@@ -284,9 +284,19 @@ async function visit(world, site) {
     let broken = [];
     const html = (load) => /html/.test(load.m?.kind ?? 'text/html');
     if (mine.ok && theirs.ok && mine.box && theirs.box) {
-      // A scroll bar's width either way isn't the box's doing.
+      // A scroll bar's width either way isn't the box's doing. A site that tells a plain window a size other than its
+      // own (adroll.com: 772 in 1172) tells the box the same: told-size says nothing there.
       const plainBox = { ...theirs.box, overflowX: theirs.box.overflowX + 16 };
-      broken = judge(mine.box, plainBox, { slot, window: { w: 1440, h: 900 }, allow: LOOSE_RULES });
+      const allow = [...LOOSE_RULES, ...(theirs.box.told.w !== width || theirs.box.told.h !== height ? ['told-size'] : [])];
+      const setup = { slot, window: { w: 1440, h: 900 }, allow };
+      broken = judge(mine.box, plainBox, setup);
+      // Broken for a moment (a page between two of its states: live.com's, nic.ru's scroller read once as <html>)
+      // isn't broken: measured again a moment later, and only what's still broken counts.
+      if (broken.length) {
+        await sleep(1500);
+        const again = await within(MEASURE_MS, 'measure', page.evaluate(measureBox)).catch(() => null);
+        if (again) { mine.box = again; broken = judge(again, plainBox, setup); }
+      }
       for (const line of broken) { const id = line.split(':')[0]; if (HELD_RULES.includes(id) && !flags.includes(id)) flags.push(id); }
     }
     if (mine.ok && theirs.ok) {

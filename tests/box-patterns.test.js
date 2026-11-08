@@ -15,7 +15,8 @@ test('every pattern has a whole header, a page after it, and lets itself off onl
   assert.ok(patterns.length >= 10, `${patterns.length} patterns`);
   for (const p of patterns) {
     assert.ok(p.title && p.from, `${p.name}: pattern and from`);
-    assert.match(p.html, /-->\s*<!doctype html>/i, `${p.name}: <!doctype html> right after the header (standards mode)`);
+    // The header's own end: the first `-->` (one inside it, a quoted `<!--…-->`, would end it early and spill the rest into the page).
+    assert.match(p.html.slice(p.html.indexOf('-->')), /^-->\s*<!doctype html>/i, `${p.name}: <!doctype html> right after the header (standards mode), and no comment inside the header`);
     for (const a of p.allow) assert.ok(RULES[a.split(' ')[0]], `${p.name}: allow "${a}" names a rule (${Object.keys(RULES).join(', ')})`);
     if (p.allow.length) assert.ok(p.note, `${p.name}: what it's let off is said in note:`);
   }

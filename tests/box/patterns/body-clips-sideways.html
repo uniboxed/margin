@@ -1,0 +1,23 @@
+<!--
+pattern: a <body> that trims what's wider than it (overflow hidden) while <html> scrolls doesn't scroll sideways in the box
+from: springer.com and biomedcentral.com (fit-check round 1, re-checked): `body { overflow: hidden }` with `html { overflow-y: scroll }`; their hero image runs past the box and is trimmed, as in a window
+handled-by: content/page/box-locks.js (checkLocks: body scrolls up and down, its sideways hidden kept)
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>body-clips-sideways</title>
+<style>
+  html { overflow-y: scroll; }
+  body { overflow: hidden; margin: 0; font: 16px/1.4 -apple-system, system-ui, sans-serif; }
+  .hero { display: grid; grid-template-columns: 300px 1fr; gap: 12px; padding: 12px; }
+  .hero img, .hero .picture { width: 140%; height: 200px; background: #cde; }
+  section { height: 600px; margin: 12px; background: #eef; }
+</style>
+</head>
+<body>
+<div class="hero" id="hero"><div>Text beside a picture wider than its column</div><div class="picture" id="picture"></div></div>
+<section id="more"></section>
+</body>
+</html>

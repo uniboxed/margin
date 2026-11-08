@@ -143,7 +143,7 @@ const firstLog = (tab) => ({ op: 'page', in: tab, js: `const fp = window.__fp; r
 const settledLayout = wait(3000);
 // The registration is at left/top/right/bottom, as an open page has it (WebKit gives a registration's
 // update to the pages it applies to: the variables its digit files add up to), within `timeout`.
-const registeredAt = (tab, [l, t, r, b], label, timeout) => checkPage(tab, `${tab}: registered at ${l}/${t}/${r}/${b} ${label}`, `const s = getComputedStyle(document.documentElement); const sum = (side) => { const v = s.getPropertyValue('--margin-at-' + side).trim(); return v.startsWith('calc(') ? (v.match(/[0-9.]+(?=px)/g) ?? []).reduce((a, n) => a + Number(n), 0) : NaN; }; return sum('left') === ${l} && sum('top') === ${t} && sum('right') === ${r} && sum('bottom') === ${b}`, timeout);
+const registeredAt = (tab, [l, t, r, b], label, timeout) => checkPage(tab, `${tab}: registered at ${l}/${t}/${r}/${b} ${label}`, `const s = getComputedStyle(document.documentElement); const sum = (side) => { const v = s.getPropertyValue('--margin-box-at-' + side).trim(); return v.startsWith('calc(') ? (v.match(/[0-9.]+(?=px)/g) ?? []).reduce((a, n) => a + Number(n), 0) : NaN; }; return sum('left') === ${l} && sum('top') === ${t} && sum('right') === ${r} && sum('bottom') === ${b}`, timeout);
 const pages = (prefix, n, layout, options) => Array.from({ length: n }, (_, i) => [fresh(`${prefix}${i}`), firstFrame(`${prefix}${i}`, layout, options), firstLog(`${prefix}${i}`)]).flat();
 
 // The page patterns the box handles (tests/box/: each pattern's page in its box,
@@ -1533,7 +1533,7 @@ Object.assign(SCENARIOS, {
     { op: 'appKill' },
     check('A', 'A: the grace over: off', `Margin.content.appDraws() === false`, 12000), wait(800),
     fresh('O0'), firstBare('O0', 'off: the page as it is from its first frame, though WebKit keeps the dropped registration'), firstLog('O0'),
-    { op: 'page', in: 'O0', js: `return 'O0: the first paint says ' + JSON.stringify(getComputedStyle(document.documentElement).getPropertyValue('--margin-fp'))` },
+    { op: 'page', in: 'O0', js: `return 'O0: the first paint says ' + JSON.stringify(getComputedStyle(document.documentElement).getPropertyValue('--margin-box-fp'))` },
     fresh('O1'), firstBare('O1', 'and the next'),
     appWith(260), reload('A'), linked('A'), wait(1500),
     ...pages('L', 2, [260, 8, 8, 8]),
@@ -1543,7 +1543,7 @@ Object.assign(SCENARIOS, {
   // open there loses its box (no empty sidebar beside it), the registration follows at once (a layout
   // of zeros: background/registered.js windowDrawnChanged, well within LAYOUT_SETTLE_MS; WebKit gives
   // it to the open page too, which is how it's seen here), so a fresh page has none from its first
-  // frame whatever the background's speed (the sheet a page gets as it commits, `--margin-fp: off`,
+  // frame whatever the background's speed (the sheet a page gets as it commits, `--margin-box-fp: off`,
   // came after the first frames when the Mac was busy), and drawn again, the open page is back in its
   // box with no frame in between at another place, and fresh pages are boxed from their first frame
   // again. ⌘T in the undrawn window opens Margin's new-tab page, which stays, and says Margin.app
@@ -1553,7 +1553,7 @@ Object.assign(SCENARIOS, {
     { op: 'appDrawn', on: false },
     bare('A'),
     check('A', 'A: the copy keeps the window\'s layout apart (only drawn changed)', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.drawn && Object.values(appLink.drawn).includes(false) && Object.keys(appLink.layouts ?? {}).length === 1`, 2000),
-    checkPage('A', 'A: the registration followed at once (a layout of zeros, given to the open page too)', `const s = getComputedStyle(document.documentElement); return ['left', 'top', 'right', 'bottom'].every((side) => { const v = s.getPropertyValue('--margin-at-' + side).trim(); return v.startsWith('calc(') && (v.match(/[0-9.]+(?=px)/g) ?? []).every((n) => Number(n) === 0); })`, 1500),
+    checkPage('A', 'A: the registration followed at once (a layout of zeros, given to the open page too)', `const s = getComputedStyle(document.documentElement); return ['left', 'top', 'right', 'bottom'].every((side) => { const v = s.getPropertyValue('--margin-box-at-' + side).trim(); return v.startsWith('calc(') && (v.match(/[0-9.]+(?=px)/g) ?? []).every((n) => Number(n) === 0); })`, 1500),
     fresh('U0'), firstBare('U0', 'U0 (fresh, in the undrawn window): no box from its first frame'), firstLog('U0'),
     // ⌘T there (the app's hot key isn't on over a window it doesn't draw): the unlinked way, Margin's
     // new-tab page, and it stays (no palette to hand it to).

@@ -5,6 +5,14 @@
 //   /ref/<name>?w=..&h=..    its plain reference: the page in an iframe w×h, a
 //                            plain window of the box's size (what tests/box/rules.js
 //                            compares the boxed page with)
+//   /bench/<rules>/<els>     a heavy page for the box's benchmark (bench.mjs): that many
+//                            rules (vw units, media queries) and elements
+//   /asset/<file>            a file a pattern's page loads (patterns/assets/: a style
+//                            sheet, a script), as a site's own files are
+// In a pattern's page, `{{other}}` is another origin serving the same files (a CDN's,
+// with no CORS): `{{other}}/asset/<file>`. Each server says what it is (`other`).
+// `<!--pause:N-->` in a pattern's page: the server sends what's before it, then the
+// rest N ms later, as a slow site's page arrives in parts (`parts`).
 //
 // A pattern's header is the HTML comment its file starts with, a field a line:
 //   pattern:    what pages do, and what the box keeps true for them, in a line (required)
@@ -21,6 +29,9 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 export const PATTERNS_DIR = fileURLToPath(new URL('./patterns/', import.meta.url));
+const ASSETS_DIR = join(PATTERNS_DIR, 'assets');
+const ASSET = /^[a-z0-9][a-z0-9-]*\.(css|js)$/;
+const TYPES = { css: 'text/css; charset=utf-8', js: 'text/javascript; charset=utf-8' };
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const FIELDS = new Set(['pattern', 'from', 'handled-by', 'settle', 'allow', 'engines', 'note']);
 
@@ -45,6 +56,38 @@ export function parseHeader(html) {
   return { title: fields.pattern, from: fields.from, handledBy: fields['handled-by'] || '', note: fields.note || '', settle, allow, engines };
 }
 
+/**
+ * A heavy page: `rules` rules, a fifth with viewport units and a tenth in media queries about the width (what the
+ * box rewrites), and `elements` elements they style. It notes, as it loads, how long from `load` to its next two
+ * frames (`window.__bench`): what the box's work after load costs a page, plus the page's own.
+ * @param {number} rules @param {number} elements
+ */
+export function benchPage(rules, elements) {
+  const css = [];
+  for (let i = 0; i < rules; i++) {
+    const rule = i % 5 === 0 ? `.c${i % elements} { width: ${(i % 90) + 10}vw; margin-left: calc(${i % 7}vw - 2px); }`
+      : `.c${i % elements} > span, .c${i % elements}:hover { color: rgb(${i % 255}, 0, 0); padding: ${i % 9}px; }`;
+    css.push(i % 10 === 0 ? `@media (min-width: ${600 + (i % 900)}px) { ${rule} }` : rule);
+  }
+  const els = Array.from({ length: elements }, (_, i) => `<div class="c${i}"><span>${i}</span></div>`).join('');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>bench ${rules}/${elements}</title><style>${css.join('\n')}</style>
+<script>addEventListener('load', () => { const t = performance.now(); requestAnimationFrame(() => requestAnimationFrame(() => { window.__bench = { loadMs: Math.round(t), frameMs: Math.round(performance.now() - t) }; })); });</script></head><body>${els}</body></html>`;
+}
+
+/** A page in the parts its pauses make: [{ text, wait }], each sent `wait` ms after the one before. @param {string} body */
+export function partsOf(body) {
+  const parts = [];
+  let wait = 0;
+  let from = 0;
+  for (const m of body.matchAll(/<!--pause:(\d{1,4})-->/g)) {
+    parts.push({ text: body.slice(from, m.index), wait });
+    wait = Math.min(Number(m[1]), 5000);
+    from = m.index + m[0].length;
+  }
+  parts.push({ text: body.slice(from), wait });
+  return parts;
+}
+
 /** Every pattern, by name (its file's), in name order. */
 export function listPatterns() {
   return readdirSync(PATTERNS_DIR).filter((f) => f.endsWith('.html')).sort().map((f) => {
@@ -57,13 +100,22 @@ export function listPatterns() {
 
 /**
  * A response for `path` (and its query), or null if it isn't one of these.
- * @param {string} path @param {URLSearchParams} query
+ * `other`: another origin's address for the same files, put in for `{{other}}`.
+ * @param {string} path @param {URLSearchParams} query @param {{ other?: string }} [options]
  * @returns {{ type: string, body: string } | null}
  */
-export function boxPage(path, query) {
+export function boxPage(path, query, { other = '' } = {}) {
   const p = /^\/pattern\/([a-z0-9-]+)$/.exec(path);
   if (p && NAME.test(p[1])) {
-    try { return { type: 'text/html; charset=utf-8', body: readFileSync(join(PATTERNS_DIR, `${p[1]}.html`), 'utf8') }; } catch { return null; }
+    let body;
+    try { body = readFileSync(join(PATTERNS_DIR, `${p[1]}.html`), 'utf8').replaceAll('{{other}}', other); } catch { return null; }
+    return { type: 'text/html; charset=utf-8', body, parts: partsOf(body) };
+  }
+  const b = /^\/bench\/(\d{1,6})\/(\d{1,6})$/.exec(path);
+  if (b) return { type: 'text/html; charset=utf-8', body: benchPage(Math.min(Number(b[1]), 200_000), Math.min(Number(b[2]), 50_000)) };
+  const a = /^\/asset\/([^/]+)$/.exec(path);
+  if (a && ASSET.test(a[1])) {
+    try { return { type: TYPES[a[1].split('.').pop()], body: readFileSync(join(ASSETS_DIR, a[1]), 'utf8') }; } catch { return null; }
   }
   const r = /^\/ref\/([a-z0-9-]+)$/.exec(path);
   if (r && NAME.test(r[1])) {

@@ -104,11 +104,20 @@ export function rebuild(data = DEFAULT_DATA) {
   changes.worse.sort(byRank); changes.better.sort(byRank);
   const progress = latestRound ? (() => { try { return JSON.parse(readFileSync(join(data, 'rounds', roundName(latestRound), 'progress.json'), 'utf8')); } catch { return null; } })() : null;
   const finished = latestRound != null && existsSync(join(data, 'rounds', roundName(latestRound), 'finished.txt'));
+  // How much longer a page takes to load through Margin than plain (both loads of a site at once, the same settle
+  // after each): the median and the slowest tenth of the difference, of every site that loaded both ways at its latest.
+  // A change that slows pages down shows here the night after.
+  const pairs = [...sites.values()].map(({ history }) => history.at(-1)).filter((r) => r.margin?.ok && r.plain?.ok && r.margin.ms > 0 && r.plain.ms > 0);
+  const extra = pairs.map((r) => r.margin.ms - r.plain.ms).sort((a, b) => a - b);
+  const at = (q) => (extra.length ? extra[Math.min(extra.length - 1, Math.floor(q * extra.length))] : null);
+  const slower = (ms) => (ms >= 0 ? `${ms} ms slower` : `${-ms} ms faster`);
+  const speed = { sites: extra.length, extraMedianMs: at(0.5), extraP90Ms: at(0.9), slowerBy500Ms: extra.filter((d) => d > 500).length };
   // Dated by its newest result (not when it was made), so making it again with nothing new changes nothing.
   const newest = table.reduce((m, r) => (r.at && r.at > m ? r.at : m), '');
   const summary = {
     at: newest || null, sites: table.length, round: latestRound, roundFinished: finished, roundProgress: progress,
     verdicts: Object.fromEntries(VERDICTS.filter((v) => verdicts[v]).map((v) => [v, verdicts[v]])),
+    speed,
     flags: Object.fromEntries(Object.entries(flags).sort((a, b) => b[1] - a[1])),
     worse: changes.worse.map((c) => `${c.rank} ${c.domain}: ${c.from} → ${c.to} (round ${c.round})`),
     better: changes.better.map((c) => `${c.rank} ${c.domain}: ${c.from} → ${c.to} (round ${c.round})`),
@@ -122,6 +131,7 @@ export function rebuild(data = DEFAULT_DATA) {
     '## Verdicts', ...Object.entries(summary.verdicts).map(([k, v]) => `- ${k}: ${v}`), '',
     '`blocked`: the site turned the plain browser away too (bot protection, a captcha): it says nothing about Margin.', '',
     '## Flags', ...Object.entries(summary.flags).map(([k, v]) => `- ${k}: ${v}`), '',
+    '## Speed', speed.sites ? `Through Margin, against plain: ${slower(speed.extraMedianMs)} at the median, ${slower(speed.extraP90Ms)} at the slowest tenth; ${speed.slowerBy500Ms} of ${speed.sites} sites over half a second slower.` : 'No site loaded both ways yet.', '',
     `## Worse since the round before (${summary.worse.length})`, ...summary.worse.slice(0, 200).map((s) => `- ${s}`), '',
     `## Better since the round before (${summary.better.length})`, ...summary.better.slice(0, 200).map((s) => `- ${s}`), '',
     `## Loaded plain but not through Margin (${summary.marginFailed.length})`, ...summary.marginFailed.slice(0, 200).map((s) => `- ${s}`), '',

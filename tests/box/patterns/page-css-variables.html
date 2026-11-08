@@ -1,0 +1,35 @@
+<!--
+pattern: a page's own CSS variables named like spacing (`--margin-left`, `--margin-top`) are the page's, not the box's
+from: appdome.com (fit-check round 1, re-checked): Elementor's containers lay out with `margin-left: var(--margin-left)`; the box's own `--margin-left: 260px` on <html> reached every container that set none, 260px off to the right
+handled-by: shared/page-box.js (boxRules: the box's variables are --margin-box-*)
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>page-css-variables</title>
+<style>
+  body { margin: 0; font: 16px/1.4 -apple-system, system-ui, sans-serif; }
+  /* As Elementor's flex containers do: each side from a variable an element may or may not set. */
+  .con { display: flex; gap: 10px; padding: 12px; background: #eef;
+    margin-left: var(--margin-left); margin-top: var(--margin-top); margin-right: var(--margin-right); margin-bottom: var(--margin-bottom); }
+  .con.set { --margin-left: 24px; --margin-top: 12px; }
+  .tile { flex: 1; height: 80px; background: #cde; border-radius: 8px; }
+  /* Other names a page might use for itself. */
+  #shift { position: relative; left: var(--margin-shift-x, 0px); top: var(--margin-shift-y, 0px); height: 20px; background: #edc; }
+  #out { margin-right: var(--margin-out-r, 0px); height: 20px; background: #dec; }
+  #dw { width: calc(100% - var(--margin-dw, 0px)); height: 20px; background: #ecd; }
+</style>
+</head>
+<body>
+<header class="con" id="header"><div class="tile"></div><div class="tile"></div><div class="tile"></div></header>
+<section class="con set" id="section"><div class="tile"></div><div class="tile"></div></section>
+<div id="shift"></div>
+<div id="out"></div>
+<div id="dw"></div>
+<p>margin-left read by the page: <output id="ml"></output></p>
+<script>
+  addEventListener('load', () => { document.getElementById('ml').textContent = getComputedStyle(document.getElementById('header')).marginLeft; });
+</script>
+</body>
+</html>

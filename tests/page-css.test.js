@@ -30,17 +30,17 @@ test('asksSize: the window\'s size, not the screen\'s or anything else', () => {
 });
 
 test('viewport units become the box\'s, through variables', () => {
-  assert.equal(shiftUnits('100vw'), 'calc(100vw - 1 * var(--margin-dw))');
-  assert.equal(shiftUnits('50vh'), 'calc(50vh - 0.5 * var(--margin-dh))');
-  assert.equal(shiftUnits('100dvh'), 'calc(100dvh - 1 * var(--margin-dh))');
-  assert.equal(shiftUnits('10vmin'), 'min(calc(10vw - 0.1 * var(--margin-dw)), calc(10vh - 0.1 * var(--margin-dh)))');
-  assert.equal(shiftUnits('-50vw'), 'calc(-50vw - -0.5 * var(--margin-dw))');
-  assert.equal(shiftUnits('.5vw'), 'calc(.5vw - 0.005 * var(--margin-dw))');
+  assert.equal(shiftUnits('100vw'), 'calc(100vw - 1 * var(--margin-box-dw))');
+  assert.equal(shiftUnits('50vh'), 'calc(50vh - 0.5 * var(--margin-box-dh))');
+  assert.equal(shiftUnits('100dvh'), 'calc(100dvh - 1 * var(--margin-box-dh))');
+  assert.equal(shiftUnits('10vmin'), 'min(calc(10vw - 0.1 * var(--margin-box-dw)), calc(10vh - 0.1 * var(--margin-box-dh)))');
+  assert.equal(shiftUnits('-50vw'), 'calc(-50vw - -0.5 * var(--margin-box-dw))');
+  assert.equal(shiftUnits('.5vw'), 'calc(.5vw - 0.005 * var(--margin-box-dw))');
 });
 
 test('the same value twice changes it once; two in one rule both change', () => {
   const once = shiftUnits('calc(50vw - 50%)');
-  assert.equal(once, 'calc(calc(50vw - 0.5 * var(--margin-dw)) - 50%)');
+  assert.equal(once, 'calc(calc(50vw - 0.5 * var(--margin-box-dw)) - 50%)');
   assert.equal(shiftUnits(once), once);
 });
 
@@ -57,7 +57,7 @@ test('the box: the same rules in the page and the placeholder, under @media scre
   const box = { left: 260, top: 8, right: 8, bottom: 8 };
   const css = boxCss(box);
   assert.ok(css.includes(boxRules(BOX_ROOT, box)));
-  assert.match(css, /--margin-dw: 268px; --margin-dh: 16px/);
+  assert.match(css, /--margin-box-dw: 268px; --margin-box-dh: 16px/);
   assert.match(css, /transform: translate\(260px, 8px\) !important/);
   assert.match(css, /width: calc\(100vw - 268px\) !important; height: calc\(100vh - 16px\) !important/);
   assert.ok(css.indexOf('@media screen') < css.indexOf(boxRules(BOX_ROOT, box)));
@@ -123,7 +123,7 @@ test('<html> itself in full screen (YouTube\'s video) is the whole window, not t
   assert.ok(rule.length > 0, 'a rule for it');
   assert.match(rule, /transform: none !important/);
   assert.match(rule, /width: 100vw !important; height: 100vh !important/);
-  assert.match(rule, /--margin-left: 0px/);
+  assert.match(rule, /--margin-box-left: 0px/);
   // More specific than the box's own <html> rule (BOX_ROOT), both !important: it wins.
   assert.ok(css.indexOf(head) > css.indexOf('transform: translate('), 'after the box\'s rule too');
   const zoomed = boxCss(box, 2);
@@ -136,7 +136,7 @@ test('the box follows a page\'s zoom on <html>', () => {
   const zoomed = boxCss(box, 2);
   assert.ok(zoomed.includes('calc(50vw - 155px)'));
   assert.ok(zoomed.includes('translate(150px, 5px)'));
-  assert.ok(zoomed.includes('--margin-dw: 155px'));
+  assert.ok(zoomed.includes('--margin-box-dw: 155px'));
 });
 
 // A declaration block as a browser keeps one (enough of it): a shorthand with a var() is kept as
@@ -169,7 +169,7 @@ test('shiftStyle: vw in a font shorthand with a var() is moved too; a longhand s
   const style = fakeStyle([['font', '800 clamp(30px, 3.2vw, 44px)/1.15 var(--sans)'], ['color', 'red']]);
   shiftStyle(style);
   assert.equal(style.getPropertyValue('font'), shiftUnits('800 clamp(30px, 3.2vw, 44px)/1.15 var(--sans)'));
-  assert.match(style.getPropertyValue('font'), /--margin-dw/);
+  assert.match(style.getPropertyValue('font'), /--margin-box-dw/);
   assert.equal(style.getPropertyValue('color'), 'red');
   // Twice: once.
   const once = style.getPropertyValue('font');

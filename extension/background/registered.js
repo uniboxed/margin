@@ -14,7 +14,7 @@
 // own as each of its pages commits (fixUp: scripting.insertCSS, on
 // webNavigation.onCommitted). A window Margin.app said it draws nothing over
 // (`drawn` false: not in full screen, or not found among the window server's)
-// counts for none, and its pages get `--margin-fp: off` as they commit: no
+// counts for none, and its pages get `--margin-box-fp: off` as they commit: no
 // box beside a sidebar that isn't there. Registered again only when that layout or the
 // theme changes, and a layout at once when it changes alone, but in a burst
 // (a resize of the sidebar sends many layouts) only once it's been the same
@@ -295,8 +295,8 @@ export function windowDrawnChanged() {
 // rendering update (Spike 4: 96 of 96 pages in WebKit and Chromium; the
 // page's world reads the variables again then: content/page/main.js). One
 // with no box there, or one Margin.app draws nothing over, gets
-// `--margin-fp: off`, so the registered one isn't drawn.
-export const OFF_CSS = 'html:root { --margin-fp: off; }';
+// `--margin-box-fp: off`, so the registered one isn't drawn.
+export const OFF_CSS = 'html:root { --margin-box-fp: off; }';
 /** What fixUp did, the last few (tests). @type {{ tabId: number, css: string, ok: boolean | string }[]} */
 export const fixUps = [];
 // Each tab's window as Safari last said it (tabs.onCreated, onAttached,

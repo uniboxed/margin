@@ -31,8 +31,8 @@ export function boxRules(selector, { left, top, right, bottom }, zoom = 1) {
     width: calc(${100 / zoom}vw - ${sum(left, right)}) !important; height: calc(${100 / zoom}vh - ${sum(top, bottom)}) !important;
     min-width: 0 !important; max-width: none !important; min-height: 0 !important; max-height: none !important;
     margin: 0 !important; padding: 0 !important; box-sizing: border-box !important;
-    --margin-left: ${len(left)}; --margin-top: ${len(top)}; --margin-shift-x: ${neg(left)}; --margin-shift-y: ${neg(top)};
-    --margin-out-r: ${neg(right)}; --margin-out-b: ${neg(bottom)};
+    --margin-box-left: ${len(left)}; --margin-box-top: ${len(top)}; --margin-box-shift-x: ${neg(left)}; --margin-box-shift-y: ${neg(top)};
+    --margin-box-out-r: ${neg(right)}; --margin-box-out-b: ${neg(bottom)};
   }`;
 }
 
@@ -103,9 +103,9 @@ export const SAID_CSS = `html:not(:fullscreen)::backdrop { width: inherit !impor
   }
   :not(dialog, [popover], :fullscreen)::backdrop { margin-top: inherit !important; }`;
 
-// What --margin-dw and --margin-dh are for a box, and for no box. They stay
+// What --margin-box-dw and --margin-box-dh are for a box, and for no box. They stay
 // defined whatever happens: the page's rewritten values use them.
-export const NO_BOX_CSS = ':root { --margin-dw: 0px; --margin-dh: 0px; }';
+export const NO_BOX_CSS = ':root { --margin-box-dw: 0px; --margin-box-dh: 0px; }';
 
 // The page-world sheet, for { left, top, right, bottom } in the page's pixels.
 // `clipY`: <html> clips up and down too (the window never scrolls, and a quirks-mode page's <body> stays a scroller of
@@ -116,7 +116,7 @@ export function boxCss(box, zoom = 1, clipY = true) {
   const dh = scaled.top + scaled.bottom;
   return `${NO_BOX_CSS}
   @media screen {
-    :root { --margin-dw: ${dw}px; --margin-dh: ${dh}px; }
+    :root { --margin-box-dw: ${dw}px; --margin-box-dh: ${dh}px; }
     ${boxRules(BOX_ROOT, scaled, zoom)}
     /* <html> itself in full screen (YouTube's video: Tirth, 2026-11-07, the video in the box's place, a strip on the
        left): the whole window. The browser's own full-screen rules skip the root (:not(:root):fullscreen), so the
@@ -124,7 +124,7 @@ export function boxCss(box, zoom = 1, clipY = true) {
        stays the scroller, as Margin's world says (content/page/viewport.js). One step heavier than BOX_ROOT. */
     ${BOX_ROOT}:fullscreen {
       transform: none !important; width: ${100 / zoom}vw !important; height: ${100 / zoom}vh !important;
-      --margin-left: 0px; --margin-top: 0px; --margin-shift-x: 0px; --margin-shift-y: 0px; --margin-out-r: 0px; --margin-out-b: 0px;
+      --margin-box-left: 0px; --margin-box-top: 0px; --margin-box-shift-x: 0px; --margin-box-shift-y: 0px; --margin-box-out-r: 0px; --margin-box-out-b: 0px;
     }
     /* top and bottom: a page's scroll lock (fixed, top: -Ypx) mustn't move the scroller. Not left and right: a page that
        places <body> by its own offset (xkcd.com: absolute, left: 50%, a negative margin) has it read and given back as
@@ -142,7 +142,7 @@ export function boxCss(box, zoom = 1, clipY = true) {
     ::backdrop { inset: ${box.top}px ${box.right}px ${box.bottom}px ${box.left}px !important; }
     :fullscreen::backdrop { inset: 0 !important; }
     /* Full screen is the whole window again. */
-    :fullscreen { --margin-dw: 0px; --margin-dh: 0px; }
+    :fullscreen { --margin-box-dw: 0px; --margin-box-dh: 0px; }
   }`;
 }
 
@@ -153,9 +153,9 @@ export function boxCss(box, zoom = 1, clipY = true) {
 // Margin.app draws Margin. A registration can list only files, and a script
 // registered can't be given a value, so a layout is spelled in files of one
 // decimal digit each, of each inset's count of quarter pixels:
-// content/layout/<side>-<place>-<digit>.css sets --margin-at-<side>-<place>
+// content/layout/<side>-<place>-<digit>.css sets --margin-box-at-<side>-<place>
 // to digit × 10^place quarter pixels, and content/layout/at.css adds a side's
-// places up into --margin-at-<side>. 164 files cover every inset from 0 to
+// places up into --margin-box-at-<side>. 164 files cover every inset from 0 to
 // 1023.75 px and a corner to 63.75 px; a layout registers 19 of them and
 // at.css. Every place, zeros too: WebKit keeps applying the CSS of a
 // registration it updated or took away to every new page (the WebKit host,
@@ -170,10 +170,10 @@ export function boxCss(box, zoom = 1, clipY = true) {
 // wrong box: the theme's first-paint file (firstPaintCss) applies only to an
 // <html> marked `data-margin-at="<theme id>"`, which the page's world sets
 // (content/page/main.js) when the newest registration says that theme
-// (`--margin-fp: <id>`, in that file) and the page is starting fresh, at a
+// (`--margin-box-fp: <id>`, in that file) and the page is starting fresh, at a
 // layout with a box: not linked any more, the background updates the
 // registration to a layout of zeros, and the page's world stays out (a
-// window with no box gets `--margin-fp: off` as its page commits). The page's world takes the mark off
+// window with no box gets `--margin-box-fp: off` as its page commits). The page's world takes the mark off
 // once Margin's content script has said where the box goes (its first
 // `margin:box`): from then on the box is the page world's own sheet.
 export const LAYOUT_SIDES = Object.freeze(['left', 'top', 'right', 'bottom', 'radius']);
@@ -186,7 +186,7 @@ export const LAYOUT_SUM_FILE = 'content/layout/at.css';
 export const firstPaintFile = (id) => `content/layout/theme-${id}.css`;
 /** @param {string} side @param {number} place @param {number} digit */
 export const layoutDigitFile = (side, place, digit) => `content/layout/${side}-${place}-${digit}.css`;
-const placeName = (side, place) => `--margin-at-${side}-${place}`;
+const placeName = (side, place) => `--margin-box-at-${side}-${place}`;
 /** @param {string} side @param {unknown} value */
 const quarters = (side, value) => Math.max(0, Math.min(MAX_QUARTERS[side], Math.round((Number(value) || 0) / QUARTER)));
 /** A layout as it's spelled: quarter pixels, within range. @param {Record<string, unknown> | null | undefined} layout @returns {{ left: number, top: number, right: number, bottom: number, radius: number }} */
@@ -223,27 +223,27 @@ export function allLayoutFiles() {
   return files;
 }
 function layoutSumCss() {
-  const sums = LAYOUT_SIDES.map((side) => `--margin-at-${side}: calc(${Array.from({ length: placesOf(side) }, (_, place) => `var(${placeName(side, place)}, 0px)`).join(' + ')});`);
+  const sums = LAYOUT_SIDES.map((side) => `--margin-box-at-${side}: calc(${Array.from({ length: placesOf(side) }, (_, place) => `var(${placeName(side, place)}, 0px)`).join(' + ')});`);
   return `:root { ${sums.join(' ')} }\n`;
 }
 /** A window's own layout, as one sheet (scripting.insertCSS): `html:root` outweighs the sums' `:root`. @param {Record<string, unknown>} layout */
 export function layoutOwnCss(layout) {
   const values = spelled(layout);
-  return `html:root { ${LAYOUT_SIDES.map((side) => `--margin-at-${side}: ${values[side]}px;`).join(' ')} }`;
+  return `html:root { ${LAYOUT_SIDES.map((side) => `--margin-box-at-${side}: ${values[side]}px;`).join(' ')} }`;
 }
 // The box from those variables, for any layout (boxRules takes CSS lengths).
-const LAYOUT_BOX = Object.freeze({ left: 'var(--margin-at-left)', top: 'var(--margin-at-top)', right: 'var(--margin-at-right)', bottom: 'var(--margin-at-bottom)' });
+const LAYOUT_BOX = Object.freeze({ left: 'var(--margin-box-at-left)', top: 'var(--margin-box-at-top)', right: 'var(--margin-box-at-right)', bottom: 'var(--margin-box-at-bottom)' });
 /** The selector a theme's first paint is under: <html> marked for that theme. @param {string} id */
 export const firstPaintRoot = (id) => `html[${FIRST_PAINT_MARK}="${id}"]`;
 /**
  * A theme's first-paint file (scripts/build.js writes it): the theme it is
- * (`--margin-fp`, read by the page's world), the box from the variables, and
+ * (`--margin-box-fp`, read by the page's world), the box from the variables, and
  * the theme's own look around it (`look`: themes/<id>/first-paint.css, every
  * rule under firstPaintRoot(id), checked by a unit test).
  * @param {string} id @param {string} look
  */
 export function firstPaintCss(id, look) {
-  return `/* ${id}'s first paint (scripts/build.js, from shared/page-box.js and themes/${id}/first-paint.css). */\n:root { --margin-fp: ${id}; }\n@media screen {\n  ${boxRules(`${firstPaintRoot(id)}${WEIGHT}`, LAYOUT_BOX)}\n}\n${look}`;
+  return `/* ${id}'s first paint (scripts/build.js, from shared/page-box.js and themes/${id}/first-paint.css). */\n:root { --margin-box-fp: ${id}; }\n@media screen {\n  ${boxRules(`${firstPaintRoot(id)}${WEIGHT}`, LAYOUT_BOX)}\n}\n${look}`;
 }
 // A side's variable as computed: its places' sum, unworked ("calc(0px + 4px +
 // …)"), or a plain value. Every term is added, so its pixels add up.
@@ -260,10 +260,10 @@ const pixels = (/** @type {string} */ text) => {
  * @returns {null | { theme: string | null, layout: { left: number, top: number, right: number, bottom: number, radius: number } | null }}
  */
 export function readFirstPaint(style) {
-  const theme = style.getPropertyValue('--margin-fp').trim();
+  const theme = style.getPropertyValue('--margin-box-fp').trim();
   if (!theme) return null;
   if (theme === 'off' || !/^[a-z][a-z0-9-]*$/.test(theme)) return { theme: null, layout: null };
-  return { theme, layout: /** @type {any} */ (Object.fromEntries(LAYOUT_SIDES.map((side) => [side, pixels(style.getPropertyValue(`--margin-at-${side}`))]))) };
+  return { theme, layout: /** @type {any} */ (Object.fromEntries(LAYOUT_SIDES.map((side) => [side, pixels(style.getPropertyValue(`--margin-box-at-${side}`))]))) };
 }
 
 // <body>'s background, with <html> saying none, is the window's canvas's: an

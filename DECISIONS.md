@@ -3327,3 +3327,47 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **Pattern:** `tests/box/patterns/body-centred-by-offset.html`, failing in Chromium and the WebKit host before.
 - **Tests:** `body-fit` (xkcd's numbers: its column at 196 in 1172), `page-css` (top and bottom held, not left and right; the fit sheet's left and right). The WebKit host's `lock` and the other box scenarios pass as before.
 
+### The box's CSS variables are --margin-box-* (2026-11-08)
+
+- **Found by fit-check (appdome.com):** Elementor's containers lay out with `margin-left: var(--margin-left)` (and top, right, bottom). The box put its own `--margin-left: 260px` and `--margin-top: 8px` on `<html>`, so every container that set none of its own inherited them: whole sections 260px to the right and 8px down. Any page or framework using such a name met the box's values.
+- **Now:** every variable the box puts in a page is `--margin-box-*`: `--margin-box-left`, `-top`, `-shift-x`, `-shift-y`, `-out-r`, `-out-b`, `-dw`, `-dh`, the layout's `--margin-box-at-*`, and the first paint's `--margin-box-fp`. They're set in `shared/page-box.js`, `shared/page-css.js` and `background/registered.js`, with the themes' first-paint files, the tests, the WebKit host and `app/PROTOCOL.md` to match. A page's own `--margin-*` is its own again.
+- **Pattern:** `tests/box/patterns/page-css-variables.html`, failing in Chromium and the WebKit host before.
+- **An update:** pages open across it have the old copy's page script until they're loaded again, which Margin does as it updates (the `reloaded` scenario).
+
+### Another origin's style sheet copied whole, its imports in it (2026-11-08)
+
+- **Found by fit-check (anu.edu.au):** its CDN sheet imports Bootstrap's grid as `@import"../../libs/bootstrap/css/bootstrap-grid.min.css"` (minified, no space). Margin's readable copy of an unreadable sheet (`content/page-link.js`) made `url()` and `@import "…"` absolute, but its pattern wanted a space after `@import`. The address stayed relative, resolved against the page and wasn't found, and the grid was lost: the site's container 1172px wide where it makes it 960.
+- **Also:** an import of another origin's in the copy is itself unreadable, so its media queries stayed the window's, even with the address right.
+- **Now:**
+  - `shared/sheet-copy.js`: `absolute` takes `@import` with a space or not.
+  - `inlineImports` puts what a copy imports into it, fetched the same way (the background's `fetchStyle`): in place, inside `@media …` for a media list, their own imports in them, 3 levels and 20 imports at most, `@charset` dropped.
+  - If any import can't go in (not fetched, in a layer, under `supports()`), none does and they stay absolute `@import`s, since an import after a rule would be dropped.
+  - `page-link.js` uses both, and checks again after the inlining that the link is still what it copied.
+- **Patterns:** `cross-origin-import.html` (a second origin, `{{other}}` in a pattern's page: `box-cdn.test` in the e2e harness, `localhost` in the WebKit host; failing in both before). `async-stylesheet.html` (a sheet loaded media print, switched as it loads: passing before too, kept as a guard, and the first guess at springer.com's overflow, which turned out to be its own `overflow: hidden` on `<body>`). `serve.js` serves a pattern's files (`patterns/assets/`).
+- **Tests:** `tests/sheet-copy.test.js`.
+
+### The box's IntersectionObserver lists its methods, as the browser's does (2026-11-08)
+
+- **Found by fit-check (gog.com):** 293 errors through Margin, `this.viewportEnterObserver.observe is not a function`. gog is an Angular app, and zone.js replaces `IntersectionObserver` with a wrapper whose prototype gets a method for each function it finds listing a sample instance with `for…in`. The box's stand-in (`content/page/in-view.js`) had `observe`, `unobserve`, `disconnect` and `takeRecords` as own properties that weren't enumerable, which hid the browser's (enumerable, on its prototype) from `for…in`. The wrapper had no `observe`, and nothing Angular watched came into view.
+- **Now:** the stand-in's methods and getters are enumerable. gog's Margin-only errors went from 264 to 1.
+- **Pattern:** `tests/box/patterns/observer-wrapped.html` (zone.js's patchClass, in the page), failing before.
+- **Also:**
+  - A pattern's page can arrive in parts (`<!--pause:N-->`, `serve.js partsOf`; both servers send them apart).
+  - `early-head-script.html` checks that a script early in `<head>` sees the box.
+  - The header check now takes the header's own end, so a comment quoted inside a header (which ends it early) fails.
+- **Not found yet:**
+  - simpli.fi: React's hydration errors (#418), through Margin only, in Chromium and the WebKit host. The markup before hydration is the same, and no one shim switched off makes them go. A guess at the page script's start (looking again for each node in `<head>`) made no difference and was taken back.
+  - cxense.com: blank, because Framer's script writes `translateY(-1000px)` on its fixed hero through Margin and not plain.
+  - stuff.co.nz: the site's own "something went wrong".
+  - 1und1.de: didn't load through Margin.
+
+### What the box costs, measured (2026-11-08)
+
+- **Tirth:** while fixing these, don't make Margin slower.
+- **Now:**
+  - `npm run bench:box` (`tests/box/bench.mjs`): a heavy page (`serve.js benchPage`: 20,000 rules, a fifth with viewport units and a tenth in media queries, 3,000 elements) and a smaller one (2,000 and 500), 7 loads each, through Margin in Chromium and plain, the medians of the page's load and from load to its second frame. The box's cost is what it adds, compared with `bench-baseline.json`; it fails past a quarter more and 30 ms.
+  - Baseline from `main` before the day's fixes (d4240ec): the box adds 123 ms to the heavy page's load and 33 to the small one's, nothing after load.
+  - With the fixes: 122 and 25.
+  - fit-check's summary has a Speed line: how much slower pages load through Margin than plain, the median and the slowest tenth, every night. Round 1: 12 ms faster at the median, 242 ms slower at the slowest tenth, 145 of 2,651 sites over half a second slower.
+  - The imports in a copied sheet are fetched all at once (`inlineImports`), so the copy waits for the slowest, not their sum.
+

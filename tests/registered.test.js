@@ -24,11 +24,11 @@ test('a layout spelled in digit files: every place of every side, zeros too, rea
 test('the page\'s world reads the first paint\'s variables: nothing yet, off, or the theme and its layout (sums worked out, a window\'s own plain values)', () => {
   const style = (vars) => ({ getPropertyValue: (name) => vars[name] ?? '' });
   assert.equal(readFirstPaint(style({})), null, 'no registration\'s CSS yet');
-  assert.deepEqual(readFirstPaint(style({ '--margin-fp': ' off' })), { theme: null, layout: null });
-  assert.deepEqual(readFirstPaint(style({ '--margin-fp': 'evil theme' })), { theme: null, layout: null }, 'not a theme id');
-  const sums = { '--margin-fp': ' arcadia', '--margin-at-left': 'calc(0px + 60px + 0px + 200px)', '--margin-at-top': 'calc(8px + 0px + 0px + 0px)', '--margin-at-right': ' 8px', '--margin-at-bottom': 'calc(0.25px + 7.75px)', '--margin-at-radius': 'calc(0.25px + 6px + 0px)' };
+  assert.deepEqual(readFirstPaint(style({ '--margin-box-fp': ' off' })), { theme: null, layout: null });
+  assert.deepEqual(readFirstPaint(style({ '--margin-box-fp': 'evil theme' })), { theme: null, layout: null }, 'not a theme id');
+  const sums = { '--margin-box-fp': ' arcadia', '--margin-box-at-left': 'calc(0px + 60px + 0px + 200px)', '--margin-box-at-top': 'calc(8px + 0px + 0px + 0px)', '--margin-box-at-right': ' 8px', '--margin-box-at-bottom': 'calc(0.25px + 7.75px)', '--margin-box-at-radius': 'calc(0.25px + 6px + 0px)' };
   assert.deepEqual(readFirstPaint(style(sums)), { theme: 'arcadia', layout: { left: 260, top: 8, right: 8, bottom: 8, radius: 6.25 } });
-  assert.equal(layoutOwnCss(L(300, 12, 16, 20, 10)), 'html:root { --margin-at-left: 300px; --margin-at-top: 12px; --margin-at-right: 16px; --margin-at-bottom: 20px; --margin-at-radius: 10px; }', 'a window\'s own: outweighs the registered sums');
+  assert.equal(layoutOwnCss(L(300, 12, 16, 20, 10)), 'html:root { --margin-box-at-left: 300px; --margin-box-at-top: 12px; --margin-box-at-right: 16px; --margin-box-at-bottom: 20px; --margin-box-at-radius: 10px; }', 'a window\'s own: outweighs the registered sums');
 });
 
 test('the layout to register: the one most windows have; a tie keeps the one registered; none measured yet: the settings\'; no box at any edge: none', () => {

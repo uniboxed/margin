@@ -50,7 +50,7 @@ const FIRST_FRAMES = `<script>(() => {
     const html = document.documentElement;
     const s = getComputedStyle(html);
     const m = new DOMMatrix(s.transform);
-    fp.frames.push({ t: Math.round(performance.now()), x: m.e, y: m.f, w: Math.round(parseFloat(s.width)), mark: html.getAttribute('data-margin-at'), said: s.getPropertyValue('--margin-fp').trim(), left: s.getPropertyValue('--margin-at-left').trim(), frame: getComputedStyle(html, '::after').boxShadow });
+    fp.frames.push({ t: Math.round(performance.now()), x: m.e, y: m.f, w: Math.round(parseFloat(s.width)), mark: html.getAttribute('data-margin-at'), said: s.getPropertyValue('--margin-box-fp').trim(), left: s.getPropertyValue('--margin-box-at-left').trim(), frame: getComputedStyle(html, '::after').boxShadow });
     if (fp.frames.length < 40) requestAnimationFrame(look);
   };
   requestAnimationFrame(look);
@@ -223,11 +223,20 @@ createServer((req, res) => {
   // The page patterns the box handles (tests/box/serve.js): /box/pattern/<name>, /box/ref/<name>?w=&h=.
   if (req.url.startsWith('/box/')) {
     const u = new URL(req.url, 'http://127.0.0.1');
-    const out = boxPage(u.pathname.slice('/box'.length), u.searchParams);
+    // Another origin for the same files (a CDN's, no CORS): localhost, where the pages are 127.0.0.1's.
+    const out = boxPage(u.pathname.slice('/box'.length), u.searchParams, { other: `http://localhost:${PORT}/box` });
     if (out) {
       res.setHeader('content-type', out.type);
       res.setHeader('cache-control', 'no-store');
-      return res.end(out.body);
+      if (!(out.parts?.length > 1)) return res.end(out.body);
+      // A page that arrives in parts (tests/box/serve.js partsOf).
+      let at = 0;
+      const next = () => {
+        const part = out.parts[at++];
+        if (!part) return res.end();
+        setTimeout(() => { res.write(part.text); next(); }, part.wait);
+      };
+      return next();
     }
   }
   const match = /^\/p\/(\w+)/.exec(req.url);

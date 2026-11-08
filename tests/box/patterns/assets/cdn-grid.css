@@ -1,0 +1,5 @@
+/* Imported by cdn-main.css. Queries between each engine's box and its window (the WebKit host's box is 932 wide in 1200, the e2e harness's 1172 in 1440). */
+.container { width: 100%; box-sizing: border-box; padding: 0 12px; background: #eef; }
+@media (min-width: 1050px) { .container { max-width: 760px; margin: 0 auto; } }
+@media (min-width: 1300px) { .container { max-width: 980px; } }
+.bleed { width: 50vw; height: 16px; background: #cde; }

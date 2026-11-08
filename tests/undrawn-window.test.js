@@ -2,7 +2,7 @@
 // full screen, or not found among the window server's yet), the background's
 // side against a fake of the browser's API, with the link's word played on
 // the background's own link object: a page committing there gets no box from
-// its first paint (`--margin-fp: off`), while one in a window not said of yet
+// its first paint (`--margin-box-fp: off`), while one in a window not said of yet
 // (a new full-screen window before its first layout) keeps the registered box;
 // and Margin's keys there go the unlinked way: ⌘T and the palette's key open
 // Margin's new-tab page, a new tab Safari made stays (no palette pushed for
@@ -135,7 +135,7 @@ test('a page committing in a window Margin.app draws nothing over: no box from i
   await commit(20);
   await sleep(20);
   assert.equal(fake.inserted.length, 1);
-  assert.match(fake.inserted[0].css, /--margin-at-left: 300px/, 'drawn again: its own layout');
+  assert.match(fake.inserted[0].css, /--margin-box-at-left: 300px/, 'drawn again: its own layout');
 });
 
 test('⌘T, the palette\'s key and the sidebar\'s in a window Margin.app draws nothing over: Margin\'s new-tab page, the sidebar\'s logged; in one it draws: left to the app', async () => {
@@ -259,7 +259,7 @@ test('a page committing in a tab Margin\'s state doesn\'t have yet: its window f
   fake.inserted.length = 0;
   void commit(70);
   assert.equal(fake.inserted.length, 1, 'asked for at once (a page paints its first frame 15 to 20 ms after it commits)');
-  assert.match(fake.inserted[0].css, /--margin-at-left: 300px/, 'its window\'s own layout');
+  assert.match(fake.inserted[0].css, /--margin-box-at-left: 300px/, 'its window\'s own layout');
   // Moved to a window Margin.app draws nothing over.
   fake.tabs.set(70, { ...fake.tabs.get(70), windowId: 3 });
   void fire('onAttached', 70, { newWindowId: 3, newPosition: 0 });
@@ -271,7 +271,7 @@ test('a page committing in a tab Margin\'s state doesn\'t have yet: its window f
   void fire('onUpdated', 70, { status: 'loading' }, { ...fake.tabs.get(70) });
   fake.inserted.length = 0;
   void commit(70);
-  assert.match(fake.inserted[0]?.css ?? '', /--margin-at-left: 300px/, 'the window its own update named');
+  assert.match(fake.inserted[0]?.css ?? '', /--margin-box-at-left: 300px/, 'the window its own update named');
   await sleep(50);
 });
 
@@ -434,7 +434,7 @@ test('windows at different layouts: the registered one is most windows\' (a tie 
     fake.inserted.length = 0;
     await commit(20); // (window 2's page)
     assert.equal(fake.inserted.length, 1);
-    assert.match(fake.inserted[0].css, /--margin-at-left: 720px/, 'window 2\'s page: its own as it commits');
+    assert.match(fake.inserted[0].css, /--margin-box-at-left: 720px/, 'window 2\'s page: its own as it commits');
     clock.tick(3000);
     await settled();
     assert.equal(updates, 0, 'settled: still a tie');

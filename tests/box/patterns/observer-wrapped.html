@@ -1,0 +1,41 @@
+<!--
+pattern: a page that wraps IntersectionObserver as Angular's zone.js does (its methods copied by listing an instance's) can still observe
+from: gog.com (fit-check round 1, re-checked): 293 errors, `this.viewportEnterObserver.observe is not a function`; zone.js lists a sample observer's properties with `for…in`, and the box's stand-in had its methods as its own, not enumerable, which hid the browser's
+handled-by: content/page/in-view.js (the stand-in's methods and getters enumerable, as the browser's are)
+settle: 600
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>observer-wrapped</title>
+<style>body { margin: 0; font: 16px/1.4 -apple-system, system-ui, sans-serif; } #card { height: 120px; margin: 20px; background: #cde; }</style>
+<script>
+  // What zone.js's patchClass does to IntersectionObserver (and MutationObserver, FileReader): a wrapper whose
+  // prototype gets a method for each function found by listing a sample instance with for…in.
+  (function patchClass(name) {
+    const Original = window[name];
+    const key = '__zone_original_instance';
+    window[name] = function (...args) { this[key] = new Original(...args); };
+    const sample = new Original(function () {});
+    for (const prop in sample) {
+      if (typeof sample[prop] === 'function') window[name].prototype[prop] = function (...args) { return this[key][prop](...args); };
+      else Object.defineProperty(window[name].prototype, prop, { get() { return this[key][prop]; } });
+    }
+  })('IntersectionObserver');
+</script>
+</head>
+<body>
+<div id="card">A card a list lazy-loads as it comes into view</div>
+<p>observe: <output id="observe"></output>, heard: <output id="heard"></output></p>
+<script>
+  try {
+    const io = new IntersectionObserver((entries) => { document.getElementById('heard').textContent = String(entries[0].isIntersecting); });
+    io.observe(document.getElementById('card'));
+    document.getElementById('observe').textContent = 'ok';
+  } catch (e) {
+    document.getElementById('observe').textContent = e.name;
+  }
+</script>
+</body>
+</html>
