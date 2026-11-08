@@ -10,8 +10,10 @@ import { join, resolve } from 'node:path';
 const argv = process.argv.slice(2);
 const i = argv.indexOf('--out');
 const OUT = resolve((i >= 0 ? argv[i + 1] : '~/margin-crawl/run').replace(/^~(?=\/|$)/, homedir()));
-const rows = [];
-for (const line of readFileSync(join(OUT, 'results.jsonl'), 'utf8').split('\n')) { try { rows.push(JSON.parse(line)); } catch {} }
+// A site's last line counts (a crawler error is tried again on the next run, and its new line comes later).
+const latest = new Map();
+for (const line of readFileSync(join(OUT, 'results.jsonl'), 'utf8').split('\n')) { try { const r = JSON.parse(line); latest.set(r.domain, r); } catch {} }
+const rows = [...latest.values()];
 rows.sort((a, b) => a.rank - b.rank);
 
 const by = (key) => rows.reduce((acc, r) => { for (const k of [].concat(key(r))) (acc[k] ??= []).push(r); return acc; }, {});

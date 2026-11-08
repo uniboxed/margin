@@ -21,6 +21,7 @@
 // is written down and the next site goes on. Headless only: nothing is shown on screen, sound is
 // muted, notifications and permission prompts are refused, dialogs dismissed, pages a site opens
 // closed. Domains with an adult word in them are skipped (written down as skipped).
+import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -67,10 +68,14 @@ process.on('uncaughtException', (e) => log(`uncaught exception: ${short(e)}`));
 const sites = readFileSync(LIST, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean)
   .map((l) => { const [rank, domain] = l.split(','); return { rank: Number(rank), domain: String(domain ?? '').trim().toLowerCase() }; })
   .filter((s) => s.rank > 0 && /^[a-z0-9.-]+$/.test(s.domain));
-const done = new Set();
-if (existsSync(RESULTS)) for (const l of readFileSync(RESULTS, 'utf8').split('\n')) { try { done.add(JSON.parse(l).domain); } catch {} }
+// A site's last line is what it came to; a crawler error (its own trouble, not the site's) is tried again.
+const last = new Map();
+if (existsSync(RESULTS)) for (const l of readFileSync(RESULTS, 'utf8').split('\n')) { try { const r = JSON.parse(l); last.set(r.domain, r.verdict); } catch {} }
+const done = new Set([...last].filter(([, v]) => v !== 'error').map(([d]) => d));
 const queue = sites.filter((s) => !done.has(s.domain)).slice(0, LIMIT || undefined);
+const KEY = { ok: 'ok', flagged: 'flagged', 'plain-failed': 'plainFailed', 'margin-failed': 'marginFailed', skipped: 'skipped' };
 const counts = { done: done.size, ok: 0, flagged: 0, plainFailed: 0, marginFailed: 0, skipped: 0, errors: 0 };
+for (const d of done) counts[KEY[last.get(d)] ?? 'errors'] += 1;
 const startedAt = Date.now();
 let doneThisRun = 0;
 const writeProgress = () => {
@@ -82,12 +87,7 @@ const record = (r) => {
   appendFileSync(RESULTS, `${JSON.stringify(r)}\n`);
   counts.done += 1;
   doneThisRun += 1;
-  if (r.verdict === 'ok') counts.ok += 1;
-  else if (r.verdict === 'flagged') counts.flagged += 1;
-  else if (r.verdict === 'plain-failed') counts.plainFailed += 1;
-  else if (r.verdict === 'margin-failed') counts.marginFailed += 1;
-  else if (r.verdict === 'skipped') counts.skipped += 1;
-  else counts.errors += 1;
+  counts[KEY[r.verdict] ?? 'errors'] += 1;
   if (counts.done % 10 === 0) writeProgress();
 };
 
@@ -153,20 +153,21 @@ async function load(page, url) {
 }
 
 // ---- comparing what the two looked like (a separate page decodes the pictures) -----------------
-let reference = null; // the plain Chromium, shared by the workers
-let composer = null;
+// The plain Chromium: one per world, made and ended with it, so a stuck one (connected but not answering, as
+// one was after ~3 500 sites) takes only its own worker's site with it, and only once.
+// Launched as the harness launches Margin's (Chrome's new headless mode), so the two browsers are alike in what
+// they tell sites (a first visit to Google came back dark in one and light in the other).
+// Each tagged (a switch Chromium ignores), so one that won't close is found and ended by it.
+let plains = 0;
 async function plainBrowser() {
-  if (reference?.isConnected()) return reference;
-  // Launched as the harness launches Margin's (Chrome's new headless mode), so the two browsers are alike in what
-  // they tell sites (a first visit to Google came back dark in one and light in the other).
-  reference = await chromium.launch({ headless: false, args: ['--headless=new', '--mute-audio', '--disable-notifications', '--deny-permission-prompts'] });
-  composer = null;
-  return reference;
+  const tag = `margin-crawl-plain=${process.pid}x${++plains}x`; // (x…x: the 1st isn't found in the 10th's)
+  const browser = await within(60_000, 'plain browser start', chromium.launch({ headless: false, args: ['--headless=new', '--mute-audio', '--disable-notifications', '--deny-permission-prompts', `--${tag}`] }));
+  return Object.assign(browser, { tag });
 }
-async function compare(a, b) {
+async function compare(world, a, b) {
   if (!a || !b) return null;
-  composer ??= await (await plainBrowser()).newContext().then((c) => c.newPage());
-  return within(10_000, 'compare', composer.evaluate(async ([x, y]) => {
+  world.composer ??= await within(10_000, 'composer', world.plain.newContext().then((c) => c.newPage()));
+  return within(10_000, 'compare', world.composer.evaluate(async ([x, y]) => {
     const grid = async (b64) => {
       const img = new Image();
       img.src = `data:image/jpeg;base64,${b64}`;
@@ -201,8 +202,9 @@ async function newWorld(w) {
       const ours = new Set(m.context.pages());
       // Pages a site opens by itself (pop-ups, new windows): closed.
       m.context.on('page', (p) => { setTimeout(() => { if (!ours.has(p) && !p.isClosed()) p.close().catch(() => {}); }, 1500); });
+      const plain = await plainBrowser().catch(async (e) => { await within(30_000, 'Margin world close', m.close()).catch(() => {}); throw e; });
       log(`worker ${w}: Margin world up (slot ${JSON.stringify(s)}, ${scheme})`);
-      return { m, slot: s, ours, scheme, sites: 0 };
+      return { m, plain, composer: null, slot: s, ours, scheme, sites: 0 };
     } catch (e) {
       log(`worker ${w}: Margin world didn't start (attempt ${attempt}): ${short(e)}`);
       await sleep(Math.min(60_000, 5000 * attempt));
@@ -212,6 +214,9 @@ async function newWorld(w) {
 async function endWorld(world) {
   if (!world) return;
   await within(30_000, 'Margin world close', world.m.close()).catch(() => {});
+  const closed = await within(15_000, 'plain browser close', world.plain.close()).then(() => true, () => false);
+  // Still there (not answering): its processes ended outright.
+  if (!closed) await new Promise((r) => execFile('pkill', ['-9', '-f', world.plain.tag], () => r()));
 }
 
 async function visit(world, site) {
@@ -221,7 +226,7 @@ async function visit(world, site) {
   const height = 900 - slot.top - slot.bottom;
   const page = await m.context.newPage();
   world.ours.add(page);
-  const plainCtx = await (await plainBrowser()).newContext({ viewport: { width, height }, colorScheme: world.scheme, acceptDownloads: false });
+  const plainCtx = await within(15_000, 'plain context', world.plain.newContext({ viewport: { width, height }, colorScheme: world.scheme, acceptDownloads: false }));
   const plain = await plainCtx.newPage();
   try {
     const [mine, theirs] = await Promise.all([load(page, url), load(plain, url)]);
@@ -233,7 +238,7 @@ async function visit(world, site) {
     }
     const shotMine = mine.ok ? await within(15_000, 'shot', page.screenshot({ type: 'jpeg', quality: 55, clip: { x: slot.left, y: slot.top, width, height } })).catch(() => null) : null;
     const shotPlain = theirs.ok ? await within(15_000, 'shot', plain.screenshot({ type: 'jpeg', quality: 55 })).catch(() => null) : null;
-    const look = await compare(shotMine, shotPlain).catch(() => null);
+    const look = await compare(world, shotMine, shotPlain).catch(() => null);
     // What's wrong, if anything (only what the plain load doesn't show too).
     const flags = [];
     if (mine.ok && theirs.ok) {
@@ -293,7 +298,6 @@ async function worker(w) {
       log(`worker ${w}: ${site.rank} ${site.domain}: ${short(e)}; a fresh Margin world`);
       await endWorld(world);
       world = null;
-      if (!reference?.isConnected()) { reference = null; composer = null; }
     }
   }
   await endWorld(world);
@@ -303,7 +307,6 @@ log(`start: ${queue.length} sites to go of ${sites.length} (${done.size} done be
 writeProgress();
 await Promise.all(Array.from({ length: WORKERS }, (_, i) => worker(i + 1).catch((e) => log(`worker ${i + 1} ended: ${short(e)}`))));
 writeProgress();
-await reference?.close().catch(() => {});
 log(`end: ${counts.done} of ${sites.length} done`);
 writeFileSync(join(OUT, 'finished.txt'), `${new Date().toISOString()}\n${JSON.stringify(counts)}\n`);
 process.exit(0);
