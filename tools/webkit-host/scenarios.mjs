@@ -726,9 +726,16 @@ export const SCENARIOS = {
   // zoomed pixels; a page reloaded zoomed has it at its size from the site's
   // zoom Margin remembers.
   zoom: [
+    { op: 'windowFrame', on: true }, // as Safari: outerWidth the window's, so the box's insets are the layout's in zoomed pixels
     ...startBoxed('A', '/p/A'),
     { op: 'zoom', factor: 1.5 },
     checkPage('A', 'at 150%: the box at 260/1.5, 8/1.5', `${AT} return Math.abs(at.x - 260 / 1.5) < 0.5 && Math.abs(at.y - 8 / 1.5) < 0.5`, 3000),
+    checkPage('A', 'at 150%: the window\'s sizes in whole pixels, as the browser\'s (YouTube refuses 809.5)', `return [innerWidth, innerHeight, document.documentElement.clientWidth, document.documentElement.clientHeight, document.body.clientWidth, document.body.clientHeight, document.body.offsetHeight].every(Number.isInteger)`, 1000),
+    { op: 'zoom', factor: 1.15 },
+    checkPage('A', 'at 115%: whole pixels too', `${AT} return Math.abs(at.x - 260 / 1.15) < 1 && [innerWidth, innerHeight, document.documentElement.clientWidth, document.documentElement.clientHeight, document.body.clientWidth, document.body.clientHeight, document.body.offsetHeight].every(Number.isInteger)`, 3000),
+    { op: 'page', in: 'A', js: `window.__pts = []; for (const t of ['mousedown', 'pointerdown']) addEventListener(t, (e) => __pts.push([t, e.clientX, e.clientY, e.pageX]), true); return 'listening'` },
+    ...pressIn('A', [503, 301]),
+    checkPage('A', 'at 115%: a real press: the mouse event\'s point in whole pixels, the pointer event\'s as it is (as WebKit\'s own)', `const m = __pts.find((p) => p[0] === 'mousedown'), p = __pts.find((q) => q[0] === 'pointerdown'); return !!m && !!p && m.slice(1).every(Number.isInteger) && Math.abs(m[1] - p[1]) <= 0.5 && Math.abs(m[2] - p[2]) <= 0.5`, 2000),
     { op: 'zoom', factor: 0.75 },
     checkPage('A', 'at 75%: at 260/0.75', `${AT} return Math.abs(at.x - 260 / 0.75) < 0.5`, 3000),
     { op: 'zoom', factor: 1 },

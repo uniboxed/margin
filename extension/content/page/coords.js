@@ -78,13 +78,16 @@ export function startCoords(box) {
   const clientX = find(mouse, 'clientX').get;
   const clientY = find(mouse, 'clientY').get;
   const define = (name, get) => Object.defineProperty(mouse, name, { configurable: true, enumerable: true, get });
+  // Whole pixels for a mouse event, as WebKit's own (a pointer event's are fractions): a page may send them on.
+  const Pointer = window.PointerEvent;
+  const asOwn = (event, v) => (Pointer && event instanceof Pointer ? v : Math.round(v));
   define('clientX', function () {
     const x = clientX.call(this);
-    return boxed() && this.isTrusted ? (x - box.x) / box.scale : x;
+    return boxed() && this.isTrusted ? asOwn(this, (x - box.x) / box.scale) : x;
   });
   define('clientY', function () {
     const y = clientY.call(this);
-    return boxed() && this.isTrusted ? (y - box.y) / box.scale : y;
+    return boxed() && this.isTrusted ? asOwn(this, (y - box.y) / box.scale) : y;
   });
   define('x', function () { return this.clientX; });
   define('y', function () { return this.clientY; });

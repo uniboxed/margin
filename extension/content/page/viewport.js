@@ -25,8 +25,10 @@ export function startViewport(box) {
   const scroll = () => (box.on ? box.body() : html);
 
   // ---- size --------------------------------------------------------------------
-  define(window, 'innerWidth', { get: () => innerWidth.get.call(window) - box.seenW(), set() {} });
-  define(window, 'innerHeight', { get: () => innerHeight.get.call(window) - box.seenH(), set() {} });
+  // Whole pixels, as the browser's own: at a page zoom the box's insets are fractions, and a page that sends its
+  // size on (YouTube: every API call's screenWidthPoints, an int32) is refused for 809.5 (2026-11-07).
+  define(window, 'innerWidth', { get: () => Math.round(innerWidth.get.call(window) - box.seenW()), set() {} });
+  define(window, 'innerHeight', { get: () => Math.round(innerHeight.get.call(window) - box.seenH()), set() {} });
   const viewport = window.visualViewport;
   if (viewport) {
     const width = find(viewport, 'width');
