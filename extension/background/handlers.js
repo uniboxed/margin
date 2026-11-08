@@ -461,8 +461,11 @@ export const handlers = {
     const url = S.searchUrl(text, settings);
     const own = { at: now(), template: S.safariEngine(settings).template };
     for (const map of [ownSearchTabs, ownSearchUrls]) for (const [key, entry] of map) if (now() - entry.at > OWN_SEARCH_MS) map.delete(key);
+    // Its row says the search at once, not the page it leaves (state/model.js goingTo).
+    const going = (id) => mutate((s) => M.goingTo(s, id, { url, title: text }, now())).catch(() => {});
     if (tabId != null) {
       ownSearchTabs.set(tabId, own);
+      await going(tabId);
       return void (await api.tabs.update(tabId, { url }));
     }
     // From a page: opened at the search's address (its row says so from the
@@ -474,7 +477,10 @@ export const handlers = {
     // Else marked before it navigates: created blank, then the search loads.
     const tab = await openTab({ windowId, url: 'about:blank', deadline });
     ownSearchTabs.set(tab.id, own);
+    await mutate((s) => M.goingTo(s.tabs[tab.id] ? s : M.upsertTab(s, tab, now()), tab.id, { url, title: text }, now())).catch(() => {});
     await api.tabs.update(tab.id, { url });
+    // Shown (opened in front): the UI's switch to it went through (shared/switching.js `failed`).
+    return { tabId: tab.id, shown: tab.id };
   },
   // An address from a page (the palette): behind it until loaded (tabs.js
   // openBehind). Margin's new-tab page, or a space's start page, at once.
@@ -863,6 +869,8 @@ export const handlers = {
     if (!Number.isInteger(tabId) || typeof url !== 'string' || !/^(https?|file):/i.test(url)) throw new Error('not an address');
     const tab = await api.tabs.get(tabId);
     if (!V.isNewTabPage(tab.url || tab.pendingUrl)) throw new Error('not a new-tab page');
+    // Its row is the address at once, not "+ New Tab" (state/model.js goingTo).
+    await mutate((s) => M.goingTo(s, tabId, { url, title: '' }, now())).catch(() => {});
     await api.tabs.update(tabId, { url });
     return { shown: tabId };
   },

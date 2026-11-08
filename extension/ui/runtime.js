@@ -78,7 +78,7 @@ const CLOUD_TICK_MS = 60_000;
  */
 export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun }) {
   /** @type {UiState & Record<string, any>} */
-  let ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, ...start };
+  let ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
   /** @type {ViewModel | null} */
   let vm = null;
   /** @type {ViewModel | null} */
@@ -178,7 +178,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   // as it's hidden.
   const stays = !!(/** @type {any} */ (host).staysOnScreen);
   const switching = createSwitching({
-    onChange: (id) => { if (destroyed) return; onSwitching?.(id); setUi({ switchingTo: id }); },
+    // A new tab's row (`opening`) lasts as long as the switch to it (NEW_TAB).
+    onChange: (id) => { if (destroyed) return; onSwitching?.(id); setUi({ switchingTo: id, ...(id !== NEW_TAB && ui.opening ? { opening: null } : {}) }); },
     onSlow: (slow) => { if (!destroyed) onSwitchSlow?.(slow); },
     failed: (result) => result === undefined,
     onFailed: () => { if (!destroyed) onSwitchFailed?.(); },
@@ -353,12 +354,15 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const request = requestFor(name, arg, { state: viewState(state), ui: { windowId: now.windowId, sidebar: vm?.window.sidebar ?? null }, platform: host.platform, row: name === 'palette.run' ? items.find((i) => i.id === arg) : null });
     // Choosing a row closes the palette first (Arcadia's palette); one opened
     // for a new tab keeps "+ New Tab" lit while another tab comes to the front.
+    // A row that opens a new tab (a search, an address) draws that tab's row at
+    // once instead, highlighted (shared/view.js `opening`), until its tab is in front.
     if (name === 'palette.run') {
       const wasNewTab = ui.palette.newTab;
-      const shows = request.kind === 'send' && SHOWS_ANOTHER_TAB.has(request.type);
-      setUi({ palette: CLOSED_PALETTE, newTabPending: wasNewTab && shows });
+      const opens = request.kind === 'send' && opensNewTab(request.type, request.payload);
+      const shows = request.kind === 'send' && SHOWS_ANOTHER_TAB.has(request.type) && !opens;
+      setUi({ palette: CLOSED_PALETTE, newTabPending: wasNewTab && shows, ...(opens ? { opening: openingFor(request.payload) } : {}) });
       if (wasNewTab && shows) holdNewTab();
-      behaviors.palette?.closed(request.kind === 'send' && opensNewTab(request.type, request.payload));
+      behaviors.palette?.closed(opens);
       onPalette?.('run', request);
     }
     switch (request.kind) {
@@ -423,6 +427,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
 
   /** @type {{ folderId: string, wasOpen: boolean, at: number } | null} */
   let lastToggle = null;
+
+  // What a new tab being opened is drawn as: the search's words, or the address
+  // (the tab in front now, `from`: it's drawn until another is).
+  /** @param {any} payload */
+  function openingFor(payload) {
+    return { title: typeof payload?.query === 'string' ? payload.query.trim() : '', url: typeof payload?.url === 'string' ? payload.url : '', from: frontTab() };
+  }
 
   let newTabTimer = null;
   function holdNewTab() {

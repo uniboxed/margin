@@ -18,6 +18,7 @@
 // update down to the rows that changed. Pure: no browser APIs, runs in Node.
 /** @import { State } from '../../types/margin' */
 import * as V from '../shared/view.js';
+import { NEW_TAB } from '../shared/switching.js';
 import { hostOf } from '../shared/dom.js';
 import { rankPalette } from '../shared/search.js';
 import { checkIconUrl } from './sanitize.js';
@@ -45,6 +46,7 @@ export const VM_VERSION = 1;
  *   editing?: { kind: 'space' | 'folder', id: string } | null,
  *   editor?: { spaceId?: string, profileId?: string, name: string, emoji: string, color: string, confirmDelete?: boolean } | null,
  *   newTabPending?: boolean,
+ *   opening?: { title: string, url: string, from: number | null } | null,
  *   notice?: { id: string, text: string, actions?: { id: string, label: string, primary?: boolean }[] } | null,
  *   prompt?: { id: string, title?: string, text: string, actions?: { id: string, label: string, primary?: boolean, danger?: boolean }[] } | null,
  *   launcher?: { allArchived?: boolean } | null,
@@ -368,6 +370,7 @@ function fresh(input) {
     newTabPending: !!(paletteUi.open && paletteUi.newTab) || !!ui.newTabPending,
     switchingTo: ui.switchingTo ?? null,
     justShown: !!ui.justShown,
+    opening: ui.switchingTo === NEW_TAB ? ui.opening ?? null : null,
   });
 
   // The pinned area, in the order shown: folders (with their pins) and the

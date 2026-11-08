@@ -662,3 +662,47 @@ test('saved default shortcuts follow the build; customized ones stay', () => {
   assert.equal(s.settings.shortcutDefaults, 'chrome');
   assert.equal(s.settings.shortcuts.nextSpace, 'Alt+Shift+KeyL');
 });
+
+test('goingTo: a tab Margin sends somewhere is drawn there at once, until the page commits (or GOING_MS)', () => {
+  let s = twoSpaces();
+  const NT = 'safari-web-extension://abc/newtab/newtab.html';
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com', { index: 0 }), 0);
+  s = M.upsertTab(s, tab(2, 1, NT, { index: 1, active: true, title: 'New Tab' }), 0);
+  assert.equal(view.sidebar(s, 1, 2).newTab.active, true);
+  s = M.goingTo(s, 2, { url: 'https://search.example/?q=cats', title: 'cats' }, 100);
+  let v = view.sidebar(s, 1, 2);
+  assert.equal(v.newTab.active, false, 'not "+ New Tab" any more');
+  assert.deepEqual(v.tabs.filter((t) => t.active).map((t) => [t.id, t.title]), [[2, 'cats']], 'its own row, highlighted, the search\'s words');
+  // The browser still says the page before (or blank): it stays where it's going.
+  for (const url of [NT, '', 'about:blank']) {
+    const next = M.upsertTab(s, tab(2, 1, url, { index: 1, title: 'New Tab' }), 200);
+    assert.equal(next.tabs[2].url, 'https://search.example/?q=cats', url || '(none)');
+    assert.equal(next.tabs[2].title, 'cats');
+  }
+  // Committed: the browser's address; the words until the page has a title.
+  let next = M.upsertTab(s, tab(2, 1, 'https://search.example/?q=cats&x=1', { index: 1, title: '' }), 300);
+  assert.equal(next.tabs[2].url, 'https://search.example/?q=cats&x=1');
+  assert.equal(next.tabs[2].title, 'cats');
+  assert.equal(next.tabs[2].going, undefined);
+  next = M.upsertTab(next, tab(2, 1, 'https://search.example/?q=cats&x=1', { index: 1, title: 'cats - Search' }), 400);
+  assert.equal(next.tabs[2].title, 'cats - Search');
+  // Never committed: what the browser says again, past GOING_MS.
+  next = M.upsertTab(s, tab(2, 1, NT, { index: 1, title: 'New Tab' }), 100 + M.GOING_MS);
+  assert.equal(next.tabs[2].url, NT);
+  assert.equal(M.goingTo(s, 99, { url: 'https://x.com' }, 0), s, 'an unknown tab: nothing');
+});
+
+test('view.sidebar: a new tab being opened (opening) is its row, highlighted, until another tab is in front', () => {
+  let s = twoSpaces();
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com', { index: 0 }), 0);
+  s = M.upsertTab(s, tab(2, 1, 'https://b.com', { index: 1, active: true }), 0);
+  const opening = { title: 'cats', url: '', from: 2 };
+  let v = view.sidebar(s, 1, null, { opening, newTabPending: true });
+  assert.equal(v.newTab.active, false, '"+ New Tab" not lit');
+  assert.deepEqual(v.tabs.map((t) => [t.id, !!t.active, !!t.behind]), [['opening', true, false], [2, false, false], [1, false, false]], 'at the top, the tab shown plain (not softly)');
+  assert.equal(v.tabs[0].title, 'cats');
+  s = M.upsertTab(s, tab(3, 1, 'https://search.example/', { index: 2, active: true }), 0);
+  v = view.sidebar(s, 1, null, { opening });
+  assert.deepEqual(v.tabs.filter((t) => t.active).map((t) => t.id), [3], 'its tab in front: that tab, no row of its own');
+  assert.ok(!v.tabs.some((t) => t.id === 'opening'));
+});
