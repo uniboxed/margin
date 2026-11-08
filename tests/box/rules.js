@@ -59,6 +59,8 @@ export function measure() {
   const out = {};
   for (const o of document.querySelectorAll('output[id]')) out[o.id] = o.textContent;
   const scroller = document.scrollingElement;
+  // What a scroller trims sideways (overflow-x hidden or clip) can't be scrolled to, though scrollWidth counts it.
+  const clipsX = !!scroller && /hidden|clip/.test(getComputedStyle(scroller).overflowX);
   const vv = window.visualViewport;
   return {
     told: { w: innerWidth, h: innerHeight, sx: round(scrollX), sy: round(scrollY) },
@@ -67,7 +69,7 @@ export function measure() {
     // The window's own scroll (the layout viewport's), which no shim speaks for.
     window: { left: vv ? round(vv.pageLeft - vv.offsetLeft) : 0, top: vv ? round(vv.pageTop - vv.offsetTop) : 0, scale: vv ? vv.scale : 1 },
     scroller: scroller === body ? 'body' : scroller === de ? 'html' : String(scroller && scroller.localName),
-    overflowX: scroller ? round(scroller.scrollWidth - scroller.clientWidth) : 0,
+    overflowX: scroller && !clipsX ? round(scroller.scrollWidth - scroller.clientWidth) : 0,
     els,
     out,
   };
