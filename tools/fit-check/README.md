@@ -24,7 +24,7 @@ It goes on from where the last night stopped. When every site of the list is don
 
 The folder is git-ignored on the code branches (it changes every night). At the end of each night it's committed to the branch `data/fit-check` and pushed, so anyone with the repo can read it on GitHub. That branch holds the data alone, at the same path, with no code. It's committed from a checkout of its own (`~/Library/Caches/margin-fit-check/publish`), so this checkout and its branch are never touched.
 
-Published: everything in the table below, but of the pictures only each flagged or margin-failed site's latest. Locally, a round's pictures are kept until the round after next begins, so the round before stays to compare.
+Published: everything in the table below, but of the pictures only each flagged, margin-failed or hinted site's latest. Locally, a round's pictures are kept until the round after next begins, so the round before stays to compare.
 
 | File | What's in it |
 | --- | --- |
@@ -43,12 +43,17 @@ Published: everything in the table below, but of the pictures only each flagged 
 - Margin's side is the e2e harness (`tests/e2e/harness/margin.js`, `web: true`): the test build of the extension in headless Chromium, linked to the stand-in Margin.app, a full-screen window with Arcadia's overlay and the sidebar kept open, so each site is shrunk into the slot as in Safari. The plain side is headless Chromium at the slot's size, with no extension, launched the same way and in the same color scheme. Each Margin world has its own plain browser, and both are made again after 150 sites or a site that hangs.
 - Verdicts:
   - `ok`.
-  - `flagged`: it loaded both ways, and something shows only in Margin's load: `no-box`, `drawn-off-slot`, `wrong-width`, `sideways-overflow`, `content-cut-off`, `text-missing`, `elements-missing`, `blank`, `looks-different`, `more-errors`.
+  - `flagged`: it loaded both ways, and Margin's load broke a rule the box promises (`tests/box/rules.js`, the same names as the box's patterns): `box-at-slot`, `box-size`, `told-size`, `window-still`, `body-scrolls`, `no-overflow`. A finding.
   - `margin-failed`: it loaded plain, not through Margin.
-  - `blocked`: the site turned the plain browser away too (401, 403 or 429, or a captcha page). It says nothing about Margin.
-  - `plain-failed`: the site doesn't load by itself (it's down, or an API host).
+  - `hinted`: the same page both ways, the rules kept, but a hint differs: `content-cut-off`, `text-missing`, `elements-missing`, `blank`, `looks-different`, `more-errors`. Worth a look at its pictures.
+  - `varied`: the site served each load a different page (their titles differ: a robot check, a login, a variant), and only hints differ.
+  - `blocked`: the site turned an automated browser away (401, 403 or 429, or a captcha page): the plain one, or Margin's only (`blocked-margin-side`, a bot check at random). It says nothing about Margin.
+  - `not-html`: the address isn't a web page (plain text, JSON). The box leaves those alone, by design.
+  - `plain-failed`: the site doesn't load by itself (it's down, an API host, the browser's own error page).
   - `skipped`: an adult word is in its domain.
   - `error`: the crawler's own trouble. The site is tried again, up to 3 times a round.
+- A page measured mid-redirect (a script sending it on after its load) is measured again once the next page has loaded. A measure has 20 s: a busy news site can keep its page busy that long.
+- `--only <file>` (a domain a line, or `rank,domain`): only those sites, for a re-check into another `--out`.
 - `looks-different` compares two small greyscale grids of the first screen. A moving page (ads, a carousel, a video) can differ by itself, so it's a hint to look, not a finding.
 - Pictures, in `shots/`: both loads of every flagged or failed site, and of every 100th.
 - It's Chromium, not WebKit, so Safari-only behaviour isn't seen here (WebKit's own layout, Safari's content blockers).

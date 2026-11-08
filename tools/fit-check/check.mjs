@@ -36,8 +36,9 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startMargin } from '../../tests/e2e/harness/margin.js';
 import { SPACES } from '../../tests/e2e/harness/seed.js';
-import { ERROR_TRIES, KEY, isBlocked } from './verdicts.mjs';
-import { pageBox, slot as slotOf } from '../../tests/e2e/harness/ui.js';
+import { ERROR_TRIES, HELD_RULES, HINTS, KEY, LOOSE_RULES, isBlocked } from './verdicts.mjs';
+import { judge, measure as measureBox } from '../../tests/box/rules.js';
+import { slot as slotOf } from '../../tests/e2e/harness/ui.js';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -54,10 +55,13 @@ const LIMIT = Number(opt('limit', '0')) || 0; // (a trial: only the first N)
 const UNTIL = opt('until', null) ? new Date(opt('until', '')).getTime() : Infinity;
 if (Number.isNaN(UNTIL)) throw new Error(`--until: not a time: ${opt('until', '')}`);
 const COMMIT = opt('commit', null);
+// --only: a file of the sites to check (a domain a line, or `rank,domain`), the rest of the list left out: a re-check.
+const ONLY = opt('only', null) ? new Set(readFileSync(expand(opt('only', '')), 'utf8').split('\n').map((l) => l.trim().split(',').pop().trim().toLowerCase()).filter(Boolean)) : null;
 const NAV_MS = 30_000; // the first answer and the DOM
 const LOAD_MS = 12_000; // then the load event, at most
 const SETTLE_MS = 2_000; // then a moment for late content
-const SITE_MS = 90_000; // a whole site, both loads, at most
+const MEASURE_MS = 20_000; // a measure of the page (a busy news site keeps its page busy for seconds)
+const SITE_MS = 120_000; // a whole site, both loads, at most
 const WORLD_SITES = 150; // a fresh Margin world after this many (its profile grows)
 const SHOT_EVERY = 100;
 const ADULT = /(porn|xxx|xvideo|xnxx|xhamster|sex|nude|naked|hentai|onlyfans|camgirl|chaturbate|stripchat|livejasmin|bongacams|brazzers|redtube|youporn|spankbang|erotic|fetish|milf|escort|adult)/i;
@@ -80,7 +84,7 @@ process.on('uncaughtException', (e) => log(`uncaught exception: ${short(e)}`));
 // ---- the list, and what's done ------------------------------------------------------------------
 const sites = readFileSync(LIST, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean)
   .map((l) => { const [rank, domain] = l.split(','); return { rank: Number(rank), domain: String(domain ?? '').trim().toLowerCase() }; })
-  .filter((s) => s.rank > 0 && /^[a-z0-9.-]+$/.test(s.domain));
+  .filter((s) => s.rank > 0 && /^[a-z0-9.-]+$/.test(s.domain) && (!ONLY || ONLY.has(s.domain)));
 // A site's last line is what it came to; a crawler error (its own trouble, not the site's) is tried again.
 const last = new Map();
 const errorsOf = new Map();
@@ -94,7 +98,7 @@ if (existsSync(RESULTS)) for (const l of readFileSync(RESULTS, 'utf8').split('\n
 const doneNow = (d) => last.has(d) && (last.get(d) !== 'error' || (errorsOf.get(d) ?? 0) >= ERROR_TRIES);
 const done = new Set([...last.keys()].filter(doneNow));
 const queue = sites.filter((s) => !done.has(s.domain)).slice(0, LIMIT || undefined);
-const counts = { done: done.size, ok: 0, flagged: 0, marginFailed: 0, blocked: 0, plainFailed: 0, skipped: 0, errors: 0 };
+const counts = { done: done.size, ok: 0, flagged: 0, marginFailed: 0, hinted: 0, varied: 0, blocked: 0, notHtml: 0, plainFailed: 0, skipped: 0, errors: 0 };
 for (const d of done) counts[KEY[last.get(d)] ?? 'errors'] += 1;
 const startedAt = Date.now();
 let doneThisRun = 0;
@@ -145,10 +149,16 @@ const MEASURE = () => {
     brokenImages: imgs.filter((i) => i.complete && i.naturalWidth === 0 && i.currentSrc).length,
     iframes: document.querySelectorAll('iframe').length,
     hasTitle: !!document.title,
+    title: document.title.trim().slice(0, 120), // to tell whether both loads were served the same page
+    kind: document.contentType, // not text/html: plain text, JSON, an image (the box leaves those alone)
+    errorPage: location.protocol === 'chrome-error:', // the browser's own page: no such site, a bad certificate
     ready: document.readyState,
     bodyHeight: body ? Math.round(body.getBoundingClientRect().height) : 0,
   };
 };
+
+// A load's page title, to tell whether both loads were served the same page.
+const a2t = (load) => load.m?.title ?? '';
 
 // One load of `url` in `page`: what came back, how long, what the page is like, its errors.
 async function load(page, url) {
@@ -157,16 +167,29 @@ async function load(page, url) {
   page.on('pageerror', onError);
   page.on('dialog', (d) => d.dismiss().catch(() => {}));
   const t0 = Date.now();
-  const out = { ok: false, status: null, finalHost: null, ms: null, error: null, errors, m: null };
+  const out = { ok: false, status: null, finalHost: null, ms: null, error: null, errors, m: null, box: null };
   try {
     const res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_MS });
     out.status = res?.status() ?? null;
     await page.waitForLoadState('load', { timeout: LOAD_MS }).catch(() => {});
     await sleep(SETTLE_MS);
     out.ms = Date.now() - t0;
+    // A site that sends the page on by a script after its load (live.com to outlook.live.com) takes the page being
+    // measured with it: measured again once the next one has loaded, twice at most.
+    for (let tries = 0; ; tries += 1) {
+      try {
+        out.m = await within(MEASURE_MS, 'measure', page.evaluate(MEASURE));
+        out.box = out.m.errorPage || !/html/.test(out.m.kind) ? null : await within(MEASURE_MS, 'measure', page.evaluate(measureBox));
+        break;
+      } catch (e) {
+        if (tries >= 2 || !/context was destroyed|navigat/i.test(String(e?.message ?? e))) throw e;
+        await page.waitForLoadState('load', { timeout: LOAD_MS }).catch(() => {});
+        await sleep(SETTLE_MS);
+      }
+    }
     out.finalHost = (() => { try { return new URL(page.url()).hostname; } catch { return null; } })();
-    out.m = await within(8000, 'measure', page.evaluate(MEASURE));
-    out.ok = !!out.m && (out.status == null || out.status < 400);
+    if (out.m.errorPage) out.error = 'the browser\'s own error page (no such site, a bad certificate)';
+    out.ok = !!out.m && !out.m.errorPage && (out.status == null || out.status < 400);
   } catch (e) {
     out.error = short(e);
     out.ms = Date.now() - t0;
@@ -252,24 +275,23 @@ async function visit(world, site) {
   const plain = await plainCtx.newPage();
   try {
     const [mine, theirs] = await Promise.all([load(page, url), load(plain, url)]);
-    let box = null;
-    let rootX = null;
-    if (mine.ok) {
-      box = await within(5000, 'box', pageBox(page)).catch(() => null);
-      rootX = await within(5000, 'root', page.locator('html').boundingBox()).then((b) => (b ? Math.round(b.x) : null)).catch(() => null);
-    }
     const shotMine = mine.ok ? await within(15_000, 'shot', page.screenshot({ type: 'jpeg', quality: 55, clip: { x: slot.left, y: slot.top, width, height } })).catch(() => null) : null;
     const shotPlain = theirs.ok ? await within(15_000, 'shot', plain.screenshot({ type: 'jpeg', quality: 55 })).catch(() => null) : null;
     const look = await compare(world, shotMine, shotPlain).catch(() => null);
-    // What's wrong, if anything (only what the plain load doesn't show too).
+    // What's wrong, if anything (only what the plain load doesn't show too). First the box's own rules
+    // (tests/box/rules.js, the patterns' names), then hints.
     const flags = [];
+    let broken = [];
+    const html = (load) => /html/.test(load.m?.kind ?? 'text/html');
+    if (mine.ok && theirs.ok && mine.box && theirs.box) {
+      // A scroll bar's width either way isn't the box's doing.
+      const plainBox = { ...theirs.box, overflowX: theirs.box.overflowX + 16 };
+      broken = judge(mine.box, plainBox, { slot, window: { w: 1440, h: 900 }, allow: LOOSE_RULES });
+      for (const line of broken) { const id = line.split(':')[0]; if (HELD_RULES.includes(id) && !flags.includes(id)) flags.push(id); }
+    }
     if (mine.ok && theirs.ok) {
       const a = mine.m;
       const b = theirs.m;
-      if (!box || Math.abs(box.left - slot.left) > 1 || Math.abs(box.right - slot.right) > 1) flags.push('no-box');
-      if (rootX != null && Math.abs(rootX - slot.left) > 1) flags.push('drawn-off-slot');
-      if (a.vw !== width) flags.push('wrong-width');
-      if (a.overflowX > 16 && b.overflowX <= 16) flags.push('sideways-overflow');
       if (a.cut - b.cut > 3) flags.push('content-cut-off');
       if (b.text > 300 && a.text < b.text * 0.5) flags.push('text-missing');
       if (b.visible > 10 && a.visible < b.visible * 0.5) flags.push('elements-missing');
@@ -279,8 +301,20 @@ async function visit(world, site) {
       const newErrors = mine.errors.filter((e) => !theirErrors.has(e));
       if (newErrors.length > theirs.errors.length && newErrors.length >= 2) flags.push('more-errors');
     }
-    const verdict = isBlocked(theirs) ? 'blocked' : !theirs.ok ? 'plain-failed' : !mine.ok ? 'margin-failed' : flags.length ? 'flagged' : 'ok';
-    const keepShots = verdict === 'flagged' || verdict === 'margin-failed' || site.rank % SHOT_EVERY === 0;
+    // The same page both ways? Not if their titles differ (a robot check, a login, a variant): then hints say nothing.
+    const samePage = !(mine.ok && theirs.ok) || (a2t(mine) === a2t(theirs));
+    const held = flags.filter((f) => !HINTS.includes(f));
+    // Margin's load refused (401, 403, 429) where the plain one wasn't: the site's bot check, at random.
+    const marginBlocked = theirs.ok && !mine.ok && isBlocked(mine);
+    if (marginBlocked) flags.push('blocked-margin-side');
+    const verdict = isBlocked(theirs) || marginBlocked ? 'blocked'
+      : theirs.ok && !html(theirs) ? 'not-html'
+      : !theirs.ok ? 'plain-failed'
+      : !mine.ok ? 'margin-failed'
+      : held.length ? 'flagged'
+      : flags.length ? (samePage ? 'hinted' : 'varied')
+      : 'ok';
+    const keepShots = ['flagged', 'margin-failed', 'hinted', 'varied'].includes(verdict) || site.rank % SHOT_EVERY === 0;
     if (keepShots) {
       const base = join(OUT, 'shots', `${site.rank}-${site.domain}`);
       if (shotMine) writeFileSync(`${base}-margin.jpg`, shotMine);
@@ -288,8 +322,9 @@ async function visit(world, site) {
     }
     return {
       rank: site.rank, domain: site.domain, verdict, flags, at: new Date().toISOString(), commit: COMMIT,
-      margin: { ok: mine.ok, status: mine.status, ms: mine.ms, error: mine.error, finalHost: mine.finalHost, errors: mine.errors, m: mine.m, box, rootX },
-      plain: { ok: theirs.ok, status: theirs.status, ms: theirs.ms, error: theirs.error, finalHost: theirs.finalHost, errors: theirs.errors, m: theirs.m },
+      margin: { ok: mine.ok, status: mine.status, ms: mine.ms, error: mine.error, finalHost: mine.finalHost, errors: mine.errors, m: mine.m, box: mine.box ? { root: mine.box.root, told: mine.box.told, window: mine.box.window, scroller: mine.box.scroller, overflowX: mine.box.overflowX } : null },
+      plain: { ok: theirs.ok, status: theirs.status, ms: theirs.ms, error: theirs.error, finalHost: theirs.finalHost, errors: theirs.errors, m: theirs.m, box: theirs.box ? { root: theirs.box.root, told: theirs.box.told, overflowX: theirs.box.overflowX } : null },
+      rules: broken, samePage,
       slot: { left: slot.left, top: slot.top, right: slot.right, bottom: slot.bottom, width, height },
       look, shots: keepShots,
     };
