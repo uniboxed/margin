@@ -11,7 +11,13 @@ This folder says what the box promises, as rules, and lists the page patterns it
 | `extension/shared/page-box.js` | The box's CSS as text: `<html>`'s rule (`BOX_ROOT`, weighted so a page's classes can't beat it), `<body>` as the scroller, full screen, the first paint's version of the same rules. |
 | `extension/shared/page-css.js` | Rewrites a page's CSS for the box: media queries about the window's size, and `vw`/`vh` units. Pure text, tested in node. |
 | `extension/content/page/main.js` | Starts the box in the page's own world. |
-| `extension/content/page/box.js` | Puts the box's sheets in, moves the box when the layout changes, and does by hand what a real window's root does: the scroll handed to `<body>`, the page's scroll locks, things put directly under `<html>`. |
+| `extension/content/page/box.js` | The box itself: where it is, turning it on and off, moving it (the page's own layout following once a move rests), and the bridge from Margin's world. Starts the parts below, which share one `ctx`. |
+| `extension/content/page/box-own-sheets.js` | Margin's own sheets in the page (the box's rules, `<body>`'s scroll, size, padding, how it's read, its background), adopted and kept adopted whatever the page does with its list. |
+| `extension/content/page/box-locks.js` | `<body>`'s scrolling in the box and the page's scroll locks, on `<html>` or `<body>`, and `<body>`'s background drawn on `<body>`. |
+| `extension/content/page/box-body.js` | What the page says about `<body>`'s size and margins, read with Margin's rules off for a moment, and applied as a height rule and padding. |
+| `extension/shared/body-fit.js` | The arithmetic for that: lengths in pixels, margins collapsing (CSS 2 §8.3.1), the width equation (§10.3.3). Pure, tested in node. |
+| `extension/content/page/box-chain.js` | The first children whose top margins collapse with `<body>`'s, followed so a class or a new first child is read. |
+| `extension/content/page/box-watch.js` | When to read again: readings kept by `<html>`'s and `<body>`'s attributes, how often a read may run, and what makes one due (styles, attributes, a new `<body>` or `<html>`, things put under `<html>`, resizes). |
 | `extension/content/page/sheets.js` | Finds the page's style sheets and style attributes that changed, and has them rewritten (page-css.js). |
 | `extension/content/page/viewport.js` | Answers for the box what a page asks about its window: `innerWidth`, scrolling (the window's is `<body>`'s), `scrollingElement`, paging keys, the place kept across Back and reload. Keeps the window itself unscrolled. |
 | `extension/content/page/coords.js` | Client coordinates from the box's corner, not the window's: `getBoundingClientRect`, points, mouse events. |
@@ -49,7 +55,7 @@ Every pattern is held to every rule. A rule compares the page in its box with th
 | [media-queries](patterns/media-queries.html) | media queries about the width, in sheets and in matchMedia, ask about the box | the frameless layout (2026-11-01); the docs site's table of contents, gone under 1180px (tests/e2e/page-box.test.js) | content/page/sheets.js (rules), content/page/media.js (matchMedia) |
 | [offcanvas-into-view](patterns/offcanvas-into-view.html) | bringing a link in an off-canvas fixed drawer into view doesn't slide the window sideways | go.dev (fit-check round 1): a link in its navigation drawer (fixed, moved off the right edge with a transform) brought into view; in the box the window itself scrolled 856px to show it | content/page/viewport.js (the window's own scroll held at 0 while there's a box) |
 | [script-sets-vw](patterns/script-sets-vw.html) | viewport units a script sets on elements after load are the box's | the WebKit host's `answers` scenario: inline vw and vh a script sets | content/page/sheets.js (style attributes, in the observer's callback, before paint) |
-| [scroll-lock](patterns/scroll-lock.html) | a modal that locks the page's scroll (body fixed at its scroll, or overflow hidden) stays in the box, the place kept (let off: `same-scroll`) | the travel page's dates modal (tests/e2e/site/sites/harbor.js); the WebKit host's `lock` scenario | content/page/box.js (the page's scroll locks, read from computed style) |
+| [scroll-lock](patterns/scroll-lock.html) | a modal that locks the page's scroll (body fixed at its scroll, or overflow hidden) stays in the box, the place kept (let off: `same-scroll`) | the travel page's dates modal (tests/e2e/site/sites/harbor.js); the WebKit host's `lock` scenario | content/page/box-locks.js (checkLocks: the page's scroll locks, read from computed style) |
 | [top-layer](patterns/top-layer.html) | a modal dialog and a popover sit against the box, not the window | the WebKit host's `top-layer` scenario: the top layer ignores `<html>`'s transform, so `left: 0` landed under the sidebar | content/page/top-layer.js, shared/page-box.js (::backdrop) |
 | [viewport-units](patterns/viewport-units.html) | vw and vh in a page's sheets are the box's, full-bleed sections included | the frameless layout (2026-11-01); Reddit's header, a `calc(50% - 50vw)` rule rewritten twice (DECISIONS.md) | content/page/sheets.js, shared/page-css.js (shiftStyle) |
 | [vw-in-font-shorthand](patterns/vw-in-font-shorthand.html) | vw inside a `font` shorthand that also has a var() follows the box | an e2e check (2026-11): the shorthand's longhands read empty while the var() is pending, so its vw stayed the window's | shared/page-css.js (shiftStyle sets such a shorthand again as a whole) |
@@ -92,7 +98,7 @@ Chromium runs them through the e2e harness: the test build of the extension, the
 
 The patterns are for what a page looks like and is told in the box. What the box does over time and with the rest of Margin stays where it was tested before:
 
-- Unit (node): `tests/page-css.test.js` (the CSS text and its rewriting), `tests/page-reads.test.js`, `tests/page-moves.test.js`, `tests/page-upkeep.test.js`.
+- Unit (node): `tests/page-css.test.js` (the CSS text and its rewriting), `tests/body-fit.test.js` (`<body>`'s arithmetic), `tests/page-reads.test.js`, `tests/page-moves.test.js`, `tests/page-upkeep.test.js`.
 - e2e: `tests/e2e/page-box.test.js`, realistic sites in the box, live layout changes, frames, first frames.
 - WebKit host (`tools/webkit-host/scenarios.mjs`): `box`, `toggle`, `csp`, `lock`, `late-body`, `read-limits`, `late-reads`, `read-shape`, `body-size`, `body-background`, `in-view`, `answers`, `top-layer`, `first-paint` and others (its README lists them).
 
