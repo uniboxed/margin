@@ -157,7 +157,9 @@ let reference = null; // the plain Chromium, shared by the workers
 let composer = null;
 async function plainBrowser() {
   if (reference?.isConnected()) return reference;
-  reference = await chromium.launch({ headless: true, args: ['--mute-audio', '--disable-notifications', '--deny-permission-prompts'] });
+  // Launched as the harness launches Margin's (Chrome's new headless mode), so the two browsers are alike in what
+  // they tell sites (a first visit to Google came back dark in one and light in the other).
+  reference = await chromium.launch({ headless: false, args: ['--headless=new', '--mute-audio', '--disable-notifications', '--deny-permission-prompts'] });
   composer = null;
   return reference;
 }
@@ -194,11 +196,13 @@ async function newWorld(w) {
       const m = await within(120_000, 'Margin world start', startMargin({ name: `crawl-${w}`, web: true, seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } }));
       const ui = await m.ui();
       const s = await within(10_000, 'the slot', m.until(() => slotOf(ui), { timeout: 8000, what: 'the slot' }));
+      // The plain load in the same color scheme as Margin's browser (a dark page and a light one aren't a difference of Margin's).
+      const scheme = await within(5000, 'scheme', m.context.pages()[0].evaluate(() => (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))).catch(() => 'light');
       const ours = new Set(m.context.pages());
       // Pages a site opens by itself (pop-ups, new windows): closed.
       m.context.on('page', (p) => { setTimeout(() => { if (!ours.has(p) && !p.isClosed()) p.close().catch(() => {}); }, 1500); });
-      log(`worker ${w}: Margin world up (slot ${JSON.stringify(s)})`);
-      return { m, slot: s, ours, sites: 0 };
+      log(`worker ${w}: Margin world up (slot ${JSON.stringify(s)}, ${scheme})`);
+      return { m, slot: s, ours, scheme, sites: 0 };
     } catch (e) {
       log(`worker ${w}: Margin world didn't start (attempt ${attempt}): ${short(e)}`);
       await sleep(Math.min(60_000, 5000 * attempt));
@@ -217,7 +221,7 @@ async function visit(world, site) {
   const height = 900 - slot.top - slot.bottom;
   const page = await m.context.newPage();
   world.ours.add(page);
-  const plainCtx = await (await plainBrowser()).newContext({ viewport: { width, height }, ignoreHTTPSErrors: false, acceptDownloads: false });
+  const plainCtx = await (await plainBrowser()).newContext({ viewport: { width, height }, colorScheme: world.scheme, acceptDownloads: false });
   const plain = await plainCtx.newPage();
   try {
     const [mine, theirs] = await Promise.all([load(page, url), load(plain, url)]);
