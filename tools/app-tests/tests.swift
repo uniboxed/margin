@@ -584,6 +584,21 @@ final class FakeRegistrar: HotKeyRegistrar {
           && !Shell.guardsQuit(browserInFront: false, parked: 2, quitting: false) && !Shell.guardsQuit(browserInFront: true, parked: 2, quitting: true))
     check("quit guard: with Margin's layout in front and its prompt wanted, held with nothing parked too",
           Shell.guardsQuit(browserInFront: true, parked: 0, quitting: false, asks: true) && !Shell.guardsQuit(browserInFront: false, parked: 0, quitting: false, asks: true))
+    // A click in Margin's UI moves the keyboard to Margin.app (a non-activating panel): ⌘R after a click in the sidebar
+    // beeped (Tirth, 2026-11-08). The keyboard goes back as the press ends, unless a field of Margin's has it or asked
+    // for it; a key that reaches Margin.app meanwhile goes on to the linked browser in front.
+    check("a press in Margin's UI: the keyboard back to the browser, unless a field of Margin's has it or asked for it, or it isn't shown",
+          OverlayController.handsKeyboardBack(shown: true, hasKeyboard: false, wantsKeyboard: false)
+          && !OverlayController.handsKeyboardBack(shown: true, hasKeyboard: true, wantsKeyboard: true)
+          && !OverlayController.handsKeyboardBack(shown: true, hasKeyboard: false, wantsKeyboard: true)
+          && !OverlayController.handsKeyboardBack(shown: false, hasKeyboard: false, wantsKeyboard: false))
+    let linkedSafari: [Set<pid_t>] = [[501, 502], [700]]
+    check("a key that reached Margin.app: on to the linked browser in front, only with none of Margin's windows key",
+          Shell.relayTarget(marginWindowKey: false, front: 502, margin: 99, linked: linkedSafari) == 502
+          && Shell.relayTarget(marginWindowKey: true, front: 502, margin: 99, linked: linkedSafari) == nil
+          && Shell.relayTarget(marginWindowKey: false, front: 99, margin: 99, linked: linkedSafari) == nil
+          && Shell.relayTarget(marginWindowKey: false, front: 333, margin: 99, linked: linkedSafari) == nil
+          && Shell.relayTarget(marginWindowKey: false, front: nil, margin: 99, linked: linkedSafari) == nil)
     check("quit prompt: Return or Enter quits, Escape cancels, ⌘Q again quits, other keys nothing",
           QuitPrompt.choice(keyCode: 36, command: false) == .quit && QuitPrompt.choice(keyCode: 76, command: false) == .quit
           && QuitPrompt.choice(keyCode: 53, command: false) == .cancel && QuitPrompt.choice(keyCode: 12, command: true) == .quit

@@ -435,6 +435,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         link.start()
         startSafariNames()
         coversSoon()
+        startKeyRelay()
         // DEV-HOOK: heard only while MarginDevHooks is YES, and only for Safari's Test A and Test B.
         if let on = options.devHooksOn, devHooks == nil {
             devHooks = DevHooks(world: self, isOn: on)
@@ -464,6 +465,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         for t in drawnTimers.values { t.timer.invalidate() }
         drawnTimers = [:]
         shortcuts.set(active: false)
+        if let keyRelay { NSEvent.removeMonitor(keyRelay) }
+        keyRelay = nil
         pointer.stop()
         apps.stop()
         safariNames?.stop()
@@ -1607,6 +1610,35 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         shortcuts.setQuitGuard(active: Shell.guardsQuit(browserInFront: apps.frontPid.map(allPids.contains) == true,
                                                         parked: parking?.entries.count ?? 0, quitting: quittingBrowser,
                                                         asks: has && front?.pageFullscreen != true && options.asksBeforeQuit()))
+    }
+
+    // A click in Margin's UI moves the keyboard to Margin.app without making it the active app (a non-activating
+    // panel), and OverlayController.pressEnded gives it back as the press ends. A key pressed before that, with none
+    // of Margin's windows key, had nowhere to go (the system's beep: ⌘R after a click in the sidebar, Tirth,
+    // 2026-11-08): it goes on to the linked browser in front instead, as the press and the release it would have had
+    // there, and the keyboard goes back with it. Which key isn't logged, only that one was sent on.
+    private var keyRelay: Any?
+    private(set) var keysRelayed = 0
+    /// Where a key that reached Margin.app goes on to: the browser in front, if it's linked and none of Margin's windows
+    /// is key (one that is takes its keys: a field of Margin's, the quit prompt, a settings window); nil: it stays Margin's.
+    static func relayTarget(marginWindowKey: Bool, front: pid_t?, margin: pid_t, linked: [Set<pid_t>]) -> pid_t? {
+        guard !marginWindowKey, let front, front != margin, linked.contains(where: { $0.contains(front) }) else { return nil }
+        return front
+    }
+    private func startKeyRelay() {
+        guard keyRelay == nil, !options.harness else { return }
+        keyRelay = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+            guard let self, let pid = Shell.relayTarget(marginWindowKey: NSApp.keyWindow != nil, front: self.apps.frontPid,
+                                                        margin: ProcessInfo.processInfo.processIdentifier, linked: Array(self.linkedPids().values)),
+                  let cg = event.cgEvent?.copy() else { return event }
+            cg.postToPid(pid)
+            if event.type == .keyDown {
+                self.keysRelayed += 1
+                if self.keysRelayed == 1 || self.keysRelayed % 100 == 0 { Diagnostics.note("a key reached Margin.app with none of its windows key: sent on to the browser in front (\(self.keysRelayed) so far)") }
+                self.overlays.values.first { $0.browserPid == pid && $0.isShown }?.returnKeyboard()
+            }
+            return nil
+        }
     }
 
     /// ⌘Q (or ⌥⌘Q) posted to a process, a key press and release (Accessibility lets Margin post events); if it

@@ -27,8 +27,14 @@ import WebKit
 // Key only while a text field in it has focus; never main.
 class OverlayPanel: NSPanel {
     var allowKey = false
+    /// A press in it ended (the main button let go): OverlayController.pressEnded.
+    var pressEnded: (() -> Void)?
     override var canBecomeKey: Bool { allowKey }
     override var canBecomeMain: Bool { false }
+    override func sendEvent(_ event: NSEvent) {
+        super.sendEvent(event)
+        if event.type == .leftMouseUp { pressEnded?() }
+    }
 }
 
 // The region that isn't the page's (PassThrough.swift CatchRegion), filled at alpha 0.01 so the window
@@ -216,6 +222,8 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         catcher.contentView = catcherView
         super.init()
         catcher.overlay = self
+        panel.pressEnded = { [weak self] in self?.pressEnded() }
+        edgePanel?.pressEnded = { [weak self] in self?.pressEnded() }
         panel.level = options.level
         panel.hidesOnDeactivate = false
         panel.isFloatingPanel = false
@@ -637,6 +645,32 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         Diagnostics.note("\(key) gave the keyboard back: \(why)")
         if panel.isKeyWindow { panel.resignKey() }
         guard !options.harness, let browser = NSRunningApplication(processIdentifier: browserPid) else { return }
+        NSApp.yieldActivation(to: browser)
+        browser.activate(from: NSRunningApplication.current, options: [])
+    }
+
+    // A press in Margin's UI ended. A click in a non-activating panel moves the keyboard to Margin.app without making
+    // it the active app, and the panel isn't key unless a field of Margin's has the focus: a key pressed after the
+    // click reached Margin.app with nowhere to go (⌘R beeped instead of reloading: Tirth, 2026-11-08). So the keyboard
+    // goes back to the browser as the press ends, as handBack gives it, unless a field of Margin's took it (its page
+    // says `focus` as it's pressed): looked at `pressSettle` later, once the page has had the chance to say so.
+    // (A key that still reaches Margin.app goes on to the browser: Shell's key monitor.)
+    static let pressSettle: TimeInterval = 0.08
+    private(set) var keyboardReturned = 0
+    /// Whether the keyboard goes back to the browser once a press ends: shown, and no field of Margin's has it or asked for it.
+    static func handsKeyboardBack(shown: Bool, hasKeyboard: Bool, wantsKeyboard: Bool) -> Bool { shown && !hasKeyboard && !wantsKeyboard }
+    func pressEnded() {
+        guard !options.harness else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.pressSettle) { [weak self] in
+            guard let self, Self.handsKeyboardBack(shown: self.isShown, hasKeyboard: self.hasKeyboard, wantsKeyboard: self.pageWantsKeyboard) else { return }
+            self.returnKeyboard()
+        }
+    }
+    // The browser made the active app again (it already is: this moves the keyboard back to its window).
+    func returnKeyboard() {
+        guard browserPid > 0, let browser = NSRunningApplication(processIdentifier: browserPid) else { return }
+        keyboardReturned += 1
+        if keyboardReturned == 1 || keyboardReturned % 200 == 0 { Diagnostics.note("\(key): the keyboard back to the browser after a press in Margin's UI (\(keyboardReturned) so far)") }
         NSApp.yieldActivation(to: browser)
         browser.activate(from: NSRunningApplication.current, options: [])
     }
