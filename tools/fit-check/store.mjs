@@ -86,7 +86,7 @@ export function rebuild(data = DEFAULT_DATA) {
       })),
     };
     writeAtomic(join(data, 'sites', `${domain}.json`), `${JSON.stringify(file, null, 2)}\n`);
-    if (latest.verdict === 'flagged' || latest.verdict === 'margin-failed') pictures.push(...Object.values(file.latest.pictures ?? {}).filter(Boolean));
+    if (['flagged', 'margin-failed', 'hinted'].includes(latest.verdict)) pictures.push(...Object.values(file.latest.pictures ?? {}).filter(Boolean));
     table.push({ rank: site.rank, domain, verdict: latest.verdict, flags: (latest.flags ?? []).join(' '), round: latest.round, at: latest.at, commit: latest.commit ?? '', marginMs: latest.margin?.ms ?? '', plainMs: latest.plain?.ms ?? '', status: latest.plain?.status ?? '', before: before?.verdict ?? '' });
   }
   table.sort((a, b) => a.rank - b.rank);
