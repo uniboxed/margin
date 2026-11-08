@@ -3361,3 +3361,13 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
   - stuff.co.nz: the site's own "something went wrong".
   - 1und1.de: didn't load through Margin.
 
+### What the box costs, measured (2026-11-08)
+
+- **Tirth:** while fixing these, don't make Margin slower.
+- **Now:**
+  - `npm run bench:box` (`tests/box/bench.mjs`): a heavy page (`serve.js benchPage`: 20,000 rules, a fifth with viewport units and a tenth in media queries, 3,000 elements) and a smaller one (2,000 and 500), 7 loads each, through Margin in Chromium and plain, the medians of the page's load and from load to its second frame. The box's cost is what it adds, compared with `bench-baseline.json`; it fails past a quarter more and 30 ms.
+  - Baseline from `main` before the day's fixes (d4240ec): the box adds 123 ms to the heavy page's load and 33 to the small one's, nothing after load.
+  - With the fixes: 122 and 25.
+  - fit-check's summary has a Speed line: how much slower pages load through Margin than plain, the median and the slowest tenth, every night. Round 1: 12 ms faster at the median, 242 ms slower at the slowest tenth, 145 of 2,651 sites over half a second slower.
+  - The imports in a copied sheet are fetched all at once (`inlineImports`), so the copy waits for the slowest, not their sum.
+

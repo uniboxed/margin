@@ -99,6 +99,8 @@ node --test tests/e2e/box-patterns.test.js   # Chromium (part of npm run test:e2
 tools/webkit-host/run.sh box-patterns        # Safari's engine (part of npm run test:webkit)
 ```
 
+How much the box costs a page, against a plain browser: `npm run bench:box` (a page of 20,000 rules and 3,000 elements, and a smaller one, several loads each), compared with `bench-baseline.json`. It fails if the box's cost grew by more than a quarter and 30 ms. Measure on `main` with `--save` before a change that could cost time, then on the change.
+
 Chromium runs them through the e2e harness: the test build of the extension, the stand-in Margin.app, the sidebar kept open (the slot 260/8/8/8 in a 1440×900 window). The WebKit host does the same in Safari's engine (a 1200×800 window). Both serve the patterns with `serve.js`.
 
 ## The box's other tests

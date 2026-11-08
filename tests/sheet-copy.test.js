@@ -72,3 +72,18 @@ test('a sheet with no imports comes back as it was, and too many imports are lef
   const many = Array.from({ length: 3 }, (_, i) => `@import "https://cdn.example/${i}.css";`).join('') + '.top{}';
   assert.equal(await inlineImports(many, BASE, fetchText, { max: 2 }), many);
 });
+
+test('imports are fetched all at once, not one after another', async () => {
+  let inFlight = 0;
+  let most = 0;
+  const fetchText = async (url) => {
+    inFlight += 1;
+    most = Math.max(most, inFlight);
+    await new Promise((r) => setTimeout(r, 20));
+    inFlight -= 1;
+    return `.${url.split('/').pop().replace('.css', '')}{}`;
+  };
+  const css = ['a', 'b', 'c'].map((n) => `@import "https://cdn.example/${n}.css";`).join('') + '.top{}';
+  assert.equal(await inlineImports(css, BASE, fetchText), '.a{}.b{}.c{}.top{}');
+  assert.equal(most, 3);
+});

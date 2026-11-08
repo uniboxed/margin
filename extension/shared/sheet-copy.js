@@ -59,19 +59,21 @@ async function inline(css, base, fetchText, depth, budget) {
   if (!found.length) return css;
   if (depth <= 0 || found.length > budget.left) return null;
   budget.left -= found.length;
-  const parts = [];
+  const wanted = [];
   for (const m of found) {
     const path = m[2] ?? m[4];
     const conditions = m[5].trim();
     if (/\b(layer|supports)\b/i.test(conditions)) return null;
     const url = ABSOLUTE.test(path) ? path : resolve(path, base);
     if (!url) return null;
-    const text = await fetchText(url);
-    if (typeof text !== 'string') return null;
-    const own = await inline(absolute(text, url).replace(CHARSET, ''), url, fetchText, depth - 1, budget);
-    if (own == null) return null;
-    parts.push({ at: m.index, end: m.index + m[0].length, text: conditions ? `@media ${conditions} {\n${own}\n}` : own });
+    wanted.push({ m, url, conditions });
   }
+  // Fetched all at once, not one after another: the copy waits for the slowest, not their sum.
+  const texts = await Promise.all(wanted.map(({ url }) => fetchText(url)));
+  if (texts.some((text) => typeof text !== 'string')) return null;
+  const owns = await Promise.all(wanted.map(({ url }, i) => inline(absolute(texts[i], url).replace(CHARSET, ''), url, fetchText, depth - 1, budget)));
+  if (owns.some((own) => own == null)) return null;
+  const parts = wanted.map(({ m, conditions }, i) => ({ at: m.index, end: m.index + m[0].length, text: conditions ? `@media ${conditions} {\n${owns[i]}\n}` : owns[i] }));
   let out = '';
   let from = 0;
   for (const part of parts) {
