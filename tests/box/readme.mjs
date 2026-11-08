@@ -1,12 +1,12 @@
-// README.md's generated parts: the rules (rules.js RULES) and the table of cases
-// (cases/*.html headers), between their markers. tests/box-cases.test.js fails
-// when the README isn't up to date.
+// README.md's generated parts: the rules (rules.js RULES) and the table of
+// patterns (patterns/*.html headers), between their markers.
+// tests/box-patterns.test.js fails when the README isn't up to date.
 //
 //   node tests/box/readme.mjs        write them
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { RULES } from './rules.js';
-import { listCases } from './serve.js';
+import { listPatterns } from './serve.js';
 
 export const README = fileURLToPath(new URL('./README.md', import.meta.url));
 // Bare tags (`<html>`) in code, so Markdown shows them; what's already in backticks stays.
@@ -17,12 +17,12 @@ export function rulesPart() {
   return Object.entries(RULES).map(([id, says]) => `- \`${id}\`: ${md(says)}.`).join('\n');
 }
 
-export function casesPart() {
-  const rows = listCases().map((c) => {
-    const extra = [c.engines !== 'both' ? `${c.engines} only` : '', c.allow.length ? `let off: ${c.allow.map((a) => `\`${a}\``).join(', ')}` : ''].filter(Boolean).join('; ');
-    return `| [${c.name}](cases/${c.name}.html) | ${cell(c.title)}${extra ? ` (${cell(extra)})` : ''} | ${cell(c.from)} | ${cell(c.handledBy)} |`;
+export function patternsPart() {
+  const rows = listPatterns().map((p) => {
+    const extra = [p.engines !== 'both' ? `${p.engines} only` : '', p.allow.length ? `let off: ${p.allow.map((a) => `\`${a}\``).join(', ')}` : ''].filter(Boolean).join('; ');
+    return `| [${p.name}](patterns/${p.name}.html) | ${cell(p.title)}${extra ? ` (${cell(extra)})` : ''} | ${cell(p.from)} | ${cell(p.handledBy)} |`;
   });
-  return ['| Case | What it holds | Where it came from | Handled by |', '| --- | --- | --- | --- |', ...rows].join('\n');
+  return ['| Pattern | What pages do, and what the box keeps true | First seen | Handled by |', '| --- | --- | --- | --- |', ...rows].join('\n');
 }
 
 /** The README with its generated parts as they should be. @param {string} text */
@@ -35,7 +35,7 @@ export function withParts(text) {
     if (a < 0 || b < a) throw new Error(`README.md: no ${start} … ${end}`);
     return `${t.slice(0, a + start.length)}\n${body}\n${t.slice(b)}`;
   };
-  return put(put(text, 'rules', rulesPart()), 'cases', casesPart());
+  return put(put(text, 'rules', rulesPart()), 'patterns', patternsPart());
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

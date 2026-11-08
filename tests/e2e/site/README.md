@@ -21,7 +21,7 @@ site.url('dispatch.test', '/2026/11/the-quiet-city');
 
 - `/missing`, or any path a site doesn't have: that site's 404 page, status 404.
 - `?fp` on any page: a recorder at the top of `<head>` notes where `<html>` sits in each of the first 40 frames (`window.__fp`). `&late=N` holds Margin's word to the box back until N ms.
-- `box.test` isn't a site: it serves the page box's cases (`tests/box/serve.js`): `/case/<name>`, and `/ref/<name>?w=&h=`, the case in an iframe that size. The suites that go through every site don't see it.
+- `box.test` isn't a site: it serves the page patterns the box handles (`tests/box/serve.js`): `/pattern/<name>`, and `/ref/<name>?w=&h=`, the pattern's page in an iframe that size. The suites that go through every site don't see it.
 - `/media/art/<kind>.svg?…`: drawn pictures (`art.js`).
 - `?wait=<ms>` on any address: answered that late (a slow server; 10 s at most).
 - `?nocontent` on any address: answered 204, so a page that goes there stays where it is.

@@ -1,5 +1,5 @@
 // What the page box promises (extension/content/page/, shared/page-box.js), as
-// rules every case is held to (README.md). A page in its box beside Margin's
+// rules every page pattern is held to (README.md). A page in its box beside Margin's
 // sidebar must be what it would be in a plain window the box's size: the same
 // layout, the same answers to what it asks, and the window itself never moved.
 //
@@ -11,7 +11,7 @@
 // `plain` is the same page measured in a plain window of the box's size: an
 // iframe that size (tests/box/serve.js /ref/), in the same browser.
 
-/** The rules, by id, for the README and for a case's `allow:`. */
+/** The rules, by id, for the README and for a pattern's `allow:`. */
 export const RULES = Object.freeze({
   'box-at-slot': "<html> is drawn at the slot's corner (the box's place beside the sidebar)",
   'box-size': "<html> is the slot's size: whatever the page says about <html>'s size, place or margins",

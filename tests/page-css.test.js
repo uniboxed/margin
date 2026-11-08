@@ -63,7 +63,7 @@ test('the box: the same rules in the page and the placeholder, under @media scre
   assert.ok(css.indexOf('@media screen') < css.indexOf(boxRules(BOX_ROOT, box)));
   assert.ok(css.startsWith(NO_BOX_CSS), 'print and no box: 0');
   assert.doesNotMatch(boxRules(BOX_ROOT, box), /overflow:/, 'a page\'s own overflow stays readable (content/page/box.js)');
-  assert.ok(css.includes(`html:not(#m#m#m#m#m) {`), 'the box\'s <html> outweighs a page\'s `.w-100 { width: 100% !important }` (tests/box/cases/html-class-width.html)');
+  assert.ok(css.includes(`html:not(#m#m#m#m#m) {`), 'the box\'s <html> outweighs a page\'s `.w-100 { width: 100% !important }` (tests/box/patterns/html-class-width.html)');
   assert.ok(css.includes(`html:not(#m#m#m#m#m):fullscreen {`), '<html> in full screen outweighs the box\'s <html>');
 });
 

@@ -75,7 +75,7 @@ export function startViewport(box) {
   // (it has a transform), so a fixed drawer moved off the box's edge with a transform runs past the window, and the browser
   // scrolls the window to show what a page brings into view there (go.dev: a link in its off-canvas menu, the whole box slid
   // 856px left, and every shim still saying 0). Put back as soon as it's told. Not under a pinch, whose view is the window's
-  // to move (Safari's own pinch). Margin's own scroll events, sent on below, aren't trusted. Case: tests/box/cases/offcanvas-into-view.html.
+  // to move (Safari's own pinch). Margin's own scroll events, sent on below, aren't trusted. Pattern: tests/box/patterns/offcanvas-into-view.html.
   addEventListener('scroll', (event) => {
     if (!box.on || event.target !== document || !event.isTrusted || !viewport || viewport.scale !== 1) return;
     if (viewport.pageLeft - viewport.offsetLeft || viewport.pageTop - viewport.offsetTop) windowScrollTo.call(window, 0, 0);

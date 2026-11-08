@@ -3,7 +3,7 @@
 // page, and <body> scrolls inside it. Plain text, shared by the page-world
 // script (content/page/box.js) and the themes' first-paint files
 // (firstPaintCss, below; scripts/build.js), so the two can't drift.
-// What the box promises, and a case for each edge it handles: tests/box/README.md.
+// What the box promises, and every page pattern it handles: tests/box/README.md.
 
 // <html>'s rules. `selector` is <html>'s. Under @media screen: paper has no box.
 // `transform-origin`: the pinch's scale starts at the box's corner. `zoom`: the

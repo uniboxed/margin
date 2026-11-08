@@ -1,8 +1,8 @@
 // Margin in the page's own world: the page's box (shared/page-box.js), with no
 // iframe. <html> is the box beside the sidebar, <body> scrolls inside it, and
 // what a page asks about its window (its size, scrolling, pointer positions,
-// media queries) is answered for the box. What it promises, as rules, and a
-// case for every edge it handles: tests/box/README.md.
+// media queries) is answered for the box. What it promises, as rules, and
+// every page pattern it handles: tests/box/README.md.
 //
 // Registered by the background (background/registered.js) only while
 // Margin.app draws Margin, in the top frame only, with the first paint's CSS:

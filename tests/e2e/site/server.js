@@ -18,8 +18,8 @@
 // word to the page's box back until `&late=N` ms, as the WebKit host's /fp/
 // pages do.
 //
-// `box.test` isn't a site: it serves the page box's cases (tests/box/serve.js),
-// so the suites that go through every site don't go through them.
+// `box.test` isn't a site: it serves the page patterns the box handles
+// (tests/box/serve.js), so the suites that go through every site don't go through them.
 //
 // Nothing is logged unless MARGIN_E2E_VERBOSE is set.
 import { createServer } from 'node:http';
@@ -58,7 +58,7 @@ export async function startSite({ port = 0, verbose = !!process.env.MARGIN_E2E_V
     try {
       if (hostname === 'box.test') {
         const out = boxPage(u.pathname, u.searchParams);
-        return send(res, out ? { ...out, cache: false } : { status: 404, type: 'text/plain; charset=utf-8', body: 'No such case.' }, u);
+        return send(res, out ? { ...out, cache: false } : { status: 404, type: 'text/plain; charset=utf-8', body: 'No such pattern.' }, u);
       }
       if (!site) return send(res, { status: 404, type: 'text/plain; charset=utf-8', body: 'No such site on the test server.' });
       // On every page: `?wait=<ms>` answers that late (a slow server), `?nocontent` with 204 (the page stays).

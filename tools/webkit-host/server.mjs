@@ -220,7 +220,7 @@ createServer((req, res) => {
     res.setHeader('content-type', 'text/html; charset=utf-8');
     return res.end('<!doctype html><title>Posted</title><h1>Posted</h1><p>result</p>');
   }
-  // The page box's cases (tests/box/serve.js): /box/case/<name>, /box/ref/<name>?w=&h=.
+  // The page patterns the box handles (tests/box/serve.js): /box/pattern/<name>, /box/ref/<name>?w=&h=.
   if (req.url.startsWith('/box/')) {
     const u = new URL(req.url, 'http://127.0.0.1');
     const out = boxPage(u.pathname.slice('/box'.length), u.searchParams);
