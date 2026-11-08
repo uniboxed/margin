@@ -64,12 +64,22 @@ export function startViewport(box) {
   }
   const scrollingElement = find(Document.prototype, 'scrollingElement');
   define(Document.prototype, 'scrollingElement', { get() { return box.on && this === document ? box.body() : scrollingElement.get.call(this); } });
+  const windowScrollTo = window.scrollTo;
   for (const name of ['scrollTo', 'scrollBy', 'scroll']) {
     const method = element[name];
     const own = window[name];
     window[name] = function (...args) { return box.on ? method.apply(box.body(), args) : own.apply(window, args); };
     element[name] = function (...args) { return method.apply(scroller(this), args); };
   }
+  // The window itself never scrolls while there's a box: <body> is the page's scroller. But what's fixed is placed in <html>
+  // (it has a transform), so a fixed drawer moved off the box's edge with a transform runs past the window, and the browser
+  // scrolls the window to show what a page brings into view there (go.dev: a link in its off-canvas menu, the whole box slid
+  // 856px left, and every shim still saying 0). Put back as soon as it's told. Not under a pinch, whose view is the window's
+  // to move (Safari's own pinch). Margin's own scroll events, sent on below, aren't trusted. Pattern: tests/box/patterns/offcanvas-into-view.html.
+  addEventListener('scroll', (event) => {
+    if (!box.on || event.target !== document || !event.isTrusted || !viewport || viewport.scale !== 1) return;
+    if (viewport.pageLeft - viewport.offsetLeft || viewport.pageTop - viewport.offsetTop) windowScrollTo.call(window, 0, 0);
+  }, { capture: true, passive: true });
   // A scroll of <body> doesn't reach what listens on the document or the window.
   for (const type of ['scroll', 'scrollend']) {
     addEventListener(type, (event) => {

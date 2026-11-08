@@ -21,6 +21,7 @@
 //   /slow?ms=N an image that arrives N ms after it's asked for
 //   POST /log  one log line, printed with a timestamp
 import { createServer } from 'node:http';
+import { boxPage } from '../../tests/box/serve.js';
 
 const PORT = Number(process.env.MARGIN_HOST_PORT) || 47811;
 const t0 = Date.now();
@@ -218,6 +219,16 @@ createServer((req, res) => {
     console.log(`${stamp()} SERVER ${req.method} ${req.url}`);
     res.setHeader('content-type', 'text/html; charset=utf-8');
     return res.end('<!doctype html><title>Posted</title><h1>Posted</h1><p>result</p>');
+  }
+  // The page patterns the box handles (tests/box/serve.js): /box/pattern/<name>, /box/ref/<name>?w=&h=.
+  if (req.url.startsWith('/box/')) {
+    const u = new URL(req.url, 'http://127.0.0.1');
+    const out = boxPage(u.pathname.slice('/box'.length), u.searchParams);
+    if (out) {
+      res.setHeader('content-type', out.type);
+      res.setHeader('cache-control', 'no-store');
+      return res.end(out.body);
+    }
   }
   const match = /^\/p\/(\w+)/.exec(req.url);
   if (match) {

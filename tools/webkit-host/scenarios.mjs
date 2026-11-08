@@ -116,6 +116,8 @@ const openKept = (tab, name) => ({ op: 'eval', in: tab, js: `${KEPT(name)} retur
 const keepMid = (tab, name) => ({ op: 'eval', in: tab, js: `const { tabs } = await ${STATE}('tabs'); globalThis.__mid${name} = Object.values(tabs).find((t) => t.url.endsWith('/p/${name}'))?.mid; return globalThis.__mid${name} ?? 'none'` });
 // The page server's address (run.sh's MARGIN_HOST_PORT), for addresses Margin's own pages carry.
 import { firstReadKeys } from '../../extension/shared/stored.js';
+import { listPatterns } from '../../tests/box/serve.js';
+import { judge, measure } from '../../tests/box/rules.js';
 const SERVER = `http://127.0.0.1:${process.env.MARGIN_HOST_PORT ?? 47811}`;
 // Margin's sleep page as an earlier build left a tab on it (Safari closes sleeping tabs now, and
 // the page is gone since Phase 3: its address opens nothing).
@@ -143,6 +145,34 @@ const settledLayout = wait(3000);
 // update to the pages it applies to: the variables its digit files add up to), within `timeout`.
 const registeredAt = (tab, [l, t, r, b], label, timeout) => checkPage(tab, `${tab}: registered at ${l}/${t}/${r}/${b} ${label}`, `const s = getComputedStyle(document.documentElement); const sum = (side) => { const v = s.getPropertyValue('--margin-at-' + side).trim(); return v.startsWith('calc(') ? (v.match(/[0-9.]+(?=px)/g) ?? []).reduce((a, n) => a + Number(n), 0) : NaN; }; return sum('left') === ${l} && sum('top') === ${t} && sum('right') === ${r} && sum('bottom') === ${b}`, timeout);
 const pages = (prefix, n, layout, options) => Array.from({ length: n }, (_, i) => [fresh(`${prefix}${i}`), firstFrame(`${prefix}${i}`, layout, options), firstLog(`${prefix}${i}`)]).flat();
+
+// The page patterns the box handles (tests/box/: each pattern's page in its box,
+// held to the box's rules against the same page in a plain window the box's size,
+// an iframe that size; the e2e suite runs them in Chromium). The reference's measurements
+// go to the pattern's tab through localStorage (one origin), and the rules
+// themselves (tests/box/rules.js) are pasted into the check as they are.
+const boxPatterns = () => {
+  const slot = { left: 260, top: 8, right: 8, bottom: 8 };
+  const win = { w: 1200, h: 800 }; // the host's window
+  const w = win.w - slot.left - slot.right;
+  const h = win.h - slot.top - slot.bottom;
+  const run = (fn, args) => `(${fn.toString()})(${args})`;
+  const settled = (settle) => `window.__t0 ??= Date.now(); if (Date.now() - window.__t0 < ${settle}) return 'settling';`;
+  const steps = [...startBoxed('A', '/p/A')];
+  listPatterns().filter((p) => p.engines !== 'chromium').forEach((p, i) => {
+    const key = JSON.stringify(`margin-box-ref:${p.name}`);
+    steps.push(
+      { op: 'open', name: `R${i}`, url: `/box/ref/${p.name}?w=${w}&h=${h}`, active: true },
+      checkPage(`R${i}`, `${p.name}: its plain reference (${w}×${h}) measured`, `const f = document.getElementById('plain'); const d = f && f.contentDocument; if (!d || d.readyState !== 'complete') return 'loading'; ${settled(p.settle)} localStorage.setItem(${key}, JSON.stringify(f.contentWindow.Function('return ' + ${JSON.stringify(run(measure, ''))})())); return true;`, p.settle + 6000),
+      { op: 'close', name: `R${i}` },
+      { op: 'open', name: `C${i}`, url: `/box/pattern/${p.name}`, active: true },
+      boxed(`C${i}`),
+      checkPage(`C${i}`, `box pattern ${p.name}: ${p.title}`, `if (document.readyState !== 'complete') return 'loading'; ${settled(p.settle)} const fails = ${run(judge, `${run(measure, '')}, JSON.parse(localStorage.getItem(${key})), ${JSON.stringify({ slot, window: win, allow: p.allow })}`)}; return fails.length ? fails.join(' | ') : true;`, p.settle + 2500),
+      { op: 'close', name: `C${i}` },
+    );
+  });
+  return steps;
+};
 
 export const SCENARIOS = {
   // Pages open at install get Margin (WebKit adds the core); switching
@@ -1545,6 +1575,7 @@ Object.assign(SCENARIOS, {
   ],
   // Another theme: its own first paint (its mark and its look), and none of
   // the theme registered before it, whose CSS WebKit keeps applying.
+  'box-patterns': boxPatterns(),
   'first-paint-theme': [
     appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), boxed('A'), settledLayout,
     ...pages('K', 1, [260, 8, 8, 8]),

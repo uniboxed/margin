@@ -1,0 +1,37 @@
+<!--
+pattern: fixed bars, a sticky sub-nav and a corner bubble stay in the box, scrolled or not
+from: the travel page (tests/e2e/site/sites/harbor.js): a fixed top nav, a sticky sub-nav, a fixed cookie bar and chat bubble
+handled-by: shared/page-box.js (<html> is the box: what's fixed is placed in it), content/page/coords.js
+settle: 700
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>fixed-and-sticky</title>
+<style>
+  body { margin: 0; font: 16px/1.5 -apple-system, system-ui, sans-serif; }
+  #nav { position: fixed; top: 0; left: 0; right: 0; height: 56px; background: #fff; border-bottom: 1px solid #ddd; z-index: 2; }
+  #spacer { height: 56px; }
+  #sub { position: sticky; top: 56px; height: 40px; background: #f4f4f4; border-bottom: 1px solid #ddd; z-index: 1; }
+  #cookies { position: fixed; left: 16px; right: 16px; bottom: 16px; height: 48px; background: #222; color: #fff; }
+  #chat { position: fixed; right: 20px; bottom: 80px; width: 56px; height: 56px; border-radius: 28px; background: #e33; }
+  section { height: 400px; margin: 16px; background: #eef; }
+</style>
+</head>
+<body>
+<div id="nav">Harbor</div>
+<div id="spacer"></div>
+<div id="sub">Stays · Experiences · Online</div>
+<section></section><section></section><section></section><section></section>
+<div id="cookies">We use cookies.</div>
+<div id="chat"></div>
+<p>Scrolled to: <output id="y"></output></p>
+<script>
+  addEventListener('load', () => setTimeout(() => {
+    scrollTo(0, 500);
+    setTimeout(() => { document.getElementById('y').textContent = String(Math.round(scrollY)); }, 100);
+  }, 200));
+</script>
+</body>
+</html>

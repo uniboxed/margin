@@ -1,0 +1,21 @@
+<!--
+pattern: vw inside a `font` shorthand that also has a var() follows the box
+from: an e2e check (2026-11): the shorthand's longhands read empty while the var() is pending, so its vw stayed the window's
+handled-by: shared/page-css.js (shiftStyle sets such a shorthand again as a whole)
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>vw-in-font-shorthand</title>
+<style>
+  body { margin: 0; }
+  #t { --lead: 1.2; font: calc(1vw + 4px) / var(--lead) -apple-system, system-ui, sans-serif; display: inline-block; }
+  #u { --size: 2vw; font: var(--size) / 1.3 -apple-system, system-ui, sans-serif; display: inline-block; }
+</style>
+</head>
+<body>
+<p><span id="t">The quick brown fox jumps over the lazy dog</span></p>
+<p><span id="u">Pack my box with five dozen liquor jugs</span></p>
+</body>
+</html>

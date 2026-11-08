@@ -1,0 +1,40 @@
+<!--
+pattern: a modal that locks the page's scroll (body fixed at its scroll, or overflow hidden) stays in the box, the place kept
+from: the travel page's dates modal (tests/e2e/site/sites/harbor.js); the WebKit host's `lock` scenario
+handled-by: content/page/box.js (the page's scroll locks, read from computed style)
+settle: 700
+allow: same-scroll
+note: the page is told it's still scrolled 300px while locked (plain: 0). Margin keeps <body> the scroller and doesn't let a lock's `top: -300px` move it, so <body> keeps its scroll instead. What's drawn is the same (same-layout holds).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>scroll-lock</title>
+<style>
+  body { margin: 0; font: 16px/1.5 -apple-system, system-ui, sans-serif; }
+  section { height: 500px; margin: 16px; background: #efe; }
+  body.locked { position: fixed; left: 0; right: 0; overflow: hidden; }
+  #scrim { display: none; position: fixed; inset: 0; background: #0006; }
+  #modal { display: none; position: fixed; left: 50%; top: 50%; width: 400px; height: 240px; margin: -120px 0 0 -200px; background: #fff; border-radius: 12px; }
+  body.locked #scrim, body.locked #modal { display: block; }
+</style>
+</head>
+<body>
+<section id="s1"></section><section id="s2"></section><section id="s3"></section>
+<div id="scrim"></div>
+<div id="modal">Pick your dates</div>
+<p>Kept: <output id="kept"></output></p>
+<script>
+  addEventListener('load', () => setTimeout(() => {
+    scrollTo(0, 300);
+    setTimeout(() => {
+      const y = scrollY;
+      document.body.style.top = `-${y}px`;
+      document.body.classList.add('locked');
+      document.getElementById('kept').textContent = String(Math.round(y));
+    }, 100);
+  }, 200));
+</script>
+</body>
+</html>
