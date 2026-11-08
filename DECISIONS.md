@@ -3200,6 +3200,7 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
     - If its title differs from the one learned while nothing showed on the left ("Show Sidebar" against "Hide Sidebar"), it's Safari's sidebar. Margin presses the item once (the menu never opens), and the overlay keeps the whole window meanwhile, covering it.
     - If the title is unchanged, it's something else (a Web Inspector docked on the left): left alone and carved out as before.
     - It's pressed at most once per appearance.
+- **The pause after each warp** (Tirth: "at the very left edge … when i try to move up, it moves up very slowly or doesn't at all"): macOS ignores pointer movement for 0.25 s after a warp by default, and pushed against the stop every move warped. `CGAssociateMouseAndMouseCursorPosition(true)` after the warp didn't lift it; `CGSetLocalEventsSuppressionInterval(0)` does, set once as the tap starts. It's deprecated but present, so it's looked up with `dlsym` and not linked, keeping the build free of warnings.
 - **Found by the tests:** the cover first passed an infinite docked width, which the left-part log line turned into an integer, trapping. Now it's the window's width.
 - **Tests.**
   - `tests.swift`: ⇧⌘L for Safari only, never taking another command's key; the fence (alone, a display beside it, a display left but elsewhere); the clamp; the title rule.

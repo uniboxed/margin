@@ -64,7 +64,17 @@ nonisolated final class EdgeStop: @unchecked Sendable {
         thread.start()
     }
 
+    // macOS pauses the pointer for 0.25 s after each warp by default, so pushed against the stop and moved up, it hardly
+    // moved (Tirth, 2026-11-07). The pause turned off for Margin's warps: the call macOS still has, deprecated (and
+    // looked up, not linked, so the build stays without warnings); CGAssociateMouseAndMouseCursorPosition alone didn't.
+    private static func noPauseAfterWarps() {
+        typealias SetInterval = @convention(c) (Double) -> Int32
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGSetLocalEventsSuppressionInterval") else { return }
+        _ = unsafeBitCast(symbol, to: SetInterval.self)(0)
+    }
+
     private func run() {
+        Self.noPauseAfterWarps()
         let mask = CGEventMask(1 << CGEventType.mouseMoved.rawValue)
         let me = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: mask, callback: { _, type, event, refcon in
