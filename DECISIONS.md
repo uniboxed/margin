@@ -3306,3 +3306,13 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **Not changed:** what any of it does. The code moved as it was, its comments with it. The box's functions are plain calls through `ctx`, so nothing outside the box saw a difference.
 - **Tests:** `tests/body-fit.test.js` (new: pixels, collapsing, the width equation for plain, centred, max-width and padding, right to left, zoomed). `box-patterns` in both engines, `tests/e2e/page-box.test.js`, and the WebKit host's box scenarios (`box`, `hidden-box`, `toggle`, `undrawn`, `csp`, `lock`, `late-body`, `read-limits`, `late-reads`, `read-shape`, `body-size`, `body-background`, `in-view`, `answers`, `keys`, `history`, `top-layer`, `linked-sheet`, `first-paint`, `first-paint-off`) pass as they did. Then the full gate.
 
+### Keys after a click in Margin's UI go to the browser (2026-11-08)
+
+- **Tirth:** ⌘R reloads from the page, but after a click in the sidebar it beeps, as if the shortcut weren't there.
+- **Why:** Margin's overlay is a non-activating panel, never key unless a field of Margin's has the focus. A click in such a panel moves the keyboard to Margin.app without making it the active app. Safari stays in front, but the keys come to Margin.app, which has no key window for them: the system's beep. Nothing logged "took the keyboard", because the overlay never did.
+- **Now:**
+  - `OverlayController.pressEnded`: when a press in the overlay (or its edge panel) ends, after `pressSettle` (80 ms, so a field the press focused can say `focus` first), the keyboard goes back to the browser as `handBack` gives it (`returnKeyboard`: yield and activate). Not if the overlay has the keyboard or its page asked for it (`handsKeyboardBack`).
+  - `Shell.startKeyRelay`, a safety net: a key that reaches Margin.app with none of Margin's windows key, while a linked browser is in front, is posted on to that browser (press and release, as it would have had them) and the keyboard returned (`relayTarget`). Margin already posts keys to the browser (⌘Q, `postQuitKeys`). Which key isn't logged, only a count.
+  - Neither runs in a harness.
+- **Tests:** `tools/app-tests/tests.swift` checks `handsKeyboardBack` and `relayTarget`. The app tests can't press a real panel (nothing is shown or made key there), so the press itself is to be checked in Safari.
+
