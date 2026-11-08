@@ -493,8 +493,8 @@ func scenario() async {
   check("the browser in front with its overlay: Margin's keys held", shortcutsHeld(shell, keys, 7))
   check("… and ⌘Q and ⌥⌘Q, for Margin's quit prompt", keys.held.values.contains(Combo.parse("Meta+KeyQ")!) && keys.held.values.contains(Combo.parse("Alt+Meta+KeyQ")!))
   mark = fake.events.count
-  keys.press("Ctrl+Meta+ArrowDown")
-  check("⌃⌘↓: navigate next-tab for window 7", await until(3, { fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" } != nil })
+  keys.press("Alt+Meta+ArrowDown")
+  check("⌥⌘↓: navigate next-tab for window 7", await until(3, { fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" } != nil })
         && ((fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" }?["msg"] as? JSONObject)?["payload"] as? JSONObject)?["action"] as? String == "next-tab")
   // The overlay's page picked the tab and highlighted it at the press, then asked the copy for exactly it (Tirth,
   // 2026-11-07: the highlight waited for the copy's background): its target and its own switch id in the request.

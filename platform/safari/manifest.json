@@ -16,28 +16,16 @@
       "description": "New tab: Margin's palette (with Safari's File › New Tab moved to another shortcut)"
     },
     "next-tab": {
-      "suggested_key": {
-        "default": "Alt+Shift+Down",
-        "mac": "MacCtrl+Command+Down"
-      },
       "description": "Next tab in the sidebar"
     },
     "prev-tab": {
-      "suggested_key": {
-        "default": "Alt+Shift+Up",
-        "mac": "MacCtrl+Command+Up"
-      },
       "description": "Previous tab in the sidebar"
     },
     "next-space": {
-      "suggested_key": {
-        "default": "Alt+Shift+Right",
-        "mac": "MacCtrl+Command+Right"
-      },
       "description": "Next space"
     },
     "prev-space": {
-      "description": "Previous space (⌃⌘← on web pages)"
+      "description": "Previous space"
     },
     "toggle-sidebar": {
       "description": "Toggle the Margin sidebar (Option+S on web pages)"

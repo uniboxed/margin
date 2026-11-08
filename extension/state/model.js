@@ -2,7 +2,7 @@
 // with `node --test` and called by background.js. Functions never mutate
 // their input; untouched top-level keys keep their identity so the
 // background can write only the keys that changed.
-import { platform, PROFILES } from '../shared/platform.js';
+import { platform, PROFILES, PAST_NAVIGATION } from '../shared/platform.js';
 import { THEMES, DEFAULT_THEME } from '../themes/index.js';
 import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.js';
 import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.js';
@@ -55,7 +55,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   // the Chrome profile's ⌃⌘ + arrows (e.g. in node tests).
   shortcuts: Object.freeze({ ...(platform?.navigation ?? LEGACY_SHORTCUTS) }),
   // Which profile's defaults `shortcuts` started from (see normalizeShortcuts).
-  shortcutDefaults: platform?.name ?? 'chrome',
+  shortcutDefaults: platform?.navigationId ?? platform?.name ?? 'chrome',
   // What Margin looks like (themes/index.js), and each theme's own settings
   // ({ [themeId]: {...} }; Arcadia: sidebarWidth).
   theme: DEFAULT_THEME,
@@ -557,7 +557,9 @@ function normalizeShortcuts(rawSettings, baseSettings) {
   const saved = { ...rawSettings?.shortcuts };
   const from = rawSettings?.shortcutDefaults;
   if (from !== baseSettings.shortcutDefaults) {
-    const old = (from && PROFILES[from]?.navigation) || LEGACY_SHORTCUTS;
+    // (A build's defaults by the id it saved: its navigationId, else its name; a past set of Safari's first.)
+    const build = from ? Object.values(PROFILES).find((p) => (p.navigationId ?? p.name) === from) : null;
+    const old = (from && (PAST_NAVIGATION[from] ?? build?.navigation)) || LEGACY_SHORTCUTS;
     for (const [name, value] of Object.entries(saved)) if (value === old[name]) delete saved[name];
   }
   return { ...baseSettings.shortcuts, ...saved };

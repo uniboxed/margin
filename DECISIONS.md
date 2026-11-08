@@ -3253,3 +3253,17 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
   - `profiles-tests.swift` and `handoff-tests.swift`: Margin off in the target's profile fails at once with no window asked for, and A stays in front.
   - `switching.test.js`: the newest target answered while the state lags 0.6 s on passed tabs, and the highlight never goes back. It fails at 300 ms.
 - **A held key** (Tirth: "when i stop holding it, it still keeps moving"). Its repeats came faster than a highlight is drawn, so they queued in the overlay's page and went on after the key was let go. Now the page adds up the presses that arrive and takes them once a frame (`overlay.js navTab`/`flushNav`, with a 50 ms timer when no frames come), giving one highlight and one `navigate` for where they end, so none wait.
+
+### Arrow shortcuts: ⌥⌘ only (2026-11-08)
+
+- **Tirth:** remove the other arrow shortcuts (he called them "cmd shift"; they were ⌃⌘ ↑/↓/←/→, the only other arrow keys bound), and switch spaces with ⌥⌘←/→.
+- **Now:**
+  - Safari's defaults are ⌥⌘↓/↑ for tabs and ⌥⌘→/← for spaces (`shared/platform.js`, defaults id `safari-2`); Margin.app's own defaults, used until a copy says, are the same (`ShortcutSet.defaults`).
+  - The four navigation commands have no keys in either manifest. They stay commands, but the browser binds nothing to them, and Margin.app no longer holds ⌃⌘ arrows from them.
+  - A saved shortcut that's still an old default moves to the new one (`normalizeShortcuts`, with the past Safari set in `PAST_NAVIGATION`, a build known by its `navigationId`). His saved spaces (⌃⌘→/←) become ⌥⌘→/←; anything changed in Settings stays.
+  - Where Margin is, Safari's own ⌥⌘←/→ (its tab switching) is Margin's space switching.
+- **Tests:**
+  - `manifest`, `build`, `shortcuts`: no navigation command keys; Safari's set.
+  - `shortcuts-safari`: the listener still takes a manifest's command keys, given a manifest that has some; the shipped one has none.
+  - `model`: Safari's old set moves to the new one.
+  - The app tests now press the ⌥⌘ keys.

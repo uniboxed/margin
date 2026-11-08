@@ -99,12 +99,12 @@ func profilesScenario() async {
 
   // ---- ⌃⌘←: the previous space in the one order is in the same profile: today's switch ----
   mark = fake.events.count
-  keys.press("Ctrl+Meta+ArrowLeft")
+  keys.press("Alt+Meta+ArrowLeft")
   check("key, same profile: the copy's own navigate", await until(3, { fake.first("req", since: mark) { ($0["msg"] as? JSONObject)?["type"] as? String == "navigate" && $0["id"] as? String == "B" } != nil }))
   // ⌃⌘→ from Office (last): wraps to P1's first space: across again.
   try? await Task.sleep(nanoseconds: 1_600_000_000) // past the keys' chaining
   mark = fake.events.count
-  keys.press("Ctrl+Meta+ArrowRight")
+  keys.press("Alt+Meta+ArrowRight")
   check("key, across: P1's copy asked for a window (it has none now)", await until(3, { fake.first("req", since: mark) { ($0["msg"] as? JSONObject)?["type"] as? String == "openSpaceWindow" && $0["id"] as? String == "A" } != nil }),
         "\(fake.all("req", since: mark).map { ($0["msg"] as? JSONObject)?["type"] ?? "" })")
   let w91 = standIn(full)
@@ -442,7 +442,7 @@ func handoffScenario() async {
       }
       if !seen.pressed, shell.switcher.phase == .frozen {
         seen.pressed = true
-        keys.press("Ctrl+Meta+ArrowRight")
+        keys.press("Alt+Meta+ArrowRight")
         keys.press("Meta+KeyT")
       }
       try? await Task.sleep(nanoseconds: 4_000_000)
