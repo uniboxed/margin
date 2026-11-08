@@ -19,6 +19,7 @@
 // "switching" cover is drawn (`switch.coverShown`, ui/switch-cover.js), and,
 // after each `shown`, that the page has drawn and in which mode (`framed`).
 import { createRuntime } from '../../extension/ui/runtime.js';
+import { createGestureMotion } from '../../extension/ui/gesture-motion.js';
 import { loadTheme, encodeStoredTheme } from '../../extension/ui/theme-loader.js';
 import { readThemeFile } from '../../extension/ui/theme-import.js';
 import { createPreviewBar } from '../../extension/ui/theme-preview.js';
@@ -51,7 +52,13 @@ const notices = createAppNotices({
   // The overlay's own notice (a theme it couldn't draw): Settings opens Margin's Settings in this window.
   local: (kind, action) => { if (kind === 'theme-failed' && action === 'settings') void host?.send('openLauncher', { settings: true }); },
 });
-const gestures = createGestureFeedback({ set: (gesture) => runtime?.setUi({ gesture }) });
+// How far a gesture has gone: eased every frame into --gesture-live (ui/gesture-motion.js), the UI not drawn again.
+const gestureMotion = createGestureMotion({ apply: (value) => document.documentElement.style.setProperty('--gesture-live', value.toFixed(3)) });
+const gestures = createGestureFeedback({
+  set: (gesture) => runtime?.setUi({ gesture }),
+  // A gesture just shown comes in from nothing (its badge out of sight), then follows the fingers.
+  progress: (value, fresh) => { if (fresh) gestureMotion.to(0, true); gestureMotion.to(value); },
+});
 // The copy's own switches in this window ('switching', then 'switch-done' or 'switch-failed').
 const copySwitches = backgroundSwitches();
 

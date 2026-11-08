@@ -112,7 +112,8 @@ notices.useLinkForTests(stand);
 pageLoads.useLinkForTests(stand);
 const { repairCutOff, forgetCurrent } = await import('../extension/background/tabs.js');
 const words = await import('../extension/shared/notices.js');
-const { createAppNotices, createGestureFeedback, GESTURE_DONE_MS } = await import('../extension/ui/app-feedback.js');
+const { createAppNotices, createGestureFeedback, GESTURE_DONE_MS, GESTURE_LEAVE_MS } = await import('../extension/ui/app-feedback.js');
+const { createGestureMotion, TAU_MS } = await import('../extension/ui/gesture-motion.js');
 const { createAppHost } = await import('../extension/ui/host-app.js');
 const { buildViewModel } = await import('../extension/ui/view-model.js');
 const { startLoads, TRANSITION_MS } = await import('../extension/content/loads.js');
@@ -370,35 +371,96 @@ test('gestures: the view model\'s gesture from the overlay\'s feedback; done goe
   const g = createGestureFeedback({ set: (v) => set.push(v), setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimer: () => {} });
   g.push({ kind: 'pull', state: 'pulling', progress: 0.43 });
   const vm = (ui) => buildViewModel({ state: null, ui: { gesture: ui } }).gesture;
-  assert.deepEqual({ ...vm(set.at(-1)) }, { pull: true, swipe: false, back: false, forward: false, armed: false, done: false, progress: 0.45, percent: 45 });
+  assert.deepEqual({ ...vm(set.at(-1)) }, { pull: true, swipe: false, back: false, forward: false, armed: false, done: false, leaving: false, progress: 0.45, percent: 45 });
   assert.equal(timers.at(-1).ms, 1000);
   g.push({ kind: 'pull', state: 'trigger', progress: 1.2 });
-  assert.deepEqual({ ...vm(set.at(-1)) }, { pull: true, swipe: false, back: false, forward: false, armed: true, done: true, progress: 1, percent: 100 });
+  assert.deepEqual({ ...vm(set.at(-1)) }, { pull: true, swipe: false, back: false, forward: false, armed: true, done: true, leaving: false, progress: 1, percent: 100 });
   assert.equal(timers.at(-1).ms, GESTURE_DONE_MS);
   timers.at(-1).fn();
   assert.equal(set.at(-1), null);
   g.push({ kind: 'swipe', state: 'armed', progress: 1, direction: 1 });
-  assert.deepEqual({ ...vm(set.at(-1)) }, { pull: false, swipe: true, back: false, forward: true, armed: true, done: false, progress: 1, percent: 100 });
+  assert.deepEqual({ ...vm(set.at(-1)) }, { pull: false, swipe: true, back: false, forward: true, armed: true, done: false, leaving: false, progress: 1, percent: 100 });
   g.push({ kind: 'swipe', state: 'idle' });
+  assert.equal(set.at(-1).state, 'leaving', 'let go while armed but not done (momentum cut it): backing out');
+  timers.at(-1).fn();
   assert.equal(set.at(-1), null);
   assert.equal(vm(null), null);
 });
 
-test('gestures: the page tells a change of state at once, its progress in steps of 0.05 at most every 30 ms, nothing while idle', () => {
+test('gestures: the page tells a change of state at once, its progress in steps of 0.01 at most once a frame, the last one held back told after, nothing while idle', () => {
   let t = 0;
   const told = [];
-  const tell = gestureTeller('pull', (g) => told.push(g), () => t);
+  const later = [];
+  const tell = gestureTeller('pull', (g) => told.push(g), () => t, (fn, ms) => { later.push({ fn, ms }); return later.length; }, () => {});
   tell({ state: 'idle', progress: 0 });
   assert.deepEqual(told, [], 'idle from idle: nothing');
-  tell({ state: 'pulling', progress: 0.11 });
+  tell({ state: 'pulling', progress: 0.113 });
   t += 5; tell({ state: 'pulling', progress: 0.3 });
-  t += 5; tell({ state: 'armed', progress: 1 });
+  assert.deepEqual(told.map((g) => [g.state, g.progress]), [['pulling', 0.11]], 'within the frame: held back');
+  assert.equal(later.length, 1);
+  assert.equal(later[0].ms, GESTURE_TELL_MS - 5);
+  t += 4; tell({ state: 'pulling', progress: 0.34 });
+  assert.equal(later.length, 1, 'one wait a frame, the newest told');
+  t = GESTURE_TELL_MS; later[0].fn();
+  assert.deepEqual(told.at(-1), { kind: 'pull', state: 'pulling', progress: 0.34, direction: 0 });
+  t += 1; tell({ state: 'armed', progress: 1 });
   t += GESTURE_TELL_MS; tell({ state: 'armed', progress: 1.4 });
   t += 1; tell({ state: 'trigger', progress: 1 });
-  assert.deepEqual(told.map((g) => [g.state, g.progress]), [['pulling', 0.1], ['armed', 1], ['trigger', 1]]);
+  assert.deepEqual(told.map((g) => [g.state, g.progress]), [['pulling', 0.11], ['pulling', 0.34], ['armed', 1], ['armed', 1.4], ['trigger', 1]]);
   const swipe = [];
   gestureTeller('swipe', (g) => swipe.push(g), () => 0)({ state: 'pulling', progress: 0.5, direction: -1 });
   assert.deepEqual(swipe, [{ kind: 'swipe', state: 'pulling', progress: 0.5, direction: -1 }]);
+});
+
+test('gestures: drawn again only as what it is changes, how far it went to the easing every word; let go too soon, it backs out', () => {
+  const set = [];
+  const moved = [];
+  const timers = [];
+  const g = createGestureFeedback({ set: (v) => set.push(v), progress: (v, fresh) => moved.push([v, fresh]), setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimer: () => {} });
+  g.push({ kind: 'pull', state: 'pulling', progress: 0.2 });
+  g.push({ kind: 'pull', state: 'pulling', progress: 0.4 });
+  g.push({ kind: 'pull', state: 'pulling', progress: 0.6 });
+  assert.equal(set.length, 1, 'progress alone: not drawn again');
+  assert.deepEqual(moved, [[0.2, true], [0.4, false], [0.6, false]]);
+  g.push({ kind: 'pull', state: 'armed', progress: 1 });
+  assert.equal(set.length, 2);
+  g.push({ kind: 'pull', state: 'idle' });
+  assert.equal(set.at(-1).state, 'leaving', 'let go before it would: backing out');
+  assert.deepEqual(moved.at(-1), [0, false], '…eased back to nothing');
+  assert.equal(buildViewModel({ state: null, ui: { gesture: set.at(-1) } }).gesture.leaving, true);
+  assert.equal(timers.at(-1).ms, GESTURE_LEAVE_MS);
+  g.push({ kind: 'pull', state: 'idle' });
+  assert.equal(set.length, 3, 'a second idle: nothing more');
+  timers.at(-1).fn();
+  assert.equal(set.at(-1), null);
+  assert.deepEqual(moved.at(-1), [0, true]);
+  g.push({ kind: 'swipe', state: 'pulling', progress: 0.3, direction: -1 });
+  g.push({ kind: 'swipe', state: 'pulling', progress: 0.3, direction: 1 });
+  assert.equal(set.at(-1).direction, 1, 'the other way: drawn again');
+});
+
+test('gestures: the overlay\'s easing follows what was said every frame, never past it, and stops once there', () => {
+  let t = 0;
+  const frames = [];
+  const applied = [];
+  const motion = createGestureMotion({ apply: (v) => applied.push(v), raf: (fn) => { frames.push(fn); return frames.length; }, caf: () => {}, now: () => t });
+  motion.to(0.5, true);
+  assert.deepEqual(applied, [0.5], 'snapped');
+  motion.to(1);
+  let last = 0.5;
+  for (let i = 0; i < 40 && frames.length; i++) {
+    t += 16;
+    frames.shift()();
+    assert.ok(applied.at(-1) >= last && applied.at(-1) <= 1, `frame ${i}: ${applied.at(-1)}`);
+    last = applied.at(-1);
+  }
+  assert.equal(motion.value, 1, 'there');
+  assert.equal(frames.length, 0, '…and the frames stopped');
+  motion.to(0);
+  t += 16;
+  frames.shift()();
+  assert.ok(applied.at(-1) > 0.5 && applied.at(-1) < 1, `a third of the way in a frame or so: ${applied.at(-1)}`);
+  assert.ok(Math.abs(1 - applied.at(-1) - (1 - Math.exp(-16 / TAU_MS))) < 0.01);
 });
 
 test('loads: the page being left told at once, taken back when it stays; a slow same-page navigation told until it ends; nothing while the app doesn\'t draw', async () => {

@@ -158,12 +158,12 @@
          in with the fingers and takes the space's color once letting go
          would do it. Never takes the pointer. -->
     <m-if test="gesture.pull">
-      <div class="gesture pull" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-style:--gesture="{{gesture.progress}}">
+      <div class="gesture pull" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-class:leaving="{{gesture.leaving}}" m-style:--gesture="{{gesture.progress}}">
         <svg class="line-icon" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"></path></svg>
       </div>
     </m-if>
     <m-if test="gesture.swipe">
-      <div class="gesture swipe" m-class:back="{{gesture.back}}" m-class:forward="{{gesture.forward}}" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-style:--gesture="{{gesture.progress}}">
+      <div class="gesture swipe" m-class:back="{{gesture.back}}" m-class:forward="{{gesture.forward}}" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-class:leaving="{{gesture.leaving}}" m-style:--gesture="{{gesture.progress}}">
         <svg class="line-icon" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"></path></svg>
       </div>
     </m-if>

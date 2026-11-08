@@ -59,7 +59,7 @@ export const VM_VERSION = 1;
  *   inNewTab?: boolean,
  *   launcherPage?: boolean,
  *   pageLoading?: boolean,
- *   gesture?: { kind: 'pull' | 'swipe', state: 'pulling' | 'armed' | 'done', progress?: number, direction?: number } | null,
+ *   gesture?: { kind: 'pull' | 'swipe', state: 'pulling' | 'armed' | 'done' | 'leaving', progress?: number, direction?: number } | null,
  *   theme?: { id: string, name: string, settings: Record<string, any> } | null,
  * }} UiState
  *
@@ -191,9 +191,13 @@ export const VM_VERSION = 1;
  * A trackpad gesture Margin runs in the page in front (Margin.app: the page
  * tells the overlay through its copy): pull to refresh (`pull`) or swipe back
  * and forward (`swipe`, `back` or `forward`), `armed` once letting go would
- * do it, `done` once it did, `progress` how far along (0 to 1, in steps of
- * 0.05; `percent` the same out of 100). Icons only: no words.
- * @typedef {{ pull: boolean, swipe: boolean, back: boolean, forward: boolean, armed: boolean, done: boolean, progress: number, percent: number }} GestureView
+ * do it, `done` once it did, `leaving` once let go of before it would (going
+ * back out), `progress` how far along (0 to 1, in steps of 0.05, as of its
+ * last change of state; `percent` the same out of 100). Margin.app eases the
+ * live progress into the CSS custom property --gesture-live every frame
+ * (ui/gesture-motion.js): a theme's badge reads that first, falling back to
+ * this. Icons only: no words.
+ * @typedef {{ pull: boolean, swipe: boolean, back: boolean, forward: boolean, armed: boolean, done: boolean, leaving: boolean, progress: number, percent: number }} GestureView
  *
  * The new-tab page's launcher (the `launcher` part, in <m-launcher>), while
  * the UI is drawn in Margin's new-tab page: the space's pins as tiles, the
@@ -788,11 +792,12 @@ function gestureView(g) {
   const kind = g?.kind === 'pull' || g?.kind === 'swipe' ? g.kind : null;
   if (!kind) return null;
   const done = g.state === 'done';
-  const progress = done ? 1 : Math.round(Math.max(0, Math.min(1, Number(g.progress) || 0)) * 20) / 20;
+  const leaving = g.state === 'leaving';
+  const progress = done ? 1 : leaving ? 0 : Math.round(Math.max(0, Math.min(1, Number(g.progress) || 0)) * 20) / 20;
   return {
     pull: kind === 'pull', swipe: kind === 'swipe',
     back: kind === 'swipe' && Number(g.direction) <= 0, forward: kind === 'swipe' && Number(g.direction) > 0,
-    armed: done || g.state === 'armed', done, progress, percent: Math.round(progress * 100),
+    armed: done || g.state === 'armed', done, leaving, progress, percent: Math.round(progress * 100),
   };
 }
 

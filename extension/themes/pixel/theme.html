@@ -167,12 +167,12 @@
        fills yellow once letting go would do it. Never takes the pointer. -->
   <div class="page-over" aria-hidden="true">
     <m-if test="gesture.pull">
-      <div class="gesture pull" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-style:--gesture="{{gesture.progress}}">
+      <div class="gesture pull" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-class:leaving="{{gesture.leaving}}" m-style:--gesture="{{gesture.progress}}">
         <svg class="pix" viewBox="0 0 12 12"><path d="M3 2h5v1H3zM2 3h1v6H2zM3 9h6v1H3zM9 6h1v3H9zM8 1h1v1H8zM9 2h1v2H8V3h1zM7 3h1v1H7z"></path></svg>
       </div>
     </m-if>
     <m-if test="gesture.swipe">
-      <div class="gesture swipe" m-class:back="{{gesture.back}}" m-class:forward="{{gesture.forward}}" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-style:--gesture="{{gesture.progress}}">
+      <div class="gesture swipe" m-class:back="{{gesture.back}}" m-class:forward="{{gesture.forward}}" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-class:leaving="{{gesture.leaving}}" m-style:--gesture="{{gesture.progress}}">
         <svg class="pix" viewBox="0 0 12 12"><path d="M3 6h1V5h1V4h1V3h1v2h4v2H7v2H6V8H5V7H4V6z"></path></svg>
       </div>
     </m-if>

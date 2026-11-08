@@ -10,26 +10,39 @@ import { installGestureGuard, atPageTop, canSwipe } from '../shared/gestures.js'
 import { createPullTracker, createSwipeTracker, DEFAULTS as PULL_DEFAULTS } from '../shared/pull.js';
 import { platform } from '../shared/platform.js';
 
-export const GESTURE_TELL_MS = 30;
+export const GESTURE_TELL_MS = 16;
 // What a gesture's tracker says (shared/pull.js: idle, pulling, armed,
 // trigger; how far, which way), told when it changes: its state at once, its
-// progress in steps of 0.05 at most every GESTURE_TELL_MS. Nothing while it
-// stays idle (most wheel events).
+// progress in steps of 0.01 at most once a frame (GESTURE_TELL_MS), the last
+// one held back told once that's up (`later`), so the overlay's badge, eased
+// there every frame (ui/gesture-motion.js), follows the fingers smoothly
+// (Tirth, 2026-11-08: steps of 0.05 every 30 ms looked jumpy). Nothing while
+// it stays idle (most wheel events).
 /** @param {'pull' | 'swipe'} kind @param {(g: { kind: string, state: string, progress: number, direction: number }) => void} tell */
-export function gestureTeller(kind, tell, now = () => performance.now()) {
+export function gestureTeller(kind, tell, now = () => performance.now(), later = (fn, ms) => setTimeout(fn, ms), cancel = (t) => clearTimeout(t)) {
   let state = 'idle';
   let key = 'idle';
   let at = -Infinity;
-  return (/** @type {{ state: string, progress?: number, direction?: number }} */ view) => {
-    const progress = view.state === 'idle' ? 0 : Math.round(Math.max(0, Math.min(1, view.progress ?? 0)) * 20) / 20;
-    const direction = kind === 'swipe' ? (view.direction ?? 0) : 0;
-    const next = view.state === 'idle' ? 'idle' : `${view.state}:${progress}:${direction}`;
-    if (next === key) return;
-    if (view.state === state && now() - at < GESTURE_TELL_MS) return;
-    key = next;
-    state = view.state;
+  let held = null;
+  let timer = null;
+  const say = (g) => {
+    if (timer != null) cancel(timer);
+    timer = null;
+    held = null;
+    key = g.key;
+    state = g.state;
     at = now();
-    tell({ kind, state: view.state, progress, direction });
+    tell({ kind, state: g.state, progress: g.progress, direction: g.direction });
+  };
+  return (/** @type {{ state: string, progress?: number, direction?: number }} */ view) => {
+    const progress = view.state === 'idle' ? 0 : Math.round(Math.max(0, Math.min(1.5, view.progress ?? 0)) * 100) / 100;
+    const direction = kind === 'swipe' ? (view.direction ?? 0) : 0;
+    const next = { key: view.state === 'idle' ? 'idle' : `${view.state}:${progress}:${direction}`, state: view.state, progress, direction };
+    if (next.key === (held?.key ?? key)) return;
+    const wait = GESTURE_TELL_MS - (now() - at);
+    if (view.state !== state || wait <= 0) return say(next);
+    held = next;
+    timer ??= later(() => { timer = null; if (held) say(held); }, wait);
   };
 }
 

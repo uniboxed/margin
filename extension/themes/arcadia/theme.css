@@ -99,15 +99,32 @@
    pulses, no hover needed. */
 .margin-sidebar :is(.tab, .pin).busy .avatar { animation: arcadia-pulse 1.2s ease-in-out infinite; }
 /* Margin's trackpad gestures on the page: a round badge over the page card. */
-.gesture { --gesture: 0; position: absolute; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: rgba(28, 28, 30, 0.88); color: #fff; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25); pointer-events: none; opacity: calc(0.3 + var(--gesture) * 0.7); }
+/* The gestures' badge (pull to refresh, swipe back and forward): --g is how far the fingers have gone, eased every
+   frame by Margin.app (--gesture-live), so the badge follows them; it grows in from the edge, its ring fills, and once
+   letting go would do it, it takes the space's color with a small pop. Done: a pull's arrow spins as the page
+   reloads, a swipe's badge slides on the way it went; let go too soon: it slides back out. Per frame only transform
+   and opacity change. */
+.gesture { --gesture: 0; --g: var(--gesture-live, var(--gesture)); position: absolute; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: rgba(28, 28, 30, 0.86); color: #fff; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.28), 0 4px 14px rgba(0, 0, 0, 0.28); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); pointer-events: none; opacity: min(1, calc(var(--g) * 2.5)); will-change: transform, opacity; transition: background-color 180ms ease, box-shadow 180ms ease; }
+.gesture::before { content: ''; position: absolute; inset: 2px; border-radius: 50%; background: conic-gradient(rgba(255, 255, 255, 0.92) calc(var(--g) * 360deg), rgba(255, 255, 255, 0.14) 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); }
 .gesture .line-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.gesture.pull { top: 14px; left: 50%; transform: translate(-50%, calc((var(--gesture) - 1) * 24px)) rotate(calc(var(--gesture) * 270deg)); }
-.gesture.swipe.back { left: 14px; top: 50%; transform: translate(calc((var(--gesture) - 1) * 24px), -50%); }
-.gesture.swipe.forward { right: 14px; top: 50%; transform: translate(calc((1 - var(--gesture)) * 24px), -50%); }
-.gesture.swipe.forward .line-icon { transform: scaleX(-1); }
-.gesture.armed { background: var(--space-color, rgba(28, 28, 30, 0.88)); }
-.gesture.done { opacity: 0; transition: opacity 250ms ease 100ms; }
+.gesture.pull { top: 14px; left: 50%; transform: translate(-50%, calc((var(--g) - 1) * 40px)) scale(calc(0.6 + var(--g) * 0.4)); }
+.gesture.pull .line-icon { transform: rotate(calc(var(--g) * 300deg)); }
+.gesture.swipe.back { --dir: -1; left: 14px; top: 50%; transform: translate(calc((var(--g) - 1) * 44px), -50%) scale(calc(0.6 + var(--g) * 0.4)); }
+.gesture.swipe.forward { --dir: 1; right: 14px; top: 50%; transform: translate(calc((1 - var(--g)) * 44px), -50%) scale(calc(0.6 + var(--g) * 0.4)); }
+.gesture.swipe.forward .line-icon { scale: -1 1; }
+.gesture.armed { background: var(--space-color, rgba(28, 28, 30, 0.86)); box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.4), 0 6px 18px rgba(0, 0, 0, 0.32); animation: arcadia-gesture-pop 260ms cubic-bezier(0.3, 1.6, 0.5, 1); }
+.gesture.armed::before { background: rgba(255, 255, 255, 0.92); }
+.gesture.swipe.armed .line-icon { animation: arcadia-gesture-nudge 260ms cubic-bezier(0.3, 1.6, 0.5, 1); }
+.gesture.done { animation: none; opacity: 0; transition: opacity 260ms ease 180ms, translate 360ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.gesture.pull.done .line-icon { animation: arcadia-gesture-spin 520ms linear infinite; }
+.gesture.swipe.back.done { translate: 28px 0; }
+.gesture.swipe.forward.done { translate: -28px 0; }
+.gesture.leaving { animation: none; transition: opacity 160ms ease; }
+@keyframes arcadia-gesture-pop { 0% { scale: 1; } 45% { scale: 1.16; } 100% { scale: 1; } }
+@keyframes arcadia-gesture-nudge { 0% { translate: 0 0; } 45% { translate: calc(var(--dir, -1) * 3px) 0; } 100% { translate: 0 0; } }
+@keyframes arcadia-gesture-spin { from { rotate: 0deg; } to { rotate: 360deg; } }
 @media (prefers-reduced-motion: reduce) {
+  .gesture, .gesture .line-icon { animation: none !important; transition: none; translate: none; }
   .margin-sidebar :is(.tab, .pin).busy .avatar { animation: none; opacity: 0.6; }
   .loader { transition: opacity 150ms linear, visibility 0s linear 150ms; }
   .arcadia.loading .loader { transition: opacity 150ms linear; }
