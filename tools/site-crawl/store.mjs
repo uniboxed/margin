@@ -54,6 +54,7 @@ export function rebuild(data = DEFAULT_DATA) {
   const latestRound = rounds.at(-1) ?? null;
   const table = [];
   const changes = { worse: [], better: [] };
+  const pictures = []; // the latest pictures of each flagged or margin-failed site (what's published)
   for (const [domain, site] of sites) {
     const latest = site.history.at(-1);
     const before = site.history.at(-2) ?? null;
@@ -85,6 +86,7 @@ export function rebuild(data = DEFAULT_DATA) {
       })),
     };
     writeAtomic(join(data, 'sites', `${domain}.json`), `${JSON.stringify(file, null, 2)}\n`);
+    if (latest.verdict === 'flagged' || latest.verdict === 'margin-failed') pictures.push(...Object.values(file.latest.pictures ?? {}).filter(Boolean));
     table.push({ rank: site.rank, domain, verdict: latest.verdict, flags: (latest.flags ?? []).join(' '), round: latest.round, at: latest.at, commit: latest.commit ?? '', marginMs: latest.margin?.ms ?? '', plainMs: latest.plain?.ms ?? '', status: latest.plain?.status ?? '', before: before?.verdict ?? '' });
   }
   table.sort((a, b) => a.rank - b.rank);
@@ -102,8 +104,10 @@ export function rebuild(data = DEFAULT_DATA) {
   changes.worse.sort(byRank); changes.better.sort(byRank);
   const progress = latestRound ? (() => { try { return JSON.parse(readFileSync(join(data, 'rounds', roundName(latestRound), 'progress.json'), 'utf8')); } catch { return null; } })() : null;
   const finished = latestRound != null && existsSync(join(data, 'rounds', roundName(latestRound), 'finished.txt'));
+  // Dated by its newest result (not when it was made), so making it again with nothing new changes nothing.
+  const newest = table.reduce((m, r) => (r.at && r.at > m ? r.at : m), '');
   const summary = {
-    at: new Date().toISOString(), sites: table.length, round: latestRound, roundFinished: finished, roundProgress: progress,
+    at: newest || null, sites: table.length, round: latestRound, roundFinished: finished, roundProgress: progress,
     verdicts: Object.fromEntries(VERDICTS.filter((v) => verdicts[v]).map((v) => [v, verdicts[v]])),
     flags: Object.fromEntries(Object.entries(flags).sort((a, b) => b[1] - a[1])),
     worse: changes.worse.map((c) => `${c.rank} ${c.domain}: ${c.from} → ${c.to} (round ${c.round})`),
@@ -114,7 +118,7 @@ export function rebuild(data = DEFAULT_DATA) {
   writeAtomic(join(data, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
   const md = [
     `# Site crawl`, '',
-    `${table.length} sites, each at its latest. Round ${latestRound ?? '–'}: ${finished ? 'finished' : progress ? `${progress.done} of ${progress.total} done` : 'not started'}. Made ${summary.at}.`, '',
+    `${table.length} sites, each at its latest. Round ${latestRound ?? '–'}: ${finished ? 'finished' : progress ? `${progress.done} of ${progress.total} done` : 'not started'}. Newest result ${summary.at ?? '–'}.`, '',
     '## Verdicts', ...Object.entries(summary.verdicts).map(([k, v]) => `- ${k}: ${v}`), '',
     '`blocked`: the site turned the plain browser away too (bot protection, a captcha): it says nothing about Margin.', '',
     '## Flags', ...Object.entries(summary.flags).map(([k, v]) => `- ${k}: ${v}`), '',
@@ -125,7 +129,7 @@ export function rebuild(data = DEFAULT_DATA) {
     `Each site in full: sites/<domain>.json. All of them: all-sites.csv.`, '',
   ].join('\n');
   writeAtomic(join(data, 'summary.md'), md);
-  return summary;
+  return { ...summary, pictures };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

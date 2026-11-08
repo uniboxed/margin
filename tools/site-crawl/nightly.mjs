@@ -6,11 +6,19 @@
 //   npm run crawl -- --status              how far it is, and whether it's running
 //   npm run crawl -- --stop                stop it (the sites under way finish first)
 //   npm run crawl -- --store               make sites/, all-sites.csv and summary.md again
+//   npm run crawl -- --publish             commit the data to the data/site-crawl branch and push it
 //
 // Options for a start: --until 07:30 (no new site after it, local time; the default), --hours N (instead),
 // --workers 3, --code main (Margin's code tested: a branch, a commit, or `here` for this checkout as it is),
 // --wait (stay in the foreground). --data DIR (default tools/site-crawl/data) for all of the above.
 // --import DIR [--import-commit SHA]: an earlier crawl's --out folder taken in as round 1 (results, pictures).
+// --no-publish: don't commit and push the data at the end.
+//
+// Published: at the end of each night the data is committed to the branch data/site-crawl (the data alone,
+// at tools/site-crawl/data, with no code; through a checkout of its own, ~/Library/Caches/margin-site-crawl/
+// publish, so this checkout and its branch aren't touched) and pushed, for anyone with the repo to see. In it:
+// everything but the pictures, and of those only each flagged or margin-failed site's latest. Here, a
+// round's pictures are kept until the round after next begins.
 //
 // The data folder (not in git: pictures and a night's churn):
 //   list.csv               the sites, `rank,domain` (Tranco's top 10 000, downloaded the first time)
@@ -39,6 +47,9 @@ const opt = (name, fallback) => { const i = argv.indexOf(`--${name}`); return i 
 const expand = (p) => resolve(p.replace(/^~(?=\/|$)/, homedir()));
 const DATA = expand(opt('data', DEFAULT_DATA));
 const CODE = join(homedir(), 'Library/Caches/margin-site-crawl/code');
+const PUBLISH = expand(opt('publish-dir', join(homedir(), 'Library/Caches/margin-site-crawl/publish')));
+const REMOTE = opt('remote', 'origin'); // (--remote, --branch, --publish-dir: for trying it out)
+const DATA_BRANCH = opt('branch', 'data/site-crawl');
 const LIST_URL = 'https://tranco-list.eu/top-1m.csv.zip';
 const LIST_SIZE = 10_000;
 const RUNNING = join(DATA, 'running.json');
@@ -50,7 +61,7 @@ const say = (line) => { const s = `${now()} ${line}`; appendFileSync(NIGHTLY_LOG
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 const readJson = (file) => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; } };
 const running = () => { const r = readJson(RUNNING); return r && alive(r.pid) ? r : null; };
-const git = (...args) => execFileSync('git', ['-C', ROOT, ...args], { encoding: 'utf8' }).trim();
+const git = (...args) => execFileSync('git', ['-C', ROOT, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
 // The round to work on: the last one, unless it's finished (then the next).
 function currentRound() {
@@ -60,7 +71,65 @@ function currentRound() {
   return existsSync(join(DATA, 'rounds', roundName(last), 'finished.txt')) ? last + 1 : last;
 }
 
-// ---- --status, --stop, --store ------------------------------------------------------------------
+// ---- publishing: the data on its own branch, committed and pushed -------------------------------
+const gitIn = (dir, args, env = {}) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...env }, timeout: 300_000 }).trim();
+const BRANCH_README = `# Margin's site crawl
+
+Every night the top 10 000 sites (Tranco's list) are loaded through Margin's page box (the extension's own code, shrinking each page into the space beside the sidebar) and loaded plain, and the two are compared. This branch holds the results only; the tool is \`tools/site-crawl/\` on main.
+
+- [summary.md](tools/site-crawl/data/summary.md): every site at its latest, and what got worse or better since the round before.
+- [all-sites.csv](tools/site-crawl/data/all-sites.csv): a row per site.
+- \`tools/site-crawl/data/sites/<domain>.json\`: one site, every round.
+- \`tools/site-crawl/data/rounds/NNNN/\`: each round as it was crawled (pictures: only each flagged or failed site's latest).
+`;
+function publish(pictures) {
+  // The branch's checkout: made the first time (from GitHub's branch if there is one, else a new branch with no history).
+  if (!existsSync(join(PUBLISH, '.git'))) {
+    mkdirSync(dirname(PUBLISH), { recursive: true });
+    rmSync(PUBLISH, { recursive: true, force: true });
+    git('worktree', 'prune');
+    const local = (() => { try { git('rev-parse', '--verify', `refs/heads/${DATA_BRANCH}`); return true; } catch { return false; } })();
+    const remote = !local && (() => { try { return gitIn(ROOT, ['ls-remote', '--heads', REMOTE, DATA_BRANCH]).length > 0; } catch { return false; } })();
+    if (local) git('worktree', 'add', PUBLISH, DATA_BRANCH);
+    else if (remote) { gitIn(ROOT, ['fetch', REMOTE, `${DATA_BRANCH}:${DATA_BRANCH}`]); git('worktree', 'add', PUBLISH, DATA_BRANCH); }
+    else {
+      git('worktree', 'add', '--detach', PUBLISH);
+      gitIn(PUBLISH, ['checkout', '-q', '--orphan', DATA_BRANCH]);
+      gitIn(PUBLISH, ['rm', '-rf', '-q', '--cached', '.']);
+      for (const f of readdirSync(PUBLISH)) if (f !== '.git') rmSync(join(PUBLISH, f), { recursive: true, force: true });
+    }
+  }
+  // The data, but for what's only this Mac's (who's running, downloads, the crawl's raw output) and the pictures.
+  const target = join(PUBLISH, 'tools/site-crawl/data');
+  mkdirSync(target, { recursive: true });
+  execFileSync('rsync', ['-a', '--delete', '--delete-excluded', '--exclude', 'running.json', '--exclude', 'list-download', '--exclude', '*.tmp', '--exclude', 'run.out', '--exclude', 'shots/', `${DATA}/`, `${target}/`]);
+  for (const pic of pictures) {
+    mkdirSync(dirname(join(target, pic)), { recursive: true });
+    if (existsSync(join(DATA, pic))) copyFileSync(join(DATA, pic), join(target, pic));
+  }
+  writeFileSync(join(PUBLISH, 'README.md'), BRANCH_README);
+  gitIn(PUBLISH, ['add', '-A', '-f', 'README.md', 'tools/site-crawl/data']);
+  const staged = gitIn(PUBLISH, ['diff', '--cached', '--name-only']).length > 0;
+  if (staged) {
+    const s = readJson(join(DATA, 'summary.json'));
+    const p = s?.roundProgress;
+    const what = s ? `round ${s.round}, ${s.roundFinished ? 'finished' : `${p?.done ?? '?'} of ${p?.total ?? '?'} sites`}` : 'results';
+    gitIn(PUBLISH, ['-c', 'user.name=Tirth Patel', '-c', 'user.email=github@tirth.io', 'commit', '-q', '-m', `chore(crawl): site crawl ${what} (${now().slice(0, 10)})`]);
+  }
+  try {
+    gitIn(PUBLISH, ['push', '-q', '-u', REMOTE, DATA_BRANCH]);
+    return staged ? 'committed and pushed' : 'nothing new; pushed';
+  } catch (e) {
+    return `committed, not pushed (${String(e.message).split('\n')[0].slice(0, 160)}); the next night pushes it`;
+  }
+}
+
+// A round's pictures, here, are kept until the round after next begins (the round before stays, to compare).
+function pruneShots(round) {
+  for (const r of roundsOf(DATA)) if (r < round - 1) rmSync(join(DATA, 'rounds', roundName(r), 'shots'), { recursive: true, force: true });
+}
+
+// ---- --status, --stop, --store, --publish -------------------------------------------------------
 if (has('status')) {
   const r = running();
   const round = currentRound();
@@ -84,6 +153,12 @@ if (has('stop')) {
   if (!r) { console.log('Not running.'); process.exit(0); }
   process.kill(r.pid, 'SIGTERM');
   console.log(`Asked it to stop (pid ${r.pid}): the sites under way finish, then the data is stored.`);
+  process.exit(0);
+}
+if (has('publish')) {
+  if (running()) { console.log('It is running: it publishes when it ends (or --stop it first).'); process.exit(1); }
+  const s = rebuild(DATA);
+  console.log(`${s.sites} sites: ${publish(s.pictures)} (${DATA_BRANCH}).`);
   process.exit(0);
 }
 if (has('store')) {
@@ -239,7 +314,9 @@ try {
     round += 1;
     writeAtomic(RUNNING, JSON.stringify({ ...readJson(RUNNING), round }, null, 2));
   }
+  pruneShots(round);
   const s = rebuild(DATA);
+  if (!has('no-publish')) { try { say(`published: ${publish(s.pictures)} (${DATA_BRANCH})`); } catch (e) { say(`not published: ${String(e?.message ?? e).split('\n')[0].slice(0, 200)}`); } }
   say(`end: ${s.sites} sites; ${JSON.stringify(s.verdicts)}; worse since the round before ${s.worse.length}, better ${s.better.length}. ${join(DATA, 'summary.md')}`);
 } catch (e) {
   say(`stopped by an error: ${String(e?.stack ?? e).split('\n').slice(0, 3).join(' | ')}`);

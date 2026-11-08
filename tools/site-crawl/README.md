@@ -8,6 +8,7 @@ Every site of the top 10 000 (Tranco's list) loaded through Margin's page box, a
 npm run crawl                 # before bed: starts in the background, stops starting sites at 07:30
 npm run crawl -- --status     # how far it is, whether it's running
 npm run crawl -- --stop       # stop it now (the sites under way finish, the data is stored)
+npm run crawl -- --publish    # commit and push the data now (it's done at the end of every night)
 ```
 
 It goes on from where the last night stopped. When every site of the list is done (a round), the next round begins, so each site gets a history and a site that changes with Margin's code shows up as worse or better.
@@ -15,11 +16,15 @@ It goes on from where the last night stopped. When every site of the list is don
 - `--until 07:30` (local time) or `--hours 6`: when to stop starting sites. `--workers 3`.
 - `--code main` (the default): Margin's code tested is `main`'s commit, checked out and built in a checkout of its own (`~/Library/Caches/margin-site-crawl/code`), whatever this checkout is doing. A branch or a commit works too; `--code here` tests this checkout as it is. Each row says which commit it tested.
 - `--wait`: stay in the foreground. `--data DIR`: another data folder.
-- `--store`: make `sites/`, `all-sites.csv` and `summary.md` again from the rounds (it's done after every night anyway).
+- `--no-publish`: leave the night's data unpublished. `--store`: make `sites/`, `all-sites.csv` and `summary.md` again from the rounds (it's done after every night anyway).
 - `--import DIR --import-commit SHA [--list CSV]`: an earlier `crawl.mjs --out` folder taken in as round 1.
 - The Mac has to stay awake. If it sleeps, the night stops there and the next start goes on.
 
-## The data: `tools/site-crawl/data/` (not in git)
+## The data: `tools/site-crawl/data/`, published on the branch `data/site-crawl`
+
+The folder is git-ignored on the code branches (it changes every night). At the end of each night it's committed to the branch `data/site-crawl` and pushed, so anyone with the repo can read it on GitHub. That branch holds the data alone, at the same path, with no code. It's committed from a checkout of its own (`~/Library/Caches/margin-site-crawl/publish`), so this checkout and its branch are never touched.
+
+Published: everything in the table below, but of the pictures only each flagged or margin-failed site's latest. Locally, a round's pictures are kept until the round after next begins, so the round before stays to compare.
 
 | File | What's in it |
 | --- | --- |
@@ -28,7 +33,8 @@ It goes on from where the last night stopped. When every site of the list is don
 | `sites/<domain>.json` | one site: its latest result in full, every round's verdict, flags, load times, commit and pictures, and its last change |
 | `rounds/NNNN/` | a round as it was crawled: `results.jsonl` (a line per site, as it's done), `log.txt`, `progress.json`, `shots/`, `summary.md`, `finished.txt` once it's done |
 | `list.csv` | the sites, `rank,domain` (downloaded the first time; kept, so the rounds compare) |
-| `nightly.log`, `running.json` | what each night did; who's running now |
+| `nightly.log` | what each night did |
+| `running.json` | who's running now (only on this Mac) |
 
 `sites/`, `all-sites.csv` and the summaries are made from the rounds' `results.jsonl`, which is the record: delete them and `--store` makes them again.
 
