@@ -84,7 +84,7 @@ const reload = (tab) => ({ op: 'page', in: tab, js: 'location.reload(); return "
 // (the page's own getBoundingClientRect answers for the box).
 const AT = "const m = new DOMMatrix(getComputedStyle(document.documentElement).transform); const at = { x: m.e, y: m.f, scale: m.a };";
 // The page has its box at `left`, inside the frame.
-const boxed = (tab, left = 260) => checkPage(tab, `${tab}: the page is in its box at ${left}`, `${AT} return at.x === ${left} && at.y === 8 && innerWidth === 1200 - ${left} - 8 && document.scrollingElement === document.body`, 5000);
+const boxed = (tab, left = 260) => checkPage(tab, `${tab}: the page is in its box at ${left}`, `${AT} return at.x === ${left} && at.y === 8 && innerWidth === 1200 - ${left} - 8 && document.scrollingElement === document.documentElement`, 5000);
 // No box: the page as it is.
 const bare = (tab) => checkPage(tab, `${tab}: no box, the page as it is`, `getComputedStyle(document.documentElement).transform === 'none' && document.scrollingElement === document.documentElement && innerWidth === 1200`, 3000);
 
@@ -345,7 +345,7 @@ export const SCENARIOS = {
   // <body>'s own size in the box: a centred column, and a body that grows.
   'body-size': [
     ...startBoxed('C', '/x/center-max'),
-    checkPage('C', 'C: max-width and auto margins kept', `const r = ${rect('h')}; return ${near('r[0]', '(innerWidth - 600) / 2')} && r[2] === 600 && document.scrollingElement === document.body`, 2000),
+    checkPage('C', 'C: max-width and auto margins kept', `const r = ${rect('h')}; return ${near('r[0]', '(innerWidth - 600) / 2')} && r[2] === 600 && document.scrollingElement === document.documentElement`, 2000),
     ...openBox('W', '/x/center-width'),
     checkPage('W', 'W: width and auto margins kept, the top margin too', `const r = ${rect('h')}; return ${near('r[0]', '(innerWidth - 600) / 2')} && r[2] === 600 && ${near('r[1]', 40)}`, 2000),
     layoutAt(360),
@@ -1004,7 +1004,7 @@ export const SCENARIOS = {
     { op: 'eval', in: 'A', js: `const w = Margin.content.getState().windowId; await browser.storage.local.set({ appLink: { state: 'linked', epoch: 'e1', at: Date.now(), layouts: { [w]: { insets: { left: 300, top: 60, right: 20, bottom: 24 }, radius: 10, container: { width: outerWidth, height: outerHeight }, mode: 'fullscreen', seq: 1, epoch: 'e1' } } } }); return 'linked ' + w + ' ' + (outerHeight - innerHeight)` },
     check('A', 'A: linked', `Margin.content.appDraws() && Margin.content.runtime === undefined`, 3000),
     check('A', 'A: linked: the box is the layout from the app, less the title bar above the viewport', `${AT} const top = 60 - Math.max(0, outerHeight - innerHeight); return at.x === 300 && at.y === top`, 3000),
-    checkPage('A', 'A: linked: the page is as big as the box', `innerWidth === 1200 - 300 - 20 && document.scrollingElement === document.body`, 3000),
+    checkPage('A', 'A: linked: the page is as big as the box', `innerWidth === 1200 - 300 - 20 && document.scrollingElement === document.documentElement`, 3000),
     nothingDrawn('A', 'A: linked: still nothing of Margin\'s in the page'),
     { op: 'eval', in: 'A', js: `const w = Margin.content.getState().windowId; const { appLink } = await browser.storage.local.get('appLink'); await browser.storage.local.set({ appLink: { ...appLink, layouts: { [w]: { ...appLink.layouts[w], insets: { left: 256, top: 60, right: 16, bottom: 16 }, seq: 2 } } } }); return 'moved'` },
     check('A', 'A: a new layout: the box follows', `${AT} return at.x === 256`, 3000),

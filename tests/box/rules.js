@@ -17,7 +17,7 @@ export const RULES = Object.freeze({
   'box-size': "<html> is the slot's size: whatever the page says about <html>'s size, place or margins",
   'told-size': 'what the page is told its window is (innerWidth, innerHeight) is the box it is drawn in',
   'window-still': "the window itself never scrolls: <body> does (a page focusing something out of sight mustn't slide the box)",
-  'body-scrolls': '<body> is the scroller (document.scrollingElement)',
+  'same-scroller': 'document.scrollingElement is what it is in a plain window (<html>, its scrolling speaking for <body>, which scrolls in the box), and says the window\'s height',
   'no-overflow': 'nothing runs past the box sideways that wouldn\'t run past a plain window',
   'same-layout': 'every element is where, and the size, it is in a plain window (as the page sees it)',
   'same-scroll': 'the page is scrolled where it would be in a plain window',
@@ -59,8 +59,10 @@ export function measure() {
   const out = {};
   for (const o of document.querySelectorAll('output[id]')) out[o.id] = o.textContent;
   const scroller = document.scrollingElement;
-  // What a scroller trims sideways (overflow-x hidden or clip) can't be scrolled to, though scrollWidth counts it.
-  const clipsX = !!scroller && /hidden|clip/.test(getComputedStyle(scroller).overflowX);
+  // What a scroller trims sideways (overflow-x hidden or clip) can't be scrolled to, though scrollWidth counts it. In the
+  // box <html> clips and <body> scrolls, <html>'s scrolling speaking for it: <body>'s overflow is the one that counts.
+  const scrolls = scroller === de && body && getComputedStyle(de).overflowX === 'clip' && getComputedStyle(body).overflowX !== 'visible' ? body : scroller;
+  const clipsX = !!scrolls && /hidden|clip/.test(getComputedStyle(scrolls).overflowX);
   const vv = window.visualViewport;
   return {
     told: { w: innerWidth, h: innerHeight, sx: round(scrollX), sy: round(scrollY) },
@@ -69,6 +71,7 @@ export function measure() {
     // The window's own scroll (the layout viewport's), which no shim speaks for.
     window: { left: vv ? round(vv.pageLeft - vv.offsetLeft) : 0, top: vv ? round(vv.pageTop - vv.offsetTop) : 0, scale: vv ? vv.scale : 1 },
     scroller: scroller === body ? 'body' : scroller === de ? 'html' : String(scroller && scroller.localName),
+    scrollerHeight: scroller ? round(scroller.clientHeight) : 0,
     overflowX: scroller && !clipsX ? round(scroller.scrollWidth - scroller.clientWidth) : 0,
     els,
     out,
@@ -94,7 +97,7 @@ export function judge(boxed, plain, setup) {
   if (!near(boxed.root.w, w, 1) || !near(boxed.root.h, h, 1)) say('box-size', `<html> ${boxed.root.w}×${boxed.root.h}, the slot ${w}×${h}`);
   if (!near(boxed.told.w, boxed.root.w, 1) || !near(boxed.told.h, boxed.root.h, 1)) say('told-size', `told ${boxed.told.w}×${boxed.told.h}, drawn ${boxed.root.w}×${boxed.root.h}`);
   if (boxed.window.left !== 0 || boxed.window.top !== 0) say('window-still', `the window scrolled to ${boxed.window.left},${boxed.window.top}`);
-  if (boxed.scroller !== 'body') say('body-scrolls', `the scroller is <${boxed.scroller}>`);
+  if (boxed.scroller !== plain.scroller || !near(boxed.scrollerHeight, plain.scrollerHeight, 1)) say('same-scroller', `the scroller is <${boxed.scroller}>, ${boxed.scrollerHeight} high; plain <${plain.scroller}>, ${plain.scrollerHeight}`);
   if (boxed.overflowX > plain.overflowX + 1) say('no-overflow', `${boxed.overflowX}px past the box sideways, ${plain.overflowX}px plain`);
   if (!off('same-layout')) {
     const moved = [];

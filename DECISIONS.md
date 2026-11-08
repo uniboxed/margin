@@ -3371,3 +3371,14 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
   - fit-check's summary has a Speed line: how much slower pages load through Margin than plain, the median and the slowest tenth, every night. Round 1: 12 ms faster at the median, 242 ms slower at the slowest tenth, 145 of 2,651 sites over half a second slower.
   - The imports in a copied sheet are fetched all at once (`inlineImports`), so the copy waits for the slowest, not their sum.
 
+### The document's scroller is <html> again, and scroll timelines run on the box's (2026-11-08)
+
+- **Found by fit-check (cxense.com, blank):** Framer's motion takes its container from `document.scrollingElement` and the window's height from that element's `clientHeight`. The box answered `scrollingElement` with `<body>`, the element that really scrolls, but `<body>`'s `clientHeight` is the page's height, as in a window (7933, not 884). Framer worked out that the page had scrolled through, and put its fixed hero at its end, 1000px up.
+- **Now:**
+  - `document.scrollingElement` is what a window's is: `<html>` (`<body>` in quirks mode). `<html>`'s scrolling already speaks for `<body>` (`viewport.js`: scrollTop, scrollHeight, clientHeight, scrollTo…), so everything read through it is the window's, and `<body>`'s own `clientHeight` stays the page's.
+  - `content/page/timelines.js`: a `ScrollTimeline` on `<html>`, or with no source, is made on the box's scroller. In the box `<html>` doesn't scroll, and a timeline on it is inactive (`currentTime` null), which libraries read as the end. It's still the browser's own `ScrollTimeline`.
+  - Margin's own scripts in the isolated world see the browser's `scrollingElement`, as before.
+- **Rules:** `body-scrolls` became `same-scroller`: `document.scrollingElement` and its height are what they are in a plain window. The overflow measure looks at `<body>`'s overflow where the box makes `<html>` clip. The WebKit host's `boxed()` and two checks now expect `<html>`.
+- **Patterns:** `scrolling-element.html`, `scroll-timeline.html` (failing before; cxense renders now).
+- **Speed:** `bench:box` within the noise (the box's cost 131 and 35 ms; baseline 123 and 33, an earlier run 122).
+

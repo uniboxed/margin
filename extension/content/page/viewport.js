@@ -62,8 +62,17 @@ export function startViewport(box) {
       set(value) { native[name].set?.call(scroller(this), value); },
     });
   }
+  // The document's scroller as a window has it: <html> (<body> in quirks mode), whose scrolling speaks for <body>
+  // while there's a box (scroller, above). Not <body> itself, though it's what scrolls: a page takes the scroller's
+  // clientHeight for the window's height, and <body>'s is the page's, as in a window (cxense.com: Framer's motion took
+  // 7933 for the window, put its hero 1000px up, a blank page). Pattern: tests/box/patterns/scrolling-element.html.
   const scrollingElement = find(Document.prototype, 'scrollingElement');
-  define(Document.prototype, 'scrollingElement', { get() { return box.on && this === document ? box.body() : scrollingElement.get.call(this); } });
+  define(Document.prototype, 'scrollingElement', {
+    get() {
+      if (!box.on || this !== document) return scrollingElement.get.call(this);
+      return document.compatMode === 'BackCompat' ? box.body() : document.documentElement;
+    },
+  });
   const windowScrollTo = window.scrollTo;
   for (const name of ['scrollTo', 'scrollBy', 'scroll']) {
     const method = element[name];
