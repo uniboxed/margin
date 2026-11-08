@@ -1,21 +1,21 @@
-// The site crawl, a night at a time: `npm run crawl` before bed, and it goes on from where the last night
+// The fit check, a night at a time: `npm run fit-check` before bed, and it goes on from where the last night
 // stopped. It goes through the whole list (a round), then starts the next round, so every site gets a
 // history (sites/<domain>.json) and a site that gets worse with a change of Margin's shows.
 //
-//   npm run crawl                          start (in the background; the terminal can be closed)
-//   npm run crawl -- --status              how far it is, and whether it's running
-//   npm run crawl -- --stop                stop it (the sites under way finish first)
-//   npm run crawl -- --store               make sites/, all-sites.csv and summary.md again
-//   npm run crawl -- --publish             commit the data to the data/site-crawl branch and push it
+//   npm run fit-check                          start (in the background; the terminal can be closed)
+//   npm run fit-check -- --status              how far it is, and whether it's running
+//   npm run fit-check -- --stop                stop it (the sites under way finish first)
+//   npm run fit-check -- --store               make sites/, all-sites.csv and summary.md again
+//   npm run fit-check -- --publish             commit the data to the data/fit-check branch and push it
 //
 // Options for a start: --until 07:30 (no new site after it, local time; the default), --hours N (instead),
 // --workers 3, --code main (Margin's code tested: a branch, a commit, or `here` for this checkout as it is),
-// --wait (stay in the foreground). --data DIR (default tools/site-crawl/data) for all of the above.
+// --wait (stay in the foreground). --data DIR (default tools/fit-check/data) for all of the above.
 // --import DIR [--import-commit SHA]: an earlier crawl's --out folder taken in as round 1 (results, pictures).
 // --no-publish: don't commit and push the data at the end.
 //
-// Published: at the end of each night the data is committed to the branch data/site-crawl (the data alone,
-// at tools/site-crawl/data, with no code; through a checkout of its own, ~/Library/Caches/margin-site-crawl/
+// Published: at the end of each night the data is committed to the branch data/fit-check (the data alone,
+// at tools/fit-check/data, with no code; through a checkout of its own, ~/Library/Caches/margin-fit-check/
 // publish, so this checkout and its branch aren't touched) and pushed, for anyone with the repo to see. In it:
 // everything but the pictures, and of those only each flagged or margin-failed site's latest. Here, a
 // round's pictures are kept until the round after next begins.
@@ -29,7 +29,7 @@
 //   summary.md, .json      the latest of every site; worse and better since the round before
 //   nightly.log            what each night did; running.json while it runs
 //
-// Margin's code is a checkout of its own (~/Library/Caches/margin-site-crawl/code), set to --code's commit
+// Margin's code is a checkout of its own (~/Library/Caches/margin-fit-check/code), set to --code's commit
 // at each start and built there, so the night tests one commit whatever this checkout is doing. The crawl
 // tool itself comes from this checkout (copied in). Each row says which commit it tested.
 import { execFileSync, spawn } from 'node:child_process';
@@ -46,10 +46,10 @@ const has = (name) => argv.includes(`--${name}`);
 const opt = (name, fallback) => { const i = argv.indexOf(`--${name}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : fallback; };
 const expand = (p) => resolve(p.replace(/^~(?=\/|$)/, homedir()));
 const DATA = expand(opt('data', DEFAULT_DATA));
-const CODE = join(homedir(), 'Library/Caches/margin-site-crawl/code');
-const PUBLISH = expand(opt('publish-dir', join(homedir(), 'Library/Caches/margin-site-crawl/publish')));
+const CODE = join(homedir(), 'Library/Caches/margin-fit-check/code');
+const PUBLISH = expand(opt('publish-dir', join(homedir(), 'Library/Caches/margin-fit-check/publish')));
 const REMOTE = opt('remote', 'origin'); // (--remote, --branch, --publish-dir: for trying it out)
-const DATA_BRANCH = opt('branch', 'data/site-crawl');
+const DATA_BRANCH = opt('branch', 'data/fit-check');
 const LIST_URL = 'https://tranco-list.eu/top-1m.csv.zip';
 const LIST_SIZE = 10_000;
 const RUNNING = join(DATA, 'running.json');
@@ -73,14 +73,14 @@ function currentRound() {
 
 // ---- publishing: the data on its own branch, committed and pushed -------------------------------
 const gitIn = (dir, args, env = {}) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...env }, timeout: 300_000 }).trim();
-const BRANCH_README = `# Margin's site crawl
+const BRANCH_README = `# Margin's fit check
 
-Every night the top 10 000 sites (Tranco's list) are loaded through Margin's page box (the extension's own code, shrinking each page into the space beside the sidebar) and loaded plain, and the two are compared. This branch holds the results only; the tool is \`tools/site-crawl/\` on main.
+Every night the top 10 000 sites (Tranco's list) are loaded through Margin's page box (the extension's own code, shrinking each page into the space beside the sidebar) and loaded plain, and the two are compared. This branch holds the results only; the tool is \`tools/fit-check/\` on main.
 
-- [summary.md](tools/site-crawl/data/summary.md): every site at its latest, and what got worse or better since the round before.
-- [all-sites.csv](tools/site-crawl/data/all-sites.csv): a row per site.
-- \`tools/site-crawl/data/sites/<domain>.json\`: one site, every round.
-- \`tools/site-crawl/data/rounds/NNNN/\`: each round as it was crawled (pictures: only each flagged or failed site's latest).
+- [summary.md](tools/fit-check/data/summary.md): every site at its latest, and what got worse or better since the round before.
+- [all-sites.csv](tools/fit-check/data/all-sites.csv): a row per site.
+- \`tools/fit-check/data/sites/<domain>.json\`: one site, every round.
+- \`tools/fit-check/data/rounds/NNNN/\`: each round as it was crawled (pictures: only each flagged or failed site's latest).
 `;
 function publish(pictures) {
   // The branch's checkout: made the first time (from GitHub's branch if there is one, else a new branch with no history).
@@ -100,7 +100,7 @@ function publish(pictures) {
     }
   }
   // The data, but for what's only this Mac's (who's running, downloads, the crawl's raw output) and the pictures.
-  const target = join(PUBLISH, 'tools/site-crawl/data');
+  const target = join(PUBLISH, 'tools/fit-check/data');
   mkdirSync(target, { recursive: true });
   execFileSync('rsync', ['-a', '--delete', '--delete-excluded', '--exclude', 'running.json', '--exclude', 'list-download', '--exclude', '*.tmp', '--exclude', 'run.out', '--exclude', 'shots/', `${DATA}/`, `${target}/`]);
   for (const pic of pictures) {
@@ -108,13 +108,13 @@ function publish(pictures) {
     if (existsSync(join(DATA, pic))) copyFileSync(join(DATA, pic), join(target, pic));
   }
   writeFileSync(join(PUBLISH, 'README.md'), BRANCH_README);
-  gitIn(PUBLISH, ['add', '-A', '-f', 'README.md', 'tools/site-crawl/data']);
+  gitIn(PUBLISH, ['add', '-A', '-f', 'README.md', 'tools/fit-check/data']);
   const staged = gitIn(PUBLISH, ['diff', '--cached', '--name-only']).length > 0;
   if (staged) {
     const s = readJson(join(DATA, 'summary.json'));
     const p = s?.roundProgress;
     const what = s ? `round ${s.round}, ${s.roundFinished ? 'finished' : `${p?.done ?? '?'} of ${p?.total ?? '?'} sites`}` : 'results';
-    gitIn(PUBLISH, ['-c', 'user.name=Tirth Patel', '-c', 'user.email=github@tirth.io', 'commit', '-q', '-m', `chore(crawl): site crawl ${what} (${now().slice(0, 10)})`]);
+    gitIn(PUBLISH, ['-c', 'user.name=Tirth Patel', '-c', 'user.email=github@tirth.io', 'commit', '-q', '-m', `chore(fit-check): fit check ${what} (${now().slice(0, 10)})`]);
   }
   try {
     gitIn(PUBLISH, ['push', '-q', '-u', REMOTE, DATA_BRANCH]);
@@ -221,9 +221,9 @@ if (!has('wait') && !has('child')) {
   const out = openSync(NIGHTLY_LOG, 'a');
   const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...argv, '--child', '--at', UNTIL.toISOString()], { cwd: ROOT, detached: true, stdio: ['ignore', out, out] });
   child.unref();
-  console.log(`The crawl started in the background (pid ${child.pid}), until ${UNTIL.toLocaleString()}.`);
-  console.log(`  npm run crawl -- --status    how far it is`);
-  console.log(`  npm run crawl -- --stop      stop it`);
+  console.log(`The fit check started in the background (pid ${child.pid}), until ${UNTIL.toLocaleString()}.`);
+  console.log(`  npm run fit-check -- --status    how far it is`);
+  console.log(`  npm run fit-check -- --stop      stop it`);
   console.log(`Data: ${DATA}`);
   process.exit(0);
 }
@@ -268,12 +268,12 @@ function prepareCode() {
     git('worktree', 'add', '--detach', CODE, sha);
   } else {
     execFileSync('git', ['-C', CODE, 'checkout', '-q', '--detach', '--force', sha]);
-    execFileSync('git', ['-C', CODE, 'clean', '-q', '-fd', 'tools/site-crawl']);
+    execFileSync('git', ['-C', CODE, 'clean', '-q', '-fd', 'tools/fit-check']);
   }
   if (!existsSync(join(CODE, 'node_modules'))) symlinkSync(join(ROOT, 'node_modules'), join(CODE, 'node_modules'));
   // The crawl tool from this checkout (a fix to the tool needn't wait for main).
-  mkdirSync(join(CODE, 'tools/site-crawl'), { recursive: true });
-  for (const f of readdirSync(HERE)) if (f.endsWith('.mjs') || f === 'README.md') cpSync(join(HERE, f), join(CODE, 'tools/site-crawl', f));
+  mkdirSync(join(CODE, 'tools/fit-check'), { recursive: true });
+  for (const f of readdirSync(HERE)) if (f.endsWith('.mjs') || f === 'README.md') cpSync(join(HERE, f), join(CODE, 'tools/fit-check', f));
   execFileSync(process.execPath, [join(CODE, 'scripts/build.js')], { cwd: CODE, stdio: 'ignore' });
   return { dir: CODE, commit: sha.slice(0, 7) };
 }
@@ -282,7 +282,7 @@ function runRound(round, code, list) {
   const out = join(DATA, 'rounds', roundName(round));
   mkdirSync(out, { recursive: true });
   const log = openSync(join(out, 'run.out'), 'a');
-  const args = [join(code.dir, 'tools/site-crawl/crawl.mjs'), '--list', list, '--out', out, '--workers', opt('workers', '3'), '--until', UNTIL.toISOString(), '--commit', code.commit];
+  const args = [join(code.dir, 'tools/fit-check/check.mjs'), '--list', list, '--out', out, '--workers', opt('workers', '3'), '--until', UNTIL.toISOString(), '--commit', code.commit];
   return new Promise((done) => {
     crawl = spawn(process.execPath, args, { cwd: code.dir, stdio: ['ignore', log, log] });
     crawl.on('exit', (codeOut, signal) => { crawl = null; done({ code: codeOut, signal }); });

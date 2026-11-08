@@ -1,28 +1,28 @@
-# Site crawl
+# Fit check
 
 Every site of the top 10 000 (Tranco's list) loaded through Margin's page box, and compared with the same site loaded plain. Headless only: nothing shows on screen, sound is muted.
 
 ## Every night
 
 ```sh
-npm run crawl                 # before bed: starts in the background, stops starting sites at 07:30
-npm run crawl -- --status     # how far it is, whether it's running
-npm run crawl -- --stop       # stop it now (the sites under way finish, the data is stored)
-npm run crawl -- --publish    # commit and push the data now (it's done at the end of every night)
+npm run fit-check                 # before bed: starts in the background, stops starting sites at 07:30
+npm run fit-check -- --status     # how far it is, whether it's running
+npm run fit-check -- --stop       # stop it now (the sites under way finish, the data is stored)
+npm run fit-check -- --publish    # commit and push the data now (it's done at the end of every night)
 ```
 
 It goes on from where the last night stopped. When every site of the list is done (a round), the next round begins, so each site gets a history and a site that changes with Margin's code shows up as worse or better.
 
 - `--until 07:30` (local time) or `--hours 6`: when to stop starting sites. `--workers 3`.
-- `--code main` (the default): Margin's code tested is `main`'s commit, checked out and built in a checkout of its own (`~/Library/Caches/margin-site-crawl/code`), whatever this checkout is doing. A branch or a commit works too; `--code here` tests this checkout as it is. Each row says which commit it tested.
+- `--code main` (the default): Margin's code tested is `main`'s commit, checked out and built in a checkout of its own (`~/Library/Caches/margin-fit-check/code`), whatever this checkout is doing. A branch or a commit works too; `--code here` tests this checkout as it is. Each row says which commit it tested.
 - `--wait`: stay in the foreground. `--data DIR`: another data folder.
 - `--no-publish`: leave the night's data unpublished. `--store`: make `sites/`, `all-sites.csv` and `summary.md` again from the rounds (it's done after every night anyway).
-- `--import DIR --import-commit SHA [--list CSV]`: an earlier `crawl.mjs --out` folder taken in as round 1.
+- `--import DIR --import-commit SHA [--list CSV]`: an earlier `check.mjs --out` folder taken in as round 1.
 - The Mac has to stay awake. If it sleeps, the night stops there and the next start goes on.
 
-## The data: `tools/site-crawl/data/`, published on the branch `data/site-crawl`
+## The data: `tools/fit-check/data/`, published on the branch `data/fit-check`
 
-The folder is git-ignored on the code branches (it changes every night). At the end of each night it's committed to the branch `data/site-crawl` and pushed, so anyone with the repo can read it on GitHub. That branch holds the data alone, at the same path, with no code. It's committed from a checkout of its own (`~/Library/Caches/margin-site-crawl/publish`), so this checkout and its branch are never touched.
+The folder is git-ignored on the code branches (it changes every night). At the end of each night it's committed to the branch `data/fit-check` and pushed, so anyone with the repo can read it on GitHub. That branch holds the data alone, at the same path, with no code. It's committed from a checkout of its own (`~/Library/Caches/margin-fit-check/publish`), so this checkout and its branch are never touched.
 
 Published: everything in the table below, but of the pictures only each flagged or margin-failed site's latest. Locally, a round's pictures are kept until the round after next begins, so the round before stays to compare.
 
@@ -57,6 +57,6 @@ Published: everything in the table below, but of the pictures only each flagged 
 
 ```sh
 npm run build
-node tools/site-crawl/crawl.mjs --list list.csv --out some/folder --workers 3 [--limit N] [--until ISO]
-node tools/site-crawl/summarize.mjs --out some/folder
+node tools/fit-check/check.mjs --list list.csv --out some/folder --workers 3 [--limit N] [--until ISO]
+node tools/fit-check/summarize.mjs --out some/folder
 ```

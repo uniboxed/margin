@@ -20,7 +20,7 @@
     "test:webkit": "node scripts/build.js && tools/webkit-host/run.sh all",
     "safari": "sh scripts/safari.sh",
     "log:app": "scripts/margin-log.sh",
-    "crawl": "node tools/site-crawl/nightly.mjs"
+    "fit-check": "node tools/fit-check/nightly.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

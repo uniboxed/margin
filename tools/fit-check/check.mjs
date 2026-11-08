@@ -6,11 +6,11 @@
 // load says what the site is like by itself, so a site that's down, or only an API host, or that
 // throws errors of its own, isn't taken for Margin's doing.
 //
-//   node tools/site-crawl/crawl.mjs --list ~/margin-crawl/top-10000.csv --out ~/margin-crawl/run [--workers 3]
+//   node tools/fit-check/check.mjs --out some/folder [--list tools/fit-check/data/list.csv] [--workers 3]
 //     [--until 2026-11-09T07:30] [--commit <sha>]
-//   node tools/site-crawl/summarize.mjs --out ~/margin-crawl/run
+//   node tools/fit-check/summarize.mjs --out some/folder
 //
-// Run every night, it's started by nightly.mjs (`npm run crawl`), which keeps a round per --out folder.
+// Run every night, it's started by nightly.mjs (`npm run fit-check`), which keeps a round per --out folder.
 // --until: no new site is started after it (the ones under way finish). --commit: Margin's code tested,
 // written in each row.
 //
@@ -33,6 +33,7 @@ import { createRequire } from 'node:module';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { startMargin } from '../../tests/e2e/harness/margin.js';
 import { SPACES } from '../../tests/e2e/harness/seed.js';
 import { ERROR_TRIES, KEY, isBlocked } from './verdicts.mjs';
@@ -45,8 +46,9 @@ const { chromium } = require('playwright');
 const argv = process.argv.slice(2);
 const opt = (name, fallback) => { const i = argv.indexOf(`--${name}`); return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback; };
 const expand = (p) => resolve(p.replace(/^~(?=\/|$)/, homedir()));
-const LIST = expand(opt('list', '~/margin-crawl/top-10000.csv'));
-const OUT = expand(opt('out', '~/margin-crawl/run'));
+const LIST = expand(opt('list', fileURLToPath(new URL('./data/list.csv', import.meta.url))));
+if (!opt('out', null)) { console.error('--out: the folder for the results (npm run fit-check keeps them in tools/fit-check/data)'); process.exit(2); }
+const OUT = expand(opt('out', ''));
 const WORKERS = Math.max(1, Math.min(6, Number(opt('workers', '3')) || 3));
 const LIMIT = Number(opt('limit', '0')) || 0; // (a trial: only the first N)
 const UNTIL = opt('until', null) ? new Date(opt('until', '')).getTime() : Infinity;
@@ -180,7 +182,7 @@ async function load(page, url) {
 // Each tagged (a switch Chromium ignores), so one that won't close is found and ended by it.
 let plains = 0;
 async function plainBrowser() {
-  const tag = `margin-crawl-plain=${process.pid}x${++plains}x`; // (x…x: the 1st isn't found in the 10th's)
+  const tag = `margin-fit-check-plain=${process.pid}x${++plains}x`; // (x…x: the 1st isn't found in the 10th's)
   const browser = await within(60_000, 'plain browser start', chromium.launch({ headless: false, args: ['--headless=new', '--mute-audio', '--disable-notifications', '--deny-permission-prompts', `--${tag}`] }));
   return Object.assign(browser, { tag });
 }
@@ -214,7 +216,7 @@ async function compare(world, a, b) {
 async function newWorld(w) {
   for (let attempt = 1; ; attempt++) {
     try {
-      const m = await within(120_000, 'Margin world start', startMargin({ name: `crawl-${w}`, web: true, seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } }));
+      const m = await within(120_000, 'Margin world start', startMargin({ name: `fit-check-${w}`, web: true, seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } }));
       const ui = await m.ui();
       const s = await within(10_000, 'the slot', m.until(() => slotOf(ui), { timeout: 8000, what: 'the slot' }));
       // The plain load in the same color scheme as Margin's browser (a dark page and a light one aren't a difference of Margin's).

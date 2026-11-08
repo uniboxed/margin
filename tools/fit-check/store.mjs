@@ -1,5 +1,5 @@
-// The crawl's data folder, made readable: from each round's raw results (rounds/NNNN/results.jsonl, written
-// by crawl.mjs as it goes) it writes
+// The fit check's data folder, made readable: from each round's raw results (rounds/NNNN/results.jsonl, written
+// by check.mjs as it goes) it writes
 // - sites/<domain>.json: that site's latest result in full, and its history (a line per round: verdict,
 //   flags, Margin's commit, load times, its pictures), and whether it changed since the round before;
 // - all-sites.csv: a row per site, its latest (opens in Numbers or a spreadsheet);
@@ -7,7 +7,7 @@
 //   round before.
 // It's all made again from the rounds' results, every time, so it can't drift from them.
 //
-//   node tools/site-crawl/store.mjs [--data tools/site-crawl/data]
+//   node tools/fit-check/store.mjs [--data tools/fit-check/data]
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -117,7 +117,7 @@ export function rebuild(data = DEFAULT_DATA) {
   };
   writeAtomic(join(data, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
   const md = [
-    `# Site crawl`, '',
+    `# Fit check`, '',
     `${table.length} sites, each at its latest. Round ${latestRound ?? '–'}: ${finished ? 'finished' : progress ? `${progress.done} of ${progress.total} done` : 'not started'}. Newest result ${summary.at ?? '–'}.`, '',
     '## Verdicts', ...Object.entries(summary.verdicts).map(([k, v]) => `- ${k}: ${v}`), '',
     '`blocked`: the site turned the plain browser away too (bot protection, a captcha): it says nothing about Margin.', '',
