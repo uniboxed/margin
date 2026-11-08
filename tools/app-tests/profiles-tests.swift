@@ -40,6 +40,8 @@ final class FakeClock: SwitchClock {
 }
 
 final class FakeWorld: SwitchWorld {
+    var off: Set<String> = [] // profiles Margin is turned off in (the browser's settings)
+    func marginOff(_ profile: String) -> Bool { off.contains(profile) }
     struct Req { let profile: String; let type: String; let payload: JSONObject; let done: (JSONObject?, String?) -> Void }
     var linked: Set<String> = []
     var wins: [String: [(id: Int, state: String)]] = [:]
@@ -262,6 +264,12 @@ func switchTests() {
         c.advance(1)
         check("switch, Safari quit: ended with nothing more asked", !s.busy && { if case .failed = w.events.last! { return true }; return false }()
               && w.requests.count == count + 1 && w.requests.last?.type == "closeWindow", "\(w.types())") // only the late window's close (its copy's gone: harmless)
+    }
+    do { // Margin turned off in the target's profile (Safari did, as Margin updated: Tirth, 2026-11-08)
+        let (w, _, s) = setup { $0.linked = [A]; $0.off = [B] }
+        s.start(toB, from: A, windowId: 10)
+        check("switch, Margin off in that profile: failed at once and said, no window opened, nothing asked",
+              !s.busy && w.events.count == 2 && { if case .failed(_, let why) = w.events.last!, why.contains("turned off") { return true }; return false }() && w.requests.isEmpty, "\(w.events)")
     }
     do { // the target's copy isn't running
         let (w, c, s) = setup { $0.linked = [A] }

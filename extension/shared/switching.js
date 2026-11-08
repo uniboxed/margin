@@ -58,7 +58,13 @@ export const SETTLE_MS = 2000;
 // (back to the chain's start, or to a passed tab already shown) has landed
 // only once the state has had another tab in front since: until then the
 // state's front is stale, and an earlier target's late change would show it.
-export const PASSED_MS = 300;
+// 1 s, not 300 ms (Tirth, 2026-11-08: fast presses over loading tabs, the
+// highlight went back to a passed tab and came forward again): Safari's answer
+// comes as it activates the newest target, but the state with it in front can
+// reach the overlay half a second later (the copy busy writing the switches
+// before: "delta out +530 ms"), so a passed tab still in front then is the
+// state lagging, not a switch the chain didn't make.
+export const PASSED_MS = 1000;
 // Each chain (`front` only), as it ends, to `onRun` for Margin.app's log: how many targets it had,
 // whether it ended on its last one, and whether the highlight went back (to the tab it started
 // from, or one it passed: that's the flicker, and it must never happen) or elsewhere (another tab

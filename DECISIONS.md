@@ -3232,3 +3232,23 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
   - `spaces-switch.test.js`: the overlay's pick taken with its id; one not in the window worked out.
   - `e2e.swift`: the key's request carries the page's target and `ov-` id. The highlight itself can't be seen there: an off-screen page is hidden, and a hidden page draws no switch.
   - Theme `behaviors` swipe: `setSpace` asked as it settles, the old space still drawn, the new one as the slide lands.
+
+### After an update: Margin turned off in two profiles; the highlight's echo window (2026-11-08)
+
+- **Tirth**, after the switching build was installed:
+  - switching to another profile's space opened a new window of it, with "Switching to …" left in the window he was in;
+  - quitting Safari left the hidden windows, which came back as small windows;
+  - fast tab keys over loading tabs made the highlight go back to a passed tab and forward again.
+- **What happened at the install** (00:38 his time, 05:38 UTC; his log and Safari's `Extensions.plist` per profile, read only).
+  - Margin.app was replaced on disk and quit for the new build, and Safari reloaded Margin's extension in every profile ("1001 going away").
+  - In the two profiles where an old **unsigned** Margin build was also switched on, Safari switched the current, team-signed Margin **off** at that moment (`EnabledModificationDate` 05:38). The two profiles with the unsigned one off kept it on. So those profiles' copies never ran again: each switch to them asked Safari for a new window, waited 10 s for a copy that couldn't start, and failed.
+  - Their hidden windows couldn't be closed through their copies at Safari's quit either.
+  - The old Margin's private Spaces ended with it, so macOS dropped the two parked windows out as normal windows. The new one found them "moved" and left them.
+- **Now:**
+  - **A turned-off profile.** A switch to a profile whose Margin is turned off (the browser's own settings: `SafariAX.marginEnabled`, read only; `SwitchWorld.marginOff`) fails at once, no window opened and no wait, saying how to turn it on, in both the plain switch and the handoff. The failure notice now says so whether or not a window was opened.
+  - **The highlight.** `PASSED_MS` went from 300 ms to 1 s. Safari's answer comes as it activates the newest target, but the state with it in front reached the overlay up to half a second later (the copy busy with the writes before), so a passed tab still in front then is the state lagging. Before, the highlight went back to it and forward again. The chain log showed "ended back on a tab it had passed … went back 1 time" before the switching change too.
+- **For Tirth:** turn the old unsigned Margin off, and the current one on, in those two profiles (Safari › Settings › Extensions, each profile chosen at the top).
+- **Not done:** windows parked when Margin updates mid-session still come back as normal windows.
+- **Tests.**
+  - `profiles-tests.swift` and `handoff-tests.swift`: Margin off in the target's profile fails at once with no window asked for, and A stays in front.
+  - `switching.test.js`: the newest target answered while the state lags 0.6 s on passed tabs, and the highlight never goes back. It fails at 300 ms.

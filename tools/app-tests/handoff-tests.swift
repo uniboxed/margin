@@ -303,6 +303,8 @@ func freezerTests() {
 // cover drawn, `framed` after a window enters full screen, ordered out) and the notices.
 
 final class FakeHandoffWorld: HandoffWorld {
+    var off: Set<String> = [] // profiles Margin is turned off in (the browser's settings)
+    func marginOff(_ profile: String) -> Bool { off.contains(profile) }
     // Safari's own menu opening a profile's window (Shell.openProfileWindow, through Accessibility): asked for these.
     var opensWindows = false
     var openedWindowFor: [String] = []
@@ -1042,6 +1044,15 @@ func handoffMachineTests() {
         handoffRun(w, 4)
         check("waitingForLink: the copy back in time: on, done", w.events.last == .done(toB) && w.registry.isParked(1010) && w.fullAndInFront(hKB), "\(w.events)")
         handoffInvariants("waitingForLink, back", w, s)
+    }
+    do {
+        // Margin turned off in that profile, no parked window: failed at once and said, no window asked of Safari.
+        let (w, s) = handoffSetup { $0.linked.remove(hC); $0.off = [hC]; $0.opensWindows = true }
+        s.start(toC, from: hA, windowId: 10)
+        handoffRun(w, 0.2)
+        check("Margin off in the target's profile: failed at once, no window opened, A still in front",
+              !s.busy && failed(w.events.last) && w.openedWindowFor.isEmpty && w.fullAndInFront(hKA), "\(w.events)")
+        handoffInvariants("Margin off", w, s, [hA])
     }
     do {
         // No parked window and no copy: needsProfile, as today; 90 s.
