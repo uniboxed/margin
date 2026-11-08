@@ -3,3 +3,4 @@ xcode/
 test-results/
 .DS_Store
 dist/
+tools/fit-check/data/

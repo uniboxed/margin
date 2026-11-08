@@ -6,27 +6,37 @@
 // load says what the site is like by itself, so a site that's down, or only an API host, or that
 // throws errors of its own, isn't taken for Margin's doing.
 //
-//   node tools/site-crawl/crawl.mjs --list ~/margin-crawl/top-10000.csv --out ~/margin-crawl/run [--workers 3]
-//   node tools/site-crawl/summarize.mjs --out ~/margin-crawl/run
+//   node tools/fit-check/check.mjs --out some/folder [--list tools/fit-check/data/list.csv] [--workers 3]
+//     [--until 2026-11-09T07:30] [--commit <sha>]
+//   node tools/fit-check/summarize.mjs --out some/folder
+//
+// Run every night, it's started by nightly.mjs (`npm run fit-check`), which keeps a round per --out folder.
+// --until: no new site is started after it (the ones under way finish). --commit: Margin's code tested,
+// written in each row.
 //
 // What's stored, in --out:
 // - results.jsonl: a line per site, as it's done (the run resumes from it: a site there isn't
-//   loaded again). See `record` below for its fields.
+//   loaded again, unless it ended in a crawler error: then it's tried again, up to ERROR_TRIES).
+//   See `visit` below for its fields.
 // - shots/<rank>-<domain>-margin.jpg and -plain.jpg: what each load looked like, for a site with
 //   anything flagged, and every 100th site (a sample of the good ones).
 // - progress.json: counts so far, the rate, when it should be done. log.txt: what the run did.
+// - finished.txt: once every site of the list is done (not when --until stopped it).
 //
 // It doesn't stop for a site: each load has a hard deadline, a site that hangs its browser gets
 // its Margin world made again, a world that won't start is retried with a pause, anything thrown
 // is written down and the next site goes on. Headless only: nothing is shown on screen, sound is
 // muted, notifications and permission prompts are refused, dialogs dismissed, pages a site opens
 // closed. Domains with an adult word in them are skipped (written down as skipped).
+import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { startMargin } from '../../tests/e2e/harness/margin.js';
 import { SPACES } from '../../tests/e2e/harness/seed.js';
+import { ERROR_TRIES, KEY, isBlocked } from './verdicts.mjs';
 import { pageBox, slot as slotOf } from '../../tests/e2e/harness/ui.js';
 
 const require = createRequire(import.meta.url);
@@ -36,10 +46,14 @@ const { chromium } = require('playwright');
 const argv = process.argv.slice(2);
 const opt = (name, fallback) => { const i = argv.indexOf(`--${name}`); return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback; };
 const expand = (p) => resolve(p.replace(/^~(?=\/|$)/, homedir()));
-const LIST = expand(opt('list', '~/margin-crawl/top-10000.csv'));
-const OUT = expand(opt('out', '~/margin-crawl/run'));
+const LIST = expand(opt('list', fileURLToPath(new URL('./data/list.csv', import.meta.url))));
+if (!opt('out', null)) { console.error('--out: the folder for the results (npm run fit-check keeps them in tools/fit-check/data)'); process.exit(2); }
+const OUT = expand(opt('out', ''));
 const WORKERS = Math.max(1, Math.min(6, Number(opt('workers', '3')) || 3));
 const LIMIT = Number(opt('limit', '0')) || 0; // (a trial: only the first N)
+const UNTIL = opt('until', null) ? new Date(opt('until', '')).getTime() : Infinity;
+if (Number.isNaN(UNTIL)) throw new Error(`--until: not a time: ${opt('until', '')}`);
+const COMMIT = opt('commit', null);
 const NAV_MS = 30_000; // the first answer and the DOM
 const LOAD_MS = 12_000; // then the load event, at most
 const SETTLE_MS = 2_000; // then a moment for late content
@@ -67,10 +81,21 @@ process.on('uncaughtException', (e) => log(`uncaught exception: ${short(e)}`));
 const sites = readFileSync(LIST, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean)
   .map((l) => { const [rank, domain] = l.split(','); return { rank: Number(rank), domain: String(domain ?? '').trim().toLowerCase() }; })
   .filter((s) => s.rank > 0 && /^[a-z0-9.-]+$/.test(s.domain));
-const done = new Set();
-if (existsSync(RESULTS)) for (const l of readFileSync(RESULTS, 'utf8').split('\n')) { try { done.add(JSON.parse(l).domain); } catch {} }
+// A site's last line is what it came to; a crawler error (its own trouble, not the site's) is tried again.
+const last = new Map();
+const errorsOf = new Map();
+if (existsSync(RESULTS)) for (const l of readFileSync(RESULTS, 'utf8').split('\n')) {
+  try {
+    const r = JSON.parse(l);
+    last.set(r.domain, r.verdict);
+    if (r.verdict === 'error') errorsOf.set(r.domain, (errorsOf.get(r.domain) ?? 0) + 1);
+  } catch {}
+}
+const doneNow = (d) => last.has(d) && (last.get(d) !== 'error' || (errorsOf.get(d) ?? 0) >= ERROR_TRIES);
+const done = new Set([...last.keys()].filter(doneNow));
 const queue = sites.filter((s) => !done.has(s.domain)).slice(0, LIMIT || undefined);
-const counts = { done: done.size, ok: 0, flagged: 0, plainFailed: 0, marginFailed: 0, skipped: 0, errors: 0 };
+const counts = { done: done.size, ok: 0, flagged: 0, marginFailed: 0, blocked: 0, plainFailed: 0, skipped: 0, errors: 0 };
+for (const d of done) counts[KEY[last.get(d)] ?? 'errors'] += 1;
 const startedAt = Date.now();
 let doneThisRun = 0;
 const writeProgress = () => {
@@ -80,15 +105,12 @@ const writeProgress = () => {
 };
 const record = (r) => {
   appendFileSync(RESULTS, `${JSON.stringify(r)}\n`);
-  counts.done += 1;
+  if (r.verdict === 'error') errorsOf.set(r.domain, (errorsOf.get(r.domain) ?? 0) + 1);
+  last.set(r.domain, r.verdict);
   doneThisRun += 1;
-  if (r.verdict === 'ok') counts.ok += 1;
-  else if (r.verdict === 'flagged') counts.flagged += 1;
-  else if (r.verdict === 'plain-failed') counts.plainFailed += 1;
-  else if (r.verdict === 'margin-failed') counts.marginFailed += 1;
-  else if (r.verdict === 'skipped') counts.skipped += 1;
-  else counts.errors += 1;
-  if (counts.done % 10 === 0) writeProgress();
+  // Counted once it's what the site comes to (an error to be tried again isn't, yet).
+  if (doneNow(r.domain)) { counts.done += 1; counts[KEY[r.verdict] ?? 'errors'] += 1; }
+  if (doneThisRun % 10 === 0) writeProgress();
 };
 
 // ---- what a page is like ----------------------------------------------------------------------
@@ -153,18 +175,21 @@ async function load(page, url) {
 }
 
 // ---- comparing what the two looked like (a separate page decodes the pictures) -----------------
-let reference = null; // the plain Chromium, shared by the workers
-let composer = null;
+// The plain Chromium: one per world, made and ended with it, so a stuck one (connected but not answering, as
+// one was after ~3 500 sites) takes only its own worker's site with it, and only once.
+// Launched as the harness launches Margin's (Chrome's new headless mode), so the two browsers are alike in what
+// they tell sites (a first visit to Google came back dark in one and light in the other).
+// Each tagged (a switch Chromium ignores), so one that won't close is found and ended by it.
+let plains = 0;
 async function plainBrowser() {
-  if (reference?.isConnected()) return reference;
-  reference = await chromium.launch({ headless: true, args: ['--mute-audio', '--disable-notifications', '--deny-permission-prompts'] });
-  composer = null;
-  return reference;
+  const tag = `margin-fit-check-plain=${process.pid}x${++plains}x`; // (x…x: the 1st isn't found in the 10th's)
+  const browser = await within(60_000, 'plain browser start', chromium.launch({ headless: false, args: ['--headless=new', '--mute-audio', '--disable-notifications', '--deny-permission-prompts', `--${tag}`] }));
+  return Object.assign(browser, { tag });
 }
-async function compare(a, b) {
+async function compare(world, a, b) {
   if (!a || !b) return null;
-  composer ??= await (await plainBrowser()).newContext().then((c) => c.newPage());
-  return within(10_000, 'compare', composer.evaluate(async ([x, y]) => {
+  world.composer ??= await within(10_000, 'composer', world.plain.newContext().then((c) => c.newPage()));
+  return within(10_000, 'compare', world.composer.evaluate(async ([x, y]) => {
     const grid = async (b64) => {
       const img = new Image();
       img.src = `data:image/jpeg;base64,${b64}`;
@@ -191,14 +216,17 @@ async function compare(a, b) {
 async function newWorld(w) {
   for (let attempt = 1; ; attempt++) {
     try {
-      const m = await within(120_000, 'Margin world start', startMargin({ name: `crawl-${w}`, web: true, seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } }));
+      const m = await within(120_000, 'Margin world start', startMargin({ name: `fit-check-${w}`, web: true, seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } }));
       const ui = await m.ui();
       const s = await within(10_000, 'the slot', m.until(() => slotOf(ui), { timeout: 8000, what: 'the slot' }));
+      // The plain load in the same color scheme as Margin's browser (a dark page and a light one aren't a difference of Margin's).
+      const scheme = await within(5000, 'scheme', m.context.pages()[0].evaluate(() => (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))).catch(() => 'light');
       const ours = new Set(m.context.pages());
       // Pages a site opens by itself (pop-ups, new windows): closed.
       m.context.on('page', (p) => { setTimeout(() => { if (!ours.has(p) && !p.isClosed()) p.close().catch(() => {}); }, 1500); });
-      log(`worker ${w}: Margin world up (slot ${JSON.stringify(s)})`);
-      return { m, slot: s, ours, sites: 0 };
+      const plain = await plainBrowser().catch(async (e) => { await within(30_000, 'Margin world close', m.close()).catch(() => {}); throw e; });
+      log(`worker ${w}: Margin world up (slot ${JSON.stringify(s)}, ${scheme})`);
+      return { m, plain, composer: null, slot: s, ours, scheme, sites: 0 };
     } catch (e) {
       log(`worker ${w}: Margin world didn't start (attempt ${attempt}): ${short(e)}`);
       await sleep(Math.min(60_000, 5000 * attempt));
@@ -208,6 +236,9 @@ async function newWorld(w) {
 async function endWorld(world) {
   if (!world) return;
   await within(30_000, 'Margin world close', world.m.close()).catch(() => {});
+  const closed = await within(15_000, 'plain browser close', world.plain.close()).then(() => true, () => false);
+  // Still there (not answering): its processes ended outright.
+  if (!closed) await new Promise((r) => execFile('pkill', ['-9', '-f', world.plain.tag], () => r()));
 }
 
 async function visit(world, site) {
@@ -217,7 +248,7 @@ async function visit(world, site) {
   const height = 900 - slot.top - slot.bottom;
   const page = await m.context.newPage();
   world.ours.add(page);
-  const plainCtx = await (await plainBrowser()).newContext({ viewport: { width, height }, ignoreHTTPSErrors: false, acceptDownloads: false });
+  const plainCtx = await within(15_000, 'plain context', world.plain.newContext({ viewport: { width, height }, colorScheme: world.scheme, acceptDownloads: false }));
   const plain = await plainCtx.newPage();
   try {
     const [mine, theirs] = await Promise.all([load(page, url), load(plain, url)]);
@@ -229,7 +260,7 @@ async function visit(world, site) {
     }
     const shotMine = mine.ok ? await within(15_000, 'shot', page.screenshot({ type: 'jpeg', quality: 55, clip: { x: slot.left, y: slot.top, width, height } })).catch(() => null) : null;
     const shotPlain = theirs.ok ? await within(15_000, 'shot', plain.screenshot({ type: 'jpeg', quality: 55 })).catch(() => null) : null;
-    const look = await compare(shotMine, shotPlain).catch(() => null);
+    const look = await compare(world, shotMine, shotPlain).catch(() => null);
     // What's wrong, if anything (only what the plain load doesn't show too).
     const flags = [];
     if (mine.ok && theirs.ok) {
@@ -248,7 +279,7 @@ async function visit(world, site) {
       const newErrors = mine.errors.filter((e) => !theirErrors.has(e));
       if (newErrors.length > theirs.errors.length && newErrors.length >= 2) flags.push('more-errors');
     }
-    const verdict = !theirs.ok ? (mine.ok ? 'plain-failed' : 'plain-failed') : !mine.ok ? 'margin-failed' : flags.length ? 'flagged' : 'ok';
+    const verdict = isBlocked(theirs) ? 'blocked' : !theirs.ok ? 'plain-failed' : !mine.ok ? 'margin-failed' : flags.length ? 'flagged' : 'ok';
     const keepShots = verdict === 'flagged' || verdict === 'margin-failed' || site.rank % SHOT_EVERY === 0;
     if (keepShots) {
       const base = join(OUT, 'shots', `${site.rank}-${site.domain}`);
@@ -256,7 +287,7 @@ async function visit(world, site) {
       if (shotPlain) writeFileSync(`${base}-plain.jpg`, shotPlain);
     }
     return {
-      rank: site.rank, domain: site.domain, verdict, flags, at: new Date().toISOString(),
+      rank: site.rank, domain: site.domain, verdict, flags, at: new Date().toISOString(), commit: COMMIT,
       margin: { ok: mine.ok, status: mine.status, ms: mine.ms, error: mine.error, finalHost: mine.finalHost, errors: mine.errors, m: mine.m, box, rootX },
       plain: { ok: theirs.ok, status: theirs.status, ms: theirs.ms, error: theirs.error, finalHost: theirs.finalHost, errors: theirs.errors, m: theirs.m },
       slot: { left: slot.left, top: slot.top, right: slot.right, bottom: slot.bottom, width, height },
@@ -278,18 +309,18 @@ async function worker(w) {
   while (!stopping) {
     const site = queue[next++];
     if (!site) break;
-    if (ADULT.test(site.domain)) { record({ rank: site.rank, domain: site.domain, verdict: 'skipped', flags: ['adult-word'], at: new Date().toISOString() }); continue; }
+    if (Date.now() >= UNTIL) { if (!stopping) log(`--until reached: stopping after the sites under way`); stopping = true; next -= 1; break; }
+    if (ADULT.test(site.domain)) { record({ rank: site.rank, domain: site.domain, verdict: 'skipped', flags: ['adult-word'], at: new Date().toISOString(), commit: COMMIT }); continue; }
     if (!world || world.sites >= WORLD_SITES) { await endWorld(world); world = await newWorld(w); }
     world.sites += 1;
     try {
       record(await within(SITE_MS, `site ${site.domain}`, visit(world, site)));
     } catch (e) {
       // Hung or broken: written down, and the world made again (the browser may be stuck).
-      record({ rank: site.rank, domain: site.domain, verdict: 'error', flags: ['crawler-error'], error: short(e), at: new Date().toISOString() });
+      record({ rank: site.rank, domain: site.domain, verdict: 'error', flags: ['crawler-error'], error: short(e), at: new Date().toISOString(), commit: COMMIT });
       log(`worker ${w}: ${site.rank} ${site.domain}: ${short(e)}; a fresh Margin world`);
       await endWorld(world);
       world = null;
-      if (!reference?.isConnected()) { reference = null; composer = null; }
     }
   }
   await endWorld(world);
@@ -299,7 +330,7 @@ log(`start: ${queue.length} sites to go of ${sites.length} (${done.size} done be
 writeProgress();
 await Promise.all(Array.from({ length: WORKERS }, (_, i) => worker(i + 1).catch((e) => log(`worker ${i + 1} ended: ${short(e)}`))));
 writeProgress();
-await reference?.close().catch(() => {});
 log(`end: ${counts.done} of ${sites.length} done`);
-writeFileSync(join(OUT, 'finished.txt'), `${new Date().toISOString()}\n${JSON.stringify(counts)}\n`);
+// The round's finished once nothing's left to do: every site done, or tried ERROR_TRIES times.
+if (!stopping && !LIMIT && sites.every((s) => doneNow(s.domain))) writeFileSync(join(OUT, 'finished.txt'), `${new Date().toISOString()}\n${JSON.stringify(counts)}\n`);
 process.exit(0);

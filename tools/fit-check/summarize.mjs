@@ -1,17 +1,21 @@
-// What a crawl found (tools/site-crawl/crawl.mjs): counts by verdict and by flag, and the sites
+// What a fit check (by hand, or a round of the nightly one) found (tools/fit-check/check.mjs): counts by verdict and by flag, and the sites
 // under each flag, best ranked first. Reads --out's results.jsonl; writes summary.json and
 // summary.md next to it, and prints the short form.
 //
-//   node tools/site-crawl/summarize.mjs --out ~/margin-crawl/run
+//   node tools/fit-check/summarize.mjs --out tools/fit-check/data/rounds/0001
 import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { verdictOf } from './verdicts.mjs';
 
 const argv = process.argv.slice(2);
 const i = argv.indexOf('--out');
-const OUT = resolve((i >= 0 ? argv[i + 1] : '~/margin-crawl/run').replace(/^~(?=\/|$)/, homedir()));
-const rows = [];
-for (const line of readFileSync(join(OUT, 'results.jsonl'), 'utf8').split('\n')) { try { rows.push(JSON.parse(line)); } catch {} }
+if (i < 0 || !argv[i + 1]) { console.error('--out: a round\'s folder (tools/fit-check/data/rounds/NNNN) or a check.mjs --out folder'); process.exit(2); }
+const OUT = resolve(argv[i + 1].replace(/^~(?=\/|$)/, homedir()));
+// A site's last line counts (a crawler error is tried again on the next run, and its new line comes later).
+const latest = new Map();
+for (const line of readFileSync(join(OUT, 'results.jsonl'), 'utf8').split('\n')) { try { const r = JSON.parse(line); latest.set(r.domain, { ...r, verdict: verdictOf(r) }); } catch {} }
+const rows = [...latest.values()];
 rows.sort((a, b) => a.rank - b.rank);
 
 const by = (key) => rows.reduce((acc, r) => { for (const k of [].concat(key(r))) (acc[k] ??= []).push(r); return acc; }, {});
@@ -33,7 +37,7 @@ const summary = {
 writeFileSync(join(OUT, 'summary.json'), JSON.stringify(summary, null, 2));
 
 const md = [
-  `# Site crawl: ${rows.length} sites`, '',
+  `# Fit check: ${rows.length} sites`, '',
   '## Verdicts', ...Object.entries(summary.verdicts).map(([k, v]) => `- ${k}: ${v}`), '',
   '## Flags (sites that loaded both ways)', ...Object.entries(summary.flags).map(([k, v]) => `- ${k}: ${v}`), '',
   `Average load: through Margin ${summary.loadMs.margin} ms, plain ${summary.loadMs.plain} ms.`, '',

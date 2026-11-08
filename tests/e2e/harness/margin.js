@@ -61,7 +61,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *   running?: boolean,    // Margin.app running at the start (default true)
  *   cloudTabs?: any, across?: any,
  *   name?: string,        // for the screenshots' folder
- *   web?: boolean,        // the real web too (tools/site-crawl only): other hosts resolve, nothing is a leak, sound muted
+ *   web?: boolean,        // the real web too (tools/fit-check only): other hosts resolve, nothing is a leak, sound muted
  * }} [options]
  */
 export async function startMargin({ seed = null, fullscreen = true, running = true, cloudTabs = null, across = null, name = 'e2e', web = false } = {}) {
