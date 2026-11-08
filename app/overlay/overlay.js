@@ -63,17 +63,38 @@ const copySwitches = backgroundSwitches();
 // So the highlight never waits for the copy's background (busy saving the switch before, or waking: Tirth,
 // 2026-11-07, "the tab switches are not instantaneous sometimes"), and the copy's `switching` for these presses
 // changes nothing here (it may come after a newer press's highlight).
+// A held key repeats faster than a highlight is drawn (Tirth, 2026-11-08: "when i stop holding it, it still keeps
+// moving"): the presses that come are added up and taken once a frame, one highlight and one ask for where they end,
+// so none wait in line and it stops as the key is let go.
 let localNav = /** @type {{ tabId: number, at: number } | null} */ (null);
 let localSeq = 0;
+let navSteps = 0;
+let navFrame = 0;
+let navTimer = /** @type {any} */ (0);
 /** @param {'next-tab' | 'prev-tab'} action */
 function navTab(action) {
+  navSteps += action === 'next-tab' ? 1 : -1;
+  if (navFrame) return;
+  navFrame = requestAnimationFrame(flushNav);
+  navTimer = setTimeout(flushNav, 50); // (no frames off screen)
+}
+function flushNav() {
+  cancelAnimationFrame(navFrame);
+  clearTimeout(navTimer);
+  navFrame = 0;
+  const steps = navSteps;
+  navSteps = 0;
+  if (!steps) return;
+  const dir = steps > 0 ? 1 : -1;
+  const action = dir > 0 ? 'next-tab' : 'prev-tab';
   const state = /** @type {any} */ (host?.getState());
   const windowId = host?.windowId;
   const ask = (/** @type {Record<string, any>} */ extra) => { void Promise.resolve(host?.send('navigate', { action, ...extra })).catch(() => {}); };
   if (!runtime || !Number.isInteger(windowId)) return ask({});
-  const target = pickNavTab(state, /** @type {number} */ (windowId), localNav, action === 'next-tab' ? 1 : -1, cycleTab);
+  let target = pickNavTab(state, /** @type {number} */ (windowId), localNav, dir, cycleTab);
   // Nothing in front known yet: the copy works it out (and highlights it, as before).
   if (target === undefined) return ask({});
+  for (let i = 1; i < Math.abs(steps) && target != null; i++) target = cycleTab(state, /** @type {number} */ (windowId), target, dir);
   if (target == null) return;
   const switchId = `${OVERLAY_SWITCH_PREFIX}${++localSeq}`;
   localNav = { tabId: target, at: Date.now() };

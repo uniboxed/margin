@@ -3252,3 +3252,4 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **Tests.**
   - `profiles-tests.swift` and `handoff-tests.swift`: Margin off in the target's profile fails at once with no window asked for, and A stays in front.
   - `switching.test.js`: the newest target answered while the state lags 0.6 s on passed tabs, and the highlight never goes back. It fails at 300 ms.
+- **A held key** (Tirth: "when i stop holding it, it still keeps moving"). Its repeats came faster than a highlight is drawn, so they queued in the overlay's page and went on after the key was let go. Now the page adds up the presses that arrive and takes them once a frame (`overlay.js navTab`/`flushNav`, with a 50 ms timer when no frames come), giving one highlight and one `navigate` for where they end, so none wait.
