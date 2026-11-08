@@ -3185,3 +3185,23 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **Kept as before:** Margin's overlay goes under the toolbar (`WindowMatcher.fullScreenToolbar`, `Overlay.orderInPlace`), so the whole toolbar slides down over Margin, sidebar included, as over the page. No window buttons in Margin's theme in full screen.
 - **Why it looked like half a bar:** Safari 27's toolbar is see-through. With Safari's own sidebar open in that window (under Margin's), Safari leaves that column of its toolbar empty: the tabs start about 270 pt in, and Margin's sidebar shows through the glass on the left. Closing Safari's sidebar (View › Hide Sidebar) gives the tabs the whole width.
 - The dropped work is in no commit on main; the patch was kept outside the repository.
+
+### Safari's own sidebar kept closed under Margin (2026-11-07)
+
+- **Tirth:** "when i reach my cursor on the left edge, it still opens. can we not have it open please." With Keep open on it opened unseen under Margin's docked sidebar; with Keep open off it showed, and it took part of the window, shrinking the page.
+- **How the reveal works** (read from AppKit, 2026-11-07: `NSSplitViewController(RevealOnEdgeHover)`). It's AppKit's, for a collapsed sidebar of a full-screen window. It triggers on a mouse-moved event within 4 pt inside the window's leading edge (`NSSplitViewItemFullscreenEdgeInWindowPadding`, default 4; outside the window `…OffWindowPadding`, default 0), after the pointer rests there 0.5 s (`…FullscreenEdgeRevealDelay`). It's heard by local *and global* event monitors, which is why the invisible edge guard over the edge never stopped it. There's also a per-app setting, `NSSplitViewItemRevealsInFullscreen`. Margin doesn't write it: it would outlive Margin (uninstall, the extension off) and would apply to every profile.
+- **Three parts, all Margin.app's, only where Margin's layout is drawn over the Safari window in front:**
+  - **The edge stop** (`EdgeStop.swift`). While the front window is a full-screen Safari window with Margin's layout, an event tap (Accessibility) moves any mouse-moved event that would land within 5 pt of the window's left edge to 5 pt, and the pointer with it: thrown left, it stops there as at an edge.
+    - Margin's own reveal zone (24 pt in full screen) still works.
+    - There's no stop where a display lies beside the window's left edge (the pointer crosses there, and crossing never rests).
+    - The tap runs on its own thread and is off whenever there's no fence. Nothing is stored; it's gone when Margin quits.
+  - **⇧⌘L**, Safari's own sidebar key, is Margin's sidebar key with Safari (`ShortcutSet.bindings(from:safari:)`), as ⌘T is always the palette, unless another Margin command has it in Settings.
+  - **Opened anyway** (View › Show Sidebar, the sidebar button in Safari's toolbar): when a part appears on the left of the front window, Margin reads Safari's View menu item (identifier `ShowSidebar`, in any language) by Accessibility.
+    - If its title differs from the one learned while nothing showed on the left ("Show Sidebar" against "Hide Sidebar"), it's Safari's sidebar. Margin presses the item once (the menu never opens), and the overlay keeps the whole window meanwhile, covering it.
+    - If the title is unchanged, it's something else (a Web Inspector docked on the left): left alone and carved out as before.
+    - It's pressed at most once per appearance.
+- **Found by the tests:** the cover first passed an infinite docked width, which the left-part log line turned into an integer, trapping. Now it's the window's width.
+- **Tests.**
+  - `tests.swift`: ⇧⌘L for Safari only, never taking another command's key; the fence (alone, a display beside it, a display left but elsewhere); the clamp; the title rule.
+  - `e2e.swift`, with a stand-in for Safari's menu item: the closed title is learned; the fence is set for the full-screen front window; ⇧⌘L is held; the sidebar opens, is closed once and covered meanwhile, never pressed again, then gone; a part on the left with the title unchanged is not pressed and is carved out; the held-key counts are now 7.
+  - Tirth's Safari: pending, including whether the menu bar's "View" title flashes on the press.

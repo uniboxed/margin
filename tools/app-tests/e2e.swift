@@ -217,6 +217,15 @@ func scenario() async {
   options.cloudWatch.debounce = 0.1
   options.cloudWatch.latency = 0.05
   options.cloudWatch.retry = 0.3
+  // Safari's View › Show Sidebar item, a stand-in (ShellSafariSidebar.swift): its title, and each press.
+  final class FakeSidebarMenu: SidebarMenu {
+    var titleNow = "Show Sidebar"
+    var reads = 0, presses = 0
+    func title(pid: pid_t, done: @escaping @MainActor (String?) -> Void) { reads += 1; let t = titleNow; DispatchQueue.main.async { MainActor.assumeIsolated { done(t) } } }
+    func press(pid: pid_t, done: @escaping @MainActor (Bool) -> Void) { presses += 1; titleNow = "Show Sidebar"; DispatchQueue.main.async { MainActor.assumeIsolated { done(true) } } }
+  }
+  let sidebarMenu = FakeSidebarMenu()
+  options.sidebarMenu = sidebarMenu
   let shell = Shell(link: link, windows: windows, apps: apps, hotKeys: keys, options: options)
   windows.shell = shell
   shell.start()
@@ -443,9 +452,34 @@ func scenario() async {
   let insetsAgain = await until(10, { (fake.all("setLayout", since: mark).last.flatMap { ($0["msg"] as? JSONObject)?["insets"] as? JSONObject }).map { num($0["bottom"]).map { $0 < 50 } ?? false } ?? false })
   check("closed: the whole window again, and its layout", wholeAgain && insetsAgain)
 
+  // ---- Safari's own sidebar kept closed under Margin (Tirth, 2026-11-07: it opened at the left edge) ----
+  check("Safari's sidebar: nothing on the left: its View menu item's closed title learned",
+        await until(3, { shell.sidebarClosedTitle[browserPid] == "Show Sidebar" }) && sidebarMenu.reads >= 1, "\(shell.sidebarClosedTitle)")
+  check("edge stop: the front window full screen with Margin's layout: the pointer stops 5 pt from its left edge",
+        await until(3, { shell.edgeFence == EdgeStop.Fence(x: rw.minX + 5, top: rw.minY, bottom: rw.maxY) }), "\(String(describing: shell.edgeFence))")
+  check("⇧⌘L held as Margin's sidebar key with Safari in front", keys.held.values.contains(Combo.parse(ShortcutSet.safariSidebarKey)!))
+  func leftPart(_ x: Double) -> JSONObject { var w = win(7, rw, "fullscreen", focused: true); w["viewport"] = ["x": x, "y": 0, "width": rw.width - x, "height": rw.height]; return w }
+  // It opens (the View menu, or Safari's toolbar button): the item's title flips, the page starts 240 pt in.
+  sidebarMenu.titleNow = "Hide Sidebar"
+  fake.tell(["do": "windows", "id": "A", "list": [leftPart(240), win(8, r8, "normal")]])
+  check("Safari's sidebar opened: closed by its View menu item, once", await until(3, { sidebarMenu.presses == 1 }), "presses \(sidebarMenu.presses)")
+  check("…and covered meanwhile: the overlay keeps the whole window", o7.frameTopLeft == rw, "\(o7.frameTopLeft)")
+  shell.track()
+  try? await Task.sleep(nanoseconds: 300_000_000)
+  check("…never pressed again while it's still there", sidebarMenu.presses == 1)
+  fake.tell(["do": "windows", "id": "A", "list": [win(7, rw, "fullscreen", focused: true), win(8, r8, "normal")]])
+  check("closed: nothing on the left again", await until(3, { shell.safariSidebar[k7] == nil }))
+  // Something else on the left (the Web Inspector docked there): the item's title unchanged, left alone, carved out as before.
+  fake.tell(["do": "windows", "id": "A", "list": [leftPart(300), win(8, r8, "normal")]])
+  check("a part on the left that isn't Safari's sidebar: not pressed, Margin out of its way",
+        await until(3, { shell.safariSidebar[k7] == .left && o7.frameTopLeft.minX == rw.minX + 300 }) && sidebarMenu.presses == 1, "\(o7.frameTopLeft) \(String(describing: shell.safariSidebar[k7]))")
+  fake.tell(["do": "windows", "id": "A", "list": [win(7, rw, "fullscreen", focused: true), win(8, r8, "normal")]])
+  check("and gone: the whole window again", await until(3, { o7.frameTopLeft == rw && shell.safariSidebar[k7] == nil }))
+
   // ---- keys ----
   shell.track()
-  check("the browser in front with its overlay: Margin's keys held", shortcutsHeld(shell, keys, 6))
+  // (Six of Margin's, and ⇧⌘L with Safari: its own sidebar key, Margin's sidebar's there.)
+  check("the browser in front with its overlay: Margin's keys held", shortcutsHeld(shell, keys, 7))
   check("… and ⌘Q and ⌥⌘Q, for Margin's quit prompt", keys.held.values.contains(Combo.parse("Meta+KeyQ")!) && keys.held.values.contains(Combo.parse("Alt+Meta+KeyQ")!))
   mark = fake.events.count
   keys.press("Ctrl+Meta+ArrowDown")
@@ -454,7 +488,7 @@ func scenario() async {
   apps.bringToFront(1)
   check("another app in front: let go", await until(2, { keys.held.isEmpty && !shell.shortcuts.isActive }))
   apps.bringToFront(browserPid)
-  check("back: held again", await until(2, { ownKeysHeld(keys) == 6 }))
+  check("back: held again", await until(2, { ownKeysHeld(keys) == 7 }))
   // The copy's Settings shortcuts (its `keys`): held instead of the defaults, at once.
   fake.tell(["do": "send", "id": "A", "msg": ["k": "keys", "bindings": ["next-tab": ["Alt+Meta+ArrowDown", "Ctrl+Meta+ArrowDown"], "toggle-sidebar": ["Alt+KeyK"]]]])
   check("the copy's keys: held as it says", await until(3, { Set(keys.held.values).contains(Combo.parse("Alt+Meta+ArrowDown")!) && Set(keys.held.values).contains(Combo.parse("Alt+KeyK")!) && !Set(keys.held.values).contains(Combo.parse("Alt+KeyS")!) }))

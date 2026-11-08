@@ -284,6 +284,56 @@ final class SafariAX: @unchecked Sendable {
         }
     }
 
+    // ---- Safari's own sidebar (ShellSafariSidebar.swift) ----
+    // Its View › Show Sidebar item (⇧⌘L), known by its identifier in any language; its title flips while the sidebar
+    // is open ("Hide Sidebar"). Read and pressed on the Accessibility queue, the menu never opened: the same as
+    // the menu command, nothing shown moving.
+    private var sidebarItem: (pid: pid_t, element: AXUIElement)?
+
+    private func sidebarMenuItem(_ pid: pid_t) -> AXUIElement? {
+        if let kept = sidebarItem, kept.pid == pid { return kept.element }
+        func attr(_ e: AXUIElement, _ a: String) -> AnyObject? { var v: AnyObject?; return AXUIElementCopyAttributeValue(e, a as CFString, &v) == .success ? v : nil }
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        guard let barValue = attr(app, kAXMenuBarAttribute), CFGetTypeID(barValue) == AXUIElementGetTypeID() else { return nil }
+        let bar = barValue as! AXUIElement
+        for top in (attr(bar, kAXChildrenAttribute) as? [AXUIElement]) ?? [] {
+            for menu in (attr(top, kAXChildrenAttribute) as? [AXUIElement]) ?? [] {
+                for item in (attr(menu, kAXChildrenAttribute) as? [AXUIElement]) ?? [] where attr(item, "AXIdentifier") as? String == "ShowSidebar" {
+                    sidebarItem = (pid, item)
+                    return item
+                }
+            }
+        }
+        return nil
+    }
+
+    /// The Show Sidebar item's title now (nil: not found, or not trusted).
+    func sidebarMenuTitle(pid: pid_t, done: @escaping @MainActor (String?) -> Void) {
+        guard Self.trusted else { return done(nil) }
+        queue.async { [self] in
+            var title: String?
+            if let item = sidebarMenuItem(pid) {
+                var v: AnyObject?
+                if AXUIElementCopyAttributeValue(item, kAXTitleAttribute as CFString, &v) == .success { title = v as? String } else { sidebarItem = nil }
+            }
+            DispatchQueue.main.async { MainActor.assumeIsolated { done(title) } }
+        }
+    }
+
+    /// The Show Sidebar item pressed (its title now its "Hide Sidebar": Safari's sidebar closes). False: not pressed.
+    func pressSidebarMenu(pid: pid_t, done: @escaping @MainActor (Bool) -> Void) {
+        guard Self.trusted else { return done(false) }
+        queue.async { [self] in
+            var pressed = false
+            if let item = sidebarMenuItem(pid) {
+                pressed = AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
+                if !pressed { sidebarItem = nil }
+            }
+            DispatchQueue.main.async { MainActor.assumeIsolated { done(pressed) } }
+        }
+    }
+
     /// Whether Margin's extension is turned on in a Safari profile, as Safari's own settings say (needs Full Disk
     /// Access): `profile` the copy's id ("s-default" or "s-" and the profile's identifier). Nil: not readable.
     static func marginEnabled(profile: String) -> Bool? {

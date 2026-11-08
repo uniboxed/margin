@@ -204,6 +204,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var devHooksOn: (() -> Bool)?
         // Which Safari window is which profile's, from Accessibility (SafariAX.swift): only the app (forApp).
         var safariAX = false
+        // Safari's View › Show Sidebar item (ShellSafariSidebar.swift; the tests: a stand-in; nil: SafariAX's when on).
+        var sidebarMenu: SidebarMenu?
+        // The edge stop: the pointer kept off a full-screen Safari window's left edge (EdgeStop.swift); off in the tests.
+        var edgeStop = true
         // The window trace (WindowTrace.swift, DEV): only the app's, unless a test gives one.
         var trace: WindowTrace?
         // ⌘Q or ⌥⌘Q handed on to the browser after Margin closed its parked windows (Shell.quitBrowser): the keys
@@ -243,6 +247,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private(set) var links: [String: Link] = [:]
     var overlays: [WindowKey: OverlayController] = [:]
     private(set) var matches: [WindowKey: Int] = [:]
+    // Safari's own sidebar (ShellSafariSidebar.swift): each window's part on the left once it's appeared; the View menu
+    // item's title while the sidebar is closed, by Safari's pid, and when it was last read.
+    var safariSidebar: [WindowKey: SafariSidebarState] = [:]
+    var sidebarClosedTitle: [pid_t: String] = [:]
+    var sidebarTitleReadAt: [pid_t: Double] = [:]
+    // The edge stop (EdgeStop.swift) and its fence now.
+    let edgeStopper = EdgeStop()
+    private(set) var edgeFence: EdgeStop.Fence?
     // Each browser's window bindings (WindowMatcher.swift).
     private(set) var binders: [String: WindowBinder] = [:]
     // Safari's windows as Accessibility reads them, and the profile (link) each one's title named, once known: a
@@ -444,6 +456,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     private func stopNow(_ then: @escaping () -> Void) {
         stopped = true
+        edgeFence = nil
+        edgeStopper.set(nil)
         pollTimer?.invalidate()
         for timer in reconnecting.values { timer.invalidate() }
         reconnecting = [:]
@@ -902,7 +916,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     /// when the overlay goes to another window (a switch's hand-over), so the new one is sent and checked afresh.
     func forgetOverlayState(_ key: WindowKey) {
         placements[key] = nil; placementMisses[key] = nil; frameSaid[key] = nil; reorderedAt[key] = nil; joinTriedAt[key] = nil
-        aheadFailedAt[key] = nil; ownSpaceSuspects[key] = nil; lastPointerPush[key] = nil; lastPointer[key] = nil
+        aheadFailedAt[key] = nil; ownSpaceSuspects[key] = nil; lastPointerPush[key] = nil; lastPointer[key] = nil; safariSidebar[key] = nil
         acrossSent[key] = nil; cloudSent[key] = nil
     }
 
@@ -1285,8 +1299,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             // Over the part of the window that's the page's and Margin's: not the docked Web Inspector.
             // (Not for Safari's own sidebar sliding in under Margin's docked one: `dockedLeft`.)
             let viewport = w.state == "fullscreen" ? w.viewport : nil
+            // Safari's own sidebar opened over Margin's layout: closed by its View menu, covered meanwhile (ShellSafariSidebar.swift).
+            let isFront = apps.frontPid == server.pid
+                && WindowMatcher.candidates(list, pids: [server.pid]).filter(\.onScreen).min(by: { $0.order < $1.order })?.number == number
+            followSafariSidebar(overlay, left: w.viewport?.minX ?? 0, front: isFront)
+            overlay.windowFullScreen = w.state == "fullscreen"
             let docked = Shell.dockedLeft(overlay)
-            let frame = Shell.overlayFrame(window: server.bounds, viewport: viewport, dockedLeft: docked)
+            // (Covering it: the whole window kept, whatever's on the left, as under a docked sidebar as wide as the window.)
+            let frame = Shell.overlayFrame(window: server.bounds, viewport: viewport, dockedLeft: coversSafariSidebar(key) ? server.bounds.width : docked)
             noteLeftPart(overlay, window: server.bounds, viewport: viewport, measured: w.viewportMeasured, docked: docked, frame: frame)
             if frame != server.bounds, overlay.windowFrame != server.bounds || overlay.frameTopLeft != frame {
                 Diagnostics.note("\(key): Safari takes part of its window (the Web Inspector docked?): Margin draws in \(frame) of \(server.bounds)\(Shell.viewportDelay(w.viewportTimes, now: options.clock()))")
@@ -1528,7 +1548,17 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let front = frontOverlay(list: list)
         let has = front != nil
         // The front window's copy's combinations (each profile's Settings may differ).
-        if let front, let keys = links[front.key.link]?.keys { shortcuts.rebind(ShortcutSet.bindings(from: keys)) }
+        // (⇧⌘L too with Safari's: its own sidebar key, Margin's sidebar's there: ShellSafariSidebar.swift.)
+        if let front { shortcuts.rebind(ShortcutSet.bindings(from: links[front.key.link]?.keys ?? [:], safari: front.key.link.hasPrefix("safari:"))) }
+        // The edge stop: the front window's overlay shown over a full-screen Safari window.
+        let fence = front.flatMap { o -> EdgeStop.Fence? in
+            guard options.edgeStop, o.key.link.hasPrefix("safari:"), o.windowFullScreen, let window = o.windowFrame else { return nil }
+            return EdgeStop.fence(window: window, displays: ScreenGeometry.displayFrames)
+        }
+        if fence != edgeFence {
+            edgeFence = fence
+            if !options.harness { edgeStopper.set(fence) } // (the tests read the fence; no real pointer is touched)
+        }
         // Mid-handoff no overlay may be shown over the front window (B is on top, its own not up yet):
         // the keys stay the app's with Safari or Margin in front, and `run` gives them to the switch (§1.7).
         let ownPid = ProcessInfo.processInfo.processIdentifier

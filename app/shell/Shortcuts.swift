@@ -105,11 +105,15 @@ enum ShortcutSet {
     // name keeps its default; one it names with nothing usable has none; the
     // palette is always ⌘T too; a combination two commands name goes to the
     // first in AppCommand's order (the copy's Settings refuse that anyway).
-    static func bindings(from keys: [String: [String]]) -> [Combo: AppCommand] {
+    // `safari`: ⇧⌘L, Safari's own sidebar key, is Margin's sidebar key too there (Safari's sidebar kept closed under
+    // Margin: ShellSafariSidebar.swift), unless another command has it.
+    static let safariSidebarKey = "Shift+Meta+KeyL"
+    static func bindings(from keys: [String: [String]], safari: Bool = false) -> [Combo: AppCommand] {
         var out: [Combo: AppCommand] = [:]
         for command in AppCommand.allCases {
             var texts = keys[command.rawValue] ?? [defaults[command]].compactMap { $0 }
             if command == .palette, !texts.contains("Meta+KeyT") { texts.append("Meta+KeyT") }
+            if command == .toggleSidebar, safari, !texts.contains(safariSidebarKey) { texts.append(safariSidebarKey) }
             for text in texts { if let combo = Combo.parse(text), out[combo] == nil { out[combo] = command } }
         }
         return out

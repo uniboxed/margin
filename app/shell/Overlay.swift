@@ -155,6 +155,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     var windowFrame: CGRect?
     private(set) var aboveWindow: Int?
     private(set) var belowWindow: Int? // the browser window's full-screen toolbar, when it has one
+    var windowFullScreen = false // its window in full screen, as its copy says (the edge stop: Shell.updateKeys)
     private(set) var ignoring = false
     private(set) var hasKeyboard = false
     // What its page last said of its focus (`focus` on or off), apart from whether it has the keyboard:

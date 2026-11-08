@@ -517,6 +517,31 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("the copy's keys: a combination that isn't one: none for it", !fromCopy.values.contains(.prevSpace))
     check("the copy's keys: one combination, one command", ShortcutSet.bindings(from: ["next-tab": ["Meta+KeyT"]])[Combo.parse("Meta+KeyT")!] == .nextTab)
     check("keys Settings can record: punctuation and F keys", Combo.parse("Alt+Comma") != nil && Combo.parse("Ctrl+F5") != nil && Combo.parse("Meta+Backquote") != nil)
+    // ⇧⌘L, Safari's own sidebar key, Margin's sidebar's with Safari (ShellSafariSidebar.swift).
+    let shiftCmdL = Combo.parse(ShortcutSet.safariSidebarKey)!
+    check("Safari: ⇧⌘L shows and hides Margin's sidebar, its own key kept", ShortcutSet.bindings(from: [:], safari: true)[shiftCmdL] == .toggleSidebar
+          && ShortcutSet.bindings(from: [:], safari: true)[Combo.parse("Alt+KeyS")!] == .toggleSidebar)
+    check("not Safari: ⇧⌘L left alone", ShortcutSet.bindings(from: [:])[shiftCmdL] == nil)
+    check("Safari: ⇧⌘L given to another command in Settings stays that command's", ShortcutSet.bindings(from: ["palette": [ShortcutSet.safariSidebarKey]], safari: true)[shiftCmdL] == .palette)
+    // The edge stop (EdgeStop.swift): 5 pt past AppKit's 4 pt edge zone, only where nothing lies to the window's left.
+    let fsWin = CGRect(x: 0, y: 33, width: 1512, height: 949)
+    let laptop: [(frame: CGRect, topInset: CGFloat)] = [(CGRect(x: 0, y: 0, width: 1512, height: 982), 33)]
+    let fence = EdgeStop.fence(window: fsWin, displays: laptop)
+    check("edge stop: a full-screen window on its own display: 5 pt in", fence == EdgeStop.Fence(x: 5, top: 33, bottom: 982))
+    check("edge stop: a display to the window's left: none (the pointer crosses there)",
+          EdgeStop.fence(window: CGRect(x: 1512, y: 0, width: 1920, height: 1080), displays: laptop + [(CGRect(x: 1512, y: 0, width: 1920, height: 1080), 0)]) == nil)
+    check("edge stop: a display left of the laptop but not beside the window's height: still there",
+          EdgeStop.fence(window: fsWin, displays: laptop + [(CGRect(x: -1920, y: 2000, width: 1920, height: 1080), 0)]) != nil)
+    check("edge stop: the pointer left of it, beside the window: stopped there", EdgeStop.clamp(CGPoint(x: 0, y: 500), fence) == CGPoint(x: 5, y: 500)
+          && EdgeStop.clamp(CGPoint(x: 4.9, y: 40), fence) == CGPoint(x: 5, y: 40))
+    check("edge stop: at it or right of it, above or below the window, or no stop: where it is",
+          EdgeStop.clamp(CGPoint(x: 5, y: 500), fence) == nil && EdgeStop.clamp(CGPoint(x: 300, y: 500), fence) == nil
+          && EdgeStop.clamp(CGPoint(x: 0, y: 10), fence) == nil && EdgeStop.clamp(CGPoint(x: 0, y: 500), nil) == nil)
+    // Safari's sidebar told from its other parts on the left by its View menu item's title (ShellSafariSidebar.swift).
+    check("Safari's sidebar: the item's title flipped from its closed one: open", SafariSidebar.isOpen(title: "Hide Sidebar", closedTitle: "Show Sidebar")
+          && SafariSidebar.isOpen(title: "Seitenleiste ausblenden", closedTitle: "Seitenleiste einblenden"))
+    check("Safari's sidebar: the same title (the Web Inspector on the left), or none learned yet: not",
+          !SafariSidebar.isOpen(title: "Show Sidebar", closedTitle: "Show Sidebar") && !SafariSidebar.isOpen(title: "Hide Sidebar", closedTitle: nil) && !SafariSidebar.isOpen(title: nil, closedTitle: "Show Sidebar"))
     check("gate: the linked browser in front with its overlay", ShortcutSet.active(frontPid: 10, linkedPids: [10], frontWindowHasOverlay: true))
     check("gate: another app in front", !ShortcutSet.active(frontPid: 11, linkedPids: [10], frontWindowHasOverlay: true))
     check("gate: the browser in front, its front window without an overlay", !ShortcutSet.active(frontPid: 10, linkedPids: [10], frontWindowHasOverlay: false))
