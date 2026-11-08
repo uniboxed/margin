@@ -1,0 +1,134 @@
+{
+  "domain": "qualys.com",
+  "rank": 4854,
+  "verdict": "flagged",
+  "flags": [
+    "content-cut-off"
+  ],
+  "round": 1,
+  "at": "2026-11-08T16:02:43.016Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4854,
+    "domain": "qualys.com",
+    "verdict": "flagged",
+    "flags": [
+      "content-cut-off"
+    ],
+    "at": "2026-11-08T16:02:43.016Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4045,
+      "error": null,
+      "finalHost": "www.qualys.com",
+      "errors": [
+        "Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 9575,
+        "visible": 86,
+        "cut": 43,
+        "cutRight": 30,
+        "images": 149,
+        "brokenImages": 1,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9165
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3736,
+      "error": null,
+      "finalHost": "www.qualys.com",
+      "errors": [
+        "Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 9575,
+        "visible": 86,
+        "cut": 34,
+        "cutRight": 34,
+        "images": 149,
+        "brokenImages": 1,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9148
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 9.4,
+      "sdMargin": 49.1,
+      "sdPlain": 48.7
+    },
+    "shots": true,
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4854-qualys.com-margin.jpg",
+      "plain": "rounds/0001/shots/4854-qualys.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:02:43.016Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "content-cut-off"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4045,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3736,
+        "error": null
+      },
+      "look": {
+        "diff": 9.4,
+        "sdMargin": 49.1,
+        "sdPlain": 48.7
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4854-qualys.com-margin.jpg",
+        "plain": "rounds/0001/shots/4854-qualys.com-plain.jpg"
+      }
+    }
+  ]
+}

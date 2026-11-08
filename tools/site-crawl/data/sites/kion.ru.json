@@ -1,0 +1,73 @@
+{
+  "domain": "kion.ru",
+  "rank": 4868,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:03:13.877Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4868,
+    "domain": "kion.ru",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T16:03:13.877Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": 200,
+      "ms": 18346,
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "finalHost": "kion.ru",
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 200,
+      "ms": 18446,
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "finalHost": "kion.ru",
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:03:13.877Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 18346,
+        "error": "page.evaluate: Target page, context or browser has been closed"
+      },
+      "plain": {
+        "status": 200,
+        "ms": 18446,
+        "error": "page.evaluate: Target page, context or browser has been closed"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

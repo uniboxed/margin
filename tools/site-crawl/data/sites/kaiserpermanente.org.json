@@ -1,0 +1,130 @@
+{
+  "domain": "kaiserpermanente.org",
+  "rank": 4786,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:00:53.754Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4786,
+    "domain": "kaiserpermanente.org",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T16:00:53.754Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6217,
+      "error": null,
+      "finalHost": "healthy.kaiserpermanente.org",
+      "errors": [
+        "(void 0) is not a function",
+        "Failed to execute 'define' on 'CustomElementRegistry': the name \"lottie-player\" has already been used with this registry",
+        "Cannot read properties of null (reading 'children')",
+        "Cannot read properties of null (reading 'children')",
+        "Cannot read properties of null (reading 'children')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5846,
+        "visible": 57,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 86,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6635
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5560,
+      "error": null,
+      "finalHost": "healthy.kaiserpermanente.org",
+      "errors": [
+        "(void 0) is not a function",
+        "Failed to execute 'define' on 'CustomElementRegistry': the name \"lottie-player\" has already been used with this registry",
+        "Cannot read properties of null (reading 'children')",
+        "Cannot read properties of null (reading 'children')",
+        "Cannot read properties of null (reading 'children')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5846,
+        "visible": 57,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 86,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6635
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.5,
+      "sdMargin": 87.9,
+      "sdPlain": 87.9
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:00:53.754Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6217,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5560,
+        "error": null
+      },
+      "look": {
+        "diff": 0.5,
+        "sdMargin": 87.9,
+        "sdPlain": 87.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

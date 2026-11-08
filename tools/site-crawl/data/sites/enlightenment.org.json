@@ -1,0 +1,73 @@
+{
+  "domain": "enlightenment.org",
+  "rank": 4769,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:00:22.034Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4769,
+    "domain": "enlightenment.org",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T16:00:22.034Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 568,
+      "error": "page.goto: net::ERR_ABORTED at https://enlightenment.org/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 561,
+      "error": "page.goto: net::ERR_ABORTED at https://enlightenment.org/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:00:22.034Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 568,
+        "error": "page.goto: net::ERR_ABORTED at https://enlightenment.org/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 561,
+        "error": "page.goto: net::ERR_ABORTED at https://enlightenment.org/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

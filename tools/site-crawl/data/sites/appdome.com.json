@@ -1,0 +1,137 @@
+{
+  "domain": "appdome.com",
+  "rank": 4771,
+  "verdict": "flagged",
+  "flags": [
+    "sideways-overflow",
+    "content-cut-off"
+  ],
+  "round": 1,
+  "at": "2026-11-08T16:00:29.803Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4771,
+    "domain": "appdome.com",
+    "verdict": "flagged",
+    "flags": [
+      "sideways-overflow",
+      "content-cut-off"
+    ],
+    "at": "2026-11-08T16:00:29.803Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4044,
+      "error": null,
+      "finalHost": "www.appdome.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'id')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1922,
+        "overflowX": 750,
+        "text": 12981,
+        "visible": 9,
+        "cut": 7,
+        "cutRight": 7,
+        "images": 7,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9577
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4185,
+      "error": null,
+      "finalHost": "www.appdome.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'id')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 12981,
+        "visible": 9,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 8,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9266
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 15.2,
+      "sdMargin": 44.3,
+      "sdPlain": 44.3
+    },
+    "shots": true,
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4771-appdome.com-margin.jpg",
+      "plain": "rounds/0001/shots/4771-appdome.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:00:29.803Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "sideways-overflow",
+        "content-cut-off"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4044,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4185,
+        "error": null
+      },
+      "look": {
+        "diff": 15.2,
+        "sdMargin": 44.3,
+        "sdPlain": 44.3
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4771-appdome.com-margin.jpg",
+        "plain": "rounds/0001/shots/4771-appdome.com-plain.jpg"
+      }
+    }
+  ]
+}

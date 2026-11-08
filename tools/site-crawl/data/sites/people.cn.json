@@ -1,0 +1,130 @@
+{
+  "domain": "people.cn",
+  "rank": 4826,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T16:02:09.288Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4826,
+    "domain": "people.cn",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T16:02:09.288Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 11638,
+      "error": null,
+      "finalHost": "www.people.com.cn",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1320,
+        "overflowX": 148,
+        "text": 5860,
+        "visible": 95,
+        "cut": 27,
+        "cutRight": 25,
+        "images": 133,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9610
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 11966,
+      "error": null,
+      "finalHost": "www.people.com.cn",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1320,
+        "overflowX": 148,
+        "text": 5860,
+        "visible": 111,
+        "cut": 30,
+        "cutRight": 27,
+        "images": 133,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 45.1,
+      "sdMargin": 71,
+      "sdPlain": 75.3
+    },
+    "shots": true,
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4826-people.cn-margin.jpg",
+      "plain": "rounds/0001/shots/4826-people.cn-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:02:09.288Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 11638,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 11966,
+        "error": null
+      },
+      "look": {
+        "diff": 45.1,
+        "sdMargin": 71,
+        "sdPlain": 75.3
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4826-people.cn-margin.jpg",
+        "plain": "rounds/0001/shots/4826-people.cn-plain.jpg"
+      }
+    }
+  ]
+}

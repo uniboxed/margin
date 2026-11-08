@@ -1,0 +1,118 @@
+{
+  "domain": "mamastar.jp",
+  "rank": 4872,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:03:05.707Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4872,
+    "domain": "mamastar.jp",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T16:03:05.707Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 202,
+      "ms": 2363,
+      "error": null,
+      "finalHost": "mamastar.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4921,
+        "visible": 106,
+        "cut": 51,
+        "cutRight": 45,
+        "images": 103,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 3883
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 202,
+      "ms": 2395,
+      "error": null,
+      "finalHost": "mamastar.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4921,
+        "visible": 106,
+        "cut": 51,
+        "cutRight": 45,
+        "images": 103,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 3742
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 40.7,
+      "sdPlain": 40.8
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:03:05.707Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 202,
+        "ms": 2363,
+        "error": null
+      },
+      "plain": {
+        "status": 202,
+        "ms": 2395,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 40.7,
+        "sdPlain": 40.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

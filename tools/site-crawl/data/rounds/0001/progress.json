@@ -1,17 +1,17 @@
 {
-  "done": 4763,
-  "ok": 2429,
-  "flagged": 121,
-  "marginFailed": 16,
-  "blocked": 44,
-  "plainFailed": 2055,
+  "done": 4875,
+  "ok": 2489,
+  "flagged": 126,
+  "marginFailed": 17,
+  "blocked": 57,
+  "plainFailed": 2088,
   "skipped": 98,
   "errors": 0,
   "total": 9999,
-  "left": 5236,
-  "perMinute": 33.8,
-  "etaHours": 2.6,
-  "updatedAt": "2026-11-08T15:59:52.463Z",
+  "left": 5124,
+  "perMinute": 36.2,
+  "etaHours": 2.4,
+  "updatedAt": "2026-11-08T16:03:15.117Z",
   "workers": 3,
-  "pid": 65878
+  "pid": 75512
 }

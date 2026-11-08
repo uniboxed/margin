@@ -6,3 +6,6 @@
 2026-11-08T15:59:48.163Z SIGTERM: stopping
 2026-11-08T15:59:52.654Z round 1: 296 more sites this run (4763 in all); the crawl ended (exit 0)
 2026-11-08T15:59:54.910Z end: 4763 sites; {"ok":2426,"flagged":121,"margin-failed":16,"blocked":616,"plain-failed":1486,"skipped":98}; worse since the round before 0, better 0. /Users/tirth/Projects/margin/tools/site-crawl/data/summary.md
+2026-11-08T16:00:09.303Z start: round 1, Margin f2231c7 (main), until 2026-11-08T20:30:00.000Z, 3 workers
+2026-11-08T16:03:13.439Z SIGTERM: stopping
+2026-11-08T16:03:15.153Z round 1: 112 more sites this run (4875 in all); the crawl ended (exit 0)

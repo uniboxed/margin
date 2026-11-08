@@ -1,0 +1,73 @@
+{
+  "domain": "minecraft-services.net",
+  "rank": 4793,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:00:57.832Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4793,
+    "domain": "minecraft-services.net",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T16:00:57.832Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 78,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://minecraft-services.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 76,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://minecraft-services.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:00:57.832Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 78,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://minecraft-services.net/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 76,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://minecraft-services.net/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

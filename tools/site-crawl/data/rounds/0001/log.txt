@@ -1358,3 +1358,9 @@
 2026-11-08T15:51:12.003Z worker 3: Margin world up (slot {"left":260,"top":8,"right":8,"bottom":8}, light)
 2026-11-08T15:59:48.171Z SIGTERM: stopping after the sites under way
 2026-11-08T15:59:52.463Z end: 4763 of 9999 done
+2026-11-08T16:00:09.666Z start: 5236 sites to go of 9999 (4763 done before), 3 workers, out /Users/tirth/Projects/margin/tools/site-crawl/data/rounds/0001
+2026-11-08T16:00:16.108Z worker 3: Margin world up (slot {"left":260,"top":8,"right":8,"bottom":8}, light)
+2026-11-08T16:00:16.566Z worker 2: Margin world up (slot {"left":260,"top":8,"right":8,"bottom":8}, light)
+2026-11-08T16:00:16.634Z worker 1: Margin world up (slot {"left":260,"top":8,"right":8,"bottom":8}, light)
+2026-11-08T16:03:13.440Z SIGTERM: stopping after the sites under way
+2026-11-08T16:03:15.117Z end: 4875 of 9999 done

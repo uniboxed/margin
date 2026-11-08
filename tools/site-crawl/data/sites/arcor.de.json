@@ -1,0 +1,130 @@
+{
+  "domain": "arcor.de",
+  "rank": 4785,
+  "verdict": "flagged",
+  "flags": [
+    "content-cut-off"
+  ],
+  "round": 1,
+  "at": "2026-11-08T16:00:48.922Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4785,
+    "domain": "arcor.de",
+    "verdict": "flagged",
+    "flags": [
+      "content-cut-off"
+    ],
+    "at": "2026-11-08T16:00:48.922Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4898,
+      "error": null,
+      "finalHost": "live.vodafone.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 10426,
+        "visible": 107,
+        "cut": 63,
+        "cutRight": 51,
+        "images": 144,
+        "brokenImages": 1,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6878
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4108,
+      "error": null,
+      "finalHost": "live.vodafone.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 9663,
+        "visible": 81,
+        "cut": 32,
+        "cutRight": 20,
+        "images": 134,
+        "brokenImages": 1,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6768
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 90.4,
+      "sdPlain": 90.4
+    },
+    "shots": true,
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4785-arcor.de-margin.jpg",
+      "plain": "rounds/0001/shots/4785-arcor.de-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:00:48.922Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "content-cut-off"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4898,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4108,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 90.4,
+        "sdPlain": 90.4
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4785-arcor.de-margin.jpg",
+        "plain": "rounds/0001/shots/4785-arcor.de-plain.jpg"
+      }
+    }
+  ]
+}

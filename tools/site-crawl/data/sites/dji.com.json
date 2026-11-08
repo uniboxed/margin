@@ -1,0 +1,118 @@
+{
+  "domain": "dji.com",
+  "rank": 4790,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:00:57.464Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4790,
+    "domain": "dji.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T16:00:57.464Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4024,
+      "error": null,
+      "finalHost": "www.dji.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1256,
+        "overflowX": 84,
+        "text": 4379,
+        "visible": 99,
+        "cut": 18,
+        "cutRight": 18,
+        "images": 31,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4933
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4027,
+      "error": null,
+      "finalHost": "www.dji.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1256,
+        "overflowX": 84,
+        "text": 4379,
+        "visible": 102,
+        "cut": 17,
+        "cutRight": 17,
+        "images": 31,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4885
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 23.5,
+      "sdMargin": 64.8,
+      "sdPlain": 64.1
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:00:57.464Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4024,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4027,
+        "error": null
+      },
+      "look": {
+        "diff": 23.5,
+        "sdMargin": 64.8,
+        "sdPlain": 64.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "domain": "aps.org",
+  "rank": 4792,
+  "verdict": "margin-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:00:59.305Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4792,
+    "domain": "aps.org",
+    "verdict": "margin-failed",
+    "flags": [],
+    "at": "2026-11-08T16:00:59.305Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": 403,
+      "ms": 2893,
+      "error": null,
+      "finalHost": "www.aps.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 259,
+        "visible": 6,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4990,
+      "error": null,
+      "finalHost": "www.aps.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5127,
+        "visible": 44,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 20,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5313
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": "rounds/0001/shots/4792-aps.org-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:00:59.305Z",
+      "commit": "f2231c7",
+      "verdict": "margin-failed",
+      "flags": [],
+      "margin": {
+        "status": 403,
+        "ms": 2893,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4990,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": "rounds/0001/shots/4792-aps.org-plain.jpg"
+      }
+    }
+  ]
+}

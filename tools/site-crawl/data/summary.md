@@ -1,23 +1,23 @@
 # Site crawl
 
-4763 sites, each at its latest. Round 1: 4763 of 9999 done. Newest result 2026-11-08T15:59:51.172Z.
+4875 sites, each at its latest. Round 1: 4875 of 9999 done. Newest result 2026-11-08T16:03:13.877Z.
 
 ## Verdicts
-- ok: 2426
-- flagged: 121
-- margin-failed: 16
-- blocked: 616
-- plain-failed: 1486
+- ok: 2486
+- flagged: 126
+- margin-failed: 17
+- blocked: 629
+- plain-failed: 1519
 - skipped: 98
 
 `blocked`: the site turned the plain browser away too (bot protection, a captcha): it says nothing about Margin.
 
 ## Flags
-- looks-different: 70
-- content-cut-off: 25
-- sideways-overflow: 17
+- looks-different: 72
+- content-cut-off: 28
+- sideways-overflow: 18
 - elements-missing: 14
-- text-missing: 12
+- text-missing: 13
 - more-errors: 10
 - wrong-width: 6
 - drawn-off-slot: 6
@@ -28,7 +28,7 @@
 
 ## Better since the round before (0)
 
-## Loaded plain but not through Margin (16)
+## Loaded plain but not through Margin (17)
 - 35 live.com
 - 136 outlook.com
 - 395 nasa.gov
@@ -45,8 +45,9 @@
 - 4408 nine.com.au
 - 4445 detik.com
 - 4759 kayak.com
+- 4792 aps.org
 
-## Flagged for more than looking different (71)
+## Flagged for more than looking different (75)
 - 82 amazonvideo.com (content-cut-off)
 - 151 nic.ru (sideways-overflow)
 - 289 booking.com (text-missing)
@@ -118,5 +119,9 @@
 - 4514 sber.ru (no-box drawn-off-slot wrong-width)
 - 4660 amazon.pl (content-cut-off)
 - 4676 theknot.com (sideways-overflow)
+- 4771 appdome.com (sideways-overflow content-cut-off)
+- 4785 arcor.de (content-cut-off)
+- 4798 vedomosti.ru (text-missing looks-different)
+- 4854 qualys.com (content-cut-off)
 
 Each site in full: sites/<domain>.json. All of them: all-sites.csv.

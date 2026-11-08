@@ -1,26 +1,26 @@
-# Site crawl: 4763 sites
+# Site crawl: 4875 sites
 
 ## Verdicts
-- ok: 2426
-- plain-failed: 1486
-- flagged: 121
-- blocked: 616
-- margin-failed: 16
+- ok: 2486
+- plain-failed: 1519
+- flagged: 126
+- blocked: 629
+- margin-failed: 17
 - skipped: 98
 
 ## Flags (sites that loaded both ways)
-- looks-different: 70
-- content-cut-off: 25
-- sideways-overflow: 17
+- looks-different: 72
+- content-cut-off: 28
+- sideways-overflow: 18
 - elements-missing: 14
-- text-missing: 12
+- text-missing: 13
 - more-errors: 10
 - wrong-width: 6
 - drawn-off-slot: 6
 - no-box: 5
 - blank: 3
 
-Average load: through Margin 4525 ms, plain 4755 ms.
+Average load: through Margin 4546 ms, plain 4764 ms.
 
 ## Loaded plain but not through Margin
 - 35 live.com: page.evaluate: Execution context was destroyed, most likely because of a navigation
@@ -39,6 +39,7 @@ Average load: through Margin 4525 ms, plain 4755 ms.
 - 4408 nine.com.au: timeout: measure (8000 ms)
 - 4445 detik.com: timeout: measure (8000 ms)
 - 4759 kayak.com: page.evaluate: Execution context was destroyed, most likely because of a navigation
+- 4792 aps.org: 
 
 ## looks-different
 - 5 facebook.com
@@ -128,6 +129,9 @@ Average load: through Margin 4525 ms, plain 4755 ms.
 - 4089 1und1.de
 - 4406 oray.com
 - 4660 amazon.pl
+- 4771 appdome.com
+- 4785 arcor.de
+- 4854 qualys.com
 
 ## sideways-overflow
 - 151 nic.ru
@@ -147,6 +151,7 @@ Average load: through Margin 4525 ms, plain 4755 ms.
 - 4089 1und1.de
 - 4369 hoster.kz
 - 4676 theknot.com
+- 4771 appdome.com
 
 ## text-missing
 - 289 booking.com
@@ -161,6 +166,7 @@ Average load: through Margin 4525 ms, plain 4755 ms.
 - 4226 shopee.sg
 - 4363 shopee.com.my
 - 4484 stuff.co.nz
+- 4798 vedomosti.ru
 
 ## more-errors
 - 306 alibaba.com

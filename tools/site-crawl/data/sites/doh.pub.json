@@ -1,0 +1,103 @@
+{
+  "domain": "doh.pub",
+  "rank": 4787,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:00:52.122Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4787,
+    "domain": "doh.pub",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T16:00:52.122Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": 502,
+      "ms": 2432,
+      "error": null,
+      "finalHost": "doh.pub",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 21,
+        "visible": 1,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 502,
+      "ms": 2484,
+      "error": null,
+      "finalHost": "doh.pub",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 21,
+        "visible": 1,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 868
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:00:52.122Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 502,
+        "ms": 2432,
+        "error": null
+      },
+      "plain": {
+        "status": 502,
+        "ms": 2484,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

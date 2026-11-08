@@ -1,0 +1,73 @@
+{
+  "domain": "icio.us",
+  "rank": 4871,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:03:06.491Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4871,
+    "domain": "icio.us",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T16:03:06.491Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 3381,
+      "error": "page.goto: net::ERR_CERT_COMMON_NAME_INVALID at https://icio.us/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 435,
+      "error": "page.goto: net::ERR_CERT_COMMON_NAME_INVALID at https://icio.us/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:03:06.491Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 3381,
+        "error": "page.goto: net::ERR_CERT_COMMON_NAME_INVALID at https://icio.us/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 435,
+        "error": "page.goto: net::ERR_CERT_COMMON_NAME_INVALID at https://icio.us/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}
