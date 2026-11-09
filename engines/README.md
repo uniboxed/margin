@@ -2,7 +2,7 @@
 
 What differs per browser lives here, by engine: WebKit, Chromium, and later Gecko. `extension/` (what runs in the browser) and `app/` (Margin's app on each OS) hold only what every browser shares.
 
-```
+```text
 engines/<engine>/
   extension/            the engine's defaults for the extension (its manifest changes, its own modules)
   app/                  the engine's defaults for the app (where its files are, how to find its windows)
