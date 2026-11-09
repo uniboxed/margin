@@ -387,6 +387,45 @@ fn only_visibility_changes_are_told_apart() {
 }
 
 #[test]
+fn each_link_binds_only_its_relays_windows() {
+    let mut h = H::linked();
+    // Chrome's own relay and copy, its window at the same bounds as Edge's.
+    h.input(Input::RelayConnected {
+        conn: 2,
+        relay: RelayFacts { browser: "chrome".into(), pid: Some(200), origin: "chrome-extension://x/".into() },
+    });
+    let say = |v: Value| Input::RelayFrame { conn: 2, text: v.to_string() };
+    h.input(say(json!({ "k": "hello", "v": 2, "epoch": "c1", "profile": "p-b", "browser": "chrome", "owner": true })));
+    h.input(say(json!({
+        "k": "snapshot", "epoch": "c1", "seq": 1, "state": { "settings": {} },
+        "windows": [{ "windowId": 3, "left": 0, "top": 0, "width": 1920, "height": 1080, "state": "fullscreen", "focused": true }],
+    })));
+    assert_eq!(h.shell.link_keys(), vec!["chrome:p-b".to_string(), "edge:p-a".to_string()]);
+    for _ in 0..40 {
+        h.now += 0.25;
+        let mut edge = ServerWindow::new(BROWSER_WINDOW, EDGE, SCREEN);
+        edge.order = 0;
+        let mut chrome = ServerWindow::new(6001, 200, SCREEN);
+        chrome.order = 1;
+        h.input(Input::Windows(WindowRead {
+            list: vec![edge, chrome],
+            front_pid: Some(EDGE),
+            front_window: Some(BROWSER_WINDOW),
+            browsers: vec![
+                BrowserProcess { pid: EDGE, browser: "edge".into(), root: EDGE },
+                BrowserProcess { pid: 200, browser: "chrome".into(), root: 200 },
+            ],
+            displays: vec![Display { frame: SCREEN, top_inset: 0.0 }],
+        }));
+        if h.shell.bindings().len() == 2 {
+            break;
+        }
+    }
+    assert_eq!(h.shell.bindings().get(&WindowKey::new("edge:p-a", 7)), Some(&BROWSER_WINDOW));
+    assert_eq!(h.shell.bindings().get(&WindowKey::new("chrome:p-b", 3)), Some(&6001));
+}
+
+#[test]
 fn bad_input_is_lived_with() {
     let mut h = H::new();
     h.input(Input::RelayFrame { conn: 5, text: "not json".into() });
