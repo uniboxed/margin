@@ -76,8 +76,8 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 Margin.app now links Chrome's and Edge's copies the way it links Safari's (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"). Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'` (zsh's `log` is a builtin).
 
 **Set up once:**
-- `npm run safari` (it builds the relay helper into Margin.app). Margin.app writes the host files at launch: `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/io.tirth.margin.json` and Edge's (`Microsoft Edge/NativeMessagingHosts/`), naming `…/Margin.app/Contents/Helpers/margin-relay`.
-- `npm run build`, then in Chrome: `chrome://extensions` → Developer mode → Load unpacked → `dist/chrome`. Its ID must be `njeebbcmlenfopaecfbphgcfihbdmkec` (the build's fixed key; another ID can't reach the relay). Edge: `edge://extensions`, the same. A Chrome build you loaded before this one had another ID: it comes back as a new extension, and the old one's data stays with the old one.
+- `npm run safari` (it builds the connector, Rust, into Margin.app). Margin.app has it write the host files at launch (`margin-connector --install`): `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/io.tirth.margin.json` and Edge's (`Microsoft Edge/NativeMessagingHosts/`), naming `…/Margin.app/Contents/Helpers/margin-connector`. Chrome or Edge open while you install an older build's update: quit and reopen them once, so they start the new connector.
+- `npm run build`, then in Chrome: `chrome://extensions` → Developer mode → Load unpacked → `dist/chrome`. Its ID must be `njeebbcmlenfopaecfbphgcfihbdmkec` (the build's fixed key; another ID can't reach the connector). Edge: `edge://extensions`, the same. A Chrome build you loaded before this one had another ID: it comes back as a new extension, and the old one's data stays with the old one.
 
 **Check:**
 - [ ] Margin.app's log says `hello: chrome:p-…` (Edge: `edge:p-…`), and no `relay: refused`.

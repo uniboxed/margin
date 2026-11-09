@@ -1,5 +1,5 @@
-// Chrome's and Edge's relay (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"): the real relay helper
-// (app/shared/connector/main.swift, built by run.sh: MARGIN_RELAY_BIN) spoken to as a browser speaks to a native host (its
+// Chrome's and Edge's connector (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"): the real connector
+// (app/shared/connector/, built by run.sh: MARGIN_CONNECTOR_BIN) spoken to as a browser speaks to a native host (its
 // framing on stdin and stdout), linked to the app's real relay listener (RelayLink.swift) and SocketLink, in a
 // temporary folder. What a wantLink gets (the handler's reply with the browser and its process, then the link
 // dispatched as Safari's would be), a ping, the app not there, a relay that waited being told appUp, another version
@@ -16,10 +16,10 @@ private final class RelayProcess {
   init(_ binary: String, socket: String, browser: String = "edge", version: String = "7") {
     process.executableURL = URL(fileURLWithPath: binary)
     var env = ProcessInfo.processInfo.environment
-    env["MARGIN_RELAY_SOCKET"] = socket
-    env["MARGIN_RELAY_BROWSER"] = browser
-    env["MARGIN_RELAY_VERSION"] = version
-    env["MARGIN_RELAY_NO_LAUNCH"] = "1"
+    env["MARGIN_CONNECTOR_SOCKET"] = socket
+    env["MARGIN_CONNECTOR_BROWSER"] = browser
+    env["MARGIN_CONNECTOR_VERSION"] = version
+    env["MARGIN_CONNECTOR_NO_LAUNCH"] = "1"
     process.environment = env
     process.standardInput = input
     process.standardOutput = output
@@ -75,8 +75,8 @@ private func spin(_ seconds: TimeInterval, until test: () -> Bool = { false }) {
 }
 
 func relayTests() {
-  guard let binary = ProcessInfo.processInfo.environment["MARGIN_RELAY_BIN"] else {
-    return check("relay: MARGIN_RELAY_BIN set by run.sh", false)
+  guard let binary = ProcessInfo.processInfo.environment["MARGIN_CONNECTOR_BIN"] else {
+    return check("relay: MARGIN_CONNECTOR_BIN set by run.sh", false)
   }
   let dir = FileManager.default.temporaryDirectory.appendingPathComponent("margin-relay-\(getpid())", isDirectory: true)
   try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -92,7 +92,7 @@ func relayTests() {
   let early = RelayProcess(binary, socket: path)
   early.send(["type": "wantLink", "nonce": "n0"])
   let alone = early.next()
-  check("no app: answered by the relay, not open, not launching (MARGIN_RELAY_NO_LAUNCH)", alone?["appOpen"] as? Bool == false && alone?["launching"] as? Bool == false && alone?["browser"] as? String == "edge", "\(alone ?? [:])")
+  check("no app: answered by the connector, not open, not launching (MARGIN_CONNECTOR_NO_LAUNCH)", alone?["appOpen"] as? Bool == false && alone?["launching"] as? Bool == false && alone?["browser"] as? String == "edge", "\(alone ?? [:])")
 
   let link = SocketLink(dispatch: NoSafari(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.relay.\(me)"))
   let hub = RelayHub(path: path, version: "7", allows: { $0.uid == getuid() ? nil : "not this user" })
@@ -141,20 +141,30 @@ func relayTests() {
   check("a refused relay: never connected", strict.connected == 0)
   refused.end()
 
-  // The host files: written for each browser whose folder is there, naming the relay and only Margin's extension;
-  // the same again writes nothing.
+  // The host files (margin-connector --install): written for each Chromium browser whose folder is there, naming
+  // the connector and only Margin's extension; the same again writes nothing.
   let support = dir.appendingPathComponent("support", isDirectory: true)
   for browser in ["Google/Chrome", "Microsoft Edge Beta"] {
     try? FileManager.default.createDirectory(at: support.appendingPathComponent(browser, isDirectory: true), withIntermediateDirectories: true)
   }
-  let relayURL = URL(fileURLWithPath: binary)
-  let written = ChromiumHosts.install(relay: relayURL, support: support)
-  check("host files: Chrome's and Edge Beta's, no other browser's", written.count == 2 && written.allSatisfy { $0.hasSuffix("NativeMessagingHosts/io.tirth.margin.json") }, "\(written)")
+  func install() -> (Int32, [String]) {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: binary)
+    process.arguments = ["--install", "--support", support.path]
+    let out = Pipe()
+    process.standardOutput = out
+    try? process.run()
+    process.waitUntilExit()
+    let text = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    return (process.terminationStatus, text.split(separator: "\n").map(String.init))
+  }
+  let (status, written) = install()
+  check("host files: Chrome's and Edge Beta's, no other browser's", status == 0 && written.count == 2 && written.allSatisfy { $0.hasSuffix("NativeMessagingHosts/io.tirth.margin.json") }, "\(status) \(written)")
   let host = object(try? Data(contentsOf: support.appendingPathComponent("Google/Chrome/NativeMessagingHosts/io.tirth.margin.json")))
-  check("a host file: the relay, stdio, Margin's extension only", host?["name"] as? String == "io.tirth.margin" && host?["path"] as? String == binary && host?["type"] as? String == "stdio"
-          && same(host?["allowed_origins"], ["chrome-extension://njeebbcmlenfopaecfbphgcfihbdmkec/"]), "\(host ?? [:])")
-  check("host files: the same again writes nothing", ChromiumHosts.install(relay: relayURL, support: support).isEmpty)
-  check("host files: no relay in the build, nothing written", ChromiumHosts.install(relay: nil, support: support).isEmpty)
+  let real = URL(fileURLWithPath: binary).resolvingSymlinksInPath().path
+  check("a host file: the connector, stdio, Margin's extension only", host?["name"] as? String == "io.tirth.margin" && (host?["path"] as? String).map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path } == real
+          && host?["type"] as? String == "stdio" && same(host?["allowed_origins"], ["chrome-extension://njeebbcmlenfopaecfbphgcfihbdmkec/"]), "\(host ?? [:])")
+  check("host files: the same again writes nothing", install().1.isEmpty)
 
   var stopped = 0
   link.stop(why: "test done") { stopped += 1 }

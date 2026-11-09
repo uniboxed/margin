@@ -1,6 +1,6 @@
 // Chrome's and Edge's way to Margin.app (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"): their copies
-// can't hear SFSafariApplication.dispatchMessage, so the browser starts Margin's relay helper
-// (Margin.app/Contents/Helpers/margin-relay, app/shared/connector/main.swift) through native messaging, and the relay
+// can't hear SFSafariApplication.dispatchMessage, so the browser starts Margin's connector
+// (Margin.app/Contents/Helpers/margin-connector, app/shared/connector/) through native messaging, and the connector
 // connects here, a Unix socket only this user can open. It does for those copies what Safari's extension handler
 // does for Safari's: each message gets the handler's reply; a `wantLink` is answered into every relay of that
 // browser's process (the copy's lasting port is one of them), as SocketLink answers Safari's into Safari; `appUp`
@@ -12,6 +12,40 @@
 
 import Foundation
 import Security
+
+// Margin's connector in this build (Contents/Helpers/margin-connector), and what the app asks of it at launch.
+enum Connector {
+    static var url: URL? {
+        let url = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/margin-connector")
+        return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
+    }
+
+    // Chrome's, Edge's and the other Chromium browsers' host files (margin-connector --install: the connector's
+    // own knowledge of where each browser keeps them, engines/chromium/app/), written in the background; the
+    // log says how many changed.
+    static func installHostFiles() {
+        guard let url else { return Diagnostics.warn("no connector in this build (Contents/Helpers/margin-connector): Chrome and Edge can't link") }
+        let process = Process()
+        process.executableURL = url
+        process.arguments = ["--install"]
+        let out = Pipe()
+        let errors = Pipe()
+        process.standardOutput = out
+        process.standardError = errors
+        process.terminationHandler = { done in
+            let written = (String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "").split(separator: "\n").count
+            let why = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let status = done.terminationStatus
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    if status != 0 { Diagnostics.warn("the browsers' host files weren't written: \(why.prefix(200))") }
+                    else if written > 0 { Diagnostics.note("the browsers' host files written: \(written)") }
+                }
+            }
+        }
+        do { try process.run() } catch { Diagnostics.warn("the connector didn't start: \(error.localizedDescription)") }
+    }
+}
 
 final class RelayHub {
     struct Peer: Sendable {
@@ -35,11 +69,12 @@ final class RelayHub {
         self.allows = allows ?? RelayHub.relaySignedByUs
     }
 
-    // ~/Library/Application Support/Margin/relay.sock (a socket path may be at most 104 bytes).
+    // ~/Library/Application Support/Margin/connector.sock (a socket path may be at most 104 bytes; the connector's
+    // own default is the same: app/shared/connector/src/unix.rs).
     static var defaultPath: String {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        return support.appendingPathComponent("Margin/relay.sock").path
+        return support.appendingPathComponent("Margin/connector.sock").path
     }
 
     static var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "" }
@@ -134,7 +169,7 @@ final class RelayHub {
         let attributes = [kSecGuestAttributePid: peer.pid] as CFDictionary
         guard SecCodeCopyGuestWithAttributes(nil, attributes, [], &code) == errSecSuccess, let code else { return "its code couldn't be read" }
         var requirement: SecRequirement?
-        let text = "identifier \"io.tirth.margin.relay\" and anchor apple generic and certificate leaf[subject.OU] = \"\(team)\""
+        let text = "identifier \"io.tirth.margin.connector\" and anchor apple generic and certificate leaf[subject.OU] = \"\(team)\""
         guard SecRequirementCreateWithString(text as CFString, [], &requirement) == errSecSuccess, let requirement else { return "no requirement" }
         return SecCodeCheckValidity(code, [], requirement) == errSecSuccess ? nil : "not Margin's relay"
     }

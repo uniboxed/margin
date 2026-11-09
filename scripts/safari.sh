@@ -87,28 +87,31 @@ fi
 xcodebuild -project xcode/Margin/Margin.xcodeproj -scheme Margin -configuration Release \
   -derivedDataPath "$DERIVED" -allowProvisioningUpdates -quiet $SIGN build
 BUILT="$DERIVED/Build/Products/Release/Margin.app"
-# Chrome's and Edge's relay helper (app/shared/connector/main.swift, docs/PROTOCOL.md "Transport (Chrome and Edge, on the
-# Mac)"): built for both kinds of Mac into Contents/Helpers, signed as Margin's relay (io.tirth.margin.relay) with
-# the identity the app was signed with, and the app signed again around it, its own settings kept. Margin.app lets
-# only that relay in (app/macos/shell/RelayLink.swift). Before anything is installed: a failure here leaves the
-# installed copy as it was.
+# Chrome's and Edge's connector (app/shared/connector/, Rust; docs/PROTOCOL.md "Transport (Chrome and Edge, on the
+# Mac)"): built for both kinds of Mac into Contents/Helpers with the app's version in it, signed as Margin's
+# connector (io.tirth.margin.connector) with the identity the app was signed with, and the app signed again around
+# it, its own settings kept. Margin.app lets only that connector in (app/macos/shell/RelayLink.swift). Before
+# anything is installed: a failure here leaves the installed copy as it was.
 HELPERS="$BUILT/Contents/Helpers"
-mkdir -p "$HELPERS" "$DERIVED/relay"
-for arch in arm64 x86_64; do
-  swiftc -O -swift-version 5 -target "$arch-apple-macos14.0" app/shared/connector/main.swift -o "$DERIVED/relay/margin-relay-$arch"
+CARGO="${CARGO:-$(command -v cargo || echo "$HOME/.cargo/bin/cargo")}"
+APP_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$BUILT/Contents/Info.plist")
+mkdir -p "$HELPERS"
+for target in aarch64-apple-darwin x86_64-apple-darwin; do
+  MARGIN_APP_VERSION="$APP_VERSION" MACOSX_DEPLOYMENT_TARGET=14.0 "$CARGO" build -q --release --locked -p margin-connector --target "$target"
 done
-lipo -create "$DERIVED/relay/margin-relay-arm64" "$DERIVED/relay/margin-relay-x86_64" -output "$HELPERS/margin-relay"
+rm -f "$HELPERS/margin-relay"
+lipo -create target/aarch64-apple-darwin/release/margin-connector target/x86_64-apple-darwin/release/margin-connector -output "$HELPERS/margin-connector"
 if [ "$UNSIGNED" = true ]; then
   IDENTITY=-
 else
   AUTHORITY=$(codesign -dvv "$BUILT" 2>&1 | sed -n 's/^Authority=//p' | head -1)
   IDENTITY=$(security find-identity -v -p codesigning | grep -F "\"$AUTHORITY\"" | head -1 | awk '{print $2}')
   if [ -z "$IDENTITY" ]; then
-    echo "No signing identity named \"$AUTHORITY\" (the app's) to sign the relay helper with." >&2
+    echo "No signing identity named \"$AUTHORITY\" (the app's) to sign the connector with." >&2
     exit 1
   fi
 fi
-codesign --force --sign "$IDENTITY" --options runtime --timestamp=none --identifier io.tirth.margin.relay "$HELPERS/margin-relay"
+codesign --force --sign "$IDENTITY" --options runtime --timestamp=none --identifier io.tirth.margin.connector "$HELPERS/margin-connector"
 codesign --force --sign "$IDENTITY" --options runtime --timestamp=none --preserve-metadata=identifier,entitlements,requirements,flags "$BUILT"
 codesign --verify --strict "$BUILT"
 

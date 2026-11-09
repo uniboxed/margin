@@ -86,15 +86,12 @@ status=0
 if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   warnings "the app" "${XCODE_FLAGS[@]}" ../../app/macos/startup/AppDelegate.swift ../../app/macos/startup/ViewController.swift "${SHELL_SOURCES[@]}"
   warnings "the extension handler" -swift-version 5 ../../engines/webkit/browsers/safari/app/handler/SafariWebExtensionHandler.swift
-  # Chrome's and Edge's relay helper (app/shared/connector/), built as scripts/safari.sh builds it, warnings failing here too.
-  relay_warns=$(swiftc -typecheck -swift-version 5 ../../app/shared/connector/main.swift 2>&1 | grep -E "(warning|error):" || true) # (a main.swift: not a library)
-  if [ -n "$relay_warns" ]; then echo "FAIL the relay helper: the build would warn:"; echo "$relay_warns" | head -20; status=1
-  else echo "ok   the relay helper: no compiler warnings"; fi
-  if [ ! -x "$BUILD/margin-relay" ] || [ ../../app/shared/connector/main.swift -nt "$BUILD/margin-relay" ]; then
-    swiftc -O -swift-version 5 ../../app/shared/connector/main.swift -o "$BUILD/margin-relay" || exit 1
-  fi
+  # Chrome's and Edge's connector (app/shared/connector/, Rust), built as scripts/safari.sh builds it.
+  CARGO="${CARGO:-$(command -v cargo || echo "$HOME/.cargo/bin/cargo")}"
+  "$CARGO" build -q --release -p margin-connector --manifest-path ../../Cargo.toml || exit 1
+  CONNECTOR="$(cd ../.. && pwd)/target/release/margin-connector"
   build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift cloud-tabs-tests.swift theme-tests.swift fake-safari.swift window-tests.swift private-calls-tests.swift handoff-tests.swift parking-tests.swift handoff-ui-tests.swift devhooks-tests.swift relay-tests.swift "${SHELL_SOURCES[@]}"
-  MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_RELAY_BIN="$BUILD/margin-relay" "$BUILD/tests" || status=1
+  MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_CONNECTOR_BIN="$CONNECTOR" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
   [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }

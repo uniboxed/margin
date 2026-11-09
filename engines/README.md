@@ -18,9 +18,9 @@ A browser that behaves like its engine needs nothing of its own. Only this folde
 | `webkit/browsers/safari/extension/manifest.json` | Safari's manifest changes: the background as a page, native messaging, its commands | `dist/safari/` |
 | `webkit/browsers/safari/app/` | Safari's side of Margin.app (Swift): its Accessibility tree, its files and profile names, iCloud Tabs, the startup covers, keeping its sidebar closed, the edge stop, the dev hooks; `handler/`, its extension handler (the extension's target, copied by `scripts/make-xcode.sh`) | Margin.app |
 | `chromium/extension/manifest.json` | Chromium's manifest changes: the service worker, `search` (`chrome.search.query`), `nativeMessaging`, and the fixed `key` that gives Margin its extension ID | `dist/chrome/` (Chrome, Edge and every other Chromium browser) |
-| `chromium/app/` | Chromium's side of Margin.app on the Mac (Swift): the native-messaging host files (`ChromiumHosts.swift`) | Margin.app |
+| `chromium/app/` | Chromium's side of the app, every OS (Rust, crate `margin-chromium`): its browsers, where their native-messaging host files go and what they say; the connector (`app/shared/connector/`) writes them | the connector |
 
-Overrides replace top-level manifest keys, except `add_permissions`, which is appended to the shared list (`scripts/build.ts`, `MANIFESTS` names each build's file). The Mac app compiles every `*.swift` of the folders `app/macos/swift-sources.txt` lists, these engines' `app/` folders among them.
+Overrides replace top-level manifest keys, except `add_permissions`, which is appended to the shared list (`scripts/build.ts`, `MANIFESTS` names each build's file). The Mac app compiles every `*.swift` of the folders `app/macos/swift-sources.txt` lists (Safari's `app/` among them); the Rust ones are crates of the root `Cargo.toml`.
 
 Behavior that differs (Safari fetches site icons since it has no `tab.favIconUrl`; default shortcuts) still lives in the profiles in `extension/shared/platform.ts`, which the build stamps for each build; it moves into each engine's `extension/` next.
 

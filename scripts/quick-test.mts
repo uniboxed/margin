@@ -11,6 +11,7 @@
 //   and any changed test file itself (theme tests two at a time: three and four made the drag tests flaky);
 // - Swift (app/macos/, each engine's and browser's app side, app/shared/connector/, tools/app-tests): the app's unit checks (compiled on every
 //   core; the randomized runs cut to 50 and 80 from 300 and 1000; the gate runs them all);
+// - Rust (*.rs, Cargo.toml, Cargo.lock, rustfmt.toml): npm run test:rust, all of it (format, clippy, tests, the Windows check);
 // - e2e test files that changed, run on their own (source changes leave e2e to the gate);
 // - what the quick tier never runs is listed at the end (WebKit host, the app's e2e, the e2e
 //   suite), so you know what the gate still has to say.
@@ -120,6 +121,8 @@ if (changed.some((f) => /^(extension|engines\/[^/]+(\/browsers\/[^/]+)?\/extensi
 }
 // (The app's Swift: app/macos/, each engine's and browser's app side, the connector, and the Swift tests.)
 const swift = all || changed.some((f) => /^(app\/macos|engines\/[^/]+(\/browsers\/[^/]+)?\/app|app\/shared\/connector|tools\/app-tests)\//.test(f));
+// (The Rust workspace: any crate's source or the workspace's own files.)
+const rust = all || changed.some((f) => /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfmt\.toml$/.test(f));
 const e2eFiles = all ? [] : E2E.filter((t) => abs.includes(t));
 const notRun = [];
 if (changed.some((f) => /^(extension|engines|app\/shared\/host|tests\/e2e)\//.test(f)) && !e2eFiles.length) notRun.push('the e2e suite (npm run test:e2e)');
@@ -127,13 +130,14 @@ if (changed.some((f) => /^(extension|tools\/webkit-host)\//.test(f))) notRun.pus
 if (swift) notRun.push('the app\'s e2e checks (tools/app-tests/run.sh e2e)');
 
 const sel = (list) => list.filter((t) => why.has(t));
-const plan = { unit: sel([...UNIT, ...SECURITY]), theme: sel(THEME), e2e: e2eFiles, swift };
+const plan = { unit: sel([...UNIT, ...SECURITY]), theme: sel(THEME), e2e: e2eFiles, swift, rust };
 
 console.log(`quick tests: ${all ? 'everything quick' : `${changed.length} changed file(s)`}${option('--base') ? ` since ${option('--base')}` : ''}`);
 for (const [t, reason] of [...why].sort()) console.log(`  ${rel(t)}  (${reason})`);
 if (swift) console.log('  Swift unit checks (the app\'s Swift or its tests changed)');
+if (rust) console.log('  Rust checks (a crate or the workspace changed)');
 for (const t of plan.e2e) console.log(`  ${rel(t)}  (changed)`);
-if (!why.size && !swift && !plan.e2e.length) console.log('  no tests reach these changes: the build and the type check only');
+if (!why.size && !swift && !rust && !plan.e2e.length) console.log('  no tests reach these changes: the build and the type check only');
 if (flag('--dry')) process.exit(0);
 
 // ---- run -------------------------------------------------------------------------------------------
@@ -153,6 +157,7 @@ ok = step('type check', node, [join(ROOT, 'node_modules/typescript/bin/tsc'), '-
 if (plan.unit.length) ok = step(`unit (${plan.unit.length} files)`, node, ['--test', ...quiet, ...plan.unit.map(rel)]) && ok;
 if (plan.theme.length) ok = step(`theme (${plan.theme.length} files)`, node, ['--test', ...quiet, '--test-concurrency=2', ...plan.theme.map(rel)]) && ok;
 if (plan.swift) ok = step('Swift unit checks', join(ROOT, 'tools/app-tests/run.sh'), ['unit'], { WINDOW_RUNS: process.env.WINDOW_RUNS ?? '50', VISIBLE_RUNS: process.env.VISIBLE_RUNS ?? '80' }) && ok;
+if (plan.rust) ok = step('Rust checks', join(ROOT, 'scripts/rust-test.sh'), []) && ok;
 if (plan.e2e.length) ok = step(`e2e (${plan.e2e.length} changed files)`, node, ['--test', ...quiet, '--test-concurrency=2', ...plan.e2e.map(rel)]) && ok;
 
 console.log('\n== quick tests: ' + (ok ? 'passed' : 'FAILED') + ` in ${((Date.now() - started) / 1000).toFixed(1)} s`);
