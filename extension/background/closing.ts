@@ -27,7 +27,7 @@ export function takeClosing(tabId: number) {
  * browser refuses them together. A tab that didn't close is forgotten here.
  */
 export async function closeTabs(ids: number | number[], how: 'keep' | 'done', why?: string) {
-  const list = [].concat(ids).filter(Number.isInteger);
+  const list = ([] as number[]).concat(ids).filter(Number.isInteger);
   if (!list.length) return;
   noteClosing(list, how, why);
   try {

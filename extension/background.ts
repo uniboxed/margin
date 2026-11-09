@@ -352,7 +352,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // show, so the page hears it was shown rather than that it didn't happen.
   const latest = deadline !== Infinity && Number.isFinite(message.waitsUntil) ? Math.max(deadline, message.waitsUntil) : deadline;
   let answered = false;
-  let guard = null;
+  let guard: number | null = null;
   // A switch asked for: work that can wait (background/tabs.ts
   // injectIntoOpenTabs) gives way until it's answered (by the guard too).
   const over = TIMED.has(message.type) ? switchAsked() : null;

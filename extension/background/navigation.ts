@@ -339,7 +339,7 @@ export async function showSpace(windowId: number, spaceId: string, { bringTab = 
   // so a copy a newer one replaced fails as stale rather than switching tabs
   // from its own state, out of date.
   if ((await recheckSoon()) !== 'owner') throw new StaleError();
-  let before = null;
+  let before: string | null = null;
   const s = await mutate((st) => {
     before = V.activeSpaceId(st, windowId);
     return M.setActiveSpace(st, windowId, spaceId);

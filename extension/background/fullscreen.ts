@@ -31,7 +31,7 @@ async function waitForState(windowId, state, ms = 3000) {
 export async function toggleMarginFullscreen(windowId) {
   if (switching.has(windowId)) return null;
   switching.set(windowId, null); // taken (null: where it's going isn't known yet)
-  let on = null;
+  let on: boolean | null = null;
   try {
     const win = await api.windows.get(windowId);
     on = !(win.state === 'fullscreen' && (await entered())[windowId]);

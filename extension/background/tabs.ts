@@ -88,7 +88,7 @@ export function activating(tabId) {
   return at;
 }
 /** The user chose a tab themselves (Safari's tab bar, ⌘1–9): a new tab's wait in that window stops. */
-export function userSwitched(tabId = null, windowId = null) {
+export function userSwitched(tabId: number | null = null, windowId: number | null = null) {
   if (tabId != null && (isFocusing(tabId) || Date.now() - (activatedByMargin.get(tabId) ?? 0) < OWN_ACTIVATION_MS)) return;
   focusGen++;
   movedOn(windowId);
@@ -520,7 +520,7 @@ async function untilLoaded(tabId: number, until: () => number, left: () => boole
     ]).finally(() => clearTimeout(timer));
   };
   let sawLoading = false;
-  let fromLoaded = null; // whether the page the user is on had loaded, when first seen
+  let fromLoaded: boolean | null = null; // whether the page the user is on had loaded, when first seen
   for (;;) {
     if (left()) return 'left';
     const [tab, from] = await Promise.all([ask(tabId), fromId != null ? ask(fromId) : null]);
@@ -768,7 +768,7 @@ async function leftOnSleepPage(tab) {
 const REPAIR_RETRY_MS = [350, 1200, 3000];
 const REPAIR_AT_ONCE = 2;
 const GIVE_WAY_POLL_MS = 50;
-let repairOpenTabs = null;
+let repairOpenTabs: Promise<void> | null = null;
 export function injectIntoOpenTabs({ retry = true }: { retry?: boolean } = {}) {
   if (!repairOpenTabs) {
     repairOpenTabs = runOpenTabRepair(retry).finally(() => { repairOpenTabs = null; });

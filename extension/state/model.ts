@@ -1029,7 +1029,7 @@ function followTab(state: State, tabId, windowId) {
 }
 
 // The most recently shown tab of a space in a window (not `exceptId`).
-function recentTabOfSpace(state: State, windowId, spaceId, exceptId = null) {
+function recentTabOfSpace(state: State, windowId: number, spaceId: string | null | undefined, exceptId: number | null = null) {
   if (!spaceId) return null;
   return Object.values(state.tabs).filter((t) => t.windowId === windowId && t.id !== exceptId && state.tabSpace[t.id] === spaceId)
     .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0] ?? null;
@@ -1151,7 +1151,7 @@ function uniqueName(state, spaceId, name) {
 
 // `folderId`/`beforeId`: where it goes (a folder of its space, before a pin
 // or folder at that level); the end of the space's top level by default.
-function addPin(state: State, { id, spaceId, url, title, folderId = null, beforeId = null }) {
+function addPin(state: State, { id, spaceId, url, title, folderId = null, beforeId = null }: { id: string, spaceId: string, url: string, title?: string, folderId?: string | null, beforeId?: string | null }) {
   if (!url || !hasSpace(state, spaceId) || pinForUrl(state, url, spaceId)) return state;
   const next = { ...state, pins: [...state.pins, { id, spaceId, url, title: title || url }] };
   const folder = folderId ? folderIn(state, folderId, spaceId) : null;
@@ -1164,7 +1164,7 @@ function removePin(state: State, pinId) {
 
 // A pin into a folder of its space (or out of folders: null), before the pin
 // or folder `beforeId` there (the end by default).
-function movePin(state: State, pinId, { folderId = null, beforeId = null } = {}) {
+function movePin(state: State, pinId: string, { folderId = null, beforeId = null }: { folderId?: string | null, beforeId?: string | null } = {}) {
   const pin = state.pins.find((p) => p.id === pinId);
   if (!pin) return state;
   const folder = folderId ? folderIn(state, folderId, pin.spaceId) : null;
@@ -1180,7 +1180,7 @@ function movePin(state: State, pinId, { folderId = null, beforeId = null } = {})
 
 // A folder in a space (open), at the space's top level before `beforeId`
 // (the end by default), holding `pinIds` (of that space) in that order.
-function createFolder(state: State, { id, spaceId, name = 'New Folder', pinIds = [], beforeId = null }) {
+function createFolder(state: State, { id, spaceId, name = 'New Folder', pinIds = [], beforeId = null }: { id: string, spaceId: string, name?: string, pinIds?: string[], beforeId?: string | null }) {
   if (!hasSpace(state, spaceId) || (state.folders ?? []).some((f) => f.id === id)) return state;
   let next = { ...state, folders: [...(state.folders ?? []), { id, spaceId, name: uniqueName(state, spaceId, folderName(name) || 'New Folder'), open: true }] };
   next = writeOrder(next, null, placed(pinOrder(next, spaceId), { kind: 'folder', id }, beforeId));
@@ -1204,7 +1204,7 @@ function setFolderOpen(state: State, folderId, open) {
 }
 
 // A folder at its space's top level before `beforeId` (the end by default).
-function moveFolder(state: State, folderId, { beforeId = null } = {}) {
+function moveFolder(state: State, folderId: string, { beforeId = null }: { beforeId?: string | null } = {}) {
   const folder = (state.folders ?? []).find((f) => f.id === folderId);
   if (!folder) return state;
   return writeOrder(state, null, placed(pinOrder(state, folder.spaceId), { kind: 'folder', id: folderId }, beforeId));

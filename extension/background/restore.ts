@@ -21,7 +21,7 @@ const ARRIVE_MS = 10_000;
 const QUIET_MS = 1500;
 /** window id → its candidate tabs */
 const watched: Map<number, { since: number, tabs: Set<number> }> = new Map();
-let timer = null;
+let timer: number | null = null;
 
 // Margin tabs lost with a window lately, that a window coming back takes back.
 const waiting = (state: import('../../types/margin').State, t = now()) => Object.values(state.keptTabs ?? {}).some((k) => k.from && t - (k.from.at ?? 0) <= M.LOST_MS);

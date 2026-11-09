@@ -24,7 +24,7 @@ export function keepScrolls(list: { tabId: number, url: string, y: number }[]) {
 // A reopened Margin tab's page taking its scroll: the place (null: none), then it's gone.
 export async function takeScroll(tabId: number, url: string): Promise<number | null> {
   if (!Number.isInteger(tabId) || typeof url !== 'string') return null;
-  let y = null;
+  let y: number | null = null;
   await mutate((s) => {
     const taken = M.takeScroll(s, tabId, url);
     y = taken.y;

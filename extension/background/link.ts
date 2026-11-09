@@ -199,7 +199,7 @@ export async function themePieces(pkg: any, sha256: (bytes: Uint8Array) => Promi
   const whole = new TextEncoder().encode(JSON.stringify(pkg));
   const transfer = await sha256(whole);
   const parts = Math.max(1, Math.ceil(whole.length / chunkBytes));
-  const out = [];
+  const out: { k: string; id: any; transfer: string; part: number; parts: number; size: number; data: string; }[] = [];
   for (let part = 0; part < parts; part++) {
     const piece = whole.subarray(part * chunkBytes, (part + 1) * chunkBytes);
     let bin = '';
@@ -301,17 +301,17 @@ export function createLink({
   let on = false;
   let port = null;
   let ws = null;
-  let epoch = null;
+  let epoch: string | null = null;
   let seq = 0;
-  let nonce = null;
+  let nonce: string | null = null;
   let linkWaiter = null;
-  let busy = null;
+  let busy: Promise<any> | null = null;
   // When the try under way (busy) started, and whether something asked for the link while it was
   // under way (the app saying it's up, a page starting, the person): asked again once it ends.
   let busySince = 0;
   let askAgain = false;
   let askMs = 0;
-  let askTimer = null;
+  let askTimer: number | null = null;
   let lastHeard = 0;
   // When a late check (a pause) last probed the app: its quiet is counted from then at the earliest.
   let resumedAt = -Infinity;
@@ -322,14 +322,14 @@ export function createLink({
     lastWrite = lastWrite.then(() => session()?.set({ [LAST_KEY]: value })).catch(() => {});
   };
   let timers = [];
-  let pingTimer = null;
+  let pingTimer: number | null = null;
   let pending = null;
-  let pendingTimer = null;
-  let sentIcons = null;
+  let pendingTimer: number | null = null;
+  let sentIcons: Map<string, string> | null = null;
   let lastWindows = '';
   let lastKeys = '';
   let lastTheme = '';
-  let snapshotting = null;
+  let snapshotting: Promise<void> | null = null;
   let appUp = false;
   // The socket guard, once read: { off: false } or { off: true, at, why, until (null: this Safari session) }.
   let guard: { off: boolean, at?: number, why?: string, until?: number | null } | null = null;
@@ -339,8 +339,8 @@ export function createLink({
   // What pages see (storage.local appLink).
   // (`why`, `offAt`, `offUntil`: while off, why; `lastLayouts`: the layouts of an older epoch, kept for the first paint.)
   let pageState: { state: string, epoch: any, at: number, layouts: Record<number, any>, drawn: Record<number, boolean>, lastLayouts?: Record<number, any>, why?: string, offAt?: number, offUntil?: number } = { state: 'off', epoch: null, at: 0, layouts: {}, drawn: {} };
-  let goneTimer = null;
-  let layoutTimer = null;
+  let goneTimer: number | null = null;
+  let layoutTimer: number | null = null;
   let stateWrite = Promise.resolve();
   let profile = null;
   // Whether `profile` is Safari's own id for this profile (`s-…`: from the handler's answer, now or
@@ -441,7 +441,7 @@ export function createLink({
     return port;
   }
   // The native port going and coming back, at most once a PORT_NOTE_MS each (counted between).
-  let portDownAt = null;
+  let portDownAt: number | null = null;
   let portDrops = 0;
   let portLostNoted = -Infinity;
   let portBackNoted = -Infinity;
@@ -1282,7 +1282,7 @@ export function createLink({
   // The app's data set, in parts (each a data set of its own, sharing a
   // `transfer`; part 0 names every collection and lists the items left out),
   // taken once every part is here.
-  let parts = null;
+  let parts: { transfer: string, count: number, got: Map<number, any>, omitted: [string, string][], rev: string | null } | null = null;
   async function takeSnapshot(m) {
     if (!data || m.format !== DATA_FORMAT || !m.set || typeof m.set !== 'object') return;
     const count = Number.isInteger(m.parts) && m.parts >= 1 ? m.parts : 1;

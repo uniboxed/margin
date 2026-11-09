@@ -37,7 +37,7 @@ export function appLog(line: string) {
 export type Entry = { tabId: number, source: string, windowId: number | null, at: number, steps: [string, number][], activations: number, failed: string | null, timer: any, done: boolean };
 /** tabId → the switch to it under way */
 const open: Map<number, Entry> = new Map();
-const lines = []; // the last few, for tests
+const lines: string[] = []; // the last few, for tests
 
 function finish(e: Entry, why = '') {
   if (e.done) return;

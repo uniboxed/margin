@@ -107,7 +107,7 @@ let zoomWrites = Promise.resolve();
 // storage first.
 const ZOOM_KEEP_MS = 60000;
 const zoomClock = () => performance.now();
-let storedZoom = null; // { pageZoom, at }
+let storedZoom: { pageZoom: any; at: number; } | null = null; // { pageZoom, at }
 let zoomReads = 0; // a read that started before a write is not kept
 const tabZoomBase = new Map(); // tab id → { base, at }
 async function zoomBase(tabId) {

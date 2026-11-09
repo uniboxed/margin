@@ -203,7 +203,7 @@ async function read() {
 let dataMeta: Record<string, any> = {};
 const metaUnsaved = new Set<any>();
 const META_WRITE_MS = 1500;
-let metaTimer = null;
+let metaTimer: number | null = null;
 function writeMetaSoon() {
   if (metaTimer || !metaUnsaved.size) return;
   metaTimer = setTimeout(() => {
@@ -252,7 +252,7 @@ function trackKeys(keys) {
 // The changes one look at a collection found (its meta before and after): the
 // items with a new time, and the new tombstones.
 function changedItems(collection, before, after, items) {
-  const out = [];
+  const out: ({ collection: any; id: string; updatedAt: any; value: any; } | { collection: any; id: string; updatedAt: any; deleted: boolean; })[] = [];
   for (const [id, [at, fp]] of Object.entries(after.items)) {
     const had = before?.items?.[id];
     if (at > 0 && (had?.[0] !== at || had?.[1] !== fp)) out.push({ collection, id, updatedAt: at, value: items[id] });
@@ -349,7 +349,7 @@ export const dataMetas = () => ({ ...dataMeta });
 // Tirth's log while two copies wrote at once): written again shortly, and
 // with the next write. The cache keeps the change meanwhile.
 const unsaved = new Set<any>();
-let retryTimer = null;
+let retryTimer: number | null = null;
 let retryMs = 250;
 // Writes `keys` from the cache, queued behind the state's other writes.
 function write(keys) {
@@ -363,7 +363,7 @@ function write(keys) {
 // Keys whose only change not yet sent can wait (mutate's `within`), and when
 // the write that takes them is due. Any write before then takes them along.
 const later = new Set<any>();
-let laterTimer = null;
+let laterTimer: number | null = null;
 let laterAt = Infinity;
 function writeWithin(ms) {
   const at = performance.now() + ms; // a clock that only runs forward, as the timer's

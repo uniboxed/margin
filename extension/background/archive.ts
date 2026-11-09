@@ -1,3 +1,4 @@
+import type { KeptTab, TabRecord } from '../../types/margin';
 import * as M from '../state/model.ts';
 import { mutate, newId, now } from './store.ts';
 import { closeTabs } from './closing.ts';
@@ -7,8 +8,8 @@ import { closeTabs } from './closing.ts';
 // Open or not (PLAN.md §6): a Margin tab that isn't open goes to the archive
 // by the same rule, with nothing to close.
 export async function archiveStale() {
-  let stale = [];
-  let kept = [];
+  let stale: TabRecord[] = [];
+  let kept: KeptTab[] = [];
   await mutate((s) => {
     stale = M.staleTabs(s, now());
     kept = M.staleKept(s, now());
