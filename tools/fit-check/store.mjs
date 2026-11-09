@@ -80,17 +80,17 @@ export function rebuild(data = DEFAULT_DATA) {
       latest: { ...latest, pictures: shots(latest) },
       history: site.history.map((r) => ({
         round: r.round, at: r.at, commit: r.commit ?? null, verdict: r.verdict, flags: r.flags ?? [],
-        margin: { status: r.margin?.status ?? null, ms: r.margin?.ms ?? null, error: r.margin?.error ?? null },
-        plain: { status: r.plain?.status ?? null, ms: r.plain?.ms ?? null, error: r.plain?.error ?? null },
+        margin: { status: r.margin?.status ?? null, ms: r.margin?.ms ?? null, cpu: r.margin?.cpu ?? null, error: r.margin?.error ?? null },
+        plain: { status: r.plain?.status ?? null, ms: r.plain?.ms ?? null, cpu: r.plain?.cpu ?? null, error: r.plain?.error ?? null },
         look: r.look ?? null, error: r.error ?? null, pictures: shots(r),
       })),
     };
     writeAtomic(join(data, 'sites', `${domain}.json`), `${JSON.stringify(file, null, 2)}\n`);
     if (['flagged', 'margin-failed', 'hinted'].includes(latest.verdict)) pictures.push(...Object.values(file.latest.pictures ?? {}).filter(Boolean));
-    table.push({ rank: site.rank, domain, verdict: latest.verdict, flags: (latest.flags ?? []).join(' '), round: latest.round, at: latest.at, commit: latest.commit ?? '', marginMs: latest.margin?.ms ?? '', plainMs: latest.plain?.ms ?? '', status: latest.plain?.status ?? '', before: before?.verdict ?? '' });
+    table.push({ rank: site.rank, domain, verdict: latest.verdict, flags: (latest.flags ?? []).join(' '), round: latest.round, at: latest.at, commit: latest.commit ?? '', marginMs: latest.margin?.ms ?? '', plainMs: latest.plain?.ms ?? '', status: latest.plain?.status ?? '', before: before?.verdict ?? '', marginTaskMs: latest.margin?.cpu?.task ?? '', plainTaskMs: latest.plain?.cpu?.task ?? '' });
   }
   table.sort((a, b) => a.rank - b.rank);
-  const cols = ['rank', 'domain', 'verdict', 'flags', 'round', 'at', 'commit', 'marginMs', 'plainMs', 'status', 'before'];
+  const cols = ['rank', 'domain', 'verdict', 'flags', 'round', 'at', 'commit', 'marginMs', 'plainMs', 'status', 'before', 'marginTaskMs', 'plainTaskMs'];
   writeAtomic(join(data, 'all-sites.csv'), `${cols.join(',')}\n${table.map((r) => cols.map((c) => csv(r[c])).join(',')).join('\n')}\n`);
 
   // The summary: every site's latest.
@@ -111,7 +111,17 @@ export function rebuild(data = DEFAULT_DATA) {
   const extra = pairs.map((r) => r.margin.ms - r.plain.ms).sort((a, b) => a - b);
   const at = (q) => (extra.length ? extra[Math.min(extra.length - 1, Math.floor(q * extra.length))] : null);
   const slower = (ms) => (ms >= 0 ? `${ms} ms slower` : `${-ms} ms faster`);
-  const speed = { sites: extra.length, extraMedianMs: at(0.5), extraP90Ms: at(0.9), slowerBy500Ms: extra.filter((d) => d > 500).length };
+  const speed = { sites: extra.length, extraMedianMs: at(0.5), extraP90Ms: at(0.9), slowerBy500Ms: extra.filter((d) => d > 500).length, mainThread: null };
+  // The work Margin adds to a page (its main thread's tasks, and the script in them; check.mjs mainThread), the
+  // same way: what a change costs a page even where it doesn't make the page slower to come.
+  const worked = [...sites.values()].map(({ history }) => history.at(-1)).filter((r) => r.margin?.ok && r.plain?.ok && r.margin.cpu?.task > 0 && r.plain.cpu?.task > 0);
+  const added = (key) => {
+    const list = worked.map((r) => (r.margin.cpu[key] ?? 0) - (r.plain.cpu[key] ?? 0)).sort((a, b) => a - b);
+    const q = (n) => list[Math.min(list.length - 1, Math.floor(n * list.length))];
+    return { medianMs: q(0.5), p90Ms: q(0.9) };
+  };
+  if (worked.length) speed.mainThread = { sites: worked.length, task: added('task'), script: added('script') };
+  const more = (ms) => (ms >= 0 ? `${ms} ms more` : `${-ms} ms less`);
   // Dated by its newest result (not when it was made), so making it again with nothing new changes nothing.
   const newest = table.reduce((m, r) => (r.at && r.at > m ? r.at : m), '');
   const summary = {
@@ -132,6 +142,7 @@ export function rebuild(data = DEFAULT_DATA) {
     '`blocked`: the site turned the plain browser away too (bot protection, a captcha): it says nothing about Margin.', '',
     '## Flags', ...Object.entries(summary.flags).map(([k, v]) => `- ${k}: ${v}`), '',
     '## Speed', speed.sites ? `Through Margin, against plain: ${slower(speed.extraMedianMs)} at the median, ${slower(speed.extraP90Ms)} at the slowest tenth; ${speed.slowerBy500Ms} of ${speed.sites} sites over half a second slower.` : 'No site loaded both ways yet.', '',
+    ...(speed.mainThread ? [`Main-thread work through Margin, against plain (${speed.mainThread.sites} sites): ${more(speed.mainThread.task.medianMs)} at the median, ${more(speed.mainThread.task.p90Ms)} at the slowest tenth; script alone ${more(speed.mainThread.script.medianMs)} and ${more(speed.mainThread.script.p90Ms)}.`, ''] : []),
     `## Worse since the round before (${summary.worse.length})`, ...summary.worse.slice(0, 200).map((s) => `- ${s}`), '',
     `## Better since the round before (${summary.better.length})`, ...summary.better.slice(0, 200).map((s) => `- ${s}`), '',
     `## Loaded plain but not through Margin (${summary.marginFailed.length})`, ...summary.marginFailed.slice(0, 200).map((s) => `- ${s}`), '',

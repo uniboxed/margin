@@ -28,9 +28,9 @@ Published: everything in the table below, but of the pictures only each flagged,
 
 | File | What's in it |
 | --- | --- |
-| `summary.md`, `summary.json` | every site at its latest: verdicts, flags, worse and better since the round before, the margin-failed and flagged sites |
-| `all-sites.csv` | a row per site, its latest (opens in Numbers) |
-| `sites/<domain>.json` | one site: its latest result in full, every round's verdict, flags, load times, commit and pictures, and its last change |
+| `summary.md`, `summary.json` | every site at its latest: verdicts, flags, speed (how much later a page is ready through Margin, and how much more main-thread work it does, against plain), worse and better since the round before, the margin-failed and flagged sites |
+| `all-sites.csv` | a row per site, its latest (opens in Numbers); `marginTaskMs` and `plainTaskMs`: the page's main-thread work each way, in Chromium's own counters |
+| `sites/<domain>.json` | one site: its latest result in full, every round's verdict, flags, load times and main-thread work, commit and pictures, and its last change |
 | `rounds/NNNN/` | a round as it was crawled: `results.jsonl` (a line per site, as it's done), `log.txt`, `progress.json`, `shots/`, `summary.md`, `finished.txt` once it's done |
 | `list.csv` | the sites, `rank,domain` (downloaded the first time; kept, so the rounds compare) |
 | `nightly.log` | what each night did |

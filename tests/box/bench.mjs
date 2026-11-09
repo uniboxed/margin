@@ -1,6 +1,6 @@
 // The page box's benchmark: what the box costs a heavy page (tests/box/serve.js
 // benchPage: 20,000 rules with viewport units and media queries, 3,000
-// elements), in Chromium through Margin (the e2e harness, as the patterns run)
+// elements; in a <style>, and in a <link>ed sheet whose text the box can't see), in Chromium through Margin (the e2e harness, as the patterns run)
 // and plain (no extension), the same page, several times each: the page's load,
 // and from load to its next frames (the box's work after load: sheets.js
 // rewriting, box.js reading <body>). Compared with the baseline
@@ -20,7 +20,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 const BASELINE = fileURLToPath(new URL('./bench-baseline.json', import.meta.url));
 const RUNS = 7;
-const SIZES = [{ rules: 20_000, elements: 3_000 }, { rules: 2_000, elements: 500 }];
+const SIZES = [{ rules: 20_000, elements: 3_000 }, { rules: 2_000, elements: 500 }, { rules: 20_000, elements: 3_000, link: true }];
 const median = (list) => [...list].sort((a, b) => a - b)[Math.floor(list.length / 2)];
 
 async function measure(open, url) {
@@ -43,12 +43,13 @@ const plain = await chromium.launch({ headless: false, args: ['--headless=new', 
 const plainCtx = await plain.newContext({ viewport: { width: 1172, height: 884 } });
 const results = {};
 try {
-  for (const { rules, elements } of SIZES) {
-    const url = m.url('box.test', `/bench/${rules}/${elements}`);
+  for (const { rules, elements, link } of SIZES) {
+    const name = `${rules}/${elements}${link ? '/link' : ''}`;
+    const url = m.url('box.test', `/bench/${name}`);
     const boxed = await measure(() => m.context.newPage(), url);
     const bare = await measure(() => plainCtx.newPage(), url);
     // The box's own cost: what it adds to the page's.
-    results[`${rules}/${elements}`] = { boxed, plain: bare, costMs: { load: boxed.loadMs - bare.loadMs, frame: boxed.frameMs - bare.frameMs } };
+    results[name] = { boxed, plain: bare, costMs: { load: boxed.loadMs - bare.loadMs, frame: boxed.frameMs - bare.frameMs } };
   }
 } finally {
   await plain.close().catch(() => {});

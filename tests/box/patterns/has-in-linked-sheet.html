@@ -1,0 +1,22 @@
+<!--
+pattern: a `body:has()` rule in a linked sheet that turns true well after load centres <body> in the box as in a window
+from: a speed change (2026-11): selectors of sheets whose text isn't known are read for :has() after load, in slices, not as the sheet is walked
+handled-by: content/page/sheets.js (hasLater: a linked sheet's selectors read for :has() after the page's turn)
+settle: 2600
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>has-in-linked-sheet</title>
+<style>body { margin: 0; font: 16px/1.4 -apple-system, system-ui, sans-serif; }</style>
+<link rel="stylesheet" href="../asset/has-in-linked-sheet.css">
+</head>
+<body>
+<div class="card" id="h">Top</div>
+<div id="x"></div>
+<script>
+  addEventListener('load', () => setTimeout(() => { document.getElementById('x').className = 'on'; }, 1500)); // after the reads a load brings
+</script>
+</body>
+</html>

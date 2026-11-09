@@ -7,7 +7,7 @@ const fmt = (n) => String(Math.round(n * 1000) / 1000);
 const toPx = (n, unit) => (unit.toLowerCase() === 'px' ? Number(n) : Number(n) * 16);
 
 // Does this query say anything about the window's size?
-export const asksSize = (query) => /\b(width|height)\b/i.test(String(query).replace(/device-(width|height)/gi, ''));
+export const asksSize = (query) => /(?<!device-)\b(?:width|height)\b/i.test(String(query));
 
 const SIZE = String.raw`(-?(?:\d+\.?\d*|\.\d+))(px|em|rem)`;
 const RANGE_NAMED = new RegExp(String.raw`\(\s*(min|max)-(width|height)\s*:\s*${SIZE}\s*\)`, 'gi');
@@ -47,57 +47,91 @@ export function shiftUnits(value) {
   return value.split(OPAQUE).map((part, i) => (i % 2 ? part : inUnits(part))).join('');
 }
 
-// The property names a declaration block's text names, shorthands included
-// (`font: … var(--x)` is listed as its longhands, which read empty until the
-// var() is substituted, so only its text says `font`).
-export function declaredNames(cssText) {
-  const names = [];
+// The declarations a block's text gives, in its order: [name, value, important].
+// Split at the `;`s outside brackets and strings.
+export function declarations(cssText) {
+  const out = [];
   let depth = 0;
   let quote = '';
   let start = 0;
   const take = (end) => {
     const part = cssText.slice(start, end);
-    const colon = part.indexOf(':');
-    if (colon > 0) names.push(part.slice(0, colon).trim().toLowerCase());
     start = end + 1;
+    const colon = part.indexOf(':');
+    if (colon <= 0) return;
+    let value = part.slice(colon + 1).trim();
+    const important = /!\s*important$/i.exec(value);
+    if (important) value = value.slice(0, important.index).trimEnd();
+    out.push([part.slice(0, colon).trim(), value, !!important]);
   };
   for (let i = 0; i < cssText.length; i++) {
     const c = cssText[i];
-    if (quote) { if (c === '\\') i++; else if (c === quote) quote = ''; }
+    if (c === '\\') i++;
+    else if (quote) { if (c === quote) quote = ''; }
     else if (c === '"' || c === "'") quote = c;
-    else if (c === '(') depth++;
-    else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth = Math.max(0, depth - 1);
     else if (c === ';' && depth === 0) take(i);
   }
   take(cssText.length);
-  return names;
+  return out;
 }
 
+// Property names known to be longhands, so not taken apart: what is a
+// shorthand doesn't change. A name: a few hundred at most.
+const LONGHANDS = new Set();
+
 // A declaration block's viewport units made the box's (shiftUnits), in place.
-// A shorthand with a var() in it (its longhands read empty, pending the var())
-// is set again as a whole, and the longhands set apart from it are put back
-// as they were. `style`: a CSSStyleDeclaration.
-export function shiftStyle(style) {
-  const was = new Map();
-  let pending = false;
-  // Over a copy of the names: a property set moves to the end of the live list.
-  for (const name of Array.from(style)) {
-    const value = style.getPropertyValue(name);
-    const priority = style.getPropertyPriority(name);
-    if (!value) pending = true;
-    was.set(name, [value, priority]);
+// Only the declarations whose text has units are touched (a block can hold
+// thousands of custom properties, and reading each would be quadratic). A
+// shorthand is set as its longhands, taken apart on `scratch` (a detached
+// element's style), so they read as they did; one with a var() of its own
+// (its longhands read empty, pending the var()) is set again as a whole, and
+// what that resets is put back. `style`: a CSSStyleDeclaration. `text`: its
+// cssText, when already read.
+export function shiftStyle(style, scratch, text = style.cssText) {
+  const list = declarations(text);
+  // `name: value` as its longhands and their values; null for a shorthand
+  // pending a var().
+  const apart = (name, value) => {
+    if (name.startsWith('--') || LONGHANDS.has(name)) return [[name, value]];
+    scratch.cssText = '';
+    scratch.setProperty(name, value);
+    const longhands = Array.from(scratch, (longhand) => [longhand, scratch.getPropertyValue(longhand)]);
+    if (longhands.length === 1 && longhands[0][0] === name) LONGHANDS.add(name);
+    return longhands.length && !longhands[0][1] ? null : longhands;
+  };
+  /** @type {Set<string> | undefined} */
+  let named;
+  /** @type {Set<string> | undefined} */
+  let whole;
+  for (const [name, value, important] of list) {
     const next = shiftUnits(value);
-    if (next !== value) style.setProperty(name, next, priority);
+    if (next === value) continue;
+    const priority = important ? 'important' : '';
+    const longhands = apart(name, value);
+    if (!longhands) {
+      style.setProperty(name, next, priority);
+      (whole ??= new Set()).add(name);
+    } else if (longhands.length === 1 && longhands[0][0] === name) style.setProperty(name, next, priority);
+    else {
+      named ??= new Set(list.map(([n]) => n));
+      for (const [longhand, before] of longhands) {
+        const after = shiftUnits(before);
+        // One set apart in the text is as the text says.
+        if (after !== before && !named.has(longhand)) style.setProperty(longhand, after, priority);
+      }
+    }
   }
-  if (!pending) return;
-  for (const name of declaredNames(style.cssText)) {
-    if (was.has(name) || name.startsWith('--')) continue;
-    const value = style.getPropertyValue(name);
-    const next = shiftUnits(value);
-    if (!value || next === value) continue;
-    style.setProperty(name, next, style.getPropertyPriority(name));
-    for (const [longhand, [before, priority]] of was) {
-      if (before && style.getPropertyValue(longhand) !== shiftUnits(before)) style.setProperty(longhand, shiftUnits(before), priority);
+  if (!whole) return;
+  named ??= new Set(list.map(([n]) => n));
+  for (const [name, value, important] of list) {
+    if (whole.has(name)) continue;
+    const priority = important ? 'important' : '';
+    for (const [longhand, before] of apart(name, value) ?? [[name, value]]) {
+      if (longhand !== name && named.has(longhand)) continue;
+      const want = shiftUnits(before);
+      if (style.getPropertyValue(longhand) !== want || style.getPropertyPriority(longhand) !== priority) style.setProperty(longhand, want, priority);
     }
   }
 }

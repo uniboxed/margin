@@ -6,7 +6,8 @@
 //                            plain window of the box's size (what tests/box/rules.js
 //                            compares the boxed page with)
 //   /bench/<rules>/<els>     a heavy page for the box's benchmark (bench.mjs): that many
-//                            rules (vw units, media queries) and elements
+//                            rules (vw units, media queries) and elements; …/link: the
+//                            rules in a linked sheet (/bench-css/<rules>/<els>)
 //   /asset/<file>            a file a pattern's page loads (patterns/assets/: a style
 //                            sheet, a script), as a site's own files are
 // In a pattern's page, `{{other}}` is another origin serving the same files (a CDN's,
@@ -56,21 +57,28 @@ export function parseHeader(html) {
   return { title: fields.pattern, from: fields.from, handledBy: fields['handled-by'] || '', note: fields.note || '', settle, allow, engines };
 }
 
-/**
- * A heavy page: `rules` rules, a fifth with viewport units and a tenth in media queries about the width (what the
- * box rewrites), and `elements` elements they style. It notes, as it loads, how long from `load` to its next two
- * frames (`window.__bench`): what the box's work after load costs a page, plus the page's own.
- * @param {number} rules @param {number} elements
- */
-export function benchPage(rules, elements) {
+/** The heavy page's style sheet (benchPage). @param {number} rules @param {number} elements */
+export function benchCss(rules, elements) {
   const css = [];
   for (let i = 0; i < rules; i++) {
     const rule = i % 5 === 0 ? `.c${i % elements} { width: ${(i % 90) + 10}vw; margin-left: calc(${i % 7}vw - 2px); }`
       : `.c${i % elements} > span, .c${i % elements}:hover { color: rgb(${i % 255}, 0, 0); padding: ${i % 9}px; }`;
     css.push(i % 10 === 0 ? `@media (min-width: ${600 + (i % 900)}px) { ${rule} }` : rule);
   }
+  return css.join('\n');
+}
+
+/**
+ * A heavy page: `rules` rules, a fifth with viewport units and a tenth in media queries about the width (what the
+ * box rewrites), and `elements` elements they style. It notes, as it loads, how long from `load` to its next two
+ * frames (`window.__bench`): what the box's work after load costs a page, plus the page's own. `link`: the
+ * rules in a sheet of their own (/bench-css/), whose text the box can't see, as on most large sites.
+ * @param {number} rules @param {number} elements @param {boolean} [link]
+ */
+export function benchPage(rules, elements, link = false) {
+  const sheet = link ? `<link rel="stylesheet" href="/bench-css/${rules}/${elements}">` : `<style>${benchCss(rules, elements)}</style>`;
   const els = Array.from({ length: elements }, (_, i) => `<div class="c${i}"><span>${i}</span></div>`).join('');
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>bench ${rules}/${elements}</title><style>${css.join('\n')}</style>
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>bench ${rules}/${elements}</title>${sheet}
 <script>addEventListener('load', () => { const t = performance.now(); requestAnimationFrame(() => requestAnimationFrame(() => { window.__bench = { loadMs: Math.round(t), frameMs: Math.round(performance.now() - t) }; })); });</script></head><body>${els}</body></html>`;
 }
 
@@ -111,8 +119,13 @@ export function boxPage(path, query, { other = '' } = {}) {
     try { body = readFileSync(join(PATTERNS_DIR, `${p[1]}.html`), 'utf8').replaceAll('{{other}}', other); } catch { return null; }
     return { type: 'text/html; charset=utf-8', body, parts: partsOf(body) };
   }
-  const b = /^\/bench\/(\d{1,6})\/(\d{1,6})$/.exec(path);
-  if (b) return { type: 'text/html; charset=utf-8', body: benchPage(Math.min(Number(b[1]), 200_000), Math.min(Number(b[2]), 50_000)) };
+  const b = /^\/bench(-css)?\/(\d{1,6})\/(\d{1,6})(\/link)?$/.exec(path);
+  if (b) {
+    const rules = Math.min(Number(b[2]), 200_000);
+    const elements = Math.min(Number(b[3]), 50_000);
+    if (b[1]) return { type: 'text/css; charset=utf-8', body: benchCss(rules, elements) };
+    return { type: 'text/html; charset=utf-8', body: benchPage(rules, elements, !!b[4]) };
+  }
   const a = /^\/asset\/([^/]+)$/.exec(path);
   if (a && ASSET.test(a[1])) {
     try { return { type: TYPES[a[1].split('.').pop()], body: readFileSync(join(ASSETS_DIR, a[1]), 'utf8') }; } catch { return null; }

@@ -4,30 +4,44 @@
   "results": {
     "20000/3000": {
       "boxed": {
-        "loadMs": 221,
-        "frameMs": 10
+        "loadMs": 232,
+        "frameMs": 11
       },
       "plain": {
-        "loadMs": 98,
+        "loadMs": 101,
         "frameMs": 21
       },
       "costMs": {
-        "load": 123,
-        "frame": -11
+        "load": 131,
+        "frame": -10
       }
     },
     "2000/500": {
       "boxed": {
-        "loadMs": 45,
+        "loadMs": 48,
+        "frameMs": 5
+      },
+      "plain": {
+        "loadMs": 21,
+        "frameMs": 16
+      },
+      "costMs": {
+        "load": 27,
+        "frame": -11
+      }
+    },
+    "20000/3000/link": {
+      "boxed": {
+        "loadMs": 227,
         "frameMs": 3
       },
       "plain": {
-        "loadMs": 12,
-        "frameMs": 13
+        "loadMs": 96,
+        "frameMs": 21
       },
       "costMs": {
-        "load": 33,
-        "frame": -10
+        "load": 131,
+        "frame": -18
       }
     }
   }
