@@ -12,16 +12,17 @@
 // does the theme's root. The sidebar grows toward the page: rightward for a
 // theme whose sidebar reveals from the left (theme.json `layout.reveal`),
 // leftward from the right.
+import type { Rt } from '../runtime.ts';
 
 const SETTING = 'sidebarWidth';
 
-export function installResize(rt: any) {
+export function installResize(rt: Rt) {
   const { view, theme } = rt;
   let drag: { el: Element, pointerId: number, startX: number, start: number, width: number, k: number } | null = null;
   let warned = false;
 
   const spec = () => theme.manifest?.settings?.[SETTING] ?? null;
-  const px = (v) => (typeof v === 'number' ? v : parseFloat(String(v ?? '')));
+  const px = (v: unknown) => (typeof v === 'number' ? v : parseFloat(String(v ?? '')));
   const bounds = () => {
     const s = spec();
     const layout = theme.manifest?.layout ?? {};
@@ -31,7 +32,7 @@ export function installResize(rt: any) {
     return { lo, hi: Number.isFinite(hi) ? hi : Math.max(lo, fallback), def: Number.isFinite(fallback) ? fallback : lo, step: s?.step > 0 ? s.step : 1 };
   };
   const clamp = (w: number) => { const { lo, hi } = bounds(); return Math.min(hi, Math.max(lo, w)); };
-  const snap = (w) => { const { step } = bounds(); return clamp(Math.round(w / step) * step); };
+  const snap = (w: number) => { const { step } = bounds(); return clamp(Math.round(w / step) * step); };
   const value = (w: number) => (spec()?.type === 'length' ? `${w}px` : w);
   // The width now: the setting as the theme gets it (saved, else its default).
   const current = () => { const w = px(rt.vm?.settings?.[SETTING]); return Number.isFinite(w) ? w : bounds().def; };

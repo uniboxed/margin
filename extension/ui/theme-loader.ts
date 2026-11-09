@@ -187,7 +187,7 @@ export type LoadedTheme = {
   ok: true, id: string, manifest: any, report: any,
   template: DocumentFragment, sheet: CSSStyleSheet, settingsSheet: CSSStyleSheet,
   fonts: FontFace[], fontErrors: string[],
-  setSettings(values: Record<string, any>): void,
+  setSettings(values: Record<string, any> | null | undefined): void,
   unload(): void,
 };
 
@@ -206,12 +206,12 @@ export async function loadTheme(pkg: ThemePackage, { document: doc = globalThis.
   if (!report.ok) return { ok: false, report };
   // (A live document, with its window: themes are drawn only in one.)
   const win = doc.defaultView!;
-  const template = buildTemplate(report.tree);
+  const template = buildTemplate(report.tree!); // (ok: the template parsed, so there's a tree)
   const sheet = new win.CSSStyleSheet();
   sheet.replaceSync(report.css);
   const settingsSheet = new win.CSSStyleSheet();
   const manifest = report.manifest;
-  const setSettings = (saved: Record<string, any> | null) => settingsSheet.replaceSync(settingsCss(resolveSettings(manifest, saved)));
+  const setSettings = (saved: Record<string, any> | null | undefined) => settingsSheet.replaceSync(settingsCss(resolveSettings(manifest, saved)));
   setSettings(settings);
   const faces = manifest.fonts.map((f) => new win.FontFace(f.family, files[f.file].slice().buffer, {
     weight: f.weight, style: f.style, ...(f.unicodeRange ? { unicodeRange: f.unicodeRange } : {}), display: 'block',

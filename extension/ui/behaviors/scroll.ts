@@ -7,10 +7,12 @@
 // switch (the next page asks for it at once) or as the page is left. A
 // position asked for that comes back after the user scrolled is dropped.
 // A space switched to starts from its top.
+import type { Rt } from '../runtime.ts';
+import type { ViewModel } from '../view-model.ts';
 
 const SAVE_MS = 150;
 
-export function installScroll(rt: any) {
+export function installScroll(rt: Rt) {
   const { view, doc, container } = rt;
   let settingScroll = false; // the next scroll event is Margin's own
   let gen = 0; // bumped by every scroll of the user's: theirs wins over a late reply
@@ -23,7 +25,7 @@ export function installScroll(rt: any) {
   // In a page the background knows the page's window (sender); the app says.
   const where = () => (rt.ownTab() == null && rt.windowId() != null ? { windowId: rt.windowId() } : {});
 
-  function apply(px) {
+  function apply(px: number) {
     const el = list();
     if (!el) { pendingTop = px; return; }
     pendingTop = null;
@@ -63,7 +65,7 @@ export function installScroll(rt: any) {
   rt.listen(rt.win, 'pagehide', flush);
 
   return {
-    afterRender(vm) {
+    afterRender(vm: ViewModel) {
       if (!vm.ready) return;
       if (!asked && list()) { asked = true; restore(); }
       if (pendingTop != null) apply(pendingTop);
@@ -73,7 +75,7 @@ export function installScroll(rt: any) {
     /** The window's position asked for again (a page just shown: the page left may have saved it late). */
     restore,
     /** At this position (a page prepared for a show with the window's), not saved again. */
-    set(px) {
+    set(px: number) {
       if (!Number.isFinite(px)) return;
       gen++;
       apply(Math.max(0, px));

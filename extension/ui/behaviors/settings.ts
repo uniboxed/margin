@@ -8,20 +8,22 @@
 // field records the next key combination pressed in it (Escape cancels;
 // a combination another shortcut has is refused with a word saying which),
 // and Margin's own shortcuts wait meanwhile (`ui.recording`).
+import type { Rt } from '../runtime.ts';
 import { saveField, saveThemeField, runField, removePrompt, shortcutTaken, wokeText, SHORTCUT_HELP } from '../settings-form.ts';
 import * as shortcuts from '../../shared/shortcuts.ts';
 
-const NAMES = new Set(['setting-number', 'setting-toggle', 'setting-choice', 'setting-list', 'setting-shortcut', 'setting-color']);
+const NAMES: Set<string | undefined> = new Set(['setting-number', 'setting-toggle', 'setting-choice', 'setting-list', 'setting-shortcut', 'setting-color']); // (asked of any element's)
 // A colour well shows #rrggbb only: a theme's other colours show as their nearest it can.
-const wellColor = (v) => (/^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : /^#[0-9a-f]{3}$/i.test(v) ? `#${[...v.slice(1)].map((c) => c + c).join('')}`.toLowerCase() : '#000000');
+const wellColor = (v: string) => (/^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : /^#[0-9a-f]{3}$/i.test(v) ? `#${[...v.slice(1)].map((c) => c + c).join('')}`.toLowerCase() : '#000000');
 
-export function installSettings(rt: any) {
+export function installSettings(rt: Rt) {
   const { view, container, doc } = rt;
-  const nameOf = (el) => view.inputs.get(el);
-  const isSetting = (el) => !!el && NAMES.has(nameOf(el));
+  // (`el`: an event's target, or an element: one of Margin's inputs if the view knows it.)
+  const nameOf = (el: EventTarget | null) => view.inputs.get(el as Element);
+  const isSetting = (el: Element | null) => !!el && NAMES.has(nameOf(el));
   // The field as the form has it now (not what the theme's scope says).
-  const fieldOf = (el) => {
-    const id = view.subjectOf(el)?.id;
+  const fieldOf = (el: EventTarget | null) => {
+    const id = view.subjectOf(el as Element)?.id;
     return rt.vm?.settingsForm?.fields.find((f) => f.id === id) ?? null;
   };
   const focused = () => (container as any).activeElement ?? doc.activeElement;
@@ -75,7 +77,7 @@ export function installSettings(rt: any) {
     }
   }
 
-  function save(el, value) {
+  function save(el: Element, value: string | boolean) {
     const f = fieldOf(el);
     // The active theme's own settings (fields Margin made from its theme.json) save only updateThemeSettings for it.
     const request = f?.fromTheme ? saveThemeField(f, value, rt.themeInfo ?? null) : saveField(f, value, rt.state?.settings);
@@ -124,7 +126,7 @@ export function installSettings(rt: any) {
   return {
     afterRender() { sync(); },
     /** A button of the form (settings.run). */
-    run(id) {
+    run(id: string) {
       const f = rt.vm?.settingsForm?.fields.find((x) => x.id === id && x.isButton);
       // Themes (Margin.app): Import asks the app for its file picker; Remove asks first, in Margin's prompt.
       if (id === 'themeImport') {

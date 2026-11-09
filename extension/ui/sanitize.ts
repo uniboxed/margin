@@ -41,12 +41,31 @@ export const LIMITS = Object.freeze({
 const SVG = 'svg';
 const HTML = 'html';
 
-const report = (list, kind: string, name, reason, at?) => { list.push(at == null ? { kind, name, reason } : { kind, name, reason, at }); };
+// What was taken out, and why (`at`: its line, when known).
+export type Removed = { kind: string, name: string, reason: string, at?: number };
+// A template as parsed (parseHtml): an attribute is [name as written, value].
+type Attr = [name: string, value: string];
+type ParsedText = { type: 'text', value: string };
+type ParsedElement = { type: 'el', name: string, lname: string, ns: string, attrs: Attr[], children: ParsedNode[], at: number };
+type ParsedNode = ParsedText | ParsedElement;
+type ParsedRoot = { type: 'root', children: ParsedNode[], ns?: undefined, lname?: undefined };
+// A template as kept (sanitizeTemplate): what ui/render.ts compiles.
+export type CleanElement = { type: 'el', ns: string, name: string, attrs: Attr[], children: CleanNode[] };
+export type CleanNode = ParsedText | CleanElement;
+// What sanitizeTemplate's walk carries down the tree.
+type Ctx = {
+  files: string[], assetUrl: (path: string) => string, removed: Removed[], errors: string[], stats: { pages: number, nodes: number },
+  parts: Set<string>, slots: Set<string>, ns: string, forDepth: number, inTemplate: boolean, inIf: boolean, guard: string | null, part?: string,
+};
+// The files a style sheet may point to, and how their addresses are written.
+type CssOptions = { files?: string[], assetUrl?: (path: string) => string };
+
+const report = (list: Removed[], kind: string, name: string, reason: string, at?: number) => { list.push(at == null ? { kind, name, reason } : { kind, name, reason, at }); };
 
 // A path inside the theme's package: plain segments, no '..', no leading '/',
 // no scheme, no query. Only files the package actually has.
 const PATH = /^(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
-export function isBundledPath(value, files) {
+export function isBundledPath(value: unknown, files: unknown) {
   if (typeof value !== 'string' || !PATH.test(value) || value.length > 200) return false;
   if (value.split('/').some((seg) => seg === '.' || seg === '..' || /^\.+$/.test(seg))) return false;
   return Array.isArray(files) ? files.includes(value) : files instanceof Set ? files.has(value) : false;
@@ -62,7 +81,7 @@ const DATA_FONT = /^data:(font\/(woff2|woff|ttf|otf|sfnt)|application\/(font-wof
 // A data: URL Margin accepts: images (any of the listed types) and, in CSS,
 // fonts. Base64 must be clean base64; svg+xml may be percent-encoded text but
 // with nothing that could end a CSS string or attribute.
-export function isDataUrl(value, { fonts = false } = {}) {
+export function isDataUrl(value: unknown, { fonts = false } = {}) {
   if (typeof value !== 'string' || value.length > LIMITS.dataUrl) return false;
   const image = DATA_IMAGE.exec(value);
   if (image) {
@@ -86,7 +105,7 @@ const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const RESERVED = new Set(['__proto__', 'prototype', 'constructor']);
 
 /** the path's segments, or null when it isn't one */
-export function parsePath(text): string[] | null {
+export function parsePath(text: unknown): string[] | null {
   if (typeof text !== 'string') return null;
   const segs = text.trim().split('.');
   if (!segs.length || segs.length > 8) return null;
@@ -101,7 +120,7 @@ export function parsePath(text): string[] | null {
 /**
  * Splits text with `{{holes}}` into parts.
  * */
-export function parseInterpolation(text): { parts: (string | { path: string[] })[], bound: boolean, bad: string | null } {
+export function parseInterpolation(text: string): { parts: (string | { path: string[] })[], bound: boolean, bad: string | null } {
   const parts: (string | { path: string[] })[] = [];
   let bound = false;
   let bad: string | null = null;
@@ -121,7 +140,7 @@ export function parseInterpolation(text): { parts: (string | { path: string[] })
 }
 
 // A binding-only value (`m-arg`, `m-class:x`, ...): exactly one `{{path}}`.
-const singleBinding = (value) => {
+const singleBinding = (value: string) => {
   const m = /^\s*\{\{([^{}]*)\}\}\s*$/.exec(value);
   return m ? parsePath(m[1]) : null;
 };
@@ -134,7 +153,7 @@ const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input'
 // with everything up to their end tag, whatever is inside.
 const RAW = new Set(['script', 'style', 'textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes', 'noscript', 'plaintext']);
 
-const ENTITIES = {
+const ENTITIES: Record<string, string> = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', copy: '©', reg: '®', trade: '™', hellip: '…',
   mdash: '—', ndash: '–', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', laquo: '«', raquo: '»', middot: '·',
   bull: '•', times: '×', divide: '÷', larr: '←', rarr: '→', uarr: '↑', darr: '↓', harr: '↔', crarr: '↵', deg: '°',
@@ -169,11 +188,11 @@ const isSpace = (c: string) => c === ' ' || c === '\n' || c === '\t' || c === '\
  * Margin's template language is a strict subset, and since the browser never
  * re-parses the result, this tree is the truth.
  * */
-export function parseHtml(html: string): { root: any, removed: any[], errors: string[] } {
-  const removed = [];
+export function parseHtml(html: string): { root: ParsedRoot, removed: Removed[], errors: string[] } {
+  const removed: Removed[] = [];
   const errors: string[] = [];
-  const root = { type: 'root', children: [] };
-  const stack: any[] = [root];
+  const root: ParsedRoot = { type: 'root', children: [] };
+  const stack: (ParsedRoot | ParsedElement)[] = [root];
   let nodes = 0;
   const top = () => stack[stack.length - 1];
   const line = (pos: number) => html.slice(0, pos).split('\n').length;
@@ -220,7 +239,7 @@ export function parseHtml(html: string): { root: any, removed: any[], errors: st
     i++;
     let name = '';
     while (i < n && !isSpace(html[i]) && html[i] !== '/' && html[i] !== '>') name += html[i++];
-    const attrs: any[][] = [];
+    const attrs: Attr[] = [];
     let selfClosing = false;
     let closed = false;
     while (i < n) {
@@ -266,7 +285,7 @@ export function parseHtml(html: string): { root: any, removed: any[], errors: st
     }
     const parent = top();
     const ns = parent.ns === SVG || lname === 'svg' ? SVG : HTML;
-    const el = { type: 'el', name, lname, ns, attrs, children: [], at: line(start) };
+    const el: ParsedElement = { type: 'el', name, lname, ns, attrs, children: [], at: line(start) };
     parent.children.push(el);
     if (++nodes > LIMITS.htmlNodes) { errors.push(`template: more than ${LIMITS.htmlNodes} nodes`); break; }
     if (!selfClosing && !(ns === HTML && VOID.has(lname))) {
@@ -325,7 +344,7 @@ const SVG_ATTRS = new Map([
 ].map((name) => [name.toLowerCase(), name]));
 
 const GLOBAL_ATTRS = new Set(['class', 'id', 'role', 'title', 'lang', 'dir', 'hidden', 'tabindex', 'style']);
-const ELEMENT_ATTRS = {
+const ELEMENT_ATTRS: Record<string, string[]> = {
   a: ['href'],
   img: ['src', 'alt', 'width', 'height', 'decoding'],
   button: ['type', 'disabled'],
@@ -344,13 +363,13 @@ const ELEMENT_ATTRS = {
 };
 
 // Attributes a binding may set (`{{}}` in the value, or `m-attr:`).
-const BINDABLE = (name, element) => /^aria-[a-z]+$/.test(name) || /^data-[a-z][a-z0-9-]*$/.test(name)
+const BINDABLE = (name: string, element: string) => /^aria-[a-z]+$/.test(name) || /^data-[a-z][a-z0-9-]*$/.test(name)
   || ['title', 'alt', 'hidden', 'disabled', 'lang', 'dir'].includes(name) || (name === 'placeholder' && element === 'input');
 
 // Margin's behaviors (PLAN.md §3), by attribute: the values each takes
 // (ui/behaviors/ implements them; they stay on the element, so a theme's CSS
 // can select them).
-const BEHAVIORS = {
+const BEHAVIORS: Record<string, string[]> = {
   'm-drag': ['tab', 'pin', 'folder', 'space'],
   'm-drop': ['folder', 'space', 'tabs', 'pins'],
   'm-resize': ['sidebar'],
@@ -363,7 +382,7 @@ const BEHAVIORS = {
 // Which element each of Margin's inputs is: a Settings list is a <textarea>,
 // a choice a <select> (Margin draws its options), the rest <input>s (Margin
 // sets a number's and a toggle's type).
-const INPUT_ELEMENT = (value) => (value === 'setting-list' ? 'textarea' : value === 'setting-choice' ? 'select' : 'input');
+const INPUT_ELEMENT = (value: string) => (value === 'setting-list' ? 'textarea' : value === 'setting-choice' ? 'select' : 'input');
 // Named parts a theme supplies (`<template m-part>`), which the runtime puts
 // in its slots: `menu` in <m-menu>, `space-editor` in <m-editor>, `palette`
 // in <m-palette>, `notice` in <m-notice>, `launcher` in <m-launcher>,
@@ -389,7 +408,7 @@ export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm
 // stand-in) or spoken (a screen reader's label).
 export const TEXT_ATTRS = Object.freeze(['title', 'alt', 'placeholder', 'aria-label', 'aria-description', 'aria-roledescription',
   'aria-valuetext', 'aria-placeholder', 'aria-braillelabel', 'aria-brailleroledescription']);
-const GUARDED_PART_SET = new Set(GUARDED_PARTS);
+const GUARDED_PART_SET: Set<string | undefined> = new Set(GUARDED_PARTS); // (asked of a template with no part too)
 const GUARDED_SLOT_SET = new Set(GUARDED_SLOTS);
 const TEXT_ATTR_SET = new Set(TEXT_ATTRS);
 
@@ -409,7 +428,7 @@ export function guardText(value: string): { text: string, removed: string } {
   }
   return { text: /\{\{/.test(text) ? text : '', removed: removed.trim() };
 }
-const guardedWhy = (guard) => `static text in Margin's ${guard} (only Margin's bound labels show there)`;
+const guardedWhy = (guard: string) => `static text in Margin's ${guard} (only Margin's bound labels show there)`;
 
 const ID_VALUE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 // Ids a theme may not give: an element with an id is also a property of the
@@ -422,10 +441,10 @@ const ID_VALUE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 export const RESERVED_IDS = Object.freeze(['browser', 'chrome', 'safari', 'webkit', 'marginApp', 'marginFallbackTheme', 'Margin', 'T', 'margin', 'opener', 'parent', 'top', 'self', 'frames', 'window', 'document', 'globalThis', 'module', 'exports', 'define', 'require']);
 const RESERVED_ID_SET = new Set(RESERVED_IDS.map((id) => id.toLowerCase()));
 export const RESERVED_PREFIX = /^margin[A-Z0-9_]/i;
-const idOk = (value) => ID_VALUE.test(value) && !RESERVED_ID_SET.has(value.toLowerCase()) && !RESERVED_PREFIX.test(value);
+const idOk = (value: string) => ID_VALUE.test(value) && !RESERVED_ID_SET.has(value.toLowerCase()) && !RESERVED_PREFIX.test(value);
 const FRAGMENT_URL = /^url\(\s*#[A-Za-z][A-Za-z0-9_-]*\s*\)$/;
 
-function staticValueOk(element, name, value, ctx) {
+function staticValueOk(element: string, name: string, value: string, ctx: Ctx) {
   switch (name) {
     case 'href':
       if (element === 'use') return /^#[A-Za-z][A-Za-z0-9_-]*$/.test(value) ? value : null;
@@ -454,7 +473,7 @@ function staticValueOk(element, name, value, ctx) {
 /**
  * Sanitizes a template.
  * */
-export function sanitizeTemplate(html: string, { files = [], assetUrl = (p) => p }: { files?: string[], assetUrl?: (path: string) => string } = {}): { tree: any, removed: any[], errors: string[], stats: { pages: number, nodes: number }, structure?: { parts: string[], slots: string[] } } {
+export function sanitizeTemplate(html: string, { files = [], assetUrl = (p) => p }: { files?: string[], assetUrl?: (path: string) => string } = {}): { tree: { type: 'root', children: CleanNode[] } | null, removed: Removed[], errors: string[], stats: { pages: number, nodes: number }, structure?: { parts: string[], slots: string[] } } {
   if (typeof html !== 'string') return { tree: null, removed: [], errors: ['template: not text'], stats: { pages: 0, nodes: 0 } };
   if (html.length > LIMITS.htmlBytes) return { tree: null, removed: [], errors: [`template: larger than ${LIMITS.htmlBytes} bytes`], stats: { pages: 0, nodes: 0 } };
   if (/[\u0000]/.test(html)) return { tree: null, removed: [], errors: ['template: NUL character'], stats: { pages: 0, nodes: 0 } };
@@ -462,9 +481,9 @@ export function sanitizeTemplate(html: string, { files = [], assetUrl = (p) => p
   const removed = parsed.removed;
   const errors = parsed.errors;
   const stats = { pages: 0, nodes: 0 };
-  const ctx = { files, assetUrl, removed, errors, stats, parts: new Set<any>(), slots: new Set<any>() };
+  const ctx = { files, assetUrl, removed, errors, stats, parts: new Set<string>(), slots: new Set<string>() };
   const children = cleanChildren(parsed.root.children, { ...ctx, ns: HTML, forDepth: 0, inTemplate: false, inIf: false, guard: null });
-  const tree = { type: 'root', children };
+  const tree = { type: 'root' as const, children };
   if (!errors.length) {
     const roots = children.filter((c) => c.type === 'el');
     if (roots.length !== 1) errors.push(`template: needs exactly one root element (found ${roots.length})`);
@@ -477,8 +496,8 @@ export function sanitizeTemplate(html: string, { files = [], assetUrl = (p) => p
   return { tree, removed, errors, stats, structure };
 }
 
-function cleanChildren(list, ctx) {
-  const out: any[] = []; // (sanitized tree nodes)
+function cleanChildren(list: ParsedNode[], ctx: Ctx) {
+  const out: CleanNode[] = [];
   for (const node of list) {
     const cleaned = cleanNode(node, ctx);
     if (Array.isArray(cleaned)) out.push(...cleaned); else if (cleaned) out.push(cleaned);
@@ -486,7 +505,7 @@ function cleanChildren(list, ctx) {
   return out;
 }
 
-function cleanNode(node, ctx) {
+function cleanNode(node: ParsedNode, ctx: Ctx): CleanNode | CleanNode[] | null {
   if (node.type === 'text') {
     const { bad } = parseInterpolation(node.value);
     if (ctx.guard) {
@@ -545,7 +564,7 @@ function cleanNode(node, ctx) {
   return { type: 'el', ns: HTML, name: lname, attrs, children };
 }
 
-function cleanSvg(node, ctx) {
+function cleanSvg(node: ParsedElement, ctx: Ctx): CleanNode | CleanNode[] | null {
   const { lname, at } = node;
   if (SVG_DROP.has(lname) || lname.includes(':')) {
     report(ctx.removed, 'element', `svg ${node.name}`, lname === 'a' ? 'svg links (children kept)' : 'not allowed in svg (dropped with its content)', at);
@@ -569,11 +588,11 @@ function cleanSvg(node, ctx) {
 }
 
 // Returns the kept attributes, or null when the element itself must go.
-function cleanAttrs(node, element, ns: string, ctx) {
-  const out: (any[] | string[])[] = [];
-  const seen = new Set<any>();
+function cleanAttrs(node: ParsedElement, element: string, ns: string, ctx: Ctx): Attr[] | null {
+  const out: Attr[] = [];
+  const seen = new Set<string>();
   const where = `<${element}>`;
-  const drop = (name, reason: string) => report(ctx.removed, 'attribute', `${where} ${name}`, reason, node.at);
+  const drop = (name: string, reason: string) => report(ctx.removed, 'attribute', `${where} ${name}`, reason, node.at);
   if (node.attrs.length > LIMITS.attrsPerElement) { report(ctx.removed, 'element', element, `more than ${LIMITS.attrsPerElement} attributes`, node.at); return null; }
   let hasAction = false;
   for (const [rawName, value] of node.attrs) {
@@ -645,7 +664,7 @@ function cleanAttrs(node, element, ns: string, ctx) {
 }
 
 // A Margin attribute: bindings, actions, behaviors, and m-for/m-if's own.
-function marginAttr(element, ns: string, name, value, ctx, drop: (name: any, reason: any) => void) {
+function marginAttr(element: string, ns: string, name: string, value: string, ctx: Ctx, drop: (name: string, reason: string) => void): Attr | null {
   if (name.startsWith('m-attr:')) {
     const target = name.slice(7);
     if (!BINDABLE(target, element)) { drop(name, `bindings can't set ${target}`); return null; }
@@ -685,7 +704,7 @@ function marginAttr(element, ns: string, name, value, ctx, drop: (name: any, rea
 
 // m-for's each, as and key, and m-if's test. `each` and `test` are paths,
 // with or without braces (`test` may start with '!'); `as` and `key` names.
-function controlAttr(name, value) {
+function controlAttr(name: string, value: string) {
   if (name === 'as' || name === 'key') return IDENT.test(value) && !RESERVED.has(value) ? value : null;
   const neg = name === 'test' && /^\s*!/.test(value);
   const inner = value.replace(/^\s*!/, '').replace(/^\s*\{\{([^{}]*)\}\}\s*$/, '$1');
@@ -703,6 +722,12 @@ const isDigit = (c: string) => c !== undefined && c >= '0' && c <= '9';
 const isWs = (c: string) => c === ' ' || c === '\n' || c === '\t';
 
 export type Token = { t: string, v?: any, s: number, e: number, esc?: boolean, unit?: string, type?: string };
+// A component value (components()): a token, a function or a block, told apart by `fn` and `open`. `out`: what a
+// kept URL is written as.
+type CssToken = Token & { fn?: undefined, open?: undefined, tok?: undefined, args?: undefined, items?: undefined, end?: undefined, out?: string };
+type CssFunction = { fn: string, tok: Token, args: Cv[], end: Token | null, out?: string, open?: undefined, items?: undefined, t?: undefined, v?: undefined, s?: undefined, e?: undefined, esc?: undefined };
+type CssBlock = { open: string, tok: Token, items: Cv[], end: Token | null, fn?: undefined, args?: undefined, out?: undefined, t?: undefined, v?: undefined, s?: undefined, e?: undefined, esc?: undefined };
+type Cv = CssToken | CssFunction | CssBlock;
 
 /**
  * Tokenizes CSS. Newlines are normalized first (CR, CRLF and FF become LF).
@@ -881,14 +906,14 @@ export function tokenizeCss(input: string): Token[] {
 // ---------------------------------------------------------------------------
 // CSS: component values, rules, declarations (CSS Syntax 3 §5, with nesting).
 
-const CLOSE = { '(': ')', '[': ']', '{': '}', func: ')' };
+const CLOSE: Record<string, string> = { '(': ')', '[': ']', '{': '}', func: ')' };
 
 // Groups tokens into component values: a token, a function { fn, args }, or
 // a simple block { open, items }. Unclosed ones close at the end (as in CSS).
 function components(tokens: Token[]) {
   let i = 0;
   const list = (close: string) => {
-    const items: any[] = []; // (parsed CSS values)
+    const items: Cv[] = [];
     while (i < tokens.length) {
       const t = tokens[i];
       if (t.t === close) { i++; return { items, end: t }; }
@@ -896,23 +921,23 @@ function components(tokens: Token[]) {
     }
     return { items, end: null };
   };
-  const one = () => {
+  const one = (): Cv => {
     const t = tokens[i++];
     if (t.t === 'func') { const { items, end } = list(')'); return { fn: t.v.toLowerCase(), tok: t, args: items, end }; }
     if (t.t === '(' || t.t === '[' || t.t === '{') { const { items, end } = list(CLOSE[t.t]); return { open: t.t, tok: t, items, end }; }
     return t;
   };
-  const all: any[] = [];
+  const all: Cv[] = [];
   while (i < tokens.length) all.push(one());
   return all;
 }
 
-const isTok = (cv, type: string) => cv && cv.t === type;
-const isWsCv = (cv) => cv && cv.t === 'ws';
-const isBlock = (cv, open = '{') => cv && cv.open === open;
+const isTok = (cv: Cv | undefined, type: string) => cv && cv.t === type;
+const isWsCv = (cv: Cv | undefined) => cv && cv.t === 'ws';
+const isBlock = (cv: Cv | undefined, open = '{') => cv && cv.open === open;
 
 // The at-rules a theme may use, and what their blocks hold.
-const AT_RULES = {
+const AT_RULES: Record<string, string> = {
   media: 'rules', supports: 'rules', container: 'rules', layer: 'rules', 'starting-style': 'rules', scope: 'rules',
   keyframes: 'keyframes', '-webkit-keyframes': 'keyframes', 'font-face': 'declarations', property: 'declarations',
 };
@@ -956,7 +981,7 @@ const TEXT_PROPERTIES = new Set(['content', 'quotes', 'list-style', 'list-style-
   'text-emphasis', 'text-emphasis-style', '-webkit-text-emphasis', '-webkit-text-emphasis-style', 'text-overflow']);
 const NUMBER_STYLES = new Set(['none', 'disc', 'circle', 'square', 'decimal', 'decimal-leading-zero', 'disclosure-open', 'disclosure-closed']);
 const LIST_WORDS = new Set([...NUMBER_STYLES, 'inside', 'outside', 'inherit', 'initial', 'unset', 'revert', 'revert-layer']);
-function writesText(prop, items) {
+function writesText(prop: string, items: Cv[]): string | null {
   for (const cv of items) {
     if (cv.fn !== undefined) {
       if (cv.fn === 'var' || cv.fn === 'env' || cv.fn === 'attr') return `${cv.fn}() in a property that writes text`;
@@ -982,14 +1007,14 @@ const URLISH = /:\/\/|^\s*\/\/|^\s*(javascript|vbscript|data):/i;
 
 class CssBuilder {
   // Its fields (set in its constructor and methods; declared only: nothing at run time).
-  declare src: any;
-  declare files: any;
-  declare assetUrl: any;
-  declare removed: any;
-  declare errors: any;
-  declare rules: any;
-  declare declarations: any;
-  constructor(source, options) {
+  declare src: string;
+  declare files: string[];
+  declare assetUrl: (path: string) => string;
+  declare removed: Removed[];
+  declare errors: string[];
+  declare rules: number;
+  declare declarations: number;
+  constructor(source: string, options: CssOptions) {
     this.src = source;
     this.files = options.files ?? [];
     this.assetUrl = options.assetUrl ?? ((p) => p);
@@ -999,14 +1024,14 @@ class CssBuilder {
     this.declarations = 0;
   }
 
-  line(cv) {
+  line(cv: Cv | undefined) {
     const at = cv?.tok?.s ?? cv?.s;
     return at == null ? undefined : this.src.slice(0, at).split('\n').length;
   }
 
   // The URL check, for url() and the URL strings in image-set() and friends.
   // Returns the URL to write, or null.
-  url(value, { font = false } = {}) {
+  url(value: string, { font = false } = {}) {
     const v = value.trim();
     if (/^#[A-Za-z][A-Za-z0-9_-]*$/.test(v)) return v; // a reference to an element (svg filter, mask)
     if (isDataUrl(v, { fonts: true })) return v;
@@ -1017,7 +1042,7 @@ class CssBuilder {
   // Checks a value (a list of component values) in place. Returns a reason
   // when the whole declaration (or prelude) must go, else null. URLs it keeps
   // are rewritten on the tokens (tok.out).
-  value(items, inUrlFn = false) {
+  value(items: Cv[], inUrlFn = false): string | null {
     for (const cv of items) {
       if (cv.fn !== undefined) {
         if (cv.tok.esc) return 'escaped function name';
@@ -1065,7 +1090,7 @@ class CssBuilder {
   }
 
   // A style block's contents: declarations and nested rules.
-  block(items, depth, kind: string) {
+  block(items: Cv[], depth: number, kind: string) {
     if (depth > LIMITS.cssDepth) { this.errors.push(`css: nested deeper than ${LIMITS.cssDepth}`); return ''; }
     let out = '';
     let i = 0;
@@ -1082,7 +1107,7 @@ class CssBuilder {
         }
         while (j < items.length && !isTok(items[j], ';') && !isBlock(items[j])) j++;
         const end = items[j];
-        out += this.atRule(cv, items.slice(i + 1, j), isBlock(end) ? end : null, depth, kind === 'rules' ? 'rules' : 'nested');
+        out += this.atRule(cv, items.slice(i + 1, j), isBlock(end) ? end as CssBlock : null, depth, kind === 'rules' ? 'rules' : 'nested');
         i = j + 1;
         continue;
       }
@@ -1090,7 +1115,7 @@ class CssBuilder {
       let j = i;
       while (j < items.length && !isTok(items[j], ';') && !isBlock(items[j])) j++;
       if (isBlock(items[j]) && kind !== 'declarations') {
-        out += this.styleRule(items.slice(i, j), items[j], depth, kind === 'keyframes');
+        out += this.styleRule(items.slice(i, j), items[j] as CssBlock, depth, kind === 'keyframes'); // (a block: isBlock)
         i = j + 1;
         continue;
       }
@@ -1106,7 +1131,7 @@ class CssBuilder {
     return out;
   }
 
-  declaration(items) {
+  declaration(items: Cv[]) {
     let a = 0;
     while (isWsCv(items[a])) a++;
     const name = items[a];
@@ -1125,7 +1150,7 @@ class CssBuilder {
     return `${prop}:${text};`;
   }
 
-  styleRule(prelude, block, depth, keyframe: boolean) {
+  styleRule(prelude: Cv[], block: CssBlock, depth: number, keyframe: boolean) {
     const selector = this.text(prelude).trim();
     if (++this.rules > LIMITS.cssRules) { this.errors.push(`css: more than ${LIMITS.cssRules} rules`); return ''; }
     if (!selector) { this.drop('css-rule', '{}', 'no selector', block); return ''; }
@@ -1137,7 +1162,7 @@ class CssBuilder {
     return `${selector}{${body}}`;
   }
 
-  atRule(at, prelude, block, depth, where: string) {
+  atRule(at: Cv, prelude: Cv[], block: CssBlock | null, depth: number, where: string) {
     const name = at.v.toLowerCase();
     const label = `@${at.v}`;
     if (at.esc) { this.drop('css-at-rule', label, 'escaped at-rule name', at); return ''; }
@@ -1163,16 +1188,16 @@ class CssBuilder {
     return `${head}{${this.block(block.items, depth + 1, where === 'nested' ? 'style' : 'rules')}}`;
   }
 
-  drop(kind: string, name, reason, cv) { report(this.removed, kind, name, reason, this.line(cv)); }
+  drop(kind: string, name: string, reason: string, cv: Cv | undefined) { report(this.removed, kind, name, reason, this.line(cv)); }
 
   // Writes component values back out. Tokens keep their source text (they
   // hold no escapes: anything escaped outside a string was refused), strings
   // are re-quoted, kept URLs rewritten, and where a comment separated two
   // tokens an empty comment keeps them apart.
-  text(items) {
+  text(items: Cv[]) {
     let out = '';
     let prevEnd = -1;
-    const emit = (cv) => {
+    const emit = (cv: Cv) => {
       const start = cv.tok ? cv.tok.s : cv.s;
       if (prevEnd >= 0 && start !== prevEnd && cv.t !== 'ws' && !out.endsWith(' ') && !out.endsWith('\n')) out += '/**/';
       if (cv.fn !== undefined) {
@@ -1203,13 +1228,13 @@ class CssBuilder {
   }
 }
 
-const quote = (v) => `"${v.replace(/[\\"]/g, (c) => `\\${c}`).replace(/\n/g, '\\a ')}"`;
+const quote = (v: string) => `"${v.replace(/[\\"]/g, (c) => `\\${c}`).replace(/\n/g, '\\a ')}"`;
 
 /**
  * Sanitizes a style sheet.
  * */
-export function sanitizeCss(css: string, options: { files?: string[], assetUrl?: (path: string) => string } = {}): { css: string, removed: any[], errors: string[], stats: { rules: number, declarations: number } } {
-  const fail = (msg: string) => ({ css: '', removed: [], errors: [msg], stats: { rules: 0, declarations: 0 } });
+export function sanitizeCss(css: string, options: { files?: string[], assetUrl?: (path: string) => string } = {}): { css: string, removed: Removed[], errors: string[], stats: { rules: number, declarations: number } } {
+  const fail = (msg: string) => ({ css: '', removed: [] as Removed[], errors: [msg], stats: { rules: 0, declarations: 0 } });
   if (typeof css !== 'string') return fail('css: not text');
   if (css.length > LIMITS.cssBytes) return fail(`css: larger than ${LIMITS.cssBytes} bytes`);
   if (css.includes('\u0000')) return fail('css: NUL character');
@@ -1220,7 +1245,7 @@ export function sanitizeCss(css: string, options: { files?: string[], assetUrl?:
 }
 
 // A `style` attribute: a list of declarations, same rules.
-export function sanitizeDeclarations(text, options = {}) {
+export function sanitizeDeclarations(text: unknown, options: CssOptions = {}): { css: string, removed: Removed[] } {
   const source = String(text).replace(/\r\n?|\f/g, '\n');
   if (source.length > LIMITS.attrValue || source.includes('\u0000')) return { css: '', removed: [{ kind: 'css-declaration', name: 'style', reason: 'too long or NUL' }] };
   const b = new CssBuilder(source, options);
@@ -1233,7 +1258,7 @@ export function sanitizeDeclarations(text, options = {}) {
 // hold nothing that loads or escapes: no url(), no strings, no escapes, no
 // functions but colors and math, no blocks or semicolons, no !important.
 const VALUE_FUNCTIONS = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color', 'color-mix', 'calc', 'min', 'max', 'clamp', 'var']);
-export function checkCssValue(value) {
+export function checkCssValue(value: unknown) {
   if (typeof value === 'number') return Number.isFinite(value);
   if (typeof value !== 'string' || value.length > LIMITS.boundCssValue) return false;
   if (/[\u0000-\u001f\u007f\\]/.test(value)) return false;

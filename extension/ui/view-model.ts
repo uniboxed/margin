@@ -23,8 +23,10 @@ import { hostOf } from '../shared/dom.ts';
 import { rankPalette } from '../shared/search.ts';
 import { checkIconUrl } from './sanitize.ts';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.ts';
+import type { MenuTarget } from './behaviors/menu-items.ts';
 import { settingsFields } from './settings-form.ts';
 import { SWITCH_NOTICES, isMultiProfile, isWindow, orderedSpaces, profileOf } from '../shared/across.ts';
+import type { AcrossContent, AcrossRow } from '../shared/across.ts';
 import { STALE_MS, cloudShown, deviceNames, lastUsed, onDevice, updatedText } from '../shared/cloud-tabs.ts';
 
 /** The view model's version: a theme reads what this version documents. */
@@ -39,9 +41,10 @@ export type UiState = {
   focused?: boolean,
   sidebar?: SidebarState | null,
   palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean },
-  menu?: { kind: string, id?: string | number | null, x?: number, y?: number, confirming?: string | null } | null,
+  menu?: { kind: MenuTarget['kind'], id?: string | number | null, x?: number, y?: number, above?: boolean, confirming?: string | null } | null,
   editing?: { kind: 'space' | 'folder', id: string } | null,
-  editor?: { spaceId?: string, profileId?: string, name: string, emoji: string, color: string, confirmDelete?: boolean } | null,
+  // (`fresh`: a space just made, switched to as its editor closes.)
+  editor?: { spaceId?: string, profileId?: string, name: string, emoji: string, color: string, confirmDelete?: boolean, fresh?: boolean } | null,
   newTabPending?: boolean,
   opening?: { title: string, url: string, from: number | null } | null,
   notice?: { id: string, text: string, actions?: { id: string, label: string, primary?: boolean }[] } | null,
@@ -212,7 +215,7 @@ function face(state: State, item: { url?: string, title?: string, favIconUrl?: s
   return { title, url, host, icon: checkIconUrl(icon) ? icon : null, letter, color };
 }
 
-const isLoading = (t) => t?.status === 'loading' || t?.loading === true;
+const isLoading = (t: { status?: string, loading?: boolean } | null | undefined) => t?.status === 'loading' || t?.loading === true;
 
 // A tab's row: an open one by its browser tab's id, a Margin tab that isn't
 // open (shared/view.ts `kept`) by its own id (a string), `open` false and
@@ -318,7 +321,7 @@ function fresh(input: ViewModelInput): ViewModel {
     }
     const inside = item.pins.map((p) => pinRow(state, p, true));
     const byId = new Map(inside.map((p) => [p.id, p]));
-    const shown = item.open ? inside : item.peek.map((p) => byId.get(p.id));
+    const shown = item.open ? inside : item.peek.map((p) => byId.get(p.id)!); // (peek: some of its pins)
     const folder: FolderRow = { kind: 'folder', isFolder: true, id: item.id, name: item.name, open: item.open, count: inside.length, pins: inside, shown, hasShown: shown.length > 0 };
     folders.push(folder);
     return folder;
@@ -338,7 +341,7 @@ function fresh(input: ViewModelInput): ViewModel {
   const across = (((state as any).across ?? null) as import('../shared/across.ts').Across | null);
   const multiProfile = isMultiProfile(across);
   const profiles = multiProfile && across ? across.profiles.filter((p) => p.spaces > 0 || p.here).map(profileChip) : [];
-  const chipOf = (id) => profiles.find((p) => p.id === id) ?? null;
+  const chipOf = (id: string) => profiles.find((p) => p.id === id) ?? null;
   const going = across?.switching?.space ? `${across.switching.profile}\u0000${across.switching.space}` : null;
   const spaces = orderedSpaces(state.spaces, across).map((o, index, all) => {
     const s = o.own ? o.space : o.entry;
@@ -567,26 +570,26 @@ function foreignSpace(across: any, windowId: number | null) {
   return spaceRows(c);
 }
 /** A space's rows from its contents (shared/across.ts AcrossContent), or null. */
-function spaceRows(c: any) {
+function spaceRows(c: AcrossContent | null) {
   if (!c) return null;
-  const faceOf = (r) => {
+  const faceOf = (r: AcrossRow) => {
     const host = hostOf(r.url);
     const { letter, color } = V.letterAvatar(host || r.title || '?');
     return { title: r.title || r.url || '', url: r.url, host, icon: r.icon && checkIconUrl(r.icon) ? r.icon : null, letter, color };
   };
-  const pinOf = (r, nested: boolean) => ({
+  const pinOf = (r: AcrossRow, nested: boolean): PinRow => ({
     kind: 'pin', isFolder: false, id: `x:${r.id}`, ...faceOf(r), folderId: r.folderId ? `x:${r.folderId}` : null, nested,
     tabId: null, open: false, active: false, behind: false, away: false, audible: false, asleep: false, loading: false, pinned: true,
   });
-  const byPos = (a, b) => a.pos - b.pos;
-  const folders = c.folders.slice().sort(byPos).map((f) => {
+  const byPos = (a: { pos: number }, b: { pos: number }) => a.pos - b.pos;
+  const folders = c.folders.slice().sort(byPos).map((f): FolderRow & { pos: number } => {
     const inside = c.pins.filter((p) => p.folderId === f.id).sort(byPos).map((p) => pinOf(p, true));
     return { kind: 'folder', isFolder: true, id: `x:${f.id}`, name: f.name, open: f.open, count: inside.length, pins: inside, shown: f.open ? inside : [], hasShown: f.open && inside.length > 0, pos: f.pos };
   });
   const loose = c.pins.filter((p) => !p.folderId || !c.folders.some((f) => f.id === p.folderId)).sort(byPos);
   const pins = loose.map((p) => ({ ...pinOf(p, false), pos: p.pos }));
   const pinned = [...folders, ...pins].sort(byPos).map(({ pos, ...item }) => item);
-  const today = c.tabs.map((t) => ({
+  const today = c.tabs.map((t): TabRow => ({
     kind: 'tab', id: `x:${t.id}`, ...faceOf(t), active: t.active, behind: false, away: false, audible: false, asleep: false, loading: false, pinned: false, open: true, notOpen: false,
   }));
   return {
@@ -699,7 +702,7 @@ function profileChip(p: import('../shared/across.ts').AcrossProfile): ProfileChi
 
 /** A notice or prompt's view: its words and buttons, as text. */
 function noticeView(n: any): NoticeView {
-  const actions = (Array.isArray(n.actions) ? n.actions : []).slice(0, 4).map((a, i) => ({
+  const actions = (Array.isArray(n.actions) ? n.actions : []).slice(0, 4).map((a: { id?: unknown, label?: unknown, primary?: unknown, danger?: unknown } | null, i: number) => ({ // (the host's: anything)
     id: String(a?.id ?? `a${i}`), label: String(a?.label ?? ''), primary: !!a?.primary, danger: !!a?.danger,
   }));
   return { id: String(n.id), text: String(n.text ?? ''), actions, hasActions: actions.length > 0 };
@@ -765,7 +768,7 @@ export function paletteItems(rawState: any, ui: UiState, platform: ViewModelInpu
 const EMPTY = Object.freeze([]);
 // A list item's key: rows by kind and id (a folder and a pin never collide),
 // else by id; anything else by place.
-const keyOf = (item) => (item && typeof item === 'object' && 'id' in item ? (typeof item.kind === 'string' ? `${item.kind}:${item.id}` : item.id) : undefined);
+const keyOf = (item: unknown) => (item && typeof item === 'object' && 'id' in item ? (typeof (item as { kind?: unknown }).kind === 'string' ? `${(item as { kind?: unknown }).kind}:${item.id}` : item.id) : undefined);
 
 /**
  * `next` with every part that equals `prev`'s replaced by `prev`'s object,
@@ -800,10 +803,10 @@ function share<T>(next: T, prev: any, memo: Map<any, any>): T {
     const old = prev !== null && typeof prev === 'object' && !Array.isArray(prev) ? prev : null;
     const keys = Object.keys(next);
     let same = old !== null && Object.keys(old).length === keys.length;
-    const obj = {};
+    const obj: Record<string, unknown> = {};
     for (const k of keys) {
       const had = old !== null && Object.prototype.hasOwnProperty.call(old, k);
-      const v = share(next[k], had ? old[k] : undefined, memo);
+      const v = share((next as Record<string, unknown>)[k], had ? old[k] : undefined, memo);
       obj[k] = v;
       if (!had || old[k] !== v) same = false;
     }

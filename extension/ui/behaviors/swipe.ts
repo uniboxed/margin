@@ -10,13 +10,15 @@
 // Not with a mouse wheel (or Shift), over something that scrolls sideways,
 // with one space, while the sidebar is hidden or something is under way
 // (renaming, a menu, a drag).
+import type { Rt } from '../runtime.ts';
+import type { ViewModel } from '../view-model.ts';
 import { canScrollX } from '../../shared/gestures.ts';
 import { createSpaceSwipe, settle, rubberBand, DEFAULTS as SWIPE } from '../../shared/space-swipe.ts';
 import { View } from '../render.ts';
 
 export const SETTLE_MS = 220;
 
-export function installSwipe(rt: any) {
+export function installSwipe(rt: Rt) {
   const { view, doc, container } = rt;
   const tracker = createSpaceSwipe();
   let swiping: { el: HTMLElement, neighbours: Record<string, string | undefined>, width: number, base: { offset: number, events: number }, settling: boolean, frame: number, offset: number, panes: HTMLElement[], bases: { left: number, top: number, width: number, height: number }[], ghosts: Record<string, HTMLElement[] | null>, position: string, overflow: string, target: string | null, dispatched: boolean } | null = null;
@@ -25,9 +27,9 @@ export function installSwipe(rt: any) {
   // rendered off screen with that space shown (rt.spaceView), its moving part (`data-swipe-pane`, else
   // `.space-pane` or `.swipes`) copied, inert, beside the real one, so the theme's own swipe rule moves both.
   // (A theme may move several parts: Neo-brutalism and Pixel move the space's head and its list, each `.swipes`.)
-  const panesOf = (root) => (([...root.querySelectorAll('[data-swipe-pane]')].length
+  const panesOf = (root: ShadowRoot | HTMLElement) => (([...root.querySelectorAll('[data-swipe-pane]')].length
     ? [...root.querySelectorAll('[data-swipe-pane]')] : [...root.querySelectorAll('.space-pane, .swipes')]) as HTMLElement[]);
-  function ghost(s, dir: string) {
+  function ghost(s: NonNullable<typeof swiping>, dir: string) {
     if (s.ghosts[dir] !== undefined) return;
     s.ghosts[dir] = null;
     const id = s.neighbours[dir];
@@ -121,7 +123,7 @@ export function installSwipe(rt: any) {
     s.el.style.position = s.position;
     for (const list of Object.values(s.ghosts)) for (const g of list ?? []) g.remove();
   }
-  function release({ offset, speed, events }) {
+  function release({ offset, speed, events }: { offset: number, speed: number, events: number }) {
     const s = swiping;
     if (!s || s.settling) return;
     cancelAnimationFrame(s.frame);
@@ -201,7 +203,7 @@ export function installSwipe(rt: any) {
     active: () => swiping != null || Date.now() < holdUntil,
     destroy() { clearTimeout(endTimer); finish(); },
     /** The space switched to after a settle is drawn: the copy beside it goes, the offset with it. */
-    afterRender(vm) { if (swiping?.dispatched && vm?.space?.id === swiping.target) finish(); },
+    afterRender(vm: ViewModel) { if (swiping?.dispatched && vm?.space?.id === swiping.target) finish(); },
   };
   return api;
 }

@@ -15,6 +15,7 @@
 // page left, it glides back. Near the list's top or bottom edge, the list
 // (`m-scroll="tabs"`) scrolls. A tab drags here once it's the one in front
 // (a press on another switches to it in a page: that page is on its way out).
+import type { Rt } from '../runtime.ts';
 import { dropAction, dropTarget } from './drop-rules.ts';
 
 export const DRAG_START_PX = 4;
@@ -24,7 +25,7 @@ const LAND_WAIT_MS = 1200; // the new order not here by then: back where it was
 const EDGE_PX = 36; // the list scrolls with the pointer this close to its edge
 const MARKS = ['m-drop-before', 'm-drop-after', 'm-drop-into', 'm-drop-end'];
 
-export function installDrag(rt: any) {
+export function installDrag(rt: Rt) {
   const { view, doc, container, win } = rt;
   let pending: { kind: string, id: any, el: Element, pointerId: number, x: number, y: number } | null = null; // pressed, not moved far enough yet
   let dragging: any = null;
@@ -34,19 +35,20 @@ export function installDrag(rt: any) {
   const marked: Set<Element> = new Set();
 
   const reduced = () => !!win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const kindOf = (el) => view.behaviorOf(el)?.attrs['m-drag'];
-  const rowOf = (el) => {
+  const kindOf = (el: HTMLElement | SVGElement) => view.behaviorOf(el)?.attrs['m-drag'];
+  const rowOf = (el: HTMLElement | SVGElement) => {
     const kind = kindOf(el);
     const id = view.subjectOf(el)?.id;
     return kind && id != null ? { kind, id } : null;
   };
   // A row's element by what it shows.
-  const rowEl = (kind, id) => view.marked('m-drag', kind).find((el) => view.subjectOf(el)?.id === id && !el.classList.contains('m-drag-ghost')) ?? null;
-  const folderEl = (id) => rowEl('folder', id) ?? view.marked('m-drop', 'folder').find((el) => view.subjectOf(el)?.id === id) ?? null;
-  const lastPinOf = (folderId) => view.marked('m-drag', 'pin').filter((el) => view.subjectOf(el)?.folderId === folderId).at(-1) ?? null;
+  // (`id`: a tab's number, a pin's or folder's string.)
+  const rowEl = (kind: string, id: string | number) => view.marked('m-drag', kind).find((el) => view.subjectOf(el)?.id === id && !el.classList.contains('m-drag-ghost')) ?? null;
+  const folderEl = (id: string) => rowEl('folder', id) ?? view.marked('m-drop', 'folder').find((el) => view.subjectOf(el)?.id === id) ?? null;
+  const lastPinOf = (folderId: string) => view.marked('m-drag', 'pin').filter((el) => view.subjectOf(el)?.folderId === folderId).at(-1) ?? null;
   const order = () => view.marked('m-drag').map((el) => `${kindOf(el)}:${view.subjectOf(el)?.id}`).join(' ');
   const clearMarks = () => { for (const el of marked) el.classList.remove(...MARKS); marked.clear(); };
-  const mark = (el, cls: string) => { if (!el) return; el.classList.add(cls); marked.add(el); };
+  const mark = (el: HTMLElement | SVGElement | null | undefined, cls: string) => { if (!el) return; el.classList.add(cls); marked.add(el); };
 
   rt.listen(container, 'pointerdown', (e: PointerEvent) => {
     pending = null;
@@ -117,7 +119,7 @@ export function installDrag(rt: any) {
 
   // What's under the pointer, for the rules (drop-rules.ts Over), with the
   // elements to mark.
-  function overAt(x, y) {
+  function overAt(x: number, y: number) {
     const under = ((container as any).elementFromPoint(x, y) as Element | null);
     if (!under || !view.owns(under)) return null;
     const chip = view.behaviorAt(under, 'm-drop', 'space');
@@ -160,7 +162,7 @@ export function installDrag(rt: any) {
     return null;
   }
 
-  function move(x, y) {
+  function move(x: number, y: number) {
     const d = dragging;
     if (!d) return;
     d.x = x;
@@ -288,7 +290,7 @@ export function installDrag(rt: any) {
     glideBack(l.ghost, l.kind, l.id);
   }
   // The copy into a row's place, the row shown once it's there.
-  function glideTo(ghost, el) {
+  function glideTo(ghost: HTMLElement, el: Element) {
     const g = ghost.getBoundingClientRect();
     const r = el.getBoundingClientRect();
     const k = rt.scale?.() || 1;
@@ -305,12 +307,12 @@ export function installDrag(rt: any) {
     glide.onfinish = done;
     glide.oncancel = done;
   }
-  function glideBack(ghost, kind, id) {
+  function glideBack(ghost: HTMLElement, kind: string, id: string | number) {
     const el = rowEl(kind, id);
     if (el) glideTo(ghost, el);
     else fadeOut(ghost);
   }
-  function fadeOut(ghost) {
+  function fadeOut(ghost: HTMLElement) {
     if (reduced() || typeof ghost.animate !== 'function') { ghost.remove(); return; }
     const t = ghost.style.transform || 'none';
     const fade = ghost.animate([{ transform: t, opacity: 0.9 }, { transform: `${t === 'none' ? '' : t} scale(0.9)`.trim(), opacity: 0 }], { duration: FADE_MS, easing: 'ease-out', fill: 'forwards' });

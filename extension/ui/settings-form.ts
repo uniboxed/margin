@@ -234,7 +234,7 @@ export function removePrompt(fieldId: string, list: any[]) {
  * that's Margin.app's (`closeWindows`) asks the host instead: `{ perform,
  * arg }`, its `perform` (ui/host-app.ts), which the app saves.
  * */
-export function saveField(f: SettingsField, value: any, settings: any): { type: 'updateSettings', payload: { patch: Record<string, any> } } | { perform: 'switch.closeWindows' | 'switch.askBeforeQuit', arg: { on: boolean } } | null {
+export function saveField(f: SettingsField | null | undefined, value: any, settings: any): { type: 'updateSettings', payload: { patch: Record<string, any> } } | { perform: 'switch.closeWindows' | 'switch.askBeforeQuit', arg: { on: boolean } } | null {
   if (!f || f.disabled) return null;
   const patch = (p) => ({ type: ('updateSettings' as 'updateSettings'), payload: { patch: p } });
   switch (f.kind) {
@@ -272,7 +272,7 @@ export function shortcutTaken(id: string, combo: string, settings: any): string 
 }
 
 /** What a button asks the background for. */
-export function runField(f: SettingsField) {
+export function runField(f: SettingsField | null | undefined) {
   if (f?.id === 'wakeAll') return { type: 'wakeSleeping', payload: {} };
   if (f?.id === 'resetShortcuts') return { type: 'updateSettings', payload: { patch: { sidebarShortcut: 'Alt+KeyS', shortcuts: { ...shortcuts.NAVIGATION } } } };
   return null;

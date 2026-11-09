@@ -14,6 +14,7 @@
 //   level; below the last row, the end of the top level. A tab dropped there
 //   is pinned in that place, a pin moves there, folders stay at the top level;
 // - nowhere a row already is (a drop that wouldn't move it is no target).
+import type { FolderRow, SpaceView } from '../view-model.ts';
 
 /**
  * What a drag holds: a row's kind and id.
@@ -33,14 +34,14 @@ export type Target = { space: string }
  * The ids at one level of the pinned area, in order: the top level (folders
  * and loose pins) for `folderId` null, else that folder's pins.
  * @param space the view model's space (`pinned`) */
-export function levelIds(space: any, folderId: string | null): string[] {
+export function levelIds(space: SpaceView | null | undefined, folderId: string | null): string[] {
   const pinned = space?.pinned ?? [];
   if (!folderId) return pinned.map((item) => item.id);
-  return pinned.find((item) => item.isFolder && item.id === folderId)?.pins.map((p) => p.id) ?? [];
+  return pinned.find((item): item is FolderRow => item.isFolder && item.id === folderId)?.pins.map((p) => p.id) ?? [];
 }
 
 // The id after `id` at its level, not counting what's being dragged.
-const after = (space, drag: Drag, folderId: null | string, id: string) => {
+const after = (space: SpaceView | null | undefined, drag: Drag, folderId: null | string, id: string) => {
   const ids = levelIds(space, folderId).filter((x) => x !== drag.id);
   return ids[ids.indexOf(id) + 1] ?? null;
 };
@@ -48,7 +49,7 @@ const after = (space, drag: Drag, folderId: null | string, id: string) => {
 /**
  * Whether a pin or folder put at `level` before `beforeId` stays where it is.
  * */
-export function stays(space: any, drag: Drag, level: string | null, beforeId: string | null) {
+export function stays(space: SpaceView | null | undefined, drag: Drag, level: string | null, beforeId: string | null) {
   if (drag.kind === 'tab') return false;
   const ids = levelIds(space, level);
   const at = ids.indexOf(String(drag.id));
@@ -59,7 +60,7 @@ export function stays(space: any, drag: Drag, level: string | null, beforeId: st
  * Where a drop at `over` would go, or null (nowhere: it glides back).
  * @param space the view model's space (`id`, `pinned`)
  * */
-export function dropTarget(drag: Drag, over: Over | null, space: any): Target | null {
+export function dropTarget(drag: Drag, over: Over | null, space: SpaceView | null | undefined): Target | null {
   if (!drag || !over || drag.kind === 'space') return null; // spaces don't move (no handler)
   if (over.zone === 'space') return drag.kind === 'tab' && over.spaceId !== space?.id ? { space: over.spaceId } : null;
   if (over.zone === 'tabs') {

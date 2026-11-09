@@ -7,6 +7,8 @@
 
 import { foreignSpace, isMultiProfile, profileOf } from '../../shared/across.ts';
 import { cloudShown } from '../../shared/cloud-tabs.ts';
+import type { State } from '../../../types/margin';
+import type { FolderRow, SpaceView } from '../view-model.ts';
 
 // The space editor's swatches (Arcadia's).
 export const SPACE_COLORS = Object.freeze(['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72']);
@@ -19,15 +21,15 @@ export type MenuTarget = { kind: 'tab' | 'pin' | 'folder' | 'space' | 'add' | 'c
  * as the sidebar shows it (ui/view-model.ts `space`: its `pinned` area, the
  * folders and pins in the order shown). None: no menu (its subject is gone).
  * */
-export function menuItems(target: MenuTarget | null | undefined, { state, space }: { state: any, space: any }): MenuItem[] {
+export function menuItems(target: MenuTarget | null | undefined, { state, space }: { state: (Partial<State> & Record<string, any>) | null, space: SpaceView | null | undefined }): MenuItem[] {
   if (!target || !state) return [];
   const list: MenuItem[] = [];
   let n = 0;
   let s = 0;
-  const item = (label: string, action: string, arg?, extra = {}) => list.push({ id: `i${n++}`, label, separator: false, danger: false, confirm: false, action, ...(arg === undefined ? {} : { arg }), ...extra });
+  const item = (label: string, action: string, arg?: unknown, extra = {}) => list.push({ id: `i${n++}`, label, separator: false, danger: false, confirm: false, action, ...(arg === undefined ? {} : { arg }), ...extra });
   const separator = () => { if (list.length && !list.at(-1)!.separator) list.push({ id: `s${s++}`, label: '', separator: true, danger: false, confirm: false, action: null }); };
   const pinned = space?.pinned ?? [];
-  const folders = pinned.filter((p) => p.isFolder);
+  const folders = pinned.filter((p): p is FolderRow => p.isFolder);
   const shownPins = pinned.flatMap((p) => (p.isFolder ? p.pins : [p]));
   switch (target.kind) {
     case 'folder': {
@@ -109,7 +111,7 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space 
         item(`Edit Profile “${here?.name ?? 'Profile'}”…`, 'profile.edit', across.profile);
       }
       // A profile's last space can't be deleted (the editor's rule); a second press confirms.
-      if (state.spaces.length > 1) {
+      if (state.spaces!.length > 1) { // (sp is one of them)
         separator();
         item('Delete Space', 'space.delete', sp.id, { danger: true, confirm: true });
       }

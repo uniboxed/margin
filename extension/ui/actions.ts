@@ -109,7 +109,7 @@ export const ACTIONS = Object.freeze({
 
 export const ACTION_NAMES = Object.freeze(Object.keys(ACTIONS));
 
-export const isAction = (name) => typeof name === 'string' && Object.hasOwn(ACTIONS, name);
+export const isAction = (name: string) => typeof name === 'string' && Object.hasOwn(ACTIONS, name);
 
 // Only Margin's behaviors and menus run these: their argument is an object
 // no `m-arg` makes, or they shouldn't come from one click on a theme's

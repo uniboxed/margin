@@ -12,17 +12,20 @@
 // part edits a profile's name, emoji and color (`profile.edit`: the editor's
 // `isProfile`), saved by the app (host.perform 'profile.rename'); a name
 // that's Safari's (`nameLocked`) is shown, not changed: the app keeps it.
+import type { Rt } from '../runtime.ts';
+import type { ViewModel } from '../view-model.ts';
 import { SPACE_COLORS } from './menu-items.ts';
+import type { Across } from '../../shared/across.ts';
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
-export function installEditor(rt: any) {
+export function installEditor(rt: Rt) {
   const { view, container } = rt;
   let focusName = false; // just opened: the name field focused once drawn
   let wanted: { spaceId: string, fresh: boolean, until: number } | null = null;
 
   const spaceOf = (id: string) => rt.state?.spaces?.find((s) => s.id === id) ?? null;
-  const isEditorField = (el: EventTarget | null) => { const name = el && view.inputs.get(el); return name === 'space-name' || name === 'space-emoji'; };
+  const isEditorField = (el: EventTarget | null) => { const name = el && view.inputs.get(el as Element); return name === 'space-name' || name === 'space-emoji'; };
 
   function open(spaceId: string, { fresh = false } = {}) {
     const space = spaceOf(spaceId);
@@ -32,8 +35,8 @@ export function installEditor(rt: any) {
     rt.setUi({ editor: { spaceId, name: space.name ?? '', emoji: space.emoji ?? '', color: space.color ?? '', confirmDelete: false, fresh } });
     return true;
   }
-  function openProfile(profileId) {
-    const p = rt.state?.across?.profiles?.find((x) => x.id === profileId);
+  function openProfile(profileId: string) {
+    const p = (rt.state?.across as Across | undefined)?.profiles?.find((x) => x.id === profileId);
     if (!p) return false;
     rt.behaviors.menus?.close();
     focusName = true;
@@ -87,20 +90,20 @@ export function installEditor(rt: any) {
       close({ deleted: true });
       return rt.dispatch('space.delete', e.spaceId, 'behavior');
     },
-    color(id) {
+    color(id: string) {
       const e = rt.ui.editor;
       const color = SPACE_COLORS[Number(String(id).slice(1))];
       if (!e || !color) return false;
       rt.setUi({ editor: { ...e, color } });
       return true;
     },
-    onInput(name, value) {
+    onInput(name: string, value: string) {
       const e = rt.ui.editor;
       if (!e) return;
       if (name === 'space-name') rt.setUi({ editor: { ...e, name: value } });
       if (name === 'space-emoji') rt.setUi({ editor: { ...e, emoji: value } });
     },
-    afterRender(vm) {
+    afterRender(vm: ViewModel) {
       if (rt.ui.editor && !vm.editor) { rt.setUi({ editor: null }); return; } // its space is gone
       if (wanted && !rt.ui.editor) {
         if (Date.now() > wanted.until) wanted = null;

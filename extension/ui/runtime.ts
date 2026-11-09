@@ -17,6 +17,7 @@
 import type { Host } from './host.ts';
 import type { LoadedTheme } from './theme-loader.ts';
 import type { UiState, ViewModel } from './view-model.ts';
+import type { State } from '../../types/margin';
 import { View } from './render.ts';
 import { buildViewModel, paletteItems } from './view-model.ts';
 import { BEHAVIOR_ONLY, checkAction, contextFromState, requestFor } from './actions.ts';
@@ -53,6 +54,46 @@ const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle', 'cloud
 // While iCloud Tabs are drawn, the model is made again this often ("updated 5 min ago").
 const CLOUD_TICK_MS = 60_000;
 
+// The UI's own state (always with a palette: closed, or as it's open).
+type Ui = UiState & { palette: NonNullable<UiState['palette']> } & Record<string, any>;
+// The stored state, as the host has it.
+type HostState = ReturnType<Host['getState']>;
+// What each behavior is given (ui/behaviors/): the runtime's parts, and what it does for them (createRuntime).
+export type Rt = {
+  host: Host, theme: LoadedTheme, themeInfo: Readonly<{ id: string, name: string, settings: Record<string, any> }>,
+  view: View, doc: Document, win: Window & typeof globalThis, container: ShadowRoot | Document,
+  /** Margin's pixels per page pixel. */
+  scale: () => number,
+  readonly vm: ViewModel | null,
+  readonly ui: Ui,
+  readonly state: HostState,
+  viewState: () => HostState,
+  setUi: (patch: Partial<UiState> & Record<string, any>) => ViewModel | null,
+  render: () => ViewModel | null,
+  dispatch: (name: string, arg: any, origin?: 'theme' | 'behavior' | 'menu', info?: any) => any,
+  send: (type: string, payload: Record<string, any>) => Promise<any>,
+  refuse: (name: string, arg: any, reason: string) => boolean,
+  warn: (message: string) => void,
+  runQuery: (query: string) => any,
+  windowId: () => number | null,
+  ownTab: () => number | null,
+  frontTab: () => number | null,
+  recentTabOf: (spaceId: string) => any,
+  switchSpace: (spaceId: string, payload: Record<string, any>) => Promise<any> | null,
+  holdSpace(spaceId: string, ms: number): void,
+  switching: ReturnType<typeof createSwitching>,
+  readonly lastToggle: { folderId: string, wasOpen: boolean, at: number } | null,
+  setThemeSettings(values: Record<string, any> | null, options?: { live?: boolean }): void,
+  busy: (except?: unknown) => boolean,
+  listen(target: EventTarget, type: string, fn: (e: any) => void, options?: boolean | AddEventListenerOptions): void,
+  later(fn: () => void, ms: number): ReturnType<typeof setTimeout>,
+  cancel(id: ReturnType<typeof setTimeout> | null | undefined): void,
+  readonly destroyed: boolean,
+  spaceView(id: string): ViewModel | null,
+  // Each behavior's own (createRuntime: set before any is installed).
+  behaviors: Record<string, any>,
+};
+
 /**
  * @param options `ui`: the UI state to start from; `log`: every action refused;
  * `onSwitching`: the tab a switch from the UI is highlighting (null: none);
@@ -78,7 +119,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   onSwitchRun?: (run: import('../shared/switching.ts').SwitchRun) => void,
 }) {
   // (Always with a palette: closed, or as it's open.)
-  let ui: UiState & { palette: NonNullable<UiState['palette']> } & Record<string, any> = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
+  let ui: Ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
   let vm: ViewModel | null = null;
   let drawn: ViewModel | null = null;
   let savedKey: string | null = null; // the theme's saved settings last applied (as JSON)
@@ -89,7 +130,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   const doc = ((container.nodeType === 9 ? container : container.ownerDocument) as Document);
   const win = (doc.defaultView as Window & typeof globalThis);
   const offs: (() => unknown)[] = [];
-  const timers = new Set<any>();
+  const timers = new Set<ReturnType<typeof setTimeout> | null | undefined>();
 
   // ---- what's shown ahead of the state ------------------------------------------
   const pending = {
@@ -125,14 +166,14 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   };
 
   // The state as the UI shows it: the stored one, with what's shown ahead of it.
-  function viewState(raw) {
+  function viewState(raw: HostState): HostState {
     if (!raw?.spaces) return raw;
     const now = Date.now();
-    let state = raw;
+    let state = raw as State & Record<string, any>; // (with spaces: a stored state)
     const p = pending;
     if (p.settings) {
-      const same = (a, b) => a === b || (typeof a === 'object' && a !== null && JSON.stringify(a) === JSON.stringify(b));
-      const agrees = Object.entries(p.settings.patch).every(([k, v]) => same(v, raw.settings?.[k]));
+      const same = (a: unknown, b: unknown) => a === b || (typeof a === 'object' && a !== null && JSON.stringify(a) === JSON.stringify(b));
+      const agrees = Object.entries(p.settings.patch).every(([k, v]) => same(v, (raw.settings as Record<string, unknown> | undefined)?.[k]));
       if (agrees || now > p.settings.until) p.settings = null;
       else state = { ...state, settings: { ...state.settings, ...p.settings.patch } };
     }
@@ -143,7 +184,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (p.folders.size) state = { ...state, folders: state.folders.map((f) => (p.folders.has(f.id) ? { ...f, name: p.folders.get(f.id)!.name } : f)) }; // (has: there)
     for (const [id, entry] of p.spaces) {
       const space = raw.spaces.find((s) => s.id === id);
-      if (!space || Object.entries(entry.patch).every(([k, v]) => space[k] === v) || now > entry.until) p.spaces.delete(id);
+      if (!space || Object.entries(entry.patch).every(([k, v]) => (space as unknown as Record<string, unknown>)[k] === v) || now > entry.until) p.spaces.delete(id);
     }
     if (p.spaces.size) state = { ...state, spaces: state.spaces.map((s) => (p.spaces.has(s.id) ? { ...s, ...p.spaces.get(s.id)!.patch } : s)) }; // (has: there)
     if (p.hold) {
@@ -154,7 +195,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     // brings its tab is over, or PENDING_MS (sidebar.js showSpaceNow).
     if (p.space) {
       const w = windowId();
-      const over = V.activeSpaceId(raw, w) === p.space.spaceId || now - p.space.since > PENDING_MS
+      const over = V.activeSpaceId(raw as State, w) === p.space.spaceId || now - p.space.since > PENDING_MS
         || (p.space.withTab != null && ui.switchingTo == null && !behaviors.swipe?.active());
       if (over) p.space = null;
       else state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w as number]: p.space.spaceId } };
@@ -208,7 +249,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   });
 
   // The theme's settings: what's saved, with a width being dragged (resize).
-  function themeSettings(state) {
+  function themeSettings(state: (Partial<State> & Record<string, any>) | null) {
     const own = state?.settings?.themes?.[theme.id];
     const p = pending.themeSettings;
     if (p && !p.live) {
@@ -328,7 +369,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
    * ('theme': a click on the theme; 'behavior', 'menu': Margin's own, which
    * alone may run BEHAVIOR_ONLY actions).
    */
-  function dispatch(name: string, arg: any, origin: 'theme' | 'behavior' | 'menu' = 'theme', info: any = null) {
+  // True or false (ran, or not), a request's answer to come (tab.move), or a behavior's own.
+  function dispatch(name: string, arg: any, origin: 'theme' | 'behavior' | 'menu' = 'theme', info: any = null): unknown {
     if (destroyed) return false;
     if (origin === 'theme' && BEHAVIOR_ONLY.has(name)) return refuse(name, arg, `${name}: only Margin's behaviors and menus run it`);
     const state = host.getState();
@@ -374,7 +416,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   }
 
   // A sent action, and what follows it.
-  function sent(name: string, arg, type: string, payload: Record<string, any>) {
+  // (`arg`: checked by checkAction, ui/actions.ts: the shape its action takes.)
+  function sent(name: string, arg: any, type: string, payload: Record<string, any>) {
     switch (name) {
       case 'space.switch':
         switchSpace(arg, payload);
@@ -436,7 +479,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     newTabTimer = setTimeout(done, NEW_TAB_HOLD_MS);
   }
 
-  function local(name: string, arg: any, info: any) {
+  function local(name: string, arg: any, info: any): unknown {
     switch (name) {
       case 'palette.open':
         setUi({ palette: { open: true, query: '', selected: 0, newTab: !!arg?.newTab }, menu: null, newTabPending: false });
@@ -512,7 +555,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   // A click on the theme: some are Margin's to swallow (a name being edited,
   // ⌃-click on a row, a press that switched already, a double-click's second
   // click on a folder), the rest run.
-  function themeClick(name: string, arg, info: { element: Element; event: Event; }) {
+  function themeClick(name: string, arg: unknown, info: { element: Element; event: Event; }) {
     const event = info?.event;
     if (behaviors.rename?.editingContains(event?.target)) return;
     if ((event as MouseEvent)?.ctrlKey && ROW_ACTIONS.has(name)) return;
@@ -535,6 +578,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     return width && root.offsetWidth ? root.offsetWidth / width : 1;
   };
 
+  // (`behaviors`: set just below, before the behaviors are installed.)
   const rt = {
     host, theme, themeInfo, view, doc, win, container, scale,
     get vm() { return vm; },
@@ -544,7 +588,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     setUi, render, dispatch, send, refuse, warn, runQuery,
     windowId, ownTab, frontTab, recentTabOf, switchSpace,
     /** Space `spaceId` kept shown for `ms`, whatever the state says meanwhile (a swipe's slide coming in). */
-    holdSpace(spaceId: string, ms) {
+    holdSpace(spaceId: string, ms: number) {
       pending.hold = typeof spaceId === 'string' ? { spaceId, until: Date.now() + Math.max(0, ms) } : null;
       expireLater();
     },
@@ -556,22 +600,22 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       render();
     },
     /** Anything under way that a sidebar out over the page waits for (sidebar.js isBusy). */
-    busy: (except = null) => list.some((b) => b !== except && b.busy?.()),
+    busy: (except: unknown = null) => list.some((b) => b !== except && b.busy?.()),
     /** A listener, removed with the runtime. */
-    listen(target: Document | ShadowRoot, type: string, fn: (e: any) => void, options?) {
+    listen(target: EventTarget, type: string, fn: (e: any) => void, options?: boolean | AddEventListenerOptions) {
       target.addEventListener(type, fn, options);
       offs.push(() => target.removeEventListener(type, fn, options));
     },
-    later(fn, ms) {
+    later(fn: () => void, ms: number) {
       const id = setTimeout(() => { timers.delete(id); if (!destroyed) fn(); }, ms);
       timers.add(id);
       return id;
     },
-    cancel(id) { clearTimeout(id); timers.delete(id); },
+    cancel(id: ReturnType<typeof setTimeout> | null | undefined) { clearTimeout(id); timers.delete(id); },
     get destroyed() { return destroyed; },
     /** The model with space `id` shown in this window (one of vm.spaces: this profile's, or another profile's from
      *  the app's data for it), for a swipe drawing it beside the current one; null if it isn't one. */
-    spaceView(id) {
+    spaceView(id: string) {
       const entry = vm?.spaces?.find((s) => s.id === id);
       if (!entry) return null;
       let state = viewState(host.getState());
@@ -581,9 +625,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       const out = buildViewModel({ state, ui: { ...fullUi(), showSpace: entry.foreign ? id : null, palette: {}, editing: null, notice: null, prompt: null, gesture: null }, platform: host.platform, settings });
       return out.space?.id === id ? out : null;
     },
-  };
+  } satisfies Omit<Rt, 'behaviors'> as Rt;
   const behaviors: Record<string, any> = {};
-  (rt as typeof rt & { behaviors: Record<string, any> }).behaviors = behaviors;
+  rt.behaviors = behaviors;
   Object.assign(behaviors, {
     press: installPress(rt),
     palette: installPalette(rt),
@@ -600,7 +644,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   const list = Object.values(behaviors);
 
   // Keystrokes in Margin's UI stay away from the page's own shortcuts.
-  const stopKeys = (e) => { if (view.owns(e.target)) e.stopPropagation(); };
+  const stopKeys = (e: Event) => { if (view.owns(e.target)) e.stopPropagation(); };
   for (const type of ['keydown', 'keyup', 'keypress']) rt.listen(container, type, stopKeys);
 
   // (A switch the new state says is over ends first: its highlight goes with it, once.)
@@ -641,7 +685,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       show: (why: 'hover' | 'toggle' | 'flash') => behaviors.peek.showFor(why),
       hide: () => behaviors.peek.hide(),
       toggle: () => behaviors.peek.toggle(),
-      flash: (ms) => behaviors.peek.flash(ms),
+      flash: (ms: number) => behaviors.peek.flash(ms),
       /** How it's out now: 'hover' | 'toggle' | 'flash' | null. */
       reason: () => behaviors.peek.reason(),
       /** Out over the page (not docked). */
@@ -668,7 +712,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     /** The tab list's scroll: saved now (before a switch), or set (a page prepared for a show). */
     flushScroll: () => behaviors.scroll?.flush(),
     restoreScroll: () => behaviors.scroll?.restore(),
-    setScroll: (px) => behaviors.scroll?.set(px),
+    setScroll: (px: number) => behaviors.scroll?.set(px),
     /** Something is under way in the UI (a drag, a menu, a name being edited). */
     busy: () => rt.busy(),
     /** Margin's pixels per page pixel (the page's zoom). */

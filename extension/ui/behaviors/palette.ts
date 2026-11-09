@@ -12,8 +12,10 @@
 // It has the focus as the launcher shows, except at the runtime's first
 // drawing in a host that says not to (`focusLauncherAtMount` false: Margin.app's
 // overlay, not on screen yet then); that host says when (`focusLauncher`).
+import type { Rt } from '../runtime.ts';
+import type { ViewModel } from '../view-model.ts';
 
-export function installPalette(rt: any) {
+export function installPalette(rt: Rt) {
   const { view, container } = rt;
   let wasOpen = false;
   let field: HTMLInputElement | null = null; // the field last shown (it stays in its block while closed)
@@ -21,9 +23,9 @@ export function installPalette(rt: any) {
   let reveal = false; // the selection moved by a key: keep it in view
   let launcherShown = false;
   let drawn = false; // the runtime's first drawing is past
-  const editable = (el) => !!el && (el.localName === 'input' || el.localName === 'textarea' || el.localName === 'select' || el.isContentEditable);
+  const editable = (el: Element | null) => !!el && (el.localName === 'input' || el.localName === 'textarea' || el.localName === 'select' || (el as HTMLElement).isContentEditable);
 
-  const isField = (el) => !!el && view.inputs.get(el) === 'palette';
+  const isField = (el: EventTarget | null) => !!el && view.inputs.get(el as Element) === 'palette';
   const active = () => {
     const root = ((container.nodeType === 9 ? container : container) as any);
     return root.activeElement ?? rt.doc.activeElement;
@@ -42,7 +44,7 @@ export function installPalette(rt: any) {
   // Enter goes to what's typed (an address) or searches for it, as the
   // palette's first row would, in this tab.
   rt.listen(container, 'keydown', (e: KeyboardEvent) => {
-    if (e.key !== 'Enter' || e.isComposing || view.inputs.get(e.target) !== 'launcher') return;
+    if (e.key !== 'Enter' || e.isComposing || view.inputs.get(e.target as Element) !== 'launcher') return;
     e.preventDefault();
     rt.runQuery((e.target as HTMLInputElement).value);
   });
@@ -71,10 +73,10 @@ export function installPalette(rt: any) {
   });
 
   return {
-    onInput(name, value) {
+    onInput(name: string, value: string) {
       if (name === 'palette' && rt.ui.palette.open) rt.setUi({ palette: { ...rt.ui.palette, query: value, selected: 0 } });
     },
-    afterRender(vm) {
+    afterRender(vm: ViewModel) {
       // The launcher's field has the focus as the new-tab page shows it
       // (Arcadia's newtab.ts; Safari focuses its address bar instead). Not as
       // the app's overlay first draws (Margin.app starting, a link back, a page
@@ -107,7 +109,7 @@ export function installPalette(rt: any) {
       wasOpen = open;
     },
     /** The palette closed: `opensNewTab`, what was chosen opens a new tab (the focus stays out of the page). */
-    closed(opensNewTab) {
+    closed(opensNewTab: boolean) {
       if (field) field.value = '';
       const back = restoreFocus;
       restoreFocus = null;

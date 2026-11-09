@@ -69,6 +69,8 @@ export type Host = {
   readonly launcher?: boolean,
   readonly focusLauncherAtMount?: boolean,
   perform?(name: string, arg?: any): boolean,
+  // Margin.app's imported themes (ui/host-app.ts), for Settings' Remove prompt.
+  readonly userThemes?: any[],
 };
 
 // ---------------------------------------------------------------------------

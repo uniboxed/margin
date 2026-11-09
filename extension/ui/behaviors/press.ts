@@ -8,12 +8,13 @@
 // While the button is down the row has the class `m-pressed` (a theme can
 // shrink it a little, as Arcadia does), kept through redraws.
 // (themes/arcadia/sidebar.js, "A press switches".)
+import type { Rt } from '../runtime.ts';
 
 // The actions a press runs, and the rows that show `m-pressed`.
 const SWITCHES = new Set(['tab.activate', 'pin.open', 'space.switch']);
 const PRESSED_ROWS = new Set(['tab.activate', 'pin.open', 'folder.toggle', 'tab.new']);
 
-export function installPress(rt: any) {
+export function installPress(rt: Rt) {
   const { view, doc } = rt;
   let pressed: { name: string, arg: any } | null = null; // a press switched: its click is the same switch
   let away = false; // and this page is on its way out (in pages: a drag can't start)
@@ -38,8 +39,8 @@ export function installPress(rt: any) {
     }
     if (e.pointerType !== 'mouse' || !SWITCHES.has(hit.name)) return;
     const vm = rt.vm;
-    let tabId = null;
-    if (hit.name === 'tab.activate') tabId = hit.arg;
+    let tabId: number | null = null;
+    if (hit.name === 'tab.activate') tabId = hit.arg as number; // (its tab's id: ui/actions.ts)
     if (hit.name === 'pin.open') {
       const pin = vm?.space?.pinned.flatMap((p) => (p.isFolder ? p.pins : [p])).find((p) => p.id === hit.arg);
       if (!pin?.open) return; // a pin not open: on click
@@ -57,8 +58,8 @@ export function installPress(rt: any) {
 
   return {
     /** Whether a click is the one after a press that switched already. */
-    consumes(name, arg, event) {
-      if (!pressed || pressed.name !== name || pressed.arg !== arg || !(event?.detail > 0)) return false;
+    consumes(name: string, arg: unknown, event: Event | undefined) {
+      if (!pressed || pressed.name !== name || pressed.arg !== arg || !((event as UIEvent)?.detail > 0)) return false;
       pressed = null;
       return true;
     },

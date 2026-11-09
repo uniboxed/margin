@@ -1,6 +1,6 @@
 // Pure view derivation shared by the content script and the new-tab page.
 // No browser APIs: also importable from node for tests.
-import type { State } from '../../types/margin';
+import type { Pin, State } from '../../types/margin';
 
 // A pin's or folder's order (state/model.ts): saved, or its place in the list.
 const posOf = (item: { pos?: number } | null | undefined, i: number): number => (Number.isFinite(item?.pos) ? item!.pos! : i);
@@ -86,7 +86,9 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
   const kept = Object.values(state.keptTabs ?? {}).filter((k) => k.spaceId === spaceId).map((k) => ({ ...k, kept: true, active: false }));
   const folders = (state.folders ?? []).filter((f) => f.spaceId === spaceId);
   const folderIds = new Set(folders.map((f) => f.id));
-  const bound = new Map(); // pin id → the pin as shown
+  // A pin as shown: in its folder (if that's still there), bound to the tab it's open in, if any.
+  type ShownPin = Omit<Pin, 'folderId'> & { folderId: string | null, pos: number, tabId: number | null, active: boolean, behind: boolean, away: boolean, favIconUrl: string };
+  const bound = new Map<string, ShownPin>(); // pin id → the pin as shown
   state.pins.forEach((p, i) => {
     if (p.spaceId !== spaceId) return;
     const key = normalizeUrl(p.url);
@@ -108,9 +110,9 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
   const pinned = [
     ...folders.map((f, i) => {
       const inside = [...bound.values()].filter((p) => p.folderId === f.id).sort(byPos);
-      return { kind: 'folder', id: f.id, name: f.name, open: f.open !== false, pos: posOf(f, i), pins: inside, peek: f.open === false ? inside.filter((p) => p.active || p.behind) : [] };
+      return { kind: 'folder' as const, id: f.id, name: f.name, open: f.open !== false, pos: posOf(f, i), pins: inside, peek: f.open === false ? inside.filter((p) => p.active || p.behind) : [] };
     }),
-    ...loose.map((p) => ({ kind: 'pin', ...p })),
+    ...loose.map((p) => ({ kind: 'pin' as const, ...p })),
   ].sort(byPos);
   // Every pin of the space, flat, in the order shown.
   const pins = pinned.flatMap((item) => (item.kind === 'folder' ? item.pins : [item]));
@@ -188,9 +190,10 @@ function cycleTab(state: State, windowId: number, currentTabId: number | null, d
   // The rows shown: a closed folder's pins only while one is the tab shown.
   const rows = v.pinned.flatMap((item) => (item.kind !== 'folder' ? [item] : item.open ? item.pins : item.peek));
   // Not tabs that aren't open (each would open as it was passed).
-  const order = [...rows.filter((p) => p.tabId != null).map((p) => p.tabId), ...v.tabs.filter((t) => !t.kept).map((t) => t.id)];
+  // (Each a browser tab's id: a pin's with one, an open tab's; a kept tab's id is Margin's own.)
+  const order = [...rows.filter((p) => p.tabId != null).map((p) => p.tabId as number), ...v.tabs.filter((t) => !t.kept).map((t) => t.id as number)];
   if (!order.length) return null;
-  const at = order.indexOf(currentTabId);
+  const at = (order as (number | null)[]).indexOf(currentTabId); // (no tab: -1)
   if (at < 0) return dir > 0 ? order[0] : order[order.length - 1];
   const next = order[(at + dir + order.length) % order.length];
   return next === currentTabId ? null : next;

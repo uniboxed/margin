@@ -18,12 +18,14 @@
 // Where the page gets the pointer's events rather than the UI (a page under
 // the in-page host's shadow root; the browser's page area under the app's
 // window), the host hands its positions in (runtime.pointer, pointerLeft).
+import type { Rt } from '../runtime.ts';
+import type { ViewModel } from '../view-model.ts';
 import * as V from '../../shared/view.ts';
 
 export const HIDE_DELAY_MS = 300;
 export const FLASH_MS = 1200;
 
-export function installPeek(rt: any) {
+export function installPeek(rt: Rt) {
   const { view, win, container } = rt;
   // Why it's out: the pointer at the edge ('hover': it goes once the pointer
   // is over the page again), the show/hide key ('toggle'), a moment after a
@@ -36,14 +38,14 @@ export function installPeek(rt: any) {
   // The zone's size in Margin's pixels; positions come in the page's (rt.scale).
   const zonePx = () => V.revealZone({ outerWidth: win.outerWidth, outerHeight: win.outerHeight, screenWidth: win.screen?.width ?? 0, screenHeight: win.screen?.height ?? 0 });
   const hidden = () => rt.vm?.window.sidebar === 'hidden';
-  const edges = () => view.marked('m-peek').map((el) => view.behaviorOf(el).attrs['m-peek']);
+  const edges = () => view.marked('m-peek').map((el) => view.behaviorOf(el)!.attrs['m-peek']); // (marked: each has its behaviors)
   const size = () => {
     if (container.nodeType === 9) return { width: win.innerWidth, height: win.innerHeight };
     const r = (container as ShadowRoot).host.getBoundingClientRect();
     return { width: r.width, height: r.height, left: r.left, top: r.top };
   };
   // Whether a point (the container's coordinates) is in the reveal zone of one of the theme's edges.
-  const atEdge = (x, y) => {
+  const atEdge = (x: number, y: number) => {
     const px = zonePx() / (rt.scale?.() || 1);
     const { width, height } = size();
     return edges().some((edge) => (edge === 'left' ? x <= px : edge === 'right' ? x >= width - px : edge === 'top' ? y <= px : y >= height - px));
@@ -108,7 +110,7 @@ export function installPeek(rt: any) {
   }, true);
 
   return {
-    afterRender(vm) {
+    afterRender(vm: ViewModel) {
       // Keep open turned on while it's out: it docks.
       if (vm.window.pinnedOpen && rt.ui.sidebar === 'peek') { reason = null; clearTimeout(hideTimer); hideTimer = null; stopFlash(); rt.setUi({ sidebar: null }); return; }
       const px = `${zonePx()}px`;
@@ -126,7 +128,7 @@ export function installPeek(rt: any) {
      * (only clicks), and the positions it hands in are all peek has. Over the
      * theme's own UI then, the same rules as its pointermove.
      */
-    pagePointer({ x, y }) {
+    pagePointer({ x, y }: { x: number, y: number }) {
       if (atEdge(x, y)) return void show();
       const target = container.nodeType === 9 ? (container as Document).elementFromPoint(x, y) : null;
       if (target && view.behaviorAt(target, 'm-peek')) return void show();
@@ -136,7 +138,7 @@ export function installPeek(rt: any) {
       if (inside) stay();
       else scheduleHide();
     },
-    pageLeft({ x, y }) {
+    pageLeft({ x, y }: { x: number, y: number }) {
       if (reason === 'hover' && !atEdge(x, y)) scheduleHide();
     },
     showFor,

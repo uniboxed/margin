@@ -12,12 +12,15 @@
 // anywhere else, the window losing focus, or the row going away closes it.
 // An item that asks first (Delete Space) says "Really delete?" on its
 // first press.
+import type { Rt } from '../runtime.ts';
+import type { ViewModel } from '../view-model.ts';
 import { menuItems } from './menu-items.ts';
+import type { MenuTarget } from './menu-items.ts';
 
 // What a row's action says it is (for rows with no m-drag).
-const ROW_OF_ACTION = { 'tab.activate': 'tab', 'pin.open': 'pin', 'folder.toggle': 'folder', 'space.switch': 'space', 'space.edit': 'space', 'cloud.open': 'cloud' };
+const ROW_OF_ACTION: Record<string, MenuTarget['kind']> = { 'tab.activate': 'tab', 'pin.open': 'pin', 'folder.toggle': 'folder', 'space.switch': 'space', 'space.edit': 'space', 'cloud.open': 'cloud' };
 
-export function installMenus(rt: any) {
+export function installMenus(rt: Rt) {
   const { view, container, doc } = rt;
   let placed = ''; // the menu placed last (kind, id, point, size)
 
@@ -103,7 +106,7 @@ export function installMenus(rt: any) {
     open: (target: { kind: string, id?: any }, point: { x: number, y: number }, options: { above?: boolean }) => show(target, point, options),
     close,
     /** An item chosen: its action, checked; one that asks first, asked. */
-    run(itemId) {
+    run(itemId: string) {
       const menu = rt.ui.menu;
       if (!menu) return false;
       const item = menuItems(menu, { state: rt.viewState(), space: rt.vm?.space }).find((i) => i.id === itemId && !i.separator);
@@ -113,9 +116,9 @@ export function installMenus(rt: any) {
         return true;
       }
       close();
-      return rt.dispatch(item.action, item.arg, 'menu');
+      return rt.dispatch(item.action as string, item.arg, 'menu'); // (not a separator: it has an action)
     },
-    afterRender(vm) {
+    afterRender(vm: ViewModel) {
       if (rt.ui.menu && !vm.menu) { rt.setUi({ menu: null }); return; } // its row is gone
       const s = slot();
       if (!vm.menu || !s || !s.firstElementChild) return;

@@ -10,30 +10,31 @@
 // puts it back. Saved, the new name shows at once (ui/runtime.ts), not the
 // old one until storage comes back. A double-click on a space's chip opens
 // the space editor (as today).
+import type { Rt } from '../runtime.ts';
 import { NAME_MAX } from '../actions.ts';
 
 const UNDO_TOGGLE_MS = 800;
 
-export function installRename(rt: any) {
+export function installRename(rt: Rt) {
   const { view, doc, container } = rt;
   let editing: { kind: 'folder' | 'space', id: string, el: HTMLElement, saved: Node[], was: string, ending: boolean } | null = null;
   let wanted: { kind: 'folder' | 'space', id: string, until: number } | null = null; // one to edit once it's drawn (a folder just made)
 
   // The m-rename element for a folder or space, if it's drawn.
-  function elementFor(kind, id) {
+  function elementFor(kind: 'folder' | 'space', id: string) {
     for (const el of view.marked('m-rename', kind)) {
       const item = view.subjectOf(el);
       if (kind === 'folder' ? item?.id === id : (item?.id ?? rt.vm?.space?.id) === id) return (el as HTMLElement);
     }
     return null;
   }
-  const nameOf = (kind, id) => {
+  const nameOf = (kind: 'folder' | 'space', id: string) => {
     const state = rt.viewState();
     const list = kind === 'folder' ? state?.folders : state?.spaces;
     return list?.find((x) => x.id === id)?.name ?? null;
   };
 
-  function start(kind, id) {
+  function start(kind: 'folder' | 'space', id: string) {
     if (editing) commit();
     const el = elementFor(kind, id);
     const name = nameOf(kind, id);
@@ -121,14 +122,14 @@ export function installRename(rt: any) {
       if (!el) return;
       e.stopPropagation();
       undoToggle(hit.arg);
-      start('folder', hit.arg);
+      start('folder', hit.arg as string); // (its folder's id; none: no folder has it)
     } else if (hit?.name === 'space.switch' || hit?.name === 'space.edit') {
       e.stopPropagation();
       rt.dispatch('space.edit', hit.arg, 'behavior');
     }
   });
   // Its first click toggled it: back as it was.
-  function undoToggle(folderId) {
+  function undoToggle(folderId: unknown) {
     const t = rt.lastToggle;
     if (t && t.folderId === folderId && Date.now() - t.at < UNDO_TOGGLE_MS) void rt.host.send('setFolderOpen', { folderId, open: t.wasOpen });
   }
@@ -136,13 +137,14 @@ export function installRename(rt: any) {
   return {
     start,
     /** Edit it once it's drawn (a folder just made: sidebar.js pendingRename). */
-    startWhenThere(kind, id) {
+    startWhenThere(kind: 'folder' | 'space', id: string) {
       if (nameOf(kind, id) != null && elementFor(kind, id)) return start(kind, id);
       wanted = { kind, id, until: Date.now() + 3000 };
       return true;
     },
     /** Whether a node is in the name being edited (its clicks aren't the row's). */
-    editingContains: (node) => !!editing && !!node && editing.el.contains(node),
+    // (`node`: an event's target in Margin's UI.)
+    editingContains: (node: EventTarget | null | undefined) => !!editing && !!node && editing.el.contains(node as Node),
     active: () => editing != null,
     afterRender() {
       if (editing && (!editing.el.isConnected || nameOf(editing.kind, editing.id) == null)) { cancel(); return; }
