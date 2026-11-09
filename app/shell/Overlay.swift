@@ -609,9 +609,10 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     /// field shows focused while the keys go to the browser. Then the page hears it's shown:
     /// `focusLauncher`, its window is new and in front (⌘N, New Window): the new-tab launcher takes
     /// the focus (palette.js focuses it only then, never as the page first draws).
-    // `newWindow`: a new window in front (⌘N, New Window): the palette opens over its new tab, as ⌘T's does
-    // (Tirth, 2026-11-09), unless a field of its page has the focus.
-    func appeared(front: Bool, newWindow: Bool) {
+    // `palette`: a window made from another (⌘N, the palette's New window), in front: the palette opens over
+    // its new tab, as ⌘T's does (Tirth, 2026-11-09). `focusLauncher`: another new window in front (Safari's own
+    // New Window): its new-tab launcher's field takes the focus. Neither while a field of its page has it.
+    func appeared(front: Bool, palette: Bool, focusLauncher: Bool) {
         if pageWantsKeyboard, !hasKeyboard {
             let age = pageFocusAt.map { Diagnostics.now() - $0 }
             if front, let age, age <= Self.focusFresh {
@@ -622,7 +623,8 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
                 letGo(front ? "shown \(age.map { "\(Int($0 * 1000)) ms" } ?? "long") after its field took the focus" : "shown, but not over the front window")
             }
         }
-        pushJSON(#"{"type":"shown","focus":false,"palette":"# + (newWindow && !pageWantsKeyboard ? "true" : "false") + "}")
+        let free = !pageWantsKeyboard
+        pushJSON(#"{"type":"shown","focus":"# + (focusLauncher && !palette && free ? "true" : "false") + #","palette":"# + (palette && free ? "true" : "false") + "}")
     }
 
     /// The page told to let go of its focus (`blur`: the palette closes, the field blurs, it says

@@ -10,6 +10,7 @@
 //   swift tools/handoff-lab/devswitch.swift dump
 //   swift tools/handoff-lab/devswitch.swift mode [--freeze on|off] [--old park|close|keep]
 //   swift tools/handoff-lab/devswitch.swift fail show|park|reveal|fullscreen
+//   swift tools/handoff-lab/devswitch.swift probe tabMove   Test A's one-shot tab-move probe (app/WINDOWS.md)
 //   swift tools/handoff-lab/devswitch.swift alternate N [--every S] [--wait S]   Test B, Test A, … N switches
 //
 // --wait S: post after S seconds (time to click into Safari, so the switch starts with Safari in front,
@@ -79,6 +80,9 @@ case "mode":
 case "fail":
     guard args.count == 2, ["show", "park", "reveal", "fullscreen"].contains(args[1]) else { fail("fail show|park|reveal|fullscreen") }
     post("fail", ["step": args[1]])
+case "probe":
+    guard args.count == 2, args[1] == "tabMove" else { fail("probe tabMove") }
+    post("probe", ["what": "tabMove"])
 case "alternate":
     guard args.count == 2, let n = Int(args[1]), n > 0, n <= 200 else { fail("alternate takes a count, 1-200") }
     for i in 1...n {

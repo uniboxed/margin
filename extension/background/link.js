@@ -140,6 +140,8 @@ export const APP_REQUESTS = new Set([
   'openSpaceWindow', 'closeWindow', 'focusWindow', 'orderSpaces',
   // A palette the app couldn't show over a window (no overlay shown there): ⌘T's hand-off undone.
   'paletteDropped',
+  // DEV-HOOK: the app's dev hook's tab-move probe (app/shell/DevHooks.swift `probe`; Test A only).
+  'devTabMoveProbe',
   // The profile handoff (app/HANDOFF.md §3.3): a window's state without taking focus, the frames of
   // its tab in front, and its drafts before a close.
   'setWindowState', 'frameProbe', 'windowDrafts',

@@ -954,54 +954,47 @@ test('link: notes made while the native port is down arrive in order once it\'s 
 
 test('link: the background\'s start and each try of the kept link are noted, with how the last link ended', async () => {
   const app = await startFakeApp();
-  const api = browser({ app, local: STATE });
-  const { link } = makeLink(api, { timing: { ...FAST, dead: 10_000 } });
-  let linked = false;
+  // Every link started here, stopped and the fake app closed whatever fails: a failure fails the run, never
+  // keeps it from ending (a link's timers and the app's socket would). The stops in the steps stay as they
+  // are: their order is what the lines say.
+  const started = [];
+  const start = (/** @type {any} */ a, /** @type {any} */ options) => { const l = makeLink(a, options).link; started.push(l); return l; };
+  let closed = false;
   try {
+    const api = browser({ app, local: STATE });
+    const link = start(api, { timing: { ...FAST, dead: 10_000 } });
     await link.start({ route: async () => ({ ok: true }) });
     assert.ok(logLines(api).includes('background started (kept link: no, page state before: none, last stop: none noted this Safari session)'), `${logLines(api)}`);
     await app.next('hello');
     app.drop(); // no close frame
     assert.ok(await until(() => logLines(api).some((l) => /^kept link try 1 of 3 \(port \d+\): open in \d+ ms$/.test(l)), 1500), `${logLines(api)}`);
     assert.ok(logLines(api).includes('dropped: closed by the app (1006)'), 'why it dropped');
-    linked = true;
-  } finally {
-    // No stop when it held: the next background starts while this one was linked, as when Safari tears it
-    // down. When it didn't, stopped here, so its timers and the fake app don't keep the run from ending.
-    if (!linked) {
-      link.stop();
-      await app.close();
-    }
-  }
-  const second = makeLink(api, { timing: { ...FAST, dead: 10_000 } }).link;
-  try {
+    // (No stop: the next background starts while this one was linked, as when Safari tears it down.)
+    const second = start(api, { timing: { ...FAST, dead: 10_000 } });
     await second.start({ route: async () => ({ ok: true }) });
-    const started = logLines(api).filter((l) => l.startsWith('background started')).at(-1);
-    assert.match(started, /^background started \(kept link: yes, page state before: linked, last stop: none since linked at \d\d:\d\d:\d\d\.\d{3} \(the background before was torn down while linked\)\)$/);
-    assert.ok(logLines(api).some((l) => /^kept link at the background's start \(port \d+\): open in \d+ ms$/.test(l)));
+    const began = logLines(api).filter((l) => l.startsWith('background started')).at(-1);
+    assert.match(began, /^background started \(kept link: yes, page state before: linked, last stop: none since linked at \d\d:\d\d:\d\d\.\d{3} \(the background before was torn down while linked\)\)$/);
+    assert.ok(logLines(api).some((l) => /^kept link at the background's start \(port \d+\): open in \d+ ms$/.test(l)), `${logLines(api)}`);
     second.stop('turned off');
-  } finally {
     link.stop();
-  }
-  const third = makeLink(api, { timing: { ...FAST, dead: 10_000 } }).link;
-  try {
+    const third = start(api, { timing: { ...FAST, dead: 10_000 } });
     await third.start({ route: async () => ({ ok: true }) });
     assert.match(logLines(api).filter((l) => l.startsWith('background started')).at(-1), /last stop: stopped at \d\d:\d\d:\d\d\.\d{3}: turned off\)$/);
-  } finally {
     third.stop();
     await app.close();
-  }
-  // A kept link nothing listens on any more: refused at once.
-  const api2 = browser({ app: null, appOpen: () => false });
-  api2.storage.session.data[SESSION_KEY] = { port: app.port, token: 't', key: 'k' };
-  const { link: l4 } = makeLink(api2);
-  try {
+    closed = true;
+    // A kept link nothing listens on any more: refused at once.
+    const api2 = browser({ app: null, appOpen: () => false });
+    api2.storage.session.data[SESSION_KEY] = { port: app.port, token: 't', key: 'k' };
+    const l4 = start(api2, undefined);
     await l4.start({ route: async () => ({ ok: true }) });
     assert.ok(logLines(api2).some((l) => new RegExp(`^kept link at the background's start \\(port ${app.port}\\): refused or closed at once \\(\\d+ ms, 1006\\)$`).test(l)), `${logLines(api2)}`);
   } finally {
-    l4.stop();
+    for (const l of started) l.stop();
+    if (!closed) await app.close().catch(() => {});
   }
 });
+
 
 // Busy for `ms`: the background paused (Safari suspending it, the Mac asleep), its timers and the
 // socket's messages queued meanwhile.

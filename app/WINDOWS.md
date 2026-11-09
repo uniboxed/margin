@@ -147,3 +147,61 @@ HANDOFF.md's tests that encode the extra window (§13.11) are rewritten to these
 4. ⌘N: the command, `newWindow` in the copy, the new line.
 5. HANDOFF.md §1.5, §6.2, §13.8 and §13.11 brought up to date. The gate. Then, with Tirth's OK, a check in real
    Safari with Test A and Test B.
+
+## 9. Tabs across Margin windows (Arc's)
+
+Tirth, 2026-11-09: two Margin windows of one profile on one space show the same tabs, in sync. A Safari tab is in
+one window at a time, so **the tab follows the window in front**:
+
+- Window 1 shows tab T. Window 2 opens on the same space, and its sidebar lists the same tabs.
+- In window 2, T is chosen: T shows live in window 2. Window 1 keeps T chosen: its sidebar row highlighted but
+  faded, and where the page was, a faded picture of it.
+- Window 1 comes to the front again: T is live there, and window 2 shows it faded.
+
+### 9.1 The model (state/model.js)
+
+- **Each window's chosen tab** (`selectedByWindow[windowId] = tabId`) is apart from where the Safari tab is
+  (`tab.windowId`). Today the two are the same; with this they may differ: a window whose chosen tab is in
+  another window shows it **away**.
+- **A space's tab list is the space's, not a window's**: the tabs of the space in every window of the profile, in
+  one order (`order`, placed among the space's tabs, not the window's). A tab that moves windows keeps its place.
+- **The stand-in**: a window showing a tab away has Margin's own page in front (`away.html`), never a Margin tab
+  (not in any list, not kept, not synced). It shows the away tab's picture, faded, and a click on it (or the
+  window coming to the front) brings the tab back. It also keeps Safari from closing a window whose last tab
+  moved out. One per window at most; closed when the window chooses another tab, or its away tab closes.
+
+### 9.2 Moves
+
+- **Chosen in window W, while in window V:** V's picture of it taken, V's stand-in up (made or reused) and in
+  front, then the tab moved to W (`tabs.move`) and made active. W chose it; V still has it chosen, away.
+- **Window W comes to the front** (`windows.onFocusChanged`) with its chosen tab away in V: the same, the other
+  way. Only then: a window in front whose chosen tab is already there moves nothing.
+- **Never** while a profile switch runs (its windows are parked or being shown), for a parked window, or for a
+  window Margin doesn't draw over.
+- **Pictures**: `captureVisibleTab`, as a JPEG, in the background's memory only (never on disk, never in a log,
+  never in synced state), one per away tab, dropped when it's back or closed.
+
+### 9.3 Everything else
+
+- **Closing T** in either window closes it; each window that had it chosen chooses its next tab, and its
+  stand-in goes.
+- **Sleeping tabs**: an away tab is never put to sleep while a window shows it away.
+- **After a Safari quit**: stand-ins Safari restores are closed (by their address), and each window's chosen tab
+  is its active one again.
+- **Pins** stay the space's (already so); a pin open in another window is that tab, followed the same way.
+
+### 9.4 Speed
+
+- Nothing runs per frame or per page: a move only on a choice or a window coming to the front, and only when its
+  chosen tab is away.
+- One picture per move, taken as the tab leaves (tens of ms, measured by the probe); the stand-in draws it as a
+  plain image.
+- The sidebar's list for a space is the same work as now over all of the profile's windows' tabs (a few
+  hundred at most).
+
+### 9.5 First: the probe (`devswitch probe tabMove`, Test A only)
+
+Before building: whether `tabs.move` between two full-screen windows keeps the page (no reload: a marker in its
+memory, its scroll, a typed field), how long a move takes, and whether `captureVisibleTab` works for the window in
+front and for one behind. If a move reloads the page, this design changes (a window would show the other's tab
+as a picture only, and a choice there would switch to the window it's in).

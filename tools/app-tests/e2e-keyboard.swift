@@ -48,8 +48,9 @@ func keyboardScenario() async {
   // Window 1 (full screen, the new-tab page in front) and, later, window 2 (new, its own bounds).
   let r1 = CGRect(x: -20000, y: -20000, width: 1280, height: 800)
   let r2 = CGRect(x: -18000, y: -20000, width: 1200, height: 760)
-  let w1 = standIn(r1), w2 = standIn(r2)
-  defer { w1.close(); w2.close() }
+  let r3 = CGRect(x: -16000, y: -20000, width: 1240, height: 780)
+  let w1 = standIn(r1), w2 = standIn(r2), w3 = standIn(r3)
+  defer { w1.close(); w2.close(); w3.close() }
   // The window server's list: which are on screen, the first in front.
   func place(_ list: [(NSWindow, CGRect, Bool)]) {
     windows.browser = list.enumerated().map { i, e in ServerWindow(number: e.0.windowNumber, pid: browserPid, bounds: e.1, onScreen: e.2, order: i) }
@@ -100,7 +101,7 @@ func keyboardScenario() async {
   f = await focused(o1b)
   check("a relink with a new-tab page in front doesn't take the keyboard", f != "launcher" && !o1b.hasKeyboard && !o1b.pageWantsKeyboard, f)
 
-  // ---- a new window in front (⌘N, New Window): the palette opens over its new tab as it shows, as ⌘T's ----
+  // ---- a new window in front, Safari's own (New Window): its launcher takes the typing as it shows ----
   var from = said.count
   place([(w2, r2, true), (w1, r1, true)])
   fake.tell(["do": "windows", "id": "A2", "list": [win(1, r1), win(2, r2, focused: true, created: Date().timeIntervalSince1970 * 1000)]])
@@ -109,7 +110,7 @@ func keyboardScenario() async {
   var ok = await until(3, { o2.hasKeyboard })
   f = await focused(o2)
   let palette2 = await paletteOpen(o2)
-  check("a new window in front: the palette open over its new tab, as ⌘T's, the keyboard the overlay's", ok && palette2 && f == "palette", "\(f) \(palette2)")
+  check("a new window in front, Safari's own: its launcher focused (no palette), the keyboard the overlay's", ok && !palette2 && f == "launcher", "\(f) \(palette2)")
   let shownAt = said[from...].firstIndex { $0.hasPrefix("overlay shown over \(k2)") }
   let tookAt = said[from...].firstIndex { $0.hasPrefix("\(k2) took the keyboard") }
   check("and only after it showed", shownAt != nil && tookAt != nil && tookAt! > shownAt!, "\(Array(said[from...]).filter { $0.contains("\(k2)") })")
@@ -118,7 +119,7 @@ func keyboardScenario() async {
   shell.pressed(CGPoint(x: r2.minX + 700, y: r2.minY + 400)) // on the page
   ok = await until(3, { !o2.hasKeyboard })
   f = await focused(o2)
-  check("a press on the page: the keyboard back to Safari, the palette closed", ok && f != "palette" && f != "launcher", f)
+  check("a press on the page: the keyboard back to Safari, the launcher let go", ok && f != "palette" && f != "launcher", f)
   check("and the log says why", said.contains("\(k2) gave the keyboard back: a press on the page or another app"))
 
   // ---- a field focused while the overlay is hidden, then shown over the front window ----
@@ -184,6 +185,18 @@ func keyboardScenario() async {
   ok = await until(3, { o1b.isShown })
   loose = await fieldWithoutKeys(o1b)
   check("then shown over the front window: no keyboard, nothing focused", ok && !o1b.hasKeyboard && o1b.keyOnShow == 1 && !loose)
+
+  // ---- a window made from another (⌘N, the palette's New window): the palette over its new tab, as ⌘T's ----
+  shell.madeFromWindow("safari:P1", SpaceWindowAnswer(["windowId": 3, "state": "fullscreen"])!, asked: Date().timeIntervalSince1970)
+  place([(w3, r3, true), (w1, r1, true), (w2, r2, true)])
+  fake.tell(["do": "windows", "id": "A2", "list": [win(1, r1), win(2, r2), win(3, r3, focused: true, created: Date().timeIntervalSince1970 * 1000)]])
+  let k3 = WindowKey(link: "safari:P1", windowId: 3)
+  check("a window made from another: its overlay shown", await until(15, { shell.overlays[k3]?.isShown == true }))
+  guard let o3 = shell.overlays[k3] else { return }
+  ok = await until(3, { o3.hasKeyboard })
+  let palette3 = await paletteOpen(o3)
+  f = await focused(o3)
+  check("a window made from another (⌘N): the palette open over its new tab, as ⌘T's, the keyboard the overlay's", ok && palette3 && f == "palette", "\(f) \(palette3)")
 
   // Never the keyboard in an overlay that isn't shown, all along.
   check("never the keyboard while not shown (the log)", !said.contains { $0.contains("took the keyboard") && $0.contains("isn't shown") })

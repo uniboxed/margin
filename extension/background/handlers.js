@@ -72,6 +72,7 @@ async function updatePackageThemeSettings(themeId, patch) {
 // not linked): the new-tab page stays (linked, the app's palette opens over
 // it; not linked, it says the app isn't running: newtab/newtab.js).
 const handOffs = new Map(); // tab id → Promise<boolean>, once per tab
+let devProbing = false; // DEV-HOOK: devTabMoveProbe running
 // Windows where Margin.app couldn't show the palette ⌘T was handed off to (no overlay shown there:
 // its window not bound yet, or its binding just gone, before the app said it draws nothing there):
 // window id → when the app said so. ⌘T there keeps Safari's new tab for PALETTE_DROPPED_MS.
@@ -724,6 +725,81 @@ export const handlers = {
   /** @param {{ windowId?: number, settings?: boolean }} message `settings`: its Settings open */
   async openLauncher({ windowId, settings = false }) {
     await openTab({ windowId, url: api.runtime.getURL(`newtab/newtab.html#${settings ? 'settings' : 'launcher'}`) });
+  },
+  // DEV-HOOK: a one-shot probe for tabs following the window in front (app/WINDOWS.md), asked only by the
+  // app's dev hook, which asks only Safari's Test A (DevHooks.swift checks the name). One test tab and one
+  // full-screen window made, the tab moved there and back; after each move, whether its page survived (a
+  // marker in its memory, its scroll, a typed field) and how long the move took; one picture of it timed
+  // and dropped. Then exactly what it made closed. Its answer: numbers and booleans only.
+  /** @param {{ url?: string }} message the page to open, the app's (a plain https origin) */
+  async devTabMoveProbe({ url } = {}, sender) {
+    if (!sender?.app) throw new Error('the app only');
+    if (!/^https:\/\/[a-z0-9.-]+\/$/.test(String(url ?? ''))) throw new Error('a plain https origin only');
+    if (devProbing) throw new Error('a probe is already running');
+    devProbing = true;
+    const made = { tabId: /** @type {number | null} */ (null), windowId: /** @type {number | null} */ (null) };
+    /** @type {Record<string, any>} */
+    const out = { ok: false };
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    try {
+      const home = (await api.windows.getAll()).find((w) => w.focused) ?? (await api.windows.getAll())[0];
+      if (!home) throw new Error('no window');
+      const tab = await api.tabs.create({ windowId: home.id, url: String(url), active: false });
+      made.tabId = tab.id;
+      for (let i = 0; i < 50 && (await api.tabs.get(tab.id)).status !== 'complete'; i++) await wait(200);
+      const token = String(Math.random()).slice(2, 12);
+      const [marked] = await api.scripting.executeScript({ target: { tabId: tab.id }, args: [token], func: (t) => {
+        /** @type {any} */ (window).__marginProbe = t;
+        const field = document.createElement('input');
+        field.id = '__margin_probe';
+        field.value = `typed ${t}`;
+        document.body.append(field);
+        document.body.style.minHeight = '5000px';
+        scrollTo(0, 1234);
+        return true;
+      } });
+      out.marked = marked?.result === true;
+      const check = async () => (await api.scripting.executeScript({ target: { tabId: tab.id }, args: [token], func: (t) => ({
+        marker: /** @type {any} */ (window).__marginProbe === t,
+        field: /** @type {HTMLInputElement | null} */ (document.getElementById('__margin_probe'))?.value === `typed ${t}`,
+        scroll: Math.round(scrollY),
+      }) }))[0]?.result ?? null;
+      out.before = await check();
+      const second = await api.windows.create({ focused: true, state: 'fullscreen' });
+      made.windowId = second.id;
+      await wait(2000); // its full-screen Space up
+      let t0 = performance.now();
+      await api.tabs.move(tab.id, { windowId: second.id, index: -1 });
+      out.moveMs = Math.round(performance.now() - t0);
+      await api.tabs.update(tab.id, { active: true });
+      await wait(1000);
+      out.movedThere = (await api.tabs.get(tab.id)).windowId === second.id;
+      out.afterMove = await check();
+      t0 = performance.now();
+      const picture = await api.tabs.captureVisibleTab(second.id, { format: 'jpeg', quality: 60 }).catch(() => null);
+      out.captureMs = Math.round(performance.now() - t0);
+      out.captureKB = picture ? Math.round(picture.length / 1024) : 0;
+      // The window behind (home, in its own Space now): can its tab in front be pictured from here?
+      t0 = performance.now();
+      const behind = await api.tabs.captureVisibleTab(home.id, { format: 'jpeg', quality: 60 }).catch(() => null);
+      out.captureBehindMs = Math.round(performance.now() - t0);
+      out.captureBehindKB = behind ? Math.round(behind.length / 1024) : 0;
+      t0 = performance.now();
+      await api.tabs.move(tab.id, { windowId: home.id, index: -1 });
+      out.backMs = Math.round(performance.now() - t0);
+      await wait(1000);
+      out.movedBack = (await api.tabs.get(tab.id)).windowId === home.id;
+      out.afterBack = await check();
+      out.ok = true;
+    } catch (err) {
+      out.error = String(/** @type {any} */ (err)?.name ?? 'Error');
+    } finally {
+      if (made.tabId != null) await api.tabs.remove(made.tabId).catch(() => {});
+      if (made.windowId != null) await api.windows.remove(made.windowId).catch(() => {});
+      out.cleaned = true;
+      devProbing = false;
+    }
+    return { summary: JSON.stringify(out) };
   },
   // A real new window of this profile (⌘N through Margin.app, the palette's "New window": app/WINDOWS.md §5),
   // a Margin window of its own. With `fromWindowId`: in full screen if that window is (or as `fullscreen`

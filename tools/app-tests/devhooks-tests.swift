@@ -23,6 +23,8 @@ final class FakeDevWorld: DevHookWorld {
         switches.append((from, link, space))
         return switchRefusal
     }
+    var probes: [String] = []
+    func devProbe(_ link: String, _ what: String) -> String? { probes.append("\(link) \(what)"); return nil }
     func devDump() -> [String] {
         dumps += 1
         return ["registry: 1 parked", "  window 2020 (safari:b#20) parked"]
@@ -66,14 +68,14 @@ func devHooksTests() {
     do {
         let (w, hooks, _) = setup()
         w.names = [:]
-        let lines = DevHooks.Kind.allCases.map { hooks.heard($0, ["to": "Test B", "old": "keep", "step": "show"]) }
+        let lines = DevHooks.Kind.allCases.filter { $0 != .probe }.map { hooks.heard($0, ["to": "Test B", "old": "keep", "step": "show"]) }
         check("dev hook: no names from Safari (no Full Disk Access): everything refused",
               lines.allSatisfy { $0.contains("refused: the window shown has no name from Safari") } && untouched(w) && !hooks.allows(a, b), "\(lines)")
     }
     do {
         let (w, hooks, _) = setup()
         w.shown = WindowKey(link: work, windowId: 9)
-        let lines = DevHooks.Kind.allCases.map { hooks.heard($0, ["to": "Test B", "freeze": "off", "step": "reveal"]) }
+        let lines = DevHooks.Kind.allCases.filter { $0 != .probe }.map { hooks.heard($0, ["to": "Test B", "freeze": "off", "step": "reveal"]) }
         check("dev hook: another profile's window shown: everything refused", lines.allSatisfy { $0.contains("isn't Test A's or Test B's") } && untouched(w), "\(lines)")
         check("dev hook: a switch from another profile may not use it", !hooks.allows(work, b) && !hooks.allows(b, work))
     }
@@ -81,6 +83,17 @@ func devHooksTests() {
         let (w, hooks, _) = setup()
         w.shown = nil
         check("dev hook: no window shown: refused", hooks.heard(.switch, ["to": "Test B"]).contains("refused: no window shown") && untouched(w))
+    }
+    // ---- the tab-move probe: Test A's copy only, by Safari's name, whatever window is shown ----
+    do {
+        let (w, hooks, toggle) = setup(false)
+        check("dev hook: probe: refused with the default off", hooks.heard(.probe, ["what": "tabMove"]).contains("isn't YES") && w.probes.isEmpty)
+        toggle()
+        check("dev hook: probe: only tabMove", hooks.heard(.probe, ["what": "closeAll"]).contains("refused: a probe that isn't tabMove") && w.probes.isEmpty)
+        w.shown = WindowKey(link: work, windowId: 9) // another profile's window in front
+        check("dev hook: probe: asked of Test A's copy, whatever window is shown", hooks.heard(.probe, ["what": "tabMove"]).contains("probe tabMove in Test A") && w.probes == ["\(a) tabMove"], "\(w.probes)")
+        w.names = [b: "Test B", work: "Work"]
+        check("dev hook: probe: no profile named Test A: refused", hooks.heard(.probe, ["what": "tabMove"]).contains("0 Safari profiles named Test A") && w.probes.count == 1)
     }
     do {
         let (w, hooks, _) = setup()
