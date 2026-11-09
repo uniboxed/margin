@@ -158,7 +158,7 @@ const layoutSource = () => liveView?.() ?? lastView;
 export const setLayoutSource = (fn: () => LinkView) => { liveView = fn; };
 const chooseFor = (settings, view: LinkView, registered: string | null) => chooseLayout(settings, view?.layouts ?? {}, registered, { epoch: view?.epoch ?? undefined, drawn: view?.drawn ?? {}, last: view?.lastLayouts ?? {} });
 
-const sameScript = (a: { js: string[]; css: string[]; on: boolean; }, b) => JSON.stringify(a ? { js: a.js ?? [], css: a.css ?? [] } : null) === JSON.stringify(b ? { js: b.js ?? [], css: b.css ?? [] } : null);
+const sameScript = (a: { js: string[]; css: string[]; on: boolean; }, b: BrowserRegisteredContentScript) => JSON.stringify(a ? { js: a.js ?? [], css: a.css ?? [] } : null) === JSON.stringify(b ? { js: b.js ?? [], css: b.css ?? [] } : null);
 async function syncPage() {
   if (!api.scripting?.registerContentScripts) return;
   const got = await api.storage.local.get(['settings', APP_LINK_KEY]);

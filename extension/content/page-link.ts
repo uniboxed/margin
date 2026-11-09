@@ -13,7 +13,7 @@ export function startPageLink(send) {
   const can = html instanceof HTMLHtmlElement;
 
   // Cancelled by the page's world: it heard. Nothing there means no script yet.
-  const say = (detail) => !document.dispatchEvent(new CustomEvent('margin:box', { detail, cancelable: true }));
+  const say = (detail: string) => !document.dispatchEvent(new CustomEvent('margin:box', { detail, cancelable: true }));
 
   let last: string | null = null; // the last message, sent again when the script arrives
   let asked = false;

@@ -551,11 +551,11 @@ async function untilLoaded(tabId: number, until: () => number, left: () => boole
 // checked once per run of the background.
 const checkedCurrent = new Set<any>();
 const checking = new Map(); // tabId → the check in flight (one at a time)
-export function ensureCurrent(tabId) {
+export function ensureCurrent(tabId: number) {
   if (!checking.has(tabId)) checking.set(tabId, checkCurrent(tabId).finally(() => checking.delete(tabId)));
   return checking.get(tabId);
 }
-async function checkCurrent(tabId) {
+async function checkCurrent(tabId: number) {
   if (checkedCurrent.has(tabId) || !api.scripting?.executeScript) return;
   const files = api.runtime.getManifest().content_scripts?.find((c) => c.world !== 'MAIN')?.js;
   const tab = await api.tabs.get(tabId).catch(() => null);
@@ -573,7 +573,7 @@ async function checkCurrent(tabId) {
   console.info(`[margin] tab ${tabId} had no current copy of Margin: added`);
   await api.scripting.executeScript({ target: { tabId }, files }).catch(() => {});
 }
-export const forgetCurrent = (tabId) => {
+export const forgetCurrent = (tabId: number) => {
   checkedCurrent.delete(tabId);
   boundHere.delete(tabId);
   cutOffSuspects.delete(tabId);

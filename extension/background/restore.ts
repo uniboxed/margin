@@ -57,7 +57,7 @@ export function synced({ state, renumbered }: { state: import('../../types/margi
 
 // A tab created (called in the queue, before it's recorded): a candidate in a
 // watched window, or in a window Margin has no tab in yet.
-export function tabCreated(state: import('../../types/margin').State, tab) {
+export function tabCreated(state: import('../../types/margin').State, tab: BrowserTab) {
   if (!waiting(state) || V.isNewTabPage(tab.pendingUrl || tab.url)) return;
   const t = now();
   expire(t);
@@ -69,6 +69,6 @@ export function tabCreated(state: import('../../types/margin').State, tab) {
 }
 
 // A candidate's address changed: it may match now.
-export function tabChanged(tab) {
+export function tabChanged(tab: BrowserTab) {
   if (watched.get(tab.windowId)?.tabs.has(tab.id)) schedule();
 }

@@ -334,7 +334,7 @@ function keptForUrl(state: State, url: string, spaceId: string) {
 
 // The kept tab that had this browser tab id this session (a close heard after
 // a sync had already found the tab gone: background.ts tabs.onRemoved).
-function keptWasTab(state: State, tabId) {
+function keptWasTab(state: State, tabId: number) {
   return Object.values(state.keptTabs ?? {}).find((k) => k.wasTab === tabId) ?? null;
 }
 
@@ -378,7 +378,7 @@ const lastPlace = (state: State) => Math.max(-1, ...Object.values(state.tabs).ma
 const TIGHT = 1e-6;
 
 // The place for a new tab at `index` in its window (its neighbours there).
-function placeNew(state: State, windowId, index, exceptId) {
+function placeNew(state: State, windowId: number, index, exceptId: number) {
   const others = Object.values(state.tabs).filter((t) => t.windowId === windowId && t.id !== exceptId);
   const before = others.filter((t) => t.index < index).sort((a, b) => b.index - a.index)[0];
   const after = others.filter((t) => t.index >= index).sort((a, b) => a.index - b.index)[0];
@@ -581,7 +581,8 @@ function activeSpaceId(state: State, windowId) {
   return hasSpace(state, id) ? id : state.spaces[0].id;
 }
 
-function pinForUrl(state: State, url: string, spaceId?: string) {
+// (`url` missing, a page Margin can't read: no pin's, since no pin's address is empty.)
+function pinForUrl(state: State, url: string | undefined, spaceId?: string) {
   const key = normalizeUrl(url);
   return state.pins.find((p) => normalizeUrl(p.url) === key && (spaceId == null || p.spaceId === spaceId));
 }
@@ -610,7 +611,7 @@ function seenTab(tab: any) {
 const GOING_MS = 15000;
 const BLANK = /^about:blank$/i;
 
-function tabRecord(tab, prev, now: number) {
+function tabRecord(tab: BrowserTab, prev, now: number) {
   const seen = seenTab(tab);
   const going = prev?.going && now - prev.going.at < GOING_MS ? prev.going : null;
   const said = seen.url || seen.pendingUrl || '';
@@ -650,7 +651,7 @@ function assignTab(state: State, tabId, windowId) {
 
 // A window Margin hasn't seen yet (e.g. ⌘N) starts in the space of the
 // window used most recently, instead of the first space.
-function inheritSpace(state: State, windowId) {
+function inheritSpace(state: State, windowId: number) {
   if (state.activeSpaceByWindow[windowId] != null) return state;
   const others = Object.values(state.tabs).filter((t) => t.windowId !== windowId);
   if (!others.length) return state;
@@ -663,7 +664,7 @@ function inheritSpace(state: State, windowId) {
 // known tabs it's owned by activateTab(), because Safari can deliver an
 // update for a page that finished loading *after* the user switched away,
 // still saying active: true, which left two tabs highlighted.
-function upsertTab(state: State, tab, now: number) {
+function upsertTab(state: State, tab: BrowserTab, now: number) {
   // The stand-in page is never a Margin tab (shared/away.ts).
   if (isAwayPage(tab.url) || isAwayPage(tab.pendingUrl)) return state.tabs[tab.id] ? removeTab(state, tab.id) : state;
   const prev = state.tabs[tab.id];
@@ -725,7 +726,7 @@ const awayTabs = (state: State) => new Set(Object.values(state.awayByWindow ?? {
 
 // Exactly one active tab per window. `windowId` may be missing from the
 // event; fall back to the tab's own window.
-function activateTab(state: State, tabId, windowId, now: number) {
+function activateTab(state: State, tabId: number, windowId: number, now: number) {
   windowId ??= state.tabs[tabId]?.windowId;
   if (windowId == null) return state;
   const tabs = {};
@@ -846,17 +847,17 @@ const groupKey = (at: number, windowId) => `${at}:${windowId}`;
 
 // Did the browser renumber its tabs (a restart, or Margin updated: no open
 // tab is one Margin knows, while some it knew are gone)?
-function isRenumbered(state: State, openTabs, { fresh = false } = {}) {
+function isRenumbered(state: State, openTabs: BrowserTab[], { fresh = false } = {}) {
   if (fresh) return true;
   const open = new Set(openTabs.map((t) => String(t.id)));
   return openTabs.length > 0 && !openTabs.some((t) => state.tabs[t.id]) && Object.keys(state.tabs).some((id) => !open.has(id));
 }
 
-function syncTabs(state: State, openTabs, { fresh = false, now = Date.now() } = {}) {
+function syncTabs(state: State, openTabs: BrowserTab[], { fresh = false, now = Date.now() } = {}) {
   // (The stand-in page isn't a Margin tab: shared/away.ts.)
   openTabs = openTabs.filter((t) => !isAwayPage(t.url) && !isAwayPage(t.pendingUrl)).map(seenTab); // (a sleeping tab by its page's address)
   const open = new Set(openTabs.map((t) => String(t.id)));
-  const known = (t) => !fresh && !!state.tabs[t.id];
+  const known = (t: BrowserTab) => !fresh && !!state.tabs[t.id];
   const gone = Object.values(state.tabs).filter((r) => fresh || !open.has(String(r.id)));
   const renumbered = isRenumbered(state, openTabs, { fresh });
   const matched = renumbered ? matchTabs(gone, openTabs.filter((t) => !known(t))) : new Map();
@@ -1014,7 +1015,7 @@ function moveTab(state: State, tabId, spaceId: string) {
 
 // ---- spaces ---------------------------------------------------------------
 
-function setActiveSpace(state: State, windowId, spaceId) {
+function setActiveSpace(state: State, windowId: number, spaceId) {
   if (!hasSpace(state, spaceId)) return state;
   return { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [windowId]: spaceId } };
 }

@@ -21,18 +21,18 @@ const TRACKED = ['title', 'url', 'favIconUrl'];
 const titleDue = new Map();
 
 // The change made (null: nothing to make).
-export function tabUpdated(tabId, change, tab) {
+export function tabUpdated(tabId: number, change: BrowserTabChange, tab: BrowserTab) {
   if (!TRACKED.some((k) => k in change) && change.status !== 'complete') return null;
   return mutate((s) => M.upsertTab(s, tab, now()), { within: (s) => waitFor(s, tabId, change, tab) });
 }
 
 // Gone: forgotten (background.ts tabs.onRemoved).
-export function tabGone(tabId) {
+export function tabGone(tabId: number) {
   titleDue.delete(tabId);
 }
 
 // How long the write may wait (null: none), from the state before the change.
-function waitFor(s, tabId, change, tab) {
+function waitFor(s, tabId: number, change: BrowserTabChange, tab: BrowserTab) {
   const known = s.tabs[tabId];
   // Safari can say active: true for a tab just left (model.ts upsertTab):
   // either one saying it's in front writes at once.

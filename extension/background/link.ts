@@ -1461,14 +1461,14 @@ export function createLink({
     windowsChanged: () => void windowsNow(),
     // windows.onFocusChanged and onCreated, with their time. WINDOW_ID_NONE (none of this copy's
     // windows focused) is kept as the copy's `blurredAt`. Each focus is a line in Margin.app's log.
-    windowFocused(windowId, at = Date.now()) {
+    windowFocused(windowId: number, at = Date.now()) {
       if (!Number.isInteger(windowId)) return;
       if (windowId >= 0) focusedAt.set(windowId, at);
       else blurredAt = at;
       note(`focus heard: ${windowId >= 0 ? `window ${windowId}` : 'none (WINDOW_ID_NONE)'} at ${clock(at)}`);
       void windowsNow();
     },
-    windowCreated(windowId, at = Date.now()) {
+    windowCreated(windowId: number, at = Date.now()) {
       if (Number.isInteger(windowId) && windowId >= 0) createdAt.set(windowId, at);
       void windowsNow();
     },
@@ -1528,7 +1528,7 @@ export function createLink({
     },
     // A switch's timeline (background/switch-log.ts) and other lines for Margin.app's log.
     note: (...args: any[]) => note(...args),
-    windowClosed(windowId) {
+    windowClosed(windowId: number) {
       focusedAt.delete(windowId);
       createdAt.delete(windowId);
       viewports.delete(windowId);

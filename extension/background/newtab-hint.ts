@@ -35,7 +35,7 @@ async function read() {
 const write = (value) => api.storage.session.set({ [KEY]: value }).catch(() => {});
 
 /** tabs.onCreated */
-export function tabCreated(tab) {
+export function tabCreated(tab: BrowserTab) {
   if (!enabled() || !tab.active || tab.openerTabId != null || tab.index === 0 || openedByMargin()) return;
   const url = tab.pendingUrl || tab.url || '';
   if (V.isNewTabPage(url) || /^[a-z-]+-extension:/i.test(url)) return;
@@ -44,7 +44,7 @@ export function tabCreated(tab) {
 }
 
 /** tabs.onUpdated: its address, or its load finishing. */
-export async function tabAddress(tabId, url) {
+export async function tabAddress(tabId: number, url: string) {
   const at = candidates.get(tabId);
   if (at == null) return;
   if (Date.now() - at > CANDIDATE_MS) return void candidates.delete(tabId);
@@ -66,7 +66,7 @@ export async function tabAddress(tabId, url) {
 }
 
 /** tabs.onUpdated with status complete: the note can be shown now. */
-export function tabLoaded(tabId) {
+export function tabLoaded(tabId: number) {
   if (!pendingNote.delete(tabId)) return;
   // Shown once a run, counted only once the overlay was told (no Margin in
   // the page, not a page opened from nothing, the tab no longer in front, or
@@ -79,7 +79,7 @@ export function tabLoaded(tabId) {
   }, () => {});
 }
 
-export function tabGone(tabId) {
+export function tabGone(tabId: number) {
   candidates.delete(tabId);
   pendingNote.delete(tabId);
 }

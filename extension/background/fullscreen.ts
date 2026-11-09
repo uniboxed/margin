@@ -70,7 +70,7 @@ async function toggle(windowId) {
 // unless the setting is off (marginFullscreenAuto) or a page or video in it
 // went full screen (the Fullscreen API also puts the window in full screen;
 // leaving it would end the video's). Called on windows.onBoundsChanged.
-export async function followFullscreen(windowId) {
+export async function followFullscreen(windowId: number) {
   if (!platform?.marginFullscreen || switching.has(windowId)) return;
   const win = await api.windows.get(windowId).catch(() => null);
   if (!win) return;
@@ -113,7 +113,7 @@ async function tellTabs(windowId, fullscreen: boolean) {
   for (const tab of tabs) api.tabs.sendMessage(tab.id, { type: 'windowState', fullscreen }).catch(() => {});
 }
 
-async function pageFullscreen(windowId) {
+async function pageFullscreen(windowId: number) {
   const [tab] = await api.tabs.query({ active: true, windowId }).catch(() => []);
   if (!tab?.id || !api.scripting?.executeScript) return false;
   try {

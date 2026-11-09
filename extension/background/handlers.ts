@@ -136,7 +136,7 @@ export function zoomStored() {
   zoomReads++;
   storedZoom = null;
 }
-function rememberZoom(tab, url, zoom) {
+function rememberZoom(tab, url, zoom: number) {
   let origin;
   try {
     origin = new URL(url).origin;
@@ -251,7 +251,7 @@ async function openKept(keptId: string, { windowId = null, deadline, sidebarTop 
 // its Margin tab (fresh: no Back history). One gone meanwhile is left.
 const SPACE_WINDOW_REST_MS = 1200;
 const SPACE_WINDOW_STEP_MS = 150;
-async function openKeptBehind(windowId, spaceId: string, keptIds: string[]) {
+async function openKeptBehind(windowId: number, spaceId: string, keptIds: string[]) {
   for (const keptId of keptIds) {
     const s = await load();
     const kept = s.keptTabs?.[keptId];

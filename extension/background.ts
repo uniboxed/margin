@@ -469,7 +469,7 @@ api.storage.onChanged.addListener((changes, area) => {
 });
 // The first paint follows the settings (the theme) and the link to
 // Margin.app (registered only while it's linked: background/registered.ts).
-const linkTurned = (change) => !!change && appDraws(change.oldValue) !== appDraws(change.newValue);
+const linkTurned = (change: BrowserStorageChange) => !!change && appDraws(change.oldValue) !== appDraws(change.newValue);
 api.storage.onChanged.addListener(owned((changes, area) => {
   if (area === 'local' && (changes.settings || linkTurned(changes[APP_LINK_KEY]))) queueRegistrations();
 }));
