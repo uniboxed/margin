@@ -1,4 +1,4 @@
-// Margin's lasting data set (DATA.md): the merge (shared/data-merge.ts) on
+// Margin's lasting data set (docs/DATA.md): the merge (shared/data-merge.ts) on
 // the JSON vectors Margin.app's Swift store runs too (tests/fixtures/
 // data-merge), the data set from the state and back (shared/data-set.ts), the
 // converter from today's extension storage, and the queue of changes made

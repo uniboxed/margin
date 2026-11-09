@@ -163,7 +163,7 @@ export async function focusTab(tabId: number, { source = 'other', raise = true, 
     const tab = answered?.tab ?? null;
     const windowId = tab?.windowId ?? cached()?.tabs[tabId]?.windowId ?? null;
     line.window(windowId);
-    // A tab in a window Margin.app has parked (out of sight, app/HANDOFF.md
+    // A tab in a window Margin.app has parked (out of sight, docs/HANDOFF.md
     // §2.5): raising it would focus it and show nothing. The tab is in front
     // there now, and the app is asked to hand off to that window instead. Not
     // linked (the app can't be told), it's raised as before.
@@ -246,7 +246,7 @@ export async function resolveTab(tabId: number, hint: { url?: string, index?: nu
     // The same page open twice: the one with the row's title, if that tells them apart.
     if (candidates.length > 1 && hint.title && candidates.some((t) => t.title === hint.title)) candidates = candidates.filter((t) => t.title === hint.title);
     if (!candidates.length) return null;
-    // The asking page's window first, then a window that isn't parked (app/HANDOFF.md §2.5), then the nearest place.
+    // The asking page's window first, then a window that isn't parked (docs/HANDOFF.md §2.5), then the nearest place.
     const distance = (t: { windowId?: number, index?: number }) => (t.windowId === preferWindow ? 0 : 2e6) + (inParkedWindow(t) ? 1e6 : 0) + Math.abs((t.index ?? 0) - (hint.index ?? 0));
     return candidates.reduce((best, t) => (distance(t) < distance(best) ? t : best));
   };
@@ -420,7 +420,7 @@ export async function openTab({ windowId, url, spaceId, deadline, index, keptId 
 // Margin's own pages have no content script, so they hear it as a broadcast
 // that says which page it's for (`from`).
 // A switch under way, done or failed is told to Margin.app's overlay of the
-// window too, while it draws the UI there (it highlights the tab: app/overlay).
+// window too, while it draws the UI there (it highlights the tab: app/shared/host).
 // `app: false`: the page only (the overlay was told already: navigation.ts
 // tells it at the key press, with no page to name).
 // A switch's `switchId`, `chain` and `seq` (a key's: navigation.ts) go to the

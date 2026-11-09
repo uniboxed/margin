@@ -157,7 +157,7 @@ test('the validators agree with what was verified by hand', () => {
 test('the `search` permission (chrome.search) is Chrome-only; Safari has no search API', () => {
   assert.ok(manifestFor('chrome').permissions.includes('search'));
   assert.ok(!manifestFor('safari').permissions.includes('search'));
-  // Both: nativeMessaging (Safari's extension handler; Chrome's and Edge's relay helper, app/PROTOCOL.md).
+  // Both: nativeMessaging (Safari's extension handler; Chrome's and Edge's relay helper, docs/PROTOCOL.md).
   assert.ok(manifestFor('safari').permissions.includes('nativeMessaging'));
   assert.ok(manifestFor('chrome').permissions.includes('nativeMessaging'));
   assert.deepEqual(manifestFor('chrome').permissions.filter((p) => p !== 'search').sort(), manifestFor('safari').permissions.slice().sort(), 'otherwise the same list');
@@ -165,13 +165,13 @@ test('the `search` permission (chrome.search) is Chrome-only; Safari has no sear
   assert.equal(PROFILES.safari.search, 'learn');
 });
 
-test('Chrome\'s build: a fixed key, whose id is the one Margin.app\'s host files name (app/shell/ChromiumHosts.swift)', () => {
+test('Chrome\'s build: a fixed key, whose id is the one Margin.app\'s host files name (engines/chromium/app/ChromiumHosts.swift)', () => {
   const key = manifestFor('chrome').key;
   assert.equal(typeof key, 'string');
   // Chrome's id from a key: the SHA-256 of its DER, its first 32 hex digits as a–p.
   const hex = createHash('sha256').update(Buffer.from(key, 'base64')).digest('hex').slice(0, 32);
   const id = [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
   assert.equal(id, 'njeebbcmlenfopaecfbphgcfihbdmkec');
-  assert.ok(readFileSync(new URL('../app/shell/ChromiumHosts.swift', import.meta.url), 'utf8').includes(`"${id}"`), 'the app names the same id');
+  assert.ok(readFileSync(new URL('../engines/chromium/app/ChromiumHosts.swift', import.meta.url), 'utf8').includes(`"${id}"`), 'the app names the same id');
   assert.equal(manifestFor('safari').key, undefined, 'Safari\'s build has none');
 });

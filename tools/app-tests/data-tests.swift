@@ -1,4 +1,4 @@
-// Checks of Margin.app's lasting data (app/shell/DataSet.swift,
+// Checks of Margin.app's lasting data (app/macos/shell/DataSet.swift,
 // DataStore.swift, DataSync.swift), part of tests.swift's run: the merge
 // against the JSON vectors the extension's reference runs
 // (tests/fixtures/data-merge/, read where MARGIN_DATA_VECTORS says), the

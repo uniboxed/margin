@@ -1,4 +1,4 @@
-// Tabs following the window in front (background/away.ts, app/WINDOWS.md §9), against a fake browser API: a tab
+// Tabs following the window in front (background/away.ts, docs/BROWSER-WINDOWS.md §9), against a fake browser API: a tab
 // chosen in a window while it's in another moves there, the other keeps it chosen, away, with the stand-in page
 // in front and the tab's picture kept in memory only.
 import { test } from 'node:test';

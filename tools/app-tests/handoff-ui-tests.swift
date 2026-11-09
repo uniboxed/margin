@@ -1,4 +1,4 @@
-// The switch's settings and words on the app's side (app/HANDOFF.md §5, §7):
+// The switch's settings and words on the app's side (docs/HANDOFF.md §5, §7):
 // "Close windows to save memory" kept in data/<browser>/browser.json and sent
 // to every overlay as `across.switchSettings`, and the switch's notices by
 // kind (SwitchNotice), with the window a kept-draft notice can close never

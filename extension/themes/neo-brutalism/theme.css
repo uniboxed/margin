@@ -160,7 +160,7 @@
 .tab .title { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Showing the page while a new tab is on its way (⌘T): outlined, dashed. */
 .tab.behind { outline: 2px dashed var(--ink); outline-offset: -2px; }
-/* Chosen here, live in another window (app/WINDOWS.md §9): still pressed, faded. */
+/* Chosen here, live in another window (docs/BROWSER-WINDOWS.md §9): still pressed, faded. */
 .tab.away { opacity: 0.55; }
 /* Playing sound: a speaker after the title. */
 .audible { width: 15px; height: 15px; stroke-width: 2.2; }

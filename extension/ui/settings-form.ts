@@ -52,7 +52,7 @@ export function currentShortcuts(settings: any) {
   };
 }
 
-// "Close windows to save memory" (app/HANDOFF.md §5): Margin.app's, for the
+// "Close windows to save memory" (docs/HANDOFF.md §5): Margin.app's, for the
 // whole browser, so every profile's Settings show the same value.
 export const CLOSE_WINDOWS_LABEL = 'Close windows to save memory: when you switch to another profile, the window you leave closes. Switching takes a little longer and its pages reload when you come back. Off: the window stays open, out of sight, with your place, text and video kept.';
 

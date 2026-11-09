@@ -1,5 +1,5 @@
 // Spaces across a browser's profiles, as Margin.app sends them to each
-// overlay (`across`: app/shell/BrowserProfiles.swift `across(for:)`,
+// overlay (`across`: app/macos/shell/BrowserProfiles.swift `across(for:)`,
 // ShellProfiles.swift): the profile this window is in, every profile Margin
 // knows (name, emoji, color: the person names them once, or, with Full Disk
 // Access, the name is Safari's own, `nameFrom` 'safari', with Safari's symbol
@@ -86,7 +86,7 @@ function windowOf(w: any): AcrossWindow | null {
 /** Whether `w` is this overlay's window: `profile` the overlay's own (`across.profile`), `windowId` its window. */
 export const isWindow = (w: AcrossWindow | null | undefined, profile: string, windowId: number | null | undefined) => !!w && w.profile === profile && w.windowId === windowId;
 
-// The cross-profile switch's notices (app/HANDOFF.md §1.5, §1.9, §1.10, §4.5):
+// The cross-profile switch's notices (docs/HANDOFF.md §1.5, §1.9, §1.10, §4.5):
 // the app sends only a kind and the profile it's about (`noticeKind`,
 // `noticeProfile`), and these are the words, with that profile's name. A
 // button goes back to the app (ui/host-app.ts perform 'notice': `switch.notice`).

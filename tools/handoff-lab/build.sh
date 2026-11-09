@@ -20,10 +20,11 @@ set -u
 cd "$(dirname "$0")"
 BUILD="$PWD/build"
 mkdir -p "$BUILD"
-SHELL_DIR=../../app/shell
-SHARED=("$SHELL_DIR/PrivateCalls.swift" "$SHELL_DIR/Diagnostics.swift" "$SHELL_DIR/Freezer.swift" "$SHELL_DIR/SpaceReads.swift"
+SHELL_DIR=../../app/macos/shell
+PRIVATE_DIR=../../app/macos/private
+SHARED=("$PRIVATE_DIR/PrivateCalls.swift" "$SHELL_DIR/Diagnostics.swift" "$PRIVATE_DIR/Freezer.swift" "$PRIVATE_DIR/SpaceReads.swift"
   "$SHELL_DIR/WindowServer.swift" "$SHELL_DIR/ProfileSwitch.swift" "$SHELL_DIR/LinkMessage.swift")
-PARKER="$SHELL_DIR/BridgeParker.swift"
+PARKER="$PRIVATE_DIR/BridgeParker.swift"
 FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -parse-as-library)
 
 for f in lab.swift "${SHARED[@]}" "$PARKER"; do

@@ -1,5 +1,5 @@
 // The lab's frame probe, in every page of the lab's server (tools/handoff-lab, gate G2). It is
-// the probe app/HANDOFF.md §3.2 describes (R3), so the gate measures that signal:
+// the probe docs/HANDOFF.md §3.2 describes (R3), so the gate measures that signal:
 // - `probe { frames, nudgeMs, timeoutMs }`: a 1×1 fixed element outside the layout, its alpha
 //   flipped between 0.01 and 0.02 each frame for nudgeMs, and an answer after `frames`
 //   requestAnimationFrames: { frames, firstAt, lastAt, width, height, hasFocus, visible, visibleAt }.

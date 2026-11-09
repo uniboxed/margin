@@ -1,4 +1,4 @@
-// The overlay's side of the switch between profiles (app/HANDOFF.md §5, §7):
+// The overlay's side of the switch between profiles (docs/HANDOFF.md §5, §7):
 // the "switching" cover in the view model (only in the overlay of the window
 // the switch leaves, only before and under the freeze), its guarded slot and
 // part, when the overlay says the cover is drawn (`switch.coverShown`, never
@@ -226,8 +226,8 @@ test('framed: on the next frame after `shown`, with the mode at that frame', () 
   assert.deepEqual(posts.at(-1), ['framed', { mode: 'fullscreen' }], 'only the two modes');
 });
 
-test('the overlay page: framed after shown, coverShown from the cover\'s slot with no swipe (app/overlay/overlay.ts)', () => {
-  const src = readFileSync(fileURLToPath(new URL('../app/overlay/overlay.ts', import.meta.url)), 'utf8');
+test('the overlay page: framed after shown, coverShown from the cover\'s slot with no swipe (app/shared/host/overlay.ts)', () => {
+  const src = readFileSync(fileURLToPath(new URL('../app/shared/host/overlay.ts', import.meta.url)), 'utf8');
   const shown = src.slice(src.indexOf("case 'shown':"), src.indexOf("case 'push':"));
   assert.match(shown, /answerFramed\(/);
   assert.match(src, /createCoverWatch\(/);

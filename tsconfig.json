@@ -18,7 +18,7 @@
   },
   "include": [
     "extension/**/*.ts",
-    "app/overlay/*.ts",
+    "app/shared/host/*.ts",
     "types/*.d.ts"
   ]
 }

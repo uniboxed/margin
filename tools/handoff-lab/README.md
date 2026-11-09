@@ -1,6 +1,6 @@
 # The handoff lab
 
-The test tool for the profile handoff's private calls (`app/HANDOFF.md` §10.3, §10.4). It has one mode per gate, G1-G18, plus `holds`, the check that the freeze still holds the screen. Each gate is a run on screen, and its result decides what the build turns on. Run it on every macOS beta. `PRIVATE-APIS.md` keeps the results.
+The test tool for the profile handoff's private calls (`docs/HANDOFF.md` §10.3, §10.4). It has one mode per gate, G1-G18, plus `holds`, the check that the freeze still holds the screen. Each gate is a run on screen, and its result decides what the build turns on. Run it on every macOS beta. `docs/PRIVATE-APIS.md` keeps the results.
 
 It isn't part of `npm test` or `npm run test:app`. Nothing runs it automatically.
 
@@ -119,7 +119,7 @@ G8 and G9 need `--person`: someone dismisses each prompt and does each step, the
 
 ### Margin.app with the dev hook (G1's second half, G16)
 
-These two run through Margin.app, never the lab's own calls. The lab posts WP12's dev hook (`app/shell/DevHooks.swift`) and reads Margin's log. Margin refuses the hook unless `MarginDevHooks` is YES, and unless the window it shows and the target are Safari's own **Test A** and **Test B** (exact names, read from Safari's files with Full Disk Access). It can't reach any other profile.
+These two run through Margin.app, never the lab's own calls. The lab posts WP12's dev hook (`engines/webkit/browsers/safari/app/DevHooks.swift`) and reads Margin's log. Margin refuses the hook unless `MarginDevHooks` is YES, and unless the window it shows and the target are Safari's own **Test A** and **Test B** (exact names, read from Safari's files with Full Disk Access). It can't reach any other profile.
 
 Before:
 
@@ -167,7 +167,7 @@ After:
 ### After
 
 1. The report is `results/<build>-<date>.md`. Each run adds a section with the launch line, whether Screen Recording was there, the options, and each gate's status and lines.
-2. Update `PRIVATE-APIS.md`: the "Seen working" and "Last lab run" columns, and the link to the newest report.
+2. Update `docs/PRIVATE-APIS.md`: the "Seen working" and "Last lab run" columns, and the link to the newest report.
 3. A gate that decides a setting (G2's R3, G4's retry, G5's enumerator, G7's cooldown, G16's numbers) is changed in the code only after the result has been read. Never automatically.
 4. Commit the report with the change it led to.
 
@@ -194,6 +194,6 @@ After:
 
 - **G1's lab half isn't free of permissions.** It runs under the terminal, which has Screen Recording. The case without permissions is Margin.app's own launch line, its self-test, and its switch through the dev hook.
 - **G2's probe is the lab's own `probe.js`.** It answers in the shape §3.2 gives. Once WP6's content script exists, run G2 again on Margin's own probe through G16's setup.
-- **G5's enumerator search** calls `SLSCopyWindowsWithOptionsAndTags` with the signature the window managers that use it declare. It's the lab's only call that Margin.app doesn't make, so `PRIVATE-APIS.md` row 13 holds its result, not its use.
+- **G5's enumerator search** calls `SLSCopyWindowsWithOptionsAndTags` with the signature the window managers that use it declare. It's the lab's only call that Margin.app doesn't make, so `docs/PRIVATE-APIS.md` row 13 holds its result, not its use.
 - **Child windows** (G5, G6, G13) are titled 800×500 windows at alpha 0 that macOS keeps mostly off screen. They're never seen, but they are real windows of another process, as Safari's are.
 - **Frames:** only complete frames count, because ScreenCaptureKit repeats old buffers while the screen is still. With no complete frame at all while frozen and a window changing every frame underneath, the screen held. A camera is still the only independent proof.

@@ -248,7 +248,7 @@ host. Immutable: rows that didn't change are the same objects.
   `color`), `active`, `behind`, `away`, `audible`, `asleep`, `loading`; pins also
   `open`, `tabId`, `folderId`, `nested`.
 - `away` (with `active`): the row is this window's chosen tab, shown live in another window of the profile (two
-  windows on one space list the same tabs, and the tab follows the window in front: app/WINDOWS.md §9). Keep it
+  windows on one space list the same tabs, and the tab follows the window in front: docs/BROWSER-WINDOWS.md §9). Keep it
   highlighted, faded: Arcadia and Pixel fade the row, Neo-brutalism fades the pressed button. Margin draws the
   tab's picture, faded, where its page was.
 - `loading` (a row's, and `tab.loading` for the tab in front): the tab's

@@ -1,11 +1,11 @@
 // How the overlay page reaches the shell that shows it: `post(message)` gives a promise of the shell's reply.
-// - Margin.app on the Mac (WKWebView, app/shell/OverlayWebView.swift): `webkit.messageHandlers.margin.postMessage`
+// - Margin.app on the Mac (WKWebView, app/macos/shell/OverlayWebView.swift): `webkit.messageHandlers.margin.postMessage`
 //   returns that promise itself (a handler with reply).
-// - Margin for Windows (WebView2, native/margin-windows/src/webview.rs): `chrome.webview.postMessage` returns
+// - Margin for Windows (WebView2, app/windows/src/webview.rs): `chrome.webview.postMessage` returns
 //   nothing, so each message carries a request id, `rid`, and the shell answers every one with
 //   `PostWebMessageAsJson({ reply: rid, ok, value })` or `{ reply: rid, ok: false, error }`, heard here as the
 //   webview's `message` event. A reply with no request waiting is ignored.
-// The shell talks to the page the same way on both: it runs `marginApp.receive(json)` (app/overlay/overlay.ts).
+// The shell talks to the page the same way on both: it runs `marginApp.receive(json)` (app/shared/host/overlay.ts).
 export type Post = (message: Record<string, unknown>) => Promise<unknown>;
 
 type WebKitHandler = { postMessage(message: unknown): Promise<unknown> };

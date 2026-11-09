@@ -26,7 +26,7 @@ export const appLink = createLink({
   commandKeys,
   data: {
     pendingQueue,
-    // The converter (DATA.md): all of storage as a data set, for an app that has none.
+    // The converter (docs/DATA.md): all of storage as a data set, for an app that has none.
     snapshot: async () => dataSetFromStorage(await api.storage.local.get(null), { now: Date.now() }),
     adopt: (set, options) => adoptAppSet(set, options),
     take: takeDataChanges,

@@ -212,7 +212,7 @@ function onScreen() {
     onRun: (run) => runs.push(run),
   });
   const state = (id) => { front = id; switching.settle(); draw(); };
-  // The copy's key switches as the overlay takes them (app/overlay/overlay.ts 'switching',
+  // The copy's key switches as the overlay takes them (app/shared/host/overlay.ts 'switching',
   // ui/runtime.ts switchTo): each with its switchId, settled only by its own word.
   const copy = backgroundSwitches();
   const key = (id, switchId) => {

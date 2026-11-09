@@ -9,7 +9,7 @@
 //   changed file, followed through every relative import; tests that name a changed non-JS
 //   file (a theme's HTML or CSS, the new-tab page); every theme test when a theme changed;
 //   and any changed test file itself (theme tests two at a time: three and four made the drag tests flaky);
-// - Swift (app/shell, app/safari, tools/app-tests): the app's unit checks (compiled on every
+// - Swift (app/macos/, each engine's and browser's app side, app/shared/connector/, tools/app-tests): the app's unit checks (compiled on every
 //   core; the randomized runs cut to 50 and 80 from 300 and 1000; the gate runs them all);
 // - e2e test files that changed, run on their own (source changes leave e2e to the gate);
 // - what the quick tier never runs is listed at the end (WebKit host, the app's e2e, the e2e
@@ -98,7 +98,7 @@ const pick = (t, reason) => { if (!why.has(t)) why.set(t, reason); };
 const changedJs = abs.filter((f) => /\.m?[jt]s$/.test(f) && !f.includes('/tests/e2e/'));
 // Non-JS files the JS side loads: a theme's HTML and CSS, the new-tab page, manifests, fixtures
 // (never Swift or docs, which comments mention without testing them).
-const changedOther = abs.filter((f) => !/\.m?[jt]s$/.test(f) && /^(extension|platform|app\/overlay|tests\/fixtures)\//.test(rel(f)) && !/\.(swift|md)$/.test(f));
+const changedOther = abs.filter((f) => !/\.m?[jt]s$/.test(f) && /^(extension|engines|app\/shared\/host|tests\/fixtures)\//.test(rel(f)) && !/\.(swift|md)$/.test(f));
 for (const t of [...UNIT, ...SECURITY, ...THEME]) {
   if (all) { pick(t, 'all'); continue; }
   if (abs.includes(t)) { pick(t, 'changed'); continue; }
@@ -115,13 +115,14 @@ for (const t of [...UNIT, ...SECURITY, ...THEME]) {
 const themeChanged = changed.some((f) => f.startsWith('extension/themes/') || f.startsWith('extension/ui/'));
 if (themeChanged) for (const t of [...THEME, ...SECURITY, ...UNIT.filter((u) => /theme/.test(basename(u)))]) pick(t, 'a theme or the UI runtime changed');
 // The build's inputs: the build and manifest tests.
-if (changed.some((f) => /^(extension|platform|app\/overlay)\/|^scripts\/build\.ts$|^package\.json$/.test(f))) {
+if (changed.some((f) => /^(extension|engines\/[^/]+(\/browsers\/[^/]+)?\/extension|app\/shared\/host)\/|^scripts\/build\.ts$|^package\.json$/.test(f))) {
   for (const n of ['build.test.ts', 'manifest.test.ts']) { const t = join(ROOT, 'tests', n); if (existsSync(t)) pick(t, 'the build\'s inputs changed'); }
 }
-const swift = all || changed.some((f) => /^(app\/shell|app\/safari|tools\/app-tests)\//.test(f));
+// (The app's Swift: app/macos/, each engine's and browser's app side, the connector, and the Swift tests.)
+const swift = all || changed.some((f) => /^(app\/macos|engines\/[^/]+(\/browsers\/[^/]+)?\/app|app\/shared\/connector|tools\/app-tests)\//.test(f));
 const e2eFiles = all ? [] : E2E.filter((t) => abs.includes(t));
 const notRun = [];
-if (changed.some((f) => /^(extension|app\/overlay|tests\/e2e)\//.test(f)) && !e2eFiles.length) notRun.push('the e2e suite (npm run test:e2e)');
+if (changed.some((f) => /^(extension|engines|app\/shared\/host|tests\/e2e)\//.test(f)) && !e2eFiles.length) notRun.push('the e2e suite (npm run test:e2e)');
 if (changed.some((f) => /^(extension|tools\/webkit-host)\//.test(f))) notRun.push('the WebKit host (npm run test:webkit)');
 if (swift) notRun.push('the app\'s e2e checks (tools/app-tests/run.sh e2e)');
 
@@ -130,7 +131,7 @@ const plan = { unit: sel([...UNIT, ...SECURITY]), theme: sel(THEME), e2e: e2eFil
 
 console.log(`quick tests: ${all ? 'everything quick' : `${changed.length} changed file(s)`}${option('--base') ? ` since ${option('--base')}` : ''}`);
 for (const [t, reason] of [...why].sort()) console.log(`  ${rel(t)}  (${reason})`);
-if (swift) console.log('  Swift unit checks (app/shell, app/safari or its tests changed)');
+if (swift) console.log('  Swift unit checks (the app\'s Swift or its tests changed)');
 for (const t of plan.e2e) console.log(`  ${rel(t)}  (changed)`);
 if (!why.size && !swift && !plan.e2e.length) console.log('  no tests reach these changes: the build and the type check only');
 if (flag('--dry')) process.exit(0);

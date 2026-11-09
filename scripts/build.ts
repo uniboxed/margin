@@ -1,5 +1,5 @@
 // Builds ready-to-load extensions for each browser from the one shared source:
-//   extension/ (shared) + platform/<target>/manifest.json (overrides)
+//   extension/ (shared) + its engine's manifest changes (MANIFESTS: engines/…/extension/manifest.json)
 //   → dist/<target>/, with shared/platform.ts stamped for that browser.
 // dist/ is committed (no Node needed on the Mac to use it); a unit test fails
 // if it's out of date. Usage: node scripts/build.ts
@@ -30,11 +30,17 @@ function dropSources(dir: string) {
   }
 }
 
+// Each build's manifest changes, in its engine's folder: Safari's in WebKit's (its only browser there), Chrome's
+// build Chromium's own (Chrome, Edge and the other Chromium browsers run it).
+export const MANIFESTS = {
+  safari: 'engines/webkit/browsers/safari/extension/manifest.json',
+  chrome: 'engines/chromium/extension/manifest.json',
+};
 // Overrides replace top-level keys, except `add_permissions`, which is
 // appended to the shared `permissions` (so the list lives in one place).
 export function manifestFor(target) {
   const base = JSON.parse(readFileSync(new URL('manifest.json', SOURCE), 'utf8'));
-  const { add_permissions: addPermissions = [], ...overrides } = JSON.parse(readFileSync(new URL(`platform/${target}/manifest.json`, root), 'utf8'));
+  const { add_permissions: addPermissions = [], ...overrides } = JSON.parse(readFileSync(new URL(MANIFESTS[target], root), 'utf8'));
   const manifest = { ...base, ...overrides };
   if (addPermissions.length) manifest.permissions = [...new Set([...(manifest.permissions ?? []), ...addPermissions])];
   return manifest;
@@ -134,7 +140,7 @@ function bundle(out, manifest) {
 
   // Chrome's background is a service worker; Safari's a page (`scripts`,
   // non-persistent, Manifest V3's default, so no `persistent` key: the converter
-  // warns on it; platform/safari/manifest.json), since WebKit hangs a
+  // warns on it; engines/webkit/browsers/safari/extension/manifest.json), since WebKit hangs a
   // service worker that opens a WebSocket, and the link to Margin.app is one
   // (background/link.ts, PLAN.md §14 Spike 3). One bundle either way.
   const bg = manifest.background;
@@ -155,7 +161,7 @@ function bundle(out, manifest) {
   }
 }
 
-// Margin.app's overlay page (app/overlay/: the UI runtime with the app's
+// Margin.app's overlay page (app/shared/host/: the UI runtime with the app's
 // host, extension/ui/host-app.ts) as one script and its page, for the app's
 // Resources/app/ (scripts/xcode-add-sources.py). Safari's profile for now
 // (Margin 2 Phase 2 is Safari's; Chrome and Edge are Phase 5).
@@ -170,9 +176,9 @@ export function buildApp(outDir, { profile = 'safari' } = {}) {
   try {
     cpSync(fileURLToPath(SOURCE), tmp, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') });
     writeFileSync(`${tmp}/shared/platform.ts`, platformFileFor(profile));
-    const entry = readFileSync(new URL('app/overlay/overlay.ts', root), 'utf8').replaceAll("'../../extension/", "'./");
+    const entry = readFileSync(new URL('app/shared/host/overlay.ts', root), 'utf8').replaceAll("'../../../extension/", "'./");
     buildSync({
-      stdin: { contents: entry, resolveDir: tmp, sourcefile: 'app/overlay/overlay.ts', loader: 'ts' },
+      stdin: { contents: entry, resolveDir: tmp, sourcefile: 'app/shared/host/overlay.ts', loader: 'ts' },
       tsconfigRaw: TSCONFIG,
       bundle: true,
       format: 'iife',
@@ -187,7 +193,7 @@ export function buildApp(outDir, { profile = 'safari' } = {}) {
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
-  cpSync(fileURLToPath(new URL('app/overlay/overlay.html', root)), `${out}/overlay.html`);
+  cpSync(fileURLToPath(new URL('app/shared/host/overlay.html', root)), `${out}/overlay.html`);
   writeFileSync(`${out}/${FALLBACK_FILE}`, fallbackScript());
   return out;
 }
@@ -197,7 +203,7 @@ export function buildApp(outDir, { profile = 'safari' } = {}) {
 // A script, not JSON: the overlay's policy allows no connections (fetch),
 // only Margin's own scripts from its folder. The package in the `theme`
 // message's shape (background/theme-package.ts ThemeMessage), loaded only
-// when it's needed (app/overlay/overlay.ts fallBack).
+// when it's needed (app/shared/host/overlay.ts fallBack).
 export const FALLBACK_FILE = 'arcadia.js';
 export function fallbackPackage() {
   const dir = new URL('themes/arcadia/', SOURCE);

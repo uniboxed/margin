@@ -1,4 +1,4 @@
-// The user themes' store and reader (app/shell/ThemeStore.swift), in a
+// The user themes' store and reader (app/macos/shell/ThemeStore.swift), in a
 // temporary folder (never ~/Library/Application Support/Margin): a value
 // stored and listed, read back as the overlay's theme message, replaced,
 // removed; values refused for their shape, id or size; files tampered with

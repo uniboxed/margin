@@ -1,6 +1,6 @@
-// DEV-HOOK: the dev-only test hook's checks go with it before production (app/HANDOFF.md §9).
+// DEV-HOOK: the dev-only test hook's checks go with it before production (docs/HANDOFF.md §9).
 //
-// The dev hook (app/shell/DevHooks.swift) against a fake world: refused with its default off, for any
+// The dev hook (engines/webkit/browsers/safari/app/DevHooks.swift) against a fake world: refused with its default off, for any
 // profile but Safari's Test A and Test B, and with no names read; each kind routed to the world; its
 // caps and faults used only by a Test A/Test B switch of the machine (FakeHandoffWorld,
 // handoff-tests.swift). And the log: the switch's summary line, and the machine's other lines, carry no

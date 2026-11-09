@@ -296,7 +296,7 @@ final class OffScreenWindow: NSWindow {
   let window = Win()
   override init() { super.init(); controller.delegate = self }
   func webExtensionController(_ c: WKWebExtensionController, openWindowsFor x: WKWebExtensionContext) -> [any WKWebExtensionWindow] { [window] }
-  // Native messaging, as Safari's extension handler and Margin.app do it (app/PROTOCOL.md):
+  // Native messaging, as Safari's extension handler and Margin.app do it (docs/PROTOCOL.md):
   // a copy's wantLink goes to the app's real end of the link (link-server/main.swift, started
   // by an `appStart` step), whose dispatches come into the copy's lasting port. Without it,
   // the handler's answer: the app isn't open. After an `appOnDemand` step, a wantLink with

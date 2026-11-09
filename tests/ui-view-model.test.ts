@@ -27,7 +27,7 @@ test('sections and order: the pinned area (folders and loose pins by position), 
   assert.deepEqual(ids(projects.pins), ['pc']);
   assert.deepEqual(ids(projects.shown), ['pc'], 'a closed folder still shows the pin of the tab in front');
   assert.equal(projects.hasShown, true);
-  assert.deepEqual(ids(vm.space.today), [15, 14, 12, 16], 'pinned tabs are their pins\' rows; the rest newest first, the other window\'s too (app/WINDOWS.md §9)');
+  assert.deepEqual(ids(vm.space.today), [15, 14, 12, 16], 'pinned tabs are their pins\' rows; the rest newest first, the other window\'s too (docs/BROWSER-WINDOWS.md §9)');
   assert.equal(vm.space.hasToday, true);
   assert.equal(vm.space.hasPinned, true);
   assert.equal(vm.space.newTab.active, false);

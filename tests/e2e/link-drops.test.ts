@@ -1,4 +1,4 @@
-// The link going and coming back (app/PROTOCOL.md "Liveness", background/
+// The link going and coming back (docs/PROTOCOL.md "Liveness", background/
 // link.ts): a socket dropped and mended at once; the app gone for a moment
 // (the overlay dimmed, "Reconnecting", pages keep their box) and back within
 // the grace; gone for longer than 6 s (no box, the new-tab notice), then a

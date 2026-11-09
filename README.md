@@ -87,7 +87,7 @@ The script runs Apple's converter on the Safari build:
 xcrun safari-web-extension-converter dist/safari --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open
 ```
 
-It then fixes the bundle IDs (the converter names the app `io.tirth.Margin`, the extension `io.tirth.margin.Extension`, and Xcode refuses an extension whose ID isn't prefixed by the app's: the script sets the app to `io.tirth.margin` and `extensionBundleIdentifier` in the app's Swift to match), turns the app's App Sandbox off (Developer ID: it listens on 127.0.0.1), and adds Margin.app's own code: `app/safari/` (the set-up window, the app delegate, the extension handler), `app/shell/` (the link to the extension, window tracking, the overlays drawn around the browser's windows, the data store) and the overlays' page (`dist/app/`, built from `app/overlay/` and `extension/ui/`). Choose the **Margin (macOS)** scheme and Run (⌘R), with the same Team on both targets under Signing & Capabilities.
+It then fixes the bundle IDs (the converter names the app `io.tirth.Margin`, the extension `io.tirth.margin.Extension`, and Xcode refuses an extension whose ID isn't prefixed by the app's: the script sets the app to `io.tirth.margin` and `extensionBundleIdentifier` in the app's Swift to match), turns the app's App Sandbox off (Developer ID: it listens on 127.0.0.1), and adds Margin.app's own code: `app/macos/startup/` (the set-up window, the app delegate, the extension handler), `app/macos/shell/` (the link to the extension, window tracking, the overlays drawn around the browser's windows, the data store) and the overlays' page (`dist/app/`, built from `app/shared/host/` and `extension/ui/`). Choose the **Margin (macOS)** scheme and Run (⌘R), with the same Team on both targets under Signing & Capabilities.
 
 **After pulling new changes,** re-run `npm run safari`. By hand: re-run `scripts/make-xcode.sh` whenever files under `dist/safari/` or `app/` are added or removed, else just Run again in Xcode.
 
@@ -129,7 +129,7 @@ tests/                  *.test.js unit tests; theme/ browser tests of the runtim
 tools/                  webkit-host/ (Safari's extension engine, off screen), app-tests/ (Margin.app's checks)
 ```
 
-**Data flow:** the background is the only writer of the extension's storage, which pages read (their tab, window and settings) and Margin.app gets as a snapshot and deltas over the link. On the Mac the lasting data (spaces, pins, folders, Margin's tabs, the archive, settings, icons) is Margin.app's, in `~/Library/Application Support/Margin/`; the extension's copy is a cache (`DATA.md`). The background can be unloaded at any time: it serializes writes through one queue and rehydrates from storage.
+**Data flow:** the background is the only writer of the extension's storage, which pages read (their tab, window and settings) and Margin.app gets as a snapshot and deltas over the link. On the Mac the lasting data (spaces, pins, folders, Margin's tabs, the archive, settings, icons) is Margin.app's, in `~/Library/Application Support/Margin/`; the extension's copy is a cache (`docs/DATA.md`). The background can be unloaded at any time: it serializes writes through one queue and rehydrates from storage.
 
 Design decisions and every Safari fallback are in [DECISIONS.md](DECISIONS.md).
 
@@ -138,7 +138,7 @@ Design decisions and every Safari fallback are in [DECISIONS.md](DECISIONS.md).
 `npm run build` copies `extension/` into `dist/<browser>/` with that browser's manifest overrides and profile, writes the first paint's files, bundles each context's scripts into one file with esbuild (`content/content.bundle.js`, `background.bundle.js`, `content/page.bundle.js`, `newtab/newtab.bundle.js`) and builds Margin.app's overlay page into `dist/app/`. Run `npm install` once. Node 22+.
 
 ```sh
-npm run build       # after any change under extension/, platform/ or app/overlay/: regenerate dist/ (a test checks it)
+npm run build       # after any change under extension/, platform/ or app/shared/host/: regenerate dist/ (a test checks it)
 npm test            # type check (tsc, TypeScript 7; types/*.d.ts), then unit tests (node --test, from the .ts files)
 npm run test:theme  # the UI runtime and the themes in headless WebKit and Chromium
 npm run test:app    # Margin.app's shell: unit checks and end to end against a fake extension, off screen

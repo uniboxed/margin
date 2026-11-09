@@ -1,4 +1,4 @@
-// The copy's side of the data set (DATA.md "Messages", background/link.ts):
+// The copy's side of the data set (docs/DATA.md "Messages", background/link.ts):
 // the app's set taken as the cache; changes made while linked sent as
 // data.changes; changes made while Margin.app wasn't there queued and sent
 // in the next data.hello; and a profile whose storage was wiped refilled

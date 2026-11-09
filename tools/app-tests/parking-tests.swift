@@ -1,4 +1,4 @@
-// Parking (app/HANDOFF.md §2.1, §3.1, §4.2, §4.3), part of tests.swift's run.
+// Parking (docs/HANDOFF.md §2.1, §3.1, §4.2, §4.3), part of tests.swift's run.
 // No real private function is called here, nothing is spawned, and the
 // window server is never read.
 //
@@ -776,7 +776,7 @@ func parkingRegistryTests() {
         said = []
     }
 
-    // ---- two Margin windows: each one's closes and §6.2's pick (app/WINDOWS.md §3) ----
+    // ---- two Margin windows: each one's closes and §6.2's pick (docs/BROWSER-WINDOWS.md §3) ----
     do {
         let s = Setup([41: boundsA, 42: boundsB, 43: boundsC, 44: boundsA], pid: safari)
         s.park(41, "safari:a", 1, bounds: boundsA)
@@ -797,7 +797,7 @@ func parkingRegistryTests() {
         check("lines: one Margin window's parked windows ended, the other's still parked", !s.registry.isParked(41) && s.registry.isParked(43) && ended?.returned == 1,
               "\(String(describing: ended)) \(s.registry.numbers)")
     }
-    // ---- a window in no line, shown: the switch gives it its line (app/WINDOWS.md §2.1) ----
+    // ---- a window in no line, shown: the switch gives it its line (docs/BROWSER-WINDOWS.md §2.1) ----
     do {
         let s = Setup([11: boundsA], pid: safari)
         s.park(11, "safari:a", 3, bounds: boundsA)
@@ -989,7 +989,7 @@ func parkingRegistryTests() {
         check("registry: … the same copy reporting: still bound", f.isEmpty && s.registry.entries[11]?.windowId == 3, "\(f)")
         said = []
     }
-    // ---- Margin windows: lines (app/WINDOWS.md §1, §4) ----
+    // ---- Margin windows: lines (docs/BROWSER-WINDOWS.md §1, §4) ----
     do {
         let s = Setup([21: boundsA, 22: boundsB, 23: boundsC, 24: boundsA], pid: safari)
         let lines = [ParkingMarker.LineRecord(id: 1, homes: [.init(link: "safari:a", number: 21), .init(link: "safari:b", number: 22)], shown: 21),

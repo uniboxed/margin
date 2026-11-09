@@ -31,15 +31,17 @@ done
 
 npm run build
 # The project again when what makes it isn't what it was made from: the app's
-# code (app/safari/) or this script's partner (make-xcode.sh) changed, or
+# code (app/macos/startup/) or this script's partner (make-xcode.sh) changed, or
 # another branch made it (its project can list files this one doesn't have),
-# or dist/safari/ or app/shell/ has a file more or less: the project lists each
+# or dist/safari/ or one of the app's Swift folders has a file more or less: the project lists each
 # of their files (a new one isn't copied or built into the app until the
 # project is made again: the sleep page, 2026-11-04, sent tabs to a page the
 # app didn't have). What's in those files is copied in or built by each
 # build, so changes there need no new project. xcode/.team stays.
 MADE_FROM="xcode/.made-from"
-FROM=$({ find app/safari scripts/make-xcode.sh scripts/xcode-add-sources.py -type f | LC_ALL=C sort | xargs shasum; (cd dist/safari && find . -type f | LC_ALL=C sort); (cd app/shell && find . -name '*.swift' | LC_ALL=C sort); } | shasum | cut -d' ' -f1)
+# (The app's Swift folders: app/macos/swift-sources.txt, each folder's own *.swift.)
+SWIFT_FOLDERS=$(grep -v '^#' app/macos/swift-sources.txt | sed '/^$/d')
+FROM=$({ find app/macos/startup engines/webkit/browsers/safari/app/handler app/macos/swift-sources.txt scripts/make-xcode.sh scripts/xcode-add-sources.py -type f | LC_ALL=C sort | xargs shasum; (cd dist/safari && find . -type f | LC_ALL=C sort); for d in $SWIFT_FOLDERS; do find "$d" -maxdepth 1 -name '*.swift'; done | LC_ALL=C sort; } | shasum | cut -d' ' -f1)
 if [ ! -d xcode/Margin/Margin.xcodeproj ] || [ "$(cat "$MADE_FROM" 2>/dev/null)" != "$FROM" ]; then
   sh scripts/make-xcode.sh
   echo "$FROM" > "$MADE_FROM"
@@ -85,15 +87,15 @@ fi
 xcodebuild -project xcode/Margin/Margin.xcodeproj -scheme Margin -configuration Release \
   -derivedDataPath "$DERIVED" -allowProvisioningUpdates -quiet $SIGN build
 BUILT="$DERIVED/Build/Products/Release/Margin.app"
-# Chrome's and Edge's relay helper (app/relay/main.swift, app/PROTOCOL.md "Transport (Chrome and Edge, on the
+# Chrome's and Edge's relay helper (app/shared/connector/main.swift, docs/PROTOCOL.md "Transport (Chrome and Edge, on the
 # Mac)"): built for both kinds of Mac into Contents/Helpers, signed as Margin's relay (io.tirth.margin.relay) with
 # the identity the app was signed with, and the app signed again around it, its own settings kept. Margin.app lets
-# only that relay in (app/shell/RelayLink.swift). Before anything is installed: a failure here leaves the
+# only that relay in (app/macos/shell/RelayLink.swift). Before anything is installed: a failure here leaves the
 # installed copy as it was.
 HELPERS="$BUILT/Contents/Helpers"
 mkdir -p "$HELPERS" "$DERIVED/relay"
 for arch in arm64 x86_64; do
-  swiftc -O -swift-version 5 -target "$arch-apple-macos14.0" app/relay/main.swift -o "$DERIVED/relay/margin-relay-$arch"
+  swiftc -O -swift-version 5 -target "$arch-apple-macos14.0" app/shared/connector/main.swift -o "$DERIVED/relay/margin-relay-$arch"
 done
 lipo -create "$DERIVED/relay/margin-relay-arm64" "$DERIVED/relay/margin-relay-x86_64" -output "$HELPERS/margin-relay"
 if [ "$UNSIGNED" = true ]; then

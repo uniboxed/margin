@@ -229,7 +229,7 @@ function tabRow(state: State, t: any): TabRow {
     ...face(state, t, t.title || t.url || 'New Tab'),
     active: open && !!t.active,
     behind: open && !!t.behind,
-    // Chosen here, but live in another window of the profile (app/WINDOWS.md §9): drawn faded.
+    // Chosen here, but live in another window of the profile (docs/BROWSER-WINDOWS.md §9): drawn faded.
     away: open && !!t.away,
     audible: open && !!t.audible,
     asleep: open && !!t.sleeping,
@@ -329,7 +329,7 @@ function fresh(input: ViewModelInput): ViewModel {
   const today = view.tabs.map((t) => tabRow(state, t));
 
   // A space's tab count: its tabs open in any window of the profile (pinned or not: a space's list is the
-  // space's, app/WINDOWS.md §9), and its tabs that aren't open (shown in every window).
+  // space's, docs/BROWSER-WINDOWS.md §9), and its tabs that aren't open (shown in every window).
   const counts = new Map();
   for (const t of Object.values(state.tabs)) {
     const s = state.tabSpace[t.id];
@@ -604,7 +604,7 @@ function spaceRows(c: AcrossContent | null) {
 
 // The cross-profile switch (Margin.app: shared/across.ts `switching`).
 
-// The phases before and under the freeze (app/HANDOFF.md §1.2): the cover is
+// The phases before and under the freeze (docs/HANDOFF.md §1.2): the cover is
 // up only then. Today's close-based switch has none of them, so it never shows one.
 const COVER_PHASES = new Set(['preparing', 'waitingForLink', 'waitingForProfile', 'frozen']);
 

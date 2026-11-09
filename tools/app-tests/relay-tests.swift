@@ -1,5 +1,5 @@
-// Chrome's and Edge's relay (app/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"): the real relay helper
-// (app/relay/main.swift, built by run.sh: MARGIN_RELAY_BIN) spoken to as a browser speaks to a native host (its
+// Chrome's and Edge's relay (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"): the real relay helper
+// (app/shared/connector/main.swift, built by run.sh: MARGIN_RELAY_BIN) spoken to as a browser speaks to a native host (its
 // framing on stdin and stdout), linked to the app's real relay listener (RelayLink.swift) and SocketLink, in a
 // temporary folder. What a wantLink gets (the handler's reply with the browser and its process, then the link
 // dispatched as Safari's would be), a ping, the app not there, a relay that waited being told appUp, another version

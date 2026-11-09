@@ -40,7 +40,7 @@ Real, as shipped:
 
 Stand-ins:
 
-- **The extension handler** (`app/safari/SafariWebExtensionHandler.swift`) and **`dispatchMessage`**: a Node relay, `tests/e2e/harness/native-host.mts`, run by Chromium as a native messaging host named `io.tirth.margin`. Its manifest goes in `<user-data-dir>/NativeMessagingHosts/`, so nothing is written outside the test's temporary folder. It passes each message to the test over a local TCP socket and writes back what the test says: the reply to `wantLink` (`{ ok, appOpen, launching }`), and `link` or `appUp` into the lasting port.
+- **The extension handler** (`engines/webkit/browsers/safari/app/handler/SafariWebExtensionHandler.swift`) and **`dispatchMessage`**: a Node relay, `tests/e2e/harness/native-host.mts`, run by Chromium as a native messaging host named `io.tirth.margin`. Its manifest goes in `<user-data-dir>/NativeMessagingHosts/`, so nothing is written outside the test's temporary folder. It passes each message to the test over a local TCP socket and writes back what the test says: the reply to `wantLink` (`{ ok, appOpen, launching }`), and `link` or `appUp` into the lasting port.
 - **Margin.app's shell**: `tests/e2e/harness/app.js`, in Node, built on `tests/fake-app.ts` (the WebSocket server). It does what `Shell.swift` does for overlays, and nothing of the window server:
   - the mirror: snapshot, deltas in order, the window list;
   - the theme's pieces put together and checked (size and SHA-256), then sent to the overlays;

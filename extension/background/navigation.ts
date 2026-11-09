@@ -254,7 +254,7 @@ async function runPress(windowId: number, press: Press, run: ReturnType<typeof r
       return shownPage.then((shown) => shown && tellPage(shown, { type, tabId: next, from: shown.id, switchId: press.switchId, ...(reason ? { reason } : {}) }, { app: false }));
     };
     try {
-      await showTab(next, windowId, { source: press.action }); // one in another window comes here (app/WINDOWS.md §9)
+      await showTab(next, windowId, { source: press.action }); // one in another window comes here (docs/BROWSER-WINDOWS.md §9)
     } catch (err) {
       run.shown = null;
       if (keyRun) keyRun.failed++;

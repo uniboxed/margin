@@ -1,4 +1,4 @@
-// Checks of Margin.app's shell logic (app/shell/), with no browser, no window
+// Checks of Margin.app's shell logic (app/macos/shell/), with no browser, no window
 // on screen and no link: the link's messages (LinkMessage.swift, version 2),
 // its WebSocket by hand (LinkSocket.swift), chunks (Chunks.swift), the app's
 // copy of a copy's state (StateMirror.swift), binding browser windows to the
@@ -193,7 +193,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("a theme chunk from the app", theme?["k"] as? String == "theme" && theme?["id"] as? String == "t" && theme?["parts"] as? Int == 1 && theme?["data"] as? String == "YWJj")
   }
 
-  // The profile handoff's words (app/PROTOCOL.md "The handoff"): the app's parked, the copy's
+  // The profile handoff's words (docs/PROTOCOL.md "The handoff"): the app's parked, the copy's
   // parkedActivity, the requests' payloads and what their answers read as.
   static func handoffMessages() {
     let parked = object(AppMessage.parked(epoch: "e", windowId: 7, on: true).encode())
@@ -509,7 +509,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("a key not known: not one", Combo.parse("Meta+Banana") == nil)
     check("a modifier twice: not one", Combo.parse("Meta+Meta+KeyT") == nil)
     check("its name", Combo.parse("Ctrl+Meta+ArrowRight")?.description == "⌃⌘ArrowRight")
-    check("seven keys by default (⌘N a new Margin window, app/WINDOWS.md §5)", ShortcutSet.bindings.count == 7 && ShortcutSet.bindings[Combo.parse("Meta+KeyN")!] == .newWindow && Set(ShortcutSet.bindings.values) == Set(AppCommand.allCases))
+    check("seven keys by default (⌘N a new Margin window, docs/BROWSER-WINDOWS.md §5)", ShortcutSet.bindings.count == 7 && ShortcutSet.bindings[Combo.parse("Meta+KeyN")!] == .newWindow && Set(ShortcutSet.bindings.values) == Set(AppCommand.allCases))
     let fromCopy = ShortcutSet.bindings(from: ["next-tab": ["Alt+Meta+ArrowDown", "Ctrl+Meta+ArrowDown"], "toggle-sidebar": ["Alt+KeyK"], "palette": [], "prev-space": ["Banana"]])
     check("the copy's keys: both of a command's combinations", fromCopy[Combo.parse("Alt+Meta+ArrowDown")!] == .nextTab && fromCopy[Combo.parse("Ctrl+Meta+ArrowDown")!] == .nextTab)
     check("the copy's keys: the sidebar's own", fromCopy[Combo.parse("Alt+KeyK")!] == .toggleSidebar && fromCopy[Combo.parse("Alt+KeyS")!] == nil)

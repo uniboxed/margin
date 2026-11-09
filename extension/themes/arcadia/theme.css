@@ -260,7 +260,7 @@
 /* While a new tab is being chosen (⌘T, "+ New Tab"): the tab whose page is
    still on screen under the palette, softly; "+ New Tab" fully. */
 .margin-sidebar :is(.tab, .pin, .new-tab-row).behind { background: rgba(255, 255, 255, 0.4); }
-/* Chosen here, live in another window (app/WINDOWS.md §9): still highlighted, faded. */
+/* Chosen here, live in another window (docs/BROWSER-WINDOWS.md §9): still highlighted, faded. */
 .margin-sidebar :is(.tab, .pin).away { opacity: 0.55; }
 
 /* A folder: its icon, then its name in semibold; its pins indented beneath. */

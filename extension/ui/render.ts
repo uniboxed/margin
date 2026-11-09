@@ -74,7 +74,7 @@ const SLOTS: Record<string, { part: string, test: string[] }> = {
   // iCloud Tabs' live folder: drawn whole by its part, so a theme can put it
   // anywhere (the sidebar now; later, perhaps, by the sidebar's toggle).
   'm-cloud-tabs': { part: 'cloud-tabs', test: ['cloudTabs'] },
-  // The "switching" cover, over the page (app/HANDOFF.md §7): with Margin's
+  // The "switching" cover, over the page (docs/HANDOFF.md §7): with Margin's
   // own default (DEFAULT_PARTS) when the theme has no part and nothing in it.
   'm-switch-cover': { part: 'switch-cover', test: ['switchCover'] },
 };

@@ -1,4 +1,4 @@
-// The page's part in the scroll record (DATA.md "The scroll record", background/scroll-record.ts):
+// The page's part in the scroll record (docs/DATA.md "The scroll record", background/scroll-record.ts):
 // where the page is scrolled, said to the background as it's hidden (at most every EVERY_MS, the last
 // one after that) and as it's left, only when it moved, so a tab Margin closes and keeps (a window
 // closed by Margin.app's switch, a tab put to sleep) opens there again. Reopened, the page takes that

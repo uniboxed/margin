@@ -1,6 +1,6 @@
-// Chrome and Edge on the Mac (app/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"), end to end: the real
+// Chrome and Edge on the Mac (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"), end to end: the real
 // Chrome build (dist/chrome's, its fixed key), in Chrome for Testing (headless), starts the real relay helper
-// (app/relay/main.swift, built here) through native messaging, the host file in the profile's own folder. A stand-in
+// (app/shared/connector/main.swift, built here) through native messaging, the host file in the profile's own folder. A stand-in
 // for Margin.app's relay socket (RelayLink.swift's words) answers the copy's wantLink as the app does and hands it the
 // link; the copy then links over the same WebSocket as Safari's (tests/fake-app.ts) from its service worker, and says
 // it's Chrome, with the browser's process as the relay told it.
@@ -65,7 +65,7 @@ test('Chrome on the Mac: the real relay finds the app, and the copy links from i
     const ext = join(root, 'ext');
     buildTo(ext, { profile: 'chrome', manifest: 'chrome' });
     const binary = join(root, 'margin-relay');
-    execFileSync('swiftc', ['-O', '-swift-version', '5', join(ROOT, 'app/relay/main.swift'), '-o', binary], { stdio: 'ignore' });
+    execFileSync('swiftc', ['-O', '-swift-version', '5', join(ROOT, 'app/shared/connector/main.swift'), '-o', binary], { stdio: 'ignore' });
     const socketPath = join(root, 'r.sock');
     relay = await relaySocket(socketPath, app);
 

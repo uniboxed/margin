@@ -13,7 +13,7 @@ npm run test:e2e    # builds dist/, then the e2e suite: headless Chromium and We
 - the JS tests whose imports reach a changed file, followed through every relative import;
 - the tests that name a changed theme, page or fixture file;
 - every theme test when a theme or the UI runtime changed (two at a time: more made the drag tests flaky);
-- the Swift unit checks when `app/shell`, `app/safari` or `tools/app-tests` changed (compiled on every core; the randomized runs cut to 50 and 80);
+- the Swift unit checks when `app/macos/shell`, `app/macos/startup` or `tools/app-tests` changed (compiled on every core; the randomized runs cut to 50 and 80);
 - any e2e file that itself changed.
 
 At the end it lists what only the gate runs: the e2e suite, the WebKit host, the app's e2e checks. Options:
@@ -73,7 +73,7 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 
 ## Chrome and Edge on the Mac (2026-11-09)
 
-Margin.app now links Chrome's and Edge's copies the way it links Safari's (app/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"). Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'` (zsh's `log` is a builtin).
+Margin.app now links Chrome's and Edge's copies the way it links Safari's (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"). Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'` (zsh's `log` is a builtin).
 
 **Set up once:**
 - `npm run safari` (it builds the relay helper into Margin.app). Margin.app writes the host files at launch: `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/io.tirth.margin.json` and Edge's (`Microsoft Edge/NativeMessagingHosts/`), naming `…/Margin.app/Contents/Helpers/margin-relay`.
@@ -695,7 +695,7 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 
 ## Margin 2: the profile handoff, live in Test A and Test B (2026-11-06)
 
-The freeze-based switch between profiles, with the window you leave parked out of sight (`app/HANDOFF.md`). Build Margin.app from `feat/profile-handoff`. **Only in Safari's Test A and Test B profiles**, never your own. Each switch holds the whole screen still for about a second.
+The freeze-based switch between profiles, with the window you leave parked out of sight (`docs/HANDOFF.md`). Build Margin.app from `feat/profile-handoff`. **Only in Safari's Test A and Test B profiles**, never your own. Each switch holds the whole screen still for about a second.
 
 Set-up:
 - Margin.app has Full Disk Access (for Safari's profile names). Test A and Test B have one window each, Test A's in full screen with Margin's sidebar.
@@ -764,7 +764,7 @@ The honest numbers, until gate G16 measures them:
 - [ ] `… alternate 30 --every 4`: 30 switches, Test B then Test A. Gate G16 does the same from the lab (`tools/handoff-lab/README.md`).
 
 **Before production.**
-- [ ] The dev hook goes: `git grep -n DEV-HOOK` lists every part. Delete `app/shell/DevHooks.swift`, `tools/app-tests/devhooks-tests.swift` and `tools/handoff-lab/devswitch.swift`, and every marked line in `Shell.swift`, `Handoff.swift`, `tools/app-tests/` (`run.sh`, `tests.swift`, the fake world in `handoff-tests.swift`) and the lab's `devSwitch` (G1's `--dev-hook` and G16 need another way to drive Margin by then). Then `npm run test:app`, and `defaults delete io.tirth.margin MarginDevHooks` on every test Mac.
+- [ ] The dev hook goes: `git grep -n DEV-HOOK` lists every part. Delete `engines/webkit/browsers/safari/app/DevHooks.swift`, `tools/app-tests/devhooks-tests.swift` and `tools/handoff-lab/devswitch.swift`, and every marked line in `Shell.swift`, `Handoff.swift`, `tools/app-tests/` (`run.sh`, `tests.swift`, the fake world in `handoff-tests.swift`) and the lab's `devSwitch` (G1's `--dev-hook` and G16 need another way to drive Margin by then). Then `npm run test:app`, and `defaults delete io.tirth.margin MarginDevHooks` on every test Mac.
 - [ ] The handoff's gate (`MarginHandoff`) is decided by the gates' results, not left to a default someone set.
 ## Margin 2 Phase 6: user themes (2026-11-06)
 

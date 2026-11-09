@@ -94,7 +94,7 @@ export const PAST_NAVIGATION = Object.freeze({
   safari: Object.freeze({ nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Ctrl+Meta+ArrowRight', prevSpace: 'Ctrl+Meta+ArrowLeft' }),
 });
 // The Mac, by the browser's own word (its user agent says Macintosh): Chrome's and Edge's copies link to
-// Margin.app only there (app/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)").
+// Margin.app only there (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)").
 const onMac = () => /\bMacintosh\b/.test(globalThis.navigator?.userAgent ?? '');
 // Whether this copy links to Margin.app: Safari's always (`nativeApp`: its extension handler), Chrome's and Edge's
 // on the Mac (Margin.app's relay helper, started by native messaging).

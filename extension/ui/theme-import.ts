@@ -3,7 +3,7 @@
 // every theme load takes ({ manifest, html, css, files }), then checked as
 // every load checks one (ui/theme-loader.ts checkPackage, sanitizeTheme)
 // and against the built-ins' ids. Margin.app reads the folder or the file's
-// bytes (app/shell/ShellThemes.swift) and hands them to the overlay; all the
+// bytes (app/macos/shell/ShellThemes.swift) and hands them to the overlay; all the
 // checking is here, in JS, so it's the same in the overlay, the tests and
 // `npm run theme:pack`.
 //

@@ -1,4 +1,4 @@
-// Tabs across Margin windows, as Arc's (app/WINDOWS.md §9). Two windows of the profile on one space list the same
+// Tabs across Margin windows, as Arc's (docs/BROWSER-WINDOWS.md §9). Two windows of the profile on one space list the same
 // tabs, and a Safari tab is in one window at a time, so the tab follows the window in front:
 // - chosen in window W while it's in V, it moves to W (tabs.move keeps its page: probed in Safari 2026-11-09);
 // - V keeps it chosen, away (state/model.ts awayByWindow), with Margin's stand-in page in front of V

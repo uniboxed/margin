@@ -1,4 +1,4 @@
-// The profile handoff (app/HANDOFF.md), part of tests.swift's run. No real
+// The profile handoff (docs/HANDOFF.md), part of tests.swift's run. No real
 // private function is called here and nothing freezes the screen.
 //
 // The freezer (Freezer.swift): FakeFreezer on the fake clock (the watchdog at
@@ -745,7 +745,7 @@ func handoffMachineTests() {
     check("choice: two displays: no freeze, the new A kept", { let c = HandoffChoice.pick(F(displays: 2)); return !c.freeze && c.old == .keep }())
     check("choice: two displays with the setting: close, no freeze", { let c = HandoffChoice.pick(F(closeSetting: true, displays: 2)); return !c.freeze && c.old == .close }())
     check("choice: A's copy gone: kept", HandoffChoice.pick(F(aLinked: false)).old == .keep)
-    // (No "the person's own window: kept": every window is a Margin window's, parked like any, app/WINDOWS.md §2.2.)
+    // (No "the person's own window: kept": every window is a Margin window's, parked like any, docs/BROWSER-WINDOWS.md §2.2.)
     check("choice: no A: the freeze, nothing left", { let c = HandoffChoice.pick(F(hasA: false)); return c.freeze && c.old == .keep }())
 
     // ---- park+freeze, a parked target: the whole switch ----
@@ -1450,7 +1450,7 @@ func handoffMachineTests() {
         handoffInvariants("target, show", w, s, [hA, hC])
     }
     do {
-        // A normal window of the profile in no line is another Margin window's (app/WINDOWS.md §2.1 rule 5): never
+        // A normal window of the profile in no line is another Margin window's (docs/BROWSER-WINDOWS.md §2.1 rule 5): never
         // the target; one is made for this one instead.
         let (w, s) = handoffSetup { $0.add(hC, id: 30, number: 3030, state: "normal") }
         s.start(toC, from: hA, windowId: 10)
@@ -1547,7 +1547,7 @@ func handoffMachineTests() {
     }
     do {
         // A window in no line (one the person opened; line 1's A is 1111, parked) is a Margin window of its own
-        // (app/WINDOWS.md §2.1, Tirth 2026-11-09): the switch gives it a line, parks it like any A, and makes it
+        // (docs/BROWSER-WINDOWS.md §2.1, Tirth 2026-11-09): the switch gives it a line, parks it like any A, and makes it
         // its own window of B. Line 1's parked B is another Margin window's: left parked.
         let ka2 = WindowKey(link: hA, windowId: 11)
         let (w, s) = handoffSetup { w in
@@ -1771,7 +1771,7 @@ func handoffReviewTests() {
         handoffInvariants("review, abort with time passing", w, s)
     }
     do {
-        // A switch that recovers (B never answers): A is its line's shown window again (app/WINDOWS.md §2.2).
+        // A switch that recovers (B never answers): A is its line's shown window again (docs/BROWSER-WINDOWS.md §2.2).
         let (w, s) = handoffSetup { $0.hung = [hKB] }
         let line = w.registry.line(of: 1010)
         s.start(toB, from: hA, windowId: 10)

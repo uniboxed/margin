@@ -1,5 +1,5 @@
-// The extension's end of the link to Margin.app (app/PROTOCOL.md; the app's
-// end is app/shell/ExtensionLink.swift). While it's up, the app draws all of
+// The extension's end of the link to Margin.app (docs/PROTOCOL.md; the app's
+// end is app/macos/shell/ExtensionLink.swift). While it's up, the app draws all of
 // Margin's UI around this copy's windows (pages never draw any): pages have
 // their box, which comes from the app's layout per window (setLayout), in
 // the windows the app draws over (`drawn`: a window it doesn't gets none).
@@ -63,7 +63,7 @@
 // made while the native port is down are kept (HELD_NOTES) and sent once
 // it's back, each with the time it was made.
 //
-// Data (DATA.md "Messages"): data.hello with the queue of changes made while
+// Data (docs/DATA.md "Messages"): data.hello with the queue of changes made while
 // unlinked; data.need → data.snapshot from the converter; the app's
 // data.snapshot becomes the cache; data.changes both ways; data.ack keeps
 // how far the app has stored (`acked`, with the copy's profile id, in
@@ -77,7 +77,7 @@ import { switchLog } from './switch-log.ts';
 const APP = 'io.tirth.margin';
 const VERSION = 2;
 export const PING_MS = 20_000; // the native port, used at least this often (Spike 3)
-export const DEAD_MS = 40_000; // no tick for this long: the link is gone (app/PROTOCOL.md Liveness; 40 s, not 12, since 2026-11-07: Safari slows a background page while it isn't in front)
+export const DEAD_MS = 40_000; // no tick for this long: the link is gone (docs/PROTOCOL.md Liveness; 40 s, not 12, since 2026-11-07: Safari slows a background page while it isn't in front)
 const CHECK_MS = 2000;
 const LINK_WAIT_MS = 2000; // the app's `link` after wantLink
 const OPEN_WAIT_MS = 2000; // a socket opening, and the app's welcome
@@ -90,7 +90,7 @@ export const LAUNCH_ASKS = 20; // …this many times (10 s), then as any other t
 // Margin.app running but sending no link (the handler said appOpen, nothing came): asked
 // again after NO_LINK_ASK_MS, at most NO_LINK_ASKS times in a row, then less and less often
 // as any other time. An app replaced under itself by an update quits once it notices
-// (app/shell/BundleWatch.swift), and the handler starts the new one at the next ask.
+// (app/macos/shell/BundleWatch.swift), and the handler starts the new one at the next ask.
 export const NO_LINK_ASK_MS = 5000;
 export const NO_LINK_ASKS = 3;
 // The extension handler's answer to wantLink, waited for this long at most. Safari 27.2 answers
@@ -127,7 +127,7 @@ const FAST_CLOSE_MS = 100; // a kept link closed this soon: refused (nothing lis
 // data set's times, this link's own key, page zoom or user themes.
 export const STATE_KEYS = ['openTabs', 'spaces', 'pins', 'folders', 'archive', 'settings', 'favicons', 'owner'];
 // What the app's UI may ask (ui/actions.ts, shared/search.ts rows,
-// app/shell/Shell.swift's keys), and nothing else.
+// app/macos/shell/Shell.swift's keys), and nothing else.
 export const APP_REQUESTS = new Set([
   'activateTab', 'closeTab', 'newTab', 'pinTab', 'unpin', 'moveTabToSpace', 'moveTab', 'openPin', 'movePin',
   'setFolderOpen', 'createFolder', 'renameFolder', 'deleteFolder', 'moveFolder', 'setSpace', 'createSpace',
@@ -136,22 +136,22 @@ export const APP_REQUESTS = new Set([
   'setSidebarScroll', 'wakeSleeping', 'windowState', 'openHere', 'cancelNewTab',
   // A button of one of Margin's notices the overlay put up (background/notices.ts).
   'noticeAction',
-  // Margin.app's switch to another profile's space (app/shell/ProfileSwitch.swift) and its order across profiles.
+  // Margin.app's switch to another profile's space (app/macos/shell/ProfileSwitch.swift) and its order across profiles.
   'openSpaceWindow', 'closeWindow', 'focusWindow', 'orderSpaces',
   // A palette the app couldn't show over a window (no overlay shown there): ⌘T's hand-off undone.
   'paletteDropped',
-  // DEV-HOOK: the app's dev hook's tab-move probe (app/shell/DevHooks.swift `probe`; Test A only).
+  // DEV-HOOK: the app's dev hook's tab-move probe (engines/webkit/browsers/safari/app/DevHooks.swift `probe`; Test A only).
   'devTabMoveProbe',
-  // The profile handoff (app/HANDOFF.md §3.3): a window's state without taking focus, the frames of
+  // The profile handoff (docs/HANDOFF.md §3.3): a window's state without taking focus, the frames of
   // its tab in front, and its drafts before a close.
   'setWindowState', 'frameProbe', 'windowDrafts',
-  // Margin.app's index of the person's imported themes (app/shell/ShellThemes.swift).
+  // Margin.app's index of the person's imported themes (app/macos/shell/ShellThemes.swift).
   'userThemes',
 ]);
 // The requests that call windows.update or windows.remove for one window: each carries `notAfter`
-// from the handoff, and only one runs per window at a time (app/HANDOFF.md §1.9).
+// from the handoff, and only one runs per window at a time (docs/HANDOFF.md §1.9).
 export const WINDOW_CALLS = new Set(['setWindowState', 'focusWindow', 'closeWindow']);
-// What a parked window's `parkedActivity` says happened there (app/PROTOCOL.md "The handoff").
+// What a parked window's `parkedActivity` says happened there (docs/PROTOCOL.md "The handoff").
 export const PARKED_WHY = new Set(['tab', 'focus', 'raise']);
 
 // A windows call that mustn't run, and its answer: past its `notAfter` (milliseconds since 1970, the
@@ -179,7 +179,7 @@ const within = <T>(promise: Promise<T>, ms: number): Promise<T | null> => new Pr
 });
 const PROFILE = /^[A-Za-z0-9_.:-]{1,64}$/;
 
-/** The app's keys from the settings (`keys`: app/PROTOCOL.md): each command's combinations. */
+/** The app's keys from the settings (`keys`: docs/PROTOCOL.md): each command's combinations. */
 export function keyBindings(settings: any, commandKeys = {}) {
   const nav = navigationFor(settings);
   const out: Record<string, string[]> = {};
@@ -194,7 +194,7 @@ export function keyBindings(settings: any, commandKeys = {}) {
   return out;
 }
 
-/** UTF-8 bytes of a theme package, cut into `theme` pieces (app/PROTOCOL.md Chunks). */
+/** UTF-8 bytes of a theme package, cut into `theme` pieces (docs/PROTOCOL.md Chunks). */
 export async function themePieces(pkg: any, sha256: (bytes: Uint8Array) => Promise<string>, chunkBytes = CHUNK_BYTES) {
   const whole = new TextEncoder().encode(JSON.stringify(pkg));
   const transfer = await sha256(whole);
@@ -360,7 +360,7 @@ export function createLink({
   // The browser's process, as Chrome's and Edge's relay says (none from Safari's handler).
   let browserPid: number | null = null;
   let acked = 0;
-  // The app's set's revision this copy's cache matches (DATA.md "Revisions"): a
+  // The app's set's revision this copy's cache matches (docs/DATA.md "Revisions"): a
   // string, compared only for being the same; null when it has none.
   let rev: string | null = null;
   let dataQueue: Promise<unknown> = Promise.resolve();
@@ -954,7 +954,7 @@ export function createLink({
         if (ours(message)) inOrder(() => takeAck(message));
         return;
       default:
-        return; // unknown kinds are left (app/PROTOCOL.md)
+        return; // unknown kinds are left (docs/PROTOCOL.md)
     }
   }
   async function request({ id, epoch: theirs, windowId, type, payload }: Said) {
@@ -996,7 +996,7 @@ export function createLink({
     for (const cb of [...drawnListeners]) cb(m.windowId, m.on);
   }
   const drawnListeners = new Set<any>();
-  // Which of this copy's windows the app has parked (app/HANDOFF.md §2.5): out of sight in a private
+  // Which of this copy's windows the app has parked (docs/HANDOFF.md §2.5): out of sight in a private
   // Space of their own, alive and normal. Kept per window as the app says it, this epoch's only: a
   // new link, the link going off and the window closing forget it (a new link says it again). Not
   // stored: no page reads it. windowId → when the app parked it.
@@ -1093,7 +1093,7 @@ export function createLink({
     }));
   }
   // What only this copy knows, on a window's entry: its tab in front's word (the inspector, whether
-  // it's shown, are a tab's: app/PROTOCOL.md `viewport`, `visible`), and the last blur it heard.
+  // it's shown, are a tab's: docs/PROTOCOL.md `viewport`, `visible`), and the last blur it heard.
   function known(entry: { windowId: number, [field: string]: any }) {
     const { viewport: _vp, visible: _v, visibleAt: _va, blurredAt: _b, ...rest } = entry;
     const vp = viewports.get(rest.windowId);
@@ -1114,7 +1114,7 @@ export function createLink({
   // Windows whose tab in front is in full screen (a page's own, or Safari's video full screen: content/core.ts): windowId → tabId.
   const fullscreens = new Map();
   // When this copy heard each of its windows focused and created (Date.now(), the app's clock too): the
-  // app tells same-bounds windows apart by them (app/shell/WindowMatcher.swift). Not kept past the background.
+  // app tells same-bounds windows apart by them (app/macos/shell/WindowMatcher.swift). Not kept past the background.
   const focusedAt: Map<number, number> = new Map();
   const createdAt: Map<number, number> = new Map();
   // When this copy last heard windows.onFocusChanged with WINDOW_ID_NONE (none of its windows
@@ -1125,7 +1125,7 @@ export function createLink({
   // and only that tab's. Missing is unknown (never hidden): a page Margin's script can't run in, one
   // not loaded yet, one whose window just showed another tab (cleared, the new tab asked again).
   // Margin.app tells same-bounds full-screen windows of different profiles apart by it
-  // (app/shell/WindowMatcher.swift, the visible rule). Not kept past the background.
+  // (app/macos/shell/WindowMatcher.swift, the visible rule). Not kept past the background.
   // (`source`, `heard`: what said it and when the background heard it, for the log.)
   const visibility: Map<number, { windowId: number, visible: boolean, at: number, source?: string, heard?: number }> = new Map();
   // Each page in front asked to say again whether it's shown (the background starting, a tab shown).
@@ -1279,7 +1279,7 @@ export function createLink({
     if (changed) await writeMeta();
   }
   // This copy's changes since its last data.hello: merged on top of a
-  // snapshot from the app that crosses them (DATA.md "For the extension's end").
+  // snapshot from the app that crosses them (docs/DATA.md "For the extension's end").
   let sinceHello: any[] = []; // (data changes: shared/data-merge.ts)
   async function dataHello() {
     if (!ws || !data) return;
@@ -1462,7 +1462,7 @@ export function createLink({
     push(windowId: number | null | undefined, msg: Record<string, any>) {
       return !!ws && send({ k: 'push', epoch, windowId: windowId ?? null, msg });
     },
-    // One of this copy's parked windows used while out of sight (app/HANDOFF.md §6.1): told to the
+    // One of this copy's parked windows used while out of sight (docs/HANDOFF.md §6.1): told to the
     // app, which hands off to it. `why`: 'tab' (a tab Margin didn't open made there), 'focus' (focus
     // landed there, not Margin's doing) or 'raise' (Margin's UI asked for a tab that's only there);
     // 'tab' and 'raise' name their tab. Ids only in the log.
@@ -1499,7 +1499,7 @@ export function createLink({
       void windowsNow();
     },
     // A page in front gone into full screen or back (handlers.ts pageFullscreen): its window's `pageFullscreen` while it's
-    // that window's tab in front; Margin.app's layout leaves that window meanwhile (app/shell/Shell.swift).
+    // that window's tab in front; Margin.app's layout leaves that window meanwhile (app/macos/shell/Shell.swift).
     pageFullscreen(windowId: number, tabId: number, on: boolean) {
       if (!Number.isInteger(windowId) || !Number.isInteger(tabId) || typeof on !== 'boolean') return;
       const had = fullscreens.get(windowId);

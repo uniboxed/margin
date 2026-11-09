@@ -1,4 +1,4 @@
-// Margin.app's real end of the link (app/shell/ExtensionLink.swift, LinkSocket.swift,
+// Margin.app's real end of the link (app/macos/shell/ExtensionLink.swift, LinkSocket.swift,
 // LinkMessage.swift, Chunks.swift), on its own, for the WebKit host's `app*` steps: the
 // host passes what the extension's native messaging does to it (wantLink) on stdin, and
 // puts what this dispatches into the extension (SFSafariApplication.dispatchMessage in the

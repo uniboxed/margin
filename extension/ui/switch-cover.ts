@@ -1,8 +1,8 @@
 // What Margin.app's overlay page tells the app while a switch to another
-// profile runs (app/HANDOFF.md §7, §3.2 R4; app/PROTOCOL.md "The overlay
+// profile runs (docs/HANDOFF.md §7, §3.2 R4; docs/PROTOCOL.md "The overlay
 // page and the app, during a switch"): that the "switching" cover is drawn,
 // so the screen may freeze on it, and that the page has drawn after the app
-// showed it, in which mode. Pure: the overlay (app/overlay/overlay.ts) gives
+// showed it, in which mode. Pure: the overlay (app/shared/host/overlay.ts) gives
 // it its animation frames and what's in its DOM, so the tests can run it.
 
 /** Frames the cover is drawn for, with no swipe settling, before it counts as shown. */

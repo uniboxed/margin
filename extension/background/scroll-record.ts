@@ -1,4 +1,4 @@
-// The scroll record (DATA.md "The scroll record"): where each open tab's page is scrolled, kept on
+// The scroll record (docs/DATA.md "The scroll record"): where each open tab's page is scrolled, kept on
 // its record (state/model.ts noteScroll) so a tab Margin closes and keeps (a window closed by
 // Margin.app's switch, a tab put to sleep) opens again where it was, once (takeScroll). Pages say it
 // as they're hidden or left (content/core.ts); the drafts check before a close and the sleep check

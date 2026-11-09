@@ -1,4 +1,4 @@
-// A stand-in for Margin.app's end of the link (app/PROTOCOL.md), for the
+// A stand-in for Margin.app's end of the link (docs/PROTOCOL.md), for the
 // extension's link client's tests (tests/link.test.ts): a WebSocket server on
 // 127.0.0.1 done by hand (Node has a WebSocket client but no server), which
 // refuses a wrong token or path before the socket opens, says welcome with

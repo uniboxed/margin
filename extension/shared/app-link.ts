@@ -1,4 +1,4 @@
-// What pages know of Margin.app's link (app/PROTOCOL.md), from storage.local
+// What pages know of Margin.app's link (docs/PROTOCOL.md), from storage.local
 // `appLink`, which the background's link client (background/link.ts) writes:
 // { state, epoch, at, layouts, why? }.
 //

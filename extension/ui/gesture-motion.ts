@@ -1,5 +1,5 @@
 // How far a trackpad gesture in the page has gone, as the theme draws it
-// (Margin.app's overlay: app/overlay/overlay.ts). The page says it at most
+// (Margin.app's overlay: app/shared/host/overlay.ts). The page says it at most
 // once a frame, a frame or two late, through the copy (content/trackpad.ts
 // gestureTeller, ui/app-feedback.ts createGestureFeedback); drawn as said, the
 // badge moved in jumps (Tirth, 2026-11-08). So it's eased toward what was

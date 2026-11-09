@@ -18,7 +18,7 @@ test('from the tab in front, the copy\'s order, wrapping both ways', () => {
   assert.equal(pickNavTab(s, 1, null, -1, cycleTab, 1000), cycleTab(s, 1, 1, -1));
   const seen = new Set();
   for (let at = 1, i = 0; i < 4; i++) seen.add(at = (pickNavTab(s, 1, null, 1, (st, w, t, d) => cycleTab(st, w, at, d), 1000) as number));
-  assert.ok(seen.has(9), 'the list is the space\'s: window 2\'s tab is in it, brought here when chosen (app/WINDOWS.md §9)');
+  assert.ok(seen.has(9), 'the list is the space\'s: window 2\'s tab is in it, brought here when chosen (docs/BROWSER-WINDOWS.md §9)');
 });
 
 test('fast presses go on from the last one\'s target, for as long as the chain lasts', () => {
