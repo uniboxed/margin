@@ -40,7 +40,7 @@ export async function readThemePackage(id: string, { fetchFile = (path) => fetch
     return res;
   };
   const [manifest, html, css] = await Promise.all(['theme.json', 'theme.html', 'theme.css'].map(async (f) => (await get(f)).text()));
-  let raw = null;
+  let raw: any = null; // (a theme's manifest, as it parses: checked by the overlay)
   try { raw = JSON.parse(manifest); } catch {}
   const named = [...(Array.isArray(raw?.fonts) ? raw.fonts.map((f) => f?.file) : []), ...(Array.isArray(raw?.images) ? raw.images : [])];
   const paths = [...new Set(named.filter((p) => typeof p === 'string' && FILE_PATH.test(p) && !p.split('/').some((seg) => /^\.+$/.test(seg))))].slice(0, MAX_FILES);

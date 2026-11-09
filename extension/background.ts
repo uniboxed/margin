@@ -81,7 +81,7 @@ const firstSyncOnce = () => resync({ onSync: (sync) => {
   // has reconciled their authoritative ids, without waiting for WebKit's
   // delayed static-content-script pass.
   if (sync.fresh) void injectIntoOpenTabs();
-} }).then(() => isOwner() && markSynced());
+} }).then(() => { if (isOwner()) return markSynced(); });
 // Tried again if it fails (a storage error), a few times.
 const firstSync = (async () => {
   for (let tries = 0; ; tries++) {

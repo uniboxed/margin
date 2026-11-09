@@ -119,7 +119,7 @@ export async function probeWindow(windowId: number, request: { width: number, he
   const got = (await Promise.race([asked, late]).finally(() => clearTimeout(timer)) as { tabId: number | null, answer: any } | null);
   const answer = got?.answer;
   if (!got || !Number.isInteger(got.tabId) || !answer || typeof answer !== 'object' || !Number.isInteger(answer.frames)) {
-    appLink.note(`frameProbe window ${windowId}: no page answered${Number.isInteger(got?.tabId) ? ` (tab ${got.tabId})` : ''} in ${Date.now() - started} ms`);
+    appLink.note(`frameProbe window ${windowId}: no page answered${Number.isInteger(got?.tabId) ? ` (tab ${got!.tabId})` : ''} in ${Date.now() - started} ms`);
     return { none: 'no page' };
   }
   const { frames, firstAt, lastAt, width, height, hasFocus, visible, visibleAt } = answer;
@@ -135,8 +135,8 @@ export const isParked = (windowId: number | null | undefined) => windowId != nul
 // A tab made in a parked window that Margin didn't open (a link from another app): the app hands off
 // to that window. True when told.
 export function tabCreated(tab: { id?: number, windowId?: number } | null | undefined) {
-  if (!Number.isInteger(tab?.id) || !isParked(tab.windowId) || openedByMargin()) return false;
-  return appLink.parkedActivity((tab.windowId as number), 'tab', tab.id);
+  if (!tab || !Number.isInteger(tab.id) || !isParked(tab.windowId) || openedByMargin()) return false;
+  return appLink.parkedActivity((tab.windowId as number), 'tab', tab.id as number);
 }
 
 // Focus landing on a parked window (windows.onFocusChanged), not Margin's own doing: the person

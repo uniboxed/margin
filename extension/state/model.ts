@@ -1151,7 +1151,7 @@ function uniqueName(state, spaceId, name) {
 
 // `folderId`/`beforeId`: where it goes (a folder of its space, before a pin
 // or folder at that level); the end of the space's top level by default.
-function addPin(state: State, { id, spaceId, url, title, folderId = null, beforeId = null }: { id: string, spaceId: string, url: string, title?: string, folderId?: string | null, beforeId?: string | null }) {
+function addPin(state: State, { id, spaceId, url, title, folderId = null, beforeId = null }: { id: string, spaceId: string, url: string, title?: string | null, folderId?: string | null, beforeId?: string | null }) {
   if (!url || !hasSpace(state, spaceId) || pinForUrl(state, url, spaceId)) return state;
   const next = { ...state, pins: [...state.pins, { id, spaceId, url, title: title || url }] };
   const folder = folderId ? folderIn(state, folderId, spaceId) : null;

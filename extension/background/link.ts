@@ -232,11 +232,11 @@ export function createLink({
   api: any,
   isOwner: () => boolean,
   copy: () => { origin: string, since: number },
-  instanceId?: string,
+  instanceId?: string | null,
   WebSocket?: any,
   enabled?: () => boolean,
   canSocket?: () => boolean,
-  data?: { pendingQueue: (since: number) => Promise<any[]>, snapshot: () => Promise<any>, adopt: (set: any, options?: { changes?: any[], omitted?: any[] }) => Promise<unknown>, take: (changes: any[]) => Promise<unknown>, onChanges: (cb: (changes: any[]) => void) => unknown },
+  data?: { pendingQueue: (since: number) => Promise<any[]>, snapshot: () => Promise<any>, adopt: (set: any, options?: { changes?: any[], omitted?: any[] }) => Promise<unknown>, take: (changes: any[]) => Promise<unknown>, onChanges: (cb: (changes: any[]) => void) => unknown } | null,
   theme?: () => Promise<any>,
   commandKeys?: () => Record<string, string>,
   wasParked?: (windowId: number) => boolean,
@@ -299,12 +299,14 @@ export function createLink({
   };
   let route: (message: any, sender: any) => Promise<any> = async () => ({ ok: false, error: 'not started' });
   let on = false;
-  let port = null;
-  let ws = null;
+  // (The browser's native port and the socket: Margin has no types for the extension APIs.)
+  type NativePort = { postMessage(message: any): void, disconnect(): void, onMessage?: any, onDisconnect?: any };
+  let port: NativePort | null = null;
+  let ws: WebSocket | null = null;
   let epoch: string | null = null;
   let seq = 0;
   let nonce: string | null = null;
-  let linkWaiter = null;
+  let linkWaiter: ((info: { port: number, token: string, key: string } | null) => void) | null = null;
   let busy: Promise<any> | null = null;
   // When the try under way (busy) started, and whether something asked for the link while it was
   // under way (the app saying it's up, a page starting, the person): asked again once it ends.
@@ -321,9 +323,9 @@ export function createLink({
     const value = { what, why: String(why).slice(0, 120), at: Date.now() };
     lastWrite = lastWrite.then(() => session()?.set({ [LAST_KEY]: value })).catch(() => {});
   };
-  let timers = [];
+  let timers: number[] = [];
   let pingTimer: number | null = null;
-  let pending = null;
+  let pending: Record<string, { newValue?: any }> | null = null;
   let pendingTimer: number | null = null;
   let sentIcons: Map<string, string> | null = null;
   let lastWindows = '';
@@ -342,7 +344,7 @@ export function createLink({
   let goneTimer: number | null = null;
   let layoutTimer: number | null = null;
   let stateWrite = Promise.resolve();
-  let profile = null;
+  let profile: string | null = null;
   // Whether `profile` is Safari's own id for this profile (`s-…`: from the handler's answer, now or
   // kept from one before), so hello needn't wait for an answer to say it.
   let profileSure = false;
@@ -413,7 +415,7 @@ export function createLink({
   // running but sent none), 'sockets-off' (the socket guard turned the link
   // off: `offAt`, and `offUntil` unless it's for this Safari session), or
   // nothing said (it isn't running, or not known).
-  function setWhy(why, { offAt = undefined, offUntil = undefined } = {}) {
+  function setWhy(why: string | null | undefined, { offAt = undefined, offUntil = undefined }: { offAt?: number, offUntil?: number } = {}) {
     if (pageState.why === why && pageState.offAt === offAt && pageState.offUntil === offUntil) return;
     pageState = { ...pageState };
     delete pageState.why;
@@ -429,7 +431,7 @@ export function createLink({
   function ensurePort() {
     if (port) return port;
     try {
-      port = api.runtime.connectNative(APP);
+      port = api.runtime.connectNative(APP) as NativePort;
     } catch {
       return (port = null);
     }
@@ -528,7 +530,9 @@ export function createLink({
   function attempt(run) {
     askAgain = false;
     busySince = now();
-    const mine = (async () => {
+    // (Declared first: the finally can't come before it's set, even if `run` threw at once.)
+    let mine: Promise<boolean> | null = null;
+    mine = (async () => {
       try {
         return await run();
       } finally {
@@ -760,7 +764,7 @@ export function createLink({
           return;
         }
         if (!on || ws) return giveUp('not needed: linked already, or stopped');
-        let m = null;
+        let m: { k?: string, v?: number, key?: string } | null = null;
         try { m = JSON.parse(String(event.data)); } catch {}
         if (m?.k !== 'welcome' || m.v !== VERSION || m.key !== kept.key) {
           note('what answered on', kept.port, 'isn\'t Margin.app; that link is forgotten');
@@ -1050,8 +1054,8 @@ export function createLink({
     }
     if ('favicons' in changes) {
       const now = iconsOf(changes.favicons.newValue);
-      const set = {};
-      const del = [];
+      const set: Record<string, any> = {};
+      const del: string[] = [];
       for (const [origin, json] of now) if (sentIcons?.get(origin) !== json) set[origin] = changes.favicons.newValue[origin];
       for (const origin of sentIcons?.keys() ?? []) if (!now.has(origin)) del.push(origin);
       sentIcons = now;
@@ -1210,11 +1214,11 @@ export function createLink({
   // ---- the data ------------------------------------------------------------------------
   async function readMeta() {
     const got = await Promise.resolve(local().get(LINK_META)).catch(() => null);
-    const meta = got?.[LINK_META];
+    const meta: { profile?: unknown, acked?: unknown, rev?: unknown } | undefined = got?.[LINK_META];
     if (meta && typeof meta.profile === 'string' && PROFILE.test(meta.profile)) {
       profile = meta.profile;
       profileSure = profile.startsWith('s-');
-      acked = Number.isFinite(meta.acked) ? meta.acked : 0;
+      acked = Number.isFinite(meta.acked) ? (meta.acked as number) : 0; // (finite: a number)
       rev = typeof meta.rev === 'string' && meta.rev ? meta.rev : null;
       // The cache started from defaults since (Safari wiped the rest, or it was
       // never written): no longer the app's set, so the next hello gets it.
@@ -1260,7 +1264,7 @@ export function createLink({
   }
   // This copy's changes since its last data.hello: merged on top of a
   // snapshot from the app that crosses them (DATA.md "For the extension's end").
-  let sinceHello = [];
+  let sinceHello: any[] = []; // (data changes: shared/data-merge.ts)
   async function dataHello() {
     if (!ws || !data) return;
     const at = epoch;
@@ -1421,7 +1425,7 @@ export function createLink({
       return true;
     },
     // storage.onChanged (background.ts), for the app's copy of the state.
-    onStorage(changes) {
+    onStorage(changes: Record<string, { newValue?: any, oldValue?: any }>) {
       if ('settings' in changes) {
         settingsNow = changes.settings.newValue ?? null;
         sendKeys();

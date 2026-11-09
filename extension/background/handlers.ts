@@ -1,6 +1,7 @@
 // What pages ask the background for: runtime messages { type, ...payload },
 // answered { ok, result } or { ok: false, error } (background.ts routes
 // them). types/margin.d.ts derives the protocol's types from this object.
+import type { TabRecord } from '../../types/margin';
 import { platform } from '../shared/platform.ts';
 import * as M from '../state/model.ts';
 import * as V from '../shared/view.ts';
@@ -371,7 +372,8 @@ export const handlers = {
   // `afterMs` (the setting's hours if left out): for checks by hand and the
   // WebKit host. What it did.
   async sleepNow({ afterMs, max }: { afterMs?: number, max?: number } = {}) {
-    return sleepIdle({ ...(Number.isFinite(afterMs) && afterMs >= 0 ? { afterMs } : {}), ...(Number.isInteger(max) && max > 0 ? { max } : {}) });
+    // (Finite, whole: numbers.)
+    return sleepIdle({ ...(Number.isFinite(afterMs) && (afterMs as number) >= 0 ? { afterMs } : {}), ...(Number.isInteger(max) && (max as number) > 0 ? { max } : {}) });
   },
   // The sidebar's scroll position in this page's window (background/scroll.ts).
   async sidebarScroll({ windowId }: { windowId?: number }, sender) {
@@ -516,7 +518,8 @@ export const handlers = {
     const id = newId();
     await mutate((st) => {
       // A tab Margin hasn't placed in a space yet goes to its window's space.
-      const spaceId = kept ? kept.spaceId : st.tabSpace[tabId] ?? V.activeSpaceId(st, tab.windowId);
+      // (Not a kept tab: an open one, with its window.)
+      const spaceId = kept ? kept.spaceId : st.tabSpace[tabId] ?? V.activeSpaceId(st, (tab as TabRecord).windowId);
       const next = M.addPin(st, { id, spaceId, url: tab.url, title: tab.title, folderId, beforeId });
       if (next === st) result = 'not pinned (already pinned in that space, or no space)';
       return kept && next !== st ? M.forgetKept(next, kept.id) : next;
@@ -543,7 +546,8 @@ export const handlers = {
       // In the place of the first pin it takes, if that's at the top level.
       const before = beforeId ?? (firstPin && !firstPin.folderId ? firstPin.id : null);
       let next = M.createFolder(st, { id, spaceId: space, name, pinIds, beforeId: before });
-      if (tab?.url) next = M.addPin(next, { id: pinFromTab, spaceId: space, url: tab.url, title: tab.title, folderId: id });
+      // (A tab is found only when one was asked for: then the pin has its id.)
+      if (tab?.url) next = M.addPin(next, { id: pinFromTab!, spaceId: space, url: tab.url, title: tab.title, folderId: id });
       return kept ? M.forgetKept(next, kept.id) : next;
     });
     return id;
@@ -595,7 +599,8 @@ export const handlers = {
       const order = after.tabs[tab.id]?.order;
       if (!Number.isFinite(order) || order === before.tabs[tab.id]?.order) return false;
       const strip = Object.values(after.tabs).filter((t) => t.windowId === tab.windowId && t.id !== tab.id);
-      const index = strip.filter((t) => (Number.isFinite(t.order) ? t.order : t.index) < order).length;
+      // (`order` is finite: checked above.)
+      const index = strip.filter((t) => (Number.isFinite(t.order) ? (t.order as number) : t.index) < (order as number)).length;
       if (index === tab.index) return true;
       return api.tabs.move(tab.id, { index }).then(() => true, () => false);
     }

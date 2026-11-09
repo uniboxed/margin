@@ -50,7 +50,8 @@ async function shrinkIcon(bytes, type) {
   try {
     const bitmap = await createImageBitmap(new Blob([bytes], { type }));
     const canvas = new OffscreenCanvas(I.SIZE, I.SIZE);
-    canvas.getContext('2d').drawImage(bitmap, 0, 0, I.SIZE, I.SIZE);
+    // (A new canvas: its 2D context is there.)
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, I.SIZE, I.SIZE);
     bitmap.close?.();
     const blob = await canvas.convertToBlob({ type: 'image/png' });
     return new Uint8Array(await blob.arrayBuffer());

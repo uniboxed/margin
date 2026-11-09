@@ -107,7 +107,7 @@ function spaceTargetNow(windowId: number, dir: number) {
 }
 
 // The overlay told about a key's switch (only it: the page is told as the switch starts).
-function tellOverlay(windowId: number, press: Press, type: string, reason = null) {
+function tellOverlay(windowId: number, press: Press, type: string, reason: string | null = null) {
   const r = keyRuns.get(windowId);
   if (r && type === 'switching') {
     if (press.seq < r.toldSeq) r.back++;
@@ -249,7 +249,7 @@ async function runPress(windowId: number, press: Press, run: ReturnType<typeof r
       tellPage(shown, { type: 'switching', tabId: next, from: shown.id, switchId: press.switchId }, { app: false });
       return shown;
     }, () => null);
-    const told = (type: string, reason = null) => {
+    const told = (type: string, reason: string | null = null) => {
       tellOverlay(windowId, press, type, reason);
       return shownPage.then((shown) => shown && tellPage(shown, { type, tabId: next, from: shown.id, switchId: press.switchId, ...(reason ? { reason } : {}) }, { app: false }));
     };
@@ -371,7 +371,7 @@ export async function showSpace(windowId: number, spaceId: string, { bringTab = 
   const top = V.sidebar(s, windowId).tabs.find((t) => t.kept);
   if (top) {
     const live = await api.tabs.query({ windowId }).catch(() => null);
-    const index = M.stripIndexFor(s, windowId, top.order, live);
+    const index = M.stripIndexFor(s, windowId, top.order as number, live); // (a kept tab always has its place)
     const tab = await openTab({ windowId, url: top.url, spaceId, deadline, index, keptId: String(top.id) });
     return { tab };
   }

@@ -353,7 +353,7 @@ export function pageChanged(tabId: number) {
 // (WebKit answers with an error in place of a result) is 'asleep' too. A tab
 // found so is remembered (noPageFound). The permission is asked once per
 // site (mayAccessCached): after a relaunch every probe asked it again.
-export async function inPage(tabId, url, func, args = [], ms = 300) {
+export async function inPage(tabId, url, func, args: any[] = [], ms = 300) {
   if (!api.scripting?.executeScript || !(await mayAccessCached(url))) return 'unknown';
   let timer;
   const answer = await Promise.race([
@@ -403,7 +403,7 @@ export async function openTab({ windowId, url, spaceId, deadline, index, keptId 
   if (spaceId && windowId != null) await mutate((s) => M.setActiveSpace(s, windowId, spaceId));
   tooLate(deadline);
   if (keptId) noteReopened(url); // (an old search there isn't one made now)
-  const tab = await api.tabs.create({ windowId, url, active: true, ...(Number.isInteger(index) && index >= 0 ? { index } : {}) });
+  const tab = await api.tabs.create({ windowId, url, active: true, ...(Number.isInteger(index) && (index as number) >= 0 ? { index } : {}) });
   if (spaceId || keptId) {
     await mutate((s) => {
       let next = M.upsertTab(s, tab, now());
@@ -470,8 +470,8 @@ export async function openBehind({ windowId, url, from, then, created, label, de
   created?.(tab);
   // In the window's space (model.ts assignTab), drawn before the page is told.
   await mutate((s) => M.upsertTab(s, label && !tab.title ? { ...tab, title: label } : tab, now())).catch(() => {});
-  const told = (type, reason = null) => tellPage(from, { type, tabId: tab.id, from: from.id, ...(reason ? { reason } : {}) });
-  const notShown = (reason = null) => {
+  const told = (type, reason: string | null = null) => tellPage(from, { type, tabId: tab.id, from: from.id, ...(reason ? { reason } : {}) });
+  const notShown = (reason: string | null = null) => {
     void told('switch-failed', reason);
     return { tabId: tab.id, shown: null };
   };

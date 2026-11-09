@@ -115,7 +115,7 @@ export function sleepInPage(expected: string, until: number, draftsOnly: boolean
       return n;
     };
     const own = top ? (globalThis as any).Margin?.content?.edits : null;
-    let edited = null;
+    let edited: boolean | null = null;
     try {
       edited = typeof own === 'function' ? own() : null;
     } catch {}
@@ -243,7 +243,7 @@ async function sleepTab(record: import('../../types/margin').TabRecord, afterMs:
     // Its browser tab closed, its Margin tab kept, not open, in its space
     // (background.ts tabs.onRemoved: closing.ts says it's Margin's, to keep),
     // with where its page was scrolled (queued before the close's change).
-    if (Number.isFinite(answer.scrollY)) void keepScroll(tab.id, tab.url, answer.scrollY);
+    if (Number.isFinite(answer.scrollY)) void keepScroll(tab.id, tab.url, answer.scrollY as number); // (finite: a number)
     noteClosing([tab.id], 'keep', 'sleep');
     if (!(await Promise.resolve(api.tabs.remove(tab.id)).then(() => true, () => false))) {
       takeClosing(tab.id);

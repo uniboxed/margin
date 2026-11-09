@@ -23,7 +23,7 @@ export const cached = () => cache;
 // ---- which copy owns the storage (shared/owner.ts) ---------------------------
 // This copy: its address, and its first background start (storage.session
 // lasts as long as the copy, across its background's restarts).
-const me = { origin: api?.runtime?.getURL?.('') ?? '', since: 0 };
+const me: { origin: string, since: number } = { origin: api?.runtime?.getURL?.('') ?? '', since: 0 };
 let role: 'owner' | 'stale' | null = null;
 let deciding: Promise<'owner' | 'stale'> | null = null;
 // Settles once this copy knows whether it owns the storage (once per
@@ -82,7 +82,7 @@ async function decideOnce() {
 // marked unmatched at once (`open`: as read): pages then wait for this copy's
 // first sync (shared/stored.ts). `back`: claimed back from an older copy that
 // claimed over this one (recheck): this copy's tabs stay matched.
-async function settle(stored, open = null, { starting = false, back = false } = {}) {
+async function settle(stored, open: Record<string, any> | null = null, { starting = false, back = false } = {}) {
   const decision = O.ownership(stored, me, starting ? Date.now() : undefined);
   if (decision === 'stale') {
     if (role !== 'stale') console.info('[margin] a newer copy of Margin is running: this one stays out of the way');
