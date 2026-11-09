@@ -17,6 +17,8 @@ Needs macOS with Xcode's command-line tools (`swiftc`) and Node. `run.sh` compil
 
 ## Scenarios
 
+Benchmarks are run by name, not by `run.sh all`: `box-bench` (the box's cost on heavy pages, plain and boxed: `npm run bench:box` runs it beside Chromium's and reads its `BENCH` lines).
+
 In `scenarios.mjs`, each a list of steps (documented at the top of the file). A check (`check` in Margin's content-script world, `checkPage` in the page's) waits until its JavaScript returns `true`, up to a timeout, so scenarios don't depend on fixed waits.
 
 | Scenario | What it covers |

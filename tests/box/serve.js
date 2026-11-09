@@ -76,7 +76,7 @@ export function benchCss(rules, elements) {
  * @param {number} rules @param {number} elements @param {boolean} [link]
  */
 export function benchPage(rules, elements, link = false) {
-  const sheet = link ? `<link rel="stylesheet" href="/bench-css/${rules}/${elements}">` : `<style>${benchCss(rules, elements)}</style>`;
+  const sheet = link ? `<link rel="stylesheet" href="../../../bench-css/${rules}/${elements}">` : `<style>${benchCss(rules, elements)}</style>`;
   const els = Array.from({ length: elements }, (_, i) => `<div class="c${i}"><span>${i}</span></div>`).join('');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>bench ${rules}/${elements}</title>${sheet}
 <script>addEventListener('load', () => { const t = performance.now(); requestAnimationFrame(() => requestAnimationFrame(() => { window.__bench = { loadMs: Math.round(t), frameMs: Math.round(performance.now() - t) }; })); });</script></head><body>${els}</body></html>`;
