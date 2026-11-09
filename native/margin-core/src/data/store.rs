@@ -25,7 +25,7 @@
 //! flushed on unix only.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
@@ -488,7 +488,7 @@ fn context(name: &str, what: &str, e: io::Error) -> io::Error {
 /// The renames made lasting (unix only: Windows can't open a folder as a file to flush it).
 fn sync_directory(dir: &Path) {
     #[cfg(unix)]
-    if let Ok(d) = File::open(dir) {
+    if let Ok(d) = fs::File::open(dir) {
         let _ = d.sync_all();
     }
     #[cfg(not(unix))]
