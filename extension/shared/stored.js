@@ -22,7 +22,7 @@
 // new-tab page) read through here. Pure.
 
 /** The state keys kept in `openTabs`. */
-export const OPEN_TABS_KEYS = Object.freeze(['tabs', 'tabSpace', 'activeSpaceByWindow', 'keptTabs']);
+export const OPEN_TABS_KEYS = Object.freeze(['tabs', 'tabSpace', 'activeSpaceByWindow', 'awayByWindow', 'keptTabs']);
 export const OPEN_TABS = 'openTabs';
 /** Other state keys stored under another name. */
 const RENAMED = Object.freeze({ lostTabs: 'lostTabs2' });
@@ -74,7 +74,7 @@ export function toStorage(state, keys, { origin, since, synced }) {
     out[storedName(key)] = state[key];
   }
   if (keys.some((key) => OPEN_TABS_KEYS.includes(key))) {
-    out[OPEN_TABS] = { origin, since, synced, ...Object.fromEntries(OPEN_TABS_KEYS.map((key) => [key, state[key]])) };
+    out[OPEN_TABS] = { origin, since, synced, ...Object.fromEntries(OPEN_TABS_KEYS.filter((key) => state[key] !== undefined).map((key) => [key, state[key]])) };
   }
   // Written in a set() of its own after the rest (background/store.js flush):
   // never a new mark over old icons.

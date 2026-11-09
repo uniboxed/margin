@@ -6,6 +6,7 @@ import { platform, PROFILES, PAST_NAVIGATION } from '../shared/platform.js';
 import { THEMES, DEFAULT_THEME } from '../themes/index.js';
 import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.js';
 import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.js';
+import { isAwayPage } from '../shared/away.js';
 /** @import { State } from '../../types/margin' */
 
 const ARCHIVE_CAP = 200;
@@ -72,7 +73,7 @@ const DEFAULT_SPACE = Object.freeze({
 // `lostTabs` is the old name of the kept tabs' reclaimable part (Margin 2,
 // Phase 2): read once, moved into `keptTabs`, and written as null so it's
 // never moved again.
-const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'tabSpace', 'pins', 'folders', 'archive', 'settings', 'tabs', 'keptTabs', 'favicons', 'lostTabs'];
+const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'awayByWindow', 'tabSpace', 'pins', 'folders', 'archive', 'settings', 'tabs', 'keptTabs', 'favicons', 'lostTabs'];
 const FAVICON_CAP = 150;
 
 /** @returns {State} */
@@ -80,6 +81,10 @@ function defaultState() {
   return {
     spaces: [{ ...DEFAULT_SPACE }],
     activeSpaceByWindow: {},
+    // The tab each window has chosen while it's live in another window of the profile (the tab follows the
+    // window in front, app/WINDOWS.md §9): { [windowId]: tabId }. That window shows it away (faded), with the
+    // stand-in page in front. A window not in it has its own active tab chosen, as ever.
+    awayByWindow: {},
     tabSpace: {},
     pins: [],
     // Folders of pins, per space (Arc): { id, spaceId, name, open, pos }.
@@ -114,6 +119,7 @@ function normalizeState(raw = {}) {
   return {
     spaces,
     activeSpaceByWindow: { ...raw.activeSpaceByWindow },
+    awayByWindow: Object.fromEntries(Object.entries(raw.awayByWindow ?? {}).filter(([w, t]) => /^\d+$/.test(w) && Number.isInteger(t))),
     tabSpace: { ...raw.tabSpace },
     pins: Array.isArray(raw.pins) ? raw.pins : [],
     folders: Array.isArray(raw.folders) ? raw.folders.filter((f) => f && typeof f.id === 'string' && typeof f.spaceId === 'string') : [],
@@ -484,23 +490,38 @@ function stripIndexFor(state, windowId, order, live = null) {
 /** @param {State} state @param {string} keptId @param {number | string} nextTo @param {'before' | 'after'} side @param {string} spaceId the list's space */
 function placeKept(state, keptId, nextTo, side, spaceId) {
   const k = state.keptTabs?.[keptId];
-  /** @type {any} */
-  const other = typeof nextTo === 'string' ? state.keptTabs?.[nextTo] : state.tabs[nextTo];
-  if (!k || !other || other === k) return state;
-  // The list as shown (one space: its kept tabs and the open ones of the
-  // other's window), in place order.
-  const windowId = typeof nextTo === 'string' ? null : other.windowId;
-  const list = [
-    ...Object.values(state.keptTabs).filter((x) => x.spaceId === spaceId && x.id !== keptId),
-    ...Object.values(state.tabs).filter((t) => state.tabSpace[t.id] === spaceId && (windowId == null || t.windowId === windowId)),
-  ].sort((a, b) => placeOf(a) - placeOf(b));
-  const at = list.indexOf(other);
-  if (at < 0) return state;
-  const o = placeOf(other);
-  const neighbour = side === 'before' ? list[at + 1] : list[at - 1];
-  const order = neighbour == null ? (side === 'before' ? o + 1 : o - 1) : (o + placeOf(neighbour)) / 2;
+  const order = placeBeside(state, k, nextTo, side, spaceId);
+  if (order == null) return state;
   const next = { ...state, keptTabs: { ...state.keptTabs, [keptId]: { ...k, order } } };
   return tight(next) ? renumber(next) : next;
+}
+// An open tab dragged next to one in another window (the list is the space's: app/WINDOWS.md §9): a place
+// between that one and its neighbour, for its window's tab strip to follow (background/handlers.js moveTab moves it
+// there: stripIndexFor). The state, unchanged if there's no such place.
+/** @param {State} state @param {number} tabId @param {number | string} nextTo @param {'before' | 'after'} side @param {string} spaceId */
+function placeOpen(state, tabId, nextTo, side, spaceId) {
+  const t = state.tabs[tabId];
+  const order = placeBeside(state, t, nextTo, side, spaceId);
+  if (order == null) return state;
+  const next = { ...state, tabs: { ...state.tabs, [tabId]: { ...t, order } } };
+  return tight(next) ? renumber(next) : next;
+}
+// The place beside `nextTo` on `side` in the space's list as shown (its kept tabs and its open ones in every
+// window), for `moving`; null if `nextTo` isn't in it.
+/** @param {State} state @param {any} moving @param {number | string} nextTo @param {'before' | 'after'} side @param {string} spaceId */
+function placeBeside(state, moving, nextTo, side, spaceId) {
+  /** @type {any} */
+  const other = typeof nextTo === 'string' ? state.keptTabs?.[nextTo] : state.tabs[nextTo];
+  if (!moving || !other || other === moving) return null;
+  const list = [
+    ...Object.values(state.keptTabs ?? {}).filter((x) => x.spaceId === spaceId),
+    ...Object.values(state.tabs).filter((t) => state.tabSpace[t.id] === spaceId),
+  ].filter((x) => x !== moving).sort((a, b) => placeOf(a) - placeOf(b));
+  const at = list.indexOf(other);
+  if (at < 0) return null;
+  const o = placeOf(other);
+  const neighbour = side === 'before' ? list[at + 1] : list[at - 1];
+  return neighbour == null ? (side === 'before' ? o + 1 : o - 1) : (o + placeOf(neighbour)) / 2;
 }
 
 // Settings that no longer exist: `searchEngine` (Margin's own engine
@@ -673,6 +694,8 @@ function inheritSpace(state, windowId) {
 // still saying active: true, which left two tabs highlighted.
 /** @param {State} state */
 function upsertTab(state, tab, now) {
+  // The stand-in page is never a Margin tab (shared/away.js).
+  if (isAwayPage(tab.url) || isAwayPage(tab.pendingUrl)) return state.tabs[tab.id] ? removeTab(state, tab.id) : state;
   const prev = state.tabs[tab.id];
   const record = tabRecord(tab, prev, now);
   if (prev) {
@@ -712,8 +735,27 @@ function removeTab(state, tabId) {
   const tabSpace = { ...state.tabSpace };
   delete tabs[tabId];
   delete tabSpace[tabId];
-  return { ...state, tabs, tabSpace };
+  // Chosen away by a window: that window chooses its own front tab again.
+  const away = state.awayByWindow ?? {};
+  const awayByWindow = Object.values(away).includes(tabId) ? Object.fromEntries(Object.entries(away).filter(([, t]) => t !== tabId)) : away;
+  return { ...state, tabs, tabSpace, awayByWindow };
 }
+
+// Window `windowId` has tab `tabId` chosen while it's live in another window (app/WINDOWS.md §9); `tabId` null:
+// it chooses its own front tab again.
+/** @param {State} state @param {number} windowId @param {number | null} tabId */
+function setAway(state, windowId, tabId) {
+  const away = state.awayByWindow ?? {};
+  if ((away[windowId] ?? null) === tabId) return state;
+  const awayByWindow = { ...away };
+  if (tabId == null) delete awayByWindow[windowId];
+  else awayByWindow[windowId] = tabId;
+  return { ...state, awayByWindow };
+}
+
+// The tabs some window shows away: never put to sleep or archived while one does.
+/** @param {State} state */
+const awayTabs = (state) => new Set(Object.values(state.awayByWindow ?? {}));
 
 // Exactly one active tab per window. `windowId` may be missing from the
 // event; fall back to the tab's own window.
@@ -727,7 +769,18 @@ function activateTab(state, tabId, windowId, now) {
     else if (t.id === tabId) tabs[id] = { ...t, active: true, lastActive: now };
     else tabs[id] = t.active ? { ...t, active: false, lastActive: now } : t;
   }
-  return { ...state, tabs };
+  // A tab of its own live in the window: it shows nothing away any more (app/WINDOWS.md §9).
+  const next = { ...state, tabs };
+  return state.tabs[tabId]?.windowId === windowId ? setAway(next, windowId, null) : next;
+}
+
+// A tab moved to another window by Margin (background/away.js, tabs.move): its record there, at `index`, not in
+// front yet (its activation comes next); its place in the list kept.
+/** @param {State} state @param {number} tabId @param {number} windowId @param {number} [index] */
+function movedTab(state, tabId, windowId, index) {
+  const t = state.tabs[tabId];
+  if (!t || (t.windowId === windowId && (index == null || t.index === index))) return state;
+  return { ...state, tabs: { ...state.tabs, [tabId]: { ...t, windowId, active: false, ...(Number.isInteger(index) && index >= 0 ? { index } : {}) } } };
 }
 
 // The same tabs under new ids. A browser restart, and Margin being updated
@@ -840,7 +893,8 @@ function isRenumbered(state, openTabs, { fresh = false } = {}) {
 
 /** @param {State} state */
 function syncTabs(state, openTabs, { fresh = false, now = Date.now() } = {}) {
-  openTabs = openTabs.map(seenTab); // (a sleeping tab by its page's address)
+  // (The stand-in page isn't a Margin tab: shared/away.js.)
+  openTabs = openTabs.filter((t) => !isAwayPage(t.url) && !isAwayPage(t.pendingUrl)).map(seenTab); // (a sleeping tab by its page's address)
   const open = new Set(openTabs.map((t) => String(t.id)));
   const known = (t) => !fresh && !!state.tabs[t.id];
   const gone = Object.values(state.tabs).filter((r) => fresh || !open.has(String(r.id)));
@@ -883,6 +937,8 @@ function syncTabs(state, openTabs, { fresh = false, now = Date.now() } = {}) {
   }
   const windows = new Set(openTabs.map((t) => String(t.windowId)));
   for (const w of Object.keys(next.activeSpaceByWindow)) if (!windows.has(w)) delete next.activeSpaceByWindow[w];
+  // Away choices of windows gone, or of tabs gone (a fresh start: every window's own front tab again).
+  next.awayByWindow = fresh ? {} : Object.fromEntries(Object.entries(next.awayByWindow ?? {}).filter(([w, t]) => windows.has(w) && open.has(String(t))));
   for (const tab of openTabs) {
     if (tab.active && next.activeSpaceByWindow[tab.windowId] == null && next.tabSpace[tab.id]) {
       next.activeSpaceByWindow = { ...next.activeSpaceByWindow, [tab.windowId]: next.tabSpace[tab.id] };
@@ -1288,8 +1344,9 @@ function staleTabs(state, now) {
   const hours = Number(state.settings.archiveAfterHours);
   if (!(hours > 0)) return [];
   const cutoff = now - hours * 3600_000;
+  const away = awayTabs(state);
   return Object.values(state.tabs).filter(
-    (t) => !t.active && /^https?:/i.test(t.url) && (t.lastActive ?? now) < cutoff && !pinForUrl(state, t.url, state.tabSpace[t.id]),
+    (t) => !t.active && !away.has(t.id) && /^https?:/i.test(t.url) && (t.lastActive ?? now) < cutoff && !pinForUrl(state, t.url, state.tabSpace[t.id]),
   );
 }
 
@@ -1316,8 +1373,9 @@ function sleepyTabs(state, now, { afterMs = null } = {}) {
   if (!(ms > 0)) return [];
   const cutoff = now - ms;
   const lastUse = (t) => Math.max(t.lastActive ?? now, t.wokeAt ?? -Infinity);
+  const away = awayTabs(state);
   return Object.values(state.tabs)
-    .filter((t) => !t.active && !t.sleeping && /^https?:/i.test(t.url) && lastUse(t) < cutoff && !neverSleeps(t.url, state.settings.neverSleepSites))
+    .filter((t) => !t.active && !away.has(t.id) && !t.sleeping && /^https?:/i.test(t.url) && lastUse(t) < cutoff && !neverSleeps(t.url, state.settings.neverSleepSites))
     .sort((a, b) => lastUse(a) - lastUse(b));
 }
 
@@ -1343,6 +1401,8 @@ export {
   goingTo,
   GOING_MS,
   removeTab,
+  setAway,
+  movedTab,
   activateTab,
   syncTabs,
   isRenumbered,
@@ -1394,6 +1454,7 @@ export {
   placeKept,
   orderTabs,
   stripIndexFor,
+  placeOpen,
   placeOf,
   seenTab,
   archiveEntryForTab,

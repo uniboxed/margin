@@ -19,6 +19,8 @@ import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
 import { getScroll, setScroll } from './scroll.js';
 import { keepScroll, takeScroll } from './scroll-record.js';
 import { closeTabs, noteClosing } from './closing.js';
+import * as away from './away.js';
+import { isAwayPage } from '../shared/away.js';
 import { appLink } from './app-link.js';
 import { noticeAnswered } from './notices.js';
 import { isNoticeAction } from '../shared/notices.js';
@@ -339,8 +341,28 @@ export const handlers = {
     const target = resolved ?? (await resolveTab(tabId, hint, sender.tab?.windowId, { deadline }));
     if (!target) throw new Error('That tab is no longer open');
     if (Number.isFinite(sidebarTop) && sender.tab?.windowId != null) void setScroll(sender.tab.windowId, sidebarTop);
+    // In another window of the profile: it comes to this one, the other keeps it chosen, away (app/WINDOWS.md §9).
+    const here = windowId ?? sender?.tab?.windowId;
+    if (here != null && target.windowId != null && target.windowId !== here && away.follows(here)) {
+      await away.bringTab(target, here, { source: 'activateTab', deadline });
+      return { shown: target.id };
+    }
     await focusTab(target.id, { source: 'activateTab', deadline });
     return { shown: target.id };
+  },
+  // Margin's stand-in page (away/away.html): what its window shows away, with its picture (background/away.js).
+  async awayShown(_message, sender) {
+    return away.shownAway(sender?.tab?.windowId);
+  },
+  // The stand-in clicked: its window's away tab back to it.
+  async bringAway(_message, sender) {
+    const windowId = sender?.tab?.windowId;
+    const s = await load();
+    const tabId = windowId != null ? s.awayByWindow?.[windowId] : null;
+    const tab = tabId != null ? await Promise.resolve(api.tabs.get(tabId)).catch(() => null) : null;
+    if (!tab || windowId == null) return { shown: null };
+    await away.bringTab(tab, windowId, { source: 'stand-in' });
+    return { shown: tab.id };
   },
   // Settings' "Wake all sleeping tabs" (background/sleep.js): how many it woke.
   async wakeSleeping() {
@@ -437,7 +459,7 @@ export const handlers = {
   async visibility({ visible, at, from } = {}, sender) {
     const tab = sender?.tab;
     if (!tab || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId) || typeof visible !== 'boolean') return;
-    const source = from === 'page' ? 'content script' : from === 'newtab' ? 'new-tab page' : 'unknown';
+    const source = from === 'page' ? 'content script' : from === 'newtab' ? 'new-tab page' : from === 'away' ? 'stand-in page' : 'unknown';
     appLink.visibility(tab.windowId, tab.id, visible, Number.isFinite(at) ? /** @type {number} */ (at) : Date.now(), source);
   },
   async getZoom(_, sender) {
@@ -578,7 +600,21 @@ export const handlers = {
     if (typeof nextTo === 'string') return false;
     if (!api.tabs.move) return false;
     const [tab, other] = await Promise.all([resolveTab(tabId, hint, sender?.tab?.windowId), resolveTab(nextTo, nextToHint, sender?.tab?.windowId)]);
-    if (!tab || !other || tab.windowId !== other.windowId || tab.id === other.id || !!tab.pinned !== !!other.pinned) return false;
+    if (!tab || !other || tab.id === other.id || !!tab.pinned !== !!other.pinned) return false;
+    if (tab.windowId !== other.windowId) {
+      // Next to one in another window (the list is the space's: app/WINDOWS.md §9): a place in the list beside it,
+      // and the tab where that place falls in its own window's strip.
+      const before = await load();
+      const spaceId = before.tabSpace[tab.id];
+      if (!spaceId || before.tabSpace[other.id] !== spaceId) return false;
+      const after = await mutate((s) => M.placeOpen(s, tab.id, other.id, side, spaceId));
+      const order = after.tabs[tab.id]?.order;
+      if (!Number.isFinite(order) || order === before.tabs[tab.id]?.order) return false;
+      const strip = Object.values(after.tabs).filter((t) => t.windowId === tab.windowId && t.id !== tab.id);
+      const index = strip.filter((t) => (Number.isFinite(t.order) ? t.order : t.index) < order).length;
+      if (index === tab.index) return true;
+      return api.tabs.move(tab.id, { index }).then(() => true, () => false);
+    }
     // Above it in the list: just after it in the window; below it: just before.
     const index = moveIndex(tab.index, other.index, side);
     if (index === tab.index) return false;
@@ -612,12 +648,18 @@ export const handlers = {
       return next;
     });
     if (!ids.length) return keptIds;
-    const [front] = await api.tabs.query({ active: true, windowId: win }).catch(() => []);
-    if (front && closing.has(front.id)) {
-      const stay = Object.values(s.tabs).filter((t) => t.windowId === win && !closing.has(t.id) && s.tabSpace[t.id] === spaceId)
+    // Each window whose tab in front is closing (this one, and any other of the profile showing the space: its
+    // list is the space's, app/WINDOWS.md §9) stays in the space and isn't left empty (Safari closes a window
+    // whose last tab closes): its most recent tab of the space it shows comes to the front, else its start page opens.
+    const windows = new Set([win, ...ids.map((id) => s.tabs[id]?.windowId).filter((w) => w != null)]);
+    for (const w of windows) {
+      const [front] = await api.tabs.query({ active: true, windowId: w }).catch(() => []);
+      if (!front || !closing.has(front.id)) continue;
+      const shows = w === win ? spaceId : V.activeSpaceId(s, w);
+      const stay = Object.values(s.tabs).filter((t) => t.windowId === w && !closing.has(t.id) && s.tabSpace[t.id] === shows)
         .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0];
       if (stay) await focusTab(stay.id, { source: 'clearToday' }).catch(() => null);
-      else await openTab({ windowId: win, url: api.runtime.getURL('newtab/newtab.html#launcher'), spaceId }).catch(() => null);
+      else await openTab({ windowId: w, url: api.runtime.getURL('newtab/newtab.html#launcher'), spaceId: shows }).catch(() => null);
     }
     await closeTabs(ids, 'done');
     return [...ids, ...keptIds];
@@ -647,7 +689,7 @@ export const handlers = {
     await mutate((s) => M.removePin(s, pinId));
   },
   /** @param {{ pinId: string, windowId?: number, sidebarTop?: number, deadline?: number }} message `deadline`: as activateTab's */
-  async openPin({ pinId, windowId, sidebarTop, deadline }) {
+  async openPin({ pinId, windowId, sidebarTop, deadline }, sender) {
     const s = await load();
     const pin = s.pins.find((p) => p.id === pinId);
     if (!pin) return;
@@ -660,7 +702,8 @@ export const handlers = {
     // only in a parked window is shown by the app's handoff to it (focusTab).
     const existing = matches.find((t) => t.windowId === windowId) ?? matches.find((t) => !inParkedWindow(t)) ?? matches[0];
     if (existing) {
-      await focusTab(existing.id, { source: 'openPin', deadline });
+      // In another window of the profile: it comes here (app/WINDOWS.md §9).
+      await away.showTab(existing.id, windowId ?? sender?.tab?.windowId, { source: 'openPin', deadline });
       return { shown: existing.id };
     }
     // Its tab that isn't open, if the space has one (kept from before it was
@@ -737,13 +780,15 @@ export const handlers = {
     if (!/^https:\/\/[a-z0-9.-]+\/$/.test(String(url ?? ''))) throw new Error('a plain https origin only');
     if (devProbing) throw new Error('a probe is already running');
     devProbing = true;
-    const made = { tabId: /** @type {number | null} */ (null), windowId: /** @type {number | null} */ (null) };
+    const made = { tabId: /** @type {number | null} */ (null), windowId: /** @type {number | null} */ (null), homeId: /** @type {number | null} */ (null), homeFront: /** @type {number | null} */ (null) };
     /** @type {Record<string, any>} */
     const out = { ok: false };
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     try {
       const home = (await api.windows.getAll()).find((w) => w.focused) ?? (await api.windows.getAll())[0];
       if (!home) throw new Error('no window');
+      made.homeId = home.id;
+      made.homeFront = (await api.tabs.query({ active: true, windowId: home.id }))[0]?.id ?? null;
       const tab = await api.tabs.create({ windowId: home.id, url: String(url), active: false });
       made.tabId = tab.id;
       for (let i = 0; i < 50 && (await api.tabs.get(tab.id)).status !== 'complete'; i++) await wait(200);
@@ -764,7 +809,10 @@ export const handlers = {
         field: /** @type {HTMLInputElement | null} */ (document.getElementById('__margin_probe'))?.value === `typed ${t}`,
         scroll: Math.round(scrollY),
       }) }))[0]?.result ?? null;
-      out.before = await check();
+      // Short (the app's log line is cut at 600 characters): marker, field (1/0) and scroll.
+      // As a number: 3 marker and field kept (2 marker only, 1 field only), times 100000, plus the scroll; -1 none.
+      const kept = async () => { const c = await check(); return c ? ((c.marker ? 2 : 0) + (c.field ? 1 : 0)) * 100000 + Math.min(99999, c.scroll) : -1; };
+      out.before = await kept();
       const second = await api.windows.create({ focused: true, state: 'fullscreen' });
       made.windowId = second.id;
       await wait(2000); // its full-screen Space up
@@ -774,7 +822,7 @@ export const handlers = {
       await api.tabs.update(tab.id, { active: true });
       await wait(1000);
       out.movedThere = (await api.tabs.get(tab.id)).windowId === second.id;
-      out.afterMove = await check();
+      out.afterMove = await kept();
       t0 = performance.now();
       const picture = await api.tabs.captureVisibleTab(second.id, { format: 'jpeg', quality: 60 }).catch(() => null);
       out.captureMs = Math.round(performance.now() - t0);
@@ -789,13 +837,48 @@ export const handlers = {
       out.backMs = Math.round(performance.now() - t0);
       await wait(1000);
       out.movedBack = (await api.tabs.get(tab.id)).windowId === home.id;
-      out.afterBack = await check();
+      out.afterBack = await kept();
+      // Margin's own follow (background/away.js), with home behind: the tab in front there, then chosen in the
+      // window in front (second), then home to the front again. Whether making and showing tabs in a window behind
+      // leaves the focus where it was (no slide to its Space), and whether the tab follows home back.
+      const focused = async (/** @type {number} */ id) => (await api.windows.get(id).catch(() => null))?.focused === true;
+      await api.tabs.update(tab.id, { active: true });
+      await wait(500);
+      out.shownBehindKeptFocus = (await focused(second.id)) && !(await focused(home.id));
+      t0 = performance.now();
+      await away.bringTab(await api.tabs.get(tab.id), second.id, { source: 'probe', raise: false });
+      out.bringMs = Math.round(performance.now() - t0);
+      await wait(800);
+      out.bringKeptFocus = (await focused(second.id)) && !(await focused(home.id));
+      const standInIn = async (/** @type {number} */ id) => (await api.tabs.query({ windowId: id })).find((t) => isAwayPage(t.url) || isAwayPage(t.pendingUrl)) ?? null;
+      const homeStandIn = await standInIn(home.id);
+      out.standInInFront = homeStandIn?.active === true;
+      const live = await api.tabs.get(tab.id);
+      out.broughtThere = live.windowId === second.id && live.active === true;
+      out.awayRecorded = (await load()).awayByWindow?.[home.id] === tab.id;
+      out.afterBring = await kept();
+      t0 = performance.now();
+      await api.windows.update(home.id, { focused: true });
+      for (let i = 0; i < 30 && (await api.tabs.get(tab.id)).windowId !== home.id; i++) await wait(100);
+      out.followMs = Math.round(performance.now() - t0);
+      await wait(800);
+      out.followedBack = (await api.tabs.get(tab.id)).windowId === home.id;
+      out.focusHeard = away.awayInternals.focusSeen.windowId === home.id;
+      out.focusOutcome = away.awayInternals.focusSeen.outcome;
+      out.homeFocused = await focused(home.id);
+      out.homeStandInGone = !(await standInIn(home.id));
+      out.secondStandIn = !!(await standInIn(second.id));
+      out.afterFollow = await kept();
       out.ok = true;
     } catch (err) {
       out.error = String(/** @type {any} */ (err)?.name ?? 'Error');
     } finally {
       if (made.tabId != null) await api.tabs.remove(made.tabId).catch(() => {});
       if (made.windowId != null) await api.windows.remove(made.windowId).catch(() => {});
+      // A stand-in the follow left in home (only the probe's tab was shown away there; nothing else touched).
+      if (made.homeId != null) for (const t of await api.tabs.query({ windowId: made.homeId }).catch(() => [])) if (isAwayPage(t.url) || isAwayPage(t.pendingUrl)) await api.tabs.remove(t.id).catch(() => {});
+      // Home's tab in front as it was.
+      if (made.homeFront != null) await api.tabs.update(made.homeFront, { active: true }).catch(() => {});
       out.cleaned = true;
       devProbing = false;
     }

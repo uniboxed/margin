@@ -310,7 +310,8 @@ test('view.sidebar: shows the window\'s active space, pins separately, newest ta
   s = M.moveTab(s, 2, 'work');
   const v = view.sidebar(s, 1);
   assert.equal(v.spaceId, 'personal');
-  assert.deepEqual(v.tabs.map((t) => t.id), [3]);
+  assert.deepEqual(v.tabs.map((t) => t.id), [4, 3], 'the space\'s tabs in every window of the profile (app/WINDOWS.md §9)');
+  assert.equal(v.tabs[0].active, false, 'another window\'s tab in front there isn\'t chosen here');
   assert.equal(v.pins[0].tabId, 1);
   assert.equal(v.pins[0].active, true);
   assert.deepEqual(view.sidebar(M.setActiveSpace(s, 1, 'work'), 1).tabs.map((t) => t.id), [2]);
@@ -319,7 +320,7 @@ test('view.sidebar: shows the window\'s active space, pins separately, newest ta
   s = M.removeTab(s, 7);
   s = M.upsertTab(s, tab(5, 1, 'https://e.com', { index: 5 }), 0);
   s = M.upsertTab(s, tab(6, 1, 'https://f.com', { index: 4 }), 0);
-  assert.deepEqual(view.sidebar(s, 1).tabs.map((t) => t.id), [5, 6, 3], 'the browser\'s order reversed: the newest at the top');
+  assert.deepEqual(view.sidebar(s, 1).tabs.map((t) => t.id), [5, 6, 4, 3], 'the browser\'s order reversed: the newest at the top (4, window 2\'s, opened before 5 and 6)');
 });
 
 test('view.sidebar: a page shows its own tab\'s space until the state records that it\'s in front, and a tab being switched to from another space shows that one at once', () => {
@@ -380,9 +381,11 @@ test('view.sidebar: a tab being switched to is highlighted already, the shown on
   v = view.sidebar(s, 1, 2, { switchingTo: 3, newTabPending: true });
   assert.equal(v.newTab.active, false, 'chosen in the palette opened for a new tab: the chosen tab wins');
   assert.deepEqual(v.tabs.filter((t) => t.active).map((t) => t.id), [3]);
-  for (const other of [2, 4, 99]) {
+  v = view.sidebar(s, 1, 2, { switchingTo: 4 });
+  assert.deepEqual(v.tabs.filter((t) => t.active).map((t) => t.id), [4], 'the space\'s tab in another window: it\'s coming here (§9)');
+  for (const other of [2, 99]) {
     v = view.sidebar(s, 1, 2, { switchingTo: other });
-    assert.deepEqual(v.tabs.filter((t) => t.active).map((t) => t.id), [2], `nothing changes for ${other} (shown, another window, gone)`);
+    assert.deepEqual(v.tabs.filter((t) => t.active).map((t) => t.id), [2], `nothing changes for ${other} (shown, gone)`);
     assert.deepEqual(v.tabs.filter((t) => t.behind), []);
   }
   s = M.upsertTab(s, tab(5, 1, 'chrome://newtab/', { index: 3, active: true }), 0);

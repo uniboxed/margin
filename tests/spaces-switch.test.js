@@ -490,11 +490,12 @@ test('clearToday: nothing of the space left open: its start page opens in it fir
   assert.equal(front(1), 4);
   const { handlers } = await import('../extension/background/handlers.js');
   const closed = await handlers.clearToday({}, { tab: { id: 4, windowId: 1 } });
-  assert.deepEqual(closed.sort(), [3, 4], 'the window from the page that asked');
-  assert.deepEqual(fake.calls.create, ['safari-web-extension://test/newtab/newtab.html#launcher']);
-  const opened = front(1);
-  assert.equal((await load()).tabSpace[opened], 'work');
-  assert.ok(fake.tabs.has(5), 'Work\'s tab in window 2 stays');
+  assert.deepEqual(closed.sort(), [3, 4, 5], 'the space\'s tabs in every window: its list is the space\'s (app/WINDOWS.md §9)');
+  assert.equal(fake.calls.create.length, 2, 'a start page in each window that would be left without its tab in front');
+  const s = await load();
+  assert.equal(s.tabSpace[front(1)], 'work', 'the window that asked stays in the space');
+  assert.ok(front(2) != null && front(2) !== 5, 'window 2 isn\'t left empty (Safari would close it)');
+  assert.equal(s.tabSpace[front(2)], V.activeSpaceId(s, 2), '…in the space it shows');
 });
 
 test('goBack, goForward, reload: the tab in front of the window (the app\'s nav buttons)', async () => {

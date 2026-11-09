@@ -60,6 +60,7 @@ const BUNDLES = {
   background: 'background.bundle.js',
   page: 'content/page.bundle.js',
   newtab: 'newtab/newtab.bundle.js',
+  away: 'away/away.bundle.js',
 };
 // The first paint (shared/page-box.js, background/registered.js): the
 // layout's digit files and at.css, and each built-in theme's
@@ -125,12 +126,14 @@ function bundle(out, manifest) {
   // The page's box, in the page's world (registered by the background).
   write(BUNDLES.page, ['content/page/main.js']);
 
-  // The new-tab page (a module: it awaits at the top level).
-  const html = readFileSync(`${out}/newtab/newtab.html`, 'utf8');
-  const tag = /<script src="([^"]+)" type="module"><\/script>/.exec(html);
-  if (!tag) throw new Error('newtab.html: module script not found');
-  write(BUNDLES.newtab, [`newtab/${tag[1]}`], { format: 'esm' });
-  writeFileSync(`${out}/newtab/newtab.html`, html.replace(tag[0], `<script src="${BUNDLES.newtab.split('/').pop()}" type="module"></script>`));
+  // The new-tab page and the stand-in for a tab shown in another window (modules: they await at the top level).
+  for (const [page, file] of [['newtab', BUNDLES.newtab], ['away', BUNDLES.away]]) {
+    const html = readFileSync(`${out}/${page}/${page}.html`, 'utf8');
+    const tag = /<script src="([^"]+)" type="module"><\/script>/.exec(html);
+    if (!tag) throw new Error(`${page}.html: module script not found`);
+    write(file, [`${page}/${tag[1]}`], { format: 'esm' });
+    writeFileSync(`${out}/${page}/${page}.html`, html.replace(tag[0], `<script src="${file.split('/').pop()}" type="module"></script>`));
+  }
 }
 
 // Margin.app's overlay page (app/overlay/: the UI runtime with the app's

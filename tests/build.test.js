@@ -47,7 +47,9 @@ test('each build loads one bundled script per context', () => {
     assert.doesNotMatch(background, /importScripts\(/, `${target}: nothing left to import`);
     const scripts = [...readFileSync(join(dir, 'newtab/newtab.html'), 'utf8').matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
     assert.deepEqual(scripts, ['newtab.bundle.js'], target);
-    for (const file of ['content/content.bundle.js', 'content/page.bundle.js', 'newtab/newtab.bundle.js']) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}`);
+    const awayScripts = [...readFileSync(join(dir, 'away/away.html'), 'utf8').matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
+    assert.deepEqual(awayScripts, ['away.bundle.js'], `${target}: the stand-in page (background/away.js)`);
+    for (const file of ['content/content.bundle.js', 'content/page.bundle.js', 'newtab/newtab.bundle.js', 'away/away.bundle.js']) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}`);
     // Nothing in the page's world from the manifest: a page Margin leaves
     // alone loads none of it (background/registered.js).
     assert.equal(manifest.content_scripts.find((c) => c.world === 'MAIN'), undefined, target);
@@ -66,7 +68,7 @@ test('each build loads one bundled script per context', () => {
     // Pages draw none of Margin's UI (Margin 2 Phase 2 step 5): the UI
     // runtime, the theme loader and the in-page host aren't in the content
     // script or the new-tab page.
-    for (const file of ['content/content.bundle.js', 'newtab/newtab.bundle.js']) {
+    for (const file of ['content/content.bundle.js', 'newtab/newtab.bundle.js', 'away/away.bundle.js']) {
       const text = readFileSync(join(dir, file), 'utf8');
       for (const word of ['createRuntime', 'createInPageHost', 'loadTheme', 'sanitizeCss', 'attachShadow']) assert.ok(!text.includes(word), `${target}/${file}: no ${word}`);
     }

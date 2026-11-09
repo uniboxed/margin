@@ -78,13 +78,13 @@ export const VM_VERSION = 1;
  * A tab of the space: open (its browser tab's id, a number) or not (its
  * Margin tab's own id, a string: `open` false, `notOpen` true).
  * @typedef {Face & {
- *   kind: 'tab', id: number | string, active: boolean, behind: boolean,
+ *   kind: 'tab', id: number | string, active: boolean, behind: boolean, away: boolean,
  *   audible: boolean, asleep: boolean, loading: boolean, pinned: false,
  *   open: boolean, notOpen: boolean,
  * }} TabRow
  * @typedef {Face & {
  *   kind: 'pin', isFolder: false, id: string, folderId: string | null, nested: boolean,
- *   tabId: number | null, open: boolean, active: boolean, behind: boolean,
+ *   tabId: number | null, open: boolean, active: boolean, behind: boolean, away: boolean,
  *   audible: boolean, asleep: boolean, loading: boolean, pinned: true,
  * }} PinRow
  * @typedef {{
@@ -300,6 +300,8 @@ function tabRow(state, t) {
     ...face(state, t, t.title || t.url || 'New Tab'),
     active: open && !!t.active,
     behind: open && !!t.behind,
+    // Chosen here, but live in another window of the profile (app/WINDOWS.md §9): drawn faded.
+    away: open && !!t.away,
     audible: open && !!t.audible,
     asleep: open && !!t.sleeping,
     loading: open && isLoading(t),
@@ -323,6 +325,7 @@ function pinRow(state, p, nested) {
     open: p.tabId != null,
     active: !!p.active,
     behind: !!p.behind,
+    away: !!p.away,
     audible: !!tab?.audible,
     asleep: !!tab?.sleeping,
     loading: isLoading(tab),
@@ -398,11 +401,10 @@ function fresh(input) {
   });
   const today = view.tabs.map((t) => tabRow(state, t));
 
-  // A space's tab count: its tabs open in this window (pinned or not), and
-  // its tabs that aren't open (shown in every window).
+  // A space's tab count: its tabs open in any window of the profile (pinned or not: a space's list is the
+  // space's, app/WINDOWS.md §9), and its tabs that aren't open (shown in every window).
   const counts = new Map();
   for (const t of Object.values(state.tabs)) {
-    if (t.windowId !== windowId) continue;
     const s = state.tabSpace[t.id];
     counts.set(s, (counts.get(s) ?? 0) + 1);
   }
@@ -653,7 +655,7 @@ function spaceRows(c) {
   };
   const pinOf = (r, nested) => ({
     kind: 'pin', isFolder: false, id: `x:${r.id}`, ...faceOf(r), folderId: r.folderId ? `x:${r.folderId}` : null, nested,
-    tabId: null, open: false, active: false, behind: false, audible: false, asleep: false, loading: false, pinned: true,
+    tabId: null, open: false, active: false, behind: false, away: false, audible: false, asleep: false, loading: false, pinned: true,
   });
   const byPos = (a, b) => a.pos - b.pos;
   const folders = c.folders.slice().sort(byPos).map((f) => {
@@ -664,7 +666,7 @@ function spaceRows(c) {
   const pins = loose.map((p) => ({ ...pinOf(p, false), pos: p.pos }));
   const pinned = [...folders, ...pins].sort(byPos).map(({ pos, ...item }) => item);
   const today = c.tabs.map((t) => ({
-    kind: 'tab', id: `x:${t.id}`, ...faceOf(t), active: t.active, behind: false, audible: false, asleep: false, loading: false, pinned: false, open: true, notOpen: false,
+    kind: 'tab', id: `x:${t.id}`, ...faceOf(t), active: t.active, behind: false, away: false, audible: false, asleep: false, loading: false, pinned: false, open: true, notOpen: false,
   }));
   return {
     pinned,

@@ -81,7 +81,7 @@ test('in-page host: the first read is what pages read first (shared/stored.js fi
   // Its window: a guess from the page's address until it's told (hello).
   assert.equal(host.windowId, W);
   const vm = buildViewModel({ state, ui: { windowId: host.windowId } });
-  assert.deepEqual(vm.space.today.map((t) => t.id), [15, 14, 12]);
+  assert.deepEqual(vm.space.today.map((t) => t.id), [15, 14, 12, 16]);
   host.destroy();
 });
 

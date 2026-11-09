@@ -59,7 +59,7 @@
                   </span>
                 </a>
                 <m-for each="g.shown" as="p">
-                  <a class="pin nested" data-pin-id="{{p.id}}" m-class:active="{{p.active}}" m-class:behind="{{p.behind}}" m-class:open="{{p.open}}" m-class:asleep="{{p.asleep}}" m-class:busy="{{p.loading}}" aria-label="{{p.title}}" m-action="pin.open" m-arg="{{p.id}}" m-drag="pin">
+                  <a class="pin nested" data-pin-id="{{p.id}}" m-class:active="{{p.active}}" m-class:behind="{{p.behind}}" m-class:away="{{p.away}}" m-class:open="{{p.open}}" m-class:asleep="{{p.asleep}}" m-class:busy="{{p.loading}}" aria-label="{{p.title}}" m-action="pin.open" m-arg="{{p.id}}" m-drag="pin">
                       <m-if test="p.icon">
                         <img class="avatar" alt="" m-icon="{{p.icon}}">
                         <m-else><span class="avatar letter" aria-hidden="true" m-style:--letter="{{p.color}}">{{p.letter}}</span></m-else>
@@ -76,7 +76,7 @@
                   </a>
                 </m-for>
                 <m-else>
-                  <a class="pin" data-pin-id="{{g.id}}" m-class:active="{{g.active}}" m-class:behind="{{g.behind}}" m-class:open="{{g.open}}" m-class:asleep="{{g.asleep}}" m-class:busy="{{g.loading}}" aria-label="{{g.title}}" m-action="pin.open" m-arg="{{g.id}}" m-drag="pin">
+                  <a class="pin" data-pin-id="{{g.id}}" m-class:active="{{g.active}}" m-class:behind="{{g.behind}}" m-class:away="{{g.away}}" m-class:open="{{g.open}}" m-class:asleep="{{g.asleep}}" m-class:busy="{{g.loading}}" aria-label="{{g.title}}" m-action="pin.open" m-arg="{{g.id}}" m-drag="pin">
                       <m-if test="g.icon">
                         <img class="avatar" alt="" m-icon="{{g.icon}}">
                         <m-else><span class="avatar letter" aria-hidden="true" m-style:--letter="{{g.color}}">{{g.letter}}</span></m-else>
@@ -110,7 +110,7 @@
             <span class="title">New Tab</span>
           </a>
           <m-for each="space.today" as="t">
-            <a class="tab" data-tab-id="{{t.id}}" m-class:active="{{t.active}}" m-class:behind="{{t.behind}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:not-open="{{t.notOpen}}" aria-label="{{t.title}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
+            <a class="tab" data-tab-id="{{t.id}}" m-class:active="{{t.active}}" m-class:behind="{{t.behind}}" m-class:away="{{t.away}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:not-open="{{t.notOpen}}" aria-label="{{t.title}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
                 <m-if test="t.icon">
                   <img class="avatar" alt="" m-icon="{{t.icon}}">
                   <m-else><span class="avatar letter" aria-hidden="true" m-style:--letter="{{t.color}}">{{t.letter}}</span></m-else>

@@ -27,6 +27,7 @@ import { platform } from './shared/platform.js';
 import { appLink } from './background/app-link.js';
 import * as handoff from './background/handoff.js';
 import * as pageLoads from './background/page-loads.js';
+import * as away from './background/away.js';
 import { linkedAgain } from './background/notices.js';
 import { APP_LINK_KEY, appDraws } from './shared/app-link.js';
 
@@ -73,6 +74,9 @@ if (!api.storage.session) {
 const SYNC_WAIT_MS = 5000;
 const firstSyncOnce = () => resync({ onSync: (sync) => {
   restore.synced(sync);
+  // Stand-ins left from before this background started (Safari restored them, or their tab is gone): after this
+  // sync's write (background/away.js).
+  void Promise.resolve().then(() => away.sweep(sync.tabs)).catch(() => {});
   // A Safari relaunch can restore pages before it injects extensions into
   // them. Repair this session's already-open pages as soon as the background
   // has reconciled their authoritative ids, without waiting for WebKit's
@@ -135,6 +139,8 @@ api.permissions?.onRemoved?.addListener(owned(() => void onboarding.reportAccess
 // ---- tab events -----------------------------------------------------------
 
 api.tabs.onCreated.addListener(owned(async (tab) => {
+  // Margin's stand-in for a tab shown in another window is never a Margin tab (background/away.js).
+  if (away.isStandIn(tab.id, tab.windowId, tab)) return;
   // ⌘T (a new tab showing the new-tab page, in front): handed back to the
   // page the user was on at once (handlers.js newTabHandOff); a new tab
   // that stays is tracked as usual.
@@ -152,6 +158,7 @@ api.tabs.onCreated.addListener(owned(async (tab) => {
   });
 }));
 api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
+  if (away.isStandIn(tabId, tab?.windowId, tab)) return;
   if (handingOff.has(tabId)) {
     // A ⌘T tab about to close (handlers.js newTabHandOff), unless it goes
     // somewhere else first: then it stays, and is tracked from here.
@@ -189,6 +196,9 @@ api.tabs.onRemoved.addListener(owned((tabId, removeInfo) => {
   forgetCurrent(tabId);
   const by = takeClosing(tabId);
   const windowClosing = removeInfo?.isWindowClosing === true;
+  // The windows that showed it away (another window had it live): each shows its next tab (background/away.js).
+  const awayIn = Object.entries(cached()?.awayByWindow ?? {}).filter(([, id]) => id === tabId).map(([w]) => Number(w));
+  away.tabClosed(tabId, awayIn).catch(() => {});
   mutate((s) => {
     const closed = s.tabs[tabId];
     const followed = closed && lastFollow.get(closed.windowId);
@@ -226,6 +236,9 @@ function stayInSpace(windowId, spaceId, closedId) {
 const activated = owned(async ({ tabId, windowId }, left) => {
   await load();
   if (handingOff.has(tabId)) return;
+  // Margin's stand-in brought to the front (background/away.js): the window still has its away tab chosen.
+  if (away.isStandIn(tabId, windowId)) return;
+  const wasAway = cached()?.awayByWindow?.[windowId] != null;
   // One found cut off while in front is loaded again now it's behind (background/tabs.js).
   if (left != null && left !== tabId) tabLeft(left);
   userSwitched(tabId, windowId);
@@ -249,6 +262,8 @@ const activated = owned(async ({ tabId, windowId }, left) => {
     }
     return followed;
   });
+  // A tab of its own in front: the window's stand-in goes.
+  away.shownIn(windowId, tabId, wasAway);
   if (!api.alarms) {
     archiveStaleThrottled();
     sleepIdleThrottled();
@@ -280,6 +295,8 @@ switchLogTo((line) => appLink.note(line));
 // that tab is checked too (a stale copy there: tabs.js ensureCurrent).
 api.windows?.onFocusChanged?.addListener(owned((windowId) => {
   if (windowId == null || windowId < 0) return;
+  // Its chosen tab, shown in another window, follows it (background/away.js).
+  away.focusChanged(windowId);
   api.tabs.query({ active: true, windowId }).then(([tab]) => tab && setTimeout(() => isOwner() && ensureCurrent(tab.id), 300), () => {});
 }));
 api.tabs.onMoved.addListener(owned(() => resync({ fresh: false })));
@@ -289,14 +306,16 @@ api.tabs.onDetached?.addListener(owned(() => resync({ fresh: false })));
 api.windows?.onBoundsChanged?.addListener(owned((win) => followFullscreen(win.id)));
 // A closed window may have been the one in full screen (registered.js syncPage).
 if (platform?.marginFullscreen) api.windows?.onRemoved.addListener(owned(() => queueRegistrations()));
-api.windows?.onRemoved.addListener(owned((windowId) =>
-  mutate((s) => {
-    if (!(windowId in s.activeSpaceByWindow)) return s;
-    const activeSpaceByWindow = { ...s.activeSpaceByWindow };
+api.windows?.onRemoved.addListener(owned((windowId) => {
+  away.windowGone(windowId);
+  return mutate((s) => {
+    const next = M.setAway(s, windowId, null);
+    if (!(windowId in next.activeSpaceByWindow)) return next;
+    const activeSpaceByWindow = { ...next.activeSpaceByWindow };
     delete activeSpaceByWindow[windowId];
-    return { ...s, activeSpaceByWindow };
-  }),
-));
+    return { ...next, activeSpaceByWindow };
+  });
+}));
 
 // sendResponse + `return true` works in both Safari and Chrome (Chrome
 // ignores promises returned from onMessage listeners).
