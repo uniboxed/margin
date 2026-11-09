@@ -84,8 +84,8 @@ const LONGHANDS = new Set();
 // A declaration block's viewport units made the box's (shiftUnits), in place.
 // Only the declarations whose text has units are touched (a block can hold
 // thousands of custom properties, and reading each would be quadratic). A
-// shorthand is set as its longhands, taken apart on `scratch` (a detached
-// element's style), so they read as they did; one with a var() of its own
+// shorthand is set as its longhands, taken apart on `scratch` (a rule of a
+// sheet that's never in the page), so they read as they did; one with a var() of its own
 // (its longhands read empty, pending the var()) is set again as a whole, and
 // what that resets is put back. `style`: a CSSStyleDeclaration. `text`: its
 // cssText, when already read.

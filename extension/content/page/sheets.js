@@ -66,11 +66,18 @@ export function startSheets(box) {
   addEventListener('afterprint', moveToBox);
 
   // ---- walking a sheet ------------------------------------------------------
-  // Where a shorthand is taken apart into its longhands (shared/page-css.js),
-  // made when first wanted.
+  // Where a shorthand is taken apart into its longhands (shared/page-css.js), made when first wanted: a rule
+  // of a sheet that's never in the page. Not an element's style: on a page with sheets of its own, WebKit does a
+  // document's worth of work for each edit of one, in the page or not (GitHub: 620 ms for its 450 rules with
+  // units, against 12 here).
   /** @type {CSSStyleDeclaration | undefined} */
   let scratchStyle;
-  const scratch = () => (scratchStyle ??= document.createElement('div').style);
+  const scratch = () => {
+    if (scratchStyle) return scratchStyle;
+    const sheet = new CSSStyleSheet();
+    replaceSync.call(sheet, 'margin-scratch {}');
+    return (scratchStyle = ruleStyle.get.call(sheet.cssRules[0]));
+  };
   // `units`: false where the sheet's text has none, which saves serializing
   // every rule of it just to look. A rule's declarations are serialized, not
   // the rules nested in it (walked on their own), nor its selector (looked
