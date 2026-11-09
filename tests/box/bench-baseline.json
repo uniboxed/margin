@@ -1,11 +1,15 @@
 {
   "at": "2026-11-09",
-  "runs": 7,
+  "runs": {
+    "20000/3000": 7,
+    "2000/500": 15,
+    "20000/3000/link": 7
+  },
   "results": {
     "chromium": {
       "20000/3000": {
         "boxed": {
-          "loadMs": 207,
+          "loadMs": 210,
           "frameMs": 11
         },
         "plain": {
@@ -13,35 +17,35 @@
           "frameMs": 22
         },
         "costMs": {
-          "load": 106,
+          "load": 109,
           "frame": -11
         }
       },
       "2000/500": {
         "boxed": {
-          "loadMs": 45,
-          "frameMs": 4
+          "loadMs": 48,
+          "frameMs": 3
         },
         "plain": {
-          "loadMs": 22,
-          "frameMs": 17
+          "loadMs": 13,
+          "frameMs": 13
         },
         "costMs": {
-          "load": 23,
-          "frame": -13
+          "load": 35,
+          "frame": -10
         }
       },
       "20000/3000/link": {
         "boxed": {
-          "loadMs": 208,
+          "loadMs": 212,
           "frameMs": 11
         },
         "plain": {
-          "loadMs": 102,
+          "loadMs": 101,
           "frameMs": 21
         },
         "costMs": {
-          "load": 106,
+          "load": 111,
           "frame": -10
         }
       }
@@ -49,44 +53,44 @@
     "webkit": {
       "20000/3000": {
         "boxed": {
-          "loadMs": 533,
-          "frameMs": 128
+          "loadMs": 323,
+          "frameMs": 125
         },
         "plain": {
           "loadMs": 186,
-          "frameMs": 27
+          "frameMs": 28
         },
         "costMs": {
-          "load": 347,
-          "frame": 101
+          "load": 137,
+          "frame": 97
         }
       },
       "2000/500": {
         "boxed": {
-          "loadMs": 58,
+          "loadMs": 47,
           "frameMs": 18
         },
         "plain": {
           "loadMs": 17,
-          "frameMs": 14
+          "frameMs": 18
         },
         "costMs": {
-          "load": 41,
-          "frame": 4
+          "load": 30,
+          "frame": 0
         }
       },
       "20000/3000/link": {
         "boxed": {
-          "loadMs": 527,
-          "frameMs": 37
+          "loadMs": 319,
+          "frameMs": 43
         },
         "plain": {
           "loadMs": 178,
-          "frameMs": 19
+          "frameMs": 29
         },
         "costMs": {
-          "load": 349,
-          "frame": 18
+          "load": 141,
+          "frame": 14
         }
       }
     }

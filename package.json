@@ -14,6 +14,7 @@
     "test:app": "node scripts/build.js && tools/app-tests/run.sh",
     "bench:theme": "node tests/theme/bench.js",
     "bench:box": "node scripts/build.js && node tests/box/bench.mjs",
+    "bench:sites": "node scripts/build.js && node tests/box/sites-bench.mjs",
     "icons": "node scripts/make-icons.js",
     "build": "node scripts/build.js",
     "theme:pack": "node scripts/pack-theme.js",
