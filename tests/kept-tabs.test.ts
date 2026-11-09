@@ -370,3 +370,10 @@ test('Margin.app\'s data: its snapshot taken with this copy\'s changes since its
   assert.equal(s1.spaces.find((sp) => sp.id === first.id).name, 'Newer here', 'the change since the hello stays');
   assert.ok(s1.spaces.some((sp) => sp.id === kept.id), 'the item left out is kept');
 });
+
+test('createFolder with a tab id that isn\'t a tab\'s (not a whole number): a folder all the same, nothing thrown', async () => {
+  const reply = await ask('createFolder', { windowId: 1, tabId: 1.5, name: 'Odd' }, 1);
+  assert.equal(reply.ok, true, JSON.stringify(reply));
+  await settled();
+  assert.ok((await state()).folders.some((f) => f.name === 'Odd'));
+});

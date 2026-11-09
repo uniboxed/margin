@@ -535,7 +535,8 @@ export const handlers = {
     const pinFromTab = Number.isInteger(tabId) || typeof tabId === 'string' ? newId() : null;
     const s = pinFromTab ? await load() : null;
     const kept = typeof tabId === 'string' ? s?.keptTabs?.[tabId] ?? null : null;
-    const tab = kept ?? (typeof tabId === 'number' ? (s.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null))) : null);
+    // (A number that isn't a whole one names no tab: `s` wasn't read for it.)
+    const tab = kept ?? (typeof tabId === 'number' && s ? (s.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null))) : null);
     await mutate((st) => {
       const space = spaceId ?? (kept ? kept.spaceId : tab ? st.tabSpace[tab.id] : null) ?? V.activeSpaceId(st, windowId ?? sender?.tab?.windowId);
       const firstPin = st.pins.find((p) => p.id === pinIds[0] && p.spaceId === space);
