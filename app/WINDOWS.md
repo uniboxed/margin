@@ -223,6 +223,13 @@ one window at a time, so **the tab follows the window in front**:
   tab moved in its own window's strip to where that place falls.
 - Tests: `tests/away.test.js` (the rules, a fake Safari), `tests/away-background.test.js` (through background.js's
   listeners).
+- **Checked in real Safari** (Test A, `devswitch probe tabMove`, 2026-11-09): a tab shown in a window behind, chosen
+  in the window in front, came there in 172 ms, its page kept (marker and typed field), focus left where it was
+  (making and showing tabs in a window behind doesn't bring it forward), the stand-in in front behind it and the
+  away tab recorded; that window brought to the front, the tab followed it back in 230 ms (120 ms of it the
+  settle), the stand-ins swapped. First found: `windows.get(…).focused` lags the focus event during the Space's
+  slide, so the follow doesn't ask it again. A move doesn't wait for the state's writes (they queue behind the
+  syncs Safari's attach events start: 290 ms before).
 
 ### 9.6 First: the probe (`devswitch probe tabMove`, Test A only)
 
