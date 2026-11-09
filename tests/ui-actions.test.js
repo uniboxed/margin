@@ -115,7 +115,7 @@ test('palette.run: the row\'s own request, as shared/search.js made it', () => {
   const run = (id, extra = {}) => req('palette.run', id, { row: row(id), ...extra });
   assert.deepEqual(run('tab:12'), { kind: 'send', type: 'activateTab', payload: { tabId: 12 } });
   assert.deepEqual(run('tab:12', { ui: { windowId: W, sidebar: 'peek' } }).payload, { tabId: 12, show: true });
-  assert.deepEqual(run('action:new-window'), { kind: 'send', type: 'newWindow', payload: {} });
+  assert.deepEqual(run('action:new-window'), { kind: 'send', type: 'newWindow', payload: { fromWindowId: W } });
   assert.deepEqual(run('action:space:work'), { kind: 'send', type: 'setSpace', payload: { windowId: W, spaceId: 'work' } });
   assert.deepEqual(run('action:toggle-sidebar'), { kind: 'local', name: 'palette.toggleSidebar', arg: { local: 'toggleSidebar' } });
   const typed = paletteItems(state, { ...pui, palette: { open: true, query: 'example.org' } }, {});

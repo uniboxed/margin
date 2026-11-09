@@ -463,7 +463,7 @@ func scenario() async {
         await until(3, { ownKeysHeld(keys) == 4 && shell.edgeFence == nil }) && !keys.held.values.contains(Combo.parse("Meta+KeyT")!), "keys \(ownKeysHeld(keys))")
   fake.tell(["do": "windows", "id": "A", "list": [win(7, rw, "fullscreen", focused: true), win(8, r8, "normal")]])
   check("out of full screen: the overlay back, its keys and the edge stop too",
-        await until(3, { !o7.isConcealed && o7.panel.alphaValue == 1 && ownKeysHeld(keys) == 7 && shell.edgeFence != nil }), "concealed \(o7.isConcealed), keys \(ownKeysHeld(keys))")
+        await until(3, { !o7.isConcealed && o7.panel.alphaValue == 1 && ownKeysHeld(keys) == 8 && shell.edgeFence != nil }), "concealed \(o7.isConcealed), keys \(ownKeysHeld(keys))")
 
   // ---- Safari's own sidebar kept closed under Margin (Tirth, 2026-11-07: it opened at the left edge) ----
   check("Safari's sidebar: nothing on the left: its View menu item's closed title learned",
@@ -492,7 +492,7 @@ func scenario() async {
   // ---- keys ----
   shell.track()
   // (Six of Margin's, and ⇧⌘L with Safari: its own sidebar key, Margin's sidebar's there.)
-  check("the browser in front with its overlay: Margin's keys held", shortcutsHeld(shell, keys, 7))
+  check("the browser in front with its overlay: Margin's keys held", shortcutsHeld(shell, keys, 8))
   check("… and ⌘Q and ⌥⌘Q, for Margin's quit prompt", keys.held.values.contains(Combo.parse("Meta+KeyQ")!) && keys.held.values.contains(Combo.parse("Alt+Meta+KeyQ")!))
   mark = fake.events.count
   keys.press("Alt+Meta+ArrowDown")
@@ -508,7 +508,7 @@ func scenario() async {
   apps.bringToFront(1)
   check("another app in front: let go", await until(2, { keys.held.isEmpty && !shell.shortcuts.isActive }))
   apps.bringToFront(browserPid)
-  check("back: held again", await until(2, { ownKeysHeld(keys) == 7 }))
+  check("back: held again", await until(2, { ownKeysHeld(keys) == 8 }))
   // The copy's Settings shortcuts (its `keys`): held instead of the defaults, at once.
   fake.tell(["do": "send", "id": "A", "msg": ["k": "keys", "bindings": ["next-tab": ["Alt+Meta+ArrowDown", "Ctrl+Meta+ArrowDown"], "toggle-sidebar": ["Alt+KeyK"]]]])
   check("the copy's keys: held as it says", await until(3, { Set(keys.held.values).contains(Combo.parse("Alt+Meta+ArrowDown")!) && Set(keys.held.values).contains(Combo.parse("Alt+KeyK")!) && !Set(keys.held.values).contains(Combo.parse("Alt+KeyS")!) }))

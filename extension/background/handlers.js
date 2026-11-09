@@ -725,11 +725,36 @@ export const handlers = {
   async openLauncher({ windowId, settings = false }) {
     await openTab({ windowId, url: api.runtime.getURL(`newtab/newtab.html#${settings ? 'settings' : 'launcher'}`) });
   },
-  // A real new window (the palette's "New window"): its new-tab page opens
-  // the palette, and the window inherits the space (model.inheritSpace).
-  async newWindow() {
+  // A real new window of this profile (⌘N through Margin.app, the palette's "New window": app/WINDOWS.md §5),
+  // a Margin window of its own. With `fromWindowId`: in full screen if that window is (or as `fullscreen`
+  // says), on the space it shows, set, not guessed, with its first tab in it too. Without one, the window
+  // inherits the space (model.inheritSpace). Its new-tab page opens the palette. Answers its id, state and
+  // bounds, which the app binds it by as Margin's.
+  /** @param {{ fromWindowId?: number, fullscreen?: boolean }} [message] */
+  async newWindow({ fromWindowId, fullscreen } = {}) {
+    const from = Number.isInteger(fromWindowId) ? await api.windows.get(fromWindowId).catch(() => null) : null;
+    const spaceId = from ? M.activeSpaceId(await load(), from.id) : null;
+    const full = fullscreen ?? from?.state === 'fullscreen';
     markMarginOpening();
-    await api.windows?.create({ focused: true });
+    let win;
+    try {
+      win = await api.windows.create({ focused: true, ...(full ? { state: 'fullscreen' } : {}) });
+    } catch {
+      win = await api.windows.create({ focused: true }); // a browser that won't make it full screen at once
+    }
+    if (!win) return null;
+    if (spaceId) {
+      const tabs = win.tabs ?? (await api.tabs.query({ windowId: win.id }).catch(() => []));
+      await mutate((st) => {
+        let next = M.setActiveSpace(st, win.id, spaceId);
+        for (const tab of tabs) next = M.moveTab(M.upsertTab(next, tab, now()), tab.id, spaceId);
+        return next;
+      });
+    }
+    void appLink.windowsNow?.();
+    const bounds = [win.left, win.top, win.width, win.height].every(Number.isFinite) && win.width > 0 && win.height > 0
+      ? { left: win.left, top: win.top, width: win.width, height: win.height } : null;
+    return { windowId: win.id, state: win.state ?? 'normal', ...(bounds ? { bounds } : {}) };
   },
   // Margin.app switching to a space of this profile from another profile's
   // window (app/shell/ProfileSwitch.swift, PLAN.md §15): this copy makes a

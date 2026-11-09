@@ -1811,6 +1811,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             overlay.push(raw: #"{"type":"command","name":"palette"}"#)
         case .toggleSidebar:
             overlay.push(raw: #"{"type":"command","name":"toggle-sidebar"}"#)
+        case .newWindow:
+            newMarginWindow(from: overlay.key)
         case .nextSpace where spaceKey(overlay, 1, isRepeat: isRepeat), .prevSpace where spaceKey(overlay, -1, isRepeat: isRepeat):
             return // across profiles (ShellProfiles.swift)
         case .nextTab where overlay.isReady, .prevTab where overlay.isReady:
