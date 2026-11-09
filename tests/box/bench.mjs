@@ -23,13 +23,12 @@ import { fileURLToPath } from 'node:url';
 import { startMargin } from '../e2e/harness/margin.js';
 import { SPACES } from '../e2e/harness/seed.js';
 import { HOST_RULES } from '../e2e/site/server.js';
-import { BENCH_SIZES } from '../../tools/webkit-host/scenarios.mjs';
+import { BENCH_SIZES, runsOf } from '../../tools/webkit-host/scenarios.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 const BASELINE = fileURLToPath(new URL('./bench-baseline.json', import.meta.url));
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const RUNS = 7;
 const median = (list) => [...list].sort((a, b) => a - b)[Math.floor(list.length / 2)];
 const argv = process.argv.slice(2);
 const only = argv.includes('--engine') ? argv[argv.indexOf('--engine') + 1] : null;
@@ -41,15 +40,22 @@ const result = (boxed, plain) => ({ boxed, plain, costMs: { load: boxed.loadMs -
 const medians = (list) => ({ loadMs: median(list.map((b) => b.loadMs)), frameMs: median(list.map((b) => b.frameMs)) });
 
 async function chromiumBench() {
-  async function measure(open, url) {
-    const list = [];
-    for (let i = 0; i < RUNS; i++) {
-      const page = await open();
-      await page.goto(url, { waitUntil: 'load' });
-      list.push(await page.waitForFunction(() => window.__bench, null, { timeout: 30_000 }).then((h) => h.jsonValue()));
-      await page.close();
+  const once = async (open, url) => {
+    const page = await open();
+    await page.goto(url, { waitUntil: 'load' });
+    const b = await page.waitForFunction(() => window.__bench, null, { timeout: 30_000 }).then((h) => h.jsonValue());
+    await page.close();
+    return b;
+  };
+  // Boxed and plain in turn, run by run: a stretch where the machine is slower costs both alike.
+  async function measure(size, boxedOpen, plainOpen, url) {
+    const boxed = [];
+    const plain = [];
+    for (let i = 0; i < runsOf(size); i++) {
+      boxed.push(await once(boxedOpen, url));
+      plain.push(await once(plainOpen, url));
     }
-    return medians(list);
+    return result(medians(boxed), medians(plain));
   }
   const m = await startMargin({ name: 'box-bench', seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } });
   await m.ui();
@@ -59,7 +65,7 @@ async function chromiumBench() {
   try {
     for (const size of BENCH_SIZES) {
       const url = m.url('box.test', `/bench/${size}`);
-      results[size] = result(await measure(() => m.context.newPage(), url), await measure(() => plainCtx.newPage(), url));
+      results[size] = await measure(size, () => m.context.newPage(), () => plainCtx.newPage(), url);
     }
   } finally {
     await plain.close().catch(() => {});
@@ -104,7 +110,7 @@ const baseOf = (engine) => {
 };
 if (argv.includes('--save')) {
   const results = Object.fromEntries(['chromium', 'webkit'].map((e) => [e, measured[e] ?? baseOf(e)]).filter(([, r]) => r));
-  writeFileSync(BASELINE, `${JSON.stringify({ at: new Date().toISOString().slice(0, 10), runs: RUNS, results }, null, 2)}\n`);
+  writeFileSync(BASELINE, `${JSON.stringify({ at: new Date().toISOString().slice(0, 10), runs: Object.fromEntries(BENCH_SIZES.map((size) => [size, runsOf(size)])), results }, null, 2)}\n`);
   console.log(`saved ${BASELINE}`);
 } else {
   let worse = 0;

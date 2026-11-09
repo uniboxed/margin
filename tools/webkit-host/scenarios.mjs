@@ -180,7 +180,9 @@ const boxPatterns = () => {
 // (window.__bench: its load, and from load to its next two frames) logged as a `BENCH` line. A warm-up load
 // first, unlogged, each way. Each load is checked to be what it says: bare, or in its box.
 export const BENCH_SIZES = ['20000/3000', '2000/500', '20000/3000/link'];
-const BENCH_RUNS = 7;
+// Loads a size gets, each way: more for a small page, whose few ms a single slow load moves most.
+export const BENCH_RUNS = 7;
+export const runsOf = (size) => (size === '2000/500' ? 15 : BENCH_RUNS);
 const boxBench = () => {
   const load = (mode, size, name, logged) => [
     { op: 'open', name, url: `/box/bench/${size}`, active: true },
@@ -191,7 +193,7 @@ const boxBench = () => {
   ];
   const runs = (mode) => [
     ...load(mode, BENCH_SIZES[1], `${mode}-warm`, false),
-    ...BENCH_SIZES.flatMap((size, s) => Array.from({ length: BENCH_RUNS }, (_, i) => load(mode, size, `${mode}${s}-${i}`, true)).flat()),
+    ...BENCH_SIZES.flatMap((size, s) => Array.from({ length: runsOf(size) }, (_, i) => load(mode, size, `${mode}${s}-${i}`, true)).flat()),
   ];
   return [...runs('plain'), ...startBoxed('W', '/p/A'), ...runs('boxed')];
 };
@@ -1609,6 +1611,10 @@ Object.assign(SCENARIOS, {
     checkPage('B0', "B0: Arcadia's again", `window.__fp.frames[0].frame.includes('rgb(156, 157, 161)')`),
   ],
 });
+
+// The page in its box, and bare, as checks for scripts that make their own scenarios (tests/box/sites-bench.mjs).
+export const boxedCheck = (tab) => boxed(tab);
+export const bareCheck = (tab) => bare(tab);
 
 // Benchmarks: run by name (`run.sh box-bench`, from tests/box/bench.mjs), not by `run.sh all`: they time, not test.
 export const BENCHES = {
