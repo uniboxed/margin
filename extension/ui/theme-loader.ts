@@ -31,7 +31,7 @@ export const PACKAGE_LIMITS = Object.freeze({
   storedBytes: 4.5 * 1024 * 1024, // a stored package's value, base64 included
 });
 
-const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', svg: 'image/svg+xml', woff2: 'font/woff2' };
+const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', svg: 'image/svg+xml', woff2: 'font/woff2' };
 const FONT_FILE = /\.woff2$/i;
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp|avif|svg)$/i;
 const NOTE_FILE = /\.(txt|md)$/i;
@@ -47,7 +47,7 @@ export type ThemePackage = { manifest: string, html: string, css: string, files:
 // decodes it. An svg image is UTF-8 text whose first element is <svg>
 // (images never run script or load anything, but a page isn't an image);
 // a note is UTF-8 text with no NUL.
-const ascii = (bytes, at: number, text: string) => bytes.length >= at + text.length && [...text].every((c, i) => bytes[at + i] === c.charCodeAt(0));
+const ascii = (bytes: Uint8Array, at: number, text: string) => bytes.length >= at + text.length && [...text].every((c, i) => bytes[at + i] === c.charCodeAt(0));
 const SIGNATURES: Record<string, (b: any) => boolean> = {
   woff2: (b) => ascii(b, 0, 'wOF2'),
   png: (b) => b.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((v, i) => b[i] === v),
@@ -83,7 +83,7 @@ const byteLength = (s: string) => (typeof s === 'string' ? new TextEncoder().enc
 export function checkPackage(pkg: ThemePackage): string[] {
   const errors: string[] = [];
   if (!pkg || typeof pkg !== 'object') return ['package: not an object'];
-  for (const key of ['manifest', 'html', 'css']) if (typeof pkg[key] !== 'string') errors.push(`package: ${key} is not text`);
+  for (const key of ['manifest', 'html', 'css'] as const) if (typeof pkg[key] !== 'string') errors.push(`package: ${key} is not text`);
   const files = pkg.files && typeof pkg.files === 'object' ? pkg.files : {};
   const paths = Object.keys(files);
   if (paths.length > PACKAGE_LIMITS.files) errors.push(`package: more than ${PACKAGE_LIMITS.files} files`);
@@ -141,7 +141,7 @@ export const settingVar = (key: string) => `--m-${key.replace(/[A-Z]/g, (c) => `
  * theme's default. Settings the theme doesn't declare are left out.
  * @param manifest the checked manifest */
 export function resolveSettings(manifest: any, saved: Record<string, any> | null | undefined): Record<string, string | number | boolean> {
-  const out = {};
+  const out: Record<string, string | number | boolean> = {};
   for (const [key, spec] of Object.entries(manifest?.settings ?? {})) {
     const value = saved && Object.prototype.hasOwnProperty.call(saved, key) ? saved[key] : undefined;
     out[key] = value !== undefined && settingValueOk(spec, value) ? value : spec.default;
@@ -201,7 +201,7 @@ export async function loadTheme(pkg: ThemePackage, { document: doc = globalThis.
   const sizes = checkPackage(pkg);
   if (sizes.length) return { ok: false, report: { errors: sizes, removed: [] } };
   const files = pkg.files ?? {};
-  const assetUrl = (path) => `data:${MIME[path.split('.').pop()!.toLowerCase()] ?? 'application/octet-stream'};base64,${base64(files[path])}`;
+  const assetUrl = (path: string) => `data:${MIME[path.split('.').pop()!.toLowerCase()] ?? 'application/octet-stream'};base64,${base64(files[path])}`;
   const report = sanitizeTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files: Object.keys(files) }, { assetUrl });
   if (!report.ok) return { ok: false, report };
   // (A live document, with its window: themes are drawn only in one.)
@@ -213,10 +213,11 @@ export async function loadTheme(pkg: ThemePackage, { document: doc = globalThis.
   const manifest = report.manifest;
   const setSettings = (saved: Record<string, any> | null | undefined) => settingsSheet.replaceSync(settingsCss(resolveSettings(manifest, saved)));
   setSettings(settings);
-  const faces = manifest.fonts.map((f) => new win.FontFace(f.family, files[f.file].slice().buffer, {
+  // (The checked manifest's fonts: theme-schema.ts.)
+  const faces = manifest.fonts.map((f: { family: string, file: string, weight?: string, style?: string, unicodeRange?: string }) => new win.FontFace(f.family, files[f.file].slice().buffer, {
     weight: f.weight, style: f.style, ...(f.unicodeRange ? { unicodeRange: f.unicodeRange } : {}), display: 'block',
   }));
-  const loaded = await Promise.allSettled(faces.map((face) => face.load()));
+  const loaded = await Promise.allSettled(faces.map((face: FontFace) => face.load()));
   const fonts: FontFace[] = [];
   const fontErrors: string[] = [];
   loaded.forEach((r, i) => {
@@ -246,22 +247,22 @@ export async function loadTheme(pkg: ThemePackage, { document: doc = globalThis.
 export async function readBuiltinTheme(id: string, { readFile = extensionFile(id) }: { readFile?: (path: string) => Promise<string | Uint8Array> } = {}): Promise<ThemePackage> {
   if (!BUILTIN_THEMES.includes(id)) throw new Error(`no built-in theme ${JSON.stringify(id)}`);
   const asText = async (path: string) => { const v = await readFile(path); return typeof v === 'string' ? v : new TextDecoder().decode(v); };
-  const asBytes = async (path) => { const v = await readFile(path); return typeof v === 'string' ? new TextEncoder().encode(v) : v; };
+  const asBytes = async (path: string) => { const v = await readFile(path); return typeof v === 'string' ? new TextEncoder().encode(v) : v; };
   const manifest = await asText('theme.json');
   const [html, css] = await Promise.all([asText('theme.html'), asText('theme.css')]);
   // The files it names (fonts, images), as plain paths; loadTheme checks
   // the whole package once they're read.
   let raw: any = null; // (as it parses: its files are checked by name below, the rest by loadTheme)
   try { raw = JSON.parse(manifest); } catch {}
-  const named = [...(Array.isArray(raw?.fonts) ? raw.fonts.map((f) => f?.file) : []), ...(Array.isArray(raw?.images) ? raw.images : [])];
+  const named = [...(Array.isArray(raw?.fonts) ? raw.fonts.map((f: { file?: unknown } | null) => f?.file) : []), ...(Array.isArray(raw?.images) ? raw.images : [])];
   const paths = [...new Set(named.filter((p) => typeof p === 'string' && FILE_PATH.test(p) && !p.split('/').some((seg) => /^\.+$/.test(seg))))].slice(0, PACKAGE_LIMITS.files);
-  const files = {};
+  const files: Record<string, Uint8Array> = {};
   await Promise.all(paths.map(async (path) => { files[path] = await asBytes(path); }));
   return { manifest, html, css, files };
 }
 
 function extensionFile(id: string) {
-  return async (path) => {
+  return async (path: string) => {
     const api = (globalThis as any).browser ?? (globalThis as any).chrome;
     const res = await fetch(api.runtime.getURL(`themes/${id}/${path}`));
     if (!res.ok) throw new Error(`themes/${id}/${path}: ${res.status}`);
@@ -310,7 +311,7 @@ export function encodeStoredTheme(pkg: ThemePackage, { now = Date.now() }: { now
 export function decodeStoredTheme(value: any): ThemePackage | null {
   if (!value || typeof value !== 'object' || value.format !== STORED_FORMAT) return null;
   if (typeof value.manifest !== 'string' || typeof value.html !== 'string' || typeof value.css !== 'string' || !value.files || typeof value.files !== 'object') return null;
-  const files = {};
+  const files: Record<string, Uint8Array> = {};
   for (const [path, text] of Object.entries(value.files)) {
     if (typeof text !== 'string') return null;
     try { files[path] = unbase64(text); } catch { return null; }

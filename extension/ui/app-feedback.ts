@@ -28,7 +28,7 @@ export function createAppNotices({ show, send, frontTab = () => null, local = ()
   clearTimer?: (timer: any) => void,
 }) {
   let current: { id: string, kind: string, tabId: number | null, front: boolean } | null = null;
-  let timer = null;
+  let timer: unknown = null; // (setTimer's)
   let count = 0;
   const viewOf = (c: { id: string, kind: string }) => ({ id: c.id, text: NOTICES[c.kind].text, actions: NOTICES[c.kind].actions.map((a) => ({ ...a })) });
   function clear(redraw = true) {

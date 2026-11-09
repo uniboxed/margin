@@ -117,11 +117,21 @@ export const THEME_SCHEMA = Object.freeze({
   },
 });
 
+// A node of the schema (THEME_SCHEMA): the JSON Schema words walk() knows, and Margin's own (`check`, `dropBadItems`).
+type SchemaNode = {
+  const?: unknown, enum?: readonly unknown[], type?: string | readonly string[], pattern?: string, maxLength?: number, minimum?: number, maximum?: number,
+  exclusiveMinimum?: number, maxItems?: number, dropBadItems?: boolean, items?: SchemaNode, uniqueItems?: boolean, required?: readonly string[],
+  properties?: Record<string, SchemaNode>, additionalProperties?: SchemaNode, propertyNames?: { pattern: string }, maxProperties?: number,
+  check?: string, default?: unknown,
+};
+// What a walk carries: the package's files, and where what's dropped is said.
+type SchemaCtx = { files: string[] | Set<string>, drop: (name: string, reason: string) => void };
+
 const FONT_EXT = /\.woff2$/;
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|svg)$/i;
 
-const typeOf = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number.isInteger(v) ? 'integer' : typeof v);
-const typeOk = (want, v) => [].concat(want).some((t) => t === typeOf(v) || (t === 'number' && typeof v === 'number' && Number.isFinite(v)));
+const typeOf = (v: unknown) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number.isInteger(v) ? 'integer' : typeof v);
+const typeOk = (want: string | readonly string[], v: unknown) => ([] as string[]).concat(want).some((t) => t === typeOf(v) || (t === 'number' && typeof v === 'number' && Number.isFinite(v)));
 
 /**
  * Whether a setting's value is good for its spec: the right kind of value,
@@ -155,14 +165,14 @@ export function settingValueOk(spec: { type: string, choices?: any[], min?: numb
   }
 }
 
-// The named checks: null when fine, else why not.
-const CHECKS = {
+// The named checks: null when fine, else why not. (`v`: the value as walked, of its node's type.)
+const CHECKS: Record<string, (v: any, ctx: SchemaCtx) => string | null> = {
   bundledFont: (v, ctx) => (isBundledPath(v, ctx.files) && FONT_EXT.test(v) ? null : 'must be a bundled .woff2'),
   bundledImage: (v, ctx) => (isBundledPath(v, ctx.files) && IMAGE_EXT.test(v) ? null : 'must be a bundled png, jpg, gif, webp, avif or svg'),
   setting: (v) => {
     if (v.type === 'choice') {
       if (!Array.isArray(v.choices) || !v.choices.length) return 'a choice needs choices';
-      if (!v.choices.every((c) => checkCssValue(c))) return 'a choice must be a plain CSS value';
+      if (!v.choices.every((c: unknown) => checkCssValue(c))) return 'a choice must be a plain CSS value';
     }
     if (v.min != null && v.max != null && v.min > v.max) return 'min above max';
     return settingValueOk(v, v.default) ? null : 'bad default for its type (a plain CSS value: no url(), strings, escapes or !important)';
@@ -180,10 +190,11 @@ const CHECKS = {
  * fields and bad list or map entries removed, defaults filled in), or
  * `undefined` with a reason in `fail`.
  */
-function walk(node, value, at: string, ctx, fail: (reason: any) => void) {
+// (`value`: parsed JSON, anything.)
+function walk(node: SchemaNode, value: any, at: string, ctx: SchemaCtx, fail: (reason: string) => void): any {
   if ('const' in node && value !== node.const) return fail(`must be ${JSON.stringify(node.const)}`);
   if (node.enum && !node.enum.includes(value)) return fail(`must be one of ${node.enum.join(', ')}`);
-  if (node.type && !typeOk(node.type, value)) return fail(`must be ${[].concat(node.type).join(' or ')}`);
+  if (node.type && !typeOk(node.type, value)) return fail(`must be ${([] as string[]).concat(node.type).join(' or ')}`);
   if (node.pattern && !new RegExp(node.pattern).test(String(value))) return fail('bad value');
   if (node.maxLength != null && String(value).length > node.maxLength) return fail('too long');
   if (node.minimum != null && value < node.minimum) return fail(`below ${node.minimum}`);
@@ -269,7 +280,7 @@ export function checkManifest(text: string, { files = [] }: { files?: string[] |
   const manifest: Record<string, any> = {};
   for (const key of THEME_SCHEMA.required) if (!(key in raw)) errors.push(`theme.json: ${key} missing`);
   for (const [key, value] of Object.entries(raw)) {
-    const node = Object.prototype.hasOwnProperty.call(THEME_SCHEMA.properties, key) ? THEME_SCHEMA.properties[key] : null;
+    const node = Object.prototype.hasOwnProperty.call(THEME_SCHEMA.properties, key) ? (THEME_SCHEMA.properties as Record<string, SchemaNode>)[key] : null;
     if (!node) { ctx.drop(key, 'unknown field'); continue; }
     let why: string | null = null;
     const kept = walk(node, value, key, ctx, (reason) => { why = reason; });

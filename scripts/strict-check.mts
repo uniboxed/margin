@@ -2,22 +2,14 @@
 // program with the next level on, and this fails only on errors in the files already brought up to it (DONE), so
 // those can't slip back while the rest catches up. TypeScript has no per-folder strictness, and a config listing one
 // folder still checks every file it imports: hence the whole program, filtered. Once DONE covers everything, the
-// level moves into tsconfig.json and this goes. `--all`: every error, wherever it is (to see what's left).
+// level moves into tsconfig.json and the next one starts here. `--all`: every error, wherever it is (to see what's
+// left). (strictNullChecks, then noImplicitAny, are in tsconfig.json now; this level: the rest of `strict`.)
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 // The files and folders (paths from the repo's root; a folder ends in /) brought up to tsconfig.strict.json.
-export const DONE: string[] = [
-  'extension/background/',
-  'extension/background.ts',
-  'extension/shared/',
-  'extension/state/',
-  'extension/content/',
-  'extension/newtab/',
-  'extension/away/',
-  'extension/themes/',
-];
+export const DONE: string[] = [];
 
 const all = process.argv.includes('--all');
 const run = spawnSync(process.execPath, [`${ROOT}node_modules/typescript/bin/tsc`, '-p', `${ROOT}tsconfig.strict.json`, '--pretty', 'false'], { cwd: ROOT, encoding: 'utf8' });

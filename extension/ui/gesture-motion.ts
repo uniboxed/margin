@@ -16,7 +16,7 @@ const SETTLED = 0.002;
 export function createGestureMotion({ apply, raf = (fn) => requestAnimationFrame(fn), caf = (id) => cancelAnimationFrame(id), now = () => performance.now(), tau = TAU_MS }: { apply: (value: number) => void, raf?: (fn: (t: number) => void) => any, caf?: (id: any) => void, now?: () => number, tau?: number }) {
   let current = 0;
   let target = 0;
-  let frame = null;
+  let frame: unknown = null; // (raf's)
   let last = 0;
   const step = () => {
     frame = null;

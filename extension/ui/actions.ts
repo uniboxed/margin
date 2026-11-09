@@ -8,6 +8,7 @@
 // action or a bad argument is ignored and logged.
 import { foreignKey, foreignSpace, isMultiProfile } from '../shared/across.ts';
 import { cloudShown } from '../shared/cloud-tabs.ts';
+import type { State } from '../../types/margin';
 
 
 // What each action's argument must be:
@@ -127,7 +128,7 @@ export const MENUS = Object.freeze(['add']);
 // An id as the state holds it: a tab id is a safe integer (the browser's),
 // other ids are short strings of letters, digits, '-', '_' and ':'.
 const ID_TEXT = /^[A-Za-z0-9_:-]{1,64}$/;
-const isId = (value) => (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+const isId = (value: unknown) => (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
   || (typeof value === 'string' && ID_TEXT.test(value));
 
 /**
@@ -148,11 +149,11 @@ export type ActionContext = {
 export const NAME_MAX = 40;
 const EMOJI_MAX = 8;
 // eslint-disable-next-line no-control-regex
-const plainText = (value, max: number) => typeof value === 'string' && [...value].length <= max && !/[\u0000-\u001f\u007f]/.test(value);
-const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
+const plainText = (value: unknown, max: number) => typeof value === 'string' && [...value].length <= max && !/[\u0000-\u001f\u007f]/.test(value);
+const isPlainObject = (v: unknown) => !!v && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
 
 /** One field's value against its kind. */
-function valueOk(kind: string | readonly string[], v: any, ctx: ActionContext) {
+function valueOk(kind: string | readonly unknown[], v: any, ctx: ActionContext) {
   if (Array.isArray(kind)) return kind.includes(v);
   const text = (kind as string);
   const optional = text.endsWith('?');
@@ -176,7 +177,8 @@ function valueOk(kind: string | readonly string[], v: any, ctx: ActionContext) {
  * */
 export function checkAction(name: string, arg: any, ctx: ActionContext): { ok: true } | { ok: false, reason: string } {
   if (!isAction(name)) return { ok: false, reason: `unknown action ${JSON.stringify(String(name)).slice(0, 80)}` };
-  const kind = ACTIONS[name];
+  // (Its argument's kind: a name, or the fields of an object and each one's.)
+  const kind = (ACTIONS as Readonly<Record<string, string | Readonly<Record<string, string | readonly unknown[]>>>>)[name];
   const none = arg === undefined || arg === null || arg === '';
   if (typeof kind === 'object') {
     const fields = Object.keys(kind);
@@ -184,7 +186,7 @@ export function checkAction(name: string, arg: any, ctx: ActionContext): { ok: t
     for (const field of fields) if (!valueOk(kind[field], arg[field], ctx)) return { ok: false, reason: `${name}: bad ${field}` };
     return { ok: true };
   }
-  const has = {
+  const has: Record<string, (id: any) => boolean> = {
     tab: ctx.hasTab, space: ctx.hasSpace, folder: ctx.hasFolder, pin: ctx.hasPin, archive: ctx.hasArchived, row: ctx.hasPaletteRow,
     item: ctx.hasMenuItem ?? (() => false), color: ctx.hasColor ?? (() => false),
     'notice-item': ctx.hasNoticeItem ?? (() => false), 'prompt-item': ctx.hasPromptItem ?? (() => false),
@@ -214,7 +216,7 @@ export function checkAction(name: string, arg: any, ctx: ActionContext): { ok: t
  * runs an action only behaviors may run.
  * */
 export function createDispatcher({ context, run, log = () => {} }: { context: () => ActionContext, run: (name: string, arg: any) => void, log?: (entry: { name: string, arg: any, reason: string }) => void }) {
-  return function dispatch(name, arg) {
+  return function dispatch(name: string, arg: unknown) {
     const verdict = BEHAVIOR_ONLY.has(name) ? { ok: false, reason: `${name}: only Margin's behaviors and menus run it` } : checkAction(name, arg, context());
     if (!verdict.ok) {
       log({ name: String(name), arg, reason: (verdict as any).reason });
@@ -234,12 +236,12 @@ export function createDispatcher({ context, run, log = () => {} }: { context: ()
 export function contextFromState(state: any, paletteIds: Iterable<string> = [], { menuIds = [], colorIds = [], noticeIds = [], promptIds = [], settingIds = [] }: { menuIds?: Iterable<string>, colorIds?: Iterable<string>, noticeIds?: Iterable<string>, promptIds?: Iterable<string>, settingIds?: Iterable<string> } = {}): ActionContext {
   const tabs = state?.tabs && typeof state.tabs === 'object' ? state.tabs : {};
   const kept = state?.keptTabs && typeof state.keptTabs === 'object' ? state.keptTabs : {};
-  const ids = (list) => new Set((Array.isArray(list) ? list : []).map((x) => x?.id));
+  const ids = (list: unknown) => new Set((Array.isArray(list) ? list : []).map((x) => x?.id));
   const spaces = ids(state?.spaces);
   // Another profile's spaces, by their chips' ids, and the profiles (Margin.app: shared/across.ts).
   const across = state?.across;
   if (isMultiProfile(across)) for (const s of across.spaces) if (s.profile !== across.profile) spaces.add(foreignKey(s.profile, s.id));
-  const profiles = new Set(isMultiProfile(across) ? across.profiles.map((p) => p.id) : []);
+  const profiles = new Set(isMultiProfile(across) ? across.profiles.map((p: { id: string }) => p.id) : []);
   const folders = ids(state?.folders);
   const pins = ids(state?.pins);
   const archived = ids(state?.archive);
@@ -427,10 +429,10 @@ const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'r
  * screen); `row`: for palette.run, the palette item its row id names
  * (ui/view-model.ts paletteItems), with its `action`.
  * */
-export function requestFor(name: string, arg: any, { state, ui, platform, row }: { state: any, ui: { windowId?: number | null, sidebar?: string | null }, platform?: { marginFullscreen?: boolean }, row?: any }): ActionRequest {
+export function requestFor(name: string, arg: any, { state, ui, platform, row }: { state: (Partial<State> & Record<string, any>) | null, ui: { windowId?: number | null, sidebar?: string | null }, platform?: { marginFullscreen?: boolean }, row?: any }): ActionRequest {
   const windowId = ui.windowId ?? undefined;
   const show = ui.sidebar === 'peek' ? { show: true } : {};
-  const send = (type, payload): ActionRequest => ({ kind: 'send', type, payload });
+  const send = (type: string, payload: Record<string, any>): ActionRequest => ({ kind: 'send', type, payload });
   if (LOCAL.has(name)) return { kind: 'local', name, ...(arg === undefined ? {} : { arg }) };
   switch (name) {
     // A tab that isn't open opens in this window (the app has no page to say which).

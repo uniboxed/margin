@@ -93,7 +93,7 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
   // What Margin looks like: the built-in themes, then the ones imported (Margin.app's: `features.userThemes`).
   const imported = userThemeList(f.userThemes);
   const theme = PACKAGE_THEMES.includes(s.theme) || imported.some((t) => t.id === s.theme) ? s.theme : PACKAGE_THEMES[0];
-  const options = [...PACKAGE_THEMES.map((id) => ({ id, label: PACKAGE_THEME_NAMES[id] ?? id })), ...imported.map((t) => ({ id: t.id, label: t.name || t.id }))];
+  const options = [...PACKAGE_THEMES.map((id) => ({ id, label: (PACKAGE_THEME_NAMES as Record<string, string>)[id] ?? id })), ...imported.map((t) => ({ id: t.id, label: t.name || t.id }))];
   list.push(field({ id: 'theme', kind: 'choice', label: 'Theme', options: options.map((o) => ({ ...o, selected: o.id === theme })), value: theme, status: status.theme?.text ?? '', error: !!status.theme?.error }));
   list.push(...importFields(f, status, imported));
   list.push(field({ id: 'engine', kind: 'info', label: engineText(s, f) }));
@@ -156,7 +156,7 @@ const SETTING_PREFIX = 'themeSetting:';
 const REMOVE_PREFIX = 'removeTheme:';
 
 /** Import Theme… (Margin.app only: `features.importThemes`) and each imported theme with Remove, under the theme choice. */
-function importFields(f, status: Record<string, { text: string; error?: boolean; } | undefined>, imported: { id: any; name: string; version: string; author: string; }[]) {
+function importFields(f: Record<string, any>, status: Record<string, { text: string; error?: boolean; } | undefined>, imported: { id: any; name: string; version: string; author: string; }[]) {
   const out: SettingsField[] = [];
   if (!f.importThemes) return out;
   out.push(field({ id: 'themeImport', kind: 'button', label: 'Import Theme…', status: status.themeImport?.text ?? 'A theme’s folder, or a .margintheme file. You’ll see it before it’s used.', error: !!status.themeImport?.error }));
@@ -168,7 +168,7 @@ function importFields(f, status: Record<string, { text: string; error?: boolean;
 }
 
 /** The active theme's own settings (`theme`: the runtime's loaded theme: id, name, its theme.json settings), under "Settings of “Name”". */
-function themeOwnFields(s, theme: { id: string; name: string; settings: Record<string, any>; } | null) {
+function themeOwnFields(s: Record<string, any>, theme: { id: string; name: string; settings: Record<string, any>; } | null) {
   const out: SettingsField[] = [];
   const specs = theme?.settings && typeof theme.settings === 'object' ? Object.entries(theme.settings) : [];
   // Margin's own width setting (m-resize drags it) is shown as the theme's too.
@@ -186,7 +186,7 @@ function themeOwnFields(s, theme: { id: string; name: string; settings: Record<s
         out.push(field({ ...base, kind: 'number', value: m ? m[1] : '', min: spec.min ?? null, max: spec.max ?? null, step: spec.step ? String(spec.step) : 'any' }));
         break;
       }
-      case 'choice': out.push(field({ ...base, kind: 'choice', value: String(value), options: (spec.choices ?? []).map((c) => ({ id: String(c), label: themeText(c, 40), selected: String(c) === String(value) })) })); break;
+      case 'choice': out.push(field({ ...base, kind: 'choice', value: String(value), options: (spec.choices ?? []).map((c: unknown) => ({ id: String(c), label: themeText(c, 40), selected: String(c) === String(value) })) })); break;
       case 'color': out.push(field({ ...base, kind: 'color', value: String(value) })); break;
       default: break;
     }
@@ -206,7 +206,7 @@ export function saveThemeField(f: SettingsField, value: any, theme: { id: string
   let v = value;
   if (spec.type === 'number') v = Number(value);
   if (spec.type === 'length') v = `${String(value).trim()}${/[a-z%]+$/.exec(String(spec.default))?.[0] ?? 'px'}`;
-  if (spec.type === 'choice') v = spec.choices?.find((c) => String(c) === String(value));
+  if (spec.type === 'choice') v = spec.choices?.find((c: unknown) => String(c) === String(value));
   if (!settingValueOk(spec, v)) return null;
   return { type: ('updateThemeSettings' as 'updateThemeSettings'), payload: { themeId: theme.id, patch: { [key]: v } } };
 }
@@ -236,7 +236,7 @@ export function removePrompt(fieldId: string, list: any[]) {
  * */
 export function saveField(f: SettingsField | null | undefined, value: any, settings: any): { type: 'updateSettings', payload: { patch: Record<string, any> } } | { perform: 'switch.closeWindows' | 'switch.askBeforeQuit', arg: { on: boolean } } | null {
   if (!f || f.disabled) return null;
-  const patch = (p) => ({ type: ('updateSettings' as 'updateSettings'), payload: { patch: p } });
+  const patch = (p: Record<string, any>) => ({ type: ('updateSettings' as 'updateSettings'), payload: { patch: p } });
   switch (f.kind) {
     case 'number': {
       const n = Number(value);
@@ -268,7 +268,7 @@ export function saveField(f: SettingsField | null | undefined, value: any, setti
  */
 export function shortcutTaken(id: string, combo: string, settings: any): string | null {
   const taken = Object.entries(currentShortcuts(settings)).find(([other, value]) => other !== id && value === combo);
-  return taken ? `${shortcuts.format(combo)} is already used for “${SHORTCUT_NAMES[taken[0]]}”.` : null;
+  return taken ? `${shortcuts.format(combo)} is already used for “${(SHORTCUT_NAMES as Record<string, string>)[taken[0]]}”.` : null;
 }
 
 /** What a button asks the background for. */

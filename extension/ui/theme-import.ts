@@ -81,8 +81,8 @@ export function packageFromFiles(input: Record<string, Uint8Array>): ReadResult 
     if (tops.size === 1 && top && files.has(`${top}/theme.json`)) root = `${top}/`;
     else return { ok: false, errors: ['no theme.json at the top (or in the one folder everything is in)'] };
   }
-  const pkgFiles = {};
-  const texts = {};
+  const pkgFiles: Record<string, Uint8Array> = {};
+  const texts: Record<string, Uint8Array> = {};
   for (const [path, bytes] of files) {
     const rel = path.slice(root.length);
     if (rel.split('/').length - 1 > IMPORT_LIMITS.depth) { errors.push(`${rel}: more than ${IMPORT_LIMITS.depth} folders deep`); continue; }
@@ -92,7 +92,7 @@ export function packageFromFiles(input: Record<string, Uint8Array>): ReadResult 
   }
   for (const t of TEXTS) if (!texts[t]) errors.push(`${t} missing`);
   if (errors.length) return { ok: false, errors };
-  const decoded = {};
+  const decoded: Record<string, string> = {};
   for (const t of TEXTS) {
     try { decoded[t] = new TextDecoder('utf-8', { fatal: true }).decode(texts[t]).replace(/^﻿/, ''); } catch { errors.push(`${t}: not UTF-8 text`); }
   }
@@ -226,7 +226,7 @@ export async function packageFromZip(zip: Uint8Array): Promise<ReadResult> {
   if (spans.length && spans[0][0] !== 0) return fail('data before the zip (not taken)');
   for (let i = 1; i < spans.length; i++) if (spans[i][0] < spans[i - 1][1]) return fail('two entries share bytes (not taken)');
   // Each entry, read.
-  const files = {};
+  const files: Record<string, Uint8Array> = {};
   const seen = new Set<any>();
   let total = 0;
   for (const [, , e, data] of spans) {
@@ -277,7 +277,7 @@ export function removedSummary(removed: { file: string, kind: string, reason: st
   }
   const lines = [...groups].sort((a, b) => b[1] - a[1]).map(([key, n]) => {
     const [file, kind, reason] = key.split('\u0000');
-    const what = { element: 'element', attribute: 'attribute', text: 'text', binding: 'binding', 'css-rule': 'rule', 'css-declaration': 'declaration', 'css-at-rule': 'at-rule' }[kind] ?? kind.replace(/^css-/, '');
+    const what = ({ element: 'element', attribute: 'attribute', text: 'text', binding: 'binding', 'css-rule': 'rule', 'css-declaration': 'declaration', 'css-at-rule': 'at-rule' } as Record<string, string>)[kind] ?? kind.replace(/^css-/, '');
     return `${n} ${what}${n === 1 ? '' : 's'} removed from ${file}: ${reason}`;
   });
   return lines.length > max ? [...lines.slice(0, max), `and ${lines.length - max} more kinds`] : lines;
@@ -306,7 +306,10 @@ export function missingWaysOut(structure: { parts?: string[], slots?: string[] }
  * to switch away from it again (missingWaysOut). `ok`: it may be previewed
  * (what was removed is said, not fatal, as for any theme load).
  * */
-export function checkImport(pkg: import('./theme-loader.ts').ThemePackage) {
+// What checkImport says: it may be previewed (`ok`, with its manifest's words), or why not; `removed`, in short.
+export type ImportCheck = { ok: true, errors: string[], removed: string[], manifest: { id: string, name: string, version: string, author: string } }
+  | { ok: false, errors: string[], removed: string[], manifest: null };
+export function checkImport(pkg: import('./theme-loader.ts').ThemePackage): ImportCheck {
   const caps = checkPackage(pkg);
   if (caps.length) return { ok: false, errors: caps, removed: [], manifest: null };
   const report = sanitizeTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files: Object.keys(pkg.files) });
@@ -322,11 +325,11 @@ export function checkImport(pkg: import('./theme-loader.ts').ThemePackage) {
  * What Margin.app hands the overlay (`themeFile`), read and checked.
  * @param msg base64 bytes
  */
-export async function readThemeFile(msg: { kind?: string, files?: Record<string, string>, zip?: string, error?: string }) {
+export async function readThemeFile(msg: { kind?: string, files?: Record<string, string>, zip?: string, error?: string }): Promise<(Extract<ImportCheck, { ok: true }> & { pkg: import('./theme-loader.ts').ThemePackage }) | (Extract<ImportCheck, { ok: false }> & { pkg: null }) | { ok: false, errors: string[] }> {
   if (!msg || typeof msg !== 'object') return { ok: false, errors: ['nothing came'] };
   if (typeof msg.error === 'string') return { ok: false, errors: [msg.error.slice(0, 300)] };
   const unb64 = (s: string) => { const bin = atob(String(s)); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
-  let read;
+  let read: ReadResult;
   try {
     if (msg.kind === 'zip' && typeof msg.zip === 'string') read = await packageFromZip(unb64(msg.zip));
     else if (msg.kind === 'folder' && msg.files && typeof msg.files === 'object') read = packageFromFiles(Object.fromEntries(Object.entries(msg.files).map(([p, b]) => [p, unb64(b)])));
@@ -334,5 +337,5 @@ export async function readThemeFile(msg: { kind?: string, files?: Record<string,
   } catch { return { ok: false, errors: ['its bytes couldn\'t be read'] }; }
   if (!read.ok) return read;
   const checked = checkImport(read.pkg);
-  return { ...checked, pkg: checked.ok ? read.pkg : null };
+  return checked.ok ? { ...checked, pkg: read.pkg } : { ...checked, pkg: null };
 }
