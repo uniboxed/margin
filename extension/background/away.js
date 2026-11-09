@@ -162,7 +162,7 @@ async function move(tab, to, { source = 'follow', deadline, raise = true }) {
       madeAway = true;
       keepPicture(tab.id, await picturing, from);
       const id = await standing;
-      await marking;
+      void marking.catch(() => {}); // (written in order: before anything the move's events write)
       if (id == null || !(await Promise.resolve(api.tabs.update(id, { active: true })).catch(() => null))) throw new Error('no stand-in');
     }
     const s = cached() ?? (await load());
@@ -170,7 +170,9 @@ async function move(tab, to, { source = 'follow', deadline, raise = true }) {
     const index = Number.isFinite(order) ? M.stripIndexFor(s, to, /** @type {number} */ (order)) : undefined;
     const moved = await api.tabs.move(tab.id, { windowId: to, index: index ?? -1 });
     const landed = Array.isArray(moved) ? moved[0] : moved;
-    await mutate((st) => M.movedTab(st, tab.id, to, landed?.index));
+    // Not waited for: the state's writes go one at a time, this one behind the syncs Safari's attach events start
+    // (background.js); it's still before the activation's, which comes after it in the queue.
+    void mutate((st) => M.movedTab(st, tab.id, to, landed?.index)).catch(() => {});
   } catch (err) {
     // Not moved: shown in its own window, as before, and nothing left away.
     if (madeAway) {
@@ -184,7 +186,7 @@ async function move(tab, to, { source = 'follow', deadline, raise = true }) {
     const shown = await focusTab(tab.id, { source, deadline, raise });
     // Its activation writes this too (background.js), unless Safari made it active with the move and says
     // nothing more: in front here, the window's space its own, nothing away here, and this window's stand-in gone.
-    await mutate((s) => M.followTab(M.activateTab(s, tab.id, to, now()), tab.id, to));
+    void mutate((s) => M.followTab(M.activateTab(s, tab.id, to, now()), tab.id, to)).catch(() => {});
     shownIn(to, tab.id, toWasAway);
     return shown;
   } finally {
