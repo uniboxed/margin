@@ -140,7 +140,7 @@ function worldAlive(): Promise<boolean> {
 // answers, kept from the page's own listeners (stopImmediatePropagation, not
 // preventDefault: WebKit gives a key the page didn't turn down to the menu);
 // the Settings keys go to the page, as nothing else can take them there.
-function installNavigation({ send, getSettings, target = globalThis, commands = commandKeys() }: { send: (type: string, payload?: any) => Promise<unknown> | undefined, getSettings: () => any, target?: { addEventListener: typeof addEventListener }, commands?: Record<string, string> }) {
+function installNavigation({ send, getSettings, target = globalThis, commands = commandKeys() }: { send: (type: 'navigate', payload: { action: string }) => Promise<unknown> | undefined, getSettings: () => any, target?: { addEventListener: typeof addEventListener }, commands?: Record<string, string> }) {
   let aside = false;
   let asking: Promise<boolean> | null = null;
   const askAlive = () => {

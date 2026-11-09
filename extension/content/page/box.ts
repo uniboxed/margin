@@ -23,6 +23,9 @@ const REST_MS = 150;
 
 // `start`: where the box starts (content/page/main.ts: the first paint's
 // layout, or the injection's left edge, inside the frame).
+// The box: where the page's box is, what it's told, and the hooks its parts add (main.ts starts them with it).
+export type Box = ReturnType<typeof startBox>;
+
 export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bottom = FRAME }: { left?: number, top?: number, right?: number, bottom?: number } = {}) {
   // The browser's own, from before viewport.ts speaks for the box.
   const { matches, append, remove, checkVisibility } = Element.prototype;
@@ -40,7 +43,7 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
   }
   // A page's `scroll-behavior: smooth` would show as a climb from the top.
   const { scrollTo: scrollElement } = Element.prototype;
-  function scrollInstantly(node, { x, y }) {
+  function scrollInstantly(node: Element, { x, y }: { x: number, y: number }) {
     if (scrollLeft.get.call(node) !== x || scrollTop.get.call(node) !== y) scrollElement.call(node, { left: x, top: y, behavior: 'instant' });
   }
   const own = createOwnSheets();
@@ -84,7 +87,7 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     /** Children came or went somewhere in the page (sheets.ts's observer). */
     childrenChanged: () => ctx.chain.childrenChanged(),
     /** Margin's own, in the page only during a read. */
-    ownFlag: (node) => ctx.body.ownFlag(node),
+    ownFlag: (node: Node) => ctx.body.ownFlag(node),
     loaded: () => ctx.watch.loaded(),
     set,
   };
@@ -205,7 +208,7 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
   // "catch-up"). Cancelled to say this world heard it. Kept as it is: an
   // updated Margin talks to a copy of this script still in open pages. A page
   // sending these only moves its own layout.
-  function set(message) {
+  function set(message: string) {
     if (message === 'off') return void off();
     let next;
     try {

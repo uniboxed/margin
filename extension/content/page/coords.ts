@@ -3,6 +3,7 @@
 // Margin's own pinch went, 2026-11-07). So what the page places by a rectangle (menus, tooltips) lands where
 // it means, and points it asks about find what's there. One transform: where
 // the box's corner is in the window, and its scale (box.x, box.y, box.scale).
+import type { Box } from './box.ts';
 import type { Accessor } from './accessor.ts';
 
 // The browser's own accessor for `name`, from `object` or its prototypes (accessor.ts).
@@ -14,7 +15,7 @@ const find = (object: Element | MouseEvent, name: string): Accessor => {
   return undefined as unknown as Accessor; // (not for these names)
 };
 
-export function startCoords(box) {
+export function startCoords(box: Box) {
   const html = document.documentElement;
   const element = Element.prototype;
   const range = Range.prototype;
@@ -31,14 +32,14 @@ export function startCoords(box) {
   const { boxed } = box;
   // An element with no box of its own (display: contents, not rendered) has an
   // empty rectangle at 0, 0: not in the page's coordinates at all.
-  const toPage = (rect) => {
+  const toPage = (rect: DOMRect | DOMRectReadOnly) => {
     if (!boxed() || (!rect.x && !rect.y && !rect.width && !rect.height)) return rect;
     return new DOMRect((rect.x - box.x) / box.scale, (rect.y - box.y) / box.scale, rect.width / box.scale, rect.height / box.scale);
   };
   box.toPage = toPage; // in-view.ts
-  const listToPage = (list) => {
+  const listToPage = (list: DOMRectList) => {
     const rects = Array.from(list, toPage);
-     (rects as any).item = (i) => rects[i] ?? null;
+     (rects as any).item = (i: number) => rects[i] ?? null;
     return (rects as any);
   };
   const windowX = (x: number) => (boxed() ? x * box.scale + box.x : x);
@@ -82,7 +83,7 @@ export function startCoords(box) {
   const define = (name: string, get: () => any) => Object.defineProperty(mouse, name, { configurable: true, enumerable: true, get });
   // Whole pixels for a mouse event, as WebKit's own (a pointer event's are fractions): a page may send them on.
   const Pointer = window.PointerEvent;
-  const asOwn = (event, v: number) => (Pointer && event instanceof Pointer ? v : Math.round(v));
+  const asOwn = (event: Event, v: number) => (Pointer && event instanceof Pointer ? v : Math.round(v));
   define('clientX', function () {
     const x = clientX.call(this);
     return boxed() && this.isTrusted ? asOwn(this, (x - box.x) / box.scale) : x;

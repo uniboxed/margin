@@ -7,21 +7,22 @@
 // and top a script writes later, its own translate (composed, not replaced). What
 // it asked for is read as computed values (`auto`, percentages), which
 // getComputedStyle doesn't give. Anchor-positioned ones are right as they are.
+import type { Box } from './box.ts';
 
 const OPEN = ':modal:not(:fullscreen), :popover-open';
 
-export function startTopLayer(box) {
+export function startTopLayer(box: Box) {
   /** Open elements moved, with their own style attribute's translate. */
-  const placed: Map<any, { value: string, priority: string }> = new Map();
+  const placed: Map<HTMLElement, { value: string, priority: string }> = new Map();
 
-  const isAuto = (value) => String(value) === 'auto';
-  const isAnchored = (value) => /anchor/.test(String(value));
+  const isAuto = (value: unknown) => String(value) === 'auto';
+  const isAnchored = (value: unknown) => /anchor/.test(String(value));
   // How much of a length is a percentage, as a fraction: of the window, here.
-  const fraction = (value) => Number(/(-?[\d.]+)%/.exec(String(value))?.[1] ?? 0) / 100;
+  const fraction = (value: unknown) => Number(/(-?[\d.]+)%/.exec(String(value))?.[1] ?? 0) / 100;
 
   // The move along one side's axis: `near` and `far` are the box's edges from
   // the window's, `lost` how much smaller than the window it is.
-  function shift(map, startName: string, endName: string, marginName: string, near, far, lost) {
+  function shift(map: StylePropertyMapReadOnly, startName: string, endName: string, marginName: string, near: number, far: number, lost: number) {
     const start = map.get(startName);
     const end = map.get(endName);
     if (isAnchored(start) || isAnchored(end)) return null;
@@ -30,7 +31,7 @@ export function startTopLayer(box) {
     return near - fraction(start) * lost;
   }
 
-  function unplace(element) {
+  function unplace(element: HTMLElement) {
     const own = placed.get(element);
     if (!own) return;
     placed.delete(element);
@@ -38,7 +39,7 @@ export function startTopLayer(box) {
     else element.style.removeProperty('translate');
   }
 
-  function place(element) {
+  function place(element: HTMLElement) {
     unplace(element);
     if (!box.boxed() || element.localName.startsWith('margin-') || !element.matches(OPEN)) return;
     const map = element.computedStyleMap();
@@ -55,9 +56,9 @@ export function startTopLayer(box) {
   // The ways in by script are the page's own calls; the rest (popovertarget, an
   // invoker) are seen as they toggle, in the frame before they're painted.
   const wrap = (proto: HTMLDialogElement | HTMLElement, name: string) => {
-    const native = proto?.[name];
+    const native = (proto as Record<string, any> | undefined)?.[name]; // (by name: the browser's own, wrapped)
     if (!native) return;
-    proto[name] = function (...args) {
+    (proto as Record<string, any>)[name] = function (this: HTMLElement, ...args: any[]) {
       const result = native.apply(this, args);
       place(this);
       return result;
@@ -66,7 +67,7 @@ export function startTopLayer(box) {
   wrap(window.HTMLDialogElement?.prototype, 'showModal');
   wrap(HTMLElement.prototype, 'showPopover');
   wrap(HTMLElement.prototype, 'togglePopover');
-  const target = (event: ToggleEvent | Event) => (event.target as any);
+  const target = (event: ToggleEvent | Event) => (event.target as HTMLElement); // (a dialog's or popover's)
   addEventListener('beforetoggle', (event) => {
     if ((event as any).newState === 'open') requestAnimationFrame(() => place(target(event)));
   }, true);

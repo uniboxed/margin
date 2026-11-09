@@ -33,7 +33,7 @@ const SEND_TIMEOUT_MS = 8000;
  * @param type a handler in background.ts
  * */
 async function send<K extends MessageType>(type: K, payload: Request<K> = ({} as any)): Promise<Result<K> | undefined> {
-  let timer;
+  let timer: number | undefined;
   const res = await Promise.race([
     Promise.resolve(api.runtime.sendMessage({ type, ...payload })).catch(() => null),
     new Promise<any>((resolve) => { timer = setTimeout(() => resolve(null), SEND_TIMEOUT_MS); }),
@@ -112,7 +112,7 @@ if (mode !== 'app') showNotice();
 // Not running, running and not answering (it sent no link), or linked with
 // nothing drawn over this window: said in the notice; the start button only
 // for the first.
-function describe(appLink) {
+function describe(appLink: any) { // (storage's appLink, as stored: shared/app-link.ts)
   const title = document.getElementById('title');
   const why = document.getElementById('why');
   const start = (document.getElementById('start') as HTMLButtonElement | null);

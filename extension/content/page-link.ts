@@ -7,7 +7,7 @@
 import { absolute, inlineImports } from '../shared/sheet-copy.ts';
 
 // `send`: to the background (content/core.ts).
-export function startPageLink(send) {
+export function startPageLink(send: (type: string, payload?: any, timed?: boolean) => Promise<any>) {
   const html = document.documentElement;
   // Pages that aren't HTML have no box.
   const can = html instanceof HTMLHtmlElement;
@@ -22,7 +22,7 @@ export function startPageLink(send) {
     if (say(message) || message === 'off' || asked) return;
     asked = true;
     // If it didn't work, the next change asks again.
-    send('injectPage', { left }).then((ok) => { if (!ok) asked = false; });
+    send('injectPage', { left }).then((ok: unknown) => { if (!ok) asked = false; });
   }
   document.addEventListener('margin:box-ready', () => { if (last) say(last); });
 
@@ -56,7 +56,7 @@ export function startPageLink(send) {
     copy.style?.remove();
     if (copy.adopted) document.adoptedStyleSheets = document.adoptedStyleSheets.filter((sheet) => sheet !== copy.adopted);
   };
-  function unmute(link, copy: { href: string; media: string | null; style?: any; adopted?: any; }) {
+  function unmute(link: HTMLLinkElement, copy: { href: string; media: string | null; style?: any; adopted?: any; }) {
     if (link.media !== MUTED) return;
     if (copy.media == null) link.removeAttribute('media');
     else link.media = copy.media;
@@ -101,7 +101,7 @@ export function startPageLink(send) {
     } catch {}
     const copy: { href: string, media: string | null, style?: HTMLStyleElement, adopted?: any } = { href: link.href, media: link.getAttribute('media') };
     copies.set(link, copy);
-    const fetchText = (url: string) => send('fetchStyle', { url }, false).then((text) => (typeof text === 'string' ? text : null), () => null);
+    const fetchText = (url: string) => send('fetchStyle', { url }, false).then((text: unknown) => (typeof text === 'string' ? text : null), () => null);
     const text = await fetchText(sheet.href);
     const stale = () => !link.isConnected || copies.get(link) !== copy || link.href !== copy.href; // replaced or taken away meanwhile
     if (typeof text !== 'string' || stale()) return;

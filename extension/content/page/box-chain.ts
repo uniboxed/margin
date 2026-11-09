@@ -63,7 +63,7 @@ export function startChain(ctx: any) {
   }
   const chainWatch = new MutationObserver(chainTouched);
   let chainBody: HTMLElement | null = null;
-  const onChain = ({ path, end }) => [...path.map((step) => step.node), ...(end ? [end] : [])];
+  const onChain = ({ path, end }: { path: { node: Element }[], end: Element | null }) => [...path.map((step) => step.node), ...(end ? [end] : [])];
   function follow(next: { nodes: any[]; tops: string[]; path: { node: any; down: boolean; }[]; end: any; }) {
     const before = onChain(chain);
     const after = onChain(next);

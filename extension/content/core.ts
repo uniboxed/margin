@@ -22,6 +22,7 @@ import { APP_LINK_KEY, appDraws, boxFromLayout, drawsWindow, layoutFor, unpinche
 import { probeFrames, watchVisible } from '../shared/frame-probe.ts';
 import { startScrollRecord } from './scroll-record.ts';
 import type { MessageType, Request, Result } from '../../types/margin';
+import type { Geometry } from './layout.ts';
 
 // Starts Margin in this page; false when it shouldn't (or already did).
 export function startCore() {
@@ -148,7 +149,7 @@ export function startCore() {
     api, marks, send, link,
     // Where the box is now (content/layout.ts).
     boxed: () => !!box,
-    setBox: (next) => {
+    setBox: (next: Geometry['insets'] | null) => {
       box = link.can ? next : null;
       link.setBox(box);
     },
@@ -199,7 +200,7 @@ export function startCore() {
   // One reaching the page while Margin.app draws this window (its hot keys
   // were off then): still done, by the copy, and the app told why for its log.
   const navSettings = () => (active() ? state?.settings : null);
-  const navSend = (type, payload) => {
+  const navSend = (type: 'navigate', payload?: { action: string }) => {
     if (type === 'navigate' && appLink !== undefined && drawsWindow(appLink, windowId ?? helloWindowId)) void send('appKeyHeard', { command: String(payload?.action ?? type) }, false);
     return send(type, payload);
   };
@@ -207,7 +208,7 @@ export function startCore() {
   // Going in or out of full screen (Chrome): Margin's box comes, or goes.
   // The background tells the window's pages; a resize, or coming back to a
   // tab (moved to another window meanwhile), asks again.
-  function setFullscreen(value) {
+  function setFullscreen(value: boolean) {
     if (fullscreen === value) return;
     fullscreen = value;
     render();
@@ -330,7 +331,7 @@ export function startCore() {
   const applyApp = () => { layout.settle(); tellViewport(); };
   // What the background says of the link: the page's box from the app's
   // layout from now on, or none.
-  const appKey = (l) => JSON.stringify([l?.state ?? null, l?.layouts ?? null, l?.drawn ?? null]);
+  const appKey = (l: any) => JSON.stringify([l?.state ?? null, l?.layouts ?? null, l?.drawn ?? null]);
   // What the log last said of the app here, said again as it changes (the window known later too).
   // Linked, the box is the app's layout for the window: none where it said it draws nothing.
   let saidOfApp: string | null = null;
@@ -342,7 +343,7 @@ export function startCore() {
     if (said !== saidOfApp) console.debug(`[margin] ${said}`);
     saidOfApp = said;
   }
-  function setAppLink(next) {
+  function setAppLink(next: any) { // (storage's appLink: shared/app-link.ts)
     const value = next && typeof next === 'object' ? next : { state: 'off', layouts: {} };
     if (appLink !== undefined && appKey(value) === appKey(appLink)) return;
     appLink = value;
@@ -392,7 +393,7 @@ export function startCore() {
   let mySince: number | null = null; // this copy's start, from hello
   let storedTabsBy: { origin?: string, since?: number, synced?: boolean } | null = null;
   let storageSeen = false;
-  function ownerSeen(owner, openTabsBy) {
+  function ownerSeen(owner: { origin: string, [more: string]: unknown } | null | undefined, openTabsBy: { origin?: string, since?: number, synced?: boolean } | null | undefined) {
     storageSeen = true;
     const before = storedOwner;
     storedOwner = owner ?? null;
@@ -514,9 +515,9 @@ export function startCore() {
   // event can't be taken (shared/stored.ts takesChanges), before it first has
   // the state, and whenever it's shown.
   // The background's note of a tab being shown is for that tab's page only.
-  const onlyShowing = (changes) => Object.keys(changes).every((key) => key === 'showing');
+  const onlyShowing = (changes: Record<string, BrowserStorageChange>) => Object.keys(changes).every((key) => key === 'showing');
   let changedWhileHidden = false;
-  const onStorageChanged = (changes, area) => {
+  const onStorageChanged = (changes: Record<string, BrowserStorageChange>, area: string) => {
     if (area !== 'local' || dormant) return;
     // The theme's package is for Margin.app (background/theme-package.ts): nothing here.
     if ('uiTheme' in changes) {
@@ -623,7 +624,7 @@ export function startCore() {
   else reportIcon();
   addEventListener('load', reportIcon, { once: true });
 
-  const onMessage = (message, _, sendResponse) => {
+  const onMessage = (message: any, _: BrowserMessageSender, sendResponse: (response?: any) => void) => {
     // Whether this page was opened from nothing (no referrer, its first
     // history entry), for the note on Safari's "New tabs open with"
     // (background/newtab-hint.ts: Margin.app's overlay says it).

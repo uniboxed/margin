@@ -13,6 +13,10 @@ export const DONE: string[] = [
   'extension/background.ts',
   'extension/shared/',
   'extension/state/',
+  'extension/content/',
+  'extension/newtab/',
+  'extension/away/',
+  'extension/themes/',
 ];
 
 const all = process.argv.includes('--all');

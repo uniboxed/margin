@@ -13,7 +13,7 @@ import { mark } from '../shared/dom.ts';
 export type Geometry = { insets: { left: number, top: number, right: number, bottom: number }, radius?: number, radii?: number[] };
 
 // `page`: see content/core.ts.
-export function startLayout(page) {
+export function startLayout(page: any) {
   const { marks } = page;
   let source: (() => Geometry | null) | null = null; // the app's layout for the window, while it's linked
   // Nothing at any edge: the page as it is, no box.

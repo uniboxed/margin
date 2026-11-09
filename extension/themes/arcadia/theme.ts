@@ -21,13 +21,14 @@ const defaults = Object.freeze({ sidebarWidth: WIDTH.default });
 // Arcadia's settings from the stored settings, filled in and valid. Pages
 // read storage directly, so this also accepts settings saved before themes
 // existed (sidebarWidth was a top-level setting then).
-function settingsOf(settings) {
+// (`settings`: the stored settings, as they came.)
+function settingsOf(settings: any) {
   const own = settings?.themes?.arcadia ?? settings?.themes?.arcadium; // the theme's earlier name, until saved again
   const stored = own && typeof own === 'object' ? own : {};
   const width = stored.sidebarWidth ?? settings?.sidebarWidth ?? defaults.sidebarWidth;
   return { ...defaults, ...stored, sidebarWidth: snapWidth(Number(width)) };
 }
-const sidebarWidth = (settings) => settingsOf(settings).sidebarWidth;
+const sidebarWidth = (settings: any) => settingsOf(settings).sidebarWidth;
 
 export default Object.freeze({
   id: 'arcadia',

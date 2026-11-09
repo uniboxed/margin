@@ -2,6 +2,7 @@
 // and viewport units are rewritten (shared/page-css.ts). Only sheets that
 // changed are looked at: one observer on the document, at most one pass a
 // frame, and none on a tab out of sight until it's shown.
+import type { Box } from './box.ts';
 import type { Accessor } from './accessor.ts';
 import { asksSize, hasUnits, shiftQuery, shiftStyle, shiftUnits } from '../../shared/page-css.ts';
 
@@ -11,7 +12,7 @@ const SWEEP_FLOOR = 64;
 const HAS_SLICE = 4;
 const HAS_WAIT = 16;
 
-export function startSheets(box) {
+export function startSheets(box: Box) {
   const ours = new Set(box.ours);
   const sheetProto = CSSStyleSheet.prototype;
   const { insertRule, deleteRule, replace, replaceSync } = sheetProto;
@@ -32,12 +33,12 @@ export function startSheets(box) {
   // A sheet that left the page, or a rule that left its sheet, goes from the
   // list: when the box rests, and whenever the list has twice as many as after
   // the last sweep (a page that swaps its <style>s and never moves the box).
-  const gone = (holder) => {
+  const gone = (holder: CSSStyleSheet | CSSMediaRule | CSSImportRule | CSSStyleRule) => {
     const sheet = holder instanceof CSSStyleSheet ? holder : holder.parentStyleSheet;
     return !sheet || (sheet.ownerNode && !sheet.ownerNode.isConnected);
   };
   let sweepAt = SWEEP_FLOOR;
-  function moveHolder(holder, dw, dh) {
+  function moveHolder(holder: any, dw: number, dh: number) { // (a sheet, or a rule with a media list)
     const applied = moved.get(holder) ?? { dw: 0, dh: 0 };
     const list = holder.media;
     if (!list) return;
@@ -50,7 +51,7 @@ export function startSheets(box) {
     for (const held of moved.keys()) if (gone(held)) moved.delete(held);
     sweepAt = Math.max(SWEEP_FLOOR, 2 * moved.size);
   }
-  function moveAll(dw, dh) {
+  function moveAll(dw: number, dh: number) {
     for (const holder of moved.keys()) {
       if (gone(holder)) moved.delete(holder);
       else {
@@ -82,7 +83,7 @@ export function startSheets(box) {
   // every rule of it just to look. A rule's declarations are serialized, not
   // the rules nested in it (walked on their own), nor its selector (looked
   // through for :has() apart: hasLater).
-  function walkRules(rules, units, dw, dh) {
+  function walkRules(rules: CSSRuleList, units: boolean, dw: number, dh: number) {
     for (const rule of Array.from(rules)) {
       try {
         if (rule instanceof CSSStyleRule) {
@@ -103,7 +104,7 @@ export function startSheets(box) {
       } catch {}
     }
   }
-  function visit(sheet) {
+  function visit(sheet: CSSStyleSheet) {
     if (!sheet || seen.has(sheet) || ours.has(sheet)) return;
     let rules;
     try {
@@ -114,7 +115,7 @@ export function startSheets(box) {
     seen.add(sheet);
     fresh ||= !!sheet.ownerNode; // adopted ones say so as they're set (box.ts)
     // Only a <style>'s own text is watched: edits of text elsewhere cost nothing.
-    const owner = sheet.ownerNode;
+    const owner = sheet.ownerNode as Element | null; // (a <style>, <link> or null here: ProcessingInstruction sheets are XML's)
     const inline = owner?.localName === 'style';
     if (inline) watch.observe(owner, STYLE_TEXT);
     const dw = box.seenW();
@@ -130,14 +131,14 @@ export function startSheets(box) {
     if (!text) hasLater(rules);
     else if (text.includes(HAS)) collectHas(rules);
   }
-  const visitRoot = (root) => {
+  const visitRoot = (root: Document | ShadowRoot) => {
     for (const sheet of Array.from(root.styleSheets)) visit(sheet);
     for (const sheet of root.adoptedStyleSheets ?? []) visit(sheet);
   };
 
   // Sheets a script writes: the units in its text, the queries once parsed
   // (they go through the same list as any, to follow the box).
-  function trackQueries(rules) {
+  function trackQueries(rules: CSSRuleList | CSSRule[]) {
     for (const rule of Array.from(rules)) {
       try {
         if (rule instanceof CSSMediaRule) moveHolder(rule, box.seenW(), box.seenH());
@@ -161,12 +162,12 @@ export function startSheets(box) {
     try {
       if (rules.some((rule) => !(rule instanceof CSSStyleRule) || rule.cssRules?.length)) return box.bodyMayHaveChanged();
       const selector = rules.map((rule) => selectorText.get.call(rule)).join();
-      if (box.reachable().some((node) => node && matches.call(node, selector))) box.bodyMayHaveChanged();
+      if (box.reachable().some((node: Element | null) => node && matches.call(node, selector))) box.bodyMayHaveChanged();
     } catch {
       box.bodyMayHaveChanged();
     }
   }
-  function ruleChanged(rule) {
+  function ruleChanged(rule: CSSRule | null | undefined) {
     box.rulesEdited();
     edited.add(rule);
     judging ||= setTimeout(judge);
@@ -206,7 +207,7 @@ export function startSheets(box) {
   sheetProto.replace = function (text) {
     if (ours.has(this)) return replace.call(this, text);
     seen.add(this);
-    return replace.call(this, shiftUnits(String(text))).then((sheet) => {
+    return replace.call(this, shiftUnits(String(text))).then((sheet: CSSStyleSheet) => {
       trackQueries(this.cssRules);
       if (String(text).includes(HAS)) collectHas(this.cssRules);
       box.bodyMayHaveChanged();
@@ -239,8 +240,9 @@ export function startSheets(box) {
   for (const proto of [StyleSheet.prototype, HTMLStyleElement.prototype, HTMLLinkElement.prototype]) reread(proto, 'disabled');
   reread(MediaList.prototype, 'mediaText');
   for (const name of ['appendMedium', 'deleteMedium']) {
-    const own = MediaList.prototype[name];
-    MediaList.prototype[name] = { [name](medium) {
+    // (By name: MediaList's own methods, wrapped.)
+    const own = (MediaList.prototype as unknown as Record<string, any>)[name];
+    (MediaList.prototype as unknown as Record<string, any>)[name] = { [name](medium: string) {
       own.apply(this, arguments);
       box.bodyMayHaveChanged();
     } }[name];
@@ -289,7 +291,7 @@ export function startSheets(box) {
   let hasFrame = 0;
   let watchingHas = false;
   // The selector without its `:has(...)`: does it name <html> or <body> at all?
-  function withoutHas(selector) {
+  function withoutHas(selector: string) {
     let out = selector;
     for (let at = out.indexOf(HAS); at >= 0; at = out.indexOf(HAS)) {
       let depth = 0;
@@ -304,9 +306,9 @@ export function startSheets(box) {
     return out;
   }
   // A 1 for each of <html> and <body> that it matches.
-  function ask(selector) {
+  function ask(selector: string) {
     try {
-      return box.reachable().slice(0, 2).map((node) => (node && matches.call(node, selector) ? 1 : 0)).join('');
+      return box.reachable().slice(0, 2).map((node: Element | null) => (node && matches.call(node, selector) ? 1 : 0)).join('');
     } catch {
       return '';
     }
@@ -319,7 +321,7 @@ export function startSheets(box) {
   const hasWatch = new MutationObserver(() => {
     hasFrame ||= requestAnimationFrame(hasCheck);
   });
-  function noteHas(selector) {
+  function noteHas(selector: string) {
     if (!selector.includes(HAS) || hasRules.has(selector)) return;
     hasRules.add(selector);
     box.bodyMayHaveChanged();
@@ -332,7 +334,7 @@ export function startSheets(box) {
   // it; one about <html> or <body> found now is read for, to be sure.
   const unread: [ArrayLike<CSSRule>, number][] = [];
   let unreadTask = 0;
-  function hasLater(rules) {
+  function hasLater(rules: CSSRuleList) {
     unread.push([Array.from(rules), 0]);
     unreadTask ||= setTimeout(readSelectors, HAS_WAIT);
   }
@@ -369,7 +371,7 @@ export function startSheets(box) {
     }
     if (about) box.bodyMayHaveChanged();
   }
-  function collectHas(rules) {
+  function collectHas(rules: CSSRuleList | CSSRule[]) {
     for (const rule of Array.from(rules)) {
       try {
         if (rule instanceof CSSStyleRule) noteHas(selectorText.get.call(rule));
@@ -390,13 +392,14 @@ export function startSheets(box) {
 
   // ---- style attributes ------------------------------------------------------
   const INLINE = '[style*="vw"], [style*="vh"], [style*="vmin"], [style*="vmax"]';
-  function shiftInline(node) {
-    const { style } = node;
+  function shiftInline(node: Element) {
+    const { style } = node as Element & Partial<ElementCSSInlineStyle>; // (SVG and MathML elements have one too; some others don't)
     const said = style?.cssText;
-    if (said && hasUnits(said)) shiftStyle(style, scratch(), said);
+    // (`said` is its text: it has a style.)
+    if (said && hasUnits(said)) shiftStyle(style as CSSStyleDeclaration, scratch(), said);
   }
-  const inlineIn = (root) => {
-    if (root.matches?.(INLINE)) shiftInline(root);
+  const inlineIn = (root: Document | DocumentFragment | Element) => {
+    if ((root as Element).matches?.(INLINE)) shiftInline(root as Element); // (only an element has matches)
     for (const node of root.querySelectorAll?.(INLINE) ?? []) shiftInline(node);
   };
 
@@ -409,7 +412,7 @@ export function startSheets(box) {
   // Out of sight, what's added isn't kept, however long a chat tab runs: only
   // which root to look through once, when the tab is shown.
   const rescan = new Set<any>();
-  const connected = (node) => node === document || node.isConnected;
+  const connected = (node: Node) => node === document || node.isConnected;
   function pass() {
     frame = 0;
     waiting = false;
@@ -443,8 +446,8 @@ export function startSheets(box) {
     if (document.hidden) waiting = true;
     else frame = requestAnimationFrame(pass);
   }
-  const isStyle = (node) => node.nodeName === 'STYLE' || node.nodeName === 'style' || node.nodeName === 'LINK';
-  function observed(records) {
+  const isStyle = (node: Node) => node.nodeName === 'STYLE' || node.nodeName === 'style' || node.nodeName === 'LINK';
+  function observed(records: MutationRecord[]) {
     if (!box.on) return;
     const hidden = document.hidden;
     let changed = false;
@@ -487,7 +490,7 @@ export function startSheets(box) {
   const STYLE_TEXT = { characterData: true, subtree: true };
   const WATCH = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'media', 'disabled'] };
   const roots = new WeakSet();
-  function watchRoot(root) {
+  function watchRoot(root: Document | ShadowRoot) {
     if (roots.has(root)) return;
     roots.add(root);
     watch.observe(root, WATCH);
@@ -503,7 +506,8 @@ export function startSheets(box) {
 
   // A sheet that has just loaded: rewritten before it's painted.
   document.addEventListener('load', (event) => {
-    if (!isStyle(event.target)) return; // a <style> says so too, once its @imports are in
+    // (A load seen in the document's capture phase is an element's.)
+    if (!isStyle(event.target as Node)) return; // a <style> says so too, once its @imports are in
     pass();
     box.bodyMayHaveChanged(); // another origin's sheet can't be read, but it applies
   }, true);

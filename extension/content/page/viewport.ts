@@ -2,6 +2,7 @@
 // scrolling (the window's is <body>'s now), and what the browser does for a
 // window's scrolling by itself: paging keys, and the place kept across Back and
 // reload. With no box, each asks the page itself.
+import type { Box } from './box.ts';
 import type { Accessor } from './accessor.ts';
 
 // The browser's own accessor for `name`, from `object` or its prototypes (accessor.ts).
@@ -12,9 +13,9 @@ const find = (object: Element | HTMLElement | Window & typeof globalThis | Visua
   }
   return undefined as unknown as Accessor; // (not for these names)
 };
-const define = (object: Window & typeof globalThis | VisualViewport | Element | HTMLElement | Document, name: string, descriptor) => Object.defineProperty(object, name, { configurable: true, enumerable: true, ...descriptor });
+const define = (object: Window & typeof globalThis | VisualViewport | Element | HTMLElement | Document, name: string, descriptor: PropertyDescriptor & ThisType<any>) => Object.defineProperty(object, name, { configurable: true, enumerable: true, ...descriptor });
 
-export function startViewport(box) {
+export function startViewport(box: Box) {
   const html = document.documentElement;
   const element = Element.prototype;
   const native: Record<string, Accessor> = {};
@@ -23,7 +24,7 @@ export function startViewport(box) {
   const innerWidth = find(window, 'innerWidth');
   const innerHeight = find(window, 'innerHeight');
   // The scroller for `node`: <html> speaks for <body> while there's a box.
-  const scroller = (node) => (box.on && node === html ? box.body() : node);
+  const scroller = (node: Element) => (box.on && node === html ? box.body() : node);
   const scroll = () => (box.on ? box.body() : html);
 
   // ---- size --------------------------------------------------------------------
@@ -61,7 +62,7 @@ export function startViewport(box) {
   for (const name of ['scrollTop', 'scrollLeft', 'scrollHeight', 'scrollWidth']) {
     define(element, name, {
       get() { return native[name].get.call(scroller(this)); },
-      set(value) { native[name].set?.call(scroller(this), value); },
+      set(value: unknown) { native[name].set?.call(scroller(this), value); },
     });
   }
   // The document's scroller as a window has it: <html> (<body> in quirks mode), whose scrolling speaks for <body>
@@ -77,10 +78,11 @@ export function startViewport(box) {
   });
   const windowScrollTo = window.scrollTo;
   for (const name of ['scrollTo', 'scrollBy', 'scroll']) {
-    const method = element[name];
-    const own = window[name];
-    window[name] = function (...args) { return box.on ? method.apply(box.body(), args) : own.apply(window, args); };
-    element[name] = function (...args) { return method.apply(scroller(this), args); };
+    // (By name: the browser's own scrolling methods, wrapped.)
+    const method = (element as unknown as Record<string, any>)[name];
+    const own = (window as unknown as Record<string, any>)[name];
+    (window as unknown as Record<string, any>)[name] = function (...args: any[]) { return box.on ? method.apply(box.body(), args) : own.apply(window, args); };
+    (element as unknown as Record<string, any>)[name] = function (this: Element, ...args: any[]) { return method.apply(scroller(this), args); };
   }
   // The window itself never scrolls while there's a box: <body> is the page's scroller. But what's fixed is placed in <html>
   // (it has a transform), so a fixed drawer moved off the box's edge with a transform runs past the window, and the browser
@@ -102,7 +104,7 @@ export function startViewport(box) {
   // Nothing focused, the browser pages the (unscrollable) root. A press decides
   // where keys go: into a pane that was clicked and can still move, they're the
   // browser's own. ⌘↑ ⌘↓ and ⌥↑ ⌥↓ are Safari's too; ⌘⌥ is Margin's.
-  const pagingStep = (event: KeyboardEvent, height) => {
+  const pagingStep = (event: KeyboardEvent, height: number) => {
     const { key, shiftKey: shift, metaKey: meta, altKey: alt } = event;
     if (meta && alt) return undefined;
     if (meta || alt) {
@@ -113,14 +115,14 @@ export function startViewport(box) {
     if (shift) return undefined; // Shift and an arrow extends a selection
     return { PageDown: height * 0.9, PageUp: -height * 0.9, ArrowDown: 40, ArrowUp: -40, Home: -1e9, End: 1e9 }[key];
   };
-  const canMove = (node, down: boolean) => {
+  const canMove = (node: Element | null, down: boolean) => {
     const top = native.scrollTop.get.call(node);
     return down ? top + native.clientHeight.get.call(node) < native.scrollHeight.get.call(node) - 1 : top > 0;
   };
   let pressed: any = null;
   addEventListener('pointerdown', (event) => { pressed = event.composedPath()[0]; }, { capture: true, passive: true });
   // Does a pane around what was pressed, short of <body>, take this key?
-  function paneTakes(body, down: boolean) {
+  function paneTakes(body: Element, down: boolean) {
     if (!pressed?.isConnected) return false;
     for (let node = pressed; node && node !== body && node !== html; node = node.parentNode ?? node.host) {
       if (node.nodeType === 1 && /auto|scroll/.test(getComputedStyle(node).overflowY) && canMove(node, down)) return true;
@@ -216,7 +218,7 @@ export function startViewport(box) {
     const NavigateEvent = (window as any).NavigateEvent;
     const intercept = NavigateEvent?.prototype.intercept;
     if (intercept) {
-      NavigateEvent.prototype.intercept = function (options) {
+      NavigateEvent.prototype.intercept = function (this: any, options?: any) {
         manual = options?.scroll === 'manual';
         return intercept.call(this, options);
       };
@@ -225,7 +227,7 @@ export function startViewport(box) {
       manual = false;
       save();
     });
-    navigation.addEventListener('currententrychange', (event) => {
+    navigation.addEventListener('currententrychange', (event: any) => {
       if (event.navigationType === 'traverse' && !manual) later();
     });
   } else {

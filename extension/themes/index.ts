@@ -11,4 +11,4 @@ export const THEMES: Readonly<Record<string, typeof arcadia>> = Object.freeze({ 
 export const DEFAULT_THEME = arcadia.id;
 
 // The active theme (an unknown or missing id falls back to the default).
-export const themeFor = (settings) => THEMES[settings?.theme] ?? THEMES[DEFAULT_THEME];
+export const themeFor = (settings: any) => THEMES[settings?.theme] ?? THEMES[DEFAULT_THEME];

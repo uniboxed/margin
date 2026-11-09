@@ -8,11 +8,12 @@
 // so it's still a ScrollTimeline to the page. Any other source is left alone.
 // One made while there's a box keeps its source if the box goes.
 // Pattern: tests/box/patterns/scroll-timeline.html.
+import type { Box } from './box.ts';
 
-export function startTimelines(box) {
+export function startTimelines(box: Box) {
   const Native = window.ScrollTimeline;
   if (!Native) return;
-  function Boxed(...args) {
+  function Boxed(...args: any[]) {
     if (!new.target) throw new TypeError("Failed to construct 'ScrollTimeline': Please use the 'new' operator, this DOM object constructor cannot be called as a function.");
     const options = args[0] ?? {};
     const html = document.documentElement;

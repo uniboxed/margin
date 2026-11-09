@@ -31,7 +31,7 @@ export const KEYFRAMES_KEEP_MS = 2000;
 // The browser's own, from before a page's scripts.
 const { CSSKeyframesRule: KeyframesRule, CSSImportRule: ImportRule } = globalThis;
 
-const nth = (list, at: number) => {
+const nth = (list: string, at: number) => {
   const all = list.split(/,\s*/);
   return all[at % all.length];
 };
@@ -68,11 +68,11 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
     return set;
   };
   let owed = false; // something that mattered moved since the last read: read again once it's all ended
-  const keyOf = (event) => (event.type.startsWith('transition') ? `t ${event.propertyName}` : `a ${event.animationName}`);
+  const keyOf = (event: any) => (event.type.startsWith('transition') ? `t ${event.propertyName}` : `a ${event.animationName}`);
   // A CSS animation with an end, running, of something a read looks at. One
   // with no end shows now all there'll ever be; a paused one stays as it is;
   // one no longer named is gone.
-  function animates(node, name: string, property: RegExp) {
+  function animates(node: Element, name: string, property: RegExp) {
     const style = styleOf(node);
     const at = String(style.animationName).split(/,\s*/).lastIndexOf(name);
     if (at < 0 || nth(style.animationIterationCount, at) === 'infinite' || nth(style.animationPlayState, at) === 'paused') return false;
@@ -80,7 +80,7 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
     return !set || set.some((item) => property.test(item));
   }
   // Whether it moves what a read looks at on that element now.
-  function matters(node, key: string) {
+  function matters(node: Element, key: string) {
     const property = names(node);
     if (!property) return false;
     const [kind, name] = [key[0], key.slice(2)];
@@ -93,7 +93,7 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
   let echoing = false;
   let echoFrame = 0;
   let echoRuns: Map<any, Set<string>> = new Map();
-  const echoKey = (event) => `${event.pseudoElement} ${event.propertyName}`;
+  const echoKey = (event: any) => `${event.pseudoElement} ${event.propertyName}`;
   function echo() {
     echoing = true;
     cancelAnimationFrame(echoFrame);
@@ -104,13 +104,13 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
     });
   }
   // Chromium ends one with a cancel, WebKit with an end, at 0 s either way.
-  function isEcho(event) {
+  function isEcho(event: any) {
     if (!echoing || event.elapsedTime !== 0 || !echoRuns.get(event.target)?.has(echoKey(event))) return false;
     echoed(event);
     return true;
   }
 
-  function started(event) {
+  function started(event: any) {
     if (!event.isTrusted) return;
     if (event.type === 'transitionrun' && echoing) {
       if (!echoRuns.has(event.target)) echoRuns.set(event.target, new Set<any>());
@@ -126,7 +126,7 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
     on.set(keyOf(event), performance.now());
     if (moving.size > SWEEP_AT) sweep();
   }
-  function stopped(event) {
+  function stopped(event: any) {
     if (!event.isTrusted) return;
     const echoes = event.type.startsWith('transition') && isEcho(event);
     if (event.pseudoElement) return;
@@ -183,7 +183,7 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
      * What a read the page's own changes asked for came to: `changed`, it
      * found something new, which may yet be on its way unseen.
      */
-    found: (changed) => {
+    found: (changed: boolean) => {
       settles = settling ? settles + 1 : 0;
       settling = false;
       if (!changed || settles >= SETTLE_TRIES) return;
@@ -200,7 +200,7 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
 // (the last one wins, as in CSS): null if none of them has it.
 export function keyframesIn(sheets: any[], name: string) {
   let found = null as CSSKeyframesRule | null; // (set in walk's callback)
-  const walk = (rules) => {
+  const walk = (rules: CSSRuleList | null | undefined) => {
     for (const rule of Array.from(rules ?? [])) {
       try {
         if (rule instanceof KeyframesRule) {

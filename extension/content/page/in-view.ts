@@ -7,6 +7,7 @@
 // observer is a stand-in holding two of the browser's, one for each, and each
 // target's answer is taken from the one that can give it. With no box there's
 // only the window's. A root the page chose itself is left alone.
+import type { Box } from './box.ts';
 import type { Accessor } from './accessor.ts';
 
 // The browser's own accessor for `name`, from `object` or its prototypes (accessor.ts).
@@ -21,7 +22,7 @@ const OWN_GETTERS = ['rootMargin', 'scrollMargin', 'thresholds', 'delay', 'track
 const OUTSIDE_FOR_MS = 1000;
 const SWEEP_FLOOR = 64;
 
-export function startInView(box) {
+export function startInView(box: Box) {
   const Native = window.IntersectionObserver;
   const Entry = window.IntersectionObserverEntry;
   if (!Native || !Entry) return;
@@ -56,7 +57,7 @@ export function startInView(box) {
   // the page would never hear it's in view.
   let outside = new WeakMap(); // target → { answer, at }
   const forgetOutside = () => { outside = new WeakMap(); };
-  function outsideBody(target, later: (ms: any) => void) {
+  function outsideBody(target: Element, later: (ms: any) => void) {
     const at = performance.now();
     const known = outside.get(target);
     if (known && at - known.at < OUTSIDE_FOR_MS) {
@@ -67,7 +68,7 @@ export function startInView(box) {
     outside.set(target, { answer, at });
     return answer;
   }
-  function walkOutside(target) {
+  function walkOutside(target: Element) {
     const body = document.body;
     if (target === body) return true;
     for (let node = target; node; node = node.parentElement ?? (node.getRootNode() as any).host) {
@@ -84,14 +85,14 @@ export function startInView(box) {
   // entries behind until the box or <body> changes: swept as well whenever
   // there are twice as many as after the last sweep.
   let sweepAt = SWEEP_FLOOR;
-  function addStandIn(standIn) {
+  function addStandIn(standIn: object) {
     standIns.add(new WeakRef(standIn));
     if (standIns.size < sweepAt) return;
     for (const ref of standIns) if (!ref.deref()) standIns.delete(ref);
     sweepAt = Math.max(SWEEP_FLOOR, 2 * standIns.size);
   }
 
-  function Boxed(callback, options) {
+  function Boxed(this: any, callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
     if (!new.target) throw new TypeError("Constructor IntersectionObserver requires 'new'");
     if (options?.root != null && options.root !== document) {
       const native = new Native(callback, options);
@@ -104,8 +105,8 @@ export function startInView(box) {
     const inWindow = new Native((list) => hear(list, false), options);
     let inBody: IntersectionObserver | null = null;
 
-    const bucket = (ratio) => inWindow.thresholds.filter((at) => ratio >= at).length;
-    function chosen(state) {
+    const bucket = (ratio: number) => inWindow.thresholds.filter((at) => ratio >= at).length;
+    function chosen(state: any) { // (a target's two answers: in the window, in <body>)
       if (!inBody) return state.window;
       if (!state.body || !state.window) return null; // the first answers go out together
       if (state.body.isIntersecting || !state.window.isIntersecting) return state.body;
@@ -115,7 +116,7 @@ export function startInView(box) {
     // out, and the page hears it if that changed what it was told.
     const again = new Set<any>();
     let againTimer = 0;
-    function askAgain(state, ms) {
+    function askAgain(state: any, ms: number) {
       again.add(state);
       againTimer ||= setTimeout(() => {
         againTimer = 0;
@@ -173,11 +174,11 @@ export function startInView(box) {
     // (Angular's zone.js, `for…in` over a sample) must find these, and an own one that isn't hides the browser's
     // (gog.com: `observe is not a function`). Pattern: tests/box/patterns/observer-wrapped.html.
     Object.defineProperty(self, 'root', { enumerable: true, get: () => options?.root ?? null });
-    for (const name of OWN_GETTERS) if (name in inWindow) Object.defineProperty(self, name, { enumerable: true, get: () => inWindow[name] });
+    for (const name of OWN_GETTERS) if (name in inWindow) Object.defineProperty(self, name, { enumerable: true, get: () => (inWindow as unknown as Record<string, unknown>)[name] });
     Object.defineProperties(self, {
       observe: {
         enumerable: true,
-        value(target) {
+        value(target: Element) {
           inWindow.observe(target);
           if (targets.has(target)) return;
           targets.set(target, { window: null, body: null, said: null });
@@ -187,7 +188,7 @@ export function startInView(box) {
       },
       unobserve: {
         enumerable: true,
-        value(target) {
+        value(target: Element) {
           inWindow.unobserve(target);
           inBody?.unobserve(target);
           targets.delete(target);

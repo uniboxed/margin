@@ -31,7 +31,7 @@ export function createOwnSheets() {
   // Never dropped by a page that assigns its own list, or edits the one it has,
   // which goes through a proxy of it, one that lets the page's edits be seen.
   const adopted = Object.getOwnPropertyDescriptor(Document.prototype, 'adoptedStyleSheets') as Accessor;
-  const adopt = () => adopted.set.call(document, [...adopted.get.call(document).filter((s) => !ours.includes(s)), ...ours]);
+  const adopt = () => adopted.set.call(document, [...adopted.get.call(document).filter((s: CSSStyleSheet) => !ours.includes(s)), ...ours]);
 
   let box: any = null; // (box.ts's, from start: it isn't typed yet)
   let rootZoom = 1; // the page's `zoom` on <html> (box-body.ts readSaid)
@@ -60,7 +60,7 @@ export function createOwnSheets() {
         box.bodyMayHaveChanged();
       });
     }
-    const edit = (act) => (...args) => {
+    const edit = <A extends any[], R>(act: (...args: A) => R) => (...args: A): R => {
       const done = act(...args);
       adoptedEdited();
       return done;

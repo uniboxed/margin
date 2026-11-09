@@ -15,7 +15,7 @@ const KNOWN_READINGS = 16;
 /** @param ctx the box's shared parts (box.ts) */
 export function startWatch(ctx: any) {
   const { box, own } = ctx;
-  const attributesOf = (node) => (node ? Array.from(node.attributes, ({ name, value }) => `${name}=${value}`).join(' ') : '');
+  const attributesOf = (node: Element | null | undefined) => (node ? Array.from(node.attributes, ({ name, value }) => `${name}=${value}`).join(' ') : '');
 
   // What a page has said for these attributes, as long as nothing but the
   // attributes changed: a class that comes and goes costs two reads, and then
@@ -24,7 +24,7 @@ export function startWatch(ctx: any) {
   const known = new Map();
   let readAt = { attributes: '', sheets: -1, first: (null as Element | null), stale: true };
   const attributesNow = () => `${attributesOf(ctx.html)} ${attributesOf(document.body)}`;
-  function remember(said) {
+  function remember(said: any) { // (what box-body.ts read)
     const attributes = attributesNow();
     readAt = { attributes, sheets: document.styleSheets.length, first: document.body.firstElementChild, stale: false };
     if (said.plain) {
@@ -38,7 +38,7 @@ export function startWatch(ctx: any) {
     readAt.stale = true;
     measureGap = MEASURE_GAP_MS;
   }
-  function useKnown({ said, key }) {
+  function useKnown({ said, key }: { said: any, key: string }) {
     ctx.lastSaid = key;
     ctx.lastPage = JSON.stringify({ ...said, whole: 0 });
     readAt.attributes = attributesNow();
@@ -115,10 +115,11 @@ export function startWatch(ctx: any) {
 
   // An absolute element a page puts directly under <html> is placed against
   // the document, which scrolls: it would stay put here, so it goes in <body>.
-  const adoptChild = (node) => {
+  const adoptChild = (node: Node) => {
     if (!box.on || !document.body || node === document.body || node.nodeType !== 1 || node.parentNode !== ctx.html) return;
-    if (/^(head|body|script|style|link|meta|margin-.*)$/.test(node.localName)) return;
-    if (getComputedStyle(node).position === 'absolute') document.body.append(node);
+    // (An element: nodeType 1, checked above.)
+    if (/^(head|body|script|style|link|meta|margin-.*)$/.test((node as Element).localName)) return;
+    if (getComputedStyle(node as Element).position === 'absolute') document.body.append(node);
   };
   // A read of <body> while the page's sheets that hold its first paint are still loading waits for the frame
   // (box-body.ts measureBody asks): nothing is drawn before they're in, and no script of the page's after them
@@ -135,7 +136,7 @@ export function startWatch(ctx: any) {
   // A read made for a frame (this one, runMeasure's, a resize's) never waits: the frame is being drawn, sheets
   // in or not (a browser draws without them once they're slow enough).
   let inFrame = 0;
-  const forFrame = (fn: (...args: any[]) => void) => (...args) => {
+  const forFrame = (fn: (...args: any[]) => void) => (...args: any[]) => {
     inFrame += 1;
     try {
       return fn(...args);
@@ -178,7 +179,7 @@ export function startWatch(ctx: any) {
     readBody();
     for (const fn of box.onBody) fn();
   }
-  function childrenAdded(records) {
+  function childrenAdded(records: MutationRecord[]) {
     bodyArrived();
     if (!bodyNow) return;
     for (const record of records) for (const node of record.addedNodes) queueMicrotask(() => adoptChild(node));

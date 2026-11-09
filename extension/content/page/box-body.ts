@@ -39,9 +39,9 @@ export function startBody(ctx: any) {
   // events in the next frame, each started and over at once (moves.ts echo),
   // and from then on everything is held for a read. Not by asking the
   // document for its animations (moves.ts).
-  function noticeStarted(event) {
+  function noticeStarted(event: Event) {
     const node = event.target;
-    if (held || node === document.body || node === ctx.html || !INHERITED_INTO.test(event.propertyName)) return;
+    if (held || node === document.body || node === ctx.html || !INHERITED_INTO.test((event as TransitionEvent).propertyName)) return;
     held = true;
     writeFit();
   }
@@ -77,7 +77,7 @@ export function startBody(ctx: any) {
       remove.call(holdFlag);
     }
   }
-  function readSaid(body) {
+  function readSaid(body: HTMLElement) {
     const { html } = ctx;
     const style = computed(body);
     const seen = computed(body, '::backdrop');
@@ -104,7 +104,7 @@ export function startBody(ctx: any) {
       plain: whole > 0 && computed(html).display === 'block' && block && [...lengths, ...collapses].every((length) => settled(length, parse)),
     };
   }
-  function readLaidOut(body, said) {
+  function readLaidOut(body: HTMLElement, said: ReturnType<typeof readSaid>) {
     const style = computed(body);
     const wide = isSized(said);
     const margins = EDGES.map((edge) => parseFloat(style[`margin${edge}`]) || 0);
@@ -129,14 +129,14 @@ export function startBody(ctx: any) {
     fit = next;
     return changed;
   }
-  function applyBody({ sized: wide, grows, column, margins, paddings }) {
+  function applyBody({ sized: wide, grows, column, margins, paddings }: ReturnType<typeof readLaidOut>) {
     ctx.sized = wide;
     fitted = { grows, column };
     const refit = writeFit();
     padded = margins.some(Boolean);
     // Padding can't be negative: what's less than nothing stays a margin.
-    const edges = margins.map((n, i) => n + paddings[i]);
-    const side = (pick: (...values: number[]) => number) => edges.map((n) => `${pick(n, 0)}px`).join(' ');
+    const edges = margins.map((n: number, i: number) => n + paddings[i]);
+    const side = (pick: (...values: number[]) => number) => edges.map((n: number) => `${pick(n, 0)}px`).join(' ');
     const padding = !padded ? '' : `@media screen { ${FITTED_BODY} { margin: ${side(Math.min)} !important; padding: ${side(Math.max)} !important; } }`;
     const repadded = padding !== paddingCss;
     if (repadded) own.replace(own.sheets.padding, padding);
@@ -150,7 +150,7 @@ export function startBody(ctx: any) {
   // there'll ever be.
   // Starts are kept for anything as deep as the first children go: a new one
   // can start moving before the next look at them (box-chain.ts) finds it.
-  const nearBody = (node) => {
+  const nearBody = (node: Node | null) => {
     if (node === ctx.html) return true;
     for (let depth = 0; node && depth <= CHAIN_DEPTH; depth++, node = node.parentElement) if (node === document.body) return true;
     return false;
@@ -201,13 +201,14 @@ export function startBody(ctx: any) {
     }, inOneGo, settle);
     if (!said) return false;
     moves.read();
-    if (!said.plain && !inOneGo && (changed || again)) readWithout((element) => { next = readLaidOut(element, said); }, true, settle);
+    // (`said!`: set, checked just above, and not set again.)
+    if (!said.plain && !inOneGo && (changed || again)) readWithout((element) => { next = readLaidOut(element, said!); }, true, settle);
     ctx.watch.remember(said);
     return changed;
   }
   // What was read before for the same attributes (box-watch.ts), applied with
   // <body> held still.
-  function applyKnown(said) {
+  function applyKnown(said: any) { // (what a read kept: box-watch.ts remember)
     append.call(ctx.html, holdFlag);
     try {
       void computed(document.body).color;
@@ -230,6 +231,6 @@ export function startBody(ctx: any) {
     applyKnown,
     reset,
     /** Margin's own, in the page only during a read. */
-    ownFlag: (node) => node === readFlag || node === holdFlag,
+    ownFlag: (node: Node) => node === readFlag || node === holdFlag,
   };
 }
