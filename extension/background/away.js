@@ -39,6 +39,10 @@ let moves = 0;
 let lastFocused = null;
 /** @type {ReturnType<typeof setTimeout> | null} */
 let focusTimer = null;
+// What the last focus change came to (for the dev probe: numbers only): 1 heard, 2 another focus since, 3 nothing
+// away, 4 a window tabs don't follow into, 5 its tab gone or here already, 6 its window being moved by the handoff,
+// 7 brought, 8 the window left pictured (or not needed), 9 a move under way.
+const focusSeen = { windowId: /** @type {number | null} */ (null), outcome: 0 };
 
 const standInUrl = () => api.runtime.getURL(AWAY_PATH);
 
@@ -234,7 +238,9 @@ export function focusChanged(windowId) {
   if (!Number.isInteger(windowId) || windowId < 0) return; // Safari left, or another profile's window
   const left = lastFocused;
   lastFocused = windowId;
-  if (moves > 0) return; // Margin's own move brought it forward
+  focusSeen.windowId = windowId;
+  focusSeen.outcome = 1;
+  if (moves > 0) return void (focusSeen.outcome = 9); // Margin's own move brought it forward
   if (focusTimer) clearTimeout(focusTimer);
   focusTimer = setTimeout(() => {
     focusTimer = null;
@@ -243,19 +249,24 @@ export function focusChanged(windowId) {
 }
 /** @param {number} windowId @param {number | null} left */
 async function follow(windowId, left) {
-  if (lastFocused !== windowId || moves > 0) return;
+  const seen = (/** @type {number} */ outcome) => { if (focusSeen.windowId === windowId) focusSeen.outcome = outcome; };
+  if (lastFocused !== windowId) return seen(2);
+  if (moves > 0) return seen(9);
   const s = await load();
   const awayId = s.awayByWindow?.[windowId];
   if (awayId != null) {
-    if (!follows(windowId)) return;
+    if (!follows(windowId)) return seen(4);
     const live = await Promise.resolve(api.tabs.get(awayId)).catch(() => null);
-    if (!live || live.windowId === windowId || lastFocused !== windowId || moves > 0) return;
-    if (handoffMoving(live.windowId)) return;
-    const win = await Promise.resolve(api.windows.get(windowId)).catch(() => null);
-    if (!win?.focused) return;
+    if (!live || live.windowId === windowId) return seen(5);
+    // (Another window to the front meanwhile, or a move: not this one's.)
+    if (lastFocused !== windowId) return seen(2);
+    if (moves > 0) return seen(9);
+    if (handoffMoving(live.windowId)) return seen(6);
+    seen(7);
     await bringTab(live, windowId, { source: 'window in front', raise: false }).catch(() => null);
     return;
   }
+  seen(3);
   if (left != null && left !== windowId) await precapture(s, left, windowId);
 }
 /** @param {any} s @param {number} left @param {number} front */
@@ -311,4 +322,4 @@ export async function sweep(tabs) {
 export function setAwayTiming(given) {
   Object.assign(TIMING, given);
 }
-export const awayInternals = { pictures, standIns, reset() { pictures.clear(); standIns.clear(); making.clear(); moves = 0; lastFocused = null; if (focusTimer) clearTimeout(focusTimer); focusTimer = null; } };
+export const awayInternals = { pictures, standIns, focusSeen, reset() { pictures.clear(); standIns.clear(); making.clear(); moves = 0; lastFocused = null; if (focusTimer) clearTimeout(focusTimer); focusTimer = null; } };

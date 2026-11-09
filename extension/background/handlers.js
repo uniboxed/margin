@@ -810,7 +810,8 @@ export const handlers = {
         scroll: Math.round(scrollY),
       }) }))[0]?.result ?? null;
       // Short (the app's log line is cut at 600 characters): marker, field (1/0) and scroll.
-      const kept = async () => { const c = await check(); return c ? `${c.marker ? 1 : 0}${c.field ? 1 : 0}:${c.scroll}` : 'none'; };
+      // As a number: 3 marker and field kept (2 marker only, 1 field only), times 100000, plus the scroll; -1 none.
+      const kept = async () => { const c = await check(); return c ? ((c.marker ? 2 : 0) + (c.field ? 1 : 0)) * 100000 + Math.min(99999, c.scroll) : -1; };
       out.before = await kept();
       const second = await api.windows.create({ focused: true, state: 'fullscreen' });
       made.windowId = second.id;
@@ -862,6 +863,9 @@ export const handlers = {
       out.followMs = Math.round(performance.now() - t0);
       await wait(800);
       out.followedBack = (await api.tabs.get(tab.id)).windowId === home.id;
+      out.focusHeard = away.awayInternals.focusSeen.windowId === home.id;
+      out.focusOutcome = away.awayInternals.focusSeen.outcome;
+      out.homeFocused = await focused(home.id);
       out.homeStandInGone = !(await standInIn(home.id));
       out.secondStandIn = !!(await standInIn(second.id));
       out.afterFollow = await kept();
