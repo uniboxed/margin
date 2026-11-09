@@ -14,6 +14,21 @@ let t0 = Date()
 func log(_ s: String) { print(String(format: "[%6.0f] ", Date().timeIntervalSince(t0) * 1000) + s); fflush(stdout) }
 var failures = 0
 func fail(_ label: String, _ why: String) { failures += 1; log("FAIL \(label): \(why)") }
+// JavaScript in a web view, given up on after `ms`: a page that never answers (busy for good, or held by
+// something nothing here answers: a real site's) fails that step and the run goes on.
+struct NoAnswer: LocalizedError { let ms: Double; var errorDescription: String? { "no answer in \(Int(ms)) ms" } }
+@MainActor func inPage(_ wv: WKWebView, _ js: String, _ world: WKContentWorld, within ms: Double) async throws -> Any? {
+  try await withCheckedThrowingContinuation { (answer: CheckedContinuation<Any?, Error>) in
+    var done = false
+    let finish: @MainActor (Result<Any?, Error>) -> Void = { result in
+      guard !done else { return }
+      done = true
+      answer.resume(with: result)
+    }
+    wv.callAsyncJavaScript(js, arguments: [:], in: nil, in: world) { result in finish(result.map { $0 as Any? }) }
+    DispatchQueue.main.asyncAfter(deadline: .now() + ms / 1000) { MainActor.assumeIsolated { finish(.failure(NoAnswer(ms: ms))) } }
+  }
+}
 
 // A page-world recorder in every frame: the page's own console errors and warnings, uncaught
 // errors and CSP violations, kept in window.__pageLog (read with a "page" step).
@@ -119,6 +134,10 @@ let pageRecorder = """
     log("nav \(name) \(frame) \(action.navigationType.rawValue == 3 ? "reload" : "go") \(action.request.url?.absoluteString.prefix(1200) ?? "?")")
     decisionHandler(.allow)
   }
+  // A page's alert, confirm or prompt (a real site's, in tests/box/sites-bench.mjs): answered at once, as dismissed.
+  func webView(_ wv: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor () -> Void) { log("dialog \(name): alert"); completionHandler() }
+  func webView(_ wv: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void) { log("dialog \(name): confirm"); completionHandler(false) }
+  func webView(_ wv: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (String?) -> Void) { log("dialog \(name): prompt"); completionHandler(nil) }
   func webView(_ wv: WKWebView, didCommit navigation: WKNavigation!) { log("nav \(name) committed \(wv.url?.absoluteString.prefix(1200) ?? "?")") }
   func webView(_ wv: WKWebView, didFinish navigation: WKNavigation!) { log("nav \(name) loaded \(wv.url?.absoluteString.prefix(1200) ?? "?")") }
   func webView(_ wv: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { log("nav \(name) failed \(error.localizedDescription)") }
@@ -661,7 +680,7 @@ Task { @MainActor in
       let t = host.tab(step["in"] as! String)!
       guard let wv = t.webView, let world = host.world() else { log("eval: no web view or world"); break }
       do {
-        let r = try await wv.callAsyncJavaScript(step["js"] as! String, arguments: [:], in: nil, contentWorld: world)
+        let r = try await inPage(wv, step["js"] as! String, world, within: Double(step["timeout"] as? Int ?? 30000))
         log("eval in \(t.name): \(String(describing: r ?? "undefined"))")
       } catch { log("eval in \(t.name) failed: \(error.localizedDescription)") }
     case "page":
@@ -669,7 +688,7 @@ Task { @MainActor in
       let t = host.tab(step["in"] as! String)!
       guard let wv = t.webView else { log("page: \(t.name) has no web view"); break }
       do {
-        let r = try await wv.callAsyncJavaScript(step["js"] as! String, arguments: [:], in: nil, contentWorld: .page)
+        let r = try await inPage(wv, step["js"] as! String, .page, within: Double(step["timeout"] as? Int ?? 30000))
         log("page \(t.name): \(String(describing: r ?? "nil"))")
       } catch { log("page \(t.name) failed: \(error)") }
     case "key":
@@ -760,7 +779,7 @@ Task { @MainActor in
       while true {
         if let t = host.tab(name), let wv = t.webView, let world = op == "check" ? host.world() : .page {
           do {
-            let r = try await wv.callAsyncJavaScript(js, arguments: [:], in: nil, contentWorld: world)
+            let r = try await inPage(wv, js, world, within: max(100, deadline.timeIntervalSinceNow * 1000))
             if (r as? Bool) == true { log("PASS \(label)"); break }
             last = String(describing: r ?? "nil")
           } catch { last = error.localizedDescription }

@@ -112,7 +112,10 @@ async function webkitSites() {
     env: { ...process.env, MARGIN_HOST_TIMEOUT: String(60 + SITES.length * RUNS * 2 * 20), MARGIN_HOST_PORT: process.env.MARGIN_HOST_PORT ?? '47832' },
   });
   const out = `${run.stdout ?? ''}${run.stderr ?? ''}`;
-  if (/\bTIMEOUT\b/.test(out)) console.log('the WebKit host ran out of time: the loads before that count');
+  const kept = join(tmpdir(), `margin-sites-bench-${process.pid}.log`);
+  writeFileSync(kept, out);
+  console.log(`the WebKit host's log: ${kept}`);
+  if (/^\[\s*\d+\] TIMEOUT$/m.test(out)) console.log('the WebKit host ran out of time: the loads before that count');
   return [...out.matchAll(/ page \S+: SITE (\{.*\})$/gm)].map((m) => JSON.parse(m[1]));
 }
 
