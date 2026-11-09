@@ -87,7 +87,7 @@ export function startWatch(ctx) {
     if (document.hidden) return;
     clearTimeout(measureTimer);
     const wait = reading ? 0 : Math.max(0, measureAt + Math.min(MEASURE_WAIT_MS, Math.max(measureGap, measureCost * MEASURE_SHARE)) - performance.now());
-    measureTimer = setTimeout(() => { measureFrame = requestAnimationFrame(runMeasure); }, wait);
+    measureTimer = setTimeout(() => { measureFrame = requestAnimationFrame(forFrame(runMeasure)); }, wait);
   }
   function bodyMayHaveChanged() {
     stale();
@@ -120,6 +120,46 @@ export function startWatch(ctx) {
     if (/^(head|body|script|style|link|meta|margin-.*)$/.test(node.localName)) return;
     if (getComputedStyle(node).position === 'absolute') document.body.append(node);
   };
+  // A read of <body> while the page's sheets that hold its first paint are still loading waits for the frame
+  // (box-body.js measureBody asks): nothing is drawn before they're in, and no script of the page's after them
+  // runs, so a read before them only read the browser's own margins (GitHub: 8px written as padding, taken back
+  // once its sheets came: a second restyle of the whole page in WebKit). A sheet's arrival asks for a read for
+  // that frame anyway (sheets.js); whichever comes second finds nothing new. A tab out of sight has no frames:
+  // its reads go on as they come (`loaded` makes one), as a tab loaded behind is ready when it's shown.
+  let firstRead = 0;
+  const holdsPaint = (link) => !link.sheet && !link.disabled && link.relList.contains('stylesheet') && !link.relList.contains('alternate') && (!link.media || matchMedia(link.media).matches);
+  function sheetsPending() {
+    for (const link of document.getElementsByTagName('link')) if (holdsPaint(link)) return true;
+    return false;
+  }
+  // A read made for a frame (this one, runMeasure's, a resize's) never waits: the frame is being drawn, sheets
+  // in or not (a browser draws without them once they're slow enough).
+  let inFrame = 0;
+  const forFrame = (fn) => (...args) => {
+    inFrame += 1;
+    try {
+      return fn(...args);
+    } finally {
+      inFrame -= 1;
+    }
+  };
+  const holdsRead = () => !inFrame && !document.hidden && sheetsPending();
+  function readAtFrame() {
+    firstRead ||= requestAnimationFrame(readFirst);
+  }
+  function readBody() {
+    cancelAnimationFrame(firstRead);
+    firstRead = 0;
+    // Its scroll first: its sheet then comes in the restyle the read starts with, not one after it (WebKit
+    // styles the whole page again for each sheet edited). Neither looks at what the other writes.
+    ctx.locks.checkLocks();
+    ctx.body.measureBody();
+  }
+  const readFirst = forFrame(() => {
+    firstRead = 0;
+    if (!nothingSince()) readBody();
+  });
+
   // The <body> in the page: the first one, or one the page swapped in (Turbo
   // and the like), with a margin and locks of its own.
   let bodyNow = null;
@@ -135,10 +175,7 @@ export function startWatch(ctx) {
     attributeWatch.observe(body, ATTRIBUTES);
     ctx.locks.forgetBody(); // what's said about the old one mustn't read as the new one's
     stale();
-    // Its scroll first: its sheet then comes in the restyle the read starts with, not one after it (WebKit
-    // styles the whole page again for each sheet edited). Neither looks at what the other writes.
-    ctx.locks.checkLocks();
-    ctx.body.measureBody();
+    readBody();
     for (const fn of box.onBody) fn();
   }
   function childrenAdded(records) {
@@ -168,7 +205,7 @@ export function startWatch(ctx) {
     if (!ctx.sized) return bodyMayHaveChanged();
     stale();
     if (resizeFrame) return;
-    resizeFrame = requestAnimationFrame(resized);
+    resizeFrame = requestAnimationFrame(forFrame(resized));
   });
   function resized() {
     resizeFrame = 0;
@@ -181,6 +218,10 @@ export function startWatch(ctx) {
     loaded,
     bodyMayHaveChanged,
     measureSoon,
+    /** The page's sheets that hold its first paint are still loading: a read now would be thrown away. */
+    holdsRead,
+    /** A read at the next frame (one asked for once). */
+    readAtFrame,
     /** A read that waited out of sight, as the page is shown. */
     measureIfDue: () => { if (measureDue) measureSoon(); },
     /** A length a read saw was on its way (box-body.js moves): only this reading of its attributes is in doubt. */

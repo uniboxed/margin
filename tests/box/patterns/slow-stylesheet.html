@@ -1,0 +1,18 @@
+<!--
+pattern: a page whose style sheet arrives well after <body> (a slow server) is fitted by what the sheet says, not by the browser's own margins
+from: a speed change (2026-11): a read of <body> while the sheets that hold the first paint are still loading waits for the frame; GitHub's first read had taken the browser's 8px margin, written it as padding and taken it back once its sheets came
+handled-by: content/page/box-watch.js (holdsRead, readAtFrame: a read waits for the sheets that hold the first paint), content/page/sheets.js (a sheet's arrival asks for a read)
+settle: 1200
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>slow-stylesheet</title>
+<link rel="stylesheet" href="../asset/slow-stylesheet.css?wait=400">
+</head>
+<body>
+<header class="bar" id="bar">Repositories · Issues · Pull requests</header>
+<main class="main" id="main"><h1>Let's build from here</h1><p>The world's leading platform for building software together.</p></main>
+</body>
+</html>

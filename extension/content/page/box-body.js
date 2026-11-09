@@ -173,6 +173,10 @@ export function startBody(ctx) {
     const { body } = document;
     if (!box.on || !body || body.localName !== 'body') return false;
     if (document.fullscreenElement === body) return false; // read as it comes back (fullscreenchange)
+    if (ctx.watch.holdsRead()) { // read at the frame, once they're in (box-watch.js)
+      ctx.watch.readAtFrame();
+      return false;
+    }
     const inOneGo = again && !ctx.plainPage;
     let said = null;
     let changed = false;
