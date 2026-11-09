@@ -254,7 +254,7 @@ export function createInPageHost({
       if (res) warn(type, res.error);
       return undefined;
     } catch (err) {
-      warn(type, err?.message ?? err);
+      warn(type, (err as Error | undefined)?.message ?? err);
       return undefined;
     } finally {
       clearTimeout(timer);

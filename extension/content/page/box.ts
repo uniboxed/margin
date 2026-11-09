@@ -42,7 +42,7 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     if (scrollTop.get.call(node) !== y) scrollTop.set.call(node, y);
   }
   // A page's `scroll-behavior: smooth` would show as a climb from the top.
-  const { scrollTo: scrollElement } = Element.prototype;
+  const { scrollTo: scrollElement }: { scrollTo: (this: Element, options: ScrollToOptions) => void } = Element.prototype; // (the form used here)
   function scrollInstantly(node: Element, { x, y }: { x: number, y: number }) {
     if (scrollLeft.get.call(node) !== x || scrollTop.get.call(node) !== y) scrollElement.call(node, { left: x, top: y, behavior: 'instant' });
   }

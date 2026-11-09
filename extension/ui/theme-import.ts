@@ -249,7 +249,7 @@ export async function packageFromZip(zip: Uint8Array): Promise<ReadResult> {
       bytes = raw.slice();
     } else {
       // Never past what it says it holds, which is within its kind's cap and what's left of the package's.
-      try { bytes = await inflate(raw, Math.min(Math.max(e.size, 0), cap)); } catch (err) { return fail(`${name}: ${err.message}`); }
+      try { bytes = await inflate(raw, Math.min(Math.max(e.size, 0), cap)); } catch (err) { return fail(`${name}: ${(err as Error).message}`); } // (inflate's own)
       if (bytes.length !== e.size) return fail(`${name}: it inflates to another size than it says`);
     }
     if (crc32(bytes) !== e.crc) return fail(`${name}: its check (CRC-32) doesn't match`);

@@ -13,9 +13,7 @@
       "dom.iterable",
       "webworker.importscripts"
     ],
-    "strict": false,
-    "strictNullChecks": true,
-    "noImplicitAny": true,
+    "strict": true,
     "skipLibCheck": true
   },
   "include": [

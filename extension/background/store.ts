@@ -47,7 +47,7 @@ async function decide() {
       return await decideOnce();
     } catch (err) {
       if (tries >= 3) throw err;
-      console.warn('[margin] reading who owns the state failed; trying again:', err?.message ?? err);
+      console.warn('[margin] reading who owns the state failed; trying again:', (err as Error | undefined)?.message ?? err);
       await new Promise<any>((resolve) => setTimeout(resolve, 150 * 3 ** tries));
     }
   }
@@ -95,7 +95,7 @@ async function settle(stored: O.Owner | null | undefined, open: Record<string, a
     await api.storage.local.set({ owner: { ...me } });
     if (open?.synced) {
       await api.storage.local.set({ [OPEN_TABS]: { ...open, synced: false } }).catch((err) => {
-        console.warn('[margin] marking the stored tabs unmatched failed:', err?.message ?? err);
+        console.warn('[margin] marking the stored tabs unmatched failed:', (err as Error | undefined)?.message ?? err);
       });
     }
     // The envelope a development build kept (workspace, workspaceBackup):
@@ -218,7 +218,7 @@ async function writeMeta() {
   try {
     await api.storage.local.set(Object.fromEntries(metas.map((collection) => [metaKey(collection), dataMeta[collection]])));
   } catch (err) {
-    console.warn('[margin] saving the data set\'s times failed; trying again with the next write:', err?.message ?? err);
+    console.warn('[margin] saving the data set\'s times failed; trying again with the next write:', (err as Error | undefined)?.message ?? err);
     for (const collection of metas) metaUnsaved.add(collection);
     writeMetaSoon();
   }
@@ -411,7 +411,7 @@ async function flush() {
     if (mark !== undefined) await api.storage.local.set({ [FAVICONS_MARK]: mark });
     retryMs = 250;
   } catch (err) {
-    console.warn('[margin] saving', keys.join(', '), `failed; trying again in ${retryMs}ms:`, err?.message ?? err);
+    console.warn('[margin] saving', keys.join(', '), `failed; trying again in ${retryMs}ms:`, (err as Error | undefined)?.message ?? err);
     for (const key of keys) if (!unsaved.has(key)) unsaved.add(key);
     clearTimeout(retryTimer);
     retryTimer = setTimeout(() => write([]), retryMs);

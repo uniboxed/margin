@@ -278,7 +278,7 @@ export function createLink({
   };
   const sent = (line: string) => {
     sentLines.set(line, Date.now());
-    if (sentLines.size > 50) sentLines.delete(sentLines.keys().next().value);
+    if (sentLines.size > 50) sentLines.delete(sentLines.keys().next().value!); // (it has some)
   };
   function flushHeld() {
     if (heldLost && post(`(${heldLost} earlier notes lost while the native port was down)`)) heldLost = 0;

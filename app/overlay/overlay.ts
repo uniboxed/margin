@@ -448,7 +448,7 @@ function previewFailed(text: string) {
   else importStatus(text, true);
   return false;
 }
-const toBase64 = (bytes: Uint8Array) => { let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); };
+const toBase64 = (bytes: Uint8Array) => { let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000) as unknown as number[]); return btoa(bin); }; // (apply takes an array-like)
 /** What the app read from the picker's choice. */
 async function themeFile(msg: any) {
   const read = await readThemeFile(msg);
@@ -480,7 +480,7 @@ function usePreview() {
   let stored;
   try { stored = encodeStoredTheme(pkg).value; } catch (err) {
     void putBack(before);
-    return importStatus(`Margin couldn’t keep that theme (${String(err?.message ?? err).slice(0, 160)}).`, true);
+    return importStatus(`Margin couldn’t keep that theme (${String((err as Error | undefined)?.message ?? err).slice(0, 160)}).`, true);
   }
   const id = String(stored.id);
   if (saving) clearTimeout(saving.timer);

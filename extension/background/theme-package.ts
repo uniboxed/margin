@@ -24,7 +24,7 @@ export const activeThemeId = (settings: any) => (PACKAGE_THEMES.includes(setting
 
 function base64(bytes: Uint8Array) {
   let bin = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000) as unknown as number[]); // (apply takes an array-like)
   return btoa(bin);
 }
 

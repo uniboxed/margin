@@ -42,13 +42,13 @@ export function tellNotice(windowId: number | null, kind: string, { tabId = null
   if (answered.has(key) || now - (said.get(key) ?? -Infinity) < NOTICE_AGAIN_MS) return false;
   if (!link.linked()) {
     pending.set(key, { windowId, kind, tabId, url, at: now });
-    if (pending.size > 20) pending.delete(pending.keys().next().value);
+    if (pending.size > 20) pending.delete(pending.keys().next().value!); // (it has some)
     return false;
   }
   if (!link.push(windowId ?? null, { type: 'notice', kind, ...(Number.isInteger(tabId) ? { tabId } : {}) })) return false;
   pending.delete(key);
   said.set(key, now);
-  if (said.size > 200) said.delete(said.keys().next().value);
+  if (said.size > 200) said.delete(said.keys().next().value!); // (it has some)
   return true;
 }
 
@@ -75,7 +75,7 @@ export async function linkedAgain({ getTab = (tabId) => api.tabs.get(tabId), now
 /** A button of the notice was chosen: never said again for that page. */
 export function noticeAnswered(kind: string, tabId: number | null, url: string | null) {
   answered.add(keyOf(kind, tabId, url));
-  if (answered.size > 200) answered.delete(answered.values().next().value);
+  if (answered.size > 200) answered.delete(answered.values().next().value!); // (it has some)
 }
 
 /** For tests: nothing said yet. */

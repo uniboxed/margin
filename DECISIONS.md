@@ -3396,3 +3396,36 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
   - The tests and tools are TypeScript too, run as they are; like before, they aren't type-checked (that's thousands of errors in their fakes: a later step).
 - **Nothing slower, nothing changed at run time:** every bundle Safari, Chrome and Margin.app load was compared byte for byte with the build from `main` before the change. The background, content, new-tab, stand-in and overlay bundles are identical; the page's bundle differs in file names inside CSS comments and one arrow function in parentheses; `arcadia.js` in a comment.
 - **File names before this date** in this log are the `.js` ones they were then.
+
+## Strict types (2026-11-09)
+
+- **Asked (Tirth):** strict type checking used properly, not `any` to get things through; any bug found on the way fixed properly.
+- **Now:** `strict: true` in `tsconfig.json` for everything it checks (extension/, app/overlay/, types/). In order:
+  `strictNullChecks`, then `noImplicitAny`, then the default-`any` shim (`types/js-defaults.d.ts`) and the classes'
+  `declare x: any` fields gone, then the rest of `strict` (`noImplicitThis`, `strictFunctionTypes`,
+  `strictBindCallApply`, `useUnknownInCatchVariables`). While a level was part way, `scripts/strict-check.mts` held the
+  folders already done to it; it went once everything was.
+- **Type-only:** every bundle was compared byte for byte with the build before each commit. The few run-time rewrites
+  are equivalent and were read in the bundles' diffs: `k.scroll && k.scroll.y > 0`, `!!k.from`, `!!webKey(k)`,
+  `.filter((r) => r != null)`, link.ts's `mine` declared first, handoff's `!tab ||`, a `then` block in background.ts,
+  render.ts's `said`/`test` split, `r.scroll != null && r.scroll > 0`, the trackpad's `(direction ?? 0) > 0`,
+  `includes(p.get('t') ?? '')`, page-css's `Number(n) / 100`, gestures' `box` alias, and readThemeFile's result built
+  in each branch of its `ok`.
+- **What's typed now:** the browser API Margin uses (`types/browser.d.ts`); the sanitizer's trees (the parsed template,
+  the kept one, CSS component values); the renderer's compiled plans, its bindings and its view's fields; `Rt`, what
+  each behavior is given (ui/runtime.ts); the sidebar's shown pins (shared/view.ts); theme schema nodes; the theme
+  import's results.
+- **Where `any` stays, on purpose:** values that really are anything and are checked where they're read: parsed or
+  stored JSON (`Record<string, any>`, with a comment), the view model's values read by path (render.ts `Scope`), an
+  action's argument once checkAction took it, the behaviors' own answers (`Rt.behaviors`). `!` only where an invariant
+  guarantees it, each with a comment.
+- **Bugs found, fixed** (each its own commit, its test failing first):
+  - createFolder with a tab id that's a number but not a whole one threw instead of making the folder (2185e666).
+  - A double-click on a theme's folder toggle with no `m-arg`, before any folder was toggled, threw in the click
+    handler (behaviors/rename.ts undoToggle read the last toggle's time though there was none), in both engines (a1c0ead5).
+- **Looked like bugs, weren't:** Settings' Remove-theme prompt reads `rt.host.userThemes`, which the shared `Host` type
+  didn't have; Margin.app's host has it (a getter: ui/host-app.ts), the type has it now.
+- **A flaky test seen:** `link: which page is shown` (tests/link.test.ts) timed out once in a full parallel run (its
+  2 s wait for a `windows` message); alone it passes. Not changed.
+- **Not yet:** the tests and tools aren't type-checked. Under `strict` that's 7,377 errors (3,934 with `noImplicitAny`
+  off), mostly their untyped fakes and fixtures, and it needs `@types/node` added: a later step, if wanted.

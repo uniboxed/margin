@@ -80,7 +80,7 @@ export function startCoords(box: Box) {
   const mouse = MouseEvent.prototype;
   const clientX = find(mouse, 'clientX').get;
   const clientY = find(mouse, 'clientY').get;
-  const define = (name: string, get: () => any) => Object.defineProperty(mouse, name, { configurable: true, enumerable: true, get });
+  const define = (name: string, get: (this: MouseEvent) => any) => Object.defineProperty(mouse, name, { configurable: true, enumerable: true, get });
   // Whole pixels for a mouse event, as WebKit's own (a pointer event's are fractions): a page may send them on.
   const Pointer = window.PointerEvent;
   const asOwn = (event: Event, v: number) => (Pointer && event instanceof Pointer ? v : Math.round(v));

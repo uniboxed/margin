@@ -7,7 +7,7 @@
 import { absolute, inlineImports } from '../shared/sheet-copy.ts';
 
 // `send`: to the background (content/core.ts).
-export function startPageLink(send: (type: string, payload?: any, timed?: boolean) => Promise<any>) {
+export function startPageLink(send: (type: 'injectPage' | 'fetchStyle', payload?: any, timed?: boolean) => Promise<any>) {
   const html = document.documentElement;
   // Pages that aren't HTML have no box.
   const can = html instanceof HTMLHtmlElement;

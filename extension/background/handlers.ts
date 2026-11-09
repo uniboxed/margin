@@ -219,7 +219,7 @@ async function handOff(tab: BrowserTab) {
     // The page the user was on couldn't come back: the new tab stays, and
     // is tracked from here.
     keepHandedOff(tab.id);
-    return log('kept', `tab ${prev.id} didn't come back: ${err?.message ?? err}`), false;
+    return log('kept', `tab ${prev.id} didn't come back: ${(err as Error | undefined)?.message ?? err}`), false;
   }
   await mutate((st) => M.removeTab(st, tab.id)).catch(() => {});
   noteClosing([tab.id], 'done');

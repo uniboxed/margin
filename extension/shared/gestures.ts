@@ -88,7 +88,7 @@ function pageScrollsX(event: WheelEvent, doc: Document | undefined) {
 // Keep wheel events over `el` (a panel in a shadow root) from scrolling the
 // page: let them scroll a list inside `el` that can move that way, else
 // cancel them. Pinches (⌃+wheel) are left to the page-wide guard.
-function containScroll(el: Element) {
+function containScroll(el: HTMLElement) {
   el.addEventListener('wheel', (event: WheelEvent) => {
     if (!event.cancelable || event.ctrlKey) return;
     const axis = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? 'x' : 'y';

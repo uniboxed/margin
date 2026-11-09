@@ -269,7 +269,7 @@ export function checkManifest(text: string, { files = [] }: { files?: string[] |
     if (typeof text !== 'string' || text.length > LIMITS.manifestBytes) throw new Error(`not text, or larger than ${LIMITS.manifestBytes} bytes`);
     raw = JSON.parse(text);
   } catch (e) {
-    return { manifest: null, removed, errors: [`theme.json: ${e.message}`] };
+    return { manifest: null, removed, errors: [`theme.json: ${(e as Error).message}`] }; // (JSON.parse's, or the one above)
   }
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { manifest: null, removed, errors: ['theme.json: not an object'] };
   const twice = duplicateKey(text);

@@ -149,7 +149,6 @@ const node = process.execPath;
 const quiet = ['--test-reporter=dot'];
 let ok = step('build', node, [join(ROOT, 'scripts/build.ts')]);
 ok = step('type check', node, [join(ROOT, 'node_modules/typescript/bin/tsc'), '-p', '.']) && ok;
-ok = step('strict check', node, [join(ROOT, 'scripts/strict-check.mts')]) && ok;
 if (plan.unit.length) ok = step(`unit (${plan.unit.length} files)`, node, ['--test', ...quiet, ...plan.unit.map(rel)]) && ok;
 if (plan.theme.length) ok = step(`theme (${plan.theme.length} files)`, node, ['--test', ...quiet, '--test-concurrency=2', ...plan.theme.map(rel)]) && ok;
 if (plan.swift) ok = step('Swift unit checks', join(ROOT, 'tools/app-tests/run.sh'), ['unit'], { WINDOW_RUNS: process.env.WINDOW_RUNS ?? '50', VISIBLE_RUNS: process.env.VISIBLE_RUNS ?? '80' }) && ok;

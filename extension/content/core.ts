@@ -115,7 +115,7 @@ export function startCore() {
       if (res?.stale) return void standDown();
       if (res) return void console.warn('[margin]', type, res.error);
     } catch (err) {
-      if (err?.message === NO_ANSWER) return void console.warn('[margin]', type, 'no answer from the background (yet)');
+      if ((err as Error | undefined)?.message === NO_ANSWER) return void console.warn('[margin]', type, 'no answer from the background (yet)');
       if (!retry) return void console.warn('[margin]', type, err);
     } finally {
       clearTimeout(timer);
@@ -286,7 +286,7 @@ export function startCore() {
     tellViewport();
     layout.settle();
   };
-  for (const type of ['pointermove', 'pointerdown']) addEventListener(type, learnOrigin, { capture: true, passive: true });
+  for (const type of ['pointermove', 'pointerdown'] as const) addEventListener(type, learnOrigin, { capture: true, passive: true });
   // (Nothing said while the page's area is the whole window: the copy keeps only the tab in front's word.)
   let toldViewport = 'null';
   function tellViewport() {

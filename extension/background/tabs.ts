@@ -489,7 +489,7 @@ export async function openBehind({ windowId, url, from, then, created, label, de
   try {
     await then?.(tab);
   } catch (err) {
-    return notShown(String(err?.message ?? err));
+    return notShown(String((err as Error | undefined)?.message ?? err));
   }
   const until = Math.min(asked + maxMs, (deadline ?? Infinity) - FOCUS_MS);
   const loaded = await untilLoaded(tab.id, () => until, left, from.id);
@@ -500,7 +500,7 @@ export async function openBehind({ windowId, url, from, then, created, label, de
   try {
     await focusTab(tab.id, { source: `new tab (${loaded} after ${Date.now() - asked} ms)`, raise: false });
   } catch (err) {
-    return notShown(String(err?.message ?? err));
+    return notShown(String((err as Error | undefined)?.message ?? err));
   }
   void told('switch-done');
   return { tabId: tab.id, shown: tab.id };

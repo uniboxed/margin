@@ -360,7 +360,7 @@ export async function showSpace(windowId: number | null | undefined, spaceId: st
     } catch (err) {
       // Closed meanwhile: the next one. Anything else (Safari didn't switch,
       // too late) is this switch failing, not a reason to open a start page.
-      if (!/No tab with id/i.test(String(err?.message ?? err))) {
+      if (!/No tab with id/i.test(String((err as Error | undefined)?.message ?? err))) {
         if (!anyFocusing()) await goBack();
         throw err;
       }
