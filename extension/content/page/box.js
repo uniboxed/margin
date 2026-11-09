@@ -77,6 +77,8 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     rulesEdited: () => ctx.watch.rulesEdited(),
     /** What a rule has to match to matter to a read: see sheets.js. */
     reachable: () => [ctx.html, document.body, ...ctx.chain.nodes()],
+    /** Runs before each read of the page, before anything of it is styled or laid out. @type {(() => void)[]} */
+    onBeforeRead: [],
     /** Runs after each read of the page. @type {(() => void)[]} */
     onRead: [],
     /** Children came or went somewhere in the page (sheets.js's observer). */

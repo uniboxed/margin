@@ -60,6 +60,7 @@ export function startBody(ctx) {
   // next layout ten times as long (8 ms against 72 on 20,000 rows).
   function readWithout(read, keepScroll, apply) {
     const { body } = document;
+    for (const fn of box.onBeforeRead) fn(); // sheets.js: the page's sheets as they'll be
     const kept = keepScroll ? ctx.scrollOf(body) : null; // laid out narrower, it may not scroll as far
     if (!held) moves.echo();
     styleNow();

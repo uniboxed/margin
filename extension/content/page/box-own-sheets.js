@@ -18,8 +18,16 @@ export function createOwnSheets() {
     back: sheet(), // <body>'s background drawn on <body> (box-locks.js checkBackground)
   };
   const ours = [sheets.box, sheets.fit, sheets.scroll, sheets.padding, sheets.read, sheets.back];
+  // Each written only when its text changes: WebKit styles the whole page again after any sheet is replaced,
+  // even with the same text (20,000 rules: about 80 ms).
+  /** @type {Map<CSSStyleSheet, string>} */
+  const written = new Map();
   /** @param {CSSStyleSheet} target @param {string} css */
-  const replace = (target, css) => replaceSync.call(target, css);
+  const replace = (target, css) => {
+    if (written.get(target) === css) return;
+    written.set(target, css);
+    replaceSync.call(target, css);
+  };
 
   // Never dropped by a page that assigns its own list, or edits the one it has,
   // which goes through a proxy of it, one that lets the page's edits be seen.
@@ -72,7 +80,10 @@ export function createOwnSheets() {
       },
     });
     write();
-    replace(sheets.fit, bodyFitCss());
+    // As most pages' <body> ends up (it grows with its content: 23 of 27 sites looked at), so the first read
+    // usually finds it so and writes nothing (box-body.js writeFit). Nothing shows it before then: that read
+    // comes with <body>.
+    replace(sheets.fit, bodyFitCss({ grows: true }));
     replace(sheets.read, `${STILL_CSS} ${SAID_CSS}`);
     adopt();
   }

@@ -17,6 +17,7 @@ export function startLocks(ctx) {
   function checkLocks() {
     const { body } = document;
     if (!box.on || !body || body.localName !== 'body') return;
+    for (const fn of box.onBeforeRead) fn(); // sheets.js: what's said about overflow as the box's queries say it
     const root = getComputedStyle(ctx.html);
     // The page's own overflow-x on <html> (hidden, auto, scroll) would make the box's clip up and down hidden, which
     // reads below as the page locking <html>: then the box clips only sideways, and what the page says up and down

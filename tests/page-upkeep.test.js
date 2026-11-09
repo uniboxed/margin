@@ -119,7 +119,7 @@ for (const name of ['HTMLStyleElement', 'HTMLLinkElement']) {
 const box = {
   on: true, dw: 268, dh: 16, ours: [],
   boxed: () => true, seenW: () => 268, seenH: () => 16, toPage: (rect) => rect,
-  onMove: [], onRest: [], onToggle: [], onBody: [], onCatchUp: [], onRead: [],
+  onMove: [], onRest: [], onToggle: [], onBody: [], onCatchUp: [], onBeforeRead: [], onRead: [],
   bodyMayHaveChanged() {}, rulesEdited() {}, childrenChanged() {}, loaded() {},
   reachable: () => [html, body], ownFlag: () => false,
 };
@@ -246,6 +246,21 @@ test('sheets: @media rules a page took out are swept as they pile up, not only w
   run(box.onRest);
   box.seenW = () => 268;
   assert.deepEqual(sheet.cssRules.map((rule) => rule.media.mediaText), ['(min-width: 900px)', '(min-width: 900px)'], 'the rules still there still follow the box');
+});
+
+test('sheets: a read walks the page\'s sheets it hasn\'t seen first, so it sees their queries as the box\'s, and walks none twice', () => {
+  const sheet = new CSSStyleSheet(); // a <link>'s, say, not yet looked through by a pass
+  sheet.cssRules = [new CSSMediaRule(sheet)];
+  document.styleSheets.push(sheet);
+  try {
+    run(box.onBeforeRead);
+    assert.equal(sheet.cssRules[0].media.mediaText, '(min-width: 868px)', 'moved for the box before the read');
+    sheet.cssRules[0].media.mediaText = '(min-width: 1px)';
+    run(box.onBeforeRead);
+    assert.equal(sheet.cssRules[0].media.mediaText, '(min-width: 1px)', 'a sheet already walked isn\'t walked again');
+  } finally {
+    document.styleSheets.splice(document.styleSheets.indexOf(sheet), 1);
+  }
 });
 
 // ---- layout.js ----------------------------------------------------------------

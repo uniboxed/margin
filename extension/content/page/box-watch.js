@@ -135,8 +135,10 @@ export function startWatch(ctx) {
     attributeWatch.observe(body, ATTRIBUTES);
     ctx.locks.forgetBody(); // what's said about the old one mustn't read as the new one's
     stale();
-    ctx.body.measureBody();
+    // Its scroll first: its sheet then comes in the restyle the read starts with, not one after it (WebKit
+    // styles the whole page again for each sheet edited). Neither looks at what the other writes.
     ctx.locks.checkLocks();
+    ctx.body.measureBody();
     for (const fn of box.onBody) fn();
   }
   function childrenAdded(records) {
