@@ -1,5 +1,5 @@
 //! Margin for Windows' OS layer (native/BRIEF.md, "The plan" step 1): each module a small API the shell
-//! drives (the shell itself, Shell.swift's counterpart, comes later). `main.rs` is the executable.
+//! drives; the shell itself is margin-core's (`margin_core::shell`), driven by host.rs. `main.rs` is the executable.
 //!
 //! The modules without `cfg(windows)` are OS-neutral and tested on the Mac (`cargo test -p margin-windows`);
 //! the rest is Win32 and only compile-checked there (`--target x86_64-pc-windows-msvc`). Rules for the Win32
@@ -12,6 +12,7 @@ pub mod args;
 pub mod bridge;
 pub mod frames;
 pub mod handshake;
+pub mod host;
 pub mod install;
 pub mod instance;
 pub mod keys;

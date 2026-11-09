@@ -239,6 +239,15 @@ impl Overlay {
         }
     }
 
+    /// Seen (255) or unseen where it is (0): the shell's `conceal` (its window missing from one read, its page in
+    /// full screen). The pointer passes through it meanwhile (`set_pass_through`, the shell's).
+    pub fn set_alpha(&self, alpha: u8) {
+        // SAFETY: our layered window, on its own thread.
+        if let Err(e) = unsafe { SetLayeredWindowAttributes(self.hwnd, COLORREF(0), alpha, LWA_ALPHA) } {
+            crate::log::warn(format!("overlay: SetLayeredWindowAttributes failed: {}", error_text(e)));
+        }
+    }
+
     pub fn pass_through(&self) -> bool {
         // SAFETY: a plain read of our window.
         let ex = unsafe { GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) } as u32;

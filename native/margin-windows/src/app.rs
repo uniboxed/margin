@@ -4,11 +4,8 @@
 //! every coordinate is then physical pixels, screens.rs), `%LOCALAPPDATA%\Margin`'s folders and the log, the
 //! single instance (instance.rs: a second launch exits here), COM for WebView2 (single-threaded apartment on
 //! this, the UI thread), the native-messaging host's registration (install.rs, rewritten at every launch) and
-//! Margin's message window. `run` then starts the pipe and runs the message loop.
-//!
-//! TODO(shell): the shell (Shell.swift's counterpart) is written apart. It takes `App`, the pipe's events, the
-//! windows (browsers.rs), the overlays (overlay.rs, webview.rs), the pointer (pointer.rs) and the keys
-//! (hotkeys.rs) from here; until then the app links relays and logs what they do.
+//! Margin's message window. `run` then hands the app to the shell's driver (host.rs: the pipe, the windows, the
+//! overlays, the keys, margin-core's `Shell`), which runs the message loop.
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -20,10 +17,8 @@ use windows::Win32::UI::WindowsAndMessaging::{DispatchMessageW, GetMessageW, MSG
 use crate::handshake::BUILD;
 use crate::instance::{Claim, Instance};
 use crate::log;
-use crate::msgwin::{MessageWindow, message_id};
+use crate::msgwin::MessageWindow;
 use crate::paths::Paths;
-use crate::pipe::{PipeEvent, PipeServer};
-use crate::queue::ui_channel;
 use crate::win::error_text;
 
 /// What a started app has.
@@ -37,9 +32,6 @@ pub struct App {
     /// Held until the app quits: the single instance.
     _instance: Option<Instance>,
 }
-
-/// The pipe's wake message on the message window.
-pub const PIPE_WAKE: u32 = message_id(0);
 
 /// Starts the app. `Ok(None)`: another Margin of this user's session is running (this one should exit).
 pub fn boot(login: bool) -> Result<Option<App>, String> {
@@ -106,41 +98,14 @@ pub fn message_loop() -> i32 {
     }
 }
 
-/// The app mode: boot, the pipe, the loop.
+/// The app mode: boot, then the shell (host.rs) until the loop ends.
 pub fn run(login: bool) -> i32 {
-    let app = match boot(login) {
-        Ok(Some(app)) => app,
-        Ok(None) => return 0,
+    match boot(login) {
+        Ok(Some(app)) => crate::host::run(app),
+        Ok(None) => 0,
         Err(e) => {
             log::warn(format!("Margin couldn't start: {e}"));
-            return 1;
+            1
         }
-    };
-    let (tx, rx) = ui_channel::<PipeEvent>(app.window.waker(PIPE_WAKE));
-    let server = match PipeServer::start(&app.sid, tx) {
-        Ok(s) => Some(s),
-        Err(e) => {
-            log::warn(format!("no link with the browsers: {e}"));
-            None
-        }
-    };
-    app.window.on(PIPE_WAKE, move |_, _| {
-        for event in rx.drain() {
-            match event {
-                PipeEvent::Connected { id, hello, relay_pid } => log::note(format!(
-                    "relay {id} linked: {} (pid {}), relay pid {relay_pid}",
-                    hello.browser,
-                    hello.pid.map(|p| p.to_string()).unwrap_or("?".into())
-                )),
-                PipeEvent::Frame { .. } => {}
-                PipeEvent::Closed { id, why } => log::note(format!("relay {id} gone: {why}")),
-                PipeEvent::Refused { why } => log::warn(format!("the pipe refused {why}")),
-                PipeEvent::Trouble { why } => log::warn(format!("the pipe: {why}")),
-            }
-        }
-    });
-    let code = message_loop();
-    drop(server);
-    log::note("Margin quits");
-    code
+    }
 }

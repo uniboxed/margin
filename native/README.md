@@ -33,9 +33,10 @@ Nothing of it runs on the Mac: there it's compile-checked
    `setx MARGIN_EXTENSION_IDS <id>` (several: commas) in a new terminal before starting `margin.exe`. The Chrome build
    doesn't have the `nativeMessaging` permission or the Chromium link yet (BRIEF.md, "The plan" step 2): until it
    lands, add `"nativeMessaging"` to the unpacked build's `manifest.json` by hand to try the relay.
-6. **Start it.** Run `margin.exe` (no arguments). It has no window of its own yet (the shell comes next): it registers
-   the host, listens on its pipe and logs. A second launch exits at once. To quit it: Task Manager, or
-   `taskkill /im margin.exe`.
+6. **Start it.** Run `margin.exe` (no arguments). It has no window of its own: it registers the host, listens on its
+   pipe, and once a linked Chrome or Edge is in front follows its windows and draws the overlay over each full-screen
+   one (F11), as Margin.app does over full-screen Safari (`margin_core::shell`, driven by `margin-windows/src/host.rs`).
+   A second launch exits at once. To quit it: Task Manager, or `taskkill /im margin.exe`.
 
 ### The host registration
 

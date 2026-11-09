@@ -121,3 +121,44 @@ why it might be wrong, how to check. Logs: `%LOCALAPPDATA%\Margin\logs\margin.lo
   PerMonitorV2) with a build script.
 - **The log rotating while several relays append.** Rust opens files with FILE_SHARE_DELETE, so a rename while
   another process writes should work. Check: many relays at once (several profiles), relay.log rotates.
+
+## The shell's glue (margin-core `shell`, margin-windows `host.rs`)
+
+Ported from Shell.swift and tested on the Mac with fake inputs; what only Windows can confirm:
+
+- **The relay's facts win.** A hello is rewritten with the relay's `browser` (`chrome`/`edge`) and `pid` before the
+  link reads it, so Edge's copy is `edge:<profile>` (its data under `data\edge\…`). Check: Edge and Chrome linked at
+  once; margin.log says `hello: edge:p-…` and `hello: chrome:p-…`, and each overlay's `platform.browser` is right.
+- **A link's windows are its relay pid's process tree.** Chromium's top-level windows belong to its main process (the
+  relay's pid); the driver maps each window's process to its main one (same executable up its parents). Check: Chrome
+  and Chrome Beta (or two user-data folders) open at once: each binds only its own windows (margin.log's binder lines).
+- **Only full-screen windows get an overlay** (F11), as on the Mac (`windowedToo` off: `Options::windowed_too`).
+  `fills_display` takes a monitor's whole rect (no top inset). Check: F11 in Chrome: the overlay shows within a second;
+  a maximized window gets none; leaving F11 puts it away and the copy hears `drawn` off 1.5 s later.
+- **The front window while an overlay has the keyboard.** Windows makes the overlay the foreground window (the Mac's
+  panel never is); the shell then takes the overlay's browser as in front, so the keys stay held. Check: Ctrl+T, type
+  in the palette, Ctrl+T again closes it; Escape gives the keyboard back to Chrome.
+- **A lost foreground blurs the page** (the Mac's `blur`): clicking the browser while the palette has the keyboard
+  closes it. Check: open the palette, click the page: it closes, and Chrome takes the typing.
+- **`conceal` is alpha 0 on the layered window** (`Overlay::set_alpha`), the pointer passing through: a window missing
+  from one read, or its page (a video) in full screen. Check: a video full screen in a full-screen Chrome: no sidebar
+  over it, only the tab and space keys held; back: the sidebar again.
+- **Restacking.** Each read checks the overlay is just above its window (`stacked_above` over EnumWindows' order) and
+  restacks it if not. Check: click Chrome's page; the overlay is back above it within a read (at most 250 ms).
+- **Reads coalesced to 60 a second** (`READ_GAP`): a drag's location events are one read per 16 ms. Check: drag a
+  window: CPU stays modest.
+- **Reconnecting.** A relay gone (the port closed, the service worker restarted): the overlays stay 6 s with
+  `link: reconnecting`, then close; a relay linking again within that takes them back. Check: reload Margin in
+  `chrome://extensions`: the overlay dims and comes back.
+- **The theme picker** is `IFileOpenDialog` on its own thread, owned by the overlay's window: `.margintheme` files, or a
+  theme folder's `theme.json` (its folder imported). Check: Settings › Import theme: the dialog comes up in front of
+  full-screen Chrome; a folder through its theme.json imports; Cancel does nothing.
+- **`copyText`** writes `CF_UNICODETEXT`. Check: copy a link from the overlay, paste it in Notepad.
+- **The quit.** On WM_QUIT the shell says `bye` on each link before the pipe closes; the writes may not reach the
+  relays (the pipe is dropped right after). Check: quit Margin; relay.log says the app said goodbye.
+- **The profile switch** (close-based, `ProfileSwitch`) with Chromium's words (`BrowserWords::chromium`): a profile
+  with no window can't be opened by Margin yet (`--profile-directory` isn't wired). Check: two Chrome profiles' spaces
+  in one sidebar; a switch opens the other profile's window full screen and closes the old one (or keeps it with a
+  draft); a profile with no window says how to open one.
+- **One clock.** The shell runs on the wall clock (`time::now`, as the copies' `focusedAt` are); a clock change while
+  it runs shifts its timers once. Check: change the time in Settings while linked: nothing sticks.
