@@ -3,6 +3,7 @@ import * as V from '../shared/view.js';
 import { api, cached, isSynced, load, mutate, now, recheckSoon, StaleError } from './store.js';
 import { anyFocusing, focusTab, openTab, tellApp, tellPage } from './tabs.js';
 import { appLog } from './switch-log.js';
+import { showTab } from './away.js';
 import { NAV_CHAIN_MS, OVERLAY_SWITCH_PREFIX } from '../shared/switching.js';
 
 // Next/previous tab and space. Three delivery paths land here: Margin.app's
@@ -267,7 +268,7 @@ async function runPress(windowId, press, run) {
       return shownPage.then((shown) => shown && tellPage(shown, { type, tabId: next, from: shown.id, switchId: press.switchId, ...(reason ? { reason } : {}) }, { app: false }));
     };
     try {
-      await focusTab(next, { source: press.action });
+      await showTab(next, windowId, { source: press.action }); // one in another window comes here (app/WINDOWS.md §9)
     } catch (err) {
       run.shown = null;
       if (keyRun) keyRun.failed++;

@@ -516,15 +516,15 @@ function askOpenTabs() {
   return asking;
 }
 export const openTabsAsked = () => openAsked ?? askOpenTabs();
-// `onSync({ state, renumbered, fresh })`: told after the sync (in the queue).
+// `onSync({ state, renumbered, fresh, tabs })`: told after the sync (in the queue), with Safari's open tabs.
 // Any sync that went through lets pages trust the stored tabs (markSynced).
-/** @param {{ fresh?: boolean, onSync?: (sync: { state: State, renumbered: boolean, fresh: boolean }) => void }} [options] */
+/** @param {{ fresh?: boolean, onSync?: (sync: { state: State, renumbered: boolean, fresh: boolean, tabs: any[] }) => void }} [options] */
 export function resync({ fresh, onSync } = {}) {
   return mutate(async (s) => {
     const tabs = await askOpenTabs();
     const isFresh = fresh ?? (await isFreshSession());
     const next = M.syncTabs(s, tabs, { fresh: isFresh, now: now() });
-    onSync?.({ state: next, renumbered: M.isRenumbered(s, tabs, { fresh: isFresh }), fresh: isFresh });
+    onSync?.({ state: next, renumbered: M.isRenumbered(s, tabs, { fresh: isFresh }), fresh: isFresh, tabs });
     return next;
   }).then(async (next) => {
     await markSynced();

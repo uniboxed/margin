@@ -183,7 +183,7 @@ test('a tab that isn\'t open, clicked: it opens in the window where it was click
   assert.equal(opened.mid, kept.id, 'the same Margin tab');
   assert.equal(s.tabSpace[opened.id], 'work');
   assert.equal(s.keptTabs[kept.id], undefined, 'open now');
-  assert.deepEqual(V.sidebar(s, 1, opened.id).tabs.map((t) => t.url), ['https://c.test/', 'https://a.test/'], 'its place kept (Work: c above a)');
+  assert.deepEqual(V.sidebar(s, 1, opened.id).tabs.filter((t) => t.windowId === 1).map((t) => t.url), ['https://c.test/', 'https://a.test/'], 'its place kept (Work: c above a; e, window 2\'s, is listed too)');
   // From another window (Margin.app names the window): it opens there.
   await closeInSafari(opened.id, true);
   await settled();

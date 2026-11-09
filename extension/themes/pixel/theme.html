@@ -61,7 +61,7 @@
                   <span class="folder-count">{{g.count}}</span>
                 </button>
                 <m-for each="g.shown" as="t">
-                  <a class="row tab pin" data-pin-id="{{t.id}}" title="{{t.title}}" m-class:on="{{t.active}}" m-class:behind="{{t.behind}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:open="{{t.open}}" m-action="pin.open" m-arg="{{t.id}}" m-drag="pin">
+                  <a class="row tab pin" data-pin-id="{{t.id}}" title="{{t.title}}" m-class:on="{{t.active}}" m-class:behind="{{t.behind}}" m-class:away="{{t.away}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:open="{{t.open}}" m-action="pin.open" m-arg="{{t.id}}" m-drag="pin">
                     <span class="cursor" aria-hidden="true"><svg class="pix now" viewBox="0 0 7 9"><path d="M0 0h2v9H0zM2 1h2v7H2zM4 2h2v5H4zM6 3h1v3H6z"></path></svg><svg class="pix was" viewBox="0 0 7 9"><path d="M0 0h1v9H0zM1 0h1v1H1zM1 8h1v1H1zM2 1h2v1H2zM2 7h2v1H2zM4 2h2v1H4zM4 6h2v1H4zM6 3h1v3H6z"></path></svg></span>
                     <m-if test="t.icon">
                       <img class="fav" alt="" m-icon="{{t.icon}}">
@@ -77,7 +77,7 @@
                 </m-for>
               </div>
               <m-else>
-                <a class="row tab pin loose" data-pin-id="{{g.id}}" title="{{g.title}}" m-class:on="{{g.active}}" m-class:behind="{{g.behind}}" m-class:asleep="{{g.asleep}}" m-class:busy="{{g.loading}}" m-class:open="{{g.open}}" m-action="pin.open" m-arg="{{g.id}}" m-drag="pin">
+                <a class="row tab pin loose" data-pin-id="{{g.id}}" title="{{g.title}}" m-class:on="{{g.active}}" m-class:behind="{{g.behind}}" m-class:away="{{g.away}}" m-class:asleep="{{g.asleep}}" m-class:busy="{{g.loading}}" m-class:open="{{g.open}}" m-action="pin.open" m-arg="{{g.id}}" m-drag="pin">
                   <span class="cursor" aria-hidden="true"><svg class="pix now" viewBox="0 0 7 9"><path d="M0 0h2v9H0zM2 1h2v7H2zM4 2h2v5H4zM6 3h1v3H6z"></path></svg><svg class="pix was" viewBox="0 0 7 9"><path d="M0 0h1v9H0zM1 0h1v1H1zM1 8h1v1H1zM2 1h2v1H2zM2 7h2v1H2zM4 2h2v1H4zM4 6h2v1H4zM6 3h1v3H6z"></path></svg></span>
                   <m-if test="g.icon">
                     <img class="fav" alt="" m-icon="{{g.icon}}">
@@ -116,7 +116,7 @@
 
           <div class="today">
             <m-for each="space.today" as="t">
-              <a class="row tab" data-tab-id="{{t.id}}" title="{{t.title}}" m-class:on="{{t.active}}" m-class:behind="{{t.behind}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:not-open="{{t.notOpen}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
+              <a class="row tab" data-tab-id="{{t.id}}" title="{{t.title}}" m-class:on="{{t.active}}" m-class:behind="{{t.behind}}" m-class:away="{{t.away}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:not-open="{{t.notOpen}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
                 <span class="cursor" aria-hidden="true"><svg class="pix now" viewBox="0 0 7 9"><path d="M0 0h2v9H0zM2 1h2v7H2zM4 2h2v5H4zM6 3h1v3H6z"></path></svg><svg class="pix was" viewBox="0 0 7 9"><path d="M0 0h1v9H0zM1 0h1v1H1zM1 8h1v1H1zM2 1h2v1H2zM2 7h2v1H2zM4 2h2v1H4zM4 6h2v1H4zM6 3h1v3H6z"></path></svg></span>
                 <m-if test="t.icon">
                   <img class="fav" alt="" m-icon="{{t.icon}}">

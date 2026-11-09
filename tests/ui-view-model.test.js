@@ -27,7 +27,7 @@ test('sections and order: the pinned area (folders and loose pins by position), 
   assert.deepEqual(ids(projects.pins), ['pc']);
   assert.deepEqual(ids(projects.shown), ['pc'], 'a closed folder still shows the pin of the tab in front');
   assert.equal(projects.hasShown, true);
-  assert.deepEqual(ids(vm.space.today), [15, 14, 12], 'pinned tabs are their pins\' rows; the rest newest first');
+  assert.deepEqual(ids(vm.space.today), [15, 14, 12, 16], 'pinned tabs are their pins\' rows; the rest newest first, the other window\'s too (app/WINDOWS.md §9)');
   assert.equal(vm.space.hasToday, true);
   assert.equal(vm.space.hasPinned, true);
   assert.equal(vm.space.newTab.active, false);
@@ -59,7 +59,7 @@ test('rows: icons from the stored favicons, a letter and color without one, slee
   assert.equal(row(14).letter, 'N');
   assert.match(row(14).color, /^hsl\(\d+ 55% 48%\)$/);
   assert.equal(row(15).title, 'https://shop.example/', 'no title: its address (as Arcadia)');
-  assert.deepEqual(Object.keys(row(12)).sort(), ['active', 'asleep', 'audible', 'behind', 'color', 'host', 'icon', 'id', 'kind', 'letter', 'loading', 'notOpen', 'open', 'pinned', 'title', 'url']);
+  assert.deepEqual(Object.keys(row(12)).sort(), ['active', 'asleep', 'audible', 'away', 'behind', 'color', 'host', 'icon', 'id', 'kind', 'letter', 'loading', 'notOpen', 'open', 'pinned', 'title', 'url']);
   assert.deepEqual([pin('pa').open, pin('pa').tabId, pin('pa').asleep, pin('pa').nested], [true, 11, true, true], 'a pin open in a sleeping tab');
   assert.deepEqual([pin('pb').open, pin('pb').tabId, pin('pb').active], [false, null, false], 'a pin not open');
   assert.deepEqual([pin('pc').active, pin('pc').folderId], [true, 'f2']);
@@ -76,8 +76,8 @@ test('rows: icons from the stored favicons, a letter and color without one, slee
 
 test('spaces, the active tab, the window, the archive', () => {
   const vm = build(smallState());
-  assert.deepEqual(vm.spaces.map((s) => [s.id, s.abbr, s.active, s.tabCount, s.index, s.number]), [['home', 'HO', true, 5, 0, 1], ['work', 'DW', false, 1, 1, 2], ['side', 'SI', false, 0, 2, 3]], 'number: the place counted from 1 (Pixel\'s "WORLD 2-1")');
-  assert.deepEqual([vm.space.name, vm.space.emoji, vm.space.color, vm.space.abbr, vm.space.tabCount, vm.space.number], ['Home', '🏠', '#6c5ce7', 'HO', 5, 1]);
+  assert.deepEqual(vm.spaces.map((s) => [s.id, s.abbr, s.active, s.tabCount, s.index, s.number]), [['home', 'HO', true, 6, 0, 1], ['work', 'DW', false, 1, 1, 2], ['side', 'SI', false, 0, 2, 3]], 'number: the place counted from 1 (Pixel\'s "WORLD 2-1")');
+  assert.deepEqual([vm.space.name, vm.space.emoji, vm.space.color, vm.space.abbr, vm.space.tabCount, vm.space.number], ['Home', '🏠', '#6c5ce7', 'HO', 6, 1], 'every window\'s, as its list');
   assert.equal(build({ ...smallState(), activeSpaceByWindow: { [W]: 'work' } }).space.number, 2, 'the space in front\'s own place');
   assert.equal(buildViewModel({ state: null, ui: {}, platform: PLATFORM, settings: {} }).space.number, 1, 'before the state: 1, never 0');
   assert.deepEqual([vm.tab.id, vm.tab.host, vm.tab.pinned, vm.tab.asleep, vm.tab.newTab], [13, 'docs.example', true, false, false], 'the window\'s active tab');
@@ -185,7 +185,7 @@ test('sharing: a new tab, a folder opened, an icon learned, a space switched, th
   const a = build(state);
   // A new tab: its row at the top, every other row the same object.
   const added = build({ ...state, tabs: { ...state.tabs, 30: { id: 30, windowId: W, index: 9, url: 'https://new.example/', title: 'New', favIconUrl: '', active: false, lastActive: 9 } }, tabSpace: { ...state.tabSpace, 30: 'home' } }, {}, a);
-  assert.deepEqual(ids(added.space.today), [30, 15, 14, 12]);
+  assert.deepEqual(ids(added.space.today), [30, 15, 14, 12, 16]);
   added.space.today.slice(1).forEach((row, i) => assert.equal(row, a.space.today[i]));
   assert.equal(added.space.pinned, a.space.pinned);
   assert.notEqual(added.spaces, a.spaces, 'the space\'s tab count');

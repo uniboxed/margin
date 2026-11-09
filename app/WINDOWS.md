@@ -160,9 +160,11 @@ one window at a time, so **the tab follows the window in front**:
 
 ### 9.1 The model (state/model.js)
 
-- **Each window's chosen tab** (`selectedByWindow[windowId] = tabId`) is apart from where the Safari tab is
-  (`tab.windowId`). Today the two are the same; with this they may differ: a window whose chosen tab is in
-  another window shows it **away**.
+- **Each window's chosen tab** is its tab in front, as before, unless it shows one **away**:
+  `awayByWindow[windowId] = tabId`, a tab live in another window (stored with the open tabs, `openTabs`; a
+  relaunch's fresh sync forgets it). A tab of its own coming to the front of the window clears it
+  (`M.activateTab`), as does the tab closing or the window going (`M.removeTab`, `windows.onRemoved`).
+  `shared/view.js sidebar` marks that row `active` and `away`; themes draw it faded (`themes/README.md`).
 - **A space's tab list is the space's, not a window's**: the tabs of the space in every window of the profile, in
   one order (`order`, placed among the space's tabs, not the window's). A tab that moves windows keeps its place.
 - **The stand-in**: a window showing a tab away has Margin's own page in front (`away.html`), never a Margin tab
@@ -199,7 +201,30 @@ one window at a time, so **the tab follows the window in front**:
 - The sidebar's list for a space is the same work as now over all of the profile's windows' tabs (a few
   hundred at most).
 
-### 9.5 First: the probe (`devswitch probe tabMove`, Test A only)
+### 9.5 As built (2026-11-09)
+
+- `background/away.js`: `bringTab` (the move: picture, `setAway`, stand-in, `tabs.move` to the window's strip index
+  for the tab's place, `focusTab`), `showTab` (what `activateTab`, `openPin` and the next/previous-tab keys use),
+  `focusChanged` (the follow, settled 120 ms, only for a window in front whose chosen tab is away),
+  `shownIn` / `tabClosed` / `windowGone` (stand-ins closed), `sweep` (stand-ins left from before the
+  background started: with the start's own sync's tabs, no extra question to Safari).
+- `away/away.html`: the stand-in page. It answers the app's visibility and frame-probe questions as the new-tab page
+  does. Click, Return or Space brings the tab back (`bringAway`).
+- **A window a tab may leave** (`leaves`): not a plain Safari window (the app draws nothing over it: its tab bar
+  shows), not while the handoff moves it; a parked one may (out of sight, its tab is in a window in front's list).
+  **A window a tab follows into** (`follows`): not parked, not plain, not while the handoff moves it.
+- **Pictures ahead**: focus moving from window X to Y, when X's tab in front is in the space Y shows (a choice in Y
+  would move it), X's picture is taken then (at most once per 5 s per tab), so a choice in Y moves at once. Without
+  one, a move waits 350 ms at most for it.
+- **Two moves of one tab at once** (the stand-in clicked as its window comes to the front): one.
+- **Clear** (`clearToday`) closes the space's tabs in every window; each window left without its tab in front
+  shows its next tab of the space it shows, else its start page (Safari closes a window whose last tab closes).
+- **Dragging** a tab next to one in another window: a place beside it in the space's list (`M.placeOpen`), and the
+  tab moved in its own window's strip to where that place falls.
+- Tests: `tests/away.test.js` (the rules, a fake Safari), `tests/away-background.test.js` (through background.js's
+  listeners).
+
+### 9.6 First: the probe (`devswitch probe tabMove`, Test A only)
 
 Before building: whether `tabs.move` between two full-screen windows keeps the page (no reload: a marker in its
 memory, its scroll, a typed field), how long a move takes, and whether `captureVisibleTab` works for the window in

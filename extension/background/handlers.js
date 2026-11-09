@@ -19,6 +19,7 @@ import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
 import { getScroll, setScroll } from './scroll.js';
 import { keepScroll, takeScroll } from './scroll-record.js';
 import { closeTabs, noteClosing } from './closing.js';
+import * as away from './away.js';
 import { appLink } from './app-link.js';
 import { noticeAnswered } from './notices.js';
 import { isNoticeAction } from '../shared/notices.js';
@@ -339,8 +340,28 @@ export const handlers = {
     const target = resolved ?? (await resolveTab(tabId, hint, sender.tab?.windowId, { deadline }));
     if (!target) throw new Error('That tab is no longer open');
     if (Number.isFinite(sidebarTop) && sender.tab?.windowId != null) void setScroll(sender.tab.windowId, sidebarTop);
+    // In another window of the profile: it comes to this one, the other keeps it chosen, away (app/WINDOWS.md §9).
+    const here = windowId ?? sender?.tab?.windowId;
+    if (here != null && target.windowId != null && target.windowId !== here && away.follows(here)) {
+      await away.bringTab(target, here, { source: 'activateTab', deadline });
+      return { shown: target.id };
+    }
     await focusTab(target.id, { source: 'activateTab', deadline });
     return { shown: target.id };
+  },
+  // Margin's stand-in page (away/away.html): what its window shows away, with its picture (background/away.js).
+  async awayShown(_message, sender) {
+    return away.shownAway(sender?.tab?.windowId);
+  },
+  // The stand-in clicked: its window's away tab back to it.
+  async bringAway(_message, sender) {
+    const windowId = sender?.tab?.windowId;
+    const s = await load();
+    const tabId = windowId != null ? s.awayByWindow?.[windowId] : null;
+    const tab = tabId != null ? await Promise.resolve(api.tabs.get(tabId)).catch(() => null) : null;
+    if (!tab || windowId == null) return { shown: null };
+    await away.bringTab(tab, windowId, { source: 'stand-in' });
+    return { shown: tab.id };
   },
   // Settings' "Wake all sleeping tabs" (background/sleep.js): how many it woke.
   async wakeSleeping() {
@@ -437,7 +458,7 @@ export const handlers = {
   async visibility({ visible, at, from } = {}, sender) {
     const tab = sender?.tab;
     if (!tab || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId) || typeof visible !== 'boolean') return;
-    const source = from === 'page' ? 'content script' : from === 'newtab' ? 'new-tab page' : 'unknown';
+    const source = from === 'page' ? 'content script' : from === 'newtab' ? 'new-tab page' : from === 'away' ? 'stand-in page' : 'unknown';
     appLink.visibility(tab.windowId, tab.id, visible, Number.isFinite(at) ? /** @type {number} */ (at) : Date.now(), source);
   },
   async getZoom(_, sender) {
@@ -578,7 +599,21 @@ export const handlers = {
     if (typeof nextTo === 'string') return false;
     if (!api.tabs.move) return false;
     const [tab, other] = await Promise.all([resolveTab(tabId, hint, sender?.tab?.windowId), resolveTab(nextTo, nextToHint, sender?.tab?.windowId)]);
-    if (!tab || !other || tab.windowId !== other.windowId || tab.id === other.id || !!tab.pinned !== !!other.pinned) return false;
+    if (!tab || !other || tab.id === other.id || !!tab.pinned !== !!other.pinned) return false;
+    if (tab.windowId !== other.windowId) {
+      // Next to one in another window (the list is the space's: app/WINDOWS.md §9): a place in the list beside it,
+      // and the tab where that place falls in its own window's strip.
+      const before = await load();
+      const spaceId = before.tabSpace[tab.id];
+      if (!spaceId || before.tabSpace[other.id] !== spaceId) return false;
+      const after = await mutate((s) => M.placeOpen(s, tab.id, other.id, side, spaceId));
+      const order = after.tabs[tab.id]?.order;
+      if (!Number.isFinite(order) || order === before.tabs[tab.id]?.order) return false;
+      const strip = Object.values(after.tabs).filter((t) => t.windowId === tab.windowId && t.id !== tab.id);
+      const index = strip.filter((t) => (Number.isFinite(t.order) ? t.order : t.index) < order).length;
+      if (index === tab.index) return true;
+      return api.tabs.move(tab.id, { index }).then(() => true, () => false);
+    }
     // Above it in the list: just after it in the window; below it: just before.
     const index = moveIndex(tab.index, other.index, side);
     if (index === tab.index) return false;
@@ -612,12 +647,18 @@ export const handlers = {
       return next;
     });
     if (!ids.length) return keptIds;
-    const [front] = await api.tabs.query({ active: true, windowId: win }).catch(() => []);
-    if (front && closing.has(front.id)) {
-      const stay = Object.values(s.tabs).filter((t) => t.windowId === win && !closing.has(t.id) && s.tabSpace[t.id] === spaceId)
+    // Each window whose tab in front is closing (this one, and any other of the profile showing the space: its
+    // list is the space's, app/WINDOWS.md §9) stays in the space and isn't left empty (Safari closes a window
+    // whose last tab closes): its most recent tab of the space it shows comes to the front, else its start page opens.
+    const windows = new Set([win, ...ids.map((id) => s.tabs[id]?.windowId).filter((w) => w != null)]);
+    for (const w of windows) {
+      const [front] = await api.tabs.query({ active: true, windowId: w }).catch(() => []);
+      if (!front || !closing.has(front.id)) continue;
+      const shows = w === win ? spaceId : V.activeSpaceId(s, w);
+      const stay = Object.values(s.tabs).filter((t) => t.windowId === w && !closing.has(t.id) && s.tabSpace[t.id] === shows)
         .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0];
       if (stay) await focusTab(stay.id, { source: 'clearToday' }).catch(() => null);
-      else await openTab({ windowId: win, url: api.runtime.getURL('newtab/newtab.html#launcher'), spaceId }).catch(() => null);
+      else await openTab({ windowId: w, url: api.runtime.getURL('newtab/newtab.html#launcher'), spaceId: shows }).catch(() => null);
     }
     await closeTabs(ids, 'done');
     return [...ids, ...keptIds];
@@ -647,7 +688,7 @@ export const handlers = {
     await mutate((s) => M.removePin(s, pinId));
   },
   /** @param {{ pinId: string, windowId?: number, sidebarTop?: number, deadline?: number }} message `deadline`: as activateTab's */
-  async openPin({ pinId, windowId, sidebarTop, deadline }) {
+  async openPin({ pinId, windowId, sidebarTop, deadline }, sender) {
     const s = await load();
     const pin = s.pins.find((p) => p.id === pinId);
     if (!pin) return;
@@ -660,7 +701,8 @@ export const handlers = {
     // only in a parked window is shown by the app's handoff to it (focusTab).
     const existing = matches.find((t) => t.windowId === windowId) ?? matches.find((t) => !inParkedWindow(t)) ?? matches[0];
     if (existing) {
-      await focusTab(existing.id, { source: 'openPin', deadline });
+      // In another window of the profile: it comes here (app/WINDOWS.md §9).
+      await away.showTab(existing.id, windowId ?? sender?.tab?.windowId, { source: 'openPin', deadline });
       return { shown: existing.id };
     }
     // Its tab that isn't open, if the space has one (kept from before it was

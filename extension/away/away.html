@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Open in another window</title>
+  <!-- Margin's stand-in (background/away.js, app/WINDOWS.md §9): in front of a window whose chosen tab is shown in
+       another window. Its picture, faded, where the page was; a click brings the tab back. -->
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: Canvas; color: CanvasText; }
+    body { font: 13px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; cursor: pointer; user-select: none; -webkit-user-select: none; }
+    #picture { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: left top; opacity: 0.4; filter: saturate(0.7); }
+    #picture:not([src]) { display: none; }
+    #note { position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%); max-width: min(520px, calc(100% - 48px)); padding: 8px 14px; border-radius: 999px; background: color-mix(in srgb, Canvas 82%, transparent); box-shadow: 0 1px 3px rgb(0 0 0 / 0.18); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); display: flex; gap: 8px; align-items: baseline; white-space: nowrap; }
+    #title { overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+    #hint { opacity: 0.7; }
+    #title:empty, #title:empty + #dot { display: none; }
+  </style>
+  <script src="away.js" type="module"></script>
+</head>
+<body>
+  <img id="picture" alt="">
+  <div id="note" role="button" tabindex="0"><span id="title"></span><span id="dot" aria-hidden="true">·</span><span id="hint">Open in another window. Click to bring it here.</span></div>
+</body>
+</html>

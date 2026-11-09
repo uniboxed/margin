@@ -28,7 +28,7 @@ test('the fixture: Home\'s pinned area and its tabs, as the sidebar shows them',
   assert.deepEqual(levelIds(space, 'f1'), ['pa', 'pb']);
   assert.deepEqual(levelIds(space, 'f2'), ['pc']);
   assert.deepEqual(levelIds(space, 'gone'), []);
-  assert.deepEqual(today, [15, 14, 12], 'the tabs no pin shows, newest first');
+  assert.deepEqual(today, [15, 14, 12, 16], 'the tabs no pin shows, newest first (16: the other window\'s, the list is the space\'s)');
 });
 
 test('drop rules: a tab on another space\'s chip moves there; nothing else drops on a chip', () => {

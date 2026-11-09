@@ -165,6 +165,11 @@ export function focusChanged(windowId) {
   return appLink.parkedActivity(windowId, 'focus');
 }
 
+// Whether Margin.app's handoff is moving the window now (a windows call under way, or one just made): tabs
+// don't follow it meanwhile (background/away.js).
+export const handoffMoving = (/** @type {number | null | undefined} */ windowId) => windowId != null
+  && (pending.has(windowId) || Date.now() - (ownCallAt.get(windowId) ?? -Infinity) < TIMING.focusOwnMs);
+
 // A window closed: nothing kept for it.
 export function windowClosed(/** @type {number} */ windowId) {
   ownCallAt.delete(windowId);

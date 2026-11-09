@@ -54,9 +54,17 @@ function sidebar(state, windowId, currentTabId = null, { newTabPending = false, 
     : justShown && own?.windowId === windowId && !own.active && has(state.tabSpace?.[own.id]) ? state.tabSpace[own.id]
     : activeSpaceId(state, windowId);
   const known = own?.windowId === windowId;
+  // The space's tabs in every window of the profile, as one list (app/WINDOWS.md §9: the tab follows the window
+  // in front). Another window's tab is chosen here only when it's this window's away tab: then it's this window's
+  // highlight, `away` (faded: it's live in the other window, a stand-in in front here).
+  const away = state.awayByWindow?.[windowId] ?? null;
   const shown = Object.values(state.tabs ?? {})
-    .filter((t) => t.windowId === windowId)
-    .map((t) => (known && t.active !== (t.id === currentTabId) ? { ...t, active: t.id === currentTabId } : t));
+    .filter((t) => t.windowId === windowId || state.tabSpace?.[t.id] === spaceId)
+    .map((t) => {
+      const active = away != null ? t.id === away : t.windowId === windowId && (known ? t.id === currentTabId : !!t.active);
+      const isAway = t.id === away;
+      return active === t.active && !isAway ? t : { ...t, active, ...(isAway ? { away: true } : {}) };
+    });
   const target = switchingTo != null && shown.some((t) => t.id === switchingTo && !t.active) ? switchingTo : null;
   const front = shown.find((t) => t.active);
   const openingRow = opening && target == null && (front == null || front.id === opening.from)
@@ -83,14 +91,14 @@ function sidebar(state, windowId, currentTabId = null, { newTabPending = false, 
   state.pins.forEach((p, i) => {
     if (p.spaceId !== spaceId) return;
     const key = normalizeUrl(p.url);
-    // Open in more than one tab: the one shown or being switched to.
+    // Open in more than one tab: the one shown or being switched to, else this window's.
     const matches = spaceTabs.filter((t) => normalizeUrl(t.url) === key);
-    const tab = matches.find((t) => t.active) ?? matches.find((t) => t.behind) ?? matches[0];
+    const tab = matches.find((t) => t.active) ?? matches.find((t) => t.behind) ?? matches.find((t) => t.windowId === windowId) ?? matches[0];
     bound.set(p.id, {
       ...p,
       folderId: p.folderId && folderIds.has(p.folderId) ? p.folderId : null, // its folder gone: loose
       pos: posOf(p, i),
-      tabId: tab?.id ?? null, active: !!tab?.active, behind: !!tab?.behind, favIconUrl: tab?.favIconUrl ?? '',
+      tabId: tab?.id ?? null, active: !!tab?.active, behind: !!tab?.behind, away: !!tab?.away, favIconUrl: tab?.favIconUrl ?? '',
     });
   });
   const byPos = (a, b) => a.pos - b.pos;
