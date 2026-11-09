@@ -251,6 +251,44 @@ final class ParkingRegistry {
         if setHome(link: link, number: number, line: line ?? Self.firstLine, shown: true) { saveMarker() }
     }
 
+    // This window's line, or a new one with it the home for `link` (app/WINDOWS.md §2.1: every window a
+    // switch leaves is a Margin window's).
+    func lineFor(number: Int, link: String) -> Int {
+        if let id = line(of: number) { return id }
+        let id = nextLine
+        setHome(link: link, number: number, line: id, shown: true)
+        saveMarker()
+        return id
+    }
+
+    // Windows the window server hasn't listed for `goneAfter` (§2.1's rule), and that aren't parked, out of their
+    // lines (closed: a close-based switch's A, the person's ⌘W); a line left with nothing ends. A moment's
+    // absence never costs a line its home (the next switch would make a second window). Each read, a few numbers.
+    private var lineMissingSince: [Int: Double] = [:]
+    func pruneLines() {
+        let now = clock.now()
+        var changed = false
+        var missing: [Int: Double] = [:]
+        for (id, line) in lines {
+            for n in line.homes.values where entries[n] == nil && reads.window(n) == nil {
+                let since = lineMissingSince[n] ?? now
+                missing[n] = since
+                guard now - since >= options.goneAfter, let l = lines[id] else { continue }
+                drop(n, from: id, l)
+                missing[n] = nil
+                changed = true
+            }
+        }
+        lineMissingSince = missing
+        if changed { saveMarker() }
+    }
+
+    // The line used last (app/WINDOWS.md §3, §6.2): a switch with no window to leave, and none that asked, is its.
+    var recentLine: Int? { lines.values.max { ($0.usedAt, -$0.id) < ($1.usedAt, -$1.id) }?.id }
+
+    // The window a line shows, its id and number, if it shows one.
+    func shown(in id: Int?) -> Int? { id.flatMap { lines[$0]?.shown } }
+
     // The line holding this window, if any.
     func line(of number: Int) -> Int? {
         lines.first { $0.value.homes.values.contains(number) }?.key
@@ -384,7 +422,8 @@ final class ParkingRegistry {
             e.cause = nil
             if o.ok {
                 self.verifiedOut.insert(number)
-                self.setHome(link: e.link, number: number, line: self.line(of: number) ?? Self.firstLine, shown: true)
+                // Its line's shown window again; one in no line is given one by the switch that showed it.
+                if let id = self.line(of: number) { self.setHome(link: e.link, number: number, line: id, shown: true) }
                 Diagnostics.note("handoff: shown window \(number) (\(e.label)) in \(o.ms) ms (\(cause))")
                 self.forget(number, .shown)
                 return done(o)
@@ -576,6 +615,7 @@ final class ParkingRegistry {
     // ---- each read (§2.5) ----
 
     func sweep(_ read: SweepRead) -> [SweepFinding] {
+        pruneLines()
         let now = clock.now()
         var found: [SweepFinding] = []
         for (link, copy) in read.copies where read.reporting.contains(link) { copyOf[link] = copy }

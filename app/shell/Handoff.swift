@@ -149,7 +149,6 @@ struct HandoffChoice: Equatable, CustomStringConvertible {
         var displays = 1 // managed now (SLSCopyManagedDisplaySpaces)
         var hasA = true
         var aLinked = true
-        var aExtra = false // a window the person opened themselves (§13.11)
     }
 
     static func pick(_ f: Facts) -> HandoffChoice {
@@ -158,9 +157,6 @@ struct HandoffChoice: Equatable, CustomStringConvertible {
         if !f.hasA {
             c.old = .keep
             c.why = "no window to leave"
-        } else if f.aExtra {
-            c.old = .keep
-            c.why = "the window left is one the person opened"
         } else if !f.aLinked {
             c.old = .keep
             c.why = "its copy isn't linked"
@@ -188,7 +184,8 @@ final class HandoffRun {
     let aNumber: Int?
     let asked: WindowKey?
     let startedAt: Double
-    var aExtra = false // A is a window the person opened themselves (§13.11): never the shown one
+    var line: Int? // the Margin window it switches in (app/WINDOWS.md §2.1)
+    var awaitedProfile = false // its profile had no window: one opened for it (asked of Safari, or the person's) is its
     var choice = HandoffChoice(freeze: false, old: .keep)
     var way = Way.create
     var b: WindowKey?
@@ -450,16 +447,10 @@ extension ProfileSwitch: FreezerDelegate {
         let a = windowId.map { WindowKey(link: fromProfile, windowId: $0) }
         let aNumber = a.flatMap { hw.number(of: $0) }
         let parking = hw.parking
-        // A is its profile's own window unless that profile's home window is another one that's still there.
-        var aExtra = false
-        if let aNumber, let home = parking?.lastShown[fromProfile], home != aNumber,
-           parking?.isParked(home) == true || reads.window(home) != nil {
-            aExtra = true
-        }
         let facts = HandoffChoice.Facts(freezeOn: hw.handoffFreezer != nil && session.rules.on && session.noFreeze == nil,
                                         parkOn: hw.parkingOn && parking != nil && session.parkOff == nil,
                                         closeSetting: hw.closesWindows(to.profile), displays: displays,
-                                        hasA: a != nil, aLinked: a.map { hw.isLinked($0.link) } ?? false, aExtra: aExtra)
+                                        hasA: a != nil, aLinked: a.map { hw.isLinked($0.link) } ?? false)
         var choice = HandoffChoice.pick(facts)
         // DEV-HOOK: the dev-only hook's caps, only for a switch between Safari's Test A and Test B.
         let devTest = hw.devHookAllows(fromProfile, to.profile)
@@ -478,7 +469,11 @@ extension ProfileSwitch: FreezerDelegate {
         }
         gen += 1
         let run = HandoffRun(gen: gen, target: to, a: a, aNumber: aNumber, asked: asked, startedAt: clock.now())
-        run.aExtra = aExtra
+        // Its Margin window (app/WINDOWS.md §2.1): A's line, or a new one with A its home; with no A (§6.2, a
+        // parked window's own activity), the line of the window that asked.
+        run.line = aNumber.flatMap { n in parking?.lineFor(number: n, link: fromProfile) }
+            ?? asked.flatMap { hw.number(of: $0) }.flatMap { parking?.line(of: $0) }
+            ?? (a == nil ? parking?.recentLine : nil)
         run.choice = choice
         run.devTest = devTest // DEV-HOOK
         if devCapped { run.devUsed.append("cap") } // DEV-HOOK
@@ -489,8 +484,6 @@ extension ProfileSwitch: FreezerDelegate {
         self.run = run
         session.runs += 1
         if let aNumber { dropWatch(aNumber) }
-        // The window left is its profile's home window from now on (§1.5 rule 2).
-        if let aNumber, !aExtra, parking?.lastShown[fromProfile] == nil { parking?.noteShown(link: fromProfile, number: aNumber) }
         hw.handoffFreezer?.delegate = self
         world?.switchChanged(.started(to))
         note("\(a.map(\.description) ?? "nothing") → \(to) (\(choice))")
@@ -544,6 +537,7 @@ extension ProfileSwitch: FreezerDelegate {
                 // asked under the freeze, as a create: the cover, the freeze, then the window (showB). The switch
                 // goes on once that copy links with it (frozenStep).
                 run.way = .openProfile
+                run.awaitedProfile = true
                 run.b = nil
                 run.bNumber = nil
                 run.prepared = false
@@ -553,6 +547,7 @@ extension ProfileSwitch: FreezerDelegate {
             } else if phase != .waitingForProfile {
                 // No freeze: asked now, and seen (the switch goes on once that copy links). Else the person is told.
                 let opened = world?.openProfileWindow(link) == true
+                run.awaitedProfile = true
                 enter(.waitingForProfile, for: opened ? options.openedProfileWait : options.profileWait)
                 if opened {
                     note("\(link) isn't linked: asked the browser for a new window of it, waiting for its copy")
@@ -589,21 +584,24 @@ extension ProfileSwitch: FreezerDelegate {
                 if n.map({ !parkedNumbers.contains($0) && !run.avoid.contains($0) }) ?? true { return (w.state == "fullscreen" ? .focus : .show, asked, n) }
             }
         }
-        // 2. its home window, parked; 3. any parked one
-        let home = parking?.lastShown[link]
+        // 2. its line's home window, parked; 3. a parked window of it in no line (the crash marker's, before any
+        // line took it), adopted. Another line's never: that's another Margin window's (app/WINDOWS.md §2.1).
+        let home = run.line.flatMap { parking?.lines[$0]?.homes[link] }
         if let home, let e = parked.first(where: { $0.number == home }) { return (.parked, e.key, e.number) }
-        if let e = parked.first { return (.parked, e.key, e.number) }
-        // 4, 5. its own window, not parked: the home window while it's there; with none known (Safari or
-        // Margin new), its windows. Another is one the person opened (§13.11): never a target.
-        let own = wins.compactMap { w -> (ExtWindow, Int?)? in
-            let n = hw.number(of: w.key)
-            if let n, parkedNumbers.contains(n) || run.avoid.contains(n) { return nil }
-            return w.state == "minimized" ? nil : (w, n) // §1.5 rule 6
+        if let e = parked.first(where: { parking?.line(of: $0.number) == nil }) { return (.parked, e.key, e.number) }
+        // 4, 5. its line's home window, not parked, in full screen (focus) or normal (show). One of its windows
+        // in no line, or in another, is another Margin window: never a target.
+        if let home, let w = wins.first(where: { hw.number(of: $0.key) == home }), w.state != "minimized" { // §1.5 rule 6
+            if !parkedNumbers.contains(home), !run.avoid.contains(home) { return (w.state == "fullscreen" ? .focus : .show, w.key, home) }
         }
-        let homeThere = home.map { h in own.contains { $0.1 == h } || hw.spaceReads?.window(h) != nil } ?? false
-        let mine = homeThere ? own.filter { $0.1 == home } : own
-        if let w = mine.first(where: { $0.0.state == "fullscreen" }) { return (.focus, w.0.key, w.1) }
-        if let w = mine.first { return (.show, w.0.key, w.1) }
+        // A window of it opened for this switch (Safari asked for one under the freeze, or the person opened one
+        // while it waited for the profile): adopted into the line, full screen first.
+        if run.awaitedProfile {
+            let fresh = wins.filter { w in
+                w.state != "minimized" && hw.number(of: w.key).map { !parkedNumbers.contains($0) && parking?.line(of: $0) == nil && !run.avoid.contains($0) } ?? true
+            }
+            if let w = fresh.first(where: { $0.state == "fullscreen" }) ?? fresh.first { return (w.state == "fullscreen" ? .focus : .show, w.key, hw.number(of: w.key)) }
+        }
         return (.create, nil, nil)
     }
 
@@ -646,7 +644,7 @@ extension ProfileSwitch: FreezerDelegate {
     private func linkGone(_ run: HandoffRun, _ hw: HandoffWorld) {
         let link = run.target.profile
         let entries = hw.parking?.entries(of: link) ?? []
-        let home = hw.parking?.lastShown[link]
+        let home = run.line.flatMap { hw.parking?.lines[$0]?.homes[link] }
         let e = entries.first { $0.number == home } ?? entries.first
         if let e { hw.parking?.returnToDesktop(number: e.number, cause: .recovery) }
         notices.append(SwitchNotice(.windowOnDesktop, profile: link, shownIn: run.a))
@@ -1358,7 +1356,8 @@ extension ProfileSwitch: FreezerDelegate {
         run.afterAt = clock.now()
         if let b = run.b, let n = run.bNumber ?? hw.number(of: b) {
             run.bNumber = n
-            if run.way != .parked { hw.parking?.noteShown(link: b.link, number: n) }
+            // B is its line's home for its profile, and the window it shows (app/WINDOWS.md §2.1).
+            hw.parking?.noteShown(link: b.link, number: n, line: run.line ?? hw.parking?.lineFor(number: n, link: b.link))
             session.shown = (b, n)
         }
         // B steady too late under the freeze: A's exit and park now, with A's Space not the active one.
@@ -1714,9 +1713,11 @@ extension ProfileSwitch: FreezerDelegate {
             landed = (b.link, b.windowId)
         } else {
             landed = run.a.map { ($0.link, $0.windowId) } ?? run.b.map { ($0.link, $0.windowId) }
-            // A is the shown window again, unless it's one the person opened themselves (§13.11: the shown
-            // window is always the profile's own), or B was shown and then closed (it stays the one).
-            if let a = run.a, !run.aGone, !run.aExtra, !run.bClosed { session.shown = (a, run.aNumber) }
+            // A is its line's shown window again, unless B was shown and then closed (it stays the one).
+            if let a = run.a, !run.aGone, !run.bClosed {
+                session.shown = (a, run.aNumber)
+                if let n = run.aNumber, let line = run.line { hw.parking?.noteShown(link: a.link, number: n, line: line) }
+            }
         }
         finish(event, run.failure.map { "ended: \($0)" } ?? "done: \(run.b.map(\.description) ?? "-") in front", landed: landed)
     }
@@ -1919,6 +1920,12 @@ extension ProfileSwitch: FreezerDelegate {
         }
     }
 
+    // The window shown in the line of window `number` (app/WINDOWS.md §2.2), with its key.
+    private func lineShown(of number: Int, _ hw: HandoffWorld) -> (key: WindowKey, number: Int?)? {
+        guard let parking = hw.parking, let n = parking.shown(in: parking.line(of: number)), let key = hw.key(of: n) else { return nil }
+        return (key, n)
+    }
+
     // §1.9: a parked window that went full screen after its switch gave up. With no switch since and
     // nothing done by the person, it's adopted: the window shown before set normal and parked in the
     // background, and the person told. Otherwise it's set normal and parked again.
@@ -1937,8 +1944,8 @@ extension ProfileSwitch: FreezerDelegate {
                 addWatch(again)
             }
             windowCall(hw, key, .setWindowState(windowId: key.windowId, state: .normal, notAfter: msNow(options.settleTimeout)), cause: .aftercare) { _, _ in }
-            // It took the front as it landed: the window shown back in front.
-            if let shown = session.shown, shown.key != key, hw.isLinked(shown.key.link), shown.number.map({ hw.parking?.isParked($0) != true }) ?? true {
+            // It took the front as it landed: its line's shown window back in front.
+            if let shown = lineShown(of: w.number, hw), shown.key != key, hw.isLinked(shown.key.link), shown.number.map({ hw.parking?.isParked($0) != true }) ?? true {
                 windowCall(hw, shown.key, .setWindowState(windowId: shown.key.windowId, state: .fullscreen, focused: true, notAfter: msNow(options.settleTimeout)), cause: .aftercare) { _, _ in }
             }
             return
@@ -1946,15 +1953,14 @@ extension ProfileSwitch: FreezerDelegate {
         note("aftercare: window \(w.number) went full screen \(seconds) s after the switch gave up: late landing")
         // Parked again meanwhile: out of the registry by Margin's own show into the Space it's in now.
         if hw.parking?.isParked(w.number) == true { hw.parking?.show(number: w.number, cause: .aftercare) }
-        let before = session.shown
-        hw.parking?.noteShown(link: key.link, number: w.number)
+        // The window its line showed before: set normal and parked (or closed). Another line's is left as it is.
+        let before = lineShown(of: w.number, hw)
+        let line = hw.parking?.line(of: w.number) ?? hw.parking?.lineFor(number: w.number, link: key.link)
+        hw.parking?.noteShown(link: key.link, number: w.number, line: line)
         session.shown = (key, w.number)
         hw.showSwitchNotice(SwitchNotice(.lateLanding, profile: key.link, shownIn: key))
         guard let before, before.key != key, hw.isLinked(before.key.link), let n = before.number else { return }
-        // Only its profile's own window, and only one that's out (§13.11): a window the person opened, or
-        // one parked already, is left as it is.
-        if hw.parking?.isParked(n) == true { return }
-        if let home = hw.parking?.lastShown[before.key.link], home != n { return note("aftercare: \(before.key) isn't its profile's own window: left as it is") }
+        if hw.parking?.isParked(n) == true { return } // one parked already: as it is
         hw.orderOutOverlay(before.key)
         if hw.parkingOn, session.parkOff == nil, !hw.closesWindows(before.key.link) {
             var park = AftercareWatch(key: before.key, number: n, kind: .parkWhenNormal, since: now, until: now + ho.aftercareFor, runs: session.runs, cause: .aftercare)

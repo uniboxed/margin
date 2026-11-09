@@ -124,6 +124,7 @@ final class ProfileSwitch {
     var phase = Phase.idle
     var target: Target?
     var from: (profile: String, windowId: Int?)?
+    private var closeLine: Int? // the close-based switch's Margin window (app/WINDOWS.md §2.3), from its start
     var newWindow: Int? // the target's window: made by the switch, or the one it shows
     var queued: Target?
     private(set) var history: [String] = [] // what happened, for the tests and the log
@@ -196,6 +197,10 @@ final class ProfileSwitch {
         queued = nil
         drafts = nil
         draftsAsked = false
+        closeLine = from.flatMap { f in
+            guard let hw = handoffWorld, let parking = hw.parking, let id = f.windowId, let n = hw.number(of: WindowKey(link: f.profile, windowId: id)) else { return nil }
+            return parking.lineFor(number: n, link: f.profile)
+        }
         world.switchChanged(.started(to))
         askDrafts()
         guard world.isLinked(to.profile) else {
@@ -219,10 +224,20 @@ final class ProfileSwitch {
         poll()
     }
 
-    // The profile's window to show: the first its copy lists, never one the handoff has parked (this
-    // switch can't bring it out of its private Space, and its registry entry would be left saying parked).
-    private func ownWindow(_ profile: String) -> (id: Int, state: String)? {
+    // The profile's window to show, never one the handoff has parked (this switch can't bring it out of its
+    // private Space, and its registry entry would be left saying parked). With Margin windows (a HandoffWorld's
+    // registry, app/WINDOWS.md §2.3): its Margin window's own, the line's home for the profile, or, `awaited`
+    // (the profile had no window), one opened for this switch in no line; another line's, or one in no line,
+    // is another Margin window's. Without them: the first its copy lists.
+    private func ownWindow(_ profile: String, awaited: Bool = false) -> (id: Int, state: String)? {
         guard let world else { return nil }
+        if let hw = handoffWorld, let parking = hw.parking {
+            let number = { (id: Int) in hw.number(of: WindowKey(link: profile, windowId: id)) }
+            let line = closeLine
+            let open = world.windows(of: profile).filter { w in number(w.id).map { !parking.isParked($0) } ?? true }
+            if let home = line.flatMap({ parking.lines[$0]?.homes[profile] }), let w = open.first(where: { number($0.id) == home }) { return w }
+            return awaited ? open.first { w in number(w.id).map { parking.line(of: $0) == nil } ?? true } : nil
+        }
         let parked = handoffWorld?.parking?.numbers ?? []
         return world.windows(of: profile).first { w in
             guard !parked.isEmpty, let hw = handoffWorld, let n = hw.number(of: WindowKey(link: profile, windowId: w.id)) else { return true }
@@ -302,7 +317,7 @@ final class ProfileSwitch {
         case .idle, .waitingForLink, .preparing, .frozen, .after, .landed, .recovering:
             return
         case .waitingForProfile:
-            if world.isLinked(to.profile), let w = ownWindow(to.profile) {
+            if world.isLinked(to.profile), let w = ownWindow(to.profile, awaited: true) {
                 note("\(to.profile) linked with window \(w.id)")
                 return adopt(w.id, fullScreen: w.state == "fullscreen")
             }
@@ -406,12 +421,14 @@ final class ProfileSwitch {
         }
         let next = queued
         // The close-based switch in a HandoffWorld landed: its window is the shown one now (§13.8 judges a
-        // close against it) and its profile's home window.
+        // close against it), and its Margin window's home for its profile (app/WINDOWS.md §2.3).
         if run == nil, case .done(let t) = event, let id = newWindow, let hw = handoffWorld {
             let key = WindowKey(link: t.profile, windowId: id)
             let n = hw.number(of: key)
             session.shown = (key, n)
-            if let n { hw.parking?.noteShown(link: t.profile, number: n) }
+            if let n, let parking = hw.parking {
+                parking.noteShown(link: t.profile, number: n, line: closeLine ?? parking.lineFor(number: n, link: t.profile))
+            }
         }
         gen += 1
         phase = .idle

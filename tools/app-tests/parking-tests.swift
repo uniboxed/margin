@@ -776,16 +776,25 @@ func parkingRegistryTests() {
         said = []
     }
 
+    // ---- a window in no line, shown: the switch gives it its line (app/WINDOWS.md §2.1) ----
+    do {
+        let s = Setup([11: boundsA], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.registry.show(number: 11, cause: .handoff)
+        s.clock.advance(1)
+        check("registry: a window in no line, shown, is still in none (the switch that showed it gives it one)", !s.registry.isParked(11) && s.registry.line(of: 11) == nil && s.registry.lines.isEmpty, "\(s.registry.lines)")
+    }
     // ---- show, and a show that didn't land ----
     do {
         let s = Setup([11: boundsA, 12: boundsB], pid: safari)
         s.park(11, "safari:a", 3, bounds: boundsA)
         s.park(12, "safari:b", 7, bounds: boundsB)
         var shown: ParkOutcome?
+        s.registry.noteShown(link: "safari:b", number: 12, line: 1) // 12 its Margin window's home for b
         s.registry.show(number: 12, cause: .handoff) { shown = $0 }
         s.clock.advance(1)
         check("registry: a show verified: let go, its Space destroyed, the profile's home window",
-              shown?.ok == true && !s.registry.isParked(12) && s.registry.lastShown["safari:b"] == 12 && s.world.destroyed == [2432] && s.world.spaces(of: 12) == [5])
+              shown?.ok == true && !s.registry.isParked(12) && s.registry.lastShown["safari:b"] == 12 && s.registry.lines[1]?.shown == 12 && s.world.destroyed == [2432] && s.world.spaces(of: 12) == [5])
         check("registry: … its line", said.last == "handoff: shown window 12 (safari:b#7) in 4 ms (a handoff)", "\(said)")
         check("registry: the marker has the shown window", ParkingMarker.read(s.marker)?.shown == [ParkingMarker.Shown(link: "safari:b", number: 12)])
         s.world.dropNext = 4
