@@ -969,6 +969,9 @@ test('link: the background\'s start and each try of the kept link are noted, wit
     app.drop(); // no close frame
     assert.ok(await until(() => logLines(api).some((l) => /^kept link try 1 of 3 \(port \d+\): open in \d+ ms$/.test(l)), 1500), `${logLines(api)}`);
     assert.ok(logLines(api).includes('dropped: closed by the app (1006)'), 'why it dropped');
+    // Linked again as stored, as the next background reads it (the page state is written a moment after the line:
+    // under load it can still say reconnecting then).
+    assert.ok(await until(() => api.storage.local.data[APP_LINK_KEY]?.state === 'linked', 1500), 'stored as linked again');
     // (No stop: the next background starts while this one was linked, as when Safari tears it down.)
     const second = start(api, { timing: { ...FAST, dead: 10_000 } });
     await second.start({ route: async () => ({ ok: true }) });
