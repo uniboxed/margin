@@ -930,6 +930,20 @@ func handoffMachineTests() {
               && w.registry.isParked(2020) && w.fullAndInFront(hKA) && w.types(hA, "setWindowState").last?.payload["focused"] as? Bool == true, "\(w.freezer.calls)")
         handoffInvariants("back to one display", w, s)
     }
+    // ---- Chrome's and Edge's profiles: never a handoff (parking reads Safari's windows); the close-based switch ----
+    do {
+        let (w, s) = handoffSetup()
+        let runs = s.session.runs
+        s.start(.init(profile: "chrome:B", space: "b0"), from: "chrome:A", windowId: 10)
+        handoffRun(w, 4)
+        check("Chrome: no handoff, no freeze, nothing parked", s.session.runs == runs && w.freezer.calls.isEmpty && !w.registry.isParked(1010)
+              && w.types(nil, "setWindowState").isEmpty, "\(w.freezer.calls) \(w.requests.map(\.type))")
+        let (w2, s2) = handoffSetup()
+        let runs2 = s2.session.runs
+        s2.start(.init(profile: "edge:B", space: "b0"), from: "", windowId: nil)
+        handoffRun(w2, 4)
+        check("Edge, no window to leave: no handoff either", s2.session.runs == runs2 && w2.freezer.calls.isEmpty, "\(w2.freezer.calls)")
+    }
     // ---- session demotions ----
     do {
         // Two failed freezes in a row turn it off; each switch still parks, seen.
