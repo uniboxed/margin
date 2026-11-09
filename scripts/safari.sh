@@ -85,6 +85,30 @@ fi
 xcodebuild -project xcode/Margin/Margin.xcodeproj -scheme Margin -configuration Release \
   -derivedDataPath "$DERIVED" -allowProvisioningUpdates -quiet $SIGN build
 BUILT="$DERIVED/Build/Products/Release/Margin.app"
+# Chrome's and Edge's relay helper (app/relay/main.swift, app/PROTOCOL.md "Transport (Chrome and Edge, on the
+# Mac)"): built for both kinds of Mac into Contents/Helpers, signed as Margin's relay (io.tirth.margin.relay) with
+# the identity the app was signed with, and the app signed again around it, its own settings kept. Margin.app lets
+# only that relay in (app/shell/RelayLink.swift). Before anything is installed: a failure here leaves the
+# installed copy as it was.
+HELPERS="$BUILT/Contents/Helpers"
+mkdir -p "$HELPERS" "$DERIVED/relay"
+for arch in arm64 x86_64; do
+  swiftc -O -swift-version 5 -target "$arch-apple-macos14.0" app/relay/main.swift -o "$DERIVED/relay/margin-relay-$arch"
+done
+lipo -create "$DERIVED/relay/margin-relay-arm64" "$DERIVED/relay/margin-relay-x86_64" -output "$HELPERS/margin-relay"
+if [ "$UNSIGNED" = true ]; then
+  IDENTITY=-
+else
+  AUTHORITY=$(codesign -dvv "$BUILT" 2>&1 | sed -n 's/^Authority=//p' | head -1)
+  IDENTITY=$(security find-identity -v -p codesigning | grep -F "\"$AUTHORITY\"" | head -1 | awk '{print $2}')
+  if [ -z "$IDENTITY" ]; then
+    echo "No signing identity named \"$AUTHORITY\" (the app's) to sign the relay helper with." >&2
+    exit 1
+  fi
+fi
+codesign --force --sign "$IDENTITY" --options runtime --timestamp=none --identifier io.tirth.margin.relay "$HELPERS/margin-relay"
+codesign --force --sign "$IDENTITY" --options runtime --timestamp=none --preserve-metadata=identifier,entitlements,requirements,flags "$BUILT"
+codesign --verify --strict "$BUILT"
 
 # Over the installed copy (same app, same extension: Safari takes it as an
 # update), by scripts/app-swap.sh: the new copy in place of the old one and

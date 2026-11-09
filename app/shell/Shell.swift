@@ -408,7 +408,13 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         if let t = options.trace { Diagnostics.note("window trace: on (\(t.folder.path), numbers only; MarginWindowTrace NO turns it off)") }
         SafariAX.askOnce()
         Diagnostics.note(SafariAX.trusted ? "Accessibility: on (Safari's windows matched by their titles' profiles)" : "Accessibility: not granted (Safari's windows matched by their pages and focus only)")
-        return Shell(link: SocketLink(), windows: CGWindowSource(), apps: WorkspaceApps(), hotKeys: CarbonHotKeys(), options: options)
+        // Chrome's and Edge's copies find the app through its relay (RelayLink.swift): their host files, then its socket.
+        let link = SocketLink()
+        link.relay = RelayHub()
+        let hosts = ChromiumHosts.install()
+        if ChromiumHosts.relay == nil { Diagnostics.warn("no relay helper in this build (Contents/Helpers/margin-relay): Chrome and Edge can't link") }
+        else if !hosts.isEmpty { Diagnostics.note("Chrome's and Edge's host files written: \(hosts.count)") }
+        return Shell(link: link, windows: CGWindowSource(), apps: WorkspaceApps(), hotKeys: CarbonHotKeys(), options: options)
     }
 
     // At launch, before start() (AppDelegate.startShell): which private calls are there. With no

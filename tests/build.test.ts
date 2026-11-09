@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { PROFILES } from '../extension/shared/platform.ts';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -162,4 +163,15 @@ test('the `search` permission (chrome.search) is Chrome-only; Safari has no sear
   assert.deepEqual(manifestFor('chrome').permissions.filter((p) => p !== 'search').sort(), manifestFor('safari').permissions.slice().sort(), 'otherwise the same list');
   assert.equal(PROFILES.chrome.search, 'browser');
   assert.equal(PROFILES.safari.search, 'learn');
+});
+
+test('Chrome\'s build: a fixed key, whose id is the one Margin.app\'s host files name (app/shell/ChromiumHosts.swift)', () => {
+  const key = manifestFor('chrome').key;
+  assert.equal(typeof key, 'string');
+  // Chrome's id from a key: the SHA-256 of its DER, its first 32 hex digits as a–p.
+  const hex = createHash('sha256').update(Buffer.from(key, 'base64')).digest('hex').slice(0, 32);
+  const id = [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
+  assert.equal(id, 'njeebbcmlenfopaecfbphgcfihbdmkec');
+  assert.ok(readFileSync(new URL('../app/shell/ChromiumHosts.swift', import.meta.url), 'utf8').includes(`"${id}"`), 'the app names the same id');
+  assert.equal(manifestFor('safari').key, undefined, 'Safari\'s build has none');
 });

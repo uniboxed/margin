@@ -160,8 +160,11 @@ final class SocketLink {
     weak var delegate: ExtensionLinkDelegate?
     private(set) var port: UInt16?
     let timing: Timing
-    // The Origins a copy may open the socket from (a Safari extension's).
-    var allowedOrigins = ["safari-web-extension://"]
+    // The Origins a copy may open the socket from (a Safari extension's; Chrome's and Edge's, through their relay).
+    var allowedOrigins = ["safari-web-extension://", "chrome-extension://"]
+    // Chrome's and Edge's relays (RelayLink.swift): started and stopped with the link. None in the tests that make
+    // their own.
+    var relay: RelayHub?
 
     private let dispatch: ExtensionDispatch
     private let safariSince: () -> Date?
@@ -170,7 +173,7 @@ final class SocketLink {
     private var token = SocketLink.secret()
     private var key = SocketLink.secret()
     private var wakeObserver: NSObjectProtocol?
-    private var asked: [String] = [] // nonces asked for before the listener had its port
+    private var asked: [(nonce: String, via: ExtensionDispatch?)] = [] // asked for before the listener had its port
     private var sockets: [Socket] = [] // accepted, no hello yet
     private var links: [String: LinkConnection] = [:] // by Hello.key
     private var ticker: Timer?
@@ -214,6 +217,7 @@ final class SocketLink {
             let json = note.object as? String
             MainActor.assumeIsolated { self?.woken(json) }
         }
+        relay?.start(link: self)
         sayAppUp()
     }
 
@@ -252,7 +256,7 @@ final class SocketLink {
             Diagnostics.note("listening on 127.0.0.1:\(port ?? 0)")
             let nonces = asked
             asked = []
-            for nonce in nonces { answer(nonce) }
+            for each in nonces { answer(each.nonce, via: each.via) }
         case .failed(let error):
             listenerWaiting = false
             Diagnostics.warn("listener failed: \(error)")
@@ -313,7 +317,7 @@ final class SocketLink {
               let body = (try? JSONSerialization.jsonObject(with: data)) as? JSONObject,
               body["type"] as? String == "wantLink" else { return }
         guard let nonce = body["nonce"] as? String, (1...128).contains(nonce.count) else { return Diagnostics.warn("wantLink without a nonce") }
-        if port == nil { asked = Array((asked + [nonce]).suffix(8)) } else { answer(nonce) }
+        take(nonce, via: nil)
     }
 
     // The wantLink a distributed notification carries (the tests call it too).
@@ -321,12 +325,24 @@ final class SocketLink {
         woken(jsonString(["type": "wantLink", "nonce": nonce]))
     }
 
-    private func answer(_ nonce: String) {
+    // A wantLink from Chrome's or Edge's relay: answered into that browser's relays (RelayDispatch), as Safari's
+    // are into Safari.
+    func wantLink(nonce: String, via relays: RelayDispatch) {
+        guard !stopped, (1...128).contains(nonce.count) else { return }
+        take(nonce, via: relays)
+    }
+
+    private func take(_ nonce: String, via: ExtensionDispatch?) {
+        if port == nil { asked = Array((asked + [(nonce, via)]).suffix(8)) } else { answer(nonce, via: via) }
+    }
+
+    private func answer(_ nonce: String, via: ExtensionDispatch? = nil) {
         guard let port else { return }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         let n = nextDispatch()
-        Diagnostics.note("wantLink: link handed to Safari (port \(port), #\(n))")
-        dispatch.dispatch("link", ["v": LinkProtocol.version, "nonce": nonce, "port": Int(port), "token": token, "key": key, "app": ["version": version], "at": Self.at()]) { [weak self] why in
+        let to = (via as? RelayDispatch)?.name ?? "Safari"
+        Diagnostics.note("wantLink: link handed to \(to) (port \(port), #\(n))")
+        (via ?? dispatch).dispatch("link", ["v": LinkProtocol.version, "nonce": nonce, "port": Int(port), "token": token, "key": key, "app": ["version": version], "at": Self.at()]) { [weak self] why in
             self?.dispatched("link", n, why)
         }
     }
@@ -386,7 +402,7 @@ final class SocketLink {
         guard request.path == "/" || request.path.isEmpty else { return "not the link's path" }
         guard Handshake.isUpgrade(request) else { return "not a WebSocket" }
         guard sameSecret(request.query["t"] ?? "", token) else { return "wrong token" }
-        guard let origin = request.headers["origin"], allowedOrigins.contains(where: { origin.hasPrefix($0) }) else { return "not from a Safari extension" }
+        guard let origin = request.headers["origin"], allowedOrigins.contains(where: { origin.hasPrefix($0) }) else { return "not from Margin's extension" }
         return nil
     }
 
@@ -487,6 +503,7 @@ final class SocketLink {
 
     func stop(why: String, then: @escaping () -> Void) {
         stopped = true
+        relay?.stop()
         if let wakeObserver { DistributedNotificationCenter.default().removeObserver(wakeObserver) }
         wakeObserver = nil
         for timer in [ticker, rotation, appUpTimer, listenWaitTimer] { timer?.invalidate() }

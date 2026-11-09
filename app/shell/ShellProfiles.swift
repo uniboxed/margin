@@ -587,7 +587,11 @@ extension Shell: SwitchWorld {
         switch event {
         case .started(let t): words = nil; carrySettings(to: t.profile)
         case .done(let t): words = nil; openedFor[t.profile] = nil
-        case .needsProfile(let t): words = "\(profileName(t.profile)) isn’t open in Safari. Open one of its windows (File › New Window › New \(profileName(t.profile)) Window) and Margin shows the space there."
+        case .needsProfile(let t):
+            // Chrome and Edge open a profile's window from their own profile menu (Margin can't ask them for one).
+            let browser = t.profile.hasPrefix("edge:") ? "Edge" : t.profile.hasPrefix("chrome:") ? "Chrome" : nil
+            words = browser.map { "\(profileName(t.profile)) isn’t open in \($0). Open one of its windows (from \($0)’s profile menu) and Margin shows the space there." }
+                ?? "\(profileName(t.profile)) isn’t open in Safari. Open one of its windows (File › New Window › New \(profileName(t.profile)) Window) and Margin shows the space there."
         case .failed(let t, let why):
             // Margin opened the profile's window, but its copy never linked: Margin is off in that profile (Safari
             // turned it off, or the person did). Told so, and the window Margin opened is closed again.

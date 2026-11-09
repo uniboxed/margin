@@ -97,6 +97,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     handoffUiTests() // handoff-ui-tests.swift
     devHooksTests() // devhooks-tests.swift (DEV-HOOK: removed with the hook)
     themeTests() // theme-tests.swift
+    relayTests() // relay-tests.swift: Chrome's and Edge's relay, the real helper
     print(failures == 0 ? "all \(passed) checks passed" : "\(failures) of \(passed + failures) checks failed", String(format: "(%.2f s)", Date().timeIntervalSince(started)))
     exit(failures == 0 ? 0 : 1)
   }

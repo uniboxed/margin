@@ -433,6 +433,12 @@ extension ProfileSwitch: FreezerDelegate {
             hw.request(fromProfile, "setSpace", ["windowId": windowId ?? NSNull(), "spaceId": to.space], windowId: windowId) { _, _ in }
             return true
         }
+        // Safari's only: parking's sweep, its checks and its recovery after a crash read Safari's windows
+        // (ShellHandoff.swift). Chrome's and Edge's profiles switch the close-based way.
+        guard fromProfile.hasPrefix("safari:") else {
+            note("\(to) from \(fromProfile): not Safari's, the close-based switch")
+            return false
+        }
         // The display count decides the freeze: unread, nothing is guessed. The close-based switch can't
         // show a parked window (and its Desktop can't be found without the displays either): with one
         // for the target, this switch is refused, and the window stays parked for the next one.
