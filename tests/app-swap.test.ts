@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, existsSync, rmSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, existsSync, readFileSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -102,7 +102,9 @@ test('app swap: one that ignores the SIGTERM is killed after the wait, its copy 
     void swapping.done.then(() => { finished = true; });
     while (!finished) {
       // The copy looked at first: gone means the script saw the process gone before.
-      const swapped = existsSync(join(dest, 'build')) && execFileSync('cat', [join(dest, 'build')], { encoding: 'utf8' }) === 'new';
+      // (One read, not a look then a read: the swap may move the folder between the two.)
+      let swapped = false;
+      try { swapped = readFileSync(join(dest, 'build'), 'utf8') === 'new'; } catch {}
       const kept = existsSync(`${dest}.old`);
       seen.push({ old: kept, swapped, alive: alive(running.pid) });
       await wait(20);
