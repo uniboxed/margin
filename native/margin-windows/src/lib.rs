@@ -17,13 +17,20 @@ pub mod instance;
 pub mod keys;
 pub mod log;
 pub mod paths;
+pub mod pointer;
 pub mod queue;
 pub mod screens;
 pub mod serve;
 
 // Windows.
 #[cfg(windows)]
+pub mod browsers;
+#[cfg(windows)]
+pub mod hotkeys;
+#[cfg(windows)]
 pub mod msgwin;
+#[cfg(windows)]
+pub mod overlay;
 #[cfg(windows)]
 pub mod pipe;
 #[cfg(windows)]
