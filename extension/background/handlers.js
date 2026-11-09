@@ -779,6 +779,11 @@ export const handlers = {
       const picture = await api.tabs.captureVisibleTab(second.id, { format: 'jpeg', quality: 60 }).catch(() => null);
       out.captureMs = Math.round(performance.now() - t0);
       out.captureKB = picture ? Math.round(picture.length / 1024) : 0;
+      // The window behind (home, in its own Space now): can its tab in front be pictured from here?
+      t0 = performance.now();
+      const behind = await api.tabs.captureVisibleTab(home.id, { format: 'jpeg', quality: 60 }).catch(() => null);
+      out.captureBehindMs = Math.round(performance.now() - t0);
+      out.captureBehindKB = behind ? Math.round(behind.length / 1024) : 0;
       t0 = performance.now();
       await api.tabs.move(tab.id, { windowId: home.id, index: -1 });
       out.backMs = Math.round(performance.now() - t0);
