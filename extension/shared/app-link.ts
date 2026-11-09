@@ -57,7 +57,8 @@ export function layoutFor(link: any, windowId: number | null | undefined) {
   const layouts = link?.layouts && typeof link.layouts === 'object' ? link.layouts : {};
   if (undrawn(link, windowId)) return NOT_DRAWN;
   if (windowId != null) return layouts[windowId] ?? null;
-  const all = Object.entries(layouts).filter(([id]) => link?.drawn?.[id] !== false).map(([, l]) => l);
+  // (Each window's layout, as the app sent it.)
+  const all = Object.entries(layouts as Record<string, { insets?: unknown, container?: unknown, mode?: unknown } | null>).filter(([id]) => link?.drawn?.[id] !== false).map(([, l]) => l);
   if (!all.length) return null;
   const key = (l: { insets?: unknown, container?: unknown, mode?: unknown } | null | undefined) => JSON.stringify([l?.insets, l?.container, l?.mode]);
   return all.every((l) => key(l) === key(all[0])) ? all[0] : null;

@@ -119,7 +119,7 @@ function normalizeState(raw: any = {}): State {
   return {
     spaces,
     activeSpaceByWindow: { ...raw.activeSpaceByWindow },
-    awayByWindow: Object.fromEntries(Object.entries(raw.awayByWindow ?? {}).filter(([w, t]) => /^\d+$/.test(w) && Number.isInteger(t))),
+    awayByWindow: Object.fromEntries(Object.entries(raw.awayByWindow ?? {}).filter(([w, t]) => /^\d+$/.test(w) && Number.isInteger(t))) as Record<number, number>, // (whole numbers: filtered)
     tabSpace: { ...raw.tabSpace },
     pins: Array.isArray(raw.pins) ? raw.pins : [],
     folders: Array.isArray(raw.folders) ? raw.folders.filter((f: any) => f && typeof f.id === 'string' && typeof f.spaceId === 'string') : [],
@@ -167,14 +167,14 @@ const isTabId = (id: unknown): id is string => typeof id === 'string' && /^t-[A-
 // (`raw…`: as stored, checked here.)
 function withTabIds(rawTabs: any, rawKept: any, rawLost: any) {
   const tabs: Record<string, any> = {};
-  for (const [id, r] of Object.entries(rawTabs ?? {})) {
+  for (const [id, r] of Object.entries((rawTabs ?? {}) as Record<string, any>)) {
     if (!r || typeof r !== 'object') continue;
     const mid = isTabId(r.mid) ? r.mid : newTabId();
     const order = Number.isFinite(r.order) ? r.order : Number(r.index) || 0;
     tabs[id] = r.mid === mid && r.order === order ? r : { ...r, mid, order };
   }
   const keptTabs: Record<string, any> = {};
-  for (const [id, k] of Object.entries(rawKept && typeof rawKept === 'object' ? rawKept : {})) {
+  for (const [id, k] of Object.entries((rawKept && typeof rawKept === 'object' ? rawKept : {}) as Record<string, any>)) {
     if (isTabId(id) && k && typeof k === 'object' && typeof k.url === 'string' && typeof k.spaceId === 'string') keptTabs[id] = k.id === id ? k : { ...k, id };
   }
   for (const w of Array.isArray(rawLost?.windows) ? rawLost.windows : []) {

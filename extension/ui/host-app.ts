@@ -181,7 +181,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   // The window's tab in front, if it's Margin's new-tab page (its launcher is drawn here then).
   const frontPage = () => {
     const own = windows.find((w: { windowId?: number, id?: number } | null) => (w?.windowId ?? w?.id) === windowId);
-    const id = own?.activeTabId ?? Object.values(state?.tabs ?? {}).find((t) => t?.windowId === windowId && t?.active)?.id;
+    const id = own?.activeTabId ?? Object.values((state?.tabs ?? {}) as Record<string, { id: number, windowId: number, active?: boolean } | null>).find((t) => t?.windowId === windowId && t?.active)?.id;
     const tab = id != null ? state?.tabs?.[id] : null;
     return tab && isNewTabPage(tab.url) ? { id: tab.id, url: String(tab.url) } : null;
   };
@@ -241,7 +241,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     // The window's tab in front, Margin's new-tab page or not.
     get frontTabId() {
       const own = windows.find((w: { windowId?: number, id?: number } | null) => (w?.windowId ?? w?.id) === windowId);
-      const id = own?.activeTabId ?? Object.values(state?.tabs ?? {}).find((t) => t?.windowId === windowId && t?.active)?.id;
+      const id = own?.activeTabId ?? Object.values((state?.tabs ?? {}) as Record<string, { id: number, windowId: number, active?: boolean } | null>).find((t) => t?.windowId === windowId && t?.active)?.id;
       return Number.isInteger(id) ? id : null;
     },
     get loading() { return [...loading]; },
@@ -389,7 +389,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
         case 'push':
           // The window's tabs loading (background/page-loads.ts): each one's row and the tab in front.
           if (msg.msg?.type === 'loading') {
-            const next = new Set((Array.isArray(msg.msg.tabIds) ? msg.msg.tabIds : []).filter((id: unknown) => Number.isInteger(id)));
+            const next = new Set<number>((Array.isArray(msg.msg.tabIds) ? msg.msg.tabIds : []).filter((id: unknown): id is number => Number.isInteger(id)));
             if (next.size === loading.size && [...next].every((id) => loading.has(id))) return;
             loading = next;
             rebuild();

@@ -142,7 +142,7 @@ export const settingVar = (key: string) => `--m-${key.replace(/[A-Z]/g, (c) => `
  * @param manifest the checked manifest */
 export function resolveSettings(manifest: any, saved: Record<string, any> | null | undefined): Record<string, string | number | boolean> {
   const out: Record<string, string | number | boolean> = {};
-  for (const [key, spec] of Object.entries(manifest?.settings ?? {})) {
+  for (const [key, spec] of Object.entries((manifest?.settings ?? {}) as Record<string, any>)) { // (the checked manifest's: theme-schema.ts)
     const value = saved && Object.prototype.hasOwnProperty.call(saved, key) ? saved[key] : undefined;
     out[key] = value !== undefined && settingValueOk(spec, value) ? value : spec.default;
   }

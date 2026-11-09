@@ -8,6 +8,7 @@
 // between two of this copy's windows.
 // Pictures (captureVisibleTab, JPEG) are kept in this background's memory only: never stored, never logged, never
 // synced. One per tab at most, dropped once no window shows the tab away.
+import type { State } from '../../types/margin';
 import * as M from '../state/model.ts';
 import * as V from '../shared/view.ts';
 import { api, cached, load, mutate, now } from './store.ts';
@@ -263,7 +264,7 @@ async function follow(windowId: number, left: number | null) {
 }
 async function precapture(s: any, left: number, front: number) {
   if (!follows(left) || !follows(front)) return;
-  const shown = Object.values(s.tabs).find((t) => t.windowId === left && t.active);
+  const shown = Object.values(s.tabs as State['tabs']).find((t) => t.windowId === left && t.active);
   if (!shown || isAwayPage(shown.url)) return;
   const spaceId = s.tabSpace?.[shown.id];
   if (spaceId == null || V.activeSpaceId(s, front) !== spaceId) return;

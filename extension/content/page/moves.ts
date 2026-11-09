@@ -218,5 +218,5 @@ export function keyframesIn(sheets: any[], name: string) {
       walk(sheet.cssRules);
     } catch {}
   }
-  return found && Array.from(found.cssRules).flatMap((frame) => Array.from((frame as any).style));
+  return found && Array.from(found.cssRules).flatMap((frame) => Array.from((frame as CSSKeyframeRule).style));
 }

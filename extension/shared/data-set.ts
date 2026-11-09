@@ -126,7 +126,7 @@ const later = (now: number, ...times: (number | undefined)[]) => Math.max(now, .
 export function track(meta: any, items: Record<string, any>, now: number): { items: Record<string, [number, string]>, gone: Record<string, number> } {
   const fresh = !meta || typeof meta !== 'object' || typeof meta.items !== 'object';
   const before = fresh ? {} : meta.items;
-  const gone = fresh ? {} : { ...meta.gone };
+  const gone: Record<string, number> = fresh ? {} : { ...meta.gone };
   const next: Record<string, [number, string]> = {};
   let changed = fresh;
   for (const [id, value] of Object.entries(items)) {
@@ -162,7 +162,7 @@ export function track(meta: any, items: Record<string, any>, now: number): { ite
  * @param metas collection → meta (track's)
  * @param items collection → items (collectionFrom's)
  */
-export function pendingChanges(metas: Record<string, any>, items: Record<string, Record<string, any>>, since: number = 0) {
+export function pendingChanges(metas: Record<string, ReturnType<typeof track> | null | undefined>, items: Record<string, Record<string, any>>, since: number = 0) {
   const out: ({ collection: string, id: string, updatedAt: number, value: any } | { collection: string, id: string, updatedAt: number, deleted: true })[] = [];
   for (const collection of Object.keys(SOURCES)) {
     const meta = metas?.[collection];
