@@ -809,7 +809,9 @@ export const handlers = {
         field: /** @type {HTMLInputElement | null} */ (document.getElementById('__margin_probe'))?.value === `typed ${t}`,
         scroll: Math.round(scrollY),
       }) }))[0]?.result ?? null;
-      out.before = await check();
+      // Short (the app's log line is cut at 600 characters): marker, field (1/0) and scroll.
+      const kept = async () => { const c = await check(); return c ? `${c.marker ? 1 : 0}${c.field ? 1 : 0}:${c.scroll}` : 'none'; };
+      out.before = await kept();
       const second = await api.windows.create({ focused: true, state: 'fullscreen' });
       made.windowId = second.id;
       await wait(2000); // its full-screen Space up
@@ -819,7 +821,7 @@ export const handlers = {
       await api.tabs.update(tab.id, { active: true });
       await wait(1000);
       out.movedThere = (await api.tabs.get(tab.id)).windowId === second.id;
-      out.afterMove = await check();
+      out.afterMove = await kept();
       t0 = performance.now();
       const picture = await api.tabs.captureVisibleTab(second.id, { format: 'jpeg', quality: 60 }).catch(() => null);
       out.captureMs = Math.round(performance.now() - t0);
@@ -834,7 +836,7 @@ export const handlers = {
       out.backMs = Math.round(performance.now() - t0);
       await wait(1000);
       out.movedBack = (await api.tabs.get(tab.id)).windowId === home.id;
-      out.afterBack = await check();
+      out.afterBack = await kept();
       // Margin's own follow (background/away.js), with home behind: the tab in front there, then chosen in the
       // window in front (second), then home to the front again. Whether making and showing tabs in a window behind
       // leaves the focus where it was (no slide to its Space), and whether the tab follows home back.
@@ -853,7 +855,7 @@ export const handlers = {
       const live = await api.tabs.get(tab.id);
       out.broughtThere = live.windowId === second.id && live.active === true;
       out.awayRecorded = (await load()).awayByWindow?.[home.id] === tab.id;
-      out.afterBring = await check();
+      out.afterBring = await kept();
       t0 = performance.now();
       await api.windows.update(home.id, { focused: true });
       for (let i = 0; i < 30 && (await api.tabs.get(tab.id)).windowId !== home.id; i++) await wait(100);
@@ -862,7 +864,7 @@ export const handlers = {
       out.followedBack = (await api.tabs.get(tab.id)).windowId === home.id;
       out.homeStandInGone = !(await standInIn(home.id));
       out.secondStandIn = !!(await standInIn(second.id));
-      out.afterFollow = await check();
+      out.afterFollow = await kept();
       out.ok = true;
     } catch (err) {
       out.error = String(/** @type {any} */ (err)?.name ?? 'Error');
