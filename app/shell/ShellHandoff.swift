@@ -24,10 +24,13 @@
 //   handoff to that window, unless a switch is under way or it's in its
 //   aftercare (§6.1).
 // - Safari in front with every window parked and no switch to explain it: the
-//   window last shown is handed to, after two reads 100 ms apart agree (§6.2).
-// - The shown window closed by the person (⌘W, its close button): every parked
-//   window of every profile is closed by its copy too, no drafts check (§13.8),
-//   unless Safari is quitting. A person's own extra window isn't the shown one.
+//   Margin window used last has its window shown, after two reads 100 ms apart
+//   agree (§6.2, app/WINDOWS.md §3).
+// - A Margin window's shown window closed by the person (⌘W, its close button):
+//   that Margin window's parked windows are closed by their copies too, no drafts
+//   check (§13.8), unless Safari is quitting; other Margin windows are as they
+//   were (app/WINDOWS.md §3).
+// - A parked window's use hands off from its own Margin window's shown window.
 // - The system's moves (§6.8): going to sleep reveals at once; a wake, a
 //   display change or the Dock restarting makes any parked window found back in
 //   the next 3 s the system's (parked again, never a handoff).
@@ -424,7 +427,7 @@ extension Shell: HandoffWorld {
     }
 
     // The window Margin showed is gone from its copy's list, and not by Margin's own hand: the person
-    // closed it. To them it was the one window, so every parked window closes too, after 0.5 s if
+    // closed it. Its Margin window's parked windows close too (app/WINDOWS.md §3), after 0.5 s if
     // Safari's still running (a quitting Safari takes its windows itself). A window that goes while a
     // switch runs (⌘W on B in its `after` or `landed`) is kept and judged once the switch is idle,
     // against the window it landed on.

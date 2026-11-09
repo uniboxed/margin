@@ -19,8 +19,7 @@
 //   the session hasn't turned it off, and exactly one display is managed), and
 //   the old window (park when parking passed and this session hasn't turned it
 //   off and the setting keeps windows; close when the setting asks or parking
-//   is off; keep for A's copy gone, the person's own extra window (§13.11),
-//   or several displays until gate G11). Only call failures are session
+//   is off; keep for A's copy gone, or several displays until gate G11). Only call failures are session
 //   demotions: the freeze's are FreezeRules', parking's a show or park that
 //   didn't land after its retry. The display count and the drafts are read per
 //   switch.
@@ -50,9 +49,11 @@
 //   close is tried once more after 0.5 s; then A stays.
 // - "Close windows to save memory" turned on with windows parked (§5): each
 //   closed by its copy, drafts permitting (closeParkedWindows).
-// - Tirth's §13.11: a profile is one window. A switch within a profile is a
-//   setSpace; a window the person opened themselves is never parked and never a
-//   target.
+// - Margin windows (app/WINDOWS.md, Tirth 2026-11-09, replacing §13.11's extra window): each Margin window
+//   (a `Line` in the registry) has its own window per profile. A switch runs in A's line, targets only that
+//   line's window of the profile (or one made for it), and never another line's. A window in no line is a
+//   Margin window of its own, given its line by its first switch. A switch within a profile is a setSpace in
+//   its window.
 // - The log has ids, numbers, Spaces, modes and milliseconds only.
 
 import AppKit
@@ -426,7 +427,7 @@ extension ProfileSwitch: FreezerDelegate {
     // A handoff, if this world can run one and this switch needs one. False: the close-based switch.
     func handoffStart(_ to: Target, from fromProfile: String, windowId: Int?, asked: WindowKey?) -> Bool {
         guard let hw = handoffWorld, let reads = hw.spaceReads else { return false }
-        // Within a profile: its spaces switch inside its one window (§13.11).
+        // Within a profile: its spaces switch inside the window (§13.11).
         if to.profile == fromProfile {
             note("\(to) in the same profile: its space, in window \(windowId.map(String.init) ?? "?")")
             hw.request(fromProfile, "setSpace", ["windowId": windowId ?? NSNull(), "spaceId": to.space], windowId: windowId) { _, _ in }

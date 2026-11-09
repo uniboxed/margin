@@ -34,8 +34,8 @@ struct Line {
   finds after its own launch. It gets a line of its own the first time it's a switch's A (or its target, §2.1).
   A new line costs nothing: a struct, and the marker's few bytes.
 - **A line's home for a link** is the window to show for that profile in that Margin window: parked, or shown.
-- **A line ends** when its last window goes (closed, gone from the window server, its copy's list). An ended
-  line's id isn't reused.
+- **A line ends** when its last window goes: a parked one forgotten as gone, or one the window server hasn't listed
+  for 3 s (`pruneLines`, so a moment's absence never costs a line its home). An ended line's id isn't reused.
 
 ## 2. Switches
 
@@ -54,7 +54,9 @@ The target window, in the line only (HANDOFF.md §1.5's rules, by line):
 4. The line's home for P, in full screen (`focus`) or normal (`show`), not parked.
 5. **Gone:** "any of P's windows when no home is known". A window of P in no line is another Margin window (rule
    6), never a target.
-6. None: a new window, made for the line under the freeze (`create`; `openProfile` with P's copy not running).
+6. A window of P opened for **this** switch (P had no window: Safari asked for one under the freeze, or the person
+   opened one while the switch waited), in no line: adopted (`awaitedProfile`).
+7. None: a new window, made for the line under the freeze (`create`; `openProfile` with P's copy not running).
 
 When the switch lands, B is the line's home for P and its shown window, and the line's `usedAt` is now. A, parked
 (or closed), stays the line's home for its link.
@@ -102,15 +104,15 @@ line's window or one in no line. `finish()` notes B as the line's home and shown
 - **A new app command, `new-window`, bound to ⌘N by default.** It's a hot key as the others are (Carbon, only
   while a linked browser with Margin's overlay is in front), so Safari never sees ⌘N while Margin draws. Without
   Margin.app running, Safari's own ⌘N is as before.
-- **What it does:** the front overlay's window (its link and window id) asks its copy for `newWindow { fromWindowId,
-  fullscreen: true }`:
-  - The copy makes the window in full screen (`windows.create({ focused: true, state: 'fullscreen' })`, retried
-    without `state` if refused).
+- **What it does:** the front overlay's window (its link and window id) asks its copy for `newWindow { fromWindowId }`
+  (`Shell.newMarginWindow`, `background/handlers.js newWindow`):
+  - The copy makes the window in full screen if `fromWindowId`'s is (`windows.create({ focused: true, state:
+    'fullscreen' })`, retried without `state` if refused).
   - It sets the window's active space to the one `fromWindowId` shows (explicit, not `inheritSpace`'s guess).
   - The window opens with the browser's new tab, which is Margin's start page, as ⌘N's is today.
   - The answer has `{ windowId, bounds }`, so the binder binds the window as Margin's (`windowMade`).
-- **The new window is a new line,** made as it's bound (`windowMade` with the `newWindow` cause), its home for the
-  link. Margin's sidebar is drawn over it as over any linked full-screen window.
+- **The new window is a Margin window of its own** by §1's rule: it's in no line until its first switch gives it
+  one (`lineFor`). Margin's sidebar is drawn over it as over any linked full-screen window.
 - **macOS slides to it**, as to any new full-screen window: that's ⌘N's own new window, wanted, not hidden.
 - **Mid-switch:** dropped, as ⌘T is (§1.7).
 - **The palette's "New window"** does the same.

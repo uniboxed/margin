@@ -199,7 +199,7 @@ final class ParkingRegistry {
     // The Margin windows, by id (app/WINDOWS.md §1). Each window Margin shows or parks is in exactly one.
     private(set) var lines: [Int: Line] = [:]
     private var nextLine = 1
-    // The first line's home windows: the one chain there was before lines (§1.5, §13.11), for the callers
+    // The first line's home windows: the one chain there was before lines (§1.5), for the callers
     // that still read it that way.
     var lastShown: [String: Int] { lines[Self.firstLine]?.homes ?? [:] }
     static let firstLine = 1
