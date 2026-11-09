@@ -37,7 +37,9 @@ final class RelayHub {
 
     // ~/Library/Application Support/Margin/relay.sock (a socket path may be at most 104 bytes).
     static var defaultPath: String {
-        DataStore.appRoot.deletingLastPathComponent().appendingPathComponent("relay.sock").path
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        return support.appendingPathComponent("Margin/relay.sock").path
     }
 
     static var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "" }
