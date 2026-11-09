@@ -1,7 +1,7 @@
 // Margin.app's lasting data end to end (part of e2e.swift's run): the real
 // link and shell with their DataSync and DataStore, in a temporary folder,
-// against fake-extension.mjs's data messages (its converter and refill are
-// the extension's own, shared/data-set.js): the first link, a relink with a
+// against fake-extension.mts's data messages (its converter and refill are
+// the extension's own, shared/data-set.ts): the first link, a relink with a
 // queue, a second profile kept apart, a wiped cache refilled, the app's own
 // change, and a crash mid-write followed by a relaunch.
 import AppKit

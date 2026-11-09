@@ -14,15 +14,15 @@ site.url('dispatch.test', '/2026/11/the-quiet-city');
 - Start Chromium with `--host-resolver-rules=${HOST_RULES}`. `*.test` goes to the server. Every other host fails to resolve.
 - A search engine's address: answer it with `searchResults(q, site.port)` (a `context.route`). It lists this site's own pages.
 - `site.sites` has every site: `host`, `name`, `look` (colours), `pages` (`path`, `title`, `what`).
-- To look at every page: `node tests/e2e/site/shoot.mjs [out dir]`.
-- `tests/e2e/site.test.js` checks the site itself.
+- To look at every page: `node tests/e2e/site/shoot.mts [out dir]`.
+- `tests/e2e/site.test.ts` checks the site itself.
 
 ## On every site
 
 - `/missing`, or any path a site doesn't have: that site's 404 page, status 404.
 - `?fp` on any page: a recorder at the top of `<head>` notes where `<html>` sits in each of the first 40 frames (`window.__fp`). `&late=N` holds Margin's word to the box back until N ms.
-- `box.test` isn't a site: it serves the page patterns the box handles (`tests/box/serve.js`): `/pattern/<name>`, and `/ref/<name>?w=&h=`, the pattern's page in an iframe that size. The suites that go through every site don't see it.
-- `/media/art/<kind>.svg?…`: drawn pictures (`art.js`).
+- `box.test` isn't a site: it serves the page patterns the box handles (`tests/box/serve.ts`): `/pattern/<name>`, and `/ref/<name>?w=&h=`, the pattern's page in an iframe that size. The suites that go through every site don't see it.
+- `/media/art/<kind>.svg?…`: drawn pictures (`art.ts`).
 - `?wait=<ms>` on any address: answered that late (a slow server; 10 s at most).
 - `?nocontent` on any address: answered 204, so a page that goes there stays where it is.
 - Nothing is logged unless `MARGIN_E2E_VERBOSE` is set.
@@ -55,10 +55,10 @@ site.url('dispatch.test', '/2026/11/the-quiet-city');
 
 ## Files
 
-- `server.js`: the server.
+- `server.ts`: the server.
 - `sites/`: one module per site; `index.js` lists them.
-- `art.js`: the drawn pictures.
-- `make-media.mjs`: PNG and ICO icons and the tune, made in memory at start.
-- `make-video.mjs`: makes `files/reel/clip.webm`. Run it by hand; the clip is committed.
-- `shoot.mjs`: screenshots of every page.
+- `art.ts`: the drawn pictures.
+- `make-media.mts`: PNG and ICO icons and the tune, made in memory at start.
+- `make-video.mts`: makes `files/reel/clip.webm`. Run it by hand; the clip is committed.
+- `shoot.mts`: screenshots of every page.
 - `SOURCES.txt`: where everything comes from.

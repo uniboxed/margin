@@ -1,7 +1,7 @@
 // Overlays through a window closing, a link dropping and Safari's own sidebar
 // (part of e2e.swift's run; DECISIONS.md "Margin 2: Safari reliability", the
 // own-Space fallback, overlays kept through a drop, Safari's sidebar slide):
-// the real link, shell and overlays against fake-extension.mjs, one profile's
+// the real link, shell and overlays against fake-extension.mts, one profile's
 // full-screen windows as stand-ins. Spaces are played by on-screen flags: an
 // overlay reads as on screen when its window does, or always while `stuck`
 // (macOS keeping an overlay in the Space showing, the case the own-Space

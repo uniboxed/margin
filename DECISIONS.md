@@ -3382,3 +3382,17 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **Patterns:** `scrolling-element.html`, `scroll-timeline.html` (failing before; cxense renders now).
 - **Speed:** `bench:box` within the noise (the box's cost 131 and 35 ms; baseline 123 and 33, an earlier run 122).
 
+
+## TypeScript (2026-11-09)
+
+- **Asked (Tirth):** the code in TypeScript, all of it, with the faster native compiler, no feature lost and nothing slower.
+- **The compiler:** TypeScript 7 (Microsoft's native port, written in Go) was already the type checker (`typescript@7.0.2`, about 0.6 s for the whole check). The Rust ports (Oxc's `tsrs` 0.23, `tsc-rs` 0.8) are pre-1.0 and track a TypeScript beta; Tirth chose to stay on TypeScript 7.
+- **What changed:**
+  - Every `.js` became `.ts` (`.mjs` → `.mts`), with every JSDoc type moved into TypeScript syntax where it was: parameters, return types, generics, variables, casts (`(x as T)`), typedefs (`export type` / `interface`), `@import` (`import type`). A one-off converter did it from TypeScript 7's own parse of the JSDoc (its API), so each type is the one the checker read; the comments keep their words.
+  - Imports are spelled `.ts`, `verbatimModuleSyntax` and `erasableSyntaxOnly` are on: Node runs the tests and scripts from the `.ts` files as they are (its type stripping, Node 26), and esbuild bundles them for the browsers.
+  - The checks are as strict as before (`strict` off), and also cover Margin.app's overlay page now. Where JavaScript let things pass that TypeScript doesn't, the types say what JavaScript assumed: class fields `declare`d with the types the checker had inferred for them; objects given properties later typed with those properties; trailing parameters that callers leave out marked optional (in JavaScript every parameter is); and `types/js-defaults.d.ts` keeps JavaScript's `any` for a generic call with nothing to infer from (`Object.values`/`entries`, `Array.from`, a `Map` or `Set` of an untyped value) where TypeScript would say `unknown`.
+  - The build bundles from the `.ts` sources and no longer ships them in `dist/` (no page loaded them: every context is a bundle). The one file a browser loads as it is, `content/page/fullscreen-only.js` (Chrome's registration), is written from its `.ts`.
+  - Still JavaScript: the files a browser loads raw or that are pasted into a bundle (`tools/handoff-lab/ext/`, `tools/webkit-host/hook.js`, `tools/boards/dc-shim.js`).
+  - The tests and tools are TypeScript too, run as they are; like before, they aren't type-checked (that's thousands of errors in their fakes: a later step).
+- **Nothing slower, nothing changed at run time:** every bundle Safari, Chrome and Margin.app load was compared byte for byte with the build from `main` before the change. The background, content, new-tab, stand-in and overlay bundles are identical; the page's bundle differs in file names inside CSS comments and one arrow function in parentheses; `arcadia.js` in a comment.
+- **File names before this date** in this log are the `.js` ones they were then.

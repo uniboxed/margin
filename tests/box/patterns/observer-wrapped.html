@@ -1,7 +1,7 @@
 <!--
 pattern: a page that wraps IntersectionObserver as Angular's zone.js does (its methods copied by listing an instance's) can still observe
 from: gog.com (fit-check round 1, re-checked): 293 errors, `this.viewportEnterObserver.observe is not a function`; zone.js lists a sample observer's properties with `for…in`, and the box's stand-in had its methods as its own, not enumerable, which hid the browser's
-handled-by: content/page/in-view.js (the stand-in's methods and getters enumerable, as the browser's are)
+handled-by: content/page/in-view.ts (the stand-in's methods and getters enumerable, as the browser's are)
 settle: 600
 -->
 <!doctype html>

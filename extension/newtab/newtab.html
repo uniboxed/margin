@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <title>New Tab</title>
   <!-- Linked to Margin.app, the app draws over this page and it shows nothing
-       (newtab.js); not linked, the notice and the address field below. -->
+       (newtab.ts); not linked, the notice and the address field below. -->
   <style>
     html, body { margin: 0; height: 100%; background: Canvas; color: CanvasText; }
     body { font: 14px/1.45 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; display: grid; place-items: center; }
@@ -18,7 +18,7 @@
     #status:empty { display: none; }
     [hidden] { display: none !important; }
   </style>
-  <script src="newtab.js" type="module"></script>
+  <script src="newtab.ts" type="module"></script>
 </head>
 <body>
   <main id="notice" hidden>

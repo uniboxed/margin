@@ -24,7 +24,7 @@
     "<all_urls>"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.ts"
   },
   "content_scripts": [
     {
@@ -32,7 +32,7 @@
         "<all_urls>"
       ],
       "js": [
-        "content/main.js"
+        "content/main.ts"
       ],
       "run_at": "document_start",
       "all_frames": false

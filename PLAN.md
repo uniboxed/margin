@@ -45,7 +45,7 @@ New in this plan (Tirth, 2026-11-04):
 | Margin UI runtime | The state mirror, rendering the theme, the action list, the behaviors (drag and drop, resize, peek, palette keys, context menus, inline rename), measuring the theme's page slot | Talk to the browser: everything goes through the host |
 | Theme | Structure (HTML), look (CSS), layout (where the page slot is), fonts and images bundled with it, its settings (as CSS variables) | Any script, any network request, any action Margin doesn't list |
 | Margin.app host | Native windows per browser window, following the window, the link to each browser's extension, app shortcuts, keyboard focus for the palette, the window drag in windowed mode, and **the lasting data on the Mac** (section 6, "Where data lives") | Live tab state: tab ids exist only inside the running browser |
-| In-page host | The runtime and theme in a closed shadow root (`ui/host.js`), for the browser tests only (`tests/theme/`). It drew Margin in pages until Phase 2 step 5, when it left the extension | Ship, or run in the extension: Margin is Mac-only, and without the app pages are left as they are and the new-tab page says the app isn't running (the install prompt: Phase 7) |
+| In-page host | The runtime and theme in a closed shadow root (`ui/host.ts`), for the browser tests only (`tests/theme/`). It drew Margin in pages until Phase 2 step 5, when it left the extension | Ship, or run in the extension: Margin is Mac-only, and without the app pages are left as they are and the new-tab page says the app isn't running (the install prompt: Phase 7) |
 
 ## 3. Themes, version 2
 
@@ -151,7 +151,7 @@ Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), ge
   - **Safari has a tab Margin doesn't know:** it's added to the window's active space, as today.
   - **Margin has a tab Safari doesn't (not open):** it stays in its space in the sidebar, drawn as not open, and opens in the window where it's clicked (`tabs.create` with its address), then is linked to that tab. A space's not-open tabs show in every window showing that space.
   - **What keeps a tab, and what removes it:** a tab closed on its own (its × in Margin, ⌘W, Safari's tab bar: `tabs.onRemoved` with `isWindowClosing` false, not started by Margin) goes to the archive, as today. Tabs lost because a whole window closed, Safari quit or crashed, or Safari didn't restore them stay as not-open tabs in their spaces.
-  - **After a relaunch:** restored browser tabs are matched to Margin's tabs by address and order (today's `restore.js` logic); unmatched Margin tabs stay not open.
+  - **After a relaunch:** restored browser tabs are matched to Margin's tabs by address and order (today's `restore.ts` logic); unmatched Margin tabs stay not open.
   - **Auto-archive** still moves tabs unused for `archiveAfterHours` into the archive, open or not.
   - Reopening a not-open tab starts fresh: its Back history and scroll position are gone, as when reopening any closed tab.
   - **Sleeping tabs become closed-but-kept (Tirth, 2026-11-04):** after `sleepAfterHours` unused, Margin closes the browser tab itself and keeps it as a not-open Margin tab, with the same skips as now (the tab in front, playing sound, drafts, the never-sleep list). This frees all of its memory (no sleep page left running) and leaves nothing broken if Margin is removed. Chrome and Edge keep `tabs.discard`, which keeps the tab and its history at no memory cost. The sleep page went in Phase 3 (with its copy moves, Back guards and "Wake all"'s path in Safari); a tab an earlier build left on it is kept as its Margin tab, or loaded at its address if it's in front. The choice of which tabs sleep and the draft check stay.
@@ -159,9 +159,9 @@ Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), ge
 
 ## 7. The extension, changed
 
-- **Switching (done in Phase 2 step 8, 2026-11-05):** `focusTab` is `tabs.update(active)`, and `windows.update(focused)` only if the window isn't focused (`background/tabs.js`, from about 1,100 lines). Navigation (next/previous tab and space) keeps its chaining, without wakes and passing checks. Each switch is one line in Margin.app's log (`background/switch-log.js`).
+- **Switching (done in Phase 2 step 8, 2026-11-05):** `focusTab` is `tabs.update(active)`, and `windows.update(focused)` only if the window isn't focused (`background/tabs.ts`, from about 1,100 lines). Navigation (next/previous tab and space) keeps its chaining, without wakes and passing checks. Each switch is one line in Margin.app's log (`background/switch-log.ts`).
 - **Page box (done):** insets come from the theme's layout per window (Phase 2 step 3a for live pages; Phase 3 for the first paint).
-  - First paint (Phase 3): the registered CSS carries the insets as variables, spelled in digit files (`shared/page-box.js layoutFiles`), the theme's first-paint file builds the box from them under a mark the page's world sets (`data-margin-at`), and the page's world reads them (`content/page/main.js`). A window whose layout isn't the registered one gets its own sheet as each page commits (`registered.js fixUp`, `webNavigation`). No file per width: the 36 placeholders and the `at-*.js` files are empty stubs for one update's sake (`scripts/build.js LEGACY_FILES`).
+  - First paint (Phase 3): the registered CSS carries the insets as variables, spelled in digit files (`shared/page-box.ts layoutFiles`), the theme's first-paint file builds the box from them under a mark the page's world sets (`data-margin-at`), and the page's world reads them (`content/page/main.ts`). A window whose layout isn't the registered one gets its own sheet as each page commits (`registered.ts fixUp`, `webNavigation`). No file per width: the 36 placeholders and the `at-*.js` files are empty stubs for one update's sake (`scripts/build.ts LEGACY_FILES`).
   - The registration is never taken away once made in a run of Safari, only updated (to zeros for no box): WebKit kept drawing a dropped registration in between (section 14).
 - **No UI in pages (done in Phase 2 step 5):** pages get only the box, while the app is linked (none otherwise: the page as it is), and the small scripts that must run in a page (gestures, pinch, the draft check, the navigation and ⌘T keys). The UI runtime, the theme loader and the in-page host are out of the content script and the new-tab page. With no app linked, Margin's new-tab page says Margin.app isn't running, with a button that starts it and an address field; Phase 7 makes that the prompt to install the app (and adds the toolbar button).
 - **Sleeping tabs:** kept; their checks no longer look at keep-ready, warm-up or slow Safari (done in Phase 2 step 8); they still wait for a switch under way.
@@ -174,15 +174,15 @@ Counted on `feat/sleeping-tabs` (wc -l). About 9,000 lines of extension code and
 
 | Where | Goes | Why |
 |---|---|---|
-| `background/tabs.js` | about 3,200 of 4,018 lines: wakes, holds, sidebar preparation, cover and paint barriers, ping gate, `focusTabNow`, WebKit's mark and introductions, kicks, restore behind, warm tab | Anti-blackout switching |
-| `background/keep-ready.js` (577), `warm-up.js` (586), `slow.js` (134) | Whole files | Anti-blackout switching |
+| `background/tabs.ts` | about 3,200 of 4,018 lines: wakes, holds, sidebar preparation, cover and paint barriers, ping gate, `focusTabNow`, WebKit's mark and introductions, kicks, restore behind, warm tab | Anti-blackout switching |
+| `background/keep-ready.js` (577), `warm-up.js` (586), `slow.ts` (134) | Whole files | Anti-blackout switching |
 | `background/diagnostics.js` (159) and the switch-log button | Whole file (done, Phase 3: sleep passes, the open-tab repair and an empty storage are lines in Margin.app's log) | Development diagnostics |
-| `background.js`, `handlers.js`, `navigation.js` | Introduction and warm-up hooks, the deadline guard and `arrival`, `prewake`, `away`, `inView`, `warmUp*`, `pageBlinked`, `switchLog`, carry-open | Anti-blackout and in-page-only |
-| `content/core.js` | about 700 of 1,496 lines: first show, prepared show, covers, warm-up note, switching cover | Anti-blackout |
-| `content/hold.js` (72), `idle.js` (135), `shared/page-ready.js` (197), `shared/away.js` (80) | Whole files | Anti-blackout |
+| `background.ts`, `handlers.ts`, `navigation.ts` | Introduction and warm-up hooks, the deadline guard and `arrival`, `prewake`, `away`, `inView`, `warmUp*`, `pageBlinked`, `switchLog`, carry-open | Anti-blackout and in-page-only |
+| `content/core.ts` | about 700 of 1,496 lines: first show, prepared show, covers, warm-up note, switching cover | Anti-blackout |
+| `content/hold.js` (72), `idle.js` (135), `shared/page-ready.js` (197), `shared/away.ts` (80) | Whole files | Anti-blackout |
 | `themes/register.js`, theme JS bundles, `assets.js`, 35 `docked/w-*.css` per theme, `at-<width>.js` | Replaced by theme packages (Phase 1 step 4) and the first paint from layout variables (Phase 3; the previous build's paths stay as empty stubs for an update) | Themes v2 |
-| `themes/arcadia/sidebar.js` (1,742), `chrome.js`, `content.js`, `palette.js`, `newtab.js` | Their behavior moves into the runtime (about 1,600 lines); their structure and look into Arcadia's HTML and CSS; hover prewake and the warm-up note are deleted | Themes v2 |
-| `shared/platform.js` | `wakeTabs`, `keepTabsReady`, `introduceTabs`, `restoreTabs`, `warmUp`, `prepareSidebar`, `hiddenPaints`, `asksBackground()`, `madeAfresh()` (all gone; `prepareSidebar` and its `stateRev` in Phase 3) | Anti-blackout |
+| `themes/arcadia/sidebar.js` (1,742), `chrome.js`, `content.js`, `palette.ts`, `newtab.ts` | Their behavior moves into the runtime (about 1,600 lines); their structure and look into Arcadia's HTML and CSS; hover prewake and the warm-up note are deleted | Themes v2 |
+| `shared/platform.ts` | `wakeTabs`, `keepTabsReady`, `introduceTabs`, `restoreTabs`, `warmUp`, `prepareSidebar`, `hiddenPaints`, `asksBackground()`, `madeAfresh()` (all gone; `prepareSidebar` and its `stateRev` in Phase 3) | Anti-blackout |
 | Tests | in-window, wake (except its new-tab-hint and sleeping-switch cases), keep-ready, warm-up, slow-safari, page-ready, hold, idle, away; parts of answer-in-time, startup, slow-start, spaces-switch; in Phase 3 the sleep page's, `stateRev`'s, the placeholders', the takeover's, and the in-page UI's e2e tests (the e2e tests of kept behaviour that drive the in-page UI are kept, skipped) | They test deleted code |
 | WebKit host scenarios | unseen, unseennav, prepared, introduce, arrival, behind*, shell*, heavyflip, unloaded*, deferred, loadcover, slowunloaded, restartrepair, recorder; in Phase 3 sleep-copy (now sleep-leftover) and update-old-layout (`twins` stays: it tests copies, kept) | They test deleted code |
 | `DECISIONS.md` | Nothing deleted: the "Margin 2, Phase 3" entry marks the anti-blackout sections (2026-10-26 to 2026-11-04) and the theme-JS sections as superseded, by heading (done) | History stays readable |
@@ -212,9 +212,9 @@ Each phase ends with the unit tests passing, the WebKit host scenarios that appl
 
 ### Phase 1: the UI runtime and themes v2, in pages (no app yet)
 
-- In pages so the runtime can be built and tested before the app exists (in Chromium with Playwright, and in Safari as a temporary development host). Afterwards the in-page host stays only as a test host; it isn't shipped (it left the extension in Phase 2 step 5; `ui/host.js` stays for the browser tests).
+- In pages so the runtime can be built and tested before the app exists (in Chromium with Playwright, and in Safari as a temporary development host). Afterwards the in-page host stays only as a test host; it isn't shipped (it left the extension in Phase 2 step 5; `ui/host.ts` stays for the browser tests).
 - The runtime (`extension/ui/`): view model, renderer, actions, behaviors (drag and drop, resize, peek, rename, menus, palette), host adapter interface.
-- The theme format, sanitizer, packaging in `scripts/build.js`, `theme.json` schema and checks.
+- The theme format, sanitizer, packaging in `scripts/build.ts`, `theme.json` schema and checks.
 - Arcadia ported; the in-page host uses the runtime. The old theme JS path goes.
 - Done when: every current in-page feature works through the new runtime with Arcadia, and the e2e suite (rewritten for the new DOM) passes.
 
@@ -291,7 +291,7 @@ All four spikes ran; the raw notes, numbers and code are on the spike branches. 
 
 **Spike 1, drawing around the page:** see section 6. One overlay window per browser window with pointer-based pass-through over the page slot.
 
-**Spike 2, theme renderer and sanitizer** (`spike/theme-renderer`: `extension/ui/sanitize.js`, `render.js`, `actions.js`, `themes/neo-brutalism/`; 847 unit and 16 browser tests):
+**Spike 2, theme renderer and sanitizer** (`spike/theme-renderer`: `extension/ui/sanitize.ts`, `render.ts`, `actions.ts`, `themes/neo-brutalism/`; 847 unit and 16 browser tests):
 - Margin parses theme HTML with its own strict tokenizer into a plain tree and builds the DOM with `createElement`/`setAttribute`; the browser never parses theme text (no `DOMParser`, no `innerHTML`). CSS goes through a CSS Syntax 3 tokenizer with an allowlist of functions.
 - With 200 tabs: first render about 3 ms; every update under 1 ms of Margin's code and under 4 ms with the browser's layout, except switching back to a 200-tab space in WebKit (5 ms; `content-visibility: auto` on rows helps).
 - 82 HTML, 50 CSS and 25 action-abuse payloads in WebKit and Chromium: nothing ran, no request was made.

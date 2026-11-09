@@ -1,7 +1,7 @@
 <!--
 pattern: a <body> placed by its own offset (absolute or relative, `left: 50%` and a negative margin) sits where the page puts it
 from: xkcd.com (fit-check round 1): `body { position: absolute; left: 50%; width: 780px; margin-left: -390px }`; in the box the page's `left` was dropped, so its column started 390px left of the box
-handled-by: content/page/box-body.js (readSaid: the page's offset read with its size and margins), shared/body-fit.js (resolve), shared/page-box.js (bodyFitCss)
+handled-by: content/page/box-body.ts (readSaid: the page's offset read with its size and margins), shared/body-fit.ts (resolve), shared/page-box.ts (bodyFitCss)
 -->
 <!doctype html>
 <html lang="en">

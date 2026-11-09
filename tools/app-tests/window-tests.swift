@@ -24,7 +24,7 @@ final class World {
   var blipped: Set<Int> = []
   var collapse = false
   var noList = false
-  // The pages (background/link.js visibility): with `pages` on, each extension window the truth names has
+  // The pages (background/link.ts visibility): with `pages` on, each extension window the truth names has
   // its page in front say it's shown while its window is on screen, hidden while not, `pageLag` after the
   // window server changed (per window and what it says); `silent` ones never say. `spaceAt`: the last
   // Space change Margin.app heard (NSWorkspace), passed as is.
@@ -128,7 +128,7 @@ final class World {
   }
   // Margin.app hearing the active Space changed (now, or `ago` seconds back).
   func spaceChanged(ago: Double = 0) { spaceAt = t - ago }
-  // A window's word forgotten (another tab shown in it: background/link.js tabActivated), its new tab
+  // A window's word forgotten (another tab shown in it: background/link.ts tabActivated), its new tab
   // saying it again `after` seconds later (if its page can).
   func forget(_ key: WindowKey, after: Double) {
     say(key, visible: nil)

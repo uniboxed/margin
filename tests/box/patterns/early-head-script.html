@@ -1,7 +1,7 @@
 <!--
 pattern: a script early in <head> already sees the box (its width, its media queries), as the scripts after it do
 from: simpli.fi (fit-check round 1, re-checked): its first inline script saw the window (1440 wide) and the next the box, in the e2e harness's Chromium, which runs the registered page script after <head>'s first nodes there. (Its React hydration errors through Margin, in Chromium and the WebKit host, have another cause, not found yet: the markup before hydration is the same, and no one shim makes them go.)
-handled-by: content/page/main.js (the first paint looked at as <head> and <body> arrive, before their scripts run)
+handled-by: content/page/main.ts (the first paint looked at as <head> and <body> arrive, before their scripts run)
 note: the page arrives in two parts, 300 ms apart (a pause marker right after <head>), so the first paint's CSS can come in between
 -->
 <!doctype html>

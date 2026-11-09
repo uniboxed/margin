@@ -505,7 +505,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
 
     // A message to the page (marginApp.receive), as JSON text.
     /// Handed to another window by a profile switch (Shell.handOverOverlay): its key changes, and its page, if drawn,
-    /// takes that window's hello in place (host-app.js `rekey`); one still loading asks for it as it starts.
+    /// takes that window's hello in place (host-app.ts `rekey`); one still loading asks for it as it starts.
     /// (Its hello is asked for after the key changes: one built before it, as an argument, was its old window's, and the
     /// page went on drawing that window: Tirth, 2026-11-07, the sidebar showing another space after a switch.)
     func rekey(_ to: WindowKey) {
@@ -608,7 +608,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     /// and the focus is at most `focusFresh` old; otherwise the page lets go of it (`blur`), so no
     /// field shows focused while the keys go to the browser. Then the page hears it's shown:
     /// `focusLauncher`, its window is new and in front (⌘N, New Window): the new-tab launcher takes
-    /// the focus (palette.js focuses it only then, never as the page first draws).
+    /// the focus (palette.ts focuses it only then, never as the page first draws).
     // `palette`: a window made from another (⌘N, the palette's New window), in front: the palette opens over
     // its new tab, as ⌘T's does (Tirth, 2026-11-09). `focusLauncher`: another new window in front (Safari's own
     // New Window): its new-tab launcher's field takes the focus. Neither while a field of its page has it.

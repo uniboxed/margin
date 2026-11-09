@@ -1,5 +1,5 @@
 // Margin's extension handler: the extension's native messages
-// (browser.runtime.sendNativeMessage, background/onboarding.js) about what it
+// (browser.runtime.sendNativeMessage, background/onboarding.ts) about what it
 // sees in Safari are passed on to Margin's app (its set-up window,
 // ViewController.swift) as a distributed notification, while the app is open.
 // Both are sandboxed and share no storage; a notification's string object is
@@ -36,7 +36,7 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         let message = request?.userInfo?[SFExtensionMessageKey]
         // Safari's own id for the profile this copy runs in (none for the
         // default profile): it survives Safari wiping the extension's storage,
-        // so the app's data for the profile is found again (background/link.js).
+        // so the app's data for the profile is found again (background/link.ts).
         var profile = "s-default"
         if #available(macOS 14.0, *), let id = request?.userInfo?[SFExtensionProfileKey] as? UUID {
             profile = "s-\(id.uuidString.lowercased())"
@@ -51,13 +51,13 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         var passOn: [String: Any]?
         var launching = false
         if let body, body["type"] as? String == "log", let line = body["line"] as? String {
-            // The copy's link events (background/link.js note): in the system log
+            // The copy's link events (background/link.ts note): in the system log
             // next to the app's own (subsystem io.tirth.margin, category extension).
             Self.extensionLog.notice("\(profile, privacy: .public): \(String(line.prefix(300)), privacy: .public)")
             return reply(context, appOpen: appOpen)
         }
         if let body, body["type"] as? String == "ping" {
-            // The copy's lasting port, used to keep Safari's background alive (background/link.js): nothing to do.
+            // The copy's lasting port, used to keep Safari's background alive (background/link.ts): nothing to do.
             return reply(context, appOpen: appOpen)
         }
         if let body, let type = body["type"] as? String, type == "status" || type == "event" {

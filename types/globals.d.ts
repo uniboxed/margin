@@ -1,7 +1,7 @@
 // Ambient declarations for `npm run typecheck` (tsc --checkJs; nothing here
 // is built or shipped).
 
-// WebKit's trackpad pinch events (Safari only; shared/gestures.js).
+// WebKit's trackpad pinch events (Safari only; shared/gestures.ts).
 interface GestureEvent extends UIEvent {
   readonly scale: number;
   readonly rotation: number;
@@ -25,7 +25,7 @@ declare var chrome: any;
 // scripts, the fitted layout); see DECISIONS.md "One bundled script per
 // context". Loosely typed on purpose: each script adds its own parts.
 declare var Margin: {
-  platform?: import('../extension/shared/platform.js').Platform;
+  platform?: import('../extension/shared/platform.ts').Platform;
   content?: any;
   theme?: any; // the active theme's content part (themes/register.js)
   [key: string]: any;

@@ -22,11 +22,11 @@ enum LinkProtocol {
     static let maxAppMessage = 1_000_000
     // A chunk's bytes before base64 (about 683 KB as text, well inside maxAppMessage).
     static let chunkBytes = 512 * 1024
-    // The largest theme taken in chunks (ui/theme-loader.js PACKAGE_LIMITS.storedBytes is 4.5 MB).
+    // The largest theme taken in chunks (ui/theme-loader.ts PACKAGE_LIMITS.storedBytes is 4.5 MB).
     static let maxThemeBytes = 8 * 1024 * 1024
 }
 
-// Where the theme put the page in one browser window (ui/host.js Geometry):
+// Where the theme put the page in one browser window (ui/host.ts Geometry):
 // `<m-page>`'s content box as insets from the window's edges, in points (CSS
 // pixels at zoom 1 in the overlay, which is exactly over the window).
 struct PageLayout: Equatable {
@@ -123,7 +123,7 @@ enum LinkMessage {
         let origin: String? // the copy whose ids the state has
         let since: Double?
         let pid: Int? // the browser's process, if the copy knows it (Chrome's relay helper does)
-        // What the copy says of a time its link was off (its socket guard, background/link.js), for the log.
+        // What the copy says of a time its link was off (its socket guard, background/link.ts), for the log.
         var socketsOff: String? = nil
 
         // The link's key: one link per browser profile.
@@ -484,7 +484,7 @@ struct SpaceWindowAnswer: Equatable {
     }
 }
 
-// The overlay page's `framed { mode }` (app/overlay/overlay.js): after the shell's `shown`, on its next
+// The overlay page's `framed { mode }` (app/overlay/overlay.ts): after the shell's `shown`, on its next
 // animation frame, the page says it has drawn, and in which mode (R4: B's overlay framed in full screen).
 struct OverlayFramed: Equatable {
     enum Mode: String { case fullscreen, windowed }

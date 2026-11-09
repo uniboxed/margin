@@ -9,6 +9,6 @@
 
 The shortcut `commands` are ⌃⌘ + arrows in both (in `extension/manifest.json`). Safari's build once had ⌥⌘↓/↑ commands for tabs; they didn't respond in Safari, while ⌃⌘ does, and Chrome refuses ⌘⌥ commands outright.
 
-Behavior that differs (Safari fetches site icons since it has no `tab.favIconUrl`; default shortcuts) lives in the profiles in `extension/shared/platform.js`; the build stamps which profile a folder uses. Safari's default *page* shortcuts for tabs are ⌥⌘↓/↑ (on top of the ⌃⌘ commands).
+Behavior that differs (Safari fetches site icons since it has no `tab.favIconUrl`; default shortcuts) lives in the profiles in `extension/shared/platform.ts`; the build stamps which profile a folder uses. Safari's default *page* shortcuts for tabs are ⌥⌘↓/↑ (on top of the ⌃⌘ commands).
 
 Don't edit `dist/` by hand: change `extension/` or these files, then run `npm run build` (a unit test fails if `dist/` is stale). Load `dist/safari/` in Safari and `dist/chrome/` in Chrome.

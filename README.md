@@ -100,23 +100,23 @@ Margin 2 (`PLAN.md`): Margin.app draws all of Margin's UI around each browser wi
 ```
 extension/              The extension's shared source, as ES modules (browsers load the bundles in dist/)
   manifest.json         MV3: tabs, storage, alarms, scripting, webNavigation; <all_urls>; newtab override; commands
-  shared/platform.js    Per-browser profiles (favicon fetching, sleeping tabs, default shortcuts); stamped by the build
-  background.js         State owner: registers every listener. Tab events → pure model → storage.local;
+  shared/platform.ts    Per-browser profiles (favicon fetching, sleeping tabs, default shortcuts); stamped by the build
+  background.ts         State owner: registers every listener. Tab events → pure model → storage.local;
                         routes pages' and Margin.app's requests.
   background/           Its parts: store, handlers (the message protocol), link and app-link (Margin.app),
                         tabs (the plain switch, opening, the open-tab repair), navigation, sleep, archive,
                         registered (the page's first paint), notices, page-loads, switch-log (lines in
                         Margin.app's log), cut-off, site-icons, search-engine, theme-package.
-  state/model.js        Pure state functions (no browser APIs), unit tested: tabs, kept tabs, spaces, pins, folders.
+  state/model.ts        Pure state functions (no browser APIs), unit tested: tabs, kept tabs, spaces, pins, folders.
   shared/               Pure helpers: view (what the sidebar shows), search, shortcuts, stored (storage
                         format), data-set and data-merge (the data Margin.app owns), page-box (the box's CSS
                         and the first paint's), page-css, app-link, sleep, notices, gestures, pull.
-  content/core.js       Margin on web pages, no UI: the box from Margin.app's layout, gestures, the
+  content/core.ts       Margin on web pages, no UI: the box from Margin.app's layout, gestures, the
                         draft check, navigation keys and ⌘T, icons and zoom, copies standing back.
   content/page/         The page's box in the page's own world (one bundle, registered while Margin.app draws).
   newtab/               Margin's new-tab page: drawn by Margin.app while linked; else a notice and an address field.
   ui/                   The UI runtime (view model, renderer, sanitizer, actions, behaviors), run by Margin.app's
-                        overlay page (ui/host-app.js) and by the browser tests (ui/host.js).
+                        overlay page (ui/host-app.ts) and by the browser tests (ui/host.ts).
   themes/<id>/          Theme packages (theme.json, theme.html, theme.css, fonts), first-paint.css: see themes/README.md.
 app/                    Margin.app: shell/ (Swift), overlay/ (its page), safari/ (set-up window, extension handler);
                         PROTOCOL.md is the link's protocol.
@@ -139,7 +139,7 @@ Design decisions and every Safari fallback are in [DECISIONS.md](DECISIONS.md).
 
 ```sh
 npm run build       # after any change under extension/, platform/ or app/overlay/: regenerate dist/ (a test checks it)
-npm test            # type check (tsc --checkJs, JSDoc types; types/*.d.ts), then unit tests (node --test)
+npm test            # type check (tsc, TypeScript 7; types/*.d.ts), then unit tests (node --test, from the .ts files)
 npm run test:theme  # the UI runtime and the themes in headless WebKit and Chromium
 npm run test:app    # Margin.app's shell: unit checks and end to end against a fake extension, off screen
 npm run test:webkit # Margin's Safari build on WebKit's own extension engine, off screen (tools/webkit-host/README.md)
@@ -150,4 +150,4 @@ npm run icons       # regenerate extension/icons
 
 ### Adding a theme
 
-A theme is HTML and CSS, no JavaScript: a package in `extension/themes/<id>/` (`theme.json`, `theme.html`, `theme.css`, bundled fonts), listed in `themes/packages.js`, with its look at a page's first paint in `first-paint.css`. `extension/themes/README.md` is the guide.
+A theme is HTML and CSS, no JavaScript: a package in `extension/themes/<id>/` (`theme.json`, `theme.html`, `theme.css`, bundled fonts), listed in `themes/packages.ts`, with its look at a page's first paint in `first-paint.css`. `extension/themes/README.md` is the guide.

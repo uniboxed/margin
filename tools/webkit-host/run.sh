@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs a scenario (scenarios.mjs) on the WebKit host against Margin's Safari
+# Runs a scenario (scenarios.mts) on the WebKit host against Margin's Safari
 # build: ./run.sh <scenario> | ./run.sh all | ./run.sh path/to/scenario.json
 # Exits 1 if a check failed. Nothing shows on screen. Run `npm run build` first.
 # Several runs can go at once with their own MARGIN_HOST_PORT (default 47811)
@@ -43,7 +43,7 @@ rm -rf "$BUILD/old" && mkdir -p "$BUILD/old"
 if git -C ../.. archive "$OLD_REF" 2>/dev/null | tar -x -C "$BUILD/old" 2>/dev/null; then
   if [ ! -d "$BUILD/old/dist/safari" ]; then
     ln -s "$(cd ../.. && pwd)/node_modules" "$BUILD/old/node_modules"
-    (cd "$BUILD/old" && node scripts/build.js >/dev/null 2>&1) || echo "the old build ($OLD_REF) didn't build: installOld can't run" >&2
+    (cd "$BUILD/old" && if [ -f scripts/build.ts ]; then node scripts/build.ts; else node scripts/build.js; fi >/dev/null 2>&1) || echo "the old build ($OLD_REF) didn't build: installOld can't run" >&2
   fi
 fi
 if [ -d "$BUILD/old/dist/safari" ]; then
@@ -58,9 +58,9 @@ run_one() {
   if [[ "$name" == *.json ]]; then
     cp "$name" "$BUILD/scenario.json" && name=scenario
   else
-    "$NODE" scenarios.mjs "$name" > "$BUILD/$name.json" || return 2
+    "$NODE" scenarios.mts "$name" > "$BUILD/$name.json" || return 2
   fi
-  "$NODE" server.mjs > "$BUILD/server.log" 2>&1 &
+  "$NODE" server.mts > "$BUILD/server.log" 2>&1 &
   local server=$!
   sleep 0.5
   "$BUILD/host" "$BUILD/ext" "http://127.0.0.1:$PORT" "$BUILD/$name.json" > "$BUILD/host.log" 2>&1
@@ -75,7 +75,7 @@ run_one() {
 
 if [ "${1:-}" = all ]; then
   failed=0
-  for name in $("$NODE" -e "import('./scenarios.mjs').then((m) => console.log(Object.keys(m.SCENARIOS).join(' ')))"); do
+  for name in $("$NODE" -e "import('./scenarios.mts').then((m) => console.log(Object.keys(m.SCENARIOS).join(' ')))"); do
     run_one "$name" || failed=1
   done
   exit $failed

@@ -158,7 +158,7 @@ A switch's target is a **window**, not just a profile: `Target { link, space, nu
 - **The space.** If B's active space (`openTabs.activeSpaceByWindow`, `ShellProfiles.swift:189-199`) isn't the target, `setSpace { windowId: B, spaceId }` goes to B's copy now. Safari switches B's tab behind, and R3 later probes the new tab in front.
 - **Blockers** (§1.10).
 - **Drafts**, whenever this switch may close A (the `close` choice, or `park` with a close possible after a failed park): `windowDrafts { windowId: A }`, at most 400 ms (§4.5).
-- **The cover** in A's overlay (§7). The freeze starts when A's overlay says `coverShown`, or 250 ms after the start, whichever comes first. The sidebar's swipe settles for `SETTLE_MS` (220 ms) after the release (`extension/ui/behaviors/swipe.js:16`, `:63-72`). The freeze is screen-wide, so it must not start mid-slide.
+- **The cover** in A's overlay (§7). The freeze starts when A's overlay says `coverShown`, or 250 ms after the start, whichever comes first. The sidebar's swipe settles for `SETTLE_MS` (220 ms) after the release (`extension/ui/behaviors/swipe.ts:16`, `:63-72`). The freeze is screen-wide, so it must not start mid-slide.
 - **The cooldown.** At least 1 s since a watchdog reveal (gate G7 may shorten it), and at least 300 ms since any reveal.
 
 ### 1.6 The target has no window: create under the freeze
@@ -171,7 +171,7 @@ A switch's target is a **window**, not just a profile: `Target { link, space, nu
 
 The create variant, in the freeze:
 
-1. `openSpaceWindow { spaceId, fullscreen: true }`, as today (`handlers.js:715-741`). The app calls `binder.expect` for the new window (`Shell.swift:995-1002`), and B's overlay page loads early (`Shell.swift:792`).
+1. `openSpaceWindow { spaceId, fullscreen: true }`, as today (`handlers.ts:715-741`). The app calls `binder.expect` for the new window (`Shell.swift:995-1002`), and B's overlay page loads early (`Shell.swift:792`).
 2. **No second full-screen request.** macOS already puts the new window into full screen (bg-create 10/10), and the copy already asks with `state: 'fullscreen'`. Today's `fullScreenAfter` re-ask (`ProfileSwitch.swift:74`, `:211-215`) applies only after gate G4, and only on §3.4's evidence.
 3. When the copy answers and the binder binds B: R1-R4 as for any B. The made-by-Margin binding needs the copy's bounds to fit (`WindowMatcher.swift:609-614`), so `openSpaceWindow` answers with the window's bounds too, and the copy pushes its window list at once (§3.3).
 4. Then A as in §1.3, steps 5-8.
@@ -199,7 +199,7 @@ The create variant, in the freeze:
 
 ### 1.9 Requests that land late
 
-Safari carries out a windows call stuck behind a hung tab later, when it gets to it (`background/tabs.js:156-158`, `:174`). Once the call is made, it can't be taken back. So:
+Safari carries out a windows call stuck behind a hung tab later, when it gets to it (`background/tabs.ts:156-158`, `:174`). Once the call is made, it can't be taken back. So:
 
 - **`notAfter`.** Every `setWindowState` carries `notAfter` (ms since 1970: the app and the copies share the clock). The copy checks it just before it calls `windows.update` and answers `{ refused: 'late' }` if it's past. Values: B's full screen, 1.5 s after the freeze; A's normal, the switch's `settleTimeout`.
 - **One windows call per window.** The copy keeps `pendingWindowCall[windowId]`. A second `setWindowState`, `focusWindow` or `closeWindow` for that window while one is pending answers `{ busy: true }` without calling. That's also positive evidence of a stuck window: the log says so, and §1.7 waits or moves on.
@@ -334,11 +334,11 @@ Built (WP5): `WindowBinder.update(…, parked:)`, `expectParked(_:number:why:)` 
 - **Hidden while parked, never closed.** In `Shell.track`'s loop (`Shell.swift:788-850`), a parked key gets `overlay.hide("its window is parked")` and is skipped. The overlay's web view keeps its page, theme and state.
 - **A's overlay leaves before A's Space goes** (§1.3 step 5). It's an own-Space panel (`.managed` + `.fullScreenAuxiliary`, `Overlay.swift:67`), which `track` would otherwise leave in A's Space to slide back in with it (`Shell.swift:804-817`). Step 5 orders it and its edge panel out first, and R5 checks it's off screen. Gate G14 records what macOS does with an own-Space panel when its full-screen Space is destroyed.
 - **Own-Space checks skip the switch's windows.** `suspectOwnSpace` and `judgeOwnSpace` (`Shell.swift:641-680`), and `checkOwnSpace` (`:609-624`), leave out parked keys and the current switch's A and B. Their suspicions are cleared at park. A handoff can't trip `ownSpaceFallBack`.
-- **B's overlay is decided from the app's own reads during a switch.** For the switch's target, `wanted` doesn't wait for the copy's `fullscreen`. The copy's list lags by up to `WINDOWS_MS` (1 s, `background/link.js:92`, `:727`), and Safari's `onBoundsChanged` is optional (`background.js:406`). The target's overlay is made or kept from the switch's start (the early overlay, `Shell.swift:792`, generalized). It's shown once R1 and R2 hold and B fills its display.
+- **B's overlay is decided from the app's own reads during a switch.** For the switch's target, `wanted` doesn't wait for the copy's `fullscreen`. The copy's list lags by up to `WINDOWS_MS` (1 s, `background/link.ts:92`, `:727`), and Safari's `onBoundsChanged` is optional (`background.ts:406`). The target's overlay is made or kept from the switch's start (the early overlay, `Shell.swift:792`, generalized). It's shown once R1 and R2 hold and B fills its display.
 - **Never shown over nothing:** otherwise an overlay shows only over a bound, on-screen, display-filling window (`Shell.swift:794-823`).
 - **Memory:** each kept overlay keeps its web view (open question 8).
 
-Built (WP9): the shell is the switch's `HandoffWorld` (`app/shell/ShellHandoff.swift`; `Shell.track`, `Overlay.swift`, `WindowServer.swift`); tests in `tools/app-tests/e2e-profiles.swift` (`handoffScenario`, with `SpaceWindows` playing the window server and macOS's Spaces from one `FakeSpaceWorld`) and `fake-extension.mjs` (`play`). Settled on the way:
+Built (WP9): the shell is the switch's `HandoffWorld` (`app/shell/ShellHandoff.swift`; `Shell.track`, `Overlay.swift`, `WindowServer.swift`); tests in `tools/app-tests/e2e-profiles.swift` (`handoffScenario`, with `SpaceWindows` playing the window server and macOS's Spaces from one `FakeSpaceWorld`) and `fake-extension.mts` (`play`). Settled on the way:
 
 - **The gate.** `Shell.Options.handoff`, off by default; `forApp()` reads `MarginHandoff` from the defaults, so the gates' runs (G1's Margin.app half, G16) can turn it on. `handoffOn` is that and the Space reads. Off, `ProfileSwitch.handoffWorld` is nil (`HandoffWorld.handoffOn`, fixed in place in WP8's files): every switch is the close-based one exactly as before, with no drafts asked and no notices, and the registry's `parkingOn` is false, so a crash's marker leaves its windows as normal ones.
 - **The parts.** `checkPrivateCalls` makes `RealFreezer(skyLight:)` when the freeze passed, and sets `switcher.session.rules = FreezeRules(availability:)`. A harness gives `Options.handoffParts` (reads, parker, freezer) and `Options.fillsDisplay` instead: used as the check's would be, with no self-test.
@@ -361,7 +361,7 @@ Built (WP9): the shell is the switch's `HandoffWorld` (`app/shell/ShellHandoff.s
 Today a window that leaves full screen is `wanted: false`, so after 1.5 s (`Grace.notWanted`) its copy hears `drawn: false` and its pages lose their box (`Shell.swift:72-128`, `:902-951`).
 
 - `wanted` becomes `((fullscreen || windowedToo) || registry.isParked(number) || switcher.isTarget(key)) && theme != nil`, in both places it's computed (`Shell.swift:790`, `:905`). A parked window's pages keep their box at its full-screen insets, and B is wanted for the whole entry, however late its copy reports.
-- **Mode pinned to full screen.** The overlay page takes its mode from its own window's state in every `windows` push (`extension/ui/host-app.js:133`, `:322-329`), and `PageLayout` carries the mode that `LayoutOutbox` compares (`LinkMessage.swift:37`, `Shell.swift:50-57`). So:
+- **Mode pinned to full screen.** The overlay page takes its mode from its own window's state in every `windows` push (`extension/ui/host-app.ts:133`, `:322-329`), and `PageLayout` carries the mode that `LayoutOutbox` compares (`LinkMessage.swift:37`, `Shell.swift:50-57`). So:
   - the shell doesn't forward a copy's `windows` list (`Shell.swift:556-567`) to the overlay of a parked window or of the switch's target until that copy's list says the window is full screen. Then the latest list is sent;
   - `hello` says `mode: 'fullscreen'` for those windows (`Shell.swift:1150`);
   - `layoutChanged` (`Shell.swift:1171-1179`) does nothing for a parked key, or for any overlay that isn't shown.
@@ -373,10 +373,10 @@ Today a window that leaves full screen is `wanted: false`, so after 1.5 s (`Grac
 - The copies still list parked windows (`windows.getAll()`): state `normal`, their own `focused` flag, and `visible: false` once the page says so.
 - **New app → copy message** `parked { epoch, windowId, on, at }`, sent like `drawn` (`app/PROTOCOL.md:62`, `LinkMessage.swift:239`, `:258`). The copy keeps `appLink.parked[windowId]`, and a new epoch clears it. The copy uses it for:
   - `parkedActivity` (§6.1);
-  - `focusTab` and `openPin`, which prefer a tab in a window that isn't parked (`handlers.js:631-636`, `background/tabs.js:176-199`). When the only match is in a parked window, the copy doesn't raise it: it sends `parkedActivity { why: 'raise', windowId, tabId }`, and the app hands off to that window (§6.11);
-  - sleeping tabs: a parked window's tab in front doesn't sleep (`background/sleep.js`).
+  - `focusTab` and `openPin`, which prefer a tab in a window that isn't parked (`handlers.ts:631-636`, `background/tabs.ts:176-199`). When the only match is in a parked window, the copy doesn't raise it: it sends `parkedActivity { why: 'raise', windowId, tabId }`, and the app hands off to that window (§6.11);
+  - sleeping tabs: a parked window's tab in front doesn't sleep (`background/sleep.ts`).
 - Built (WP7): `AppMessage.parked` and the copy's `parkedActivity` push (`link.parkedActivity(windowId, why, tabId)`). The app decodes that push as its own `LinkMessage.parkedActivity`, so it never reaches an overlay. A `tab` or `raise` must name its tab. A push and a msg that name two different windows aren't a message.
-- Built (WP6): the copy keeps `parked` in `background/link.js` (`appLink.parked(windowId)`, `parkedWindows()`, `onParked`), in memory only (no page reads it). A new link (a new epoch), the link going off and the window closing forget it. A drop that's still reconnecting keeps it: the app may still have the window parked. Settled on the way:
+- Built (WP6): the copy keeps `parked` in `background/link.ts` (`appLink.parked(windowId)`, `parkedWindows()`, `onParked`), in memory only (no page reads it). A new link (a new epoch), the link going off and the window closing forget it. A drop that's still reconnecting keeps it: the app may still have the window parked. Settled on the way:
   - **`tab`:** `tabs.onCreated` in a parked window, unless Margin opened a tab in the last 2 s (`openedByMargin`, which `openKeptBehind` and every Margin open mark).
   - **`focus`:** `windows.onFocusChanged` naming a parked window, unless one of this copy's windows calls for it is pending or started or ended within 1 s. Each one heard is pushed: the app merges a burst.
   - **`raise`:** `focusTab` still brings the tab to the front of its parked window (so the handoff shows it, and R3 probes it), then pushes `raise` instead of focusing the window. Not linked (the push can't go), the window is raised as before.
@@ -427,33 +427,33 @@ The freeze has its own poll timer (8 ms), apart from `track`'s burst (33 ms, `Sh
 
 - **R1, B's Space.** The active Space isn't A's (noted at the freeze), it's in B's Spaces, and it's a type-4 Space (`S/stp/stp-handoff.swift:199-205`).
 - **R2, B's bounds.** B fills its display (`ScreenGeometry.fillsDisplay`, `WindowServer.swift:87-92`) with the same bounds for 3 polls in a row.
-- **R3, a fresh page frame (gate G2).** `frameProbe { windowId: B, width, height, frames: 6, nudgeMs: 80, timeoutMs: 400 }` goes to B's copy when R1 first holds. The copy passes it to B's tab in front (`tabs.sendMessage`, as `reportVisibility` is: `background/link.js:983`, `content/core.js:590`). The page:
+- **R3, a fresh page frame (gate G2).** `frameProbe { windowId: B, width, height, frames: 6, nudgeMs: 80, timeoutMs: 400 }` goes to B's copy when R1 first holds. The copy passes it to B's tab in front (`tabs.sendMessage`, as `reportVisibility` is: `background/link.ts:983`, `content/core.ts:590`). The page:
   - nudges for `nudgeMs`: a 1×1 fixed element, alternating alpha 0.01/0.02 each frame, outside the layout. In the AppKit lab, changed frames cleared full screen's leftover image (`S/handoff/RESULTS.md` step 4);
   - answers after `frames` `requestAnimationFrame`s at the full-screen width (within 2 pt): `{ tabId, frames, firstAt, lastAt, width, height, hasFocus, visible }`.
-  - Margin's new-tab page answers the same way (`extension/newtab/newtab.js`).
+  - Margin's new-tab page answers the same way (`extension/newtab/newtab.ts`).
   - **Unknown until G2:** whether WebKit runs rAF for B's page under the freeze before it marks the page visible, and whether its commits count as fresh commits of Safari's window. The STP pages animated all the time, which masks the leftover. So R3 ships behind `Options.frameProbe`. G2 runs STP with still pages and logs, per poll, when rAF resumes and when `visibilitychange` fires relative to R1/R2. If rAF doesn't run under the freeze, R3 becomes "the page's `visibilitychange` to visible after R2" and the nudge runs from that. If neither signal comes, R3 is off, and the risk (a leftover or a dark first frame on still pages) is written in TESTING.md.
   - **No answer** within 250 ms of R2: go on, and the log says `no page frames (tab T)`.
-- **R4, B's overlay.** B's overlay is shown just above B (`WindowMatcher.stackedAbove`, `WindowMatcher.swift:159-169`) and has said `framed { mode }` since this show, with `mode: 'fullscreen'`. After the shell's `shown` push (`app/overlay/overlay.js:274`), the overlay page answers on its next `requestAnimationFrame`. Timeout: 200 ms after R2, then go on (logged). G2 also checks the overlay web view's rAF under the freeze.
+- **R4, B's overlay.** B's overlay is shown just above B (`WindowMatcher.stackedAbove`, `WindowMatcher.swift:159-169`) and has said `framed { mode }` since this show, with `mode: 'fullscreen'`. After the shell's `shown` push (`app/overlay/overlay.ts:274`), the overlay page answers on its next `requestAnimationFrame`. Timeout: 200 ms after R2, then go on (logged). G2 also checks the overlay web view's rAF under the freeze.
 - **R5, the old window.** A off screen and in no user Space (parked), or gone (closed), or (`keep`) its Space not active. A's overlay off screen. At least 130 ms since A left full screen. No Safari window left over A's bounds (§1.10). "Left full screen" means the first poll where A's bounds no longer fill the display and A isn't in its old Space (`S/stp/stp-handoff.swift:209-210`).
 
 **Without a freeze:** the same reads drive the steps. If the Space reads are missing too, R1 is today's public "in front" check (`ShellProfiles.swift:355-362`).
 
 ### 3.3 New copy requests
 
-All go through `APP_REQUESTS` (`background/link.js:117-130`) and `handlers.js`:
+All go through `APP_REQUESTS` (`background/link.ts:117-130`) and `handlers.ts`:
 
 - **`setWindowState { windowId, state, focused?, notAfter }`:**
   - refused (`{ refused: 'late' }`) past `notAfter`, and `{ busy: true }` while a windows call for that window is pending (§1.9);
   - otherwise `windows.update(windowId, { state, …(focused ? { focused: true } : {}) })`;
-  - then it **polls `windows.get` every 100 ms until the state lands** (as `fullscreen.js` `waitForState` does, `:21-28`), at most 3 s, and **pushes the window list at once** (`windowsNow`), so the app and B's overlay hear the new state without the 1 s lag;
+  - then it **polls `windows.get` every 100 ms until the state lands** (as `fullscreen.ts` `waitForState` does, `:21-28`), at most 3 s, and **pushes the window list at once** (`windowsNow`), so the app and B's overlay hear the new state without the 1 s lag;
   - answers `{ windowId, state, landedAt }`, or `{ windowId, state, timedOut: true }`.
-  - It's not `focusWindow`, which always focuses (`handlers.js:750-756`): A must leave full screen without taking focus.
+  - It's not `focusWindow`, which always focuses (`handlers.ts:750-756`): A must leave full screen without taking focus.
 - **`frameProbe { … }`** (above). Answers `{ none: 'no page' }` when the tab doesn't answer within `timeoutMs`.
-- **`windowDrafts { windowId }`:** the tabs of that window with typed text not sent, from the sleeping-tabs draft check (`background/sleep.js:250-266`), all tabs in parallel, 400 ms. Answers `{ drafts: [tabId], unknown: [tabId] }`.
+- **`windowDrafts { windowId }`:** the tabs of that window with typed text not sent, from the sleeping-tabs draft check (`background/sleep.ts:250-266`), all tabs in parallel, 400 ms. Answers `{ drafts: [tabId], unknown: [tabId] }`.
 - **`openSpaceWindow`** answers `bounds` too, and pushes the window list at once (§1.6).
 - **`focusWindow` and `closeWindow`** take `notAfter` and the one-call-per-window rule too.
 
-Built (WP7, the words only; the handlers are WP6's): `HandoffRequest`, `WindowCallAnswer`, `FrameProbeAnswer`, `WindowDrafts`, `SpaceWindowAnswer` and `OverlayFramed` in `LinkMessage.swift`; `APP_REQUESTS`, `WINDOW_CALLS` and `windowCallRefusal` in `background/link.js`; all of it in `app/PROTOCOL.md` "The handoff". Settled on the way:
+Built (WP7, the words only; the handlers are WP6's): `HandoffRequest`, `WindowCallAnswer`, `FrameProbeAnswer`, `WindowDrafts`, `SpaceWindowAnswer` and `OverlayFramed` in `LinkMessage.swift`; `APP_REQUESTS`, `WINDOW_CALLS` and `windowCallRefusal` in `background/link.ts`; all of it in `app/PROTOCOL.md` "The handoff". Settled on the way:
 
 - `busy` and `refused` are ordinary answers (`ok: true`), so the app tells "nothing done" from a failure.
 - `refused: 'late'` also says `pastMs`, for the log line in §8.1.
@@ -461,7 +461,7 @@ Built (WP7, the words only; the handlers are WP6's): `HandoffRequest`, `WindowCa
 - `frameProbe`'s answer may carry `visibleAt` (the page's last `visibilitychange` to visible), for G2's fallback.
 - `openSpaceWindow`'s `bounds` is `{ left, top, width, height }`, as the `windows` list has them.
 
-Built (WP6, the copy's side): `extension/background/handoff.js` (`windowCall`, `setWindowState`, `probeWindow`, `tabCreated`, `focusChanged`), the handlers in `background/handlers.js`, `windowDrafts` in `background/sleep.js`, and `extension/shared/frame-probe.js` (`probeFrames`, `watchVisible`) answered by `content/core.js` and `newtab/newtab.js`; tests in `tests/handoff-copy.test.js`, and the WebKit host's `frame-probe` scenario. Settled on the way:
+Built (WP6, the copy's side): `extension/background/handoff.ts` (`windowCall`, `setWindowState`, `probeWindow`, `tabCreated`, `focusChanged`), the handlers in `background/handlers.ts`, `windowDrafts` in `background/sleep.ts`, and `extension/shared/frame-probe.ts` (`probeFrames`, `watchVisible`) answered by `content/core.ts` and `newtab/newtab.ts`; tests in `tests/handoff-copy.test.ts`, and the WebKit host's `frame-probe` scenario. Settled on the way:
 
 - **Today's switch keeps its calls.** `ProfileSwitch.swift` sends `focusWindow` and `closeWindow` with no `notAfter`. Those are never late and never `busy`, so its undo's close is never dropped behind its own focus. They still count as pending, so a handoff's call for that window meanwhile is `busy`.
 - **`pending` is held until Safari answers** the windows call (and, for `setWindowState`, through the poll). No cap: a call that never answers keeps its window `busy`, which is §1.9's evidence of a stuck window.
@@ -593,7 +593,7 @@ The lab only ever closed A under a second freeze after B's reveal (`S/handoff/la
 
 - **Gate G3:** this form in STP, against a single-freeze close. Until it passes, close-mode timings in TESTING.md are marked unmeasured.
 - **Drafts:** asked in `preparing`. If a tab has a draft or didn't answer, A isn't closed (`keep`), and B's overlay says so with a new notice kind `window-kept-draft`: "Kept Work's window open: a page in it has text you haven't sent." (Open question 3.)
-- **Pages reload** when the profile is opened again. Their tabs come back from Margin's records (`state/model.js spaceWindowTabs`, `DATA.md:134`).
+- **Pages reload** when the profile is opened again. Their tabs come back from Margin's records (`state/model.ts spaceWindowTabs`, `DATA.md:134`).
 - **Scroll:** each page goes back to where it was scrolled, once (the scroll record, `DATA.md` "The scroll record").
 - **Media restarts.** PiP ends with its window.
 - **Honest timings:** a create plus entry is about 1.1-1.7 s still, then about 0.3 s of B, then about 0.15 s still again (G3 measures it). The setting's text says switching is slower and pages reload (§5).
@@ -611,8 +611,8 @@ The lab only ever closed A under a second freeze after B's reveal (`S/handoff/la
 ## 5. "Close windows to save memory"
 
 - **Where it lives:** the app's browser-level file `data/safari/browser.json` (`BrowserProfiles.swift:107-115`, `DATA.md:121-126`), as `switching: { closeWindows: false }`. It's about switching between profiles, not about any one profile, so every profile's Settings show the same value (open question 6).
-- **How it reaches the overlay:** `across` gets `switchSettings: { closeWindows }` (`ShellProfiles.swift:151-180`, `shared/across.js`), and `ui/host-app.js` passes it to the form as a feature, as it does `cloudTabs` (`host-app.js:146-150`).
-- **The field:** a toggle in the form after "Show iCloud Tabs" (`settings-form.js:115`), shown for Safari with Margin.app and more than one profile:
+- **How it reaches the overlay:** `across` gets `switchSettings: { closeWindows }` (`ShellProfiles.swift:151-180`, `shared/across.ts`), and `ui/host-app.ts` passes it to the form as a feature, as it does `cloudTabs` (`host-app.ts:146-150`).
+- **The field:** a toggle in the form after "Show iCloud Tabs" (`settings-form.ts:115`), shown for Safari with Margin.app and more than one profile:
   - "Close windows to save memory: when you switch to another profile, the window you leave closes. Switching takes a little longer and its pages reload when you come back. Off: the window stays open, out of sight, with your place, text and video kept."
 - **How it reaches Margin.app:** `saveField` for this field returns `{ perform: 'switch.closeWindows', arg: { on } }`. `ShellProfiles.performAcross` writes `browser.json` and pushes `across` again.
 - **Turned on with windows parked:** each parked window is set normal (it already is), returned out of sight, and closed by its copy, drafts permitting (those stay parked, and the notice says so). Turned off: nothing changes until the next switch.
@@ -622,7 +622,7 @@ The lab only ever closed A under a second freeze after B's reveal (`S/handoff/la
   - a draft or no answer: it stays parked, and `window-kept-draft` names it (its Close window closes it). The shell keeps one notice, so with several kept, the last one shows;
   - while a switch runs: done once it's idle.
   - **Not "returned out of sight" first:** it's closed in its private Space, as quit's close is (§13.1). A return is one more step that could show the window, and quit already relies on closing a parked window in place.
-- Built (WP10): `BrowserProfiles.closeWindows` and `setCloseWindows` (`browser.json` `switching.closeWindows`; a file without it reads as off), `across.switchSettings`, the `closeWindows` field (`CLOSE_WINDOWS_LABEL`), shown when `ui/host-app.js` gives the feature `switchSettings` (Safari, more than one profile in `across`, and the app said the value), and `performAcross`'s `switch.closeWindows`. Closing the parked windows when it's turned on is WP11's.
+- Built (WP10): `BrowserProfiles.closeWindows` and `setCloseWindows` (`browser.json` `switching.closeWindows`; a file without it reads as off), `across.switchSettings`, the `closeWindows` field (`CLOSE_WINDOWS_LABEL`), shown when `ui/host-app.ts` gives the feature `switchSettings` (Safari, more than one profile in `across`, and the app said the value), and `performAcross`'s `switch.closeWindows`. Closing the parked windows when it's turned on is WP11's.
 
 ---
 
@@ -631,7 +631,7 @@ The lab only ever closed A under a second freeze after B's reveal (`S/handoff/la
 ### 6.1 A link from another app, or the person's focus, lands in a parked window
 
 - Seen in STP: with the only window parked, a link opened as a hidden tab in it, the page focused but `vis=hidden`, and no window showed (`S/stp/stp-1793947586.log` D).
-- **The copy:** for a tab created in a parked window that Margin didn't open (`markMarginOpening`, `background/tabs.js:291`; `openKeptBehind`'s tabs), or `windows.onFocusChanged` naming a parked window not within 1 s of Margin's own call, it pushes `{ type: 'parkedActivity', windowId, tabId?, why: 'tab' | 'focus' | 'raise' }`.
+- **The copy:** for a tab created in a parked window that Margin didn't open (`markMarginOpening`, `background/tabs.ts:291`; `openKeptBehind`'s tabs), or `windows.onFocusChanged` naming a parked window not within 1 s of Margin's own call, it pushes `{ type: 'parkedActivity', windowId, tabId?, why: 'tab' | 'focus' | 'raise' }`.
 - **The app** merges a burst into one event (150 ms), ignores it while a switch is busy or in its aftercare for that window, and runs a handoff to **that window** (§1.5 rule 1), with the tab's space as the target space. It's a full handoff from whatever is in front, or a no-A handoff (§6.2).
 - A tab can't be moved to the visible window instead: it belongs to another profile's copy.
 
@@ -711,15 +711,15 @@ The lab only ever closed A under a second freeze after B's reveal (`S/handoff/la
 
 ## 7. The UX before the freeze
 
-What exists today: `across.switching { profile, space, phase, notice }` (`ShellProfiles.swift:182-187`), the target chip's `switching: true` (`extension/ui/view-model.js:393`, `:412`), and a notice for "needs profile" and failures (`view-model.js:567`). There's no cover.
+What exists today: `across.switching { profile, space, phase, notice }` (`ShellProfiles.swift:182-187`), the target chip's `switching: true` (`extension/ui/view-model.ts:393`, `:412`), and a notice for "needs profile" and failures (`view-model.js:567`). There's no cover.
 
 New, kept small:
 
 - **`switchCover`** in the view model, only in A's overlay and only while `phase` is `preparing`, `waitingForLink` or `frozen`: `{ profile: { name, emoji, color, symbol? }, space: { name, emoji } }`.
-- **A guarded slot `<m-switch-cover>`** drawn over the page slot, like the launcher (`extension/themes/README.md:69`; slots in `ui/render.js:38-69`, `ui/sanitize.js:294`, `:373-385`). Every word is Margin's: "Switching to {profile}…", with the space's name under it. It's the one other exception, besides the launcher, to "never paint under `<m-page>`".
+- **A guarded slot `<m-switch-cover>`** drawn over the page slot, like the launcher (`extension/themes/README.md:69`; slots in `ui/render.ts:38-69`, `ui/sanitize.ts:294`, `:373-385`). Every word is Margin's: "Switching to {profile}…", with the space's name under it. It's the one other exception, besides the launcher, to "never paint under `<m-page>`".
 - **Margin's default part** when a theme has none: a centred card in the theme's colours. Arcadia and Neo-brutalism each get their own part.
 - No fade in the first build. The "animated later" Tirth mentioned is a later change.
-- **`coverShown`:** the overlay page posts `perform('switch.coverShown')` after the cover has been in the DOM for 2 animation frames and no swipe is settling (`m-settling`, `swipe.js:63-72`).
+- **`coverShown`:** the overlay page posts `perform('switch.coverShown')` after the cover has been in the DOM for 2 animation frames and no swipe is settling (`m-settling`, `swipe.ts:63-72`).
 - **After the switch**, the cover goes from A's (now hidden) overlay with the next `across`. R4 makes sure A's page has drawn without it the next time A is shown.
 - **No snapshot of the target** in the first build. It would be stale, it would cross the 1 MB link cap (`app/PROTOCOL.md:105`), and it would be the only page content the app holds (open question 5).
 - **Honest numbers** for TESTING.md and DECISIONS.md, until G16 replaces them:
@@ -730,7 +730,7 @@ New, kept small:
   - more than one display: today's slide (0.4-0.65 s);
   - today's slide, for comparison: 0.4-0.65 s, with Margin's overlay gone for about 180 ms (`PLAN.md` §15).
 
-Built (WP10, the overlay's side): `switchCover` in `ui/view-model.js`, the guarded `<m-switch-cover>` slot and `switch-cover` part (`ui/sanitize.js`, `ui/render.js`, Margin's default in `DEFAULT_PARTS`), parts in Arcadia and Neo-brutalism, `extension/ui/switch-cover.js` (`createCoverWatch`, `answerFramed`) wired in `app/overlay/overlay.js`, and the switch's notices by kind; tests in `tests/handoff-ui.test.js`, `tests/theme/switch-cover.test.js` and `tools/app-tests/handoff-ui-tests.swift`. Settled on the way:
+Built (WP10, the overlay's side): `switchCover` in `ui/view-model.ts`, the guarded `<m-switch-cover>` slot and `switch-cover` part (`ui/sanitize.ts`, `ui/render.ts`, Margin's default in `DEFAULT_PARTS`), parts in Arcadia and Neo-brutalism, `extension/ui/switch-cover.ts` (`createCoverWatch`, `answerFramed`) wired in `app/overlay/overlay.ts`, and the switch's notices by kind; tests in `tests/handoff-ui.test.ts`, `tests/theme/switch-cover.test.ts` and `tools/app-tests/handoff-ui-tests.swift`. Settled on the way:
 
 - **Which overlay is A's:** `across.switching.from { profile, windowId }` (the switcher's `from`). The view model draws the cover only when that's its own profile and window. Today's machine has none of the three phases, so it never shows one.
 - **The cover's shape:** `{ id, text, label, hasSpace, profile: { name, emoji, color, initial, symbol }, space: { name, emoji } }`. `text` is "Switching to Work…", with Margin's words in the view model.
@@ -738,7 +738,7 @@ Built (WP10, the overlay's side): `switchCover` in `ui/view-model.js`, the guard
 - **Margin's default part** fills the slot of a theme with no part and nothing in it: a centred card in `--m-cover-ground`, `--m-cover-text` and `--m-cover-card`, else the system's colours. A theme with no `<m-switch-cover>` at all shows no cover, and the freeze starts at the 250 ms limit.
 - **`coverShown`** waits for two frames in a row with the cover in the DOM and no `m-swiping` or `m-settling` element. A swipe frame starts the count again, and a new target counts again. No frames (the overlay off screen): nothing is said.
 - **`framed`** is read at the frame after `shown`, so a `windows` list that came meanwhile counts. Only `fullscreen` or `windowed`.
-- **The notices** are kinds, not text: `across.switching.noticeKind` (`window-kept-draft`, `dialog-open`, `window-busy`, `late-landing`, `window-on-desktop`) and `noticeProfile`, with the words in `shared/across.js` `SWITCH_NOTICES`, and `noticeIn` for the one overlay they're for. The app's side is `SwitchNotice` and `Shell.showSwitchNotice` (`ShellProfiles.swift`): the kept window rides in the app's copy of the notice and never goes to an overlay. `window-kept-draft` stays 20 s, the others 8 s. Its **Close window** comes back as `switch.notice { kind, action: 'close' }`, and the app sends that window's copy `closeWindow` (no drafts check).
+- **The notices** are kinds, not text: `across.switching.noticeKind` (`window-kept-draft`, `dialog-open`, `window-busy`, `late-landing`, `window-on-desktop`) and `noticeProfile`, with the words in `shared/across.ts` `SWITCH_NOTICES`, and `noticeIn` for the one overlay they're for. The app's side is `SwitchNotice` and `Shell.showSwitchNotice` (`ShellProfiles.swift`): the kept window rides in the app's copy of the notice and never goes to an overlay. `window-kept-draft` stays 20 s, the others 8 s. Its **Close window** comes back as `switch.notice { kind, action: 'close' }`, and the app sends that window's copy `closeWindow` (no drafts check).
 - **Left for WP8/WP9:** raising these notices from the machine's events, and acting on `switch.coverShown` (`Shell.switchCoverShown` only checks it's A's overlay and logs it), and `framed` (`Overlay.swift` ignores the op until then).
 
 ---
@@ -836,7 +836,7 @@ These must keep passing: `npm test`, `npm run test:theme`, `npm run test:app`, `
   - `returnAll`; the crash marker in the harness root.
 - **`tools/app-tests/window-tests.swift`:** the binder with `parked` (never dropped for missing; dropped for closed, browser gone and new copy; left out of `liveBound`, `reliableBig`, front candidates and the rules) and `expectParked`.
 - **`tools/app-tests/private-calls-tests.swift` (new):** `PrivateCalls.check` with a fake resolver: each missing symbol, class or selector, and each mismatched encoding, gives the right availability. Nil Copy results read as unknown. The real wrappers refuse under `MARGIN_APP_TESTS`.
-- **`tools/app-tests/e2e-profiles.swift`:** the whole switch with stand-in windows and `fake-extension.mjs` (the fake parker and freezer injected through `Shell` options).
+- **`tools/app-tests/e2e-profiles.swift`:** the whole switch with stand-in windows and `fake-extension.mts` (the fake parker and freezer injected through `Shell` options).
   - the cover and `coverShown`;
   - A's overlay ordered out before A's normal;
   - B's overlay shown from the app's reads before the copy says full screen;
@@ -989,7 +989,7 @@ Two critics reviewed draft 1. Each problem was checked against the code at df687
 | 4 | `plain` drops "Keep windows alive" whenever there are two displays or one freeze call fails, and closes without a drafts check | **Accepted** | §1.1 (two separate choices, per-switch setup facts, two failures to turn the freeze off, drafts before every close) |
 | 5 | One shared private Space: a recovery releases every profile's windows, and the returns become a chain of handoffs | **Accepted** | §2.1 (a Space per window), §2.6 (causes), §6.8, §4.4 invariant 5 |
 | 6 | R4 and `drawn` wait for the copy's lagging `fullscreen` | **Accepted.** Confirmed: `WINDOWS_MS` 1 s, and the optional `onBoundsChanged` | §2.3, §2.4 (`isTarget`), §3.3 (the copy polls the state and pushes) |
-| 7 | A parked window's hidden overlay flips to `windowed` and sends `setLayout` | **Accepted.** Confirmed: `windows` goes to every overlay of the link (`Shell.swift:556-567`, via `overlays(of:)`), and the mode comes from it (`host-app.js:322-329`) | §2.4 (no list until full screen, `hello` mode, `layoutChanged` held), R4's `framed { mode }` |
+| 7 | A parked window's hidden overlay flips to `windowed` and sends `setLayout` | **Accepted.** Confirmed: `windows` goes to every overlay of the link (`Shell.swift:556-567`, via `overlays(of:)`), and the mode comes from it (`host-app.ts:322-329`) | §2.4 (no list until full screen, `hello` mode, `layoutChanged` held), R4's `framed { mode }` |
 | 8 | A's own-Space overlay stays in A's Space as it's destroyed; own-Space suspicion can fall back | **Accepted** | §1.3 step 5, §2.3, R5, G14 |
 | 9 | The hot keys go off under the freeze, and Margin's keys reach Safari | **Accepted.** Confirmed: `run` needs `frontOverlay` (`Shell.swift:1125`), and the keys are active only with one (`:1038-1044`) | §1.7, §2.4 (palette path) |
 | 10 | Retrying the full-screen request can toggle B out | **Accepted.** The AppKit log shows exactly that (`S/handoff/park-enter-1793945331.log`) | §3.4, §1.6 step 2, G4 |

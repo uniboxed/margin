@@ -345,7 +345,7 @@ extension ProfileSwitch: FreezerDelegate {
     // The window the switch leaves.
     var leaving: WindowKey? { run?.a }
 
-    // A's overlay drew the cover (app/overlay/overlay.js `switch.coverShown`).
+    // A's overlay drew the cover (app/overlay/overlay.ts `switch.coverShown`).
     func coverShown(in key: WindowKey) {
         guard let run, run.a == key, [.preparing, .waitingForLink].contains(phase), run.coverAt == nil else { return }
         run.coverAt = clock.now()

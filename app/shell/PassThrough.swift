@@ -7,7 +7,7 @@
 //
 // Over the slot the theme can still draw things that take the pointer (the
 // palette, a menu, a notice, the sidebar out over the page): the overlay's
-// page reports their boxes (`hits`, extension/ui/host-app.js), and the
+// page reports their boxes (`hits`, extension/ui/host-app.ts), and the
 // overlay takes the mouse over them, as the in-page host's pass-through does
 // (its root ignores the pointer, its children keep theirs). While a button
 // is held, nothing changes: a drag that started on the page stays the
@@ -85,7 +85,7 @@ struct CatchRegion: Equatable {
     }
 }
 
-// Which pointer positions an overlay's page wants handed in (app/overlay/overlay.js
+// Which pointer positions an overlay's page wants handed in (app/overlay/overlay.ts
 // reportWant; only peek uses them): none while its sidebar is docked, those within
 // `zone` points of its peek edges while the sidebar is hidden, every one while it's
 // out over the page. Before 2026-11-05 every move over an overlay went in, at 30 a second.

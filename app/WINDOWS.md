@@ -105,7 +105,7 @@ line's window or one in no line. `finish()` notes B as the line's home and shown
   while a linked browser with Margin's overlay is in front), so Safari never sees ⌘N while Margin draws. Without
   Margin.app running, Safari's own ⌘N is as before.
 - **What it does:** the front overlay's window (its link and window id) asks its copy for `newWindow { fromWindowId }`
-  (`Shell.newMarginWindow`, `background/handlers.js newWindow`):
+  (`Shell.newMarginWindow`, `background/handlers.ts newWindow`):
   - The copy makes the window in full screen if `fromWindowId`'s is (`windows.create({ focused: true, state:
     'fullscreen' })`, retried without `state` if refused).
   - It sets the window's active space to the one `fromWindowId` shows (explicit, not `inheritSpace`'s guess).
@@ -158,13 +158,13 @@ one window at a time, so **the tab follows the window in front**:
   faded, and where the page was, a faded picture of it.
 - Window 1 comes to the front again: T is live there, and window 2 shows it faded.
 
-### 9.1 The model (state/model.js)
+### 9.1 The model (state/model.ts)
 
 - **Each window's chosen tab** is its tab in front, as before, unless it shows one **away**:
   `awayByWindow[windowId] = tabId`, a tab live in another window (stored with the open tabs, `openTabs`; a
   relaunch's fresh sync forgets it). A tab of its own coming to the front of the window clears it
   (`M.activateTab`), as does the tab closing or the window going (`M.removeTab`, `windows.onRemoved`).
-  `shared/view.js sidebar` marks that row `active` and `away`; themes draw it faded (`themes/README.md`).
+  `shared/view.ts sidebar` marks that row `active` and `away`; themes draw it faded (`themes/README.md`).
 - **A space's tab list is the space's, not a window's**: the tabs of the space in every window of the profile, in
   one order (`order`, placed among the space's tabs, not the window's). A tab that moves windows keeps its place.
 - **The stand-in**: a window showing a tab away has Margin's own page in front (`away.html`), never a Margin tab
@@ -203,7 +203,7 @@ one window at a time, so **the tab follows the window in front**:
 
 ### 9.5 As built (2026-11-09)
 
-- `background/away.js`: `bringTab` (the move: picture, `setAway`, stand-in, `tabs.move` to the window's strip index
+- `background/away.ts`: `bringTab` (the move: picture, `setAway`, stand-in, `tabs.move` to the window's strip index
   for the tab's place, `focusTab`), `showTab` (what `activateTab`, `openPin` and the next/previous-tab keys use),
   `focusChanged` (the follow, settled 120 ms, only for a window in front whose chosen tab is away),
   `shownIn` / `tabClosed` / `windowGone` (stand-ins closed), `sweep` (stand-ins left from before the
@@ -221,7 +221,7 @@ one window at a time, so **the tab follows the window in front**:
   shows its next tab of the space it shows, else its start page (Safari closes a window whose last tab closes).
 - **Dragging** a tab next to one in another window: a place beside it in the space's list (`M.placeOpen`), and the
   tab moved in its own window's strip to where that place falls.
-- Tests: `tests/away.test.js` (the rules, a fake Safari), `tests/away-background.test.js` (through background.js's
+- Tests: `tests/away.test.ts` (the rules, a fake Safari), `tests/away-background.test.ts` (through background.ts's
   listeners).
 - **Checked in real Safari** (Test A, `devswitch probe tabMove`, 2026-11-09): a tab shown in a window behind, chosen
   in the window in front, came there in 172 ms, its page kept (marker and typed field), focus left where it was

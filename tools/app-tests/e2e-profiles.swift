@@ -1,5 +1,5 @@
 // Spaces across profiles end to end (part of e2e.swift's run): the real link,
-// shell and overlays against fake-extension.mjs playing two Safari profiles,
+// shell and overlays against fake-extension.mts playing two Safari profiles,
 // P1 with a full-screen window and P2 with none, in a temporary data folder.
 // The overlay over P1's window draws every space of both profiles in one
 // order with P2's marked; a click on P2's space has the app drive the switch:
@@ -367,7 +367,7 @@ func handoffScenario() async {
       if !seen.coverDrawn, shell.switcher.run != nil, await js(o7.webView, "return !!document.querySelector('.switch-cover')") as? Bool == true {
         seen.coverDrawn = true
         // The page's own words, said for it: a panel off every display draws no frames to count
-        // (ui/switch-cover.js), so its `switch.coverShown` and B's `framed` are posted as the bridge would.
+        // (ui/switch-cover.ts), so its `switch.coverShown` and B's `framed` are posted as the bridge would.
         if shell.switcher.run?.coverAt == nil { shell.perform(from: o7, "switch.coverShown", nil) }
       }
       if let b = shell.overlays[k8], b.isShown, shell.switcher.run?.shownAt != nil, shell.switcher.run?.framedAt == nil { b.pageSaid("framed", ["mode": "fullscreen"]) }
@@ -552,7 +552,7 @@ func handoffScenario() async {
   check("8: then to P2's window again: 9 parked", await until(8, { !shell.switcher.busy }) && shell.parking?.isParked(n9) == true, "\(shell.switcher.session.lines.last ?? "-")")
 
   // ---- 9. Safari restored a window Margin had parked before it quit (Tirth, 2026-11-07): its copy says so
-  // (`wasParked`, background/parked-restore.js); the app closes it by its copy, once. One Margin has parked now
+  // (`wasParked`, background/parked-restore.ts); the app closes it by its copy, once. One Margin has parked now
   // (9: a Margin update keeps them alive and out of sight) isn't. ----
   let mark9 = fake.events.count
   fake.tell(["do": "windows", "id": "A", "list": [

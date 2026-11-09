@@ -1,5 +1,5 @@
 // Which window is which, end to end (part of e2e.swift's run): the real link,
-// shell, binder and overlays against fake-extension.mjs playing two Safari
+// shell, binder and overlays against fake-extension.mts playing two Safari
 // profiles with several windows: P1 with two full-screen windows, P2 with one
 // full-screen window and one normal window, the three full-screen ones with
 // the same bounds (one display). Stand-in windows off screen; which macOS Space

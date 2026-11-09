@@ -17,7 +17,7 @@ It goes on from where the last night stopped. When every site of the list is don
 - `--code main` (the default): Margin's code tested is `main`'s commit, checked out and built in a checkout of its own (`~/Library/Caches/margin-fit-check/code`), whatever this checkout is doing. A branch or a commit works too; `--code here` tests this checkout as it is. Each row says which commit it tested.
 - `--wait`: stay in the foreground. `--data DIR`: another data folder.
 - `--no-publish`: leave the night's data unpublished. `--store`: make `sites/`, `all-sites.csv` and `summary.md` again from the rounds (it's done after every night anyway).
-- `--import DIR --import-commit SHA [--list CSV]`: an earlier `check.mjs --out` folder taken in as round 1.
+- `--import DIR --import-commit SHA [--list CSV]`: an earlier `check.mts --out` folder taken in as round 1.
 - The Mac has to stay awake. If it sleeps, the night stops there and the next start goes on.
 
 ## The data: `tools/fit-check/data/`, published on the branch `data/fit-check`
@@ -40,10 +40,10 @@ Published: everything in the table below, but of the pictures only each flagged,
 
 ## What it does with a site
 
-- Margin's side is the e2e harness (`tests/e2e/harness/margin.js`, `web: true`): the test build of the extension in headless Chromium, linked to the stand-in Margin.app, a full-screen window with Arcadia's overlay and the sidebar kept open, so each site is shrunk into the slot as in Safari. The plain side is headless Chromium at the slot's size, with no extension, launched the same way and in the same color scheme. Each Margin world has its own plain browser, and both are made again after 150 sites or a site that hangs.
+- Margin's side is the e2e harness (`tests/e2e/harness/margin.ts`, `web: true`): the test build of the extension in headless Chromium, linked to the stand-in Margin.app, a full-screen window with Arcadia's overlay and the sidebar kept open, so each site is shrunk into the slot as in Safari. The plain side is headless Chromium at the slot's size, with no extension, launched the same way and in the same color scheme. Each Margin world has its own plain browser, and both are made again after 150 sites or a site that hangs.
 - Verdicts:
   - `ok`.
-  - `flagged`: it loaded both ways, and Margin's load broke a rule the box promises (`tests/box/rules.js`, the same names as the box's patterns): `box-at-slot`, `box-size`, `told-size`, `window-still`, `same-scroller`, `no-overflow`. A finding.
+  - `flagged`: it loaded both ways, and Margin's load broke a rule the box promises (`tests/box/rules.ts`, the same names as the box's patterns): `box-at-slot`, `box-size`, `told-size`, `window-still`, `same-scroller`, `no-overflow`. A finding.
   - `margin-failed`: it loaded plain, not through Margin.
   - `hinted`: the same page both ways, the rules kept, but a hint differs: `content-cut-off`, `text-missing`, `elements-missing`, `blank`, `looks-different`, `more-errors`. Worth a look at its pictures.
   - `varied`: the site served each load a different page (their titles differ: a robot check, a login, a variant), and only hints differ.
@@ -62,6 +62,6 @@ Published: everything in the table below, but of the pictures only each flagged,
 
 ```sh
 npm run build
-node tools/fit-check/check.mjs --list list.csv --out some/folder --workers 3 [--limit N] [--until ISO]
-node tools/fit-check/summarize.mjs --out some/folder
+node tools/fit-check/check.mts --list list.csv --out some/folder --workers 3 [--limit N] [--until ISO]
+node tools/fit-check/summarize.mts --out some/folder
 ```

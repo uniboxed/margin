@@ -1,7 +1,7 @@
 // Margin's app: a set-up window that walks through what Safari needs for
 // Margin, checking each step where it can. It sees itself whether Margin is
 // on in Safari (SFSafariExtensionManager); the rest only the extension can see
-// (background/onboarding.js → SafariWebExtensionHandler.swift → a distributed
+// (background/onboarding.ts → SafariWebExtensionHandler.swift → a distributed
 // notification here): whether Margin may run on every website, whether ⌘T
 // reaches Margin, whether new tabs and windows open Margin's page. Itself
 // again, by trying to read Safari's data: whether Margin has Full Disk Access,

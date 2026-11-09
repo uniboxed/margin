@@ -3,8 +3,8 @@
 // (the permission Safari's profile names already use: SafariProfiles.swift),
 // read only, kept in step while Margin.app runs, and drawn by Margin's UI in
 // a live folder in each Safari window's sidebar and in the command palette
-// (ShellCloudTabs.swift sends it to the overlays; extension/shared/cloud-tabs.js
-// and ui/view-model.js shape it for themes). DECISIONS.md "Margin 2: iCloud Tabs".
+// (ShellCloudTabs.swift sends it to the overlays; extension/shared/cloud-tabs.ts
+// and ui/view-model.ts shape it for themes). DECISIONS.md "Margin 2: iCloud Tabs".
 //
 // Where Safari keeps them (Safari 27.2, read on Tirth's Mac: the schema,
 // counts and formats only, never a title, an address or a device's name):
@@ -282,7 +282,7 @@ nonisolated enum CloudTabs {
         }
     }
 
-    // What the overlays get (extension/shared/cloud-tabs.js cloudOf): times in milliseconds since 1970.
+    // What the overlays get (extension/shared/cloud-tabs.ts cloudOf): times in milliseconds since 1970.
     static func json(_ outcome: Outcome) -> JSONObject? {
         switch outcome {
         case .read(let r):

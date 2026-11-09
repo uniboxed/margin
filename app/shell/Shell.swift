@@ -33,7 +33,7 @@
 //    leaves its overlays where they are for `reconnectGrace`, dimmed and
 //    saying it's reconnecting; the copy linking again in that time takes
 //    them back as they are, else they close. The copy's pages go back to
-//    drawing their own UI on the same clock (background/link.js GONE_MS).
+//    drawing their own UI on the same clock (background/link.ts GONE_MS).
 //    Meanwhile the window server is still read, and a kept overlay is put
 //    away once the window it's over is gone, off screen (not in its own
 //    Space) or no longer where it was; dropped while the browser isn't in
@@ -172,7 +172,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // The lasting data's folder (DataStore.swift). Default: ~/Library/Application Support/Margin/data,
         // or a new temporary folder for a harness (a test never touches the real one).
         var dataRoot: URL?
-        var reconnectGrace: TimeInterval = 6 // a dropped link's overlays, kept dimmed (background/link.js GONE_MS)
+        var reconnectGrace: TimeInterval = 6 // a dropped link's overlays, kept dimmed (background/link.ts GONE_MS)
         var drawnGrace = DrawnOutbox.Grace() // how long a window is unbound or out of full screen before its copy hears it isn't drawn
         var bundleIds = ["safari": safariIdentifier, "chrome": "com.google.Chrome", "edge": "com.microsoft.edgemac"]
         var profileSwitch = ProfileSwitch.Options() // switching to another profile's space (ProfileSwitch.swift)
@@ -223,7 +223,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let connection: LinkConnection
         let mirror = StateMirror()
         var assembler = ChunkAssembler()
-        var theme: String? // the theme package's JSON (background/theme-package.js ThemeMessage)
+        var theme: String? // the theme package's JSON (background/theme-package.ts ThemeMessage)
         var themeId: String?
         var outbox = LayoutOutbox()
         var drawn = DrawnOutbox() // whether the app draws over each window, as told to the copy
@@ -1460,7 +1460,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // Not on the left when Margin's sidebar is docked at least that wide (`dockedLeft`: its left
     // inset): that's Safari's own sidebar sliding in under Margin's (Tirth's log, 19:37:14: x 19, 213,
     // 238, 240, … 2, 0, over about 1.3 s, open 0.4 to 1.1 s), and the overlay stays over the whole
-    // window. The page's box keeps its place (shared/app-link.js boxFromLayout takes the viewport's
+    // window. The page's box keeps its place (shared/app-link.ts boxFromLayout takes the viewport's
     // offset off the layout's left inset). Whether the page measured where its area starts (`measured`)
     // doesn't change that: a pointer moving over the page while Safari's sidebar slides away measures
     // each step. A hidden Margin sidebar, or a part wider than its docked one (a left-docked
@@ -1820,7 +1820,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             return // across profiles (ShellProfiles.swift)
         case .nextTab where overlay.isReady, .prevTab where overlay.isReady:
             // The overlay's page highlights the tab at once (its own pick, the copy's rule) and asks the copy for it
-            // (overlay.js navTab): the highlight never waits for the copy's background (Tirth, 2026-11-07).
+            // (overlay.ts navTab): the highlight never waits for the copy's background (Tirth, 2026-11-07).
             overlay.push(raw: #"{"type":"command","name":"\#(command.rawValue)","repeat":\#(isRepeat)}"#)
         case .nextTab, .prevTab, .nextSpace, .prevSpace:
             let windowId = overlay.key.windowId
@@ -1902,7 +1902,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     func shownSpace(_ overlay: OverlayController, _ said: JSONObject) {
         let space = said["space"] as? String ?? "-"
         let windowId = said["windowId"] as? Int
-        // (Stored inside the copy's `openTabs` record: shared/stored.js OPEN_TABS_KEYS.)
+        // (Stored inside the copy's `openTabs` record: shared/stored.ts OPEN_TABS_KEYS.)
         let open = links[overlay.key.link]?.mirror.value("openTabs") as? JSONObject
         let copy = (open?["activeSpaceByWindow"] as? JSONObject)?[String(overlay.key.windowId)] as? String
         let agree = copy == space

@@ -20,7 +20,7 @@ my-theme/
   *.txt, *.md               licences and notes (kept, never loaded)
 ```
 
-`theme.json` (format 2, schema in `ui/theme-schema.js`):
+`theme.json` (format 2, schema in `ui/theme-schema.ts`):
 
 ```json
 {
@@ -233,7 +233,7 @@ Modes: style `[data-mode="fullscreen|windowed|inpage"]` by binding
 
 ## The view model
 
-One versioned object (`ui/view-model.js`, `VM_VERSION`), the same in every
+One versioned object (`ui/view-model.ts`, `VM_VERSION`), the same in every
 host. Immutable: rows that didn't change are the same objects.
 
 - `window`: `id`, `mode`, `focused`, `sidebar` (`open`, `hidden`, `peek`),
@@ -408,7 +408,7 @@ Classes and variables Margin sets for you to style:
 
 A theme sees every tab's title and address, so it must not be able to run
 code or send anything anywhere. Margin checks a theme when it's imported
-and every time it loads (`ui/sanitize.js`), and the renderer enforces the
+and every time it loads (`ui/sanitize.ts`), and the renderer enforces the
 same rules again.
 
 - Margin parses the template itself; allowed elements and attributes only.
@@ -438,7 +438,7 @@ same rules again.
   theme wrote outside them (svg `<text>` in a `<symbol>`).
 - Ids named like the globals Margin's code reads (`webkit`, `marginApp`,
   `browser`, `chrome`, `safari`, `Margin`, `T`, `window`, `top`… any case:
-  `ui/sanitize.js RESERVED_IDS`), and any id that is `margin` and then a
+  `ui/sanitize.ts RESERVED_IDS`), and any id that is `margin` and then a
   letter, digit or `_` (`marginFallbackTheme`; `margin-results` is fine),
   are removed: in Margin.app's overlay the
   theme's ids are the window's names. One template per part: a second is

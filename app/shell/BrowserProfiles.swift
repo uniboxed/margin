@@ -428,7 +428,7 @@ final class BrowserProfiles {
     var profilesShown: [String] { profiles.filter { p in order.contains { $0.profile == p } } }
 
     // What an overlay of `profile`'s window draws besides its own state
-    // (ui/host-app.js `across`): every shown profile, and every space in the
+    // (ui/host-app.ts `across`): every shown profile, and every space in the
     // one order. `spaces`: each profile's spaces' values (name, emoji,
     // color); `counts`: profile → space → its tabs; `linked`; `switching`:
     // the cross-profile switch under way, if any.

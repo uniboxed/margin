@@ -30,8 +30,8 @@ await m.close();
 
 ## What stands in
 
-- `native-host.mjs` and `relay.js`: Safari's extension handler. `wantLink` is answered as the handler would, with Safari's id for the profile (`s-default`); the app's `link` goes into the lasting port.
-- `shell.js`: Margin.app's shell, on `tests/fake-app.js`. It keeps the mirror, puts the theme together, makes an overlay per full-screen window, and does the bridge ops. A window is bound when it's in full screen. There's no window server.
+- `native-host.mts` and `relay.ts`: Safari's extension handler. `wantLink` is answered as the handler would, with Safari's id for the profile (`s-default`); the app's `link` goes into the lasting port.
+- `shell.ts`: Margin.app's shell, on `tests/fake-app.ts`. It keeps the mirror, puts the theme together, makes an overlay per full-screen window, and does the bridge ops. A window is bound when it's in full screen. There's no window server.
 - The app's data: the seed is its set for `s-default`. A `data.hello` for any other profile gets `data.need`, as from the app. No `data.ack` is sent, so the copy's queue keeps everything.
 
 ## Handles
@@ -45,9 +45,9 @@ await m.close();
 - `m.shell.requests`, `performs`, `layoutsSent`, `drawnSent`, `overlayLogs`, `received`: what happened, for checks.
 - `m.leaks`: requests to any host that isn't `.test` or `127.0.0.1`. Search engines are answered locally.
 - `m.close()` fails the file (its `after` hook) if `m.leaks`, `m.shell.blocked` or `m.shell.pageErrors` has anything. `m.problems()` lists them sooner.
-- `m.pixels(png, points)`: the colours of a screenshot's points. `settled(ui)` (`ui.js`) waits for the overlay's transitions, before a picture.
+- `m.pixels(png, points)`: the colours of a screenshot's points. `settled(ui)` (`ui.ts`) waits for the overlay's transitions, before a picture.
 - `m.worker`, `m.bg(fn)`: the background. They follow it when it stops and starts again.
-- `cloudTabsOf(m.url)` (`seed.js`): iCloud Tabs of made-up devices, with this site's pages.
+- `cloudTabsOf(m.url)` (`seed.ts`): iCloud Tabs of made-up devices, with this site's pages.
 
 ## Rules
 

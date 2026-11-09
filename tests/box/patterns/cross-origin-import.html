@@ -1,7 +1,7 @@
 <!--
 pattern: a style sheet from another origin that imports its own parts (minified, a relative address) asks its queries and units of the box
 from: anu.edu.au (fit-check round 1, re-checked): its CDN's sheet has `@import"../../libs/bootstrap/css/bootstrap-grid.min.css"`; Margin's readable copy of the sheet left that address relative, so it resolved against the page and the grid was lost (its container 1172px wide where the site makes it 960)
-handled-by: content/page-link.js (replaceSheet), shared/sheet-copy.js (absolute, inlineImports)
+handled-by: content/page-link.ts (replaceSheet), shared/sheet-copy.ts (absolute, inlineImports)
 settle: 900
 -->
 <!doctype html>

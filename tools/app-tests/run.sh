@@ -17,7 +17,7 @@
 #         the user themes' store and what the picker chose, read (theme-tests.swift, in a temporary folder)
 #   e2e:  e2e.swift, the real link, shell and overlays (off screen, in an
 #         accessory app that never activates) against a stand-in for the
-#         extension (fake-extension.mjs, Node), and a picture of the overlay
+#         extension (fake-extension.mts, Node), and a picture of the overlay
 #         drawing Arcadia (MARGIN_APP_SHOT, default build/overlay.png); then
 #         e2e-data.swift, the lasting data over the real link, in a temporary
 #         folder (never ~/Library/Application Support/Margin); and e2e-profiles.swift,
