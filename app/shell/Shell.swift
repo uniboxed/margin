@@ -350,6 +350,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var shownGone = ShownCloseWatch() // windows gone from their copies' lists, judged once no switch runs (§13.8)
     var safariActivated = false // Safari came to the front: §6.2's check is due
     var everyParkedSince: TimeInterval? // §6.2: a read with Safari in front and every window parked
+    var paletteOnShow: [WindowKey: Double] = [:] // windows made from another (⌘N): the palette as each first shows
     var parkedEnding = false // §13.8: the shown window was closed, its parked windows closing
     var endingNumbers: Set<Int> = [] // those windows (its Margin window's, app/WINDOWS.md §3)
     var parkedBindAsked: Set<Int> = [] // parked windows the binder was asked to bind from the registry's record
@@ -1530,15 +1531,17 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     // An overlay just shown (it wasn't): whether it's the front window's (a field its page focused
-    // while hidden gets the keyboard only then, OverlayController.appeared), and whether the palette
-    // opens over its new tab, as ⌘T's does: only over the front window, and only for a window its copy
-    // heard made within `launcherFocusWithin` (⌘N, New Window). Not at Margin.app's start, a relink or a
-    // page reloaded over a window that was already there: the keys stay where they were.
+    // while hidden gets the keyboard only then, OverlayController.appeared). Only over the front window:
+    // a window made from another (⌘N, the palette's New window: `paletteOnShow`) gets the palette over its
+    // new tab, as ⌘T's does (Tirth, 2026-11-09); another its copy heard made within `launcherFocusWithin`
+    // (Safari's own New Window) has its new-tab launcher focused. Not at Margin.app's start, a relink, a
+    // switch's window or a page reloaded over a window that was already there: the keys stay where they were.
     static let launcherFocusWithin: TimeInterval = 10
     private func appeared(_ overlay: OverlayController, _ w: ExtWindow, list: [ServerWindow]) {
         let front = frontOverlay(list: list) === overlay
         let new = w.createdAt.map { options.clock() - $0 <= Shell.launcherFocusWithin } ?? false
-        overlay.appeared(front: front, newWindow: front && new)
+        let made = paletteOnShow.removeValue(forKey: overlay.key).map { options.clock() - $0 <= Shell.launcherFocusWithin } ?? false
+        overlay.appeared(front: front, palette: front && made, focusLauncher: front && new)
     }
 
     private func makeOverlay(_ key: WindowKey) -> OverlayController {
@@ -1850,7 +1853,27 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     func send(from overlay: OverlayController, type: String, payload: JSONObject) async throws -> JSONObject {
         guard let entry = links[overlay.key.link] else { throw LinkError.down }
-        return try await entry.connection.request(type: type, payload: payload, windowId: overlay.key.windowId)
+        let asked = options.clock()
+        let reply = try await entry.connection.request(type: type, payload: payload, windowId: overlay.key.windowId)
+        // The palette's New window: made from this one, as ⌘N's (app/WINDOWS.md §5).
+        if type == "newWindow", reply["ok"] as? Bool == true, let made = (reply["result"] as? JSONObject).flatMap({ SpaceWindowAnswer($0) }) {
+            madeFromWindow(overlay.key.link, made, asked: asked)
+        }
+        return reply
+    }
+
+    // A window made from another (⌘N, the palette's New window): bound as Margin's, and the palette opens
+    // over its new tab as it shows.
+    func madeFromWindow(_ link: String, _ made: SpaceWindowAnswer, asked: Double) {
+        let key = WindowKey(link: link, windowId: made.windowId)
+        windowMade(link, windowId: made.windowId, asked: asked, bounds: made.bounds)
+        // Its overlay shown before the answer came (its window list first): the palette now, as the copy's own
+        // push for a new-tab page opens it (over its new tab, not a new one).
+        if let overlay = overlays[key], overlay.isShown {
+            overlay.push(raw: #"{"type":"push","msg":{"type":"palette","newTab":false}}"#)
+        } else {
+            paletteOnShow[key] = options.clock()
+        }
     }
 
     // Only a layout measured at the window's own size goes (one from before the overlay

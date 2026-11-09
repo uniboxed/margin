@@ -549,7 +549,8 @@ extension Shell: SwitchWorld {
                 let reply = try await entry.connection.request(type: type, payload: payload, windowId: windowId)
                 if reply["ok"] as? Bool == true {
                     let result = reply["result"] as? JSONObject ?? [:]
-                    if type == "openSpaceWindow" || type == "newWindow", let made = SpaceWindowAnswer(result) { self.windowMade(profile, windowId: made.windowId, asked: asked, bounds: made.bounds) }
+                    if type == "newWindow", let made = SpaceWindowAnswer(result) { self.madeFromWindow(profile, made, asked: asked) }
+                    else if type == "openSpaceWindow", let made = SpaceWindowAnswer(result) { self.windowMade(profile, windowId: made.windowId, asked: asked, bounds: made.bounds) }
                     done(result, nil)
                 } else { done(nil, Diagnostics.scrub(reply["error"] as? String ?? "refused", max: 160)) } // a browser's words: never a page's
             } catch {
