@@ -9,7 +9,8 @@
 //                            rules (vw units, media queries) and elements; …/link: the
 //                            rules in a linked sheet (/bench-css/<rules>/<els>)
 //   /asset/<file>            a file a pattern's page loads (patterns/assets/: a style
-//                            sheet, a script), as a site's own files are
+//                            sheet, a script), as a site's own files are; ?wait=N:
+//                            its content N ms late, as a slow server's
 // In a pattern's page, `{{other}}` is another origin serving the same files (a CDN's,
 // with no CORS): `{{other}}/asset/<file>`. Each server says what it is (`other`).
 // `<!--pause:N-->` in a pattern's page: the server sends what's before it, then the
@@ -128,7 +129,11 @@ export function boxPage(path, query, { other = '' } = {}) {
   }
   const a = /^\/asset\/([^/]+)$/.exec(path);
   if (a && ASSET.test(a[1])) {
-    try { return { type: TYPES[a[1].split('.').pop()], body: readFileSync(join(ASSETS_DIR, a[1]), 'utf8') }; } catch { return null; }
+    let body;
+    try { body = readFileSync(join(ASSETS_DIR, a[1]), 'utf8'); } catch { return null; }
+    // `?wait=N`: its content N ms after its headers, as a slow server's (a sheet still loading as <body> comes).
+    const wait = Math.min(Number(query.get('wait')) || 0, 5000);
+    return { type: TYPES[a[1].split('.').pop()], body, ...(wait > 0 ? { parts: [{ text: '', wait: 0 }, { text: body, wait }] } : {}) };
   }
   const r = /^\/ref\/([a-z0-9-]+)$/.exec(path);
   if (r && NAME.test(r[1])) {

@@ -1,0 +1,5 @@
+/* For patterns/slow-stylesheet.html, served 400 ms late (?wait=400): a reset of <body>'s
+   margin, a full-width bar and a centred column, as a site's main sheet says them. */
+body { margin: 0; font: 16px/1.5 -apple-system, system-ui, sans-serif; }
+.bar { padding: 12px 24px; background: #24292f; color: #fff; }
+.main { max-width: 640px; margin: 0 auto; padding: 24px; }
