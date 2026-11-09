@@ -7,7 +7,9 @@ import { THEMES, DEFAULT_THEME } from '../themes/index.ts';
 import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.ts';
 import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.ts';
 import { isAwayPage } from '../shared/away.ts';
-import type { State } from '../../types/margin';
+import type { KeptTab, State, TabRecord } from '../../types/margin';
+// A kept tab lost with its window: where it was (a window that comes back takes it back).
+type KeptFrom = KeptTab & { from: NonNullable<KeptTab['from']> };
 
 const ARCHIVE_CAP = 200;
 
@@ -208,7 +210,7 @@ const isWebPage = (url) => /^(https?|file):/i.test(url ?? '');
 // that didn't bring it back), so a window that comes back takes it back
 // (reclaimTabs); `wasTab`: the browser's id it had, while that can still mean
 // it (this session: a close heard after a sync noticed it gone).
-function keptRecord(r, spaceId, { why, now, from = null, wasTab = null }) {
+function keptRecord(r, spaceId, { why, now, from = null, wasTab = null }: { why: string, now: number, from?: KeptTab['from'] | null, wasTab?: number | null }) {
   return {
     id: isTabId(r.mid) ? r.mid : newTabId(),
     url: r.url,
@@ -244,7 +246,7 @@ function keepTab(state: State, tabId: number, how: { why: string, now: number, f
 // The window a tab is lost with (keepTab's `from`): its key and when, and how
 // many web pages the window had (a window that comes back needs two of them,
 // or one if it had one: reclaimTabs).
-function lostWith(state: State, windowId, now) {
+function lostWith(state: State, windowId: number, now: number) {
   const size = Object.values(state.tabs).filter((t) => t.windowId === windowId && isWebPage(t.url)).length;
   return { key: groupKey(now, windowId), at: now, size };
 }
@@ -277,8 +279,8 @@ function closedTab(state: State, tabId: number, { by = null, windowClosing = fal
 // The window a closing window's tabs are lost with: the one its first tab
 // closing made (its tabs close one by one), else a new one, with how many
 // web pages the window has now.
-function windowLoss(state: State, windowId, now) {
-  const earlier = Object.values(state.keptTabs ?? {}).find((k) => k.why === 'window' && k.from?.windowId === windowId && now - (k.from.at ?? 0) < 10_000);
+function windowLoss(state: State, windowId: number, now: number) {
+  const earlier = Object.values(state.keptTabs ?? {}).find((k): k is KeptFrom => k.why === 'window' && k.from?.windowId === windowId && now - (k.from.at ?? 0) < 10_000);
   if (earlier) return { key: earlier.from.key, at: earlier.from.at, size: earlier.from.size, windowId };
   return { ...lostWith(state, windowId, now), windowId };
 }
@@ -318,7 +320,7 @@ function linkKept(state: State, tabId: number, keptId: string, now: number) {
   const record = { ...r, mid: k.id, order: k.order, title: r.title && r.title !== r.url ? r.title : k.title || r.title, lastActive: now, placed: true };
   if (!r.favIconUrl && k.favIconUrl) record.favIconUrl = k.favIconUrl;
   // Its page's scroll, for the page to take once as it loads (takeScroll).
-  if (k.scroll?.y > 0 && sameUrl(k.scroll.url, k.url)) record.restoreScroll = { y: k.scroll.y, url: k.url };
+  if (k.scroll && k.scroll.y > 0 && sameUrl(k.scroll.url, k.url)) record.restoreScroll = { y: k.scroll.y, url: k.url };
   const next = forgetKept(state, keptId);
   return { ...next, tabs: { ...next.tabs, [tabId]: record }, ...(spaceId ? { tabSpace: { ...next.tabSpace, [tabId]: spaceId } } : {}) };
 }
@@ -388,7 +390,7 @@ function placeNew(state: State, windowId, index, exceptId) {
 function orderTabs(state: State) {
   const byWindow = new Map();
   for (const t of Object.values(state.tabs)) byWindow.set(t.windowId, [...(byWindow.get(t.windowId) ?? []), t]);
-  let tabs = null;
+  let tabs: Record<number, TabRecord> | null = null;
   let top = lastPlace(state);
   for (const list of byWindow.values()) {
     list.sort((a, b) => a.index - b.index);
@@ -414,8 +416,8 @@ function orderTabs(state: State) {
 }
 
 // The indices of the longest strictly increasing run of the known values.
-function increasingRun(values) {
-  const tails = []; // index into values of the run's last item, by run length - 1
+function increasingRun(values: (number | null)[]) {
+  const tails: number[] = []; // index into values of the run's last item, by run length - 1
   const prev = new Array(values.length).fill(-1);
   values.forEach((v, i) => {
     if (v == null) return;
@@ -423,7 +425,8 @@ function increasingRun(values) {
     let hi = tails.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if (values[tails[mid]] < v) lo = mid + 1;
+      // (`tails` holds the places of known values only.)
+      if (values[tails[mid]]! < v) lo = mid + 1;
       else hi = mid;
     }
     if (lo > 0) prev[i] = tails[lo - 1];
@@ -770,7 +773,7 @@ function matchTabs(old: any[], open: any[], { minShared = () => 1, anyWindow = t
   const oldWindows = byWindow(old);
   const openWindows = byWindow(open);
   // Pair windows by shared web addresses, most first, one to one.
-  const pairs = [];
+  const pairs: { openId: number, oldId: number, shared: number }[] = [];
   for (const [openId, tabs] of openWindows) {
     for (const [oldId, records] of oldWindows) {
       const counts = new Map();
@@ -820,7 +823,7 @@ function matchTabs(old: any[], open: any[], { minShared = () => 1, anyWindow = t
 // (reopened from History, Safari's restore of the last session, a restored
 // tab whose address comes late) takes them back (reclaimTabs).
 const LOST_MS = 24 * 60 * 60 * 1000;
-const reclaimable = (state: State, now) => Object.values(state.keptTabs ?? {}).filter((k) => k.from && Number.isFinite(k.from.at) && now - k.from.at <= LOST_MS && webKey(k));
+const reclaimable = (state: State, now: number) => Object.values(state.keptTabs ?? {}).filter((k): k is KeptFrom => !!k.from && Number.isFinite(k.from.at) && now - k.from.at <= LOST_MS && !!webKey(k));
 
 // Reconcile with `tabs.query({})`. Tabs Margin knows keep their records; when
 // `fresh` (the browser restarted: every id is new, and old ones may be reused
@@ -871,7 +874,7 @@ function syncTabs(state: State, openTabs, { fresh = false, now = Date.now() } = 
     // (Renumbered: the browser ids kept tabs had mean other tabs now.)
     keptTabs: shift || renumbered ? Object.fromEntries(keptBefore.map((k) => [k.id, withoutTabId(shift ? shifted(k, shift) : k)])) : { ...state.keptTabs },
   };
-  const unplaced = [];
+  const unplaced: any[] = []; // (Safari's tabs, as it gave them)
   for (const tab of openTabs) {
     const same = known(tab) ? state.tabs[tab.id] : undefined;
     const match = matched.get(tab.id);
@@ -948,7 +951,7 @@ const shifted = (k, ms) => ({
 // or lost at a relaunch): its pin opens it, so they're dropped once no window
 // can take them back.
 function dropStalePinned(state: State, now) {
-  let keptTabs = null;
+  let keptTabs: Record<string, KeptTab> | null = null;
   for (const k of Object.values(state.keptTabs ?? {})) {
     if (!pinForUrl(state, k.url, k.spaceId)) continue;
     if (k.from && now - (k.from.at ?? 0) <= LOST_MS) continue;
@@ -1089,7 +1092,7 @@ const folderOfPin = (state, pin) => (pin.folderId ? folderIn(state, pin.folderId
 // One list, in order: [{ kind: 'folder' | 'pin', id }]. `folderId` null: the
 // space's top level.
 function pinOrder(state: State, spaceId, folderId = null) {
-  const items = [];
+  const items: { kind: 'folder' | 'pin', id: string, pos: number }[] = [];
   // Folders first, so equal positions sort as shared/view.ts shows them.
   if (folderId == null) {
     (state.folders ?? []).forEach((f, i) => f.spaceId === spaceId && items.push({ kind: 'folder', id: f.id, pos: posOf(f, i) }));

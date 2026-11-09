@@ -82,7 +82,8 @@ const detect = () => {
   }
 };
 
-export type Platform = typeof PROFILES.safari;
+// Either browser's profile (`navigationId`: only a profile whose shortcut defaults changed has one).
+export type Platform = (typeof PROFILES)[keyof typeof PROFILES] & { navigationId?: string };
 export const platform: Platform = PROFILES[BUILD_TARGET ?? detect()];
 // Defaults a build had before (`shortcutDefaults` then): a saved shortcut still one of them moves to today's
 // (state/model.ts normalizeShortcuts).

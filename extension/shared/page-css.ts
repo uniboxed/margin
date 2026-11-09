@@ -50,7 +50,7 @@ export function shiftUnits(value) {
 // The declarations a block's text gives, in its order: [name, value, important].
 // Split at the `;`s outside brackets and strings.
 export function declarations(cssText) {
-  const out = [];
+  const out: [string, string, boolean][] = [];
   let depth = 0;
   let quote = '';
   let start = 0;

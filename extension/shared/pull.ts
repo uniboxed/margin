@@ -34,20 +34,24 @@ const DEFAULTS = {
 };
 const SWIPE_DEFAULTS = { ...DEFAULTS, THRESHOLD: 110, MIN_EVENTS: 6, MIN_MS: 100 };
 
-function createTracker(axis, options) {
+// A gesture under way: when it started and its last event, how many events, how far it's pulled and which way,
+// whether it applies here, whether it's only momentum now (decaying deltas), and its last deltas.
+type Gesture = { start: number, last: number, events: number, pull: number, direction: number, eligible: boolean, momentum: boolean, recent: number[] };
+
+function createTracker(axis: 'x' | 'y', options: typeof DEFAULTS) {
   const o = options;
-  let gesture = null; // { start, last, events, pull, direction, eligible, momentum, recent: [] }
+  let gesture: Gesture | null = null;
   let lastTime = -Infinity;
 
   const idle = () => ({ state: 'idle', progress: 0, direction: 0 });
-  const view = (g) => {
+  const view = (g: Gesture) => {
     const progress = Math.min(g.pull / o.THRESHOLD, 1.5);
     const armed = g.pull >= o.THRESHOLD && g.events >= o.MIN_EVENTS && g.last - g.start >= o.MIN_MS;
     return { state: armed ? 'armed' : g.pull > 0 ? 'pulling' : 'idle', progress, direction: g.direction };
   };
 
   // Smooth decay over the last MOMENTUM_RUN deltas: each 72–99% of the one before.
-  const decaying = (recent) => {
+  const decaying = (recent: number[]) => {
     if (recent.length < o.MOMENTUM_RUN) return false;
     const run = recent.slice(-o.MOMENTUM_RUN);
     if (run[0] < 3) return false;
@@ -66,7 +70,7 @@ function createTracker(axis, options) {
     // 'pulling' | 'armed' | 'trigger', progress, direction }.
     wheel({ deltaY = 0, deltaX = 0, time, eligible, atTop }: { deltaY?: number, deltaX?: number, time: number, eligible?: boolean | (() => boolean), atTop?: boolean | (() => boolean) }) {
       const given = eligible ?? atTop;
-      let answer = null;
+      let answer: boolean | null = null;
       const ok = () => (answer ??= !!(typeof given === 'function' ? given() : given));
       const primary = axis === 'y' ? deltaY : deltaX;
       const cross = axis === 'y' ? deltaX : deltaY;

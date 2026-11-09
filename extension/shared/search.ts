@@ -146,13 +146,22 @@ function matchScore(query, item) {
 
 const isWebUrl = (url) => /^https?:/i.test(url ?? '');
 
+// One thing the palette can offer: a tab, a pin, an archived tab, an action, an iCloud tab. `boost` lifts it in
+// the ranking, `recency` breaks ties (its last use); `action`, what choosing it asks for.
+export type PaletteItem = {
+  id: string, kind: string, title: string, subtitle: string, url?: string, favIconUrl?: string, badge?: string,
+  spaceColor?: string, boost?: number, recency?: number, section?: string, sectionStart?: boolean, action: any,
+  [extra: string]: unknown,
+};
+
 // Everything the palette can offer for this window. `ctx`:
 // { windowId, tabId, inNewTab, canToggleSidebar, canFullscreen }.
 function paletteItems(state, ctx) {
   const view = V;
   const spaceId = view.activeSpaceId(state, ctx.windowId);
   const spaceOf = (id) => state.spaces.find((s) => s.id === id);
-  const items = [];
+  // (Each with its boost: the ranking adds it. iCloud tabs, which have none, are ranked apart: cloudMatches.)
+  const items: (PaletteItem & { boost: number })[] = [];
 
   for (const t of Object.values(state.tabs ?? {})) {
     const space = spaceOf(state.tabSpace?.[t.id]);
@@ -269,7 +278,7 @@ function cloudMatches(state, q, ctx) {
   if (!q || cloud?.status !== 'ready') return [];
   const open = new Set(Object.values(state.tabs ?? {}).map((t) => V.normalizeUrl(t.url)));
   const names = deviceNames(cloud.devices);
-  const groups = [];
+  const groups: { best: number, hits: { item: PaletteItem, score: number }[] }[] = [];
   for (const d of cloud.devices) {
     const section = onDevice(names.get(d.id) ?? d.name);
     const hits = d.tabs

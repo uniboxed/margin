@@ -44,7 +44,7 @@ function activeSpaceId(state: State, windowId) {
 // top of the list, highlighted, at once (Arc), titled with what was asked for
 // (`title`, `url`); the tab in front plain, "+ New Tab" not lit (Tirth,
 // 2026-11-08: it only lit partly until the page had loaded).
-function sidebar(state: State, windowId, currentTabId = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null } = {}) {
+function sidebar(state: State, windowId: number, currentTabId: number | null = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null }: { newTabPending?: boolean, switchingTo?: number | null, justShown?: boolean, opening?: { title?: string, url?: string, from?: number | null } | null } = {}) {
   const has = (id) => id != null && state.spaces.some((s) => s.id === id);
   const own = currentTabId != null ? state.tabs?.[currentTabId] : null;
   const going = switchingTo != null ? state.tabs?.[switchingTo] : null;
@@ -256,7 +256,8 @@ function iconFor(state: State, item) {
 // view model: ui/view-model.ts).
 function hue(text: string) {
   let h = 0;
-  for (const ch of text) h = (h * 31 + ch.codePointAt(0)) % 360;
+  // (`ch` is one character: its code point is there.)
+  for (const ch of text) h = (h * 31 + ch.codePointAt(0)!) % 360;
   return h;
 }
 function letterAvatar(label: string): { letter: string, color: string } {

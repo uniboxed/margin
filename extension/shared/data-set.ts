@@ -163,7 +163,7 @@ export function track(meta: any, items: Record<string, any>, now: number): { ite
  * @param items collection → items (collectionFrom's)
  */
 export function pendingChanges(metas: Record<string, any>, items: Record<string, Record<string, any>>, since: number = 0) {
-  const out = [];
+  const out: ({ collection: string, id: string, updatedAt: number, value: any } | { collection: string, id: string, updatedAt: number, deleted: true })[] = [];
   for (const collection of Object.keys(SOURCES)) {
     const meta = metas?.[collection];
     if (!meta) continue;

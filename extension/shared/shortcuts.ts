@@ -107,14 +107,15 @@ const ALIVE_MS = 200;
 // never (or fails at once) in one whose copy is gone. True where it can't be
 // told (no storage).
 function worldAlive(): Promise<boolean> {
-  let local = null;
+  let local: { get?: (key: string) => unknown } | null = null;
   try {
     const api = (globalThis as any).browser ?? (globalThis as any).chrome;
     local = api?.storage?.local;
   } catch {}
   if (typeof local?.get !== 'function') return Promise.resolve(true);
   return Promise.race([
-    Promise.resolve().then(() => local.get('owner')).then(() => true, () => false),
+    // (`local.get` is a function: checked above.)
+    Promise.resolve().then(() => local!.get!('owner')).then(() => true, () => false),
     new Promise<any>((resolve) => setTimeout(() => resolve(false), ALIVE_MS)),
   ]);
 }

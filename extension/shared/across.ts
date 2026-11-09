@@ -64,13 +64,13 @@ export type AcrossContent = { space: string, pins: AcrossRow[], folders: { id: s
 const ICON = /^data:image\/(png|jpeg|gif|webp|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+=*$/;
 function contentOf(c): AcrossContent | null {
   if (!c || typeof c !== 'object' || typeof c.space !== 'string') return null;
-  const row = (r) => (r && typeof r === 'object' && typeof r.id === 'string' ? {
+  const row = (r): AcrossRow | null => (r && typeof r === 'object' && typeof r.id === 'string' ? {
     id: text(r.id, 64), title: text(r.title, 300), url: text(r.url, 2048),
     icon: typeof r.icon === 'string' && r.icon.length <= 16384 && ICON.test(r.icon) ? r.icon : '',
     folderId: typeof r.folderId === 'string' && r.folderId ? text(r.folderId, 64) : null,
     pos: Number(r.pos) || 0, active: r.active === true,
   } : null);
-  const list = (v, n) => (Array.isArray(v) ? v : []).slice(0, n).map(row).filter(Boolean);
+  const list = (v, n) => (Array.isArray(v) ? v : []).slice(0, n).map(row).filter((r): r is AcrossRow => r != null);
   const folders = (Array.isArray(c.folders) ? c.folders : []).slice(0, 50).filter((f) => f && typeof f.id === 'string')
     .map((f) => ({ id: text(f.id, 64), name: text(f.name, 60), open: f.open !== false, pos: Number(f.pos) || 0 }));
   return { space: text(c.space, 64), pins: list(c.pins, 200), folders, tabs: list(c.tabs, 80) };

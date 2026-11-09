@@ -168,8 +168,8 @@ function installGestureGuard({ getSettings, wanted = undefined, pinch = () => 'b
   }, { capture: true, passive: false });
 
   // No bounce at the top/bottom (and so no Safari pull-to-refresh).
-  let sheet = null;
-  let style = null;
+  let sheet: CSSStyleSheet | null = null;
+  let style: HTMLStyleElement | null = null;
   function update() {
     syncWheel();
     const on = enabled();

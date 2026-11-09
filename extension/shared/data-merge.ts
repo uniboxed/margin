@@ -22,7 +22,7 @@
 
 export const DATA_FORMAT = 1;
 
-const isObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const isObject = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
 const isName = (v) => typeof v === 'string' && v.length > 0 && v.length <= 256;
 
 export function isItem(item: any): boolean {
@@ -75,9 +75,10 @@ export function mergeData(base: { format?: number, items?: Record<string, Record
  * `mergeData(a, changesFrom(b))`), in a fixed order (collection, then id).
  * */
 export function changesFrom(set: { items?: Record<string, Record<string, any>> } | null | undefined) {
-  const out = [];
+  const out: ({ collection: string, id: string, updatedAt: any, deleted: true } | { collection: string, id: string, updatedAt: any, value: any })[] = [];
   for (const collection of Object.keys(isObject(set?.items) ? set.items : {}).sort()) {
-    const list = set.items[collection];
+    // (The keys are set.items's: it's an object.)
+    const list = set!.items![collection];
     if (!isObject(list)) continue;
     for (const id of Object.keys(list).sort()) {
       const item = list[id];

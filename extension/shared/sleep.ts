@@ -23,7 +23,7 @@ export function oldSleepPage(url: unknown): { url: string | null, title: string 
     return null;
   }
   if (!/-extension:$/.test(at.protocol) || at.pathname !== OLD_SLEEP_PATH) return null;
-  let page = null;
+  let page: string | null = null;
   try {
     const u = new URL(at.searchParams.get('u') ?? '');
     if (u.protocol === 'http:' || u.protocol === 'https:') page = u.href;
@@ -41,7 +41,7 @@ const SITES_MAX = 200;
 /** @param input text (one per line, or separated by commas or spaces) or a list */
 export function siteList(input: unknown): string[] {
   const items = Array.isArray(input) ? input : String(input ?? '').split(/[\s,]+/);
-  const out = [];
+  const out: string[] = [];
   for (const item of items) {
     let text = String(item ?? '').trim().toLowerCase();
     if (!text) continue;

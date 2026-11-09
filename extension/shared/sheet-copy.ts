@@ -55,7 +55,7 @@ async function inline(css, base, fetchText, depth, budget) {
   if (!found.length) return css;
   if (depth <= 0 || found.length > budget.left) return null;
   budget.left -= found.length;
-  const wanted = [];
+  const wanted: { m: RegExpExecArray, url: string, conditions: string }[] = [];
   for (const m of found) {
     const path = m[2] ?? m[4];
     const conditions = m[5].trim();

@@ -87,7 +87,7 @@ export function describeSwitchRun(run: SwitchRun) {
  */
 export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, doc = document, front = null, onRun = null }: { onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, doc?: Document, front?: (() => number | null) | null, onRun?: ((run: SwitchRun) => void) | null }) {
   let target: number | null = null;
-  let current = null; // this start's token: an older start's request can't end a newer one
+  let current: object | null = null; // this start's token: an older start's request can't end a newer one
   let slow = false;
   let timers: ReturnType<typeof setTimeout>[] = [];
   let passedTimer: ReturnType<typeof setTimeout> | null = null;
