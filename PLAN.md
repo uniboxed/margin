@@ -240,6 +240,8 @@ Each phase ends with the unit tests passing, the WebKit host scenarios that appl
 
 ### Phase 5: Chrome and Edge on the Mac
 
+- **Linked (2026-11-09):** the relay helper, the host files, the link in Chrome's build, both browsers at once (`DECISIONS.md` "Chrome and Edge link to Margin.app on the Mac"). Left: Tirth's checks in real Chrome and Edge, their profiles' names, the iCloud Tabs counterpart.
+
 - Native messaging host install, window matching for Chromium windows, both browsers at once.
 - iCloud Tabs' folder and palette section for Chrome and Edge windows (built for Safari on 2026-11-05: `DECISIONS.md` "Margin 2: iCloud Tabs"): the extension's `sessions.getDevices()` gives the person's other devices and their open tabs (its own sync, not iCloud), sent to the app for its overlays in the same shape as `cloudTabs` (`app/PROTOCOL.md` "iCloud Tabs").
 - Their profiles' own names, as Safari's are shown from Phase 2 step 9 (`app/shell/SafariProfiles.swift`; not built for them yet): each browser's `Local State` file (JSON; Chrome: `~/Library/Application Support/Google/Chrome/Local State`, Edge: `~/Library/Application Support/Microsoft Edge/Local State`), `profile.info_cache`, keyed by the profile's folder (`Default`, `Profile 1`…), with `name` (and `avatar_icon`, `default_avatar_fill_color`). Readable without Full Disk Access, but macOS 27 asks before an app reads another app's data (TCC "app data"): the set-up window will need its own step. The extension sees no profile id at all in Chromium, so the link from a copy to its folder still has to be found (its `Extensions/`/`Local Extension Settings/<extension id>/` folder under the profile is one lead).

@@ -71,6 +71,24 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 - WebKit's own extension engine, Safari reloading Margin, tab ids changing on a relaunch;
 - the app's data files and the real Swift link.
 
+## Chrome and Edge on the Mac (2026-11-09)
+
+Margin.app now links Chrome's and Edge's copies the way it links Safari's (app/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"). Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'` (zsh's `log` is a builtin).
+
+**Set up once:**
+- `npm run safari` (it builds the relay helper into Margin.app). Margin.app writes the host files at launch: `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/io.tirth.margin.json` and Edge's (`Microsoft Edge/NativeMessagingHosts/`), naming `…/Margin.app/Contents/Helpers/margin-relay`.
+- `npm run build`, then in Chrome: `chrome://extensions` → Developer mode → Load unpacked → `dist/chrome`. Its ID must be `njeebbcmlenfopaecfbphgcfihbdmkec` (the build's fixed key; another ID can't reach the relay). Edge: `edge://extensions`, the same. A Chrome build you loaded before this one had another ID: it comes back as a new extension, and the old one's data stays with the old one.
+
+**Check:**
+- [ ] Margin.app's log says `hello: chrome:p-…` (Edge: `edge:p-…`), and no `relay: refused`.
+- [ ] Put a Chrome window in full screen: Margin's sidebar is drawn over it, the page sits in the theme's slot, and clicks, scrolling and typing reach the page.
+- [ ] ⌘T opens Margin's palette; the tab and space keys switch; a click on a tab in the sidebar switches to it.
+- [ ] The same in Edge, and with Chrome, Edge and Safari all open at once: each window's sidebar shows its own browser's tabs.
+- [ ] Quit Margin.app with Chrome open, then open it again: Chrome's windows get their sidebar back within a few seconds, without reloading anything.
+- [ ] With Margin.app not running, open Chrome's new tab page and press Start: Margin.app starts and the page changes once it's linked.
+- [ ] Two Chrome profiles: switching to the other profile's space opens or focuses that profile's window (the close-based switch; Safari's handoff is Safari's only). With the other profile not open, the notice says to open one of its windows from Chrome's profile menu.
+- [ ] A Chrome window that isn't in full screen: nothing drawn over it, as with Safari.
+
 ## Safari behaviors to confirm first
 
 None of these can be tested in the cloud. The code feature-detects each one and degrades as described, and DECISIONS.md records each fallback. Do these right after setup, and write the results into DECISIONS.md.
