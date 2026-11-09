@@ -4,7 +4,7 @@
 // opened; a tab opened as a new tab; Copy Link and Full Disk Access asked of
 // the app; the setting off hides them; the palette's iCloud section. The
 // devices are made up (tests/fixtures/cloud-tabs.ts), their tabs this test
-// site's pages (harness/seed.js cloudTabsOf).
+// site's pages (harness/seed.ts cloudTabsOf).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin } from './harness/margin.ts';

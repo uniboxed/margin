@@ -15,7 +15,7 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(
 let composer = null;
 
 /**
- * @param m the file's world (margin.js)
+ * @param m the file's world (margin.ts)
  * @param t the test (node:test's context: its name), or a string
  */
 export async function shoot(m: any, t: any, label: string, { windowId = m.shell.frontWindowId(), page = null }: { windowId?: number, page?: any } = {}) {
@@ -49,7 +49,7 @@ export async function shoot(m: any, t: any, label: string, { windowId = m.shell.
   return { dir, page: !!pagePng, overlay: !!overlayPng };
 }
 
-/** The composer's page goes with its browser (margin.js closes WebKit). */
+/** The composer's page goes with its browser (margin.ts closes WebKit). */
 export function forgetComposer() { composer = null; }
 
 /**

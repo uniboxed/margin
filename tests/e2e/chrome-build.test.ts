@@ -25,7 +25,7 @@ let worker;
 let site;
 let root;
 const leaks = [];
-// For the screenshots (harness/shots.js: there's no overlay here, so only page.png).
+// For the screenshots (harness/shots.ts: there's no overlay here, so only page.png).
 const world = { name: 'chrome-build', shell: { frontWindowId: () => null, overlays: new Map() }, front: async () => null, pageOf: async () => null };
 const bg = (fn, arg) => worker.evaluate(fn, arg);
 const until = async (check, { timeout = 5000, what = 'a condition' } = {}) => {

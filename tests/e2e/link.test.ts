@@ -63,7 +63,7 @@ test('a page opened while linked sits in the slot from its first frame', async (
   const box = await m.until(() => pageBox(page), { what: 'the article\'s box' });
   assert.deepEqual({ left: box.left, top: box.top, right: box.right, bottom: box.bottom }, s);
   assert.equal(box.width, 1440 - s.left - s.right, 'the page lays out at the slot\'s width');
-  // The recorder (site/sites/common.js FIRST_FRAMES): where <html> sat in each early frame.
+  // The recorder (site/sites/common.ts FIRST_FRAMES): where <html> sat in each early frame.
   const frames = await m.until(() => page.evaluate(() => (globalThis.__fp?.frames.length >= 10 ? globalThis.__fp.frames : null)), { what: 'the first frames' });
   assert.equal(Math.round(frames[0].x), s.left, `the first frame is already in the box: ${JSON.stringify(frames.slice(0, 3))}`);
   assert.equal(Math.round(frames[0].y), s.top);

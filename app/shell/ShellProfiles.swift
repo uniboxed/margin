@@ -264,7 +264,7 @@ extension Shell: SwitchWorld {
     // up to 200 pins, 50 folders, 80 tabs (newest first, the one used last marked active); an icon only a small
     // `data:` image, its own or its site's. Titles and addresses go to the overlay only, never to the log.
     // Every space's contents of each profile (smaller caps), for the other profiles' layouts: a swipe draws the
-    // neighbouring space beside the current one, another profile's too (ui/behaviors/swipe.ts, view-model.js).
+    // neighbouring space beside the current one, another profile's too (ui/behaviors/swipe.ts, view-model.ts).
     private func spaceContents(_ browser: String, _ ids: [String: [String]]) -> [JSONObject] {
         var out: [JSONObject] = []
         for (p, spaces) in ids.sorted(by: { $0.key < $1.key }) {

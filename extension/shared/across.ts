@@ -5,7 +5,7 @@
 // Access, the name is Safari's own, `nameFrom` 'safari', with Safari's symbol
 // for it as a small picture, `symbol`), and every space of
 // every profile in the one order the person controls. The UI (ui/
-// view-model.js) draws this window's own spaces from its own state, as
+// view-model.ts) draws this window's own spaces from its own state, as
 // always, in their places in that order, and the other profiles' spaces as
 // chips whose ids are `x:` and a hash of their profile and id (`foreignKey`):
 // ids of two profiles can be the same, and an action naming one goes to the
