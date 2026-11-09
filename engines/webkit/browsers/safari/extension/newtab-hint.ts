@@ -14,13 +14,13 @@
 // Settings). Not linked to the app, nothing is said.
 // Bookmarks opened twice in new tabs look the same, hence "twice" and the
 // way to turn it off.
-import { platform } from '../shared/platform.ts';
-import * as M from '../state/model.ts';
-import * as V from '../shared/view.ts';
-import { api, load } from './store.ts';
-import { openedByMargin } from './tabs.ts';
+import { platform } from '../../../../../extension/shared/platform.ts';
+import * as M from '../../../../../extension/state/model.ts';
+import * as V from '../../../../../extension/shared/view.ts';
+import { api, load } from '../../../../../extension/background/store.ts';
+import { openedByMargin } from '../../../../../extension/background/tabs.ts';
 import { reportEvent } from './onboarding.ts';
-import { tellNotice } from './notices.ts';
+import { tellNotice } from '../../../../../extension/background/notices.ts';
 
 const KEY = 'newTabHint'; // storage.session: { seen: { [url]: count }, shown: boolean }
 const CANDIDATE_MS = 3000; // its first web address must come this soon

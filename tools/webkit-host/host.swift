@@ -576,7 +576,7 @@ Task { @MainActor in
       log("put \(t.name) to sleep")
     case "install": try! await host.install(sameId: (step["sameId"] as? Bool) == true)
     case "installOld":
-      // An old copy of Margin (MARGIN_HOST_OLD_EXT: run.sh puts main's dist/safari there, or
+      // An old copy of Margin (MARGIN_HOST_OLD_EXT: run.sh puts main's Safari build (dist/webkit) there, or
       // `dir`) running beside the installed one, sharing its storage.
       let dir = step["dir"] as? String ?? ProcessInfo.processInfo.environment["MARGIN_HOST_OLD_EXT"] ?? ""
       try! await host.installOld(dir: URL(fileURLWithPath: dir))

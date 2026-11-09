@@ -1,4 +1,4 @@
-// The ⌘T-opens-the-homepage note (background/newtab-hint.ts) and finding a
+// The ⌘T-opens-the-homepage note (engines/webkit/browsers/safari/extension/newtab-hint.ts) and finding a
 // sleeping tab by its address (the rest of the old wake tests went with the wakes, Phase 2 step 8), against a fake
 // browser API (Safari's: the note is Safari-only).
 import { test } from 'node:test';
@@ -139,7 +139,7 @@ globalThis.chrome = {
 
 const { markMarginOpening, resolveTab, tabShown } = await import('../extension/background/tabs.ts');
 const M = await import('../extension/state/model.ts');
-const hint = await import('../extension/background/newtab-hint.ts');
+const hint = await import('../engines/webkit/browsers/safari/extension/newtab-hint.ts');
 // Margin.app's overlay, linked: the notices pushed to it (background/notices.ts).
 const notices = await import('../extension/background/notices.ts');
 const pushed = [];

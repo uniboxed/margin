@@ -2,7 +2,8 @@
 // with `node --test` and called by background.ts. Functions never mutate
 // their input; untouched top-level keys keep their identity so the
 // background can write only the keys that changed.
-import { platform, PROFILES, PAST_NAVIGATION } from '../shared/platform.ts';
+import { platform } from '../shared/platform.ts';
+import { NAVIGATION_DEFAULTS } from '../shared/navigation-defaults.ts';
 import { THEMES, DEFAULT_THEME } from '../themes/index.ts';
 import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.ts';
 import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.ts';
@@ -555,9 +556,8 @@ function normalizeShortcuts(rawSettings: any, baseSettings: any) {
   const saved = { ...rawSettings?.shortcuts };
   const from = rawSettings?.shortcutDefaults;
   if (from !== baseSettings.shortcutDefaults) {
-    // (A build's defaults by the id it saved: its navigationId, else its name; a past set of Safari's first.)
-    const build = from ? Object.values(PROFILES).find((p) => ((p as { navigationId?: string }).navigationId ?? p.name) === from) : null;
-    const old = (from && ((PAST_NAVIGATION as Record<string, any>)[from] ?? build?.navigation)) || LEGACY_SHORTCUTS;
+    // (A build's defaults by the id it saved, today's or a past one: shared/navigation-defaults.ts.)
+    const old = (from && (NAVIGATION_DEFAULTS as Record<string, any>)[from]) || LEGACY_SHORTCUTS;
     for (const [name, value] of Object.entries(saved)) if (value === old[name]) delete saved[name];
   }
   return { ...baseSettings.shortcuts, ...saved };

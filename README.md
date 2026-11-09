@@ -55,14 +55,14 @@ npm run safari
 
 Builds Margin, signs it with your Apple Developer team, installs it as `~/Applications/Margin.app` and registers it with Safari (`scripts/safari.sh`). Signed, Safari keeps it on, with its data, across relaunches; run the same command again after a change or a `git pull` and Safari takes the new build as an update (nothing to remove or turn on again; pages get the new copy as they're shown). The first time, turn Margin on in Safari → Settings → Extensions and allow it on every website.
 
-The team comes from Xcode → Settings → Accounts (add your Apple ID once; a free Personal Team works), or `MARGIN_TEAM`, or `xcode/.team`. It builds from `xcode/` (made by `scripts/make-xcode.sh` if missing; regenerate it when files under `dist/safari/` are added or removed) and unregisters other Xcode builds of Margin, so Safari has one copy.
+The team comes from Xcode → Settings → Accounts (add your Apple ID once; a free Personal Team works), or `MARGIN_TEAM`, or `xcode/.team`. It builds from `xcode/` (made by `scripts/make-xcode.sh` if missing; regenerate it when files under `dist/webkit/` are added or removed) and unregisters other Xcode builds of Margin, so Safari has one copy.
 
 ## Install for development (temporary extension, no Xcode)
 
-The fastest loop: Safari loads `dist/safari/` straight from the repo (committed, so no Node needed on the Mac). There's no Xcode build and no "Allow unsigned extensions" toggle.
+The fastest loop: Safari loads `dist/webkit/` straight from the repo (committed, so no Node needed on the Mac). There's no Xcode build and no "Allow unsigned extensions" toggle.
 
 1. Safari → Settings → Advanced → enable **Show features for web developers**.
-2. **Develop → Add Temporary Extension…** → choose this repo's `dist/safari/` folder.
+2. **Develop → Add Temporary Extension…** → choose this repo's `dist/webkit/` folder.
 3. Safari → Settings → Extensions → Margin → website access **Always Allow on Every Website**.
 4. Safari → Settings → General → **New tabs open with** → **Margin**.
 
@@ -84,12 +84,12 @@ open xcode/Margin/Margin.xcodeproj
 The script runs Apple's converter on the Safari build:
 
 ```sh
-xcrun safari-web-extension-converter dist/safari --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open
+xcrun safari-web-extension-converter dist/webkit --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open
 ```
 
 It then fixes the bundle IDs (the converter names the app `io.tirth.Margin`, the extension `io.tirth.margin.Extension`, and Xcode refuses an extension whose ID isn't prefixed by the app's: the script sets the app to `io.tirth.margin` and `extensionBundleIdentifier` in the app's Swift to match), turns the app's App Sandbox off (Developer ID: it listens on 127.0.0.1), and adds Margin.app's own code: `app/macos/startup/` (the set-up window, the app delegate, the extension handler), `app/macos/shell/` (the link to the extension, window tracking, the overlays drawn around the browser's windows, the data store) and the overlays' page (`dist/app/`, built from `app/shared/host/` and `extension/ui/`). Choose the **Margin (macOS)** scheme and Run (⌘R), with the same Team on both targets under Signing & Capabilities.
 
-**After pulling new changes,** re-run `npm run safari`. By hand: re-run `scripts/make-xcode.sh` whenever files under `dist/safari/` or `app/` are added or removed, else just Run again in Xcode.
+**After pulling new changes,** re-run `npm run safari`. By hand: re-run `scripts/make-xcode.sh` whenever files under `dist/webkit/` or `app/` are added or removed, else just Run again in Xcode.
 
 **The set-up window.** Opened by hand, Margin.app shows a window that walks through what Safari needs (Margin on, allowed on every website, new tabs opening Margin, Full Disk Access for Safari's profile names) and checks each step as you go. Started by the extension, it runs in the background with no window and no Dock icon, and quits a while after the last browser has gone.
 
@@ -118,12 +118,18 @@ extension/              The extension's shared source, as ES modules (browsers l
   ui/                   The UI runtime (view model, renderer, sanitizer, actions, behaviors), run by Margin.app's
                         overlay page (ui/host-app.ts) and by the browser tests (ui/host.ts).
   themes/<id>/          Theme packages (theme.json, theme.html, theme.css, fonts), first-paint.css: see themes/README.md.
-app/                    Margin.app: shell/ (Swift), overlay/ (its page), safari/ (set-up window, extension handler);
-                        PROTOCOL.md is the link's protocol.
-platform/<browser>/     Manifest overrides per browser
-dist/safari/, dist/chrome/, dist/app/
-                        Ready-to-load builds from `npm run build` (generated, committed; a test checks they're current)
-scripts/                build.js, safari.sh (install), make-xcode.sh, margin-log.sh (`npm run log:app`)
+engines/                What differs per browser, by engine (engines/README.md): webkit/ (Safari: browsers/safari/,
+                        its manifest, profile and modules, and its side of Margin.app), chromium/ (Chrome, Edge and
+                        the rest: its manifest, profile and modules; app/, its host files, Rust), gecko/ later.
+app/                    Margin.app on every OS: shared/ (core/ in Rust, connector/ for Chrome and Edge in Rust,
+                        host/ the page drawn over each browser window), macos/ (shell/, private/, startup/: Swift),
+                        windows/ (Rust), linux/ later.
+docs/                   PROTOCOL.md (the link's protocol), HANDOFF.md, DATA.md, PRIVATE-APIS.md, windows/.
+Cargo.toml              The Rust workspace (app/shared/core, app/shared/connector, app/windows, engines/chromium/app).
+dist/webkit/, dist/chromium/, dist/app/
+                        Builds from `npm run build`, one per engine, each with only its own engine's code (generated,
+                        not committed): Safari loads dist/webkit/; Chrome and Edge, dist/chromium/
+scripts/                build.ts, safari.sh (install), make-xcode.sh, rust-test.sh, margin-log.sh (`npm run log:app`)
 tests/                  *.test.js unit tests; theme/ browser tests of the runtime and themes (Playwright);
                         e2e/ the real extension linked to a stand-in Margin.app, the real overlay, a local test site
 tools/                  webkit-host/ (Safari's extension engine, off screen), app-tests/ (Margin.app's checks)

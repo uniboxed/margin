@@ -166,7 +166,7 @@ test('dist/app is up to date with app/shared/host and extension/ (run `npm run b
     assert.deepEqual(readdirSync(join(root, 'dist/app')).sort(), [...APP_FILES].sort());
     for (const f of APP_FILES) assert.ok(readFileSync(join(tmp, f)).equals(readFileSync(join(root, 'dist/app', f))), `dist/app/${f} is stale`);
     const js = readFileSync(join(tmp, 'overlay.js'), 'utf8');
-    assert.match(js, /BUILD_TARGET="safari"/, 'Safari\'s profile');
+    assert.ok(js.includes('name:"safari"') && !js.includes('name:"chrome"'), 'Safari\'s profile, only');
     assert.doesNotMatch(js, /\bimport\s*\(|importScripts|fetch\(/, 'one script, nothing loaded');
     assert.match(readFileSync(join(tmp, 'overlay.html'), 'utf8'), /<script src="overlay.js" defer><\/script>/);
   } finally {

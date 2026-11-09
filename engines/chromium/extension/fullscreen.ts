@@ -6,9 +6,9 @@
 // starts, Chrome shows no toolbar, so it never comes up; Margin's sidebar and
 // palette stand in for it. It has to start from a window that isn't in full
 // screen already.
-import { platform } from '../shared/platform.ts';
-import { queueRegistrations } from './registered.ts';
-import { api } from './store.ts';
+import { platform } from '../../../extension/shared/platform.ts';
+import { queueRegistrations } from '../../../extension/background/registered.ts';
+import { api } from '../../../extension/background/store.ts';
 
 const KEY = 'marginFullscreen'; // storage.session: { [windowId]: the state to go back to }
 const switching = new Map(); // window id → going full screen or not, while Margin switches it

@@ -1,10 +1,11 @@
-// Builds ready-to-load extensions for each browser from the one shared source:
-//   extension/ (shared) + its engine's manifest changes (MANIFESTS: engines/…/extension/manifest.json)
-//   → dist/<target>/, with shared/platform.ts stamped for that browser.
-// dist/ is committed (no Node needed on the Mac to use it); a unit test fails
-// if it's out of date. Usage: node scripts/build.ts
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+// Builds ready-to-load extensions, one per engine, from the one shared source:
+//   extension/ (shared) + its engine's own code (engines/<engine>/…/extension/: its profile, its modules)
+//   and manifest changes (MANIFESTS) → dist/<engine>/ (DIST: dist/webkit/ for Safari, dist/chromium/ for
+//   Chrome, Edge and the other Chromium browsers), and dist/app/ (Margin.app's host page).
+// Each build takes only its own engine's code: shared code reaches it as `#engine` and `#engine/profile`
+// (package.json "imports"), which the build resolves by its engine's condition (CONDITIONS); unbuilt (unit
+// tests), they pick either engine's by the extension's URL. Usage: node scripts/build.ts
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { buildSync, transformSync } from 'esbuild';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +15,11 @@ import { WIDTH } from '../extension/themes/arcadia/theme.ts';
 
 const root = new URL('../', import.meta.url);
 const SOURCE = new URL('extension/', root);
+// The builds by their profile's name (platform.ts Profile.name: what saved data and the link call them), each
+// one's dist/ folder by its engine, and the package.json "imports" condition that gives `#engine` its engine's code.
 export const TARGETS = ['chrome', 'safari'];
+export const DIST = { safari: 'webkit', chrome: 'chromium' };
+export const CONDITIONS = { safari: 'margin-webkit', chrome: 'margin-chromium' };
 // How esbuild reads Margin's TypeScript (the bundles are built from copies outside the repo's tsconfig.json too):
 // every import kept as written (a module's side effects stay, as in JavaScript), class fields as JavaScript's.
 const TSCONFIG = { compilerOptions: { verbatimModuleSyntax: true, useDefineForClassFields: true } };
@@ -46,14 +51,7 @@ export function manifestFor(target) {
   return manifest;
 }
 
-export function platformFileFor(target) {
-  const source = readFileSync(new URL('shared/platform.ts', SOURCE), 'utf8');
-  const marker = 'const BUILD_TARGET = null; // set by scripts/build.ts';
-  if (!source.includes(marker)) throw new Error('shared/platform.ts: BUILD_TARGET marker not found');
-  return source.replace(marker, `const BUILD_TARGET = '${target}'; // set by scripts/build.ts`);
-}
-
-// One build: `profile` decides behavior (shared/platform.ts), `manifest`
+// One build: `profile` decides behavior (its engine's profile and modules), `manifest`
 // which manifest overrides to use. They're the same for dist/; tests also
 // build the Safari profile with Chrome's manifest so Chromium can load it.
 export function buildTo(outDir, { profile, manifest = profile }) {
@@ -62,9 +60,8 @@ export function buildTo(outDir, { profile, manifest = profile }) {
   mkdirSync(out, { recursive: true });
   // Skip Finder's .DS_Store files (git-ignored) so a Mac build matches CI.
   cpSync(fileURLToPath(SOURCE), out, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') });
-  writeFileSync(`${out}/shared/platform.ts`, platformFileFor(profile));
   const built = manifestFor(manifest);
-  bundle(out, built);
+  bundle(out, built, profile);
   // The one plain script registered as a file, not bundled (background/registered.ts FULLSCREEN_ONLY_JS).
   const plain = `${out}/content/page/fullscreen-only`;
   writeFileSync(`${plain}.js`, transformSync(readFileSync(`${plain}.ts`, 'utf8'), { loader: 'ts', tsconfigRaw: TSCONFIG }).code);
@@ -111,10 +108,18 @@ export const LEGACY_FILES = [
   ...[8, ...WIDTHS].map((left) => `content/page/at-${left}.js`),
 ];
 
-function bundle(out, manifest) {
+// What every bundle is built with: its engine's code for `#engine` (package.json "imports"), on top of
+// esbuild's own conditions.
+const engineOptions = (profile) => ({ conditions: [CONDITIONS[profile]], tsconfigRaw: TSCONFIG });
+
+function bundle(out, manifest, profile) {
+  // From the sources themselves (the copy in `out` is for the files pages load as they are), so each engine's
+  // modules and the shared ones they import are one module each.
+  const source = fileURLToPath(SOURCE);
   const write = (file, entries, { format = 'iife' } = {}) => buildSync({
     // A module keeps its entry's exports (a theme's new-tab mount()).
-    stdin: { contents: entries.map((f) => (format === 'esm' ? `export * from './${f}';` : `import './${f}';`)).join('\n'), resolveDir: out, sourcefile: 'margin-bundle-entry.js' },
+    stdin: { contents: entries.map((f) => (format === 'esm' ? `export * from './${f}';` : `import './${f}';`)).join('\n'), resolveDir: source, sourcefile: 'margin-bundle-entry.js' },
+    ...engineOptions(profile),
     bundle: true,
     format,
     target: 'esnext',
@@ -124,7 +129,6 @@ function bundle(out, manifest) {
     charset: 'utf8',
     outfile: `${out}/${file}`,
     logLevel: 'warning',
-    tsconfigRaw: TSCONFIG,
   });
 
   firstPaintFiles(out);
@@ -170,29 +174,20 @@ export function buildApp(outDir, { profile = 'safari' } = {}) {
   const out = outDir instanceof URL ? fileURLToPath(outDir) : outDir;
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
-  // The extension's modules with shared/platform.ts stamped for the profile,
-  // and the page's entry pointed at them.
-  const tmp = mkdtempSync(join(tmpdir(), 'margin-app-'));
-  try {
-    cpSync(fileURLToPath(SOURCE), tmp, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') });
-    writeFileSync(`${tmp}/shared/platform.ts`, platformFileFor(profile));
-    const entry = readFileSync(new URL('app/shared/host/overlay.ts', root), 'utf8').replaceAll("'../../../extension/", "'./");
-    buildSync({
-      stdin: { contents: entry, resolveDir: tmp, sourcefile: 'app/shared/host/overlay.ts', loader: 'ts' },
-      tsconfigRaw: TSCONFIG,
-      bundle: true,
-      format: 'iife',
-      target: 'esnext',
-      minifyWhitespace: true,
-      minifySyntax: true,
-      legalComments: 'none',
-      charset: 'utf8',
-      outfile: `${out}/overlay.js`,
-      logLevel: 'warning',
-    });
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
+  // The page's entry and the extension's modules it imports, with the profile's engine's code.
+  buildSync({
+    entryPoints: [fileURLToPath(new URL('app/shared/host/overlay.ts', root))],
+    ...engineOptions(profile),
+    bundle: true,
+    format: 'iife',
+    target: 'esnext',
+    minifyWhitespace: true,
+    minifySyntax: true,
+    legalComments: 'none',
+    charset: 'utf8',
+    outfile: `${out}/overlay.js`,
+    logLevel: 'warning',
+  });
   cpSync(fileURLToPath(new URL('app/shared/host/overlay.html', root)), `${out}/overlay.html`);
   writeFileSync(`${out}/${FALLBACK_FILE}`, fallbackScript());
   return out;
@@ -219,8 +214,8 @@ function fallbackScript() {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   for (const target of TARGETS) {
-    buildTo(new URL(`dist/${target}/`, root), { profile: target });
-    console.log(`dist/${target}/`);
+    buildTo(new URL(`dist/${DIST[target]}/`, root), { profile: target });
+    console.log(`dist/${DIST[target]}/`);
   }
   buildApp(new URL('dist/app/', root));
   console.log('dist/app/');

@@ -2,6 +2,18 @@
   "name": "margin",
   "private": true,
   "type": "module",
+  "imports": {
+    "#engine": {
+      "margin-webkit": "./engines/webkit/browsers/safari/extension/engine.ts",
+      "margin-chromium": "./engines/chromium/extension/engine.ts",
+      "default": "./extension/shared/any-engine.ts"
+    },
+    "#engine/profile": {
+      "margin-webkit": "./engines/webkit/browsers/safari/extension/profile.ts",
+      "margin-chromium": "./engines/chromium/extension/profile.ts",
+      "default": "./extension/shared/any-engine-profile.ts"
+    }
+  },
   "description": "Arc-style sidebar for Safari (prototype)",
   "scripts": {
     "pretest": "node scripts/build.ts",

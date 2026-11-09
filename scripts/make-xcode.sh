@@ -3,7 +3,7 @@
 # bundle IDs. The converter capitalizes the app's ID from --app-name
 # (io.tirth.Margin) while the extension keeps io.tirth.margin.Extension, and
 # Xcode rejects an extension whose ID isn't prefixed by the app's.
-# Wraps dist/safari/ (the Safari build; refresh it with `npm run build`), and
+# Wraps dist/webkit/ (the Safari build; refresh it with `npm run build`), and
 # gives the app its shell (app/macos/shell/: the link to the extension, the overlays
 # around the browser's windows) and the overlays' page (dist/app/).
 # Kept from before: xcode/.team (the team scripts/safari.sh signs with) and
@@ -11,7 +11,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-[ -f dist/safari/manifest.json ] || { echo "dist/safari/ is missing: run npm run build" >&2; exit 1; }
+[ -f dist/webkit/manifest.json ] || { echo "dist/webkit/ is missing: run npm run build" >&2; exit 1; }
 [ -f dist/app/overlay.html ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
 
 APP_ID=io.tirth.margin
@@ -20,7 +20,7 @@ EXT_ID="$APP_ID.Extension"
 if [ -d xcode ]; then
   find xcode -mindepth 1 -maxdepth 1 ! -name .team ! -name build -exec rm -rf {} +
 fi
-xcrun safari-web-extension-converter dist/safari \
+xcrun safari-web-extension-converter dist/webkit \
   --project-location xcode --app-name Margin --bundle-identifier "$APP_ID" \
   --macos-only --swift --no-open
 

@@ -77,7 +77,7 @@ Margin.app now links Chrome's and Edge's copies the way it links Safari's (docs/
 
 **Set up once:**
 - `npm run safari` (it builds the connector, Rust, into Margin.app). Margin.app has it write the host files at launch (`margin-connector --install`): `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/io.tirth.margin.json` and Edge's (`Microsoft Edge/NativeMessagingHosts/`), naming `…/Margin.app/Contents/Helpers/margin-connector`. Chrome or Edge open while you install an older build's update: quit and reopen them once, so they start the new connector.
-- `npm run build`, then in Chrome: `chrome://extensions` → Developer mode → Load unpacked → `dist/chrome`. Its ID must be `njeebbcmlenfopaecfbphgcfihbdmkec` (the build's fixed key; another ID can't reach the connector). Edge: `edge://extensions`, the same. A Chrome build you loaded before this one had another ID: it comes back as a new extension, and the old one's data stays with the old one.
+- `npm run build`, then in Chrome: `chrome://extensions` → Developer mode → Load unpacked → `dist/chromium`. Its ID must be `njeebbcmlenfopaecfbphgcfihbdmkec` (the build's fixed key; another ID can't reach the connector). Edge: `edge://extensions`, the same. A Chrome build you loaded before this one had another ID: it comes back as a new extension, and the old one's data stays with the old one.
 
 **Check:**
 - [ ] Margin.app's log says `hello: chrome:p-…` (Edge: `edge:p-…`), and no `relay: refused`.
@@ -129,7 +129,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 **Recommended: temporary extension** (no Xcode, no "Allow unsigned extensions").
 
 1. Safari → Settings → Advanced → enable **Show features for web developers** (older Safari: "Show Develop menu in menu bar").
-2. **Develop → Add Temporary Extension…** → choose the repo's `dist/safari/` folder (not `extension/`). Redo this after every Safari relaunch. After pulling changes, reload Margin in Safari → Settings → Extensions, then reload pages.
+2. **Develop → Add Temporary Extension…** → choose the repo's `dist/webkit/` folder (not `extension/`). Redo this after every Safari relaunch. After pulling changes, reload Margin in Safari → Settings → Extensions, then reload pages.
 3. Safari → Settings → Extensions → Margin → set website access to **Always Allow on Every Website**.
 4. Safari → Settings → General → **New tabs open with** → **Margin**. Set **New windows open with** to Margin too if you like.
 5. If an Xcode-built Margin is also installed, turn it off in Safari → Settings → Extensions so only one copy runs.
@@ -139,7 +139,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 1. Run `scripts/make-xcode.sh`, open `xcode/Margin/Margin.xcodeproj`, choose the **Margin (macOS)** scheme, and Run (⌘R). The container app opens. You can close it.
 2. Safari → Settings → Developer (older Safari: the Develop menu) → enable **Allow unsigned extensions**. You'll be asked for your password. **This resets every time Safari quits.**
 3. Then steps 3–4 above, after checking **Margin** in Safari → Settings → Extensions.
-4. If Margin disappears from the Extensions list: press ⌘R in Xcode again, quit and reopen Safari, and toggle "Allow unsigned extensions" off and on. Re-run `scripts/make-xcode.sh` only when files under `dist/safari/` are added or removed. Regenerating is what most often leaves Safari pointing at a deleted app.
+4. If Margin disappears from the Extensions list: press ⌘R in Xcode again, quit and reopen Safari, and toggle "Allow unsigned extensions" off and on. Re-run `scripts/make-xcode.sh` only when files under `dist/webkit/` are added or removed. Regenerating is what most often leaves Safari pointing at a deleted app.
 
 ## M1 smoke check
 
@@ -334,7 +334,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 Retired 2026-11-01: there's no iframe now. Kept for its list of sites to try.
 
-Setup: load `dist/safari/` (Develop → Add Temporary Extension…), allow Margin on every website, turn **Keep open** on, then reload the tabs you test in. Turning Keep open on doesn't refit pages that are already open. To see why a page wasn't fitted, open its Web Inspector console with Debug messages shown: `[margin] fitted layout: …`.
+Setup: load `dist/webkit/` (Develop → Add Temporary Extension…), allow Margin on every website, turn **Keep open** on, then reload the tabs you test in. Turning Keep open on doesn't refit pages that are already open. To see why a page wasn't fitted, open its Web Inspector console with Debug messages shown: `[margin] fitted layout: …`.
 
 **Layout**
 - [ ] github.com, youtube.com, google.com, a news site: the page sits in the card beside the sidebar, and nothing is cut off on the right. Pinned headers span exactly the card, and the site's narrow (tablet) layout kicks in when you widen the sidebar. Dragging the sidebar edge re-lays the page out live.
@@ -380,7 +380,7 @@ Setup: load `dist/safari/` (Develop → Add Temporary Extension…), allow Margi
 
 ## After the restructuring (bundles, modules, background split; 2026-10-25)
 
-Files were added under `dist/safari/`, so re-run `scripts/make-xcode.sh`, then Run in Xcode.
+Files were added under `dist/webkit/`, so re-run `scripts/make-xcode.sh`, then Run in Xcode.
 
 - [ ] Sidebar appears on a fresh page; tabs, pins and spaces render; drag-resize works.
 - [ ] Option+K opens the palette on a web page and on the new-tab page; ⌘T hands off to the palette over the previous tab.
@@ -394,7 +394,7 @@ Files were added under `dist/safari/`, so re-run `scripts/make-xcode.sh`, then R
 
 ## Themes: Arcadia in its own folder (2026-10-25)
 
-Files were added and moved under `dist/safari/`: re-run `scripts/make-xcode.sh`, then Run in Xcode. Nothing should look or behave differently.
+Files were added and moved under `dist/webkit/`: re-run `scripts/make-xcode.sh`, then Run in Xcode. Nothing should look or behave differently.
 
 - [ ] After installing, pages you open show the sidebar as before (it now comes from `themes/arcadia/`). Also right after relaunching Safari: the first restored tabs still get it (they ask the background for the theme if Safari hasn't loaded its registrations yet).
 - [ ] "Keep open": the first paint already shows the frame (placeholder), pages push or fit as before, and resizing still saves the width (it's now Arcadia's own setting; your old width carries over).

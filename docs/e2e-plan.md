@@ -205,7 +205,7 @@ Each file starts its own browser pair and seeds its state (§4). Names are the f
 - **`data.test.ts`**: the app's set taken as the cache (seed); a wiped profile refilled from the app; changes made while unlinked queued and sent on link (`data.hello` queue); changes while linked sent as `data.changes`.
 - **`link-drops.test.ts`**: the app killed: overlay dimmed with "Reconnecting to Safari…", pages keep their box; after 6 s off: no box, the new-tab notice; the app back: relinked, box back, overlay as it was; `bye`: off at once; a new app (new key) after `appUp`; a wrong welcome key refused.
 - **`themes.test.ts`**: for each built-in theme (`PACKAGE_THEMES`, so Pixel joins when Phase 6 adds it): switched in Settings, its pieces sent again, the overlay drawn with it, the page box at its gutters; its parts with real content: sidebar, pins and folders, palette with results, launcher with archive, menu, editor, notice, cloud folder, hidden sidebar and peek. Screenshots of each.
-- **`chrome-build.test.ts`**: `dist/chrome` alone (no app until Phase 5): background starts, pages get nothing, Chrome's shortcuts, Chrome's icons (no fetching), `chrome.search`, no gesture blocking, bounce left alone.
+- **`chrome-build.test.ts`**: `dist/chromium` alone (no app until Phase 5): background starts, pages get nothing, Chrome's shortcuts, Chrome's icons (no fetching), `chrome.search`, no gesture blocking, bounce left alone.
 
 Rules for every test:
 

@@ -60,7 +60,11 @@ function walk(dir, out = []) {
   return out;
 }
 const IMPORT = /(?:import|export)\s[^'"`;]*?from\s*['"]([^'"]+)['"]|import\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g;
+// package.json "imports" (`#engine`, `#engine/profile`): as Node resolves them unbuilt, to their `default`,
+// which reaches every engine's modules.
+const IMPORTS = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).imports ?? {};
 function resolveImport(from, spec) {
+  if (spec.startsWith('#')) { const to = IMPORTS[spec]; const target = typeof to === 'string' ? to : to?.default; return target ? resolve(ROOT, target) : null; }
   if (!spec.startsWith('.')) return null;
   const base = resolve(dirname(from), spec);
   for (const c of [base, `${base}.ts`, `${base}.mts`, `${base}.js`, `${base}.mjs`, join(base, 'index.ts')]) if (existsSync(c) && statSync(c).isFile()) return c;
@@ -68,7 +72,7 @@ function resolveImport(from, spec) {
 }
 const graph = new Map(); // file → files it imports
 const texts = new Map();
-for (const f of [...walk(join(ROOT, 'extension')), ...walk(join(ROOT, 'app')), ...walk(join(ROOT, 'tests')), ...walk(join(ROOT, 'scripts'))]) {
+for (const f of [...walk(join(ROOT, 'extension')), ...walk(join(ROOT, 'engines')), ...walk(join(ROOT, 'app')), ...walk(join(ROOT, 'tests')), ...walk(join(ROOT, 'scripts'))]) {
   const text = readFileSync(f, 'utf8');
   texts.set(f, text);
   const deps = new Set();
@@ -126,7 +130,7 @@ const rust = all || changed.some((f) => /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfm
 const e2eFiles = all ? [] : E2E.filter((t) => abs.includes(t));
 const notRun = [];
 if (changed.some((f) => /^(extension|engines|app\/shared\/host|tests\/e2e)\//.test(f)) && !e2eFiles.length) notRun.push('the e2e suite (npm run test:e2e)');
-if (changed.some((f) => /^(extension|tools\/webkit-host)\//.test(f))) notRun.push('the WebKit host (npm run test:webkit)');
+if (changed.some((f) => /^(extension|engines\/[^/]+(\/browsers\/[^/]+)?\/extension|tools\/webkit-host)\//.test(f))) notRun.push('the WebKit host (npm run test:webkit)');
 if (swift) notRun.push('the app\'s e2e checks (tools/app-tests/run.sh e2e)');
 
 const sel = (list) => list.filter((t) => why.has(t));

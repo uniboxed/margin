@@ -18,6 +18,7 @@
   },
   "include": [
     "extension/**/*.ts",
+    "engines/**/extension/**/*.ts",
     "app/shared/host/*.ts",
     "types/*.d.ts"
   ]

@@ -11,17 +11,16 @@ import * as V from './shared/view.ts';
 import { api, cached, decided, isOwner, isStale, isSynced, load, markSynced, mutate, newId, now, recheck, recheckSoon, resync, StaleError } from './background/store.ts';
 import { takeClosing } from './background/closing.ts';
 import * as restore from './background/restore.ts';
-import * as onboarding from './background/onboarding.ts';
 import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, keepHandedOff, pageChanged, resolveTab, setActivationHook, shownAt, switchAsked, tabClosed, tabLeft, tabShown, userSwitched } from './background/tabs.ts';
 import { switchLog, switchLogTo } from './background/switch-log.ts';
 import { learnSearchEngine } from './background/search-engine.ts';
 import { drawnChanged, handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.ts';
-import * as newTabHint from './background/newtab-hint.ts';
+// This engine's own modules (Safari's set-up messages and new-tab note, Chromium's full screen), or null.
+import { engine } from '#engine';
 import { layoutsChanged, queueRegistrations, setLayoutSource, watchCommits, windowDrawnChanged } from './background/registered.ts';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.ts';
 import { sleepIdle, sleepIdleThrottled } from './background/sleep.ts';
 import { navActivated, navigate, NAV_ACTIONS } from './background/navigation.ts';
-import { followFullscreen } from './background/fullscreen.ts';
 import { tabGone, tabUpdated } from './background/tab-updates.ts';
 import { platform } from './shared/platform.ts';
 import { appLink } from './background/app-link.ts';
@@ -121,7 +120,7 @@ async function startWorkDue() {
 firstSync.then(async () => {
   if (!isOwner() || !isSynced()) return;
   if (!(await startWorkDue())) return;
-  void onboarding.reportAccess(); // to Margin's Mac app, if it's open (its set-up window)
+  void engine.onboarding?.reportAccess(); // to Margin's Mac app, if it's open (its set-up window)
   // Safari's search engine from tabs already open, if none is known yet (a
   // stale tab mustn't override one learned since).
   const s = await load();
@@ -132,8 +131,8 @@ firstSync.then(async () => {
 }).catch((err) => { if (!(err instanceof StaleError)) console.error('[margin]', err); });
 
 // Margin allowed on more or fewer sites: the Mac app's set-up window shows it.
-api.permissions?.onAdded?.addListener(owned(() => void onboarding.reportAccess()));
-api.permissions?.onRemoved?.addListener(owned(() => void onboarding.reportAccess()));
+api.permissions?.onAdded?.addListener(owned(() => void engine.onboarding?.reportAccess()));
+api.permissions?.onRemoved?.addListener(owned(() => void engine.onboarding?.reportAccess()));
 
 // ---- tab events -----------------------------------------------------------
 
@@ -144,13 +143,13 @@ api.tabs.onCreated.addListener(owned(async (tab) => {
   // page the user was on at once (handlers.ts newTabHandOff); a new tab
   // that stays is tracked as usual.
   if (tab.active && V.isNewTabPage(tab.pendingUrl || tab.url)) {
-    void newTabHint.newTabPageSeen(tab); // ⌘T reaches Margin: the setting is Margin
+    void engine.newTabHint?.newTabPageSeen(tab); // ⌘T reaches Margin: the setting is Margin
     if (await newTabHandOff(tab)) return;
     // As it is now: its events were set aside meanwhile.
     tab = (await api.tabs.get(tab.id).catch(() => null))!;
     if (!tab) return;
   }
-  newTabHint.tabCreated(tab);
+  engine.newTabHint?.tabCreated(tab);
   mutate((s) => {
     restore.tabCreated(s, tab); // back from before the ids changed?
     return M.upsertTab(s, tab, now());
@@ -176,8 +175,8 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   // from its record: no search was made now (search-engine.ts noteReopened).
   const url = change.url ?? (change.status === 'complete' ? tab.url : null);
   if (url) learnSearchEngine([url], { tabId });
-  if (change.url) void newTabHint.tabAddress(tabId, change.url);
-  if (change.status === 'complete') newTabHint.tabLoaded(tabId);
+  if (change.url) void engine.newTabHint?.tabAddress(tabId, change.url);
+  if (change.status === 'complete') engine.newTabHint?.tabLoaded(tabId);
   // Safari reloading a tab as it's shown: it had unloaded it (diagnostics).
   if (change.status === 'loading' && !change.url && shownAt.get(tabId) > Date.now() - 1000) {
     console.info(`[margin] tab ${tabId} reloaded as it was shown`);
@@ -190,7 +189,7 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
 api.tabs.onRemoved.addListener(owned((tabId, removeInfo) => {
   handingOff.delete(tabId);
   tabClosed(tabId); // gone: forgotten
-  newTabHint.tabGone(tabId);
+  engine.newTabHint?.tabGone(tabId);
   tabGone(tabId);
   forgetCurrent(tabId);
   const by = takeClosing(tabId);
@@ -300,7 +299,8 @@ api.tabs.onMoved.addListener(owned(() => resync({ fresh: false })));
 api.tabs.onAttached.addListener(owned(() => resync({ fresh: false })));
 api.tabs.onDetached?.addListener(owned(() => resync({ fresh: false })));
 // Chrome: a window going full screen becomes Margin full screen.
-api.windows?.onBoundsChanged?.addListener(owned((win) => followFullscreen(win.id)));
+const { fullscreen } = engine;
+if (fullscreen) api.windows?.onBoundsChanged?.addListener(owned((win) => fullscreen.followFullscreen(win.id)));
 // A closed window may have been the one in full screen (registered.ts syncPage).
 if (platform?.marginFullscreen) api.windows?.onRemoved.addListener(owned(() => queueRegistrations()));
 api.windows?.onRemoved.addListener(owned((windowId) => {

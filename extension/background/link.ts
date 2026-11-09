@@ -223,9 +223,9 @@ export function createLink({
   WebSocket: Socket = globalThis.WebSocket,
   enabled = () => linksApp() && typeof api.runtime?.connectNative === 'function' && typeof Socket === 'function',
   // (A worker's WebSocket hangs WebKit's background, Transport step 9; Chrome's service worker has none of that.)
-  canSocket = () => platform?.name === 'chrome' || (typeof globalThis.document === 'object' && typeof ((globalThis as any)).WorkerGlobalScope === 'undefined'),
-  // The socket guard (Transport step 9): Safari's alone.
-  socketGuard = platform?.name !== 'chrome',
+  canSocket = () => !!platform?.socketInWorker || (typeof globalThis.document === 'object' && typeof ((globalThis as any)).WorkerGlobalScope === 'undefined'),
+  // The socket guard (Transport step 9): WebKit's alone.
+  socketGuard = !!platform?.socketGuard,
   data = null,
   theme = async () => null,
   commandKeys = () => ({}),

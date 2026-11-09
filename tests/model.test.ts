@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as model from '../extension/state/model.ts';
-import { PROFILES } from '../extension/shared/platform.ts';
+import { PROFILES } from '../extension/shared/any-engine-profile.ts';
 import * as shortcuts from '../extension/shared/shortcuts.ts';
 import * as view from '../extension/shared/view.ts';
 

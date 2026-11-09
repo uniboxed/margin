@@ -1,4 +1,4 @@
-// background/onboarding.ts: what the extension tells Margin's Mac app (its
+// engines/webkit/browsers/safari/extension/onboarding.ts: what the extension tells Margin's Mac app (its
 // set-up window), against a fake browser API (Safari's profile).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,7 +21,7 @@ globalThis.chrome = {
   storage: { local: { get: async () => ({}), set: async () => {} } },
 };
 
-const onboarding = await import('../extension/background/onboarding.ts');
+const onboarding = await import('../engines/webkit/browsers/safari/extension/onboarding.ts');
 const types = () => sent.map((m) => (m.type === 'status' ? `status:${m.allSites}` : m.name));
 
 const tick = () => new Promise((r) => setTimeout(r, 5));

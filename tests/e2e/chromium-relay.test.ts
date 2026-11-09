@@ -1,5 +1,5 @@
 // Chrome and Edge on the Mac (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"), end to end: the real
-// Chrome build (dist/chrome's, its fixed key), in Chrome for Testing (headless), starts the real connector
+// Chromium build (dist/chromium's, its fixed key), in Chrome for Testing (headless), starts the real connector
 // (app/shared/connector/, Rust, built here) through native messaging, the host file in the profile's own folder. A stand-in
 // for Margin.app's connector socket (RelayLink.swift's words) answers the copy's wantLink as the app does and hands it the
 // link; the copy then links over the same WebSocket as Safari's (tests/fake-app.ts) from its service worker, and says
