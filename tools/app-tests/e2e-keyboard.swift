@@ -1,6 +1,6 @@
 // The overlay's keyboard and its page's focus, end to end (part of e2e.swift's
 // run; DECISIONS.md "Margin 2: Safari reliability", the keyboard and the
-// page's focus): the real link, shell and overlays against fake-extension.mjs,
+// page's focus): the real link, shell and overlays against fake-extension.mts,
 // one profile whose window has Margin's new-tab page in front (the overlay
 // draws the launcher). The harness never makes a panel key, so what's checked
 // is the decision: whether the overlay has the keyboard (`hasKeyboard`), what

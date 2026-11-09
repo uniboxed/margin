@@ -1,62 +1,62 @@
 // Margin's message protocol, derived from the background's handlers
-// (extension/background/handlers.js `handlers`): a page's `send(type, payload)` is
+// (extension/background/handlers.ts `handlers`): a page's `send(type, payload)` is
 // checked against the handler of that name, and gets its result type.
 // Used by `npm run typecheck` only.
 
-type Handlers = typeof import('../extension/background/handlers.js').handlers;
+type Handlers = typeof import('../extension/background/handlers.ts').handlers;
 
 export type MessageType = keyof Handlers;
 export type Request<K extends MessageType> = Parameters<Handlers[K]>[0];
 export type Result<K extends MessageType> = Awaited<ReturnType<Handlers[K]>>;
 
-// What pages call (content/sidebar.js, newtab/newtab.js, shared/ui.js).
+// What pages call (content/sidebar.js, newtab/newtab.ts, shared/ui.js).
 export type Send = <K extends MessageType>(type: K, payload?: Request<K>) => Promise<Result<K>>;
 
-// ---- stored state (storage.local; state/model.js) ---------------------------
+// ---- stored state (storage.local; state/model.ts) ---------------------------
 
 export interface Space { id: string; name: string; emoji: string; color: string }
 export interface Pin {
   id: string; spaceId: string; url: string; title: string;
-  /** a folder of its space (state/model.js); none or unknown: at the top level */
+  /** a folder of its space (state/model.ts); none or unknown: at the top level */
   folderId?: string;
   /** order within its level (folder, or the space's top level); missing: its place in the list */
   pos?: number;
 }
 export interface Folder { id: string; spaceId: string; name: string; open: boolean; pos?: number }
-// Snapshot of an open tab (state/model.js tabRecord).
+// Snapshot of an open tab (state/model.ts tabRecord).
 export interface TabRecord {
   id: number; windowId: number; index: number; title: string; url: string;
   favIconUrl: string; active: boolean; lastActive: number;
-  /** its Margin tab's own id, lasting (state/model.js "Margin's tabs") */
+  /** its Margin tab's own id, lasting (state/model.ts "Margin's tabs") */
   mid?: string;
   /** its place in the list (higher: newer, shown higher), as its Margin tab's */
   order?: number;
-  /** as shared/view.js sidebar shows it only: this window's choice, live in another window (app/WINDOWS.md §9) */
+  /** as shared/view.ts sidebar shows it only: this window's choice, live in another window (app/WINDOWS.md §9) */
   away?: boolean;
   /** view.sidebar only: its page is on screen under the palette while a new tab is chosen */
   behind?: boolean;
   /** view.sidebar only: never on an open tab's record (a kept tab's row has it) */
   kept?: boolean;
-  /** its space and record came from before its id changed (state/model.js syncTabs, reclaimWindows) */
+  /** its space and record came from before its id changed (state/model.ts syncTabs, reclaimWindows) */
   restored?: boolean;
   /** the old window it came back from (restored), as of that renumbering */
   restoredFrom?: string;
   /** put in its space on purpose (the user, or Margin opening it there) */
   placed?: boolean;
-  /** Margin put it to sleep (background/sleep.js), at `at`; its url and title are its page's (state/model.js seenTab) */
+  /** Margin put it to sleep (background/sleep.ts), at `at`; its url and title are its page's (state/model.ts seenTab) */
   sleeping?: { at: number; how: 'page' | 'discarded' };
   /** when it last woke from that sleep */
   wokeAt?: number;
-  /** where its page is scrolled (px), as it last said, for this address (state/model.js noteScroll) */
+  /** where its page is scrolled (px), as it last said, for this address (state/model.ts noteScroll) */
   scroll?: number;
-  /** a scroll its page takes once as it loads: its Margin tab opened again (state/model.js linkKept, takeScroll) */
+  /** a scroll its page takes once as it loads: its Margin tab opened again (state/model.ts linkKept, takeScroll) */
   restoreScroll?: { y: number; url: string };
-  /** a page Margin sent it to, shown at once while the browser's tab still says the page before (state/model.js goingTo) */
+  /** a page Margin sent it to, shown at once while the browser's tab still says the page before (state/model.ts goingTo) */
   going?: { url: string; title: string; from: string; at: number };
 }
 /** A tab from before ids changed that no open tab matched yet (an earlier build's lostTabs: moved into keptTabs as read). */
 export interface LostTab { url: string; spaceId: string; lastActive: number; windowId: number; index: number }
-/** A Margin tab with no browser tab: not open, in its space (state/model.js keepTab). */
+/** A Margin tab with no browser tab: not open, in its space (state/model.ts keepTab). */
 export interface KeptTab {
   id: string; url: string; title: string; favIconUrl: string; spaceId: string;
   order: number; lastActive: number; wokeAt?: number;
@@ -86,9 +86,9 @@ export interface Settings {
   /** the devices whose tabs iCloud Tabs' folder hides (Safari's device ids) */
   cloudTabsClosed?: string[];
   archiveAfterHours: number;
-  /** tabs unused this long are put to sleep (background/sleep.js); 0: never */
+  /** tabs unused this long are put to sleep (background/sleep.ts); 0: never */
   sleepAfterHours: number;
-  /** hostnames whose tabs never sleep (each with its subdomains: shared/sleep.js) */
+  /** hostnames whose tabs never sleep (each with its subdomains: shared/sleep.ts) */
   neverSleepSites: string[];
   sidebarShortcut: string;
   newTabHint: boolean;
@@ -100,7 +100,7 @@ export interface Settings {
   fullscreenOnly: boolean;
   shortcuts: Shortcuts;
   shortcutDefaults: string;
-  theme: string; // extension/themes/index.js
+  theme: string; // extension/themes/index.ts
   themes: Record<string, Record<string, unknown>>; // each theme's own settings
 }
 export interface State {

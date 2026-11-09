@@ -1,5 +1,5 @@
 // Margin's lasting data set (DATA.md) in Swift: items, changes and the merge.
-// The rules are extension/shared/data-merge.js mergeData's (the reference),
+// The rules are extension/shared/data-merge.ts mergeData's (the reference),
 // and the Swift store runs the same JSON vectors (tests/fixtures/data-merge/):
 //
 //  - an item is { updatedAt, value } or a tombstone { updatedAt, deleted: true };

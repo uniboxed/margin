@@ -1,11 +1,12 @@
 {
   "compilerOptions": {
-    "allowJs": true,
-    "checkJs": true,
     "noEmit": true,
     "target": "esnext",
     "module": "esnext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
     "lib": [
       "esnext",
       "dom",
@@ -16,7 +17,8 @@
     "skipLibCheck": true
   },
   "include": [
-    "extension/**/*.js",
+    "extension/**/*.ts",
+    "app/overlay/*.ts",
     "types/*.d.ts"
   ]
 }

@@ -2,7 +2,7 @@
 // for the whole Mac, not per profile: a theme is the person's look in every
 // browser and profile. `~/Library/Application Support/Margin/themes/`:
 //
-//   <id>.json    the stored package, as the overlay made it (ui/theme-loader.js
+//   <id>.json    the stored package, as the overlay made it (ui/theme-loader.ts
 //                encodeStoredTheme: format 2, id, version, savedAt, manifest,
 //                html, css, files as base64)
 //   index.json   the short list: [{ id, name, version, author, bytes, savedAt }]
@@ -17,10 +17,10 @@ import Foundation
 
 final class ThemeStore {
     static let format = 2
-    static let maxBytes = 4_718_592 // ui/theme-loader.js PACKAGE_LIMITS.storedBytes (4.5 MB)
+    static let maxBytes = 4_718_592 // ui/theme-loader.ts PACKAGE_LIMITS.storedBytes (4.5 MB)
     static let maxThemes = 50
-    static let builtins: Set<String> = ["arcadia", "neo-brutalism", "pixel"] // extension/themes/packages.js
-    // ui/theme-schema.js: a theme's id.
+    static let builtins: Set<String> = ["arcadia", "neo-brutalism", "pixel"] // extension/themes/packages.ts
+    // ui/theme-schema.ts: a theme's id.
     static func idOK(_ id: String) -> Bool {
         guard (1...41).contains(id.count), let first = id.unicodeScalars.first, Self.lowerDigit(first) else { return false }
         return id.unicodeScalars.allSatisfy { Self.lowerDigit($0) || $0 == "-" }
@@ -125,11 +125,11 @@ final class ThemeStore {
 // ---- what the picker chose, read with caps before reading ----
 
 enum ThemeFileReader {
-    static let maxFiles = 70 // ui/theme-import.js IMPORT_LIMITS.entries
+    static let maxFiles = 70 // ui/theme-import.ts IMPORT_LIMITS.entries
     static let maxDepth = 2 // folders below the theme's own
-    static let maxFileBytes = 512 * 1024 // a font's cap, the largest of a package's (ui/theme-loader.js PACKAGE_LIMITS)
+    static let maxFileBytes = 512 * 1024 // a font's cap, the largest of a package's (ui/theme-loader.ts PACKAGE_LIMITS)
     static let maxFolderBytes = 4 * 1024 * 1024
-    static let maxZipBytes = 4 * 1024 * 1024 // ui/theme-import.js IMPORT_LIMITS.zipBytes
+    static let maxZipBytes = 4 * 1024 * 1024 // ui/theme-import.ts IMPORT_LIMITS.zipBytes
 
     // The message for the overlay: { type: 'themeFile', kind, files | zip } or { type: 'themeFile', error }
     // (Margin's words). `bytes`: what was read, for the log.

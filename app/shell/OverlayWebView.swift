@@ -1,5 +1,5 @@
 // The overlay's page (dist/app/overlay.html, built from app/overlay/: the UI
-// runtime with the app's host, extension/ui/host-app.js) in a web view, and
+// runtime with the app's host, extension/ui/host-app.ts) in a web view, and
 // its line to the app.
 //
 // OverlayWebView takes a press without first becoming key (WebKit takes no

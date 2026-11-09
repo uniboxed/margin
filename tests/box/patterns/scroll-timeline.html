@@ -1,7 +1,7 @@
 <!--
 pattern: a scroll-linked animation on the document's scroll (ScrollTimeline on <html>, or with no source) runs on the box's
 from: cxense.com (fit-check round 1, re-checked): Framer's motion drives its fixed hero from `new ScrollTimeline({ source: document.documentElement })`; in the box <html> doesn't scroll, the timeline was inactive (null), and the hero was put at its end, 1000px up: a blank page
-handled-by: content/page/timelines.js (ScrollTimeline on the box's scroller)
+handled-by: content/page/timelines.ts (ScrollTimeline on the box's scroller)
 settle: 700
 -->
 <!doctype html>

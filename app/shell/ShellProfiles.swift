@@ -11,7 +11,7 @@
 // carries "Close windows to save memory" (`switchSettings`, BrowserProfiles),
 // the window the switch leaves (`switching.from`: its overlay draws the
 // cover) and the switch's notices by kind (SwitchNotice; the words are the
-// overlay's, extension/shared/across.js SWITCH_NOTICES). The overlay's page
+// overlay's, extension/shared/across.ts SWITCH_NOTICES). The overlay's page
 // asks for `switch.closeWindows`, says `switch.coverShown`, and passes a
 // notice's button back (`switch.notice`).
 
@@ -230,7 +230,7 @@ extension Shell: SwitchWorld {
         acrossSent = acrossSent.filter { overlays[$0.key] != nil }
     }
 
-    // DEV-HOOK: Margin.app's development switches, sent with `across` (Settings shows them: ui/settings-form.js).
+    // DEV-HOOK: Margin.app's development switches, sent with `across` (Settings shows them: ui/settings-form.ts).
     func devSwitches() -> JSONObject { ["askBeforeQuit": options.asksBeforeQuit()] }
 
     func acrossJSON(for overlay: OverlayController) -> String? {
@@ -252,9 +252,9 @@ extension Shell: SwitchWorld {
     private func switchingJSON() -> JSONObject? {
         guard switcher.busy, let t = switcher.target, t.profile.contains(":") else { return switchNotice.map { SwitchNotice.sent($0) } }
         var out: JSONObject = ["profile": SwitchNotice.profileId(t.profile), "space": t.space, "phase": switcher.phase.rawValue]
-        // The window it leaves: its overlay draws the cover (ui/view-model.js switchCover).
+        // The window it leaves: its overlay draws the cover (ui/view-model.ts switchCover).
         if let from = switcher.from, let w = from.windowId { out["from"] = ["profile": SwitchNotice.profileId(from.profile), "windowId": w] }
-        // The target space's contents, drawn in that window's sidebar while the switch runs (ui/view-model.js foreignSpace).
+        // The target space's contents, drawn in that window's sidebar while the switch runs (ui/view-model.ts foreignSpace).
         if let content = spaceContent(t.profile, t.space) { out["content"] = content }
         if let n = switchNotice { out.merge(SwitchNotice.sent(n)) { _, new in new } }
         return out
@@ -264,7 +264,7 @@ extension Shell: SwitchWorld {
     // up to 200 pins, 50 folders, 80 tabs (newest first, the one used last marked active); an icon only a small
     // `data:` image, its own or its site's. Titles and addresses go to the overlay only, never to the log.
     // Every space's contents of each profile (smaller caps), for the other profiles' layouts: a swipe draws the
-    // neighbouring space beside the current one, another profile's too (ui/behaviors/swipe.js, view-model.js).
+    // neighbouring space beside the current one, another profile's too (ui/behaviors/swipe.ts, view-model.ts).
     private func spaceContents(_ browser: String, _ ids: [String: [String]]) -> [JSONObject] {
         var out: [JSONObject] = []
         for (p, spaces) in ids.sorted(by: { $0.key < $1.key }) {
@@ -324,7 +324,7 @@ extension Shell: SwitchWorld {
         } }
     }
 
-    // A button of the switch's notice (ui/host-app.js `switch.notice`): the notice goes; a kept
+    // A button of the switch's notice (ui/host-app.ts `switch.notice`): the notice goes; a kept
     // window's Close window closes it by its copy, with no drafts check (the person chose it).
     func switchNoticeAction(kind: String, action: String) {
         guard let n = switchNotice, n["noticeKind"] as? String == kind else { return }
@@ -337,7 +337,7 @@ extension Shell: SwitchWorld {
         Task { _ = try? await entry.connection.request(type: "closeWindow", payload: ["windowId": kept.windowId], windowId: kept.windowId) }
     }
 
-    // The switching cover drawn in `overlay` (its page's word: app/overlay/overlay.js): the freeze may start
+    // The switching cover drawn in `overlay` (its page's word: app/overlay/overlay.ts): the freeze may start
     // on it (app/HANDOFF.md §1.5, else 250 ms after the start). Only the window the switch leaves counts.
     // Today's close-based switch has no cover, so this is heard only once the handoff runs.
     func switchCoverShown(_ overlay: OverlayController) {
@@ -399,7 +399,7 @@ extension Shell: SwitchWorld {
         acrossSoon()
     }
 
-    // What the overlay's page asks the app for (host-app.js perform).
+    // What the overlay's page asks the app for (host-app.ts perform).
     func performAcross(from overlay: OverlayController, _ name: String, _ arg: JSONObject) {
         guard let entry = links[overlay.key.link] else { return }
         let browser = entry.connection.hello.browser
@@ -494,7 +494,7 @@ extension Shell: SwitchWorld {
             for k in ["name", "emoji", "color"] { if let x = payload[k] as? String { v[k] = x } }
             data.change(p, [DataChange(collection: "spaces", id: id, item: DataItem(updatedAt: t, value: v))])
         default:
-            // Deleting moves its tabs and pins to the profile's first space: its copy's work (state/model.js deleteSpace).
+            // Deleting moves its tabs and pins to the profile's first space: its copy's work (state/model.ts deleteSpace).
             switchNotice = ["notice": "Open a window of \(profilesOf(browser).name(profile)) to delete its spaces."]
             pushAcross()
             switchNotice = nil

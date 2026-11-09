@@ -46,7 +46,7 @@ func themeFallbackScenario(shell: Shell, fake: Fake, overlay o7: OverlayControll
 }
 
 // Neo-brutalism's package, from the repo, as the overlay stores an imported theme
-// (ui/theme-loader.js encodeStoredTheme), under another id.
+// (ui/theme-loader.ts encodeStoredTheme), under another id.
 func storedNeo(id: String) -> JSONObject {
   let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../extension/themes/neo-brutalism").standardizedFileURL
   let text = { (f: String) in (try? String(contentsOf: dir.appendingPathComponent(f), encoding: .utf8)) ?? "" }
@@ -101,7 +101,7 @@ func personalCopy(of builtin: String, id: String, name: String, in root: URL) ->
   let dst = root.appendingPathComponent(id, isDirectory: true)
   try? fm.removeItem(at: dst)
   try? fm.copyItem(at: src, to: dst)
-  for extra in ["first-paint.css", "theme.js"] { try? fm.removeItem(at: dst.appendingPathComponent(extra)) }
+  for extra in ["first-paint.css", "theme.ts"] { try? fm.removeItem(at: dst.appendingPathComponent(extra)) }
   let manifestURL = dst.appendingPathComponent("theme.json")
   var manifest = (try? JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL))) as? JSONObject ?? [:]
   manifest["id"] = id

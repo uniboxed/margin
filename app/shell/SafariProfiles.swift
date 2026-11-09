@@ -344,7 +344,7 @@ final class SafariProfileWatcher: SafariFileWatcher<SafariProfiles.Outcome> {
 }
 
 // A profile's SF Symbol as a small white picture for a theme's profile mark
-// (an `m-icon`: a data: URL, ui/sanitize.js checkIconUrl), made once per symbol.
+// (an `m-icon`: a data: URL, ui/sanitize.ts checkIconUrl), made once per symbol.
 enum ProfileSymbols {
     private static var made: [String: String] = [:]
 

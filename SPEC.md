@@ -15,7 +15,7 @@ Development happens on Tirth's Mac (macOS 27), with Xcode, Safari, Chrome, Edge,
 - **Cmd+T, Cmd+W, Cmd+N, Cmd+Q, Cmd+R, Cmd+L, Ctrl+Tab are never delivered to web pages in Safari.** Do not try to intercept them with `keydown`. Instead, take over new tabs with `"chrome_url_overrides": { "newtab": "newtab/newtab.html" }`. The user must select the extension under Safari → Settings → General → "New tabs open with" — put this in onboarding/docs.
 - **Margin 2:** the sidebar's place, its reveal and docking, the frame and the page's place are the theme's layout: the theme's `<m-page>` slot gives the page box its four insets and corner radius, per window. A switch is a plain `tabs.update({active: true})`; Margin hides no blink. A page has its box from its first frame, at any layout, from registered CSS variables (the layout spelled in digit files) and its window's own sheet as it commits (Phase 3; `PLAN.md` §14 Spike 4); while Margin.app isn't drawing, no page has a box. Sleeping tabs in Safari are closed and kept as Margin tabs that aren't open (Chrome and Edge: `tabs.discard`); there's no sleep page.
 - **(First prototype)** **The sidebar overlays the page by default.** Overlay with `position: fixed; z-index: 2147483647`, hidden by default, revealed when the mouse touches the left edge of the viewport or via shortcut. When revealed by hover it's a floating card inset from the window edges. With "Keep open" it docks flush left and an Arc-style frame (same color as the sidebar, rounded page corners, small margin top/right/bottom) wraps the page's box.
-- **Exception (Tirth's decision, 2026-11-01, replacing the push and the fitted layout): every page Margin touches sits in a box beside it, with no iframe.** `<html>` is the box and `<body>` scrolls inside it (`shared/page-box.js`, `content/page/`, both browsers). With "Keep open" the box starts at the sidebar's edge; hidden, at the frame's. Sheets are adopted, screen only, never page markup or inline styles. A script in the page's own world, registered only while Margin.app draws Margin (Margin 2), answers what a page asks about its window for the box, and rewrites media queries and viewport units. With no box (the frame turned off, Chrome outside full screen) the page is untouched and none of that loads. Hover never moves the page.
+- **Exception (Tirth's decision, 2026-11-01, replacing the push and the fitted layout): every page Margin touches sits in a box beside it, with no iframe.** `<html>` is the box and `<body>` scrolls inside it (`shared/page-box.ts`, `content/page/`, both browsers). With "Keep open" the box starts at the sidebar's edge; hidden, at the frame's. Sheets are adopted, screen only, never page markup or inline styles. A script in the page's own world, registered only while Margin.app draws Margin (Margin 2), answers what a page asks about its window for the box, and rewrites media queries and viewport units. With no box (the frame turned off, Chrome outside full screen) the page is untouched and none of that loads. Hover never moves the page.
 - **Exception (Tirth's decision, 2026-10-31): with the sidebar hidden, Margin's frame stays around the page** (a setting, on by default), the page in its box inside it. Hovering the sidebar still moves nothing. Turning "Keep open" off slides the sidebar away with the frame's edge.
 - **Isolate our UI in a closed Shadow DOM** so site CSS can't affect it and ours can't leak.
 - **Safari has no `tabs.hide`, no `bookmarks`, no `history` API, no `tabGroups`.** "Spaces" are a Margin concept: the sidebar filters to show the active space's tabs. Safari's own tab bar will still show all tabs — that's accepted.
@@ -26,7 +26,7 @@ Development happens on Tirth's Mac (macOS 27), with Xcode, Safari, Chrome, Edge,
 
 ## Tech choices (decided)
 
-- Plain **Manifest V3 web extension** in `extension/`, **vanilla JavaScript + CSS, no framework, no runtime dependencies**. `extension/` is the source, written as ES modules; the build (`npm run build`) bundles each context (content script, background, the page's box, new-tab page; and Margin.app's overlay page) into one plain script with **esbuild** (a dev dependency; Tirth's decision, 2026-10-25), and `dist/<browser>/` is what browsers load. Types are JSDoc comments checked by `tsc --checkJs` at development time (`npm test` runs it); there's no TypeScript source and no compile step.
+- Plain **Manifest V3 web extension** in `extension/`, **TypeScript + CSS, no framework, no runtime dependencies**. `extension/` is the source, written as ES modules; the build (`npm run build`) bundles each context (content script, background, the page's box, new-tab page; and Margin.app's overlay page) into one plain script with **esbuild** (a dev dependency; Tirth's decision, 2026-10-25), and `dist/<browser>/` is what browsers load. The source is TypeScript (Tirth's decision, 2026-11-09: it was JavaScript with JSDoc types until then), type-checked by `tsc` (TypeScript 7, `npm test` runs it) and turned into JavaScript only by esbuild's bundling: Node runs the tests and scripts from the `.ts` files as they are (its type stripping), so the code uses only TypeScript that erases (`erasableSyntaxOnly`: no enums, namespaces or parameter properties) and spells its imports with `.ts`.
 - **Do not generate the Xcode project.** Tirth will run this locally on his Mac:
   `xcrun safari-web-extension-converter dist/safari --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open`
   Put that command, plus how to rebuild after pulling new changes, in `README.md` under "Building for Safari (local, macOS)". Add `xcode/` to `.gitignore` unless Tirth later commits it himself.
@@ -43,29 +43,29 @@ Margin 2 adds `extension/ui/` (the UI runtime: view model, renderer, actions, be
 margin/
   extension/
     manifest.json
-    background.js          # state owner: registers listeners; parts in background/
+    background.ts          # state owner: registers listeners; parts in background/
     background/            # store, message handlers, tabs, registrations, archive, navigation
     state/                 # pure functions (no browser APIs) — unit tested
-      model.js
+      model.ts
     content/
       main.js              # content-script entry: core, then the palette's wiring
-      core.js              # Margin on web pages: behavior only; parts in layout.js, trackpad.js,
+      core.ts              # Margin on web pages: behavior only; parts in layout.ts, trackpad.ts,
                            # loader.js, takeover.js
-      palette.js           # palette shortcut and wiring (the palette's look is the theme's)
-      page-link.js         # Margin's side of the page's box
+      palette.ts           # palette shortcut and wiring (the palette's look is the theme's)
+      page-link.ts         # Margin's side of the page's box
       page/                # the page's box, in the page's world (registered at runtime)
     newtab/
       newtab.html          # Margin's new-tab page: loads the active theme's new-tab module
-      newtab.js
+      newtab.ts
     shared/                # core helpers (view model, search, shortcuts, gestures, dom, …)
     themes/                # what Margin looks like; only the active theme's code loads
       index.js             # the themes Margin ships (UI-free registry)
       register.js          # how a theme's content bundle hands itself to core
       arcadia/            # Arcadia (the default): Arc's look
-        theme.js           # UI-free description, defaults, its own settings
+        theme.ts           # UI-free description, defaults, its own settings
         content.js         # its part on web pages: sidebar, chrome, palette, CSS
-        newtab.js, newtab.html
-        sidebar.js, chrome.js, palette.js
+        newtab.ts, newtab.html
+        sidebar.js, chrome.js, palette.ts
         styles/*.css, docked.template.css
         assets.js, docked/ # generated by `npm run styles`
     icons/                 # the app's icons (not a theme's)
@@ -126,7 +126,7 @@ The first prototype's milestones, kept as history. Margin 2's phases are in `PLA
 - Create, rename, recolor, and delete spaces from the sidebar (context menu or inline edit). Deleting a space moves its tabs and pins to the first space.
 - Pin and unpin from the tab row. Drag tabs between spaces by dropping on a space chip.
 - Switching the space changes only what the sidebar shows, per window.
-- Unit-test all of `state/model.js` (assign new tab, move tab, delete space, rebuild after restart, archive cap).
+- Unit-test all of `state/model.ts` (assign new tab, move tab, delete space, rebuild after restart, archive cap).
 
 ### M5 — Command palette
 - Opens with **⌘T** (Arc's: choosing a new tab over the page you're on), via a content-script `keydown` listener once the browser's own File › New Tab has another shortcut (macOS App Shortcuts), Safari's `new-tab` command app-wide, and otherwise by handing the browser's new tab back (DECISIONS.md). Was **Option+K** (a setting); dropped when ⌘T opened the same palette.

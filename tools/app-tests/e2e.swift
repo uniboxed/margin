@@ -1,7 +1,7 @@
 // Margin.app's shell end to end, with no browser and nothing on screen: the
 // real link (ExtensionLink.swift), mirrors, window matching, overlays with
 // their web views drawing the real overlay page (dist/app: the UI runtime
-// with extension/ui/host-app.js) and Arcadia, against fake-extension.mjs (a
+// with extension/ui/host-app.ts) and Arcadia, against fake-extension.mts (a
 // stand-in for the extension's copies, in Node). The "browser windows" are
 // plain windows of this process at (-20000, -20000), which the window server
 // list stands in for (ScriptedWindows: the browser's process is made up);
@@ -504,7 +504,7 @@ func scenario() async {
   let navTarget = int(navReq["target"])
   check("…its target picked and its own switch id given by the overlay's page", navTarget != nil && (navReq["switchId"] as? String)?.hasPrefix("ov-") == true, "\(navReq)")
   // (The highlight itself: this page is off every display, so hidden, and a hidden page draws no switch:
-  // shared/switching.js start. The pick is tested in switching-pick.test.js.)
+  // shared/switching.ts start. The pick is tested in switching-pick.test.ts.)
   apps.bringToFront(1)
   check("another app in front: let go", await until(2, { keys.held.isEmpty && !shell.shortcuts.isActive }))
   apps.bringToFront(browserPid)

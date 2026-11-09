@@ -9,7 +9,7 @@ npm test            # unit tests: node --test tests/*.test.js
 npm run test:e2e    # builds dist/, then the e2e suite: headless Chromium and WebKit, two files at a time
 ```
 
-**The quick tier** (`scripts/quick-test.mjs`) compares the branch with `main` (its commits since it left `main`, plus anything staged, unstaged or untracked). It always runs the build and the type check. It runs:
+**The quick tier** (`scripts/quick-test.mts`) compares the branch with `main` (its commits since it left `main`, plus anything staged, unstaged or untracked). It always runs the build and the type check. It runs:
 - the JS tests whose imports reach a changed file, followed through every relative import;
 - the tests that name a changed theme, page or fixture file;
 - every theme test when a theme or the UI runtime changed (two at a time: more made the drag tests flaky);
@@ -31,19 +31,19 @@ Everything below "The e2e suite" is **manual, in Safari on macOS**. The automate
 `tests/e2e/`. What runs:
 
 - **Margin:** the Safari build's profile with Chrome's manifest, in headless Chromium (`--headless=new`). Its real link client, page scripts and background.
-- **Margin.app:** a stand-in in Node (`tests/e2e/harness/shell.js`). The real overlay page (`dist/app/overlay.html`) runs in headless WebKit, one per full-screen window, served with the app's content policy.
-- **Safari's extension handler:** a native messaging relay (`harness/native-host.mjs`, `relay.js`). Its manifest sits in the test's own temporary profile.
+- **Margin.app:** a stand-in in Node (`tests/e2e/harness/shell.ts`). The real overlay page (`dist/app/overlay.html`) runs in headless WebKit, one per full-screen window, served with the app's content policy.
+- **Safari's extension handler:** a native messaging relay (`harness/native-host.mjs`, `relay.ts`). Its manifest sits in the test's own temporary profile.
 - **The pages:** a local site of 20 realistic pages on 17 made-up `.test` sites (`tests/e2e/site/`). Nothing leaves the Mac: other hosts don't resolve, search engines are answered locally, and a file fails on any request outside the site, anything the overlay loads from the web, or any error in the overlay (`m.close()`).
 
 How to run it:
 
 - `npm run test:e2e`: the build, then every file, two at a time. About 2 minutes on Tirth's Mac (132 s in three runs in a row on 2026-11-06, the build included).
-- One file: `node scripts/build.js && node --test tests/e2e/sleep.test.js`.
+- One file: `node scripts/build.ts && node --test tests/e2e/sleep.test.ts`.
 - One test: add `--test-name-pattern="pulling down"`.
 - Headless only. Nothing shows on screen. Never run `playwright install`: Chromium and WebKit are installed.
 - Screenshots go to `$MARGIN_E2E_SHOTS/<file>-<test>/` (default `$TMPDIR/margin-e2e-shots`), never the repo. Each point has `page.png`, `overlay.png` and `window.png` (the two put together).
 - `MARGIN_E2E_VERBOSE=1` prints what the shell, the relay and the site do.
-- `node tests/e2e/site/shoot.mjs [dir]` photographs every page of the test site.
+- `node tests/e2e/site/shoot.mts [dir]` photographs every page of the test site.
 
 What each file covers:
 
@@ -87,7 +87,7 @@ Additional Safari-only checks:
 
 | # | Check | How to tell | If it fails |
 |---|-------|-------------|-------------|
-| A | The background service worker starts (classic worker, `importScripts('state/model.js')`) | Develop → Web Extension Background Content → Margin shows no errors, and the console shows `[margin] installed` and `[margin] auto-archive via …` | Record the error in DECISIONS.md. The likely fallback is concatenating `state/model.js` into `background.js` |
+| A | The background service worker starts (classic worker, `importScripts('state/model.ts')`) | Develop → Web Extension Background Content → Margin shows no errors, and the console shows `[margin] installed` and `[margin] auto-archive via …` | Record the error in DECISIONS.md. The likely fallback is concatenating `state/model.ts` into `background.ts` |
 | B | Sidebar CSS loads inside the shadow root on a strict-CSP site (github.com) | The sidebar is styled, not raw HTML | A constructable stylesheet with `<style>` fallback is already in place. If both fail, record it |
 | C | Restart rebuild | Pin a site into a non-default space, quit Safari with windows restored, relaunch | The pinned site's tab appears under that space, and other tabs under the first space |
 

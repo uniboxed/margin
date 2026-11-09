@@ -1,5 +1,5 @@
 # Putting a new Margin.app in place of the installed one (sourced by
-# scripts/safari.sh; tests/app-swap.test.js runs it against a stand-in in a
+# scripts/safari.sh; tests/app-swap.test.ts runs it against a stand-in in a
 # temporary folder). The caller defines three steps first:
 #   register_app DEST   the new copy made known to the system (lsregister, pluginkit)
 #   safari_running      true while Safari runs

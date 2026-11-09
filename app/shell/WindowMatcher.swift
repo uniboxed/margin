@@ -89,18 +89,18 @@ struct ExtWindow: Equatable {
     var createdAt: Double?
     // Where its tab in front's page area sits in it (top left, from the window's corner, in points),
     // when that's less than the whole window: the docked Web Inspector (or Safari's sidebar) takes
-    // the rest (background/link.js `viewport`). Nil: the whole window.
+    // the rest (background/link.ts `viewport`). Nil: the whole window.
     var viewport: CGRect?
-    // Whether the page measured where its area starts (from a pointer event: content/core.js
+    // Whether the page measured where its area starts (from a pointer event: content/core.ts
     // pointerOrigin) rather than taking the missing width to be on the left.
     var viewportMeasured = false
     // When the page was resized, said its area, and its copy heard it (seconds since 1970; nil: not said): for the
     // log's delay when Margin draws in a new area (Tirth, 2026-11-07: the layout late beside the inspector).
     var viewportTimes: ViewportTimes?
     // A window its copy had parked before Safari quit, restored by Safari as a normal window (the copy's
-    // background/parked-restore.js): the app closes it (Shell.closeRestoredParked).
+    // background/parked-restore.ts): the app closes it (Shell.closeRestoredParked).
     var wasParked = false
-    // Its tab in front in full screen (a page's own, or Safari's video full screen: content/core.js): Margin's layout
+    // Its tab in front in full screen (a page's own, or Safari's video full screen: content/core.ts): Margin's layout
     // leaves the window meanwhile (Shell.track).
     var pageFullscreen = false
     // Whether its tab in front's page says it's shown (document.visibilityState), and when it last said

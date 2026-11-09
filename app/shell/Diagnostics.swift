@@ -13,7 +13,7 @@
 //                                                                   one summary per switch (Handoff.swift)
 //   handoff: parked window N (…) in its Space S in 9 ms (…)         the registry (Parking.swift)
 //   profile switch: aftercare: window N …                           the aftercare (Handoff.swift)
-//   <link>: setWindowState window 3: …                              the copy's side (background/handoff.js)
+//   <link>: setWindowState window 3: …                              the copy's side (background/handoff.ts)
 //   dev hook: …                                                     the dev-only hook (DevHooks.swift; DEV-HOOK)
 // Words that come from outside the app (a copy's error, a browser's message) go through scrub()
 // before they reach a line: Margin doesn't choose them, and a browser's error can name a page.

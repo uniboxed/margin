@@ -134,7 +134,7 @@ let pageRecorder = """
     log("nav \(name) \(frame) \(action.navigationType.rawValue == 3 ? "reload" : "go") \(action.request.url?.absoluteString.prefix(1200) ?? "?")")
     decisionHandler(.allow)
   }
-  // A page's alert, confirm or prompt (a real site's, in tests/box/sites-bench.mjs): answered at once, as dismissed.
+  // A page's alert, confirm or prompt (a real site's, in tests/box/sites-bench.mts): answered at once, as dismissed.
   func webView(_ wv: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor () -> Void) { log("dialog \(name): alert"); completionHandler() }
   func webView(_ wv: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void) { log("dialog \(name): confirm"); completionHandler(false) }
   func webView(_ wv: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (String?) -> Void) { log("dialog \(name): prompt"); completionHandler(nil) }
@@ -330,7 +330,7 @@ final class OffScreenWindow: NSWindow {
     port.messageHandler = { message, _ in
       // The copy's pings keep its background alive (Safari): answered, as the handler does.
       if (message as? [String: Any])?["type"] as? String == "ping" { appLink.pings += 1 }
-      // The copy's lines for Margin.app's log (background/link.js note: each switch's timeline, say),
+      // The copy's lines for Margin.app's log (background/link.ts note: each switch's timeline, say),
       // as the handler writes them to the system log: heard as the app's, for `appHeard`.
       if (message as? [String: Any])?["type"] as? String == "log", let line = (message as? [String: Any])?["line"] as? String {
         appLink.heard.append(#"{"ev":"extension log","line":"# + (String(data: (try? JSONSerialization.data(withJSONObject: [line])) ?? Data(), encoding: .utf8)?.dropFirst().dropLast() ?? "\"\"") + "}")
@@ -555,7 +555,7 @@ Task { @MainActor in
     case "open":
       let path = step["url"] as! String
       // "ext:<path>": a page of the installed extension (e.g. its new-tab page); a full URL
-      // (a real website); else a test page of server.mjs.
+      // (a real website); else a test page of server.mts.
       let url = path.hasPrefix("ext:") ? URL(string: String(path.dropFirst(4)), relativeTo: host.context!.baseURL)!.absoluteURL
         : path.contains("://") ? URL(string: path)! : URL(string: base + path)!
       let t = Tab(name: step["name"] as! String, url: url)

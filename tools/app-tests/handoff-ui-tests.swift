@@ -2,7 +2,7 @@
 // "Close windows to save memory" kept in data/<browser>/browser.json and sent
 // to every overlay as `across.switchSettings`, and the switch's notices by
 // kind (SwitchNotice), with the window a kept-draft notice can close never
-// sent to an overlay. The overlay's side is npm test's (tests/handoff-ui.test.js).
+// sent to an overlay. The overlay's side is npm test's (tests/handoff-ui.test.ts).
 
 import Foundation
 
@@ -47,10 +47,10 @@ func handoffUiTests() {
     check("notices: a kept draft stays longer than the others", draft.seconds > SwitchNotice(.dialogOpen, profile: "safari:s-a").seconds)
     check("notices: every kind as the overlay knows it", [SwitchNotice.Kind.windowKeptDraft, .dialogOpen, .windowBusy, .lateLanding, .windowOnDesktop].map(\.rawValue)
           == ["window-kept-draft", "dialog-open", "window-busy", "late-landing", "window-on-desktop"])
-    // The words are the overlay's: the kinds here must be the ones extension/shared/across.js has.
-    let across = (try? String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../extension/shared/across.js"), encoding: .utf8)) ?? ""
+    // The words are the overlay's: the kinds here must be the ones extension/shared/across.ts has.
+    let across = (try? String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../extension/shared/across.ts"), encoding: .utf8)) ?? ""
     for kind in ["window-kept-draft", "dialog-open", "window-busy", "late-landing", "window-on-desktop"] {
-        check("notices: \(kind) has words in across.js", across.contains("'\(kind)': {"))
+        check("notices: \(kind) has words in across.ts", across.contains("'\(kind)': {"))
     }
     check("notices: a link key's profile id", SwitchNotice.profileId("safari:s-a") == "s-a" && SwitchNotice.profileId("s-a") == "s-a")
 

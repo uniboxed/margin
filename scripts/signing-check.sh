@@ -1,5 +1,5 @@
 # The installed Margin.app's signing against the build's (sourced by
-# scripts/safari.sh; tests/signing-check.test.js runs it with a stand-in for
+# scripts/safari.sh; tests/signing-check.test.ts runs it with a stand-in for
 # codesign). Safari keys an extension's state in each profile by its bundle id
 # and team ("<bundle id> (<team>)", or "(UNSIGNED)" for an ad-hoc build), so
 # a build signed by another team, or unsigned over a signed one, is a new

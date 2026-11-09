@@ -1,7 +1,7 @@
 <!--
 pattern: a page whose style sheet arrives well after <body> (a slow server) is fitted by what the sheet says, not by the browser's own margins
 from: a speed change (2026-11): a read of <body> while the sheets that hold the first paint are still loading waits for the frame; GitHub's first read had taken the browser's 8px margin, written it as padding and taken it back once its sheets came
-handled-by: content/page/box-watch.js (holdsRead, readAtFrame: a read waits for the sheets that hold the first paint), content/page/sheets.js (a sheet's arrival asks for a read)
+handled-by: content/page/box-watch.ts (holdsRead, readAtFrame: a read waits for the sheets that hold the first paint), content/page/sheets.ts (a sheet's arrival asks for a read)
 settle: 1200
 -->
 <!doctype html>

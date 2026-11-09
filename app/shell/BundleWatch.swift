@@ -13,7 +13,7 @@
 // id and modification date) and compares it every 30 s (AppDelegate.swift's
 // idle check) and right after a dispatch Safari didn't pass on. When the
 // file is another one, it quits: the copies are told goodbye, ask again
-// (background/link.js), and the handler starts the installed build. Never on
+// (background/link.ts), and the handler starts the installed build. Never on
 // a refused dispatch alone: the extension's record can be gone for seconds
 // after an install (safari.sh), and a new process wouldn't help then.
 //

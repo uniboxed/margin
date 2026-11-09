@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Open in another window</title>
-  <!-- Margin's stand-in (background/away.js, app/WINDOWS.md §9): in front of a window whose chosen tab is shown in
+  <!-- Margin's stand-in (background/away.ts, app/WINDOWS.md §9): in front of a window whose chosen tab is shown in
        another window. Its picture, faded, where the page was; a click brings the tab back. -->
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: Canvas; color: CanvasText; }
@@ -17,7 +17,7 @@
     #hint { opacity: 0.7; }
     #title:empty, #title:empty + #dot { display: none; }
   </style>
-  <script src="away.js" type="module"></script>
+  <script src="away.ts" type="module"></script>
 </head>
 <body>
   <img id="picture" alt="">

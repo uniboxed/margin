@@ -86,7 +86,7 @@ final class ProfileSwitch {
         case idle
         case waitingForProfile // its copy isn't running, and it has no parked window: the person opens one
         // The handoff's (Handoff.swift, app/HANDOFF.md §1.2). The overlay draws the cover over the
-        // window left while the phase is preparing, waitingForLink or frozen (ui/view-model.js).
+        // window left while the phase is preparing, waitingForLink or frozen (ui/view-model.ts).
         case waitingForLink // its copy isn't linked, but it has a parked window: up to 3 s
         case preparing // the cover up, the target picked, blockers checked, its space set, drafts asked
         case frozen // the steps: under the freeze when there is one, else the same steps seen
