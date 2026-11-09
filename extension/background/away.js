@@ -89,9 +89,10 @@ function prunePictures() {
   for (const [tabId, p] of pictures) if (!away.has(tabId) && Date.now() - p.at > TIMING.freshMs) pictures.delete(tabId);
 }
 
-// The window's stand-in, in front (made, or the one it has). Its id, or null.
-/** @param {number} windowId @param {number | undefined} index */
-async function standIn(windowId, index) {
+// The window's stand-in (made, or the one it has), in front unless `front` is false (it's brought there once the
+// tab's picture is taken). Its id, or null.
+/** @param {number} windowId @param {number | undefined} index @param {{ front?: boolean }} [options] */
+async function standIn(windowId, index, { front = true } = {}) {
   let id = standIns.get(windowId) ?? null;
   if (id == null) {
     // One from before this background started (its id not known here).
@@ -99,7 +100,7 @@ async function standIn(windowId, index) {
     id = tabs.find((t) => isAwayPage(t.url) || isAwayPage(t.pendingUrl))?.id ?? null;
   }
   if (id != null) {
-    const shown = await Promise.resolve(api.tabs.update(id, { active: true })).catch(() => null);
+    const shown = await Promise.resolve(front ? api.tabs.update(id, { active: true }) : api.tabs.get(id)).catch(() => null);
     if (shown) {
       standIns.set(windowId, id);
       // (Its page draws the window's away tab again: it may be another one now.)
@@ -112,7 +113,7 @@ async function standIn(windowId, index) {
   // (A tab made in a parked window is Margin's, not a link from another app: handoff.js tabCreated.)
   if (isParked(windowId)) markMarginOpening();
   try {
-    const tab = await api.tabs.create({ windowId, url: standInUrl(), active: true, ...(Number.isInteger(index) ? { index } : {}) });
+    const tab = await api.tabs.create({ windowId, url: standInUrl(), active: front, ...(Number.isInteger(index) ? { index } : {}) });
     if (tab?.id != null) standIns.set(windowId, tab.id);
     return tab?.id ?? null;
   } finally {
@@ -150,12 +151,19 @@ async function move(tab, to, { source = 'follow', deadline, raise = true }) {
   let madeAway = false;
   try {
     if (tab.active === true) {
-      // Its picture while it's still there: one taken as its window was left stands (precapture).
+      // Its picture while it's still there (one taken as its window was left stands: precapture), the window's
+      // stand-in made behind it and the state written meanwhile; then the stand-in to the front, before the move
+      // (Safari would bring a neighbour forward there, or close the window with its last tab gone).
       const had = pictures.get(tab.id);
-      if (!(had && had.windowId === from && Date.now() - had.at < TIMING.freshMs) && !isParked(from)) keepPicture(tab.id, await capture(from, TIMING.captureMs), from);
-      await mutate((s) => M.setAway(s, from, tab.id));
+      const fresh = had && had.windowId === from && Date.now() - had.at < TIMING.freshMs;
+      const picturing = fresh || isParked(from) ? Promise.resolve(null) : capture(from, TIMING.captureMs);
+      const standing = standIn(from, Number.isInteger(tab.index) ? /** @type {number} */ (tab.index) + 1 : undefined, { front: false });
+      const marking = mutate((s) => M.setAway(s, from, tab.id));
       madeAway = true;
-      await standIn(from, Number.isInteger(tab.index) ? /** @type {number} */ (tab.index) + 1 : undefined);
+      keepPicture(tab.id, await picturing, from);
+      const id = await standing;
+      await marking;
+      if (id == null || !(await Promise.resolve(api.tabs.update(id, { active: true })).catch(() => null))) throw new Error('no stand-in');
     }
     const s = cached() ?? (await load());
     const order = s.tabs[tab.id]?.order;

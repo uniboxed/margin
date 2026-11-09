@@ -34,6 +34,7 @@ globalThis.chrome = {
       }
     },
     create: async ({ windowId, url, active, index }) => {
+      if (fake.refuseCreate) throw new Error('no');
       const tab = { id: fake.nextId++, windowId, url, active: !!active, index: index ?? 99, title: '' };
       if (active) for (const t of fake.tabs.values()) if (t.windowId === windowId) t.active = false;
       fake.tabs.set(tab.id, tab);
@@ -77,7 +78,7 @@ away.setAwayTiming({ settleMs: 5 });
 // Window 1: tabs 1 (in front) and 2; window 2: tab 3 (in front). All of the space Personal.
 async function setup() {
   away.awayInternals.reset();
-  Object.assign(fake, { tabs: new Map(), nextId: 100, captures: [], moves: [], removed: [], created: [], refuseMove: false, focused: 2 });
+  Object.assign(fake, { tabs: new Map(), nextId: 100, captures: [], moves: [], removed: [], created: [], refuseMove: false, refuseCreate: false, focused: 2 });
   const tabs = [
     { id: 1, windowId: 1, url: 'https://one.example/', title: 'One', active: true, index: 0 },
     { id: 2, windowId: 1, url: 'https://two.example/', title: 'Two', active: false, index: 1 },
@@ -246,4 +247,13 @@ test('the model: a tab dragged next to one in another window takes a place besid
   assert.deepEqual(list(below), [2, 3, 1], 'below 2 (an earlier place), above 1');
   assert.ok(below.tabs[3].order > below.tabs[1].order, '…still after 1 in window 1\'s strip: no move needed there');
   assert.equal(M.placeOpen(s, 3, 99, 'after', s.tabSpace[3]), s, 'beside a tab not in the list: nothing');
+});
+
+test('no stand-in could be made: the tab isn\'t moved (its window would lose it, maybe its last tab), but shown where it is', async () => {
+  await setup();
+  fake.refuseCreate = true;
+  await away.bringTab(await chrome.tabs.get(1), 2, { source: 'test' });
+  assert.deepEqual(fake.moves, []);
+  assert.equal(fake.tabs.get(1).windowId, 1);
+  assert.deepEqual((await load()).awayByWindow, {});
 });
