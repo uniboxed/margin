@@ -39,6 +39,9 @@ pub struct OverlayModel {
     pub frame: Rect,
     /// Its browser window's bounds: the overlay's frame, or more when the browser takes part of it.
     pub window_frame: Option<Rect>,
+    /// The window its layout's insets are measured from, when that isn't `window_frame` (a windowed overlay:
+    /// planner::windowed_frame).
+    pub layout_window: Option<Rect>,
     /// The browser window it's shown over.
     pub above: Option<i64>,
     pub window_full_screen: bool,
@@ -77,6 +80,7 @@ impl OverlayModel {
             capture_all: false,
             frame: Rect::ZERO,
             window_frame: None,
+            layout_window: None,
             above: None,
             window_full_screen: false,
             page_fullscreen: false,

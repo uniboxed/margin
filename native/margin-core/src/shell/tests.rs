@@ -17,6 +17,8 @@ struct H {
     shell: Shell,
     now: Secs,
     _dir: tempfile::TempDir,
+    /// The browser window's bounds as the OS lists them.
+    server: Rect,
     log: Vec<Command>,
 }
 
@@ -26,14 +28,19 @@ fn obj(v: Value) -> Object {
 
 impl H {
     fn new() -> Self {
+        Self::with(|_| {})
+    }
+
+    fn with(set: impl FnOnce(&mut Options)) -> Self {
         let dir = tempfile::Builder::new().prefix("margin-shell-").tempdir().expect("a temporary folder");
         let mut opts = Options::new(dir.path().join("data"), dir.path().join("themes"));
         opts.own_pid = 999;
+        set(&mut opts);
         let mut shell = Shell::new(opts);
         let clock = std::sync::Arc::new(std::sync::Mutex::new(T0));
         let c = clock.clone();
         shell.data_mut().now = Box::new(move || c.lock().map(|t| *t * 1000.0).unwrap_or(0.0));
-        Self { shell, now: T0, _dir: dir, log: Vec::new() }
+        Self { shell, now: T0, _dir: dir, server: SCREEN, log: Vec::new() }
     }
 
     fn input(&mut self, input: Input) -> Vec<Command> {
@@ -52,7 +59,7 @@ impl H {
     }
 
     fn read(&mut self, front: u32) -> Vec<Command> {
-        let mut w = ServerWindow::new(BROWSER_WINDOW, EDGE, SCREEN);
+        let mut w = ServerWindow::new(BROWSER_WINDOW, EDGE, self.server);
         w.order = 0;
         self.input(Input::Windows(WindowRead {
             list: vec![w],
@@ -111,7 +118,13 @@ impl H {
     /// A relay of Edge's linked, its copy (saying `chrome`, as Edge's may) linked with its state, theme and one
     /// full-screen window.
     fn linked() -> Self {
-        let mut h = H::new();
+        Self::linked_with(
+            H::new(),
+            json!({ "windowId": 7, "left": 0, "top": 0, "width": 1920, "height": 1080, "state": "fullscreen", "focused": true }),
+        )
+    }
+
+    fn linked_with(mut h: H, window: Value) -> Self {
         let out = h.input(Input::RelayConnected {
             conn: 1,
             relay: RelayFacts { browser: "edge".into(), pid: Some(EDGE), origin: "chrome-extension://x/".into() },
@@ -122,7 +135,7 @@ impl H {
         h.frame(json!({
             "k": "snapshot", "epoch": "e1", "seq": 1,
             "state": { "settings": {}, "spaces": [{ "id": "s1", "name": "One" }], "openTabs": { "activeSpaceByWindow": { "7": "s1" } } },
-            "windows": [{ "windowId": 7, "left": 0, "top": 0, "width": 1920, "height": 1080, "state": "fullscreen", "focused": true }],
+            "windows": [window],
         }));
         let package = json!({ "id": "arcadia", "manifest": "{}", "html": "<m-page></m-page>", "css": "" }).to_string();
         for chunk in crate::chunks::split(package.as_bytes(), "arcadia").unwrap_or_default() {
@@ -435,4 +448,53 @@ fn bad_input_is_lived_with() {
     h.input(Input::ThemeFileRead { id: 3, file: None });
     h.input(Input::Windows(WindowRead::default()));
     h.later(100.0);
+}
+
+#[test]
+fn a_windowed_window_gets_an_overlay_over_its_page_area_with_windowed_too() {
+    // Chrome on Windows, not in full screen: windows.get's bounds have the invisible borders the OS's frame hasn't.
+    let window = json!({ "windowId": 7, "left": 93, "top": 50, "width": 1214, "height": 807, "state": "normal",
+                         "focused": true, "viewport": { "x": 16, "y": 97, "width": 1198, "height": 710 } });
+    let mut h = H::linked_with(H::with(|o| o.windowed_too = true), window.clone());
+    h.server = Rect::new(100.0, 50.0, 1200.0, 800.0);
+    h.read_until_bound();
+    assert_eq!(H::sent_kind(&h.log, "drawn").last().map(|d| d["on"].clone()), Some(json!(true)), "drawn over it");
+    let hello = h.op("hello", json!({}), Some(1));
+    let hello = hello
+        .iter()
+        .find_map(|c| match c {
+            Command::Reply { token: 1, result: Ok(Value::String(s)) } => serde_json::from_str::<Value>(s).ok(),
+            _ => None,
+        })
+        .expect("the hello answered");
+    assert_eq!(hello["mode"], "windowed");
+    h.op("ready", json!({}), Some(2));
+    h.now += 0.05;
+    let out = h.read(EDGE);
+    let page = Rect::new(101.0, 139.0, 1198.0, 710.0);
+    assert!(
+        out.iter().any(|c| matches!(c, Command::ShowOverlay { frame, .. } if *frame == page)),
+        "over the page area, under the toolbar: {out:?}"
+    );
+    // A sidebar 280 wide in the overlay: the copy, taking its page to start 16 in and 97 down, boxes it at 280.
+    let geometry = json!({ "geometry": { "insets": { "left": 280, "top": 0, "right": 0, "bottom": 0 },
+                                         "container": { "width": 1198, "height": 710 }, "radius": 0, "mode": "windowed" } });
+    let layouts = H::sent_kind(&h.op("layout", geometry, None), "setLayout");
+    assert_eq!(layouts.len(), 1, "{:?}", h.logs());
+    let l = &layouts[0];
+    assert_eq!((l["insets"]["left"].as_f64(), l["insets"]["top"].as_f64()), (Some(296.0), Some(97.0)));
+    assert_eq!((l["insets"]["right"].as_f64(), l["insets"]["bottom"].as_f64()), (Some(0.0), Some(0.0)));
+    assert_eq!((l["container"]["width"].as_f64(), l["container"]["height"].as_f64()), (Some(1214.0), Some(807.0)));
+}
+
+#[test]
+fn a_windowed_window_gets_no_overlay_without_windowed_too() {
+    let window = json!({ "windowId": 7, "left": 93, "top": 50, "width": 1214, "height": 807, "state": "normal", "focused": true });
+    let mut h = H::linked_with(H::new(), window);
+    h.server = Rect::new(100.0, 50.0, 1200.0, 800.0);
+    for _ in 0..12 {
+        h.now += 0.25;
+        h.read(EDGE);
+    }
+    assert!(!h.log.iter().any(|c| matches!(c, Command::ShowOverlay { .. })), "the Mac's rule: full screen only");
 }

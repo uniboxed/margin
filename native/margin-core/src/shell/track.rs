@@ -291,8 +291,18 @@ impl Shell {
             let viewport = if w.state == "fullscreen" { w.viewport } else { None };
             o.window_full_screen = w.state == "fullscreen";
             let docked = planner::docked_left(o.pointer_want.mode == WantMode::None, o.layout.as_ref().map(|l| l.left));
-            let frame = planner::overlay_frame(server.bounds, viewport, docked);
-            if frame != server.bounds && (o.window_frame != Some(server.bounds) || o.frame != frame) {
+            let (frame, layout_window) = if w.state != "fullscreen" && self.opts.windowed_too {
+                // Over the page area only, under the browser's tabs and toolbar.
+                let (frame, from) = planner::windowed_frame(server.bounds, w.bounds, w.viewport, w.viewport_measured);
+                (frame, (from != server.bounds).then_some(from))
+            } else {
+                (planner::overlay_frame(server.bounds, viewport, docked), None)
+            };
+            o.layout_window = layout_window;
+            if frame != server.bounds
+                && layout_window.is_none()
+                && (o.window_frame != Some(server.bounds) || o.frame != frame)
+            {
                 self.out.note(format!(
                     "{key}: the browser takes part of its window (DevTools docked?): Margin draws in {} of {}",
                     frame.describe(),
@@ -474,7 +484,7 @@ impl Shell {
         if (layout.width - size.width).abs() >= 1.0 || (layout.height - size.height).abs() >= 1.0 {
             return;
         }
-        let window = o.window_frame.unwrap_or(o.frame);
+        let window = o.layout_window.or(o.window_frame).unwrap_or(o.frame);
         let in_window = layout.in_window(o.frame, window);
         let Some(entry) = self.links.get_mut(&key.link) else { return };
         let Some((seq, rounded)) = entry.outbox.offer(key.window_id, &in_window) else { return };

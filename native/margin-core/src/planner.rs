@@ -185,6 +185,48 @@ pub fn overlay_frame(window: Rect, viewport: Option<Rect>, docked_left: Option<f
     Rect::new(min_x, min_y, max_x - min_x, max_y - min_y)
 }
 
+/// The widest a window's border beside its page area is taken to be (Windows: Chrome's 1 px frame line inside the
+/// visible frame; the invisible resize borders are outside it). More than this each side: something else (DevTools
+/// docked, the browser's side panel) has that width.
+pub const PAGE_BORDER_MAX: f64 = 4.0;
+
+/// Where an overlay goes over a window that isn't in full screen (the shell's `windowed_too`, on Windows), and the
+/// window its layout's insets are measured from. Not the Mac's (windowed is its Phase 4); there the window is
+/// [`overlay_frame`]'s.
+///
+/// - `window`: the window's visible frame, as the OS lists it; `outer`: its bounds as the browser reports them
+///   (`windows.get`, which on Windows has the invisible resize borders too: about 7 points left, right and below);
+///   `viewport`: where its page area sits in `outer`, as its copy said (`x` and `y` a guess unless `measured`: all of
+///   the missing width taken to be on the left, the missing height on top, as `boxFromLayout` takes them).
+/// - The overlay goes over the page area only, the viewport's size: never over the browser's tabs and toolbar.
+///   Horizontally it's centred in the visible frame when the width beyond it is only the borders, else where the
+///   copy said; its bottom is the visible frame's, less a border as wide as a side's, unless measured.
+/// - The second rect is the window the insets are measured from: placed so that the copy, taking its page area to be
+///   where it said in its own window (`boxFromLayout`: insets less its offsets), puts the page's box exactly where
+///   the slot is. Its size is the copy's window's (`container` matches its `windows.get` size).
+/// - No viewport said yet, or a page area under 200 points either way: the whole window, both ways.
+pub fn windowed_frame(window: Rect, outer: Option<Rect>, viewport: Option<Rect>, measured: bool) -> (Rect, Rect) {
+    let outer = outer.filter(|o| !o.is_empty()).unwrap_or(window);
+    let Some(v) = viewport.filter(|v| v.width >= 200.0 && v.height >= 200.0) else { return (window, window) };
+    let beyond = window.width - v.width;
+    let spans = (-1.0..=2.0 * PAGE_BORDER_MAX).contains(&beyond);
+    let border = if spans { (beyond / 2.0).max(0.0) } else { 0.0 };
+    let x = if spans {
+        window.min_x() + border
+    } else if measured {
+        outer.min_x() + v.x
+    } else {
+        window.max_x() - v.width
+    };
+    let y = if measured { outer.min_y() + v.y } else { window.max_y() - border - v.height };
+    let part = Rect::new(x.round(), y.round(), v.width.round(), v.height.round()).intersection(&window);
+    if !(part.width >= 200.0 && part.height >= 200.0) {
+        return (window, window);
+    }
+    let from = Rect::new(part.x - v.x, part.y - v.y, outer.width, outer.height);
+    (part, from)
+}
+
 /// How wide an overlay's docked sidebar is (Shell.dockedLeft): its last layout's left inset, while its page wants
 /// no pointer positions (`PointerWant` none: Margin's sidebar docked); `None` otherwise.
 pub fn docked_left(wants_no_pointer: bool, layout_left: Option<f64>) -> Option<f64> {
@@ -281,6 +323,50 @@ impl PlacementCheck {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_windowed_overlay_is_over_the_page_area_and_lays_out_in_the_copys_window() {
+        // Chrome on Windows at 100 %: visible frame 100,50 1200×800; windows.get 7 points wider each side and below;
+        // its page 1198×710 (1 point frame lines), said at x 16 (all the missing width on the left), y 97.
+        let window = Rect::new(100.0, 50.0, 1200.0, 800.0);
+        let outer = Rect::new(93.0, 50.0, 1214.0, 807.0);
+        let viewport = Rect::new(16.0, 97.0, 1198.0, 710.0);
+        let (frame, from) = windowed_frame(window, Some(outer), Some(viewport), false);
+        assert_eq!(frame, Rect::new(101.0, 139.0, 1198.0, 710.0), "under the toolbar, between the frame lines");
+        assert_eq!((from.width, from.height), (1214.0, 807.0), "the copy's window's size, its container");
+        // A slot 300 points in from the overlay's left: the copy takes its page to start at its x, so the box is 300.
+        let slot_left = frame.x + 300.0;
+        let inset = slot_left - from.x;
+        assert_eq!(inset - viewport.x, 300.0);
+        let slot_right = frame.max_x() - 20.0;
+        let right_inset = from.max_x() - slot_right;
+        assert_eq!(right_inset - (outer.width - viewport.width - viewport.x), 20.0);
+        let slot_top = frame.y + 10.0;
+        assert_eq!((slot_top - from.y) - viewport.y, 10.0);
+    }
+
+    #[test]
+    fn a_windowed_page_beside_something_docked_goes_where_the_copy_says() {
+        let window = Rect::new(0.0, 0.0, 1200.0, 800.0);
+        let outer = Rect::new(-7.0, 0.0, 1214.0, 807.0);
+        // DevTools docked right, 400 wide, and the page's place measured.
+        let measured = Rect::new(8.0, 90.0, 790.0, 709.0);
+        let (frame, from) = windowed_frame(window, Some(outer), Some(measured), true);
+        assert_eq!(frame, Rect::new(1.0, 90.0, 790.0, 709.0));
+        assert_eq!((from.x, from.y), (-7.0, 0.0), "measured: the copy's own window");
+        // Not measured: the missing width is the copy's left, so is the overlay's.
+        let guessed = Rect::new(424.0, 98.0, 790.0, 709.0);
+        let (frame, _) = windowed_frame(window, Some(outer), Some(guessed), false);
+        assert_eq!((frame.x, frame.max_x(), frame.max_y()), (410.0, 1200.0, 800.0));
+    }
+
+    #[test]
+    fn a_windowed_overlay_with_no_page_area_said_is_over_the_whole_window() {
+        let window = Rect::new(0.0, 0.0, 1200.0, 800.0);
+        assert_eq!(windowed_frame(window, None, None, false), (window, window));
+        let tiny = Rect::new(8.0, 90.0, 150.0, 709.0);
+        assert_eq!(windowed_frame(window, Some(window), Some(tiny), false), (window, window));
+    }
 
     const FULL: Rect = Rect::new(0.0, 0.0, 1512.0, 982.0);
 

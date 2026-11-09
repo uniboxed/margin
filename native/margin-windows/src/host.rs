@@ -160,6 +160,9 @@ mod win {
     pub fn run(app: App) -> i32 {
         let mut opts = Options::new(&app.paths.data, &app.paths.themes);
         opts.own_pid = std::process::id();
+        // Margin over windows that aren't in full screen too, over their page area (Tirth, 2026-11-09: most people
+        // on Windows never use F11).
+        opts.windowed_too = true;
         let shell = Shell::new(opts);
         let (pipe_tx, pipe_rx) = ui_channel::<PipeEvent>(app.window.waker(PIPE_WAKE));
         let (picked_tx, picked_rx) = ui_channel::<(OverlayId, Option<ThemeFile>)>(app.window.waker(PICKED_WAKE));

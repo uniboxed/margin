@@ -132,9 +132,23 @@ Ported from Shell.swift and tested on the Mac with fake inputs; what only Window
 - **A link's windows are its relay pid's process tree.** Chromium's top-level windows belong to its main process (the
   relay's pid); the driver maps each window's process to its main one (same executable up its parents). Check: Chrome
   and Chrome Beta (or two user-data folders) open at once: each binds only its own windows (margin.log's binder lines).
-- **Only full-screen windows get an overlay** (F11), as on the Mac (`windowedToo` off: `Options::windowed_too`).
-  `fills_display` takes a monitor's whole rect (no top inset). Check: F11 in Chrome: the overlay shows within a second;
-  a maximized window gets none; leaving F11 puts it away and the copy hears `drawn` off 1.5 s later.
+- **Windows that aren't in full screen get an overlay too** (Tirth, 2026-11-09: `Options::windowed_too` on in
+  host.rs; off on the Mac), over the page area only (`planner::windowed_frame`): the viewport's size, centred between
+  the frame lines, its bottom on the visible frame's. Check: a normal and a maximized Chrome window: the sidebar sits
+  under the tabs and address bar, never over them, flush with the page's left edge and bottom (no gap, no overlap of
+  a few pixels); F11 then puts it over the whole window, and leaving F11 back under the toolbar.
+- **The page's box in a windowed window lines up with the sidebar.** The layout's insets are measured from a window
+  placed where the copy takes its page to be (`windowed_frame`'s second rect: `boxFromLayout` takes all of the
+  missing width, 16 points of invisible borders on Windows, to be on the left). Check: the page's content starts
+  exactly at the sidebar's edge, at 100 %, 125 % and 150 % display scale; if it's off by the border width, the copy's
+  viewport isn't what windowed_frame assumes.
+- **A maximized window binds.** `GetWindowRect` reaches 8 px beyond the screen when maximized (`windows.get` reports
+  that); the binder's tolerance is 8 points, exactly that at 100 %. Check: a maximized window gets its overlay at
+  100 % and 150 %; if not, margin.log's binder lines say why.
+- **Dragging or resizing a windowed window:** the overlay follows from the location events' 30 Hz bursts, so it can
+  trail the window by a frame or two. Check: drag a window around quickly; resize it from each edge.
+- **Other apps' windows over a windowed browser** stay over Margin's overlay too (it's just above its browser
+  window). Check: a Notepad window half over Chrome: Notepad covers the sidebar where it overlaps.
 - **The front window while an overlay has the keyboard.** Windows makes the overlay the foreground window (the Mac's
   panel never is); the shell then takes the overlay's browser as in front, so the keys stay held. Check: Ctrl+T, type
   in the palette, Ctrl+T again closes it; Escape gives the keyboard back to Chrome.

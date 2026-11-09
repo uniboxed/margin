@@ -3464,6 +3464,11 @@ the Safari build are untouched by this work, which lives on `feat/windows-shell`
   `PointerWatch` does; the overlay files served by the app with the Mac's Content Security Policy, every other request
   refused. Taking the keyboard (the palette) makes the overlay the foreground window: Windows has no non-activating
   key panel.
+- **Windowed windows too on Windows** (Tirth, 2026-11-09, as most people there don't use F11): Margin draws over
+  every linked Chrome or Edge window, over the whole window in full screen and over the page area only otherwise,
+  under the tabs and toolbar (`planner::windowed_frame`; the shell's `windowed_too`, off on the Mac). Its layout is
+  measured from where the copy takes its page to be, so `boxFromLayout` puts the page's box at the slot without
+  knowing about Windows' invisible borders.
 - **Keys on Windows are provisional, to pick with Tirth:** next/previous tab Ctrl+Alt+↓/↑, space Ctrl+Alt+→/←, palette
   Ctrl+T, sidebar Alt+S, new window Ctrl+N. Ctrl+Alt is AltGr on many European layouts, and some graphics drivers take
   Ctrl+Alt+arrows. Only the combinations the copy writes for the Mac (`Meta+KeyT`, the built-in navigation keys,
