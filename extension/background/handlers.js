@@ -20,6 +20,7 @@ import { getScroll, setScroll } from './scroll.js';
 import { keepScroll, takeScroll } from './scroll-record.js';
 import { closeTabs, noteClosing } from './closing.js';
 import * as away from './away.js';
+import { isAwayPage } from '../shared/away.js';
 import { appLink } from './app-link.js';
 import { noticeAnswered } from './notices.js';
 import { isNoticeAction } from '../shared/notices.js';
@@ -779,13 +780,15 @@ export const handlers = {
     if (!/^https:\/\/[a-z0-9.-]+\/$/.test(String(url ?? ''))) throw new Error('a plain https origin only');
     if (devProbing) throw new Error('a probe is already running');
     devProbing = true;
-    const made = { tabId: /** @type {number | null} */ (null), windowId: /** @type {number | null} */ (null) };
+    const made = { tabId: /** @type {number | null} */ (null), windowId: /** @type {number | null} */ (null), homeId: /** @type {number | null} */ (null), homeFront: /** @type {number | null} */ (null) };
     /** @type {Record<string, any>} */
     const out = { ok: false };
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     try {
       const home = (await api.windows.getAll()).find((w) => w.focused) ?? (await api.windows.getAll())[0];
       if (!home) throw new Error('no window');
+      made.homeId = home.id;
+      made.homeFront = (await api.tabs.query({ active: true, windowId: home.id }))[0]?.id ?? null;
       const tab = await api.tabs.create({ windowId: home.id, url: String(url), active: false });
       made.tabId = tab.id;
       for (let i = 0; i < 50 && (await api.tabs.get(tab.id)).status !== 'complete'; i++) await wait(200);
@@ -832,12 +835,44 @@ export const handlers = {
       await wait(1000);
       out.movedBack = (await api.tabs.get(tab.id)).windowId === home.id;
       out.afterBack = await check();
+      // Margin's own follow (background/away.js), with home behind: the tab in front there, then chosen in the
+      // window in front (second), then home to the front again. Whether making and showing tabs in a window behind
+      // leaves the focus where it was (no slide to its Space), and whether the tab follows home back.
+      const focused = async (/** @type {number} */ id) => (await api.windows.get(id).catch(() => null))?.focused === true;
+      await api.tabs.update(tab.id, { active: true });
+      await wait(500);
+      out.shownBehindKeptFocus = (await focused(second.id)) && !(await focused(home.id));
+      t0 = performance.now();
+      await away.bringTab(await api.tabs.get(tab.id), second.id, { source: 'probe', raise: false });
+      out.bringMs = Math.round(performance.now() - t0);
+      await wait(800);
+      out.bringKeptFocus = (await focused(second.id)) && !(await focused(home.id));
+      const standInIn = async (/** @type {number} */ id) => (await api.tabs.query({ windowId: id })).find((t) => isAwayPage(t.url) || isAwayPage(t.pendingUrl)) ?? null;
+      const homeStandIn = await standInIn(home.id);
+      out.standInInFront = homeStandIn?.active === true;
+      const live = await api.tabs.get(tab.id);
+      out.broughtThere = live.windowId === second.id && live.active === true;
+      out.awayRecorded = (await load()).awayByWindow?.[home.id] === tab.id;
+      out.afterBring = await check();
+      t0 = performance.now();
+      await api.windows.update(home.id, { focused: true });
+      for (let i = 0; i < 30 && (await api.tabs.get(tab.id)).windowId !== home.id; i++) await wait(100);
+      out.followMs = Math.round(performance.now() - t0);
+      await wait(800);
+      out.followedBack = (await api.tabs.get(tab.id)).windowId === home.id;
+      out.homeStandInGone = !(await standInIn(home.id));
+      out.secondStandIn = !!(await standInIn(second.id));
+      out.afterFollow = await check();
       out.ok = true;
     } catch (err) {
       out.error = String(/** @type {any} */ (err)?.name ?? 'Error');
     } finally {
       if (made.tabId != null) await api.tabs.remove(made.tabId).catch(() => {});
       if (made.windowId != null) await api.windows.remove(made.windowId).catch(() => {});
+      // A stand-in the follow left in home (only the probe's tab was shown away there; nothing else touched).
+      if (made.homeId != null) for (const t of await api.tabs.query({ windowId: made.homeId }).catch(() => [])) if (isAwayPage(t.url) || isAwayPage(t.pendingUrl)) await api.tabs.remove(t.id).catch(() => {});
+      // Home's tab in front as it was.
+      if (made.homeFront != null) await api.tabs.update(made.homeFront, { active: true }).catch(() => {});
       out.cleaned = true;
       devProbing = false;
     }
