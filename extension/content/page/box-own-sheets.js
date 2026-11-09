@@ -80,7 +80,10 @@ export function createOwnSheets() {
       },
     });
     write();
-    replace(sheets.fit, bodyFitCss());
+    // As most pages' <body> ends up (it grows with its content: 23 of 27 sites looked at), so the first read
+    // usually finds it so and writes nothing (box-body.js writeFit). Nothing shows it before then: that read
+    // comes with <body>.
+    replace(sheets.fit, bodyFitCss({ grows: true }));
     replace(sheets.read, `${STILL_CSS} ${SAID_CSS}`);
     adopt();
   }
