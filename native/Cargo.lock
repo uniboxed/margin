@@ -179,6 +179,7 @@ dependencies = [
  "margin-core",
  "serde",
  "serde_json",
+ "tempfile",
  "webview2-com",
  "windows",
  "windows-core",
