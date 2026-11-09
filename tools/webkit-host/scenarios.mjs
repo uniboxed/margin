@@ -174,6 +174,28 @@ const boxPatterns = () => {
   return steps;
 };
 
+// The box's benchmark in WebKit (tests/box/bench.mjs runs it, beside Chromium's): the same heavy pages
+// (tests/box/serve.js benchPage), each loaded BENCH_RUNS times plain (Margin not installed yet: the bare
+// engine, at the host's window size, 1200×800) and then in its box (932×784), every load's own numbers
+// (window.__bench: its load, and from load to its next two frames) logged as a `BENCH` line. A warm-up load
+// first, unlogged, each way. Each load is checked to be what it says: bare, or in its box.
+export const BENCH_SIZES = ['20000/3000', '2000/500', '20000/3000/link'];
+const BENCH_RUNS = 7;
+const boxBench = () => {
+  const load = (mode, size, name, logged) => [
+    { op: 'open', name, url: `/box/bench/${size}`, active: true },
+    checkPage(name, `${mode} ${size}: loaded`, 'return !!window.__bench', 30000),
+    mode === 'plain' ? bare(name) : boxed(name),
+    ...(logged ? [{ op: 'page', in: name, js: `return 'BENCH ' + JSON.stringify({ size: '${size}', mode: '${mode}', ...window.__bench })` }] : []),
+    { op: 'close', name },
+  ];
+  const runs = (mode) => [
+    ...load(mode, BENCH_SIZES[1], `${mode}-warm`, false),
+    ...BENCH_SIZES.flatMap((size, s) => Array.from({ length: BENCH_RUNS }, (_, i) => load(mode, size, `${mode}${s}-${i}`, true)).flat()),
+  ];
+  return [...runs('plain'), ...startBoxed('W', '/p/A'), ...runs('boxed')];
+};
+
 export const SCENARIOS = {
   // Pages open at install get Margin (WebKit adds the core); switching
   // through Margin, including to a tab Safari unloaded. Nothing is drawn in
@@ -1588,11 +1610,17 @@ Object.assign(SCENARIOS, {
   ],
 });
 
+// Benchmarks: run by name (`run.sh box-bench`, from tests/box/bench.mjs), not by `run.sh all`: they time, not test.
+export const BENCHES = {
+  'box-bench': boxBench(),
+};
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const name = process.argv[2];
-  if (!SCENARIOS[name]) {
-    console.error(`unknown scenario "${name}"; one of: ${Object.keys(SCENARIOS).join(', ')}`);
+  const steps = SCENARIOS[name] ?? BENCHES[name];
+  if (!steps) {
+    console.error(`unknown scenario "${name}"; one of: ${[...Object.keys(SCENARIOS), ...Object.keys(BENCHES)].join(', ')}`);
     process.exit(2);
   }
-  process.stdout.write(JSON.stringify(SCENARIOS[name]));
+  process.stdout.write(JSON.stringify(steps));
 }
