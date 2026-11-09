@@ -82,7 +82,7 @@ async function decideOnce() {
 // marked unmatched at once (`open`: as read): pages then wait for this copy's
 // first sync (shared/stored.ts). `back`: claimed back from an older copy that
 // claimed over this one (recheck): this copy's tabs stay matched.
-async function settle(stored, open: Record<string, any> | null = null, { starting = false, back = false } = {}) {
+async function settle(stored: O.Owner | null | undefined, open: Record<string, any> | null = null, { starting = false, back = false } = {}) {
   const decision = O.ownership(stored, me, starting ? Date.now() : undefined);
   if (decision === 'stale') {
     if (role !== 'stale') console.info('[margin] a newer copy of Margin is running: this one stays out of the way');
@@ -224,7 +224,7 @@ async function writeMeta() {
   }
 }
 function readMeta(raw: Record<string, any>) {
-  const metas = {};
+  const metas: Record<string, any> = {};
   for (const collection of Object.keys(SOURCES)) {
     const meta = raw?.[metaKey(collection)];
     if (meta && typeof meta === 'object' && meta.items && typeof meta.items === 'object') metas[collection] = meta;
@@ -251,7 +251,7 @@ function trackKeys(keys: any[]) {
 }
 // The changes one look at a collection found (its meta before and after): the
 // items with a new time, and the new tombstones.
-function changedItems(collection: string, before, after: { items: Record<string, [number, string]>; gone: Record<string, number>; }, items: Record<string, any>) {
+function changedItems(collection: string, before: { items?: Record<string, [number, string]>, gone?: Record<string, number> } | null | undefined, after: { items: Record<string, [number, string]>; gone: Record<string, number>; }, items: Record<string, any>) {
   const out: ({ collection: any; id: string; updatedAt: any; value: any; } | { collection: any; id: string; updatedAt: any; deleted: boolean; })[] = [];
   for (const [id, [at, fp]] of Object.entries(after.items)) {
     const had = before?.items?.[id];
@@ -270,8 +270,9 @@ function changedItems(collection: string, before, after: { items: Record<string,
 const dataListeners: Set<(changes: any[]) => void> = new Set<any>();
 export const onDataChanges = (cb: (changes: any[]) => void) => { dataListeners.add(cb); return () => dataListeners.delete(cb); };
 // Two values the same, whatever order their keys came in (the app's JSON keeps none).
-const canonical = (v) => (Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])])) : v);
-const sameValue = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+// A value with its objects' keys sorted, to compare by value.
+const canonical = (v: any): any => (Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])])) : v);
+const sameValue = (a: unknown, b: unknown) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 /**
  * A collection's meta after the state took a data set's items: an item that
  * agrees with the set has the set's time; one that doesn't (a live change the
@@ -280,7 +281,7 @@ const sameValue = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(cano
  * items still gone.
  * */
 export function metaFromSet(meta: any, items: Record<string, any>, setItems: Record<string, any>, now: number) {
-  const next = {};
+  const next: Record<string, [number, string]> = {};
   for (const [id, value] of Object.entries(items)) {
     const fp = fingerprint(value);
     const s = setItems?.[id];
@@ -288,8 +289,8 @@ export function metaFromSet(meta: any, items: Record<string, any>, setItems: Rec
     else if (meta?.items?.[id]?.[1] === fp) next[id] = meta.items[id];
     else next[id] = [now, fp];
   }
-  const gone = {};
-  for (const [id, at] of Object.entries(meta?.gone ?? {})) if (!(id in next)) gone[id] = at;
+  const gone: Record<string, number> = {};
+  for (const [id, at] of Object.entries(meta?.gone ?? {})) if (!(id in next)) gone[id] = at as number;
   for (const [id, s] of Object.entries(setItems ?? {})) {
     if (s?.deleted === true && !(id in next) && Number.isFinite(s.updatedAt)) gone[id] = Math.max(gone[id] ?? 0, s.updatedAt);
   }
@@ -352,7 +353,7 @@ const unsaved = new Set<any>();
 let retryTimer: number | null = null;
 let retryMs = 250;
 // Writes `keys` from the cache, queued behind the state's other writes.
-function write(keys) {
+function write(keys: Iterable<string>) {
   for (const key of keys) {
     later.delete(key);
     unsaved.add(key);
@@ -437,7 +438,7 @@ export function mutate(fn: (state: State) => State | void | Promise<State | void
     // loading again, the same title) rebuilds its records, but isn't written.
     // A real change still goes through flush, which asks first whether this
     // copy still owns the state.
-    const changed = M.STATE_KEYS.filter((key) => !sameStored(next[key], prev[key]));
+    const changed = M.STATE_KEYS.filter((key) => !sameStored((next as any)[key], (prev as any)[key])); // (by key: STATE_KEYS are State's)
     cache = next;
     if (wait != null && wait > 0) {
       // A key with a change already on its way (a failed write to try again)

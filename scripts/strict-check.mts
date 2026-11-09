@@ -8,7 +8,10 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 // The files and folders (paths from the repo's root; a folder ends in /) brought up to tsconfig.strict.json.
-export const DONE: string[] = [];
+export const DONE: string[] = [
+  'extension/background/',
+  'extension/background.ts',
+];
 
 const all = process.argv.includes('--all');
 const run = spawnSync(process.execPath, [`${ROOT}node_modules/typescript/bin/tsc`, '-p', `${ROOT}tsconfig.strict.json`, '--pretty', 'false'], { cwd: ROOT, encoding: 'utf8' });

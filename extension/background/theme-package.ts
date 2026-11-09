@@ -34,7 +34,7 @@ function base64(bytes: Uint8Array) {
  * */
 export async function readThemePackage(id: string, { fetchFile = (path) => fetch(api.runtime.getURL(`themes/${id}/${path}`)) }: { fetchFile?: (path: string) => Promise<Response> } = {}): Promise<ThemeMessage> {
   if (!PACKAGE_THEMES.includes(id)) throw new Error(`no built-in theme ${JSON.stringify(id)}`);
-  const get = async (path) => {
+  const get = async (path: string) => {
     const res = await fetchFile(path);
     if (!res.ok) throw new Error(`themes/${id}/${path}: ${res.status}`);
     return res;
@@ -42,9 +42,9 @@ export async function readThemePackage(id: string, { fetchFile = (path) => fetch
   const [manifest, html, css] = await Promise.all(['theme.json', 'theme.html', 'theme.css'].map(async (f) => (await get(f)).text()));
   let raw: any = null; // (a theme's manifest, as it parses: checked by the overlay)
   try { raw = JSON.parse(manifest); } catch {}
-  const named = [...(Array.isArray(raw?.fonts) ? raw.fonts.map((f) => f?.file) : []), ...(Array.isArray(raw?.images) ? raw.images : [])];
+  const named = [...(Array.isArray(raw?.fonts) ? raw.fonts.map((f: { file?: unknown } | null) => f?.file) : []), ...(Array.isArray(raw?.images) ? raw.images : [])];
   const paths = [...new Set(named.filter((p) => typeof p === 'string' && FILE_PATH.test(p) && !p.split('/').some((seg) => /^\.+$/.test(seg))))].slice(0, MAX_FILES);
-  const files = {};
+  const files: Record<string, string> = {};
   await Promise.all(paths.map(async (path) => { files[path] = base64(new Uint8Array(await (await get(path)).arrayBuffer())); }));
   return { id, manifest, html, css, files };
 }

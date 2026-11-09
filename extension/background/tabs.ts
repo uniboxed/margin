@@ -46,7 +46,7 @@ export function keepHandedOff(tabId: number) {
 // ---- switching -----------------------------------------------------------------
 let focusGen = 0;
 const focusing = new Map(); // tabId → overlapping Margin focus requests
-export const isFocusing = (tabId) => (focusing.get(tabId) ?? 0) > 0;
+export const isFocusing = (tabId: number) => (focusing.get(tabId) ?? 0) > 0;
 export const anyFocusing = () => focusing.size > 0;
 // Switches asked for and not answered yet (background.ts counts each timed
 // request from its arrival; focusTab until it answers): the open-tab repair
@@ -103,7 +103,7 @@ function tooLate(deadline: number | undefined) {
 }
 // A Safari call held to `until`: its value, or null if it's not answered by then.
 async function answerBy<T>(promise: Promise<T>, until: number): Promise<T | null> {
-  let timer;
+  let timer: number | undefined;
   const late = new Promise<any>((resolve) => { timer = setTimeout(() => resolve(null), Math.max(0, until - Date.now())); });
   try {
     return (await Promise.race([promise, late]) as T | null);
@@ -247,7 +247,7 @@ export async function resolveTab(tabId: number, hint: { url?: string, index?: nu
     if (candidates.length > 1 && hint.title && candidates.some((t) => t.title === hint.title)) candidates = candidates.filter((t) => t.title === hint.title);
     if (!candidates.length) return null;
     // The asking page's window first, then a window that isn't parked (app/HANDOFF.md §2.5), then the nearest place.
-    const distance = (t) => (t.windowId === preferWindow ? 0 : 2e6) + (inParkedWindow(t) ? 1e6 : 0) + Math.abs((t.index ?? 0) - (hint.index ?? 0));
+    const distance = (t: { windowId?: number, index?: number }) => (t.windowId === preferWindow ? 0 : 2e6) + (inParkedWindow(t) ? 1e6 : 0) + Math.abs((t.index ?? 0) - (hint.index ?? 0));
     return candidates.reduce((best, t) => (distance(t) < distance(best) ? t : best));
   };
   // Margin's own tabs first, once they're this copy's (matched to the open
@@ -309,10 +309,10 @@ export const startedAt = Date.now();
 const access = new Map(); // origin pattern → Promise<boolean>
 api.permissions?.onAdded?.addListener(() => access.clear());
 api.permissions?.onRemoved?.addListener(() => access.clear());
-async function mayAccessCached(url) {
+async function mayAccessCached(url: string | undefined) {
   let key;
   try {
-    const { protocol, hostname } = new URL(url);
+    const { protocol, hostname } = new URL(url as string); // (none: it throws, caught: no access)
     key = `${protocol}//${hostname}`;
   } catch {
     return false;
@@ -324,10 +324,10 @@ async function mayAccessCached(url) {
   }
   return access.get(key);
 }
-export async function mayAccess(url) {
+export async function mayAccess(url: string | undefined) {
   let pattern;
   try {
-    const { protocol, hostname } = new URL(url);
+    const { protocol, hostname } = new URL(url as string); // (none: it throws, caught: no access)
     if (protocol !== 'http:' && protocol !== 'https:') return false;
     pattern = `${protocol}//${hostname}/*`;
   } catch {
@@ -353,9 +353,10 @@ export function pageChanged(tabId: number) {
 // (WebKit answers with an error in place of a result) is 'asleep' too. A tab
 // found so is remembered (noPageFound). The permission is asked once per
 // site (mayAccessCached): after a relaunch every probe asked it again.
-export async function inPage(tabId, url, func, args: any[] = [], ms = 300) {
+// (`func` runs in the page: its arguments are `args`.)
+export async function inPage<A extends any[]>(tabId: number, url: string | undefined, func: (...args: A) => unknown, args: A = [] as unknown as A, ms = 300) {
   if (!api.scripting?.executeScript || !(await mayAccessCached(url))) return 'unknown';
-  let timer;
+  let timer: number | undefined;
   const answer = await Promise.race([
     api.scripting.executeScript({ target: { tabId }, func, args }).then((r) => (ranAtAll(r) ? { result: r?.[0]?.result } : 'asleep'), () => 'asleep'),
     new Promise<any>((resolve) => { timer = setTimeout(() => resolve('unknown'), ms); }),
@@ -513,7 +514,7 @@ export async function openBehind({ windowId, url, from, then, created, label, de
 async function untilLoaded(tabId: number, until: () => number, left: () => boolean, fromId: number | null): Promise<'loaded' | 'timeout' | 'gone' | 'left' | 'moved'> {
   const SLOW = Symbol('slow');
   const ask = (id: number) => {
-    let timer;
+    let timer: number | undefined;
     return Promise.race([
       Promise.resolve().then(() => api.tabs.get(id)).catch(() => null),
       new Promise<any>((resolve) => { timer = setTimeout(() => resolve(SLOW), Math.max(POLL_MS, until() - Date.now())); }),
@@ -557,7 +558,7 @@ export function ensureCurrent(tabId: number) {
 }
 async function checkCurrent(tabId: number) {
   if (checkedCurrent.has(tabId) || !api.scripting?.executeScript) return;
-  const files = api.runtime.getManifest().content_scripts?.find((c) => c.world !== 'MAIN')?.js;
+  const files = api.runtime.getManifest().content_scripts?.find((c: { world?: string, js?: string[] }) => c.world !== 'MAIN')?.js;
   const tab = await api.tabs.get(tabId).catch(() => null);
   if (await repairOldOwnPage(tab)) return void checkedCurrent.add(tabId);
   if (!files?.length || !tab?.url || tab.discarded) return;
@@ -596,7 +597,7 @@ const quietened = new Set<any>(); // said once per tab
 // silent when asked. A switch to one asks again first (focusTab).
 const cutOffSuspects = new Set<any>();
 let cutOffLoads = Promise.resolve();
-async function askCutOff(tabId: number, url, quiet: boolean, ms: number) {
+async function askCutOff(tabId: number, url: string | undefined, quiet: boolean, ms: number) {
   const answer = await inPage(tabId, url, cutOffInPage, [ownAddress, quiet, Object.values(commandKeys())], ms);
   return typeof answer === 'string' ? null : answer.result ?? null;
 }
@@ -715,7 +716,7 @@ function reloadBehind(tabId: number) {
 // A tab showing Margin's new-tab page from a copy that's gone (background/
 // cut-off.ts oldOwnPageAddress): sent to this copy's. Whether it was. Also a
 // tab an earlier build left on Margin's sleep page (leftOnSleepPage).
-async function repairOldOwnPage(tab) {
+async function repairOldOwnPage(tab: BrowserTab | null | undefined) {
   if (await leftOnSleepPage(tab)) return true;
   const to = oldOwnPageAddress(tab?.url, ownAddress);
   if (tab?.id == null || !to || Date.now() - (cutOffLoadedAt.get(tab.id) ?? 0) < CUT_OFF_COOLDOWN_MS) return false;
@@ -733,7 +734,7 @@ async function repairOldOwnPage(tab) {
 // keeps it by its page's address, seenTab). In front, it's loaded at its
 // page's address. One whose sleep page names no web address is left as it
 // is. Whether it was handled.
-async function leftOnSleepPage(tab) {
+async function leftOnSleepPage(tab: BrowserTab | null | undefined) {
   const page = oldSleepPage(tab?.url);
   if (tab?.id == null || !page?.url || Date.now() - (cutOffLoadedAt.get(tab.id) ?? 0) < CUT_OFF_COOLDOWN_MS) return false;
   cutOffLoadedAt.set(tab.id, Date.now());
@@ -783,7 +784,7 @@ async function giveWay() {
 
 async function runOpenTabRepair(retry: boolean) {
   // The sidebar's entry, whatever the build named its file.
-  const files = api.runtime.getManifest().content_scripts?.find((c) => c.world !== 'MAIN')?.js;
+  const files = api.runtime.getManifest().content_scripts?.find((c: { world?: string, js?: string[] }) => c.world !== 'MAIN')?.js;
   if (!files?.length || !api.scripting?.executeScript) return;
   const delays = [0, ...(retry ? REPAIR_RETRY_MS : [])];
   const done = (tab: any) => tab.discarded || checkedCurrent.has(tab.id) || !/^https?:/i.test(tab.url ?? '');

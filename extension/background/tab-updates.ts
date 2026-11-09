@@ -10,6 +10,7 @@
 // any write before then (a switch, a tab opened or closed, the tab in front
 // changing) takes them along. The tab in front, one not known yet, and a
 // hidden tab's new address are written at once.
+import type { State } from '../../types/margin';
 import * as M from '../state/model.ts';
 import { mutate, now } from './store.ts';
 
@@ -32,7 +33,7 @@ export function tabGone(tabId: number) {
 }
 
 // How long the write may wait (null: none), from the state before the change.
-function waitFor(s, tabId: number, change: BrowserTabChange, tab: BrowserTab) {
+function waitFor(s: State, tabId: number, change: BrowserTabChange, tab: BrowserTab) {
   const known = s.tabs[tabId];
   // Safari can say active: true for a tab just left (model.ts upsertTab):
   // either one saying it's in front writes at once.

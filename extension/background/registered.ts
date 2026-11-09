@@ -61,21 +61,22 @@ const LAYOUT_SETTLE_MS = 2000;
 // Chrome, where Margin works only in full screen: the page's script stays
 // out of windows with a toolbar itself (content/page/fullscreen-only.ts),
 // and the CSS draws only where it marks the page.
-const worksInWindows = (settings) => !platform?.marginFullscreen || settings?.fullscreenOnly === false;
+// (`settings`: the stored settings, as they came: state.settings.)
+const worksInWindows = (settings: any) => !platform?.marginFullscreen || settings?.fullscreenOnly === false;
 const anyFullscreen = async () => (await api.windows.getAll().catch((): BrowserWindow[] => [])).some((win) => win.state === 'fullscreen');
 
 export type Layout = { left: number, top: number, right: number, bottom: number, radius: number };
 // A window's layout as Margin.app measured it (shared/app-link.ts layouts:
 // insets from the window's edges, and the card's corner), spelled.
 export const layoutOf = (l: any): Layout | null => (l?.insets ? spelled({ ...l.insets, radius: l.radius }) : null);
-const hasBox = (layout: Layout | null) => !!layout && ['left', 'top', 'right', 'bottom'].some((side) => layout[side] >= 0.5);
+const hasBox = (layout: Layout | null) => !!layout && (['left', 'top', 'right', 'bottom'] as const).some((side) => layout[side] >= 0.5);
 const keyOf = (layout: Layout | null) => (layout ? JSON.stringify(spelled(layout)) : 'none');
 
 // Before Margin.app has measured any window: Arcadia's geometry from the
 // settings (beside the sidebar with Keep open, else in the frame, else none).
 const FRAME = 8;
 const RADIUS = 6.25; // Arcadia's card
-export function layoutFromSettings(settings, theme = themeFor(settings)): Layout | null {
+export function layoutFromSettings(settings: any, theme = themeFor(settings)): Layout | null {
   if (settings?.sidebarPinnedOpen) return { left: theme.sidebarWidth?.(settings) ?? 260, top: FRAME, right: FRAME, bottom: FRAME, radius: RADIUS };
   return settings?.frameWhenHidden !== false ? { left: FRAME, top: FRAME, right: FRAME, bottom: FRAME, radius: RADIUS } : null;
 }
@@ -117,7 +118,7 @@ export function chooseLayout(settings: any, layouts: Record<string, any>, regist
 }
 
 /** The theme whose first paint pages get: the active one's, else Arcadia's. */
-const firstPaintTheme = (settings) => (PACKAGE_THEMES.includes(settings?.theme) ? settings.theme : PACKAGE_THEMES[0]);
+const firstPaintTheme = (settings: any) => (PACKAGE_THEMES.includes(settings?.theme) ? settings.theme : PACKAGE_THEMES[0]);
 
 const NO_BOX = Object.freeze({ left: 0, top: 0, right: 0, bottom: 0, radius: 0 });
 /**
@@ -156,7 +157,7 @@ let liveView: (() => LinkView) | null = null;
 const layoutSource = () => liveView?.() ?? lastView;
 /** Where the windows' layouts come from (background.ts: the link's own, in memory). */
 export const setLayoutSource = (fn: () => LinkView) => { liveView = fn; };
-const chooseFor = (settings, view: LinkView, registered: string | null) => chooseLayout(settings, view?.layouts ?? {}, registered, { epoch: view?.epoch ?? undefined, drawn: view?.drawn ?? {}, last: view?.lastLayouts ?? {} });
+const chooseFor = (settings: any, view: LinkView, registered: string | null) => chooseLayout(settings, view?.layouts ?? {}, registered, { epoch: view?.epoch ?? undefined, drawn: view?.drawn ?? {}, last: view?.lastLayouts ?? {} });
 
 const sameScript = (a: { js: string[]; css: string[]; on: boolean; }, b: BrowserRegisteredContentScript) => JSON.stringify(a ? { js: a.js ?? [], css: a.css ?? [] } : null) === JSON.stringify(b ? { js: b.js ?? [], css: b.css ?? [] } : null);
 async function syncPage() {

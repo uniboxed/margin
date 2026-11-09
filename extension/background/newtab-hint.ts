@@ -32,7 +32,7 @@ const enabled = () => !!platform?.newTabHint && !!api.storage?.session;
 async function read() {
   return (await api.storage.session.get(KEY).catch(() => null))?.[KEY] ?? { seen: {}, shown: false };
 }
-const write = (value) => api.storage.session.set({ [KEY]: value }).catch(() => {});
+const write = (value: unknown) => api.storage.session.set({ [KEY]: value }).catch(() => {});
 
 /** tabs.onCreated */
 export function tabCreated(tab: BrowserTab) {
