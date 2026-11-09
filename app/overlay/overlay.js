@@ -587,9 +587,11 @@ function onMessage(msg) {
       setKeys(false);
       return;
     case 'shown':
-      // The app showed this overlay (it wasn't): `focus`, over a new window in front (⌘N, New
-      // Window): the new-tab launcher's field takes the focus (never as the page first draws).
-      if (msg.focus === true) runtime?.focusLauncher();
+      // The app showed this overlay (it wasn't): `palette`, over a new window in front (⌘N, New
+      // Window): the palette opens over its new tab, as ⌘T's does (Tirth, 2026-11-09), never as the
+      // page first draws. (`focus`: the launcher's field instead, for a host that asks for that.)
+      if (msg.palette === true) openPaletteTimed({ newTab: !host?.launcher }, 'a new window');
+      else if (msg.focus === true) runtime?.focusLauncher();
       // Drawn, and in which mode, on the next frame (R4).
       answerFramed({ requestFrame: (fn) => requestAnimationFrame(fn), mode: () => host?.mode ?? 'fullscreen', post: (op, body) => post(op, body).catch(() => {}) });
       return;

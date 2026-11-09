@@ -519,6 +519,18 @@ extension Shell: SwitchWorld {
         return true
     }
 
+    // ⌘N (app/WINDOWS.md §5): a new window of the front window's profile, a Margin window of its own, in full
+    // screen like it and on its space (its copy's newWindow). macOS slides to it, as to any new full-screen
+    // window: ⌘N's own, wanted. It's in no line until its first switch gives it one (§2.1).
+    func newMarginWindow(from key: WindowKey) {
+        guard isLinked(key.link) else { return Diagnostics.note("⌘N: \(key.link) isn't linked: no window") }
+        Diagnostics.note("⌘N: a new window of \(key.link) from \(key)")
+        request(key.link, "newWindow", ["fromWindowId": key.windowId], windowId: nil) { result, error in
+            if let error { Diagnostics.warn("⌘N: no window: \(error)") }
+            else if let made = result.flatMap({ SpaceWindowAnswer($0) }) { Diagnostics.note("⌘N: window \(made.windowId) (\(made.state))") }
+        }
+    }
+
     func marginOff(_ profile: String) -> Bool {
         guard options.safariAX, profile.hasPrefix("safari:") else { return false }
         return SafariAX.marginEnabled(profile: SwitchNotice.profileId(profile)) == false
@@ -537,7 +549,7 @@ extension Shell: SwitchWorld {
                 let reply = try await entry.connection.request(type: type, payload: payload, windowId: windowId)
                 if reply["ok"] as? Bool == true {
                     let result = reply["result"] as? JSONObject ?? [:]
-                    if type == "openSpaceWindow", let made = SpaceWindowAnswer(result) { self.windowMade(profile, windowId: made.windowId, asked: asked, bounds: made.bounds) }
+                    if type == "openSpaceWindow" || type == "newWindow", let made = SpaceWindowAnswer(result) { self.windowMade(profile, windowId: made.windowId, asked: asked, bounds: made.bounds) }
                     done(result, nil)
                 } else { done(nil, Diagnostics.scrub(reply["error"] as? String ?? "refused", max: 160)) } // a browser's words: never a page's
             } catch {

@@ -272,6 +272,33 @@ test('openSpaceWindow: answers the new window\'s bounds as Safari gave them and 
   fake.windows.get(1).focused = true;
 });
 
+// ---- newWindow: ⌘N (app/WINDOWS.md §5) -------------------------------------------------------------
+
+test('newWindow from a window: a Margin window of its own in full screen like it, on the space it shows, its tab in that space; bounds answered, the list sent at once', async () => {
+  fresh();
+  let s = await store.load();
+  const space = s.spaces[s.spaces.length - 1];
+  await handlers.setSpace({ windowId: 1, spaceId: space.id });
+  fake.windows.get(1).state = 'fullscreen';
+  const before = said.windowsNow;
+  const answer = await handlers.newWindow({ fromWindowId: 1 });
+  s = await store.load();
+  assert.equal(answer.state, 'fullscreen', 'full screen like the window it came from');
+  assert.deepEqual(answer.bounds, { left: 10, top: 25, width: 1200, height: 800 });
+  assert.equal(s.activeSpaceByWindow[answer.windowId], space.id, 'on the space that window shows');
+  assert.equal(s.tabSpace[answer.windowId * 10], space.id, 'its tab in that space');
+  assert.equal(said.windowsNow, before + 1);
+  // A normal window's: a normal window. With no window to start from, as before: the browser's choice of space.
+  fake.windows.get(1).state = 'normal';
+  const normal = await handlers.newWindow({ fromWindowId: 1 });
+  assert.equal(normal.state, 'normal');
+  const bare = await handlers.newWindow();
+  assert.equal(bare.state, 'normal');
+  for (const w of [answer, normal, bare]) { fake.windows.delete(w.windowId); fake.tabs.delete(w.windowId * 10); }
+  fake.windows.get(1).state = 'fullscreen';
+  fake.windows.get(1).focused = true;
+});
+
 // ---- the frame probe ---------------------------------------------------------------------------
 
 test('frameProbe (the background): passed to the window\'s tab in front, its answer with its tab; no answer in timeoutMs, or no tab: none', async () => {

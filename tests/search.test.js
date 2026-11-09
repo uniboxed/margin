@@ -164,9 +164,10 @@ test('palette: "Margin start page & settings" on web pages, not on the start pag
   assert.ok(!rankPalette(s, '', { ...ctx, inNewTab: true }).some((i) => i.id === 'action:launcher'));
 });
 
-test('palette: "New window" is always offered', () => {
+test('palette: "New window" is always offered, from the window it\'s in (a Margin window of its own on its space: app/WINDOWS.md §5)', () => {
   const s = paletteState();
-  assert.deepEqual(rankPalette(s, 'new window', ctx)[0].action, { type: 'newWindow' });
+  assert.deepEqual(rankPalette(s, 'new window', ctx)[0].action, { type: 'newWindow', fromWindowId: ctx.windowId });
+  assert.deepEqual(rankPalette(s, 'new window', { ...ctx, windowId: undefined })[0].action, { type: 'newWindow' });
   assert.ok(rankPalette(s, '', { ...ctx, inNewTab: true }).some((i) => i.id === 'action:new-window'));
 });
 

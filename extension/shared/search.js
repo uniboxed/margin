@@ -230,7 +230,8 @@ function paletteItems(state, ctx) {
   // (and its Settings) is reachable from here.
   // A real window even when macOS turns ⌘N into a tab ("Prefer tabs when
   // opening documents", which defaults to doing that in full screen).
-  action('new-window', 'New window', { type: 'newWindow' }, { emoji: '⧉' });
+  // A Margin window of its own, in full screen like this one, on its space (background/handlers.js newWindow).
+  action('new-window', 'New window', { type: 'newWindow', ...(ctx.windowId != null ? { fromWindowId: ctx.windowId } : {}) }, { emoji: '⧉' });
   if (!ctx.inNewTab) action('launcher', 'Margin start page & settings', { type: 'openLauncher', windowId: ctx.windowId }, { emoji: '⚙︎' });
   if (ctx.canToggleSidebar) action('toggle-sidebar', 'Toggle sidebar', { local: 'toggleSidebar' }, { emoji: '◧' });
   // Chrome: full screen with no toolbar (background/fullscreen.js).

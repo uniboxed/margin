@@ -745,7 +745,7 @@ func handoffMachineTests() {
     check("choice: two displays: no freeze, the new A kept", { let c = HandoffChoice.pick(F(displays: 2)); return !c.freeze && c.old == .keep }())
     check("choice: two displays with the setting: close, no freeze", { let c = HandoffChoice.pick(F(closeSetting: true, displays: 2)); return !c.freeze && c.old == .close }())
     check("choice: A's copy gone: kept", HandoffChoice.pick(F(aLinked: false)).old == .keep)
-    check("choice: the person's own window: kept", HandoffChoice.pick(F(aExtra: true)).old == .keep)
+    // (No "the person's own window: kept": every window is a Margin window's, parked like any, app/WINDOWS.md §2.2.)
     check("choice: no A: the freeze, nothing left", { let c = HandoffChoice.pick(F(hasA: false)); return c.freeze && c.old == .keep }())
 
     // ---- park+freeze, a parked target: the whole switch ----
@@ -1422,14 +1422,29 @@ func handoffMachineTests() {
         handoffInvariants("target, focus", w, s, [hA, hC])
     }
     do {
-        // A normal window of its own on the Desktop: shown by the bridge (one op), then full screen.
-        let (w, s) = handoffSetup { $0.add(hC, id: 30, number: 3030, state: "normal") }
+        // A normal window of its own (its Margin window's) on the Desktop: shown by the bridge (one op), then full screen.
+        let (w, s) = handoffSetup { w in
+            w.add(hC, id: 30, number: 3030, state: "normal")
+            w.registry.noteShown(link: hC, number: 3030)
+            w.registry.noteShown(link: hA, number: 1010)
+        }
         let kc = WindowKey(link: hC, windowId: 30)
         s.start(toC, from: hA, windowId: 10)
         check("target: a normal window: the show variant", s.run?.way == .show)
         handoffRun(w, 4)
         check("target: … added to the active Space, then full screen", w.reads.calls.contains { $0.hasPrefix("add 3030 → ") } && w.fullAndInFront(kc) && w.events.last == .done(toC))
         handoffInvariants("target, show", w, s, [hA, hC])
+    }
+    do {
+        // A normal window of the profile in no line is another Margin window's (app/WINDOWS.md §2.1 rule 5): never
+        // the target; one is made for this one instead.
+        let (w, s) = handoffSetup { $0.add(hC, id: 30, number: 3030, state: "normal") }
+        s.start(toC, from: hA, windowId: 10)
+        check("target: another Margin window's window: passed over, a new one", s.run?.way == .create, "\(String(describing: s.run?.way))")
+        handoffRun(w, 4)
+        check("target: … made and in front, the other left where it is", w.events.last == .done(toC) && s.session.shown?.key != WindowKey(link: hC, windowId: 30)
+              && w.win(WindowKey(link: hC, windowId: 30))?.state == "normal" && w.types(hC, "openSpaceWindow").count == 1, "\(w.events)")
+        handoffInvariants("target, another Margin window's", w, s, [hA, hC])
     }
     do {
         // Minimized only: not a target (the genie under a freeze): a new window.
@@ -1517,18 +1532,34 @@ func handoffMachineTests() {
         handoffInvariants("same profile", w, s, [hA])
     }
     do {
-        // The window left is one the person opened (its profile's home window is another, parked): kept.
+        // A window in no line (one the person opened; line 1's A is 1111, parked) is a Margin window of its own
+        // (app/WINDOWS.md §2.1, Tirth 2026-11-09): the switch gives it a line, parks it like any A, and makes it
+        // its own window of B. Line 1's parked B is another Margin window's: left parked.
         let ka2 = WindowKey(link: hA, windowId: 11)
         let (w, s) = handoffSetup { w in
             w.add(hA, id: 11, number: 1111, state: "normal")
-            w.park(ka2) // A's home window is 1111 now
+            w.park(ka2) // line 1's home for A is 1111 now: 1010 is in no line
             w.focus(hKA)
         }
+        let line1 = w.registry.line(of: 2020)
         s.start(toB, from: hA, windowId: 10)
-        check("extra window: the window left is the person's own: kept", s.run?.choice.old == .keep)
+        let line2 = w.registry.line(of: 1010)
+        check("own window: a window in no line: a line of its own, parked like any A, B made for it",
+              s.run?.choice.old == .park && s.run?.way == .create && line2 != nil && line2 != line1, "\(String(describing: s.run?.choice)) \(String(describing: s.run?.way)) \(w.registry.lines)")
         handoffRun(w, 4)
-        check("extra window: … never parked, B in front", !w.registry.isParked(1010) && w.win(hKA)?.state == "fullscreen" && w.fullAndInFront(hKB) && w.events.last == .done(toB))
-        handoffInvariants("extra window", w, s)
+        let madeB = s.session.shown?.key
+        check("own window: … its new B in front, A parked in its line, line 1's B and A still parked",
+              w.events.last == .done(toB) && madeB != nil && madeB != hKB && madeB.map { w.fullAndInFront($0) } == true
+              && w.registry.isParked(1010) && w.registry.isParked(2020) && w.registry.isParked(1111)
+              && madeB.flatMap { w.number(of: $0) }.flatMap { w.registry.line(of: $0) } == line2 && w.registry.line(of: 2020) == line1, "\(w.events) \(w.registry.lines)")
+        // Back to A from that window: its own A (1010), never line 1's (1111).
+        if let madeB {
+            s.start(.init(profile: hA, space: "a1"), from: hB, windowId: madeB.windowId)
+            handoffRun(w, 4)
+            check("own window: back to A in it: its own A shown, line 1's left parked", w.fullAndInFront(hKA) && w.registry.isParked(1111) && w.registry.isParked(2020)
+                  && w.registry.lines[line2 ?? -1]?.shown == 1010, "\(w.events) \(w.registry.lines)")
+        }
+        handoffInvariants("own window", w, s)
     }
     // ---- §1.5: a parked target its copy hasn't named yet ----
     do {
@@ -1726,24 +1757,16 @@ func handoffReviewTests() {
         handoffInvariants("review, abort with time passing", w, s)
     }
     do {
-        // The window left is one the person opened (its profile's own is parked): a recovered switch never
-        // makes it the shown window, so B landing late leaves it alone.
-        let ka2 = WindowKey(link: hA, windowId: 11)
-        let (w, s) = handoffSetup { w in
-            w.add(hA, id: 11, number: 1111, state: "normal")
-            w.park(ka2) // A's own window is 1111
-            w.focus(hKA)
-            w.hung = [hKB]
-        }
+        // A switch that recovers (B never answers): A is its line's shown window again (app/WINDOWS.md §2.2).
+        let (w, s) = handoffSetup { $0.hung = [hKB] }
+        let line = w.registry.line(of: 1010)
         s.start(toB, from: hA, windowId: 10)
         handoffRun(w, 7)
-        check("review: the person's own window left, the switch recovered: not made the shown window",
-              failed(w.events.last) && s.session.shown?.key != hKA && w.fullAndInFront(hKA), "\(w.events) \(String(describing: s.session.shown))")
+        check("review: the switch recovered: A its line's shown window again, and the session's",
+              failed(w.events.last) && s.session.shown?.key == hKA && w.registry.lines[line ?? -1]?.shown == 1010 && w.fullAndInFront(hKA), "\(w.events) \(w.registry.lines)")
         w.unhang(hKB)
         handoffRun(w, 4)
-        check("review: … B landing late: the person's own window left in full screen, never set normal or parked",
-              w.win(hKA)?.state == "fullscreen" && !w.registry.isParked(1010) && w.types(hA, "setWindowState").allSatisfy { $0.state != "normal" }, "\(s.history.suffix(4))")
-        handoffInvariants("review, the person's window", w, s)
+        handoffInvariants("review, recovered in a line", w, s)
     }
     do {
         // B's show didn't land and its drafts never answer: when the switch gives up, B (in no Space, its
@@ -1765,6 +1788,8 @@ func handoffReviewTests() {
             w.slides = true
             w.parkingOnFlag = false
             w.add(hC, id: 30, number: 3030, state: "normal")
+            w.registry.noteShown(link: hC, number: 3030)
+            w.registry.noteShown(link: hA, number: 1010)
         }
         s.start(toC, from: hA, windowId: 10)
         handoffRun(w, 6)

@@ -25,6 +25,7 @@ import Foundation
 enum AppCommand: String, CaseIterable {
     case nextTab = "next-tab", prevTab = "prev-tab", nextSpace = "next-space", prevSpace = "prev-space", palette
     case toggleSidebar = "toggle-sidebar"
+    case newWindow = "new-window" // a Margin window of its own (app/WINDOWS.md §5)
 
     // Held down, these run again at the Mac's key repeat (a hot key itself fires once).
     var repeats: Bool { self == .nextTab || self == .prevTab || self == .nextSpace || self == .prevSpace }
@@ -93,6 +94,7 @@ enum ShortcutSet {
         .nextTab: "Alt+Meta+ArrowDown", .prevTab: "Alt+Meta+ArrowUp",
         .nextSpace: "Alt+Meta+ArrowRight", .prevSpace: "Alt+Meta+ArrowLeft",
         .palette: "Meta+KeyT", .toggleSidebar: "Alt+KeyS",
+        .newWindow: "Meta+KeyN",
     ]
 
     static var bindings: [Combo: AppCommand] {
