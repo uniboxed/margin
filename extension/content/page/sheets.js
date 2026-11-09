@@ -425,6 +425,15 @@ export function startSheets(box) {
     }
     rescan.clear();
   }
+  // Before a read of <body> (box-body.js), the sheets it hasn't seen yet are walked, as a pass would: the read
+  // sees their queries and units already the box's, and their edits are styled with it, not after it. WebKit
+  // styles the whole page again after any sheet is edited (20,000 rules: about 85 ms), so a walk after the read
+  // was a second time. What the read finds needs no read of its own: the count is the read's.
+  box.onBeforeRead.push(() => {
+    if (!box.on) return;
+    visitRoot(document);
+    sheetCount = document.styleSheets.length;
+  });
   function soon() {
     if (frame || waiting) return;
     if (document.hidden) waiting = true;
