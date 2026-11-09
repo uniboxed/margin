@@ -5,7 +5,7 @@ const MODIFIERS = ['Ctrl', 'Alt', 'Shift', 'Meta'];
 const MOD_CODES = /^(Control|Alt|Shift|Meta|OS)(Left|Right)?$/;
 const KEY_CODES = /^(Key[A-Z]|Digit\d|F\d{1,2}|Arrow(Up|Down|Left|Right)|Space|Enter|Backquote|Minus|Equal|BracketLeft|BracketRight|Backslash|Semicolon|Quote|Comma|Period|Slash)$/;
 
-function parse(text) {
+function parse(text: unknown) {
   const parts = String(text ?? '').split('+').map((p) => p.trim()).filter(Boolean);
   const code = parts.pop();
   if (!code || !KEY_CODES.test(code)) return null;
@@ -15,7 +15,7 @@ function parse(text) {
   return { ctrl: mods.has('Ctrl'), alt: mods.has('Alt'), shift: mods.has('Shift'), meta: mods.has('Meta'), code };
 }
 
-function matches(event: KeyboardEvent, text) {
+function matches(event: KeyboardEvent, text: unknown) {
   const s = parse(text);
   return !!s && event.code === s.code && event.ctrlKey === s.ctrl && event.altKey === s.alt
     && event.shiftKey === s.shift && event.metaKey === s.meta;
@@ -29,13 +29,13 @@ function fromEvent(event: KeyboardEvent) {
   return [...mods, event.code].join('+');
 }
 
-const SYMBOLS = { Ctrl: '⌃', Alt: '⌥', Shift: '⇧', Meta: '⌘' };
-function format(text) {
+const SYMBOLS: Record<string, string> = { Ctrl: '⌃', Alt: '⌥', Shift: '⇧', Meta: '⌘' };
+function format(text: unknown) {
   const s = parse(text);
   if (!s) return '';
-  const ARROWS = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' };
+  const ARROWS: Record<string, string> = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' };
   const key = ARROWS[s.code] ?? s.code.replace(/^Key|^Digit/, '').replace(/^Slash$/, '/').replace(/^Period$/, '.').replace(/^Space$/, 'Space');
-  return MODIFIERS.filter((m) => s[m.toLowerCase()]).map((m) => SYMBOLS[m]).join('') + key;
+  return MODIFIERS.filter((m) => (s as Record<string, unknown>)[m.toLowerCase()]).map((m) => SYMBOLS[m]).join('') + key;
 }
 
 // Default navigation shortcuts come from the build's platform profile
@@ -51,16 +51,16 @@ function format(text) {
 // capture phase, from document_start. It handles the Settings shortcuts, with
 // key repeat, first.
 const NAVIGATION = { ...(platform ?? PROFILES.chrome).navigation };
-const navigationFor = (settings) => ({ ...NAVIGATION, ...settings?.shortcuts });
+const navigationFor = (settings: any) => ({ ...NAVIGATION, ...settings?.shortcuts });
 
 // Navigation actions, shared with the background and manifest commands.
-const ACTIONS = { nextTab: 'next-tab', prevTab: 'prev-tab', nextSpace: 'next-space', prevSpace: 'prev-space' };
+const ACTIONS: Record<string, string> = { nextTab: 'next-tab', prevTab: 'prev-tab', nextSpace: 'next-space', prevSpace: 'prev-space' };
 
 // A manifest command's key (`suggested_key.mac`: "MacCtrl+Command+Down") as a
 // shortcut string here ("Ctrl+Meta+ArrowDown"); null for one this can't
 // match. On the Mac, the manifest's `Ctrl` and `Command` are ⌘, `MacCtrl` ⌃.
-const MANIFEST_MODIFIERS = { MacCtrl: 'Ctrl', Command: 'Meta', Ctrl: 'Meta', Alt: 'Alt', Option: 'Alt', Shift: 'Shift' };
-const MANIFEST_KEYS = { Up: 'ArrowUp', Down: 'ArrowDown', Left: 'ArrowLeft', Right: 'ArrowRight', Comma: 'Comma', Period: 'Period', Space: 'Space' };
+const MANIFEST_MODIFIERS: Record<string, string> = { MacCtrl: 'Ctrl', Command: 'Meta', Ctrl: 'Meta', Alt: 'Alt', Option: 'Alt', Shift: 'Shift' };
+const MANIFEST_KEYS: Record<string, string> = { Up: 'ArrowUp', Down: 'ArrowDown', Left: 'ArrowLeft', Right: 'ArrowRight', Comma: 'Comma', Period: 'Period', Space: 'Space' };
 function fromManifest(text: unknown): string | null {
   if (typeof text !== 'string') return null;
   const parts = text.split('+').map((p) => p.trim()).filter(Boolean);
@@ -140,7 +140,7 @@ function worldAlive(): Promise<boolean> {
 // answers, kept from the page's own listeners (stopImmediatePropagation, not
 // preventDefault: WebKit gives a key the page didn't turn down to the menu);
 // the Settings keys go to the page, as nothing else can take them there.
-function installNavigation({ send, getSettings, target = globalThis, commands = commandKeys() }) {
+function installNavigation({ send, getSettings, target = globalThis, commands = commandKeys() }: { send: (type: string, payload?: any) => Promise<unknown> | undefined, getSettings: () => any, target?: { addEventListener: typeof addEventListener }, commands?: Record<string, string> }) {
   let aside = false;
   let asking: Promise<boolean> | null = null;
   const askAlive = () => {

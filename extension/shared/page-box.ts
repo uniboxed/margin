@@ -109,7 +109,7 @@ export const NO_BOX_CSS = ':root { --margin-box-dw: 0px; --margin-box-dh: 0px; }
 // The page-world sheet, for { left, top, right, bottom } in the page's pixels.
 // `clipY`: <html> clips up and down too (the window never scrolls, and a quirks-mode page's <body> stays a scroller of
 // its own, not the document's). Off while the page says <html>'s overflow-x itself (content/page/box.ts checkLocks).
-export function boxCss(box, zoom = 1, clipY = true) {
+export function boxCss(box: { left: number, top: number, right: number, bottom: number, [more: string]: any }, zoom = 1, clipY = true) {
   const scaled = { left: box.left / zoom, top: box.top / zoom, right: box.right / zoom, bottom: box.bottom / zoom };
   const dw = scaled.left + scaled.right;
   const dh = scaled.top + scaled.bottom;
@@ -176,7 +176,7 @@ export function boxCss(box, zoom = 1, clipY = true) {
 // once Margin's content script has said where the box goes (its first
 // `margin:box`): from then on the box is the page world's own sheet.
 export const LAYOUT_SIDES = Object.freeze(['left', 'top', 'right', 'bottom', 'radius']);
-const MAX_QUARTERS = Object.freeze({ left: 4095, top: 4095, right: 4095, bottom: 4095, radius: 255 });
+const MAX_QUARTERS: Readonly<Record<string, number>> = Object.freeze({ left: 4095, top: 4095, right: 4095, bottom: 4095, radius: 255 });
 const QUARTER = 0.25;
 const placesOf = (side: string) => String(MAX_QUARTERS[side]).length;
 export const FIRST_PAINT_MARK = 'data-margin-at';
@@ -225,7 +225,7 @@ function layoutSumCss() {
 /** A window's own layout, as one sheet (scripting.insertCSS): `html:root` outweighs the sums' `:root`. */
 export function layoutOwnCss(layout: Record<string, unknown>) {
   const values = spelled(layout);
-  return `html:root { ${LAYOUT_SIDES.map((side) => `--margin-box-at-${side}: ${values[side]}px;`).join(' ')} }`;
+  return `html:root { ${LAYOUT_SIDES.map((side) => `--margin-box-at-${side}: ${(values as Record<string, number>)[side]}px;`).join(' ')} }`;
 }
 // The box from those variables, for any layout (boxRules takes CSS lengths).
 const LAYOUT_BOX = Object.freeze({ left: 'var(--margin-box-at-left)', top: 'var(--margin-box-at-top)', right: 'var(--margin-box-at-right)', bottom: 'var(--margin-box-at-bottom)' });

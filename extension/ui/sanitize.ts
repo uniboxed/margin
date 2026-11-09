@@ -77,7 +77,7 @@ export function isDataUrl(value, { fonts = false } = {}) {
 // A tab icon from the view model (`m-icon`): only a base64 data: image, the
 // form Margin stores icons in. Checked when the value arrives, not when the
 // theme loads, since the value isn't the theme's.
-export const checkIconUrl = (value) => typeof value === 'string' && /^data:image\//.test(value) && /;base64,/.test(value) && isDataUrl(value);
+export const checkIconUrl = (value: unknown): value is string => typeof value === 'string' && /^data:image\//.test(value) && /;base64,/.test(value) && isDataUrl(value);
 
 // ---------------------------------------------------------------------------
 // Bindings: `{{dotted.path}}`, dotted paths only, never expressions.

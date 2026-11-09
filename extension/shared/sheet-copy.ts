@@ -6,7 +6,7 @@
 // in the copy would be unreadable again, its media queries the window's.
 
 const ABSOLUTE = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
-const resolve = (path, base: string) => {
+const resolve = (path: string, base: string) => {
   try {
     return new URL(path, base).href;
   } catch {
@@ -50,7 +50,7 @@ export async function inlineImports(css: string, base: string, fetchText: (url: 
 }
 
 // `css` with its imports in it, or null if one of them can't go in.
-async function inline(css: string, base: string, fetchText, depth: number, budget) {
+async function inline(css: string, base: string, fetchText: (url: string) => Promise<string | null>, depth: number, budget: { left: number }) {
   const found = [...css.matchAll(IMPORT)];
   if (!found.length) return css;
   if (depth <= 0 || found.length > budget.left) return null;
@@ -67,7 +67,8 @@ async function inline(css: string, base: string, fetchText, depth: number, budge
   // Fetched all at once, not one after another: the copy waits for the slowest, not their sum.
   const texts = await Promise.all(wanted.map(({ url }) => fetchText(url)));
   if (texts.some((text) => typeof text !== 'string')) return null;
-  const owns = await Promise.all(wanted.map(({ url }, i) => inline(absolute(texts[i], url).replace(CHARSET, ''), url, fetchText, depth - 1, budget)));
+  // (Each a string: checked above.)
+  const owns = await Promise.all(wanted.map(({ url }, i) => inline(absolute(texts[i] as string, url).replace(CHARSET, ''), url, fetchText, depth - 1, budget)));
   if (owns.some((own) => own == null)) return null;
   const parts = wanted.map(({ m, conditions }, i) => ({ at: m.index, end: m.index + m[0].length, text: conditions ? `@media ${conditions} {\n${owns[i]}\n}` : owns[i] }));
   let out = '';

@@ -52,8 +52,8 @@ export function topMargin(top: number, { meets, collapses }: { meets: boolean, c
 export function resolve(said: any, parse: any) {
   const { lengths, borders, boxSizing, direction, column, zoom } = said;
   const whole = said.whole / zoom;
-  const [top, right, bottom, left, ...rest] = lengths.map((length) => pixels(length, whole, parse));
-  const paddings = rest.slice(0, 4).map((n) => n || 0);
+  const [top, right, bottom, left, ...rest] = lengths.map((length: string) => pixels(length, whole, parse));
+  const paddings = rest.slice(0, 4).map((n: number) => n || 0);
   const [width, minWidth, maxWidth] = rest.slice(4);
   const extra = paddings[1] + paddings[3] + borders;
   const inner = boxSizing === 'border-box' ? 0 : extra;

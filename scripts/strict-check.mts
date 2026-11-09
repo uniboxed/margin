@@ -11,6 +11,8 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url));
 export const DONE: string[] = [
   'extension/background/',
   'extension/background.ts',
+  'extension/shared/',
+  'extension/state/',
 ];
 
 const all = process.argv.includes('--all');

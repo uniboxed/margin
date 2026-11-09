@@ -3,11 +3,11 @@
 // `dw` and `dh`, but media queries and viewport units ask about the window.
 // They're rewritten, in the page's own sheets, to ask about the box.
 
-const fmt = (n) => String(Math.round(n * 1000) / 1000);
-const toPx = (n, unit) => (unit.toLowerCase() === 'px' ? Number(n) : Number(n) * 16);
+const fmt = (n: number) => String(Math.round(n * 1000) / 1000);
+const toPx = (n: string, unit: string) => (unit.toLowerCase() === 'px' ? Number(n) : Number(n) * 16);
 
 // Does this query say anything about the window's size?
-export const asksSize = (query) => /(?<!device-)\b(?:width|height)\b/i.test(String(query));
+export const asksSize = (query: unknown) => /(?<!device-)\b(?:width|height)\b/i.test(String(query));
 
 const SIZE = String.raw`(-?(?:\d+\.?\d*|\.\d+))(px|em|rem)`;
 const RANGE_NAMED = new RegExp(String.raw`\(\s*(min|max)-(width|height)\s*:\s*${SIZE}\s*\)`, 'gi');
@@ -18,9 +18,9 @@ const RANGE_RIGHT = new RegExp(String.raw`\b(width|height)(\s*[<>]=?\s*)${SIZE}`
 // the same query about a window this much larger. Sizes in em and rem are
 // taken at 16px, as a media query's are. Not idempotent: a caller moves a
 // query by the difference from what it was last moved by (content/page/sheets.ts).
-export function shiftQuery(query, dw, dh) {
+export function shiftQuery(query: string, dw: number, dh: number) {
   if (!query || (!dw && !dh)) return query;
-  const by = (dimension) => (dimension.toLowerCase() === 'width' ? dw : dh);
+  const by = (dimension: string) => (dimension.toLowerCase() === 'width' ? dw : dh);
   return query
     .replace(RANGE_NAMED, (_, limit, dimension, n, unit) => `(${limit}-${dimension}: ${fmt(toPx(n, unit) + by(dimension))}px)`)
     .replace(RANGE_LEFT, (_, n, unit, op, dimension) => `${fmt(toPx(n, unit) + by(dimension))}px${op}${dimension}`)
@@ -30,16 +30,16 @@ export function shiftQuery(query, dw, dh) {
 // Viewport units in a value, outside url(…) and strings.
 const OPAQUE = /(url\([^)]*\)|"[^"]*"|'[^']*')/g;
 const UNIT = /(?<![\w.#-])([-+]?(?:\d+\.?\d*|\.\d+))(s|l|d)?(vw|vh|vmin|vmax)\b/g;
-export const hasUnits = (value) => /\dd?[sl]?v(?:w|h|min|max)\b/.test(value);
+export const hasUnits = (value: string) => /\dd?[sl]?v(?:w|h|min|max)\b/.test(value);
 
 // `value` with vw, vh, vmin and vmax taken as the box's, through --margin-box-dw
 // and --margin-box-dh (always defined: content/page/box.ts), so a value needs
 // rewriting only once, whatever the box does after. Already rewritten: as it is.
-export function shiftUnits(value) {
+export function shiftUnits(value: string) {
   if (!value || !hasUnits(value) || value.includes('--margin-box-d')) return value;
-  const inUnits = (text) => text.replace(UNIT, (_, n, size = '', unit) => {
-    const width = `calc(${n}${size}vw - ${fmt(n / 100)} * var(--margin-box-dw))`;
-    const height = `calc(${n}${size}vh - ${fmt(n / 100)} * var(--margin-box-dh))`;
+  const inUnits = (text: string) => text.replace(UNIT, (_: string, n: string, size = '', unit: string) => {
+    const width = `calc(${n}${size}vw - ${fmt(Number(n) / 100)} * var(--margin-box-dw))`;
+    const height = `calc(${n}${size}vh - ${fmt(Number(n) / 100)} * var(--margin-box-dh))`;
     if (unit === 'vw') return width;
     if (unit === 'vh') return height;
     return `${unit === 'vmin' ? 'min' : 'max'}(${width}, ${height})`;
@@ -49,12 +49,12 @@ export function shiftUnits(value) {
 
 // The declarations a block's text gives, in its order: [name, value, important].
 // Split at the `;`s outside brackets and strings.
-export function declarations(cssText) {
+export function declarations(cssText: string) {
   const out: [string, string, boolean][] = [];
   let depth = 0;
   let quote = '';
   let start = 0;
-  const take = (end) => {
+  const take = (end: number) => {
     const part = cssText.slice(start, end);
     start = end + 1;
     const colon = part.indexOf(':');
@@ -89,7 +89,7 @@ const LONGHANDS = new Set<any>();
 // (its longhands read empty, pending the var()) is set again as a whole, and
 // what that resets is put back. `style`: a CSSStyleDeclaration. `text`: its
 // cssText, when already read.
-export function shiftStyle(style, scratch, text = style.cssText) {
+export function shiftStyle(style: CSSStyleDeclaration, scratch: CSSStyleDeclaration, text = style.cssText) {
   const list = declarations(text);
   // `name: value` as its longhands and their values; null for a shorthand
   // pending a var().

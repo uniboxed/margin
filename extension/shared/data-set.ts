@@ -37,7 +37,7 @@ export const metaKey = (collection: string) => `dataMeta:${collection}`;
 export const DATA_META_KEYS = Object.freeze(Object.keys(SOURCES).map(metaKey));
 
 const isWeb = (url: string) => /^(https?|file):/i.test(url ?? '');
-const finite = (v, or = 0) => (Number.isFinite(v) ? v : or);
+const finite = (v: unknown, or = 0): number => (Number.isFinite(v) ? v as number : or);
 
 // ---- the items, from the state --------------------------------------------------
 
@@ -55,7 +55,7 @@ export function collectionFrom(state: State, collection: string): Record<string,
     case 'tabs': {
       // Margin's tabs, open or not (state/model.ts): an open one by its
       // Margin id, with its space; only web pages (as only they're kept).
-      const out = {};
+      const out: Record<string, ReturnType<typeof tabValue>> = {};
       for (const t of Object.values(state.tabs ?? {})) {
         const spaceId = state.tabSpace?.[t.id];
         if (typeof t.mid !== 'string' || !isWeb(t.url) || typeof spaceId !== 'string') continue;
@@ -76,7 +76,7 @@ export function collectionFrom(state: State, collection: string): Record<string,
       return {};
   }
 }
-const tabValue = (t, spaceId: string) => ({ url: t.url, title: t.title ?? '', icon: /^(https?|data):/.test(t.favIconUrl ?? '') ? t.favIconUrl : '', spaceId, order: finite(t.order, finite(t.index)), lastUsed: finite(t.lastActive) });
+const tabValue = (t: { url: string, title?: string, favIconUrl?: string, order?: number, index?: number, lastActive?: number }, spaceId: string) => ({ url: t.url, title: t.title ?? '', icon: /^(https?|data):/.test(t.favIconUrl ?? '') ? t.favIconUrl : '', spaceId, order: finite(t.order, finite(t.index)), lastUsed: finite(t.lastActive) });
 
 /** Every collection the state has. */
 export function itemsFrom(state: State) {
@@ -117,7 +117,7 @@ export function fingerprint(value: any) {
 // Margin.app's clock ahead of this one), so a change always has a newer time
 // than what it changed: Margin.app merges by time, and the change is told
 // (background/store.ts changedItems).
-const later = (now: number, ...times) => Math.max(now, ...times.filter(Number.isFinite).map((t) => t + 1));
+const later = (now: number, ...times: (number | undefined)[]) => Math.max(now, ...times.filter(Number.isFinite).map((t) => (t as number) + 1)); // (finite: numbers)
 /**
  * A collection's meta after looking at its items now: unchanged (the same
  * object) if nothing changed, else new times for the items that changed or
@@ -127,7 +127,7 @@ export function track(meta: any, items: Record<string, any>, now: number): { ite
   const fresh = !meta || typeof meta !== 'object' || typeof meta.items !== 'object';
   const before = fresh ? {} : meta.items;
   const gone = fresh ? {} : { ...meta.gone };
-  const next = {};
+  const next: Record<string, [number, string]> = {};
   let changed = fresh;
   for (const [id, value] of Object.entries(items)) {
     const fp = fingerprint(value);
@@ -186,7 +186,7 @@ export function dataSetFrom(state: State, { metas = {}, now = 0, userThemes = {}
   const items: Record<string, any> = {};
   for (const collection of Object.keys(SOURCES)) {
     const meta = metas[collection];
-    const list = {};
+    const list: Record<string, any> = {};
     for (const [id, value] of Object.entries(collectionFrom(state, collection))) list[id] = { updatedAt: meta?.items?.[id]?.[0] ?? now, value };
     for (const [id, at] of Object.entries(meta?.gone ?? {})) if (!(id in list)) list[id] = { updatedAt: at, deleted: true };
     items[collection] = list;
@@ -240,7 +240,7 @@ export function stateFromDataSet(state: State, set: { items?: Record<string, Rec
       if (next.spaces.some((s) => s.id === t.spaceId)) tabSpace[r.id] = t.spaceId;
       if (Number.isFinite(t.order) && t.order !== r.order) records[r.id] = { ...r, order: t.order };
     }
-    const keptTabs = {};
+    const keptTabs: Record<string, any> = {};
     for (const [id, t] of Object.entries(tabs)) {
       if (openIds.has(id) || !next.spaces.some((s) => s.id === t.spaceId)) continue;
       const had = state.keptTabs?.[id];
@@ -253,7 +253,7 @@ export function stateFromDataSet(state: State, set: { items?: Record<string, Rec
   if (next.spaces !== state.spaces) {
     const known = (id: string) => next.spaces.some((s) => s.id === id);
     const home = (tabId: string) => {
-      const id = next.activeSpaceByWindow?.[next.tabs?.[tabId]?.windowId];
+      const id = next.activeSpaceByWindow?.[next.tabs?.[tabId as unknown as number]?.windowId as number];
       return known(id) ? id : next.spaces[0].id;
     };
     const stray = Object.entries(next.tabSpace ?? {}).filter(([, sid]) => !known(sid));

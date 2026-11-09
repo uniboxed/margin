@@ -23,7 +23,7 @@
 export const DATA_FORMAT = 1;
 
 const isObject = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
-const isName = (v) => typeof v === 'string' && v.length > 0 && v.length <= 256;
+const isName = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 256;
 
 export function isItem(item: any): boolean {
   return isObject(item) && Number.isFinite(item.updatedAt) && (item.deleted === true ? !('value' in item) : 'value' in item && item.deleted === undefined);
@@ -35,21 +35,21 @@ export function isChange(change: any): boolean {
 }
 
 /** Whether `incoming` replaces `current` (both items, current may be missing). */
-function wins(incoming: { updatedAt: any; deleted: boolean; value?: undefined; } | { deleted?: undefined; updatedAt: any; value: any; }, current) {
+function wins(incoming: { updatedAt: any; deleted: boolean; value?: undefined; } | { deleted?: undefined; updatedAt: any; value: any; }, current: { updatedAt: number, deleted?: boolean } | null | undefined) {
   if (!current) return true;
   if (incoming.updatedAt !== current.updatedAt) return incoming.updatedAt > current.updatedAt;
   if (current.deleted === true && incoming.deleted !== true) return false; // a deletion holds its ground
   return true; // the same time: the change wins (a deletion over a live item, or the newer word)
 }
 
-const itemOf = (change) => (change.deleted === true ? { updatedAt: change.updatedAt, deleted: true } : { updatedAt: change.updatedAt, value: change.value });
+const itemOf = (change: { deleted?: boolean, updatedAt: number, value?: unknown }) => (change.deleted === true ? { updatedAt: change.updatedAt, deleted: true } : { updatedAt: change.updatedAt, value: change.value });
 
 /**
  * `base` with `changes` applied, item by item. Neither input is changed; the
  * result shares the items that didn't change.
  * */
 export function mergeData(base: { format?: number, items?: Record<string, Record<string, any>> } | null | undefined, changes: any[] = []): { format: number, items: Record<string, Record<string, any>> } {
-  const items = {};
+  const items: Record<string, Record<string, any>> = {};
   for (const [collection, list] of Object.entries(isObject(base?.items) ? base.items : {})) {
     if (!isObject(list)) continue;
     items[collection] = {};
@@ -94,7 +94,7 @@ export function changesFrom(set: { items?: Record<string, Record<string, any>> }
  * every copy has had them, a deletion needs no more keeping.
  * */
 export function pruneTombstones(set: { format?: number, items?: Record<string, Record<string, any>> }, before: number) {
-  const items = {};
+  const items: Record<string, Record<string, any>> = {};
   for (const [collection, list] of Object.entries(isObject(set?.items) ? set.items : {})) {
     items[collection] = Object.fromEntries(Object.entries(list ?? {}).filter(([, item]) => isItem(item) && !(item.deleted === true && item.updatedAt < before)));
   }

@@ -411,8 +411,8 @@ function fresh(input: ViewModelInput): ViewModel {
   }));
 
   // The palette's rows: shared/search.ts ranks them, as Arcadia's palette.
-  let rows = [];
-  let selected = null;
+  let rows: PaletteRow[] = [];
+  let selected: string | null = null;
   if (paletteUi.open) {
     const items = rankPalette(state, paletteUi.query ?? '', paletteContext(ui, input.platform));
     const at = items.length ? Math.min(Math.max(0, paletteUi.selected ?? 0), items.length - 1) : -1;

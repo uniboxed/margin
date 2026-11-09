@@ -33,13 +33,16 @@ const DEFAULTS = {
 
 function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
   const o = { ...DEFAULTS, ...options };
-  let gesture: { axis: 'x' | 'y' | null, dx: number, dy: number, offset: number, events: number, released: boolean, last: number, recent: { d: number, t: number }[] } | null = null;
+  // A swipe under way: its axis once it's known, how far each way, its offset and events, whether it's let go,
+  // its last delta, and its recent deltas with their times.
+  type Gesture = { axis: 'x' | 'y' | null, dx: number, dy: number, offset: number, events: number, released: boolean, last: number, recent: { d: number, t: number }[] };
+  let gesture: Gesture | null = null;
   let lastTime = -Infinity;
 
   // `counted`: this event moved the drag (an oversized step doesn't).
   const idle = () => ({ phase: 'idle', offset: 0, speed: 0, events: 0, counted: false });
   // Average speed (px/ms) of the last few finger movements, signed like `offset`.
-  const speed = (g) => {
+  const speed = (g: Gesture) => {
     const run = g.recent.slice(-4);
     if (run.length < 2) return 0;
     const span = run[run.length - 1].t - run[0].t;
@@ -48,7 +51,7 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
   // Momentum: a smooth decay over the last MOMENTUM_RUN deltas, each 80–99%
   // of the one before, from a real speed (fingers easing off while still
   // down rarely decay that steadily).
-  const decaying = (g) => {
+  const decaying = (g: Gesture) => {
     const run = g.recent.slice(-o.MOMENTUM_RUN).map((r) => Math.abs(r.d));
     if (run.length < o.MOMENTUM_RUN || run[0] < 4) return false;
     for (let i = 1; i < run.length; i++) {
@@ -57,14 +60,14 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
     }
     return true;
   };
-  const release = (g) => {
+  const release = (g: Gesture) => {
     g.released = true;
     g.last = -(g.recent.at(-1)?.d ?? 0); // the last delta, as deltaX
     return { phase: 'release', offset: g.offset, speed: speed(g), events: g.events, counted: false };
   };
 
   // One event of gesture `g`; `ok`: this input, here, may swipe.
-  function track(g, { deltaX, deltaY, time, ok }: { deltaX: number; deltaY: number; time: number; ok: boolean; }) {
+  function track(g: Gesture | null, { deltaX, deltaY, time, ok }: { deltaX: number; deltaY: number; time: number; ok: boolean; }) {
     if (!g || g.axis === 'y' || g.released) return idle();
     if (g.axis == null) {
       if (!ok) {

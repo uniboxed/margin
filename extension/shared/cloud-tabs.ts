@@ -21,11 +21,11 @@ const ID = /^[A-Za-z0-9_:.-]{1,64}$/;
 // A device not used for this long is shown dimmed.
 export const STALE_MS = 7 * 24 * 3600 * 1000;
 
-const str = (v, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
-const time = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
+const time = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
 // eslint-disable-next-line no-control-regex
 const plain = (s: string) => s.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
-const webUrl = (u) => typeof u === 'string' && u.length <= 4096 && /^https?:\/\/[^\s]+$/i.test(u);
+const webUrl = (u: unknown): u is string => typeof u === 'string' && u.length <= 4096 && /^https?:\/\/[^\s]+$/i.test(u);
 
 /**
  * What the app sent, checked and capped (a bad device or tab is left out):

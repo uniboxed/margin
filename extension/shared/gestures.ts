@@ -46,19 +46,20 @@ const AXES = {
 // first. No movement that way asks nothing; the overflow style needs at most
 // the page's style worked out; only an element that can scroll has its sizes
 // read, which makes the browser lay out a page whose layout is out of date.
-function canScroll(node, axis: string, delta: number, scrollingElement: null | Element) {
+function canScroll(node: Element, axis: 'x' | 'y', delta: number, scrollingElement: null | Element) {
   if (!delta) return false;
   const a = AXES[axis];
   const style = getComputedStyle(node);
-  const overflow = style[a.overflow];
+  const overflow = style[a.overflow as 'overflowX' | 'overflowY'];
   if (node === scrollingElement ? overflow === 'hidden' || overflow === 'clip' : overflow !== 'auto' && overflow !== 'scroll') return false;
-  const max = node[`scroll${a.size}`] - node[`client${a.size}`];
+  const box = node as unknown as Record<string, number>; // (scrollWidth, clientHeight, scrollTop…: numbers)
+  const max = box[`scroll${a.size}`] - box[`client${a.size}`];
   if (max <= 1) return false;
   // scrollLeft runs 0 … max, or -max … 0 in right-to-left content.
   const [lo, hi] = axis === 'x' && style.direction === 'rtl' ? [-max, 0] : [0, max];
-  return delta < 0 ? node[a.pos] > lo + 0.5 : node[a.pos] < hi - 0.5;
+  return delta < 0 ? box[a.pos] > lo + 0.5 : box[a.pos] < hi - 0.5;
 }
-const canScrollX = (node, dx: number, scrollingElement: null) => canScroll(node, 'x', dx, scrollingElement);
+const canScrollX = (node: Element, dx: number, scrollingElement: null) => canScroll(node, 'x', dx, scrollingElement);
 
 // Does anything the event passes through (up to `stopAt`, else including
 // the page itself) scroll along `axis` in the event's direction?
@@ -87,8 +88,8 @@ function pageScrollsX(event: WheelEvent, doc: Document | undefined) {
 // Keep wheel events over `el` (a panel in a shadow root) from scrolling the
 // page: let them scroll a list inside `el` that can move that way, else
 // cancel them. Pinches (⌃+wheel) are left to the page-wide guard.
-function containScroll(el) {
-  el.addEventListener('wheel', (event) => {
+function containScroll(el: Element) {
+  el.addEventListener('wheel', (event: WheelEvent) => {
     if (!event.cancelable || event.ctrlKey) return;
     const axis = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? 'x' : 'y';
     if (!somethingScrolls(event, axis, { stopAt: el })) event.preventDefault();

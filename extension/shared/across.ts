@@ -19,21 +19,22 @@ export type AcrossSwitching = { profile: string, space: string, phase: string, n
 export type SwitchSettings = { closeWindows: boolean };
 export type Across = { profile: string, profiles: AcrossProfile[], spaces: AcrossSpace[], switching: AcrossSwitching | null, switchSettings: SwitchSettings | null, contents?: Record<string, any> };
 
-const text = (v, max = 200) => (typeof v === 'string' ? v.slice(0, max) : '');
+const text = (v: unknown, max = 200) => (typeof v === 'string' ? v.slice(0, max) : '');
 const COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 // A symbol's picture: a small PNG as a data: URL (the app makes it), nothing else.
 const SYMBOL = /^data:image\/png;base64,[A-Za-z0-9+/]+=*$/;
-const symbolOf = (v) => (typeof v === 'string' && v.length <= 16384 && SYMBOL.test(v) ? v : '');
+const symbolOf = (v: unknown) => (typeof v === 'string' && v.length <= 16384 && SYMBOL.test(v) ? v : '');
 
 /** What the app sent, checked; null if there's nothing usable. */
-export function acrossOf(raw): Across | null {
+// (`raw`: as Margin.app sent it; every field is checked here.)
+export function acrossOf(raw: any): Across | null {
   if (!raw || typeof raw !== 'object' || typeof raw.profile !== 'string' || !Array.isArray(raw.spaces)) return null;
-  const profiles = (Array.isArray(raw.profiles) ? raw.profiles : []).filter((p) => p && typeof p.id === 'string').slice(0, 64).map((p) => ({
+  const profiles = (Array.isArray(raw.profiles) ? raw.profiles : []).filter((p: any) => p && typeof p.id === 'string').slice(0, 64).map((p: any) => ({
     id: p.id, name: text(p.name, 40) || 'Profile', emoji: text(p.emoji, 8), color: COLOR.test(p.color) ? p.color : '',
     named: !!p.named, nameFrom: p.nameFrom === 'safari' ? 'safari' : '', symbol: symbolOf(p.symbol), here: p.id === raw.profile, linked: !!p.linked, stale: !!p.stale,
     lastSeen: Number(p.lastSeen) || 0, spaces: Number(p.spaces) || 0,
   }));
-  const spaces = raw.spaces.filter((s) => s && typeof s.profile === 'string' && typeof s.id === 'string').slice(0, 512).map((s) => ({
+  const spaces = raw.spaces.filter((s: any) => s && typeof s.profile === 'string' && typeof s.id === 'string').slice(0, 512).map((s: any) => ({
     profile: s.profile, id: s.id, name: text(s.name, 40), emoji: text(s.emoji, 8), color: COLOR.test(s.color) ? s.color : '', tabCount: Math.max(0, Number(s.tabCount) || 0),
   }));
   const sw = raw.switching && typeof raw.switching === 'object' ? raw.switching : null;
@@ -62,22 +63,22 @@ export function acrossOf(raw): Across | null {
 export type AcrossRow = { id: string, title: string, url: string, icon: string, folderId: string | null, pos: number, active: boolean };
 export type AcrossContent = { space: string, pins: AcrossRow[], folders: { id: string, name: string, open: boolean, pos: number }[], tabs: AcrossRow[] };
 const ICON = /^data:image\/(png|jpeg|gif|webp|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+=*$/;
-function contentOf(c): AcrossContent | null {
+function contentOf(c: any): AcrossContent | null {
   if (!c || typeof c !== 'object' || typeof c.space !== 'string') return null;
-  const row = (r): AcrossRow | null => (r && typeof r === 'object' && typeof r.id === 'string' ? {
+  const row = (r: any): AcrossRow | null => (r && typeof r === 'object' && typeof r.id === 'string' ? {
     id: text(r.id, 64), title: text(r.title, 300), url: text(r.url, 2048),
     icon: typeof r.icon === 'string' && r.icon.length <= 16384 && ICON.test(r.icon) ? r.icon : '',
     folderId: typeof r.folderId === 'string' && r.folderId ? text(r.folderId, 64) : null,
     pos: Number(r.pos) || 0, active: r.active === true,
   } : null);
-  const list = (v, n: number) => (Array.isArray(v) ? v : []).slice(0, n).map(row).filter((r): r is AcrossRow => r != null);
-  const folders = (Array.isArray(c.folders) ? c.folders : []).slice(0, 50).filter((f) => f && typeof f.id === 'string')
-    .map((f) => ({ id: text(f.id, 64), name: text(f.name, 60), open: f.open !== false, pos: Number(f.pos) || 0 }));
+  const list = (v: unknown, n: number) => (Array.isArray(v) ? v : []).slice(0, n).map(row).filter((r): r is AcrossRow => r != null);
+  const folders = (Array.isArray(c.folders) ? c.folders : []).slice(0, 50).filter((f: any) => f && typeof f.id === 'string')
+    .map((f: any) => ({ id: text(f.id, 64), name: text(f.name, 60), open: f.open !== false, pos: Number(f.pos) || 0 }));
   return { space: text(c.space, 64), pins: list(c.pins, 200), folders, tabs: list(c.tabs, 80) };
 }
 
 /** A window as the app names it, or null. */
-function windowOf(w): AcrossWindow | null {
+function windowOf(w: any): AcrossWindow | null {
   if (!w || typeof w !== 'object' || typeof w.profile !== 'string' || !w.profile || !Number.isInteger(w.windowId)) return null;
   return { profile: w.profile.slice(0, 64), windowId: w.windowId };
 }

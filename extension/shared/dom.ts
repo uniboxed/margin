@@ -12,9 +12,9 @@ function mark(target: { dataset: Record<string, string | undefined> }, key: stri
   else target.dataset[key] = value;
 }
 
-function hostOf(url) {
+function hostOf(url: string | null | undefined) {
   try {
-    return new URL(url).hostname.replace(/^www\./, '');
+    return new URL(url as string).hostname.replace(/^www\./, ''); // (none: it throws, and that's caught)
   } catch {
     return '';
   }

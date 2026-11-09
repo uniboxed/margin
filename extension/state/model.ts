@@ -7,7 +7,7 @@ import { THEMES, DEFAULT_THEME } from '../themes/index.ts';
 import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.ts';
 import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.ts';
 import { isAwayPage } from '../shared/away.ts';
-import type { KeptTab, State, TabRecord } from '../../types/margin';
+import type { ArchiveEntry, KeptTab, State, TabRecord } from '../../types/margin';
 // A kept tab lost with its window: where it was (a window that comes back takes it back).
 type KeptFrom = KeptTab & { from: NonNullable<KeptTab['from']> };
 
@@ -122,7 +122,7 @@ function normalizeState(raw: any = {}): State {
     awayByWindow: Object.fromEntries(Object.entries(raw.awayByWindow ?? {}).filter(([w, t]) => /^\d+$/.test(w) && Number.isInteger(t))),
     tabSpace: { ...raw.tabSpace },
     pins: Array.isArray(raw.pins) ? raw.pins : [],
-    folders: Array.isArray(raw.folders) ? raw.folders.filter((f) => f && typeof f.id === 'string' && typeof f.spaceId === 'string') : [],
+    folders: Array.isArray(raw.folders) ? raw.folders.filter((f: any) => f && typeof f.id === 'string' && typeof f.spaceId === 'string') : [],
     archive: Array.isArray(raw.archive) ? raw.archive : [],
     settings: {
       ...base.settings,
@@ -164,15 +164,16 @@ const isTabId = (id: unknown): id is string => typeof id === 'string' && /^t-[A-
 // ids changed that no open tab matched yet) as kept tabs: shown, not open, in
 // their spaces, and still taken back by a window that comes back within a
 // day (reclaimTabs), as lostTabs were.
-function withTabIds(rawTabs, rawKept, rawLost) {
-  const tabs = {};
+// (`raw…`: as stored, checked here.)
+function withTabIds(rawTabs: any, rawKept: any, rawLost: any) {
+  const tabs: Record<string, any> = {};
   for (const [id, r] of Object.entries(rawTabs ?? {})) {
     if (!r || typeof r !== 'object') continue;
     const mid = isTabId(r.mid) ? r.mid : newTabId();
     const order = Number.isFinite(r.order) ? r.order : Number(r.index) || 0;
     tabs[id] = r.mid === mid && r.order === order ? r : { ...r, mid, order };
   }
-  const keptTabs = {};
+  const keptTabs: Record<string, any> = {};
   for (const [id, k] of Object.entries(rawKept && typeof rawKept === 'object' ? rawKept : {})) {
     if (isTabId(id) && k && typeof k === 'object' && typeof k.url === 'string' && typeof k.spaceId === 'string') keptTabs[id] = k.id === id ? k : { ...k, id };
   }
@@ -203,7 +204,7 @@ function tabIdsAdded(raw: any, state: State) {
 const KEPT_CAP = 500;
 // A web page's address: only those are kept (a new-tab page, a blank page, an
 // extension page isn't worth keeping).
-const isWebPage = (url) => /^(https?|file):/i.test(url ?? '');
+const isWebPage = (url: string | null | undefined) => /^(https?|file):/i.test(url ?? '');
 
 // A kept tab from an open tab's record (`spaceId`: its space). `from`: the
 // window it was in, as it was lost with others (a window closing, a relaunch
@@ -344,7 +345,7 @@ function keptWasTab(state: State, tabId: number) {
 // record's address only. Kept with its Margin tab when the tab closes and is kept (keptRecord), and
 // taken once by the page when that Margin tab opens again (linkKept, takeScroll). This device's
 // only: never in the data set (shared/data-set.ts names a tab's fields).
-const sameUrl = (a, b) => typeof a === 'string' && typeof b === 'string' && normalizeUrl(a) === normalizeUrl(b);
+const sameUrl = (a: unknown, b: unknown) => typeof a === 'string' && typeof b === 'string' && normalizeUrl(a) === normalizeUrl(b);
 
 // The page at `url` in tab `tabId` is scrolled to `y`. Not its record's address (it has moved on, or
 // the message came late): nothing.
@@ -372,13 +373,13 @@ function takeScroll(state: State, tabId: number, url: string): { state: State, y
 // it's the newest), and after a move or a sync the tabs whose places no longer
 // follow their window's order get new ones between their neighbours, the
 // longest run that does keeping theirs. A kept tab keeps its place.
-const placeOf = (t) => (Number.isFinite(t?.order) ? t.order : Number(t?.index) || 0);
+const placeOf = (t: { order?: number, index?: number } | null | undefined): number => (Number.isFinite(t?.order) ? t!.order! : Number(t?.index) || 0);
 const lastPlace = (state: State) => Math.max(-1, ...Object.values(state.tabs).map(placeOf), ...Object.values(state.keptTabs ?? {}).map(placeOf));
 // Places closer than this are renumbered (0, 1, 2… in the order they're in).
 const TIGHT = 1e-6;
 
 // The place for a new tab at `index` in its window (its neighbours there).
-function placeNew(state: State, windowId: number, index, exceptId: number) {
+function placeNew(state: State, windowId: number, index: number, exceptId: number) {
   const others = Object.values(state.tabs).filter((t) => t.windowId === windowId && t.id !== exceptId);
   const before = others.filter((t) => t.index < index).sort((a, b) => b.index - a.index)[0];
   const after = others.filter((t) => t.index >= index).sort((a, b) => a.index - b.index)[0];
@@ -388,13 +389,13 @@ function placeNew(state: State, windowId: number, index, exceptId: number) {
 
 // Every window's open tabs in places that follow their order (sync, move).
 function orderTabs(state: State) {
-  const byWindow = new Map();
+  const byWindow = new Map<number, TabRecord[]>();
   for (const t of Object.values(state.tabs)) byWindow.set(t.windowId, [...(byWindow.get(t.windowId) ?? []), t]);
   let tabs: Record<number, TabRecord> | null = null;
   let top = lastPlace(state);
   for (const list of byWindow.values()) {
     list.sort((a, b) => a.index - b.index);
-    const keep = increasingRun(list.map((t) => (Number.isFinite(t.order) ? t.order : null)));
+    const keep = increasingRun(list.map((t) => (Number.isFinite(t.order) ? t.order! : null)));
     const places = list.map((t, i) => (keep.has(i) ? t.order : null));
     for (let i = 0; i < list.length; i++) {
       if (places[i] != null) continue;
@@ -408,7 +409,7 @@ function orderTabs(state: State) {
     list.forEach((t, i) => {
       if (t.order === places[i]) return;
       tabs ??= { ...state.tabs };
-      tabs[t.id] = { ...t, order: places[i] };
+      tabs[t.id] = { ...t, order: places[i]! }; // (every place filled above)
     });
   }
   const next = tabs ? { ...state, tabs } : state;
@@ -511,7 +512,7 @@ function placeBeside(state: State, moving: any, nextTo: number | string, side: '
 // still finds the 0 Tirth set there, and doesn't turn the old keep-ready back
 // on with its default of 30.
 const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth', 'paletteShortcut'];
-const withoutKeys = (obj, keys: string[]) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
+const withoutKeys = (obj: Record<string, unknown> | null | undefined, keys: string[]) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
 
 // Each theme's settings, filled in by the theme (which also takes over what
 // it used to keep among the top-level settings). Themes this build doesn't
@@ -531,8 +532,8 @@ function themeId(id: unknown) {
   if (renamed) return renamed;
   return Object.hasOwn(THEMES, id) || PACKAGE_THEMES.includes(id) || USER_THEME_ID.test(id) ? id : DEFAULT_THEME;
 }
-const objectOr = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
-function normalizeThemes(rawSettings) {
+const objectOr = (v: unknown): Record<string, any> | null => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, any> : null);
+function normalizeThemes(rawSettings: any) {
   const saved = objectOr(rawSettings?.themes) ?? {};
   const themes = { ...saved };
   for (const theme of Object.values(THEMES)) {
@@ -550,13 +551,13 @@ function normalizeThemes(rawSettings) {
 // the defaults change (another build, e.g. Safari's ⌥⌘↓/↑ for tabs after
 // ⌃⌘↓/↑), a saved value that is still the old default moves to the new
 // default; anything the user changed in Settings stays.
-function normalizeShortcuts(rawSettings, baseSettings) {
+function normalizeShortcuts(rawSettings: any, baseSettings: any) {
   const saved = { ...rawSettings?.shortcuts };
   const from = rawSettings?.shortcutDefaults;
   if (from !== baseSettings.shortcutDefaults) {
     // (A build's defaults by the id it saved: its navigationId, else its name; a past set of Safari's first.)
     const build = from ? Object.values(PROFILES).find((p) => ((p as { navigationId?: string }).navigationId ?? p.name) === from) : null;
-    const old = (from && (PAST_NAVIGATION[from] ?? build?.navigation)) || LEGACY_SHORTCUTS;
+    const old = (from && ((PAST_NAVIGATION as Record<string, any>)[from] ?? build?.navigation)) || LEGACY_SHORTCUTS;
     for (const [name, value] of Object.entries(saved)) if (value === old[name]) delete saved[name];
   }
   return { ...baseSettings.shortcuts, ...saved };
@@ -564,9 +565,9 @@ function normalizeShortcuts(rawSettings, baseSettings) {
 
 // Pins and tabs are matched by URL, ignoring the fragment and a bare
 // trailing slash. Keep in sync with shared/view.ts (a test checks parity).
-function normalizeUrl(url) {
+function normalizeUrl(url: string | null | undefined) {
   try {
-    const u = new URL(url);
+    const u = new URL(url as string); // (none: it throws, and that's caught)
     const path = u.pathname === '/' ? '' : u.pathname;
     return `${u.protocol}//${u.host}${path}${u.search}`;
   } catch {
@@ -611,7 +612,7 @@ function seenTab(tab: any) {
 const GOING_MS = 15000;
 const BLANK = /^about:blank$/i;
 
-function tabRecord(tab: BrowserTab, prev, now: number) {
+function tabRecord(tab: BrowserTab, prev: TabRecord | null | undefined, now: number) {
   const seen = seenTab(tab);
   const going = prev?.going && now - prev.going.at < GOING_MS ? prev.going : null;
   const said = seen.url || seen.pendingUrl || '';
@@ -621,7 +622,8 @@ function tabRecord(tab: BrowserTab, prev, now: number) {
     windowId: seen.windowId,
     index: seen.index ?? prev?.index ?? 0,
     // Gone there: its title as soon as the page has one (the search's words until then).
-    title: before ? going.title || prev.title || '' : going ? seen.title || prev.title || '' : seen.title ?? prev?.title ?? '',
+    // (`going` is prev's: with it, there's a prev.)
+    title: before ? going.title || prev!.title || '' : going ? seen.title || prev!.title || '' : seen.title ?? prev?.title ?? '',
     url: before ? going.url : seen.url || seen.pendingUrl || prev?.url || '',
     ...(before ? { going } : {}),
     favIconUrl: before ? '' : seen.favIconUrl ?? prev?.favIconUrl ?? '',
@@ -629,12 +631,12 @@ function tabRecord(tab: BrowserTab, prev, now: number) {
     lastActive: prev?.lastActive ?? seen.lastAccessed ?? now,
     // Its Margin tab's id and place in the list (new ones: upsertTab, syncTabs).
     ...(isTabId(prev?.mid) ? { mid: prev.mid } : {}),
-    ...(Number.isFinite(prev?.order) ? { order: prev.order } : {}),
+    ...(Number.isFinite(prev?.order) ? { order: prev!.order } : {}),
     ...(prev?.restored ? { restored: true, restoredFrom: prev.restoredFrom } : {}),
     ...(prev?.placed ? { placed: true } : {}),
     // Its page's scroll while it's that page; a scroll to take once while it loads that page, or
     // isn't at a web page yet (a tab made with an address starts blank: noteScroll, takeScroll).
-    ...(prev?.scroll > 0 && sameUrl(seen.url || seen.pendingUrl || prev.url, prev.url) ? { scroll: prev.scroll } : {}),
+    ...(prev && (prev.scroll ?? 0) > 0 && sameUrl(seen.url || seen.pendingUrl || prev.url, prev.url) ? { scroll: prev.scroll } : {}),
     ...(prev?.restoreScroll && (!isWebPage(seen.url || seen.pendingUrl) || sameUrl(seen.url || seen.pendingUrl, prev.restoreScroll.url)) ? { restoreScroll: prev.restoreScroll } : {}),
     // Asleep since `at`; awake again since `wokeAt` (a tab woken isn't put
     // to sleep again until it's been left that long once more: sleepyTabs).
@@ -644,7 +646,7 @@ function tabRecord(tab: BrowserTab, prev, now: number) {
 }
 
 // New tabs join their window's active space; existing assignments stick.
-function assignTab(state: State, tabId, windowId: number) {
+function assignTab(state: State, tabId: number, windowId: number) {
   if (hasSpace(state, state.tabSpace[tabId])) return state;
   return { ...state, tabSpace: { ...state.tabSpace, [tabId]: activeSpaceId(state, windowId) } };
 }
@@ -729,7 +731,7 @@ const awayTabs = (state: State) => new Set(Object.values(state.awayByWindow ?? {
 function activateTab(state: State, tabId: number, windowId: number, now: number) {
   windowId ??= state.tabs[tabId]?.windowId;
   if (windowId == null) return state;
-  const tabs = {};
+  const tabs: Record<string, TabRecord> = {};
   for (const [id, t] of Object.entries(state.tabs)) {
     if (t.windowId !== windowId) tabs[id] = t;
     else if (t.id === tabId) tabs[id] = { ...t, active: true, lastActive: now };
@@ -757,11 +759,11 @@ function movedTab(state: State, tabId: number, windowId: number, index: number) 
 // only match within paired windows, in order (one in a new window isn't the
 // old one). Returns open tab id → old record.
 // A web page's address (a new-tab page, about:blank or none: '').
-const webKey = (t) => {
+const webKey = (t: { url?: string, pendingUrl?: string }) => {
   const url = t.url || t.pendingUrl || '';
   return /^(https?|file):/i.test(url) ? normalizeUrl(url) : '';
 };
-const anyKey = (t) => normalizeUrl(t.url || t.pendingUrl || '');
+const anyKey = (t: { url?: string, pendingUrl?: string }) => normalizeUrl(t.url || t.pendingUrl || '');
 // Options: `minShared(records, tabs)`: web addresses an open window (its
 // `tabs`) must share with an old one (its `records`) to be paired (1);
 // `anyWindow`: also by address in any window (true).
@@ -800,8 +802,8 @@ function matchTabs(old: any[], open: any[], { minShared = () => 1, anyWindow = t
   const taken = new Set<any>();
   // Same address (by `key`) within `records` for `tabs`; of several (the
   // same page open twice), the one nearest its place in the window.
-  const zip = (tabs, records, key: (t: any) => any) => {
-    const free = new Map();
+  const zip = (tabs: any[], records: any[], key: (t: any) => any) => {
+    const free = new Map<string, any[]>();
     for (const r of records) if (!taken.has(r) && key(r)) free.set(key(r), [...(free.get(key(r)) ?? []), r]);
     for (const t of [...tabs].sort((a, b) => String(a.windowId).localeCompare(String(b.windowId)) || a.index - b.index)) {
       if (matched.has(t.id) || !key(t)) continue;
@@ -867,7 +869,7 @@ function syncTabs(state: State, openTabs: BrowserTab[], { fresh = false, now = D
   const latest = Math.max(0, ...gone.map((r) => r.lastActive ?? 0), ...keptBefore.map((k) => Math.max(k.lastActive ?? 0, k.keptAt ?? 0)));
   const shift = fresh && (gone.length || keptBefore.length) ? Math.max(0, now - latest) : 0;
   const knownWindows = new Set(Object.values(state.tabs).map((t) => t.windowId));
-  let next = {
+  let next: State = {
     ...state,
     tabs: {},
     tabSpace: {},
@@ -897,7 +899,7 @@ function syncTabs(state: State, openTabs: BrowserTab[], { fresh = false, now = D
     else unplaced.push(tab);
   }
   const windows = new Set(openTabs.map((t) => String(t.windowId)));
-  for (const w of Object.keys(next.activeSpaceByWindow)) if (!windows.has(w)) delete next.activeSpaceByWindow[w];
+  for (const w of Object.keys(next.activeSpaceByWindow)) if (!windows.has(w)) delete (next.activeSpaceByWindow as Record<string, string>)[w];
   // Away choices of windows gone, or of tabs gone (a fresh start: every window's own front tab again).
   next.awayByWindow = fresh ? {} : Object.fromEntries(Object.entries(next.awayByWindow ?? {}).filter(([w, t]) => windows.has(w) && open.has(String(t))));
   for (const tab of openTabs) {
@@ -977,7 +979,7 @@ function reclaimTabs(state: State, tabIds: number[], now: number) {
   const old = lost.map((k) => ({ ...k, windowId: `lost:${k.from.key}`, index: Number(k.from.index) || 0 }));
   const open = tabIds.map((id) => state.tabs[id]).filter((t) => t && !t.restored && !t.placed); // placed: by the user or Margin
   // Two of the old window's pages, counting those already back in this window.
-  const minShared = (records, tabs) => {
+  const minShared = (records: any[], tabs: any[]) => {
     const from = records[0].from;
     const back = Object.values(state.tabs).filter((t) => t.windowId === tabs[0].windowId && t.restored && t.restoredFrom === from.key).length;
     return Math.max(1, Math.min(2, Number(from.size) || records.length) - back);
@@ -999,7 +1001,7 @@ function reclaimTabs(state: State, tabIds: number[], now: number) {
   return orderTabs(next);
 }
 
-function moveTab(state: State, tabId, spaceId: string) {
+function moveTab(state: State, tabId: number | string, spaceId: string) {
   // A kept tab (not open): its space.
   if (typeof tabId === 'string') {
     const k = state.keptTabs?.[tabId];
@@ -1070,8 +1072,8 @@ function spaceWindowTabs(state: State, spaceId: string) {
 
 // Rename, re-emoji or recolor.
 function updateSpace(state: State, spaceId: string, patch: { name: string | undefined; emoji: string | undefined; color: string | undefined; }) {
-  const allowed = {};
-  for (const key of ['name', 'emoji', 'color']) {
+  const allowed: Record<string, string> = {};
+  for (const key of ['name', 'emoji', 'color'] as const) {
     const value = typeof patch[key] === 'string' ? patch[key].trim() : '';
     if (value) allowed[key] = value;
   }
@@ -1086,9 +1088,9 @@ function updateSpace(state: State, spaceId: string, patch: { name: string | unde
 // stands in (shared/view.ts does the same). Every change renumbers the
 // lists it touches 0, 1, 2…
 const posOf = (item: any, i: number) => (Number.isFinite(item?.pos) ? item.pos : i);
-const folderIn = (state: State, folderId, spaceId: string) => (state.folders ?? []).find((f) => f.id === folderId && f.spaceId === spaceId) ?? null;
+const folderIn = (state: State, folderId: string | null | undefined, spaceId: string) => (state.folders ?? []).find((f) => f.id === folderId && f.spaceId === spaceId) ?? null;
 // A pin's folder, if that folder exists in the pin's space (else it's loose).
-const folderOfPin = (state: State, pin) => (pin.folderId ? folderIn(state, pin.folderId, pin.spaceId) : null);
+const folderOfPin = (state: State, pin: { folderId?: string | null, spaceId: string }) => (pin.folderId ? folderIn(state, pin.folderId, pin.spaceId) : null);
 
 // One list, in order: [{ kind: 'folder' | 'pin', id }]. `folderId` null: the
 // space's top level.
@@ -1227,9 +1229,9 @@ function deleteSpace(state: State, spaceId: string) {
   if (state.spaces.length < 2 || !hasSpace(state, spaceId)) return state;
   const spaces = state.spaces.filter((s) => s.id !== spaceId);
   const target = spaces[0].id;
-  const tabSpace = {};
+  const tabSpace: Record<string, string> = {};
   for (const [tabId, sid] of Object.entries(state.tabSpace)) tabSpace[tabId] = sid === spaceId ? target : sid;
-  const activeSpaceByWindow = {};
+  const activeSpaceByWindow: Record<string, string> = {};
   for (const [w, sid] of Object.entries(state.activeSpaceByWindow)) activeSpaceByWindow[w] = sid === spaceId ? target : sid;
   // Its folders go along (after the first space's own items), and its pins
   // with them, unless that space already has their URL.
@@ -1252,7 +1254,7 @@ function deleteSpace(state: State, spaceId: string) {
 // ---- archive --------------------------------------------------------------
 
 // Newest first, one entry per URL, capped.
-function archiveTab(state: State, { id, url, title, spaceId, favIconUrl, closedAt }, cap = ARCHIVE_CAP) {
+function archiveTab(state: State, { id, url, title, spaceId, favIconUrl, closedAt }: ArchiveEntry, cap = ARCHIVE_CAP) {
   if (!url) return state;
   const key = normalizeUrl(url);
   const entry = { id, url, title: title || url, spaceId, favIconUrl: favIconUrl || '', closedAt };

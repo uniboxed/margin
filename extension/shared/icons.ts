@@ -9,7 +9,7 @@ const SIZE = 32; // stored icons are shrunk to 32×32 when possible
 // text/plain or HTML error pages with 200). null = not an image.
 function sniffType(bytes: Uint8Array<ArrayBuffer>) {
   const b = bytes;
-  const starts = (...sig) => sig.every((v, i) => b[i] === v);
+  const starts = (...sig: number[]) => sig.every((v, i) => b[i] === v);
   if (starts(0x89, 0x50, 0x4e, 0x47)) return 'image/png';
   if (starts(0x00, 0x00, 0x01, 0x00)) return 'image/x-icon';
   if (starts(0x47, 0x49, 0x46, 0x38)) return 'image/gif';

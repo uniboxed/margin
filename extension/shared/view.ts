@@ -3,12 +3,12 @@
 import type { State } from '../../types/margin';
 
 // A pin's or folder's order (state/model.ts): saved, or its place in the list.
-const posOf = (item, i: number) => (Number.isFinite(item?.pos) ? item.pos : i);
+const posOf = (item: { pos?: number } | null | undefined, i: number): number => (Number.isFinite(item?.pos) ? item!.pos! : i);
 
 // Keep in sync with state/model.ts normalizeUrl.
-function normalizeUrl(url) {
+function normalizeUrl(url: string | null | undefined) {
   try {
-    const u = new URL(url);
+    const u = new URL(url as string); // (none: it throws, and that's caught)
     const path = u.pathname === '/' ? '' : u.pathname;
     return `${u.protocol}//${u.host}${path}${u.search}`;
   } catch {
@@ -100,7 +100,7 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
       tabId: tab?.id ?? null, active: !!tab?.active, behind: !!tab?.behind, away: !!tab?.away, favIconUrl: tab?.favIconUrl ?? '',
     });
   });
-  const byPos = (a, b) => a.pos - b.pos;
+  const byPos = (a: { pos: number }, b: { pos: number }) => a.pos - b.pos;
   const loose = [...bound.values()].filter((p) => !p.folderId);
   // The pinned area, in order (state/model.ts pinOrder): folders, with their
   // pins, and the pins in none. A closed folder still shows the pin of the
@@ -133,12 +133,12 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
 
 // A tab's place in the list (state/model.ts "places in the list"): its Margin
 // tab's `order`, else (a record from before) its place in its window.
-const placeOf = (t) => (Number.isFinite(t?.order) ? t.order : Number(t?.index) || 0);
-const byPlace = (a, b) => placeOf(a) - placeOf(b) || (Number(a.index) || 0) - (Number(b.index) || 0);
+const placeOf = (t: { order?: number, index?: number } | null | undefined): number => (Number.isFinite(t?.order) ? t!.order! : Number(t?.index) || 0);
+const byPlace = (a: { order?: number, index?: number }, b: { order?: number, index?: number }) => placeOf(a) - placeOf(b) || (Number(a.index) || 0) - (Number(b.index) || 0);
 
 // The tab a pin opens: one of its space with its URL, in this window first
 // (as the background's openPin), or null (the pin opens a new tab).
-function pinTabId(state: State, pinId, windowId: number) {
+function pinTabId(state: State, pinId: string, windowId: number) {
   const pin = state.pins?.find((p) => p.id === pinId);
   if (!pin) return null;
   const key = normalizeUrl(pin.url);
@@ -152,13 +152,13 @@ function pinTabId(state: State, pinId, windowId: number) {
 // The row of a tab being opened (sidebar `opening`): not a tab of the browser's yet.
 const OPENING_ID = 'opening';
 const NEW_TAB_PAGE = /^(chrome:\/\/newtab\/?|[a-z-]+-extension:\/\/[^/]+\/newtab\/newtab\.html)(\?[^#]*)?$/i;
-const isNewTabPage = (url) => NEW_TAB_PAGE.test(String(url ?? ''));
+const isNewTabPage = (url: unknown) => NEW_TAB_PAGE.test(String(url ?? ''));
 
 // Best guess at the window a page is in, before the background has told the
 // content script its tab id (that needs the background awake, which can
 // take a while in Safari). Single window → that one; otherwise a tab with
 // this URL, preferring active and most recently used.
-function guessWindow(state: State, url) {
+function guessWindow(state: State, url: string) {
   const tabs = Object.values(state.tabs ?? {});
   const windows = new Set(tabs.map((t) => t.windowId));
   if (windows.size <= 1) return tabs[0]?.windowId ?? null;
@@ -183,7 +183,7 @@ function revealZone({ outerWidth, outerHeight, screenWidth, screenHeight }: { ou
 // (open pinned tabs in the rows shown, then the space's open tabs), wrapping around. From a tab
 // that isn't in the list, ↓ goes to the first and ↑ to the last. null if
 // there's nowhere to go.
-function cycleTab(state: State, windowId: number, currentTabId, dir: number) {
+function cycleTab(state: State, windowId: number, currentTabId: number | null, dir: number) {
   const v = sidebar(state, windowId, currentTabId);
   // The rows shown: a closed folder's pins only while one is the tab shown.
   const rows = v.pinned.flatMap((item) => (item.kind !== 'folder' ? [item] : item.open ? item.pins : item.peek));
@@ -211,9 +211,9 @@ function cycleSpace(state: State, windowId: number, dir: number, from: string | 
 // icon link, the background fetches it once per site and stores it as a
 // data: URL in state.favicons[origin] (see background.ts pageIcon).
 
-function originOf(url) {
+function originOf(url: string | null | undefined) {
   try {
-    const u = new URL(url);
+    const u = new URL(url as string); // (none: it throws, and that's caught)
     return /^https?:$/.test(u.protocol) ? u.origin : null;
   } catch {
     return null;
@@ -245,8 +245,8 @@ function pickIconHref(links: { rel: string; href: string; sizes: string; type: s
 
 // What to show for a tab/pin/archive entry: the browser's icon if it gave
 // one (Chrome does), else the icon Margin fetched for that site.
-function iconFor(state: State, item) {
-  if (/^(https?|data):/.test(item?.favIconUrl ?? '')) return item.favIconUrl;
+function iconFor(state: State, item: { url?: string, favIconUrl?: string } | null | undefined) {
+  if (/^(https?|data):/.test(item?.favIconUrl ?? '')) return item!.favIconUrl!; // (an icon matched: it's there)
   const origin = originOf(item?.url);
   return (origin && state?.favicons?.[origin]?.data) || '';
 }

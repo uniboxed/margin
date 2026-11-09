@@ -41,7 +41,7 @@ export const undrawn = (link: any, windowId: number | null | undefined) => windo
  * */
 export const drawsWindow = (link: any, windowId: number | null | undefined) => appDraws(link) && !undrawn(link, windowId);
 
-const finite = (v) => (Number.isFinite(v) ? v : 0);
+const finite = (v: unknown): number => (Number.isFinite(v) ? v as number : 0);
 
 // A window the app draws nothing over: a layout with nothing at any edge (no box).
 export const NOT_DRAWN = Object.freeze({ insets: Object.freeze({ left: 0, top: 0, right: 0, bottom: 0 }), radius: 0, radii: null, drawn: false });
@@ -59,7 +59,7 @@ export function layoutFor(link: any, windowId: number | null | undefined) {
   if (windowId != null) return layouts[windowId] ?? null;
   const all = Object.entries(layouts).filter(([id]) => link?.drawn?.[id] !== false).map(([, l]) => l);
   if (!all.length) return null;
-  const key = (l) => JSON.stringify([l?.insets, l?.container, l?.mode]);
+  const key = (l: { insets?: unknown, container?: unknown, mode?: unknown } | null | undefined) => JSON.stringify([l?.insets, l?.container, l?.mode]);
   return all.every((l) => key(l) === key(all[0])) ? all[0] : null;
 }
 
