@@ -26,3 +26,6 @@ pub mod window_map;
 pub mod across;
 pub mod shortcuts;
 pub mod switch;
+
+// The shell that joins them (Shell.swift), sans IO.
+pub mod shell;
