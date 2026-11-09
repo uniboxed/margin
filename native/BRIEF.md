@@ -125,8 +125,11 @@ Windows counterpart; (c) Safari-only; (d) private macOS APIs.
        from the running app over a named pipe for this user only);
      - a single instance, starting at login, data under `%LOCALAPPDATA%\Margin`.
    - `margin-linux`: later.
-2. **The Chromium link** in the extension, on Windows only: native-messaging discovery, a WebSocket from the service
-   worker, the app allowing `chrome-extension://<id>` origins, `hello.browser` `edge` for Edge.
+2. **The Chromium link** in the extension. **Update (2026-11-09): being built on macOS first, in the main checkout**
+   (Chrome and Edge linking to Margin.app on the Mac: a relay helper started by `connectNative`, the link's messages
+   over the native port, PLAN.md "Spike 3"). Don't build a second one here: merge main once that lands, and give
+   Windows the same relay in Rust (the host started by Chrome, relaying to the running app over a named pipe for this
+   user only, as the Mac's relays over a Unix socket).
 3. **Windows shell, part 1:** link, windows, overlay, keys. Then the data, themes, profiles and the profile switch.
 4. Every feature that doesn't carry over gets a line in `native/UNVERIFIED.md` or DECISIONS.md: what it was on the
    Mac, and why not (or what replaces it).
