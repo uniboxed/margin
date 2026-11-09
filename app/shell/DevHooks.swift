@@ -23,6 +23,9 @@
 //   - `fail { step: show|park|reveal|fullscreen }`: the next such step of a Test A/Test B switch counts
 //     as not landed, and its call isn't made. A reveal is the one exception: the screen is revealed
 //     anyway (it must never stay held) and the reveal counted as failed.
+//   - `probe { what: tabMove }`: Test A's copy's one-shot tab-move probe (app/WINDOWS.md: tabs following the
+//     window in front): one tab and one window made, the tab moved there and back, what survived, closed
+//     again. Only Test A's (by Safari's name), whatever window is shown; its answer is numbers and booleans.
 // - Each notification is one log line, honoured or refused: the kind, "Test A" or "Test B", ids and the
 //   sender's pid (as it says it). Nothing else it sent is ever logged.
 
@@ -93,6 +96,8 @@ protocol DevHookWorld: AnyObject {
     func devSwitch(from: WindowKey, to link: String, space: String?) -> String?
     // The dump's lines (ids, numbers, ms only).
     func devDump() -> [String]
+    // A probe asked of this link's copy (Test A's); nil if asked, else why not. Its answer is logged.
+    func devProbe(_ link: String, _ what: String) -> String?
     var devState: DevHookState { get set }
 }
 
@@ -101,7 +106,7 @@ final class DevHooks {
     static let names: Set<String> = ["Test A", "Test B"]
     static let prefix = "io.tirth.margin.dev."
     static let defaultsKey = "MarginDevHooks"
-    enum Kind: String, CaseIterable { case `switch`, dump, mode, fail }
+    enum Kind: String, CaseIterable { case `switch`, dump, mode, fail, probe }
 
     weak var world: DevHookWorld?
     let isOn: () -> Bool // the MarginDevHooks default, read each time
@@ -148,6 +153,14 @@ final class DevHooks {
         func refuse(_ why: String) -> String { say("dev hook: \(Self.prefix)\(kind.rawValue) refused: \(why) \(asked)") }
         guard isOn() else { return refuse("\(Self.defaultsKey) isn't YES") }
         guard let world else { return refuse("no shell") }
+        // A probe acts only in Test A's own copy, whatever window is shown.
+        if kind == .probe {
+            guard fields["what"] == "tabMove" else { return refuse("a probe that isn't tabMove") }
+            let links = world.devSafariLinks(named: "Test A")
+            guard links.count == 1, let link = links.first, world.devSafariName(link) == "Test A" else { return refuse("\(links.count) Safari profiles named Test A") }
+            if let why = world.devProbe(link, "tabMove") { return refuse(why) }
+            return say("dev hook: probe tabMove in Test A (\(link)) \(asked)")
+        }
         guard let shown = world.devShownWindow() else { return refuse("no window shown") }
         guard let here = world.devSafariName(shown.link) else { return refuse("the window shown has no name from Safari (Full Disk Access, or not a Safari profile)") }
         guard Self.names.contains(here) else { return refuse("the window shown isn't Test A's or Test B's") }
@@ -185,6 +198,8 @@ final class DevHooks {
             guard !set.isEmpty else { return refuse("neither freeze nor old") }
             world.devState = state
             return say("dev hook: mode \(set.joined(separator: ", ")) for Test A and Test B's switches this session (\(state.description)) \(asked)")
+        case .probe:
+            return refuse("unreachable")
         case .fail:
             guard let s = fields["step"], let step = DevFailStep(rawValue: s) else { return refuse("a step that isn't show, park, reveal or fullscreen") }
             world.devState.fails.insert(step)
@@ -234,6 +249,17 @@ extension Shell: DevHookWorld {
     func devSafariName(_ link: String) -> String? {
         guard link.hasPrefix("safari:") else { return nil }
         return profilesOf("safari").browserNames[SwitchNotice.profileId(link)]?.name
+    }
+
+    func devProbe(_ link: String, _ what: String) -> String? {
+        guard isLinked(link) else { return "Test A isn't linked: open one of its windows" }
+        // The page it opens: a plain one, here and not in the extension (no third-party address there).
+        request(link, "devTabMoveProbe", ["what": what, "url": "https://example.com/"], windowId: nil) { result, error in
+            // Numbers and booleans only (the copy's summary), scrubbed and cut short all the same.
+            let said = (result?["summary"] as? String).map { Diagnostics.scrub($0, max: 600) } ?? "none"
+            Diagnostics.note("dev hook: probe \(what): \(error.map { "failed: " + Diagnostics.scrub($0, max: 160) } ?? said)")
+        }
+        return nil
     }
 
     func devSafariLinks(named name: String) -> [String] {
