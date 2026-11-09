@@ -3440,3 +3440,58 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **Safari's only, on purpose:** the profile handoff and parking (their sweep, checks and recovery read Safari's windows): Chrome's and Edge's profiles switch the close-based way, and the notice for a profile not open says to open one of its windows from the browser's profile menu (Margin can't ask Chrome for one). Also Safari's: iCloud Tabs, Accessibility's exact window binding, the startup covers, the edge stop, keeping Safari's sidebar closed.
 - **Tests:** the link in Chrome's build (`tests/link-chromium.test.ts`); the real relay with the app's real listener and SocketLink (`tools/app-tests/relay-tests.swift`); Chrome for Testing, headless, loading the real Chrome build and starting the real relay through native messaging, linking to a stand-in app (`tests/e2e/chromium-relay.test.ts`). Safari's bundles differ only by the switches above, each the same as before for Safari (read in the diffs).
 - **Next (Phase 5's rest):** Tirth's checks in real Chrome and Edge (TESTING.md "Chrome and Edge on the Mac"); their profiles' own names (`Local State`); the iCloud Tabs folder's counterpart from `sessions.getDevices()`; Chrome's full-screen toolbar windows, which the matcher hasn't been shown yet.
+
+## Margin for Windows planned: a Rust shell, macOS first still (2026-11-09)
+
+Tirth's decision ("let's do it in rust then … write app for windows for now"). It supersedes "Margin 2 ships for macOS
+only" (2026-11-04) for Windows; Linux stays later and undecided (`native/BRIEF.md`). The macOS app, its Swift shell and
+the Safari build are untouched by this work, which lives on `feat/windows-shell` in its own worktree.
+
+- **Where the code is.** `native/` is a Cargo workspace: `margin-core`, OS-neutral (the link's session and messages,
+  chunks, the state mirror, the window binder and map, pass-through, the overlay planner, keys, the data set, store,
+  sync, browser profiles, imported themes, spaces across profiles, the close-based profile switch), each module naming
+  the Swift file it ports and tested on the Mac with the Swift's own tests and vectors (`tests/fixtures/data-merge`,
+  `tests/fixtures/traces`); and `margin-windows`, the binary `margin.exe`. Nothing has run on Windows: every behaviour
+  only Windows can confirm is a line in `native/UNVERIFIED.md`, with how to check it.
+- **No WebSocket on Windows.** Only Chrome and Edge exist there, and they link through native messaging: `margin.exe`,
+  started by the browser as its host, relays the port to the running app over a named pipe for this user only
+  (`\\.\pipe\Margin-<SID>`, a DACL for the user, remote clients refused, first instance only, each end checking the
+  other is the same `margin.exe`). The pipe carries native messaging's own framing (4-byte little-endian length, UTF-8
+  JSON) and the link's messages unchanged. So `margin-core` ports the link's session rules (welcome, hello in 5 s,
+  owner, replaced, tick/tock, 40 s, requests in 15 s, the 1 MB cap), not the RFC 6455 framing, the token, the Origin
+  check or Safari's dispatch. The welcome's `key` is optional: the pipe's security stands in for it.
+- **The extension's half of the Chromium link** comes from the macOS work (the relay helper on the Mac, PLAN.md
+  "Spike 3"), not built a second time here. Until it lands: the Chrome manifest has no `nativeMessaging` permission,
+  no extension id is fixed (`install.rs EXTENSION_IDS` is empty, `MARGIN_EXTENSION_IDS` for unpacked builds), and the
+  relay's own frames (`relayHello`, `relayWelcome`, `relayDown`, `relayUp`) are this branch's, to align with the Mac's.
+  The relay's facts win over the copy's: a link's browser (Edge or Chrome) and pid come from the relay's parent process.
+- **The overlay page is shared.** Its one change: `extension/ui/overlay-bridge.ts` picks WebKit's handler (the Mac, as
+  before) or WebView2's (`chrome.webview.postMessage` with a `rid`, answered `{ reply: rid, ok, value | error }`; the
+  app answers every message). The Safari and Chrome bundles are byte-identical to main's; `dist/app/overlay.js` differs
+  only by the bridge.
+- **Overlays on Windows:** a no-activate tool popup per browser window, not owned by it (a cross-process owner ties
+  the two UI threads' input together), kept just above it in z-order and restacked on foreground changes; WebView2 by
+  composition (transparent); pointer pass-through by toggling `WS_EX_TRANSPARENT` from the pointer's place, as
+  `PointerWatch` does; the overlay files served by the app with the Mac's Content Security Policy, every other request
+  refused. Taking the keyboard (the palette) makes the overlay the foreground window: Windows has no non-activating
+  key panel.
+- **Windowed windows too on Windows** (Tirth, 2026-11-09, as most people there don't use F11): Margin draws over
+  every linked Chrome or Edge window, over the whole window in full screen and over the page area only otherwise,
+  under the tabs and toolbar (`planner::windowed_frame`; the shell's `windowed_too`, off on the Mac). Its layout is
+  measured from where the copy takes its page to be, so `boxFromLayout` puts the page's box at the slot without
+  knowing about Windows' invisible borders.
+- **Keys on Windows are provisional, to pick with Tirth:** next/previous tab Ctrl+Alt+↓/↑, space Ctrl+Alt+→/←, palette
+  Ctrl+T, sidebar Alt+S, new window Ctrl+N. Ctrl+Alt is AltGr on many European layouts, and some graphics drivers take
+  Ctrl+Alt+arrows. Only the combinations the copy writes for the Mac (`Meta+KeyT`, the built-in navigation keys,
+  `Meta+KeyN`) are swapped for these; a key recorded in Settings is kept as written (Chrome on Windows reports the
+  Windows key as `Meta`).
+- **What doesn't carry over** (each said in its module): Spaces and the own-Space checks, the full-screen handoff with
+  parking and the freeze (SkyLight), Safari's Accessibility, files, profile names and sidebar, iCloud Tabs (`cloudTabs`
+  is null; `sessions.getDevices()` could stand in later), covers, EdgeStop. Profile names for Chromium can come from
+  `Local State` later (`browserId`/`browserName` are kept for it).
+- **Bugs the ports found in the Swift** (not fixed on the Mac by this branch): two wrong bindings in
+  `WindowMatcher.swift` past the gate's seed ranges (the space-switch run's seed 1686, the pages run's seed 1084: the
+  Swift tests reproduce them); `DataStore.save` can write over a later format's files when a save is a profile's first
+  touch; a failed save in `DataSync.carry` leaves that link held for good; `ProfileSwitch.undo` leaves a window it made
+  when the switch started from none; `Combo.parse` drops F13 and up; `spaceContent`'s caps take an arbitrary subset.
+  The Rust ports avoid the data ones and keep the binder's for comparison.

@@ -28,9 +28,11 @@ import { createAppNotices, createGestureFeedback } from '../../extension/ui/app-
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../extension/shared/switching.ts';
 import { cycleTab } from '../../extension/shared/view.ts';
 import { answerFramed, createCoverWatch } from '../../extension/ui/switch-cover.ts';
+import { pickBridge } from '../../extension/ui/overlay-bridge.ts';
 
-const bridge = (globalThis as any).webkit?.messageHandlers?.margin;
-const post = (op: string, body: Record<string, any> = {}) => (bridge ? bridge.postMessage({ op, ...body }) : Promise.reject(new Error('no app')));
+// WebKit's handler on the Mac, WebView2's on Windows (ui/overlay-bridge.ts).
+const bridge = pickBridge(globalThis);
+const post = (op: string, body: Record<string, any> = {}): Promise<any> => (bridge ? bridge({ op, ...body }) : Promise.reject(new Error('no app')));
 const log = (level: 'note' | 'warn' | 'error', ...args: any[]) => { void post('log', { level, text: args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ') }).catch(() => {}); };
 
 let host: ReturnType<typeof createAppHost> | null = null;
