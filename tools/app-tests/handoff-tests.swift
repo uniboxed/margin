@@ -308,9 +308,11 @@ final class FakeHandoffWorld: HandoffWorld {
     // Safari's own menu opening a profile's window (Shell.openProfileWindow, through Accessibility): asked for these.
     var opensWindows = false
     var openedWindowFor: [String] = []
+    var openedFrozen: [Bool] = [] // the freeze was live as each was asked
     func openProfileWindow(_ profile: String) -> Bool {
         guard opensWindows else { return false }
         openedWindowFor.append(profile)
+        openedFrozen.append(freezer.isLive)
         return true
     }
     struct Win {
@@ -1055,10 +1057,13 @@ func handoffMachineTests() {
         handoffInvariants("Margin off", w, s, [hA])
     }
     do {
-        // No parked window and no copy: needsProfile, as today; 90 s.
+        // No parked window and no copy, and Safari can't be asked for one: the freeze that would have hidden its
+        // window's slide revealed at once, then needsProfile, as today; 90 s.
         let (w, s) = handoffSetup { $0.linked.remove(hC) }
         s.start(toC, from: hA, windowId: 10)
-        check("waitingForProfile: no parked window: the person asked to open one", s.phase == .waitingForProfile && w.events == [.started(toC), .needsProfile(toC)])
+        handoffRun(w, 0.5)
+        check("waitingForProfile: no parked window: the person asked to open one", s.phase == .waitingForProfile && w.events == [.started(toC), .needsProfile(toC)], "\(s.phase) \(w.events)")
+        check("waitingForProfile: and the freeze revealed at once", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 failed: 0"] && !w.freezer.isLive, "\(w.freezer.calls)")
         handoffRun(w, 91)
         check("waitingForProfile: given up after 90 s, nothing done", !s.busy && failed(w.events.last) && w.fullAndInFront(hKA))
         handoffInvariants("waitingForProfile", w, s, [hA])
@@ -1076,26 +1081,57 @@ func handoffMachineTests() {
     do {
         // With Accessibility: Margin asks Safari for the profile's window itself, the person isn't told to open one,
         // and the switch goes on when its copy links with that window (Tirth, 2026-11-07: "Test A isn't open").
+        // Asked under the freeze, after the cover: a window opened beside a full-screen one is put in full screen
+        // by macOS, which slides to it, and that slide was seen (Tirth, 2026-11-09).
         let (w, s) = handoffSetup { $0.linked.remove(hC); $0.opensWindows = true }
         s.start(toC, from: hA, windowId: 10)
-        check("waitingForProfile with Accessibility: Safari asked for a window, no needsProfile", s.phase == .waitingForProfile && w.openedWindowFor == [hC] && w.events == [.started(toC)], "\(w.events) \(w.openedWindowFor)")
-        handoffRun(w, 1)
+        check("profile window: nothing asked before the freeze", s.phase == .preparing && w.openedWindowFor.isEmpty && w.events == [.started(toC)], "\(s.phase) \(w.events) \(w.openedWindowFor)")
+        handoffRun(w, 0.5)
+        check("profile window: Safari asked for it under the freeze, no needsProfile", s.phase == .frozen && w.openedWindowFor == [hC] && w.openedFrozen == [true] && w.events == [.started(toC)], "\(s.phase) \(w.events) \(w.openedFrozen)")
+        handoffRun(w, 0.3)
         check("and asked once, not on every poll", w.openedWindowFor == [hC], "\(w.openedWindowFor)")
         let kc = w.add(hC, id: 30, number: 3030, state: "fullscreen")
         handoffRun(w, 4)
         check("its window opened by Safari: shown, A parked", w.events.last == .done(toC) && w.fullAndInFront(kc) && w.registry.isParked(1010), "\(w.events) \(s.history.suffix(3))")
+        check("profile window: one freeze, revealed when ready, not at the watchdog", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 0"], "\(w.freezer.calls)")
         handoffInvariants("waitingForProfile, opened by Margin", w, s, [hA, hC])
     }
     do {
-        // Margin opened the profile's window, but its copy never links (Margin off in that profile): given up
-        // after 10 s, not 90, with A back in front (the shell tells the person why and closes that window).
+        // Margin opened the profile's window, but its copy never links (Margin off in that profile): revealed at the
+        // watchdog, given up after 10 s, not 90, with A back in front (the shell tells the person why and closes that window).
         let (w, s) = handoffSetup { $0.linked.remove(hC); $0.opensWindows = true }
         s.start(toC, from: hA, windowId: 10)
-        handoffRun(w, 9)
+        handoffRun(w, 2)
+        check("Margin's own window asked for: revealed at the watchdog, then waited for unfrozen, the keys the person's",
+              s.phase == .waitingForProfile && !s.keysMidSwitch && w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 watchdog: 0"], "\(s.phase) \(w.freezer.calls)")
+        handoffRun(w, 7)
         check("Margin's own window asked for: still waiting at 9 s", s.phase == .waitingForProfile, "\(s.phase)")
         handoffRun(w, 2)
         check("given up at 10 s, A in front", !s.busy && failed(w.events.last) && w.fullAndInFront(hKA), "\(w.events)")
         handoffInvariants("waitingForProfile, Margin off there", w, s, [hA])
+    }
+    do {
+        // Its copy slower than the freeze: revealed at the watchdog, waited for unfrozen, and once it links the
+        // switch freezes again for its window (after the cooldown) and goes on to it.
+        let (w, s) = handoffSetup { $0.linked.remove(hC); $0.opensWindows = true }
+        s.start(toC, from: hA, windowId: 10)
+        handoffRun(w, 3)
+        check("profile window, slow copy: waiting unfrozen after the watchdog", s.phase == .waitingForProfile && w.openedWindowFor == [hC], "\(s.phase)")
+        let kc = w.add(hC, id: 30, number: 3030, state: "fullscreen")
+        handoffRun(w, 4)
+        check("profile window, slow copy: frozen again for it, shown, A parked", w.events.last == .done(toC) && w.fullAndInFront(kc) && w.registry.isParked(1010)
+              && w.freezer.calls.first == "freeze 1.7 s: 0" && w.freezer.calls.filter { $0.hasPrefix("freeze") }.count == 2 && w.openedWindowFor == [hC], "\(w.freezer.calls) \(w.events)")
+        handoffInvariants("waitingForProfile, slow copy", w, s, [hA, hC])
+    }
+    do {
+        // With no freeze to hide it, Safari is asked at once, as before.
+        let (w, s) = handoffSetup { $0.linked.remove(hC); $0.opensWindows = true; $0.noFreezer = true }
+        s.start(toC, from: hA, windowId: 10)
+        check("profile window, no freeze: asked at once", s.phase == .waitingForProfile && w.openedWindowFor == [hC] && w.events == [.started(toC)], "\(s.phase) \(w.openedWindowFor)")
+        let kc = w.add(hC, id: 30, number: 3030, state: "fullscreen")
+        handoffRun(w, 4)
+        check("profile window, no freeze: shown, A parked", w.events.last == .done(toC) && w.fullAndInFront(kc) && w.registry.isParked(1010), "\(w.events)")
+        handoffInvariants("waitingForProfile, no freeze", w, s, [hA, hC])
     }
     // ---- the watchdog's three states, and step 5's latest start ----
     do {
@@ -1838,7 +1874,8 @@ func handoffReviewTests() {
         // The keys (§1.7): the switch's while it moves windows; not while it waits for a profile's copy.
         let (w, s) = handoffSetup { $0.linked.remove(hC) }
         s.start(toC, from: hA, windowId: 10)
-        check("review: waiting for a profile's copy: the keys aren't the switch's", s.phase == .waitingForProfile && !s.keysMidSwitch)
+        handoffRun(w, 0.5)
+        check("review: waiting for a profile's copy: the keys aren't the switch's", s.phase == .waitingForProfile && !s.keysMidSwitch, "\(s.phase)")
         let (w2, s2) = handoffSetup()
         s2.start(toB, from: hA, windowId: 10)
         check("review: preparing: the keys are the switch's", s2.phase == .preparing && s2.keysMidSwitch)

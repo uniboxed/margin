@@ -144,7 +144,10 @@ A switch's target is a **window**, not just a profile: `Target { link, space, nu
 **The target's copy isn't linked** (link down, reconnecting, a new copy relinking):
 
 - **P has a parked window:** `waitingForLink`, up to 3 s, with the cover up and no freeze. The link usually comes back (`reconnectGrace`, `Shell.swift:398-407`). If it doesn't, the window is returned by number to its display's Desktop Space (§2.1 `returnToDesktop`, no copy needed), and the notice says: "Work's window is on the Desktop. Margin can't reach its extension right now." The window is never stranded, and the person never sees "isn't open in Safari" for a profile whose window exists.
-- **P has none:** `waitingForProfile`, as today (`ProfileSwitch.swift:137-143`, `ShellProfiles.swift:369`).
+- **P has none:** its window is asked of Safari's own menu (`Shell.openProfileWindow`, Accessibility) **under the freeze**, as a create (§1.6): way `openProfile`. Preparing as for any switch (the cover, the cooldown), then the freeze, then the ask. Once its copy links with that window, the switch goes on as for that window (`focus`, or `show`), its space set then. A window opened beside a full-screen one is put in full screen by macOS, which slides to it, and before this the slide was seen (Tirth, 2026-11-09).
+  - Safari can't be asked (no Accessibility, no menu item): revealed at once, then `waitingForProfile` (90 s) with the notice, as before.
+  - The copy slower than the freeze: revealed at the watchdog, then `waitingForProfile` for the rest of the 10 s, the keys the person's; once it links, a freeze of its own for its window.
+  - No freeze (off for the session, two displays): asked at once and seen, `waitingForProfile` as before.
 
 **A parked target whose copy id is unknown** (a new copy, not yet rebound, §2.2): no freeze. Margin shows it by number into the active Space, the binder binds it from on-screen evidence, and the switch goes on from step 3 once it's bound (visible, logged). This is rare: §2.2's rebinding usually binds it first.
 

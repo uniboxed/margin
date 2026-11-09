@@ -180,6 +180,7 @@ final class HandoffRun {
         case focus = "full-screen target" // §1.5 rule 4
         case show = "normal target" // rule 5
         case create = "new window" // rule 7
+        case openProfile = "new profile window" // rule 7 with its copy not running: Safari's menu, under the freeze
     }
     let gen: Int
     var target: ProfileSwitch.Target
@@ -223,6 +224,7 @@ final class HandoffRun {
     var boundsAtShow: CGRect?
     var spacesAtShow: [UInt64]?
     var createAskedAt: Double?
+    var openedAt: Double? // the copy of an `openProfile` target linked with its window
     var createdAt: Double?
     var r1At: Double?
     var r2At: Double?
@@ -534,9 +536,22 @@ extension ProfileSwitch: FreezerDelegate {
             } else if phase != .waitingForProfile, world?.marginOff(link) == true {
                 // Margin turned off in that profile (Safari's settings): no window opened, failed at once, and said.
                 return finish(.failed(run.target, "Margin is turned off in it"), "Margin is turned off in \(link) (the browser's settings)")
+            } else if phase != .waitingForProfile, run.way == .openProfile {
+                return // asked under the freeze (showB), or about to be (preparing)
+            } else if phase != .waitingForProfile, freezes(run, hw) {
+                // Its copy starts with a window Margin asks Safari for (its own menu, through Accessibility). A window
+                // opened beside a full-screen one is put in full screen by macOS, which slides to it (§1.6), so it's
+                // asked under the freeze, as a create: the cover, the freeze, then the window (showB). The switch
+                // goes on once that copy links with it (frozenStep).
+                run.way = .openProfile
+                run.b = nil
+                run.bNumber = nil
+                run.prepared = false
+                newWindow = nil
+                if phase != .preparing { enter(.preparing, for: options.settleTimeout) }
+                note("\(link) isn't linked: its window to be asked for under the freeze")
             } else if phase != .waitingForProfile {
-                // Its copy starts with a window Margin asks Safari for (its own menu, through Accessibility); the
-                // switch goes on once that copy links (this is asked again on each poll). Else the person is told.
+                // No freeze: asked now, and seen (the switch goes on once that copy links). Else the person is told.
                 let opened = world?.openProfileWindow(link) == true
                 enter(.waitingForProfile, for: opened ? options.openedProfileWait : options.profileWait)
                 if opened {
@@ -640,7 +655,12 @@ extension ProfileSwitch: FreezerDelegate {
     }
 
     private func prepareStep(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
-        guard hw.isLinked(run.target.profile) else { return pickTarget(run, hw) }
+        if run.way == .openProfile {
+            // Its copy linked with a window meanwhile (the person opened one): that window is the target.
+            if hw.isLinked(run.target.profile), !hw.copyWindows(run.target.profile).isEmpty { return pickTarget(run, hw) }
+        } else if !hw.isLinked(run.target.profile) {
+            return pickTarget(run, hw)
+        }
         if run.bNumber == nil, let b = run.b { run.bNumber = hw.number(of: b) }
         // A window with a windows call still pending (§1.7): A's waits, then the switch is refused; B's
         // waits, then another target is picked.
@@ -684,6 +704,12 @@ extension ProfileSwitch: FreezerDelegate {
         guard run.a == nil || run.coverAt != nil || now - run.startedAt >= ho.coverWait else { return }
         if run.choice.freeze, !cooledDown(now) { return }
         freezeAndGo(run, hw, now)
+    }
+
+    // This switch will freeze, as freezeAndGo decides it (before the per-way exceptions, none of which is a
+    // window yet to be opened).
+    private func freezes(_ run: HandoffRun, _ hw: HandoffWorld) -> Bool {
+        run.choice.freeze && session.rules.on && session.noFreeze == nil && hw.handoffFreezer != nil
     }
 
     private func cooledDown(_ now: Double) -> Bool {
@@ -810,7 +836,25 @@ extension ProfileSwitch: FreezerDelegate {
         case .create:
             run.createAskedAt = now
             askCreate(run, hw)
+        case .openProfile:
+            run.createAskedAt = now
+            askProfileWindow(run, hw)
         }
+    }
+
+    // §1.6 for a profile whose copy isn't running: its window asked of Safari's own menu under the freeze, the
+    // switch on as for its own window once that copy links with it (frozenStep). Safari not asked (no
+    // Accessibility, no menu item): revealed, and the person asked to open one, as with no freeze.
+    private func askProfileWindow(_ run: HandoffRun, _ hw: HandoffWorld) {
+        let link = run.target.profile
+        guard world?.openProfileWindow(link) == true else {
+            note("\(link) isn't linked: waiting for one of its windows")
+            reveal(run, hw, .failed)
+            enter(.waitingForProfile, for: options.profileWait)
+            world?.switchChanged(.needsProfile(run.target))
+            return
+        }
+        note("\(link) isn't linked: asked the browser for a new window of it under the freeze, waiting for its copy")
     }
 
     // The show variant's window can go through the bridge (§1.5 rule 5): known, and parking on.
@@ -924,6 +968,34 @@ extension ProfileSwitch: FreezerDelegate {
         let reads = hw.spaceReads
         // The freeze gone by itself (the watchdog), its report still on its way.
         if run.live, hw.handoffFreezer?.isLive != true { late(run, now) }
+        if run.way == .openProfile {
+            let link = run.target.profile
+            guard hw.isLinked(link), !hw.copyWindows(link).isEmpty else {
+                let waited = now - (run.createAskedAt ?? now)
+                if waited >= options.openedProfileWait { return recover(run, hw, "no window of it was opened") }
+                // The freeze over (the watchdog) with its copy still not linked: waited for as with no freeze, the
+                // keys the person's again; once it links, the switch freezes again for its window (pickTarget).
+                if run.handle != nil, !run.live {
+                    note("\(link) not linked by the reveal: waiting for its copy unfrozen")
+                    enter(.waitingForProfile, for: options.openedProfileWait - waited)
+                }
+                return
+            }
+            let (way, key, number) = pickWindow(run, hw)
+            guard way != .create, let key else { return recover(run, hw, "Margin couldn’t find its window") }
+            run.openedAt = now
+            run.way = way
+            run.b = key
+            run.bNumber = number
+            newWindow = key.windowId
+            if let number { dropWatch(number) }
+            note("\(link) linked with a window at \(run.ms(now)) ms: \(way.rawValue) \(key)")
+            // Its space, which preparing couldn't set with no window to name.
+            if hw.activeSpaceId(of: key) != run.target.space {
+                hw.request(key.link, "setSpace", ["windowId": key.windowId, "spaceId": run.target.space], windowId: key.windowId) { _, _ in }
+            }
+            return showB(run, hw)
+        }
         guard hw.isLinked(run.target.profile) else { return recover(run, hw, "Safari stopped answering", reveal: .closed) }
         if run.bNumber == nil, let b = run.b { run.bNumber = hw.number(of: b) }
         // A parked target shown by number: on once the binder names it.
@@ -973,7 +1045,7 @@ extension ProfileSwitch: FreezerDelegate {
         // Deadlines (§1.4): the create's answer, then the settle timeout from the freeze (or the answer).
         if run.way == .create, run.createdAt == nil {
             if now - (run.createAskedAt ?? now) >= options.createTimeout { return recover(run, hw, "Safari took too long to open its window") }
-        } else if now - (run.createdAt ?? run.freezeAt ?? now) >= options.settleTimeout {
+        } else if now - (run.createdAt ?? run.openedAt ?? run.freezeAt ?? now) >= options.settleTimeout {
             if run.r2At != nil {
                 note("settle timeout with B ready: A's part to the aftercare")
                 return enterAfter(run, hw)
@@ -1656,6 +1728,7 @@ extension ProfileSwitch: FreezerDelegate {
             s += ", frozen \(Int(((revealed - freezeAt) * 1000).rounded())) ms" + (run.revealResult.map { " (result \($0))" } ?? "")
         }
         var parts: [String] = []
+        if run.openedAt != nil { parts.append("profile window linked \(run.ms(run.openedAt))") }
         if run.way == .create { parts.append("created \(run.ms(run.createdAt))") } else { parts.append("shown \(run.ms(run.shownAt))") }
         parts.append("B steady \(run.ms(run.r2At))")
         if run.aAskedAt != nil { parts.append("A asked \(run.ms(run.aAskedAt))") }
