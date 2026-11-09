@@ -13,7 +13,7 @@ Every private macOS call, class, selector, key and file format Margin.app uses. 
 - Tests never call a real private function and never freeze the screen:
   - the real resolver (`RealPrivateResolver`) is made only in `Shell.forApp()`;
   - it and every wrapper (`SkyLight`) refuse to run when `MARGIN_APP_TESTS` is set, and `tools/app-tests/run.sh` sets it;
-  - tests use a fake resolver whose "functions" are their own (`tools/app-tests/private-calls-tests.swift`).
+  - tests use a fake resolver whose "functions" are their own (`app/macos/private/tests/private-calls-tests.swift`).
 - The log holds names, counts, results and milliseconds only. Never a title, an address or a page's words. Nothing is sent anywhere.
 
 ## The parts

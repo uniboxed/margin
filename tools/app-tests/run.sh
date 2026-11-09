@@ -1,6 +1,8 @@
 #!/bin/bash
 # Margin.app's shell (app/macos/shell/), tested with no browser: npm run test:app.
-#   unit: tests.swift, data-tests.swift and window-tests.swift, the shell's logic on its own (no
+#   unit: each app folder's own tests/ (app/macos/shell/tests/, app/macos/private/tests/,
+#         engines/webkit/browsers/safari/app/tests/): tests.swift, data-tests.swift and
+#         window-tests.swift, the shell's logic on its own (no
 #         window, no link), the lasting data's merge (tests/fixtures/data-merge/),
 #         its files (in a temporary folder) and its messages; spaces across
 #         profiles (profiles-tests.swift: the order, the names' file, the
@@ -46,11 +48,17 @@ cd "$(dirname "$0")"
 BUILD="${MARGIN_APP_TESTS_BUILD:-$PWD/build}"
 mkdir -p "$BUILD"
 # Margin.app's Swift: every *.swift of each folder app/macos/swift-sources.txt lists (as the app's Xcode target has it).
+# Their unit checks: each such folder's own tests/ (app/macos/shell/tests/, app/macos/private/tests/,
+# engines/webkit/browsers/safari/app/tests/: never in the app, which takes each folder's own *.swift only).
 SHELL_SOURCES=()
+UNIT_TESTS=()
 while read -r folder; do
   case "$folder" in ''|'#'*) continue ;; esac
   SHELL_SOURCES+=(../../"$folder"/*.swift)
+  for t in ../../"$folder"/tests/*.swift; do [ -f "$t" ] && UNIT_TESTS+=("$t"); done
 done < ../../app/macos/swift-sources.txt
+# The stand-in for Safari's folder, for the unit checks and the end-to-end ones.
+FAKE_SAFARI=../../engines/webkit/browsers/safari/app/tests/fake-safari.swift
 FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault)
 # Compiled on every core (batch mode): about 4x faster than one job.
 JOBS=(-j"$(sysctl -n hw.ncpu 2>/dev/null || echo 4)")
@@ -90,12 +98,12 @@ if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   CARGO="${CARGO:-$(command -v cargo || echo "$HOME/.cargo/bin/cargo")}"
   "$CARGO" build -q --release -p margin-connector --manifest-path ../../Cargo.toml || exit 1
   CONNECTOR="$(cd ../.. && pwd)/target/release/margin-connector"
-  build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift cloud-tabs-tests.swift theme-tests.swift fake-safari.swift window-tests.swift private-calls-tests.swift handoff-tests.swift parking-tests.swift handoff-ui-tests.swift devhooks-tests.swift relay-tests.swift "${SHELL_SOURCES[@]}"
+  build tests "${UNIT_TESTS[@]}" "${SHELL_SOURCES[@]}"
   MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_CONNECTOR_BIN="$CONNECTOR" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
   [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
-  build e2e e2e.swift e2e-data.swift e2e-profiles.swift e2e-windows.swift e2e-keyboard.swift e2e-overlays.swift e2e-cloud.swift e2e-themes.swift fake-safari.swift "${SHELL_SOURCES[@]}"
+  build e2e e2e.swift e2e-data.swift e2e-profiles.swift e2e-windows.swift e2e-keyboard.swift e2e-overlays.swift e2e-cloud.swift e2e-themes.swift "$FAKE_SAFARI" "${SHELL_SOURCES[@]}"
   MARGIN_APP_ROOT="$PWD/../../dist/app" MARGIN_FAKE_EXTENSION="$PWD/fake-extension.mts" MARGIN_NODE="$NODE" \
     MARGIN_APP_SHOT="${MARGIN_APP_SHOT:-$BUILD/overlay.png}" "$BUILD/e2e" || status=1
 fi

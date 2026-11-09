@@ -706,7 +706,7 @@ mod tests {
         }
     }
 
-    // tools/app-tests/tests.swift shortcuts()
+    // app/macos/shell/tests/tests.swift shortcuts()
     #[test]
     fn parsing() {
         let down = c("Ctrl+Meta+ArrowDown");

@@ -608,7 +608,7 @@ pub fn replay_with_overlays(lines: &[TraceLine]) -> Vec<(WindowSnapshot, Vec<Tra
     out
 }
 
-// The Swift's tests (tools/app-tests/window-tests.swift `windowMap`), and Tirth's recorded session
+// The Swift's tests (app/macos/shell/tests/window-tests.swift `windowMap`), and Tirth's recorded session
 // (tests/fixtures/traces/2026-11-07-sidebar-on-desktop.jsonl, as `overlaySpace` replays it).
 #[cfg(test)]
 mod tests {

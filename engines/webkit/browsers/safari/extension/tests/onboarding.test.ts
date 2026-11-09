@@ -21,7 +21,7 @@ globalThis.chrome = {
   storage: { local: { get: async () => ({}), set: async () => {} } },
 };
 
-const onboarding = await import('../engines/webkit/browsers/safari/extension/onboarding.ts');
+const onboarding = await import('../onboarding.ts');
 const types = () => sent.map((m) => (m.type === 'status' ? `status:${m.allSites}` : m.name));
 
 const tick = () => new Promise((r) => setTimeout(r, 5));

@@ -223,7 +223,7 @@ Before the freeze, in `preparing`:
 
 ### 1.11 Built (WP8)
 
-`app/macos/shell/Handoff.swift` (`HandoffWorld`, `HandoffOptions`, `HandoffChoice`, `HandoffRun`, `AftercareWatch`, `HandoffSession`, and the machine as an extension of `ProfileSwitch`), with `app/macos/shell/ProfileSwitch.swift` as its face; tests in `tools/app-tests/handoff-tests.swift` (`FakeHandoffWorld`: Safari, its Spaces, the real parker and registry over `FakeSpaceWorld`, `FakeFreezer`). Settled on the way:
+`app/macos/shell/Handoff.swift` (`HandoffWorld`, `HandoffOptions`, `HandoffChoice`, `HandoffRun`, `AftercareWatch`, `HandoffSession`, and the machine as an extension of `ProfileSwitch`), with `app/macos/shell/ProfileSwitch.swift` as its face; tests in `app/macos/shell/tests/handoff-tests.swift` (`FakeHandoffWorld`: Safari, its Spaces, the real parker and registry over `FakeSpaceWorld`, `FakeFreezer`). Settled on the way:
 
 - **One machine, two ways.** `ProfileSwitch` keeps today's close-based switch, its phases (`creating`, `settling`, `closing`, `checking`) and its words, and runs it when the world isn't a `HandoffWorld`, has no Space reads, or the display list doesn't read (never a guess). It also runs it for `close` without a freeze when the target has no parked window. In a `HandoffWorld` it asks A's drafts first: a draft or no answer keeps A, with `window-kept-draft`.
 - **`HandoffWorld` extends `SwitchWorld`.** Four of its members are the shell's own already (`spaceReads`, `parker`, `parking`, `parkingOn`, and `showSwitchNotice`); the rest are WP9's. Until the shell conforms, every switch is today's.
@@ -317,7 +317,7 @@ Changes:
   Several matches leave it unbound (§1.5 covers that), and the log says so.
 - Parked numbers are left out of the "read that tells nothing" test (`liveBound`, `reliableBig`: `WindowMatcher.swift:398-404`, `:546-548`), and they're never front-window candidates, elimination rivals, or subjects of the moved or visible rules.
 
-Built (WP5): `WindowBinder.update(…, parked:)`, `expectParked(_:number:why:)` (and a form that takes `rebind`'s map), and `expect(…, bounds:)` in `app/macos/shell/WindowMatcher.swift`; tests in `tools/app-tests/window-tests.swift` (`parkedWindowBinding`). Settled on the way:
+Built (WP5): `WindowBinder.update(…, parked:)`, `expectParked(_:number:why:)` (and a form that takes `rebind`'s map), and `expect(…, bounds:)` in `app/macos/shell/WindowMatcher.swift`; tests in `app/macos/shell/tests/window-tests.swift` (`parkedWindowBinding`). Settled on the way:
 
 - **A parked binding is also kept while its copy isn't linked.** That isn't one of the three drop reasons above. A copy that comes back new still drops it, because the binder remembers each link's copy.
 - **Each keep is one log line**, said again only when its reason changes: not listed by the window server, off screen, or its copy not linked.
@@ -597,7 +597,7 @@ The lab only ever closed A under a second freeze after B's reveal (`S/handoff/la
 - **Scroll:** each page goes back to where it was scrolled, once (the scroll record, `docs/DATA.md` "The scroll record").
 - **Media restarts.** PiP ends with its window.
 - **Honest timings:** a create plus entry is about 1.1-1.7 s still, then about 0.3 s of B, then about 0.15 s still again (G3 measures it). The setting's text says switching is slower and pages reload (§5).
-- Built (WP11): `Handoff.swift` `startClose`, `closeTry`, `closingStep`, `checkingStep`; tests in `tools/app-tests/handoff-tests.swift`. Settled on the way:
+- Built (WP11): `Handoff.swift` `startClose`, `closeTry`, `closingStep`, `checkingStep`; tests in `app/macos/shell/tests/handoff-tests.swift`. Settled on the way:
   - **When freeze 2 starts:** in `after`, once B's focus check (§6.6, 300 ms) is done and the cooldown has passed (300 ms since the reveal; 1 s after a watchdog reveal). The phase is then `closing`, and `checking` for a drop left at the watchdog. Both names are the close-based switch's too, for the same steps.
   - **The close's `notAfter`:** 600 ms into freeze 2. A close that would land after the freeze is refused rather than carried out seen. Unfrozen, `closeTimeout` as before.
   - **"B in front":** B's Space is the active one (the Space reads) and B is Safari's first window on screen (`inFront`). A is gone when the window server stops listing it; its copy's list lags.
@@ -730,7 +730,7 @@ New, kept small:
   - more than one display: today's slide (0.4-0.65 s);
   - today's slide, for comparison: 0.4-0.65 s, with Margin's overlay gone for about 180 ms (`PLAN.md` §15).
 
-Built (WP10, the overlay's side): `switchCover` in `ui/view-model.ts`, the guarded `<m-switch-cover>` slot and `switch-cover` part (`ui/sanitize.ts`, `ui/render.ts`, Margin's default in `DEFAULT_PARTS`), parts in Arcadia and Neo-brutalism, `extension/ui/switch-cover.ts` (`createCoverWatch`, `answerFramed`) wired in `app/shared/host/overlay.ts`, and the switch's notices by kind; tests in `tests/handoff-ui.test.ts`, `tests/theme/switch-cover.test.ts` and `tools/app-tests/handoff-ui-tests.swift`. Settled on the way:
+Built (WP10, the overlay's side): `switchCover` in `ui/view-model.ts`, the guarded `<m-switch-cover>` slot and `switch-cover` part (`ui/sanitize.ts`, `ui/render.ts`, Margin's default in `DEFAULT_PARTS`), parts in Arcadia and Neo-brutalism, `extension/ui/switch-cover.ts` (`createCoverWatch`, `answerFramed`) wired in `app/shared/host/overlay.ts`, and the switch's notices by kind; tests in `tests/handoff-ui.test.ts`, `tests/theme/switch-cover.test.ts` and `app/macos/shell/tests/handoff-ui-tests.swift`. Settled on the way:
 
 - **Which overlay is A's:** `across.switching.from { profile, windowId }` (the switcher's `from`). The view model draws the cover only when that's its own profile and window. Today's machine has none of the three phases, so it never shows one.
 - **The cover's shape:** `{ id, text, label, hasSpace, profile: { name, emoji, color, initial, symbol }, space: { name, emoji } }`. `text` is "Switching to Work…", with Margin's words in the view model.
@@ -791,7 +791,7 @@ For live tests without Accessibility, AppleScript or clicks.
 - **A sender:** `tools/handoff-lab/devswitch.swift`.
 - **Removal:** the file, its call sites and the sender go before production. Each has a `DEV-HOOK` comment so one grep finds them.
 
-Built (WP12): `engines/webkit/browsers/safari/app/DevHooks.swift` (`DevHooks`, `DevHookWorld`, `DevHookState`, `DevFailStep`, and the shell's side), `Shell.Options.devHooksOn` (set only in `forApp()`), the machine's caps and four fault sites in `Handoff.swift`, `Diagnostics.scrub`, the sender `tools/handoff-lab/devswitch.swift`, the live checklist in `TESTING.md`, and the G1/G16 runbook in `tools/handoff-lab/README.md`; tests in `tools/app-tests/devhooks-tests.swift`. Settled on the way:
+Built (WP12): `engines/webkit/browsers/safari/app/DevHooks.swift` (`DevHooks`, `DevHookWorld`, `DevHookState`, `DevFailStep`, and the shell's side), `Shell.Options.devHooksOn` (set only in `forApp()`), the machine's caps and four fault sites in `Handoff.swift`, `Diagnostics.scrub`, the sender `tools/handoff-lab/devswitch.swift`, the live checklist in `TESTING.md`, and the G1/G16 runbook in `tools/handoff-lab/README.md`; tests in `engines/webkit/browsers/safari/app/tests/devhooks-tests.swift`. Settled on the way:
 
 - **"The current profile" is the window Margin shows** (where the last switch landed, else the one in front with its overlay, else the one Safari window with its overlay up). The sender runs in a terminal, so Safari usually isn't in front. It must be Test A's or Test B's for every kind, not only `switch`, and a switch's target the other one.
 - **The caps and faults can't reach another profile.** `dev.mode` and `dev.fail` are kept for the session, but a switch uses them only if `HandoffWorld.devHookAllows(A, B)` holds as it starts: the default YES at that moment, and both profiles Safari's Test A and Test B. Anything armed stays armed through other profiles' switches.
@@ -808,7 +808,7 @@ These must keep passing: `npm test`, `npm run test:theme`, `npm run test:app`, `
 
 ### 10.1 Unit and app tests (`npm run test:app`, `npm test`)
 
-- **`tools/app-tests/handoff-tests.swift` (new):** the machine against fakes, in the `SwitchWorld`/`SwitchClock` pattern (`tools/app-tests/profiles-tests.swift:12-80`; `FakeClock` reused).
+- **`app/macos/shell/tests/handoff-tests.swift` (new):** the machine against fakes, in the `SwitchWorld`/`SwitchClock` pattern (`app/macos/shell/tests/profiles-tests.swift:12-80`; `FakeClock` reused).
   - `FakeHandoffWorld`: links (up, held, down, new copy), the copies' windows (id, state, focused, focusedAt, bounds), window numbers, Spaces and the active Space, overlays (ready, framed with mode), the cover, the display count, and scripted answers, lags, `busy` and `refused` for each request.
   - `FakeFreezer`: freeze, reveal and release results, and a watchdog driven by the fake clock.
   - `FakeParker`: park, show and return results and lags, per-window Spaces, and "came back by itself".
@@ -828,14 +828,14 @@ These must keep passing: `npm test`, `npm run test:theme`, `npm run test:app`, `
     - §1.10's blockers;
     - §6.11's same-profile handoff.
   - **The invariants of §4.4** run after every case.
-- **`tools/app-tests/parking-tests.swift` (new):** the registry.
+- **`app/macos/shell/tests/parking-tests.swift` (new):** the registry.
   - Keyed by number, and forgotten only by §2.1's rule. Never forgotten by a link down, a reconnecting link or a new copy.
   - Rebinding by elimination and by bounds, and ambiguity left unbound.
   - §2.6's causes: a system return re-parked, never a handoff; a focus event a handoff.
   - A failed show destroys only that window's Space.
   - `returnAll`; the crash marker in the harness root.
-- **`tools/app-tests/window-tests.swift`:** the binder with `parked` (never dropped for missing; dropped for closed, browser gone and new copy; left out of `liveBound`, `reliableBig`, front candidates and the rules) and `expectParked`.
-- **`tools/app-tests/private-calls-tests.swift` (new):** `PrivateCalls.check` with a fake resolver: each missing symbol, class or selector, and each mismatched encoding, gives the right availability. Nil Copy results read as unknown. The real wrappers refuse under `MARGIN_APP_TESTS`.
+- **`app/macos/shell/tests/window-tests.swift`:** the binder with `parked` (never dropped for missing; dropped for closed, browser gone and new copy; left out of `liveBound`, `reliableBig`, front candidates and the rules) and `expectParked`.
+- **`app/macos/private/tests/private-calls-tests.swift` (new):** `PrivateCalls.check` with a fake resolver: each missing symbol, class or selector, and each mismatched encoding, gives the right availability. Nil Copy results read as unknown. The real wrappers refuse under `MARGIN_APP_TESTS`.
 - **`tools/app-tests/e2e-profiles.swift`:** the whole switch with stand-in windows and `fake-extension.mts` (the fake parker and freezer injected through `Shell` options).
   - the cover and `coverShown`;
   - A's overlay ordered out before A's normal;

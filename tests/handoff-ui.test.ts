@@ -5,7 +5,7 @@
 // mid-swipe), its `framed { mode }` after a `shown`, "Close windows to save
 // memory" in Settings and how it's saved (the app's `switch.closeWindows`),
 // `across.switchSettings`, and the switch's notices by kind with their
-// button going back to the app. The app's side: tools/app-tests/handoff-ui-tests.swift.
+// button going back to the app. The app's side: app/macos/shell/tests/handoff-ui-tests.swift.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

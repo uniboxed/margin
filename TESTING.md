@@ -764,7 +764,7 @@ The honest numbers, until gate G16 measures them:
 - [ ] `… alternate 30 --every 4`: 30 switches, Test B then Test A. Gate G16 does the same from the lab (`tools/handoff-lab/README.md`).
 
 **Before production.**
-- [ ] The dev hook goes: `git grep -n DEV-HOOK` lists every part. Delete `engines/webkit/browsers/safari/app/DevHooks.swift`, `tools/app-tests/devhooks-tests.swift` and `tools/handoff-lab/devswitch.swift`, and every marked line in `Shell.swift`, `Handoff.swift`, `tools/app-tests/` (`run.sh`, `tests.swift`, the fake world in `handoff-tests.swift`) and the lab's `devSwitch` (G1's `--dev-hook` and G16 need another way to drive Margin by then). Then `npm run test:app`, and `defaults delete io.tirth.margin MarginDevHooks` on every test Mac.
+- [ ] The dev hook goes: `git grep -n DEV-HOOK` lists every part. Delete `engines/webkit/browsers/safari/app/DevHooks.swift`, `engines/webkit/browsers/safari/app/tests/devhooks-tests.swift` and `tools/handoff-lab/devswitch.swift`, and every marked line in `Shell.swift`, `Handoff.swift`, `tools/app-tests/` (`run.sh`, `tests.swift`, the fake world in `handoff-tests.swift`) and the lab's `devSwitch` (G1's `--dev-hook` and G16 need another way to drive Margin by then). Then `npm run test:app`, and `defaults delete io.tirth.margin MarginDevHooks` on every test Mac.
 - [ ] The handoff's gate (`MarginHandoff`) is decided by the gates' results, not left to a default someone set.
 ## Margin 2 Phase 6: user themes (2026-11-06)
 

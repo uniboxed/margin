@@ -2355,7 +2355,7 @@ impl WindowBinder {
     }
 }
 
-// The Swift's tests (tools/app-tests/window-tests.swift `windowBinding`, `parkedWindowBinding`, `axBinding`,
+// The Swift's tests (app/macos/shell/tests/window-tests.swift `windowBinding`, `parkedWindowBinding`, `axBinding`,
 // `stackingExact`), read after read against the same made-up browser, with the same seeds for the randomized runs.
 #[cfg(test)]
 mod tests {

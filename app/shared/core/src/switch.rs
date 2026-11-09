@@ -889,7 +889,7 @@ mod tests {
         payload: Value,
     }
 
-    /// The Swift FakeWorld (tools/app-tests/profiles-tests.swift): the copies answer closeWindow, focusWindow and
+    /// The Swift FakeWorld (app/macos/shell/tests/profiles-tests.swift): the copies answer closeWindow, focusWindow and
     /// setSpace at once (queued here, delivered by `pump`), openSpaceWindow when told.
     #[derive(Default)]
     struct World {
@@ -1069,7 +1069,7 @@ mod tests {
         Target::new(B, "b1")
     }
 
-    // tools/app-tests/profiles-tests.swift switchTests(), each case.
+    // app/macos/shell/tests/profiles-tests.swift switchTests(), each case.
     #[test]
     fn it_works() {
         let mut r = Run::new(|_| {});

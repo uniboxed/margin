@@ -762,7 +762,7 @@ mod tests {
         }
     }
 
-    // tools/app-tests/tests.swift shortcuts(): the space step.
+    // app/macos/shell/tests/tests.swift shortcuts(): the space step.
     #[test]
     fn the_space_step() {
         let d = three();

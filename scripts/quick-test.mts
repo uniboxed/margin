@@ -90,6 +90,8 @@ function reach(file) { // every file `file` imports, directly or not
 
 // ---- the plan -----------------------------------------------------------------------------------
 const UNIT = readdirSync(join(ROOT, 'tests')).filter((n) => n.endsWith('.test.ts')).map((n) => join(ROOT, 'tests', n));
+// Tests next to what they test: each engine's and browser's own (engines/**/tests/*.test.ts), run with the unit tests.
+UNIT.push(...walk(join(ROOT, 'engines')).filter((f) => /\/tests\/[^/]+\.test\.ts$/.test(f)));
 const SECURITY = existsSync(join(ROOT, 'tests/security')) ? readdirSync(join(ROOT, 'tests/security')).filter((n) => n.endsWith('.test.ts')).map((n) => join(ROOT, 'tests/security', n)) : [];
 const THEME = readdirSync(join(ROOT, 'tests/theme')).filter((n) => n.endsWith('.test.ts')).map((n) => join(ROOT, 'tests/theme', n));
 const E2E = readdirSync(join(ROOT, 'tests/e2e')).filter((n) => n.endsWith('.test.ts')).map((n) => join(ROOT, 'tests/e2e', n));

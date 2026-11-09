@@ -400,7 +400,7 @@ mod tests {
         f.window = Some(win(100, false, FULL));
     }
 
-    // tools/app-tests/window-tests.swift overlayPlanner(), its Spaces-free rules.
+    // app/macos/shell/tests/window-tests.swift overlayPlanner(), its Spaces-free rules.
     #[test]
     fn wanted_or_not() {
         assert_eq!(d(|_| {}), OverlayDecision::Show(100), "a bound full-screen window on screen");
@@ -534,7 +534,7 @@ mod tests {
         );
     }
 
-    // tools/app-tests/tests.swift safariParts(): the docked Web Inspector.
+    // app/macos/shell/tests/tests.swift safariParts(): the docked Web Inspector.
     #[test]
     fn the_overlays_frame() {
         let w = Rect::new(0.0, 33.0, 1512.0, 949.0);
@@ -581,7 +581,7 @@ mod tests {
         assert!(!fills_display(&FULL, &[]));
     }
 
-    // tools/app-tests/window-tests.swift placementCheck(), less the Space bridge's.
+    // app/macos/shell/tests/window-tests.swift placementCheck(), less the Space bridge's.
     #[test]
     fn the_placement_check() {
         let side = Rect::new(0.0, 0.0, 300.0, 982.0);
