@@ -220,7 +220,7 @@ async function sleepTab(record: import('../../types/margin').TabRecord, afterMs:
   const how = platform?.sleepTabs === 'discard' ? 'discard' : 'close';
   if (how === 'discard' && typeof api.tabs.discard !== 'function') return 'no discard';
   if (!stillDue(record.id, afterMs)) return 'used';
-  const answer = await ask(tab.id, tab.url);
+  const answer = await ask(tab.id, tab.url as string); // (mayAccess: it has its url)
   // Its page said no (or nothing): not asked again for a while (refusedLately).
   const refused = (why: string) => {
     noteRefusal(record);
@@ -243,7 +243,7 @@ async function sleepTab(record: import('../../types/margin').TabRecord, afterMs:
     // Its browser tab closed, its Margin tab kept, not open, in its space
     // (background.ts tabs.onRemoved: closing.ts says it's Margin's, to keep),
     // with where its page was scrolled (queued before the close's change).
-    if (Number.isFinite(answer.scrollY)) void keepScroll(tab.id, tab.url, answer.scrollY as number); // (finite: a number)
+    if (Number.isFinite(answer.scrollY)) void keepScroll(tab.id, tab.url as string, answer.scrollY as number); // (finite: a number)
     noteClosing([tab.id], 'keep', 'sleep');
     if (!(await Promise.resolve(api.tabs.remove(tab.id)).then(() => true, () => false))) {
       takeClosing(tab.id);
@@ -318,7 +318,7 @@ export async function windowDrafts(windowId: number, { ms = DRAFTS_MS }: { ms?: 
   await Promise.all(tabs.map(async (tab) => {
     if (!Number.isInteger(tab?.id) || !/^https?:/i.test(tab.url ?? '') || tab.discarded || foundWithNoPage(tab.id)) return;
     const said = await answerOrNull(draftIn(tab, until), Math.max(0, until - Date.now()));
-    if (said?.scrollY != null) scrolls.push({ tabId: tab.id, url: tab.url, y: said.scrollY });
+    if (said?.scrollY != null) scrolls.push({ tabId: tab.id, url: tab.url as string, y: said.scrollY }); // (a web page's: checked above)
     if (said?.is === 'draft') drafts.push(tab.id);
     else if (said?.is !== 'none') unknown.push(tab.id);
   }));

@@ -115,7 +115,8 @@ async function zoomBase(tabId) {
   const known = tabZoomBase.get(tabId);
   if (known && zoomClock() - known.at < ZOOM_KEEP_MS) return known.base;
   const settings = await api.tabs.getZoomSettings?.(tabId).catch(() => null);
-  const base = Number.isFinite(settings?.defaultZoomFactor) && settings.defaultZoomFactor > 0 ? settings.defaultZoomFactor : 1;
+  // (Finite: settings and its factor are there.)
+  const base = Number.isFinite(settings?.defaultZoomFactor) && settings!.defaultZoomFactor! > 0 ? settings!.defaultZoomFactor! : 1;
   if (tabZoomBase.size > 2 * ZOOM_CAP) tabZoomBase.clear();
   tabZoomBase.set(tabId, { base, at: zoomClock() });
   return base;
@@ -469,7 +470,7 @@ export const handlers = {
     const from = sender?.tab?.id != null ? sender.tab : null;
     if (platform?.search === 'browser' && api.search?.query) {
       if (tabId != null) return void (await api.search.query({ text, tabId }));
-      if (from) return openBehind({ windowId, from, deadline, label: text, then: (tab) => api.search.query({ text, tabId: tab.id }) });
+      if (from) return openBehind({ windowId, from, deadline, label: text, then: (tab) => api.search!.query({ text, tabId: tab.id }) }); // (checked above)
       return void (await api.search.query({ text, disposition: 'NEW_TAB' }));
     }
     const { settings } = await load();
@@ -867,7 +868,7 @@ export const handlers = {
   // inherits the space (model.inheritSpace). Its new-tab page opens the palette. Answers its id, state and
   // bounds, which the app binds it by as Margin's.
   async newWindow({ fromWindowId, fullscreen }: { fromWindowId?: number, fullscreen?: boolean } = {}) {
-    const from = Number.isInteger(fromWindowId) ? await api.windows.get(fromWindowId).catch(() => null) : null;
+    const from = Number.isInteger(fromWindowId) ? await api.windows.get(fromWindowId as number).catch(() => null) : null;
     const spaceId = from ? M.activeSpaceId(await load(), from.id) : null;
     const full = fullscreen ?? from?.state === 'fullscreen';
     markMarginOpening();

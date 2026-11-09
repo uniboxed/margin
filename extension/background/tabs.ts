@@ -686,7 +686,8 @@ export async function reloadCutOff(tabId: number) {
   if (!tab || !/^https?:/i.test(tab.url ?? '')) return false;
   cutOffLoadedAt.set(tab.id, Date.now());
   reloadWhenLeft.delete(tab.id);
-  const ok = await (tab.url.includes('#') ? api.tabs.reload(tab.id) : api.tabs.update(tab.id, { url: tab.url })).then(() => true, () => false);
+  // (Its url: checked above.)
+  const ok = await (tab.url!.includes('#') ? api.tabs.reload(tab.id) : api.tabs.update(tab.id, { url: tab.url })).then(() => true, () => false);
   if (!ok) return false;
   cutOffSuspects.delete(tab.id);
   quietened.delete(tab.id);
@@ -796,7 +797,7 @@ async function runOpenTabRepair(retry: boolean) {
       gaveWay += Date.now() - from;
     };
     await yielded();
-    const tabs = await api.tabs.query({}).catch(() => []);
+    const tabs = await api.tabs.query({}).catch((): BrowserTab[] => []);
     const left = tabs.filter((tab) => !checkedCurrent.has(tab.id) && !noPageFound.has(tab.id)).sort((a, b) => Number(!!b.active) - Number(!!a.active));
     // The tabs this pass asked, and found with no page (its line in Margin.app's log).
     const counts = { asked: 0, noPage: 0 };

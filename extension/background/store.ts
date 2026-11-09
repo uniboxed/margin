@@ -59,7 +59,7 @@ async function decideOnce() {
   // Whether this is the copy's first start (not its background waking): only
   // then may it claim a record from a clock that was ahead (shared/owner.ts).
   let first = false;
-  if (Number.isFinite(session?.since)) me.since = session.since;
+  if (Number.isFinite(session?.since)) me.since = session!.since; // (finite: there)
   // Without storage.session a restart can't be told from the copy's first
   // start: the record stands if it's this address.
   else if (!api.storage.session && owner?.origin === me.origin && Number.isFinite(owner.since)) me.since = owner.since;

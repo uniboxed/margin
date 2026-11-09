@@ -147,7 +147,7 @@ api.tabs.onCreated.addListener(owned(async (tab) => {
     void newTabHint.newTabPageSeen(tab); // ⌘T reaches Margin: the setting is Margin
     if (await newTabHandOff(tab)) return;
     // As it is now: its events were set aside meanwhile.
-    tab = await api.tabs.get(tab.id).catch(() => null);
+    tab = (await api.tabs.get(tab.id).catch(() => null))!;
     if (!tab) return;
   }
   newTabHint.tabCreated(tab);
@@ -484,7 +484,7 @@ if (api.alarms) {
     await archiveStale();
     await sleepIdle();
   }));
-  api.alarms.get(ARCHIVE_ALARM).then((alarm) => alarm || api.alarms.create(ARCHIVE_ALARM, { periodInMinutes: 15 }));
+  api.alarms.get(ARCHIVE_ALARM).then((alarm) => alarm || api.alarms!.create(ARCHIVE_ALARM, { periodInMinutes: 15 })); // (in this if: there)
   console.log('[margin] auto-archive via browser.alarms');
 } else {
   console.log('[margin] auto-archive via tab events (no browser.alarms)');

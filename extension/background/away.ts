@@ -25,7 +25,7 @@ const TIMING = {
   // A focus change settles this long before a tab follows it (a handoff's or Safari's own focus bounces).
   settleMs: 120,
 };
-const PICTURE = { format: 'jpeg', quality: 60 };
+const PICTURE = { format: 'jpeg', quality: 60 } as const;
 
 /** tab id → its picture */
 const pictures: Map<number, { data: string, at: number, windowId: number }> = new Map();
@@ -88,7 +88,7 @@ async function standIn(windowId: number, index: number | undefined, { front = tr
   let id = standIns.get(windowId) ?? null;
   if (id == null) {
     // One from before this background started (its id not known here).
-    const tabs = await Promise.resolve(api.tabs.query({ windowId })).catch(() => []);
+    const tabs = await Promise.resolve(api.tabs.query({ windowId })).catch((): BrowserTab[] => []);
     id = tabs.find((t) => isAwayPage(t.url) || isAwayPage(t.pendingUrl))?.id ?? null;
   }
   if (id != null) {

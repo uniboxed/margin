@@ -23,8 +23,8 @@ const ACCESS_EVERY_MS = 30_000; // a page loading re-checks access at most this 
 const RETRY_MS = [15_000, 5 * 60_000]; // access the app didn't hear: tried again after this long, doubling up to the second
 const SAME_EVENT_MS = 1000; // one event, reported from two places (the new-tab page's own report and the tab's creation)
 
-let heard = null; // the access the app last heard (null: not heard)
-let tried = null; // the access last sent, heard or not
+let heard: boolean | null = null; // the access the app last heard (null: not heard)
+let tried: boolean | null = null; // the access last sent, heard or not
 let retryMs = 0;
 let retryAt = 0;
 let accessCheckedAt = 0;

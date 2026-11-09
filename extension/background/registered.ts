@@ -62,7 +62,7 @@ const LAYOUT_SETTLE_MS = 2000;
 // out of windows with a toolbar itself (content/page/fullscreen-only.ts),
 // and the CSS draws only where it marks the page.
 const worksInWindows = (settings) => !platform?.marginFullscreen || settings?.fullscreenOnly === false;
-const anyFullscreen = async () => (await api.windows.getAll().catch(() => [])).some((win) => win.state === 'fullscreen');
+const anyFullscreen = async () => (await api.windows.getAll().catch((): BrowserWindow[] => [])).some((win) => win.state === 'fullscreen');
 
 export type Layout = { left: number, top: number, right: number, bottom: number, radius: number };
 // A window's layout as Margin.app measured it (shared/app-link.ts layouts:
@@ -182,7 +182,7 @@ async function syncPage() {
   const showing = worksInWindows(settings) || await anyFullscreen();
   const want = pagePlan(settings, { linked, showing, layout, wasOn: await wasOnHere() });
   if (want && !sameScript(want, current)) {
-    const script = { id: PAGE_ID, js: want.js, css: want.css, matches: ['<all_urls>'], runAt: 'document_start', allFrames: false, world: 'MAIN' };
+    const script: BrowserRegisteredContentScript = { id: PAGE_ID, js: want.js, css: want.css, matches: ['<all_urls>'], runAt: 'document_start', allFrames: false, world: 'MAIN' };
     // Changed in place (above: the newest files win, and there's no moment
     // with none for a page starting then); made where there's none yet. Only
     // a browser with no update takes it away and makes it again.

@@ -17,9 +17,10 @@ interface NavigateEvent {
   readonly sourceElement?: Element | null;
 }
 
-// The extension APIs: `browser` in Safari, `chrome` in Chrome. Untyped.
-declare var browser: any;
-declare var chrome: any;
+// The extension APIs: `browser` in Safari, `chrome` in Chrome (types/browser.d.ts). Code takes
+// `globalThis.browser ?? globalThis.chrome`.
+declare var browser: MarginBrowserApi | undefined;
+declare var chrome: MarginBrowserApi;
 
 // Shared between scripts injected separately into one page (content
 // scripts, the fitted layout); see DECISIONS.md "One bundled script per
