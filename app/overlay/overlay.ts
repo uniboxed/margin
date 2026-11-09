@@ -226,7 +226,7 @@ const coverWatch = createCoverWatch({
     return c && (document.querySelector('m-switch-cover')?.childElementCount ?? 0) > 0 ? c.id : null;
   },
   settling: () => !!runtime?.view.rootElement()?.querySelector('.m-swiping, .m-settling'),
-  say: () => { host?.perform!('switch.coverShown'); }, // (the app's host: it has perform)
+  say: () => { host?.perform('switch.coverShown'); },
 });
 // What takes the pointer, measured again once a theme's animation ends (the sidebar sliding out over the page:
 // measured at the slide's start, it was still off screen, and the pointer went through it to the page, Tirth's
@@ -485,7 +485,7 @@ function usePreview() {
   const id = String(stored.id);
   if (saving) clearTimeout(saving.timer);
   saving = { id, before, timer: setTimeout(() => saveUnanswered(id), SAVE_WAIT_MS) };
-  host?.perform!('theme.save', { value: stored });
+  host?.perform('theme.save', { value: stored });
   importStatus('Saving…');
 }
 /** No package for the theme came in time: the theme from before back, and why. */
