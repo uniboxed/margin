@@ -130,7 +130,7 @@ export function installRename(rt: any) {
   // Its first click toggled it: back as it was.
   function undoToggle(folderId) {
     const t = rt.lastToggle;
-    if (t?.folderId === folderId && Date.now() - t.at < UNDO_TOGGLE_MS) void rt.host.send('setFolderOpen', { folderId, open: t.wasOpen });
+    if (t && t.folderId === folderId && Date.now() - t.at < UNDO_TOGGLE_MS) void rt.host.send('setFolderOpen', { folderId, open: t.wasOpen });
   }
 
   return {

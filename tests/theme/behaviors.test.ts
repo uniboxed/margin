@@ -388,3 +388,36 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
     }
   });
 }
+
+// A theme's folder row whose toggle has no argument (m-action="folder.toggle", no m-arg): a double-click on it
+// (beside its name), before any folder was toggled, starts no rename and throws nothing (behaviors/rename.ts undoToggle once
+// read the last toggle's time though there was none).
+for (const [name, engine] of ENGINES) {
+  test(`rename: a folder toggle with no argument, double-clicked, throws nothing, ${name}`, async () => {
+    const browser = await engine.launch({ headless: true });
+    try {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const page = await context.newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await context.route('**/*', (route) => route.abort());
+      await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');
+      await page.addScriptTag({ content: script });
+      const pkg = themeForPage(NEO);
+      const html = pkg.html.replace('m-action="folder.toggle" m-arg="{{g.id}}"', 'm-action="folder.toggle"');
+      assert.notEqual(html, pkg.html, 'the toggle without its argument');
+      assert.equal((await page.evaluate(([p, i]) => T.loadBuiltin(p, i), [{ ...pkg, html }, 'neo-brutalism'])).ok, true);
+      await page.evaluate(() => T.mountRuntime());
+      // On its chevron, beside the name: the toggle's own double-click (a press on the name is the name's).
+      await page.evaluate(() => T.rtBox('.folder-head .chev', 0));
+      const box = await page.evaluate(() => T.rtRect('.folder-head .chev', 0));
+      assert.ok(box, 'a folder drawn');
+      await page.mouse.dblclick(box.x, box.y);
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 50))));
+      assert.deepEqual(errors, []);
+      assert.equal((await page.evaluate(() => T.rtVmFull())).editing, null, 'no rename without a folder');
+    } finally {
+      await browser.close();
+    }
+  });
+}
