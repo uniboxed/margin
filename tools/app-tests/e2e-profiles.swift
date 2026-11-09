@@ -480,7 +480,8 @@ func handoffScenario() async {
   // ---- 4. a parked window used: none while a switch is busy, then one handoff to it ----
   check("4: the wake's 3 s over", await until(4, { shell.parking?.inSystemWindow == false }))
   shell.switcher.start(.init(profile: "safari:P9", space: "x"), from: "safari:P1", windowId: 7) // waits for a profile that isn't open
-  check("4: a switch waiting for a profile", shell.switcher.phase == .waitingForProfile)
+  // (Its window asked for under a freeze first, which Safari can't be here: revealed at once, then waiting.)
+  check("4: a switch waiting for a profile", await until(2, { shell.switcher.phase == .waitingForProfile }), "\(shell.switcher.phase)")
   fake.tell(["do": "send", "id": "B", "msg": ["k": "push", "windowId": 8, "msg": ["type": "parkedActivity", "windowId": 8, "why": "focus"]]])
   check("4: used while a switch is busy: left", await until(2, { shell.activitySaid.contains(k8) }))
   shell.switcher.start(.init(profile: "safari:P1", space: p1Spaces[1]), from: "safari:P1", windowId: 7) // back: the wait ends
