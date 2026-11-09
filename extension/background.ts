@@ -106,7 +106,7 @@ const SYNC_HINTED_MS = 1000;
 const untilSynced = (deadline = Infinity, hinted = false) => {
   if (isSynced()) return null;
   const ms = Math.max(0, Math.min(SYNC_WAIT_MS, deadline - SYNC_LEAVES_MS - Date.now(), deadline !== Infinity && hinted ? SYNC_HINTED_MS : Infinity));
-  let timer;
+  let timer: number | undefined;
   return Promise.race([firstSync, new Promise<any>((resolve) => { timer = setTimeout(resolve, ms); })]).finally(() => clearTimeout(timer));
 };
 // A background Safari stops and starts again (idle 30 s, then the next event)
@@ -220,7 +220,7 @@ api.tabs.onRemoved.addListener(owned((tabId, removeInfo) => {
 const STAY_MS = 1500;
 const closedShown = new Map(); // windowId → { spaceId, at, tabId }: removed while in front
 const lastFollow = new Map(); // windowId → { from, at, prevTabId }: the space followTab just left, and the tab in front then
-function stayInSpace(windowId: number, spaceId: string, closedId) {
+function stayInSpace(windowId: number, spaceId: string, closedId: number) {
   mutate((s) => {
     const stay = M.recentTabOfSpace(s, windowId, spaceId, closedId);
     if (!stay) return s; // nothing left there: the window follows the browser's pick
@@ -321,7 +321,8 @@ api.windows?.onRemoved.addListener(owned((windowId) => {
 // fails if the tab is gone (no other tab is closed or moved for it).
 // The tab found goes with it (`resolved`): a switch doesn't ask Safari for it
 // a second time before it starts (handlers.ts activateTab).
-async function withTab(message, sender: BrowserMessageSender) {
+// (`message`: a page's request as it came, checked by its handler.)
+async function withTab(message: Record<string, any>, sender: BrowserMessageSender) {
   if (!Number.isInteger(message?.tabId) || !message.hint) return message;
   const target = await resolveTab(message.tabId, message.hint, sender.tab?.windowId, { deadline: message.deadline });
   if (!target) throw new Error('That tab is no longer open');
@@ -343,7 +344,7 @@ const BEFORE_SYNC = new Set(['hello', 'owner', 'sidebarScroll', 'setSidebarScrol
 const TIMED = new Set(['activateTab', 'openPin', 'setSpace', 'newTab', 'search']);
 const REPLY_GUARD_MS = 500;
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  const handler = handlers[message?.type];
+  const handler = (handlers as Record<string, (message: any, sender: any) => Promise<any>>)[message?.type]; // (an unknown type: none)
   if (!handler) return false;
   const deadline = TIMED.has(message.type) && Number.isFinite(message.deadline) ? message.deadline : Infinity;
   // A page that waits past its deadline (content/core.ts SWITCH_GRACE_MS):
@@ -377,8 +378,10 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // A request run by its handler, as a page's (above) or Margin.app's UI's
 // (background/link.ts, `sender` standing for the app's window) is:
 // answered { ok, result } or { ok: false, error, stale? }, never thrown.
+// A request's answer: its result, or why there's none (`stale`: a newer copy owns the state).
+type Reply = { ok: boolean, result?: unknown, stale?: boolean, error?: string };
 function route(message: any, sender: any, deadline: number = Infinity) {
-  const handler = handlers[message?.type];
+  const handler = (handlers as Record<string, (message: any, sender: any) => Promise<any>>)[message?.type]; // (an unknown type: none)
   if (!handler) return Promise.resolve({ ok: false, error: `no such request: ${message?.type}` });
   // DEVELOPMENT DIAGNOSTICS: how much of its page's wait was left as it came,
   // and what it waited for before its switch started (the switch log's
@@ -398,9 +401,9 @@ function route(message: any, sender: any, deadline: number = Infinity) {
       if (arrival) [arrival.sync, step] = [since(step), Date.now()];
       return isOwner() ? withTab(message, sender) : null;
     })
-    .then((request) => {
+    .then((request): Reply | Promise<Reply> => {
       if (arrival) arrival.resolve = since(step);
-      return isOwner() ? handler(arrival ? { ...request, arrival } : request, sender).then((result) => ({ ok: true, result })) : { ok: false, stale: true, error: 'a newer copy of Margin is running' };
+      return isOwner() ? handler(arrival ? { ...request, arrival } : request, sender).then((result: unknown) => ({ ok: true, result })) : { ok: false, stale: true, error: 'a newer copy of Margin is running' };
     })
     // A change made while a newer copy took over wasn't written (store.ts
     // mutate). Only a copy known not to own the state says `stale` (its pages

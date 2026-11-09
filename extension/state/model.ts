@@ -699,7 +699,7 @@ function goingTo(state: State, tabId: number, { url, title = '' }: { url: string
   return { ...state, tabs: { ...state.tabs, [tabId]: { ...prev, url, title, favIconUrl: '', going: { url, title, from, at: now } } } };
 }
 
-function removeTab(state: State, tabId) {
+function removeTab(state: State, tabId: number) {
   const tabs = { ...state.tabs };
   const tabSpace = { ...state.tabSpace };
   delete tabs[tabId];

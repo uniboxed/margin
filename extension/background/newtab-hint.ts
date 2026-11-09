@@ -85,7 +85,7 @@ export function tabGone(tabId: number) {
 }
 
 /** Margin's new-tab page showed up for a new tab: the setting is Margin. */
-export async function newTabPageSeen(tab) {
+export async function newTabPageSeen(tab: BrowserTab | undefined) {
   // The Mac app's set-up window: Safari opened Margin's page for a new window
   // (its first tab) or tab. Not a tab Margin opened itself.
   if (tab && !openedByMargin()) reportEvent(tab.index === 0 ? 'marginNewWindowPage' : 'marginNewTabPage');

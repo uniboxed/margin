@@ -16,12 +16,12 @@ const iconFailed = new Set<any>(); // `${origin} ${href}` that yielded nothing (
 const PRIVATE_HOST = /^([^.]+$|.*\.local$|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|\[)/i;
 // The page chooses the icon URL, and the background can fetch what pages
 // can't: another site's icon must be https and not on a local network.
-export function iconUrlAllowed(href: string, pageUrl) {
+export function iconUrlAllowed(href: string, pageUrl: string | undefined) {
   if (/^data:image\//i.test(href)) return true;
   let u, page;
   try {
     u = new URL(href);
-    page = new URL(pageUrl);
+    page = new URL(pageUrl as string); // (none: it throws, and that's caught)
   } catch {
     return false;
   }
@@ -33,7 +33,7 @@ export function iconUrlAllowed(href: string, pageUrl) {
 // The same care for a style sheet: a page has its sheets fetched by the
 // background (content/page-link.ts) and can read what comes back, so a sheet
 // on a local network is only for a page that's on one too.
-export function styleUrlAllowed(href: string, pageUrl) {
+export function styleUrlAllowed(href: string, pageUrl: string) {
   try {
     const u = new URL(href);
     if (!/^https?:$/.test(u.protocol)) return false;

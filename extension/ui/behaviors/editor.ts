@@ -21,7 +21,7 @@ export function installEditor(rt: any) {
   let focusName = false; // just opened: the name field focused once drawn
   let wanted: { spaceId: string, fresh: boolean, until: number } | null = null;
 
-  const spaceOf = (id) => rt.state?.spaces?.find((s) => s.id === id) ?? null;
+  const spaceOf = (id: string) => rt.state?.spaces?.find((s) => s.id === id) ?? null;
   const isEditorField = (el: EventTarget | null) => { const name = el && view.inputs.get(el); return name === 'space-name' || name === 'space-emoji'; };
 
   function open(spaceId: string, { fresh = false } = {}) {

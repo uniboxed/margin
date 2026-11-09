@@ -183,11 +183,11 @@ const PROFILE = /^[A-Za-z0-9_.:-]{1,64}$/;
 export function keyBindings(settings: any, commandKeys = {}) {
   const nav = navigationFor(settings);
   const out: Record<string, string[]> = {};
-  const add = (command: string, combo) => { if (combo && !(out[command] ??= []).includes(combo)) out[command].push(combo); };
-  const names = { nextTab: 'next-tab', prevTab: 'prev-tab', nextSpace: 'next-space', prevSpace: 'prev-space' };
+  const add = (command: string, combo: string | undefined) => { if (combo && !(out[command] ??= []).includes(combo)) out[command].push(combo); };
+  const names: Record<string, string> = { nextTab: 'next-tab', prevTab: 'prev-tab', nextSpace: 'next-space', prevSpace: 'prev-space' };
   for (const [name, command] of Object.entries(names)) {
     add(command, nav[name]);
-    add(command, commandKeys[name]); // Safari's manifest commands' keys (⌃⌘ + arrows) too, as pages take them
+    add(command, (commandKeys as Record<string, string | undefined>)[name]); // Safari's manifest commands' keys (⌃⌘ + arrows) too, as pages take them
   }
   add('palette', 'Meta+KeyT');
   add('toggle-sidebar', settings?.sidebarShortcut ?? 'Alt+KeyS');
@@ -210,6 +210,11 @@ export async function themePieces(pkg: any, sha256: (bytes: Uint8Array) => Promi
 }
 const webSha256 = async (bytes: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', (bytes as any)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 
+// A message as it came (JSON from Margin.app, or a page's): an object whose fields each use checks.
+type Said = Record<string, any>;
+// Where Margin.app listens, as it said (its port), and the link's secret and key.
+type KeptLink = { port: number, token: string, key: string };
+
 export function createLink({
   api,
   isOwner,
@@ -229,7 +234,7 @@ export function createLink({
   now = () => performance.now(),
   timing = {},
 }: {
-  api: any,
+  api: MarginBrowserApi,
   isOwner: () => boolean,
   copy: () => { origin: string, since: number },
   instanceId?: string | null,
@@ -436,7 +441,7 @@ export function createLink({
       return (port = null);
     }
     const mine = port;
-    port.onMessage?.addListener((m) => onNative(m));
+    port.onMessage?.addListener((m: Said) => onNative(m));
     port.onDisconnect?.addListener(() => { if (port === mine) { port = null; portLost(); } });
     portBack();
     flushHeld();
@@ -476,7 +481,7 @@ export function createLink({
       }
     }
   }
-  function onNative(message) {
+  function onNative(message: Said) {
     if (!on || !message?.name) return; // (the handler's replies to pings have no name)
     let info = message.userInfo ?? {};
     if (typeof info.e === 'string') {
@@ -497,7 +502,7 @@ export function createLink({
   }
 
   // ---- getting linked ---------------------------------------------------------
-  const validLink = (l) => Number.isInteger(l?.port) && l.port > 0 && l.port < 65536 && typeof l.token === 'string' && !!l.token && typeof l.key === 'string' && !!l.key;
+  const validLink = (l: Said | null | undefined): l is KeptLink => Number.isInteger(l?.port) && l!.port > 0 && l!.port < 65536 && typeof l!.token === 'string' && !!l!.token && typeof l!.key === 'string' && !!l!.key;
   async function keptLink() {
     const got = await Promise.resolve(session()?.get(SESSION_KEY)).catch(() => null);
     return validLink(got?.[SESSION_KEY]) ? got[SESSION_KEY] : null;
@@ -717,7 +722,7 @@ export function createLink({
   }
   // A kept or given link opened: { ok, how } (`how` for the log: 'open in 12 ms', 'refused or closed
   // at once (3 ms)', 'no welcome within 400 ms (slow)', …).
-  async function open(kept, waitMs: number) {
+  async function open(kept: KeptLink, waitMs: number) {
     if (noSocketHere() || (await noSockets())) return { ok: false, how: 'sockets off' };
     await Promise.resolve(local().set({ [OPENING_KEY]: { at: Date.now() } })).catch(() => {});
     let socket = null;
@@ -732,9 +737,9 @@ export function createLink({
     return followed ? await followed : { ok: false, how: 'the WebSocket constructor threw' };
   }
   // A socket closed with a code and why (a page's WebSocket may send only 1000 or 3000–4999, and up to 123 bytes).
-  const closeSocket = (socket, why: string) => { try { socket?.close(1000, String(why).slice(0, 100)); } catch {} };
+  const closeSocket = (socket: WebSocket | null | undefined, why: string) => { try { socket?.close(1000, String(why).slice(0, 100)); } catch {} };
   // Until it's open and the app has said who it is (or not, in `waitMs`).
-  function follow(socket, kept, waitMs: number) {
+  function follow(socket: WebSocket, kept: KeptLink, waitMs: number) {
     const t0 = now();
     const ms = () => Math.round(now() - t0);
     return new Promise<any>((resolve) => {
@@ -777,13 +782,13 @@ export function createLink({
       };
     });
   }
-  async function forget(kept) {
+  async function forget(kept: KeptLink) {
     const got = await Promise.resolve(session()?.get(SESSION_KEY)).catch(() => null);
     if (got?.[SESSION_KEY]?.token === kept.token) await Promise.resolve(session()?.remove(SESSION_KEY)).catch(() => {});
   }
 
   // ---- linked ------------------------------------------------------------------
-  function linked(socket, { port: at, token, key }) {
+  function linked(socket: WebSocket, { port: at, token, key }: KeptLink) {
     ws = socket;
     epoch = random();
     seq = 0;
@@ -897,7 +902,7 @@ export function createLink({
   }
 
   // ---- what the app says -----------------------------------------------------------
-  function onApp(text) {
+  function onApp(text: string) {
     let message;
     try {
       message = JSON.parse(String(text));
@@ -943,7 +948,7 @@ export function createLink({
         return; // unknown kinds are left (app/PROTOCOL.md)
     }
   }
-  async function request({ id, epoch: theirs, windowId, type, payload }) {
+  async function request({ id, epoch: theirs, windowId, type, payload }: Said) {
     if (!Number.isInteger(id)) return;
     if (theirs !== epoch) return send({ k: 'reply', id, ok: false, error: 'stale epoch' });
     if (!APP_REQUESTS.has(type)) return send({ k: 'reply', id, ok: false, error: `not a request Margin's UI makes: ${type}` });
@@ -960,7 +965,7 @@ export function createLink({
     send({ k: 'reply', id, ...(answer && typeof answer === 'object' ? answer : { ok: true, result: answer ?? null }) });
   }
   // Each window's layout, newest per window (a new epoch starts its count again).
-  function setLayout(m) {
+  function setLayout(m: Said) {
     if (m.epoch !== epoch || !Number.isInteger(m.windowId) || !m.insets || !Number.isInteger(m.seq)) return;
     const had = pageState.layouts[m.windowId];
     if (had && had.epoch === m.epoch && had.seq >= m.seq) return;
@@ -973,7 +978,7 @@ export function createLink({
   // Whether the app draws over a window (its binding, not whether its overlay is on screen now):
   // false, its pages get no box (shared/app-link.ts layoutFor). Only a change is sent; this
   // epoch's only.
-  function drawn(m) {
+  function drawn(m: Said) {
     if (m.epoch !== epoch || !Number.isInteger(m.windowId) || typeof m.on !== 'boolean') return;
     if (pageState.drawn?.[m.windowId] === m.on) return;
     pageState = { ...pageState, drawn: { ...pageState.drawn, [m.windowId]: m.on } };
@@ -987,7 +992,7 @@ export function createLink({
   // new link, the link going off and the window closing forget it (a new link says it again). Not
   // stored: no page reads it. windowId → when the app parked it.
   const parked: Map<number, number> = new Map();
-  function parkedSaid(m) {
+  function parkedSaid(m: Said) {
     if (m.epoch !== epoch || !Number.isInteger(m.windowId) || typeof m.on !== 'boolean') return;
     if (parked.has(m.windowId) === m.on) return;
     if (m.on) parked.set(m.windowId, Number.isFinite(m.at) ? m.at : Date.now());
@@ -1009,8 +1014,8 @@ export function createLink({
     const drawnNow = { ...pageState.drawn };
     let changed = false;
     for (const id of ids) {
-      if (id in layouts) { delete layouts[id]; changed = true; }
-      if (id in drawnNow) { delete drawnNow[id]; changed = true; }
+      if (id in layouts) { delete (layouts as Record<string, unknown>)[id]; changed = true; }
+      if (id in drawnNow) { delete (drawnNow as Record<string, unknown>)[id]; changed = true; }
     }
     if (!changed) return;
     pageState = { ...pageState, layouts, drawn: drawnNow };
@@ -1036,7 +1041,7 @@ export function createLink({
     if (snapshotting === run) snapshotting = null;
     if (pending && !pendingTimer) flushSoon();
   }
-  const iconsOf = (favicons) => new Map(Object.entries(favicons ?? {}).map(([origin, entry]) => [origin, JSON.stringify(entry)]));
+  const iconsOf = (favicons: Record<string, unknown> | null | undefined) => new Map(Object.entries(favicons ?? {}).map(([origin, entry]) => [origin, JSON.stringify(entry)] as [string, string]));
   function flushSoon() {
     pendingTimer ??= setTimeout(() => {
       pendingTimer = null;
@@ -1068,10 +1073,10 @@ export function createLink({
   }
   async function windowList() {
     const [wins, fronts] = await Promise.all([
-      Promise.resolve(api.windows?.getAll?.()).catch(() => null),
-      Promise.resolve(api.tabs.query({ active: true })).catch(() => []),
+      Promise.resolve(api.windows?.getAll?.()).catch((): BrowserWindow[] | null => null),
+      Promise.resolve(api.tabs.query({ active: true })).catch((): BrowserTab[] => []),
     ]);
-    return (wins ?? []).filter((w) => w?.id != null).map((w) => known({
+    return (wins ?? ([] as BrowserWindow[])).filter((w) => w?.id != null).map((w) => known({
       windowId: w.id, left: w.left ?? 0, top: w.top ?? 0, width: w.width ?? 0, height: w.height ?? 0,
       state: w.state ?? 'normal', focused: !!w.focused, activeTabId: (fronts ?? []).find((t) => t.windowId === w.id)?.id ?? null,
       ...(focusedAt.has(w.id) ? { focusedAt: focusedAt.get(w.id) } : {}),
@@ -1080,7 +1085,7 @@ export function createLink({
   }
   // What only this copy knows, on a window's entry: its tab in front's word (the inspector, whether
   // it's shown, are a tab's: app/PROTOCOL.md `viewport`, `visible`), and the last blur it heard.
-  function known(entry) {
+  function known(entry: { windowId: number, [field: string]: any }) {
     const { viewport: _vp, visible: _v, visibleAt: _va, blurredAt: _b, ...rest } = entry;
     const vp = viewports.get(rest.windowId);
     const seen = rest.activeTabId != null ? visibility.get(rest.activeTabId) : null;
@@ -1146,7 +1151,7 @@ export function createLink({
   let flagsAt = -Infinity;
   let flagsTimer: any = null;
   let flagsList: any[] = [];
-  function noteFlags(list) {
+  function noteFlags(list: { windowId: number, [field: string]: any }[]) {
     flagsList = list;
     if (flagsTimer) return;
     const flags = (times: boolean) => {
@@ -1202,7 +1207,7 @@ export function createLink({
     lastTheme = key;
     for (const piece of pieces) send({ ...piece, epoch });
   }
-  let settingsNow = null;
+  let settingsNow: Record<string, any> | null = null; // (the stored settings, as they came)
   function sendKeys(settings = settingsNow) {
     const bindings = keyBindings(settings, commandKeys());
     const json = JSON.stringify(bindings);
@@ -1239,7 +1244,7 @@ export function createLink({
   // wiped finds its data in the app again. A different id than before is a
   // profile the app knows apart: no acked, no rev (the app's data.need or
   // snapshot follows).
-  async function takeProfile(id) {
+  async function takeProfile(id: string) {
     if (typeof id !== 'string' || !PROFILE.test(id)) return;
     profileSure = true;
     if (id === profile) return;
@@ -1250,13 +1255,13 @@ export function createLink({
   }
   // The handler's answer: Safari's id for the profile kept; an answer with none (a handler that
   // gives none) means none will come, so nothing waits for one.
-  async function heardFrom(reply) {
+  async function heardFrom(reply: Said) {
     if (reply && typeof reply === 'object' && !('profile' in reply)) profileSure = true;
     await takeProfile(reply?.profile);
   }
   const writeMeta = () => Promise.resolve(isOwner() ? local().set({ [LINK_META]: { profile, acked, ...(rev ? { rev } : {}) } }) : null).catch(() => {});
   // `upTo` kept as acked (never lower); a `rev`, when the ack has one.
-  async function takeAck(m) {
+  async function takeAck(m: Said) {
     let changed = false;
     if (Number.isFinite(m.upTo) && m.upTo > acked) [acked, changed] = [m.upTo, true];
     if (typeof m.rev === 'string' && m.rev && m.rev !== rev) [rev, changed] = [m.rev, true];
@@ -1287,7 +1292,7 @@ export function createLink({
   // `transfer`; part 0 names every collection and lists the items left out),
   // taken once every part is here.
   let parts: { transfer: string, count: number, got: Map<number, any>, omitted: [string, string][], rev: string | null } | null = null;
-  async function takeSnapshot(m) {
+  async function takeSnapshot(m: Said) {
     if (!data || m.format !== DATA_FORMAT || !m.set || typeof m.set !== 'object') return;
     const count = Number.isInteger(m.parts) && m.parts >= 1 ? m.parts : 1;
     const part = Number.isInteger(m.part) ? m.part : 0;
@@ -1299,7 +1304,7 @@ export function createLink({
     if (part === 0 && typeof m.rev === 'string' && m.rev) parts.rev = m.rev;
     if (parts.got.size < parts.count) return;
     const items = {};
-    for (const piece of parts.got.values()) for (const [c, list] of Object.entries(piece?.items ?? {})) items[c] = { ...(items[c] ?? {}), ...(list && typeof list === 'object' ? list : {}) };
+    for (const piece of parts.got.values()) for (const [c, list] of Object.entries(piece?.items ?? {})) (items as Record<string, any>)[c] = { ...((items as Record<string, any>)[c] ?? {}), ...(list && typeof list === 'object' ? list : {}) };
     const { omitted, rev: setRev } = parts;
     parts = null;
     // A set not taken leaves no `rev`: the next hello gets it again.
@@ -1311,14 +1316,14 @@ export function createLink({
     }
   }
   // This copy's changes as they're written, while linked (unlinked, they're queued).
-  function dataChanged(changes) {
+  function dataChanged(changes: any[]) {
     if (!ws || !changes.length) return;
     sinceHello.push(...changes);
     if (sinceHello.length > 5000) sinceHello = sinceHello.slice(-5000);
     send({ k: 'data.changes', epoch, profile, changes });
   }
   // The app's data messages carry this link's epoch and profile (another's are left).
-  const ours = (m) => (m.epoch == null || m.epoch === epoch) && (m.profile == null || m.profile === profile);
+  const ours = (m: Said) => (m.epoch == null || m.epoch === epoch) && (m.profile == null || m.profile === profile);
 
   // ---- starting and stopping --------------------------------------------------------------
   // The page state left by the background before this one: kept while this
@@ -1333,7 +1338,7 @@ export function createLink({
     if (before && typeof before === 'object') {
       const wins = await Promise.resolve(api.windows?.getAll?.()).catch(() => null);
       const ids = Array.isArray(wins) ? new Set(wins.map((w) => String(w?.id))) : null;
-      const listed = (o) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([id]) => !ids || ids.has(id)));
+      const listed = (o: unknown) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([id]) => !ids || ids.has(id)));
       const off = before.state === 'off';
       const last = before.layouts && typeof before.layouts === 'object' && Object.keys(before.layouts).length ? before.layouts : before.lastLayouts ?? {};
       pageState = { state: off ? 'off' : 'reconnecting', epoch: null, at: Date.now(), layouts: off ? {} : listed(before.layouts), drawn: off ? {} : listed(before.drawn), lastLayouts: last };
@@ -1342,7 +1347,7 @@ export function createLink({
     return was;
   }
   // The last link's end, for the start note.
-  function lastStop(last) {
+  function lastStop(last: Said | null | undefined) {
     if (!last || typeof last !== 'object' || !Number.isFinite(last.at)) return 'none noted this Safari session';
     if (last.what === 'linked') return `none since linked at ${clock(last.at)} (the background before was torn down while linked)`;
     return `${last.what} at ${clock(last.at)}: ${String(last.why ?? '').slice(0, 120)}`;
@@ -1443,7 +1448,7 @@ export function createLink({
       if (pending) flushSoon();
     },
     // Something for one window's UI (no windowId: every window's).
-    push(windowId: number | null | undefined, msg) {
+    push(windowId: number | null | undefined, msg: Record<string, any>) {
       return !!ws && send({ k: 'push', epoch, windowId: windowId ?? null, msg });
     },
     // One of this copy's parked windows used while out of sight (app/HANDOFF.md §6.1): told to the

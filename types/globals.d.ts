@@ -43,3 +43,6 @@ interface Function {
 interface BrowserMessageSender {
   app?: boolean;
 }
+
+// Margin's helpers for the background's console (background.ts: archiveNow, sleepNow…).
+declare var margin: Record<string, unknown>;

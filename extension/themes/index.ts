@@ -6,7 +6,8 @@
 // an entry here (Neo-brutalism) keeps its settings as saved.
 import arcadia from './arcadia/theme.ts';
 
-export const THEMES = Object.freeze({ [arcadia.id]: arcadia });
+// (By id: a theme's settings, for the ones whose settings the background knows.)
+export const THEMES: Readonly<Record<string, typeof arcadia>> = Object.freeze({ [arcadia.id]: arcadia });
 export const DEFAULT_THEME = arcadia.id;
 
 // The active theme (an unknown or missing id falls back to the default).
