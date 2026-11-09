@@ -220,7 +220,7 @@ api.tabs.onRemoved.addListener(owned((tabId, removeInfo) => {
 const STAY_MS = 1500;
 const closedShown = new Map(); // windowId → { spaceId, at, tabId }: removed while in front
 const lastFollow = new Map(); // windowId → { from, at, prevTabId }: the space followTab just left, and the tab in front then
-function stayInSpace(windowId: number, spaceId, closedId) {
+function stayInSpace(windowId: number, spaceId: string, closedId) {
   mutate((s) => {
     const stay = M.recentTabOfSpace(s, windowId, spaceId, closedId);
     if (!stay) return s; // nothing left there: the window follows the browser's pick
@@ -321,7 +321,7 @@ api.windows?.onRemoved.addListener(owned((windowId) => {
 // fails if the tab is gone (no other tab is closed or moved for it).
 // The tab found goes with it (`resolved`): a switch doesn't ask Safari for it
 // a second time before it starts (handlers.ts activateTab).
-async function withTab(message, sender) {
+async function withTab(message, sender: BrowserMessageSender) {
   if (!Number.isInteger(message?.tabId) || !message.hint) return message;
   const target = await resolveTab(message.tabId, message.hint, sender.tab?.windowId, { deadline: message.deadline });
   if (!target) throw new Error('That tab is no longer open');

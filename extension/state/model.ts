@@ -574,9 +574,9 @@ function normalizeUrl(url) {
   }
 }
 
-const hasSpace = (state: State, spaceId) => state.spaces.some((s) => s.id === spaceId);
+const hasSpace = (state: State, spaceId: string | null | undefined) => state.spaces.some((s) => s.id === spaceId);
 
-function activeSpaceId(state: State, windowId) {
+function activeSpaceId(state: State, windowId: number) {
   const id = state.activeSpaceByWindow[windowId];
   return hasSpace(state, id) ? id : state.spaces[0].id;
 }
@@ -644,7 +644,7 @@ function tabRecord(tab: BrowserTab, prev, now: number) {
 }
 
 // New tabs join their window's active space; existing assignments stick.
-function assignTab(state: State, tabId, windowId) {
+function assignTab(state: State, tabId, windowId: number) {
   if (hasSpace(state, state.tabSpace[tabId])) return state;
   return { ...state, tabSpace: { ...state.tabSpace, [tabId]: activeSpaceId(state, windowId) } };
 }
@@ -843,7 +843,7 @@ const reclaimable = (state: State, now: number) => Object.values(state.keptTabs 
 // unheard) are kept too, with the id they had (a close heard later archives
 // them: background.ts).
 // An old window, as of one renumbering (window ids repeat across them).
-const groupKey = (at: number, windowId) => `${at}:${windowId}`;
+const groupKey = (at: number, windowId: number) => `${at}:${windowId}`;
 
 // Did the browser renumber its tabs (a restart, or Margin updated: no open
 // tab is one Margin knows, while some it knew are gone)?
@@ -1015,7 +1015,7 @@ function moveTab(state: State, tabId, spaceId: string) {
 
 // ---- spaces ---------------------------------------------------------------
 
-function setActiveSpace(state: State, windowId: number, spaceId) {
+function setActiveSpace(state: State, windowId: number, spaceId: string) {
   if (!hasSpace(state, spaceId)) return state;
   return { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [windowId]: spaceId } };
 }
@@ -1086,7 +1086,7 @@ function updateSpace(state: State, spaceId: string, patch: { name: string | unde
 // stands in (shared/view.ts does the same). Every change renumbers the
 // lists it touches 0, 1, 2…
 const posOf = (item: any, i: number) => (Number.isFinite(item?.pos) ? item.pos : i);
-const folderIn = (state: State, folderId, spaceId) => (state.folders ?? []).find((f) => f.id === folderId && f.spaceId === spaceId) ?? null;
+const folderIn = (state: State, folderId, spaceId: string) => (state.folders ?? []).find((f) => f.id === folderId && f.spaceId === spaceId) ?? null;
 // A pin's folder, if that folder exists in the pin's space (else it's loose).
 const folderOfPin = (state: State, pin) => (pin.folderId ? folderIn(state, pin.folderId, pin.spaceId) : null);
 

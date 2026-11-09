@@ -282,7 +282,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   }
 
   // The most recent tab of a space in this window: the one its switch shows.
-  const recentTabOf = (spaceId) => {
+  const recentTabOf = (spaceId: string) => {
     const state = host.getState();
     const w = windowId();
     // (Tabs only when there's a state.)
@@ -294,7 +294,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   // switches to it, and the UI shows it at once, from the top of its list
   // (sidebar.js askSpace, switchSpace). Its own space with no switch away
   // under way: only the window's space, as before.
-  function switchSpace(spaceId, payload: Record<string, any>) {
+  function switchSpace(spaceId: string, payload: Record<string, any>) {
     const state = host.getState();
     if (!state) return null;
     // Another profile's space: Margin.app's switch (its window opens, this one closes): nothing shown here meanwhile.
@@ -544,7 +544,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     setUi, render, dispatch, send, refuse, warn, runQuery,
     windowId, ownTab, frontTab, recentTabOf, switchSpace,
     /** Space `spaceId` kept shown for `ms`, whatever the state says meanwhile (a swipe's slide coming in). */
-    holdSpace(spaceId, ms) {
+    holdSpace(spaceId: string, ms) {
       pending.hold = typeof spaceId === 'string' ? { spaceId, until: Date.now() + Math.max(0, ms) } : null;
       expireLater();
     },

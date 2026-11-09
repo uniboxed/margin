@@ -24,7 +24,7 @@ export function installEditor(rt: any) {
   const spaceOf = (id) => rt.state?.spaces?.find((s) => s.id === id) ?? null;
   const isEditorField = (el: EventTarget | null) => { const name = el && view.inputs.get(el); return name === 'space-name' || name === 'space-emoji'; };
 
-  function open(spaceId, { fresh = false } = {}) {
+  function open(spaceId: string, { fresh = false } = {}) {
     const space = spaceOf(spaceId);
     if (!space) return false;
     rt.behaviors.menus?.close();
@@ -62,7 +62,7 @@ export function installEditor(rt: any) {
     open,
     openProfile,
     /** Open it once the space is there (a new space can reach us after its reply). */
-    openWhenThere(spaceId, { fresh = false } = {}) {
+    openWhenThere(spaceId: string, { fresh = false } = {}) {
       if (spaceOf(spaceId)) return open(spaceId, { fresh });
       wanted = { spaceId, fresh, until: Date.now() + 3000 };
       return true;

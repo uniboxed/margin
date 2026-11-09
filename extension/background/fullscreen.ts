@@ -18,7 +18,7 @@ async function entered() {
 }
 
 // Until the window reaches `state` (a full-screen change animates), at most `ms`.
-async function waitForState(windowId, state: string, ms = 3000) {
+async function waitForState(windowId: number, state: string, ms = 3000) {
   const until = Date.now() + ms;
   while (Date.now() < until) {
     const win = await api.windows.get(windowId).catch(() => null);
@@ -28,7 +28,7 @@ async function waitForState(windowId, state: string, ms = 3000) {
 }
 
 // On, or off again if Margin put this window there. Returns { on }.
-export async function toggleMarginFullscreen(windowId) {
+export async function toggleMarginFullscreen(windowId: number) {
   if (switching.has(windowId)) return null;
   switching.set(windowId, null); // taken (null: where it's going isn't known yet)
   let on: boolean | null = null;
@@ -43,7 +43,7 @@ export async function toggleMarginFullscreen(windowId) {
   }
 }
 
-async function toggle(windowId) {
+async function toggle(windowId: number) {
   const win = await api.windows.get(windowId);
   const states = await entered();
   if (win.state === 'fullscreen' && states[windowId]) {
@@ -95,7 +95,7 @@ export async function followFullscreen(windowId: number) {
 // in full screen on a Mac with a notch stays below it, as tall as a window
 // filling the screen under the menu bar. While Margin switches a window,
 // where it's going.
-export async function isFullscreen(windowId) {
+export async function isFullscreen(windowId: number) {
   if (switching.get(windowId) != null) return switching.get(windowId);
   const win = await api.windows.get(windowId).catch(() => null);
   return win?.state === 'fullscreen';
@@ -104,7 +104,7 @@ export async function isFullscreen(windowId) {
 // Tells the window's pages when that changes. The page's box follows whether
 // any window is in full screen (background/registered.ts syncPage).
 const known = new Map(); // window id → last told full screen or not
-async function tellTabs(windowId, fullscreen: boolean) {
+async function tellTabs(windowId: number, fullscreen: boolean) {
   if (known.get(windowId) !== fullscreen) {
     known.set(windowId, fullscreen);
     queueRegistrations();

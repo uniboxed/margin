@@ -16,8 +16,9 @@ function normalizeUrl(url) {
   }
 }
 
-function activeSpaceId(state: State, windowId) {
-  const id = state.activeSpaceByWindow?.[windowId];
+// (No window yet: the first space.)
+function activeSpaceId(state: State, windowId: number | null | undefined) {
+  const id = state.activeSpaceByWindow?.[windowId as number];
   return state.spaces.some((s) => s.id === id) ? id : state.spaces[0].id;
 }
 
@@ -137,7 +138,7 @@ const byPlace = (a, b) => placeOf(a) - placeOf(b) || (Number(a.index) || 0) - (N
 
 // The tab a pin opens: one of its space with its URL, in this window first
 // (as the background's openPin), or null (the pin opens a new tab).
-function pinTabId(state: State, pinId, windowId) {
+function pinTabId(state: State, pinId, windowId: number) {
   const pin = state.pins?.find((p) => p.id === pinId);
   if (!pin) return null;
   const key = normalizeUrl(pin.url);

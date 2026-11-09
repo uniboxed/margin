@@ -13,7 +13,7 @@ function load() {
   return positions;
 }
 
-export async function getScroll(windowId) {
+export async function getScroll(windowId: number) {
   return (await load())[windowId] ?? 0;
 }
 

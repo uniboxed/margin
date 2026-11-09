@@ -9,9 +9,9 @@ import { mutate } from './store.ts';
 // A scroll alone isn't worth a write of its own: it goes with the next one, or this long after.
 export const SCROLL_WRITE_MS = 5000;
 
-export function keepScroll(tabId: number, url: string, y: number) {
+export function keepScroll(tabId: number | undefined, url: string, y: number) {
   if (!Number.isInteger(tabId) || typeof url !== 'string' || !Number.isFinite(y)) return Promise.resolve(null);
-  return mutate((s) => M.noteScroll(s, tabId, { y, url }), { within: () => SCROLL_WRITE_MS });
+  return mutate((s) => M.noteScroll(s, tabId as number, { y, url }), { within: () => SCROLL_WRITE_MS }); // (whole: checked)
 }
 
 // Several at once (a window's tabs, asked before its close): one change.
@@ -22,11 +22,11 @@ export function keepScrolls(list: { tabId: number, url: string, y: number }[]) {
 }
 
 // A reopened Margin tab's page taking its scroll: the place (null: none), then it's gone.
-export async function takeScroll(tabId: number, url: string): Promise<number | null> {
+export async function takeScroll(tabId: number | undefined, url: string): Promise<number | null> {
   if (!Number.isInteger(tabId) || typeof url !== 'string') return null;
   let y: number | null = null;
   await mutate((s) => {
-    const taken = M.takeScroll(s, tabId, url);
+    const taken = M.takeScroll(s, tabId as number, url); // (whole: checked)
     y = taken.y;
     return taken.state;
   }, { within: () => SCROLL_WRITE_MS });

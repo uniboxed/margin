@@ -37,3 +37,9 @@ interface HTMLIFrameElement {
 }
 interface Function {
 }
+
+// A message's sender as Margin's own requests carry it: one from Margin.app's overlay has `app` (background/link.ts
+// request), and the window it was drawn for as its `tab`.
+interface BrowserMessageSender {
+  app?: boolean;
+}

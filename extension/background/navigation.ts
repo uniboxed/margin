@@ -327,7 +327,7 @@ async function frontOf(windowId: number) {
   const answer = await Promise.race([asking.catch(() => null), new Promise<any>((resolve) => { timer = setTimeout(() => resolve(null), FRONT_KNOWN_MS); })]).finally(() => clearTimeout(timer));
   return (answer as { tab: any } | null)?.tab ?? known;
 }
-export async function showSpace(windowId: number, spaceId: string, { bringTab = true, deadline }: { bringTab?: boolean, deadline?: number } = {}): Promise<{ tab: any } | undefined> {
+export async function showSpace(windowId: number | null | undefined, spaceId: string, { bringTab = true, deadline }: { bringTab?: boolean, deadline?: number } = {}): Promise<{ tab: any } | undefined> {
   if (windowId == null) return;
   const shown = bringTab ? await frontOf(windowId) : null;
   const candidatesIn = (st: import('../../types/margin').State) => Object.values(st.tabs)
@@ -352,7 +352,7 @@ export async function showSpace(windowId: number, spaceId: string, { bringTab = 
   const goBack = async () => {
     if (!before || before === spaceId) return;
     const [front] = await api.tabs.query({ active: true, windowId }).catch(() => []);
-    await mutate((st) => (V.activeSpaceId(st, windowId) === spaceId && (!front || st.tabSpace[front.id] === before) ? M.setActiveSpace(st, windowId, before) : st)).catch(() => {});
+    await mutate((st) => (V.activeSpaceId(st, windowId) === spaceId && (!front || st.tabSpace[front.id] === before) ? M.setActiveSpace(st, windowId, before!) : st)).catch(() => {}); // (`before`: checked above)
   };
   for (const tab of candidates) {
     try {

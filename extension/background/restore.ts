@@ -39,7 +39,7 @@ async function run() {
   const tabIds = [...watched.values()].flatMap((w) => [...w.tabs]);
   if (tabIds.length) await mutate((s) => (waiting(s, t) ? M.reclaimTabs(s, tabIds, t) : s));
 }
-const watch = (windowId, tabIds) => {
+const watch = (windowId: number, tabIds) => {
   const w = watched.get(windowId) ?? { since: now(), tabs: new Set<any>() };
   for (const id of tabIds) w.tabs.add(id);
   watched.set(windowId, w);

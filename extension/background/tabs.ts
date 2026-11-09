@@ -73,8 +73,8 @@ const OWN_ACTIVATION_MS = 1500;
 // Switches per window (the user's, and Margin's), so a new tab's wait in one
 // window (openBehind) isn't called off by a switch in another.
 const windowGens = new Map(); // windowId → count
-const windowGen = (windowId) => windowGens.get(windowId) ?? 0;
-function movedOn(windowId) {
+const windowGen = (windowId: number) => windowGens.get(windowId) ?? 0;
+function movedOn(windowId: number | null | undefined) {
   if (windowId == null) return 0;
   windowGens.set(windowId, windowGen(windowId) + 1);
   return windowGen(windowId);

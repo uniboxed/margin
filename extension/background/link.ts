@@ -1443,7 +1443,7 @@ export function createLink({
       if (pending) flushSoon();
     },
     // Something for one window's UI (no windowId: every window's).
-    push(windowId, msg) {
+    push(windowId: number | null | undefined, msg) {
       return !!ws && send({ k: 'push', epoch, windowId: windowId ?? null, msg });
     },
     // One of this copy's parked windows used while out of sight (app/HANDOFF.md §6.1): told to the
@@ -1552,16 +1552,16 @@ export function createLink({
     linked: () => !!ws,
     // 'linked', 'reconnecting' or 'off', as pages see it.
     pageState: () => pageState.state,
-    layout: (windowId) => pageState.layouts[windowId] ?? null,
+    layout: (windowId: number) => pageState.layouts[windowId] ?? null,
     layouts: () => ({ ...pageState.layouts }),
     // What the app said of each window, for the first paint (background/registered.ts): this
     // epoch's layouts and whether it draws each window.
     view: () => ({ epoch: pageState.epoch, layouts: { ...pageState.layouts }, drawn: { ...pageState.drawn }, lastLayouts: { ...pageState.lastLayouts } }),
     // Whether the app said it draws over the window (true, false), or hasn't said (undefined).
-    drawn: (windowId) => (windowId == null ? undefined : pageState.drawn?.[windowId]),
+    drawn: (windowId: number | null | undefined) => (windowId == null ? undefined : pageState.drawn?.[windowId]),
     // Whether the app draws Margin around the window: linked or reconnecting, and not said
     // otherwise for it (shared/app-link.ts drawsWindow).
-    drawsWindow: (windowId) => pageState.state !== 'off' && (windowId == null || pageState.drawn?.[windowId] !== false),
+    drawsWindow: (windowId: number | null | undefined) => pageState.state !== 'off' && (windowId == null || pageState.drawn?.[windowId] !== false),
     onPageState(cb: (state: string) => void) { listeners.add(cb); return () => listeners.delete(cb); },
     onLayout(cb: (windowId: number, layout: any) => void) { layoutListeners.add(cb); return () => layoutListeners.delete(cb); },
     onDrawn(cb: (windowId: number, on: boolean) => void) { drawnListeners.add(cb); return () => drawnListeners.delete(cb); },
