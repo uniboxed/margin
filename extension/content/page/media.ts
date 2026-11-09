@@ -25,7 +25,7 @@ export function startMedia(box) {
     const listeners = new Set<any>(); // [callback, once]
     let current = native(text);
     const list: any = Object.create(MediaQueryList.prototype);
-    let handler = null;
+    let handler: ((this: any, event: MediaQueryListEvent) => void) | null = null;
     const notify = (matches) => {
       const event = new MediaQueryListEvent('change', { media: text, matches });
       for (const name of ['target', 'currentTarget']) Object.defineProperty(event, name, { value: list });

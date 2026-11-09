@@ -26,7 +26,7 @@ export function startPageLink(send) {
   }
   document.addEventListener('margin:box-ready', () => { if (last) say(last); });
 
-  let shown = null; // what it was last told: a box, 'off', or nothing yet
+  let shown: string | null = null; // what it was last told: a box, 'off', or nothing yet
   // { left, top, right, bottom } in the page's pixels, and `live` while the
   // sidebar's edge is being dragged; null: no box, the page as it is.
   function setBox(box, { live = false } = {}) {

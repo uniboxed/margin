@@ -178,9 +178,10 @@ export function startBody(ctx: any) {
       return false;
     }
     const inOneGo = again && !ctx.plainPage;
-    let said = null;
+    // (Set in readWithout's callback: typed as what they can be, not as their first value.)
+    let said = null as ReturnType<typeof readSaid> | null;
     let changed = false;
-    let next = null;
+    let next = null as ReturnType<typeof readLaidOut> | null;
     const settle = () => !!next && applyBody(next);
     if (moves.moving()) return false;
     readWithout((element) => {

@@ -2,6 +2,7 @@
 // and viewport units are rewritten (shared/page-css.ts). Only sheets that
 // changed are looked at: one observer on the document, at most one pass a
 // frame, and none on a tab out of sight until it's shown.
+import type { Accessor } from './accessor.ts';
 import { asksSize, hasUnits, shiftQuery, shiftStyle, shiftUnits } from '../../shared/page-css.ts';
 
 const SWEEP_FLOOR = 64;
@@ -16,9 +17,10 @@ export function startSheets(box) {
   const { insertRule, deleteRule, replace, replaceSync } = sheetProto;
   const { addRule, removeRule } = sheetProto;
   const { matches } = Element.prototype;
-  const mediaText = Object.getOwnPropertyDescriptor(MediaList.prototype, 'mediaText');
-  const ruleStyle = Object.getOwnPropertyDescriptor(CSSStyleRule.prototype, 'style');
-  const selectorText = Object.getOwnPropertyDescriptor(CSSStyleRule.prototype, 'selectorText');
+  // (The browser's own: accessor.ts.)
+  const mediaText = Object.getOwnPropertyDescriptor(MediaList.prototype, 'mediaText') as Accessor;
+  const ruleStyle = Object.getOwnPropertyDescriptor(CSSStyleRule.prototype, 'style') as Accessor;
+  const selectorText = Object.getOwnPropertyDescriptor(CSSStyleRule.prototype, 'selectorText') as Accessor;
   const seen = new WeakSet();
   let fresh = false; // a sheet of the document's not seen before
 
@@ -225,7 +227,7 @@ export function startSheets(box) {
     deleteFromGroup.call(this, index);
   };
   const reread = (proto, name) => {
-    const own = Object.getOwnPropertyDescriptor(proto, name);
+    const own = Object.getOwnPropertyDescriptor(proto, name) as Accessor;
     Object.defineProperty(proto, name, {
       ...own,
       set(value) {
@@ -257,7 +259,7 @@ export function startSheets(box) {
       box.bodyMayHaveChanged();
     },
   });
-  const styleMap = Object.getOwnPropertyDescriptor(CSSStyleRule.prototype, 'styleMap');
+  const styleMap = Object.getOwnPropertyDescriptor(CSSStyleRule.prototype, 'styleMap') as Accessor | undefined; // (not every browser has it)
   if (styleMap) {
     Object.defineProperty(CSSStyleRule.prototype, 'styleMap', {
       ...styleMap,

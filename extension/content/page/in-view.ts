@@ -7,13 +7,15 @@
 // observer is a stand-in holding two of the browser's, one for each, and each
 // target's answer is taken from the one that can give it. With no box there's
 // only the window's. A root the page chose itself is left alone.
+import type { Accessor } from './accessor.ts';
 
-const find = (object, name) => {
+// The browser's own accessor for `name`, from `object` or its prototypes (accessor.ts).
+const find = (object, name): Accessor => {
   for (let at = object; at; at = Object.getPrototypeOf(at)) {
     const descriptor = Object.getOwnPropertyDescriptor(at, name);
-    if (descriptor) return descriptor;
+    if (descriptor) return descriptor as Accessor;
   }
-  return undefined;
+  return undefined as unknown as Accessor; // (not for these names)
 };
 const OWN_GETTERS = ['rootMargin', 'scrollMargin', 'thresholds', 'delay', 'trackVisibility'];
 const OUTSIDE_FOR_MS = 1000;
@@ -100,7 +102,7 @@ export function startInView(box) {
     /** One per target: the latest entry from each root, and what the page last heard. */
     const targets = new Map();
     const inWindow = new Native((list) => hear(list, false), options);
-    let inBody = null;
+    let inBody: IntersectionObserver | null = null;
 
     const bucket = (ratio) => inWindow.thresholds.filter((at) => ratio >= at).length;
     function chosen(state) {
@@ -124,7 +126,7 @@ export function startInView(box) {
     }
     // What the page should hear of these targets: only what changed for it.
     function news(list) {
-      const out = [];
+      const out: any[] = []; // (IntersectionObserverEntry-likes the page hears)
       for (const state of list) {
         const answer = chosen(state);
         if (!answer) continue;

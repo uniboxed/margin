@@ -20,9 +20,9 @@ export function startChain(ctx: any) {
     return false;
   };
   function readChain(body) {
-    const nodes = [];
-    const tops = [];
-    const path = [];
+    const nodes: any[] = []; // (the page's elements, as they are)
+    const tops: string[] = [];
+    const path: { node: any; down: boolean; }[] = [];
     let parent = body;
     let node = body.firstElementChild;
     while (node && nodes.length < CHAIN_DEPTH && path.length < CHAIN_LOOK && !textBefore(parent, node)) {
@@ -62,7 +62,7 @@ export function startChain(ctx: any) {
     chainFrame ||= requestAnimationFrame(chainCheck);
   }
   const chainWatch = new MutationObserver(chainTouched);
-  let chainBody = null;
+  let chainBody: HTMLElement | null = null;
   const onChain = ({ path, end }) => [...path.map((step) => step.node), ...(end ? [end] : [])];
   function follow(next) {
     const before = onChain(chain);

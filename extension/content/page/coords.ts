@@ -3,13 +3,15 @@
 // Margin's own pinch went, 2026-11-07). So what the page places by a rectangle (menus, tooltips) lands where
 // it means, and points it asks about find what's there. One transform: where
 // the box's corner is in the window, and its scale (box.x, box.y, box.scale).
+import type { Accessor } from './accessor.ts';
 
-const find = (object, name) => {
+// The browser's own accessor for `name`, from `object` or its prototypes (accessor.ts).
+const find = (object, name): Accessor => {
   for (let at = object; at; at = Object.getPrototypeOf(at)) {
     const descriptor = Object.getOwnPropertyDescriptor(at, name);
-    if (descriptor) return descriptor;
+    if (descriptor) return descriptor as Accessor;
   }
-  return undefined;
+  return undefined as unknown as Accessor; // (not for these names)
 };
 
 export function startCoords(box) {

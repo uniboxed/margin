@@ -162,7 +162,7 @@ export function startWatch(ctx: any) {
 
   // The <body> in the page: the first one, or one the page swapped in (Turbo
   // and the like), with a margin and locks of its own.
-  let bodyNow = null;
+  let bodyNow: HTMLElement | null = null;
   function bodyArrived() {
     const { body } = document;
     if (!body || body === bodyNow) return;

@@ -2,20 +2,22 @@
 // scrolling (the window's is <body>'s now), and what the browser does for a
 // window's scrolling by itself: paging keys, and the place kept across Back and
 // reload. With no box, each asks the page itself.
+import type { Accessor } from './accessor.ts';
 
-const find = (object, name) => {
+// The browser's own accessor for `name`, from `object` or its prototypes (accessor.ts).
+const find = (object, name): Accessor => {
   for (let at = object; at; at = Object.getPrototypeOf(at)) {
     const descriptor = Object.getOwnPropertyDescriptor(at, name);
-    if (descriptor) return descriptor;
+    if (descriptor) return descriptor as Accessor;
   }
-  return undefined;
+  return undefined as unknown as Accessor; // (not for these names)
 };
 const define = (object, name, descriptor) => Object.defineProperty(object, name, { configurable: true, enumerable: true, ...descriptor });
 
 export function startViewport(box) {
   const html = document.documentElement;
   const element = Element.prototype;
-  const native: Record<string, PropertyDescriptor> = {};
+  const native: Record<string, Accessor> = {};
   for (const name of ['scrollTop', 'scrollLeft', 'scrollHeight', 'scrollWidth', 'clientWidth', 'clientHeight']) native[name] = find(element, name);
   const offsetHeight = find(HTMLElement.prototype, 'offsetHeight');
   const innerWidth = find(window, 'innerWidth');
@@ -177,7 +179,7 @@ export function startViewport(box) {
     const body = box.body();
     let tries = 0;
     let timer = 0;
-    let at = null;
+    let at: number | null = null;
     const stop = () => {
       clearTimeout(timer);
       for (const type of ['wheel', 'touchmove', 'keydown', 'pointerdown']) removeEventListener(type, stop, true);
@@ -189,7 +191,7 @@ export function startViewport(box) {
       native.scrollLeft.set.call(body, x);
       native.scrollTop.set.call(body, y);
       at = native.scrollTop.get.call(body);
-      if (++tries >= 10 || at >= y - 1) return stop();
+      if (++tries >= 10 || at! >= y - 1) return stop(); // (just read)
       timer = setTimeout(put, 100);
     };
     put();

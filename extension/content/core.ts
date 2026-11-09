@@ -179,14 +179,14 @@ export function startCore() {
   // Each answer also gives the screen's own scale (devicePixelRatio is that
   // times the page's zoom, in WebKit and Chromium), so the next change is
   // followed at once from the page (the answer, a moment later, confirms).
-  let screenScale = null;
+  let screenScale: number | null = null;
   const readZoom = () => send('getZoom').then((z) => {
     if (!Number.isFinite(Number(z)) || Number(z) <= 0) return;
     zoomAnswered = true;
     screenScale = devicePixelRatio / Number(z);
     applyZoom(Number(z));
   }, () => {});
-  let zoomTimer = null;
+  let zoomTimer: number | null = null;
   addEventListener('resize', () => {
     if (screenScale) applyZoom(devicePixelRatio / screenScale);
     clearTimeout(zoomTimer);
@@ -212,7 +212,7 @@ export function startCore() {
     fullscreen = value;
     render();
   }
-  let recheck = null;
+  let recheck: number | null = null;
   const checkFullscreen = () => {
     if (!platform?.marginFullscreen) return;
     clearTimeout(recheck);
@@ -333,11 +333,11 @@ export function startCore() {
   const appKey = (l) => JSON.stringify([l?.state ?? null, l?.layouts ?? null, l?.drawn ?? null]);
   // What the log last said of the app here, said again as it changes (the window known later too).
   // Linked, the box is the app's layout for the window: none where it said it draws nothing.
-  let saidOfApp = null;
+  let saidOfApp: string | null = null;
   function sayApp() {
     if (appLink === undefined) return;
     // (Its window not known yet, from Margin's state or the background's hello: not said either way.)
-    const known = state?.tabs?.[tabId]?.windowId ?? helloWindowId;
+    const known = state?.tabs?.[tabId as number]?.windowId ?? helloWindowId; // (no id yet: no tab, undefined)
     const said = !appUi() ? 'Margin.app isn\'t linked: the page as it is, no box' : known == null ? 'Margin.app is linked (this page\'s window not known yet)' : drawsWindow(appLink, known) ? 'Margin.app draws Margin around this window' : 'Margin.app is linked but draws nothing over this window: the page as it is, no box';
     if (said !== saidOfApp) console.debug(`[margin] ${said}`);
     saidOfApp = said;
@@ -378,19 +378,19 @@ export function startCore() {
 
   // ---- data ---------------------------------------------------------------
 
-  let tabId = null;
-  let helloWindowId = null;
-  let windowId = null;
+  let tabId: number | null = null;
+  let helloWindowId: number | null = null;
+  let windowId: number | null = null;
 
   // ---- this copy, and standing back ---------------------------------------------
   // Until this copy owns the state and has matched the open tabs (after Safari
   // starts, or Margin is updated), the stored tabs are another copy's. Its
   // background says whether a newer copy runs (`hello`, and `owner` when
   // another copy has claimed the state since): this one then stands back.
-  let storedOwner = null;
+  let storedOwner: { origin: string, [more: string]: unknown } | null = null; // (storage's `owner`: shared/owner.ts)
   let waitedSince = 0;
-  let mySince = null; // this copy's start, from hello
-  let storedTabsBy = null;
+  let mySince: number | null = null; // this copy's start, from hello
+  let storedTabsBy: { origin?: string, since?: number, synced?: boolean } | null = null;
   let storageSeen = false;
   function ownerSeen(owner, openTabsBy) {
     storageSeen = true;
@@ -459,7 +459,7 @@ export function startCore() {
     if (!state) return;
     if (fullscreenOnly() && fullscreen === null) return; // until the background says (above)
     // Known tab → its window. Until the background answers `hello`, guess.
-    windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
+    windowId = state.tabs?.[tabId as number]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
     if (tabId != null) scrollRecord.take(!!state.tabs?.[tabId]?.restoreScroll);
     layout.settle();
     trackpad.update();

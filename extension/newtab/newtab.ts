@@ -162,7 +162,7 @@ function showNotice() {
   if (platform?.nativeApp) {
     start.hidden = false;
     describe(appLinkNow);
-    let timer = null;
+    let timer: number | null = null;
     // Try again (Margin turned its link off): sockets on again; the page changes once it's linked.
     document.getElementById('retry')?.addEventListener('click', async () => {
       const retry = (document.getElementById('retry') as HTMLButtonElement);

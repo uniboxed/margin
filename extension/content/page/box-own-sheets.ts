@@ -2,6 +2,7 @@
 // and <body>'s scroll (box-locks.ts), size and padding (box-body.ts), how it's
 // read, and its background. Made in the page's own world and adopted, and kept
 // adopted whatever the page does with its list.
+import type { Accessor } from './accessor.ts';
 import { bodyFitCss, boxCss, NO_BOX_CSS, SAID_CSS, STILL_CSS } from '../../shared/page-box.ts';
 
 // Made with the box, before anything is in the page; `start` puts them in.
@@ -29,10 +30,10 @@ export function createOwnSheets() {
 
   // Never dropped by a page that assigns its own list, or edits the one it has,
   // which goes through a proxy of it, one that lets the page's edits be seen.
-  const adopted = Object.getOwnPropertyDescriptor(Document.prototype, 'adoptedStyleSheets');
+  const adopted = Object.getOwnPropertyDescriptor(Document.prototype, 'adoptedStyleSheets') as Accessor;
   const adopt = () => adopted.set.call(document, [...adopted.get.call(document).filter((s) => !ours.includes(s)), ...ours]);
 
-  let box = null;
+  let box: any = null; // (box.ts's, from start: it isn't typed yet)
   let rootZoom = 1; // the page's `zoom` on <html> (box-body.ts readSaid)
   let rootClipsY = true; // <html> clips up and down (box-locks.ts checkLocks: not while the page says its overflow-x)
   const write = () => replace(sheets.box, box.on ? boxCss(box, rootZoom, rootClipsY) : NO_BOX_CSS);

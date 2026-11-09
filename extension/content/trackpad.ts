@@ -22,8 +22,8 @@ export function gestureTeller(kind: 'pull' | 'swipe', tell: (g: { kind: string, 
   let state = 'idle';
   let key = 'idle';
   let at = -Infinity;
-  let held = null;
-  let timer = null;
+  let held: { key: string; state: string; progress: number; direction: number; } | null = null;
+  let timer: number | null = null;
   const say = (g) => {
     if (timer != null) cancel(timer);
     timer = null;
@@ -69,7 +69,7 @@ export function startTrackpad(page: any) {
   // guard); this is Margin's: pull down at the top of a page past the
   // threshold and let go to reload. The gesture logic is shared/pull.ts.
   let pullRefreshing = false;
-  let pullStuckTimer = null;
+  let pullStuckTimer: number | null = null;
   // Also while an earlier copy is still in the page (its pull reloads too: the
   // same reload), unlike swipe below (two would go back twice).
   const pullEnabled = () => !page.dormant?.() && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.pullToRefresh !== false;
@@ -131,7 +131,7 @@ export function startTrackpad(page: any) {
   if (gestureGuard) {
     const pullTracker = createPullTracker();
     const swipeTracker = createSwipeTracker();
-    let endTimer = null;
+    let endTimer: number | null = null;
     // Where the gesture applies is asked lazily (shared/pull.ts): it walks
     // the event's path, which can cost a layout, only while it matters.
     const onWheel = (event: WheelEvent) => {

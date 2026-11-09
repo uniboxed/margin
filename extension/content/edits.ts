@@ -100,7 +100,7 @@ function fieldsInUse(doc: Document) {
 function framesInUse(doc: Document, depth = 0) {
   if (depth > 4) return false;
   for (const frame of ([...doc.querySelectorAll('iframe, frame')] as any[])) {
-    let inner = null;
+    let inner: Document | null = null;
     try {
       inner = frame.contentDocument;
     } catch {

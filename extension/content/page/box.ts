@@ -8,6 +8,7 @@
 //   box-chain.ts       the first children whose top margins count with <body>'s
 //   box-watch.ts       when to read again: attributes, children, a new <body> or <html>, resizes
 // What the box promises, and every page pattern it handles: tests/box/README.md.
+import type { Accessor } from './accessor.ts';
 import { createOwnSheets } from './box-own-sheets.ts';
 import { startLocks } from './box-locks.ts';
 import { startBody } from './box-body.ts';
@@ -25,8 +26,8 @@ const REST_MS = 150;
 export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bottom = FRAME }: { left?: number, top?: number, right?: number, bottom?: number } = {}) {
   // The browser's own, from before viewport.ts speaks for the box.
   const { matches, append, remove, checkVisibility } = Element.prototype;
-  const scrollTop = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
-  const scrollLeft = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollLeft');
+  const scrollTop = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop') as Accessor;
+  const scrollLeft = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollLeft') as Accessor;
   const native = {
     matches, append, remove, checkVisibility, scrollTop, scrollLeft,
     computed: window.getComputedStyle,
@@ -117,7 +118,7 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
   // The page's own layout follows when the box rests, and once it's in sight:
   // a hidden tab catches up as it's shown.
   let restTimer = 0;
-  let restFrom = null;
+  let restFrom: { dw: number, dh: number } | null = null;
   function rest() {
     clearTimeout(restTimer);
     restTimer = 0;
@@ -165,7 +166,7 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     if (!wasOn) {
       ctx.body.measureBody();
       ctx.locks.checkLocks();
-      scrollTo(box.body(), scrolled);
+      scrollTo(box.body(), scrolled!); // (read above while the box was off)
       for (const fn of box.onToggle) fn();
     }
     for (const fn of box.onMove) fn(before);

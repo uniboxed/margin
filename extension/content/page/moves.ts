@@ -114,7 +114,7 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
     if (!event.isTrusted) return;
     if (event.type === 'transitionrun' && echoing) {
       if (!echoRuns.has(event.target)) echoRuns.set(event.target, new Set<any>());
-      echoRuns.get(event.target).add(echoKey(event));
+      echoRuns.get(event.target)!.add(echoKey(event)); // (set just above)
     }
     if (event.pseudoElement) return; // a read looks at elements, not at their ::before
     const node = event.target;
@@ -199,7 +199,7 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
 // What a `@keyframes` of that name sets, from the sheets the page can read
 // (the last one wins, as in CSS): null if none of them has it.
 export function keyframesIn(sheets, name) {
-  let found = null;
+  let found = null as CSSKeyframesRule | null; // (set in walk's callback)
   const walk = (rules) => {
     for (const rule of Array.from(rules ?? [])) {
       try {
