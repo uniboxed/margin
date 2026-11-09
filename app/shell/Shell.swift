@@ -1530,15 +1530,15 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     // An overlay just shown (it wasn't): whether it's the front window's (a field its page focused
-    // while hidden gets the keyboard only then, OverlayController.appeared), and whether its new-tab
-    // launcher takes the focus: only over the front window, and only for a window its copy heard made
-    // within `launcherFocusWithin` (⌘N, New Window). Not at Margin.app's start, a relink or a page
-    // reloaded over a window that was already there: the keys stay where they were.
+    // while hidden gets the keyboard only then, OverlayController.appeared), and whether the palette
+    // opens over its new tab, as ⌘T's does: only over the front window, and only for a window its copy
+    // heard made within `launcherFocusWithin` (⌘N, New Window). Not at Margin.app's start, a relink or a
+    // page reloaded over a window that was already there: the keys stay where they were.
     static let launcherFocusWithin: TimeInterval = 10
     private func appeared(_ overlay: OverlayController, _ w: ExtWindow, list: [ServerWindow]) {
         let front = frontOverlay(list: list) === overlay
         let new = w.createdAt.map { options.clock() - $0 <= Shell.launcherFocusWithin } ?? false
-        overlay.appeared(front: front, focusLauncher: front && new)
+        overlay.appeared(front: front, newWindow: front && new)
     }
 
     private func makeOverlay(_ key: WindowKey) -> OverlayController {

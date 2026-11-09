@@ -100,7 +100,7 @@ func keyboardScenario() async {
   f = await focused(o1b)
   check("a relink with a new-tab page in front doesn't take the keyboard", f != "launcher" && !o1b.hasKeyboard && !o1b.pageWantsKeyboard, f)
 
-  // ---- a new window in front (⌘N, New Window): its launcher takes the typing as it shows ----
+  // ---- a new window in front (⌘N, New Window): the palette opens over its new tab as it shows, as ⌘T's ----
   var from = said.count
   place([(w2, r2, true), (w1, r1, true)])
   fake.tell(["do": "windows", "id": "A2", "list": [win(1, r1), win(2, r2, focused: true, created: Date().timeIntervalSince1970 * 1000)]])
@@ -108,7 +108,8 @@ func keyboardScenario() async {
   guard let o2 = shell.overlays[k2] else { return }
   var ok = await until(3, { o2.hasKeyboard })
   f = await focused(o2)
-  check("a new window in front: its launcher focused, the keyboard the overlay's", ok && f == "launcher", f)
+  let palette2 = await paletteOpen(o2)
+  check("a new window in front: the palette open over its new tab, as ⌘T's, the keyboard the overlay's", ok && palette2 && f == "palette", "\(f) \(palette2)")
   let shownAt = said[from...].firstIndex { $0.hasPrefix("overlay shown over \(k2)") }
   let tookAt = said[from...].firstIndex { $0.hasPrefix("\(k2) took the keyboard") }
   check("and only after it showed", shownAt != nil && tookAt != nil && tookAt! > shownAt!, "\(Array(said[from...]).filter { $0.contains("\(k2)") })")
@@ -117,7 +118,7 @@ func keyboardScenario() async {
   shell.pressed(CGPoint(x: r2.minX + 700, y: r2.minY + 400)) // on the page
   ok = await until(3, { !o2.hasKeyboard })
   f = await focused(o2)
-  check("a press on the page: the keyboard back to Safari, the launcher let go", ok && f != "launcher", f)
+  check("a press on the page: the keyboard back to Safari, the palette closed", ok && f != "palette" && f != "launcher", f)
   check("and the log says why", said.contains("\(k2) gave the keyboard back: a press on the page or another app"))
 
   // ---- a field focused while the overlay is hidden, then shown over the front window ----
