@@ -12,6 +12,8 @@ pub mod args;
 pub mod bridge;
 pub mod frames;
 pub mod handshake;
+pub mod install;
+pub mod instance;
 pub mod keys;
 pub mod log;
 pub mod paths;
@@ -19,3 +21,16 @@ pub mod queue;
 pub mod screens;
 pub mod serve;
 
+// Windows.
+#[cfg(windows)]
+pub mod msgwin;
+#[cfg(windows)]
+pub mod pipe;
+#[cfg(windows)]
+pub mod process;
+#[cfg(windows)]
+pub mod relay;
+#[cfg(windows)]
+pub mod security;
+#[cfg(windows)]
+pub mod win;
