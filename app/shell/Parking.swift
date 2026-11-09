@@ -283,6 +283,24 @@ final class ParkingRegistry {
         if changed { saveMarker() }
     }
 
+    // The parked windows that close with window `number`, closed by the person (§13.8, app/WINDOWS.md §3): its
+    // line's, if it was that line's shown window; nil if it wasn't one. Other lines are as they were.
+    func parkedClosingWith(_ number: Int) -> Set<Int>? {
+        guard let id = line(of: number), let l = lines[id], l.shown == number else { return nil }
+        return Set(l.homes.values.filter { entries[$0] != nil })
+    }
+
+    // With every Safari window parked (§6.2): the window to show, from the line used last, the one it showed
+    // last (`lastShown`) first, then its most recently parked; with no line, the most recently parked of all.
+    func everyParkedPick(lastShown: Int?) -> ParkedWindow? {
+        let parked = entries.values.filter { $0.key != nil && $0.phase == .parked }.sorted { ($0.since, $0.number) > ($1.since, $1.number) }
+        if let recent = recentLine {
+            let mine = parked.filter { line(of: $0.number) == recent }
+            if let e = mine.first(where: { $0.number == lastShown }) ?? mine.first { return e }
+        }
+        return parked.first
+    }
+
     // The line used last (app/WINDOWS.md §3, §6.2): a switch with no window to leave, and none that asked, is its.
     var recentLine: Int? { lines.values.max { ($0.usedAt, -$0.id) < ($1.usedAt, -$1.id) }?.id }
 
@@ -478,10 +496,11 @@ final class ParkingRegistry {
     // it), all at once, for `within` in all. A window not done by then stays tracked, as it was
     // before it was asked: §13.8 runs this while Margin keeps running, and a copy that never
     // answers mustn't leave the window busy for good. A late "closed" still forgets it.
-    func endAll(cause: Cause, within: Double, close: Closer?, done: @escaping (ParkingEnd) -> Void) {
+    // `only`: these parked windows (one Margin window's, app/WINDOWS.md §3), else every one.
+    func endAll(cause: Cause, within: Double, close: Closer?, only: Set<Int>? = nil, done: @escaping (ParkingEnd) -> Void) {
         let began = clock.now()
         var end = ParkingEnd()
-        var waiting = Set(entries.keys)
+        var waiting = only.map { Set(entries.keys).intersection($0) } ?? Set(entries.keys)
         var asked: [Int: ParkedWindow.Phase] = [:] // asked to close: the phase each had before
         var finished = false
         func finish() {

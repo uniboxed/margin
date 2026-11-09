@@ -314,8 +314,8 @@ extension Shell: HandoffWorld {
     // A burst merged into one (150 ms), then one handoff to that window.
     static let activityMerge: TimeInterval = 0.15
     func queueActivity(_ key: WindowKey, tabId: Int?, why: String) {
-        // The shown window was just closed and every parked one is closing (§13.8): none comes back for it.
-        if parkedEnding { return Diagnostics.note("handoff: \(key)'s use (\(why)) dropped: the parked windows are closing") }
+        // A shown window was just closed and its Margin window's parked ones are closing (§13.8): none comes back for it.
+        if endingIncludes(key) { return Diagnostics.note("handoff: \(key)'s use (\(why)) dropped: its Margin window's parked windows are closing") }
         if let was = activity[key] { activity[key] = (tabId ?? was.tabId, was.why, was.timer); return }
         let timer = Timer.scheduledTimer(withTimeInterval: Self.activityMerge, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.activityDue(key) }
@@ -325,7 +325,7 @@ extension Shell: HandoffWorld {
 
     private func activityDue(_ key: WindowKey) {
         guard let a = activity.removeValue(forKey: key), handoffOn, let parking else { return }
-        if parkedEnding { return Diagnostics.note("handoff: \(key)'s use (\(a.why)) dropped: the parked windows are closing") }
+        if endingIncludes(key) { return Diagnostics.note("handoff: \(key)'s use (\(a.why)) dropped: its Margin window's parked windows are closing") }
         guard let number = matches[key] ?? parking.entries.values.first(where: { $0.key == key })?.number, parking.isParked(number) else {
             return Diagnostics.note("handoff: \(key) isn't parked any more: no handoff")
         }
@@ -338,7 +338,7 @@ extension Shell: HandoffWorld {
         }
         activitySaid.remove(key)
         guard let space = spaceFor(key, tabId: a.tabId) else { return Diagnostics.note("handoff: \(key) has no space to show: no handoff") }
-        let from = shownWindow()
+        let from = shownWindow(lineOf: number)
         Diagnostics.note("handoff: window \(number) (\(key)) used while parked (\(a.why)): handed off to it from \(from.map(\.description) ?? "nothing")")
         switcher.start(.init(profile: key.link, space: space), from: from?.link ?? "", windowId: from?.windowId, asked: key)
         burst("a parked window used")
@@ -351,6 +351,23 @@ extension Shell: HandoffWorld {
         if let tabId, let s = (open?["tabSpace"] as? JSONObject)?[String(tabId)] as? String { return s }
         if let s = activeSpaceId(of: key) { return s }
         return (links[key.link]?.mirror.value("spaces") as? [Any])?.first.flatMap { ($0 as? JSONObject)?["id"] as? String }
+    }
+
+    // A parked window of a closing Margin window's (§13.8, app/WINDOWS.md §3).
+    private func endingIncludes(_ key: WindowKey) -> Bool {
+        guard parkedEnding else { return false }
+        guard let n = matches[key] ?? parking?.entries.values.first(where: { $0.key == key })?.number else { return endingNumbers.isEmpty }
+        return endingNumbers.isEmpty || endingNumbers.contains(n)
+    }
+
+    // The window a parked window's Margin window shows now (app/WINDOWS.md §3): its line's shown window, if
+    // it's still there and not parked; with its line showing nothing, none (a handoff with no A). A window in
+    // no line: the window shown as before.
+    func shownWindow(lineOf number: Int) -> WindowKey? {
+        guard let parking, let line = parking.line(of: number) else { return shownWindow() }
+        guard let n = parking.shown(in: line), let key = key(of: n), isLinked(key.link), !parking.isParked(n),
+              copyWindows(key.link).contains(where: { $0.key == key }) else { return nil }
+        return key
     }
 
     // The window Margin shows now: where the last switch landed, if it's still there and not parked;
@@ -421,11 +438,14 @@ extension Shell: HandoffWorld {
         guard !parking.entries.isEmpty else { return }
         for (key, number) in gone {
             guard let entry = links[key.link], entry.connection.isUp, entry.mirror.hasState, !parking.isParked(number) else { continue }
-            // The shown window by its number, or by its key when the switch that showed it had no number yet.
-            let shown = switcher.session.shown.map { $0.number == number || $0.key == key } ?? (parking.lastShown[key.link] == number)
-            guard shown else { continue }
-            Diagnostics.note("handoff: the shown window \(number) (\(key)) closed by the person: the \(parking.entries.count) parked close too")
+            // A Margin window's shown window (its line's), or the session's by its key when the switch that showed
+            // it had no number yet. Only that Margin window's parked windows close (app/WINDOWS.md §3, Tirth
+            // 2026-11-09): other Margin windows are as they were.
+            let own = parking.parkedClosingWith(number) ?? (parking.line(of: number) == nil && switcher.session.shown?.key == key ? Set(parking.entries.keys) : nil)
+            guard let own, !own.isEmpty else { continue }
+            Diagnostics.note("handoff: the shown window \(number) (\(key)) closed by the person: its Margin window's \(own.count) parked close too")
             parkedEnding = true
+            endingNumbers = own
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.shownCloseWait) { [weak self] in
                 MainActor.assumeIsolated { self?.endParked(after: key) }
             }
@@ -436,10 +456,11 @@ extension Shell: HandoffWorld {
     // A switch under way when it's due (none should start meanwhile: a parked window's use is dropped
     // while they close): after it, looked at every 0.25 s for up to 10 s.
     private func endParked(after key: WindowKey, waited: TimeInterval = 0) {
-        guard handoffOn, let parking, !parking.entries.isEmpty else { parkedEnding = false; return }
+        guard handoffOn, let parking, !parking.entries.isEmpty else { parkedEnding = false; endingNumbers = []; return }
         if switcher.busy {
             guard waited < 10 else {
                 parkedEnding = false
+                endingNumbers = []
                 return Diagnostics.note("handoff: the shown window closed, but a switch ran for 10 s: its parked windows left parked")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -449,10 +470,12 @@ extension Shell: HandoffWorld {
         }
         guard links[key.link]?.connection.isUp == true, !browserPids("safari").isEmpty else {
             parkedEnding = false
+            endingNumbers = []
             return Diagnostics.note("handoff: Safari is going: its parked windows left to it")
         }
-        parking.endAll(cause: .handoff, within: switcher.options.closeTimeout, close: parkedCloser()) { [weak self] end in
+        parking.endAll(cause: .handoff, within: switcher.options.closeTimeout, close: parkedCloser(), only: endingNumbers) { [weak self] end in
             self?.parkedEnding = false
+            self?.endingNumbers = []
             Diagnostics.note("handoff: the shown window closed: \(end.closed) parked closed, \(end.returned) returned to the Desktop, \(end.left) not done (\(end.ms) ms)")
         }
     }
@@ -490,9 +513,8 @@ extension Shell: HandoffWorld {
         everyParkedSince = nil
         safariActivated = false
         // The window last shown: where the last switch left from or landed, else the most recent parked.
-        let entries = parking.entries.values.filter { $0.key != nil && $0.phase == .parked }.sorted { $0.since > $1.since }
-        let lastShown = switcher.session.shown?.number
-        guard let e = entries.first(where: { $0.number == lastShown || parking.lastShown[$0.link] == $0.number }) ?? entries.first, let key = e.key,
+        // The Margin window used last (app/WINDOWS.md §3): its window shown last, else its most recently parked.
+        guard let e = parking.everyParkedPick(lastShown: switcher.session.shown?.number), let key = e.key,
               let space = spaceFor(key, tabId: nil) else { return }
         Diagnostics.note("handoff: Safari in front with every window parked, and no switch explains it: window \(e.number) (\(key)) shown")
         switcher.start(.init(profile: key.link, space: space), from: "", windowId: nil, asked: key)

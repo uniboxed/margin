@@ -776,6 +776,27 @@ func parkingRegistryTests() {
         said = []
     }
 
+    // ---- two Margin windows: each one's closes and §6.2's pick (app/WINDOWS.md §3) ----
+    do {
+        let s = Setup([41: boundsA, 42: boundsB, 43: boundsC, 44: boundsA], pid: safari)
+        s.park(41, "safari:a", 1, bounds: boundsA)
+        s.park(43, "safari:a", 3, bounds: boundsC)
+        s.registry.noteShown(link: "safari:a", number: 41, line: 1)
+        s.registry.noteShown(link: "safari:b", number: 42, line: 1) // line 1 shows 42, its a parked
+        s.clock.advance(1)
+        s.registry.noteShown(link: "safari:a", number: 43, line: 2)
+        s.registry.noteShown(link: "safari:b", number: 44, line: 2) // line 2 shows 44, used last
+        check("lines: closing a Margin window's shown window closes its own parked windows only",
+              s.registry.parkedClosingWith(42) == [41] && s.registry.parkedClosingWith(44) == [43], "\(s.registry.lines)")
+        check("lines: a window that isn't its line's shown one closes nothing with it", s.registry.parkedClosingWith(41) == nil && s.registry.parkedClosingWith(99) == nil)
+        check("lines: every window parked: the line used last's", s.registry.recentLine == 2 && s.registry.everyParkedPick(lastShown: nil)?.number == 43)
+        check("lines: … even when the window shown last is another line's", s.registry.everyParkedPick(lastShown: 41)?.number == 43)
+        var ended: ParkingEnd?
+        s.registry.endAll(cause: .handoff, within: 1, close: nil, only: [41]) { ended = $0 }
+        s.clock.advance(1.5)
+        check("lines: one Margin window's parked windows ended, the other's still parked", !s.registry.isParked(41) && s.registry.isParked(43) && ended?.returned == 1,
+              "\(String(describing: ended)) \(s.registry.numbers)")
+    }
     // ---- a window in no line, shown: the switch gives it its line (app/WINDOWS.md §2.1) ----
     do {
         let s = Setup([11: boundsA], pid: safari)

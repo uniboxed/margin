@@ -351,6 +351,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var safariActivated = false // Safari came to the front: §6.2's check is due
     var everyParkedSince: TimeInterval? // §6.2: a read with Safari in front and every window parked
     var parkedEnding = false // §13.8: the shown window was closed, its parked windows closing
+    var endingNumbers: Set<Int> = [] // those windows (its Margin window's, app/WINDOWS.md §3)
     var parkedBindAsked: Set<Int> = [] // parked windows the binder was asked to bind from the registry's record
     var devHooks: DevHooks? // DEV-HOOK: the dev-only test hook (DevHooks.swift), only with Options.devHooksOn
     // ---- user themes (ShellThemes.swift) ----
