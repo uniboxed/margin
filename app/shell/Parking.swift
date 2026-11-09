@@ -152,6 +152,12 @@ nonisolated struct ParkingMarker: Codable, Equatable, Sendable {
         var link: String
         var number: Int
     }
+    // A Margin window's windows (app/WINDOWS.md §4): its home window per link, and the one it shows.
+    nonisolated struct LineRecord: Codable, Equatable, Sendable {
+        var id: Int
+        var homes: [Shown]
+        var shown: Int?
+    }
 
     static let fileName = "parked.json"
 
@@ -160,7 +166,8 @@ nonisolated struct ParkingMarker: Codable, Equatable, Sendable {
     var at: Double // when it was written, ms since 1970
     var count: Int
     var windows: [Window]
-    var shown: [Shown] // each profile's window Margin last showed
+    var shown: [Shown] // each profile's window Margin last showed (every line's homes, flattened)
+    var lines: [LineRecord]? = nil // the Margin windows (app/WINDOWS.md §4); nil in a marker from before them
 
     // Application Support/Margin, beside the lasting data's folder (DataStore.appRoot's parent).
     @MainActor static var appRoot: URL { DataStore.appRoot.deletingLastPathComponent() }
@@ -179,10 +186,23 @@ struct ParkingEnd: Equatable {
     var ms = 0
 }
 
+// A Margin window (app/WINDOWS.md §1): its own window per profile, shown or parked, and the one it shows.
+struct Line: Equatable {
+    let id: Int
+    var homes: [String: Int] = [:] // link → its window's number in this line
+    var shown: Int? // one of homes' values; nil while all of it is parked
+    var usedAt: Double = 0 // the last switch or show in it
+}
+
 final class ParkingRegistry {
     private(set) var entries: [Int: ParkedWindow] = [:]
-    // Per link: the window number Margin last showed for that profile, its home window (§1.5, §13.11).
-    private(set) var lastShown: [String: Int] = [:]
+    // The Margin windows, by id (app/WINDOWS.md §1). Each window Margin shows or parks is in exactly one.
+    private(set) var lines: [Int: Line] = [:]
+    private var nextLine = 1
+    // The first line's home windows: the one chain there was before lines (§1.5, §13.11), for the callers
+    // that still read it that way.
+    var lastShown: [String: Int] { lines[Self.firstLine]?.homes ?? [:] }
+    static let firstLine = 1
     let options: ParkingOptions
     // Whether parking is on now (the shell's parkingOn): off, a window back by itself is returned.
     var parkingOn: () -> Bool
@@ -225,11 +245,38 @@ final class ParkingRegistry {
     func isParked(_ number: Int) -> Bool { entries[number] != nil }
     func entries(of link: String) -> [ParkedWindow] { entries.values.filter { $0.link == link }.sorted { $0.since > $1.since } }
 
-    // A switch landed on this window without a park or show (made, or the focus variant).
-    func noteShown(link: String, number: Int) {
-        guard lastShown[link] != number else { return }
-        lastShown[link] = number
-        saveMarker()
+    // A switch landed on this window without a park or show (made, or the focus variant): its line's home
+    // for its link, and the window that line shows. `line`: the first one's unless said.
+    func noteShown(link: String, number: Int, line: Int? = nil) {
+        if setHome(link: link, number: number, line: line ?? Self.firstLine, shown: true) { saveMarker() }
+    }
+
+    // The line holding this window, if any.
+    func line(of number: Int) -> Int? {
+        lines.first { $0.value.homes.values.contains(number) }?.key
+    }
+
+    // `number` the line's home for `link` (out of any other line it was in), and its shown window if
+    // `shown`. Whether anything changed.
+    @discardableResult
+    private func setHome(link: String, number: Int, line id: Int, shown: Bool) -> Bool {
+        var line = lines[id] ?? Line(id: id)
+        let before = line
+        for (other, l) in lines where other != id && l.homes.values.contains(number) { drop(number, from: other, l) }
+        line.homes[link] = number
+        if shown { line.shown = number }
+        line.usedAt = clock.now()
+        lines[id] = line
+        nextLine = max(nextLine, id + 1)
+        return line.homes != before.homes || line.shown != before.shown
+    }
+
+    // `number` out of its line; a line left with nothing ends.
+    private func drop(_ number: Int, from id: Int, _ line: Line) {
+        var line = line
+        line.homes = line.homes.filter { $0.value != number }
+        if line.shown == number { line.shown = nil }
+        lines[id] = line.homes.isEmpty ? nil : line
     }
 
     // A windows call Margin made for this window itself (setWindowState, focusWindow): focus that
@@ -337,7 +384,7 @@ final class ParkingRegistry {
             e.cause = nil
             if o.ok {
                 self.verifiedOut.insert(number)
-                self.lastShown[e.link] = number
+                self.setHome(link: e.link, number: number, line: self.line(of: number) ?? Self.firstLine, shown: true)
                 Diagnostics.note("handoff: shown window \(number) (\(e.label)) in \(o.ms) ms (\(cause))")
                 self.forget(number, .shown)
                 return done(o)
@@ -736,7 +783,7 @@ final class ParkingRegistry {
         if why.gone {
             // Its private Space has nothing left to hold.
             parker.destroySpace(of: number)
-            if lastShown[e.link] == number { lastShown[e.link] = nil }
+            if let id = line(of: number), let l = lines[id] { drop(number, from: id, l) }
             Diagnostics.note("handoff: forgot parked window \(number) (\(e.label)): \(why.rawValue)")
         }
         saveMarker()
@@ -760,9 +807,12 @@ final class ParkingRegistry {
             ParkingMarker.Window(number: e.number, link: e.link, windowId: e.windowId, copy: e.copy, pid: e.pid,
                                  bounds: [e.bounds.minX, e.bounds.minY, e.bounds.width, e.bounds.height].map(Double.init))
         }
+        let lineRecords = lines.values.sorted { $0.id < $1.id }.map { l in
+            ParkingMarker.LineRecord(id: l.id, homes: l.homes.sorted { $0.key < $1.key }.map { ParkingMarker.Shown(link: $0.key, number: $0.value) }, shown: l.shown)
+        }
         return ParkingMarker(pid: ProcessInfo.processInfo.processIdentifier, build: build, at: (clock.now() * 1000).rounded(),
                              count: windows.count, windows: windows,
-                             shown: lastShown.sorted { $0.key < $1.key }.map { ParkingMarker.Shown(link: $0.key, number: $0.value) })
+                             shown: lineRecords.flatMap(\.homes), lines: lineRecords)
     }
 
     private func saveMarker() {
@@ -822,9 +872,14 @@ final class ParkingRegistry {
             again.removeAll { $0.number == stay.number }
             kept = 1
         }
-        // The shown window stays as it is, and stays each profile's home window while Safari's the same.
-        for s in marker.shown where lastShown[s.link] == nil && reads.window(s.number).map({ safariPids.contains($0.pid) }) == true {
-            lastShown[s.link] = s.number
+        // The shown windows stay as they are, and stay their lines' home windows while Safari's the same. A
+        // marker from before lines was one chain: one line.
+        let records = marker.lines ?? [ParkingMarker.LineRecord(id: Self.firstLine, homes: marker.shown, shown: nil)]
+        let here = { (n: Int) in self.reads.window(n).map { safariPids.contains($0.pid) } == true }
+        for r in records {
+            for s in r.homes where here(s.number) && line(of: s.number) == nil && lines[r.id]?.homes[s.link] == nil {
+                setHome(link: s.link, number: s.number, line: r.id, shown: r.shown == s.number)
+            }
         }
         var left: [String] = []
         if restarted > 0 { left.append("\(restarted) of an earlier Safari") }

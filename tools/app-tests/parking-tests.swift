@@ -959,6 +959,31 @@ func parkingRegistryTests() {
         check("registry: … the same copy reporting: still bound", f.isEmpty && s.registry.entries[11]?.windowId == 3, "\(f)")
         said = []
     }
+    // ---- Margin windows: lines (app/WINDOWS.md §1, §4) ----
+    do {
+        let s = Setup([21: boundsA, 22: boundsB, 23: boundsC, 24: boundsA], pid: safari)
+        let lines = [ParkingMarker.LineRecord(id: 1, homes: [.init(link: "safari:a", number: 21), .init(link: "safari:b", number: 22)], shown: 21),
+                     ParkingMarker.LineRecord(id: 4, homes: [.init(link: "safari:a", number: 23), .init(link: "safari:b", number: 24)], shown: 24)]
+        let m = ParkingMarker(pid: 99999, build: "26B123", at: 1, count: 0, windows: [], shown: lines.flatMap(\.homes), lines: lines)
+        s.registry.adoptAfterCrash(m, safariPids: [safari])
+        check("lines: a marker's lines restored, each with its homes and its shown window",
+              s.registry.lines[1]?.homes == ["safari:a": 21, "safari:b": 22] && s.registry.lines[1]?.shown == 21
+              && s.registry.lines[4]?.homes == ["safari:a": 23, "safari:b": 24] && s.registry.lines[4]?.shown == 24, "\(s.registry.lines)")
+        check("lines: each window in its own line", s.registry.line(of: 21) == 1 && s.registry.line(of: 24) == 4 && s.registry.line(of: 99) == nil)
+        check("lines: the first line is the one chain's view", s.registry.lastShown == ["safari:a": 21, "safari:b": 22])
+        s.registry.noteShown(link: "safari:a", number: 23, line: 1)
+        check("lines: a window is in one line only: moved, and the home it replaced is in none",
+              s.registry.lines[1]?.homes["safari:a"] == 23 && s.registry.lines[1]?.shown == 23 && s.registry.lines[4]?.homes == ["safari:b": 24]
+              && s.registry.line(of: 21) == nil, "\(s.registry.lines)")
+        let written = s.registry.marker
+        check("lines: the marker keeps the lines, and every home flattened for an older Margin",
+              written.lines?.map(\.id) == [1, 4] && written.lines?.first?.shown == 23 && written.shown.count == 3, "\(String(describing: written.lines))")
+        let windowless = Setup([31: boundsA], pid: safari)
+        windowless.registry.adoptAfterCrash(ParkingMarker(pid: 99999, build: "26B123", at: 1, count: 0, windows: [], shown: [], lines: [
+            ParkingMarker.LineRecord(id: 2, homes: [.init(link: "safari:a", number: 31), .init(link: "safari:b", number: 32)], shown: 32)]), safariPids: [safari])
+        check("lines: a home Safari no longer has isn't restored", windowless.registry.lines[2]?.homes == ["safari:a": 31] && windowless.registry.lines[2]?.shown == nil,
+              "\(windowless.registry.lines)")
+    }
     do {
         let s = Setup([11: boundsA], pid: safari)
         s.registry.parkingOn = { false }
