@@ -156,11 +156,10 @@ test('the validators agree with what was verified by hand', () => {
 test('the `search` permission (chrome.search) is Chrome-only; Safari has no search API', () => {
   assert.ok(manifestFor('chrome').permissions.includes('search'));
   assert.ok(!manifestFor('safari').permissions.includes('search'));
-  // Safari's own: nativeMessaging, for the Mac app's set-up window (background/onboarding.ts).
+  // Both: nativeMessaging (Safari's extension handler; Chrome's and Edge's relay helper, app/PROTOCOL.md).
   assert.ok(manifestFor('safari').permissions.includes('nativeMessaging'));
-  assert.ok(!manifestFor('chrome').permissions.includes('nativeMessaging'));
-  const base = manifestFor('safari').permissions.filter((p) => p !== 'nativeMessaging');
-  assert.deepEqual(manifestFor('chrome').permissions.filter((p) => p !== 'search'), base, 'otherwise the same list');
+  assert.ok(manifestFor('chrome').permissions.includes('nativeMessaging'));
+  assert.deepEqual(manifestFor('chrome').permissions.filter((p) => p !== 'search').sort(), manifestFor('safari').permissions.slice().sort(), 'otherwise the same list');
   assert.equal(PROFILES.chrome.search, 'browser');
   assert.equal(PROFILES.safari.search, 'learn');
 });

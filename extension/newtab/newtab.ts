@@ -17,7 +17,7 @@
 // be missed), whenever it's shown or focused, and back from the back/forward
 // cache (a suspended page misses storage events). (Phase 7 makes the prompt
 // to install the app.)
-import { platform } from '../shared/platform.ts';
+import { linksApp } from '../shared/platform.ts';
 import { resolveInput } from '../shared/search.ts';
 import * as shortcuts from '../shared/shortcuts.ts';
 import { APP_LINK_KEY, appDraws, undrawn } from '../shared/app-link.ts';
@@ -87,7 +87,7 @@ api.storage.onChanged.addListener((changes, area) => { if (area === 'local' && c
 shortcuts.installNavigation({ send, getSettings: () => settingsNow });
 // Whether this page is shown, as web pages say it (content/core.ts tellVisibility): at each change,
 // at the start and when the background asks.
-const tellVisibility = () => { if (platform?.nativeApp) void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now(), from: 'newtab' }); };
+const tellVisibility = () => { if (linksApp()) void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now(), from: 'newtab' }); };
 document.addEventListener('visibilitychange', tellVisibility);
 addEventListener('pageshow', (event) => event.persisted && tellVisibility());
 tellVisibility();
@@ -125,7 +125,7 @@ function describe(appLink: any) { // (storage's appLink, as stored: shared/app-l
     start.hidden = true;
     return;
   }
-  if (!platform?.nativeApp) return;
+  if (!linksApp()) return;
   if (appLink?.why === 'sockets-off') {
     title.textContent = 'Margin turned its link off';
     why.textContent = `Margin turned its link off at ${when(appLink.offAt)} after a socket never opened. `
@@ -155,11 +155,10 @@ function showNotice() {
   const status = (document.getElementById('status') as HTMLElement);
   if (!notice) return;
   notice.hidden = false;
-  // Only where Margin.app can be linked (Safari for now: Chrome and Edge are
-  // Phase 5): the button asks for the link, which has Margin's extension
-  // handler start the app if it isn't running (background/link.ts); the page
-  // is loaded again once it's linked.
-  if (platform?.nativeApp) {
+  // Only where Margin.app can be linked (Safari, and Chrome and Edge on the Mac): the button asks for the link,
+  // which has Margin's extension handler (Chrome's and Edge's: its relay helper) start the app if it isn't running
+  // (background/link.ts); the page is loaded again once it's linked.
+  if (linksApp()) {
     start.hidden = false;
     describe(appLinkNow);
     let timer: number | null = null;
@@ -186,7 +185,7 @@ function showNotice() {
       }, asked === false ? 0 : 15000);
     });
   } else {
-     (document.getElementById('why') as HTMLElement).textContent = 'Margin’s sidebar, palette and Settings are drawn by Margin.app, which works with Safari for now.';
+     (document.getElementById('why') as HTMLElement).textContent = 'Margin’s sidebar, palette and Settings are drawn by Margin.app, which runs on the Mac.';
   }
   // The address field: an address opens here, anything else is searched
   // with the search engine Settings name (background/handlers.ts search).

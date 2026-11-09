@@ -91,6 +91,15 @@ export const PAST_NAVIGATION = Object.freeze({
   // Safari's until 2026-11-08: spaces on ⌃⌘→/←.
   safari: Object.freeze({ nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Ctrl+Meta+ArrowRight', prevSpace: 'Ctrl+Meta+ArrowLeft' }),
 });
+// The Mac, by the browser's own word (its user agent says Macintosh): Chrome's and Edge's copies link to
+// Margin.app only there (app/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)").
+const onMac = () => /\bMacintosh\b/.test(globalThis.navigator?.userAgent ?? '');
+// Whether this copy links to Margin.app: Safari's always (`nativeApp`: its extension handler), Chrome's and Edge's
+// on the Mac (Margin.app's relay helper, started by native messaging).
+export const linksApp = () => !!platform?.nativeApp || (platform?.name === 'chrome' && onMac());
+// The browser this copy runs in, as the link names it: Edge's user agent says `Edg/` (the Chrome build runs in both).
+export const browserName = (): 'safari' | 'chrome' | 'edge' => (platform?.name === 'safari' ? 'safari' : /\bEdg\//.test(globalThis.navigator?.userAgent ?? '') ? 'edge' : 'chrome');
+
 export { PROFILES };
 // Also on the global, for the console and the E2E tests.
 (globalThis.Margin ??= {}).platform = platform;

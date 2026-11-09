@@ -3,7 +3,7 @@
 // memory only), faded, and its title; a click, Return or Space brings the tab back to this window, as the window
 // coming to the front does. Never a Margin tab (state/model.ts upsertTab), never kept or synced. It answers
 // Margin.app's handoff as the new-tab page does (its visibility, the frame probe).
-import { platform } from '../shared/platform.ts';
+import { linksApp } from '../shared/platform.ts';
 import { probeFrames, watchVisible } from '../shared/frame-probe.ts';
 
 const api = globalThis.browser ?? globalThis.chrome;
@@ -50,7 +50,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 // Whether this page is shown, as the new-tab page says it (newtab.ts tellVisibility).
-const tellVisibility = () => { if (platform?.nativeApp) void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now(), from: 'away' }); };
+const tellVisibility = () => { if (linksApp()) void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now(), from: 'away' }); };
 document.addEventListener('visibilitychange', tellVisibility);
 addEventListener('pageshow', (event) => event.persisted && tellVisibility());
 tellVisibility();

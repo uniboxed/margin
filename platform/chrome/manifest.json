@@ -1,3 +1,7 @@
 {
-  "add_permissions": ["search"]
+  "add_permissions": [
+    "search",
+    "nativeMessaging"
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4nLyxhbUW0n2NKSdSIDVqd9IIRBLsq/7PRnJmScbHNvNN2BeGOa6JTH1qIFisXZ6XfvTc8S1N392rLuD8astU6JG//Vb7dtcg8kWJjdGBjALhiw6jfCgIMoJHLRehNBEVA0EWC8xSAYYIjxu2VJeyc6Q9qdgLfT45HAnd8VyLZOm+HcpS4ZPR7JP169/4TwJZk7eL5V3HDDVXWOx8RSgAazLkMDrGnTcOpeBWY3LdC7m2+ywUAt88heCgl5hnWKXiqsma9Nc8lUbEQdxmTvzi6+/7o46y3+No3edKQjTEuQ3ekGr+RdR7SwBzQGY0F1axuqupOHYe/IOMBMEoobw6QIDAQAB"
 }

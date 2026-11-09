@@ -26,7 +26,16 @@ Version 1 was `feat/native-panel`'s (one link, a `cover` lease for the sidebar p
 
 After the last link closes, the app keeps its token and key for 30 s (a copy that restarts tries the link it had first), then makes new ones; a copy whose connection is refused asks again.
 
-Chrome and Edge (Phase 5) carry the same messages over native messaging through a relay helper; only steps 1–4 differ.
+## Transport (Chrome and Edge, on the Mac)
+
+The same link as Safari's, from step 3 on: the copy's WebSocket to `127.0.0.1`, `welcome`, `hello`, every message the same. Only how the copy finds the app differs: there's no `dispatchMessage`, so a relay helper inside Margin.app (`Margin.app/Contents/Helpers/margin-relay`, `app/relay/main.swift`) does what Safari's extension handler does.
+
+1. **The host.** Margin.app writes Chrome's and Edge's native-messaging host files at each launch (`app/shell/ChromiumHosts.swift`): `io.tirth.margin.json` in each browser's `NativeMessagingHosts` folder under `~/Library/Application Support/` (Chrome and its Beta, Dev and Canary, Edge and its Beta, Dev and Canary, wherever the browser's folder exists), naming the relay and only Margin's extension (`allowed_origins`, the id from the Chrome build's `key`). A file that already says the same is left alone.
+2. **The relay.** The browser starts one relay per native port (`connectNative`) and one per one-off message (`sendNativeMessage`), each with the browser's own framing on stdin and stdout (4-byte native-order length, then UTF-8 JSON). The relay connects to the app's relay socket (`~/Library/Application Support/Margin/relay.sock`, mode 0600; the app checks that its peer is the same user and, in a signed build, the relay signed by Margin's team) and says `{ k: 'relay', v: 1, version, pid, browser, waited }`: `pid` the browser's process (the relay's parent), `browser` `chrome` or `edge` (from that process's bundle id), `waited` true once it had to wait for the app. The app answers `{ k: 'relayWelcome', v: 1, version }`; a relay whose `version` differs exits (the browser starts the new one next time). Then each of the browser's messages goes to the app as `{ msg }`, one JSON line each, and each line the app sends goes to the browser as it is.
+3. **What the app answers.** Every message gets the reply Safari's handler gives (`{ ok, appOpen, launching }`), with `browser` and `pid`: a `wantLink` (with its nonce) is then answered as Safari's (Transport (Safari), step 2), by dispatching `{ name: 'link', userInfo: { e } }` into every relay of that browser process, where the copy's lasting port receives it as it would Safari's dispatch. `appUp` goes the same way to a relay that says `waited`. The app not running: the relay starts it (in the background, never activated, at most once per 10 s), answers `{ ok: true, appOpen: false, launching: true }` itself, and keeps trying the socket; a lasting port's relay stays and says `waited` once in.
+4. **Connect.** As Safari's, with the copy's Origin `chrome-extension://…`. Chrome's background is a service worker, and a WebSocket there is fine (WebKit's hang, step 9, is Safari's): the socket guard is Safari's alone. The copy's lasting port and the link's ticks keep the worker alive.
+
+A copy in Chrome or Edge says `browser` and `pid` in its `hello` as the relay told it. Its `profile` is its own (`p-…`): Chromium gives an extension no profile id.
 
 ## Messages
 

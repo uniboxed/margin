@@ -10,7 +10,7 @@
 import * as V from '../shared/view.ts';
 import { mark } from '../shared/dom.ts';
 import * as shortcuts from '../shared/shortcuts.ts';
-import { platform } from '../shared/platform.ts';
+import { linksApp, platform } from '../shared/platform.ts';
 import { watchEdits } from './edits.ts';
 import { startTrackpad } from './trackpad.ts';
 import { startPageLink } from './page-link.ts';
@@ -440,7 +440,7 @@ export function startCore() {
   // it asks (Safari: Margin.app tells same-bounds full-screen windows of different profiles apart by
   // which one's page in front is shown: background/link.ts visibility). Its time is when it was seen.
   function tellVisibility() {
-    if (!platform?.nativeApp || retired()) return;
+    if (!linksApp() || retired()) return;
     void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now(), from: 'page' }, false);
   }
   document.addEventListener('visibilitychange', tellVisibility);

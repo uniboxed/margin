@@ -74,7 +74,7 @@ export const HIDDEN_BEHIND = `// e2e: a tab behind the front one is hidden, as i
 })();
 `;
 
-export const SOCKET_GUARD = 'canSocket=()=>typeof globalThis.document=="object"&&typeof globalThis.WorkerGlobalScope>"u"';
+export const SOCKET_GUARD = 'canSocket=()=>platform?.name==="chrome"||typeof globalThis.document=="object"&&typeof globalThis.WorkerGlobalScope>"u"';
 
 /** The extension id Chromium gives an extension whose manifest has this public key (DER). */
 export function extensionId(der) {

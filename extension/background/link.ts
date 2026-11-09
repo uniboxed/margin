@@ -3,7 +3,7 @@
 // Margin's UI around this copy's windows (pages never draw any): pages have
 // their box, which comes from the app's layout per window (setLayout), in
 // the windows the app draws over (`drawn`: a window it doesn't gets none).
-// Safari only (platform.nativeApp), in the copy that owns its profile's state.
+// Safari's copies, and Chrome's and Edge's on the Mac (shared/platform.ts linksApp), in the copy that owns its profile's state.
 //
 // Getting linked (the app can't open anything into the extension, and the
 // extension can reach only the app's extension handler):
@@ -68,7 +68,7 @@
 // data.snapshot becomes the cache; data.changes both ways; data.ack keeps
 // how far the app has stored (`acked`, with the copy's profile id, in
 // storage.local `dataMeta:link`, which pages ignore).
-import { platform } from '../shared/platform.ts';
+import { browserName, linksApp, platform } from '../shared/platform.ts';
 import { APP_LINK_KEY } from '../shared/app-link.ts';
 import { navigationFor } from '../shared/shortcuts.ts';
 import { DATA_FORMAT } from '../shared/data-merge.ts';
@@ -213,7 +213,7 @@ const webSha256 = async (bytes: Uint8Array) => [...new Uint8Array(await crypto.s
 // A message as it came (JSON from Margin.app, or a page's): an object whose fields each use checks.
 type Said = Record<string, any>;
 // Where Margin.app listens, as it said (its port), and the link's secret and key.
-type KeptLink = { port: number, token: string, key: string };
+type KeptLink = { port: number, token: string, key: string, pid?: number };
 
 export function createLink({
   api,
@@ -221,8 +221,11 @@ export function createLink({
   copy,
   instanceId = null,
   WebSocket: Socket = globalThis.WebSocket,
-  enabled = () => !!platform?.nativeApp && typeof api.runtime?.connectNative === 'function' && typeof Socket === 'function',
-  canSocket = () => typeof globalThis.document === 'object' && typeof ((globalThis as any)).WorkerGlobalScope === 'undefined',
+  enabled = () => linksApp() && typeof api.runtime?.connectNative === 'function' && typeof Socket === 'function',
+  // (A worker's WebSocket hangs WebKit's background, Transport step 9; Chrome's service worker has none of that.)
+  canSocket = () => platform?.name === 'chrome' || (typeof globalThis.document === 'object' && typeof ((globalThis as any)).WorkerGlobalScope === 'undefined'),
+  // The socket guard (Transport step 9): Safari's alone.
+  socketGuard = platform?.name !== 'chrome',
   data = null,
   theme = async () => null,
   commandKeys = () => ({}),
@@ -241,6 +244,7 @@ export function createLink({
   WebSocket?: any,
   enabled?: () => boolean,
   canSocket?: () => boolean,
+  socketGuard?: boolean,
   data?: { pendingQueue: (since: number) => Promise<any[]>, snapshot: () => Promise<any>, adopt: (set: any, options?: { changes?: any[], omitted?: any[] }) => Promise<unknown>, take: (changes: any[]) => Promise<unknown>, onChanges: (cb: (changes: any[]) => void) => unknown } | null,
   theme?: () => Promise<any>,
   commandKeys?: () => Record<string, string>,
@@ -353,6 +357,8 @@ export function createLink({
   // Whether `profile` is Safari's own id for this profile (`s-…`: from the handler's answer, now or
   // kept from one before), so hello needn't wait for an answer to say it.
   let profileSure = false;
+  // The browser's process, as Chrome's and Edge's relay says (none from Safari's handler).
+  let browserPid: number | null = null;
   let acked = 0;
   // The app's set's revision this copy's cache matches (DATA.md "Revisions"): a
   // string, compared only for being the same; null when it has none.
@@ -505,7 +511,10 @@ export function createLink({
   const validLink = (l: Said | null | undefined): l is KeptLink => Number.isInteger(l?.port) && l!.port > 0 && l!.port < 65536 && typeof l!.token === 'string' && !!l!.token && typeof l!.key === 'string' && !!l!.key;
   async function keptLink() {
     const got = await Promise.resolve(session()?.get(SESSION_KEY)).catch(() => null);
-    return validLink(got?.[SESSION_KEY]) ? got[SESSION_KEY] : null;
+    const kept = got?.[SESSION_KEY];
+    if (!validLink(kept)) return null;
+    if (typeof kept.pid === 'number' && Number.isInteger(kept.pid) && kept.pid > 0) browserPid ??= kept.pid; // (kept with the link: a worker started again)
+    return kept;
   }
   // One try at a time. Asked for while one is under way, the link is asked for again as soon as
   // that one ends unlinked (what it waits on may be an app that's gone, or an answer Safari lost);
@@ -580,7 +589,7 @@ export function createLink({
   async function ask() {
     if (!on) return false;
     if (noSocketHere()) return failed();
-    if (await noSockets()) return failed({ socketsOff: true });
+    if (socketGuard && await noSockets()) return failed({ socketsOff: true });
     appUp = false;
     const mine = (nonce = random());
     const given: Promise<{ port: number, token: string, key: string } | null> = new Promise((resolve) => { linkWaiter = resolve; });
@@ -723,8 +732,8 @@ export function createLink({
   // A kept or given link opened: { ok, how } (`how` for the log: 'open in 12 ms', 'refused or closed
   // at once (3 ms)', 'no welcome within 400 ms (slow)', …).
   async function open(kept: KeptLink, waitMs: number) {
-    if (noSocketHere() || (await noSockets())) return { ok: false, how: 'sockets off' };
-    await Promise.resolve(local().set({ [OPENING_KEY]: { at: Date.now() } })).catch(() => {});
+    if (noSocketHere() || (socketGuard && await noSockets())) return { ok: false, how: 'sockets off' };
+    if (socketGuard) await Promise.resolve(local().set({ [OPENING_KEY]: { at: Date.now() } })).catch(() => {});
     let socket = null;
     try {
       socket = new Socket(`ws://127.0.0.1:${kept.port}/?t=${encodeURIComponent(kept.token)}`);
@@ -733,7 +742,7 @@ export function createLink({
     }
     // Its handlers on before anything is awaited (a welcome that came meanwhile would be lost), then the note goes.
     const followed = socket ? follow(socket, kept, waitMs) : null;
-    await Promise.resolve(local().remove(OPENING_KEY)).catch(() => {});
+    if (socketGuard) await Promise.resolve(local().remove(OPENING_KEY)).catch(() => {});
     return followed ? await followed : { ok: false, how: 'the WebSocket constructor threw' };
   }
   // A socket closed with a code and why (a page's WebSocket may send only 1000 or 3000–4999, and up to 123 bytes).
@@ -804,12 +813,12 @@ export function createLink({
     clearTimeout(goneTimer);
     goneTimer = null;
     forgetParked('a new link');
-    void Promise.resolve(session()?.set({ [SESSION_KEY]: { port: at, token, key } })).catch(() => {});
+    void Promise.resolve(session()?.set({ [SESSION_KEY]: { port: at, token, key, ...(browserPid ? { pid: browserPid } : {}) } })).catch(() => {});
     setLast('linked', `on port ${at}`);
     const { origin, since } = copy();
     // The socket guard's sightings, said once to the app and then forgotten: sockets work here.
     const offBefore = hung ? `the socket guard found an unfinished socket in ${hung.count} Safari session${hung.count === 1 ? '' : 's'}, last at ${new Date(hung.at).toISOString()}` : null;
-    send({ k: 'hello', v: VERSION, epoch, profile, browser: platform?.name === 'chrome' ? 'chrome' : 'safari', owner: isOwner(), ext: version(), instanceId, origin, since, ...(offBefore ? { socketsOff: offBefore } : {}) });
+    send({ k: 'hello', v: VERSION, epoch, profile, browser: browserName(), ...(browserPid ? { pid: browserPid } : {}), owner: isOwner(), ext: version(), instanceId, origin, since, ...(offBefore ? { socketsOff: offBefore } : {}) });
     if (hung) {
       hung = null;
       void Promise.resolve(local().remove(HUNG_KEY)).catch(() => {});
@@ -1256,6 +1265,8 @@ export function createLink({
   // The handler's answer: Safari's id for the profile kept; an answer with none (a handler that
   // gives none) means none will come, so nothing waits for one.
   async function heardFrom(reply: Said) {
+    // Chrome's and Edge's relay: the browser's process, for hello.
+    if (Number.isInteger(reply?.pid) && reply.pid > 0) browserPid = reply.pid;
     if (reply && typeof reply === 'object' && !('profile' in reply)) profileSure = true;
     await takeProfile(reply?.profile);
   }
