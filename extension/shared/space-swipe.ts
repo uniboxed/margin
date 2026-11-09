@@ -64,7 +64,7 @@ function createSpaceSwipe(options: Partial<typeof DEFAULTS> = {}) {
   };
 
   // One event of gesture `g`; `ok`: this input, here, may swipe.
-  function track(g, { deltaX, deltaY, time, ok }) {
+  function track(g, { deltaX, deltaY, time, ok }: { deltaX: number; deltaY: number; time: number; ok: boolean; }) {
     if (!g || g.axis === 'y' || g.released) return idle();
     if (g.axis == null) {
       if (!ok) {

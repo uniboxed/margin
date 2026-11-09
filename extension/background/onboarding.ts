@@ -33,7 +33,7 @@ const lastEvent = new Map();
 const enabled = () => !!platform?.nativeApp && typeof api.runtime?.sendNativeMessage === 'function';
 
 // Whether the app was open to hear it (the handler says).
-async function send(message) {
+async function send(message: { type: string; allSites: any; } | { type: string; name: any; }) {
   try {
     const reply = await api.runtime.sendNativeMessage(APP, { v: 1, ...message, at: Date.now() });
     return reply?.appOpen === true;
@@ -73,7 +73,7 @@ export function pageLoaded() {
 // 'otherNewTabPage' (a new tab from nothing opened a web page: Safari's
 // homepage, or a link from another app), 'homepageNewTab' (the same page
 // twice: Safari's homepage, most likely).
-export function reportEvent(name) {
+export function reportEvent(name: string) {
   if (!enabled()) return;
   const now = Date.now();
   if (now - (lastEvent.get(name) ?? 0) < SAME_EVENT_MS) return;

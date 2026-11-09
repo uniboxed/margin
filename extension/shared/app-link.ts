@@ -103,7 +103,7 @@ export function boxFromLayout(layout: any, { outerWidth, outerHeight, innerWidth
   const offY = Math.max(0, finite(outerHeight) - h);
   const left = Number.isFinite(x) ? Math.min(offX, Math.max(0, (x as number))) : offX;
   const top = Number.isFinite(y) ? Math.min(offY, Math.max(0, (y as number))) : offY;
-  const half = (v) => Math.round(v * 2) / 2;
+  const half = (v: number) => Math.round(v * 2) / 2;
   const box = {
     left: half(Math.max(0, finite(insets.left) - left) / z),
     top: half(Math.max(0, finite(insets.top) - top) / z),

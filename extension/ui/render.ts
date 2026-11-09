@@ -81,8 +81,8 @@ const SLOTS = {
 // centred card in the theme's colours (`--m-cover-ground`, `--m-cover-text`
 // and `--m-cover-card` if it sets them; else the system's). As the
 // sanitizer's tree (buildTemplate), every word bound.
-const tag = (name, attrs, ...children) => ({ type: 'el', ns: 'html', name, attrs, children });
-const hole = (path) => ({ type: 'text', value: `{{${path}}}` });
+const tag = (name: string, attrs: string[][], ...children) => ({ type: 'el', ns: 'html', name, attrs, children });
+const hole = (path: string) => ({ type: 'text', value: `{{${path}}}` });
 const DEFAULT_PARTS = {
   'switch-cover': { children: [
     tag('div', [['class', 'm-cover'], ['role', 'status'], ['aria-label', '{{switchCover.label}}']],
@@ -125,11 +125,11 @@ export function buildTemplate(tree: any, doc?: Document): DocumentFragment {
 // Paths and scopes.
 
 const HOLE = /^\s*\{\{([^{}]*)\}\}\s*$/;
-const splitPath = (text) => text.trim().split('.');
+const splitPath = (text: string) => text.trim().split('.');
 
 // Text with holes, as parts: strings and paths (arrays), or null when it
 // has none (the sanitizer's own parser, so both agree on what a hole is).
-function interpolation(text) {
+function interpolation(text: string) {
   const r = parseInterpolation(text);
   return r.bound ? r.parts.map((p) => (typeof p === 'string' ? p : p.path)) : null;
 }
@@ -167,12 +167,12 @@ const joinParts = (parts, scope) => {
 
 export type Plan = { frag: DocumentFragment, bindings: any[], heads: Set<string>, single: boolean };
 
-function compileBlock(nodes, ctx, locals) {
+function compileBlock(nodes: ChildNode[], ctx, locals) {
   const frag = ctx.doc.createDocumentFragment();
   const bindings: Plan['bindings'] = [];
   const heads = new Set<any>();
   const usePath = (path) => { heads.add(path[0]); };
-  const visit = (parent, list, at) => {
+  const visit = (parent, list: ChildNode[], at) => {
     const kept = significant(list);
     for (const node of kept) {
       const path = [...at, parent.childNodes.length];
@@ -294,20 +294,21 @@ function compileBlock(nodes, ctx, locals) {
 
 // Whitespace between elements, as authors indent: dropped when it holds a
 // newline, else kept as one space (it can matter between inline elements).
-function significant(list) {
+function significant(list: ChildNode[]) {
   const out: Node[] = [];
   for (const n of list) {
     if (n.nodeType === 3) {
       const t = (n as Text).data;
-      if (!/\S/.test(t)) { if (!t.includes('\n') && t.length) out.push(n.ownerDocument.createTextNode(' ')); continue; }
+      // (A template's node: in a document.)
+      if (!/\S/.test(t)) { if (!t.includes('\n') && t.length) out.push(n.ownerDocument!.createTextNode(' ')); continue; }
       out.push(n);
     } else if (n.nodeType === 1) out.push(n);
   }
   return out;
 }
 
-const nodeAt = (root, path) => {
-  let n = root;
+const nodeAt = (root: DocumentFragment, path) => {
+  let n: Node = root;
   for (const i of path) n = n.childNodes[i];
   return n;
 };
@@ -356,7 +357,7 @@ class Block {
   }
 }
 
-function makeBinding(b, node, view, scope) {
+function makeBinding(b, node: Node, view: View, scope) {
   switch (b.kind) {
     case 'text': return new TextBinding(node, b.parts);
     case 'element': return new ElementBinding(node, b.own, view, scope);
@@ -510,7 +511,7 @@ class SlotBinding {
 
 // Longest increasing subsequence of `seq` (entries < 0 are skipped); returns
 // the indexes into seq that are in it.
-function lis(seq) {
+function lis(seq: any[]) {
   const tails: number[] = [];
   const prev = new Array(seq.length);
   for (let i = 0; i < seq.length; i++) {
@@ -546,7 +547,7 @@ class ForBinding {
     this.pool = new Map(); // rows that left, kept for when their key comes back
     this.items = null;
   }
-  key(item, i) {
+  key(item, i: number) {
     const k = item != null && typeof item === 'object' && own.call(item, this.b.key) ? item[this.b.key] : undefined;
     return typeof k === 'string' || typeof k === 'number' ? k : `\u0000${i}`;
   }
@@ -664,7 +665,7 @@ export class View {
     const ctx = { doc: this.doc, behaviors: this.behaviors, guard: false, warn: (m) => this.warn?.(m) };
     // The theme's parts, compiled once, before the template that shows them.
     this.parts = new Map();
-    const findParts = (nodes) => {
+    const findParts = (nodes: NodeListOf<ChildNode>) => {
       for (const n of nodes) {
         if (n.nodeType !== 1) continue;
         const el = (n as Element);
@@ -764,7 +765,7 @@ export class View {
     return !!root && !!node && (node === root || root.contains(node));
   }
   /** The behaviors an element of the theme has, and its scope: { attrs, scope } or null. */
-  behaviorOf(el) { return this.behaviorEls.get(el) ?? null; }
+  behaviorOf(el: Element) { return this.behaviorEls.get(el) ?? null; }
   /**
    * The nearest element from `node` up (to the container) with behavior
    * `name` (and `value`, if given): { el, value, scope }.

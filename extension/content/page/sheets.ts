@@ -226,7 +226,7 @@ export function startSheets(box) {
     ruleChanged(this.cssRules[index]);
     deleteFromGroup.call(this, index);
   };
-  const reread = (proto, name) => {
+  const reread = (proto: HTMLStyleElement | StyleSheet | MediaList, name: string) => {
     const own = Object.getOwnPropertyDescriptor(proto, name) as Accessor;
     Object.defineProperty(proto, name, {
       ...own,

@@ -18,7 +18,7 @@ async function entered() {
 }
 
 // Until the window reaches `state` (a full-screen change animates), at most `ms`.
-async function waitForState(windowId, state, ms = 3000) {
+async function waitForState(windowId, state: string, ms = 3000) {
   const until = Date.now() + ms;
   while (Date.now() < until) {
     const win = await api.windows.get(windowId).catch(() => null);
@@ -104,7 +104,7 @@ export async function isFullscreen(windowId) {
 // Tells the window's pages when that changes. The page's box follows whether
 // any window is in full screen (background/registered.ts syncPage).
 const known = new Map(); // window id → last told full screen or not
-async function tellTabs(windowId, fullscreen) {
+async function tellTabs(windowId, fullscreen: boolean) {
   if (known.get(windowId) !== fullscreen) {
     known.set(windowId, fullscreen);
     queueRegistrations();

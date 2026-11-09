@@ -15,14 +15,14 @@ function parse(text) {
   return { ctrl: mods.has('Ctrl'), alt: mods.has('Alt'), shift: mods.has('Shift'), meta: mods.has('Meta'), code };
 }
 
-function matches(event, text) {
+function matches(event: KeyboardEvent, text) {
   const s = parse(text);
   return !!s && event.code === s.code && event.ctrlKey === s.ctrl && event.altKey === s.alt
     && event.shiftKey === s.shift && event.metaKey === s.meta;
 }
 
 // KeyboardEvent → shortcut string, or null if it's a bare key or only modifiers.
-function fromEvent(event) {
+function fromEvent(event: KeyboardEvent) {
   if (MOD_CODES.test(event.code) || !KEY_CODES.test(event.code)) return null;
   const mods = [event.ctrlKey && 'Ctrl', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Meta'].filter(Boolean);
   if (!mods.length) return null;

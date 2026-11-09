@@ -93,7 +93,7 @@ export function shiftStyle(style, scratch, text = style.cssText) {
   const list = declarations(text);
   // `name: value` as its longhands and their values; null for a shorthand
   // pending a var().
-  const apart = (name, value) => {
+  const apart = (name: string, value: string) => {
     if (name.startsWith('--') || LONGHANDS.has(name)) return [[name, value]];
     scratch.cssText = '';
     scratch.setProperty(name, value);

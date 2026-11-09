@@ -17,7 +17,7 @@ export async function getScroll(windowId) {
   return (await load())[windowId] ?? 0;
 }
 
-export async function setScroll(windowId, top) {
+export async function setScroll(windowId: number, top: number) {
   const all = await load();
   all[windowId] = Math.max(0, Math.round(top));
   clearTimeout(saveTimer);

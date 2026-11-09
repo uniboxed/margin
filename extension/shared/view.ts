@@ -3,7 +3,7 @@
 import type { State } from '../../types/margin';
 
 // A pin's or folder's order (state/model.ts): saved, or its place in the list.
-const posOf = (item, i) => (Number.isFinite(item?.pos) ? item.pos : i);
+const posOf = (item, i: number) => (Number.isFinite(item?.pos) ? item.pos : i);
 
 // Keep in sync with state/model.ts normalizeUrl.
 function normalizeUrl(url) {
@@ -45,7 +45,7 @@ function activeSpaceId(state: State, windowId) {
 // (`title`, `url`); the tab in front plain, "+ New Tab" not lit (Tirth,
 // 2026-11-08: it only lit partly until the page had loaded).
 function sidebar(state: State, windowId: number | null, currentTabId: number | null = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null }: { newTabPending?: boolean, switchingTo?: number | null, justShown?: boolean, opening?: { title?: string, url?: string, from?: number | null } | null } = {}) {
-  const has = (id) => id != null && state.spaces.some((s) => s.id === id);
+  const has = (id: string) => id != null && state.spaces.some((s) => s.id === id);
   const own = currentTabId != null ? state.tabs?.[currentTabId] : null;
   const going = switchingTo != null ? state.tabs?.[switchingTo] : null;
   const spaceId = going?.windowId === windowId && has(state.tabSpace?.[going.id]) ? state.tabSpace[going.id]
@@ -173,7 +173,7 @@ function guessWindow(state: State, url) {
 // opens from further out there and the cursor rarely needs to reach it.
 const EDGE_PX = 10;
 const FULLSCREEN_EDGE_PX = 24;
-function revealZone({ outerWidth, outerHeight, screenWidth, screenHeight }) {
+function revealZone({ outerWidth, outerHeight, screenWidth, screenHeight }: { outerWidth: any; outerHeight: any; screenWidth: any; screenHeight: any; }) {
   const fullScreen = outerWidth >= screenWidth && outerHeight >= screenHeight;
   return fullScreen ? FULLSCREEN_EDGE_PX : EDGE_PX;
 }
@@ -182,7 +182,7 @@ function revealZone({ outerWidth, outerHeight, screenWidth, screenHeight }) {
 // (open pinned tabs in the rows shown, then the space's open tabs), wrapping around. From a tab
 // that isn't in the list, ↓ goes to the first and ↑ to the last. null if
 // there's nowhere to go.
-function cycleTab(state: State, windowId, currentTabId, dir) {
+function cycleTab(state: State, windowId: number, currentTabId, dir: number) {
   const v = sidebar(state, windowId, currentTabId);
   // The rows shown: a closed folder's pins only while one is the tab shown.
   const rows = v.pinned.flatMap((item) => (item.kind !== 'folder' ? [item] : item.open ? item.pins : item.peek));
@@ -198,7 +198,7 @@ function cycleTab(state: State, windowId, currentTabId, dir) {
 // ⌘⌥→ / ⌘⌥←: the next/previous space for this window, wrapping around;
 // `from`: the space to count from (a chain of presses: background/navigation.ts),
 // else the window's.
-function cycleSpace(state: State, windowId, dir, from: string | null = null) {
+function cycleSpace(state: State, windowId: number, dir: number, from: string | null = null) {
   if (state.spaces.length < 2) return null;
   const base = from != null && state.spaces.some((s) => s.id === from) ? from : activeSpaceId(state, windowId);
   const at = state.spaces.findIndex((s) => s.id === base);
@@ -223,11 +223,11 @@ function originOf(url) {
 // type}): a scalable or ~16–64px "icon" first, then any "icon", then
 // apple-touch-icon, else /favicon.ico. Returns an absolute http(s) or
 // data:image URL, or null for non-web pages.
-function pickIconHref(links, pageUrl) {
+function pickIconHref(links: { rel: string; href: string; sizes: string; type: string; }[], pageUrl: string) {
   const origin = originOf(pageUrl);
   if (!origin) return null;
-  const usable = (href) => /^https?:/i.test(href ?? '') || /^data:image\//i.test(href ?? '');
-  const score = (l) => {
+  const usable = (href: string) => /^https?:/i.test(href ?? '') || /^data:image\//i.test(href ?? '');
+  const score = (l: { rel: string; href: string; sizes: string; type: string; }) => {
     const rel = (l.rel ?? '').toLowerCase().split(/\s+/);
     if (!rel.some((r) => r === 'icon' || r === 'apple-touch-icon' || r === 'apple-touch-icon-precomposed')) return -1;
     if (!usable(l.href)) return -1;

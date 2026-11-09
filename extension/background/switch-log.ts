@@ -52,7 +52,7 @@ function finish(e: Entry, why = '') {
   try { sink?.(line); } catch {}
 }
 
-const has = (e: Entry, what) => e.steps.some(([w]) => w === what);
+const has = (e: Entry, what: string) => e.steps.some(([w]) => w === what);
 
 export const switchLog = {
   /** A switch asked for (focusTab). */

@@ -127,7 +127,7 @@ export function startWatch(ctx: any) {
   // that frame anyway (sheets.ts); whichever comes second finds nothing new. A tab out of sight has no frames:
   // its reads go on as they come (`loaded` makes one), as a tab loaded behind is ready when it's shown.
   let firstRead = 0;
-  const holdsPaint = (link) => !link.sheet && !link.disabled && link.relList.contains('stylesheet') && !link.relList.contains('alternate') && (!link.media || matchMedia(link.media).matches);
+  const holdsPaint = (link: HTMLLinkElement) => !link.sheet && !link.disabled && link.relList.contains('stylesheet') && !link.relList.contains('alternate') && (!link.media || matchMedia(link.media).matches);
   function sheetsPending() {
     for (const link of document.getElementsByTagName('link')) if (holdsPaint(link)) return true;
     return false;
@@ -135,7 +135,7 @@ export function startWatch(ctx: any) {
   // A read made for a frame (this one, runMeasure's, a resize's) never waits: the frame is being drawn, sheets
   // in or not (a browser draws without them once they're slow enough).
   let inFrame = 0;
-  const forFrame = (fn) => (...args) => {
+  const forFrame = (fn: (...args: any[]) => void) => (...args) => {
     inFrame += 1;
     try {
       return fn(...args);

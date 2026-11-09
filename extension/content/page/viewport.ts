@@ -5,14 +5,14 @@
 import type { Accessor } from './accessor.ts';
 
 // The browser's own accessor for `name`, from `object` or its prototypes (accessor.ts).
-const find = (object, name): Accessor => {
+const find = (object: Element | HTMLElement | Window & typeof globalThis | VisualViewport | Document, name: string): Accessor => {
   for (let at = object; at; at = Object.getPrototypeOf(at)) {
     const descriptor = Object.getOwnPropertyDescriptor(at, name);
     if (descriptor) return descriptor as Accessor;
   }
   return undefined as unknown as Accessor; // (not for these names)
 };
-const define = (object, name, descriptor) => Object.defineProperty(object, name, { configurable: true, enumerable: true, ...descriptor });
+const define = (object: Window & typeof globalThis | VisualViewport | Element | HTMLElement | Document, name: string, descriptor) => Object.defineProperty(object, name, { configurable: true, enumerable: true, ...descriptor });
 
 export function startViewport(box) {
   const html = document.documentElement;
@@ -102,7 +102,7 @@ export function startViewport(box) {
   // Nothing focused, the browser pages the (unscrollable) root. A press decides
   // where keys go: into a pane that was clicked and can still move, they're the
   // browser's own. ⌘↑ ⌘↓ and ⌥↑ ⌥↓ are Safari's too; ⌘⌥ is Margin's.
-  const pagingStep = (event, height) => {
+  const pagingStep = (event: KeyboardEvent, height) => {
     const { key, shiftKey: shift, metaKey: meta, altKey: alt } = event;
     if (meta && alt) return undefined;
     if (meta || alt) {
@@ -113,14 +113,14 @@ export function startViewport(box) {
     if (shift) return undefined; // Shift and an arrow extends a selection
     return { PageDown: height * 0.9, PageUp: -height * 0.9, ArrowDown: 40, ArrowUp: -40, Home: -1e9, End: 1e9 }[key];
   };
-  const canMove = (node, down) => {
+  const canMove = (node, down: boolean) => {
     const top = native.scrollTop.get.call(node);
     return down ? top + native.clientHeight.get.call(node) < native.scrollHeight.get.call(node) - 1 : top > 0;
   };
   let pressed: any = null;
   addEventListener('pointerdown', (event) => { pressed = event.composedPath()[0]; }, { capture: true, passive: true });
   // Does a pane around what was pressed, short of <body>, take this key?
-  function paneTakes(body, down) {
+  function paneTakes(body, down: boolean) {
     if (!pressed?.isConnected) return false;
     for (let node = pressed; node && node !== body && node !== html; node = node.parentNode ?? node.host) {
       if (node.nodeType === 1 && /auto|scroll/.test(getComputedStyle(node).overflowY) && canMove(node, down)) return true;

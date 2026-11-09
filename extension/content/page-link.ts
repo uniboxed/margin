@@ -15,9 +15,9 @@ export function startPageLink(send) {
   // Cancelled by the page's world: it heard. Nothing there means no script yet.
   const say = (detail) => !document.dispatchEvent(new CustomEvent('margin:box', { detail, cancelable: true }));
 
-  let last = null; // the last message, sent again when the script arrives
+  let last: string | null = null; // the last message, sent again when the script arrives
   let asked = false;
-  function tell(message, left) {
+  function tell(message: string, left: number | undefined) {
     last = message;
     if (say(message) || message === 'off' || asked) return;
     asked = true;
@@ -29,7 +29,7 @@ export function startPageLink(send) {
   let shown: string | null = null; // what it was last told: a box, 'off', or nothing yet
   // { left, top, right, bottom } in the page's pixels, and `live` while the
   // sidebar's edge is being dragged; null: no box, the page as it is.
-  function setBox(box, { live = false } = {}) {
+  function setBox(box: { left: number; top: number; right: number; bottom: number; } | null, { live = false } = {}) {
     if (!can) return;
     const message = box ? JSON.stringify({ ...box, live }) : 'off';
     if (message === shown) return;
@@ -52,11 +52,11 @@ export function startPageLink(send) {
   const MUTED = 'not all';
   /** link → its copy; a link with neither is one that couldn't be fetched. */
   const copies: Map<any, { href: string, media: string | null, style?: any, adopted?: any }> = new Map();
-  const dropCopy = (copy) => {
+  const dropCopy = (copy: { href: string; media: string | null; style?: any; adopted?: any; }) => {
     copy.style?.remove();
     if (copy.adopted) document.adoptedStyleSheets = document.adoptedStyleSheets.filter((sheet) => sheet !== copy.adopted);
   };
-  function unmute(link, copy) {
+  function unmute(link, copy: { href: string; media: string | null; style?: any; adopted?: any; }) {
     if (link.media !== MUTED) return;
     if (copy.media == null) link.removeAttribute('media');
     else link.media = copy.media;
@@ -87,12 +87,13 @@ export function startPageLink(send) {
     }
     if (refetch && boxed()) fetchUnreadable();
   });
-  function follow(link) {
+  function follow(link: Element | ProcessingInstruction) {
     links.observe(link, { attributes: true, attributeFilter: ['href', 'media', 'disabled', 'rel'] });
     if (link.parentNode) links.observe(link.parentNode, { childList: true });
   }
-  async function replaceSheet(sheet) {
-    const link = sheet.ownerNode;
+  async function replaceSheet(sheet: CSSStyleSheet) {
+    // (A <link>: checked by its name below, which holds across the page's worlds, where instanceof wouldn't.)
+    const link = sheet.ownerNode as HTMLLinkElement | null;
     if (!link || link.localName !== 'link' || !sheet.href || sheet.href !== link.href || copies.get(link)?.href === link.href || new URL(sheet.href).origin === location.origin) return;
     try {
       void sheet.cssRules; // readable: nothing to do
@@ -100,7 +101,7 @@ export function startPageLink(send) {
     } catch {}
     const copy: { href: string, media: string | null, style?: HTMLStyleElement, adopted?: any } = { href: link.href, media: link.getAttribute('media') };
     copies.set(link, copy);
-    const fetchText = (url) => send('fetchStyle', { url }, false).then((text) => (typeof text === 'string' ? text : null), () => null);
+    const fetchText = (url: string) => send('fetchStyle', { url }, false).then((text) => (typeof text === 'string' ? text : null), () => null);
     const text = await fetchText(sheet.href);
     const stale = () => !link.isConnected || copies.get(link) !== copy || link.href !== copy.href; // replaced or taken away meanwhile
     if (typeof text !== 'string' || stale()) return;

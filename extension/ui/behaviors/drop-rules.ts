@@ -40,7 +40,7 @@ export function levelIds(space: any, folderId: string | null): string[] {
 }
 
 // The id after `id` at its level, not counting what's being dragged.
-const after = (space, drag, folderId, id) => {
+const after = (space, drag: Drag, folderId: null | string, id: string) => {
   const ids = levelIds(space, folderId).filter((x) => x !== drag.id);
   return ids[ids.indexOf(id) + 1] ?? null;
 };

@@ -156,7 +156,7 @@ const SETTING_PREFIX = 'themeSetting:';
 const REMOVE_PREFIX = 'removeTheme:';
 
 /** Import Theme… (Margin.app only: `features.importThemes`) and each imported theme with Remove, under the theme choice. */
-function importFields(f, status, imported) {
+function importFields(f, status: Record<string, { text: string; error?: boolean; } | undefined>, imported: { id: any; name: string; version: string; author: string; }[]) {
   const out: SettingsField[] = [];
   if (!f.importThemes) return out;
   out.push(field({ id: 'themeImport', kind: 'button', label: 'Import Theme…', status: status.themeImport?.text ?? 'A theme’s folder, or a .margintheme file. You’ll see it before it’s used.', error: !!status.themeImport?.error }));
@@ -168,7 +168,7 @@ function importFields(f, status, imported) {
 }
 
 /** The active theme's own settings (`theme`: the runtime's loaded theme: id, name, its theme.json settings), under "Settings of “Name”". */
-function themeOwnFields(s, theme) {
+function themeOwnFields(s, theme: { id: string; name: string; settings: Record<string, any>; } | null) {
   const out: SettingsField[] = [];
   const specs = theme?.settings && typeof theme.settings === 'object' ? Object.entries(theme.settings) : [];
   // Margin's own width setting (m-resize drags it) is shown as the theme's too.

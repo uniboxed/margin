@@ -30,7 +30,7 @@ function schedule() {
   clearTimeout(timer);
   timer = setTimeout(run, QUIET_MS);
 }
-function expire(t) {
+function expire(t: number) {
   for (const [windowId, w] of watched) if (t - w.since > RESTORE_MS) watched.delete(windowId);
 }
 async function run() {

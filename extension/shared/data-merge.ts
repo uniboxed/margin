@@ -35,7 +35,7 @@ export function isChange(change: any): boolean {
 }
 
 /** Whether `incoming` replaces `current` (both items, current may be missing). */
-function wins(incoming, current) {
+function wins(incoming: { updatedAt: any; deleted: boolean; value?: undefined; } | { deleted?: undefined; updatedAt: any; value: any; }, current) {
   if (!current) return true;
   if (incoming.updatedAt !== current.updatedAt) return incoming.updatedAt > current.updatedAt;
   if (current.deleted === true && incoming.deleted !== true) return false; // a deletion holds its ground

@@ -28,7 +28,7 @@ const TEXTS = ['theme.json', 'theme.html', 'theme.css'];
 // macOS's leftovers, skipped: resource forks and extended attributes (Finder's
 // Compress puts them in __MACOSX/, ditto and others beside each file as ._name)
 // and folder settings (.DS_Store).
-const JUNK = (path) => path.startsWith('__MACOSX/') || path.split('/').some((seg) => seg === '.DS_Store' || seg.startsWith('._'));
+const JUNK = (path: string) => path.startsWith('__MACOSX/') || path.split('/').some((seg) => seg === '.DS_Store' || seg.startsWith('._'));
 const SEGMENT = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 
 /**
@@ -154,8 +154,8 @@ export async function packageFromZip(zip: Uint8Array): Promise<ReadResult> {
   if (zip.length > IMPORT_LIMITS.zipBytes) return fail(`the file is larger than ${IMPORT_LIMITS.zipBytes} bytes`);
   if (zip.length < 22) return fail('not a zip file');
   const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
-  const u16 = (at) => view.getUint16(at, true);
-  const u32 = (at) => view.getUint32(at, true);
+  const u16 = (at: number) => view.getUint16(at, true);
+  const u32 = (at: number) => view.getUint32(at, true);
   // The end record: the last one, with its comment running exactly to the end.
   let end = -1;
   for (let i = zip.length - 22; i >= Math.max(0, zip.length - 22 - 0xffff); i--) {
@@ -325,7 +325,7 @@ export function checkImport(pkg: import('./theme-loader.ts').ThemePackage) {
 export async function readThemeFile(msg: { kind?: string, files?: Record<string, string>, zip?: string, error?: string }) {
   if (!msg || typeof msg !== 'object') return { ok: false, errors: ['nothing came'] };
   if (typeof msg.error === 'string') return { ok: false, errors: [msg.error.slice(0, 300)] };
-  const unb64 = (s) => { const bin = atob(String(s)); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
+  const unb64 = (s: string) => { const bin = atob(String(s)); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
   let read;
   try {
     if (msg.kind === 'zip' && typeof msg.zip === 'string') read = await packageFromZip(unb64(msg.zip));

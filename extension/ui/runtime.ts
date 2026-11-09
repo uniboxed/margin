@@ -294,7 +294,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   // switches to it, and the UI shows it at once, from the top of its list
   // (sidebar.js askSpace, switchSpace). Its own space with no switch away
   // under way: only the window's space, as before.
-  function switchSpace(spaceId, payload) {
+  function switchSpace(spaceId, payload: Record<string, any>) {
     const state = host.getState();
     if (!state) return null;
     // Another profile's space: Margin.app's switch (its window opens, this one closes): nothing shown here meanwhile.
@@ -374,7 +374,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   }
 
   // A sent action, and what follows it.
-  function sent(name, arg, type, payload) {
+  function sent(name: string, arg, type: string, payload: Record<string, any>) {
     switch (name) {
       case 'space.switch':
         switchSpace(arg, payload);
@@ -512,13 +512,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   // A click on the theme: some are Margin's to swallow (a name being edited,
   // ⌃-click on a row, a press that switched already, a double-click's second
   // click on a folder), the rest run.
-  function themeClick(name, arg, info) {
+  function themeClick(name: string, arg, info: { element: Element; event: Event; }) {
     const event = info?.event;
     if (behaviors.rename?.editingContains(event?.target)) return;
-    if (event?.ctrlKey && ROW_ACTIONS.has(name)) return;
+    if ((event as MouseEvent)?.ctrlKey && ROW_ACTIONS.has(name)) return;
     if (behaviors.drag?.justDropped()) return;
     if (behaviors.press?.consumes(name, arg, event)) return;
-    if (name === 'folder.toggle' && event?.detail > 1) return;
+    if (name === 'folder.toggle' && (event as MouseEvent)?.detail > 1) return;
     dispatch(name, arg, 'theme', info);
   }
 
@@ -558,7 +558,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     /** Anything under way that a sidebar out over the page waits for (sidebar.js isBusy). */
     busy: (except = null) => list.some((b) => b !== except && b.busy?.()),
     /** A listener, removed with the runtime. */
-    listen(target, type, fn, options?) {
+    listen(target: Document | ShadowRoot, type: string, fn: (e: any) => void, options?) {
       target.addEventListener(type, fn, options);
       offs.push(() => target.removeEventListener(type, fn, options));
     },
@@ -630,7 +630,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
      * */
     pointer: (point: { x: number, y: number }) => behaviors.peek.pagePointer(point),
     /** The pointer left the window (`x`, `y`: where it was last). */
-    pointerLeft: (point) => behaviors.peek.pageLeft(point),
+    pointerLeft: (point: { x: number; y: number; }) => behaviors.peek.pageLeft(point),
     /**
      * The sidebar out over the page by the host's word: `hover` (as the
      * pointer at the edge does), `toggle` (the show/hide key: it stays until

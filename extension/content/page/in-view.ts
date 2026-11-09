@@ -10,7 +10,7 @@
 import type { Accessor } from './accessor.ts';
 
 // The browser's own accessor for `name`, from `object` or its prototypes (accessor.ts).
-const find = (object, name): Accessor => {
+const find = (object: IntersectionObserverEntry, name: string): Accessor => {
   for (let at = object; at; at = Object.getPrototypeOf(at)) {
     const descriptor = Object.getOwnPropertyDescriptor(at, name);
     if (descriptor) return descriptor as Accessor;
@@ -56,7 +56,7 @@ export function startInView(box) {
   // the page would never hear it's in view.
   let outside = new WeakMap(); // target → { answer, at }
   const forgetOutside = () => { outside = new WeakMap(); };
-  function outsideBody(target, later) {
+  function outsideBody(target, later: (ms: any) => void) {
     const at = performance.now();
     const known = outside.get(target);
     if (known && at - known.at < OUTSIDE_FOR_MS) {
@@ -125,7 +125,7 @@ export function startInView(box) {
       }, ms + 1);
     }
     // What the page should hear of these targets: only what changed for it.
-    function news(list) {
+    function news(list: any[] | Set<any> | MapIterator<any>) {
       const out: any[] = []; // (IntersectionObserverEntry-likes the page hears)
       for (const state of list) {
         const answer = chosen(state);
@@ -137,7 +137,7 @@ export function startInView(box) {
       }
       return out;
     }
-    function sort(list, fromBody) {
+    function sort(list: IntersectionObserverEntry[], fromBody: boolean) {
       const touched = new Set<any>();
       for (const item of list) {
         const state = targets.get(item.target);
@@ -148,10 +148,10 @@ export function startInView(box) {
       }
       return news(touched);
     }
-    function tell(list) {
+    function tell(list: any[]) {
       if (list.length) callback.call(self, list, self);
     }
-    function hear(list, fromBody) {
+    function hear(list: IntersectionObserverEntry[], fromBody: boolean) {
       tell(sort(list, fromBody));
     }
 

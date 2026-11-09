@@ -27,7 +27,7 @@ export function installSwipe(rt: any) {
   // (A theme may move several parts: Neo-brutalism and Pixel move the space's head and its list, each `.swipes`.)
   const panesOf = (root) => (([...root.querySelectorAll('[data-swipe-pane]')].length
     ? [...root.querySelectorAll('[data-swipe-pane]')] : [...root.querySelectorAll('.space-pane, .swipes')]) as HTMLElement[]);
-  function ghost(s, dir) {
+  function ghost(s, dir: string) {
     if (s.ghosts[dir] !== undefined) return;
     s.ghosts[dir] = null;
     const id = s.neighbours[dir];
@@ -64,12 +64,12 @@ export function installSwipe(rt: any) {
   // A mouse wheel, not a trackpad (sidebar.js mouseWheel): WebKit and
   // Chromium report a wheel's notches as multiples of 120 in the old
   // wheelDelta, a trackpad's as about 3× its pixel delta.
-  const mouseWheel = (e) => {
+  const mouseWheel = (e: WheelEvent) => {
     const legacy = (e as any).wheelDeltaX ?? 0;
     return legacy !== 0 && legacy % 120 === 0 && Math.abs(Math.abs(legacy) - Math.abs(e.deltaX) * 3) > 3;
   };
   // Something between the pointer and the swipe's part scrolls sideways that way.
-  const scrollsSideways = (e, stop) => {
+  const scrollsSideways = (e: WheelEvent, stop: HTMLElement) => {
     for (let n = (e.target as any); n && n !== stop.parentNode; n = n.parentNode) {
       if (n.nodeType === 1 && canScrollX(n, e.deltaX, null)) return true;
       if (n === stop) break;
@@ -77,7 +77,7 @@ export function installSwipe(rt: any) {
     return false;
   };
 
-  function place(offset) {
+  function place(offset: number) {
     const s = swiping;
     if (!s) return;
     const toward = offset > 0 ? -1 : 1;
@@ -87,7 +87,7 @@ export function installSwipe(rt: any) {
     // How far toward the neighbour (0 to 1), for a theme that blends the two spaces' colours.
     s.el.style.setProperty('--m-swipe-progress', `${Math.round(Math.min(1, Math.abs(shown) / s.width) * 1000) / 1000}`);
   }
-  function begin(el) {
+  function begin(el: HTMLElement) {
     const spaces = rt.vm?.spaces ?? [];
     const at = spaces.findIndex((s) => s.id === rt.vm?.space?.id);
     // The copies are placed in the swiping part itself, which clips them until they slide in: it's made their

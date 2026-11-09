@@ -232,7 +232,7 @@ const coverWatch = createCoverWatch({
 // measured at the slide's start, it was still off screen, and the pointer went through it to the page, Tirth's
 // recording 2026-11-07 2:11), and a moment after any change (an animation that ends unheard).
 let hitsLater = 0;
-function hitsAfter(ms) { clearTimeout(hitsLater); hitsLater = setTimeout(hitsSoon, ms); }
+function hitsAfter(ms: number) { clearTimeout(hitsLater); hitsLater = setTimeout(hitsSoon, ms); }
 for (const type of ['transitionend', 'transitioncancel', 'animationend']) addEventListener(type, () => hitsSoon(), true);
 // The space the sidebar shows, told to the app when it changes (its window's, by the view model: theme-blind), for the
 // app's log beside the copy's own word (Tirth, 2026-11-07: after a switch the sidebar showed another space's tabs).
@@ -679,7 +679,7 @@ let pendingTheme: any = null;
 // Dimmed with a note (not the theme's: Margin's own, over everything) while
 // the app waits for the copy to come back (app/shell/Shell.swift).
 let reconnectNote: HTMLElement | null = null;
-function setReconnecting(on) {
+function setReconnecting(on: boolean) {
   document.documentElement.toggleAttribute('data-reconnecting', on);
   if (on && !reconnectNote) {
     reconnectNote = document.createElement('div');

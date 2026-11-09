@@ -574,7 +574,7 @@ function spaceRows(c: any) {
     const { letter, color } = V.letterAvatar(host || r.title || '?');
     return { title: r.title || r.url || '', url: r.url, host, icon: r.icon && checkIconUrl(r.icon) ? r.icon : null, letter, color };
   };
-  const pinOf = (r, nested) => ({
+  const pinOf = (r, nested: boolean) => ({
     kind: 'pin', isFolder: false, id: `x:${r.id}`, ...faceOf(r), folderId: r.folderId ? `x:${r.folderId}` : null, nested,
     tabId: null, open: false, active: false, behind: false, away: false, audible: false, asleep: false, loading: false, pinned: true,
   });
@@ -720,7 +720,7 @@ function gestureView(g: any): GestureView | null {
 }
 
 // How long ago, as the launcher's archive says it (Arcadia's newtab.ts ago).
-function ago(ts, now) {
+function ago(ts: number, now: number) {
   const minutes = Math.round((now - ts) / 60000);
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes}m ago`;

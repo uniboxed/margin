@@ -15,15 +15,15 @@ export function startChain(ctx: any) {
   // `path`: each element the walk left, by going down or to the next one past it.
   // `end`: where it stopped, null if for want of an element.
   let chain: { nodes: Element[], tops: string[], path: { node: Element, down: boolean }[], end: Element | null } = { nodes: [], tops: [], path: [], end: null };
-  const textBefore = (parent, node) => {
-    for (let text = parent.firstChild; text && text !== node; text = text.nextSibling) if (text.nodeType === 3 && text.data.trim()) return true;
+  const textBefore = (parent: Element, node: Element) => {
+    for (let text = parent.firstChild; text && text !== node; text = text.nextSibling) if (text.nodeType === 3 && (text as Text).data.trim()) return true;
     return false;
   };
-  function readChain(body) {
+  function readChain(body: HTMLElement) {
     const nodes: any[] = []; // (the page's elements, as they are)
     const tops: string[] = [];
     const path: { node: any; down: boolean; }[] = [];
-    let parent = body;
+    let parent: Element = body;
     let node = body.firstElementChild;
     while (node && nodes.length < CHAIN_DEPTH && path.length < CHAIN_LOOK && !textBefore(parent, node)) {
       const style = computed(node);
@@ -64,7 +64,7 @@ export function startChain(ctx: any) {
   const chainWatch = new MutationObserver(chainTouched);
   let chainBody: HTMLElement | null = null;
   const onChain = ({ path, end }) => [...path.map((step) => step.node), ...(end ? [end] : [])];
-  function follow(next) {
+  function follow(next: { nodes: any[]; tops: string[]; path: { node: any; down: boolean; }[]; end: any; }) {
     const before = onChain(chain);
     const after = onChain(next);
     const same = after.length === before.length && after.every((node, i) => node === before[i]) && chainBody === document.body;

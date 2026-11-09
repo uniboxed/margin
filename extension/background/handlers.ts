@@ -31,7 +31,7 @@ import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, USER_THEME
 
 // The tab a nav request is for: the one named, the page's own, or the one
 // in front of the window.
-async function frontTab(tabId, windowId, sender) {
+async function frontTab(tabId: number | undefined, windowId: number | undefined, sender) {
   if (Number.isInteger(tabId)) return tabId;
   const win = windowId ?? sender?.tab?.windowId;
   if (win == null) return sender?.tab?.id ?? null;
@@ -50,7 +50,7 @@ async function userThemeListed(id: unknown) {
   return Array.isArray(index) && index.some((e) => e?.id === id);
 }
 
-async function updatePackageThemeSettings(themeId, patch) {
+async function updatePackageThemeSettings(themeId: string, patch: object) {
   if (typeof themeId !== 'string' || !patch || typeof patch !== 'object' || Array.isArray(patch)) return;
   if (!PACKAGE_THEMES.includes(themeId) && !(await userThemeListed(themeId))) return; // not a theme Margin has
   const clean = Object.fromEntries(Object.entries(patch).filter(([k, v]) => SETTING_NAME.test(k) && plainSetting(v)));
@@ -181,7 +181,7 @@ export function newTabHandOff(tab) {
 async function handOff(tab) {
   // One line per new tab, so what Safari did (⌘T vs ⌘N, a new window or a
   // tab — macOS can turn ⌘N into a tab) is visible in the background console.
-  const log = (decision, why) => console.info(`[margin] new tab ${tab.id} in window ${tab.windowId}: ${decision} (${why})`);
+  const log = (decision: string, why: string) => console.info(`[margin] new tab ${tab.id} in window ${tab.windowId}: ${decision} (${why})`);
   const prev = previousTab(await load(), tab);
   if (!prev) return log('palette on the new-tab page', 'no other tab in this window: a new window'), false;
   // The Mac app's set-up window: Safari's own New Tab made a tab (its ⌘T, its
@@ -236,7 +236,7 @@ async function openKept(keptId: string, { windowId = null, deadline, sidebarTop 
   const kept = s.keptTabs?.[keptId];
   if (!kept) throw new Error('That tab is no longer there');
   const win = windowId ?? (await api.windows?.getLastFocused?.().catch(() => null))?.id ?? undefined;
-  if (Number.isFinite(sidebarTop) && win != null) void setScroll(win, sidebarTop);
+  if (Number.isFinite(sidebarTop) && win != null) void setScroll(win, sidebarTop as number); // (finite: checked)
   const spaceId = s.spaces.some((sp) => sp.id === kept.spaceId) ? kept.spaceId : V.activeSpaceId(s, win);
   // The window's tabs as Safari has them now (Margin's indexes lag after closes).
   const live = win != null ? await api.tabs.query({ windowId: win }).catch(() => null) : null;
@@ -250,7 +250,7 @@ async function openKept(keptId: string, { windowId = null, deadline, sidebarTop 
 // its Margin tab (fresh: no Back history). One gone meanwhile is left.
 const SPACE_WINDOW_REST_MS = 1200;
 const SPACE_WINDOW_STEP_MS = 150;
-async function openKeptBehind(windowId, spaceId, keptIds) {
+async function openKeptBehind(windowId, spaceId: string, keptIds: string[]) {
   for (const keptId of keptIds) {
     const s = await load();
     const kept = s.keptTabs?.[keptId];
@@ -340,7 +340,7 @@ export const handlers = {
     if (typeof tabId === 'string') return openKept(tabId, { windowId: windowId ?? sender?.tab?.windowId, deadline, sidebarTop });
     const target = resolved ?? (await resolveTab(tabId, hint, sender.tab?.windowId, { deadline }));
     if (!target) throw new Error('That tab is no longer open');
-    if (Number.isFinite(sidebarTop) && sender.tab?.windowId != null) void setScroll(sender.tab.windowId, sidebarTop);
+    if (Number.isFinite(sidebarTop) && sender.tab?.windowId != null) void setScroll(sender.tab.windowId, sidebarTop as number); // (finite: checked)
     // In another window of the profile: it comes to this one, the other keeps it chosen, away (app/WINDOWS.md §9).
     const here = windowId ?? sender?.tab?.windowId;
     if (here != null && target.windowId != null && target.windowId !== here && away.follows(here)) {
@@ -382,7 +382,7 @@ export const handlers = {
   },
   async setSidebarScroll({ top, windowId }: { top: number, windowId?: number }, sender) {
     const id = windowId ?? sender.tab?.windowId;
-    if (id != null && Number.isFinite(top)) await setScroll(id, top);
+    if (id != null && Number.isFinite(top)) await setScroll(id, top as number);
   },
   // Closing from Margin archives the tab, like Arc. One that isn't open (a
   // string id: state/model.ts keptTabs) goes to the archive as it is.
@@ -431,10 +431,10 @@ export const handlers = {
   async viewport({ viewport = null, resizedAt, at }: { viewport?: { x: number, y: number, width: number, height: number, measured?: boolean } | null, resizedAt?: number, at?: number } = {}, sender) {
     const tab = sender?.tab;
     if (!tab || tab.active === false || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId)) return;
-    const ok = (v) => Number.isFinite(v) && v >= 0 && v < 100_000;
+    const ok = (v: number) => Number.isFinite(v) && v >= 0 && v < 100_000;
     const rect = viewport && ok(viewport.x) && ok(viewport.y) && ok(viewport.width) && ok(viewport.height) && viewport.width > 0 && viewport.height > 0
       ? { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, ...(viewport.measured === true ? { measured: true } : {}) } : null;
-    const time = (v) => Number.isFinite(v) && v > 0;
+    const time = (v: number | undefined) => Number.isFinite(v) && (v as number) > 0;
     const times = { ...(time(resizedAt) ? { resized: resizedAt } : {}), ...(time(at) ? { said: at } : {}), heard: Date.now() };
     appLink.viewport(tab.windowId, tab.id, rect, times);
   },
@@ -477,7 +477,7 @@ export const handlers = {
     const own = { at: now(), template: S.safariEngine(settings).template };
     for (const map of [ownSearchTabs, ownSearchUrls]) for (const [key, entry] of map) if (now() - entry.at > OWN_SEARCH_MS) map.delete(key);
     // Its row says the search at once, not the page it leaves (state/model.ts goingTo).
-    const going = (id) => mutate((s) => M.goingTo(s, id, { url, title: text }, now())).catch(() => {});
+    const going = (id: number) => mutate((s) => M.goingTo(s, id, { url, title: text }, now())).catch(() => {});
     if (tabId != null) {
       ownSearchTabs.set(tabId, own);
       await going(tabId);
@@ -677,7 +677,7 @@ export const handlers = {
     const s = await load();
     const pin = s.pins.find((p) => p.id === pinId);
     if (!pin) return;
-    if (Number.isFinite(sidebarTop) && windowId != null) void setScroll(windowId, sidebarTop);
+    if (Number.isFinite(sidebarTop) && windowId != null) void setScroll(windowId, sidebarTop as number); // (finite: checked)
     // Only a tab of the pin's space (as the sidebar shows it): one elsewhere
     // would switch the window to that space.
     const key = M.normalizeUrl(pin.url);
@@ -700,7 +700,7 @@ export const handlers = {
   // the sidebar's space, the page in front stays. Answers which tab is in front now.
   async setSpace({ windowId, spaceId, bringTab = true, sidebarTop, deadline }: { windowId?: number, spaceId: string, bringTab?: boolean, sidebarTop?: number, deadline?: number }, sender) {
     const win = windowId ?? sender?.tab?.windowId;
-    if (Number.isFinite(sidebarTop) && win != null) void setScroll(win, sidebarTop);
+    if (Number.isFinite(sidebarTop) && win != null) void setScroll(win, sidebarTop as number); // (finite: checked)
     const result = await showSpace(win, spaceId, { bringTab, deadline });
     return { shown: result?.tab?.id ?? null };
   },
@@ -760,7 +760,7 @@ export const handlers = {
     devProbing = true;
     const made = { tabId: (null as number | null), windowId: (null as number | null), homeId: (null as number | null), homeFront: (null as number | null) };
     const out: Record<string, any> = { ok: false };
-    const wait = (ms) => new Promise<any>((r) => setTimeout(r, ms));
+    const wait = (ms: number) => new Promise<any>((r) => setTimeout(r, ms));
     try {
       const home = (await api.windows.getAll()).find((w) => w.focused) ?? (await api.windows.getAll())[0];
       if (!home) throw new Error('no window');

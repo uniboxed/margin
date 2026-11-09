@@ -29,7 +29,7 @@ export function installPalette(rt: any) {
     return root.activeElement ?? rt.doc.activeElement;
   };
 
-  function move(delta) {
+  function move(delta: number) {
     const rows = rt.vm?.palette.rows ?? [];
     if (!rows.length) return;
     const at = rows.findIndex((r) => r.selected);

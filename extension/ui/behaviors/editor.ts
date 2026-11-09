@@ -22,7 +22,7 @@ export function installEditor(rt: any) {
   let wanted: { spaceId: string, fresh: boolean, until: number } | null = null;
 
   const spaceOf = (id) => rt.state?.spaces?.find((s) => s.id === id) ?? null;
-  const isEditorField = (el) => { const name = el && view.inputs.get(el); return name === 'space-name' || name === 'space-emoji'; };
+  const isEditorField = (el: EventTarget | null) => { const name = el && view.inputs.get(el); return name === 'space-name' || name === 'space-emoji'; };
 
   function open(spaceId, { fresh = false } = {}) {
     const space = spaceOf(spaceId);

@@ -16,7 +16,7 @@ const iconFailed = new Set<any>(); // `${origin} ${href}` that yielded nothing (
 const PRIVATE_HOST = /^([^.]+$|.*\.local$|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|\[)/i;
 // The page chooses the icon URL, and the background can fetch what pages
 // can't: another site's icon must be https and not on a local network.
-export function iconUrlAllowed(href, pageUrl) {
+export function iconUrlAllowed(href: string, pageUrl) {
   if (/^data:image\//i.test(href)) return true;
   let u, page;
   try {
@@ -33,7 +33,7 @@ export function iconUrlAllowed(href, pageUrl) {
 // The same care for a style sheet: a page has its sheets fetched by the
 // background (content/page-link.ts) and can read what comes back, so a sheet
 // on a local network is only for a page that's on one too.
-export function styleUrlAllowed(href, pageUrl) {
+export function styleUrlAllowed(href: string, pageUrl) {
   try {
     const u = new URL(href);
     if (!/^https?:$/.test(u.protocol)) return false;
@@ -45,7 +45,7 @@ export function styleUrlAllowed(href, pageUrl) {
   }
 }
 
-async function shrinkIcon(bytes, type) {
+async function shrinkIcon(bytes: Uint8Array<ArrayBuffer>, type: string) {
   if (type === 'image/svg+xml' || typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') return null;
   try {
     const bitmap = await createImageBitmap(new Blob([bytes], { type }));
@@ -60,7 +60,7 @@ async function shrinkIcon(bytes, type) {
   }
 }
 
-async function fetchIcon(href) {
+async function fetchIcon(href: string) {
   if (/^data:image\//i.test(href)) return href.length <= I.MAX_STORED * 1.4 ? href : null;
   const res = await fetch(href, { credentials: 'omit', signal: AbortSignal.timeout?.(6000) });
   if (!res.ok || Number(res.headers.get('content-length')) > I.MAX_DOWNLOAD) return null;
@@ -73,7 +73,7 @@ async function fetchIcon(href) {
   return bytes.length <= I.MAX_STORED ? I.dataUrl(type, bytes) : null;
 }
 
-export async function learnIcon(origin, href) {
+export async function learnIcon(origin: string, href: string) {
   const s = await load();
   const known = s.favicons[origin];
   if (known && known.href === href && now() - known.at < ICON_MAX_AGE) return;

@@ -21,7 +21,7 @@ const EDGES = ['left', 'right', 'top', 'bottom', 'none'];
 // markup, and none of the invisible characters that reorder or hide text
 // (bidi controls and marks, zero-width characters, the BOM), so a name reads
 // as it's stored.
-const text = (min, max) => `^[^\\u0000-\\u001f\\u007f<>\\u061c\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2069\\ufeff]{${min},${max}}$`;
+const text = (min: number, max: number) => `^[^\\u0000-\\u001f\\u007f<>\\u061c\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2069\\ufeff]{${min},${max}}$`;
 
 /**
  * The first key an object of this JSON text has twice (JSON.parse keeps the
@@ -180,7 +180,7 @@ const CHECKS = {
  * fields and bad list or map entries removed, defaults filled in), or
  * `undefined` with a reason in `fail`.
  */
-function walk(node, value, at, ctx, fail) {
+function walk(node, value, at: string, ctx, fail: (reason: any) => void) {
   if ('const' in node && value !== node.const) return fail(`must be ${JSON.stringify(node.const)}`);
   if (node.enum && !node.enum.includes(value)) return fail(`must be one of ${node.enum.join(', ')}`);
   if (node.type && !typeOk(node.type, value)) return fail(`must be ${[].concat(node.type).join(' or ')}`);
@@ -263,8 +263,8 @@ export function checkManifest(text: string, { files = [] }: { files?: string[] |
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { manifest: null, removed, errors: ['theme.json: not an object'] };
   const twice = duplicateKey(text);
   if (twice !== null) return { manifest: null, removed, errors: [`theme.json: the key ${JSON.stringify(twice.slice(0, 40))} appears twice in one object`] };
-  const kindOf = (name) => (/^fonts\[/.test(name) ? 'font' : /^settings\./.test(name) ? 'setting' : /^images\[/.test(name) ? 'image' : 'manifest');
-  const ctx = { files, drop: (name, reason) => removed.push({ kind: kindOf(name), name, reason }) };
+  const kindOf = (name: string) => (/^fonts\[/.test(name) ? 'font' : /^settings\./.test(name) ? 'setting' : /^images\[/.test(name) ? 'image' : 'manifest');
+  const ctx = { files, drop: (name: string, reason: string) => removed.push({ kind: kindOf(name), name, reason }) };
   // Field by field at the top, so every bad one is said, not just the first.
   const manifest: Record<string, any> = {};
   for (const key of THEME_SCHEMA.required) if (!(key in raw)) errors.push(`theme.json: ${key} missing`);

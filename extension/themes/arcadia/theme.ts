@@ -12,8 +12,8 @@
 // Arc (Tirth's screenshots): 160–500 CSS px. Stored widths snap to 10px
 // (theme.json's step).
 const WIDTH = Object.freeze({ min: 160, max: 500, default: 260, step: 10 });
-const clampWidth = (w) => Math.min(WIDTH.max, Math.max(WIDTH.min, Number.isFinite(w) ? w : WIDTH.default));
-const snapWidth = (w) => clampWidth(Math.round(clampWidth(w) / WIDTH.step) * WIDTH.step);
+const clampWidth = (w: number) => Math.min(WIDTH.max, Math.max(WIDTH.min, Number.isFinite(w) ? w : WIDTH.default));
+const snapWidth = (w: number) => clampWidth(Math.round(clampWidth(w) / WIDTH.step) * WIDTH.step);
 
 // The theme's own settings (state settings.themes.arcadia).
 const defaults = Object.freeze({ sidebarWidth: WIDTH.default });

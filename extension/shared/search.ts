@@ -20,8 +20,8 @@ const SAFARI_ENGINES = {
     name: 'Google',
     host: /^www\.google(\.[a-z]{2,3}){1,2}$/,
     path: /^\/search$/,
-    fromSafari: (p) => p.get('client') === 'safari',
-    template: (host) => `https://${host}/search?client=safari&rls=en&q=%s&ie=UTF-8&oe=UTF-8`,
+    fromSafari: (p: URLSearchParams) => p.get('client') === 'safari',
+    template: (host: string) => `https://${host}/search?client=safari&rls=en&q=%s&ie=UTF-8&oe=UTF-8`,
   },
   bing: {
     name: 'Bing',
@@ -83,7 +83,7 @@ function searchEngineOf(url) {
 
 // The engine Margin's searches use in Safari: learned, else the default.
 const safariEngine = (settings) => (settings?.safariSearch?.template?.includes('%s') ? settings.safariSearch : SAFARI_DEFAULT);
-const searchUrl = (query, settings) => safariEngine(settings).template.replace('%s', encodeURIComponent(query));
+const searchUrl = (query: string, settings) => safariEngine(settings).template.replace('%s', encodeURIComponent(query));
 // For display: which engine a search goes to.
 const engineLabel = (settings, platform = P.platform) =>
   (platform?.search === 'browser' ? 'Chrome’s search engine' : safariEngine(settings).name);
@@ -95,7 +95,7 @@ const DOMAIN = /^([a-z0-9-]+\.)+[a-z][a-z0-9-]*\.?(:\d+)?([/?#]\S*)?$/i;
 
 // Text typed into the launcher or palette → { kind: 'url', url } or
 // { kind: 'search', query } (run by the background with the browser's engine).
-function resolveInput(text) {
+function resolveInput(text: string): { kind: 'url', url: string } | { kind: 'search', query: string } | null {
   const input = (text ?? '').trim();
   if (!input) return null;
   if (WITH_SCHEME.test(input) || OPAQUE_SCHEME.test(input)) return { kind: 'url', url: input };
@@ -112,7 +112,7 @@ const isWordStart = (text, i) => i === 0 || /[\s\-_./:]/.test(text[i - 1]);
 
 // Higher is better; -Infinity means no match. Substrings beat scattered
 // subsequences; prefixes and word starts get a bonus.
-function fuzzyScore(query, text) {
+function fuzzyScore(query: string, text) {
   const q = query.toLowerCase();
   const t = (text ?? '').toLowerCase();
   if (!q) return 0;
@@ -132,7 +132,7 @@ function fuzzyScore(query, text) {
 }
 
 // Every whitespace-separated token must match the title or the subtitle.
-function matchScore(query, item) {
+function matchScore(query: string, item) {
   let total = 0;
   for (const token of query.split(/\s+/).filter(Boolean)) {
     const best = Math.max(fuzzyScore(token, item.title), fuzzyScore(token, item.subtitle) - 10);
@@ -156,7 +156,7 @@ export type PaletteItem = {
 
 // Everything the palette can offer for this window. `ctx`:
 // { windowId, tabId, inNewTab, canToggleSidebar, canFullscreen }.
-function paletteItems(state, ctx) {
+function paletteItems(state, ctx: { windowId: number | null; tabId: number | null; inNewTab: boolean; canToggleSidebar: boolean; canFullscreen: boolean; }) {
   const view = V;
   const spaceId = view.activeSpaceId(state, ctx.windowId);
   const spaceOf = (id) => state.spaces.find((s) => s.id === id);
@@ -228,10 +228,11 @@ function paletteItems(state, ctx) {
     });
   }
 
-  const action = (id, title, act, extra = {}) =>
+  const action = (id: string, title: string, act, extra = {}) =>
     items.push({ id: `action:${id}`, kind: 'action', title, subtitle: '', boost: 12, action: act, ...extra });
-  const current = state.tabs?.[ctx.tabId];
-  const currentSpace = state.tabSpace?.[ctx.tabId];
+  // (No tab yet: none current.)
+  const current = state.tabs?.[ctx.tabId as number];
+  const currentSpace = state.tabSpace?.[ctx.tabId as number];
   if (current && isWebUrl(current.url) && !state.pins.some((p) => p.spaceId === currentSpace && view.normalizeUrl(p.url) === view.normalizeUrl(current.url))) {
     action('pin-current', 'Pin current tab', { type: 'pinTab', tabId: ctx.tabId }, { emoji: '📌' });
   }
@@ -273,7 +274,7 @@ const KIND_ORDER = { tab: 0, action: 1, pin: 2, archive: 3 };
 // in its space (or in Margin's new-tab page, in place).
 const CLOUD_MAX = 8;
 const CLOUD_PER_DEVICE = 5;
-function cloudMatches(state, q, ctx) {
+function cloudMatches(state, q: string, ctx: { windowId: number | null; tabId: number | null; inNewTab: boolean; canToggleSidebar: boolean; canFullscreen: boolean; }) {
   const cloud = cloudShown(state);
   if (!q || cloud?.status !== 'ready') return [];
   const open = new Set(Object.values(state.tabs ?? {}).map((t) => V.normalizeUrl(t.url)));
@@ -310,7 +311,7 @@ function cloudMatches(state, q, ctx) {
 
 // Ranked palette results for `query`, including an "Open URL / Search for"
 // entry: first when the text is a URL, last when it's a search.
-function rankPalette(state, query, ctx, limit = 40) {
+function rankPalette(state, query: string, ctx: { windowId: number | null; tabId: number | null; inNewTab: boolean; canToggleSidebar: boolean; canFullscreen: boolean; }, limit = 40) {
   const q = (query ?? '').trim();
   const items = paletteItems(state, ctx);
   let ranked;

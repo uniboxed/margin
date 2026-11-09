@@ -183,7 +183,7 @@ const PROFILE = /^[A-Za-z0-9_.:-]{1,64}$/;
 export function keyBindings(settings: any, commandKeys = {}) {
   const nav = navigationFor(settings);
   const out: Record<string, string[]> = {};
-  const add = (command, combo) => { if (combo && !(out[command] ??= []).includes(combo)) out[command].push(combo); };
+  const add = (command: string, combo) => { if (combo && !(out[command] ??= []).includes(combo)) out[command].push(combo); };
   const names = { nextTab: 'next-tab', prevTab: 'prev-tab', nextSpace: 'next-space', prevSpace: 'prev-space' };
   for (const [name, command] of Object.entries(names)) {
     add(command, nav[name]);
@@ -319,7 +319,7 @@ export function createLink({
   let resumedAt = -Infinity;
   // How the last link here ended (LAST_KEY), written in order.
   let lastWrite = Promise.resolve();
-  const setLast = (what, why) => {
+  const setLast = (what: string, why: string) => {
     const value = { what, why: String(why).slice(0, 120), at: Date.now() };
     lastWrite = lastWrite.then(() => session()?.set({ [LAST_KEY]: value })).catch(() => {});
   };
@@ -352,8 +352,8 @@ export function createLink({
   // The app's set's revision this copy's cache matches (DATA.md "Revisions"): a
   // string, compared only for being the same; null when it has none.
   let rev: string | null = null;
-  let dataQueue = Promise.resolve();
-  const inOrder = (fn) => { dataQueue = dataQueue.then(fn).catch((err) => note('the app\'s data not taken:', err?.message ?? err)); };
+  let dataQueue: Promise<unknown> = Promise.resolve();
+  const inOrder = (fn: () => Promise<unknown> | undefined) => { dataQueue = dataQueue.then(fn).catch((err) => note('the app\'s data not taken:', err?.message ?? err)); };
   const local = () => api.storage.local;
   const session = () => api.storage?.session;
   const listeners = new Set<any>();
@@ -374,7 +374,7 @@ export function createLink({
   // layouts and whether it draws them), and goes; a new link says it again. The layouts are kept
   // as `lastLayouts`, only for the first paint's registration to start from (registered.ts
   // chooseLayout): no page takes its box from them.
-  function setPageState(state) {
+  function setPageState(state: string) {
     if (state === pageState.state && pageState.epoch === epoch) return;
     const changed = state !== pageState.state;
     const fresh = state === 'off' || (state === 'linked' && epoch !== pageState.epoch);
@@ -388,8 +388,8 @@ export function createLink({
     if (changed) for (const cb of [...listeners]) cb(state);
     writePageState(0);
   }
-  const ofEpoch = (layouts, at) => Object.fromEntries(Object.entries(layouts ?? {}).filter(([, l]) => at != null && l?.epoch === at));
-  function writePageState(ms) {
+  const ofEpoch = (layouts: Record<number, any>, at: string | null) => Object.fromEntries(Object.entries(layouts ?? {}).filter(([, l]) => at != null && l?.epoch === at));
+  function writePageState(ms: number) {
     if (!isOwner()) return;
     clearTimeout(layoutTimer);
     layoutTimer = setTimeout(() => {
@@ -527,7 +527,7 @@ export function createLink({
   }
   // A try (link, reconnect) as `busy`. Only the newest one clears it: one left as stuck that ends
   // later changes nothing. Ended unlinked with something having asked meanwhile: asked again now.
-  function attempt(run) {
+  function attempt(run: () => Promise<boolean>) {
     askAgain = false;
     busySince = now();
     // (Declared first: the finally can't come before it's set, even if `run` threw at once.)
@@ -717,7 +717,7 @@ export function createLink({
   }
   // A kept or given link opened: { ok, how } (`how` for the log: 'open in 12 ms', 'refused or closed
   // at once (3 ms)', 'no welcome within 400 ms (slow)', …).
-  async function open(kept, waitMs) {
+  async function open(kept, waitMs: number) {
     if (noSocketHere() || (await noSockets())) return { ok: false, how: 'sockets off' };
     await Promise.resolve(local().set({ [OPENING_KEY]: { at: Date.now() } })).catch(() => {});
     let socket = null;
@@ -732,21 +732,21 @@ export function createLink({
     return followed ? await followed : { ok: false, how: 'the WebSocket constructor threw' };
   }
   // A socket closed with a code and why (a page's WebSocket may send only 1000 or 3000–4999, and up to 123 bytes).
-  const closeSocket = (socket, why) => { try { socket?.close(1000, String(why).slice(0, 100)); } catch {} };
+  const closeSocket = (socket, why: string) => { try { socket?.close(1000, String(why).slice(0, 100)); } catch {} };
   // Until it's open and the app has said who it is (or not, in `waitMs`).
-  function follow(socket, kept, waitMs) {
+  function follow(socket, kept, waitMs: number) {
     const t0 = now();
     const ms = () => Math.round(now() - t0);
     return new Promise<any>((resolve) => {
       let welcomed = false;
       let settled = false;
-      const done = (ok, how) => {
+      const done = (ok: boolean, how: string) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         resolve({ ok, how });
       };
-      const giveUp = (why, how = why) => {
+      const giveUp = (why: string, how = why) => {
         closeSocket(socket, why);
         done(false, how);
       };
@@ -846,7 +846,7 @@ export function createLink({
     ];
     note('linked on', at);
   }
-  function drop(why) {
+  function drop(why: string) {
     const socket = ws;
     if (!socket) return;
     dropped(why);
@@ -854,7 +854,7 @@ export function createLink({
   }
   // `bye`: the app said goodbye (it quit): pages lose their box at once, and
   // the app is asked for later. Else a drop: tried again.
-  function dropped(why, { bye = false } = {}) {
+  function dropped(why: string, { bye = false } = {}) {
     if (!ws) return;
     ws = null;
     epoch = null;
@@ -1004,7 +1004,7 @@ export function createLink({
   }
   const parkedListeners = new Set<any>();
   // A window gone: what the app said of it goes too.
-  function forgetWindows(ids) {
+  function forgetWindows(ids: string[]) {
     const layouts = { ...pageState.layouts };
     const drawnNow = { ...pageState.drawn };
     let changed = false;

@@ -9,7 +9,7 @@ const SWEEP_FLOOR = 64;
 
 export function startMedia(box) {
   const matchMediaNative = window.matchMedia;
-  const native = (query) => matchMediaNative.call(window, shiftQuery(query, box.seenW(), box.seenH()));
+  const native = (query: string) => matchMediaNative.call(window, shiftQuery(query, box.seenW(), box.seenH()));
   const lists: Set<WeakRef<object>> = new Set();
   // Pages ask for lists all the time and drop them: those gone are swept when
   // the box rests, and whenever there are twice as many as after the last sweep.
@@ -21,7 +21,7 @@ export function startMedia(box) {
     sweepAt = Math.max(SWEEP_FLOOR, 2 * lists.size);
   }
 
-  function standIn(text) {
+  function standIn(text: string) {
     const listeners = new Set<any>(); // [callback, once]
     let current = native(text);
     const list: any = Object.create(MediaQueryList.prototype);

@@ -46,7 +46,7 @@ const AXES = {
 // first. No movement that way asks nothing; the overflow style needs at most
 // the page's style worked out; only an element that can scroll has its sizes
 // read, which makes the browser lay out a page whose layout is out of date.
-function canScroll(node, axis, delta, scrollingElement) {
+function canScroll(node, axis: string, delta: number, scrollingElement: null | Element) {
   if (!delta) return false;
   const a = AXES[axis];
   const style = getComputedStyle(node);
@@ -58,7 +58,7 @@ function canScroll(node, axis, delta, scrollingElement) {
   const [lo, hi] = axis === 'x' && style.direction === 'rtl' ? [-max, 0] : [0, max];
   return delta < 0 ? node[a.pos] > lo + 0.5 : node[a.pos] < hi - 0.5;
 }
-const canScrollX = (node, dx, scrollingElement) => canScroll(node, 'x', dx, scrollingElement);
+const canScrollX = (node, dx: number, scrollingElement: null) => canScroll(node, 'x', dx, scrollingElement);
 
 // Does anything the event passes through (up to `stopAt`, else including
 // the page itself) scroll along `axis` in the event's direction?
@@ -103,11 +103,11 @@ function containScroll(el) {
 // page's top there (Tirth, 2026-11-08: "2 finger swipe down from anywhere in
 // the tab content"). The cheap question first: an element not scrolled down
 // has nothing to ask of its style.
-function atPageTop(event, doc) {
+function atPageTop(event: WheelEvent, doc: Document) {
   const scrollingElement = doc.scrollingElement ?? doc.documentElement;
   // (In a page's box, <body> is what scrolls: content/page/box.ts.)
   if (scrollingElement.scrollTop > 0 || doc.body?.scrollTop > 0) return false;
-  for (const node of event.composedPath()) {
+  for (const node of event.composedPath() as Element[]) {
     if (node.nodeType !== 1 || node === scrollingElement || node === doc.body) continue;
     if (!((node as Element).scrollTop > 0.5)) continue;
     const overflow = getComputedStyle((node as Element)).overflowY;
@@ -196,6 +196,6 @@ function installGestureGuard({ getSettings, wanted = undefined, pinch = () => 'b
 
 // For swipe navigation: does nothing under the pointer scroll sideways in
 // this event's direction (so the swipe is the page's to go back/forward)?
-const canSwipe = (event, doc) => !pageScrollsX(event, doc);
+const canSwipe = (event: WheelEvent, doc: Document) => !pageScrollsX(event, doc);
 
 export { installGestureGuard, containScroll, atPageTop, canSwipe, canScroll, canScrollX };

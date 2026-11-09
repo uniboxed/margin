@@ -220,7 +220,7 @@ api.tabs.onRemoved.addListener(owned((tabId, removeInfo) => {
 const STAY_MS = 1500;
 const closedShown = new Map(); // windowId → { spaceId, at, tabId }: removed while in front
 const lastFollow = new Map(); // windowId → { from, at, prevTabId }: the space followTab just left, and the tab in front then
-function stayInSpace(windowId, spaceId, closedId) {
+function stayInSpace(windowId: number, spaceId, closedId) {
   mutate((s) => {
     const stay = M.recentTabOfSpace(s, windowId, spaceId, closedId);
     if (!stay) return s; // nothing left there: the window follows the browser's pick

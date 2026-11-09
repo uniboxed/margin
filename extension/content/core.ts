@@ -170,7 +170,7 @@ export function startCore() {
   // is shared by its tabs).
   let pageZoom = 1;
   let zoomAnswered = false; // until the browser says, the site's last zoom (storage pageZoom)
-  function applyZoom(z) {
+  function applyZoom(z: number) {
     if (!Number.isFinite(z) || z <= 0 || Math.abs(z - pageZoom) < 0.001) return;
     pageZoom = z;
     layout.rezoom(); // only from answers and events, after the layout below exists
@@ -266,7 +266,7 @@ export function startCore() {
     const full = outerWidth >= screen.width - 1 && outerHeight >= screen.height - 60;
     const x = known ? known.x : offX;
     const y = known ? known.y : full ? 0 : offY;
-    const half = (v) => Math.round(v * 2) / 2;
+    const half = (v: number) => Math.round(v * 2) / 2;
     // `measured`: where the area starts came from a pointer event, not the guess (for Margin.app's log).
     return { x: half(x), y: half(y), width: half(w), height: half(h), ...(known ? { measured: true } : {}) };
   };
@@ -567,7 +567,7 @@ export function startCore() {
   // "storage" is late, the storage.local read was slow.
   function logTiming() {
     const nav = (performance.getEntriesByType?.('navigation')?.[0] as PerformanceNavigationTiming | undefined);
-    const fmt = (n) => (n == null ? '–' : `${Math.round(n)}`);
+    const fmt = (n: number | undefined) => (n == null ? '–' : `${Math.round(n)}`);
     console.debug(
       `[margin] timing (ms) injected=${fmt(timing.injected)} storage=${fmt(timing.storage)} state=${fmt(timing.rendered)}` +
         ` | page DOMContentLoaded=${fmt(nav?.domContentLoadedEventStart)} load=${fmt(nav?.loadEventStart)} app=${appLink?.state ?? '–'}`,
@@ -605,7 +605,7 @@ export function startCore() {
   // Safari gives extensions no favicons: tell the background which icon this
   // page uses (it fetches and stores it once per site). Again on load, for
   // pages that add their icon from script.
-  let reportedIcon = null;
+  let reportedIcon: string | null = null;
   function reportIcon() {
     if (!platform?.fetchFavicons) return; // the browser provides icons (Chrome)
     const links = [...(document.querySelectorAll('link[rel]') as NodeListOf<HTMLLinkElement>)].map((l) => ({

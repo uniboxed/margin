@@ -24,7 +24,7 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space 
   const list: MenuItem[] = [];
   let n = 0;
   let s = 0;
-  const item = (label, action, arg?, extra = {}) => list.push({ id: `i${n++}`, label, separator: false, danger: false, confirm: false, action, ...(arg === undefined ? {} : { arg }), ...extra });
+  const item = (label: string, action: string, arg?, extra = {}) => list.push({ id: `i${n++}`, label, separator: false, danger: false, confirm: false, action, ...(arg === undefined ? {} : { arg }), ...extra });
   const separator = () => { if (list.length && !list.at(-1)!.separator) list.push({ id: `s${s++}`, label: '', separator: true, danger: false, confirm: false, action: null }); };
   const pinned = space?.pinned ?? [];
   const folders = pinned.filter((p) => p.isFolder);

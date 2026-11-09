@@ -6,7 +6,7 @@
 // in the copy would be unreadable again, its media queries the window's.
 
 const ABSOLUTE = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
-const resolve = (path, base) => {
+const resolve = (path, base: string) => {
   try {
     return new URL(path, base).href;
   } catch {
@@ -50,7 +50,7 @@ export async function inlineImports(css: string, base: string, fetchText: (url: 
 }
 
 // `css` with its imports in it, or null if one of them can't go in.
-async function inline(css, base, fetchText, depth, budget) {
+async function inline(css: string, base: string, fetchText, depth: number, budget) {
   const found = [...css.matchAll(IMPORT)];
   if (!found.length) return css;
   if (depth <= 0 || found.length > budget.left) return null;

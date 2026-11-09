@@ -18,13 +18,13 @@ export const GESTURE_TELL_MS = 16;
 // there every frame (ui/gesture-motion.ts), follows the fingers smoothly
 // (Tirth, 2026-11-08: steps of 0.05 every 30 ms looked jumpy). Nothing while
 // it stays idle (most wheel events).
-export function gestureTeller(kind: 'pull' | 'swipe', tell: (g: { kind: string, state: string, progress: number, direction: number }) => void, now = () => performance.now(), later = (fn, ms) => setTimeout(fn, ms), cancel = (t) => clearTimeout(t)) {
+export function gestureTeller(kind: 'pull' | 'swipe', tell: (g: { kind: string, state: string, progress: number, direction: number }) => void, now = () => performance.now(), later = (fn: () => void, ms: number) => setTimeout(fn, ms), cancel = (t: number) => clearTimeout(t)) {
   let state = 'idle';
   let key = 'idle';
   let at = -Infinity;
   let held: { key: string; state: string; progress: number; direction: number; } | null = null;
   let timer: number | null = null;
-  const say = (g) => {
+  const say = (g: { key: string; state: string; progress: number; direction: number; }) => {
     if (timer != null) cancel(timer);
     timer = null;
     held = null;
@@ -112,15 +112,15 @@ export function startTrackpad(page: any) {
     tellSwipe(swipe);
     if (phase === 'trigger') navigateBySwipe(direction);
   }
-  function navigateBySwipe(direction) {
-    mark(marks, 'swipe', direction > 0 ? 'forward' : 'back'); // test/debug hook
-    if (direction > 0) history.forward();
+  function navigateBySwipe(direction: number | undefined) {
+    mark(marks, 'swipe', (direction ?? 0) > 0 ? 'forward' : 'back'); // test/debug hook
+    if ((direction ?? 0) > 0) history.forward();
     else history.back();
   }
   // With the Navigation API (Safari 26, Chrome), only swipe where there's
   // history to go to; without it, any swipe may try (as before).
   const nav = globalThis.navigation;
-  const historyAllows = (dx) => {
+  const historyAllows = (dx: number) => {
     if (!dx || typeof nav?.canGoBack !== 'boolean') return true;
     return dx < 0 ? nav.canGoBack : nav.canGoForward;
   };

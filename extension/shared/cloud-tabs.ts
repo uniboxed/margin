@@ -21,10 +21,10 @@ const ID = /^[A-Za-z0-9_:.-]{1,64}$/;
 // A device not used for this long is shown dimmed.
 export const STALE_MS = 7 * 24 * 3600 * 1000;
 
-const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
+const str = (v, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
 const time = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
 // eslint-disable-next-line no-control-regex
-const plain = (s) => s.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+const plain = (s: string) => s.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
 const webUrl = (u) => typeof u === 'string' && u.length <= 4096 && /^https?:\/\/[^\s]+$/i.test(u);
 
 /**
@@ -71,7 +71,7 @@ const KIND_NAMES = { phone: 'iPhone', pad: 'iPad', mac: 'Mac', vision: 'Apple Vi
  * "Name (iPhone 2)". A device with no name: its kind's.
  * */
 export function deviceNames(devices: CloudDevice[]): Map<string, string> {
-  const base = (d) => d.name || KIND_NAMES[d.kind] || 'Device';
+  const base = (d: CloudDevice) => d.name || KIND_NAMES[d.kind] || 'Device';
   const count = new Map();
   for (const d of devices) count.set(base(d).toLowerCase(), (count.get(base(d).toLowerCase()) ?? 0) + 1);
   const out = new Map();
@@ -95,8 +95,8 @@ export function lastUsed(d: CloudDevice) {
 }
 
 // Safari keeps a device's record time rounded to the local day.
-const atMidnight = (ms) => { const t = new Date(ms); return t.getHours() === 0 && t.getMinutes() === 0 && t.getSeconds() === 0 && t.getMilliseconds() === 0; };
-const dayStart = (ms) => { const t = new Date(ms); t.setHours(0, 0, 0, 0); return t.getTime(); };
+const atMidnight = (ms: number) => { const t = new Date(ms); return t.getHours() === 0 && t.getMinutes() === 0 && t.getSeconds() === 0 && t.getMilliseconds() === 0; };
+const dayStart = (ms: number) => { const t = new Date(ms); t.setHours(0, 0, 0, 0); return t.getTime(); };
 
 /**
  * "updated 5 min ago" (Margin's words): to the minute when the time is

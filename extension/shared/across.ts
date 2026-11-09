@@ -70,7 +70,7 @@ function contentOf(c): AcrossContent | null {
     folderId: typeof r.folderId === 'string' && r.folderId ? text(r.folderId, 64) : null,
     pos: Number(r.pos) || 0, active: r.active === true,
   } : null);
-  const list = (v, n) => (Array.isArray(v) ? v : []).slice(0, n).map(row).filter((r): r is AcrossRow => r != null);
+  const list = (v, n: number) => (Array.isArray(v) ? v : []).slice(0, n).map(row).filter((r): r is AcrossRow => r != null);
   const folders = (Array.isArray(c.folders) ? c.folders : []).slice(0, 50).filter((f) => f && typeof f.id === 'string')
     .map((f) => ({ id: text(f.id, 64), name: text(f.name, 60), open: f.open !== false, pos: Number(f.pos) || 0 }));
   return { space: text(c.space, 64), pins: list(c.pins, 200), folders, tabs: list(c.tabs, 80) };
@@ -106,7 +106,7 @@ export const SWITCH_NOTICES: Readonly<Record<string, { text: (profile: string) =
 export const isMultiProfile = (a: Across | null | undefined) => !!a && new Set(a.spaces.map((s) => s.profile)).size > 1;
 
 // FNV-1a, 32 bits, in base 36: short and stable.
-function hash(s) {
+function hash(s: string) {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
   return h.toString(36);

@@ -33,8 +33,8 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     computed: window.getComputedStyle,
     parseLength: window.CSSNumericValue?.parse, // absent: NaN, and a layout tells (shared/body-fit.ts pixels)
   };
-  const scrollOf = (node) => ({ x: scrollLeft.get.call(node), y: scrollTop.get.call(node) });
-  function scrollTo(node, { x, y }) {
+  const scrollOf = (node: HTMLElement) => ({ x: scrollLeft.get.call(node), y: scrollTop.get.call(node) });
+  function scrollTo(node: HTMLElement, { x, y }: { x: any; y: any; }) {
     if (scrollLeft.get.call(node) !== x) scrollLeft.set.call(node, x);
     if (scrollTop.get.call(node) !== y) scrollTop.set.call(node, y);
   }
@@ -132,7 +132,7 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
   }
   // The page's own resize listeners, told the box moved.
   const tellResize = () => dispatchEvent(new Event('resize'));
-  function restSoon(before, live) {
+  function restSoon(before: { dw: number; dh: number; }, live: boolean) {
     restFrom ??= before;
     clearTimeout(restTimer);
     if (document.hidden) return;
@@ -154,7 +154,7 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     ctx.watch.bodyMayHaveChanged();
   });
 
-  function on(next, live) {
+  function on(next: { left: any; top: any; right: any; bottom: any; }, live: boolean) {
     const wasOn = box.on;
     ctx.watch.rootArrived();
     if (wasOn && next.left === box.left && next.top === box.top && next.right === box.right && next.bottom === box.bottom) return;

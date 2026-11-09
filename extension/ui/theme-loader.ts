@@ -47,7 +47,7 @@ export type ThemePackage = { manifest: string, html: string, css: string, files:
 // decodes it. An svg image is UTF-8 text whose first element is <svg>
 // (images never run script or load anything, but a page isn't an image);
 // a note is UTF-8 text with no NUL.
-const ascii = (bytes, at, text) => bytes.length >= at + text.length && [...text].every((c, i) => bytes[at + i] === c.charCodeAt(0));
+const ascii = (bytes, at: number, text: string) => bytes.length >= at + text.length && [...text].every((c, i) => bytes[at + i] === c.charCodeAt(0));
 const SIGNATURES: Record<string, (b: any) => boolean> = {
   woff2: (b) => ascii(b, 0, 'wOF2'),
   png: (b) => b.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((v, i) => b[i] === v),
@@ -73,7 +73,7 @@ export function contentMatches(path: string, bytes: Uint8Array) {
   return SIGNATURES[ext]?.(bytes) ?? false;
 }
 
-const byteLength = (s) => (typeof s === 'string' ? new TextEncoder().encode(s).length : 0);
+const byteLength = (s: string) => (typeof s === 'string' ? new TextEncoder().encode(s).length : 0);
 
 /**
  * The size caps and which files a package may hold: fonts (.woff2), images,
@@ -168,12 +168,12 @@ export function settingsCss(values: Record<string, string | number | boolean>) {
 // ---------------------------------------------------------------------------
 // Loading.
 
-function base64(bytes) {
+function base64(bytes: Uint8Array<ArrayBufferLike>) {
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
   return btoa(bin);
 }
-function unbase64(text) {
+function unbase64(text: string) {
   const bin = atob(text);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
@@ -211,7 +211,7 @@ export async function loadTheme(pkg: ThemePackage, { document: doc = globalThis.
   sheet.replaceSync(report.css);
   const settingsSheet = new win.CSSStyleSheet();
   const manifest = report.manifest;
-  const setSettings = (saved) => settingsSheet.replaceSync(settingsCss(resolveSettings(manifest, saved)));
+  const setSettings = (saved: Record<string, any> | null) => settingsSheet.replaceSync(settingsCss(resolveSettings(manifest, saved)));
   setSettings(settings);
   const faces = manifest.fonts.map((f) => new win.FontFace(f.family, files[f.file].slice().buffer, {
     weight: f.weight, style: f.style, ...(f.unicodeRange ? { unicodeRange: f.unicodeRange } : {}), display: 'block',
@@ -245,7 +245,7 @@ export async function loadTheme(pkg: ThemePackage, { document: doc = globalThis.
  * */
 export async function readBuiltinTheme(id: string, { readFile = extensionFile(id) }: { readFile?: (path: string) => Promise<string | Uint8Array> } = {}): Promise<ThemePackage> {
   if (!BUILTIN_THEMES.includes(id)) throw new Error(`no built-in theme ${JSON.stringify(id)}`);
-  const asText = async (path) => { const v = await readFile(path); return typeof v === 'string' ? v : new TextDecoder().decode(v); };
+  const asText = async (path: string) => { const v = await readFile(path); return typeof v === 'string' ? v : new TextDecoder().decode(v); };
   const asBytes = async (path) => { const v = await readFile(path); return typeof v === 'string' ? new TextEncoder().encode(v) : v; };
   const manifest = await asText('theme.json');
   const [html, css] = await Promise.all([asText('theme.html'), asText('theme.css')]);
@@ -260,7 +260,7 @@ export async function readBuiltinTheme(id: string, { readFile = extensionFile(id
   return { manifest, html, css, files };
 }
 
-function extensionFile(id) {
+function extensionFile(id: string) {
   return async (path) => {
     const api = (globalThis as any).browser ?? (globalThis as any).chrome;
     const res = await fetch(api.runtime.getURL(`themes/${id}/${path}`));

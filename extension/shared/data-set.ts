@@ -36,7 +36,7 @@ export const COLLECTIONS = Object.freeze([...Object.keys(SOURCES), 'userThemes']
 export const metaKey = (collection: string) => `dataMeta:${collection}`;
 export const DATA_META_KEYS = Object.freeze(Object.keys(SOURCES).map(metaKey));
 
-const isWeb = (url) => /^(https?|file):/i.test(url ?? '');
+const isWeb = (url: string) => /^(https?|file):/i.test(url ?? '');
 const finite = (v, or = 0) => (Number.isFinite(v) ? v : or);
 
 // ---- the items, from the state --------------------------------------------------
@@ -76,7 +76,7 @@ export function collectionFrom(state: State, collection: string): Record<string,
       return {};
   }
 }
-const tabValue = (t, spaceId) => ({ url: t.url, title: t.title ?? '', icon: /^(https?|data):/.test(t.favIconUrl ?? '') ? t.favIconUrl : '', spaceId, order: finite(t.order, finite(t.index)), lastUsed: finite(t.lastActive) });
+const tabValue = (t, spaceId: string) => ({ url: t.url, title: t.title ?? '', icon: /^(https?|data):/.test(t.favIconUrl ?? '') ? t.favIconUrl : '', spaceId, order: finite(t.order, finite(t.index)), lastUsed: finite(t.lastActive) });
 
 /** Every collection the state has. */
 export function itemsFrom(state: State) {
@@ -117,7 +117,7 @@ export function fingerprint(value: any) {
 // Margin.app's clock ahead of this one), so a change always has a newer time
 // than what it changed: Margin.app merges by time, and the change is told
 // (background/store.ts changedItems).
-const later = (now, ...times) => Math.max(now, ...times.filter(Number.isFinite).map((t) => t + 1));
+const later = (now: number, ...times) => Math.max(now, ...times.filter(Number.isFinite).map((t) => t + 1));
 /**
  * A collection's meta after looking at its items now: unchanged (the same
  * object) if nothing changed, else new times for the items that changed or
@@ -215,7 +215,7 @@ export function dataSetFromStorage(raw: Record<string, any>, { now = 0 }: { now?
  * stays as the state has it.
  * */
 export function stateFromDataSet(state: State, set: { items?: Record<string, Record<string, any>> }): State {
-  const has = (c) => !!set?.items?.[c] && typeof set.items[c] === 'object';
+  const has = (c: string) => !!set?.items?.[c] && typeof set.items[c] === 'object';
   const next = { ...state };
   if (has('spaces')) {
     const spaces = Object.entries(liveValues(set, 'spaces')).sort((a, b) => finite(a[1].order) - finite(b[1].order)).map(([id, s]) => ({ id, name: s.name, emoji: s.emoji, color: s.color }));
@@ -251,8 +251,8 @@ export function stateFromDataSet(state: State, set: { items?: Record<string, Rec
   // A tab in a space the set took away (one open before the set came in, in
   // the copy's default space): it joins its window's space, or the first.
   if (next.spaces !== state.spaces) {
-    const known = (id) => next.spaces.some((s) => s.id === id);
-    const home = (tabId) => {
+    const known = (id: string) => next.spaces.some((s) => s.id === id);
+    const home = (tabId: string) => {
       const id = next.activeSpaceByWindow?.[next.tabs?.[tabId]?.windowId];
       return known(id) ? id : next.spaces[0].id;
     };

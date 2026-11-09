@@ -46,7 +46,7 @@ export function installDrag(rt: any) {
   const lastPinOf = (folderId) => view.marked('m-drag', 'pin').filter((el) => view.subjectOf(el)?.folderId === folderId).at(-1) ?? null;
   const order = () => view.marked('m-drag').map((el) => `${kindOf(el)}:${view.subjectOf(el)?.id}`).join(' ');
   const clearMarks = () => { for (const el of marked) el.classList.remove(...MARKS); marked.clear(); };
-  const mark = (el, cls) => { if (!el) return; el.classList.add(cls); marked.add(el); };
+  const mark = (el, cls: string) => { if (!el) return; el.classList.add(cls); marked.add(el); };
 
   rt.listen(container, 'pointerdown', (e: PointerEvent) => {
     pending = null;
@@ -225,7 +225,7 @@ export function installDrag(rt: any) {
     if (d) glideBack(d.ghost, d.kind, d.id);
   }
 
-  function drop(x, y) {
+  function drop(x: number, y: number) {
     move(x, y);
     const d = endDrag();
     if (!d) return;

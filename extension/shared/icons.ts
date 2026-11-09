@@ -7,7 +7,7 @@ const SIZE = 32; // stored icons are shrunk to 32×32 when possible
 
 // Image type from the bytes themselves (servers often send icons as
 // text/plain or HTML error pages with 200). null = not an image.
-function sniffType(bytes) {
+function sniffType(bytes: Uint8Array<ArrayBuffer>) {
   const b = bytes;
   const starts = (...sig) => sig.every((v, i) => b[i] === v);
   if (starts(0x89, 0x50, 0x4e, 0x47)) return 'image/png';
@@ -21,12 +21,12 @@ function sniffType(bytes) {
   return null;
 }
 
-function toBase64(bytes) {
+function toBase64(bytes: Uint8Array<ArrayBuffer>) {
   let s = '';
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
 }
 
-const dataUrl = (type, bytes) => `data:${type};base64,${toBase64(bytes)}`;
+const dataUrl = (type: string, bytes: Uint8Array<ArrayBuffer>) => `data:${type};base64,${toBase64(bytes)}`;
 
 export { MAX_DOWNLOAD, MAX_STORED, SIZE, sniffType, toBase64, dataUrl };

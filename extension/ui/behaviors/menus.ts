@@ -26,13 +26,14 @@ export function installMenus(rt: any) {
 
   // What a right-click is on: a row with m-drag, else an action's row, else
   // the space's own name (m-rename="space").
-  function subjectAt(target) {
+  function subjectAt(target: EventTarget | null) {
     const drag = view.behaviorAt(target, 'm-drag');
     if (drag) {
       const item = view.subjectOf(drag.el);
       if (item?.id != null) return { kind: drag.value, id: item.id };
     }
-    for (let n = target; n; n = n.parentNode) {
+    // (Each turn ends on an action's element: there's a node to go up from.)
+    for (let n: Node | null = target as Node; n; n = n!.parentNode) {
       const hit = view.actionAt(n);
       if (!hit) break;
       if (ROW_OF_ACTION[hit.name] && hit.arg != null) return { kind: ROW_OF_ACTION[hit.name], id: hit.arg };
@@ -43,7 +44,7 @@ export function installMenus(rt: any) {
     return null;
   }
 
-  function show(target, point, { above = false } = {}) {
+  function show(target: { kind: any; id: any; } | { kind: string; id?: any; }, point: { x: number; y: number; }, { above = false } = {}) {
     rt.setUi({ menu: { kind: target.kind, id: target.id ?? null, x: point.x, y: point.y, above, confirming: null } });
     if (!rt.vm?.menu) { rt.setUi({ menu: null }); return false; }
     return true;

@@ -31,7 +31,7 @@ export const KEYFRAMES_KEEP_MS = 2000;
 // The browser's own, from before a page's scripts.
 const { CSSKeyframesRule: KeyframesRule, CSSImportRule: ImportRule } = globalThis;
 
-const nth = (list, at) => {
+const nth = (list, at: number) => {
   const all = list.split(/,\s*/);
   return all[at % all.length];
 };
@@ -72,7 +72,7 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
   // A CSS animation with an end, running, of something a read looks at. One
   // with no end shows now all there'll ever be; a paused one stays as it is;
   // one no longer named is gone.
-  function animates(node, name, property) {
+  function animates(node, name: string, property: RegExp) {
     const style = styleOf(node);
     const at = String(style.animationName).split(/,\s*/).lastIndexOf(name);
     if (at < 0 || nth(style.animationIterationCount, at) === 'infinite' || nth(style.animationPlayState, at) === 'paused') return false;
@@ -80,7 +80,7 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
     return !set || set.some((item) => property.test(item));
   }
   // Whether it moves what a read looks at on that element now.
-  function matters(node, key) {
+  function matters(node, key: string) {
     const property = names(node);
     if (!property) return false;
     const [kind, name] = [key[0], key.slice(2)];
@@ -198,7 +198,7 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
 
 // What a `@keyframes` of that name sets, from the sheets the page can read
 // (the last one wins, as in CSS): null if none of them has it.
-export function keyframesIn(sheets, name) {
+export function keyframesIn(sheets: any[], name: string) {
   let found = null as CSSKeyframesRule | null; // (set in walk's callback)
   const walk = (rules) => {
     for (const rule of Array.from(rules ?? [])) {

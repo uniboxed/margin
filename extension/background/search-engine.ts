@@ -14,7 +14,7 @@ import { mutate, now } from './store.ts';
 export const OWN_SEARCH_MS = 30000;
 export const ownSearchTabs = new Map(); // tabId → { at, template }
 export const ownSearchUrls = new Map(); // address → { at, template }
-const sameAddress = (a, b) => {
+const sameAddress = (a: string, b) => {
   try {
     return new URL(a).href === new URL(b).href;
   } catch {
@@ -35,7 +35,7 @@ export function noteReopened(url: unknown) {
   reopenedUrls.set(url, at);
 }
 const reopened = (urls: string[]) => [...reopenedUrls].some(([url, at]) => now() - at < OWN_SEARCH_MS && urls.some((u) => sameAddress(u, url)));
-function isOwnSearch(tabId, found, urls) {
+function isOwnSearch(tabId: number | undefined, found: { id: string; name: string; template: string; }, urls: string[]) {
   const fresh = (own) => !!own && now() - own.at < OWN_SEARCH_MS && own.template === found.template;
   if (tabId != null && fresh(ownSearchTabs.get(tabId))) return true;
   for (const [url, own] of ownSearchUrls) if (fresh(own) && urls.some((u) => sameAddress(u, url))) return true;

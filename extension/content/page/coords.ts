@@ -6,7 +6,7 @@
 import type { Accessor } from './accessor.ts';
 
 // The browser's own accessor for `name`, from `object` or its prototypes (accessor.ts).
-const find = (object, name): Accessor => {
+const find = (object: Element | MouseEvent, name: string): Accessor => {
   for (let at = object; at; at = Object.getPrototypeOf(at)) {
     const descriptor = Object.getOwnPropertyDescriptor(at, name);
     if (descriptor) return descriptor as Accessor;
@@ -41,8 +41,8 @@ export function startCoords(box) {
      (rects as any).item = (i) => rects[i] ?? null;
     return (rects as any);
   };
-  const windowX = (x) => (boxed() ? x * box.scale + box.x : x);
-  const windowY = (y) => (boxed() ? y * box.scale + box.y : y);
+  const windowX = (x: number) => (boxed() ? x * box.scale + box.x : x);
+  const windowY = (y: number) => (boxed() ? y * box.scale + box.y : y);
 
   const scrollTop = find(element, 'scrollTop').get;
   const scrollLeft = find(element, 'scrollLeft').get;
@@ -79,10 +79,10 @@ export function startCoords(box) {
   const mouse = MouseEvent.prototype;
   const clientX = find(mouse, 'clientX').get;
   const clientY = find(mouse, 'clientY').get;
-  const define = (name, get) => Object.defineProperty(mouse, name, { configurable: true, enumerable: true, get });
+  const define = (name: string, get: () => any) => Object.defineProperty(mouse, name, { configurable: true, enumerable: true, get });
   // Whole pixels for a mouse event, as WebKit's own (a pointer event's are fractions): a page may send them on.
   const Pointer = window.PointerEvent;
-  const asOwn = (event, v) => (Pointer && event instanceof Pointer ? v : Math.round(v));
+  const asOwn = (event, v: number) => (Pointer && event instanceof Pointer ? v : Math.round(v));
   define('clientX', function () {
     const x = clientX.call(this);
     return boxed() && this.isTrusted ? asOwn(this, (x - box.x) / box.scale) : x;

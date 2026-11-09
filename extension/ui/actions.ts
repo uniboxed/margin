@@ -148,7 +148,7 @@ export type ActionContext = {
 export const NAME_MAX = 40;
 const EMOJI_MAX = 8;
 // eslint-disable-next-line no-control-regex
-const plainText = (value, max) => typeof value === 'string' && [...value].length <= max && !/[\u0000-\u001f\u007f]/.test(value);
+const plainText = (value, max: number) => typeof value === 'string' && [...value].length <= max && !/[\u0000-\u001f\u007f]/.test(value);
 const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
 
 /** One field's value against its kind. */

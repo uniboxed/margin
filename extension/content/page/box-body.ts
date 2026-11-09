@@ -58,7 +58,7 @@ export function startBody(ctx: any) {
   // still held: a change of padding mustn't start a page's transition on it.
   // Styled again in the same step: leaving that to the next paint makes WebKit's
   // next layout ten times as long (8 ms against 72 on 20,000 rows).
-  function readWithout(read, keepScroll, apply) {
+  function readWithout(read: (element: any) => void, keepScroll: boolean, apply: () => boolean) {
     const { body } = document;
     for (const fn of box.onBeforeRead) fn(); // sheets.ts: the page's sheets as they'll be
     const kept = keepScroll ? ctx.scrollOf(body) : null; // laid out narrower, it may not scroll as far
@@ -136,7 +136,7 @@ export function startBody(ctx: any) {
     padded = margins.some(Boolean);
     // Padding can't be negative: what's less than nothing stays a margin.
     const edges = margins.map((n, i) => n + paddings[i]);
-    const side = (pick) => edges.map((n) => `${pick(n, 0)}px`).join(' ');
+    const side = (pick: (...values: number[]) => number) => edges.map((n) => `${pick(n, 0)}px`).join(' ');
     const padding = !padded ? '' : `@media screen { ${FITTED_BODY} { margin: ${side(Math.min)} !important; padding: ${side(Math.max)} !important; } }`;
     const repadded = padding !== paddingCss;
     if (repadded) own.replace(own.sheets.padding, padding);

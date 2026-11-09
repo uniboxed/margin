@@ -41,7 +41,7 @@ export const LIMITS = Object.freeze({
 const SVG = 'svg';
 const HTML = 'html';
 
-const report = (list, kind, name, reason, at?) => { list.push(at == null ? { kind, name, reason } : { kind, name, reason, at }); };
+const report = (list, kind: string, name, reason, at?) => { list.push(at == null ? { kind, name, reason } : { kind, name, reason, at }); };
 
 // A path inside the theme's package: plain segments, no '..', no leading '/',
 // no scheme, no query. Only files the package actually has.
@@ -146,7 +146,7 @@ const ENTITIES = {
 };
 const LEGACY = new Set(['amp', 'lt', 'gt', 'quot', 'nbsp', 'copy', 'reg']);
 
-export function decodeEntities(text) {
+export function decodeEntities(text: string) {
   if (!text.includes('&')) return text;
   return text.replace(/&(#[xX][0-9A-Fa-f]{1,8};?|#[0-9]{1,10};?|[A-Za-z][A-Za-z0-9]{1,31};?)/g, (all, body) => {
     if (body[0] === '#') {
@@ -162,24 +162,24 @@ export function decodeEntities(text) {
   });
 }
 
-const isSpace = (c) => c === ' ' || c === '\n' || c === '\t' || c === '\r' || c === '\f';
+const isSpace = (c: string) => c === ' ' || c === '\n' || c === '\t' || c === '\r' || c === '\f';
 
 /**
  * Parses a template into a plain tree. Not HTML5's algorithm, on purpose:
  * Margin's template language is a strict subset, and since the browser never
  * re-parses the result, this tree is the truth.
  * */
-export function parseHtml(html): { root: any, removed: any[], errors: string[] } {
+export function parseHtml(html: string): { root: any, removed: any[], errors: string[] } {
   const removed = [];
   const errors: string[] = [];
   const root = { type: 'root', children: [] };
   const stack: any[] = [root];
   let nodes = 0;
   const top = () => stack[stack.length - 1];
-  const line = (pos) => html.slice(0, pos).split('\n').length;
+  const line = (pos: number) => html.slice(0, pos).split('\n').length;
   let i = 0;
   const n = html.length;
-  const text = (value) => {
+  const text = (value: string) => {
     if (!value) return;
     const parent = top();
     const last = parent.children[parent.children.length - 1];
@@ -569,11 +569,11 @@ function cleanSvg(node, ctx) {
 }
 
 // Returns the kept attributes, or null when the element itself must go.
-function cleanAttrs(node, element, ns, ctx) {
+function cleanAttrs(node, element, ns: string, ctx) {
   const out: (any[] | string[])[] = [];
   const seen = new Set<any>();
   const where = `<${element}>`;
-  const drop = (name, reason) => report(ctx.removed, 'attribute', `${where} ${name}`, reason, node.at);
+  const drop = (name, reason: string) => report(ctx.removed, 'attribute', `${where} ${name}`, reason, node.at);
   if (node.attrs.length > LIMITS.attrsPerElement) { report(ctx.removed, 'element', element, `more than ${LIMITS.attrsPerElement} attributes`, node.at); return null; }
   let hasAction = false;
   for (const [rawName, value] of node.attrs) {
@@ -645,7 +645,7 @@ function cleanAttrs(node, element, ns, ctx) {
 }
 
 // A Margin attribute: bindings, actions, behaviors, and m-for/m-if's own.
-function marginAttr(element, ns, name, value, ctx, drop) {
+function marginAttr(element, ns: string, name, value, ctx, drop: (name: any, reason: any) => void) {
   if (name.startsWith('m-attr:')) {
     const target = name.slice(7);
     if (!BINDABLE(target, element)) { drop(name, `bindings can't set ${target}`); return null; }
@@ -696,11 +696,11 @@ function controlAttr(name, value) {
 // ---------------------------------------------------------------------------
 // CSS: tokenizer (CSS Syntax Level 3, §4).
 
-const isHex = (c) => /[0-9A-Fa-f]/.test(c ?? '');
-const isNameStart = (c) => c !== undefined && (/[A-Za-z_]/.test(c) || c.charCodeAt(0) >= 0x80);
-const isName = (c) => c !== undefined && (isNameStart(c) || /[0-9-]/.test(c));
-const isDigit = (c) => c !== undefined && c >= '0' && c <= '9';
-const isWs = (c) => c === ' ' || c === '\n' || c === '\t';
+const isHex = (c: string) => /[0-9A-Fa-f]/.test(c ?? '');
+const isNameStart = (c: string) => c !== undefined && (/[A-Za-z_]/.test(c) || c.charCodeAt(0) >= 0x80);
+const isName = (c: string) => c !== undefined && (isNameStart(c) || /[0-9-]/.test(c));
+const isDigit = (c: string) => c !== undefined && c >= '0' && c <= '9';
+const isWs = (c: string) => c === ' ' || c === '\n' || c === '\t';
 
 export type Token = { t: string, v?: any, s: number, e: number, esc?: boolean, unit?: string, type?: string };
 
@@ -708,18 +708,18 @@ export type Token = { t: string, v?: any, s: number, e: number, esc?: boolean, u
  * Tokenizes CSS. Newlines are normalized first (CR, CRLF and FF become LF).
  * Comments become nothing: two tokens with a gap between them had one.
  * */
-export function tokenizeCss(input): Token[] {
+export function tokenizeCss(input: string): Token[] {
   const s = input.replace(/\r\n?|\f/g, '\n');
   const out: Token[] = [];
   let i = 0;
   const n = s.length;
-  const validEscape = (a, b) => a === '\\' && b !== '\n' && b !== undefined;
-  const startsIdent = (a, b, c) => {
+  const validEscape = (a: string, b: string) => a === '\\' && b !== '\n' && b !== undefined;
+  const startsIdent = (a: string, b: string, c: string) => {
     if (a === '-') return isNameStart(b) || b === '-' || validEscape(b, c);
     if (isNameStart(a)) return true;
     return validEscape(a, b);
   };
-  const startsNumber = (a, b, c) => {
+  const startsNumber = (a: string, b: string, c: string) => {
     if (a === '+' || a === '-') return isDigit(b) || (b === '.' && isDigit(c));
     if (a === '.') return isDigit(b);
     return isDigit(a);
@@ -734,11 +734,11 @@ export function tokenizeCss(input): Token[] {
       return cp === 0 || (cp >= 0xd800 && cp <= 0xdfff) || cp > 0x10ffff ? '�' : String.fromCodePoint(cp);
     }
     if (i >= n) return '�';
-    const cp = s.codePointAt(i);
+    const cp = s.codePointAt(i)!; // (i < n: a code point there)
     i += cp > 0xffff ? 2 : 1;
     return String.fromCodePoint(cp);
   };
-  const consumeName = (tok) => {
+  const consumeName = (tok: Token) => {
     let name = '';
     for (;;) {
       const c = s[i];
@@ -756,7 +756,7 @@ export function tokenizeCss(input): Token[] {
     }
     return Number(s.slice(start, i));
   };
-  const consumeString = (q, tok) => {
+  const consumeString = (q: string, tok: Token) => {
     let v = '';
     for (;;) {
       const c = s[i];
@@ -781,7 +781,7 @@ export function tokenizeCss(input): Token[] {
       if (validEscape(s[i], s[i + 1])) { i++; consumeEscape(); } else i++;
     }
   };
-  const consumeUrl = (tok) => {
+  const consumeUrl = (tok: Token) => {
     while (isWs(s[i])) i++;
     let v = '';
     for (;;) {
@@ -846,7 +846,7 @@ export function tokenizeCss(input): Token[] {
     } else if (isNameStart(c)) {
       identLike(tok);
     } else {
-      const cp = s.codePointAt(i);
+      const cp = s.codePointAt(i)!; // (i < n: a code point there)
       i += cp > 0xffff ? 2 : 1;
       tok.t = 'delim';
       tok.v = String.fromCodePoint(cp);
@@ -856,11 +856,11 @@ export function tokenizeCss(input): Token[] {
   }
   return out;
 
-  function numeric(tok) {
+  function numeric(tok: Token) {
     tok.v = consumeNumber();
     if (startsIdent(s[i], s[i + 1], s[i + 2])) { tok.t = 'dim'; tok.unit = consumeName(tok); } else if (s[i] === '%') { i++; tok.t = 'pct'; } else tok.t = 'num';
   }
-  function identLike(tok) {
+  function identLike(tok: Token) {
     const name = consumeName(tok);
     if (name.toLowerCase() === 'url' && s[i] === '(') {
       i++;
@@ -885,9 +885,9 @@ const CLOSE = { '(': ')', '[': ']', '{': '}', func: ')' };
 
 // Groups tokens into component values: a token, a function { fn, args }, or
 // a simple block { open, items }. Unclosed ones close at the end (as in CSS).
-function components(tokens) {
+function components(tokens: Token[]) {
   let i = 0;
-  const list = (close) => {
+  const list = (close: string) => {
     const items: any[] = []; // (parsed CSS values)
     while (i < tokens.length) {
       const t = tokens[i];
@@ -907,7 +907,7 @@ function components(tokens) {
   return all;
 }
 
-const isTok = (cv, type) => cv && cv.t === type;
+const isTok = (cv, type: string) => cv && cv.t === type;
 const isWsCv = (cv) => cv && cv.t === 'ws';
 const isBlock = (cv, open = '{') => cv && cv.open === open;
 
@@ -1065,7 +1065,7 @@ class CssBuilder {
   }
 
   // A style block's contents: declarations and nested rules.
-  block(items, depth, kind) {
+  block(items, depth, kind: string) {
     if (depth > LIMITS.cssDepth) { this.errors.push(`css: nested deeper than ${LIMITS.cssDepth}`); return ''; }
     let out = '';
     let i = 0;
@@ -1125,7 +1125,7 @@ class CssBuilder {
     return `${prop}:${text};`;
   }
 
-  styleRule(prelude, block, depth, keyframe) {
+  styleRule(prelude, block, depth, keyframe: boolean) {
     const selector = this.text(prelude).trim();
     if (++this.rules > LIMITS.cssRules) { this.errors.push(`css: more than ${LIMITS.cssRules} rules`); return ''; }
     if (!selector) { this.drop('css-rule', '{}', 'no selector', block); return ''; }
@@ -1137,7 +1137,7 @@ class CssBuilder {
     return `${selector}{${body}}`;
   }
 
-  atRule(at, prelude, block, depth, where) {
+  atRule(at, prelude, block, depth, where: string) {
     const name = at.v.toLowerCase();
     const label = `@${at.v}`;
     if (at.esc) { this.drop('css-at-rule', label, 'escaped at-rule name', at); return ''; }
@@ -1163,7 +1163,7 @@ class CssBuilder {
     return `${head}{${this.block(block.items, depth + 1, where === 'nested' ? 'style' : 'rules')}}`;
   }
 
-  drop(kind, name, reason, cv) { report(this.removed, kind, name, reason, this.line(cv)); }
+  drop(kind: string, name, reason, cv) { report(this.removed, kind, name, reason, this.line(cv)); }
 
   // Writes component values back out. Tokens keep their source text (they
   // hold no escapes: anything escaped outside a string was refused), strings
@@ -1209,7 +1209,7 @@ const quote = (v) => `"${v.replace(/[\\"]/g, (c) => `\\${c}`).replace(/\n/g, '\\
  * Sanitizes a style sheet.
  * */
 export function sanitizeCss(css: string, options: { files?: string[], assetUrl?: (path: string) => string } = {}): { css: string, removed: any[], errors: string[], stats: { rules: number, declarations: number } } {
-  const fail = (msg) => ({ css: '', removed: [], errors: [msg], stats: { rules: 0, declarations: 0 } });
+  const fail = (msg: string) => ({ css: '', removed: [], errors: [msg], stats: { rules: 0, declarations: 0 } });
   if (typeof css !== 'string') return fail('css: not text');
   if (css.length > LIMITS.cssBytes) return fail(`css: larger than ${LIMITS.cssBytes} bytes`);
   if (css.includes('\u0000')) return fail('css: NUL character');

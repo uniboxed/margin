@@ -233,7 +233,7 @@ function readMeta(raw: Record<string, any>) {
 }
 // The collections `keys` feed, looked at again now: those that changed are
 // written with them.
-function trackKeys(keys) {
+function trackKeys(keys: any[]) {
   if (!cache) return;
   const at = Date.now();
   const changes: any[] = [];
@@ -251,7 +251,7 @@ function trackKeys(keys) {
 }
 // The changes one look at a collection found (its meta before and after): the
 // items with a new time, and the new tombstones.
-function changedItems(collection, before, after, items) {
+function changedItems(collection: string, before, after: { items: Record<string, [number, string]>; gone: Record<string, number>; }, items: Record<string, any>) {
   const out: ({ collection: any; id: string; updatedAt: any; value: any; } | { collection: any; id: string; updatedAt: any; deleted: boolean; })[] = [];
   for (const [id, [at, fp]] of Object.entries(after.items)) {
     const had = before?.items?.[id];
@@ -365,7 +365,7 @@ function write(keys) {
 const later = new Set<any>();
 let laterTimer: number | null = null;
 let laterAt = Infinity;
-function writeWithin(ms) {
+function writeWithin(ms: number) {
   const at = performance.now() + ms; // a clock that only runs forward, as the timer's
   if (laterTimer && laterAt <= at) return;
   clearTimeout(laterTimer);

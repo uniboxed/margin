@@ -30,9 +30,9 @@ export function installResize(rt: any) {
     const fallback = layout.sidebarDefault ?? px(s?.default);
     return { lo, hi: Number.isFinite(hi) ? hi : Math.max(lo, fallback), def: Number.isFinite(fallback) ? fallback : lo, step: s?.step > 0 ? s.step : 1 };
   };
-  const clamp = (w) => { const { lo, hi } = bounds(); return Math.min(hi, Math.max(lo, w)); };
+  const clamp = (w: number) => { const { lo, hi } = bounds(); return Math.min(hi, Math.max(lo, w)); };
   const snap = (w) => { const { step } = bounds(); return clamp(Math.round(w / step) * step); };
-  const value = (w) => (spec()?.type === 'length' ? `${w}px` : w);
+  const value = (w: number) => (spec()?.type === 'length' ? `${w}px` : w);
   // The width now: the setting as the theme gets it (saved, else its default).
   const current = () => { const w = px(rt.vm?.settings?.[SETTING]); return Number.isFinite(w) ? w : bounds().def; };
   const usable = () => {
@@ -43,7 +43,7 @@ export function installResize(rt: any) {
   // Which way a drag grows it: toward the page.
   const sign = () => (theme.manifest?.layout?.reveal === 'right' ? -1 : 1);
 
-  const save = (w) => {
+  const save = (w: number) => {
     rt.setThemeSettings({ [SETTING]: value(w) });
     void rt.host.send('updateThemeSettings', { themeId: theme.id, patch: { [SETTING]: value(w) } });
   };

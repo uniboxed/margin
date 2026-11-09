@@ -14,15 +14,15 @@
 // page says about it (bodyFitCss) with its own rules taken off.
 // An inset is a number of pixels, or a CSS length (the first paint's
 // variables, below), so one sheet fits any insets.
-const len = (v) => (typeof v === 'number' ? `${v}px` : v);
+const len = (v: string | number) => (typeof v === 'number' ? `${v}px` : v);
 // The weight of five ids, for Margin's rules a page's mustn't beat: a page's
 // `!important` on a class or an id loses to it (`.w-100 { width: 100% !important }`
 // on <html>, islonline.net: the box went back to the window's width).
 const WEIGHT = ':not(#m#m#m#m#m)';
 /** <html>, as the box's own rules name it: outweighing whatever a page says about it. */
 export const BOX_ROOT = `html${WEIGHT}`;
-const neg = (v) => (typeof v === 'number' ? `${-v}px` : `calc(-1 * ${v})`);
-const sum = (a, b) => (typeof a === 'number' && typeof b === 'number' ? `${a + b}px` : `(${len(a)} + ${len(b)})`);
+const neg = (v: string | number) => (typeof v === 'number' ? `${-v}px` : `calc(-1 * ${v})`);
+const sum = (a: string | number, b: string | number) => (typeof a === 'number' && typeof b === 'number' ? `${a + b}px` : `(${len(a)} + ${len(b)})`);
 export function boxRules(selector: string, { left, top, right, bottom }: { left: number | string, top: number | string, right: number | string, bottom: number | string }, zoom: number = 1) {
   return `${selector} {
     position: absolute !important; left: 0 !important; top: 0 !important;
@@ -50,7 +50,7 @@ export const READ_ELEMENT = 'margin-read';
 export const HOLD_ELEMENT = 'margin-hold';
 const BODY = 'html > body:where(:first-of-type)'; // one <body>, not a stray second
 // <body> with no such element after it.
-const none = (element) => `:nth-last-child(1 of body:first-of-type, ${element})`;
+const none = (element: string) => `:nth-last-child(1 of body:first-of-type, ${element})`;
 // <body>, while no read is looking. `:where`: no weight, a page's `!important`
 // class still wins as it would.
 export const FITTED_BODY = `${BODY}:where(${none(READ_ELEMENT)})`;
@@ -178,13 +178,13 @@ export function boxCss(box, zoom = 1, clipY = true) {
 export const LAYOUT_SIDES = Object.freeze(['left', 'top', 'right', 'bottom', 'radius']);
 const MAX_QUARTERS = Object.freeze({ left: 4095, top: 4095, right: 4095, bottom: 4095, radius: 255 });
 const QUARTER = 0.25;
-const placesOf = (side) => String(MAX_QUARTERS[side]).length;
+const placesOf = (side: string) => String(MAX_QUARTERS[side]).length;
 export const FIRST_PAINT_MARK = 'data-margin-at';
 export const LAYOUT_SUM_FILE = 'content/layout/at.css';
 /** @param id a theme's */
 export const firstPaintFile = (id: string) => `content/layout/theme-${id}.css`;
 export const layoutDigitFile = (side: string, place: number, digit: number) => `content/layout/${side}-${place}-${digit}.css`;
-const placeName = (side, place) => `--margin-box-at-${side}-${place}`;
+const placeName = (side: string, place: number) => `--margin-box-at-${side}-${place}`;
 const quarters = (side: string, value: unknown) => Math.max(0, Math.min(MAX_QUARTERS[side], Math.round((Number(value) || 0) / QUARTER)));
 /** A layout as it's spelled: quarter pixels, within range. */
 export const spelled = (layout: Record<string, unknown> | null | undefined): { left: number, top: number, right: number, bottom: number, radius: number } => (Object.fromEntries(LAYOUT_SIDES.map((side) => [side, quarters(side, layout?.[side]) * QUARTER])) as any);

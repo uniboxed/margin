@@ -156,9 +156,9 @@ let liveView: (() => LinkView) | null = null;
 const layoutSource = () => liveView?.() ?? lastView;
 /** Where the windows' layouts come from (background.ts: the link's own, in memory). */
 export const setLayoutSource = (fn: () => LinkView) => { liveView = fn; };
-const chooseFor = (settings, view: LinkView, registered) => chooseLayout(settings, view?.layouts ?? {}, registered, { epoch: view?.epoch ?? undefined, drawn: view?.drawn ?? {}, last: view?.lastLayouts ?? {} });
+const chooseFor = (settings, view: LinkView, registered: string | null) => chooseLayout(settings, view?.layouts ?? {}, registered, { epoch: view?.epoch ?? undefined, drawn: view?.drawn ?? {}, last: view?.lastLayouts ?? {} });
 
-const sameScript = (a, b) => JSON.stringify(a ? { js: a.js ?? [], css: a.css ?? [] } : null) === JSON.stringify(b ? { js: b.js ?? [], css: b.css ?? [] } : null);
+const sameScript = (a: { js: string[]; css: string[]; on: boolean; }, b) => JSON.stringify(a ? { js: a.js ?? [], css: a.css ?? [] } : null) === JSON.stringify(b ? { js: b.js ?? [], css: b.css ?? [] } : null);
 async function syncPage() {
   if (!api.scripting?.registerContentScripts) return;
   const got = await api.storage.local.get(['settings', APP_LINK_KEY]);
@@ -308,7 +308,7 @@ async function fixUp(tabId: number, documentId: string | undefined) {
   const own = off ? null : windowId != null ? layoutOf(view?.layouts?.[windowId]) : null;
   if (!off && (!own || keyOf(own) === registeredKey)) return;
   const css = own && hasBox(own) ? layoutOwnCss(own) : OFF_CSS;
-  const insert = (target) => Promise.resolve(api.scripting.insertCSS({ target, css }));
+  const insert = (target: { tabId: number; documentIds: string[]; } | { tabId: number; frameIds: number[]; }) => Promise.resolve(api.scripting.insertCSS({ target, css }));
   const ok = await (documentId ? insert({ tabId, documentIds: [documentId] }).catch(() => insert({ tabId, frameIds: [0] })) : insert({ tabId, frameIds: [0] })).then(() => true, (err) => String(err?.message ?? err));
   fixUps.push({ tabId, css, ok });
   if (fixUps.length > 20) fixUps.shift();

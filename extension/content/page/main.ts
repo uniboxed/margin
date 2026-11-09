@@ -78,7 +78,7 @@ import { FIRST_PAINT_MARK, readFirstPaint } from '../../shared/page-box.ts';
   // a box is wanted.
   let told = false;
   const at = (layout: any) => ({ left: layout.left, top: layout.top, right: layout.right, bottom: layout.bottom });
-  const same = (a, b) => a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
+  const same = (a: { left: any; top: any; right: any; bottom: any; }, b) => a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
   const look = () => {
     if (told) return false;
     if (!box && (window as any)[RAN]) return false; // injected meanwhile: that copy has the box

@@ -25,7 +25,7 @@ export function installSettings(rt: any) {
     return rt.vm?.settingsForm?.fields.find((f) => f.id === id) ?? null;
   };
   const focused = () => (container as any).activeElement ?? doc.activeElement;
-  const status = (key, text, error = false) => rt.setUi({ settingsStatus: { ...(rt.ui.settingsStatus ?? {}), [key]: text == null ? undefined : { text, error } } });
+  const status = (key: string, text: string, error = false) => rt.setUi({ settingsStatus: { ...(rt.ui.settingsStatus ?? {}), [key]: text == null ? undefined : { text, error } } });
 
   function sync() {
     const root = view.rootElement();

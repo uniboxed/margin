@@ -37,7 +37,7 @@ export function startLocks(ctx: any) {
     // One side's rule. What the page says shows, unless it's our own rule's
     // value, which stands for the page saying nothing. Forced, its value hides
     // what the page says: what it said then stands.
-    const side = (ours, shown, rootSays) => {
+    const side = (ours: { value: string; said: string; forced: boolean; force: boolean; }, shown: string, rootSays: string) => {
       const said = ours.forced ? ours.said : ours.value && shown === ours.value ? 'visible' : shown;
       // Nothing said: as <html> says. It locks the window: locked with it.
       if (said === 'visible') Object.assign(ours, { value: rootSays === 'hidden' ? 'hidden' : 'auto', said, forced: ours.force });
@@ -58,7 +58,7 @@ export function startLocks(ctx: any) {
     // A page's own `overflow: visible` beats a rule with no weight: said again, to win.
     const after = getComputedStyle(body);
     if (pinned) return;
-    const lost = (ours, shown) => !!ours.value && !ours.forced && shown === 'visible';
+    const lost = (ours: { value: string; said: string; forced: boolean; force: boolean; }, shown: string) => !!ours.value && !ours.forced && shown === 'visible';
     if (!lost(rule.y, after.overflowY) && !lost(rule.x, after.overflowX)) return;
     rule.y.force ||= lost(rule.y, after.overflowY);
     rule.x.force ||= lost(rule.x, after.overflowX);
@@ -67,7 +67,7 @@ export function startLocks(ctx: any) {
 
   // <body>'s background on <body>, not the canvas (shared/page-box.ts bodyBackgroundCss).
   let backCss = '';
-  function checkBackground(style) {
+  function checkBackground(style: CSSStyleDeclaration) {
     const css = bodyBackgroundCss(style);
     if (css !== backCss) own.replace(own.sheets.back, css);
     backCss = css;

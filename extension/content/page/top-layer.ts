@@ -21,7 +21,7 @@ export function startTopLayer(box) {
 
   // The move along one side's axis: `near` and `far` are the box's edges from
   // the window's, `lost` how much smaller than the window it is.
-  function shift(map, startName, endName, marginName, near, far, lost) {
+  function shift(map, startName: string, endName: string, marginName: string, near, far, lost) {
     const start = map.get(startName);
     const end = map.get(endName);
     if (isAnchored(start) || isAnchored(end)) return null;
@@ -54,7 +54,7 @@ export function startTopLayer(box) {
 
   // The ways in by script are the page's own calls; the rest (popovertarget, an
   // invoker) are seen as they toggle, in the frame before they're painted.
-  const wrap = (proto, name) => {
+  const wrap = (proto: HTMLDialogElement | HTMLElement, name: string) => {
     const native = proto?.[name];
     if (!native) return;
     proto[name] = function (...args) {
@@ -66,7 +66,7 @@ export function startTopLayer(box) {
   wrap(window.HTMLDialogElement?.prototype, 'showModal');
   wrap(HTMLElement.prototype, 'showPopover');
   wrap(HTMLElement.prototype, 'togglePopover');
-  const target = (event) => (event.target as any);
+  const target = (event: ToggleEvent | Event) => (event.target as any);
   addEventListener('beforetoggle', (event) => {
     if ((event as any).newState === 'open') requestAnimationFrame(() => place(target(event)));
   }, true);

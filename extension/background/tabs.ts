@@ -79,7 +79,7 @@ function movedOn(windowId) {
   windowGens.set(windowId, windowGen(windowId) + 1);
   return windowGen(windowId);
 }
-export function activating(tabId) {
+export function activating(tabId: number) {
   const at = Date.now();
   activatedByMargin.set(tabId, at);
   setTimeout(() => {
@@ -470,7 +470,7 @@ export async function openBehind({ windowId, url, from, then, created, label, de
   created?.(tab);
   // In the window's space (model.ts assignTab), drawn before the page is told.
   await mutate((s) => M.upsertTab(s, label && !tab.title ? { ...tab, title: label } : tab, now())).catch(() => {});
-  const told = (type, reason: string | null = null) => tellPage(from, { type, tabId: tab.id, from: from.id, ...(reason ? { reason } : {}) });
+  const told = (type: string, reason: string | null = null) => tellPage(from, { type, tabId: tab.id, from: from.id, ...(reason ? { reason } : {}) });
   const notShown = (reason: string | null = null) => {
     void told('switch-failed', reason);
     return { tabId: tab.id, shown: null };
@@ -512,7 +512,7 @@ export async function openBehind({ windowId, url, from, then, created, label, de
 // counts as still loading.
 async function untilLoaded(tabId: number, until: () => number, left: () => boolean, fromId: number | null): Promise<'loaded' | 'timeout' | 'gone' | 'left' | 'moved'> {
   const SLOW = Symbol('slow');
-  const ask = (id) => {
+  const ask = (id: number) => {
     let timer;
     return Promise.race([
       Promise.resolve().then(() => api.tabs.get(id)).catch(() => null),
@@ -780,7 +780,7 @@ async function giveWay() {
   while (switchUnderWay() && Date.now() < until) await new Promise<any>((resolve) => setTimeout(resolve, GIVE_WAY_POLL_MS));
 }
 
-async function runOpenTabRepair(retry) {
+async function runOpenTabRepair(retry: boolean) {
   // The sidebar's entry, whatever the build named its file.
   const files = api.runtime.getManifest().content_scripts?.find((c) => c.world !== 'MAIN')?.js;
   if (!files?.length || !api.scripting?.executeScript) return;

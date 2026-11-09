@@ -156,7 +156,7 @@ function setTabIdMaker(maker: () => string) {
   makeTabId = maker;
 }
 const newTabId = () => makeTabId();
-const isTabId = (id) => typeof id === 'string' && /^t-[A-Za-z0-9]{1,30}$/.test(id);
+const isTabId = (id: unknown): id is string => typeof id === 'string' && /^t-[A-Za-z0-9]{1,30}$/.test(id);
 
 // Open records with their Margin ids and places (records from before Margin 2
 // have neither: each gets an id, and its place in its window, `index`), the
@@ -210,7 +210,7 @@ const isWebPage = (url) => /^(https?|file):/i.test(url ?? '');
 // that didn't bring it back), so a window that comes back takes it back
 // (reclaimTabs); `wasTab`: the browser's id it had, while that can still mean
 // it (this session: a close heard after a sync noticed it gone).
-function keptRecord(r, spaceId, { why, now, from = null, wasTab = null }: { why: string, now: number, from?: KeptTab['from'] | null, wasTab?: number | null }) {
+function keptRecord(r: TabRecord, spaceId: string, { why, now, from = null, wasTab = null }: { why: string, now: number, from?: KeptTab['from'] | null, wasTab?: number | null }) {
   return {
     id: isTabId(r.mid) ? r.mid : newTabId(),
     url: r.url,
@@ -222,7 +222,7 @@ function keptRecord(r, spaceId, { why, now, from = null, wasTab = null }: { why:
     ...(r.wokeAt != null ? { wokeAt: r.wokeAt } : {}),
     // Where its page was scrolled (noteScroll), with the address it's for: opened again, it goes
     // back there once (linkKept, takeScroll).
-    ...(r.scroll > 0 ? { scroll: { y: r.scroll, url: r.url } } : {}),
+    ...(r.scroll != null && r.scroll > 0 ? { scroll: { y: r.scroll, url: r.url } } : {}),
     keptAt: now,
     why,
     ...(from ? { from } : {}),
@@ -511,7 +511,7 @@ function placeBeside(state: State, moving: any, nextTo: number | string, side: '
 // still finds the 0 Tirth set there, and doesn't turn the old keep-ready back
 // on with its default of 30.
 const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth', 'paletteShortcut'];
-const withoutKeys = (obj, keys) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
+const withoutKeys = (obj, keys: string[]) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
 
 // Each theme's settings, filled in by the theme (which also takes over what
 // it used to keep among the top-level settings). Themes this build doesn't
@@ -574,7 +574,7 @@ function normalizeUrl(url) {
   }
 }
 
-const hasSpace = (state, spaceId) => state.spaces.some((s) => s.id === spaceId);
+const hasSpace = (state: State, spaceId) => state.spaces.some((s) => s.id === spaceId);
 
 function activeSpaceId(state: State, windowId) {
   const id = state.activeSpaceByWindow[windowId];
@@ -610,7 +610,7 @@ function seenTab(tab: any) {
 const GOING_MS = 15000;
 const BLANK = /^about:blank$/i;
 
-function tabRecord(tab, prev, now) {
+function tabRecord(tab, prev, now: number) {
   const seen = seenTab(tab);
   const going = prev?.going && now - prev.going.at < GOING_MS ? prev.going : null;
   const said = seen.url || seen.pendingUrl || '';
@@ -663,7 +663,7 @@ function inheritSpace(state: State, windowId) {
 // known tabs it's owned by activateTab(), because Safari can deliver an
 // update for a page that finished loading *after* the user switched away,
 // still saying active: true, which left two tabs highlighted.
-function upsertTab(state: State, tab, now) {
+function upsertTab(state: State, tab, now: number) {
   // The stand-in page is never a Margin tab (shared/away.ts).
   if (isAwayPage(tab.url) || isAwayPage(tab.pendingUrl)) return state.tabs[tab.id] ? removeTab(state, tab.id) : state;
   const prev = state.tabs[tab.id];
@@ -725,7 +725,7 @@ const awayTabs = (state: State) => new Set(Object.values(state.awayByWindow ?? {
 
 // Exactly one active tab per window. `windowId` may be missing from the
 // event; fall back to the tab's own window.
-function activateTab(state: State, tabId, windowId, now) {
+function activateTab(state: State, tabId, windowId, now: number) {
   windowId ??= state.tabs[tabId]?.windowId;
   if (windowId == null) return state;
   const tabs = {};
@@ -765,7 +765,7 @@ const anyKey = (t) => normalizeUrl(t.url || t.pendingUrl || '');
 // `tabs`) must share with an old one (its `records`) to be paired (1);
 // `anyWindow`: also by address in any window (true).
 function matchTabs(old: any[], open: any[], { minShared = () => 1, anyWindow = true }: { minShared?: (records: any[], tabs: any[]) => number, anyWindow?: boolean } = {}) {
-  const byWindow = (list) => {
+  const byWindow = (list: any[]) => {
     const map = new Map();
     for (const t of list) map.set(t.windowId, [...(map.get(t.windowId) ?? []), t]);
     return map;
@@ -799,7 +799,7 @@ function matchTabs(old: any[], open: any[], { minShared = () => 1, anyWindow = t
   const taken = new Set<any>();
   // Same address (by `key`) within `records` for `tabs`; of several (the
   // same page open twice), the one nearest its place in the window.
-  const zip = (tabs, records, key) => {
+  const zip = (tabs, records, key: (t: any) => any) => {
     const free = new Map();
     for (const r of records) if (!taken.has(r) && key(r)) free.set(key(r), [...(free.get(key(r)) ?? []), r]);
     for (const t of [...tabs].sort((a, b) => String(a.windowId).localeCompare(String(b.windowId)) || a.index - b.index)) {
@@ -842,7 +842,7 @@ const reclaimable = (state: State, now: number) => Object.values(state.keptTabs 
 // unheard) are kept too, with the id they had (a close heard later archives
 // them: background.ts).
 // An old window, as of one renumbering (window ids repeat across them).
-const groupKey = (at, windowId) => `${at}:${windowId}`;
+const groupKey = (at: number, windowId) => `${at}:${windowId}`;
 
 // Did the browser renumber its tabs (a restart, or Margin updated: no open
 // tab is one Margin knows, while some it knew are gone)?
@@ -908,7 +908,7 @@ function syncTabs(state: State, openTabs, { fresh = false, now = Date.now() } = 
   // What's gone and wasn't matched: kept (not open), by its old window.
   const used = new Set(matched.values());
   // `size`: how many web pages its window had (it needs two of them back, or one if it had one).
-  const size = (windowId) => gone.filter((r) => r.windowId === windowId && webKey(r)).length;
+  const size = (windowId: number) => gone.filter((r) => r.windowId === windowId && webKey(r)).length;
   const keptTabs = { ...next.keptTabs };
   for (const r of gone) {
     if (used.has(r)) continue;
@@ -933,13 +933,13 @@ function syncTabs(state: State, openTabs, { fresh = false, now = Date.now() } = 
   return capKept(dropStalePinned(next, now));
 }
 
-const withoutTabId = (k) => {
+const withoutTabId = (k: KeptTab) => {
   if (k.wasTab == null) return k;
   const { wasTab: _, ...rest } = k;
   return rest;
 };
 // A kept tab's times moved forward by `ms` (the time the browser was closed).
-const shifted = (k, ms) => ({
+const shifted = (k: KeptTab, ms: number) => ({
   ...k,
   lastActive: (k.lastActive ?? 0) + ms,
   ...(k.wokeAt != null ? { wokeAt: k.wokeAt + ms } : {}),
@@ -950,7 +950,7 @@ const shifted = (k, ms) => ({
 // Kept tabs whose address is pinned in their space (kept from before the pin,
 // or lost at a relaunch): its pin opens it, so they're dropped once no window
 // can take them back.
-function dropStalePinned(state: State, now) {
+function dropStalePinned(state: State, now: number) {
   let keptTabs: Record<string, KeptTab> | null = null;
   for (const k of Object.values(state.keptTabs ?? {})) {
     if (!pinForUrl(state, k.url, k.spaceId)) continue;
@@ -970,7 +970,7 @@ function dropStalePinned(state: State, now) {
 // window only, and a window must share two of its old window's web pages (one
 // if it had only one): a page opened anew doesn't take an old tab's place.
 // The window then shows its front tab's space.
-function reclaimTabs(state: State, tabIds: number[], now) {
+function reclaimTabs(state: State, tabIds: number[], now: number) {
   const lost = reclaimable(state, now);
   if (!lost.length) return state;
   const old = lost.map((k) => ({ ...k, windowId: `lost:${k.from.key}`, index: Number(k.from.index) || 0 }));
@@ -998,7 +998,7 @@ function reclaimTabs(state: State, tabIds: number[], now) {
   return orderTabs(next);
 }
 
-function moveTab(state: State, tabId, spaceId) {
+function moveTab(state: State, tabId, spaceId: string) {
   // A kept tab (not open): its space.
   if (typeof tabId === 'string') {
     const k = state.keptTabs?.[tabId];
@@ -1022,7 +1022,7 @@ function setActiveSpace(state: State, windowId, spaceId) {
 // The window shows the space of the tab it shows (Arc): a tab of another
 // space brought to the front (from the palette, Safari's own tab bar)
 // switches the window to that space.
-function followTab(state: State, tabId, windowId) {
+function followTab(state: State, tabId: number, windowId: number) {
   const spaceId = state.tabSpace[tabId];
   if (!spaceId || !hasSpace(state, spaceId) || activeSpaceId(state, windowId) === spaceId) return state;
   return setActiveSpace(state, windowId, spaceId);
@@ -1035,7 +1035,7 @@ function recentTabOfSpace(state: State, windowId: number, spaceId: string | null
     .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0] ?? null;
 }
 
-function createSpace(state: State, { id, name, emoji, color }) {
+function createSpace(state: State, { id, name, emoji, color }: { id: string; name: string | undefined; emoji: string | undefined; color: string | undefined; }) {
   const space = {
     id,
     name: name?.trim() || 'New space',
@@ -1068,7 +1068,7 @@ function spaceWindowTabs(state: State, spaceId: string) {
 }
 
 // Rename, re-emoji or recolor.
-function updateSpace(state: State, spaceId, patch) {
+function updateSpace(state: State, spaceId: string, patch: { name: string | undefined; emoji: string | undefined; color: string | undefined; }) {
   const allowed = {};
   for (const key of ['name', 'emoji', 'color']) {
     const value = typeof patch[key] === 'string' ? patch[key].trim() : '';
@@ -1085,13 +1085,13 @@ function updateSpace(state: State, spaceId, patch) {
 // stands in (shared/view.ts does the same). Every change renumbers the
 // lists it touches 0, 1, 2…
 const posOf = (item: any, i: number) => (Number.isFinite(item?.pos) ? item.pos : i);
-const folderIn = (state, folderId, spaceId) => (state.folders ?? []).find((f) => f.id === folderId && f.spaceId === spaceId) ?? null;
+const folderIn = (state: State, folderId, spaceId) => (state.folders ?? []).find((f) => f.id === folderId && f.spaceId === spaceId) ?? null;
 // A pin's folder, if that folder exists in the pin's space (else it's loose).
-const folderOfPin = (state, pin) => (pin.folderId ? folderIn(state, pin.folderId, pin.spaceId) : null);
+const folderOfPin = (state: State, pin) => (pin.folderId ? folderIn(state, pin.folderId, pin.spaceId) : null);
 
 // One list, in order: [{ kind: 'folder' | 'pin', id }]. `folderId` null: the
 // space's top level.
-function pinOrder(state: State, spaceId, folderId = null) {
+function pinOrder(state: State, spaceId: string, folderId: string | null = null) {
   const items: { kind: 'folder' | 'pin', id: string, pos: number }[] = [];
   // Folders first, so equal positions sort as shared/view.ts shows them.
   if (folderId == null) {
@@ -1107,8 +1107,8 @@ function pinOrder(state: State, spaceId, folderId = null) {
 
 // Write `list` (pinOrder's shape) as the order of that level, putting its
 // pins in `folderId` (null: none).
-function writeOrder(state: State, folderId, list) {
-  const pos = new Map(list.map((item, i) => [item.id, i]));
+function writeOrder(state: State, folderId: string | null, list: { kind: "folder" | "pin"; id: string; }[] | { kind: string; id: string; }[]) {
+  const pos = new Map(list.map((item, i) => [item.id, i] as [string, number]));
   // Unchanged items, and lists, stay as they are (the background saves only
   // what changed, and every page redraws for each save).
   let pinsChanged = false;
@@ -1130,7 +1130,7 @@ function writeOrder(state: State, folderId, list) {
 
 // `list` with `item` moved before the entry with id `beforeId` (the end if
 // there's none).
-function placed(list, item, beforeId) {
+function placed(list: { kind: "folder" | "pin"; id: string; }[], item: { kind: string; id: string; }, beforeId: string | null) {
   if (beforeId != null && beforeId === item.id) return list.some((x) => x.id === item.id) ? list : [...list, item]; // before itself: where it is
   const rest = list.filter((x) => x.id !== item.id);
   const at = beforeId == null ? -1 : rest.findIndex((x) => x.id === beforeId);
@@ -1139,9 +1139,9 @@ function placed(list, item, beforeId) {
 }
 
 const FOLDER_NAME_MAX = 40;
-const folderName = (name) => String(name ?? '').trim().slice(0, FOLDER_NAME_MAX);
+const folderName = (name: string) => String(name ?? '').trim().slice(0, FOLDER_NAME_MAX);
 // "New Folder", "New Folder 2"…: menus name folders, so a space's are distinct.
-function uniqueName(state, spaceId, name) {
+function uniqueName(state: State, spaceId: string, name: string) {
   const taken = new Set((state.folders ?? []).filter((f) => f.spaceId === spaceId).map((f) => f.name));
   if (!taken.has(name)) return name;
   let n = 2;
@@ -1158,7 +1158,7 @@ function addPin(state: State, { id, spaceId, url, title, folderId = null, before
   return movePin(next, id, { folderId: folder?.id ?? null, beforeId });
 }
 
-function removePin(state: State, pinId) {
+function removePin(state: State, pinId: string) {
   return { ...state, pins: state.pins.filter((p) => p.id !== pinId) };
 }
 
@@ -1190,14 +1190,14 @@ function createFolder(state: State, { id, spaceId, name = 'New Folder', pinIds =
   return next;
 }
 
-function renameFolder(state: State, folderId, name) {
+function renameFolder(state: State, folderId: string, name: string) {
   const clean = folderName(name);
   const folder = (state.folders ?? []).find((f) => f.id === folderId);
   if (!clean || !folder || folder.name === clean) return state;
   return { ...state, folders: (state.folders ?? []).map((f) => (f.id === folderId ? { ...f, name: clean } : f)) };
 }
 
-function setFolderOpen(state: State, folderId, open) {
+function setFolderOpen(state: State, folderId: string, open: boolean) {
   const folder = (state.folders ?? []).find((f) => f.id === folderId);
   if (!folder || (folder.open !== false) === !!open) return state;
   return { ...state, folders: (state.folders ?? []).map((f) => (f.id === folderId ? { ...f, open: !!open } : f)) };
@@ -1211,7 +1211,7 @@ function moveFolder(state: State, folderId: string, { beforeId = null }: { befor
 }
 
 // Delete a folder; its pins stay, in its place at the top level.
-function deleteFolder(state: State, folderId) {
+function deleteFolder(state: State, folderId: string) {
   const folder = (state.folders ?? []).find((f) => f.id === folderId);
   if (!folder) return state;
   const inside = pinOrder(state, folder.spaceId, folderId);
@@ -1222,7 +1222,7 @@ function deleteFolder(state: State, folderId) {
 
 // Delete a space; its tabs, pins and archive entries move to the first
 // remaining space. The last space can't be deleted.
-function deleteSpace(state: State, spaceId) {
+function deleteSpace(state: State, spaceId: string) {
   if (state.spaces.length < 2 || !hasSpace(state, spaceId)) return state;
   const spaces = state.spaces.filter((s) => s.id !== spaceId);
   const target = spaces[0].id;
@@ -1260,7 +1260,7 @@ function archiveTab(state: State, { id, url, title, spaceId, favIconUrl, closedA
 }
 
 // Remember a site's icon; keeps the most recently fetched FAVICON_CAP sites.
-function rememberFavicon(state: State, origin, { data, href, at }, cap = FAVICON_CAP) {
+function rememberFavicon(state: State, origin: string, { data, href, at }: { data: any; href: any; at: number; }, cap = FAVICON_CAP) {
   if (!origin || !data) return state;
   const entries = Object.entries({ ...state.favicons, [origin]: { data, href, at } })
     .sort((a, b) => b[1].at - a[1].at)
@@ -1268,14 +1268,14 @@ function rememberFavicon(state: State, origin, { data, href, at }, cap = FAVICON
   return { ...state, favicons: Object.fromEntries(entries) };
 }
 
-function removeArchived(state: State, archiveId) {
+function removeArchived(state: State, archiveId: string) {
   return { ...state, archive: state.archive.filter((a) => a.id !== archiveId) };
 }
 
 // Tabs due for auto-archive: web pages that aren't pinned in their space,
 // aren't the active tab of their window, and haven't been active for
 // `settings.archiveAfterHours` (0 or less disables it).
-function staleTabs(state: State, now) {
+function staleTabs(state: State, now: number) {
   const hours = Number(state.settings.archiveAfterHours);
   if (!(hours > 0)) return [];
   const cutoff = now - hours * 3600_000;
@@ -1287,7 +1287,7 @@ function staleTabs(state: State, now) {
 
 // Kept tabs (not open) due for auto-archive, by the same rule: open or not,
 // a tab unused for `archiveAfterHours` goes to the archive (PLAN.md §6).
-function staleKept(state: State, now) {
+function staleKept(state: State, now: number) {
   const hours = Number(state.settings.archiveAfterHours);
   if (!(hours > 0)) return [];
   const cutoff = now - hours * 3600_000;
@@ -1305,14 +1305,14 @@ function sleepyTabs(state: State, now: number, { afterMs = null }: { afterMs?: n
   const ms = afterMs ?? Number(state.settings.sleepAfterHours) * 3600_000;
   if (!(ms > 0)) return [];
   const cutoff = now - ms;
-  const lastUse = (t) => Math.max(t.lastActive ?? now, t.wokeAt ?? -Infinity);
+  const lastUse = (t: TabRecord) => Math.max(t.lastActive ?? now, t.wokeAt ?? -Infinity);
   const away = awayTabs(state);
   return Object.values(state.tabs)
     .filter((t) => !t.active && !away.has(t.id) && !t.sleeping && /^https?:/i.test(t.url) && lastUse(t) < cutoff && !neverSleeps(t.url, state.settings.neverSleepSites))
     .sort((a, b) => lastUse(a) - lastUse(b));
 }
 
-function archiveEntryForTab(state: State, tab, { id, closedAt }) {
+function archiveEntryForTab(state: State, tab: TabRecord, { id, closedAt }: { id: string; closedAt: number; }) {
   return { id, url: tab.url, title: tab.title, favIconUrl: tab.favIconUrl, spaceId: state.tabSpace[tab.id] ?? state.spaces[0].id, closedAt };
 }
 
