@@ -77,17 +77,18 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   onSwitching?: (tabId: number | null) => void,
   onSwitchRun?: (run: import('../shared/switching.ts').SwitchRun) => void,
 }) {
-  let ui: UiState & Record<string, any> = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
+  // (Always with a palette: closed, or as it's open.)
+  let ui: UiState & { palette: NonNullable<UiState['palette']> } & Record<string, any> = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
   let vm: ViewModel | null = null;
   let drawn: ViewModel | null = null;
-  let savedKey = null; // the theme's saved settings last applied (as JSON)
+  let savedKey: string | null = null; // the theme's saved settings last applied (as JSON)
   let settings = resolveSettings(theme.manifest, null);
   let destroyed = false;
   const refused: { name: string, arg: any, reason: string }[] = [];
   const warn = onWarn ?? ((message) => console.warn('[margin]', message));
   const doc = ((container.nodeType === 9 ? container : container.ownerDocument) as Document);
   const win = (doc.defaultView as Window & typeof globalThis);
-  const offs = [];
+  const offs: (() => unknown)[] = [];
   const timers = new Set<any>();
 
   // ---- what's shown ahead of the state ------------------------------------------
@@ -102,7 +103,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
      hold: null as { spaceId: string, until: number } | null,
   };
   // Re-drawn when the soonest of them runs out.
-  let expiryTimer = null;
+  let expiryTimer: number | null = null;
   function expireLater() {
     const ends = [pending.settings?.until, ...[...pending.folders.values()].map((p) => p.until), ...[...pending.spaces.values()].map((p) => p.until),
       pending.space ? pending.space.since + PENDING_MS + 50 : undefined, pending.hold ? pending.hold.until + 1 : undefined, pending.themeSettings && !pending.themeSettings.live ? pending.themeSettings.until : undefined].filter((t) => t != null);
@@ -139,15 +140,15 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       const folder = raw.folders?.find((f) => f.id === id);
       if (!folder || folder.name === entry.name || now > entry.until) p.folders.delete(id);
     }
-    if (p.folders.size) state = { ...state, folders: state.folders.map((f) => (p.folders.has(f.id) ? { ...f, name: p.folders.get(f.id).name } : f)) };
+    if (p.folders.size) state = { ...state, folders: state.folders.map((f) => (p.folders.has(f.id) ? { ...f, name: p.folders.get(f.id)!.name } : f)) }; // (has: there)
     for (const [id, entry] of p.spaces) {
       const space = raw.spaces.find((s) => s.id === id);
       if (!space || Object.entries(entry.patch).every(([k, v]) => space[k] === v) || now > entry.until) p.spaces.delete(id);
     }
-    if (p.spaces.size) state = { ...state, spaces: state.spaces.map((s) => (p.spaces.has(s.id) ? { ...s, ...p.spaces.get(s.id).patch } : s)) };
+    if (p.spaces.size) state = { ...state, spaces: state.spaces.map((s) => (p.spaces.has(s.id) ? { ...s, ...p.spaces.get(s.id)!.patch } : s)) }; // (has: there)
     if (p.hold) {
       if (now > p.hold.until) p.hold = null;
-      else state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [windowId()]: p.hold.spaceId } };
+      else state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [windowId() as number]: p.hold.spaceId } };
     }
     // A space asked for: shown until the state says so, the switch that
     // brings its tab is over, or PENDING_MS (sidebar.js showSpaceNow).
@@ -156,7 +157,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       const over = V.activeSpaceId(raw, w) === p.space.spaceId || now - p.space.since > PENDING_MS
         || (p.space.withTab != null && ui.switchingTo == null && !behaviors.swipe?.active());
       if (over) p.space = null;
-      else state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w]: p.space.spaceId } };
+      else state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w as number]: p.space.spaceId } };
     }
     return state;
   }
@@ -241,7 +242,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (vm.cloudTabs?.hasDevices && !cloudTick) cloudTick = setTimeout(() => { cloudTick = null; render(); }, CLOUD_TICK_MS);
     return vm;
   }
-  let cloudTick = null;
+  let cloudTick: number | null = null;
 
   function setUi(patch: Partial<UiState> & Record<string, any>) {
     ui = { ...ui, ...patch };
@@ -284,7 +285,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   const recentTabOf = (spaceId) => {
     const state = host.getState();
     const w = windowId();
-    return (Object.values(state?.tabs ?? {}).filter((t) => (t as any).windowId === w && state.tabSpace?.[(t as any).id] === spaceId)
+    // (Tabs only when there's a state.)
+    return (Object.values(state?.tabs ?? {}).filter((t) => (t as any).windowId === w && state!.tabSpace?.[(t as any).id] === spaceId)
       .sort((a, b) => ((b as any).lastActive ?? 0) - ((a as any).lastActive ?? 0))[0] as any) ?? null;
   };
 
@@ -425,7 +427,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     return { title: typeof payload?.query === 'string' ? payload.query.trim() : '', url: typeof payload?.url === 'string' ? payload.url : '', from: frontTab() };
   }
 
-  let newTabTimer = null;
+  let newTabTimer: number | null = null;
   function holdNewTab() {
     clearTimeout(newTabTimer);
     const done = () => { clearTimeout(newTabTimer); doc.removeEventListener('visibilitychange', onHidden); if (ui.newTabPending) setUi({ newTabPending: false }); };
@@ -575,7 +577,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       let state = viewState(host.getState());
       if (!state) return null;
       const w = fullUi().windowId;
-      if (!entry.foreign) state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w]: id } };
+      if (!entry.foreign) state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w as number]: id } };
       const out = buildViewModel({ state, ui: { ...fullUi(), showSpace: entry.foreign ? id : null, palette: {}, editing: null, notice: null, prompt: null, gesture: null }, platform: host.platform, settings });
       return out.space?.id === id ? out : null;
     },

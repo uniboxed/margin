@@ -44,7 +44,7 @@ function activeSpaceId(state: State, windowId) {
 // top of the list, highlighted, at once (Arc), titled with what was asked for
 // (`title`, `url`); the tab in front plain, "+ New Tab" not lit (Tirth,
 // 2026-11-08: it only lit partly until the page had loaded).
-function sidebar(state: State, windowId: number, currentTabId: number | null = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null }: { newTabPending?: boolean, switchingTo?: number | null, justShown?: boolean, opening?: { title?: string, url?: string, from?: number | null } | null } = {}) {
+function sidebar(state: State, windowId: number | null, currentTabId: number | null = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null }: { newTabPending?: boolean, switchingTo?: number | null, justShown?: boolean, opening?: { title?: string, url?: string, from?: number | null } | null } = {}) {
   const has = (id) => id != null && state.spaces.some((s) => s.id === id);
   const own = currentTabId != null ? state.tabs?.[currentTabId] : null;
   const going = switchingTo != null ? state.tabs?.[switchingTo] : null;
@@ -55,7 +55,7 @@ function sidebar(state: State, windowId: number, currentTabId: number | null = n
   // The space's tabs in every window of the profile, as one list (app/WINDOWS.md §9: the tab follows the window
   // in front). Another window's tab is chosen here only when it's this window's away tab: then it's this window's
   // highlight, `away` (faded: it's live in the other window, a stand-in in front here).
-  const away = state.awayByWindow?.[windowId] ?? null;
+  const away = state.awayByWindow?.[windowId as number] ?? null; // (no window yet: none away)
   const shown = Object.values(state.tabs ?? {})
     .filter((t) => t.windowId === windowId || state.tabSpace?.[t.id] === spaceId)
     .map((t) => {

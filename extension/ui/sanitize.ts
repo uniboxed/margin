@@ -102,9 +102,9 @@ export function parsePath(text): string[] | null {
  * Splits text with `{{holes}}` into parts.
  * */
 export function parseInterpolation(text): { parts: (string | { path: string[] })[], bound: boolean, bad: string | null } {
-  const parts = [];
+  const parts: (string | { path: string[] })[] = [];
   let bound = false;
-  let bad = null;
+  let bad: string | null = null;
   let i = 0;
   while (i < text.length) {
     const open = text.indexOf('{{', i);
@@ -171,7 +171,7 @@ const isSpace = (c) => c === ' ' || c === '\n' || c === '\t' || c === '\r' || c 
  * */
 export function parseHtml(html): { root: any, removed: any[], errors: string[] } {
   const removed = [];
-  const errors = [];
+  const errors: string[] = [];
   const root = { type: 'root', children: [] };
   const stack: any[] = [root];
   let nodes = 0;
@@ -220,7 +220,7 @@ export function parseHtml(html): { root: any, removed: any[], errors: string[] }
     i++;
     let name = '';
     while (i < n && !isSpace(html[i]) && html[i] !== '/' && html[i] !== '>') name += html[i++];
-    const attrs = [];
+    const attrs: any[][] = [];
     let selfClosing = false;
     let closed = false;
     while (i < n) {
@@ -478,7 +478,7 @@ export function sanitizeTemplate(html: string, { files = [], assetUrl = (p) => p
 }
 
 function cleanChildren(list, ctx) {
-  const out = [];
+  const out: any[] = []; // (sanitized tree nodes)
   for (const node of list) {
     const cleaned = cleanNode(node, ctx);
     if (Array.isArray(cleaned)) out.push(...cleaned); else if (cleaned) out.push(cleaned);
@@ -570,7 +570,7 @@ function cleanSvg(node, ctx) {
 
 // Returns the kept attributes, or null when the element itself must go.
 function cleanAttrs(node, element, ns, ctx) {
-  const out = [];
+  const out: (any[] | string[])[] = [];
   const seen = new Set<any>();
   const where = `<${element}>`;
   const drop = (name, reason) => report(ctx.removed, 'attribute', `${where} ${name}`, reason, node.at);
@@ -710,7 +710,7 @@ export type Token = { t: string, v?: any, s: number, e: number, esc?: boolean, u
  * */
 export function tokenizeCss(input): Token[] {
   const s = input.replace(/\r\n?|\f/g, '\n');
-  const out = [];
+  const out: Token[] = [];
   let i = 0;
   const n = s.length;
   const validEscape = (a, b) => a === '\\' && b !== '\n' && b !== undefined;
@@ -888,7 +888,7 @@ const CLOSE = { '(': ')', '[': ']', '{': '}', func: ')' };
 function components(tokens) {
   let i = 0;
   const list = (close) => {
-    const items = [];
+    const items: any[] = []; // (parsed CSS values)
     while (i < tokens.length) {
       const t = tokens[i];
       if (t.t === close) { i++; return { items, end: t }; }
@@ -902,7 +902,7 @@ function components(tokens) {
     if (t.t === '(' || t.t === '[' || t.t === '{') { const { items, end } = list(CLOSE[t.t]); return { open: t.t, tok: t, items, end }; }
     return t;
   };
-  const all = [];
+  const all: any[] = [];
   while (i < tokens.length) all.push(one());
   return all;
 }

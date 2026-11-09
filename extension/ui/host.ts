@@ -219,7 +219,7 @@ export function createInPageHost({
     void read();
   };
 
-  let offSource = null;
+  let offSource: (() => void) | null = null;
   let ready: Promise<boolean>;
   if (source) {
     offSource = source.onState((next) => { if (next?.spaces?.length && !destroyed) { state = next; emit(); } });

@@ -67,7 +67,7 @@ function utf8Text(bytes: Uint8Array): string | null {
 const SVG_START = /^\uFEFF?\s*(?:<\?xml[^>]{0,200}\?>\s*)?(?:<!--[\s\S]{0,4000}?-->\s*)*(?:<!DOCTYPE svg[^>]{0,400}>\s*)?<svg[\s>]/i;
 /** Does the file's content match its kind (by its extension)? */
 export function contentMatches(path: string, bytes: Uint8Array) {
-  const ext = path.split('.').pop().toLowerCase();
+  const ext = path.split('.').pop()!.toLowerCase();
   if (ext === 'svg') { const text = utf8Text(bytes); return text !== null && SVG_START.test(text); }
   if (ext === 'txt' || ext === 'md') return utf8Text(bytes) !== null;
   return SIGNATURES[ext]?.(bytes) ?? false;
@@ -81,7 +81,7 @@ const byteLength = (s) => (typeof s === 'string' ? new TextEncoder().encode(s).l
  * what's wrong (nothing: fine)
  */
 export function checkPackage(pkg: ThemePackage): string[] {
-  const errors = [];
+  const errors: string[] = [];
   if (!pkg || typeof pkg !== 'object') return ['package: not an object'];
   for (const key of ['manifest', 'html', 'css']) if (typeof pkg[key] !== 'string') errors.push(`package: ${key} is not text`);
   const files = pkg.files && typeof pkg.files === 'object' ? pkg.files : {};
@@ -101,7 +101,7 @@ export function checkPackage(pkg: ThemePackage): string[] {
     if (!kind) { errors.push(`${path}: not a file a theme may bundle (woff2 fonts, png, jpg, gif, webp, avif, svg images, txt or md notes)`); continue; }
     const cap = PACKAGE_LIMITS[`${kind}Bytes`];
     if (bytes.length > cap) errors.push(`${path}: ${kind} larger than ${cap} bytes`);
-    else if (!contentMatches(path, bytes)) errors.push(`${path}: its content isn't a ${path.split('.').pop().toLowerCase()} ${kind}`);
+    else if (!contentMatches(path, bytes)) errors.push(`${path}: its content isn't a ${path.split('.').pop()!.toLowerCase()} ${kind}`);
   }
   if (total > PACKAGE_LIMITS.totalBytes) errors.push(`package: larger than ${PACKAGE_LIMITS.totalBytes} bytes`);
   return errors;
@@ -155,7 +155,7 @@ export function resolveSettings(manifest: any, saved: Record<string, any> | null
  * is written only if it passes the CSS value check again; a toggle is 1 or 0.
  * */
 export function settingsCss(values: Record<string, string | number | boolean>) {
-  const decls = [];
+  const decls: string[] = [];
   for (const [key, value] of Object.entries(values ?? {})) {
     if (!/^[a-z][A-Za-z0-9]{0,31}$/.test(key)) continue;
     const css = typeof value === 'boolean' ? (value ? '1' : '0') : value;
@@ -201,10 +201,11 @@ export async function loadTheme(pkg: ThemePackage, { document: doc = globalThis.
   const sizes = checkPackage(pkg);
   if (sizes.length) return { ok: false, report: { errors: sizes, removed: [] } };
   const files = pkg.files ?? {};
-  const assetUrl = (path) => `data:${MIME[path.split('.').pop().toLowerCase()] ?? 'application/octet-stream'};base64,${base64(files[path])}`;
+  const assetUrl = (path) => `data:${MIME[path.split('.').pop()!.toLowerCase()] ?? 'application/octet-stream'};base64,${base64(files[path])}`;
   const report = sanitizeTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files: Object.keys(files) }, { assetUrl });
   if (!report.ok) return { ok: false, report };
-  const win = doc.defaultView;
+  // (A live document, with its window: themes are drawn only in one.)
+  const win = doc.defaultView!;
   const template = buildTemplate(report.tree);
   const sheet = new win.CSSStyleSheet();
   sheet.replaceSync(report.css);
@@ -216,8 +217,8 @@ export async function loadTheme(pkg: ThemePackage, { document: doc = globalThis.
     weight: f.weight, style: f.style, ...(f.unicodeRange ? { unicodeRange: f.unicodeRange } : {}), display: 'block',
   }));
   const loaded = await Promise.allSettled(faces.map((face) => face.load()));
-  const fonts = [];
-  const fontErrors = [];
+  const fonts: FontFace[] = [];
+  const fontErrors: string[] = [];
   loaded.forEach((r, i) => {
     if (r.status === 'fulfilled') { doc.fonts.add(r.value); fonts.push(r.value); } else fontErrors.push(`${manifest.fonts[i].file}: ${r.reason?.message ?? r.reason}`);
   });
@@ -250,7 +251,7 @@ export async function readBuiltinTheme(id: string, { readFile = extensionFile(id
   const [html, css] = await Promise.all([asText('theme.html'), asText('theme.css')]);
   // The files it names (fonts, images), as plain paths; loadTheme checks
   // the whole package once they're read.
-  let raw = null;
+  let raw: any = null; // (as it parses: its files are checked by name below, the rest by loadTheme)
   try { raw = JSON.parse(manifest); } catch {}
   const named = [...(Array.isArray(raw?.fonts) ? raw.fonts.map((f) => f?.file) : []), ...(Array.isArray(raw?.images) ? raw.images : [])];
   const paths = [...new Set(named.filter((p) => typeof p === 'string' && FILE_PATH.test(p) && !p.split('/').some((seg) => /^\.+$/.test(seg))))].slice(0, PACKAGE_LIMITS.files);

@@ -44,7 +44,7 @@ export function installSwipe(rt: any) {
       v.destroy?.();
     } catch { sources = []; }
     if (sources.length !== s.panes.length) return;
-    const copies = [];
+    const copies: HTMLElement[] = [];
     s.panes.forEach((p, i) => {
       const copy = sources[i];
       if (!p.parentNode) return;
@@ -59,7 +59,7 @@ export function installSwipe(rt: any) {
     });
     s.ghosts[dir] = copies;
   }
-  let endTimer = null;
+  let endTimer: number | null = null;
 
   // A mouse wheel, not a trackpad (sidebar.js mouseWheel): WebKit and
   // Chromium report a wheel's notches as multiples of 120 in the old
@@ -172,10 +172,11 @@ export function installSwipe(rt: any) {
       if (!swiping) {
         begin(el);
         // Before this event (if it counted): 0 for a gesture that starts here.
-        swiping.base = result.counted ? { offset: result.offset + e.deltaX, events: result.events - 1 } : { offset: result.offset, events: result.events };
+        // (begin set it.)
+        swiping!.base = result.counted ? { offset: result.offset + e.deltaX, events: result.events - 1 } : { offset: result.offset, events: result.events };
       }
-      swiping.offset = result.offset - swiping.base.offset;
-      if (!swiping.frame) swiping.frame = requestAnimationFrame(() => { if (!swiping) return; swiping.frame = 0; place(swiping.offset); });
+      swiping!.offset = result.offset - swiping!.base.offset;
+      if (!swiping!.frame) swiping!.frame = requestAnimationFrame(() => { if (!swiping) return; swiping.frame = 0; place(swiping.offset); });
       endTimer = setTimeout(() => {
         const end = tracker.end();
         if (end.phase === 'release') release(end);

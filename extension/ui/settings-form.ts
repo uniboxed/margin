@@ -85,11 +85,11 @@ function field(f: Partial<SettingsField> & { id: string, kind: SettingsField['ki
  * one profile: the switch's settings, `{ closeWindows }`) and the form's own state (`ui`: the
  * shortcut being recorded, the statuses, the active theme: its id, name and theme.json settings).
  * */
-export function settingsFields(settings: any, features: any = {}, ui: { recording?: string | null, status?: Record<string, { text: string, error?: boolean }>, theme?: { id: string, name: string, settings: Record<string, any> } | null } = {}): SettingsField[] {
+export function settingsFields(settings: any, features: any = {}, ui: { recording?: string | null, status?: Record<string, { text: string, error?: boolean } | undefined>, theme?: { id: string, name: string, settings: Record<string, any> } | null } = {}): SettingsField[] {
   const s = settings ?? {};
   const f = features ?? {};
   const status = ui.status ?? {};
-  const list = [];
+  const list: SettingsField[] = [];
   // What Margin looks like: the built-in themes, then the ones imported (Margin.app's: `features.userThemes`).
   const imported = userThemeList(f.userThemes);
   const theme = PACKAGE_THEMES.includes(s.theme) || imported.some((t) => t.id === s.theme) ? s.theme : PACKAGE_THEMES[0];
@@ -157,7 +157,7 @@ const REMOVE_PREFIX = 'removeTheme:';
 
 /** Import Theme… (Margin.app only: `features.importThemes`) and each imported theme with Remove, under the theme choice. */
 function importFields(f, status, imported) {
-  const out = [];
+  const out: SettingsField[] = [];
   if (!f.importThemes) return out;
   out.push(field({ id: 'themeImport', kind: 'button', label: 'Import Theme…', status: status.themeImport?.text ?? 'A theme’s folder, or a .margintheme file. You’ll see it before it’s used.', error: !!status.themeImport?.error }));
   for (const t of imported) {
@@ -169,7 +169,7 @@ function importFields(f, status, imported) {
 
 /** The active theme's own settings (`theme`: the runtime's loaded theme: id, name, its theme.json settings), under "Settings of “Name”". */
 function themeOwnFields(s, theme) {
-  const out = [];
+  const out: SettingsField[] = [];
   const specs = theme?.settings && typeof theme.settings === 'object' ? Object.entries(theme.settings) : [];
   // Margin's own width setting (m-resize drags it) is shown as the theme's too.
   if (!theme || !specs.length) return out;

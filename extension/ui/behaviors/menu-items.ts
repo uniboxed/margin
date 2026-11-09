@@ -21,11 +21,11 @@ export type MenuTarget = { kind: 'tab' | 'pin' | 'folder' | 'space' | 'add' | 'c
  * */
 export function menuItems(target: MenuTarget | null | undefined, { state, space }: { state: any, space: any }): MenuItem[] {
   if (!target || !state) return [];
-  const list = [];
+  const list: MenuItem[] = [];
   let n = 0;
   let s = 0;
   const item = (label, action, arg?, extra = {}) => list.push({ id: `i${n++}`, label, separator: false, danger: false, confirm: false, action, ...(arg === undefined ? {} : { arg }), ...extra });
-  const separator = () => { if (list.length && !list.at(-1).separator) list.push({ id: `s${s++}`, label: '', separator: true, danger: false, confirm: false, action: null }); };
+  const separator = () => { if (list.length && !list.at(-1)!.separator) list.push({ id: `s${s++}`, label: '', separator: true, danger: false, confirm: false, action: null }); };
   const pinned = space?.pinned ?? [];
   const folders = pinned.filter((p) => p.isFolder);
   const shownPins = pinned.flatMap((p) => (p.isFolder ? p.pins : [p]));
@@ -59,11 +59,11 @@ export function menuItems(target: MenuTarget | null | undefined, { state, space 
       // own id: the same menu; closing it archives it).
       const tabId = target.id;
       const kept = typeof tabId === 'string' ? state.keptTabs?.[tabId] : null;
-      if (!kept && (!Number.isInteger(tabId) || !state.tabs?.[tabId])) return [];
+      if (!kept && (!Number.isInteger(tabId) || !state.tabs?.[tabId as number])) return [];
       item('Pin Tab', 'tab.pin', tabId);
       for (const f of folders) item(`Pin to 📁 ${f.name}`, 'tab.pinAt', { tab: tabId, folder: f.id, before: null });
       item('New Folder with Tab', 'folder.newWithTab', tabId);
-      const spaceId = kept ? kept.spaceId : state.tabSpace?.[tabId];
+      const spaceId = kept ? kept.spaceId : state.tabSpace?.[tabId as number]; // (not kept: an open tab's id)
       const others = (state.spaces ?? []).filter((sp) => sp.id !== spaceId);
       if (others.length) {
         separator();

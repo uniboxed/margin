@@ -226,7 +226,7 @@ const coverWatch = createCoverWatch({
     return c && (document.querySelector('m-switch-cover')?.childElementCount ?? 0) > 0 ? c.id : null;
   },
   settling: () => !!runtime?.view.rootElement()?.querySelector('.m-swiping, .m-settling'),
-  say: () => { host?.perform('switch.coverShown'); },
+  say: () => { host?.perform!('switch.coverShown'); }, // (the app's host: it has perform)
 });
 // What takes the pointer, measured again once a theme's animation ends (the sidebar sliding out over the page:
 // measured at the slide's start, it was still off screen, and the pointer went through it to the page, Tirth's
@@ -323,11 +323,11 @@ async function fallBack(id: string, why: string) {
 async function mount(pkg: any, { fallback = false, preview: previewing = false }: { fallback?: boolean, preview?: boolean } = {}) {
   if (!host) return false;
   const id = typeof pkg?.id === 'string' ? pkg.id : '(no id)';
-  let loaded = null;
-  let why = null;
+  let loaded: Awaited<ReturnType<typeof loadTheme>> | null = null;
+  let why: string | null = null;
   if (!pkg || typeof pkg !== 'object' || typeof pkg.id !== 'string') why = 'no package';
   else {
-    let files = null;
+    let files: { [k: string]: Uint8Array<ArrayBuffer>; } | null = null;
     try { files = Object.fromEntries(Object.entries(pkg.files ?? {}).map(([p, b64]) => [p, decode(String(b64))])); } catch { why = 'its files aren\'t readable'; }
     if (files) {
       loaded = await loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files }, { document, settings: host.getState()?.settings?.themes?.[pkg.id] ?? null });
@@ -485,7 +485,7 @@ function usePreview() {
   const id = String(stored.id);
   if (saving) clearTimeout(saving.timer);
   saving = { id, before, timer: setTimeout(() => saveUnanswered(id), SAVE_WAIT_MS) };
-  host?.perform('theme.save', { value: stored });
+  host?.perform!('theme.save', { value: stored });
   importStatus('Saving…');
 }
 /** No package for the theme came in time: the theme from before back, and why. */
@@ -697,8 +697,8 @@ function setReconnecting(on) {
 // Another of Margin's pages in front starts with its Settings closed: the overlay outlives each
 // page, and its Settings kept open (a theme chosen there: mount's `keep`) would show open over
 // the next new tab, its Settings button closing them.
-let settingsFor = null;
-let launcherFor = null;
+let settingsFor: number | null = null;
+let launcherFor: number | null = null;
 function followPage() {
   const page = host?.pageTabId ?? null;
   const asked = host?.settingsAsked ? page : null;

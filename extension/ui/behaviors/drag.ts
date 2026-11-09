@@ -171,15 +171,16 @@ export function installDrag(rt: any) {
     d.over = over;
     d.where = where;
     clearMarks();
+    // (A drop target only over something: dropTarget says none over nothing.)
     const w = (where as any);
-    if (w?.space || w?.unpin) mark(over.el, 'm-drop-into');
-    else if (w?.into) mark(folderEl(w.into) ?? over.el, 'm-drop-into');
-    else if (w?.tab != null) mark(over.rowEl, w.side === 'before' ? 'm-drop-before' : 'm-drop-after');
+    if (w?.space || w?.unpin) mark(over!.el, 'm-drop-into');
+    else if (w?.into) mark(folderEl(w.into) ?? over!.el, 'm-drop-into');
+    else if (w?.tab != null) mark(over!.rowEl, w.side === 'before' ? 'm-drop-before' : 'm-drop-after');
     else if (w?.row) {
       // After an open folder: the line under its last pin.
       const el = w.row.kind === 'folder' ? (w.side === 'after' ? lastPinOf(w.row.id) ?? folderEl(w.row.id) : folderEl(w.row.id)) : rowEl('pin', w.row.id);
       mark(el, w.side === 'before' ? 'm-drop-before' : 'm-drop-after');
-    } else if (w) mark(over.el, 'm-drop-end');
+    } else if (w) mark(over!.el, 'm-drop-end');
     autoScroll();
   }
 

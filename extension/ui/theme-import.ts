@@ -56,7 +56,7 @@ function pathProblem(path: string): string | null {
  * folder is the theme's.
  * */
 export function packageFromFiles(input: Record<string, Uint8Array>): ReadResult {
-  const errors = [];
+  const errors: string[] = [];
   let skipped = 0;
   const files: Map<string, Uint8Array> = new Map();
   const folded = new Set<any>();
@@ -129,7 +129,7 @@ function capFor(path: string) {
 async function inflate(data: Uint8Array, max: number) {
   const stream = new Blob([(data.slice() as Uint8Array<ArrayBuffer>)]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
   const reader = stream.getReader();
-  const chunks = [];
+  const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {
     let step;
@@ -204,7 +204,8 @@ export async function packageFromZip(zip: Uint8Array): Promise<ReadResult> {
   }
   if (at !== end) return fail('its directory isn\'t the size its end record says');
   // Nothing before the first entry, entries one after another, never overlapping.
-  const spans = [];
+  // [where its entry starts, where its data ends, the entry, where its data starts]
+  const spans: [number, number, (typeof list)[number], number][] = [];
   for (const e of list) {
     const l = e.local;
     if (l + 30 > cdOffset || u32(l) !== 0x04034b50) return fail(`${JSON.stringify(e.name.slice(0, 80))}: its entry isn't where the directory says`);
@@ -292,7 +293,7 @@ export function removedSummary(removed: { file: string, kind: string, reason: st
 export function missingWaysOut(structure: { parts?: string[], slots?: string[] } | undefined) {
   const parts = new Set(structure?.parts ?? []);
   const slots = new Set(structure?.slots ?? []);
-  const missing = [];
+  const missing: string[] = [];
   for (const part of ['launcher', 'settings', 'prompt', 'notice']) if (!parts.has(part)) missing.push(`<template m-part="${part}">`);
   for (const slot of ['m-launcher', 'm-prompt', 'm-notice']) if (!slots.has(`>${slot}`)) missing.push(`<${slot}> outside the parts`);
   if (!slots.has('launcher>m-settings') && !slots.has('>m-settings')) missing.push('<m-settings> in the launcher part');

@@ -28,7 +28,7 @@ const text = (min, max) => `^[^\\u0000-\\u001f\\u007f<>\\u061c\\u200b-\\u200f\\u
  * last, so a reader that takes the first sees another theme), or null.
  * */
 export function duplicateKey(json: string): string | null {
-  const stack = []; // per open object: its keys; per array: null
+  const stack: (Set<any> | null)[] = []; // per open object: its keys; per array: null
   let expectKey = false;
   for (let i = 0; i < json.length; i++) {
     const c = json[i];
@@ -198,7 +198,7 @@ function walk(node, value, at, ctx, fail) {
     out = [];
     const seen = new Set<any>();
     for (const [i, item] of value.slice(0, node.maxItems ?? value.length).entries()) {
-      let why = null;
+      let why: string | null = null;
       const kept = node.items ? walk(node.items, item, `${at}[${i}]`, ctx, (reason) => { why = reason; }) : item;
       if (why == null && node.uniqueItems && seen.has(JSON.stringify(kept))) why = 'repeated';
       if (why != null) {
@@ -225,7 +225,7 @@ function walk(node, value, at, ctx, fail) {
         continue;
       }
       if (!known && node.maxProperties != null && count >= node.maxProperties) { ctx.drop(name, `more than ${node.maxProperties} entries`); continue; }
-      let why = null;
+      let why: string | null = null;
       const kept = walk(child, v, name, ctx, (reason) => { why = reason; });
       if (why != null) {
         if (!known && node.dropBadItems) { ctx.drop(name, why); continue; }
@@ -238,7 +238,7 @@ function walk(node, value, at, ctx, fail) {
       if (!(key in out) && 'default' in child) out[key] = child.default;
     }
   }
-  if (typeof out === 'number' && [].concat(node.type ?? []).includes('string') && node.pattern) out = String(out); // a font weight given as 400
+  if (typeof out === 'number' && ([] as string[]).concat(node.type ?? []).includes('string') && node.pattern) out = String(out); // a font weight given as 400
   if (node.check) {
     const why = CHECKS[node.check](out, ctx);
     if (why) return fail(why);
@@ -251,8 +251,8 @@ function walk(node, value, at, ctx, fail) {
  * `files`: the package's file paths (fonts and images must be among them).
  * */
 export function checkManifest(text: string, { files = [] }: { files?: string[] | Set<string> } = {}): { manifest: any, removed: { kind: string, name: string, reason: string }[], errors: string[] } {
-  const removed = [];
-  const errors = [];
+  const removed: { kind: string; name: any; reason: any; }[] = [];
+  const errors: string[] = [];
   let raw;
   try {
     if (typeof text !== 'string' || text.length > LIMITS.manifestBytes) throw new Error(`not text, or larger than ${LIMITS.manifestBytes} bytes`);
@@ -271,7 +271,7 @@ export function checkManifest(text: string, { files = [] }: { files?: string[] |
   for (const [key, value] of Object.entries(raw)) {
     const node = Object.prototype.hasOwnProperty.call(THEME_SCHEMA.properties, key) ? THEME_SCHEMA.properties[key] : null;
     if (!node) { ctx.drop(key, 'unknown field'); continue; }
-    let why = null;
+    let why: string | null = null;
     const kept = walk(node, value, key, ctx, (reason) => { why = reason; });
     if (why != null) errors.push(`theme.json: bad ${key} (${why})`);
     else manifest[key] = kept;

@@ -118,8 +118,8 @@ export const GESTURE_STALE_MS = 1000;
  * for a gesture just shown (it starts from there).
  * */
 export function createGestureFeedback({ set, progress: moved = () => {}, setTimer = setTimeout, clearTimer = clearTimeout }: { set: (gesture: { kind: 'pull' | 'swipe', state: 'pulling' | 'armed' | 'done' | 'leaving', progress: number, direction: number } | null) => void, progress?: (value: number, fresh: boolean) => void, setTimer?: (fn: () => void, ms: number) => any, clearTimer?: (timer: any) => void }) {
-  let shown = null;
-  let timer = null;
+  let shown: { kind: 'pull' | 'swipe', state: 'pulling' | 'armed' | 'done' | 'leaving', progress: number, direction: number } | null = null;
+  let timer: any = null; // (setTimer's: the caller's own timers in tests)
   const off = () => {
     clearTimer(timer);
     timer = null;
@@ -144,7 +144,7 @@ export function createGestureFeedback({ set, progress: moved = () => {}, setTime
       const progress = done ? 1 : Math.max(0, Math.min(1, Number(msg.progress) || 0));
       const next = { kind, state: done ? 'done' : msg.state, progress, direction: kind === 'swipe' ? (Number(msg.direction) > 0 ? 1 : -1) : 0 };
       const fresh = !shown || shown.kind !== next.kind || shown.state === 'leaving';
-      const changed = fresh || shown.state !== next.state || shown.direction !== next.direction;
+      const changed = fresh || shown!.state !== next.state || shown!.direction !== next.direction; // (not fresh: one shown)
       moved(progress, fresh);
       shown = next;
       if (changed) set(shown);

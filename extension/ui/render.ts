@@ -169,7 +169,7 @@ export type Plan = { frag: DocumentFragment, bindings: any[], heads: Set<string>
 
 function compileBlock(nodes, ctx, locals) {
   const frag = ctx.doc.createDocumentFragment();
-  const bindings = [];
+  const bindings: Plan['bindings'] = [];
   const heads = new Set<any>();
   const usePath = (path) => { heads.add(path[0]); };
   const visit = (parent, list, at) => {
@@ -177,7 +177,7 @@ function compileBlock(nodes, ctx, locals) {
     for (const node of kept) {
       const path = [...at, parent.childNodes.length];
       if (node.nodeType === 3) {
-        let data = node.data;
+        let data = (node as Text).data;
         if (ctx.guard) {
           const g = guardText(data);
           if (g.removed) { ctx.warn?.(`static text in a guarded part, not shown: ${JSON.stringify(g.removed.slice(0, 60))}`); data = g.text; if (!data) continue; }
@@ -194,7 +194,8 @@ function compileBlock(nodes, ctx, locals) {
       const el = (node as Element);
       const name = el.localName;
       if (el.namespaceURI !== SVG_NS && name === 'm-for') {
-        const each = splitPath(el.getAttribute('each').replace(HOLE, '$1'));
+        // (`each` and `as`: the sanitizer keeps no <m-for> without them, nor an <m-if> without `test`.)
+        const each = splitPath(el.getAttribute('each')!.replace(HOLE, '$1'));
         const as = el.getAttribute('as');
         const key = el.getAttribute('key') || 'id';
         usePath(each);
@@ -208,9 +209,9 @@ function compileBlock(nodes, ctx, locals) {
         continue;
       }
       if (el.namespaceURI !== SVG_NS && name === 'm-if') {
-        let test = el.getAttribute('test');
-        const neg = test.startsWith('!');
-        test = splitPath(test.replace(/^!/, ''));
+        const said = el.getAttribute('test')!;
+        const neg = said.startsWith('!');
+        const test = splitPath(said.replace(/^!/, ''));
         usePath(test);
         const children = [...el.childNodes];
         const elseAt = children.findIndex((c) => c.nodeType === 1 && (c as Element).localName === 'm-else');
@@ -224,7 +225,7 @@ function compileBlock(nodes, ctx, locals) {
       }
       if (name === 'template') continue; // a part: compiled once (View), shown in its slot
       const copy = el.namespaceURI === SVG_NS ? ctx.doc.createElementNS(SVG_NS, el.localName) : ctx.doc.createElement(name);
-      const own = [];
+      const own: any[] = []; // (the element's own bindings: ElementBinding)
       const guarded = ctx.guard || (el.namespaceURI !== SVG_NS && GUARDED_SLOT.has(name));
       for (const attr of [...el.attributes]) {
         const a = attr.name;
@@ -294,7 +295,7 @@ function compileBlock(nodes, ctx, locals) {
 // Whitespace between elements, as authors indent: dropped when it holds a
 // newline, else kept as one space (it can matter between inline elements).
 function significant(list) {
-  const out = [];
+  const out: Node[] = [];
   for (const n of list) {
     if (n.nodeType === 3) {
       const t = (n as Text).data;
@@ -510,7 +511,7 @@ class SlotBinding {
 // Longest increasing subsequence of `seq` (entries < 0 are skipped); returns
 // the indexes into seq that are in it.
 function lis(seq) {
-  const tails = [];
+  const tails: number[] = [];
   const prev = new Array(seq.length);
   for (let i = 0; i < seq.length; i++) {
     const v = seq[i];

@@ -15,7 +15,7 @@ export function installScroll(rt: any) {
   let settingScroll = false; // the next scroll event is Margin's own
   let gen = 0; // bumped by every scroll of the user's: theirs wins over a late reply
   let top = 0;
-  let saveTimer = null;
+  let saveTimer: number | null = null;
   let asked = false; // the first position asked for, once the list is drawn
   let pendingTop: number | null = null;
 

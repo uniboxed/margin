@@ -49,7 +49,7 @@ export type UiState = {
   launcher?: { allArchived?: boolean } | null,
   settingsOpen?: boolean,
   recording?: string | null,
-  settingsStatus?: Record<string, { text: string, error?: boolean }>,
+  settingsStatus?: Record<string, { text: string, error?: boolean } | undefined>,
   switchingTo?: number | null,
   showSpace?: string | null,
   justShown?: boolean,
@@ -308,8 +308,8 @@ function fresh(input: ViewModelInput): ViewModel {
   // The pinned area, in the order shown: folders (with their pins) and the
   // pins in none. A closed folder shows only the pin of the tab in front
   // (`shown`: view.peek), so the highlight stays in sight.
-  const pins = [];
-  const folders = [];
+  const pins: PinRow[] = [];
+  const folders: FolderRow[] = [];
   const pinned = view.pinned.map((item) => {
     if (item.kind !== 'folder') {
       const row = pinRow(state, item, false);
@@ -444,7 +444,7 @@ function fresh(input: ViewModelInput): ViewModel {
   }
 
   // A context menu (ui/behaviors/menus.ts): its rows, from what it's for.
-  let menu = null;
+  let menu: ViewModel['menu'] = null;
   if (ui.menu) {
     const items = menuItems((ui.menu as any), { state, space });
     if (items.length) {
@@ -462,7 +462,7 @@ function fresh(input: ViewModelInput): ViewModel {
 
   // The space editor (ui/behaviors/editor.ts), while a space is edited; or a
   // profile's name, emoji and color (the same part, `isProfile`).
-  let editor = null;
+  let editor: ViewModel['editor'] = null;
   const edited = ui.editor?.spaceId != null ? state.spaces.find((s) => s.id === ui.editor?.spaceId) : null;
   const editedProfile = ui.editor?.profileId != null ? profiles.find((p) => p.id === ui.editor?.profileId) : null;
   if (ui.editor && editedProfile) {
@@ -502,9 +502,9 @@ function fresh(input: ViewModelInput): ViewModel {
 
   // The new-tab page's launcher (Arcadia's newtab.ts renderLauncher): the
   // space's pins, folders' too, and the latest archived tabs.
-  let launcher = null;
+  let launcher: ViewModel['launcher'] = null;
   if (ui.inNewTab || ui.launcherPage) {
-    const tiles = pinned.flatMap((p) => (p.isFolder ? p.pins : [p]));
+    const tiles = pinned.flatMap((p) => (p.isFolder ? p.pins : [p as PinRow]));
     const all = ui.launcher?.allArchived;
     const shown = all ? archive : archive.slice(0, LAUNCHER_ARCHIVE);
     launcher = {
@@ -519,7 +519,7 @@ function fresh(input: ViewModelInput): ViewModel {
     };
   }
   // Its Settings form, open (ui/settings-form.ts).
-  let settingsForm = null;
+  let settingsForm: ViewModel['settingsForm'] = null;
   if (launcher && ui.settingsOpen) {
     const fields = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {}, theme: ui.theme ?? null });
     settingsForm = { fields, hasFields: fields.length > 0 };
@@ -781,7 +781,7 @@ function share<T>(next: T, prev: any, memo: Map<any, any>): T {
   let out;
   if (Array.isArray(next)) {
     const old = Array.isArray(prev) ? prev : EMPTY;
-    let byKey = null;
+    let byKey: Map<any, any> | null = null;
     let same = old.length === next.length;
     const items = new Array(next.length);
     for (let i = 0; i < next.length; i++) {
