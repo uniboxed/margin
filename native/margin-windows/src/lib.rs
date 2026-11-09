@@ -24,6 +24,8 @@ pub mod serve;
 
 // Windows.
 #[cfg(windows)]
+pub mod app;
+#[cfg(windows)]
 pub mod browsers;
 #[cfg(windows)]
 pub mod hotkeys;
@@ -39,5 +41,7 @@ pub mod process;
 pub mod relay;
 #[cfg(windows)]
 pub mod security;
+#[cfg(windows)]
+pub mod webview;
 #[cfg(windows)]
 pub mod win;
