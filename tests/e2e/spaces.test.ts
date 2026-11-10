@@ -34,6 +34,8 @@ test('chips switch the space; its tabs come with it, and a new tab joins the spa
   const home = (await view()).tabs.map((r) => r.id);
   await ui.click(chip('sp-work'));
   await m.until(async () => (await view()).space === 'Work', { what: 'the Work space shown' });
+  // The layout selects optimistically; the extension commits the window's space afterwards.
+  await m.until(async () => (await spaceOfWindow(windowId)) === 'sp-work', { what: 'the Work selection stored' });
   assert.equal(await spaceOfWindow(windowId), 'sp-work');
   assert.ok(!(await view()).tabs.some((r) => home.includes(r.id)), 'Home\'s tabs aren\'t listed in Work');
   // A new page opened now is Work's.
@@ -45,6 +47,8 @@ test('chips switch the space; its tabs come with it, and a new tab joins the spa
 
   await ui.click(chip('sp-home'));
   await m.until(async () => (await view()).space === 'Home', { what: 'Home again' });
+  await m.until(async () => (await spaceOfWindow(windowId)) === 'sp-home'
+    && (await m.state()).tabSpace[await frontId()] === 'sp-home', { what: 'Home stored and its browser tab activated' });
   const rows = (await view()).tabs.map((r) => r.id);
   assert.ok(home.every((id) => rows.includes(id)) && !rows.includes(dash), 'Home\'s tabs again, not the dashboard');
   // The browser shows a tab of the space switched to.

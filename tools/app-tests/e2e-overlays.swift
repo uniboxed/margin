@@ -130,6 +130,31 @@ func preparedWindowsScenario() async {
   check("presentation does not move either native layout between Spaces", world.calls.count == priorMoves)
   show(false); shell.track()
   check("return is already shown on the same synchronous read", o1.isShown && !o1.isConcealed && o1.frameTopLeft == r1)
+  // Recorded Space-return tail: presentation x goes 3 → 2 → 1 → 0 while model x
+  // stays at zero. Adopting the final one-point offset makes a two-pixel Retina bounce.
+  var stableAtReturn = true
+  let readsBeforeReturn = modelReads
+  for dx in [3.0, 2, 1, 0, -1, 0] {
+    windows.browser = [ServerWindow(number: a.windowNumber, pid: browserPid, bounds: r1.offsetBy(dx: dx, dy: 0), onScreen: true),
+                       ServerWindow(number: b.windowNumber, pid: browserPid, bounds: r2, onScreen: false)]
+    shell.track()
+    stableAtReturn = stableAtReturn && o1.isShown && !o1.isConcealed && o1.frameTopLeft == r1
+  }
+  check("the last one-point Space-slide offsets never move the native layout", stableAtReturn)
+  guard stableAtReturn else { return }
+  let readsAfterReturn = modelReads
+  for _ in 0..<10 { shell.track() }
+  check("position validation reads stop when the presentation settles", modelReads == readsAfterReturn && readsAfterReturn > readsBeforeReturn)
+  // A real one-point model move must still be followed. Model/presentation agreement is
+  // genuine geometry, even inside the existing one-point display/rounding tolerance.
+  let moved = r1.offsetBy(dx: 1, dy: 0)
+  modelFrames[a.windowNumber] = moved
+  windows.browser = [ServerWindow(number: a.windowNumber, pid: browserPid, bounds: moved, onScreen: true),
+                     ServerWindow(number: b.windowNumber, pid: browserPid, bounds: r2, onScreen: false)]
+  shell.track()
+  check("a genuine one-point move of both model and presentation is followed", o1.frameTopLeft == moved)
+  modelFrames[a.windowNumber] = r1
+  show(false); shell.track()
   let returnedOrigins = [await js(o1.webView, "return performance.timeOrigin"), await js(o2.webView, "return performance.timeOrigin")]
   check("presentation and return reuse each WebView", origins.allSatisfy { $0 as? NSNumber != nil } && zip(origins, returnedOrigins).allSatisfy { same($0, $1) })
   windows.noList = true

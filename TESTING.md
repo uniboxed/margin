@@ -1910,3 +1910,10 @@ Installed candidate `595c83cc`, user visual result (2026-11-10): full layout is 
 - [ ] With two browser windows/profiles on different pages, reload from each one's focused layout: only its own selected page reloads. Hold ⌘R briefly: it must not build up repeated reload requests. Confirm ordinary page-focused ⌘R still uses the browser's behavior. Repeat in Chrome/Edge.
 
 Automated: `MARGIN_E2E_ONLY=keyboard tools/app-tests/run.sh e2e` exercises AppKit's key-equivalent entry point on the actual off-screen WKWebView with a focused field and the real native link to a fake extension. It verifies the scoped reload, same layout page/time origin, focus/draft retention, and repeat suppression. Modifier/key-up checks are in native unit tests. The fixture never activates a real browser or injects desktop key events.
+
+## Small snap after a Space swipe (2026-11-10)
+
+- [ ] Swipe from full-screen Safari to a different Space and back several times in both directions, including slow/partial swipes. As the slide settles, Margin stays aligned with the page without a final sideways bounce. Repeat after visiting each window, on another display and browser if available.
+- [ ] A real browser move/resize, display arrangement change, full-screen exit and page full-screen still update or hide Margin appropriately.
+
+The provided recording measured a two-pixel reversal on a Retina recording at roughly 3.125, 6.317 and 9.692 seconds; native trace frames show a corresponding logical one-point move and reversal. The off-screen `MARGIN_E2E_ONLY=window-ready tools/app-tests/run.sh e2e` regression replays the positional tail without hiding or moving the layout, verifies no model reads once settled, and checks that a genuine one-point model move remains followed. It supplements the real visual check rather than proving compositor behavior.

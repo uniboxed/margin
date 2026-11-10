@@ -1046,19 +1046,23 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                   overlay.modelBoundsWindow == number, overlay.modelBoundsVerified,
                   let old = overlay.windowFrame, fillsDisplay(old),
                   let server = byNumber[number], server.pid == overlay.browserPid, server.layer == 0, server.alpha > 0,
-                  !Self.sameSize(server.bounds, old) else { continue }
+                  server.bounds != old else { continue }
+            // A full-size Space slide is already kept by the planner until it fills its display.
+            // Check its final positional/rounding offsets too: adopting x=1 then x=0 adds a bounce.
+            guard !Self.sameSize(server.bounds, old) || fillsDisplay(server.bounds) else { continue }
             guard let model = readModelBounds(number) else {
                 overlay.verifyModelBounds(window: number, valid: false)
                 Diagnostics.note("\(key): model geometry unavailable; preview kept hidden")
                 continue
             }
-            guard Self.sameModelFrame(model, old) else { continue }
+            // Matching model and presentation is real geometry, including a genuine one-point move.
+            guard model != server.bounds, Self.sameModelFrame(model, old) else { continue }
             out[key] = model
             if !modelPresented.contains(key) {
                 Diagnostics.note("\(key): presentation bounds \(server.bounds); model stays \(model): native geometry retained")
             }
         }
-        for key in modelPresented.subtracting(out.keys) { Diagnostics.note("\(key): presentation returned to model geometry") }
+        for key in modelPresented.subtracting(out.keys) { Diagnostics.note("\(key): native geometry retention ended") }
         modelPresented = Set(out.keys)
         return out
     }
