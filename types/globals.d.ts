@@ -26,7 +26,7 @@ declare var chrome: MarginBrowserApi;
 // scripts, the fitted layout); see DECISIONS.md "One bundled script per
 // context". Loosely typed on purpose: each script adds its own parts.
 declare var Margin: {
-  platform?: import('../extension/shared/platform.ts').Platform;
+  capabilities?: import('../extension/shared/capabilities.ts').Capabilities;
   content?: any;
   theme?: any; // the active theme's content part (themes/register.js)
   [key: string]: any;

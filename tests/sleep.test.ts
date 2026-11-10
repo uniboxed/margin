@@ -78,8 +78,8 @@ globalThis.chrome = {
   },
 };
 
-const { platform } = await import('../extension/shared/platform.ts');
-assert.equal(platform.sleepTabs, 'close', 'Safari closes a sleeping tab');
+const { capabilities } = await import('../extension/shared/capabilities.ts');
+assert.equal(capabilities.sleepTabs, 'close', 'Safari closes a sleeping tab');
 const S = await import('../extension/shared/sleep.ts');
 const M = await import('../extension/state/model.ts');
 const { oldOwnPageAddress } = await import('../extension/background/cut-off.ts');

@@ -100,7 +100,7 @@ Margin 2 (`PLAN.md`): Margin.app draws all of Margin's UI around each browser wi
 ```
 extension/              The extension's shared source, as ES modules (browsers load the bundles in dist/)
   manifest.json         MV3: tabs, storage, alarms, scripting, webNavigation; <all_urls>; newtab override; commands
-  shared/platform.ts    Per-browser profiles (favicon fetching, sleeping tabs, default shortcuts); stamped by the build
+  shared/capabilities.ts    Per-browser profiles (favicon fetching, sleeping tabs, default shortcuts); stamped by the build
   background.ts         State owner: registers every listener. Tab events → pure model → storage.local;
                         routes pages' and Margin.app's requests.
   background/           Its parts: store, handlers (the message protocol), link and app-link (Margin.app),
@@ -119,7 +119,7 @@ extension/              The extension's shared source, as ES modules (browsers l
                         overlay page (ui/host-app.ts) and by the browser tests (ui/host.ts).
   themes/<id>/          Theme packages (theme.json, theme.html, theme.css, fonts), first-paint.css: see themes/README.md.
   engines/              What differs per browser (engines/README.md): webkit/safari/ and chromium/, each its manifest,
-                        profile (what the browser can do) and own modules; gecko/ later. Each build takes only its own.
+                        capabilities (what the browser can do) and own modules; gecko/ later. Each build takes only its own.
 app/                    Margin.app on every OS: shared/ (core/ in Rust, connector/ for Chrome and Edge in Rust,
                         host/ the page drawn over each browser window); platforms/ each OS's own code: macos/ (shell/,
                         private/, startup/: Swift), windows/ (Rust), linux/ later; engines/ its per-browser side (webkit/safari/: Safari's Swift

@@ -10,7 +10,7 @@
 import * as V from '../shared/view.ts';
 import { mark } from '../shared/dom.ts';
 import * as shortcuts from '../shared/shortcuts.ts';
-import { linksApp, platform } from '../shared/platform.ts';
+import { linksApp, capabilities } from '../shared/capabilities.ts';
 import { watchEdits } from './edits.ts';
 import { startTrackpad } from './trackpad.ts';
 import { startPageLink } from './page-link.ts';
@@ -38,7 +38,7 @@ export function startCore() {
   Margin.content = { api, startedAt: Date.now() }; // see background.ts injectIntoOpenTabs
   // What the user typed here and hasn't sent: a tab with a draft isn't put to
   // sleep (background/sleep.ts asks: content/edits.ts).
-  if (platform?.sleepTabs) Margin.content.edits = watchEdits();
+  if (capabilities?.sleepTabs) Margin.content.edits = watchEdits();
   // This copy's address: the stored tabs say whether they're this copy's
   // (shared/stored.ts). A copy a newer one replaced stays out of the way
   // (`dormant`, below).
@@ -137,7 +137,7 @@ export function startCore() {
   // in a window that isn't full screen Margin stays out of the way (no box,
   // no keys). Whether the window is in full screen comes from the background
   // (`hello`, `windowState`), not the page's size; null until it says.
-  const fullscreenOnly = () => !!platform?.marginFullscreen && state?.settings?.fullscreenOnly !== false;
+  const fullscreenOnly = () => !!capabilities?.marginFullscreen && state?.settings?.fullscreenOnly !== false;
   let fullscreen: boolean | null = null;
   const active = () => !retired() && (!fullscreenOnly() || fullscreen === true);
   Margin.content.active = active; // (whether this copy acts here: it hasn't stood back; Chrome: in full screen)
@@ -215,7 +215,7 @@ export function startCore() {
   }
   let recheck: number | null = null;
   const checkFullscreen = () => {
-    if (!platform?.marginFullscreen) return;
+    if (!capabilities?.marginFullscreen) return;
     clearTimeout(recheck);
     recheck = setTimeout(() => send('windowState').then((res) => res && setFullscreen(res.fullscreen)), 200);
   };
@@ -608,7 +608,7 @@ export function startCore() {
   // pages that add their icon from script.
   let reportedIcon: string | null = null;
   function reportIcon() {
-    if (!platform?.fetchFavicons) return; // the browser provides icons (Chrome)
+    if (!capabilities?.fetchFavicons) return; // the browser provides icons (Chrome)
     const links = [...(document.querySelectorAll('link[rel]') as NodeListOf<HTMLLinkElement>)].map((l) => ({
       rel: l.rel,
       href: l.href,

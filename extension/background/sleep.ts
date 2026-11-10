@@ -5,7 +5,7 @@
 // and gives extensions no tabs.discard (WebKit's extension engine has none,
 // 2026-11-04). So in Safari Margin closes the browser tab and keeps its
 // Margin tab, not open, in its space (Margin 2, PLAN.md §6:
-// platform.sleepTabs 'close'; state/model.ts keepTab): all its memory goes,
+// capabilities.sleepTabs 'close'; state/model.ts keepTab): all its memory goes,
 // nothing is left running, and nothing breaks if Margin is removed; it opens
 // again when clicked. Chrome and Edge: tabs.discard ('discard').
 //
@@ -27,7 +27,7 @@
 // log (switch-log.ts appLog): how many, which slept, why the others didn't.
 import * as M from '../state/model.ts';
 import { api, cached, isOwner, load, now } from './store.ts';
-import { platform } from '../shared/platform.ts';
+import { capabilities } from '../shared/capabilities.ts';
 import { neverSleeps } from '../shared/sleep.ts';
 import { foundWithNoPage, isFocusing, mayAccess, switchBusy } from './tabs.ts';
 import { appLog } from './switch-log.ts';
@@ -137,7 +137,7 @@ let running: Promise<Pass | null> | null = null;
 // setting's hours (a pass asked for by hand: the background's console,
 // `margin.sleepNow(ms)`, or the WebKit host); `max`: in place of TIMING.perRun.
 export function sleepIdle(options: { afterMs?: number | null, max?: number } = {}): Promise<Pass | null> {
-  if (!platform?.sleepTabs) return Promise.resolve(null);
+  if (!capabilities?.sleepTabs) return Promise.resolve(null);
   return (running ??= run(options).finally(() => { running = null; }));
 }
 let lastRun = 0;
@@ -217,7 +217,7 @@ async function sleepTab(record: import('../../types/margin').TabRecord, afterMs:
   // Safari unloaded it already: nothing to free.
   if (foundWithNoPage(tab.id)) return 'no page';
   if (!(await mayAccess(tab.url))) return 'no access';
-  const how = platform?.sleepTabs === 'discard' ? 'discard' : 'close';
+  const how = capabilities?.sleepTabs === 'discard' ? 'discard' : 'close';
   if (how === 'discard' && typeof api.tabs.discard !== 'function') return 'no discard';
   if (!stillDue(record.id, afterMs)) return 'used';
   const answer = await ask(tab.id, tab.url as string); // (mayAccess: it has its url)
@@ -400,7 +400,7 @@ const pause = (ms: number) => new Promise<any>((resolve) => setTimeout(resolve, 
 // front wakes itself). How many it woke. Safari closes sleeping tabs: none
 // open to wake (each opens as it's clicked).
 export async function wakeAll() {
-  if (platform?.sleepTabs !== 'discard') return 0;
+  if (capabilities?.sleepTabs !== 'discard') return 0;
   const open = await api.tabs.query({}).catch(() => []);
   let woke = 0;
   for (const tab of open) {

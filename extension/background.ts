@@ -22,7 +22,7 @@ import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background
 import { sleepIdle, sleepIdleThrottled } from './background/sleep.ts';
 import { navActivated, navigate, NAV_ACTIONS } from './background/navigation.ts';
 import { tabGone, tabUpdated } from './background/tab-updates.ts';
-import { platform } from './shared/platform.ts';
+import { capabilities } from './shared/capabilities.ts';
 import { appLink } from './background/app-link.ts';
 import * as handoff from './background/handoff.ts';
 import * as pageLoads from './background/page-loads.ts';
@@ -302,7 +302,7 @@ api.tabs.onDetached?.addListener(owned(() => resync({ fresh: false })));
 const { fullscreen } = engine;
 if (fullscreen) api.windows?.onBoundsChanged?.addListener(owned((win) => fullscreen.followFullscreen(win.id)));
 // A closed window may have been the one in full screen (registered.ts syncPage).
-if (platform?.marginFullscreen) api.windows?.onRemoved.addListener(owned(() => queueRegistrations()));
+if (capabilities?.marginFullscreen) api.windows?.onRemoved.addListener(owned(() => queueRegistrations()));
 api.windows?.onRemoved.addListener(owned((windowId) => {
   away.windowGone(windowId);
   return mutate((s) => {

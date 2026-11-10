@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { PROFILES } from '../extension/shared/any-engine-profile.ts';
+import { CAPABILITIES } from '../extension/shared/any-engine-capabilities.ts';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -86,8 +86,8 @@ test('each build has its own engine\'s profile and modules, and none of the othe
     for (const name of TARGETS) assert.equal(bundle.includes(`name:"${name}"`), name === target, `${target}: ${name}'s profile`);
     for (const [owner, fn] of only) assert.equal(new RegExp(`function ${fn}\\b`).test(bundle), owner === target, `${target}: ${fn}`);
   }
-  assert.equal(PROFILES.safari.fetchFavicons, true, 'Safari gives no tab.favIconUrl');
-  assert.equal(PROFILES.chrome.fetchFavicons, false, 'Chrome provides tab.favIconUrl');
+  assert.equal(CAPABILITIES.safari.fetchFavicons, true, 'Safari gives no tab.favIconUrl');
+  assert.equal(CAPABILITIES.chrome.fetchFavicons, false, 'Chrome provides tab.favIconUrl');
 });
 
 // The rules of WebKit's parseCommandShortcut (Safari's command loading): 2–3
@@ -135,7 +135,7 @@ for (const target of TARGETS) {
       assert.ok(webkitShortcut(spec), `${name}: Safari would drop "${spec}"`);
       assert.ok(chromeAccepts(spec) && chromeAccepts(c.suggested_key.default), `${name}: Chrome refuses "${spec}"`);
     }
-    const { navigation } = PROFILES[target];
+    const { navigation } = CAPABILITIES[target];
     assert.deepEqual(Object.keys(navigation).sort(), Object.keys(ACTIONS).sort());
     // The navigation commands have no keys (Tirth, 2026-11-08: no ⌃⌘ arrows): the Settings shortcuts only.
     for (const action of Object.values(ACTIONS)) assert.equal(commands[action].suggested_key, undefined, `${target} ${action}`);
@@ -143,7 +143,7 @@ for (const target of TARGETS) {
 }
 
 test('safari: ⌥⌘↓/↑ for tabs and ⌥⌘→/← for spaces, no ⌃⌘ arrows anywhere', () => {
-  const { navigation } = PROFILES.safari;
+  const { navigation } = CAPABILITIES.safari;
   assert.deepEqual(navigation, { nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Alt+Meta+ArrowRight', prevSpace: 'Alt+Meta+ArrowLeft' });
   const { commands } = manifestFor('safari');
   assert.ok(!JSON.stringify(commands).includes('MacCtrl+Command'), 'no ⌃⌘ command keys');
@@ -165,8 +165,8 @@ test('the `search` permission (chrome.search) is Chrome-only; Safari has no sear
   assert.ok(manifestFor('safari').permissions.includes('nativeMessaging'));
   assert.ok(manifestFor('chrome').permissions.includes('nativeMessaging'));
   assert.deepEqual(manifestFor('chrome').permissions.filter((p) => p !== 'search').sort(), manifestFor('safari').permissions.slice().sort(), 'otherwise the same list');
-  assert.equal(PROFILES.chrome.search, 'browser');
-  assert.equal(PROFILES.safari.search, 'learn');
+  assert.equal(CAPABILITIES.chrome.search, 'browser');
+  assert.equal(CAPABILITIES.safari.search, 'learn');
 });
 
 test('Chrome\'s build: a fixed key, whose id is the one Margin.app\'s host files name (app/engines/chromium/src/lib.rs, the connector\'s)', () => {

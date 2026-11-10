@@ -34,8 +34,8 @@ Then: do it in its own worktree and session, so macOS work goes on in the main c
 ## What was found (an inventory of Margin.app, 2026-11-09)
 
 **Chrome and Edge don't link to Margin.app today, even on the Mac** (PLAN.md "Phase 5", never built):
-- `extension/shared/platform.ts`: the chrome profile's `nativeApp: false`. `background/link.ts` `createLink`'s
-  `enabled` needs `platform.nativeApp`, and `onboarding.ts` has the same gate.
+- `extension/shared/capabilities.ts`: the chrome profile's `nativeApp: false`. `background/link.ts` `createLink`'s
+  `enabled` needs `capabilities.nativeApp`, and `onboarding.ts` has the same gate.
 - `link.ts` `canSocket` allows a WebSocket only in a document; Chrome's background is a service worker.
 - `hello.browser` is only ever `chrome` or `safari`; nothing sends `edge`.
 - The app's socket allows only `safari-web-extension://` origins. The link details reach the extension only through

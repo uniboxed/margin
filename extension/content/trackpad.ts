@@ -8,7 +8,7 @@
 import { mark } from '../shared/dom.ts';
 import { installGestureGuard, atPageTop, canSwipe } from '../shared/gestures.ts';
 import { createPullTracker, createSwipeTracker, DEFAULTS as PULL_DEFAULTS } from '../shared/pull.ts';
-import { platform } from '../shared/platform.ts';
+import { capabilities } from '../shared/capabilities.ts';
 
 export const GESTURE_TELL_MS = 16;
 // What a gesture's tracker says (shared/pull.ts: idle, pulling, armed,
@@ -53,7 +53,7 @@ export function startTrackpad(page: any) {
   // Not in a copy that stood back for a newer one (content/core.ts): that one's guard is enough.
   // Its wheel listener there by the setting alone: a page that stood back is
   // asked per event (it may be shown again before its next render).
-  const gestureGuard = !platform?.blockGestures ? null : installGestureGuard({
+  const gestureGuard = !capabilities?.blockGestures ? null : installGestureGuard({
     getSettings: () => (page.dormant?.() ? { blockGestures: false } : page.state()?.settings),
     wanted: () => page.state()?.settings?.blockGestures !== false,
     // Safari's own (but for what opens its tab overview); none in an element's full screen.

@@ -60,7 +60,7 @@ function walk(dir, out = []) {
   return out;
 }
 const IMPORT = /(?:import|export)\s[^'"`;]*?from\s*['"]([^'"]+)['"]|import\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g;
-// package.json "imports" (`#engine`, `#engine/profile`): as Node resolves them unbuilt, to their `default`,
+// package.json "imports" (`#engine`, `#engine/capabilities`): as Node resolves them unbuilt, to their `default`,
 // which reaches every engine's modules.
 const IMPORTS = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).imports ?? {};
 function resolveImport(from, spec) {

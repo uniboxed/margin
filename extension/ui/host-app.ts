@@ -47,7 +47,7 @@ import { fromStorage } from '../shared/stored.ts';
 import { isNewTabPage } from '../shared/view.ts';
 import { acrossOf, foreignSpace } from '../shared/across.ts';
 import { cloudOf } from '../shared/cloud-tabs.ts';
-import { platform as profile } from '../shared/platform.ts';
+import { capabilities } from '../shared/capabilities.ts';
 
 /**
  * The stored values with a change applied, as storage.onChanged reports it
@@ -136,11 +136,11 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let destroyed = false;
   const listeners = new Set<any>();
   // What Settings offers for this browser (ui/settings-form.ts): the build's
-  // profile (scripts/build.ts stamps Safari's into the overlay), as the new-tab
+  // capabilities (scripts/build.ts builds the overlay with Safari's), as the new-tab
   // page gave them when Settings were drawn there.
   const platform = {
     browser: String(hello?.platform?.browser ?? hello?.browser ?? 'safari'), os: 'mac', app: true,
-    features: { sleepTabs: profile?.sleepTabs ?? false, blockGestures: !!profile?.blockGestures, marginFullscreen: false, newTabHint: !!profile?.newTabHint, search: profile?.search, cloudTabs: false, switchSettings: (null as { closeWindows: boolean } | null) },
+    features: { sleepTabs: capabilities?.sleepTabs ?? false, blockGestures: !!capabilities?.blockGestures, marginFullscreen: false, newTabHint: !!capabilities?.newTabHint, search: capabilities?.search, cloudTabs: false, switchSettings: (null as { closeWindows: boolean } | null) },
   };
   // "Show iCloud Tabs" in Settings: Safari's windows (Chrome and Edge: Phase 5, sessions.getDevices()).
   platform.features.cloudTabs = platform.browser === 'safari';

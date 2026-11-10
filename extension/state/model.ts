@@ -2,7 +2,7 @@
 // with `node --test` and called by background.ts. Functions never mutate
 // their input; untouched top-level keys keep their identity so the
 // background can write only the keys that changed.
-import { platform } from '../shared/platform.ts';
+import { capabilities } from '../shared/capabilities.ts';
 import { NAVIGATION_DEFAULTS } from '../shared/navigation-defaults.ts';
 import { THEMES, DEFAULT_THEME } from '../themes/index.ts';
 import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.ts';
@@ -54,12 +54,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   // Chrome: Margin only in full screen; in a window that isn't, it stays out
   // of the way and offers full screen when reached for (content/core.ts).
   fullscreenOnly: true,
-  // Defaults from the build's platform profile (shared/platform.ts; loaded
+  // Defaults from the build's capabilities (shared/capabilities.ts; loaded
   // before this file in the background). Editable in Settings. Fallback:
   // the Chrome profile's ⌃⌘ + arrows (e.g. in node tests).
-  shortcuts: Object.freeze({ ...(platform?.navigation ?? LEGACY_SHORTCUTS) }),
+  shortcuts: Object.freeze({ ...(capabilities?.navigation ?? LEGACY_SHORTCUTS) }),
   // Which profile's defaults `shortcuts` started from (see normalizeShortcuts).
-  shortcutDefaults: platform?.navigationId ?? platform?.name ?? 'chrome',
+  shortcutDefaults: capabilities?.navigationId ?? capabilities?.name ?? 'chrome',
   // What Margin looks like (themes/index.ts), and each theme's own settings
   // ({ [themeId]: {...} }; Arcadia: sidebarWidth).
   theme: DEFAULT_THEME,

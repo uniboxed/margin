@@ -1,6 +1,6 @@
 // Sleeping tabs in Chrome (background/sleep.ts): tabs.discard, with the same
 // choice of tabs and the same look in the page first; no sleep page. A fake of
-// Chrome's API (its extension address makes shared/platform.ts pick Chrome's
+// Chrome's API (its extension address makes shared/capabilities.ts pick Chrome's
 // profile).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -43,7 +43,7 @@ globalThis.chrome = {
   },
 };
 
-const { platform } = await import('../extension/shared/platform.ts');
+const { capabilities } = await import('../extension/shared/capabilities.ts');
 const M = await import('../extension/state/model.ts');
 const { sleepIdle, setSleepTiming, wakeAll } = await import('../extension/background/sleep.ts');
 const { decided, mutate } = await import('../extension/background/store.ts');
@@ -67,7 +67,7 @@ async function setUp(tabs) {
 }
 
 test('chrome: a tab long unused is discarded (tabs.discard) once its page says it may sleep; never sent to a sleep page', async () => {
-  assert.equal(platform.name, 'chrome');
+  assert.equal(capabilities.name, 'chrome');
   await setUp([{ id: 1, url: 'https://front.test/', active: true }, { id: 2, url: 'https://idle.test/' }, { id: 3, url: 'https://draft.test/' }]);
   fake.page = (tabId) => (tabId === 3 ? { ok: false, why: 'edited' } : { ok: true });
   const pass = await sleepIdle();

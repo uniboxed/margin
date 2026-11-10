@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as model from '../extension/state/model.ts';
-import { PROFILES } from '../extension/shared/any-engine-profile.ts';
+import { CAPABILITIES } from '../extension/shared/any-engine-capabilities.ts';
 import * as shortcuts from '../extension/shared/shortcuts.ts';
 import * as view from '../extension/shared/view.ts';
 
@@ -643,7 +643,7 @@ test('navigation shortcut defaults match shared/shortcuts.ts; stored values merg
 });
 
 test('saved default shortcuts follow the build; customized ones stay', () => {
-  const P = PROFILES;
+  const P = CAPABILITIES;
   const safari = { shortcuts: { ...P.safari.navigation }, shortcutDefaults: 'safari-2' };
   // Saved by a version before per-browser builds (no marker): all ⌃⌘ defaults, one customized.
   const legacy = { shortcuts: { nextTab: 'Ctrl+Meta+ArrowDown', prevTab: 'Ctrl+Meta+ArrowUp', nextSpace: 'Alt+Shift+KeyL', prevSpace: 'Ctrl+Meta+ArrowLeft' } };

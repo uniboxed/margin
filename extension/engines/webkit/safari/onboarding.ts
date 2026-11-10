@@ -7,7 +7,7 @@
 // as a distributed notification other apps on the Mac could listen to too).
 // What's sent: whether Margin may run on every website, and the names of a
 // few events with their time. No addresses, no page content. Safari only
-// (platform.nativeApp); without the app (a temporary extension) the messages
+// (capabilities.nativeApp); without the app (a temporary extension) the messages
 // just fail.
 //
 // The app can't call the extension, so the extension can't know when it
@@ -15,7 +15,7 @@
 // window); access goes when it changes, and again until the app has heard it
 // (on page loads, less and less often while the app stays closed, and at once
 // when an event finds it open).
-import { platform } from '../../../shared/platform.ts';
+import { capabilities } from '../../../shared/capabilities.ts';
 import { api } from '../../../background/store.ts';
 
 const APP = 'io.tirth.margin';
@@ -30,7 +30,7 @@ let retryAt = 0;
 let accessCheckedAt = 0;
 const lastEvent = new Map();
 
-const enabled = () => !!platform?.nativeApp && typeof api.runtime?.sendNativeMessage === 'function';
+const enabled = () => !!capabilities?.nativeApp && typeof api.runtime?.sendNativeMessage === 'function';
 
 // Whether the app was open to hear it (the handler says).
 async function send(message: { type: string; allSites: any; } | { type: string; name: any; }) {

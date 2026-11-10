@@ -3,7 +3,7 @@
 // memory only), faded, and its title; a click, Return or Space brings the tab back to this window, as the window
 // coming to the front does. Never a Margin tab (state/model.ts upsertTab), never kept or synced. It answers
 // Margin.app's handoff as the new-tab page does (its visibility, the frame probe).
-import { linksApp } from '../shared/platform.ts';
+import { linksApp } from '../shared/capabilities.ts';
 import { probeFrames, watchVisible } from '../shared/frame-probe.ts';
 
 const api = globalThis.browser ?? globalThis.chrome;

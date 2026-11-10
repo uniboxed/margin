@@ -79,7 +79,7 @@ function field(f: Partial<SettingsField> & { id: string, kind: SettingsField['ki
 
 /**
  * The form's fields for the stored settings, the browser's features
- * (`features`: shared/platform.ts's sleepTabs ('close', 'discard' or false), blockGestures,
+ * (`features`: shared/capabilities.ts's sleepTabs ('close', 'discard' or false), blockGestures,
  * marginFullscreen, newTabHint, search; cloudTabs, Margin.app's Safari windows; importThemes and
  * userThemes, Margin.app's imported themes; switchSettings, Margin.app's Safari windows with more than
  * one profile: the switch's settings, `{ closeWindows }`) and the form's own state (`ui`: the

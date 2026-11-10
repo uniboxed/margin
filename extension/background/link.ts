@@ -3,7 +3,7 @@
 // Margin's UI around this copy's windows (pages never draw any): pages have
 // their box, which comes from the app's layout per window (setLayout), in
 // the windows the app draws over (`drawn`: a window it doesn't gets none).
-// Safari's copies, and Chrome's and Edge's on the Mac (shared/platform.ts linksApp), in the copy that owns its profile's state.
+// Safari's copies, and Chrome's and Edge's on the Mac (shared/capabilities.ts linksApp), in the copy that owns its profile's state.
 //
 // Getting linked (the app can't open anything into the extension, and the
 // extension can reach only the app's extension handler):
@@ -68,7 +68,7 @@
 // data.snapshot becomes the cache; data.changes both ways; data.ack keeps
 // how far the app has stored (`acked`, with the copy's profile id, in
 // storage.local `dataMeta:link`, which pages ignore).
-import { browserName, linksApp, platform } from '../shared/platform.ts';
+import { browserName, linksApp, capabilities } from '../shared/capabilities.ts';
 import { APP_LINK_KEY } from '../shared/app-link.ts';
 import { navigationFor } from '../shared/shortcuts.ts';
 import { DATA_FORMAT } from '../shared/data-merge.ts';
@@ -223,9 +223,9 @@ export function createLink({
   WebSocket: Socket = globalThis.WebSocket,
   enabled = () => linksApp() && typeof api.runtime?.connectNative === 'function' && typeof Socket === 'function',
   // (A worker's WebSocket hangs WebKit's background, Transport step 9; Chrome's service worker has none of that.)
-  canSocket = () => !!platform?.socketInWorker || (typeof globalThis.document === 'object' && typeof ((globalThis as any)).WorkerGlobalScope === 'undefined'),
+  canSocket = () => !!capabilities?.socketInWorker || (typeof globalThis.document === 'object' && typeof ((globalThis as any)).WorkerGlobalScope === 'undefined'),
   // The socket guard (Transport step 9): WebKit's alone.
-  socketGuard = !!platform?.socketGuard,
+  socketGuard = !!capabilities?.socketGuard,
   data = null,
   theme = async () => null,
   commandKeys = () => ({}),

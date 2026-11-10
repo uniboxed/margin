@@ -1,4 +1,4 @@
-import { platform } from '../shared/platform.ts';
+import { capabilities } from '../shared/capabilities.ts';
 import * as S from '../shared/search.ts';
 import { mutate, now } from './store.ts';
 
@@ -42,7 +42,7 @@ function isOwnSearch(tabId: number | undefined, found: { id: string; name: strin
   return false;
 }
 export function learnSearchEngine(urls: string[], { tabId }: { tabId?: number } = {}) {
-  if (platform?.search !== 'learn') return;
+  if (capabilities?.search !== 'learn') return;
   const found = urls.map(S.detectSafariSearch).find(Boolean);
   if (!found) {
     // On an engine's site but without Safari's parameters: not an address-bar

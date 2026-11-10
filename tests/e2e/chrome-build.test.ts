@@ -65,8 +65,8 @@ after(async () => {
 
 test('the background starts, as Chrome\'s profile', async () => {
   assert.match(worker.url(), /^chrome-extension:\/\/[a-p]{32}\/background\.bundle\.js$/);
-  assert.equal(await bg(() => globalThis.Margin.platform.name), 'chrome');
-  assert.equal(await bg(() => globalThis.Margin.platform.nativeApp), false, 'no app for Chrome yet');
+  assert.equal(await bg(() => globalThis.Margin.capabilities.name), 'chrome');
+  assert.equal(await bg(() => globalThis.Margin.capabilities.nativeApp), false, 'no app for Chrome yet');
 });
 
 test('a new tab is Margin\'s new-tab page, with its own address field', async (t) => {
