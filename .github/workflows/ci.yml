@@ -39,8 +39,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - name: Chromium for the browser tests
-        run: npx playwright install --with-deps chromium
+      - name: Chromium and WebKit for the browser tests (the theme tests run in both), and an emoji font (space chips)
+        run: |
+          npx playwright install --with-deps chromium webkit
+          sudo apt-get install -y --no-install-recommends fonts-noto-color-emoji
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Unit tests and the type check
