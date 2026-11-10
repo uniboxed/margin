@@ -13,6 +13,8 @@ tools/webkit-host/run.sh switching    # one scenario
 npm run test:webkit                   # the same as `run.sh all`
 ```
 
+`MARGIN_SCROLL_BARS=always` runs the host with classic scroll bars (always shown, taking space, as on a Mac with a mouse and no trackpad), `overlay` with overlay ones; unset, the Mac's own setting. It's the host's own setting only, passed as its argument domain (`-AppleShowScrollBars Always`), which WebKit's page processes follow: nothing is written to any defaults domain. `npm run test:classic` runs the `box-patterns` scenario that way (and the Chromium patterns with Chrome for Testing's own setting, `scripts/scroll-bars.mts`).
+
 Needs macOS with Xcode's command-line tools (`swiftc`) and Node. `run.sh` compiles the host into `build/` when `host.swift` changes, copies `dist/webkit` to `build/ext` with a small hook (`hook.js`) that sends Margin's console output to the test server, starts the server (`server.mts`, port 47811, serving the test pages), runs the scenario and prints both logs: the host's steps with each check's `PASS`/`FAIL`, then Margin's console.
 
 ## Scenarios

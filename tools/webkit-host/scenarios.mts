@@ -159,6 +159,17 @@ const boxPatterns = () => {
   const run = (fn, args) => `(${fn.toString()})(${args})`;
   const settled = (settle) => `window.__t0 ??= Date.now(); if (Date.now() - window.__t0 < ${settle}) return 'settling';`;
   const steps = [...startBoxed('A', '/p/A')];
+  // MARGIN_SCROLL_BARS (run.sh: the host's own setting; npm run test:classic): the scroll bars it asks for, checked
+  // first, so a setting the host didn't take can't pass for either.
+  const bars = process.env.MARGIN_SCROLL_BARS;
+  if (bars) {
+    const asked = bars === 'always' ? 'bars.w > 0 && bars.h > 0' : 'bars.w === 0 && bars.h === 0';
+    steps.push(
+      { op: 'open', name: 'S', url: '/box/ref/classic-scroll-bars?w=800&h=600', active: true },
+      checkPage('S', `the host's scroll bars are ${bars === 'always' ? 'classic (they take space)' : 'overlay (they take none)'}, as MARGIN_SCROLL_BARS asks`, `const f = document.getElementById('plain'); const d = f && f.contentDocument; if (!d || d.readyState !== 'complete') return 'loading'; const { bars } = f.contentWindow.Function('return ' + ${JSON.stringify(run(measure, ''))})(); return (${asked}) || JSON.stringify(bars);`, 6000),
+      { op: 'close', name: 'S' },
+    );
+  }
   listPatterns().filter((p) => p.engines !== 'chromium').forEach((p, i) => {
     const key = JSON.stringify(`margin-box-ref:${p.name}`);
     steps.push(

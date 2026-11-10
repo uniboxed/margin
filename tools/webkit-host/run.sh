@@ -6,7 +6,7 @@
 # and MARGIN_HOST_BUILD (default build/); MARGIN_HOST_TIMEOUT: seconds per run; MARGIN_HOST_SLOW: every
 # check's wait that many times longer (CI's virtual Macs; default 1);
 # MARGIN_HOST_DIST: another Safari build to test (default ../../dist/webkit; a relative
-# path is from tools/webkit-host).
+# path is from tools/webkit-host); MARGIN_SCROLL_BARS: always or overlay (below).
 set -u
 cd "$(dirname "$0")"
 BUILD="${MARGIN_HOST_BUILD:-$PWD/build}" # absolute: WebKit loads the extension from a file URL
@@ -56,6 +56,17 @@ if [ -n "$(old_dist)" ]; then
   done
 fi
 
+# MARGIN_SCROLL_BARS=always: classic scroll bars (always shown, taking space, as on a Mac with a mouse), for the
+# host only: its argument domain (-AppleShowScrollBars Always), which WebKit's page processes follow. Nothing is
+# written to any defaults domain. Unset: the Mac's own setting.
+SCROLL_BARS=()
+case "${MARGIN_SCROLL_BARS:-}" in
+  always) SCROLL_BARS=(-AppleShowScrollBars Always) ;;
+  overlay) SCROLL_BARS=(-AppleShowScrollBars WhenScrolling) ;;
+  '') ;;
+  *) echo "MARGIN_SCROLL_BARS: always, overlay or unset" >&2; exit 2 ;;
+esac
+
 run_one() {
   local name=$1 status
   if [[ "$name" == *.json ]]; then
@@ -66,7 +77,7 @@ run_one() {
   "$NODE" server.mts > "$BUILD/server.log" 2>&1 &
   local server=$!
   sleep 0.5
-  "$BUILD/host" "$BUILD/ext" "http://127.0.0.1:$PORT" "$BUILD/$name.json" > "$BUILD/host.log" 2>&1
+  "$BUILD/host" "$BUILD/ext" "http://127.0.0.1:$PORT" "$BUILD/$name.json" ${SCROLL_BARS[@]+"${SCROLL_BARS[@]}"} > "$BUILD/host.log" 2>&1
   status=$?
   kill "$server" 2>/dev/null
   echo "=== $name"

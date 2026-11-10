@@ -1,0 +1,40 @@
+<!--
+pattern: with scroll bars that take space (a Mac set to always show them, or a mouse), what's fixed is laid out in the window less them, a centred <body> is centred in what they leave, and a modal dialog too
+from: GitHub issue #17 (CI's Macs have no trackpad): fixed bars and the patterns with them came out a scroll bar wider in the box than in a window. Run with classic scroll bars by `npm run test:classic` (MARGIN_SCROLL_BARS=always); with overlay ones it's a page like any other
+handled-by: content/page/box-bars.ts (<body>'s bars measured), shared/page-box.ts (boxCss, bodyFitCss: <html> narrower and shorter by them, <body> past it), content/page/box-body.ts (its margin), content/page/top-layer.ts
+settle: 700
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>classic-scroll-bars</title>
+<style>
+  body { width: 700px; margin: 0 auto; font: 16px/1.5 -apple-system, system-ui, sans-serif; }
+  #top { position: fixed; top: 0; left: 0; right: 0; height: 48px; background: #fff; border-bottom: 1px solid #ddd; }
+  #foot { position: fixed; left: 0; right: 0; bottom: 0; height: 40px; background: #222; color: #fff; }
+  #corner { position: fixed; right: 12px; bottom: 52px; width: 40px; height: 40px; background: #e33; }
+  #half { position: fixed; top: 60px; left: 50%; width: 30%; height: 20px; background: #3a3; }
+  #column { padding-top: 56px; }
+  section { height: 500px; margin: 0 0 16px; background: #eef; }
+  /* Wider than the box: a scroll bar along the bottom too. */
+  #wide { width: 1500px; height: 40px; background: #fec; }
+  dialog { width: 300px; height: 120px; border: 0; }
+</style>
+</head>
+<body>
+<div id="top">Top bar</div>
+<div id="half"></div>
+<div id="column"><section></section><div id="wide"></div><section></section><section></section></div>
+<div id="corner"></div>
+<div id="foot">Footer</div>
+<dialog id="dlg">A modal</dialog>
+<p>Inner width: <output id="w"></output></p>
+<script>
+  addEventListener('load', () => setTimeout(() => {
+    document.getElementById('w').textContent = String(document.documentElement.clientWidth);
+    document.getElementById('dlg').showModal();
+  }, 200));
+</script>
+</body>
+</html>

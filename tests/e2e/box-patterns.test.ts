@@ -54,6 +54,24 @@ async function run(p) {
   }
 }
 
+// MARGIN_SCROLL_BARS (scripts/scroll-bars.mts, npm run test:classic): the patterns with the scroll bars it asks for,
+// classic (`always`) or overlay. Checked first, so a setting the browser didn't take can't pass for either.
+const BARS = process.env.MARGIN_SCROLL_BARS;
+if (BARS) {
+  test(`the browser's scroll bars are ${BARS === 'always' ? 'classic (they take space)' : 'overlay (they take none)'}, as MARGIN_SCROLL_BARS asks`, async () => {
+    const ref = await m.context.newPage();
+    try {
+      await ref.goto(m.url('box.test', '/ref/classic-scroll-bars?w=800&h=600'), { waitUntil: 'load' });
+      const frame = ref.frames().find((f) => f.url().endsWith('/pattern/classic-scroll-bars'));
+      const { bars } = await frame!.evaluate(measure);
+      if (BARS === 'always') assert.ok(bars.w > 0 && bars.h > 0, `classic scroll bars take space: ${bars.w}×${bars.h}`);
+      else assert.deepEqual(bars, { w: 0, h: 0 }, 'overlay scroll bars take none');
+    } finally {
+      await ref.close().catch(() => {});
+    }
+  });
+}
+
 for (const p of PATTERNS) {
   test(`box pattern ${p.name}: ${p.title}`, async () => {
     const fails = await run(p);
