@@ -1757,6 +1757,16 @@ extension Tests {
     check("trace: an overlay state written once while unchanged; events kept", lines.filter { $0.ov != nil }.count == 1 && lines.contains { $0.ev == "Space changed" })
     let text = files.first.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
     check("trace: numbers and Margin's own keys only (no title)", !text.contains("Test A — x") && !text.contains("title"))
+    check("trace: old overlay records without visibility details still decode", lines.first { $0.ov != nil }?.ov?.first?.concealed == nil)
+    var detail = TraceOverlay(k: "safari:s-a#1", n: 900, over: 100, shown: true, own: true, f: CGRect(x: 0, y: 0, width: 300, height: 982), concealed: true, orders: 1)
+    trace.overlays([detail], at: 100.7)
+    trace.overlays([detail], at: 100.75)
+    detail.concealed = false; detail.toolbar = 101; detail.orders = 2
+    trace.overlays([detail], at: 100.8)
+    trace.flush()
+    let details = files.first.map(WindowTrace.load)?.compactMap { $0.ov?.first } ?? []
+    check("trace: conceal and stacking changes recorded with unchanged geometry", details.count == 3 && details[1].concealed == true
+          && details[2].concealed == false && details[2].toolbar == 101 && details[2].orders == 2)
   }
 
   // The planner (OverlayPlanner.swift): each rule, as Shell.track decided it before the planner took over.

@@ -403,7 +403,8 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
       // Playwright's wheel is a mouse's (notches of 120), which never swipes:
       // a trackpad's events, dispatched (pixel deltas, no notches).
       await t.test('space swipe: two fingers sideways over the sidebar switch to the next space', async () => {
-        await mount();
+        // setSpace always returns { shown } on success; undefined means no answer.
+        await mount({ replies: { setSpace: { shown: null } } });
         await ev(() => T.rtTrackpad('.space-name', 30, 12));
         await wait(() => T.rtSent().some(([type]) => type === 'setSpace'));
         assert.deepEqual((await sent()).find(([type]) => type === 'setSpace'), ['setSpace', { windowId: 1, spaceId: 'work' }]);

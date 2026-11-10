@@ -9,7 +9,7 @@ import { themesInScope } from './theme/package.ts';
 const THEME_TESTS = readdirSync(new URL('./theme/', import.meta.url)).filter((n) => n.endsWith('.test.ts')).sort().map((n) => `tests/theme/${n}`);
 const OWN = ['tests/theme/arcadia.test.ts', 'tests/theme/neubrutalism.test.ts', 'tests/theme/pixel.test.ts'];
 const AGNOSTIC = THEME_TESTS.filter((f) => !OWN.includes(f));
-const LOOPED = ['tests/theme/behaviors.test.ts', 'tests/theme/cloud.test.ts', 'tests/theme/feedback.test.ts', 'tests/theme/security.test.ts', 'tests/theme/switch-cover.test.ts'];
+const LOOPED = ['tests/theme/behaviors.test.ts', 'tests/theme/cloud.test.ts', 'tests/theme/feedback.test.ts', 'tests/theme/security.test.ts', 'tests/theme/space-settle.test.ts', 'tests/theme/switch-cover.test.ts'];
 const kinds = (p: Plan) => p.browsers.include.map((j) => `${j.kind} ${j.shard}${j.themes ? ` ${j.themes}` : ''}`);
 
 test('docs only: nothing heavy runs', () => {

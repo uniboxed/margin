@@ -20,6 +20,10 @@ nonisolated struct TraceOverlay: Codable, Equatable, Sendable {
     let shown: Bool
     let own: Bool // in its window's own Space (not every Space)
     let f: CGRect
+    // Optional for older trace files. Logical shown state alone does not establish visibility.
+    var concealed: Bool? = nil
+    var toolbar: Int? = nil
+    var orders: Int? = nil
 }
 
 nonisolated struct TraceExt: Codable, Equatable, Sendable {

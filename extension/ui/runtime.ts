@@ -137,7 +137,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
      settings: null as { patch: Record<string, any>, until: number } | null,
      folders: new Map() as Map<string, { name: string, until: number }>,
      spaces: new Map() as Map<string, { patch: Record<string, any>, until: number }>,
-     space: null as { spaceId: string, since: number, withTab: number | string | null } | null,
+     space: null as { spaceId: string, since: number, windowId: number | null } | null,
      themeSettings: null as { values: Record<string, any>, live: boolean, until: number } | null,
     // A space kept shown a moment though the state has moved on: a swipe's slide still coming in, its switch asked
     // of the copy as it settled (behaviors/swipe.js holdSpace). The space asked for (`space`) comes after it.
@@ -191,12 +191,12 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       if (now > p.hold.until) p.hold = null;
       else state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [windowId() as number]: p.hold.spaceId } };
     }
-    // A space asked for: shown until the state says so, the switch that
-    // brings its tab is over, or PENDING_MS (sidebar.js showSpaceNow).
+    // Tab activation and selected-space storage arrive separately. Keep the
+    // selected space until its own state agrees, even after its tab lands.
     if (p.space) {
       const w = windowId();
-      const over = V.activeSpaceId(raw as State, w) === p.space.spaceId || now - p.space.since > PENDING_MS
-        || (p.space.withTab != null && ui.switchingTo == null && !behaviors.swipe?.active());
+      const over = w !== p.space.windowId || !raw.spaces.some((s) => s.id === p.space!.spaceId)
+        || V.activeSpaceId(raw as State, w) === p.space.spaceId || now - p.space.since > PENDING_MS;
       if (over) p.space = null;
       else state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w as number]: p.space.spaceId } };
     }
@@ -343,11 +343,21 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (String(spaceId).startsWith('x:')) return host.send('setSpace', payload);
     const own = ownTab() ?? frontTab();
     const shownSpace = vm?.space?.id;
-    if (state.tabSpace?.[own] === spaceId && ui.switchingTo == null && shownSpace === spaceId) return host.send('setSpace', payload);
+    if (!pending.space && state.tabSpace?.[own] === spaceId && ui.switchingTo == null && shownSpace === spaceId) return host.send('setSpace', payload);
     behaviors.scroll?.reset();
     pending.hold = null;
     switchAskedAt = Date.now();
     const request = host.send('setSpace', payload);
+    const selection = { spaceId, since: Date.now(), windowId: windowId() };
+    pending.space = selection;
+    // A failed request rolls back only its own selection; an older answer
+    // must not undo a newer click, including another click on the same space.
+    const failed = () => {
+      if (destroyed || pending.space !== selection) return;
+      pending.space = null;
+      render();
+    };
+    request.then((result) => { if (result === undefined) failed(); }, failed);
     if (state.tabSpace?.[own] === spaceId) {
       // Back to this page's own space: a switch away still pending stops (on
       // screen, the chain goes on to the tab in front: shared/switching.ts toFront).
@@ -358,7 +368,6 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       const tab = recentTabOf(spaceId);
       if (tab && tab.id !== frontTab()) switching.start(tab.id, request);
     }
-    pending.space = { spaceId, since: Date.now(), withTab: ui.switchingTo ?? null };
     render();
     return request;
   }

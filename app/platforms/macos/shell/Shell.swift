@@ -1456,7 +1456,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         releaseHeldWindows()
         closeRestoredParked(ext)
         options.trace?.overlays(overlays.map { key, o in
-            TraceOverlay(k: "\(key)", n: o.windowNumber, over: o.aboveWindow, shown: o.isShown, own: o.ownSpace, f: o.frameTopLeft)
+            TraceOverlay(k: "\(key)", n: o.windowNumber, over: o.aboveWindow, shown: o.isShown, own: o.ownSpace, f: o.frameTopLeft,
+                         concealed: o.isConcealed, toolbar: o.belowWindow, orders: o.reorders)
         }, at: Diagnostics.now())
         if read != nil { judgeOwnSpace(ext, byNumber) }
         if read != nil { followKept(byNumber) }
