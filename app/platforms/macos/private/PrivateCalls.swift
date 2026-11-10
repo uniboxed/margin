@@ -56,8 +56,9 @@ enum PrivateCalls {
     // ---- what's checked ----
     nonisolated static let freezeFunctions = ["SLSMainConnectionID", "SLSNewTransition", "SLSInvokeTransition", "SLSReleaseTransition"]
     nonisolated static let spaceFunctions = ["SLSMainConnectionID", "SLSGetActiveSpace", "SLSCopySpacesForWindows", "SLSCopyManagedDisplaySpaces"]
+    nonisolated static let geometryFunctions = ["SLSMainConnectionID", "SLSGetWindowBounds"]
     nonisolated static let parkFunctions = ["SLSSpaceCreate", "SLSSpaceDestroy"] // and the Space reads, to verify
-    nonisolated static var functions: [String] { var seen = Set<String>(); return (freezeFunctions + spaceFunctions + parkFunctions).filter { seen.insert($0).inserted } }
+    nonisolated static var functions: [String] { var seen = Set<String>(); return (freezeFunctions + spaceFunctions + parkFunctions + geometryFunctions).filter { seen.insert($0).inserted } }
 
     nonisolated static let addRemoveClass = "SLSBridgedSpaceAddWindowsAndRemoveFromSpacesOperation"
     nonisolated static let removeClass = "SLSBridgedRemoveWindowsFromSpacesOperation"
@@ -89,6 +90,7 @@ enum PrivateCalls {
     nonisolated struct Availability: Equatable, Sendable {
         var freeze = false // the freeze and its reveal
         var spaces = false // the Space reads (R1, where to show, verifying parks and shows)
+        var geometry = false // untransformed window geometry, independent of Mission Control presentation
         var park = false // the private Spaces and the bridge (needs spaces)
         var enumerator = false // §4.1 row 13: off until gate G5
         var missing: [String] = [] // frameworks, functions, classes and "Class -selector"
@@ -105,7 +107,7 @@ enum PrivateCalls {
             func part(_ name: String, _ on: Bool) -> String { on ? "\(name) ok" : "\(name) off: \(reasons[name] ?? "not checked")" }
             let encodings = mismatched.isEmpty ? "encodings ok" : "\(mismatched.count) encoding\(mismatched.count == 1 ? "" : "s") changed"
             let enumeration = enumerator ? "enumerator ok" : "enumerator off (\(candidateFound ? "candidate found, " : "")gate G5)"
-            return "private calls on macOS \(version) (\(build ?? "build unknown")): \(part("freeze", freeze)), \(part("spaces", spaces)), \(part("park", park)) "
+            return "private calls on macOS \(version) (\(build ?? "build unknown")): \(part("freeze", freeze)), \(part("spaces", spaces)), \(part("park", park)), \(part("geometry", geometry)) "
                 + "(\(functionsFound)/\(functionsTotal) functions, \(classesFound)/\(classesTotal) classes, \(selectorsFound)/\(selectorsTotal) selectors, \(encodings)); \(enumeration)"
         }
     }
@@ -156,6 +158,7 @@ enum PrivateCalls {
         }
         let skyProblem = sky ? [] : ["SkyLight.framework didn't open"]
         let freezeProblems = skyProblem + freezeFunctions.filter { sky && !found.contains($0) }.map { "\($0) missing" }
+        let geometryProblems = skyProblem + geometryFunctions.filter { sky && !found.contains($0) }.map { "\($0) missing" }
         let spaceProblems = skyProblem + spaceFunctions.filter { sky && !found.contains($0) }.map { "\($0) missing" }
         var parkProblems = skyProblem + (wm ? [] : ["WindowManagement.framework didn't open"])
         parkProblems += parkFunctions.filter { sky && !found.contains($0) }.map { "\($0) missing" }
@@ -163,6 +166,8 @@ enum PrivateCalls {
         parkProblems += selectorProblems
         if spaceProblems.isEmpty == false, parkProblems.isEmpty { parkProblems = ["the Space reads are off"] }
 
+        a.geometry = geometryProblems.isEmpty
+        a.reasons["geometry"] = why(geometryProblems)
         a.freeze = freezeProblems.isEmpty
         a.spaces = spaceProblems.isEmpty
         a.park = a.spaces && parkProblems.isEmpty
@@ -272,6 +277,7 @@ nonisolated struct SkyLight: @unchecked Sendable {
     typealias NewTransition = @convention(c) (UInt32, UnsafeRawPointer, UnsafeMutablePointer<Int32>) -> Int32
     typealias InvokeTransition = @convention(c) (UInt32, Int32, Float) -> Int32
     typealias ReleaseTransition = @convention(c) (UInt32, Int32) -> Int32
+    typealias GetWindowBounds = @convention(c) (UInt32, UInt32, UnsafeMutablePointer<CGRect>) -> Int32
     typealias GetActiveSpace = @convention(c) (UInt32) -> UInt64
     typealias CopySpacesForWindows = @convention(c) (UInt32, Int32, CFArray) -> Unmanaged<CFArray>?
     typealias CopyManagedDisplaySpaces = @convention(c) (UInt32) -> Unmanaged<CFArray>?
@@ -288,6 +294,7 @@ nonisolated struct SkyLight: @unchecked Sendable {
     private var newTransition: NewTransition?
     private var invokeTransition: InvokeTransition?
     private var releaseTransition: ReleaseTransition?
+    private var getWindowBounds: GetWindowBounds?
     private var getActiveSpace: GetActiveSpace?
     private var copySpacesForWindows: CopySpacesForWindows?
     private var copyManagedDisplaySpaces: CopyManagedDisplaySpaces?
@@ -310,7 +317,8 @@ nonisolated struct SkyLight: @unchecked Sendable {
         refuses = refusing
         func fn<T>(_ name: String, _: T.Type) -> T? { resolver.function(name, in: .skyLight).map { unsafeBitCast($0, to: T.self) } }
         func imp<T>(_ cls: String, _ sel: String, _: T.Type) -> T? { resolver.implementation(cls, sel).map { unsafeBitCast($0, to: T.self) } }
-        if availability.freeze || availability.spaces { mainConnectionID = fn("SLSMainConnectionID", MainConnectionID.self) }
+        if availability.freeze || availability.spaces || availability.geometry { mainConnectionID = fn("SLSMainConnectionID", MainConnectionID.self) }
+        if availability.geometry { getWindowBounds = fn("SLSGetWindowBounds", GetWindowBounds.self) }
         if availability.freeze {
             newTransition = fn("SLSNewTransition", NewTransition.self)
             invokeTransition = fn("SLSInvokeTransition", InvokeTransition.self)
@@ -336,6 +344,17 @@ nonisolated struct SkyLight: @unchecked Sendable {
     private func connection() -> UInt32? {
         guard !refuses, let mainConnectionID else { return nil }
         return mainConnectionID()
+    }
+
+    // WindowServer's model bounds, not CGWindowList's animated/presentation rectangle. Read only.
+    func modelBounds(of window: Int) -> CGRect? {
+        guard let cid = connection(), cid != 0, let getWindowBounds,
+              let id = UInt32(exactly: window), id > 0 else { return nil }
+        var bounds = CGRect.zero
+        guard getWindowBounds(cid, id, &bounds) == 0,
+              [bounds.minX, bounds.minY, bounds.width, bounds.height].allSatisfy(\.isFinite),
+              bounds.width > 0, bounds.height > 0 else { return nil }
+        return bounds
     }
 
     // ---- the freeze ----

@@ -2,6 +2,8 @@
 
 Draft plan, 2026-11-04. Nothing here is built yet. Once it is approved, the decisions move into `SPEC.md` (which this plan changes, see the last section) and `DECISIONS.md`, and the work starts at Phase 0.
 
+**Mission Control follow-up (2026-11-10):** Preserve an already shown own-Space layout at its independently validated model geometry while the window server presents a scaled preview. Opt those layers into Mission Control only after that exact browser window passes the read-only geometry check; keep transient hiding when unavailable. No additional resident helper work, view reload, snapshot cache or timer. See SPEC.md, DECISIONS.md and `tools/mission-control-lab/README.md`; actual compositor alignment remains a manual check.
+
 ## 1. What we're building, in one picture
 
 ```text

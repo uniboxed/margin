@@ -12,6 +12,8 @@ import ObjectiveC
 
 // What the fake functions were called with, in order.
 nonisolated(unsafe) var fakeSkyCalls: [String] = []
+nonisolated(unsafe) var fakeModelAnswer = CGRect(x: 10, y: 20, width: 900, height: 700)
+nonisolated(unsafe) var fakeModelResult: Int32 = 0
 nonisolated(unsafe) var fakeCopyAnswer: Int = 0 // 0 a list, 1 nil, 2 not numbers
 
 let fakeMainConnection: SkyLight.MainConnectionID = { fakeSkyCalls.append("cid"); return 42 }
@@ -23,6 +25,9 @@ let fakeNewTransition: SkyLight.NewTransition = { cid, spec, handle in
 }
 let fakeInvokeTransition: SkyLight.InvokeTransition = { cid, handle, duration in fakeSkyCalls.append("invoke \(cid) \(handle) \(duration)"); return 0 }
 let fakeReleaseTransition: SkyLight.ReleaseTransition = { cid, handle in fakeSkyCalls.append("release \(cid) \(handle)"); return 0 }
+let fakeGetModelBounds: SkyLight.GetWindowBounds = { cid, window, out in
+    fakeSkyCalls.append("model \(cid) \(window)"); out.pointee = fakeModelAnswer; return fakeModelResult
+}
 let fakeGetActiveSpace: SkyLight.GetActiveSpace = { cid in fakeSkyCalls.append("active \(cid)"); return 7 }
 let fakeCopySpaces: SkyLight.CopySpacesForWindows = { cid, mask, windows in
     fakeSkyCalls.append("spaces \(cid) \(mask) \(CFArrayGetCount(windows))")
@@ -70,6 +75,7 @@ final class FakePrivateResolver: PrivateResolver, @unchecked Sendable {
         case "SLSNewTransition": return p(fakeNewTransition)
         case "SLSInvokeTransition": return p(fakeInvokeTransition)
         case "SLSReleaseTransition": return p(fakeReleaseTransition)
+        case "SLSGetWindowBounds": return p(fakeGetModelBounds)
         case "SLSGetActiveSpace": return p(fakeGetActiveSpace)
         case "SLSCopySpacesForWindows": return p(fakeCopySpaces)
         case "SLSCopyManagedDisplaySpaces": return p(fakeCopyDisplays)
@@ -110,8 +116,8 @@ func privateCallsTests() {
     let all = PrivateCalls.evaluate(FakePrivateResolver())
     check("private calls: all there: freeze, spaces and park on, nothing missing or changed",
           all.freeze && all.spaces && all.park && all.missing.isEmpty && all.mismatched.isEmpty && all.reasons.isEmpty, "\(all)")
-    check("private calls: the counts (9 functions, 2 classes, 4 selectors)",
-          all.functionsFound == 9 && all.functionsTotal == 9 && all.classesFound == 2 && all.classesTotal == 2 && all.selectorsFound == 4 && all.selectorsTotal == 4, "\(all)")
+    check("private calls: the counts (10 functions, 2 classes, 4 selectors)",
+          all.functionsFound == 10 && all.functionsTotal == 10 && all.classesFound == 2 && all.classesTotal == 2 && all.selectorsFound == 4 && all.selectorsTotal == 4, "\(all)")
     check("private calls: the enumerator stays off until gate G5, its candidate found", !all.enumerator && all.candidateFound)
     check("private calls: the enumerator once G5 passed", PrivateCalls.evaluate(FakePrivateResolver(), enumeratorPassed: true).enumerator)
     do {
@@ -138,7 +144,7 @@ func privateCallsTests() {
     }
     for name in ["SLSSpaceCreate", "SLSSpaceDestroy"] {
         let a = without(function: name)
-        check("private calls: no \(name): parking off only", a.freeze && a.spaces && !a.park && a.missing == [name] && a.functionsFound == 8, "\(a)")
+        check("private calls: no \(name): parking off only", a.freeze && a.spaces && !a.park && a.missing == [name] && a.functionsFound == 9, "\(a)")
     }
     for name in PrivateCalls.classes {
         let r = FakePrivateResolver()
@@ -205,21 +211,25 @@ func privateCallsTests() {
         let line = said.last ?? ""
         check("private calls: the launch line",
               line.hasPrefix("private calls on macOS 27.2 (26B123): freeze ok, spaces ok, park off: -initWithSpaceID:windows:options: encoding changed (@40@0:8, expected @36@0:8Q16@24I32)")
-              && line.contains("(9/9 functions, 2/2 classes, 4/4 selectors, 1 encoding changed); enumerator off (candidate found, gate G5) in "), line)
+              && line.contains("(10/10 functions, 2/2 classes, 4/4 selectors, 1 encoding changed); enumerator off (candidate found, gate G5) in "), line)
         said = []
         Diagnostics.echo = { said.append($0) }
         _ = PrivateCalls.check(resolver: FakePrivateResolver(), defaults: nil)
         Diagnostics.echo = echo
-        check("private calls: check with no defaults: the launch line only, all ok", said.count == 1 && said[0].contains("freeze ok, spaces ok, park ok (9/9 functions, 2/2 classes, 4/4 selectors, encodings ok)"), "\(said)")
+        check("private calls: check with no defaults: the launch line only, all ok", said.count == 1 && said[0].contains("freeze ok, spaces ok, park ok, geometry ok (10/10 functions, 2/2 classes, 4/4 selectors, encodings ok)"), "\(said)")
     } else { check("private calls: a test's defaults", false) }
 
+    do {
+        let a = without(function: "SLSGetWindowBounds")
+        check("private calls: missing model geometry disables only native preview geometry", !a.geometry && a.freeze && a.spaces && a.park && a.reasons["geometry"] == "SLSGetWindowBounds missing")
+    }
     // ---- the wrappers ----
     do {
         fakeSkyCalls = []
         let sky = SkyLight(resolver: FakePrivateResolver(), availability: all)
         check("private calls: the wrappers refuse under MARGIN_APP_TESTS", sky.refuses)
         let refused = sky.freeze() == nil && sky.reveal(9) == nil && sky.release(9) == nil && sky.activeSpace() == nil
-            && sky.spaces(forWindows: [3]) == nil && sky.managedDisplaySpaces() == nil && sky.createSpace() == nil
+            && sky.modelBounds(of: 3) == nil && sky.spaces(forWindows: [3]) == nil && sky.managedDisplaySpaces() == nil && sky.createSpace() == nil
             && !sky.destroySpace(2431) && !sky.bridgeAdd(windows: [3], toSpace: 2431) && !sky.bridgeRemove(windows: [3], fromSpaces: [2431])
         check("private calls: refused: every wrapper answers nothing, and no function is called", refused && fakeSkyCalls.isEmpty, "\(fakeSkyCalls)")
     }
@@ -228,6 +238,16 @@ func privateCallsTests() {
         fakeSkyCalls = []
         fakeCopyAnswer = 0
         let sky = SkyLight(resolver: FakePrivateResolver(), availability: all, refusing: false)
+        fakeModelResult = 0
+        fakeModelAnswer = CGRect(x: 10, y: 20, width: 900, height: 700)
+        check("model geometry: reads the requested window on the owned connection", sky.modelBounds(of: 12) == fakeModelAnswer && fakeSkyCalls == ["cid", "model 42 12"], "\(fakeSkyCalls)")
+        fakeModelResult = 1
+        check("model geometry: an API error is unknown", sky.modelBounds(of: 12) == nil)
+        fakeModelResult = 0
+        fakeModelAnswer.size.width = .nan
+        check("model geometry: invalid dimensions are unknown", sky.modelBounds(of: 12) == nil)
+        check("model geometry: invalid IDs are never queried", sky.modelBounds(of: -1) == nil)
+        fakeSkyCalls = []
         let frozen = sky.freeze()
         check("private calls: freeze: spec version 0, type 1; the handle", frozen?.result == 0 && frozen?.handle == 9 && fakeSkyCalls == ["cid", "new 42 v0 t1 o0 w0"], "\(fakeSkyCalls)")
         fakeSkyCalls = []

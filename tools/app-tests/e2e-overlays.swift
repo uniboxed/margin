@@ -27,11 +27,16 @@ func preparedWindowsScenario() async {
   let world = FakeSpaceWorld(clock: RunLoopClock())
   world.active = 10
   world.displayList = [DisplaySpaces(display: "Main", current: 10, spaces: [ManagedSpace(id: 10, type: 4), ManagedSpace(id: 11, type: 4)])]
+  var modelFrames: [Int: CGRect] = [:]
+  var modelReads = 0
   var options = Shell.Options()
   options.harness = true
   options.overlay.harness = true
   options.overlay.ownSpace = true
   options.harnessAheadPlacement = true
+  options.fillsDisplay = { $0.width >= 1000 && $0.height >= 760 }
+  options.modelBounds = { number in modelReads += 1; return modelFrames[number] }
+
   options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
   options.dataRoot = root
   options.bundleIds = ["safari": fakeBundle]
@@ -42,6 +47,7 @@ func preparedWindowsScenario() async {
   let r1 = CGRect(x: -20000, y: -20000, width: 1200, height: 800)
   let r2 = CGRect(x: -18000, y: -20000, width: 1100, height: 760)
   let a = standIn(r1), b = standIn(r2)
+  modelFrames[a.windowNumber] = r1; modelFrames[b.windowNumber] = r2
   defer { a.close(); b.close() }
   world.windows[a.windowNumber] = .init(pid: browserPid, bounds: r1, spaces: [10])
   world.windows[b.windowNumber] = .init(pid: browserPid, bounds: r2, spaces: [11])
@@ -104,6 +110,27 @@ func preparedWindowsScenario() async {
   check("visits reuse the same two native windows", ids == [shell.overlays[k1]?.windowNumber, shell.overlays[k2]?.windowNumber].compactMap { $0 })
   let after = [await js(o1.webView, "performance.timeOrigin"), await js(o2.webView, "performance.timeOrigin")]
   check("visits never reload either web view", zip(origins, after).allSatisfy { same($0, $1) })
+  check("verified own-Space layers participate in Mission Control", [o1, o2].allSatisfy { o in
+    [o.panel, o.catcher, o.edgePanel].compactMap { $0 }.allSatisfy { $0.collectionBehavior == OverlayController.ownSpacePreviewBehavior }
+  })
+  let readsBeforeOrdinary = modelReads
+  for _ in 0..<10 { shell.track() }
+  check("ordinary reads do not add model-geometry IPC", modelReads == readsBeforeOrdinary)
+  let beforeFrames = [o1.frameTopLeft, o2.frameTopLeft]
+  let priorMoves = world.calls.count
+  var heldThroughPresentation = true
+  for i in 0..<20 {
+    let scale = i < 10 ? 0.2 + Double(i) * 0.03 : 0.5 - Double(i - 10) * 0.03
+    windows.browser = [ServerWindow(number: a.windowNumber, pid: browserPid, bounds: CGRect(x: r1.minX + 150, y: r1.minY + 80, width: r1.width * scale, height: r1.height * scale), onScreen: i % 3 != 0),
+                       ServerWindow(number: b.windowNumber, pid: browserPid, bounds: CGRect(x: r2.minX + 80, y: r2.minY + 40, width: r2.width * scale, height: r2.height * scale), onScreen: i % 2 == 0)]
+    shell.track()
+    heldThroughPresentation = heldThroughPresentation && o1.isShown && o2.isShown && !o1.isConcealed && !o2.isConcealed && [o1.frameTopLeft, o2.frameTopLeft] == beforeFrames
+  }
+  check("twenty transformed presentation reads never hide or resize either native layout", heldThroughPresentation)
+  check("presentation does not move either native layout between Spaces", world.calls.count == priorMoves)
+  show(false); shell.track()
+  check("return is already shown on the same synchronous read", o1.isShown && !o1.isConcealed && o1.frameTopLeft == r1)
+  check("presentation and return reuse each WebView", zip(origins, [await js(o1.webView, "performance.timeOrigin"), await js(o2.webView, "performance.timeOrigin")]).allSatisfy { same($0, $1) })
   windows.noList = true
   shell.track()
   check("a missing batch read does not blank layouts independently confirmed in their full-screen Spaces", !o1.isConcealed && !o2.isConcealed)

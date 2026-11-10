@@ -1787,6 +1787,16 @@ extension Tests {
           d { $0.absent = true; $0.absentConfirmed = true; $0.leaving = true } == .leaving
           && d { $0.absent = true; $0.absentConfirmed = true; $0.parked = true } == .parked)
     check("planner: its window gone from the window server", d { $0.window = nil } == .hide("its window is gone from the window server"))
+    check("planner: a verified presentation keeps the existing native frame and order",
+          d { $0.shown = true; $0.over = 100; $0.windowFrame = full; $0.modelPresentation = true } == .keep)
+    check("planner: verified presentation remains prepared while the compositor lists it off screen",
+          d { $0.shown = true; $0.over = 100; $0.windowFrame = full; $0.modelPresentation = true; $0.window = win(100, on: false); $0.absent = true } == .keep)
+    check("planner: a model flag cannot keep an unshown or unbound layout",
+          d { $0.modelPresentation = true } == .show(100) && d { $0.modelPresentation = true; $0.bound = nil } == .hide("its window isn't bound to one of the window server's"))
+    check("planner: a changed model is still a real resize",
+          d { $0.shown = true; $0.over = 100; $0.windowFrame = full; $0.modelPresentation = true; $0.window = win(100, CGRect(x: 10, y: 20, width: 800, height: 600)); $0.fills = false } == .hide("its window doesn't fill its display (going into or out of full screen)"))
+    check("planner: thumbnail-sized off-screen bounds are never used to prepare a new layout",
+          d { $0.window = win(100, on: false, CGRect(x: 10, y: 20, width: 400, height: 300)); $0.fills = false } == .hide("its off-screen window doesn't fill its display yet"))
     // Off screen.
     check("planner: its window off screen, the overlay not in its Space yet: placed ahead (else put away)",
           d { $0.window = win(100, on: false) } == .placeAhead(orHide: "its window isn't on screen")

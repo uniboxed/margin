@@ -1880,7 +1880,7 @@ After `npm run safari`:
 - [ ] Log out and back in with Safari set to reopen its windows: Margin is there with them.
 
 
-## Sidebar restore, Settings and Mission Control fallback (2026-11-10)
+## Sidebar restore, Settings and Mission Control fallback (2026-11-10, superseded below)
 
 The user chose hiding the separate native layers in Mission Control after the stationary preview experiment failed. The earlier faithful-composition check is superseded for this candidate: only Safari should be arranged. Native tests verify transient flags on all layers and repeated Space visits retaining the same views; the compositor result remains a manual check.
 
@@ -1891,3 +1891,13 @@ The user chose hiding the separate native layers in Mission Control after the st
 - [ ] New-tab keys show the palette. No inactive internal New Tab/start-page row appears in sidebar or palette; new windows and empty spaces still offer the palette. Archive remains reachable separately.
 
 Live desktop capture remains unavailable (previous ScreenCaptureKit -3811 result). No automated compositor observation is claimed.
+
+## Mission Control model geometry candidate (2026-11-10)
+
+The user observed a return gap with the transient fallback. The new candidate validates an independent model rectangle before enabling native preview participation. During a displayed-size discrepancy, a fresh matching model rectangle preserves an already shown layout. Failure retains transient hiding; a genuine resize, closed/reused owner or unknown placement retains conservative handling. The prior stationary experiment and unconditional transient policy are superseded for validated own-Space bindings.
+
+- [ ] Visit each full-screen browser Space once, swipe up and pause: frame/sidebar remain aligned with the browser thumbnail, with no independent tile or full-sized layer. Return by Escape, selecting that Space and selecting another Space; no bare Safari frame before Margin draws.
+- [ ] Repeat partial swipes, reversals, rapid Space changes, background browser Spaces, multiple browsers/profiles and displays. Check clicks, palette focus, browser resize/full-screen exit and page full-screen.
+- [ ] Launch diagnostics say `geometry ok`. A scaled CG rectangle logs `model stays ...: native geometry retained`; the trace's logical overlay frames remain full size, and return needs no hide/show or placement. A getter failure logs the hidden fallback. These logs establish the code path, not visual composition.
+
+Automated native playback uses real off-screen panels/WebViews, injected model bounds and a fake Space bridge. Twenty scaled reads retain the same frames/windows/WebView time origins; ordinary reads add no model IPC; changed or unavailable geometry is conservative. Run `WINDOW_RUNS=50 VISIBLE_RUNS=80 tools/app-tests/run.sh`. It does not drive Safari or prove compositor alignment. Capture failed with ScreenCaptureKit -3811; computer-control calls timed out, so visual confirmation remains required.

@@ -137,11 +137,24 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         var ownSpace = false
     }
 
-    // Let macOS hide all native layers in Mission Control. Keep the same windows and WebViews
-    // alive so leaving it needs no reload, capture, gesture watcher or delayed re-creation.
-    // Own-Space placement is still verified by the Space bridge.
+    // Conservative fallback: hide in Mission Control. A verified model-geometry read permits the
+    // own-Space panels below to participate without resizing themselves from presentation bounds.
+    // Both policies retain the same native windows/WebViews; neither captures the screen.
     static let collectionBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
     static let ownSpaceBehavior: NSWindow.CollectionBehavior = [.transient, .fullScreenAuxiliary, .ignoresCycle]
+    // Enabled only after a successful independent model-bounds read for this exact browser window.
+    static let ownSpacePreviewBehavior: NSWindow.CollectionBehavior = [.managed, .fullScreenAuxiliary, .ignoresCycle]
+    private(set) var modelBoundsWindow: Int?
+    private(set) var modelBoundsVerified = false
+    func verifyModelBounds(window: Int, valid: Bool) {
+        modelBoundsWindow = window
+        guard modelBoundsVerified != valid else { return }
+        modelBoundsVerified = valid
+        let behavior = ownSpace && valid ? Self.ownSpacePreviewBehavior : (ownSpace ? Self.ownSpaceBehavior : Self.collectionBehavior)
+        panel.collectionBehavior = behavior
+        catcher.collectionBehavior = behavior
+        edgePanel?.collectionBehavior = behavior
+    }
     // The thin panel at the window's left edge (PassThrough.swift EdgeGuard): nil with `edgeWidth` 0.
     let edgePanel: OverlayPanel?
     private(set) var edgeFrame: CGRect?

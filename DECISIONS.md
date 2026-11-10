@@ -4177,3 +4177,17 @@ checks remain 2,073 logic and 518 integration, with the intended transient polic
 visits, no view recreation, no added moves and existing placement/backoff checks. TypeScript and
 whitespace checks pass. Real Safari/Mission Control visual verification is still pending; the
 Chromium fixtures and AppKit stand-ins do not establish that compositor result.
+
+## Mission Control: distinguish model geometry from animated presentation (2026-11-10)
+
+The user rejected unconditional transient hiding: Safari briefly appears before Margin returns. Live diagnostics from their gesture show size-based hides and later placement, roughly 154–349 ms apart. A prior trace also records Margin's logical full-size layout being changed to the Mission Control thumbnail rectangle. The 90-second metadata probe ended before the latest gesture; its successful registrations must not be described as having measured that gesture.
+
+An explicit owned off-screen transform control on 27.2.1 (26B131) establishes that `SLSGetWindowBounds` keeps the 800×600 model while CGWindowList reports a scaled 402×300 presentation; restoring its own transform restores CG bounds. No foreign window was mutated. Evidence and diagnostic sources are retained in `tools/mission-control-lab/`. Prior cross-process grouping attempts did not establish attachment; no grouping calls or foreign transform writes are adopted. Notifications 1327/1328 are Space lifecycle, not Mission Control state; no event detector is adopted.
+
+The native shell now checks the read-only getter at launch independently. It validates each exact full-size browser binding once before using managed own-Space collection behavior. On a later size disagreement, an already shown, unconcealed same-window/same-owner layer-0 layout remains drawn only if a fresh model read matches its full-size frame, outside parking/switch/page-fullscreen. Such frames skip layout and placement repair rather than applying the compositor scale twice. Invalid getters disable preview participation for that binding; missing/changed windows and genuine resizes keep conservative handling. Off-screen thumbnail rectangles cannot prewarm a newly hidden layout.
+
+Cost: one getter to validate a full-size binding, extra reads only during size disagreement. No additional timer, capture, new view, screenshot buffer, geometry write, browser call or resident helper work. Native replay verifies twenty scaled on/off-screen reads keep both layouts shown at canonical geometry, without Space moves or WebView reloads, and normal reads add no getter calls. Actual macOS preview composition and perceived return latency remain unverified until a real visual result.
+
+Verification: `npm test` 1,031 passed. The native full run passed 2,083 logic checks and 524 integration checks, with no app/handler/helper compiler warnings and all helper checks passing. The final-source rerun, including the nonzero-connection guard, also passes all 2,083 logic and 524 integration checks. Both diagnostic fixtures compile with warnings as errors and their no-argument dry runs create no windows. Browser and installed verification follow.
+
+Final browser run: `npm run test:e2e` passes all 150 checks with the normal two workers. No browser runtime or theme code changed in this geometry fix. Whitespace checks pass. Actual Safari preview/return remains pending visual verification after installation.
