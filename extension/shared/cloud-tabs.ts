@@ -5,7 +5,7 @@
 // docs/PROTOCOL.md). The extension never has them. This file checks what the
 // app sent (`cloudOf`), says whether they're shown (`cloudShown`: the
 // "Show iCloud Tabs" setting), and has Margin's words for them (a device's
-// name told apart from another's, "updated 5 min ago", "On Tirth's iPhone"),
+// name told apart from another's, "updated 5 min ago", "On Nora's iPhone"),
 // for the view model (ui/view-model.ts `cloudTabs`) and the palette
 // (shared/search.ts). Pure: no browser APIs, runs in Node.
 
@@ -114,5 +114,5 @@ export function updatedText(at: number, exact: boolean, now: number): string {
   return hours < 24 ? `updated ${hours} h ago` : dayText();
 }
 
-/** "On Tirth's iPhone": where a tab is, from the device's name as shown. */
+/** "On Nora's iPhone": where a tab is, from the device's name as shown. */
 export const onDevice = (name: string) => `On ${name}`;

@@ -43,7 +43,7 @@ function activeSpaceId(state: State, windowId: number | null | undefined) {
 // `opening`: a new tab the palette is opening (its Enter: ui/runtime.ts), while
 // the tab in front is still the one it was opened from (`from`): its row at the
 // top of the list, highlighted, at once (Arc), titled with what was asked for
-// (`title`, `url`); the tab in front plain, "+ New Tab" not lit (Tirth,
+// (`title`, `url`); the tab in front plain, "+ New Tab" not lit (seen
 // 2026-11-08: it only lit partly until the page had loaded).
 function sidebar(state: State, windowId: number | null, currentTabId: number | null = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null }: { newTabPending?: boolean, switchingTo?: number | null, justShown?: boolean, opening?: { title?: string, url?: string, from?: number | null } | null } = {}) {
   const has = (id: string) => id != null && state.spaces.some((s) => s.id === id);

@@ -176,7 +176,7 @@ function installNavigation({ send, getSettings, target = globalThis, commands = 
     event.stopImmediatePropagation();
     // Don't fly through spaces while held, on this path (a page's keys, when
     // Margin.app doesn't hold them). The app's own held keys repeat, spaces
-    // too (Tirth, 2026-11-05), one switch at a time: background/navigation.ts.
+    // too (requested 2026-11-05), one switch at a time: background/navigation.ts.
     if (event.repeat && name.endsWith('Space')) return;
     const reply = send('navigate', { action: ACTIONS[name] });
     if (!reply || typeof reply.then !== 'function') return;

@@ -201,7 +201,7 @@ func windowsScenario(ownSpace: Bool = false) async {
   check("windows: P1's copy told both its windows are drawn", await until(3, { drawnSaid("A", 1).last?.on == true && drawnSaid("A", 2).last?.on == true }), "\(drawnSaid("A", 1)) \(drawnSaid("A", 2))")
   let drawnBefore = fake.events.count
 
-  // Swipes back and forth with the flags lagging and disagreeing (Tirth's log): nothing changes hands.
+  // Swipes back and forth with the flags lagging and disagreeing (a real session's log): nothing changes hands.
   let bound = shell.matches
   for (to, key, link) in [(wC, b1, "B"), (wB, a2, "A"), (wA, a1, "A"), (wC, b1, "B")] {
     let from = windows.browser.first { $0.onScreen }.flatMap { s in stand.first { $0.windowNumber == s.number } }
@@ -226,7 +226,7 @@ func windowsScenario(ownSpace: Bool = false) async {
       && shell.overlays.values.filter(\.isShown).count == 1 }))
   }
 
-  // The window server's list blipping (Tirth's log, 2026-11-05 21:53:39): the front window missing for
+  // The window server's list blipping (a real session's log, 2026-11-05 21:53:39): the front window missing for
   // 40 ms, then every one of the browser's, then no list at all. The overlay stays over its window
   // (unseen while it's missing), with no line saying it was put away or shown again.
   do {

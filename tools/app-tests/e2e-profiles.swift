@@ -398,7 +398,7 @@ func handoffScenario() async {
         await until(5, { shell.overlays[k8]?.isShown == true }) && shell.overlays[k8] === o7 && o7.key == k8 && shell.overlays[k7].map { !$0.isShown && $0.key == k7 } ?? true,
         "\(String(describing: shell.overlays[k8]?.key)) \(String(describing: shell.overlays[k7]?.isShown))")
   check("1: its page took B's window in place, not loaded again", await waitJS(o7.webView, "return window.marginApp && document.querySelectorAll('.chip').length > 0") && o7.isReady)
-  // Tirth, 2026-11-07: after a switch the sidebar showed the new space's tabs, then another space's: the handed page
+  // Seen 2026-11-07: after a switch the sidebar showed the new space's tabs, then another space's: the handed page
   // was given the old window's hello (built before its key changed), and went on drawing window 7.
   let drawsFor = await js(o7.webView, "return marginApp.windowId()") as? Int
   check("1: the kept sidebar's page draws for B's window (8) now, not A's (7)", drawsFor == 8, "\(String(describing: drawsFor))")
@@ -551,7 +551,7 @@ func handoffScenario() async {
   shell.performAcross(from: o9again, "profile.switch", ["profile": "P2", "space": "home"])
   check("8: then to P2's window again: 9 parked", await until(8, { !shell.switcher.busy }) && shell.parking?.isParked(n9) == true, "\(shell.switcher.session.lines.last ?? "-")")
 
-  // ---- 9. Safari restored a window Margin had parked before it quit (Tirth, 2026-11-07): its copy says so
+  // ---- 9. Safari restored a window Margin had parked before it quit (seen 2026-11-07): its copy says so
   // (`wasParked`, background/parked-restore.ts); the app closes it by its copy, once. One Margin has parked now
   // (9: a Margin update keeps them alive and out of sight) isn't. ----
   let mark9 = fake.events.count
@@ -567,7 +567,7 @@ func handoffScenario() async {
   fake.tell(["do": "windows", "id": "A", "list": [box(normal1).merging(["windowId": 9, "state": "normal", "focused": false, "activeTabId": 13]) { $1 }]])
   try? await Task.sleep(nanoseconds: 300_000_000)
 
-  // ---- 10. ⌘Q in Safari with a window parked (Tirth, 2026-11-07): Margin's first, the parked window closed by its
+  // ---- 10. ⌘Q in Safari with a window parked (2026-11-07): Margin's first, the parked window closed by its
   // copy, then the keys passed on to Safari. ----
   let mark10 = fake.events.count
   check("10: with Safari in front and a window parked, ⌘Q is Margin's first", await until(3, { keys.held.values.contains(Combo.parse("Meta+KeyQ")!) }))

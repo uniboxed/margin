@@ -64,10 +64,10 @@ const copySwitches = backgroundSwitches();
 // is worked out here with the copy's rule (shared/view.ts cycleTab: the order the sidebar shows, wrapping), each
 // press going on from the one before for a moment (NAV_CHAIN_MS), else from the tab in front; highlighted now, then
 // asked of the copy with its switch id, which takes it as that press's (background/navigation.ts navigate `given`).
-// So the highlight never waits for the copy's background (busy saving the switch before, or waking: Tirth,
+// So the highlight never waits for the copy's background (busy saving the switch before, or waking: reported
 // 2026-11-07, "the tab switches are not instantaneous sometimes"), and the copy's `switching` for these presses
 // changes nothing here (it may come after a newer press's highlight).
-// A held key repeats faster than a highlight is drawn (Tirth, 2026-11-08: "when i stop holding it, it still keeps
+// A held key repeats faster than a highlight is drawn (reported 2026-11-08: "when i stop holding it, it still keeps
 // moving"): the presses that come are added up and taken once a frame, one highlight and one ask for where they end,
 // so none wait in line and it stops as the key is let go.
 let localNav = (null as { tabId: number, at: number } | null);
@@ -231,13 +231,13 @@ const coverWatch = createCoverWatch({
   say: () => { host?.perform('switch.coverShown'); },
 });
 // What takes the pointer, measured again once a theme's animation ends (the sidebar sliding out over the page:
-// measured at the slide's start, it was still off screen, and the pointer went through it to the page, Tirth's
-// recording 2026-11-07 2:11), and a moment after any change (an animation that ends unheard).
+// measured at the slide's start, it was still off screen, and the pointer went through it to the page, a real
+// session's recording 2026-11-07 2:11), and a moment after any change (an animation that ends unheard).
 let hitsLater = 0;
 function hitsAfter(ms: number) { clearTimeout(hitsLater); hitsLater = setTimeout(hitsSoon, ms); }
 for (const type of ['transitionend', 'transitioncancel', 'animationend']) addEventListener(type, () => hitsSoon(), true);
 // The space the sidebar shows, told to the app when it changes (its window's, by the view model: theme-blind), for the
-// app's log beside the copy's own word (Tirth, 2026-11-07: after a switch the sidebar showed another space's tabs).
+// app's log beside the copy's own word (seen 2026-11-07: after a switch the sidebar showed another space's tabs).
 let spaceTold = '';
 function reportSpace() {
   const vm = runtime?.vm;
@@ -574,7 +574,7 @@ function onMessage(msg: any) {
       return;
     case 'shown':
       // The app showed this overlay (it wasn't): `palette`, over a new window in front (⌘N, New
-      // Window): the palette opens over its new tab, as ⌘T's does (Tirth, 2026-11-09), never as the
+      // Window): the palette opens over its new tab, as ⌘T's does (2026-11-09), never as the
       // page first draws. (`focus`: the launcher's field instead, for a host that asks for that.)
       if (msg.palette === true) openPaletteTimed({ newTab: !host?.launcher }, 'a new window');
       else if (msg.focus === true) runtime?.focusLauncher();

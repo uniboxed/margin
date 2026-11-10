@@ -107,7 +107,7 @@ export function createAppNotices({ show, send, frontTab = () => null, local = ()
 // the way, the page gone) goes after STALE_MS.
 // Only a change of what it is (its kind, state, way) is `set` (the UI drawn
 // again); how far it's gone goes to `progress` with every word, eased there
-// every frame without drawing anything again (ui/gesture-motion.ts; Tirth,
+// every frame without drawing anything again (ui/gesture-motion.ts; seen
 // 2026-11-08: it looked jumpy).
 export const GESTURE_DONE_MS = 450;
 export const GESTURE_LEAVE_MS = 220;

@@ -23,7 +23,7 @@ export function installSwipe(rt: Rt) {
   const tracker = createSpaceSwipe();
   let swiping: { el: HTMLElement, neighbours: Record<string, string | undefined>, width: number, base: { offset: number, events: number }, settling: boolean, frame: number, offset: number, panes: HTMLElement[], bases: { left: number, top: number, width: number, height: number }[], ghosts: Record<string, HTMLElement[] | null>, position: string, overflow: string, target: string | null, dispatched: boolean } | null = null;
 
-  // The neighbouring spaces drawn beside the one shown, as Arc does (Tirth, 2026-11-07): the theme's own sidebar
+  // The neighbouring spaces drawn beside the one shown, as Arc does (requested 2026-11-07): the theme's own sidebar
   // rendered off screen with that space shown (rt.spaceView), its moving part (`data-swipe-pane`, else
   // `.space-pane` or `.swipes`) copied, inert, beside the real one, so the theme's own swipe rule moves both.
   // (A theme may move several parts: Neubrutalism and Pixel move the space's head and its list, each `.swipes`.)
@@ -133,7 +133,7 @@ export function installSwipe(rt: Rt) {
     s.el.style.setProperty('--m-swipe-offset', `${dir ? -dir * s.width : 0}px`);
     s.el.style.setProperty('--m-swipe-progress', dir ? '1' : '0');
     s.target = dir ? s.neighbours[dir] ?? null : null;
-    // Asked for as it settles, not once the slide is in (Tirth, 2026-11-07: "it takes a while for me to see that space
+    // Asked for as it settles, not once the slide is in (reported 2026-11-07: "it takes a while for me to see that space
     // is switching"): another profile's space is switched to at once (the app's cover comes now; the copy beside it
     // stays until the switch's view of it is drawn here, ui/view-model.ts foreignSpace, or 1.5 s). One of this
     // profile's: its tab asked of the copy now, Safari bringing it while the slide comes in; drawn here as before, in

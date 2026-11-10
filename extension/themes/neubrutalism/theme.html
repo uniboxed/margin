@@ -167,7 +167,7 @@
         <!-- At most eight rows show; the rest scroll (Margin keeps the selected one in view). -->
         <div class="palette-rows" m-scroll="palette">
           <m-for each="palette.rows" as="r">
-            <!-- A run of rows from one place (iCloud Tabs: "On Tirth's iPhone"): its heading. -->
+            <!-- A run of rows from one place (iCloud Tabs: "On Nora's iPhone"): its heading. -->
             <m-if test="r.sectionStart"><div class="palette-section" aria-hidden="true">{{r.section}}</div></m-if>
             <button class="btn row palette-row" m-class:on="{{r.selected}}" m-attr:aria-description="{{r.section}}" m-action="palette.run" m-arg="{{r.id}}">
               <!-- The board's tag (TAB, ASK): here the row's badge (its space, Archived, Search…), in that space's color, one width for all. -->

@@ -1,4 +1,4 @@
-// Safari's own UI never shown on a Margin profile's full-screen window, not even while Safari opens (Tirth,
+// Safari's own UI never shown on a Margin profile's full-screen window, not even while Safari opens (asked
 // 2026-11-07: "i should never see safari's ui at all even when i am opening safari for the first time").
 //
 // A Margin layout needs its copy linked and its overlay page drawn: about 1-2 s after Safari opens its windows.

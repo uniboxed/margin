@@ -1,6 +1,6 @@
 // The window trace: what the window map saw, what the copies said of their windows, where Margin's overlays were,
 // and what Margin heard (a Space change, Safari's Accessibility events, links, switches), one JSON line each, so a
-// session of Tirth's can be read back exactly (`WindowTrace.load`, `replay`) and become a test (window module step 1,
+// real session can be read back exactly (`WindowTrace.load`, `replay`) and become a test (window module step 1,
 // 2026-11-07). DEV: on by default while Margin is in development (MarginWindowTrace NO turns it off); see the memory's
 // before-production list.
 //

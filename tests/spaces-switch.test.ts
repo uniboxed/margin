@@ -139,7 +139,7 @@ test('showSpace: an empty space opens the start page in it; an untouched start p
   assert.equal((await load()).tabSpace[opened], 'empty2', 'the untouched one moved');
 });
 
-test('showSpace: a space with only tabs that aren\'t open (kept): its top one opens, not a new tab (Tirth, 2026-11-08)', async () => {
+test('showSpace: a space with only tabs that aren\'t open (kept): its top one opens, not a new tab (requested 2026-11-08)', async () => {
   await setup();
   // Work's two tabs in window 1 closed and kept (put to sleep), tab 5 (window 2) left out of it.
   await mutate((s) => M.keepTab(M.keepTab(s, 3, 'sleep'), 4, 'sleep'));

@@ -79,8 +79,8 @@ mod tests {
     #[test]
     fn the_run_command_quotes_the_path() {
         assert_eq!(
-            run_command(r"C:\Users\Tirth Patel\AppData\Local\Programs\Margin\margin.exe"),
-            r#""C:\Users\Tirth Patel\AppData\Local\Programs\Margin\margin.exe" --login"#
+            run_command(r"C:\Users\Nora Field\AppData\Local\Programs\Margin\margin.exe"),
+            r#""C:\Users\Nora Field\AppData\Local\Programs\Margin\margin.exe" --login"#
         );
     }
 }

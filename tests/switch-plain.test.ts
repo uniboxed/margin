@@ -406,7 +406,7 @@ test('the activations of a chain\'s own switches don\'t restart it: presses duri
   assert.equal(front(), three[2]);
 });
 
-// Held space keys repeat (Tirth, 2026-11-05: DECISIONS.md "after the merge"): the
+// Held space keys repeat (2026-11-05: DECISIONS.md "after the merge"): the
 // same one at a time, the newest press waiting in place of older ones.
 test('fast space presses: one space switch with Safari at a time, the newest waiting, landing on the last press\'s space', async () => {
   const M = await import('../extension/state/model.ts');

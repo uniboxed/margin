@@ -167,7 +167,7 @@ Ported from Shell.swift and tested on the Mac with fake inputs; what only Window
   connector's grandparent); the driver maps each window's process to its main one (same executable up its parents).
   Check: Chrome and Chrome Beta (or two user-data folders) open at once: each binds only its own windows (margin.log's
   binder lines).
-- **Windows that aren't in full screen get an overlay too** (Tirth, 2026-11-09: `Options::windowed_too` on in
+- **Windows that aren't in full screen get an overlay too** (decided 2026-11-09: `Options::windowed_too` on in
   host.rs; off on the Mac), over the page area only (`planner::windowed_frame`): the viewport's size, centred between
   the frame lines, its bottom on the visible frame's. Check: a normal and a maximized Chrome window: the sidebar sits
   under the tabs and address bar, never over them, flush with the page's left edge and bottom (no gap, no overlap of

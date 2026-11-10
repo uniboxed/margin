@@ -37,7 +37,7 @@ const UNASKED_MAX_MS = 2500;
 // another tab came to the front since, or SETTLE_MS after its answer at the
 // latest. Ending on the answer alone (GRACE_MS later, or at once for the
 // background's word) let the highlight go back to the tab left until the
-// state caught up, then forward again: a flicker (Tirth, 2026-11-05; Phase 2
+// state caught up, then forward again: a flicker (seen 2026-11-05; Phase 2
 // step 8).
 export const SETTLE_MS = 2000;
 // A chain of switches (keys pressed fast, a click during them): one switch
@@ -58,7 +58,7 @@ export const SETTLE_MS = 2000;
 // (back to the chain's start, or to a passed tab already shown) has landed
 // only once the state has had another tab in front since: until then the
 // state's front is stale, and an earlier target's late change would show it.
-// 1 s, not 300 ms (Tirth, 2026-11-08: fast presses over loading tabs, the
+// 1 s, not 300 ms (2026-11-08: fast presses over loading tabs, the
 // highlight went back to a passed tab and came forward again): Safari's answer
 // comes as it activates the newest target, but the state with it in front can
 // reach the overlay half a second later (the copy busy writing the switches

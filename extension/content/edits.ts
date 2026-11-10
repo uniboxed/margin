@@ -16,7 +16,7 @@
 // judges the whole page that generous way (`late`), except for text the page
 // put there itself (a field's value as its own HTML has it: a results page's
 // query in its search box, as on Google's, which kept every such tab awake
-// until it was next loaded, in Tirth's Safari, 2026-11-04) in a field the
+// until it was next loaded, in real Safari, 2026-11-04) in a field the
 // cursor isn't in. (A React app's draft typed before Margin came equals its
 // value attribute too: kept awake while its field has the focus, where a
 // half-written message stays, even with its tab hidden.)

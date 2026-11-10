@@ -428,7 +428,7 @@ export const handlers = {
   // Inspector: content/core.ts viewportNow), for Margin.app's overlay (background/link.ts viewport).
   // `measured`: the page found where its area starts from a pointer event (else it's a guess).
   // `resizedAt`, `at`: when the page was resized and when it said so (its Date.now()), passed on with when this
-  // copy heard it, so Margin.app's log says where the time went (Tirth, 2026-11-07: the layout late beside the inspector).
+  // copy heard it, so Margin.app's log says where the time went (2026-11-07: the layout late beside the inspector).
   async viewport({ viewport = null, resizedAt, at }: { viewport?: { x: number, y: number, width: number, height: number, measured?: boolean } | null, resizedAt?: number, at?: number } = {}, sender: BrowserMessageSender) {
     const tab = sender?.tab;
     if (!tab || tab.active === false || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId)) return;

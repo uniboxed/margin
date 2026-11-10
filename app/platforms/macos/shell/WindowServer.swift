@@ -98,7 +98,7 @@ enum ScreenGeometry {
     // once it's in its Space (alone, or one side of a Split View): inside the display, its bottom at
     // the display's, its top at the display's or a little below (a notched display's camera housing,
     // the menu bar kept in full screen: `topRoom`, or the display's own top inset if that's more).
-    // A window going into or out of full screen doesn't, mostly, while macOS animates it (Tirth,
+    // A window going into or out of full screen doesn't, mostly, while macOS animates it (found
     // 2026-11-05: the overlay was seen on the desktop; a profile switch's new window is made there
     // before it goes full screen).
     static let topRoom: CGFloat = 60
@@ -135,7 +135,7 @@ final class WorkspaceApps: AppWatch {
 
     var frontPid: pid_t? { NSWorkspace.shared.frontmostApplication?.processIdentifier }
 
-    // NSRunningApplication's list once came back empty for a read while Safari ran on (Tirth's log, 2026-11-06
+    // NSRunningApplication's list once came back empty for a read while Safari ran on (a real session's log, 2026-11-06
     // 23:30:49: every binding dropped as "the browser isn't running", Safari's windows listed again a second
     // later, nothing drawn until they were told apart again). The last processes it gave are kept, and used
     // while that list is empty and they're still running (kill 0).

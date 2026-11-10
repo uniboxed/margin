@@ -67,14 +67,14 @@ test('cloudShown: only with the app\'s data, and not once Settings turn it off',
 
 test('device names: Safari\'s, told apart when two read the same; "On …"', () => {
   const d = (id, name, kind, duplicateName = false) => ({ id, name, kind, duplicateName, tabs: [], model: '', modifiedAt: 0, ephemeral: false });
-  const names = deviceNames([d('1', 'Tirth’s iPhone', 'phone'), d('2', 'Studio', 'mac'), d('3', 'studio', 'pad'), d('4', 'Studio', 'mac'), d('5', 'Work', 'mac', true), d('6', '', 'vision')]);
-  assert.equal(names.get('1'), 'Tirth’s iPhone');
+  const names = deviceNames([d('1', 'Nora’s iPhone', 'phone'), d('2', 'Studio', 'mac'), d('3', 'studio', 'pad'), d('4', 'Studio', 'mac'), d('5', 'Work', 'mac', true), d('6', '', 'vision')]);
+  assert.equal(names.get('1'), 'Nora’s iPhone');
   assert.equal(names.get('2'), 'Studio (Mac)');
   assert.equal(names.get('3'), 'studio (iPad)');
   assert.equal(names.get('4'), 'Studio (Mac 2)');
   assert.equal(names.get('5'), 'Work (Mac)', 'Safari\'s own flag for a duplicate name');
   assert.equal(names.get('6'), 'Apple Vision Pro', 'no name: its kind');
-  assert.equal(onDevice('Tirth’s iPhone'), 'On Tirth’s iPhone');
+  assert.equal(onDevice('Nora’s iPhone'), 'On Nora’s iPhone');
 });
 
 test('"updated …": to the minute from a tab viewed, to the day from Safari\'s day-rounded record', () => {
@@ -107,13 +107,13 @@ test('the folder: none without the app\'s data or with Settings off; the devices
   assert.equal(c.count, 6);
   assert.equal(c.labels.title, 'iCloud Tabs');
   assert.deepEqual(c.devices.map((d) => [d.name, d.label, d.isPhone, d.isMac, d.isPad]), [
-    ['Tirth’s iPhone', 'On Tirth’s iPhone', true, false, false],
+    ['Nora’s iPhone', 'On Nora’s iPhone', true, false, false],
     ['Studio MacBook Air', 'On Studio MacBook Air', false, true, false],
     ['Kitchen iPad', 'On Kitchen iPad', false, false, true],
   ]);
   assert.deepEqual(c.devices.map((d) => d.updated), ['updated 5 min ago', 'updated yesterday', 'updated 10 days ago']);
   assert.deepEqual(c.devices.map((d) => d.stale), [false, false, true], 'not used for a week: dimmed');
-  assert.equal(c.devices[0].describe, 'On Tirth’s iPhone, updated 5 min ago');
+  assert.equal(c.devices[0].describe, 'On Nora’s iPhone, updated 5 min ago');
   const [ferry, essay, board] = c.devices[0].shown;
   assert.deepEqual([ferry.title, ferry.host, ferry.pinned, ferry.label], ['Ferry timetable – Tagus Lines', 'tagus.example', true, 'Ferry timetable – Tagus Lines, tagus.example, pinned on that device']);
   assert.ok(essay.icon?.startsWith('data:image/png'), 'an icon Margin has for the site');
@@ -171,7 +171,7 @@ test('the palette: before typing, no iCloud tabs; typed, their own section after
   const rows = rankPalette(state, 'ferry', ctx);
   const kinds = rows.map((r) => r.kind);
   assert.deepEqual(rows.filter((r) => r.kind === 'cloud').map((r) => [r.title, r.section, r.sectionStart]), [
-    ['Ferry timetable – Tagus Lines', 'On Tirth’s iPhone', true],
+    ['Ferry timetable – Tagus Lines', 'On Nora’s iPhone', true],
     ['Ferry fares – Tagus Lines', 'On Studio MacBook Air', true],
   ], 'the device with the best match first, each its own section');
   assert.equal(kinds.at(-1), 'go', '"Search for …" stays last');
@@ -194,7 +194,7 @@ test('the palette: before typing, no iCloud tabs; typed, their own section after
 test('the palette\'s rows in the view model: a section\'s heading on its first row; Margin\'s own rows have none', () => {
   const vm = vmOf(withCloud(), { palette: { open: true, query: 'ferry', selected: 0 } });
   const cloud = vm.palette.rows.filter((r) => r.kind === 'cloud');
-  assert.deepEqual(cloud.map((r) => [r.section, r.sectionStart, r.goes]), [['On Tirth’s iPhone', true, true], ['On Studio MacBook Air', true, true]]);
+  assert.deepEqual(cloud.map((r) => [r.section, r.sectionStart, r.goes]), [['On Nora’s iPhone', true, true], ['On Studio MacBook Air', true, true]]);
   assert.ok(vm.palette.rows.filter((r) => r.kind !== 'cloud').every((r) => r.section === '' && r.sectionStart === false));
 });
 

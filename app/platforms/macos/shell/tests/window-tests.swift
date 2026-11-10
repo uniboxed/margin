@@ -1,6 +1,6 @@
 // Binding the extension's windows to the window server's (WindowMatcher.swift
 // WindowBinder), read after read, against a made-up browser: every
-// multi-window case Tirth asked for, a replay of the swap in his log
+// multi-window case asked for, a replay of the swap in a real session's log
 // (2026-11-05), and randomized orderings of Space switches with copies' focus
 // flags lagging and disagreeing, checked against the truth at every read.
 import AppKit
@@ -19,7 +19,7 @@ final class World {
   var binder: WindowBinder!
   var truth: [WindowKey: Int] = [:]
   var wrong: [String] = []
-  // Blips of the window server's list (Tirth's log, 2026-11-05): these numbers left out of a read;
+  // Blips of the window server's list (a real session's log, 2026-11-05): these numbers left out of a read;
   // `collapse`, every one of the browser's left out; `noList`, no list at all.
   var blipped: Set<Int> = []
   var collapse = false
@@ -301,7 +301,7 @@ extension Tests {
       check("and the next binds the other", w.binder.numbers == w.truth && w.wrong.isEmpty)
     }
 
-    // ---- the swap in Tirth's log, replayed ----
+    // ---- the swap in a real session's log, replayed ----
     // 14:32:20: two profiles, one full-screen window each, already bound. A Space switch from A's
     // (12812) to B's (12881): the front window changes at once; the copies' flags lag and disagree for
     // 650 ms (A still calls #74 focused, B not yet #1169), then catch up, then the switch back.
@@ -506,7 +506,7 @@ extension Tests {
       check("switch: the log says it was Margin's own window", w.said.contains("safari:B#90 is window 400: made by Margin's openSpaceWindow at"), w.said)
     }
 
-    // ---- the window server's list blips (Tirth's log, 2026-11-05 21:53:39) ----
+    // ---- the window server's list blips (a real session's log, 2026-11-05 21:53:39) ----
     // Three profiles, one full-screen window each, all with the same bounds; the third's bound by a
     // focus change. Its window missing from one read and listed again 42 ms later, then every one of
     // the browser's windows missing from a read: the binding holds, with no number free for another.
@@ -728,7 +728,7 @@ extension Tests {
       check("held, its window gone 3 s: dropped", w.binder.numbers.isEmpty && w.said.contains("safari:A#1 is no longer window 100: window 100 is gone from the window server (not listed for 3 s)"), w.said)
     }
 
-    // ---- the pages say which window is shown (Tirth's log, 2026-11-05 21:52-21:56) ----
+    // ---- the pages say which window is shown (a real session's log, 2026-11-05 21:52-21:56) ----
     // Three profiles, one full-screen window each, all with the same bounds, each in its own Space; each
     // copy calls its own window focused. Their pages say whether they're shown, a moment after the window
     // server shows or hides their window.
@@ -762,7 +762,7 @@ extension Tests {
       check("visible: no focus change needed (none heard)", !w.said.contains("focus moved"), w.said)
     }
     do {
-      // Tirth's log, 2026-11-06 23:30:19-29: from the bound window to one not bound yet, slowly: both windows
+      // A real session's log, 2026-11-06 23:30:19-29: from the bound window to one not bound yet, slowly: both windows
       // offset as they slide, the new page saying it's shown as it starts to slide in, macOS saying the Space
       // changed only once the slide is over. Bound as it slides in, not left unbound after it.
       let w = threeShown { _, visible in visible ? 0.05 : 0.15 }
@@ -838,7 +838,7 @@ extension Tests {
       check("visible: and the log says the silent page didn't stop it", s.said.contains("safari:B#153 is window 18285: visible: its page alone says it's shown (since ") && s.said.contains("; safari:A#155 said nothing, the others hidden"), s.said)
     }
     do {
-      // Tirth's log, 2026-11-06 21:24:30-21:25:05: Safari reopened with five profiles, one full-screen window each,
+      // A real session's log, 2026-11-06 21:24:30-21:25:05: Safari reopened with five profiles, one full-screen window each,
       // all with the same bounds, each on its own Space. The copies link one by one over 10 s; three pages said
       // they're hidden before their copies linked, one never says (its tab not loaded), and the one whose window
       // a Space slide brought on screen (Safari not in front) said it's shown as the slide began, its word heard
@@ -950,7 +950,7 @@ extension Tests {
       }
     }
     do {
-      // Tirth's log, 2026-11-06 21:25:20: no page can say (Margin updated: the pages' scripts are the old copy's),
+      // A real session's log, 2026-11-06 21:25:20: no page can say (Margin updated: the pages' scripts are the old copy's),
       // the focus change says which, but the window was offset by a swipe begun when it was weighed: still bound.
       let fs = CGRect(x: 0, y: 33, width: 1512, height: 949)
       let D = "safari:s-default", P2 = "safari:s-4282", P3 = "safari:s-defee"
@@ -1012,7 +1012,7 @@ extension Tests {
             && w.said.contains("safari: window 900 (on screen, 0,0 1512×982) not bound from its page: 4 window(s) have its bounds, 3 reported (a Private window, or a profile without Margin?)"), w.said)
     }
     do {
-      // The front window and the Space change seen in one read (Tirth's log, 2026-11-05 21:53:03: the front
+      // The front window and the Space change seen in one read (a real session's log, 2026-11-05 21:53:03: the front
       // window changed 166 ms before macOS said the Space changed, and the Shell reads at once on the notice).
       // One transition, from the read before: the page's word at the slide's end counts.
       let w = threeShown()
@@ -1317,7 +1317,7 @@ extension Tests {
         lastReport[link] = when
         later(when, f)
       }
-      // The window server's blips (Tirth's log, 2026-11-05): a window missing from 1-15 reads, and every
+      // The window server's blips (a real session's log, 2026-11-05): a window missing from 1-15 reads, and every
       // one of the browser's missing (sometimes no list at all) for 0.2-1.1 s about a switch.
       var blipReads: [Int: (after: Int, reads: Int)] = [:]
       var collapse: (from: Double, until: Double)?
@@ -1880,7 +1880,7 @@ extension Tests {
   }
 
   // An overlay in front of its window, asked exactly (WindowMatcher.stackedAboveExactly; Shell.isStacked): the
-  // every-window list's order isn't front to back between apps (Tirth's trace 2026-11-07: 136 against 1).
+  // every-window list's order isn't front to back between apps (a real session's trace 2026-11-07: 136 against 1).
   static func stackingExact() {
     let full = CGRect(x: 0, y: 33, width: 1512, height: 949)
     func w(_ n: Int, pid: pid_t = 7, layer: Int = 0, alpha: Double = 1, _ b: CGRect = full) -> ServerWindow { ServerWindow(number: n, pid: pid, layer: layer, bounds: b, alpha: alpha) }
@@ -1894,10 +1894,10 @@ extension Tests {
           !WindowMatcher.stackedAboveExactly(aboveBrowser: [panel, w(5, pid: 99)], aboveToolbar: nil, overlay: 900, browser: full, browserPid: 50))
     check("stacking: the browser's own popover, or a see-through window, between: still in front",
           WindowMatcher.stackedAboveExactly(aboveBrowser: [panel, w(6, pid: 50, layer: 3), w(5, pid: 99, alpha: 0)], aboveToolbar: nil, overlay: 900, browser: full, browserPid: 50))
-    // Tirth's probe, 2026-11-07, Safari in front: the every-window list put the overlay at 101 and its window at 126 (right),
-    // his trace at 136 against 1 (wrong); asked exactly, the order is the window server's.
+    // The probe on a real Mac, 2026-11-07, Safari in front: the every-window list put the overlay at 101 and its window at 126 (right),
+    // the session's trace at 136 against 1 (wrong); asked exactly, the order is the window server's.
     let list = [w(65173, CGRect(x: 0, y: 33, width: 4, height: 949)), w(65170), w(65172)]
-    check("stacking: Tirth's probe asked exactly: in front", WindowMatcher.stackedAboveExactly(aboveBrowser: list, aboveToolbar: [], overlay: 65170, browser: full, browserPid: 50, own: [65172, 65173]))
+    check("stacking: the real probe asked exactly: in front", WindowMatcher.stackedAboveExactly(aboveBrowser: list, aboveToolbar: [], overlay: 65170, browser: full, browserPid: 50, own: [65172, 65173]))
   }
 
   // The placer's check (OverlayPlacer.swift): each placement checked on the next maps.
@@ -1938,7 +1938,7 @@ extension Tests {
     check("placer: without the Space bridge: not moved, ordered in again", c(map(overlay: ov(on: false, spaces: [1]), window: win()), canMove: false)
           == (true, .reorder("not on screen while its window is")))
 
-    // Tirth's session (2026-11-07 11:32:51): shown over its window after a switch, but in the Desktop's Space.
+    // A real session (2026-11-07 11:32:51): shown over its window after a switch, but in the Desktop's Space.
     let vectors = ProcessInfo.processInfo.environment["MARGIN_DATA_VECTORS"] ?? "../../tests/fixtures/data-merge"
     let url = URL(fileURLWithPath: vectors).appendingPathComponent("../traces/2026-11-07-sidebar-on-desktop.jsonl").standardizedFileURL
     // (A trace has a map only when something changed; live, every read checks the map it has, 4 to 30 times a
@@ -1957,11 +1957,11 @@ extension Tests {
         now += 0.25
       }
     }
-    check("placer: Tirth's session: the sidebar left in the Desktop's Space after the switch is caught, and moved into 3046",
+    check("placer: the replayed session: the sidebar left in the Desktop's Space after the switch is caught, and moved into 3046",
           fixes.first == .join(3046), "\(fixes)")
   }
 
-  // An overlay kept in its window's Space (OverlayPlanner.spaceToJoin), and Tirth's own session replayed (2026-11-07 11:32:51:
+  // An overlay kept in its window's Space (OverlayPlanner.spaceToJoin), and a real session replayed (2026-11-07 11:32:51:
   // the sidebar left on the Desktop after a switch brought its window back into a new full-screen Space).
   static func overlaySpace() {
     check("in its window's Space: nothing to do", OverlayPlanner.spaceToJoin(overlay: [7], window: [7], windowOnScreen: true, showing: [7]) == nil)
@@ -1984,11 +1984,11 @@ extension Tests {
       if w.onScreen, let ws = w.spaces, o.spaces != ws { wrong += 1 }
       if let to = OverlayPlanner.spaceToJoin(overlay: o.spaces, window: w.spaces, windowOnScreen: w.onScreen, showing: m.showing) { wouldMove.append(to) }
     }
-    check("Tirth's session: replayed from its trace (\(maps.count) maps)", maps.count > 50)
-    check("Tirth's session: the sidebar in the Desktop (Space 1) while its window showed in Space 3046", wrong > 0, "\(wrong)")
-    check("Tirth's session: each of those maps says move it into 3046, and nothing else", !wouldMove.isEmpty && Set(wouldMove) == [3046], "\(wouldMove)")
+    check("the replayed session: replayed from its trace (\(maps.count) maps)", maps.count > 50)
+    check("the replayed session: the sidebar in the Desktop (Space 1) while its window showed in Space 3046", wrong > 0, "\(wrong)")
+    check("the replayed session: each of those maps says move it into 3046, and nothing else", !wouldMove.isEmpty && Set(wouldMove) == [3046], "\(wouldMove)")
 
-    // 11:33:03.969: he swiped to the Desktop, where the sidebar was, its window's Space no longer showing. The planner
+    // 11:33:03.969: a swipe to the Desktop, where the sidebar was, its window's Space no longer showing. The planner
     // with the maps' Spaces: moved into its window's Space at once (it sat on the Desktop for a second before).
     var planned: [OverlayDecision] = []
     for (m, ov) in maps {
@@ -2001,7 +2001,7 @@ extension Tests {
       f.canSuspect = false; f.spaceChanged = true // (the Space had just changed: the old rule waited a second)
       planned.append(OverlayPlanner.decide(f))
     }
-    check("Tirth's session: on the Desktop with its window away, the planner moves it into 3046 at once", !planned.isEmpty && planned.allSatisfy { $0 == .join(3046) }, "\(planned)")
+    check("the replayed session: on the Desktop with its window away, the planner moves it into 3046 at once", !planned.isEmpty && planned.allSatisfy { $0 == .join(3046) }, "\(planned)")
   }
 
   // The own-Space suspicion (Shell.judgeOwnSpace): what drops it before every overlay joins every Space.
@@ -2013,7 +2013,7 @@ extension Tests {
     check("its window still listed off screen, nothing else changed: kept (the fallback after 0.3 s)", judge() == nil)
     check("its window on screen again, gone, or the Space changed: dropped", judge(server: ServerWindow(number: 5, pid: 1, bounds: .zero, onScreen: true)) != nil
           && judge(server: nil) != nil && judge(spaceChanged: true) != nil)
-    // Tirth's log 2026-11-07 10:55:41: put away as suspect, placed in its window's Space ahead of a visit the next read
+    // A real session's log 2026-11-07 10:55:41: put away as suspect, placed in its window's Space ahead of a visit the next read
     // (correctly), and 314 ms later the old suspicion made every overlay join every Space.
     check("its overlay placed again since (in its window's Space, ahead of a visit): dropped, no fallback for every overlay",
           judge(shownAgain: true) != nil, "\(judge(shownAgain: true) ?? "kept")")

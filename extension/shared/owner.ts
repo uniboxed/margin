@@ -1,7 +1,7 @@
 // Which copy of Margin is in charge of its storage. Safari can keep an older
 // copy of Margin running beside a newer one until it quits (after an update,
 // or each rebuild in development): both see the same tabs, each under its own
-// ids, and they share storage.local. Seen in Tirth's Safari: two copies wrote
+// ids, and they share storage.local. Seen in real Safari: two copies wrote
 // the same page as tab 6835 and as tab 4660, so pages listed tabs by ids
 // their own copy didn't have, and switching to them failed. So one copy, the
 // newest, owns the storage: it alone writes the state, and pages of the

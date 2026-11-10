@@ -67,7 +67,7 @@ nonisolated final class EdgeStop: @unchecked Sendable {
 
     // The pointer put at the stop by a posted mouse-moved event, from a source of Margin's own whose pause is zero:
     // macOS ignores the pointer for a while after a warp or a posted event (0.25 s by default), and pushed against the
-    // stop with every move moving it back, it hardly moved up or down (Tirth, 2026-11-07). Only current API: no warp, no
+    // stop with every move moving it back, it hardly moved up or down (seen 2026-11-07). Only current API: no warp, no
     // deprecated call. The posted event lands at the stop, so it passes back through the tap untouched.
     private var mover: CGEventSource?
 

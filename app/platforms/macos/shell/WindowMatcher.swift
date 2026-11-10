@@ -10,7 +10,7 @@
 // whether each is on screen and the order front to back, but not whose they
 // are: every Safari profile's windows are one process's. Two full-screen
 // windows on one display have the same bounds, and copies' `focused` flags lag
-// and disagree while a Space changes (Tirth's log, 2026-11-05: two profiles'
+// and disagree while a Space changes (a real session's log, 2026-11-05: two profiles'
 // windows swapped for 650 ms when focus broke the tie). So:
 //
 //  - A binding, once made, holds while both windows exist. It never changes
@@ -34,13 +34,13 @@
 //    while, and as many browser windows with those bounds as it reports).
 //    A copy's focused flag is about its own windows only (each profile's copy
 //    calls its own last focused window focused), so it never tells one
-//    profile's window from another's: their pages do (Tirth's log, 2026-11-05
+//    profile's window from another's: their pages do (a real session's log, 2026-11-05
 //    21:52: three profiles' full-screen windows never bound in 4 minutes).
 //  - A window it can't tell yet gets no binding, so no overlay is drawn over
 //    it (it says so in the log, once per reason) rather than the wrong one.
 //  - A binding its pages contradict (its page hidden while its window is the
 //    one on screen, another profile's page shown) goes after `hiddenDrop`.
-//  - The window server's list blips (Tirth's log, 2026-11-05: a bound window
+//  - The window server's list blips (a real session's log, 2026-11-05: a bound window
 //    missing from one read and listed again 42 ms later, and reads without any
 //    of Safari's windows next to Space changes). A window server number is the
 //    same window for the whole login session, so a bound window missing from a
@@ -95,7 +95,7 @@ struct ExtWindow: Equatable {
     // pointerOrigin) rather than taking the missing width to be on the left.
     var viewportMeasured = false
     // When the page was resized, said its area, and its copy heard it (seconds since 1970; nil: not said): for the
-    // log's delay when Margin draws in a new area (Tirth, 2026-11-07: the layout late beside the inspector).
+    // log's delay when Margin draws in a new area (seen 2026-11-07: the layout late beside the inspector).
     var viewportTimes: ViewportTimes?
     // A window its copy had parked before Safari quit, restored by Safari as a normal window (the copy's
     // background/parked-restore.ts): the app closes it (Shell.closeRestoredParked).
@@ -160,7 +160,7 @@ nonisolated enum WindowMatcher {
         server.filter { pids.contains($0.pid) && $0.layer == 0 && $0.alpha > 0 && $0.bounds.width >= minSize && $0.bounds.height >= minSize }
     }
 
-    /// A full-screen browser window's toolbar, which Safari draws as a window of its own (Tirth's
+    /// A full-screen browser window's toolbar, which Safari draws as a window of its own (a real
     /// Safari, 2026-11-05, recorded with the window server's list): the same process, layer 0, the
     /// window's left edge and width, short (52 pt; more with a tab bar or Favorites), parked just
     /// above the window's top (y = top − its height) and sliding down over the window's top when
@@ -262,7 +262,7 @@ final class WindowBinder {
         // A page that has said nothing (its tab not loaded yet, a page Margin can't run in) doesn't stop the page
         // that says it's shown from binding its window, once this long has passed after `visibleLag` from the last
         // change: a page shown before it (newly said in the change, its window the one going) has said it's hidden
-        // and been heard by then (Tirth's log, 2026-11-06 21:24: five profiles' restored full-screen windows, one
+        // and been heard by then (a real session's log, 2026-11-06 21:24: five profiles' restored full-screen windows, one
         // page that never spoke, nothing drawn).
         var visibleQuiet: Double = 1.0
         // A bound window on screen whose page has said it's hidden this long, while another profile's
@@ -353,7 +353,7 @@ final class WindowBinder {
     private var steadyReads = 0
     // Changes that change which pages are shown: the browser's windows coming on or going off screen, and
     // Space changes. (Not the front window alone: the browser coming to the front, or another of the windows
-    // on screen coming forward, shows and hides no page. Tirth's log, 2026-11-06 21:24:50: Safari brought to
+    // on screen coming forward, shows and hides no page. A real session's log, 2026-11-06 21:24:50: Safari brought to
     // the front over the Space already showing made the shown page's word stale.) `at`: when it may have begun
     // (the read before a window was seen come or go; a Space change when it was heard); `latest`: the latest
     // it can have happened (the read it was seen in, the Space change heard). A Space change heard within
@@ -471,7 +471,7 @@ final class WindowBinder {
         let expectedParked = Set(parkedExpects.map(\.key))
         func parkedKey(_ key: WindowKey) -> Bool { expectedParked.contains(key) || bindings[key].map { parked.contains($0.number) } ?? false }
 
-        // A read that tells nothing (Tirth's log, 2026-11-05: reads without any of Safari's windows, next
+        // A read that tells nothing (a real session's log, 2026-11-05: reads without any of Safari's windows, next
         // to Space changes, each back a read later): no list at all, or none of the browser-sized windows
         // the last read that told something had, or none of the bound ones, or none at all, and no new
         // one, while the browser runs and its copies still have windows. Nothing is learned or forgotten
@@ -570,7 +570,7 @@ final class WindowBinder {
             // The browser's windows on screen (one missing from this read as it was). One come on screen: a
             // transition from when it may have begun; a Space change heard since then (in this read, or across
             // reads that told nothing) may have come after it: the same transition, from the earlier of the two
-            // (Tirth's log, 2026-11-05 21:53:03: the front window changed 166 ms before the Space change was
+            // (a real session's log, 2026-11-05 21:53:03: the front window changed 166 ms before the Space change was
             // heard, and one read saw both). Only gone off screen: the end of the last change if it's that near
             // (a slide), else a transition of its own.
             let onNow = Set(candidates.filter(\.onScreen).map(\.number)).union(lastOnScreen.filter { present[$0] == nil && missing($0) })
@@ -878,7 +878,7 @@ final class WindowBinder {
             // Its window missing from this read: weighed again when it's back (or gone).
             guard let w = present[number] else { if missing(number) { focusEvents[i].decided = false }; continue }
             // (Its bounds, or the ones it settled in: a window offset for a moment, in a Space's slide, still has
-            // its own. Tirth's log, 2026-11-06 21:25:22: the focus change that told it was lost to one.)
+            // its own. A real session's log, 2026-11-06 21:25:22: the focus change that told it was lost to one.)
             guard fits(e, w) || (e.bounds.map { has(number, $0) } ?? false) else { log("\(heard): doesn't fit window \(number) (\(e.bounds.map(WindowMatcher.describe) ?? "no bounds") and \(WindowMatcher.describe(w.bounds)))"); continue }
             let why = "focus moved to it at \(WindowMatcher.clock(ev.at)) and window \(number) came to the front by \(WindowMatcher.clock(change.at)), each alone then"
             let holder = bindings.first { $0.value.number == number && $0.key != ev.key }?.key
@@ -945,7 +945,7 @@ final class WindowBinder {
         eliminate()
 
         // ---- visible at once: a window come on screen, and the one page that newly says it's shown ----
-        // (Tirth's log, 2026-11-06 23:30:19-29: three profiles' full-screen windows, swiped between: macOS says
+        // (a real session's log, 2026-11-06 23:30:19-29: three profiles' full-screen windows, swiped between: macOS says
         // the Space changed only once a slide is over, and a page says it's shown as its window starts sliding
         // in, so the rule below took every word as from before the change, and the two windows not on screen at
         // the start stayed unbound for 10 s, nothing drawn over them.) WebKit says a page is shown only while its

@@ -1075,7 +1075,7 @@ impl Shell {
     }
 
     /// A Chrome or Edge copy's hello names its browser process as its connector told it. Trusted as on the Mac
-    /// (Tirth, 2026-11-09: never refused), but one that no connector has named since the app started is logged:
+    /// (decided 2026-11-09: never refused), but one that no connector has named since the app started is logged:
     /// a copy linking with a link kept from before, a connector that knew no process, or a hello not as its relay said.
     fn warn_unheard_pid(&mut self, key: &str, hello: &Hello) {
         if hello.browser == "safari" {

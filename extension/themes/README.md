@@ -314,7 +314,7 @@ host. Immutable: rows that didn't change are the same objects.
   the progress; keep the per-frame part to `transform`, `opacity` and the
   like, which don't lay anything out.
 - `palette.rows[]` also have `section` and `sectionStart`: rows from one
-  place come as a run with a heading ("On Tirth’s iPhone": iCloud Tabs,
+  place come as a run with a heading ("On iPhone": iCloud Tabs,
   after Margin's own rows). Draw `{{r.section}}` before a row whose
   `sectionStart` is true, inside the rows' `<m-for>`; Margin's own rows
   have `''` and false.

@@ -306,7 +306,7 @@
    a small speaker. */
 .margin-sidebar :is(.tab, .pin).asleep .avatar { opacity: 0.45; filter: grayscale(1); }
 /* A tab that isn't open (its window closed, Safari didn't restore it, or it
-   was put to sleep): still in its space, drawn as any tab (Tirth, 2026-11-08); a click opens it. */
+   was put to sleep): still in its space, drawn as any tab (2026-11-08); a click opens it. */
 .margin-sidebar .audible-icon { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
 .margin-sidebar .audible-icon .speaker { fill: currentColor; stroke: none; }
 .margin-sidebar :is(.tab, .pin):hover .audible-icon { display: none; }
@@ -746,7 +746,7 @@
   cursor: default;
 }
 .palette .result + .result { margin-top: 4px; }
-/* The heading of a run of rows from one place (iCloud Tabs: "On Tirth's iPhone"). */
+/* The heading of a run of rows from one place (iCloud Tabs: "On Nora's iPhone"). */
 .palette .result-section { padding: 12px 10px 5px; color: var(--muted); font-size: 12px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .palette .result:hover { background: var(--row-hover); }
 .palette .result[aria-selected="true"] { background: color-mix(in srgb, var(--space-color) 82%, #000); }

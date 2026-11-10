@@ -650,7 +650,7 @@ test('saved default shortcuts follow the build; customized ones stay', () => {
   assert.deepEqual(M.normalizeShortcuts(legacy, safari), {
     nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Alt+Shift+KeyL', prevSpace: 'Alt+Meta+ArrowLeft',
   });
-  // Saved with Safari's defaults before 2026-11-08 (spaces on ⌃⌘→/←): to ⌥⌘→/← now (Tirth); a customized one stays.
+  // Saved with Safari's defaults before 2026-11-08 (spaces on ⌃⌘→/←): to ⌥⌘→/← now; a customized one stays.
   const before = { shortcuts: { nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Ctrl+Meta+ArrowRight', prevSpace: 'Alt+KeyJ' }, shortcutDefaults: 'safari' };
   assert.deepEqual(M.normalizeShortcuts(before, safari), { nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Alt+Meta+ArrowRight', prevSpace: 'Alt+KeyJ' });
   assert.equal(P.safari.navigation.nextSpace, 'Alt+Meta+ArrowRight');

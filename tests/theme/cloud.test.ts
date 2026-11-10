@@ -52,7 +52,7 @@ for (const [engineName, engine] of ENGINES) {
           assert.equal(await count('.cloud [m-drag], .cloud [m-drop]'), 0, 'nothing dragged out or into it');
           assert.deepEqual(await ev(() => T.rtText('.cloud-head .title, .cloud-head .cloud-name')), ['iCloud Tabs']);
           const devices = await ev(() => T.rtText('.cloud-device'));
-          assert.ok(devices[0].includes('Tirth’s iPhone') && devices[0].includes('updated'), devices[0]);
+          assert.ok(devices[0].includes('Nora’s iPhone') && devices[0].includes('updated'), devices[0]);
           assert.equal(await count('.cloud-device.stale'), 1, 'the iPad not used for ten days: dimmed');
           assert.equal(await count('.cloud-tab.stale'), 1);
           assert.equal(await count('.cloud-tab .pinned-mark'), 1, 'a tab pinned on the phone, marked');
@@ -138,7 +138,7 @@ for (const [engineName, engine] of ENGINES) {
           assert.deepEqual(rows.filter((r) => r.startsWith('cloud:')), ['cloud:T-PHONE-1', 'cloud:T-AIR-2']);
           assert.equal(rows.at(-1), 'go', '"Search for …" last');
           assert.ok(rows.indexOf('cloud:T-PHONE-1') > rows.findLastIndex((r) => /^(tab|pin|action|archive):/.test(r)), 'after Margin\'s own rows');
-          assert.deepEqual(await ev((s) => T.rtText(s), sel.section), ['On Tirth’s iPhone', 'On Studio MacBook Air']);
+          assert.deepEqual(await ev((s) => T.rtText(s), sel.section), ['On Nora’s iPhone', 'On Studio MacBook Air']);
           // Margin's own matches come first: down to the first iCloud tab, then Enter.
           for (let i = 0; i < rows.indexOf('cloud:T-PHONE-1'); i++) await page.keyboard.press('ArrowDown');
           assert.equal((await ev(() => T.rtVmFull())).selected, 'cloud:T-PHONE-1');

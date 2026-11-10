@@ -4,7 +4,7 @@ Plan, 2026-11-06, on `feat/pixel-user-themes` (from `feat/margin-app`). `PLAN.md
 
 ## Sources
 
-- **Boards.** Tirth's "Browser Theme Explorations" canvas, copied into `docs/phase6/boards/`: `Pixel.dc.html` ("Sidebar · Pixel / 8-bit"), `Main.dc.html` ("Neubrutalism"; it holds only that board, there's no Arcadia board), `WindowControls.dc.html` (four window-control sets, for Phase 4).
+- **Boards.** The "Browser Theme Explorations" design canvas, copied into `docs/phase6/boards/`: `Pixel.dc.html` ("Sidebar · Pixel / 8-bit"), `Main.dc.html` ("Neubrutalism"; it holds only that board, there's no Arcadia board), `WindowControls.dc.html` (four window-control sets, for Phase 4).
 - **Seeing them.** `node tools/boards/render.mts <board> <out-dir> [name='{"state":…}'[|hover]]…` renders a board headless with every request refused and the fonts from the theme packages (the canvas's own runtime isn't in the repo; `tools/boards/dc-shim.js` stands in for it).
 - **Reference shots** in `docs/phase6/shots/`: the boards with their real fonts (`pixel-board*.png`, `neo-board*.png`), today's Neubrutalism through the runtime and the mock host (`neo-now*.png`), and the two side by side at 2× (`neo-side-by-side-*.png`).
 
@@ -254,9 +254,9 @@ Each one is a commit (`…(themes): …`), with `npm test`, `npm run test:theme`
 8. **The package reader.** `ui/theme-import.ts` (folder file map or zip bytes to a package: root folder, skipped files, path rules, caps, inflating with counts); `scripts/pack-theme.ts` (`npm run theme:pack`); the README guide. *Tests:* `tests/theme-import.test.ts` with every zip, folder and path payload; a round trip of all three built-ins through `theme:pack` and the reader.
 9. **Margin.app stores user themes.** `app/platforms/macos/shell/ThemeStore.swift` (the themes folder, the index, atomic writes, reads that refuse a later format) and `ShellThemes.swift` (`theme.import` with `NSOpenPanel` and the folder rules, `theme.save`, `theme.remove`, the `themes` push, picking the user package for overlays, the index to copies). In the extension: `userThemes` as the index (`data-set.ts`, `stateFromDataSet`), `updateSettings` accepting indexed ids, the plain first paint. Updates to `docs/DATA.md` and `docs/PROTOCOL.md`. `Shell.swift` gets only a `case` in `perform` and one hook where the overlay's theme is chosen, so the merge with the profile handoff stays easy. *Tests:* `app/platforms/macos/shell/tests/theme-tests.swift` (store, index, caps, ids, a tampered file refused at load, the harness's picker path instead of the panel); `e2e-data.swift` (the index reaching a copy); unit `data-set.test.ts`, `link.test.ts`, `registered.test.ts`.
 10. **Settings for themes, and the preview.** The new fields in `settings-form.ts`; host and overlay wiring (`theme.import` → `themeFile` → check → preview bar → `theme.save`); Remove with its prompt; the theme's own settings and `setting-color` in all three themes. *Tests:* `settings-form.test.ts`; browser tests that the preview bar sits in the top layer and a hostile theme can't cover or restyle it, and that it cancels after 30 s; `test:app` end-to-end: import a folder and a zip, preview, use, remove the active theme → Arcadia in every profile.
-11. **Tirth's checks and the record.** `TESTING.md` "Margin 2 Phase 6" (Pixel and Neo in full-screen Safari, light and dark system modes, an import from Finder over full screen, preview and revert, remove while in use), and `DECISIONS.md` entries for what changed on the way.
+11. **The checks by hand and the record.** `TESTING.md` "Margin 2 Phase 6" (Pixel and Neo in full-screen Safari, light and dark system modes, an import from Finder over full screen, preview and revert, remove while in use), and `DECISIONS.md` entries for what changed on the way.
 
-## Open questions for Tirth
+## Open questions
 
 - Neo's folder count (difference 6): drop it to match the board? The plan says yes.
 - Pixel's and Neo's dark mode: the boards have one look each (Pixel dark, Neo light), and the plan keeps that in both system modes. Arcadia's launcher follows the system.

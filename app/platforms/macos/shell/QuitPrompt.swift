@@ -1,4 +1,4 @@
-// Margin's own prompt on ⌘Q in a browser window Margin draws around (Tirth, 2026-11-07, after Arc's: "Are you sure
+// Margin's own prompt on ⌘Q in a browser window Margin draws around (asked 2026-11-07, after Arc's: "Are you sure
 // you want to quit? … Always quit, Cancel, Quit"). Shown centred on the front window, over Margin's layout; the
 // browser stays the active app (a panel that takes the keys without activating Margin, as the overlay's palette).
 //

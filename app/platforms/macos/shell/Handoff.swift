@@ -1,4 +1,4 @@
-// The profile handoff (docs/HANDOFF.md §1, with Tirth's answers in §13): the
+// The profile handoff (docs/HANDOFF.md §1, with the answers in §13): the
 // switch's state machine when the world can freeze the screen, read Spaces and
 // park windows. ProfileSwitch (ProfileSwitch.swift) is its face; this is how
 // it runs.
@@ -49,7 +49,7 @@
 //   close is tried once more after 0.5 s; then A stays.
 // - "Close windows to save memory" turned on with windows parked (§5): each
 //   closed by its copy, drafts permitting (closeParkedWindows).
-// - Margin windows (docs/BROWSER-WINDOWS.md, Tirth 2026-11-09, replacing §13.11's extra window): each Margin window
+// - Margin windows (docs/BROWSER-WINDOWS.md, 2026-11-09, replacing §13.11's extra window): each Margin window
 //   (a `Line` in the registry) has its own window per profile. A switch runs in A's line, targets only that
 //   line's window of the profile (or one made for it), and never another line's. A window in no line is a
 //   Margin window of its own, given its line by its first switch. A switch within a profile is a setSpace in
@@ -1109,7 +1109,7 @@ extension ProfileSwitch: FreezerDelegate {
         }
     }
 
-    // The same sidebar through the switch (Tirth, 2026-11-07): as the freeze starts (A's sidebar showing the switch's
+    // The same sidebar through the switch (2026-11-07): as the freeze starts (A's sidebar showing the switch's
     // cover and the target space, B not shown yet), A's sidebar is handed to B, and the shell shows it over B once B is
     // in place; B's own (if any) is A's now, and goes out with A's (outA). Once per switch, only under a freeze (the
     // hand-over would be seen otherwise); B not known yet (a window the switch makes): at R2.

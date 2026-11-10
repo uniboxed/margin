@@ -256,7 +256,7 @@ export function startCore() {
   const viewportNow = () => {
     const z = pageZoom || 1;
     // (Before any pinch: WebKit divides innerWidth and innerHeight by a pinch's scale, which read as Safari taking
-    // most of the window, Tirth's log 2026-11-07: Margin drew in a third of it.)
+    // most of the window, a real session's log 2026-11-07: Margin drew in a third of it.)
     const inner = unpinchedSize({ innerWidth, innerHeight, visualViewport });
     const w = inner.width * z;
     const h = inner.height * z;
@@ -298,7 +298,7 @@ export function startCore() {
     void send('viewport', { viewport: v, resizedAt, at: Date.now() }, false);
   }
   // The page in full screen (its own, YouTube's button, a video in a frame; or Safari's own video full screen): told so
-  // Margin.app's layout leaves the window meanwhile, and comes back after (Tirth, 2026-11-07: the video's full screen
+  // Margin.app's layout leaves the window meanwhile, and comes back after (2026-11-07: the video's full screen
   // left the sidebar's strip on the left). The top frame says it for the page.
   let toldFullscreen = false;
   function pageFullscreenNow() {

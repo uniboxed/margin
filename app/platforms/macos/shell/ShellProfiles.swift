@@ -567,7 +567,7 @@ extension Shell: SwitchWorld {
         burst("profile switch")
     }
 
-    // The window a switch leaves, as it looks, given to the profile it goes to before its window shows (Tirth,
+    // The window a switch leaves, as it looks, given to the profile it goes to before its window shows (asked
     // 2026-11-07: "it should match all the configuration of the previous window like a snapshot"): Keep open,
     // the frame when the sidebar is hidden, the theme and the themes' settings (the sidebar's width). Written to
     // that profile's settings by its copy (`updateSettings`), only when they differ; again when its copy links
@@ -586,7 +586,7 @@ extension Shell: SwitchWorld {
         Task { _ = try? await b.connection.request(type: "updateSettings", payload: ["patch": patch], windowId: nil) }
     }
 
-    // Keep open, the frame, the theme and the themes' settings are the person's, not a profile's (Tirth, 2026-11-07:
+    // Keep open, the frame, the theme and the themes' settings are the person's, not a profile's (seen 2026-11-07:
     // a window switched into showed its sidebar hidden): a change in one profile is given to the browser's other
     // profiles. Not a change Margin made itself (the echo of its own `updateSettings`), and not in a copy's first
     // 5 s after it linked (its set adopted from the app's store may be an old one).

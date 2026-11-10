@@ -5,7 +5,7 @@
 //! The keys: next and previous tab and space (the window's copy's `navigate`, or across profiles the app's switch:
 //! `across.rs`), the palette (opened in the front window's overlay, which then takes the typing), the sidebar's
 //! show/hide key, and a new Margin window (docs/BROWSER-WINDOWS.md §5). A held tab or space key repeats at the OS's key
-//! repeat, each repeat marked as one (Tirth, 2026-11-05): the copy takes repeats like presses, and a repeat never
+//! repeat, each repeat marked as one (requested 2026-11-05): the copy takes repeats like presses, and a repeat never
 //! starts a switch to another profile's space. Which combinations is the copy's to say (its Settings shortcuts: the
 //! `keys` message); until it does, the defaults for the OS ([`defaults`]).
 //!
@@ -273,7 +273,7 @@ impl fmt::Display for Combo {
 }
 
 /// The app's default combination for a command on an OS. macOS: exactly the Swift's. **Windows: provisional, to
-/// pick with Tirth** (⌘ → Ctrl, ⌥ → Alt: tabs Ctrl+Alt+↓/↑, spaces Ctrl+Alt+→/←, palette Ctrl+T, sidebar Alt+S, new
+/// be decided** (⌘ → Ctrl, ⌥ → Alt: tabs Ctrl+Alt+↓/↑, spaces Ctrl+Alt+→/←, palette Ctrl+T, sidebar Alt+S, new
 /// window Ctrl+N). Open questions there: Ctrl+Alt is AltGr on many European layouts, and some graphics drivers
 /// take Ctrl+Alt+arrows to rotate the screen; Ctrl+T and Ctrl+N are the browser's own new tab and window, which
 /// Margin then takes only while it draws over the front window, as ⌘T on the Mac.
@@ -402,7 +402,7 @@ pub fn keys_held(
 
 /// The overlay that last had the keys, and when (Shell.keysOverlay): a moment with none matched over the front
 /// window (a window being made or moved, a desktop settling) keeps them for [`KeysFront::GRACE`] while its browser
-/// stays in front, so a press then is still Margin's, not the page's (Tirth, 2026-11-08). `K`: the shell's key for
+/// stays in front, so a press then is still Margin's, not the page's (seen 2026-11-08). `K`: the shell's key for
 /// an overlay (its link and window id).
 #[derive(Clone, Debug, Default)]
 pub struct KeysFront<K> {
@@ -439,7 +439,7 @@ impl<K: Clone> KeysFront<K> {
 pub enum KeyRoute {
     /// Pushed to the front overlay as `{"type":"command","name":…}` (with `repeat` for a tab key): the palette
     /// and the sidebar, with no round trip through the browser; the tab keys, which the overlay highlights at once
-    /// and then asks the copy for (overlay.ts navTab; Tirth, 2026-11-07). [`command_push`] writes it.
+    /// and then asks the copy for (overlay.ts navTab; 2026-11-07). [`command_push`] writes it.
     Overlay { name: &'static str, repeat: Option<bool> },
     /// ⌘N: a new Margin window from the front overlay's window (`across.rs` `new_margin_window`).
     NewWindow,

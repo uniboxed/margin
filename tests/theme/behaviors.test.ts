@@ -403,7 +403,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
         await wait(() => T.rtSent().some(([type]) => type === 'setSpace'));
         assert.deepEqual((await sent()).find(([type]) => type === 'setSpace'), ['setSpace', { windowId: 1, spaceId: 'work' }]);
         // Asked of the copy as the swipe settles (Safari brings the space's tab while the slide comes in), the space
-        // left still drawn till the slide is in, then the space switched to (Tirth, 2026-11-07: the switch felt late).
+        // left still drawn till the slide is in, then the space switched to (2026-11-07: the switch felt late).
         assert.equal((await vm()).space, 'personal', 'the slide still coming in');
         await wait(() => T.rtVmFull().spaceName === 'Work');
         assert.equal((await vm()).space, 'work', 'shown as the slide lands');

@@ -70,7 +70,7 @@ let pageRecorder = """
   var unloaded = false
   // The tab's next activation by the extension (tabs.update) is carried out and answered only
   // this long after it's asked (ms): Safari's update of a tab whose process hangs, answered as
-  // the process recovers (Tirth's Safari, 2026-11-03).
+  // the process recovers (real Safari, 2026-11-03).
   var stallMs = 0
   var asleep: Bool { webView == nil || unloaded }
   weak var window: Win?

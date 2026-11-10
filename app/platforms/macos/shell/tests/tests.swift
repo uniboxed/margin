@@ -72,7 +72,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     stackingExact() // window-tests.swift: in front of its window, asked exactly
     placementCheck() // window-tests.swift: the placer's check
     overlayPlanner() // window-tests.swift: the planner's rules
-    overlaySpace() // window-tests.swift: an overlay kept in its window's Space, Tirth's session replayed
+    overlaySpace() // window-tests.swift: an overlay kept in its window's Space, a real session replayed
     windowMap() // window-tests.swift: the window map and its trace
     ownSpaceJudge() // window-tests.swift: what drops an own-Space suspicion
     axEvents() // window-tests.swift: Safari's Accessibility events and the scan kept for startup
@@ -592,7 +592,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("quit guard: with Margin's layout in front and its prompt wanted, held with nothing parked too",
           Shell.guardsQuit(browserInFront: true, parked: 0, quitting: false, asks: true) && !Shell.guardsQuit(browserInFront: false, parked: 0, quitting: false, asks: true))
     // A click in Margin's UI moves the keyboard to Margin.app (a non-activating panel): ⌘R after a click in the sidebar
-    // beeped (Tirth, 2026-11-08). The keyboard goes back as the press ends, unless a field of Margin's has it or asked
+    // beeped (seen 2026-11-08). The keyboard goes back as the press ends, unless a field of Margin's has it or asked
     // for it; a key that reaches Margin.app meanwhile goes on to the linked browser in front.
     check("a press in Margin's UI: the keyboard back to the browser, unless a field of Margin's has it or asked for it, or it isn't shown",
           OverlayController.handsKeyboardBack(shown: true, hasKeyboard: false, wantsKeyboard: false)
@@ -735,7 +735,7 @@ final class FakeRegistrar: HotKeyRegistrar {
   }
 
   // Safari's own parts of the window (Phase 2 step 8): the full-screen toolbar, a window of its own,
-  // from Tirth's recorded list (scratchpad winrec/rec.log, 2026-11-05), and the docked Web Inspector.
+  // from a real session's recorded list (scratchpad winrec/rec.log, 2026-11-05), and the docked Web Inspector.
   static func safariParts() {
     let pid: pid_t = 501
     let main = ServerWindow(number: 14375, pid: pid, bounds: CGRect(x: 0, y: 33, width: 1512, height: 949), order: 165)
@@ -766,7 +766,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("docked on the right: the part left of it", Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 1000, height: 949)) == CGRect(x: 0, y: 33, width: 1000, height: 949))
     check("docked on the left: the part right of it", Shell.overlayFrame(window: win, viewport: CGRect(x: 512, y: 0, width: 1000, height: 949)) == CGRect(x: 512, y: 33, width: 1000, height: 949))
     check("a part too small to lay out in, or outside the window: the whole window", Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 150, height: 949)) == win && Shell.overlayFrame(window: win, viewport: CGRect(x: 4000, y: 0, width: 800, height: 900)) == win)
-    // Safari's own sidebar sliding in (Tirth's log, 19:37:14.956-18.706) under Margin's docked one (260 pt).
+    // Safari's own sidebar sliding in (a real session's log, 19:37:14.956-18.706) under Margin's docked one (260 pt).
     let xs: [CGFloat] = [19, 213, 238, 239, 240, 177, 54, 2, 115, 222, 237, 240, 215, 84, 2]
     check("Safari's sidebar at each logged step, guessed, under a docked 260 pt sidebar: the whole window",
           xs.allSatisfy { Shell.overlayFrame(window: win, viewport: CGRect(x: $0, y: 0, width: 1512 - $0, height: 949), dockedLeft: 260) == win })

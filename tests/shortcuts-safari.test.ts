@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { manifestFor } = await import('../scripts/build.ts');
-// The shipped manifest's navigation commands have no keys now (Tirth, 2026-11-08: no ⌃⌘ arrows; the last test
+// The shipped manifest's navigation commands have no keys now (decided 2026-11-08: no ⌃⌘ arrows; the last test
 // here). The listener still takes whatever keys a manifest's commands have, tested with the ⌃⌘ ones they had.
 const shipped = manifestFor('safari');
 const withKeys = (mac: string) => ({ suggested_key: { default: 'Alt+Shift+Down', mac } });

@@ -1,6 +1,6 @@
 // Each switch Margin makes, as one line in Margin.app's log (background/link.ts
 // note → the extension handler → the system log: npm run log:app), so a switch
-// that misbehaves in Tirth's Safari can be read from the log alone (Margin 2
+// that misbehaves in real Safari can be read from the log alone (Margin 2
 // Phase 2 step 8). Low noise: one line per switch, written once it's over:
 //
 //   switch to tab 412 (activateTab, window 3): asked +0, tabs.update +1,

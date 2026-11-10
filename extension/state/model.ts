@@ -510,7 +510,7 @@ function placeBeside(state: State, moving: any, nextTo: number | string, side: '
 // Not `keepTabsReadyMinutes`, `keepLeftTabReadyMinutes` or `warmUpTabs`
 // (keep-ready and the warm-up, gone in Margin 2 Phase 2 step 8): unread here,
 // but kept as saved, so a build from before (main, a branch being checked)
-// still finds the 0 Tirth set there, and doesn't turn the old keep-ready back
+// still finds the 0 set there, and doesn't turn the old keep-ready back
 // on with its default of 30.
 const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth', 'paletteShortcut'];
 const withoutKeys = (obj: Record<string, unknown> | null | undefined, keys: string[]) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
@@ -615,7 +615,7 @@ function seenTab(tab: any) {
 
 // A page Margin sent a tab to (a search or an address from the palette: goingTo), drawn as that page at once: the
 // browser's tab says the page it's leaving (Margin's new-tab page), or none, until the new one commits, so its row
-// stayed "+ New Tab" until then (Tirth, 2026-11-08). For GOING_MS at most (a navigation that never commits: the tab
+// stayed "+ New Tab" until then (seen 2026-11-08). For GOING_MS at most (a navigation that never commits: the tab
 // is what the browser says again).
 const GOING_MS = 15000;
 const BLANK = /^about:blank$/i;

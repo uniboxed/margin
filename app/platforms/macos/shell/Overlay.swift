@@ -96,7 +96,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         var crashWindow: TimeInterval = 300
         var edgeWidth: CGFloat = EdgeGuard.width // the edge guard's (PassThrough.swift EdgeGuard); 0: none
         // Joining only its window's Space instead of every Space, so it's already drawn when that
-        // Space comes back (Tirth, 2026-11-05: the layout at once on every window switch). On by
+        // Space comes back (requested 2026-11-05: the layout at once on every window switch). On by
         // default in the app (`defaults write com.unibox.margin MarginOverlayOwnSpace -bool NO` turns it
         // off); the shell falls back to every Space, until no link and no overlay is left, if macOS
         // doesn't place it with its window (Shell.checkOwnSpace, judgeOwnSpace).
@@ -402,7 +402,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     }
 
     /// Placed ahead of a visit: over its window `number`, which is in another Space (not on screen), so that when
-    /// that Space slides in the layout is already there and drawn (Tirth, 2026-11-07: "i should never see safari's
+    /// that Space slides in the layout is already there and drawn (asked 2026-11-07: "i should never see safari's
     /// ui at all"). Ordered in unseen (alpha 0: ordering in puts a window in the active Space), then its windows
     /// moved into its window's Space by `move` (the Space bridge), then seen again there. False, and put away, if
     /// it can't be shown or moved. `aheadPending`: shown this way and not yet on screen (the shell's first on-screen
@@ -507,7 +507,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     /// Handed to another window by a profile switch (Shell.handOverOverlay): its key changes, and its page, if drawn,
     /// takes that window's hello in place (host-app.ts `rekey`); one still loading asks for it as it starts.
     /// (Its hello is asked for after the key changes: one built before it, as an argument, was its old window's, and the
-    /// page went on drawing that window: Tirth, 2026-11-07, the sidebar showing another space after a switch.)
+    /// page went on drawing that window: seen 2026-11-07, the sidebar showing another space after a switch.)
     func rekey(_ to: WindowKey) {
         Diagnostics.note("overlay for \(key) handed to \(to)")
         key = to
@@ -610,7 +610,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     /// `focusLauncher`, its window is new and in front (⌘N, New Window): the new-tab launcher takes
     /// the focus (palette.ts focuses it only then, never as the page first draws).
     // `palette`: a window made from another (⌘N, the palette's New window), in front: the palette opens over
-    // its new tab, as ⌘T's does (Tirth, 2026-11-09). `focusLauncher`: another new window in front (Safari's own
+    // its new tab, as ⌘T's does (2026-11-09). `focusLauncher`: another new window in front (Safari's own
     // New Window): its new-tab launcher's field takes the focus. Neither while a field of its page has it.
     func appeared(front: Bool, palette: Bool, focusLauncher: Bool) {
         if pageWantsKeyboard, !hasKeyboard {
@@ -655,7 +655,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
 
     // A press in Margin's UI ended. A click in a non-activating panel moves the keyboard to Margin.app without making
     // it the active app, and the panel isn't key unless a field of Margin's has the focus: a key pressed after the
-    // click reached Margin.app with nowhere to go (⌘R beeped instead of reloading: Tirth, 2026-11-08). So the keyboard
+    // click reached Margin.app with nowhere to go (⌘R beeped instead of reloading: seen 2026-11-08). So the keyboard
     // goes back to the browser as the press ends, as handBack gives it, unless a field of Margin's took it (its page
     // says `focus` as it's pressed): looked at `pressSettle` later, once the page has had the chance to say so.
     // (A key that still reaches Margin.app goes on to the browser: Shell's key monitor.)

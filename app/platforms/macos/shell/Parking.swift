@@ -1,4 +1,4 @@
-// The parked windows (docs/HANDOFF.md §2.1, §2.5, §2.6, §6.4, and Tirth's
+// The parked windows (docs/HANDOFF.md §2.1, §2.5, §2.6, §6.4, and the
 // answers in §13): which of Safari's windows Margin keeps out of sight in a
 // private Space of their own, keyed by the window server's number.
 //

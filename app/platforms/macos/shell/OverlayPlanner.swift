@@ -1,6 +1,6 @@
 // The planner: step 2 of the window module (WindowMap.swift has the plan). What each overlay should do on a read,
 // decided from facts only (`OverlayFacts`), never from the screen: a pure function, so every case is a test, and a
-// trace of Tirth's can be replayed through it.
+// real session's trace can be replayed through it.
 //
 // This first version decides exactly what Shell.track's overlay loop decided before (2026-11-07): the same rules in
 // the same order, with the same words for the log. The shell gathers the facts, asks, and carries the decision out
@@ -85,7 +85,7 @@ enum OverlayPlanner {
         if !server.onScreen {
             if kept {
                 // Its Spaces known and not its window's (one Space): moved there now, not suspected a second later
-                // (Tirth's trace 2026-11-07 11:33:03: the sidebar sat on the Desktop for a second).
+                // (a real session's trace 2026-11-07 11:33:03: the sidebar sat on the Desktop for a second).
                 if f.canMove, let ws = f.windowSpaces, ws.count == 1, let os = f.overlaySpaces, os != ws { return .join(ws[0]) }
                 if f.aheadPending, f.overlayOnScreen { return .misplaced }
                 // On screen while its window isn't: a guess at the wrong Space, only when the Spaces can't say (with

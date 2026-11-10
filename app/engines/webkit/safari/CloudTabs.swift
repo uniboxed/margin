@@ -1,4 +1,4 @@
-// iCloud Tabs (Tirth, 2026-11-05): the tabs open in Safari on the person's
+// iCloud Tabs (2026-11-05): the tabs open in Safari on the person's
 // other Apple devices, read from Safari's own file with Full Disk Access
 // (the permission Safari's profile names already use: SafariProfiles.swift),
 // read only, kept in step while Margin.app runs, and drawn by Margin's UI in
@@ -6,7 +6,7 @@
 // (ShellCloudTabs.swift sends it to the overlays; extension/shared/cloud-tabs.ts
 // and ui/view-model.ts shape it for themes). DECISIONS.md "Margin 2: iCloud Tabs".
 //
-// Where Safari keeps them (Safari 27.2, read on Tirth's Mac: the schema,
+// Where Safari keeps them (Safari 27.2, read on a real Mac: the schema,
 // counts and formats only, never a title, an address or a device's name):
 //
 //   ~/Library/Containers/com.apple.Safari/Data/Library/Safari/CloudTabs.db
@@ -27,7 +27,7 @@
 //                        `server_change_token`: nothing says which device is
 //                        this Mac
 //
-// - **This Mac** has its own rows (with no tabs, on Tirth's Mac: two of them,
+// - **This Mac** has its own rows (with no tabs, on a real Mac: two of them,
 //   both named as the Mac is, both of its model): a device is taken to be
 //   this Mac when it's a Mac named as this Mac is named (System Settings ›
 //   General › Sharing's name, SCDynamicStoreCopyComputerName). A device with

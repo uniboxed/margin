@@ -37,7 +37,7 @@ Everything below "The e2e suite" is **manual, in Safari on macOS**. The automate
 
 How to run it:
 
-- `npm run test:e2e`: the build, then every file, two at a time. About 2 minutes on Tirth's Mac (132 s in three runs in a row on 2026-11-06, the build included).
+- `npm run test:e2e`: the build, then every file, two at a time. About 2 minutes on the development Mac (132 s in three runs in a row on 2026-11-06, the build included).
 - One file: `node scripts/build.ts && node --test tests/e2e/sleep.test.ts`.
 - One test: add `--test-name-pattern="pulling down"`.
 - Headless only. Nothing shows on screen. Never run `playwright install`: Chromium and WebKit are installed.
@@ -109,7 +109,7 @@ Additional Safari-only checks:
 | B | Sidebar CSS loads inside the shadow root on a strict-CSP site (github.com) | The sidebar is styled, not raw HTML | A constructable stylesheet with `<style>` fallback is already in place. If both fail, record it |
 | C | Restart rebuild | Pin a site into a non-default space, quit Safari with windows restored, relaunch | The pinned site's tab appears under that space, and other tabs under the first space |
 
-### Results on Tirth's Mac (2026-10-24)
+### Results on the development Mac (2026-10-24)
 
 | # | Result |
 |---|--------|
@@ -247,7 +247,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 ## Resizing the sidebar
 
-- [ ] Hover the sidebar's right edge: the cursor becomes ↔ and a light rounded line appears just inside the sidebar edge, running the height of the page, almost touching it (like Arc). Drag: the sidebar resizes live between about the widths in Tirth's two Arc screenshots (160–500), and stops at both ends.
+- [ ] Hover the sidebar's right edge: the cursor becomes ↔ and a light rounded line appears just inside the sidebar edge, running the height of the page, almost touching it (like Arc). Drag: the sidebar resizes live between about the widths in the two Arc reference screenshots (160–500), and stops at both ends.
 - [ ] With "Keep open" on, the page and the frame move with the edge while dragging. Release: other tabs use the new width, and newly opened pages appear at the new width from their first frame (no jump from the old width).
 - [ ] In hover mode the sidebar stays open while you drag, and the page doesn't move.
 - [ ] Double-click the edge: back to the default width.
@@ -1065,17 +1065,17 @@ Linked:
 
 ## Margin 2 Phase 2 step 4: spaces across Safari profiles (2026-11-05)
 
-Needs two Safari profiles (Safari › Settings › Profiles; here "Default" and "Work"), Margin turned on in both, and step 3's checks done. Each switch to the other profile's space creates a full-screen window and closes one, with macOS's slide: tell Tirth before starting, and do one switch first and check it before doing more. Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'` (lines `profile switch: …` and `link down (…)`).
+Needs two Safari profiles (Safari › Settings › Profiles; here "Default" and "Work"), Margin turned on in both, and step 3's checks done. Each switch to the other profile's space creates a full-screen window and closes one, with macOS's slide: ask before starting, and do one switch first and check it before doing more. Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'` (lines `profile switch: …` and `link down (…)`).
 
 **First, the crux: does a profile's copy stay running with no window?** Safari 27.2's own code (read off screen, DECISIONS.md) says: at launch only the default profile's extensions load; a named profile's load when its first window opens, and stay loaded until Safari quits. Margin's port pings keep the background page alive.
 
-- [ ] Open a Work window and a Default window, both full screen; both copies link (`linked: safari:s-…` twice in the log). Close the Work window (⌘⇧W). Wait 2 minutes. **Expected:** no `link down (safari:s-<Work>)`; Develop › Web Extension Background Content still lists Margin for Work. If it does go down: Margin's switch to Work works only while a Work window exists; every other time it asks the person to open one (that's the fallback built in), and a way to keep the copy alive is needed (tell Tirth: a choice).
+- [ ] Open a Work window and a Default window, both full screen; both copies link (`linked: safari:s-…` twice in the log). Close the Work window (⌘⇧W). Wait 2 minutes. **Expected:** no `link down (safari:s-<Work>)`; Develop › Web Extension Background Content still lists Margin for Work. If it does go down: Margin's switch to Work works only while a Work window exists; every other time it asks the person to open one (that's the fallback built in), and a way to keep the copy alive is needed (a choice to be made).
 - [ ] Quit Safari with only a Default window open, then open Safari again. **Expected (from Safari's code):** only the Default copy links (`linked: safari:s-default`), not Work's, until a Work window opens. Then the first switch to a Work space after each Safari launch shows "Work isn't open in Safari. Open one of its windows (File › New Window › New Work Window)…"; opening it (menu or Dock) shows that space there and closes the Default window. If Work's copy does link at launch without a window: the notice never shows; note it.
 
 **The sidebar across profiles** (with both copies linked):
 
 - [ ] Both profiles' spaces are in one row of chips, Default's first; Work's have a small badge with "P" (Profile 2, until named) and a divider before them. Hovering a chip's title says "Office · Profile 2". With one profile (Margin on in only one, or a Safari with no profiles): the chips look as before, no badges.
-- [ ] Right-click a Work space: Switch to Space, Move Left/Right, Edit Profile "Profile 2"…, New Space in Profile 2. Edit Profile: name it "Work" with an emoji and a color: every window's badges follow, and `~/Library/Application Support/Margin/data/safari/browser.json` has the name (read it only if Tirth agrees).
+- [ ] Right-click a Work space: Switch to Space, Move Left/Right, Edit Profile "Profile 2"…, New Space in Profile 2. Edit Profile: name it "Work" with an emoji and a color: every window's badges follow, and `~/Library/Application Support/Margin/data/safari/browser.json` has the name (read it only when allowed to).
 - [ ] Move a Default space past a Work one and back: the order sticks after a Safari relaunch; a Default window alone (Margin.app quit) shows its spaces in the same relative order.
 - [ ] "+" › New Space in Work: it appears among Work's spaces at once (no switch).
 - [ ] Neubrutalism: Work's chips have a dashed edge and a corner tag; the gap between profiles shows.

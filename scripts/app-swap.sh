@@ -14,7 +14,7 @@
 #     file, Safari could read the extension half gone: its files no longer
 #     matching their signature, it turned Margin off and blocked it
 #     (WKWebExtensionErrorDomain 3, "Disabling and blocking extension",
-#     Tirth's Safari, 2026-11-04).
+#     real Safari, 2026-11-04).
 #  3. Only then the noted processes are sent a SIGTERM (Margin.app quits as
 #     when it's quit: the copies are told goodbye), waited for up to
 #     MARGIN_QUIT_WAIT seconds (5), and any left are killed. Quit after the
@@ -22,7 +22,7 @@
 #     as a copy asks for its link) starts the new build. Left running, the
 #     old process went on answering the copies with links Safari refused
 #     (SFErrorDomain 1), and the handler, seeing it, never started the new
-#     one (Tirth's runs of 2026-11-05).
+#     one (real runs of 2026-11-05).
 #  4. Only once they're gone, the old copy is deleted.
 #  5. If one was running and Safari is, and nothing has started the new build
 #     within MARGIN_START_WAIT seconds (2), it's started in the background

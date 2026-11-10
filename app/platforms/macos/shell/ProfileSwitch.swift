@@ -1,13 +1,13 @@
 // Switching to a space of another browser profile. Two ways, one machine:
 //
-// - The handoff (Handoff.swift, docs/HANDOFF.md §1 with Tirth's answers in §13):
+// - The handoff (Handoff.swift, docs/HANDOFF.md §1 with the answers in §13):
 //   the screen frozen while the target profile's window is shown and put in
 //   full screen, and the window left is parked out of sight (or closed, or kept
 //   in its own full-screen Space). It runs when the world is a HandoffWorld with
 //   the handoff on (the shell's gate) and the Space reads, and each switch picks its freeze and the old window's fate
 //   from what passed at launch, what failed this session, the setting and the
 //   displays at that moment.
-// - The close-based switch below (PLAN.md §15, Tirth 2026-11-05), the fallback:
+// - The close-based switch below (PLAN.md §15, 2026-11-05), the fallback:
 //   the target profile's copy creates its full-screen window showing the space,
 //   and only once that window is full screen and in front (its new Space the
 //   active one) is the old profile's window closed. Its tabs aren't lost: a
@@ -51,7 +51,7 @@ protocol SwitchWorld: AnyObject {
     // Accessibility: SafariAX.swift), for a profile whose copy isn't running. False: it can't.
     func openProfileWindow(_ profile: String) -> Bool
     // Margin's extension turned off in `profile`, as the browser's own settings say (Safari can turn it off as Margin
-    // updates: Tirth, 2026-11-08): its copy never starts, so the switch fails at once and says so, no window opened.
+    // updates: seen 2026-11-08): its copy never starts, so the switch fails at once and says so, no window opened.
     func marginOff(_ profile: String) -> Bool
 }
 
@@ -457,7 +457,7 @@ final class ProfileSwitch {
 // One of the switch's notices: its kind, the profile it's about (a link key,
 // "safari:s-a"), the one window whose overlay shows it (none: every overlay),
 // and, for a window kept open with a draft, that window (its Close window
-// button closes it: no drafts check then, Tirth 2026-11-06). Only the kind,
+// button closes it: no drafts check then, decided 2026-11-06). Only the kind,
 // the profile's id and the window go to overlays; the words are theirs.
 struct SwitchNotice: Equatable {
     enum Kind: String {

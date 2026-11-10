@@ -117,7 +117,7 @@ export function boxCss(box: { left: number, top: number, right: number, bottom: 
   @media screen {
     :root { --margin-box-dw: ${dw}px; --margin-box-dh: ${dh}px; }
     ${boxRules(BOX_ROOT, scaled, zoom)}
-    /* <html> itself in full screen (YouTube's video: Tirth, 2026-11-07, the video in the box's place, a strip on the
+    /* <html> itself in full screen (YouTube's video, 2026-11-07: the video in the box's place, a strip on the
        left): the whole window. The browser's own full-screen rules skip the root (:not(:root):fullscreen), so the
        box's would stay; a <body> or element in full screen is the browser's, its rules outweighing these. <body>
        stays the scroller, as Margin's world says (content/page/viewport.ts). One step heavier than BOX_ROOT. */

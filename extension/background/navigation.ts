@@ -120,7 +120,7 @@ function tellOverlay(windowId: number, press: Press, type: string, reason: strin
 /**
  * `given`: the target Margin.app's overlay worked out and highlighted at the key press (its own chain, the same rule:
  * shared/view.ts cycleTab), with its switch id: taken as this press's while that tab is still open here, so the
- * highlight never waits for this background (busy with the switch before, or waking: Tirth, 2026-11-07) and the two
+ * highlight never waits for this background (busy with the switch before, or waking, as seen 2026-11-07) and the two
  * never differ.
  */
 export function navigate(action: string, source: string, windowId: number | null | undefined, given: { target?: unknown, switchId?: unknown } = {}) {
@@ -367,7 +367,7 @@ export async function showSpace(windowId: number | null | undefined, spaceId: st
     }
   }
   // Nothing of the space open, only tabs that aren't (put to sleep, or kept as a window closed: state/model.ts
-  // keptTabs): the top one opens, as a click on its row does (handlers.ts openKept), not a new tab (Tirth, 2026-11-08).
+  // keptTabs): the top one opens, as a click on its row does (handlers.ts openKept), not a new tab (requested 2026-11-08).
   const top = V.sidebar(s, windowId).tabs.find((t) => t.kept);
   if (top) {
     const live = await api.tabs.query({ windowId }).catch(() => null);

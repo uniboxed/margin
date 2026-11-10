@@ -1,4 +1,4 @@
-// Pixel as a theme package (extension/themes/pixel/, Tirth's "Sidebar ·
+// Pixel as a theme package (extension/themes/pixel/, the "Sidebar ·
 // Pixel / 8-bit" board) in real engines: Playwright's WebKit and Chromium,
 // headless, every network request refused. It loads as a built-in theme with
 // nothing removed and its two fonts from bundled bytes; draws the board's
@@ -152,7 +152,7 @@ for (const [name, engine] of ENGINES) {
         assert.equal(await ev(() => T.rtVisible('.tab.behind .cursor .was')), true);
         assert.equal(await ev(() => T.rtComputed('.tab.behind .cursor .was', 'animation-name')), 'none', 'still');
         await page.keyboard.press('Escape');
-        // A Margin tab with no browser tab: drawn as any tab (Tirth, 2026-11-08), only marked for a theme that wants to.
+        // A Margin tab with no browser tab: drawn as any tab (2026-11-08), only marked for a theme that wants to.
         await edit("return { ...s, keptTabs: { 't-k1': { id: 't-k1', url: 'https://kept.example/', title: 'Kept for later', favIconUrl: '', spaceId: 'personal', order: 0.5, lastActive: 1, keptAt: 1, why: 'window' } } };");
         assert.equal(await count('.tab.not-open'), 1);
         assert.equal(await ev(() => T.rtComputed('.tab.not-open .title', 'opacity')), '1');

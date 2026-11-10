@@ -6,7 +6,7 @@
 // (wakes and holds, introductions flipping a never-shown tab forward and
 // back, restores behind the page, covers and paint barriers, keep-ready,
 // the warm-up's wakes, the slow-Safari plan) is gone with its settings: in
-// Tirth's Safari (2026-11-05) its flips and waits made the overlay's
+// real Safari (2026-11-05) its flips and waits made the overlay's
 // highlight go to the new tab, back, and forward again, and every switch
 // cost two extra activations and a storage write each. Each switch's
 // timeline is one line in Margin.app's log (background/switch-log.ts).
@@ -760,7 +760,7 @@ async function leftOnSleepPage(tab: BrowserTab | null | undefined) {
 // after a relaunch) isn't asked again, by this pass or the next, until it's
 // shown or its page changes: once it loads it runs this copy anyway. (Each
 // was asked twice per pass, over four passes: about 450 failing scripts in
-// Tirth's first five minutes after a relaunch, 2026-11-03.)
+// the first five minutes after a relaunch in real Safari, 2026-11-03.)
 // A few tabs at a time, the one in front of each window first, and none
 // while a switch is under way (switchUnderWay: asked for, or in focusTab):
 // all at once, the repair's scripts queued ahead of the switch's own calls
