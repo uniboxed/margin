@@ -154,7 +154,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "margin-chromium"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -162,7 +162,7 @@ dependencies = [
 
 [[package]]
 name = "margin-connector"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "libc",
  "margin-chromium",
@@ -174,7 +174,7 @@ dependencies = [
 
 [[package]]
 name = "margin-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "getrandom",
@@ -187,7 +187,7 @@ dependencies = [
 
 [[package]]
 name = "margin-windows"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "margin-core",
  "serde",
