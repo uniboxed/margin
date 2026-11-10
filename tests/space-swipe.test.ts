@@ -3,8 +3,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSpaceSwipe, settle, rubberBand } from '../extension/shared/space-swipe.ts';
 
+type Swipe = ReturnType<typeof createSpaceSwipe>;
+
 // A run of wheel events, 16ms apart from `start`.
-function feed(swipe, deltas, { start = 1000, usable = true, deltaY = 0 } = {}) {
+function feed(swipe: Swipe, deltas: number[], { start = 1000, usable = true, deltaY = 0 } = {}) {
   return deltas.map((dx, i) => swipe.wheel({ deltaX: dx, deltaY, time: start + i * 16, usable }));
 }
 const both = () => true;
@@ -13,8 +15,8 @@ test('space swipe: follows the fingers (right = positive), releases when they st
   const swipe = createSpaceSwipe();
   const out = feed(swipe, [-4, -8, -10, -10, -12]);
   assert.equal(out[0].phase, 'idle', 'axis not decided yet');
-  assert.equal(out.at(-1).phase, 'tracking');
-  assert.equal(out.at(-1).offset, 40, 'only the movement after the axis was decided… plus that event');
+  assert.equal(out.at(-1)!.phase, 'tracking');
+  assert.equal(out.at(-1)!.offset, 40, 'only the movement after the axis was decided… plus that event');
   assert.ok(swipe.swiping(1000 + 4 * 16 + 50));
   const end = swipe.end();
   assert.equal(end.phase, 'release');
@@ -54,7 +56,7 @@ test('space swipe: a pause longer than the gap starts a new gesture', () => {
   const swipe = createSpaceSwipe();
   feed(swipe, [-10, -10, -10]);
   const next = feed(swipe, [10, 10], { start: 2000 });
-  assert.equal(next.at(-1).offset, -20, 'counted from zero again');
+  assert.equal(next.at(-1)!.offset, -20, 'counted from zero again');
 });
 
 test('settle: far enough or flicked switches; short, reversed or at the end goes back', () => {
@@ -118,13 +120,13 @@ test('space swipe: where it can\'t apply is checked until the axis is decided', 
 
 test('space swipe: after a release, fingers down again (growing, turning back or vertical) start a new gesture at once', () => {
   const momentum = Array.from({ length: 6 }, (_, i) => 20 * 0.92 ** (i + 1));
-  const flick = (swipe) => feed(swipe, [8, 14, 20, 20, ...momentum]);
+  const flick = (swipe: Swipe) => feed(swipe, [8, 14, 20, 20, ...momentum]);
   const regrow = createSpaceSwipe();
   const out = flick(regrow);
   assert.ok(out.some((r) => r.phase === 'release'));
   const t = 1000 + out.length * 16;
   const again = [4, 10, 20, 30].map((dx, i) => regrow.wheel({ deltaX: dx, time: t + i * 16 }));
-  assert.equal(again.at(-1).phase, 'tracking', 'a second flick right after');
+  assert.equal(again.at(-1)!.phase, 'tracking', 'a second flick right after');
   const vertical = createSpaceSwipe();
   const out2 = flick(vertical);
   const t2 = 1000 + out2.length * 16;

@@ -3444,8 +3444,34 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
     and state/model.ts tabRecord never stores `audible`, yet ui/view-model.ts tabRow reads `t.audible`: the sidebar's
     "playing" mark is likely never set from real state, and tests/ui-view-model.test.ts checks it from the fixture
     alone. Typed openly in the fixture (`MockTab`); the extension not changed: to look at.
-  - **Still to do for #4:** the test files themselves (`tests/**/*.test.ts`, each one's own `globalThis.chrome = {…}`
-    fake: there's no shared fake browser API), tools/ and the other scripts/.
+- **The unit test files, since 2026-11-10** (#4's next step): `tests/*.test.ts`, `tests/security/` and the engines'
+  `tests/`, 74 files, 3,220 errors, now 0. `tsconfig.test-files.json` checks them with what they import, and
+  `scripts/tests-check.mts` (strict-check.mts's way, in `npm test`, `typecheck`, `test:quick`) fails only on errors in
+  its DONE folders (`tests/`, `extension/engines/`), so they can't slip back: whole folders, so a new test file is held
+  at once. The only errors left in that program are the two scripts the tests import (scripts/ci-plan.mts,
+  pack-theme.ts); once those are typed, the test files join tsconfig.tests.json and the filter goes.
+  - **The browser fakes:** `globalThis.chrome = fakeBrowser({ … })` (tests/fake-browser.ts): each part a test gives is
+    typed as MarginBrowserApi's (parameters as the real ones, compared as methods), its answers with only the fields
+    the code reads, or none where it doesn't read them; storage asked by key(s) or null (Margin never passes
+    defaults); executeScript as one call. fakeBrowser hands back the same object. It replaced the `as any` on them.
+  - **Type-only:** every file compared stripped of types and comments (esbuild) with before. Run-time differences, all
+    equivalent: the fakeBrowser wrapper; parentheses around a cast arrow; `alarms.clear` and `tabs.setZoom` dropped
+    from fakes (Margin never calls them, and the real API types don't have them); `alarms.get` answering `undefined`,
+    not `null`, as the real one does; `refuseCreate: false` declared up front in away's fake; `canFullscreen: false`
+    in cloud-tabs' palette context (read as `if (ctx.canFullscreen)`). The product's own changes are type-only
+    (optional fields its code already defaults, `sleepInPage`'s answer named `SleepAnswer`, the pages' state with
+    settings in part), the bundles the same.
+  - **Test bug, fixed:** tests/spaces-switch.test.ts kept two tabs with `M.keepTab(s, 3, 'sleep')`, but keepTab takes
+    `{ why, now }`: the records had no `why` and no `keptAt`. Now `{ why: 'sleep', now: Date.now() }`; same result.
+  - **Drift, typed openly (casts with a comment):** tests that call handlers without the `sender` they're typed with
+    (handoff-copy's setSpace and openPin); owner records with `synced`, which the owner record no longer has
+    (stored.ts's openTabs has it); `settings.sidebarWidth` and `paletteShortcut` (gone from Settings) in copies and
+    model; fake tabs without `active` or `index`. `BrowserMessageSender.tab` is a whole tab, but background/link.ts
+    gives the app's requests `{ app: true, tab: { windowId } }`: the type is wider than what Margin.app's requests
+    carry (switch-plain casts its app sender).
+  - **Still to do for #4:** tools/ and scripts/ (ci-plan.mts and pack-theme.ts first: the tests import them); the
+    background tests repeat one block of fake events and storage (`listeners`, `event`, `pick`) in seven files: a
+    shared helper would be a run-time change, left for its own step.
 
 ## Chrome and Edge link to Margin.app on the Mac (2026-11-09)
 

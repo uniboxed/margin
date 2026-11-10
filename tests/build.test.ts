@@ -11,8 +11,11 @@ import { allLayoutFiles, firstPaintFile, layoutFiles } from '../extension/shared
 import { PACKAGE_THEMES } from '../extension/themes/packages.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+// What the tests read of a built manifest (parsed JSON): a content script's entry, a command.
+type ContentScript = { js: string[], world?: 'ISOLATED' | 'MAIN' };
+type ManifestCommand = { suggested_key?: { default: string, mac: string }, description?: string };
 
-const listFiles = (dir, prefix = '') => readdirSync(dir).flatMap((name) => {
+const listFiles = (dir: string, prefix = ''): string[] => readdirSync(dir).flatMap((name) => {
   const path = join(dir, name);
   return statSync(path).isDirectory() ? listFiles(path, `${prefix}${name}/`) : [`${prefix}${name}`];
 }).sort();
@@ -39,7 +42,7 @@ test('each build loads one bundled script per context', () => {
     const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
     assert.deepEqual(manifest.content_scripts[0].js, ['content/content.bundle.js'], target);
     // background/tabs.ts injectIntoOpenTabs finds the sidebar's entry this way.
-    assert.deepEqual(manifest.content_scripts.find((c) => c.world !== 'MAIN').js, ['content/content.bundle.js'], target);
+    assert.deepEqual(manifest.content_scripts.find((c: ContentScript) => c.world !== 'MAIN').js, ['content/content.bundle.js'], target);
     // Safari's background is a page (the link to Margin.app: background/link.ts), Chrome's a worker.
     if (target === 'safari') assert.deepEqual(manifest.background, { scripts: ['background.bundle.js'] }, target); // non-persistent: Manifest V3's default (WebKit), and Safari's converter warns on the key
     else assert.deepEqual(manifest.background, { service_worker: 'background.bundle.js' }, target);
@@ -53,7 +56,7 @@ test('each build loads one bundled script per context', () => {
     for (const file of ['content/content.bundle.js', 'content/page.bundle.js', 'newtab/newtab.bundle.js', 'away/away.bundle.js']) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}`);
     // Nothing in the page's world from the manifest: a page Margin leaves
     // alone loads none of it (background/registered.ts).
-    assert.equal(manifest.content_scripts.find((c) => c.world === 'MAIN'), undefined, target);
+    assert.equal(manifest.content_scripts.find((c: ContentScript) => c.world === 'MAIN'), undefined, target);
     // The first paint (background/registered.ts): every digit file of every
     // place, at.css, and each built-in theme's file.
     for (const [file, css] of allLayoutFiles()) assert.equal(readFileSync(join(dir, file), 'utf8'), css, `${target}/${file}`);
@@ -94,12 +97,12 @@ test('each build has its own engine\'s profile and modules, and none of the othe
 // parts, the last one the key; modifiers Command/Ctrl (⌘), Alt (⌥), MacCtrl
 // (⌃), Shift; at most 4 commands with a shortcut. An invalid shortcut drops
 // just that command. The key list is the subset Margin could plausibly use.
-const WEBKIT_MODIFIERS = { Command: '⌘', Ctrl: '⌘', Alt: '⌥', MacCtrl: '⌃', Shift: '⇧' };
+const WEBKIT_MODIFIERS: Record<string, string> = { Command: '⌘', Ctrl: '⌘', Alt: '⌥', MacCtrl: '⌃', Shift: '⇧' };
 const WEBKIT_KEYS = /^([A-Z0-9]|F([1-9]|1[0-2])|Comma|Period|Home|End|PageUp|PageDown|Space|Insert|Delete|Up|Down|Left|Right)$/;
-function webkitShortcut(spec) {
+function webkitShortcut(spec: string) {
   const parts = spec.split('+');
   if (parts.length < 2 || parts.length > 3) return null;
-  const key = parts.pop();
+  const key = parts.pop()!; // two or three parts
   if (!WEBKIT_KEYS.test(key)) return null;
   const mods = parts.map((p) => WEBKIT_MODIFIERS[p]);
   if (mods.some((m) => !m) || new Set(mods).size !== mods.length) return null;
@@ -109,23 +112,23 @@ function webkitShortcut(spec) {
 
 // Chrome refuses Command+Alt / Ctrl+Alt in manifest commands (verified: the
 // whole extension then fails to load, even when the key is only under "ios").
-function chromeAccepts(spec) {
+function chromeAccepts(spec: string) {
   const parts = spec.split('+');
   if (parts.includes('Alt') && (parts.includes('Command') || parts.includes('Ctrl'))) return false;
-  return parts.length >= 2 && parts.length <= 3 && WEBKIT_KEYS.test(parts.at(-1));
+  return parts.length >= 2 && parts.length <= 3 && WEBKIT_KEYS.test(parts.at(-1)!);
 }
 
 const ACTIONS = { nextTab: 'next-tab', prevTab: 'prev-tab', nextSpace: 'next-space', prevSpace: 'prev-space' };
 
 for (const target of TARGETS) {
   test(`${target}: manifest commands load in Safari and Chrome and match the profile's shortcuts`, () => {
-    const { commands } = manifestFor(target);
+    const { commands }: { commands: Record<string, ManifestCommand> } = manifestFor(target);
     const withKeys = Object.entries(commands).filter(([, c]) => c.suggested_key);
     assert.ok(withKeys.length <= 4, 'browsers allow at most 4 commands with a shortcut');
     for (const [name, c] of withKeys) {
-      const spec = c.suggested_key.mac;
+      const spec = c.suggested_key!.mac; // withKeys: those with one
       assert.ok(webkitShortcut(spec), `${name}: Safari would drop "${spec}"`);
-      assert.ok(chromeAccepts(spec) && chromeAccepts(c.suggested_key.default), `${name}: Chrome refuses "${spec}"`);
+      assert.ok(chromeAccepts(spec) && chromeAccepts(c.suggested_key!.default), `${name}: Chrome refuses "${spec}"`);
     }
     const { navigation } = CAPABILITIES[target];
     assert.deepEqual(Object.keys(navigation).sort(), Object.keys(ACTIONS).sort());
@@ -156,7 +159,7 @@ test('the `search` permission (chrome.search) is Chrome-only; Safari has no sear
   // Both: nativeMessaging (Safari's extension handler; Chrome's and Edge's connector, docs/PROTOCOL.md).
   assert.ok(manifestFor('safari').permissions.includes('nativeMessaging'));
   assert.ok(manifestFor('chrome').permissions.includes('nativeMessaging'));
-  assert.deepEqual(manifestFor('chrome').permissions.filter((p) => p !== 'search').sort(), manifestFor('safari').permissions.slice().sort(), 'otherwise the same list');
+  assert.deepEqual(manifestFor('chrome').permissions.filter((p: string) => p !== 'search').sort(), manifestFor('safari').permissions.slice().sort(), 'otherwise the same list');
   assert.equal(CAPABILITIES.chrome.search, 'browser');
   assert.equal(CAPABILITIES.safari.search, 'learn');
 });

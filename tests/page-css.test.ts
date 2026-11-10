@@ -141,14 +141,14 @@ test('the box follows a page\'s zoom on <html>', () => {
 
 // A declaration block as a browser keeps one (enough of it): a shorthand with a var() is kept as
 // its text, its longhands reading empty (pending the var()); one without is its longhands.
-function fakeStyle(decls) {
-  const LONG = { font: ['font-style', 'font-weight', 'font-size', 'line-height', 'font-family'], padding: ['padding-top', 'padding-right', 'padding-bottom', 'padding-left'] };
-  const longs = new Map();
-  const shorts = new Map();
+function fakeStyle(decls: string[][]) {
+  const LONG: Record<string, string[]> = { font: ['font-style', 'font-weight', 'font-size', 'line-height', 'font-family'], padding: ['padding-top', 'padding-right', 'padding-bottom', 'padding-left'] };
+  const longs = new Map<string, [string, string]>(); // longhand → [value, priority]
+  const shorts = new Map<string, string>();
   const style = {
-    getPropertyValue: (n) => (shorts.has(n) ? shorts.get(n) : longs.get(n)?.[0] ?? ''),
-    getPropertyPriority: (n) => longs.get(n)?.[1] ?? '',
-    setProperty(n, v, p = '') {
+    getPropertyValue: (n: string) => (shorts.has(n) ? shorts.get(n) : longs.get(n)?.[0] ?? ''),
+    getPropertyPriority: (n: string) => longs.get(n)?.[1] ?? '',
+    setProperty(n: string, v: string, p = '') {
       if (LONG[n]) {
         if (v.includes('var(')) { shorts.set(n, v); for (const l of LONG[n]) { longs.delete(l); longs.set(l, ['', p]); } } else for (const l of LONG[n]) { longs.delete(l); longs.set(l, [v, p]); }
       } else { for (const [s, ls] of Object.entries(LONG)) if (ls.includes(n)) shorts.delete(s); longs.delete(n); longs.set(n, [v, p]); }
@@ -158,7 +158,7 @@ function fakeStyle(decls) {
     [Symbol.iterator]: () => [...longs.keys()][Symbol.iterator](),
   };
   for (const [n, v] of decls) style.setProperty(n, v);
-  return style;
+  return style as CSSStyleDeclaration; // the part of one page-css.ts uses
 }
 
 test('declarations: a block\'s text in its declarations, not split inside brackets or strings', () => {

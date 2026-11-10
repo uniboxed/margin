@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import * as shortcuts from '../extension/shared/shortcuts.ts';
 
 const { parse, matches, fromEvent, format } = shortcuts;
-const ev = (code, mods = {}) => ({ code, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...mods });
+// A key event: only what shortcuts.ts reads of one (its code and modifiers).
+type Mods = Partial<Pick<KeyboardEvent, 'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey'>>;
+const ev = (code: string, mods: Mods = {}) => ({ code, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...mods }) as KeyboardEvent;
 
 test('parse', () => {
   assert.deepEqual(parse('Alt+KeyK'), { ctrl: false, alt: true, shift: false, meta: false, code: 'KeyK' });

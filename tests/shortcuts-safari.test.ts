@@ -7,6 +7,7 @@
 // file is Safari's.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser, type FakeBrowserApi } from './fake-browser.ts';
 
 const { manifestFor } = await import('../scripts/build.ts');
 // The shipped manifest's navigation commands have no keys now (decided 2026-11-08: no ⌃⌘ arrows; the last test
@@ -17,22 +18,26 @@ const manifest = { ...shipped, commands: { ...shipped.commands,
   'next-tab': { ...shipped.commands['next-tab'], ...withKeys('MacCtrl+Command+Down') },
   'prev-tab': { ...shipped.commands['prev-tab'], ...withKeys('MacCtrl+Command+Up') },
   'next-space': { ...shipped.commands['next-space'], ...withKeys('MacCtrl+Command+Right') } } };
-globalThis.chrome = ({ runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => manifest } } as any);
+globalThis.chrome = fakeBrowser({ runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => manifest } });
 const shortcuts = await import('../extension/shared/shortcuts.ts');
 const { capabilities } = await import('../extension/shared/capabilities.ts');
 
 // A window to listen on, and a key press as WebKit dispatches it there.
-function listening({ settings = { shortcuts: {} }, answer = async () => true } = {}) {
-  let listener = null;
-  const sent = [];
-  const target = { addEventListener: (type, fn, capture) => { if (type === 'keydown' && capture) listener = fn; } };
-  const state = { settings };
+// The settings the listener reads (null: paused), and a key press: what it reads of one, and what it did with it.
+type NavSettings = { shortcuts: Record<string, string>, sidebarShortcut?: string } | null;
+type Press = { code: string, ctrlKey: boolean, altKey: boolean, shiftKey: boolean, metaKey: boolean, repeat: boolean, prevented: boolean, stopped: boolean, preventDefault?: () => void, stopImmediatePropagation?: () => void };
+function listening({ settings = { shortcuts: {} }, answer = async () => true }: { settings?: NavSettings, answer?: () => Promise<unknown> } = {}) {
+  let listener: ((e: Press) => void) | null = null;
+  const sent: { type: string, action: string }[] = [];
+  // installNavigation's listener is a function; it's given the fake press.
+  const target = { addEventListener: (type: string, fn: EventListenerOrEventListenerObject, capture?: boolean | AddEventListenerOptions) => { if (type === 'keydown' && capture) listener = fn as unknown as (e: Press) => void; } };
+  const state: { settings: NavSettings } = { settings };
   shortcuts.installNavigation({ send: (type, payload) => { sent.push({ type, ...payload }); return answer(); }, getSettings: () => state.settings, target });
-  const press = (code, mods = {}) => {
-    const e = { code, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, repeat: false, prevented: false, stopped: false, ...mods };
+  const press = (code: string, mods: Partial<Press> = {}) => {
+    const e: Press = { code, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, repeat: false, prevented: false, stopped: false, ...mods };
     e.preventDefault = () => { e.prevented = true; };
     e.stopImmediatePropagation = () => { e.stopped = true; };
-    listener(e);
+    listener!(e); // installed above
     return e;
   };
   return { sent, press, state };
@@ -85,7 +90,7 @@ test('Safari: in a page found cut off from Margin (Margin.cutOff in its world) t
     assert.equal(own.stopped, false, 'a Settings key has no command: the page\'s');
     assert.equal(sent.length, 0);
   } finally {
-    delete globalThis.Margin;
+    delete (globalThis as { Margin?: unknown }).Margin;
   }
 });
 
@@ -101,10 +106,11 @@ test('Safari: a ⌃⌘ arrow that Settings give to the sidebar is left to it, no
 
 // The world's storage, as worldAlive reads it: `answer` false never answers (a
 // world whose copy is gone).
+// The fake's storage, set and taken away by a test (as the fake it is: the real API always has one).
 function storage(answers: boolean) {
-  globalThis.chrome.storage = { local: { get: () => (answers ? Promise.resolve({}) : new Promise(() => {})) } };
+  (globalThis.chrome as FakeBrowserApi).storage = { local: { get: () => (answers ? Promise.resolve({}) : new Promise<Record<string, any>>(() => {})) } };
 }
-const after = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const after = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 test('Safari: a press with no answer in 400 ms, in a world whose storage doesn\'t answer either (its copy gone, nobody has told it yet), makes the listener step aside, and it stays aside while the world is dead', async () => {
   storage(false);
@@ -119,7 +125,7 @@ test('Safari: a press with no answer in 400 ms, in a world whose storage doesn\'
     assert.equal(press('ArrowDown', { altKey: true, metaKey: true }).prevented, false, 'asked again: still dead');
     assert.equal(sent.length, 1);
   } finally {
-    delete globalThis.chrome.storage;
+    delete (globalThis.chrome as FakeBrowserApi).storage;
   }
 });
 
@@ -135,7 +141,7 @@ test('Safari: a slow but live background (a cold start) never makes the listener
     await after(400);
     assert.equal(sent.length, 2);
   } finally {
-    delete globalThis.chrome.storage;
+    delete (globalThis.chrome as FakeBrowserApi).storage;
   }
 });
 
@@ -149,13 +155,13 @@ test('Safari: a late answer that is no answer (a send that gave up: undefined) i
     for (let i = 0; i < 3; i++) assert.equal(press('ArrowDown', { altKey: true, metaKey: true }).prevented, true);
     assert.equal(sent.length, 4);
   } finally {
-    delete globalThis.chrome.storage;
+    delete (globalThis.chrome as FakeBrowserApi).storage;
   }
 });
 
 test('Safari: taken as cut off on a slow storage, the world is asked again at the next press (which passes) and at the late answer, and taken again once it answers', async () => {
   let alive = false;
-  globalThis.chrome.storage = { local: { get: () => (alive ? Promise.resolve({}) : new Promise(() => {})) } };
+  (globalThis.chrome as FakeBrowserApi).storage = { local: { get: () => (alive ? Promise.resolve({}) : new Promise<Record<string, any>>(() => {})) } };
   try {
     let late = () => {};
     const { sent, press } = listening({ answer: () => (sent.length === 1 ? new Promise((resolve) => { late = () => resolve(true); }) : Promise.resolve(true)) });
@@ -169,7 +175,7 @@ test('Safari: taken as cut off on a slow storage, the world is asked again at th
     await after(10);
     assert.equal(sent.length, 2);
   } finally {
-    delete globalThis.chrome.storage;
+    delete (globalThis.chrome as FakeBrowserApi).storage;
   }
 });
 

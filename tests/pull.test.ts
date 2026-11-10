@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import * as pull from '../extension/shared/pull.ts';
 
 const { createPullTracker } = pull;
+type Tracker = ReturnType<typeof createPullTracker>;
 
 // Feed a series of deltaY values, 16ms apart from `t0`; returns the states.
-function feed(tracker, deltas, { t0 = 1000, atTop = true } = {}) {
+function feed(tracker: Tracker, deltas: number[], { t0 = 1000, atTop = true } = {}) {
   return deltas.map((deltaY, i) => tracker.wheel({ deltaY, time: t0 + i * 16, atTop }).state);
 }
 // A steady, deliberate pull: n events of `step` px upward, with finger jitter.
-const pullDeltas = (n, step = -12) => Array.from({ length: n }, (_, i) => step + (i % 3) - 1);
+const pullDeltas = (n: number, step = -12) => Array.from({ length: n }, (_, i) => step + (i % 3) - 1);
 
 test('a deliberate pull at the top arms, and refreshes when the fingers lift (events stop)', () => {
   const t = createPullTracker();
@@ -84,15 +85,16 @@ test('a new gesture after a pause starts fresh', () => {
 // ---- swipe back/forward (axis x) ---------------------------------------------
 
 const { createSwipeTracker } = pull;
-function feedX(tracker, deltas, { t0 = 1000, eligible = true } = {}) {
+function feedX(tracker: Tracker, deltas: number[], { t0 = 1000, eligible = true } = {}) {
   return deltas.map((deltaX, i) => tracker.wheel({ deltaX, deltaY: 0.5, time: t0 + i * 16, eligible }));
 }
 
 test('swipe: a deliberate sideways swipe arms in its direction and triggers on release', () => {
   const back = createSwipeTracker();
   const states = feedX(back, Array.from({ length: 12 }, (_, i) => -12 + (i % 3) - 1));
-  assert.equal(states.at(-1).state, 'armed');
-  assert.equal(states.at(-1).direction, -1, 'deltaX < 0: back');
+  // 12 events fed: there's a last one.
+  assert.equal(states.at(-1)!.state, 'armed');
+  assert.equal(states.at(-1)!.direction, -1, 'deltaX < 0: back');
   assert.deepEqual([back.end().state, back.end().state], ['trigger', 'idle']);
 
   const forward = createSwipeTracker();
@@ -105,7 +107,7 @@ test('swipe: a deliberate sideways swipe arms in its direction and triggers on r
 test('swipe: reversing un-swipes; a vertical scroll, a flick, notches or an ineligible start never trigger', () => {
   const t = createSwipeTracker();
   feedX(t, Array(10).fill(-12));
-  assert.equal(feedX(t, Array(12).fill(12), { t0: 1000 + 160 }).at(-1).state, 'idle', 'swiped back the other way');
+  assert.equal(feedX(t, Array(12).fill(12), { t0: 1000 + 160 }).at(-1)!.state, 'idle', 'swiped back the other way');
   assert.equal(t.end().state, 'idle');
 
   const vertical = createSwipeTracker();
@@ -133,7 +135,7 @@ test('eligibility as a function: the same results as a boolean, asked at most on
   const random = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
   let asked = 0;
   let events = 0;
-  for (const make of ['createPullTracker', 'createSwipeTracker']) {
+  for (const make of ['createPullTracker', 'createSwipeTracker'] as const) {
     for (let run = 0; run < 300; run++) {
       const plain = pull[make]();
       const lazy = pull[make]();

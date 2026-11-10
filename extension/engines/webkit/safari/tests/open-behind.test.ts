@@ -7,8 +7,9 @@
 // fake of Safari's API (Chrome's: tests/open-behind-chrome.test.ts).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from '../../../../../tests/fake-browser.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // tabs: id → { id, url, active, windowId, status }. New tabs get ids never
 // used before in this file (a tab Margin brought to the front counts as
@@ -24,10 +25,10 @@ const fake = {
   broadcasts: [] as any[], // runtime.sendMessage (Margin's own pages)
   noContentScript: new Set<number>(), // pages that can't be sent to (Margin's own)
   failUpdate: new Set<number>(), // tabs.update refused (Safari: no tab)
-  local: {},
+  local: {} as Record<string, any>, // stored JSON
 };
-const pick = (store, keys) => (keys == null ? structuredClone(store) : Object.fromEntries([].concat(keys).filter((k) => k in store).map((k) => [k, structuredClone(store[k])])));
-globalThis.chrome = ({
+const pick = (store: Record<string, any>, keys?: string | string[] | null) => (keys == null ? structuredClone(store) : Object.fromEntries(([] as string[]).concat(keys).filter((k) => k in store).map((k) => [k, structuredClone(store[k])])));
+globalThis.chrome = fakeBrowser({
   runtime: {
     getURL: (path) => `safari-web-extension://test/${path}`,
     getManifest: () => ({ version: '0' }),
@@ -57,7 +58,7 @@ globalThis.chrome = ({
       if (change.active) for (const t of fake.tabs.values()) if (t.windowId === tab.windowId) t.active = t.id === id;
       return { ...tab };
     },
-    query: async ({ active, windowId } = {} as any) => [...fake.tabs.values()].filter((t) => (active == null || t.active === active) && (windowId == null || t.windowId === windowId)).map((t) => ({ ...t })),
+    query: async ({ active, windowId } = {}) => [...fake.tabs.values()].filter((t) => (active == null || t.active === active) && (windowId == null || t.windowId === windowId)).map((t) => ({ ...t })),
     sendMessage: async (tabId, message) => {
       if (fake.noContentScript.has(tabId)) throw new Error('Could not establish connection. Receiving end does not exist.');
       fake.messages.push({ tabId, message });
@@ -73,7 +74,7 @@ globalThis.chrome = ({
     },
     session: { get: async () => ({}), set: async () => {} },
   },
-} as any);
+});
 
 const { focusTab, openBehind, userSwitched } = await import('../../../../background/tabs.ts');
 const { decided, load } = await import('../../../../background/store.ts');
@@ -84,7 +85,7 @@ appLink.linked = () => true;
 appLink.push = (windowId, msg) => { pushed.push({ windowId, msg }); return true; };
 await decided();
 
-function reset(tabs) {
+function reset(tabs: (Partial<BrowserTab> & { id: number })[]) {
   fake.tabs = new Map(tabs.map((t) => [t.id, { windowId: 1, status: 'complete', active: false, ...t }]));
   fake.created = [];
   fake.updates = [];
@@ -95,7 +96,7 @@ function reset(tabs) {
   fake.failUpdate = new Set();
   pushed.length = 0;
 }
-const told = (type) => fake.messages.filter((m) => m.message?.type === type);
+const told = (type: string) => fake.messages.filter((m) => m.message?.type === type);
 const front = (windowId = 1) => [...fake.tabs.values()].find((t) => t.active && t.windowId === windowId)?.id;
 const newTab = () => fake.created.at(-1)?.id;
 const from = { id: 1, windowId: 1 };

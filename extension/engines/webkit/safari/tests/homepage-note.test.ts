@@ -4,14 +4,43 @@
 // browser API (Safari's: the note is Safari-only).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser, type FakeBrowserApi, type FakeInjection, type FakeInjectionResult } from '../../../../../tests/fake-browser.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // tabs: id → { id, url, active, windowId, status }. `scriptDelay(tabId)`:
 // how long the page takes to run a script (null: no page, it fails at once).
 // `scriptError(tabId)`: a view but no page (WebKit answers with an error in
 // place of a result).
-const fake = {
+// The fake's tabs: Safari's, without `index` unless a test gives one (not read here otherwise).
+type FakeTab = Omit<BrowserTab, 'index'> & { index?: number };
+// A script asked for, as the fake takes it (`again`: its own second try, after a suspended page's resume).
+type Injection = FakeInjection & { again?: boolean };
+type HomeFake = {
+  tabs: Map<number, FakeTab>,
+  scriptDelay: (tabId: number, func?: Injection['func']) => number | null,
+  scripts: { tabId: number, at: number, world?: string, func: { name: string }, args?: any[], files?: string[] }[],
+  updates: { id: number, change: Record<string, unknown>, at: number }[], // tabs.update's change, or a reload
+  messages: { tabId: number, message: any }[], // Margin's own messages (any, as types/browser.d.ts has them)
+  created: { id: number, url?: string, active: boolean }[],
+  session: Record<string, any>, // stored JSON
+  local: Record<string, any>,
+  reply: unknown,
+  hintReply: { fromNothing: boolean } | undefined,
+  prepare: (args?: any[]) => unknown,
+  contentScripts: unknown,
+  painted: Set<number>,
+  unseen: Set<number>,
+  seen: Set<number>,
+  oldDocument: Set<number>,
+  barrierMs: (tabId: number) => number,
+  suspended: Map<number, { shown: () => void, wait: () => Promise<unknown> }>,
+  activated?: ((info: { tabId: number, windowId: number }) => void) | null,
+  scriptError?: ((tabId: number) => unknown) | null,
+  cutOff?: ((tabId: number, args?: any[]) => unknown) | null,
+  sessionMs?: number,
+};
+const fake: HomeFake = {
   tabs: new Map(),
   scriptDelay: () => 0,
   scripts: [],
@@ -42,7 +71,7 @@ const fake = {
 };
 // readyInPage, as a page answers it: 'loaded' once its status says complete,
 // 'painted' once it has painted, 'timeout' at its limit.
-const readiness = async (tabId, [ms]) => {
+const readiness = async (tabId: number, [ms]: number[]) => {
   if (fake.oldDocument.has(tabId)) return 'loaded';
   const until = Date.now() + ms;
   for (;;) {
@@ -54,7 +83,7 @@ const readiness = async (tabId, [ms]) => {
     await sleep(5);
   }
 };
-globalThis.chrome = {
+globalThis.chrome = fakeBrowser({
   runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ version: '0', content_scripts: fake.contentScripts }) },
   permissions: { contains: async () => true },
   tabs: {
@@ -68,7 +97,7 @@ globalThis.chrome = {
     update: async (id, change) => {
       fake.updates.push({ id, change, at: Date.now() });
       if (change.active) fake.suspended.get(id)?.shown();
-      const tab = fake.tabs.get(id);
+      const tab = fake.tabs.get(id)!; // asked for tabs it has
       const was = tab.active;
       for (const t of fake.tabs.values()) if (t.windowId === tab.windowId) t.active = t.id === id;
       if (change.active && !was) fake.activated?.({ tabId: id, windowId: tab.windowId });
@@ -81,20 +110,20 @@ globalThis.chrome = {
       fake.created.push({ id, url, active });
       fake.tabs.set(id, { id, windowId, url, status: 'loading', active: false });
       if (active) for (const t of fake.tabs.values()) if (t.windowId === windowId) t.active = t.id === id;
-      return { ...fake.tabs.get(id) };
+      return { ...fake.tabs.get(id)! };
     },
     sendMessage: async (tabId, message) => { fake.messages.push({ tabId, message }); return message?.type === 'newtab-hint' ? fake.hintReply : fake.reply; },
     reload: async (id) => { fake.updates.push({ id, change: { reload: true }, at: Date.now() }); },
   },
   scripting: {
-    executeScript: ({ target, world, func, args, files, again = false }) => {
+    executeScript: ({ target, world, func, args, files, again = false }: Injection) => {
       if (!again) fake.scripts.push({ tabId: target.tabId, at: Date.now(), world, func: func ?? { name: 'files' }, args, files });
       const suspended = fake.suspended.get(target.tabId);
-      if (suspended) return suspended.wait().then(() => chrome.scripting.executeScript({ target, world, func, args, files, again: true }));
+      if (suspended) return suspended.wait().then(() => (chrome.scripting.executeScript as (injection: Injection) => Promise<FakeInjectionResult[]>)({ target, world, func, args, files, again: true }));
       if (fake.scriptError?.(target.tabId)) return sleep(1).then(() => [{ result: null, error: 'Failed to execute script.' }]);
       const delay = fake.scriptDelay(target.tabId, func);
       if (delay == null) return Promise.reject(new Error('Could not execute script on this tab'));
-      if (func?.name === 'readyInPage') return sleep(delay).then(() => readiness(target.tabId, args)).then((result) => [{ result }]);
+      if (func?.name === 'readyInPage') return sleep(delay).then(() => readiness(target.tabId, args!)).then((result) => [{ result }]); // asked with its limit
       if (func?.name === 'paintBarrierInPage') return sleep(delay + fake.barrierMs(target.tabId)).then(() => [{ result: 'drawn' }]);
       const result = func?.name === 'prepareSidebarInPage' ? fake.prepare(args) : func?.name === 'cutOffInPage' ? (fake.cutOff?.(target.tabId, args) ?? { cutOff: false }) : func?.name === 'pageThere' && fake.unseen.has(target.tabId) ? 'unseen' : func?.name === 'pageThere' && fake.seen.has(target.tabId) ? 'seen' : true;
       return sleep(delay).then(() => [{ result }]);
@@ -102,31 +131,31 @@ globalThis.chrome = {
   },
   storage: {
     local: {
-      get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((k) => k in fake.local).map((k) => [k, fake.local[k]])),
+      get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys as string]).filter((k) => k in fake.local).map((k) => [k, fake.local[k]])),
       set: async (items) => { Object.assign(fake.local, items); },
     },
     // `fake.sessionMs`: how long a read takes (a background Safari just started).
     session: {
       get: async (keys) => {
         if (fake.sessionMs) await sleep(fake.sessionMs);
-        return Object.fromEntries([].concat(keys).filter((k) => k in fake.session).map((k) => [k, structuredClone(fake.session[k])]));
+        return Object.fromEntries(([] as string[]).concat(keys!).filter((k) => k in fake.session).map((k) => [k, structuredClone(fake.session[k])]));
       },
       set: async (items) => { Object.assign(fake.session, structuredClone(items)); },
     },
   },
-};
+});
 
 const { markMarginOpening, resolveTab } = await import('../../../../background/tabs.ts');
 const hint = await import('../newtab-hint.ts');
 // Margin.app's overlay, linked: the notices pushed to it (background/notices.ts).
 const notices = await import('../../../../background/notices.ts');
-const pushed = [];
+const pushed: { windowId: number | null, msg: any }[] = []; // the notices as pushed (Margin's own messages)
 let appLinked = true;
 notices.useLinkForTests({ linked: () => appLinked, push: (windowId, msg) => { if (!appLinked) return false; pushed.push({ windowId, msg }); return true; } });
 const noted = () => pushed.filter((p) => p.msg.kind === 'new-tab-setting').map((p) => p.msg.tabId);
 const { mutate } = await import('../../../../background/store.ts');
 
-function reset(tabs) {
+function reset(tabs: (Partial<FakeTab> & { id: number })[]) {
   fake.prepare = (args) => ({ ready: true, token: args?.[0]?.token });
   fake.painted = new Set();
   fake.unseen = new Set();
@@ -149,11 +178,11 @@ function reset(tabs) {
 
 // ---- ⌘T opening Safari's homepage --------------------------------------------
 
-async function homepageTab(id, url, extra = {}) {
+async function homepageTab(id: number, url: string, extra: Partial<BrowserTab> = {}) {
   fake.tabs.set(id, { id, url, active: true, windowId: 1, status: 'loading' });
-  hint.tabCreated({ id, url: '', active: true, windowId: 1, ...extra });
+  hint.tabCreated({ id, url: '', active: true, windowId: 1, ...extra } as BrowserTab); // its index when the test gives one
   await hint.tabAddress(id, url);
-  fake.tabs.get(id).status = 'complete';
+  fake.tabs.get(id)!.status = 'complete';
   hint.tabLoaded(id);
   await sleep(5);
 }
@@ -264,7 +293,7 @@ test('homepage note: not for tabs Margin opened itself', async () => {
 // A tab an earlier build left on Margin's sleep page (its address carries its
 // page's): Margin knows it by its page (state/model.ts seenTab) until the
 // open-tab repair handles it (tests/cut-off.test.ts).
-const oldSleepAt = (base, url) => `${base}sleep/sleep.html?${new URLSearchParams({ u: url, t: '', k: 'k' })}`;
+const oldSleepAt = (base: string, url: string) => `${base}sleep/sleep.html?${new URLSearchParams({ u: url, t: '', k: 'k' })}`;
 
 test('asleep: a page that names a tab on an earlier build\'s sleep page by its address (before this copy\'s ids are its own) finds it there', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 64, url: oldSleepAt('safari-web-extension://test/', 'https://named.test/a') }]);
