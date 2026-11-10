@@ -94,17 +94,17 @@ test('Settings open from the launcher', async (t) => {
   await page.close();
 });
 
-// Found by this suite (2026-11-06): Margin's start page opened on purpose (newtab.html#launcher or
-// #settings: the archive button, Settings from elsewhere, openLauncher) isn't a new-tab page to the
-// overlay (shared/view.ts NEW_TAB_PAGE ends at an optional query, so a #hash doesn't match): no
-// launcher is drawn over it, the sidebar lists it as a "New Tab" row, and the page shows its own
-// "Margin.app isn't running" notice (the [hidden] bug above) while the app is linked.
+// Found by this suite (2026-11-06), fixed 2026-11-10 (GitHub issue #19): Margin's start page opened on
+// purpose (newtab.html#launcher or #settings: the archive button, Settings from elsewhere, openLauncher)
+// wasn't a new-tab page to the overlay (shared/view.ts NEW_TAB_PAGE ends at an optional query, so a #hash
+// didn't match), so no launcher was drawn over it. The overlay now draws over it by isLauncherPage, while
+// the background's hand-off still goes by isNewTabPage: the page isn't a new tab to close.
 test('Margin\'s start page opened on purpose (#launcher) is drawn as the launcher and stays open', async (t) => {
   const { page, tab } = await newTabPage('#launcher');
   try {
     await m.shoot(t, 'start-page', { page });
-    // Looked for once the overlay has the page in front, not waited on: waited on, this todo's "waited 5000 ms for
-    // the launcher", in every run, read as a timing flake (GitHub issue #13).
+    // Looked for once the overlay has the page in front, not waited on: when this was a known failure, a 5 s wait
+    // for the launcher read as a timing flake in every run (GitHub issues #13, #19).
     await m.until(async () => startPageInFront(await sidebar(ui), tab.id), { what: 'the start page in front in the overlay' });
     assert.ok((await sidebar(ui)).launcher, 'the launcher drawn over the start page');
     await new Promise((r) => setTimeout(r, 500));

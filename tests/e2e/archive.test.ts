@@ -79,7 +79,7 @@ test('the archive button opens Margin\'s start page with the archived tabs; one 
   const page = await m.until(async () => { const f = await m.front(); return f?.url.startsWith(m.newTabUrl()) && f; }, { what: 'Margin\'s start page in front' });
   await m.shoot(t, 'start-page');
   try {
-    // Looked for once the overlay has the page in front, not waited on (as in newtab.test.ts's todo).
+    // Looked for once the overlay has the page in front, not waited on (as in newtab.test.ts).
     await m.until(async () => startPageInFront(await sidebar(ui), page.id), { what: 'the start page in front in the overlay' });
     assert.ok((await sidebar(ui)).launcher, 'the launcher drawn over the start page');
     const rows = await m.until(async () => { const r = await ui.$$eval('.archive-row .title', (els) => els.map((e) => e.textContent)); return r.length >= 3 && r; }, { what: 'the archive list' });
@@ -109,7 +109,9 @@ test('the launcher over a new tab lists the archived tabs, newest first, and one
   await m.shoot(t, 'archive-list', { page });
   // The oldest listed, restored: it takes the new-tab page's place. (Not the Work dashboard: the next test restores it
   // from the palette, into its own space.)
-  const oldest = stored[order.filter((at) => stored[at].id !== 'ar-dash').at(-1)];
+  const last = order.filter((at) => stored[at].id !== 'ar-dash').at(-1);
+  assert.ok(last != null, 'an archived tab to restore');
+  const oldest = stored[last];
   await ui.locator('.archive-row', { hasText: oldest.title }).last().click();
   await m.until(async () => (await m.front())?.url === oldest.url, { what: `${oldest.title} back` });
   assert.ok(!(await m.tabs()).some((x) => x.id === nt.id && x.url.startsWith(m.newTabUrl())), 'the new-tab page made way');
