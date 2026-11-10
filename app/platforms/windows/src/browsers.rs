@@ -1,4 +1,4 @@
-//! Finding and following Chrome's and Edge's windows (app/macos/shell/WindowServer.swift's counterpart). Windows only.
+//! Finding and following Chrome's and Edge's windows (app/platforms/macos/shell/WindowServer.swift's counterpart). Windows only.
 //!
 //! The windows: `EnumWindows` gives every top-level window front to back (the z-order), so a window's place
 //! in it is its `order`. A browser window is a top-level window of `chrome.exe` or `msedge.exe` with Chrome's

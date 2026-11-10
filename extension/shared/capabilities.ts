@@ -1,13 +1,13 @@
-// What differs between browsers, as what each one can do: its engine's profile (extension/engines/webkit/safari/
-// profile.ts, extension/engines/chromium/profile.ts) answers, and shared code asks it, never which
-// browser this is. A build resolves `#engine/profile` to its own engine's profile only (scripts/build.ts), so the
-// other's isn't in it; unbuilt (unit tests), extension/shared/any-engine-profile.ts picks one from the
+// What differs between browsers, as what each one can do: its engine's capabilities (extension/engines/webkit/safari/
+// capabilities.ts, extension/engines/chromium/capabilities.ts) answer, and shared code asks them, never which
+// browser this is. A build resolves `#engine/capabilities` to its own engine's only (scripts/build.ts), so the
+// other's aren't in it; unbuilt (unit tests), extension/shared/any-engine-capabilities.ts picks one from the
 // extension's own URL scheme.
-import { profile } from '#engine/profile';
+import { capabilities } from '#engine/capabilities';
 import type { NavigationId } from './navigation-defaults.ts';
 
 type Navigation = { readonly nextTab: string, readonly prevTab: string, readonly nextSpace: string, readonly prevSpace: string };
-export type Profile = {
+export type Capabilities = {
   // The build's name, as saved data and the link know it (one Chromium build runs in Chrome, Edge and the rest).
   name: 'safari' | 'chrome',
   fetchFavicons: boolean,
@@ -32,13 +32,13 @@ export type Profile = {
   browser: () => 'safari' | 'chrome' | 'edge',
 };
 
-export type Platform = Profile;
-export const platform: Platform = profile;
+// This build's (its engine's object itself, one binding in the bundle).
+export { capabilities };
 // Whether this copy links to Margin's app: Safari's always (`nativeApp`: its extension handler), Chrome's and Edge's
 // on the Mac and Windows (the app's connector, started by native messaging).
-export const linksApp = () => !!platform?.linksApp();
+export const linksApp = () => !!capabilities?.linksApp();
 // The browser this copy runs in, as the link names it.
-export const browserName = (): 'safari' | 'chrome' | 'edge' => platform.browser();
+export const browserName = (): 'safari' | 'chrome' | 'edge' => capabilities.browser();
 
 // Also on the global, for the console and the E2E tests.
-(globalThis.Margin ??= {}).platform = platform;
+(globalThis.Margin ??= {}).capabilities = capabilities;

@@ -1,6 +1,6 @@
 //! The Windows driver of margin-core's shell (`margin_core::shell::Shell`): every event of the Windows layer becomes
 //! one of the shell's `Input`s, and every `Command` it gives back is carried out here. The counterpart of the Mac's
-//! glue in app/macos/shell/Shell.swift that touches the OS (its timers, the window server, the overlays' panels and web
+//! glue in app/platforms/macos/shell/Shell.swift that touches the OS (its timers, the window server, the overlays' panels and web
 //! views, NSOpenPanel, the pasteboard).
 //!
 //! - The link's listener (tcp.rs): the copies' WebSockets on 127.0.0.1, each connection's bytes and end, the

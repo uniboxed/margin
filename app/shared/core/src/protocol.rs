@@ -1,4 +1,4 @@
-//! What Margin's extension and the app say on their link, version 2 (app/macos/shell/LinkMessage.swift; docs/PROTOCOL.md
+//! What Margin's extension and the app say on their link, version 2 (app/platforms/macos/shell/LinkMessage.swift; docs/PROTOCOL.md
 //! describes every message and the order they come in): one JSON object per message, `k` naming its kind.
 //! [`LinkMessage`] is what an extension copy sends, [`AppMessage`] what the app does. The state comes as the
 //! extension's stored values, left as they are ([`crate::mirror::StateMirror`] keeps them).

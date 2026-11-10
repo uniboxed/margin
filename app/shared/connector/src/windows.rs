@@ -1,6 +1,6 @@
 //! The connector on Windows: the app's named pipe (this user only; each end checks the other: the app that its client
 //! is `margin-connector.exe` beside `margin.exe`, the connector here that the pipe's server is that `margin.exe`:
-//! app/windows/src/pipe.rs), the browser that started it (Chrome and Edge start hosts through cmd.exe: the first
+//! app/platforms/windows/src/pipe.rs), the browser that started it (Chrome and Edge start hosts through cmd.exe: the first
 //! ancestor that isn't), the app started detached, inheriting none of the browser's handles (so the browser's
 //! port never hangs on the app), and host files as one file named in each browser's registry key.
 //!

@@ -1,7 +1,7 @@
 // Margin's app: its set-up window (ViewController.swift, from the converter's
 // storyboard) while it's open, and otherwise running on with no window and no
 // Dock icon (an accessory app), linked to Margin's extension copies and
-// drawing Margin around the browser's windows (app/macos/shell/Shell.swift), which
+// drawing Margin around the browser's windows (app/platforms/macos/shell/Shell.swift), which
 // does nothing until a linked browser is in front. Opening the app again
 // shows the set-up window again. Quitting, the copies are told first; a
 // SIGTERM quits the same way. scripts/safari.sh puts a new build in place of

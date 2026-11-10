@@ -12,7 +12,7 @@
 // (a copy starting after an update finds the pages cut off from the copy
 // before it before it has linked), it's kept for PENDING_MS and said once
 // linked, if its tab is still in front with the same page (the app gives it
-// to the window's overlay when that's drawn: app/macos/shell/Shell.swift
+// to the window's overlay when that's drawn: app/platforms/macos/shell/Shell.swift
 // HeldPushes). Not linked by then, nothing is said: there's nowhere to say it.
 import { isNotice } from '../shared/notices.ts';
 import { appLink } from './app-link.ts';

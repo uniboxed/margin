@@ -1,4 +1,4 @@
-//! Spaces across profiles and the switch, the shell's side (app/macos/shell/ShellProfiles.swift): each overlay's `across`,
+//! Spaces across profiles and the switch, the shell's side (app/platforms/macos/shell/ShellProfiles.swift): each overlay's `across`,
 //! the space keys and a click on another profile's space, what the overlay asks of the profiles (`perform`), the
 //! settings a switch carries and a browser's profiles share, and the shell as the switch's world
 //! ([`crate::switch::SwitchWorld`]: requests over the links, windows from the copies' lists, "in front" from the last

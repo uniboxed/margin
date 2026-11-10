@@ -1,4 +1,4 @@
-//! Margin's hot keys (app/macos/shell/Shortcuts.swift's Carbon part): `RegisterHotKey` for each combination
+//! Margin's hot keys (app/platforms/macos/shell/Shortcuts.swift's Carbon part): `RegisterHotKey` for each combination
 //! (keys.rs), on Margin's message window, registered all together while the shell's "active" rule holds (a
 //! linked browser in front with its overlay shown) and unregistered all together otherwise, so the keys are
 //! the browser's the rest of the time. WM_HOTKEY becomes a `HotKeyHit` for the shell. Windows only.

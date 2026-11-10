@@ -1,6 +1,6 @@
 //! Which window server window is which of the extension's windows (PLAN.md §5), as lasting bindings learned from
 //! evidence, never guessed (`WindowBinder`), and whether an overlay is stacked just above its browser window
-//! (`stacked_above`). The port of app/macos/shell/WindowMatcher.swift, rule for rule, in the same order and with the
+//! (`stacked_above`). The port of app/platforms/macos/shell/WindowMatcher.swift, rule for rule, in the same order and with the
 //! same constants: the same inputs give the same decisions and the same log lines.
 //!
 //! The extension knows its windows by id (per copy, so per profile), with their bounds, state, which one its copy
@@ -2355,7 +2355,7 @@ impl WindowBinder {
     }
 }
 
-// The Swift's tests (app/macos/shell/tests/window-tests.swift `windowBinding`, `parkedWindowBinding`, `axBinding`,
+// The Swift's tests (app/platforms/macos/shell/tests/window-tests.swift `windowBinding`, `parkedWindowBinding`, `axBinding`,
 // `stackingExact`), read after read against the same made-up browser, with the same seeds for the randomized runs.
 #[cfg(test)]
 mod tests {

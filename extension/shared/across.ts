@@ -1,5 +1,5 @@
 // Spaces across a browser's profiles, as Margin.app sends them to each
-// overlay (`across`: app/macos/shell/BrowserProfiles.swift `across(for:)`,
+// overlay (`across`: app/platforms/macos/shell/BrowserProfiles.swift `across(for:)`,
 // ShellProfiles.swift): the profile this window is in, every profile Margin
 // knows (name, emoji, color: the person names them once, or, with Full Disk
 // Access, the name is Safari's own, `nameFrom` 'safari', with Safari's symbol

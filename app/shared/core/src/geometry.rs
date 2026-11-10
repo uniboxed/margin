@@ -1,6 +1,6 @@
 //! Rectangles and points in the window server's coordinates: from the top left of the main display, y down,
 //! in points (the browser's `windows.get` units: CSS pixels on the Mac, DIPs on Windows). The Swift shell's
-//! CGRect, top-left origin (app/macos/shell/WindowServer.swift).
+//! CGRect, top-left origin (app/platforms/macos/shell/WindowServer.swift).
 
 use serde::{Deserialize, Serialize};
 

@@ -1,9 +1,9 @@
-// Safari's profile: what it can do, as shared code asks it (extension/shared/platform.ts). The Safari build
-// takes only this one (scripts/build.ts `#engine/profile`).
-import type { Profile } from '../../../shared/platform.ts';
+// Safari's capabilities: what it can do, as shared code asks it (extension/shared/capabilities.ts). The Safari build
+// takes only this one (scripts/build.ts `#engine/capabilities`).
+import type { Capabilities } from '../../../shared/capabilities.ts';
 import { NAVIGATION_DEFAULTS } from '../../../shared/navigation-defaults.ts';
 
-export const profile: Profile = {
+export const capabilities: Capabilities = {
   name: 'safari',
   // Safari gives extensions no tab.favIconUrl: fetch each site's own icon.
   fetchFavicons: true,

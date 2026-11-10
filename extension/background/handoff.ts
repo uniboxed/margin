@@ -6,7 +6,7 @@
 // back once made. So the app gives each one a `notAfter` (checked as it arrives: past it, nothing is
 // called), and a second call for a window while one is still pending is answered `busy` without
 // calling Safari (link.ts windowCallRefusal). Both are ordinary answers: the app tells "nothing done"
-// from a failure. Today's close-based switch (app/macos/shell/ProfileSwitch.swift) sends its focusWindow
+// from a failure. Today's close-based switch (app/platforms/macos/shell/ProfileSwitch.swift) sends its focusWindow
 // and closeWindow with no `notAfter`: those run as they always did, never late and never busy (its
 // undo's close mustn't be dropped behind its own focus), but they count as pending, so a handoff's
 // call for that window meanwhile is busy.

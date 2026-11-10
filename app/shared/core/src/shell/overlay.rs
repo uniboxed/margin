@@ -1,4 +1,4 @@
-//! One overlay as the shell sees it (the OS-neutral half of app/macos/shell/Overlay.swift `OverlayController`): whether its
+//! One overlay as the shell sees it (the OS-neutral half of app/platforms/macos/shell/Overlay.swift `OverlayController`): whether its
 //! page has drawn and asked for its hello, where it is and over which window, the page slot and what's drawn over
 //! it, which pointer positions its page wants, and who has the keyboard. Each change the OS must make is a
 //! [`Command`] for the driver (the overlay's window and web view are the driver's, by [`OverlayId`]).

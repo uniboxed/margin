@@ -1,4 +1,4 @@
-//! The overlay planner (app/macos/shell/OverlayPlanner.swift, OverlayPlacer.swift, and `Shell.overlayFrame` /
+//! The overlay planner (app/platforms/macos/shell/OverlayPlanner.swift, OverlayPlacer.swift, and `Shell.overlayFrame` /
 //! `ScreenGeometry.fillsDisplay`), without macOS Spaces: what each overlay should do on a read, decided from facts
 //! only ([`OverlayFacts`]), never from the screen: a pure function, so every case is a test and a trace replays
 //! through it. Then where it goes ([`overlay_frame`]), and the check, on the next reads, that the OS put it there
@@ -400,7 +400,7 @@ mod tests {
         f.window = Some(win(100, false, FULL));
     }
 
-    // app/macos/shell/tests/window-tests.swift overlayPlanner(), its Spaces-free rules.
+    // app/platforms/macos/shell/tests/window-tests.swift overlayPlanner(), its Spaces-free rules.
     #[test]
     fn wanted_or_not() {
         assert_eq!(d(|_| {}), OverlayDecision::Show(100), "a bound full-screen window on screen");
@@ -534,7 +534,7 @@ mod tests {
         );
     }
 
-    // app/macos/shell/tests/tests.swift safariParts(): the docked Web Inspector.
+    // app/platforms/macos/shell/tests/tests.swift safariParts(): the docked Web Inspector.
     #[test]
     fn the_overlays_frame() {
         let w = Rect::new(0.0, 33.0, 1512.0, 949.0);
@@ -581,7 +581,7 @@ mod tests {
         assert!(!fills_display(&FULL, &[]));
     }
 
-    // app/macos/shell/tests/window-tests.swift placementCheck(), less the Space bridge's.
+    // app/platforms/macos/shell/tests/window-tests.swift placementCheck(), less the Space bridge's.
     #[test]
     fn the_placement_check() {
         let side = Rect::new(0.0, 0.0, 300.0, 982.0);

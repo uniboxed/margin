@@ -17,7 +17,7 @@
 // be missed), whenever it's shown or focused, and back from the back/forward
 // cache (a suspended page misses storage events). (Phase 7 makes the prompt
 // to install the app.)
-import { linksApp } from '../shared/platform.ts';
+import { linksApp } from '../shared/capabilities.ts';
 import { resolveInput } from '../shared/search.ts';
 import * as shortcuts from '../shared/shortcuts.ts';
 import { APP_LINK_KEY, appDraws, undrawn } from '../shared/app-link.ts';

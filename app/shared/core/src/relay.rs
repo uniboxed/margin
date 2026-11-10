@@ -1,4 +1,4 @@
-//! The app's end of Margin's connector, sans IO (app/macos/shell/RelayLink.swift: `RelayHub` and
+//! The app's end of Margin's connector, sans IO (app/platforms/macos/shell/RelayLink.swift: `RelayHub` and
 //! `RelayConnection`, less the socket): Chrome's and Edge's copies can't hear Safari's `dispatchMessage`, so the
 //! browser starts the connector (`margin-connector`, app/shared/connector/) through native messaging, and the
 //! connector connects to the app (a Unix socket on the Mac, a named pipe on Windows: only this user's, the

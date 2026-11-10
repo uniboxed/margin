@@ -1,6 +1,6 @@
-// Chromium's profile: what Chrome, Edge and the other Chromium browsers can do, as shared code asks it
-// (extension/shared/platform.ts). The Chromium build takes only this one (scripts/build.ts `#engine/profile`).
-import type { Profile } from '../../shared/platform.ts';
+// Chromium's capabilities: what Chrome, Edge and the other Chromium browsers can do, as shared code asks it
+// (extension/shared/capabilities.ts). The Chromium build takes only this one (scripts/build.ts `#engine/capabilities`).
+import type { Capabilities } from '../../shared/capabilities.ts';
 import { NAVIGATION_DEFAULTS } from '../../shared/navigation-defaults.ts';
 
 // Where Margin's app runs, by the browser's own word (its user agent): the Mac (`Macintosh`) and Windows
@@ -8,7 +8,7 @@ import { NAVIGATION_DEFAULTS } from '../../shared/navigation-defaults.ts';
 // WebSocket as Safari's (docs/PROTOCOL.md "Transport (Chrome and Edge)").
 const linksHere = () => /\b(?:Macintosh|Windows NT)\b/.test(globalThis.navigator?.userAgent ?? '');
 
-export const profile: Profile = {
+export const capabilities: Capabilities = {
   name: 'chrome',
   // Chrome provides tab.favIconUrl: no extra requests.
   fetchFavicons: false,

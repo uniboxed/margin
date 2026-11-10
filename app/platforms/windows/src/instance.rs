@@ -1,4 +1,4 @@
-//! One Margin per user session, and opening at sign-in (app/macos/startup/AppDelegate.swift's single instance and
+//! One Margin per user session, and opening at sign-in (app/platforms/macos/startup/AppDelegate.swift's single instance and
 //! login item).
 //!
 //! The single instance is a named mutex, `Local\Margin-<SID>` (paths.rs): the first app holds it for its whole

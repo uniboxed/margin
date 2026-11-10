@@ -1,4 +1,4 @@
-// "Margin full screen" (Chrome; platform.marginFullscreen): the window in
+// "Margin full screen" (Chrome; capabilities.marginFullscreen): the window in
 // full screen with no toolbar at all. In Chrome's own full screen (the green
 // button, toolbar set to auto-hide), Chrome shows the toolbar for a second on
 // every change of the active tab, on purpose and with no setting to stop it
@@ -6,7 +6,7 @@
 // starts, Chrome shows no toolbar, so it never comes up; Margin's sidebar and
 // palette stand in for it. It has to start from a window that isn't in full
 // screen already.
-import { platform } from '../../shared/platform.ts';
+import { capabilities } from '../../shared/capabilities.ts';
 import { queueRegistrations } from '../../background/registered.ts';
 import { api } from '../../background/store.ts';
 
@@ -71,7 +71,7 @@ async function toggle(windowId: number) {
 // went full screen (the Fullscreen API also puts the window in full screen;
 // leaving it would end the video's). Called on windows.onBoundsChanged.
 export async function followFullscreen(windowId: number) {
-  if (!platform?.marginFullscreen || switching.has(windowId)) return;
+  if (!capabilities?.marginFullscreen || switching.has(windowId)) return;
   const win = await api.windows.get(windowId).catch(() => null);
   if (!win) return;
   tellTabs(windowId, win.state === 'fullscreen');

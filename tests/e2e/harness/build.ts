@@ -1,4 +1,4 @@
-// The test build: Safari's profile (shared/platform.ts: nativeApp, icon
+// The test build: Safari's profile (shared/capabilities.ts: nativeApp, icon
 // fetching, sleeping tabs, the learned search engine) with Chrome's manifest
 // so Chromium loads it, plus two changes in this copy only:
 //
@@ -74,7 +74,7 @@ export const HIDDEN_BEHIND = `// e2e: a tab behind the front one is hidden, as i
 })();
 `;
 
-export const SOCKET_GUARD = 'canSocket=()=>!!platform?.socketInWorker||typeof globalThis.document=="object"&&typeof globalThis.WorkerGlobalScope>"u"';
+export const SOCKET_GUARD = 'canSocket=()=>!!capabilities?.socketInWorker||typeof globalThis.document=="object"&&typeof globalThis.WorkerGlobalScope>"u"';
 
 /** The extension id Chromium gives an extension whose manifest has this public key (DER). */
 export function extensionId(der) {

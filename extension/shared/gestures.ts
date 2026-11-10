@@ -1,6 +1,6 @@
 // Trackpad behavior.
 //
-// installGestureGuard (Safari builds, shared/platform.ts `blockGestures`;
+// installGestureGuard (Safari builds, shared/capabilities.ts `blockGestures`;
 // setting `blockGestures`, default on) stops Safari's gestures that leave or
 // distort the page:
 //  - Swipe back/forward: Safari starts one only from a horizontal scroll the

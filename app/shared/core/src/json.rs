@@ -1,4 +1,4 @@
-//! Reading untrusted JSON the way the Swift shell does (`num`, `int` in app/macos/shell/LinkMessage.swift): a number
+//! Reading untrusted JSON the way the Swift shell does (`num`, `int` in app/platforms/macos/shell/LinkMessage.swift): a number
 //! that's finite, an integer that's whole and fits, a string, a bool. Nothing here panics on any input.
 
 use serde_json::{Map, Value};

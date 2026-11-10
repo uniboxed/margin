@@ -1,6 +1,6 @@
 #!/bin/bash
-# Margin.app's shell (app/macos/shell/), tested with no browser: npm run test:app.
-#   unit: each app folder's own tests/ (app/macos/shell/tests/, app/macos/private/tests/,
+# Margin.app's shell (app/platforms/macos/shell/), tested with no browser: npm run test:app.
+#   unit: each app folder's own tests/ (app/platforms/macos/shell/tests/, app/platforms/macos/private/tests/,
 #         app/engines/webkit/safari/tests/): tests.swift, data-tests.swift and
 #         window-tests.swift, the shell's logic on its own (no
 #         window, no link), the lasting data's merge (tests/fixtures/data-merge/),
@@ -47,8 +47,8 @@ export MARGIN_APP_TESTS=1
 cd "$(dirname "$0")"
 BUILD="${MARGIN_APP_TESTS_BUILD:-$PWD/build}"
 mkdir -p "$BUILD"
-# Margin.app's Swift: every *.swift of each folder app/macos/swift-sources.txt lists (as the app's Xcode target has it).
-# Their unit checks: each such folder's own tests/ (app/macos/shell/tests/, app/macos/private/tests/,
+# Margin.app's Swift: every *.swift of each folder app/platforms/macos/swift-sources.txt lists (as the app's Xcode target has it).
+# Their unit checks: each such folder's own tests/ (app/platforms/macos/shell/tests/, app/platforms/macos/private/tests/,
 # app/engines/webkit/safari/tests/: never in the app, which takes each folder's own *.swift only).
 SHELL_SOURCES=()
 UNIT_TESTS=()
@@ -56,7 +56,7 @@ while read -r folder; do
   case "$folder" in ''|'#'*) continue ;; esac
   SHELL_SOURCES+=(../../"$folder"/*.swift)
   for t in ../../"$folder"/tests/*.swift; do [ -f "$t" ] && UNIT_TESTS+=("$t"); done
-done < ../../app/macos/swift-sources.txt
+done < ../../app/platforms/macos/swift-sources.txt
 # The stand-in for Safari's folder, for the unit checks and the end-to-end ones.
 FAKE_SAFARI=../../app/engines/webkit/safari/tests/fake-safari.swift
 FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault)
@@ -92,7 +92,7 @@ warnings() { # label flags... -- sources...
 
 status=0
 if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
-  warnings "the app" "${XCODE_FLAGS[@]}" ../../app/macos/startup/AppDelegate.swift ../../app/macos/startup/ViewController.swift "${SHELL_SOURCES[@]}"
+  warnings "the app" "${XCODE_FLAGS[@]}" ../../app/platforms/macos/startup/AppDelegate.swift ../../app/platforms/macos/startup/ViewController.swift "${SHELL_SOURCES[@]}"
   warnings "the extension handler" -swift-version 5 ../../app/engines/webkit/safari/handler/SafariWebExtensionHandler.swift
   # Chrome's and Edge's connector (app/shared/connector/, Rust), built as scripts/safari.sh builds it.
   CARGO="${CARGO:-$(command -v cargo || echo "$HOME/.cargo/bin/cargo")}"

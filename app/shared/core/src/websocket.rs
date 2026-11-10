@@ -1,4 +1,4 @@
-//! The WebSocket protocol (RFC 6455) on the app's end of the link, done by hand (app/macos/shell/LinkSocket.swift):
+//! The WebSocket protocol (RFC 6455) on the app's end of the link, done by hand (app/platforms/macos/shell/LinkSocket.swift):
 //! the HTTP upgrade ([`parse`], [`is_upgrade`], [`switching`], [`refusal`]), the app's frames ([`encode`],
 //! [`close_frame`]: never masked) and the copy's ([`FrameReader`]: always masked), and the constant-time check of
 //! a secret ([`same_secret`]). Only what the background's WebSocket uses: text, ping, pong and close, no

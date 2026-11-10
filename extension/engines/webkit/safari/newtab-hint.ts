@@ -14,7 +14,7 @@
 // Settings). Not linked to the app, nothing is said.
 // Bookmarks opened twice in new tabs look the same, hence "twice" and the
 // way to turn it off.
-import { platform } from '../../../shared/platform.ts';
+import { capabilities } from '../../../shared/capabilities.ts';
 import * as M from '../../../state/model.ts';
 import * as V from '../../../shared/view.ts';
 import { api, load } from '../../../background/store.ts';
@@ -28,7 +28,7 @@ const CANDIDATE_MS = 3000; // its first web address must come this soon
 const candidates = new Map(); // tabId → when it was created
 const pendingNote = new Set<any>(); // tabIds to tell once their page has loaded
 
-const enabled = () => !!platform?.newTabHint && !!api.storage?.session;
+const enabled = () => !!capabilities?.newTabHint && !!api.storage?.session;
 async function read() {
   return (await api.storage.session.get(KEY).catch(() => null))?.[KEY] ?? { seen: {}, shown: false };
 }

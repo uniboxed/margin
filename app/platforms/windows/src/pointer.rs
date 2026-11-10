@@ -1,4 +1,4 @@
-//! The pointer, wherever it is (app/macos/shell/PassThrough.swift `PointerWatch`'s counterpart). Windows has no
+//! The pointer, wherever it is (app/platforms/macos/shell/PassThrough.swift `PointerWatch`'s counterpart). Windows has no
 //! global mouse monitor without a hook, and a low-level mouse hook would sit in every mouse event's path, so
 //! the pointer is polled instead: `GetCursorPos` and the buttons' state at about 60 Hz, only while the shell
 //! runs it (a browser in front). Each change is handed to the shell, which decides whether each overlay lets

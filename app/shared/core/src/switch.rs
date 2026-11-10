@@ -1,4 +1,4 @@
-//! Switching to a space of another browser profile: the close-based switch (app/macos/shell/ProfileSwitch.swift; PLAN.md
+//! Switching to a space of another browser profile: the close-based switch (app/platforms/macos/shell/ProfileSwitch.swift; PLAN.md
 //! §15, Tirth 2026-11-05), through link requests only, sans IO: a state machine fed the copies' answers and the
 //! time, which makes its requests through [`SwitchWorld`] (the shell's: the links, the copies' window lists, the
 //! window server).
@@ -889,7 +889,7 @@ mod tests {
         payload: Value,
     }
 
-    /// The Swift FakeWorld (app/macos/shell/tests/profiles-tests.swift): the copies answer closeWindow, focusWindow and
+    /// The Swift FakeWorld (app/platforms/macos/shell/tests/profiles-tests.swift): the copies answer closeWindow, focusWindow and
     /// setSpace at once (queued here, delivered by `pump`), openSpaceWindow when told.
     #[derive(Default)]
     struct World {
@@ -1069,7 +1069,7 @@ mod tests {
         Target::new(B, "b1")
     }
 
-    // app/macos/shell/tests/profiles-tests.swift switchTests(), each case.
+    // app/platforms/macos/shell/tests/profiles-tests.swift switchTests(), each case.
     #[test]
     fn it_works() {
         let mut r = Run::new(|_| {});

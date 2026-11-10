@@ -1,4 +1,4 @@
-//! Margin's lasting data (docs/DATA.md), ported from app/macos/shell/: the data set and its merge (`set`, DataSet.swift),
+//! Margin's lasting data (docs/DATA.md), ported from app/platforms/macos/shell/: the data set and its merge (`set`, DataSet.swift),
 //! the per-profile files (`store`, DataStore.swift), the `data.*` messages (`sync`, DataSync.swift), the spaces
 //! across a browser's profiles (`profiles`, BrowserProfiles.swift) and the imported themes (`themes`,
 //! ThemeStore.swift and the OS-neutral part of ShellThemes.swift).

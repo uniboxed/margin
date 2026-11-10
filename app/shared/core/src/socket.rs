@@ -1,4 +1,4 @@
-//! The link's WebSocket server, sans IO (app/macos/shell/ExtensionLink.swift: `SocketLink` and its `Socket`, with
+//! The link's WebSocket server, sans IO (app/platforms/macos/shell/ExtensionLink.swift: `SocketLink` and its `Socket`, with
 //! LinkSocket.swift's protocol in [`crate::websocket`]): the copies' TCP connections to 127.0.0.1, each one's HTTP
 //! upgrade (turned away with 403 before any WebSocket for a path other than `/`, a wrong token or an `Origin`
 //! that isn't an extension's), its frames, and the link session over them ([`crate::link::Link`]); the secrets (a

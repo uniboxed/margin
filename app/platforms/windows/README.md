@@ -12,7 +12,7 @@ Two programs, side by side in one folder (docs/windows/BRIEF.md):
 
 The Rust is one workspace at the repo's root (`Cargo.toml`): `margin-core` (`app/shared/core/`, OS-neutral, tested on
 any OS), `margin-connector`, `margin-chromium` (`app/engines/chromium/`, where each browser looks for host files) and
-`margin-windows`. macOS stays Swift (`app/macos/`).
+`margin-windows`. macOS stays Swift (`app/platforms/macos/`).
 
 ## Building and running on Windows
 

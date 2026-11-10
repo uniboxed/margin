@@ -1,6 +1,6 @@
 // Keyboard shortcut strings like "Alt+KeyK" (modifiers + KeyboardEvent.code).
 // Matching on `code` keeps Option+K working even though macOS turns it into "˚".
-import { platform } from './platform.ts';
+import { capabilities } from './capabilities.ts';
 const MODIFIERS = ['Ctrl', 'Alt', 'Shift', 'Meta'];
 const MOD_CODES = /^(Control|Alt|Shift|Meta|OS)(Left|Right)?$/;
 const KEY_CODES = /^(Key[A-Z]|Digit\d|F\d{1,2}|Arrow(Up|Down|Left|Right)|Space|Enter|Backquote|Minus|Equal|BracketLeft|BracketRight|Backslash|Semicolon|Quote|Comma|Period|Slash)$/;
@@ -38,8 +38,8 @@ function format(text: unknown) {
   return MODIFIERS.filter((m) => (s as Record<string, unknown>)[m.toLowerCase()]).map((m) => SYMBOLS[m]).join('') + key;
 }
 
-// Default navigation shortcuts come from the build's platform profile
-// (shared/platform.ts): Safari ⌥⌘↓/↑ for tabs, Chrome ⌃⌘↓/↑; spaces ⌃⌘→/←
+// Default navigation shortcuts come from the build's capabilities
+// (shared/capabilities.ts): Safari ⌥⌘↓/↑ for tabs, Chrome ⌃⌘↓/↑; spaces ⌃⌘→/←
 // in both. Separately, the manifest `commands` are ⌃⌘ + arrows in both
 // builds. Chrome matches those in the browser, before the page. Safari doesn't
 // (2026-11-04): its commands are menu key equivalents, and WebKit gives the
@@ -50,7 +50,7 @@ function format(text: unknown) {
 // (commandKeys), ahead of every page script: it's on the window, in the
 // capture phase, from document_start. It handles the Settings shortcuts, with
 // key repeat, first.
-const NAVIGATION = { ...platform.navigation };
+const NAVIGATION = { ...capabilities.navigation };
 const navigationFor = (settings: any) => ({ ...NAVIGATION, ...settings?.shortcuts });
 
 // Navigation actions, shared with the background and manifest commands.
@@ -83,7 +83,7 @@ function commandKeysFrom(manifest: any): Record<string, string> {
 // This build's, where the page sees them first (`pageCommandKeys`: Safari; Chrome matches them before the page). From the
 // manifest, so they can't drift from the commands Safari knows.
 function commandKeys(): Record<string, string> {
-  if (!platform?.pageCommandKeys) return {};
+  if (!capabilities?.pageCommandKeys) return {};
   try {
     const api = (globalThis as any).browser ?? (globalThis as any).chrome;
     return commandKeysFrom(api?.runtime?.getManifest?.());
