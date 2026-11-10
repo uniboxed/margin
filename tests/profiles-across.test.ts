@@ -6,25 +6,27 @@
 // and the switch itself are tested in Swift (npm run test:app).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { acrossOf, foreignKey, foreignSpace, isMultiProfile, orderedSpaces } from '../extension/shared/across.ts';
-import { buildViewModel, paletteItems } from '../extension/ui/view-model.ts';
+import { acrossOf, foreignKey, foreignSpace, isMultiProfile, orderedSpaces, type AcrossProfile } from '../extension/shared/across.ts';
+import { buildViewModel, paletteItems, type UiState, type ViewModelInput } from '../extension/ui/view-model.ts';
 import { checkAction, contextFromState, createDispatcher, requestFor } from '../extension/ui/actions.ts';
-import { menuItems } from '../extension/ui/behaviors/menu-items.ts';
+import { menuItems, type MenuTarget } from '../extension/ui/behaviors/menu-items.ts';
 import { createAppHost } from '../extension/ui/host-app.ts';
 import { toStorage } from '../extension/shared/stored.ts';
 import * as M from '../extension/state/model.ts';
 import { smallState, W } from './ui/fixtures.ts';
+import type { KeptTab } from '../types/margin.d.ts';
 
 const HERE = 's-default';
 const WORK = 's-1111';
 // As the app sends it: this window's profile has home, work, side; another profile (Work) has two spaces between.
-const rawAcross = (extra = {}) => ({
+const rawAcross = (extra: Record<string, unknown> = {}) => ({
   v: 1,
   profile: HERE,
+  // As sent: any of a profile's fields (acrossOf checks them).
   profiles: [
     { id: HERE, name: 'Default', emoji: '', color: '#6c5ce7', named: false, here: true, linked: true, stale: false, lastSeen: 1, spaces: 3 },
     { id: WORK, name: 'Job', emoji: '💼', color: '#00b894', named: true, here: false, linked: false, stale: false, lastSeen: 1, spaces: 2 },
-  ],
+  ] as Partial<AcrossProfile>[],
   spaces: [
     { profile: HERE, id: 'home', name: 'Home', emoji: '🏠', color: '#6c5ce7', tabCount: 6 },
     { profile: WORK, id: 'home', name: 'Office', emoji: '🏢', color: '#0984e3', tabCount: 4 },
@@ -35,12 +37,12 @@ const rawAcross = (extra = {}) => ({
   ...extra,
 });
 const withAcross = (raw = rawAcross()) => ({ ...smallState(), across: acrossOf(raw) });
-const build = (state, ui = {}) => buildViewModel({ state, ui: { windowId: W, ...ui }, platform: { browser: 'safari', os: 'mac' } });
+const build = (state: ViewModelInput['state'], ui: UiState = {}) => buildViewModel({ state, ui: { windowId: W, ...ui }, platform: { browser: 'safari', os: 'mac' } });
 
 test('across: checked as it comes; one profile with spaces is not "several"', () => {
   assert.equal(acrossOf(null), null);
   assert.equal(acrossOf({ profile: 3, spaces: [] }), null);
-  const a = acrossOf({ ...rawAcross(), profiles: [{ id: HERE, name: 'x'.repeat(99), color: 'red' }, 'nope'], spaces: [...rawAcross().spaces, { id: 'no-profile' }] });
+  const a = acrossOf({ ...rawAcross(), profiles: [{ id: HERE, name: 'x'.repeat(99), color: 'red' }, 'nope'], spaces: [...rawAcross().spaces, { id: 'no-profile' }] })!; // one profile left: not null
   assert.equal(a.profiles.length, 1);
   assert.equal(a.profiles[0].name.length, 40);
   assert.equal(a.profiles[0].color, '', 'only #hex colors');
@@ -56,7 +58,7 @@ test('across: another profile\'s space has a chip id of its own, stable, apart f
   assert.equal(k, foreignKey(WORK, 'home'));
   assert.notEqual(k, foreignKey(HERE, 'home'));
   assert.notEqual(k, foreignKey(WORK, 'mail'));
-  const a = acrossOf(rawAcross());
+  const a = acrossOf(rawAcross())!; // a whole one
   assert.deepEqual(foreignSpace(a, k), a.spaces[1]);
   assert.equal(foreignSpace(a, foreignKey(HERE, 'home')), null, 'this profile\'s own spaces are never foreign');
   assert.equal(foreignSpace(a, 'home'), null);
@@ -85,8 +87,8 @@ test('view model, several profiles: every space in the one order, another profil
   const vm = build(withAcross());
   assert.equal(vm.multiProfile, true);
   assert.deepEqual(vm.profiles.map((p) => [p.id, p.name, p.initial, p.here]), [[HERE, 'Default', 'D', true], [WORK, 'Job', 'J', false]]);
-  assert.equal(vm.profile.id, HERE);
-  assert.deepEqual(vm.spaces.map((s) => [s.name, s.foreign, s.profileMark, s.profileStart, s.profile.id, s.index]), [
+  assert.equal(vm.profile!.id, HERE);
+  assert.deepEqual(vm.spaces.map((s) => [s.name, s.foreign, s.profileMark, s.profileStart, s.profile!.id, s.index]), [
     ['Home', false, false, false, HERE, 0],
     ['Office', true, true, true, WORK, 1],
     ['Mail', true, true, false, WORK, 2],
@@ -102,17 +104,17 @@ test('view model, several profiles: every space in the one order, another profil
   // Being switched to: marked; the app's words for a switch that needs the person are a notice.
   const going = build(withAcross(rawAcross({ switching: { profile: WORK, space: 'mail', phase: 'creating', notice: 'Open one of Job\'s windows.' } })));
   assert.deepEqual(going.spaces.map((s) => s.switching), [false, false, true, false, false]);
-  assert.equal(going.notice.text, 'Open one of Job\'s windows.');
-  assert.equal(build(withAcross(), { notice: { id: 'mine', text: 'Mine' } }).notice.id, 'mine', 'the runtime\'s own notice first');
+  assert.equal(going.notice!.text, 'Open one of Job\'s windows.');
+  assert.equal(build(withAcross(), { notice: { id: 'mine', text: 'Mine' } }).notice!.id, 'mine', 'the runtime\'s own notice first');
 });
 
 test('view model: the profile editor uses the space editor\'s part; a profile\'s last space can\'t be deleted', () => {
   const vm = build(withAcross(), { editor: { profileId: WORK, name: 'Job', emoji: '💼', color: '#00b894' } });
-  assert.equal(vm.editor.isProfile, true);
-  assert.equal(vm.editor.labels.title, 'Edit profile');
-  assert.equal(vm.editor.canDelete, false);
+  assert.equal(vm.editor!.isProfile, true);
+  assert.equal(vm.editor!.labels.title, 'Edit profile');
+  assert.equal(vm.editor!.canDelete, false);
   const one = { ...withAcross(), spaces: [smallState().spaces[0]] };
-  const ed = build(one, { editor: { spaceId: 'home', name: 'Home', emoji: '', color: '' } }).editor;
+  const ed = build(one, { editor: { spaceId: 'home', name: 'Home', emoji: '', color: '' } }).editor!;
   assert.equal(ed.isProfile, false);
   assert.equal(ed.canDelete, false);
   assert.match(ed.deleteTitle, /profile’s last space/);
@@ -122,25 +124,25 @@ test('Safari\'s own names (step 9): marked as Safari\'s, its symbol\'s picture o
   const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
   const raw = rawAcross();
   raw.profiles[1] = { ...raw.profiles[1], name: 'Personal', nameFrom: 'safari', symbol: PNG };
-  const a = acrossOf(raw);
+  const a = acrossOf(raw)!;
   assert.equal(a.profiles[1].nameFrom, 'safari');
   assert.equal(a.profiles[1].symbol, PNG);
   assert.equal(a.profiles[0].nameFrom, '', 'Margin\'s own name');
-  const odd = acrossOf({ ...raw, profiles: [{ ...raw.profiles[1], nameFrom: 'chrome?', symbol: 'javascript:alert(1)' }, { ...raw.profiles[1], id: 'x', symbol: 'data:image/svg+xml;base64,PHN2Zz4=' }] });
+  const odd = acrossOf({ ...raw, profiles: [{ ...raw.profiles[1], nameFrom: 'chrome?', symbol: 'javascript:alert(1)' }, { ...raw.profiles[1], id: 'x', symbol: 'data:image/svg+xml;base64,PHN2Zz4=' }] })!;
   assert.equal(odd.profiles[0].nameFrom, '');
   assert.equal(odd.profiles[0].symbol, '', 'only a PNG data URL');
   assert.equal(odd.profiles[1].symbol, '', 'never an SVG');
   const vm = build({ ...smallState(), across: a });
-  const work = vm.profiles.find((p) => p.id === WORK);
+  const work = vm.profiles.find((p) => p.id === WORK)!;
   assert.equal(work.fromBrowser, true);
   assert.equal(work.symbol, PNG);
-  assert.equal(vm.profiles.find((p) => p.id === HERE).symbol, null);
-  const chip = vm.spaces.find((s) => s.foreign);
-  assert.equal(chip.profile.symbol, PNG, 'the chip\'s profile mark can draw it');
-  const ed = build({ ...smallState(), across: a }, { editor: { profileId: WORK, name: 'Personal', emoji: '💼', color: '#00b894' } }).editor;
+  assert.equal(vm.profiles.find((p) => p.id === HERE)!.symbol, null);
+  const chip = vm.spaces.find((s) => s.foreign)!;
+  assert.equal(chip.profile!.symbol, PNG, 'the chip\'s profile mark can draw it');
+  const ed = build({ ...smallState(), across: a }, { editor: { profileId: WORK, name: 'Personal', emoji: '💼', color: '#00b894' } }).editor!;
   assert.equal(ed.nameLocked, true);
   assert.match(ed.labels.note, /Safari’s.*Settings › Profiles/);
-  const own = build(withAcross(), { editor: { profileId: WORK, name: 'Job', emoji: '💼', color: '#00b894' } }).editor;
+  const own = build(withAcross(), { editor: { profileId: WORK, name: 'Job', emoji: '💼', color: '#00b894' } }).editor!;
   assert.equal(own.nameLocked, false);
   assert.equal(own.labels.note, '');
 });
@@ -156,10 +158,10 @@ test('actions: another profile\'s space is a space; profiles are checked; the ne
   assert.equal(checkAction('space.move', { space: k, dir: 1 }, ctx).ok, true);
   assert.equal(checkAction('space.move', { space: k, dir: 2 }, ctx).ok, false);
   assert.equal(checkAction('profile.edit', HERE, contextFromState(smallState())).ok, false, 'no profiles without the app');
-  const ran = [];
+  const ran: string[] = [];
   const dispatch = createDispatcher({ context: () => ctx, run: (n, a) => ran.push(n) });
   assert.equal(dispatch('profile.forget', WORK), false, 'forgetting is the menu\'s, with its confirmation');
-  const req = (name, arg, s = state) => requestFor(name, arg, { state: s, ui: { windowId: W } });
+  const req = (name: string, arg: unknown, s: Parameters<typeof requestFor>[2]['state'] = state) => requestFor(name, arg, { state: s, ui: { windowId: W } });
   assert.deepEqual(req('space.switch', k), { kind: 'send', type: 'setSpace', payload: { windowId: W, spaceId: k } }, 'sent as any switch: the app host routes it');
   assert.deepEqual(req('space.move', { space: k, dir: -1 }), { kind: 'host', name: 'space.move', arg: { profile: WORK, space: 'mail', dir: -1 } });
   assert.deepEqual(req('space.move', { space: 'work', dir: 1 }), { kind: 'host', name: 'space.move', arg: { profile: HERE, space: 'work', dir: 1 } });
@@ -173,7 +175,7 @@ test('actions: another profile\'s space is a space; profiles are checked; the ne
 
 test('menus: another profile\'s space (switch, move, its profile, forget when it isn\'t open); this one\'s gains moves and its profile; "+" offers the others', () => {
   const state = withAcross();
-  const labels = (target) => menuItems(target, { state, space: null }).filter((i) => !i.separator).map((i) => i.label);
+  const labels = (target: MenuTarget) => menuItems(target, { state, space: null }).filter((i) => !i.separator).map((i) => i.label);
   assert.deepEqual(labels({ kind: 'space', id: foreignKey(WORK, 'mail') }), ['Switch to Space', 'Move Left', 'Move Right', 'Edit Profile “Job”…', 'New Space in Job', 'Forget Job']);
   const linked = withAcross(rawAcross({ profiles: rawAcross().profiles.map((p) => ({ ...p, linked: true })) }));
   assert.ok(!menuItems({ kind: 'space', id: foreignKey(WORK, 'mail') }, { state: linked, space: null }).some((i) => i.action === 'profile.forget'), 'a profile that\'s open isn\'t forgotten');
@@ -191,31 +193,33 @@ test('the palette: another profile\'s spaces, named with their profile', () => {
 });
 
 test('the app host: `across` from the hello and as it changes; another profile\'s space goes to the app, never the copy', async () => {
-  const posts = [];
-  const post = async (op, body = {}) => { posts.push({ op, ...body }); return op === 'send' ? JSON.stringify({ ok: true, result: {} }) : null; };
+  // What the host posted to the app: its op, and the body (the app's protocol: any).
+  const posts: Record<string, any>[] = [];
+  const post = async (op: string, body: Record<string, any> = {}) => { posts.push({ op, ...body }); return op === 'send' ? JSON.stringify({ ok: true, result: {} }) : null; };
   const keys = ['spaces', 'pins', 'folders', 'archive', 'settings', 'tabs', 'tabSpace', 'activeSpaceByWindow', 'favicons'];
   const state = toStorage(smallState(), keys, { origin: 'o', since: 1, synced: true });
   const host = createAppHost({ hello: { windowId: W, profile: HERE, browser: 'safari', state, windows: [], across: rawAcross() }, post });
-  assert.equal(host.getState().across.profiles.length, 2);
-  const seen = [];
+  assert.equal(host.getState()!.across.profiles.length, 2);
+  const seen: Record<string, any>[] = []; // states as the host gives them (any, as Host's onState)
   host.onState((s) => seen.push(s));
   host.receive({ type: 'across', across: rawAcross({ switching: { profile: WORK, space: 'mail', phase: 'settling' } }) });
-  assert.equal(seen.at(-1).across.switching.phase, 'settling');
+  assert.equal(seen.at(-1)!.across.switching.phase, 'settling');
   await host.send('setSpace', { windowId: W, spaceId: foreignKey(WORK, 'mail') });
   assert.deepEqual(posts.at(-1), { op: 'perform', name: 'profile.switch', arg: { profile: WORK, space: 'mail' } });
   await host.send('renameSpace', { spaceId: foreignKey(WORK, 'mail'), name: 'Post' });
   assert.deepEqual(posts.at(-1), { op: 'perform', name: 'profile.space', arg: { profile: WORK, type: 'renameSpace', payload: { spaceId: 'mail', name: 'Post' } } });
   await host.send('setSpace', { windowId: W, spaceId: 'work' });
-  assert.equal(posts.at(-1).op, 'send', 'this profile\'s own: to its copy, as before');
+  assert.equal(posts.at(-1)!.op, 'send', 'this profile\'s own: to its copy, as before');
   assert.equal(host.perform('profile.rename', { profile: WORK, name: 'Job' }), true);
   assert.deepEqual(posts.at(-1), { op: 'perform', name: 'profile.rename', arg: { profile: WORK, name: 'Job' } });
   host.receive({ type: 'across', across: null });
-  assert.equal(host.getState().across, undefined, 'gone: one profile again');
+  assert.equal(host.getState()!.across, undefined, 'gone: one profile again');
 });
 
 test('the copy\'s side: a space\'s window opens its last used tab, the others that were open with it behind; the order across profiles', () => {
   let s = M.normalizeState({ ...smallState(), keptTabs: {} });
-  const kept = (id, url, spaceId, lastActive, extra) => ({ id, url, title: url, spaceId, order: lastActive, lastActive, keptAt: 100, ...extra });
+  // Kept tabs without an icon (`favIconUrl`); `why` from `extra`.
+  const kept = (id: string, url: string, spaceId: string, lastActive: number, extra: Partial<KeptTab>) => ({ id, url, title: url, spaceId, order: lastActive, lastActive, keptAt: 100, ...extra }) as KeptTab;
   s = {
     ...s,
     keptTabs: {

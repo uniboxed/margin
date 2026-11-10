@@ -4,25 +4,30 @@
 // hear each other's writes (as in WebKit: no storage.onChanged across them).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser, type FakeBrowserApi, type FakeStorageArea } from './fake-browser.ts';
+import type { Settings, TabRecord } from '../types/margin.d.ts';
 
-const local = new Map(); // shared by both copies
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-function fakeApi(origin) {
-  const session = new Map();
-  const area = (map) => ({
+// The store module, as each copy's own instance of it (imported with a query) is.
+type Store = typeof import('../extension/background/store.ts');
+
+const local = new Map<string, any>(); // shared by both copies: stored JSON
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function fakeApi(origin: string): FakeBrowserApi {
+  const session = new Map<string, any>();
+  const area = (map: Map<string, any>): FakeStorageArea => ({
     get: async (keys) => {
-      const list = keys == null ? [...map.keys()] : [].concat(keys);
+      const list = keys == null ? [...map.keys()] : ([] as string[]).concat(keys);
       return Object.fromEntries(list.filter((k) => map.has(k)).map((k) => [k, structuredClone(map.get(k))]));
     },
     set: async (values) => { for (const [k, v] of Object.entries(values)) map.set(k, structuredClone(v)); },
-    remove: async (keys) => { for (const k of [].concat(keys)) map.delete(k); },
+    remove: async (keys) => { for (const k of ([] as string[]).concat(keys)) map.delete(k); },
   });
   return { runtime: { getURL: (path) => `${origin}${path}` }, storage: { local: area(local), session: area(session), onChanged: { addListener() {} } } };
 }
 // A copy of the background's store, started now.
-async function startCopy(origin) {
-  globalThis.chrome = (fakeApi(origin) as any);
-  const store = await import(`../extension/background/store.ts?copy=${encodeURIComponent(origin)}`);
+async function startCopy(origin: string) {
+  globalThis.chrome = fakeBrowser(fakeApi(origin));
+  const store: Store = await import(`../extension/background/store.ts?copy=${encodeURIComponent(origin)}`);
   await store.decided();
   return store;
 }
@@ -31,7 +36,8 @@ const storedTabs = () => local.get('openTabs');
 test('copies: the newest owns the state; the older one stops writing as soon as it next writes', async () => {
   const older = await startCopy('safari-web-extension://OLD/');
   assert.equal(older.isOwner(), true);
-  await older.mutate((s) => ({ ...s, tabs: { 1: { id: 1, windowId: 9, url: 'https://a.test/', index: 0 } }, tabSpace: { 1: 'personal' } }));
+  // Tab records with only what the test needs of them.
+  await older.mutate((s) => ({ ...s, tabs: { 1: { id: 1, windowId: 9, url: 'https://a.test/', index: 0 } as TabRecord }, tabSpace: { 1: 'personal' } }));
   await older.markSynced();
   assert.equal(storedTabs().origin, 'safari-web-extension://OLD/');
   assert.equal(storedTabs().synced, true);
@@ -42,11 +48,11 @@ test('copies: the newest owns the state; the older one stops writing as soon as 
   assert.equal(storedTabs().synced, false, 'its claim marks the stored tabs unmatched at once');
 
   // The older copy, still running, sees a tab event under its own ids.
-  await assert.rejects(older.mutate((s) => ({ ...s, tabs: { 7: { id: 7, windowId: 9, url: 'https://old-ids.test/', index: 0 } } })), older.StaleError, 'the change fails (it wasn\'t written)');
+  await assert.rejects(older.mutate((s) => ({ ...s, tabs: { 7: { id: 7, windowId: 9, url: 'https://old-ids.test/', index: 0 } as TabRecord } })), older.StaleError, 'the change fails (it wasn\'t written)');
   assert.equal(older.isOwner(), false, 'it found out at its write');
   assert.deepEqual(Object.keys(storedTabs().tabs), ['1'], 'and wrote nothing');
 
-  await newer.mutate((s) => ({ ...s, tabs: { 42: { id: 42, windowId: 41, url: 'https://a.test/', index: 0 } }, tabSpace: { 42: 'personal' } }));
+  await newer.mutate((s) => ({ ...s, tabs: { 42: { id: 42, windowId: 41, url: 'https://a.test/', index: 0 } as TabRecord }, tabSpace: { 42: 'personal' } }));
   await newer.markSynced();
   assert.equal(storedTabs().origin, 'safari-web-extension://NEW/');
   assert.equal(storedTabs().synced, true);
@@ -60,14 +66,15 @@ test('copies: the newest owns the state; the older one stops writing as soon as 
 test('copies: a copy\'s background starting again keeps what it owns, matched', async () => {
   local.clear();
   const copy = await startCopy('safari-web-extension://SAME/');
-  await copy.mutate((s) => ({ ...s, tabs: { 3: { id: 3, windowId: 1, url: 'https://c.test/', index: 0 } } }));
+  await copy.mutate((s) => ({ ...s, tabs: { 3: { id: 3, windowId: 1, url: 'https://c.test/', index: 0 } as TabRecord } }));
   await copy.markSynced();
   const writes = JSON.stringify(storedTabs());
   // The same copy (same address, same storage.session) after its worker was unloaded:
   // a new module instance, the session kept.
   const session = new Map([['since', (await chrome.storage.session.get('since')).since]]);
-  globalThis.chrome = ({ ...fakeApi('safari-web-extension://SAME/'), storage: { ...fakeApi('safari-web-extension://SAME/').storage, session: { get: async (k) => ({ since: session.get('since') }), set: async () => {} } } } as any);
-  const again = await import('../extension/background/store.ts?copy=same-again');
+  globalThis.chrome = fakeBrowser({ ...fakeApi('safari-web-extension://SAME/'), storage: { ...fakeApi('safari-web-extension://SAME/').storage, session: { get: async (k) => ({ since: session.get('since') }), set: async () => {} } } });
+  // A new instance of the module (the query): typed as the module, its address not one tsc resolves.
+  const again: Store = await import('../extension/background/store.ts?copy=same-again' as string);
   await again.decided();
   assert.equal(again.isOwner(), true);
   assert.equal(again.isSynced(), true, 'its tabs are still its own and matched: nothing to wait for');
@@ -83,28 +90,28 @@ test('copies: a copy\'s background starting again keeps what it owns, matched', 
 
 test('copies: a storage error while deciding who owns the state isn\'t kept: it\'s tried again', async () => {
   local.clear();
-  globalThis.chrome = (fakeApi('safari-web-extension://FLAKY/') as any);
+  globalThis.chrome = fakeBrowser(fakeApi('safari-web-extension://FLAKY/'));
   const get = chrome.storage.local.get;
   let failures = 1;
   chrome.storage.local.get = async (keys) => {
     if (failures-- > 0) throw new Error('SQLite error 5');
     return get(keys);
   };
-  const store = await import('../extension/background/store.ts?copy=flaky');
+  const store: Store = await import('../extension/background/store.ts?copy=flaky' as string); // a new instance, as above
   await store.decided();
   assert.equal(store.isOwner(), true);
 });
 
 test('copies: a storage error that outlasts deciding leaves the copy unknown, not stale; the next caller tries again', async () => {
   local.clear();
-  globalThis.chrome = (fakeApi('safari-web-extension://DOWN/') as any);
+  globalThis.chrome = fakeBrowser(fakeApi('safari-web-extension://DOWN/'));
   const get = chrome.storage.local.get;
   let failures = 4; // all of decide()'s tries
   chrome.storage.local.get = async (keys) => {
     if (failures-- > 0) throw new Error('SQLite error 5');
     return get(keys);
   };
-  const store = await import('../extension/background/store.ts?copy=down');
+  const store: Store = await import('../extension/background/store.ts?copy=down' as string); // a new instance, as above
   await assert.rejects(store.decided());
   assert.equal(store.isOwner(), false);
   assert.equal(store.isStale(), false, 'its pages aren\'t told to stand down');
@@ -115,7 +122,7 @@ test('copies: a storage error that outlasts deciding leaves the copy unknown, no
 test('copies: an older copy claiming over a newer one is claimed back, with the newer one\'s tabs written again at once', async () => {
   local.clear();
   const newer = await startCopy('safari-web-extension://NEWER/');
-  await newer.mutate((s) => ({ ...s, tabs: { 5: { id: 5, windowId: 1, url: 'https://n.test/', index: 0 } } }));
+  await newer.mutate((s) => ({ ...s, tabs: { 5: { id: 5, windowId: 1, url: 'https://n.test/', index: 0 } as TabRecord } }));
   await newer.markSynced();
   // An older copy's record over it (they started together; it read before the newer one wrote).
   local.set('owner', { origin: 'safari-web-extension://OLDER/', since: 1 });
@@ -131,9 +138,9 @@ test('copies: an older copy claiming over a newer one is claimed back, with the 
 test('store: a change with nothing new isn\'t written; a real one is, with the tabs\' whole value; a failed write is still retried', async () => {
   local.clear();
   const copy = await startCopy('safari-web-extension://NOOP/');
-  await copy.mutate((s) => ({ ...s, tabs: { 5: { id: 5, windowId: 1, url: 'https://e.test/', index: 0, title: 'E' } }, tabSpace: { 5: 'personal' } }));
+  await copy.mutate((s) => ({ ...s, tabs: { 5: { id: 5, windowId: 1, url: 'https://e.test/', index: 0, title: 'E' } as TabRecord }, tabSpace: { 5: 'personal' } }));
   const set = chrome.storage.local.set;
-  const written = [];
+  const written: string[][] = [];
   chrome.storage.local.set = async (values) => { written.push(Object.keys(values)); return set(values); };
   // Rebuilt as a tab event does, nothing new in it.
   await copy.mutate((s) => ({ ...s, tabs: { ...s.tabs, 5: { ...s.tabs[5] } }, tabSpace: { ...s.tabSpace } }));
@@ -147,11 +154,13 @@ test('store: a change with nothing new isn\'t written; a real one is, with the t
   let fail = true;
   chrome.storage.local.set = async (values) => {
     if (fail) { fail = false; throw new Error('busy'); }
-    written.push(Object.keys(values));
+    // `as`: assert.deepEqual(written, []) above narrowed it to never[] (the strict assert's `asserts actual is T`).
+    (written as string[][]).push(Object.keys(values));
     return set(values);
   };
   written.length = 0;
-  await copy.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarWidth: 301 } }));
+  // Any change to settings (`sidebarWidth` isn't one of Margin's own any more: a theme's now; still a change).
+  await copy.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarWidth: 301 } as Settings }));
   await copy.mutate((s) => ({ ...s, settings: { ...s.settings } })); // nothing new: the failed write still goes
   assert.deepEqual(written, [['settings']]);
   assert.equal(local.get('settings').sidebarWidth, 301);
@@ -160,7 +169,8 @@ test('store: a change with nothing new isn\'t written; a real one is, with the t
   written.length = 0;
   await sleep(1700);
   assert.equal(written.length, 1);
-  assert.ok(written[0].includes('dataMeta:settings') && written[0].every((key) => key.startsWith('dataMeta:')), 'only the times');
+  // `as`: narrowed as above.
+  assert.ok((written as string[][])[0].includes('dataMeta:settings') && (written as string[][])[0].every((key) => key.startsWith('dataMeta:')), 'only the times');
   assert.ok(local.get('dataMeta:settings').items.sidebarWidth[0] > 0);
   chrome.storage.local.set = set;
 });

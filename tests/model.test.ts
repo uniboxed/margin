@@ -4,9 +4,12 @@ import * as model from '../extension/state/model.ts';
 import { CAPABILITIES } from '../extension/shared/any-engine-capabilities.ts';
 import * as shortcuts from '../extension/shared/shortcuts.ts';
 import * as view from '../extension/shared/view.ts';
+import type { ArchiveEntry, KeptTab, Settings, State } from '../types/margin.d.ts';
 
 const M = model;
-const tab = (id, windowId, url, extra = {}) => ({ id, windowId, url, title: `t${id}`, index: id, active: false, ...extra });
+// A sidebar row read for `behind` (an open tab's; a kept tab's row has none).
+type Behind = { behind?: boolean };
+const tab = (id: number, windowId: number, url: string, extra: Partial<BrowserTab> = {}) => ({ id, windowId, url, title: `t${id}`, index: id, active: false, ...extra });
 
 test('default state has one Personal space and default settings', () => {
   const s = M.defaultState();
@@ -18,8 +21,9 @@ test('default state has one Personal space and default settings', () => {
 test('normalizeState fills missing keys and keeps stored ones', () => {
   const s = M.normalizeState({ settings: { archiveAfterHours: 3 }, pins: [{ id: 'p' }] });
   assert.equal(s.settings.archiveAfterHours, 3);
-  assert.equal(s.settings.paletteShortcut, undefined, '⌥K is gone: ⌘T opens the palette');
-  assert.equal(M.normalizeState({ spaces: [], settings: { paletteShortcut: 'Alt+KeyK' } }).settings.paletteShortcut, undefined, 'a saved one is dropped');
+  // `paletteShortcut`: gone from Settings too.
+  assert.equal((s.settings as Settings & { paletteShortcut?: unknown }).paletteShortcut, undefined, '⌥K is gone: ⌘T opens the palette');
+  assert.equal((M.normalizeState({ spaces: [], settings: { paletteShortcut: 'Alt+KeyK' } }).settings as Settings & { paletteShortcut?: unknown }).paletteShortcut, undefined, 'a saved one is dropped');
   assert.equal(s.pins.length, 1);
   assert.equal(s.spaces.length, 1);
   assert.deepEqual(s.tabSpace, {});
@@ -109,7 +113,7 @@ test('rebuild after restart: tabs matching a pin go to its space, others to the 
   assert.deepEqual(Object.keys(next.tabs).sort(), ['1', '2']);
 });
 
-const inWindow = (s, windowId) => Object.values(s.tabs).filter((t) => t.windowId === windowId).map((t) => t.id);
+const inWindow = (s: State, windowId: number) => Object.values(s.tabs).filter((t) => t.windowId === windowId).map((t) => t.id);
 
 // The session before: window 1 with Work's a.com and b.com and Personal's
 // second a.com (a duplicate), used at 100, 300, 200; window 2 with Work's c.com.
@@ -134,7 +138,7 @@ test('after a restart (new ids, some reused for other tabs): tabs keep their spa
   assert.deepEqual(next.tabSpace, { 1: 'work', 20: 'work', 21: 'work', 22: 'personal' }, 'duplicates in tab order; the reused id is the c.com tab');
   assert.deepEqual(next.activeSpaceByWindow, { 7: 'work', 8: 'work' }, 'each window shows its shown tab\'s space');
   assert.deepEqual([20, 21, 22, 1].map((id) => next.tabs[id].lastActive), [9800, 10_000, 9900, 9750], 'the most recent now, gaps kept');
-  assert.equal(M.recentTabOfSpace(next, 7, 'work').id, 21);
+  assert.equal(M.recentTabOfSpace(next, 7, 'work')!.id, 21);
 });
 
 test('Margin updated (new ids for the same tabs, the session not fresh): the same tabs keep their space', () => {
@@ -162,15 +166,16 @@ test('sync on wake (ids not renumbered): a new tab is new, even with the address
   assert.equal(next.tabSpace[50], 'personal', 'its window\'s space, not closed tab 1\'s Work');
   assert.equal(next.lostTabs, null);
   // Tabs 1 (a.com) and 4 (c.com) went unheard: kept, not open, in their spaces, with the ids they had.
-  const kept = Object.values(next.keptTabs).sort((a, b) => a.wasTab - b.wasTab);
+  const kept = Object.values(next.keptTabs).sort((a, b) => a.wasTab! - b.wasTab!); // found gone: each has the id it had
   assert.deepEqual(kept.map((k) => [k.url, k.spaceId, k.wasTab, k.why]), [['https://a.com/', 'work', 1, 'gone'], ['https://c.com/', 'work', 4, 'gone']]);
   assert.equal(kept[0].id, s.tabs[1].mid, 'the same Margin tab');
 });
 
 // Kept tabs by the window they were lost with (from.key), in their old order.
-const keptByWindow = (s) => {
-  const groups = new Map();
-  for (const k of Object.values(s.keptTabs).sort((a, b) => a.from.index - b.from.index)) groups.set(k.from.key, [...(groups.get(k.from.key) ?? []), k]);
+// (Lost with a window: each has its `from`.)
+const keptByWindow = (s: State) => {
+  const groups = new Map<string, KeptTab[]>();
+  for (const k of Object.values(s.keptTabs).sort((a, b) => a.from!.index - b.from!.index)) groups.set(k.from!.key, [...(groups.get(k.from!.key) ?? []), k]);
   return [...groups.values()];
 };
 
@@ -182,7 +187,7 @@ test('a session reopened after the restart sync (Safari opened with a new window
   assert.deepEqual(keptByWindow(next)[0].map((k) => k.id), [1, 2, 3].map((id) => s.tabs[id].mid), 'the same Margin tabs');
   // History › Reopen All Windows from Last Session, 3h later: a new window's tabs arrive.
   const later = 10_000 + 3 * 3600_000;
-  for (const [id, url, index, active] of [[70, 'favorites://', 0, false], [71, 'https://a.com/', 1, false], [72, 'https://b.com/', 2, true], [73, 'https://a.com/', 3, false]]) next = M.upsertTab(next, tab(id, 10, url, { index, active }), later);
+  for (const [id, url, index, active] of [[70, 'favorites://', 0, false], [71, 'https://a.com/', 1, false], [72, 'https://b.com/', 2, true], [73, 'https://a.com/', 3, false]] as [number, string, number, boolean][]) next = M.upsertTab(next, tab(id, 10, url, { index, active }), later);
   next = M.reclaimTabs(next, inWindow(next, 10), later);
   assert.deepEqual([71, 72, 73].map((id) => next.tabSpace[id]), ['work', 'work', 'personal'], 'duplicates in their old order; a start page first doesn\'t block');
   assert.deepEqual([71, 72, 73].map((id) => next.tabs[id].mid), [1, 2, 3].map((id) => s.tabs[id].mid), 'open again as the same Margin tabs');
@@ -205,7 +210,7 @@ test('reclaiming: a page opened anew doesn\'t take an old tab\'s place (two page
 test('reclaiming: what\'s left of a partly matched window still needs two of its pages', () => {
   // Window 1 had a.com, b.com and a.com; only b.com and the first a.com came back at the restart.
   let next = M.syncTabs(lastSession(), [tab(20, 7, 'https://a.com/', { index: 0, active: true }), tab(21, 7, 'https://b.com/', { index: 1 })], { fresh: true, now: 10_000 });
-  assert.equal(Object.values(next.keptTabs).find((k) => k.url === 'https://a.com/').from.size, 3);
+  assert.equal(Object.values(next.keptTabs).find((k) => k.url === 'https://a.com/')!.from!.size, 3);
   next = M.upsertTab(next, tab(90, 15, 'https://a.com/', { active: true }), 10_001); // a page opened anew in a new window
   next = M.reclaimTabs(next, [90], 10_002);
   assert.notEqual(next.tabSpace[90], 'personal', 'not the leftover Personal a.com') ;
@@ -277,7 +282,7 @@ test('kept tabs: taken back by a window for a day, then they stay (not open) in 
   assert.equal(next.tabSpace[70], 'personal', 'too late: its window\'s space');
   next = M.syncTabs(next, [tab(60, 9, 'favorites://', { active: true }), tab(70, 10, 'https://c.com/')], { now: day });
   assert.equal(Object.values(next.keptTabs).length, 4, 'still kept: only the archive takes them (archiveAfterHours)');
-  assert.equal(Object.values(next.keptTabs).find((k) => k.url === 'https://c.com/').spaceId, 'work');
+  assert.equal(Object.values(next.keptTabs).find((k) => k.url === 'https://c.com/')!.spaceId, 'work');
 });
 
 test('sync on wake (not fresh): keeps assignments, drops closed tabs and windows, adds new tabs', () => {
@@ -358,8 +363,8 @@ test('view.sidebar: the new-tab page being shown is the "+ New Tab" row, not a t
   v = view.sidebar(s, 1, 1, { newTabPending: true });
   assert.equal(v.newTab.active, true, 'choosing a new tab (⌘T, the row): "+ New Tab" highlighted');
   assert.deepEqual(v.tabs.filter((t) => t.active), [], '…no tab fully');
-  assert.deepEqual(v.tabs.filter((t) => t.behind).map((t) => t.id), [1], '…the tab still on screen only softly');
-  assert.deepEqual(view.sidebar(s, 1, 1).tabs.filter((t) => t.behind), [], 'chosen or not, back to normal after');
+  assert.deepEqual(v.tabs.filter((t) => (t as Behind).behind).map((t) => t.id), [1], '…the tab still on screen only softly');
+  assert.deepEqual(view.sidebar(s, 1, 1).tabs.filter((t) => (t as Behind).behind), [], 'chosen or not, back to normal after');
   assert.equal(view.isNewTabPage('chrome-extension://abc/newtab/newtab.html'), true);
   assert.equal(view.isNewTabPage('safari-web-extension://abc/newtab/newtab.html#launcher'), false, 'Margin\'s start page opened on purpose');
   assert.equal(view.isNewTabPage('https://example.com/newtab/newtab.html'), false);
@@ -374,7 +379,7 @@ test('view.sidebar: a tab being switched to is highlighted already, the shown on
   s = M.addPin(s, { id: 'p', url: 'https://mail.com/', title: 'Mail', spaceId: 'personal' });
   let v = view.sidebar(s, 1, 2, { switchingTo: 3 });
   assert.deepEqual(v.tabs.filter((t) => t.active).map((t) => t.id), [3]);
-  assert.deepEqual(v.tabs.filter((t) => t.behind), []);
+  assert.deepEqual(v.tabs.filter((t) => (t as Behind).behind), []);
   v = view.sidebar(s, 1, 2, { switchingTo: 1 });
   assert.equal(v.pins[0].active, true, 'a pin\'s tab: the pin');
   assert.deepEqual(v.tabs.filter((t) => t.active), []);
@@ -386,7 +391,7 @@ test('view.sidebar: a tab being switched to is highlighted already, the shown on
   for (const other of [2, 99]) {
     v = view.sidebar(s, 1, 2, { switchingTo: other });
     assert.deepEqual(v.tabs.filter((t) => t.active).map((t) => t.id), [2], `nothing changes for ${other} (shown, gone)`);
-    assert.deepEqual(v.tabs.filter((t) => t.behind), []);
+    assert.deepEqual(v.tabs.filter((t) => (t as Behind).behind), []);
   }
   s = M.upsertTab(s, tab(5, 1, 'chrome://newtab/', { index: 3, active: true }), 0);
   v = view.sidebar(s, 1, 5, { switchingTo: 3 });
@@ -447,20 +452,20 @@ test('archive: newest first, one entry per URL, capped at 200', () => {
   for (let i = 0; i < 250; i++) s = M.archiveTab(s, { id: `a${i}`, url: `https://x.com/${i}`, spaceId: 'personal', closedAt: i });
   assert.equal(s.archive.length, M.ARCHIVE_CAP);
   assert.equal(s.archive[0].id, 'a249');
-  assert.equal(s.archive.at(-1).id, 'a50');
-  s = M.archiveTab(s, { id: 'again', url: 'https://x.com/100#frag', closedAt: 999 });
+  assert.equal(s.archive.at(-1)!.id, 'a50');
+  s = M.archiveTab(s, { id: 'again', url: 'https://x.com/100#frag', closedAt: 999 } as ArchiveEntry); // no space: as the test needs
   assert.equal(s.archive.length, M.ARCHIVE_CAP);
   assert.equal(s.archive.filter((a) => a.url.startsWith('https://x.com/100')).length, 1);
   assert.equal(s.archive[0].id, 'again');
-  assert.equal(M.archiveTab(s, { id: 'x', url: '' }), s);
+  assert.equal(M.archiveTab(s, { id: 'x', url: '' } as ArchiveEntry), s); // no address: nothing else read
   assert.equal(M.removeArchived(s, 'again').archive.length, M.ARCHIVE_CAP - 1);
 });
 
 test('auto-archive: only inactive, unpinned web tabs past the threshold', () => {
   const H = 3600_000;
   let s = M.defaultState(); // archiveAfterHours: 12
-  const add = (id, url, lastActive, extra = {}) => {
-    s = M.upsertTab(s, { id, windowId: 1, index: id, url, title: `t${id}`, ...extra }, lastActive);
+  const add = (id: number, url: string, lastActive: number, extra: Partial<BrowserTab> = {}) => {
+    s = M.upsertTab(s, { id, windowId: 1, index: id, url, title: `t${id}`, ...extra } as BrowserTab, lastActive); // `active` only when given
   };
   add(1, 'https://old.com', 0);
   add(2, 'https://recent.com', 11 * H);
@@ -493,7 +498,7 @@ test('view.guessWindow: picks the window before the background answers', () => {
   assert.equal(view.guessWindow(s, 'https://nowhere.com/'), 7, 'most recently active window');
 });
 
-const activeIn = (s, windowId) => Object.values(s.tabs).filter((t) => t.windowId === windowId && t.active).map((t) => t.id);
+const activeIn = (s: State, windowId: number) => Object.values(s.tabs).filter((t) => t.windowId === windowId && t.active).map((t) => t.id);
 
 test('active tab: a late update for a tab you left does not re-highlight it', () => {
   let s = M.defaultState();
@@ -535,7 +540,7 @@ test('view.sidebar: the tab the sidebar is drawn in is the highlighted one', () 
   s = M.upsertTab(s, tab(1, 1, 'https://a.com', { active: true }), 0);
   s = M.upsertTab(s, tab(2, 1, 'https://b.com'), 0);
   // Stale snapshot: background still thinks 1 is active, but we're on 2.
-  const active = (v) => v.tabs.filter((t) => t.active).map((t) => t.id);
+  const active = (v: ReturnType<typeof view.sidebar>) => v.tabs.filter((t) => t.active).map((t) => t.id);
   assert.deepEqual(active(view.sidebar(s, 1, 2)), [2]);
   assert.deepEqual(active(view.sidebar(s, 1)), [1], 'without a current tab, the snapshot decides');
   assert.deepEqual(active(view.sidebar(s, 1, 99)), [1], 'unknown current tab: snapshot decides');
@@ -585,7 +590,7 @@ test('view.cycleSpace: next/previous space per window, wrapping', () => {
 
 test('favicons: pick the best icon link, else /favicon.ico', () => {
   const page = 'https://example.com/a/b';
-  const L = (rel, href, extra = {}) => ({ rel, href, ...extra });
+  const L = (rel: string, href: string, extra: { sizes?: string, type?: string } = {}) => ({ rel, href, ...extra });
   assert.equal(view.pickIconHref([], page), 'https://example.com/favicon.ico');
   assert.equal(view.pickIconHref([], 'about:blank'), null, 'non-web page');
   assert.equal(view.pickIconHref([
@@ -612,7 +617,7 @@ test('favicons: browser icon first, else the fetched one for that site; cache is
   assert.equal(view.iconFor(s, { url: 'chrome://settings' }), '');
   for (let i = 0; i < 10; i++) s = M.rememberFavicon(s, `https://s${i}.com`, { data: 'd', href: 'h', at: 10 + i }, 5);
   assert.deepEqual(Object.keys(s.favicons).sort(), ['https://s5.com', 'https://s6.com', 'https://s7.com', 'https://s8.com', 'https://s9.com']);
-  assert.equal(M.rememberFavicon(s, null, { data: 'd', at: 1 }), s);
+  assert.equal(M.rememberFavicon(s, null, { data: 'd', at: 1 } as Parameters<typeof M.rememberFavicon>[2]), s); // no site: nothing else read
 });
 
 test('new window (⌘N) starts in the space of the most recently used window', () => {
@@ -702,7 +707,7 @@ test('view.sidebar: a new tab being opened (opening) is its row, highlighted, un
   const opening = { title: 'cats', url: '', from: 2 };
   let v = view.sidebar(s, 1, null, { opening, newTabPending: true });
   assert.equal(v.newTab.active, false, '"+ New Tab" not lit');
-  assert.deepEqual(v.tabs.map((t) => [t.id, !!t.active, !!t.behind]), [['opening', true, false], [2, false, false], [1, false, false]], 'at the top, the tab shown plain (not softly)');
+  assert.deepEqual(v.tabs.map((t) => [t.id, !!t.active, !!(t as Behind).behind]), [['opening', true, false], [2, false, false], [1, false, false]], 'at the top, the tab shown plain (not softly)');
   assert.equal(v.tabs[0].title, 'cats');
   s = M.upsertTab(s, tab(3, 1, 'https://search.example/', { index: 2, active: true }), 0);
   v = view.sidebar(s, 1, null, { opening });

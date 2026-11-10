@@ -14,7 +14,7 @@ test('a length in pixels: px, a percent of the whole, and NaN for what takes a l
   assert.ok(Number.isNaN(pixels('fit-content', 1000)));
   assert.ok(Number.isNaN(pixels('calc(50% - 10px)', 200)), 'no parser (node, or a browser without one): NaN');
   let asked = '';
-  const parse = (text) => { asked = text; return { to: () => ({ value: 90 }) }; };
+  const parse = (text: string) => { asked = text; return { to: () => ({ value: 90 }) }; };
   assert.equal(pixels('calc(50% - 10px)', 200, parse), 90);
   assert.equal(asked, 'calc(100px - 10px)', 'percents are lengths before the browser\'s arithmetic');
   assert.ok(Number.isNaN(pixels('calc(1em + 2px)', 200, () => { throw new Error('no'); })), 'what the parser refuses: NaN');
@@ -33,7 +33,7 @@ test('margins collapse as CSS 2 adds them: the largest positive and the most neg
 });
 
 test('sized: margins or a size that follow the box\'s width; grows: no height said', () => {
-  const lengths = (over = {}) => {
+  const lengths = (over: Record<number, string> = {}) => {
     const l = ['8px', '8px', '8px', '8px', '0px', '0px', '0px', '0px', 'auto', '0px', 'none', 'auto'];
     for (const [i, v] of Object.entries(over)) l[Number(i)] = v;
     return { lengths: l };
@@ -56,7 +56,7 @@ test('the top margin: only what it adds to the first children\'s it collapses wi
 });
 
 // A body as readSaid sees it: margins, paddings, then width, min-width, max-width, height.
-const said = (lengths, over = {}) => ({ lengths, whole: 1000, zoom: 1, borders: 0, boxSizing: 'content-box', direction: 'ltr', column: false, meets: false, collapses: [], ...over });
+const said = (lengths: string[], over: Record<string, unknown> = {}) => ({ lengths, whole: 1000, zoom: 1, borders: 0, boxSizing: 'content-box', direction: 'ltr', column: false, meets: false, collapses: [], ...over });
 const NONE = ['0px', '0px', '0px', '0px'];
 
 test('the width equation: a plain body with the browser\'s 8px margins', () => {

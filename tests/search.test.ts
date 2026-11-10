@@ -18,7 +18,7 @@ test('URLs pass through or get a scheme', () => {
 
 test('everything else is a search, left to the browser\'s engine', () => {
   assert.deepEqual(resolveInput('  hello world '), { kind: 'search', query: 'hello world' });
-  assert.equal(resolveInput('node.js tutorial').kind, 'search');
+  assert.equal(resolveInput('node.js tutorial')!.kind, 'search');
   assert.equal(resolveInput('   '), null);
 });
 
@@ -66,7 +66,7 @@ test('other searches and look-alikes are not Safari\'s engine', () => {
     'https://example.com/?q=monkey&t=osx',
     'not a url',
     undefined,
-  ]) assert.equal(detectSafariSearch(url), null, String(url));
+  ]) assert.equal(detectSafariSearch(url as string), null, String(url)); // undefined too: its new URL() throws
 });
 
 test('which engine\'s site a URL is on, Safari\'s parameters or not (for diagnostics)', () => {
@@ -107,8 +107,9 @@ test('fuzzyScore: substring > word-start subsequence > scattered; misses are -In
 function paletteState() {
   let s = M.defaultState();
   s = M.createSpace(s, { id: 'work', name: 'Work', emoji: '💼' });
-  const add = (id, title, url, spaceId, extra = {}) => {
-    s = M.upsertTab(s, { id, windowId: 1, index: id, url, title, ...extra }, extra.lastActive ?? id);
+  const add = (id: number, title: string, url: string, spaceId: string, extra: Partial<BrowserTab> & { lastActive?: number } = {}) => {
+    // `active` only when the test says (a tab not in front otherwise).
+    s = M.upsertTab(s, { id, windowId: 1, index: id, url, title, ...extra } as BrowserTab, extra.lastActive ?? id);
     s = M.moveTab(s, id, spaceId);
   };
   add(1, 'GitHub Pull Requests', 'https://github.com/pulls', 'work');
@@ -118,7 +119,9 @@ function paletteState() {
   s = M.archiveTab(s, { id: 'a1', url: 'https://old.example', title: 'Old GitHub issue', spaceId: 'personal', closedAt: 5 });
   return s;
 }
-const ctx = { windowId: 1, tabId: 3, canToggleSidebar: true };
+// The palette's context: what a test leaves out is off (the view model gives every field).
+type Ctx = Parameters<typeof rankPalette>[2];
+const ctx = { windowId: 1, tabId: 3, canToggleSidebar: true } as Ctx;
 
 test('palette: searches tabs in all spaces, pins, archive; current space ranks first', () => {
   const s = paletteState();
@@ -166,15 +169,15 @@ test('palette: "Margin start page & settings" on web pages, not on the start pag
 test('palette: "New window" is always offered, from the window it\'s in (a Margin window of its own on its space: docs/BROWSER-WINDOWS.md §5)', () => {
   const s = paletteState();
   assert.deepEqual(rankPalette(s, 'new window', ctx)[0].action, { type: 'newWindow', fromWindowId: ctx.windowId });
-  assert.deepEqual(rankPalette(s, 'new window', { ...ctx, windowId: undefined })[0].action, { type: 'newWindow' });
+  assert.deepEqual(rankPalette(s, 'new window', { ...ctx, windowId: undefined } as Partial<Ctx> as Ctx)[0].action, { type: 'newWindow' });
   assert.ok(rankPalette(s, '', { ...ctx, inNewTab: true }).some((i) => i.id === 'action:new-window'));
 });
 
 test('palette: "Margin full screen" only where the browser has it (Chrome)', () => {
   const state = M.normalizeState({ tabs: { 1: { id: 1, windowId: 1, url: 'https://a.com/', title: 'A' } }, tabSpace: { 1: 'personal' } });
-  const has = (ctx) => rankPalette(state, 'full screen', ctx).some((i) => i.id === 'action:fullscreen');
+  const has = (ctx: Partial<Ctx>) => rankPalette(state, 'full screen', ctx as Ctx).some((i) => i.id === 'action:fullscreen');
   assert.equal(has({ windowId: 1, tabId: 1, canFullscreen: true }), true);
   assert.equal(has({ windowId: 1, tabId: 1 }), false);
-  const item = rankPalette(state, 'full screen', { windowId: 1, tabId: 1, canFullscreen: true }).find((i) => i.id === 'action:fullscreen');
-  assert.deepEqual(item.action, { type: 'toggleFullscreen', windowId: 1 });
+  const item = rankPalette(state, 'full screen', { windowId: 1, tabId: 1, canFullscreen: true } as Ctx).find((i) => i.id === 'action:fullscreen');
+  assert.deepEqual(item!.action, { type: 'toggleFullscreen', windowId: 1 });
 });

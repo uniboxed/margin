@@ -13,8 +13,10 @@ import { buildViewModel } from '../extension/ui/view-model.ts';
 import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
 import { menuItems } from '../extension/ui/behaviors/menu-items.ts';
 import { rankPalette } from '../extension/shared/search.ts';
+import type { KeptTab, State } from '../types/margin.d.ts';
 
-const tab = (id, windowId, url, extra = {}) => ({ id, windowId, url, title: `t${id}`, index: id, active: false, ...extra });
+// Every tab the state records has its Margin id and place (upsertTab, syncTabs give them): `.mid!`, `.order!` below.
+const tab = (id: number, windowId: number, url: string, extra: Partial<BrowserTab> = {}) => ({ id, windowId, url, title: `t${id}`, index: id, active: false, ...extra });
 const NOW = 1_000_000;
 
 function twoSpaces() {
@@ -32,7 +34,7 @@ function session() {
   s = M.upsertTab(s, tab(4, 2, 'https://d.test/', { index: 0, active: true }), NOW);
   return s;
 }
-const keptList = (s) => Object.values(s.keptTabs).sort((a, b) => a.order - b.order);
+const keptList = (s: State) => Object.values(s.keptTabs).sort((a, b) => a.order - b.order);
 
 // ---- ids and places -------------------------------------------------------------
 
@@ -49,12 +51,12 @@ test('Margin tab ids: every tab gets one of Margin\'s own, kept through updates,
 
 test('places: a new tab at the end of its window is the newest of all (open or not); one opened between two takes a place between them', () => {
   let s = session();
-  const [a, b, c] = [1, 2, 3].map((id) => s.tabs[id].order);
+  const [a, b, c] = [1, 2, 3].map((id) => s.tabs[id].order!);
   assert.ok(a < b && b < c, 'in the window\'s order');
   s = M.upsertTab(s, tab(5, 1, 'https://e.test/', { index: 1 }), NOW); // a link opened next to a
-  assert.ok(s.tabs[5].order > a && s.tabs[5].order < s.tabs[2].order, 'between a and b');
+  assert.ok(s.tabs[5].order! > a && s.tabs[5].order! < s.tabs[2].order!, 'between a and b');
   s = M.keepTab(s, 3, { why: 'window', now: NOW });
-  const top = Math.max(...Object.values(s.tabs).map((t) => t.order), ...Object.values(s.keptTabs).map((k) => k.order));
+  const top = Math.max(...Object.values(s.tabs).map((t) => t.order!), ...Object.values(s.keptTabs).map((k) => k.order));
   s = M.upsertTab(s, tab(6, 1, 'https://f.test/', { index: 9 }), NOW);
   assert.equal(s.tabs[6].order, top + 1, 'after every tab, the kept one too');
 });
@@ -66,7 +68,7 @@ test('places: after a move in the tab strip only the moved tab gets a new place,
   s = M.syncTabs(s, [tab(1, 1, 'https://a.test/', { index: 1, active: true }), tab(2, 1, 'https://b.test/', { index: 2 }), tab(3, 1, 'https://c.test/', { index: 0 }), tab(4, 2, 'https://d.test/', { index: 0, active: true })], { now: NOW });
   assert.equal(s.tabs[1].order, before[1]);
   assert.equal(s.tabs[2].order, before[2]);
-  assert.ok(s.tabs[3].order < s.tabs[1].order, 'before a now');
+  assert.ok(s.tabs[3].order! < s.tabs[1].order!, 'before a now');
   const shown = V.sidebar(s, 1, 1).tabs.map((t) => t.id);
   assert.deepEqual(shown, [2, 1, 3], 'newest first: the strip reversed');
 });
@@ -74,10 +76,10 @@ test('places: after a move in the tab strip only the moved tab gets a new place,
 test('places that get too close are renumbered, the order kept', () => {
   let s = session();
   // a and b a hair apart (many tabs opened between them before).
-  s = { ...s, tabs: { ...s.tabs, 2: { ...s.tabs[2], order: s.tabs[1].order + 1e-7 } } };
+  s = { ...s, tabs: { ...s.tabs, 2: { ...s.tabs[2], order: s.tabs[1].order! + 1e-7 } } };
   s = M.closedTab(s, 4, { windowClosing: true, now: NOW, archiveId: 'x' });
   s = M.upsertTab(s, tab(9, 1, 'https://n.test/', { index: 1 }), NOW); // opened right after a
-  const all = [...Object.values(s.tabs), ...Object.values(s.keptTabs)].sort((x, y) => x.order - y.order);
+  const all = [...Object.values(s.tabs), ...Object.values(s.keptTabs)].sort((x, y) => x.order! - y.order!);
   assert.deepEqual(all.map((t) => t.order), [0, 1, 2, 3, 4], 'renumbered, open and not');
   assert.deepEqual(all.map((t) => t.url), ['https://a.test/', 'https://n.test/', 'https://b.test/', 'https://c.test/', 'https://d.test/'], 'in the same order');
 });
@@ -95,7 +97,8 @@ test('migration: open tabs from before Margin\'s ids get one and a place (their 
   assert.ok(M.isTabId(s.tabs[7].mid));
   assert.equal(s.tabs[7].order, 3);
   assert.equal(s.lostTabs, null, 'moved: never read again');
-  assert.deepEqual(keptList(s).map((k) => [k.url, k.spaceId, k.from.key, k.from.size]), [['https://l1.test/', 'work', '50:9', 2], ['https://l2.test/', 'personal', '50:9', 2]]);
+  assert.deepEqual(keptList(s).map((k) => [k.url, k.spaceId, k.from!.key, k.from!.size]), // lost with a window: its `from`
+    [['https://l1.test/', 'work', '50:9', 2], ['https://l2.test/', 'personal', '50:9', 2]]);
   assert.equal(M.tabIdsAdded(raw, s), true, 'written, so the ids last');
   const again = M.normalizeState({ ...raw, tabs: s.tabs, keptTabs: s.keptTabs, lostTabs: null });
   assert.equal(again.tabs[7], s.tabs[7], 'kept as stored');
@@ -132,8 +135,8 @@ test('tabs lost with their window stay, not open, in their spaces, the same Marg
   assert.deepEqual(kept.map((k) => k.id), mids);
   assert.deepEqual(kept.map((k) => k.order), orders);
   assert.deepEqual(kept.map((k) => [k.url, k.spaceId, k.why]), [['https://a.test/', 'work', 'window'], ['https://b.test/', 'work', 'window'], ['https://c.test/', 'work', 'window']]);
-  assert.equal(new Set(kept.map((k) => k.from.key)).size, 1, 'lost with one window');
-  assert.equal(kept[0].from.size, 3, 'which had three pages');
+  assert.equal(new Set(kept.map((k) => k.from!.key)).size, 1, 'lost with one window'); // so each has its `from`
+  assert.equal(kept[0].from!.size, 3, 'which had three pages');
   // Shown in every window showing Work: window 2, once it shows Work.
   const w2 = M.setActiveSpace(s, 2, 'work');
   assert.deepEqual(V.sidebar(w2, 2, 4).tabs.map((t) => [t.id, !!t.kept]), [[mids[2], true], [mids[1], true], [mids[0], true]]);
@@ -190,9 +193,9 @@ test('relaunch: restored tabs are matched by address and order, keeping their Ma
   assert.deepEqual([next.tabs[70].mid, next.tabs[71].mid], [s.tabs[1].mid, s.tabs[3].mid], 'the same Margin tabs');
   assert.deepEqual([next.tabSpace[70], next.tabSpace[71]], ['work', 'work']);
   assert.deepEqual(keptList(next).map((k) => [k.id, k.url, k.spaceId, k.why]), [[s.tabs[2].mid, 'https://b.test/', 'work', 'not restored'], [s.tabs[4].mid, 'https://d.test/', 'personal', 'not restored']]);
-  assert.ok(next.tabs[70].order < next.tabs[71].order);
+  assert.ok(next.tabs[70].order! < next.tabs[71].order!);
   const b = keptList(next)[0];
-  assert.ok(b.order > next.tabs[70].order && b.order < next.tabs[71].order, 'b keeps its place between a and c');
+  assert.ok(b.order > next.tabs[70].order! && b.order < next.tabs[71].order!, 'b keeps its place between a and c');
   assert.equal(b.lastActive, NOW + 3600_000, 'the time Safari was closed doesn\'t count');
 });
 
@@ -227,7 +230,7 @@ test('auto-archive: a tab unused for archiveAfterHours goes to the archive, open
 
 test('kept tabs: at most KEPT_CAP, the least recently used beyond it archived', () => {
   let s = twoSpaces();
-  const keptTabs = {};
+  const keptTabs: Record<string, KeptTab> = {};
   for (let i = 0; i < M.KEPT_CAP + 3; i++) keptTabs[`t-k${i}`] = { id: `t-k${i}`, url: `https://k${i}.test/`, title: '', favIconUrl: '', spaceId: 'work', order: i, lastActive: i, keptAt: 0, why: 'window' };
   s = { ...s, keptTabs };
   s = M.upsertTab(s, tab(1, 1, 'https://new.test/', { index: 0 }), NOW);
@@ -242,11 +245,11 @@ test('opening a kept tab: where in the tab strip (before the first open tab plac
   let s = session();
   const b = s.tabs[2];
   s = M.closedTab(s, 2, { windowClosing: true, now: NOW, archiveId: 'x' });
-  assert.equal(M.stripIndexFor(s, 1, b.order), 2, 'before c (index 2)');
-  assert.equal(M.stripIndexFor(s, 2, b.order), 0, 'window 2: before d, placed after it');
-  assert.equal(M.stripIndexFor(s, 2, s.tabs[4].order + 1), undefined, 'nothing placed after it: the end');
+  assert.equal(M.stripIndexFor(s, 1, b.order!), 2, 'before c (index 2)');
+  assert.equal(M.stripIndexFor(s, 2, b.order!), 0, 'window 2: before d, placed after it');
+  assert.equal(M.stripIndexFor(s, 2, s.tabs[4].order! + 1), undefined, 'nothing placed after it: the end');
   s = M.upsertTab(s, tab(50, 1, 'https://b.test/', { index: 2, active: true }), NOW + 10);
-  s = M.linkKept(s, 50, b.mid, NOW + 10);
+  s = M.linkKept(s, 50, b.mid!, NOW + 10);
   assert.equal(s.tabs[50].mid, b.mid);
   assert.equal(s.tabs[50].order, b.order);
   assert.equal(s.tabSpace[50], 'work');
@@ -297,9 +300,9 @@ test('the view model: a kept tab\'s row says it isn\'t open (open false, notOpen
   let s = session();
   s = M.closedTab(s, 2, { windowClosing: true, now: NOW, archiveId: 'x' });
   const vm = buildViewModel({ state: s, ui: { windowId: 1, tabId: 1 } });
-  const row = vm.space.today.find((t) => typeof t.id === 'string');
+  const row = vm.space.today.find((t) => typeof t.id === 'string')!;
   assert.deepEqual([row.open, row.notOpen, row.active, row.asleep, row.loading, row.title], [false, true, false, false, false, 't2']);
-  const open = vm.space.today.find((t) => t.id === 3);
+  const open = vm.space.today.find((t) => t.id === 3)!;
   assert.deepEqual([open.open, open.notOpen], [true, false]);
   assert.equal(vm.space.tabCount, 3, 'a, c and the one not open');
 });
@@ -314,7 +317,7 @@ test('actions: a kept tab\'s id is a tab\'s; activating it asks the background t
   assert.deepEqual(checkAction('tab.moveToSpace', { tab: id, space: 'personal' }, ctx), { ok: true });
   assert.deepEqual(requestFor('tab.activate', id, { state: s, ui: { windowId: 1, sidebar: 'open' } }), { kind: 'send', type: 'activateTab', payload: { tabId: id, windowId: 1 } });
   assert.deepEqual(requestFor('tab.activate', 3, { state: s, ui: { windowId: 1, sidebar: 'open' } }), { kind: 'send', type: 'activateTab', payload: { tabId: 3 } }, 'an open one as before');
-  assert.deepEqual(requestFor('tab.close', id, { state: s, ui: { windowId: 1 } }).payload, { tabId: id });
+  assert.deepEqual((requestFor('tab.close', id, { state: s, ui: { windowId: 1 } }) as { payload?: unknown }).payload, { tabId: id }); // a send's
 });
 
 test('menus: a kept tab\'s menu is a tab\'s (pin, folders, move to a space, close)', () => {
@@ -331,7 +334,8 @@ test('the palette finds a kept tab, and choosing it opens it in this window', ()
   let s = session();
   s = M.closedTab(s, 2, { windowClosing: true, now: NOW, archiveId: 'x' });
   const id = Object.keys(s.keptTabs)[0];
-  const row = rankPalette(s, 'b.test', { windowId: 1, tabId: 1 }).find((r) => r.id === `tab:${id}`);
+  // The palette's context: what's left out is off.
+  const row = rankPalette(s, 'b.test', { windowId: 1, tabId: 1 } as Parameters<typeof rankPalette>[2]).find((r) => r.id === `tab:${id}`);
   assert.ok(row, 'listed');
   assert.deepEqual(row.action, { type: 'activateTab', tabId: id, windowId: 1 });
 });
