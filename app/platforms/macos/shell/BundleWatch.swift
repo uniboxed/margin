@@ -20,6 +20,7 @@
 // A new instance ends any other one started from the same bundle before it
 // starts its shell (AppDelegate.swift), never the other way round.
 
+import CoreServices
 import Foundation
 
 // A file as it is now: the same path can hold another file after an update.
@@ -62,12 +63,29 @@ final class BundleWatch {
         return true
     }
 
-    // Each dispatch the link's Safari didn't pass on: looked at at once.
-    func watch(_ link: SocketLink) {
-        link.onDispatchRefused = { [weak self] name, why in
-            self?.check("\(name) not passed on: \(why)")
+    // Each dispatch the link's Safari didn't pass on: looked at at once; three in a row, the registrations healed.
+    func watch(_ link: SocketLink, registration: Registration? = nil) {
+        link.onDispatchRefused = { [weak self, weak link] name, why in
+            guard self?.check("\(name) not passed on: \(why)") == false, let link, link.refusedInARow >= 3 else { return }
+            registration?.heal("Safari refused \(link.refusedInARow) hand-offs in a row")
         }
     }
+
+    // Registered copies of Margin that aren't this one and are no one's Margin: one left in a build folder (an
+    // Xcode or scripts/safari.sh build, a test's), in the Trash, or gone from disk. Another real install (an
+    // Applications folder's) is never one. A second registered Margin.app makes Safari take this one for another
+    // app's and refuse its messages (SFErrorDomain 1: the build-only safari.sh's, 2026-11-09, 19 in a row).
+    nonisolated static let buildFolders = ["/DerivedData/", "/xcode/build/", "/Build/Products/", "/.Trash/", "/private/tmp/", "/private/var/folders/", "/tmp/"]
+    nonisolated static func strays(_ registered: [URL], me: URL, exists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }) -> [URL] {
+        let mine = me.standardizedFileURL.path
+        var seen = Set<String>()
+        return registered.filter { url in
+            let path = url.standardizedFileURL.path
+            guard path != mine, seen.insert(path).inserted else { return false }
+            return !exists(url) || buildFolders.contains { path.contains($0) }
+        }
+    }
+
 
     // The other instances to end as one starts: those of the same bundle
     // (its path, or the path an update moves it aside to), never this one,
@@ -83,5 +101,40 @@ final class BundleWatch {
             let there = URL(fileURLWithPath: path).standardizedFileURL.path
             return there == here || there == here + ".old"
         }.map(\.pid)
+    }
+}
+
+// Margin.app the one copy the system knows by its id: the strays (BundleWatch.strays) unregistered and this one
+// registered again, off the main thread, at launch and when Safari keeps refusing its hand-offs; at most once a
+// minute, and never under the app's tests (MARGIN_APP_TESTS).
+final class Registration {
+    private var lastHeal = -Double.infinity
+    private let queue = DispatchQueue(label: "io.tirth.margin.registration", qos: .utility)
+    nonisolated static let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+    func heal(_ why: String, now: Double = Diagnostics.now()) {
+        guard ProcessInfo.processInfo.environment["MARGIN_APP_TESTS"] == nil, now - lastHeal >= 60,
+              let id = Bundle.main.bundleIdentifier else { return }
+        lastHeal = now
+        let me = Bundle.main.bundleURL
+        queue.async {
+            let registered = (LSCopyApplicationURLsForBundleIdentifier(id as CFString, nil)?.takeRetainedValue() as? [URL]) ?? []
+            let strays = BundleWatch.strays(registered, me: me)
+            for url in strays {
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: Self.lsregister)
+                task.arguments = ["-u", url.path]
+                try? task.run()
+                task.waitUntilExit()
+            }
+            let status = LSRegisterURL(me as CFURL, true)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    if !strays.isEmpty || status != noErr {
+                        Diagnostics.note("registration (\(why)): \(strays.count) other cop\(strays.count == 1 ? "y" : "ies") of Margin unregistered, this one registered again\(status == noErr ? "" : " (error \(status))")")
+                    }
+                }
+            }
+        }
     }
 }

@@ -38,6 +38,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var terminating: DispatchSourceSignal?
     // The executable as it was at launch; quits once another build is in its place.
     private var bundle: BundleWatch?
+    private let registration = Registration()
 
     // Opened by macOS at login (a login item: SMAppService.mainApp), so it's running before Safari opens and
     // can cover Safari's windows from their first frame (ShellCovers.swift). Read while the open event is current.
@@ -65,6 +66,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         bundle = BundleWatch(quit: { RunLoop.main.perform { NSApp.terminate(nil) } })
+        registration.heal("launch")
         // The storyboard's window, shown at launch (but opened with --background).
         // How it started goes in the log (a run with the set-up window open is a regular app with a
         // Dock icon, and doesn't quit by itself while that window is open).
@@ -162,7 +164,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         watching = false
         if let bundle {
-            bundle.watch(shell.link)
+            bundle.watch(shell.link, registration: registration)
             // Replaced while it was starting: no shell at all.
             if bundle.check("at launch") { return }
         }

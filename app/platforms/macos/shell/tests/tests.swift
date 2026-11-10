@@ -799,6 +799,20 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("one Margin.app: the others of this bundle (and one an update moved aside) end, never this one", BundleWatch.othersToEnd(running, me: 10, bundlePath: here) == [11, 12])
     check("never a build folder's or Xcode's copy, nor one whose bundle isn't known", !BundleWatch.othersToEnd(running, me: 99, bundlePath: here).contains { [13, 14, 15].contains($0) })
     check("alone: nothing to end", BundleWatch.othersToEnd([BundleWatch.Running(pid: 10, bundlePath: here)], me: 10, bundlePath: here).isEmpty)
+    // The registered copies that go: build folders', the Trash's, gone ones; never this one or another real install.
+    let me = URL(fileURLWithPath: "/Users/u/Applications/Margin.app")
+    let registered = [me, URL(fileURLWithPath: "/Users/u/Projects/margin/xcode/build/Build/Products/Release/Margin.app"),
+                      URL(fileURLWithPath: "/Users/u/Library/Developer/Xcode/DerivedData/Margin-x/Build/Products/Debug/Margin.app"),
+                      URL(fileURLWithPath: "/Users/u/.Trash/Margin.app"), URL(fileURLWithPath: "/private/tmp/t/Margin.app"),
+                      URL(fileURLWithPath: "/Applications/Margin.app"), URL(fileURLWithPath: "/Users/u/Old/Margin.app"),
+                      URL(fileURLWithPath: "/Users/u/Projects/margin/xcode/build/Build/Products/Release/Margin.app")]
+    let gone: Set<String> = ["/Users/u/Old/Margin.app"]
+    let strays = BundleWatch.strays(registered, me: me, exists: { !gone.contains($0.path) }).map(\.path)
+    check("registration: a build folder's, DerivedData's, the Trash's, a temporary folder's and a gone copy are strays, once each",
+          strays == ["/Users/u/Projects/margin/xcode/build/Build/Products/Release/Margin.app",
+                     "/Users/u/Library/Developer/Xcode/DerivedData/Margin-x/Build/Products/Debug/Margin.app",
+                     "/Users/u/.Trash/Margin.app", "/private/tmp/t/Margin.app", "/Users/u/Old/Margin.app"], "\(strays)")
+    check("registration: never this copy, nor another install in an Applications folder", !strays.contains(me.path) && !strays.contains("/Applications/Margin.app"))
     // The executable's identity, read from a real file (in a temporary folder) as scripts/safari.sh swaps the bundle.
     let fm = FileManager.default
     let dir = fm.temporaryDirectory.appendingPathComponent("margin-bundle-\(UUID().uuidString)", isDirectory: true)

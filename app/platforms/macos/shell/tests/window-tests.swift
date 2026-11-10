@@ -1875,6 +1875,8 @@ extension Tests {
     check("covers: laid out: the cover goes", f { $0.laidOut = [100]; $0.covers = [100: 9] } == CoverPlan.Plan(wanted: [], close: [100], expire: []))
     check("covers: 6 s on: taken away, never again for that window", f { $0.covers = [100: 4] } == CoverPlan.Plan(wanted: [], close: [100], expire: [100]))
     check("covers: a closed window's cover goes", f { $0.candidates = []; $0.covers = [100: 9] } == CoverPlan.Plan(wanted: [], close: [100], expire: []))
+    check("covers: no layout coming (the hand-off refused): taken away at once, never again, and none made",
+          f { $0.linkStalled = true; $0.covers = [100: 9.5] } == CoverPlan.Plan(wanted: [], close: [100], expire: [100]) && f { $0.linkStalled = true }.wanted.isEmpty)
   }
 
   // An overlay in front of its window, asked exactly (WindowMatcher.stackedAboveExactly; Shell.isStacked): the

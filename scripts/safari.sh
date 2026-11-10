@@ -136,6 +136,9 @@ codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --identifier 
 codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --preserve-metadata=identifier,entitlements,requirements,flags "$BUILT"
 codesign --verify --strict "$BUILT"
 if [ "$INSTALL" = false ]; then
+  # Not left known to the system: a second registered Margin.app (this one, unsigned or signed otherwise) makes
+  # Safari take the installed one for another app's and refuse its messages (SFErrorDomain 1, 2026-11-09).
+  "$LSREGISTER" -u "$BUILT" 2>/dev/null || true
   echo "Built (not installed):"
   echo "$BUILT"
   exit 0
