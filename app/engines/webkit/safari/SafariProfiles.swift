@@ -68,7 +68,7 @@ nonisolated enum SafariProfiles {
 
     static let defaultServerId = "DefaultProfile"
     static let defaultMargin = "s-default" // BrowserProfiles.defaultProfile: the default profile's copy
-    static let marginExtension = "io.tirth.margin.Extension"
+    static let marginExtension = "com.unibox.margin.Extension"
     static var safariFolder: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Containers/com.apple.Safari/Data/Library/Safari", isDirectory: true)
     }

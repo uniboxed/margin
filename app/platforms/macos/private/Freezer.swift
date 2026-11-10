@@ -151,7 +151,7 @@ nonisolated final class FreezeCore: @unchecked Sendable {
     }
 
     private let sky: SkyLight
-    private let queue = DispatchQueue(label: "io.tirth.margin.freezer", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "com.unibox.margin.freezer", qos: .userInteractive)
     private let lock = NSLock()
     private var live: Live?
 

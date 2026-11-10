@@ -64,7 +64,7 @@ final class Harness: ExtensionLinkDelegate {
   }
 
   init() {
-    link = SocketLink(dispatch: dispatcher, safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.link.\(getpid())"))
+    link = SocketLink(dispatch: dispatcher, safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.link.\(getpid())"))
     // The host's extension pages are webkit-extension:// (Safari's are safari-web-extension://).
     link.allowedOrigins = ["safari-web-extension://", "webkit-extension://"]
     link.delegate = self

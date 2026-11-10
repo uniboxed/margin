@@ -40,7 +40,7 @@ Real, as shipped:
 
 Stand-ins:
 
-- **The extension handler** (`app/engines/webkit/safari/handler/SafariWebExtensionHandler.swift`) and **`dispatchMessage`**: a Node relay, `tests/e2e/harness/native-host.mts`, run by Chromium as a native messaging host named `io.tirth.margin`. Its manifest goes in `<user-data-dir>/NativeMessagingHosts/`, so nothing is written outside the test's temporary folder. It passes each message to the test over a local TCP socket and writes back what the test says: the reply to `wantLink` (`{ ok, appOpen, launching }`), and `link` or `appUp` into the lasting port.
+- **The extension handler** (`app/engines/webkit/safari/handler/SafariWebExtensionHandler.swift`) and **`dispatchMessage`**: a Node relay, `tests/e2e/harness/native-host.mts`, run by Chromium as a native messaging host named `com.unibox.margin`. Its manifest goes in `<user-data-dir>/NativeMessagingHosts/`, so nothing is written outside the test's temporary folder. It passes each message to the test over a local TCP socket and writes back what the test says: the reply to `wantLink` (`{ ok, appOpen, launching }`), and `link` or `appUp` into the lasting port.
 - **Margin.app's shell**: `tests/e2e/harness/app.js`, in Node, built on `tests/fake-app.ts` (the WebSocket server). It does what `Shell.swift` does for overlays, and nothing of the window server:
   - the mirror: snapshot, deltas in order, the window list;
   - the theme's pieces put together and checked (size and SHA-256), then sent to the overlays;
@@ -54,7 +54,7 @@ Stand-ins:
 ### Evidence (probes, 2026-11-06, in the scratchpad, not committed)
 
 - Chromium is Chrome for Testing 153 (`chromium-1243`). Manifest V2 is gone, so the background can't be a page here: it's the service worker.
-- A native messaging host manifest in `<user-data-dir>/NativeMessagingHosts/io.tirth.margin.json` is found by headless Chromium (`--headless=new`). A fixed extension id comes from a `key` added to the test build's manifest (made per run with `crypto.generateKeyPairSync`), so `allowed_origins` is known before launch.
+- A native messaging host manifest in `<user-data-dir>/NativeMessagingHosts/com.unibox.margin.json` is found by headless Chromium (`--headless=new`). A fixed extension id comes from a `key` added to the test build's manifest (made per run with `crypto.generateKeyPairSync`), so `allowed_origins` is known before launch.
 - The test build needs two changes from the Safari-profile build, both in the test's copy only:
   - `nativeMessaging` added to `permissions` (Chrome's manifest has none);
   - the link's socket guard, `canSocket` (`background/link.ts`: no socket in a worker, because WebKit hangs one there), let through. In the minified bundle it's one exact string (`canSocket=()=>typeof globalThis.document=="object"&&typeof globalThis.WorkerGlobalScope>"u"`); the harness replaces it and fails loudly if it isn't found. Chromium's workers open sockets fine. If the string moves, the fallback is a one-line test switch in `link.ts` (a separate, agreed change).

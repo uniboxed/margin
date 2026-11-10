@@ -176,7 +176,7 @@ Windows counterpart; (c) Safari-only; (d) private macOS APIs.
      - the link's listener on 127.0.0.1 (`tcp.rs`) and the connector's named pipe for this user only (`pipe.rs`);
        the native-messaging host is Margin's connector (`margin-connector.exe`, `app/shared/connector/`), whose
        `--install` the app runs at each launch (registered under
-       `HKCU\Software\Google\Chrome\NativeMessagingHosts\io.tirth.margin`, Edge's, Brave's and Chromium's keys);
+       `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.unibox.margin`, Edge's, Brave's and Chromium's keys);
      - a single instance, starting at login, data under `%LOCALAPPDATA%\Margin`.
    - `margin-linux`: later.
 2. **The Chromium link** in the extension (done, built on macOS first: Chrome and Edge link to Margin.app through

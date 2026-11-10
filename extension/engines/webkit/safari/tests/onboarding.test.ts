@@ -32,7 +32,7 @@ test('onboarding: access is reported when it changes (first at start), events as
   allSites = true;
   await onboarding.reportAccess();
   assert.deepEqual(types(), ['status:false', 'status:true'], 'only changes');
-  assert.ok(sent.every((m) => m.app === 'io.tirth.margin' && m.v === 1 && Number.isFinite(m.at)));
+  assert.ok(sent.every((m) => m.app === 'com.unibox.margin' && m.v === 1 && Number.isFinite(m.at)));
   onboarding.reportEvent('marginNewTabPage');
   onboarding.reportEvent('marginNewTabPage'); // the same tab, from its page too
   onboarding.reportEvent('cmdTKey');

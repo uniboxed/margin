@@ -742,7 +742,7 @@ final class Stp {
 // MARK: - Margin.app (G1's second half, G16): its signature, its log, its dev hook
 
 enum Margin {
-    static let bundle = "io.tirth.margin"
+    static let bundle = "com.unibox.margin"
     static var running: NSRunningApplication? { NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first }
     static var devHooksOn: Bool { UserDefaults(suiteName: bundle)?.bool(forKey: "MarginDevHooks") ?? false }
 
@@ -775,7 +775,7 @@ enum Margin {
     // Margin's own lines from its log: only "private calls" and "handoff:" lines, which hold ids,
     // numbers and milliseconds only (HANDOFF.md §8.1).
     static func logLines(last: String) -> [String] {
-        let (_, text) = run("/usr/bin/log", ["show", "--style", "compact", "--last", last, "--predicate", "subsystem == \"io.tirth.margin\" AND process == \"Margin\""])
+        let (_, text) = run("/usr/bin/log", ["show", "--style", "compact", "--last", last, "--predicate", "subsystem == \"com.unibox.margin\" AND process == \"Margin\""])
         return text.split(separator: "\n").compactMap { l in
             guard let r = l.range(of: "private calls") ?? l.range(of: "handoff:") else { return nil }
             return String(l[r.lowerBound...])
@@ -786,7 +786,7 @@ enum Margin {
     static func stream() throws -> (Process, LineBuffer) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/log")
-        p.arguments = ["stream", "--style", "compact", "--predicate", "subsystem == \"io.tirth.margin\" AND process == \"Margin\""]
+        p.arguments = ["stream", "--style", "compact", "--predicate", "subsystem == \"com.unibox.margin\" AND process == \"Margin\""]
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = FileHandle.nullDevice
@@ -803,7 +803,7 @@ enum Margin {
     // Margin refuses any profile not named exactly "Test A" or "Test B".
     static func devSwitch(to profile: String) {
         // DEV-HOOK: goes with the hook before production (tools/handoff-lab/devswitch.swift is its sender for people).
-        DistributedNotificationCenter.default().postNotificationName(NSNotification.Name("io.tirth.margin.dev.switch"), object: nil,
+        DistributedNotificationCenter.default().postNotificationName(NSNotification.Name("com.unibox.margin.dev.switch"), object: nil,
                                                                       userInfo: ["to": profile, "pid": String(ProcessInfo.processInfo.processIdentifier)], deliverImmediately: true)
     }
 }
@@ -933,7 +933,7 @@ enum Needs: String {
     case child = "a hidden window of a child process (off screen, alpha 0)"
     case stp = "Safari Technology Preview with the lab's temporary extension (ext/)"
     case margin = "Margin.app, a Developer-ID hardened build, with Safari's Test A and Test B"
-    case devHook = "WP12's dev hook in Margin.app (defaults write io.tirth.margin MarginDevHooks -bool YES)"
+    case devHook = "WP12's dev hook in Margin.app (defaults write com.unibox.margin MarginDevHooks -bool YES)"
     case person = "a person at the Mac for the guided steps (--person)"
     case frames = "Screen Recording for the terminal (frame counts; not asked for)"
     case displays = "a second display (a Sidecar iPad is enough)"
@@ -2086,7 +2086,7 @@ let g16 = Gate(
     decides: "the honest numbers, Options.watchdog, the step-5 limit; the build's acceptance, with Tirth's go-ahead",
     needs: [.margin, .devHook], freezes: "about 1.0-1.5 s per handoff, 30 handoffs (--runs)",
     plan: ["needs Margin.app running with MarginDevHooks YES, and Safari's Test A and Test B each with a window (Margin shows one, the other parked)",
-           "the lab never touches Safari: it posts io.tirth.margin.dev.switch (to: Test B, then Test A, …) every 3 s, which Margin refuses for any other profile",
+           "the lab never touches Safari: it posts com.unibox.margin.dev.switch (to: Test B, then Test A, …) every 3 s, which Margin refuses for any other profile",
            "Margin's own summary line for each (its log, ids and ms only): frozen ms, late, recovered or aborted",
            "the reveal-time distribution and the late-reveal rate; passes when every switch landed with none recovered or aborted (the late rate is Tirth's call)"],
     run: { lab in

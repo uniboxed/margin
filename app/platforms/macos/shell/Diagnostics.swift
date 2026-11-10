@@ -1,5 +1,5 @@
-// Margin.app's own log: os_log, subsystem io.tirth.margin, category shell. Read it with
-//   /usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'
+// Margin.app's own log: os_log, subsystem com.unibox.margin, category shell. Read it with
+//   /usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'
 // (in zsh, `log` is a builtin). Only what the app does and how long it took:
 // never a page's title or address.
 //
@@ -22,7 +22,7 @@ import Foundation
 import os
 
 enum Diagnostics {
-    static let logger = Logger(subsystem: "io.tirth.margin", category: "shell")
+    static let logger = Logger(subsystem: "com.unibox.margin", category: "shell")
 
     // Also each line here (tools/app-tests print them).
     static var echo: ((String) -> Void)?

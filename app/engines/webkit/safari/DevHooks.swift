@@ -4,11 +4,11 @@
 // A dev-only test hook for the profile handoff's live runs (gates G1 and G16, TESTING.md's live
 // checklist), with no Accessibility, no AppleScript and no clicks:
 //
-// - Distributed notifications, `io.tirth.margin.dev.<kind>`, as ExtensionLink hears the extension's
+// - Distributed notifications, `com.unibox.margin.dev.<kind>`, as ExtensionLink hears the extension's
 //   (its fields in userInfo, or a JSON string as the object). Sent by tools/handoff-lab/devswitch.swift
 //   or the lab, with deliverImmediately (and heard that way too, so Margin.app not being the active app
 //   holds nothing back).
-// - Off unless `defaults write io.tirth.margin MarginDevHooks -bool YES`. Read at each notification,
+// - Off unless `defaults write com.unibox.margin MarginDevHooks -bool YES`. Read at each notification,
 //   never kept: turned off, the next one is refused.
 // - Only Safari's "Test A" and "Test B": Safari's own names for the profiles (SafariProfiles.swift,
 //   read with Full Disk Access), exactly, never the names typed in Margin. The window Margin shows now
@@ -104,7 +104,7 @@ protocol DevHookWorld: AnyObject {
 // DEV-HOOK: the hook itself.
 final class DevHooks {
     static let names: Set<String> = ["Test A", "Test B"]
-    static let prefix = "io.tirth.margin.dev."
+    static let prefix = "com.unibox.margin.dev."
     static let defaultsKey = "MarginDevHooks"
     enum Kind: String, CaseIterable { case `switch`, dump, mode, fail, probe }
 

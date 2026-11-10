@@ -23,7 +23,7 @@ func dataScenario() async {
   var launches = 0
   func launch() async -> Shell? {
     launches += 1
-    let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.data.\(ProcessInfo.processInfo.processIdentifier).\(launches)"),
+    let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.data.\(ProcessInfo.processInfo.processIdentifier).\(launches)"),
                           timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, request: 5, safariSettled: 2))
     var options = Shell.Options()
     options.harness = true
@@ -230,7 +230,7 @@ func carryScenario() async {
   Diagnostics.echo = { said.append($0); echo?($0) }
   defer { Diagnostics.echo = echo }
 
-  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.carry.\(ProcessInfo.processInfo.processIdentifier)"),
+  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.carry.\(ProcessInfo.processInfo.processIdentifier)"),
                         timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, request: 5, safariSettled: 2))
   var options = Shell.Options()
   options.harness = true

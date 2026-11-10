@@ -1,10 +1,10 @@
 // DEV-HOOK: goes before production with app/engines/webkit/safari/DevHooks.swift (docs/HANDOFF.md §9).
 //
-// The dev hook's sender: posts one io.tirth.margin.dev.* notification to Margin.app, which honours it
-// only while `defaults read io.tirth.margin MarginDevHooks` is YES, and only when the window it shows
+// The dev hook's sender: posts one com.unibox.margin.dev.* notification to Margin.app, which honours it
+// only while `defaults read com.unibox.margin MarginDevHooks` is YES, and only when the window it shows
 // and the target are Safari's "Test A" and "Test B" (it checks; this checks too, and says so first).
 // Nothing here touches Safari or reads anything of it. Margin.app's log says what it did:
-//   /usr/bin/log stream --style compact --predicate 'subsystem == "io.tirth.margin"' | grep -E 'dev hook|handoff:'
+//   /usr/bin/log stream --style compact --predicate 'subsystem == "com.unibox.margin"' | grep -E 'dev hook|handoff:'
 //
 //   swift tools/handoff-lab/devswitch.swift switch "Test B" [--space ID] [--wait S]
 //   swift tools/handoff-lab/devswitch.swift dump
@@ -19,7 +19,7 @@
 import Foundation
 
 let names: Set<String> = ["Test A", "Test B"]
-let prefix = "io.tirth.margin.dev."
+let prefix = "com.unibox.margin.dev."
 
 func fail(_ why: String) -> Never {
     FileHandle.standardError.write(Data("devswitch: \(why)\n".utf8))
@@ -56,8 +56,8 @@ guard let command = args.first else {
     fail("switch \"Test B\" [--space ID] | dump | mode [--freeze on|off] [--old park|close|keep] | fail STEP | alternate N [--every S] (see the file's head)")
 }
 
-let on = UserDefaults(suiteName: "io.tirth.margin")?.bool(forKey: "MarginDevHooks") ?? false
-if !on { print("note: MarginDevHooks isn't YES: Margin.app will refuse (defaults write io.tirth.margin MarginDevHooks -bool YES)") }
+let on = UserDefaults(suiteName: "com.unibox.margin")?.bool(forKey: "MarginDevHooks") ?? false
+if !on { print("note: MarginDevHooks isn't YES: Margin.app will refuse (defaults write com.unibox.margin MarginDevHooks -bool YES)") }
 if wait > 0 {
     print("posting in \(wait) s")
     Thread.sleep(forTimeInterval: wait)

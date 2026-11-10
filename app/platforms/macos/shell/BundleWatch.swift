@@ -109,7 +109,7 @@ final class BundleWatch {
 // minute, and never under the app's tests (MARGIN_APP_TESTS).
 final class Registration {
     private var lastHeal = -Double.infinity
-    private let queue = DispatchQueue(label: "io.tirth.margin.registration", qos: .utility)
+    private let queue = DispatchQueue(label: "com.unibox.margin.registration", qos: .utility)
     nonisolated static let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
     func heal(_ why: String, now: Double = Diagnostics.now()) {

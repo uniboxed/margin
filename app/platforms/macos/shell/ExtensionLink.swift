@@ -50,7 +50,7 @@ protocol ExtensionDispatch {
     func dispatch(_ name: String, _ info: JSONObject, done: @escaping @MainActor (String?) -> Void)
 }
 
-let marginExtensionIdentifier = "io.tirth.margin.Extension"
+let marginExtensionIdentifier = "com.unibox.margin.Extension"
 let safariIdentifier = "com.apple.Safari"
 
 // When Safari started, if it's running.
@@ -226,7 +226,7 @@ final class SocketLink {
     func connection(_ key: String) -> LinkConnection? { links[key] }
 
     init(dispatch: ExtensionDispatch = SafariDispatch(), safariSince: @escaping () -> Date? = safariRunningSince,
-         wake: Notification.Name = Notification.Name("io.tirth.margin.setup"), timing: Timing = Timing(), note: LinkNote = .standard()) {
+         wake: Notification.Name = Notification.Name("com.unibox.margin.setup"), timing: Timing = Timing(), note: LinkNote = .standard()) {
         self.dispatch = dispatch
         self.note = note
         self.safariSince = safariSince

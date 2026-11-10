@@ -38,9 +38,9 @@ func safariProfilesTests() {
     check("safari: Safari's ids", list.count > 2 && list[1].serverId == FakeSafari.personalServer && list[2].serverId == FakeSafari.testServer)
     check("safari: the log says names and ids, never a page", !SafariProfiles.describe(.read(list)).contains("example.com") && SafariProfiles.describe(.read(list)).contains("“Personal”"))
     // An unsigned build's entry ("(UNSIGNED)"), and one whose id isn't a UUID.
-    safari.extensions(FakeSafari.testServer, ["io.tirth.margin.Extension (UNSIGNED)": ["ProfileIdentifier": FakeSafari.testCopy]])
+    safari.extensions(FakeSafari.testServer, ["com.unibox.margin.Extension (UNSIGNED)": ["ProfileIdentifier": FakeSafari.testCopy]])
     check("safari: an unsigned build's entry", SafariProfiles.marginProfile(safari.folder, folders: [FakeSafari.testServer], extensionId: SafariProfiles.marginExtension) == test)
-    safari.extensions(FakeSafari.testServer, ["io.tirth.margin.Extension (UNSIGNED)": ["ProfileIdentifier": "not a uuid"]])
+    safari.extensions(FakeSafari.testServer, ["com.unibox.margin.Extension (UNSIGNED)": ["ProfileIdentifier": "not a uuid"]])
     check("safari: an id that isn't a UUID: no link", SafariProfiles.marginProfile(safari.folder, folders: [FakeSafari.testServer], extensionId: SafariProfiles.marginExtension) == nil)
     check("safari: a folder name that isn't an id: never read", SafariProfiles.marginProfile(safari.folder, folders: ["../Profiles"], extensionId: SafariProfiles.marginExtension) == nil)
     check("safari: a symbol that isn't a symbol's name: none", SafariProfiles.symbol(try? PropertyListSerialization.data(fromPropertyList: ["SymbolImageName": "../x y"], format: .binary, options: 0)) == "")
@@ -53,7 +53,7 @@ func safariProfilesTests() {
     let removedUnsigned: [String: Any] = ["Enabled": false, "AddedDate": day(0), "RemovedDate": day(6), "ProfileIdentifier": idA]
     let liveTeam: [String: Any] = ["Enabled": true, "AddedDate": day(5), "ProfileIdentifier": idB]
     let tirths: [String: Any] = ["\(ext) (UNSIGNED)": removedUnsigned, "\(ext) (VSNN5UW99X)": liveTeam,
-                                 "io.tirth.margin-move-test.Extension (VSNN5UW99X)": ["Enabled": true, "AddedDate": day(10), "RemovedDate": day(11), "ProfileIdentifier": "77777777-7777-4777-8777-777777777777"]]
+                                 "com.unibox.margin-move-test.Extension (VSNN5UW99X)": ["Enabled": true, "AddedDate": day(10), "RemovedDate": day(11), "ProfileIdentifier": "77777777-7777-4777-8777-777777777777"]]
     let a = SafariProfiles.entries(tirths, extensionId: ext, team: "VSNN5UW99X")
     check("entries: (UNSIGNED) removed and off beside the team's live one, this build the team's: the team's, though UNSIGNED sorts first", a.chosen == sB && a.suffix == "VSNN5UW99X" && a.count == 2, "\(a)")
     let b = SafariProfiles.entries(tirths, extensionId: ext, team: nil)
@@ -177,7 +177,7 @@ func safariProfilesTests() {
     waitUntil(1.5) { false }
     check("watcher: many writes at once: few reads", watcher.reads - reads <= 4, "\(watcher.reads - reads) reads")
     check("watcher: nothing new: nothing handed on", outcomes.count == 2, "\(outcomes.count)")
-    safari.extensions(FakeSafari.testServer, ["io.tirth.margin.Extension (ABCDE12345)": ["ProfileIdentifier": FakeSafari.testCopy]])
+    safari.extensions(FakeSafari.testServer, ["com.unibox.margin.Extension (ABCDE12345)": ["ProfileIdentifier": FakeSafari.testCopy]])
     waitUntil(5) { if case .read(let l) = outcomes.last { return l.last?.margin == test }; return false }
     check("watcher: Margin turned on in another profile: linked", { if case .read(let l) = outcomes.last { return l.last?.margin == test }; return false }())
     try? FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: safari.dbPath)

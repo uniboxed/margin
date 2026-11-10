@@ -779,14 +779,14 @@ It also holds:
 
 For live tests without Accessibility, AppleScript or clicks.
 
-- **New `app/engines/webkit/safari/DevHooks.swift`.** It listens to `DistributedNotificationCenter` (as `ExtensionLink.swift:211` already does for `io.tirth.margin.setup`).
-- **Off unless** `defaults write io.tirth.margin MarginDevHooks -bool YES`, checked at each notification.
+- **New `app/engines/webkit/safari/DevHooks.swift`.** It listens to `DistributedNotificationCenter` (as `ExtensionLink.swift:211` already does for `com.unibox.margin.setup`).
+- **Off unless** `defaults write com.unibox.margin MarginDevHooks -bool YES`, checked at each notification.
 - **Only Test A and Test B:** it refuses a target unless Safari's own name for the profile (`SafariProfiles.swift`) is exactly "Test A" or "Test B". Without names it refuses everything.
 - **Notifications:**
-  - `io.tirth.margin.dev.switch { to: "Test B", space? }`: a switch from the front window, as a key press would (`startSwitch`, `ShellProfiles.swift:234-240`);
-  - `io.tirth.margin.dev.dump`: logs the registry, the choices, the availability, the aftercare and the last 5 switch lines;
-  - `io.tirth.margin.dev.mode { freeze: on|off, old: park|close|keep }`: caps the choices for the session;
-  - `io.tirth.margin.dev.fail { step: "show" | "park" | "reveal" | "fullscreen" }`: makes the next such call count as not landed (the call isn't made).
+  - `com.unibox.margin.dev.switch { to: "Test B", space? }`: a switch from the front window, as a key press would (`startSwitch`, `ShellProfiles.swift:234-240`);
+  - `com.unibox.margin.dev.dump`: logs the registry, the choices, the availability, the aftercare and the last 5 switch lines;
+  - `com.unibox.margin.dev.mode { freeze: on|off, old: park|close|keep }`: caps the choices for the session;
+  - `com.unibox.margin.dev.fail { step: "show" | "park" | "reveal" | "fullscreen" }`: makes the next such call count as not landed (the call isn't made).
 - Every honoured notification is logged: `dev hook: switch to Test B (asked by pid N)`.
 - **A sender:** `tools/handoff-lab/devswitch.swift`.
 - **Removal:** the file, its call sites and the sender go before production. Each has a `DEV-HOOK` comment so one grep finds them.

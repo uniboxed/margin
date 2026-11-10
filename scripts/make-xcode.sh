@@ -1,7 +1,7 @@
 #!/bin/sh
 # Regenerate the Safari Xcode project in xcode/ (git-ignored) and fix the
 # bundle IDs. The converter capitalizes the app's ID from --app-name
-# (io.tirth.Margin) while the extension keeps io.tirth.margin.Extension, and
+# (com.unibox.Margin) while the extension keeps com.unibox.margin.Extension, and
 # Xcode rejects an extension whose ID isn't prefixed by the app's.
 # Wraps dist/webkit/ (the Safari build; refresh it with `npm run build`), and
 # gives the app its shell (app/platforms/macos/shell/: the link to the extension, the overlays
@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 [ -f dist/webkit/manifest.json ] || { echo "dist/webkit/ is missing: run npm run build" >&2; exit 1; }
 [ -f dist/app/overlay.html ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
 
-APP_ID=io.tirth.margin
+APP_ID=com.unibox.margin
 EXT_ID="$APP_ID.Extension"
 
 if [ -d xcode ]; then

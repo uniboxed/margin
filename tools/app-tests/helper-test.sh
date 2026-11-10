@@ -23,14 +23,14 @@ PL
   chmod +x "$1/Contents/MacOS/run"
 }
 MARK="$BUILD/margin-started"
-stub "$BUILD/Margin.app" io.tirth.margin.test.app "echo \"\$@\" >> '$MARK'; sleep 2"
-stub "$BUILD/Browser.app" io.tirth.margin.test.browser "" LSUIElement
+stub "$BUILD/Margin.app" com.unibox.margin.test.app "echo \"\$@\" >> '$MARK'; sleep 2"
+stub "$BUILD/Browser.app" com.unibox.margin.test.browser "" LSUIElement
 # (The "browser" a real Cocoa app: macOS announces a launch only once the app checks in. An accessory app, no
 # window, gone in 4 s.)
 printf 'import AppKit\nNSApplication.shared.setActivationPolicy(.accessory)\nDispatchQueue.main.asyncAfter(deadline: .now() + 4) { exit(0) }\nNSApplication.shared.run()\n' > "$BUILD/browser.swift"
 rm -f "$BUILD/Browser.app/Contents/MacOS/run"
 swiftc -O "$BUILD/browser.swift" -o "$BUILD/Browser.app/Contents/MacOS/run" || exit 1
-export MARGIN_HELPER_APP="$BUILD/Margin.app" MARGIN_HELPER_BROWSERS=io.tirth.margin.test.browser
+export MARGIN_HELPER_APP="$BUILD/Margin.app" MARGIN_HELPER_BROWSERS=com.unibox.margin.test.browser
 
 # 1. No browser yet: nothing started; then the browser opens: Margin.app started, with --background.
 "$BUILD/margin-helper" 2> "$BUILD/helper.log" &
@@ -49,7 +49,7 @@ kill $HELPER 2>/dev/null; wait $HELPER 2>/dev/null
 pkill -f "$BUILD/Margin.app/Contents/MacOS/run" 2>/dev/null; pkill -f "$BUILD/Browser.app/Contents/MacOS/run" 2>/dev/null
 # (Until the system's list of running apps has them gone too: it lags a moment behind a process's end, and the
 # helper, rightly, never starts a Margin.app that list still has.)
-for _ in $(seq 1 50); do pgrep -f "$BUILD/(Margin|Browser).app/Contents/MacOS/run" >/dev/null || lsappinfo list 2>/dev/null | grep -q "io.tirth.margin.test.app" || break; sleep 0.1; done
+for _ in $(seq 1 50); do pgrep -f "$BUILD/(Margin|Browser).app/Contents/MacOS/run" >/dev/null || lsappinfo list 2>/dev/null | grep -q "com.unibox.margin.test.app" || break; sleep 0.1; done
 rm -f "$MARK"
 open -g "$BUILD/Browser.app"; sleep 0.5
 "$BUILD/margin-helper" 2>> "$BUILD/helper.log" &

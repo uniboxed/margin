@@ -18,7 +18,7 @@
 import { capabilities } from '../../../shared/capabilities.ts';
 import { api } from '../../../background/store.ts';
 
-const APP = 'io.tirth.margin';
+const APP = 'com.unibox.margin';
 const ACCESS_EVERY_MS = 30_000; // a page loading re-checks access at most this often (grants from Safari's own controls send no event)
 const RETRY_MS = [15_000, 5 * 60_000]; // access the app didn't hear: tried again after this long, doubling up to the second
 const SAME_EVENT_MS = 1000; // one event, reported from two places (the new-tab page's own report and the tab's creation)

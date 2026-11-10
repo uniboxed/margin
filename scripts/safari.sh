@@ -21,7 +21,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-APP_ID=io.tirth.margin
+APP_ID=com.unibox.margin
 DEST="$HOME/Applications/Margin.app"
 DERIVED="$PWD/xcode/build"
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -111,7 +111,7 @@ fi
 BUILT="$DERIVED/Build/Products/Release/Margin.app"
 # Chrome's and Edge's connector (app/shared/connector/, Rust; docs/PROTOCOL.md "Transport (Chrome and Edge, on the
 # Mac)"): built for both kinds of Mac into Contents/Helpers with the app's version in it, signed as Margin's
-# connector (io.tirth.margin.connector) with the identity the app was signed with, and the app signed again around
+# connector (com.unibox.margin.connector) with the identity the app was signed with, and the app signed again around
 # it, its own settings kept. Margin.app lets only that connector in (app/platforms/macos/shell/RelayLink.swift). Before
 # anything is installed: a failure here leaves the installed copy as it was.
 HELPERS="$BUILT/Contents/Helpers"
@@ -130,7 +130,7 @@ for arch in arm64 x86_64; do
   swiftc -O -swift-version 5 -target "$arch-apple-macos14.0" app/platforms/macos/helper/main.swift -o "$DERIVED/helper/margin-helper-$arch"
 done
 lipo -create "$DERIVED/helper/margin-helper-arm64" "$DERIVED/helper/margin-helper-x86_64" -output "$HELPERS/margin-helper"
-cp app/platforms/macos/helper/io.tirth.margin.helper.plist "$BUILT/Contents/Library/LaunchAgents/"
+cp app/platforms/macos/helper/com.unibox.margin.helper.plist "$BUILT/Contents/Library/LaunchAgents/"
 if [ "$UNSIGNED" = true ]; then
   IDENTITY=-
 else
@@ -141,8 +141,8 @@ else
     exit 1
   fi
 fi
-codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --identifier io.tirth.margin.connector "$HELPERS/margin-connector"
-codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --identifier io.tirth.margin.helper "$HELPERS/margin-helper"
+codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --identifier com.unibox.margin.connector "$HELPERS/margin-connector"
+codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --identifier com.unibox.margin.helper "$HELPERS/margin-helper"
 codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --preserve-metadata=identifier,entitlements,requirements,flags "$BUILT"
 codesign --verify --strict "$BUILT"
 if [ "$INSTALL" = false ]; then
@@ -179,7 +179,7 @@ register_app() {
   APPEX="$1/Contents/PlugIns/Margin Extension.appex"
   KEPT=0
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
-    if pluginkit -m -v -i io.tirth.margin.Extension 2>/dev/null | grep -qF "$APPEX"; then
+    if pluginkit -m -v -i com.unibox.margin.Extension 2>/dev/null | grep -qF "$APPEX"; then
       KEPT=$((KEPT + 1))
       if [ "$KEPT" -ge 10 ]; then
         REGISTERED=true

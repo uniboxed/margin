@@ -76,8 +76,8 @@ test('Chrome on the Mac: the real connector finds the app, and the copy links fr
     const host = join(root, 'host.sh');
     writeFileSync(host, `#!/bin/sh\nMARGIN_CONNECTOR_SOCKET="${socketPath}" MARGIN_CONNECTOR_NO_LAUNCH=1 exec "${binary}" "$@"\n`);
     chmodSync(host, 0o755);
-    writeFileSync(join(userData, 'NativeMessagingHosts', 'io.tirth.margin.json'), JSON.stringify({
-      name: 'io.tirth.margin', description: 'Margin e2e connector', path: host, type: 'stdio', allowed_origins: [`chrome-extension://${ID}/`],
+    writeFileSync(join(userData, 'NativeMessagingHosts', 'com.unibox.margin.json'), JSON.stringify({
+      name: 'com.unibox.margin', description: 'Margin e2e connector', path: host, type: 'stdio', allowed_origins: [`chrome-extension://${ID}/`],
     }));
     context = await chromium.launchPersistentContext(userData, {
       headless: false,

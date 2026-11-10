@@ -53,7 +53,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // What runs at login is the helper (Tirth, 2026-11-10: not the whole app): margin-helper, a login agent
     // (app/platforms/macos/helper/), starts Margin.app as a browser opens, about 0.3 s, long before the browser's
     // extension asks for its link. A build without it (an Xcode run's) is Margin.app's own login item, as before.
-    static let helperPlist = "io.tirth.margin.helper.plist"
+    static let helperPlist = "com.unibox.margin.helper.plist"
     static var hasHelper: Bool {
         FileManager.default.fileExists(atPath: Bundle.main.bundleURL.appendingPathComponent("Contents/Library/LaunchAgents/\(helperPlist)").path)
     }
@@ -138,7 +138,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var othersTimer: Timer?
     private func endOthers() {
         let me = ProcessInfo.processInfo.processIdentifier
-        let running = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "io.tirth.margin")
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "com.unibox.margin")
             .map { BundleWatch.Running(pid: $0.processIdentifier, bundlePath: $0.bundleURL?.path) }
         others = BundleWatch.othersToEnd(running, me: me, bundlePath: Bundle.main.bundleURL.path)
         guard !others.isEmpty else { return startShell() }

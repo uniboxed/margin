@@ -75,7 +75,7 @@ Log: `%LOCALAPPDATA%\Margin\logs\margin.log`.
 - **The install at each launch.** margin.log says `the browsers' host files written: N` (the registry keys are written
   every time, so N is at least 4), never `weren't written` or `no connector beside margin.exe`.
 - **An older registration naming `margin.exe`** (from before the connector): Chrome starting it makes it exit at once;
-  the app's next launch points the browsers at the connector. The old `NativeMessagingHosts\io.tirth.margin.json`
+  the app's next launch points the browsers at the connector. The old `NativeMessagingHosts\com.unibox.margin.json`
   under `%LOCALAPPDATA%\Margin` is left behind, unused.
 - **`Local\Margin-<SID>` is one per sign-in session.** Fast user switching gives each session its own app (wanted).
   Check: double-click `margin.exe` twice; margin.log says "another Margin is running" once.

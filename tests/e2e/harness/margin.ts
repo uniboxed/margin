@@ -87,8 +87,8 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
   const hostScript = join(root, 'native-host.sh');
   writeFileSync(hostScript, `#!/bin/sh\nexec "${process.execPath}" "${join(HERE, 'native-host.mts')}" "$@"\n`);
   chmodSync(hostScript, 0o755);
-  writeFileSync(join(userData, 'NativeMessagingHosts', 'io.tirth.margin.json'), JSON.stringify({
-    name: 'io.tirth.margin', description: 'Margin e2e relay', path: hostScript, type: 'stdio', allowed_origins: [`chrome-extension://${build.id}/`],
+  writeFileSync(join(userData, 'NativeMessagingHosts', 'com.unibox.margin.json'), JSON.stringify({
+    name: 'com.unibox.margin', description: 'Margin e2e relay', path: hostScript, type: 'stdio', allowed_origins: [`chrome-extension://${build.id}/`],
   }));
 
   const context = await chromium.launchPersistentContext(userData, {

@@ -8,8 +8,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// The host's name, as the extension asks for it (`runtime.connectNative('io.tirth.margin')`).
-pub const HOST_NAME: &str = "io.tirth.margin";
+/// The host's name, as the extension asks for it (`runtime.connectNative('com.unibox.margin')`).
+pub const HOST_NAME: &str = "com.unibox.margin";
 
 /// Margin's extension in every Chromium browser: the id its manifest's key gives
 /// (extension/engines/chromium/manifest.json; tests/build.test.ts checks the two agree).
@@ -121,7 +121,7 @@ mod tests {
     fn the_host_file_names_the_connector_and_only_margins_extension() {
         let text = manifest(Path::new("/Applications/Margin.app/Contents/Helpers/margin-connector"));
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(value["name"], "io.tirth.margin");
+        assert_eq!(value["name"], "com.unibox.margin");
         assert_eq!(value["type"], "stdio");
         assert_eq!(value["path"], "/Applications/Margin.app/Contents/Helpers/margin-connector");
         assert_eq!(
@@ -137,7 +137,7 @@ mod tests {
         fs::create_dir_all(root.path().join("Microsoft Edge Beta")).unwrap();
         let files = host_files(root.path(), false);
         assert_eq!(files.len(), 2);
-        assert!(files.iter().all(|f| f.ends_with("NativeMessagingHosts/io.tirth.margin.json")));
+        assert!(files.iter().all(|f| f.ends_with("NativeMessagingHosts/com.unibox.margin.json")));
         let body = manifest(Path::new("/x/margin-connector"));
         assert_eq!(write_host_files(&files, &body).unwrap().len(), 2);
         assert_eq!(fs::read_to_string(&files[0]).unwrap(), body);
@@ -155,14 +155,14 @@ mod tests {
         fs::create_dir_all(root.path().join("google-chrome")).unwrap();
         fs::create_dir_all(root.path().join("Google/Chrome")).unwrap(); // the Mac's name: not Linux's
         let files = host_files(root.path(), true);
-        assert_eq!(files, vec![root.path().join("google-chrome/NativeMessagingHosts/io.tirth.margin.json")]);
+        assert_eq!(files, vec![root.path().join("google-chrome/NativeMessagingHosts/com.unibox.margin.json")]);
         assert_eq!(
             windows_keys(),
             vec![
-                r"Software\Google\Chrome\NativeMessagingHosts\io.tirth.margin".to_string(),
-                r"Software\Microsoft\Edge\NativeMessagingHosts\io.tirth.margin".to_string(),
-                r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\io.tirth.margin".to_string(),
-                r"Software\Chromium\NativeMessagingHosts\io.tirth.margin".to_string(),
+                r"Software\Google\Chrome\NativeMessagingHosts\com.unibox.margin".to_string(),
+                r"Software\Microsoft\Edge\NativeMessagingHosts\com.unibox.margin".to_string(),
+                r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.unibox.margin".to_string(),
+                r"Software\Chromium\NativeMessagingHosts\com.unibox.margin".to_string(),
             ]
         );
     }
