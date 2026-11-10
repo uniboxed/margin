@@ -1100,7 +1100,7 @@ let g1 = Gate(
 
 // MARK: The handoff itself (HANDOFF.md §1.3), in STP or on the lab's own windows
 
-struct HandoffRun {
+struct LabHandoffRun {
     var t: [String: Double] = [:] // ms from the freeze
     var late = false
     var failure: String?
@@ -1141,9 +1141,9 @@ struct Side {
 
 // One handoff x → y (y parked), as §1.3 orders it: freeze, show y, y full screen once, R1+R2,
 // x to normal (latest start 1.15 s), x parked once normal and out of its Space, the settle, reveal.
-func handoff(_ lab: Lab, _ x: Side, _ y: Side, _ plan: HandoffPlan) async -> HandoffRun {
+func handoff(_ lab: Lab, _ x: Side, _ y: Side, _ plan: HandoffPlan) async -> LabHandoffRun {
     let c = lab.calls
-    var run = HandoffRun()
+    var run = LabHandoffRun()
     let xSpace = c.active()
     let fsBefore = c.fullScreen()
     let t0 = epochMs()

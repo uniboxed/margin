@@ -46,10 +46,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   swipeNavigation: true, // Safari: Margin's two-finger swipe back/forward (shared/pull.ts)
   sidebarShortcut: 'Alt+KeyS', // show/hide the sidebar (Margin.app's key: background/link.ts keys)
   // Safari: a note when ⌘T seems to open Safari's homepage instead of Margin
-  // (background/newtab-hint.ts); turned off from the note.
+  // (engines/webkit/browsers/safari/extension/newtab-hint.ts); turned off from the note.
   newTabHint: true,
   // Chrome: whenever a window goes full screen, Margin full screen instead
-  // (no toolbar; background/fullscreen.ts).
+  // (no toolbar; engines/chromium/extension/fullscreen.ts).
   marginFullscreenAuto: true,
   // Chrome: Margin only in full screen; in a window that isn't, it stays out
   // of the way and offers full screen when reached for (content/core.ts).

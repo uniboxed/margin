@@ -1094,7 +1094,7 @@ export const handlers = {
     if ('theme' in patch && !THEMES[patch.theme] && !PACKAGE_THEMES.includes(patch.theme) && !(await userThemeListed(patch.theme))) return;
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   },
-  // "Margin full screen" on or off for this window (Chrome; background/fullscreen.ts).
+  // "Margin full screen" on or off for this window (Chrome; engines/chromium/extension/fullscreen.ts).
   async toggleFullscreen({ windowId }: { windowId?: number }, sender: BrowserMessageSender) {
     const id = windowId ?? sender.tab?.windowId;
     if (id == null || !platform?.marginFullscreen) return null;

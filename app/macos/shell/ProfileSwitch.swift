@@ -453,3 +453,55 @@ final class ProfileSwitch {
         }
     }
 }
+
+// One of the switch's notices: its kind, the profile it's about (a link key,
+// "safari:s-a"), the one window whose overlay shows it (none: every overlay),
+// and, for a window kept open with a draft, that window (its Close window
+// button closes it: no drafts check then, Tirth 2026-11-06). Only the kind,
+// the profile's id and the window go to overlays; the words are theirs.
+struct SwitchNotice: Equatable {
+    enum Kind: String {
+        case windowKeptDraft = "window-kept-draft" // close mode kept the window it left: a draft in it (§4.5)
+        case dialogOpen = "dialog-open" // a sheet or dialog on the window being left (§1.10)
+        case windowBusy = "window-busy" // a windows call stuck in the window being left (§1.10)
+        case lateLanding = "late-landing" // a switch that gave up landed after all (§1.9)
+        case windowOnDesktop = "window-on-desktop" // the copy didn't come back: its window returned to the Desktop (§1.5)
+    }
+    let kind: Kind
+    let profile: String
+    var shownIn: WindowKey?
+    var kept: WindowKey?
+    // How long it stays up unless a button closes it first.
+    var seconds: TimeInterval { kind == .windowKeptDraft ? 20 : 8 }
+
+    // As Shell.switchNotice keeps it: what overlays get, and the kept window (never sent).
+    var stored: JSONObject {
+        var o: JSONObject = ["noticeKind": kind.rawValue, "noticeProfile": Self.profileId(profile)]
+        if let w = shownIn { o["noticeIn"] = ["profile": Self.profileId(w.link), "windowId": w.windowId] }
+        if let k = kept { o["kept"] = ["link": k.link, "windowId": k.windowId] }
+        return o
+    }
+
+    init(_ kind: Kind, profile: String, shownIn: WindowKey? = nil, kept: WindowKey? = nil) {
+        self.kind = kind
+        self.profile = profile
+        self.shownIn = shownIn
+        self.kept = kept
+    }
+
+    // The window a stored notice kept open, if it's that kind's.
+    static func kept(_ stored: JSONObject?) -> WindowKey? {
+        guard stored?["noticeKind"] as? String == Kind.windowKeptDraft.rawValue, let k = stored?["kept"] as? JSONObject,
+              let link = k["link"] as? String, let id = int(k["windowId"]) else { return nil }
+        return WindowKey(link: link, windowId: id)
+    }
+
+    // What of a stored notice an overlay gets (`across.switching`): never the kept window.
+    static func sent(_ stored: JSONObject) -> JSONObject { stored.filter { ["notice", "noticeKind", "noticeProfile", "noticeIn"].contains($0.key) } }
+
+    // A link key's profile id ("safari:s-a" → "s-a"), as overlays name profiles.
+    static func profileId(_ link: String) -> String {
+        guard let colon = link.firstIndex(of: ":") else { return link }
+        return String(link[link.index(after: colon)...])
+    }
+}

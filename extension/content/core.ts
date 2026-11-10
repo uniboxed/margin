@@ -627,7 +627,7 @@ export function startCore() {
   const onMessage = (message: any, _: BrowserMessageSender, sendResponse: (response?: any) => void) => {
     // Whether this page was opened from nothing (no referrer, its first
     // history entry), for the note on Safari's "New tabs open with"
-    // (background/newtab-hint.ts: Margin.app's overlay says it).
+    // (engines/webkit/browsers/safari/extension/newtab-hint.ts: Margin.app's overlay says it).
     if (message?.type === 'newtab-hint') return sendResponse({ fromNothing: !document.referrer && history.length === 1 });
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
     if (message?.type === 'reportVisibility') return tellVisibility();
