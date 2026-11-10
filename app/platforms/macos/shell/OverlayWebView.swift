@@ -148,6 +148,15 @@ final class OverlayPages {
         configuration.userContentController.addScriptMessageHandler(bridge, contentWorld: .page, name: "margin")
         configuration.preferences.isElementFullscreenEnabled = false
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        // Issue #14, both off unless set (`defaults write com.unibox.margin <name> -bool YES`, then Margin restarted):
+        // MarginOverlayFullFrameRate draws the overlay at the display's rate (WebKit holds an app's web view near
+        // 60 fps), MarginFrameProbe logs how often the overlay really draws while something moves. Measured first.
+        if UserDefaults.standard.bool(forKey: "MarginOverlayFullFrameRate") {
+            Diagnostics.note("overlay frame rate: \(OverlayFrameRate.uncap(configuration.preferences))")
+        }
+        if UserDefaults.standard.bool(forKey: "MarginFrameProbe") {
+            configuration.userContentController.addUserScript(WKUserScript(source: OverlayFrameRate.probe, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .page))
+        }
         self.configuration = configuration
         WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "margin-app-no-network", encodedContentRuleList: Self.rulesJSON) { [weak self] list, error in
             MainActor.assumeIsolated {
@@ -184,4 +193,66 @@ final class OverlayPages {
         #endif
         return webView
     }
+}
+
+// The overlay's frame rate (issue #14). WebKit draws a web view an app embeds near 60 times a second, even on a
+// 120 Hz display (its PreferPageRenderingUpdatesNear60FPSEnabled, on by default and with no public switch), so the
+// overlay's motion can look less smooth than the native animations around it. `uncap` turns that feature off
+// through WKPreferences' private feature list (docs/PRIVATE-APIS.md); each step is checked, and anything missing
+// leaves the cap as it is. `probe` is a page script that logs the gaps between the overlay's frames for 1.5 s
+// after each press, wheel, key or animation: 8.3 ms is 120 Hz, 16.7 ms is 60.
+enum OverlayFrameRate {
+    static let feature = "PreferPageRenderingUpdatesNear60FPSEnabled"
+
+    /// What happened, for the log: the display's rate, or why the cap stays.
+    @MainActor static func uncap(_ preferences: WKPreferences) -> String {
+        let cls: AnyClass = WKPreferences.self
+        let list = NSSelectorFromString("_features")
+        let set = NSSelectorFromString("_setEnabled:forFeature:")
+        let get = NSSelectorFromString("_isEnabledForFeature:")
+        guard (cls as AnyObject).responds(to: list), preferences.responds(to: set), preferences.responds(to: get),
+              let setter = class_getInstanceMethod(cls, set), let getter = class_getInstanceMethod(cls, get),
+              let features = (cls as AnyObject).perform(list)?.takeUnretainedValue() as? [NSObject] else {
+            return "kept near 60 fps: WebKit's feature list isn't there"
+        }
+        let keyed = NSSelectorFromString("key")
+        guard let target = features.first(where: { $0.responds(to: keyed) && ($0.value(forKey: "key") as? String) == feature }) else {
+            return "kept near 60 fps: WebKit has no \(feature)"
+        }
+        typealias Set = @convention(c) (AnyObject, Selector, Bool, AnyObject) -> Void
+        typealias Get = @convention(c) (AnyObject, Selector, AnyObject) -> Bool
+        unsafeBitCast(method_getImplementation(setter), to: Set.self)(preferences, set, false, target)
+        let still = unsafeBitCast(method_getImplementation(getter), to: Get.self)(preferences, get, target)
+        return still ? "kept near 60 fps: \(feature) didn't turn off" : "the display's rate (\(feature) off)"
+    }
+
+    static let probe = #"""
+    (() => {
+      const post = (text) => { try { window.webkit.messageHandlers.margin.postMessage({ op: 'log', level: 'note', text }); } catch {} };
+      let busy = false;
+      const sample = (why) => {
+        if (busy) return;
+        busy = true;
+        const gaps = [];
+        requestAnimationFrame((first) => {
+          let last = first;
+          const end = first + 1500;
+          const tick = (t) => {
+            gaps.push(t - last);
+            last = t;
+            if (t < end) { requestAnimationFrame(tick); return; }
+            busy = false;
+            const sorted = [...gaps].sort((a, b) => a - b);
+            const at = (q) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+            const median = at(0.5);
+            const hitches = gaps.filter((g) => g > median * 2.5).length;
+            post(`frame probe (${why}): ${gaps.length} frames, median ${median.toFixed(1)} ms (${Math.round(1000 / median)} fps), 95th ${at(0.95).toFixed(1)} ms, longest ${sorted[sorted.length - 1].toFixed(1)} ms, ${hitches} longer than 2.5 frames`);
+          };
+          requestAnimationFrame(tick);
+        });
+      };
+      for (const type of ['pointerdown', 'wheel', 'keydown']) addEventListener(type, () => sample(type), { capture: true, passive: true });
+      for (const type of ['transitionstart', 'animationstart']) document.addEventListener(type, () => sample(type.replace('start', '')), true);
+    })();
+    """#
 }
