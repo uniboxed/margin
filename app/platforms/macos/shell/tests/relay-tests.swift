@@ -98,7 +98,7 @@ func relayTests() {
   let noteDir = dir.appendingPathComponent("Caches", isDirectory: true)
   try? FileManager.default.createDirectory(at: noteDir, withIntermediateDirectories: true)
   let noteURL = noteDir.appendingPathComponent("margin-link")
-  let link = SocketLink(dispatch: NoSafari(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.relay.\(me)"), note: LinkNote(url: noteURL))
+  let link = SocketLink(dispatch: NoSafari(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.relay.\(me)"), note: LinkNote(url: noteURL))
   let hub = RelayHub(path: path, version: "7", allows: { $0.uid == getuid() ? nil : "not this user" })
   link.relay = hub
   link.start()
@@ -143,7 +143,7 @@ func relayTests() {
 
   // Refused by the listener's check: closed at once, the relay answering alone again.
   let strict = RelayHub(path: dir.appendingPathComponent("s.sock").path, version: "7", allows: { _ in "not Margin's relay" })
-  let strictLink = SocketLink(dispatch: NoSafari(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.relay.strict.\(me)"))
+  let strictLink = SocketLink(dispatch: NoSafari(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.relay.strict.\(me)"))
   strictLink.relay = strict
   strictLink.start()
   let refused = RelayProcess(binary, socket: strict.path)
@@ -169,10 +169,10 @@ func relayTests() {
     return (process.terminationStatus, text.split(separator: "\n").map(String.init))
   }
   let (status, written) = install()
-  check("host files: Chrome's and Edge Beta's, no other browser's", status == 0 && written.count == 2 && written.allSatisfy { $0.hasSuffix("NativeMessagingHosts/io.tirth.margin.json") }, "\(status) \(written)")
-  let host = object(try? Data(contentsOf: support.appendingPathComponent("Google/Chrome/NativeMessagingHosts/io.tirth.margin.json")))
+  check("host files: Chrome's and Edge Beta's, no other browser's", status == 0 && written.count == 2 && written.allSatisfy { $0.hasSuffix("NativeMessagingHosts/com.unibox.margin.json") }, "\(status) \(written)")
+  let host = object(try? Data(contentsOf: support.appendingPathComponent("Google/Chrome/NativeMessagingHosts/com.unibox.margin.json")))
   let real = URL(fileURLWithPath: binary).resolvingSymlinksInPath().path
-  check("a host file: the connector, stdio, Margin's extension only", host?["name"] as? String == "io.tirth.margin" && (host?["path"] as? String).map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path } == real
+  check("a host file: the connector, stdio, Margin's extension only", host?["name"] as? String == "com.unibox.margin" && (host?["path"] as? String).map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path } == real
           && host?["type"] as? String == "stdio" && same(host?["allowed_origins"], ["chrome-extension://njeebbcmlenfopaecfbphgcfihbdmkec/"]), "\(host ?? [:])")
   check("host files: the same again writes nothing", install().1.isEmpty)
 

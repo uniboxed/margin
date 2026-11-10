@@ -23,7 +23,7 @@
 //! - The RFC 6455 framing, the HTTP upgrade and its refusals, the token's check and the `Origin`'s, the secrets
 //!   and their rotation, Safari's and the relays' `wantLink` answered with `link`: [`crate::socket`] and
 //!   [`crate::websocket`].
-//! - Safari's way in (`SafariDispatch`, the distributed notification `io.tirth.margin.setup`, `appUp` once Safari
+//! - Safari's way in (`SafariDispatch`, the distributed notification `com.unibox.margin.setup`, `appUp` once Safari
 //!   has run 2 s): Safari's, on the Mac only.
 //! - The listener and its upkeep (`NWListener`, 127.0.0.1 only, no Nagle, `waiting` 5 s made again on a new
 //!   port, `retryListen`) and `stop`'s 0.3 s wait for the `bye`s to be written before quitting: the transport's.

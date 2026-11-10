@@ -80,7 +80,7 @@ final class DataStore {
 
     init(root: URL, background: Bool = true) {
         self.root = root
-        queue = background ? DispatchQueue(label: "io.tirth.margin.data", qos: .utility) : nil
+        queue = background ? DispatchQueue(label: "com.unibox.margin.data", qos: .utility) : nil
     }
 
     // ---- names ----

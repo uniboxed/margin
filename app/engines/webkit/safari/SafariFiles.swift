@@ -149,7 +149,7 @@ class SafariFileWatcher<Outcome: Equatable & Sendable>: FolderEvents {
         self.next = next
         self.describe = describe
         self.matters = matters
-        queue = DispatchQueue(label: "io.tirth.margin.\(label.replacingOccurrences(of: " ", with: "-"))", qos: .utility)
+        queue = DispatchQueue(label: "com.unibox.margin.\(label.replacingOccurrences(of: " ", with: "-"))", qos: .utility)
     }
 
     var running: Bool { !stopped }

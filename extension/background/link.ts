@@ -74,7 +74,7 @@ import { navigationFor } from '../shared/shortcuts.ts';
 import { DATA_FORMAT } from '../shared/data-merge.ts';
 import { switchLog } from './switch-log.ts';
 
-const APP = 'io.tirth.margin';
+const APP = 'com.unibox.margin';
 const VERSION = 2;
 export const PING_MS = 20_000; // the native port, used at least this often (Spike 3)
 export const DEAD_MS = 40_000; // no tick for this long: the link is gone (docs/PROTOCOL.md Liveness; 40 s, not 12, since 2026-11-07: Safari slows a background page while it isn't in front)
@@ -261,7 +261,7 @@ export function createLink({
   };
   // What the link does, in the background's console and, through the lasting
   // native port, in Margin.app's own log (the extension handler writes it to
-  // the system log: subsystem io.tirth.margin, category extension), so a link
+  // the system log: subsystem com.unibox.margin, category extension), so a link
   // that fails can be read in one place. The same line again within a minute
   // of being sent isn't sent again. With no port (not yet, or it went), the
   // newest HELD_NOTES are kept and sent once it's back, each with its time.

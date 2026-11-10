@@ -193,7 +193,7 @@ func scenario() async {
   do { try fake.start() } catch { check("the fake extension starts", false, "\(error)"); return }
   guard await until(5, { fake.first("ready") != nil }) else { return check("the fake extension starts", false) }
 
-  let note = Notification.Name("io.tirth.margin.test.\(ProcessInfo.processInfo.processIdentifier)")
+  let note = Notification.Name("com.unibox.margin.test.\(ProcessInfo.processInfo.processIdentifier)")
   let dispatcher = FakeDispatch()
   let link = SocketLink(dispatch: dispatcher, safariSince: { nil }, wake: note,
                         timing: .init(tick: 0.5, dead: 1.5, keep: 30, hello: 2, request: 5, safariSettled: 2))

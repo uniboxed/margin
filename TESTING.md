@@ -73,10 +73,10 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 
 ## Chrome and Edge on the Mac (2026-11-09)
 
-Margin.app now links Chrome's and Edge's copies the way it links Safari's (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"). Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'` (zsh's `log` is a builtin).
+Margin.app now links Chrome's and Edge's copies the way it links Safari's (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"). Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'` (zsh's `log` is a builtin).
 
 **Set up once:**
-- `npm run safari` (it builds the connector, Rust, into Margin.app). Margin.app has it write the host files at launch (`margin-connector --install`): `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/io.tirth.margin.json` and Edge's (`Microsoft Edge/NativeMessagingHosts/`), naming `…/Margin.app/Contents/Helpers/margin-connector`. Chrome or Edge open while you install an older build's update: quit and reopen them once, so they start the new connector.
+- `npm run safari` (it builds the connector, Rust, into Margin.app). Margin.app has it write the host files at launch (`margin-connector --install`): `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.unibox.margin.json` and Edge's (`Microsoft Edge/NativeMessagingHosts/`), naming `…/Margin.app/Contents/Helpers/margin-connector`. Chrome or Edge open while you install an older build's update: quit and reopen them once, so they start the new connector.
 - `npm run build`, then in Chrome: `chrome://extensions` → Developer mode → Load unpacked → `dist/chromium`. Its ID must be `njeebbcmlenfopaecfbphgcfihbdmkec` (the build's fixed key; another ID can't reach the connector). Edge: `edge://extensions`, the same. A Chrome build you loaded before this one had another ID: it comes back as a new extension, and the old one's data stays with the old one.
 
 **Check:**
@@ -700,9 +700,9 @@ The freeze-based switch between profiles, with the window you leave parked out o
 Set-up:
 - Margin.app has Full Disk Access (for Safari's profile names). Test A and Test B have one window each, Test A's in full screen with Margin's sidebar.
 - Turn the handoff on, then quit and reopen Margin.app (it's read at launch):
-  `defaults write io.tirth.margin MarginHandoff -bool YES`
+  `defaults write com.unibox.margin MarginHandoff -bool YES`
 - Keep the log open:
-  `/usr/bin/log stream --style compact --predicate 'subsystem == "io.tirth.margin"' | grep -E 'handoff|private calls|profile switch|dev hook'`
+  `/usr/bin/log stream --style compact --predicate 'subsystem == "com.unibox.margin"' | grep -E 'handoff|private calls|profile switch|dev hook'`
 - At launch it says `handoff: on (MarginHandoff is set)`, `private calls on macOS …: freeze ok, spaces ok, park ok (…)` and `private calls: cross-process self-test park N ms, …`. A `park off` or `freeze off` there: stop, and send me the line.
 - Margin's lines hold ids, window numbers, counts and milliseconds only, never a page's title or address. Send me any line that shows one.
 
@@ -753,7 +753,7 @@ The honest numbers, until gate G16 measures them:
 - A late reveal: after 1.7 s, the end of Safari's slide.
 - Close mode's two still moments.
 
-**The dev hook** (development only, Test A and Test B only, removed before production). It drives the same switches from a terminal, without clicks. Turn it on with `defaults write io.tirth.margin MarginDevHooks -bool YES` (no relaunch), off with `defaults delete io.tirth.margin MarginDevHooks`. It refuses anything unless the window shown and the target are Safari's own Test A and Test B. Every notification is one `dev hook: …` line, honoured or refused.
+**The dev hook** (development only, Test A and Test B only, removed before production). It drives the same switches from a terminal, without clicks. Turn it on with `defaults write com.unibox.margin MarginDevHooks -bool YES` (no relaunch), off with `defaults delete com.unibox.margin MarginDevHooks`. It refuses anything unless the window shown and the target are Safari's own Test A and Test B. Every notification is one `dev hook: …` line, honoured or refused.
 - [ ] `swift tools/handoff-lab/devswitch.swift switch "Test B" --wait 3`, then click into Test A's window: the switch runs as a key press would (`dev hook: switch to Test B from …`).
 - [ ] `… devswitch.swift dump`: one line each for the private calls, the choices, the registry, the aftercare and the last 5 switch lines.
 - [ ] `… mode --freeze off`: Test A and Test B's switches show the slide, and windows are still parked. `--old close`: close mode. `--old keep`: the window you leave stays in its own full-screen Space. `--freeze on --old park`: back to normal. These last until Margin.app quits.
@@ -764,7 +764,7 @@ The honest numbers, until gate G16 measures them:
 - [ ] `… alternate 30 --every 4`: 30 switches, Test B then Test A. Gate G16 does the same from the lab (`tools/handoff-lab/README.md`).
 
 **Before production.**
-- [ ] The dev hook goes: `git grep -n DEV-HOOK` lists every part. Delete `app/engines/webkit/safari/DevHooks.swift`, `app/engines/webkit/safari/tests/devhooks-tests.swift` and `tools/handoff-lab/devswitch.swift`, and every marked line in `Shell.swift`, `Handoff.swift`, `tools/app-tests/` (`run.sh`, `tests.swift`, the fake world in `handoff-tests.swift`) and the lab's `devSwitch` (G1's `--dev-hook` and G16 need another way to drive Margin by then). Then `npm run test:app`, and `defaults delete io.tirth.margin MarginDevHooks` on every test Mac.
+- [ ] The dev hook goes: `git grep -n DEV-HOOK` lists every part. Delete `app/engines/webkit/safari/DevHooks.swift`, `app/engines/webkit/safari/tests/devhooks-tests.swift` and `tools/handoff-lab/devswitch.swift`, and every marked line in `Shell.swift`, `Handoff.swift`, `tools/app-tests/` (`run.sh`, `tests.swift`, the fake world in `handoff-tests.swift`) and the lab's `devSwitch` (G1's `--dev-hook` and G16 need another way to drive Margin by then). Then `npm run test:app`, and `defaults delete com.unibox.margin MarginDevHooks` on every test Mac.
 - [ ] The handoff's gate (`MarginHandoff`) is decided by the gates' results, not left to a default someone set.
 ## Margin 2 Phase 6: user themes (2026-11-06)
 
@@ -994,7 +994,7 @@ Build and install as usual (`npm run safari`), open Margin.app's log in Terminal
 
 - [ ] **Switching: the highlight moves once.** Click rows, use ⌃⌘↓/↑ (single presses, then held), switch spaces. The highlight goes to the new tab and stays; it never goes back to the tab you left and forward again. Safari's own blink in the page area as it draws the tab is expected now (Margin no longer hides it). Each switch is one line: `switch to tab N (activateTab, window W): asked +0, tabs.update +a, updated +b, onActivated +c, stored +d, delta out +e ms`. If the highlight ever flickers, send me the lines from that moment: `N activations heard` means something else switched too; `no onActivated within 3000 ms` means Safari never said the tab came to the front; a big `stored` means Safari's storage was slow (the highlight now waits for it, up to 2 s).
 - [ ] **The palette.** ⌘T several times, from a fresh Safari window too (no click in Margin before): the palette is drawn at once, the field has the caret, and what you type appears with no lag. The log has three lines a time: `the palette's key: sent to safari:…'s overlay`, `overlay page (…): palette opened (the app's key): drawn X ms after the word, Y ms of work, its field focused`, and `… took the keyboard Z ms after the palette's key`. If it freezes: is the last line missing (the keyboard never came), is `drawn` large, or are there `slow: …` lines (the overlay page busy, with what caused it)?
-- [ ] **Never over the desktop.** Swipe (or ⌃→/←) from full-screen Safari to the desktop and back, slowly and quickly; open Mission Control; switch profiles (a new window goes full screen). Margin's overlay is never left on the desktop. The log: `the active Space changed (…)`, then `overlay put away (…): the active Space changed and its window isn't on screen`, and back: `overlay shown over … : its window is on screen after the Space changed`. A profile switch's new window: `its window doesn't fill its display (going into or out of full screen)` until it's in its Space. If you still see the overlay over the desktop while the slide plays, try the experiment and tell me: `defaults write io.tirth.margin MarginOverlayOwnSpace -bool YES`, quit and reopen Margin.app (the log says `overlays join only their window's Space`): the overlay then belongs to Safari's Space and should slide away with it. Check it still shows over Safari, in every full-screen window, and after switching profiles. `defaults delete io.tirth.margin MarginOverlayOwnSpace` undoes it.
+- [ ] **Never over the desktop.** Swipe (or ⌃→/←) from full-screen Safari to the desktop and back, slowly and quickly; open Mission Control; switch profiles (a new window goes full screen). Margin's overlay is never left on the desktop. The log: `the active Space changed (…)`, then `overlay put away (…): the active Space changed and its window isn't on screen`, and back: `overlay shown over … : its window is on screen after the Space changed`. A profile switch's new window: `its window doesn't fill its display (going into or out of full screen)` until it's in its Space. If you still see the overlay over the desktop while the slide plays, try the experiment and tell me: `defaults write com.unibox.margin MarginOverlayOwnSpace -bool YES`, quit and reopen Margin.app (the log says `overlays join only their window's Space`): the overlay then belongs to Safari's Space and should slide away with it. Check it still shows over Safari, in every full-screen window, and after switching profiles. `defaults delete com.unibox.margin MarginOverlayOwnSpace` undoes it.
 - [ ] **The left edge.** With Margin's sidebar hidden, and again docked (Keep open): move the pointer to the left edge, slowly and quickly (a fast flick from the middle of the page). Safari's own sidebar never opens; Margin's peek still comes out (hidden) and the docked sidebar still works. The top edge isn't guarded (Safari's toolbar should still come down: next check).
 - [ ] **Safari's toolbar over Margin.** Pointer to the top in full screen: Safari's toolbar slides down over the page and over Margin's sidebar (all of it, not half covered), and goes back up.
 - [ ] **The Web Inspector docked.** ⌘⌥I on a page, docked at the bottom, then left, then right (its dock buttons): Margin is laid out beside it (sidebar and frame in the rest of the window), nothing of Margin's over the inspector, and the inspector takes clicks, scrolling and drags everywhere (its resize handle too). Resize it: Margin follows. Close it: back to normal. The log: `Safari takes part of its window (the Web Inspector docked?): Margin draws in … of …`. Left and right are told apart by where the pointer is in the page: move the pointer over the page once after docking it on the left if Margin sits on the wrong side.
@@ -1065,7 +1065,7 @@ Linked:
 
 ## Margin 2 Phase 2 step 4: spaces across Safari profiles (2026-11-05)
 
-Needs two Safari profiles (Safari › Settings › Profiles; here "Default" and "Work"), Margin turned on in both, and step 3's checks done. Each switch to the other profile's space creates a full-screen window and closes one, with macOS's slide: tell Tirth before starting, and do one switch first and check it before doing more. Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'` (lines `profile switch: …` and `link down (…)`).
+Needs two Safari profiles (Safari › Settings › Profiles; here "Default" and "Work"), Margin turned on in both, and step 3's checks done. Each switch to the other profile's space creates a full-screen window and closes one, with macOS's slide: tell Tirth before starting, and do one switch first and check it before doing more. Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'` (lines `profile switch: …` and `link down (…)`).
 
 **First, the crux: does a profile's copy stay running with no window?** Safari 27.2's own code (read off screen, DECISIONS.md) says: at launch only the default profile's extensions load; a named profile's load when its first window opens, and stay loaded until Safari quits. Margin's port pings keep the background page alive.
 
@@ -1826,7 +1826,7 @@ Pinch, on a page with a box (Safari's own since 2026-11-07; Margin's own pinch w
 After `npm run safari`:
 - [ ] System Settings › General › Login Items lists Margin (its helper) under "Allow in the Background", and Margin.app itself is no longer under "Open at Login".
 - [ ] Quit Safari: Margin.app quits about a minute later (Activity Monitor), and `margin-helper` stays (about 9 MB).
-- [ ] Open Safari: Margin's UI comes as soon as Safari's windows do, with no 6 s blank; `npm run log:app` (or `/usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'`) says `wantLink: the link in the extension handler's answer (N ms)` and no `SFErrorDomain`.
+- [ ] Open Safari: Margin's UI comes as soon as Safari's windows do, with no 6 s blank; `npm run log:app` (or `/usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'`) says `wantLink: the link in the extension handler's answer (N ms)` and no `SFErrorDomain`.
 - [ ] Safari's Start Page, an empty window, and a window opened from Safari's Dock menu with no other window: linked all the same.
 - [ ] Log out and back in with Safari set to reopen its windows: Margin is there with them.
 

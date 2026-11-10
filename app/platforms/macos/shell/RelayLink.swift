@@ -175,7 +175,7 @@ final class RelayHub {
         let attributes = [kSecGuestAttributePid: peer.pid] as CFDictionary
         guard SecCodeCopyGuestWithAttributes(nil, attributes, [], &code) == errSecSuccess, let code else { return "its code couldn't be read" }
         var requirement: SecRequirement?
-        let text = "identifier \"io.tirth.margin.connector\" and anchor apple generic and certificate leaf[subject.OU] = \"\(team)\""
+        let text = "identifier \"com.unibox.margin.connector\" and anchor apple generic and certificate leaf[subject.OU] = \"\(team)\""
         guard SecRequirementCreateWithString(text as CFString, [], &requirement) == errSecSuccess, let requirement else { return "no requirement" }
         return SecCodeCheckValidity(code, [], requirement) == errSecSuccess ? nil : "not Margin's relay"
     }

@@ -4,7 +4,7 @@
 # and the handler's own. Usage: scripts/margin-log.sh [minutes, default 30] [--stream]
 set -euo pipefail
 MIN="${1:-30}"
-PRED='subsystem == "io.tirth.margin" OR (process == "Margin Extension" AND eventMessage BEGINSWITH "Margin:")'
+PRED='subsystem == "com.unibox.margin" OR (process == "Margin Extension" AND eventMessage BEGINSWITH "Margin:")'
 if [ "${2:-}" = "--stream" ] || [ "$MIN" = "--stream" ]; then
   exec /usr/bin/log stream --style compact --predicate "$PRED"
 fi

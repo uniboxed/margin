@@ -3,7 +3,7 @@
 //!
 //! Everything is under `%LOCALAPPDATA%\Margin`: `data` (the lasting data), `themes` (imported themes), `logs` and
 //! `WebView2` (the overlay's web view's user data folder); the connector writes its host file there too
-//! (`io.tirth.margin.json`, app/shared/connector/src/windows.rs).
+//! (`com.unibox.margin.json`, app/shared/connector/src/windows.rs).
 
 use std::path::{Path, PathBuf};
 

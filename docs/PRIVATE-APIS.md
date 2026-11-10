@@ -104,4 +104,4 @@ Latest lab report: [`tools/handoff-lab/results/26B123-2026-11-06.md`](tools/hand
 
 - The **yabai** and **Hammerspoon** trackers: they use the same SkyLight calls and hear first when a macOS beta breaks them.
 - **macOS beta release notes**, for window management, Spaces and full screen.
-- Margin's own log on each new build: `/usr/bin/log show --predicate 'subsystem == "io.tirth.margin"' --last 1h | grep 'private calls'`.
+- Margin's own log on each new build: `/usr/bin/log show --predicate 'subsystem == "com.unibox.margin"' --last 1h | grep 'private calls'`.

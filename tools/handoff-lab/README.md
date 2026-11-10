@@ -127,14 +127,14 @@ Before:
 2. Install the Developer-ID, hardened build of Margin.app. In System Settings → Device Control and Data Access, check that Margin has **neither Screen Recording nor Accessibility** (G1 checks this by hand). It needs **Full Disk Access**, for Safari's profile names.
 3. Turn the handoff and the hook on, then quit and reopen Margin.app (the handoff's gate is read at launch):
    ```sh
-   defaults write io.tirth.margin MarginHandoff -bool YES
-   defaults write io.tirth.margin MarginDevHooks -bool YES
+   defaults write com.unibox.margin MarginHandoff -bool YES
+   defaults write com.unibox.margin MarginDevHooks -bool YES
    ```
 4. In release Safari, use only **Test A** and **Test B**: one window each, Test A's in full screen with Margin's sidebar. Switch to Test B and back once by hand, so Test B's window is parked and Test A's is shown.
 5. Check the hook from a terminal, with nothing moving:
    ```sh
    swift tools/handoff-lab/devswitch.swift dump
-   /usr/bin/log show --last 1m --style compact --predicate 'subsystem == "io.tirth.margin"' | grep 'dev hook'
+   /usr/bin/log show --last 1m --style compact --predicate 'subsystem == "com.unibox.margin"' | grep 'dev hook'
    ```
    - The dump says `handoff on, parking on (self-test passed)`, `freeze ok, spaces ok, park ok`, `displays 1` and `1 parked`.
    - `refused: …` names what's missing (the default, a name, no window shown).
@@ -160,8 +160,8 @@ The hook's other kinds (for TESTING.md's live checklist, not the gates): `mode -
 
 After:
 
-1. Turn the hook off: `defaults delete io.tirth.margin MarginDevHooks`. The next notification is refused, with no relaunch.
-2. `defaults delete io.tirth.margin MarginHandoff` too, unless the build is meant to keep the handoff on, then quit and reopen Margin.app.
+1. Turn the hook off: `defaults delete com.unibox.margin MarginDevHooks`. The next notification is refused, with no relaunch.
+2. `defaults delete com.unibox.margin MarginHandoff` too, unless the build is meant to keep the handoff on, then quit and reopen Margin.app.
 3. The hook goes before production: `git grep DEV-HOOK` lists every part of it (TESTING.md, "Before production").
 
 ### After

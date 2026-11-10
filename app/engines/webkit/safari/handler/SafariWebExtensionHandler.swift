@@ -24,8 +24,8 @@ import AppKit
 import SafariServices
 import os.log
 
-let marginAppIdentifier = "io.tirth.margin"
-let marginNotification = Notification.Name("io.tirth.margin.setup")
+let marginAppIdentifier = "com.unibox.margin"
+let marginNotification = Notification.Name("com.unibox.margin.setup")
 // The note the handler leaves (in its container's Caches) as it starts the app for a link.
 let launchNote = "margin-launch"
 // The note the app keeps there: where its link is (ExtensionLink.swift LinkNote).
@@ -34,7 +34,7 @@ let linkNote = "margin-link"
 class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
     private var profile = "s-default"
-    static let extensionLog = Logger(subsystem: "io.tirth.margin", category: "extension")
+    static let extensionLog = Logger(subsystem: "com.unibox.margin", category: "extension")
 
     func beginRequest(with context: NSExtensionContext) {
         let request = context.inputItems.first as? NSExtensionItem
@@ -57,7 +57,7 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         var launching = false
         if let body, body["type"] as? String == "log", let line = body["line"] as? String {
             // The copy's link events (background/link.ts note): in the system log
-            // next to the app's own (subsystem io.tirth.margin, category extension).
+            // next to the app's own (subsystem com.unibox.margin, category extension).
             Self.extensionLog.notice("\(profile, privacy: .public): \(String(line.prefix(300)), privacy: .public)")
             return reply(context, appOpen: appOpen)
         }

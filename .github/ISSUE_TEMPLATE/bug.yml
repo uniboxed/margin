@@ -38,6 +38,6 @@ body:
     attributes:
       label: Margin.app's log, if it helps
       description: >-
-        On a Mac: `/usr/bin/log show --last 10m --predicate 'subsystem == "io.tirth.margin"'`. Margin's log never
+        On a Mac: `/usr/bin/log show --last 10m --predicate 'subsystem == "com.unibox.margin"'`. Margin's log never
         has page addresses or titles, but look it over before pasting.
       render: text

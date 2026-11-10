@@ -3622,3 +3622,28 @@ the scratchpad's `instant-link-design.md` and `link-platform-research.md` (summa
 - **Next:** Margin's UI drawn from its own data as a window binds, before the copy links (Safari takes ~3 s to
   start the extension, which no link can beat); the connector answering Chrome's and Edge's ask the same way;
   why Safari's `storage.session` kept no link across a background restart (every one logged said "kept link: no").
+
+## Margin's identifiers are Unibox's: com.unibox.margin (2026-11-10)
+
+Margin belongs to the Unibox organization on GitHub (`uniboxed/margin`), but its identifiers carried a person's name.
+Before the first release, while nobody has it installed, they're `com.unibox.margin`: the app, the Safari extension
+(`com.unibox.margin.Extension`), margin-helper (`com.unibox.margin.helper`, its plist renamed with it), the connector
+(`com.unibox.margin.connector`), the native-messaging host Chrome and Edge ask for (`com.unibox.margin`, its host
+files with it), the log's subsystem, the preferences' domain and the notifications. The entries above keep the old
+name (`io.tirth.margin`): they're the history.
+
+- **`com.`, not `company.`** (the org's site is unibox.company, which reverses to `company.unibox`, as Arc's
+  `company.thebrowser.Browser`): chosen for the familiar form. Bundle ids aren't checked against a domain.
+- **No migration in the app.** Its data was never under the id (`~/Library/Application Support/Margin/`, the app
+  isn't sandboxed). What is keyed by it, only on the one Mac that ran it, was moved there by hand: the preferences'
+  domain, the old login agent and host files. Safari takes the renamed extension for a new one: it's turned on
+  again once; the default profile's spaces are `s-default` either way, and named profiles' sets are carried over by
+  Safari's own profile ids (`BrowserProfiles.carrySource`) once Margin.app has Full Disk Access again (macOS ties
+  its permissions to the id, as it does Accessibility's).
+- **Signed by the person still.** The Developer ID certificate names its Individual team's holder; only an Apple
+  Organization account (a registered company and a D-U-N-S number) signs as Unibox. v0.1.0 ships with the
+  Individual team; a switch later changes the team id, and the permissions are given again once.
+- **Not registered with Apple.** A Developer ID app without restricted capabilities needs no registered App ID
+  (the team had none, the old id included); the API key's role can't register one. Registering
+  `com.unibox.margin` in the developer portal only reserves it.
+- **The Chrome extension's id doesn't change:** it comes from its key (`njeebbcmlenfopaecfbphgcfihbdmkec`).

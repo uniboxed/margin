@@ -85,7 +85,7 @@ final class FakeSafari {
         row(id: 1764, parent: 0, type: 1, subtype: 0, title: "A tab group", uuid: "32D59E44-0000-4000-8000-000000000007", server: "TG1")
         row(id: 1765, parent: 1764, type: 0, subtype: 0, title: "A page", uuid: "32D59E44-0000-4000-8000-000000000008", server: "T1", url: "https://example.com/private")
         extensions(Self.personalServer, [
-            "io.tirth.margin.Extension (ABCDE12345)": ["Enabled": true, "ProfileIdentifier": Self.personalCopy],
+            "com.unibox.margin.Extension (ABCDE12345)": ["Enabled": true, "ProfileIdentifier": Self.personalCopy],
             "com.example.other.Extension (ZZZZZ99999)": ["Enabled": true, "ProfileIdentifier": "99999999-9999-4999-8999-999999999999"],
         ])
         extensions(Self.testServer, ["com.example.other.Extension (ZZZZZ99999)": ["Enabled": true, "ProfileIdentifier": "99999999-9999-4999-8999-999999999998"]])
@@ -94,7 +94,7 @@ final class FakeSafari {
     // Margin's entries as standard() has them again.
     func standardExtensions() {
         extensions(Self.personalServer, [
-            "io.tirth.margin.Extension (ABCDE12345)": ["Enabled": true, "ProfileIdentifier": Self.personalCopy],
+            "com.unibox.margin.Extension (ABCDE12345)": ["Enabled": true, "ProfileIdentifier": Self.personalCopy],
             "com.example.other.Extension (ZZZZZ99999)": ["Enabled": true, "ProfileIdentifier": "99999999-9999-4999-8999-999999999999"],
         ])
         extensions(Self.testServer, ["com.example.other.Extension (ZZZZZ99999)": ["Enabled": true, "ProfileIdentifier": "99999999-9999-4999-8999-999999999998"]])

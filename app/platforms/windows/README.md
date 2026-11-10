@@ -59,17 +59,17 @@ Nothing of it runs on the Mac: there it's compile-checked (`npm run test:rust` r
 ### The host registration
 
 `margin-connector.exe --install` (the app runs it at each launch, in the background, with no console window) writes
-`%LOCALAPPDATA%\Margin\io.tirth.margin.json` (its `path` is the connector, `allowed_origins` Margin's extension only)
-and points the default value of these keys at it: `HKCU\Software\Google\Chrome\NativeMessagingHosts\io.tirth.margin`
-(Chrome, and its Beta, Dev and Canary), `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\io.tirth.margin`,
-`HKCU\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\io.tirth.margin` and
-`HKCU\Software\Chromium\NativeMessagingHosts\io.tirth.margin`. Check with
-`reg query HKCU\Software\Google\Chrome\NativeMessagingHosts\io.tirth.margin /ve`; run it by hand with
+`%LOCALAPPDATA%\Margin\com.unibox.margin.json` (its `path` is the connector, `allowed_origins` Margin's extension only)
+and points the default value of these keys at it: `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.unibox.margin`
+(Chrome, and its Beta, Dev and Canary), `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.unibox.margin`,
+`HKCU\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.unibox.margin` and
+`HKCU\Software\Chromium\NativeMessagingHosts\com.unibox.margin`. Check with
+`reg query HKCU\Software\Google\Chrome\NativeMessagingHosts\com.unibox.margin /ve`; run it by hand with
 `margin-connector.exe --install` (it prints what it wrote). The log says `the browsers' host files written: N`.
 
 ### The link, step by step
 
-The copy calls `connectNative('io.tirth.margin')` (its lasting port) and `sendNativeMessage` (`wantLink`); Chrome
+The copy calls `connectNative('com.unibox.margin')` (its lasting port) and `sendNativeMessage` (`wantLink`); Chrome
 starts `margin-connector.exe chrome-extension://<id>/` through `cmd.exe` for each. The connector connects to
 `\\.\pipe\Margin-<SID>`, says its hello (the browser and its process), and passes each message on; the app answers it
 as Safari's handler does and dispatches the `link` into that browser's connectors. The copy then opens

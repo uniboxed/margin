@@ -343,7 +343,7 @@ final class SafariAX: @unchecked Sendable {
             return (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any]
         }
         func enabled(_ list: [String: Any], matching: (([String: Any]) -> Bool)?) -> Bool? {
-            let margin = list.filter { $0.key.hasPrefix("io.tirth.margin.Extension (") }.compactMap { k, v -> (String, [String: Any])? in (v as? [String: Any]).map { (k, $0) } }
+            let margin = list.filter { $0.key.hasPrefix("com.unibox.margin.Extension (") }.compactMap { k, v -> (String, [String: Any])? in (v as? [String: Any]).map { (k, $0) } }
             let signed = margin.filter { !$0.0.contains("(UNSIGNED)") }
             let pick = (signed.isEmpty ? margin : signed).filter { matching?($0.1) ?? true }
             guard !pick.isEmpty else { return nil }

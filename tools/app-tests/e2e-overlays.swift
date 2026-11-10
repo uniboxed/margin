@@ -20,7 +20,7 @@ func overlaysScenario() async {
   guard await until(5, { fake.first("ready") != nil }) else { return check("the fake extension starts", false) }
   let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-overlays-\(UUID().uuidString)", isDirectory: true)
   defer { try? FileManager.default.removeItem(at: root) }
-  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.overlays.\(ProcessInfo.processInfo.processIdentifier)"),
+  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.overlays.\(ProcessInfo.processInfo.processIdentifier)"),
                         timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, request: 5, safariSettled: 2))
   let windows = ScriptedWindows()
   let apps = ScriptedApps()
@@ -247,7 +247,7 @@ func sidebarSlideScenario() async {
   guard await until(5, { fake.first("ready") != nil }) else { return check("the fake extension starts", false) }
   let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-slide-\(UUID().uuidString)", isDirectory: true)
   defer { try? FileManager.default.removeItem(at: root) }
-  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.slide.\(ProcessInfo.processInfo.processIdentifier)"),
+  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.slide.\(ProcessInfo.processInfo.processIdentifier)"),
                         timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, request: 5, safariSettled: 2))
   let windows = ScriptedWindows()
   let apps = ScriptedApps()

@@ -16,8 +16,8 @@ import SafariServices
 import SwiftUI
 import WebKit
 
-let extensionBundleIdentifier = "io.tirth.margin.Extension"
-let setupNotification = Notification.Name("io.tirth.margin.setup")
+let extensionBundleIdentifier = "com.unibox.margin.Extension"
+let setupNotification = Notification.Name("com.unibox.margin.setup")
 
 class ViewController: NSViewController {
 
