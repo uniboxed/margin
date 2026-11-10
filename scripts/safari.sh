@@ -100,13 +100,20 @@ else
   echo "Signing with team $TEAM."
 fi
 
+# The app's version is the extension's (the converter's project says 1.0): what Finder and the About
+# window show, and what the connector is built with (APP_VERSION below), for every build, not the
+# project's, which isn't made again when only the version changes.
+VERSION=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' dist/webkit/manifest.json | head -n 1)
+[ -n "$VERSION" ] || { echo "safari.sh: no version in dist/webkit/manifest.json" >&2; exit 1; }
+VERSIONS="MARKETING_VERSION=$VERSION CURRENT_PROJECT_VERSION=$VERSION"
+
 # shellcheck disable=SC2086
 if [ -n "$IDENTITY_NAME" ] && [ "$UNSIGNED" = false ]; then
   xcodebuild -project xcode/Margin/Margin.xcodeproj -scheme Margin -configuration Release \
-    -derivedDataPath "$DERIVED" -quiet $SIGN CODE_SIGN_IDENTITY="$IDENTITY_NAME" build
+    -derivedDataPath "$DERIVED" -quiet $SIGN $VERSIONS CODE_SIGN_IDENTITY="$IDENTITY_NAME" build
 else
   xcodebuild -project xcode/Margin/Margin.xcodeproj -scheme Margin -configuration Release \
-    -derivedDataPath "$DERIVED" -allowProvisioningUpdates -quiet $SIGN build
+    -derivedDataPath "$DERIVED" -allowProvisioningUpdates -quiet $SIGN $VERSIONS build
 fi
 BUILT="$DERIVED/Build/Products/Release/Margin.app"
 # Chrome's and Edge's connector (app/shared/connector/, Rust; docs/PROTOCOL.md "Transport (Chrome and Edge, on the
