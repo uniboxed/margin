@@ -61,7 +61,22 @@ On the Mac, Margin needs macOS 14 or later, on Apple silicon or Intel, and today
 
 ## Install
 
-There's no release yet. To build and install Margin from source on a Mac, with Xcode, Node 26 and Rust:
+**On a Mac** (macOS 14 or later, Apple silicon or Intel):
+
+1. Download **Margin-x.y.z-macOS.zip** from the [latest release](https://github.com/uniboxed/margin/releases/latest), open it,
+   and move **Margin.app** to your Applications folder. It's signed and notarized by Apple.
+2. Open Margin.app once, then turn Margin on in **Safari → Settings → Extensions** (and allow it on every website).
+3. Put a Safari window in full screen: Margin draws around it.
+
+**Chrome or Edge on the Mac:** with Margin.app installed, unzip the release's **chromium-extension** zip, open
+`chrome://extensions` (or `edge://extensions`), turn on Developer mode, and choose **Load unpacked** with the unzipped
+folder. Margin is in review for the Chrome Web Store, which will replace these steps.
+
+**Windows:** the release has an early preview (x64 and Arm), not yet tried on a real Windows PC.
+
+### From source
+
+To build and install Margin from source on a Mac, with Xcode, Node 26 and Rust:
 
 ```sh
 npm ci
