@@ -8,7 +8,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
-import { sidebar } from './harness/ui.ts';
+import { sidebar, startPageInFront } from './harness/ui.ts';
 
 let m;
 let ui;
@@ -100,7 +100,10 @@ test('Margin\'s start page opened on purpose (#launcher) is drawn as the launche
   const { page, tab } = await newTabPage('#launcher');
   try {
     await m.shoot(t, 'start-page', { page });
-    await m.until(async () => (await sidebar(ui)).launcher, { what: 'the launcher' });
+    // Looked for once the overlay has the page in front, not waited on: waited on, this todo's "waited 5000 ms for
+    // the launcher", in every run, read as a timing flake (GitHub issue #13).
+    await m.until(async () => startPageInFront(await sidebar(ui), tab.id), { what: 'the start page in front in the overlay' });
+    assert.ok((await sidebar(ui)).launcher, 'the launcher drawn over the start page');
     await new Promise((r) => setTimeout(r, 500));
     assert.ok((await m.tabs()).some((x) => x.id === tab.id), 'the start page wasn\'t handed off and closed');
     assert.equal(await frontId(), tab.id);

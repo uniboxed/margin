@@ -6,7 +6,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
-import { sidebar, palette, chip } from './harness/ui.ts';
+import { sidebar, palette, chip, startPageInFront } from './harness/ui.ts';
 
 let m;
 let ui;
@@ -76,7 +76,9 @@ test('the archive button opens Margin\'s start page with the archived tabs; one 
   const page = await m.until(async () => { const f = await m.front(); return f?.url.startsWith(m.newTabUrl()) && f; }, { what: 'Margin\'s start page in front' });
   await m.shoot(t, 'start-page');
   try {
-    await m.until(async () => (await sidebar(ui)).launcher, { what: 'the launcher drawn' });
+    // Looked for once the overlay has the page in front, not waited on (as in newtab.test.ts's todo).
+    await m.until(async () => startPageInFront(await sidebar(ui), page.id), { what: 'the start page in front in the overlay' });
+    assert.ok((await sidebar(ui)).launcher, 'the launcher drawn over the start page');
     const rows = await m.until(async () => { const r = await ui.$$eval('.archive-row .title', (els) => els.map((e) => e.textContent)); return r.length >= 3 && r; }, { what: 'the archive list' });
     assert.ok(rows.some((r) => r.startsWith('Sign in')), `the newest first: ${rows.join(' | ')}`);
     assert.equal(rows.at(-1), 'The sound of low tide · Radio Field', 'the oldest last');

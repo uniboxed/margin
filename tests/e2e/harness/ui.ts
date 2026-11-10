@@ -32,6 +32,14 @@ export function sidebar(ui: Page) {
 }
 
 /**
+ * Whether the sidebar as drawn (`sidebar(ui)`) has Margin's start page (tab `tabId`) in front: the launcher, the
+ * New Tab row highlighted, or the page's own row (as a tab: newtab.html#launcher today). The launcher comes in the
+ * same draw as the row (ui/host-app.ts frontPage), so a test looks for it once this holds rather than wait on it.
+ * */
+export const startPageInFront = (v: Awaited<ReturnType<typeof sidebar>>, tabId: number) =>
+  v.launcher || v.newTabActive || v.tabs.some((r) => r.id === tabId && r.active);
+
+/**
  * Waits for the overlay's transitions and animations that end (a sidebar
  * sliding out, an edge moving) to finish, for a picture of where they land.
  * */
