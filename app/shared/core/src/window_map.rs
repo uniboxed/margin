@@ -1,4 +1,4 @@
-//! The window map (app/macos/shell/WindowMap.swift) and its trace's OS-neutral part (app/macos/shell/WindowTrace.swift): one
+//! The window map (app/platforms/macos/shell/WindowMap.swift) and its trace's OS-neutral part (app/platforms/macos/shell/WindowTrace.swift): one
 //! place that knows every window Margin cares about, as one snapshot: the browsers' windows and Margin's own
 //! (overlays, covers, catchers), each with its bounds, whether it's on screen, its place in the window server's
 //! order, its display, its Spaces, and (Safari's, on the Mac) its profile and full screen as Accessibility read
@@ -608,7 +608,7 @@ pub fn replay_with_overlays(lines: &[TraceLine]) -> Vec<(WindowSnapshot, Vec<Tra
     out
 }
 
-// The Swift's tests (app/macos/shell/tests/window-tests.swift `windowMap`), and Tirth's recorded session
+// The Swift's tests (app/platforms/macos/shell/tests/window-tests.swift `windowMap`), and Tirth's recorded session
 // (tests/fixtures/traces/2026-11-07-sidebar-on-desktop.jsonl, as `overlaySpace` replays it).
 #[cfg(test)]
 mod tests {

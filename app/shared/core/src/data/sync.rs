@@ -1,4 +1,4 @@
-//! The lasting data on the link (docs/DATA.md "Messages"; app/macos/shell/DataSync.swift): each copy's `data.hello`,
+//! The lasting data on the link (docs/DATA.md "Messages"; app/platforms/macos/shell/DataSync.swift): each copy's `data.hello`,
 //! `data.snapshot` and `data.changes` taken into its own profile's data set (`store`), and the app's answers:
 //! `data.need`, `data.snapshot` (in parts, none over 1 MB), `data.changes` and `data.ack`. A message only ever
 //! touches the set of the link it came on (its browser and profile: a `profile` naming another is refused, another

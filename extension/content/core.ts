@@ -243,7 +243,7 @@ export function startCore() {
   // Safari can take part of a full-screen window: the Web Inspector docked at
   // the bottom, left or right (Safari's sidebar on the left). The page's area
   // is then smaller than the window, and Margin.app draws only over it
-  // (app/macos/shell/Shell.swift overlayFrame), beside the inspector. Its size is
+  // (app/platforms/macos/shell/Shell.swift overlayFrame), beside the inspector. Its size is
   // the viewport's; where it starts is known exactly from any pointer event
   // (the event's screen point less the window's corner and its own point in
   // the page), else taken as: the width missing on the left (Safari's

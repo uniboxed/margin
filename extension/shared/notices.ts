@@ -35,7 +35,7 @@ export const NOTICES: Readonly<Record<string, NoticeWords>> = Object.freeze({
   // A new tab from nothing opened the same web page twice (background/
   // newtab-hint.ts): Safari's "New tabs open with" isn't Margin (Safari sets
   // it back when it turns Margin off). The set-up window checks the same
-  // setting (app/macos/startup/ViewController.swift), in the same words.
+  // setting (app/platforms/macos/startup/ViewController.swift), in the same words.
   'new-tab-setting': {
     text: 'If a new tab opened this page instead of Margin’s: in Safari Settings › General, set “New tabs open with” to Margin. Safari sets it back when it turns Margin off.',
     actions: [{ id: 'ok', label: 'OK' }, { id: 'never', label: 'Don’t show again' }],

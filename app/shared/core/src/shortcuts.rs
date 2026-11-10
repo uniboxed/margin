@@ -1,4 +1,4 @@
-//! Margin's keys as the app's own hot keys (app/macos/shell/Shortcuts.swift; PLAN.md §6, docs/PROTOCOL.md "Keys"): a key
+//! Margin's keys as the app's own hot keys (app/platforms/macos/shell/Shortcuts.swift; PLAN.md §6, docs/PROTOCOL.md "Keys"): a key
 //! registered so never reaches the browser, so they're held only while a linked browser is the active app and its
 //! front window has Margin's overlay, and let go the moment it isn't (another app in front must get its own keys).
 //!
@@ -706,7 +706,7 @@ mod tests {
         }
     }
 
-    // app/macos/shell/tests/tests.swift shortcuts()
+    // app/platforms/macos/shell/tests/tests.swift shortcuts()
     #[test]
     fn parsing() {
         let down = c("Ctrl+Meta+ArrowDown");

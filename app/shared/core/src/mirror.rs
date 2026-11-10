@@ -1,4 +1,4 @@
-//! The app's copy of one extension copy's state (app/macos/shell/StateMirror.swift): storage.local's keys, as the
+//! The app's copy of one extension copy's state (app/platforms/macos/shell/StateMirror.swift): storage.local's keys, as the
 //! extension sends them (a snapshot, then deltas: docs/PROTOCOL.md), each kept as the JSON it came as. An overlay's
 //! page gets the whole state from here at once (no round trip, so nothing to wait for before it draws); the app
 //! itself reads only the little it needs ([`StateMirror::value`]).

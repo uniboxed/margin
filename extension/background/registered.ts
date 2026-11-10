@@ -27,7 +27,7 @@
 // late, after the first frames (the host, 2026-11-06). So whether the app
 // draws a window is followed at once (windowDrawnChanged), not after a
 // settle: the app already says it only as it changes, and off only after its
-// grace (app/macos/shell/Shell.swift DrawnOutbox); and so is a layout that leaves
+// grace (app/platforms/macos/shell/Shell.swift DrawnOutbox); and so is a layout that leaves
 // no box anywhere, and a lone one (layoutsChanged).
 // Once registered in a run of Safari it's only ever updated, never taken
 // away: no longer linked (or no box anywhere), it's updated to a layout of

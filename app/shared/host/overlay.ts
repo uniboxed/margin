@@ -1,9 +1,9 @@
-// The page in each of Margin.app's overlays (app/macos/shell/Overlay.swift): the
+// The page in each of Margin.app's overlays (app/platforms/macos/shell/Overlay.swift): the
 // UI runtime (extension/ui/runtime.ts) drawing the theme around the page
 // slot over one browser window, with the app's host
 // (extension/ui/host-app.ts). Built into dist/app/overlay.js (scripts/
 // build.js), served at margin-app://app/ with a policy that allows no
-// network (app/macos/shell/OverlayWebView.swift).
+// network (app/platforms/macos/shell/OverlayWebView.swift).
 //
 // It asks the app for its window, the state and the theme (`hello`), draws,
 // says it's drawn (`ready`: the app shows the overlay only then), and from
@@ -60,7 +60,7 @@ const gestures = createGestureFeedback({
 const copySwitches = backgroundSwitches();
 
 // ---- next/previous tab by the app's keys: highlighted here at once ---------------------------------------------
-// The app hands this page ⌘⌥↓/↑ (whatever Settings has) instead of the copy (app/macos/shell/Shell.swift run): the target
+// The app hands this page ⌘⌥↓/↑ (whatever Settings has) instead of the copy (app/platforms/macos/shell/Shell.swift run): the target
 // is worked out here with the copy's rule (shared/view.ts cycleTab: the order the sidebar shows, wrapping), each
 // press going on from the one before for a moment (NAV_CHAIN_MS), else from the tab in front; highlighted now, then
 // asked of the copy with its switch id, which takes it as that press's (background/navigation.ts navigate `given`).
@@ -205,7 +205,7 @@ function measureNow() {
 // them): none while the sidebar is docked (nothing to bring out), those in
 // the reveal zone of the theme's peek edges while it's hidden, all of them
 // while it's out over the page (to put it away once the pointer leaves).
-// Told to the app when it changes (app/macos/shell/Shell.swift pointerMoved).
+// Told to the app when it changes (app/platforms/macos/shell/Shell.swift pointerMoved).
 let lastWant = '';
 function reportWant() {
   const vm = runtime?.vm;
@@ -540,7 +540,7 @@ function onMessage(msg: any) {
       if (host?.getState()) mounting = mounting.then(() => mount(msg.theme));
       return;
     case 'command':
-      // The app's keys (app/macos/shell/Shortcuts.swift, following the Settings shortcuts).
+      // The app's keys (app/platforms/macos/shell/Shortcuts.swift, following the Settings shortcuts).
       if (msg.name === 'palette') {
         if (runtime?.paletteOpen) runtime.closePalette();
         else openPaletteTimed({ newTab: !host?.launcher }, 'the app\'s key');
@@ -679,7 +679,7 @@ let pendingTheme: any = null;
 // (Still clickable and hovered: a link back in a moment is the usual case; the dim and the note come only after
 // 1.5 s, overlay.html. A press meanwhile that needs the copy is lost, as one in a dropped link always was.)
 // Dimmed with a note (not the theme's: Margin's own, over everything) while
-// the app waits for the copy to come back (app/macos/shell/Shell.swift).
+// the app waits for the copy to come back (app/platforms/macos/shell/Shell.swift).
 let reconnectNote: HTMLElement | null = null;
 function setReconnecting(on: boolean) {
   document.documentElement.toggleAttribute('data-reconnecting', on);
@@ -719,7 +719,7 @@ async function start() {
   host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args) });
   host.onState(() => followPage());
   // What the copy pushed for this window before this page was there (a
-  // notice, the tabs loading: app/macos/shell/Shell.swift HeldPushes), as if it came now.
+  // notice, the tabs loading: app/platforms/macos/shell/Shell.swift HeldPushes), as if it came now.
   for (const msg of Array.isArray(hello.held) ? hello.held : []) host.receive({ type: 'push', msg });
   pendingTheme = hello.theme ?? null;
   if (hello.theme && host.getState()) mounting = mounting.then(() => mount(hello.theme));

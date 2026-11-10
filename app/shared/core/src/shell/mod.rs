@@ -1,4 +1,4 @@
-//! Margin's shell as a whole, OS-neutral and sans IO (app/macos/shell/Shell.swift, with ShellProfiles.swift's and
+//! Margin's shell as a whole, OS-neutral and sans IO (app/platforms/macos/shell/Shell.swift, with ShellProfiles.swift's and
 //! ShellThemes.swift's wiring and the OS-neutral half of Overlay.swift and OverlayWebView.swift's page handling): it
 //! joins the links to Margin's extension copies (one per browser profile, [`crate::link::Link`]) and each copy's
 //! state ([`crate::mirror::StateMirror`]) to what the OS says of the browsers' windows, and keeps one overlay over

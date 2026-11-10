@@ -1,4 +1,4 @@
-//! Margin's lasting data set (docs/DATA.md): items, changes and the merge (app/macos/shell/DataSet.swift). The rules are
+//! Margin's lasting data set (docs/DATA.md): items, changes and the merge (app/platforms/macos/shell/DataSet.swift). The rules are
 //! `extension/shared/data-merge.ts` `mergeData`'s (the reference), and this runs the same JSON vectors
 //! (`tests/fixtures/data-merge/`):
 //!

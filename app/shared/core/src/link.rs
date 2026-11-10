@@ -1,4 +1,4 @@
-//! The app's end of its links to the extension's copies, without the transport (app/macos/shell/ExtensionLink.swift:
+//! The app's end of its links to the extension's copies, without the transport (app/platforms/macos/shell/ExtensionLink.swift:
 //! `SocketLink` and `LinkConnection`). A state machine the caller drives (sans-IO): it says when a connection opens
 //! ([`Link::on_open`]), each message that comes on it ([`Link::on_text`]), when it ends ([`Link::on_closed`]) and
 //! the time ([`Link::tick`]); each returns [`Action`]s: text to send on a connection, a connection to close (with

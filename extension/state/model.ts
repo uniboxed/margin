@@ -1048,7 +1048,7 @@ function createSpace(state: State, { id, name, emoji, color }: { id: string; nam
   return { ...state, spaces: [...state.spaces, space] };
 }
 
-// The spaces in the order given (Margin.app's order across profiles: app/macos/shell/
+// The spaces in the order given (Margin.app's order across profiles: app/platforms/macos/shell/
 // BrowserProfiles.swift); ones it doesn't name keep their places after them.
 function orderSpaces(state: State, ids: string[]) {
   const rank = new Map(ids.map((id, i) => [id, i]));

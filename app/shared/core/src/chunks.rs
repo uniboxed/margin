@@ -1,5 +1,5 @@
 //! Something too big for one link message (a theme package, PLAN.md §14), sent in pieces and put back together
-//! (app/macos/shell/Chunks.swift; docs/PROTOCOL.md "Chunks"). The whole is UTF-8 JSON; it's cut into pieces of at most
+//! (app/platforms/macos/shell/Chunks.swift; docs/PROTOCOL.md "Chunks"). The whole is UTF-8 JSON; it's cut into pieces of at most
 //! [`CHUNK_BYTES`], each sent as base64 with the whole's size and SHA-256 (`transfer`), so pieces of two sends never
 //! mix and a whole that came wrong is never used.
 

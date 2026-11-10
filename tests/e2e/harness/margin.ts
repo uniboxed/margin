@@ -31,7 +31,7 @@ const { chromium, webkit } = require('playwright');
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const APP_DIR = fileURLToPath(new URL('../../../dist/app/', import.meta.url));
-// The app's Content Security Policy for its overlay pages (app/macos/shell/OverlayWebView.swift policy).
+// The app's Content Security Policy for its overlay pages (app/platforms/macos/shell/OverlayWebView.swift policy).
 export const OVERLAY_POLICY = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'";
 // Addresses of search engines the copy may go to (Safari's default, the learned ones).
 export const ENGINES = /^https?:\/\/([a-z0-9-]+\.)*(google|bing|duckduckgo|yahoo|ecosia|startpage|baidu|yandex|kagi)\.[a-z.]+\//i;

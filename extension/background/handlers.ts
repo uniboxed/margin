@@ -893,7 +893,7 @@ export const handlers = {
     return { windowId: win.id, state: win.state ?? 'normal', ...(bounds ? { bounds } : {}) };
   },
   // Margin.app switching to a space of this profile from another profile's
-  // window (app/macos/shell/ProfileSwitch.swift, PLAN.md §15): this copy makes a
+  // window (app/platforms/macos/shell/ProfileSwitch.swift, PLAN.md §15): this copy makes a
   // window showing the space, in full screen. In front: the space's tab used
   // last (it isn't open: the window the switch closed kept it); the others
   // that were open with it in that window open behind once it's up. Answers
@@ -1105,7 +1105,7 @@ export const handlers = {
     const id = sender.tab?.windowId;
     return { fullscreen: id != null && platform?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(id) : false };
   },
-  // Margin.app's index of the themes the person imported (app/macos/shell/ThemeStore.swift: they're the
+  // Margin.app's index of the themes the person imported (app/platforms/macos/shell/ThemeStore.swift: they're the
   // Mac's, kept by the app; a copy holds only the list, never a package), sent as a copy links and
   // whenever it changes. Kept in storage.local (`userThemes`) for updateSettings and the theme's settings.
   async userThemes({ list }: { list: any[] }) {

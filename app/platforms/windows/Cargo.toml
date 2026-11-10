@@ -16,7 +16,7 @@ name = "margin"
 path = "src/main.rs"
 
 [dependencies]
-margin-core = { path = "../shared/core" }
+margin-core = { path = "../../shared/core" }
 serde.workspace = true
 serde_json.workspace = true
 

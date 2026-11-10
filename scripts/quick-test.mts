@@ -9,7 +9,7 @@
 //   changed file, followed through every relative import; tests that name a changed non-JS
 //   file (a theme's HTML or CSS, the new-tab page); every theme test when a theme changed;
 //   and any changed test file itself (theme tests two at a time: three and four made the drag tests flaky);
-// - Swift (app/macos/, each engine's app side in app/engines/, app/shared/connector/, tools/app-tests): the app's unit checks (compiled on every
+// - Swift (app/platforms/macos/, each engine's app side in app/engines/, app/shared/connector/, tools/app-tests): the app's unit checks (compiled on every
 //   core; the randomized runs cut to 50 and 80 from 300 and 1000; the gate runs them all);
 // - Rust (*.rs, Cargo.toml, Cargo.lock, rustfmt.toml): npm run test:rust, all of it (format, clippy, tests, the Windows check);
 // - e2e test files that changed, run on their own (source changes leave e2e to the gate);
@@ -125,8 +125,8 @@ if (themeChanged) for (const t of [...THEME, ...SECURITY, ...UNIT.filter((u) => 
 if (changed.some((f) => /^(extension|app\/shared\/host)\/|^scripts\/build\.ts$|^package\.json$/.test(f))) {
   for (const n of ['build.test.ts', 'manifest.test.ts']) { const t = join(ROOT, 'tests', n); if (existsSync(t)) pick(t, 'the build\'s inputs changed'); }
 }
-// (The app's Swift: app/macos/, each engine's app side (app/engines/), the connector, and the Swift tests.)
-const swift = all || changed.some((f) => /^(app\/macos|app\/engines|app\/shared\/connector|tools\/app-tests)\//.test(f));
+// (The app's Swift: app/platforms/macos/, each engine's app side (app/engines/), the connector, and the Swift tests.)
+const swift = all || changed.some((f) => /^(app\/platforms\/macos|app\/engines|app\/shared\/connector|tools\/app-tests)\//.test(f));
 // (The Rust workspace: any crate's source or the workspace's own files.)
 const rust = all || changed.some((f) => /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfmt\.toml$/.test(f));
 const e2eFiles = all ? [] : E2E.filter((t) => abs.includes(t));

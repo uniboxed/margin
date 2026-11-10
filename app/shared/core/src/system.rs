@@ -1,4 +1,4 @@
-//! What the OS's window server says about windows (app/macos/shell/WindowServer.swift `ServerWindow`), the same on
+//! What the OS's window server says about windows (app/platforms/macos/shell/WindowServer.swift `ServerWindow`), the same on
 //! every OS: each shell reads its own (CGWindowListCopyWindowInfo on the Mac, EnumWindows and DWM on Windows)
 //! and hands the binder these.
 

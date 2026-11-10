@@ -20,7 +20,7 @@ Then: do it in its own worktree and session, so macOS work goes on in the main c
   (`extension/ui/`), the themes (HTML/CSS, sanitized), and the overlay page Margin.app shows (`app/shared/host/overlay.ts`).
   The shell finds and follows the browser's windows, draws the overlay page over them, holds Margin's keys, talks to
   the extension and keeps the lasting data.
-- **macOS stays Swift** (`app/macos/shell/`), untouched by this work. **No Flutter or React Native:** they draw their own
+- **macOS stays Swift** (`app/platforms/macos/shell/`), untouched by this work. **No Flutter or React Native:** they draw their own
   UI, and the themes are HTML/CSS.
 - **No Chrome side panel:** it has Chrome's own header and width limits. Margin draws its own overlay, as on the Mac.
 - **No in-page sidebar as the product:** no product build draws the sidebar in pages (DECISIONS.md, "Margin 2 ships
@@ -50,7 +50,7 @@ Then: do it in its own worktree and session, so macOS work goes on in the main c
 So Windows needs (1) the Chromium link in the extension, switched on only on Windows (`runtime.getPlatformInfo().os
 === 'win'`) so the Mac's Chrome build doesn't change, and (2) the Windows shell.
 
-**Margin.app's parts** (`app/macos/shell/`). Kinds: (a) OS-neutral logic, portable as is; (b) macOS-general, needs a
+**Margin.app's parts** (`app/platforms/macos/shell/`). Kinds: (a) OS-neutral logic, portable as is; (b) macOS-general, needs a
 Windows counterpart; (c) Safari-only; (d) private macOS APIs.
 
 - **Link** (a): `LinkSocket.swift` (a hand-made RFC 6455 WebSocket on 127.0.0.1; server frames unmasked; client
@@ -86,7 +86,7 @@ Windows counterpart; (c) Safari-only; (d) private macOS APIs.
   `DrawnOutbox`, `HeldPushes`, `overlayFrame`, `hello(for:)`, `perform`), `ShellProfiles.swift` (`across`, space keys
   across profiles, `newMarginWindow`), `ProfileSwitch.swift` ((a): the close-based switch to another profile's space,
   through link requests only: `openSpaceWindow`, `focusWindow`, `closeWindow`, `windowDrafts`), `Diagnostics.swift`,
-  `BundleWatch.swift`, `app/macos/startup/AppDelegate.swift` (login item, single instance).
+  `BundleWatch.swift`, `app/platforms/macos/startup/AppDelegate.swift` (login item, single instance).
 - **Not on Windows** (c/d): `Handoff.swift`, `Parking.swift`, `BridgeParker.swift`, `Freezer.swift`, `SpaceReads.swift`,
   `PrivateCalls.swift` (the freeze and park handoff with SkyLight), `SafariAX.swift`, `SafariFiles.swift`,
   `SafariProfiles.swift`, `CloudTabs.swift`, `ShellCloudTabs.swift`, `ShellCovers.swift`, `EdgeStop.swift`,
@@ -139,8 +139,8 @@ Windows counterpart; (c) Safari-only; (d) private macOS APIs.
 - `CLAUDE.md` and SPEC.md's Working rules apply: Conventional Commits, subject line only, no attribution of any kind;
   no assistant or tool names in branches, commits or PRs; commit as
   `git -c user.name="Tirth Patel" -c user.email="github@tirth.io"`.
-- Work on `feat/windows-shell`, in this worktree (`/Users/tirth/Projects/margin-windows`). Never touch `app/macos/shell/`,
-  `app/macos/startup/`, `xcode/` or the Safari build; never run `npm run safari` from here.
+- Work on `feat/windows-shell`, in this worktree (`/Users/tirth/Projects/margin-windows`). Never touch `app/platforms/macos/shell/`,
+  `app/platforms/macos/startup/`, `xcode/` or the Safari build; never run `npm run safari` from here.
 - A change to shared code (`extension/`, `app/shared/host/`) must keep the macOS bundles identical, or differ only by
   the reviewed change: build, then compare every `dist/` bundle with main's byte for byte. Run `npm run test:quick`
   before each commit, and the full gate (`npm run gate`) once before any merge to main.
@@ -152,5 +152,5 @@ Windows counterpart; (c) Safari-only; (d) private macOS APIs.
   `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`, clippy and rustfmt installed. Check the Windows code with
   `cargo check --target x86_64-pc-windows-msvc` (no linking needed), test `margin-core` with `cargo test` on the Mac.
   Building a real `.exe` needs MSVC's linker: Tirth builds on Windows when he tests (put the steps in
-  `app/windows/README.md`).
+  `app/platforms/windows/README.md`).
 - Node is at `/opt/homebrew/bin` (add it to PATH).

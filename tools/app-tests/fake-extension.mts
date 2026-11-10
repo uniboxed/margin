@@ -1,5 +1,5 @@
 // A stand-in for Margin's extension copies on the link (docs/PROTOCOL.md), for
-// e2e.swift, which runs Margin.app's real end (app/macos/shell/) against it:
+// e2e.swift, which runs Margin.app's real end (app/platforms/macos/shell/) against it:
 //   node fake-extension.mts
 // It does what the host tells it on stdin, one JSON object a line, and says
 // what happened on stdout the same way. Several copies (profiles) at once,

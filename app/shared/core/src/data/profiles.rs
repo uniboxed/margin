@@ -1,4 +1,4 @@
-//! Spaces across a browser's profiles (PLAN.md §15, docs/DATA.md "Spaces across profiles"; app/macos/shell/BrowserProfiles.swift):
+//! Spaces across a browser's profiles (PLAN.md §15, docs/DATA.md "Spaces across profiles"; app/platforms/macos/shell/BrowserProfiles.swift):
 //! which profile each space is in, the one order of every profile's spaces the person controls, and each profile's
 //! name, emoji and color. One file per browser, beside its profiles' data sets:
 //!

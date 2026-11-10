@@ -31,7 +31,7 @@ done
 
 npm run build
 # The project again when what makes it isn't what it was made from: the app's
-# code (app/macos/startup/) or this script's partner (make-xcode.sh) changed, or
+# code (app/platforms/macos/startup/) or this script's partner (make-xcode.sh) changed, or
 # another branch made it (its project can list files this one doesn't have),
 # or dist/webkit/ or one of the app's Swift folders has a file more or less: the project lists each
 # of their files (a new one isn't copied or built into the app until the
@@ -39,9 +39,9 @@ npm run build
 # app didn't have). What's in those files is copied in or built by each
 # build, so changes there need no new project. xcode/.team stays.
 MADE_FROM="xcode/.made-from"
-# (The app's Swift folders: app/macos/swift-sources.txt, each folder's own *.swift.)
-SWIFT_FOLDERS=$(grep -v '^#' app/macos/swift-sources.txt | sed '/^$/d')
-FROM=$({ find app/macos/startup app/engines/webkit/safari/handler app/macos/swift-sources.txt scripts/make-xcode.sh scripts/xcode-add-sources.py -type f | LC_ALL=C sort | xargs shasum; (cd dist/webkit && find . -type f | LC_ALL=C sort); for d in $SWIFT_FOLDERS; do find "$d" -maxdepth 1 -name '*.swift'; done | LC_ALL=C sort; } | shasum | cut -d' ' -f1)
+# (The app's Swift folders: app/platforms/macos/swift-sources.txt, each folder's own *.swift.)
+SWIFT_FOLDERS=$(grep -v '^#' app/platforms/macos/swift-sources.txt | sed '/^$/d')
+FROM=$({ find app/platforms/macos/startup app/engines/webkit/safari/handler app/platforms/macos/swift-sources.txt scripts/make-xcode.sh scripts/xcode-add-sources.py -type f | LC_ALL=C sort | xargs shasum; (cd dist/webkit && find . -type f | LC_ALL=C sort); for d in $SWIFT_FOLDERS; do find "$d" -maxdepth 1 -name '*.swift'; done | LC_ALL=C sort; } | shasum | cut -d' ' -f1)
 if [ ! -d xcode/Margin/Margin.xcodeproj ] || [ "$(cat "$MADE_FROM" 2>/dev/null)" != "$FROM" ]; then
   sh scripts/make-xcode.sh
   echo "$FROM" > "$MADE_FROM"
@@ -90,7 +90,7 @@ BUILT="$DERIVED/Build/Products/Release/Margin.app"
 # Chrome's and Edge's connector (app/shared/connector/, Rust; docs/PROTOCOL.md "Transport (Chrome and Edge, on the
 # Mac)"): built for both kinds of Mac into Contents/Helpers with the app's version in it, signed as Margin's
 # connector (io.tirth.margin.connector) with the identity the app was signed with, and the app signed again around
-# it, its own settings kept. Margin.app lets only that connector in (app/macos/shell/RelayLink.swift). Before
+# it, its own settings kept. Margin.app lets only that connector in (app/platforms/macos/shell/RelayLink.swift). Before
 # anything is installed: a failure here leaves the installed copy as it was.
 HELPERS="$BUILT/Contents/Helpers"
 CARGO="${CARGO:-$(command -v cargo || echo "$HOME/.cargo/bin/cargo")}"

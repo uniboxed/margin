@@ -1,6 +1,6 @@
 # The full-screen handoff with parking: design
 
-Draft 2, 2026-11-06 (revised after two critics' reviews: Appendix A). Nothing here is built. It replaces today's close-based cross-profile switch (`app/macos/shell/ProfileSwitch.swift`) with Tirth's freeze-based handoff, and keeps the old profile's window alive ("parked") instead of closing it.
+Draft 2, 2026-11-06 (revised after two critics' reviews: Appendix A). Nothing here is built. It replaces today's close-based cross-profile switch (`app/platforms/macos/shell/ProfileSwitch.swift`) with Tirth's freeze-based handoff, and keeps the old profile's window alive ("parked") instead of closing it.
 
 **Margin windows (2026-11-09):** this design had one chain of windows (one home window per profile, one shown window). `docs/BROWSER-WINDOWS.md` replaces that with a window per profile for **each** Margin window, and it overrides what this document says about home windows, the shown window, §6.2, §13.8 and §13.11 (answers 8 and 11). Where the two differ, WINDOWS.md holds.
 
@@ -223,7 +223,7 @@ Before the freeze, in `preparing`:
 
 ### 1.11 Built (WP8)
 
-`app/macos/shell/Handoff.swift` (`HandoffWorld`, `HandoffOptions`, `HandoffChoice`, `HandoffRun`, `AftercareWatch`, `HandoffSession`, and the machine as an extension of `ProfileSwitch`), with `app/macos/shell/ProfileSwitch.swift` as its face; tests in `app/macos/shell/tests/handoff-tests.swift` (`FakeHandoffWorld`: Safari, its Spaces, the real parker and registry over `FakeSpaceWorld`, `FakeFreezer`). Settled on the way:
+`app/platforms/macos/shell/Handoff.swift` (`HandoffWorld`, `HandoffOptions`, `HandoffChoice`, `HandoffRun`, `AftercareWatch`, `HandoffSession`, and the machine as an extension of `ProfileSwitch`), with `app/platforms/macos/shell/ProfileSwitch.swift` as its face; tests in `app/platforms/macos/shell/tests/handoff-tests.swift` (`FakeHandoffWorld`: Safari, its Spaces, the real parker and registry over `FakeSpaceWorld`, `FakeFreezer`). Settled on the way:
 
 - **One machine, two ways.** `ProfileSwitch` keeps today's close-based switch, its phases (`creating`, `settling`, `closing`, `checking`) and its words, and runs it when the world isn't a `HandoffWorld`, has no Space reads, or the display list doesn't read (never a guess). It also runs it for `close` without a freeze when the target has no parked window. In a `HandoffWorld` it asks A's drafts first: a draft or no answer keeps A, with `window-kept-draft`.
 - **`HandoffWorld` extends `SwitchWorld`.** Four of its members are the shell's own already (`spaceReads`, `parker`, `parking`, `parkingOn`, and `showSwitchNotice`); the rest are WP9's. Until the shell conforms, every switch is today's.
@@ -253,7 +253,7 @@ After a review (2026-11-06), each with a case in `handoffReviewTests`:
 
 ### 2.1 The registry: keyed by window number
 
-New `app/macos/shell/Parking.swift`, one per shell:
+New `app/platforms/macos/shell/Parking.swift`, one per shell:
 
 ```swift
 struct ParkedWindow {
@@ -285,7 +285,7 @@ final class ParkingRegistry {
 - **Hard rule:** the registry never drops an entry that's still alive. Every path that stops tracking a window calls `returnToDesktop` first and verifies it. A debug assertion and a unit test cover it.
 - **Memory only**, except the crash marker (§6.4).
 
-Built (WP4): `app/macos/shell/Parking.swift`, `ParkingRegistry` (made with the parker in `Shell.checkPrivateCalls`, as `Shell.parking`). Settled on the way:
+Built (WP4): `app/platforms/macos/shell/Parking.swift`, `ParkingRegistry` (made with the parker in `Shell.checkPrivateCalls`, as `Shell.parking`). Settled on the way:
 
 - **`ParkedWindow`** also keeps `copy` (the copy instance its window id belongs to, so "the same copy stops listing it" can be told from a new copy) and `cause` (the call under way). `space` is optional: nil once destroyed after a show that didn't land.
 - **A copy never seen with the window's id counts as a new copy** when it doesn't list that id. This covers a park before any read named the copy. "Closed in Safari" needs the same copy's word, so the window is rebound, never forgotten.
@@ -303,7 +303,7 @@ Built (WP4): `app/macos/shell/Parking.swift`, `ParkingRegistry` (made with the p
   - **A step that sent an op is never "nothing sent".** Any failure with `tries > 0` counts as possibly landed: a park's window is returned to its Desktop before it's let go, and a show's private Space is destroyed with the entry kept `out`. `forget(.neverParked)` gets `sent: o.tries > 0`.
   - **The person's return is theirs until it's acted on** (`ParkedWindow.claimed`). Once `.person` is found, it's said on every read (logged once), and the entry is never judged the system's again, focus lost or a system event. Before, a window brought back with focus while a switch was busy (§6.1 drops it then) was parked again as soon as focus left it. It ends with a handoff's `show`, a `park` (which now parks a claimed window for real), or `release(number)`: its Space destroyed and the entry forgotten, once it's in a user Space. WP9 calls `release` when it won't hand off.
 
-### 2.2 The window binder (`app/macos/shell/WindowMatcher.swift`)
+### 2.2 The window binder (`app/platforms/macos/shell/WindowMatcher.swift`)
 
 Today, a bound window missing from reads keeps its binding for `Timing.absent` (3 s), then the binding goes (`WindowMatcher.swift:211-213`, `:529-534`). A new copy drops all its bindings (`:514-519`).
 
@@ -317,7 +317,7 @@ Changes:
   Several matches leave it unbound (§1.5 covers that), and the log says so.
 - Parked numbers are left out of the "read that tells nothing" test (`liveBound`, `reliableBig`: `WindowMatcher.swift:398-404`, `:546-548`), and they're never front-window candidates, elimination rivals, or subjects of the moved or visible rules.
 
-Built (WP5): `WindowBinder.update(…, parked:)`, `expectParked(_:number:why:)` (and a form that takes `rebind`'s map), and `expect(…, bounds:)` in `app/macos/shell/WindowMatcher.swift`; tests in `app/macos/shell/tests/window-tests.swift` (`parkedWindowBinding`). Settled on the way:
+Built (WP5): `WindowBinder.update(…, parked:)`, `expectParked(_:number:why:)` (and a form that takes `rebind`'s map), and `expect(…, bounds:)` in `app/platforms/macos/shell/WindowMatcher.swift`; tests in `app/platforms/macos/shell/tests/window-tests.swift` (`parkedWindowBinding`). Settled on the way:
 
 - **A parked binding is also kept while its copy isn't linked.** That isn't one of the three drop reasons above. A copy that comes back new still drops it, because the binder remembers each link's copy.
 - **Each keep is one log line**, said again only when its reason changes: not listed by the window server, off screen, or its copy not linked.
@@ -329,7 +329,7 @@ Built (WP5): `WindowBinder.update(…, parked:)`, `expectParked(_:number:why:)` 
 - **Made by Margin with answered bounds:** either the copy's listed bounds or the answer's bounds may fit the one new window. A window bound from the answer before its copy lists it isn't taken as closed for 2 s (`alone` + `reportLag`) after the answer. `Shell.windowMade` passes `SpaceWindowAnswer.bounds` from `ShellProfiles.request`. Those two lines are WP9's files, wired here so the rule works now.
 - **Not wired yet (WP9):** `Shell.track` passing `parking.numbers` as `parked`, and `parking.rebind`'s map into `expectParked`.
 
-### 2.3 The overlays (`app/macos/shell/Overlay.swift`, `Shell.track`)
+### 2.3 The overlays (`app/platforms/macos/shell/Overlay.swift`, `Shell.track`)
 
 - **Hidden while parked, never closed.** In `Shell.track`'s loop (`Shell.swift:788-850`), a parked key gets `overlay.hide("its window is parked")` and is skipped. The overlay's web view keeps its page, theme and state.
 - **A's overlay leaves before A's Space goes** (§1.3 step 5). It's an own-Space panel (`.managed` + `.fullScreenAuxiliary`, `Overlay.swift:67`), which `track` would otherwise leave in A's Space to slide back in with it (`Shell.swift:804-817`). Step 5 orders it and its edge panel out first, and R5 checks it's off screen. Gate G14 records what macOS does with an own-Space panel when its full-screen Space is destroyed.
@@ -338,7 +338,7 @@ Built (WP5): `WindowBinder.update(…, parked:)`, `expectParked(_:number:why:)` 
 - **Never shown over nothing:** otherwise an overlay shows only over a bound, on-screen, display-filling window (`Shell.swift:794-823`).
 - **Memory:** each kept overlay keeps its web view (open question 8).
 
-Built (WP9): the shell is the switch's `HandoffWorld` (`app/macos/shell/ShellHandoff.swift`; `Shell.track`, `Overlay.swift`, `WindowServer.swift`); tests in `tools/app-tests/e2e-profiles.swift` (`handoffScenario`, with `SpaceWindows` playing the window server and macOS's Spaces from one `FakeSpaceWorld`) and `fake-extension.mts` (`play`). Settled on the way:
+Built (WP9): the shell is the switch's `HandoffWorld` (`app/platforms/macos/shell/ShellHandoff.swift`; `Shell.track`, `Overlay.swift`, `WindowServer.swift`); tests in `tools/app-tests/e2e-profiles.swift` (`handoffScenario`, with `SpaceWindows` playing the window server and macOS's Spaces from one `FakeSpaceWorld`) and `fake-extension.mts` (`play`). Settled on the way:
 
 - **The gate.** `Shell.Options.handoff`, off by default; `forApp()` reads `MarginHandoff` from the defaults, so the gates' runs (G1's Margin.app half, G16) can turn it on. `handoffOn` is that and the Space reads. Off, `ProfileSwitch.handoffWorld` is nil (`HandoffWorld.handoffOn`, fixed in place in WP8's files): every switch is the close-based one exactly as before, with no drafts asked and no notices, and the registry's `parkingOn` is false, so a crash's marker leaves its windows as normal ones.
 - **The parts.** `checkPrivateCalls` makes `RealFreezer(skyLight:)` when the freeze passed, and sets `switcher.session.rules = FreezeRules(availability:)`. A harness gives `Options.handoffParts` (reads, parker, freezer) and `Options.fillsDisplay` instead: used as the check's would be, with no self-test.
@@ -406,7 +406,7 @@ Today a window that leaves full screen is `wanted: false`, so after 1.5 s (`Grac
 4. `SLSSpaceDestroy(B's private Space)`.
 5. B appears as a floating window in A's full-screen Space, hidden by the freeze, then enters its own Space (`S/handoff/RESULTS-park.md`: the same on 12 returns).
 
-Built (WP3): `app/macos/private/SpaceReads.swift` and `app/macos/private/BridgeParker.swift`. Settled on the way:
+Built (WP3): `app/platforms/macos/private/SpaceReads.swift` and `app/platforms/macos/private/BridgeParker.swift`. Settled on the way:
 
 - **The reads** are `SpaceReads`: `activeSpace`, `spaces(of:)` (one window per call: `SLSCopySpacesForWindows` answers the union of the windows it's given), `displays()` (each display's Desktops and type-4 Spaces), `window(_:)` (the per-number window server read) and `display(at:)`. Derived from them: `fullScreenSpaces`, `managedDisplayCount`, `desktop(for:)` and `readsParked`. Every read is optional: nil is unknown.
 - **A display list with any odd entry is unknown as a whole.** The count decides whether a switch freezes, so a half-read list isn't trusted.
@@ -499,10 +499,10 @@ The AppKit lab's own retry toggled B back out: B had entered, then "dropped; ask
 | 13? | a read that lists a Space's windows (candidate: `SLSCopyWindowsWithOptionsAndTags`), or a mask of `SLSCopySpacesForWindows` that includes private Spaces | function | orphan check (§4.4 invariant 3) | only if gate G5 finds one. Without it, no orphan check |
 
 - **Signatures:** every Copy function is declared as returning `Unmanaged<CFArray>?`, and nil means "unknown" (never a crash). The bridge initializers are called only when the type encodings match the ones recorded in `docs/PRIVATE-APIS.md` (from macOS 27.2). A mismatch means parking is off at launch.
-- **Already in Margin.app, also listed** (not new, not part of the choices): WebKit's `drawsBackground` key (`app/macos/shell/OverlayWebView.swift:178`, a `responds`/`value(forKey:)` check at launch, logged), and Safari's files read only (`SafariTabs.db`, each profile's `Extensions.plist`, `CloudTabs.db`, with the schema checks those readers already do).
+- **Already in Margin.app, also listed** (not new, not part of the choices): WebKit's `drawsBackground` key (`app/platforms/macos/shell/OverlayWebView.swift:178`, a `responds`/`value(forKey:)` check at launch, logged), and Safari's files read only (`SafariTabs.db`, each profile's `Extensions.plist`, `CloudTabs.db`, with the schema checks those readers already do).
 - **Considered and not used:** `SLSManagedDisplaySetCurrentSpace` (it didn't shorten the entry), `SLSOrderWindow` and other direct window calls (refused cross-process with error 1000, or silently ignored: `S/handoff/xp.swift:76-110`), and minimizing.
 
-Built (WP1): `app/macos/private/PrivateCalls.swift` and `docs/PRIVATE-APIS.md`. Settled on the way:
+Built (WP1): `app/platforms/macos/private/PrivateCalls.swift` and `docs/PRIVATE-APIS.md`. Settled on the way:
 
 - **Row 12's selector is SkyLight's, not WindowManagement's.** Both classes and their `-performWithWMBridgeDelegate` are implemented in SkyLight (read with `class_getImageName` and `dladdr` on 26B123). `WindowManagement.framework` is still opened and checked: every lab that parked had it loaded, and whether the bridge needs it is untested.
 - **The encodings** (macOS 27.2, 26B123): `-initWithSpaceID:windows:options:` `@36@0:8Q16@24I32`, `-initWithWindows:spaces:` `@32@0:8@16@24`, `-performWithWMBridgeDelegate` `v16@0:8`. The perform selector is checked on each class, so the launch line says 4 selectors, not 3.
@@ -514,7 +514,7 @@ Built (WP1): `app/macos/private/PrivateCalls.swift` and `docs/PRIVATE-APIS.md`. 
 
 ### 4.2 At launch
 
-New `app/macos/private/PrivateCalls.swift`:
+New `app/platforms/macos/private/PrivateCalls.swift`:
 
 - `PrivateCalls.check(resolver:)` runs before the shell starts (`AppDelegate.startShell`). It returns `Availability { freeze, spaces, park, enumerator, missing: [String], mismatched: [String] }`.
 - **The park self-test runs across processes.** Margin.app starts a copy of its own binary as a child (`Margin --park-probe`, no new Xcode target). The child shows a 1×1 borderless window at alpha 0, off screen, and prints its window number. Margin parks it, shows it, returns it and checks each step, then the child exits. It takes about 50 ms and shows nothing. A failure means parking is off. This tests the case that can break: Margin moving another process's window. The freeze isn't self-tested, because that would freeze the screen.
@@ -548,7 +548,7 @@ New `app/macos/private/PrivateCalls.swift`:
 - **The watchdog belongs to the freezer** (`RealFreezer`): a `DispatchSourceTimer` on a private serial queue calls `SLSInvokeTransition` if the handle is still live at 1.7 s, with a lock guarding the handle. A stuck main thread can't hold the screen. Gate G13 kills a freezing process to learn whether macOS releases a dead process's freeze.
 - **Reveal-at-once paths:** quit (`Shell.stop`, `Shell.swift:294`), will-sleep (§6.8), Safari quitting, a foreign Space change (§1.2), and any failure.
 
-Built (WP2): `app/macos/private/Freezer.swift`. Settled on the way:
+Built (WP2): `app/platforms/macos/private/Freezer.swift`. Settled on the way:
 
 - **The protocol:** `Freezer { delegate, isLive, freeze(watchdog:) -> FreezeResult, reveal(RevealWhy) -> RevealResult }`. `FreezeResult` is `.frozen(handle)`, `.failed(result)` or `.unavailable(why)`. `RevealResult` is `.revealed`, `.failed(result, released:)` or `.notLive`. `RevealWhy` names each path above, plus `ready`, `watchdog`, `closed` and `cancelled`.
 - **The session rules are `FreezeRules`,** a struct the delegate keeps (WP8's machine), fed by `FreezeReport`s: two failed freezes in a row, or one failed reveal, turn it off. A success resets the count. A watchdog reveal is counted, not a failure. `FreezeRules(availability:)` starts off when the launch check didn't pass the freeze. It also keeps `lastRevealAt` and `lastWatchdogAt` for §1.5's cooldown. The freezer itself never decides whether to freeze.
@@ -597,7 +597,7 @@ The lab only ever closed A under a second freeze after B's reveal (`S/handoff/la
 - **Scroll:** each page goes back to where it was scrolled, once (the scroll record, `docs/DATA.md` "The scroll record").
 - **Media restarts.** PiP ends with its window.
 - **Honest timings:** a create plus entry is about 1.1-1.7 s still, then about 0.3 s of B, then about 0.15 s still again (G3 measures it). The setting's text says switching is slower and pages reload (§5).
-- Built (WP11): `Handoff.swift` `startClose`, `closeTry`, `closingStep`, `checkingStep`; tests in `app/macos/shell/tests/handoff-tests.swift`. Settled on the way:
+- Built (WP11): `Handoff.swift` `startClose`, `closeTry`, `closingStep`, `checkingStep`; tests in `app/platforms/macos/shell/tests/handoff-tests.swift`. Settled on the way:
   - **When freeze 2 starts:** in `after`, once B's focus check (§6.6, 300 ms) is done and the cooldown has passed (300 ms since the reveal; 1 s after a watchdog reveal). The phase is then `closing`, and `checking` for a drop left at the watchdog. Both names are the close-based switch's too, for the same steps.
   - **The close's `notAfter`:** 600 ms into freeze 2. A close that would land after the freeze is refused rather than carried out seen. Unfrozen, `closeTimeout` as before.
   - **"B in front":** B's Space is the active one (the Space reads) and B is Safari's first window on screen (`inFront`). A is gone when the window server stops listing it; its copy's list lags.
@@ -730,7 +730,7 @@ New, kept small:
   - more than one display: today's slide (0.4-0.65 s);
   - today's slide, for comparison: 0.4-0.65 s, with Margin's overlay gone for about 180 ms (`PLAN.md` §15).
 
-Built (WP10, the overlay's side): `switchCover` in `ui/view-model.ts`, the guarded `<m-switch-cover>` slot and `switch-cover` part (`ui/sanitize.ts`, `ui/render.ts`, Margin's default in `DEFAULT_PARTS`), parts in Arcadia and Neo-brutalism, `extension/ui/switch-cover.ts` (`createCoverWatch`, `answerFramed`) wired in `app/shared/host/overlay.ts`, and the switch's notices by kind; tests in `tests/handoff-ui.test.ts`, `tests/theme/switch-cover.test.ts` and `app/macos/shell/tests/handoff-ui-tests.swift`. Settled on the way:
+Built (WP10, the overlay's side): `switchCover` in `ui/view-model.ts`, the guarded `<m-switch-cover>` slot and `switch-cover` part (`ui/sanitize.ts`, `ui/render.ts`, Margin's default in `DEFAULT_PARTS`), parts in Arcadia and Neo-brutalism, `extension/ui/switch-cover.ts` (`createCoverWatch`, `answerFramed`) wired in `app/shared/host/overlay.ts`, and the switch's notices by kind; tests in `tests/handoff-ui.test.ts`, `tests/theme/switch-cover.test.ts` and `app/platforms/macos/shell/tests/handoff-ui-tests.swift`. Settled on the way:
 
 - **Which overlay is A's:** `across.switching.from { profile, windowId }` (the switcher's `from`). The view model draws the cover only when that's its own profile and window. Today's machine has none of the three phases, so it never shows one.
 - **The cover's shape:** `{ id, text, label, hasSpace, profile: { name, emoji, color, initial, symbol }, space: { name, emoji } }`. `text` is "Switching to Work…", with Margin's words in the view model.
@@ -747,7 +747,7 @@ Built (WP10, the overlay's side): `switchCover` in `ui/view-model.ts`, the guard
 
 ### 8.1 The log
 
-`Diagnostics.note` (`app/macos/shell/Diagnostics.swift:15-18`), with the prefix `handoff:` or `private calls:`. It holds ids, window numbers, counts, modes, results and milliseconds only. Never a title, an address or a page's words. Nothing is sent anywhere.
+`Diagnostics.note` (`app/platforms/macos/shell/Diagnostics.swift:15-18`), with the prefix `handoff:` or `private calls:`. It holds ids, window numbers, counts, modes, results and milliseconds only. Never a title, an address or a page's words. Nothing is sent anywhere.
 
 - **Launch:** `private calls on macOS 27.2 (26C123): freeze ok, spaces ok, park ok (9/9 functions, 2/2 classes, 3/3 selectors, encodings ok); cross-process self-test park 12 ms, show 15 ms, return 14 ms`, or `… park off: initWithSpaceID:windows:options: encoding changed`.
 - **A build change:** `macOS build changed from 26B88 to 26C123: private calls checked again`.
@@ -808,7 +808,7 @@ These must keep passing: `npm test`, `npm run test:theme`, `npm run test:app`, `
 
 ### 10.1 Unit and app tests (`npm run test:app`, `npm test`)
 
-- **`app/macos/shell/tests/handoff-tests.swift` (new):** the machine against fakes, in the `SwitchWorld`/`SwitchClock` pattern (`app/macos/shell/tests/profiles-tests.swift:12-80`; `FakeClock` reused).
+- **`app/platforms/macos/shell/tests/handoff-tests.swift` (new):** the machine against fakes, in the `SwitchWorld`/`SwitchClock` pattern (`app/platforms/macos/shell/tests/profiles-tests.swift:12-80`; `FakeClock` reused).
   - `FakeHandoffWorld`: links (up, held, down, new copy), the copies' windows (id, state, focused, focusedAt, bounds), window numbers, Spaces and the active Space, overlays (ready, framed with mode), the cover, the display count, and scripted answers, lags, `busy` and `refused` for each request.
   - `FakeFreezer`: freeze, reveal and release results, and a watchdog driven by the fake clock.
   - `FakeParker`: park, show and return results and lags, per-window Spaces, and "came back by itself".
@@ -828,14 +828,14 @@ These must keep passing: `npm test`, `npm run test:theme`, `npm run test:app`, `
     - §1.10's blockers;
     - §6.11's same-profile handoff.
   - **The invariants of §4.4** run after every case.
-- **`app/macos/shell/tests/parking-tests.swift` (new):** the registry.
+- **`app/platforms/macos/shell/tests/parking-tests.swift` (new):** the registry.
   - Keyed by number, and forgotten only by §2.1's rule. Never forgotten by a link down, a reconnecting link or a new copy.
   - Rebinding by elimination and by bounds, and ambiguity left unbound.
   - §2.6's causes: a system return re-parked, never a handoff; a focus event a handoff.
   - A failed show destroys only that window's Space.
   - `returnAll`; the crash marker in the harness root.
-- **`app/macos/shell/tests/window-tests.swift`:** the binder with `parked` (never dropped for missing; dropped for closed, browser gone and new copy; left out of `liveBound`, `reliableBig`, front candidates and the rules) and `expectParked`.
-- **`app/macos/private/tests/private-calls-tests.swift` (new):** `PrivateCalls.check` with a fake resolver: each missing symbol, class or selector, and each mismatched encoding, gives the right availability. Nil Copy results read as unknown. The real wrappers refuse under `MARGIN_APP_TESTS`.
+- **`app/platforms/macos/shell/tests/window-tests.swift`:** the binder with `parked` (never dropped for missing; dropped for closed, browser gone and new copy; left out of `liveBound`, `reliableBig`, front candidates and the rules) and `expectParked`.
+- **`app/platforms/macos/private/tests/private-calls-tests.swift` (new):** `PrivateCalls.check` with a fake resolver: each missing symbol, class or selector, and each mismatched encoding, gives the right availability. Nil Copy results read as unknown. The real wrappers refuse under `MARGIN_APP_TESTS`.
 - **`tools/app-tests/e2e-profiles.swift`:** the whole switch with stand-in windows and `fake-extension.mts` (the fake parker and freezer injected through `Shell` options).
   - the cover and `coverShown`;
   - A's overlay ordered out before A's normal;

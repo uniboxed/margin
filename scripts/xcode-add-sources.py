@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Add Margin.app's Swift to the generated Xcode project (scripts/make-xcode.sh runs it): every *.swift of
-the folders app/macos/swift-sources.txt lists (the Mac's own code, and each engine's and browser's app side on
+the folders app/platforms/macos/swift-sources.txt lists (the Mac's own code, and each engine's and browser's app side on
 the Mac) to the app target's sources, in a Shell group, and dist/app (the host page, `npm run build`) as a
 folder copied to the app's Resources/app/. From feat/native-panel's version (its panel), with the paths changed.
 
@@ -25,9 +25,9 @@ import sys
 APP_TARGET = 'Margin'
 
 
-# The app's Swift, from app/macos/swift-sources.txt: the repo (what the paths are from) and each file's path from it.
+# The app's Swift, from app/platforms/macos/swift-sources.txt: the repo (what the paths are from) and each file's path from it.
 def panel_files(repo):
-    with open(os.path.join(repo, 'app', 'macos', 'swift-sources.txt')) as f:
+    with open(os.path.join(repo, 'app', 'platforms', 'macos', 'swift-sources.txt')) as f:
         folders = [line.strip() for line in f if line.strip() and not line.startswith('#')]
     files = []
     for folder in folders:

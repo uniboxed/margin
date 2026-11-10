@@ -212,7 +212,7 @@ test('the app host and themes: the index from the hello and `themes`; Import, a 
   host.destroy();
 });
 
-// A profile switch hands the sidebar the person is looking at to the window the switch goes to (app/macos/shell
+// A profile switch hands the sidebar the person is looking at to the window the switch goes to (app/platforms/macos/shell
 // Shell.handOverOverlay): the same page, given that window's hello in place (`rekey`), so nothing reloads.
 test('the app host: handed to another window and profile (rekey): its window, state, mode and windows from the new hello', () => {
   const b = bridge();

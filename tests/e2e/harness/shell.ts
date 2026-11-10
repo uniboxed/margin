@@ -1,4 +1,4 @@
-// A stand-in for Margin.app's shell (app/macos/shell/Shell.swift, Overlay.swift,
+// A stand-in for Margin.app's shell (app/platforms/macos/shell/Shell.swift, Overlay.swift,
 // OverlayWebView.swift), in Node, for the e2e suite. The link's server is
 // tests/fake-app.ts; the overlays are the real dist/app/overlay.html, one
 // WebKit page per window the shell draws over. It does what the shell does

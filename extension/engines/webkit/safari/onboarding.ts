@@ -1,4 +1,4 @@
-// Margin's Mac app has a set-up window (app/macos/startup/ViewController.swift) that
+// Margin's Mac app has a set-up window (app/platforms/macos/startup/ViewController.swift) that
 // walks through what Safari needs: Margin on, allowed on every website, new
 // tabs and windows opening Margin's page, ⌘T reaching Margin (Safari's File ›
 // New Tab moved to another shortcut). The app sees the first itself; the
