@@ -4,7 +4,9 @@
 // the sanitizer allows for it; the view model and the action that run it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { settingsFields, saveField, runField, shortcutTaken, wokeText, SHORTCUT_HELP } from '../extension/ui/settings-form.ts';
+import { settingsFields, saveField, runField, shortcutTaken, wokeText, SHORTCUT_HELP, type SettingsField } from '../extension/ui/settings-form.ts';
+import type { CleanElement, CleanNode } from '../extension/ui/sanitize.ts';
+import type { UiState } from '../extension/ui/view-model.ts';
 import { sanitizeTemplate } from '../extension/ui/sanitize.ts';
 import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
 import { buildViewModel } from '../extension/ui/view-model.ts';
@@ -15,7 +17,9 @@ const SAFARI = { sleepTabs: 'close', blockGestures: true, newTabHint: true, sear
 // A browser whose sleeping tabs stay open, discarded (Chrome, Edge: Phase 5's), with Safari's other features.
 const DISCARDS = { ...SAFARI, sleepTabs: 'discard' };
 const CHROME = { sleepTabs: false, blockGestures: false, newTabHint: false, search: 'browser', marginFullscreen: true };
-const byId = (fields) => Object.fromEntries(fields.map((f) => [f.id, f]));
+// A setting saved (each valid value the tests give saves one).
+type Saved = { type: 'updateSettings', payload: { patch: Record<string, any> } };
+const byId = (fields: SettingsField[]) => Object.fromEntries(fields.map((f) => [f.id, f]));
 
 test('Settings covers today\'s form: theme, search engine, archive, sleep, never-sleep sites, gestures, frame, the ⌘T hint, shortcuts; Wake all where sleeping tabs are discarded', () => {
   const fields = settingsFields({ theme: 'arcadia', archiveAfterHours: 12, sleepAfterHours: 4, neverSleepSites: ['mail.example.com'] }, SAFARI);
@@ -53,29 +57,29 @@ test('Settings covers today\'s form: theme, search engine, archive, sleep, never
 test('Settings: what a field saves is checked against the field, never taken from the theme', () => {
   const f = byId(settingsFields({ theme: 'arcadia', shortcuts: {} }, SAFARI));
   assert.deepEqual(saveField(f.archiveAfterHours, '24', {}), { type: 'updateSettings', payload: { patch: { archiveAfterHours: 24 } } });
-  assert.deepEqual(saveField(f.archiveAfterHours, '9999', {}).payload.patch, { archiveAfterHours: 720 }, 'clamped');
-  assert.deepEqual(saveField(f.archiveAfterHours, '2.6', {}).payload.patch, { archiveAfterHours: 3 }, 'whole hours');
-  assert.deepEqual(saveField(f.sleepAfterHours, '0.5', {}).payload.patch, { sleepAfterHours: 0.5 }, 'any step');
+  assert.deepEqual((saveField(f.archiveAfterHours, '9999', {}) as Saved).payload.patch, { archiveAfterHours: 720 }, 'clamped');
+  assert.deepEqual((saveField(f.archiveAfterHours, '2.6', {}) as Saved).payload.patch, { archiveAfterHours: 3 }, 'whole hours');
+  assert.deepEqual((saveField(f.sleepAfterHours, '0.5', {}) as Saved).payload.patch, { sleepAfterHours: 0.5 }, 'any step');
   for (const bad of ['-1', '', 'x', 'Infinity']) assert.equal(saveField(f.archiveAfterHours, bad, {}), null, bad);
-  assert.deepEqual(saveField(f.blockGestures, false, {}).payload.patch, { blockGestures: false });
+  assert.deepEqual((saveField(f.blockGestures, false, {}) as Saved).payload.patch, { blockGestures: false });
   assert.equal(saveField(f.blockGestures, 'false', {}), null, 'a toggle takes a boolean');
-  assert.deepEqual(saveField(f.theme, 'neubrutalism', {}).payload.patch, { theme: 'neubrutalism' });
+  assert.deepEqual((saveField(f.theme, 'neubrutalism', {}) as Saved).payload.patch, { theme: 'neubrutalism' });
   assert.equal(saveField(f.theme, 'evil', {}), null, 'only a listed theme');
   assert.equal(saveField(f.theme, 'arcadia', {}), null, 'the one already chosen: nothing');
-  assert.deepEqual(saveField(f.neverSleepSites, 'https://Mail.Example.com/x\nnews.test, bad host!', {}).payload.patch, { neverSleepSites: ['mail.example.com', 'news.test', 'bad'] });
-  assert.deepEqual(saveField(f.sidebarShortcut, 'Alt+KeyD', {}).payload.patch, { sidebarShortcut: 'Alt+KeyD' });
-  const nav = saveField(f.nextTab, 'Ctrl+Alt+KeyN', { shortcuts: {} }).payload.patch.shortcuts;
+  assert.deepEqual((saveField(f.neverSleepSites, 'https://Mail.Example.com/x\nnews.test, bad host!', {}) as Saved).payload.patch, { neverSleepSites: ['mail.example.com', 'news.test', 'bad'] });
+  assert.deepEqual((saveField(f.sidebarShortcut, 'Alt+KeyD', {}) as Saved).payload.patch, { sidebarShortcut: 'Alt+KeyD' });
+  const nav = (saveField(f.nextTab, 'Ctrl+Alt+KeyN', { shortcuts: {} }) as Saved).payload.patch.shortcuts;
   assert.equal(nav.nextTab, 'Ctrl+Alt+KeyN');
   assert.ok(['prevTab', 'nextSpace', 'prevSpace'].every((k) => typeof nav[k] === 'string'), 'the others kept');
   assert.equal(saveField(f.nextTab, 'nonsense', {}), null);
   assert.equal(saveField(f.engine, 'x', {}), null, 'a paragraph saves nothing');
   const disabled = byId(settingsFields({ blockGestures: false }, SAFARI)).swipeNavigation;
   assert.equal(saveField(disabled, true, {}), null, 'a disabled field saves nothing');
-  assert.match(shortcutTaken('nextTab', 'Alt+KeyS', {}), /already used for “Show or hide the sidebar”/);
+  assert.match(shortcutTaken('nextTab', 'Alt+KeyS', {})!, /already used for “Show or hide the sidebar”/);
   assert.equal(shortcutTaken('sidebarShortcut', 'Alt+KeyS', {}), null, 'its own');
-  assert.match(shortcutTaken('nextTab', 'Meta+KeyT', {}), /New tab/);
+  assert.match(shortcutTaken('nextTab', 'Meta+KeyT', {})!, /New tab/);
   assert.deepEqual(runField(byId(settingsFields({}, DISCARDS)).wakeAll), { type: 'wakeSleeping', payload: {} });
-  assert.equal(runField(f.resetShortcuts).payload.patch.sidebarShortcut, 'Alt+KeyS');
+  assert.equal((runField(f.resetShortcuts) as Saved).payload.patch.sidebarShortcut, 'Alt+KeyS');
   assert.equal(runField(f.theme), null);
   assert.deepEqual([wokeText(2), wokeText(1), wokeText(0), wokeText(undefined)], ['Woke 2 tabs.', 'Woke 1 tab.', 'No tabs are asleep.', 'Couldn’t reach Margin.']);
 });
@@ -89,9 +93,10 @@ test('Settings inputs: each of Margin\'s on its own element, their options and t
     <input m-input="setting-list"><select m-input="setting-number"></select>
     <span>Delete everything</span></div></template>`));
   assert.deepEqual(r.errors, []);
-  const els = [];
-  const walk = (n) => { if (n.type === 'el') els.push(n); for (const c of n.children ?? []) walk(c); };
-  walk(r.tree);
+  const els: CleanElement[] = [];
+  // A node of the kept tree (a text has no children), from its root (there: no errors).
+  const walk = (n: { type: string, children?: CleanNode[] }) => { if (n.type === 'el') els.push(n as CleanElement); for (const c of n.children ?? []) walk(c); };
+  walk(r.tree!);
   const inputs = els.filter((e) => ['input', 'select', 'textarea'].includes(e.name)).map((e) => `${e.name}:${e.attrs.find(([k]) => k === 'm-input')?.[1]}:${e.children.length}`);
   assert.deepEqual(inputs, ['input:setting-number:0', 'input:setting-toggle:0', 'input:setting-shortcut:0', 'select:setting-choice:0', 'textarea:setting-list:0']);
   assert.ok(!els.find((e) => e.name === 'input' && e.attrs.some(([k]) => k === 'type')), 'their type is Margin\'s to set');
@@ -101,16 +106,17 @@ test('Settings inputs: each of Margin\'s on its own element, their options and t
 
 test('Settings in the view model: on Margin\'s own pages, while open; its buttons are the only settings.run arguments', () => {
   const state = { ...smallState(), settings: { ...smallState().settings, theme: 'arcadia' } };
-  const vm = (ui) => buildViewModel({ state, ui: { windowId: W, ...ui }, platform: { browser: 'safari', os: 'mac', features: DISCARDS } });
+  const vm = (ui: UiState) => buildViewModel({ state, ui: { windowId: W, ...ui }, platform: { browser: 'safari', os: 'mac', features: DISCARDS } });
   assert.equal(vm({}).settingsForm, null, 'a web page');
   assert.equal(vm({ launcherPage: true }).settingsForm, null, 'closed');
-  assert.equal(vm({ launcherPage: true }).launcher.settingsOpen, false);
+  assert.equal(vm({ launcherPage: true }).launcher!.settingsOpen, false); // a launcher page: it has its launcher
   assert.equal(vm({ launcherPage: true }).window.sidebar, 'open', 'the sidebar beside the launcher, Keep open or not');
   assert.equal(vm({}).window.sidebar, 'hidden');
   const open = vm({ launcherPage: true, settingsOpen: true });
-  assert.equal(open.launcher.settingsOpen, true);
-  assert.ok(open.settingsForm.fields.some((f) => f.id === 'wakeAll'));
-  const buttons = open.settingsForm.fields.filter((f) => f.isButton).map((f) => f.id);
+  assert.equal(open.launcher!.settingsOpen, true);
+  // Open: the form is there.
+  assert.ok(open.settingsForm!.fields.some((f) => f.id === 'wakeAll'));
+  const buttons = open.settingsForm!.fields.filter((f) => f.isButton).map((f) => f.id);
   const ctx = contextFromState(state, [], { settingIds: buttons });
   assert.deepEqual(checkAction('settings.run', 'wakeAll', ctx), { ok: true });
   assert.equal(checkAction('settings.run', 'theme', ctx).ok, false, 'not a button');

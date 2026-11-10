@@ -5,9 +5,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startFakeApp } from './fake-app.ts';
+import { fakeBrowser } from './fake-browser.ts';
 
 // Chrome's build, as detected (shared/capabilities.ts detect): its own scheme.
-globalThis.chrome = { runtime: { getURL: (p: string) => `chrome-extension://njeebbcmlenfopaecfbphgcfihbdmkec/${p}`, getManifest: () => ({ version: '2.0.0' }) } } as any;
+globalThis.chrome = fakeBrowser({ runtime: { getURL: (p: string) => `chrome-extension://njeebbcmlenfopaecfbphgcfihbdmkec/${p}`, getManifest: () => ({ version: '2.0.0' }) } });
 const setAgent = (userAgent: string) => Object.defineProperty(globalThis, 'navigator', { value: { userAgent }, configurable: true });
 const MAC_CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36';
 const MAC_EDGE = `${MAC_CHROME} Edg/153.0.0.0`;
@@ -122,7 +123,7 @@ test('a Chrome copy in Edge says edge; one started again links with its kept lin
   let second: any = null;
   try {
     await first.start({ route: async () => ({ ok: true }) });
-    const hello = await app.next('hello');
+    const hello = (await app.next('hello'))!; // null only if it never came: then .browser fails the test
     assert.equal(hello.browser, 'edge');
     assert.equal(hello.pid, 5151);
     // The worker torn down and started again (Chrome does that): the kept link first, no wantLink.

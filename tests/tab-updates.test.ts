@@ -5,23 +5,24 @@
 // fake storage.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from './fake-browser.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // Until `ready()`, at most `ms`: a busy machine fires timers late, so a write
 // that's due is waited for, not timed. (A check that nothing's written yet
 // can only pass more often then.)
-const until = async (ready, ms = 1500) => {
+const until = async (ready: () => unknown, ms = 1500) => {
   const end = Date.now() + ms;
   while (!ready() && Date.now() < end) await sleep(10);
 };
-const local = {};
-const sets = [];
+const local: Record<string, any> = {}; // stored JSON
+const sets: Record<string, any>[] = [];
 let failNext = false; // the next write of the tabs fails (Safari's storage busy)
-globalThis.chrome = ({
+globalThis.chrome = fakeBrowser({
   runtime: { getURL: (path) => `safari-web-extension://test/${path}` },
   storage: {
     local: {
-      get: async (keys) => (keys == null ? { ...local } : Object.fromEntries([].concat(keys).filter((k) => k in local).map((k) => [k, structuredClone(local[k])]))),
+      get: async (keys) => (keys == null ? { ...local } : Object.fromEntries(([] as string[]).concat(keys).filter((k) => k in local).map((k) => [k, structuredClone(local[k])]))),
       set: async (items) => {
         sets.push(structuredClone(items));
         if (failNext && 'openTabs' in items) {
@@ -34,7 +35,7 @@ globalThis.chrome = ({
     },
     session: { get: async () => ({}), set: async () => {} },
   },
-} as any);
+});
 const { decided, load, mutate } = await import('../extension/background/store.ts');
 const { GATHER_MS, TITLE_EVERY_MS, tabGone, tabUpdated } = await import('../extension/background/tab-updates.ts');
 const M = await import('../extension/state/model.ts');
@@ -42,10 +43,10 @@ const M = await import('../extension/state/model.ts');
 await decided();
 await load();
 // Tab 1 in front, 2 to 5 behind, in window 1.
-const tab = (id, more = {}) => ({ id, windowId: 1, index: id, url: `https://t${id}.test/`, title: `T${id}`, active: false, ...more });
+const tab = (id: number, more: Partial<BrowserTab> = {}) => ({ id, windowId: 1, index: id, url: `https://t${id}.test/`, title: `T${id}`, active: false, ...more });
 await mutate((s) => M.activateTab([tab(1), tab(2), tab(3), tab(4), tab(5)].reduce((state, t) => M.upsertTab(state, t, 1), s), 1, 1, 1));
 const writes = () => sets.filter((set) => 'openTabs' in set);
-const stored = (id) => local.openTabs.tabs[id];
+const stored = (id: number) => local.openTabs.tabs[id];
 const settle = () => sleep(GATHER_MS + 60);
 const reset = async () => {
   await settle();

@@ -2,12 +2,14 @@
 // set-up window), against a fake browser API (Safari's profile).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from '../../../../../tests/fake-browser.ts';
 
-const sent = [];
+// What was sent to the app: Margin's own messages (any, as types/browser.d.ts has them), each with the app it went to.
+const sent: Record<string, any>[] = [];
 let allSites = false;
 let appOpen = true;
 let failing = false;
-globalThis.chrome = {
+globalThis.chrome = fakeBrowser({
   runtime: {
     getURL: (path) => `safari-web-extension://test/${path}`,
     getManifest: () => ({}),
@@ -17,9 +19,10 @@ globalThis.chrome = {
       return { ok: true, appOpen };
     },
   },
-  permissions: { contains: async ({ origins }) => (origins[0] === '<all_urls>' ? allSites : false) },
+  // Asked by origin (onboarding.ts).
+  permissions: { contains: async ({ origins }) => (origins![0] === '<all_urls>' ? allSites : false) },
   storage: { local: { get: async () => ({}), set: async () => {} } },
-};
+});
 
 const onboarding = await import('../onboarding.ts');
 const types = () => sent.map((m) => (m.type === 'status' ? `status:${m.allSites}` : m.name));

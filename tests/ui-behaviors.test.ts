@@ -6,22 +6,24 @@
 // tests/theme/behaviors.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dropAction, dropTarget, levelIds, moveIndex, stays } from '../extension/ui/behaviors/drop-rules.ts';
-import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from '../extension/ui/behaviors/menu-items.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
+import { dropAction, dropTarget, levelIds, moveIndex, stays, type Drag, type Over, type Target } from '../extension/ui/behaviors/drop-rules.ts';
+import { CONFIRM_LABEL, SPACE_COLORS, menuItems, type MenuItem } from '../extension/ui/behaviors/menu-items.ts';
+import { buildViewModel, type UiState } from '../extension/ui/view-model.ts';
 import { checkAction, contextFromState } from '../extension/ui/actions.ts';
 import { smallState, W } from './ui/fixtures.ts';
 
 const state = smallState();
-const vm = (ui = {}) => buildViewModel({ state, ui: { windowId: W, ...ui } });
+const vm = (ui: UiState = {}) => buildViewModel({ state, ui: { windowId: W, ...ui } });
 const space = vm().space;
-const tab = (id) => ({ kind: 'tab', id });
-const pin = (id) => ({ kind: 'pin', id });
-const folder = (id) => ({ kind: 'folder', id });
+// Drags (ui/behaviors/drop-rules.ts Drag), a pin's and a folder's also a row a drop names.
+const tab = (id: number): { kind: 'tab', id: number } => ({ kind: 'tab', id });
+const pin = (id: string): { kind: 'pin', id: string } => ({ kind: 'pin', id });
+const folder = (id: string): { kind: 'folder', id: string } => ({ kind: 'folder', id });
 const today = space.today.map((t) => t.id);
-const pinsOver = (row, y) => ({ zone: 'pins', row, y });
-const pinRow = (id, folderId = null) => ({ kind: 'pin', id, folder: folderId });
-const folderRow = (id) => ({ kind: 'folder', id, folder: null });
+type PinsRow = Extract<Over, { zone: 'pins' }>['row'];
+const pinsOver = (row: PinsRow, y: number): Over => ({ zone: 'pins', row, y });
+const pinRow = (id: string, folderId: string | null = null): PinsRow => ({ kind: 'pin', id, folder: folderId });
+const folderRow = (id: string): PinsRow => ({ kind: 'folder', id, folder: null });
 
 test('the fixture: Home\'s pinned area and its tabs, as the sidebar shows them', () => {
   assert.deepEqual(levelIds(space, null), ['f1', 'pd', 'f2'], 'folders and the loose pin, in order');
@@ -39,7 +41,8 @@ test('drop rules: a tab on another space\'s chip moves there; nothing else drops
 });
 
 test('drop rules: in the tabs, before or after the tab there, never where it is already; a pin there is unpinned', () => {
-  const over = (t, y) => ({ zone: 'tabs', rows: today, tab: t, y });
+  // (The fixture's tabs are all open: their ids are numbers.)
+  const over = (t: number | null, y: number): Over => ({ zone: 'tabs', rows: today as number[], tab: t, y });
   assert.deepEqual(dropTarget(tab(15), over(12, 0.7), space), { tab: 12, side: 'after' });
   assert.deepEqual(dropTarget(tab(15), over(12, 0.2), space), { tab: 12, side: 'before' });
   assert.deepEqual(dropTarget(tab(12), over(15, 0.2), space), { tab: 15, side: 'before' });
@@ -95,7 +98,7 @@ test('a drop\'s action: the background\'s message today\'s sidebar sends', () =>
   assert.deepEqual(dropAction(folder('f2'), { folderId: null, beforeId: 'f1' }), { name: 'folder.move', arg: { folder: 'f2', before: 'f1' } });
   // Each one passes the action checks against the state.
   const ctx = contextFromState(state);
-  for (const [drag, where] of [[tab(14), { space: 'work' }], [pin('pa'), { unpin: true }], [tab(12), { tab: 15, side: 'after' }], [tab(14), { into: 'f1' }], [pin('pd'), { into: 'f2' }], [folder('f2'), { folderId: null, beforeId: 'f1' }]]) {
+  for (const [drag, where] of [[tab(14), { space: 'work' }], [pin('pa'), { unpin: true }], [tab(12), { tab: 15, side: 'after' }], [tab(14), { into: 'f1' }], [pin('pd'), { into: 'f2' }], [folder('f2'), { folderId: null, beforeId: 'f1' }]] as [Drag, Target][]) {
     const { name, arg } = dropAction(drag, where);
     assert.equal(checkAction(name, arg, ctx).ok, true, name);
   }
@@ -111,8 +114,8 @@ test('reorder maths: where a tab moved next to another lands in the window (back
   assert.equal(moveIndex(4, 3, 'before'), 4);
 });
 
-const labels = (items) => items.map((i) => (i.separator ? '—' : i.label));
-const run = (items) => items.filter((i) => !i.separator).map((i) => [i.action, i.arg]);
+const labels = (items: MenuItem[]) => items.map((i) => (i.separator ? '—' : i.label));
+const run = (items: MenuItem[]) => items.filter((i) => !i.separator).map((i) => [i.action, i.arg]);
 
 test('menus: a folder\'s, a pin\'s, a tab\'s, as today\'s right-click menu', () => {
   assert.deepEqual(labels(menuItems({ kind: 'folder', id: 'f1' }, { state, space })), ['Rename Folder', 'Close Folder', '—', 'Delete Folder (pins stay)']);
@@ -129,7 +132,7 @@ test('menus: a folder\'s, a pin\'s, a tab\'s, as today\'s right-click menu', () 
     ['tab.moveToSpace', { tab: 14, space: 'work' }], ['tab.moveToSpace', { tab: 14, space: 'side' }], ['tab.close', 14]]);
   // Every item's action passes the checks.
   const ctx = contextFromState(state);
-  for (const item of [...pa, ...t, ...menuItems({ kind: 'folder', id: 'f1' }, { state, space })]) if (!item.separator) assert.equal(checkAction(item.action, item.arg, ctx).ok, true, item.label);
+  for (const item of [...pa, ...t, ...menuItems({ kind: 'folder', id: 'f1' }, { state, space })]) if (!item.separator) assert.equal(checkAction(item.action!, item.arg, ctx).ok, true, item.label); // an item: its action
 });
 
 test('menus: a space\'s, the "+" menu, and nothing for what isn\'t there', () => {
@@ -145,28 +148,29 @@ test('menus: a space\'s, the "+" menu, and nothing for what isn\'t there', () =>
   // Item ids are unique; separators never lead, trail or double.
   for (const items of [s, menuItems({ kind: 'tab', id: 14 }, { state, space })]) {
     assert.equal(new Set(items.map((i) => i.id)).size, items.length);
-    assert.equal(items[0].separator || items.at(-1).separator, false);
+    assert.equal(items[0].separator || items.at(-1)!.separator, false);
     assert.equal(items.some((i, k) => i.separator && items[k + 1]?.separator), false);
   }
 });
 
 test('view model: a menu shows its labels, not what they run; a confirming item asks', () => {
-  const m = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40 } }).menu;
+  // Each asked for, of something there: shown.
+  const m = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40 } }).menu!;
   assert.deepEqual(m.items.map((i) => i.label), ['Edit Space…', 'Rename Space', '', 'New Space', '', 'Delete Space']);
   assert.deepEqual(Object.keys(m.items[0]).sort(), ['confirming', 'danger', 'id', 'label', 'separator'], 'no action, no argument');
   assert.deepEqual([m.kind, m.id, m.x, m.y, m.hasItems], ['space', 'work', 30, 40, true]);
-  const asked = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40, confirming: 'i3' } }).menu;
+  const asked = vm({ menu: { kind: 'space', id: 'work', x: 30, y: 40, confirming: 'i3' } }).menu!;
   assert.deepEqual(asked.items.at(-1), { id: 'i3', label: CONFIRM_LABEL, separator: false, danger: true, confirming: true });
   assert.equal(vm({ menu: { kind: 'tab', id: 99 } }).menu, null, 'its tab is gone: no menu');
 });
 
 test('view model: the space editor, its swatches and its delete rule', () => {
-  const e = vm({ editor: { spaceId: 'work', name: 'Deep W', emoji: '💼', color: SPACE_COLORS[2], confirmDelete: false } }).editor;
+  const e = vm({ editor: { spaceId: 'work', name: 'Deep W', emoji: '💼', color: SPACE_COLORS[2], confirmDelete: false } }).editor!; // a space there: shown
   assert.deepEqual([e.id, e.name, e.emoji, e.color, e.canDelete, e.cannotDelete, e.deleteLabel], ['work', 'Deep W', '💼', '#00b894', true, false, 'Delete']);
   assert.deepEqual(e.colors.map((c) => c.id), ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7']);
   assert.deepEqual(e.colors.filter((c) => c.selected).map((c) => c.color), ['#00b894']);
-  assert.equal(vm({ editor: { spaceId: 'work', name: '', emoji: '', color: '', confirmDelete: true } }).editor.deleteLabel, CONFIRM_LABEL);
+  assert.equal(vm({ editor: { spaceId: 'work', name: '', emoji: '', color: '', confirmDelete: true } }).editor!.deleteLabel, CONFIRM_LABEL);
   assert.equal(vm({ editor: { spaceId: 'gone', name: '', emoji: '', color: '' } }).editor, null);
-  const only = buildViewModel({ state: { ...state, spaces: state.spaces.slice(0, 1) }, ui: { windowId: W, editor: { spaceId: 'home', name: 'Home', emoji: '', color: '' } } }).editor;
+  const only = buildViewModel({ state: { ...state, spaces: state.spaces.slice(0, 1) }, ui: { windowId: W, editor: { spaceId: 'home', name: 'Home', emoji: '', color: '' } } }).editor!;
   assert.deepEqual([only.canDelete, only.cannotDelete, only.deleteTitle], [false, true, 'The last space can’t be deleted']);
 });

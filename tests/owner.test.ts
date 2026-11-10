@@ -1,7 +1,7 @@
 // shared/owner.ts: which copy of Margin is in charge of its storage.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newer, ownership } from '../extension/shared/owner.ts';
+import { newer, ownership, type Owner } from '../extension/shared/owner.ts';
 import { fromStorage, openTabsCurrent, storedName, toStorage, withChanges } from '../extension/shared/stored.ts';
 
 const old = { origin: 'safari-web-extension://AAA/', since: 1000 };
@@ -14,7 +14,8 @@ test('owner: the first copy claims an empty or broken record', () => {
 });
 
 test('owner: a copy keeps what it owns, across its background restarts', () => {
-  assert.equal(ownership({ ...old, synced: true }, old), 'own');
+  // `synced`: not the owner record's (shared/stored.ts openTabs has it); ignored there.
+  assert.equal(ownership({ ...old, synced: true } as Owner, old), 'own');
 });
 
 test('owner: a newer copy takes over; the older one is then stale, whichever starts its background first', () => {
@@ -28,7 +29,7 @@ test('owner: after a relaunch the new copy claims the last launch\'s record', ()
 });
 
 test('owner: the same address started again (Chrome restarts, extension reloaded) claims again, unsynced', () => {
-  assert.equal(ownership({ ...old, synced: true }, { ...old, since: 3000 }), 'claim');
+  assert.equal(ownership({ ...old, synced: true } as Owner, { ...old, since: 3000 }), 'claim'); // `synced` ignored, as above
 });
 
 test('owner: a record from a clock that was ahead is claimed by a copy starting, not by one running (no claiming in turn)', () => {
@@ -107,9 +108,9 @@ test('stored: the changes taken from the events give the state a full read would
   const { sameStored, takesChanges } = await import('../extension/shared/stored.ts');
   let seed = 11;
   const random = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-  const pick = (list) => list[Math.floor(random() * list.length)];
+  const pick = <T,>(list: T[]) => list[Math.floor(random() * list.length)];
   const by = { origin: 'safari-web-extension://A/', since: 5, synced: true };
-  const value = (key) => {
+  const value = (key: string) => {
     switch (key) {
       case 'tabs': return Object.fromEntries(Array.from({ length: 1 + Math.floor(random() * 4) }, (_, i) => [i, { id: i, windowId: 1, url: `https://${i}.test/`, title: String(random()) }]));
       case 'tabSpace': return { 0: pick(['a', 'b']) };
@@ -121,7 +122,7 @@ test('stored: the changes taken from the events give the state a full read would
   };
   const KEYS = ['tabs', 'tabSpace', 'activeSpaceByWindow', 'spaces', 'pins', 'folders', 'settings', 'favicons', 'owner', 'showing', 'pageZoom', 'lostTabs'];
   for (let run = 0; run < 200; run++) {
-    const full = { tabs: value('tabs'), tabSpace: value('tabSpace'), activeSpaceByWindow: value('activeSpaceByWindow'), spaces: value('spaces') };
+    const full: Record<string, unknown> = { tabs: value('tabs'), tabSpace: value('tabSpace'), activeSpaceByWindow: value('activeSpaceByWindow'), spaces: value('spaces') };
     let stored = toStorage(full, Object.keys(full), by);
     let page = fromStorage(stored);
     for (let write = 0; write < 12; write++) {
@@ -129,7 +130,7 @@ test('stored: the changes taken from the events give the state a full read would
       for (const key of keys) full[key] = value(key);
       const out = toStorage(full, keys, by);
       // As storage.onChanged reports a set(): only what's new by value.
-      const changes = Object.fromEntries(Object.entries(out).filter(([k, v]) => !sameStored(v, stored[k])).map(([k, v]) => [k, { oldValue: stored[k], newValue: v }]));
+      const changes: Record<string, BrowserStorageChange> = Object.fromEntries(Object.entries(out).filter(([k, v]) => !sameStored(v, stored[k])).map(([k, v]) => [k, { oldValue: stored[k], newValue: v }]));
       if (random() < 0.2) changes.tabs = { newValue: { 99: { id: 99 } } }; // another copy's write, under the old name
       stored = { ...stored, ...out };
       assert.equal(takesChanges(changes, { reading: 0, openTabsBy: page.openTabsBy }), true);

@@ -3,7 +3,7 @@
 // as content/core.ts reads today; and the mock host the browser tests use.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createInPageHost, createMockHost } from '../extension/ui/host.ts';
+import { createInPageHost, createMockHost, type Geometry } from '../extension/ui/host.ts';
 import { toStorage, faviconsMark, firstReadKeys } from '../extension/shared/stored.ts';
 import { buildViewModel } from '../extension/ui/view-model.ts';
 import { smallState, W, OTHER_WINDOW } from './ui/fixtures.ts';
@@ -11,36 +11,38 @@ import { smallState, W, OTHER_WINDOW } from './ui/fixtures.ts';
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 // storage.local as the background writes it (shared/stored.ts toStorage).
-function stored(state = smallState()) {
+function stored(state: Parameters<typeof toStorage>[0] = smallState()) {
   const keys = ['spaces', 'pins', 'folders', 'archive', 'settings', 'tabs', 'tabSpace', 'activeSpaceByWindow', 'favicons'];
   return toStorage(state, keys, { origin: 'safari-web-extension://margin', since: 1, synced: true });
 }
 
-function fakeBrowser(local = stored()) {
-  const listeners = new Set();
+// (Messages are Margin's own, any as the browser API has them; storage holds JSON.)
+type Changed = (changes: Record<string, BrowserStorageChange>, area: string) => void;
+function fakeBrowser(local: Record<string, any> = stored()) {
+  const listeners = new Set<Changed>();
   const fake = {
     local,
-    gets: [],
-    messages: [],
-    reply: (message) => ({ ok: true, result: { echoed: message.type } }),
+    gets: [] as (string[] | null | undefined)[],
+    messages: [] as Record<string, any>[],
+    reply: (message: Record<string, any>): unknown => ({ ok: true, result: { echoed: message.type } }),
     storage: {
       local: {
-        get: async (keys) => {
+        get: async (keys?: string[] | null): Promise<Record<string, any>> => {
           fake.gets.push(keys);
           if (keys == null) return structuredClone(fake.local);
           return Object.fromEntries(keys.filter((k) => k in fake.local).map((k) => [k, structuredClone(fake.local[k])]));
         },
       },
-      onChanged: { addListener: (fn) => listeners.add(fn), removeListener: (fn) => listeners.delete(fn) },
+      onChanged: { addListener: (fn: Changed) => listeners.add(fn), removeListener: (fn: Changed) => listeners.delete(fn) },
     },
     runtime: {
-      id: 'margin',
-      sendMessage: async (message) => { fake.messages.push(message); return fake.reply(message); },
+      id: 'margin' as string | undefined,
+      sendMessage: async (message: Record<string, any>) => { fake.messages.push(message); return fake.reply(message); },
     },
     listeners,
     // A write by the background: storage changes, then the event.
-    write(items) {
-      const changes = {};
+    write(items: Record<string, unknown>) {
+      const changes: Record<string, BrowserStorageChange> = {};
       for (const [key, value] of Object.entries(items)) { changes[key] = { oldValue: fake.local[key], newValue: value }; fake.local[key] = value; }
       for (const fn of [...listeners]) fn(structuredClone(changes), 'local');
     },
@@ -49,17 +51,17 @@ function fakeBrowser(local = stored()) {
 }
 
 function fakeWindow({ href = 'https://docs.example/x', hidden = false } = {}) {
-  const docListeners = new Set();
+  const docListeners = new Set<() => void>();
   const win = {
-    calls: [],
+    calls: [] as string[],
     location: { href, reload: () => win.calls.push('reload') },
     history: { back: () => win.calls.push('back'), forward: () => win.calls.push('forward') },
     document: {
       visibilityState: hidden ? 'hidden' : 'visible',
-      addEventListener: (type, fn) => type === 'visibilitychange' && docListeners.add(fn),
-      removeEventListener: (type, fn) => docListeners.delete(fn),
+      addEventListener: (type: string, fn: () => void) => type === 'visibilitychange' && docListeners.add(fn),
+      removeEventListener: (type: string, fn: () => void) => docListeners.delete(fn),
     },
-    setHidden(on) { win.document.visibilityState = on ? 'hidden' : 'visible'; for (const fn of [...docListeners]) fn(); },
+    setHidden(on: boolean) { win.document.visibilityState = on ? 'hidden' : 'visible'; for (const fn of [...docListeners]) fn(); },
     docListeners,
   };
   return win;
@@ -68,7 +70,7 @@ function fakeWindow({ href = 'https://docs.example/x', hidden = false } = {}) {
 test('in-page host: the first read is what pages read first (shared/stored.ts firstReadKeys), as pages read it; then state for the view model', async () => {
   const api = fakeBrowser();
   const host = createInPageHost({ api, window: fakeWindow(), warn: () => {} });
-  const seen = [];
+  const seen: unknown[] = [];
   host.onState((s) => seen.push(s));
   assert.equal(host.getState(), null);
   assert.equal(await host.ready, true);
@@ -165,9 +167,9 @@ test('in-page host: a read overtaken by an event is dropped; no state yet waits 
   const api = fakeBrowser();
   const host2 = createInPageHost({ api, window: fakeWindow(), warn: () => {} });
   await host2.ready;
-  const releases = [];
+  const releases: (() => void)[] = [];
   const get = api.storage.local.get;
-  api.storage.local.get = (keys) => new Promise((r) => { releases.push(() => r(get(keys))); });
+  api.storage.local.get = (keys) => new Promise<Record<string, any>>((r) => { releases.push(() => r(get(keys))); });
   const reading = host2.refresh();
   const s = smallState();
   api.write({ settings: { ...s.settings, sidebarPinnedOpen: true } });
@@ -218,7 +220,7 @@ test('in-page host: requests go by runtime.sendMessage; a tab named carries its 
 test('in-page host: its window and tab, layout reports, the page\'s history', async () => {
   const api = fakeBrowser();
   const win = fakeWindow({ href: 'https://elsewhere.example/' });
-  const layouts = [];
+  const layouts: Geometry[] = [];
   const host = createInPageHost({ api, window: win, onLayout: (g) => layouts.push(g), platform: { browser: 'chrome', os: 'linux' }, warn: () => {} });
   await host.ready;
   assert.equal(host.windowId, OTHER_WINDOW, 'guessed from the address (shared/view.ts guessWindow)');
@@ -267,11 +269,11 @@ test('mock host: state by hand, requests, layouts and host actions recorded', as
 
 test('in-page host with a state kept elsewhere (content/core.ts): no reads of its own, its send and actions first', async () => {
   const api = fakeBrowser();
-  let state = smallState();
-  const subscribers = new Set();
-  const source = { getState: () => state, onState: (cb) => { subscribers.add(cb); return () => subscribers.delete(cb); } };
-  const sent = [];
-  const performed = [];
+  let state: Parameters<typeof toStorage>[0] = smallState(); // a state as content/core.ts keeps it
+  const subscribers = new Set<(state: unknown) => void>();
+  const source = { getState: () => state, onState: (cb: (state: unknown) => void) => { subscribers.add(cb); return () => subscribers.delete(cb); } };
+  const sent: [string, Record<string, any> | undefined][] = [];
+  const performed: unknown[] = [];
   const win = fakeWindow();
   const host = createInPageHost({
     api, window: win, source, warn: () => {},
@@ -282,7 +284,7 @@ test('in-page host with a state kept elsewhere (content/core.ts): no reads of it
   assert.equal(host.getState(), state, 'the state as given');
   assert.deepEqual(api.gets, [], 'nothing read');
   assert.equal(api.listeners.size, 0, 'no storage listener');
-  const seen = [];
+  const seen: unknown[] = [];
   host.onState((s) => seen.push(s));
   state = { ...state, settings: { ...state.settings, frameWhenHidden: false } };
   for (const cb of subscribers) cb(state);

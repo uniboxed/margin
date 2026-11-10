@@ -1,16 +1,16 @@
 // shared/switching.ts: the tab being switched to, from a page.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSwitching, backgroundSwitches, describeSwitchRun } from '../extension/shared/switching.ts';
+import { createSwitching, backgroundSwitches, describeSwitchRun, type SwitchRun } from '../extension/shared/switching.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function fakeDocument() {
-  const listeners = { visibilitychange: [], pagehide: [] };
+  const listeners: Record<string, (() => void)[]> = { visibilitychange: [], pagehide: [] };
   const doc = {
     hidden: false,
-    addEventListener: (type, fn) => listeners[type]?.push(fn),
-    defaultView: { addEventListener: (type, fn) => listeners[type]?.push(fn) },
+    addEventListener: (type: string, fn: () => void) => listeners[type]?.push(fn),
+    defaultView: { addEventListener: (type: string, fn: () => void) => listeners[type]?.push(fn) },
     hide() {
       doc.hidden = true;
       listeners.visibilitychange.forEach((fn) => fn());
@@ -25,9 +25,9 @@ function fakeDocument() {
 
 function setup() {
   const doc = fakeDocument();
-  const events = [];
+  const events: unknown[][] = [];
   const switching = createSwitching({
-    doc: (doc as any),
+    doc: doc as unknown as Document, // a fake: `hidden` and its listeners
     onChange: (id) => events.push(['change', id]),
     onSlow: (slow) => events.push(['slow', slow]),
     failed: (result) => result === 'failed',
@@ -57,7 +57,7 @@ test('switching: the pill only once it takes longer than 150ms', async () => {
 
 test('switching: still showing after the request says it switched (split view): ends shortly after, no pill', async () => {
   const { events, switching } = setup();
-  let done;
+  let done!: (value?: unknown) => void; // set by the promise, at once
   switching.start(7, new Promise((resolve) => { done = resolve; }));
   done();
   await sleep(100);
@@ -69,7 +69,7 @@ test('switching: still showing after the request says it switched (split view): 
 
 test('switching: the pill goes as soon as the request is done', async () => {
   const { events, switching } = setup();
-  let done;
+  let done!: (value?: unknown) => void; // set by the promise, at once
   switching.start(7, new Promise((resolve) => { done = resolve; }));
   await sleep(200);
   done();
@@ -79,7 +79,7 @@ test('switching: the pill goes as soon as the request is done', async () => {
 
 test('switching: an older switch\'s request doesn\'t end a newer one to the same tab', async () => {
   const { switching } = setup();
-  let first;
+  let first!: (value?: unknown) => void; // set by the promise, at once
   switching.start(7, new Promise((resolve) => { first = resolve; }));
   switching.start(8);
   switching.start(7, new Promise(() => {}));
@@ -196,33 +196,33 @@ test('switching from the background: done isn\'t taken for a failure (it resolve
 // state's tab in front).
 function onScreen() {
   const doc = fakeDocument();
-  const runs: any[] = [];
+  const runs: SwitchRun[] = [];
   let front = 1;
-  let target = null;
-  const drawn = [];
+  let target: number | null = null;
+  const drawn: number[] = [];
   const highlight = () => target ?? front;
   const draw = () => { if (drawn.at(-1) !== highlight()) drawn.push(highlight()); };
   draw();
   const switching = createSwitching({
-    doc: (doc as any),
+    doc: doc as unknown as Document, // a fake: `hidden` and its listeners
     onChange: (id) => { target = id; draw(); },
     onSlow: () => {},
     failed: (result) => result === undefined,
     front: () => front,
     onRun: (run) => runs.push(run),
   });
-  const state = (id) => { front = id; switching.settle(); draw(); };
+  const state = (id: number) => { front = id; switching.settle(); draw(); };
   // The copy's key switches as the overlay takes them (app/shared/host/overlay.ts 'switching',
   // ui/runtime.ts switchTo): each with its switchId, settled only by its own word.
   const copy = backgroundSwitches();
-  const key = (id, switchId) => {
+  const key = (id: number, switchId: string) => {
     const request = copy.begin(id, switchId);
     if (id === front) switching.toFront(id, request);
     else switching.start(id, request);
   };
-  const done = (id, switchId) => copy.settle({ type: 'switch-done', tabId: id, switchId });
+  const done = (id: number, switchId: string) => copy.settle({ type: 'switch-done', tabId: id, switchId });
   // A click on a row (ui/runtime.ts send): the tab in front goes on with the chain.
-  const click = (id, request) => {
+  const click = (id: number, request: Promise<unknown>) => {
     if (id === front) switching.toFront(id, request);
     else switching.start(id, request);
   };
@@ -231,7 +231,7 @@ function onScreen() {
 
 test('switching, on screen: each chain as it ends, for Margin.app\'s log: its targets, where it ended, whether the highlight went back', async () => {
   const { PASSED_MS } = await import('../extension/shared/switching.ts');
-  const only = (runs) => runs.map(({ targets, landed, back, elsewhere, failed }) => ({ targets, landed, back, elsewhere, failed }));
+  const only = (runs: SwitchRun[]) => runs.map(({ targets, landed, back, elsewhere, failed }) => ({ targets, landed, back, elsewhere, failed }));
   // Landed on its last target.
   let s = onScreen();
   s.key(2, 'nav-1'); s.key(3, 'nav-2'); s.done(3, 'nav-2');
@@ -261,7 +261,7 @@ test('switching, on screen: each chain as it ends, for Margin.app\'s log: its ta
 
 test('switching, on screen: answered before the state has the tab, the highlight stays on it; it moves once (1 → 2), never back', async () => {
   const { switching, state, drawn } = onScreen();
-  let answer;
+  let answer!: (value?: unknown) => void; // set by the promise, at once
   switching.start(2, new Promise((resolve) => { answer = resolve; }));
   answer({ shown: 2 });
   await sleep(400); // past the old 300 ms grace: before, the highlight went back to tab 1 here
@@ -293,7 +293,7 @@ test('switching, on screen: the state with the tab in front before the answer en
   s.state(4); // the user went elsewhere (Safari's tab bar)
   assert.deepEqual(s.drawn, [1, 2, 4]);
   s = onScreen();
-  let fail;
+  let fail!: (value?: unknown) => void; // set by the promise, at once
   s.switching.start(2, new Promise((resolve) => { fail = resolve; }));
   fail(undefined);
   await sleep(0);

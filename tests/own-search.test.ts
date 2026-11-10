@@ -2,29 +2,30 @@
 // also when the tab was opened at the search's address (tabs.ts openBehind).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from './fake-browser.ts';
 
-const local = {};
-globalThis.chrome = ({
+const local: Record<string, any> = {}; // stored JSON
+globalThis.chrome = fakeBrowser({
   runtime: { getURL: (path) => `safari-web-extension://test/${path}` },
   storage: {
     local: {
-      get: async (keys) => (keys == null ? { ...local } : Object.fromEntries([].concat(keys).filter((k) => k in local).map((k) => [k, structuredClone(local[k])]))),
+      get: async (keys) => (keys == null ? { ...local } : Object.fromEntries(([] as string[]).concat(keys).filter((k) => k in local).map((k) => [k, structuredClone(local[k])]))),
       set: async (items) => { Object.assign(local, structuredClone(items)); },
       remove: async () => {},
     },
     session: { get: async () => ({}), set: async () => {} },
   },
-} as any);
+});
 const { learnSearchEngine, noteReopened, ownSearchUrls, ownSearchTabs } = await import('../extension/background/search-engine.ts');
 const S = await import('../extension/shared/search.ts');
 const { load } = await import('../extension/background/store.ts');
 
-const searchUrl = (q) => S.SAFARI_DEFAULT.template.replace('%s', encodeURIComponent(q));
+const searchUrl = (q: string) => S.SAFARI_DEFAULT.template.replace('%s', encodeURIComponent(q));
 const learned = async () => (await load()).settings.safariSearch ?? null;
 
 test('own search: a new tab opened at Margin\'s own search address isn\'t learned from', async () => {
   const url = searchUrl('two words');
-  ownSearchUrls.set(url, { at: Date.now(), template: S.detectSafariSearch(url).template });
+  ownSearchUrls.set(url, { at: Date.now(), template: S.detectSafariSearch(url)!.template });
   await learnSearchEngine([url], { tabId: 42 });
   assert.equal(await learned(), null);
 });
@@ -32,7 +33,7 @@ test('own search: a new tab opened at Margin\'s own search address isn\'t learne
 test('own search: Safari\'s own search (another address) still is', async () => {
   const url = searchUrl('from the address bar');
   await learnSearchEngine([url], { tabId: 43 });
-  assert.equal((await learned())?.template, S.detectSafariSearch(url).template);
+  assert.equal((await learned())?.template, S.detectSafariSearch(url)!.template);
   assert.equal(ownSearchTabs.size, 0);
 });
 

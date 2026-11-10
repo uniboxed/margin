@@ -15,11 +15,11 @@ import { fileURLToPath } from 'node:url';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'app-swap.sh');
 const mac = process.platform === 'darwin';
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 // A Margin.app whose executable is a stand-in; `mark` names the build.
-function bundle(path, mark) {
+function bundle(path: string, mark: string) {
   mkdirSync(join(path, 'Contents', 'MacOS'), { recursive: true });
   const exe = join(path, 'Contents', 'MacOS', 'Margin');
   copyFileSync('/bin/sleep', exe);
@@ -29,11 +29,11 @@ function bundle(path, mark) {
 }
 
 // The stand-in running from `exe` (`ignoreTerm`: as an app that doesn't quit on a SIGTERM).
-async function run(exe, { ignoreTerm = false } = {}) {
+async function run(exe: string, { ignoreTerm = false } = {}) {
   const child = ignoreTerm
     ? spawn('/bin/sh', ['-c', `trap '' TERM; exec "${exe}" 60`], { stdio: 'ignore' })
     : spawn(exe, ['60'], { stdio: 'ignore' });
-  const ended = new Promise((resolve) => child.on('exit', (code, signal) => resolve(signal ?? code)));
+  const ended = new Promise<string | number | null>((resolve) => child.on('exit', (code, signal) => resolve(signal ?? code)));
   // Running as Margin (after the exec), from that executable.
   for (let i = 0; i < 100; i++) {
     let comm = '';
@@ -41,11 +41,11 @@ async function run(exe, { ignoreTerm = false } = {}) {
     if (comm === exe) break;
     await wait(20);
   }
-  return { pid: child.pid, ended };
+  return { pid: child.pid!, ended }; // started: it has a pid (ps saw it above)
 }
 
 // swap_app NEW DEST with the test's steps; `register` is the register_app step's body.
-function swap(dir, { register = ':', safari = true, quitWait = 5, startWait = 1 } = {}) {
+function swap(dir: string, { register = ':', safari = true, quitWait = 5, startWait = 1 } = {}) {
   const sh = `
     set -eu
     . "${SCRIPT}"
@@ -58,7 +58,7 @@ function swap(dir, { register = ':', safari = true, quitWait = 5, startWait = 1 
   let out = '';
   child.stdout.on('data', (d) => { out += d; });
   child.stderr.on('data', (d) => { out += d; });
-  const done = new Promise((resolve) => child.on('exit', (code) => resolve({ code, out })));
+  const done = new Promise<{ code: number | null, out: string }>((resolve) => child.on('exit', (code) => resolve({ code, out })));
   return { done };
 }
 
@@ -126,7 +126,7 @@ test('app swap: one that ignores the SIGTERM is killed after the wait, its copy 
 test('app swap: one started during the swap (the extension handler, for a link) is the new build, kept running, and not started twice', { skip: !mac }, async () => {
   const { dir, old } = folder();
   const running = await run(old);
-  let started = null;
+  let started: number | null = null;
   try {
     // The handler starting Margin.app as the registration settles: from DEST, so the new build.
     const register = `"$1/Contents/MacOS/Margin" 60 >/dev/null 2>&1 & echo "started $!"`;

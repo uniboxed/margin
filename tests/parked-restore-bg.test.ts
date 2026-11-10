@@ -5,16 +5,16 @@ import { createParkedRestore } from '../extension/background/parked-restore.ts';
 
 // A copy of storage.local that outlives one "Safari" (one restore instance) and is read by the next.
 function storage() {
-  const data = {};
+  const data: Record<string, any> = {}; // stored JSON
   return {
     data,
     local: {
-      async get(key) { return key in data ? { [key]: structuredClone(data[key]) } : {}; },
-      async set(o) { Object.assign(data, structuredClone(o)); },
+      async get(key: string) { return key in data ? { [key]: structuredClone(data[key]) } : {}; },
+      async set(o: Record<string, any>) { Object.assign(data, structuredClone(o)); },
     },
   };
 }
-const tabs = (list) => ({ tabs: Object.fromEntries(list.map(([id, windowId, mid]) => [id, { id, windowId, mid }])) });
+const tabs = (list: [number, number, string][]) => ({ tabs: Object.fromEntries(list.map(([id, windowId, mid]) => [id, { id, windowId, mid }])) });
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 test('a parked window is remembered, known again after Safari restores it, and told once', async () => {

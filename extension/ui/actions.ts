@@ -424,12 +424,13 @@ const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'r
 
 /**
  * What a checked action becomes (`checkAction` first: this trusts its
- * argument). `state`: the host's state; `ui`: the UI's own (its window, the
+ * argument). `state`: the host's state (as read from storage, as the view model takes it: its settings may be only
+ * some of them); `ui`: the UI's own (its window, the
  * sidebar); `platform`: the host's (whether the browser has Margin full
  * screen); `row`: for palette.run, the palette item its row id names
  * (ui/view-model.ts paletteItems), with its `action`.
  * */
-export function requestFor(name: string, arg: any, { state, ui, platform, row }: { state: (Partial<State> & Record<string, any>) | null, ui: { windowId?: number | null, sidebar?: string | null }, platform?: { marginFullscreen?: boolean }, row?: any }): ActionRequest {
+export function requestFor(name: string, arg: any, { state, ui, platform, row }: { state: (Omit<Partial<State>, 'settings'> & { settings?: Partial<State['settings']> } & Record<string, any>) | null, ui: { windowId?: number | null, sidebar?: string | null }, platform?: { marginFullscreen?: boolean }, row?: any }): ActionRequest {
   const windowId = ui.windowId ?? undefined;
   const show = ui.sidebar === 'peek' ? { show: true } : {};
   const send = (type: string, payload: Record<string, any>): ActionRequest => ({ kind: 'send', type, payload });

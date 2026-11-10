@@ -3,17 +3,19 @@
 // against a fake browser API (Safari's profile: the wake runs).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from './fake-browser.ts';
+import type { State } from '../types/margin.d.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const fake = { zoom: {}, tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, messages: [], access: true, local: {}, current: new Set(), injected: [], probes: 0, probeHangs: false, removed: [], history: [] };
-const asTab = (t) => ({ ...t });
-globalThis.chrome = {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// The browser's side: tabs by id, each tab's zoom, what was asked and sent (Margin's messages: any), storage (stored JSON).
+const fake = { zoom: {} as Record<number, number>, tabs: new Map<number, BrowserTab>(), nextId: 100, calls: { get: 0, contains: 0, create: [] as (string | undefined)[] }, messages: [] as Record<string, any>[], access: true, local: {} as Record<string, any>, current: new Set<number>(), injected: [] as { tabId: number, files: string[] }[], probes: 0, probeHangs: false, removed: [] as number[][], history: [] as [string, number][] };
+const asTab = (t: BrowserTab) => ({ ...t });
+globalThis.chrome = fakeBrowser({
   runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ content_scripts: [{ js: ['content/other.bundle.js'], world: 'MAIN' }, { js: ['content/content.bundle.js'] }] }) },
   permissions: { contains: async () => { fake.calls.contains++; return fake.access; }, onAdded: { addListener() {} }, onRemoved: { addListener() {} } },
   tabs: {
     sendMessage: async (tabId, message) => { fake.messages.push({ tabId, ...message }); },
     getZoom: async (id) => fake.zoom[id] ?? 1,
-    setZoom: async (id, zoom) => { fake.zoom[id] = zoom; },
     get: async (id) => {
       fake.calls.get++;
       const tab = fake.tabs.get(id);
@@ -28,7 +30,7 @@ globalThis.chrome = {
       return asTab(tab);
     },
     remove: async (ids) => {
-      const list = [].concat(ids);
+      const list = ([] as number[]).concat(ids);
       fake.removed.push(list);
       for (const id of list) fake.tabs.delete(id);
     },
@@ -36,7 +38,7 @@ globalThis.chrome = {
     goForward: async (id) => { fake.history.push(['forward', id]); },
     reload: async (id) => { fake.history.push(['reload', id]); },
     create: async ({ windowId, url, active }) => {
-      const tab = { id: fake.nextId++, windowId, url, active: !!active, index: 99, title: '' };
+      const tab = { id: fake.nextId++, windowId, url, active: !!active, index: 99, title: '' } as BrowserTab; // Margin gives its window and address
       if (active) for (const t of fake.tabs.values()) if (t.windowId === windowId) t.active = false;
       fake.tabs.set(tab.id, tab);
       fake.calls.create.push(url);
@@ -63,11 +65,12 @@ globalThis.chrome = {
   },
   storage: {
     local: {
-      get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((k) => k in fake.local).map((k) => [k, fake.local[k]])),
+      // (Asked by key or keys.)
+      get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys as string]).filter((k) => k in fake.local).map((k) => [k, fake.local[k]])),
       set: async (items) => { Object.assign(fake.local, items); },
     },
   },
-};
+});
 
 const M = await import('../extension/state/model.ts');
 const V = await import('../extension/shared/view.ts');
@@ -94,7 +97,7 @@ async function setup() {
     let s = M.defaultState();
     s = M.createSpace(s, { id: 'work', name: 'Work', emoji: '💼', color: '#0984e3' });
     s = M.createSpace(s, { id: 'empty', name: 'Empty', emoji: '🫙', color: '#00b894' });
-    for (const t of tabs) s = M.upsertTab(s, t, 0);
+    for (const t of tabs) s = M.upsertTab(s, t as BrowserTab, 0); // titled in the fake, not here
     s = M.moveTab(M.moveTab(M.moveTab(s, 3, 'work'), 4, 'work'), 5, 'work');
     s = { ...s, tabs: { ...s.tabs, 3: { ...s.tabs[3], lastActive: 10 }, 4: { ...s.tabs[4], lastActive: 20 }, 5: { ...s.tabs[5], lastActive: 99 } } };
     return s;
@@ -130,9 +133,9 @@ test('showSpace: an empty space opens the start page in it; an untouched start p
   await setup();
   await showSpace(1, 'empty');
   assert.deepEqual(fake.calls.create, ['safari-web-extension://test/newtab/newtab.html#launcher']);
-  const opened = front(1);
+  const opened = front(1)!; // the start page just opened
   assert.equal((await load()).tabSpace[opened], 'empty');
-  await mutate((s) => M.upsertTab(s, fake.tabs.get(opened), 0));
+  await mutate((s) => M.upsertTab(s, fake.tabs.get(opened)!, 0));
   await mutate((s) => M.createSpace(s, { id: 'empty2', name: 'Empty 2', emoji: '📭', color: '#636e72' }));
   await showSpace(1, 'empty2');
   assert.equal(fake.calls.create.length, 1, 'no second start page');
@@ -142,16 +145,16 @@ test('showSpace: an empty space opens the start page in it; an untouched start p
 test('showSpace: a space with only tabs that aren\'t open (kept): its top one opens, not a new tab (requested 2026-11-08)', async () => {
   await setup();
   // Work's two tabs in window 1 closed and kept (put to sleep), tab 5 (window 2) left out of it.
-  await mutate((s) => M.keepTab(M.keepTab(s, 3, 'sleep'), 4, 'sleep'));
+  await mutate((s) => M.keepTab(M.keepTab(s, 3, { why: 'sleep', now: Date.now() }), 4, { why: 'sleep', now: Date.now() }));
   fake.tabs.delete(3); fake.tabs.delete(4);
   const kept = Object.values((await load()).keptTabs).filter((k) => k.spaceId === 'work');
   assert.equal(kept.length, 2);
   const view = V.sidebar(await mutate((s) => M.setActiveSpace(s, 1, 'work')), 1);
-  const top = view.tabs.find((t) => t.kept);
+  const top = view.tabs.find((t) => t.kept)!;
   await mutate((s) => M.setActiveSpace(s, 1, 'personal'));
   const result = await showSpace(1, 'work');
   assert.deepEqual(fake.calls.create, [top.url], 'the top kept tab\'s address, no start page');
-  assert.equal((await load()).tabSpace[front(1)], 'work');
+  assert.equal((await load()).tabSpace[front(1)!], 'work');
   assert.equal(result?.tab?.id, front(1));
   assert.ok(!(await load()).keptTabs[top.id], 'that Margin tab is the open one now');
 });
@@ -160,7 +163,7 @@ test('showSpace: the space\'s tab comes to the front without waiting for the spa
   await setup();
   // Storage takes no write until released.
   const set = chrome.storage.local.set;
-  let release = () => {};
+  let release: (value?: unknown) => void = () => {};
   const held = new Promise((resolve) => { release = resolve; });
   chrome.storage.local.set = async (items) => {
     await held;
@@ -215,9 +218,9 @@ test('showSpace: only the sidebar\'s space, a tab of the space already in front,
 
 // Storage takes no write until released; a write is under way (any change),
 // and `change` is queued behind it before the space is shown.
-async function showBehindHeldWrite(spaceId, change) {
+async function showBehindHeldWrite(spaceId: string, change: (state: State) => State) {
   const set = chrome.storage.local.set;
-  let release = () => {};
+  let release: (value?: unknown) => void = () => {};
   const held = new Promise((resolve) => { release = resolve; });
   chrome.storage.local.set = async (items) => {
     await held;
@@ -341,8 +344,10 @@ test('next/previous from Margin.app\'s overlay: its own pick taken (it highlight
 
 test('page zoom: remembered per site (only away from the default), capped, so its pages draw Margin at its size at once', async () => {
   const { handlers, zoomChanged } = await import('../extension/background/handlers.ts');
-  const at = (url) => ({ tab: { id: 1, url }, url });
-  const zooms = () => Object.fromEntries(Object.entries(fake.local.pageZoom ?? {}).map(([k, v]) => [k, v[0]]));
+  // A page's message's sender: its tab (as much of it as getZoom reads) and address.
+  const at = (url: string) => ({ tab: { id: 1, url } as BrowserTab, url });
+  // `pageZoom`: a site's [zoom, when].
+  const zooms = () => Object.fromEntries(Object.entries((fake.local.pageZoom ?? {}) as Record<string, [number, number]>).map(([k, v]) => [k, v[0]]));
   fake.zoom[1] = 1.5;
   assert.equal(await handlers.getZoom({}, at('https://p1.com/a')), 1.5);
   await sleep(10);
@@ -358,7 +363,7 @@ test('page zoom: remembered per site (only away from the default), capped, so it
   for (const n of [1, 2, 3]) await handlers.getZoom({}, at(`https://site${n}.com/`));
   await sleep(10);
   assert.deepEqual(zooms(), { '*': 1.1 });
-  delete chrome.tabs.getZoomSettings;
+  delete (chrome.tabs as Partial<MarginBrowserApi['tabs']>).getZoomSettings; // as the fake was: none
   zoomChanged();
   // At most 150 sites, the oldest changes dropped.
   for (let n = 0; n < 160; n++) {
@@ -374,11 +379,11 @@ test('page zoom: remembered per site (only away from the default), capped, so it
 
 test('page zoom: an unchanged zoom is answered without reading storage or the zoom settings again, until a zoom or `pageZoom` changes', async () => {
   const { handlers, zoomChanged, zoomStored } = await import('../extension/background/handlers.ts');
-  const at = (url) => ({ tab: { id: 7, url }, url });
+  const at = (url: string) => ({ tab: { id: 7, url } as BrowserTab, url }); // as above
   const get = chrome.storage.local.get;
   const reads = { pageZoom: 0, settings: 0 };
   chrome.storage.local.get = async (keys) => {
-    if ([].concat(keys).includes('pageZoom')) reads.pageZoom++;
+    if (([] as unknown[]).concat(keys).includes('pageZoom')) reads.pageZoom++;
     return get(keys);
   };
   chrome.tabs.getZoomSettings = async () => {
@@ -421,7 +426,7 @@ test('page zoom: an unchanged zoom is answered without reading storage or the zo
     assert.equal(reads.settings, 2);
   } finally {
     chrome.storage.local.get = get;
-    delete chrome.tabs.getZoomSettings;
+    delete (chrome.tabs as Partial<MarginBrowserApi['tabs']>).getZoomSettings; // as above
     zoomChanged();
   }
 });
@@ -436,7 +441,7 @@ test('a window reopened after the ids changed takes its old tabs\' spaces once i
     't-a': { id: 't-a', url: 'https://a.com/', title: 'A', favIconUrl: '', spaceId: 'work', order: 0, lastActive: 1, keptAt: from.at, why: 'window', from: { ...from, index: 0 } },
     't-b': { id: 't-b', url: 'https://b.com/', title: 'B', favIconUrl: '', spaceId: 'work', order: 1, lastActive: 2, keptAt: from.at, why: 'window', from: { ...from, index: 1 } },
   } }));
-  for (const [id, url, index] of [[300, 'https://a.com/', 0], [301, 'https://b.com/', 1]]) {
+  for (const [id, url, index] of [[300, 'https://a.com/', 0], [301, 'https://b.com/', 1]] as [number, string, number][]) {
     const t = { id, windowId: 30, url, index, active: index === 1, title: '' };
     await mutate((s) => {
       restore.tabCreated(s, t);
@@ -489,13 +494,13 @@ test('clearToday: nothing of the space left open: its start page opens in it fir
   await showSpace(1, 'work');
   assert.equal(front(1), 4);
   const { handlers } = await import('../extension/background/handlers.ts');
-  const closed = await handlers.clearToday({}, { tab: { id: 4, windowId: 1 } });
+  const closed = await handlers.clearToday({}, { tab: { id: 4, windowId: 1 } as BrowserTab }); // as much of it as it reads
   assert.deepEqual(closed.sort(), [3, 4, 5], 'the space\'s tabs in every window: its list is the space\'s (docs/BROWSER-WINDOWS.md §9)');
   assert.equal(fake.calls.create.length, 2, 'a start page in each window that would be left without its tab in front');
   const s = await load();
-  assert.equal(s.tabSpace[front(1)], 'work', 'the window that asked stays in the space');
+  assert.equal(s.tabSpace[front(1)!], 'work', 'the window that asked stays in the space');
   assert.ok(front(2) != null && front(2) !== 5, 'window 2 isn\'t left empty (Safari would close it)');
-  assert.equal(s.tabSpace[front(2)], V.activeSpaceId(s, 2), '…in the space it shows');
+  assert.equal(s.tabSpace[front(2)!], V.activeSpaceId(s, 2), '…in the space it shows');
 });
 
 test('goBack, goForward, reload: the tab in front of the window (the app\'s nav buttons)', async () => {
@@ -505,7 +510,7 @@ test('goBack, goForward, reload: the tab in front of the window (the app\'s nav 
   assert.equal(await handlers.goBack({ windowId: 1 }, {}), true);
   assert.equal(await handlers.goForward({ windowId: 2 }, {}), true);
   assert.equal(await handlers.reload({ tabId: 2 }, {}), true);
-  assert.equal(await handlers.goBack({}, { tab: { id: 4, windowId: 1 } }), true, 'a page\'s own window');
+  assert.equal(await handlers.goBack({}, { tab: { id: 4, windowId: 1 } as BrowserTab }), true, 'a page\'s own window');
   assert.deepEqual(fake.history, [['back', 1], ['forward', 5], ['reload', 2], ['back', 1]]);
   assert.equal(await handlers.goBack({}, {}), false, 'no window, no tab');
 });
@@ -532,7 +537,7 @@ test('userThemes: Margin.app\'s index of imported themes kept (ids checked, buil
   const { handlers } = await import('../extension/background/handlers.ts');
   await handlers.updateSettings({ patch: { theme: 'mine' } });
   assert.notEqual((await load()).settings.theme, 'mine', 'not listed yet: refused');
-  assert.equal(await handlers.userThemes({ list: 'evil' }), false);
+  assert.equal(await handlers.userThemes({ list: 'evil' } as unknown as Parameters<typeof handlers.userThemes>[0]), false); // not a list
   assert.equal(await handlers.userThemes({ list: [{ id: 'mine', name: 'Mine', version: '1.0.0', author: 'Me', bytes: 9, html: '<x>' }, { id: 'arcadia', name: 'Fake' }, { id: '../evil' }, null] }), true);
   assert.deepEqual(fake.local.userThemes, [{ id: 'mine', name: 'Mine', version: '1.0.0', author: 'Me' }], 'only the index\'s fields, never a package');
   await handlers.updateSettings({ patch: { theme: 'mine' } });

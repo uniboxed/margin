@@ -6,11 +6,14 @@
 // knows. Through background.ts's own listeners, as answer-in-time.test.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from './fake-browser.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const listeners = {};
-const event = (name) => ({ addListener: (fn) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
-const fire = (name, ...args) => (listeners[name] ?? []).map((fn) => fn(...args));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// A listener, called with whatever its event gives.
+type Listener = (...args: any[]) => unknown;
+const listeners: Record<string, Listener[]> = {};
+const event = (name: string) => ({ addListener: (fn: Listener) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
+const fire = (name: string, ...args: unknown[]) => (listeners[name] ?? []).map((fn) => fn(...args));
 
 const fake = {
   tabs: new Map(),
@@ -18,12 +21,12 @@ const fake = {
   // Each extension call takes this long of Safari's main thread, one after
   // another (a busy Mac just after a relaunch).
   callMs: 0,
-  calls: [], // { what, tabId, name, at }
-  local: {},
-  session: {},
-  updates: [],
+  calls: [] as { what: string, tabId: number | null, name: string | null, at: number }[],
+  local: {} as Record<string, any>, // stored JSON
+  session: {} as Record<string, any>,
+  updates: [] as { id: number, change: object, at: number }[],
 };
-let turn = Promise.resolve();
+let turn: Promise<unknown> = Promise.resolve();
 const safari = <T>(what: string, tabId: number | null, name: string | null, fn: () => T | Promise<T>): Promise<T> => {
   const call = turn.then(() => (fake.callMs ? sleep(fake.callMs) : null)).then(() => {
     fake.calls.push({ what, tabId, name, at: Date.now() });
@@ -32,18 +35,18 @@ const safari = <T>(what: string, tabId: number | null, name: string | null, fn: 
   turn = call.catch(() => {});
   return call;
 };
-const pick = (store, keys) => {
+const pick = (store: Record<string, any>, keys?: string | string[] | Record<string, unknown> | null) => {
   if (keys == null) return structuredClone(store);
   const list = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys);
   return Object.fromEntries(list.filter((k) => k in store).map((k) => [k, structuredClone(store[k])]));
 };
-const bringToFront = (id) => {
+const bringToFront = (id: number) => {
   const tab = fake.tabs.get(id);
   if (!tab || tab.active) return;
   for (const t of fake.tabs.values()) if (t.windowId === tab.windowId) t.active = t.id === id;
   fire('onActivated', { tabId: id, windowId: tab.windowId });
 };
-globalThis.chrome = {
+globalThis.chrome = fakeBrowser({
   runtime: {
     id: 'test',
     getURL: (p) => `safari-web-extension://test/${p}`,
@@ -53,9 +56,10 @@ globalThis.chrome = {
     sendNativeMessage: async () => undefined,
   },
   permissions: { contains: () => safari('contains', null, null, () => true), onAdded: event('pAdded'), onRemoved: event('pRemoved') },
-  alarms: { get: async () => null, create: async () => {}, clear: async () => true, onAlarm: event('onAlarm') },
+  alarms: { get: async () => undefined, create: async () => {}, onAlarm: event('onAlarm') },
   commands: { onCommand: event('onCommand') },
   windows: {
+    // Windows as far as Margin reads them here; its updates' answers unread.
     get: async (id) => ({ id, focused: true }), getAll: async () => [{ id: 1, focused: true }], getLastFocused: async () => ({ id: 1 }),
     update: async () => {}, onFocusChanged: event('onFocusChanged'), onRemoved: event('wRemoved'), onBoundsChanged: event('wBounds'),
   },
@@ -76,7 +80,7 @@ globalThis.chrome = {
   scripting: {
     executeScript: ({ target, func, files, args }) => safari('script', target.tabId, files ? 'files' : func?.name ?? 'anonymous', () => {
       if (fake.noPage.has(target.tabId)) throw new Error('Could not execute script on this tab');
-      let result = true;
+      let result: unknown = true;
       if (func?.name === 'prepareSidebarInPage') result = { ready: true, token: args?.[0]?.token };
       else if (func?.name === 'paintBarrierInPage') result = 'drawn';
       else if (func?.name === 'cutOffInPage') result = { cutOff: false };
@@ -88,7 +92,7 @@ globalThis.chrome = {
     local: {
       get: async (keys) => pick(fake.local, keys),
       set: async (items) => { Object.assign(fake.local, structuredClone(items)); },
-      remove: async (keys) => { for (const k of [].concat(keys)) delete fake.local[k]; },
+      remove: async (keys) => { for (const k of ([] as string[]).concat(keys)) delete fake.local[k]; },
     },
     session: {
       get: async (keys) => pick(fake.session, keys),
@@ -97,7 +101,7 @@ globalThis.chrome = {
     },
     onChanged: event('sChanged'),
   },
-};
+});
 
 // Tab 1 in front and tab 2 loaded; tabs 3–42 unloaded (Safari restores only
 // the tab in front of a window at a relaunch).
@@ -108,13 +112,15 @@ for (const id of UNLOADED) fake.noPage.add(id);
 // tabs and starts the repair, and a click on tab 2's row comes at once.
 fake.callMs = 15;
 
-const sender = (id) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id).url });
+const sender = (id: number) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id).url });
 const WAIT_MS = 3000;
-function ask(type, payload = {}, from = 1) {
+// The background's answer (Margin's own protocol: any, as types/browser.d.ts has it).
+type Reply = { ok: boolean, result?: any, error?: string };
+function ask(type: string, payload: Record<string, unknown> = {}, from = 1) {
   const asked = Date.now();
   const deadline = asked + WAIT_MS;
-  return new Promise((resolve) => {
-    listeners.onMessage[0]({ type, ...payload, deadline }, sender(from), (reply) => resolve({ reply, ms: Date.now() - asked }));
+  return new Promise<{ reply: Reply, ms: number }>((resolve) => {
+    listeners.onMessage[0]({ type, ...payload, deadline }, sender(from), (reply: Reply) => resolve({ reply, ms: Date.now() - asked }));
   });
 }
 
@@ -123,8 +129,8 @@ const firstSwitch = ask('activateTab', { tabId: 2 });
 const store = await import('../extension/background/store.ts');
 const { injectIntoOpenTabs, tabShown } = await import('../extension/background/tabs.ts');
 
-const scripts = (id, name = null) => fake.calls.filter((c) => c.what === 'script' && c.tabId === id && (name == null || c.name === name));
-async function settledOn(id) {
+const scripts = (id: number, name: string | null = null) => fake.calls.filter((c) => c.what === 'script' && c.tabId === id && (name == null || c.name === name));
+async function settledOn(id: number) {
   for (let i = 0; i < 200; i++) {
     if ((await store.load()).tabs[id]?.active) return;
     await sleep(10);
@@ -160,7 +166,7 @@ test('a tab found with no page is asked again once a tab event says its page cha
   tabShown(4); // its activation (background.ts)
   const before = fake.calls.length;
   await injectIntoOpenTabs({ retry: false });
-  const asked = new Set(fake.calls.slice(before).filter((c) => c.what === 'script').map((c) => c.tabId));
+  const asked = new Set(fake.calls.slice(before).filter((c) => c.what === 'script').map((c) => c.tabId!)); // (a script's call: its tab's)
   assert.deepEqual([...asked].sort((a, b) => a - b), [3, 4]);
 });
 
@@ -194,7 +200,7 @@ test('a switch whose steps are still waiting on Safari once its page was answere
   // shown as it is at its deadline, its steps still waiting.
   const get = chrome.tabs.get;
   let release = () => {};
-  const hung = new Promise((resolve) => { release = resolve; });
+  const hung = new Promise<void>((resolve) => { release = resolve; });
   chrome.tabs.get = (id) => (id === 2 ? hung.then(() => get(id)) : get(id));
   try {
     const { reply } = await ask('activateTab', { tabId: 2 });
@@ -220,7 +226,7 @@ test('a row naming a tab just closed (Safari says it\'s gone, Margin\'s state do
   try {
     const { reply } = await ask('activateTab', { tabId: 42, hint: { url: closed.url, index: closed.index, title: closed.title } });
     assert.equal(reply.ok, false);
-    assert.match(reply.error, /no longer open/);
+    assert.match(reply.error!, /no longer open/);
     assert.deepEqual(fake.updates.slice(updates).filter((u) => u.id === 42), [], 'no switch to it');
   } finally {
     fake.tabs.set(42, closed);

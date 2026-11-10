@@ -8,33 +8,43 @@
 // come a moment after the update, as Safari's do.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from './fake-browser.ts';
+import type { State } from '../types/margin.d.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // "At once", counted in work, not wall clock: done before the event loop's next turn (setImmediate), so with no timer,
 // no storage write and no wait for Safari in between, however slow the machine (a fixed few ms trips on a loaded runner).
 const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
 // A key chain lasts NAV_CHAIN_MS (background/navigation.ts): a test's presses start a chain of their own after it.
 const NAV_SETTLE_MS = 1600;
-const listeners = {};
-const event = (name) => ({ addListener: (fn) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
-const fire = (name, ...args) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
+// A listener, called with whatever its event gives.
+type Listener = (...args: any[]) => unknown;
+const listeners: Record<string, Listener[]> = {};
+const event = (name: string) => ({ addListener: (fn: Listener) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
+const fire = (name: string, ...args: unknown[]) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
 const STORE_MS = 60;
 // `updateMs`: how long Safari takes to carry out and answer a tabs.update (null: at once).
-const fake = { tabs: new Map(), local: {}, session: {}, updates: [], windowUpdates: [], focused: true, hang: new Set(), changes: [], updateMs: (null as null | (() => number)) };
-const pick = (store, keys) => {
+type TabUpdate = Parameters<MarginBrowserApi['tabs']['update']>[1];
+type WindowUpdate = Parameters<MarginBrowserApi['windows']['update']>[1];
+// local, session: stored JSON; updates, windowUpdates: what Safari was asked; changes: storage's change events.
+const fake = { tabs: new Map(), local: {} as Record<string, any>, session: {} as Record<string, any>, updates: [] as (TabUpdate & { id: number, at: number })[], windowUpdates: [] as (WindowUpdate & { id: number })[], focused: true, hang: new Set(), changes: [] as Record<string, BrowserStorageChange>[], updateMs: (null as null | (() => number)) };
+const pick = (store: Record<string, any>, keys?: string | string[] | Record<string, unknown> | null) => {
   if (keys == null) return structuredClone(store);
   const list = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys);
   return Object.fromEntries(list.filter((k) => k in store).map((k) => [k, structuredClone(store[k])]));
 };
-globalThis.fetch = async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) });
-globalThis.chrome = {
+// Only what Margin reads of a response.
+globalThis.fetch = (async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) })) as unknown as typeof fetch;
+globalThis.chrome = fakeBrowser({
   runtime: { id: 'test', getURL: (p) => `safari-web-extension://test/${p}`, getManifest: () => ({ version: '0', content_scripts: [{ js: ['content.js'] }] }),
     onInstalled: event('onInstalled'), onStartup: event('onStartup'), onMessage: event('onMessage'), sendMessage: async () => undefined, sendNativeMessage: async () => undefined },
   permissions: { contains: async () => true, onAdded: event('pAdded'), onRemoved: event('pRemoved') },
-  alarms: { get: async () => ({}), create: async () => {}, clear: async () => true, onAlarm: event('onAlarm') },
+  // An alarm there already (its fields unread: background.ts).
+  alarms: { get: async () => ({}) as { name: string, scheduledTime: number }, create: async () => {}, onAlarm: event('onAlarm') },
   commands: { onCommand: event('onCommand') },
+  // Windows as far as Margin reads them here; its updates' answers unread.
   windows: { get: async (id) => ({ id, focused: fake.focused }), getAll: async () => [{ id: 1, focused: fake.focused }], getLastFocused: async () => ({ id: 1 }),
-    update: async (id, props) => { fake.windowUpdates.push({ id, ...props }); }, create: async () => ({}), onFocusChanged: event('onFocusChanged'), onRemoved: event('wRemoved'), onBoundsChanged: event('wBounds') },
+    update: async (id: number, props: WindowUpdate) => { fake.windowUpdates.push({ id, ...props }); }, create: async () => ({}), onFocusChanged: event('onFocusChanged'), onRemoved: event('wRemoved'), onBoundsChanged: event('wBounds') },
   tabs: {
     get: async (id) => { const t = fake.tabs.get(id); if (!t) throw new Error(`No tab with id: ${id}`); return { ...t }; },
     query: async (filter = {}) => [...fake.tabs.values()].filter((t) => (filter.active == null || t.active === filter.active) && (filter.windowId == null || t.windowId === filter.windowId)).map((t) => ({ ...t })),
@@ -69,12 +79,12 @@ globalThis.chrome = {
         fake.changes.push(changes);
         void fire('sChanged', changes, 'local');
       },
-      remove: async (keys) => { for (const k of [].concat(keys)) delete fake.local[k]; },
+      remove: async (keys) => { for (const k of ([] as string[]).concat(keys)) delete fake.local[k]; },
     },
     session: { get: async (keys) => pick(fake.session, keys), set: async (items) => { Object.assign(fake.session, structuredClone(items)); }, remove: async () => {} },
     onChanged: event('sChanged'),
   },
-};
+});
 // Fourteen tabs, so a run of presses goes through them without coming round again.
 for (const [id, i] of Array.from({ length: 14 }, (_, n) => [n + 1, n])) fake.tabs.set(id, { id, windowId: 1, url: `https://t${id}.test/`, title: `T${id}`, index: i, active: id === 1, status: 'complete' });
 fake.session.alive = true;
@@ -105,13 +115,15 @@ const { createSwitching, backgroundSwitches } = await import('../extension/share
 const { handlers } = await import('../extension/background/handlers.ts');
 await sleep(300);
 
-const ask = (type, payload) => new Promise((resolve) => listeners.onMessage[0]({ type, ...payload }, { tab: { ...fake.tabs.get(1), windowId: 1 } }, resolve));
+// The background's answer (Margin's own protocol: any, as types/browser.d.ts has it).
+type Reply = { ok: boolean, result?: any, error?: string };
+const ask = (type: string, payload?: Record<string, unknown>) => new Promise<Reply>((resolve) => listeners.onMessage[0]({ type, ...payload }, { tab: { ...fake.tabs.get(1), windowId: 1 } }, resolve));
 const front = () => [...fake.tabs.values()].find((t) => t.active)?.id;
 const storedFront = () => {
-  const s = fake.local.openTabs ? fromStorage(fake.local) : null;
+  const s: State | null = fake.local.openTabs ? fromStorage(fake.local) : null;
   return Object.values(s?.tabs ?? {}).find((t) => t.windowId === 1 && t.active)?.id ?? null;
 };
-async function inFront(id) {
+async function inFront(id: number) {
   if (front() !== id) await ask('activateTab', { tabId: id, windowId: 1 });
   for (let i = 0; i < 100 && storedFront() !== id; i++) await sleep(10);
   await sleep(50);
@@ -124,7 +136,7 @@ async function inFront(id) {
 function overlay() {
   const drawn = [storedFront()];
   const runs: any[] = [];
-  let target = null;
+  let target: number | null = null;
   const draw = () => { const h = target ?? storedFront(); if (drawn.at(-1) !== h) drawn.push(h); };
   const switching = createSwitching({
     doc: ({ hidden: false, addEventListener() {}, defaultView: { addEventListener() {} } } as any),
@@ -135,10 +147,10 @@ function overlay() {
     onRun: (run) => runs.push(run),
   });
   const copy = backgroundSwitches();
-  const onState = (changes, area) => { if (area === 'local' && 'openTabs' in changes) { switching.settle(); draw(); } };
+  const onState = (changes: Record<string, BrowserStorageChange>, area: string) => { if (area === 'local' && 'openTabs' in changes) { switching.settle(); draw(); } };
   listeners.sChanged.push(onState);
   // Each push as the overlay takes it (app/shared/host/overlay.ts, ui/runtime.ts switchTo), as it comes.
-  const take = ({ msg }) => {
+  const take = ({ msg }: { msg: { type: string, [key: string]: any } }) => { // a push: Margin's own message
     if (msg.type === 'switching') {
       const request = copy.begin(msg.tabId, msg.switchId ?? null);
       if (msg.tabId === storedFront()) switching.toFront(msg.tabId, request);
@@ -151,7 +163,7 @@ function overlay() {
     drawn,
     runs, // each chain as it ended (shared/switching.ts onRun)
     // A switch asked for in the overlay itself (a click on a row): highlighted at once, its request's answer.
-    click: (id, request) => switching.start(id, request),
+    click: (id: number, request: Promise<unknown>) => switching.start(id, request),
     stop() { listeners.sChanged.splice(listeners.sChanged.indexOf(onState), 1); takers.splice(takers.indexOf(take), 1); },
   };
 }
@@ -180,7 +192,7 @@ test('the window is focused only if it isn\'t (re-focusing the window in front c
 test('a tab that\'s gone: the switch fails, and says why', async () => {
   const reply = await ask('activateTab', { tabId: 77, windowId: 1 });
   assert.equal(reply.ok, false);
-  assert.match(reply.error, /no longer open|No tab with id/);
+  assert.match(reply.error!, /no longer open|No tab with id/);
 });
 
 test('Safari not answering the update (a hung tab process): answered as made after 1 s, not left waiting; Safari carries it out', async () => {
@@ -208,7 +220,7 @@ test('each switch\'s timeline is one line for Margin.app\'s log: asked, tabs.upd
   const before = switchLog.lines().length;
   await ask('activateTab', { tabId: 2, windowId: 1 });
   for (let i = 0; i < 100 && switchLog.lines().length === before; i++) await sleep(10);
-  const line = switchLog.lines().at(-1);
+  const line = switchLog.lines().at(-1)!; // (one at least: waited for above)
   // (Asked within a millisecond of the request: a loaded machine's clock can tick between them.)
   assert.match(line, /^switch to tab 2 \(activateTab, window 1\): asked \+[01], tabs\.update \+\d+, updated \+\d+, onActivated \+\d+, stored \+\d+/);
   assert.ok(!/activations heard/.test(line), `one activation only: ${line}`);
@@ -221,7 +233,7 @@ test('a key\'s switch, the whole way to the overlay: the highlight moves once, t
   await inFront(1);
   const o = overlay();
   pushed.length = 0;
-  await handlers.navigate({ action: 'next-tab' }, { app: true, tab: { windowId: 1 } });
+  await handlers.navigate({ action: 'next-tab' }, { app: true, tab: { windowId: 1 } } as BrowserMessageSender); // as link.ts makes it
   for (let i = 0; i < 100 && storedFront() === 1; i++) await sleep(10);
   await sleep(STORE_MS * 3);
   o.stop();
@@ -251,17 +263,18 @@ test('a click\'s switch, the whole way to the overlay, with Safari\'s storage sl
 // Fast presses (a held key, quick taps: Margin 2: Safari reliability). Each press's
 // target is worked out at the press and the overlay told at once; Safari gets one
 // switch at a time per window, the newest press waiting in place of older ones.
-const press = (sender) => handlers.navigate({ action: 'next-tab' }, sender);
+const press = (sender: BrowserMessageSender) => handlers.navigate({ action: 'next-tab' }, sender);
 const V = await import('../extension/shared/view.ts');
 // The tabs the next-tab key goes through from `id`, in the sidebar's order.
-const nextTabs = (id, n) => {
+const nextTabs = (id: number, n: number) => {
   const s = fromStorage(fake.local);
-  const out = [];
-  for (let at = id; out.length < n;) out.push(at = V.cycleTab(s, 1, at, 1));
+  const out: (number | null)[] = [];
+  for (let at: number | null = id; out.length < n;) out.push(at = V.cycleTab(s, 1, at, 1));
   return out;
 };
-const APP = { app: true, tab: { windowId: 1 } };
-const PAGE = { tab: { id: 1, windowId: 1 } };
+// Senders as link.ts makes the app's (its tab only its window) and as a page's is read: not whole tabs.
+const APP = { app: true, tab: { windowId: 1 } } as BrowserMessageSender;
+const PAGE = { tab: { id: 1, windowId: 1 } } as BrowserMessageSender;
 
 test('fast presses: the overlay told at each press, Safari only the newest waiting, the highlight never going back, nothing after the last', async () => {
   await inFront(1);
@@ -271,7 +284,7 @@ test('fast presses: the overlay told at each press, Safari only the newest waiti
   notes.length = 0;
   fake.updates = [];
   fake.updateMs = () => 120 + Math.random() * 60;
-  const presses = [];
+  const presses: number[] = [];
   const told: number[] = []; // 'switching' pushes made by the turn after each press
   const targets = nextTabs(1, 12);
   const last = targets.at(-1);
@@ -294,7 +307,7 @@ test('fast presses: the overlay told at each press, Safari only the newest waiti
   assert.deepEqual(switching.map((p) => p.msg.tabId), targets, 'one target per press, each the next');
   assert.deepEqual(told, targets.map((_, i) => i + 1), 'each press told to the overlay before the event loop\'s next turn');
   assert.ok(new Set(switching.map((p) => p.msg.switchId)).size === 12, 'each press its own switch');
-  const span = presses.at(-1) - presses[0];
+  const span = presses.at(-1)! - presses[0];
   const updates = fake.updates.filter((u) => u.active).map((u) => u.id);
   assert.ok(updates.length < 12 && updates.length <= 1 + Math.ceil(span / 120), `Safari asked ${updates.length} times: ${updates}`);
   assert.equal(updates.at(-1), last, 'the last switch is the last press\'s');
@@ -424,7 +437,7 @@ test('fast space presses: one space switch with Safari at a time, the newest wai
   });
   await inFront(1);
   await sleep(NAV_SETTLE_MS);
-  const spaces = () => fromStorage(fake.local).spaces.map((x) => x.id);
+  const spaces = () => fromStorage(fake.local).spaces.map((x: { id: string }) => x.id);
   const at = () => V.activeSpaceId(fromStorage(fake.local), 1);
   const order = spaces();
   assert.equal(order.length, 4);
@@ -448,11 +461,11 @@ test('fast space presses: one space switch with Safari at a time, the newest wai
 });
 
 test('a page\'s word that it\'s shown carries what said it: a web page\'s content script, Margin\'s new-tab page, or unknown', async () => {
-  const heard = [];
+  const heard: unknown[][] = [];
   const was = appLink.visibility;
   appLink.visibility = (...args) => { heard.push(args); };
   try {
-    const tab = { tab: { id: 3, windowId: 1 } };
+    const tab = { tab: { id: 3, windowId: 1 } } as BrowserMessageSender; // what the handler reads of it
     await handlers.visibility({ visible: false, at: 5, from: 'page' }, tab);
     await handlers.visibility({ visible: true, at: 6, from: 'newtab' }, tab);
     await handlers.visibility({ visible: true, at: 7 }, tab);

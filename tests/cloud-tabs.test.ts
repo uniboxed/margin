@@ -7,25 +7,30 @@
 // in tests/theme/cloud.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cloudOf, cloudShown, deviceNames, lastUsed, updatedText, onDevice, MAX_TABS } from '../extension/shared/cloud-tabs.ts';
-import { buildViewModel } from '../extension/ui/view-model.ts';
+import { cloudOf, cloudShown, deviceNames, lastUsed, updatedText, onDevice, MAX_TABS, type CloudDevice, type CloudTabs } from '../extension/shared/cloud-tabs.ts';
+import { buildViewModel, type UiState, type ViewModel, type ViewModelInput } from '../extension/ui/view-model.ts';
 import { rankPalette } from '../extension/shared/search.ts';
-import { checkAction, contextFromState, requestFor } from '../extension/ui/actions.ts';
+import { checkAction, contextFromState, requestFor, type ActionRequest } from '../extension/ui/actions.ts';
 import { menuItems } from '../extension/ui/behaviors/menu-items.ts';
 import { settingsFields, saveField } from '../extension/ui/settings-form.ts';
 import { createAppHost } from '../extension/ui/host-app.ts';
 import { toStorage } from '../extension/shared/stored.ts';
 import { smallState, W, icon } from './ui/fixtures.ts';
 import { cloudFixture, PHONE, AIR, PAD } from './fixtures/cloud-tabs.ts';
+import type { State, TabRecord } from '../types/margin.d.ts';
 
 // Noon on a fixed day: "updated" words don't depend on when the tests run.
 const NOON = new Date(2026, 10, 5, 12, 0, 0).getTime();
 const MIN = 60_000;
-const withCloud = (cloud = cloudOf(cloudFixture(NOON)), extra = {}) => {
+// The fixture's state with iCloud Tabs, as the functions under test take it (it has no kept or lost tabs: none read).
+const withCloud = (cloud: CloudTabs | null = cloudOf(cloudFixture(NOON)), extra: { settings?: Record<string, unknown>, [key: string]: unknown } = {}) => {
   const s = smallState();
-  return { ...s, cloudTabs: cloud, ...extra, settings: { ...s.settings, ...(extra.settings ?? {}) } };
+  return { ...s, cloudTabs: cloud, ...extra, settings: { ...s.settings, ...(extra.settings ?? {}) } } as unknown as State & { cloudTabs: CloudTabs | null };
 };
-const vmOf = (state, ui = {}, prev = null) => buildViewModel({ state, now: NOON, ui: { windowId: W, mode: 'fullscreen', ...ui }, platform: { browser: 'safari', os: 'mac' } }, prev);
+const vmOf = (state: ViewModelInput['state'], ui: UiState = {}, prev: ViewModel | null = null) => buildViewModel({ state, now: NOON, ui: { windowId: W, mode: 'fullscreen', ...ui }, platform: { browser: 'safari', os: 'mac' } }, prev);
+
+// A request that sends (ui/actions.ts ActionRequest).
+type Sent = Extract<ActionRequest, { kind: 'send' }>;
 
 // ---- what the app sends ----
 
@@ -33,7 +38,7 @@ test('cloudOf: the app\'s message checked: bad devices and tabs left out, only w
   assert.equal(cloudOf(null), null);
   assert.equal(cloudOf({ status: 'sideways', devices: [] }), null, 'an unknown status: nothing');
   const tabs = Array.from({ length: MAX_TABS + 5 }, (_, i) => ({ id: `T${i}`, title: `Tab ${i}`, url: `https://x.example/${i}`, viewedAt: i }));
-  const got = cloudOf({ status: 'ready', devices: [
+  const got = cloudOf({ status: 'ready', devices: [ // (a ready list: checked, not null)
     { id: 'D1', name: ' Phone\u0007 ', kind: 'phone', tabs: [
       { id: 'a', title: 'A', url: 'https://a.example/', pinned: true, viewedAt: 5 },
       { id: 'b', title: 'B', url: 'javascript:alert(1)' },
@@ -46,7 +51,7 @@ test('cloudOf: the app\'s message checked: bad devices and tabs left out, only w
     { id: 'D2', name: 'No tabs', kind: 'pad', tabs: [] },
     { id: 'D3', name: 'Many', kind: 'toaster', tabs },
     { id: 'bad id!', name: 'Bad', kind: 'mac', tabs: [{ id: 'q', url: 'https://q.example/' }] },
-  ] });
+  ] })!;
   assert.deepEqual(got.devices.map((d) => d.id), ['D1', 'D3'], 'one device per id, none without tabs or with a bad id');
   assert.deepEqual(got.devices[0].tabs.map((t) => t.id), ['a', 'd'], 'web pages only, one tab per id');
   assert.equal(got.devices[0].name, 'Phone', 'control characters out, trimmed');
@@ -66,7 +71,7 @@ test('cloudShown: only with the app\'s data, and not once Settings turn it off',
 });
 
 test('device names: Safari\'s, told apart when two read the same; "On …"', () => {
-  const d = (id, name, kind, duplicateName = false) => ({ id, name, kind, duplicateName, tabs: [], model: '', modifiedAt: 0, ephemeral: false });
+  const d = (id: string, name: string, kind: CloudDevice['kind'], duplicateName = false) => ({ id, name, kind, duplicateName, tabs: [], model: '', modifiedAt: 0, ephemeral: false });
   const names = deviceNames([d('1', 'Nora’s iPhone', 'phone'), d('2', 'Studio', 'mac'), d('3', 'studio', 'pad'), d('4', 'Studio', 'mac'), d('5', 'Work', 'mac', true), d('6', '', 'vision')]);
   assert.equal(names.get('1'), 'Nora’s iPhone');
   assert.equal(names.get('2'), 'Studio (Mac)');
@@ -88,7 +93,8 @@ test('"updated …": to the minute from a tab viewed, to the day from Safari\'s 
   assert.equal(updatedText(midnight - 86_400_000, false, NOON), 'updated yesterday');
   assert.equal(updatedText(0, true, NOON), '');
   // lastUsed: the newest tab viewed if it's newer than the record, and a record at midnight is a day's.
-  const dev = (modifiedAt, viewed) => ({ modifiedAt, tabs: viewed.map((v) => ({ viewedAt: v })) });
+  // A device with only what lastUsed reads.
+  const dev = (modifiedAt: number, viewed: number[]) => ({ modifiedAt, tabs: viewed.map((v) => ({ viewedAt: v })) }) as CloudDevice;
   assert.deepEqual(lastUsed(dev(midnight, [NOON - 5 * MIN, 1])), { at: NOON - 5 * MIN, exact: true });
   assert.deepEqual(lastUsed(dev(midnight, [0])), { at: midnight, exact: false });
   assert.deepEqual(lastUsed(dev(midnight + 1234, [0])), { at: midnight + 1234, exact: true }, 'a record not at midnight is taken as exact');
@@ -100,7 +106,7 @@ test('the folder: none without the app\'s data or with Settings off; the devices
   assert.equal(vmOf(smallState()).cloudTabs, null);
   assert.equal(vmOf(withCloud(undefined, { settings: { showCloudTabs: false } })).cloudTabs, null);
   const state = withCloud(undefined, { favicons: { ...smallState().favicons, 'https://margins.example': icon([1, 2, 3]) } });
-  const c = vmOf(state).cloudTabs;
+  const c = vmOf(state).cloudTabs!; // the app's data, shown
   assert.equal(c.open, true);
   assert.equal(c.ready, true);
   assert.equal(c.hasMessage, false);
@@ -123,16 +129,18 @@ test('the folder: none without the app\'s data or with Settings off; the devices
 });
 
 test('the folder and each device close and stay closed (settings), shown at once', () => {
-  const closed = vmOf(withCloud(undefined, { settings: { cloudTabsOpen: false } })).cloudTabs;
+  // Closed, still there.
+  const closed = vmOf(withCloud(undefined, { settings: { cloudTabsOpen: false } })).cloudTabs!;
   assert.equal(closed.open, false);
   assert.equal(closed.labels.toggle, 'Show iCloud Tabs');
   assert.equal(closed.count, 6, 'the count stays on the closed folder');
-  const one = vmOf(withCloud(undefined, { settings: { cloudTabsClosed: [AIR] } })).cloudTabs;
+  const one = vmOf(withCloud(undefined, { settings: { cloudTabsClosed: [AIR] } })).cloudTabs!;
   assert.deepEqual(one.devices.map((d) => [d.open, d.shown.length, d.count]), [[true, 3, 3], [false, 0, 2], [true, 1, 1]]);
 });
 
 test('the folder\'s other states: no other devices, no Full Disk Access (its button), iCloud Tabs off, a Safari it can\'t read', () => {
-  const of = (status, devices = []) => vmOf(withCloud(cloudOf({ status, devices }))).cloudTabs;
+  // A known status: the folder, with its message.
+  const of = (status: string, devices: unknown[] = []) => vmOf(withCloud(cloudOf({ status, devices }))).cloudTabs!;
   const empty = of('ready');
   assert.deepEqual([empty.ready, empty.empty, empty.hasMessage, empty.canFix, empty.hasCount], [false, true, true, false, false]);
   assert.match(empty.message, /No tabs are open on your other devices/);
@@ -149,7 +157,7 @@ test('live updates: a tab retitled on one device makes one new row; every other 
   const raw = cloudFixture(NOON);
   raw.devices[0].tabs[1].title = 'Slow software, revised — Margins';
   const after = vmOf(withCloud(cloudOf(raw)), {}, before);
-  const [b, a] = [before.cloudTabs, after.cloudTabs];
+  const [b, a] = [before.cloudTabs!, after.cloudTabs!];
   assert.notEqual(a, b);
   assert.notEqual(a.devices[0], b.devices[0]);
   assert.equal(a.devices[0].shown[0], b.devices[0].shown[0], 'the row before it: the same');
@@ -166,7 +174,7 @@ test('live updates: a tab retitled on one device makes one new row; every other 
 
 test('the palette: before typing, no iCloud tabs; typed, their own section after Margin\'s own rows, per device, before the search', () => {
   const state = withCloud();
-  const ctx = { windowId: W, tabId: 13, inNewTab: false, canToggleSidebar: true };
+  const ctx = { windowId: W, tabId: 13, inNewTab: false, canToggleSidebar: true, canFullscreen: false };
   assert.equal(rankPalette(state, '', ctx).some((i) => i.kind === 'cloud'), false);
   const rows = rankPalette(state, 'ferry', ctx);
   const kinds = rows.map((r) => r.kind);
@@ -176,15 +184,15 @@ test('the palette: before typing, no iCloud tabs; typed, their own section after
   ], 'the device with the best match first, each its own section');
   assert.equal(kinds.at(-1), 'go', '"Search for …" stays last');
   assert.ok(kinds.indexOf('cloud') > Math.max(-1, ...kinds.map((k, i) => (k === 'tab' || k === 'pin' || k === 'action' || k === 'archive' ? i : -1))), 'after Margin\'s own rows');
-  const ferry = rows.find((r) => r.kind === 'cloud');
+  const ferry = rows.find((r) => r.kind === 'cloud')!; // two just above
   assert.deepEqual(ferry.action, { type: 'newTab', windowId: W, url: 'https://tagus.example/ferries' }, 'opened as an address typed in: this window, its space');
   assert.equal(ferry.badge, 'iCloud');
   // Margin's new-tab page: there, in place.
-  assert.deepEqual(rankPalette(state, 'ferry', { ...ctx, inNewTab: true }).find((r) => r.kind === 'cloud').action, { local: 'navigate', url: 'https://tagus.example/ferries' });
+  assert.deepEqual(rankPalette(state, 'ferry', { ...ctx, inNewTab: true }).find((r) => r.kind === 'cloud')!.action, { local: 'navigate', url: 'https://tagus.example/ferries' });
   // An address typed: "Open …" first, the iCloud tabs still after Margin's own.
   assert.equal(rankPalette(state, 'tagus.example', ctx)[0].kind, 'go');
-  // A page open here already isn't offered from another device.
-  const open = { ...state, tabs: { ...state.tabs, 30: { id: 30, windowId: W, index: 9, url: 'https://tagus.example/ferries', title: 'Ferries', active: false } }, tabSpace: { ...state.tabSpace, 30: 'home' } };
+  // A page open here already isn't offered from another device (its record: only what's matched).
+  const open = { ...state, tabs: { ...state.tabs, 30: { id: 30, windowId: W, index: 9, url: 'https://tagus.example/ferries', title: 'Ferries', active: false } as TabRecord }, tabSpace: { ...state.tabSpace, 30: 'home' } };
   assert.deepEqual(rankPalette(open, 'ferry', ctx).filter((r) => r.kind === 'cloud').map((r) => r.title), ['Ferry fares – Tagus Lines']);
   // Settings off, or no Full Disk Access: none.
   assert.equal(rankPalette(withCloud(undefined, { settings: { showCloudTabs: false } }), 'ferry', ctx).some((r) => r.kind === 'cloud'), false);
@@ -212,11 +220,12 @@ test('actions: iCloud tabs and devices checked against what\'s shown; what each 
   assert.equal(checkAction('cloud.open', 'T-PHONE-1', contextFromState(withCloud(undefined, { settings: { showCloudTabs: false } }))).ok, false, 'not shown: nothing to open');
   const ui = { windowId: W, sidebar: 'open' };
   assert.deepEqual(requestFor('cloud.toggle', undefined, { state, ui }), { kind: 'send', type: 'updateSettings', payload: { patch: { cloudTabsOpen: false } } });
-  assert.deepEqual(requestFor('cloud.toggle', undefined, { state: withCloud(undefined, { settings: { cloudTabsOpen: false } }), ui }).payload, { patch: { cloudTabsOpen: true } });
-  assert.deepEqual(requestFor('cloud.toggleDevice', AIR, { state, ui }).payload, { patch: { cloudTabsClosed: [AIR] } });
+  // (A send's payload: `send` requests, as just above.)
+  assert.deepEqual((requestFor('cloud.toggle', undefined, { state: withCloud(undefined, { settings: { cloudTabsOpen: false } }), ui }) as Sent).payload, { patch: { cloudTabsOpen: true } });
+  assert.deepEqual((requestFor('cloud.toggleDevice', AIR, { state, ui }) as Sent).payload, { patch: { cloudTabsClosed: [AIR] } });
   // A device closed before and gone since is dropped; this one opens again.
   const closedBefore = withCloud(undefined, { settings: { cloudTabsClosed: ['GONE', AIR, PAD] } });
-  assert.deepEqual(requestFor('cloud.toggleDevice', AIR, { state: closedBefore, ui }).payload, { patch: { cloudTabsClosed: [PAD] } });
+  assert.deepEqual((requestFor('cloud.toggleDevice', AIR, { state: closedBefore, ui }) as Sent).payload, { patch: { cloudTabsClosed: [PAD] } });
   assert.deepEqual(requestFor('cloud.open', 'T-AIR-1', { state, ui }), { kind: 'local', name: 'palette.navigate', arg: { url: 'https://cloudrender.example/queue' } });
   assert.deepEqual(requestFor('cloud.copy', 'T-AIR-1', { state, ui }), { kind: 'host', name: 'copyText', arg: { text: 'https://cloudrender.example/queue' } });
   assert.deepEqual(requestFor('cloud.access', undefined, { state, ui }), { kind: 'host', name: 'cloud.access' });
@@ -228,7 +237,7 @@ test('an iCloud tab\'s menu: Open and Copy Link, nothing that would change the o
   assert.deepEqual(items.map((i) => [i.label, i.action, i.arg]), [['Open', 'cloud.open', 'T-PAD-1'], ['Copy Link', 'cloud.copy', 'T-PAD-1']]);
   assert.deepEqual(menuItems({ kind: 'cloud', id: 'T-NOPE' }, { state, space: null }), []);
   const vm = vmOf(state, { menu: { kind: 'cloud', id: 'T-PAD-1', x: 1, y: 2 } });
-  assert.equal(vm.menu.label, 'iCloud Tab');
+  assert.equal(vm.menu!.label, 'iCloud Tab'); // asked for
 });
 
 // ---- Settings ----
@@ -236,33 +245,34 @@ test('an iCloud tab\'s menu: Open and Copy Link, nothing that would change the o
 test('Settings: "Show iCloud Tabs" where Margin.app draws Safari\'s windows, on by default, saved as a toggle', () => {
   assert.equal(settingsFields({}, { cloudTabs: false }).some((f) => f.id === 'showCloudTabs'), false, 'not in Chrome and Edge (Phase 5)');
   const fields = settingsFields({}, { cloudTabs: true });
-  const f = fields.find((x) => x.id === 'showCloudTabs');
+  const f = fields.find((x) => x.id === 'showCloudTabs')!; // offered (just above)
   assert.equal(f.isToggle, true);
   assert.equal(f.checked, true);
   assert.match(f.label, /^Show iCloud Tabs/);
   assert.equal(fields.indexOf(f), fields.findIndex((x) => x.id === 'frameWhenHidden') + 1, 'with the sidebar\'s settings');
-  assert.equal(settingsFields({ showCloudTabs: false }, { cloudTabs: true }).find((x) => x.id === 'showCloudTabs').checked, false);
+  assert.equal(settingsFields({ showCloudTabs: false }, { cloudTabs: true }).find((x) => x.id === 'showCloudTabs')!.checked, false);
   assert.deepEqual(saveField(f, false, {}), { type: 'updateSettings', payload: { patch: { showCloudTabs: false } } });
 });
 
 // ---- the app host ----
 
 test('the app host: iCloud Tabs from the hello and as they change, the state\'s cloudTabs; its asks go to the app', () => {
-  const posts = [];
-  const post = async (op, body = {}) => { posts.push({ op, ...body }); return null; };
+  const posts: Record<string, any>[] = []; // Margin's own messages
+  const post = async (op: string, body: Record<string, any> = {}) => { posts.push({ op, ...body }); return null; };
   const stored = toStorage(smallState(), ['spaces', 'pins', 'folders', 'archive', 'settings', 'tabs', 'tabSpace', 'activeSpaceByWindow', 'favicons'], { origin: 'safari-web-extension://margin', since: 1, synced: true });
   const hello = { windowId: W, profile: 'P1', browser: 'safari', mode: 'fullscreen', platform: { browser: 'safari', os: 'mac', app: true }, state: stored, windows: [], theme: null };
   const none = createAppHost({ hello, post });
-  assert.equal(none.getState().cloudTabs, undefined, 'none sent: none');
+  // The hello's state: there.
+  assert.equal(none.getState()!.cloudTabs, undefined, 'none sent: none');
   const host = createAppHost({ hello: { ...hello, cloudTabs: cloudFixture(NOON) }, post });
-  assert.deepEqual(host.getState().cloudTabs.devices.map((d) => d.id), [PHONE, AIR, PAD]);
-  const drawn = [];
+  assert.deepEqual(host.getState()!.cloudTabs.devices.map((d: CloudDevice) => d.id), [PHONE, AIR, PAD]);
+  const drawn: { cloudTabs: CloudTabs }[] = [];
   host.onState((s) => drawn.push(s));
   host.receive({ type: 'cloudTabs', cloudTabs: { status: 'noAccess', devices: [] } });
   assert.equal(drawn.length, 1);
   assert.equal(drawn[0].cloudTabs.status, 'noAccess');
   host.receive({ type: 'cloudTabs', cloudTabs: null });
-  assert.equal(host.getState().cloudTabs, undefined, 'the app stopped reading (Settings off): gone');
+  assert.equal(host.getState()!.cloudTabs, undefined, 'the app stopped reading (Settings off): gone');
   assert.equal(host.perform('cloud.access'), true);
   assert.equal(host.perform('copyText', { text: 'https://tagus.example/ferries' }), true);
   assert.equal(host.perform('copyText', {}), false);

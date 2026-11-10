@@ -26,19 +26,19 @@ export const RULES = Object.freeze({
 });
 
 /** In a page. */
-export function measure(): any {
+export function measure() {
   const de = document.documentElement;
   const body = document.body;
   const cs = getComputedStyle(de);
   const t = cs.transform;
   const m = t && t !== 'none' ? new DOMMatrix(t) : null;
-  const round = (n) => Math.round(n);
+  const round = (n: number) => Math.round(n);
   // A key for an element that's the same in both loads: its id, or its path of
   // tag and place from <body>.
-  const keyOf = (el) => {
+  const keyOf = (el: Element) => {
     if (el.id) return `#${el.id}`;
-    const parts = [];
-    for (let at = el; at && at !== body && at !== de; at = at.parentElement) {
+    const parts: string[] = [];
+    for (let at: Element | null = el; at && at !== body && at !== de; at = at.parentElement) {
       if (at.id) { parts.unshift(`#${at.id}`); break; }
       let n = 1;
       for (let s = at.previousElementSibling; s; s = s.previousElementSibling) if (s.localName === at.localName) n += 1;
@@ -46,7 +46,7 @@ export function measure(): any {
     }
     return parts.join('>');
   };
-  const els = {};
+  const els: Record<string, number[]> = {};
   let count = 0;
   for (const el of body ? body.querySelectorAll('*') : []) {
     if (count >= 400) break;
@@ -57,7 +57,7 @@ export function measure(): any {
     els[keyOf(el)] = [round(b.left), round(b.top), round(b.width), round(b.height)];
     count += 1;
   }
-  const out = {};
+  const out: Record<string, string | null> = {};
   for (const o of document.querySelectorAll('output[id]')) out[o.id] = o.textContent;
   const scroller = document.scrollingElement;
   // What a scroller trims sideways (overflow-x hidden or clip) can't be scrolled to, though scrollWidth counts it. In the
@@ -82,18 +82,22 @@ export function measure(): any {
   };
 }
 
+/** What measure() gives: a page as drawn. */
+// (`bars` optional: a shot taken before scroll bars were measured, as the unit tests' fixtures are, has none.)
+export type Shot = Omit<ReturnType<typeof measure>, 'bars'> & { bars?: ReturnType<typeof measure>['bars'] };
+
 /**
  * The rules a boxed page broke, compared with the same page plain.
  * */
-export function judge(boxed: any, plain: any, setup: { slot: { left: number, top: number, right: number, bottom: number }, window: { w: number, h: number }, allow?: string[] }): string[] {
-  const fails = [];
+export function judge(boxed: Shot, plain: Shot, setup: { slot: { left: number, top: number, right: number, bottom: number }, window: { w: number, h: number }, allow?: string[] }): string[] {
+  const fails: string[] = [];
   const allow = new Set(setup.allow || []);
-  const off = (rule, key) => allow.has(rule) || (key != null && allow.has(`${rule} ${key}`));
-  const near = (a, b, by) => Math.abs(a - b) <= by;
+  const off = (rule: string, key?: string) => allow.has(rule) || (key != null && allow.has(`${rule} ${key}`));
+  const near = (a: number, b: number, by: number) => Math.abs(a - b) <= by;
   const { slot } = setup;
   const w = setup.window.w - slot.left - slot.right;
   const h = setup.window.h - slot.top - slot.bottom;
-  const say = (rule, text) => { if (!off(rule)) fails.push(`${rule}: ${text}`); };
+  const say = (rule: string, text: string) => { if (!off(rule)) fails.push(`${rule}: ${text}`); };
   // Where scroll bars take space, <html> is the window less them, as in a plain window.
   const bars = plain.bars || { w: 0, h: 0 };
   const less = bars.w || bars.h ? ` less the plain window's scroll bars (${bars.w}×${bars.h})` : '';
@@ -106,7 +110,7 @@ export function judge(boxed: any, plain: any, setup: { slot: { left: number, top
   if (boxed.scroller !== plain.scroller || !near(boxed.scrollerHeight, plain.scrollerHeight, 1)) say('same-scroller', `the scroller is <${boxed.scroller}>, ${boxed.scrollerHeight} high; plain <${plain.scroller}>, ${plain.scrollerHeight}`);
   if (boxed.overflowX > plain.overflowX + 1) say('no-overflow', `${boxed.overflowX}px past the box sideways, ${plain.overflowX}px plain`);
   if (!off('same-layout')) {
-    const moved = [];
+    const moved: string[] = [];
     for (const [key, r] of Object.entries(plain.els)) {
       if (off('same-layout', key)) continue;
       const b = boxed.els[key];

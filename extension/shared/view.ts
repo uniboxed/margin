@@ -227,11 +227,11 @@ function originOf(url: string | null | undefined) {
 // type}): a scalable or ~16–64px "icon" first, then any "icon", then
 // apple-touch-icon, else /favicon.ico. Returns an absolute http(s) or
 // data:image URL, or null for non-web pages.
-function pickIconHref(links: { rel: string; href: string; sizes: string; type: string; }[], pageUrl: string) {
+function pickIconHref(links: { rel: string; href: string; sizes?: string; type?: string; }[], pageUrl: string) {
   const origin = originOf(pageUrl);
   if (!origin) return null;
   const usable = (href: string) => /^https?:/i.test(href ?? '') || /^data:image\//i.test(href ?? '');
-  const score = (l: { rel: string; href: string; sizes: string; type: string; }) => {
+  const score = (l: { rel: string; href: string; sizes?: string; type?: string; }) => {
     const rel = (l.rel ?? '').toLowerCase().split(/\s+/);
     if (!rel.some((r) => r === 'icon' || r === 'apple-touch-icon' || r === 'apple-touch-icon-precomposed')) return -1;
     if (!usable(l.href)) return -1;

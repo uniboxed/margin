@@ -107,7 +107,7 @@ export function createMockHost({ state = null, windowId = 1, tabId = null, platf
       return replies[type]?.(payload);
     },
     reportLayout(geometry: Geometry) { host.layouts.push(geometry); },
-    perform(name: string, arg: any) { host.performed.push({ name, arg }); return true; },
+    perform(name: string, arg?: any) { host.performed.push({ name, arg }); return true; },
     // Test controls.
     setState(next: any) { current = next; for (const cb of [...listeners]) cb(current); },
     update(fn: (state: any) => any) { host.setState(fn(current)); },
@@ -283,7 +283,7 @@ export function createInPageHost({
     reportLayout(geometry: Geometry) { layout = geometry; onLayout?.(geometry); },
     /** The last layout reported. */
     get layout() { return layout; },
-    perform(name: string, arg: any) {
+    perform(name: string, arg?: any) {
       const mine = performFirst?.(name, arg);
       if (mine != null) return mine;
       switch (name) {

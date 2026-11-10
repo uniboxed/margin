@@ -8,9 +8,12 @@ import { FIRST_PAINT_MARK, firstPaintRoot } from '../extension/shared/page-box.t
 
 const root = new URL('../extension/', import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
-const exists = (path) => existsSync(new URL(path, root));
+// What the tests read of a manifest (parsed JSON): a command, a content script's entry, an exposed resource.
+type ManifestCommand = { suggested_key?: { default?: string, mac?: string }, description?: string };
+type Commands = Record<string, ManifestCommand>;
+const exists = (path: string) => existsSync(new URL(path, root));
 // Every source file under extension/ with one of these extensions.
-const sources = (exts, dir = '') => readdirSync(new URL(dir || '.', root)).flatMap((name) => {
+const sources = (exts: string[], dir = ''): string[] => readdirSync(new URL(dir || '.', root)).flatMap((name) => {
   const path = `${dir}${name}`;
   return statSync(new URL(path, root)).isDirectory() ? sources(exts, `${path}/`) : exts.some((e) => name.endsWith(e)) ? [path] : [];
 });
@@ -32,15 +35,15 @@ test('manifest follows the SPEC constraints', () => {
   // No ⌃⌘ arrows as the browser's own command keys (decided 2026-11-08): the navigation commands have none (Margin.app
   // holds the Settings keys, ⌥⌘ arrows by default; pages take them too). Never ⌘⌥ here: Chrome refuses the extension.
   for (const name of ['next-tab', 'prev-tab', 'next-space', 'prev-space']) assert.equal(manifest.commands[name].suggested_key, undefined, name);
-  for (const c of Object.values(manifest.commands)) assert.doesNotMatch(JSON.stringify(c.suggested_key ?? {}), /(Command|Ctrl)\+Alt/);
+  for (const c of Object.values(manifest.commands as Commands)) assert.doesNotMatch(JSON.stringify(c.suggested_key ?? {}), /(Command|Ctrl)\+Alt/);
 });
 
 test('every file the manifest and new tab reference exists', () => {
   const files = [
     manifest.background.service_worker,
     ...Object.values(manifest.icons),
-    ...manifest.content_scripts.flatMap((c) => c.js),
-    ...(manifest.web_accessible_resources ?? []).flatMap((w) => w.resources),
+    ...manifest.content_scripts.flatMap((c: { js: string[] }) => c.js),
+    ...(manifest.web_accessible_resources ?? []).flatMap((w: { resources: string[] }) => w.resources),
     manifest.chrome_url_overrides.newtab,
     // Each built-in theme's package (read by the background and the new-tab page),
     // and its look at a page's first paint (scripts/build.ts makes the registered file).
@@ -91,17 +94,17 @@ test('the navigation commands have no keys of their own: the Settings shortcuts 
 });
 
 test('the page card has the same corner radius and shadow wherever it is drawn', () => {
-  const read = (f) => readFileSync(new URL(f, root), 'utf8');
-  const decl = (css, selector, prop) => {
+  const read = (f: string) => readFileSync(new URL(f, root), 'utf8');
+  const decl = (css: string, selector: string, prop: string) => {
     const block = css.slice(css.indexOf(selector));
-    return block.match(new RegExp(`\\b${prop}: ([^;]+?)( !important)?;`))[1];
+    return block.match(new RegExp(`\\b${prop}: ([^;]+?)( !important)?;`))![1]; // a missing one fails the test here
   };
   // The first paint and Arcadia's package: the same card shadow, then the frame
   // (its corner is the layout's, which Margin.app measures from the package).
   const pkg = read('themes/arcadia/theme.css');
-  const radius = pkg.match(/\n  --card-radius: ([^;]+);/)[1];
+  const radius = pkg.match(/\n  --card-radius: ([^;]+);/)![1];
   const shadow = decl(pkg, '.card-edge { pointer-events: none;', 'box-shadow');
-  const frame = pkg.match(/\n  --frame: ([^;]+);/)[1];
+  const frame = pkg.match(/\n  --frame: ([^;]+);/)![1];
   assert.equal(radius, '6.25px');
   const first = read('themes/arcadia/first-paint.css');
   assert.equal(decl(first, 'html[data-margin-at="arcadia"]::after', 'border-radius'), 'var(--margin-box-at-radius)');
@@ -125,11 +128,11 @@ test('Settings toggles are switches where supported (checkboxes elsewhere): Marg
 
 test('Safari\'s commands: ⌘T the only one with a key (no ⌃⌘ arrows since 2026-11-08); Chrome\'s none', async () => {
   const { manifestFor } = await import('../scripts/build.ts');
-  const keyed = (m) => Object.entries(m.commands).filter(([, c]) => c.suggested_key).map(([k]) => k).sort();
+  const keyed = (m: { commands: Commands }) => Object.entries(m.commands).filter(([, c]) => c.suggested_key).map(([k]) => k).sort();
   const safari = manifestFor('safari');
   assert.deepEqual(keyed(safari), ['new-tab']);
   assert.equal(safari.commands['new-tab'].suggested_key.mac, 'Command+T');
   for (const name of ['next-tab', 'prev-tab', 'next-space', 'prev-space']) assert.ok(safari.commands[name], `${name}: still a command`);
-  for (const [, c] of Object.entries(safari.commands)) assert.doesNotMatch(JSON.stringify(c.suggested_key ?? {}), /(Command|Ctrl)\+Alt/);
+  for (const [, c] of Object.entries(safari.commands as Commands)) assert.doesNotMatch(JSON.stringify(c.suggested_key ?? {}), /(Command|Ctrl)\+Alt/);
   assert.deepEqual(keyed(manifestFor('chrome')), []);
 });

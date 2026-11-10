@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { DATA_FORMAT, changesFrom, isChange, mergeData, pruneTombstones } from '../extension/shared/data-merge.ts';
 import { COLLECTIONS, SOURCES, TOMBSTONE_CAP, TOMBSTONE_MS, collectionFrom, dataSetFrom, dataSetFromStorage, fingerprint, itemsFrom, metaKey, pendingChanges, stateFromDataSet, track } from '../extension/shared/data-set.ts';
 import * as M from '../extension/state/model.ts';
+import type { TabRecord } from '../types/margin.d.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const VECTORS = path.join(here, 'fixtures', 'data-merge');
@@ -68,8 +69,9 @@ function sampleState() {
   let s = M.defaultState();
   s = M.createSpace(s, { id: 'work', name: 'Work', emoji: '💼', color: '#0984e3' });
   s = M.upsertTab(M.setActiveSpace(s, 1, 'work'), { id: 1, windowId: 1, index: 0, url: 'https://a.test/', title: 'A', active: true }, 100);
-  s = M.upsertTab(s, { id: 2, windowId: 1, index: 1, url: 'https://b.test/', title: 'B' }, 100);
-  s = M.upsertTab(s, { id: 3, windowId: 1, index: 2, url: 'safari-web-extension://x/newtab/newtab.html', title: 'New Tab' }, 100);
+  // Tabs as the test gives them: without `active` (a tab not in front).
+  s = M.upsertTab(s, { id: 2, windowId: 1, index: 1, url: 'https://b.test/', title: 'B' } as BrowserTab, 100);
+  s = M.upsertTab(s, { id: 3, windowId: 1, index: 2, url: 'safari-web-extension://x/newtab/newtab.html', title: 'New Tab' } as BrowserTab, 100);
   s = M.closedTab(s, 2, { windowClosing: true, now: 200, archiveId: 'x' });
   s = M.addPin(s, { id: 'p1', spaceId: 'work', url: 'https://pin.test/', title: 'Pin' });
   s = M.createFolder(s, { id: 'f1', spaceId: 'work', name: 'Read', pinIds: ['p1'] });
@@ -89,7 +91,7 @@ test('the data set\'s items: spaces in order, pins by address, folders, Margin\'
   const a = s.tabs[1];
   const b = Object.values(s.keptTabs)[0];
   assert.deepEqual(items.tabs, {
-    [a.mid]: { url: 'https://a.test/', title: 'A', icon: '', spaceId: 'work', order: a.order, lastUsed: a.lastActive },
+    [a.mid!]: { url: 'https://a.test/', title: 'A', icon: '', spaceId: 'work', order: a.order, lastUsed: a.lastActive },
     [b.id]: { url: 'https://b.test/', title: 'B', icon: '', spaceId: 'work', order: b.order, lastUsed: b.lastActive },
   }, 'the new-tab page isn\'t a Margin tab worth keeping');
   assert.deepEqual(items.archive, { a1: { url: 'https://old.test/', title: 'Old', spaceId: 'work', icon: '', closedAt: 50 } });
@@ -125,7 +127,7 @@ test('the converter (first link): today\'s extension storage as a data set, user
   assert.deepEqual(set.items.siteIcons['https://a.test'].value.at, 60);
   // An earlier build's storage (lost tabs, records without ids) converts too.
   const old = dataSetFromStorage({ spaces: s.spaces, tabs: { 9: { id: 9, windowId: 1, index: 0, url: 'https://x.test/', title: 'X' } }, tabSpace: { 9: 'work' }, lostTabs2: { windows: [{ key: 'k', at: 1, size: 1, tabs: [{ url: 'https://l.test/', spaceId: 'work', lastActive: 1, windowId: 3, index: 0 }] }] } }, { now: 9 });
-  assert.deepEqual(Object.values(old.items.tabs).map((t) => t.value.url).sort(), ['https://l.test/', 'https://x.test/']);
+  assert.deepEqual(Object.values(old.items.tabs as Record<string, { value: { url: string } }>).map((t) => t.value.url).sort(), ['https://l.test/', 'https://x.test/']);
 });
 
 test('the data set back into the state (the cache refilled): spaces, pins, folders, the archive, settings, icons; open tabs keep their browser tabs and take their space and place; the rest are kept tabs', () => {
@@ -154,7 +156,8 @@ test('the data set\'s spaces in place of the copy\'s: a tab in a space the set t
     home: { updatedAt: 1, value: { name: 'Home', emoji: '', color: '#000', order: 0 } },
     work: { updatedAt: 1, value: { name: 'Work', emoji: '', color: '#111', order: 1 } },
   } } };
-  const early = { ...wiped, tabs: { 5: { id: 5, windowId: 1, url: 'https://a.test/' }, 6: { id: 6, windowId: 2, url: 'https://b.test/' } }, tabSpace: { 5: 'personal', 6: 'personal' }, activeSpaceByWindow: { 2: 'work' } };
+  // Tab records with only what the test needs of them.
+  const early = { ...wiped, tabs: { 5: { id: 5, windowId: 1, url: 'https://a.test/' } as TabRecord, 6: { id: 6, windowId: 2, url: 'https://b.test/' } as TabRecord }, tabSpace: { 5: 'personal', 6: 'personal' }, activeSpaceByWindow: { 2: 'work' } };
   const next = stateFromDataSet(early, set);
   assert.deepEqual(next.spaces.map((x) => x.id), ['home', 'work']);
   assert.equal(next.tabSpace[5], 'home', 'its window has no space of the set\'s: the first');
@@ -193,7 +196,7 @@ test('the queue: the first look starts every item at 0 (not queued); changes, ne
 test('the queue: a change in the same millisecond as the item\'s last time (or after a time ahead of this clock) still gets a newer one', () => {
   const s = sampleState();
   const base = track(null, collectionFrom(s, 'pins'), 1000);
-  const renamed = (title) => collectionFrom({ ...s, pins: s.pins.map((p) => (p.id === 'p1' ? { ...p, title } : p)) }, 'pins');
+  const renamed = (title: string) => collectionFrom({ ...s, pins: s.pins.map((p) => (p.id === 'p1' ? { ...p, title } : p)) }, 'pins');
   const first = track(base, renamed('One'), 3000);
   assert.equal(first.items.p1[0], 3000);
   assert.equal(track(first, renamed('Two'), 3000).items.p1[0], 3001, 'the same millisecond: just after');
@@ -203,7 +206,7 @@ test('the queue: a change in the same millisecond as the item\'s last time (or a
 });
 
 test('the queue\'s tombstones are kept TOMBSTONE_MS, at most TOMBSTONE_CAP per collection', () => {
-  const gone = {};
+  const gone: Record<string, number> = {};
   for (let i = 0; i < TOMBSTONE_CAP + 5; i++) gone[`x${i}`] = 10_000 + i;
   const meta = track({ items: {}, gone }, {}, 20_000);
   assert.equal(Object.keys(meta.gone).length, TOMBSTONE_CAP);

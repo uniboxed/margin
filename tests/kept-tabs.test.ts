@@ -6,37 +6,41 @@
 // The rules themselves (state/model.ts) are in tests/margin-tabs.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from './fake-browser.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const listeners = {};
-const event = (name) => ({ addListener: (fn) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
-const fire = (name, ...args) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// A listener, called with whatever its event gives.
+type Listener = (...args: any[]) => unknown;
+const listeners: Record<string, Listener[]> = {};
+const event = (name: string) => ({ addListener: (fn: Listener) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
+const fire = (name: string, ...args: unknown[]) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
 
 const fake = {
   tabs: new Map(),
   nextId: 500,
-  created: [],
-  removed: [],
-  local: {},
-  session: {},
+  created: [] as { windowId: number, url?: string, index?: number, active: boolean }[],
+  removed: [] as number[],
+  local: {} as Record<string, any>, // stored JSON
+  session: {} as Record<string, any>,
   // What a page answers the sleep pass (background/sleep.ts sleepInPage).
-  page: () => ({ ok: true, judged: 'margin' }),
+  page: (() => ({ ok: true, judged: 'margin' })) as (tabId: number) => { ok: boolean, why?: string, judged?: string },
 };
-const pick = (store, keys) => {
+const pick = (store: Record<string, any>, keys?: string | string[] | Record<string, unknown> | null) => {
   if (keys == null) return structuredClone(store);
   const list = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys);
   return Object.fromEntries(list.filter((k) => k in store).map((k) => [k, structuredClone(store[k])]));
 };
-const reindex = (windowId) => [...fake.tabs.values()].filter((t) => t.windowId === windowId).sort((a, b) => a.index - b.index).forEach((t, i) => { t.index = i; });
+const reindex = (windowId?: number) => [...fake.tabs.values()].filter((t) => t.windowId === windowId).sort((a, b) => a.index - b.index).forEach((t, i) => { t.index = i; });
 // Safari closing a tab (its tab bar, ⌘W, or its window closing).
-async function closeInSafari(id, isWindowClosing = false) {
+async function closeInSafari(id: number, isWindowClosing = false) {
   const tab = fake.tabs.get(id);
   fake.tabs.delete(id);
   reindex(tab.windowId);
   await fire('onRemoved', id, { windowId: tab.windowId, isWindowClosing });
 }
-globalThis.fetch = async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) });
-globalThis.chrome = {
+// Only what Margin reads of a response.
+globalThis.fetch = (async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) })) as unknown as typeof fetch;
+globalThis.chrome = fakeBrowser({
   runtime: {
     id: 'test',
     getURL: (p) => `safari-web-extension://test/${p}`,
@@ -46,9 +50,11 @@ globalThis.chrome = {
     sendNativeMessage: async () => undefined,
   },
   permissions: { contains: async () => true, onAdded: event('pAdded'), onRemoved: event('pRemoved') },
-  alarms: { get: async () => ({}), create: async () => {}, clear: async () => true, onAlarm: event('onAlarm') },
+  // An alarm there already (its fields unread: background.ts).
+  alarms: { get: async () => ({}) as { name: string, scheduledTime: number }, create: async () => {}, onAlarm: event('onAlarm') },
   commands: { onCommand: event('onCommand') },
   windows: {
+    // Windows as far as Margin reads them here; its updates' answers unread.
     get: async (id) => ({ id, focused: true }), getAll: async () => [{ id: 1, focused: true }], getLastFocused: async () => ({ id: 1 }),
     update: async () => {}, create: async () => ({}), onFocusChanged: event('onFocusChanged'), onRemoved: event('wRemoved'), onBoundsChanged: event('wBounds'),
   },
@@ -64,7 +70,7 @@ globalThis.chrome = {
     create: async ({ windowId, url, active, index }) => {
       const win = windowId ?? 1;
       const count = [...fake.tabs.values()].filter((t) => t.windowId === win).length;
-      const at = Number.isInteger(index) ? Math.min(index, count) : count;
+      const at = Number.isInteger(index) ? Math.min(index!, count) : count; // (a number: just checked)
       for (const t of fake.tabs.values()) if (t.windowId === win && t.index >= at) t.index++;
       if (active) for (const t of fake.tabs.values()) if (t.windowId === win) t.active = false;
       const tab = { id: fake.nextId++, windowId: win, url, title: '', index: at, active: !!active, status: 'loading' };
@@ -74,7 +80,7 @@ globalThis.chrome = {
       return { ...tab };
     },
     remove: async (ids) => {
-      for (const id of [].concat(ids)) {
+      for (const id of ([] as number[]).concat(ids)) {
         if (!fake.tabs.has(id)) throw new Error(`No tab with id: ${id}`);
         fake.removed.push(id);
         await closeInSafari(id, false);
@@ -96,7 +102,7 @@ globalThis.chrome = {
     local: {
       get: async (keys) => pick(fake.local, keys),
       set: async (items) => { Object.assign(fake.local, structuredClone(items)); },
-      remove: async (keys) => { for (const k of [].concat(keys)) delete fake.local[k]; },
+      remove: async (keys) => { for (const k of ([] as string[]).concat(keys)) delete fake.local[k]; },
     },
     session: {
       get: async (keys) => pick(fake.session, keys),
@@ -105,7 +111,7 @@ globalThis.chrome = {
     },
     onChanged: event('sChanged'),
   },
-};
+});
 
 // Window 1: a (in front), b, c in Work; d in Personal. Window 2: e (Work).
 const OPEN = [
@@ -120,10 +126,12 @@ fake.session.alive = true; // not a relaunch: the ids are this session's
 fake.session.since = 1;
 fake.session.startWorkAt = Date.now(); // no start-up work (onboarding, archive) in the way
 
-const sender = (id) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id)?.url });
-function ask(type, payload = {}, from = 1) {
-  return new Promise((resolve) => {
-    listeners.onMessage[0]({ type, ...payload }, sender(from), (reply) => resolve(reply));
+const sender = (id: number) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id)?.url });
+// The background's answer (Margin's own protocol: any, as types/browser.d.ts has it).
+type Reply = { ok: boolean, result?: any, error?: string };
+function ask(type: string, payload: Record<string, unknown> = {}, from = 1) {
+  return new Promise<Reply>((resolve) => {
+    listeners.onMessage[0]({ type, ...payload }, sender(from), (reply: Reply) => resolve(reply));
   });
 }
 
@@ -171,24 +179,25 @@ test('a tab closed on its own (⌘W, Safari\'s tab bar) goes to the archive; one
 test('a tab that isn\'t open, clicked: it opens in the window where it was clicked, at its place in the tab strip, as the same Margin tab', async () => {
   // Put c back between a and d first (it was lost with its window).
   const s0 = await state();
-  const kept = Object.values(s0.keptTabs).find((k) => k.url === 'https://c.test/');
+  const kept = Object.values(s0.keptTabs).find((k) => k.url === 'https://c.test/')!; // (kept by the test before)
   fake.created.length = 0;
   const reply = await ask('activateTab', { tabId: kept.id }, 1);
   assert.equal(reply.ok, true, JSON.stringify(reply));
   await settled();
   assert.deepEqual(fake.created, [{ windowId: 1, url: 'https://c.test/', index: 1, active: true }], 'in window 1, before d (placed after it): a, c, d');
   const s = await state();
-  const opened = Object.values(s.tabs).find((t) => t.url === 'https://c.test/');
+  const opened = Object.values(s.tabs).find((t) => t.url === 'https://c.test/')!;
   assert.equal(reply.result.shown, opened.id);
   assert.equal(opened.mid, kept.id, 'the same Margin tab');
   assert.equal(s.tabSpace[opened.id], 'work');
   assert.equal(s.keptTabs[kept.id], undefined, 'open now');
-  assert.deepEqual(V.sidebar(s, 1, opened.id).tabs.filter((t) => t.windowId === 1).map((t) => t.url), ['https://c.test/', 'https://a.test/'], 'its place kept (Work: c above a; e, window 2\'s, is listed too)');
+  // (A row read for its window: a kept one has none.)
+  assert.deepEqual(V.sidebar(s, 1, opened.id).tabs.filter((t: { id: number | string, windowId?: number }) => t.windowId === 1).map((t) => t.url), ['https://c.test/', 'https://a.test/'], 'its place kept (Work: c above a; e, window 2\'s, is listed too)');
   // From another window (Margin.app names the window): it opens there.
   await closeInSafari(opened.id, true);
   await settled();
   fake.created.length = 0;
-  const again = Object.values((await state()).keptTabs).find((k) => k.url === 'https://c.test/');
+  const again = Object.values((await state()).keptTabs).find((k) => k.url === 'https://c.test/')!;
   const there = await ask('activateTab', { tabId: again.id, windowId: 2 }, 1);
   assert.equal(there.ok, true);
   assert.equal(fake.created[0].windowId, 2);
@@ -198,10 +207,10 @@ test('a tab that isn\'t open, clicked: it opens in the window where it was click
 });
 
 test('a tab that isn\'t open: closed from Margin it goes to the archive; pinned, its pin is it from then on; moved to another space', async () => {
-  const c = Object.values((await state()).tabs).find((t) => t.url === 'https://c.test/');
+  const c = Object.values((await state()).tabs).find((t) => t.url === 'https://c.test/')!;
   await closeInSafari(c.id, true);
   await settled();
-  let kept = Object.values((await state()).keptTabs).find((k) => k.url === 'https://c.test/');
+  let kept = Object.values((await state()).keptTabs).find((k) => k.url === 'https://c.test/')!;
   assert.equal((await ask('moveTabToSpace', { tabId: kept.id, spaceId: 'personal' })).ok, true);
   assert.equal((await state()).keptTabs[kept.id].spaceId, 'personal');
   assert.equal((await ask('closeTab', { tabId: kept.id })).ok, true);
@@ -212,7 +221,7 @@ test('a tab that isn\'t open: closed from Margin it goes to the archive; pinned,
   // Another kept, then pinned.
   await closeInSafari(4, true);
   await settled();
-  kept = Object.values((await state()).keptTabs).find((k) => k.url === 'https://d.test/');
+  kept = Object.values((await state()).keptTabs).find((k) => k.url === 'https://d.test/')!;
   const pinned = await ask('pinTab', { tabId: kept.id });
   assert.equal(pinned.ok, true);
   s = await state();
@@ -229,7 +238,7 @@ test('a pin whose tab isn\'t open opens as that Margin tab (one kept from before
   assert.equal(reply.ok, true);
   await settled();
   const s = await state();
-  const t = Object.values(s.tabs).find((x) => x.url === 'https://p.test/');
+  const t = Object.values(s.tabs).find((x) => x.url === 'https://p.test/')!;
   assert.equal(t.mid, 't-pinned1');
   assert.equal(s.keptTabs['t-pinned1'], undefined);
 });
@@ -237,7 +246,7 @@ test('a pin whose tab isn\'t open opens as that Margin tab (one kept from before
 test('auto-archive: a tab unused for archiveAfterHours goes to the archive whether it\'s open or not', async () => {
   const old = Date.now() - 13 * 3600_000;
   await store.mutate((s) => ({ ...s, keptTabs: { ...s.keptTabs, 't-old1': { id: 't-old1', url: 'https://old.test/', title: 'Old', favIconUrl: '', spaceId: 'work', order: 0.1, lastActive: old, keptAt: old, why: 'window' } } }));
-  const count = await globalThis.margin.archiveNow();
+  const count = await (globalThis.margin.archiveNow as () => Promise<number>)(); // (background.ts's console helper)
   assert.ok(count >= 1);
   const s = await state();
   assert.equal(s.keptTabs['t-old1'], undefined);
@@ -267,7 +276,7 @@ test('sleep (Safari): a tab unused for sleepAfterHours is closed by Margin and k
   const s = await state();
   assert.ok(fake.removed.includes(20), 'closed');
   assert.equal(s.tabs[20], undefined);
-  const kept = s.keptTabs[s1.mid];
+  const kept = s.keptTabs[s1.mid!]; // (every open tab has its Margin id)
   assert.ok(kept, 'its Margin tab kept');
   assert.deepEqual([kept.url, kept.why, kept.spaceId], ['https://s1.test/', 'sleep', 'work']);
   assert.equal(s.archive.some((a) => a.url === 'https://s1.test/'), false, 'not archived');
@@ -281,15 +290,15 @@ test('the queue for Margin.app: each change made since the data set\'s times beg
   assert.deepEqual(queued, [], 'nothing since');
   await ask('createSpace', { name: 'Reading' });
   const s = await state();
-  const reading = s.spaces.find((sp) => sp.name === 'Reading');
+  const reading = s.spaces.find((sp) => sp.name === 'Reading')!;
   const after = await store.pendingQueue(before - 1);
   const change = after.find((c) => c.collection === 'spaces' && c.id === reading.id);
   assert.ok(change, JSON.stringify(after));
   assert.ok(change.updatedAt >= before);
-  assert.deepEqual(change.value, { name: 'Reading', emoji: '✨', color: '#00b894', order: s.spaces.length - 1 });
+  assert.deepEqual((change as { value: unknown }).value, { name: 'Reading', emoji: '✨', color: '#00b894', order: s.spaces.length - 1 });
   await ask('deleteSpace', { spaceId: reading.id });
   const gone = (await store.pendingQueue(before - 1)).find((c) => c.collection === 'spaces' && c.id === reading.id);
-  assert.equal(gone.deleted, true, 'a tombstone');
+  assert.equal((gone as { deleted?: true }).deleted, true, 'a tombstone');
   // Stored (the queue lasts across the background's restarts).
   await sleep(1700); // (written a moment after the state: background/store.ts)
   assert.ok(fake.local['dataMeta:spaces'].gone[reading.id] >= before);
@@ -299,7 +308,8 @@ test('the queue for Margin.app: each change made since the data set\'s times beg
 });
 
 test('Margin.app\'s data (background/link.ts): its data set becomes the cache with its times, its changes merged by time, this copy\'s changes told as they\'re written', async () => {
-  const told = [];
+  // Data changes as the store tells them (background/store.ts onDataChanges).
+  const told: { collection: string, id: string, updatedAt: number, value?: any, deleted?: boolean }[] = [];
   const off = store.onDataChanges((changes) => told.push(...changes));
   try {
     const t0 = Date.now();
@@ -319,7 +329,8 @@ test('Margin.app\'s data (background/link.ts): its data set becomes the cache wi
     const metas = store.dataMetas();
     assert.equal(metas.spaces.items['from-app'][0], T + 2000, 'with the app\'s time, not now');
     assert.equal(metas.pins.items['pin-app'][0], T + 2000);
-    assert.deepEqual(told, [], 'nothing it sent is told back as this copy\'s change');
+    // (The empty list typed: deepEqual narrows what it checks to the type of what it expects.)
+    assert.deepEqual(told, [] as typeof told, 'nothing it sent is told back as this copy\'s change');
     assert.equal((await store.pendingQueue(t0 - 1)).filter((c) => c.id === 'from-app' || c.id === 'pin-app').length, 0, 'nor queued');
     // The app's own changes: a newer one wins, an older one doesn't.
     await store.takeDataChanges([
@@ -327,12 +338,12 @@ test('Margin.app\'s data (background/link.ts): its data set becomes the cache wi
       { collection: 'pins', id: 'pin-app', updatedAt: T + 1500, deleted: true },
     ]);
     const s2 = await state();
-    assert.equal(s2.spaces.find((sp) => sp.id === 'from-app').name, 'Renamed in the app');
+    assert.equal(s2.spaces.find((sp) => sp.id === 'from-app')!.name, 'Renamed in the app');
     assert.ok(s2.pins.some((p) => p.id === 'pin-app'), 'an older deletion: the pin stays');
     await store.takeDataChanges([{ collection: 'pins', id: 'pin-app', updatedAt: T + 4000, deleted: true }]);
     assert.ok(!(await state()).pins.some((p) => p.id === 'pin-app'), 'a newer deletion: gone');
     assert.equal(store.dataMetas().pins.gone['pin-app'], T + 4000, 'its tombstone with the app\'s time');
-    assert.deepEqual(told, [], 'still nothing told back');
+    assert.deepEqual(told, [] as typeof told, 'still nothing told back');
     // A change of this copy's: told as it's written, with its time.
     await ask('renameSpace', { spaceId: 'from-app', name: 'Renamed here' });
     for (let i = 0; i < 50 && !told.length; i++) await sleep(10);
@@ -357,7 +368,7 @@ test('Margin.app\'s data: its snapshot taken with this copy\'s changes since its
   const s0 = await state();
   const T = Date.now() - 30_000;
   await ask('createSpace', { name: 'Kept here' });
-  const kept = (await state()).spaces.find((sp) => sp.name === 'Kept here');
+  const kept = (await state()).spaces.find((sp) => sp.name === 'Kept here')!;
   const spaces = Object.fromEntries(s0.spaces.map((sp, i) => [sp.id, { updatedAt: T, value: { name: sp.name, emoji: sp.emoji ?? '', color: sp.color ?? '', order: i } }]));
   // The app's set renames the first space; this copy renamed it since (a newer change), and the app left `kept` out.
   const first = s0.spaces[0];
@@ -367,7 +378,7 @@ test('Margin.app\'s data: its snapshot taken with this copy\'s changes since its
     omitted: [['spaces', kept.id]],
   });
   const s1 = await state();
-  assert.equal(s1.spaces.find((sp) => sp.id === first.id).name, 'Newer here', 'the change since the hello stays');
+  assert.equal(s1.spaces.find((sp) => sp.id === first.id)!.name, 'Newer here', 'the change since the hello stays');
   assert.ok(s1.spaces.some((sp) => sp.id === kept.id), 'the item left out is kept');
 });
 

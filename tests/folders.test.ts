@@ -4,18 +4,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as M from '../extension/state/model.ts';
 import * as view from '../extension/shared/view.ts';
+import type { State } from '../types/margin.d.ts';
 
-const tab = (id, windowId, url, extra = {}) => ({ id, windowId, url, title: `t${id}`, index: id, active: false, ...extra });
+const tab = (id: number, windowId: number, url: string, extra: Partial<BrowserTab> = {}) => ({ id, windowId, url, title: `t${id}`, index: id, active: false, ...extra });
 
 // Personal (window 1) with pins a, b, c in that order.
-function withPins(...ids) {
+function withPins(...ids: string[]) {
   let s = M.defaultState();
   for (const id of ids) s = M.addPin(s, { id, spaceId: 'personal', url: `https://${id}.com/`, title: id });
   return s;
 }
-const top = (s, spaceId = 'personal') => M.pinOrder(s, spaceId).map((x) => x.id);
-const inside = (s, folderId, spaceId = 'personal') => M.pinOrder(s, spaceId, folderId).map((x) => x.id);
-const shown = (s) => view.sidebar(s, 1).pinned.map((item) => (item.kind === 'folder' ? `${item.name}[${item.pins.map((p) => p.id).join(',')}]${item.open ? '' : '(closed)'}` : item.id));
+const top = (s: State, spaceId = 'personal') => M.pinOrder(s, spaceId).map((x) => x.id);
+const inside = (s: State, folderId: string, spaceId = 'personal') => M.pinOrder(s, spaceId, folderId).map((x) => x.id);
+const shown = (s: State) => view.sidebar(s, 1).pinned.map((item) => (item.kind === 'folder' ? `${item.name}[${item.pins.map((p) => p.id).join(',')}]${item.open ? '' : '(closed)'}` : item.id));
 
 test('folders: a new folder goes at the end, or where asked, holding the pins it takes', () => {
   let s = withPins('a', 'b', 'c');
@@ -24,11 +25,11 @@ test('folders: a new folder goes at the end, or where asked, holding the pins it
   s = M.createFolder(s, { id: 'g', spaceId: 'personal', name: '  Work stuff  ', pinIds: ['b', 'c'], beforeId: 'b' });
   assert.deepEqual(top(s), ['a', 'g', 'f']);
   assert.deepEqual(inside(s, 'g'), ['b', 'c']);
-  assert.equal(s.folders.find((f) => f.id === 'g').name, 'Work stuff', 'trimmed');
-  assert.equal(s.folders.find((f) => f.id === 'g').open, true);
+  assert.equal(s.folders.find((f) => f.id === 'g')!.name, 'Work stuff', 'trimmed');
+  assert.equal(s.folders.find((f) => f.id === 'g')!.open, true);
   assert.equal(M.createFolder(s, { id: 'g', spaceId: 'personal' }), s, 'ids are unique');
   assert.equal(M.createFolder(s, { id: 'x', spaceId: 'nope' }), s, 'only in a space that exists');
-  assert.equal(M.createFolder(s, { id: 'y', spaceId: 'personal', name: '   ' }).folders.at(-1).name, 'New Folder');
+  assert.equal(M.createFolder(s, { id: 'y', spaceId: 'personal', name: '   ' }).folders.at(-1)!.name, 'New Folder');
 });
 
 test('folders: pins move in, out and around; folders move among the top level', () => {
@@ -41,7 +42,7 @@ test('folders: pins move in, out and around; folders move among the top level', 
   s = M.movePin(s, 'c', { folderId: null, beforeId: 'b' });
   assert.deepEqual(top(s), ['c', 'b', 'd', 'f']);
   assert.deepEqual(inside(s, 'f'), ['a']);
-  assert.equal(s.pins.find((p) => p.id === 'c').folderId, undefined, 'out of the folder');
+  assert.equal(s.pins.find((p) => p.id === 'c')!.folderId, undefined, 'out of the folder');
   s = M.moveFolder(s, 'f', { beforeId: 'c' });
   assert.deepEqual(top(s), ['f', 'c', 'b', 'd']);
   s = M.movePin(s, 'b', {}); // to the end of the top level
@@ -102,9 +103,10 @@ test('folders: saved data from before folders (no pos) and unknown folders still
   assert.equal(s.folders.length, 1, 'malformed folders dropped');
   assert.deepEqual(top(s), ['a', 'b', 'c', 'ok']);
   // Pages read raw storage: the view must cope with it as it is.
-  const v = view.sidebar({ ...raw, activeSpaceByWindow: {}, tabSpace: {}, tabs: {} }, 1);
+  // As read, not as Margin writes it (a malformed folder, no settings): no State.
+  const v = view.sidebar({ ...raw, activeSpaceByWindow: {}, tabSpace: {}, tabs: {} } as unknown as State, 1);
   assert.deepEqual(v.pinned.map((item) => item.id), ['a', 'b', 'c', 'ok']);
-  assert.equal(v.pins.find((p) => p.id === 'b').folderId, null, 'its folder gone: loose');
+  assert.equal(v.pins.find((p) => p.id === 'b')!.folderId, null, 'its folder gone: loose');
   assert.deepEqual(M.normalizeState({}).folders, []);
   assert.ok(M.STATE_KEYS.includes('folders'), 'saved by the background');
 });
@@ -118,12 +120,12 @@ test('view: folders with their pins in order; a closed folder still shows the ta
   assert.deepEqual(shown(s), ['a', 'MSU[c,b]', 'd']);
   const v = view.sidebar(s, 1, 1);
   assert.deepEqual(v.pins.map((p) => p.id), ['a', 'c', 'b', 'd'], 'flat, in the order shown');
-  assert.equal(v.pins.find((p) => p.id === 'b').active, true);
+  assert.equal(v.pins.find((p) => p.id === 'b')!.active, true);
   s = M.setFolderOpen(s, 'f', false);
-  const closed = view.sidebar(s, 1, 1).pinned.find((item) => item.kind === 'folder');
+  const closed = view.sidebar(s, 1, 1).pinned.find((item) => item.kind === 'folder')!;
   assert.equal(closed.open, false);
   assert.deepEqual(closed.peek.map((p) => p.id), ['b'], 'the shown tab\'s pin stays visible');
-  assert.deepEqual(view.sidebar(s, 1, 2).pinned.find((item) => item.kind === 'folder').peek, [], 'none when it isn\'t shown');
+  assert.deepEqual(view.sidebar(s, 1, 2).pinned.find((item) => item.kind === 'folder')!.peek, [], 'none when it isn\'t shown');
   assert.equal(view.cycleTab(s, 1, 1, 1), 2, 'open pins in the order shown (b, then d), then tabs');
   assert.equal(view.cycleTab(s, 1, 2, 1), 3);
 });

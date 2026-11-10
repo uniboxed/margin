@@ -5,26 +5,36 @@
 // with no Start button and nothing about the app not running.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from './fake-browser.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const page = {};
-function reset({ reads }) {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// The fake page: its elements (what newtab.ts sets and listens to), its listeners, what it read and sent.
+type Listener = (event?: unknown) => unknown;
+type FakeEl = { hidden: boolean, textContent: string, disabled: boolean, value: string, listeners: Record<string, Listener>, addEventListener(type: string, fn: Listener): void, focus(): void };
+type Page = {
+  reads: Record<string, unknown>[], changed: ((changes: Record<string, BrowserStorageChange>, area: string) => void)[],
+  doc: Record<string, Listener[]>, win: Record<string, Listener[]>, reloads: number, sent: string[],
+  els: Record<string, FakeEl>, visibility: string, focused?: boolean,
+};
+const page = {} as Page; // filled in by reset
+function reset({ reads }: { reads: Record<string, unknown>[] }) {
   // `reads`: what each storage read of appLink gives, in turn (the last one from then on).
   Object.assign(page, { reads: [...reads], changed: [], doc: {}, win: {}, reloads: 0, sent: [] });
-  const el = (extra = {}) => ({ hidden: true, textContent: '', disabled: false, value: '', listeners: {}, addEventListener(type, fn) { this.listeners[type] = fn; }, focus() { page.focused = true; }, ...extra });
+  const el = (extra: Partial<FakeEl> = {}): FakeEl => ({ hidden: true, textContent: '', disabled: false, value: '', listeners: {}, addEventListener(type: string, fn: Listener) { this.listeners[type] = fn; }, focus() { page.focused = true; }, ...extra });
   page.els = { notice: el(), title: el({ textContent: 'Margin.app isn’t running' }), why: el(), start: el(), retry: el(), status: el(), go: el(), address: el() };
   page.visibility = 'visible';
 }
-const on = (store) => (type, fn) => { (store[type] ??= []).push(fn); };
-globalThis.document = {
-  getElementById: (id) => page.els[id] ?? null,
-  addEventListener: (type, fn) => on(page.doc)(type, fn),
+const on = (store: Record<string, Listener[]>) => (type: string, fn: Listener) => { (store[type] ??= []).push(fn); };
+// Stand-ins for the page's document, window, location and history: what newtab.ts uses of them.
+globalThis.document = ({
+  getElementById: (id: string) => page.els[id] ?? null,
+  addEventListener: (type: string, fn: Listener) => on(page.doc)(type, fn),
   get visibilityState() { return page.visibility; },
-};
-globalThis.addEventListener = (type, fn) => on(page.win)(type, fn);
-globalThis.location = { hash: '', search: '', reload: () => { page.reloads++; } };
-globalThis.history = { length: 2 }; // not a fresh new tab: no hand-off asked
-globalThis.browser = {
+} as unknown as Document);
+globalThis.addEventListener = ((type: string, fn: Listener) => on(page.win)(type, fn)) as typeof globalThis.addEventListener;
+globalThis.location = ({ hash: '', search: '', reload: () => { page.reloads++; } } as unknown as Location);
+globalThis.history = ({ length: 2 } as History); // not a fresh new tab: no hand-off asked
+globalThis.browser = fakeBrowser({
   runtime: {
     getURL: (p) => `safari-web-extension://test/${p}`,
     sendMessage: async (m) => { page.sent.push(m.type); return { ok: true, result: m.type === 'startApp' ? true : undefined }; },
@@ -35,10 +45,10 @@ globalThis.browser = {
     onChanged: { addListener: (fn) => page.changed.push(fn) },
   },
   tabs: { getCurrent: async () => ({ id: 5, windowId: 7 }) },
-};
+});
 let n = 0;
 const load = async () => { await import(`../extension/newtab/newtab.ts?${++n}`); await sleep(20); };
-const fire = (store, type, event = {}) => { for (const fn of store[type] ?? []) fn(event); };
+const fire = (store: Record<string, Listener[]>, type: string, event = {}) => { for (const fn of store[type] ?? []) fn(event); };
 
 test('the new-tab page: "linked" written before its listener was handed over is caught by the read right after it', async () => {
   reset({ reads: [{ state: 'off' }, { state: 'linked' }] });

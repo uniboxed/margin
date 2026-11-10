@@ -6,21 +6,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { faviconsMark, firstReadKeys, fromStorage, readForPage, sameStored, toStorage, withChanges } from '../extension/shared/stored.ts';
+import { fakeBrowser, type FakeStorageArea } from './fake-browser.ts';
+import type { Favicon } from '../types/margin.d.ts';
+
+// What a page holds and storage keeps: stored JSON (fromStorage's, any).
+type Stored = Record<string, any>;
+// The store module, as its own instance (imported with a query) is.
+type Store = typeof import('../extension/background/store.ts');
 
 const by = { origin: 'safari-web-extension://A/', since: 5, synced: true };
-const icon = (i, at) => ({ data: `data:image/png;base64,${'iVBORw0KGgo'.repeat(220)}${i}`, href: `https://site${i}.test/f.png`, at });
-const icons = (n, at = 1000) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`https://site${i}.test`, icon(i, at + i)]));
+const icon = (i: number, at: number): Favicon => ({ data: `data:image/png;base64,${'iVBORw0KGgo'.repeat(220)}${i}`, href: `https://site${i}.test/f.png`, at });
+const icons = (n: number, at = 1000): Record<string, Favicon> => Object.fromEntries(Array.from({ length: n }, (_, i) => [`https://site${i}.test`, icon(i, at + i)]));
 // storage.local over a Map, counting what each get returns.
-function fakeStorage(values) {
-  const map = new Map(Object.entries(values));
-  const gets = [];
-  const get = async (keys) => {
-    const list = keys == null ? [...map.keys()] : [].concat(keys);
+function fakeStorage(values: Stored) {
+  const map = new Map<string, any>(Object.entries(values));
+  // Each get: the keys asked (null: everything), and the size of what it gave.
+  const gets: { keys: string[] | null, bytes: number }[] = [];
+  const get = async (keys: string[] | null) => {
+    const list = keys == null ? [...map.keys()] : ([] as string[]).concat(keys);
     const out = Object.fromEntries(list.filter((k) => map.has(k)).map((k) => [k, structuredClone(map.get(k))]));
     gets.push({ keys, bytes: JSON.stringify(out).length });
     return out;
   };
-  return { map, gets, get, set: (out) => { for (const [k, v] of Object.entries(out)) map.set(k, structuredClone(v)); } };
+  return { map, gets, get, set: (out: Stored) => { for (const [k, v] of Object.entries(out)) map.set(k, structuredClone(v)); } };
 }
 const STATE = {
   tabs: { 1: { id: 1, windowId: 9, url: 'https://site1.test/', title: 'One' } },
@@ -34,13 +42,13 @@ const STATE = {
   favicons: icons(120),
   lostTabs: { windows: [{ tabs: [{ url: 'https://lost.test/' }] }] },
 };
-const stored = () => ({ ...toStorage(STATE, Object.keys(STATE), by), owner: { origin: by.origin, since: 5 } });
+const stored = (): Stored => ({ ...toStorage(STATE, Object.keys(STATE), by), owner: { origin: by.origin, since: 5 } });
 
 test('page reads: the icons get a mark, and a new one whenever one is learned or fetched again', () => {
   const out = toStorage(STATE, ['favicons', 'tabs', 'spaces'], by);
   assert.equal(out.faviconsMark, faviconsMark(STATE.favicons));
   assert.equal('faviconsMark' in toStorage(STATE, ['tabs', 'settings'], by), false, 'only with the icons');
-  const learned = { ...STATE.favicons, 'https://new.test': icon(999, 5000) };
+  const learned: Record<string, Favicon> = { ...STATE.favicons, 'https://new.test': icon(999, 5000) };
   assert.notEqual(faviconsMark(learned), faviconsMark(STATE.favicons));
   const again = { ...STATE.favicons, 'https://site3.test': icon(3, 6000) };
   assert.notEqual(faviconsMark(again), faviconsMark(STATE.favicons), 'fetched again: same count, a new time');
@@ -51,8 +59,8 @@ test('page reads: the icons get a mark, and a new one whenever one is learned or
 
 test('page reads: what pages use and the icons once, then all but the icons and what only the background reads, a small part of it', async () => {
   const storage = fakeStorage(stored());
-  let state = null;
-  const seen = new Set();
+  let state = null as Stored | null;
+  const seen = new Set<string>();
   const refresh = async () => {
     const raw = await readForPage(storage.get, () => state, seen);
     for (const key of Object.keys(raw)) seen.add(key);
@@ -60,42 +68,43 @@ test('page reads: what pages use and the icons once, then all but the icons and 
   };
   await refresh();
   assert.deepEqual(storage.gets[0].keys, firstReadKeys(), 'the first read: the page\'s keys, the icons, the link');
-  for (const key of ['favicons', 'appLink', 'openTabs', 'settings']) assert.ok(storage.gets[0].keys.includes(key), key);
+  // (A page asks by keys, never for everything: `keys!`.)
+  for (const key of ['favicons', 'appLink', 'openTabs', 'settings']) assert.ok(storage.gets[0].keys!.includes(key), key);
   const full = storage.gets[0].bytes;
   await refresh();
   const second = storage.gets[1];
   assert.equal(storage.gets.length, 2, 'one get');
-  for (const key of ['favicons', 'lostTabs2', 'tabs', 'tabSpace', 'activeSpaceByWindow']) assert.equal(second.keys.includes(key), false, key);
-  for (const key of ['openTabs', 'spaces', 'pins', 'folders', 'archive', 'settings', 'owner', 'showing', 'pageZoom', 'faviconsMark']) assert.equal(second.keys.includes(key), true, key);
+  for (const key of ['favicons', 'lostTabs2', 'tabs', 'tabSpace', 'activeSpaceByWindow']) assert.equal(second.keys!.includes(key), false, key);
+  for (const key of ['openTabs', 'spaces', 'pins', 'folders', 'archive', 'settings', 'owner', 'showing', 'pageZoom', 'faviconsMark']) assert.equal(second.keys!.includes(key), true, key);
   assert.ok(second.bytes < full / 20, `${second.bytes} bytes against ${full}`);
   const { lostTabs: _a, lostTabs2: _b, ...drawn } = fromStorage(storage.map.size ? Object.fromEntries(storage.map) : {});
-  const { lostTabs: _c, lostTabs2: _d, ...page } = state;
+  const { lostTabs: _c, lostTabs2: _d, ...page } = state!;
   assert.deepEqual(page, drawn, 'what a full read gives a page, the icons too');
 });
 
 test('page reads: a key the page saw in an event is read again, one it never saw isn\'t; the icons are read again once their mark changed', async () => {
   const storage = fakeStorage({ ...stored(), later: { a: 1 } });
-  let state = null;
-  const seen = new Set();
+  let state = null as Stored | null;
+  const seen = new Set<string>();
   const refresh = async () => {
     const raw = await readForPage(storage.get, () => state, seen);
     for (const key of Object.keys(raw)) seen.add(key);
     state = fromStorage(raw);
   };
   await refresh();
-  assert.equal(state.later, undefined, 'not a page\'s key: not read');
+  assert.equal(state!.later, undefined, 'not a page\'s key: not read');
   seen.add('fromAnEvent');
   storage.set({ fromAnEvent: 7 });
   await refresh();
-  assert.equal(state.fromAnEvent, 7);
+  assert.equal(state!.fromAnEvent, 7);
   // An icon learned while the page missed the event (suspended).
   const learned = { ...STATE, favicons: { ...STATE.favicons, 'https://new.test': icon(999, 9000) } };
   storage.set(toStorage(learned, ['favicons'], by));
   const before = storage.gets.length;
   await refresh();
   assert.equal(storage.gets.length, before + 2, 'the rest, then the icons');
-  assert.deepEqual(storage.gets.at(-1).keys, ['favicons']);
-  assert.equal(state.favicons['https://new.test'].at, 9000);
+  assert.deepEqual(storage.gets.at(-1)!.keys, ['favicons']);
+  assert.equal(state!.favicons['https://new.test'].at, 9000);
   await refresh();
   assert.equal(storage.gets.length, before + 3, 'and then not again');
 });
@@ -104,8 +113,8 @@ test('page reads: the theme\'s package (Margin.app\'s) is never read, however bi
   // Neubrutalism's package is about 330 KB stored; a user theme can be 3 MB (themes/README.md).
   const uiTheme = { id: 'big', version: '1', pkg: { id: 'big', manifest: '{}', html: '<div></div>', css: '', files: { 'fonts/a.woff2': 'A'.repeat(3_000_000) } } };
   const storage = fakeStorage({ ...stored(), uiTheme, 'dataMeta:link': { profile: 'p-x', acked: 3 } });
-  let state = null;
-  const seen = new Set();
+  let state = null as Stored | null;
+  const seen = new Set<string>();
   for (let i = 0; i < 3; i++) {
     const raw = await readForPage(storage.get, () => state, seen);
     for (const key of Object.keys(raw)) seen.add(key);
@@ -115,34 +124,34 @@ test('page reads: the theme\'s package (Margin.app\'s) is never read, however bi
   }
   const everything = JSON.stringify(Object.fromEntries(storage.map)).length;
   assert.ok(storage.gets[0].bytes < everything - 3_000_000, `${storage.gets[0].bytes} bytes against ${everything} for all of storage`);
-  assert.equal(state.spaces[0].name, 'Personal');
+  assert.equal(state!.spaces[0].name, 'Personal');
 });
 
 test('page reads: the open tabs still under their old names (just updated): read with them', async () => {
   const { openTabs, ...rest } = stored();
   const storage = fakeStorage({ ...rest, tabs: openTabs.tabs, tabSpace: openTabs.tabSpace, activeSpaceByWindow: openTabs.activeSpaceByWindow });
-  let state = null;
+  let state = null as Stored | null;
   for (let i = 0; i < 2; i++) state = fromStorage(await readForPage(storage.get, () => state));
   assert.equal(storage.gets.length, 4, 'each read, then the old names with the icons');
-  for (const i of [1, 3]) assert.ok(storage.gets[i].keys.includes('tabs') && storage.gets[i].keys.includes('favicons'), `read ${i}: the old names`);
-  assert.equal(state.tabs[1].title, 'One');
+  for (const i of [1, 3]) assert.ok(storage.gets[i].keys!.includes('tabs') && storage.gets[i].keys!.includes('favicons'), `read ${i}: the old names`);
+  assert.equal(state!.tabs[1].title, 'One');
 });
 
 test('page reads: an icon learned after storage answered, its event taken before the read is back: the page keeps the newer icons', async () => {
   const storage = fakeStorage(stored());
-  let state = null;
+  let state = null as Stored | null;
   state = fromStorage(await readForPage(storage.get, () => state));
   const learned = { ...STATE, favicons: { ...STATE.favicons, 'https://new.test': icon(999, 9000) } };
-  const get = async (keys) => {
+  const get = async (keys: string[] | null) => {
     const got = await storage.get(keys);
     const out = toStorage(learned, ['favicons'], by);
     storage.set(out);
-    state = withChanges(state, Object.fromEntries(Object.entries(out).map(([k, v]) => [k, { newValue: v }])));
+    state = withChanges(state!, Object.fromEntries(Object.entries(out).map(([k, v]) => [k, { newValue: v }])));
     return got;
   };
   state = fromStorage(await readForPage(get, () => state));
-  assert.equal(state.favicons['https://new.test']?.at, 9000, 'not the icons from before the event');
-  assert.equal(state.faviconsMark, storage.map.get('faviconsMark'), 'with their own mark');
+  assert.equal(state!.favicons['https://new.test']?.at, 9000, 'not the icons from before the event');
+  assert.equal(state!.faviconsMark, storage.map.get('faviconsMark'), 'with their own mark');
 });
 
 // Any run of writes, events taken or missed (Safari suspends hidden tabs, and
@@ -151,9 +160,9 @@ test('page reads: an icon learned after storage answered, its event taken before
 test('page reads: after any run of writes, events taken or missed, a read gives what a full read would', async () => {
   let seed = 7;
   const random = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-  const pick = (list) => list[Math.floor(random() * list.length)];
+  const pick = <T,>(list: T[]) => list[Math.floor(random() * list.length)];
   let at = 10_000;
-  const value = (key, full) => {
+  const value = (key: string, full: Stored) => {
     switch (key) {
       case 'tabs': return { [Math.floor(random() * 3)]: { id: 1, windowId: 9, url: `https://${Math.floor(random() * 5)}.test/` } };
       case 'favicons': {
@@ -165,12 +174,12 @@ test('page reads: after any run of writes, events taken or missed, a read gives 
   };
   const KEYS = ['tabs', 'spaces', 'settings', 'favicons', 'favicons', 'pins', 'archive'];
   for (let run = 0; run < 150; run++) {
-    const full = { tabs: {}, tabSpace: {}, activeSpaceByWindow: {}, spaces: [{ id: 'a' }], favicons: {}, settings: {} };
+    const full: Stored = { tabs: {}, tabSpace: {}, activeSpaceByWindow: {}, spaces: [{ id: 'a' }], favicons: {}, settings: {} };
     const storage = fakeStorage(toStorage(full, Object.keys(full), by));
-    let state = null;
-    const seen = new Set();
-    let pending = null; // an event on its way during a read
-    const take = (changes) => {
+    let state = null as Stored | null;
+    const seen = new Set<string>();
+    let pending = null as Record<string, BrowserStorageChange> | null; // an event on its way during a read
+    const take = (changes: Record<string, BrowserStorageChange>) => {
       for (const key of Object.keys(changes)) seen.add(key);
       if (state) state = withChanges(state, changes);
     };
@@ -190,7 +199,7 @@ test('page reads: after any run of writes, events taken or missed, a read gives 
       // else missed
       if (random() < 0.5) {
         let during = false;
-        const get = async (keys) => {
+        const get = async (keys: string[] | null) => {
           const got = await storage.get(keys);
           if (pending) {
             take(pending);
@@ -210,7 +219,7 @@ test('page reads: after any run of writes, events taken or missed, a read gives 
         // An event taken during a read: core.ts reads again (staleRead), and
         // that read has to be right; otherwise this one.
         if (during) state = fromStorage(await readForPage(storage.get, () => state, seen));
-        const { lostTabs: _a, ...page } = state;
+        const { lostTabs: _a, ...page } = state!;
         const { lostTabs: _b, ...drawn } = fromStorage(Object.fromEntries(storage.map));
         assert.deepEqual(page, drawn, `run ${run}, step ${step}`);
       }
@@ -219,14 +228,15 @@ test('page reads: after any run of writes, events taken or missed, a read gives 
 });
 
 test('page reads: icons a build before the mark kept are written again with it once, by the copy that owns the state', async () => {
-  const local = new Map(Object.entries({ spaces: [{ id: 'personal', name: 'Personal' }], favicons: icons(3) }));
-  const area = (map) => ({
-    get: async (keys) => Object.fromEntries((keys == null ? [...map.keys()] : [].concat(keys)).filter((k) => map.has(k)).map((k) => [k, structuredClone(map.get(k))])),
+  const local = new Map<string, any>(Object.entries({ spaces: [{ id: 'personal', name: 'Personal' }], favicons: icons(3) }));
+  const area = (map: Map<string, any>): FakeStorageArea => ({
+    get: async (keys) => Object.fromEntries((keys == null ? [...map.keys()] : ([] as string[]).concat(keys)).filter((k) => map.has(k)).map((k) => [k, structuredClone(map.get(k))])),
     set: async (values) => { for (const [k, v] of Object.entries(values)) map.set(k, structuredClone(v)); },
-    remove: async (keys) => { for (const k of [].concat(keys)) map.delete(k); },
+    remove: async (keys) => { for (const k of ([] as string[]).concat(keys)) map.delete(k); },
   });
-  globalThis.chrome = ({ runtime: { getURL: (path) => `safari-web-extension://MARK/${path}` }, storage: { local: area(local), session: area(new Map()), onChanged: { addListener() {} } } } as any);
-  const store = await import('../extension/background/store.ts?marks');
+  globalThis.chrome = fakeBrowser({ runtime: { getURL: (path) => `safari-web-extension://MARK/${path}` }, storage: { local: area(local), session: area(new Map()), onChanged: { addListener() {} } } });
+  // Its own instance (the query): typed as the module, its address not one tsc resolves.
+  const store: Store = await import('../extension/background/store.ts?marks' as string);
   await store.load();
   for (let i = 0; i < 20 && !local.has('faviconsMark'); i++) await new Promise((resolve) => setTimeout(resolve, 5));
   assert.equal(local.get('faviconsMark'), faviconsMark(icons(3)));
@@ -239,14 +249,14 @@ test('page reads: icons a build before the mark kept are written again with it o
 // once. The stored mark is never one of icons not stored; a page that missed
 // the events still gets the new icon once the write is through.
 test('page reads: a new mark is stored only once its icons are, whatever order Safari writes a set() in', async () => {
-  const local = new Map(Object.entries({ spaces: [{ id: 'personal', name: 'Personal' }], favicons: icons(3), faviconsMark: faviconsMark(icons(3)) }));
+  const local = new Map<string, any>(Object.entries({ spaces: [{ id: 'personal', name: 'Personal' }], favicons: icons(3), faviconsMark: faviconsMark(icons(3)) }));
   const marks = new Set([faviconsMark(icons(3))]); // of every icons stored so far
-  const calls = [];
-  const ahead = []; // a stored mark of icons not stored
+  const calls: string[][] = [];
+  const ahead: unknown[] = []; // a stored mark of icons not stored
   let failIcons = false;
-  const get = async (keys) => Object.fromEntries((keys == null ? [...local.keys()] : [].concat(keys)).filter((k) => local.has(k)).map((k) => [k, structuredClone(local.get(k))]));
-  const area = (map, watched) => ({
-    get: async (keys) => Object.fromEntries((keys == null ? [...map.keys()] : [].concat(keys)).filter((k) => map.has(k)).map((k) => [k, structuredClone(map.get(k))])),
+  const get = async (keys: string[] | null) => Object.fromEntries((keys == null ? [...local.keys()] : ([] as string[]).concat(keys)).filter((k) => local.has(k)).map((k) => [k, structuredClone(local.get(k))]));
+  const area = (map: Map<string, any>, watched: boolean): FakeStorageArea => ({
+    get: async (keys) => Object.fromEntries((keys == null ? [...map.keys()] : ([] as string[]).concat(keys)).filter((k) => map.has(k)).map((k) => [k, structuredClone(map.get(k))])),
     set: async (values) => {
       if (watched) calls.push(Object.keys(values));
       try {
@@ -262,10 +272,10 @@ test('page reads: a new mark is stored only once its icons are, whatever order S
         if (watched && map.has('faviconsMark') && !marks.has(map.get('faviconsMark'))) ahead.push(map.get('faviconsMark'));
       }
     },
-    remove: async (keys) => { for (const k of [].concat(keys)) map.delete(k); },
+    remove: async (keys) => { for (const k of ([] as string[]).concat(keys)) map.delete(k); },
   });
-  globalThis.chrome = ({ runtime: { getURL: (path) => `safari-web-extension://ORDER/${path}` }, storage: { local: area(local, true), session: area(new Map(), false), onChanged: { addListener() {} } } } as any);
-  const store = await import('../extension/background/store.ts?order');
+  globalThis.chrome = fakeBrowser({ runtime: { getURL: (path) => `safari-web-extension://ORDER/${path}` }, storage: { local: area(local, true), session: area(new Map(), false), onChanged: { addListener() {} } } });
+  const store: Store = await import('../extension/background/store.ts?order' as string); // its own instance, as above
   await store.load();
   // A page that has read everything once, then misses every event.
   let page = fromStorage(await readForPage(get, () => null));

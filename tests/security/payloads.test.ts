@@ -5,13 +5,13 @@
 // in tests/theme/security.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeTemplate, sanitizeCss, RESERVED_IDS } from '../../extension/ui/sanitize.ts';
+import { sanitizeTemplate, sanitizeCss, RESERVED_IDS, type CleanElement, type Removed } from '../../extension/ui/sanitize.ts';
 import { checkManifest } from '../../extension/ui/theme-schema.ts';
 import { checkPackage, contentMatches, svgStarts } from '../../extension/ui/theme-loader.ts';
 import { TEMPLATE_PAYLOADS_2, CSS_PAYLOADS_2, CSS_KEPT_2, MANIFEST_PAYLOADS, MANIFEST_REMOVED, FILE_PAYLOADS, wrap } from '../theme/payloads.ts';
 import { auditTree } from '../theme/audit.ts';
 
-const said = (r) => [...r.errors, ...r.removed.map((x) => `${x.kind} ${x.name}: ${x.reason}`)].join('\n');
+const said = (r: { errors: string[], removed: Removed[] }) => [...r.errors, ...r.removed.map((x) => `${x.kind} ${x.name}: ${x.reason}`)].join('\n');
 const PKG = { manifest: '{"format":2,"id":"mine","name":"Mine","version":"1.0.0"}', html: wrap(''), css: '' };
 
 for (const [name, fragment, expect] of TEMPLATE_PAYLOADS_2) {
@@ -24,7 +24,8 @@ for (const [name, fragment, expect] of TEMPLATE_PAYLOADS_2) {
 
 test('the guarded part keeps nothing that can show the symbol\'s words', () => {
   const r = sanitizeTemplate(wrap(TEMPLATE_PAYLOADS_2[0][1]), { files: [] });
-  assert.doesNotMatch(JSON.stringify(r.tree.children[0].children.find((c) => c.name === 'template')), /"use"/);
+  // The payload's root: an element (wrap's <div>).
+  assert.doesNotMatch(JSON.stringify((r.tree!.children[0] as CleanElement).children.find((c) => (c as CleanElement).name === 'template')), /"use"/);
 });
 
 test('reserved ids: each refused in html and svg, any case; other ids kept', () => {
@@ -82,7 +83,7 @@ for (const [name, files, expect] of FILE_PAYLOADS) {
 }
 
 test('first bytes: real signatures pass', () => {
-  const b = (...xs) => new Uint8Array(xs.flatMap((x) => (typeof x === 'string' ? [...x].map((c) => c.charCodeAt(0)) : x)));
+  const b = (...xs: (string | number[])[]) => new Uint8Array(xs.flatMap((x) => (typeof x === 'string' ? [...x].map((c) => c.charCodeAt(0)) : x)));
   assert.ok(contentMatches('a.woff2', b('wOF2', [0, 1, 0, 0])));
   assert.ok(contentMatches('a.png', b([0x89], 'PNG\r\n\x1a\n', [0])));
   assert.ok(contentMatches('a.jpeg', b([0xff, 0xd8, 0xff, 0xe0])));

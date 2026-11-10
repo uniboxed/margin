@@ -6,8 +6,15 @@ import assert from 'node:assert/strict';
 import { watchEdits } from '../extension/content/edits.ts';
 
 // A field: 'text' (a textarea or a text input), 'select', 'checkbox' or 'editor'.
-function field(kind, props = {}) {
-  const el = {
+type Kind = 'text' | 'select' | 'checkbox' | 'editor';
+// What content/edits.ts reads of a field.
+interface FakeField {
+  kind: Kind, value: string, defaultValue: string, textContent: string, checked: boolean, defaultChecked: boolean, options: unknown[],
+  isConnected: boolean, isContentEditable: boolean, hasAttribute(name: string): boolean, matches(selector: string): boolean,
+  closest(selector: string): FakeField | null,
+}
+function field(kind: Kind, props: { value?: string, defaultValue?: string, textContent?: string } = {}) {
+  const el: FakeField = {
     kind,
     value: '',
     defaultValue: '',
@@ -17,25 +24,25 @@ function field(kind, props = {}) {
     options: [],
     isConnected: true,
     isContentEditable: kind === 'editor',
-    hasAttribute: (name) => kind === 'editor' && name === 'contenteditable',
-    matches(selector) {
+    hasAttribute: (name: string) => kind === 'editor' && name === 'contenteditable',
+    matches(selector: string) {
       if (selector === 'select') return kind === 'select';
       if (selector.startsWith('input[type=checkbox]')) return kind === 'checkbox';
       if (selector.startsWith('textarea, select, input')) return kind !== 'editor'; // FIELDS
       return false;
     },
-    closest: (selector) => (kind === 'editor' && selector.startsWith('[contenteditable]') ? el : null),
+    closest: (selector: string) => (kind === 'editor' && selector.startsWith('[contenteditable]') ? el : null),
     ...props,
   };
   return el;
 }
 // A page: its fields, `readyState` as the watch starts.
-function page({ readyState = 'loading', fields = [] } = {}) {
-  const listeners = {};
-  const win = { addEventListener: (type, fn) => (listeners[type] ??= []).push(fn) };
+function page({ readyState = 'loading', fields = [] }: { readyState?: string, fields?: FakeField[] } = {}) {
+  const listeners: Record<string, ((event: object) => void)[]> = {};
+  const win = { addEventListener: (type: string, fn: (event: object) => void) => (listeners[type] ??= []).push(fn) };
   const doc = {
     readyState,
-    querySelectorAll(selector) {
+    querySelectorAll(selector: string) {
       if (selector.startsWith('iframe')) return [];
       if (selector.startsWith('textarea, input')) return fields.filter((f) => f.kind === 'text');
       if (selector.startsWith('[contenteditable]')) return fields.filter((f) => f.kind === 'editor');
@@ -44,12 +51,13 @@ function page({ readyState = 'loading', fields = [] } = {}) {
       return [];
     },
   };
-  const fire = (type, target, trusted = true) => (listeners[type] ?? []).forEach((fn) => fn({ type, isTrusted: trusted, target, composedPath: () => [target] }));
-  return { win, doc, fire };
+  const fire = (type: string, target: FakeField, trusted = true) => (listeners[type] ?? []).forEach((fn) => fn({ type, isTrusted: trusted, target, composedPath: () => [target] }));
+  // As the watch takes them: a fake can't be a whole Window or Document (it has what edits.ts reads).
+  return { win: win as unknown as Window, doc: doc as unknown as Document, fire };
 }
 // The user types `text` into a field, as a browser reports it: focus, then
 // beforeinput (the field as it was), the value, input.
-function type(p, el, text, { focus = true } = {}) {
+function type(p: ReturnType<typeof page>, el: FakeField, text: string, { focus = true } = {}) {
   if (focus) p.fire('focusin', el);
   p.fire('beforeinput', el);
   el.value = text;
@@ -132,7 +140,7 @@ test('a watch started after the page loaded (Margin installed or updated into an
   assert.equal(watchEdits(results.win, results.doc)(), false, 'the page\'s own text');
   // A React app's draft typed before Margin came (its value attribute kept in
   // step): kept awake while the cursor is in it.
-  results.doc.activeElement = query;
+  (results.doc as { activeElement?: unknown }).activeElement = query; // a plain field on the fake (Document's is read-only)
   assert.equal(watchEdits(results.win, results.doc)(), true, 'the field with the focus');
   const editor = field('editor', { textContent: 'a draft in an editor' });
   const lateEditor = page({ readyState: 'interactive', fields: [editor] });

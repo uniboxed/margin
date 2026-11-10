@@ -13,7 +13,7 @@
 export const TAU_MS = 40;
 const SETTLED = 0.002;
 
-export function createGestureMotion({ apply, raf = (fn) => requestAnimationFrame(fn), caf = (id) => cancelAnimationFrame(id), now = () => performance.now(), tau = TAU_MS }: { apply: (value: number) => void, raf?: (fn: (t: number) => void) => any, caf?: (id: any) => void, now?: () => number, tau?: number }) {
+export function createGestureMotion({ apply, raf = (fn) => requestAnimationFrame(fn), caf = (id) => cancelAnimationFrame(id), now = () => performance.now(), tau = TAU_MS }: { apply: (value: number) => void, raf?: (fn: () => void) => any, caf?: (id: any) => void, now?: () => number, tau?: number }) {
   let current = 0;
   let target = 0;
   let frame: unknown = null; // (raf's)

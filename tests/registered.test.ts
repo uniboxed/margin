@@ -6,9 +6,9 @@ import { chooseLayout, layoutFromSettings, layoutOf, pagePlan } from '../extensi
 import { firstPaintFile, layoutFiles, layoutOfFiles, layoutOwnCss, readFirstPaint, spelled } from '../extension/shared/page-box.ts';
 
 const keepOpen = { sidebarPinnedOpen: true };
-const L = (left, top = 8, right = 8, bottom = 8, radius = 6.25) => ({ left, top, right, bottom, radius });
+const L = (left: number, top = 8, right = 8, bottom = 8, radius = 6.25) => ({ left, top, right, bottom, radius });
 // Margin.app's layout for a window, as the link keeps it (shared/app-link.ts).
-const app = (left, top = 8, right = 8, bottom = 8, radius = 6.25) => ({ insets: { left, top, right, bottom }, radius, mode: 'fullscreen' });
+const app = (left: number, top = 8, right = 8, bottom = 8, radius = 6.25) => ({ insets: { left, top, right, bottom }, radius, mode: 'fullscreen' });
 
 test('a layout spelled in digit files: every place of every side, zeros too, read back the same', () => {
   const files = layoutFiles(L(260));
@@ -22,7 +22,8 @@ test('a layout spelled in digit files: every place of every side, zeros too, rea
 });
 
 test('the page\'s world reads the first paint\'s variables: nothing yet, off, or the theme and its layout (sums worked out, a window\'s own plain values)', () => {
-  const style = (vars) => ({ getPropertyValue: (name) => vars[name] ?? '' });
+  // A computed style: only its variables, what readFirstPaint reads of one.
+  const style = (vars: Record<string, string>) => ({ getPropertyValue: (name: string) => vars[name] ?? '' }) as CSSStyleDeclaration;
   assert.equal(readFirstPaint(style({})), null, 'no registration\'s CSS yet');
   assert.deepEqual(readFirstPaint(style({ '--margin-box-fp': ' off' })), { theme: null, layout: null });
   assert.deepEqual(readFirstPaint(style({ '--margin-box-fp': 'evil theme' })), { theme: null, layout: null }, 'not a theme id');
@@ -45,24 +46,24 @@ test('the layout to register: the one most windows have; a tie keeps the one reg
 });
 
 test('what\'s registered: linked, the page\'s script with the layout\'s files and the theme\'s first paint; not linked, nothing, or the same at a layout of zeros (no box) once a first paint was registered in this run of Safari', () => {
-  const on = pagePlan(keepOpen, { linked: true, showing: true, layout: L(260) });
+  const on = pagePlan(keepOpen, { linked: true, showing: true, layout: L(260) })!; // linked, a box: a plan (the asserts below say what)
   assert.equal(on.js.at(-1), 'content/page.bundle.js', 'the page\'s script (after Chrome\'s full-screen-only check where Margin works only in full screen)');
   assert.deepEqual(on.css, [...layoutFiles(L(260)), firstPaintFile('arcadia')]);
-  assert.equal(pagePlan({ theme: 'neubrutalism' }, { linked: true, showing: true, layout: L(272, 16, 16, 16, 18) }).css.at(-1), 'content/layout/theme-neubrutalism.css');
-  assert.equal(pagePlan({ theme: 'someone-elses' }, { linked: true, showing: true, layout: L(260) }).css.at(-1), firstPaintFile('arcadia'), 'a theme with no first paint of its own: Arcadia\'s');
+  assert.equal(pagePlan({ theme: 'neubrutalism' }, { linked: true, showing: true, layout: L(272, 16, 16, 16, 18) })!.css.at(-1), 'content/layout/theme-neubrutalism.css');
+  assert.equal(pagePlan({ theme: 'someone-elses' }, { linked: true, showing: true, layout: L(260) })!.css.at(-1), firstPaintFile('arcadia'), 'a theme with no first paint of its own: Arcadia\'s');
   assert.equal(pagePlan(keepOpen, { linked: false, layout: L(260) }), null, 'not linked: nothing');
   assert.equal(pagePlan(keepOpen, { linked: true, showing: true, layout: null }), null, 'no box anywhere: nothing');
   const zeros = [...layoutFiles(L(0, 0, 0, 0, 0)), firstPaintFile('arcadia')];
-  assert.deepEqual(pagePlan(keepOpen, { linked: false, layout: L(260), wasOn: true }).css, zeros, 'off after a first paint: no box (updated, never taken away: WebKit would keep drawing the one in between)');
-  assert.equal(pagePlan(keepOpen, { linked: false, layout: L(260), wasOn: true }).on, false);
-  assert.deepEqual(pagePlan(keepOpen, { linked: true, showing: true, layout: null, wasOn: true }).css, zeros, 'no box anywhere');
-  assert.deepEqual(pagePlan(keepOpen, { linked: true, showing: false, layout: L(260), wasOn: true }).css, zeros, 'Chrome with no window in full screen');
+  assert.deepEqual(pagePlan(keepOpen, { linked: false, layout: L(260), wasOn: true })!.css, zeros, 'off after a first paint: no box (updated, never taken away: WebKit would keep drawing the one in between)');
+  assert.equal(pagePlan(keepOpen, { linked: false, layout: L(260), wasOn: true })!.on, false);
+  assert.deepEqual(pagePlan(keepOpen, { linked: true, showing: true, layout: null, wasOn: true })!.css, zeros, 'no box anywhere');
+  assert.deepEqual(pagePlan(keepOpen, { linked: true, showing: false, layout: L(260), wasOn: true })!.css, zeros, 'Chrome with no window in full screen');
   assert.equal(on.on, true);
 });
 
 test('the layout to register counts only the windows Margin.app draws, of this epoch; the settings\' only before it said anything of a window; it draws none: none', () => {
-  const at = (left, epoch = 'e1') => ({ ...app(left), epoch });
-  const link = (drawn, epoch = 'e1') => ({ epoch, drawn });
+  const at = (left: number, epoch = 'e1') => ({ ...app(left), epoch });
+  const link = (drawn: Record<string, boolean>, epoch = 'e1') => ({ epoch, drawn });
   assert.deepEqual(chooseLayout({}, { 1: at(300), 2: at(300), 3: at(260) }, null, link({ 1: false, 2: false, 3: true })), L(260), 'two undrawn windows outweigh nothing');
   assert.deepEqual(chooseLayout({}, { 1: at(300, 'e0'), 2: at(300, 'e0'), 3: at(260) }, null, link({})), L(260), 'an older epoch\'s layouts count for nothing');
   assert.deepEqual(chooseLayout(keepOpen, {}, null, link({})), L(260), 'nothing said yet this epoch: the settings\'');

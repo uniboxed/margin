@@ -88,7 +88,7 @@ export async function startFakeApp({ token = randomUUID(), key = randomUUID(), w
     send(message: Said) { for (const s of sockets) s.write(frame(JSON.stringify(message))); },
     /** The first message of kind `k` (and `test`), after `from` received, waited for up to `ms` (5 s: a busy CI
      * runner can take more than 2; it's back at once when the message comes). */
-    async next(k: string, { from = 0, test = (_m: Said) => true, ms = 5000 } = {}) {
+    async next(k: string, { from = 0, test = (_m: Said): boolean => true, ms = 5000 } = {}) {
       const find = () => received.slice(from).find((m) => m.k === k && test(m));
       const end = Date.now() + ms;
       while (!find() && Date.now() < end) await new Promise<void>((resolve) => { waiters.add(resolve); setTimeout(() => { waiters.delete(resolve); resolve(undefined); }, 20); });

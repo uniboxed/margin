@@ -5,17 +5,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { fakeBrowser } from './fake-browser.ts';
 
-const store = {};
-const sets = [];
-globalThis.browser = {
+const store: Record<string, any> = {}; // stored JSON
+const sets: string[][] = [];
+globalThis.browser = fakeBrowser({
   runtime: { getURL: (p) => `file://${new URL(`../extension/${p}`, import.meta.url).pathname}`, getManifest: () => ({ version: '9.9' }) },
   storage: { local: {
-    get: async (keys) => Object.fromEntries([].concat(keys).filter((k) => k in store).map((k) => [k, store[k]])),
+    // Asked by a key or keys here (never everything).
+    get: async (keys) => Object.fromEntries(([] as string[]).concat(keys as string | string[]).filter((k) => k in store).map((k) => [k, store[k]])),
     set: async (items) => { sets.push(Object.keys(items)); Object.assign(store, items); },
   } },
-};
-const fileFetch = async (url) => {
+});
+const fileFetch = async (url: string) => {
   try {
     const bytes = await readFile(new URL(url));
     return { ok: true, status: 200, text: async () => bytes.toString('utf8'), arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) };
@@ -23,7 +25,7 @@ const fileFetch = async (url) => {
     return { ok: false, status: 404 };
   }
 };
-globalThis.fetch = (fileFetch as any);
+globalThis.fetch = (fileFetch as unknown as typeof fetch); // a file's text or bytes: what theme-package.ts reads of a Response
 const { readThemePackage, storeActiveTheme, activeThemeId, STORED_THEME } = await import('../extension/background/theme-package.ts');
 const { pageKeys } = await import('../extension/shared/stored.ts');
 

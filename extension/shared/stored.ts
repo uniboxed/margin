@@ -148,7 +148,7 @@ export async function readForPage(get: (keys: string[] | null) => Promise<Record
  * as fromStorage would read it. The old names of the open tabs (another
  * copy's writes) change nothing.
  * */
-export function withChanges(state: Record<string, any>, changes: Record<string, { newValue?: any }>): any {
+export function withChanges(state: Record<string, any>, changes: Record<string, BrowserStorageChange>): any {
   const next = { ...state };
   for (const [key, { newValue }] of Object.entries(changes)) {
     if (key === OPEN_TABS) {
@@ -187,4 +187,4 @@ export const sameStored = (a: any, b: any) => a === b || JSON.stringify(a) === J
  * (no newValue: storage was cleared), or while the open tabs are still under
  * their old names (only a full read knows them then).
  * */
-export const takesChanges = (changes: Record<string, { newValue?: any }>, { reading, openTabsBy }: { reading: number, openTabsBy: any }) => reading === 0 && openTabsBy != null && Object.values(changes).every((change) => change && 'newValue' in change);
+export const takesChanges = (changes: Record<string, BrowserStorageChange>, { reading, openTabsBy }: { reading: number, openTabsBy: any }) => reading === 0 && openTabsBy != null && Object.values(changes).every((change) => change && 'newValue' in change);

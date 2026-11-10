@@ -15,7 +15,7 @@ import { auditTree } from './theme/audit.ts';
 import { readTheme } from './theme/package.ts';
 import { MockState, pngIcon } from './theme/view-model.ts';
 
-const leaks = (text) => /evil\.test|javascript:|vbscript:|expression\(/i.test(text);
+const leaks = (text: string) => /evil\.test|javascript:|vbscript:|expression\(/i.test(text);
 
 // --- Built-in themes pass the same rules as anyone's -------------------------
 
@@ -66,7 +66,7 @@ test('the sanitizer reports each removal with what, why and where', () => {
     ['attribute', '<img> src', 2],
     ['attribute', '<img> onerror', 2],
   ]);
-  assert.match(r.removed.find((x) => x.name === '<img> onerror').reason, /event handlers/);
+  assert.match(r.removed.find((x) => x.name === '<img> onerror')!.reason, /event handlers/); // listed just above
 });
 
 test('entity-encoded and obfuscated javascript: links are removed, # links kept', () => {
@@ -82,7 +82,7 @@ test('entity-encoded and obfuscated javascript: links are removed, # links kept'
 
 test('bundled images only: present in the package, no traversal, rewritten through assetUrl', () => {
   const files = ['images/a.png', 'fonts/x.woff2'];
-  const assetUrl = (p) => `margin-theme://t/${p}`;
+  const assetUrl = (p: string) => `margin-theme://t/${p}`;
   const keep = sanitizeTemplate(wrap('<img src="images/a.png" alt="">'), { files, assetUrl });
   assert.ok(JSON.stringify(keep.tree).includes('margin-theme://t/images/a.png'));
   for (const src of ['images/b.png', '../images/a.png', 'images/../images/a.png', '/images/a.png', 'fonts/x.woff2', 'images/a.png?x', './images/a.png']) {
@@ -187,7 +187,7 @@ for (const [name, css] of CSS_PAYLOADS) {
 
 test('css: kept rules come out equivalent, with bundled and data: URLs, and comments become separators', () => {
   const files = ['images/dot.png', 'fonts/a.woff2'];
-  const assetUrl = (p) => `margin-theme://t/${p}`;
+  const assetUrl = (p: string) => `margin-theme://t/${p}`;
   const r = sanitizeCss(`
     .a { color: red !important; background: url(images/dot.png) no-repeat }
     .b/**/.c { font-family: "\\2192" }
@@ -210,7 +210,7 @@ test('css: kept rules come out equivalent, with bundled and data: URLs, and comm
 });
 
 test('css tokenizer: escapes are decoded where CSS decodes them, so u\\72l( is a url token', () => {
-  const kinds = (s) => tokenizeCss(s).filter((t) => t.t !== 'ws').map((t) => `${t.t}:${t.v ?? ''}`);
+  const kinds = (s: string) => tokenizeCss(s).filter((t) => t.t !== 'ws').map((t) => `${t.t}:${t.v ?? ''}`);
   assert.deepEqual(kinds('u\\72l(x)'), ['url:x']);
   assert.deepEqual(kinds('\\75 rl(x)'), ['url:x']);
   assert.deepEqual(kinds('url( "x" )'), ['func:url', 'str:x', '):']);
@@ -250,7 +250,7 @@ test('icon values: base64 data: images only', () => {
 test('theme.json: fields checked, unknown ones removed, fonts must be bundled woff2', () => {
   const r = checkManifest(JSON.stringify({ format: 2, id: 'x', name: 'X', version: '1.0.0', script: 'alert(1)', fonts: [{ family: 'A', file: 'fonts/a.woff2' }, { family: 'B', file: 'https://evil.test/b.woff2' }, { family: 'C"; src:url(x)', file: 'fonts/a.woff2' }] }), { files: ['fonts/a.woff2'] });
   assert.deepEqual(r.errors, []);
-  assert.deepEqual(r.manifest.fonts.map((f) => f.family), ['A']);
+  assert.deepEqual(r.manifest.fonts.map((f: { family: string }) => f.family), ['A']);
   assert.deepEqual(r.removed.map((x) => x.name).sort(), ['fonts[1]', 'fonts[2]', 'script']);
   assert.match(checkManifest('{"id":"X Y"}').errors.join(), /bad id/);
   assert.match(checkManifest('nope').errors.join(), /theme\.json/);
@@ -276,7 +276,8 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
 const mock = new MockState();
 const ctx = contextFromState(mock.state);
 
-for (const [name, action, arg] of ACTION_PAYLOADS) {
+// Its rows: a name, the action, its argument.
+for (const [name, action, arg] of ACTION_PAYLOADS as [string, string, unknown][]) {
   test(`action abuse: ${name}`, () => {
     const verdict = checkAction(action, arg, ctx);
     assert.equal(verdict.ok, false);
@@ -292,8 +293,8 @@ test('good actions pass the checks; refused ones are logged and never run', () =
   assert.equal(checkAction('tab.new', 'studio', ctx).ok, true);
   assert.equal(checkAction('tab.moveToSpace', { tab, space: 'work' }, ctx).ok, true);
   assert.equal(checkAction('archive.restore', 'a1', ctx).ok, true);
-  const ran = [];
-  const log = [];
+  const ran: [string, unknown][] = [];
+  const log: { name: string, arg: unknown, reason: string }[] = [];
   const dispatch = createDispatcher({ context: () => ctx, run: (n, a) => ran.push([n, a]), log: (e) => log.push(e) });
   assert.equal(dispatch('tab.close', tab), true);
   assert.equal(dispatch('tab.close', 999999), false);

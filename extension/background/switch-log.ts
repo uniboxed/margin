@@ -25,7 +25,7 @@
 const DONE_MS = 3000;
 let sink: ((line: string) => void) | null = null;
 /** Where the lines go (background.ts: the link's note). */
-export function switchLogTo(fn: (line: string) => void) {
+export function switchLogTo(fn: ((line: string) => void) | null) {
   sink = fn;
 }
 /** One line in Margin.app's log, and the background's console. */

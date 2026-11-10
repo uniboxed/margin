@@ -9,28 +9,32 @@ import { join } from 'node:path';
 
 let clock = 1000;
 Object.defineProperty(globalThis, 'performance', { value: { now: () => clock }, configurable: true, writable: true });
-globalThis.CSSKeyframesRule = (class { constructor(name, frames) { this.name = name; this.cssRules = frames.map((style) => ({ style })); } } as any);
-globalThis.CSSImportRule = (class { constructor(sheet) { this._sheet = sheet; } get styleSheet() { return this._sheet; } } as any);
+// Stand-ins for the rule classes keyframesIn tells apart (`instanceof`): what it reads of them. A frame's style is its
+// properties' names.
+globalThis.CSSKeyframesRule = (class { declare name: string; declare cssRules: { style: string[] }[]; constructor(name: string, frames: string[][]) { this.name = name; this.cssRules = frames.map((style) => ({ style })); } } as unknown as typeof CSSKeyframesRule);
+globalThis.CSSImportRule = (class { declare _sheet: unknown; constructor(sheet: unknown) { this._sheet = sheet; } get styleSheet() { return this._sheet; } } as unknown as typeof CSSImportRule);
 // Frames by hand: `frame()` runs what's waiting for the next one.
-let frames = new Map();
+let frames = new Map<number, () => void>();
 let frameId = 0;
-globalThis.requestAnimationFrame = (((fn) => { frames.set(++frameId, fn); return frameId; }) as any);
-globalThis.cancelAnimationFrame = (((id) => { frames.delete(id); }) as any);
+globalThis.requestAnimationFrame = (((fn: () => void) => { frames.set(++frameId, fn); return frameId; }) as typeof requestAnimationFrame);
+globalThis.cancelAnimationFrame = (((id: number) => { frames.delete(id); }) as typeof cancelAnimationFrame);
 const frame = () => { const due = frames; frames = new Map(); for (const fn of due.values()) fn(); };
 const { KEYFRAMES_KEEP_MS, MOVE_CAP_MS, SETTLE_MS, SETTLE_TRIES, keyframesIn, startMoves } = await import('../extension/content/page/moves.ts');
 
 const READ = /^(margin|padding|width|font|--)/i;
 const CHAIN = /^(margin|font|--)/i;
-const node = (name) => ({ name, isConnected: true });
+const node = (name: string) => ({ name, isConnected: true });
 const html = node('html');
 const body = node('body');
 const first = node('h1');
 const other = node('div');
 
-function setUp({ keyframes = () => null, styles = new Map(), looked = new Map(), near } = {}) {
-  const handlers = {};
-  const on = { addEventListener: (type, fn, capture) => { assert.equal(capture, true, 'before the page\'s own listeners'); handlers[type] = fn; } };
-  const calls = { ended: 0, settled: 0, echoed: [] };
+// The window's listeners: each event type's, given a plain object as its event.
+type Handlers = Record<string, (event: object) => void>;
+function setUp({ keyframes = () => null, styles = new Map(), looked = new Map(), near }: { keyframes?: (name: string) => string[] | null, styles?: Map<unknown, object>, looked?: Map<unknown, RegExp>, near?: (node: unknown) => boolean } = {}) {
+  const handlers: Handlers = {};
+  const on = { addEventListener: (type: string, fn: (event: object) => void, capture: unknown) => { assert.equal(capture, true, 'before the page\'s own listeners'); handlers[type] = fn; } };
+  const calls = { ended: 0, settled: 0, echoed: [] as string[] };
   const moves = startMoves({
     names: (n) => (n === html || n === body ? READ : n === first ? CHAIN : looked.get(n) ?? null),
     near,
@@ -39,17 +43,17 @@ function setUp({ keyframes = () => null, styles = new Map(), looked = new Map(),
     styleOf: (n) => styles.get(n) ?? { animationName: 'none', animationIterationCount: '1', animationPlayState: 'running' },
     keyframes,
     echoed: (event) => calls.echoed.push(`${event.type} ${event.pseudoElement}${event.propertyName}`),
-  }, (on as any));
-  const fire = (type, target, more = {}) => handlers[type]({ type, target, isTrusted: true, pseudoElement: '', ...more });
-  const transition = (type, target, propertyName, more) => fire(type, target, { propertyName, ...more });
-  const animation = (type, target, animationName, more) => fire(type, target, { animationName, ...more });
+  }, on as unknown as EventTarget); // a fake: its addEventListener
+  const fire = (type: string, target: object, more: Record<string, unknown> = {}) => handlers[type]({ type, target, isTrusted: true, pseudoElement: '', ...more });
+  const transition = (type: string, target: object, propertyName: string, more?: Record<string, unknown>) => fire(type, target, { propertyName, ...more });
+  const animation = (type: string, target: object, animationName: string, more?: Record<string, unknown>) => fire(type, target, { animationName, ...more });
   return { moves, calls, transition, animation, handlers };
 }
 
 test('moves: no code of Margin\'s asks for animations, the document\'s or an element\'s', () => {
   const root = new URL('../extension/', import.meta.url).pathname;
-  const files = [];
-  const walk = (dir) => {
+  const files: string[] = [];
+  const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {
       const path = join(dir, name);
       if (statSync(path).isDirectory()) walk(path);
@@ -59,7 +63,7 @@ test('moves: no code of Margin\'s asks for animations, the document\'s or an ele
   walk(root);
   assert.ok(files.length > 20);
   // Code, not the comments that say why.
-  const code = (path) => readFileSync(path, 'utf8').split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line)).join('\n');
+  const code = (path: string) => readFileSync(path, 'utf8').split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line)).join('\n');
   const asking = files.filter((path) => /getAnimations/.test(code(path)));
   assert.deepEqual(asking, [], 'WebKit sorts every animation of the document for either (Document::matchingAnimations)');
 });
@@ -86,9 +90,9 @@ test('moves: one heard after a read is read again as it ends; one let go before 
   transition('transitioncancel', html, 'font-size');
   assert.equal(calls.ended, 1, 'the read may have caught it on its way');
   const gone = node('body');
-  const handlers = {};
+  const handlers: Handlers = {};
   let ended = 0;
-  const kept = startMoves({ names: (n) => (n === gone ? READ : null), ended: () => ended++, styleOf: () => ({}), keyframes: () => null }, ({ addEventListener: (type, fn) => { handlers[type] = fn; } } as any));
+  const kept = startMoves({ names: (n) => (n === gone ? READ : null), ended: () => ended++, styleOf: () => ({}), keyframes: () => null }, { addEventListener: (type: string, fn: (event: object) => void) => { handlers[type] = fn; } } as unknown as EventTarget);
   handlers.transitionrun({ type: 'transitionrun', target: gone, propertyName: 'width', isTrusted: true, pseudoElement: '' });
   gone.isConnected = false;
   assert.equal(kept.moving(), false);
@@ -115,7 +119,7 @@ test('moves: what a read doesn\'t look at never holds it back', () => {
 });
 
 test('moves: an animation counts if it ends, runs and moves a length, by its @keyframes', () => {
-  const frames = { slide: ['margin-left', 'opacity'], fade: ['opacity'] };
+  const frames: Record<string, string[]> = { slide: ['margin-left', 'opacity'], fade: ['opacity'] };
   const styles = new Map();
   const { moves, animation } = setUp({ keyframes: (name) => frames[name] ?? null, styles });
   styles.set(body, { animationName: 'fade, slide', animationIterationCount: '1', animationPlayState: 'running' });
@@ -139,7 +143,7 @@ test('moves: an animation counts if it ends, runs and moves a length, by its @ke
 });
 
 test('moves: what a @keyframes sets is found once for a run of reads (every sheet\'s every rule walked for it), and again once that\'s 2 s old', () => {
-  const asked = [];
+  const asked: string[] = [];
   const { moves, animation } = setUp({ keyframes: (name) => { asked.push(name); return ['opacity']; }, styles: new Map([[body, { animationName: 'fade', animationIterationCount: '1', animationPlayState: 'running' }]]) });
   animation('animationstart', body, 'fade');
   for (let i = 0; i < 20; i++) {
@@ -157,8 +161,8 @@ test('moves: one whose element left the page, or isn\'t looked at any more, or n
   const { moves, transition } = setUp();
   const swapped = node('body');
   const looked = new Set([swapped]);
-  const handlers = {};
-  const kept = startMoves({ names: (n) => (looked.has(n) ? READ : null), ended() {}, styleOf: () => ({}), keyframes: () => null }, ({ addEventListener: (type, fn) => { handlers[type] = fn; } } as any));
+  const handlers: Handlers = {};
+  const kept = startMoves({ names: (n) => (looked.has(n) ? READ : null), ended() {}, styleOf: () => ({}), keyframes: () => null }, { addEventListener: (type: string, fn: (event: object) => void) => { handlers[type] = fn; } } as unknown as EventTarget);
   handlers.transitionrun({ type: 'transitionrun', target: swapped, propertyName: 'width', isTrusted: true, pseudoElement: '' });
   assert.equal(kept.moving(), true);
   swapped.isConnected = false; // a <body> swapped for another (Turbo): no end comes to the window
@@ -262,8 +266,9 @@ test('moves: what no event tells of (a script\'s animate()): a read the page ask
 });
 
 test('moves: @keyframes are found in nested rules and imports, the last of a name wins, and a sheet that can\'t be read is passed over', () => {
-  const Keyframes = (globalThis.CSSKeyframesRule as any);
-  const Import = (globalThis.CSSImportRule as any);
+  // The stand-ins above, as they're made.
+  const Keyframes = globalThis.CSSKeyframesRule as unknown as new (name: string, frames: string[][]) => object;
+  const Import = globalThis.CSSImportRule as unknown as new (sheet: unknown) => object;
   const locked = { get cssRules() { throw new Error('SecurityError'); } };
   const sheets = [
     { cssRules: [new Keyframes('slide', [['opacity']])] },

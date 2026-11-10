@@ -23,9 +23,9 @@ test('addresses made absolute: url() and @import, with a space or not, the absol
 });
 
 // A fetch over a map of addresses to texts, counting what it was asked.
-const fetcher = (files) => {
-  const asked = [];
-  const fetchText = async (url) => { asked.push(url); return files[url] ?? null; };
+const fetcher = (files: Record<string, string>) => {
+  const asked: string[] = [];
+  const fetchText = async (url: string) => { asked.push(url); return files[url] ?? null; };
   return { fetchText, asked };
 };
 
@@ -76,12 +76,12 @@ test('a sheet with no imports comes back as it was, and too many imports are lef
 test('imports are fetched all at once, not one after another', async () => {
   let inFlight = 0;
   let most = 0;
-  const fetchText = async (url) => {
+  const fetchText = async (url: string) => {
     inFlight += 1;
     most = Math.max(most, inFlight);
     await new Promise((r) => setTimeout(r, 20));
     inFlight -= 1;
-    return `.${url.split('/').pop().replace('.css', '')}{}`;
+    return `.${url.split('/').pop()!.replace('.css', '')}{}`;
   };
   const css = ['a', 'b', 'c'].map((n) => `@import "https://cdn.example/${n}.css";`).join('') + '.top{}';
   assert.equal(await inlineImports(css, BASE, fetchText), '.a{}.b{}.c{}.top{}');
