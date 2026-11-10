@@ -13,6 +13,14 @@ const range = previous ? `${previous}..${tag}` : tag;
 const subjects = git('log', '--no-merges', '--format=%s', range).split('\n').filter(Boolean);
 
 const SECTIONS = [['feat', 'New'], ['fix', 'Fixed'], ['perf', 'Faster']];
+// The first release: everything since the start would be hundreds of lines; its notes are written by hand (the
+// draft's text), and these only count what went in.
+if (!previous) {
+  const count = (type) => subjects.filter((s) => s.startsWith(`${type}(`) || s.startsWith(`${type}:`)).length;
+  console.log([`## Margin ${tag.replace(/^v/, '')}`, '', 'The first release.', '',
+    `${subjects.length} changes went into it: ${count('feat')} new, ${count('fix')} fixed, ${count('perf')} faster, and the rest refactoring, tests, docs and build.`].join('\n'));
+  process.exit(0);
+}
 const parse = (s) => /^(\w+)(?:\(([^)]+)\))?(!)?: (.+)$/.exec(s);
 const out = [`## Margin ${tag.replace(/^v/, '')}`, ''];
 let rest = 0;
