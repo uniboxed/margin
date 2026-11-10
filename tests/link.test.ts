@@ -573,7 +573,8 @@ test('link: which page is shown — each window\'s `visible` from its tab in fro
   const api = browser({ app, local: STATE });
   const asked = [];
   api.tabs.sendMessage = async (tabId, message) => { asked.push([tabId, message.type]); };
-  const { link } = makeLink(api);
+  // (A link that stays up: on a busy machine FAST's 400 ms `dead` drops it, and what follows comes in a new link's snapshot.)
+  const { link } = makeLink(api, { timing: { ...FAST, dead: 10_000 } });
   try {
     await link.start({ route: async () => ({ ok: true, result: null }) });
     await app.next('hello');
