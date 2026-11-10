@@ -67,4 +67,4 @@ Public, all regions. Free.
 
 ## The first upload
 
-The first upload keeps the extension's ID (`njeebbcmlenfopaecfbphgcfihbdmkec`, the one Margin.app's connector allows): the zip has no `key` in its manifest and the private key as `key.pem` at its root. Later uploads need neither: the store keeps the ID.
+The first upload keeps the extension's ID (`njeebbcmlenfopaecfbphgcfihbdmkec`, the one Margin.app's connector allows): the zip has no `key` in its manifest and the private key as `key.pem` at its root, in PKCS#8 (`BEGIN PRIVATE KEY`, as Chrome writes it; the store can't read `BEGIN RSA PRIVATE KEY`: `openssl pkcs8 -topk8 -nocrypt` converts it, same key, same ID). Later uploads need neither: the store keeps the ID.
