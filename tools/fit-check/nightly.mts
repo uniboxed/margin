@@ -273,7 +273,7 @@ function prepareCode() {
   if (!existsSync(join(CODE, 'node_modules'))) symlinkSync(join(ROOT, 'node_modules'), join(CODE, 'node_modules'));
   // The crawl tool from this checkout (a fix to the tool needn't wait for main).
   mkdirSync(join(CODE, 'tools/fit-check'), { recursive: true });
-  for (const f of readdirSync(HERE)) if (f.endsWith('.mjs') || f === 'README.md') cpSync(join(HERE, f), join(CODE, 'tools/fit-check', f));
+  for (const f of readdirSync(HERE)) if (f.endsWith('.mts') || f === 'README.md') cpSync(join(HERE, f), join(CODE, 'tools/fit-check', f));
   execFileSync(process.execPath, [join(CODE, 'scripts/build.ts')], { cwd: CODE, stdio: 'ignore' });
   return { dir: CODE, commit: sha.slice(0, 7) };
 }
