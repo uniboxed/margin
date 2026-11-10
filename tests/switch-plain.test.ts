@@ -10,6 +10,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// "At once", counted in work, not wall clock: done before the event loop's next turn (setImmediate), so with no timer,
+// no storage write and no wait for Safari in between, however slow the machine (a fixed few ms trips on a loaded runner).
+const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
 // A key chain lasts NAV_CHAIN_MS (background/navigation.ts): a test's presses start a chain of their own after it.
 const NAV_SETTLE_MS = 1600;
 const listeners = {};
@@ -269,12 +272,15 @@ test('fast presses: the overlay told at each press, Safari only the newest waiti
   fake.updates = [];
   fake.updateMs = () => 120 + Math.random() * 60;
   const presses = [];
+  const told: number[] = []; // 'switching' pushes made by the turn after each press
   const targets = nextTabs(1, 12);
   const last = targets.at(-1);
   try {
     for (let i = 0; i < 12; i++) {
       presses.push(Date.now());
       await press(APP);
+      await nextTurn();
+      told.push(pushed.filter((p) => p.msg.type === 'switching').length);
       await sleep(83);
     }
     for (let i = 0; i < 300 && storedFront() !== last; i++) await sleep(10);
@@ -286,7 +292,7 @@ test('fast presses: the overlay told at each press, Safari only the newest waiti
   const switching = pushed.filter((p) => p.msg.type === 'switching');
   assert.equal(new Set(targets).size, 12);
   assert.deepEqual(switching.map((p) => p.msg.tabId), targets, 'one target per press, each the next');
-  switching.forEach((p, i) => assert.ok(p.at - presses[i] <= 5, `press ${i + 1}: told ${p.at - presses[i]} ms after it`));
+  assert.deepEqual(told, targets.map((_, i) => i + 1), 'each press told to the overlay before the event loop\'s next turn');
   assert.ok(new Set(switching.map((p) => p.msg.switchId)).size === 12, 'each press its own switch');
   const span = presses.at(-1) - presses[0];
   const updates = fake.updates.filter((u) => u.active).map((u) => u.id);
@@ -359,11 +365,9 @@ test('fast presses: a press after the switches are done is never skipped, and go
   await press(APP);
   for (let i = 0; i < 100 && storedFront() !== a; i++) await sleep(10);
   await sleep(50);
-  const t = Date.now();
   await press(APP);
-  await sleep(5);
-  assert.deepEqual(fake.updates.map((u) => u.id), [a, b]);
-  assert.ok(fake.updates[1].at - t <= 5, `asked ${fake.updates[1].at - t} ms after the press`);
+  await nextTurn();
+  assert.deepEqual(fake.updates.map((u) => u.id), [a, b], 'Safari asked before the event loop\'s next turn');
 });
 
 test('one press heard twice (the app\'s key and the page\'s keydown) counts once', async () => {

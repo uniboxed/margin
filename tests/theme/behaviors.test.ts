@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-import { harnessScript, themeForPage, NEO, PIXEL } from './package.ts';
+import { harnessScript, themeForPage, themesInScope, NEO, PIXEL } from './package.ts';
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const script = harnessScript();
@@ -18,7 +18,7 @@ const THEMES = [
 ];
 const SCROLL = /^(sidebarScroll|setSidebarScroll)$/;
 
-for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
+for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInScope(THEMES)) {
   const gap = th.docked - th.def; // the page's left inset less the sidebar's width
   test(`behaviors in ${themeId}, ${name}`, async (t) => {
     const browser = await engine.launch({ headless: true });
@@ -190,8 +190,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
         await page.mouse.move(handle.x, handle.y);
         await page.mouse.down();
         await page.mouse.move(handle.x + 20, handle.y, { steps: 2 });
-        await page.waitForTimeout(50);
-        assert.ok((await ev((r) => T.rtClasses(r), th.root)).includes('m-resizing'));
+        await eventually(async () => assert.ok((await ev((r) => T.rtClasses(r), th.root)).includes('m-resizing')));
         await page.mouse.move(handle.x + 50, handle.y, { steps: 3 });
         await wait((x) => T.rtLayoutsAll().at(-1) === x, th.docked + 50);
         const live = await ev(() => T.rtLayoutsAll());
