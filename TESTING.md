@@ -86,6 +86,8 @@ Automated coverage: `npm run test:app` checks historical copy IDs against the cu
 
 ## Prepared layouts across full-screen Spaces (2026-11-10)
 
+Known open issue: the user confirmed detached/scaled Mission Control thumbnails while the live layout is correct after exiting. The stationary-policy experiment did not fix it and was reverted. `tools/window-group-lab/README.md` records the bounded native-grouping investigation; automated policy/group checks do not prove a correct preview.
+
 - [ ] **Mission Control thumbnails:** with the browser in full screen, swipe up with three fingers or press Control-Up. Margin's sidebar/frame must stay aligned with its browser in the Space thumbnail, without a separately scaled sidebar, detached palette, duplicate tile or full-size overlay covering Mission Control. Repeat from the Desktop while the browser Spaces are in the background. Exit with Escape, select a Space, and try a partial swipe/reversal: the layout is immediately usable, clicks reach the correct page, and keyboard focus stays correct. Repeat on another display, if available. This compositor check is manual; off-screen tests cannot establish it.
 - [ ] Restore two or three browser windows in separate full-screen Spaces. Leave the first in front while their layouts draw, then visit each of the others within five seconds. Its sidebar and frame should already be drawn as its Space slides in, without a black gap followed by the layout appearing.
 - [ ] Swipe back and forth twenty times, including partial swipes and quick reversals, then use Mission Control and the keyboard to visit them. Each window keeps its correct layout; none appears on the Desktop or in another app's Space. Repeat with Safari profiles, Chrome and Edge.

@@ -80,11 +80,6 @@ func preparedWindowsScenario() async {
   check("preparation moves only the overlay into that window's Space", await until(1, { world.spaces(of: o2.windowNumber) == [11] }) && world.spaces(of: b.windowNumber) == [11])
   check("placed within one second of drawing", Date().timeIntervalSince(readyAt) < 1.5)
   guard await until(15, { o1.isReady && o1.isShown }) else { check("front overlay draws", false); return }
-  let panels = [o1.panel, o1.catcher, o2.panel, o2.catcher] + [o1.edgePanel, o2.edgePanel].compactMap { $0 }
-  check("every native layer stays in its own Space without separate Mission Control arrangement",
-        panels.allSatisfy { $0.collectionBehavior.contains(.stationary) && !$0.collectionBehavior.contains(.managed)
-          && !$0.collectionBehavior.contains(.transient) && !$0.collectionBehavior.contains(.canJoinAllSpaces)
-          && $0.collectionBehavior.contains(.fullScreenAuxiliary) })
   // Deferred NSPanel helpers receive their real window numbers only when first ordered. Register those
   // numbers too: the stand-in otherwise loses the successful move sent before that number was in its table.
   for (o, space) in [(o1, UInt64(10)), (o2, UInt64(11))] {

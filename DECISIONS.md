@@ -4040,6 +4040,10 @@ The two flakes left in GitHub issue #13's end-to-end tests:
 
 ## Mission Control must not arrange the layout as another document (2026-11-10)
 
+- **Visual check failed.** After installing 8122a1fd, the user reported “Still detached or incorrectly scaled”.
+  The stationary-policy hypothesis below did not solve the actual preview. It is reverted while native
+  grouping/compositing is investigated. The policy assertions passing did not prove the visual result.
+  The user also confirmed the live layout is correct after exiting: only the small previews are wrong.
 - **Report and diagnosis.** The supplied 13:30:57 screenshot shows a small detached layout in a full-screen
   Space preview after a three-finger upward swipe. The own-Space policy used `.managed`, which explicitly
   opts the transparent Margin panel into Mission Control's independent window arrangement. Its pointer
@@ -4068,3 +4072,35 @@ The two flakes left in GitHub issue #13's end-to-end tests:
   The focused readiness run passed 35 checks. `npm run test:e2e`: final run 149 passed. The first run passed
   148 and failed the previously recorded archive/palette restore timeout (`archive.test.ts:134`); all five
   archive tests passed in isolation, followed by the clean full rerun. No browser runtime/test changes kept.
+
+### Follow-up: grouping evidence and rollback
+
+The native grouping investigation is retained in `tools/window-group-lab/README.md`, with a guarded,
+off-screen, two-process probe and its result excerpt. The same-process public and private controls
+establish relationships. The cross-process calls, in both ownership directions and through AppKit's
+transaction variants, do not: readback stays separate and the owned child's parent ID stays zero.
+Some calls still return zero. No private grouping implementation is enabled in Margin on that evidence.
+The probe's final REA Evidence ID is `ev_0672265891a11f6159ac261b1a24186944f242c1c78fe9d9d2b8d4b42e9b830f`.
+It exited normally and explicitly ended its child; the capture's process sampler reports incomplete
+sampling, as retained in the result file. The test did not use real browsers or native-fullscreen Spaces,
+so it establishes a bounded failed approach, not impossibility of every native solution.
+
+The installed candidate's project references the actual repository Swift sources; stale copied shell
+code was ruled out. The ineffective stationary change and its policy-only regression are removed; the
+earlier Space preparation/missing-read fixes stay. A faithful Mission Control preview is still open.
+There is no added browser preview renderer, screenshot cache, timer, resident helper work or new private
+product API. Further native grouping needs a demonstrated attachment and a real compositor check;
+the supplied ordinary-window probe cannot provide that fullscreen/visual proof.
+
+A bounded static follow-up found Dock delegates Exposé/Mission Control through WindowManager's
+coordinator/client interfaces; the inspected WindowManager exports forward through a connection/XPC
+boundary. No thumbnail composition rule, collection-flag condition or safe cross-process attachment API
+was demonstrated. The actual renderer, native-fullscreen cases and installed app's permission context
+are still unknown. No conclusion of universal impossibility is claimed. The live preview issue remains open.
+
+Rollback verification: `npm test` 1,017 passed; native suite (`WINDOW_RUNS=50 VISIBLE_RUNS=80`) 2,073 logic
+checks and 517 end-to-end checks passed, with no compiler warnings and all helper checks passing. The
+standalone probe compiled with warnings as errors, its no-argument dry run made no windows, and its explicit
+run exited zero after verifying the child window's owner and each queried window's ID. The first browser
+run passed 148/149 (the existing archive/palette flake, this time waiting for the restored row's highlight,
+`archive.test.ts:137`); the full browser rerun by itself passed 149/149. No browser changes made.
