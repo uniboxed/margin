@@ -11,6 +11,9 @@
 //   /asset/<file>            a file a pattern's page loads (patterns/assets/: a style
 //                            sheet, a script), as a site's own files are; ?wait=N:
 //                            its content N ms late, as a slow server's
+//   /walk-css/<file>         the style sheets of the kept-sheet-walk pattern (walkCss), in
+//                            the version /walk-css-set?v=a|b|c|d chose: the same address
+//                            with other contents, as a site that changed a file in place
 // In a pattern's page, `{{other}}` is another origin serving the same files (a CDN's,
 // with no CORS): `{{other}}/asset/<file>`. Each server says what it is (`other`).
 // `<!--pause:N-->` in a pattern's page: the server sends what's before it, then the
@@ -54,6 +57,36 @@ export function parseHeader(html: string) {
   if (!(settle >= 0 && settle <= 10_000)) throw new Error(`settle: ms from 0 to 10000, not "${fields.settle}"`);
   const allow = (fields.allow || '').split(',').map((s) => s.trim().replace(/\s+/, ' ')).filter(Boolean);
   return { title: fields.pattern, from: fields.from, handledBy: fields['handled-by'] || '', note: fields.note || '', settle, allow, engines };
+}
+
+// The kept-sheet-walk pattern's sheets (walkCss), in this version: changed by /walk-css-set, for every page after.
+let walkVersion = 'a';
+export const WALK_FILES = { main: 'kept-walk-3f9a1c2b7d.css', imported: 'kept-walk-import-7c2d9e4a1b.css', plain: 'kept-walk.css' };
+/**
+ * A sheet of the kept-sheet-walk pattern, in `version`: `a`; `b`, two rules that need the box's work with other
+ * values (the rule count the same); `c`, a rule more; `d`, a rule that needed no work now needs it, the file's size
+ * and rule count the same (what no check short of the full walk sees: a kept walk is too old to use after a day).
+ * Each content-named file (main, imported) the box's walk is kept for; `plain` (no hash in its name), never.
+ */
+export function walkCss(file: string, version: string) {
+  if (file === WALK_FILES.imported) return `#imp { width: 30vw; height: 15px; background: #cdc; }\n@media (min-width: 1000px) { #imp { height: 25px; } }`;
+  if (file === WALK_FILES.plain) return `#plain1 { width: 20vw; height: 10px; background: #dcd; }\n#plain2 { width: ${version === 'a' ? '10px' : '10vw'}; height: 10px; background: #ccd; }`;
+  if (file !== WALK_FILES.main) return null;
+  const css = [`@import url("${WALK_FILES.imported}");`];
+  for (let i = 0; i < 40; i++) css.push(`.f${i} { color: rgb(${i}, 0, 0); padding: ${i % 5}px; }`);
+  css.push(
+    '#full { width: 100vw; height: 30px; background: #cde; }',
+    `#half { width: ${version === 'b' ? 60 : 50}vw; height: 30px; background: #dec; }`,
+    `#tall { height: ${version === 'b' ? 30 : 20}vh; width: 60px; background: #edc; }`,
+    `#sneak { width: 10${version === 'd' ? 'vw' : 'px'}; height: 12px; background: #aaa; }`,
+    '@media (min-width: 1000px) { #q1 { width: 300px; height: 20px; background: #abc; } }',
+    '@media (min-width: 1300px) { #q2 { width: 300px; height: 20px; background: #bca; } }',
+    '@supports (display: grid) { #nested { height: 10vh; width: 40px; background: #ddd; } @media (max-width: 1100px) { #nested { width: 80px; } } }',
+    '.card { padding: 8px; background: #eee; }',
+    'body:has(#x.on) .card { margin-left: 15vw; }',
+  );
+  if (version === 'c') css.push('#added { width: 25vw; height: 10px; background: #f0f; }');
+  return css.join('\n');
 }
 
 /** The heavy page's style sheet (benchPage). */
@@ -121,6 +154,17 @@ export function boxPage(path: string, query: URLSearchParams, { other = '' }: { 
     const elements = Math.min(Number(b[3]), 50_000);
     if (b[1]) return { type: 'text/css; charset=utf-8', body: benchCss(rules, elements) };
     return { type: 'text/html; charset=utf-8', body: benchPage(rules, elements, !!b[4]) };
+  }
+  if (path === '/walk-css-set') {
+    const v = query.get('v') ?? '';
+    if (!/^[abcd]$/.test(v)) return null;
+    walkVersion = v;
+    return { type: 'text/plain; charset=utf-8', body: `version ${v}` };
+  }
+  const k = /^\/walk-css\/([^/]+)$/.exec(path);
+  if (k) {
+    const body = walkCss(k[1], walkVersion);
+    return body == null ? null : { type: 'text/css; charset=utf-8', body };
   }
   const a = /^\/asset\/([^/]+)$/.exec(path);
   if (a && ASSET.test(a[1])) {

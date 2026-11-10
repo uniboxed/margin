@@ -1,0 +1,34 @@
+<!--
+pattern: linked sheets whose addresses name their contents (a hash in the name, one @imported) have their walk kept for the next visit; viewport units, queries about the size, nested rules and a `body:has()` rule are the box's on the first visit and every one after
+from: GitHub issue #3 (2026-11): a return visit to GitHub walked its 38,000 rules again to find the same 450; tests/e2e/sheet-walk.test.ts loads this again, and with the file changed under the same address
+handled-by: content/page/sheets.ts (fromKept: a kept walk, checked rule by rule before it's used), shared/sheet-walk.ts (contentNamed, planFrom)
+settle: 2600
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>kept-sheet-walk</title>
+<style>body { margin: 0; font: 16px/1.4 -apple-system, system-ui, sans-serif; }</style>
+<link rel="stylesheet" href="../walk-css/kept-walk-3f9a1c2b7d.css">
+<link rel="stylesheet" href="../walk-css/kept-walk.css">
+</head>
+<body>
+<div id="full"></div>
+<div id="half"></div>
+<div id="tall"></div>
+<div id="sneak"></div>
+<div id="q1"></div>
+<div id="q2"></div>
+<div id="nested"></div>
+<div id="imp"></div>
+<div id="added"></div>
+<div id="plain1"></div>
+<div id="plain2"></div>
+<div class="card" id="h">A card</div>
+<div id="x"></div>
+<script>
+  addEventListener('load', () => setTimeout(() => { document.getElementById('x').className = 'on'; }, 1500)); // after the reads a load brings
+</script>
+</body>
+</html>
