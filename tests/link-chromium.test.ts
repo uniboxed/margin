@@ -1,5 +1,5 @@
-// background/link.ts in Chrome's build (Chrome and Edge on the Mac, docs/PROTOCOL.md "Transport (Chrome and Edge, on
-// the Mac)"): the same link as Safari's, found through Margin.app's relay helper. Its socket opened from the service
+// background/link.ts in Chrome's build (Chrome and Edge on the Mac and Windows, docs/PROTOCOL.md "Transport (Chrome
+// and Edge)"): the same link as Safari's, found through the app's connector. Its socket opened from the service
 // worker, no socket guard, the browser's process (the relay's word) and Edge told apart in hello, the process kept
 // with the link through the worker starting again; and where the Chrome build links at all (shared/platform.ts).
 import { test } from 'node:test';
@@ -12,6 +12,8 @@ const setAgent = (userAgent: string) => Object.defineProperty(globalThis, 'navig
 const MAC_CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36';
 const MAC_EDGE = `${MAC_CHROME} Edg/153.0.0.0`;
 const WINDOWS_CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36';
+const WINDOWS_EDGE = `${WINDOWS_CHROME} Edg/153.0.0.0`;
+const LINUX_CHROME = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36';
 setAgent(MAC_CHROME);
 const { createLink, SESSION_KEY } = await import('../extension/background/link.ts');
 const { platform, linksApp, browserName } = await import('../extension/shared/platform.ts');
@@ -72,7 +74,7 @@ const makeLink = (api: any) => createLink({
   WebSocket: globalThis.WebSocket, enabled: () => true, log: () => {}, timing: FAST,
 });
 
-test('Chrome\'s build: it links on the Mac only, and names Chrome or Edge', () => {
+test('Chrome\'s build: it links on the Mac and Windows only, and names Chrome or Edge', () => {
   assert.equal(platform.name, 'chrome');
   setAgent(MAC_CHROME);
   assert.equal(linksApp(), true);
@@ -81,7 +83,13 @@ test('Chrome\'s build: it links on the Mac only, and names Chrome or Edge', () =
   assert.equal(linksApp(), true);
   assert.equal(browserName(), 'edge');
   setAgent(WINDOWS_CHROME);
-  assert.equal(linksApp(), false, 'not on Windows (yet)');
+  assert.equal(linksApp(), true, 'Windows: Margin for Windows');
+  assert.equal(browserName(), 'chrome');
+  setAgent(WINDOWS_EDGE);
+  assert.equal(linksApp(), true);
+  assert.equal(browserName(), 'edge');
+  setAgent(LINUX_CHROME);
+  assert.equal(linksApp(), false, 'not on Linux (no app there yet)');
   setAgent(MAC_CHROME);
 });
 

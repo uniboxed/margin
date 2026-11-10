@@ -3,7 +3,7 @@
 // Margin's UI around this copy's windows (pages never draw any): pages have
 // their box, which comes from the app's layout per window (setLayout), in
 // the windows the app draws over (`drawn`: a window it doesn't gets none).
-// Safari's copies, and Chrome's and Edge's on the Mac (shared/platform.ts linksApp), in the copy that owns its profile's state.
+// Safari's copies, and Chrome's and Edge's on the Mac and Windows (shared/platform.ts linksApp), in the copy that owns its profile's state.
 //
 // Getting linked (the app can't open anything into the extension, and the
 // extension can reach only the app's extension handler):

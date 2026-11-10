@@ -26,16 +26,16 @@ export type Profile = {
   // Its default shortcuts, and the id its settings save them under (shared/navigation-defaults.ts).
   navigationId: NavigationId,
   navigation: Navigation,
-  // Whether this copy links to Margin.app (Safari's always, Chrome's and Edge's on the Mac), and the browser it
-  // runs in, as the link names it.
+  // Whether this copy links to Margin's app (Safari's always, Chrome's and Edge's on the Mac and Windows), and the
+  // browser it runs in, as the link names it.
   linksApp: () => boolean,
   browser: () => 'safari' | 'chrome' | 'edge',
 };
 
 export type Platform = Profile;
 export const platform: Platform = profile;
-// Whether this copy links to Margin.app: Safari's always (`nativeApp`: its extension handler), Chrome's and Edge's
-// on the Mac (Margin.app's connector, started by native messaging).
+// Whether this copy links to Margin's app: Safari's always (`nativeApp`: its extension handler), Chrome's and Edge's
+// on the Mac and Windows (the app's connector, started by native messaging).
 export const linksApp = () => !!platform?.linksApp();
 // The browser this copy runs in, as the link names it.
 export const browserName = (): 'safari' | 'chrome' | 'edge' => platform.browser();
