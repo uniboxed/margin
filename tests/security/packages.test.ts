@@ -31,7 +31,7 @@ for (const p of await readSuitePackages()) {
     const fonts = Object.keys(pkg.files).filter((f) => /\.woff2$/i.test(f));
     for (const f of r.manifest.fonts) assert.ok(fonts.includes(f.file), `${f.file} is bundled`);
     const notes = Object.keys(pkg.files).filter((f) => /\.(txt|md)$/i.test(f));
-    const text = (f) => new TextDecoder().decode(pkg.files[f]);
+    const text = (f: string) => new TextDecoder().decode(pkg.files[f]);
     if (fonts.length) {
       assert.ok(notes.some((n) => /SIL Open Font License|Apache License|OFL|licen[cs]e/i.test(text(n))), 'a licence text for its fonts');
       if (p.builtin) assert.ok(notes.some((n) => /SOURCES\.txt$/.test(n)), 'SOURCES.txt says where its fonts came from');
@@ -43,9 +43,10 @@ for (const p of await readSuitePackages()) {
     for (const f of Object.keys(pkg.files).filter((x) => /\.svg$/i.test(x))) assert.doesNotMatch(text(f), ADDRESS, `${f} names no address`);
   });
 
-  if (p.builtin && existsSync(join(p.dir, 'first-paint.css'))) {
+  // A built-in theme's: its folder.
+  if (p.builtin && existsSync(join(p.dir!, 'first-paint.css'))) {
     test(`${p.label}: its first paint paints only under its own mark, with no address and no text`, () => {
-      const css = readFileSync(join(p.dir, 'first-paint.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      const css = readFileSync(join(p.dir!, 'first-paint.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
       assert.doesNotMatch(css, /url\(|@import|image-set|src\s*\(/i);
       for (const m of css.matchAll(/content\s*:\s*([^;}]*)/gi)) assert.match(m[1].trim(), /^(""|'')\s*(!important)?$/, 'content only ever empty');
       // Every rule's selectors under html[data-margin-at="<id>"] (at-rules' preludes aside).

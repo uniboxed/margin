@@ -212,7 +212,7 @@ export const TEMPLATE_PAYLOADS_2 = [
   ['the same part twice (a decoy second menu)', `<template m-part="menu"><div class="menu">{{menu.title}}</div></template><template m-part="menu"><div class="menu-decoy">{{menu.title}}</div></template>`, /a second template for this part/],
   ['an unknown part name', `<template m-part="evil"><div>x</div></template>`, /unknown part/],
   ['<m-page> inside a part', `<template m-part="palette"><m-page></m-page></template>`, /<m-page> inside <m-for> or <template>/],
-];
+] satisfies [string, string, RegExp][];
 
 // [name, css, true if the rule is kept (it loads nothing)]
 export const CSS_PAYLOADS_2 = [
@@ -228,11 +228,11 @@ export const CSS_PAYLOADS_2 = [
   ['an escaped property name: \\62 ackground', `.a{\\62 ackground:url(https://evil.test/escaped-prop.png)}`],
   ['@counter-style spelling words', `@counter-style evil{system:cyclic;symbols:"D" "e" "l" "e" "t" "e";} .a{list-style:evil}`],
   ['a data: font in @font-face over the cap', `@font-face{font-family:big;src:url(data:font/woff2;base64,${'d09GMg'.repeat(30000)})} .a{font-family:big}`],
-];
+] satisfies [string, string][];
 // Kept on purpose: a data: font under the cap loads nothing (checked live).
 export const CSS_KEPT_2 = [
   ['a data: font in @font-face (no request; capped at LIMITS.dataUrl)', `@font-face{font-family:inert;src:url(data:font/woff2;base64,d09GMgABAAAAAA==)} .a{font-family:inert}`],
-];
+] satisfies [string, string][];
 
 // [name, theme.json text, RegExp over the errors]
 export const MANIFEST_PAYLOADS = [
@@ -240,12 +240,12 @@ export const MANIFEST_PAYLOADS = [
   ['a name with a bidi override', `{"format":2,"id":"mine","name":"Safe\u202Etxt.exe","version":"1.0.0"}`, /bad name/],
   ['an author with an isolate and a zero-width space', `{"format":2,"id":"mine","name":"Mine","version":"1.0.0","author":"Mar\u2066gin\u200b"}`, /bad author/],
   ['not an object', `["format",2]`, /not an object/],
-];
+] satisfies [string, string, RegExp][];
 // [name, theme.json text, RegExp over the removed reasons]: the theme loads, the bad part removed.
 export const MANIFEST_REMOVED = [
   ['__proto__ keys', `{"format":2,"id":"mine","name":"Mine","version":"1.0.0","__proto__":{"polluted":1},"settings":{"__proto__":{"type":"toggle","default":true}}}`, /__proto__: unknown field[\s\S]*settings\.__proto__: bad name/],
   ['deep nesting in an unknown field', `{"format":2,"id":"mine","name":"Mine","version":"1.0.0","extra":${'['.repeat(400)}${']'.repeat(400)}}`, /extra: unknown field/],
-];
+] satisfies [string, string, RegExp][];
 
 const bytes = (...parts: (string | number[])[]) => {
   const out: number[] = [];
@@ -271,4 +271,4 @@ export const FILE_PAYLOADS = [
   ['look-alike Unicode (Cyrillic а)', { 'im\u0430ges/evil.png': bytes([0x89], 'PNG\r\n\x1a\n') }, /bad path/],
   ['a hidden file', { '.git/config': bytes('[core]') }, /bad path|not a file a theme may bundle/],
   ['a file a theme may not bundle', { 'evil.js': bytes("__trip('js')") }, /not a file a theme may bundle/],
-];
+] satisfies [string, Record<string, Uint8Array>, RegExp][];

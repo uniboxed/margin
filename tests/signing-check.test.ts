@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'signing-check.sh');
 
 // A folder with a Margin.app whose extension codesign says is signed `team` (null: no Margin.app).
-function folder(team) {
+function folder(team: string | null) {
   const dir = mkdtempSync(join(tmpdir(), 'margin-signing-'));
   if (team !== null) mkdirSync(join(dir, 'Margin.app', 'Contents', 'PlugIns', 'Margin Extension.appex'), { recursive: true });
   const codesign = join(dir, 'codesign');
@@ -22,7 +22,7 @@ function folder(team) {
   return { dir, codesign };
 }
 
-function confirm(dir, codesign, next, { yes = false, input = '' } = {}) {
+function confirm(dir: string, codesign: string, next: string, { yes = false, input = '' } = {}) {
   const r = spawnSync('/bin/sh', ['-c', `set -eu; . "${SCRIPT}"; confirm_signing "$1/Margin.app" "$2" "$3"`, 'check', dir, next, String(yes)], {
     env: { ...process.env, CODESIGN: codesign }, input, encoding: 'utf8',
   });

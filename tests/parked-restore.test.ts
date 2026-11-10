@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { midsOf, restoredParked } from '../extension/shared/parked-restore.ts';
 
-const state = (tabs) => ({ tabs: Object.fromEntries(tabs.map(([id, windowId, mid]) => [id, { id, windowId, mid }])) });
+const state = (tabs: [number, number, string | undefined][]) => ({ tabs: Object.fromEntries(tabs.map(([id, windowId, mid]) => [id, { id, windowId, mid }])) });
 
 test('a parked window recorded by its tabs\' Margin ids', () => {
   const s = state([[1, 10, 'b'], [2, 10, 'a'], [3, 11, 'c'], [4, 10, undefined]]);

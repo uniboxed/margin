@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { RULES, judge } from './box/rules.ts';
+import { RULES, judge, type Shot } from './box/rules.ts';
 import { boxPage, listPatterns, parseHeader } from './box/serve.ts';
 import { README, withParts } from './box/readme.mts';
 
@@ -17,7 +17,8 @@ test('every pattern has a whole header, a page after it, and lets itself off onl
     assert.ok(p.title && p.from, `${p.name}: pattern and from`);
     // The header's own end: the first `-->` (one inside it, a quoted `<!--…-->`, would end it early and spill the rest into the page).
     assert.match(p.html.slice(p.html.indexOf('-->')), /^-->\s*<!doctype html>/i, `${p.name}: <!doctype html> right after the header (standards mode), and no comment inside the header`);
-    for (const a of p.allow) assert.ok(RULES[a.split(' ')[0]], `${p.name}: allow "${a}" names a rule (${Object.keys(RULES).join(', ')})`);
+    // Looked up by any name: undefined when it isn't a rule.
+    for (const a of p.allow) assert.ok((RULES as Readonly<Record<string, string>>)[a.split(' ')[0]], `${p.name}: allow "${a}" names a rule (${Object.keys(RULES).join(', ')})`);
     if (p.allow.length) assert.ok(p.note, `${p.name}: what it's let off is said in note:`);
   }
 });
@@ -57,10 +58,10 @@ test('a header: fields over several lines, the defaults, and what isn\'t allowed
 
 test('the server: a pattern\'s page, its plain reference the size asked for, and nothing else', () => {
   const page = boxPage('/pattern/html-class-width', new URLSearchParams());
-  assert.match(page.body, /class="w-100 h-100"/);
+  assert.match(page!.body, /class="w-100 h-100"/);
   const ref = boxPage('/ref/html-class-width', new URLSearchParams('w=932&h=784'));
-  assert.match(ref.body, /width:932px;height:784px/);
-  assert.match(ref.body, /src="\.\.\/pattern\/html-class-width"/);
+  assert.match(ref!.body, /width:932px;height:784px/);
+  assert.match(ref!.body, /src="\.\.\/pattern\/html-class-width"/);
   assert.equal(boxPage('/ref/html-class-width', new URLSearchParams()), null, 'no size, no reference');
   assert.equal(boxPage('/pattern/../serve', new URLSearchParams()), null);
   assert.equal(boxPage('/pattern/nothing-here', new URLSearchParams()), null);
@@ -74,7 +75,7 @@ test('the README\'s rules and table of patterns are up to date (node tests/box/r
 
 // A page as measure() sees it: in its box at the slot (260/8/8/8 in 1440×900), or plain.
 const SETUP = { slot: { left: 260, top: 8, right: 8, bottom: 8 }, window: { w: 1440, h: 900 } };
-const shot = (over = {}) => ({
+const shot = (over: Partial<Shot> = {}) => ({
   told: { w: 1172, h: 884, sx: 0, sy: 0 },
   root: { x: 260, y: 8, w: 1172, h: 884 },
   window: { left: 0, top: 0, scale: 1 },
@@ -92,7 +93,7 @@ test('the rules: a page that is what it is plain breaks none', () => {
 });
 
 test('the rules: each one says what broke', () => {
-  const broke = (over) => judge(shot(over), plain, SETUP).map((f) => f.split(':')[0]);
+  const broke = (over: Partial<Shot>) => judge(shot(over), plain, SETUP).map((f) => f.split(':')[0]);
   assert.deepEqual(broke({ root: { x: 0, y: 8, w: 1172, h: 884 } }), ['box-at-slot']);
   assert.deepEqual(broke({ root: { x: 260, y: 8, w: 1440, h: 900 }, told: { w: 1172, h: 884, sx: 0, sy: 0 } }), ['box-size', 'told-size']);
   assert.deepEqual(broke({ told: { w: 1440, h: 900, sx: 0, sy: 0 } }), ['told-size']);

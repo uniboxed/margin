@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import * as icons from '../extension/shared/icons.ts';
 
 const { sniffType, toBase64, dataUrl } = icons;
-const bytes = (...v) => new Uint8Array(v);
-const text = (s) => new TextEncoder().encode(s);
+const bytes = (...v: number[]) => new Uint8Array(v);
+const text = (s: string) => new TextEncoder().encode(s);
 
 test('sniffType recognizes icon formats by their bytes, rejects everything else', () => {
   assert.equal(sniffType(bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a)), 'image/png');

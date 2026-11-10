@@ -11,7 +11,7 @@ import { fakeClock } from './fake-clock.ts';
 const MS = 2000;
 const make = () => {
   const clock = fakeClock();
-  const ran = [];
+  const ran: number[] = [];
   const s = settler(MS, () => ran.push(clock.now()), () => clock);
   return { clock, ran, s };
 };
@@ -74,7 +74,7 @@ test('the clock is read at each change: a wait started on one clock is cleared o
   const a = fakeClock();
   const b = fakeClock(5_000_000);
   let clock = a;
-  const ran = [];
+  const ran: number[] = [];
   const s = settler(MS, () => ran.push(clock.now()), () => clock);
   s.change();
   clock = b;

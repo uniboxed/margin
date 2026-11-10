@@ -8,7 +8,7 @@ import * as M from '../extension/state/model.ts';
 
 function state() {
   let s = M.defaultState();
-  for (const [id, active] of [[1, true], [2, false], [3, false], [9, false]]) s = M.upsertTab(s, { id, windowId: id === 9 ? 2 : 1, url: `https://t${id}.example/`, active, index: id }, 0);
+  for (const [id, active] of [[1, true], [2, false], [3, false], [9, false]] as [number, boolean][]) s = M.upsertTab(s, { id, windowId: id === 9 ? 2 : 1, url: `https://t${id}.example/`, active, index: id }, 0);
   return s;
 }
 

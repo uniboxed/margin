@@ -20,7 +20,7 @@ test('Margin ships Arcadia, the default theme; an unknown theme falls back to it
 test('every theme has its folder: theme.ts (settings) beside its package and its first paint', () => {
   for (const theme of Object.values(THEMES)) {
     for (const file of ['theme.ts', 'theme.json', 'theme.html', 'theme.css', 'first-paint.css']) assert.ok(existsSync(new URL(`themes/${theme.id}/${file}`, root)), `${theme.id}/${file}`);
-    assert.equal(theme.content, undefined, 'no theme script any more');
+    assert.equal((theme as { content?: unknown }).content, undefined, 'no theme script any more'); // gone from the type too
     assert.equal(typeof theme.settingsOf, 'function');
     assert.ok(Object.isFrozen(theme.defaults));
   }
@@ -76,7 +76,7 @@ test('the theme\'s earlier name: its id falls back, its own settings carry over,
 });
 
 test('Neubrutalism\'s earlier name (neo-brutalism, until 2026-11-10): the theme chosen and its settings carry over, the old entry goes', () => {
-  const norm = (settings) => M.normalizeState({ settings }).settings;
+  const norm = (settings: Record<string, unknown>) => M.normalizeState({ settings }).settings;
   let s = norm({ theme: 'neo-brutalism', themes: { 'neo-brutalism': { grid: false, radius: 6 } } });
   assert.equal(s.theme, 'neubrutalism');
   assert.deepEqual(s.themes.neubrutalism, { grid: false, radius: 6 });
@@ -88,7 +88,7 @@ test('Neubrutalism\'s earlier name (neo-brutalism, until 2026-11-10): the theme 
 });
 
 test('Arcadia\'s package\'s earlier name (arcadia-2): its settings join Arcadia\'s, snapped and clamped, and the old entry goes', () => {
-  const norm = (settings) => M.normalizeState({ settings }).settings;
+  const norm = (settings: Record<string, unknown>) => M.normalizeState({ settings }).settings;
   // Only the package's: its width, snapped to 10 px and clamped to 160–500.
   let s = norm({ themes: { 'arcadia-2': { sidebarWidth: 333 } } });
   assert.deepEqual(s.themes.arcadia, { sidebarWidth: 330 });
