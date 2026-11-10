@@ -51,9 +51,10 @@ export type UiState = {
   prompt?: { id: string, title?: string, text: string, actions?: { id: string, label: string, primary?: boolean, danger?: boolean }[] } | null,
   launcher?: { allArchived?: boolean } | null,
   settingsOpen?: boolean,
+  settingsPage?: boolean,
   recording?: string | null,
   settingsStatus?: Record<string, { text: string, error?: boolean } | undefined>,
-  switchingTo?: number | null,
+  switchingTo?: number | string | null,
   showSpace?: string | null,
   justShown?: boolean,
   inNewTab?: boolean,
@@ -142,7 +143,7 @@ export type SwitchCoverView = {
 export type GestureView = { pull: boolean, swipe: boolean, back: boolean, forward: boolean, armed: boolean, done: boolean, leaving: boolean, progress: number, percent: number };
 export type LauncherView = {
   pins: PinRow[], hasPins: boolean, archive: ArchiveRow[], hasArchive: boolean, emptyArchive: boolean,
-  more: boolean, moreLabel: string, settingsOpen: boolean,
+  more: boolean, moreLabel: string, settingsOpen: boolean, settingsPage: boolean, canSearch: boolean,
 };
 export type SettingsFormView = { fields: import('./settings-form.ts').SettingsField[], hasFields: boolean };
 export type ViewModel = {
@@ -228,7 +229,7 @@ function tabRow(state: State, t: any): TabRow {
     kind: 'tab',
     id: t.id,
     ...face(state, t, t.title || t.url || 'New Tab'),
-    active: open && !!t.active,
+    active: !!t.active,
     behind: open && !!t.behind,
     // Chosen here, but live in another window of the profile (docs/BROWSER-WINDOWS.md §9): drawn faded.
     away: open && !!t.away,
@@ -513,18 +514,19 @@ function fresh(input: ViewModelInput): ViewModel {
     const shown = all ? archive : archive.slice(0, LAUNCHER_ARCHIVE);
     launcher = {
       pins: tiles,
-      hasPins: tiles.length > 0,
+      hasPins: !ui.settingsPage && tiles.length > 0,
       archive: shown,
-      hasArchive: archive.length > 0,
+      hasArchive: !ui.settingsPage && archive.length > 0,
       emptyArchive: archive.length === 0,
       more: archive.length > LAUNCHER_ARCHIVE,
       moreLabel: all ? 'Show fewer' : `Show all ${archive.length}`,
-      settingsOpen: !!ui.settingsOpen,
+      settingsOpen: !!ui.settingsOpen || !!ui.settingsPage,
+      settingsPage: !!ui.settingsPage, canSearch: !ui.settingsPage,
     };
   }
   // Its Settings form, open (ui/settings-form.ts).
   let settingsForm: ViewModel['settingsForm'] = null;
-  if (launcher && ui.settingsOpen) {
+  if (launcher && (ui.settingsOpen || ui.settingsPage)) {
     const fields = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {}, theme: ui.theme ?? null });
     settingsForm = { fields, hasFields: fields.length > 0 };
   }
@@ -543,7 +545,7 @@ function fresh(input: ViewModelInput): ViewModel {
     multiProfile,
     tab,
     archive,
-    hasArchive: archive.length > 0,
+    hasArchive: !ui.settingsPage && archive.length > 0,
     palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows, hasRows: rows.length > 0, selected },
     menu,
     editing,

@@ -76,7 +76,7 @@ export function collectionFrom(state: State, collection: string): Record<string,
       return {};
   }
 }
-const tabValue = (t: { url: string, title?: string, favIconUrl?: string, order?: number, index?: number, lastActive?: number }, spaceId: string) => ({ url: t.url, title: t.title ?? '', icon: /^(https?|data):/.test(t.favIconUrl ?? '') ? t.favIconUrl : '', spaceId, order: finite(t.order, finite(t.index)), lastUsed: finite(t.lastActive) });
+const tabValue = (t: { url: string, title?: string, favIconUrl?: string, order?: number, index?: number, lastActive?: number, active?: boolean, wasActive?: boolean }, spaceId: string) => ({ url: t.url, title: t.title ?? '', icon: /^(https?|data):/.test(t.favIconUrl ?? '') ? t.favIconUrl : '', spaceId, order: finite(t.order, finite(t.index)), lastUsed: finite(t.lastActive), selected: !!(t.active ?? t.wasActive) });
 
 /** Every collection the state has. */
 export function itemsFrom(state: State) {
@@ -244,7 +244,7 @@ export function stateFromDataSet(state: State, set: { items?: Record<string, Rec
     for (const [id, t] of Object.entries(tabs)) {
       if (!isName(id) || openIds.has(id) || !next.spaces.some((s) => s.id === t.spaceId)) continue;
       const had = state.keptTabs?.[id];
-      keptTabs[id] = { ...(had ?? { keptAt: finite(t.lastUsed), why: 'app' }), id, url: t.url, title: t.title ?? '', favIconUrl: t.icon ?? '', spaceId: t.spaceId, order: finite(t.order), lastActive: finite(t.lastUsed) };
+      keptTabs[id] = { ...(had ?? { keptAt: finite(t.lastUsed), why: 'app' }), id, url: t.url, title: t.title ?? '', favIconUrl: t.icon ?? '', spaceId: t.spaceId, order: finite(t.order), lastActive: finite(t.lastUsed), wasActive: t.selected === true };
     }
     Object.assign(next, { tabs: records, tabSpace, keptTabs });
   }

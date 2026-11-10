@@ -37,3 +37,15 @@ test('nothing known yet: undefined (the copy works it out); nowhere to go: null'
   one = M.upsertTab(one, { id: 1, windowId: 1, url: 'https://only.example/', active: true, index: 0 }, 0);
   assert.equal(pickNavTab(one, 1, null, 1, cycleTab), null);
 });
+
+test('saved rows participate in the overlay key chain before and after reopening', () => {
+  let s = state();
+  const id = 2;
+  const mid = s.tabs[id].mid!;
+  s = M.keepTab(s, id, { why: 'window', now: 1000 });
+  const first = pickNavTab(s, 1, null, -1, cycleTab, 1000);
+  assert.equal(first, mid);
+  assert.equal(pickNavTab(s, 1, { tabId: mid, at: 1000 }, -1, cycleTab, 1001), cycleTab(s, 1, mid, -1));
+  s = M.linkKept(M.upsertTab(s, { id: 20, windowId: 1, index: 1, url: s.keptTabs[mid].url, active: true } as BrowserTab, 1001), 20, mid, 1001);
+  assert.equal(pickNavTab(s, 1, { tabId: mid, at: 1000 }, -1, cycleTab, 1002), cycleTab(s, 1, 20, -1));
+});

@@ -168,11 +168,12 @@ function paletteItems(state: State, ctx: { windowId: number | null; tabId: numbe
   const items: (PaletteItem & { boost: number })[] = [];
 
   for (const t of Object.values(state.tabs ?? {})) {
+    if (V.isPlaceholderPage(t.url)) continue;
     const space = spaceOf(state.tabSpace?.[t.id]);
     items.push({
       id: `tab:${t.id}`,
       kind: 'tab',
-      title: t.title || t.url || 'New Tab',
+      title: V.isLauncherPage(t.url) && /#settings$/i.test(t.url) ? 'Settings' : t.title || t.url || 'Untitled',
       subtitle: t.url,
       url: t.url,
       favIconUrl: V.iconFor(state, t),
@@ -246,7 +247,8 @@ function paletteItems(state: State, ctx: { windowId: number | null; tabId: numbe
   // opening documents", which defaults to doing that in full screen).
   // A Margin window of its own, in full screen like this one, on its space (background/handlers.ts newWindow).
   action('new-window', 'New window', { type: 'newWindow', ...(ctx.windowId != null ? { fromWindowId: ctx.windowId } : {}) }, { emoji: '⧉' });
-  if (!ctx.inNewTab) action('launcher', 'Margin start page & settings', { type: 'openLauncher', windowId: ctx.windowId }, { emoji: '⚙︎' });
+  action('settings', 'Settings', { type: 'openLauncher', windowId: ctx.windowId, settings: true }, { emoji: '⚙︎' });
+  if (!ctx.inNewTab) action('launcher', 'Archive', { type: 'openLauncher', windowId: ctx.windowId }, { emoji: '◷' });
   if (ctx.canToggleSidebar) action('toggle-sidebar', 'Toggle sidebar', { local: 'toggleSidebar' }, { emoji: '◧' });
   // Chrome: full screen with no toolbar (extension/engines/chromium/fullscreen.ts).
   if (ctx.canFullscreen) action('fullscreen', 'Margin full screen (no toolbar) on/off', { type: 'toggleFullscreen', windowId: ctx.windowId }, { emoji: '⛶' });
@@ -292,7 +294,7 @@ function cloudMatches(state: State, q: string, ctx: { windowId: number | null; t
         const item = {
           id: `cloud:${t.id}`,
           kind: 'cloud',
-          title: t.title || t.url,
+          title: V.isLauncherPage(t.url) && /#settings$/i.test(t.url) ? 'Settings' : t.title || t.url,
           subtitle: t.url,
           url: t.url,
           favIconUrl: V.iconFor(state, { url: t.url }),
@@ -332,6 +334,7 @@ function rankPalette(state: State, query: string, ctx: { windowId: number | null
       .map((r) => r.item);
   }
   ranked = [...ranked.slice(0, limit), ...cloudMatches(state, q, ctx)];
+  if (/^margin:\/\/settings\/?$/i.test(q)) return items.filter((i) => i.id === 'action:settings');
   const target = resolveInput(q);
   if (target) {
     const isUrl = target.kind === 'url';

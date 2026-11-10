@@ -300,7 +300,7 @@
 
   <template m-part="launcher">
     <main class="launcher">
-      <input class="launcher-query" m-input="launcher" placeholder="Go anywhere…" aria-label="Search or enter address" spellcheck="false" autocomplete="off">
+      <m-if test="launcher.canSearch"><input class="launcher-query" m-input="launcher" placeholder="Go anywhere…" aria-label="Search or enter address" spellcheck="false" autocomplete="off"></m-if>
       <m-if test="launcher.hasPins">
         <section>
           <h2>Pinned</h2>
@@ -342,7 +342,8 @@
         </section>
       </m-if>
       <section>
-        <button class="btn push small" m-attr:aria-expanded="{{launcher.settingsOpen}}" m-action="settings.open">Settings</button>
+        <m-if test="launcher.settingsPage"><h1>Settings</h1></m-if>
+        <m-if test="launcher.canSearch"><button class="btn push small" m-attr:aria-expanded="{{launcher.settingsOpen}}" m-action="settings.open">Settings</button></m-if>
         <m-settings></m-settings>
       </section>
     </main>

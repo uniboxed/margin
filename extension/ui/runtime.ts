@@ -115,7 +115,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   onSwitchSlow?: (slow: boolean) => void,
   onSwitchFailed?: () => void,
   onPalette?: (what: 'run' | 'close', request?: any) => void,
-  onSwitching?: (tabId: number | null) => void,
+  onSwitching?: (tabId: number | string | null) => void,
   onSwitchRun?: (run: import('../shared/switching.ts').SwitchRun) => void,
 }) {
   // (Always with a palette: closed, or as it's open.)
@@ -137,7 +137,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
      settings: null as { patch: Record<string, any>, until: number } | null,
      folders: new Map() as Map<string, { name: string, until: number }>,
      spaces: new Map() as Map<string, { patch: Record<string, any>, until: number }>,
-     space: null as { spaceId: string, since: number, withTab: number | null } | null,
+     space: null as { spaceId: string, since: number, withTab: number | string | null } | null,
      themeSettings: null as { values: Record<string, any>, live: boolean, until: number } | null,
     // A space kept shown a moment though the state has moved on: a swipe's slide still coming in, its switch asked
     // of the copy as it settled (behaviors/swipe.js holdSpace). The space asked for (`space`) comes after it.
@@ -222,7 +222,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     failed: (result) => result === undefined,
     onFailed: () => { if (!destroyed) onSwitchFailed?.(); },
     doc,
-    front: stays ? frontTab : null,
+    front: stays ? () => { const id = frontTab(); const mid = id != null ? host.getState()?.tabs?.[id]?.mid : null; return mid && mid === ui.switchingTo ? mid : id; } : null,
     onRun: stays && onSwitchRun ? (run) => { if (!destroyed) onSwitchRun(run); } : null,
   });
 
@@ -235,6 +235,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     mode: host.mode ?? 'inpage',
     inNewTab: !!host.inNewTab,
     launcherPage: !!host.launcher,
+    settingsPage: !!host.settingsAsked || !!ui.settingsPage,
     // The active theme, for Settings' "Settings of …" (ui/settings-form.ts): its id, name and theme.json settings.
     theme: themeInfo,
     justShown: (firstRender || Date.now() - lastShownAt < JUST_SHOWN_MS) && switchAskedAt <= lastShownAt,
@@ -313,7 +314,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const target = type === 'activateTab' ? payload.tabId
       : type === 'openPin' && state ? V.pinTabId(state, payload.pinId, payload.windowId ?? windowId())
       : opensNewTab(type, payload) ? NEW_TAB : null;
-    if (Number.isInteger(target)) {
+    if (Number.isInteger(target) || typeof target === 'string') {
       // Back to the tab in front: a switch away still under way ends, or, in
       // a chain on screen, goes on to it (shared/switching.ts toFront).
       if (target === frontTab()) switching.toFront(target, request);
@@ -698,8 +699,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
      * backgroundSwitches). A switch to the tab in front ends any under way,
      * or goes on with a chain on screen (shared/switching.ts toFront).
      * */
-    switchTo(tabId: number, request: Promise<any>) {
-      if (!Number.isInteger(tabId)) return;
+    switchTo(tabId: number | string, request: Promise<any>) {
+      if (!(Number.isInteger(tabId) || typeof tabId === 'string')) return;
       if (tabId === frontTab()) switching.toFront(tabId, request);
       else switching.start(tabId, request);
     },

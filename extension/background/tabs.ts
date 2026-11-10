@@ -177,6 +177,7 @@ export async function focusTab(tabId: number, { source = 'other', raise = true, 
       if (Number.isFinite(deadline)) await answerBy(raising, (deadline as number) - ANSWER_LEAVES_MS);
       else await raising;
     }
+    if (tab && windowId != null) alignOrder(tabId, windowId);
     return { tab: { ...(tab ?? {}), id: tabId, active: true, windowId } };
   } catch (err) {
     line.fail(err);
@@ -188,6 +189,44 @@ export async function focusTab(tabId: number, { source = 'other', raise = true, 
     else focusing.delete(tabId);
   }
 }
+// Repair a selected tab's physical position only when cached indexes disagree with Margin's places.
+// Selection does not wait for this. One repair per window at a time; rapid keys keep only the latest.
+const orderRepairs = new Map<number, { target: number, done: Promise<void> }>();
+function alignOrder(tabId: number, windowId: number) {
+  if (!api.tabs.move) return;
+  const s = cached();
+  const selected = s?.tabs[tabId];
+  if (!selected || selected.order == null) return;
+  let beforePlace = 0, beforeIndex = 0;
+  for (const tab of Object.values(s?.tabs ?? {})) {
+    if (tab.windowId !== windowId || tab.id === tabId) continue;
+    if ((tab.order ?? tab.index) < selected.order) beforePlace++;
+    if (tab.index < selected.index) beforeIndex++;
+  }
+  if (beforePlace === beforeIndex) return;
+  const pending = orderRepairs.get(windowId);
+  if (pending) { pending.target = tabId; return; }
+  const repair = { target: tabId, done: Promise.resolve() };
+  orderRepairs.set(windowId, repair);
+  repair.done = (async () => {
+    let previous: number | null = null;
+    while (repair.target !== previous) {
+      const id: number = repair.target;
+      previous = id;
+      const live = await api.tabs.query({ windowId });
+      const state = cached();
+      const tab = live.find((t) => t.id === id);
+      const order = state?.tabs[id]?.order;
+      if (!tab || order == null || !state) continue;
+      const rest = live.filter((t) => t.id !== id && state.tabs[t.id]).sort((a, b) => a.index - b.index);
+      const after = rest.find((t) => (state.tabs[t.id].order ?? t.index) > order);
+      const edge = after?.index ?? (rest.at(-1)?.index ?? -1) + 1;
+      const index = edge > tab.index ? edge - 1 : edge;
+      if (index >= 0 && index !== tab.index) await api.tabs.move!(id, { index });
+    }
+  })().catch(() => {}).finally(() => { if (orderRepairs.get(windowId) === repair) orderRepairs.delete(windowId); });
+}
+
 // A tab Margin's UI asked for in a window the app has parked: the app told (parkedActivity `raise`),
 // true once it is; false when the window isn't parked or the app can't be told.
 function parkedRaise(windowId: number | null, tabId: number) {

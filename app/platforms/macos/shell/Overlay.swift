@@ -137,15 +137,11 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         var ownSpace = false
     }
 
-    // PLAN.md §6 and Phase 0's overlay probe: in every Space (a full-screen one too), beside a
-    // full-screen window, not moved by Mission Control, not in ⌘-Tab's or the window cycle.
-    // With it, an overlay is in every Space, so it stays drawn while macOS slides from Safari's
-    // full-screen Space to another (the desktop) until the shell hears the Space changed and puts it
-    // away (Shell.spaceChanged). `ownSpace` joins only its browser's Space and slides with it; the
-    // Space bridge verifies placement. Changing managed to stationary alone does not combine these
-    // separate-process windows in Mission Control (confirmed in the 2026-11-10 visual check).
-    static let collectionBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-    static let ownSpaceBehavior: NSWindow.CollectionBehavior = [.managed, .fullScreenAuxiliary, .ignoresCycle]
+    // Let macOS hide all native layers in Mission Control. Keep the same windows and WebViews
+    // alive so leaving it needs no reload, capture, gesture watcher or delayed re-creation.
+    // Own-Space placement is still verified by the Space bridge.
+    static let collectionBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+    static let ownSpaceBehavior: NSWindow.CollectionBehavior = [.transient, .fullScreenAuxiliary, .ignoresCycle]
     // The thin panel at the window's left edge (PassThrough.swift EdgeGuard): nil with `edgeWidth` 0.
     let edgePanel: OverlayPanel?
     private(set) var edgeFrame: CGRect?

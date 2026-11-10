@@ -26,7 +26,7 @@ function activeSpaceId(state: State, windowId: number | null | undefined) {
 // sidebar is drawn in: the page being looked at is by definition the active
 // tab of its window, so it wins over a possibly stale `active` flag.
 // Tabs newest first (Arc), below the pins and the "+ New Tab" row: the
-// browser's own order, reversed (a new tab goes at its end). "+ New Tab" is
+// saved Margin places, reversed (a new tab takes the last place). "+ New Tab" is
 // highlighted while a new tab is being chosen (`newTabPending`: the palette
 // opened by ⌘T or the row), the tab being shown then only softly (`behind`:
 // its page is still on screen, under the palette); or when the tab being
@@ -45,13 +45,15 @@ function activeSpaceId(state: State, windowId: number | null | undefined) {
 // top of the list, highlighted, at once (Arc), titled with what was asked for
 // (`title`, `url`); the tab in front plain, "+ New Tab" not lit (seen
 // 2026-11-08: it only lit partly until the page had loaded).
-function sidebar(state: State, windowId: number | null, currentTabId: number | null = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null }: { newTabPending?: boolean, switchingTo?: number | null, justShown?: boolean, opening?: { title?: string, url?: string, from?: number | null } | null } = {}) {
+function sidebar(state: State, windowId: number | null, currentTabId: number | null = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null }: { newTabPending?: boolean, switchingTo?: number | string | null, justShown?: boolean, opening?: { title?: string, url?: string, from?: number | null } | null } = {}) {
+  if (typeof switchingTo === 'string') switchingTo = liveTabId(state, switchingTo) ?? switchingTo;
   const has = (id: string) => id != null && state.spaces.some((s) => s.id === id);
   const own = currentTabId != null ? state.tabs?.[currentTabId] : null;
-  const going = switchingTo != null ? state.tabs?.[switchingTo] : null;
+  const going = switchingTo != null ? state.tabs?.[switchingTo as number] : null;
+  const goingKept = typeof switchingTo === 'string' ? state.keptTabs?.[switchingTo] : null;
   const spaceId = going?.windowId === windowId && has(state.tabSpace?.[going.id]) ? state.tabSpace[going.id]
     : justShown && own?.windowId === windowId && !own.active && has(state.tabSpace?.[own.id]) ? state.tabSpace[own.id]
-    : activeSpaceId(state, windowId);
+    : goingKept && has(goingKept.spaceId) ? goingKept.spaceId : activeSpaceId(state, windowId);
   const known = own?.windowId === windowId;
   // The space's tabs in every window of the profile, as one list (docs/BROWSER-WINDOWS.md §9: the tab follows the window
   // in front). Another window's tab is chosen here only when it's this window's away tab: then it's this window's
@@ -60,16 +62,17 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
   const shown = Object.values(state.tabs ?? {})
     .filter((t) => t.windowId === windowId || state.tabSpace?.[t.id] === spaceId)
     .map((t) => {
+      if (/#settings$/i.test(t.url) && isLauncherPage(t.url)) t = { ...t, title: 'Settings' };
       const active = away != null ? t.id === away : t.windowId === windowId && (known ? t.id === currentTabId : !!t.active);
       const isAway = t.id === away;
       return active === t.active && !isAway ? t : { ...t, active, ...(isAway ? { away: true } : {}) };
     });
-  const target = switchingTo != null && shown.some((t) => t.id === switchingTo && !t.active) ? switchingTo : null;
+  const target = goingKept ? switchingTo : switchingTo != null && shown.some((t) => t.id === switchingTo && !t.active) ? switchingTo : null;
   const front = shown.find((t) => t.active);
   const openingRow = opening && target == null && (front == null || front.id === opening.from)
     ? { id: OPENING_ID, windowId, title: String(opening.title ?? ''), url: String(opening.url ?? ''), favIconUrl: '', active: true, opening: true, status: 'loading', order: Infinity, index: Infinity, lastActive: Date.now() }
     : null;
-  const shownNewTab = openingRow ? undefined : shown.find((t) => t.active && isLauncherPage(t.url));
+  const shownNewTab = openingRow ? undefined : shown.find((t) => t.active && isPlaceholderPage(t.url));
   const windowTabs = shown
     .map((t) => {
       if (openingRow) return t.active ? { ...t, active: false } : t;
@@ -83,7 +86,7 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
   if (openingRow) spaceTabs.push((openingRow as any));
   // The space's Margin tabs with no browser tab (state/model.ts keptTabs):
   // shown in every window showing the space, not open (`kept`), in their place.
-  const kept = Object.values(state.keptTabs ?? {}).filter((k) => k.spaceId === spaceId).map((k) => ({ ...k, kept: true, active: false }));
+  const kept = Object.values(state.keptTabs ?? {}).filter((k) => k.spaceId === spaceId).map((k) => ({ ...k, kept: true, active: k.id === target }));
   const folders = (state.folders ?? []).filter((f) => f.spaceId === spaceId);
   const folderIds = new Set(folders.map((f) => f.id));
   // A pin as shown: in its folder (if that's still there), bound to the tab it's open in, if any.
@@ -99,7 +102,7 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
       ...p,
       folderId: p.folderId && folderIds.has(p.folderId) ? p.folderId : null, // its folder gone: loose
       pos: posOf(p, i),
-      tabId: tab?.id ?? null, active: !!tab?.active, behind: !!tab?.behind, away: !!tab?.away, favIconUrl: tab?.favIconUrl ?? '',
+      tabId: tab?.id ?? null, active: !!tab?.active || !!(goingKept && normalizeUrl(goingKept.url) === key), behind: !!tab?.behind, away: !!tab?.away, favIconUrl: tab?.favIconUrl ?? '',
     });
   });
   const byPos = (a: { pos: number }, b: { pos: number }) => a.pos - b.pos;
@@ -129,7 +132,7 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
     // Reversed here, not sorted that way above: a pin binds to the oldest tab
     // with its URL (unless another is shown or being switched to). Open and
     // not open, in their places (pins bind to open tabs only).
-    tabs: [...spaceTabs, ...kept].sort(byPlace).filter((t) => !pinnedUrls.has(normalizeUrl(t.url)) && t.id !== shownNewTab?.id && !(targetIsNewTab && t.id === target)).reverse(),
+    tabs: [...spaceTabs, ...kept].sort(byPlace).filter((t) => !pinnedUrls.has(normalizeUrl(t.url)) && !isPlaceholderPage(t.url)).reverse(),
   };
 }
 
@@ -187,21 +190,34 @@ function revealZone({ outerWidth, outerHeight, screenWidth, screenHeight }: { ou
 }
 
 // ⌘⌥↓ / ⌘⌥↑: the next/previous tab in the order the sidebar shows them
-// (open pinned tabs in the rows shown, then the space's open tabs), wrapping around. From a tab
+// (open/saved pinned tabs in the rows shown, then the space's open and saved tabs), wrapping around. From a tab
 // that isn't in the list, ↓ goes to the first and ↑ to the last. null if
 // there's nowhere to go.
-function cycleTab(state: State, windowId: number, currentTabId: number | null, dir: number) {
-  const v = sidebar(state, windowId, currentTabId);
+function cycleTab(state: State, windowId: number, currentTabId: number | string | null, dir: number) {
+  const resolved = currentTabId == null ? null : liveTabId(state, currentTabId) ?? currentTabId;
+  const v = sidebar(state, windowId, typeof resolved === 'number' ? resolved : null, { switchingTo: typeof resolved === 'string' ? resolved : null });
+  currentTabId = resolved;
   // The rows shown: a closed folder's pins only while one is the tab shown.
   const rows = v.pinned.flatMap((item) => (item.kind !== 'folder' ? [item] : item.open ? item.pins : item.peek));
-  // Not tabs that aren't open (each would open as it was passed).
-  // (Each a browser tab's id: a pin's with one, an open tab's; a kept tab's id is Margin's own.)
-  const order = [...rows.filter((p) => p.tabId != null).map((p) => p.tabId as number), ...v.tabs.filter((t) => !t.kept).map((t) => t.id as number)];
+  // The actual rows, including saved tabs: only the chosen missing tab is reopened.
+  const keptByUrl = new Map(Object.values(state.keptTabs ?? {}).filter((k) => k.spaceId === v.spaceId).map((k) => [normalizeUrl(k.url), k.id]));
+  const pins = rows.map((p) => p.tabId ?? keptByUrl.get(normalizeUrl(p.url))).filter((id): id is number | string => id != null);
+  const order: (number | string)[] = [...pins, ...v.tabs.map((t) => t.id)];
   if (!order.length) return null;
-  const at = (order as (number | null)[]).indexOf(currentTabId); // (no tab: -1)
+  const at = order.indexOf(currentTabId as number | string); // (no tab: -1)
   if (at < 0) return dir > 0 ? order[0] : order[order.length - 1];
   const next = order[(at + dir + order.length) % order.length];
   return next === currentTabId ? null : next;
+}
+
+function liveTabId(state: State, id: number | string) {
+  if (typeof id === 'number') return state.tabs[id]?.id;
+  return state.keptTabs?.[id] ? undefined : Object.values(state.tabs).find((t) => t.mid === id)?.id;
+}
+
+// Browser-only anchors do not belong in the list of the person's tabs. Settings does.
+function isPlaceholderPage(url: string | null | undefined) {
+  return isLauncherPage(url) && !/#settings$/i.test(String(url));
 }
 
 // ⌘⌥→ / ⌘⌥←: the next/previous space for this window, wrapping around;
@@ -275,4 +291,4 @@ function letterAvatar(label: string): { letter: string, color: string } {
 }
 
 
-export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, isLauncherPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, hue, letterAvatar };
+export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, isLauncherPage, isPlaceholderPage, liveTabId, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, hue, letterAvatar };

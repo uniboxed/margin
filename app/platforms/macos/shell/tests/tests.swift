@@ -723,10 +723,10 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("and back", ScreenGeometry.appKitRect(CGRect(x: 10, y: 780, width: 300, height: 200), mainHeight: 1000) == CGRect(x: 10, y: 20, width: 300, height: 200))
     check("off screen stays off screen", ScreenGeometry.appKitRect(CGRect(x: -20000, y: -20000, width: 1280, height: 800), mainHeight: 982).minY == 982 + 20000 - 800)
     check("a pointer flipped", ScreenGeometry.topLeftPoint(CGPoint(x: 5, y: 990), mainHeight: 1000) == CGPoint(x: 5, y: 10))
-    check("the overlay's window: in every Space, beside full screen, out of the window cycle",
-          OverlayController.collectionBehavior == [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle])
-    check("own-Space overlay: only the Space it's shown in, beside full screen",
-          OverlayController.ownSpaceBehavior == [.managed, .fullScreenAuxiliary, .ignoresCycle])
+    check("the overlay's window: in every Space, hidden in Mission Control, out of the window cycle",
+          OverlayController.collectionBehavior == [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle])
+    check("own-Space overlay: only its own Space, hidden in Mission Control, beside full screen",
+          OverlayController.ownSpaceBehavior == [.transient, .fullScreenAuxiliary, .ignoresCycle])
     // A full-screen window fills its display's height; one going into full screen doesn't (Phase 2 step 8).
     let displays: [(frame: CGRect, topInset: CGFloat)] = [(CGRect(x: 0, y: 0, width: 1512, height: 982), 32), (CGRect(x: 1512, y: -200, width: 2560, height: 1440), 0)]
     check("full screen: the whole display", ScreenGeometry.fillsDisplay(CGRect(x: 0, y: 0, width: 1512, height: 982), displays: displays))

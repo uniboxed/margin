@@ -160,9 +160,9 @@ test('palette: URLs open first; in the new tab they navigate in place', () => {
   assert.deepEqual(inNewTab.action, { local: 'navigate', url: 'https://example.com' });
 });
 
-test('palette: "Margin start page & settings" on web pages, not on the start page itself', () => {
+test('palette: Settings is directly available; Archive is offered on web pages', () => {
   const s = paletteState();
-  assert.deepEqual(rankPalette(s, 'settings', ctx)[0].action, { type: 'openLauncher', windowId: 1 });
+  assert.deepEqual(rankPalette(s, 'settings', ctx)[0].action, { type: 'openLauncher', windowId: 1, settings: true });
   assert.ok(!rankPalette(s, '', { ...ctx, inNewTab: true }).some((i) => i.id === 'action:launcher'));
 });
 
@@ -180,4 +180,14 @@ test('palette: "Margin full screen" only where the browser has it (Chrome)', () 
   assert.equal(has({ windowId: 1, tabId: 1 }), false);
   const item = rankPalette(state, 'full screen', { windowId: 1, tabId: 1, canFullscreen: true } as Ctx).find((i) => i.id === 'action:fullscreen');
   assert.deepEqual(item!.action, { type: 'toggleFullscreen', windowId: 1 });
+});
+
+test('Settings has a direct palette action and an internal address alias', () => {
+  const s = model.defaultState();
+  const context = { windowId: 1, tabId: null, inNewTab: false, canToggleSidebar: false, canFullscreen: false };
+  for (const query of ['settings', 'margin://settings', 'MARGIN://SETTINGS/']) {
+    const first = search.rankPalette(s, query, context)[0];
+    assert.equal(first.title, 'Settings');
+    assert.deepEqual(first.action, { type: 'openLauncher', windowId: 1, settings: true });
+  }
 });

@@ -4104,3 +4104,76 @@ standalone probe compiled with warnings as errors, its no-argument dry run made 
 run exited zero after verifying the child window's owner and each queried window's ID. The first browser
 run passed 148/149 (the existing archive/palette flake, this time waiting for the restored row's highlight,
 `archive.test.ts:137`); the full browser rerun by itself passed 149/149. No browser changes made.
+
+## Margin 2: saved-tab navigation, dedicated Settings and Mission Control fallback (2026-11-10)
+
+The user chose hiding Margin in Mission Control after confirming the detached/scaled appearance happens
+only in its previews. All three overlay layers now use AppKit's `transient` policy, including the
+all-Spaces fallback, in place of `managed`/`stationary`. Apple's collection-behavior documentation says
+transient windows hide in Mission Control. The existing windows, WebViews, browser page geometry,
+Space placement and readiness/missing-read protections remain. No gesture observer, polling, new
+renderer, screenshot cache or helper work is added. The browser's page insets intentionally stay
+prepared; this does not promise a full-width, reflowed Safari thumbnail. A real Mission Control
+entry/exit/reversal observation remains necessary because live desktop capture failed previously.
+
+Two navigation causes were reproduced. The shared key cycle explicitly excluded kept rows; its
+background and overlay pick also required integer browser IDs. Saved IDs now participate in the same
+sidebar order and optimistic selection, including pinned URLs with a saved tab. Clicks, keys and
+space restore share the kept-tab reopen path, preserving Margin identity, place and scroll metadata.
+The key chain resolves that identity after the new browser ID arrives. Creation/activation before the
+identity link cannot prematurely clear its highlight; only the chosen missing page opens. The
+existing one-switch/latest-waiting behavior stays.
+
+Space restore formerly tried all open pages before kept tabs, including an internal launcher, and
+then reopened the first kept row rather than the last-used tab. It now compares real open and saved
+records by recency. Saved `wasActive` breaks a tie (activating a tab can stamp both it and the one left
+at the same millisecond). The app data's additive `selected` field preserves that information through
+a wiped extension cache; older records default false. The separate closed-profile window restore
+uses the same kept-tab tie break. An already shown real tab of the requested space stays shown.
+
+Safari resync and reclaim retain known Margin `order` values instead of deriving a new sidebar order
+from Safari's strip. Explicit sidebar drags write a Margin place. After ordinary selection, only a
+cached order mismatch schedules a physical position repair: a linear scan on the selection path, no
+additional browser call when ordered, no waiting before activation, at most one repair per window,
+latest target retained while one is running. No speculative tab loads or background reordering loop.
+
+Internal start/new-tab anchors are omitted from sidebar and palette tab results even when inactive;
+new-tab keys still use the palette and first/empty windows retain their necessary browser anchor.
+Settings is a named page/row, opened directly by the palette's Settings action or `margin://settings`
+in Margin's fields, reusing an existing page per window and coalescing concurrent opens. It uses the
+existing renderer and settings controls in all three bundled themes, showing a Settings heading and
+form without the start-page search, pins and archive. Archive has its own palette action. The internal
+alias is not a system-wide macOS protocol handler or a Safari address-bar interception.
+
+Checks so far: TypeScript passes; the complete unit suite passes 1,031 tests. Native integration passes
+518 checks, including all transient panel flags and the existing repeated-Space lifetime checks.
+Two native logic assertions initially expected the old flags; after updating those intended policy
+expectations, all 2,073 native checks pass. App, handler and helper have no compiler warnings; helper
+checks pass (resident below the existing 20 MB limit while its temporary splash child draws). Focused
+restore/order/Settings integration and app-data round-trip checks pass. Browser/theme results follow.
+
+The theme integration regression then exposed one more old guard: `tabRow` forced all not-open rows
+inactive even when the shared view selected one. It now retains that optimistic active state. Both
+WebKit and Chromium verify `runtime.switchTo` with a saved ID and the actual view-model highlight.
+Saved pinned rows also receive the pending highlight. All 275 theme checks pass, including dedicated
+Settings in Arcadia, Pixel and Neubrutalism. Concurrent clicks on the same saved row share one reopen;
+space restore uses the creation's tab result directly, with no extra `tabs.get` round trip.
+
+The first browser pass was 149/150: the previously recorded archive/palette timeout, waiting for the
+restored dashboard (`archive.test.ts:134`). All five archive cases passed in isolation; the following
+quiet full run passed 150/150. The final-source unit/browser pass and installed build are recorded below.
+
+The last-source parallel browser rerun hit that existing archive timeout again (149/150). Its test
+shared a live browser with the preceding new-tab replacement case, whose late close/activation
+listeners can cancel the next unrelated restore. That palette case now starts its own seeded browser
+fixture; the assertions and timeout are unchanged. This is test isolation, not a claimed production
+archive fix. Its subsequent normal parallel run passes the case. A regression also covers Safari
+activating a newly created browser ID before `linkKept`: that own activation cannot reset a saved-tab
+key chain or discard a newer waiting target. The focused run passes all 33 cases.
+
+Final source verification: `npm test` 1,031/1,031; `npm run test:e2e` 150/150 with its normal two workers
+(after isolating the archive fixture); `npm run test:theme` 275/275 across WebKit and Chromium. Native
+checks remain 2,073 logic and 518 integration, with the intended transient policies, repeated Space
+visits, no view recreation, no added moves and existing placement/backoff checks. TypeScript and
+whitespace checks pass. Real Safari/Mission Control visual verification is still pending; the
+Chromium fixtures and AppKit stand-ins do not establish that compositor result.

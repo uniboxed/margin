@@ -348,9 +348,9 @@
        space's pins as tiles, recently archived tabs, and Settings. -->
   <template m-part="launcher">
     <main class="launcher">
-      <div class="search-field">
+      <m-if test="launcher.canSearch"><div class="search-field">
         <input class="launcher-query" type="text" m-input="launcher" placeholder="Search or enter address" aria-label="Search or enter address" spellcheck="false" autocomplete="off">
-      </div>
+      </div></m-if>
       <m-if test="launcher.hasPins">
         <section class="pins-tiles">
           <h2>Pinned</h2>
@@ -391,7 +391,8 @@
         </section>
       </m-if>
       <section class="settings" m-class:open="{{launcher.settingsOpen}}">
-        <div class="settings-summary"><button m-attr:aria-expanded="{{launcher.settingsOpen}}" m-action="settings.open">Settings</button></div>
+        <m-if test="launcher.settingsPage"><h1>Settings</h1></m-if>
+        <m-if test="launcher.canSearch"><div class="settings-summary"><button m-attr:aria-expanded="{{launcher.settingsOpen}}" m-action="settings.open">Settings</button></div></m-if>
         <m-settings class="settings-slot"></m-settings>
       </section>
     </main>

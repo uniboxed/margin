@@ -317,7 +317,7 @@
   <!-- Margin's new-tab page: a title screen in the page card. -->
   <template m-part="launcher">
     <main class="launcher">
-      <div class="title-screen">
+      <m-if test="launcher.canSearch"><div class="title-screen">
         <div class="world">WORLD {{space.number}}-1</div>
         <h1 class="stage">{{space.name}}</h1>
         <label class="launcher-field">
@@ -325,7 +325,7 @@
           <input class="launcher-query" m-input="launcher" placeholder="search or type a url…" aria-label="Search or enter address" spellcheck="false" autocomplete="off">
           <span class="caret" aria-hidden="true"></span>
         </label>
-      </div>
+      </div></m-if>
       <m-if test="launcher.hasPins">
         <section>
           <h2>PINNED</h2>
@@ -367,7 +367,8 @@
         </section>
       </m-if>
       <section class="settings-section">
-        <button class="btn press small settings-button" m-attr:aria-expanded="{{launcher.settingsOpen}}" m-action="settings.open">SETTINGS</button>
+        <m-if test="launcher.settingsPage"><h1>Settings</h1></m-if>
+        <m-if test="launcher.canSearch"><button class="btn press small settings-button" m-attr:aria-expanded="{{launcher.settingsOpen}}" m-action="settings.open">SETTINGS</button></m-if>
         <m-settings class="settings-slot"></m-settings>
       </section>
     </main>

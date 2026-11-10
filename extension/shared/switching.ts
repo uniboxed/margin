@@ -1,3 +1,4 @@
+export type TabKey = number | string;
 // A switch to another tab, from this page: a click in the sidebar or the
 // palette, a next/previous key (the background says which tab). The switch
 // itself can take a moment (the background first wakes a hidden tab:
@@ -85,8 +86,8 @@ export function describeSwitchRun(run: SwitchRun) {
  * screen (above): with it, a switch ends as the state says it landed;
  * `onRun`: each chain as it ends (SwitchRun, above).
  */
-export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, doc = document, front = null, onRun = null }: { onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, doc?: Document, front?: (() => number | null) | null, onRun?: ((run: SwitchRun) => void) | null }) {
-  let target: number | null = null;
+export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, doc = document, front = null, onRun = null }: { onChange: (tabId: TabKey | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: TabKey) => void, doc?: Document, front?: (() => TabKey | null) | null, onRun?: ((run: SwitchRun) => void) | null }) {
+  let target: TabKey | null = null;
   let current: object | null = null; // this start's token: an older start's request can't end a newer one
   let slow = false;
   let timers: ReturnType<typeof setTimeout>[] = [];
@@ -109,7 +110,7 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
    * `targets`, `lastAt`: how many it had and when the last was asked, for `onRun`.
    * `answeredAt`: when the newest target's request was answered (null: not yet).
    * */
-  let chain: { from: number | null, passed: Map<number, number | null>, stale: boolean, other: boolean, targets: number, lastAt: number, answeredAt: number | null } | null = null;
+  let chain: { from: TabKey | null, passed: Map<TabKey, number | null>, stale: boolean, other: boolean, targets: number, lastAt: number, answeredAt: number | null } | null = null;
   function end(didFail = false) {
     if (passedTimer) clearTimeout(passedTimer);
     passedTimer = null;
@@ -133,6 +134,7 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
   function landed() {
     if (!front || !chain || target == null) return null;
     const f = front();
+    if (typeof target === 'string' && f !== target && chain.answeredAt == null) return null;
     if (f !== target) chain.other = true;
     if (f === target) return !chain.stale || chain.other ? true : null;
     if (f === chain.from) return null;
@@ -154,8 +156,8 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
     if (landed() != null) end();
   }
   /** @param request the switch request, if this page made it */
-  function start(tabId: number, request: Promise<unknown> | null = null) {
-    if (!Number.isInteger(tabId) || doc.hidden) return;
+  function start(tabId: TabKey, request: Promise<unknown> | null = null) {
+    if (!(Number.isInteger(tabId) || typeof tabId === 'string') || doc.hidden) return;
     clearTimers();
     if (front) {
       const f = front();
@@ -194,6 +196,8 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
         clearTimers();
         stopPill();
         if (front) {
+          const shown = (result as { shown?: unknown } | null)?.shown;
+          if (chain && typeof target === 'string' && typeof shown === 'number') chain.passed.set(shown, null);
           if (chain) chain.answeredAt = Date.now();
           if (landed() != null) return end();
           timers.push(setTimeout(() => mine() && end(), SETTLE_MS));
@@ -208,7 +212,7 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
   // space, the copy's key landing back on it): with a chain under way (and
   // `front`), the chain goes on to it, so an earlier target's late change
   // can't show that one; else a switch under way ends.
-  function toFront(tabId: number, request: Promise<unknown> | null = null) {
+  function toFront(tabId: TabKey, request: Promise<unknown> | null = null) {
     if (front && target != null && Number.isInteger(tabId)) start(tabId, request);
     else end();
   }
@@ -226,22 +230,23 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
 // background gives one (background/tabs.ts coverFront): only that switch's
 // word settles it (an older switch to the same tab, called off, says it's done).
 export function backgroundSwitches() {
-  let pending: { tabId: number, switchId: string | null, resolve: () => void, reject: () => void } | null = null;
+  let pending: { tabId: TabKey, switchId: string | null, resolve: () => void, reject: () => void } | null = null;
   return {
     /** the request to pass to start() */
-    begin(tabId: number, switchId: string | null = null): Promise<any> {
+    begin(tabId: TabKey, switchId: string | null = null): Promise<any> {
       pending?.resolve(); // a newer one takes over (start() ignores the old)
        let resolve: (value?: any) => void = () => {};
        let reject: (reason: Error) => void = () => {};
       const request: Promise<any> = new Promise((res, rej) => { resolve = res; reject = rej; });
       request.catch(() => {}); // a switch that never started
       // Done resolves as a page's own switch request does ({ shown }), so it isn't taken for a failure.
-      pending = { tabId, switchId: switchId ?? null, resolve: () => resolve(({ shown: tabId } as any)), reject: () => reject(new Error('switch failed')) };
+      pending = { tabId, switchId: switchId ?? null, resolve: () => resolve(({ shown: pending?.tabId ?? tabId } as any)), reject: () => reject(new Error('switch failed')) };
       return request;
     },
     /** @param message 'switch-done' or 'switch-failed' */
-    settle({ type, tabId, switchId = null }: { type: string, tabId?: number, switchId?: string | null }) {
+    settle({ type, tabId, switchId = null, shown }: { type: string, tabId?: TabKey, switchId?: string | null, shown?: number }) {
       if (!pending || pending.tabId !== tabId || pending.switchId !== (switchId ?? null)) return;
+      if (typeof shown === 'number') pending.tabId = shown;
       (type === 'switch-done' ? pending.resolve : pending.reject)();
       pending = null;
     },
@@ -261,11 +266,13 @@ export const OVERLAY_SWITCH_PREFIX = 'ov-';
  * while the chain lasts (NAV_CHAIN_MS, that tab still known), else from the tab in front of the window. Null: nothing
  * to go to; undefined: nothing in front known yet (the copy works it out).
  * */
-export function pickNavTab(state: { tabs?: Record<string, any> } | null, windowId: number, last: { tabId: number, at: number } | null, dir: number, cycle: (state: any, windowId: number, from: number, dir: number) => number | null, now: number = Date.now()): number | null | undefined {
+export function pickNavTab(state: { tabs?: Record<string, any>, keptTabs?: Record<string, any> } | null, windowId: number, last: { tabId: TabKey, at: number } | null, dir: number, cycle: (state: any, windowId: number, from: TabKey, dir: number) => TabKey | null, now: number = Date.now()): TabKey | null | undefined {
   if (!state?.tabs) return undefined;
-  const chained = last && now - last.at < NAV_CHAIN_MS && state.tabs[last.tabId] ? last.tabId : null;
+  const previous = last && now - last.at < NAV_CHAIN_MS ? last.tabId : null;
+  const live = previous == null ? null : state.tabs[previous] ?? Object.values(state.tabs).find((t) => t.mid === previous);
+  const chained = live?.id ?? (previous != null && state.keptTabs?.[previous] ? previous : null);
   const front = Object.values(state.tabs).find((t) => t?.windowId === windowId && t?.active)?.id;
   const from = chained ?? front;
-  if (!Number.isInteger(from)) return undefined;
+  if (!(Number.isInteger(from) || typeof from === 'string')) return undefined;
   return cycle(state, windowId, from, dir);
 }

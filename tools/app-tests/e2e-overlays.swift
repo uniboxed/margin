@@ -238,6 +238,12 @@ func overlaysScenario() async {
   check("both overlays shown", await until(15, { shell.overlays[k1]?.isShown == true && shell.overlays[k2]?.isShown == true }))
   guard let o1 = shell.overlays[k1], let o2 = shell.overlays[k2] else { return }
   check("in their window's own Space", o1.panel.collectionBehavior == OverlayController.ownSpaceBehavior && o2.panel.collectionBehavior == OverlayController.ownSpaceBehavior)
+  check("all native layers hide in Mission Control without joining other Spaces", [o1, o2].allSatisfy { o in
+    [o.panel, o.catcher, o.edgePanel].compactMap { $0 }.allSatisfy {
+      $0.collectionBehavior.contains(.transient) && !$0.collectionBehavior.contains(.managed)
+        && !$0.collectionBehavior.contains(.stationary) && !$0.collectionBehavior.contains(.canJoinAllSpaces)
+    }
+  })
   try? await Task.sleep(nanoseconds: 400_000_000) // (the check after each placement passes: overlay and window on screen together)
   check("the check after placing them: no fallback", !shell.ownSpaceFellBack)
 

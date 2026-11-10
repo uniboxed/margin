@@ -278,12 +278,12 @@ test('the window\'s frame when hidden, and the new-tab launcher: the space\'s pi
 test('Margin\'s own pages show no host: never the extension\'s id, and a letter from the title', () => {
   const state = smallState();
   const t = state.tabs[14];
-  for (const url of ['safari-web-extension://4F1E2D3C-AAAA-BBBB-CCCC-123456789ABC/newtab/newtab.html', 'chrome-extension://abcdefghijklmnop/newtab/newtab.html']) {
-    state.tabs[14] = { ...t, url, title: 'New Tab' };
+  for (const url of ['safari-web-extension://4F1E2D3C-AAAA-BBBB-CCCC-123456789ABC/newtab/newtab.html#settings', 'chrome-extension://abcdefghijklmnop/newtab/newtab.html#settings']) {
+    state.tabs[14] = { ...t, url, title: 'Settings' };
     const vm = build(state);
     const r = vm.space.today.find((x) => x.id === 14)!; // listed
     assert.equal(r.host, '', url);
-    assert.equal(r.letter, 'N', 'the letter comes from the title');
+    assert.equal(r.letter, 'S', 'the letter comes from the title');
   }
 });
 
@@ -299,4 +299,15 @@ test('a tab playing sound: the browser\'s audible kept in its record, its row ma
   s = M.upsertTab(s, tab(false), 0);
   assert.equal('audible' in s.tabs[31], false, 'no field once it stops');
   assert.equal(row(s)?.audible, false);
+});
+
+test('dedicated Settings shows its controls without start-page sections in every theme', () => {
+  const state = smallState();
+  const vm = buildViewModel({ state, ui: { windowId: 1, launcherPage: true, settingsPage: true }, platform: {}, settings: {} } as Parameters<typeof buildViewModel>[0]);
+  assert.equal(vm.launcher?.settingsPage, true);
+  assert.equal(vm.launcher?.canSearch, false);
+  assert.equal(vm.launcher?.hasArchive, false);
+  assert.equal(vm.launcher?.hasPins, false);
+  assert.equal(vm.launcher?.settingsOpen, true);
+  assert.ok(vm.settingsForm?.fields.length);
 });

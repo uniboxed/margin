@@ -62,6 +62,8 @@ export interface LostTab { url: string; spaceId: string; lastActive: number; win
 export interface KeptTab {
   id: string; url: string; title: string; favIconUrl: string; spaceId: string;
   order: number; lastActive: number; wokeAt?: number;
+  /** Selected before it stopped being open: breaks equal lastActive times on restore. */
+  wasActive?: boolean;
   /** when it stopped being open, and why ('window', 'sleep', 'not restored', 'gone', 'app') */
   keptAt: number; why: string;
   /** the window it was lost with: a window that comes back within a day takes it back (reclaimTabs) */

@@ -1879,3 +1879,15 @@ After `npm run safari`:
 - [ ] Safari's Start Page, an empty window, and a window opened from Safari's Dock menu with no other window: linked all the same.
 - [ ] Log out and back in with Safari set to reopen its windows: Margin is there with them.
 
+
+## Sidebar restore, Settings and Mission Control fallback (2026-11-10)
+
+The user chose hiding the separate native layers in Mission Control after the stationary preview experiment failed. The earlier faithful-composition check is superseded for this candidate: only Safari should be arranged. Native tests verify transient flags on all layers and repeated Space visits retaining the same views; the compositor result remains a manual check.
+
+- [ ] Visit each full-screen Safari Space once. Swipe up; no detached Margin layer in the small thumbnails or desktop arrangement. Cancel, choose the same Space, choose another browser Space, and reverse the swipe: Margin is already aligned on return, with no new loading screen. Test multiple displays too. Browser page insets intentionally stay prepared; entering Mission Control does not reflow the page.
+- [ ] Restore a space after Safari quit/crashed with its pages not reopened. Its previously highlighted page loads, not a New Tab page; only that saved page reopens.
+- [ ] Use the tab up/down keys through interleaved live and unloaded rows, including fast repeats and reversals. Follow sidebar order; each selected missing page opens once. After restoring a reordered Safari session, the sidebar's order stays, and selecting a tab repairs its browser position without blocking activation.
+- [ ] Open the palette, search Settings, then try `margin://settings` there. Both open a named Settings page with its form and no start-page search/archive. Repeat: reuse the same page in that window. Verify controls save and the form scrolls in Arcadia, Pixel and Neubrutalism. The alias is handled by Margin's fields; it does not register a macOS-wide URL protocol.
+- [ ] New-tab keys show the palette. No inactive internal New Tab/start-page row appears in sidebar or palette; new windows and empty spaces still offer the palette. Archive remains reachable separately.
+
+Live desktop capture remains unavailable (previous ScreenCaptureKit -3811 result). No automated compositor observation is claimed.

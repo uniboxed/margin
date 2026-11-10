@@ -1,3 +1,4 @@
+import { openKept } from './kept.ts';
 // What pages ask the background for: runtime messages { type, ...payload },
 // answered { ok, result } or { ok: false, error } (background.ts routes
 // them). types/margin.d.ts derives the protocol's types from this object.
@@ -227,26 +228,6 @@ async function handOff(tab: BrowserTab) {
   return true;
 }
 
-// A Margin tab that isn't open (state/model.ts keptTabs), clicked: opened in
-// the window where it was clicked (the last focused one if none is named),
-// at its place in the tab strip, in its space, and from then on that browser
-// tab is the Margin tab (linkKept). Its Back history is gone, as for any
-// closed tab reopened; its page goes back to where it was scrolled, once (the
-// scroll record: background/scroll-record.ts). Answers which tab came to the front.
-async function openKept(keptId: string, { windowId = null, deadline, sidebarTop }: { windowId?: number | null, deadline?: number, sidebarTop?: number } = {}) {
-  const s = await load();
-  const kept = s.keptTabs?.[keptId];
-  if (!kept) throw new Error('That tab is no longer there');
-  const win = windowId ?? (await api.windows?.getLastFocused?.().catch(() => null))?.id ?? undefined;
-  if (Number.isFinite(sidebarTop) && win != null) void setScroll(win, sidebarTop as number); // (finite: checked)
-  const spaceId = s.spaces.some((sp) => sp.id === kept.spaceId) ? kept.spaceId : V.activeSpaceId(s, win);
-  // The window's tabs as Safari has them now (Margin's indexes lag after closes).
-  const live = win != null ? await api.tabs.query({ windowId: win }).catch(() => null) : null;
-  const index = win != null ? M.stripIndexFor(s, win, kept.order, live) : undefined;
-  const tab = await openTab({ windowId: win, url: kept.url, spaceId, deadline, index, keptId });
-  return { shown: tab.id };
-}
-
 // A space's window made by Margin.app's switch: the tabs that were open with
 // its front tab open behind it, one at a time, in their old order, each as
 // its Margin tab (fresh: no Back history). One gone meanwhile is left.
@@ -320,6 +301,8 @@ const appState = (windowId: number | null) => {
   const drawn = appLink.drawn(windowId);
   return { state: appLink.pageState(), layout: windowId != null ? appLink.layout(windowId) : null, ...(typeof drawn === 'boolean' ? { drawn } : {}) };
 };
+
+const launcherOpening = new Map<string, Promise<{ tabId: number, shown: number }>>();
 
 export const handlers = {
   // A page starting: which tab and window it is, this copy, whether the window is in Margin's
@@ -505,6 +488,7 @@ export const handlers = {
   // An address from a page (the palette): behind it until loaded (tabs.ts
   // openBehind). Margin's new-tab page, or a space's start page, at once.
   async newTab({ windowId, url, spaceId, deadline }: { windowId?: number, url?: string, spaceId?: string, deadline?: number }, sender: BrowserMessageSender) {
+    if (/^margin:\/\/settings\/?$/i.test(url ?? '')) return handlers.openLauncher({ windowId: windowId ?? sender?.tab?.windowId, settings: true });
     if (url && !spaceId && sender?.tab?.id != null) return openBehind({ windowId, url, from: sender.tab, deadline });
     const tab = await openTab({ windowId, url, spaceId, deadline });
     return { tabId: tab.id };
@@ -611,6 +595,7 @@ export const handlers = {
     }
     // Above it in the list: just after it in the window; below it: just before.
     const index = moveIndex(tab.index, other.index, side);
+    await mutate((s) => M.placeOpen(s, tab.id, other.id, side, s.tabSpace[tab.id]));
     if (index === tab.index) return false;
     return api.tabs.move(tab.id, { index }).then(() => true, () => false);
   },
@@ -750,8 +735,23 @@ export const handlers = {
   // The launcher on purpose (#launcher: it doesn't hand off to the palette).
   /** @param message `settings`: its Settings open */
   async openLauncher({ windowId, settings = false }: { windowId?: number, settings?: boolean }) {
-    await openTab({ windowId, url: api.runtime.getURL(`newtab/newtab.html#${settings ? 'settings' : 'launcher'}`) });
+    const win = windowId ?? (await api.windows?.getLastFocused?.().catch(() => null))?.id;
+    const key = `${win}:${settings}`;
+    const pending = launcherOpening.get(key);
+    if (pending) return pending;
+    const opening = (async () => {
+      const url = api.runtime.getURL(`newtab/newtab.html#${settings ? 'settings' : 'launcher'}`);
+      const s = await load();
+      const existing = Object.values(s.tabs).find((t) => t.windowId === win && t.url === url);
+      if (existing) { await focusTab(existing.id, { source: settings ? 'settings' : 'archive' }); return { tabId: existing.id, shown: existing.id }; }
+      const tab = await openTab({ windowId: win, url });
+      await mutate((st) => M.upsertTab(st, { ...tab, title: settings ? 'Settings' : 'Margin' }, now()));
+      return { tabId: tab.id, shown: tab.id };
+    })();
+    launcherOpening.set(key, opening);
+    try { return await opening; } finally { if (launcherOpening.get(key) === opening) launcherOpening.delete(key); }
   },
+
   // DEV-HOOK: a one-shot probe for tabs following the window in front (docs/BROWSER-WINDOWS.md), asked only by the
   // app's dev hook, which asks only Safari's Test A (DevHooks.swift checks the name). One test tab and one
   // full-screen window made, the tab moved there and back; after each move, whether its page survived (a
@@ -1020,6 +1020,7 @@ export const handlers = {
     appLink.push(sender.tab.windowId ?? null, { type: 'gesture', tabId: sender.tab.id, kind, state: String(state), progress: Number(progress) || 0, direction: Number(direction) || 0 });
   },
   async openHere({ tabId, url }: { tabId: number, url: string }) {
+    if (/^margin:\/\/settings\/?$/i.test(url)) url = api.runtime.getURL('newtab/newtab.html#settings');
     if (!Number.isInteger(tabId) || typeof url !== 'string' || !/^(https?|file):/i.test(url)) throw new Error('not an address');
     const tab = await api.tabs.get(tabId);
     if (!V.isNewTabPage(tab.url || tab.pendingUrl)) throw new Error('not a new-tab page');
