@@ -1,5 +1,6 @@
 // The ⌘T-opens-the-homepage note (extension/engines/webkit/safari/newtab-hint.ts) and finding a
-// sleeping tab by its address (the rest of the old wake tests went with the wakes, Phase 2 step 8), against a fake
+// sleeping tab by its address (the rest of the old wake tests went with the wakes, Phase 2 step 8; a new
+// tab from the palette, tabs.ts openBehind: open-behind.test.ts), against a fake
 // browser API (Safari's: the note is Safari-only).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -257,11 +258,8 @@ test('homepage note: not for tabs Margin opened itself', async () => {
   assert.equal(fake.messages.length, 0);
 });
 
-// ---- a new tab from the palette, shown once loaded (tabs.ts openBehind) ----------
-
-const told = (type) => fake.messages.filter((m) => m.message?.type === type);
-const front = () => [...fake.tabs.values()].find((t) => t.active)?.id;
-
+// ---- a tab on an earlier build's sleep page ----------------------------------------
+// (A new tab from the palette, tabs.ts openBehind: open-behind.test.ts.)
 
 // A tab an earlier build left on Margin's sleep page (its address carries its
 // page's): Margin knows it by its page (state/model.ts seenTab) until the
