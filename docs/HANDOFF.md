@@ -6,7 +6,7 @@ Draft 2, 2026-11-06 (revised after two critics' reviews: Appendix A). Nothing he
 
 Where things are:
 
-- **Repo:** `/Users/tirth/Projects/margin`, read at `merge/icloud-tabs` (df6877e). File:line references are to that commit.
+- **Repo:** this repository, read at `merge/icloud-tabs` (df6877e). File:line references are to that commit.
 - **Labs:** `S = /private/tmp/claude-501/-Users-tirth-Projects-margin/1bb1ea82-aa29-4c73-85e7-63051090d15a/scratchpad`. `S/handoff/RESULTS.md`, `S/handoff/RESULTS-park.md`, `S/handoff/xp.swift`, `S/handoff/park.swift`, `S/handoff/lab.swift`, `S/stp/stp-handoff.swift`, `S/stp/stp-lab.swift`, and the STP logs `S/stp/margin-park-handoff.mp4.log`, `S/stp/stp-1793947553.log`, `S/stp/stp-1793947586.log`, `S/stp/stp-1793947722.log`.
 
 Words used below:

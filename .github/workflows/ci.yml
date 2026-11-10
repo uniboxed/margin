@@ -1,0 +1,115 @@
+# Margin's checks on every pull request and every push to main (npm run gate's parts, by where they can run).
+# Linux: the extension's unit, theme, security and end-to-end tests in Chromium, and the Rust workspace with
+# both Windows targets checked. Windows: the Rust workspace built and tested on Windows itself. macOS: the
+# app's Swift checks, its end-to-end checks and the WebKit host. They run when started by hand, or on every
+# push once the repository variable MACOS_CI is "true" (macOS minutes cost ten times more on a private repo;
+# set it when the repo goes public, where they're free).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      macos:
+        description: Run the macOS jobs too
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: "26"
+
+jobs:
+  extension:
+    name: Extension (Linux, Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Chromium for the browser tests
+        run: npx playwright install --with-deps chromium
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Unit tests and the type check
+        run: npm test
+      - name: Theme tests
+        run: npm run test:theme
+      - name: Security tests
+        run: npm run test:security
+      - name: End-to-end tests
+        run: npm run test:e2e
+      - name: Test results, when something failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-linux
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  rust:
+    name: Rust (Linux, Windows targets checked)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-pc-windows-msvc, aarch64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/rust-test.sh
+
+  windows:
+    name: Rust (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests on Windows
+        run: cargo test --workspace --locked
+      - name: Clippy on Windows
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: margin.exe and margin-connector.exe
+        run: cargo build --release --locked -p margin-windows -p margin-connector
+
+  macos:
+    name: Margin.app (macOS)
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.macos) ||
+      (github.event_name != 'workflow_dispatch' && vars.MACOS_CI == 'true')
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: The app's Swift checks and end-to-end checks
+        run: npm run test:app
+      - name: The WebKit host (Safari's extension engine)
+        run: npm run test:webkit

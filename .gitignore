@@ -5,3 +5,5 @@ test-results/
 dist/
 tools/fit-check/data/
 target/
+# Local notes, never shared.
+research_notes/

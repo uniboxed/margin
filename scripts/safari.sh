@@ -12,6 +12,12 @@
 # Signed otherwise than the installed copy (another team, or --unsigned over
 # a signed one), it warns that named profiles' spaces start fresh and asks
 # first (scripts/signing-check.sh); `--yes` goes on without asking.
+#
+# `--no-install`: build and sign only, install nothing; the last line printed is
+# the built Margin.app's path (the release workflow, .github/workflows/release.yml).
+# MARGIN_SIGN_IDENTITY (a Developer ID Application identity in the keychain, with
+# MARGIN_TEAM): signed with it instead of the team's automatic signing, with
+# secure timestamps, as notarization needs.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -22,12 +28,17 @@ LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchSe
 
 UNSIGNED=false
 YES=false
+INSTALL=true
 for arg in "$@"; do
   case "$arg" in
     --unsigned) UNSIGNED=true ;;
     --yes) YES=true ;;
+    --no-install) INSTALL=false ;;
   esac
 done
+IDENTITY_NAME="${MARGIN_SIGN_IDENTITY:-}"
+# Secure timestamps for a Developer ID build (notarization refuses a signature without one); none otherwise.
+if [ -n "$IDENTITY_NAME" ] && [ "$UNSIGNED" = false ]; then TIMESTAMP=--timestamp; else TIMESTAMP=--timestamp=none; fi
 
 npm run build
 # The project again when what makes it isn't what it was made from: the app's
@@ -71,21 +82,31 @@ EOF
 fi
 
 # The installed copy signed otherwise: its named profiles' spaces would start fresh. Asked first.
-. scripts/signing-check.sh
-if [ "$UNSIGNED" = true ]; then NEW_TEAM="not set"; else NEW_TEAM="$TEAM"; fi
-confirm_signing "$DEST" "$NEW_TEAM" "$YES" || exit 1
+if [ "$INSTALL" = true ]; then
+  . scripts/signing-check.sh
+  if [ "$UNSIGNED" = true ]; then NEW_TEAM="not set"; else NEW_TEAM="$TEAM"; fi
+  confirm_signing "$DEST" "$NEW_TEAM" "$YES" || exit 1
+fi
 
 if [ "$UNSIGNED" = true ]; then
   SIGN="CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM="
   echo "Building unsigned (Safari turns it off at each launch)."
+elif [ -n "$IDENTITY_NAME" ]; then
+  SIGN="DEVELOPMENT_TEAM=$TEAM CODE_SIGN_STYLE=Manual OTHER_CODE_SIGN_FLAGS=--timestamp"
+  echo "Signing with $IDENTITY_NAME (team $TEAM)."
 else
   SIGN="DEVELOPMENT_TEAM=$TEAM CODE_SIGN_STYLE=Automatic"
   echo "Signing with team $TEAM."
 fi
 
 # shellcheck disable=SC2086
-xcodebuild -project xcode/Margin/Margin.xcodeproj -scheme Margin -configuration Release \
-  -derivedDataPath "$DERIVED" -allowProvisioningUpdates -quiet $SIGN build
+if [ -n "$IDENTITY_NAME" ] && [ "$UNSIGNED" = false ]; then
+  xcodebuild -project xcode/Margin/Margin.xcodeproj -scheme Margin -configuration Release \
+    -derivedDataPath "$DERIVED" -quiet $SIGN CODE_SIGN_IDENTITY="$IDENTITY_NAME" build
+else
+  xcodebuild -project xcode/Margin/Margin.xcodeproj -scheme Margin -configuration Release \
+    -derivedDataPath "$DERIVED" -allowProvisioningUpdates -quiet $SIGN build
+fi
 BUILT="$DERIVED/Build/Products/Release/Margin.app"
 # Chrome's and Edge's connector (app/shared/connector/, Rust; docs/PROTOCOL.md "Transport (Chrome and Edge, on the
 # Mac)"): built for both kinds of Mac into Contents/Helpers with the app's version in it, signed as Margin's
@@ -111,9 +132,14 @@ else
     exit 1
   fi
 fi
-codesign --force --sign "$IDENTITY" --options runtime --timestamp=none --identifier io.tirth.margin.connector "$HELPERS/margin-connector"
-codesign --force --sign "$IDENTITY" --options runtime --timestamp=none --preserve-metadata=identifier,entitlements,requirements,flags "$BUILT"
+codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --identifier io.tirth.margin.connector "$HELPERS/margin-connector"
+codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --preserve-metadata=identifier,entitlements,requirements,flags "$BUILT"
 codesign --verify --strict "$BUILT"
+if [ "$INSTALL" = false ]; then
+  echo "Built (not installed):"
+  echo "$BUILT"
+  exit 0
+fi
 
 # Over the installed copy (same app, same extension: Safari takes it as an
 # update), by scripts/app-swap.sh: the new copy in place of the old one and

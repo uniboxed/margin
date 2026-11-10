@@ -14,7 +14,11 @@
       "default": "./extension/shared/any-engine-capabilities.ts"
     }
   },
-  "description": "Arc-style sidebar for Safari (prototype)",
+  "description": "Arc's way of browsing in Safari, Chrome and Edge: spaces, pins, a command palette and sleeping tabs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/uniboxed/margin.git"
+  },
   "scripts": {
     "pretest": "node scripts/build.ts",
     "test": "tsc -p . && node --test tests/*.test.ts tests/security/*.test.ts 'extension/engines/**/tests/*.test.ts'",
