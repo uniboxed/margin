@@ -15,9 +15,9 @@ const KEEP = /^(theme\.(json|html|css)|.+\.(woff2|png|jpe?g|gif|webp|avif|svg|tx
 
 /** The folder's package files (path → bytes), and what was left out. */
 export function folderFiles(dir: string) {
-  const files = {};
-  const left = [];
-  const walk = (sub, depth) => {
+  const files: Record<string, Uint8Array> = {};
+  const left: string[] = [];
+  const walk = (sub: string, depth: number) => {
     for (const name of readdirSync(join(dir, sub)).sort()) {
       if (name === '.DS_Store') continue;
       const rel = sub ? `${sub}/${name}` : name;
@@ -39,8 +39,8 @@ export function folderFiles(dir: string) {
 
 /** Files (path → bytes) as zip bytes: deflated, sorted, dated 1 January 2026. */
 export function zipFiles(files: Record<string, Uint8Array>) {
-  const locals = [];
-  const central = [];
+  const locals: Uint8Array[] = [];
+  const central: Buffer[] = [];
   let offset = 0;
   const DOS_TIME = 0;
   const DOS_DATE = ((2026 - 1980) << 9) | (1 << 5) | 1;
@@ -97,7 +97,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (motion.length) console.log(`Motion that may not be smooth (packed anyway):\n${motionAdvice(motion).join('\n')}`);
     if (removed.length) console.log(`Margin will remove ${removed.length} thing${removed.length === 1 ? '' : 's'} when it loads it:\n${removed.slice(0, 20).map((r) => `  ${r.file}: ${r.kind} ${r.name}: ${r.reason}`).join('\n')}`);
   } catch (err) {
-    console.error(`not packed:\n${err.message}`);
+    console.error(`not packed:\n${(err as Error).message}`); // (what packTheme throws: an Error)
     process.exit(1);
   }
 }

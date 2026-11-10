@@ -1,8 +1,9 @@
-// The tests' shared fakes and harnesses, checked against the real types under the same `strict` (in npm test and
-// npm run typecheck), with what they import: the extension's files again, the e2e test site, scripts/build.ts.
-// With Node's types: they run in Node (the theme harness and the e2e helpers' page functions run in a page, and are
-// checked against the DOM's as well). The test files themselves: tsconfig.test-files.json, held file by file as each is
-// brought up to it (scripts/tests-check.mts, GitHub issue #4).
+// The tests, checked against the real types under the same `strict` (in npm test and npm run typecheck): the shared
+// fakes and harnesses and every unit test file (tests/*.test.ts, tests/security/, the engines' tests/), with what they
+// import: the extension's files again, the e2e test site, the scripts under test. Folders by glob, so a new test file is
+// checked at once. With Node's types: they run in Node (the theme harness and the e2e helpers' page functions run in a
+// page, and are checked against the DOM's as well). What isn't here yet (the browser tests, scripts/, tools/):
+// tsconfig.rest.json, held folder by folder as each is brought up to it (scripts/tests-check.mts, GitHub issue #4).
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
@@ -18,6 +19,10 @@
     "tests/theme/harness.ts",
     "tests/theme/package.ts",
     "tests/e2e/harness/*.ts",
-    "tests/e2e/harness/*.mts"
-  ]
+    "tests/e2e/harness/*.mts",
+    "tests/*.test.ts",
+    "tests/security/*.ts",
+    "extension/engines/**/tests/*.test.ts"
+  ],
+  "exclude": []
 }

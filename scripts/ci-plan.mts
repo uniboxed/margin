@@ -37,13 +37,13 @@ const REACH = {
 };
 const TEST_FILE = /^[a-z0-9-]+\.test\.ts$/;
 
-const listTests = (root, dir) => (existsSync(join(root, dir)) ? readdirSync(join(root, dir)).filter((n) => TEST_FILE.test(n)).sort().map((n) => `${dir}/${n}`) : []);
+const listTests = (root: string, dir: string): string[] => (existsSync(join(root, dir)) ? readdirSync(join(root, dir)).filter((n) => TEST_FILE.test(n)).sort().map((n) => `${dir}/${n}`) : []);
 
 // Every module the theme suite's code can load: what tests/theme/ imports (the harness is bundled by path, so every
 // file there is a start), and all of extension/ui/ (preview.test.ts bundles from it by name), followed through every
 // relative import and package.json's own (#engine).
 const IMPORT = /(?:import|export)\s[^'"`;]*?from\s*['"]([^'"]+)['"]|import\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g;
-function walk(dir, out = []) {
+function walk(dir: string, out: string[] = []): string[] {
   if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
@@ -53,9 +53,10 @@ function walk(dir, out = []) {
   return out;
 }
 // package.json "imports" (`#engine`, `#engine/capabilities`): every engine's target (a bundle picks one).
-function resolveImport(from, spec, root) {
+function resolveImport(from: string, spec: string, root: string): string[] {
   if (spec.startsWith('#')) {
-    const to = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).imports?.[spec];
+    // package.json's "imports": a path, or a path per condition.
+    const to: string | Record<string, string> | undefined = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).imports?.[spec];
     return to ? (typeof to === 'string' ? [to] : Object.values(to)).map((t) => resolve(root, t)).filter((t) => existsSync(t)) : [];
   }
   if (!spec.startsWith('.')) return [];
@@ -64,10 +65,10 @@ function resolveImport(from, spec, root) {
   return [];
 }
 export function themeSuiteReach(root = ROOT) {
-  const seen = new Set();
+  const seen = new Set<string>();
   const stack = [...walk(join(root, 'tests/theme')), ...walk(join(root, 'extension/ui'))];
   while (stack.length) {
-    const f = stack.pop();
+    const f = stack.pop()!;
     if (seen.has(f)) continue;
     seen.add(f);
     for (const m of readFileSync(f, 'utf8').matchAll(IMPORT)) for (const r of resolveImport(f, m[1] ?? m[2] ?? m[3], root)) if (!seen.has(r)) stack.push(r);
@@ -83,14 +84,14 @@ export type Plan = {
 
 export function plan(files: string[], { everything = false, root = ROOT } = {}): Plan {
   const all = everything || files.some((f) => ALL.test(f));
-  const reaches = (re) => all || files.some((f) => re.test(f));
+  const reaches = (re: RegExp) => all || files.some((f) => re.test(f));
   const unit = reaches(REACH.unit);
   const e2e = reaches(REACH.e2e);
   const rust = reaches(REACH.rust);
   const app = reaches(REACH.app);
 
   const themeTests = listTests(root, 'tests/theme');
-  const own = new Map(PACKAGE_THEMES.map((id) => [id, `tests/theme/${id}.test.ts`]).filter(([, f]) => themeTests.includes(f)));
+  const own = new Map(PACKAGE_THEMES.map((id): [string, string] => [id, `tests/theme/${id}.test.ts`]).filter(([, f]) => themeTests.includes(f)));
   const owns = new Set(own.values());
   const looped = themeTests.filter((f) => readFileSync(join(root, f), 'utf8').includes('themesInScope('));
   const agnostic = themeTests.filter((f) => !owns.has(f));
@@ -98,7 +99,7 @@ export function plan(files: string[], { everything = false, root = ROOT } = {}):
   let themes: Plan['themes'];
   if (all) themes = { files: themeTests, scope: '', shards: 2, why: everything ? 'everything runs' : 'the workflow, a lockfile, the build or the plan changed' };
   else {
-    const inTheme = (f) => PACKAGE_THEMES.some((id) => f.startsWith(`extension/themes/${id}/`));
+    const inTheme = (f: string) => PACKAGE_THEMES.some((id) => f.startsWith(`extension/themes/${id}/`));
     const changedThemes = PACKAGE_THEMES.filter((id) => files.some((f) => f.startsWith(`extension/themes/${id}/`)));
     const changedTests = files.filter((f) => themeTests.includes(f));
     const reach = themeSuiteReach(root);
@@ -108,7 +109,7 @@ export function plan(files: string[], { everything = false, root = ROOT } = {}):
       || /\/OverlayWebView\.swift$/.test(f)));
     const picked = new Set<string>();
     if (runtime.length) for (const f of agnostic) picked.add(f);
-    for (const id of changedThemes) { if (own.has(id)) picked.add(own.get(id)); for (const f of looped) picked.add(f); }
+    for (const id of changedThemes) { if (own.has(id)) picked.add(own.get(id)!); for (const f of looped) picked.add(f); }
     for (const f of changedTests) picked.add(f);
     // A looped test changed itself: in every theme. Else the reference theme (if the runtime changed) and the themes changed.
     const scope = changedTests.some((f) => looped.includes(f)) ? '' : [runtime.length ? 'reference' : null, ...changedThemes].filter(Boolean).join(',');
@@ -151,7 +152,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const files = everything ? [] : readFileSync(0, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
   const p = plan(files, { everything });
   if (process.env.GITHUB_OUTPUT) {
-    appendFileSync(process.env.GITHUB_OUTPUT, ['unit', 'rust', 'app', 'browsers_any'].map((k) => `${k}=${p[k]}\n`).join('') + `browsers=${JSON.stringify(p.browsers)}\n`);
+    appendFileSync(process.env.GITHUB_OUTPUT, (['unit', 'rust', 'app', 'browsers_any'] as const).map((k) => `${k}=${p[k]}\n`).join('') + `browsers=${JSON.stringify(p.browsers)}\n`);
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary(p, files, process.env.MACOS ?? '', everything));
   } else console.log(JSON.stringify(p, null, 2));
 }
