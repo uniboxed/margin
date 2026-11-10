@@ -1,0 +1,29 @@
+{
+  "description": "__proto__ is never a collection's or an item's name: in the reference, x[name] = … with it would change an object's prototype. Dropped from the base and from changes alike; everything else applies.",
+  "base": {
+    "format": 1,
+    "items": {
+      "__proto__": {
+        "p1": { "updatedAt": 10, "value": { "polluted": true } }
+      },
+      "archive": {
+        "a1": { "updatedAt": 10, "value": { "url": "https://a.test/", "title": "A", "spaceId": "work", "icon": "", "closedAt": 10 } },
+        "__proto__": { "updatedAt": 10, "value": { "polluted": true } }
+      }
+    }
+  },
+  "changes": [
+    { "collection": "__proto__", "id": "p2", "updatedAt": 20, "value": { "polluted": true } },
+    { "collection": "archive", "id": "__proto__", "updatedAt": 20, "value": { "polluted": true } },
+    { "collection": "archive", "id": "a2", "updatedAt": 21, "value": { "url": "https://b.test/", "title": "B", "spaceId": "work", "icon": "", "closedAt": 21 } }
+  ],
+  "expected": {
+    "format": 1,
+    "items": {
+      "archive": {
+        "a1": { "updatedAt": 10, "value": { "url": "https://a.test/", "title": "A", "spaceId": "work", "icon": "", "closedAt": 10 } },
+        "a2": { "updatedAt": 21, "value": { "url": "https://b.test/", "title": "B", "spaceId": "work", "icon": "", "closedAt": 21 } }
+      }
+    }
+  }
+}

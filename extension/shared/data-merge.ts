@@ -23,7 +23,11 @@
 export const DATA_FORMAT = 1;
 
 const isObject = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
-const isName = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 256;
+// A collection's or an item's name. Never `__proto__`: these names come from the app and other
+// copies, and `x[name] = …` with it would change an object's prototype (CodeQL
+// js/remote-property-injection, 2026-11-10). Object.fromEntries and spreads are safe with any name.
+export const usableKey = (key: string) => key !== '__proto__';
+export const isName = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 256 && usableKey(v);
 
 export function isItem(item: any): boolean {
   return isObject(item) && Number.isFinite(item.updatedAt) && (item.deleted === true ? !('value' in item) : 'value' in item && item.deleted === undefined);
@@ -51,9 +55,9 @@ const itemOf = (change: { deleted?: boolean, updatedAt: number, value?: unknown 
 export function mergeData(base: { format?: number, items?: Record<string, Record<string, any>> } | null | undefined, changes: any[] = []): { format: number, items: Record<string, Record<string, any>> } {
   const items: Record<string, Record<string, any>> = {};
   for (const [collection, list] of Object.entries(isObject(base?.items) ? base.items : {})) {
-    if (!isObject(list)) continue;
+    if (!usableKey(collection) || !isObject(list)) continue;
     items[collection] = {};
-    for (const [id, item] of Object.entries(list)) if (isItem(item)) items[collection][id] = item;
+    for (const [id, item] of Object.entries(list)) if (usableKey(id) && isItem(item)) items[collection][id] = item;
   }
   const copied = new Set<any>();
   for (const change of Array.isArray(changes) ? changes : []) {
@@ -96,7 +100,8 @@ export function changesFrom(set: { items?: Record<string, Record<string, any>> }
 export function pruneTombstones(set: { format?: number, items?: Record<string, Record<string, any>> }, before: number) {
   const items: Record<string, Record<string, any>> = {};
   for (const [collection, list] of Object.entries(isObject(set?.items) ? set.items : {})) {
-    items[collection] = Object.fromEntries(Object.entries(list ?? {}).filter(([, item]) => isItem(item) && !(item.deleted === true && item.updatedAt < before)));
+    if (!usableKey(collection)) continue;
+    items[collection] = Object.fromEntries(Object.entries(list ?? {}).filter(([id, item]) => usableKey(id) && isItem(item) && !(item.deleted === true && item.updatedAt < before)));
   }
   return { format: DATA_FORMAT, items };
 }

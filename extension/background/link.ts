@@ -71,7 +71,7 @@
 import { browserName, linksApp, capabilities } from '../shared/capabilities.ts';
 import { APP_LINK_KEY } from '../shared/app-link.ts';
 import { navigationFor } from '../shared/shortcuts.ts';
-import { DATA_FORMAT } from '../shared/data-merge.ts';
+import { DATA_FORMAT, isName } from '../shared/data-merge.ts';
 import { switchLog } from './switch-log.ts';
 
 const APP = 'com.unibox.margin';
@@ -1323,7 +1323,7 @@ export function createLink({
     if (part === 0 && typeof m.rev === 'string' && m.rev) parts.rev = m.rev;
     if (parts.got.size < parts.count) return;
     const items = {};
-    for (const piece of parts.got.values()) for (const [c, list] of Object.entries(piece?.items ?? {})) (items as Record<string, any>)[c] = { ...((items as Record<string, any>)[c] ?? {}), ...(list && typeof list === 'object' ? list : {}) };
+    for (const piece of parts.got.values()) for (const [c, list] of Object.entries(piece?.items ?? {})) if (isName(c)) (items as Record<string, any>)[c] = { ...((items as Record<string, any>)[c] ?? {}), ...(list && typeof list === 'object' ? list : {}) };
     const { omitted, rev: setRev } = parts;
     parts = null;
     // A set not taken leaves no `rev`: the next hello gets it again.

@@ -13,7 +13,7 @@
 // page zoom, the sidebar's scroll, the theme package's cached copy).
 import { normalizeState } from '../state/model.ts';
 import { fromStorage } from './stored.ts';
-import { DATA_FORMAT, liveValues } from './data-merge.ts';
+import { DATA_FORMAT, isName, liveValues } from './data-merge.ts';
 import type { State } from '../../types/margin';
 
 // The collections, and for each the state keys it's made from (a change to
@@ -242,7 +242,7 @@ export function stateFromDataSet(state: State, set: { items?: Record<string, Rec
     }
     const keptTabs: Record<string, any> = {};
     for (const [id, t] of Object.entries(tabs)) {
-      if (openIds.has(id) || !next.spaces.some((s) => s.id === t.spaceId)) continue;
+      if (!isName(id) || openIds.has(id) || !next.spaces.some((s) => s.id === t.spaceId)) continue;
       const had = state.keptTabs?.[id];
       keptTabs[id] = { ...(had ?? { keptAt: finite(t.lastUsed), why: 'app' }), id, url: t.url, title: t.title ?? '', favIconUrl: t.icon ?? '', spaceId: t.spaceId, order: finite(t.order), lastActive: finite(t.lastUsed) };
     }
