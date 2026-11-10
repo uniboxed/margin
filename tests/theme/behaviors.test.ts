@@ -24,6 +24,9 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
     const browser = await engine.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const page = await context.newPage();
+    // THROTTLE=6 npm run test:theme: Chromium's CPU that many times slower, as on a busy CI runner (what a check
+    // made too early looks like there).
+    if (process.env.THROTTLE && name === 'chromium') await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.THROTTLE) });
     const seen = { requests: [], errors: [] };
     page.on('request', (r) => { if (!/^(data|blob|about):/.test(r.url())) seen.requests.push(r.url()); });
     page.on('pageerror', (e) => seen.errors.push(e.message));
@@ -44,6 +47,14 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
     const click = async (selector, nth = 0) => { const b = await shown(selector, nth); assert.ok(b, selector); await page.mouse.click(b.x, b.y); };
     const today = () => ev(() => T.rtTodayIds(8));
     const wait = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 3000 });
+    // An assertion tried again until it holds (or 3 s): what follows a pointer, a drop or a scroll is drawn and
+    // sent a frame or more later on a slow machine.
+    const eventually = async (check, ms = 3000) => {
+      const end = Date.now() + ms;
+      for (;;) {
+        try { return await check(); } catch (e) { if (Date.now() > end) throw e; await new Promise((r) => setTimeout(r, 25)); }
+      }
+    };
 
     try {
       await t.test('a press highlights its row at once and switches; the click after it sends nothing more', async () => {
@@ -305,12 +316,14 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
         await page.mouse.move(from.x, from.y + 2);
         assert.deepEqual(await ev(() => T.rtMarked()), [], 'under the threshold: no drag');
         await page.mouse.move(to.x, to.top + to.height * 0.8, { steps: 6 });
-        const marks = Object.fromEntries(await ev(() => T.rtMarked()));
-        assert.equal(marks['m-drag-ghost'], 1, 'a copy follows the pointer');
-        assert.equal(marks['m-dragging'], 2, 'the row and the theme\'s root');
-        assert.ok((await ev(() => T.rtClasses('.today .tab:not(.m-drag-ghost)', 2))).includes('m-drop-after'));
+        await eventually(async () => {
+          const marks = Object.fromEntries(await ev(() => T.rtMarked()));
+          assert.equal(marks['m-drag-ghost'], 1, 'a copy follows the pointer');
+          assert.equal(marks['m-dragging'], 2, 'the row and the theme\'s root');
+          assert.ok((await ev(() => T.rtClasses('.today .tab:not(.m-drag-ghost)', 2))).includes('m-drop-after'));
+        });
         await page.mouse.up();
-        const moved = (await sent()).find(([type]) => type === 'moveTab');
+        const moved = await eventually(async () => { const m = (await sent()).find(([type]) => type === 'moveTab'); assert.ok(m, 'moveTab sent'); return m; });
         assert.deepEqual(moved[1], { tabId: ids[0], nextTo: ids[2], side: 'after', nextToHint: moved[1].nextToHint });
         assert.equal(typeof moved[1].nextToHint.url, 'string');
         assert.deepEqual(await ev(() => T.rtMarked()).then((m) => m.filter(([c]) => c !== 'm-drag-ghost')), [], 'marks cleared');
@@ -322,10 +335,10 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
         await page.mouse.move(row.x, row.y);
         await page.mouse.down();
         await page.mouse.move(chip.x, chip.y, { steps: 8 });
-        const over = await ev(({ x, y }) => T.rtAt(x, y), chip);
-        assert.ok((await ev(() => T.rtClasses('.chip', 1))).includes('m-drop-into'), `the chip's drop mark (chip ${JSON.stringify(chip)}, under the pointer ${JSON.stringify(over)}, its classes ${JSON.stringify(await ev(() => T.rtClasses('.chip', 1)))})`);
+        await eventually(async () => assert.ok((await ev(() => T.rtClasses('.chip', 1))).includes('m-drop-into'),
+          `the chip's drop mark (chip ${JSON.stringify(chip)}, under the pointer ${JSON.stringify(await ev(({ x, y }) => T.rtAt(x, y), chip))})`));
         await page.mouse.up();
-        assert.deepEqual((await sent()).at(-1), ['moveTabToSpace', { tabId: ids[1], spaceId: 'work' }]);
+        await eventually(async () => assert.deepEqual((await sent()).at(-1), ['moveTabToSpace', { tabId: ids[1], spaceId: 'work' }]));
 
         // Into a folder (its row, below its top quarter): pinned there.
         await shown('.folder-head', 1);
@@ -335,9 +348,9 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
         await page.mouse.move(start.x, start.y);
         await page.mouse.down();
         await page.mouse.move(folder.x, folder.top + folder.height * 0.7, { steps: 8 });
-        assert.ok((await ev(() => T.rtClasses('.folder-head', 1))).includes('m-drop-into'));
+        await eventually(async () => assert.ok((await ev(() => T.rtClasses('.folder-head', 1))).includes('m-drop-into')));
         await page.mouse.up();
-        assert.deepEqual((await sent()).at(-1), ['pinTab', { tabId: ids[3], folderId: 'personal-f1', beforeId: null }]);
+        await eventually(async () => assert.deepEqual((await sent()).at(-1), ['pinTab', { tabId: ids[3], folderId: 'personal-f1', beforeId: null }]));
 
         // Escape: back, nothing sent.
         await shown('.today .tab', 4);
@@ -359,14 +372,15 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
         await page.mouse.move(list.x, list.y);
         await page.mouse.wheel(0, 240);
         await wait(() => T.rtSent().some(([type, p]) => type === 'setSidebarScroll' && p.top > 300));
-        const saved = await lastSent('setSidebarScroll');
-        assert.equal(saved[1].windowId, 1);
-        assert.equal(saved[1].top, await ev(() => T.rtScrollTop('.tabs')), `the saved scroll is the list's (saved ${JSON.stringify(saved)}, all ${JSON.stringify((await sent({ scroll: true })).filter(([t]) => t === 'setSidebarScroll'))})`);
+        // (Once the scroll has come to rest: a smooth scroll is still moving when its first position is saved.)
+        await eventually(async () => {
+          const saved = await lastSent('setSidebarScroll');
+          assert.equal(saved[1].windowId, 1);
+          assert.equal(saved[1].top, await ev(() => T.rtScrollTop('.tabs')), `the saved scroll is the list's (saved ${JSON.stringify(saved)})`);
+        });
         // A space switched to: from its top, saved as the window's.
-        const chip2 = await shown('.chip', 2);
-        const over = await ev(({ x, y }) => T.rtAt(x, y), chip2);
         await click('.chip', 2);
-        assert.deepEqual(await lastSent('setSidebarScroll'), ['setSidebarScroll', { top: 0, windowId: 1 }], `the chip clicked (chip ${JSON.stringify(chip2)}, under the pointer ${JSON.stringify(over)}, sent ${JSON.stringify((await sent()).slice(-4))})`);
+        await eventually(async () => assert.deepEqual(await lastSent('setSidebarScroll'), ['setSidebarScroll', { top: 0, windowId: 1 }]));
       });
 
       // Playwright's wheel is a mouse's (notches of 120), which never swipes:
