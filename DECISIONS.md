@@ -4191,3 +4191,11 @@ Cost: one getter to validate a full-size binding, extra reads only during size d
 Verification: `npm test` 1,031 passed. The native full run passed 2,083 logic checks and 524 integration checks, with no app/handler/helper compiler warnings and all helper checks passing. The final-source rerun, including the nonzero-connection guard, also passes all 2,083 logic and 524 integration checks. Both diagnostic fixtures compile with warnings as errors and their no-argument dry runs create no windows. Browser and installed verification follow.
 
 Final browser run: `npm run test:e2e` passes all 150 checks with the normal two workers. No browser runtime or theme code changed in this geometry fix. Whitespace checks pass. Actual Safari preview/return remains pending visual verification after installation.
+
+### Installed verification, 2026-11-10
+
+Signed candidate `595c83cc` was installed at `~/Applications/Margin.app`; strict/deep signature verification passed. The user reports that the layout disappears as the browser moves up into Mission Control, then appears during the downward transition, so the returning browser already has its full layout. They accept that behavior for now. This verifies the reported return improvement in that Safari session, not continuous aligned preview visibility. Entry preview disappearance remains open; no further runtime change is made for this feedback.
+
+Actual Margin process 23941 logs on macOS 27.2.1 (26B131), 16:26:02–16:27:20 local time, show 11 retained-presentation episodes and 11 returns to model geometry, no logged overlay put-away/re-show cycle after the initial draw, and no model-getter failures. The app trace `trace-2026-11-10T16-25-49-320.jsonl` keeps the same native panel 6975 bound to browser 6963, logically shown at 1512×949 (occasional one-point rounding), rather than adopting thumbnail dimensions. These are metadata observations; shown state does not establish compositor visibility or rule out alpha concealment. No screen capture was available. Multiple displays, other browsers/profiles and cold first draws remain separate checks.
+
+Documentation-only follow-up verification: `npm test` 1,031/1,031 and `npm run test:e2e` 150/150 with normal two-worker execution. Runtime/native sources are unchanged from installed `595c83cc`; no additional install is needed.
