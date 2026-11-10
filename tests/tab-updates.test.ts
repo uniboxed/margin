@@ -16,6 +16,7 @@ const until = async (ready, ms = 1500) => {
 };
 const local = {};
 const sets = [];
+let failNext = false; // the next write of the tabs fails (Safari's storage busy)
 globalThis.chrome = ({
   runtime: { getURL: (path) => `safari-web-extension://test/${path}` },
   storage: {
@@ -23,6 +24,10 @@ globalThis.chrome = ({
       get: async (keys) => (keys == null ? { ...local } : Object.fromEntries([].concat(keys).filter((k) => k in local).map((k) => [k, structuredClone(local[k])]))),
       set: async (items) => {
         sets.push(structuredClone(items));
+        if (failNext && 'openTabs' in items) {
+          failNext = false;
+          throw new Error('busy');
+        }
         Object.assign(local, structuredClone(items));
       },
       remove: async () => {},
@@ -204,4 +209,21 @@ test('a change with nothing new doesn\'t write the waiting ones early', async ()
   await until(() => writes().length);
   assert.equal(writes().length, 1);
   assert.equal(stored(3).favIconUrl, icon);
+});
+
+// Safari's storage can be busy (SQLite error 5: background/store.ts flush): a
+// gathered write that fails is tried again on its own a moment later, with
+// nothing else written to take it along; the state keeps the change meanwhile.
+test('a gathered write that fails: kept in the state, and written again shortly by itself', async () => {
+  await reset();
+  const icon = 'https://t3.test/retried.png';
+  await tabUpdated(3, { favIconUrl: icon }, tab(3, { title: 'just left', favIconUrl: icon }));
+  failNext = true;
+  await until(() => !failNext);
+  assert.equal(failNext, false, 'the gathered write was tried');
+  assert.notEqual(stored(3).favIconUrl, icon, 'it failed: not in storage');
+  assert.equal((await load()).tabs[3].favIconUrl, icon, 'the state still has it');
+  await until(() => stored(3).favIconUrl === icon, 1000);
+  assert.equal(stored(3).favIconUrl, icon, 'written again (store.ts: 250 ms later)');
+  assert.equal(writes().length, 2, 'the failed write and its retry');
 });
