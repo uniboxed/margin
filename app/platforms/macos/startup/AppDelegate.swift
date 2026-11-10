@@ -123,8 +123,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Not from inside the handler: quitting waits on the main queue (the goodbye sent).
         terminating?.setEventHandler { RunLoop.main.perform { NSApp.terminate(nil) } }
         terminating?.resume()
-        endOthers()
+        // (The login item first: whether margin-helper is on decides whether this app waits for a browser at all.)
         addLoginItemOnce()
+        endOthers()
     }
 
     // Another Margin.app of this bundle still running (one an update left, or
@@ -174,6 +175,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startShell() {
         guard idleCheck == nil else { return }
+        // Waiting is margin-helper's (it starts this app as a browser opens): with it on and no browser open, quit.
+        if watching, !Self.browserRunning(), helperOn {
+            Diagnostics.note("no browser open: Margin.app quits (margin-helper starts it when one opens)")
+            return NSApp.terminate(nil)
+        }
         if watching, !Self.browserRunning() {
             guard browserLaunch == nil else { return }
             Diagnostics.note("Margin.app is waiting for a browser to open (no shell until then)")
