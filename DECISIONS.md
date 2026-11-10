@@ -6,6 +6,7 @@ Ambiguous calls made while building Margin, newest milestone last. "Verified" me
 
 Things to revisit. Remove an item once it's done.
 
+- **Archive/palette E2E is intermittent.** On 2026-11-10, `archive.test.ts`'s palette restore sometimes failed waiting for the dashboard in front or its highlighted row. The startup work changed no extension or browser-harness code; isolated runs also failed, then an isolated run and a full 149-test run passed unchanged. Not fixed by the startup work; investigate the remaining restore/close ordering (see the startup decision below).
 - **Safari's search engine still needs a better answer.** Margin learns it only from a search made in Safari's own address bar, so after changing Safari → Settings → Search, Margin keeps the old engine until one such search (see "Searches use the browser's search engine"). Safari gives extensions no search API and no access to its settings. Ideas to explore: a better first-run default or prompt; detecting the engine some other way; an optional manual override. Flagged (2026-10-25): "we will have to do something about this."
 - **Squircle corners, once Safari draws them.** Safari's "CSS corner-shape property" flag (Testable) made Margin's squircles draw as squares, so they were removed. When a shipping Safari has corner-shape on by default (stable in WebKit's development version already) and it draws correctly, re-add `border-radius: 11px; corner-shape: squircle` for the page card (fitted to Arc: error 0.34 vs 3.06 for the 6.25px circle) and ×1.75 radii elsewhere. Gate it on that Safari, not on `@supports`. The removed code is in commit "feat(ui): use squircles, navigation api, top layer and switches where supported"; see "Squircles removed" below.
 - **Trackpad gestures are a first version to improve later** (the note: "we will improvise it more later"): pull-to-refresh, swipe back/forward and pinch-zoom feel and thresholds (shared/pull.js, shared/gestures.js).
@@ -3914,3 +3915,299 @@ The two flakes left in GitHub issue #13's end-to-end tests:
   "the launcher drawn over the start page". With `NEW_TAB_PAGE` taking a hash (tried, not kept), newtab.test.ts's
   todo passes that way; archive.test.ts's then fails sooner (its start page not in front after the archive button):
   the product fix is more than the pattern.
+
+## Safari startup: current profile identities and a native splash (2026-11-10)
+
+- **Measured in the installed app's logs.** At 12:09:55 Margin started; Safari's copies started around
+  12:09:59, linked within the next ~150 ms (the handler's link reply took 156–406 ms), and the overlay
+  pages drew at 12:10:01.7. Drawing did not mean showing: the restored Test A/B windows were identified
+  as hidden historical copies, while their current copies remained unbound. At 11:51 the same old
+  identities held blank startup covers for their full six seconds. Safari starting its extensions late
+  is one part of the delay; the incorrect window identity is a separate bug that can prevent showing entirely.
+- **The cause.** BrowserProfiles.browserNames deliberately retains names for historical copy IDs after a
+  signing change, for data carry-over and the profile picker. The live browser.json confirms Test A and
+  Test B each have an old hidden ID and a current ID linked to the same Safari profile. AX matching was
+  using all those names, choosing a dictionary entry when names tied, and keeping that identity for the
+  life of the window. Window matching now uses windowNames, only Safari's current mapping. Cached AX
+  identities whose copy is no longer in that mapping are forgotten and read again. A mapping change
+  wakes tracking and the cover loop. Two current profiles with identical names remain ambiguous instead
+  of choosing one; the binder's other evidence can still identify them.
+- **The startup cover is native AppKit.** “Getting things ready for you”, a secondary message and a system
+  spinner draw without waiting for an extension link, theme or WebKit. Once that window's copy links,
+  the message becomes “Preparing your layout…”. Reduced motion leaves the spinner still. The panel follows
+  the restored window's frame as it changes and keeps the existing focus, pointer, profile and full-screen
+  rules. It goes when the overlay is shown/placed, and the existing six-second limit and stalled-link
+  release remain. This cannot cover a window before the helper starts Margin and Accessibility identifies it.
+- **Report the front window before scanning other Spaces.** SafariAX.refresh used to hold windows it had
+  already found until the private element scan finished (up to one second while Safari is busy restoring).
+  It now reports known windows first and newly scanned ones afterwards; AXKnown merges both deliveries.
+  The scan's limits and retry rules stay as before. The real Safari latency improvement needs a cold-launch check.
+- **Diagnostics.** Each overlay records load-to-drawn milliseconds; each covered window records when its
+  copy links and how long the splash lasted before the actual layout showed. No page titles or URLs added.
+- **Verification.** Regression checks cover historical IDs, current matching, invalidation and relearning,
+  ambiguous names and overlapping name prefixes. Native end-to-end checks render the splash off screen
+  in both appearances and check layout, stage changes and focus/pointer behavior. TESTING.md has the real
+  Safari cold-launch checks. Historical Safari logs were inspected; the changed build has not been
+  manually verified in Safari.
+- **Browser verification:** `npm test`: 1,017 passed. `npm run test:e2e`: the final run passed all 149;
+  the first run passed 148 and failed the archive/palette restore (also intermittent in isolated repeats,
+  with no extension or browser-test changes kept). Native checks passed 2,070 on the full randomized run,
+  then 2,071 after the scan-delivery regression was added (WINDOW_RUNS=50, VISIBLE_RUNS=80); all 491 native
+  end-to-end checks passed, including the splash's two appearances. The app, handler and helper type-check
+  without compiler warnings.
+
+## The launch splash belongs to a temporary helper process (2026-11-10)
+
+- **Keep the idle saving.** The request was a splash from margin-helper without keeping the full app at login
+  or paying for windows in the resident watcher. AppKit's window connection keeps tens of MB in a process even
+  after its panels go. The login helper therefore never creates NSApplication or a window: its existing
+  NSWorkspace observation stays event-driven, with no poll. A recently launched supported browser, while
+  Margin.app is not running, starts the app and a `--splash <browser pid>` child of the helper in parallel.
+  An older browser already open as the helper starts gets no launch card; an app already running gets no child.
+- **The child alone draws.** A small native “Getting things ready for you” card, ordered just above that browser's
+  first on-screen window, follows its bounds without taking the keyboard, showing a Dock icon or taking clicks.
+  Window metadata only: no title, profile, Accessibility, page, WebKit or network. It reads at 10 Hz for at most
+  six seconds, exits on browser quit, and exits if the person switches away after it shows. This is deliberately
+  a passive launch card before a profile can be identified, not the app's profile-specific full-window cover.
+- **The app takes over.** Once a native startup cover or on-screen overlay has been ordered over that browser,
+  the app sends `com.unibox.margin.startup.ready`, scoped to its pid and actual window number. A different
+  window on a second display cannot dismiss the card. Merely connecting the extension or loading
+  the overlay page doesn't count. The child asks `startup.query` after subscribing: if the app drew before the
+  child started, the answer dismisses it too. A window placed invisibly in another Space doesn't end the card.
+  These are cosmetic notifications with no data or privileges; a matching notification can only dismiss a card.
+- **Measured in one session, optimized builds, off-screen stand-in browser.** Original helper after asking for
+  an app: 10,944 KB resident; new helper afterwards: 11,472 KB (about 0.5 MiB more). New helper before a browser:
+  8,992 KB; during the splash: 11,456 KB. No CPU time gained during the one-second idle sample. The temporary
+  child used 70,528 KB including its test snapshot, drew in 200 ms after its mode started, and exited on handoff
+  at 351 ms; a child starting after the ready event exited via the query at 115 ms. These are fixture measurements,
+  not a real Safari cold-launch benchmark. The temporary ~69 MiB UI cost is released with the child; it isn't
+  added to the always-running helper. Main app startup and its existing idle quit are unchanged.
+- **Updates.** safari.sh now restarts an already loaded login agent after replacing the installed app, so an
+  old resident helper doesn't keep running old code until next login. It doesn't load or enable a disabled agent.
+- **Tests.** Real helper processes over an off-screen fake browser: launch, arguments, idle CPU and resident
+  memory before/during/after, early handoff, late-listener recovery, pid isolation, six-second timeout, browser
+  quit. Tests refuse an on-screen frame. The app's actual responder is exercised in its native end-to-end run.
+  Two initially parallel test commands shared fixture files and interfered; those results were discarded.
+  Helper fixture folders and browser IDs are now unique per run, and the clean helper run passed every check.
+  `npm test`: 1,017 passed; `npm run test:e2e`: 149 passed; native logic: 2,071 passed; native end-to-end: 496 passed
+  (five new handoff checks). The installed Safari launch and Space transitions still need manual verification.
+
+## Keep full-screen layouts prepared between Space visits (2026-11-10)
+
+- **The report is switching full-screen windows/macOS Spaces.** Existing traces show a background overlay
+  created at 12:55:25.537 and drawn at 12:55:26.083 (546 ms), but never placed before Safari quit around
+  12:55:28. Shell.placeAhead called the overlay before its page was ready; that normal loading failure was
+  treated as a refused Space move and started a five-second cooldown. It now sizes the loading view as before,
+  but waits for readiness before Space queries or a placement attempt. The existing ready callback schedules
+  tracking. Only a real refused placement starts the cooldown, retaining its protection against repeated calls.
+- **A second deterministic flicker.** A missing batch window-server read unconditionally made an already
+  drawn overlay transparent, even when independent live reads confirmed its window and Space. Such an
+  overlay now stays drawn only if its native binding, owner, size, single full-screen Space and every active
+  panel's Space agree. This includes its pointer catcher even after conceal orders that helper out; an unused
+  deferred edge panel is not realized just to check it. Unknown Space data, closed/resized/reused window
+  numbers, misplaced panels, parked windows, switches in progress and page full-screen keep the conservative
+  conceal path. No new binding is learned from a missing batch.
+- **Cost.** The ordinary Space-visit path reuses the existing web views/windows, with no page reload, extra
+  Space move, snapshot cache, new view, faster timer or resident helper change. Independent single-window and
+  Space checks happen only on missing batch reads. Twenty simulated visits took about 9 ms in the off-screen
+  regression fixture; this measures the shell's reads with a fake bridge, not real compositor latency.
+- **Regression evidence.** The readiness test fails before the cooldown fix; the missing-read test fails
+  before the independent confirmation fix. With both, real off-screen Shell/WKWebViews keep two layouts
+  drawn through twenty visits, before any extension focus response, using the same native window numbers
+  and page time origins. Tests also exercise unknown reads, closed/resized/reused windows, misplaced panel
+  and catcher (including a second read after conceal), and a refused move's five-second backoff and retry.
+- **Helper-test isolation.** The first broad run's launch-card test skipped startup while the real installed
+  Margin.app was running (started by a browser test). Its deliberately nonexistent target bundle fell back
+  to the real app's identity, so the helper correctly did nothing. The fixture now has a unique bundle identity
+  and a deliberately missing executable; launch still fails as intended, independently of the installed app.
+  The rerun exercises the splash while the real app is running. No helper production code changed here.
+- **Pointer-test isolation.** The first full native end-to-end run lost a hidden palette's pending focus,
+  causing eight chained keyboard assertions to fail. Code inspection found that off-screen Shell harnesses
+  were subscribing to real local/global desktop mouse events. A real click calls pressed and explicitly
+  cancels a hidden palette's focus request. Harnesses now use their injected pressed calls only; production
+  pointer monitoring is unchanged. The first keyboard failure also prints its collected focus reasons if
+  it recurs. Desktop input was not recorded, so the specific external event is not established.
+- **Verification.** `npm test`: 1,017 passed; `npm run test:e2e`: 149 passed. Native logic: all 2,073 passed
+  with the default 300 binding runs and 1,000 visible-page runs. After the two test-isolation corrections,
+  `WINDOW_RUNS=50 VISIBLE_RUNS=80 tools/app-tests/run.sh` exited successfully: 2,073 logic checks, all helper
+  checks, no app/handler/helper compiler warnings, and all 517 native end-to-end checks (21 added for window
+  preparation). The focused readiness run also passed all 34 checks. Only off-screen stand-ins were driven.
+- **Manual verification.** TESTING.md lists full and partial swipes, rapid reversals, Mission Control, keyboard,
+  different browsers/profiles, closing/resizing, displays and page full-screen. No real browser or macOS Space
+  was driven by these tests. Cold new views still need WebKit to draw; unknown private Space reads still hide
+  conservatively; the OS compositor's animation is outside these off-screen measurements. Literal zero delay
+  on every possible first frame is not established.
+
+## Mission Control must not arrange the layout as another document (2026-11-10)
+
+- **Visual check failed.** After installing 8122a1fd, the user reported “Still detached or incorrectly scaled”.
+  The stationary-policy hypothesis below did not solve the actual preview. It is reverted while native
+  grouping/compositing is investigated. The policy assertions passing did not prove the visual result.
+  The user also confirmed the live layout is correct after exiting: only the small previews are wrong.
+- **Report and diagnosis.** The supplied 13:30:57 screenshot shows a small detached layout in a full-screen
+  Space preview after a three-finger upward swipe. The own-Space policy used `.managed`, which explicitly
+  opts the transparent Margin panel into Mission Control's independent window arrangement. Its pointer
+  catcher and edge guard inherited the same policy. Staying in the same Space does not combine those
+  windows into the browser's document.
+- **Small native policy change.** Own-Space overlays now use `.stationary, .fullScreenAuxiliary, .ignoresCycle`.
+  They still belong to one Space (no `.canJoinAllSpaces`), with placement verified by the existing bridge,
+  and retain their normal window level. All three native layers receive the same policy. The fallback
+  that joins all Spaces already used stationary and is unchanged. No timers, gesture detection, capture,
+  screenshots, new windows, reloads or helper changes. The ordinary tracking and rendering paths stay as before.
+- **Why this policy.** Apple's documentation describes [managed](https://developer.apple.com/documentation/appkit/nswindow/collectionbehavior-swift.struct/managed)
+  as participating in Mission Control/Spaces, [stationary](https://developer.apple.com/documentation/appkit/nswindow/collectionbehavior-swift.struct/stationary)
+  as remaining visible without being affected by Mission Control, and transient as hiding in Mission Control.
+  Managed, transient and stationary are alternatives; they are not combined. The regression checks the actual
+  AppKit policies on both layouts and all their helper panels, alongside the existing repeated Space visits,
+  no-reload/no-extra-move checks, conservative missing-read checks, and refused-placement backoff.
+- **Verification boundary.** The native policy regression failed against the old behavior. A live desktop
+  observation was attempted through the computer-use tool; Finder had no capturable window and System
+  Settings capture failed with ScreenCaptureKit error -3811. No Mission Control key or browser action was
+  sent. TESTING.md therefore retains a required visual check of full-screen thumbnails, active and background
+  Spaces, entry/exit/reversal, pointer/focus and multiple displays. Static policy and fake-Space tests cannot
+  prove the compositor's actual result; this is not yet a visually verified Mission Control fix.
+- **Automated results.** `npm test`: 1,017 passed. `WINDOW_RUNS=50 VISIBLE_RUNS=80 tools/app-tests/run.sh`:
+  2,073 native logic checks and all 518 native end-to-end checks passed, including real AppKit policies on
+  all overlay panels; app/handler/helper type-check without compiler warnings and all helper checks pass.
+  The focused readiness run passed 35 checks. `npm run test:e2e`: final run 149 passed. The first run passed
+  148 and failed the previously recorded archive/palette restore timeout (`archive.test.ts:134`); all five
+  archive tests passed in isolation, followed by the clean full rerun. No browser runtime/test changes kept.
+
+### Follow-up: grouping evidence and rollback
+
+The native grouping investigation is retained in `tools/window-group-lab/README.md`, with a guarded,
+off-screen, two-process probe and its result excerpt. The same-process public and private controls
+establish relationships. The cross-process calls, in both ownership directions and through AppKit's
+transaction variants, do not: readback stays separate and the owned child's parent ID stays zero.
+Some calls still return zero. No private grouping implementation is enabled in Margin on that evidence.
+The probe's final REA Evidence ID is `ev_0672265891a11f6159ac261b1a24186944f242c1c78fe9d9d2b8d4b42e9b830f`.
+It exited normally and explicitly ended its child; the capture's process sampler reports incomplete
+sampling, as retained in the result file. The test did not use real browsers or native-fullscreen Spaces,
+so it establishes a bounded failed approach, not impossibility of every native solution.
+
+The installed candidate's project references the actual repository Swift sources; stale copied shell
+code was ruled out. The ineffective stationary change and its policy-only regression are removed; the
+earlier Space preparation/missing-read fixes stay. A faithful Mission Control preview is still open.
+There is no added browser preview renderer, screenshot cache, timer, resident helper work or new private
+product API. Further native grouping needs a demonstrated attachment and a real compositor check;
+the supplied ordinary-window probe cannot provide that fullscreen/visual proof.
+
+A bounded static follow-up found Dock delegates Exposé/Mission Control through WindowManager's
+coordinator/client interfaces; the inspected WindowManager exports forward through a connection/XPC
+boundary. No thumbnail composition rule, collection-flag condition or safe cross-process attachment API
+was demonstrated. The actual renderer, native-fullscreen cases and installed app's permission context
+are still unknown. No conclusion of universal impossibility is claimed. The live preview issue remains open.
+
+Rollback verification: `npm test` 1,017 passed; native suite (`WINDOW_RUNS=50 VISIBLE_RUNS=80`) 2,073 logic
+checks and 517 end-to-end checks passed, with no compiler warnings and all helper checks passing. The
+standalone probe compiled with warnings as errors, its no-argument dry run made no windows, and its explicit
+run exited zero after verifying the child window's owner and each queried window's ID. The first browser
+run passed 148/149 (the existing archive/palette flake, this time waiting for the restored row's highlight,
+`archive.test.ts:137`); the full browser rerun by itself passed 149/149. No browser changes made.
+
+## Margin 2: saved-tab navigation, dedicated Settings and Mission Control fallback (2026-11-10)
+
+The user chose hiding Margin in Mission Control after confirming the detached/scaled appearance happens
+only in its previews. All three overlay layers now use AppKit's `transient` policy, including the
+all-Spaces fallback, in place of `managed`/`stationary`. Apple's collection-behavior documentation says
+transient windows hide in Mission Control. The existing windows, WebViews, browser page geometry,
+Space placement and readiness/missing-read protections remain. No gesture observer, polling, new
+renderer, screenshot cache or helper work is added. The browser's page insets intentionally stay
+prepared; this does not promise a full-width, reflowed Safari thumbnail. A real Mission Control
+entry/exit/reversal observation remains necessary because live desktop capture failed previously.
+
+Two navigation causes were reproduced. The shared key cycle explicitly excluded kept rows; its
+background and overlay pick also required integer browser IDs. Saved IDs now participate in the same
+sidebar order and optimistic selection, including pinned URLs with a saved tab. Clicks, keys and
+space restore share the kept-tab reopen path, preserving Margin identity, place and scroll metadata.
+The key chain resolves that identity after the new browser ID arrives. Creation/activation before the
+identity link cannot prematurely clear its highlight; only the chosen missing page opens. The
+existing one-switch/latest-waiting behavior stays.
+
+Space restore formerly tried all open pages before kept tabs, including an internal launcher, and
+then reopened the first kept row rather than the last-used tab. It now compares real open and saved
+records by recency. Saved `wasActive` breaks a tie (activating a tab can stamp both it and the one left
+at the same millisecond). The app data's additive `selected` field preserves that information through
+a wiped extension cache; older records default false. The separate closed-profile window restore
+uses the same kept-tab tie break. An already shown real tab of the requested space stays shown.
+
+Safari resync and reclaim retain known Margin `order` values instead of deriving a new sidebar order
+from Safari's strip. Explicit sidebar drags write a Margin place. After ordinary selection, only a
+cached order mismatch schedules a physical position repair: a linear scan on the selection path, no
+additional browser call when ordered, no waiting before activation, at most one repair per window,
+latest target retained while one is running. No speculative tab loads or background reordering loop.
+
+Internal start/new-tab anchors are omitted from sidebar and palette tab results even when inactive;
+new-tab keys still use the palette and first/empty windows retain their necessary browser anchor.
+Settings is a named page/row, opened directly by the palette's Settings action or `margin://settings`
+in Margin's fields, reusing an existing page per window and coalescing concurrent opens. It uses the
+existing renderer and settings controls in all three bundled themes, showing a Settings heading and
+form without the start-page search, pins and archive. Archive has its own palette action. The internal
+alias is not a system-wide macOS protocol handler or a Safari address-bar interception.
+
+Checks so far: TypeScript passes; the complete unit suite passes 1,031 tests. Native integration passes
+518 checks, including all transient panel flags and the existing repeated-Space lifetime checks.
+Two native logic assertions initially expected the old flags; after updating those intended policy
+expectations, all 2,073 native checks pass. App, handler and helper have no compiler warnings; helper
+checks pass (resident below the existing 20 MB limit while its temporary splash child draws). Focused
+restore/order/Settings integration and app-data round-trip checks pass. Browser/theme results follow.
+
+The theme integration regression then exposed one more old guard: `tabRow` forced all not-open rows
+inactive even when the shared view selected one. It now retains that optimistic active state. Both
+WebKit and Chromium verify `runtime.switchTo` with a saved ID and the actual view-model highlight.
+Saved pinned rows also receive the pending highlight. All 275 theme checks pass, including dedicated
+Settings in Arcadia, Pixel and Neubrutalism. Concurrent clicks on the same saved row share one reopen;
+space restore uses the creation's tab result directly, with no extra `tabs.get` round trip.
+
+The first browser pass was 149/150: the previously recorded archive/palette timeout, waiting for the
+restored dashboard (`archive.test.ts:134`). All five archive cases passed in isolation; the following
+quiet full run passed 150/150. The final-source unit/browser pass and installed build are recorded below.
+
+The last-source parallel browser rerun hit that existing archive timeout again (149/150). Its test
+shared a live browser with the preceding new-tab replacement case, whose late close/activation
+listeners can cancel the next unrelated restore. That palette case now starts its own seeded browser
+fixture; the assertions and timeout are unchanged. This is test isolation, not a claimed production
+archive fix. Its subsequent normal parallel run passes the case. A regression also covers Safari
+activating a newly created browser ID before `linkKept`: that own activation cannot reset a saved-tab
+key chain or discard a newer waiting target. The focused run passes all 33 cases.
+
+Final source verification: `npm test` 1,031/1,031; `npm run test:e2e` 150/150 with its normal two workers
+(after isolating the archive fixture); `npm run test:theme` 275/275 across WebKit and Chromium. Native
+checks remain 2,073 logic and 518 integration, with the intended transient policies, repeated Space
+visits, no view recreation, no added moves and existing placement/backoff checks. TypeScript and
+whitespace checks pass. Real Safari/Mission Control visual verification is still pending; the
+Chromium fixtures and AppKit stand-ins do not establish that compositor result.
+
+## Mission Control: distinguish model geometry from animated presentation (2026-11-10)
+
+The user rejected unconditional transient hiding: Safari briefly appears before Margin returns. Live diagnostics from their gesture show size-based hides and later placement, roughly 154–349 ms apart. A prior trace also records Margin's logical full-size layout being changed to the Mission Control thumbnail rectangle. The 90-second metadata probe ended before the latest gesture; its successful registrations must not be described as having measured that gesture.
+
+An explicit owned off-screen transform control on 27.2.1 (26B131) establishes that `SLSGetWindowBounds` keeps the 800×600 model while CGWindowList reports a scaled 402×300 presentation; restoring its own transform restores CG bounds. No foreign window was mutated. Evidence and diagnostic sources are retained in `tools/mission-control-lab/`. Prior cross-process grouping attempts did not establish attachment; no grouping calls or foreign transform writes are adopted. Notifications 1327/1328 are Space lifecycle, not Mission Control state; no event detector is adopted.
+
+The native shell now checks the read-only getter at launch independently. It validates each exact full-size browser binding once before using managed own-Space collection behavior. On a later size disagreement, an already shown, unconcealed same-window/same-owner layer-0 layout remains drawn only if a fresh model read matches its full-size frame, outside parking/switch/page-fullscreen. Such frames skip layout and placement repair rather than applying the compositor scale twice. Invalid getters disable preview participation for that binding; missing/changed windows and genuine resizes keep conservative handling. Off-screen thumbnail rectangles cannot prewarm a newly hidden layout.
+
+Cost: one getter to validate a full-size binding, extra reads only during size disagreement. No additional timer, capture, new view, screenshot buffer, geometry write, browser call or resident helper work. Native replay verifies twenty scaled on/off-screen reads keep both layouts shown at canonical geometry, without Space moves or WebView reloads, and normal reads add no getter calls. Actual macOS preview composition and perceived return latency remain unverified until a real visual result.
+
+Verification: `npm test` 1,031 passed. The native full run passed 2,083 logic checks and 524 integration checks, with no app/handler/helper compiler warnings and all helper checks passing. The final-source rerun, including the nonzero-connection guard, also passes all 2,083 logic and 524 integration checks. Both diagnostic fixtures compile with warnings as errors and their no-argument dry runs create no windows. Browser and installed verification follow.
+
+Final browser run: `npm run test:e2e` passes all 150 checks with the normal two workers. No browser runtime or theme code changed in this geometry fix. Whitespace checks pass. Actual Safari preview/return remains pending visual verification after installation.
+
+### Installed verification, 2026-11-10
+
+Signed candidate `595c83cc` was installed at `~/Applications/Margin.app`; strict/deep signature verification passed. The user reports that the layout disappears as the browser moves up into Mission Control, then appears during the downward transition, so the returning browser already has its full layout. They accept that behavior for now. This verifies the reported return improvement in that Safari session, not continuous aligned preview visibility. Entry preview disappearance remains open; no further runtime change is made for this feedback.
+
+Actual Margin process 23941 logs on macOS 27.2.1 (26B131), 16:26:02–16:27:20 local time, show 11 retained-presentation episodes and 11 returns to model geometry, no logged overlay put-away/re-show cycle after the initial draw, and no model-getter failures. The app trace `trace-2026-11-10T16-25-49-320.jsonl` keeps the same native panel 6975 bound to browser 6963, logically shown at 1512×949 (occasional one-point rounding), rather than adopting thumbnail dimensions. These are metadata observations; shown state does not establish compositor visibility or rule out alpha concealment. No screen capture was available. Multiple displays, other browsers/profiles and cold first draws remain separate checks.
+
+Documentation-only follow-up verification: `npm test` 1,031/1,031 and `npm run test:e2e` 150/150 with normal two-worker execution. Runtime/native sources are unchanged from installed `595c83cc`; no additional install is needed.
+
+## Reload while the native layout has keyboard focus (2026-11-10)
+
+The user's ⌘R did not reload the browser tab while focus was in the sidebar. The existing local relay deliberately forwards only when Margin has no key window; focused native overlay WebViews had no browser reload key equivalent. A regression against the old implementation fails to deliver a reload while the real off-screen overlay field has focus.
+
+`OverlayWebView.performKeyEquivalent` now handles plain ⌘R through its own overlay controller. The controller sends the existing `reload` request through that overlay's exact link/window; the extension resolves the current active tab with its existing window-scoped handler. The layout is not reloaded and the field, query/draft and keyboard focus remain. Caps Lock is accepted; other keys/modifier combinations keep their existing handling. Auto-repeat is consumed without queuing repeated reloads. Hidden/concealed or detached overlays cannot initiate it; link/API refusal is logged without selecting a different browser/window. No new timer, polling, global shortcut, helper work, synthetic key or permission is added.
+
+The native regression checks the real WebView key-equivalent entry point with a focused field, exactly one request scoped to window 2 on its current connection, unchanged WebView time origin/focus/draft, and no extra request when the key repeats. Unit checks cover modifiers/key-up. Automated checks use off-screen native windows and a fake extension, not real Safari key delivery; installed Safari still needs the manual check in TESTING.md. Final suite results follow.
+
+Test-quality correction: `callAsyncJavaScript` snippets must explicitly return their values. The new draft-retention assertion initially failed because it read no return value. Its origin/draft reads now return values and require a numeric origin. The related existing Space/Mission Control lifetime assertions had the same missing return and could compare nil with nil; those reads now also return actual numbers and require numeric origins. The previous no-reload assertions alone therefore did not establish lifetime preservation; the strengthened full-suite result below supersedes that evidence. No additional runtime change is made for this test correction.
+
+Final verification: `npm test` 1,031/1,031; `npm run test:e2e` 150/150 with normal two-worker execution. Full native run (`WINDOW_RUNS=50 VISIBLE_RUNS=80 tools/app-tests/run.sh`) passes all 2,085 logic checks, 529 integration checks and all helper checks, with no app/handler/helper compiler warnings. The focused keyboard run passes all 52 checks. The strengthened Space/preview lifetime assertions also pass with actual numeric time origins. Real Safari key delivery remains the installed manual check.

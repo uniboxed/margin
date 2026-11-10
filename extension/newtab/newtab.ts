@@ -50,6 +50,9 @@ async function send<K extends MessageType>(type: K, payload: Request<K> = ({} as
 // `?again`: a page from a copy of Margin that's gone, loaded again at this
 // copy's address (background/cut-off.ts oldOwnPageAddress), not a new tab.
 const nav = (performance.getEntriesByType?.('navigation')?.[0] as PerformanceNavigationTiming | undefined);
+const pageTitle = () => { document.title = location.hash === '#settings' ? 'Settings' : 'Margin'; };
+pageTitle();
+addEventListener('hashchange', pageTitle);
 const isLauncher = location.hash === '#launcher' || location.hash === '#settings';
 const fresh = history.length <= 1 && (!nav || nav.type === 'navigate') && !isLauncher && !/[?&]again\b/.test(location.search);
 if (fresh) void send('newTabPage');
@@ -193,6 +196,7 @@ function showNotice() {
     event.preventDefault();
     const target = resolveInput(address()?.value ?? '');
     if (!target || self?.id == null) return;
+    if (target.kind === 'url' && /^margin:\/\/settings\/?$/i.test(target.url)) return void send('openLauncher', { windowId: windowId ?? undefined, settings: true });
     if (target.kind === 'url') void api.tabs.update(self.id, { url: target.url });
     else void send('search', { query: target.query, tabId: self.id });
   });

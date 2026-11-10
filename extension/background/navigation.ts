@@ -1,3 +1,4 @@
+import { openKept, restoreKept } from './kept.ts';
 import * as M from '../state/model.ts';
 import * as V from '../shared/view.ts';
 import { api, cached, isSynced, load, mutate, now, recheckSoon, StaleError } from './store.ts';
@@ -46,7 +47,7 @@ let seqs = 0;
  * activations aren't the user's: `navActivated`).
  * `given`: Margin.app's overlay's pick for a tab press, with its switch id (navigate `given`).
  */
-export type Press = { kind: 'tab' | 'space', action: string, dir: number, target: any, seq: number, chain: number, switchId: string, done: Promise<void>, finish: () => void, given?: { target: number, switchId: string | null } };
+export type Press = { kind: 'tab' | 'space', action: string, dir: number, target: any, seq: number, chain: number, switchId: string, done: Promise<void>, finish: () => void, shown?: number, given?: { target: number | string, switchId: string | null } };
 const runs: Map<number, { busy: Press | null, waiting: Press[], chain: number, asked: Map<number, number>, shown: number | null, front: number | null }> = new Map();
 // Each key run (a window's presses until KEY_RUN_QUIET_MS after the last one's switch is over, none
 // waiting) as one line in Margin.app's log (switch-log.ts appLog): its presses, how many switches
@@ -93,7 +94,7 @@ function tabTargetNow(windowId: number, dir: number) {
   const s = isSynced() ? cached() : null;
   if (!s) return { target: undefined, chained: false };
   const chained = navTarget.get(windowId);
-  const from = chained && now() - chained.at < NAV_CHAIN_MS && s.tabs[chained.tabId] ? chained.tabId : null;
+  const from = chained && now() - chained.at < NAV_CHAIN_MS && (s.tabs[chained.tabId] || s.keptTabs?.[chained.tabId] || V.liveTabId(s, chained.tabId)) ? (V.liveTabId(s, chained.tabId) ?? chained.tabId) : null;
   const current = from ?? Object.values(s.tabs).find((t) => t.windowId === windowId && t.active)?.id ?? null;
   if (current == null) return { target: undefined, chained: false };
   return { target: V.cycleTab(s, windowId, current, dir), chained: from != null };
@@ -114,12 +115,12 @@ function tellOverlay(windowId: number, press: Press, type: string, reason: strin
     else r.toldSeq = press.seq;
     if (press.seq === r.lastSeq) r.lastTarget = press.target;
   }
-  tellApp(windowId, { type, tabId: press.target, switchId: press.switchId, chain: press.chain, seq: press.seq, ...(reason ? { reason } : {}) });
+  tellApp(windowId, { type, tabId: press.target, switchId: press.switchId, chain: press.chain, seq: press.seq, ...(press.shown != null ? { shown: press.shown } : {}), ...(reason ? { reason } : {}) });
 }
 
 /**
  * `given`: the target Margin.app's overlay worked out and highlighted at the key press (its own chain, the same rule:
- * shared/view.ts cycleTab), with its switch id: taken as this press's while that tab is still open here, so the
+ * shared/view.ts cycleTab), with its switch id: taken while that open/saved tab is still known, so the
  * highlight never waits for this background (busy with the switch before, or waking, as seen 2026-11-07) and the two
  * never differ.
  */
@@ -151,7 +152,7 @@ export function navigate(action: string, source: string, windowId: number | null
   // after a space: the space's tabs aren't known until it's shown).
   const ahead = [run.busy, ...run.waiting].filter(Boolean);
   const mixed = ahead.some((p) => p?.kind !== kind || p?.target === undefined);
-  if (kind === 'tab' && Number.isInteger(given.target)) press.given = { target: (given.target as number), switchId: overlaySwitchId(given.switchId) };
+  if (kind === 'tab' && (Number.isInteger(given.target) || typeof given.target === 'string')) press.given = { target: (given.target as number | string), switchId: overlaySwitchId(given.switchId) };
   const s0 = isSynced() ? cached() : null;
   const givenTarget = press.given && s0 ? takeGiven(press, s0, windowId) : undefined;
   if (kind === 'tab' && !mixed) {
@@ -191,12 +192,14 @@ export function navigate(action: string, source: string, windowId: number | null
 
 // The overlay's switch id for a press it highlighted (shared/switching.ts OVERLAY_SWITCH_PREFIX), else none.
 const overlaySwitchId = (id: unknown) => (typeof id === 'string' && id.startsWith(OVERLAY_SWITCH_PREFIX) && id.length < 40 ? id : null);
-// The overlay's pick for a press, while it's a tab of that window in `s`: taken, with its switch id (undefined: not).
+// The overlay's pick, while still known to this profile (open or saved): taken with its switch id.
 function takeGiven(press: Press, s: any, windowId: number) {
   const given = press.given;
-  if (!given || s?.tabs?.[given.target]?.windowId !== windowId) return undefined;
+  if (!given) return undefined;
+  const id = V.liveTabId(s, given.target) ?? given.target;
+  if (!s.keptTabs?.[id] && !s.tabs?.[id]) return undefined;
   if (given.switchId) press.switchId = given.switchId;
-  return given.target;
+  return id;
 }
 
 function drive(windowId: number) {
@@ -222,8 +225,8 @@ async function runPress(windowId: number, press: Press, run: ReturnType<typeof r
       // Not known at the press (the state not synced yet, a space switch ahead): worked out now.
       const s = await load();
       const chained = navTarget.get(windowId);
-      const current = chained && now() - chained.at < NAV_CHAIN_MS && s.tabs[chained.tabId]
-        ? chained.tabId
+      const current = chained && now() - chained.at < NAV_CHAIN_MS && (s.tabs[chained.tabId] || s.keptTabs?.[chained.tabId] || V.liveTabId(s, chained.tabId))
+        ? V.liveTabId(s, chained.tabId) ?? chained.tabId
         : (await api.tabs.query({ active: true, windowId }))[0]?.id;
       if (!(chained && now() - chained.at < NAV_CHAIN_MS)) run.chain++;
       press.chain = run.chain;
@@ -233,7 +236,8 @@ async function runPress(windowId: number, press: Press, run: ReturnType<typeof r
       navTarget.set(windowId, { tabId: next, at: now() });
       tellOverlay(windowId, press, 'switching');
     }
-    const next = (press.target as number);
+    const next = press.target as number | string;
+    let shownId = V.liveTabId(await load(), next);
     const keyRun = keyRuns.get(windowId);
     // Back to the tab this window's last switch showed, with nothing shown since: nothing to ask Safari.
     if (run.shown === next && run.front === next) {
@@ -241,7 +245,7 @@ async function runPress(windowId: number, press: Press, run: ReturnType<typeof r
       tellOverlay(windowId, press, 'switch-done');
       return;
     }
-    run.asked.set(next, Date.now());
+    if (shownId != null) run.asked.set(shownId, Date.now());
     if (keyRun) keyRun.asked++;
     // The page on screen is told (`from` says which page it's for: Margin's own pages hear it as a broadcast).
     const shownPage = api.tabs.query({ active: true, windowId }).then(([shown]) => {
@@ -254,18 +258,27 @@ async function runPress(windowId: number, press: Press, run: ReturnType<typeof r
       return shownPage.then((shown) => shown && tellPage(shown, { type, tabId: next, from: shown.id, switchId: press.switchId, ...(reason ? { reason } : {}) }, { app: false }));
     };
     try {
-      await showTab(next, windowId, { source: press.action }); // one in another window comes here (docs/BROWSER-WINDOWS.md §9)
+      if (shownId == null && typeof next === 'string') {
+        const result = await openKept(next, { windowId });
+        shownId = result.shown;
+        if (shownId != null) run.asked.set(shownId, Date.now());
+      } else {
+        if (shownId == null) throw new Error('That tab is no longer there');
+        await showTab(shownId, windowId, { source: press.action });
+      } // one in another window comes here (docs/BROWSER-WINDOWS.md §9)
     } catch (err) {
       run.shown = null;
       if (keyRun) keyRun.failed++;
       void told('switch-failed', String((err as any)?.message ?? err));
       throw err;
     }
-    run.shown = next;
+    press.shown = shownId ?? undefined;
+    run.shown = shownId;
+    if (navTarget.get(windowId)?.tabId === next && shownId != null) navTarget.set(windowId, { tabId: shownId, at: now() });
     void told('switch-done');
     // The state follows from Safari's activation; written here too (a tab handed
     // off is left out of those), not waited for: the next press needn't wait on storage.
-    void mutate((st) => M.activateTab(st, next, windowId, now())).catch(() => {});
+    if (shownId != null) void mutate((st) => M.activateTab(st, shownId!, windowId, now())).catch(() => {});
   } else {
     const spaceId = press.target !== undefined ? press.target : V.cycleSpace(await load(), windowId, press.dir);
     if (spaceId == null) return;
@@ -293,7 +306,16 @@ export function navActivated(windowId: number, tabId: number) {
   const asked = run?.asked.get(tabId);
   for (const [id, at] of run?.asked ?? []) if (Date.now() - at >= OWN_MS) run?.asked.delete(id);
   if (asked != null && Date.now() - asked < OWN_MS) return;
-  if (navTarget.get(windowId)?.tabId !== tabId) navTarget.delete(windowId);
+  const pending = navTarget.get(windowId)?.tabId;
+  if (run?.busy?.kind === 'tab' && typeof run.busy.target === 'string') {
+    const state = cached();
+    const created = state?.tabs[tabId];
+    const kept = state?.keptTabs?.[run.busy.target];
+    // Safari can activate the new browser id before create/linkKept returns. That is still
+    // this key run's activation, and must not discard the target of a newer waiting key.
+    if (created?.mid === run.busy.target || (kept && (!created || V.normalizeUrl(created.url) === V.normalizeUrl(kept.url)))) return;
+  }
+  if (pending !== tabId) navTarget.delete(windowId);
   // A space key's own switch shows a tab of a space its chain went to: the chain goes on.
   const space = spaceTarget.get(windowId);
   if (space && !space.spaces.has(cached()?.tabSpace?.[tabId])) spaceTarget.delete(windowId);
@@ -302,7 +324,7 @@ export function navActivated(windowId: number, tabId: number) {
 export const NAV_ACTIONS = new Set(['next-tab', 'prev-tab', 'next-space', 'prev-space']);
 
 // A space shown in a window (Arc): the window's sidebar shows it, and its
-// most recent tab in that window comes to the front (the tab shown stays if
+// most recent real open/saved tab comes to the front (the tab shown stays if
 // it's already one of the space's); with none there, Margin's start page
 // opens in it, or the untouched start or new-tab page in front moves to it
 // (no pile of empty pages). `bringTab: false`: only the sidebar's space.
@@ -331,9 +353,9 @@ export async function showSpace(windowId: number | null | undefined, spaceId: st
   if (windowId == null) return;
   const shown = bringTab ? await frontOf(windowId) : null;
   const candidatesIn = (st: import('../../types/margin').State) => Object.values(st.tabs)
-    .filter((t) => t.windowId === windowId && st.tabSpace[t.id] === spaceId && t.id !== shown?.id)
+    .filter((t) => t.windowId === windowId && st.tabSpace[t.id] === spaceId && t.id !== shown?.id && !V.isPlaceholderPage(t.url))
     .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0));
-  const switching = (st: import('../../types/margin').State) => bringTab && st.spaces.some((x) => x.id === spaceId) && !(shown && st.tabSpace[shown.id] === spaceId) && candidatesIn(st).length > 0;
+  const switching = (st: import('../../types/margin').State) => bringTab && st.spaces.some((x) => x.id === spaceId) && !(shown && st.tabSpace[shown.id] === spaceId && !V.isPlaceholderPage(shown.url)) && candidatesIn(st).length > 0;
   // The write that waits doesn't ask whether this copy still owns the state
   // (store.ts flush does, as it writes): asked here (at most once a second),
   // so a copy a newer one replaced fails as stale rather than switching tabs
@@ -345,8 +367,9 @@ export async function showSpace(windowId: number | null | undefined, spaceId: st
     return M.setActiveSpace(st, windowId, spaceId);
   }, { within: (st) => (switching(st) ? SPACE_WRITE_MS : null) });
   if (V.activeSpaceId(s, windowId) !== spaceId || !bringTab) return; // no such space, or only the sidebar
-  if (shown && s.tabSpace[shown.id] === spaceId) return;
-  const candidates = candidatesIn(s);
+  if (shown && s.tabSpace[shown.id] === spaceId && !V.isPlaceholderPage(shown.url)) return;
+  const candidates = [...candidatesIn(s), ...Object.values(s.keptTabs ?? {}).filter((k) => k.spaceId === spaceId)]
+    .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0) || Number(!!('wasActive' in b && b.wasActive)) - Number(!!('wasActive' in a && a.wasActive)));
   // The window back to the space it showed (its tab in front is still of that
   // one), unless something else changed it meanwhile.
   const goBack = async () => {
@@ -356,6 +379,9 @@ export async function showSpace(windowId: number | null | undefined, spaceId: st
   };
   for (const tab of candidates) {
     try {
+      if (typeof tab.id === 'string') {
+        return { tab: await restoreKept(tab.id, { windowId, deadline }) };
+      }
       return await focusTab(tab.id, { source: 'space', deadline });
     } catch (err) {
       // Closed meanwhile: the next one. Anything else (Safari didn't switch,
@@ -365,15 +391,6 @@ export async function showSpace(windowId: number | null | undefined, spaceId: st
         throw err;
       }
     }
-  }
-  // Nothing of the space open, only tabs that aren't (put to sleep, or kept as a window closed: state/model.ts
-  // keptTabs): the top one opens, as a click on its row does (handlers.ts openKept), not a new tab (requested 2026-11-08).
-  const top = V.sidebar(s, windowId).tabs.find((t) => t.kept);
-  if (top) {
-    const live = await api.tabs.query({ windowId }).catch(() => null);
-    const index = M.stripIndexFor(s, windowId, top.order as number, live); // (a kept tab always has its place)
-    const tab = await openTab({ windowId, url: top.url, spaceId, deadline, index, keptId: String(top.id) });
-    return { tab };
   }
   const startPage = api.runtime.getURL('newtab/newtab.html#launcher');
   const untouched = shown && (shown.url === startPage || V.isNewTabPage(shown.url || shown.pendingUrl));

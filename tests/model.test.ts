@@ -356,10 +356,10 @@ test('view.sidebar: the new-tab page being shown is the "+ New Tab" row, not a t
   s = M.upsertTab(s, tab(3, 1, 'safari-web-extension://abc/newtab/newtab.html', { index: 2 }), 0);
   let v = view.sidebar(s, 1, 2);
   assert.equal(v.newTab.active, true);
-  assert.deepEqual(v.tabs.map((t) => t.id), [3, 1], 'another new-tab page stays a row');
+  assert.deepEqual(v.tabs.map((t) => t.id), [1], 'inactive new-tab anchors are hidden too');
   v = view.sidebar(s, 1, 1);
   assert.equal(v.newTab.active, false, 'a web page shown: the row isn\'t highlighted');
-  assert.deepEqual(v.tabs.map((t) => t.id), [3, 2, 1]);
+  assert.deepEqual(v.tabs.map((t) => t.id), [1], 'anchors stay hidden when a web page is active');
   v = view.sidebar(s, 1, 1, { newTabPending: true });
   assert.equal(v.newTab.active, true, 'choosing a new tab (⌘T, the row): "+ New Tab" highlighted');
   assert.deepEqual(v.tabs.filter((t) => t.active), [], '…no tab fully');

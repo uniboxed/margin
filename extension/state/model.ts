@@ -221,6 +221,7 @@ function keptRecord(r: TabRecord, spaceId: string, { why, now, from = null, wasT
     spaceId,
     order: placeOf(r),
     lastActive: r.lastActive ?? now,
+    wasActive: !!r.active,
     ...(r.wokeAt != null ? { wokeAt: r.wokeAt } : {}),
     // Where its page was scrolled (noteScroll), with the address it's for: opened again, it goes
     // back there once (linkKept, takeScroll).
@@ -388,15 +389,15 @@ function placeNew(state: State, windowId: number, index: number, exceptId: numbe
   return before ? (placeOf(before) + placeOf(after)) / 2 : placeOf(after) - 1;
 }
 
-// Every window's open tabs in places that follow their order (sync, move).
-function orderTabs(state: State) {
+// Fill missing places. Browser resync keeps saved places; explicit row drags change them with placeOpen.
+function orderTabs(state: State, preserve = false) {
   const byWindow = new Map<number, TabRecord[]>();
   for (const t of Object.values(state.tabs)) byWindow.set(t.windowId, [...(byWindow.get(t.windowId) ?? []), t]);
   let tabs: Record<number, TabRecord> | null = null;
   let top = lastPlace(state);
   for (const list of byWindow.values()) {
     list.sort((a, b) => a.index - b.index);
-    const keep = increasingRun(list.map((t) => (Number.isFinite(t.order) ? t.order! : null)));
+    const keep = preserve ? new Set(list.flatMap((t, i) => Number.isFinite(t.order) ? [i] : [])) : increasingRun(list.map((t) => (Number.isFinite(t.order) ? t.order! : null)));
     const places = list.map((t, i) => (keep.has(i) ? t.order : null));
     for (let i = 0; i < list.length; i++) {
       if (places[i] != null) continue;
@@ -477,7 +478,7 @@ function placeKept(state: State, keptId: string, nextTo: number | string, side: 
   const next = { ...state, keptTabs: { ...state.keptTabs, [keptId]: { ...k, order } } };
   return tight(next) ? renumber(next) : next;
 }
-// An open tab dragged next to one in another window (the list is the space's: docs/BROWSER-WINDOWS.md §9): a place
+// An open tab dragged beside another row (including one in another window): a place
 // between that one and its neighbour, for its window's tab strip to follow (background/handlers.ts moveTab moves it
 // there: stripIndexFor). The state, unchanged if there's no such place.
 function placeOpen(state: State, tabId: number, nextTo: number | string, side: 'before' | 'after', spaceId: string) {
@@ -933,7 +934,7 @@ function syncTabs(state: State, openTabs: BrowserTab[], { fresh = false, now = D
     keptTabs[k.id] = k;
   }
   next = { ...next, keptTabs };
-  next = orderTabs(next);
+  next = orderTabs(next, true);
   // Tabs that may be back from before: after a renumbering, the ones nothing
   // matched (a window kept as it closed, before the relaunch); else windows
   // that are all new to Margin (opened while it wasn't running, not a tab
@@ -1008,7 +1009,7 @@ function reclaimTabs(state: State, tabIds: number[], now: number) {
     delete keptTabs[k.id];
     if (record.active) next = setActiveSpace(next, record.windowId, tabSpace[id]);
   }
-  return orderTabs(next);
+  return orderTabs(next, true);
 }
 
 function moveTab(state: State, tabId: number | string, spaceId: string) {
@@ -1073,7 +1074,7 @@ function orderSpaces(state: State, ids: string[]) {
 // the window they were lost with, in their old order. A space with none: nothing.
 function spaceWindowTabs(state: State, spaceId: string) {
   const kept = Object.values(state.keptTabs ?? {}).filter((k) => k.spaceId === spaceId && /^https?:/i.test(k.url));
-  const front = [...kept].sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0] ?? null;
+  const front = [...kept].sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0) || Number(!!b.wasActive) - Number(!!a.wasActive))[0] ?? null;
   const key = front?.why === 'window' ? front.from?.key : null;
   const rest = key == null ? [] : kept.filter((k) => k !== front && k.why === 'window' && k.from?.key === key)
     .sort((a, b) => (a.from?.index ?? 0) - (b.from?.index ?? 0));

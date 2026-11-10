@@ -198,8 +198,8 @@ function onScreen() {
   const doc = fakeDocument();
   const runs: SwitchRun[] = [];
   let front = 1;
-  let target: number | null = null;
-  const drawn: number[] = [];
+  let target: number | string | null = null;
+  const drawn: (number | string)[] = [];
   const highlight = () => target ?? front;
   const draw = () => { if (drawn.at(-1) !== highlight()) drawn.push(highlight()); };
   draw();
@@ -447,4 +447,23 @@ test('switching: a chain as a line for Margin.app\'s log (the overlay\'s); a lon
     'switch chain: 1 target highlighted, ended on another tab (a switch it didn\'t make) 5 ms after the last; the highlight went back 0 times');
   assert.equal(describeSwitchRun({ targets: 3, landed: false, back: 0, elsewhere: 0, failed: true, ms: 9 }),
     'switch chain: 3 targets highlighted, ended failed 9 ms after the last; the highlight went back 0 times');
+});
+
+test('a saved row stays highlighted through the browser creation event and identity handoff', async () => {
+  let front: number | string = 1;
+  let finish!: (result: { shown: number }) => void;
+  const request = new Promise<{ shown: number }>((resolve) => { finish = resolve; });
+  const doc = fakeDocument();
+  const changes: (number | string | null)[] = [];
+  const switching = createSwitching({ doc: doc as unknown as Document, front: () => front, onChange: (id) => changes.push(id), onSlow() {} });
+  switching.start('t-saved', request);
+  front = 20; // created/activated before linkKept is delivered
+  switching.settle();
+  assert.equal(switching.target(), 't-saved');
+  finish({ shown: 20 });
+  await Promise.resolve();
+  assert.equal(switching.target(), 't-saved');
+  front = 't-saved'; // runtime maps the browser tab's stable mid to the saved target
+  switching.settle();
+  assert.deepEqual(changes, ['t-saved', null]);
 });

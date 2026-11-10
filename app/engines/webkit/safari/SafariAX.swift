@@ -73,7 +73,8 @@ final class SafariAX: @unchecked Sendable {
     private var watchPid: pid_t = 0
 
     /// Reads Safari's windows (`pid`) and calls `done` on the main thread with every window found, the ones in
-    /// `wanted` (window numbers the window server lists) scanned for when they aren't known. One read at a time:
+    /// `wanted` (window numbers the window server lists) scanned for when they aren't known. Known windows
+    /// are reported before the other Spaces' scan, then newly found ones afterwards. One read at a time:
     /// a refresh asked while one runs is dropped (the caller asks again on its next read).
     func refresh(pid: pid_t, wanted: Set<Int>, done: @escaping @MainActor ([Int: Window]) -> Void) {
         guard Self.trusted else { return }
@@ -89,15 +90,6 @@ final class SafariAX: @unchecked Sendable {
             if AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &list) == .success, let windows = list as? [AXUIElement] {
                 for w in windows { if let n = Self.number(of: w) { elements[n] = w; watchWindow(n, w) } }
             }
-            // Windows on other Spaces: scanned for when one the window server lists isn't known (shouldScan).
-            let now = Date().timeIntervalSince1970
-            if wanted.subtracting(elements.keys).isEmpty { unknownSince = nil } else { unknownSince = unknownSince ?? now }
-            if Self.shouldScan(now: now, unknownSince: unknownSince, scannedAt: scannedAt, scans: scans, watching: observer != nil) {
-                scannedAt = now
-                scans += 1
-                for (n, w) in Self.scan(pid: pid) where elements[n] == nil { elements[n] = w; watchWindow(n, w) }
-                if wanted.subtracting(elements.keys).isEmpty { unknownSince = nil }
-            }
             var found: [Int: Window] = [:]
             for (n, w) in elements {
                 var title: CFTypeRef?
@@ -108,6 +100,22 @@ final class SafariAX: @unchecked Sendable {
                 found[n] = read(n, w, title: title as? String)
             }
             DispatchQueue.main.async { MainActor.assumeIsolated { done(found) } }
+            // Report what we already know before the up-to-one-second scan for
+            // other Spaces. The front window's splash/layout can start meanwhile.
+            let now = Date().timeIntervalSince1970
+            if wanted.subtracting(elements.keys).isEmpty { unknownSince = nil } else { unknownSince = unknownSince ?? now }
+            if Self.shouldScan(now: now, unknownSince: unknownSince, scannedAt: scannedAt, scans: scans, watching: observer != nil) {
+                scannedAt = now
+                scans += 1
+                var more: [Int: Window] = [:]
+                for (n, w) in Self.scan(pid: pid) where elements[n] == nil {
+                    elements[n] = w
+                    watchWindow(n, w)
+                    more[n] = read(n, w)
+                }
+                if wanted.subtracting(elements.keys).isEmpty { unknownSince = nil }
+                if !more.isEmpty { DispatchQueue.main.async { MainActor.assumeIsolated { done(more) } } }
+            }
         }
     }
 
@@ -366,8 +374,12 @@ final class SafariAX: @unchecked Sendable {
     /// profile's. `names`: profile id (as in a link, "s-…") → its name in Safari; `defaultId`: the default's id.
     static func profile(ofTitle title: String, names: [String: String], defaultId: String?) -> String? {
         let named = names.filter { $0.key != defaultId && !$0.value.isEmpty }
-        if let hit = named.sorted(by: { $0.value.count > $1.value.count }).first(where: { title.hasPrefix($0.value + " — ") || title == $0.value }) {
-            return hit.key
+        let hits = named.filter { title.hasPrefix($0.value + " — ") || title == $0.value }
+        if let longest = hits.values.map(\.count).max() {
+            let best = hits.filter { $0.value.count == longest }
+            // Two real profiles can have the same name. Leave that window to
+            // the binder's other evidence rather than pick a dictionary entry.
+            return best.count == 1 ? best.first?.key : nil
         }
         return defaultId
     }
@@ -379,6 +391,17 @@ final class SafariAX: @unchecked Sendable {
 struct AXKnown {
     private(set) var profiles: [Int: String] = [:]
     private(set) var fullScreen: [Int: Bool] = [:]
+
+    // A signing change or a corrected Safari read can replace a copy's id.
+    // Forget its old identity so the next read can name the window again.
+    @discardableResult mutating func keepProfiles(names: [String: String]) -> [Int] {
+        let removed = profiles.keys.filter { n in
+            guard let link = profiles[n] else { return false }
+            return names[String(link.dropFirst("safari:".count))] == nil
+        }.sorted()
+        for n in removed { profiles[n] = nil }
+        return removed
+    }
 
     /// Windows read: full screen kept for each; a profile named for each not known yet, with a title, when Safari's
     /// profile names are known (without them, every title would read as the default profile's). The windows whose

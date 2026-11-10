@@ -94,6 +94,19 @@ test('Settings open from the launcher', async (t) => {
   await page.close();
 });
 
+test('Settings has a dedicated page and a named sidebar row', async (t) => {
+  const { page, tab } = await newTabPage('#settings');
+  try {
+    await m.until(() => ui.isVisible('.settings-form .setting'), { what: 'dedicated Settings form' });
+    assert.equal(await ui.locator('.launcher h1').innerText(), 'Settings');
+    assert.equal(await ui.isVisible('.launcher-query'), false);
+    assert.equal(await ui.isVisible('.archive-list'), false);
+    await m.until(async () => (await page.title()) === 'Settings', { what: 'Settings document title' });
+    assert.ok((await sidebar(ui)).tabs.some((row: { id: number, title: string }) => row.id === tab.id && row.title === 'Settings'));
+    await m.shoot(t, 'dedicated-settings', { page });
+  } finally { await page.close(); }
+});
+
 // Found by this suite (2026-11-06), fixed 2026-11-10 (GitHub issue #19): Margin's start page opened on
 // purpose (newtab.html#launcher or #settings: the archive button, Settings from elsewhere, openLauncher)
 // wasn't a new-tab page to the overlay (shared/view.ts NEW_TAB_PAGE ends at an optional query, so a #hash

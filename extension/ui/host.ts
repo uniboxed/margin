@@ -67,6 +67,7 @@ export type Host = {
   readonly tabId?: number | null,
   readonly mode?: 'fullscreen' | 'windowed' | 'inpage',
   readonly inNewTab?: boolean,
+  readonly settingsAsked?: boolean,
   readonly launcher?: boolean,
   readonly focusLauncherAtMount?: boolean,
   perform?(name: string, arg?: any): boolean,

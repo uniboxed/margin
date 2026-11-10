@@ -20,7 +20,9 @@ struct OverlayFacts: Equatable {
     // Its window, as the window server says.
     var bound: Int? // the window server's window it's bound to
     var absent = false // bound, but missing from this read
+    var absentConfirmed = false // an already shown own-Space overlay independently confirmed with its live window
     var window: ServerWindow?
+    var modelPresentation = false // a fresh independent model read matches the previously shown full-size window
     var fills = false // the window fills its display (or the harness, or windowed overlays allowed)
     // The overlay as it is (a fresh one if it isn't made yet).
     var ownSpace = false // in its window's own Space, not every Space
@@ -77,7 +79,12 @@ enum OverlayPlanner {
         // Never shown over a window that isn't bound, isn't on screen, or doesn't fill its display yet.
         guard f.full || f.targetReady else { return .hide("its window is still being made") }
         guard let number = f.bound else { return .hide("its window isn't bound to one of the window server's") }
-        if f.absent { return .conceal }
+        // Mission Control transforms both surfaces. Do not resize/order the native overlay from the
+        // transformed rectangle, which would apply the scale twice. An absent/foreign/changed model
+        // never gets this fact; real exits from full screen still take the conservative hide path.
+        if f.modelPresentation, f.ownSpace, f.shown, f.over == number, let server = f.window,
+           f.windowFrame.map({ sameSize($0, server.bounds) }) == true { return .keep }
+        if f.absent { return f.absentConfirmed ? .reveal : .conceal }
         guard let server = f.window else { return .hide("its window is gone from the window server") }
         // Kept where it is over its window in its own Space: shown over this window, at its size (a slide moves the
         // window, it doesn't resize it).
@@ -94,6 +101,7 @@ enum OverlayPlanner {
                 if f.canSuspect, f.overlayOnScreen, !spacesKnown { return .suspect }
                 return .reveal
             }
+            guard f.fills else { return .hide("its off-screen window doesn't fill its display yet") }
             return .placeAhead(orHide: f.spaceChanged ? "the active Space changed and its window isn't on screen" : "its window isn't on screen")
         }
         guard f.fills else { return kept ? .keep : .hide("its window doesn't fill its display (going into or out of full screen)") }

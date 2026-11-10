@@ -24,6 +24,40 @@ import AppKit
 import QuartzCore
 import WebKit
 
+// The helper's temporary splash runs before the shell. A cosmetic, window-scoped handoff: a cover or overlay has
+// actually been ordered over that browser, never merely a socket connecting or a web view loading. The query
+// answers a splash that started late, so it cannot linger over an already drawn layout after missing the event.
+enum HelperSplash {
+    static let readyName = Notification.Name("com.unibox.margin.startup.ready")
+    static let queryName = Notification.Name("com.unibox.margin.startup.query")
+    private static var ready: Set<String> = []
+    private static var observer: NSObjectProtocol?
+
+    static func start() {
+        guard observer == nil else { return }
+        observer = DistributedNotificationCenter.default().addObserver(forName: queryName, object: nil, queue: .main) { note in
+            MainActor.assumeIsolated {
+                guard let object = note.object as? String, let pid = pid_t(object), pid > 0 else { return }
+                for key in ready where key.hasPrefix("\(pid):") { post(key) }
+            }
+        }
+    }
+    static func drawn(browser pid: pid_t, window: Int) {
+        guard pid > 0, window > 0 else { return }
+        let key = "\(pid):\(window)"
+        guard ready.insert(key).inserted else { return }
+        post(key)
+    }
+    private static func post(_ key: String) {
+        DistributedNotificationCenter.default().postNotificationName(readyName, object: key, userInfo: nil, deliverImmediately: true)
+    }
+    static func stop() {
+        if let observer { DistributedNotificationCenter.default().removeObserver(observer) }
+        observer = nil
+        ready = []
+    }
+}
+
 // Key only while a text field in it has focus; never main.
 class OverlayPanel: NSPanel {
     var allowKey = false
@@ -103,15 +137,24 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         var ownSpace = false
     }
 
-    // PLAN.md §6 and Phase 0's overlay probe: in every Space (a full-screen one too), beside a
-    // full-screen window, not moved by Mission Control, not in ⌘-Tab's or the window cycle.
-    // With it, an overlay is in every Space, so it stays drawn while macOS slides from Safari's
-    // full-screen Space to another (the desktop) until the shell hears the Space changed and puts it
-    // away (Shell.spaceChanged). `ownSpace`: a managed window joining only the Space it's shown in
-    // (the full-screen window's, `.fullScreenAuxiliary`), which would slide away with it; not the
-    // default until it's checked over real full-screen Safari (DECISIONS.md, Phase 2 step 8).
-    static let collectionBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-    static let ownSpaceBehavior: NSWindow.CollectionBehavior = [.managed, .fullScreenAuxiliary, .ignoresCycle]
+    // Conservative fallback: hide in Mission Control. A verified model-geometry read permits the
+    // own-Space panels below to participate without resizing themselves from presentation bounds.
+    // Both policies retain the same native windows/WebViews; neither captures the screen.
+    static let collectionBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+    static let ownSpaceBehavior: NSWindow.CollectionBehavior = [.transient, .fullScreenAuxiliary, .ignoresCycle]
+    // Enabled only after a successful independent model-bounds read for this exact browser window.
+    static let ownSpacePreviewBehavior: NSWindow.CollectionBehavior = [.managed, .fullScreenAuxiliary, .ignoresCycle]
+    private(set) var modelBoundsWindow: Int?
+    private(set) var modelBoundsVerified = false
+    func verifyModelBounds(window: Int, valid: Bool) {
+        modelBoundsWindow = window
+        guard modelBoundsVerified != valid else { return }
+        modelBoundsVerified = valid
+        let behavior = ownSpace && valid ? Self.ownSpacePreviewBehavior : (ownSpace ? Self.ownSpaceBehavior : Self.collectionBehavior)
+        panel.collectionBehavior = behavior
+        catcher.collectionBehavior = behavior
+        edgePanel?.collectionBehavior = behavior
+    }
     // The thin panel at the window's left edge (PassThrough.swift EdgeGuard): nil with `edgeWidth` 0.
     let edgePanel: OverlayPanel?
     private(set) var edgeFrame: CGRect?
@@ -148,6 +191,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     }
 
     private(set) var isReady = false // the page has drawn
+    private var loadStartedAt: TimeInterval?
     private(set) var isShown = false
     private(set) var crashBudgetOK = true
     private var crashes: [TimeInterval] = []
@@ -221,6 +265,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         catcherView.autoresizingMask = [.width, .height]
         catcher.contentView = catcherView
         super.init()
+        webView.reloadBrowserTab = { [weak self] repeating in self?.reloadFromKeyboard(repeating: repeating) ?? false }
         catcher.overlay = self
         panel.pressEnded = { [weak self] in self?.pressEnded() }
         edgePanel?.pressEnded = { [weak self] in self?.pressEnded() }
@@ -254,6 +299,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
 
     // The page, drawn off screen until it's needed (never shown before it's ready).
     func load() {
+        loadStartedAt = Diagnostics.now()
         isReady = false
         asked = false
         pageWantsKeyboard = false // a new page: nothing of it focused yet
@@ -396,6 +442,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
             shownAt = Diagnostics.now()
             Diagnostics.note("overlay shown over \(key) (window \(number)): \(why)")
         }
+        if !options.harness, panel.alphaValue > 0 { HelperSplash.drawn(browser: browserPid, window: number) }
         placeCatcher(restack: ordered)
         placeEdge(restack: ordered)
         return true
@@ -532,12 +579,32 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         return try await delegate.send(from: self, type: type, payload: payload)
     }
 
+    // Use the existing window-scoped command, so focus stays in the layout and the extension
+    // resolves the current active tab. No synthetic keys, new hot key registration or UI reload.
+    private func reloadFromKeyboard(repeating: Bool) -> Bool {
+        guard isShown, !isConcealed, delegate != nil else { return false }
+        guard !repeating else { return true }
+        Task { [weak self] in
+            guard let self, self.isShown, !self.isConcealed else { return }
+            do {
+                let reply = try await self.pageSend(type: "reload", payload: [:])
+                if reply["ok"] as? Bool == false || reply["result"] as? Bool == false {
+                    Diagnostics.warn("\(self.key): focused layout's browser reload was refused")
+                }
+            } catch {
+                Diagnostics.warn("\(self.key): focused layout's browser reload could not reach its extension")
+            }
+        }
+        return true
+    }
+
     func pageSaid(_ op: String, _ body: JSONObject) {
         switch op {
         case "ready":
             guard !isReady else { return }
             isReady = true
-            Diagnostics.note("overlay page drawn (\(key))")
+            let took = loadStartedAt.map { " in \(Diagnostics.ms(since: $0))" } ?? ""
+            Diagnostics.note("overlay page drawn (\(key))\(took)")
             delegate?.overlayChanged(self, "page drawn")
         case "layout":
             guard let geometry = body["geometry"] as? JSONObject, let layout = PageLayout(geometry: geometry) else { return }

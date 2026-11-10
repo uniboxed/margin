@@ -61,16 +61,16 @@ test('places: a new tab at the end of its window is the newest of all (open or n
   assert.equal(s.tabs[6].order, top + 1, 'after every tab, the kept one too');
 });
 
-test('places: after a move in the tab strip only the moved tab gets a new place, between its new neighbours', () => {
+test('places: Safari tab-strip movement does not change Margin row order', () => {
   let s = session();
   const before = Object.fromEntries([1, 2, 3].map((id) => [id, s.tabs[id].order]));
   // c dragged to the front of the window (Safari's tab bar): tabs.query's indexes.
   s = M.syncTabs(s, [tab(1, 1, 'https://a.test/', { index: 1, active: true }), tab(2, 1, 'https://b.test/', { index: 2 }), tab(3, 1, 'https://c.test/', { index: 0 }), tab(4, 2, 'https://d.test/', { index: 0, active: true })], { now: NOW });
   assert.equal(s.tabs[1].order, before[1]);
   assert.equal(s.tabs[2].order, before[2]);
-  assert.ok(s.tabs[3].order! < s.tabs[1].order!, 'before a now');
+  assert.equal(s.tabs[3].order, before[3]);
   const shown = V.sidebar(s, 1, 1).tabs.map((t) => t.id);
-  assert.deepEqual(shown, [2, 1, 3], 'newest first: the strip reversed');
+  assert.deepEqual(shown, [3, 2, 1], 'Margin places win over Safari indexes');
 });
 
 test('places that get too close are renumbered, the order kept', () => {
@@ -281,7 +281,7 @@ test('a space deleted: its kept tabs go to the first space with its other tabs',
 
 // ---- what pages draw ---------------------------------------------------------------
 
-test('the sidebar: a space\'s kept tabs among its open ones by place, not open; never a pin\'s tab, nor in ⌘⌥↓/↑\'s cycle', () => {
+test('the sidebar: a space\'s kept tabs among its open ones by place, not open; never a pin\'s tab, included in ⌘⌥↓/↑\'s cycle', () => {
   let s = session();
   s = M.closedTab(s, 2, { windowClosing: true, now: NOW, archiveId: 'x' });
   const kept = Object.values(s.keptTabs)[0];
@@ -289,11 +289,18 @@ test('the sidebar: a space\'s kept tabs among its open ones by place, not open; 
   assert.deepEqual(rows.map((t) => t.id), [3, kept.id, 1]);
   assert.equal(rows[1].kept, true);
   assert.equal(rows[1].active, false);
-  assert.equal(V.cycleTab(s, 1, 3, 1), 1, 'past the tab that isn\'t open');
+  assert.equal(V.cycleTab(s, 1, 3, 1), kept.id, 'the next visible row even when not open');
+  assert.equal(V.cycleTab(s, 1, kept.id, 1), 1);
+  assert.equal(V.sidebar(s, 1, 3, { switchingTo: kept.id }).tabs.find((t) => t.id === kept.id)?.active, true);
+  const pending = buildViewModel({ state: s, ui: { windowId: 1, tabId: 3, switchingTo: kept.id } }).space.today.find((t) => t.id === kept.id);
+  assert.equal(pending?.active, true);
+  assert.equal(pending?.notOpen, true);
   const pinned = M.addPin(s, { id: 'p', spaceId: 'work', url: 'https://b.test/', title: 'B' });
   const view = V.sidebar(pinned, 1, 1);
   assert.deepEqual(view.tabs.map((t) => t.id), [3, 1], 'its pin shows it');
   assert.equal(view.pins[0].tabId, null, 'the pin isn\'t open');
+  assert.equal(V.cycleTab(pinned, 1, 1, 1), kept.id, 'a saved pinned page participates too');
+  assert.equal(V.sidebar(pinned, 1, 1, { switchingTo: kept.id }).pins[0].active, true);
 });
 
 test('the view model: a kept tab\'s row says it isn\'t open (open false, notOpen true), its id Margin\'s; the space counts it', () => {
@@ -338,4 +345,18 @@ test('the palette finds a kept tab, and choosing it opens it in this window', ()
   const row = rankPalette(s, 'b.test', { windowId: 1, tabId: 1 } as Parameters<typeof rankPalette>[2]).find((r) => r.id === `tab:${id}`);
   assert.ok(row, 'listed');
   assert.deepEqual(row.action, { type: 'activateTab', tabId: id, windowId: 1 });
+});
+
+ test('browser resync preserves Margin row order when Safari restores tabs in another order', () => {
+  const before = session();
+  const after = M.syncTabs(before, Object.values(before.tabs).map((t, i, all) => ({ ...t, index: all.length - i - 1 })), { fresh: false, now: NOW });
+  assert.deepEqual(V.sidebar(after, 1).tabs.map((t) => 'mid' in t ? t.mid : t.id), V.sidebar(before, 1).tabs.map((t) => 'mid' in t ? t.mid : t.id));
+});
+
+test('internal anchors never appear as tab rows; Settings is a named real row', () => {
+  let s = session();
+  for (const [id, hash] of [[10, ''], [11, '#launcher'], [12, '#settings']] as const) s = M.upsertTab(s, { id, windowId: 1, index: id, active: false, url: `safari-web-extension://test/newtab/newtab.html${hash}`, title: 'New Tab' } as BrowserTab, NOW);
+  const rows = V.sidebar(s, 1).tabs;
+  assert.ok(!rows.some((t) => t.id === 10 || t.id === 11));
+  assert.equal(rows.find((t) => t.id === 12)?.title, 'Settings');
 });

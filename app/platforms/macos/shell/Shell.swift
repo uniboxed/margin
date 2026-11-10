@@ -160,6 +160,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // The own-Space check (checkOwnSpace, judgeOwnSpace) in a harness too: its window source says
         // which windows are on screen (the harness's stand-in windows have no Spaces of their own).
         var harnessOwnSpaceCheck = false
+        // Exercise ahead-of-visit placement with an injected SpaceBridge in off-screen tests. The overlay's
+        // harness still refuses every frame on a display; the real bridge refuses under MARGIN_APP_TESTS.
+        var harnessAheadPlacement = false
         var root: URL? // the overlay's page folder (dist/app); default: the app's Resources/app
         var overlay = OverlayController.Options()
         var restPoll: TimeInterval = 0.25 // a linked browser in front
@@ -199,6 +202,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Whether a window's bounds fill its display (R2, a window shown over): the screens' by
         // default (ScreenGeometry.fillsDisplay); a harness's stand-in windows are off every screen.
         var fillsDisplay: ((CGRect) -> Bool)?
+        // Tests inject model geometry; the app uses the checked, read-only SkyLight getter.
+        var modelBounds: ((Int) -> CGRect?)?
         // DEV-HOOK: the dev-only test hook (DevHooks.swift, removed before production): whether
         // MarginDevHooks is YES, read at each notification. Nil (every test, the harness): not listened for.
         var devHooksOn: (() -> Bool)?
@@ -438,6 +443,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     func start() {
         stopped = false
+        if !options.harness { HelperSplash.start() }
         link.start()
         startSafariNames()
         coversSoon()
@@ -463,6 +469,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     private func stopNow(_ then: @escaping () -> Void) {
         stopped = true
+        if !options.harness { HelperSplash.stop() }
         edgeFence = nil
         edgeStopper.set(nil)
         pollTimer?.invalidate()
@@ -972,11 +979,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // the one asked only said. Each fix in the log and the trace. Not in the test harness (its windows have no Spaces).
     private var frameSaid: [WindowKey: Double] = [:]
     private var reorderedAt: [WindowKey: Double] = [:]
-    private func checkPlacements() {
+    private func checkPlacements(excluding presented: Set<WindowKey> = []) {
         guard !options.harness else { return }
         let now = Diagnostics.now()
         let canMove = (spaceReads as? SpaceBridge)?.canPark == true
-        for (key, p) in placements.sorted(by: { $0.key < $1.key }) {
+        for (key, p) in placements.sorted(by: { $0.key < $1.key }) where !presented.contains(key) {
             guard let overlay = overlays[key], overlay.isShown, overlay.aboveWindow == p.window, !inSwitch(key) else {
                 placements[key] = nil; placementMisses[key] = nil; continue
             }
@@ -1011,6 +1018,49 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         guard let above = windowSource.above(browser.number) else { return false }
         return WindowMatcher.stackedAboveExactly(aboveBrowser: above, aboveToolbar: toolbar.flatMap { windowSource.above($0) } ?? (toolbar == nil ? nil : []),
                                                 overlay: overlay.windowNumber, browser: browser.bounds, browserPid: browser.pid, own: overlay.catcherWindowNumbers)
+    }
+
+    private func readModelBounds(_ number: Int) -> CGRect? {
+        if let read = options.modelBounds { return read(number) }
+        return skyLight?.modelBounds(of: number)
+    }
+
+    private func verifyModelGeometry(_ overlay: OverlayController, server: ServerWindow, full: Bool) {
+        guard options.modelBounds != nil || privateCalls.geometry else { return }
+        guard full, overlay.ownSpace, fillsDisplay(server.bounds), overlay.modelBoundsWindow != server.number else { return }
+        let valid = readModelBounds(server.number).map { Self.sameModelFrame($0, server.bounds) } ?? false
+        overlay.verifyModelBounds(window: server.number, valid: valid)
+    }
+
+    static func sameModelFrame(_ a: CGRect, _ b: CGRect) -> Bool {
+        sameSize(a, b) && abs(a.minX - b.minX) <= 1 && abs(a.minY - b.minY) <= 1
+    }
+
+    private var modelPresented: Set<WindowKey> = []
+    private func modelPresentations(_ ext: [WindowKey: (ExtWindow, Link)], byNumber: [Int: ServerWindow]) -> [WindowKey: CGRect] {
+        var out: [WindowKey: CGRect] = [:]
+        for (key, overlay) in overlays {
+            guard let (window, _) = ext[key], window.state == "fullscreen", !window.pageFullscreen,
+                  !inSwitch(key), !isParkedKey(key), overlay.ownSpace, overlay.isShown, !overlay.isConcealed,
+                  let number = overlay.aboveWindow, matches[key] == number,
+                  overlay.modelBoundsWindow == number, overlay.modelBoundsVerified,
+                  let old = overlay.windowFrame, fillsDisplay(old),
+                  let server = byNumber[number], server.pid == overlay.browserPid, server.layer == 0, server.alpha > 0,
+                  !Self.sameSize(server.bounds, old) else { continue }
+            guard let model = readModelBounds(number) else {
+                overlay.verifyModelBounds(window: number, valid: false)
+                Diagnostics.note("\(key): model geometry unavailable; preview kept hidden")
+                continue
+            }
+            guard Self.sameModelFrame(model, old) else { continue }
+            out[key] = model
+            if !modelPresented.contains(key) {
+                Diagnostics.note("\(key): presentation bounds \(server.bounds); model stays \(model): native geometry retained")
+            }
+        }
+        for key in modelPresented.subtracting(out.keys) { Diagnostics.note("\(key): presentation returned to model geometry") }
+        modelPresented = Set(out.keys)
+        return out
     }
 
     // A shown overlay in its window's own Space, checked against the map on each read: in another Space, it's moved
@@ -1054,22 +1104,43 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private func placeAhead(_ overlay: OverlayController, key: WindowKey, w: ExtWindow, number: Int, server: ServerWindow) -> Bool {
         // (Not within 3 s of a switch: its windows' Spaces were just changed, and a read may still give the old one.)
         if switcher.busy { lastSwitchBusyAt = Diagnostics.now() }
-        guard !options.harness, overlay.ownSpace, !ownSpaceFellBack, w.state == "fullscreen", !inSwitch(key), !isParkedKey(key),
+        guard (!options.harness || (options.harnessAheadPlacement && options.overlay.harness)), overlay.ownSpace, !ownSpaceFellBack, w.state == "fullscreen", !inSwitch(key), !isParkedKey(key),
               !switcher.busy, Diagnostics.now() - lastSwitchBusyAt >= 3,
               let reads = spaceReads, let bridge = reads as? SpaceBridge, bridge.canPark,
               Diagnostics.now() - (aheadFailedAt[key] ?? -.infinity) >= 5 else { return false }
-        // (A window Accessibility read as not full screen: no SkyLight calls. One it read as full screen is still
-        // checked with SkyLight, as entering full screen says so before the window is in its own Space.)
-        guard ax.fullScreen[number] != false, let space = reads.spaces(of: number)?.first, reads.fullScreenSpaces()?.contains(space) == true else { return false }
         let viewport = w.viewport
         let docked = Shell.dockedLeft(overlay)
         let frame = Shell.overlayFrame(window: server.bounds, viewport: viewport, dockedLeft: docked)
         overlay.windowFrame = server.bounds
         overlay.size(to: frame)
         overlay.browserPid = server.pid
+        // Loading is not a refused Space move. The ready callback schedules another read; do not start the
+        // five-second failure cooldown before a placement has actually been attempted.
+        guard overlay.isReady else { return false }
+        // No Space queries while the web view is loading. An AX window explicitly not full screen never moves;
+        // one that is full screen still needs its actual full-screen Space (Safari can be mid-transition).
+        guard ax.fullScreen[number] != false, let space = reads.spaces(of: number)?.first, reads.fullScreenSpaces()?.contains(space) == true else { return false }
         let placed = overlay.placeAhead(over: number, frame: frame) { numbers in numbers.allSatisfy { bridge.add($0, to: space) } }
         if !placed { aheadFailedAt[key] = Diagnostics.now() }
         return placed
+    }
+
+    // A batch list can omit a live window during a Space change. Avoid making an already drawn layout
+    // transparent for that blip, but only with independent evidence: a fresh single-window read at its size,
+    // and its native panels in the same existing full-screen Space. Unknown, closed, resized, moved to the
+    // Desktop, parked or switching windows keep the conservative conceal path. No checks on ordinary reads.
+    private func confirmsAbsent(_ overlay: OverlayController, number: Int) -> Bool {
+        // The catcher is ordered out by conceal and back in by reveal. Include it even while hidden; the
+        // edge's frame remains known while concealed. Never realize an unused, deferred edge window here.
+        let owned = overlay.spaceWindowNumbers.union([overlay.catcher.windowNumber])
+        guard overlay.isShown, overlay.ownSpace, overlay.aboveWindow == number,
+              let before = overlay.windowFrame, let reads = spaceReads,
+              let bridge = reads as? SpaceBridge, bridge.canPark,
+              let window = reads.window(number), window.pid == overlay.browserPid, Self.sameSize(before, window.bounds),
+              let spaces = reads.spaces(of: number), spaces.count == 1, let space = spaces.first,
+              owned.allSatisfy({ reads.spaces(of: $0) == spaces }),
+              reads.fullScreenSpaces()?.contains(space) == true else { return false }
+        return true
     }
 
     // Safari's windows' profiles from Accessibility: known ones at once, unknown ones asked for (the answer
@@ -1080,6 +1151,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         guard options.safariAX, SafariAX.trusted, let pid = pids.first else { return [:] }
         let wanted = Set(WindowMatcher.candidates(list, pids: pids).map(\.number))
         ax.keep(listed: Set(list.map(\.number)))
+        let names = profilesOf("safari").windowNames
+        for n in ax.keepProfiles(names: names) { axSaid.remove(n) }
         safariAX.watch(pid: pid) { [weak self] e in self?.axEvent(e) }
         if !wanted.subtracting(ax.profiles.keys).isEmpty {
             safariAX.refresh(pid: pid, wanted: wanted) { [weak self] found in
@@ -1093,7 +1166,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // What Accessibility read of Safari's windows, kept; the windows whose profile it named now.
     @discardableResult
     func axLearn(_ found: [Int: SafariAX.Window]) -> [Int] {
-        let names = profilesOf("safari").browserNames.mapValues(\.name)
+        let names = profilesOf("safari").windowNames
         let learned = ax.learn(found, names: names)
         for n in learned where !axSaid.contains(n) {
             axSaid.insert(n)
@@ -1230,7 +1303,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         windowMap.reads = spaceReads
         let mapChanges = windowMap.update(now: Diagnostics.now(), list: read, browserPids: readPids, marginPid: ProcessInfo.processInfo.processIdentifier, front: front, ax: ax,
                                           parked: parking?.numbers ?? [])
-        checkPlacements()
+        let presented = modelPresentations(ext, byNumber: byNumber)
+        checkPlacements(excluding: Set(presented.keys))
         if let trace = options.trace {
             trace.map(windowMap.snapshot, mapChanges)
             trace.ext(ext.values.map { w, _ in TraceExt(k: "\(w.key)", state: w.state, b: w.bounds, focused: w.focused) }, at: windowMap.snapshot.at)
@@ -1260,6 +1334,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             facts.bound = boundTo
             facts.absent = boundTo.map(absent.contains) ?? false
             facts.window = boundTo.flatMap { byNumber[$0] }
+            if let model = presented[key], let server = facts.window {
+                facts.modelPresentation = true
+                facts.window = ServerWindow(number: server.number, pid: server.pid, layer: server.layer, bounds: model,
+                                            onScreen: server.onScreen, alpha: server.alpha, order: server.order)
+            }
             facts.fills = options.harness || options.windowedToo || facts.window.map { fillsDisplay($0.bounds) } == true
             facts.ownSpace = existing?.ownSpace ?? options.overlay.ownSpace
             facts.shown = existing?.isShown ?? false
@@ -1271,7 +1350,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 facts.overlaySpaces = windowMap.snapshot.windows[existing.windowNumber]?.spaces
                 facts.windowSpaces = boundTo.flatMap { windowMap.snapshot.windows[$0]?.spaces }
             }
-            facts.canMove = !options.harness && (spaceReads as? SpaceBridge)?.canPark == true && !inSwitch(key)
+            facts.canMove = (!options.harness || (options.harnessAheadPlacement && options.overlay.harness)) && (spaceReads as? SpaceBridge)?.canPark == true && !inSwitch(key)
+            if facts.absent, facts.canMove, facts.full, !facts.parked, !w.pageFullscreen, let existing, let number = boundTo {
+                facts.absentConfirmed = confirmsAbsent(existing, number: number)
+            }
             facts.canSuspect = ownSpaceChecks && !ownSpaceFellBack && !spaceChanged && !inSwitch(key)
             facts.spaceChanged = spaceChanged
             let decision = OverlayPlanner.decide(facts)
@@ -1286,6 +1368,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 continue
             }
             let overlay = existing ?? makeOverlay(key)
+            if let server = facts.window, !facts.modelPresentation { verifyModelGeometry(overlay, server: server, full: facts.full) }
             switch decision {
             case .hide(let why): overlay.hide(why); continue
             case .conceal: overlay.conceal(); continue
@@ -1379,7 +1462,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             overlays[key] = nil
             ownSpaceSuspects[key] = nil
         }
-        if overlays.values.contains(where: \.isShown) { pointer.start() } else { pointer.stop() }
+        // Off-screen tests inject presses with pressed(_:); desktop clicks must not cancel their palettes.
+        if !options.harness, overlays.values.contains(where: \.isShown) { pointer.start() } else { pointer.stop() }
         updateKeys(list: list, allPids: allPids)
         pointerMoved(PointerWatch.location, fromTrack: true)
         if switcher.busy { switcher.tick(); lastSwitchBusyAt = Diagnostics.now() }

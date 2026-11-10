@@ -1636,8 +1636,20 @@ extension Tests {
     func win(_ n: Int, _ title: String, full: Bool = true) -> SafariAX.Window { SafariAX.Window(number: n, title: title, fullScreen: full) }
     do {
       var k = AXKnown()
+      _ = k.learn([11: win(11, "Test A — Start Page")], names: ["s-old": "Test A"])
+      check("startup: a corrected copy mapping drops an old window identity, keeping its full-screen fact",
+            k.keepProfiles(names: ["s-new": "Test A"]) == [11] && k.profiles[11] == nil && k.fullScreen[11] == true)
+      check("startup: the restored window is named again for the current copy without closing Safari",
+            k.learn([11: win(11, "Test A — Start Page")], names: ["s-new": "Test A"]) == [11] && k.profiles[11] == "safari:s-new")
+      check("startup: an unchanged mapping keeps its exact identity", k.keepProfiles(names: ["s-new": "Test A"]).isEmpty)
+    }
+    do {
+      var k = AXKnown()
       let learned = k.learn([7: win(7, "Test A — Start Page")], names: names)
       check("a created window's event names its profile at once, no read needed", learned == [7] && k.profiles[7] == "safari:s-c" && k.fullScreen[7] == true, "\(learned) \(k.profiles)")
+      _ = k.learn([12: win(12, "Personal — Start Page")], names: names)
+      check("startup: another Space's later scan adds its windows without losing the front window reported first",
+            k.profiles[7] == "safari:s-c" && k.profiles[12] == "safari:s-b")
       check("its next events change nothing of its profile", k.learn([7: win(7, "Personal — x")], names: names).isEmpty && k.profiles[7] == "safari:s-c")
       _ = k.learn([7: win(7, "Test A — x", full: false)], names: names)
       check("out of full screen: kept as not full screen", k.fullScreen[7] == false && k.profiles[7] == "safari:s-c")
@@ -1769,7 +1781,22 @@ extension Tests {
           d { $0.full = false; $0.target = true } == .hide("its window is still being made") && d { $0.full = false; $0.target = true; $0.targetReady = true } == .show(100))
     check("planner: not bound", d { $0.bound = nil; $0.window = nil } == .hide("its window isn't bound to one of the window server's"))
     check("planner: bound but missing from one read: concealed where it is", d { $0.absent = true } == .conceal)
+    check("planner: missing from the batch, independently confirmed in its full-screen Space: kept drawn",
+          d { $0.absent = true; $0.absentConfirmed = true } == .reveal)
+    check("planner: a held-out or parked window stays hidden even if independently confirmed",
+          d { $0.absent = true; $0.absentConfirmed = true; $0.leaving = true } == .leaving
+          && d { $0.absent = true; $0.absentConfirmed = true; $0.parked = true } == .parked)
     check("planner: its window gone from the window server", d { $0.window = nil } == .hide("its window is gone from the window server"))
+    check("planner: a verified presentation keeps the existing native frame and order",
+          d { $0.shown = true; $0.over = 100; $0.windowFrame = full; $0.modelPresentation = true } == .keep)
+    check("planner: verified presentation remains prepared while the compositor lists it off screen",
+          d { $0.shown = true; $0.over = 100; $0.windowFrame = full; $0.modelPresentation = true; $0.window = win(100, on: false); $0.absent = true } == .keep)
+    check("planner: a model flag cannot keep an unshown or unbound layout",
+          d { $0.modelPresentation = true } == .show(100) && d { $0.modelPresentation = true; $0.bound = nil } == .hide("its window isn't bound to one of the window server's"))
+    check("planner: a changed model is still a real resize",
+          d { $0.shown = true; $0.over = 100; $0.windowFrame = full; $0.modelPresentation = true; $0.window = win(100, CGRect(x: 10, y: 20, width: 800, height: 600)); $0.fills = false } == .hide("its window doesn't fill its display (going into or out of full screen)"))
+    check("planner: thumbnail-sized off-screen bounds are never used to prepare a new layout",
+          d { $0.window = win(100, on: false, CGRect(x: 10, y: 20, width: 400, height: 300)); $0.fills = false } == .hide("its off-screen window doesn't fill its display yet"))
     // Off screen.
     check("planner: its window off screen, the overlay not in its Space yet: placed ahead (else put away)",
           d { $0.window = win(100, on: false) } == .placeAhead(orHide: "its window isn't on screen")
@@ -2030,6 +2057,10 @@ extension Tests {
           && SafariAX.profile(ofTitle: "Test A", names: names, defaultId: "s-default") == "s-c"
           && SafariAX.profile(ofTitle: "Inbox — Personal stuff", names: names, defaultId: "s-default") == "s-default"
           && SafariAX.profile(ofTitle: "Start Page", names: names, defaultId: "s-default") == "s-default")
+    check("two current profiles with the same name: a title alone never chooses either or the default",
+          SafariAX.profile(ofTitle: "Personal — Inbox", names: ["s-a": "Personal", "s-b": "Personal"], defaultId: "s-default") == nil)
+    check("overlapping profile names: the longest matching prefix identifies the window",
+          SafariAX.profile(ofTitle: "Test — Work — Inbox", names: ["s-a": "Test", "s-b": "Test — Work"], defaultId: "s-default") == "s-b")
 
     // Three profiles, three same-bounds full-screen windows, one on screen, nothing said by any page:
     // bound at the first read, every one, the off-screen ones too.

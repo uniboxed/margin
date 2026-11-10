@@ -65,6 +65,8 @@ async function serveOverlay() {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// How much longer waits for what does come are given (CI sets it: .github/workflows/ci.yml).
+const SLOW = Math.max(1, Number(process.env.MARGIN_E2E_SLOW) || 1);
 
 export async function startMargin({ seed = null, fullscreen = true, running = true, cloudTabs = null, across = null, name = 'e2e', web = false }: {
   seed?: any,           // what the app's data set holds (seed.ts seedSet's input), or a data set;
@@ -186,8 +188,10 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
     async ui(windowId: number | null = shell.frontWindowId()) {
       return (await shell.overlay(windowId)).page!; // (an overlay that's drawn has its page)
     },
-    /** Waits until `check()` (sync or async) is truthy. */
-    async until<T>(check: () => T | Promise<T>, { timeout = 5000, interval = 30, what = 'a condition' } = {}): Promise<Truthy<T>> {
+    /** Waits until `check()` (sync or async) is truthy: `timeout` times MARGIN_E2E_SLOW (CI's virtual Macs are
+     *  several times slower than a real one: a wait for what does come, given longer there; 1 elsewhere). */
+    async until<T>(check: () => T | Promise<T>, { timeout: given = 5000, interval = 30, what = 'a condition' } = {}): Promise<Truthy<T>> {
+      const timeout = given * SLOW;
       const end = Date.now() + timeout;
       let last;
       for (;;) {

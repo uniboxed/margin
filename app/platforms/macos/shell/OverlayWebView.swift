@@ -23,6 +23,20 @@ import WebKit
 final class OverlayWebView: WKWebView {
     private var always: NSTrackingArea?
     private var lastMove: TimeInterval = -1
+    // A native key equivalent reaches here even while a Margin field owns the keyboard.
+    // Reload belongs to the browser underneath, never to this layout's WebView.
+    var reloadBrowserTab: ((_ repeating: Bool) -> Bool)?
+
+    static func isBrowserReload(_ event: NSEvent) -> Bool {
+        event.type == .keyDown
+            && event.modifierFlags.intersection([.command, .shift, .option, .control]) == .command
+            && event.charactersIgnoringModifiers?.lowercased() == "r"
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if Self.isBrowserReload(event), reloadBrowserTab?(event.isARepeat) == true { return true }
+        return super.performKeyEquivalent(with: event)
+    }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func shouldDelayWindowOrdering(for event: NSEvent) -> Bool { true }

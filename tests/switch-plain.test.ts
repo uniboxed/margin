@@ -134,9 +134,9 @@ async function inFront(id: number) {
 // (shared/switching.ts `landed`), else the stored state's tab in front; each
 // change drawn recorded.
 function overlay() {
-  const drawn = [storedFront()];
+  const drawn: (number | string | null)[] = [storedFront()];
   const runs: any[] = [];
-  let target: number | null = null;
+  let target: number | string | null = null;
   const draw = () => { const h = target ?? storedFront(); if (drawn.at(-1) !== h) drawn.push(h); };
   const switching = createSwitching({
     doc: ({ hidden: false, addEventListener() {}, defaultView: { addEventListener() {} } } as any),
@@ -268,8 +268,8 @@ const V = await import('../extension/shared/view.ts');
 // The tabs the next-tab key goes through from `id`, in the sidebar's order.
 const nextTabs = (id: number, n: number) => {
   const s = fromStorage(fake.local);
-  const out: (number | null)[] = [];
-  for (let at: number | null = id; out.length < n;) out.push(at = V.cycleTab(s, 1, at, 1));
+  const out: (number | string | null)[] = [];
+  for (let at: number | string | null = id; out.length < n;) out.push(at = V.cycleTab(s, 1, at, 1));
   return out;
 };
 // Senders as link.ts makes the app's (its tab only its window) and as a page's is read: not whole tabs.

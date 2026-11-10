@@ -298,6 +298,15 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(await ev(() => T.rtRefused()), []);
       });
 
+      await t.test('dedicated Settings has a heading and controls without a start-page field', async () => {
+        await mount({ inNewTab: true });
+        await ev(() => T.rtSetUi({ settingsPage: true }));
+        assert.equal(await count('.launcher h1'), 1);
+        assert.equal(await count('.launcher-query'), 0);
+        assert.equal(await count('.launcher .archive-row, .launcher .tile'), 0);
+        assert.ok(await count('.settings-form input') > 0);
+      });
+
       await t.test('the new-tab page: a title screen, the > field focused, pinned tiles, the archive; Settings in Pixel\'s inputs', async () => {
         await mount({ inNewTab: true, mode: 'inpage', platform: { browser: 'safari', os: 'mac', features: { sleepTabs: 'discard', blockGestures: true, newTabHint: true, search: 'learn' } }, replies: { wakeSleeping: 0 } });
         assert.equal(await count('.launcher'), 1);

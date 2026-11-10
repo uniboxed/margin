@@ -9,6 +9,8 @@ import type { State } from '../types/margin.d.ts';
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // The browser's side: tabs by id, each tab's zoom, what was asked and sent (Margin's messages: any), storage (stored JSON).
 const fake = { zoom: {} as Record<number, number>, tabs: new Map<number, BrowserTab>(), nextId: 100, calls: { get: 0, contains: 0, create: [] as (string | undefined)[] }, messages: [] as Record<string, any>[], access: true, local: {} as Record<string, any>, current: new Set<number>(), injected: [] as { tabId: number, files: string[] }[], probes: 0, probeHangs: false, removed: [] as number[][], history: [] as [string, number][] };
+let creating: ((tab: BrowserTab) => void) | null = null;
+const orderMoves: { id: number, index: number }[] = [];
 const asTab = (t: BrowserTab) => ({ ...t });
 globalThis.chrome = fakeBrowser({
   runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ content_scripts: [{ js: ['content/other.bundle.js'], world: 'MAIN' }, { js: ['content/content.bundle.js'] }] }) },
@@ -29,6 +31,14 @@ globalThis.chrome = fakeBrowser({
       for (const t of fake.tabs.values()) if (t.windowId === tab.windowId) t.active = t.id === id;
       return asTab(tab);
     },
+    move: async (id, { index }) => {
+      const tab = fake.tabs.get(id as number)!;
+      orderMoves.push({ id: id as number, index });
+      const rest = [...fake.tabs.values()].filter((t) => t.windowId === tab.windowId && t.id !== id).sort((a, b) => a.index - b.index);
+      rest.splice(index, 0, tab);
+      rest.forEach((t, i) => { t.index = i; });
+      return asTab(tab);
+    },
     remove: async (ids) => {
       const list = ([] as number[]).concat(ids);
       fake.removed.push(list);
@@ -42,6 +52,7 @@ globalThis.chrome = fakeBrowser({
       if (active) for (const t of fake.tabs.values()) if (t.windowId === windowId) t.active = false;
       fake.tabs.set(tab.id, tab);
       fake.calls.create.push(url);
+      creating?.(tab);
       return asTab(tab);
     },
   },
@@ -547,6 +558,103 @@ test('userThemes: Margin.app\'s index of imported themes kept (ids checked, buil
   await handlers.updateSettings({ patch: { theme: 'arcadia' } });
   assert.equal((await load()).settings.theme, 'arcadia');
   delete fake.local.userThemes;
+});
+
+test('space restore: saved MRU wins over a leftover launcher and over an older open page', async () => {
+  await setup();
+  await mutate((s) => {
+    let next = M.closedTab(s, 4, { windowClosing: true, now: 30, archiveId: 'unused' });
+    next = M.upsertTab(next, { id: 6, windowId: 1, index: 6, url: 'safari-web-extension://test/newtab/newtab.html#launcher', active: false } as BrowserTab, 100);
+    return M.moveTab(next, 6, 'work');
+  });
+  fake.tabs.delete(4);
+  fake.tabs.set(6, { id: 6, windowId: 1, index: 6, active: false, url: 'safari-web-extension://test/newtab/newtab.html#launcher' });
+  const before = (await load()).keptTabs;
+  const kept = Object.values(before)[0];
+  await showSpace(1, 'work');
+  const shown = fake.tabs.get(front()!);
+  assert.equal(shown?.url, 'https://w4.com/');
+  assert.equal((await load()).tabs[shown!.id].mid, kept.id);
+  assert.deepEqual(fake.calls.create, ['https://w4.com/']);
+});
+
+test('keys follow sidebar order through a missing browser tab and keep its identity after reopening', async () => {
+  await setup();
+  await mutate((s) => M.closedTab(s, 2, { windowClosing: true, now: 30, archiveId: 'unused' }));
+  fake.tabs.delete(2);
+  const kept = Object.values((await load()).keptTabs)[0];
+  await navigate('prev-tab', 'saved-test', 1, { target: kept.id, switchId: 'ov-saved' });
+  const shown = fake.tabs.get(front()!);
+  assert.equal(shown?.url, 'https://p2.com/');
+  assert.equal((await load()).tabs[shown!.id].mid, kept.id);
+  await navigate('next-tab', 'saved-test', 1);
+  assert.equal(front(), 1);
+  assert.deepEqual(fake.calls.create, ['https://p2.com/'], 'only the selected missing page opens once');
+});
+
+test('an entirely unloaded space restores the previously highlighted tab, not its top row or a new page', async () => {
+  await setup();
+  await mutate((s) => {
+    let next = M.activateTab(s, 3, 1, 100);
+    next = M.closedTab(next, 3, { windowClosing: true, now: 101, archiveId: 'unused' });
+    next = M.closedTab(next, 4, { windowClosing: true, now: 101, archiveId: 'unused' });
+    next = M.closedTab(next, 5, { windowClosing: true, now: 101, archiveId: 'unused' });
+    return M.setActiveSpace(next, 1, 'personal');
+  });
+  for (const id of [3, 4, 5]) fake.tabs.delete(id);
+  for (const t of fake.tabs.values()) t.active = t.id === 1;
+  await showSpace(1, 'work');
+  assert.equal(fake.tabs.get(front()!)?.url, 'https://w3.com/');
+  assert.deepEqual(fake.calls.create, ['https://w3.com/']);
+});
+
+test('selected tab order is repaired after activation without changing Margin places', async () => {
+  await setup();
+  orderMoves.length = 0;
+  await mutate((s) => ({ ...s, tabs: { ...s.tabs, 2: { ...s.tabs[2], order: -1 } } }));
+  const before = V.sidebar(await load(), 1).tabs.map((t) => t.id);
+  const { handlers } = await import('../extension/background/handlers.ts');
+  await handlers.activateTab({ tabId: 2, windowId: 1 }, { app: true });
+  await sleep(10);
+  assert.equal(front(), 2);
+  assert.deepEqual(orderMoves, [{ id: 2, index: 0 }]);
+  await mutate((s) => M.syncTabs(s, [...fake.tabs.values()], { fresh: false, now: 200 }));
+  assert.deepEqual(V.sidebar(await load(), 1).tabs.map((t) => t.id), before);
+});
+
+test('Settings route is reused in a window, including concurrent palette requests', async () => {
+  await setup();
+  const { handlers } = await import('../extension/background/handlers.ts');
+  const [a, b] = await Promise.all([handlers.openLauncher({ windowId: 1, settings: true }), handlers.newTab({ windowId: 1, url: 'margin://settings' }, { app: true })]);
+  assert.equal(a.tabId, b.tabId);
+  await handlers.openLauncher({ windowId: 1, settings: true });
+  assert.deepEqual(fake.calls.create, ['safari-web-extension://test/newtab/newtab.html#settings']);
+});
+
+test('concurrent selection of the same saved row opens only one browser tab', async () => {
+  await setup();
+  await mutate((s) => M.closedTab(s, 2, { windowClosing: true, now: 30, archiveId: 'unused' }));
+  fake.tabs.delete(2);
+  const id = Object.keys((await load()).keptTabs)[0];
+  const { handlers } = await import('../extension/background/handlers.ts');
+  const [a, b] = await Promise.all([handlers.activateTab({ tabId: id, windowId: 1 }, { app: true }), handlers.activateTab({ tabId: id, windowId: 1 }, { app: true })]);
+  assert.equal(a.shown, b.shown);
+  assert.deepEqual(fake.calls.create, ['https://p2.com/']);
+});
+
+test('Safari activation before a saved tab is linked preserves the shortcut chain', async () => {
+  await setup();
+  await mutate((s) => M.closedTab(s, 2, { windowClosing: true, now: 30, archiveId: 'unused' }));
+  fake.tabs.delete(2);
+  const id = Object.keys((await load()).keptTabs)[0];
+  const { navActivated, navTarget } = await import('../extension/background/navigation.ts');
+  creating = (tab) => {
+    navActivated(tab.windowId, tab.id);
+    assert.equal(navTarget.get(1)?.tabId, id);
+  };
+  try { await navigate('prev-tab', 'activation-before-link', 1, { target: id }); }
+  finally { creating = null; }
+  assert.equal((await load()).tabs[front()!].mid, id);
 });
 
 // (Last: this copy is stale from here on.)

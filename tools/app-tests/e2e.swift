@@ -692,6 +692,22 @@ final class Runner: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     if env["MARGIN_APP_VERBOSE"] != nil { Diagnostics.echo = { print("  app:", $0) } }
     Task { @MainActor in
+      await helperSplashHandoffScenario()
+      startupSplashScenario()
+      if env["MARGIN_E2E_ONLY"] == "startup" {
+        print(failures == 0 ? "all \(passed) startup checks passed" : "\(failures) startup checks failed")
+        exit(failures == 0 ? 0 : 1)
+      }
+      if env["MARGIN_E2E_ONLY"] == "window-ready" {
+        await preparedWindowsScenario()
+        print(failures == 0 ? "all \(passed) window readiness checks passed" : "\(failures) window readiness checks failed")
+        exit(failures == 0 ? 0 : 1)
+      }
+      if env["MARGIN_E2E_ONLY"] == "keyboard" {
+        await keyboardScenario()
+        print(failures == 0 ? "all \(passed) keyboard checks passed" : "\(failures) keyboard checks failed")
+        exit(failures == 0 ? 0 : 1)
+      }
       // MARGIN_E2E_ONLY=overlays: that scenario alone (while working on it).
       if env["MARGIN_E2E_ONLY"] == "overlays" {
         await overlaysScenario()
@@ -707,11 +723,75 @@ final class Runner: NSObject, NSApplicationDelegate {
       await windowsScenario(ownSpace: true)
       await keyboardScenario() // e2e-keyboard.swift
       await overlaysScenario() // e2e-overlays.swift
+      await preparedWindowsScenario()
       await sidebarSlideScenario()
       print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
       exit(failures == 0 ? 0 : 1)
     }
   }
+}
+
+// Native splash: a cold start needs no extension, theme or WebKit process.
+// Render off screen in both appearances; no Safari window or permission needed.
+func startupSplashScenario() {
+  let appearance = NSApp.appearance
+  defer { NSApp.appearance = appearance }
+  for mode in ["light", "dark"] {
+    NSApp.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+    let cover = SafariCover(number: 123, since: Diagnostics.now())
+    defer { cover.close() }
+    cover.panel.setFrame(NSRect(x: -20000, y: -20000, width: 1000, height: 700), display: true)
+    guard let view = cover.panel.contentView else { check("startup splash: native content exists", false); continue }
+    func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap { descendants($0) } }
+    let all = descendants(view)
+    let labels = all.compactMap { $0 as? NSTextField }
+    check("startup splash (\(mode)): message exists before any link or web view starts",
+          labels.contains { $0.stringValue == "Getting things ready for you" } && !all.contains { $0 is WKWebView })
+    check("startup splash (\(mode)): leaves browser input and focus alone", cover.panel.ignoresMouseEvents && !cover.panel.isKeyWindow)
+    cover.update(preparingLayout: true)
+    check("startup splash (\(mode)): moves on when the copy links", labels.contains { $0.stringValue == "Preparing your layout…" })
+    view.layoutSubtreeIfNeeded()
+    check("startup splash (\(mode)): message is centred and inside its window", labels.allSatisfy {
+      let rect = view.convert($0.bounds, from: $0)
+      return view.bounds.contains(rect) && abs(rect.midX - view.bounds.midX) < 1
+    })
+    if let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+      view.cacheDisplay(in: view.bounds, to: bitmap)
+      let destination = URL(fileURLWithPath: env["MARGIN_APP_SHOT"] ?? "/tmp/margin-overlay.png").deletingLastPathComponent().appendingPathComponent("startup-\(mode).png")
+      try? bitmap.representation(using: .png, properties: [:])?.write(to: destination)
+    }
+  }
+}
+
+// Real cross-process notification transport with the shell's actual handoff implementation. A ready page
+// alone doesn't dismiss the launch splash: its native cover/overlay must call drawn. The query recovers a
+// ready event missed by a child that started late, and another browser cannot dismiss this one's splash.
+func helperSplashHandoffScenario() async {
+  let center = DistributedNotificationCenter.default()
+  let pid: pid_t = 987_001
+  var received: [String] = []
+  let token = center.addObserver(forName: HelperSplash.readyName, object: nil, queue: .main) { note in
+    MainActor.assumeIsolated { if let object = note.object as? String { received.append(object) } }
+  }
+  HelperSplash.start()
+  defer { HelperSplash.stop(); center.removeObserver(token) }
+  func query(_ pid: pid_t) { center.postNotificationName(HelperSplash.queryName, object: String(pid), userInfo: nil, deliverImmediately: true) }
+  query(pid)
+  try? await Task.sleep(nanoseconds: 100_000_000)
+  check("helper handoff: not ready before any native UI is drawn", received.isEmpty)
+  let key = "\(pid):123"
+  HelperSplash.drawn(browser: pid, window: 123)
+  check("helper handoff: drawing names the browser and its actual window", await until(2, { received == [key] }))
+  query(pid + 1)
+  try? await Task.sleep(nanoseconds: 100_000_000)
+  check("helper handoff: another browser is not answered", received == [key])
+  query(pid)
+  check("helper handoff: a child arriving after the draw is answered", await until(2, { received.count == 2 }))
+  HelperSplash.stop()
+  HelperSplash.start()
+  query(pid)
+  try? await Task.sleep(nanoseconds: 100_000_000)
+  check("helper handoff: stopping clears the old launch's readiness", received.count == 2)
 }
 
 @main enum E2E {

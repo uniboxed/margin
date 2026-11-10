@@ -71,6 +71,31 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 - WebKit's own extension engine, Safari reloading Margin, tab ids changing on a relaunch;
 - the app's data files and the real Swift link.
 
+## Safari startup (2026-11-10)
+
+- [ ] With Safari closed, Activity Monitor shows only the resident `margin-helper`. Open Safari: a second `margin-helper --splash …` briefly shows a small “Getting things ready for you” card before Margin.app's full-window cover/layout. The child goes when the app draws. Switching to another app after the card appears or quitting Safari dismisses it; a failed startup dismisses it within six seconds. No Dock icon or keyboard-focus change.
+- [ ] Close all supported browsers and wait for Margin.app's existing idle quit. The splash child is gone; the resident helper remains small, with no window, WebKit process or periodic CPU use. Installing an update restarts an already loaded helper; a disabled login item stays disabled.
+- [ ] With the installed build updated (`npm run safari`), quit and reopen Safari restoring two full-screen windows from different profiles. As each window is identified, a native “Getting things ready for you” splash appears until Margin's layout is ready; there is no empty color panel. Repeat in light and dark appearances.
+- [ ] Both windows get the correct profile's sidebar, including after a signed/unsigned build change. Visit their Spaces and check the tabs belong to that profile.
+- [ ] Open a window with Margin disabled: no splash. A normal window is left alone. Quitting Safari while a splash is up removes it; a startup failure releases the cover after at most six seconds.
+- [ ] Read `npm run log:app -- 5`: `Accessibility: window … is …` must name the currently linked profile, followed by `overlay page drawn … in … ms`, `overlay shown over …`, and `startup layout over window … ready after … ms` when a splash was used. A link reaching the app and an overlay drawing do not themselves prove that the overlay was shown.
+
+Automated coverage: `npm run test:app` checks historical copy IDs against the current Safari mapping, invalidation and relearning of an old window identity, ambiguous profile names, cover removal/timeout rules, and the native splash off screen in both appearances (`tools/app-tests/build/startup-{light,dark}.png`). These checks use stand-in browser windows; real Safari's extension launch delay and first-frame coverage still need the checks above.
+
+`tools/app-tests/helper-test.sh` also tests the real helper and its splash child over a fake browser window off every display: resident memory before/during/after, idle CPU time, app startup, early and late handoff messages, pid isolation, timeout and browser quit. `helper-splash-test.sh` refuses any on-screen test frame. Fixture folders and browser IDs are unique per run. The app's end-to-end checks exercise its actual notification responder too. To compare an older helper in the same session, pass `MARGIN_HELPER_BASELINE=/absolute/path/to/the/old/helper`; it is run only against the fake browser. Logs and the launch-card snapshot stay in the fixture folder printed in failure output (`build/helper-splash-test-*/`).
+
+## Prepared layouts across full-screen Spaces (2026-11-10)
+
+Known open issue: the user confirmed detached/scaled Mission Control thumbnails while the live layout is correct after exiting. The stationary-policy experiment did not fix it and was reverted. `tools/window-group-lab/README.md` records the bounded native-grouping investigation; automated policy/group checks do not prove a correct preview.
+
+- [ ] **Mission Control thumbnails:** with the browser in full screen, swipe up with three fingers or press Control-Up. Margin's sidebar/frame must stay aligned with its browser in the Space thumbnail, without a separately scaled sidebar, detached palette, duplicate tile or full-size overlay covering Mission Control. Repeat from the Desktop while the browser Spaces are in the background. Exit with Escape, select a Space, and try a partial swipe/reversal: the layout is immediately usable, clicks reach the correct page, and keyboard focus stays correct. Repeat on another display, if available. This compositor check is manual; off-screen tests cannot establish it.
+- [ ] Restore two or three browser windows in separate full-screen Spaces. Leave the first in front while their layouts draw, then visit each of the others within five seconds. Its sidebar and frame should already be drawn as its Space slides in, without a black gap followed by the layout appearing.
+- [ ] Swipe back and forth twenty times, including partial swipes and quick reversals, then use Mission Control and the keyboard to visit them. Each window keeps its correct layout; none appears on the Desktop or in another app's Space. Repeat with Safari profiles, Chrome and Edge.
+- [ ] Close one window, exit full screen, resize, move a full-screen window between displays, and use a page's video full-screen mode. Margin hides or follows as appropriate; there must be no leftover sidebar or invisible pointer catcher in the previous Space.
+- [ ] Leave the browsers open but idle, then quit them. The resident helper's idle behavior and the app's existing idle quit stay as before. No additional web views or screenshot cache are used for switching.
+
+Automated: `MARGIN_E2E_ONLY=window-ready tools/app-tests/run.sh e2e` (build with `npm run build` first), also included in `npm run test:app`. Real off-screen WKWebViews and Shell run against stand-in windows and a fake Space bridge. A ready background layout must be placed within one second of its ready callback; twenty Space visits reuse both native windows and their pages without another Space move. Missing batch reads retain the layout only with fresh independent window/owner/size and full-screen Space confirmation for all active overlay panels. Unknown membership, a closed/resized/reused window number, or a misplaced panel/catcher must still conceal. Real Space move refusals keep their five-second cooldown. These tests never move a real browser or call the real private bridge; they do not measure macOS's compositor or guarantee a cold window is drawn before WebKit is ready.
+
 ## Chrome and Edge on the Mac (2026-11-09)
 
 Margin.app now links Chrome's and Edge's copies the way it links Safari's (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"). Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'` (zsh's `log` is a builtin).
@@ -1854,3 +1879,34 @@ After `npm run safari`:
 - [ ] Safari's Start Page, an empty window, and a window opened from Safari's Dock menu with no other window: linked all the same.
 - [ ] Log out and back in with Safari set to reopen its windows: Margin is there with them.
 
+
+## Sidebar restore, Settings and Mission Control fallback (2026-11-10, superseded below)
+
+The user chose hiding the separate native layers in Mission Control after the stationary preview experiment failed. The earlier faithful-composition check is superseded for this candidate: only Safari should be arranged. Native tests verify transient flags on all layers and repeated Space visits retaining the same views; the compositor result remains a manual check.
+
+- [ ] Visit each full-screen Safari Space once. Swipe up; no detached Margin layer in the small thumbnails or desktop arrangement. Cancel, choose the same Space, choose another browser Space, and reverse the swipe: Margin is already aligned on return, with no new loading screen. Test multiple displays too. Browser page insets intentionally stay prepared; entering Mission Control does not reflow the page.
+- [ ] Restore a space after Safari quit/crashed with its pages not reopened. Its previously highlighted page loads, not a New Tab page; only that saved page reopens.
+- [ ] Use the tab up/down keys through interleaved live and unloaded rows, including fast repeats and reversals. Follow sidebar order; each selected missing page opens once. After restoring a reordered Safari session, the sidebar's order stays, and selecting a tab repairs its browser position without blocking activation.
+- [ ] Open the palette, search Settings, then try `margin://settings` there. Both open a named Settings page with its form and no start-page search/archive. Repeat: reuse the same page in that window. Verify controls save and the form scrolls in Arcadia, Pixel and Neubrutalism. The alias is handled by Margin's fields; it does not register a macOS-wide URL protocol.
+- [ ] New-tab keys show the palette. No inactive internal New Tab/start-page row appears in sidebar or palette; new windows and empty spaces still offer the palette. Archive remains reachable separately.
+
+Live desktop capture remains unavailable (previous ScreenCaptureKit -3811 result). No automated compositor observation is claimed.
+
+## Mission Control model geometry candidate (2026-11-10)
+
+The user observed a return gap with the transient fallback. The new candidate validates an independent model rectangle before enabling native preview participation. During a displayed-size discrepancy, a fresh matching model rectangle preserves an already shown layout. Failure retains transient hiding; a genuine resize, closed/reused owner or unknown placement retains conservative handling. The prior stationary experiment and unconditional transient policy are superseded for validated own-Space bindings.
+
+- [ ] Visit each full-screen browser Space once, swipe up and pause: frame/sidebar remain aligned with the browser thumbnail, with no independent tile or full-sized layer. Return by Escape, selecting that Space and selecting another Space; no bare Safari frame before Margin draws.
+- [ ] Repeat partial swipes, reversals, rapid Space changes, background browser Spaces, multiple browsers/profiles and displays. Check clicks, palette focus, browser resize/full-screen exit and page full-screen.
+- [ ] Launch diagnostics say `geometry ok`. A scaled CG rectangle logs `model stays ...: native geometry retained`; the trace's logical overlay frames remain full size, and return needs no hide/show or placement. A getter failure logs the hidden fallback. These logs establish the code path, not visual composition.
+
+Automated native playback uses real off-screen panels/WebViews, injected model bounds and a fake Space bridge. Twenty scaled reads retain the same frames/windows/WebView time origins; ordinary reads add no model IPC; changed or unavailable geometry is conservative. Run `WINDOW_RUNS=50 VISIBLE_RUNS=80 tools/app-tests/run.sh`. It does not drive Safari or prove compositor alignment. Capture failed with ScreenCaptureKit -3811; computer-control calls timed out, so visual confirmation remains required.
+
+Installed candidate `595c83cc`, user visual result (2026-11-10): full layout is present before Safari finishes returning from Mission Control. Layout still disappears on entry and reappears during exit; the user accepts this for now. Continuous aligned preview visibility is **not** verified. Real product logs show 11 model-retention/return episodes without an order-out/show cycle or getter error; the native trace retains canonical dimensions. Keep the broader display/browser/reversal checklist open.
+
+## Reload with focus in Margin (2026-11-10)
+
+- [ ] In full-screen Safari, click a tab in the sidebar and press ⌘R: the selected page reloads once. Repeat with a palette/search field, a rename field and Settings focused; the underlying selected browser tab reloads while Margin's field text/focus stay in place.
+- [ ] With two browser windows/profiles on different pages, reload from each one's focused layout: only its own selected page reloads. Hold ⌘R briefly: it must not build up repeated reload requests. Confirm ordinary page-focused ⌘R still uses the browser's behavior. Repeat in Chrome/Edge.
+
+Automated: `MARGIN_E2E_ONLY=keyboard tools/app-tests/run.sh e2e` exercises AppKit's key-equivalent entry point on the actual off-screen WKWebView with a focused field and the real native link to a fake extension. It verifies the scoped reload, same layout page/time origin, focus/draft retention, and repeat suppression. Modifier/key-up checks are in native unit tests. The fixture never activates a real browser or injects desktop key events.

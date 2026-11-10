@@ -70,7 +70,7 @@ const copySwitches = backgroundSwitches();
 // A held key repeats faster than a highlight is drawn (reported 2026-11-08: "when i stop holding it, it still keeps
 // moving"): the presses that come are added up and taken once a frame, one highlight and one ask for where they end,
 // so none wait in line and it stops as the key is let go.
-let localNav = (null as { tabId: number, at: number } | null);
+let localNav = (null as { tabId: number | string, at: number } | null);
 let localSeq = 0;
 let navSteps = 0;
 let navFrame = 0;
@@ -591,7 +591,7 @@ function onMessage(msg: any) {
         case 'switching':
           // (Not one this page highlighted itself, navTab: it's on it, or on a newer one already.)
           if (String(msg.msg.switchId ?? '').startsWith(OVERLAY_SWITCH_PREFIX)) return;
-          if (Number.isInteger(msg.msg.tabId)) runtime?.switchTo(msg.msg.tabId, copySwitches.begin(msg.msg.tabId, msg.msg.switchId ?? null));
+          if (Number.isInteger(msg.msg.tabId) || typeof msg.msg.tabId === 'string') runtime?.switchTo(msg.msg.tabId, copySwitches.begin(msg.msg.tabId, msg.msg.switchId ?? null));
           return;
         case 'switch-done': copySwitches.settle(msg.msg); return;
         // Didn't happen: the highlight goes, and why is said (when the copy says why).

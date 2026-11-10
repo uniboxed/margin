@@ -315,6 +315,15 @@ for (const [name, engine] of ENGINES) {
         await page.emulateMedia({ colorScheme: null });
       });
 
+      await t.test('dedicated Settings has a heading and controls without a start-page field', async () => {
+        await mount({ inNewTab: true });
+        await ev(() => T.rtSetUi({ settingsPage: true }));
+        assert.equal(await count('.launcher h1'), 1);
+        assert.equal(await count('.launcher-query'), 0);
+        assert.equal(await count('.launcher .archive-row, .launcher .tile'), 0);
+        assert.ok(await count('.settings-form input') > 0);
+      });
+
       await t.test('Settings: toggles drawn as Neo switches, buttons on one line', async () => {
         await mount({ inNewTab: true });
         await ev(() => T.rtSetUi({ settingsOpen: true }));

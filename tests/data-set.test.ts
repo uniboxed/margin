@@ -91,8 +91,8 @@ test('the data set\'s items: spaces in order, pins by address, folders, Margin\'
   const a = s.tabs[1];
   const b = Object.values(s.keptTabs)[0];
   assert.deepEqual(items.tabs, {
-    [a.mid!]: { url: 'https://a.test/', title: 'A', icon: '', spaceId: 'work', order: a.order, lastUsed: a.lastActive },
-    [b.id]: { url: 'https://b.test/', title: 'B', icon: '', spaceId: 'work', order: b.order, lastUsed: b.lastActive },
+    [a.mid!]: { url: 'https://a.test/', title: 'A', icon: '', spaceId: 'work', order: a.order, lastUsed: a.lastActive, selected: !!a.active },
+    [b.id]: { url: 'https://b.test/', title: 'B', icon: '', spaceId: 'work', order: b.order, lastUsed: b.lastActive, selected: !!b.wasActive },
   }, 'the new-tab page isn\'t a Margin tab worth keeping');
   assert.deepEqual(items.archive, { a1: { url: 'https://old.test/', title: 'Old', spaceId: 'work', icon: '', closedAt: 50 } });
   assert.equal(items.settings.archiveAfterHours, 24);
@@ -223,4 +223,16 @@ test('a wiped cache merged with the app\'s data: the app\'s data stays, the chan
   assert.deepEqual(queue, [], 'its defaults aren\'t changes');
   const merged = mergeData(app, queue);
   assert.equal(stateFromDataSet(fresh, merged).spaces[0].name, 'Me');
+});
+
+test('a wiped extension cache recovers the highlighted saved tab from app data, even with tied recency', () => {
+  let s = sampleState();
+  const tabs = Object.values(s.tabs).filter((t) => /^https?:/.test(t.url));
+  const chosen = tabs[0];
+  s = M.activateTab(s, chosen.id, chosen.windowId, 500);
+  s = M.keepTab(s, chosen.id, { why: 'window', now: 501 });
+  const set = dataSetFrom(s, { now: 502 });
+  const refilled = stateFromDataSet(M.defaultState(), set);
+  assert.equal(refilled.keptTabs[chosen.mid!].wasActive, true);
+  assert.equal(M.spaceWindowTabs(refilled, s.tabSpace[chosen.id] ?? 'work').front?.id, chosen.mid);
 });

@@ -28,7 +28,7 @@ Every item is `{ updatedAt, value }`, or a tombstone `{ updatedAt, deleted: true
 | `spaces` | the space's id | `name`, `emoji`, `color`, `order` (its place among spaces, 0 first) |
 | `pins` | the pin's id | `spaceId`, `url`, `title`, `folderId` (or null), `pos` (its place at its level) |
 | `folders` | the folder's id | `spaceId`, `name`, `open`, `pos` |
-| `tabs` | the Margin tab's own id (`t-` and ten letters or digits) | `url`, `title`, `icon` (an address or `data:` image the browser gave, else empty), `spaceId`, `order` (its place in the list: higher is newer, shown higher), `lastUsed` |
+| `tabs` | the Margin tab's own id (`t-` and ten letters or digits) | `url`, `title`, `icon` (an address or `data:` image the browser gave, else empty), `spaceId`, `order` (its place in the list: higher is newer, shown higher), `lastUsed`, `selected` (boolean; absent in earlier data) |
 | `archive` | the entry's id | `url`, `title`, `spaceId`, `icon`, `closedAt` |
 | `settings` | the setting's name | the setting's value (any JSON); every setting but `themes` |
 | `themeSettings` | the theme's id | that theme's settings object |
@@ -36,6 +36,8 @@ Every item is `{ updatedAt, value }`, or a tombstone `{ updatedAt, deleted: true
 | `userThemes` | the theme's id | unused: imported themes belong to the Mac, kept by Margin.app outside the data sets (`app/platforms/macos/shell/ThemeStore.swift`); copies get the index by `req userThemes` (`docs/PROTOCOL.md` "User themes") |
 
 Only web pages are Margin tabs worth keeping: a new-tab page or an extension page isn't in `tabs`. In the extension, an open Margin tab is a browser tab's record with its Margin id (`mid`) and place (`order`); one that isn't open is in `keptTabs` (`state/model.ts`).
+A tab value also carries `selected` (boolean): whether it was its browser window's chosen tab at the last live/saved record. It breaks equal `lastUsed` times when restoring an unloaded space; missing in older data means false. The extension maps it to `wasActive` on a kept tab. It contains no browser ID, and a cache refill retains it.
+
 
 ## The scroll record
 

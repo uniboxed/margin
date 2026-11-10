@@ -35,13 +35,18 @@ extension Shell: SwitchWorld {
         watcher.onChange = { [weak self] outcome in
             guard let self else { return }
             let profiles = self.profilesOf("safari")
+            let windowNames = profiles.windowNames
             let changed: Bool
             switch outcome {
             case .read(let list): changed = profiles.useBrowserNames(list)
             case .noAccess, .noSafari, .failed: changed = profiles.dropBrowserNames()
             case .busy: changed = false
             }
-            if changed { self.acrossSoon() }
+            if changed || profiles.windowNames != windowNames {
+                self.acrossSoon()
+                self.coversSoon()
+                self.burst("Safari's profile mapping changed")
+            }
         }
         // Each read (changed or not): the linked copies checked against it.
         watcher.onRead = { [weak self] outcome in

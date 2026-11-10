@@ -1,0 +1,78 @@
+{
+  "excerpt": true,
+  "evidence_id": "ev_0672265891a11f6159ac261b1a24186944f242c1c78fe9d9d2b8d4b42e9b830f",
+  "operation": "capture_process_scenario",
+  "authority": "controlled-replay",
+  "environment": {
+    "id": "darwin-arm64",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "isolation": "process"
+  },
+  "executable_sha256": "c6c60b2b785c6986a80fddc594a0d1ecff3a2c946276d90c7ac4c02578289fe0",
+  "frames": [
+    {
+      "sequence": 0,
+      "at_ms": 160,
+      "data": "own parent 4427, own local 4428, before (\r\n    4427\r\n)\r\n"
+    },
+    {
+      "sequence": 1,
+      "at_ms": 280,
+      "data": "public same-process child (\r\n    4428,\r\n    4427\r\n), movement [4428], parentOfLocal 4427\r\n"
+    },
+    {
+      "sequence": 2,
+      "at_ms": 570,
+      "data": "own cross-process child 4429, pid <pid>\r\n",
+      "raw_data": "own cross-process child 4429, pid 48067\r\n"
+    },
+    {
+      "sequence": 3,
+      "at_ms": 670,
+      "data": "private same process 0/0, movement [4428], associated (\r\n    4428,\r\n    4427\r\n)\r\n"
+    },
+    {
+      "sequence": 4,
+      "at_ms": 920,
+      "data": "cross process add: movement 0, ordering 0, associated (\r\n    4427\r\n)\r\nremove movement 0\r\nremove ordering 0\r\n"
+    },
+    {
+      "sequence": 5,
+      "at_ms": 980,
+      "data": "foreign parent own child 0/0, movement error 1001, count 0, assoc parent (\r\n    4429\r\n), assoc child (\r\n    4427\r\n), actual parent 0\r\n"
+    },
+    {
+      "sequence": 6,
+      "at_ms": 1080,
+      "data": "transaction foreign parent own child sent, movement error 1001, count 0, assoc parent (\r\n    4429\r\n), assoc child (\r\n    4427\r\n), actual parent 0\r\n"
+    },
+    {
+      "sequence": 7,
+      "at_ms": 1180,
+      "data": "cross process own-child setParent 0, associated foreign parent (\r\n    4429\r\n), own child (\r\n    4427\r\n), actual parent 0\r\n"
+    },
+    {
+      "sequence": 8,
+      "at_ms": 1200,
+      "data": "owned child ended 15\r\n"
+    }
+  ],
+  "exit": {
+    "code": 0,
+    "signal": 0,
+    "reason": "exited"
+  },
+  "cleanup": {
+    "owned_process_group": "verified",
+    "temporary_root": "removed"
+  },
+  "limitations": [
+    "Artifact identity is unavailable for this observation.",
+    "The executable digest is a prelaunch file sample; matching path metadata immediately after spawn does not prove an atomic operating-system image binding.",
+    "Process trees are sampled and may omit short-lived descendants.",
+    "Filesystem observations are before/after snapshots, not syscall traces.",
+    "Inherited host environment variables are not recorded and may affect results.",
+    "No filesystem observation paths were selected; filesystem effects remain unknown."
+  ]
+}

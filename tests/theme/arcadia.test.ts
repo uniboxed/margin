@@ -168,6 +168,26 @@ for (const [name, engine] of ENGINES) {
         assert.equal(await page.evaluate(() => T.rtActive()), 'launcher');
       });
 
+      await t.test('native keyboard selection immediately highlights a saved row', async () => {
+        await page.evaluate(() => T.mountRuntime({ container: 'document', mode: 'fullscreen' }));
+        const result = await page.evaluate(() => {
+          const state = __rt.host.getState()!;
+          const id = 't-saved00001';
+          __rt.host.setState({ ...state, keptTabs: { ...state.keptTabs, [id]: { id, url: 'https://saved.test/', title: 'Saved', favIconUrl: '', spaceId: state.activeSpaceByWindow[1], order: 999, lastActive: 0, keptAt: 1, why: 'window' } } });
+          __rt.runtime.switchTo(id, new Promise(() => {}));
+          return { target: __rt.runtime.ui.switchingTo, active: __rt.runtime.vm.space.today.find((row) => row.id === id)?.active };
+        });
+        assert.deepEqual(result, { target: 't-saved00001', active: true });
+      });
+
+      await t.test('dedicated Settings has a heading and controls without start-page sections', async () => {
+        await page.evaluate(() => T.mountRuntime({ container: 'document', mode: 'inpage', inNewTab: true }));
+        await page.evaluate(() => T.rtSetUi({ settingsPage: true }));
+        assert.equal(await page.locator('.launcher h1').innerText(), 'Settings');
+        assert.equal(await page.locator('.launcher-query, .launcher .archive-row, .launcher .tile').count(), 0);
+        assert.ok(await page.locator('.settings-form input').count() > 0);
+      });
+
       await t.test('the launcher\'s Settings: Margin\'s inputs in the theme\'s settings part, each saving through its field', async () => {
         const platform = { browser: 'safari', os: 'mac', features: { sleepTabs: 'discard', blockGestures: true, newTabHint: true, search: 'learn' } };
         await page.evaluate((p) => T.mountRuntime({ container: 'document', mode: 'inpage', inNewTab: true, platform: p, replies: { wakeSleeping: 0 } }), platform);

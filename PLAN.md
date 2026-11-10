@@ -2,6 +2,8 @@
 
 Draft plan, 2026-11-04. Nothing here is built yet. Once it is approved, the decisions move into `SPEC.md` (which this plan changes, see the last section) and `DECISIONS.md`, and the work starts at Phase 0.
 
+**Mission Control follow-up (2026-11-10):** Preserve an already shown own-Space layout at its independently validated model geometry while the window server presents a scaled preview. Opt those layers into Mission Control only after that exact browser window passes the read-only geometry check; keep transient hiding when unavailable. No additional resident helper work, view reload, snapshot cache or timer. See SPEC.md, DECISIONS.md and `tools/mission-control-lab/README.md`; actual compositor alignment remains a manual check.
+
 ## 1. What we're building, in one picture
 
 ```text
@@ -151,6 +153,8 @@ Reuse the protocol from `feat/native-panel` (which worked in real Safari), gener
   - **Safari has a tab Margin doesn't know:** it's added to the window's active space, as today.
   - **Margin has a tab Safari doesn't (not open):** it stays in its space in the sidebar, drawn as not open, and opens in the window where it's clicked (`tabs.create` with its address), then is linked to that tab. A space's not-open tabs show in every window showing that space.
   - **What keeps a tab, and what removes it:** a tab closed on its own (its × in Margin, ⌘W, Safari's tab bar: `tabs.onRemoved` with `isWindowClosing` false, not started by Margin) goes to the archive, as today. Tabs lost because a whole window closed, Safari quit or crashed, or Safari didn't restore them stay as not-open tabs in their spaces.
+  - **Navigation and order (2026-11-10):** Up/down tab keys use the displayed rows, including saved tabs. Only the chosen missing tab opens, keeping its stable identity and position. Safari resync preserves Margin places; explicit sidebar drags update them. A selected live tab's physical order is repaired after selection only when indexes disagree, coalescing rapid requests per window.
+  - **Restoring a space (2026-11-10):** Prefer its most recent real tab across live/saved records, not an internal start-page anchor; the saved selected flag breaks recency ties and survives an app-data refill. Empty-space/new-window anchors can still support the palette but never appear as tabs. Settings opens directly from the palette or its `margin://settings` alias and has its own title, row and form, reusing a page already open in that window.
   - **After a relaunch:** restored browser tabs are matched to Margin's tabs by address and order (today's `restore.ts` logic); unmatched Margin tabs stay not open.
   - **Auto-archive** still moves tabs unused for `archiveAfterHours` into the archive, open or not.
   - Reopening a not-open tab starts fresh: its Back history and scroll position are gone, as when reopening any closed tab.
