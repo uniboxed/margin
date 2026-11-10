@@ -3586,3 +3586,39 @@ Tirth's name for the theme. Its id, folder and name: `neubrutalism`, `extension/
   file (2026-10-25), so that path stays in the build, empty (`scripts/build.ts` `LEGACY_FILES`), until no Safari has it.
 - **The old id stays reserved.** `ThemeStore.swift` `builtins` and `margin-core` `data::themes::BUILTINS` refuse it for
   an imported theme as they refuse the built-ins' own, since a saved `neo-brutalism` now means Neubrutalism.
+
+## A link that's there at once, and a helper instead of the app at login (2026-11-10)
+
+Tirth: link instantly when the browser starts and stay linked until it quits; and not the whole app always
+running. Measured first (the Mac's log, 24 h): 114 of 743 of the app's `dispatchMessage` hand-offs refused
+(`SFErrorDomain 1`, every profile alike), once 19 in a row for 10.5 min (the startup cover's 6 s blank, then no
+Margin); the extension's background starting 40 times a day, each time asking from scratch. Design and research:
+the scratchpad's `instant-link-design.md` and `link-platform-research.md` (summarised here).
+
+- **The link in the handler's own answer.** Margin.app keeps where its link is in the extension's container
+  (`Library/Caches/margin-link`, `ExtensionLink.swift` `LinkNote`: owner-only, replaced whole, removed when the
+  listener goes; none under the app's tests). The handler answers a copy's `wantLink` with it when the process
+  that wrote it is a running Margin.app: the link reaches that copy alone, in milliseconds, with nothing Safari can
+  refuse. No App Group: the container is the one the handler's launch note already shares with the app. The old
+  way (the notification, then `dispatchMessage`) stays for a note that isn't there.
+- **The cause of the 10 minutes:** a second registered Margin.app. `scripts/safari.sh --no-install` (added the same
+  night for the release workflow) skipped the install's unregistering of the build's own copy, and Safari took the
+  installed app for another app's. It now unregisters its build; and Margin.app itself, at launch and after three
+  refused hand-offs in a row (at most once a minute), unregisters copies of itself left in build folders, the Trash
+  or gone from disk (`BundleWatch.strays`; never another install) and registers itself again (`Registration`).
+- **No cover for nothing.** With the hand-off refused twice in a row no layout is coming: covers go at once
+  (`CoverPlan.Facts.linkStalled`), and none is made, instead of holding 6 s.
+- **margin-helper** (`app/platforms/macos/helper/`), the login agent (`SMAppService.agent`,
+  `io.tirth.margin.helper.plist`, in Margin.app's `Contents/Library/LaunchAgents`, its program `Contents/Helpers/`):
+  it starts Margin.app (`--background`) as a browser opens, about 0.3 s, long before the extension asks (about 3 s
+  after Safari opens). 2.5 MB (9 MB resident) where the waiting app was 44 MB. It follows launches by observing
+  `NSWorkspace.runningApplications`: the launch notifications reach only a process connected as an app, which
+  costs 50 MB. Margin.app now quits a minute after the last browser closes, and the 10-minute idle rule quits
+  instead of restarting it to wait. The app's own login item becomes the helper's once, on if it was on (or never
+  added), off if it had been turned off. A build without the helper (an Xcode run's) works as before.
+  `tools/app-tests/helper-test.sh` tries it off screen with stand-ins for a browser and Margin.app.
+- **No page needed:** the extension's background starts by itself as the browser opens (about 3 s after Safari's
+  launch, in every session logged), on the Start Page, an empty window or none.
+- **Next:** Margin's UI drawn from its own data as a window binds, before the copy links (Safari takes ~3 s to
+  start the extension, which no link can beat); the connector answering Chrome's and Edge's ask the same way;
+  why Safari's `storage.session` kept no link across a background restart (every one logged said "kept link: no").

@@ -94,6 +94,12 @@ status=0
 if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   warnings "the app" "${XCODE_FLAGS[@]}" ../../app/platforms/macos/startup/AppDelegate.swift ../../app/platforms/macos/startup/ViewController.swift "${SHELL_SOURCES[@]}"
   warnings "the extension handler" -swift-version 5 ../../app/engines/webkit/safari/handler/SafariWebExtensionHandler.swift
+  # margin-helper (app/platforms/macos/helper/): no warnings (a main.swift: not a library), then started off screen
+  # by stand-ins for a browser and Margin.app (helper-test.sh).
+  helper_warns=$(swiftc -typecheck -swift-version 5 ../../app/platforms/macos/helper/main.swift 2>&1 | grep -E "(warning|error):" || true)
+  if [ -n "$helper_warns" ]; then echo "FAIL margin-helper: the build would warn:"; echo "$helper_warns" | head -20; status=1
+  else echo "ok   margin-helper: no compiler warnings"; fi
+  ./helper-test.sh || status=1
   # Chrome's and Edge's connector (app/shared/connector/, Rust), built as scripts/safari.sh builds it.
   CARGO="${CARGO:-$(command -v cargo || echo "$HOME/.cargo/bin/cargo")}"
   "$CARGO" build -q --release -p margin-connector --manifest-path ../../Cargo.toml || exit 1

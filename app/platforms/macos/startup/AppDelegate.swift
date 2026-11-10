@@ -50,9 +50,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // Margin.app opens at login (Tirth, 2026-11-07: Safari's UI never shown, not even as Safari opens: Margin has
-    // to be running first). Added once; if the person turns it off in System Settings, it stays off.
+    // What runs at login is the helper (Tirth, 2026-11-10: not the whole app): margin-helper, a login agent
+    // (app/platforms/macos/helper/), starts Margin.app as a browser opens, about 0.3 s, long before the browser's
+    // extension asks for its link. A build without it (an Xcode run's) is Margin.app's own login item, as before.
+    static let helperPlist = "io.tirth.margin.helper.plist"
+    static var hasHelper: Bool {
+        FileManager.default.fileExists(atPath: Bundle.main.bundleURL.appendingPathComponent("Contents/Library/LaunchAgents/\(helperPlist)").path)
+    }
+    private var helperOn: Bool { Self.hasHelper && SMAppService.agent(plistName: Self.helperPlist).status == .enabled }
+
+    // Margin opens at login (Tirth, 2026-11-07: Safari's UI never shown, not even as Safari opens: Margin has to be
+    // running first). Added once; if the person turns it off in System Settings, it stays off. The app's own login
+    // item, from before the helper, becomes the helper's: on if it was on (or never added), off if they'd turned it off.
     private func addLoginItemOnce() {
+        let defaults = UserDefaults.standard
+        if Self.hasHelper {
+            guard !defaults.bool(forKey: "MarginHelperAdded") else { return }
+            let appWasOn = SMAppService.mainApp.status == .enabled
+            let wanted = appWasOn || !defaults.bool(forKey: "MarginLoginItemAdded")
+            if appWasOn { try? SMAppService.mainApp.unregister() }
+            defaults.set(true, forKey: "MarginHelperAdded")
+            guard wanted else { return Diagnostics.note("Margin's login item stays off, as it was turned off (System Settings › General › Login Items)") }
+            let agent = SMAppService.agent(plistName: Self.helperPlist)
+            do {
+                try agent.register()
+                Diagnostics.note(agent.status == .requiresApproval
+                    ? "margin-helper is a login item now, once allowed in System Settings › General › Login Items"
+                    : "margin-helper opens at login now, and starts Margin.app when a browser opens (System Settings › General › Login Items turns it off)")
+            } catch {
+                Diagnostics.note("margin-helper couldn't be added to the login items: \(error.localizedDescription)")
+            }
+            return
+        }
         let key = "MarginLoginItemAdded"
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         do {
@@ -184,13 +213,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // a browser starting again starts it again.
     static let idleQuitAfter: TimeInterval = 10 * 60
     static let idleCheckEvery: TimeInterval = 30
+    static let noBrowserQuitAfter: TimeInterval = 60
     private var idleCheck: Timer?
     private var idleSince: Date?
     private var keptBySetupSaid = false // the log said, once, that the set-up window keeps it running
+    private var noBrowserSince: Date?
     private func checkIdle() {
         // Another build in this one's place: quits, linked or not (BundleWatch.swift).
         if bundle?.check("the 30 s check") == true { return }
         let setupOpen = setup?.window?.isVisible == true
+        // With the helper on, no browser open for a minute: quit (it starts Margin.app again as one opens).
+        if helperOn, !setupOpen, !Self.browserRunning() {
+            let since = noBrowserSince ?? Date()
+            noBrowserSince = since
+            if Date().timeIntervalSince(since) >= Self.noBrowserQuitAfter {
+                Diagnostics.note("no browser open for \(Int(Self.noBrowserQuitAfter)) s: Margin.app quits (margin-helper starts it when one opens)")
+                return NSApp.terminate(nil)
+            }
+        } else {
+            noBrowserSince = nil
+        }
         if shell.links.isEmpty, setupOpen {
             if !keptBySetupSaid { Diagnostics.note("no copy linked, but the set-up window is open: Margin.app doesn't quit by itself while it is") }
             keptBySetupSaid = true
@@ -201,9 +243,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let since = idleSince ?? Date()
         idleSince = since
         guard Date().timeIntervalSince(since) >= Self.idleQuitAfter else { return }
-        // A login item: back to watching in a fresh process (nothing of the shell kept), so the next browser to
-        // open is covered from its first frame. Otherwise quit, as before (a browser starting starts it again).
-        if SMAppService.mainApp.status == .enabled {
+        // The app its own login item (no helper): back to watching in a fresh process (nothing of the shell kept), so
+        // the next browser to open is covered from its first frame. Otherwise quit (the helper, or the extension
+        // asking, starts it again).
+        if !helperOn, SMAppService.mainApp.status == .enabled {
             Diagnostics.note("no copy linked for \(Int(Self.idleQuitAfter / 60)) min: Margin.app goes back to waiting for a browser")
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.activates = false
