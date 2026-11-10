@@ -92,7 +92,7 @@ Stand-ins:
 - Search engines (the learned engine, Safari's default Google) are caught with `context.route` and answered with a plain local results page (no engine's name or look). Nothing goes out.
 - A guard records every request to a host that isn't `.test` or `127.0.0.1`. A test with one fails.
 - Pictures are drawn, not downloaded: SVG scenes and product renders, CSS, canvas. Raster files (PNG, ICO, the audio and the video) are made by `tests/e2e/site/make-media.mts`, from code, the same bytes every time.
-- Fonts: system fonts (`-apple-system`, `ui-serif`, `ui-monospace`, `system-ui`). The portfolio uses Space Grotesk and Archivo Black, served from `extension/themes/neo-brutalism/fonts/` (OFL, already in the repo, no copy).
+- Fonts: system fonts (`-apple-system`, `ui-serif`, `ui-monospace`, `system-ui`). The portfolio uses Space Grotesk and Archivo Black, served from `extension/themes/neubrutalism/fonts/` (OFL, already in the repo, no copy).
 - If a real photo is ever needed: CC0 or public domain only, under 150 KB each, listed in `tests/e2e/site/SOURCES.txt`. The plan doesn't need any.
 - Size: the whole site under 2 MB. The video (WebM, VP8, about 6 s, made by recording an animated canvas in headless Chromium with Playwright's `recordVideo`) is the only file over 100 KB. The PNGs, ICOs and the WAV are made in memory when the server starts and aren't committed.
 - Pages never log anything. The server logs nothing unless `MARGIN_E2E_VERBOSE` is set.

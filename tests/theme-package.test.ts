@@ -28,15 +28,15 @@ const { readThemePackage, storeActiveTheme, activeThemeId, STORED_THEME } = awai
 const { pageKeys } = await import('../extension/shared/stored.ts');
 
 test('a built-in theme\'s package: its three texts and the files theme.json names, as base64', async () => {
-  const neo = await readThemePackage('neo-brutalism');
-  assert.equal(neo.id, 'neo-brutalism');
+  const neo = await readThemePackage('neubrutalism');
+  assert.equal(neo.id, 'neubrutalism');
   assert.ok(neo.html.includes('<m-page'));
   assert.deepEqual(Object.keys(neo.files).sort(), ['fonts/archivo-black-latin-ext.woff2', 'fonts/archivo-black-latin.woff2', 'fonts/space-grotesk-latin-ext.woff2', 'fonts/space-grotesk-latin.woff2']);
   assert.ok(Object.values(neo.files).every((b) => /^[A-Za-z0-9+/]+=*$/.test(b)));
   const arcadia = await readThemePackage('arcadia');
   assert.deepEqual(arcadia.files, {}, 'Arcadia bundles nothing (and its first-paint files aren\'t the package\'s)');
   await assert.rejects(readThemePackage('../../evil'), /no built-in theme/);
-  assert.equal(activeThemeId({ theme: 'neo-brutalism' }), 'neo-brutalism');
+  assert.equal(activeThemeId({ theme: 'neubrutalism' }), 'neubrutalism');
   assert.equal(activeThemeId({ theme: 'gone' }), 'arcadia');
 });
 
@@ -52,8 +52,8 @@ test('the active theme is kept in storage for pages, written again only when it 
   store[STORED_THEME] = { ...store[STORED_THEME], pkg: { ...store[STORED_THEME].pkg, css: 'old' } };
   await storeActiveTheme();
   assert.equal(sets.length, writes + 1, 'another build\'s files (the same version): written again');
-  store.settings = { theme: 'neo-brutalism' };
+  store.settings = { theme: 'neubrutalism' };
   await storeActiveTheme();
-  assert.equal(store[STORED_THEME].id, 'neo-brutalism');
+  assert.equal(store[STORED_THEME].id, 'neubrutalism');
   assert.ok(!pageKeys([STORED_THEME]).includes(STORED_THEME), 'pages read it once (their first, full read), not with every read');
 });

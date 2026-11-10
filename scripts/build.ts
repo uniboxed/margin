@@ -110,6 +110,9 @@ export const LEGACY_FILES = [
   ...WIDTHS.map((w) => `themes/arcadia/docked/w-${w}.css`),
   'themes/arcadia/docked/closed.css',
   ...[8, ...WIDTHS].map((left) => `content/page/at-${left}.js`),
+  // Neubrutalism's first paint by its name until 2026-11-10 (Neo-brutalism): registered while it was the theme,
+  // so kept, empty, as the files above, until no Safari has that registration.
+  'content/layout/theme-neo-brutalism.css',
 ];
 
 // What every bundle is built with: its engine's code for `#engine` (package.json "imports"), on top of

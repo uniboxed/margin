@@ -1,5 +1,5 @@
 // What Margin.app's overlay draws about the window's pages (Margin 2 Phase 2
-// step 7), in Arcadia, Neo-brutalism and Pixel, in real engines (Playwright's WebKit
+// step 7), in Arcadia, Neubrutalism and Pixel, in real engines (Playwright's WebKit
 // and Chromium, headless, every network request refused): a tab loading (its
 // row, and the tab in front's indicator, shown with the sidebar hidden too:
 // no hover needed), the trackpad gestures' badges over the page (never
@@ -13,7 +13,7 @@ import { harnessScript, themeForPage, ARCADIA, NEO, PIXEL } from './package.ts';
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const THEMES = [
   ['arcadia', ARCADIA, { root: '.arcadia', indicator: '.loader', loadingRoot: true }],
-  ['neo-brutalism', NEO, { root: '.nb', indicator: '.load-bar.on', loadingRoot: false }],
+  ['neubrutalism', NEO, { root: '.nb', indicator: '.load-bar.on', loadingRoot: false }],
   ['pixel', PIXEL, { root: '.pixel', indicator: '.load-bar.on', loadingRoot: false }],
 ];
 const script = harnessScript();

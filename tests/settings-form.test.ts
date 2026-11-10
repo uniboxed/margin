@@ -25,7 +25,7 @@ test('Settings covers today\'s form: theme, search engine, archive, sleep, never
     'shortcuts:group', 'sidebarShortcut:shortcut', 'nextTab:shortcut', 'prevTab:shortcut', 'nextSpace:shortcut', 'prevSpace:shortcut', 'resetShortcuts:button',
   ]);
   const f = byId(fields);
-  assert.deepEqual(f.theme.options.map((o) => [o.id, o.label, o.selected]), [['arcadia', 'Arcadia', true], ['neo-brutalism', 'Neo-brutalism', false], ['pixel', 'Pixel', false]]);
+  assert.deepEqual(f.theme.options.map((o) => [o.id, o.label, o.selected]), [['arcadia', 'Arcadia', true], ['neubrutalism', 'Neubrutalism', false], ['pixel', 'Pixel', false]]);
   assert.equal(f.neverSleepSites.value, 'mail.example.com');
   assert.equal(f.archiveAfterHours.value, '12');
   assert.match(f.engine.label, /Safari’s default search engine/);
@@ -59,7 +59,7 @@ test('Settings: what a field saves is checked against the field, never taken fro
   for (const bad of ['-1', '', 'x', 'Infinity']) assert.equal(saveField(f.archiveAfterHours, bad, {}), null, bad);
   assert.deepEqual(saveField(f.blockGestures, false, {}).payload.patch, { blockGestures: false });
   assert.equal(saveField(f.blockGestures, 'false', {}), null, 'a toggle takes a boolean');
-  assert.deepEqual(saveField(f.theme, 'neo-brutalism', {}).payload.patch, { theme: 'neo-brutalism' });
+  assert.deepEqual(saveField(f.theme, 'neubrutalism', {}).payload.patch, { theme: 'neubrutalism' });
   assert.equal(saveField(f.theme, 'evil', {}), null, 'only a listed theme');
   assert.equal(saveField(f.theme, 'arcadia', {}), null, 'the one already chosen: nothing');
   assert.deepEqual(saveField(f.neverSleepSites, 'https://Mail.Example.com/x\nnews.test, bad host!', {}).payload.patch, { neverSleepSites: ['mail.example.com', 'news.test', 'bad'] });

@@ -1,4 +1,4 @@
-// Neo-brutalism against its board (Tirth's "Neo-brutalism", Main.dc.html)
+// Neubrutalism against its board (Tirth's "Neubrutalism", Main.dc.html)
 // and against Arcadia's parts, in real engines: Playwright's WebKit and
 // Chromium, headless, every network request refused, through the runtime and
 // the mock host. Folder heads without a count; each row's close button, the
@@ -20,7 +20,7 @@ import { firstPaintCss, layoutOwnCss } from '../../extension/shared/page-box.ts'
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const script = harnessScript();
 const pkg = themeForPage(NEO);
-const FIRST_PAINT = firstPaintCss('neo-brutalism', readFileSync(new URL('first-paint.css', `file://${NEO}`), 'utf8'));
+const FIRST_PAINT = firstPaintCss('neubrutalism', readFileSync(new URL('first-paint.css', `file://${NEO}`), 'utf8'));
 const INK = '#111111';
 const PAGE = '#ff00ff';
 
@@ -61,7 +61,7 @@ function decodePng(buf) {
 }
 
 for (const [name, engine] of ENGINES) {
-  test(`Neo-brutalism against its board in ${name}`, async (t) => {
+  test(`Neubrutalism against its board in ${name}`, async (t) => {
     const browser = await engine.launch({ headless: true });
     try {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -310,7 +310,7 @@ for (const [name, engine] of ENGINES) {
 
       await t.test('first paint: the card\'s border, shadow and ground around the box, nothing inside it', async () => {
         const fp = await context.newPage();
-        await fp.setContent(`<!doctype html><html data-margin-at="neo-brutalism"><head><meta charset="utf-8"><style>${FIRST_PAINT}\n${layoutOwnCss({ left: 291, top: 19, right: 19, bottom: 19, radius: 15 })}</style></head><body style="margin:0;background:${PAGE}"><p style="margin:0">a page</p></body></html>`);
+        await fp.setContent(`<!doctype html><html data-margin-at="neubrutalism"><head><meta charset="utf-8"><style>${FIRST_PAINT}\n${layoutOwnCss({ left: 291, top: 19, right: 19, bottom: 19, radius: 15 })}</style></head><body style="margin:0;background:${PAGE}"><p style="margin:0">a page</p></body></html>`);
         await fp.waitForTimeout(60);
         const shot = decodePng(await fp.screenshot());
         assert.equal(shot.at(700, 450), PAGE, 'the page inside its box');
@@ -322,7 +322,7 @@ for (const [name, engine] of ENGINES) {
         assert.equal(shot.at(100, 450), '#ffd23f', 'the ground where the sidebar will be');
         await fp.evaluate(() => document.documentElement.removeAttribute('data-margin-at'));
         await fp.waitForTimeout(60);
-        assert.equal(decodePng(await fp.screenshot()).at(100, 450), PAGE, 'not marked for Neo-brutalism: nothing');
+        assert.equal(decodePng(await fp.screenshot()).at(100, 450), PAGE, 'not marked for Neubrutalism: nothing');
         await fp.close();
       });
 

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
 
-export const NEO = fileURLToPath(new URL('../../extension/themes/neo-brutalism/', import.meta.url));
+export const NEO = fileURLToPath(new URL('../../extension/themes/neubrutalism/', import.meta.url));
 export const ARCADIA = fileURLToPath(new URL('../../extension/themes/arcadia/', import.meta.url));
 export const PIXEL = fileURLToPath(new URL('../../extension/themes/pixel/', import.meta.url));
 

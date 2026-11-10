@@ -1,4 +1,4 @@
-// The runtime's behaviors (extension/ui/behaviors/) with Neo-brutalism and
+// The runtime's behaviors (extension/ui/behaviors/) with Neubrutalism and
 // Pixel (the built-in themes that share the sidebar's classes) in real engines, Playwright's WebKit and Chromium, headless, on a blank page
 // whose every network request is refused; real pointer, wheel and keyboard
 // input through Playwright. The host is the mock (ui/host.ts): each test
@@ -13,7 +13,7 @@ const script = harnessScript();
 // Each theme's sidebar: its root, the page's left inset docked, and its
 // width setting's default, bounds and a 50 px drag (snapped to its step).
 const THEMES = [
-  ['neo-brutalism', NEO, { root: '.nb', docked: 291, def: 256, min: 200, max: 400, dragged: 306 }],
+  ['neubrutalism', NEO, { root: '.nb', docked: 291, def: 256, min: 200, max: 400, dragged: 306 }],
   ['pixel', PIXEL, { root: '.pixel', docked: 286, def: 252, min: 200, max: 360, dragged: 304 }],
 ];
 const SCROLL = /^(sidebarScroll|setSidebarScroll)$/;
@@ -435,7 +435,7 @@ for (const [name, engine] of ENGINES) {
       const pkg = themeForPage(NEO);
       const html = pkg.html.replace('m-action="folder.toggle" m-arg="{{g.id}}"', 'm-action="folder.toggle"');
       assert.notEqual(html, pkg.html, 'the toggle without its argument');
-      assert.equal((await page.evaluate(([p, i]) => T.loadBuiltin(p, i), [{ ...pkg, html }, 'neo-brutalism'])).ok, true);
+      assert.equal((await page.evaluate(([p, i]) => T.loadBuiltin(p, i), [{ ...pkg, html }, 'neubrutalism'])).ok, true);
       await page.evaluate(() => T.mountRuntime());
       // On its chevron, beside the name: the toggle's own double-click (a press on the name is the name's).
       await page.evaluate(() => T.rtBox('.folder-head .chev', 0));

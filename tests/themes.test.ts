@@ -75,6 +75,18 @@ test('the theme\'s earlier name: its id falls back, its own settings carry over,
   assert.equal('arcadium' in settings.themes, false);
 });
 
+test('Neubrutalism\'s earlier name (neo-brutalism, until 2026-11-10): the theme chosen and its settings carry over, the old entry goes', () => {
+  const norm = (settings) => M.normalizeState({ settings }).settings;
+  let s = norm({ theme: 'neo-brutalism', themes: { 'neo-brutalism': { grid: false, radius: 6 } } });
+  assert.equal(s.theme, 'neubrutalism');
+  assert.deepEqual(s.themes.neubrutalism, { grid: false, radius: 6 });
+  assert.equal('neo-brutalism' in s.themes, false);
+  // Settings under the new name already: those, and the old entry still goes.
+  s = norm({ theme: 'neubrutalism', themes: { neubrutalism: { radius: 2 }, 'neo-brutalism': { radius: 6 } } });
+  assert.deepEqual(s.themes.neubrutalism, { radius: 2 });
+  assert.equal('neo-brutalism' in s.themes, false);
+});
+
 test('Arcadia\'s package\'s earlier name (arcadia-2): its settings join Arcadia\'s, snapped and clamped, and the old entry goes', () => {
   const norm = (settings) => M.normalizeState({ settings }).settings;
   // Only the package's: its width, snapped to 10 px and clamped to 160–500.
@@ -90,7 +102,7 @@ test('Arcadia\'s package\'s earlier name (arcadia-2): its settings join Arcadia\
   assert.equal(norm({ sidebarWidth: 414, themes: { 'arcadia-2': {} } }).themes.arcadia.sidebarWidth, 410);
   assert.ok(!('sidebarWidth' in s), 'the top-level key is dropped');
   // Other themes' settings stay as saved.
-  assert.deepEqual(norm({ themes: { 'arcadia-2': { sidebarWidth: 300 }, 'neo-brutalism': { sidebarWidth: '300px' } } }).themes['neo-brutalism'], { sidebarWidth: '300px' });
+  assert.deepEqual(norm({ themes: { 'arcadia-2': { sidebarWidth: 300 }, 'neubrutalism': { sidebarWidth: '300px' } } }).themes['neubrutalism'], { sidebarWidth: '300px' });
 });
 
 test('an imported theme chosen in Settings survives every fresh read of the state (a background started again, the converter)', () => {

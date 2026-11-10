@@ -1,4 +1,4 @@
-// Times the theme renderer with Neo-brutalism and 200 tabs, in Playwright's
+// Times the theme renderer with Neubrutalism and 200 tabs, in Playwright's
 // WebKit and Chromium, headless. `npm run bench:theme` (add `--runs=N`).
 // The page is cross-origin isolated (COOP and COEP headers on a routed
 // localhost page, nothing listens there) for Chromium's 5 µs clock; WebKit's

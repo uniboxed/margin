@@ -513,10 +513,10 @@ test('goBack, goForward, reload: the tab in front of the window (the app\'s nav 
 test('updateThemeSettings: a package theme\'s settings (built in, or imported), plain values only', async () => {
   await setup();
   const { handlers } = await import('../extension/background/handlers.ts');
-  await handlers.updateThemeSettings({ themeId: 'neo-brutalism', patch: { sidebarWidth: '300px', evil: { url: 'x' }, 'Bad Name': 1, long: 'x'.repeat(200) } });
-  assert.deepEqual((await load()).settings.themes['neo-brutalism'], { sidebarWidth: '300px' });
-  await handlers.updateThemeSettings({ themeId: 'neo-brutalism', patch: { dots: true } });
-  assert.deepEqual((await load()).settings.themes['neo-brutalism'], { sidebarWidth: '300px', dots: true }, 'merged');
+  await handlers.updateThemeSettings({ themeId: 'neubrutalism', patch: { sidebarWidth: '300px', evil: { url: 'x' }, 'Bad Name': 1, long: 'x'.repeat(200) } });
+  assert.deepEqual((await load()).settings.themes['neubrutalism'], { sidebarWidth: '300px' });
+  await handlers.updateThemeSettings({ themeId: 'neubrutalism', patch: { dots: true } });
+  assert.deepEqual((await load()).settings.themes['neubrutalism'], { sidebarWidth: '300px', dots: true }, 'merged');
   await handlers.updateThemeSettings({ themeId: 'nope', patch: { a: 1 } });
   assert.equal((await load()).settings.themes.nope, undefined, 'not a theme Margin has');
   fake.local.userThemes = [{ id: 'mine', name: 'Mine', version: '1.0.0' }];

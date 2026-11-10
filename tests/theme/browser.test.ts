@@ -2,7 +2,7 @@
 // (Safari's engine) and Chromium, headless, on a blank page with every
 // network request intercepted and refused. `npm run test:theme`.
 //
-// - Neo-brutalism loads from its sanitized package and renders 200 tabs;
+// - Neubrutalism loads from its sanitized package and renders 200 tabs;
 // - updates are keyed and minimal (a MutationObserver counts every change);
 // - real clicks dispatch checked actions;
 // - <m-page> reports its insets and radius;
@@ -37,7 +37,7 @@ for (const [name, engine] of ENGINES) {
     try {
       const { page, seen, context } = await open(browser);
 
-      await t.test('Neo-brutalism loads from its sanitized package: nothing removed, fonts from bundled bytes', async () => {
+      await t.test('Neubrutalism loads from its sanitized package: nothing removed, fonts from bundled bytes', async () => {
         const r = await page.evaluate((p) => T.loadNeo(p), pkg);
         assert.equal(r.ok, true);
         assert.deepEqual(r.removed, []);
@@ -90,11 +90,11 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(ran, [['tab.activate', ids.today[2]], ['space.switch', 'work'], ['folder.toggle', ids.folder], ['tab.new', undefined]]);
       });
 
-      await t.test('the runtime: Neo-brutalism as a built-in theme, a mock host, real clicks', async () => {
+      await t.test('the runtime: Neubrutalism as a built-in theme, a mock host, real clicks', async () => {
         await page.evaluate(() => T.unmountAll());
         const b = await page.evaluate((p) => T.loadBuiltin(p), pkg);
         assert.equal(b.ok, true);
-        assert.equal(b.id, 'neo-brutalism');
+        assert.equal(b.id, 'neubrutalism');
         assert.deepEqual(b.read.slice(0, 3).sort(), ['theme.css', 'theme.html', 'theme.json'], 'theme.json, the template and the stylesheet');
         assert.equal(b.read.filter((f) => f.endsWith('.woff2')).length, 4, 'and the fonts it lists, nothing else');
         assert.deepEqual(b.fontErrors, []);

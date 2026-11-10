@@ -22,7 +22,7 @@ Fonts
   System fonts (-apple-system, system-ui, ui-serif, ui-monospace,
   ui-rounded) everywhere but the portfolio.
   noir.test uses Archivo Black and Space Grotesk, SIL Open Font License 1.1,
-  served straight from extension/themes/neo-brutalism/fonts/ (their
+  served straight from extension/themes/neubrutalism/fonts/ (their
   SOURCES.txt and OFL files are there). Not copied.
 
 Licence

@@ -768,7 +768,7 @@ The honest numbers, until gate G16 measures them:
 - [ ] The handoff's gate (`MarginHandoff`) is decided by the gates' results, not left to a default someone set.
 ## Margin 2 Phase 6: user themes (2026-11-06)
 
-Build with `npm run safari`. Use a copy of a theme to import, never one of Margin's folders as it is: `cp -R extension/themes/neo-brutalism ~/Desktop/my-neo`, then in `~/Desktop/my-neo/theme.json` set `"id": "my-neo"` and `"name": "My Neo"`, and delete `first-paint.css`. Check it first: `MARGIN_THEMES=~/Desktop/my-neo npm run test:security`. Make a `.margintheme` too: `npm run theme:pack ~/Desktop/my-neo ~/Desktop/my-neo.margintheme`.
+Build with `npm run safari`. Use a copy of a theme to import, never one of Margin's folders as it is: `cp -R extension/themes/neubrutalism ~/Desktop/my-neo`, then in `~/Desktop/my-neo/theme.json` set `"id": "my-neo"` and `"name": "My Neo"`, and delete `first-paint.css`. Check it first: `MARGIN_THEMES=~/Desktop/my-neo npm run test:security`. Make a `.margintheme` too: `npm run theme:pack ~/Desktop/my-neo ~/Desktop/my-neo.margintheme`.
 
 1. **Import a folder over full screen.** Safari in full screen, Margin's new-tab page, Settings › Import Theme…. The file panel shows over full-screen Safari, not on another Space. Choose `my-neo`. The window draws My Neo at once, with a dark bar at the top: "Previewing “My Neo” 1.0.0 by Margin. Use this theme?". The pages move to My Neo's box.
 2. **Cancel.** Press Cancel: the theme from before comes back. Import again and press Escape: the same. Import again and wait 30 s: it ends by itself and Settings says so.
@@ -906,12 +906,12 @@ Before: after an update or a quick quit and restart of Margin.app, often only th
 `npm run safari` from `feat/icloud-tabs` (Margin.app changes; the Xcode project is made again because shell files were added). Margin.app has Full Disk Access. Have Safari open on at least one other device signed in to the same Apple Account (an iPhone with a few tabs is enough), and keep `npm run log:app -- --stream` open.
 
 **The folder.**
-- [ ] In a full-screen Safari window, the sidebar shows "iCloud Tabs" above "+ New Tab" (Arcadia: a blue cloud where a folder's icon would be, a count and a chevron; Neo-brutalism: a card with a sky-blue head). Under it, one heading per other device (its icon, its name, "updated … ago"), and that device's tabs, each with its title over its site. This Mac isn't listed. Tell me if a device of yours is missing, or this Mac shows up.
+- [ ] In a full-screen Safari window, the sidebar shows "iCloud Tabs" above "+ New Tab" (Arcadia: a blue cloud where a folder's icon would be, a count and a chevron; Neubrutalism: a card with a sky-blue head). Under it, one heading per other device (its icon, its name, "updated … ago"), and that device's tabs, each with its title over its site. This Mac isn't listed. Tell me if a device of yours is missing, or this Mac shows up.
 - [ ] The tabs of a device are in the order that device has them (compare with Safari's own tab overview, "From your other devices", or the iPhone's tab view). Tell me if the order is wrong; the order comes from Safari's own position values.
 - [ ] A tab pinned on the iPhone has a small pin mark.
 - [ ] Sites you've opened in this Mac's Margin show their icon; others show a letter. Margin made no network request for them (nothing to check unless you watch the network).
 - [ ] The log has one `icloud tabs: N other devices (…), M tabs; left out: …` line, with counts only: no titles, addresses or device names. Send me the line.
-- [ ] A device you haven't used for over a week is dimmed (Neo-brutalism: its tag dashed).
+- [ ] A device you haven't used for over a week is dimmed (Neubrutalism: its tag dashed).
 
 **Live.**
 - [ ] Open a new tab on the iPhone (wait for it to sync: Safari on the Mac shows it in its tab overview): it appears in the folder within a couple of seconds of Safari having it, with no flicker of the other rows and the sidebar's scroll where it was. Close a tab there: it goes.
@@ -952,7 +952,7 @@ What changed for you: no Margin sleep page any more (Safari's sleeping tabs are 
 **The first paint.**
 - [ ] With Keep open on, open new pages (⌘T and an address, a link with ⌘-click then switch to it, a reload): the page is beside the sidebar from its first frame, never drawn at the window's edge first and then moving. Try a heavy site (YouTube, a news site) and a light one.
 - [ ] Drag the sidebar's edge to another width, let go, and open new pages right away and again after 3 seconds: both are at the new width from their first frame (the first ones get the window's layout as they commit, the later ones from the registration made again once the width has settled).
-- [ ] Keep open off (the frame alone), then on again: new pages are right from their first frame each time. The same after switching the theme to Neo-brutalism and back.
+- [ ] Keep open off (the frame alone), then on again: new pages are right from their first frame each time. The same after switching the theme to Neubrutalism and back.
 - [ ] Two full-screen windows (two profiles, or one profile): new pages in each are right in their own window.
 - [ ] Quit Margin.app (or let its link drop): within about 6 s new pages have no box at all from their first frame (the page as it is, no grey frame); `npm run log:app` shows the link dropping. Open Margin.app again (or click the new-tab page's Start button): new pages have their box again from their first frame. Do this twice in a row. If a new page ever shows a box or frame while Margin.app isn't running, or none while it is, tell me the time: WebKit keeps applying registrations it was told to drop, and this build never drops one (it's updated to no box instead), so that would be something new.
 - [ ] Tell me if any page jumps at about a quarter of a second after it appears: that's Margin's content script moving a box the first paint got wrong.
@@ -970,7 +970,7 @@ What changed for you: no Margin sleep page any more (Safari's sleeping tabs are 
 
 - [ ] The log says how each profile was linked: `scripts/margin-log.sh 5 | grep "safari profiles"` shows one line like `3 profiles: “Work” (DefaultProfile, person.fill) → s-default; “Personal” (A8C3B0E9-…, person.lanyardcard.fill) → s-8d454f81-… (VSNN5UW99X, 2 entries); “Test” (CDC954CA-…, …) → s-4282ea5b-… (VSNN5UW99X, 2 entries)`. Personal must list `s-8d454f81-…` and Test `s-4282ea5b-…` (the copies that say hello), never `s-5068e0e4-…` or `s-be3f2b99-…` (until "Margin 2: Safari reliability" it did, from the removed unsigned build's entries). A profile where Margin has never run says `no copy yet`. Send me the line if a profile you use says `no copy yet` or names the wrong copy.
 - [ ] The sidebar's profile marks, the space menus ("Edit Profile “Work”…", "New Space in …") and the switch's words use Safari's names: your default profile shows as "Work", not "Default".
-- [ ] The profile mark on another profile's chips shows Safari's symbol for it (a small white glyph in Arcadia, a black one in Neo-brutalism) instead of the initial. Tell me if it's too small to read; the initial is the fallback.
+- [ ] The profile mark on another profile's chips shows Safari's symbol for it (a small white glyph in Arcadia, a black one in Neubrutalism) instead of the initial. Tell me if it's too small to read; the initial is the fallback.
 - [ ] Rename a profile in Safari › Settings › Profiles: within a couple of seconds the sidebar shows the new name, with no click or switch. Change its symbol there: the mark follows.
 - [ ] Edit Profile on a Safari-named profile: the name field shows Safari's name, greyed and not editable, with a line saying to rename it in Safari; change the emoji and color and Save: they stick, the name stays Safari's.
 - [ ] Set-up window (open Margin.app): the "Show Safari's profile names" step is ticked and says Margin has Full Disk Access.
@@ -1010,18 +1010,18 @@ Build and install as usual (`npm run safari`), open Margin.app's log in Terminal
 - [ ] **Margin was updated while Safari was open.** Only when Safari keeps two copies of Margin running (after some updates; the log says `a newer copy of Margin is running`): a page in front bound to the older copy shows "Margin was updated while Safari was open. Quit and reopen Safari to finish updating it." with OK. If you can't make it happen, note that; the WebKit host can't run two copies with the link either.
 - [ ] **A switch that didn't happen.** Close a tab from Safari's tab bar and, quickly, click its row before the sidebar drops it (or use a row of a tab another window just closed): "That tab is no longer open." for about 4 s. Hard to hit on purpose; note it if you see any of the three ("didn't answer", "couldn't show") during normal use, with what you did.
 - [ ] **Safari's New Tab setting.** Set Safari Settings › General › "New tabs open with" to Homepage (or Favorites). Open a new tab with the tab bar's + twice (not ⌘T: the app holds it). After the second, its window shows "If a new tab opened this page instead of Margin's: in Safari Settings › General, set "New tabs open with" to Margin…" with OK and Don't show again. Don't show again: Settings' "Tell me when a new tab seems to open Safari's homepage…" toggle is off (it's in the app's Settings now). Set the setting back to Margin.
-- [ ] Every notice in Arcadia and in Neo-brutalism (Settings › Theme): drawn in the theme's notice, its buttons clickable over the page, the page still taking clicks around it.
+- [ ] Every notice in Arcadia and in Neubrutalism (Settings › Theme): drawn in the theme's notice, its buttons clickable over the page, the page still taking clicks around it.
 
 **Loading** (no hover needed: check with the sidebar hidden too):
 
-- [ ] Click a link to a slow site (or ⌘R on a heavy page): Arcadia's pill in the frame's top strip shows at once, before the next page arrives, and goes when it has loaded; in Neo-brutalism the striped bar above the page marches and the reload button spins. With the sidebar hidden, the pill (or the bar) still shows.
-- [ ] A tab loading behind (⌘-click a link): its row's icon pulses (Arcadia) or its icon box blinks (Neo-brutalism) until it has loaded.
+- [ ] Click a link to a slow site (or ⌘R on a heavy page): Arcadia's pill in the frame's top strip shows at once, before the next page arrives, and goes when it has loaded; in Neubrutalism the striped bar above the page marches and the reload button spins. With the sidebar hidden, the pill (or the bar) still shows.
+- [ ] A tab loading behind (⌘-click a link): its row's icon pulses (Arcadia) or its icon box blinks (Neubrutalism) until it has loaded.
 - [ ] A "Leave page?" prompt (a page with unsaved changes, then ⌘R and Cancel): the indicator goes once you cancel.
 - [ ] A single-page app navigating within itself (Gmail between folders, GitHub between tabs of a repository): the indicator shows while a slow one runs. Note sites where it shows for too long or never.
 
 **Gestures** (Settings: Margin's trackpad gestures on):
 
-- [ ] Pull down at the top of a page: a round badge (Arcadia; a square one in Neo-brutalism) comes down over the top of the page as you pull, turns the space's color (yellow in Neo-brutalism) once letting go would reload, and the page reloads when you let go. Pull a little and let go: the badge goes, no reload.
+- [ ] Pull down at the top of a page: a round badge (Arcadia; a square one in Neubrutalism) comes down over the top of the page as you pull, turns the space's color (yellow in Neubrutalism) once letting go would reload, and the page reloads when you let go. Pull a little and let go: the badge goes, no reload.
 - [ ] Two-finger swipe sideways where nothing scrolls sideways: the arrow badge comes in from the left (back) or right (forward), and fills once letting go would go there. *Tell me how far it lags your fingers*: it goes page → Margin → app → overlay, about one round trip of the link.
 - [ ] The badges never take a click or a scroll from the page.
 
@@ -1078,7 +1078,7 @@ Needs two Safari profiles (Safari › Settings › Profiles; here "Default" and 
 - [ ] Right-click a Work space: Switch to Space, Move Left/Right, Edit Profile "Profile 2"…, New Space in Profile 2. Edit Profile: name it "Work" with an emoji and a color: every window's badges follow, and `~/Library/Application Support/Margin/data/safari/browser.json` has the name (read it only if Tirth agrees).
 - [ ] Move a Default space past a Work one and back: the order sticks after a Safari relaunch; a Default window alone (Margin.app quit) shows its spaces in the same relative order.
 - [ ] "+" › New Space in Work: it appears among Work's spaces at once (no switch).
-- [ ] Neo-brutalism: Work's chips have a dashed edge and a corner tag; the gap between profiles shows.
+- [ ] Neubrutalism: Work's chips have a dashed edge and a corner tag; the gap between profiles shows.
 
 **The switch** (the full-screen Default window in front, a Work space not open anywhere):
 
@@ -1118,7 +1118,7 @@ Closing:
 
 - [ ] Close a tab with its × in the sidebar, with ⌘W, and with Safari's tab bar. Each time the row goes, and the tab is in the archive (Margin's start page, "Archive"). It's not left dimmed in the sidebar.
 - [ ] Open a second window (⌘N) with a few tabs in a space, then close the window (the red button or ⌘⇧W). In the first window, show that space: its tabs are there, dimmed. Nothing new in the archive.
-- [ ] A space's dimmed tabs show in every window that shows the space. In Neo-brutalism, the space's tab count includes them.
+- [ ] A space's dimmed tabs show in every window that shows the space. In Neubrutalism, the space's tab count includes them.
 
 Opening:
 
@@ -1127,7 +1127,7 @@ Opening:
 - [ ] Search for a dimmed tab in the palette (⌘T, type part of its title): it's listed; Enter opens it.
 - [ ] Right-click a dimmed tab: Pin Tab, Pin to a folder, New Folder with Tab, Move to another space, Close Tab all work. Close Tab sends it to the archive. Pinned, it becomes the pin (the pin opens it).
 - [ ] Drag a dimmed tab up or down: it takes its new place. Drag it onto another space's icon: it moves there.
-- [ ] In Neo-brutalism, Clear: the space's dimmed tabs go to the archive with the others.
+- [ ] In Neubrutalism, Clear: the space's dimmed tabs go to the archive with the others.
 
 Quitting and relaunching:
 
@@ -1190,8 +1190,8 @@ Settings (on Margin's start page: the palette's "Margin start page & settings", 
 
 Theme switch:
 
-- [ ] In Settings, choose Neo-brutalism: the start page redraws in it. Pages you switch to or reload draw Neo-brutalism: a dotted colored ground, bordered cards, the page as a rounded card with a black border. The page must be fully visible inside the card. Expect a small jump when a page loads: first paint still uses Arcadia's frame until Phase 3.
-- [ ] In Neo-brutalism: the sidebar, the palette, a right-click menu, a drag, and its Settings all work. Switch back to Arcadia from its Settings.
+- [ ] In Settings, choose Neubrutalism: the start page redraws in it. Pages you switch to or reload draw Neubrutalism: a dotted colored ground, bordered cards, the page as a rounded card with a black border. The page must be fully visible inside the card. Expect a small jump when a page loads: first paint still uses Arcadia's frame until Phase 3.
+- [ ] In Neubrutalism: the sidebar, the palette, a right-click menu, a drag, and its Settings all work. Switch back to Arcadia from its Settings.
 
 ## Sleeping tabs (2026-11-04)
 

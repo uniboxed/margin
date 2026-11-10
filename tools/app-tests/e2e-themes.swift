@@ -9,11 +9,11 @@ import WebKit
 
 @MainActor
 func themeFallbackScenario(shell: Shell, fake: Fake, overlay o7: OverlayController) async {
-  // Refused: Neo-brutalism's files with a template that has no <m-page>.
-  fake.tell(["do": "theme", "id": "A", "theme": "neo-brutalism", "edit": ["html": "<div class=\"broken\">no page here</div>"]])
-  check("themes: a refused theme taken by the shell (the checks are the overlay's)", await until(5, { shell.links["safari:P1"]?.themeId == "neo-brutalism" }))
+  // Refused: Neubrutalism's files with a template that has no <m-page>.
+  fake.tell(["do": "theme", "id": "A", "theme": "neubrutalism", "edit": ["html": "<div class=\"broken\">no page here</div>"]])
+  check("themes: a refused theme taken by the shell (the checks are the overlay's)", await until(5, { shell.links["safari:P1"]?.themeId == "neubrutalism" }))
   check("themes: refused in the overlay: Arcadia drawn instead, from the app's own copy",
-        await waitJS(o7.webView, "return !!document.querySelector('.arcadia') && !document.querySelector('.broken') && marginApp.themeFailure()?.id === 'neo-brutalism'"))
+        await waitJS(o7.webView, "return !!document.querySelector('.arcadia') && !document.querySelector('.broken') && marginApp.themeFailure()?.id === 'neubrutalism'"))
   check("themes: and Margin says so, in its own words, with Settings and OK",
         await waitJS(o7.webView, "const n = document.querySelector('.notice'); return !!n && n.querySelector('.text')?.textContent.includes('couldn’t draw the theme you chose, so it’s using Arcadia') && [...n.querySelectorAll('button')].map((b) => b.textContent.trim()).join('|') === 'Settings|OK'"))
   let why = await js(o7.webView, "return marginApp.themeFailure()?.why ?? ''") as? String ?? ""
@@ -30,14 +30,14 @@ func themeFallbackScenario(shell: Shell, fake: Fake, overlay o7: OverlayControll
   } else { check("themes: the notice's OK button", false) }
 
   // Passes the checks, but its page is 60 × 40: unusable, so Arcadia again.
-  fake.tell(["do": "theme", "id": "A", "theme": "neo-brutalism", "edit": [
+  fake.tell(["do": "theme", "id": "A", "theme": "neubrutalism", "edit": [
     "html": "<div class=\"stamp\"><m-page></m-page></div>",
     "css": ".stamp{position:fixed;inset:0} .stamp m-page{position:absolute;left:10px;top:10px;width:60px;height:40px;display:block}",
   ]])
   check("themes: a page slot too small to use: Arcadia instead",
         await waitJS(o7.webView, "return !!document.querySelector('.arcadia') && !document.querySelector('.stamp') && /page slot/.test(marginApp.themeFailure()?.why ?? '')"))
   mark = fake.events.count
-  fake.tell(["do": "theme", "id": "A", "theme": "neo-brutalism"])
+  fake.tell(["do": "theme", "id": "A", "theme": "neubrutalism"])
   check("themes: the copy's next good theme drawn again, the failure forgotten",
         await waitJS(o7.webView, "return !document.querySelector('.arcadia') && marginApp.themeFailure() === null"))
   fake.tell(["do": "theme", "id": "A", "theme": "arcadia"])
@@ -45,10 +45,10 @@ func themeFallbackScenario(shell: Shell, fake: Fake, overlay o7: OverlayControll
   check("themes: Arcadia's layout sent again", await until(10, { fake.first("setLayout", since: mark) != nil }))
 }
 
-// Neo-brutalism's package, from the repo, as the overlay stores an imported theme
+// Neubrutalism's package, from the repo, as the overlay stores an imported theme
 // (ui/theme-loader.ts encodeStoredTheme), under another id.
 func storedNeo(id: String) -> JSONObject {
-  let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../extension/themes/neo-brutalism").standardizedFileURL
+  let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../extension/themes/neubrutalism").standardizedFileURL
   let text = { (f: String) in (try? String(contentsOf: dir.appendingPathComponent(f), encoding: .utf8)) ?? "" }
   var manifest = (try? JSONSerialization.jsonObject(with: Data(text("theme.json").utf8))) as? JSONObject ?? [:]
   manifest["id"] = id
@@ -119,7 +119,7 @@ func importScenario(shell: Shell, fake: Fake, overlay o7: OverlayController) asy
   let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-import-\(UUID().uuidString)", isDirectory: true)
   try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
   defer { try? FileManager.default.removeItem(at: root); shell.userThemes.pick = nil }
-  let folder = personalCopy(of: "neo-brutalism", id: "e2e-import", name: "E2E Import", in: root)
+  let folder = personalCopy(of: "neubrutalism", id: "e2e-import", name: "E2E Import", in: root)
   shell.userThemes.pick = { folder }
   var mark = fake.events.count
   shell.performTheme(from: o7, "theme.import", nil)
@@ -189,15 +189,15 @@ func importScenario(shell: Shell, fake: Fake, overlay o7: OverlayController) asy
 
   // Previewed and cancelled while Arcadia stands in for a theme Margin couldn't draw: Arcadia back, still standing in.
   try? await Task.sleep(nanoseconds: 300_000_000)
-  fake.tell(["do": "theme", "id": "A", "theme": "neo-brutalism", "edit": ["html": "<div class=\"broken\">no page here</div>"]])
-  check("import: the copy's theme refused: Arcadia standing in", await waitJS(o7.webView, "return !!document.querySelector('.arcadia') && marginApp.themeFailure()?.id === 'neo-brutalism'"))
-  let other = personalCopy(of: "neo-brutalism", id: "e2e-over-fallback", name: "E2E Over", in: root)
+  fake.tell(["do": "theme", "id": "A", "theme": "neubrutalism", "edit": ["html": "<div class=\"broken\">no page here</div>"]])
+  check("import: the copy's theme refused: Arcadia standing in", await waitJS(o7.webView, "return !!document.querySelector('.arcadia') && marginApp.themeFailure()?.id === 'neubrutalism'"))
+  let other = personalCopy(of: "neubrutalism", id: "e2e-over-fallback", name: "E2E Over", in: root)
   shell.userThemes.pick = { other }
   shell.performTheme(from: o7, "theme.import", nil)
   check("import: over the fallback: previewed", await waitJS(o7.webView, "const p = marginApp.preview(); return p.shown && !!document.querySelector('.nb')"))
   _ = await js(o7.webView, "marginApp.previewPress('cancel'); return true")
   check("import: Cancel over the fallback: Arcadia back, still standing in for the theme it couldn't draw",
-        await waitJS(o7.webView, "return !marginApp.preview().shown && !!document.querySelector('.arcadia') && !document.querySelector('.nb') && marginApp.themeFailure()?.id === 'neo-brutalism'"))
+        await waitJS(o7.webView, "return !marginApp.preview().shown && !!document.querySelector('.arcadia') && !document.querySelector('.nb') && marginApp.themeFailure()?.id === 'neubrutalism'"))
   fake.tell(["do": "theme", "id": "A", "theme": "arcadia"])
   check("import: the copy's good theme again", await waitJS(o7.webView, "return !!document.querySelector('.arcadia') && marginApp.themeFailure() === null"))
 }

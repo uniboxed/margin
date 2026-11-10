@@ -47,7 +47,7 @@ const T = {
     };
   },
 
-  // Renders Neo-brutalism with the mock view model, in a shadow root (or the
+  // Renders Neubrutalism with the mock view model, in a shadow root (or the
   // document), and keeps the view for the steps below.
   mountNeo({ width = 1440, height = 900, container = 'shadow', closed = false } = {}) {
     const mock = new MockState();
@@ -304,10 +304,10 @@ const T = {
 const rt = { runtime: null, host: null, mock: null, el: null, target: null, theme: null };
 
 Object.assign(T, {
-  // Neo-brutalism (or another built-in theme, with its font families) as a
+  // Neubrutalism (or another built-in theme, with its font families) as a
   // built-in theme: its files read through readFile (here from the package
   // handed over, in the extension from its own URL).
-  async loadBuiltin(pkg, id = 'neo-brutalism', families = ['Archivo Black', 'Space Grotesk']) {
+  async loadBuiltin(pkg, id = 'neubrutalism', families = ['Archivo Black', 'Space Grotesk']) {
     const p = unpack(pkg);
     const text = { 'theme.json': p.manifest, 'theme.html': p.html, 'theme.css': p.css };
     const read = [];

@@ -20,7 +20,7 @@ const leaks = (text) => /evil\.test|javascript:|vbscript:|expression\(/i.test(te
 
 // --- Built-in themes pass the same rules as anyone's -------------------------
 
-test('Neo-brutalism passes the sanitizer with nothing removed', () => {
+test('Neubrutalism passes the sanitizer with nothing removed', () => {
   const t = readTheme();
   const r = sanitizeTheme({ ...t, files: Object.keys(t.files) });
   assert.deepEqual(r.errors, []);
@@ -33,7 +33,7 @@ test('Neo-brutalism passes the sanitizer with nothing removed', () => {
   assert.ok(!/@import|url\(/.test(r.css), 'no imports or URLs in the theme');
 });
 
-test('Neo-brutalism bundles its fonts as woff2 with the OFL text, and the template names no font service', () => {
+test('Neubrutalism bundles its fonts as woff2 with the OFL text, and the template names no font service', () => {
   const t = readTheme();
   for (const f of ['fonts/archivo-black-latin.woff2', 'fonts/space-grotesk-latin.woff2']) {
     assert.ok(t.files[f], f);

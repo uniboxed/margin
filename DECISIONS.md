@@ -3571,3 +3571,18 @@ from before 2026-11-09, are the old ones** (`platform/`, `app/shell/`, `app/over
   every `extension Shell` out of its copies (not only `BridgeParker.swift`'s), and `SwitchNotice` moved from
   `ShellProfiles.swift` (a Shell extension) to `ProfileSwitch.swift`, which uses it; the lab's own run record is
   `LabHandoffRun` (the shell has a `HandoffRun`).
+
+## Neo-brutalism is Neubrutalism (2026-11-10)
+
+Tirth's name for the theme. Its id, folder and name: `neubrutalism`, `extension/themes/neubrutalism/`,
+"Neubrutalism" (its CSS kept its own `nb-` prefix).
+
+- **Saved settings follow it.** `state/model.ts` `OLD_NAMES` maps a saved `neo-brutalism` to `neubrutalism`, as it
+  does Arcadia's earlier names, and its saved settings (`settings.themes['neo-brutalism']`) move to the new id when
+  there are none under it. Package themes had no carry-over of their settings before (only the themes in
+  `themes/index.ts`'s `THEMES` did, Arcadia alone): `normalizeThemes` now does it for every renamed package theme.
+- **Safari's registration.** While Neo-brutalism was the theme, its first paint was registered as
+  `content/layout/theme-neo-brutalism.css`; Safari loads none of an extension's registrations if one names a missing
+  file (2026-10-25), so that path stays in the build, empty (`scripts/build.ts` `LEGACY_FILES`), until no Safari has it.
+- **The old id stays reserved.** `ThemeStore.swift` `builtins` and `margin-core` `data::themes::BUILTINS` refuse it for
+  an imported theme as they refuse the built-ins' own, since a saved `neo-brutalism` now means Neubrutalism.

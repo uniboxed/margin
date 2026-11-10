@@ -36,7 +36,9 @@ pub const MAX_THEMES: usize = 50;
 /// A package's files, at most.
 pub const MAX_PACKAGE_FILES: usize = 64;
 /// extension/themes/packages.ts: an imported theme can't take one of these ids.
-pub const BUILTINS: [&str; 3] = ["arcadia", "neo-brutalism", "pixel"];
+/// The built-ins' ids, and an earlier name of one that saved settings still mean it by (Neubrutalism's until
+/// 2026-11-10: the extension's state/model.ts OLD_NAMES): an imported theme takes neither.
+pub const BUILTINS: [&str; 4] = ["arcadia", "neubrutalism", "pixel", "neo-brutalism"];
 
 /// ui/theme-schema.ts: a theme's id is 1–41 of a–z, 0–9 and `-`, starting with a letter or digit.
 pub fn id_ok(id: &str) -> bool {

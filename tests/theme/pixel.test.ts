@@ -298,7 +298,7 @@ for (const [name, engine] of ENGINES) {
         await ev(() => T.rtSetUi({ settingsOpen: true }));
         assert.ok(await count('.settings-form .setting') > 5);
         const options = await ev(() => [...__rt.target.querySelectorAll('.settings-form select option')].map((o) => o.textContent));
-        assert.deepEqual(options.slice(0, 3), ['Arcadia', 'Neo-brutalism', 'Pixel'], 'Pixel in the theme choice');
+        assert.deepEqual(options.slice(0, 3), ['Arcadia', 'Neubrutalism', 'Pixel'], 'Pixel in the theme choice');
         assert.equal(await ev(() => T.rtComputed('.settings-form select', 'background-color')), 'rgb(11, 10, 26)');
         assert.equal(await ev(() => T.rtComputed('.settings-form input.toggle', 'appearance')), 'none', 'toggles drawn as pixel boxes');
         assert.ok(await count('.setting-group') > 0);

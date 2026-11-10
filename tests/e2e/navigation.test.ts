@@ -175,9 +175,9 @@ test('a slow same-page navigation (the Navigation API) shows as loading on its r
   await m.until(async () => !(await view()).tabs.find((r) => r.id === tab)?.busy, { what: 'not busy once drawn' });
 });
 
-test('Back, Forward and Reload from the overlay\'s buttons (Neo-brutalism draws them)', async (t) => {
-  assert.equal((await m.shell.request('updateSettings', { patch: { theme: 'neo-brutalism' } }, windowId)).ok, true);
-  await m.until(() => m.shell.themeId === 'neo-brutalism', { what: 'the theme sent' });
+test('Back, Forward and Reload from the overlay\'s buttons (Neubrutalism draws them)', async (t) => {
+  assert.equal((await m.shell.request('updateSettings', { patch: { theme: 'neubrutalism' } }, windowId)).ok, true);
+  await m.until(() => m.shell.themeId === 'neubrutalism', { what: 'the theme sent' });
   await m.until(() => ui.isVisible('[m-action="nav.back"], button[aria-label="Back"]'), { what: 'the Back button' });
   try {
     const docs = await m.open('docs.test', '/guide/getting-started');

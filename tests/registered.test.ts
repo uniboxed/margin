@@ -48,7 +48,7 @@ test('what\'s registered: linked, the page\'s script with the layout\'s files an
   const on = pagePlan(keepOpen, { linked: true, showing: true, layout: L(260) });
   assert.equal(on.js.at(-1), 'content/page.bundle.js', 'the page\'s script (after Chrome\'s full-screen-only check where Margin works only in full screen)');
   assert.deepEqual(on.css, [...layoutFiles(L(260)), firstPaintFile('arcadia')]);
-  assert.equal(pagePlan({ theme: 'neo-brutalism' }, { linked: true, showing: true, layout: L(272, 16, 16, 16, 18) }).css.at(-1), 'content/layout/theme-neo-brutalism.css');
+  assert.equal(pagePlan({ theme: 'neubrutalism' }, { linked: true, showing: true, layout: L(272, 16, 16, 16, 18) }).css.at(-1), 'content/layout/theme-neubrutalism.css');
   assert.equal(pagePlan({ theme: 'someone-elses' }, { linked: true, showing: true, layout: L(260) }).css.at(-1), firstPaintFile('arcadia'), 'a theme with no first paint of its own: Arcadia\'s');
   assert.equal(pagePlan(keepOpen, { linked: false, layout: L(260) }), null, 'not linked: nothing');
   assert.equal(pagePlan(keepOpen, { linked: true, showing: true, layout: null }), null, 'no box anywhere: nothing');

@@ -7,7 +7,7 @@ Draft plan, 2026-11-04. Nothing here is built yet. Once Tirth approves it, the d
 ```text
             ┌──────────────────────── Margin UI (one web app) ────────────────────────┐
             │  runtime (Margin's JS only): state mirror · renderer · actions · behaviors │
-            │  theme (HTML + CSS only, no JS): Arcadia · Neo-brutalism · Pixel · users'  │
+            │  theme (HTML + CSS only, no JS): Arcadia · Neubrutalism · Pixel · users'  │
             └──────────────▲──────────────────────────────────────▲─────────────────────┘
                            │ host adapter                         │ host adapter
         ┌──────────────────┴───────────────┐        ┌─────────────┴────────────────────┐
@@ -35,7 +35,7 @@ New in this plan (Tirth, 2026-11-04):
 
 - **A theme decides the layout**, including where the page sits: sidebar left or right, a top bar, a bottom shelf, a framed card. Margin reads the page's place from the theme and tells the extension, which fits every page there.
 - **Themes are HTML and CSS only.** Users can add their own. No theme may run JavaScript: Margin's own runtime drives the theme through declarative bindings, and the security rules in section 4 make that hold.
-- **Two new built-in themes**, Neo-brutalism and Pixel, from Tirth's "Browser Theme Explorations" canvas.
+- **Two new built-in themes**, Neubrutalism and Pixel, from Tirth's "Browser Theme Explorations" canvas.
 
 ## 2. The parts and who owns what
 
@@ -194,7 +194,7 @@ Kept as they are: state model, stored state and copies, restore, tab updates, cu
 Each is a theme package, passes the security rules, and covers all three modes.
 
 - **Arcadia:** today's look, ported from `sidebar.js` and its CSS. The reference for every binding and behavior. Done first, so nothing looks different when the runtime switches over.
-- **Neo-brutalism** (the canvas's "Neo-brutalism" board): dotted background in the space's color, 256 px sidebar of 2.5 px-bordered cards with hard offset shadows, Archivo Black and Space Grotesk (bundled), the page as an 18 px-rounded card with a 3 px border and a 6 px shadow, 16 px gutters. Spaces as color chips, folders as bordered cards, a yellow New Tab button, a palette dialog with a 10 px shadow.
+- **Neubrutalism** (the canvas's "Neubrutalism" board): dotted background in the space's color, 256 px sidebar of 2.5 px-bordered cards with hard offset shadows, Archivo Black and Space Grotesk (bundled), the page as an 18 px-rounded card with a 3 px border and a 6 px shadow, 16 px gutters. Spaces as color chips, folders as bordered cards, a yellow New Tab button, a palette dialog with a 10 px shadow.
 - **Pixel** (the canvas's "Sidebar · Pixel / 8-bit" board): a dark dotted ground, Press Start 2P and Pixelify Sans (bundled), 3 px pixel borders made of box-shadows, a `▶` blinking cursor on the active tab, folders as `▼`/`▶` lists, spaces as numbered "worlds", the palette as "SELECT DESTINATION". `svg` with crisp edges for the pixel icons.
 
 Parts of those designs Margin doesn't have yet are left out of the first version and planned as future features (Tirth, 2026-11-04; section 13): the **Ask** panel, the **mini player**, and the **favorites** tiles. The themes keep their place in the layout, and each arrives later as new actions and view-model fields, not theme code.
@@ -206,7 +206,7 @@ Each phase ends with the unit tests passing, the WebKit host scenarios that appl
 ### Phase 0: spikes (decide the open questions with evidence)
 
 1. One transparent window over the browser window with an empty page slot: do clicks, scrolling, text selection and drags in the page reach the browser? What does it cost in memory, versus edge windows? Decides section 6's drawing method.
-2. Template renderer and sanitizer prototype: render Neo-brutalism from a sanitized package at 60 fps with 200 tabs; run the XSS and CSS-leak payload list.
+2. Template renderer and sanitizer prototype: render Neubrutalism from a sanitized package at 60 fps with 200 tabs; run the XSS and CSS-leak payload list.
 3. The link in today's Safari with the background as a page, and Chrome native messaging with a relay helper: round trip, wake from idle, reconnects.
 4. First paint with insets read from registered CSS variables: no jump on a fresh page, in Safari and Chrome.
 
@@ -246,7 +246,7 @@ Each phase ends with the unit tests passing, the WebKit host scenarios that appl
 - iCloud Tabs' folder and palette section for Chrome and Edge windows (built for Safari on 2026-11-05: `DECISIONS.md` "Margin 2: iCloud Tabs"): the extension's `sessions.getDevices()` gives the person's other devices and their open tabs (its own sync, not iCloud), sent to the app for its overlays in the same shape as `cloudTabs` (`docs/PROTOCOL.md` "iCloud Tabs").
 - Their profiles' own names, as Safari's are shown from Phase 2 step 9 (`app/engines/webkit/safari/SafariProfiles.swift`; not built for them yet): each browser's `Local State` file (JSON; Chrome: `~/Library/Application Support/Google/Chrome/Local State`, Edge: `~/Library/Application Support/Microsoft Edge/Local State`), `profile.info_cache`, keyed by the profile's folder (`Default`, `Profile 1`…), with `name` (and `avatar_icon`, `default_avatar_fill_color`). Readable without Full Disk Access, but macOS 27 asks before an app reads another app's data (TCC "app data"): the set-up window will need its own step. The extension sees no profile id at all in Chromium, so the link from a copy to its folder still has to be found (its `Extensions/`/`Local Extension Settings/<extension id>/` folder under the profile is one lead).
 
-### Phase 6: Neo-brutalism and Pixel, and user themes
+### Phase 6: Neubrutalism and Pixel, and user themes
 
 - The two themes; theme import, preview and removal in Settings; the security suite in CI.
 
@@ -293,7 +293,7 @@ All four spikes ran; the raw notes, numbers and code are on the spike branches. 
 
 **Spike 1, drawing around the page:** see section 6. One overlay window per browser window with pointer-based pass-through over the page slot.
 
-**Spike 2, theme renderer and sanitizer** (`spike/theme-renderer`: `extension/ui/sanitize.ts`, `render.ts`, `actions.ts`, `themes/neo-brutalism/`; 847 unit and 16 browser tests):
+**Spike 2, theme renderer and sanitizer** (`spike/theme-renderer`: `extension/ui/sanitize.ts`, `render.ts`, `actions.ts`, `themes/neubrutalism/`; 847 unit and 16 browser tests):
 - Margin parses theme HTML with its own strict tokenizer into a plain tree and builds the DOM with `createElement`/`setAttribute`; the browser never parses theme text (no `DOMParser`, no `innerHTML`). CSS goes through a CSS Syntax 3 tokenizer with an allowlist of functions.
 - With 200 tabs: first render about 3 ms; every update under 1 ms of Margin's code and under 4 ms with the browser's layout, except switching back to a 200-tab space in WebKit (5 ms; `content-visibility: auto` on rows helps).
 - 82 HTML, 50 CSS and 25 action-abuse payloads in WebKit and Chromium: nothing ran, no request was made.
@@ -353,7 +353,7 @@ Also tested (scratchpad `bg-create/`): creating the target window unfocused, the
 
 **Built (Phase 2 step 4, 2026-11-05), what was decided:**
 - **Where a space's profile is:** the profile whose data set has it; nothing new in the sets. A profile has any number of spaces. The one order of every profile's spaces, and each profile's name, emoji and color, are the app's, in `data/<browser>/browser.json` beside the sets (`docs/DATA.md` "Spaces across profiles"). Profiles are named once by the person ("Default" and "Profile N" until then). From step 9 (Tirth, 2026-11-05: "option A"), with Full Disk Access, Safari's own names and symbols instead, kept in step with Safari (`app/engines/webkit/safari/SafariProfiles.swift`, `DECISIONS.md` "Margin 2, Phase 2 step 9").
-- **The sidebar** shows every profile's spaces in that order; another profile's carry its mark (Arcadia: a small badge with its initial on the chip; Neo-brutalism: a tag and a dashed edge) and a divider sits where the profile changes. With one profile nothing changes.
+- **The sidebar** shows every profile's spaces in that order; another profile's carry its mark (Arcadia: a small badge with its initial on the chip; Neubrutalism: a tag and a dashed edge) and a divider sits where the profile changes. With one profile nothing changes.
 - **A new space** is made in the profile you're in; "+" and a space's menu offer "New Space in …" for the others. Menus also move a space along the order, edit a profile (the space editor's part, `isProfile`), and forget a profile that isn't open. A profile's last space can't be deleted; a profile not seen for a month is never removed by Margin.
 - **Switching:** within a profile it's today's switch. To another profile's space the app drives it (`app/platforms/macos/shell/ProfileSwitch.swift`): that profile's copy creates its full-screen window showing the space (`openSpaceWindow`), the app waits until the window is full screen and the browser's first window on screen (its Space active), and only then has the old profile's copy close its window (`closeWindow`: its tabs stay as not-open tabs). A create that comes back normal is asked once for full screen; one that fails, times out (8 s) or never comes to the front (6 s) closes nothing (the new window is closed, the old one brought back, the person told; a late window is closed when it comes); after the close, if macOS shows the desktop instead, the new window is focused again (twice). A switch asked mid-switch runs after it (the last asked wins); the person closing either window or Safari quitting ends it safely.
 - **A profile whose copy isn't running** (Safari loads a named profile's extensions only once one of its windows opens: below) can't be switched to by Margin itself: the app asks the person to open one of its windows (File › New Window), waits 90 s, and when its copy links with a window, shows the space there and closes the old window.

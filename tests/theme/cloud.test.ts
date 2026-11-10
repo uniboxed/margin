@@ -14,7 +14,7 @@ import { AIR } from '../fixtures/cloud-tabs.ts';
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const THEMES = [
   ['arcadia', ARCADIA, { newTab: '.new-tab-row', list: '.tabs-section', section: '.result-section' }],
-  ['neo-brutalism', NEO, { newTab: '.new-tab', list: '.tabs', section: '.palette-section' }],
+  ['neubrutalism', NEO, { newTab: '.new-tab', list: '.tabs', section: '.palette-section' }],
   ['pixel', PIXEL, { newTab: '.new-tab', list: '.tabs', section: '.palette-section' }],
 ];
 const script = harnessScript();

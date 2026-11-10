@@ -12,7 +12,7 @@ import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, ARCADIA, NEO } from './package.ts';
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
-const THEMES = [['arcadia', ARCADIA], ['neo-brutalism', NEO]];
+const THEMES = [['arcadia', ARCADIA], ['neubrutalism', NEO]];
 const script = harnessScript();
 const HERE = 'here';
 const WORK = 's-work';

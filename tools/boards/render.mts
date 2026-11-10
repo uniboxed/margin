@@ -15,8 +15,8 @@ import { basename, join } from 'node:path';
 
 const root = new URL('../../', import.meta.url);
 const FONTS = [
-  ['Archivo Black', 'extension/themes/neo-brutalism/fonts/archivo-black-latin.woff2', '400'],
-  ['Space Grotesk', 'extension/themes/neo-brutalism/fonts/space-grotesk-latin.woff2', '300 700'],
+  ['Archivo Black', 'extension/themes/neubrutalism/fonts/archivo-black-latin.woff2', '400'],
+  ['Space Grotesk', 'extension/themes/neubrutalism/fonts/space-grotesk-latin.woff2', '300 700'],
   ['Press Start 2P', 'extension/themes/pixel/fonts/press-start-2p-latin.woff2', '400'],
   ['Pixelify Sans', 'extension/themes/pixel/fonts/pixelify-sans-latin.woff2', '400 700'],
 ];

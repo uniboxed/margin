@@ -4,7 +4,7 @@ A theme is HTML and CSS, no JavaScript. Margin's runtime (`extension/ui/`)
 renders it from a view model, runs its buttons as checked actions, and
 gives it behaviors (drag and drop, resizing, menus…) through attributes.
 The built-in themes are packages like any other: `arcadia/` (Margin's
-default, today's look), `neo-brutalism/` (uses every binding, behavior
+default, today's look), `neubrutalism/` (uses every binding, behavior
 and part) and `pixel/` (an 8-bit game, dark only; every part, with pixel
 svg icons where Margin's words are guarded). Read them next to this guide. The plan behind it is `PLAN.md`
 §3 and §4.
@@ -46,7 +46,7 @@ my-theme/
 
 ## Making and importing a theme
 
-1. **Start from a copy** of `neo-brutalism/` (it uses every binding,
+1. **Start from a copy** of `neubrutalism/` (it uses every binding,
    behavior and part) or `arcadia/`.
 2. **Give it your own `id`** in `theme.json`: lower-case letters, digits
    and dashes, not a built-in's. Bump `version` each time you change it.
@@ -125,7 +125,7 @@ is used when it has no part for it.
 **Never paint under `<m-page>`.** The browser's page shows through it: in a
 page, Margin's UI lies over the page, and in Margin.app the page slot is a
 hole in Margin's window. Draw a ground around the page as the page card's
-spread `box-shadow` (Arcadia's frame), or mask it out (Neo-brutalism's dots).
+spread `box-shadow` (Arcadia's frame), or mask it out (Neubrutalism's dots).
 Margin lets the pointer through to the page over the slot, past your root's
 own background; what you draw over the page (a sidebar out over it, a
 dialog) still takes it. Two of Margin's slots are the exceptions, and paint
@@ -199,7 +199,7 @@ what it did.
 **iCloud Tabs.** The tabs open in Safari on the person's other devices
 (Margin.app reads them; Chrome and Edge get none yet). The `cloud-tabs`
 part draws the whole folder from `cloudTabs`, so it stands on its own: put
-`<m-cloud-tabs>` where it belongs in your layout (Arcadia and Neo-brutalism:
+`<m-cloud-tabs>` where it belongs in your layout (Arcadia and Neubrutalism:
 above the new-tab row), and Margin may later show the same part elsewhere
 (a button beside the sidebar's toggle, say). Make it read as a folder that's
 plainly live, not one of the person's: it's read only, so never put `m-drag`
@@ -249,13 +249,13 @@ host. Immutable: rows that didn't change are the same objects.
   `open`, `tabId`, `folderId`, `nested`.
 - `away` (with `active`): the row is this window's chosen tab, shown live in another window of the profile (two
   windows on one space list the same tabs, and the tab follows the window in front: docs/BROWSER-WINDOWS.md §9). Keep it
-  highlighted, faded: Arcadia and Pixel fade the row, Neo-brutalism fades the pressed button. Margin draws the
+  highlighted, faded: Arcadia and Pixel fade the row, Neubrutalism fades the pressed button. Margin draws the
   tab's picture, faded, where its page was.
 - `loading` (a row's, and `tab.loading` for the tab in front): the tab's
   page is loading, its page is being left (a link, ⌘R: before the next page
   arrives), or the site is running a navigation of its own. Draw it where it
   shows without a hover, the sidebar hidden too: Arcadia has a pill in the
-  frame's top strip and pulses a loading row's icon; Neo-brutalism spins the
+  frame's top strip and pulses a loading row's icon; Neubrutalism spins the
   reload button, marches a stripe along the gutter above the page and blinks
   a loading row's icon box.
 - Tab rows also have `open` and `notOpen`. Margin's sidebar is the real list
