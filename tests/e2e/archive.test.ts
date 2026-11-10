@@ -119,6 +119,12 @@ test('the launcher over a new tab lists the archived tabs, newest first, and one
 });
 
 test('an archived tab restored from the palette opens in its own space', async (t) => {
+  // The test before's new-tab page closes after its restore (it made way), and the tab the browser then brings
+  // forward is a switch: landing during this restore, it reads as the user going elsewhere, and the dashboard
+  // stays behind (seen under the gate's load, 2026-11-10). So: once it's gone, and what's in front has settled.
+  await m.until(async () => !(await m.tabs()).some((x) => x.url.startsWith(m.newTabUrl())), { what: 'the new-tab page gone' });
+  let seen: number | null = null;
+  await m.until(async () => { const id = await frontId(); const same = id != null && id === seen; seen = id; return same; }, { interval: 300, what: 'the tab in front settled' });
   m.shell.key('palette');
   await m.until(async () => (await palette(ui)).focused, { what: 'the palette' });
   await ui.keyboard.type('metrics');
