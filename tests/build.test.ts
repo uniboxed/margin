@@ -137,7 +137,7 @@ for (const target of TARGETS) {
     }
     const { navigation } = CAPABILITIES[target];
     assert.deepEqual(Object.keys(navigation).sort(), Object.keys(ACTIONS).sort());
-    // The navigation commands have no keys (Tirth, 2026-11-08: no ⌃⌘ arrows): the Settings shortcuts only.
+    // The navigation commands have no keys (decided 2026-11-08: no ⌃⌘ arrows): the Settings shortcuts only.
     for (const action of Object.values(ACTIONS)) assert.equal(commands[action].suggested_key, undefined, `${target} ${action}`);
   });
 }

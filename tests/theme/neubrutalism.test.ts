@@ -1,4 +1,4 @@
-// Neubrutalism against its board (Tirth's "Neubrutalism", Main.dc.html)
+// Neubrutalism against its board ("Neubrutalism", Main.dc.html)
 // and against Arcadia's parts, in real engines: Playwright's WebKit and
 // Chromium, headless, every network request refused, through the runtime and
 // the mock host. Folder heads without a count; each row's close button, the

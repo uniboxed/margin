@@ -1,5 +1,5 @@
 //! Switching to a space of another browser profile: the close-based switch (app/platforms/macos/shell/ProfileSwitch.swift; PLAN.md
-//! §15, Tirth 2026-11-05), through link requests only, sans IO: a state machine fed the copies' answers and the
+//! §15, 2026-11-05), through link requests only, sans IO: a state machine fed the copies' answers and the
 //! time, which makes its requests through [`SwitchWorld`] (the shell's: the links, the copies' window lists, the
 //! window server).
 //!
@@ -187,7 +187,7 @@ pub trait SwitchWorld {
 
 /// One of the switch's notices (ShellProfiles.swift `SwitchNotice`): its kind, the profile it's about (a link key),
 /// the one window whose overlay shows it (none: every overlay), and, for a window kept open with a draft, that
-/// window (its Close window button closes it: no drafts check then, Tirth 2026-11-06). Only the kind, the profile's
+/// window (its Close window button closes it: no drafts check then, decided 2026-11-06). Only the kind, the profile's
 /// id and the window go to overlays; the words are theirs (extension/shared/across.ts SWITCH_NOTICES).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SwitchNotice {

@@ -4,7 +4,7 @@
 // browser's copy, linked through Margin.app), so every build's ids stay here, today's and past ones.
 export const NAVIGATION_DEFAULTS = Object.freeze({
   // Safari's (extension/engines/webkit/safari/capabilities.ts). Tabs on ⌥⌘↓/↑ like Arc, spaces on ⌥⌘→/←
-  // (Tirth, 2026-11-08: those, and no ⌃⌘ arrows: the manifest commands have no keys now). Safari's own ⌥⌘←/→
+  // (decided 2026-11-08: those, and no ⌃⌘ arrows: the manifest commands have no keys now). Safari's own ⌥⌘←/→
   // (its tab switching) is Margin's space switching where Margin is.
   'safari-2': Object.freeze({
     nextTab: 'Alt+Meta+ArrowDown',

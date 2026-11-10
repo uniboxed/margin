@@ -8,7 +8,7 @@
 // the installed one, then sends a SIGTERM to the Margin.app it found running
 // from there (a KILL after 5 s), and if Safari is running and nothing has
 // started the new build in 2 s, opens it with --background (no set-up
-// window). Started by the extension handler for a link (Tirth, 2026-11-05: no
+// window). Started by the extension handler for a link (2026-11-05: no
 // login item needed), there's no set-up window either: the handler's
 // arguments never reach a sandboxed caller's app, so it leaves a note instead
 // (startedForLink). With no copy linked for 10 minutes (and no set-up
@@ -50,7 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // What runs at login is the helper (Tirth, 2026-11-10: not the whole app): margin-helper, a login agent
+    // What runs at login is the helper (decided 2026-11-10: not the whole app): margin-helper, a login agent
     // (app/platforms/macos/helper/), starts Margin.app as a browser opens, about 0.3 s, long before the browser's
     // extension asks for its link. A build without it (an Xcode run's) is Margin.app's own login item, as before.
     static let helperPlist = "com.unibox.margin.helper.plist"
@@ -59,7 +59,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private var helperOn: Bool { Self.hasHelper && SMAppService.agent(plistName: Self.helperPlist).status == .enabled }
 
-    // Margin opens at login (Tirth, 2026-11-07: Safari's UI never shown, not even as Safari opens: Margin has to be
+    // Margin opens at login (asked 2026-11-07: Safari's UI never shown, not even as Safari opens: Margin has to be
     // running first). Added once; if the person turns it off in System Settings, it stays off. The app's own login
     // item, from before the helper, becomes the helper's: on if it was on (or never added), off if they'd turned it off.
     private func addLoginItemOnce() {
@@ -215,7 +215,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // Started on demand, Margin.app quits by itself once no copy has been
-    // linked for a while and its set-up window isn't open (Tirth, 2026-11-05):
+    // linked for a while and its set-up window isn't open (2026-11-05):
     // a browser starting again starts it again.
     static let idleQuitAfter: TimeInterval = 10 * 60
     static let idleCheckEvery: TimeInterval = 30

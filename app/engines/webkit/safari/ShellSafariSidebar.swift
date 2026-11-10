@@ -1,4 +1,4 @@
-// Safari's own sidebar, kept closed under Margin (Tirth, 2026-11-07: "when i reach my cursor on the left edge, it still
+// Safari's own sidebar, kept closed under Margin (asked 2026-11-07: "when i reach my cursor on the left edge, it still
 // opens … can we not have it open please"). Three parts, all Margin.app's, all only where Margin's layout is drawn over
 // the Safari window in front:
 //

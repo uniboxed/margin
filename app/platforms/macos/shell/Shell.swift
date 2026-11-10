@@ -397,7 +397,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         options.privateResolver = RealPrivateResolver()
         options.privateCallsDefaults = .standard
         // The handoff: off until its gates pass (HANDOFF.md §10.4), unless MarginHandoff is set for their runs.
-        // On by default since 2026-11-07 (Tirth: the switch to another profile without Safari's slide, its window
+        // On by default since 2026-11-07 (decided: the switch to another profile without Safari's slide, its window
         // parked); `defaults write com.unibox.margin MarginHandoff -bool NO` turns it off (the close-based switch).
         options.handoff = UserDefaults.standard.object(forKey: "MarginHandoff") as? Bool ?? true
         Diagnostics.note(options.handoff ? "handoff: on: profile switches hand off when the private calls allow"
@@ -490,7 +490,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // ---- links ----
 
-    // A Chrome or Edge copy's hello names its browser process as its connector told it. Trusted (Tirth, 2026-11-09:
+    // A Chrome or Edge copy's hello names its browser process as its connector told it. Trusted (decided 2026-11-09:
     // never refused), but one no connector has named since the app started is logged: a copy linking with a link
     // kept from before, a connector that knew no process, or a hello not as its relay said. The same in margin-core
     // (app/shared/core/src/shell/mod.rs warn_unheard_pid), word for word.
@@ -830,7 +830,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // Only for an overlay just shown, and judged only if it's been shown since then: a check asked for an
     // overlay that couldn't be shown yet (its page not drawn: every read while Safari opens) would otherwise
     // judge it the moment it's shown, before macOS lists it on screen, and every overlay would join every Space
-    // for the rest of that run of Safari (Tirth's log 2026-11-07, at each launch: the sidebar then put away for
+    // for the rest of that run of Safari (a real session's log 2026-11-07, at each launch: the sidebar then put away for
     // every swipe and back 1.5-5 s later).
     private func checkOwnSpace(_ overlay: OverlayController, browser number: Int) {
         guard !ownSpaceFellBack, ownSpaceChecks, overlay.isShown else { return }
@@ -861,7 +861,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // An overlay in its window's own Space read as on screen while its window isn't. A window closing,
     // or every window of a browser quitting, is ordered out a read or so before it leaves the window
-    // server's list (Tirth's log, 21:57:20: 73 ms), so one read proves nothing: the overlay is put away
+    // server's list (a real session's log, 21:57:20: 73 ms), so one read proves nothing: the overlay is put away
     // at once and the window looked at again. Only a later read, `ownSpaceWait` on or more, with no
     // Space change since, the link up, the window still its copy's and bound to the same window, that
     // still lists the window as off screen falls back (judgeOwnSpace).
@@ -953,7 +953,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         wasParked && !parkedNow && state != "fullscreen" && !asked
     }
 
-    // Parked windows Safari restored after a quit, as normal windows on the Desktop (Tirth, 2026-11-07): closed by
+    // Parked windows Safari restored after a quit, as normal windows on the Desktop (seen 2026-11-07): closed by
     // their own copy, as Margin's quit closes parked ones (their tabs stay in their spaces, not open).
     private var restoredClosed: Set<WindowKey> = []
     private func closeRestoredParked(_ ext: [WindowKey: (ExtWindow, Link)]) {
@@ -1004,7 +1004,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     /// Whether an overlay is in front of its browser window (and behind its toolbar): the read's list first (cheap);
     /// when that says no, asked exactly (the windows in front of the browser's window), since the every-window list's
-    /// order isn't front to back between Margin's windows and Safari's (Tirth's trace 2026-11-07): an overlay already
+    /// order isn't front to back between Margin's windows and Safari's (a real session's trace 2026-11-07): an overlay already
     /// in front isn't ordered in again on every read, and a switch's R4 isn't held back by a wrong "behind".
     func isStacked(_ list: [ServerWindow], overlay: OverlayController, browser: ServerWindow, toolbar: Int?) -> Bool {
         if WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: browser.number, toolbar: toolbar, own: overlay.catcherWindowNumbers) { return true }
@@ -1014,10 +1014,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     // A shown overlay in its window's own Space, checked against the map on each read: in another Space, it's moved
-    // into its window's (the Space bridge), at most once a second for each. Tirth's trace 2026-11-07 11:32:51: a
+    // into its window's (the Space bridge), at most once a second for each. A real session's trace 2026-11-07 11:32:51: a
     // switch brought a parked window back into a new full-screen Space and macOS removed its old one, moving the
     // overlay kept hidden there to the Desktop: no sidebar over Safari after the switch, and the sidebar on the
-    // Desktop when he swiped there.
+    // Desktop on a swipe there.
     private var joinTriedAt: [WindowKey: Double] = [:]
     // (Read from SkyLight there and then, not the map's last read, when it was just shown or the map has it off screen
     // while its window is on: the map reads a window's Spaces only when it moves, goes on or off screen, or each second.)
@@ -1306,7 +1306,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 overlay.hide("its window isn't on screen")
                 continue
             case .placeAhead(let orHide):
-                // Placed ahead in its window's Space, so the layout is there when that Space slides in (Tirth,
+                // Placed ahead in its window's Space, so the layout is there when that Space slides in (asked
                 // 2026-11-07: never Safari's own UI, not even on a first visit). Else put away, as before.
                 if let n = facts.bound, let server = facts.window, placeAhead(overlay, key: key, w: w, number: n, server: server) { continue }
                 overlay.hide(orHide)
@@ -1472,7 +1472,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // outside the window: the whole window. An edge within `edgeSnap` of the window's is the
     // window's (Safari's sidebar ends its slide 1 or 2 pt off).
     // Not on the left when Margin's sidebar is docked at least that wide (`dockedLeft`: its left
-    // inset): that's Safari's own sidebar sliding in under Margin's (Tirth's log, 19:37:14: x 19, 213,
+    // inset): that's Safari's own sidebar sliding in under Margin's (a real session's log, 19:37:14: x 19, 213,
     // 238, 240, … 2, 0, over about 1.3 s, open 0.4 to 1.1 s), and the overlay stays over the whole
     // window. The page's box keeps its place (shared/app-link.ts boxFromLayout takes the viewport's
     // offset off the layout's left inset). Whether the page measured where its area starts (`measured`)
@@ -1547,7 +1547,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // An overlay just shown (it wasn't): whether it's the front window's (a field its page focused
     // while hidden gets the keyboard only then, OverlayController.appeared). Only over the front window:
     // a window made from another (⌘N, the palette's New window: `paletteOnShow`) gets the palette over its
-    // new tab, as ⌘T's does (Tirth, 2026-11-09); another its copy heard made within `launcherFocusWithin`
+    // new tab, as ⌘T's does (2026-11-09); another its copy heard made within `launcherFocusWithin`
     // (Safari's own New Window) has its new-tab launcher focused. Not at Margin.app's start, a relink, a
     // switch's window or a page reloaded over a window that was already there: the keys stay where they were.
     static let launcherFocusWithin: TimeInterval = 10
@@ -1583,7 +1583,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // The overlay that last had the keys, and when: a moment with none matched over the front window (a window
     // being made or moved, a Space settling) keeps them for `keysGrace` while its browser stays in front, so a press
-    // then is still Margin's, not the page's (Tirth, 2026-11-08: "sometimes … overridden by the site").
+    // then is still Margin's, not the page's (reported 2026-11-08: "sometimes … overridden by the site").
     private var keysOverlay: (key: WindowKey, pid: pid_t, at: TimeInterval)?
     static let keysGrace: TimeInterval = 1.0
     // Why the keys went off, last logged (logged as it changes, a linked browser in front).
@@ -1632,7 +1632,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // A click in Margin's UI moves the keyboard to Margin.app without making it the active app (a non-activating
     // panel), and OverlayController.pressEnded gives it back as the press ends. A key pressed before that, with none
-    // of Margin's windows key, had nowhere to go (the system's beep: ⌘R after a click in the sidebar, Tirth,
+    // of Margin's windows key, had nowhere to go (the system's beep: ⌘R after a click in the sidebar, seen
     // 2026-11-08): it goes on to the linked browser in front instead, as the press and the release it would have had
     // there, and the keyboard goes back with it. Which key isn't logged, only that one was sent on.
     private var keyRelay: Any?
@@ -1688,7 +1688,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // ⌘Q or ⌥⌘Q in the browser with windows parked: every parked window closed by its own copy first (its tabs stay in
     // their spaces, not open), at most `quitCloseWithin`, then the same keys handed to the browser, which quits as it
     // would have (its own "quit with these tabs?" too). So the browser never saves them as windows to bring back on the
-    // Desktop at its next launch (Tirth, 2026-11-07). A parked window whose copy can't be asked goes back to its Desktop
+    // Desktop at its next launch (seen 2026-11-07). A parked window whose copy can't be asked goes back to its Desktop
     // as at Margin's own quit.
     private(set) var quittingBrowser = false
     static let quitCloseWithin: Double = 0.6
@@ -1696,7 +1696,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // ⌘Q again with the prompt up: Quit.
         if let prompt = quitPrompt { return prompt.choose(.quit) }
         guard !quittingBrowser, let pid = apps.frontPid else { return }
-        // Over Margin's layout, Margin's own prompt first (Tirth, 2026-11-07, as Arc's): Quit, Always quit, Cancel.
+        // Over Margin's layout, Margin's own prompt first (asked 2026-11-07, as Arc's): Quit, Always quit, Cancel.
         if options.asksBeforeQuit(), let front = frontOverlay(), let window = front.windowFrame {
             let browser = links[front.key.link]?.connection.hello.browser == "safari" ? "Safari" : (NSRunningApplication(processIdentifier: pid)?.localizedName ?? "the browser")
             let prompt = QuitPrompt(browser: browser)
@@ -1834,7 +1834,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             return // across profiles (ShellProfiles.swift)
         case .nextTab where overlay.isReady, .prevTab where overlay.isReady:
             // The overlay's page highlights the tab at once (its own pick, the copy's rule) and asks the copy for it
-            // (overlay.ts navTab): the highlight never waits for the copy's background (Tirth, 2026-11-07).
+            // (overlay.ts navTab): the highlight never waits for the copy's background (2026-11-07).
             overlay.push(raw: #"{"type":"command","name":"\#(command.rawValue)","repeat":\#(isRepeat)}"#)
         case .nextTab, .prevTab, .nextSpace, .prevSpace:
             let windowId = overlay.key.windowId
@@ -1912,7 +1912,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     /// The space a sidebar shows, in the log beside what its copy's state says of that window (space ids only), and in
-    /// the trace (Tirth, 2026-11-07: after a switch the sidebar showed another space's tabs).
+    /// the trace (seen 2026-11-07: after a switch the sidebar showed another space's tabs).
     func shownSpace(_ overlay: OverlayController, _ said: JSONObject) {
         let space = said["space"] as? String ?? "-"
         let windowId = said["windowId"] as? Int

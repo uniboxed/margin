@@ -1,6 +1,6 @@
 // The handoff lab (docs/HANDOFF.md §10.3, §10.4): one mode per gate G1-G18, plus `holds`, the
 // freeze-holds check the product can't do. Each gate is a run on screen whose result decides what
-// the build turns on. README.md is the runbook; run nothing here without Tirth's go-ahead.
+// the build turns on. README.md is the runbook; run nothing here without approval.
 //
 // - Built by build.sh with Margin.app's own files (PrivateCalls.swift, Freezer.swift,
 //   SpaceReads.swift, BridgeParker.swift): every freeze is RealFreezer's, with its own watchdog,
@@ -2083,12 +2083,12 @@ let g15 = Gate(
 
 let g16 = Gate(
     id: "G16", title: "At least 30 handoffs in release Safari (Test A/Test B) with Margin's extension, real sites, R3/R4 on",
-    decides: "the honest numbers, Options.watchdog, the step-5 limit; the build's acceptance, with Tirth's go-ahead",
+    decides: "the honest numbers, Options.watchdog, the step-5 limit; the build's acceptance, once approved",
     needs: [.margin, .devHook], freezes: "about 1.0-1.5 s per handoff, 30 handoffs (--runs)",
     plan: ["needs Margin.app running with MarginDevHooks YES, and Safari's Test A and Test B each with a window (Margin shows one, the other parked)",
            "the lab never touches Safari: it posts com.unibox.margin.dev.switch (to: Test B, then Test A, …) every 3 s, which Margin refuses for any other profile",
            "Margin's own summary line for each (its log, ids and ms only): frozen ms, late, recovered or aborted",
-           "the reveal-time distribution and the late-reveal rate; passes when every switch landed with none recovered or aborted (the late rate is Tirth's call)"],
+           "the reveal-time distribution and the late-reveal rate; passes when every switch landed with none recovered or aborted (the late rate is the maintainer's call)"],
     run: { lab in
         guard Margin.running != nil else { return Outcome(status: .notRun, lines: ["Margin.app isn't running"]) }
         guard Margin.devHooksOn else { return Outcome(status: .notRun, lines: ["MarginDevHooks isn't YES (WP12's dev hook; README)"]) }
@@ -2222,7 +2222,7 @@ enum Runner {
     handoff-lab: the handoff's gates (docs/HANDOFF.md §10.4). README.md is the runbook.
       handoff-lab list                       the gates
       handoff-lab <gate…> --dry-run          the plan and read-only checks; touches nothing
-      handoff-lab <gate…> --go               runs them on screen (Tirth's go-ahead first)
+      handoff-lab <gate…> --go               runs them on screen (approval first)
     gates: holds, g1 … g18, own, stp, all
     options: --person (guided steps), --runs N, --stp (G7/G15 in STP too), --dock-restart (G5),
              --dev-hook (G1's Margin switch), --app PATH (default /Applications/Margin.app),
@@ -2316,7 +2316,7 @@ enum Runner {
 
     static func run(_ o: LabOptions, _ gates: [Gate]) async -> Int32 {
         if o.dryRun || !o.go {
-            print(o.dryRun ? "Dry run: the plan, and read-only checks. Nothing on screen is touched." : "Not run: add --go to run these on screen (Tirth's go-ahead first; README.md).")
+            print(o.dryRun ? "Dry run: the plan, and read-only checks. Nothing on screen is touched." : "Not run: add --go to run these on screen (approval first; README.md).")
             for g in gates { printPlan(g) }
             print("\nChecks:")
             for l in preflight(o, gates) { print("  " + l) }

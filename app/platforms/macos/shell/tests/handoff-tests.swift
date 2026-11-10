@@ -1094,9 +1094,9 @@ func handoffMachineTests() {
     }
     do {
         // With Accessibility: Margin asks Safari for the profile's window itself, the person isn't told to open one,
-        // and the switch goes on when its copy links with that window (Tirth, 2026-11-07: "Test A isn't open").
+        // and the switch goes on when its copy links with that window (reported 2026-11-07: "Test A isn't open").
         // Asked under the freeze, after the cover: a window opened beside a full-screen one is put in full screen
-        // by macOS, which slides to it, and that slide was seen (Tirth, 2026-11-09).
+        // by macOS, which slides to it, and that slide was seen (2026-11-09).
         let (w, s) = handoffSetup { $0.linked.remove(hC); $0.opensWindows = true }
         s.start(toC, from: hA, windowId: 10)
         check("profile window: nothing asked before the freeze", s.phase == .preparing && w.openedWindowFor.isEmpty && w.events == [.started(toC)], "\(s.phase) \(w.events) \(w.openedWindowFor)")
@@ -1547,7 +1547,7 @@ func handoffMachineTests() {
     }
     do {
         // A window in no line (one the person opened; line 1's A is 1111, parked) is a Margin window of its own
-        // (docs/BROWSER-WINDOWS.md §2.1, Tirth 2026-11-09): the switch gives it a line, parks it like any A, and makes it
+        // (docs/BROWSER-WINDOWS.md §2.1, 2026-11-09): the switch gives it a line, parks it like any A, and makes it
         // its own window of B. Line 1's parked B is another Margin window's: left parked.
         let ka2 = WindowKey(link: hA, windowId: 11)
         let (w, s) = handoffSetup { w in

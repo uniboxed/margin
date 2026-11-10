@@ -1,6 +1,6 @@
 // Windows Margin.app had parked (out of sight in a private Space, docs/HANDOFF.md §2.5) coming back after Safari
 // quit and opened again: Safari restores every window it had, the parked ones too, as normal windows on the
-// Desktop (Tirth, 2026-11-07: "i see those hidden tabs as small windowed windows on the homescreen"). Window and tab
+// Desktop (reported 2026-11-07: "i see those hidden tabs as small windowed windows on the homescreen"). Window and tab
 // ids are new after a relaunch; Margin's own tab ids (`mid`, state/model.ts) are matched back to the restored tabs
 // by address and order. So a parked window is recorded by its tabs' Margin ids, and a restored window is known as
 // one only if every one of its tabs is that record's, at least half of the record's tabs are back in it, and no

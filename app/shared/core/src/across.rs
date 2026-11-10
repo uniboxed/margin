@@ -625,7 +625,7 @@ impl BrowserWords {
             turn_on: "Safari › Settings › Extensions (with {name} chosen at the top)".into(),
         }
     }
-    /// Chrome's or Edge's (provisional, to check on Windows with Tirth).
+    /// Chrome's or Edge's (provisional, to check on Windows).
     pub fn chromium(browser: &str) -> Self {
         let page = if browser == "Edge" { "edge://extensions" } else { "chrome://extensions" };
         Self {
@@ -668,7 +668,7 @@ pub fn switch_words(
 }
 
 /// The settings a window's look is made of, carried to the profile a switch goes to and shared between a browser's
-/// profiles (Tirth, 2026-11-07: "it should match all the configuration of the previous window like a snapshot").
+/// profiles (asked 2026-11-07: "it should match all the configuration of the previous window like a snapshot").
 pub const CARRIED_SETTINGS: [&str; 4] = ["sidebarPinnedOpen", "frameWhenHidden", "theme", "themes"];
 
 /// The `updateSettings { patch }` that gives `to` the carried settings of `from` (ShellProfiles.carrySettings):

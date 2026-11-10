@@ -1,4 +1,4 @@
-/* Pixel: Tirth's "Sidebar · Pixel / 8-bit" board, ported from the Design
+/* Pixel: the "Sidebar · Pixel / 8-bit" board, ported from the Design
    canvas (Pixel.dc.html). The PICO-8 palette on a dotted night ground,
    notched pixel borders (four hard box-shadows, no blur, no radius), Press
    Start 2P for labels, Pixelify Sans for the rest. Motion in steps only.
@@ -370,7 +370,7 @@
 .palette-row .fav { margin: 0 2px; }
 .fav.glyph { display: grid; place-items: center; color: var(--yellow); }
 .fav.glyph .pix { width: 13.5px; height: 13.5px; }
-/* The heading of a run of rows from one place (iCloud Tabs: "On Tirth's iPhone"). */
+/* The heading of a run of rows from one place (iCloud Tabs: "On Nora's iPhone"). */
 .palette-section { flex-shrink: 0; margin: 8px 10px 4px; font-family: 'Press Start 2P', monospace; font-size: 8px; line-height: 1.4; color: var(--blue); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tag { flex-shrink: 0; max-width: 34%; padding: 4px 6px; font-family: 'Press Start 2P', monospace; font-size: 7px; line-height: 1.3; text-transform: uppercase; color: var(--muted); background: var(--deep); box-shadow: inset 0 0 0 2px var(--field); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .palette-row.on .tag { color: var(--yellow); }

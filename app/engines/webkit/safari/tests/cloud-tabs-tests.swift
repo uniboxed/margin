@@ -142,7 +142,7 @@ func cloudTabsTests() {
           CloudTabs.before(pos([(1, "a")]), pos([(2, "a")])) && CloudTabs.before(pos([(1, "a")]), pos([(1, "b")])) && CloudTabs.before(pos([(1, "a")]), pos([(1, "a"), (0, "z")]))
           && !CloudTabs.before(pos([(1, "a"), (0, "z")]), pos([(1, "a")])) && CloudTabs.before(pos([(1, "a"), (0, "z")]), pos([(1, "a"), (5, "z")])))
     check("cloud: this Mac: a Mac with its name (case, spaces and apostrophes aside), never another kind or another name",
-          CloudTabs.isThisMac(name: " test MAC ", kind: "mac", thisMac: "Test Mac") && CloudTabs.isThisMac(name: "Tirth\u{2019}s Mac", kind: "mac", thisMac: "Tirth's Mac")
+          CloudTabs.isThisMac(name: " test MAC ", kind: "mac", thisMac: "Test Mac") && CloudTabs.isThisMac(name: "Nora\u{2019}s Mac", kind: "mac", thisMac: "Nora's Mac")
           && !CloudTabs.isThisMac(name: "Test Mac", kind: "phone", thisMac: "Test Mac") && !CloudTabs.isThisMac(name: "Test Mac 2", kind: "mac", thisMac: "Test Mac")
           && !CloudTabs.isThisMac(name: "Test Mac", kind: "mac", thisMac: nil) && !CloudTabs.isThisMac(name: "", kind: "mac", thisMac: ""))
     check("cloud: this Mac's own name is read", CloudTabs.thisMacName().map { !$0.isEmpty } ?? true)

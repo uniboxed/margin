@@ -41,7 +41,7 @@ func overlaysScenario() async {
   windows.shell = shell
   var stuck = false
   // macOS lists an overlay just ordered in as on screen a moment later, not at once (`lag`: 150 ms after it's
-  // first listed over its window; Tirth's log 2026-11-07 10:44:49, 10:52:17: the check judged it 5 ms after).
+  // first listed over its window; a real session's log 2026-11-07 10:44:49, 10:52:17: the check judged it 5 ms after).
   var lag = false
   var firstListed: [Int: Date] = [:]
   windows.overlayOnScreen = { w in
@@ -99,7 +99,7 @@ func overlaysScenario() async {
   try? await Task.sleep(nanoseconds: 400_000_000) // (the check after each placement passes: overlay and window on screen together)
   check("the check after placing them: no fallback", !shell.ownSpaceFellBack)
 
-  // ---- a window ordered out a read before it leaves the list (a close, Safari quitting: Tirth's log, 21:57:20) ----
+  // ---- a window ordered out a read before it leaves the list (a close, Safari quitting: a real session's log, 21:57:20) ----
   stuck = true
   place([(w1, r1, false), (w2, r2, true)])
   shell.track()
@@ -290,7 +290,7 @@ func sidebarSlideScenario() async {
   // The page told it was resized, as a drawn page would be at its next frame (in the harness its web
   // view, off every display, draws none): it measures the slot again, and a new layout goes as setLayout.
   func resized() async { _ = await js(q.webView, "dispatchEvent(new Event('resize')); return innerWidth") }
-  // ---- Safari's own sidebar sliding in and out under Margin's docked one (Tirth's log, 19:37:14.956-18.706) ----
+  // ---- Safari's own sidebar sliding in and out under Margin's docked one (a real session's log, 19:37:14.956-18.706) ----
   check("Margin's sidebar docked: no pointer positions wanted, the edge guarded", await until(5, { q.pointerWant.mode == .none && q.edgeFrame != nil && q.layout != nil }))
   try? await Task.sleep(nanoseconds: 800_000_000) // (the layout sent and settled)
   var mark = fake.events.count

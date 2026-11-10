@@ -211,7 +211,7 @@ export const SCENARIOS = {
     switchTo('D', 'C'), shown('C'), nothingDrawn('C'), { op: 'state' },
   ],
   // Safari's update of the tab asked for answers only 4 s later (its process
-  // hung, as in Tirth's Safari on 2026-11-03): the page that asked is
+  // hung, as in real Safari on 2026-11-03): the page that asked is
   // answered before it stops waiting (3 s here: the host's background lives
   // about 5 s), that the tab is shown (background/tabs.ts focusTab), and the
   // tab comes up when Safari gets to it.
@@ -899,7 +899,7 @@ export const SCENARIOS = {
   ],
   // Safari's own pinch on a page Margin.app draws around (gestures not Margin's): WebKit divides innerWidth and
   // innerHeight by the pinch's scale (a 3× pinch reads a third), which read as Safari taking most of the window: the
-  // page lost its box, and Margin.app was told the page's area was a third of it (Tirth's log 2026-11-07, Margin drew
+  // page lost its box, and Margin.app was told the page's area was a third of it (a real session's log 2026-11-07, Margin drew
   // its sidebar in a corner). The area before the pinch is used (shared/app-link.ts unpinchedSize).
   'pinch-native': [
     { op: 'windowFrame', on: true }, // (outerWidth and outerHeight the window's, as in Safari)

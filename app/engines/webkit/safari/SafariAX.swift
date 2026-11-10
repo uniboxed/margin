@@ -1,4 +1,4 @@
-// Which Safari window is which profile's, through Accessibility (Tirth, 2026-11-07: "let's use accessibility
+// Which Safari window is which profile's, through Accessibility (asked 2026-11-07: "let's use accessibility
 // then … i should never see safari's ui at all"). Without it the window server can't say: every Safari window is
 // the same process's, full-screen windows have the same bounds, and their titles are kept from apps without
 // Screen Recording (tested 2026-11-06: CGWindowList and SLSCopyWindowProperty both redact them; window-server

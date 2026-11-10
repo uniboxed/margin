@@ -284,7 +284,7 @@ pub enum PlacementFix {
 /// screen at the bounds it had (a window moving isn't judged: nothing's settled), (1) on screen: not, while its
 /// window is → ordered in again; (2) its frame: not the one asked → said. Each only once the placement is `GRACE`
 /// old and on two reads in a row (a read just after an order can lag). Not its order against its window: the
-/// list's order isn't front to back between Margin's windows and the browser's (Tirth's trace 2026-11-07).
+/// list's order isn't front to back between Margin's windows and the browser's (a real session's trace 2026-11-07).
 pub struct PlacementCheck;
 
 impl PlacementCheck {

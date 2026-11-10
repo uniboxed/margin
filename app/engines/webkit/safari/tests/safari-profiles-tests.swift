@@ -45,18 +45,18 @@ func safariProfilesTests() {
     check("safari: a folder name that isn't an id: never read", SafariProfiles.marginProfile(safari.folder, folders: ["../Profiles"], extensionId: SafariProfiles.marginExtension) == nil)
     check("safari: a symbol that isn't a symbol's name: none", SafariProfiles.symbol(try? PropertyListSerialization.data(fromPropertyList: ["SymbolImageName": "../x y"], format: .binary, options: 0)) == "")
 
-    // ---- which of Margin's entries (Tirth's named profiles: the removed unsigned build beside the signed one) ----
+    // ---- which of Margin's entries (a real Mac's named profiles: the removed unsigned build beside the signed one) ----
     let ext = SafariProfiles.marginExtension
     let day = { (d: Int) in Date(timeIntervalSinceReferenceDate: 783_000_000 + Double(d) * 86_400) }
     let idA = "5068E0E4-81AA-4EC4-A74A-BB4DA5A64A41", idB = FakeSafari.personalCopy
     let sA = "s-" + idA.lowercased(), sB = personal
     let removedUnsigned: [String: Any] = ["Enabled": false, "AddedDate": day(0), "RemovedDate": day(6), "ProfileIdentifier": idA]
     let liveTeam: [String: Any] = ["Enabled": true, "AddedDate": day(5), "ProfileIdentifier": idB]
-    let tirths: [String: Any] = ["\(ext) (UNSIGNED)": removedUnsigned, "\(ext) (VSNN5UW99X)": liveTeam,
-                                 "com.unibox.margin-move-test.Extension (VSNN5UW99X)": ["Enabled": true, "AddedDate": day(10), "RemovedDate": day(11), "ProfileIdentifier": "77777777-7777-4777-8777-777777777777"]]
-    let a = SafariProfiles.entries(tirths, extensionId: ext, team: "VSNN5UW99X")
+    let realEntries: [String: Any] = ["\(ext) (UNSIGNED)": removedUnsigned, "\(ext) (VSNN5UW99X)": liveTeam,
+                                      "com.unibox.margin-move-test.Extension (VSNN5UW99X)": ["Enabled": true, "AddedDate": day(10), "RemovedDate": day(11), "ProfileIdentifier": "77777777-7777-4777-8777-777777777777"]]
+    let a = SafariProfiles.entries(realEntries, extensionId: ext, team: "VSNN5UW99X")
     check("entries: (UNSIGNED) removed and off beside the team's live one, this build the team's: the team's, though UNSIGNED sorts first", a.chosen == sB && a.suffix == "VSNN5UW99X" && a.count == 2, "\(a)")
-    let b = SafariProfiles.entries(tirths, extensionId: ext, team: nil)
+    let b = SafariProfiles.entries(realEntries, extensionId: ext, team: nil)
     check("entries: the same with an unsigned build: still the live one, never the removed", b.chosen == sB && b.suffix == "VSNN5UW99X", "\(b)")
     let c = SafariProfiles.entries(["\(ext) (UNSIGNED)": removedUnsigned], extensionId: ext, team: nil)
     check("entries: only a removed entry: none (the typed name is kept)", c.chosen == nil && c.count == 1, "\(c)")
@@ -76,9 +76,9 @@ func safariProfilesTests() {
     let offNewer: [String: Any] = ["\(ext) (AAAAA11111)": ["Enabled": true, "AddedDate": day(1), "ProfileIdentifier": idA], "\(ext) (BBBBB22222)": ["Enabled": false, "AddedDate": day(2), "ProfileIdentifier": idB]]
     check("entries: an enabled one over a newer one turned off", SafariProfiles.entries(offNewer, extensionId: ext, team: nil).chosen == sA)
     check("entries: another bundle id that starts the same is never Margin's", SafariProfiles.entries(["\(ext)Other (X)": liveTeam, "\(ext)2 (VSNN5UW99X)": liveTeam], extensionId: ext, team: "VSNN5UW99X").count == 0)
-    // Through the files, as Tirth's Mac has them: both named profiles with the removed unsigned entry.
+    // Through the files, as a real Mac has them: both named profiles with the removed unsigned entry.
     let idA2 = "BE3F2B99-F245-4869-B8C3-25B40B7A3316", idB2 = "4282EA5B-775B-400D-BE65-CB1B668E7367"
-    safari.extensions(FakeSafari.personalServer, tirths.merging(["com.example.other.Extension (ZZZZZ99999)": ["Enabled": true, "ProfileIdentifier": "99999999-9999-4999-8999-999999999999"]]) { a, _ in a })
+    safari.extensions(FakeSafari.personalServer, realEntries.merging(["com.example.other.Extension (ZZZZZ99999)": ["Enabled": true, "ProfileIdentifier": "99999999-9999-4999-8999-999999999999"]]) { a, _ in a })
     safari.extensions(FakeSafari.testServer, ["\(ext) (UNSIGNED)": ["Enabled": false, "AddedDate": day(0), "RemovedDate": day(6), "ProfileIdentifier": idA2],
                                               "\(ext) (VSNN5UW99X)": ["Enabled": true, "AddedDate": day(5), "ProfileIdentifier": idB2]])
     if case .read(let l) = SafariProfiles.read(safari.folder, team: "VSNN5UW99X") {
@@ -92,7 +92,7 @@ func safariProfilesTests() {
         np.refresh(spaces: [sB: ["a"]], linked: [sB])
         np.useBrowserNames(l)
         check("names: the signed entry's copy gets “Personal”", np.name(sB) == "Personal" && BrowserProfiles(browser: "safari", root: named).info[sB]?.browserId == FakeSafari.personalServer, np.name(sB))
-    } else { check("read: Tirth's layout read", false) }
+    } else { check("read: the real Mac's layout read", false) }
     if case .read(let l) = SafariProfiles.read(safari.folder, team: nil) {
         check("read, an unsigned build: still the live entries", l.dropFirst().map { $0.margin ?? "-" } == [sB, "s-" + idB2.lowercased()])
     } else { check("read: unsigned", false) }

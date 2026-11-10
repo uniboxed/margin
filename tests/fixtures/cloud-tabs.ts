@@ -17,7 +17,7 @@ export function cloudFixture(now: number = Date.now()) {
     status: 'ready',
     devices: [
       {
-        id: PHONE, name: 'Tirth’s iPhone', kind: 'phone', model: 'com.apple.iphone-13-pro-9', modifiedAt: midnight(now), ephemeral: false, duplicateName: false,
+        id: PHONE, name: 'Nora’s iPhone', kind: 'phone', model: 'com.apple.iphone-13-pro-9', modifiedAt: midnight(now), ephemeral: false, duplicateName: false,
         tabs: [
           { id: 'T-PHONE-1', title: 'Ferry timetable – Tagus Lines', url: 'https://tagus.example/ferries', pinned: true, viewedAt: now - 5 * MIN },
           { id: 'T-PHONE-2', title: 'Slow software — Margins', url: 'https://margins.example/essays/slow-software', pinned: false, viewedAt: now - 30 * MIN },

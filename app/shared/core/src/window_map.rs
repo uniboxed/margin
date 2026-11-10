@@ -608,7 +608,7 @@ pub fn replay_with_overlays(lines: &[TraceLine]) -> Vec<(WindowSnapshot, Vec<Tra
     out
 }
 
-// The Swift's tests (app/platforms/macos/shell/tests/window-tests.swift `windowMap`), and Tirth's recorded session
+// The Swift's tests (app/platforms/macos/shell/tests/window-tests.swift `windowMap`), and a real recorded session
 // (tests/fixtures/traces/2026-11-07-sidebar-on-desktop.jsonl, as `overlaySpace` replays it).
 #[cfg(test)]
 mod tests {
@@ -803,10 +803,10 @@ mod tests {
         assert!(load("not json\n{\"t\": 1}\n").len() == 1, "a line that doesn't read is left out");
     }
 
-    // Tirth's session (2026-11-07 11:32:51): the sidebar left in the Desktop's Space after a switch brought its
+    // A real session (2026-11-07 11:32:51): the sidebar left in the Desktop's Space after a switch brought its
     // window back into a new full-screen Space.
     #[test]
-    fn tirths_session_replayed() {
+    fn real_session_replayed() {
         let text = include_str!("../../../../tests/fixtures/traces/2026-11-07-sidebar-on-desktop.jsonl");
         let lines = load(text);
         assert_eq!(lines.len(), text.lines().filter(|l| !l.is_empty()).count(), "every line of the trace reads");

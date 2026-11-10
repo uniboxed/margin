@@ -29,7 +29,7 @@ test('manifest follows the SPEC constraints', () => {
   assert.equal(manifest.chrome_url_overrides.newtab, 'newtab/newtab.html');
   assert.ok(manifest.commands['toggle-sidebar']);
   assert.ok(manifest.commands['open-palette']);
-  // No ⌃⌘ arrows as the browser's own command keys (Tirth, 2026-11-08): the navigation commands have none (Margin.app
+  // No ⌃⌘ arrows as the browser's own command keys (decided 2026-11-08): the navigation commands have none (Margin.app
   // holds the Settings keys, ⌥⌘ arrows by default; pages take them too). Never ⌘⌥ here: Chrome refuses the extension.
   for (const name of ['next-tab', 'prev-tab', 'next-space', 'prev-space']) assert.equal(manifest.commands[name].suggested_key, undefined, name);
   for (const c of Object.values(manifest.commands)) assert.doesNotMatch(JSON.stringify(c.suggested_key ?? {}), /(Command|Ctrl)\+Alt/);
@@ -123,7 +123,7 @@ test('Settings toggles are switches where supported (checkboxes elsewhere): Marg
   assert.match(render, /value === 'setting-toggle'\) \{ copy\.setAttribute\('type', 'checkbox'\); copy\.setAttribute\('switch', ''\);/);
 });
 
-test('Safari\'s commands: ⌘T the only one with a key (no ⌃⌘ arrows: Tirth, 2026-11-08); Chrome\'s none', async () => {
+test('Safari\'s commands: ⌘T the only one with a key (no ⌃⌘ arrows since 2026-11-08); Chrome\'s none', async () => {
   const { manifestFor } = await import('../scripts/build.ts');
   const keyed = (m) => Object.entries(m.commands).filter(([, c]) => c.suggested_key).map(([k]) => k).sort();
   const safari = manifestFor('safari');

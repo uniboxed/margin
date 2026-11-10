@@ -160,7 +160,7 @@ mod win {
     pub fn run(app: App) -> i32 {
         let mut opts = Options::new(&app.paths.data, &app.paths.themes);
         opts.own_pid = std::process::id();
-        // Margin over windows that aren't in full screen too, over their page area (Tirth, 2026-11-09: most people
+        // Margin over windows that aren't in full screen too, over their page area (decided 2026-11-09: most people
         // on Windows never use F11).
         opts.windowed_too = true;
         opts.app_version = crate::VERSION.into();

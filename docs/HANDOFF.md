@@ -1,13 +1,13 @@
 # The full-screen handoff with parking: design
 
-Draft 2, 2026-11-06 (revised after two critics' reviews: Appendix A). Nothing here is built. It replaces today's close-based cross-profile switch (`app/platforms/macos/shell/ProfileSwitch.swift`) with Tirth's freeze-based handoff, and keeps the old profile's window alive ("parked") instead of closing it.
+Draft 2, 2026-11-06 (revised after two critics' reviews: Appendix A). Nothing here is built. It replaces today's close-based cross-profile switch (`app/platforms/macos/shell/ProfileSwitch.swift`) with a freeze-based handoff, and keeps the old profile's window alive ("parked") instead of closing it.
 
 **Margin windows (2026-11-09):** this design had one chain of windows (one home window per profile, one shown window). `docs/BROWSER-WINDOWS.md` replaces that with a window per profile for **each** Margin window, and it overrides what this document says about home windows, the shown window, §6.2, §13.8 and §13.11 (answers 8 and 11). Where the two differ, WINDOWS.md holds.
 
 Where things are:
 
 - **Repo:** this repository, read at `merge/icloud-tabs` (df6877e). File:line references are to that commit.
-- **Labs:** `S = /private/tmp/claude-501/-Users-tirth-Projects-margin/1bb1ea82-aa29-4c73-85e7-63051090d15a/scratchpad`. `S/handoff/RESULTS.md`, `S/handoff/RESULTS-park.md`, `S/handoff/xp.swift`, `S/handoff/park.swift`, `S/handoff/lab.swift`, `S/stp/stp-handoff.swift`, `S/stp/stp-lab.swift`, and the STP logs `S/stp/margin-park-handoff.mp4.log`, `S/stp/stp-1793947553.log`, `S/stp/stp-1793947586.log`, `S/stp/stp-1793947722.log`.
+- **Labs:** `S` = the lab's working folder, outside the repo. `S/handoff/RESULTS.md`, `S/handoff/RESULTS-park.md`, `S/handoff/xp.swift`, `S/handoff/park.swift`, `S/handoff/lab.swift`, `S/stp/stp-handoff.swift`, `S/stp/stp-lab.swift`, and the STP logs `S/stp/margin-park-handoff.mp4.log`, `S/stp/stp-1793947553.log`, `S/stp/stp-1793947586.log`, `S/stp/stp-1793947722.log`.
 
 Words used below:
 
@@ -20,7 +20,7 @@ Words used below:
 
 ---
 
-## 0. What Tirth decided, and what this design adds
+## 0. What was decided, and what this design adds
 
 Decided (2026-11-05/06):
 
@@ -56,7 +56,7 @@ Each switch picks both, from the launch check, what failed this session, the set
 
 - So the modes are `park+freeze` (the default), `park` without a freeze (the person sees the slide, and A is still kept alive), `close+freeze` (the two-freeze close, §4.5), `close` without a freeze (today's switch, plus the drafts check), and `keep`.
 - **There's no lasting `plain` level.** Today's flow (`ProfileSwitch.swift:10-24`) is `close` without a freeze, run by the same machine.
-- **Session demotions** (until Margin.app quits, Tirth's "for the session"), each one log line:
+- **Session demotions** (until Margin.app quits: "for the session", as asked), each one log line:
   - **park off:** the bridge is missing at launch, the self-test failed, or a park or show didn't land after one retry.
   - **freeze off:** missing at launch, `SLSNewTransition` nonzero on two switches in a row, or a reveal nonzero (then released).
 - **Setup facts aren't demotions:** the display count and drafts are read per switch. Unplugging the second display brings the freeze back on the next switch.
@@ -146,7 +146,7 @@ A switch's target is a **window**, not just a profile: `Target { link, space, nu
 **The target's copy isn't linked** (link down, reconnecting, a new copy relinking):
 
 - **P has a parked window:** `waitingForLink`, up to 3 s, with the cover up and no freeze. The link usually comes back (`reconnectGrace`, `Shell.swift:398-407`). If it doesn't, the window is returned by number to its display's Desktop Space (§2.1 `returnToDesktop`, no copy needed), and the notice says: "Work's window is on the Desktop. Margin can't reach its extension right now." The window is never stranded, and the person never sees "isn't open in Safari" for a profile whose window exists.
-- **P has none:** its window is asked of Safari's own menu (`Shell.openProfileWindow`, Accessibility) **under the freeze**, as a create (§1.6): way `openProfile`. Preparing as for any switch (the cover, the cooldown), then the freeze, then the ask. Once its copy links with that window, the switch goes on as for that window (`focus`, or `show`), its space set then. A window opened beside a full-screen one is put in full screen by macOS, which slides to it, and before this the slide was seen (Tirth, 2026-11-09).
+- **P has none:** its window is asked of Safari's own menu (`Shell.openProfileWindow`, Accessibility) **under the freeze**, as a create (§1.6): way `openProfile`. Preparing as for any switch (the cover, the cooldown), then the freeze, then the ask. Once its copy links with that window, the switch goes on as for that window (`focus`, or `show`), its space set then. A window opened beside a full-screen one is put in full screen by macOS, which slides to it, and before this the slide was seen in real Safari (2026-11-09).
   - Safari can't be asked (no Accessibility, no menu item): revealed at once, then `waitingForProfile` (90 s) with the notice, as before.
   - The copy slower than the freeze: revealed at the watchdog, then `waitingForProfile` for the rest of the 10 s, the keys the person's; once it links, a freeze of its own for its window.
   - No freeze (off for the session, two displays): asked at once and seen, `waitingForProfile` as before.
@@ -579,7 +579,7 @@ Recovery, by where it failed. **A window is parked again only once its copy repo
 - **B fails after A was parked:** A shown (§3.1), full screen and focused, then B as above. Visible.
 - **B's show didn't land** (still parked after a retry): destroy B's own private Space only, and check whether B comes back (gate G5). If not, B's copy closes B (`closeWindow`: its tabs are kept as not-open tabs, `PLAN.md` §6), drafts permitting, and the switch goes on as a create. Parking is off for the session. Other parked windows aren't touched: each stays in its own Space.
 - **A's park didn't land:** A is a normal window on its Desktop Space, out of sight. Parking is off for the session. A is `close`d now (drafts permitting) or `keep`: it stays a normal window on the Desktop, and the notice says so.
-- **A's close failed:** retried once after 0.5 s, and logged. A stays where it is (Tirth's decision).
+- **A's close failed:** retried once after 0.5 s, and logged. A stays where it is (decided).
 
 ### 4.5 The close handoff (`close`): two freezes
 
@@ -718,7 +718,7 @@ New, kept small:
 - **`switchCover`** in the view model, only in A's overlay and only while `phase` is `preparing`, `waitingForLink` or `frozen`: `{ profile: { name, emoji, color, symbol? }, space: { name, emoji } }`.
 - **A guarded slot `<m-switch-cover>`** drawn over the page slot, like the launcher (`extension/themes/README.md:69`; slots in `ui/render.ts:38-69`, `ui/sanitize.ts:294`, `:373-385`). Every word is Margin's: "Switching to {profile}…", with the space's name under it. It's the one other exception, besides the launcher, to "never paint under `<m-page>`".
 - **Margin's default part** when a theme has none: a centred card in the theme's colours. Arcadia and Neubrutalism each get their own part.
-- No fade in the first build. The "animated later" Tirth mentioned is a later change.
+- No fade in the first build. The "animated later" that was mentioned is a later change.
 - **`coverShown`:** the overlay page posts `perform('switch.coverShown')` after the cover has been in the DOM for 2 animation frames and no swipe is settling (`m-settling`, `swipe.ts:63-72`).
 - **After the switch**, the cover goes from A's (now hidden) overlay with the next `across`. R4 makes sure A's page has drawn without it the next time A is shown.
 - **No snapshot of the target** in the first build. It would be stale, it would cross the 1 MB link cap (`docs/PROTOCOL.md:105`), and it would be the only page content the app holds (open question 5).
@@ -804,7 +804,7 @@ Built (WP12): `app/engines/webkit/safari/DevHooks.swift` (`DevHooks`, `DevHookWo
 
 ## 10. The test plan
 
-These must keep passing: `npm test`, `npm run test:theme`, `npm run test:app`, `tools/webkit-host/run.sh`. No `npm run test:e2e`. Tests never read Tirth's real Margin or Safari data, never call a real private function, and never freeze the screen.
+These must keep passing: `npm test`, `npm run test:theme`, `npm run test:app`, `tools/webkit-host/run.sh`. No `npm run test:e2e`. Tests never read real Margin or Safari data, never call a real private function, and never freeze the screen.
 
 ### 10.1 Unit and app tests (`npm run test:app`, `npm test`)
 
@@ -858,7 +858,7 @@ It must pass as before. A scenario for `frameProbe` in a real WebKit page (rAF a
 ### 10.3 The lab tool (`tools/handoff-lab/`, a repo test tool run on each macOS beta)
 
 - Built from the STP labs (`S/stp/stp-handoff.swift`, `S/stp/stp-lab.swift`, `S/handoff/park.swift`, `S/handoff/xp.swift`), sharing `PrivateCalls.swift`'s declarations so the lab tests what ships.
-- Runs against Safari Technology Preview with its own test extension (`S/stp/ext`), or release Safari in Test A/Test B. Only with Tirth's go-ahead, since it drives windows on screen (memory: on-screen test discipline: one dry run first, abort on the first failure).
+- Runs against Safari Technology Preview with its own test extension (`S/stp/ext`), or release Safari in Test A/Test B. Only once approved, since it drives windows on screen (memory: on-screen test discipline: one dry run first, abort on the first failure).
 - It records frames with ScreenCaptureKit, which needs Screen Recording **for the lab tool only**, never for Margin.app. That's how it checks that a freeze holds the screen (§4.3).
 - Its report is one file per run (`tools/handoff-lab/results/<build>-<date>.md`): per gate, pass or fail and the numbers. `docs/PRIVATE-APIS.md` links the latest.
 
@@ -883,7 +883,7 @@ Each gate is a mode of the lab tool. Until it passes, the part named stays off o
 | G13 | killing the freezing process mid-freeze; where windows land when the parker dies with a full-screen Space active | §4.3, §6.4 |
 | G14 | an own-Space panel (Margin's overlay behaviour) in a full-screen Space that's destroyed | §2.3 |
 | G15 | the active Space during Safari's entry, polled; a trackpad swipe during a freeze | §1.2's abort rule |
-| G16 | at least 30 handoffs in release Safari (Test A/Test B) with Margin's extension, real sites, and R3/R4 on: the reveal-time distribution and the late-reveal rate | the honest numbers, `Options.watchdog`, the step-5 limit. **Acceptance for the build, with Tirth's go-ahead** |
+| G16 | at least 30 handoffs in release Safari (Test A/Test B) with Margin's extension, real sites, and R3/R4 on: the reveal-time distribution and the late-reveal rate | the honest numbers, `Options.watchdog`, the step-5 limit. **Acceptance for the build, once approved** |
 | G17 | a watchdog reveal during A's exit, and during the settle | §1.4's claim that nothing shows |
 | G18 | the bridge on a minimized window | §1.5 rule 6 |
 
@@ -935,7 +935,7 @@ The build order is WP13 (lab tool) and WP1 first, so that G1 can run before anyt
 
 ---
 
-## 12. Open questions for Tirth
+## 12. Open questions
 
 1. At quit, parked windows go back to the Desktop as normal windows. OK, or should they be closed?
 2. After a crash, windows that came back by themselves are left as normal windows. Should they be parked again?
@@ -955,11 +955,11 @@ The build order is WP13 (lab tool) and WP1 first, so that G1 can run before anyt
 
 ---
 
-## 13. Tirth's answers (2026-11-06)
+## 13. Answers (2026-11-06)
 
 These override the sections they name. Where §12 asked, this is the decision.
 
-1. **Margin.app quits with windows parked (overrides §6.4 "a clean quit"):** every parked window is **closed** by its own copy (`closeWindow`, its tabs kept as not-open tabs, as any closed window's). Only the window on screen stays. This includes the quit from `npm run safari` (`scripts/app-swap.sh`) and `BundleWatch`. No drafts check at quit: Tirth (2026-11-06) wants every parked window closed, unsent text or not. A copy that isn't linked at quit: its parked windows are returned to the Desktop (they'd come back by themselves anyway).
+1. **Margin.app quits with windows parked (overrides §6.4 "a clean quit"):** every parked window is **closed** by its own copy (`closeWindow`, its tabs kept as not-open tabs, as any closed window's). Only the window on screen stays. This includes the quit from `npm run safari` (`scripts/app-swap.sh`) and `BundleWatch`. No drafts check at quit: every parked window is closed, unsent text or not (decided 2026-11-06). A copy that isn't linked at quit: its parked windows are returned to the Desktop (they'd come back by themselves anyway).
 2. **Margin.app crashes (overrides §6.4 "the new instance at launch"):** nothing can run at the crash, and the parked windows come back by themselves. The crash marker (`parked.json`) records what's needed to find them again: each parked window's number, link, copy window id, bounds and pid, plus the window that was shown (never a title or address). At the next launch, if Safari's pid is the same, each window from the marker that's still alive is **parked again** (no freeze, no handoff; logged), and the shown one stays. Windows whose pid changed (Safari restarted too) are left as normal windows (answer 3).
 3. **Safari restarts:** as designed: restored windows stay normal windows, each parked the first time a switch leaves it.
 4. **A draft in a window that close mode would close:** as designed (kept open), and the notice offers a **Close window** action so the person can close it themselves (`closeWindow` on their click, no drafts check then).
@@ -972,7 +972,7 @@ These override the sections they name. Where §12 asked, this is the decision.
 11. *(Replaced 2026-11-09 by docs/BROWSER-WINDOWS.md: every window is a Margin window with its own window per profile; ⌘N makes one.)* **One window per profile (overrides §6.11 and §1.5 rule 1's same-profile case):** a profile is one window, and its spaces switch inside it (`setSpace`), never by a handoff. A second window the person opens themselves (⌘N) is left alone: never parked, never a handoff target, and Margin's pins and tabs go to the profile's own window (the one Margin shows and parks, `registry.lastShown`). No same-profile handoffs are built.
 12. **No pre-made windows** for now. (A pre-made window costs a whole Safari window, ~100-300 MB, and saves about 0.3 s on the first switch into a profile only.)
 13. **Two or more displays must work like one display**, built right after the single-display handoff works properly. Until then, the multi-display rule of §6.7 stands.
-14. **The gates may run** (Tirth on another computer, 2026-11-06). The lab tool may use Screen Recording (through the terminal's existing grant); Margin.app never does.
+14. **The gates may run** (2026-11-06, while nobody was at the Mac). The lab tool may use Screen Recording (through the terminal's existing grant); Margin.app never does.
 15. **The launch self-test** (a hidden child copy for about 50 ms): OK.
 
 ---
@@ -1003,7 +1003,7 @@ Two critics reviewed draft 1. Each problem was checked against the code at df687
 | 18 | Safari focusing a parked window leaves it parked; draft 1's "focus B again" fights the person | **Accepted.** Confirmed: `S/stp/stp-1793947586.log` D | §2.6 (focus is the person's signal), §6.1, §6.6, G9 |
 | 19 | Recovery parks windows mid-entry, a state no lab parked | **Accepted** | §4.4 (parked again only once normal; visible recovery stated), G10 |
 | 20 | Verification can't see the private Space; invariant 3 can't be checked | **Accepted.** Invariant 3 restated in checkable terms, and the enumerator search added | §4.4, §4.1 row 13, G5, §6.8 |
-| 21 | The budget rests on 4 STP handoffs | **Accepted.** G16 is the acceptance figure, and it needs Tirth's go-ahead for on-screen runs | §1.4, §7, G16 |
+| 21 | The budget rests on 4 STP handoffs | **Accepted.** G16 is the acceptance figure, and it needs approval for on-screen runs | §1.4, §7, G16 |
 | 22 | (the same as 2) | **Accepted**, merged with 2 | §1.7 |
 | 23 | Sheets, dialogs and inspectors aren't handled | **Accepted** | §1.10, R5, G8 |
 | 24 | The launch checks don't check signatures; non-optional `Unmanaged` can crash | **Accepted** | §4.1 (encodings, optional returns), G13 |

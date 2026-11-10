@@ -181,7 +181,7 @@ final class SocketLink {
     struct Timing {
         var tick: TimeInterval = 5
         // (40, not 12, since 2026-11-07: Safari slows a background page's timers while it isn't in front, and a quiet
-        // copy then read as gone left Tirth's sidebar dimmed when he came back. A closed socket is heard at once.)
+        // copy then read as gone left the sidebar dimmed on coming back to Safari. A closed socket is heard at once.)
         var dead: TimeInterval = 40
         var keep: TimeInterval = 30 // the token and key, after the last link closes
         var hello: TimeInterval = 5 // an accepted socket, to say hello

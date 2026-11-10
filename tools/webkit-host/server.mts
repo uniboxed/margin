@@ -56,7 +56,7 @@ const FIRST_FRAMES = `<script>(() => {
   requestAnimationFrame(look);
 })();</script>`;
 const FIXTURES = {
-  // msu.edu's pattern (Tirth, 2026-11-07: "i can't scroll in there at all"): <html> clips sideways only, so its
+  // msu.edu's pattern (reported 2026-11-07: "i can't scroll in there at all"): <html> clips sideways only, so its
   // scrolling stays auto, and <body> says overflow: hidden, harmless where <html> scrolls. In the box <body> scrolls.
   'root-x-hidden': `<style>html { overflow-x: hidden } body { overflow: hidden; margin: 0 } .tall { height: 5000px; background: linear-gradient(#eee, #999) }</style><div class="tall">tall</div>`,
   // A page whose main thread stalls `stall` ms (default 1200), `after` ms

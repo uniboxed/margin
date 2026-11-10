@@ -1,4 +1,4 @@
-// margin-helper: the one part of Margin that runs all the time (Tirth, 2026-11-10: not the whole app). Started at
+// margin-helper: the one part of Margin that runs all the time (decided 2026-11-10: not the whole app). Started at
 // login by launchd (Margin.app registers it: SMAppService.agent, com.unibox.margin.helper.plist), it waits for a
 // browser Margin works in to open, and then starts Margin.app in the background, so Margin is up (about 0.3 s)
 // long before the browser's extension asks for its link (about 3 s after the browser opens). It does nothing else:

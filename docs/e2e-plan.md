@@ -2,7 +2,7 @@
 
 2026-11-06, branch `test/e2e-rewrite` (from `feat/margin-app`).
 
-Tirth asked for the e2e suite to be rewritten, and for it to test on pages that look and behave like real sites, not plain text pages.
+A rewrite of the e2e suite was requested, testing on pages that look and behave like real sites, not plain text pages.
 
 Today `tests/e2e/` has 48 tests. 45 are skipped since Margin 2 Phase 2 step 5: they drive the in-page UI, which is gone. Three still run (the archive alarm and two smoke checks). The pages they open are one `<h1>` each.
 
@@ -211,11 +211,11 @@ Rules for every test:
 
 - Wait on a condition, never a fixed time (except the link's 6 s grace, which is the thing tested).
 - Each test leaves its tabs as it found them; a file that can't, seeds again.
-- A test that finds a product bug stays in, marked `todo` with what it found, and the bug goes to Tirth. It isn't skipped silently.
+- A test that finds a product bug stays in, marked `todo` with what it found, and the bug is reported. It isn't skipped silently.
 
 ## 4. Speed
 
-Target: the whole suite in under 4 minutes on Tirth's Mac. Today's suite takes 1 min 49 s for its 3 live tests (a build, then a browser launched in each of 13 files, most of them only to skip).
+Target: the whole suite in under 4 minutes on the development Mac. Today's suite takes 1 min 49 s for its 3 live tests (a build, then a browser launched in each of 13 files, most of them only to skip).
 
 - One browser pair per file: one Chromium (persistent context, the extension) and one WebKit (the overlays). Tests in a file share them. Launch and link take about 2–3 s per file, so under a minute for 18 files.
 - One test build per run: `buildTo` once, then a copy per file only for its manifest key and user data dir (the bundle patch is a string replace, milliseconds).
@@ -251,5 +251,5 @@ Each is one commit (`test(e2e): …`), with `npm test`, `npm run test:theme`, `n
 ## Open questions
 
 - The probe's 2.3 s highlight after a switch made in the browser right after a click in the overlay: a runtime hold, or a bug? Item 5's test says.
-- If the `canSocket` string moves with a build change, the harness fails at once. A one-line test switch in `link.ts` would end that; it needs Tirth's OK, as it touches the extension.
+- If the `canSocket` string moves with a build change, the harness fails at once. A one-line test switch in `link.ts` would end that; it needs approval, as it touches the extension.
 - Pixel arrives with Phase 6. `themes.test.ts` picks it up from `PACKAGE_THEMES` without changes here.

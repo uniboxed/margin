@@ -53,7 +53,7 @@ enum PassThrough {
     }
 }
 
-// Where the overlay's own windows take the mouse whatever its `ignoresMouseEvents` says (Tirth, 2026-11-06:
+// Where the overlay's own windows take the mouse whatever its `ignoresMouseEvents` says (seen 2026-11-06:
 // a scroll over the sidebar scrolled the page behind it; sometimes nothing in the layout took a click): the
 // window server passes the pointer through a window's fully transparent pixels, and the overlay's one
 // window follows the pointer after the fact (the first event over Margin's UI, coming from over the page,
@@ -117,7 +117,7 @@ struct PointerWant: Equatable {
     }
 }
 
-// What keeps the browser's own edge reveal from the pointer (Tirth, 2026-11-05: in full-screen
+// What keeps the browser's own edge reveal from the pointer (seen 2026-11-05: in full-screen
 // Safari the pointer at the left edge also opened Safari's sidebar behind Margin's). The overlay
 // is one window whose `ignoresMouseEvents` follows the pointer after the fact, so the first moves
 // at the edge, coming from over the page, still reached Safari. A thin panel at the window's left

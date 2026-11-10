@@ -3,7 +3,7 @@
 // An update (scripts/safari.sh, or any other copy over ~/Applications/Margin.app)
 // puts a new bundle where the running app's was. Before safari.sh quit the
 // running app, the old process ran on: Safari refused every `link` it
-// dispatched (SFErrorDomain 1, SFErrorNoExtensionFound: Tirth's runs of
+// dispatched (SFErrorDomain 1, SFErrorNoExtensionFound: real runs of
 // 2026-11-05, pids 73613 and 50812), and the extension handler, seeing a
 // Margin.app running, never started the new one, so a copy that needed a new
 // link never got one. It would also have drawn the new build's overlay files

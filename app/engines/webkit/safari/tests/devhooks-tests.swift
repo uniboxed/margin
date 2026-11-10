@@ -275,9 +275,9 @@ private func summaryPrivacyTests() {
     var said: [String] = []
     Diagnostics.echo = { said.append($0) }
     defer { Diagnostics.echo = echo }
-    let secret = #"Cannot access contents of url "https://bank.example/login?u=tirth" (“Bank — Secret Title”) www.bank.example data:text/html,hi"#
+    let secret = #"Cannot access contents of url "https://bank.example/login?u=nora" (“Bank — Secret Title”) www.bank.example data:text/html,hi"#
     let toB = ProfileSwitch.Target(profile: hB, space: "b1")
-    func clean(_ l: String) -> Bool { !["bank.example", "https://", "Secret", "tirth", "data:text"].contains { l.contains($0) } }
+    func clean(_ l: String) -> Bool { !["bank.example", "https://", "Secret", "nora", "data:text"].contains { l.contains($0) } }
     do {
         let (w, s) = handoffSetup { w in
             w.errors["\(hB) setWindowState"] = secret

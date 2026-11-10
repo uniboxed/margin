@@ -72,7 +72,7 @@ enum PrivateCalls {
         var encoding: String // as macOS 27.2 (26B123) has it
         var label: String { "\(className) -\(name)" }
     }
-    // Read on Tirth's Mac with method_getTypeEncoding (macOS 27.2, 26B123). The perform selector is
+    // Read on a real Mac with method_getTypeEncoding (macOS 27.2, 26B123). The perform selector is
     // SkyLight's own (both classes, implemented in SkyLight); it's checked on each class.
     nonisolated static let selectors = [
         Selector(className: addRemoveClass, name: initAddRemove, encoding: "@36@0:8Q16@24I32"), // (UInt64 space, NSArray windows, UInt32 options)

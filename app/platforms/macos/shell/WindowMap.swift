@@ -1,4 +1,4 @@
-// The window map: step 1 of the window module (Tirth, 2026-11-07: "create a separate module that would do all the
+// The window map: step 1 of the window module (asked 2026-11-07: "create a separate module that would do all the
 // window related stuff and it know what window is where … when i test in multiple screen").
 //
 // One place that knows every window Margin cares about, as one snapshot: the browsers' windows and Margin's own

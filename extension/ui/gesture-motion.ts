@@ -2,7 +2,7 @@
 // (Margin.app's overlay: app/shared/host/overlay.ts). The page says it at most
 // once a frame, a frame or two late, through the copy (content/trackpad.ts
 // gestureTeller, ui/app-feedback.ts createGestureFeedback); drawn as said, the
-// badge moved in jumps (Tirth, 2026-11-08). So it's eased toward what was
+// badge moved in jumps (seen 2026-11-08). So it's eased toward what was
 // last said, every display frame, and written as one CSS custom property
 // (`apply`: --gesture-live on the overlay's root, which the themes' gesture
 // badges read, falling back to the view model's `gesture.progress`), with

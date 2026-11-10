@@ -14,12 +14,12 @@ build and run it in `app/platforms/windows/README.md`.
   host on every OS.
 - **One link, as on the Mac** (below): the copy's WebSocket to 127.0.0.1, found through the connector. Chrome's and
   Edge's copies link on Windows as on the Mac (`extension/engines/chromium/capabilities.ts` `linksApp`).
-- **Next:** Tirth's first run on Windows (`app/platforms/windows/README.md`, then `docs/windows/UNVERIFIED.md` line by line);
-  the keys' defaults with Tirth (DECISIONS.md "Margin for Windows planned"); the overlay page's `platform.os` (it
+- **Next:** the first run on a real Windows PC (`app/platforms/windows/README.md`, then `docs/windows/UNVERIFIED.md` line by line);
+  the keys' defaults, still to be agreed (DECISIONS.md "Margin for Windows planned"); the overlay page's `platform.os` (it
   says `mac` whatever the app's hello says: `extension/ui/host-app.ts`, a reviewed change to the shared overlay page);
   Chromium's profile names from `Local State`; opening a profile with no window (`--profile-directory`).
 
-## One link for every OS (Tirth's restructure, 2026-11-09)
+## One link for every OS (the restructure, 2026-11-09)
 
 Every copy links over its own WebSocket to `127.0.0.1`, on Windows as on the Mac: the welcome with the key, the hello,
 every message the same (docs/PROTOCOL.md, Transport). margin-core has the WebSocket server, sans IO
@@ -52,7 +52,7 @@ the Mac either). Replaced: margin.exe's own relay mode (`relay.rs`, the pipe's 4
 `relayHello`/`relayWelcome`/`relayDown`/`relayUp` `handshake.rs`, its host registration `install.rs`) and the shell's
 "the relay's facts win" (the hello rewritten with the relay's browser and pid).
 
-## What Tirth asked
+## What was asked
 
 > "let's do it in rust then. i would like you to create the architecture ready for all OS and write app for windows
 > for now. i will do the testing later. we will still focus on macos after that but i want to get started and get
@@ -61,7 +61,7 @@ the Mac either). Replaced: margin.exe's own relay mode (`relay.rs`, the pipe's 4
 
 Then: do it in its own worktree and session, so macOS work goes on in the main checkout.
 
-## Decisions so far (Tirth, 2026-11-09)
+## Decisions so far (2026-11-09)
 
 - **Rust** for the Windows shell, chosen over C#/.NET and C++. It's small, starts fast, uses little memory, gets all of
   Win32 through Microsoft's `windows` crate, and the same code can carry a Linux shell later.
@@ -74,9 +74,9 @@ Then: do it in its own worktree and session, so macOS work goes on in the main c
 - **No Chrome side panel:** it has Chrome's own header and width limits. Margin draws its own overlay, as on the Mac.
 - **No in-page sidebar as the product:** no product build draws the sidebar in pages (DECISIONS.md, "Margin 2 ships
   for macOS only", 2026-11-04). `createInPageHost` (`extension/ui/host.ts`) remains a development/test host only.
-- **Linux: later, undecided.** Under Wayland an app can't follow or cover another app's windows. The options to put
-  to Tirth when it comes up: the in-page host as Linux's product, X11 only, or Margin as its own Chromium browser.
-- **Testing:** Tirth tests on Windows later. Nothing here can run on Windows from this Mac: compile-check the
+- **Linux: later, undecided.** Under Wayland an app can't follow or cover another app's windows. The options to choose
+  from when it comes up: the in-page host as Linux's product, X11 only, or Margin as its own Chromium browser.
+- **Testing:** on real Windows, later. Nothing here can run on Windows from this Mac: compile-check the
   Windows code, unit-test the OS-neutral code on the Mac, and keep a list of what's unverified (`docs/windows/UNVERIFIED.md`).
 - When work starts for real, record a DECISIONS.md entry: Windows planned, which supersedes "macOS only" for Windows.
 
@@ -133,7 +133,7 @@ Windows counterpart; (c) Safari-only; (d) private macOS APIs.
   overrides them. Keys are held only while a linked browser is in front and its front window has a shown overlay (or
   mid-switch). Tab and space keys repeat. `Shell.run`: palette and sidebar go to the front overlay as `command`; the
   overlay highlights next/prev tab at once, then asks `navigate`; spaces `navigate` or switch profiles; new window
-  sends `newWindow`. On Windows, ⌘ is Ctrl (Ctrl+T for the palette); pick the defaults with Tirth.
+  sends `newWindow`. On Windows, ⌘ is Ctrl (Ctrl+T for the palette); the defaults are still to be agreed.
 - **Glue**: `Shell.swift` (polling 0.25 s while a browser is in front, 1 s idle, 30 Hz bursts; `LayoutOutbox`,
   `DrawnOutbox`, `HeldPushes`, `overlayFrame`, `hello(for:)`, `perform`), `ShellProfiles.swift` (`across`, space keys
   across profiles, `newMarginWindow`), `ProfileSwitch.swift` ((a): the close-based switch to another profile's space,
@@ -190,8 +190,8 @@ Windows counterpart; (c) Safari-only; (d) private macOS APIs.
 ## Rules for this work
 
 - `CLAUDE.md` and SPEC.md's Working rules apply: Conventional Commits, subject line only, no attribution of any kind;
-  no assistant or tool names in branches, commits or PRs; commit as
-  `git -c user.name="Tirth Patel" -c user.email="github@tirth.io"`.
+  no assistant or tool names in branches, commits or PRs; commit with
+  the author name and address that `.mailmap` maps every commit to (`git -c user.name=… -c user.email=…`).
 - Work on `feat/windows-shell`, in its own worktree (`margin-windows`, beside the main checkout). Never touch `app/platforms/macos/shell/`,
   `app/platforms/macos/startup/`, `xcode/` or the Safari build; never run `npm run safari` from here.
 - A change to shared code (`extension/`, `app/shared/host/`) must keep the macOS bundles identical, or differ only by
@@ -199,11 +199,11 @@ Windows counterpart; (c) Safari-only; (d) private macOS APIs.
   before each commit, and the full gate (`npm run gate`) once before any merge to main.
 - TypeScript is under full `strict` (DECISIONS.md "Strict types"): no `any` to get past the checker, and `!` only
   with an invariant comment. Real bugs get their own commit, with a failing test first.
-- Never test on Tirth's screen without asking: no windows of tests shown. Tirth wants speed: parallel work where it
+- Never test on the Mac's screen without asking: no windows of tests shown. Speed matters: parallel work where it
   helps, the gate once, reviews only for big pieces.
 - Rust: rustup 1.99.1 at `~/.cargo/bin` (not on PATH: `export PATH="$HOME/.cargo/bin:$PATH"`), targets
   `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`, clippy and rustfmt installed. Check the Windows code with
   `cargo check --target x86_64-pc-windows-msvc` (no linking needed), test `margin-core` with `cargo test` on the Mac.
-  Building a real `.exe` needs MSVC's linker: Tirth builds on Windows when he tests (put the steps in
+  Building a real `.exe` needs MSVC's linker: it's built on Windows when it's tested there (put the steps in
   `app/platforms/windows/README.md`).
 - Node is at `/opt/homebrew/bin` (add it to PATH).

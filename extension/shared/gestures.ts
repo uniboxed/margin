@@ -101,7 +101,7 @@ function containScroll(el: HTMLElement) {
 // scrolls up and down at its top (a list or an editor scrolled down keeps
 // its own top: it scrolls up first)? From anywhere in the page: an app-like
 // site scrolls a pane of its own, not the page, and a pane at its top is the
-// page's top there (Tirth, 2026-11-08: "2 finger swipe down from anywhere in
+// page's top there (requested 2026-11-08: "2 finger swipe down from anywhere in
 // the tab content"). The cheap question first: an element not scrolled down
 // has nothing to ask of its style.
 function atPageTop(event: WheelEvent, doc: Document) {
@@ -123,7 +123,7 @@ const NO_BOUNCE_CSS = ':root { overscroll-behavior-y: none !important; }';
 // `pinch()`, for a pinch starting in `win` with the page at its normal scale:
 // 'native' (Safari's, but for what opens its overview) or 'block' (none: the
 // new-tab page, full screen). (Margin's own pinch, a page with a box scaled at
-// <html>, was removed 2026-11-07: Tirth found it slow next to Safari's own.)
+// <html>, was removed 2026-11-07: too slow next to Safari's own.)
 // `wanted()`: whether the guard is on by the settings alone (default:
 // getSettings says so). Returns { update() }: call it when settings change
 // (adds or removes the no-bounce rule, and the wheel listener).

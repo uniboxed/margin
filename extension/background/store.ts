@@ -347,7 +347,7 @@ export async function pendingQueue(since: number = 0) {
 export const dataMetas = () => ({ ...dataMeta });
 
 // Keys whose write failed (Safari's storage can be busy: SQLite error 5 in
-// Tirth's log while two copies wrote at once): written again shortly, and
+// a real session's log while two copies wrote at once): written again shortly, and
 // with the next write. The cache keeps the change meanwhile.
 const unsaved = new Set<any>();
 let retryTimer: number | null = null;

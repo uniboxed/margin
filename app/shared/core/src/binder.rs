@@ -7,8 +7,8 @@
 //! calls focused, and when its copy heard each one focused and created (`focusedAt`, `createdAt`: the same
 //! machine's clock). The window server knows them by number, with bounds, whether each is on screen and the order
 //! front to back, but not whose they are: every profile's windows are one process's. Two full-screen windows on
-//! one display have the same bounds, and copies' `focused` flags lag and disagree while a Space changes (Tirth's
-//! log, 2026-11-05: two profiles' windows swapped for 650 ms when focus broke the tie). So:
+//! one display have the same bounds, and copies' `focused` flags lag and disagree while a Space changes (a real
+//! session's log, 2026-11-05: two profiles' windows swapped for 650 ms when focus broke the tie). So:
 //!
 //!  - A binding, once made, holds while both windows exist. It never changes on a focus flag. It goes when the
 //!    extension's window closes, the window server's goes, the copy goes (or a new copy of Margin starts, whose
@@ -381,7 +381,7 @@ pub struct Timing {
     /// What the pages say holds this long, over reads that told something, before a window is bound by it.
     pub visible_hold: f64,
     /// A page that has said nothing doesn't stop the one that says it's shown, once this long has passed after
-    /// `visible_lag` from the last change (Tirth's log, 2026-11-06 21:24: one page never spoke, nothing drawn).
+    /// `visible_lag` from the last change (a real session's log, 2026-11-06 21:24: one page never spoke, nothing drawn).
     pub visible_quiet: f64,
     /// A bound window on screen whose page has said it's hidden this long, while another profile's same-bounds
     /// window's page says it's shown: not its window, the binding goes.
@@ -973,7 +973,7 @@ impl WindowBinder {
             settled_pages: true,
         };
 
-        // A read that tells nothing (Tirth's log, 2026-11-05: reads without any of Safari's windows, next to Space
+        // A read that tells nothing (a real session's log, 2026-11-05: reads without any of Safari's windows, next to Space
         // changes, each back a read later): no list at all, or none of the browser-sized windows the last read that
         // told something had, or none of the bound ones, or none at all, and no new one, while the browser runs and
         // its copies still have windows. Nothing is learned or forgotten from it, for `absent` at most.
@@ -1172,7 +1172,7 @@ impl WindowBinder {
         if !collapsed {
             // The browser's windows on screen (one missing from this read as it was). One come on screen: a
             // transition from when it may have begun; a Space change heard since then may have come after it: the
-            // same transition, from the earlier of the two (Tirth's log, 2026-11-05 21:53:03). Only gone off screen:
+            // same transition, from the earlier of the two (a real session's log, 2026-11-05 21:53:03). Only gone off screen:
             // the end of the last change if it's that near (a slide), else a transition of its own.
             let mut on_now: BTreeSet<i64> = f.candidates.iter().filter(|w| w.on_screen).map(|w| w.number).collect();
             for n in &self.last_on_screen {
@@ -1878,7 +1878,7 @@ impl WindowBinder {
                 continue;
             };
             // (Its bounds, or the ones it settled in: a window offset for a moment, in a Space's slide, still has
-            // its own. Tirth's log, 2026-11-06 21:25:22.)
+            // its own. A real session's log, 2026-11-06 21:25:22.)
             if !(fits(e, w) || e.bounds.is_some_and(|b| self.has(f, number, &b))) {
                 let eb = e.bounds.map(|b| b.describe()).unwrap_or_else(|| "no bounds".into());
                 self.note(format!("{heard}: doesn't fit window {number} ({eb} and {})", w.bounds.describe()));
@@ -1972,7 +1972,7 @@ impl WindowBinder {
     }
 
     // ---- visible at once: a window come on screen, and the one page that newly says it's shown ----
-    // (Tirth's log, 2026-11-06 23:30:19-29: macOS says the Space changed only once a slide is over, and a page says
+    // (a real session's log, 2026-11-06 23:30:19-29: macOS says the Space changed only once a slide is over, and a page says
     // it's shown as its window starts sliding in.) A page is said shown only while its window is on screen. So a
     // free window `w` on screen is bound to the free page with its bounds that said it's shown since `w` came on
     // screen (`visible_fresh` before the read before it was seen there), when: that page is the only free one saying
@@ -2969,7 +2969,7 @@ mod tests {
         assert!(w.numbers() == w.truth && w.wrong.is_empty(), "and the next binds the other");
     }
 
-    // ---- the swap in Tirth's log, replayed (14:32:20) ----
+    // ---- the swap in a real session's log, replayed (14:32:20) ----
     #[test]
     fn the_swap_replayed() {
         let mut w = World::new();
@@ -3324,7 +3324,7 @@ mod tests {
         }
     }
 
-    // ---- the window server's list blips (Tirth's log, 2026-11-05 21:53:39) ----
+    // ---- the window server's list blips (a real session's log, 2026-11-05 21:53:39) ----
     fn three() -> World {
         let mut w = World::new();
         w.add(18278, SCREEN, false);
@@ -3685,7 +3685,7 @@ mod tests {
         );
     }
 
-    // ---- the pages say which window is shown (Tirth's log, 2026-11-05 21:52-21:56) ----
+    // ---- the pages say which window is shown (a real session's log, 2026-11-05 21:52-21:56) ----
     fn three_shown(lag: PageLag) -> World {
         let mut w = World::new();
         w.add(18278, SCREEN, false);
@@ -3858,7 +3858,7 @@ mod tests {
         );
     }
 
-    // Tirth's log, 2026-11-06 21:24:30-21:25:05: Safari reopened with five profiles, one full-screen window each.
+    // A real session's log, 2026-11-06 21:24:30-21:25:05: Safari reopened with five profiles, one full-screen window each.
     const FS: Rect = Rect::new(0.0, 33.0, 1512.0, 949.0);
     const D: &str = "safari:s-default";
     const P2: &str = "safari:s-4282";
@@ -4044,7 +4044,7 @@ mod tests {
 
     #[test]
     fn focus_moved_with_its_window_offset() {
-        // Tirth's log, 2026-11-06 21:25:20: no page can say, the focus change says which, but the window was offset
+        // A real session's log, 2026-11-06 21:25:20: no page can say, the focus change says which, but the window was offset
         // by a swipe begun when it was weighed: still bound by its settled bounds.
         let (d, p2, p3) = ("safari:s-default", "safari:s-4282", "safari:s-defee");
         let mut w = World::new();
@@ -5236,7 +5236,7 @@ mod tests {
             w(65170, 7, 0, 1.0, full),
             w(65172, 7, 0, 1.0, full),
         ];
-        assert!(stacked_above_exactly(&list, Some(&[]), 65170, &full, 50, &own(&[65172, 65173])), "Tirth's probe");
+        assert!(stacked_above_exactly(&list, Some(&[]), 65170, &full, 50, &own(&[65172, 65173])), "the real probe");
 
         // The every-window list's order (stacked_above): the overlay just above, nothing between.
         let at = |mut s: ServerWindow, order: usize| {

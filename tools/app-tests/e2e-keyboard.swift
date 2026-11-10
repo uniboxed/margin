@@ -66,7 +66,7 @@ func keyboardScenario() async {
     (await js(o.webView, "const a = document.activeElement; return a && a !== document.body ? (a.getAttribute('m-input') ?? a.localName) : ''") as? String) ?? "?"
   }
   func paletteOpen(_ o: OverlayController) async -> Bool { await js(o.webView, "return !!document.querySelector('.palette-layer')") as? Bool ?? false }
-  // A field of Margin's focused without the keyboard (what Tirth saw: typing went to Safari).
+  // A field of Margin's focused without the keyboard (seen in real use: typing went to Safari).
   func fieldWithoutKeys(_ o: OverlayController) async -> Bool {
     let f = await focused(o)
     return !o.hasKeyboard && (f == "input" || f == "palette" || f == "launcher")

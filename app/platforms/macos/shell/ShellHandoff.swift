@@ -1,5 +1,5 @@
 // The shell's side of the profile handoff (docs/HANDOFF.md §2.3-2.6, §1.7, §6,
-// with Tirth's answers in §13): the shell is the switch's HandoffWorld, and
+// with the answers in §13): the shell is the switch's HandoffWorld, and
 // each read of the window server carries the parked windows along.
 //
 // - The gate: the handoff runs only with `Options.handoff` on (forApp: the
@@ -442,7 +442,7 @@ extension Shell: HandoffWorld {
         for (key, number) in gone {
             guard let entry = links[key.link], entry.connection.isUp, entry.mirror.hasState, !parking.isParked(number) else { continue }
             // A Margin window's shown window (its line's), or the session's by its key when the switch that showed
-            // it had no number yet. Only that Margin window's parked windows close (docs/BROWSER-WINDOWS.md §3, Tirth
+            // it had no number yet. Only that Margin window's parked windows close (docs/BROWSER-WINDOWS.md §3, decided
             // 2026-11-09): other Margin windows are as they were.
             let own = parking.parkedClosingWith(number) ?? (parking.line(of: number) == nil && switcher.session.shown?.key == key ? Set(parking.entries.keys) : nil)
             guard let own, !own.isEmpty else { continue }

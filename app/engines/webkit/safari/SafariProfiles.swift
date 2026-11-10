@@ -1,4 +1,4 @@
-// Safari's own profile names (Phase 2 step 9, Tirth 2026-11-05: "option A"),
+// Safari's own profile names (Phase 2 step 9, chosen 2026-11-05: "option A"),
 // read from Safari's files with Full Disk Access, read only, and kept in step
 // with Safari while Margin.app runs. Without the permission nothing here is
 // read and Margin keeps the names typed in its Edit Profile (BrowserProfiles.swift).
@@ -21,8 +21,8 @@
 //
 // A profile can hold more than one entry of Margin's: Safari keeps a removed
 // extension's state (with a `RemovedDate`), and a build signed by another
-// team, or unsigned ("(UNSIGNED)"), is another key with its own id. Tirth's
-// named profiles have the unsigned build of 2026-10-24 (removed 10-30) next
+// team, or unsigned ("(UNSIGNED)"), is another key with its own id. A real
+// Mac's named profiles have the unsigned build of 2026-10-24 (removed 10-30) next
 // to the signed one: the first key in sorted order was the removed one, so
 // each name went to a copy that never links ("Margin 2: Safari
 // reliability"). The entry used (chosenEntry): never a removed one; the one

@@ -270,7 +270,7 @@ const KIND_ORDER: Record<string, number> = { tab: 0, action: 1, pin: 2, archive:
 
 // iCloud Tabs (Margin.app with Safari: shared/cloud-tabs.ts) matching what's
 // typed: their own section after Margin's own rows (open tabs, pins, actions,
-// the archive) and before "Search for …", one run per device ("On Tirth's
+// the archive) and before "Search for …", one run per device ("On Nora's
 // iPhone"), the device with the best match first (as good a match: the one
 // used most recently). Never before typing, and
 // not a page that's open here already (its tab is the row for it). Chosen,

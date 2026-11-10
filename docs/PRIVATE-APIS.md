@@ -80,13 +80,13 @@ Notes on the rows:
 - `SLSOrderWindow`, `SLSMoveWindow`, `SLSSetWindowAlpha`, `SLSSetWindowLevel`, `SLSSetWindowTags` and other direct window calls on another process's window: refused across processes with error 1000, or silently ignored (the cross-process lab, `xp.swift`, 2026-11-06).
 - `SLSAddWindowsToSpaces`, `SLSRemoveWindowsFromSpaces`, `SLSMoveWindowsToManagedSpace`, `SLSSpaceAddWindowsAndRemoveFromSpaces`, `SLSSetWindowListWorkspace` (the direct, non-bridged Space calls): tried in the same lab. The bridge (rows 10-12) is the form every later lab used to move Safari's windows.
 - `SLSBridgedMoveWindowsToManagedSpaceOperation`: replaced by rows 10-11, which give each parked window its own private Space.
-- Minimizing, Desktop parking, Accessibility, AppleScript, and screen recording in the mechanism: ruled out by Tirth (`docs/HANDOFF.md` §0).
+- Minimizing, Desktop parking, Accessibility, AppleScript, and screen recording in the mechanism: ruled out (`docs/HANDOFF.md` §0).
 
 ## Running the lab on a macOS beta
 
 The lab tool is `tools/handoff-lab/`. Its `README.md` is the runbook. It compiles Margin.app's own `PrivateCalls.swift`, `Freezer.swift`, `SpaceReads.swift` and `BridgeParker.swift`, so it tests what ships. Its gates are `docs/HANDOFF.md` §10.4, plus `holds`.
 
-1. **Ask Tirth first.** The lab drives windows on screen. It drives them only in Safari Technology Preview, and only windows it opened itself. Release Safari is reached only through Margin.app's dev hook, which refuses any profile but Test A and Test B. Never another profile.
+1. **Ask first.** The lab drives windows on screen. It drives them only in Safari Technology Preview, and only windows it opened itself. Release Safari is reached only through Margin.app's dev hook, which refuses any profile but Test A and Test B. Never another profile.
 2. **One dry run first:** `tools/handoff-lab/build/handoff-lab <gates> --dry-run` prints the plan and read-only checks and touches nothing. Nothing runs without `--go`. Then run one gate at a time, and **abort on the first failure** (the lab stops by itself).
 3. **`holds` and G1 first.**
    - `holds` checks that the freeze still holds the screen, which the product can't check.

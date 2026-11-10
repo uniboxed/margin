@@ -183,7 +183,7 @@
         </div>
         <div class="results" id="margin-results" role="listbox">
           <m-for each="palette.rows" as="r">
-            <!-- A run of rows from one place (iCloud Tabs: "On Tirth's iPhone"): its heading. -->
+            <!-- A run of rows from one place (iCloud Tabs: "On Nora's iPhone"): its heading. -->
             <m-if test="r.sectionStart"><div class="result-section" aria-hidden="true">{{r.section}}</div></m-if>
             <a class="result" role="option" data-id="{{r.id}}" title="{{r.title}}" m-attr:aria-selected="{{r.selected}}" m-attr:aria-description="{{r.section}}" m-action="palette.run" m-arg="{{r.id}}">
                 <m-if test="r.emoji">

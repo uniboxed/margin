@@ -8,7 +8,7 @@
 // copy as `navigate`), ⌘T, the palette (opened in the front window's overlay,
 // which then takes the typing: the app's own, with no round trip through the
 // browser), and the sidebar's show/hide key. A held tab or space key repeats
-// at the Mac's key repeat (a hot key fires only once per press; Tirth,
+// at the Mac's key repeat (a hot key fires only once per press; requested
 // 2026-11-05), each repeat marked as one: the copy takes repeats like presses,
 // only one switch at a time with Safari, the newest waiting (navigation.ts),
 // and a repeat never starts a switch to another profile's space (at most one
@@ -248,7 +248,7 @@ final class AppShortcuts {
     // ---- the quit guard ----
     // ⌘Q and ⌥⌘Q (Quit and Keep Windows), taken while a linked browser is in front with windows Margin has parked
     // (Shell.updateKeys): Margin's first, so it closes those windows before the browser saves its windows for its
-    // next launch, then hands the same keys on (Shell.quitBrowser; Tirth, 2026-11-07: parked windows came back as
+    // next launch, then hands the same keys on (Shell.quitBrowser; seen 2026-11-07: parked windows came back as
     // small windows on the Desktop after Safari quit). Never held otherwise: ⌘Q is the browser's as it always was.
     static let quitCombos: [(combo: Combo, keepWindows: Bool)] = [(Combo.parse("Meta+KeyQ")!, false), (Combo.parse("Alt+Meta+KeyQ")!, true)]
     static let quitIdBase: UInt32 = 900

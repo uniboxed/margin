@@ -10,9 +10,9 @@
 //   2. on screen: not, while its window is → ordered in again over it (`.reorder`);
 //   3. its frame: not the one asked → said (the show path sets it again on each read).
 // (Not its order against its window: the window list's order isn't front to back between Margin's windows and
-// Safari's, Tirth's trace 2026-11-07: an overlay in front read 136 against its window's 1.)
+// Safari's, a real session's trace 2026-11-07: an overlay in front read 136 against its window's 1.)
 // Each only once the placement is `grace` old and on two maps in a row (a map read just after an order can lag).
-// Pure: every case is a test, and a trace of Tirth's replays through it.
+// Pure: every case is a test, and a real session's trace replays through it.
 
 import CoreGraphics
 

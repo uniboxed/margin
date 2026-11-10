@@ -1,4 +1,4 @@
-/* Neubrutalism: Tirth's "Neubrutalism" board, ported from the Design canvas
+/* Neubrutalism: the "Neubrutalism" board, ported from the Design canvas
    (Main.dc.html). Dotted ground in the space's color, 2.5 px-bordered cards
    with hard offset shadows, the page as an 18 px-rounded card. */
 
@@ -327,7 +327,7 @@
 .palette-input { flex-shrink: 0; height: 56px; box-sizing: border-box; border: 3px solid var(--ink); border-radius: 12px; padding: 0 16px; font: inherit; font-size: 20px; font-weight: 500; background: var(--paper); color: var(--ink); outline: none; }
 .palette-row { flex-shrink: 0; width: 100%; justify-content: flex-start; gap: 12px; height: 46px; padding: 0 12px; border-radius: 10px; font-size: 15px; font-weight: 500; }
 .palette-row.on { background: rgba(17, 17, 17, .08); }
-/* The heading of a run of rows from one place (iCloud Tabs: "On Tirth's iPhone"): a sky-blue tag. */
+/* The heading of a run of rows from one place (iCloud Tabs: "On Nora's iPhone"): a sky-blue tag. */
 .palette-section { flex-shrink: 0; align-self: flex-start; max-width: 100%; margin-top: 6px; padding: 2px 8px; border: 2px solid var(--ink); border-radius: 6px; background: #8fdcff; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; }
 /* The board's tag: the row's space's color (white for Archived, Search…), a 2 px ink border,
    capitals, one width for every row so the icons and titles after it line up. */

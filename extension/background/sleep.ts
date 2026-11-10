@@ -1,7 +1,7 @@
 // Tabs not used for a while, put to sleep to free their memory (as Arc does):
 // `settings.sleepAfterHours` (4; 0: never) since the tab was last used,
 // except sites on `settings.neverSleepSites`. Safari keeps every tab's page
-// process alive, however long it's been hidden (Tirth's 35 tabs: 16.5 GB),
+// process alive, however long it's been hidden (a real Mac's 35 tabs: 16.5 GB),
 // and gives extensions no tabs.discard (WebKit's extension engine has none,
 // 2026-11-04). So in Safari Margin closes the browser tab and keeps its
 // Margin tab, not open, in its space (Margin 2, PLAN.md §6:

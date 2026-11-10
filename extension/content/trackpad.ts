@@ -16,7 +16,7 @@ export const GESTURE_TELL_MS = 16;
 // progress in steps of 0.01 at most once a frame (GESTURE_TELL_MS), the last
 // one held back told once that's up (`later`), so the overlay's badge, eased
 // there every frame (ui/gesture-motion.ts), follows the fingers smoothly
-// (Tirth, 2026-11-08: steps of 0.05 every 30 ms looked jumpy). Nothing while
+// (2026-11-08: steps of 0.05 every 30 ms looked jumpy). Nothing while
 // it stays idle (most wheel events).
 export function gestureTeller(kind: 'pull' | 'swipe', tell: (g: { kind: string, state: string, progress: number, direction: number }) => void, now = () => performance.now(), later = (fn: () => void, ms: number) => setTimeout(fn, ms), cancel = (t: number) => clearTimeout(t)) {
   let state = 'idle';

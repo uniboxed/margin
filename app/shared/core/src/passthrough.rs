@@ -114,7 +114,7 @@ impl PassThrough {
     }
 }
 
-/// Where the overlay's own windows take the pointer whatever the pointer-following says (Tirth, 2026-11-06: a
+/// Where the overlay's own windows take the pointer whatever the pointer-following says (seen 2026-11-06: a
 /// scroll over the sidebar scrolled the page behind it; sometimes nothing in the layout took a click). The window
 /// server passes the pointer through a window's fully transparent pixels, and the overlay follows the pointer after
 /// the fact. So the region that isn't the page's, known from the layout (everything but the slot, less its rounded
@@ -235,7 +235,7 @@ impl PointerWant {
     }
 }
 
-/// What keeps the browser's own edge reveal from the pointer (Tirth, 2026-11-05: in full-screen Safari the pointer
+/// What keeps the browser's own edge reveal from the pointer (seen 2026-11-05: in full-screen Safari the pointer
 /// at the left edge also opened Safari's sidebar behind Margin's). The overlay follows the pointer after the fact,
 /// so the first moves at the edge, coming from over the page, still reached the browser. A thin panel at the
 /// window's left edge that never lets the pointer through takes them first. Always while its overlay is shown,

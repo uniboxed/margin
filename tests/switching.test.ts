@@ -403,7 +403,7 @@ test('switching, on screen: Safari slower than PASSED_MS with the newest target:
   assert.deepEqual(u.drawn, [1, 2, 3, 2], 'a request with no answer holds it SETTLE_MS at most');
 });
 
-test('switching, on screen: the newest target answered while the state lags half a second on a passed tab (Tirth, 2026-11-08): the highlight never goes back and forth', async () => {
+test('switching, on screen: the newest target answered while the state lags half a second on a passed tab (seen 2026-11-08): the highlight never goes back and forth', async () => {
   const s = onScreen();
   s.key(2, 'nav-1'); s.key(3, 'nav-2'); s.key(4, 'nav-3');
   s.state(2); // Safari carried out an earlier press first; its change arrives

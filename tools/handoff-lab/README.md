@@ -6,11 +6,11 @@ It isn't part of `npm test` or `npm run test:app`. Nothing runs it automatically
 
 ## The rules
 
-- **Tirth's go-ahead first.** The lab moves windows, takes them into full screen and freezes the screen. Ask before any run on screen.
+- **Approval first.** The lab moves windows, takes them into full screen and freezes the screen. Ask before any run on screen.
 - **Browsers:**
   - The lab drives windows only in **Safari Technology Preview**, and only the windows it opened itself, through its temporary extension (`ext/`).
   - It never touches release Safari's windows. G1's Margin half and G16 go through Margin.app (WP12's dev hook). Margin refuses any profile not named exactly "Test A" or "Test B", and the lab only reads Margin's log.
-  - Never use another profile, and never any of Tirth's own windows.
+  - Never use another profile, and never any windows in real use.
 - **One dry run first:** `--dry-run` prints the plan and the read-only checks, and touches nothing. Without `--go` the lab does the same and runs nothing.
 - **One gate at a time** while you learn a new beta. The first failure stops the run (`abort: … failed`). Don't rerun past a failure without finding out why.
 - **Screen Recording** is for the lab only, through the terminal's existing grant. The lab checks it but never asks for it. Without it, frame counts say "not measured". Margin.app never gets Screen Recording.
@@ -89,7 +89,7 @@ Each result is one of:
 
 ### Before
 
-1. Ask Tirth. Say which gates, how long, and that the screen will freeze for about 1-2 s at a time.
+1. Ask first. Say which gates, how long, and that the screen will freeze for about 1-2 s at a time.
 2. Build: `tools/handoff-lab/build.sh`.
 3. Dry run what you'll run: `$L <gates> --dry-run`. Check the read-only lines:
    - the launch check says `freeze ok, spaces ok, park ok`;
@@ -123,7 +123,7 @@ These two run through Margin.app, never the lab's own calls. The lab posts WP12'
 
 Before:
 
-1. Tirth's go-ahead. Each handoff holds the screen still for about 1-1.5 s.
+1. Approval first. Each handoff holds the screen still for about 1-1.5 s.
 2. Install the Developer-ID, hardened build of Margin.app. In System Settings → Device Control and Data Access, check that Margin has **neither Screen Recording nor Accessibility** (G1 checks this by hand). It needs **Full Disk Access**, for Safari's profile names.
 3. Turn the handoff and the hook on, then quit and reopen Margin.app (the handoff's gate is read at launch):
    ```sh
@@ -152,7 +152,7 @@ G16 (at least 30 handoffs):
 1. Test A shown, Test B parked (the first switch goes to Test B). Leave the keyboard and mouse alone.
 2. `$L g16 --dry-run`, then `$L g16 --go` (30 switches, every 3 s, about 2 minutes; `--runs N` for more).
 3. Each switch is one Margin summary line in the report: its frozen ms, `late` if the watchdog revealed, `recovered` or `aborted` if it didn't land.
-4. Pass: every switch has a line, none recovered or aborted. The report gives the frozen-time distribution and the late rate. Tirth decides whether the late rate is acceptable, and the numbers replace TESTING.md's estimates.
+4. Pass: every switch has a line, none recovered or aborted. The report gives the frozen-time distribution and the late rate. Whether the late rate is acceptable is then decided, and the numbers replace TESTING.md's estimates.
 5. Abort with ⌃C at the first switch that looks wrong (a black screen, a window in the wrong place). The lab stops posting, and Margin's own recovery runs.
 6. Without the lab, the same loop by hand: `swift tools/handoff-lab/devswitch.swift alternate 30 --every 4`, with the log open.
 

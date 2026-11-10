@@ -1,6 +1,6 @@
 <div class="pixel" m-attr:data-mode="{{window.mode}}" m-attr:data-sidebar="{{window.sidebar}}" m-class:framed="{{window.frameWhenHidden}}" m-class:newtab="{{launcher}}" m-class:blink="{{settings.blink}}" m-style:--space="{{space.color}}">
 
-  <!-- Pixel: Tirth's "Sidebar · Pixel / 8-bit" board (Pixel.dc.html). The
+  <!-- Pixel: the "Sidebar · Pixel / 8-bit" board (Pixel.dc.html). The
        PICO-8 palette on a dotted night ground, notched pixel borders (four
        hard box-shadows), Press Start 2P for labels, Pixelify Sans for the
        rest, a blinking cursor. Icons are pixel svgs (crisp edges). -->
@@ -191,7 +191,7 @@
         </div>
         <div class="palette-rows" m-scroll="palette">
           <m-for each="palette.rows" as="r">
-            <!-- A run of rows from one place (iCloud Tabs: "On Tirth's iPhone"): its heading. -->
+            <!-- A run of rows from one place (iCloud Tabs: "On Nora's iPhone"): its heading. -->
             <m-if test="r.sectionStart"><div class="palette-section" aria-hidden="true">{{r.section}}</div></m-if>
             <button class="btn row palette-row" data-id="{{r.id}}" m-class:on="{{r.selected}}" m-attr:aria-selected="{{r.selected}}" m-attr:aria-description="{{r.section}}" m-action="palette.run" m-arg="{{r.id}}">
               <span class="cursor" aria-hidden="true"><svg class="pix now" viewBox="0 0 7 9"><path d="M0 0h2v9H0zM2 1h2v7H2zM4 2h2v5H4zM6 3h1v3H6z"></path></svg></span>

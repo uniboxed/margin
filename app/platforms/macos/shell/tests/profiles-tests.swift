@@ -265,7 +265,7 @@ func switchTests() {
         check("switch, Safari quit: ended with nothing more asked", !s.busy && { if case .failed = w.events.last! { return true }; return false }()
               && w.requests.count == count + 1 && w.requests.last?.type == "closeWindow", "\(w.types())") // only the late window's close (its copy's gone: harmless)
     }
-    do { // Margin turned off in the target's profile (Safari did, as Margin updated: Tirth, 2026-11-08)
+    do { // Margin turned off in the target's profile (Safari did, as Margin updated: seen 2026-11-08)
         let (w, _, s) = setup { $0.linked = [A]; $0.off = [B] }
         s.start(toB, from: A, windowId: 10)
         check("switch, Margin off in that profile: failed at once and said, no window opened, nothing asked",

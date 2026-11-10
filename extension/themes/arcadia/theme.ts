@@ -9,7 +9,7 @@
 // the build import it.
 
 // Sidebar width: resizable by dragging its right edge. Range measured from
-// Arc (Tirth's screenshots): 160–500 CSS px. Stored widths snap to 10px
+// Arc (screenshots of it): 160–500 CSS px. Stored widths snap to 10px
 // (theme.json's step).
 const WIDTH = Object.freeze({ min: 160, max: 500, default: 260, step: 10 });
 const clampWidth = (w: number) => Math.min(WIDTH.max, Math.max(WIDTH.min, Number.isFinite(w) ? w : WIDTH.default));

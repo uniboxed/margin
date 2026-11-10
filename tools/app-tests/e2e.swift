@@ -453,7 +453,7 @@ func scenario() async {
   check("closed: the whole window again, and its layout", wholeAgain && insetsAgain)
 
   // ---- a page (a video) in full screen: Margin's layout out of sight over the window, its keys let go but the tab and
-  // space keys (Tirth, 2026-11-07; 2026-11-08: Margin's keys from anywhere) ----
+  // space keys (2026-11-07; 2026-11-08: Margin's keys from anywhere) ----
   var fullVideo = win(7, rw, "fullscreen", focused: true)
   fullVideo["pageFullscreen"] = true
   fake.tell(["do": "windows", "id": "A", "list": [fullVideo, win(8, r8, "normal")]])
@@ -465,7 +465,7 @@ func scenario() async {
   check("out of full screen: the overlay back, its keys and the edge stop too",
         await until(3, { !o7.isConcealed && o7.panel.alphaValue == 1 && ownKeysHeld(keys) == 8 && shell.edgeFence != nil }), "concealed \(o7.isConcealed), keys \(ownKeysHeld(keys))")
 
-  // ---- Safari's own sidebar kept closed under Margin (Tirth, 2026-11-07: it opened at the left edge) ----
+  // ---- Safari's own sidebar kept closed under Margin (seen 2026-11-07: it opened at the left edge) ----
   check("Safari's sidebar: nothing on the left: its View menu item's closed title learned",
         await until(3, { shell.sidebarClosedTitle[browserPid] == "Show Sidebar" }) && sidebarMenu.reads >= 1, "\(shell.sidebarClosedTitle)")
   check("edge stop: the front window full screen with Margin's layout: the pointer stops 5 pt from its left edge",
@@ -498,7 +498,7 @@ func scenario() async {
   keys.press("Alt+Meta+ArrowDown")
   check("⌥⌘↓: navigate next-tab for window 7", await until(3, { fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" } != nil })
         && ((fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" }?["msg"] as? JSONObject)?["payload"] as? JSONObject)?["action"] as? String == "next-tab")
-  // The overlay's page picked the tab and highlighted it at the press, then asked the copy for exactly it (Tirth,
+  // The overlay's page picked the tab and highlighted it at the press, then asked the copy for exactly it (seen
   // 2026-11-07: the highlight waited for the copy's background): its target and its own switch id in the request.
   let navReq = (fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" }?["msg"] as? JSONObject)?["payload"] as? JSONObject ?? [:]
   let navTarget = int(navReq["target"])

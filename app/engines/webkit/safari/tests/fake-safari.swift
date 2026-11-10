@@ -68,7 +68,7 @@ final class FakeSafari {
         try! data.write(to: dir.appendingPathComponent("Extensions.plist"), options: .atomic)
     }
 
-    // Tirth's, as the probe found it (2026-11-05), with made-up ids.
+    // A real Mac's, as the probe found it (2026-11-05), with made-up ids.
     static let personalServer = "A8C3B0E9-0000-4000-8000-000000000001"
     static let testServer = "CDC954CA-0000-4000-8000-000000000002"
     static let personalCopy = "8D454F81-4100-489D-BA9F-E788BEC2DAEB"

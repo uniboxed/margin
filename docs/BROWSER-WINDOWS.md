@@ -1,6 +1,6 @@
 # Margin windows: a window per profile for each window (design)
 
-Decided by Tirth, 2026-11-09, to work as Arc's windows do:
+Decided 2026-11-09, to work as Arc's windows do:
 
 1. ⌘N opens a new window of the current window's profile, full screen in its own Space like the first, on the
    space the person was in, with its own sidebar.
@@ -145,12 +145,12 @@ HANDOFF.md's tests that encode the extra window (§13.11) are rewritten to these
 2. The handoff by line: rules 3 and 5, `aExtra` and `session.shown` gone, the close-based switch.
 3. The shell by line: activity, §13.8, §6.2.
 4. ⌘N: the command, `newWindow` in the copy, the new line.
-5. HANDOFF.md §1.5, §6.2, §13.8 and §13.11 brought up to date. The gate. Then, with Tirth's OK, a check in real
+5. HANDOFF.md §1.5, §6.2, §13.8 and §13.11 brought up to date. The gate. Then, once approved, a check in real
    Safari with Test A and Test B.
 
 ## 9. Tabs across Margin windows (Arc's)
 
-Tirth, 2026-11-09: two Margin windows of one profile on one space show the same tabs, in sync. A Safari tab is in
+Decided 2026-11-09: two Margin windows of one profile on one space show the same tabs, in sync. A Safari tab is in
 one window at a time, so **the tab follows the window in front**:
 
 - Window 1 shows tab T. Window 2 opens on the same space, and its sidebar lists the same tabs.

@@ -369,7 +369,7 @@ function fresh(input: ViewModelInput): ViewModel {
     };
   });
   // A switch to another profile's space started from this window: that space drawn here, from Margin.app's data
-  // for it, as the one shown (its chip active), while the switch runs (Tirth, 2026-11-07: the sidebar slides to
+  // for it, as the one shown (its chip active), while the switch runs (requested 2026-11-07: the sidebar slides to
   // the other profile's space and shows its tabs at once; the window that takes over shows the same).
   // (A space drawn for a swipe's neighbour, ui.showSpace: another profile's, from the app's data for it.)
   const shown = ui.showSpace ? orderedSpaces(state.spaces, across).find((o) => !o.own && o.key === ui.showSpace) : null;

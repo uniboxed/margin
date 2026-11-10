@@ -71,7 +71,7 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
             // The app's note, if it's the running app's: the link in this reply, and nothing to pass on.
             if appOpen, let link = Self.noteLink(nonce: nonce) { return reply(context, appOpen: true, link: link) }
             passOn = ["type": "wantLink", "nonce": nonce]
-            // Margin.app started on demand (Tirth, 2026-11-05: no login item
+            // Margin.app started on demand (2026-11-05: no login item
             // needed): in the background, never activated, no window. The
             // notification below is lost while it starts; the copy asks again
             // (and the app says `appUp` once it's listening).

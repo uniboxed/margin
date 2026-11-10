@@ -1,4 +1,4 @@
-// Screenshots of Tirth's "Browser Theme Explorations" boards (docs/phase6/
+// Screenshots of the "Browser Theme Explorations" boards (docs/phase6/
 // boards/*.dc.html), headless Chromium, for comparing a theme with its board.
 // The Design canvas runtime (support.js) isn't in the repo: dc-shim.js stands
 // in for it ({{holes}}, sc-if, sc-for, on* handlers, setState).

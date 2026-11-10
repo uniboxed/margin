@@ -1,7 +1,7 @@
 // This copy's windows that Margin.app had parked, remembered across a Safari quit, so the ones Safari restores as
 // normal windows on the Desktop are known again (shared/parked-restore.ts) and told to the app (`wasParked` on the
 // window's entry: background/link.ts), which closes them (their tabs stay in their spaces, not open) unless it has
-// them parked still (Tirth, 2026-11-07).
+// them parked still (2026-11-07).
 //
 // - A record (storage.local `parkedWindows`: old window id → its tabs' Margin ids, no address, no title) is written
 //   when the app parks a window, and goes when the app stops parking it. A link going away or a new link doesn't
