@@ -51,7 +51,7 @@ globalThis.getComputedStyle = (node) => {
   styleReads.count++;
   return { position: styleOf.get(node) ?? 'static' };
 };
-const listeners = () => ({ addEventListener() {}, removeEventListener() {} });
+const listeners = () => ({ addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; } });
 const node = (localName, parentElement = null) => ({ localName, nodeName: localName.toUpperCase(), parentElement, isConnected: true, getRootNode() { return {}; }, dataset: {}, matches: () => false, querySelectorAll: () => [] });
 const html = node('html');
 const body = node('body', html);

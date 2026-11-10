@@ -14,6 +14,8 @@ import { linksApp, capabilities } from '../shared/capabilities.ts';
 import { watchEdits } from './edits.ts';
 import { startTrackpad } from './trackpad.ts';
 import { startPageLink } from './page-link.ts';
+import { startSheetWalkLink } from './sheet-walk-link.ts';
+import { isSheetWalkKey } from '../shared/sheet-walk.ts';
 import { SWITCH_GRACE_MS } from '../shared/switching.ts';
 import { startLayout } from './layout.ts';
 import { startLoads } from './loads.ts';
@@ -144,6 +146,8 @@ export function startCore() {
 
   // The page's box (content/page-link.ts).
   const link = startPageLink(send);
+  // What the page box's walks of this site's style sheets found before (content/sheet-walk-link.ts).
+  if (link.can) startSheetWalkLink(api, send, marks);
   let box: { left: number, top: number, right: number, bottom: number } | null = null;
   const page = {
     api, marks, send, link,
@@ -533,8 +537,9 @@ export function startCore() {
       changes = rest;
     }
     // The data set's times for Margin.app, written on their own (background/
-    // store.ts): nothing a page reads.
-    if (Object.keys(changes).every((key) => key.startsWith('dataMeta:'))) return;
+    // store.ts), and the page box's kept sheet walks (content/sheet-walk-link.ts
+    // reads its own origin's at start): nothing the state has.
+    if (Object.keys(changes).every((key) => key.startsWith('dataMeta:') || isSheetWalkKey(key))) return;
     for (const key of Object.keys(changes)) seenKeys.add(key);
     if (!firstRender && onlyShowing(changes)) return;
     const read = () => void refresh();
