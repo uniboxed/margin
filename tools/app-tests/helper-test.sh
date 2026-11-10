@@ -47,13 +47,24 @@ kill $HELPER 2>/dev/null; wait $HELPER 2>/dev/null
 # 2. The browser open as the helper starts: Margin.app started at once. (The first case's stand-ins ended first: a
 # Margin.app running already is never started again.)
 pkill -f "$BUILD/Margin.app/Contents/MacOS/run" 2>/dev/null; pkill -f "$BUILD/Browser.app/Contents/MacOS/run" 2>/dev/null
-for _ in $(seq 1 30); do pgrep -f "$BUILD/(Margin|Browser).app/Contents/MacOS/run" >/dev/null || break; sleep 0.1; done
+# (Until the system's list of running apps has them gone too: it lags a moment behind a process's end, and the
+# helper, rightly, never starts a Margin.app that list still has.)
+for _ in $(seq 1 50); do pgrep -f "$BUILD/(Margin|Browser).app/Contents/MacOS/run" >/dev/null || lsappinfo list 2>/dev/null | grep -q "io.tirth.margin.test.app" || break; sleep 0.1; done
 rm -f "$MARK"
 open -g "$BUILD/Browser.app"; sleep 0.5
 "$BUILD/margin-helper" 2>> "$BUILD/helper.log" &
 HELPER=$!
 for _ in $(seq 1 30); do [ -s "$MARK" ] && break; sleep 0.1; done
 check "a browser open already: Margin.app started at once" "$([ -s "$MARK" ] && echo true || echo false)"
+kill $HELPER 2>/dev/null; wait $HELPER 2>/dev/null
+
+# 3. As launchd starts it: from /, its argv[0] the agent's path relative to the bundle, nothing set (2026-11-10: it took
+# argv[0] for its path and quit, again and again). It finds its Margin.app and keeps running.
+mkdir -p "$BUILD/Margin.app/Contents/Helpers" && cp "$BUILD/margin-helper" "$BUILD/Margin.app/Contents/Helpers/margin-helper"
+(cd / && unset MARGIN_HELPER_APP MARGIN_HELPER_BROWSERS && exec -a Contents/Helpers/margin-helper "$BUILD/Margin.app/Contents/Helpers/margin-helper") 2>> "$BUILD/helper.log" &
+HELPER=$!
+sleep 1
+check "started as launchd does (a relative path): finds its Margin.app and runs" "$(kill -0 $HELPER 2>/dev/null && echo true || echo false)" "$(tail -2 "$BUILD/helper.log")"
 kill $HELPER 2>/dev/null; wait $HELPER 2>/dev/null
 
 # The stand-ins forgotten by the system again.
