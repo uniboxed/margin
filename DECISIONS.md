@@ -3885,3 +3885,32 @@ the box came out a scroll bar wider than in a plain window wherever something is
   saying `overflow-y: scroll` on `<html>` (the box keeps `100vw` the window's); for such a page, the setting changed
   in System Settings while it's open is followed only as far as `<body>`'s own bars. Needs a check in real Safari
   with "Show scroll bars: Always" (only the WebKit host and Chromium were run).
+
+## The e2e trackpad runs on their own clock, and the start page's todos without a 5 s wait (2026-11-10)
+
+The two flakes left in GitHub issue #13's end-to-end tests:
+
+- **The two-finger swipe and pull to refresh (`tests/e2e/scroll.test.ts`).** The gestures read each wheel event's
+  own `timeStamp` (shared/pull.ts: a gap over `GAP_MS`, 140 ms, starts a new gesture) and end on a wall-clock timer
+  after the last one (content/trackpad.ts). The test sent its run with an awaited `page.mouse.wheel` per event (which
+  waits for the page to handle it: ~34 ms a round trip on a fast Mac) plus 16 ms, so on a slow machine the gaps
+  passed 140 ms and the gesture ended halfway. Now `wheelRun` sends the run through CDP `Input.dispatchMouseEvent`
+  (`mouseWheel`), each event stamped `t0 + i × 16 ms` (`timestamp`; Chromium gives it to the page as
+  `event.timeStamp`, checked) and sent on a 16 ms schedule of its own, not after the last one's answer. Still trusted
+  events through Margin's capture listener; Chromium may merge two that reach the page in one frame (deltas added,
+  the later stamp), as it does a trackpad's. Measured with the page's CPU slowed down (CDP
+  `Emulation.setCPUThrottlingRate`, 20–40×): the old sending saw gaps of 146–151 ms and failed the pull test in 5 of
+  7 runs; the new one saw 16 or 32 ms between stamps and passed every gesture test in 6 of 6.
+  (A CPU hog of 16 busy loops on the 8-core Mac didn't reach 140 ms gaps; the throttled page did.) The tests still
+  fail when the gesture logic breaks: thresholds too high fail the pull and the swipe, too low (any 20 px) fail
+  "a small one" and "too small".
+- **"waited 5000 ms for the launcher".** Every one in CI's logs (five runs) and in local runs, loaded or not, comes
+  from the two `todo` tests of Margin's start page opened on purpose (`newtab.html#launcher`: newtab.test.ts and
+  archive.test.ts), which fail on every run by a known bug (shared/view.ts `NEW_TAB_PAGE` takes no `#hash`), not
+  from load: Node's spec reporter lists failing todos under "failing tests", so their 5 s timeouts read as flakes.
+  The launcher tests that pass never failed in CI's logs, nor locally at four files at once beside 8–16 busy loops
+  (147 of 147). The todos now wait for the overlay to have the start page in front (`startPageInFront`, ui.ts: its row,
+  the New Tab row or the launcher, which come in the same draw) and then look for the launcher: they fail at once with
+  "the launcher drawn over the start page". With `NEW_TAB_PAGE` taking a hash (tried, not kept), newtab.test.ts's
+  todo passes that way; archive.test.ts's then fails sooner (its start page not in front after the archive button):
+  the product fix is more than the pattern.
