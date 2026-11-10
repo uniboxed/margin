@@ -103,6 +103,16 @@ On a Mac with a 120 Hz (ProMotion) display. Both settings are off by default; ea
 3. Report both medians and the "longer than 2.5 frames" counts on issue #14. Then
    `defaults delete com.unibox.margin MarginFrameProbe` (and the other, unless it stays on).
 
+## Classic scroll bars (issue #17, 2026-11-10)
+
+In real Safari, with System Settings → Appearance → Show scroll bars: **Always** (set it back afterwards):
+
+- [ ] On a site with a fixed top bar, a cookie banner or a chat bubble (any big news or shop site): the bar ends at the
+  scroll bar's left edge, not under it; the bubble sits just left of the scroll bar, as in Safari without Margin.
+- [ ] A page that locks scrolling (open a site's menu or a modal): the page doesn't jump sideways when its scroll bar
+  goes, nor when it comes back.
+- [ ] With the setting back on "Automatically" (overlay scroll bars): everything looks as before.
+
 ## Safari behaviors to confirm first
 
 None of these can be tested in the cloud. The code feature-detects each one and degrades as described, and DECISIONS.md records each fallback. Do these right after setup, and write the results into DECISIONS.md.
