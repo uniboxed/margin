@@ -143,6 +143,8 @@ jobs:
           FILES: ${{ matrix.files }}
           SHARD: ${{ matrix.shard }}
           MARGIN_TEST_THEMES: ${{ matrix.themes }}
+          # The e2e harness's waits for what does come, three times as long on a virtual Mac (tests/e2e/harness/margin.ts).
+          MARGIN_E2E_SLOW: "3"
         # ($FILES unquoted: a list of test files, or a glob in the fallback.)
         run: node --test --test-concurrency=1 --test-shard="$SHARD" $FILES
       # (Once, on the first half's Mac: Chrome for Testing's own setting, which outweighs the runner's above.)
@@ -211,14 +213,14 @@ jobs:
         run: node scripts/build.ts && tools/app-tests/run.sh unit
       - name: Scroll bars that show while scrolling only, as on a Mac with a trackpad (the box patterns' setting)
         run: defaults write -g AppleShowScrollBars -string WhenScrolling
-      - name: The WebKit host (Safari's extension engine), its waits twice as long on a virtual Mac
+      - name: The WebKit host (Safari's extension engine), its waits three times as long on a virtual Mac
         env:
-          MARGIN_HOST_SLOW: "2"
+          MARGIN_HOST_SLOW: "3"
         run: npm run test:webkit
       # (The host's own setting, its argument domain, over the runner's above: tools/webkit-host/run.sh.)
       - name: The WebKit host's box patterns with classic scroll bars, always shown and taking space (GitHub issue #17)
         if: ${{ !cancelled() }}
         env:
-          MARGIN_HOST_SLOW: "2"
+          MARGIN_HOST_SLOW: "3"
           MARGIN_SCROLL_BARS: always
         run: tools/webkit-host/run.sh box-patterns
