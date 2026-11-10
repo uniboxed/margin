@@ -139,7 +139,9 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   // capabilities (scripts/build.ts builds the overlay with Safari's), as the new-tab
   // page gave them when Settings were drawn there.
   const platform = {
-    browser: String(hello?.platform?.browser ?? hello?.browser ?? 'safari'), os: 'mac', app: true,
+    browser: String(hello?.platform?.browser ?? hello?.browser ?? 'safari'),
+    // The app's OS as its hello says it (Margin.app: mac; Margin for Windows: win), the Mac's when it says none.
+    os: hello?.platform?.os === 'win' ? 'win' : 'mac', app: true,
     features: { sleepTabs: capabilities?.sleepTabs ?? false, blockGestures: !!capabilities?.blockGestures, marginFullscreen: false, newTabHint: !!capabilities?.newTabHint, search: capabilities?.search, cloudTabs: false, switchSettings: (null as { closeWindows: boolean } | null) },
   };
   // "Show iCloud Tabs" in Settings: Safari's windows (Chrome and Edge: Phase 5, sessions.getDevices()).

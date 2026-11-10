@@ -3480,6 +3480,9 @@ the Safari build are untouched by this work, which lives on `feat/windows-shell`
   under the tabs and toolbar (`planner::windowed_frame`; the shell's `windowed_too`, off on the Mac). Its layout is
   measured from where the copy takes its page to be, so `boxFromLayout` puts the page's box at the slot without
   knowing about Windows' invisible borders.
+- **A copy's process is trusted, as on the Mac** (Tirth, 2026-11-09): a Chrome or Edge copy's `hello.pid` is never
+  checked against the connectors before linking, but both apps log a warning at link up when no connector's hello
+  has named that process since the app started (`Shell.unheardPid` in Swift, `warn_unheard_pid` in margin-core).
 - **Keys on Windows are provisional, to pick with Tirth:** next/previous tab Ctrl+Alt+↓/↑, space Ctrl+Alt+→/←, palette
   Ctrl+T, sidebar Alt+S, new window Ctrl+N. Ctrl+Alt is AltGr on many European layouts, and some graphics drivers take
   Ctrl+Alt+arrows. Only the combinations the copy writes for the Mac (`Meta+KeyT`, the built-in navigation keys,
@@ -3495,6 +3498,14 @@ the Safari build are untouched by this work, which lives on `feat/windows-shell`
   touch; a failed save in `DataSync.carry` leaves that link held for good; `ProfileSwitch.undo` leaves a window it made
   when the switch started from none; `Combo.parse` drops F13 and up; `spaceContent`'s caps take an arbitrary subset.
   The Rust ports avoid the data ones and keep the binder's for comparison.
+- **Update (2026-11-09): Windows links as the Mac does** (Tirth's restructure), superseding "No WebSocket on Windows"
+  above and the relay's facts winning. Each copy opens its own WebSocket to 127.0.0.1 (welcome with the key, hello,
+  every message the same): margin-core ports LinkSocket.swift and ExtensionLink.swift's `SocketLink` sans IO
+  (`websocket.rs`, `socket.rs`), margin.exe holds the TCP sockets (`tcp.rs`). The named pipe is for finding the app
+  only: Margin's connector (`margin-connector.exe`, beside `margin.exe`) is the browsers' host on every OS, and
+  margin-core's `relay.rs` answers it as RelayLink.swift does. margin.exe's relay mode, its pipe framing and host
+  registration are gone; the welcome's key is always there; the hello's browser and pid are trusted as on the Mac.
+  The Chromium build's `linksApp` is the Mac and Windows. docs/windows/BRIEF.md has why.
 
 ## The repo's layout: extension, app, docs (2026-11-09)
 

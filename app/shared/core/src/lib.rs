@@ -6,12 +6,15 @@ pub mod json;
 pub mod system;
 pub mod time;
 
-// The link (ExtensionLink.swift, LinkMessage.swift, Chunks.swift, StateMirror.swift) and its native-messaging framing.
+// The link (ExtensionLink.swift, LinkSocket.swift, LinkMessage.swift, Chunks.swift, StateMirror.swift): the copies'
+// WebSockets on every OS.
 pub mod chunks;
-pub mod framing;
 pub mod link;
 pub mod mirror;
 pub mod protocol;
+pub mod relay;
+pub mod socket;
+pub mod websocket;
 
 // The lasting data (DataSet.swift, DataStore.swift, DataSync.swift, BrowserProfiles.swift, ThemeStore.swift).
 pub mod data;

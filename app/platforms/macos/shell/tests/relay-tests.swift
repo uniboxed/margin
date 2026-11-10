@@ -119,6 +119,7 @@ func relayTests() {
   check("wantLink: the link dispatched as Safari's arrives (name, userInfo.e)", dispatched?["name"] as? String == "link", "\(dispatched ?? [:])")
   check("the link: its nonce, the port, a token and a key", info?["nonce"] as? String == "n1" && info?["port"] as? Int == link.port.map(Int.init)
           && (info?["token"] as? String)?.count == 64 && (info?["key"] as? String)?.count == 64, "\(info ?? [:])")
+  check("a relay's hello: its browser process heard", hub.heardPid(me) && !hub.heardPid(me + 1))
   relay.send(["type": "ping", "at": 1])
   check("a ping: answered", relay.next()?["ok"] as? Bool == true)
   relay.send(["type": "log", "line": "kept link try 1 of 3"])

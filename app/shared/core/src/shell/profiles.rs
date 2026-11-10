@@ -19,7 +19,7 @@ use crate::data::set::{DataChange, DataItem};
 use crate::data::store::DataProfile;
 use crate::data::sync::DataSync;
 use crate::json::{self, Object};
-use crate::link::Link;
+use crate::socket::SocketLink;
 use crate::switch::{self, CopyWindow, LineId, RequestId, SwitchEvent, SwitchNotice, SwitchWorld, Target};
 use crate::time::Secs;
 
@@ -105,7 +105,7 @@ impl AcrossData for View<'_> {
 
 /// The shell as the switch's world, borrowed for one call.
 struct World<'a> {
-    link: &'a mut Link,
+    link: &'a mut SocketLink,
     links: &'a BTreeMap<String, LinkEntry>,
     matches: &'a BTreeMap<WindowKey, i64>,
     read: &'a WindowRead,
@@ -132,9 +132,9 @@ impl SwitchWorld for World<'_> {
             Value::Object(o) => o,
             _ => Object::new(),
         };
-        match conn.map(|c| self.link.request(c, kind, payload, window_id, self.now)) {
-            Some(Ok((id, crate::link::Action::Send { conn, text }))) => {
-                self.out.push(Command::Send { conn, text });
+        match conn.map(|c| (c, self.link.request(c, kind, payload, window_id, self.now))) {
+            Some((conn, Ok((id, bytes)))) => {
+                self.out.push(Command::Write { conn, bytes });
                 let p = Pending::Switch { rid, kind: kind.to_owned(), link: link.to_owned(), asked: self.now };
                 self.pending.insert((conn, id), p);
             }

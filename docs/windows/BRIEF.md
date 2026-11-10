@@ -1,7 +1,56 @@
 # Margin for Windows: the brief
 
-The starting point for the Windows work, written 2026-11-09 when it was split off from the macOS work. Read this first,
-then `CLAUDE.md`, `SPEC.md`'s Working rules, `docs/PROTOCOL.md`, `docs/BROWSER-WINDOWS.md` and `docs/DATA.md`.
+The Windows plan, what's done and what's next. Written 2026-11-09 when the Windows work was split off from the macOS
+work, and kept since as its brief. Read this first, then `CLAUDE.md`, `SPEC.md`'s Working rules, `docs/PROTOCOL.md`,
+`docs/BROWSER-WINDOWS.md` and `docs/DATA.md`; what only Windows can confirm is in `docs/windows/UNVERIFIED.md`, how to
+build and run it in `app/platforms/windows/README.md`.
+
+## Where it stands (2026-11-09)
+
+- **Built, compile-checked for Windows (x64 and Arm64), the OS-neutral half tested on the Mac; nothing run on Windows
+  yet.** margin-core (`app/shared/core/`) holds every rule of Margin.app that isn't the OS's, each module naming the
+  Swift it ports; margin-windows (`app/platforms/windows/`, `margin.exe`) is the Windows layer and the shell's driver
+  (`host.rs`); Margin's connector (`app/shared/connector/`, `margin-connector.exe`) is the browsers' native-messaging
+  host on every OS.
+- **One link, as on the Mac** (below): the copy's WebSocket to 127.0.0.1, found through the connector. Chrome's and
+  Edge's copies link on Windows as on the Mac (`extension/engines/chromium/capabilities.ts` `linksApp`).
+- **Next:** Tirth's first run on Windows (`app/platforms/windows/README.md`, then `docs/windows/UNVERIFIED.md` line by line);
+  the keys' defaults with Tirth (DECISIONS.md "Margin for Windows planned"); the overlay page's `platform.os` (it
+  says `mac` whatever the app's hello says: `extension/ui/host-app.ts`, a reviewed change to the shared overlay page);
+  Chromium's profile names from `Local State`; opening a profile with no window (`--profile-directory`).
+
+## One link for every OS (Tirth's restructure, 2026-11-09)
+
+Every copy links over its own WebSocket to `127.0.0.1`, on Windows as on the Mac: the welcome with the key, the hello,
+every message the same (docs/PROTOCOL.md, Transport). margin-core has the WebSocket server, sans IO
+(`websocket.rs`: RFC 6455 by hand, as LinkSocket.swift; `socket.rs`: ExtensionLink.swift's `SocketLink`, the upgrade's
+checks with their 403s, the token and key, their rotation, `wantLink` answered with the `link`), and margin.exe holds
+only the TCP sockets (`tcp.rs`: 127.0.0.1 only, Nagle off, each connection on its own threads, the listener made again
+on a new port when the Mac's would be).
+
+**The pipe is for finding the app only.** `margin-connector.exe` (beside `margin.exe`), started by Chrome or Edge, is
+the only native-messaging host on every OS. It connects to the app's named pipe (`\\.\pipe\Margin-<SID>`, this user
+only; the app lets in only the connector beside it, the connector only the `margin.exe` beside it), says
+`{ k: 'relay', v: 1, version, pid, browser, waited }`, gets `{ k: 'relayWelcome', v: 1, version }`, then sends the
+browser's messages as `{ msg }` JSON lines and passes each line the app sends straight to the browser
+(margin-core `relay.rs`, RelayLink.swift's port). A `wantLink` is answered as Safari's handler answers it, and the
+`link` (`{ v: 2, nonce, port, token, key, app, at }`) is dispatched into every relay of that browser process, where the
+copy's lasting port takes it as it takes Safari's `dispatchMessage`. Why:
+
+- **One link, one set of rules.** The welcome's key, the token, the Origin check, the ticks, the 40 s silence, the
+  1 MB cap: the same code and the same tests on every OS, and the extension's link (`background/link.ts`) has one
+  transport, not a socket on the Mac and a port on Windows.
+- **Native messaging is a poor link.** A host per port, started and stopped by the browser; 1 MB at most to the
+  browser; every message through two extra processes and two extra framings. The connector stays small (it only
+  answers and hands out the link) and never carries the copy's state or the overlays' traffic.
+- **The same connector everywhere.** Its install (`margin-connector --install`, run by the app at each launch) writes
+  the browsers' host files (on Windows, one file and each browser's registry key): margin.exe registers nothing itself.
+
+The copy's hello says its browser and pid as its relay told it (and its user agent says Edge), and the shell trusts
+them, as the Mac does: the token is what proves the copy is Margin's (a relay's word isn't checked against the hello on
+the Mac either). Replaced: margin.exe's own relay mode (`relay.rs`, the pipe's 4-byte framing `frames.rs`, its
+`relayHello`/`relayWelcome`/`relayDown`/`relayUp` `handshake.rs`, its host registration `install.rs`) and the shell's
+"the relay's facts win" (the hello rewritten with the relay's browser and pid).
 
 ## What Tirth asked
 
@@ -33,9 +82,12 @@ Then: do it in its own worktree and session, so macOS work goes on in the main c
 
 ## What was found (an inventory of Margin.app, 2026-11-09)
 
-**Chrome and Edge don't link to Margin.app today, even on the Mac** (PLAN.md "Phase 5", never built):
-- `extension/shared/capabilities.ts`: the chrome profile's `nativeApp: false`. `background/link.ts` `createLink`'s
-  `enabled` needs `capabilities.nativeApp`, and `onboarding.ts` has the same gate.
+As found before the Chromium link was built. **Since then (2026-11-09):** Chrome and Edge link to Margin.app on the Mac
+through Margin's connector, and on Windows the same way (above); what follows of the Chromium link is history.
+
+**Chrome and Edge didn't link to Margin.app then, even on the Mac** (PLAN.md "Phase 5", not built then):
+- `extension/shared/platform.ts` (now `shared/capabilities.ts`): the chrome profile's `nativeApp: false`.
+  `background/link.ts` `createLink`'s `enabled` needs `platform.nativeApp`, and `onboarding.ts` has the same gate.
 - `link.ts` `canSocket` allows a WebSocket only in a document; Chrome's background is a service worker.
 - `hello.browser` is only ever `chrome` or `safari`; nothing sends `edge`.
 - The app's socket allows only `safari-web-extension://` origins. The link details reach the extension only through
@@ -107,30 +159,31 @@ Windows counterpart; (c) Safari-only; (d) private macOS APIs.
   page needs a small bridge (request ids for replies) that picks WebKit's or WebView2's. That's a change to shared
   code: Margin.app's overlay bundle must stay byte-identical, or differ only by that bridge, reviewed.
 
-## The plan
+## The plan, and what's done
 
-1. **Architecture.** A Cargo workspace in `native/`:
+1. **Architecture** (done; the folders as they are since the repo's new layout, DECISIONS.md "The repo's layout"). One
+   Cargo workspace at the root (`Cargo.toml`), first planned in `native/`:
    - `margin-core`, OS-neutral and unit-tested on the Mac: the WebSocket link, the protocol's messages (serde),
      chunks, key parsing and the active rule, the state mirror, the window binder, overlay planning without Spaces,
      the data set and store, browser profiles, the profile switch.
-   - `margin-windows`, the binary:
+   - `margin-windows` (`app/platforms/windows/`), the binary `margin.exe`:
      - finding and following Chrome's and Edge's windows (`SetWinEventHook`, `DwmGetWindowAttribute`
        `DWMWA_EXTENDED_FRAME_BOUNDS`, `EnumWindows`, process names `chrome.exe` / `msedge.exe`);
      - overlay windows (layered, tool, no-activate, owned by the browser window so they stay just above it; pointer
        pass-through by turning `WS_EX_TRANSPARENT` on and off from the pointer's place, like `PointerWatch`);
      - WebView2 (transparent background, the overlay files served from a virtual host, network blocked as on the Mac);
      - hot keys (`RegisterHotKey`);
-     - the native-messaging host mode (`margin.exe` started by Chrome or Edge, registered under
-       `HKCU\Software\Google\Chrome\NativeMessagingHosts\io.tirth.margin` and Edge's key; it gets the link details
-       from the running app over a named pipe for this user only);
+     - the link's listener on 127.0.0.1 (`tcp.rs`) and the connector's named pipe for this user only (`pipe.rs`);
+       the native-messaging host is Margin's connector (`margin-connector.exe`, `app/shared/connector/`), whose
+       `--install` the app runs at each launch (registered under
+       `HKCU\Software\Google\Chrome\NativeMessagingHosts\io.tirth.margin`, Edge's, Brave's and Chromium's keys);
      - a single instance, starting at login, data under `%LOCALAPPDATA%\Margin`.
    - `margin-linux`: later.
-2. **The Chromium link** in the extension. **Update (2026-11-09): being built on macOS first, in the main checkout**
-   (Chrome and Edge linking to Margin.app on the Mac: a relay helper started by `connectNative`, the link's messages
-   over the native port, PLAN.md "Spike 3"). Don't build a second one here: merge main once that lands, and give
-   Windows the same relay in Rust (the host started by Chrome, relaying to the running app over a named pipe for this
-   user only, as the Mac's relays over a Unix socket).
-3. **Windows shell, part 1:** link, windows, overlay, keys. Then the data, themes, profiles and the profile switch.
+2. **The Chromium link** in the extension (done, built on macOS first: Chrome and Edge link to Margin.app through
+   Margin's connector over the copy's WebSocket). On Windows the same (2026-11-09: "One link for every OS", above):
+   the Chromium profile's `linksApp` is the Mac and Windows (`Windows NT` in the user agent).
+3. **Windows shell** (done, unverified on Windows): link, windows, overlay, keys; the data, themes, profiles and the
+   profile switch; windowed windows too.
 4. Every feature that doesn't carry over gets a line in `docs/windows/UNVERIFIED.md` or DECISIONS.md: what it was on the
    Mac, and why not (or what replaces it).
 

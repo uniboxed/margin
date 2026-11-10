@@ -3,9 +3,10 @@
 import type { Capabilities } from '../../shared/capabilities.ts';
 import { NAVIGATION_DEFAULTS } from '../../shared/navigation-defaults.ts';
 
-// The Mac, by the browser's own word (its user agent says Macintosh): Chrome's and Edge's copies link to
-// Margin.app only there (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)").
-const onMac = () => /\bMacintosh\b/.test(globalThis.navigator?.userAgent ?? '');
+// Where Margin's app runs, by the browser's own word (its user agent): the Mac (`Macintosh`) and Windows
+// (`Windows NT`). Chrome's and Edge's copies link to the app there, through its connector, over the same
+// WebSocket as Safari's (docs/PROTOCOL.md "Transport (Chrome and Edge)").
+const linksHere = () => /\b(?:Macintosh|Windows NT)\b/.test(globalThis.navigator?.userAgent ?? '');
 
 export const capabilities: Capabilities = {
   name: 'chrome',
@@ -17,8 +18,8 @@ export const capabilities: Capabilities = {
   // Wheel deltas are in the page's zoomed pixels (Chromium divides them by
   // the page's zoom).
   zoomedWheel: true,
-  // No extension handler (Safari's set-up messages). Chrome and Edge still link to Margin.app on the Mac, through
-  // its connector (linksApp, below).
+  // No extension handler (Safari's set-up messages). Chrome and Edge still link to Margin's app on the Mac and
+  // Windows, through its connector (linksApp, below).
   nativeApp: false,
   // Not needed (and a page-wide non-passive wheel listener costs scroll
   // performance in Chrome).
@@ -37,7 +38,7 @@ export const capabilities: Capabilities = {
   pageCommandKeys: false,
   navigationId: 'chrome',
   navigation: NAVIGATION_DEFAULTS.chrome,
-  linksApp: onMac,
+  linksApp: linksHere,
   // Edge's user agent says `Edg/` (this build runs in both, and in the other Chromium browsers).
   browser: () => (/\bEdg\//.test(globalThis.navigator?.userAgent ?? '') ? 'edge' : 'chrome'),
 };

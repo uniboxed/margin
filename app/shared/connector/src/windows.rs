@@ -1,10 +1,12 @@
-//! The connector on Windows: the app's named pipe (this user only; each end checks the other is Margin:
+//! The connector on Windows: the app's named pipe (this user only; each end checks the other: the app that its client
+//! is `margin-connector.exe` beside `margin.exe`, the connector here that the pipe's server is that `margin.exe`:
 //! app/platforms/windows/src/pipe.rs), the browser that started it (Chrome and Edge start hosts through cmd.exe: the first
 //! ancestor that isn't), the app started detached, inheriting none of the browser's handles (so the browser's
 //! port never hangs on the app), and host files as one file named in each browser's registry key.
 //!
-//! Not yet run on Windows, and Margin for Windows' pipe still speaks its own framing (frames.rs): it takes these
-//! JSON lines once it moves to the one link every OS shares (docs/windows/BRIEF.md).
+//! The pipe carries these JSON lines as the Mac's Unix socket does (margin-core `relay` on the app's side); the
+//! link itself is the copy's WebSocket to the app, on Windows as on the Mac. Not yet run on Windows
+//! (docs/windows/UNVERIFIED.md).
 
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};

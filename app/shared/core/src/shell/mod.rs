@@ -27,10 +27,16 @@
 //!   [`crate::data::profiles::BrowserProfiles`]), the close-based switch to another profile's space
 //!   ([`crate::switch::ProfileSwitch`]) and imported themes ([`crate::data::themes::ThemeStore`]).
 //!
-//! **The relay's facts win.** On Windows a copy reaches the app through a native-messaging relay (margin.exe started
-//! by the browser), which knows which browser started it and that browser's process: Edge's copy may say `chrome` in
-//! its hello. So a link's browser and pid are the relay's ([`RelayFacts`]: its hello is rewritten before the link
-//! reads it), and only windows of that pid's process tree ([`BrowserProcess::root`]) are that link's candidates.
+//! **One link, every OS.** Each copy links over its own WebSocket to 127.0.0.1 ([`crate::socket::SocketLink`]),
+//! as on the Mac: the transport says each TCP connection's bytes ([`Input::SocketBytes`]) and the shell answers
+//! with bytes to write ([`Command::Write`]). Chrome's and Edge's copies find the app through Margin's connector
+//! ([`crate::relay::RelayHub`], over a Unix socket or a named pipe: [`Input::RelayBytes`]), which only answers
+//! their native messages and hands them the `link` (the port, the token, the key); nothing of the link goes
+//! through it. A link's browser and pid are its hello's, which the copy says as its relay told it (the pid, the
+//! browser's own main process) and as its user agent says (`edge`): the Mac trusts them the same way (Shell.swift
+//! `linkedPids`, RelayLink.swift); the token is what proves the copy is Margin's. Only windows of that pid's
+//! process tree ([`BrowserProcess::root`]) are that link's candidates; a hello with no pid has every window of its
+//! browser's processes.
 //!
 //! Left out of Shell.swift (the Mac's), one line each:
 //! - Spaces: the own-Space checks, `spaceDidChange`, `placeAhead`, the Space bridge, the window map's Space reads.
@@ -70,11 +76,13 @@ use crate::data::sync::{self as datasync, DataSync, Effects};
 use crate::data::themes::{ThemeFile, ThemeStore};
 use crate::geometry::{Point, Rect};
 use crate::json::{self, Object};
-use crate::link::{self, Action, ConnId, Link, LinkError};
+use crate::link::{self, Action, ConnId, LinkError};
 use crate::mirror::{Outcome, Resync, StateMirror};
 use crate::planner::Display;
 use crate::protocol::{AppMessage, Hello, LinkMessage};
+use crate::relay::{RelayHub, RelayOut};
 use crate::shortcuts::{AppCommand, AppShortcuts, Combo, HotKeyRegistrar, KeyRepeat, KeysFront, Os};
+use crate::socket::{self, SocketLink};
 use crate::switch::{ProfileSwitch, SwitchOptions};
 use crate::system::ServerWindow;
 use crate::time::Secs;
@@ -84,17 +92,6 @@ pub use crate::binder::WindowKey;
 
 /// The driver's name for one page op's answer (its `rid`, kept by the driver).
 pub type ReplyToken = u64;
-
-/// What a relay knows of the browser that started it (margin-windows `handshake::RelayHello`).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RelayFacts {
-    /// `chrome`, `edge`, or another executable's name (`brave`), or `other`.
-    pub browser: String,
-    /// The browser's process.
-    pub pid: Option<u32>,
-    /// The caller's origin (`chrome-extension://<id>/`).
-    pub origin: String,
-}
 
 /// One process with a browser window: its browser (`chrome`, `edge`) and the browser's main process it belongs to
 /// (itself for the main process, which owns every top-level window of a Chromium browser).
@@ -123,19 +120,36 @@ pub struct WindowRead {
 /// What the OS layer tells the shell.
 #[derive(Clone, Debug)]
 pub enum Input {
-    /// A relay linked (its handshake done): the extension's frames on it follow.
-    RelayConnected {
-        conn: ConnId,
-        relay: RelayFacts,
+    /// The link's listener (127.0.0.1) has this port now, or none (failed, being made again).
+    Listening {
+        port: Option<u16>,
     },
-    /// One of the extension's messages, as text.
-    RelayFrame {
+    /// A TCP connection to the listener, accepted ([`socket::SocketLink::on_accept`]).
+    SocketOpened {
         conn: ConnId,
-        text: String,
     },
-    RelayClosed {
+    /// Bytes on it, as they came.
+    SocketBytes {
         conn: ConnId,
-        why: String,
+        bytes: Vec<u8>,
+    },
+    /// It ended (exactly once, also after [`Command::End`]); `error`: how it failed, if it did.
+    SocketEnded {
+        conn: ConnId,
+        error: Option<String>,
+    },
+    /// A relay (Margin's connector, started by the browser) connected; the transport checked it's this user's
+    /// connector. Relays are named apart from sockets.
+    RelayOpened {
+        conn: ConnId,
+    },
+    /// Bytes from it (JSON lines), as they came.
+    RelayBytes {
+        conn: ConnId,
+        bytes: Vec<u8>,
+    },
+    RelayEnded {
+        conn: ConnId,
     },
     /// The windows, read (after [`Command::ReadWindows`], or whenever the layer reads them).
     Windows(WindowRead),
@@ -204,16 +218,23 @@ pub struct HotKey {
 /// What the OS layer does, in order.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
-    /// One of the app's messages to that relay (the link's text).
-    Send {
+    /// These bytes on that TCP connection (the link's WebSocket), in order.
+    Write {
         conn: ConnId,
-        text: String,
+        bytes: Vec<u8>,
     },
-    /// Close that relay's connection (the code and reason, for the log).
-    Close {
+    /// Close that TCP connection once what was written before has gone; [`Input::SocketEnded`] follows.
+    End {
         conn: ConnId,
-        code: u16,
-        reason: String,
+    },
+    /// These bytes (JSON lines) to that relay.
+    RelayWrite {
+        conn: ConnId,
+        bytes: Vec<u8>,
+    },
+    /// Close that relay's connection now.
+    RelayEnd {
+        conn: ConnId,
     },
     /// Make an overlay (hidden, its web view loading the page) and say its window's number
     /// ([`Input::OverlayWindow`]).
@@ -348,6 +369,8 @@ pub struct Options {
     pub key_repeat: KeyRepeat,
     /// Margin's own process (its windows in a read are its overlays).
     pub own_pid: u32,
+    /// The app's version: the `link`'s `app.version` and `relayWelcome`'s (a relay of another version exits).
+    pub app_version: String,
     pub link: link::Timing,
     pub switch: SwitchOptions,
 }
@@ -377,6 +400,7 @@ impl Options {
             platform_os: "win".into(),
             key_repeat: KeyRepeat::default(),
             own_pid: 0,
+            app_version: String::new(),
             link: link::Timing::default(),
             switch,
         }
@@ -386,7 +410,7 @@ impl Options {
 /// One copy's link (`Shell.Link`).
 pub(crate) struct LinkEntry {
     pub conn: ConnId,
-    /// Its hello, with the relay's browser and pid.
+    /// Its hello (its browser and pid, as the copy says them).
     pub hello: Hello,
     pub mirror: StateMirror,
     pub resync: Resync,
@@ -498,9 +522,9 @@ impl Lines {
 /// The shell.
 pub struct Shell {
     pub(crate) opts: Options,
-    pub(crate) link: Link,
+    pub(crate) link: SocketLink,
     pub(crate) links: BTreeMap<String, LinkEntry>,
-    pub(crate) relays: HashMap<ConnId, RelayFacts>,
+    pub(crate) relays: RelayHub,
     pub(crate) data: DataSync,
     pub(crate) profiles: HashMap<String, BrowserProfiles>,
     pub(crate) themes: ThemeStore,
@@ -572,12 +596,13 @@ impl Shell {
         let data = DataSync::new(DataStore::new(&opts.data_root));
         let themes = ThemeStore::new(&opts.themes_root);
         let shortcuts = AppShortcuts::new(crate::shortcuts::default_bindings(opts.os), opts.key_repeat);
-        let link = Link::new(opts.link.clone(), None);
+        let link = SocketLink::new(opts.link.clone(), opts.app_version.clone());
+        let relays = RelayHub::new(opts.app_version.clone());
         let switcher = ProfileSwitch::new(opts.switch.clone());
         Self {
             link,
             links: BTreeMap::new(),
-            relays: HashMap::new(),
+            relays,
             data,
             profiles: HashMap::new(),
             themes,
@@ -668,13 +693,28 @@ impl Shell {
         self.now = now;
         if !self.stopped {
             match input {
-                Input::RelayConnected { conn, relay } => self.relay_connected(conn, relay),
-                Input::RelayFrame { conn, text } => self.relay_frame(conn, &text),
-                Input::RelayClosed { conn, why } => {
-                    self.relays.remove(&conn);
-                    let actions = self.link.on_closed(conn, &why, now);
-                    self.actions(actions);
+                Input::Listening { port } => {
+                    let outs = self.link.listening(port, now);
+                    self.actions(outs);
                 }
+                Input::SocketOpened { conn } => {
+                    let outs = self.link.on_accept(conn, now);
+                    self.actions(outs);
+                }
+                Input::SocketBytes { conn, bytes } => {
+                    let outs = self.link.on_bytes(conn, &bytes, now);
+                    self.actions(outs);
+                }
+                Input::SocketEnded { conn, error } => {
+                    let outs = self.link.on_ended(conn, error.as_deref(), now);
+                    self.actions(outs);
+                }
+                Input::RelayOpened { conn } => self.relays.on_open(conn),
+                Input::RelayBytes { conn, bytes } => {
+                    let outs = self.relays.on_bytes(conn, &bytes, now);
+                    self.relay_outs(outs);
+                }
+                Input::RelayEnded { conn } => self.relays.on_ended(conn),
                 Input::Windows(read) => self.track(read),
                 Input::Burst(why) => self.burst(&why),
                 Input::Pointer { at, buttons, pressed } => {
@@ -832,6 +872,8 @@ impl Shell {
     }
 
     fn stop(&mut self, why: &str) {
+        let outs = self.relays.stop();
+        self.relay_outs(outs);
         let actions = self.link.stop(why, self.now);
         self.actions(actions);
         let ids: Vec<OverlayId> = self.overlays.values().map(|o| o.id).collect();
@@ -872,55 +914,22 @@ impl Shell {
 
     // ---- the link ----
 
-    fn relay_connected(&mut self, conn: ConnId, relay: RelayFacts) {
-        self.out.note(format!(
-            "relay {conn} linked: {} (pid {})",
-            relay.browser,
-            relay.pid.map(|p| p.to_string()).unwrap_or_else(|| "?".into())
-        ));
-        self.relays.insert(conn, relay);
-        let actions = self.link.on_open(conn, self.now);
-        self.actions(actions);
-    }
-
-    fn relay_frame(&mut self, conn: ConnId, text: &str) {
-        let rewritten = self.relay_says(conn, text);
-        let actions = self.link.on_text(conn, rewritten.as_deref().unwrap_or(text), self.now);
-        self.actions(actions);
-    }
-
-    /// A hello rewritten with the relay's browser and pid (the relay's facts win); `None`: as it came.
-    fn relay_says(&self, conn: ConnId, text: &str) -> Option<String> {
-        let relay = self.relays.get(&conn)?;
-        // (Only a small message can be a hello: a snapshot isn't read twice.)
-        if text.len() > 64 * 1024 || !text.contains("hello") {
-            return None;
-        }
-        let mut v: Value = serde_json::from_str(text).ok()?;
-        let m = v.as_object_mut()?;
-        if json::string(m.get("k")) != Some("hello") {
-            return None;
-        }
-        if matches!(relay.browser.as_str(), "chrome" | "edge") {
-            m.insert("browser".into(), relay.browser.clone().into());
-        }
-        if let Some(pid) = relay.pid {
-            m.insert("pid".into(), pid.into());
-        }
-        Some(json_text(&v))
-    }
-
-    /// The link session's actions, carried out.
-    pub(crate) fn actions(&mut self, actions: Vec<Action>) {
-        for a in actions {
-            match a {
-                Action::Send { conn, text } => self.out.push(Command::Send { conn, text }),
-                Action::Close { conn, code, reason } => self.out.push(Command::Close { conn, code, reason }),
-                Action::Up { conn, hello } => self.link_up(conn, hello),
-                Action::Received { conn, key, message } => self.link_received(conn, &key, message),
-                Action::Down { conn, key, why } => self.link_down(conn, &key, &why),
-                Action::Answer { conn, id, answer, .. } => self.answered(conn, id, answer),
-                Action::Log { level, text } => match level {
+    /// The link's news, carried out: its writes and ends, its `link` dispatched into the relays, what its session
+    /// heard.
+    pub(crate) fn actions(&mut self, outs: Vec<socket::Out>) {
+        for o in outs {
+            match o {
+                socket::Out::Write { conn, bytes } => self.out.push(Command::Write { conn, bytes }),
+                socket::Out::End { conn } => self.out.push(Command::End { conn }),
+                socket::Out::Dispatch { to, name, info, n } => {
+                    let (outs, sent) = self.relays.dispatch(&name, &info, to.pid);
+                    self.relay_outs(outs);
+                    let why = (!sent).then(|| format!("no relay of {} (pid {})", to.browser, to.pid));
+                    let outs = self.link.dispatched(&name, n, why.as_deref());
+                    self.actions(outs);
+                }
+                socket::Out::Link(a) => self.session(a),
+                socket::Out::Log { level, text } => match level {
                     link::Level::Note => self.out.note(text),
                     link::Level::Warn => self.out.warn(text),
                 },
@@ -928,13 +937,46 @@ impl Shell {
         }
     }
 
+    /// The relays' news: their lines and closes, a copy's `wantLink` to the link.
+    pub(crate) fn relay_outs(&mut self, outs: Vec<RelayOut>) {
+        for o in outs {
+            match o {
+                RelayOut::Write { conn, bytes } => self.out.push(Command::RelayWrite { conn, bytes }),
+                RelayOut::End { conn } => self.out.push(Command::RelayEnd { conn }),
+                RelayOut::WantLink { nonce, via } => {
+                    let outs = self.link.want_link(&nonce, via, self.now);
+                    self.actions(outs);
+                }
+                RelayOut::Log { level, text } => match level {
+                    link::Level::Note => self.out.note(text),
+                    link::Level::Warn => self.out.warn(text),
+                },
+            }
+        }
+    }
+
+    /// What the link session heard.
+    fn session(&mut self, a: Action) {
+        match a {
+            Action::Up { conn, hello } => self.link_up(conn, hello),
+            Action::Received { conn, key, message } => self.link_received(conn, &key, message),
+            Action::Down { conn, key, why } => self.link_down(conn, &key, &why),
+            Action::Answer { conn, id, answer, .. } => self.answered(conn, id, answer),
+            Action::Log { level, text } => match level {
+                link::Level::Note => self.out.note(text),
+                link::Level::Warn => self.out.warn(text),
+            },
+            // (The socket link writes these itself.)
+            Action::Send { .. } | Action::Close { .. } => {}
+        }
+    }
+
     /// A message to a link (logged if refused for its size).
     pub(crate) fn send(&mut self, conn: ConnId, message: &AppMessage) {
         match self.link.send(conn, message, self.now) {
-            Ok(Action::Send { conn, text }) => self.out.push(Command::Send { conn, text }),
-            Ok(_) => {}
+            Ok(bytes) => self.out.push(Command::Write { conn, bytes }),
             Err(LinkError::NotJson) => {
-                let key = self.link.connection_on(conn).map(|c| c.key()).unwrap_or_default();
+                let key = self.link.link().connection_on(conn).map(|c| c.key()).unwrap_or_default();
                 self.out.warn(format!("not sent to {key}: not JSON, or over 1000000 bytes"));
             }
             Err(_) => {}
@@ -956,12 +998,11 @@ impl Shell {
             _ => Object::new(),
         };
         match self.link.request(conn, kind, payload, window_id, self.now) {
-            Ok((id, Action::Send { conn, text })) => {
-                self.out.push(Command::Send { conn, text });
+            Ok((id, bytes)) => {
+                self.out.push(Command::Write { conn, bytes });
                 self.pending.insert((conn, id), then);
                 true
             }
-            Ok(_) => false,
             Err(e) => {
                 if e == LinkError::NotJson {
                     self.out.warn(format!("not sent to {link_key}: not JSON, or over 1000000 bytes"));
@@ -1033,6 +1074,21 @@ impl Shell {
         }
     }
 
+    /// A Chrome or Edge copy's hello names its browser process as its connector told it. Trusted as on the Mac
+    /// (Tirth, 2026-11-09: never refused), but one that no connector has named since the app started is logged:
+    /// a copy linking with a link kept from before, a connector that knew no process, or a hello not as its relay said.
+    fn warn_unheard_pid(&mut self, key: &str, hello: &Hello) {
+        if hello.browser == "safari" {
+            return; // Safari's copies find the app through its extension handler, not a connector
+        }
+        let Some(pid) = hello.pid.and_then(|p| u32::try_from(p).ok()).filter(|p| *p > 0) else { return };
+        if !self.relays.heard_pid(pid) {
+            self.out.warn(format!(
+                "{key}: its hello says browser process {pid}, which no connector has named: trusted, as on the Mac"
+            ));
+        }
+    }
+
     fn link_up(&mut self, conn: ConnId, hello: Hello) {
         let key = hello.key();
         let mut entry = LinkEntry {
@@ -1049,6 +1105,7 @@ impl Shell {
             held: HeldPushes::default(),
         };
         entry.mirror.begin(&hello);
+        self.warn_unheard_pid(&key, &hello);
         self.data.link_up(&entry.data_link());
         self.links.insert(key.clone(), entry);
         self.linked_at.insert(key.clone(), self.now);

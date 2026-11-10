@@ -57,6 +57,14 @@ test('the app host: the state from the hello, in the pages\' shape, drawable', (
   assert.equal(vm.space.name, 'Home');
 });
 
+test("the app host: the app's OS from its hello, the Mac's when it says none or something else", () => {
+  const os = (platform) => createAppHost({ hello: hello({ platform }), post: bridge().post }).platform.os;
+  assert.equal(os({ browser: 'edge', os: 'win', app: true }), 'win', 'Margin for Windows');
+  assert.equal(os({ browser: 'safari', os: 'mac', app: true }), 'mac');
+  assert.equal(os({ browser: 'safari', app: true }), 'mac', 'an older Margin.app');
+  assert.equal(os({ browser: 'chrome', os: '<b>', app: true }), 'mac', 'only a known word');
+});
+
 test('the app host: no state yet, then a snapshot; changes and icons as diffs; each drawn', () => {
   const host = createAppHost({ hello: hello({ state: null }), post: bridge().post });
   assert.equal(host.getState(), null);

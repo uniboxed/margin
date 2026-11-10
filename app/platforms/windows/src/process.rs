@@ -71,7 +71,7 @@ pub fn parent(pid: u32) -> Option<(u32, String)> {
 }
 
 /// The nearest ancestor of `pid` whose executable isn't one of `skip` (lowercase file names), at most
-/// `depth` levels up: Chrome starts its native hosts through `cmd.exe /d /c`, so the relay's parent is
+/// `depth` levels up: Chrome starts its native hosts through `cmd.exe /d /c`, so the connector's parent is
 /// `cmd.exe` and the browser is its parent. Each ancestor must have started before its child, or its pid was
 /// reused by an unrelated process after the real parent exited: then `None`.
 pub fn ancestor_not_named(pid: u32, skip: &[&str], depth: usize) -> Option<(u32, String)> {

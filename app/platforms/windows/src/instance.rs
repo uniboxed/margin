@@ -2,7 +2,7 @@
 //! login item).
 //!
 //! The single instance is a named mutex, `Local\Margin-<SID>` (paths.rs): the first app holds it for its whole
-//! life; a second launch finds it there, tells the first nothing and exits (the relay starts the app only
+//! life; a second launch finds it there, tells the first nothing and exits (the connector starts the app only
 //! when the pipe isn't there, so a second launch is a person's double click). Opening at sign-in is the value
 //! `Margin` of `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, a setting the shell turns on and off:
 //! `"<margin.exe>" --login`. (Windows' Settings › Apps › Startup can still turn it off; that's kept apart, in

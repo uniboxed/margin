@@ -446,12 +446,9 @@ fn strings(v: Option<&Value>) -> Option<Vec<String>> {
 /// `AppMessage`: what the app sends.
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppMessage {
-    /// First, on a connection the app accepted. Over the WebSocket its `key` is the app's proof that it's the app
-    /// (Transport, step 4). **Provisional:** over the Chromium relay (a named pipe on Windows) the pipe's own
-    /// security stands in for the token and key, so `key` is optional and left out when `None`; settle this when
-    /// the macOS Chromium link lands (docs/windows/BRIEF.md, plan step 2).
+    /// First, on a connection the app accepted: its `key` is the app's proof that it's the app (Transport, step 4).
     Welcome {
-        key: Option<String>,
+        key: String,
     },
     /// Every 5 s; the copy answers `tock`.
     Tick,
@@ -513,9 +510,7 @@ impl AppMessage {
             Self::Welcome { key } => {
                 put("k", "welcome".into());
                 put("v", VERSION.into());
-                if let Some(key) = key {
-                    put("key", key.clone().into());
-                }
+                put("key", key.clone().into());
             }
             Self::Tick => {
                 put("k", "tick".into());
@@ -1184,10 +1179,8 @@ mod tests {
 
     #[test]
     fn app_messages() {
-        let w = sent(&AppMessage::Welcome { key: Some("K".into()) });
+        let w = sent(&AppMessage::Welcome { key: "K".into() });
         assert_eq!(Value::Object(w), json!({"k":"welcome","v":2,"key":"K"}));
-        let w = sent(&AppMessage::Welcome { key: None });
-        assert_eq!(Value::Object(w), json!({"k":"welcome","v":2}), "over the relay: no key");
 
         let req = AppMessage::Req {
             id: 3,
