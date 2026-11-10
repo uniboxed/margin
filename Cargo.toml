@@ -8,7 +8,7 @@ members = ["app/shared/core", "app/shared/connector", "app/platforms/windows", "
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-license = "UNLICENSED"
+license = "GPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]

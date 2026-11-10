@@ -15,6 +15,7 @@
     }
   },
   "description": "Arc-style sidebar for Safari (prototype)",
+  "license": "GPL-3.0-or-later",
   "scripts": {
     "pretest": "node scripts/build.ts",
     "test": "tsc -p . && node --test tests/*.test.ts tests/security/*.test.ts 'extension/engines/**/tests/*.test.ts'",
