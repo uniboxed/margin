@@ -20,6 +20,7 @@ struct OverlayFacts: Equatable {
     // Its window, as the window server says.
     var bound: Int? // the window server's window it's bound to
     var absent = false // bound, but missing from this read
+    var absentConfirmed = false // an already shown own-Space overlay independently confirmed with its live window
     var window: ServerWindow?
     var fills = false // the window fills its display (or the harness, or windowed overlays allowed)
     // The overlay as it is (a fresh one if it isn't made yet).
@@ -77,7 +78,7 @@ enum OverlayPlanner {
         // Never shown over a window that isn't bound, isn't on screen, or doesn't fill its display yet.
         guard f.full || f.targetReady else { return .hide("its window is still being made") }
         guard let number = f.bound else { return .hide("its window isn't bound to one of the window server's") }
-        if f.absent { return .conceal }
+        if f.absent { return f.absentConfirmed ? .reveal : .conceal }
         guard let server = f.window else { return .hide("its window is gone from the window server") }
         // Kept where it is over its window in its own Space: shown over this window, at its size (a slide moves the
         // window, it doesn't resize it).

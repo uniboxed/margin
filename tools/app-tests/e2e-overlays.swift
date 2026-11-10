@@ -10,6 +10,148 @@
 import AppKit
 import WebKit
 
+// The real shell's ahead-of-visit path, including its retry bookkeeping. A web view not ready yet is normal:
+// it must not start the five-second cooldown for a refused Space move. Both browser windows stay off every
+// display, and all Space reads/moves are in FakeSpaceWorld (no private macOS calls, no real browser).
+@MainActor
+func preparedWindowsScenario() async {
+  func check(_ label: String, _ ok: Bool) { e2eCheck("prepared windows: \(label)", ok) }
+  let fake = Fake()
+  do { try fake.start() } catch { check("fake extension starts", false); return }
+  defer { fake.stop() }
+  guard await until(5, { fake.first("ready") != nil }) else { check("fake extension starts", false); return }
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-prepared-\(UUID().uuidString)")
+  defer { try? FileManager.default.removeItem(at: root) }
+  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.prepared.\(ProcessInfo.processInfo.processIdentifier)"))
+  let windows = ScriptedWindows(), apps = ScriptedApps()
+  let world = FakeSpaceWorld(clock: RunLoopClock())
+  world.active = 10
+  world.displayList = [DisplaySpaces(display: "Main", current: 10, spaces: [ManagedSpace(id: 10, type: 4), ManagedSpace(id: 11, type: 4)])]
+  var options = Shell.Options()
+  options.harness = true
+  options.overlay.harness = true
+  options.overlay.ownSpace = true
+  options.harnessAheadPlacement = true
+  options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
+  options.dataRoot = root
+  options.bundleIds = ["safari": fakeBundle]
+  let shell = Shell(link: link, windows: windows, apps: apps, hotKeys: FakeKeys(), options: options)
+  shell.spaceReads = world
+  windows.shell = shell
+  windows.overlayOnScreen = { $0.onScreen }
+  let r1 = CGRect(x: -20000, y: -20000, width: 1200, height: 800)
+  let r2 = CGRect(x: -18000, y: -20000, width: 1100, height: 760)
+  let a = standIn(r1), b = standIn(r2)
+  defer { a.close(); b.close() }
+  world.windows[a.windowNumber] = .init(pid: browserPid, bounds: r1, spaces: [10])
+  world.windows[b.windowNumber] = .init(pid: browserPid, bounds: r2, spaces: [11])
+  func show(_ second: Bool) {
+    world.active = second ? 11 : 10
+    world.displayList = [DisplaySpaces(display: "Main", current: world.active, spaces: [ManagedSpace(id: 10, type: 4), ManagedSpace(id: 11, type: 4)])]
+    windows.browser = [ServerWindow(number: a.windowNumber, pid: browserPid, bounds: r1, onScreen: !second),
+                       ServerWindow(number: b.windowNumber, pid: browserPid, bounds: r2, onScreen: second)]
+  }
+  show(false)
+  shell.start()
+  defer { shell.stop {} }
+  guard await until(3, { link.port != nil }) else { check("link listens", false); return }
+  fake.tell(["do": "wantLink"])
+  guard await until(3, { fake.first("wantLink") != nil }), let nonce = fake.first("wantLink")?["nonce"] as? String else { check("link requested", false); return }
+  link.wantLink(nonce: nonce)
+  guard await until(3, { fake.first("link") != nil }) else { check("linked", false); return }
+  let wins: [JSONObject] = [
+    ["windowId": 1, "left": r1.minX, "top": r1.minY, "width": r1.width, "height": r1.height, "state": "fullscreen", "focused": true],
+    ["windowId": 2, "left": r2.minX, "top": r2.minY, "width": r2.width, "height": r2.height, "state": "fullscreen", "focused": false],
+  ]
+  fake.tell(["do": "connect", "id": "P", "profile": "P", "windows": wins])
+  apps.bringToFront(browserPid)
+  let k1 = WindowKey(link: "safari:P", windowId: 1), k2 = WindowKey(link: "safari:P", windowId: 2)
+  guard await until(10, { shell.overlays[k1] != nil && shell.overlays[k2] != nil }), let o1 = shell.overlays[k1], let o2 = shell.overlays[k2] else { check("both overlays created", false); return }
+  // The first placement was already asked while o2 was loading. Give the stand-in overlay windows their
+  // initial Desktop membership, so the fake move can update it, as the real bridge does.
+  for o in [o1, o2] { for n in [o.windowNumber, o.catcher.windowNumber] + (o.edgePanel.map { [$0.windowNumber] } ?? []) {
+    world.windows[n] = .init(pid: ProcessInfo.processInfo.processIdentifier, bounds: o.frameTopLeft, spaces: o === o1 ? [10] : [1])
+  } }
+  guard await until(15, { o2.isReady }) else { check("background page draws", false); return }
+  let readyAt = Date()
+  let prepared = await until(1, { o2.isShown && o2.aheadPending })
+  check("ready background window placed without the five-second cooldown", prepared)
+  guard prepared else { return }
+  check("preparation moves only the overlay into that window's Space", await until(1, { world.spaces(of: o2.windowNumber) == [11] }) && world.spaces(of: b.windowNumber) == [11])
+  check("placed within one second of drawing", Date().timeIntervalSince(readyAt) < 1.5)
+  guard await until(15, { o1.isReady && o1.isShown }) else { check("front overlay draws", false); return }
+  // Deferred NSPanel helpers receive their real window numbers only when first ordered. Register those
+  // numbers too: the stand-in otherwise loses the successful move sent before that number was in its table.
+  for (o, space) in [(o1, UInt64(10)), (o2, UInt64(11))] {
+    for n in o.spaceWindowNumbers.union([o.catcher.windowNumber]) where world.windows[n] == nil {
+      if o === o2 { check("deferred background helper was included in the prepared move", world.calls.contains("add \(n) → 11")) }
+      world.windows[n] = .init(pid: ProcessInfo.processInfo.processIdentifier, bounds: o.frameTopLeft, spaces: [space])
+    }
+  }
+  let ids = [o1.windowNumber, o2.windowNumber]
+  let origins = [await js(o1.webView, "performance.timeOrigin"), await js(o2.webView, "performance.timeOrigin")]
+  let movesBeforeVisits = world.calls.count
+  let visitsAt = ProcessInfo.processInfo.systemUptime
+  var kept = true
+  for i in 0..<20 {
+    show(i % 2 == 0)
+    shell.spaceDidChange()
+    kept = kept && o1.isShown && o2.isShown && !o1.isConcealed && !o2.isConcealed
+  }
+  check("twenty Space visits keep both layouts already shown, before any extension reply", kept)
+  print(String(format: "  timings: twenty prepared Space reads %.1f ms", (ProcessInfo.processInfo.systemUptime - visitsAt) * 1000))
+  check("ordinary Space visits make no additional Space moves", world.calls.count == movesBeforeVisits)
+  check("visits reuse the same two native windows", ids == [shell.overlays[k1]?.windowNumber, shell.overlays[k2]?.windowNumber].compactMap { $0 })
+  let after = [await js(o1.webView, "performance.timeOrigin"), await js(o2.webView, "performance.timeOrigin")]
+  check("visits never reload either web view", zip(origins, after).allSatisfy { same($0, $1) })
+  windows.noList = true
+  shell.track()
+  check("a missing batch read does not blank layouts independently confirmed in their full-screen Spaces", !o1.isConcealed && !o2.isConcealed)
+  world.unknown = true
+  shell.track()
+  check("an unknown Space read still conceals rather than guessing", o1.isConcealed && o2.isConcealed)
+  world.unknown = false
+  shell.track()
+  check("independent confirmation restores a concealed layout without waiting for the batch", !o1.isConcealed && !o2.isConcealed)
+  let saved = world.windows[b.windowNumber]
+  world.windows[b.windowNumber] = nil
+  shell.track()
+  check("a closed window is concealed even while its old binding is kept", o2.isConcealed && !o1.isConcealed)
+  world.windows[b.windowNumber] = saved
+  world.windows[o2.windowNumber]?.spaces = [1]
+  shell.track()
+  check("an overlay displaced onto the Desktop stays concealed", o2.isConcealed)
+  world.windows[o2.windowNumber]?.spaces = [11]
+  shell.track()
+  world.windows[o2.catcher.windowNumber]?.spaces = [1]
+  shell.track()
+  check("a pointer catcher in another Space also keeps the whole overlay concealed", o2.isConcealed)
+  shell.track()
+  check("concealing a misplaced catcher cannot make it safe to reveal on the next read", o2.isConcealed)
+  world.windows[o2.catcher.windowNumber]?.spaces = [11]
+  world.windows[b.windowNumber]?.bounds.size.width -= 40
+  shell.track()
+  check("a resized window is concealed until its new frame can be read", o2.isConcealed)
+  world.windows[b.windowNumber] = saved
+  world.windows[b.windowNumber]?.pid = 42
+  shell.track()
+  check("a window number belonging to another process never keeps the overlay visible", o2.isConcealed)
+  world.windows[b.windowNumber] = saved
+  windows.noList = false
+  shell.track()
+  // A real move refused by macOS still backs off: no repeated private calls on every poll. Loading never
+  // reaches the bridge; refusal does, and the same ready view is retried after the existing five seconds.
+  let callsBefore = world.calls.count
+  o2.hide("test a refused move")
+  world.refuseAdds = [true]
+  shell.track()
+  let refusedCalls = world.calls.count
+  check("a refused Space move is kept hidden", !o2.isShown && refusedCalls > callsBefore)
+  for _ in 0..<20 { shell.track() }
+  check("a real move failure keeps its cooldown without hammering the bridge", world.calls.count == refusedCalls)
+  check("the ready view is retried after the real failure's cooldown", await until(6, { o2.isShown && o2.aheadPending }))
+}
+
 @MainActor
 func overlaysScenario() async {
   func check(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") { e2eCheck("overlays: \(label)", ok, detail()) }

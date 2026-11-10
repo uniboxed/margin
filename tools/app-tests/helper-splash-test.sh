@@ -54,8 +54,17 @@ trap cleanup EXIT
 export MARGIN_HELPER_SPLASH_TEST=1
 export MARGIN_HELPER_SPLASH_SHOT="$BUILD/splash.png"
 export MARGIN_HELPER_BROWSERS="$TEST_BROWSER_ID"
-# A deliberately missing app: the helper's launch can fail, but it must still remain small and its splash
-# must still release the window. No app-start marker or real installation is touched.
+# An app with a deliberately missing executable: launch can fail, but the helper must remain small and its
+# splash must release the window. Give it its own bundle identity; a wholly missing bundle falls back to the
+# real Margin's identity, making the test skip startup whenever the person's Margin.app is already running.
+# No app-start marker or real installation is touched.
+mkdir -p "$BUILD/Missing.app/Contents"
+cat > "$BUILD/Missing.app/Contents/Info.plist" <<PL
+<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>com.unibox.margin.test.missing-app.$$</string>
+<key>CFBundleExecutable</key><string>missing</string><key>CFBundlePackageType</key><string>APPL</string>
+</dict></plist>
+PL
 export MARGIN_HELPER_APP="$BUILD/Missing.app"
 "$HELPER_BIN" 2> "$BUILD/resident.log" & RESIDENT=$!
 sleep 0.5

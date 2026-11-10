@@ -1781,6 +1781,11 @@ extension Tests {
           d { $0.full = false; $0.target = true } == .hide("its window is still being made") && d { $0.full = false; $0.target = true; $0.targetReady = true } == .show(100))
     check("planner: not bound", d { $0.bound = nil; $0.window = nil } == .hide("its window isn't bound to one of the window server's"))
     check("planner: bound but missing from one read: concealed where it is", d { $0.absent = true } == .conceal)
+    check("planner: missing from the batch, independently confirmed in its full-screen Space: kept drawn",
+          d { $0.absent = true; $0.absentConfirmed = true } == .reveal)
+    check("planner: a held-out or parked window stays hidden even if independently confirmed",
+          d { $0.absent = true; $0.absentConfirmed = true; $0.leaving = true } == .leaving
+          && d { $0.absent = true; $0.absentConfirmed = true; $0.parked = true } == .parked)
     check("planner: its window gone from the window server", d { $0.window = nil } == .hide("its window is gone from the window server"))
     // Off screen.
     check("planner: its window off screen, the overlay not in its Space yet: placed ahead (else put away)",

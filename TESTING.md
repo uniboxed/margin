@@ -84,6 +84,15 @@ Automated coverage: `npm run test:app` checks historical copy IDs against the cu
 
 `tools/app-tests/helper-test.sh` also tests the real helper and its splash child over a fake browser window off every display: resident memory before/during/after, idle CPU time, app startup, early and late handoff messages, pid isolation, timeout and browser quit. `helper-splash-test.sh` refuses any on-screen test frame. Fixture folders and browser IDs are unique per run. The app's end-to-end checks exercise its actual notification responder too. To compare an older helper in the same session, pass `MARGIN_HELPER_BASELINE=/absolute/path/to/the/old/helper`; it is run only against the fake browser. Logs and the launch-card snapshot stay in the fixture folder printed in failure output (`build/helper-splash-test-*/`).
 
+## Prepared layouts across full-screen Spaces (2026-11-10)
+
+- [ ] Restore two or three browser windows in separate full-screen Spaces. Leave the first in front while their layouts draw, then visit each of the others within five seconds. Its sidebar and frame should already be drawn as its Space slides in, without a black gap followed by the layout appearing.
+- [ ] Swipe back and forth twenty times, including partial swipes and quick reversals, then use Mission Control and the keyboard to visit them. Each window keeps its correct layout; none appears on the Desktop or in another app's Space. Repeat with Safari profiles, Chrome and Edge.
+- [ ] Close one window, exit full screen, resize, move a full-screen window between displays, and use a page's video full-screen mode. Margin hides or follows as appropriate; there must be no leftover sidebar or invisible pointer catcher in the previous Space.
+- [ ] Leave the browsers open but idle, then quit them. The resident helper's idle behavior and the app's existing idle quit stay as before. No additional web views or screenshot cache are used for switching.
+
+Automated: `MARGIN_E2E_ONLY=window-ready tools/app-tests/run.sh e2e` (build with `npm run build` first), also included in `npm run test:app`. Real off-screen WKWebViews and Shell run against stand-in windows and a fake Space bridge. A ready background layout must be placed within one second of its ready callback; twenty Space visits reuse both native windows and their pages without another Space move. Missing batch reads retain the layout only with fresh independent window/owner/size and full-screen Space confirmation for all active overlay panels. Unknown membership, a closed/resized/reused window number, or a misplaced panel/catcher must still conceal. Real Space move refusals keep their five-second cooldown. These tests never move a real browser or call the real private bridge; they do not measure macOS's compositor or guarantee a cold window is drawn before WebKit is ready.
+
 ## Chrome and Edge on the Mac (2026-11-09)
 
 Margin.app now links Chrome's and Edge's copies the way it links Safari's (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"). Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'` (zsh's `log` is a builtin).

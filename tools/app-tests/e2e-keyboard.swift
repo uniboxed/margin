@@ -130,7 +130,8 @@ func keyboardScenario() async {
   check("the palette focused in the hidden overlay: wanted, but the keyboard isn't taken", await until(3, { o1b.pageWantsKeyboard }) && !o1b.hasKeyboard)
   check("and the log says it waits", said[from...].contains("\(k1): a field of its page has the focus, but the overlay isn't shown: the keyboard waits for it to show"))
   await ticks(3) // each one puts it away again
-  check("reads that keep it hidden: still wanted, the page not told to let go", o1b.pageWantsKeyboard && o1b.blurs == 0 && !o1b.hasKeyboard && !o1b.isShown)
+  check("reads that keep it hidden: still wanted, the page not told to let go", o1b.pageWantsKeyboard && o1b.blurs == 0 && !o1b.hasKeyboard && !o1b.isShown,
+        Array(said[from...]).filter { $0.contains("\(k1)") }.joined(separator: "\n"))
   place([(w1, r1, true), (w2, r2, true)])
   check("shown over the front window within 2 s: the keyboard taken as it shows", await until(3, { o1b.isShown && o1b.hasKeyboard }) && o1b.keyOnShow == 1, "keyOnShow \(o1b.keyOnShow)")
   f = await focused(o1b)

@@ -3991,3 +3991,49 @@ The two flakes left in GitHub issue #13's end-to-end tests:
   Helper fixture folders and browser IDs are now unique per run, and the clean helper run passed every check.
   `npm test`: 1,017 passed; `npm run test:e2e`: 149 passed; native logic: 2,071 passed; native end-to-end: 496 passed
   (five new handoff checks). The installed Safari launch and Space transitions still need manual verification.
+
+## Keep full-screen layouts prepared between Space visits (2026-11-10)
+
+- **The report is switching full-screen windows/macOS Spaces.** Existing traces show a background overlay
+  created at 12:55:25.537 and drawn at 12:55:26.083 (546 ms), but never placed before Safari quit around
+  12:55:28. Shell.placeAhead called the overlay before its page was ready; that normal loading failure was
+  treated as a refused Space move and started a five-second cooldown. It now sizes the loading view as before,
+  but waits for readiness before Space queries or a placement attempt. The existing ready callback schedules
+  tracking. Only a real refused placement starts the cooldown, retaining its protection against repeated calls.
+- **A second deterministic flicker.** A missing batch window-server read unconditionally made an already
+  drawn overlay transparent, even when independent live reads confirmed its window and Space. Such an
+  overlay now stays drawn only if its native binding, owner, size, single full-screen Space and every active
+  panel's Space agree. This includes its pointer catcher even after conceal orders that helper out; an unused
+  deferred edge panel is not realized just to check it. Unknown Space data, closed/resized/reused window
+  numbers, misplaced panels, parked windows, switches in progress and page full-screen keep the conservative
+  conceal path. No new binding is learned from a missing batch.
+- **Cost.** The ordinary Space-visit path reuses the existing web views/windows, with no page reload, extra
+  Space move, snapshot cache, new view, faster timer or resident helper change. Independent single-window and
+  Space checks happen only on missing batch reads. Twenty simulated visits took about 9 ms in the off-screen
+  regression fixture; this measures the shell's reads with a fake bridge, not real compositor latency.
+- **Regression evidence.** The readiness test fails before the cooldown fix; the missing-read test fails
+  before the independent confirmation fix. With both, real off-screen Shell/WKWebViews keep two layouts
+  drawn through twenty visits, before any extension focus response, using the same native window numbers
+  and page time origins. Tests also exercise unknown reads, closed/resized/reused windows, misplaced panel
+  and catcher (including a second read after conceal), and a refused move's five-second backoff and retry.
+- **Helper-test isolation.** The first broad run's launch-card test skipped startup while the real installed
+  Margin.app was running (started by a browser test). Its deliberately nonexistent target bundle fell back
+  to the real app's identity, so the helper correctly did nothing. The fixture now has a unique bundle identity
+  and a deliberately missing executable; launch still fails as intended, independently of the installed app.
+  The rerun exercises the splash while the real app is running. No helper production code changed here.
+- **Pointer-test isolation.** The first full native end-to-end run lost a hidden palette's pending focus,
+  causing eight chained keyboard assertions to fail. Code inspection found that off-screen Shell harnesses
+  were subscribing to real local/global desktop mouse events. A real click calls pressed and explicitly
+  cancels a hidden palette's focus request. Harnesses now use their injected pressed calls only; production
+  pointer monitoring is unchanged. The first keyboard failure also prints its collected focus reasons if
+  it recurs. Desktop input was not recorded, so the specific external event is not established.
+- **Verification.** `npm test`: 1,017 passed; `npm run test:e2e`: 149 passed. Native logic: all 2,073 passed
+  with the default 300 binding runs and 1,000 visible-page runs. After the two test-isolation corrections,
+  `WINDOW_RUNS=50 VISIBLE_RUNS=80 tools/app-tests/run.sh` exited successfully: 2,073 logic checks, all helper
+  checks, no app/handler/helper compiler warnings, and all 517 native end-to-end checks (21 added for window
+  preparation). The focused readiness run also passed all 34 checks. Only off-screen stand-ins were driven.
+- **Manual verification.** TESTING.md lists full and partial swipes, rapid reversals, Mission Control, keyboard,
+  different browsers/profiles, closing/resizing, displays and page full-screen. No real browser or macOS Space
+  was driven by these tests. Cold new views still need WebKit to draw; unknown private Space reads still hide
+  conservatively; the OS compositor's animation is outside these off-screen measurements. Literal zero delay
+  on every possible first frame is not established.

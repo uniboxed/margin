@@ -160,6 +160,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // The own-Space check (checkOwnSpace, judgeOwnSpace) in a harness too: its window source says
         // which windows are on screen (the harness's stand-in windows have no Spaces of their own).
         var harnessOwnSpaceCheck = false
+        // Exercise ahead-of-visit placement with an injected SpaceBridge in off-screen tests. The overlay's
+        // harness still refuses every frame on a display; the real bridge refuses under MARGIN_APP_TESTS.
+        var harnessAheadPlacement = false
         var root: URL? // the overlay's page folder (dist/app); default: the app's Resources/app
         var overlay = OverlayController.Options()
         var restPoll: TimeInterval = 0.25 // a linked browser in front
@@ -1056,22 +1059,43 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private func placeAhead(_ overlay: OverlayController, key: WindowKey, w: ExtWindow, number: Int, server: ServerWindow) -> Bool {
         // (Not within 3 s of a switch: its windows' Spaces were just changed, and a read may still give the old one.)
         if switcher.busy { lastSwitchBusyAt = Diagnostics.now() }
-        guard !options.harness, overlay.ownSpace, !ownSpaceFellBack, w.state == "fullscreen", !inSwitch(key), !isParkedKey(key),
+        guard (!options.harness || (options.harnessAheadPlacement && options.overlay.harness)), overlay.ownSpace, !ownSpaceFellBack, w.state == "fullscreen", !inSwitch(key), !isParkedKey(key),
               !switcher.busy, Diagnostics.now() - lastSwitchBusyAt >= 3,
               let reads = spaceReads, let bridge = reads as? SpaceBridge, bridge.canPark,
               Diagnostics.now() - (aheadFailedAt[key] ?? -.infinity) >= 5 else { return false }
-        // (A window Accessibility read as not full screen: no SkyLight calls. One it read as full screen is still
-        // checked with SkyLight, as entering full screen says so before the window is in its own Space.)
-        guard ax.fullScreen[number] != false, let space = reads.spaces(of: number)?.first, reads.fullScreenSpaces()?.contains(space) == true else { return false }
         let viewport = w.viewport
         let docked = Shell.dockedLeft(overlay)
         let frame = Shell.overlayFrame(window: server.bounds, viewport: viewport, dockedLeft: docked)
         overlay.windowFrame = server.bounds
         overlay.size(to: frame)
         overlay.browserPid = server.pid
+        // Loading is not a refused Space move. The ready callback schedules another read; do not start the
+        // five-second failure cooldown before a placement has actually been attempted.
+        guard overlay.isReady else { return false }
+        // No Space queries while the web view is loading. An AX window explicitly not full screen never moves;
+        // one that is full screen still needs its actual full-screen Space (Safari can be mid-transition).
+        guard ax.fullScreen[number] != false, let space = reads.spaces(of: number)?.first, reads.fullScreenSpaces()?.contains(space) == true else { return false }
         let placed = overlay.placeAhead(over: number, frame: frame) { numbers in numbers.allSatisfy { bridge.add($0, to: space) } }
         if !placed { aheadFailedAt[key] = Diagnostics.now() }
         return placed
+    }
+
+    // A batch list can omit a live window during a Space change. Avoid making an already drawn layout
+    // transparent for that blip, but only with independent evidence: a fresh single-window read at its size,
+    // and its native panels in the same existing full-screen Space. Unknown, closed, resized, moved to the
+    // Desktop, parked or switching windows keep the conservative conceal path. No checks on ordinary reads.
+    private func confirmsAbsent(_ overlay: OverlayController, number: Int) -> Bool {
+        // The catcher is ordered out by conceal and back in by reveal. Include it even while hidden; the
+        // edge's frame remains known while concealed. Never realize an unused, deferred edge window here.
+        let owned = overlay.spaceWindowNumbers.union([overlay.catcher.windowNumber])
+        guard overlay.isShown, overlay.ownSpace, overlay.aboveWindow == number,
+              let before = overlay.windowFrame, let reads = spaceReads,
+              let bridge = reads as? SpaceBridge, bridge.canPark,
+              let window = reads.window(number), window.pid == overlay.browserPid, Self.sameSize(before, window.bounds),
+              let spaces = reads.spaces(of: number), spaces.count == 1, let space = spaces.first,
+              owned.allSatisfy({ reads.spaces(of: $0) == spaces }),
+              reads.fullScreenSpaces()?.contains(space) == true else { return false }
+        return true
     }
 
     // Safari's windows' profiles from Accessibility: known ones at once, unknown ones asked for (the answer
@@ -1275,7 +1299,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 facts.overlaySpaces = windowMap.snapshot.windows[existing.windowNumber]?.spaces
                 facts.windowSpaces = boundTo.flatMap { windowMap.snapshot.windows[$0]?.spaces }
             }
-            facts.canMove = !options.harness && (spaceReads as? SpaceBridge)?.canPark == true && !inSwitch(key)
+            facts.canMove = (!options.harness || (options.harnessAheadPlacement && options.overlay.harness)) && (spaceReads as? SpaceBridge)?.canPark == true && !inSwitch(key)
+            if facts.absent, facts.canMove, facts.full, !facts.parked, !w.pageFullscreen, let existing, let number = boundTo {
+                facts.absentConfirmed = confirmsAbsent(existing, number: number)
+            }
             facts.canSuspect = ownSpaceChecks && !ownSpaceFellBack && !spaceChanged && !inSwitch(key)
             facts.spaceChanged = spaceChanged
             let decision = OverlayPlanner.decide(facts)
@@ -1383,7 +1410,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             overlays[key] = nil
             ownSpaceSuspects[key] = nil
         }
-        if overlays.values.contains(where: \.isShown) { pointer.start() } else { pointer.stop() }
+        // Off-screen tests inject presses with pressed(_:); desktop clicks must not cancel their palettes.
+        if !options.harness, overlays.values.contains(where: \.isShown) { pointer.start() } else { pointer.stop() }
         updateKeys(list: list, allPids: allPids)
         pointerMoved(PointerWatch.location, fromTrack: true)
         if switcher.busy { switcher.tick(); lastSwitchBusyAt = Diagnostics.now() }
