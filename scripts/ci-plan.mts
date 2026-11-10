@@ -27,11 +27,11 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // The workflow itself, the lockfiles, the shared build script and this plan reach everything.
 const ALL = /^(\.github\/workflows\/ci\.yml|package(-lock)?\.json|tsconfig(\.tests)?\.json|scripts\/build\.ts|scripts\/ci-plan\.mts)$/;
 // (Unit tests read some of the app's files too: the Chromium crate's extension id, the host page; and npm test
-// type-checks tools/ and, by tsconfig.rest.json, the browser tests. The end-to-end tests
+// type-checks tools/ and the browser tests. The end-to-end tests
 // load the built extension and the host page, their site, harness and fixtures, the box patterns' pages, and build the
 // connector for the Chromium relay's test.)
 const REACH = {
-  unit: /^(extension|app|tests|types|scripts|tools)\/|^tsconfig\.rest\.json$/,
+  unit: /^(extension|app|tests|types|scripts|tools)\//,
   e2e: /^(extension|app\/shared\/(host|connector)|types|scripts|tests\/(e2e|fixtures|box))\/|^tests\/fake-app\.ts$/,
   rust: /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfmt\.toml$|^scripts\/rust-test\.sh$|^tests\/fixtures\//,
   app: /^(app|tools|extension|tests\/fixtures)\/|\.swift$/,

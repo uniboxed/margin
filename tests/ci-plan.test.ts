@@ -68,8 +68,8 @@ test('a unit test alone: the unit tests, no browser', () => {
   assert.deepEqual(p.browsers.include, []);
 });
 
-test('a tool or the rest\'s type check alone: the unit tests (npm test type-checks tools/ and the browser tests), no browser', () => {
-  for (const f of ['tools/fit-check/store.mts', 'tools/webkit-host/scenarios.mts', 'tsconfig.rest.json']) {
+test('a tool alone: the unit tests (npm test type-checks tools/), no browser', () => {
+  for (const f of ['tools/fit-check/store.mts', 'tools/webkit-host/scenarios.mts']) {
     const p = plan([f]);
     assert.equal(p.unit, true, f);
     assert.deepEqual(p.browsers.include, [], f);
