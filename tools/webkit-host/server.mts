@@ -55,7 +55,7 @@ const FIRST_FRAMES = `<script>(() => {
   };
   requestAnimationFrame(look);
 })();</script>`;
-const FIXTURES = {
+const FIXTURES: Record<string, string> = {
   // msu.edu's pattern (reported 2026-11-07: "i can't scroll in there at all"): <html> clips sideways only, so its
   // scrolling stays auto, and <body> says overflow: hidden, harmless where <html> scrolls. In the box <body> scrolls.
   'root-x-hidden': `<style>html { overflow-x: hidden } body { overflow: hidden; margin: 0 } .tall { height: 5000px; background: linear-gradient(#eee, #999) }</style><div class="tall">tall</div>`,
@@ -146,11 +146,11 @@ const FIXTURES = {
   pane: '<style>html, body { height: 100%; margin: 0 } #app { height: 100%; overflow: auto }</style><div id=app><p id=line>first line</p><div style="height: 3000px">app</div></div>',
   linked: `<link id=l rel=stylesheet href="http://localhost:${PORT}/other.css"><p id=w>wide?</p>`,
 };
-const page = (name) => {
+const page = (name: string) => {
   if (name.startsWith('T')) return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title><style>${BOX_CSS}</style></head><body>${BOX_BODY}</body></html>`;
   if (name.startsWith('P')) return `<!doctype html><title>${name}</title><form id=f method=post action=/posted><input name=x value=1></form>`;
   if (name.startsWith('H')) {
-    const box = (i) => `<div class=b style="background:linear-gradient(${i % 360}deg,hsl(${i % 360} 60% 40%),hsl(${(i * 7) % 360} 70% 30%))">${i} ${'word '.repeat(6)}</div>`;
+    const box = (i: number) => `<div class=b style="background:linear-gradient(${i % 360}deg,hsl(${i % 360} 60% 40%),hsl(${(i * 7) % 360} 70% 30%))">${i} ${'word '.repeat(6)}</div>`;
     return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title><style>body{margin:0;background:#202124;color:#e8eaed;font:14px sans-serif;display:flex;flex-wrap:wrap;gap:4px}.b{width:150px;height:60px;border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,.6),inset 0 0 12px rgba(255,255,255,.25);filter:drop-shadow(0 0 3px #000);overflow:hidden}</style></head><body>${Array.from({ length: 3000 }, (_, i) => box(i)).join('')}</body></html>`;
   }
   if (name.startsWith('B')) return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title><style>@keyframes s{to{transform:rotate(360deg)}}.s{width:80px;height:80px;background:#48c;animation:s 1s linear infinite}</style></head><body><h1>Busy ${name}</h1><div class=s></div><p id=n>0</p><script>let n=0;setInterval(()=>{let x=0;for(let i=0;i<20000;i++)x+=Math.sqrt(i);document.getElementById('n').textContent=++n},50);(function f(){requestAnimationFrame(f)})()</script></body></html>`;
@@ -160,7 +160,7 @@ const page = (name) => {
   // "I…": another site's frame with text in a field; "J…": another site's frame with none, beside
   // frames of the page's own site with no address of their own (empty, srcdoc: Gmail has some)
   // and a sandboxed one; "K…": a data: frame (no site: no extension may look into it).
-  const framed = (frames) => `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title></head><body><h1>Framed ${name}</h1>${frames}</body></html>`;
+  const framed = (frames: string) => `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title></head><body><h1>Framed ${name}</h1>${frames}</body></html>`;
   if (name.startsWith('I')) return framed(`<iframe src="http://localhost:${PORT}/x/frame-draft"></iframe>`);
   if (name.startsWith('J')) return framed(`<iframe src="http://localhost:${PORT}/x/frame-plain"></iframe><iframe></iframe><iframe srcdoc="<p>inline</p>"></iframe><iframe sandbox src="http://localhost:${PORT}/x/frame-plain"></iframe>`);
   if (name.startsWith('K')) return framed(`<iframe src="data:text/html,<textarea>typed</textarea>"></iframe>`);
@@ -168,6 +168,7 @@ const page = (name) => {
   return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title><style>body{margin:0;font:20px sans-serif;background:#fff}</style></head><body><h1>Page ${name}</h1><p>${'text '.repeat(200)}</p></body></html>`;
 };
 
+// (`req.url!`: a server's request always has its address.)
 createServer((req, res) => {
   if (req.url === '/log' && req.method === 'POST') {
     let body = '';
@@ -188,7 +189,7 @@ createServer((req, res) => {
     res.setHeader('content-type', 'text/css');
     return res.end('@media (max-width: 1000px) { #w { color: rgb(1, 2, 3); } }');
   }
-  const fixture = /^\/x\/([\w-]+)/.exec(req.url);
+  const fixture = /^\/x\/([\w-]+)/.exec(req.url!);
   if (fixture && FIXTURES[fixture[1]]) {
     res.setHeader('content-type', 'text/html; charset=utf-8');
     return res.end(`<!doctype html><html><head><meta charset="utf-8"><title>${fixture[1]}</title></head><body>${FIXTURES[fixture[1]]}</body></html>`);
@@ -197,49 +198,49 @@ createServer((req, res) => {
     res.setHeader('content-type', 'text/css');
     return res.end(BOX_CSS);
   }
-  const firstPaint = /^\/fp\/(\w+)/.exec(req.url);
+  const firstPaint = /^\/fp\/(\w+)/.exec(req.url!);
   if (firstPaint) {
     res.setHeader('content-type', 'text/html; charset=utf-8');
     return res.end(`<!doctype html><html><head><meta charset="utf-8"><title>${firstPaint[1]}</title>${FIRST_FRAMES}<style>body{margin:0;font:20px sans-serif;background:#fff}</style></head><body><h1>Page ${firstPaint[1]}</h1><p>${'text '.repeat(400)}</p></body></html>`);
   }
-  const strict = /^\/csp\/(\w+)/.exec(req.url);
+  const strict = /^\/csp\/(\w+)/.exec(req.url!);
   if (strict) {
     res.setHeader('content-type', 'text/html; charset=utf-8');
     res.setHeader('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self'");
     return res.end(`<!doctype html><html><head><meta charset="utf-8"><title>${strict[1]}</title><link rel=stylesheet href=/box.css></head><body>${BOX_BODY.replaceAll(/ style="[^"]*"/g, '')}</body></html>`);
   }
-  const slow = /^\/slow\?ms=(\d+)/.exec(req.url);
+  const slow = /^\/slow\?ms=(\d+)/.exec(req.url!);
   if (slow) {
     return setTimeout(() => {
       res.setHeader('content-type', 'image/gif');
       res.end(Buffer.from('R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==', 'base64'));
     }, Number(slow[1]));
   }
-  if (req.url.startsWith('/posted')) {
+  if (req.url!.startsWith('/posted')) {
     console.log(`${stamp()} SERVER ${req.method} ${req.url}`);
     res.setHeader('content-type', 'text/html; charset=utf-8');
     return res.end('<!doctype html><title>Posted</title><h1>Posted</h1><p>result</p>');
   }
   // The page patterns the box handles (tests/box/serve.ts): /box/pattern/<name>, /box/ref/<name>?w=&h=.
-  if (req.url.startsWith('/box/')) {
-    const u = new URL(req.url, 'http://127.0.0.1');
+  if (req.url!.startsWith('/box/')) {
+    const u = new URL(req.url!, 'http://127.0.0.1');
     // Another origin for the same files (a CDN's, no CORS): localhost, where the pages are 127.0.0.1's.
     const out = boxPage(u.pathname.slice('/box'.length), u.searchParams, { other: `http://localhost:${PORT}/box` });
     if (out) {
       res.setHeader('content-type', out.type);
       res.setHeader('cache-control', 'no-store');
-      if (!(out.parts?.length > 1)) return res.end(out.body);
+      if (!((out.parts?.length ?? 0) > 1)) return res.end(out.body);
       // A page that arrives in parts (tests/box/serve.ts partsOf).
       let at = 0;
       const next = () => {
-        const part = out.parts[at++];
+        const part = out.parts![at++]; // (in parts: just above)
         if (!part) return res.end();
         setTimeout(() => { res.write(part.text); next(); }, part.wait);
       };
       return next();
     }
   }
-  const match = /^\/p\/(\w+)/.exec(req.url);
+  const match = /^\/p\/(\w+)/.exec(req.url!);
   if (match) {
     res.setHeader('content-type', 'text/html; charset=utf-8');
     // "S…": a slow page, still loading for 1.5s after its start arrived.

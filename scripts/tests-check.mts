@@ -1,6 +1,6 @@
 // The type check of what tsconfig.tests.json doesn't hold yet, folder by folder (GitHub issue #4; as
 // scripts/strict-check.mts did for the extension's code, DECISIONS.md "Strict types"): `tsconfig.rest.json` checks the
-// browser tests and tools/ with what they import, and this fails only on errors in the folders and files
+// browser tests with what they import, and this fails only on errors in the folders and files
 // already brought up to it (DONE), so those can't slip back while the rest catches up. A config listing only the done
 // files would still check every file they import (a helper not done yet): hence the whole program, filtered. Once DONE
 // covers everything, those join tsconfig.tests.json and this goes. `--all`: every error, wherever it is (to see what's
@@ -15,12 +15,9 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const TSC = join(dirname(createRequire(import.meta.url).resolve('typescript/package.json')), 'bin/tsc');
 // The files and folders (paths from the repo's root; a folder ends in /) whose type errors fail the check. A folder
 // once all of it is done, so a file added there is held at once; a folder all done moves to tsconfig.tests.json
-// (scripts/, 2026-11-10). (What the unit tests import, the theme harness, the e2e harness and site, the box patterns'
+// (scripts/ and tools/, 2026-11-10). (What the unit tests import, the theme harness, the e2e harness and site, the box patterns'
 // rules and server, is held there already.)
 export const DONE: string[] = [
-  'tools/boards/',
-  'tools/fit-check/',
-  'tools/store-shots.mts',
 ];
 
 const all = process.argv.includes('--all');

@@ -50,69 +50,73 @@
 //                              view is made as it's selected all the same (no page: a script there
 //                              gets an error in place of a result, as in Safari)
 
+// A step (the list above); scenarios are lists of them, printed as JSON.
+type Step = { op: string, [field: string]: unknown };
+type Box = [left: number, top: number, right: number, bottom: number];
+
 // Margin's state from storage, by state key (shared/stored.ts: the keys
 // holding tab ids have names of their own there): an expression for steps.
 const STATE = '(async (keys) => { const raw = await browser.storage.local.get(null); const open = raw.openTabs ?? {}; const of = (k) => (["tabs", "tabSpace", "activeSpaceByWindow", "keptTabs"].includes(k) ? open[k] ?? (k === "keptTabs" ? {} : undefined) : k === "lostTabs" ? raw.lostTabs2 : k === "openTabsBy" ? (raw.openTabs ? { origin: open.origin, synced: open.synced } : null) : raw[k]); return Object.fromEntries([].concat(keys).map((k) => [k, of(k)])); })';
 // The id of the tab showing /p/<name>, from Margin's own tab snapshot.
 const ID = 'const { tabs } = await ' + STATE + '("tabs"); const id = (n) => Object.values(tabs).find((t) => t.url.endsWith("/p/" + n))?.id;';
-const switchTo = (from, to, options = {}) => ({ op: 'eval', in: from, js: `${ID} return JSON.stringify(await Margin.content.send("activateTab", { tabId: id("${to}"), ...${JSON.stringify(options)} }) ?? null)` });
+const switchTo = (from: string, to: string, options: Record<string, unknown> = {}) => ({ op: 'eval', in: from, js: `${ID} return JSON.stringify(await Margin.content.send("activateTab", { tabId: id("${to}"), ...${JSON.stringify(options)} }) ?? null)` });
 // `js`: an expression, or statements ending in `return …`.
-const body = (js) => (/\breturn\b/.test(js) ? js : `return ${js}`);
-const check = (tab, label, js, timeout) => ({ op: 'check', in: tab, label, js: body(js), ...(timeout ? { timeout } : {}) });
-const checkPage = (tab, label, js, timeout) => ({ op: 'checkPage', in: tab, label, js: body(js), ...(timeout ? { timeout } : {}) });
-const wait = (ms) => ({ op: 'wait', ms });
+const body = (js: string) => (/\breturn\b/.test(js) ? js : `return ${js}`);
+const check = (tab: string, label: string, js: string, timeout?: number) => ({ op: 'check', in: tab, label, js: body(js), ...(timeout ? { timeout } : {}) });
+const checkPage = (tab: string, label: string, js: string, timeout?: number) => ({ op: 'checkPage', in: tab, label, js: body(js), ...(timeout ? { timeout } : {}) });
+const wait = (ms: number) => ({ op: 'wait', ms });
 // Margin's core runs in this page and has the state. It draws nothing there,
 // linked to Margin.app or not (Margin 2 Phase 2 step 5: the app draws Margin's UI).
-const ready = (tab) => check(tab, `${tab}: Margin runs here, with the state`, `!!Margin.content?.getState?.().state?.spaces?.length`, 5000);
+const ready = (tab: string) => check(tab, `${tab}: Margin runs here, with the state`, `!!Margin.content?.getState?.().state?.spaces?.length`, 5000);
 // No element of Margin's in the page, and no frame painted on it (the first paint handed over, or never there).
 const NOTHING_DRAWN = `[...document.querySelectorAll('*')].every((el) => !el.localName.startsWith('margin-')) && getComputedStyle(document.documentElement, '::after').content === 'none'`;
-const nothingDrawn = (tab, label = `${tab}: no element of Margin's in the page, no frame`) => checkPage(tab, label, NOTHING_DRAWN, 3000);
+const nothingDrawn = (tab: string, label = `${tab}: no element of Margin's in the page, no frame`) => checkPage(tab, label, NOTHING_DRAWN, 3000);
 // Linked to Margin.app's real end of the link (the link server, started by appStart).
-const linked = (tab) => check(tab, `${tab}: linked to Margin.app`, `Margin.content?.appDraws?.() === true`, 9000);
+const linked = (tab: string) => check(tab, `${tab}: linked to Margin.app`, `Margin.content?.appDraws?.() === true`, 9000);
 // The app's overlay measured the page slot again: its insets from the window's edges.
-const layoutAt = (left, top = 8, right = 8, bottom = 8) => ({ op: 'appLayout', layout: [left, top, right, bottom] });
+const layoutAt = (left: number, top = 8, right = 8, bottom = 8) => ({ op: 'appLayout', layout: [left, top, right, bottom] });
 // Margin.app running, its page slot `left`/8/8/8 (Keep open: 260; the frame alone: 8).
 const appWith = (left = 260) => ({ op: 'appStart', layout: [left, 8, 8, 8] });
-const shown = (tab) => checkPage(tab, `${tab} is the tab shown`, `!document.hidden`);
+const shown = (tab: string) => checkPage(tab, `${tab} is the tab shown`, `!document.hidden`);
 // Keep open, as the app's layout says it (pages have no sidebar of their own to keep open).
 const keepOpen = layoutAt(260);
 // Nothing Margin did reached the page's own error listeners (a ResizeObserver
 // loop error from a paint barrier, say: host.swift's page log).
-const noPageErrors = (tab) => checkPage(tab, `${tab}: no error reached the page`, `!(window.__pageLog ?? []).some((l) => l.startsWith('uncaught'))`);
-const reload = (tab) => ({ op: 'page', in: tab, js: 'location.reload(); return "reloading"' });
+const noPageErrors = (tab: string) => checkPage(tab, `${tab}: no error reached the page`, `!(window.__pageLog ?? []).some((l) => l.startsWith('uncaught'))`);
+const reload = (tab: string) => ({ op: 'page', in: tab, js: 'location.reload(); return "reloading"' });
 // In a page step: where <html> sits in the window, from the transform itself
 // (the page's own getBoundingClientRect answers for the box).
 const AT = "const m = new DOMMatrix(getComputedStyle(document.documentElement).transform); const at = { x: m.e, y: m.f, scale: m.a };";
 // The page has its box at `left`, inside the frame.
-const boxed = (tab, left = 260) => checkPage(tab, `${tab}: the page is in its box at ${left}`, `${AT} return at.x === ${left} && at.y === 8 && innerWidth === 1200 - ${left} - 8 && document.scrollingElement === document.documentElement`, 5000);
+const boxed = (tab: string, left = 260) => checkPage(tab, `${tab}: the page is in its box at ${left}`, `${AT} return at.x === ${left} && at.y === 8 && innerWidth === 1200 - ${left} - 8 && document.scrollingElement === document.documentElement`, 5000);
 // No box: the page as it is.
-const bare = (tab) => checkPage(tab, `${tab}: no box, the page as it is`, `getComputedStyle(document.documentElement).transform === 'none' && document.scrollingElement === document.documentElement && innerWidth === 1200`, 3000);
+const bare = (tab: string) => checkPage(tab, `${tab}: no box, the page as it is`, `getComputedStyle(document.documentElement).transform === 'none' && document.scrollingElement === document.documentElement && innerWidth === 1200`, 3000);
 
-const rect = (id) => `(() => { const r = document.getElementById('${id}').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; })()`;
-const near = (a, b, by = 2) => `Math.abs((${a}) - (${b})) <= ${by}`;
-const openBox = (name, url) => [{ op: 'open', name, url, active: true }, boxed(name)];
+const rect = (id: string) => `(() => { const r = document.getElementById('${id}').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; })()`;
+const near = (a: string | number, b: string | number, by = 2) => `Math.abs((${a}) - (${b})) <= ${by}`;
+const openBox = (name: string, url: string) => [{ op: 'open', name, url, active: true }, boxed(name)];
 // Margin.app linked with Keep open's layout (260/8/8/8), and a page in its box.
-const startBoxed = (name, url, left = 260) => [appWith(left), { op: 'open', name, url, active: true }, wait(800), { op: 'install' }, linked(name), boxed(name, left)];
+const startBoxed = (name: string, url: string, left = 260): Step[] => [appWith(left), { op: 'open', name, url, active: true }, wait(800), { op: 'install' }, linked(name), boxed(name, left)];
 const tick = 'await new Promise((resolve) => setTimeout(resolve, 80));';
 // A real key, no modifiers unless given (arrows: 125 down, 126 up, chars as AppKit's).
-const key = (tab, keyCode, chars, mods = []) => ({ op: 'key', in: tab, keyCode, chars: String.fromCharCode(chars), mods });
-const ARROW_DOWN = [125, 0xF701];
-const PAGE_DOWN = [121, 0xF72D];
-const pressIn = (tab, at) => [{ op: 'mouse', in: tab, type: 'down', at: `return ${JSON.stringify(at)}` }, { op: 'mouse', in: tab, type: 'up' }];
+const key = (tab: string, keyCode: number, chars: number, mods: string[] = []) => ({ op: 'key', in: tab, keyCode, chars: String.fromCharCode(chars), mods });
+const ARROW_DOWN: [number, number] = [125, 0xF701];
+const PAGE_DOWN: [number, number] = [121, 0xF72D];
+const pressIn = (tab: string, at: [number, number]) => [{ op: 'mouse', in: tab, type: 'down', at: `return ${JSON.stringify(at)}` }, { op: 'mouse', in: tab, type: 'up' }];
 
 // Sleeping tabs (background/sleep.ts): a pass asked for now, for tabs unused
 // for a millisecond (the setting is hours), and what it did.
-const sleepNow = (tab, label = 'a pass of sleeping tabs') => ({ op: 'eval', in: tab, js: `return JSON.stringify(await Margin.content.send('sleepNow', { afterMs: 1 }))`, label });
+const sleepNow = (tab: string, label = 'a pass of sleeping tabs') => ({ op: 'eval', in: tab, js: `return JSON.stringify(await Margin.content.send('sleepNow', { afterMs: 1 }))`, label });
 // A Margin tab opened again: its page, one history entry, its content there.
-const awakeAt = (tab, name, label) => checkPage(tab, `${tab}: ${label}`, `location.pathname === '/p/${name}' && history.length === 1 && document.title === '${name}' && !!document.body?.textContent.includes('${name}')`, 4000);
+const awakeAt = (tab: string, name: string, label: string) => checkPage(tab, `${tab}: ${label}`, `location.pathname === '/p/${name}' && history.length === 1 && document.title === '${name}' && !!document.body?.textContent.includes('${name}')`, 4000);
 
 // Margin's tabs (Margin 2: state/model.ts keptTabs). The kept (not open)
 // Margin tab at /p/<name>, as statements in a check (`k` then).
-const KEPT = (name) => `const k = Object.values((await ${STATE}('keptTabs')).keptTabs ?? {}).find((x) => x.url.endsWith('/p/${name}'));`;
+const KEPT = (name: string) => `const k = Object.values((await ${STATE}('keptTabs')).keptTabs ?? {}).find((x) => x.url.endsWith('/p/${name}'));`;
 // It clicked in the app's sidebar: the request its row sends (activateTab with its id: ui/actions.ts).
-const openKept = (tab, name) => ({ op: 'eval', in: tab, js: `${KEPT(name)} return JSON.stringify(await Margin.content.send('activateTab', { tabId: k.id }) ?? null)` });
+const openKept = (tab: string, name: string) => ({ op: 'eval', in: tab, js: `${KEPT(name)} return JSON.stringify(await Margin.content.send('activateTab', { tabId: k.id }) ?? null)` });
 // The open tab's Margin id at /p/<name>, kept in `tab`'s content world as __mid<name>.
-const keepMid = (tab, name) => ({ op: 'eval', in: tab, js: `const { tabs } = await ${STATE}('tabs'); globalThis.__mid${name} = Object.values(tabs).find((t) => t.url.endsWith('/p/${name}'))?.mid; return globalThis.__mid${name} ?? 'none'` });
+const keepMid = (tab: string, name: string) => ({ op: 'eval', in: tab, js: `const { tabs } = await ${STATE}('tabs'); globalThis.__mid${name} = Object.values(tabs).find((t) => t.url.endsWith('/p/${name}'))?.mid; return globalThis.__mid${name} ?? 'none'` });
 // The page server's address (run.sh's MARGIN_HOST_PORT), for addresses Margin's own pages carry.
 import { firstReadKeys } from '../../extension/shared/stored.ts';
 import { listPatterns, WALK_FILES } from '../../tests/box/serve.ts';
@@ -121,7 +125,7 @@ import { judge, measure } from '../../tests/box/rules.ts';
 const SERVER = `http://127.0.0.1:${process.env.MARGIN_HOST_PORT ?? 47811}`;
 // Margin's sleep page as an earlier build left a tab on it (Safari closes sleeping tabs now, and
 // the page is gone since Phase 3: its address opens nothing).
-const OLD_SLEEP = (name) => `ext:sleep/sleep.html?${new URLSearchParams({ u: `${SERVER}/p/${name}`, t: name, k: `old-${name}` })}`;
+const OLD_SLEEP = (name: string) => `ext:sleep/sleep.html?${new URLSearchParams({ u: `${SERVER}/p/${name}`, t: name, k: `old-${name}` })}`;
 
 
 // The first paint (Margin 2 Phase 3: background/registered.ts, content/page/main.ts).
@@ -129,22 +133,22 @@ const OLD_SLEEP = (name) => `ext:sleep/sleep.html?${new URLSearchParams({ u: `${
 // box held back LATE ms as Safari's content scripts come late: what's drawn is the
 // first paint's alone.
 const LATE = 400;
-const fresh = (name, late = LATE) => ({ op: 'open', name, url: `/fp/${name}?late=${late}`, active: true });
+const fresh = (name: string, late = LATE) => ({ op: 'open', name, url: `/fp/${name}?late=${late}`, active: true });
 // Its box at left/top/right/bottom in its first frame and every frame before Margin's
 // word (the host's window is 1200 wide); `how`: 'registered' (the variables from the
 // registration's sums) or 'own' (the window's own sheet, put in as the page committed).
-const firstFrame = (tab, [l, t, r, b], { theme = 'arcadia', how = 'registered', late = LATE } = {}) => checkPage(tab, `${tab}: in its box at ${l}/${t}/${r}/${b} from its first frame, the first paint alone (${how}, ${theme})`,
+const firstFrame = (tab: string, [l, t, r, b]: Box, { theme = 'arcadia', how = 'registered', late = LATE } = {}) => checkPage(tab, `${tab}: in its box at ${l}/${t}/${r}/${b} from its first frame, the first paint alone (${how}, ${theme})`,
   `const fp = window.__fp; if (!fp || fp.frames.length < 12 || performance.now() < ${late} + 50) return false; const f0 = fp.frames[0]; const right = (f) => f.x === ${l} && f.y === ${t} && f.w === ${1200 - l - r}; const early = fp.frames.filter((f) => f.t < ${late}); return f0.t < ${late} && right(f0) && early.every(right) && early.every((f) => f.mark === '${theme}') && f0.said === '${theme}' && ${how === 'own' ? "/^\\d/.test(f0.left)" : "f0.left.startsWith('calc(')"}`, 6000);
 // No box in any of its first frames: the page as it is, no mark, no frame, none of Margin's page scripts.
-const firstBare = (tab, label) => checkPage(tab, `${tab}: ${label}`, `const fp = window.__fp; if (!fp || fp.frames.length < 12) return false; return fp.frames.every((f) => f.x === 0 && f.y === 0 && f.w === 1200 && !f.mark && f.frame === 'none') && !window[Symbol.for('margin.page')]`, 6000);
+const firstBare = (tab: string, label: string) => checkPage(tab, `${tab}: ${label}`, `const fp = window.__fp; if (!fp || fp.frames.length < 12) return false; return fp.frames.every((f) => f.x === 0 && f.y === 0 && f.w === 1200 && !f.mark && f.frame === 'none') && !window[Symbol.for('margin.page')]`, 6000);
 // What a page's first frame was, in the log (the measurements).
-const firstLog = (tab) => ({ op: 'page', in: tab, js: `const fp = window.__fp; return '${tab} first frame ' + JSON.stringify(fp.frames[0]) + ', ' + fp.frames.filter((f) => f.t < ${LATE}).length + ' frames before Margin spoke (' + fp.held + ' word(s) held back)'` });
+const firstLog = (tab: string) => ({ op: 'page', in: tab, js: `const fp = window.__fp; return '${tab} first frame ' + JSON.stringify(fp.frames[0]) + ', ' + fp.frames.filter((f) => f.t < ${LATE}).length + ' frames before Margin spoke (' + fp.held + ' word(s) held back)'` });
 // Margin.app's layout settled, and registered (background/registered.ts LAYOUT_SETTLE_MS, then a sync).
 const settledLayout = wait(3000);
 // The registration is at left/top/right/bottom, as an open page has it (WebKit gives a registration's
 // update to the pages it applies to: the variables its digit files add up to), within `timeout`.
-const registeredAt = (tab, [l, t, r, b], label, timeout) => checkPage(tab, `${tab}: registered at ${l}/${t}/${r}/${b} ${label}`, `const s = getComputedStyle(document.documentElement); const sum = (side) => { const v = s.getPropertyValue('--margin-box-at-' + side).trim(); return v.startsWith('calc(') ? (v.match(/[0-9.]+(?=px)/g) ?? []).reduce((a, n) => a + Number(n), 0) : NaN; }; return sum('left') === ${l} && sum('top') === ${t} && sum('right') === ${r} && sum('bottom') === ${b}`, timeout);
-const pages = (prefix, n, layout, options) => Array.from({ length: n }, (_, i) => [fresh(`${prefix}${i}`), firstFrame(`${prefix}${i}`, layout, options), firstLog(`${prefix}${i}`)]).flat();
+const registeredAt = (tab: string, [l, t, r, b]: Box, label: string, timeout?: number) => checkPage(tab, `${tab}: registered at ${l}/${t}/${r}/${b} ${label}`, `const s = getComputedStyle(document.documentElement); const sum = (side) => { const v = s.getPropertyValue('--margin-box-at-' + side).trim(); return v.startsWith('calc(') ? (v.match(/[0-9.]+(?=px)/g) ?? []).reduce((a, n) => a + Number(n), 0) : NaN; }; return sum('left') === ${l} && sum('top') === ${t} && sum('right') === ${r} && sum('bottom') === ${b}`, timeout);
+const pages = (prefix: string, n: number, layout: Box, options?: Parameters<typeof firstFrame>[2]) => Array.from({ length: n }, (_, i) => [fresh(`${prefix}${i}`), firstFrame(`${prefix}${i}`, layout, options), firstLog(`${prefix}${i}`)]).flat();
 
 // The page patterns the box handles (tests/box/: each pattern's page in its box,
 // held to the box's rules against the same page in a plain window the box's size,
@@ -156,9 +160,9 @@ const boxPatterns = () => {
   const win = { w: 1200, h: 800 }; // the host's window
   const w = win.w - slot.left - slot.right;
   const h = win.h - slot.top - slot.bottom;
-  const run = (fn, args) => `(${fn.toString()})(${args})`;
-  const settled = (settle) => `window.__t0 ??= Date.now(); if (Date.now() - window.__t0 < ${settle}) return 'settling';`;
-  const steps = [...startBoxed('A', '/p/A')];
+  const run = (fn: Function, args: string) => `(${fn.toString()})(${args})`;
+  const settled = (settle: number) => `window.__t0 ??= Date.now(); if (Date.now() - window.__t0 < ${settle}) return 'settling';`;
+  const steps: Step[] = [...startBoxed('A', '/p/A')];
   // MARGIN_SCROLL_BARS (run.sh: the host's own setting; npm run test:classic): the scroll bars it asks for, checked
   // first, so a setting the host didn't take can't pass for either.
   const bars = process.env.MARGIN_SCROLL_BARS;
@@ -190,20 +194,20 @@ const boxPatterns = () => {
 // change under the same addresses (tests/box/serve.ts walkCss), and what Margin's world heard of the page's
 // walks (content/sheet-walk-link.ts marks: the files walked in full, the ones used as kept).
 const keptWalks = () => {
-  const p = listPatterns().find((x) => x.name === 'kept-sheet-walk');
+  const p = listPatterns().find((x) => x.name === 'kept-sheet-walk')!; // (tests/box/patterns/ has it)
   const slot = { left: 260, top: 8, right: 8, bottom: 8 };
   const win = { w: 1200, h: 800 };
   const w = win.w - slot.left - slot.right;
   const h = win.h - slot.top - slot.bottom;
-  const run = (fn, args) => `(${fn.toString()})(${args})`;
+  const run = (fn: Function, args: string) => `(${fn.toString()})(${args})`;
   const settled = `window.__t0 ??= Date.now(); if (Date.now() - window.__t0 < ${p.settle}) return 'settling';`;
   const key = JSON.stringify(`margin-box-ref:${p.name}`);
-  const files = (...names) => `[${names.map((n) => `location.origin + '/box/walk-css/${n}'`).join(', ')}].sort().join()`;
+  const files = (...names: string[]) => `[${names.map((n) => `location.origin + '/box/walk-css/${n}'`).join(', ')}].sort().join()`;
   const MAIN = WALK_FILES.main;
   const IMPORTED = WALK_FILES.imported;
-  const version = (v) => ({ op: 'page', in: 'A', js: `return await (await fetch('/box/walk-css-set?v=${v}')).text()` });
+  const version = (v: string) => ({ op: 'page', in: 'A', js: `return await (await fetch('/box/walk-css-set?v=${v}')).text()` });
   let n = 0;
-  const visit = (label, walked, used) => {
+  const visit = (label: string, walked: string[], used: string[]) => {
     const i = n++;
     return [
       { op: 'open', name: `R${i}`, url: `/box/ref/${p.name}?w=${w}&h=${h}`, active: true },
@@ -244,23 +248,23 @@ const keptWalks = () => {
 export const BENCH_SIZES = ['20000/3000', '2000/500', '20000/3000/link'];
 // Loads a size gets, each way: more for a small page, whose few ms a single slow load moves most.
 export const BENCH_RUNS = 7;
-export const runsOf = (size) => (size === '2000/500' ? 15 : BENCH_RUNS);
+export const runsOf = (size: string) => (size === '2000/500' ? 15 : BENCH_RUNS);
 const boxBench = () => {
-  const load = (mode, size, name, logged) => [
+  const load = (mode: string, size: string, name: string, logged: boolean): Step[] => [
     { op: 'open', name, url: `/box/bench/${size}`, active: true },
     checkPage(name, `${mode} ${size}: loaded`, 'return !!window.__bench', 30000),
     mode === 'plain' ? bare(name) : boxed(name),
     ...(logged ? [{ op: 'page', in: name, js: `return 'BENCH ' + JSON.stringify({ size: '${size}', mode: '${mode}', ...window.__bench })` }] : []),
     { op: 'close', name },
   ];
-  const runs = (mode) => [
+  const runs = (mode: string) => [
     ...load(mode, BENCH_SIZES[1], `${mode}-warm`, false),
     ...BENCH_SIZES.flatMap((size, s) => Array.from({ length: runsOf(size) }, (_, i) => load(mode, size, `${mode}${s}-${i}`, true)).flat()),
   ];
   return [...runs('plain'), ...startBoxed('W', '/p/A'), ...runs('boxed')];
 };
 
-export const SCENARIOS = {
+export const SCENARIOS: Record<string, Step[]> = {
   // Pages open at install get Margin (WebKit adds the core); switching
   // through Margin, including to a tab Safari unloaded. Nothing is drawn in
   // a page.
@@ -1157,7 +1161,7 @@ export const SCENARIOS = {
 // nothing answers (background/cut-off.ts). The page in front and the ones behind are loaded
 // again; one with a draft typed keeps it; switches then work and every page answers, a new tab
 // loads and comes to the front, and every page has its box from Margin.app's layout.
-const answers = (tab) => check(tab, `${tab}: its Margin answers (storage and the background)`, "const later = (ms) => new Promise((r) => setTimeout(() => r(false), ms)); return (await Promise.race([browser.storage.local.get('owner').then(() => true), later(1000)])) && (await Promise.race([Margin.content.send('sidebarScroll').then(() => true), later(1500)]))", 3000);
+const answers = (tab: string) => check(tab, `${tab}: its Margin answers (storage and the background)`, "const later = (ms) => new Promise((r) => setTimeout(() => r(false), ms)); return (await Promise.race([browser.storage.local.get('owner').then(() => true), later(1000)])) && (await Promise.race([Margin.content.send('sidebarScroll').then(() => true), later(1500)]))", 3000);
 Object.assign(SCENARIOS, {
   reloaded: [
     appWith(260),
@@ -1676,11 +1680,11 @@ Object.assign(SCENARIOS, {
 });
 
 // The page in its box, and bare, as checks for scripts that make their own scenarios (tests/box/sites-bench.mts).
-export const boxedCheck = (tab) => boxed(tab);
-export const bareCheck = (tab) => bare(tab);
+export const boxedCheck = (tab: string) => boxed(tab);
+export const bareCheck = (tab: string) => bare(tab);
 
 // Benchmarks: run by name (`run.sh box-bench`, from tests/box/bench.mts), not by `run.sh all`: they time, not test.
-export const BENCHES = {
+export const BENCHES: Record<string, Step[]> = {
   'box-bench': boxBench(),
 };
 
