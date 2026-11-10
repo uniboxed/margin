@@ -125,5 +125,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: The app's Swift checks
         run: node scripts/build.ts && tools/app-tests/run.sh unit
+      - name: Scroll bars that show while scrolling only, as on a Mac with a trackpad (the box patterns' setting)
+        run: defaults write -g AppleShowScrollBars -string WhenScrolling
       - name: The WebKit host (Safari's extension engine)
         run: npm run test:webkit

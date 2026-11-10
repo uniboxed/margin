@@ -14,7 +14,7 @@
       "default": "./extension/shared/any-engine-capabilities.ts"
     }
   },
-  "description": "Arc's way of browsing in Safari, Chrome and Edge: spaces, pins, a command palette and sleeping tabs",
+  "description": "Not a browser. Not a sidebar. A new interface for the browser you already use, for Safari, Chrome and Edge",
   "license": "GPL-3.0-or-later",
   "repository": {
     "type": "git",
