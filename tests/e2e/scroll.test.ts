@@ -23,13 +23,24 @@ const gestures = (from) => m.shell.received.slice(from).filter((x) => x.k === 'p
 const setSettings = (patch) => m.shell.request('updateSettings', { patch }, windowId);
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// A trackpad's run of small wheel events, ~16 ms apart, at the pointer.
+// A trackpad's run of small wheel events, ~16 ms apart, at the pointer. Sent
+// as a trackpad sends them: each stamped with its own time (CDP's `timestamp`,
+// the page's event.timeStamp, which the gestures read: content/trackpad.ts),
+// on a clock of their own, not one after another's round trip. (Awaited one
+// by one, as page.mouse.wheel does, a slow machine left gaps past GAP_MS
+// between them, shared/pull.ts, and the gesture ended halfway: GitHub
+// issue #13.) Trusted wheel events all the same, as Margin's capture
+// listener gets them from a trackpad; Chromium may merge two that come in
+// one frame (their deltas added), as it does a trackpad's.
+const sessions = new WeakMap();
 async function wheelRun(page, { dx = 0, dy = 0, n = 18, x = 800, y = 450 } = {}) {
+  if (!sessions.has(page)) sessions.set(page, await page.context().newCDPSession(page));
+  const cdp = sessions.get(page);
   await page.mouse.move(x, y);
-  for (let i = 0; i < n; i++) {
-    await page.mouse.wheel(dx ? dx + (i % 3) - 1 : 0, dy ? dy + (i % 3) - 1 : 0);
-    await pause(16);
-  }
+  const t0 = Date.now();
+  await Promise.all(Array.from({ length: n }, (_, i) => pause(i * 16).then(() => cdp.send('Input.dispatchMouseEvent', {
+    type: 'mouseWheel', x, y, deltaX: dx ? dx + (i % 3) - 1 : 0, deltaY: dy ? dy + (i % 3) - 1 : 0, timestamp: (t0 + i * 16) / 1000,
+  }))));
 }
 // Whether the page's own listener saw the last wheel events stopped (after Margin's capture listener).
 async function watchWheels(page) {
