@@ -4037,3 +4037,34 @@ The two flakes left in GitHub issue #13's end-to-end tests:
   was driven by these tests. Cold new views still need WebKit to draw; unknown private Space reads still hide
   conservatively; the OS compositor's animation is outside these off-screen measurements. Literal zero delay
   on every possible first frame is not established.
+
+## Mission Control must not arrange the layout as another document (2026-11-10)
+
+- **Report and diagnosis.** The supplied 13:30:57 screenshot shows a small detached layout in a full-screen
+  Space preview after a three-finger upward swipe. The own-Space policy used `.managed`, which explicitly
+  opts the transparent Margin panel into Mission Control's independent window arrangement. Its pointer
+  catcher and edge guard inherited the same policy. Staying in the same Space does not combine those
+  windows into the browser's document.
+- **Small native policy change.** Own-Space overlays now use `.stationary, .fullScreenAuxiliary, .ignoresCycle`.
+  They still belong to one Space (no `.canJoinAllSpaces`), with placement verified by the existing bridge,
+  and retain their normal window level. All three native layers receive the same policy. The fallback
+  that joins all Spaces already used stationary and is unchanged. No timers, gesture detection, capture,
+  screenshots, new windows, reloads or helper changes. The ordinary tracking and rendering paths stay as before.
+- **Why this policy.** Apple's documentation describes [managed](https://developer.apple.com/documentation/appkit/nswindow/collectionbehavior-swift.struct/managed)
+  as participating in Mission Control/Spaces, [stationary](https://developer.apple.com/documentation/appkit/nswindow/collectionbehavior-swift.struct/stationary)
+  as remaining visible without being affected by Mission Control, and transient as hiding in Mission Control.
+  Managed, transient and stationary are alternatives; they are not combined. The regression checks the actual
+  AppKit policies on both layouts and all their helper panels, alongside the existing repeated Space visits,
+  no-reload/no-extra-move checks, conservative missing-read checks, and refused-placement backoff.
+- **Verification boundary.** The native policy regression failed against the old behavior. A live desktop
+  observation was attempted through the computer-use tool; Finder had no capturable window and System
+  Settings capture failed with ScreenCaptureKit error -3811. No Mission Control key or browser action was
+  sent. TESTING.md therefore retains a required visual check of full-screen thumbnails, active and background
+  Spaces, entry/exit/reversal, pointer/focus and multiple displays. Static policy and fake-Space tests cannot
+  prove the compositor's actual result; this is not yet a visually verified Mission Control fix.
+- **Automated results.** `npm test`: 1,017 passed. `WINDOW_RUNS=50 VISIBLE_RUNS=80 tools/app-tests/run.sh`:
+  2,073 native logic checks and all 518 native end-to-end checks passed, including real AppKit policies on
+  all overlay panels; app/handler/helper type-check without compiler warnings and all helper checks pass.
+  The focused readiness run passed 35 checks. `npm run test:e2e`: final run 149 passed. The first run passed
+  148 and failed the previously recorded archive/palette restore timeout (`archive.test.ts:134`); all five
+  archive tests passed in isolation, followed by the clean full rerun. No browser runtime/test changes kept.

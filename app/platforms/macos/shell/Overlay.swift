@@ -141,11 +141,12 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     // full-screen window, not moved by Mission Control, not in ⌘-Tab's or the window cycle.
     // With it, an overlay is in every Space, so it stays drawn while macOS slides from Safari's
     // full-screen Space to another (the desktop) until the shell hears the Space changed and puts it
-    // away (Shell.spaceChanged). `ownSpace`: a managed window joining only the Space it's shown in
-    // (the full-screen window's, `.fullScreenAuxiliary`), which would slide away with it; not the
-    // default until it's checked over real full-screen Safari (DECISIONS.md, Phase 2 step 8).
+    // away (Shell.spaceChanged). `ownSpace` joins only its browser's Space and slides with it; the
+    // Space bridge verifies placement. Stationary keeps the transparent layout out of Mission Control's
+    // independent window arrangement. Managed would arrange it separately from the browser; transient
+    // would hide it. None of these policies requires joining every Space or changing the window level.
     static let collectionBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-    static let ownSpaceBehavior: NSWindow.CollectionBehavior = [.managed, .fullScreenAuxiliary, .ignoresCycle]
+    static let ownSpaceBehavior: NSWindow.CollectionBehavior = [.stationary, .fullScreenAuxiliary, .ignoresCycle]
     // The thin panel at the window's left edge (PassThrough.swift EdgeGuard): nil with `edgeWidth` 0.
     let edgePanel: OverlayPanel?
     private(set) var edgeFrame: CGRect?
