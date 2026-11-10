@@ -111,6 +111,23 @@ Issues, ideas and pull requests are welcome, and so are themes. [CONTRIBUTING.md
 testing and the commit style. Please report security problems privately ([SECURITY.md](SECURITY.md)), and follow the
 [code of conduct](CODE_OF_CONDUCT.md).
 
+## Code signing policy
+
+Margin for macOS is signed with an Apple Developer ID and notarized by Apple. For Windows, Margin has applied to the
+SignPath Foundation: once accepted, Windows releases get free code signing provided by
+[SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). (Windows builds
+up to then, v0.1.0 included, are unsigned.)
+
+Only programs built from this repository by its GitHub Actions release workflow are signed, never anything from
+elsewhere.
+
+- **Committers and reviewers:** the [members of the uniboxed organization](https://github.com/orgs/uniboxed/people).
+  Changes from anyone else, such as pull requests, are reviewed by a member before they're merged.
+- **Approvers:** the [owners of the uniboxed organization](https://github.com/orgs/uniboxed/people), who approve each
+  signing request by hand.
+- **Privacy:** Margin sends no information to any other networked system unless the user asks for it
+  ([PRIVACY.md](PRIVACY.md) has the details).
+
 ## License
 
 Margin is free software: you can use, study, share and change it under the
