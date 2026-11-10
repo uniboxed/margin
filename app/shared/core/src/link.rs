@@ -1,42 +1,32 @@
-//! The app's end of its links to the extension's copies, without the transport (app/macos/shell/ExtensionLink.swift:
-//! `SocketLink` and `LinkConnection`). A state machine the caller drives (sans-IO): it says when a connection opens
-//! ([`Link::on_open`]), each message that comes on it ([`Link::on_text`]), when it ends ([`Link::on_closed`]) and
-//! the time ([`Link::tick`]); each returns [`Action`]s: text to send on a connection, a connection to close (with
-//! a code and a reason), and what the shell hears (a link up, a message, a link down, a request's answer, a log
-//! line). Times are [`Secs`], given by the caller.
+//! The app's end of its links to the extension's copies, the session without the transport (app/macos/shell/
+//! ExtensionLink.swift: `SocketLink` and `LinkConnection`, less what's the WebSocket's). A state machine the
+//! caller drives (sans-IO): it says when a connection opens ([`Link::on_open`]), each message that comes on it
+//! ([`Link::on_text`]), when it ends ([`Link::on_closed`]) and the time ([`Link::tick`]); each returns
+//! [`Action`]s: text to send on a connection, a connection to close (with a code and a reason), and what the shell
+//! hears (a link up, a message, a link down, a request's answer, a log line). Times are [`Secs`], given by the
+//! caller.
 //!
-//! On Windows (and later Linux) there's no WebSocket: Chrome and Edge reach the app through a native-messaging
-//! relay (margin.exe, started by the browser) over a named pipe, carrying the same JSON messages, one per frame
-//! ([`crate::framing`]). Each pipe client is one connection here, named by the caller's [`ConnId`].
+//! Its connections are the copies' WebSockets to 127.0.0.1, on every OS (docs/PROTOCOL.md, Transport):
+//! [`crate::socket::SocketLink`] holds the sockets, the upgrade, the frames and the secrets, and drives this with
+//! each socket once it's upgraded ([`ConnId`]: the transport's name for its TCP connection).
 //!
 //! Kept from the Swift (every rule that isn't the WebSocket's or Safari's): the first message is
-//! `welcome { v: 2, key? }`; a connection that says no hello within 5 s is closed (1008); a hello with `owner`
-//! false is closed (1008, "not the copy in charge"), the profile's link kept; a newer hello for the same
-//! `browser:profile` replaces the older link (closed 1000 "replaced"); while any link is up the app ticks every
-//! 5 s, the copy answers `tock`, and a link not heard from for 40 s is closed (1001); requests (`req`) are numbered
-//! per link and time out after 15 s, answered by `reply`; a `bye` is passed on, then the link closed ("bye");
-//! stopping says `bye` on every link and closes it (1001). A new copy (another `instanceId`) is the shell's to
-//! notice ([`Hello::copy_id`], for the window binder).
+//! `welcome { v: 2, key }`; a connection that says no hello within 5 s of being accepted is closed (1008); a hello
+//! with `owner` false is closed (1008, "not the copy in charge"), the profile's link kept; a newer hello for the
+//! same `browser:profile` replaces the older link (closed 1000 "replaced"); while any link is up the app ticks
+//! every 5 s, the copy answers `tock`, and a link not heard from for 40 s is closed (1001); requests (`req`) are
+//! numbered per link and time out after 15 s, answered by `reply`; a `bye` is passed on, then the link closed
+//! ("bye"); stopping says `bye` on every link and closes it (1001). A new copy (another `instanceId`) is the
+//! shell's to notice ([`Hello::copy_id`], for the window binder).
 //!
-//! Left out of ExtensionLink.swift and LinkSocket.swift, and why:
-//! - The RFC 6455 framing (`FrameReader`, `Frame`: masking, continuations, ping and pong, close frames and their
-//!   descriptions): native messaging and the pipe have their own framing ([`crate::framing`]); a close's code and
-//!   reason are [`Action::Close`]'s, for the transport to say as it can.
-//! - The HTTP upgrade (`Handshake`: the request, `Sec-WebSocket-Accept`, the 400 and 403 refusals): no HTTP on a
-//!   pipe.
-//! - The token in the URL, its constant-time check (`sameSecret`), and the `Origin` check: the browser checks
-//!   the extension against the host manifest's `allowed_origins` before it starts the relay, and the pipe is
-//!   this user's only (its security descriptor), so neither needs a secret. Hence `welcome`'s key is optional
-//!   ([`AppMessage::Welcome`]): provisional, until the macOS Chromium link settles it.
-//! - The secrets' rotation 30 s after the last link closes (`Timing.keep`, `rotation`): no secrets.
+//! Left out here, and where it is:
+//! - The RFC 6455 framing, the HTTP upgrade and its refusals, the token's check and the `Origin`'s, the secrets
+//!   and their rotation, Safari's and the relays' `wantLink` answered with `link`: [`crate::socket`] and
+//!   [`crate::websocket`].
+//! - Safari's way in (`SafariDispatch`, the distributed notification `io.tirth.margin.setup`, `appUp` once Safari
+//!   has run 2 s): Safari's, on the Mac only.
 //! - The listener and its upkeep (`NWListener`, 127.0.0.1 only, no Nagle, `waiting` 5 s made again on a new
-//!   port, `retryListen`): the transport's (a pipe server), not the session's.
-//! - Safari's way in: `SafariDispatch` (`SFSafariApplication.dispatchMessage`), `wantLink` and its nonces held
-//!   until the listener has a port, the `link` answer, `appUp` once Safari has run 2 s (`safariSettled`), the
-//!   distributed notification `io.tirth.margin.setup`, and the dispatch counts (`refusedInARow`,
-//!   `onDispatchRefused`): all Safari's. The relay is started by the browser itself, so nothing is asked for.
-//! - `stop`'s 0.3 s wait for the `bye`s to be written before quitting: the transport's (it knows when a write
-//!   is done).
+//!   port, `retryListen`) and `stop`'s 0.3 s wait for the `bye`s to be written before quitting: the transport's.
 //!
 //! The transport's part that stays: `Socket.got` counts any bytes as being heard from (`lastHeard`), even half a
 //! message; the caller says so with [`Link::heard`].
@@ -46,7 +36,7 @@ use crate::protocol::{AppMessage, Hello, LinkMessage, MAX_INCOMING};
 use crate::time::Secs;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The caller's name for one connection (one pipe client). Never reused while this [`Link`] lives.
+/// The transport's name for one connection (one TCP connection). Never reused while this [`Link`] lives.
 pub type ConnId = u64;
 
 /// `SocketLink.Timing`, the parts that are the session's.
@@ -89,7 +79,7 @@ pub enum Level {
 /// What the caller does, in order.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
-    /// Send this text on the connection (one message, one frame).
+    /// Send this text on the connection (one message: one text frame).
     Send { conn: ConnId, text: String },
     /// Close the connection, saying the code and reason if the transport can. The link has already gone down
     /// here (its [`Action::Down`] follows); call [`Link::on_closed`] all the same once it has ended.
@@ -150,8 +140,8 @@ impl Connection {
 #[derive(Clone, Debug)]
 pub struct Link {
     timing: Timing,
-    welcome_key: Option<String>,
-    /// Opened, no hello yet: when each opened.
+    welcome_key: String,
+    /// Opened, no hello yet: when each was accepted.
     opening: BTreeMap<ConnId, Secs>,
     /// By `Hello::key`.
     links: BTreeMap<String, Connection>,
@@ -167,8 +157,8 @@ fn whole(s: Secs) -> i64 {
 }
 
 impl Link {
-    /// `welcome_key`: the key the first message carries (`None` over the relay: see [`AppMessage::Welcome`]).
-    pub fn new(timing: Timing, welcome_key: Option<String>) -> Self {
+    /// `welcome_key`: the key the first message carries (the app's proof that it's the app).
+    pub fn new(timing: Timing, welcome_key: String) -> Self {
         Self {
             timing,
             welcome_key,
@@ -182,6 +172,11 @@ impl Link {
 
     pub fn timing(&self) -> &Timing {
         &self.timing
+    }
+
+    /// The key the next connections' `welcome` carries (the secrets changed: [`crate::socket::SocketLink`]).
+    pub fn set_welcome_key(&mut self, key: String) {
+        self.welcome_key = key;
     }
 
     /// `connections`: every link up, by key.
@@ -216,8 +211,14 @@ impl Link {
         self.opening.contains_key(&conn) || self.ended.contains(&conn) || self.key_of(conn).is_some()
     }
 
-    /// `accept` and `opened`: a connection opened. Its first message is `welcome`; it has 5 s to say hello.
+    /// `accept` and `opened`: a connection opened now. Its first message is `welcome`; it has 5 s to say hello.
     pub fn on_open(&mut self, conn: ConnId, now: Secs) -> Vec<Action> {
+        self.on_open_at(conn, now, now)
+    }
+
+    /// `opened`: a connection accepted at `accepted` (its 5 s to say hello count from then) opened now (the
+    /// WebSocket's upgrade done).
+    pub fn on_open_at(&mut self, conn: ConnId, accepted: Secs, now: Secs) -> Vec<Action> {
         let mut out = Vec::new();
         if self.stopped {
             out.push(Action::Close { conn, code: 1001, reason: "stopped".into() });
@@ -228,7 +229,7 @@ impl Link {
             warn(&mut out, format!("connection {conn} opened again: left"));
             return out;
         }
-        self.opening.insert(conn, now);
+        self.opening.insert(conn, accepted);
         note(&mut out, "socket open".into());
         if let Some(text) = (AppMessage::Welcome { key: self.welcome_key.clone() }).encode(now * 1000.0) {
             out.push(Action::Send { conn, text });
@@ -243,7 +244,7 @@ impl Link {
         }
     }
 
-    /// `received(_:on:)`: one message (one frame's text) on a connection.
+    /// `received(_:on:)`: one message (one WebSocket message's text) on a connection.
     pub fn on_text(&mut self, conn: ConnId, text: &str, now: Secs) -> Vec<Action> {
         let mut out = Vec::new();
         if self.stopped || self.ended.contains(&conn) || !self.known(conn) {
@@ -328,7 +329,7 @@ impl Link {
         out.push(Action::Up { conn, hello });
     }
 
-    /// `closed(_:_:)`: the transport says the connection ended (the relay went, the pipe broke), and why.
+    /// `closed(_:_:)`: the transport says the connection ended (the copy closed it, the TCP connection went), and why.
     pub fn on_closed(&mut self, conn: ConnId, why: &str, now: Secs) -> Vec<Action> {
         let mut out = Vec::new();
         if self.ended.remove(&conn) {
@@ -357,9 +358,10 @@ impl Link {
 
     fn closed(&mut self, conn: ConnId, why: &str, now: Secs, out: &mut Vec<Action>) {
         if let Some(opened) = self.opening.remove(&conn) {
-            // Ended before its hello: the 'no hello' timeout, a copy not in charge, the relay gone.
-            let ms = ((now - opened) * 1000.0).round().max(0.0);
-            return note(out, format!("socket ended before its hello ({ms} ms): {why}"));
+            // Ended before its hello: the 'no hello' timeout, a TCP connection closed after the upgrade, a copy not in
+            // charge. (One ended before the upgrade is the socket's to say: crate::socket.)
+            let ms = ((now - opened) * 1000.0).max(0.0);
+            return note(out, format!("socket ended before its hello (after the upgrade, {ms:.1} ms): {why}"));
         }
         let Some(key) = self.key_of(conn) else { return };
         let Some(link) = self.links.remove(&key) else { return };
@@ -552,7 +554,7 @@ mod tests {
 
     /// A link with one copy linked on connection 1 at time 0.
     fn linked() -> Link {
-        let mut link = Link::new(Timing::default(), None);
+        let mut link = Link::new(Timing::default(), "K".into());
         link.on_open(1, 0.0);
         link.on_text(1, &hello("P1", "A"), 0.0);
         link
@@ -560,16 +562,16 @@ mod tests {
 
     #[test]
     fn the_first_message_is_welcome() {
-        let mut link = Link::new(Timing::default(), Some("K".into()));
+        let mut link = Link::new(Timing::default(), "K".into());
         let out = link.on_open(1, 0.0);
         assert_eq!(sends(&out), vec![(1, json!({"k":"welcome","v":2,"key":"K"}))]);
-        let mut relay = Link::new(Timing::default(), None);
-        assert_eq!(sends(&relay.on_open(1, 0.0)), vec![(1, json!({"k":"welcome","v":2}))], "over the relay: no key");
+        link.set_welcome_key("K2".into());
+        assert_eq!(sends(&link.on_open(2, 0.0)), vec![(2, json!({"k":"welcome","v":2,"key":"K2"}))], "new secrets");
     }
 
     #[test]
     fn hello_brings_the_link_up() {
-        let mut link = Link::new(Timing::default(), None);
+        let mut link = Link::new(Timing::default(), "K".into());
         link.on_open(1, 0.0);
         let out = link.on_text(1, &hello("P1", "A"), 1.0);
         assert_eq!(ups(&out), 1);
@@ -581,13 +583,13 @@ mod tests {
 
     #[test]
     fn no_hello_within_5_s_is_closed() {
-        let mut link = Link::new(Timing::default(), None);
+        let mut link = Link::new(Timing::default(), "K".into());
         link.on_open(1, 10.0);
         assert_eq!(link.next_deadline(), Some(15.0));
         assert!(closes(&link.tick(14.9)).is_empty());
         let out = link.tick(15.0);
         assert_eq!(closes(&out), vec![(1, 1008, "no hello within 5 s".into())]);
-        assert!(logged(&out, "socket ended before its hello (5000 ms): no hello within 5 s"));
+        assert!(logged(&out, "socket ended before its hello (after the upgrade, 5000.0 ms): no hello within 5 s"));
         assert!(downs(&out).is_empty(), "never a link");
         assert_eq!(link.next_deadline(), None);
         assert!(link.on_text(1, &hello("P1", "A"), 15.1).is_empty(), "a hello after: left");
@@ -643,7 +645,7 @@ mod tests {
 
     #[test]
     fn a_tick_every_5_s_while_linked() {
-        let mut link = Link::new(Timing::default(), None);
+        let mut link = Link::new(Timing::default(), "K".into());
         assert_eq!(link.next_deadline(), None, "nothing to do with no link");
         assert!(link.tick(100.0).is_empty());
         link.on_open(1, 100.0);
@@ -795,7 +797,7 @@ mod tests {
 
     #[test]
     fn what_isnt_a_message_or_comes_before_hello_is_left() {
-        let mut link = Link::new(Timing::default(), None);
+        let mut link = Link::new(Timing::default(), "K".into());
         link.on_open(1, 0.0);
         let out = link.on_text(1, "{not json", 1.0);
         assert!(logged(&out, "not a link message ({not json)"));
@@ -821,10 +823,10 @@ mod tests {
 
     #[test]
     fn a_connection_ending_before_hello() {
-        let mut link = Link::new(Timing::default(), None);
+        let mut link = Link::new(Timing::default(), "K".into());
         link.on_open(1, 0.0);
         let out = link.on_closed(1, "the relay went", 0.25);
-        assert!(logged(&out, "socket ended before its hello (250 ms): the relay went"));
+        assert!(logged(&out, "socket ended before its hello (after the upgrade, 250.0 ms): the relay went"));
         assert!(downs(&out).is_empty());
         assert_eq!(link.next_deadline(), None);
     }

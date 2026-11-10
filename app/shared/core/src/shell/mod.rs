@@ -572,7 +572,7 @@ impl Shell {
         let data = DataSync::new(DataStore::new(&opts.data_root));
         let themes = ThemeStore::new(&opts.themes_root);
         let shortcuts = AppShortcuts::new(crate::shortcuts::default_bindings(opts.os), opts.key_repeat);
-        let link = Link::new(opts.link.clone(), None);
+        let link = Link::new(opts.link.clone(), crate::socket::secret());
         let switcher = ProfileSwitch::new(opts.switch.clone());
         Self {
             link,
