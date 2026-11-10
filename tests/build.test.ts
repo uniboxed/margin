@@ -115,14 +115,6 @@ function chromeAccepts(spec) {
   return parts.length >= 2 && parts.length <= 3 && WEBKIT_KEYS.test(parts.at(-1));
 }
 
-// Settings combo (e.g. 'Alt+Meta+ArrowDown') → the manifest's mac spec, as a
-// modifier set + key so the order of parts doesn't matter.
-const PAGE_TO_WEBKIT = { Ctrl: '⌃', Alt: '⌥', Shift: '⇧', Meta: '⌘' };
-function fromSetting(combo) {
-  const parts = combo.split('+');
-  return { mods: new Set(parts.slice(0, -1).map((p) => PAGE_TO_WEBKIT[p])), key: parts.at(-1).replace(/^Arrow/, '') };
-}
-
 const ACTIONS = { nextTab: 'next-tab', prevTab: 'prev-tab', nextSpace: 'next-space', prevSpace: 'prev-space' };
 
 for (const target of TARGETS) {

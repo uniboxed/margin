@@ -83,7 +83,7 @@ test('app swap: the running Margin.app is quit only after the new one is in plac
     assert.match(out, new RegExp(`quit the running Margin.app \\(pid ${running.pid}\\)`));
     assert.equal(await running.ended, 'SIGTERM', 'a SIGTERM: the app quits as when it is quit');
     assert.ok(!existsSync(`${dest}.old`), 'the old copy deleted');
-    assert.equal(execFileSync('cat', [join(dest, 'build')], { encoding: 'utf8' }), 'new');
+    assert.equal(readFileSync(join(dest, 'build'), 'utf8'), 'new');
     assert.match(out, /open_app .*Margin\.app\nstarted the new Margin.app in the background/, 'Safari running, nothing started it: started in the background');
     assert.ok(alive(other.pid), 'a Margin from elsewhere (a build folder) left alone');
   } finally {
@@ -124,7 +124,7 @@ test('app swap: one that ignores the SIGTERM is killed after the wait, its copy 
 });
 
 test('app swap: one started during the swap (the extension handler, for a link) is the new build, kept running, and not started twice', { skip: !mac }, async () => {
-  const { dir, old, dest } = folder();
+  const { dir, old } = folder();
   const running = await run(old);
   let started = null;
   try {
@@ -155,7 +155,7 @@ test('app swap: nothing running: nothing quit, nothing started; a first install'
     bundle(join(dir, 'Margin.app.new'), 'new');
     const first = await swap(dir).done;
     assert.equal(first.code, 0, first.out);
-    assert.equal(execFileSync('cat', [join(dest, 'build')], { encoding: 'utf8' }), 'new', 'no copy before: put in place');
+    assert.equal(readFileSync(join(dest, 'build'), 'utf8'), 'new', 'no copy before: put in place');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -5,7 +5,7 @@
 // a full read's.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { faviconsMark, firstReadKeys, fromStorage, pageKeys, readForPage, sameStored, toStorage, withChanges } from '../extension/shared/stored.ts';
+import { faviconsMark, firstReadKeys, fromStorage, readForPage, sameStored, toStorage, withChanges } from '../extension/shared/stored.ts';
 
 const by = { origin: 'safari-web-extension://A/', since: 5, synced: true };
 const icon = (i, at) => ({ data: `data:image/png;base64,${'iVBORw0KGgo'.repeat(220)}${i}`, href: `https://site${i}.test/f.png`, at });

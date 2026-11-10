@@ -20,7 +20,7 @@
 // git's), --all (every quick test), --dry (print the plan, run nothing).
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve, basename, extname } from 'node:path';
+import { dirname, join, relative, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');

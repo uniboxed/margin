@@ -15,7 +15,6 @@ import { auditTree } from './theme/audit.ts';
 import { readTheme } from './theme/package.ts';
 import { MockState, pngIcon } from './theme/view-model.ts';
 
-const MANIFEST = JSON.stringify({ format: 2, id: 'payload', name: 'Payload', version: '1.0.0' });
 const leaks = (text) => /evil\.test|javascript:|vbscript:|expression\(/i.test(text);
 
 // --- Built-in themes pass the same rules as anyone's -------------------------
