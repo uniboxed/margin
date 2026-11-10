@@ -1,8 +1,9 @@
 //! Where Margin keeps things on Windows, and the names of its per-user kernel objects. The building is
 //! OS-neutral and tested on the Mac; only finding `%LOCALAPPDATA%` is Windows'.
 //!
-//! Everything is under `%LOCALAPPDATA%\Margin`: `data` (the lasting data), `themes` (imported themes), `logs`,
-//! `WebView2` (the overlay's web view's user data folder) and `NativeMessagingHosts` (the host manifest).
+//! Everything is under `%LOCALAPPDATA%\Margin`: `data` (the lasting data), `themes` (imported themes), `logs` and
+//! `WebView2` (the overlay's web view's user data folder); the connector writes its host file there too
+//! (`io.tirth.margin.json`, app/shared/connector/src/windows.rs).
 
 use std::path::{Path, PathBuf};
 
@@ -13,7 +14,6 @@ pub struct Paths {
     pub themes: PathBuf,
     pub logs: PathBuf,
     pub webview2: PathBuf,
-    pub hosts: PathBuf,
 }
 
 impl Paths {
@@ -25,14 +25,13 @@ impl Paths {
             themes: root.join("themes"),
             logs: root.join("logs"),
             webview2: root.join("WebView2"),
-            hosts: root.join("NativeMessagingHosts"),
             root,
         }
     }
 
     /// Makes every folder (those already there are left as they are).
     pub fn create_all(&self) -> std::io::Result<()> {
-        for dir in [&self.root, &self.data, &self.themes, &self.logs, &self.webview2, &self.hosts] {
+        for dir in [&self.root, &self.data, &self.themes, &self.logs, &self.webview2] {
             std::fs::create_dir_all(dir)?;
         }
         Ok(())
@@ -50,6 +49,14 @@ pub fn overlay_dir(exe: &Path) -> PathBuf {
     exe.parent().unwrap_or(Path::new(".")).join("app")
 }
 
+/// Margin's connector, beside `margin.exe`: the native-messaging host Chrome and Edge start (app/shared/connector/).
+pub const CONNECTOR_EXE: &str = "margin-connector.exe";
+
+/// The connector beside this `margin.exe`: the only client the app's pipe lets in.
+pub fn connector_path(exe: &Path) -> PathBuf {
+    exe.parent().unwrap_or(Path::new(".")).join(CONNECTOR_EXE)
+}
+
 /// The app's named pipe, one per user: `\\.\pipe\Margin-<SID>`.
 pub fn pipe_name(sid: &str) -> String {
     format!(r"\\.\pipe\Margin-{sid}")
@@ -61,7 +68,7 @@ pub fn mutex_name(sid: &str) -> String {
 }
 
 /// The pipe's security descriptor: a protected DACL (nothing inherited) giving this user, and no one else,
-/// full access. SYSTEM and Administrators aren't listed: the pipe is only ever opened by this user's relay.
+/// full access. SYSTEM and Administrators aren't listed: the pipe is only ever opened by this user's connector.
 pub fn pipe_sddl(sid: &str) -> String {
     format!("D:P(A;;GA;;;{sid})")
 }
@@ -113,7 +120,6 @@ mod tests {
         assert_eq!(p.root, base.join("Margin"));
         assert_eq!(p.data, base.join("Margin").join("data"));
         assert_eq!(p.webview2, base.join("Margin").join("WebView2"));
-        assert_eq!(p.hosts, base.join("Margin").join("NativeMessagingHosts"));
     }
 
     #[test]
@@ -149,5 +155,11 @@ mod tests {
     #[test]
     fn overlay_beside_the_exe() {
         assert_eq!(overlay_dir(Path::new("dir").join("margin.exe").as_path()), Path::new("dir").join("app"));
+    }
+
+    #[test]
+    fn the_connector_beside_the_exe() {
+        let exe = Path::new("dir").join("margin.exe");
+        assert_eq!(connector_path(&exe), Path::new("dir").join("margin-connector.exe"));
     }
 }

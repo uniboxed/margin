@@ -23,7 +23,7 @@ enum Cmd {
 
 static LOG: OnceLock<Mutex<Sender<Cmd>>> = OnceLock::new();
 
-/// Starts the log in `dir` as `<name>.log` (`margin` for the app, `relay` for the relays). Only the first call
+/// Starts the log in `dir` as `<name>.log` (`margin` for the app). Only the first call
 /// counts. Notes made before it go to stderr only.
 pub fn init(dir: &Path, name: &str) {
     let mut file = FileLog::new(dir, name, MAX_BYTES);
@@ -112,7 +112,7 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 }
 
 /// The file itself: appended to, rotated once it's `max` bytes or more. Other processes may append to the
-/// same file (the relays share `relay.log`): the size is read from the file, so whoever crosses `max` rotates.
+/// same file: the size is read from the file, so whoever crosses `max` rotates.
 pub struct FileLog {
     path: PathBuf,
     rotated: PathBuf,

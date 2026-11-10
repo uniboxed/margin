@@ -1,19 +1,26 @@
-//! The app's named pipe, and the relay's end of it. Windows only.
+//! The app's named pipe, where Margin's connector (`margin-connector.exe`, app/shared/connector/, started by Chrome
+//! or Edge through native messaging) finds the app, and the connector's end of it. Windows only.
+//!
+//! The pipe is for finding the app only (margin-core `relay`: the connector's JSON lines, its hello, the browser's
+//! messages answered, the `link` handed out): the link itself is the copy's WebSocket to 127.0.0.1 (tcp.rs), as on
+//! the Mac, whose connector reaches Margin.app over a Unix socket the same way.
 //!
 //! `\\.\pipe\Margin-<SID>`, one per user (paths.rs): a protected DACL that lets only this user in,
 //! `PIPE_REJECT_REMOTE_CLIENTS`, and `FILE_FLAG_FIRST_PIPE_INSTANCE` for the first instance, so the app fails
-//! to start its link (and says so) if another process already made a pipe of that name. One instance is
+//! to start its pipe (and says so) if another process already made a pipe of that name. One instance is
 //! always kept listening: the next is made before a connected one is handed off.
 //!
-//! Each side checks the other is this same executable: the app checks each client
-//! (`GetNamedPipeClientProcessId` → `QueryFullProcessImageNameW`), the relay checks the server
-//! (`GetNamedPipeServerProcessId`). The relay opens the pipe with `SECURITY_IDENTIFICATION`, so a server that
-//! isn't Margin can't act as this user with the relay's token.
+//! Each side checks the other: the app checks each client is `margin-connector.exe` beside `margin.exe`
+//! (`GetNamedPipeClientProcessId` → `QueryFullProcessImageNameW`, as Margin.app checks its connector's signature),
+//! the connector checks the server is `margin.exe` beside itself (`connect`, `GetNamedPipeServerProcessId`). The
+//! connector opens the pipe with `SECURITY_IDENTIFICATION`, so a server that isn't Margin can't act as this user
+//! with the connector's token.
 //!
 //! I/O is overlapped. A synchronous pipe handle serializes all I/O on it, so a read waiting for the other end
 //! would block every write on the same handle; with overlapped handles the reader and the writer threads of a
 //! connection run independently. Each wait also watches a stop event, so a connection closes promptly.
-//! Frames are those of frames.rs. The connections' events reach the UI thread through queue.rs.
+//! The bytes go both ways as they are (the connector's JSON lines, split by margin-core). The connections'
+//! events reach the UI thread through queue.rs.
 
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -39,15 +46,11 @@ use windows::Win32::System::Pipes::{
 use windows::Win32::System::Threading::{CreateEventW, INFINITE, SetEvent, WaitForMultipleObjects};
 use windows::core::HSTRING;
 
-use crate::frames::{PIPE_MAX, read_frame, write_frame};
-use crate::handshake::{RelayHello, RelayWelcome};
 use crate::queue::UiSender;
 use crate::security::SecurityDescriptor;
 use crate::win::{Handle, error_text};
 
 const BUFFER: u32 = 64 * 1024;
-/// How long a relay has to say its hello.
-const HELLO_WAIT_MS: u32 = 5000;
 
 fn event() -> io::Result<Handle> {
     // SAFETY: an unnamed manual-reset event, initially clear; owned by the Handle.
@@ -192,12 +195,12 @@ impl Write for PipeIo<'_> {
     }
 }
 
-/// Whether a process is this same executable (its image path, compared as paths.rs does).
+/// Whether a process is that executable (its image path, compared as paths.rs does).
 fn is_margin(pid: u32, expected: &str) -> bool {
     crate::process::image_path(pid).is_some_and(|p| crate::paths::same_file_path(&p, expected))
 }
 
-// The relay's side.
+// The connector's side.
 
 pub enum ConnectError {
     /// No pipe of that name: the app isn't running (or hasn't made it yet).
@@ -207,11 +210,11 @@ pub enum ConnectError {
     Other(String),
 }
 
-/// Opens the app's pipe and checks the server is this executable.
+/// Opens the app's pipe and checks its server is `expected_image` (the connector: `margin.exe` beside it).
 pub fn connect(name: &str, expected_image: &str) -> Result<Pipe, ConnectError> {
     let wide = HSTRING::from(name);
     // SAFETY: a null-terminated name; no security attributes; the handle it returns is owned by the Handle.
-    // SECURITY_IDENTIFICATION: the server may learn who the relay is, never act as it.
+    // SECURITY_IDENTIFICATION: the server may learn who the connector is, never act as it.
     let opened = unsafe {
         CreateFileW(
             &wide,
@@ -250,13 +253,13 @@ pub type ConnId = u64;
 /// What the pipe tells the UI thread.
 #[derive(Debug)]
 pub enum PipeEvent {
-    /// A relay linked: its hello, and its own pid.
-    Connected { id: ConnId, hello: RelayHello, relay_pid: u32 },
-    /// One of the extension's frames, from that relay.
-    Frame { id: ConnId, body: Vec<u8> },
-    /// That relay is gone (or `close` was called).
+    /// Margin's connector connected (its process checked): its own pid.
+    Connected { id: ConnId, client_pid: u32 },
+    /// Bytes from it, as they came.
+    Bytes { id: ConnId, bytes: Vec<u8> },
+    /// That connector is gone (or `close` was called).
     Closed { id: ConnId, why: String },
-    /// A client that isn't Margin's relay, or said no proper hello: closed at once.
+    /// A client that isn't Margin's connector: closed at once (`relay: refused pid N: why`, as the Mac says it).
     Refused { why: String },
     /// The server couldn't make its next instance; it tries again every second.
     Trouble { why: String },
@@ -308,12 +311,13 @@ fn create_instance(name: &str, sd: &SecurityDescriptor, first: bool) -> Result<H
 }
 
 impl PipeServer {
-    /// Starts listening on this user's pipe. An error here means no link at all (another process holds the
-    /// pipe's name, or Windows refused): the shell logs it.
+    /// Starts listening on this user's pipe. An error here means Chrome and Edge can't find the app (another
+    /// process holds the pipe's name, or Windows refused): the shell logs it.
     pub fn start(sid: &str, events: UiSender<PipeEvent>) -> Result<Self, String> {
         let name = crate::paths::pipe_name(sid);
         let sd = SecurityDescriptor::from_sddl(&crate::paths::pipe_sddl(sid))?;
-        let expected = crate::win::exe_path().ok_or("no path for margin.exe")?.to_string_lossy().into_owned();
+        let exe = crate::win::exe_path().ok_or("no path for margin.exe")?;
+        let expected = crate::paths::connector_path(&exe).to_string_lossy().into_owned();
         let first = create_instance(&name, &sd, true).map_err(|e| format!("the pipe couldn't be made: {e}"))?;
         let first = Arc::new(Pipe::new(first).map_err(|e| e.to_string())?);
         let stopping = event().map_err(|e| e.to_string())?;
@@ -335,7 +339,7 @@ impl PipeServer {
         Ok(Self { shared, accept: Some(accept) })
     }
 
-    /// Queues a frame for that relay (never blocks). False: no such connection.
+    /// Queues bytes for that connector (never blocks). False: no such connection.
     pub fn send(&self, id: ConnId, body: Vec<u8>) -> bool {
         let conns = match self.shared.conns.lock() {
             Ok(c) => c,
@@ -437,7 +441,7 @@ fn accept_loop(shared: Arc<Shared>, first: Arc<Pipe>) {
             }
             Err(e) if e.kind() == io::ErrorKind::Interrupted => break,
             Err(e) => {
-                shared.events.send(PipeEvent::Trouble { why: format!("waiting for a relay: {e}") });
+                shared.events.send(PipeEvent::Trouble { why: format!("waiting for a connector: {e}") });
                 // The same instance listens again (a new one would leave the name free for a moment).
                 // SAFETY: a server end of ours; disconnecting one that isn't connected fails harmlessly.
                 let _ = unsafe { DisconnectNamedPipe(pipe.raw()) };
@@ -458,33 +462,24 @@ fn serve(shared: Arc<Shared>, id: ConnId, pipe: Arc<Pipe>) {
         let _ = unsafe { DisconnectNamedPipe(pipe.raw()) };
         pipe.stop();
     };
-    let Some(relay_pid) = pipe.client_pid() else { return refuse("a client with no pid".into()) };
-    if !is_margin(relay_pid, &shared.expected) {
-        return refuse(format!("a client (pid {relay_pid}) that isn't Margin"));
-    }
-    if let Err(e) = write_frame(&mut pipe.writer(), &RelayWelcome::new().to_json(), PIPE_MAX) {
-        return refuse(format!("the welcome didn't go: {e}"));
-    }
-    let hello = match read_frame(&mut pipe.reader(HELLO_WAIT_MS), 64 * 1024) {
-        Ok(Some(body)) => match RelayHello::parse(&body) {
-            Some(h) => h,
-            None => return refuse(format!("pid {relay_pid}: not a relay's hello")),
-        },
-        Ok(None) => return refuse(format!("pid {relay_pid}: closed before its hello")),
-        Err(e) => return refuse(format!("pid {relay_pid}: no hello ({e})")),
+    let Some(client_pid) = pipe.client_pid() else {
+        return refuse("relay: a connection whose process couldn't be told: closed".into());
     };
+    if !is_margin(client_pid, &shared.expected) {
+        return refuse(format!("relay: refused pid {client_pid}: not Margin's connector"));
+    }
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     match shared.conns.lock() {
         Ok(mut c) => {
             c.insert(id, Conn { pipe: pipe.clone(), out: tx });
         }
-        Err(_) => return refuse("the server is stopping".into()),
+        Err(_) => return refuse("relay: the server is stopping".into()),
     }
-    shared.events.send(PipeEvent::Connected { id, hello, relay_pid });
+    shared.events.send(PipeEvent::Connected { id, client_pid });
     let writer_pipe = pipe.clone();
     let writer = std::thread::Builder::new().name(format!("margin-pipe-{id}-out")).spawn(move || {
         for body in rx {
-            if write_frame(&mut writer_pipe.writer(), &body, PIPE_MAX).is_err() {
+            if writer_pipe.writer().write_all(&body).is_err() {
                 writer_pipe.stop();
                 break;
             }
@@ -493,12 +488,13 @@ fn serve(shared: Arc<Shared>, id: ConnId, pipe: Arc<Pipe>) {
     let why = if writer.is_err() {
         "no thread to write with".to_string()
     } else {
+        let mut buf = vec![0u8; BUFFER as usize];
         loop {
-            match read_frame(&mut pipe.reader(INFINITE), PIPE_MAX) {
-                Ok(Some(body)) => {
-                    shared.events.send(PipeEvent::Frame { id, body });
+            match pipe.read_some(&mut buf, INFINITE) {
+                Ok(0) => break "the connector closed the pipe".to_string(),
+                Ok(n) => {
+                    shared.events.send(PipeEvent::Bytes { id, bytes: buf[..n].to_vec() });
                 }
-                Ok(None) => break "the relay closed the pipe".to_string(),
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => break "closed".to_string(),
                 Err(e) => break format!("the pipe broke: {e}"),
             }

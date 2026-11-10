@@ -3,9 +3,12 @@
 //! glue in app/macos/shell/Shell.swift that touches the OS (its timers, the window server, the overlays' panels and web
 //! views, NSOpenPanel, the pasteboard).
 //!
-//! - The pipe (pipe.rs): each relay's hello (its browser and pid, the relay's facts), frames and end.
+//! - The link's listener (tcp.rs): the copies' WebSockets on 127.0.0.1, each connection's bytes and end, the
+//!   shell's writes and ends; the listener's port as it changes.
+//! - The pipe (pipe.rs): Margin's connectors (`margin-connector.exe`, started by Chrome and Edge), their bytes and
+//!   end: how a copy finds the app and gets its link (margin-core `relay`), never the link itself.
 //! - The windows (browsers.rs): read on the shell's `ReadWindows`, at most once per 1/60 s (a burst of window events
-//!   is one read), with each browser process's main process (its root: the relay's pid is the main process), the
+//!   is one read), with each browser process's main process (its root: a hello's pid is the main process), the
 //!   foreground window and the monitors in DIPs (screens.rs); every window event is a `Burst`.
 //! - The overlays (overlay.rs) and their web views (webview.rs), by the shell's `OverlayId`: each overlay's window is
 //!   made at once, its web view once the one WebView2 environment is there; DIPs to pixels with screens.rs.
@@ -109,11 +112,13 @@ mod win {
     use crate::queue::{UiSender, ui_channel};
     use crate::screens::ScreenMap;
     use crate::serve::OverlayFiles;
+    use crate::tcp::{TcpEvent, TcpServer};
     use crate::webview::{Reply, WebView, WebViewEnv, WebViewEvent, connect};
     use margin_core::system::WindowSource;
 
     const PIPE_WAKE: u32 = message_id(0);
     const PICKED_WAKE: u32 = message_id(1);
+    const TCP_WAKE: u32 = message_id(2);
     const SHELL_TIMER: usize = 0x5348; // "SH"
     const READ_TIMER: usize = 0x5244; // "RD"
     /// CF_UNICODETEXT (winuser.h).
@@ -131,6 +136,7 @@ mod win {
         app: App,
         shell: RefCell<Shell>,
         pipe: RefCell<Option<PipeServer>>,
+        tcp: RefCell<Option<TcpServer>>,
         source: WinWindowSource,
         events: RefCell<Option<WindowEvents>>,
         pointer: RefCell<Option<PointerWatch>>,
@@ -157,12 +163,15 @@ mod win {
         // Margin over windows that aren't in full screen too, over their page area (Tirth, 2026-11-09: most people
         // on Windows never use F11).
         opts.windowed_too = true;
+        opts.app_version = crate::VERSION.into();
         let shell = Shell::new(opts);
         let (pipe_tx, pipe_rx) = ui_channel::<PipeEvent>(app.window.waker(PIPE_WAKE));
+        let (tcp_tx, tcp_rx) = ui_channel::<TcpEvent>(app.window.waker(TCP_WAKE));
         let (picked_tx, picked_rx) = ui_channel::<(OverlayId, Option<ThemeFile>)>(app.window.waker(PICKED_WAKE));
         let host = Rc::new(Host {
             shell: RefCell::new(shell),
             pipe: RefCell::new(None),
+            tcp: RefCell::new(None),
             source: WinWindowSource::new(),
             events: RefCell::new(None),
             pointer: RefCell::new(None),
@@ -191,8 +200,24 @@ mod win {
             }
         });
         match PipeServer::start(&host.app.sid, pipe_tx) {
-            Ok(s) => *host.pipe.borrow_mut() = Some(s),
-            Err(e) => log::warn(format!("no link with the browsers: {e}")),
+            Ok(s) => {
+                *host.pipe.borrow_mut() = Some(s);
+                log::note("relay: listening for Chrome's and Edge's relays");
+            }
+            Err(e) => log::warn(format!("relay: Chrome and Edge can't find the app: {e}")),
+        }
+
+        // The link's listener: the copies' WebSockets.
+        let weak = Rc::downgrade(&host);
+        host.app.window.on(TCP_WAKE, move |_, _| {
+            let Some(h) = weak.upgrade() else { return };
+            for event in tcp_rx.drain() {
+                h.tcp_event(event);
+            }
+        });
+        match TcpServer::start(tcp_tx) {
+            Ok(s) => *host.tcp.borrow_mut() = Some(s),
+            Err(e) => log::warn(format!("no listener: {e}")),
         }
 
         // The theme picker's answers.
@@ -255,6 +280,8 @@ mod win {
         host.feed(Input::Stop { why: "Margin quit".into() });
         host.stopped.set(true);
         host.slots.borrow_mut().clear();
+        // (Dropping the listener gives the `bye`s written above their 0.3 s.)
+        host.tcp.borrow_mut().take();
         host.pipe.borrow_mut().take();
         log::note("Margin quits");
         code
@@ -300,14 +327,30 @@ mod win {
 
         fn pipe_event(self: &Rc<Self>, event: PipeEvent) {
             match event {
-                PipeEvent::Connected { id, relay_pid, .. } => {
-                    log::note(format!("relay {id} (pid {relay_pid}) linked"));
+                PipeEvent::Connected { id, client_pid } => {
+                    log::note(format!("relay {id}: Margin's connector (pid {client_pid}) connected"));
                     self.feed(Input::RelayOpened { conn: id });
                 }
-                PipeEvent::Frame { id, body } => self.feed(Input::RelayBytes { conn: id, bytes: body }),
+                PipeEvent::Bytes { id, bytes } => self.feed(Input::RelayBytes { conn: id, bytes }),
                 PipeEvent::Closed { id, .. } => self.feed(Input::RelayEnded { conn: id }),
-                PipeEvent::Refused { why } => log::warn(format!("the pipe refused {why}")),
-                PipeEvent::Trouble { why } => log::warn(format!("the pipe: {why}")),
+                PipeEvent::Refused { why } => log::warn(why),
+                PipeEvent::Trouble { why } => log::warn(format!("relay: the pipe: {why}")),
+            }
+        }
+
+        fn tcp_event(self: &Rc<Self>, event: TcpEvent) {
+            match event {
+                TcpEvent::Listening { port } => self.feed(Input::Listening { port }),
+                TcpEvent::Opened { id } => self.feed(Input::SocketOpened { conn: id }),
+                TcpEvent::Bytes { id, bytes } => self.feed(Input::SocketBytes { conn: id, bytes }),
+                TcpEvent::Ended { id, error } => self.feed(Input::SocketEnded { conn: id, error }),
+                TcpEvent::Log { warn, text } => {
+                    if warn {
+                        log::warn(text)
+                    } else {
+                        log::note(text)
+                    }
+                }
             }
         }
 
@@ -324,8 +367,16 @@ mod win {
                         p.close(conn);
                     }
                 }
-                // (The link's own socket comes with the TCP listener.)
-                Command::Write { .. } | Command::End { .. } => {}
+                Command::Write { conn, bytes } => {
+                    if let Some(t) = self.tcp.borrow().as_ref() {
+                        t.write(conn, bytes);
+                    }
+                }
+                Command::End { conn } => {
+                    if let Some(t) = self.tcp.borrow().as_ref() {
+                        t.end(conn);
+                    }
+                }
                 Command::CreateOverlay { id } => self.create_overlay(id),
                 Command::ShowOverlay { id, frame, above } => self.place(id, frame, above, true),
                 Command::PlaceOverlay { id, frame, above } => self.place(id, frame, above, false),
