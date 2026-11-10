@@ -73,6 +73,7 @@ Notes on the rows:
 | Safari's `SafariTabs.db` (file format, SQLite) | `app/engines/webkit/safari/SafariProfiles.swift` `read` | Safari's profile names | its schema checked on each read; read only | the names typed in Margin | medium: undocumented schema |
 | each profile's `Extensions.plist` (file format, property list) | `app/engines/webkit/safari/SafariProfiles.swift` `marginEntries` | which Safari profile a Margin copy is | its keys checked on each read; read only | no names for that copy | medium |
 | Safari's `CloudTabs.db` (file format, SQLite) | `app/engines/webkit/safari/CloudTabs.swift` | iCloud Tabs | its schema checked on each read; read only | no iCloud Tabs folder | medium |
+| `WKPreferences._features`, `-_setEnabled:forFeature:`, `-_isEnabledForFeature:` (WebKit, private), feature `PreferPageRenderingUpdatesNear60FPSEnabled` | `app/platforms/macos/shell/OverlayWebView.swift` `OverlayFrameRate.uncap` | the overlay drawn at the display's rate, not near 60 fps (issue #14) | only with `MarginOverlayFullFrameRate` set (off by default); each selector and the feature looked for, the result read back with the getter and logged; the app's unit checks require it on macOS 26+ | the cap stays (WebKit's 60 fps) | low |
 
 ## Considered, not used
 

@@ -11,6 +11,7 @@
 // builds and runs them (and the end-to-end check, e2e.swift).
 import AppKit
 import Foundation
+import WebKit
 
 var failures = 0
 var passed = 0
@@ -78,6 +79,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     axEvents() // window-tests.swift: Safari's Accessibility events and the scan kept for startup
     parkedWindowBinding() // window-tests.swift
     stacking()
+    frameRate()
     passThrough()
     shortcuts()
     geometry()
@@ -850,4 +852,17 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("none while docked", !PointerWant(["mode": "none"]).wants(CGPoint(x: 0, y: 0), in: size))
     check("all while out, and before the page says", PointerWant(["mode": "all"]).wants(CGPoint(x: 600, y: 400), in: size) && PointerWant([:]).mode == .all)
   }
+}
+
+// The overlay's frame rate (issue #14): WebKit's 60 fps feature turned off where it exists, and the probe's script
+// posts to the page's bridge. The feature is WebKit's own (private): if a macOS drops it, `uncap` says so and the
+// overlay keeps WebKit's rate, which this lets through.
+@MainActor func frameRate() {
+    let preferences = WKPreferences()
+    let said = OverlayFrameRate.uncap(preferences)
+    check("frame rate: the 60 fps feature off, or a reason it's kept", said.hasPrefix("the display's rate") || said.hasPrefix("kept near 60 fps"), said)
+    if ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 {
+        check("frame rate: on macOS 26 and later, WebKit has the feature and it turns off", said.hasPrefix("the display's rate"), said)
+    }
+    check("frame rate: the probe posts its numbers as an overlay log", OverlayFrameRate.probe.contains("op: 'log'") && OverlayFrameRate.probe.contains("frame probe"))
 }

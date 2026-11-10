@@ -89,6 +89,20 @@ Margin.app now links Chrome's and Edge's copies the way it links Safari's (docs/
 - [ ] Two Chrome profiles: switching to the other profile's space opens or focuses that profile's window (the close-based switch; Safari's handoff is Safari's only). With the other profile not open, the notice says to open one of its windows from Chrome's profile menu.
 - [ ] A Chrome window that isn't in full screen: nothing drawn over it, as with Safari.
 
+## The overlay's frame rate (issue #14, 2026-11-10)
+
+On a Mac with a 120 Hz (ProMotion) display. Both settings are off by default; each needs Margin.app restarted.
+
+1. `defaults write com.unibox.margin MarginFrameProbe -bool YES`, restart Margin.app, then reveal the hidden sidebar,
+   peek, swipe between spaces and dock a few times. `scripts/margin-log.sh` (or `/usr/bin/log show --last 5m
+   --predicate 'subsystem == "com.unibox.margin"'`) shows `frame probe (…): N frames, median X ms (Y fps)`.
+   Expected today: a median near 16.7 ms (60 fps).
+2. `defaults write com.unibox.margin MarginOverlayFullFrameRate -bool YES`, restart, and do the same moves. The log
+   says `overlay frame rate: the display's rate…` at launch; the probe's median should drop near 8.3 ms (120 fps).
+   Does the motion look smoother next to Safari's own?
+3. Report both medians and the "longer than 2.5 frames" counts on issue #14. Then
+   `defaults delete com.unibox.margin MarginFrameProbe` (and the other, unless it stays on).
+
 ## Safari behaviors to confirm first
 
 None of these can be tested in the cloud. The code feature-detects each one and degrades as described, and DECISIONS.md records each fallback. Do these right after setup, and write the results into DECISIONS.md.
