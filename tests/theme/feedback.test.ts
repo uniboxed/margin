@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-import { harnessScript, themeForPage, ARCADIA, NEO, PIXEL } from './package.ts';
+import { harnessScript, themeForPage, themesInScope, ARCADIA, NEO, PIXEL } from './package.ts';
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const THEMES = [
@@ -19,7 +19,7 @@ const THEMES = [
 const script = harnessScript();
 
 for (const [name, engine] of ENGINES) {
-  for (const [id, dir, sel] of THEMES) {
+  for (const [id, dir, sel] of themesInScope(THEMES)) {
     test(`${id}: loading, gestures and notices in ${name}`, async (t) => {
       const browser = await engine.launch({ headless: true });
       try {
@@ -52,7 +52,8 @@ for (const [name, engine] of ENGINES) {
           assert.equal(await ev((s) => T.rtVisible(s), sel.indicator), true, 'with the sidebar hidden too, no hover');
           await ev(() => T.rtLoading(false));
           await ev(() => T.rtSetUi({ sidebar: 'open' }));
-          await page.waitForTimeout(350);
+          // Past its fade out (as long as the fade in on a slow machine).
+          await page.waitForFunction((s) => T.rtCount('.busy') === 0 && !T.rtVisible(s), sel.indicator, { timeout: 3000 }).catch(() => {});
           assert.equal(await ev(() => T.rtCount('.busy')), 0);
           assert.equal(await ev((s) => T.rtVisible(s), sel.indicator), false, 'done: gone');
         });

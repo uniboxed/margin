@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-import { harnessScript, themeForPage, ARCADIA, NEO, PIXEL } from './package.ts';
+import { harnessScript, themeForPage, themesInScope, ARCADIA, NEO, PIXEL } from './package.ts';
 import { AIR } from '../fixtures/cloud-tabs.ts';
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
@@ -20,7 +20,7 @@ const THEMES = [
 const script = harnessScript();
 
 for (const [engineName, engine] of ENGINES) {
-  for (const [id, dir, sel] of THEMES) {
+  for (const [id, dir, sel] of themesInScope(THEMES)) {
     test(`iCloud Tabs in ${id}, ${engineName}`, async (t) => {
       const browser = await engine.launch({ headless: true });
       try {

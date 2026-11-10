@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-import { harnessScript, themeForPage, ARCADIA, NEO } from './package.ts';
+import { harnessScript, themeForPage, themesInScope, ARCADIA, NEO } from './package.ts';
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const THEMES = [['arcadia', ARCADIA], ['neubrutalism', NEO]];
@@ -46,7 +46,7 @@ async function open(engine, pkg, id) {
 }
 
 for (const [engineName, engine] of ENGINES) {
-  for (const [id, dir] of THEMES) {
+  for (const [id, dir] of themesInScope(THEMES)) {
     test(`the switching cover in ${id}, ${engineName}`, async (t) => {
       const { browser, page, seen, ev } = await open(engine, themeForPage(dir), id);
       try {

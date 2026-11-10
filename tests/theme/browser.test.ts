@@ -193,8 +193,8 @@ for (const [name, engine] of ENGINES) {
             }
           }
         }
-        // The layout callback fires once a frame after a change.
-        await page.waitForTimeout(100);
+        // The layout callback fires once a frame after a change (a frame or more later on a slow machine).
+        await page.waitForFunction(() => T.layoutLog().length > 0, null, { timeout: 3000 }).catch(() => {});
         const log = await page.evaluate(() => T.layoutLog());
         assert.ok(log.length > 0);
         t.diagnostic(JSON.stringify(rows.map(({ outer, ...r }) => r)));

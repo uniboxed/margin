@@ -16,7 +16,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { chromium, webkit } from 'playwright';
-import { harnessScript } from './package.ts';
+import { harnessScript, themesInScope } from './package.ts';
 import { HTML_PAYLOADS, CSS_PAYLOADS, TEMPLATE_PAYLOADS_2, CSS_PAYLOADS_2, CSS_KEPT_2 } from './payloads.ts';
 import { readSuitePackages } from '../security/packages.ts';
 
@@ -24,7 +24,8 @@ const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const MANIFEST = JSON.stringify({ format: 2, id: 'payload', name: 'Payload', version: '1.0.0' });
 const script = harnessScript();
 const b64 = (pkg) => ({ ...pkg, files: Object.fromEntries(Object.entries(pkg.files).map(([k, v]) => [k, Buffer.from(v).toString('base64')])) });
-const packages = (await readSuitePackages()).map((p) => ({ label: p.label, pkg: b64(p.pkg) }));
+// (MARGIN_TEST_THEMES: the built-ins CI scoped this run to, tests/theme/package.ts themesInScope; MARGIN_THEMES' own packages always.)
+const packages = themesInScope(await readSuitePackages(), (p) => (p.builtin ? p.id : null)).map((p) => ({ label: p.label, pkg: b64(p.pkg) }));
 const swift = readFileSync(new URL('../../app/platforms/macos/shell/OverlayWebView.swift', import.meta.url), 'utf8');
 const POLICY = /static let policy = "([^"]+)"/.exec(swift)?.[1];
 

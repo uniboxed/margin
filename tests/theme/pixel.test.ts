@@ -77,7 +77,13 @@ for (const [name, engine] of ENGINES) {
       const ev = (fn, arg) => page.evaluate(fn, arg);
       const count = (s) => ev((x) => T.rtCount(x), s);
       const text = (s) => ev((x) => T.rtText(x), s);
-      const layout = async () => { await page.waitForFunction(() => T.rtLayouts().length > 0); await page.waitForTimeout(40); return (await ev(() => T.rtLayouts())).at(-1); };
+      // The last layout, once no more come (two frames with none new: a frame is later on a slow machine).
+      const layout = async () => {
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+        const frames = () => ev(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(T.rtLayouts().length)))));
+        for (let n = -1, i = 0; i < 40; i++) { const now = await frames(); if (now === n) break; n = now; }
+        return (await ev(() => T.rtLayouts())).at(-1);
+      };
       const mount = (o = {}) => ev((x) => T.mountRuntime({ width: 1440, height: 900, platform: { browser: 'safari', os: 'mac' }, ...x }), o);
       // The state as the background would change it.
       const edit = (js) => ev((code) => { const rt = window.__rt; rt.mock.state = new Function('s', code)(rt.mock.state); rt.host.setState(rt.mock.state); }, js);
