@@ -70,7 +70,7 @@ jobs:
           fi
           files=$(git diff --name-only "$base" HEAD)
           # The workflow itself, the lockfiles and the shared build script reach everything.
-          all='^(\.github/workflows/ci\.yml|package(-lock)?\.json|tsconfig\.json|scripts/build\.ts)$'
+          all='^(\.github/workflows/ci\.yml|package(-lock)?\.json|tsconfig(\.tests)?\.json|scripts/build\.ts)$'
           reaches() { if echo "$files" | grep -qE "$all|$1"; then echo true; else echo false; fi; }
           # (Unit tests read some of the app's files too: the Chromium crate's extension id, the host page; the browser
           # tests' security suite reads the Mac app's page policy, OverlayWebView.swift.)

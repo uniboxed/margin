@@ -3429,6 +3429,23 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
   2 s wait for a `windows` message); alone it passes. Not changed.
 - **Not yet:** the tests and tools aren't type-checked. Under `strict` that's 7,377 errors (3,934 with `noImplicitAny`
   off), mostly their untyped fakes and fixtures, and it needs `@types/node` added: a later step, if wanted.
+- **The shared fakes and harnesses, since 2026-11-10** (GitHub issue #4's smaller option): `tsconfig.tests.json`, the
+  same `strict` with Node's types (`@types/node`), in `npm test`, `npm run typecheck` and `test:quick`. It checks
+  tests/fake-app.ts, fake-clock.ts (against background/settle.ts `Clock`), ui/fixtures.ts, fixtures/, the theme
+  harness (theme/harness.ts, view-model.ts, audit.ts, payloads.ts, package.ts: against `Host`, the runtime, the view
+  model, types/margin.d.ts), tests/e2e/harness/ (the shell, the relay, the native host; page functions against
+  `MarginBrowserApi`) and what they import (the e2e test site, tests/box/serve.ts, scripts/build.ts): 965 errors, now 0.
+  Type-only, compared stripped of types (esbuild) with before: the few rewrites are equivalent. The extension's timer
+  handles are `Timer` (types/dom-null-timers.d.ts: `ReturnType<typeof setTimeout>`, a number in a browser, Node's
+  `Timeout` in the tests), as its modules are checked with Node's types too there; the bundles are the same byte for
+  byte. The link's messages aren't typed beyond background/link.ts `Said` (`Record<string, any>`), so the fake app and
+  the shell use that.
+  - **Drift found:** the fixtures' tab records have `audible` (and the harness's `loading`), which `TabRecord` doesn't,
+    and state/model.ts tabRecord never stores `audible`, yet ui/view-model.ts tabRow reads `t.audible`: the sidebar's
+    "playing" mark is likely never set from real state, and tests/ui-view-model.test.ts checks it from the fixture
+    alone. Typed openly in the fixture (`MockTab`); the extension not changed: to look at.
+  - **Still to do for #4:** the test files themselves (`tests/**/*.test.ts`, each one's own `globalThis.chrome = {…}`
+    fake: there's no shared fake browser API), tools/ and the other scripts/.
 
 ## Chrome and Edge link to Margin.app on the Mac (2026-11-09)
 
