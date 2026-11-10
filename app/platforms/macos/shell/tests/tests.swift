@@ -602,6 +602,19 @@ final class FakeRegistrar: HotKeyRegistrar {
           && !OverlayController.handsKeyboardBack(shown: true, hasKeyboard: false, wantsKeyboard: true)
           && !OverlayController.handsKeyboardBack(shown: false, hasKeyboard: false, wantsKeyboard: false))
     let linkedSafari: [Set<pid_t>] = [[501, 502], [700]]
+    func reloadEvent(_ characters: String, _ modifiers: NSEvent.ModifierFlags, type: NSEvent.EventType = .keyDown) -> NSEvent {
+        NSEvent.keyEvent(with: type, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: 0,
+                        context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: 15)!
+    }
+    check("focused layout reload: plain ⌘R, including Caps Lock", OverlayWebView.isBrowserReload(reloadEvent("r", .command))
+          && OverlayWebView.isBrowserReload(reloadEvent("R", [.command, .capsLock])))
+    check("focused layout reload: typing and other modifier combinations stay untouched",
+          !OverlayWebView.isBrowserReload(reloadEvent("r", []))
+          && !OverlayWebView.isBrowserReload(reloadEvent("r", [.command, .shift]))
+          && !OverlayWebView.isBrowserReload(reloadEvent("r", [.command, .option]))
+          && !OverlayWebView.isBrowserReload(reloadEvent("r", [.command, .control]))
+          && !OverlayWebView.isBrowserReload(reloadEvent("l", .command))
+          && !OverlayWebView.isBrowserReload(reloadEvent("r", .command, type: .keyUp)))
     check("a key that reached Margin.app: on to the linked browser in front, only with none of Margin's windows key",
           Shell.relayTarget(marginWindowKey: false, front: 502, margin: 99, linked: linkedSafari) == 502
           && Shell.relayTarget(marginWindowKey: true, front: 502, margin: 99, linked: linkedSafari) == nil

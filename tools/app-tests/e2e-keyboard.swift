@@ -116,6 +116,31 @@ func keyboardScenario() async {
   check("and only after it showed", shownAt != nil && tookAt != nil && tookAt! > shownAt!, "\(Array(said[from...]).filter { $0.contains("\(k2)") })")
   var loose = await fieldWithoutKeys(o1b)
   check("the window behind keeps nothing focused", !loose && !o1b.hasKeyboard)
+  // AppKit key equivalents while the actual overlay WebView owns a text field: reload the
+  // owning browser window exactly once, without reloading the layout or losing the input.
+  let reloadFrom = fake.events.count
+  let origin = await js(o2.webView, "return performance.timeOrigin")
+  _ = await js(o2.webView, "document.activeElement.value = 'keep this draft'; return true")
+  func reloadKey(repeating: Bool = false) -> NSEvent {
+    NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
+                    windowNumber: o2.panel.windowNumber, context: nil, characters: "r", charactersIgnoringModifiers: "r",
+                    isARepeat: repeating, keyCode: 15)!
+  }
+  let tookReload = o2.webView.performKeyEquivalent(with: reloadKey())
+  let sentReload = await until(2, { fake.first("req", since: reloadFrom) { ($0["msg"] as? JSONObject)?["type"] as? String == "reload" } != nil })
+  check("⌘R with the layout field focused is handled and reaches the browser", tookReload && sentReload)
+  guard tookReload && sentReload else { return }
+  let reloads = fake.all("req", since: reloadFrom) { ($0["msg"] as? JSONObject)?["type"] as? String == "reload" }
+  let reload = reloads.first?["msg"] as? JSONObject
+  check("⌘R reloads only this layout's browser window", reloads.count == 1 && reloads.first?["id"] as? String == "A2" && num(reload?["windowId"]) == 2)
+  let afterOrigin = await js(o2.webView, "return performance.timeOrigin")
+  let afterFocus = await focused(o2)
+  let afterDraft = await js(o2.webView, "return document.activeElement.value") as? String
+  check("⌘R retains the same layout page, focused field and draft", origin as? NSNumber != nil && same(origin, afterOrigin)
+        && o2.hasKeyboard && afterFocus == f && afterDraft == "keep this draft", "origin \(String(describing: origin)) → \(String(describing: afterOrigin)), focus \(f) → \(afterFocus), keyboard \(o2.hasKeyboard), draft \(String(describing: afterDraft))")
+  check("a held ⌘R is consumed", o2.webView.performKeyEquivalent(with: reloadKey(repeating: true)))
+  try? await Task.sleep(nanoseconds: 120_000_000)
+  check("a held ⌘R does not queue more reloads", fake.all("req", since: reloadFrom) { ($0["msg"] as? JSONObject)?["type"] as? String == "reload" }.count == 1)
   shell.pressed(CGPoint(x: r2.minX + 700, y: r2.minY + 400)) // on the page
   ok = await until(3, { !o2.hasKeyboard })
   f = await focused(o2)

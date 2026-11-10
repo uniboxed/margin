@@ -265,6 +265,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         catcherView.autoresizingMask = [.width, .height]
         catcher.contentView = catcherView
         super.init()
+        webView.reloadBrowserTab = { [weak self] repeating in self?.reloadFromKeyboard(repeating: repeating) ?? false }
         catcher.overlay = self
         panel.pressEnded = { [weak self] in self?.pressEnded() }
         edgePanel?.pressEnded = { [weak self] in self?.pressEnded() }
@@ -576,6 +577,25 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     func pageSend(type: String, payload: JSONObject) async throws -> JSONObject {
         guard let delegate else { throw LinkError.down }
         return try await delegate.send(from: self, type: type, payload: payload)
+    }
+
+    // Use the existing window-scoped command, so focus stays in the layout and the extension
+    // resolves the current active tab. No synthetic keys, new hot key registration or UI reload.
+    private func reloadFromKeyboard(repeating: Bool) -> Bool {
+        guard isShown, !isConcealed, delegate != nil else { return false }
+        guard !repeating else { return true }
+        Task { [weak self] in
+            guard let self, self.isShown, !self.isConcealed else { return }
+            do {
+                let reply = try await self.pageSend(type: "reload", payload: [:])
+                if reply["ok"] as? Bool == false || reply["result"] as? Bool == false {
+                    Diagnostics.warn("\(self.key): focused layout's browser reload was refused")
+                }
+            } catch {
+                Diagnostics.warn("\(self.key): focused layout's browser reload could not reach its extension")
+            }
+        }
+        return true
     }
 
     func pageSaid(_ op: String, _ body: JSONObject) {

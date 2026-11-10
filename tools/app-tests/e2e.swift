@@ -703,6 +703,11 @@ final class Runner: NSObject, NSApplicationDelegate {
         print(failures == 0 ? "all \(passed) window readiness checks passed" : "\(failures) window readiness checks failed")
         exit(failures == 0 ? 0 : 1)
       }
+      if env["MARGIN_E2E_ONLY"] == "keyboard" {
+        await keyboardScenario()
+        print(failures == 0 ? "all \(passed) keyboard checks passed" : "\(failures) keyboard checks failed")
+        exit(failures == 0 ? 0 : 1)
+      }
       // MARGIN_E2E_ONLY=overlays: that scenario alone (while working on it).
       if env["MARGIN_E2E_ONLY"] == "overlays" {
         await overlaysScenario()

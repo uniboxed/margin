@@ -1903,3 +1903,10 @@ The user observed a return gap with the transient fallback. The new candidate va
 Automated native playback uses real off-screen panels/WebViews, injected model bounds and a fake Space bridge. Twenty scaled reads retain the same frames/windows/WebView time origins; ordinary reads add no model IPC; changed or unavailable geometry is conservative. Run `WINDOW_RUNS=50 VISIBLE_RUNS=80 tools/app-tests/run.sh`. It does not drive Safari or prove compositor alignment. Capture failed with ScreenCaptureKit -3811; computer-control calls timed out, so visual confirmation remains required.
 
 Installed candidate `595c83cc`, user visual result (2026-11-10): full layout is present before Safari finishes returning from Mission Control. Layout still disappears on entry and reappears during exit; the user accepts this for now. Continuous aligned preview visibility is **not** verified. Real product logs show 11 model-retention/return episodes without an order-out/show cycle or getter error; the native trace retains canonical dimensions. Keep the broader display/browser/reversal checklist open.
+
+## Reload with focus in Margin (2026-11-10)
+
+- [ ] In full-screen Safari, click a tab in the sidebar and press ⌘R: the selected page reloads once. Repeat with a palette/search field, a rename field and Settings focused; the underlying selected browser tab reloads while Margin's field text/focus stay in place.
+- [ ] With two browser windows/profiles on different pages, reload from each one's focused layout: only its own selected page reloads. Hold ⌘R briefly: it must not build up repeated reload requests. Confirm ordinary page-focused ⌘R still uses the browser's behavior. Repeat in Chrome/Edge.
+
+Automated: `MARGIN_E2E_ONLY=keyboard tools/app-tests/run.sh e2e` exercises AppKit's key-equivalent entry point on the actual off-screen WKWebView with a focused field and the real native link to a fake extension. It verifies the scoped reload, same layout page/time origin, focus/draft retention, and repeat suppression. Modifier/key-up checks are in native unit tests. The fixture never activates a real browser or injects desktop key events.

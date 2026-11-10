@@ -95,7 +95,7 @@ func preparedWindowsScenario() async {
     }
   }
   let ids = [o1.windowNumber, o2.windowNumber]
-  let origins = [await js(o1.webView, "performance.timeOrigin"), await js(o2.webView, "performance.timeOrigin")]
+  let origins = [await js(o1.webView, "return performance.timeOrigin"), await js(o2.webView, "return performance.timeOrigin")]
   let movesBeforeVisits = world.calls.count
   let visitsAt = ProcessInfo.processInfo.systemUptime
   var kept = true
@@ -108,8 +108,8 @@ func preparedWindowsScenario() async {
   print(String(format: "  timings: twenty prepared Space reads %.1f ms", (ProcessInfo.processInfo.systemUptime - visitsAt) * 1000))
   check("ordinary Space visits make no additional Space moves", world.calls.count == movesBeforeVisits)
   check("visits reuse the same two native windows", ids == [shell.overlays[k1]?.windowNumber, shell.overlays[k2]?.windowNumber].compactMap { $0 })
-  let after = [await js(o1.webView, "performance.timeOrigin"), await js(o2.webView, "performance.timeOrigin")]
-  check("visits never reload either web view", zip(origins, after).allSatisfy { same($0, $1) })
+  let after = [await js(o1.webView, "return performance.timeOrigin"), await js(o2.webView, "return performance.timeOrigin")]
+  check("visits never reload either web view", origins.allSatisfy { $0 as? NSNumber != nil } && zip(origins, after).allSatisfy { same($0, $1) })
   check("verified own-Space layers participate in Mission Control", [o1, o2].allSatisfy { o in
     [o.panel, o.catcher, o.edgePanel].compactMap { $0 }.allSatisfy { $0.collectionBehavior == OverlayController.ownSpacePreviewBehavior }
   })
@@ -130,7 +130,8 @@ func preparedWindowsScenario() async {
   check("presentation does not move either native layout between Spaces", world.calls.count == priorMoves)
   show(false); shell.track()
   check("return is already shown on the same synchronous read", o1.isShown && !o1.isConcealed && o1.frameTopLeft == r1)
-  check("presentation and return reuse each WebView", zip(origins, [await js(o1.webView, "performance.timeOrigin"), await js(o2.webView, "performance.timeOrigin")]).allSatisfy { same($0, $1) })
+  let returnedOrigins = [await js(o1.webView, "return performance.timeOrigin"), await js(o2.webView, "return performance.timeOrigin")]
+  check("presentation and return reuse each WebView", origins.allSatisfy { $0 as? NSNumber != nil } && zip(origins, returnedOrigins).allSatisfy { same($0, $1) })
   windows.noList = true
   shell.track()
   check("a missing batch read does not blank layouts independently confirmed in their full-screen Spaces", !o1.isConcealed && !o2.isConcealed)
