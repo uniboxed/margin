@@ -142,9 +142,15 @@ for (const [name, engine] of ENGINES) {
         await page.mouse.move(g0.x, g0.y);
         await page.mouse.down();
         await page.mouse.move(g0.x + 30, g0.y - 40, { steps: 5 });
-        await page.waitForTimeout(80);
-        const ghost = await ev(() => T.rtRect('.m-drag-ghost'));
-        assert.ok(ghost && Math.abs(ghost.y - (g0.y - 40)) < 20 && Math.abs(ghost.x - (g0.x + 30)) < 40, `the copy under the pointer (${JSON.stringify([g0, ghost])})`);
+        // The copy follows each move a frame or more later (on a loaded machine, more than 80 ms): asked again until it's there.
+        const end = Date.now() + 3000;
+        for (;;) {
+          const ghost = await ev(() => T.rtRect('.m-drag-ghost'));
+          const under = ghost && Math.abs(ghost.y - (g0.y - 40)) < 20 && Math.abs(ghost.x - (g0.x + 30)) < 40;
+          if (under) break;
+          assert.ok(Date.now() < end, `the copy under the pointer (${JSON.stringify([g0, ghost])})`);
+          await page.waitForTimeout(25);
+        }
         await page.keyboard.press('Escape');
         await page.mouse.up();
         assert.deepEqual(await ev(() => T.rtRefused()), []);
