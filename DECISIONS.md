@@ -3647,3 +3647,23 @@ name (`io.tirth.margin`): they're the history.
   (the team had none, the old id included); the API key's role can't register one. Registering
   `com.unibox.margin` in the developer portal only reserves it.
 - **The Chrome extension's id doesn't change:** it comes from its key (`njeebbcmlenfopaecfbphgcfihbdmkec`).
+
+## Code scanning's findings, triaged (2026-11-10)
+
+GitHub's code scanning (CodeQL, security-and-quality) listed 99 open findings once the repository was public. No
+secrets, no vulnerable dependencies. Each was read in its code; the ones that touch what ships were fixed, the rest
+dismissed with the reason, so the Security tab lists only what matters.
+
+- **A slow regex on imported themes (fixed).** The check that a theme's svg file starts with `<svg` (`theme-loader.ts`)
+  was a regex with a repeated comment group; a file of a few thousand empty comments made it backtrack for minutes.
+  Importing a crafted theme could freeze the import. `svgStarts` reads the start once, with the regex's rules (the
+  tests run both on the same files); crafted files are refused in milliseconds.
+- **`__proto__` as a data name (hardened).** Collection and item names in data sets come from Margin.app and other
+  copies; `x[name] = …` with `__proto__` changes an object's prototype. `isName` and `usableKey` (`data-merge.ts`)
+  refuse it in every merge (`mergeData`, `pruneTombstones`, the link's set in parts, kept tabs), and Margin.app's
+  Rust and Swift merges drop it too, so all three agree (vector `09-reserved-name.json`). Only Margin.app could send
+  one, over its token-protected local link.
+- **Dismissed:** findings in tests and local tools (servers on 127.0.0.1, temporary files of benchmarks), test-only
+  Rust (`#[cfg(test)]`'s fixed token), and false positives (an integer-checked key, Windows message constants read
+  as bindings by an analysis without Windows, a promise compared with itself on purpose). `docs/` (design boards)
+  isn't scanned.

@@ -35,6 +35,11 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: none
           queries: security-and-quality
+          # docs/ holds design boards and notes, never shipped or run: their sketches' scripts aren't Margin's code.
+          # Tests and tools stay scanned (their findings are dismissed one by one, with the reason).
+          config: |
+            paths-ignore:
+              - docs/**
       - uses: github/codeql-action/analyze@v4
         with:
           category: /language:${{ matrix.language }}
