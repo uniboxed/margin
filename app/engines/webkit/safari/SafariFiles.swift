@@ -152,6 +152,11 @@ class SafariFileWatcher<Outcome: Equatable & Sendable>: FolderEvents {
         queue = DispatchQueue(label: "com.unibox.margin.\(label.replacingOccurrences(of: " ", with: "-"))", qos: .utility)
     }
 
+    // Written out, and not optimized: Swift 6.3.3 (Xcode 26.6, GitHub's newest) crashes inlining
+    // into the deinit it makes for this generic class when building for macOS 14 (EarlyPerfInliner,
+    // 2026-11-10). It does nothing; the class's users stop it first.
+    @_optimize(none) deinit {}
+
     var running: Bool { !stopped }
 
     func start() {
