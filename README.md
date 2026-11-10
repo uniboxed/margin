@@ -57,7 +57,7 @@ every change. [Writing a theme](extension/themes/README.md) explains the files, 
 
 Safari only runs on Apple's systems, so there's no Safari to work with on Windows or Linux (— in the table).
 
-On the Mac, Margin needs macOS 14 or later, and today it draws around full-screen browser windows.
+On the Mac, Margin needs macOS 14 or later, on Apple silicon or Intel, and today it draws around full-screen browser windows.
 
 ## Install
 

@@ -106,6 +106,10 @@ fi
 VERSION=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' dist/webkit/manifest.json | head -n 1)
 [ -n "$VERSION" ] || { echo "safari.sh: no version in dist/webkit/manifest.json" >&2; exit 1; }
 VERSIONS="MARKETING_VERSION=$VERSION CURRENT_PROJECT_VERSION=$VERSION"
+# For every Mac Margin says it supports (README: macOS 14 or later, Apple silicon and Intel): the
+# converter's project leaves both to the building Mac (its SDK's macOS as the minimum, its own
+# architecture), so a build on macOS 26.5 wouldn't open on 14, 15 or an Intel Mac.
+VERSIONS="$VERSIONS MACOSX_DEPLOYMENT_TARGET=14.0 ARCHS=\$(ARCHS_STANDARD) ONLY_ACTIVE_ARCH=NO"
 
 # shellcheck disable=SC2086
 if [ -n "$IDENTITY_NAME" ] && [ "$UNSIGNED" = false ]; then

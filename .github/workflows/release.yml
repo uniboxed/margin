@@ -147,6 +147,16 @@ jobs:
           if [ "$HAS_SIGNING" = true ]; then sh scripts/safari.sh --no-install | tee build.log
           else MARGIN_SIGN_IDENTITY= sh scripts/safari.sh --unsigned --no-install | tee build.log; fi
           echo "APP=$(tail -1 build.log)" >> "$GITHUB_ENV"
+      - name: For every Mac it says it supports (Apple silicon and Intel, macOS 14 or later)
+        run: |
+          for bin in "$APP/Contents/MacOS/Margin" "$APP/Contents/PlugIns/Margin Extension.appex/Contents/MacOS/Margin Extension" "$APP/Contents/Helpers/margin-connector" "$APP/Contents/Helpers/margin-helper"; do
+            archs=$(lipo -archs "$bin")
+            case " $archs " in *" arm64 "*) ;; *) echo "::error::$bin has no Apple silicon code ($archs)"; exit 1 ;; esac
+            case " $archs " in *" x86_64 "*) ;; *) echo "::error::$bin has no Intel code ($archs)"; exit 1 ;; esac
+            minos=$(otool -l "$bin" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
+            [ "$minos" = "14.0" ] || { echo "::error::$bin needs macOS $minos, not 14.0"; exit 1; }
+          done
+          [ "$(plutil -extract LSMinimumSystemVersion raw "$APP/Contents/Info.plist")" = "14.0" ] || { echo "::error::Margin.app's Info.plist asks for a newer macOS than 14.0"; exit 1; }
       - name: Zip
         run: |
           mkdir -p out
