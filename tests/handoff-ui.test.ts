@@ -12,13 +12,15 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { SWITCH_NOTICES, acrossOf, isWindow } from '../extension/shared/across.ts';
 import { buildViewModel } from '../extension/ui/view-model.ts';
-import { CLOSE_WINDOWS_LABEL, saveField, settingsFields } from '../extension/ui/settings-form.ts';
+import { CLOSE_WINDOWS_LABEL, saveField, settingsFields, type SettingsField } from '../extension/ui/settings-form.ts';
 import { createAppHost } from '../extension/ui/host-app.ts';
 import { COVER_FRAMES, answerFramed, createCoverWatch } from '../extension/ui/switch-cover.ts';
 import { GUARDED_PARTS, GUARDED_SLOTS, sanitizeTemplate } from '../extension/ui/sanitize.ts';
 import { toStorage } from '../extension/shared/stored.ts';
 import { readTheme, ARCADIA, NEO } from './theme/package.ts';
 import { smallState, W, OTHER_WINDOW } from './ui/fixtures.ts';
+import type { UiState } from '../extension/ui/view-model.ts';
+import type { CleanNode } from '../extension/ui/sanitize.ts';
 
 const HERE = 's-default';
 const WORK = 's-1111';
@@ -36,8 +38,8 @@ const rawAcross = (extra = {}) => ({
   switchSettings: { closeWindows: false },
   ...extra,
 });
-const switching = (phase, more = {}) => ({ profile: WORK, space: 'mail', phase, from: { profile: HERE, windowId: W }, ...more });
-const build = (raw, ui = {}) => buildViewModel({ state: { ...smallState(), across: acrossOf(raw) }, ui: { windowId: W, ...ui }, platform: { browser: 'safari', os: 'mac' } });
+const switching = (phase: string, more = {}) => ({ profile: WORK, space: 'mail', phase, from: { profile: HERE, windowId: W }, ...more });
+const build = (raw: Record<string, unknown>, ui: UiState = {}) => buildViewModel({ state: { ...smallState(), across: acrossOf(raw) }, ui: { windowId: W, ...ui }, platform: { browser: 'safari', os: 'mac' } });
 
 // ---- the cover in the view model ----
 
@@ -45,11 +47,11 @@ test('the cover: only while the switch gets ready or the screen is frozen, in th
   for (const phase of ['preparing', 'waitingForLink', 'waitingForProfile', 'frozen']) {
     const vm = build(rawAcross({ switching: switching(phase) }));
     assert.ok(vm.switchCover, phase);
-    assert.equal(vm.switchCover.text, 'Switching to Work…');
-    assert.deepEqual(vm.switchCover.profile, { name: 'Work', emoji: '💼', color: '#00b894', initial: 'W', symbol: null });
-    assert.deepEqual(vm.switchCover.space, { name: 'Mail', emoji: '✉️' });
-    assert.equal(vm.switchCover.hasSpace, true);
-    assert.equal(vm.switchCover.label, 'Switching to Work… Mail');
+    assert.equal(vm.switchCover!.text, 'Switching to Work…');
+    assert.deepEqual(vm.switchCover!.profile, { name: 'Work', emoji: '💼', color: '#00b894', initial: 'W', symbol: null });
+    assert.deepEqual(vm.switchCover!.space, { name: 'Mail', emoji: '✉️' });
+    assert.equal(vm.switchCover!.hasSpace, true);
+    assert.equal(vm.switchCover!.label, 'Switching to Work… Mail');
   }
   // After the freeze, and today's close-based switch's phases: none.
   for (const phase of ['after', 'landed', 'recovering', 'idle', 'creating', 'settling', 'closing', 'checking', '']) {
@@ -65,36 +67,37 @@ test('the cover: only while the switch gets ready or the screen is frozen, in th
 
 test('the cover: a space it doesn\'t know shows the profile alone; the same switch is the same object', () => {
   const vm = build(rawAcross({ switching: switching('preparing', { space: 'gone' }) }));
-  assert.equal(vm.switchCover.hasSpace, false);
-  assert.equal(vm.switchCover.label, 'Switching to Work…');
+  assert.equal(vm.switchCover!.hasSpace, false);
+  assert.equal(vm.switchCover!.label, 'Switching to Work…');
   const a = build(rawAcross({ switching: switching('preparing') }));
   const b = buildViewModel({ state: { ...smallState(), across: acrossOf(rawAcross({ switching: switching('frozen') })) }, ui: { windowId: W }, platform: { browser: 'safari', os: 'mac' } }, a);
   assert.equal(b.switchCover, a.switchCover, 'preparing then frozen: nothing to redraw');
-  assert.equal(a.switchCover.id, b.switchCover.id);
+  assert.equal(a.switchCover!.id, b.switchCover!.id);
 });
 
 test('across: the window a switch leaves, the notice\'s window and kind, and the switch\'s settings, checked as they come', () => {
   const a = acrossOf(rawAcross({ switching: { ...switching('frozen'), noticeKind: 'late-landing', noticeProfile: WORK, noticeIn: { profile: WORK, windowId: 4 } } }));
-  assert.deepEqual(a.switching.from, { profile: HERE, windowId: W });
-  assert.deepEqual(a.switching.noticeIn, { profile: WORK, windowId: 4 });
-  assert.equal(a.switching.noticeKind, 'late-landing');
-  assert.deepEqual(a.switchSettings, { closeWindows: false });
-  assert.ok(isWindow(a.switching.from, HERE, W) && !isWindow(a.switching.from, HERE, 99) && !isWindow(null, HERE, W));
+  assert.deepEqual(a!.switching!.from, { profile: HERE, windowId: W });
+  assert.deepEqual(a!.switching!.noticeIn, { profile: WORK, windowId: 4 });
+  assert.equal(a!.switching!.noticeKind, 'late-landing');
+  assert.deepEqual(a!.switchSettings, { closeWindows: false });
+  assert.ok(isWindow(a!.switching!.from, HERE, W) && !isWindow(a!.switching!.from, HERE, 99) && !isWindow(null, HERE, W));
   const bad = acrossOf(rawAcross({ switching: { ...switching('frozen'), from: { profile: HERE, windowId: '7' }, noticeKind: 'toString', noticeIn: { windowId: 2 } }, switchSettings: { closeWindows: 'yes' } }));
-  assert.equal(bad.switching.from, null, 'a window id that isn\'t a number');
-  assert.equal(bad.switching.noticeIn, null);
-  assert.equal(bad.switching.noticeKind, '', 'only a kind Margin has words for');
-  assert.deepEqual(bad.switchSettings, { closeWindows: false }, 'only true is on');
-  assert.equal(acrossOf({ ...rawAcross(), switchSettings: undefined }).switchSettings, null);
+  assert.equal(bad!.switching!.from, null, 'a window id that isn\'t a number');
+  assert.equal(bad!.switching!.noticeIn, null);
+  assert.equal(bad!.switching!.noticeKind, '', 'only a kind Margin has words for');
+  assert.deepEqual(bad!.switchSettings, { closeWindows: false }, 'only true is on');
+  assert.equal(acrossOf({ ...rawAcross(), switchSettings: undefined })!.switchSettings, null);
 });
 
 // ---- the slot and the part ----
 
-const root = (inner) => `<div class="t">${inner}<m-page></m-page></div>`;
-const texts = (tree) => {
-  const out = [];
-  const walk = (n) => { if (n.type === 'text' && n.value.trim()) out.push(n.value.trim()); for (const c of n.children ?? []) walk(c); };
-  walk(tree);
+const root = (inner: string) => `<div class="t">${inner}<m-page></m-page></div>`;
+const texts = (tree: { children: CleanNode[] } | null) => { // a tree that's there (the sanitizer took the template)
+  const out: string[] = [];
+  // Any node of the tree (the root, an element, a text: a text node has its value).
+  const walk = (n: { type?: string, value?: string, children?: CleanNode[] }) => { if (n.type === 'text' && n.value!.trim()) out.push(n.value!.trim()); for (const c of n.children ?? []) walk(c); };
+  walk(tree!);
   return out;
 };
 
@@ -133,9 +136,9 @@ test('the built-in themes: the slot over the page and a part of their own, with 
 // ---- coverShown and framed ----
 
 function frames() {
-  const queue = [];
+  const queue: (() => void)[] = [];
   return {
-    requestFrame: (fn) => { queue.push(fn); },
+    requestFrame: (fn: () => void) => { queue.push(fn); },
     // One animation frame: what was asked before it runs.
     tick() { const now = queue.splice(0); for (const fn of now) fn(); return now.length; },
     get pending() { return queue.length; },
@@ -145,8 +148,8 @@ function frames() {
 test('coverShown: after two frames with the cover drawn, once per cover', () => {
   assert.equal(COVER_FRAMES, 2);
   const f = frames();
-  let cover = null;
-  const said = [];
+  let cover: string | null = null;
+  const said: (string | null)[] = [];
   const watch = createCoverWatch({ requestFrame: f.requestFrame, cover: () => cover, settling: () => false, say: () => said.push(cover) });
   watch.check();
   assert.equal(f.pending, 0, 'no cover: nothing asked');
@@ -177,7 +180,7 @@ test('coverShown: after two frames with the cover drawn, once per cover', () => 
 test('coverShown: never while a swipe moves or settles; two clear frames after it', () => {
   const f = frames();
   let settling = true;
-  const said = [];
+  const said: number[] = [];
   const watch = createCoverWatch({ requestFrame: f.requestFrame, cover: () => 'work', settling: () => settling, say: () => said.push(1) });
   watch.check();
   for (let i = 0; i < 13; i++) f.tick(); // the swipe's 220 ms
@@ -198,8 +201,8 @@ test('coverShown: never while a swipe moves or settles; two clear frames after i
 
 test('coverShown: the cover gone before its second frame: nothing said, and no frames asked after', () => {
   const f = frames();
-  let cover = 'work';
-  const said = [];
+  let cover: string | null = 'work';
+  const said: number[] = [];
   const watch = createCoverWatch({ requestFrame: f.requestFrame, cover: () => cover, settling: () => false, say: () => said.push(1) });
   watch.check();
   f.tick();
@@ -211,13 +214,14 @@ test('coverShown: the cover gone before its second frame: nothing said, and no f
 
 test('framed: on the next frame after `shown`, with the mode at that frame', () => {
   const f = frames();
-  const posts = [];
+  const posts: [string, Record<string, any>][] = [];
   let mode = 'windowed';
   answerFramed({ requestFrame: f.requestFrame, mode: () => mode, post: (op, body) => posts.push([op, body]) });
-  assert.deepEqual(posts, [], 'not before a frame');
+  // (Typed as posts are: a bare `[]` would narrow them to never[] for the pushes after.)
+  assert.deepEqual<typeof posts>(posts, [], 'not before a frame');
   mode = 'fullscreen';
   f.tick();
-  assert.deepEqual(posts, [['framed', { mode: 'fullscreen' }]]);
+  assert.deepEqual<typeof posts>(posts, [['framed', { mode: 'fullscreen' }]]);
   answerFramed({ requestFrame: f.requestFrame, mode: () => 'windowed', post: (op, body) => posts.push([op, body]) });
   f.tick();
   assert.deepEqual(posts.at(-1), ['framed', { mode: 'windowed' }]);
@@ -239,7 +243,7 @@ test('the overlay page: framed after shown, coverShown from the cover\'s slot wi
 // ---- the setting ----
 
 test('Settings: "Close windows to save memory" after "Show iCloud Tabs", only with the app\'s value; saved by the app', () => {
-  const ids = (fields) => fields.map((f) => f.id);
+  const ids = (fields: SettingsField[]) => fields.map((f) => f.id);
   assert.ok(!ids(settingsFields({}, { cloudTabs: true })).includes('closeWindows'), 'not without it (one profile, Chrome, the in-page host)');
   const fields = settingsFields({}, { cloudTabs: true, switchSettings: { closeWindows: false } });
   const at = ids(fields).indexOf('closeWindows');
@@ -249,19 +253,19 @@ test('Settings: "Close windows to save memory" after "Show iCloud Tabs", only wi
   assert.equal(f.checked, false);
   assert.equal(f.label, CLOSE_WINDOWS_LABEL);
   assert.equal(CLOSE_WINDOWS_LABEL, 'Close windows to save memory: when you switch to another profile, the window you leave closes. Switching takes a little longer and its pages reload when you come back. Off: the window stays open, out of sight, with your place, text and video kept.');
-  assert.equal(settingsFields({ closeWindows: true }, { switchSettings: { closeWindows: false } }).find((x) => x.id === 'closeWindows').checked, false, 'the app\'s value, not a stored setting');
-  assert.equal(settingsFields({}, { switchSettings: { closeWindows: true } }).find((x) => x.id === 'closeWindows').checked, true);
+  assert.equal(settingsFields({ closeWindows: true }, { switchSettings: { closeWindows: false } }).find((x) => x.id === 'closeWindows')!.checked, false, 'the app\'s value, not a stored setting');
+  assert.equal(settingsFields({}, { switchSettings: { closeWindows: true } }).find((x) => x.id === 'closeWindows')!.checked, true);
   assert.deepEqual(saveField(f, true, {}), { perform: 'switch.closeWindows', arg: { on: true } });
   assert.deepEqual(saveField(f, false, {}), { perform: 'switch.closeWindows', arg: { on: false } });
   assert.equal(saveField(f, 'true', {}), null, 'a toggle takes a boolean');
 });
 
-function appHost(raw, browser = 'safari') {
-  const posts = [];
-  const post = async (op, body = {}) => { posts.push({ op, ...body }); return null; };
+function appHost(raw: Record<string, unknown> | null, browser = 'safari') {
+  const posts: Record<string, any>[] = [];
+  const post = async (op: string, body = {}) => { posts.push({ op, ...body }); return null; };
   const keys = ['spaces', 'pins', 'folders', 'archive', 'settings', 'tabs', 'tabSpace', 'activeSpaceByWindow', 'favicons'];
   const state = toStorage(smallState(), keys, { origin: 'o', since: 1, synced: true });
-  const notices = [];
+  const notices: { id?: string, action?: string }[] = [];
   const host = createAppHost({ hello: { windowId: W, profile: HERE, browser, platform: { browser }, state, windows: [], across: raw }, post, onNotice: (arg) => notices.push(arg) });
   return { host, posts, notices };
 }
@@ -271,8 +275,8 @@ test('the app host: the setting is a feature for Safari with more than one profi
   assert.deepEqual(host.platform.features.switchSettings, { closeWindows: false });
   host.receive({ type: 'across', across: rawAcross({ switchSettings: { closeWindows: true } }) });
   assert.deepEqual(host.platform.features.switchSettings, { closeWindows: true });
-  const fields = buildViewModel({ state: host.getState(), ui: { windowId: W, settingsOpen: true, launcherPage: true }, platform: host.platform }).settingsForm.fields;
-  assert.equal(fields.find((f) => f.id === 'closeWindows').checked, true, 'drawn in Settings');
+  const fields = buildViewModel({ state: host.getState(), ui: { windowId: W, settingsOpen: true, launcherPage: true }, platform: host.platform }).settingsForm!.fields;
+  assert.equal(fields.find((f) => f.id === 'closeWindows')!.checked, true, 'drawn in Settings');
   host.receive({ type: 'across', across: rawAcross({ profiles: rawAcross().profiles.slice(0, 1) }) });
   assert.equal(host.platform.features.switchSettings, null, 'one profile: no field');
   host.receive({ type: 'across', across: null });
@@ -289,21 +293,21 @@ test('the app host: the setting is a feature for Safari with more than one profi
 // ---- the switch's notices ----
 
 test('notices: each kind in Margin\'s words, with its profile\'s name; the one window it\'s for', () => {
-  const said = (kind, extra = {}, ui = {}) => build(rawAcross({ switching: { noticeKind: kind, noticeProfile: WORK, ...extra } }), ui).notice;
+  const said = (kind: string, extra = {}, ui: UiState = {}) => build(rawAcross({ switching: { noticeKind: kind, noticeProfile: WORK, ...extra } }), ui).notice;
   assert.deepEqual(said('window-kept-draft'), {
     id: 'switch:window-kept-draft', text: 'Kept Work’s window open: a page in it has text you haven’t sent.',
     actions: [{ id: 'close', label: 'Close window', primary: false, danger: false }], hasActions: true,
   });
-  assert.equal(said('dialog-open').text, 'Finish the dialog in this window first.');
-  assert.equal(said('window-busy').text, 'Safari is busy in this window.');
-  assert.equal(said('late-landing').text, 'Switched to Work (Safari was slow).');
-  assert.equal(said('window-on-desktop').text, 'Work’s window is on the Desktop. Margin can’t reach its extension right now.');
-  for (const kind of Object.keys(SWITCH_NOTICES)) assert.equal(said(kind).id, `switch:${kind}`);
+  assert.equal(said('dialog-open')!.text, 'Finish the dialog in this window first.');
+  assert.equal(said('window-busy')!.text, 'Safari is busy in this window.');
+  assert.equal(said('late-landing')!.text, 'Switched to Work (Safari was slow).');
+  assert.equal(said('window-on-desktop')!.text, 'Work’s window is on the Desktop. Margin can’t reach its extension right now.');
+  for (const kind of Object.keys(SWITCH_NOTICES)) assert.equal(said(kind)!.id, `switch:${kind}`);
   assert.equal(said('late-landing', { noticeIn: { profile: HERE, windowId: OTHER_WINDOW } }), null, 'another window\'s');
   assert.ok(said('late-landing', { noticeIn: { profile: HERE, windowId: W } }), 'this window\'s');
   assert.equal(said('nonsense'), null, 'a kind Margin has no words for');
-  assert.equal(said('nonsense', { notice: 'Couldn’t switch to Work: no answer. Nothing was closed.' }).id, 'profile-switch', 'the app\'s own text, as before');
-  assert.equal(said('dialog-open', {}, { notice: { id: 'x#1', text: 'A page notice', actions: [] } }).id, 'x#1', 'a notice of the page\'s first');
+  assert.equal(said('nonsense', { notice: 'Couldn’t switch to Work: no answer. Nothing was closed.' })!.id, 'profile-switch', 'the app\'s own text, as before');
+  assert.equal(said('dialog-open', {}, { notice: { id: 'x#1', text: 'A page notice', actions: [] } })!.id, 'x#1', 'a notice of the page\'s first');
 });
 
 test('notices: a button of the switch\'s goes to the app; the copy\'s notices still go to the copy', () => {
@@ -340,5 +344,5 @@ test('the target space drawn in the window a switch leaves, from the app\'s data
   assert.equal(build(rawAcross({ switching: switching('frozen', { content: { ...content, space: 'other' } }) })).space.switching, false);
   // An icon that isn't a small data: image is dropped.
   const odd = acrossOf(rawAcross({ switching: switching('frozen', { content: { ...content, tabs: [{ id: 't', title: 'x', url: 'https://x/', icon: 'javascript:alert(1)' }] } }) }));
-  assert.equal(odd.switching.content.tabs[0].icon, '');
+  assert.equal(odd!.switching!.content.tabs[0].icon, '');
 });

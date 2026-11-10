@@ -12,20 +12,31 @@
 // note: tests/wake.test.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser, type FakeBrowserApi, type FakeInjection } from './fake-browser.ts';
+import type { Said } from '../extension/background/link.ts';
+import type { UiState } from '../extension/ui/view-model.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const listeners = {};
-const event = (name) => ({ addListener: (fn) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
-const fire = (name, ...args) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
 
-const fake = { tabs: new Map(), nextId: 500, created: [], removed: [], local: {}, session: {}, registered: new Map(), toPages: [], updated: [], script: null };
-const pick = (store, keys) => {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// Every event's listeners, by the event's name: each called with what that event gives.
+const listeners: Record<string, ((...args: any[]) => unknown)[]> = {};
+const event = (name: string) => ({ addListener: (fn: (...args: any[]) => unknown) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
+const fire = (name: string, ...args: unknown[]) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
+
+const fake = {
+  tabs: new Map<number, BrowserTab>(), nextId: 500, created: [] as (string | undefined)[], removed: [] as number[],
+  local: {} as Record<string, any>, session: {} as Record<string, any>, // stored JSON
+  registered: new Map<string, BrowserRegisteredContentScript>(), toPages: [] as (string | undefined)[],
+  updated: [] as ({ id: number } & Record<string, unknown>)[], script: null as ((details: FakeInjection) => unknown) | null,
+};
+const pick = (store: Record<string, any>, keys?: string | string[] | Record<string, any> | null) => {
   if (keys == null) return structuredClone(store);
   const list = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys);
   return Object.fromEntries(list.filter((k) => k in store).map((k) => [k, structuredClone(store[k])]));
 };
-globalThis.fetch = async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) });
-globalThis.chrome = {
+// Every fetch answered with an empty document: only what Margin reads of a response.
+globalThis.fetch = (async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) })) as unknown as typeof fetch;
+globalThis.chrome = fakeBrowser({
   runtime: {
     id: 'test',
     getURL: (p) => `safari-web-extension://test/${p}`,
@@ -35,7 +46,7 @@ globalThis.chrome = {
     sendNativeMessage: async () => undefined,
   },
   permissions: { contains: async () => true, onAdded: event('pAdded'), onRemoved: event('pRemoved') },
-  alarms: { get: async () => ({}), create: async () => {}, clear: async () => true, onAlarm: event('onAlarm') },
+  alarms: { get: async () => ({}), create: async () => {}, onAlarm: event('onAlarm') }, // (no clear: Margin never calls it)
   commands: { onCommand: event('onCommand') },
   windows: {
     get: async (id) => ({ id, focused: true }), getAll: async () => [{ id: 1, focused: true }], getLastFocused: async () => ({ id: 1 }),
@@ -51,7 +62,7 @@ globalThis.chrome = {
       fake.created.push(url);
       return { ...tab };
     },
-    remove: async (ids) => { for (const id of [].concat(ids)) { fake.removed.push(id); fake.tabs.delete(id); } },
+    remove: async (ids) => { for (const id of ([] as number[]).concat(ids)) { fake.removed.push(id); fake.tabs.delete(id); } },
     sendMessage: async (tabId, message) => { fake.toPages.push(message?.type); return undefined; },
     getZoom: async () => 1, getZoomSettings: async () => ({ defaultZoomFactor: 1 }), reload: async (id) => { fake.updated.push({ id, reload: true }); },
     onActivated: event('onActivated'), onCreated: event('onCreated'), onUpdated: event('onUpdated'), onRemoved: event('onRemoved'),
@@ -72,7 +83,7 @@ globalThis.chrome = {
         Object.assign(fake.local, structuredClone(items));
         void fire('sChanged', changes, 'local');
       },
-      remove: async (keys) => { for (const k of [].concat(keys)) delete fake.local[k]; },
+      remove: async (keys) => { for (const k of ([] as string[]).concat(keys)) delete fake.local[k]; },
     },
     session: {
       get: async (keys) => pick(fake.session, keys),
@@ -81,7 +92,7 @@ globalThis.chrome = {
     },
     onChanged: event('sChanged'),
   },
-};
+});
 
 fake.tabs.set(1, { id: 1, windowId: 1, url: 'https://a.test/', title: 'A', index: 0, active: true, status: 'complete' });
 fake.local.settings = { fullscreenOnly: false }; // Chrome's profile (this file's): Margin in every window
@@ -89,10 +100,10 @@ fake.session.alive = true;
 fake.session.since = 1;
 fake.session.startWorkAt = Date.now();
 
-const sender = (id) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id)?.url });
-function ask(type, payload = {}, from = 1) {
-  return new Promise((resolve) => {
-    listeners.onMessage[0]({ type, ...payload }, sender(from), (reply) => resolve(reply));
+const sender = (id: number) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id)?.url });
+function ask(type: string, payload = {}, from = 1) {
+  return new Promise<any>((resolve) => { // (the handler's answer: Margin's own protocol)
+    listeners.onMessage[0]({ type, ...payload }, sender(from), (reply: unknown) => resolve(reply));
   });
 }
 
@@ -102,9 +113,9 @@ for (let i = 0; i < 100 && !store.isSynced(); i++) await sleep(10);
 assert.ok(store.isSynced(), 'synced');
 
 // The link, linked: what's pushed to each window's overlay.
-const pushed = [];
+const pushed: { windowId: number | null, msg: Said }[] = [];
 let linked = true;
-const stand = { linked: () => linked, push: (windowId, msg) => { if (!linked) return false; pushed.push({ windowId, msg }); return true; } };
+const stand = { linked: () => linked, push: (windowId: number | null, msg: Said) => { if (!linked) return false; pushed.push({ windowId, msg }); return true; } };
 const notices = await import('../extension/background/notices.ts');
 const pageLoads = await import('../extension/background/page-loads.ts');
 notices.useLinkForTests(stand);
@@ -117,7 +128,9 @@ const { createAppHost } = await import('../extension/ui/host-app.ts');
 const { buildViewModel } = await import('../extension/ui/view-model.ts');
 const { startLoads, TRANSITION_MS } = await import('../extension/content/loads.ts');
 const { gestureTeller, GESTURE_TELL_MS } = await import('../extension/content/trackpad.ts');
-const kinds = (kind) => pushed.filter((p) => p.msg.type === 'notice' && p.msg.kind === kind);
+type Shown = Parameters<Parameters<typeof createGestureFeedback>[0]['set']>[0];
+type Told = Parameters<Parameters<typeof gestureTeller>[1]>[0];
+const kinds = (kind: string) => pushed.filter((p) => p.msg.type === 'notice' && p.msg.kind === kind);
 
 // ---- the words ------------------------------------------------------------------
 
@@ -195,7 +208,7 @@ test('not linked: kept, and said once linked if its page is still in front; only
   assert.equal(notices.tellNotice(1, 'not-responding', { tabId: 3, url: 'https://c.test/', now: Date.now() - 2 * notices.PENDING_MS }), false);
   assert.deepEqual(pushed, [], 'nowhere to say it yet');
   linked = true;
-  const tabs = { 1: { id: 1, windowId: 1, active: true, url: 'https://a.test/' }, 2: { id: 2, windowId: 1, active: false, url: 'https://b.test/' }, 3: { id: 3, windowId: 1, active: true, url: 'https://c.test/' } };
+  const tabs: Record<number, Partial<BrowserTab>> = { 1: { id: 1, windowId: 1, active: true, url: 'https://a.test/' }, 2: { id: 2, windowId: 1, active: false, url: 'https://b.test/' }, 3: { id: 3, windowId: 1, active: true, url: 'https://c.test/' } };
   assert.equal(await notices.linkedAgain({ getTab: async (id) => tabs[id] }), 1);
   assert.deepEqual(pushed, [{ windowId: 1, msg: { type: 'notice', kind: 'not-responding', tabId: 1 } }], 'the page still in front: said; one behind now, or decided too long ago: not');
   assert.equal(await notices.linkedAgain({ getTab: async (id) => tabs[id] }), 0, 'once');
@@ -264,10 +277,11 @@ test('loading: a sign that never ends goes after its time', async () => {
 
 // ---- the overlay drawing it ----------------------------------------------------------
 
-function overlayNotices(front = () => 12) {
-  const shown = [];
-  const sent = [];
-  const timers = [];
+type AppNotice = Parameters<Parameters<typeof createAppNotices>[0]['show']>[0];
+function overlayNotices(front: () => number | null = () => 12) {
+  const shown: AppNotice[] = [];
+  const sent: [string, Record<string, any>][] = [];
+  const timers: { fn: () => void, ms: number }[] = [];
   const n = createAppNotices({
     show: (v) => shown.push(v),
     send: (type, payload) => sent.push([type, payload]),
@@ -281,10 +295,10 @@ function overlayNotices(front = () => 12) {
 test('the overlay\'s notices: a pushed kind drawn in Margin\'s words; its button closes it and goes to the copy as noticeAction, with its tab', () => {
   const { n, shown, sent, timers } = overlayNotices();
   assert.equal(n.push({ type: 'notice', kind: 'not-responding', tabId: 12 }), true);
-  const v = shown.at(-1);
+  const v = shown.at(-1)!;
   assert.equal(v.text, words.NOTICES['not-responding'].text);
   assert.deepEqual(v.actions.map((a) => a.label), ['Reload', 'Not now']);
-  assert.equal(timers.at(-1).ms, 20000);
+  assert.equal(timers.at(-1)!.ms, 20000);
   assert.equal(n.run({ id: 'someone else', action: 'reload' }), false);
   assert.equal(n.run({ id: v.id, action: 'reload' }), true);
   assert.deepEqual(sent, [['noticeAction', { notice: 'not-responding', action: 'reload', tabId: 12 }]]);
@@ -300,7 +314,7 @@ test('the overlay\'s notices: one about a tab\'s page goes once another tab is i
   assert.ok(n.current);
   front = 13;
   n.front(13);
-  assert.equal(n.current, null);
+  assert.equal<unknown>(n.current, null); // (as unknown: a bare null would narrow n.current for good)
   assert.equal(shown.at(-1), null, 'taken down');
   // About a tab not in front yet (a switch to it under way): kept until it has been.
   n.push({ type: 'notice', kind: 'not-responding', tabId: 14 });
@@ -308,15 +322,15 @@ test('the overlay\'s notices: one about a tab\'s page goes once another tab is i
   assert.equal(n.current?.kind, 'not-responding');
   n.front(14);
   n.front(13);
-  assert.equal(n.current, null);
+  assert.equal<unknown>(n.current, null);
   // A switch that didn't happen: the copy's, with why; this overlay's own request's.
   assert.equal(n.push({ type: 'switch-failed', tabId: 5 }), false, 'no reason: no notice');
   assert.equal(n.push({ type: 'switch-failed', tabId: 5, reason: 'That tab is no longer open' }), true);
-  assert.equal(shown.at(-1).text, 'That tab is no longer open.');
-  assert.equal(timers.at(-1).ms, 4000);
+  assert.equal(shown.at(-1)!.text, 'That tab is no longer open.');
+  assert.equal(timers.at(-1)!.ms, 4000);
   assert.equal(n.switchFailed('no answer from Margin: timedOut'), true);
-  assert.equal(n.current.kind, 'no-answer', 'the newest');
-  timers.at(-1).fn();
+  assert.equal(n.current!.kind, 'no-answer', 'the newest');
+  timers.at(-1)!.fn();
   assert.equal(n.current, null, 'after its time');
   assert.equal(n.switchFailed('no answer from Margin: down'), false);
 });
@@ -326,11 +340,11 @@ test('the app host: the window\'s tabs loading from the copy\'s push, drawn as t
   const { smallState, W } = await import('./ui/fixtures.ts');
   const state = smallState();
   const raw = toStorage(state, ['spaces', 'pins', 'folders', 'archive', 'settings', 'tabs', 'tabSpace', 'activeSpaceByWindow', 'favicons'], { origin: 'o', since: 1, synced: true });
-  const front = Object.values(state.tabs).find((t) => t.windowId === W && t.active);
+  const front = Object.values(state.tabs).find((t) => t.windowId === W && t.active)!; // smallState has one
   const before = buildViewModel({ state: { ...state, openTabsBy: null }, ui: { windowId: W, mode: 'fullscreen' } });
-  const other = before.space.today.find((r) => r.id !== front.id && r.open);
-  let answer = { ok: false, error: 'That tab is no longer open' };
-  const noticed = [];
+  const other = before.space.today.find((r) => r.id !== front.id && r.open)!;
+  let answer: { ok: boolean, error: string, stale?: boolean } = { ok: false, error: 'That tab is no longer open' };
+  const noticed: { id?: string, action?: string }[] = [];
   const host = createAppHost({
     hello: { windowId: W, state: raw, windows: [{ windowId: W, state: 'fullscreen', activeTabId: front.id }] },
     post: async (op) => (op === 'send' ? JSON.stringify(answer) : null),
@@ -344,14 +358,14 @@ test('the app host: the window\'s tabs loading from the copy\'s push, drawn as t
   assert.equal(drawn, 1);
   assert.deepEqual(host.loading.sort(), [front.id, other.id].sort());
   const vm = buildViewModel({ state: host.getState(), ui: { windowId: W, mode: 'fullscreen' }, platform: host.platform });
-  assert.equal(vm.tab.loading, true, 'the tab in front');
+  assert.equal(vm.tab!.loading, true, 'the tab in front');
   const row = vm.space.today.find((r) => r.id === other.id);
   assert.ok(row, 'its row');
-  assert.equal(row.loading, true, 'loading');
+  assert.equal(row!.loading, true, 'loading');
   host.receive({ type: 'push', msg: { type: 'loading', tabIds: [front.id, other.id] } });
   assert.equal(drawn, 1, 'the same set: nothing drawn again');
   host.receive({ type: 'push', msg: { type: 'loading', tabIds: [] } });
-  assert.equal(buildViewModel({ state: host.getState(), ui: { windowId: W }, platform: host.platform }).tab.loading, false);
+  assert.equal(buildViewModel({ state: host.getState(), ui: { windowId: W }, platform: host.platform }).tab!.loading, false);
   // A request that failed: why, once, for the notice.
   assert.equal(await host.send('activateTab', { tabId: other.id }), undefined);
   assert.deepEqual(host.takeFailure(), { type: 'activateTab', error: 'That tab is no longer open' });
@@ -365,34 +379,34 @@ test('the app host: the window\'s tabs loading from the copy\'s push, drawn as t
 });
 
 test('gestures: the view model\'s gesture from the overlay\'s feedback; done goes after a moment, one that stops being told after its time', () => {
-  const set = [];
-  const timers = [];
+  const set: Shown[] = [];
+  const timers: { fn: () => void, ms: number }[] = [];
   const g = createGestureFeedback({ set: (v) => set.push(v), setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimer: () => {} });
   g.push({ kind: 'pull', state: 'pulling', progress: 0.43 });
-  const vm = (ui) => buildViewModel({ state: null, ui: { gesture: ui } }).gesture;
+  const vm = (ui: UiState['gesture']) => buildViewModel({ state: null, ui: { gesture: ui } }).gesture;
   assert.deepEqual({ ...vm(set.at(-1)) }, { pull: true, swipe: false, back: false, forward: false, armed: false, done: false, leaving: false, progress: 0.45, percent: 45 });
-  assert.equal(timers.at(-1).ms, 1000);
+  assert.equal(timers.at(-1)!.ms, 1000);
   g.push({ kind: 'pull', state: 'trigger', progress: 1.2 });
   assert.deepEqual({ ...vm(set.at(-1)) }, { pull: true, swipe: false, back: false, forward: false, armed: true, done: true, leaving: false, progress: 1, percent: 100 });
-  assert.equal(timers.at(-1).ms, GESTURE_DONE_MS);
-  timers.at(-1).fn();
+  assert.equal(timers.at(-1)!.ms, GESTURE_DONE_MS);
+  timers.at(-1)!.fn();
   assert.equal(set.at(-1), null);
   g.push({ kind: 'swipe', state: 'armed', progress: 1, direction: 1 });
   assert.deepEqual({ ...vm(set.at(-1)) }, { pull: false, swipe: true, back: false, forward: true, armed: true, done: false, leaving: false, progress: 1, percent: 100 });
   g.push({ kind: 'swipe', state: 'idle' });
-  assert.equal(set.at(-1).state, 'leaving', 'let go while armed but not done (momentum cut it): backing out');
-  timers.at(-1).fn();
+  assert.equal(set.at(-1)!.state, 'leaving', 'let go while armed but not done (momentum cut it): backing out');
+  timers.at(-1)!.fn();
   assert.equal(set.at(-1), null);
   assert.equal(vm(null), null);
 });
 
 test('gestures: the page tells a change of state at once, its progress in steps of 0.01 at most once a frame, the last one held back told after, nothing while idle', () => {
   let t = 0;
-  const told = [];
-  const later = [];
-  const tell = gestureTeller('pull', (g) => told.push(g), () => t, (fn, ms) => { later.push({ fn, ms }); return later.length; }, () => {});
+  const told: Told[] = [];
+  const later: { fn: () => void, ms: number }[] = [];
+  const tell = gestureTeller('pull', (g) => told.push(g), () => t, (fn, ms) => { later.push({ fn, ms }); return later.length as unknown as Timer; }, () => {}); // a stand-in handle for the timer
   tell({ state: 'idle', progress: 0 });
-  assert.deepEqual(told, [], 'idle from idle: nothing');
+  assert.deepEqual<typeof told>(told, [], 'idle from idle: nothing');
   tell({ state: 'pulling', progress: 0.113 });
   t += 5; tell({ state: 'pulling', progress: 0.3 });
   assert.deepEqual(told.map((g) => [g.state, g.progress]), [['pulling', 0.11]], 'within the frame: held back');
@@ -406,15 +420,15 @@ test('gestures: the page tells a change of state at once, its progress in steps 
   t += GESTURE_TELL_MS; tell({ state: 'armed', progress: 1.4 });
   t += 1; tell({ state: 'trigger', progress: 1 });
   assert.deepEqual(told.map((g) => [g.state, g.progress]), [['pulling', 0.11], ['pulling', 0.34], ['armed', 1], ['armed', 1.4], ['trigger', 1]]);
-  const swipe = [];
+  const swipe: Told[] = [];
   gestureTeller('swipe', (g) => swipe.push(g), () => 0)({ state: 'pulling', progress: 0.5, direction: -1 });
   assert.deepEqual(swipe, [{ kind: 'swipe', state: 'pulling', progress: 0.5, direction: -1 }]);
 });
 
 test('gestures: drawn again only as what it is changes, how far it went to the easing every word; let go too soon, it backs out', () => {
-  const set = [];
-  const moved = [];
-  const timers = [];
+  const set: Shown[] = [];
+  const moved: [number, boolean][] = [];
+  const timers: { fn: () => void, ms: number }[] = [];
   const g = createGestureFeedback({ set: (v) => set.push(v), progress: (v, fresh) => moved.push([v, fresh]), setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimer: () => {} });
   g.push({ kind: 'pull', state: 'pulling', progress: 0.2 });
   g.push({ kind: 'pull', state: 'pulling', progress: 0.4 });
@@ -424,24 +438,24 @@ test('gestures: drawn again only as what it is changes, how far it went to the e
   g.push({ kind: 'pull', state: 'armed', progress: 1 });
   assert.equal(set.length, 2);
   g.push({ kind: 'pull', state: 'idle' });
-  assert.equal(set.at(-1).state, 'leaving', 'let go before it would: backing out');
+  assert.equal(set.at(-1)!.state, 'leaving', 'let go before it would: backing out');
   assert.deepEqual(moved.at(-1), [0, false], '…eased back to nothing');
-  assert.equal(buildViewModel({ state: null, ui: { gesture: set.at(-1) } }).gesture.leaving, true);
-  assert.equal(timers.at(-1).ms, GESTURE_LEAVE_MS);
+  assert.equal(buildViewModel({ state: null, ui: { gesture: set.at(-1) } }).gesture!.leaving, true);
+  assert.equal(timers.at(-1)!.ms, GESTURE_LEAVE_MS);
   g.push({ kind: 'pull', state: 'idle' });
   assert.equal(set.length, 3, 'a second idle: nothing more');
-  timers.at(-1).fn();
+  timers.at(-1)!.fn();
   assert.equal(set.at(-1), null);
   assert.deepEqual(moved.at(-1), [0, true]);
   g.push({ kind: 'swipe', state: 'pulling', progress: 0.3, direction: -1 });
   g.push({ kind: 'swipe', state: 'pulling', progress: 0.3, direction: 1 });
-  assert.equal(set.at(-1).direction, 1, 'the other way: drawn again');
+  assert.equal(set.at(-1)!.direction, 1, 'the other way: drawn again');
 });
 
 test('gestures: the overlay\'s easing follows what was said every frame, never past it, and stops once there', () => {
   let t = 0;
-  const frames = [];
-  const applied = [];
+  const frames: (() => void)[] = [];
+  const applied: number[] = [];
   const motion = createGestureMotion({ apply: (v) => applied.push(v), raf: (fn) => { frames.push(fn); return frames.length; }, caf: () => {}, now: () => t });
   motion.to(0.5, true);
   assert.deepEqual(applied, [0.5], 'snapped');
@@ -449,23 +463,24 @@ test('gestures: the overlay\'s easing follows what was said every frame, never p
   let last = 0.5;
   for (let i = 0; i < 40 && frames.length; i++) {
     t += 16;
-    frames.shift()();
-    assert.ok(applied.at(-1) >= last && applied.at(-1) <= 1, `frame ${i}: ${applied.at(-1)}`);
-    last = applied.at(-1);
+    frames.shift()!();
+    assert.ok(applied.at(-1)! >= last && applied.at(-1)! <= 1, `frame ${i}: ${applied.at(-1)!}`);
+    last = applied.at(-1)!;
   }
   assert.equal(motion.value, 1, 'there');
   assert.equal(frames.length, 0, '…and the frames stopped');
   motion.to(0);
   t += 16;
-  frames.shift()();
-  assert.ok(applied.at(-1) > 0.5 && applied.at(-1) < 1, `a third of the way in a frame or so: ${applied.at(-1)}`);
-  assert.ok(Math.abs(1 - applied.at(-1) - (1 - Math.exp(-16 / TAU_MS))) < 0.01);
+  frames.shift()!();
+  assert.ok(applied.at(-1)! > 0.5 && applied.at(-1)! < 1, `a third of the way in a frame or so: ${applied.at(-1)!}`);
+  assert.ok(Math.abs(1 - applied.at(-1)! - (1 - Math.exp(-16 / TAU_MS))) < 0.01);
 });
 
 test('loads: the page being left told at once, taken back when it stays; a slow same-page navigation told until it ends; nothing while the app doesn\'t draw', async () => {
-  const handlers = {};
-  const win = { addEventListener: (type, fn) => { (handlers[type] ??= []).push(fn); }, navigation: { transition: null, addEventListener: (type, fn) => { (handlers[`nav:${type}`] ??= []).push(fn); } } };
-  const said = [];
+  // The page's listeners, by event (the navigation's as `nav:`), called with stand-ins for their events.
+  const handlers: Record<string, ((...args: any[]) => void)[]> = {};
+  const win = { addEventListener: (type: string, fn: (...args: any[]) => void) => { (handlers[type] ??= []).push(fn); }, navigation: { transition: null as { finished: Promise<unknown> } | null, addEventListener: (type: string, fn: (...args: any[]) => void) => { (handlers[`nav:${type}`] ??= []).push(fn); } } };
+  const said: [string, Record<string, any>][] = [];
   let on = true;
   startLoads({ on: () => on, send: (type, payload) => said.push([type, payload]), win });
   const ev = { defaultPrevented: false, returnValue: '' };
@@ -477,12 +492,12 @@ test('loads: the page being left told at once, taken back when it stays; a slow 
   handlers.beforeunload[0]({ defaultPrevented: true });
   await sleep(5);
   assert.deepEqual(said.slice(-2), [['pageLoading', { on: true, why: 'leaving' }], ['pageLoading', { on: false, why: 'leaving' }]]);
-  let finish;
+  let finish: ((value?: unknown) => void) | undefined;
   win.navigation.transition = { finished: new Promise((resolve) => { finish = resolve; }) };
   handlers['nav:navigate'][0]();
   await sleep(TRANSITION_MS + 40);
   assert.deepEqual(said.at(-1), ['pageLoading', { on: true, why: 'navigating' }]);
-  finish();
+  finish!();
   await sleep(5);
   assert.deepEqual(said.at(-1), ['pageLoading', { on: false, why: 'navigating' }]);
   on = false;
@@ -495,7 +510,7 @@ test('loads: the page being left told at once, taken back when it stays; a slow 
 
 test('viewport: the page\'s word goes to the link with `measured` only when a pointer event said where the area starts; junk is null', async () => {
   const { appLink } = await import('../extension/background/app-link.ts');
-  const heard = [];
+  const heard: unknown[][] = [];
   const was = appLink.viewport;
   appLink.viewport = (windowId, tabId, rect) => heard.push([windowId, tabId, rect]);
   try {
@@ -516,9 +531,9 @@ test('viewport: the page\'s word goes to the link with `measured` only when a po
 
 test('viewport: when the page was resized and said so, and when the copy heard it, go with it (Margin.app logs the delay)', async () => {
   const { appLink } = await import('../extension/background/app-link.ts');
-  const heard = [];
+  const heard: [unknown, NonNullable<Parameters<typeof appLink.viewport>[3]>][] = [];
   const was = appLink.viewport;
-  appLink.viewport = (windowId, tabId, rect, times) => heard.push([rect, times]);
+  appLink.viewport = (windowId, tabId, rect, times) => heard.push([rect, times!]);
   try {
     const before = Date.now();
     await ask('viewport', { viewport: { x: 0, y: 0, width: 1512, height: 485 }, resizedAt: before - 30, at: before - 10 });
@@ -534,15 +549,15 @@ test('viewport: when the page was resized and said so, and when the copy heard i
 });
 
 test('the overlay\'s own notice: a theme it couldn\'t draw; the copy can\'t push it, and its buttons stay in the overlay', () => {
-  const ran = [];
-  const shown = [];
-  const sent = [];
+  const ran: [string, string][] = [];
+  const shown: AppNotice[] = [];
+  const sent: [string, Record<string, any>][] = [];
   const n = createAppNotices({ show: (v) => shown.push(v), send: (t, p) => sent.push([t, p]), local: (kind, action) => ran.push([kind, action]), setTimer: () => 0, clearTimer: () => {} });
   assert.equal(n.push({ type: 'notice', kind: 'theme-failed' }), false, 'not the copy\'s to say');
   assert.equal(words.isNoticeAction('theme-failed', 'ok'), false, 'nor its to run');
   assert.equal(n.say('not-responding'), false, 'only the overlay\'s own kinds');
   assert.equal(n.say('theme-failed'), true);
-  const v = shown.at(-1);
+  const v = shown.at(-1)!;
   assert.match(v.text, /couldn’t draw the theme you chose, so it’s using Arcadia/);
   assert.deepEqual(v.actions.map((a) => a.label), ['Settings', 'OK']);
   assert.equal(n.run({ id: v.id, action: 'settings' }), true);
