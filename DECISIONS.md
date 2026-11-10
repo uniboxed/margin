@@ -3955,3 +3955,39 @@ The two flakes left in GitHub issue #13's end-to-end tests:
   then 2,071 after the scan-delivery regression was added (WINDOW_RUNS=50, VISIBLE_RUNS=80); all 491 native
   end-to-end checks passed, including the splash's two appearances. The app, handler and helper type-check
   without compiler warnings.
+
+## The launch splash belongs to a temporary helper process (2026-11-10)
+
+- **Keep the idle saving.** The request was a splash from margin-helper without keeping the full app at login
+  or paying for windows in the resident watcher. AppKit's window connection keeps tens of MB in a process even
+  after its panels go. The login helper therefore never creates NSApplication or a window: its existing
+  NSWorkspace observation stays event-driven, with no poll. A recently launched supported browser, while
+  Margin.app is not running, starts the app and a `--splash <browser pid>` child of the helper in parallel.
+  An older browser already open as the helper starts gets no launch card; an app already running gets no child.
+- **The child alone draws.** A small native “Getting things ready for you” card, ordered just above that browser's
+  first on-screen window, follows its bounds without taking the keyboard, showing a Dock icon or taking clicks.
+  Window metadata only: no title, profile, Accessibility, page, WebKit or network. It reads at 10 Hz for at most
+  six seconds, exits on browser quit, and exits if the person switches away after it shows. This is deliberately
+  a passive launch card before a profile can be identified, not the app's profile-specific full-window cover.
+- **The app takes over.** Once a native startup cover or on-screen overlay has been ordered over that browser,
+  the app sends `com.unibox.margin.startup.ready`, scoped to its pid and actual window number. A different
+  window on a second display cannot dismiss the card. Merely connecting the extension or loading
+  the overlay page doesn't count. The child asks `startup.query` after subscribing: if the app drew before the
+  child started, the answer dismisses it too. A window placed invisibly in another Space doesn't end the card.
+  These are cosmetic notifications with no data or privileges; a matching notification can only dismiss a card.
+- **Measured in one session, optimized builds, off-screen stand-in browser.** Original helper after asking for
+  an app: 10,944 KB resident; new helper afterwards: 11,472 KB (about 0.5 MiB more). New helper before a browser:
+  8,992 KB; during the splash: 11,456 KB. No CPU time gained during the one-second idle sample. The temporary
+  child used 70,528 KB including its test snapshot, drew in 200 ms after its mode started, and exited on handoff
+  at 351 ms; a child starting after the ready event exited via the query at 115 ms. These are fixture measurements,
+  not a real Safari cold-launch benchmark. The temporary ~69 MiB UI cost is released with the child; it isn't
+  added to the always-running helper. Main app startup and its existing idle quit are unchanged.
+- **Updates.** safari.sh now restarts an already loaded login agent after replacing the installed app, so an
+  old resident helper doesn't keep running old code until next login. It doesn't load or enable a disabled agent.
+- **Tests.** Real helper processes over an off-screen fake browser: launch, arguments, idle CPU and resident
+  memory before/during/after, early handoff, late-listener recovery, pid isolation, six-second timeout, browser
+  quit. Tests refuse an on-screen frame. The app's actual responder is exercised in its native end-to-end run.
+  Two initially parallel test commands shared fixture files and interfered; those results were discarded.
+  Helper fixture folders and browser IDs are now unique per run, and the clean helper run passed every check.
+  `npm test`: 1,017 passed; `npm run test:e2e`: 149 passed; native logic: 2,071 passed; native end-to-end: 496 passed
+  (five new handoff checks). The installed Safari launch and Space transitions still need manual verification.

@@ -438,6 +438,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     func start() {
         stopped = false
+        if !options.harness { HelperSplash.start() }
         link.start()
         startSafariNames()
         coversSoon()
@@ -463,6 +464,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     private func stopNow(_ then: @escaping () -> Void) {
         stopped = true
+        if !options.harness { HelperSplash.stop() }
         edgeFence = nil
         edgeStopper.set(nil)
         pollTimer?.invalidate()

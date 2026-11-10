@@ -692,7 +692,12 @@ final class Runner: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     if env["MARGIN_APP_VERBOSE"] != nil { Diagnostics.echo = { print("  app:", $0) } }
     Task { @MainActor in
+      await helperSplashHandoffScenario()
       startupSplashScenario()
+      if env["MARGIN_E2E_ONLY"] == "startup" {
+        print(failures == 0 ? "all \(passed) startup checks passed" : "\(failures) startup checks failed")
+        exit(failures == 0 ? 0 : 1)
+      }
       // MARGIN_E2E_ONLY=overlays: that scenario alone (while working on it).
       if env["MARGIN_E2E_ONLY"] == "overlays" {
         await overlaysScenario()
@@ -745,6 +750,37 @@ func startupSplashScenario() {
       try? bitmap.representation(using: .png, properties: [:])?.write(to: destination)
     }
   }
+}
+
+// Real cross-process notification transport with the shell's actual handoff implementation. A ready page
+// alone doesn't dismiss the launch splash: its native cover/overlay must call drawn. The query recovers a
+// ready event missed by a child that started late, and another browser cannot dismiss this one's splash.
+func helperSplashHandoffScenario() async {
+  let center = DistributedNotificationCenter.default()
+  let pid: pid_t = 987_001
+  var received: [String] = []
+  let token = center.addObserver(forName: HelperSplash.readyName, object: nil, queue: .main) { note in
+    MainActor.assumeIsolated { if let object = note.object as? String { received.append(object) } }
+  }
+  HelperSplash.start()
+  defer { HelperSplash.stop(); center.removeObserver(token) }
+  func query(_ pid: pid_t) { center.postNotificationName(HelperSplash.queryName, object: String(pid), userInfo: nil, deliverImmediately: true) }
+  query(pid)
+  try? await Task.sleep(nanoseconds: 100_000_000)
+  check("helper handoff: not ready before any native UI is drawn", received.isEmpty)
+  let key = "\(pid):123"
+  HelperSplash.drawn(browser: pid, window: 123)
+  check("helper handoff: drawing names the browser and its actual window", await until(2, { received == [key] }))
+  query(pid + 1)
+  try? await Task.sleep(nanoseconds: 100_000_000)
+  check("helper handoff: another browser is not answered", received == [key])
+  query(pid)
+  check("helper handoff: a child arriving after the draw is answered", await until(2, { received.count == 2 }))
+  HelperSplash.stop()
+  HelperSplash.start()
+  query(pid)
+  try? await Task.sleep(nanoseconds: 100_000_000)
+  check("helper handoff: stopping clears the old launch's readiness", received.count == 2)
 }
 
 @main enum E2E {

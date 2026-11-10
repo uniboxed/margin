@@ -24,6 +24,40 @@ import AppKit
 import QuartzCore
 import WebKit
 
+// The helper's temporary splash runs before the shell. A cosmetic, window-scoped handoff: a cover or overlay has
+// actually been ordered over that browser, never merely a socket connecting or a web view loading. The query
+// answers a splash that started late, so it cannot linger over an already drawn layout after missing the event.
+enum HelperSplash {
+    static let readyName = Notification.Name("com.unibox.margin.startup.ready")
+    static let queryName = Notification.Name("com.unibox.margin.startup.query")
+    private static var ready: Set<String> = []
+    private static var observer: NSObjectProtocol?
+
+    static func start() {
+        guard observer == nil else { return }
+        observer = DistributedNotificationCenter.default().addObserver(forName: queryName, object: nil, queue: .main) { note in
+            MainActor.assumeIsolated {
+                guard let object = note.object as? String, let pid = pid_t(object), pid > 0 else { return }
+                for key in ready where key.hasPrefix("\(pid):") { post(key) }
+            }
+        }
+    }
+    static func drawn(browser pid: pid_t, window: Int) {
+        guard pid > 0, window > 0 else { return }
+        let key = "\(pid):\(window)"
+        guard ready.insert(key).inserted else { return }
+        post(key)
+    }
+    private static func post(_ key: String) {
+        DistributedNotificationCenter.default().postNotificationName(readyName, object: key, userInfo: nil, deliverImmediately: true)
+    }
+    static func stop() {
+        if let observer { DistributedNotificationCenter.default().removeObserver(observer) }
+        observer = nil
+        ready = []
+    }
+}
+
 // Key only while a text field in it has focus; never main.
 class OverlayPanel: NSPanel {
     var allowKey = false
@@ -398,6 +432,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
             shownAt = Diagnostics.now()
             Diagnostics.note("overlay shown over \(key) (window \(number)): \(why)")
         }
+        if !options.harness, panel.alphaValue > 0 { HelperSplash.drawn(browser: browserPid, window: number) }
         placeCatcher(restack: ordered)
         placeEdge(restack: ordered)
         return true

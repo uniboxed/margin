@@ -197,6 +197,7 @@ extension Shell {
                 guard moved else { c.close(); continue }
             }
             covers[n] = c
+            if w.onScreen { c.panel.displayIfNeeded(); HelperSplash.drawn(browser: w.pid, window: n) }
             Diagnostics.note("cover over window \(n) (\(exact[n] ?? "?")): native splash until its layout is ready")
         }
         // Restored windows can change size while Safari enters full screen.

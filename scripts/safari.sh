@@ -209,6 +209,12 @@ open_app() { open -g "$1" --args --background; }
 # Waiting for a browser to open (no shell until then): the login item's way.
 open_watch() { open -g "$1" --args --background --watch; }
 swap_app "$DEST.new" "$DEST"
+# A login helper stays alive across an app update. Restart only an already loaded agent so the installed
+# helper code takes effect now; a login item the person disabled stays disabled.
+HELPER_AGENT="gui/$(id -u)/com.unibox.margin.helper"
+if launchctl print "$HELPER_AGENT" >/dev/null 2>&1; then
+  launchctl kickstart -k "$HELPER_AGENT" || echo "warning: margin-helper will update at the next login" >&2
+fi
 [ "$REGISTERED" = true ] || echo "warning: the system doesn't list Margin's extension; open $DEST once so Safari sees it." >&2
 # Only this copy: one Xcode left elsewhere (its own build folder) would be a
 # second Margin in Safari, with storage of its own.

@@ -73,12 +73,16 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 
 ## Safari startup (2026-11-10)
 
+- [ ] With Safari closed, Activity Monitor shows only the resident `margin-helper`. Open Safari: a second `margin-helper --splash …` briefly shows a small “Getting things ready for you” card before Margin.app's full-window cover/layout. The child goes when the app draws. Switching to another app after the card appears or quitting Safari dismisses it; a failed startup dismisses it within six seconds. No Dock icon or keyboard-focus change.
+- [ ] Close all supported browsers and wait for Margin.app's existing idle quit. The splash child is gone; the resident helper remains small, with no window, WebKit process or periodic CPU use. Installing an update restarts an already loaded helper; a disabled login item stays disabled.
 - [ ] With the installed build updated (`npm run safari`), quit and reopen Safari restoring two full-screen windows from different profiles. As each window is identified, a native “Getting things ready for you” splash appears until Margin's layout is ready; there is no empty color panel. Repeat in light and dark appearances.
 - [ ] Both windows get the correct profile's sidebar, including after a signed/unsigned build change. Visit their Spaces and check the tabs belong to that profile.
 - [ ] Open a window with Margin disabled: no splash. A normal window is left alone. Quitting Safari while a splash is up removes it; a startup failure releases the cover after at most six seconds.
 - [ ] Read `npm run log:app -- 5`: `Accessibility: window … is …` must name the currently linked profile, followed by `overlay page drawn … in … ms`, `overlay shown over …`, and `startup layout over window … ready after … ms` when a splash was used. A link reaching the app and an overlay drawing do not themselves prove that the overlay was shown.
 
 Automated coverage: `npm run test:app` checks historical copy IDs against the current Safari mapping, invalidation and relearning of an old window identity, ambiguous profile names, cover removal/timeout rules, and the native splash off screen in both appearances (`tools/app-tests/build/startup-{light,dark}.png`). These checks use stand-in browser windows; real Safari's extension launch delay and first-frame coverage still need the checks above.
+
+`tools/app-tests/helper-test.sh` also tests the real helper and its splash child over a fake browser window off every display: resident memory before/during/after, idle CPU time, app startup, early and late handoff messages, pid isolation, timeout and browser quit. `helper-splash-test.sh` refuses any on-screen test frame. Fixture folders and browser IDs are unique per run. The app's end-to-end checks exercise its actual notification responder too. To compare an older helper in the same session, pass `MARGIN_HELPER_BASELINE=/absolute/path/to/the/old/helper`; it is run only against the fake browser. Logs and the launch-card snapshot stay in the fixture folder printed in failure output (`build/helper-splash-test-*/`).
 
 ## Chrome and Edge on the Mac (2026-11-09)
 

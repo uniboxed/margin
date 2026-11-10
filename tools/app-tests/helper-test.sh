@@ -4,7 +4,7 @@
 # must start "Margin" when the "browser" opens, and at once when it's open already; and stay small.
 set -u
 cd "$(dirname "$0")"
-BUILD="${MARGIN_APP_TESTS_BUILD:-$PWD/build}/helper-test"
+BUILD="${MARGIN_APP_TESTS_BUILD:-$PWD/build}/helper-test-$$"
 LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 rm -rf "$BUILD" && mkdir -p "$BUILD"
 swiftc -O -swift-version 5 ../../app/platforms/macos/helper/main.swift -o "$BUILD/margin-helper" || exit 1
@@ -31,6 +31,7 @@ printf 'import AppKit\nNSApplication.shared.setActivationPolicy(.accessory)\nDis
 rm -f "$BUILD/Browser.app/Contents/MacOS/run"
 swiftc -O "$BUILD/browser.swift" -o "$BUILD/Browser.app/Contents/MacOS/run" || exit 1
 export MARGIN_HELPER_APP="$BUILD/Margin.app" MARGIN_HELPER_BROWSERS=com.unibox.margin.test.browser
+export MARGIN_HELPER_SPLASH_TEST=1
 
 # 1. No browser yet: nothing started; then the browser opens: Margin.app started, with --background.
 "$BUILD/margin-helper" 2> "$BUILD/helper.log" &
@@ -70,4 +71,5 @@ kill $HELPER 2>/dev/null; wait $HELPER 2>/dev/null
 # The stand-ins forgotten by the system again.
 pkill -f "$BUILD/Browser.app/Contents/MacOS/run" 2>/dev/null; pkill -f "$BUILD/Margin.app/Contents/MacOS/run" 2>/dev/null
 "$LSR" -u "$BUILD/Margin.app" 2>/dev/null; "$LSR" -u "$BUILD/Browser.app" 2>/dev/null
+./helper-splash-test.sh "$BUILD/margin-helper" || fail=1
 exit $fail
