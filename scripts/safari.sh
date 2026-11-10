@@ -122,6 +122,14 @@ for target in aarch64-apple-darwin x86_64-apple-darwin; do
 done
 rm -f "$HELPERS/margin-relay"
 lipo -create target/aarch64-apple-darwin/release/margin-connector target/x86_64-apple-darwin/release/margin-connector -output "$HELPERS/margin-connector"
+# margin-helper (app/platforms/macos/helper/): the login agent that starts Margin.app as a browser opens, about
+# 2.5 MB, for both kinds of Mac, and its launch agent's file where SMAppService.agent looks (AppDelegate.swift).
+mkdir -p "$DERIVED/helper" "$BUILT/Contents/Library/LaunchAgents"
+for arch in arm64 x86_64; do
+  swiftc -O -swift-version 5 -target "$arch-apple-macos14.0" app/platforms/macos/helper/main.swift -o "$DERIVED/helper/margin-helper-$arch"
+done
+lipo -create "$DERIVED/helper/margin-helper-arm64" "$DERIVED/helper/margin-helper-x86_64" -output "$HELPERS/margin-helper"
+cp app/platforms/macos/helper/io.tirth.margin.helper.plist "$BUILT/Contents/Library/LaunchAgents/"
 if [ "$UNSIGNED" = true ]; then
   IDENTITY=-
 else
@@ -133,9 +141,13 @@ else
   fi
 fi
 codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --identifier io.tirth.margin.connector "$HELPERS/margin-connector"
+codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --identifier io.tirth.margin.helper "$HELPERS/margin-helper"
 codesign --force --sign "$IDENTITY" --options runtime "$TIMESTAMP" --preserve-metadata=identifier,entitlements,requirements,flags "$BUILT"
 codesign --verify --strict "$BUILT"
 if [ "$INSTALL" = false ]; then
+  # Not left known to the system: a second registered Margin.app (this one, unsigned or signed otherwise) makes
+  # Safari take the installed one for another app's and refuse its messages (SFErrorDomain 1, 2026-11-09).
+  "$LSREGISTER" -u "$BUILT" 2>/dev/null || true
   echo "Built (not installed):"
   echo "$BUILT"
   exit 0

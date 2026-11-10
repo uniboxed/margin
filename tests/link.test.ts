@@ -148,6 +148,44 @@ test('link: helpers — the keys from Settings, the theme in checked pieces, wha
   for (const type of ['hello', 'reloadForUpdate', 'getZoom', 'injectPage', 'fetchStyle']) assert.ok(!APP_REQUESTS.has(type), type);
 });
 
+test('link: the link in the extension handler\'s answer (the app\'s note): linked at once, with nothing dispatched; a stale or foreign one is never used', async () => {
+  const app = await startFakeApp();
+  // Safari's handler, answering from the app's note: the link in its reply, this copy's nonce.
+  const answering = (nonce, patch = {}) => ({ ok: true, appOpen: true, launching: false, link: { ...JSON.parse(app.linkInfo(nonce).userInfo.e), ...patch } });
+  // No dispatch ever comes (the fake browser's own sendNativeMessage would deliver one: replaced).
+  const api = browser({ local: STATE });
+  api.runtime.sendNativeMessage = async (_, message) => { api.native.push(message); return message.type === 'wantLink' ? answering(message.nonce) : { ok: true, appOpen: true }; };
+  const { link } = makeLink(api);
+  try {
+    const t0 = Date.now();
+    await link.start({ route: async () => ({ ok: true }) });
+    assert.ok(link.linked(), 'linked');
+    assert.ok(await app.next('hello'), 'said hello');
+    assert.ok(Date.now() - t0 < 1000, `at once (${Date.now() - t0} ms)`);
+    assert.equal(api.native.filter((m) => m.type === 'wantLink').length, 1, 'asked once');
+    assert.equal(api.ports.flatMap((p) => p.posted).filter((m) => m.name === 'link').length, 0, 'nothing dispatched');
+  } finally {
+    await link.stop?.();
+    await app.close();
+  }
+  // Another nonce's, or another version's: not taken (the copy waits for a dispatch that never comes: not linked).
+  for (const patch of [{ nonce: 'someone-else' }, { v: 1 }, { port: 0 }]) {
+    const other = await startFakeApp();
+    const api2 = browser({ local: STATE });
+    api2.runtime.sendNativeMessage = async (_, message) => (message.type === 'wantLink'
+      ? { ok: true, appOpen: true, launching: false, link: { ...JSON.parse(other.linkInfo(message.nonce).userInfo.e), ...patch } } : { ok: true, appOpen: true });
+    const { link: l2 } = makeLink(api2);
+    try {
+      await l2.start({ route: async () => ({ ok: true }) });
+      assert.equal(l2.linked(), false, `not linked with ${JSON.stringify(patch)}`);
+      assert.equal(other.received.length, 0, 'never connected');
+    } finally {
+      await l2.stop?.();
+      await other.close();
+    }
+  }
+});
+
 test('link: linked — the port kept used, wantLink, the key checked, hello, snapshot, theme, keys, data.hello', async () => {
   const app = await startFakeApp();
   const api = browser({ app, local: STATE });

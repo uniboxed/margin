@@ -5,7 +5,8 @@
 // Until then each such window is covered: a plain panel in Margin's frame tone over the whole window, in that
 // window's Space (on screen: just above it; in another Space: placed there, as Overlay.placeAhead does). It goes
 // as soon as the window's overlay is shown over it, or placed in its Space; when the window is gone, out of full
-// screen, parked or in a switch; or after `coverFor` at the latest, so Safari is never kept covered. The mouse
+// screen, parked or in a switch; at once when no layout is coming (Safari refusing the link's hand-off, 2026-11-09:
+// a cover held its 6 s for nothing); or after `coverFor` at the latest, so Safari is never kept covered. The mouse
 // passes through it.
 //
 // Only a window Accessibility names (SafariAX: its title's profile) and only a profile Margin has data for or a
@@ -45,6 +46,7 @@ enum CoverPlan {
         var parked: Set<Int> = []
         var switchBusy = false
         var expired: Set<Int> = [] // covered long enough once: never again
+        var linkStalled = false // no layout is coming: Safari refuses the link's hand-off (2 in a row)
         var covers: [Int: Double] = [:] // the covers there, by window, since when
         var fills: (CGRect) -> Bool = { _ in false }
         var now: Double = 0
@@ -63,10 +65,12 @@ enum CoverPlan {
             plan.wanted.append(w.number)
         }
         let wanted = Set(plan.wanted)
-        for (n, since) in f.covers.sorted(by: { $0.key < $1.key }) where !wanted.contains(n) || f.now - since >= coverFor {
+        for (n, since) in f.covers.sorted(by: { $0.key < $1.key }) where !wanted.contains(n) || f.now - since >= coverFor || f.linkStalled {
             plan.close.append(n)
-            if f.now - since >= coverFor { plan.expire.append(n) }
+            if f.now - since >= coverFor || f.linkStalled { plan.expire.append(n) }
         }
+        // (No layout coming: no new cover either.)
+        if f.linkStalled { plan.wanted = [] }
         plan.wanted.removeAll { n in plan.expire.contains(n) }
         return plan
     }
@@ -117,6 +121,7 @@ extension Shell {
         facts.parked = parking?.numbers ?? []
         facts.switchBusy = switcher.busy
         facts.expired = coverExpired
+        facts.linkStalled = link.refusedInARow >= 2
         facts.covers = covers.mapValues(\.since)
         facts.fills = { [weak self] b in self?.fillsDisplay(b) ?? false }
         facts.now = now
@@ -128,7 +133,8 @@ extension Shell {
         for n in plan.close {
             if plan.expire.contains(n) {
                 coverExpired.insert(n)
-                Diagnostics.note("cover over window \(n) taken away after \(Int(Self.coverFor)) s: its layout wasn't ready")
+                if facts.linkStalled { Diagnostics.note("cover over window \(n) taken away: no layout is coming (Safari refuses the link's hand-off)") }
+                else { Diagnostics.note("cover over window \(n) taken away after \(Int(Self.coverFor)) s: its layout wasn't ready") }
             }
             covers[n]?.close()
             covers[n] = nil

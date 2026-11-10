@@ -1820,3 +1820,13 @@ Pinch, on a page with a box (Safari's own since 2026-11-07; Margin's own pinch w
 - [ ] Drop it nowhere (outside the list), or press Escape mid-drag: the copy glides back.
 - [ ] With a long list, drag toward the top or bottom edge: the list scrolls.
 - [ ] Zoomed page (⌘+), the overlay sidebar, Keep open, Margin's new-tab page: the copy stays under the pointer and lands in place.
+
+## The instant link and margin-helper (2026-11-10)
+
+After `npm run safari`:
+- [ ] System Settings › General › Login Items lists Margin (its helper) under "Allow in the Background", and Margin.app itself is no longer under "Open at Login".
+- [ ] Quit Safari: Margin.app quits about a minute later (Activity Monitor), and `margin-helper` stays (about 9 MB).
+- [ ] Open Safari: Margin's UI comes as soon as Safari's windows do, with no 6 s blank; `npm run log:app` (or `/usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'`) says `wantLink: the link in the extension handler's answer (N ms)` and no `SFErrorDomain`.
+- [ ] Safari's Start Page, an empty window, and a window opened from Safari's Dock menu with no other window: linked all the same.
+- [ ] Log out and back in with Safari set to reopen its windows: Margin is there with them.
+
