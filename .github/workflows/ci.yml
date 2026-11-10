@@ -1,9 +1,10 @@
-# Margin's checks on every pull request and every push to main (npm run gate's parts, by where they can run).
-# Linux: the extension's unit, theme, security and end-to-end tests in Chromium, and the Rust workspace with
-# both Windows targets checked. Windows: the Rust workspace built and tested on Windows itself. macOS: the
-# app's Swift checks, its end-to-end checks and the WebKit host. They run when started by hand, or on every
-# push once the repository variable MACOS_CI is "true" (macOS minutes cost ten times more on a private repo;
-# set it when the repo goes public, where they're free).
+# Margin's checks on every pull request and every push to main: npm run gate's parts, each where it's meaningful.
+# Linux: the type check and the unit tests. macOS: the browser tests (theme, security, end to end) in Chromium and
+# WebKit, the browsers Margin runs on, and the app's Swift checks and the WebKit host. Rust: on Linux with both
+# Windows targets checked, and built and tested on Windows itself. The app's own end-to-end checks drive real
+# windows and wait on macOS's window server, which a CI virtual machine is too slow for: they run in npm run gate,
+# on a Mac, before main. The macOS jobs run on every push once the repository variable MACOS_CI is "true" (it is),
+# or when started by hand.
 name: CI
 
 on:
@@ -28,10 +29,10 @@ env:
   NODE_VERSION: "26"
 
 jobs:
-  extension:
-    name: Extension (Linux, Chromium)
+  unit:
+    name: Unit tests (Linux)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,15 +40,28 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - name: Chromium and WebKit for the browser tests (the theme tests run in both), and an emoji font (space chips)
-        run: |
-          npx playwright install --with-deps chromium webkit
-          sudo apt-get install -y --no-install-recommends fonts-noto-color-emoji
-      - name: Rust (stable, by the runner's own rustup)
+      - name: The type check and the unit tests
+        run: npm test
+
+  browsers:
+    name: Browser tests (macOS)
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.macos) ||
+      (github.event_name != 'workflow_dispatch' && vars.MACOS_CI == 'true')
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Chromium and WebKit for the browser tests (the theme tests run in both)
+        run: npx playwright install chromium webkit
+      - name: Rust (stable, by the runner's own rustup), for the connector's end-to-end test
         run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - name: Unit tests and the type check
-        run: npm test
       - name: Theme tests
         run: npm run test:theme
       - name: Security tests
@@ -58,7 +72,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-linux
+          name: test-results-macos
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
@@ -109,7 +123,7 @@ jobs:
       - name: Rust (stable, by the runner's own rustup)
         run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - name: The app's Swift checks and end-to-end checks
-        run: npm run test:app
+      - name: The app's Swift checks
+        run: node scripts/build.ts && tools/app-tests/run.sh unit
       - name: The WebKit host (Safari's extension engine)
         run: npm run test:webkit
