@@ -1,6 +1,6 @@
 # Margin
 
-**A new interface for the browser you already use.**
+**It's not a browser. It's not a sidebar. It's a new interface for the browser you already use.**
 
 Margin draws its own interface around your pages, with spaces, pinned tabs, folders and a command palette, on top of
 Safari, Chrome and Edge. The browser stays yours: its engine, logins, passwords, sync and extensions all keep working
@@ -51,9 +51,11 @@ every change. [Writing a theme](extension/themes/README.md) explains the files, 
 
 | | macOS | Windows | Linux |
 |---|---|---|---|
-| Safari | ✓ | | |
-| Chrome, Edge and other Chromium browsers | ✓ | in progress | later |
-| Firefox | later | later | later |
+| Safari | ✓ | — | — |
+| Chrome, Edge and other Chromium browsers | ✓ | in progress | coming soon |
+| Firefox | coming soon | coming soon | coming soon |
+
+Safari only runs on Apple's systems, so there's no Safari to work with on Windows or Linux (— in the table).
 
 On the Mac, Margin needs macOS 14 or later, and today it draws around full-screen browser windows.
 
