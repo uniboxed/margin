@@ -3667,3 +3667,66 @@ dismissed with the reason, so the Security tab lists only what matters.
   Rust (`#[cfg(test)]`'s fixed token), and false positives (an integer-checked key, Windows message constants read
   as bindings by an analysis without Windows, a promise compared with itself on purpose). `docs/` (design boards)
   isn't scanned.
+
+## The page box keeps its walk of content-named style sheets (2026-11-10)
+
+GitHub issue #3: every load walked every rule of every sheet to find the few the box rewrites (viewport units,
+queries about the window's size); GitHub has some 38,000 rules for about 450, and `walkRules` + `readSelectors` were
+two thirds of Margin's extra script there. Now what a walk finds in a file is kept (`shared/sheet-walk.ts`), and a
+return visit touches only those rules.
+
+- **Option 2 of the issue, with a day's limit.** Kept only for a file whose address names its contents
+  (`contentNamed`: a hex hash of 8+ with a digit and a letter, or a Vite-style base64 one, in the path or the
+  query; or an `integrity` on its `<link>`). Every other file (Wikipedia's `load.php`, `style.css?ver=6.4`) gets the
+  full walk every time. Option 1 (use the cache for any file, walk again in idle time) can't be made safe on the
+  load path: a file changed under its address would be wrong until the idle walk, and it saves no work. Before an
+  entry is used it's checked: the rule count, the decoded size where Resource Timing gives it, and every kept rule at
+  its place (its kind, and a hash of its selector and declarations, its query, or its import's address; each
+  `:has()` selector as text). Anything off: the full walk, and its result replaces the entry. What no check short of
+  the walk sees (a hashed file changed in place so that a rule that needed nothing now needs work, size and count
+  the same) is wrong at most until the entry is a day old (`MAX_AGE_MS`): older entries aren't used.
+  `tests/e2e/sheet-walk.test.ts` shows that case wrong without the age and right with it.
+- **What's kept invalidates itself.** Each origin's group carries a mark: a hash of `WALK_FORMAT`, the user agent
+  (the browser's version) and the text of the functions that decide what a walk finds (`hasUnits`, `asksSize`,
+  `walkRules`, `visit`, `readSelectors`, …). A Margin or browser update that changes them ignores the old entries.
+- **Storage.** Margin's own storage.local, never the site's: `sheetWalk:<page origin>` (read only by that origin's
+  pages, so a page can only ever feed itself) and `sheetWalkIndex`. Content scripts read their origin's key at start
+  on its own (not with the state, and pages never read these keys with it: `stored.ts pageKeys`, `onlyMark`, and
+  core.ts/host.ts ignore their change events); the background alone writes (`keepSheetWalk`, one write at a time),
+  under the origin of the page that sent it. Caps: 40 files and 64 KB per origin, 300 files and 1 MB in all, the
+  least recently used origins dropped first; an entry over 24 KB isn't kept. A page gets 3 writes at most, and a
+  return visit writes nothing (its group's use is noted once a day). GitHub's group: 26 files, 37 KB. A write
+  reaches every open page's content script as a change event (storage.local's way), which drops it: rare (a new
+  or changed file), at most 64 KB.
+- **Never in the way.** The page's world asks for the kept walks as it starts; a sheet visited before they arrive
+  gets the full walk as before (no sheet waits: a wait would leave its units the window's for a page script reading
+  layout meanwhile). A sheet walked in full whose findings turn out to be what was kept still skips its
+  `:has()` selector read (`keptHas`). No new sheet writes, no new style reads.
+- **Measured** (2026-11-10, same session, `npm run bench:sites -- --sites github.com,en.wikipedia.org/wiki/Web_browser
+  --runs 5`; the bench now takes `--visits first|return`; "off" is this build with `contentNamed` always false,
+  i.e. the walk as on main). The box's extra over a plain load, fcp/dcl/load ms:
+
+  | github.com | off | first visit | return visit |
+  | --- | --- | --- | --- |
+  | Chromium | 96 / 82 / 120 | 64 / 118 / 153 | 104 / 77 / 119 |
+  | WebKit | 251 / 464 / 395 | 244 / 457 / 389 | 238 / 446 / 378 |
+
+  (Main itself, with the bench as it was, the same morning: Chromium 92 / 65 / 109, WebKit 1077 / 1150 / 1082, its
+  WebKit boxed loads growing round by round with no boxed load before them; hence the same-session "off".)
+  Wikipedia (no content-named files) is unchanged in both (Chromium 12–28 / 77–83 / 31–38, WebKit 80–85 / 86–91 /
+  37–44). Chromium's page timings move within their noise (±30 ms); the main thread shows it.
+  A/B on github.com, first visit (kept walks cleared) and return visit by turns, medians:
+  | github.com, medians of 5 | first visit | return visit |
+  | --- | --- | --- |
+  | Chromium, CDP script time (all of the page's) | 517 ms | 412 ms (earlier runs: 459–467) |
+  | Chromium, the box's sheet walk / :has() read | 90 / 50 ms | 37 / 0 ms (earlier runs: 59–92 / 0–3) |
+  | WebKit, the box's sheet walk / :has() read | 71 / 49 ms | 24 / 0 ms |
+  | WebKit, DCL / FCP | 931 / 510 ms | 896 / 457 ms |
+  The layout is the same both ways: a fingerprint of every readable rule's text after the box's work matched across
+  all loads, in both engines. In Chromium the storage reply comes 20–220 ms after the content script starts (the
+  state's read is as slow then), so the `<head>`'s first sheets are often walked before it: what's saved there
+  depends on it. In WebKit it came at ~100 ms, after every sheet. `npm run bench:box` (no content-named sheets
+  there): every size within its baseline in both engines.
+- **Tests.** `tests/sheet-walk.test.ts` (addresses, entries and their checks, ages, merges, caps, the background's
+  writer); the box pattern `kept-sheet-walk` (both engines); `tests/e2e/sheet-walk.test.ts` and the WebKit host's
+  `kept-walks` (first visit, return visit, a kept rule changed, a rule more, a change no check sees once a day old).
