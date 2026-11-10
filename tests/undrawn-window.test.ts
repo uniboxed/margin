@@ -11,21 +11,26 @@
 // registration follows what the app draws at once.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from './fake-browser.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const listeners = {};
-const event = (name) => ({ addListener: (fn) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
-const fire = (name, ...args) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// A listener, called with whatever its event gives.
+type Listener = (...args: any[]) => unknown;
+const listeners: Record<string, Listener[]> = {};
+const event = (name: string) => ({ addListener: (fn: Listener) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
+const fire = (name: string, ...args: unknown[]) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
 
-const fake = { tabs: new Map(), nextId: 500, created: [], removed: [], local: {}, session: {}, registered: new Map(), toPages: [], inserted: [] };
-const pick = (store, keys) => {
+// local, session: stored JSON. toPages: the types of the messages sent to pages; inserted: the sheets put in.
+const fake = { tabs: new Map(), nextId: 500, created: [] as (string | undefined)[], removed: [] as number[], local: {} as Record<string, any>, session: {} as Record<string, any>, registered: new Map(), toPages: [] as (string | undefined)[], inserted: [] as { tabId: number, css?: string }[] };
+const pick = (store: Record<string, any>, keys?: string | string[] | Record<string, unknown> | null) => {
   if (keys == null) return structuredClone(store);
   const list = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys);
   return Object.fromEntries(list.filter((k) => k in store).map((k) => [k, structuredClone(store[k])]));
 };
 const NEW_TAB = 'safari-web-extension://test/newtab/newtab.html';
-globalThis.fetch = async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) });
-globalThis.chrome = {
+// Only what Margin reads of a response.
+globalThis.fetch = (async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) })) as unknown as typeof fetch;
+globalThis.chrome = fakeBrowser({
   runtime: {
     id: 'test',
     getURL: (p) => `safari-web-extension://test/${p}`,
@@ -35,9 +40,11 @@ globalThis.chrome = {
     sendNativeMessage: async () => undefined,
   },
   permissions: { contains: async () => true, onAdded: event('pAdded'), onRemoved: event('pRemoved') },
-  alarms: { get: async () => ({}), create: async () => {}, clear: async () => true, onAlarm: event('onAlarm') },
+  // An alarm there already (its fields unread: background.ts).
+  alarms: { get: async () => ({}) as { name: string, scheduledTime: number }, create: async () => {}, onAlarm: event('onAlarm') },
   commands: { onCommand: event('onCommand') },
   windows: {
+    // Windows as far as Margin reads them here; its updates' answers unread.
     get: async (id) => ({ id, focused: true }), getAll: async () => [{ id: 1, focused: true }], getLastFocused: async () => ({ id: 1 }),
     update: async () => {}, create: async () => ({}), onFocusChanged: event('onFocusChanged'), onRemoved: event('wRemoved'), onBoundsChanged: event('wBounds'),
   },
@@ -51,7 +58,7 @@ globalThis.chrome = {
       fake.created.push(url);
       return { ...tab };
     },
-    remove: async (ids) => { for (const id of [].concat(ids)) { fake.removed.push(id); fake.tabs.delete(id); } },
+    remove: async (ids) => { for (const id of ([] as number[]).concat(ids)) { fake.removed.push(id); fake.tabs.delete(id); } },
     sendMessage: async (tabId, message) => { fake.toPages.push(message?.type); return undefined; },
     getZoom: async () => 1, getZoomSettings: async () => ({ defaultZoomFactor: 1 }), reload: async () => {},
     onActivated: event('onActivated'), onCreated: event('onCreated'), onUpdated: event('onUpdated'), onRemoved: event('onRemoved'),
@@ -74,7 +81,7 @@ globalThis.chrome = {
         Object.assign(fake.local, structuredClone(items));
         void fire('sChanged', changes, 'local');
       },
-      remove: async (keys) => { for (const k of [].concat(keys)) delete fake.local[k]; },
+      remove: async (keys) => { for (const k of ([] as string[]).concat(keys)) delete fake.local[k]; },
     },
     session: {
       get: async (keys) => pick(fake.session, keys),
@@ -83,7 +90,7 @@ globalThis.chrome = {
     },
     onChanged: event('sChanged'),
   },
-};
+});
 
 fake.tabs.set(1, { id: 1, windowId: 1, url: 'https://a.test/', title: 'A', index: 0, active: true, status: 'complete' });
 fake.local.settings = { fullscreenOnly: false }; // Chrome's profile (this file's): Margin in every window
@@ -91,10 +98,10 @@ fake.session.alive = true;
 fake.session.since = 1;
 fake.session.startWorkAt = Date.now();
 
-const sender = (id) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id)?.url });
-function ask(type, payload = {}, from = 1) {
+const sender = (id: number) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id)?.url });
+function ask(type: string, payload: Record<string, unknown> = {}, from = 1) {
   return new Promise((resolve) => {
-    listeners.onMessage[0]({ type, ...payload }, sender(from), (reply) => resolve(reply));
+    listeners.onMessage[0]({ type, ...payload }, sender(from), (reply: unknown) => resolve(reply));
   });
 }
 
@@ -108,16 +115,17 @@ const settled = async () => { await sleep(30); await whenRegistered(); await sle
 
 
 // The link's word, as the background's link object would have it (background/link.ts view, drawn, drawsWindow).
-const pushes = [];
-function linkSays({ drawn = {}, layouts = {}, linked = true } = {}) {
+const pushes: [number | null | undefined, unknown][] = [];
+function linkSays({ drawn = {}, layouts = {}, linked = true }: { drawn?: Record<number, boolean>, layouts?: Record<number, unknown>, linked?: boolean } = {}) {
   appLink.push = (windowId, msg) => { pushes.push([windowId, msg]); return linked; };
-  appLink.view = () => ({ epoch: 'e1', layouts, drawn });
-  appLink.drawn = (w) => drawn[w];
-  appLink.drawsWindow = (w) => linked && drawn[w] !== false;
+  // No lastLayouts: optional where it's read (registered.ts LinkView).
+  appLink.view = () => ({ epoch: 'e1', layouts, drawn }) as ReturnType<typeof appLink.view>;
+  appLink.drawn = (w) => drawn[w as number]; // (no window: undefined, as drawn[w] gives)
+  appLink.drawsWindow = (w) => linked && drawn[w as number] !== false;
   appLink.linked = () => linked;
   appLink.pageState = () => (linked ? 'linked' : 'off');
 }
-const commit = (tabId) => fire('navCommitted', { tabId, frameId: 0, documentId: `doc-${tabId}`, url: 'https://a.test/next' });
+const commit = (tabId: number) => fire('navCommitted', { tabId, frameId: 0, documentId: `doc-${tabId}`, url: 'https://a.test/next' });
 
 test('a page committing in a window Margin.app draws nothing over: no box from its first paint; in a window not said of yet: the registered box', async () => {
   await chrome.storage.local.set({ appLink: { state: 'linked', epoch: 'e1', layouts: {}, drawn: {} } });
@@ -135,7 +143,7 @@ test('a page committing in a window Margin.app draws nothing over: no box from i
   await commit(20);
   await sleep(20);
   assert.equal(fake.inserted.length, 1);
-  assert.match(fake.inserted[0].css, /--margin-box-at-left: 300px/, 'drawn again: its own layout');
+  assert.match(fake.inserted[0].css!, /--margin-box-at-left: 300px/, 'drawn again: its own layout');
 });
 
 test('⌘T, the palette\'s key and the sidebar\'s in a window Margin.app draws nothing over: Margin\'s new-tab page, the sidebar\'s logged; in one it draws: left to the app', async () => {
@@ -147,7 +155,8 @@ test('⌘T, the palette\'s key and the sidebar\'s in a window Margin.app draws n
   await fire('onCommand', 'new-tab', { id: 1, windowId: 1 });
   await sleep(30);
   assert.deepEqual(fake.created, [NEW_TAB], 'undrawn: Margin\'s new-tab page');
-  assert.deepEqual(pushes, [], 'nothing pushed for the app');
+  // (The empty lists typed: deepEqual narrows what it checks to the type of what it expects.)
+  assert.deepEqual(pushes, [] as typeof pushes, 'nothing pushed for the app');
   await fire('onCommand', 'new-tab', { id: 20, windowId: 2 });
   await sleep(30);
   assert.equal(fake.created.length, 1, 'drawn: no tab');
@@ -157,7 +166,7 @@ test('⌘T, the palette\'s key and the sidebar\'s in a window Margin.app draws n
   await fire('onCommand', 'toggle-sidebar', { id: 1, windowId: 1 });
   await sleep(30);
   assert.equal(fake.created.length, 1, 'the sidebar\'s key: no tab');
-  assert.deepEqual(pushes, [], 'and nothing for an app that draws nothing there');
+  assert.deepEqual(pushes, [] as typeof pushes, 'and nothing for an app that draws nothing there');
   await sleep(650);
   await ask('newTabKey', {}, 1); // ⌘T heard by the page in the undrawn window (content/core.ts drawsWindow)
   await sleep(30);
@@ -173,8 +182,8 @@ test('a new tab Safari made in a window Margin.app draws nothing over stays, wit
   fake.removed.length = 0;
   pushes.length = 0;
   assert.deepEqual(await ask('newTabPage', {}, 9), { ok: true, result: { app: false } }, 'undrawn: the page shows its own');
-  assert.deepEqual(fake.removed, [], 'the new tab stays');
-  assert.deepEqual(pushes, [], 'no palette pushed');
+  assert.deepEqual(fake.removed, [] as number[], 'the new tab stays');
+  assert.deepEqual(pushes, [] as typeof pushes, 'no palette pushed');
   await fire('onCreated', { ...fake.tabs.get(20) }); // (the web page in window 2, as Margin's state has it)
   await sleep(50);
   fake.tabs.set(29, { id: 29, windowId: 2, url: NEW_TAB, title: 'New Tab', index: 1, active: true, status: 'complete' });
@@ -201,7 +210,7 @@ test('⌘T handed off while the copy still thinks the app draws there, and the a
   assert.ok(fake.removed.includes(39), 'Safari\'s new tab closed');
   fake.tabs.get(30).active = true;
   // The app (Shell.paletteDropped) says it couldn't show it, as a request of its UI's.
-  const notes = [];
+  const notes: string[] = [];
   const note = appLink.note;
   appLink.note = (line) => { notes.push(String(line)); };
   let done;
@@ -223,7 +232,7 @@ test('⌘T handed off while the copy still thinks the app draws there, and the a
   fake.removed.length = 0;
   await fire('onCreated', { ...fake.tabs.get(49) });
   await sleep(50);
-  assert.deepEqual(pushes, [], 'no palette pushed');
+  assert.deepEqual(pushes, [] as typeof pushes, 'no palette pushed');
   assert.ok(!fake.removed.includes(49), 'the next ⌘T\'s tab stays');
   // The app saying it draws there again: at once after the drop (its binding holds, its overlay not
   // shown yet), still kept; a second later, ⌘T goes to the app's palette again.
@@ -234,7 +243,7 @@ test('⌘T handed off while the copy still thinks the app draws there, and the a
     await fire('onActivated', { tabId: 30, windowId: 3 });
     await sleep(50);
   };
-  const newTab = async (id) => {
+  const newTab = async (id: number) => {
     fake.tabs.get(30).active = false;
     fake.tabs.set(id, { id, windowId: 3, url: NEW_TAB, title: 'New Tab', index: 1, active: true, status: 'complete' });
     pushes.length = 0;
@@ -244,7 +253,7 @@ test('⌘T handed off while the copy still thinks the app draws there, and the a
   drawnChanged(3, true);
   await backToPage();
   await newTab(59);
-  assert.deepEqual(pushes, [], 'drawn at once after the drop: still kept');
+  assert.deepEqual(pushes, [] as typeof pushes, 'drawn at once after the drop: still kept');
   await sleep(1000);
   drawnChanged(3, true);
   await backToPage();
@@ -259,7 +268,7 @@ test('a page committing in a tab Margin\'s state doesn\'t have yet: its window f
   fake.inserted.length = 0;
   void commit(70);
   assert.equal(fake.inserted.length, 1, 'asked for at once (a page paints its first frame 15 to 20 ms after it commits)');
-  assert.match(fake.inserted[0].css, /--margin-box-at-left: 300px/, 'its window\'s own layout');
+  assert.match(fake.inserted[0].css!, /--margin-box-at-left: 300px/, 'its window\'s own layout');
   // Moved to a window Margin.app draws nothing over.
   fake.tabs.set(70, { ...fake.tabs.get(70), windowId: 3 });
   void fire('onAttached', 70, { newWindowId: 3, newPosition: 0 });
@@ -303,7 +312,7 @@ test('a layout with no box anywhere (the frame turned off): registered at once; 
   const { layoutsChanged } = await import('../extension/background/registered.ts');
   const { layoutOfFiles } = await import('../extension/shared/page-box.ts');
   const registered = () => layoutOfFiles(fake.registered.get('margin-page')?.css);
-  const at = (left, top = 8) => ({ 1: { insets: { left, top, right: top, bottom: top }, radius: 6.25, epoch: 'e1' } });
+  const at = (left: number, top = 8) => ({ 1: { insets: { left, top, right: top, bottom: top }, radius: 6.25, epoch: 'e1' } });
   linkSays({ drawn: { 1: true }, layouts: at(300) });
   assert.equal(registered()?.left, 300, '(from the test before)');
   linkSays({ drawn: { 1: true }, layouts: at(0, 0) });
@@ -327,13 +336,13 @@ test('a lone layout change (none in the 2 s before it) registered at once; a dra
   const { layoutOfFiles } = await import('../extension/shared/page-box.ts');
   const { fakeClock } = await import('./fake-clock.ts');
   const registered = () => layoutOfFiles(fake.registered.get('margin-page')?.css);
-  const at = (left) => ({ 1: { insets: { left, top: 8, right: 8, bottom: 8 }, radius: 6.25, epoch: 'e1' } });
+  const at = (left: number) => ({ 1: { insets: { left, top: 8, right: 8, bottom: 8 }, radius: 6.25, epoch: 'e1' } });
   const clock = fakeClock(Date.now() + 60_000); // (well after the tests before's changes)
   useLayoutClock(clock);
   let updates = 0;
   const update = chrome.scripting.updateContentScripts;
   chrome.scripting.updateContentScripts = async (list) => { updates++; return update(list); };
-  const change = async (left) => { linkSays({ drawn: { 1: true }, layouts: at(left) }); layoutsChanged(); await settled(); };
+  const change = async (left: number) => { linkSays({ drawn: { 1: true }, layouts: at(left) }); layoutsChanged(); await settled(); };
   try {
     await change(320);
     assert.equal(registered()?.left, 320, 'lone: at once (no tick of the clock)');
@@ -378,7 +387,7 @@ test('a burst never ends at a layout it passed through: the settled one is chose
   const { layoutOfFiles } = await import('../extension/shared/page-box.ts');
   const { fakeClock } = await import('./fake-clock.ts');
   const registered = () => layoutOfFiles(fake.registered.get('margin-page')?.css);
-  const at = (left) => ({ 1: { insets: { left, top: 8, right: 8, bottom: 8 }, radius: 6.25, epoch: 'e1' } });
+  const at = (left: number) => ({ 1: { insets: { left, top: 8, right: 8, bottom: 8 }, radius: 6.25, epoch: 'e1' } });
   const clock = fakeClock(Date.now() + 120_000);
   useLayoutClock(clock);
   linkSays({ drawn: { 1: true }, layouts: at(500) });
@@ -389,8 +398,8 @@ test('a burst never ends at a layout it passed through: the settled one is chose
   await settled();
   // The next registration held in WebKit (a busy Mac) until let go.
   const update = chrome.scripting.updateContentScripts;
-  let release;
-  const held = new Promise((resolve) => { release = resolve; });
+  let release!: () => void; // (set as the promise is made)
+  const held = new Promise<void>((resolve) => { release = resolve; });
   chrome.scripting.updateContentScripts = async (list) => { await held; return update(list); };
   try {
     linkSays({ drawn: { 1: true }, layouts: at(600) });
@@ -417,10 +426,10 @@ test('windows at different layouts: the registered one is most windows\' (a tie 
   const { layoutOfFiles } = await import('../extension/shared/page-box.ts');
   const { fakeClock } = await import('./fake-clock.ts');
   const registered = () => layoutOfFiles(fake.registered.get('margin-page')?.css);
-  const box = (left) => ({ insets: { left, top: 8, right: 8, bottom: 8 }, radius: 6.25, epoch: 'e1' });
+  const box = (left: number) => ({ insets: { left, top: 8, right: 8, bottom: 8 }, radius: 6.25, epoch: 'e1' });
   const clock = fakeClock(Date.now() + 180_000);
   useLayoutClock(clock);
-  const change = async (layouts) => { linkSays({ drawn: { 1: true, 2: true }, layouts }); layoutsChanged(); await settled(); };
+  const change = async (layouts: Record<number, unknown>) => { linkSays({ drawn: { 1: true, 2: true }, layouts }); layoutsChanged(); await settled(); };
   await change({ 1: box(700), 2: box(700) });
   assert.equal(registered()?.left, 700);
   clock.tick(3000);
@@ -434,7 +443,7 @@ test('windows at different layouts: the registered one is most windows\' (a tie 
     fake.inserted.length = 0;
     await commit(20); // (window 2's page)
     assert.equal(fake.inserted.length, 1);
-    assert.match(fake.inserted[0].css, /--margin-box-at-left: 720px/, 'window 2\'s page: its own as it commits');
+    assert.match(fake.inserted[0].css!, /--margin-box-at-left: 720px/, 'window 2\'s page: its own as it commits');
     clock.tick(3000);
     await settled();
     assert.equal(updates, 0, 'settled: still a tie');
@@ -451,11 +460,11 @@ test('in a burst, a box gone everywhere registered at once, and a box back after
   const { layoutOfFiles } = await import('../extension/shared/page-box.ts');
   const { fakeClock } = await import('./fake-clock.ts');
   const registered = () => layoutOfFiles(fake.registered.get('margin-page')?.css);
-  const at = (left, top = 8) => ({ 1: { insets: { left, top, right: top, bottom: top }, radius: 6.25, epoch: 'e1' } });
+  const at = (left: number, top = 8) => ({ 1: { insets: { left, top, right: top, bottom: top }, radius: 6.25, epoch: 'e1' } });
   const ZEROS = { left: 0, top: 0, right: 0, bottom: 0, radius: 0 };
   const clock = fakeClock(Date.now() + 240_000);
   useLayoutClock(clock);
-  const change = async (layouts) => { linkSays({ drawn: { 1: true }, layouts }); layoutsChanged(); await settled(); };
+  const change = async (layouts: Record<number, unknown>) => { linkSays({ drawn: { 1: true }, layouts }); layoutsChanged(); await settled(); };
   await change(at(500));
   assert.equal(registered()?.left, 500, 'lone: at once');
   clock.tick(16);
@@ -472,8 +481,8 @@ test('in a burst, a box gone everywhere registered at once, and a box back after
 
   // The no-box layout's registration held in WebKit (a busy Mac), and the box back meanwhile.
   const update = chrome.scripting.updateContentScripts;
-  let release;
-  const held = new Promise((resolve) => { release = resolve; });
+  let release!: () => void; // (set as the promise is made)
+  const held = new Promise<void>((resolve) => { release = resolve; });
   chrome.scripting.updateContentScripts = async (list) => { await held; return update(list); };
   try {
     linkSays({ drawn: { 1: true }, layouts: at(0, 0) });

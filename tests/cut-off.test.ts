@@ -6,43 +6,47 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { cutOffAction, cutOffInPage, oldOwnPageAddress } from '../extension/background/cut-off.ts';
+import { fakeBrowser } from './fake-browser.ts';
 
 const OWN = 'safari-web-extension://NEW/';
 const OLD = 'safari-web-extension://OLD/';
 
 // Just what cutOffInPage looks at: Margin's hosts and other children of
 // <html>, fields (by the selector that finds them), the body's style.
-function style(initial = {}) {
+function style(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial).map(([k, v]) => [k, [v, 'important']]));
   return {
-    setProperty: (k, v, p = '') => values.set(k, [String(v), p]),
-    removeProperty: (k) => values.delete(k),
-    getPropertyValue: (k) => values.get(k)?.[0] ?? '',
-    getPropertyPriority: (k) => values.get(k)?.[1] ?? '',
+    setProperty: (k: string, v: unknown, p = '') => values.set(k, [String(v), p]),
+    removeProperty: (k: string) => values.delete(k),
+    getPropertyValue: (k: string) => values.get(k)?.[0] ?? '',
+    getPropertyPriority: (k: string) => values.get(k)?.[1] ?? '',
   };
 }
-function element(localName, extra = {}) {
-  const attrs = new Map();
-  return { localName, style: style(), setAttribute: (k, v) => attrs.set(k, v), getAttribute: (k) => attrs.get(k), ...extra };
+function element(localName: string, extra: Record<string, unknown> = {}) {
+  const attrs = new Map<string, string>();
+  return { localName, style: style(), setAttribute: (k: string, v: string) => attrs.set(k, v), getAttribute: (k: string) => attrs.get(k), ...extra };
 }
 // `storage`: what the world's storage.local.get does: 'dead' (never settles, as
 // in a world whose copy is gone), 'fails', or 'answers' (a copy still running).
-function page({ address = OLD, id = 'margin', fields = [], hidden = true, body = {}, throws = false, storage = 'dead' } = {}) {
+// The page's document, as far as cutOffInPage reads it; a test may add dispatchEvent.
+type FakeDoc = { hidden: boolean, activeElement: null, documentElement: { children: unknown[] }, body: ReturnType<typeof element>, querySelectorAll: (selector: string) => unknown[], dispatchEvent?: (event: { type: string, detail: unknown }) => boolean };
+function page({ address = OLD, id = 'margin', fields = [], hidden = true, body = {}, throws = false, storage = 'dead' }: { address?: string, id?: string, fields?: { value: string }[], hidden?: boolean, body?: Record<string, string>, throws?: boolean, storage?: 'dead' | 'fails' | 'answers' } = {}) {
   const hosts = [element('margin-sidebar-host'), element('margin-palette-host')];
   const other = element('main');
-  const doc = {
+  const doc: FakeDoc = {
     hidden,
     activeElement: null,
     documentElement: { children: [other, ...hosts] },
     body: element('body', { style: style(body) }),
-    querySelectorAll: (selector) => (selector.startsWith('textarea, input') ? fields : []),
+    querySelectorAll: (selector: string) => (selector.startsWith('textarea, input') ? fields : []),
   };
   const runtime = { id, getURL: () => { if (throws) throw new Error('Extension context invalidated'); return address; } };
   const get = { dead: () => new Promise(() => {}), fails: () => Promise.reject(new Error('Extension context invalidated')), answers: async () => ({}) }[storage];
-  return { doc, hosts, other, globals: { document: doc, navigator: {}, setTimeout, browser: { runtime, storage: { local: { get } } } } };
+  // The page's globals: what the test puts there.
+  return { doc, hosts, other, globals: { document: doc, navigator: {}, setTimeout, browser: { runtime, storage: { local: { get } } } } as Record<string, unknown> };
 }
 // cutOffInPage as executeScript runs it: its source alone, in a page's globals.
-function run(p, quiet = false) {
+function run(p: ReturnType<typeof page>, quiet = false) {
   const context = vm.createContext({ ...p.globals });
   return vm.runInContext(`(${cutOffInPage.toString()})(${JSON.stringify(OWN)}, ${quiet})`, context);
 }
@@ -80,9 +84,9 @@ test('cut off: something typed makes it busy (not loaded again)', async () => {
 
 test('cut off: quiet takes the dead Margin\'s box off (the page has the window), and touches nothing else', async () => {
   const p = page({ body: { opacity: '0' } });
-  const said = [];
+  const said: [string, unknown][] = [];
   p.doc.dispatchEvent = (event) => { said.push([event.type, event.detail]); return true; };
-  p.globals.CustomEvent = class { constructor(type, init) { this.type = type; this.detail = init?.detail; } };
+  p.globals.CustomEvent = class { declare type: string; declare detail: unknown; constructor(type: string, init?: { detail?: unknown }) { this.type = type; this.detail = init?.detail; } };
   await run(p);
   assert.deepEqual(said, [], 'only asked: nothing said');
   await run(p, true);
@@ -130,15 +134,16 @@ test('cut off: a page found so is told in its world (its old listener for the na
 
 test('cut off: a world found so gets a listener (once) that keeps the commands\' keys from the page\'s own listeners, not turned down, so Safari\'s command (this copy\'s) runs: the way out by keys of a page that eats arrows (review, 2026-11-04)', async () => {
   const p = page();
-  const listeners = [];
-  const world = vm.createContext({ ...p.globals, addEventListener: (type, fn, capture) => listeners.push({ type, fn, capture }) });
+  const listeners: { type: string, fn: (e: unknown) => void, capture: boolean }[] = [];
+  const world = vm.createContext({ ...p.globals, addEventListener: (type: string, fn: (e: unknown) => void, capture: boolean) => listeners.push({ type, fn, capture }) });
   const keys = ['Ctrl+Meta+ArrowDown', 'Ctrl+Meta+ArrowUp'];
   for (let i = 0; i < 2; i++) await vm.runInContext(`(${cutOffInPage.toString()})(${JSON.stringify(OWN)}, false, ${JSON.stringify(keys)})`, world);
   assert.equal(listeners.length, 1, 'once per world');
   assert.equal(listeners[0].type, 'keydown');
   assert.equal(listeners[0].capture, true);
-  const press = (code, mods) => {
-    const e = { code, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...mods, stopped: false, prevented: false };
+  const press = (code: string, mods: Record<string, unknown>) => {
+    // A keydown as the listener reads it, which it may stop.
+    const e: { code: string, stopped: boolean, prevented: boolean, stopImmediatePropagation?: () => void, preventDefault?: () => void, [key: string]: unknown } = { code, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...mods, stopped: false, prevented: false };
     e.stopImmediatePropagation = () => { e.stopped = true; };
     e.preventDefault = () => { e.prevented = true; };
     listeners[0].fn(e);
@@ -150,18 +155,22 @@ test('cut off: a world found so gets a listener (once) that keeps the commands\'
   assert.equal(press('ArrowDown', { altKey: true, metaKey: true }).stopped, false, 'another combination is the page\'s');
   assert.equal(press('ArrowLeft', { ctrlKey: true, metaKey: true }).stopped, false, 'a key no command has');
   const live = page({ address: OWN });
-  const liveListeners = [];
-  await vm.runInContext(`(${cutOffInPage.toString()})(${JSON.stringify(OWN)}, false, ${JSON.stringify(keys)})`, vm.createContext({ ...live.globals, addEventListener: (...a) => liveListeners.push(a) }));
+  const liveListeners: unknown[][] = [];
+  await vm.runInContext(`(${cutOffInPage.toString()})(${JSON.stringify(OWN)}, false, ${JSON.stringify(keys)})`, vm.createContext({ ...live.globals, addEventListener: (...a: unknown[]) => liveListeners.push(a) }));
   assert.equal(liveListeners.length, 0, 'none in a page that isn\'t cut off');
 });
 
 // The background's side (background/tabs.ts repairCutOff), against a fake
 // Safari: tabs, their pages' answer to the probe, the loads it asks for.
-const fake = { tabs: new Map(), updates: [], removed: [], scripts: [], session: {}, local: {}, probe: () => ({ cutOff: false }) };
+// What a page answers the probe (cutOffInPage), given its arguments.
+type Probe = (tabId: number, args: any[]) => { cutOff: boolean, busy?: boolean, hidden?: boolean, proven?: boolean, quiet?: boolean };
+// session, local: stored JSON.
+const fake = { tabs: new Map(), updates: [] as { id: number, change: Parameters<MarginBrowserApi['tabs']['update']>[1] & { reload?: boolean }, at: number }[], removed: [] as (number | number[])[], scripts: [] as { tabId: number, func?: (...args: any[]) => unknown, args?: any[] }[], session: {} as Record<string, any>, local: {} as Record<string, any>, probe: (() => ({ cutOff: false })) as Probe };
 async function background() {
-  globalThis.chrome = {
+  globalThis.chrome = fakeBrowser({
     runtime: { id: 'x', getURL: (path) => `${OWN}${path}`, getManifest: () => ({ version: '0', content_scripts: [{ js: ['content/main.ts'] }] }) },
     permissions: { contains: async () => true },
+    // Its updates' answers unread.
     windows: { get: async (id) => ({ id, focused: true }), update: async () => {} },
     tabs: {
       get: async (id) => { const t = fake.tabs.get(id); if (!t) throw new Error('no tab'); return { ...t }; },
@@ -174,22 +183,23 @@ async function background() {
     scripting: {
       executeScript: async ({ target, func, args }) => {
         fake.scripts.push({ tabId: target.tabId, func, args });
-        return [{ result: func?.name === 'cutOffInPage' ? fake.probe(target.tabId, args) : true }];
+        return [{ result: func?.name === 'cutOffInPage' ? fake.probe(target.tabId, args!) : true }]; // (asked with its arguments)
       },
     },
     storage: {
-      local: { get: async (k) => Object.fromEntries([].concat(k ?? Object.keys(fake.local)).filter((x) => x in fake.local).map((x) => [x, structuredClone(fake.local[x])])), set: async (v) => { Object.assign(fake.local, structuredClone(v)); }, remove: async () => {} },
-      session: { get: async (k) => Object.fromEntries([].concat(k).filter((x) => x in fake.session).map((x) => [x, structuredClone(fake.session[x])])), set: async (v) => { Object.assign(fake.session, structuredClone(v)); } },
+      local: { get: async (k) => Object.fromEntries(([] as string[]).concat(k ?? Object.keys(fake.local)).filter((x) => x in fake.local).map((x) => [x, structuredClone(fake.local[x])])), set: async (v) => { Object.assign(fake.local, structuredClone(v)); }, remove: async () => {} },
+      // (Session storage asked by key here.)
+      session: { get: async (k) => Object.fromEntries(([] as string[]).concat(k as string | string[]).filter((x) => x in fake.session).map((x) => [x, structuredClone(fake.session[x])])), set: async (v) => { Object.assign(fake.session, structuredClone(v)); } },
       onChanged: { addListener() {} },
     },
-  };
+  });
   const tabs = await import('../extension/background/tabs.ts');
   const store = await import('../extension/background/store.ts');
   await store.decided();
   return tabs;
 }
-const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const loadsOf = (id) => fake.updates.filter((u) => u.id === id && (u.change.url || u.change.reload));
+const sleepMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const loadsOf = (id: number) => fake.updates.filter((u) => u.id === id && (u.change.url || u.change.reload));
 
 test('cut off, in front: put out of sight at once, not loaded again in front; loaded again once it\'s left, behind', async () => {
   const tabs = await background();
@@ -197,7 +207,8 @@ test('cut off, in front: put out of sight at once, not loaded again in front; lo
   fake.probe = (id, [, quiet]) => (id === 1 ? { cutOff: true, busy: false, hidden: false, proven: true, quiet } : { cutOff: false });
   assert.equal(await tabs.repairCutOff({ ...fake.tabs.get(1) }), 'quiet');
   assert.deepEqual(loadsOf(1), [], 'not loaded again in front');
-  assert.ok(fake.scripts.some((x) => x.tabId === 1 && x.func.name === 'cutOffInPage' && x.args[1] === true), 'its dead sidebar put out of sight');
+  // (Each script in that tab a function's: the probe.)
+  assert.ok(fake.scripts.some((x) => x.tabId === 1 && x.func!.name === 'cutOffInPage' && x.args![1] === true), 'its dead sidebar put out of sight');
   // Left (the user's switch to tab 2): loaded again, behind.
   fake.tabs.get(1).active = false;
   fake.tabs.get(2).active = true;
@@ -230,9 +241,9 @@ test('cut off, with a switch to it under way (behind still): put out of sight in
   fake.probe = (id) => (id === 7 ? { cutOff: true, busy: false, hidden: true, proven: false } : { cutOff: false });
   assert.equal(await tabs.repairCutOff({ ...fake.tabs.get(7) }, { forSwitch: true }), 'quiet');
   assert.deepEqual(loadsOf(7), []);
-  const probes = fake.scripts.filter((x) => x.tabId === 7 && x.func.name === 'cutOffInPage');
+  const probes = fake.scripts.filter((x) => x.tabId === 7 && x.func!.name === 'cutOffInPage');
   assert.equal(probes.length, 1, 'one script');
-  assert.equal(probes[0].args[1], true, 'which puts it out of sight');
+  assert.equal(probes[0].args![1], true, 'which puts it out of sight');
   // Shown, then left.
   fake.tabs.get(7).active = true;
   fake.tabs.get(8).active = false;
@@ -251,8 +262,8 @@ test('a tab an earlier build left on Margin\'s sleep page: hidden, closed as Mar
   const { takeClosing } = await import('../extension/background/closing.ts');
   fake.updates = [];
   fake.removed = [];
-  const asleep = (u) => `${OLD}sleep/sleep.html?${new URLSearchParams({ u, t: 'Title', k: 'k1' })}`;
-  const tab = (id, url, active = false) => [id, { id, windowId: 4, url, active, status: 'complete' }];
+  const asleep = (u: string) => `${OLD}sleep/sleep.html?${new URLSearchParams({ u, t: 'Title', k: 'k1' })}`;
+  const tab = (id: number, url: string, active = false) => [id, { id, windowId: 4, url, active, status: 'complete' }] as const;
   fake.tabs = new Map([tab(11, asleep('https://hidden.test/a')), tab(12, asleep('https://front.test/x?y=1'), true), tab(13, asleep('javascript:alert(1)')), tab(14, 'https://awake.test/')]);
   for (const id of [11, 12, 13, 14]) await tabs.ensureCurrent(id);
   assert.deepEqual(fake.removed, [11], 'the hidden one closed');

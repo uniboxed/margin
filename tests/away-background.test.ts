@@ -3,39 +3,43 @@
 // back, the stand-in clicked, the tab closed. The rules: tests/away.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from './fake-browser.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const listeners = {};
-const event = (name) => ({ addListener: (fn) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
-const fire = (name, ...args) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// A listener, called with whatever its event gives.
+type Listener = (...args: any[]) => unknown;
+const listeners: Record<string, Listener[]> = {};
+const event = (name: string) => ({ addListener: (fn: Listener) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
+const fire = (name: string, ...args: unknown[]) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
 
 const fake = {
   tabs: new Map(),
   nextId: 500,
-  created: [],
-  removed: [],
-  moves: [],
-  local: {},
-  session: {},
+  created: [] as { windowId: number, url?: string, index?: number, active: boolean }[],
+  removed: [] as number[],
+  moves: [] as { id: number | number[], from: number, to?: number }[],
+  local: {} as Record<string, any>, // stored JSON
+  session: {} as Record<string, any>,
   focused: 2,
   // What a page answers the sleep pass (background/sleep.ts sleepInPage).
-  page: () => ({ ok: true, judged: 'margin' }),
+  page: (() => ({ ok: true, judged: 'margin' })) as (tabId: number) => { ok: boolean, judged?: string },
 };
-const pick = (store, keys) => {
+const pick = (store: Record<string, any>, keys?: string | string[] | Record<string, unknown> | null) => {
   if (keys == null) return structuredClone(store);
   const list = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys);
   return Object.fromEntries(list.filter((k) => k in store).map((k) => [k, structuredClone(store[k])]));
 };
-const reindex = (windowId) => [...fake.tabs.values()].filter((t) => t.windowId === windowId).sort((a, b) => a.index - b.index).forEach((t, i) => { t.index = i; });
+const reindex = (windowId?: number) => [...fake.tabs.values()].filter((t) => t.windowId === windowId).sort((a, b) => a.index - b.index).forEach((t, i) => { t.index = i; });
 // Safari closing a tab (its tab bar, ⌘W, or its window closing).
-async function closeInSafari(id, isWindowClosing = false) {
+async function closeInSafari(id: number, isWindowClosing = false) {
   const tab = fake.tabs.get(id);
   fake.tabs.delete(id);
   reindex(tab.windowId);
   await fire('onRemoved', id, { windowId: tab.windowId, isWindowClosing });
 }
-globalThis.fetch = async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) });
-globalThis.chrome = {
+// Only what Margin reads of a response.
+globalThis.fetch = (async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) })) as unknown as typeof fetch;
+globalThis.chrome = fakeBrowser({
   runtime: {
     id: 'test',
     getURL: (p) => `safari-web-extension://test/${p}`,
@@ -45,9 +49,11 @@ globalThis.chrome = {
     sendNativeMessage: async () => undefined,
   },
   permissions: { contains: async () => true, onAdded: event('pAdded'), onRemoved: event('pRemoved') },
-  alarms: { get: async () => ({}), create: async () => {}, clear: async () => true, onAlarm: event('onAlarm') },
+  // An alarm there already (its fields unread: background.ts).
+  alarms: { get: async () => ({}) as { name: string, scheduledTime: number }, create: async () => {}, onAlarm: event('onAlarm') },
   commands: { onCommand: event('onCommand') },
   windows: {
+    // Windows as far as Margin reads them here; its updates' answers unread.
     get: async (id) => ({ id, focused: id === fake.focused }), getAll: async () => [{ id: 1, focused: true }], getLastFocused: async () => ({ id: 1 }),
     update: async () => {}, create: async () => ({}), onFocusChanged: event('onFocusChanged'), onRemoved: event('wRemoved'), onBoundsChanged: event('wBounds'),
   },
@@ -80,7 +86,7 @@ globalThis.chrome = {
     create: async ({ windowId, url, active, index }) => {
       const win = windowId ?? 1;
       const count = [...fake.tabs.values()].filter((t) => t.windowId === win).length;
-      const at = Number.isInteger(index) ? Math.min(index, count) : count;
+      const at = Number.isInteger(index) ? Math.min(index!, count) : count; // (a number: just checked)
       for (const t of fake.tabs.values()) if (t.windowId === win && t.index >= at) t.index++;
       if (active) for (const t of fake.tabs.values()) if (t.windowId === win) t.active = false;
       const tab = { id: fake.nextId++, windowId: win, url, title: '', index: at, active: !!active, status: 'loading' };
@@ -91,7 +97,7 @@ globalThis.chrome = {
       return { ...tab };
     },
     remove: async (ids) => {
-      for (const id of [].concat(ids)) {
+      for (const id of ([] as number[]).concat(ids)) {
         if (!fake.tabs.has(id)) throw new Error(`No tab with id: ${id}`);
         fake.removed.push(id);
         await closeInSafari(id, false);
@@ -113,7 +119,7 @@ globalThis.chrome = {
     local: {
       get: async (keys) => pick(fake.local, keys),
       set: async (items) => { Object.assign(fake.local, structuredClone(items)); },
-      remove: async (keys) => { for (const k of [].concat(keys)) delete fake.local[k]; },
+      remove: async (keys) => { for (const k of ([] as string[]).concat(keys)) delete fake.local[k]; },
     },
     session: {
       get: async (keys) => pick(fake.session, keys),
@@ -122,7 +128,7 @@ globalThis.chrome = {
     },
     onChanged: event('sChanged'),
   },
-};
+});
 
 
 // Window 1: a (in front) and b; window 2: c (in front). All in the first space.
@@ -136,10 +142,12 @@ fake.session.alive = true;
 fake.session.since = 1;
 fake.session.startWorkAt = Date.now();
 
-const sender = (id) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id)?.url });
-function ask(type, payload = {}, from = 1) {
-  return new Promise((resolve) => {
-    listeners.onMessage[0]({ type, ...payload }, sender(from), (reply) => resolve(reply));
+const sender = (id: number) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id)?.url });
+// The background's answer (Margin's own protocol: any, as types/browser.d.ts has it).
+type Reply = { ok: boolean, result?: any, error?: string };
+function ask(type: string, payload: Record<string, unknown> = {}, from = 1) {
+  return new Promise<Reply>((resolve) => {
+    listeners.onMessage[0]({ type, ...payload }, sender(from), (reply: Reply) => resolve(reply));
   });
 }
 
@@ -150,7 +158,9 @@ const { setAwayTiming } = await import('../extension/background/away.ts');
 setAwayTiming({ settleMs: 5 });
 const STAND_IN = 'safari-web-extension://test/away/away.html';
 const state = async () => { await sleep(30); return store.load(); };
-const standIn = (windowId) => [...fake.tabs.values()].find((t) => t.windowId === windowId && t.url === STAND_IN);
+// A sidebar row as these tests read it (shared/view.ts sidebar: `away` only on a window's away tab).
+type Row = { active: boolean, away?: boolean };
+const standIn = (windowId: number) => [...fake.tabs.values()].find((t) => t.windowId === windowId && t.url === STAND_IN);
 
 test('a: chosen in window 2, it moves there; window 1 shows it away, its stand-in never a Margin tab', async () => {
   await state();
@@ -165,7 +175,7 @@ test('a: chosen in window 2, it moves there; window 1 shows it away, its stand-i
   assert.ok(stand?.active, 'the stand-in in front of window 1');
   assert.equal(s.tabs[stand.id], undefined, 'not a Margin tab, though Safari said no address at first');
   assert.equal(Object.keys(s.tabs).length, 3);
-  const one = V.sidebar(s, 1).tabs.find((t) => t.id === 1);
+  const one: Row = V.sidebar(s, 1).tabs.find((t) => t.id === 1)!;
   assert.deepEqual([one.active, one.away], [true, true]);
   assert.equal(V.sidebar(s, 1).tabs.filter((t) => t.active).length, 1, 'only it chosen in window 1');
   const shown = await ask('awayShown', {}, stand.id);
@@ -183,7 +193,7 @@ test('b: window 1 to the front: the tab follows it back; window 2 shows it away'
   assert.ok(!fake.tabs.has(first), 'window 1\'s stand-in gone');
   assert.deepEqual(s.awayByWindow, { 2: 1 });
   assert.ok(standIn(2)?.active);
-  assert.equal(V.sidebar(s, 2).tabs.find((t) => t.id === 1).away, true);
+  assert.equal((V.sidebar(s, 2).tabs.find((t) => t.id === 1) as Row).away, true);
 });
 
 test('c: the stand-in clicked: its tab back in its window', async () => {

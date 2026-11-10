@@ -3,13 +3,16 @@
 // in front and the tab's picture kept in memory only.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from './fake-browser.ts';
+import type { State } from '../types/margin.d.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const PICTURE = 'data:image/jpeg;base64,AAAA';
-const fake = { tabs: new Map(), nextId: 100, local: {}, captures: [], moves: [], removed: [], created: [], refuseMove: false, focused: 2 };
-const asTab = (t) => ({ ...t });
-const reindex = (windowId) => [...fake.tabs.values()].filter((t) => t.windowId === windowId).sort((a, b) => a.index - b.index).forEach((t, i) => { t.index = i; });
-globalThis.chrome = {
+// local: stored JSON. captures: the windows whose picture was taken. refuseMove, refuseCreate: the browser refusing.
+const fake = { tabs: new Map(), nextId: 100, local: {} as Record<string, any>, captures: [] as (number | undefined)[], moves: [] as { id: number | number[], from: number, to?: number, index: number }[], removed: [] as number[], created: [] as { windowId?: number, url?: string, active: boolean }[], refuseMove: false, refuseCreate: false, focused: 2 };
+const asTab = (t: BrowserTab) => ({ ...t });
+const reindex = (windowId?: number) => [...fake.tabs.values()].filter((t) => t.windowId === windowId).sort((a, b) => a.index - b.index).forEach((t, i) => { t.index = i; });
+globalThis.chrome = fakeBrowser({
   runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ content_scripts: [] }), sendMessage: async () => {} },
   permissions: { contains: async () => true, onAdded: { addListener() {} }, onRemoved: { addListener() {} } },
   tabs: {
@@ -28,14 +31,15 @@ globalThis.chrome = {
       return asTab(tab);
     },
     remove: async (ids) => {
-      for (const id of [].concat(ids)) {
+      for (const id of ([] as number[]).concat(ids)) {
         fake.removed.push(id);
         fake.tabs.delete(id);
       }
     },
     create: async ({ windowId, url, active, index }) => {
       if (fake.refuseCreate) throw new Error('no');
-      const tab = { id: fake.nextId++, windowId, url, active: !!active, index: index ?? 99, title: '' };
+      // Made without a window: none here.
+      const tab = { id: fake.nextId++, windowId, url, active: !!active, index: index ?? 99, title: '' } as BrowserTab;
       if (active) for (const t of fake.tabs.values()) if (t.windowId === windowId) t.active = false;
       fake.tabs.set(tab.id, tab);
       fake.created.push({ windowId, url, active: !!active });
@@ -59,14 +63,16 @@ globalThis.chrome = {
       return PICTURE;
     },
   },
+  // Its answer unread.
   windows: { get: async (id) => ({ id, focused: id === fake.focused }), update: async (id) => { fake.focused = id; return {}; } },
   storage: {
     local: {
-      get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((k) => k in fake.local).map((k) => [k, fake.local[k]])),
+      // Asked by key or keys here.
+      get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys as string]).filter((k) => k in fake.local).map((k) => [k, fake.local[k]])),
       set: async (items) => { Object.assign(fake.local, items); },
     },
   },
-};
+});
 
 const M = await import('../extension/state/model.ts');
 const V = await import('../extension/shared/view.ts');
@@ -93,13 +99,15 @@ async function setup() {
   });
 }
 // What background.ts does with an activation: the state, and the window's stand-in.
-async function activated(tabId, windowId) {
+async function activated(tabId: number, windowId: number) {
   const wasAway = (await load()).awayByWindow?.[windowId] != null;
   await mutate((s) => M.activateTab(s, tabId, windowId, 5));
   away.shownIn(windowId, tabId, wasAway);
   await sleep(1);
 }
-const standInOf = (windowId) => [...fake.tabs.values()].find((t) => t.windowId === windowId && t.url === STAND_IN);
+// A sidebar row as these tests read it (shared/view.ts sidebar: `away` only on a window's away tab).
+type Row = { active: boolean, away?: boolean };
+const standInOf = (windowId: number) => [...fake.tabs.values()].find((t) => t.windowId === windowId && t.url === STAND_IN);
 
 test('chosen in window 2 while in front of window 1: it moves to 2; 1 keeps it chosen, faded, its picture in front', async () => {
   await setup();
@@ -111,14 +119,14 @@ test('chosen in window 2 while in front of window 1: it moves to 2; 1 keeps it c
   const stand = standInOf(1);
   assert.ok(stand?.active, 'the stand-in in front of window 1');
   const s = await load();
-  assert.equal(s.awayByWindow[1], 1);
+  assert.equal(s.awayByWindow![1], 1);
   assert.equal(s.tabs[1].windowId, 2, 'the record follows the move');
   assert.equal(s.tabs[stand.id], undefined, 'the stand-in is never a Margin tab');
   await activated(1, 2);
   const s2 = await load();
-  const one = V.sidebar(s2, 1).tabs.find((t) => t.id === 1);
+  const one: Row = V.sidebar(s2, 1).tabs.find((t) => t.id === 1)!;
   assert.deepEqual([one.active, one.away], [true, true], 'window 1: chosen, away');
-  const two = V.sidebar(s2, 2).tabs.find((t) => t.id === 1);
+  const two: Row = V.sidebar(s2, 2).tabs.find((t) => t.id === 1)!;
   assert.deepEqual([two.active, !!two.away], [true, false], 'window 2: live');
   assert.deepEqual(away.shownAway(1), { tabId: 1, title: 'One', url: 'https://one.example/', picture: PICTURE });
   assert.equal(away.shownAway(2), null, 'window 2 shows nothing away');
@@ -142,8 +150,8 @@ test('window 1 to the front again: the tab follows it back; window 2 shows it aw
   assert.ok(!fake.tabs.has(firstStandIn), 'window 1\'s stand-in closed once its tab is back');
   const s = await load();
   assert.deepEqual(s.awayByWindow, { 2: 1 });
-  assert.equal(V.sidebar(s, 2).tabs.find((t) => t.id === 1).away, true);
-  assert.equal(V.sidebar(s, 1).tabs.find((t) => t.id === 1).away, undefined);
+  assert.equal((V.sidebar(s, 2).tabs.find((t) => t.id === 1) as Row).away, true);
+  assert.equal((V.sidebar(s, 1).tabs.find((t) => t.id === 1) as Row).away, undefined);
 });
 
 test('another tab chosen in the window showing one away: nothing away there, its stand-in closed', async () => {
@@ -226,26 +234,29 @@ test('the model: a stand-in is never a Margin tab, and what a window shows away 
   let s = M.defaultState();
   s = M.upsertTab(s, { id: 1, windowId: 1, url: 'https://one.example/', index: 0, active: true }, 0);
   assert.equal(M.upsertTab(s, { id: 9, windowId: 1, url: STAND_IN, index: 1, active: true }, 0), s);
-  s = M.setAway(M.upsertTab(s, { id: 2, windowId: 2, url: 'https://two.example/', index: 0 }, 0), 1, 2);
+  // Tabs as the test gives them: without `active` (not in front).
+  s = M.setAway(M.upsertTab(s, { id: 2, windowId: 2, url: 'https://two.example/', index: 0 } as BrowserTab, 0), 1, 2);
   assert.deepEqual(s.awayByWindow, { 1: 2 });
   assert.deepEqual(M.removeTab(s, 2).awayByWindow, {});
   assert.deepEqual(M.activateTab(s, 1, 1, 9).awayByWindow, {}, 'a tab of its own in front');
   assert.deepEqual(M.activateTab(s, 2, 1, 9).awayByWindow, { 1: 2 }, 'not for a tab in another window (its record lags)');
-  const sleepy = (st) => M.sleepyTabs(st, 1e15, { afterMs: 1 }).map((t) => t.id);
+  const sleepy = (st: State) => M.sleepyTabs(st, 1e15, { afterMs: 1 }).map((t) => t.id);
   assert.ok(sleepy(M.setAway(s, 1, null)).includes(2), '(asleep after long enough, once nothing shows it away)');
   assert.ok(!sleepy(s).includes(2), 'never put to sleep while a window shows it away');
 });
 
 test('the model: a tab dragged next to one in another window takes a place beside it in the space\'s list', () => {
   let s = M.defaultState();
-  s = M.upsertTab(s, { id: 1, windowId: 1, url: 'https://a.example/', index: 0 }, 0);
-  s = M.upsertTab(s, { id: 2, windowId: 2, url: 'https://b.example/', index: 0 }, 0);
-  s = M.upsertTab(s, { id: 3, windowId: 1, url: 'https://c.example/', index: 1 }, 0);
-  const list = (st) => V.sidebar(st, 1).tabs.map((t) => t.id);
+  // Tabs as the test gives them: without `active` (not in front).
+  s = M.upsertTab(s, { id: 1, windowId: 1, url: 'https://a.example/', index: 0 } as BrowserTab, 0);
+  s = M.upsertTab(s, { id: 2, windowId: 2, url: 'https://b.example/', index: 0 } as BrowserTab, 0);
+  s = M.upsertTab(s, { id: 3, windowId: 1, url: 'https://c.example/', index: 1 } as BrowserTab, 0);
+  const list = (st: State) => V.sidebar(st, 1).tabs.map((t) => t.id);
   assert.deepEqual(list(s), [3, 2, 1], 'newest first, across both windows');
   const below = M.placeOpen(s, 3, 2, 'after', s.tabSpace[3]);
   assert.deepEqual(list(below), [2, 3, 1], 'below 2 (an earlier place), above 1');
-  assert.ok(below.tabs[3].order > below.tabs[1].order, '…still after 1 in window 1\'s strip: no move needed there');
+  // (upsertTab gives each its place: `order`.)
+  assert.ok(below.tabs[3].order! > below.tabs[1].order!, '…still after 1 in window 1\'s strip: no move needed there');
   assert.equal(M.placeOpen(s, 3, 99, 'after', s.tabSpace[3]), s, 'beside a tab not in the list: nothing');
 });
 

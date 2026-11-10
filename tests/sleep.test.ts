@@ -6,31 +6,37 @@
 // tests/sleep-chrome.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from './fake-browser.ts';
+import type { Settings, State, TabRecord } from '../types/margin.d.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const BASE = 'safari-web-extension://test/';
 
 // tabs: id → { id, url, active, windowId, status, audible, title }. `page(tabId)`:
 // what sleepInPage answers there (null: no page, its script fails; 'never':
 // no answer at all).
+type Answer = { ok: boolean, why?: string, judged?: string, foreign?: number } | 'never' | null;
+// A frame's row (WebKit's has `error` for a frame it can't run in).
+type FrameRow = { frameId: number, result: unknown, error?: string };
 const fake = {
   tabs: new Map(),
-  updates: [],
-  removed: [],
-  scripts: [],
-  local: {},
-  session: {},
-  page: () => ({ ok: true, judged: 'margin' }),
+  updates: [] as { id: number, change: Parameters<MarginBrowserApi['tabs']['update']>[1] }[],
+  removed: [] as number[],
+  scripts: [] as { tabId: number, func: string, args?: any[], allFrames: boolean }[],
+  local: {} as Record<string, any>, // stored JSON
+  session: {} as Record<string, any>,
+  page: (() => ({ ok: true, judged: 'margin' })) as (tabId: number, args?: any[]) => Answer,
   // The page's other frames' answers (executeScript's rows), when every frame is asked.
-  frames: () => [],
+  frames: (() => []) as (tabId: number) => FrameRow[],
   // Before a page answers (the ask under way).
-  asking: async () => {},
+  asking: (async () => {}) as (tabId: number) => Promise<void>,
   noAllFrames: false,
-  denied: new Set(),
+  denied: new Set<string>(),
 };
-globalThis.chrome = {
+globalThis.chrome = fakeBrowser({
   runtime: { id: 'test', getURL: (path) => `${BASE}${path}`, getManifest: () => ({ version: '0' }), sendMessage: async () => undefined },
-  permissions: { contains: async ({ origins: [o] }) => ![...fake.denied].some((d) => o.includes(d)) },
+  // (Asked by origin.)
+  permissions: { contains: async ({ origins: [o] }: { origins: string[] }) => ![...fake.denied].some((d) => o.includes(d)) },
   tabs: {
     get: async (id) => {
       const tab = fake.tabs.get(id);
@@ -46,7 +52,7 @@ globalThis.chrome = {
     },
     remove: async (id) => {
       if (!fake.tabs.has(id)) throw new Error('no tab');
-      fake.removed.push(id);
+      fake.removed.push(id as number); // (one at a time here)
       fake.tabs.delete(id);
     },
     query: async () => [...fake.tabs.values()].map((t) => ({ ...t })),
@@ -68,15 +74,16 @@ globalThis.chrome = {
   },
   storage: {
     local: {
-      get: async (keys) => (keys == null ? { ...fake.local } : Object.fromEntries([].concat(keys).filter((k) => k in fake.local).map((k) => [k, structuredClone(fake.local[k])]))),
+      get: async (keys) => (keys == null ? { ...fake.local } : Object.fromEntries(([] as string[]).concat(keys).filter((k) => k in fake.local).map((k) => [k, structuredClone(fake.local[k])]))),
       set: async (items) => { Object.assign(fake.local, structuredClone(items)); },
     },
     session: {
-      get: async (keys) => Object.fromEntries([].concat(keys).filter((k) => k in fake.session).map((k) => [k, structuredClone(fake.session[k])])),
+      // (Session storage asked by key.)
+      get: async (keys) => Object.fromEntries(([] as string[]).concat(keys as string | string[]).filter((k) => k in fake.session).map((k) => [k, structuredClone(fake.session[k])])),
       set: async (items) => { Object.assign(fake.session, structuredClone(items)); },
     },
   },
-};
+});
 
 const { capabilities } = await import('../extension/shared/capabilities.ts');
 assert.equal(capabilities.sleepTabs, 'close', 'Safari closes a sleeping tab');
@@ -92,7 +99,7 @@ setSleepTiming({ gapMs: 5, askMs: 150, wakeGapMs: 1 });
 // ---- a tab an earlier build left on Margin's sleep page (shared/sleep.ts) --------------
 
 // That build's sleep page's address for a page (its `k` was the sleep's key).
-const oldAt = (url, { title = 'Page', base = BASE } = {}) => `${base}sleep/sleep.html?${new URLSearchParams({ u: url, t: title, k: 'k9' })}`;
+const oldAt = (url: string, { title = 'Page', base = BASE } = {}) => `${base}sleep/sleep.html?${new URLSearchParams({ u: url, t: title, k: 'k9' })}`;
 
 test('an earlier build\'s sleep page: known by its path at any copy\'s address; only a web page\'s address is taken from it', () => {
   assert.deepEqual(S.oldSleepPage(oldAt('https://mail.example.com/inbox?q=a b&x=1#top', { title: 'Inbox (3)' })), { url: 'https://mail.example.com/inbox?q=a%20b&x=1#top', title: 'Inbox (3)' });
@@ -129,8 +136,8 @@ test('never-sleep list: what\'s typed is read generously, and a host matches its
 
 const HOUR = 3600_000;
 const NOW = 1_800_000_000_000;
-const rec = (id, url, hoursAgo, extra = {}) => ({ id, windowId: 1, index: id, title: `t${id}`, url, favIconUrl: '', active: false, lastActive: NOW - hoursAgo * HOUR, ...extra });
-const withTabs = (records, settings = {}) => {
+const rec = (id: number, url: string, hoursAgo: number, extra: Partial<TabRecord> = {}): TabRecord => ({ id, windowId: 1, index: id, title: `t${id}`, url, favIconUrl: '', active: false, lastActive: NOW - hoursAgo * HOUR, ...extra });
+const withTabs = (records: TabRecord[], settings: Partial<Settings> = {}): State => {
   const s = M.defaultState();
   return { ...s, tabs: Object.fromEntries(records.map((r) => [r.id, r])), tabSpace: Object.fromEntries(records.map((r) => [r.id, 'personal'])), settings: { ...s.settings, ...settings } };
 };
@@ -152,7 +159,7 @@ test('which tabs: web pages unused for the setting\'s hours, the longest unused 
   const pinned = M.addPin(s, { id: 'p', spaceId: 'personal', url: 'https://pinned.test/', title: 'Pinned' });
   assert.deepEqual(M.sleepyTabs(pinned, NOW).map((t) => t.id), [3, 2, 10]);
   assert.deepEqual(M.sleepyTabs({ ...pinned, settings: { ...pinned.settings, sleepAfterHours: 0 } }, NOW), [], 'never');
-  assert.deepEqual(M.sleepyTabs({ ...pinned, settings: { ...pinned.settings, sleepAfterHours: 'x' } }, NOW), []);
+  assert.deepEqual(M.sleepyTabs({ ...pinned, settings: { ...pinned.settings, sleepAfterHours: 'x' as unknown as number } }, NOW), []); // (not a number, as stored settings can be)
   assert.deepEqual(M.sleepyTabs({ ...pinned, settings: { ...pinned.settings, sleepAfterHours: 0.5 } }, NOW).map((t) => t.id), [3, 2, 10, 4, 9], 'half an hour (9 woke an hour ago)');
   assert.deepEqual(M.sleepyTabs({ ...pinned, settings: { ...pinned.settings, sleepAfterHours: 0 } }, NOW, { afterMs: 1 }).map((t) => t.id), [3, 2, 10, 4, 9], 'a pass asked for by hand: its own time');
 });
@@ -190,7 +197,7 @@ test('a tab on an earlier build\'s sleep page keeps its page\'s address, title a
   assert.equal(s.tabs[3].wokeAt, NOW + 9);
   assert.deepEqual(M.sleepyTabs(s, NOW + HOUR).map((t) => t.id), [], 'not put to sleep again for its hours');
   // A sleep page with no web address isn't taken for its page.
-  const broken = M.upsertTab(s, { id: 3, windowId: 1, index: 3, url: `${BASE}sleep/sleep.html?u=javascript%3Ax`, title: 'x' }, NOW);
+  const broken = M.upsertTab(s, { id: 3, windowId: 1, index: 3, url: `${BASE}sleep/sleep.html?u=javascript%3Ax`, title: 'x' } as BrowserTab, NOW); // (no `active`: as the test gives it)
   assert.match(broken.tabs[3].url, /^safari-web-extension:/);
   assert.equal(broken.tabs[3].sleeping, undefined);
 });
@@ -239,7 +246,7 @@ async function setUp(tabs: any[], settings: Record<string, any> = {}) {
   delete fake.session.sleepRefused;
   await decided();
   await mutate((s) => {
-    let next = { ...s, tabs: {}, tabSpace: {}, settings: { ...s.settings, sleepAfterHours: 4, neverSleepSites: [], ...settings } };
+    let next: State = { ...s, tabs: {}, tabSpace: {}, settings: { ...s.settings, sleepAfterHours: 4, neverSleepSites: [], ...settings } };
     for (const t of fake.tabs.values()) {
       next = M.upsertTab(next, t, Date.now());
       next = { ...next, tabs: { ...next.tabs, [t.id]: { ...next.tabs[t.id], active: !!t.active, lastActive: Date.now() - (t.idleHours ?? 5) * HOUR } } };
@@ -255,7 +262,7 @@ const slept = () => fake.removed.map((id) => {
 
 test('a pass: each tab long unused asked in its page, then closed as Margin\'s own close, to be kept (its Margin tab, not open), at most a few per pass, one at a time', async () => {
   await setUp([{ id: 1, url: 'https://front.test/', active: true }, ...[2, 3, 4, 5, 6, 7, 8].map((id) => ({ id, url: `https://s${id}.test/p`, idleHours: 4 + id }))]);
-  const lines = [];
+  const lines: string[] = [];
   switchLogTo((line) => lines.push(line));
   const pass = await sleepIdle();
   switchLogTo(null);
@@ -263,7 +270,7 @@ test('a pass: each tab long unused asked in its page, then closed as Margin\'s o
   assert.deepEqual(slept(), [8, 7, 6, 5, 4], 'the longest unused first');
   const asked = fake.scripts.filter((x) => x.func === 'sleepInPage');
   assert.deepEqual(asked.map((x) => x.tabId), [8, 7, 6, 5, 4]);
-  assert.equal(asked[0].args[0], 'https://s8.test/p', 'asked whether it\'s still that page');
+  assert.equal(asked[0].args![0], 'https://s8.test/p', 'asked whether it\'s still that page');
   assert.deepEqual(fake.updates, [], 'none sent anywhere, none brought to the front');
   assert.equal(lines.length, 1, 'one line in Margin.app\'s log for the pass');
   assert.match(lines[0], /^sleep: 7 due, 5 put to sleep \(tab 8 closed, kept, unused 7\d\d min, its page judged by margin; tab 7 .*\); skipped: next pass 2 \(\d+ ms\)$/);
@@ -296,9 +303,9 @@ test('a pass leaves alone: a tab in front, playing sound, loading, already aslee
   // (The one in front, as Safari has it, though Margin's record says otherwise.)
   await mutate((s) => ({ ...s, tabs: { ...s.tabs, 1: { ...s.tabs[1], active: false } } }));
   fake.denied = new Set(['denied.test']);
-  const answers = { 7: { ok: false, why: 'edited', judged: 'margin' }, 8: { ok: false, why: 'playing' }, 9: 'never', 10: null, 11: { ok: false, why: 'shown' } };
+  const answers: Record<number, Answer> = { 7: { ok: false, why: 'edited', judged: 'margin' }, 8: { ok: false, why: 'playing' }, 9: 'never', 10: null, 11: { ok: false, why: 'shown' } };
   fake.page = (tabId) => (tabId in answers ? answers[tabId] : { ok: true });
-  const pass = await sleepIdle();
+  const pass = (await sleepIdle())!; // (null only where tabs can't sleep: Safari's can)
   assert.deepEqual(pass.skipped, { 'in front': 1, playing: 2, loading: 1, 'no access': 1, edited: 1, 'no answer': 1, 'no page': 1, shown: 1 });
   assert.equal(pass.due, 9, 'one asleep already, one on the never list and one used lately aren\'t due');
   assert.equal(pass.slept, 0);
@@ -308,9 +315,9 @@ test('a pass leaves alone: a tab in front, playing sound, loading, already aslee
 test('a pass asks every frame of the page: text or media in another site\'s frame (a comment box, a form, a payment\'s), or a frame of another site that gave no answer, keeps the tab awake; the page\'s own checks are its top frame\'s', async () => {
   await setUp([2, 3, 4, 5, 6, 7, 8].map((id) => ({ id, url: `https://f${id}.test/` })));
   // A frame of another site (its parent can't look into it), and WebKit's error for a frame it has no access to.
-  const other = (result) => ({ frameId: 9, result: { top: false, apart: true, foreign: 0, ...result } });
+  const other = (result: Record<string, unknown>) => ({ frameId: 9, result: { top: false, apart: true, foreign: 0, ...result } });
   const noAccess = { frameId: 10, result: null, error: 'Failed to execute script. Extension does not have access to this frame.' };
-  const frames = {
+  const frames: Record<number, FrameRow[]> = {
     2: [other({ ok: false, why: 'edited', judged: 'frame' })],
     3: [noAccess], // (a data: frame: the top frame couldn't look into it)
     4: [other({ ok: true, judged: 'frame' })],
@@ -321,7 +328,7 @@ test('a pass asks every frame of the page: text or media in another site\'s fram
   };
   fake.frames = (tabId) => frames[tabId] ?? [];
   fake.page = (tabId) => (tabId === 6 ? { ok: false, why: 'moved' } : { ok: true, judged: 'margin', foreign: 1 });
-  const pass = await sleepIdle({ afterMs: 1 });
+  const pass = (await sleepIdle({ afterMs: 1 }))!;
   assert.deepEqual(pass.skipped, { edited: 1, 'frame unknown': 2, playing: 1, moved: 1 });
   assert.deepEqual(slept().sort(), [4, 7]);
   const asked = fake.scripts.filter((x) => x.func === 'sleepInPage');
@@ -333,7 +340,7 @@ test('a browser that won\'t run the check in every frame: asked in the top frame
   await setUp([{ id: 2, url: 'https://framed.test/' }, { id: 3, url: 'https://plain.test/' }]);
   fake.noAllFrames = true;
   fake.page = (tabId) => ({ ok: true, judged: 'margin', foreign: tabId === 2 ? 1 : 0 });
-  const pass = await sleepIdle({ afterMs: 1 });
+  const pass = (await sleepIdle({ afterMs: 1 }))!;
   assert.deepEqual(pass.skipped, { 'frame unknown': 1 });
   assert.deepEqual(slept(), [3]);
   assert.deepEqual(fake.scripts.filter((x) => x.func === 'sleepInPage').map((x) => [x.tabId, x.allFrames]), [[2, true], [2, false], [3, true], [3, false]]);
@@ -341,13 +348,13 @@ test('a browser that won\'t run the check in every frame: asked in the top frame
 
 test('a tab used while the pass goes on (in front a moment by Safari\'s tab bar or ⌘1–9, which no switch of Margin\'s sees) isn\'t put to sleep: neither one used during its own page\'s answer nor one used before its turn', async () => {
   await setUp([{ id: 2, url: 'https://two.test/', idleHours: 9 }, { id: 3, url: 'https://three.test/', idleHours: 8 }]);
-  const use = (id) => mutate((s) => ({ ...s, tabs: { ...s.tabs, [id]: { ...s.tabs[id], lastActive: Date.now() } } }));
+  const use = (id: number) => mutate((s) => ({ ...s, tabs: { ...s.tabs, [id]: { ...s.tabs[id], lastActive: Date.now() } } }));
   fake.asking = async (tabId) => {
     if (tabId !== 2) return;
     await use(2);
     await use(3);
   };
-  const pass = await sleepIdle();
+  const pass = (await sleepIdle())!;
   assert.deepEqual(pass.skipped, { used: 2 });
   assert.deepEqual(fake.removed, [], 'none put to sleep');
   assert.deepEqual(fake.scripts.filter((x) => x.func === 'sleepInPage').map((x) => x.tabId), [2], '3 not even asked');
@@ -357,8 +364,8 @@ test('a page that said no isn\'t asked again each pass (asking resumes its proce
   await setUp([{ id: 2, url: 'https://draft.test/' }, { id: 3, url: 'https://idle.test/' }]);
   let draft = true;
   fake.page = (tabId) => (tabId === 2 && draft ? { ok: false, why: 'edited', judged: 'margin' } : { ok: true });
-  const askedOf = (id) => fake.scripts.filter((x) => x.func === 'sleepInPage' && x.tabId === id).length;
-  assert.deepEqual((await sleepIdle()).skipped, { edited: 1 });
+  const askedOf = (id: number) => fake.scripts.filter((x) => x.func === 'sleepInPage' && x.tabId === id).length;
+  assert.deepEqual((await sleepIdle())!.skipped, { edited: 1 });
   assert.equal(askedOf(2), 1);
   await mutate((s) => M.closedTab(s, 3, { by: { how: 'keep', why: 'sleep' }, now: Date.now(), archiveId: 'a3' })); // 3 asleep, as onRemoved brings it in
   assert.deepEqual(slept(), [3]);
@@ -367,16 +374,16 @@ test('a page that said no isn\'t asked again each pass (asking resumes its proce
   assert.deepEqual(await sleepIdle(), { due: 1, slept: 0, skipped: { 'asked lately': 1 }, stopped: null });
   assert.equal(askedOf(2), 1);
   // By hand: asked.
-  assert.deepEqual((await sleepIdle({ afterMs: 1 })).skipped, { edited: 1 });
+  assert.deepEqual((await sleepIdle({ afterMs: 1 }))!.skipped, { edited: 1 });
   assert.equal(askedOf(2), 2);
   // Used since (its last use moved, still long ago): asked again.
   await mutate((s) => ({ ...s, tabs: { ...s.tabs, 2: { ...s.tabs[2], lastActive: s.tabs[2].lastActive + 1000 } } }));
   setSleepTiming({ refusedMs: 20 });
   try {
-    assert.deepEqual((await sleepIdle()).skipped, { edited: 1 });
+    assert.deepEqual((await sleepIdle())!.skipped, { edited: 1 });
     assert.equal(askedOf(2), 3);
     // Its time up: asked again; the draft sent meanwhile, it sleeps, and its refusal is forgotten.
-    assert.deepEqual((await sleepIdle()).skipped, { 'asked lately': 1 });
+    assert.deepEqual((await sleepIdle())!.skipped, { 'asked lately': 1 });
     await sleep(30);
     draft = false;
     assert.deepEqual(await sleepIdle(), { due: 1, slept: 1, skipped: {}, stopped: null });
@@ -390,16 +397,17 @@ test('a page that said no isn\'t asked again each pass (asking resumes its proce
 test('sleepInPage: only a hidden page at the same address with nothing typed (Margin\'s watch, or a generous look at the page without it) and nothing playing; another site\'s frame: nothing typed or playing there, its address its own; the top frame counts the frames it can\'t look into', () => {
   const was = { document: globalThis.document, location: globalThis.location, navigator: globalThis.navigator, Margin: globalThis.Margin, window: globalThis.window };
   try {
-    const el = (props) => ({ value: '', textContent: '', paused: true, ended: false, isContentEditable: false, options: [], checked: false, defaultChecked: false, ...props });
+    const el = (props: Record<string, unknown>) => ({ value: '', textContent: '', paused: true, ended: false, isContentEditable: false, options: [], checked: false, defaultChecked: false, ...props });
     // `frame`: run in a frame of another site (window.top isn't this window); `frames`: the page's own iframes.
-    const page = ({ hidden = true, href = 'https://a.test/', fields = [], media = [], edits = undefined, late = false, frame = false, frames = [] } = {}) => {
-      globalThis.document = { visibilityState: hidden ? 'hidden' : 'visible', querySelectorAll: (sel) => (sel.startsWith('audio') ? media : sel.startsWith('textarea') ? fields : sel.startsWith('iframe') ? frames : []), fullscreenElement: null };
+    const page = ({ hidden = true, href = 'https://a.test/', fields = [], media = [], edits = undefined, late = false, frame = false, frames = [] }: { hidden?: boolean, href?: string, fields?: unknown[], media?: unknown[], edits?: boolean, late?: boolean, frame?: boolean | 'same', frames?: unknown[] } = {}) => {
+      // A page as sleepInPage reads it.
+      globalThis.document = { visibilityState: hidden ? 'hidden' : 'visible', querySelectorAll: (sel: string) => (sel.startsWith('audio') ? media : sel.startsWith('textarea') ? fields : sel.startsWith('iframe') ? frames : []), fullscreenElement: null } as unknown as Document;
       Object.defineProperty(globalThis, 'location', { value: { href }, configurable: true, writable: true });
       Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true, writable: true });
-      const win = { frameElement: frame === 'same' ? {} : null };
+      const win: { frameElement: {} | null, top?: unknown } = { frameElement: frame === 'same' ? {} : null };
       win.top = frame ? {} : win;
-      globalThis.window = win;
-      globalThis.Margin = edits === undefined ? undefined : { content: { edits: Object.assign(() => edits, { late }) } };
+      globalThis.window = win as unknown as typeof window;
+      globalThis.Margin = (edits === undefined ? undefined : { content: { edits: Object.assign(() => edits, { late }) } }) as typeof Margin; // (none: no Margin in the page)
     };
     const until = Date.now() + 1000;
     page();

@@ -7,21 +7,26 @@
 // is registered again, and dropped once the link is off.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeBrowser } from './fake-browser.ts';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const listeners = {};
-const event = (name) => ({ addListener: (fn) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
-const fire = (name, ...args) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// A listener, called with whatever its event gives.
+type Listener = (...args: any[]) => unknown;
+const listeners: Record<string, Listener[]> = {};
+const event = (name: string) => ({ addListener: (fn: Listener) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
+const fire = (name: string, ...args: unknown[]) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
 
-const fake = { tabs: new Map(), nextId: 500, created: [], removed: [], local: {}, session: {}, registered: new Map(), toPages: [] };
-const pick = (store, keys) => {
+// local, session: stored JSON. toPages: the types of the messages sent to pages.
+const fake = { tabs: new Map(), nextId: 500, created: [] as (string | undefined)[], removed: [] as number[], local: {} as Record<string, any>, session: {} as Record<string, any>, registered: new Map(), toPages: [] as (string | undefined)[] };
+const pick = (store: Record<string, any>, keys?: string | string[] | Record<string, unknown> | null) => {
   if (keys == null) return structuredClone(store);
   const list = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys);
   return Object.fromEntries(list.filter((k) => k in store).map((k) => [k, structuredClone(store[k])]));
 };
 const NEW_TAB = 'safari-web-extension://test/newtab/newtab.html';
-globalThis.fetch = async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) });
-globalThis.chrome = {
+// Only what Margin reads of a response.
+globalThis.fetch = (async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) })) as unknown as typeof fetch;
+globalThis.chrome = fakeBrowser({
   runtime: {
     id: 'test',
     getURL: (p) => `safari-web-extension://test/${p}`,
@@ -31,9 +36,11 @@ globalThis.chrome = {
     sendNativeMessage: async () => undefined,
   },
   permissions: { contains: async () => true, onAdded: event('pAdded'), onRemoved: event('pRemoved') },
-  alarms: { get: async () => ({}), create: async () => {}, clear: async () => true, onAlarm: event('onAlarm') },
+  // An alarm there already (its fields unread: background.ts).
+  alarms: { get: async () => ({}) as { name: string, scheduledTime: number }, create: async () => {}, onAlarm: event('onAlarm') },
   commands: { onCommand: event('onCommand') },
   windows: {
+    // Windows as far as Margin reads them here; its updates' answers unread.
     get: async (id) => ({ id, focused: true }), getAll: async () => [{ id: 1, focused: true }], getLastFocused: async () => ({ id: 1 }),
     update: async () => {}, create: async () => ({}), onFocusChanged: event('onFocusChanged'), onRemoved: event('wRemoved'), onBoundsChanged: event('wBounds'),
   },
@@ -47,7 +54,7 @@ globalThis.chrome = {
       fake.created.push(url);
       return { ...tab };
     },
-    remove: async (ids) => { for (const id of [].concat(ids)) { fake.removed.push(id); fake.tabs.delete(id); } },
+    remove: async (ids) => { for (const id of ([] as number[]).concat(ids)) { fake.removed.push(id); fake.tabs.delete(id); } },
     sendMessage: async (tabId, message) => { fake.toPages.push(message?.type); return undefined; },
     getZoom: async () => 1, getZoomSettings: async () => ({ defaultZoomFactor: 1 }), reload: async () => {},
     onActivated: event('onActivated'), onCreated: event('onCreated'), onUpdated: event('onUpdated'), onRemoved: event('onRemoved'),
@@ -68,7 +75,7 @@ globalThis.chrome = {
         Object.assign(fake.local, structuredClone(items));
         void fire('sChanged', changes, 'local');
       },
-      remove: async (keys) => { for (const k of [].concat(keys)) delete fake.local[k]; },
+      remove: async (keys) => { for (const k of ([] as string[]).concat(keys)) delete fake.local[k]; },
     },
     session: {
       get: async (keys) => pick(fake.session, keys),
@@ -77,7 +84,7 @@ globalThis.chrome = {
     },
     onChanged: event('sChanged'),
   },
-};
+});
 
 fake.tabs.set(1, { id: 1, windowId: 1, url: 'https://a.test/', title: 'A', index: 0, active: true, status: 'complete' });
 fake.local.settings = { fullscreenOnly: false }; // Chrome's profile (this file's): Margin in every window
@@ -85,10 +92,10 @@ fake.session.alive = true;
 fake.session.since = 1;
 fake.session.startWorkAt = Date.now();
 
-const sender = (id) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id)?.url });
-function ask(type, payload = {}, from = 1) {
+const sender = (id: number) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id)?.url });
+function ask(type: string, payload: Record<string, unknown> = {}, from = 1) {
   return new Promise((resolve) => {
-    listeners.onMessage[0]({ type, ...payload }, sender(from), (reply) => resolve(reply));
+    listeners.onMessage[0]({ type, ...payload }, sender(from), (reply: unknown) => resolve(reply));
   });
 }
 
