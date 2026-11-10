@@ -69,7 +69,7 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
   const openingRow = opening && target == null && (front == null || front.id === opening.from)
     ? { id: OPENING_ID, windowId, title: String(opening.title ?? ''), url: String(opening.url ?? ''), favIconUrl: '', active: true, opening: true, status: 'loading', order: Infinity, index: Infinity, lastActive: Date.now() }
     : null;
-  const shownNewTab = openingRow ? undefined : shown.find((t) => t.active && isNewTabPage(t.url));
+  const shownNewTab = openingRow ? undefined : shown.find((t) => t.active && isLauncherPage(t.url));
   const windowTabs = shown
     .map((t) => {
       if (openingRow) return t.active ? { ...t, active: false } : t;
@@ -155,6 +155,11 @@ function pinTabId(state: State, pinId: string, windowId: number) {
 const OPENING_ID = 'opening';
 const NEW_TAB_PAGE = /^(chrome:\/\/newtab\/?|[a-z-]+-extension:\/\/[^/]+\/newtab\/newtab\.html)(\?[^#]*)?$/i;
 const isNewTabPage = (url: unknown) => NEW_TAB_PAGE.test(String(url ?? ''));
+// What the launcher is drawn over (ui/host-app.ts, the sidebar's New Tab row): the browser's new-tab page, and
+// Margin's start page opened on purpose (#launcher, #settings: the archive button, a link to it), which isn't a new
+// tab to hand off (isNewTabPage, the background's) but is drawn the same (issue #19).
+const LAUNCHER_PAGE = /^(chrome:\/\/newtab\/?|[a-z-]+-extension:\/\/[^/]+\/newtab\/newtab\.html)(\?[^#]*)?(#(launcher|settings))?$/i;
+const isLauncherPage = (url: unknown) => LAUNCHER_PAGE.test(String(url ?? ''));
 
 // Best guess at the window a page is in, before the background has told the
 // content script its tab id (that needs the background awake, which can
@@ -270,4 +275,4 @@ function letterAvatar(label: string): { letter: string, color: string } {
 }
 
 
-export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, hue, letterAvatar };
+export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, isLauncherPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, hue, letterAvatar };

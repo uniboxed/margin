@@ -44,7 +44,7 @@
 // No browser API here: only the DOM and `post`.
 import type { Geometry, Host } from './host.ts';
 import { fromStorage } from '../shared/stored.ts';
-import { isNewTabPage } from '../shared/view.ts';
+import { isLauncherPage } from '../shared/view.ts';
 import { acrossOf, foreignSpace } from '../shared/across.ts';
 import { cloudOf } from '../shared/cloud-tabs.ts';
 import { capabilities } from '../shared/capabilities.ts';
@@ -185,7 +185,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     const own = windows.find((w: { windowId?: number, id?: number } | null) => (w?.windowId ?? w?.id) === windowId);
     const id = own?.activeTabId ?? Object.values((state?.tabs ?? {}) as Record<string, { id: number, windowId: number, active?: boolean } | null>).find((t) => t?.windowId === windowId && t?.active)?.id;
     const tab = id != null ? state?.tabs?.[id] : null;
-    return tab && isNewTabPage(tab.url) ? { id: tab.id, url: String(tab.url) } : null;
+    return tab && isLauncherPage(tab.url) ? { id: tab.id, url: String(tab.url) } : null;
   };
   const pageKey = () => JSON.stringify(frontPage());
 
