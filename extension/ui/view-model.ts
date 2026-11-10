@@ -63,7 +63,8 @@ export type UiState = {
   theme?: { id: string, name: string, settings: Record<string, any> } | null,
 };
 export type ViewModelInput = {
-  state: Partial<State> & Record<string, any> | null,
+  // As read from storage (usable() takes what's there): its settings may be only some of them.
+  state: Omit<Partial<State>, 'settings'> & { settings?: Partial<State['settings']> } & Record<string, any> | null,
   now?: number,
   ui?: UiState,
   platform?: { browser?: string, os?: string, marginFullscreen?: boolean, features?: Record<string, any> },

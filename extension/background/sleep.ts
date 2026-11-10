@@ -72,7 +72,9 @@ const TIMING = {
 // The top frame's answer that the page may sleep, or has a draft, says where it's scrolled too, when
 // it isn't at the top (`scrollY`: the scroll record, background/scroll-record.ts; back at the top,
 // the page said so itself as it was hidden): <html>'s, or <body>'s while Margin's page box scrolls it.
-export function sleepInPage(expected: string, until: number, draftsOnly: boolean = false) {
+// What a page (or frame) answers: may it sleep, and if not, why.
+export type SleepAnswer = { ok: boolean, why?: string, judged?: string, top: boolean, foreign?: number, scrollY?: number, apart?: boolean };
+export function sleepInPage(expected: string, until: number, draftsOnly: boolean = false): SleepAnswer {
   let top = true;
   let apart = false;
   try {

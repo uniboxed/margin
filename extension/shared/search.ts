@@ -87,7 +87,7 @@ function searchEngineOf(url: string) {
 const safariEngine = (settings: any) => (settings?.safariSearch?.template?.includes('%s') ? settings.safariSearch : SAFARI_DEFAULT);
 const searchUrl = (query: string, settings: any) => safariEngine(settings).template.replace('%s', encodeURIComponent(query));
 // For display: which engine a search goes to.
-const engineLabel = (settings: any, browserCan = P.capabilities) =>
+const engineLabel = (settings: any, browserCan: Pick<P.Capabilities, 'search'> = P.capabilities) =>
   (browserCan?.search === 'browser' ? 'Chrome’s search engine' : safariEngine(settings).name);
 
 const WITH_SCHEME = /^(https?|file|ftp):\/\//i;

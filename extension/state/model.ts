@@ -350,7 +350,7 @@ const sameUrl = (a: unknown, b: unknown) => typeof a === 'string' && typeof b ==
 
 // The page at `url` in tab `tabId` is scrolled to `y`. Not its record's address (it has moved on, or
 // the message came late): nothing.
-function noteScroll(state: State, tabId: number, { y, url }: { y: number, url: string }) {
+function noteScroll(state: State, tabId: number, { y, url }: { y: number, url: string }): State {
   const r = state.tabs[tabId];
   if (!r || !isWebPage(r.url) || !sameUrl(url, r.url) || !Number.isFinite(y)) return state;
   const at = Math.max(0, Math.round(y));
@@ -738,7 +738,7 @@ const awayTabs = (state: State) => new Set(Object.values(state.awayByWindow ?? {
 
 // Exactly one active tab per window. `windowId` may be missing from the
 // event; fall back to the tab's own window.
-function activateTab(state: State, tabId: number, windowId: number, now: number) {
+function activateTab(state: State, tabId: number, windowId: number | null | undefined, now: number) {
   windowId ??= state.tabs[tabId]?.windowId;
   if (windowId == null) return state;
   const tabs: Record<string, TabRecord> = {};
@@ -1048,7 +1048,7 @@ function recentTabOfSpace(state: State, windowId: number, spaceId: string | null
     .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0] ?? null;
 }
 
-function createSpace(state: State, { id, name, emoji, color }: { id: string; name: string | undefined; emoji: string | undefined; color: string | undefined; }) {
+function createSpace(state: State, { id, name, emoji, color }: { id: string; name?: string; emoji?: string; color?: string; }) {
   const space = {
     id,
     name: name?.trim() || 'New space',
@@ -1081,7 +1081,7 @@ function spaceWindowTabs(state: State, spaceId: string) {
 }
 
 // Rename, re-emoji or recolor.
-function updateSpace(state: State, spaceId: string, patch: { name: string | undefined; emoji: string | undefined; color: string | undefined; }) {
+function updateSpace(state: State, spaceId: string, patch: { name?: string; emoji?: string; color?: string; }) {
   const allowed: Record<string, string> = {};
   for (const key of ['name', 'emoji', 'color'] as const) {
     const value = typeof patch[key] === 'string' ? patch[key].trim() : '';
@@ -1264,7 +1264,7 @@ function deleteSpace(state: State, spaceId: string) {
 // ---- archive --------------------------------------------------------------
 
 // Newest first, one entry per URL, capped.
-function archiveTab(state: State, { id, url, title, spaceId, favIconUrl, closedAt }: ArchiveEntry, cap = ARCHIVE_CAP) {
+function archiveTab(state: State, { id, url, title, spaceId, favIconUrl, closedAt }: Omit<ArchiveEntry, 'favIconUrl' | 'title'> & { favIconUrl?: string, title?: string }, cap = ARCHIVE_CAP) {
   if (!url) return state;
   const key = normalizeUrl(url);
   const entry = { id, url, title: title || url, spaceId, favIconUrl: favIconUrl || '', closedAt };
@@ -1273,7 +1273,7 @@ function archiveTab(state: State, { id, url, title, spaceId, favIconUrl, closedA
 }
 
 // Remember a site's icon; keeps the most recently fetched FAVICON_CAP sites.
-function rememberFavicon(state: State, origin: string, { data, href, at }: { data: any; href: any; at: number; }, cap = FAVICON_CAP) {
+function rememberFavicon(state: State, origin: string | null, { data, href, at }: { data: any; href: any; at: number; }, cap = FAVICON_CAP) {
   if (!origin || !data) return state;
   const entries = Object.entries({ ...state.favicons, [origin]: { data, href, at } })
     .sort((a, b) => b[1].at - a[1].at)

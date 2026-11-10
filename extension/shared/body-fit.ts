@@ -14,7 +14,7 @@ export const SIZES = ['width', 'minWidth', 'maxWidth', 'height'];
  * A length as the page wrote it, in pixels of `whole`: NaN if it takes a
  * layout to know, as `auto` and `fit-content` do.
  */
-export function pixels(value: string, whole: number, parse: any) {
+export function pixels(value: string, whole: number, parse?: any) {
   if (value.endsWith('px')) return parseFloat(value);
   if (!value.includes('(')) return value.endsWith('%') ? (parseFloat(value) * whole) / 100 : NaN;
   try { // calc(), min(), clamp(): the browser's own arithmetic, once percents are lengths
@@ -23,7 +23,7 @@ export function pixels(value: string, whole: number, parse: any) {
     return NaN;
   }
 }
-export const settled = (value: string, parse: any) => value === 'auto' || value === 'none' || !Number.isNaN(pixels(value, 0, parse));
+export const settled = (value: string, parse?: any) => value === 'auto' || value === 'none' || !Number.isNaN(pixels(value, 0, parse));
 
 /** A margin collapsed with others, as CSS 2 §8.3.1 adds them up. */
 export const collapsed = (list: number[]) => Math.max(0, ...list) + Math.min(0, ...list);
@@ -39,7 +39,7 @@ export const growsIn = ({ lengths }: { lengths: string[] }) => lengths.at(-1) ==
  * A margin can't collapse with the first child's as padding does: only what
  * it adds to theirs stays, which can be less than nothing.
  */
-export function topMargin(top: number, { meets, collapses }: { meets: boolean, collapses: string[] }, padding: number, width: number, parse: any) {
+export function topMargin(top: number, { meets, collapses }: { meets: boolean, collapses: string[] }, padding: number, width: number, parse?: any) {
   if (!meets || padding) return top;
   const tops = collapses.map((length) => pixels(length, width, parse) || 0);
   return collapsed([top, ...tops]) - collapsed(tops);
@@ -49,7 +49,7 @@ export function topMargin(top: number, { meets, collapses }: { meets: boolean, c
  * The width equation of CSS 2 §10.3.3, for a block in <html>. In <body>'s own
  * pixels: `zoom` scales what it says and the padding that comes back alike.
  */
-export function resolve(said: any, parse: any) {
+export function resolve(said: any, parse?: any) {
   const { lengths, borders, boxSizing, direction, column, zoom } = said;
   const whole = said.whole / zoom;
   const [top, right, bottom, left, ...rest] = lengths.map((length: string) => pixels(length, whole, parse));

@@ -21,7 +21,7 @@ export type MenuTarget = { kind: 'tab' | 'pin' | 'folder' | 'space' | 'add' | 'c
  * as the sidebar shows it (ui/view-model.ts `space`: its `pinned` area, the
  * folders and pins in the order shown). None: no menu (its subject is gone).
  * */
-export function menuItems(target: MenuTarget | null | undefined, { state, space }: { state: (Partial<State> & Record<string, any>) | null, space: SpaceView | null | undefined }): MenuItem[] {
+export function menuItems(target: MenuTarget | null | undefined, { state, space }: { state: (Omit<Partial<State>, 'settings'> & { settings?: Partial<State['settings']> } & Record<string, any>) | null, space: SpaceView | null | undefined }): MenuItem[] {
   if (!target || !state) return [];
   const list: MenuItem[] = [];
   let n = 0;

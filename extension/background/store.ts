@@ -321,7 +321,7 @@ export function adoptDataSet(setFor: (state: State) => { items?: Record<string, 
  * crossing a change doesn't undo it), and the items the app left out
  * (`omitted`: [[collection, id]], too big to send) kept as this copy has them.
  */
-export function adoptAppSet(set: { items?: Record<string, Record<string, any>> }, { changes = [], omitted = [] }: { changes?: any[], omitted?: any[] } = {}) {
+export function adoptAppSet(set: { format?: number, items?: Record<string, Record<string, any>> }, { changes = [], omitted = [] }: { changes?: any[], omitted?: any[] } = {}) {
   return adoptDataSet((s) => {
     let full = set;
     if (omitted.length) {
