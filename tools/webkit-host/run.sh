@@ -3,7 +3,8 @@
 # build: ./run.sh <scenario> | ./run.sh all | ./run.sh path/to/scenario.json
 # Exits 1 if a check failed. Nothing shows on screen. Run `npm run build` first.
 # Several runs can go at once with their own MARGIN_HOST_PORT (default 47811)
-# and MARGIN_HOST_BUILD (default build/); MARGIN_HOST_TIMEOUT: seconds per run;
+# and MARGIN_HOST_BUILD (default build/); MARGIN_HOST_TIMEOUT: seconds per run; MARGIN_HOST_SLOW: every
+# check's wait that many times longer (CI's virtual Macs; default 1);
 # MARGIN_HOST_DIST: another Safari build to test (default ../../dist/webkit; a relative
 # path is from tools/webkit-host).
 set -u

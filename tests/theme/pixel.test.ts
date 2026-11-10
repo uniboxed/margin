@@ -107,7 +107,7 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(await text('.chip'), ['1', '2', '3'], 'chips by number, counted from 1');
         assert.equal(await count('.chip.on'), 1);
         assert.equal(await count('.tab.on'), 1, 'one row lit');
-        assert.equal(await ev(() => T.rtVisible('.tab.on .cursor .now')), true, 'the ▶ cursor before it');
+        assert.equal(await ev(() => T.rtShown('.tab.on .cursor .now')), true, 'the ▶ cursor before it (shown; it blinks)');
         assert.equal(await count('.clear'), 1);
         assert.deepEqual(await text('.today-label'), ['TODAY']);
         assert.equal(await count('.new-tab'), 1);
@@ -239,7 +239,7 @@ for (const [name, engine] of ENGINES) {
         assert.equal(vm.selected, vm.rowIds[11]);
         const on = await ev(() => T.rtRect('.palette-row.on'));
         assert.ok(on.top >= list.top - 1 && on.bottom <= list.bottom + 1, 'the selected row scrolled into view');
-        assert.equal(await ev(() => T.rtVisible('.palette-row.on .cursor .now')), true, 'with its ▶');
+        assert.equal(await ev(() => T.rtShown('.palette-row.on .cursor .now')), true, 'with its ▶ (shown; it blinks)');
         await page.keyboard.type('nimbus');
         assert.ok((await ev(() => T.rtVmFull())).rows.slice(0, 2).every((r) => /nimbus/i.test(r)));
         await page.keyboard.press('Enter');
