@@ -99,7 +99,7 @@ test('Settings open from the launcher', async (t) => {
 // overlay (shared/view.ts NEW_TAB_PAGE ends at an optional query, so a #hash doesn't match): no
 // launcher is drawn over it, the sidebar lists it as a "New Tab" row, and the page shows its own
 // "Margin.app isn't running" notice (the [hidden] bug above) while the app is linked.
-test('Margin\'s start page opened on purpose (#launcher) is drawn as the launcher and stays open', { todo: 'newtab.html#launcher gets no launcher; the page says "Margin.app isn\'t running" while linked' }, async (t) => {
+test('Margin\'s start page opened on purpose (#launcher) is drawn as the launcher and stays open', async (t) => {
   const { page, tab } = await newTabPage('#launcher');
   try {
     await m.shoot(t, 'start-page', { page });
