@@ -145,6 +145,10 @@ jobs:
           MARGIN_TEST_THEMES: ${{ matrix.themes }}
         # ($FILES unquoted: a list of test files, or a glob in the fallback.)
         run: node --test --test-concurrency=1 --test-shard="$SHARD" $FILES
+      # (Once, on the first half's Mac: Chrome for Testing's own setting, which outweighs the runner's above.)
+      - name: The box patterns with classic scroll bars, always shown and taking space, as on a Mac with a mouse (GitHub issue #17)
+        if: ${{ !cancelled() && matrix.kind == 'e2e' && matrix.shard == '1/2' }}
+        run: node scripts/scroll-bars.mts always node --test tests/e2e/box-patterns.test.ts
       - name: Test results, when something failed
         if: failure()
         uses: actions/upload-artifact@v7
@@ -211,3 +215,10 @@ jobs:
         env:
           MARGIN_HOST_SLOW: "2"
         run: npm run test:webkit
+      # (The host's own setting, its argument domain, over the runner's above: tools/webkit-host/run.sh.)
+      - name: The WebKit host's box patterns with classic scroll bars, always shown and taking space (GitHub issue #17)
+        if: ${{ !cancelled() }}
+        env:
+          MARGIN_HOST_SLOW: "2"
+          MARGIN_SCROLL_BARS: always
+        run: tools/webkit-host/run.sh box-patterns
