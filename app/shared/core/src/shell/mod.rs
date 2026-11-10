@@ -1074,6 +1074,21 @@ impl Shell {
         }
     }
 
+    /// A Chrome or Edge copy's hello names its browser process as its connector told it. Trusted as on the Mac
+    /// (Tirth, 2026-11-09: never refused), but one that no connector has named since the app started is logged:
+    /// a copy linking with a link kept from before, a connector that knew no process, or a hello not as its relay said.
+    fn warn_unheard_pid(&mut self, key: &str, hello: &Hello) {
+        if hello.browser == "safari" {
+            return; // Safari's copies find the app through its extension handler, not a connector
+        }
+        let Some(pid) = hello.pid.and_then(|p| u32::try_from(p).ok()).filter(|p| *p > 0) else { return };
+        if !self.relays.heard_pid(pid) {
+            self.out.warn(format!(
+                "{key}: its hello says browser process {pid}, which no connector has named: trusted, as on the Mac"
+            ));
+        }
+    }
+
     fn link_up(&mut self, conn: ConnId, hello: Hello) {
         let key = hello.key();
         let mut entry = LinkEntry {
@@ -1090,6 +1105,7 @@ impl Shell {
             held: HeldPushes::default(),
         };
         entry.mirror.begin(&hello);
+        self.warn_unheard_pid(&key, &hello);
         self.data.link_up(&entry.data_link());
         self.links.insert(key.clone(), entry);
         self.linked_at.insert(key.clone(), self.now);

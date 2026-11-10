@@ -490,10 +490,20 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // ---- links ----
 
+    // A Chrome or Edge copy's hello names its browser process as its connector told it. Trusted (Tirth, 2026-11-09:
+    // never refused), but one no connector has named since the app started is logged: a copy linking with a link
+    // kept from before, a connector that knew no process, or a hello not as its relay said. The same in margin-core
+    // (app/shared/core/src/shell/mod.rs warn_unheard_pid), word for word.
+    nonisolated static func unheardPid(_ key: String, _ hello: LinkMessage.Hello, heard: (pid_t) -> Bool) -> String? {
+        guard hello.browser != "safari", let pid = hello.pid, pid > 0, pid <= Int(Int32.max), !heard(pid_t(pid)) else { return nil }
+        return "\(key): its hello says browser process \(pid), which no connector has named: trusted, as on the Mac"
+    }
+
     func linkUp(_ connection: LinkConnection) {
         let entry = Link(connection)
         entry.drawn.grace = options.drawnGrace
         entry.mirror.begin(connection.hello)
+        if let hub = link.relay, let warning = Self.unheardPid(connection.key, connection.hello, heard: hub.heardPid) { Diagnostics.warn(warning) }
         links[connection.key] = entry
         linkedAt[connection.key] = options.clock()
         options.trace?.event("link up \(connection.key)", at: Diagnostics.now())

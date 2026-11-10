@@ -37,7 +37,7 @@ The same link as Safari's, from step 3 on: the copy's WebSocket to `127.0.0.1`, 
 
 **On Windows** it's the same (`docs/windows/BRIEF.md`): the connector is `margin-connector.exe` beside `margin.exe`, the app's connector socket is its named pipe `\\.\pipe\Margin-<user SID>` (this user only; each end checks the other is Margin's), the browser is the connector's first ancestor that isn't `cmd.exe`, and the host file is one file under `%LOCALAPPDATA%\Margin` named in each browser's registry key. The link is the copy's WebSocket to `127.0.0.1`, as here.
 
-A copy in Chrome or Edge says `browser` and `pid` in its `hello` as the relay told it. Its `profile` is its own (`p-…`): Chromium gives an extension no profile id.
+A copy in Chrome or Edge says `browser` and `pid` in its `hello` as the relay told it. The app trusts them, and never refuses a link for them; a `pid` that no relay's hello has named since the app started is logged as a warning at link up (both apps: `Shell.unheardPid`, margin-core's `warn_unheard_pid`). Its `profile` is its own (`p-…`): Chromium gives an extension no profile id.
 
 ## Messages
 

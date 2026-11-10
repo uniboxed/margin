@@ -673,3 +673,34 @@ fn quitting_says_bye_on_the_socket_and_closes_the_relays() {
     assert!(out.contains(&Command::End { conn: 1 }));
     assert!(out.contains(&Command::RelayEnd { conn: 1 }));
 }
+
+#[test]
+fn a_hello_naming_a_process_no_connector_named_is_trusted_and_logged() {
+    const UNWARNED: &str = "which no connector has named";
+    // The usual way: the connector named Edge's process, the copy's hello says the same. Nothing logged.
+    let h = H::linked();
+    assert!(!h.logs().iter().any(|l| l.contains(UNWARNED)), "{:?}", h.logs());
+    // A copy saying a process none of the connectors said: linked all the same, with a warning.
+    let mut h = H::linked();
+    let token = h.want_link(1)["token"].as_str().unwrap_or("").to_owned();
+    h.connect(2, &token, ORIGIN);
+    let say = |v: Value| Input::SocketBytes { conn: 2, bytes: client_frame(1, v.to_string().as_bytes(), true) };
+    h.input(say(json!({ "k": "hello", "v": 2, "epoch": "c1", "profile": "p-b", "browser": "chrome", "pid": 777, "owner": true })));
+    assert_eq!(h.shell.link_keys(), vec!["chrome:p-b".to_string(), "edge:p-a".to_string()], "never refused");
+    let warned: Vec<Command> =
+        h.log.iter().filter(|c| matches!(c, Command::Log { text, .. } if text.contains(UNWARNED))).cloned().collect();
+    assert_eq!(warned.len(), 1);
+    assert!(matches!(&warned[0], Command::Log { warn: true, text }
+        if text == "chrome:p-b: its hello says browser process 777, which no connector has named: trusted, as on the Mac"));
+    // A connector gone still counts: its process was named.
+    h.input(Input::RelayEnded { conn: 1 });
+    h.connect(3, &token, ORIGIN);
+    let say3 = |v: Value| Input::SocketBytes { conn: 3, bytes: client_frame(1, v.to_string().as_bytes(), true) };
+    h.input(say3(json!({ "k": "hello", "v": 2, "epoch": "e2", "profile": "p-a", "browser": "edge", "pid": EDGE, "owner": true, "instanceId": "i1" })));
+    assert_eq!(h.log.iter().filter(|c| matches!(c, Command::Log { text, .. } if text.contains(UNWARNED))).count(), 1);
+    // No process said, or Safari's (no connector): nothing to match, nothing logged.
+    h.connect(4, &token, ORIGIN);
+    let say4 = |v: Value| Input::SocketBytes { conn: 4, bytes: client_frame(1, v.to_string().as_bytes(), true) };
+    h.input(say4(json!({ "k": "hello", "v": 2, "epoch": "d1", "profile": "p-c", "browser": "chrome", "owner": true })));
+    assert_eq!(h.log.iter().filter(|c| matches!(c, Command::Log { text, .. } if text.contains(UNWARNED))).count(), 1);
+}

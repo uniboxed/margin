@@ -62,6 +62,9 @@ final class RelayHub {
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
     private var relays: [ObjectIdentifier: RelayConnection] = [:]
+    // Every browser process a relay's hello has named since the app started (gone relays' too): a copy's hello names
+    // its process as its relay told it, so one that matches none is worth a word in the log (Shell.unheardPid).
+    private var heard: Set<pid_t> = []
 
     init(path: String = RelayHub.defaultPath, version: String = RelayHub.appVersion, allows: ((Peer) -> String?)? = nil) {
         self.path = path
@@ -80,6 +83,9 @@ final class RelayHub {
     static var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "" }
 
     var connected: Int { relays.count }
+
+    // Whether a relay's hello has named this browser process since the app started.
+    func heardPid(_ pid: pid_t) -> Bool { heard.contains(pid) }
 
     func start(link: SocketLink) {
         guard listenFD < 0 else { return }
@@ -195,6 +201,7 @@ final class RelayHub {
                 return relay.close()
             }
             let pid = (message["pid"] as? Int).map { pid_t($0) } ?? 0
+            if pid > 0 { heard.insert(pid) }
             relay.hello = RelayConnection.Hello(browser: browser, pid: pid, version: message["version"] as? String ?? "", waited: message["waited"] as? Bool == true)
             relay.send(["k": "relayWelcome", "v": 1, "version": version])
             // Waiting for the app, the copies asked in vain: they ask again now (as Safari's do on appUp).

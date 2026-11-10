@@ -3480,6 +3480,9 @@ the Safari build are untouched by this work, which lives on `feat/windows-shell`
   under the tabs and toolbar (`planner::windowed_frame`; the shell's `windowed_too`, off on the Mac). Its layout is
   measured from where the copy takes its page to be, so `boxFromLayout` puts the page's box at the slot without
   knowing about Windows' invisible borders.
+- **A copy's process is trusted, as on the Mac** (Tirth, 2026-11-09): a Chrome or Edge copy's `hello.pid` is never
+  checked against the connectors before linking, but both apps log a warning at link up when no connector's hello
+  has named that process since the app started (`Shell.unheardPid` in Swift, `warn_unheard_pid` in margin-core).
 - **Keys on Windows are provisional, to pick with Tirth:** next/previous tab Ctrl+Alt+↓/↑, space Ctrl+Alt+→/←, palette
   Ctrl+T, sidebar Alt+S, new window Ctrl+N. Ctrl+Alt is AltGr on many European layouts, and some graphics drivers take
   Ctrl+Alt+arrows. Only the combinations the copy writes for the Mac (`Meta+KeyT`, the built-in navigation keys,

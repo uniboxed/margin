@@ -389,6 +389,12 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("windows: only the pages' words changed", Shell.onlyVisibilityChanged(w1, w2) && Shell.onlyVisibilityChanged(w1, w3) && Shell.onlyVisibilityChanged(w1, w5))
     check("windows: another tab in front, a focus flag, a window more or less, the first list: more than that", !Shell.onlyVisibilityChanged(w1, w4) && !Shell.onlyVisibilityChanged(w1, w6)
           && !Shell.onlyVisibilityChanged(w1, Array(w1.prefix(1))) && !Shell.onlyVisibilityChanged([], w1))
+    // A copy's hello naming a browser process no connector named: trusted, logged once at link up.
+    let chrome = { (pid: Int?) in LinkMessage.Hello(epoch: "c1", profile: "p-b", browser: "chrome", ext: nil, owner: true, instanceId: nil, origin: nil, since: nil, pid: pid) }
+    check("link up: a process no connector named is logged, in margin-core's words",
+          Shell.unheardPid("chrome:p-b", chrome(777), heard: { $0 == 42 }) == "chrome:p-b: its hello says browser process 777, which no connector has named: trusted, as on the Mac")
+    check("link up: a process a connector named, none said, or Safari's: nothing", Shell.unheardPid("chrome:p-b", chrome(42), heard: { $0 == 42 }) == nil
+          && Shell.unheardPid("chrome:p-b", chrome(nil), heard: { _ in false }) == nil && Shell.unheardPid("safari:P1", hello, heard: { _ in false }) == nil)
   }
 
   static func layouts() {

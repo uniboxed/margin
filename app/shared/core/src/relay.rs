@@ -22,7 +22,7 @@
 //! connections from Margin's connector, says each one's bytes and end, writes [`RelayOut::Write`]s in order and
 //! closes on [`RelayOut::End`] (at once: what's queued is left).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
@@ -83,6 +83,10 @@ pub struct RelayHub {
     /// The app's version (`relayWelcome.version`).
     version: String,
     relays: BTreeMap<ConnId, Relay>,
+    /// Every browser process a relay's hello has named since the app started (gone relays' too): a copy's hello
+    /// names its process as its relay told it, so one that matches none is worth a word in the log
+    /// ([`RelayHub::heard_pid`]).
+    heard: BTreeSet<u32>,
 }
 
 /// `RelayHub.dispatched`: a dispatch as Safari's arrives on the copy's port: `{ name, userInfo: { e: <JSON string> } }`.
@@ -98,12 +102,17 @@ pub fn dispatched(name: &str, info: &Object) -> Object {
 
 impl RelayHub {
     pub fn new(version: impl Into<String>) -> Self {
-        Self { version: version.into(), relays: BTreeMap::new() }
+        Self { version: version.into(), relays: BTreeMap::new(), heard: BTreeSet::new() }
     }
 
     /// The relays connected (said hello or not).
     pub fn connected(&self) -> usize {
         self.relays.values().filter(|r| !r.closed).count()
+    }
+
+    /// Whether a relay's hello has named this browser process since the app started.
+    pub fn heard_pid(&self, pid: u32) -> bool {
+        self.heard.contains(&pid)
     }
 
     /// What a relay said of itself, once it has.
@@ -188,6 +197,9 @@ impl RelayHub {
                 waited: json::boolean(message.get("waited")) == Some(true),
             };
             let waited = hello.waited;
+            if pid > 0 {
+                self.heard.insert(pid);
+            }
             relay.hello = Some(hello);
             let mut welcome = Object::new();
             welcome.insert("k".into(), "relayWelcome".into());
