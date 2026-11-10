@@ -71,6 +71,15 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 - WebKit's own extension engine, Safari reloading Margin, tab ids changing on a relaunch;
 - the app's data files and the real Swift link.
 
+## Safari startup (2026-11-10)
+
+- [ ] With the installed build updated (`npm run safari`), quit and reopen Safari restoring two full-screen windows from different profiles. As each window is identified, a native “Getting things ready for you” splash appears until Margin's layout is ready; there is no empty color panel. Repeat in light and dark appearances.
+- [ ] Both windows get the correct profile's sidebar, including after a signed/unsigned build change. Visit their Spaces and check the tabs belong to that profile.
+- [ ] Open a window with Margin disabled: no splash. A normal window is left alone. Quitting Safari while a splash is up removes it; a startup failure releases the cover after at most six seconds.
+- [ ] Read `npm run log:app -- 5`: `Accessibility: window … is …` must name the currently linked profile, followed by `overlay page drawn … in … ms`, `overlay shown over …`, and `startup layout over window … ready after … ms` when a splash was used. A link reaching the app and an overlay drawing do not themselves prove that the overlay was shown.
+
+Automated coverage: `npm run test:app` checks historical copy IDs against the current Safari mapping, invalidation and relearning of an old window identity, ambiguous profile names, cover removal/timeout rules, and the native splash off screen in both appearances (`tools/app-tests/build/startup-{light,dark}.png`). These checks use stand-in browser windows; real Safari's extension launch delay and first-frame coverage still need the checks above.
+
 ## Chrome and Edge on the Mac (2026-11-09)
 
 Margin.app now links Chrome's and Edge's copies the way it links Safari's (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"). Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "com.unibox.margin"'` (zsh's `log` is a builtin).

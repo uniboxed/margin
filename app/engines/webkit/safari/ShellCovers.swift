@@ -2,7 +2,7 @@
 // 2026-11-07: "i should never see safari's ui at all even when i am opening safari for the first time").
 //
 // A Margin layout needs its copy linked and its overlay page drawn: about 1-2 s after Safari opens its windows.
-// Until then each such window is covered: a plain panel in Margin's frame tone over the whole window, in that
+// Until then each such window is covered: a native startup message in Margin's frame tone over the whole window, in that
 // window's Space (on screen: just above it; in another Space: placed there, as Overlay.placeAhead does). It goes
 // as soon as the window's overlay is shown over it, or placed in its Space; when the window is gone, out of full
 // screen, parked or in a switch; at once when no layout is coming (Safari refusing the link's hand-off, 2026-11-09:
@@ -19,6 +19,9 @@ final class SafariCover {
     let number: Int // the Safari window it covers
     let since: Double
     let panel: NSPanel
+    private let progress = NSProgressIndicator()
+    private let detail = NSTextField(wrappingLabelWithString: "Your spaces will be ready in a moment.")
+    private(set) var preparingLayout = false
     init(number: Int, since: Double) {
         self.number = number
         self.since = since
@@ -32,8 +35,44 @@ final class SafariCover {
         panel.collectionBehavior = [.managed, .fullScreenAuxiliary, .ignoresCycle]
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         panel.backgroundColor = dark ? NSColor(calibratedWhite: 0.11, alpha: 1) : NSColor(calibratedWhite: 0.93, alpha: 1)
+        let content = NSView(frame: panel.contentRect(forFrameRect: panel.frame))
+        content.wantsLayer = true
+        content.layer?.backgroundColor = panel.backgroundColor?.cgColor
+        let title = NSTextField(labelWithString: "Getting things ready for you")
+        title.font = .systemFont(ofSize: 22, weight: .semibold)
+        title.alignment = .center
+        detail.font = .systemFont(ofSize: 13)
+        detail.textColor = .secondaryLabelColor
+        detail.alignment = .center
+        let mark = NSImageView(image: NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: "Margin") ?? NSImage())
+        mark.contentTintColor = .labelColor
+        mark.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 36, weight: .regular)
+        progress.style = .spinning
+        progress.controlSize = .small
+        progress.isIndeterminate = true
+        progress.isDisplayedWhenStopped = true
+        let stack = NSStackView(views: [mark, title, detail, progress])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 14
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+            stack.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor, constant: -48),
+            mark.heightAnchor.constraint(equalToConstant: 44),
+            mark.widthAnchor.constraint(equalToConstant: 44),
+        ])
+        panel.contentView = content
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { progress.startAnimation(nil) }
     }
-    func close() { panel.orderOut(nil); panel.close() }
+    func update(preparingLayout: Bool) {
+        guard self.preparingLayout != preparingLayout else { return }
+        self.preparingLayout = preparingLayout
+        detail.stringValue = preparingLayout ? "Preparing your layout…" : "Your spaces will be ready in a moment."
+    }
+    func close() { progress.stopAnimation(nil); panel.orderOut(nil); panel.close() }
 }
 
 /// Which of Safari's windows want a cover now, and which covers go (pure: the shell's covers loop carries it out).
@@ -135,6 +174,8 @@ extension Shell {
                 coverExpired.insert(n)
                 if facts.linkStalled { Diagnostics.note("cover over window \(n) taken away: no layout is coming (Safari refuses the link's hand-off)") }
                 else { Diagnostics.note("cover over window \(n) taken away after \(Int(Self.coverFor)) s: its layout wasn't ready") }
+            } else if let c = covers[n], facts.laidOut.contains(n) {
+                Diagnostics.note("startup layout over window \(n) ready after \(Diagnostics.ms(since: c.since)) with the splash shown")
             }
             covers[n]?.close()
             covers[n] = nil
@@ -156,7 +197,19 @@ extension Shell {
                 guard moved else { c.close(); continue }
             }
             covers[n] = c
-            Diagnostics.note("cover over window \(n) (\(exact[n] ?? "?")): until its layout is ready")
+            Diagnostics.note("cover over window \(n) (\(exact[n] ?? "?")): native splash until its layout is ready")
+        }
+        // Restored windows can change size while Safari enters full screen.
+        for (n, c) in covers {
+            if let w = wanted[n] {
+                let frame = ScreenGeometry.appKitRect(w.bounds)
+                if c.panel.frame != frame { c.panel.setFrame(frame, display: true) }
+            }
+            let preparing = exact[n].flatMap { links[$0] } != nil
+            if preparing != c.preparingLayout {
+                c.update(preparingLayout: preparing)
+                Diagnostics.note("startup window \(n): \(preparing ? "copy linked, preparing layout" : "waiting for its copy") after \(Diagnostics.ms(since: c.since))")
+            }
         }
         // Kept just above its window (Safari raises its window as it opens).
         for (n, c) in covers where wanted[n]?.onScreen == true { c.panel.order(.above, relativeTo: n) }

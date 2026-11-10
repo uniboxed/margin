@@ -6,6 +6,7 @@ Ambiguous calls made while building Margin, newest milestone last. "Verified" me
 
 Things to revisit. Remove an item once it's done.
 
+- **Archive/palette E2E is intermittent.** On 2026-11-10, `archive.test.ts`'s palette restore sometimes failed waiting for the dashboard in front or its highlighted row. The startup work changed no extension or browser-harness code; isolated runs also failed, then an isolated run and a full 149-test run passed unchanged. Not fixed by the startup work; investigate the remaining restore/close ordering (see the startup decision below).
 - **Safari's search engine still needs a better answer.** Margin learns it only from a search made in Safari's own address bar, so after changing Safari → Settings → Search, Margin keeps the old engine until one such search (see "Searches use the browser's search engine"). Safari gives extensions no search API and no access to its settings. Ideas to explore: a better first-run default or prompt; detecting the engine some other way; an optional manual override. Flagged (2026-10-25): "we will have to do something about this."
 - **Squircle corners, once Safari draws them.** Safari's "CSS corner-shape property" flag (Testable) made Margin's squircles draw as squares, so they were removed. When a shipping Safari has corner-shape on by default (stable in WebKit's development version already) and it draws correctly, re-add `border-radius: 11px; corner-shape: squircle` for the page card (fitted to Arc: error 0.34 vs 3.06 for the 6.25px circle) and ×1.75 radii elsewhere. Gate it on that Safari, not on `@supports`. The removed code is in commit "feat(ui): use squircles, navigation api, top layer and switches where supported"; see "Squircles removed" below.
 - **Trackpad gestures are a first version to improve later** (the note: "we will improvise it more later"): pull-to-refresh, swipe back/forward and pinch-zoom feel and thresholds (shared/pull.js, shared/gestures.js).
@@ -3914,3 +3915,43 @@ The two flakes left in GitHub issue #13's end-to-end tests:
   "the launcher drawn over the start page". With `NEW_TAB_PAGE` taking a hash (tried, not kept), newtab.test.ts's
   todo passes that way; archive.test.ts's then fails sooner (its start page not in front after the archive button):
   the product fix is more than the pattern.
+
+## Safari startup: current profile identities and a native splash (2026-11-10)
+
+- **Measured in the installed app's logs.** At 12:09:55 Margin started; Safari's copies started around
+  12:09:59, linked within the next ~150 ms (the handler's link reply took 156–406 ms), and the overlay
+  pages drew at 12:10:01.7. Drawing did not mean showing: the restored Test A/B windows were identified
+  as hidden historical copies, while their current copies remained unbound. At 11:51 the same old
+  identities held blank startup covers for their full six seconds. Safari starting its extensions late
+  is one part of the delay; the incorrect window identity is a separate bug that can prevent showing entirely.
+- **The cause.** BrowserProfiles.browserNames deliberately retains names for historical copy IDs after a
+  signing change, for data carry-over and the profile picker. The live browser.json confirms Test A and
+  Test B each have an old hidden ID and a current ID linked to the same Safari profile. AX matching was
+  using all those names, choosing a dictionary entry when names tied, and keeping that identity for the
+  life of the window. Window matching now uses windowNames, only Safari's current mapping. Cached AX
+  identities whose copy is no longer in that mapping are forgotten and read again. A mapping change
+  wakes tracking and the cover loop. Two current profiles with identical names remain ambiguous instead
+  of choosing one; the binder's other evidence can still identify them.
+- **The startup cover is native AppKit.** “Getting things ready for you”, a secondary message and a system
+  spinner draw without waiting for an extension link, theme or WebKit. Once that window's copy links,
+  the message becomes “Preparing your layout…”. Reduced motion leaves the spinner still. The panel follows
+  the restored window's frame as it changes and keeps the existing focus, pointer, profile and full-screen
+  rules. It goes when the overlay is shown/placed, and the existing six-second limit and stalled-link
+  release remain. This cannot cover a window before the helper starts Margin and Accessibility identifies it.
+- **Report the front window before scanning other Spaces.** SafariAX.refresh used to hold windows it had
+  already found until the private element scan finished (up to one second while Safari is busy restoring).
+  It now reports known windows first and newly scanned ones afterwards; AXKnown merges both deliveries.
+  The scan's limits and retry rules stay as before. The real Safari latency improvement needs a cold-launch check.
+- **Diagnostics.** Each overlay records load-to-drawn milliseconds; each covered window records when its
+  copy links and how long the splash lasted before the actual layout showed. No page titles or URLs added.
+- **Verification.** Regression checks cover historical IDs, current matching, invalidation and relearning,
+  ambiguous names and overlapping name prefixes. Native end-to-end checks render the splash off screen
+  in both appearances and check layout, stage changes and focus/pointer behavior. TESTING.md has the real
+  Safari cold-launch checks. Historical Safari logs were inspected; the changed build has not been
+  manually verified in Safari.
+- **Browser verification:** `npm test`: 1,017 passed. `npm run test:e2e`: the final run passed all 149;
+  the first run passed 148 and failed the archive/palette restore (also intermittent in isolated repeats,
+  with no extension or browser-test changes kept). Native checks passed 2,070 on the full randomized run,
+  then 2,071 after the scan-delivery regression was added (WINDOW_RUNS=50, VISIBLE_RUNS=80); all 491 native
+  end-to-end checks passed, including the splash's two appearances. The app, handler and helper type-check
+  without compiler warnings.

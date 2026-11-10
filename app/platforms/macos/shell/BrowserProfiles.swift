@@ -90,6 +90,15 @@ final class BrowserProfiles {
     private(set) var browserNames: [String: BrowserName] = [:]
     struct BrowserName: Equatable { var name: String; var symbol: String }
 
+    // Window identity uses only the copies Safari currently maps. browserNames also
+    // names historical copies after a signing change, for data carry-over and the
+    // profile picker; feeding those aliases to Accessibility makes a title ambiguous.
+    var windowNames: [String: String] {
+        Dictionary((browserList ?? []).compactMap { p in
+            p.margin.map { ($0, p.name) }
+        }, uniquingKeysWith: { a, _ in a })
+    }
+
     // `root`: the data folder (DataStore.root); nil keeps it in memory (the unit tests).
     init(browser: String, root: URL?) {
         self.browser = browser

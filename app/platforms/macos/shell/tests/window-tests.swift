@@ -1636,8 +1636,20 @@ extension Tests {
     func win(_ n: Int, _ title: String, full: Bool = true) -> SafariAX.Window { SafariAX.Window(number: n, title: title, fullScreen: full) }
     do {
       var k = AXKnown()
+      _ = k.learn([11: win(11, "Test A — Start Page")], names: ["s-old": "Test A"])
+      check("startup: a corrected copy mapping drops an old window identity, keeping its full-screen fact",
+            k.keepProfiles(names: ["s-new": "Test A"]) == [11] && k.profiles[11] == nil && k.fullScreen[11] == true)
+      check("startup: the restored window is named again for the current copy without closing Safari",
+            k.learn([11: win(11, "Test A — Start Page")], names: ["s-new": "Test A"]) == [11] && k.profiles[11] == "safari:s-new")
+      check("startup: an unchanged mapping keeps its exact identity", k.keepProfiles(names: ["s-new": "Test A"]).isEmpty)
+    }
+    do {
+      var k = AXKnown()
       let learned = k.learn([7: win(7, "Test A — Start Page")], names: names)
       check("a created window's event names its profile at once, no read needed", learned == [7] && k.profiles[7] == "safari:s-c" && k.fullScreen[7] == true, "\(learned) \(k.profiles)")
+      _ = k.learn([12: win(12, "Personal — Start Page")], names: names)
+      check("startup: another Space's later scan adds its windows without losing the front window reported first",
+            k.profiles[7] == "safari:s-c" && k.profiles[12] == "safari:s-b")
       check("its next events change nothing of its profile", k.learn([7: win(7, "Personal — x")], names: names).isEmpty && k.profiles[7] == "safari:s-c")
       _ = k.learn([7: win(7, "Test A — x", full: false)], names: names)
       check("out of full screen: kept as not full screen", k.fullScreen[7] == false && k.profiles[7] == "safari:s-c")
@@ -2030,6 +2042,10 @@ extension Tests {
           && SafariAX.profile(ofTitle: "Test A", names: names, defaultId: "s-default") == "s-c"
           && SafariAX.profile(ofTitle: "Inbox — Personal stuff", names: names, defaultId: "s-default") == "s-default"
           && SafariAX.profile(ofTitle: "Start Page", names: names, defaultId: "s-default") == "s-default")
+    check("two current profiles with the same name: a title alone never chooses either or the default",
+          SafariAX.profile(ofTitle: "Personal — Inbox", names: ["s-a": "Personal", "s-b": "Personal"], defaultId: "s-default") == nil)
+    check("overlapping profile names: the longest matching prefix identifies the window",
+          SafariAX.profile(ofTitle: "Test — Work — Inbox", names: ["s-a": "Test", "s-b": "Test — Work"], defaultId: "s-default") == "s-b")
 
     // Three profiles, three same-bounds full-screen windows, one on screen, nothing said by any page:
     // bound at the first read, every one, the off-screen ones too.

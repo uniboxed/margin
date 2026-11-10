@@ -692,6 +692,7 @@ final class Runner: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     if env["MARGIN_APP_VERBOSE"] != nil { Diagnostics.echo = { print("  app:", $0) } }
     Task { @MainActor in
+      startupSplashScenario()
       // MARGIN_E2E_ONLY=overlays: that scenario alone (while working on it).
       if env["MARGIN_E2E_ONLY"] == "overlays" {
         await overlaysScenario()
@@ -710,6 +711,38 @@ final class Runner: NSObject, NSApplicationDelegate {
       await sidebarSlideScenario()
       print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
       exit(failures == 0 ? 0 : 1)
+    }
+  }
+}
+
+// Native splash: a cold start needs no extension, theme or WebKit process.
+// Render off screen in both appearances; no Safari window or permission needed.
+func startupSplashScenario() {
+  let appearance = NSApp.appearance
+  defer { NSApp.appearance = appearance }
+  for mode in ["light", "dark"] {
+    NSApp.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+    let cover = SafariCover(number: 123, since: Diagnostics.now())
+    defer { cover.close() }
+    cover.panel.setFrame(NSRect(x: -20000, y: -20000, width: 1000, height: 700), display: true)
+    guard let view = cover.panel.contentView else { check("startup splash: native content exists", false); continue }
+    func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap { descendants($0) } }
+    let all = descendants(view)
+    let labels = all.compactMap { $0 as? NSTextField }
+    check("startup splash (\(mode)): message exists before any link or web view starts",
+          labels.contains { $0.stringValue == "Getting things ready for you" } && !all.contains { $0 is WKWebView })
+    check("startup splash (\(mode)): leaves browser input and focus alone", cover.panel.ignoresMouseEvents && !cover.panel.isKeyWindow)
+    cover.update(preparingLayout: true)
+    check("startup splash (\(mode)): moves on when the copy links", labels.contains { $0.stringValue == "Preparing your layout…" })
+    view.layoutSubtreeIfNeeded()
+    check("startup splash (\(mode)): message is centred and inside its window", labels.allSatisfy {
+      let rect = view.convert($0.bounds, from: $0)
+      return view.bounds.contains(rect) && abs(rect.midX - view.bounds.midX) < 1
+    })
+    if let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+      view.cacheDisplay(in: view.bounds, to: bitmap)
+      let destination = URL(fileURLWithPath: env["MARGIN_APP_SHOT"] ?? "/tmp/margin-overlay.png").deletingLastPathComponent().appendingPathComponent("startup-\(mode).png")
+      try? bitmap.representation(using: .png, properties: [:])?.write(to: destination)
     }
   }
 }

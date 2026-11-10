@@ -148,6 +148,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     }
 
     private(set) var isReady = false // the page has drawn
+    private var loadStartedAt: TimeInterval?
     private(set) var isShown = false
     private(set) var crashBudgetOK = true
     private var crashes: [TimeInterval] = []
@@ -254,6 +255,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
 
     // The page, drawn off screen until it's needed (never shown before it's ready).
     func load() {
+        loadStartedAt = Diagnostics.now()
         isReady = false
         asked = false
         pageWantsKeyboard = false // a new page: nothing of it focused yet
@@ -537,7 +539,8 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         case "ready":
             guard !isReady else { return }
             isReady = true
-            Diagnostics.note("overlay page drawn (\(key))")
+            let took = loadStartedAt.map { " in \(Diagnostics.ms(since: $0))" } ?? ""
+            Diagnostics.note("overlay page drawn (\(key))\(took)")
             delegate?.overlayChanged(self, "page drawn")
         case "layout":
             guard let geometry = body["geometry"] as? JSONObject, let layout = PageLayout(geometry: geometry) else { return }

@@ -253,6 +253,10 @@ func safariProfilesTests() {
     check("carry source: the read doesn't map the new one: none yet", cp.carrySource(for: newId, hasSet: hasOld, linked: [newId]) == nil)
     let readAfter = readBefore.map { var p = $0; if p.margin == oldId { p.margin = newId }; return p }
     cp.useBrowserNames(readAfter)
+    check("startup: historical copies keep their names for carry-over, but only the current copy names a window",
+          cp.browserNames[oldId]?.name == "Personal" && cp.windowNames[oldId] == nil && cp.windowNames[newId] == "Personal")
+    check("startup: Accessibility resolves a restored window to the current copy after a signing change",
+          SafariAX.profile(ofTitle: "Personal — Start Page", names: cp.windowNames, defaultId: "s-default") == newId)
     let src = cp.carrySource(for: newId, hasSet: hasOld, linked: [newId, "s-default"])
     check("carry source: the read maps Safari's profile to the new id: the old id's set", src?.old == oldId && src?.browserId == FakeSafari.personalServer, "\(String(describing: src))")
     check("carry source: no hold once the read maps it", !cp.mightCarry(newId, hasSet: hasOld, linked: [newId]))
@@ -268,6 +272,7 @@ func safariProfilesTests() {
           && cp.order == orderBefore && orderBefore.count == 3, "\(cp.order)")
     check("carry: one Personal in across", ((cp.across(for: "s-default", spaces: [:], counts: [:], linked: ["s-default", newId])["profiles"] as? [JSONObject]) ?? []).filter { $0["name"] as? String == "Personal" }.count == 1)
     cp.dropBrowserNames()
+    check("startup: without Safari's mapping, historical names never identify a window", cp.windowNames.isEmpty)
     check("carry source: no read (no permission): none", cp.carrySource(for: newId, hasSet: { $0 == oldId }, linked: [newId]) == nil && !cp.mightCarry(oldId, hasSet: { $0 == newId }, linked: [oldId]))
 
     // ---- the symbol's picture ----

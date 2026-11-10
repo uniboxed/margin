@@ -1080,6 +1080,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         guard options.safariAX, SafariAX.trusted, let pid = pids.first else { return [:] }
         let wanted = Set(WindowMatcher.candidates(list, pids: pids).map(\.number))
         ax.keep(listed: Set(list.map(\.number)))
+        let names = profilesOf("safari").windowNames
+        for n in ax.keepProfiles(names: names) { axSaid.remove(n) }
         safariAX.watch(pid: pid) { [weak self] e in self?.axEvent(e) }
         if !wanted.subtracting(ax.profiles.keys).isEmpty {
             safariAX.refresh(pid: pid, wanted: wanted) { [weak self] found in
@@ -1093,7 +1095,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // What Accessibility read of Safari's windows, kept; the windows whose profile it named now.
     @discardableResult
     func axLearn(_ found: [Int: SafariAX.Window]) -> [Int] {
-        let names = profilesOf("safari").browserNames.mapValues(\.name)
+        let names = profilesOf("safari").windowNames
         let learned = ax.learn(found, names: names)
         for n in learned where !axSaid.contains(n) {
             axSaid.insert(n)
