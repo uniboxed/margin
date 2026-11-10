@@ -7,20 +7,22 @@
 // site's pages (harness/seed.ts cloudTabsOf).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES, cloudTabsOf } from './harness/seed.ts';
 import { palette, sidebar } from './harness/ui.ts';
 import { PHONE, AIR, PAD } from '../fixtures/cloud-tabs.ts';
+import type { Page } from 'playwright';
+import type { Settings } from '../../types/margin.d.ts';
 
-let m;
-let ui;
-let windowId;
+let m: Margin;
+let ui: Page;
+let windowId: number | null;
 
 const cloudView = () => ui.evaluate(() => ({
   folder: !!document.querySelector('.cloud'),
   open: !!document.querySelector('.cloud.open'),
-  devices: [...document.querySelectorAll('.cloud-device')].map((d) => ({ id: d.dataset.deviceId, open: d.classList.contains('open'), stale: d.classList.contains('stale'), label: d.getAttribute('aria-label') ?? '' })),
-  tabs: [...document.querySelectorAll('.cloud-tab')].map((t) => t.dataset.cloudTabId),
+  devices: [...document.querySelectorAll<HTMLElement>('.cloud-device')].map((d) => ({ id: d.dataset.deviceId, open: d.classList.contains('open'), stale: d.classList.contains('stale'), label: d.getAttribute('aria-label') ?? '' })),
+  tabs: [...document.querySelectorAll<HTMLElement>('.cloud-tab')].map((t) => t.dataset.cloudTabId),
   note: document.querySelector('.cloud-note .text')?.textContent ?? null,
   fix: !!document.querySelector('.cloud-fix'),
   aboveNewTab: (() => {
@@ -29,17 +31,17 @@ const cloudView = () => ui.evaluate(() => ({
     return !!c && !!n && !!(c.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING);
   })(),
 }));
-const setSettings = (patch) => m.shell.request('updateSettings', { patch }, windowId);
+const setSettings = (patch: Partial<Settings>) => m.shell.request('updateSettings', { patch }, windowId);
 // A press on the folder or a device, then the overlay told of the new setting (the press after
 // it is made from that, or from what's drawn). `from`: the shell's message count before the press.
-async function pressed(selector) {
+async function pressed(selector: string) {
   const from = m.shell.received.length;
   await ui.click(selector);
   await m.until(() => m.shell.received.slice(from).some((x) => x.k === 'delta' && x.changes?.settings), { what: 'the setting changed' });
-  await m.shell.overlays.get(windowId).chain;
+  await m.shell.overlays.get(windowId!)!.chain;
 }
 
-let site;
+let site: Margin['url'];
 before(async () => {
   m = await startMargin({ name: 'cloud-tabs', seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } });
   site = m.url;
@@ -56,7 +58,7 @@ test('the folder sits above New Tab, with each device and its tabs; an old devic
   assert.equal(v.aboveNewTab, true, 'above New Tab');
   assert.deepEqual(v.devices.map((d) => d.id), [PHONE, AIR, PAD], 'in the app\'s order');
   assert.match(v.devices[0].label, /iPhone/);
-  assert.equal(v.devices.find((d) => d.id === PAD).stale, true, 'the iPad not used for ten days, dimmed');
+  assert.equal(v.devices.find((d) => d.id === PAD)!.stale, true, 'the iPad not used for ten days, dimmed');
   assert.ok(v.tabs.includes('T-PHONE-2'), 'the phone\'s tabs shown');
   await m.shoot(t, 'folder');
 });

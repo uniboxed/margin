@@ -6,24 +6,24 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { verdictOf } from './verdicts.mts';
+import { verdictOf, type Loaded, type Row } from './verdicts.mts';
 
 const argv = process.argv.slice(2);
 const i = argv.indexOf('--out');
 if (i < 0 || !argv[i + 1]) { console.error('--out: a round\'s folder (tools/fit-check/data/rounds/NNNN) or a check.mts --out folder'); process.exit(2); }
 const OUT = resolve(argv[i + 1].replace(/^~(?=\/|$)/, homedir()));
 // A site's last line counts (a crawler error is tried again on the next run, and its new line comes later).
-const latest = new Map();
+const latest = new Map<string, Row>();
 for (const line of readFileSync(join(OUT, 'results.jsonl'), 'utf8').split('\n')) { try { const r = JSON.parse(line); latest.set(r.domain, { ...r, verdict: verdictOf(r) }); } catch {} }
 const rows = [...latest.values()];
 rows.sort((a, b) => a.rank - b.rank);
 
-const by = (key) => rows.reduce((acc, r) => { for (const k of [].concat(key(r))) (acc[k] ??= []).push(r); return acc; }, {});
+const by = (key: (r: Row) => string | string[]) => rows.reduce<Record<string, Row[]>>((acc, r) => { for (const k of ([] as string[]).concat(key(r))) (acc[k] ??= []).push(r); return acc; }, {});
 const verdicts = by((r) => r.verdict);
-const flags = by((r) => (r.verdict === 'flagged' ? r.flags : []));
+const flags = by((r) => (r.verdict === 'flagged' ? r.flags! : [])); // (a flagged row has its flags)
 const marginErrors = by((r) => (r.verdict === 'margin-failed' ? (r.margin?.error ?? 'unknown').replace(/https?:\/\/\S+/g, '<url>').slice(0, 80) : []));
-const loaded = rows.filter((r) => r.margin?.ok && r.plain?.ok);
-const avg = (list, f) => (list.length ? Math.round(list.reduce((s, r) => s + f(r), 0) / list.length) : null);
+const loaded = rows.filter((r): r is Loaded => !!(r.margin?.ok && r.plain?.ok));
+const avg = <T,>(list: T[], f: (r: T) => number) => (list.length ? Math.round(list.reduce((s, r) => s + f(r), 0) / list.length) : null);
 
 const summary = {
   total: rows.length,

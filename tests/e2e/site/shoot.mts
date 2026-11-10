@@ -10,16 +10,17 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HOST_RULES, startSite } from './server.ts';
+import type { Page } from 'playwright';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('playwright');
+const { chromium } = require('playwright') as typeof import('playwright');
 
 const out = process.argv[2] || join(process.env.MARGIN_E2E_SHOTS || join(tmpdir(), 'margin-e2e-shots'), 'site');
 const only = process.argv[3];
 mkdirSync(out, { recursive: true });
 
 // Shots after doing something on a page.
-const EXTRA = {
+const EXTRA: Record<string, [label: string, act: (p: Page) => Promise<unknown>][]> = {
   'dispatch.test/2026/11/the-quiet-city': [['scrolled', (p) => p.mouse.wheel(0, 2600)]],
   'shop.test/p/canvas-tote': [['added', (p) => p.click('#add')]],
   'shop.test/': [['carousel', async (p) => { await p.click('.arrows button[data-dir="1"]'); await p.mouse.wheel(0, 500); }]],
@@ -31,13 +32,13 @@ const EXTRA = {
   'accounts.test/signin': [['error', async (p) => { await p.fill('#email', 'nora'); await p.click('button[type=submit]'); }], ['signed-in', async (p) => { await p.fill('#email', 'nora@field.test'); await p.fill('#password', 'correct horse'); await Promise.all([p.waitForURL('**/welcome'), p.click('button[type=submit]')]); }]],
   'app.test/': [['projects', (p) => p.click('a[href="/projects"]')], ['report', async (p) => { await p.click('a[href="/reports"]'); await p.waitForSelector('.report-ready', { timeout: 3000 }); }]],
   'radio.test/': [['playing', async (p) => { await p.click('#play'); await p.waitForTimeout(600); }]],
-  'reel.test/watch': [['playing', async (p) => { await p.evaluate(() => document.querySelector('video').play()); await p.waitForTimeout(1500); }]],
+  'reel.test/watch': [['playing', async (p) => { await p.evaluate(() => document.querySelector('video')!.play()); await p.waitForTimeout(1500); }]],
 };
 
 const site = await startSite();
 const browser = await chromium.launch({ headless: true, args: ['--headless=new', `--host-resolver-rules=${HOST_RULES}`, '--autoplay-policy=no-user-gesture-required'] });
 const context = await browser.newContext({ viewport: { width: 1200, height: 860 }, deviceScaleFactor: 1 });
-const leaks = [];
+const leaks: string[] = [];
 context.on('request', (r) => {
   const u = new URL(r.url());
   if (/^https?:$/.test(u.protocol) && !u.hostname.endsWith('.test') && u.hostname !== '127.0.0.1') leaks.push(r.url());
@@ -52,7 +53,7 @@ for (const { host, path } of pages) {
   const name = key.replace(/[^\w.-]+/g, '_').replace(/_$/, '');
   if (only && !key.includes(only)) continue;
   const page = await context.newPage();
-  const errors = [];
+  const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && !(path === '/missing' && m.text().includes('404')) && errors.push(m.text()));
   try {
@@ -68,7 +69,7 @@ for (const { host, path } of pages) {
       n++;
     }
   } catch (err) {
-    errors.push(String(err.message).split('\n')[0]);
+    errors.push(String((err as Error).message).split('\n')[0]);
   }
   if (errors.length) console.log(`${key}: ${errors.join(' | ')}`);
   await page.close();

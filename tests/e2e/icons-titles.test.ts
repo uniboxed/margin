@@ -7,21 +7,25 @@
 // overlay, also from a tab that isn't in front; long titles are cut.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { sidebar, palette, tabRow, pinRow } from './harness/ui.ts';
+import type { Page } from 'playwright';
+import type { Pin } from '../../types/margin.d.ts';
 
-let m;
-let ui;
+let m: Margin;
+let ui: Page;
 
-const frontId = async () => (await m.front())?.id;
+// (`!`: a test's front tab is there; were it not, the id is still undefined and the test fails where it's used.)
+const frontId = async (): Promise<number> => (await m.front())?.id!;
 const favicons = async () => (await m.stored('favicons')).favicons ?? {};
-const origin = (host) => new URL(m.url(host, '/')).origin;
-const pngSize = (dataUrl) => { const b = Buffer.from(dataUrl.split(',')[1], 'base64'); return [b.readUInt32BE(16), b.readUInt32BE(20)]; };
-const row = async (id) => (await sidebar(ui)).tabs.find((r) => r.id === id);
+const origin = (host: string) => new URL(m.url(host, '/')).origin;
+const pngSize = (dataUrl: string) => { const b = Buffer.from(dataUrl.split(',')[1], 'base64'); return [b.readUInt32BE(16), b.readUInt32BE(20)]; };
+const row = async (id: number | undefined) => (await sidebar(ui)).tabs.find((r) => r.id === id);
 
 // Each site, what its icon is, and what Margin should keep and draw.
-const KINDS = [
+// (`tab`: each site's tab, once it's open.)
+const KINDS: { host: string, path: string, kind: string, stored: RegExp | null, size?: number[], href?: string, tab?: number }[] = [
   { host: 'dispatch.test', path: '/2026/11/the-quiet-city', kind: 'SVG', stored: /^data:image\/svg\+xml/ },
   { host: 'shop.test', path: '/', kind: 'PNG (192 px)', stored: /^data:image\/png/, size: [32, 32] },
   { host: 'docs.test', path: '/guide/getting-started', kind: 'ICO', stored: /^data:image\/png/, size: [32, 32] },
@@ -44,11 +48,11 @@ after(async () => { await m?.close(); });
 test('each kind of site icon is kept per site and drawn on its row', async (t) => {
   for (const k of KINDS.filter((x) => x.stored)) {
     const entry = await m.until(async () => (await favicons())[origin(k.host)], { timeout: 8000, what: `${k.host}'s icon (${k.kind})` });
-    assert.match(entry.data, k.stored, `${k.host}: ${k.kind}`);
+    assert.match(entry.data, k.stored!, `${k.host}: ${k.kind}`);
     if (k.size) assert.deepEqual(pngSize(entry.data), k.size, `${k.host}: shrunk to 32 × 32`);
     if (k.href) assert.equal(entry.href, `${origin(k.host)}${k.href}`);
     const r = await m.until(async () => { const x = await row(k.tab); return x?.icon?.kind === 'image' && x.icon.loaded && x; }, { what: `${k.host}'s icon drawn` });
-    assert.match(r.icon.src, /^data:image\//, 'drawn from the kept data: URL (the overlay loads nothing from the web)');
+    assert.match((r.icon as { src: string }).src, /^data:image\//, 'drawn from the kept data: URL (the overlay loads nothing from the web)');
   }
   // None, or a bad one: nothing kept, the row shows the site's letter.
   await new Promise((r) => setTimeout(r, 1000));
@@ -56,7 +60,7 @@ test('each kind of site icon is kept per site and drawn on its row', async (t) =
   for (const k of KINDS.filter((x) => !x.stored)) {
     assert.equal(kept[origin(k.host)], undefined, `${k.host} (${k.kind}): nothing kept`);
     const r = await row(k.tab);
-    assert.equal(r.icon?.kind, 'letter', `${k.host}: a letter`);
+    assert.equal(r!.icon?.kind, 'letter', `${k.host}: a letter`);
   }
   assert.deepEqual(m.shell.blocked, []);
   await m.shoot(t, 'icons');
@@ -89,8 +93,8 @@ test('another host\'s icon over plain http is refused', async () => {
 test('a closed pin draws its site\'s kept icon', async (t) => {
   const res = await m.shell.request('pinTab', { tabId: KINDS[2].tab }, m.shell.frontWindowId());
   assert.equal(res.ok, true);
-  const pin = await m.until(async () => (await m.stored('pins')).pins?.find((p) => p.url.startsWith(origin('docs.test'))), { what: 'the docs pinned' });
-  await m.bg((id) => chrome.tabs.remove(id), KINDS[2].tab);
+  const pin = await m.until(async () => (await m.stored('pins')).pins?.find((p: Pin) => p.url.startsWith(origin('docs.test'))), { what: 'the docs pinned' });
+  await m.bg((id) => chrome.tabs.remove(id), KINDS[2].tab!);
   const drawn = await m.until(async () => (await sidebar(ui)).pins.find((p) => p.id === pin.id && !p.open), { what: 'the pin, closed' });
   assert.equal(drawn.icon?.kind, 'image');
   assert.equal(drawn.icon.src, (await favicons())[origin('docs.test')].data);
@@ -112,7 +116,7 @@ test('titles that change reach the overlay, also from a tab not in front', async
   await m.until(async () => /^\d\d:\d\d · Focus$/.test((await row(timerTab))?.title ?? ''), { what: 'the timer\'s title' });
   await ui.click(tabRow(feedTab));
   await m.until(async () => (await frontId()) === feedTab, { what: 'the feed in front' });
-  const first = (await row(timerTab)).title;
+  const first = (await row(timerTab))!.title;
   const next = await m.until(async () => { const x = (await row(timerTab))?.title; return x !== first && x; }, { timeout: 5000, what: 'the hidden timer\'s title moving on' });
   assert.match(next, /^\d\d:\d\d · Focus$/);
   await m.shoot(t, 'titles');
@@ -121,10 +125,10 @@ test('titles that change reach the overlay, also from a tab not in front', async
 test('a long title is cut in the row and in the palette, whole in its tooltip', async (t) => {
   await m.open('dispatch.test', '/longread');
   const tab = await frontId();
-  const title = (await m.tabs()).find((x) => x.id === tab).title;
+  const title = (await m.tabs()).find((x) => x.id === tab)!.title!;
   assert.ok(title.length >= 150, `a long title (${title.length})`);
   await m.until(async () => (await row(tab))?.title === title, { what: 'the row has the whole title' });
-  const cut = await ui.$eval(`${tabRow(tab)} .title`, (el) => ({ scroll: el.scrollWidth, client: el.clientWidth, overflow: getComputedStyle(el).textOverflow, rowRight: el.closest('a').getBoundingClientRect().right, right: el.getBoundingClientRect().right }));
+  const cut = await ui.$eval(`${tabRow(tab)} .title`, (el) => ({ scroll: el.scrollWidth, client: el.clientWidth, overflow: getComputedStyle(el).textOverflow, rowRight: el.closest('a')!.getBoundingClientRect().right, right: el.getBoundingClientRect().right }));
   assert.ok(cut.scroll > cut.client, 'wider than its row');
   assert.equal(cut.overflow, 'ellipsis');
   assert.ok(cut.right <= cut.rowRight, 'kept inside the row');
@@ -134,7 +138,7 @@ test('a long title is cut in the row and in the palette, whole in its tooltip', 
   await ui.keyboard.type('river remembers');
   const p = await m.until(async () => { const x = await palette(ui); return x.rows.some((r) => r.id === `tab:${tab}`) && x; }, { what: 'the long read in the palette' });
   assert.ok(p.rows.find((r) => r.id === `tab:${tab}`));
-  const inPalette = await ui.$eval(`.palette .result[data-id="tab:${tab}"]`, (el) => ({ title: el.getAttribute('title'), scroll: el.querySelector('.title').scrollWidth, client: el.querySelector('.title').clientWidth, height: el.getBoundingClientRect().height }));
+  const inPalette = await ui.$eval(`.palette .result[data-id="tab:${tab}"]`, (el) => ({ title: el.getAttribute('title'), scroll: el.querySelector('.title')!.scrollWidth, client: el.querySelector('.title')!.clientWidth, height: el.getBoundingClientRect().height }));
   assert.equal(inPalette.title, title, 'the whole title as its tooltip');
   assert.ok(inPalette.scroll > inPalette.client && inPalette.height < 80, 'cut on one line');
   await m.shoot(t, 'long-title');

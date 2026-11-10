@@ -5,17 +5,20 @@
 // meanwhile says so. (The old sidebar.test.js drove the in-page sidebar.)
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { sidebar, palette, drag, tabRow, pageBox, slot } from './harness/ui.ts';
+import type { Page } from 'playwright';
+import type { ArchiveEntry } from '../../types/margin.d.ts';
 
-let m;
-let ui;
-const ids = {};
+let m: Margin;
+let ui: Page;
+const ids: Record<string, number> = {};
 
 const rows = async () => (await sidebar(ui)).tabs;
 const activeRows = async () => (await rows()).filter((r) => r.active).map((r) => r.id);
-const frontId = async () => (await m.front())?.id;
+// (`!`: a test's front tab is there; were it not, the id is still undefined and the test fails where it's used.)
+const frontId = async (): Promise<number> => (await m.front())?.id!;
 
 before(async () => {
   m = await startMargin({ name: 'tabs', seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } });
@@ -35,8 +38,8 @@ test('a click in the overlay shows that tab; a switch in the browser moves the h
   await m.until(async () => (await frontId()) === ids.shop, { what: 'the shop in front' });
   await m.until(async () => (await activeRows()).join() === String(ids.shop), { what: 'the shop highlighted' });
   // The page in front is in the slot.
-  const page = await m.pageOf(ids.shop);
-  const box = await pageBox(page);
+  const page = (await m.pageOf(ids.shop))!;
+  const box = (await pageBox(page))!;
   assert.deepEqual({ left: box.left, top: box.top, right: box.right, bottom: box.bottom }, await slot(ui));
   await m.shoot(t, 'shop-clicked');
 
@@ -79,14 +82,14 @@ test('× closes the tab and archives it', async (t) => {
   await m.until(async () => !(await m.tabs()).some((x) => x.id === timer), { what: 'the browser tab closed' });
   await m.until(async () => !(await rows()).some((r) => r.id === timer), { what: 'the row gone' });
   const { archive } = await m.stored('archive');
-  assert.ok(archive.some((a) => a.url.startsWith(m.url('focus.test', '/')) && /Focus/.test(a.title)), 'the timer is in the archive');
+  assert.ok(archive.some((a: ArchiveEntry) => a.url.startsWith(m.url('focus.test', '/')) && /Focus/.test(a.title)), 'the timer is in the archive');
 });
 
 test('the New Tab row opens the palette, for a new tab', async (t) => {
   await ui.click('.new-tab-row');
   const p = await m.until(async () => { const x = await palette(ui); return x.open && x.focused && x; }, { what: 'the palette, its field focused' });
   assert.equal(p.query, '');
-  assert.ok(m.shell.overlays.get(m.shell.frontWindowId()).focus, 'the overlay asked the app for the keyboard');
+  assert.ok(m.shell.overlays.get(m.shell.frontWindowId()!)!.focus, 'the overlay asked the app for the keyboard');
   await m.shoot(t, 'palette');
   await ui.keyboard.press('Escape');
   await m.until(async () => !(await palette(ui)).open, { what: 'the palette closed' });
@@ -94,13 +97,13 @@ test('the New Tab row opens the palette, for a new tab', async (t) => {
 
 test('dragging a row reorders the tabs, in the sidebar and the browser', async (t) => {
   const before = (await rows()).map((r) => r.id);
-  const last = before.at(-1);
+  const last = before.at(-1)!;
   const first = before[0];
   await drag(ui, tabRow(last), tabRow(first), { at: 0.15 });
   await m.until(async () => (await rows())[0]?.id === last, { what: `the dragged row first (was ${before.join()})` });
   const move = m.shell.requests.findLast((r) => r.type === 'moveTab');
   assert.equal(move?.payload.tabId, last);
-  assert.equal(move.reply?.ok, true);
+  assert.equal(move!.reply?.ok, true);
   // Each tab once (what the drag drew is gone).
   const after = await m.until(async () => { const ids2 = (await rows()).map((r) => r.id); return new Set(ids2).size === ids2.length && ids2; }, { timeout: 2000, what: 'one row per tab after the drop' });
   assert.deepEqual([...after].sort(), [...before].sort(), 'the same tabs');
@@ -137,7 +140,7 @@ test('a tab open before the app\'s set came in is in a space the sidebar shows',
   try {
     const page = early.context.pages()[0];
     await page.goto(early.url('harbor.test', '/'));
-    const tab = (await early.tabs()).find((x) => x.url.startsWith(early.url('harbor.test', '/')));
+    const tab = (await early.tabs()).find((x) => x.url.startsWith(early.url('harbor.test', '/')))!;
     early.shell.seed((await import('./harness/seed.ts')).seedSet({ spaces: SPACES, settings: { sidebarPinnedOpen: true } }));
     early.shell.setRunning(true);
     early.relay.dispatch('appUp', { v: 2, at: Date.now() });

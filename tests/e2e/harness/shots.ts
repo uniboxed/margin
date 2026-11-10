@@ -12,7 +12,7 @@ import type { Browser, Page } from 'playwright';
 // What these use of the file's world (margin.ts startMargin's).
 type World = {
   name: string,
-  webkit: Browser,
+  webkit?: Browser, // (startMargin's; a world with no overlays, chrome-build.test.ts's, has none)
   shell: { frontWindowId(): number | null, overlays: { get(windowId: number | null): { page: Page | null } | undefined } },
   front(windowId?: number | null): Promise<{ id?: number } | null>,
   pageOf(tabId?: number | null): Promise<Page | null>,
@@ -43,7 +43,7 @@ export async function shoot(m: World, t: ShotTest, label: string, { windowId = m
   if (pagePng) writeFileSync(`${base}-page.png`, pagePng);
   if (overlayPng) writeFileSync(`${base}-overlay.png`, overlayPng);
   if (pagePng && overlayPng) {
-    composer ??= await m.webkit.newContext({ viewport: { width: 1440, height: 900 } }).then((c) => c.newPage());
+    composer ??= await m.webkit!.newContext({ viewport: { width: 1440, height: 900 } }).then((c) => c.newPage());
     const png = await composer!.evaluate(async ([a, b]) => {
       const load = (b64: string) => new Promise<HTMLImageElement>((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = `data:image/png;base64,${b64}`; });
       const [under, over] = await Promise.all([load(a), load(b)]);
@@ -69,7 +69,7 @@ export function forgetComposer() { composer = null; }
  * The colours of a few points of a screenshot ([r, g, b] each), read in the
  * composer's page (WebKit, outside Margin's browser).
  * */
-export async function pixels(m: Pick<World, 'webkit'>, png: Buffer, points: Array<[number, number]>) {
+export async function pixels(m: { webkit: Browser }, png: Buffer, points: Array<[number, number]>) {
   composer ??= await m.webkit.newContext({ viewport: { width: 1440, height: 900 } }).then((c) => c.newPage());
   return composer!.evaluate(async ([b64, at]) => {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = `data:image/png;base64,${b64}`; });

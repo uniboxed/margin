@@ -12,22 +12,22 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFile
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { VERDICTS, verdictOf } from './verdicts.mts';
+import { VERDICTS, verdictOf, type Cpu, type Loaded, type Row } from './verdicts.mts';
 
 export const DEFAULT_DATA = join(dirname(fileURLToPath(import.meta.url)), 'data');
-export const roundName = (n) => String(n).padStart(4, '0');
-export const roundsOf = (data) => {
+export const roundName = (n: number) => String(n).padStart(4, '0');
+export const roundsOf = (data: string) => {
   const dir = join(data, 'rounds');
   return existsSync(dir) ? readdirSync(dir).filter((d) => /^\d{4}$/.test(d)).map(Number).sort((a, b) => a - b) : [];
 };
 
 // Written whole or not at all (a reader never sees half a file).
-export const writeAtomic = (file, text) => { writeFileSync(`${file}.tmp`, text); renameSync(`${file}.tmp`, file); };
+export const writeAtomic = (file: string, text: string) => { writeFileSync(`${file}.tmp`, text); renameSync(`${file}.tmp`, file); };
 
 // Each round's last line per site (the crawl writes a site again when it retries a crawler error).
-export function readRound(data, round) {
+export function readRound(data: string, round: number) {
   const file = join(data, 'rounds', roundName(round), 'results.jsonl');
-  const rows = new Map();
+  const rows = new Map<string, Row>();
   if (!existsSync(file)) return rows;
   for (const line of readFileSync(file, 'utf8').split('\n')) {
     try { const r = JSON.parse(line); rows.set(r.domain, { ...r, verdict: verdictOf(r) }); } catch {}
@@ -36,12 +36,19 @@ export function readRound(data, round) {
 }
 
 // Better or worse, for Margin: only these three say anything about it (a blocked or down site says nothing).
-const SCORE = { ok: 2, flagged: 1, 'margin-failed': 0 };
-const csv = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+const SCORE: Record<string, number> = { ok: 2, flagged: 1, 'margin-failed': 0 };
+const csv = (v: unknown) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+
+type Change = { rank: number, domain: string, from: string, to: string, round: number };
+type TableRow = {
+  rank: number, domain: string, verdict: string, flags: string, round: number, at: string, commit: string, marginMs: number | '',
+  plainMs: number | '', status: number | '' | null, before: string, marginTaskMs: number | '', plainTaskMs: number | '',
+};
+type Spread = { medianMs: number, p90Ms: number };
 
 export function rebuild(data = DEFAULT_DATA) {
   const rounds = roundsOf(data);
-  const sites = new Map(); // domain → { rank, history: [row per round] }
+  const sites = new Map<string, { rank: number, history: (Row & { round: number })[] }>(); // domain → { rank, history: [row per round] }
   for (const round of rounds) {
     for (const [domain, r] of readRound(data, round)) {
       const site = sites.get(domain) ?? { rank: r.rank, history: [] };
@@ -52,24 +59,24 @@ export function rebuild(data = DEFAULT_DATA) {
   }
   mkdirSync(join(data, 'sites'), { recursive: true });
   const latestRound = rounds.at(-1) ?? null;
-  const table = [];
-  const changes = { worse: [], better: [] };
-  const pictures = []; // the latest pictures of each flagged or margin-failed site (what's published)
+  const table: TableRow[] = [];
+  const changes: { worse: Change[], better: Change[] } = { worse: [], better: [] };
+  const pictures: string[] = []; // the latest pictures of each flagged or margin-failed site (what's published)
   for (const [domain, site] of sites) {
-    const latest = site.history.at(-1);
+    const latest = site.history.at(-1)!; // (a site is in `sites` by a row of its own)
     const before = site.history.at(-2) ?? null;
-    const shots = (r) => {
+    const shots = (r: Row & { round: number }) => {
       if (!r.shots) return null;
       const base = `rounds/${roundName(r.round)}/shots/${r.rank}-${domain}`;
       return { margin: existsSync(join(data, `${base}-margin.jpg`)) ? `${base}-margin.jpg` : null, plain: existsSync(join(data, `${base}-plain.jpg`)) ? `${base}-plain.jpg` : null };
     };
-    let change = null;
+    let change: { from: string, to: string, round: number } | null = null;
     if (before && before.verdict !== latest.verdict) {
       change = { from: before.verdict, to: latest.verdict, round: latest.round };
       if (latest.verdict in SCORE && before.verdict in SCORE) (SCORE[latest.verdict] < SCORE[before.verdict] ? changes.worse : changes.better).push({ rank: site.rank, domain, ...change });
     }
     // The last time its verdict changed, whenever that was (`change` is only since the round before).
-    let lastChange = null;
+    let lastChange: { from: string, to: string, round: number, at: string, commitBefore: string | null, commit: string | null } | null = null;
     for (let k = site.history.length - 1; k > 0 && !lastChange; k--) {
       const [a, b] = [site.history[k - 1], site.history[k]];
       if (a.verdict !== b.verdict) lastChange = { from: a.verdict, to: b.verdict, round: b.round, at: b.at, commitBefore: a.commit ?? null, commit: b.commit ?? null };
@@ -86,42 +93,43 @@ export function rebuild(data = DEFAULT_DATA) {
       })),
     };
     writeAtomic(join(data, 'sites', `${domain}.json`), `${JSON.stringify(file, null, 2)}\n`);
-    if (['flagged', 'margin-failed', 'hinted'].includes(latest.verdict)) pictures.push(...Object.values(file.latest.pictures ?? {}).filter(Boolean));
+    if (['flagged', 'margin-failed', 'hinted'].includes(latest.verdict)) pictures.push(...Object.values(file.latest.pictures ?? {}).filter((p): p is string => !!p));
     table.push({ rank: site.rank, domain, verdict: latest.verdict, flags: (latest.flags ?? []).join(' '), round: latest.round, at: latest.at, commit: latest.commit ?? '', marginMs: latest.margin?.ms ?? '', plainMs: latest.plain?.ms ?? '', status: latest.plain?.status ?? '', before: before?.verdict ?? '', marginTaskMs: latest.margin?.cpu?.task ?? '', plainTaskMs: latest.plain?.cpu?.task ?? '' });
   }
   table.sort((a, b) => a.rank - b.rank);
-  const cols = ['rank', 'domain', 'verdict', 'flags', 'round', 'at', 'commit', 'marginMs', 'plainMs', 'status', 'before', 'marginTaskMs', 'plainTaskMs'];
+  const cols: (keyof TableRow)[] = ['rank', 'domain', 'verdict', 'flags', 'round', 'at', 'commit', 'marginMs', 'plainMs', 'status', 'before', 'marginTaskMs', 'plainTaskMs'];
   writeAtomic(join(data, 'all-sites.csv'), `${cols.join(',')}\n${table.map((r) => cols.map((c) => csv(r[c])).join(',')).join('\n')}\n`);
 
   // The summary: every site's latest.
-  const count = (key) => table.reduce((acc, r) => { for (const k of [].concat(key(r))) if (k) acc[k] = (acc[k] ?? 0) + 1; return acc; }, {});
+  const count = (key: (r: TableRow) => string | string[]) => table.reduce<Record<string, number>>((acc, r) => { for (const k of ([] as string[]).concat(key(r))) if (k) acc[k] = (acc[k] ?? 0) + 1; return acc; }, {});
   const verdicts = count((r) => r.verdict);
   const flags = count((r) => (r.verdict === 'flagged' ? r.flags.split(' ') : []));
-  const list = (v, n = 200) => table.filter((r) => r.verdict === v).slice(0, n).map((r) => `${r.rank} ${r.domain}${r.flags ? ` (${r.flags})` : ''}`);
+  const list = (v: string, n = 200) => table.filter((r) => r.verdict === v).slice(0, n).map((r) => `${r.rank} ${r.domain}${r.flags ? ` (${r.flags})` : ''}`);
   // Flagged for something more than a different first screen (that alone is often an ad or an A/B test).
   const flaggedReal = table.filter((r) => r.verdict === 'flagged' && r.flags.split(' ').some((f) => f !== 'looks-different'));
-  const byRank = (a, b) => a.rank - b.rank;
+  const byRank = (a: Change, b: Change) => a.rank - b.rank;
   changes.worse.sort(byRank); changes.better.sort(byRank);
   const progress = latestRound ? (() => { try { return JSON.parse(readFileSync(join(data, 'rounds', roundName(latestRound), 'progress.json'), 'utf8')); } catch { return null; } })() : null;
   const finished = latestRound != null && existsSync(join(data, 'rounds', roundName(latestRound), 'finished.txt'));
   // How much longer a page takes to load through Margin than plain (both loads of a site at once, the same settle
   // after each): the median and the slowest tenth of the difference, of every site that loaded both ways at its latest.
   // A change that slows pages down shows here the night after.
-  const pairs = [...sites.values()].map(({ history }) => history.at(-1)).filter((r) => r.margin?.ok && r.plain?.ok && r.margin.ms > 0 && r.plain.ms > 0);
+  const pairs = [...sites.values()].map(({ history }) => history.at(-1)!).filter((r): r is Loaded & { round: number } => !!(r.margin?.ok && r.plain?.ok && r.margin.ms > 0 && r.plain.ms > 0));
   const extra = pairs.map((r) => r.margin.ms - r.plain.ms).sort((a, b) => a - b);
-  const at = (q) => (extra.length ? extra[Math.min(extra.length - 1, Math.floor(q * extra.length))] : null);
-  const slower = (ms) => (ms >= 0 ? `${ms} ms slower` : `${-ms} ms faster`);
-  const speed = { sites: extra.length, extraMedianMs: at(0.5), extraP90Ms: at(0.9), slowerBy500Ms: extra.filter((d) => d > 500).length, mainThread: null };
+  const at = (q: number) => (extra.length ? extra[Math.min(extra.length - 1, Math.floor(q * extra.length))] : null);
+  const slower = (ms: number) => (ms >= 0 ? `${ms} ms slower` : `${-ms} ms faster`);
+  // (With sites, the median and the slowest tenth are numbers.)
+  const speed: { sites: number, extraMedianMs: number | null, extraP90Ms: number | null, slowerBy500Ms: number, mainThread: { sites: number, task: Spread, script: Spread } | null } = { sites: extra.length, extraMedianMs: at(0.5), extraP90Ms: at(0.9), slowerBy500Ms: extra.filter((d) => d > 500).length, mainThread: null };
   // The work Margin adds to a page (its main thread's tasks, and the script in them; check.mts mainThread), the
   // same way: what a change costs a page even where it doesn't make the page slower to come.
-  const worked = [...sites.values()].map(({ history }) => history.at(-1)).filter((r) => r.margin?.ok && r.plain?.ok && r.margin.cpu?.task > 0 && r.plain.cpu?.task > 0);
-  const added = (key) => {
+  const worked = [...sites.values()].map(({ history }) => history.at(-1)!).filter((r): r is Loaded & { round: number, margin: { cpu: Cpu }, plain: { cpu: Cpu } } => !!(r.margin?.ok && r.plain?.ok && (r.margin.cpu?.task ?? 0) > 0 && (r.plain.cpu?.task ?? 0) > 0));
+  const added = (key: 'task' | 'script'): Spread => {
     const list = worked.map((r) => (r.margin.cpu[key] ?? 0) - (r.plain.cpu[key] ?? 0)).sort((a, b) => a - b);
-    const q = (n) => list[Math.min(list.length - 1, Math.floor(n * list.length))];
+    const q = (n: number) => list[Math.min(list.length - 1, Math.floor(n * list.length))];
     return { medianMs: q(0.5), p90Ms: q(0.9) };
   };
   if (worked.length) speed.mainThread = { sites: worked.length, task: added('task'), script: added('script') };
-  const more = (ms) => (ms >= 0 ? `${ms} ms more` : `${-ms} ms less`);
+  const more = (ms: number) => (ms >= 0 ? `${ms} ms more` : `${-ms} ms less`);
   // Dated by its newest result (not when it was made), so making it again with nothing new changes nothing.
   const newest = table.reduce((m, r) => (r.at && r.at > m ? r.at : m), '');
   const summary = {
@@ -141,7 +149,7 @@ export function rebuild(data = DEFAULT_DATA) {
     '## Verdicts', ...Object.entries(summary.verdicts).map(([k, v]) => `- ${k}: ${v}`), '',
     '`blocked`: the site turned the plain browser away too (bot protection, a captcha): it says nothing about Margin.', '',
     '## Flags', ...Object.entries(summary.flags).map(([k, v]) => `- ${k}: ${v}`), '',
-    '## Speed', speed.sites ? `Through Margin, against plain: ${slower(speed.extraMedianMs)} at the median, ${slower(speed.extraP90Ms)} at the slowest tenth; ${speed.slowerBy500Ms} of ${speed.sites} sites over half a second slower.` : 'No site loaded both ways yet.', '',
+    '## Speed', speed.sites ? `Through Margin, against plain: ${slower(speed.extraMedianMs!)} at the median, ${slower(speed.extraP90Ms!)} at the slowest tenth; ${speed.slowerBy500Ms} of ${speed.sites} sites over half a second slower.` : 'No site loaded both ways yet.', '',
     ...(speed.mainThread ? [`Main-thread work through Margin, against plain (${speed.mainThread.sites} sites): ${more(speed.mainThread.task.medianMs)} at the median, ${more(speed.mainThread.task.p90Ms)} at the slowest tenth; script alone ${more(speed.mainThread.script.medianMs)} and ${more(speed.mainThread.script.p90Ms)}.`, ''] : []),
     `## Worse since the round before (${summary.worse.length})`, ...summary.worse.slice(0, 200).map((s) => `- ${s}`), '',
     `## Better since the round before (${summary.better.length})`, ...summary.better.slice(0, 200).map((s) => `- ${s}`), '',

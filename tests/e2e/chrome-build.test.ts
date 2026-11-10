@@ -14,21 +14,22 @@ import { HOST_RULES, startSite, searchResults } from './site/server.ts';
 import { ENGINES, SIZE } from './harness/margin.ts';
 import { pageBox } from './harness/ui.ts';
 import { shoot } from './harness/shots.ts';
+import type { BrowserContext, Worker } from 'playwright';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('playwright');
+const { chromium } = require('playwright') as typeof import('playwright');
 
 const EXTENSION = fileURLToPath(new URL('../../dist/chromium', import.meta.url));
 
-let context;
-let worker;
-let site;
-let root;
-const leaks = [];
+let context: BrowserContext;
+let worker: Worker;
+let site: Awaited<ReturnType<typeof startSite>>;
+let root: string;
+const leaks: string[] = [];
 // For the screenshots (harness/shots.ts: there's no overlay here, so only page.png).
 const world = { name: 'chrome-build', shell: { frontWindowId: () => null, overlays: new Map() }, front: async () => null, pageOf: async () => null };
-const bg = (fn, arg) => worker.evaluate(fn, arg);
-const until = async (check, { timeout = 5000, what = 'a condition' } = {}) => {
+const bg = <R, A>(fn: (arg: A) => R | Promise<R>, arg?: A) => worker.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
+const until = async <T,>(check: () => T | Promise<T>, { timeout = 5000, what = 'a condition' } = {}) => {
   const end = Date.now() + timeout;
   for (;;) {
     const v = await check();
@@ -65,8 +66,8 @@ after(async () => {
 
 test('the background starts, as Chrome\'s profile', async () => {
   assert.match(worker.url(), /^chrome-extension:\/\/[a-p]{32}\/background\.bundle\.js$/);
-  assert.equal(await bg(() => globalThis.Margin.capabilities.name), 'chrome');
-  assert.equal(await bg(() => globalThis.Margin.capabilities.nativeApp), false, 'no app for Chrome yet');
+  assert.equal(await bg(() => globalThis.Margin.capabilities!.name), 'chrome');
+  assert.equal(await bg(() => globalThis.Margin.capabilities!.nativeApp), false, 'no app for Chrome yet');
 });
 
 test('a new tab is Margin\'s new-tab page, with its own address field', async (t) => {
@@ -89,7 +90,7 @@ test('Chrome\'s own site icons: nothing fetched', async () => {
   const page = await context.newPage();
   await page.goto(site.url('shop.test', '/'));
   const tab = await until(() => bg(() => chrome.tabs.query({ url: '*://shop.test/*' }).then(([x]) => x?.favIconUrl && x)), { what: 'Chrome\'s icon for the shop' });
-  assert.match(tab.favIconUrl, /^http:\/\/shop\.test:\d+\//, 'the shop\'s own icon, as Chrome found it');
+  assert.match((tab as BrowserTab).favIconUrl!, /^http:\/\/shop\.test:\d+\//, 'the shop\'s own icon, as Chrome found it');
   await new Promise((r) => setTimeout(r, 1200));
   assert.deepEqual(await bg(() => chrome.storage.local.get('favicons').then((r) => r.favicons ?? {})), {}, 'Margin fetched nothing');
   await page.close();
@@ -102,11 +103,11 @@ test('pages get nothing of Margin\'s: no box, no gesture blocking, the bounce le
   assert.equal(await pageBox(page), null, 'no box');
   assert.equal(await page.evaluate(() => innerWidth), SIZE.width);
   assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).overscrollBehaviorY), 'auto', 'the bounce left alone');
-  await page.evaluate(() => { window.__wheel = []; document.addEventListener('wheel', (e) => window.__wheel.push(e.defaultPrevented)); });
+  await page.evaluate(() => { (window as typeof window & { __wheel: boolean[] }).__wheel = []; document.addEventListener('wheel', (e) => (window as typeof window & { __wheel: boolean[] }).__wheel.push(e.defaultPrevented)); });
   await page.mouse.move(700, 300);
   await page.mouse.wheel(-80, 0);
-  await until(() => page.evaluate(() => window.__wheel.length > 0), { what: 'the wheel seen' });
-  assert.equal(await page.evaluate(() => window.__wheel.some(Boolean)), false, 'a sideways swipe left to Chrome');
+  await until(() => page.evaluate(() => (window as typeof window & { __wheel: boolean[] }).__wheel.length > 0), { what: 'the wheel seen' });
+  assert.equal(await page.evaluate(() => (window as typeof window & { __wheel: boolean[] }).__wheel.some(Boolean)), false, 'a sideways swipe left to Chrome');
   assert.equal(await page.evaluate(() => document.querySelectorAll('[class*="margin"], margin-sidebar-host').length), 0, 'nothing added to the page');
   await shoot(world, t, 'harbor', { page });
   await page.close();
@@ -127,7 +128,7 @@ test('the new-tab page: an address goes there, words go to Chrome\'s search (ans
   await page.press('#address', 'Enter');
   await page.waitForURL(ENGINES);
   assert.equal(new URL(page.url()).searchParams.get('q'), 'quiet ferries');
-  assert.match(await page.textContent('body'), /quiet ferries/);
+  assert.match((await page.textContent('body'))!, /quiet ferries/);
   await page.close();
   assert.deepEqual(leaks, [], 'nothing left the Mac');
 });

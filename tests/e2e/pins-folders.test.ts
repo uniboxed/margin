@@ -3,19 +3,22 @@
 // opened, pins moved in and out, and a closed pin keeps its site's icon.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { sidebar, tabRow, pinRow, folderRow, menuItem } from './harness/ui.ts';
+import type { Page } from 'playwright';
+import type { Pin } from '../../types/margin.d.ts';
 
-let m;
-let ui;
+let m: Margin;
+let ui: Page;
 
 const view = () => sidebar(ui);
-const frontId = async () => (await m.front())?.id;
-const pinsStored = async () => (await m.stored('pins')).pins ?? [];
+// (`!`: a test's front tab is there; were it not, the id is still undefined and the test fails where it's used.)
+const frontId = async (): Promise<number> => (await m.front())?.id!;
+const pinsStored = async (): Promise<Pin[]> => (await m.stored('pins')).pins ?? [];
 
 // Two pins the person made before: the docs and the travel site (not open now).
-const SEED = (url) => ({
+const SEED = (url: (host: string, path: string) => string) => ({
   spaces: SPACES,
   pins: [
     { id: 'pin-docs', spaceId: 'sp-home', url: url('docs.test', '/guide/getting-started'), title: 'Getting started · Lattice docs', pos: 0 },
@@ -53,7 +56,7 @@ test('a tab pinned from its menu becomes a pin, and Unpin makes it a tab again',
   await m.open('shop.test', '/p/canvas-tote');
   const tote = await frontId();
   await m.until(async () => (await view()).tabs.some((r) => r.id === tote), { what: 'the product\'s row' });
-  await ui.click(tabRow(tote), { button: 'right' });
+  await ui.click(tabRow(tote!), { button: 'right' });
   await menuItem(ui, 'Pin Tab');
   const pin = await m.until(async () => (await pinsStored()).find((p) => p.url.startsWith(m.url('shop.test', '/p/canvas-tote'))), { what: 'the pin stored' });
   await m.until(async () => { const v = await view(); return v.pins.some((p) => p.id === pin.id && p.active) && !v.tabs.some((r) => r.id === tote); }, { what: 'drawn as a pin, highlighted' });

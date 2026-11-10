@@ -27,6 +27,7 @@ import { startRelay } from './relay.ts';
 import { startShell } from './shell.ts';
 import { seedSet } from './seed.ts';
 import type { Said } from '../../../extension/background/link.ts';
+import type { State } from '../../../types/margin.d.ts';
 import { shoot, pixels, forgetComposer, type ShotTest, type ShotOptions } from './shots.ts';
 
 const require = createRequire(import.meta.url);
@@ -38,7 +39,8 @@ export type Margin = Awaited<ReturnType<typeof startMargin>>;
 // What `until` gives back: its check's value, once truthy.
 type Truthy<T> = Exclude<T, false | null | undefined | 0 | ''>;
 // A browser tab as `m.tabs()` reads it.
-type TabInfo = Pick<BrowserTab, 'id' | 'windowId' | 'index' | 'title' | 'url' | 'active' | 'status' | 'audible'>;
+// (`url`: the test build has host access to every page, so Chromium gives each tab's.)
+type TabInfo = Pick<BrowserTab, 'id' | 'windowId' | 'index' | 'title' | 'active' | 'status' | 'audible'> & { url: string };
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const APP_DIR = fileURLToPath(new URL('../../../dist/app/', import.meta.url));
@@ -151,15 +153,15 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
     /** Runs `fn(arg)` in the background. */
     bg: <R, Arg>(fn: (arg: Arg) => R | Promise<R>, arg?: Arg): Promise<R> => worker.evaluate(fn as (arg: unknown) => R | Promise<R>, arg),
     /** Every browser tab: { id, windowId, index, title, url, active, status }. */
-    tabs: (): Promise<TabInfo[]> => worker.evaluate(() => chrome.tabs.query({}).then((ts) => ts.map((t) => ({ id: t.id, windowId: t.windowId, index: t.index, title: t.title, url: t.url, active: t.active, status: t.status, audible: t.audible })))),
+    tabs: (): Promise<TabInfo[]> => worker.evaluate(() => chrome.tabs.query({}).then((ts) => ts.map((t) => ({ id: t.id, windowId: t.windowId, index: t.index, title: t.title, url: t.url!, active: t.active, status: t.status, audible: t.audible })))),
     /** The browser tab in front of a window (the front window by default). */
     async front(windowId: number | null = shell.frontWindowId()): Promise<TabInfo | null> {
       return (await m.tabs()).find((t) => t.windowId === windowId && t.active) ?? null;
     },
     /** All of storage.local (the copy's stored values). */
     stored: (keys: string | string[] | null = null) => worker.evaluate((k) => chrome.storage.local.get(k), keys),
-    /** The copy's state as pages read it (shared/stored.ts fromStorage's keys). */
-    async state(): Promise<Record<string, any>> {
+    /** The copy's state as pages read it (shared/stored.ts fromStorage's keys): State's, and storage's other keys. */
+    async state(): Promise<State & Record<string, any>> {
       const raw = await m.stored();
       return { ...raw, ...(raw.openTabs ?? {}) };
     },

@@ -24,33 +24,37 @@ import { startMargin } from '../e2e/harness/margin.ts';
 import { SPACES } from '../e2e/harness/seed.ts';
 import { HOST_RULES } from '../e2e/site/server.ts';
 import { BENCH_SIZES, runsOf } from '../../tools/webkit-host/scenarios.mts';
+import type { Page } from 'playwright';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('playwright');
+const { chromium } = require('playwright') as typeof import('playwright');
+// One load's numbers (tests/box/serve.ts benchPage: window.__bench), and a size's medians each way with the box's cost.
+type Bench = { loadMs: number, frameMs: number, size?: string, mode?: string };
+type Result = { boxed: Bench, plain: Bench, costMs: { load: number, frame: number } };
 const BASELINE = fileURLToPath(new URL('./bench-baseline.json', import.meta.url));
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const median = (list) => [...list].sort((a, b) => a - b)[Math.floor(list.length / 2)];
+const median = (list: number[]) => [...list].sort((a, b) => a - b)[Math.floor(list.length / 2)];
 const argv = process.argv.slice(2);
 const only = argv.includes('--engine') ? argv[argv.indexOf('--engine') + 1] : null;
 if (only && !['chromium', 'webkit'].includes(only)) throw new Error(`--engine: chromium or webkit, not ${only}`);
 const engines = only ? [only] : ['chromium', 'webkit'];
 
 // Each way's median load and load-to-frames, and the box's own cost: what it adds to the page's.
-const result = (boxed, plain) => ({ boxed, plain, costMs: { load: boxed.loadMs - plain.loadMs, frame: boxed.frameMs - plain.frameMs } });
-const medians = (list) => ({ loadMs: median(list.map((b) => b.loadMs)), frameMs: median(list.map((b) => b.frameMs)) });
+const result = (boxed: Bench, plain: Bench): Result => ({ boxed, plain, costMs: { load: boxed.loadMs - plain.loadMs, frame: boxed.frameMs - plain.frameMs } });
+const medians = (list: Bench[]) => ({ loadMs: median(list.map((b) => b.loadMs)), frameMs: median(list.map((b) => b.frameMs)) });
 
 async function chromiumBench() {
-  const once = async (open, url) => {
+  const once = async (open: () => Promise<Page>, url: string): Promise<Bench> => {
     const page = await open();
     await page.goto(url, { waitUntil: 'load' });
-    const b = await page.waitForFunction(() => window.__bench, null, { timeout: 30_000 }).then((h) => h.jsonValue());
+    const b = await page.waitForFunction(() => (window as Window & { __bench?: Bench }).__bench, null, { timeout: 30_000 }).then((h) => h.jsonValue() as Promise<Bench>); // (waited for: there)
     await page.close();
     return b;
   };
   // Boxed and plain in turn, run by run: a stretch where the machine is slower costs both alike.
-  async function measure(size, boxedOpen, plainOpen, url) {
-    const boxed = [];
-    const plain = [];
+  async function measure(size: string, boxedOpen: () => Promise<Page>, plainOpen: () => Promise<Page>, url: string) {
+    const boxed: Bench[] = [];
+    const plain: Bench[] = [];
     for (let i = 0; i < runsOf(size); i++) {
       boxed.push(await once(boxedOpen, url));
       plain.push(await once(plainOpen, url));
@@ -61,7 +65,7 @@ async function chromiumBench() {
   await m.ui();
   const plain = await chromium.launch({ headless: false, args: ['--headless=new', `--host-resolver-rules=${HOST_RULES}`] });
   const plainCtx = await plain.newContext({ viewport: { width: 1172, height: 884 } });
-  const results = {};
+  const results: Record<string, Result> = {};
   try {
     for (const size of BENCH_SIZES) {
       const url = m.url('box.test', `/bench/${size}`);
@@ -83,17 +87,17 @@ function webkitBench() {
   const out = `${run.stdout ?? ''}${run.stderr ?? ''}`;
   const failed = out.split('\n').filter((line) => / FAIL |TIMEOUT/.test(line));
   if (run.status !== 0 || failed.length) throw new Error(`the WebKit host's box-bench didn't run through (exit ${run.status}):\n${failed.slice(0, 10).join('\n') || out.slice(-2000)}`);
-  const loads = [...out.matchAll(/ page \S+: BENCH (\{.*\})$/gm)].map((m) => JSON.parse(m[1]));
-  const results = {};
+  const loads: Bench[] = [...out.matchAll(/ page \S+: BENCH (\{.*\})$/gm)].map((m) => JSON.parse(m[1]));
+  const results: Record<string, Result> = {};
   for (const size of BENCH_SIZES) {
-    const of = (mode) => loads.filter((b) => b.size === size && b.mode === mode);
+    const of = (mode: string) => loads.filter((b) => b.size === size && b.mode === mode);
     if (!of('plain').length || !of('boxed').length) throw new Error(`the WebKit host logged no ${size} loads`);
     results[size] = result(medians(of('boxed')), medians(of('plain')));
   }
   return results;
 }
 
-const measured = {};
+const measured: Record<string, Record<string, Result>> = {};
 for (const engine of engines) measured[engine] = engine === 'chromium' ? await chromiumBench() : webkitBench();
 
 for (const [engine, results] of Object.entries(measured)) {
@@ -102,8 +106,9 @@ for (const [engine, results] of Object.entries(measured)) {
   }
 }
 // The baseline by engine; one from before WebKit was measured is Chromium's.
-const stored = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : null;
-const baseOf = (engine) => {
+// (bench-baseline.json: { at, runs, results: engine → size → Result }, or before WebKit was measured, size → Result.)
+const stored: { results?: Record<string, any> } | null = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : null;
+const baseOf = (engine: string): Record<string, Result> | null => {
   const results = stored?.results ?? {};
   if (results.chromium || results.webkit) return results[engine] ?? null;
   return engine === 'chromium' && Object.keys(results).length ? results : null;
@@ -123,7 +128,7 @@ if (argv.includes('--save')) {
     for (const [size, r] of Object.entries(results)) {
       const was = base[size];
       if (!was) continue;
-      for (const k of ['load', 'frame']) {
+      for (const k of ['load', 'frame'] as const) {
         const limit = Math.max(was.costMs[k], 0) * 1.25 + 30;
         const bad = r.costMs[k] > limit;
         if (bad) worse += 1;

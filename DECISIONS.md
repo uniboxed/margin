@@ -3469,9 +3469,34 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
     model; fake tabs without `active` or `index`. `BrowserMessageSender.tab` is a whole tab, but background/link.ts
     gives the app's requests `{ app: true, tab: { windowId } }`: the type is wider than what Margin.app's requests
     carry (switch-plain casts its app sender).
-  - **Still to do for #4:** tools/ and scripts/ (ci-plan.mts and pack-theme.ts first: the tests import them); the
-    background tests repeat one block of fake events and storage (`listeners`, `event`, `pick`) in seven files: a
-    shared helper would be a run-time change, left for its own step.
+  - **Left:** the background tests repeat one block of fake events and storage (`listeners`, `event`, `pick`) in
+    seven files: a shared helper would be a run-time change, left for its own step.
+- **Everything else, since 2026-11-10** (#4's last steps): scripts/ (ci-plan.mts and pack-theme.ts, 23 errors, then
+  the rest, 24), tools/' TypeScript (fit-check, webkit-host, app-tests' fake extension, store-shots, boards: 424; not
+  the Swift) and the browser tests, type-checked only, not run here (tests/e2e/ with its site's scripts 1,651,
+  tests/theme/ 1,151 counted with its pages untyped (typing them showed some 200 more), tests/box/'s benchmarks 55):
+  all 0. One config now, `tsconfig.tests.json`, by folder glob (`tests/**`, the engines' tests/, `scripts/*`,
+  `tools/**`), plain tsc in `npm test`, `typecheck` and test:quick: a new file in any of them is checked at once.
+  tsconfig.test-files.json, then tsconfig.rest.json, and scripts/tests-check.mts (the filter that held each folder
+  while the rest caught up) are gone. CI's plan: a change to tools/ now reaches the unit tests (the type check).
+  - **Type-only,** each file compared stripped of types (esbuild) with before. Run-time differences, all equivalent:
+    filters given a type predicate return `!!(…)` (fit-check store and summarize, sites-bench) or `(r) => !!r` for
+    `Boolean` (make-video); `(out.parts?.length ?? 0) > 1` (webkit-host server) and `(cpu?.task ?? 0) > 0` (fit-check
+    store) for an `undefined > n`; the theme harness's two `Object.assign(T, …)` named (`withRuntime`,
+    `withSecurity`, the same object) for its type.
+  - **How the tests are typed:** `let m: Margin`, `let ui: Page`; a page's own globals by a cast at each use
+    (`window as typeof window & { __wheel: boolean[] }`); the theme harness's `T` and `__rt` declared per test file
+    (`declare const T: Harness`, harness.ts's types), its `ev` as `<R, const A>` so a tuple argument stays one. `!`
+    where a value a test reads is there, or the test fails on it either way (a TypeError where it's used): the front
+    tab's id, `slot()`, `boundingBox()`, an element a page function looks up and uses at once, the last layout. The
+    e2e harness: a tab's `url` is a string (the test build has host access), `state()` is `State` and storage's other
+    keys, the app's requests' payloads are `Said`, the overlay's hit rects tuples, shots' `webkit` optional (the
+    Chrome build's world has none). `any` only for parsed JSON and storage, with a comment (fake extension's
+    messages, nightly's own files, the box baseline, the mock host's payloads); four `(window as any)` in
+    tests/theme/security.test.ts and chromium-relay's two `: any` were there before, left.
+  - **Tool bug, fixed:** tools/fit-check/nightly.mts copied this checkout's `.mjs` files into the night's checkout,
+    and there are none since the move to TypeScript: the night ran main's crawl tool, not this checkout's (ff6905ba).
+  - **No product bug found** in this step.
 
 ## Chrome and Edge link to Margin.app on the Mac (2026-11-09)
 

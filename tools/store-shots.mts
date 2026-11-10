@@ -17,7 +17,7 @@ const { SPACES } = await import('../tests/e2e/harness/seed.ts');
 const { settled } = await import('../tests/e2e/harness/ui.ts');
 const { PACKAGE_THEMES } = await import('../extension/themes/packages.ts');
 
-const SEED = (url) => ({
+const SEED = (url: (host: string, path: string) => string) => ({
   spaces: SPACES,
   pins: [
     { id: 'pin-mail', url: url('post.test', '/inbox'), title: 'Inbox — Post', spaceId: 'sp-home', folderId: null },

@@ -6,16 +6,18 @@
 // files are the app's (tools/app-tests).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { SAFARI_PROFILE } from './harness/shell.ts';
 import { sidebar, pinRow, folderRow } from './harness/ui.ts';
+import type { Page } from 'playwright';
+import type { Said } from '../../extension/background/link.ts';
 
-let m;
-let ui;
-let windowId;
+let m: Margin;
+let ui: Page;
+let windowId: number | null;
 
-const SEED = (url) => ({
+const SEED = (url: (host: string, path: string) => string) => ({
   spaces: SPACES,
   pins: [
     { id: 'pin-mail', url: url('post.test', '/inbox'), title: 'Inbox — Post', spaceId: 'sp-work', folderId: null },
@@ -28,7 +30,7 @@ const SEED = (url) => ({
 });
 
 const hellos = () => m.shell.received.filter((x) => x.k === 'data.hello');
-const has = (changes, collection, test = () => true) => changes.some((c) => c.collection === collection && test(c));
+const has = (changes: Said[], collection: string, test: (c: Said) => boolean = () => true) => changes.some((c) => c.collection === collection && test(c));
 
 before(async () => {
   m = await startMargin({ name: 'data', seed: SEED });
@@ -62,7 +64,7 @@ test('changes made while linked go to the app as they\'re made', async () => {
   const from = m.shell.dataChanges.length;
   assert.equal((await m.shell.request('updateSettings', { patch: { archiveAfterHours: 48 } }, windowId)).ok, true);
   const page = await m.open('noir.test', '/');
-  const tab = (await m.front()).id;
+  const tab = (await m.front())!.id;
   assert.equal((await m.shell.request('pinTab', { tabId: tab }, windowId)).ok, true);
   await m.until(() => has(m.shell.dataChanges.slice(from), 'settings', (c) => JSON.stringify(c.value ?? null).includes('48')), { timeout: 8000, what: 'the setting sent' });
   await m.until(() => has(m.shell.dataChanges.slice(from), 'pins', (c) => /noir\.test/.test(c.value?.url ?? '')), { timeout: 8000, what: 'the new pin sent' });
@@ -73,7 +75,7 @@ test('changes made while linked go to the app as they\'re made', async () => {
 
 test('changes made while Margin.app wasn\'t there are queued and sent in the next hello', async () => {
   const page = await m.open('accounts.test', '/signin');
-  const tab = (await m.front()).id;
+  const tab = (await m.front())!.id;
   await m.until(async () => (await m.state()).tabs[tab]?.title.startsWith('Sign in'), { what: 'the sign-in page known' });
   await m.shell.kill();
   await m.until(() => !m.shell.linked, { what: 'the link down' });
@@ -98,7 +100,7 @@ test('a profile whose storage was wiped is filled again from the app\'s set', as
   const nt = await m.context.newPage();
   const cdp = await m.context.newCDPSession(nt);
   await cdp.send('ServiceWorker.enable');
-  await m.bg(() => Promise.all([chrome.storage.local.clear(), chrome.storage.session.clear()]));
+  await m.bg(() => Promise.all([chrome.storage.local.clear!(), chrome.storage.session.clear!()]));
   await cdp.send('ServiceWorker.stopAllWorkers');
   await nt.goto(m.newTabUrl());
   // The stopped background may have said hello under a profile of its own making first (the app

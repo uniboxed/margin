@@ -92,28 +92,45 @@ import { liveValues } from '../../extension/shared/data-merge.ts';
 import { normalizeState } from '../../extension/state/model.ts';
 import { fromStorage } from '../../extension/shared/stored.ts';
 
+// What the host and the app send, and a copy's storage: parsed JSON, read field by field where it's used.
+type Msg = Record<string, any>;
+type Bounds = { left: number, top: number, width: number, height: number };
+type Win = Bounds & { windowId: number, state: string, focused?: boolean, focusedAt?: number, activeTabId?: number };
+type DataSet = { format: number, items: Record<string, Record<string, unknown>> };
+// A copy on the link (connect).
+type Sock = {
+  id: string, ws: WebSocket, profile: string, epoch: string, seq: number, muted: boolean, welcomed: boolean, raw: Msg,
+  windows: Win[], data: Msg | null, acked: number, rev: string | null, cache: DataSet | null,
+  incoming: { transfer: string, parts: Map<number, Msg>, bytes: number } | null, newWindow: Bounds | null, nextWindow: number,
+  play: { enterMs?: number, exitMs?: number, listLagMs?: number, normal?: Bounds }, drafts: Record<string, number[]> | null,
+  calling: Set<number>, send: (m: Msg) => void,
+};
+// Node's WebSocket (undici's) takes the request's headers; the DOM's type doesn't say so.
+type NodeWebSocket = new (url: string, init: { headers: Record<string, string> }) => WebSocket;
+
 // The host gone (it quit): nothing more to say.
 process.stdout.on('error', () => process.exit(0));
-const say = (event) => process.stdout.write(JSON.stringify(event) + '\n');
+const say = (event: Msg) => process.stdout.write(JSON.stringify(event) + '\n');
 const ORIGIN = 'safari-web-extension://12345678-ABCD-4321-DCBA-0123456789AB';
-let nonce = null;
-let link = null; // { port, token, key }, as the app sent it
-let kept = null; // the one before
-const sockets = new Map(); // id → { ws, epoch, seq, muted, raw }
+let nonce: string | null = null;
+type Link = { port: number, token: string, key: string };
+let link: Link | null = null; // as the app sent it
+let kept: Link | null = null; // the one before
+const sockets = new Map<string, Sock>(); // id → { ws, epoch, seq, muted, raw }
 
 // The fixture's state as a copy stores it (shared/stored.ts toStorage), with Keep open on.
-function storedState() {
-  const s = smallState();
+function storedState(): Msg {
+  const s: Msg = smallState();
   s.settings = { ...s.settings, sidebarPinnedOpen: true };
   const keys = Object.keys(s).filter((k) => k !== 'openTabsBy');
   return toStorage(s, keys, { origin: ORIGIN, since: 1, synced: true });
 }
 
-const themes = new Map();
-async function themeMessage(id) {
+const themes = new Map<string, Msg>();
+async function themeMessage(id: string) {
   if (!themes.has(id)) {
     const dir = fileURLToPath(new URL(`../../extension/themes/${id}/`, import.meta.url));
-    const pkg = await readBuiltinTheme(id, { readFile: async (p) => { const b = readFileSync(dir + p); return /\.(json|html|css)$/.test(p) ? b.toString('utf8') : new Uint8Array(b); } });
+    const pkg = await readBuiltinTheme(id, { readFile: async (p: string) => { const b = readFileSync(dir + p); return /\.(json|html|css)$/.test(p) ? b.toString('utf8') : new Uint8Array(b); } });
     // background/theme-package.ts ThemeMessage: the files' bytes as base64.
     themes.set(id, { id, manifest: pkg.manifest, html: pkg.html, css: pkg.css, files: Object.fromEntries(Object.entries(pkg.files).map(([p, b]) => [p, Buffer.from(b).toString('base64')])) });
   }
@@ -122,7 +139,7 @@ async function themeMessage(id) {
 
 // `edit`: changes to the package before it's sent ({ manifest, html, css }: text put in their place;
 // a broken theme for the overlay's fallback to Arcadia).
-async function sendTheme(s, id, chunkBytes = 512 * 1024, corrupt = false, edit = null) {
+async function sendTheme(s: Sock, id: string, chunkBytes = 512 * 1024, corrupt = false, edit: Msg | null = null) {
   const whole = Buffer.from(JSON.stringify({ ...(await themeMessage(id)), ...(edit ?? {}) }), 'utf8');
   const transfer = createHash('sha256').update(whole).digest('hex');
   const parts = Math.max(1, Math.ceil(whole.length / chunkBytes));
@@ -135,8 +152,8 @@ async function sendTheme(s, id, chunkBytes = 512 * 1024, corrupt = false, edit =
 }
 
 // The converter's set in `parts`: every collection named in part 0, the items dealt out in turn.
-function snapshotParts(set, parts) {
-  const out = Array.from({ length: parts }, (_, i) => ({ format: 1, items: i === 0 ? Object.fromEntries(Object.keys(set.items).map((c) => [c, {}])) : {} }));
+function snapshotParts(set: DataSet, parts: number) {
+  const out = Array.from({ length: parts }, (_, i): DataSet => ({ format: 1, items: i === 0 ? Object.fromEntries(Object.keys(set.items).map((c) => [c, {}])) : {} }));
   let n = 0;
   for (const [c, list] of Object.entries(set.items)) {
     for (const [itemId, item] of Object.entries(list)) {
@@ -147,28 +164,29 @@ function snapshotParts(set, parts) {
   return out;
 }
 
-function takeData(s, m) {
+function takeData(s: Sock, m: Msg) {
   switch (m.k) {
     case 'data.need': {
       say({ ev: 'dataNeed', id: s.id, all: m.all, profile: m.profile });
-      const set = dataSetFromStorage(s.raw, { now: s.data.now ?? Date.now() });
-      const parts = snapshotParts(set, s.data.parts ?? 1);
+      const set = dataSetFromStorage(s.raw, { now: s.data!.now ?? Date.now() }); // (data: on connect, as data.need comes)
+      const parts = snapshotParts(set, s.data!.parts ?? 1);
       const transfer = randomUUID();
       parts.forEach((part, i) => s.send({ k: 'data.snapshot', profile: s.profile, format: 1, set: part, transfer, part: i, parts: parts.length }));
       return say({ ev: 'sent', id: s.id, what: 'data.snapshot', parts: parts.length });
     }
     case 'data.snapshot': {
       if (s.incoming?.transfer !== m.transfer) s.incoming = { transfer: m.transfer, parts: new Map(), bytes: 0 };
-      s.incoming.parts.set(m.part, m);
-      s.incoming.bytes += Buffer.byteLength(JSON.stringify(m));
-      if (s.incoming.parts.size < m.parts) return;
-      const items = {};
-      for (const part of s.incoming.parts.values()) for (const [c, list] of Object.entries(part.set.items)) Object.assign((items[c] ??= {}), list);
-      const set = { format: 1, items };
-      const omitted = s.incoming.parts.get(0)?.omitted ?? [];
-      const rev = s.incoming.parts.get(0)?.rev ?? null;
+      // (`s.incoming!`: made just above if it wasn't there.)
+      s.incoming!.parts.set(m.part, m);
+      s.incoming!.bytes += Buffer.byteLength(JSON.stringify(m));
+      if (s.incoming!.parts.size < m.parts) return;
+      const items: DataSet['items'] = {};
+      for (const part of s.incoming!.parts.values()) for (const [c, list] of Object.entries(part.set.items)) Object.assign((items[c] ??= {}), list);
+      const set: DataSet = { format: 1, items };
+      const omitted = s.incoming!.parts.get(0)?.omitted ?? [];
+      const rev = s.incoming!.parts.get(0)?.rev ?? null;
       if (rev) s.rev = rev;
-      const bytes = s.incoming.bytes;
+      const bytes = s.incoming!.bytes;
       s.incoming = null;
       s.cache = set;
       const state = stateFromDataSet(normalizeState(fromStorage(s.raw)), set);
@@ -191,7 +209,7 @@ function takeData(s, m) {
 }
 
 // A window request played as Safari would (above); null: the usual echo. A promise: answered when it settles.
-function playWindow(s, m) {
+function playWindow(s: Sock, m: Msg) {
   if (!s.newWindow) return null;
   const sendWindows = () => s.send({ k: 'windows', seq: ++s.seq, list: s.windows });
   const windowId = m.payload?.windowId;
@@ -222,7 +240,8 @@ function playWindow(s, m) {
       s.calling.add(windowId);
       return new Promise((done) => setTimeout(() => {
         s.calling.delete(windowId);
-        const b = state === 'fullscreen' ? s.newWindow : (s.play.normal ?? { left: s.newWindow.left + 100, top: s.newWindow.top + 80, width: s.newWindow.width - 200, height: s.newWindow.height - 160 });
+        // (`s.newWindow!`: played only with one, above.)
+        const b = state === 'fullscreen' ? s.newWindow! : (s.play.normal ?? { left: s.newWindow!.left + 100, top: s.newWindow!.top + 80, width: s.newWindow!.width - 200, height: s.newWindow!.height - 160 });
         s.windows = s.windows.map((x) => (x.windowId !== windowId ? (m.payload?.focused ? { ...x, focused: false } : x)
           : { ...x, state, left: b.left, top: b.top, width: b.width, height: b.height, ...(m.payload?.focused ? { focused: true, focusedAt: Date.now() } : {}) }));
         say({ ev: 'landed', id: s.id, windowId, state });
@@ -245,7 +264,7 @@ function playWindow(s, m) {
       return null;
   }
 }
-function setSpace(s, windowId, spaceId) {
+function setSpace(s: Sock, windowId: number | undefined, spaceId: unknown) {
   if (windowId == null || typeof spaceId !== 'string') return;
   const open = structuredClone(s.raw.openTabs);
   open.activeSpaceByWindow = { ...open.activeSpaceByWindow, [windowId]: spaceId };
@@ -253,14 +272,14 @@ function setSpace(s, windowId, spaceId) {
   s.send({ k: 'delta', seq: ++s.seq, changes: { openTabs: { newValue: open } } });
 }
 
-function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, newTabPage = null, instanceId = null, play = {}, drafts = null, nextWindow = 90 }) {
-  const to = old ? kept : link;
-  const ws = new WebSocket(`ws://127.0.0.1:${to.port}/?t=${encodeURIComponent(token ?? to.token)}`, { headers: { Origin: origin } });
+function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, newTabPage = null, instanceId = null, play = {}, drafts = null, nextWindow = 90 }: Msg) {
+  const to = (old ? kept : link)!; // (connect: once linked)
+  const ws = new (WebSocket as unknown as NodeWebSocket)(`ws://127.0.0.1:${to.port}/?t=${encodeURIComponent(token ?? to.token)}`, { headers: { Origin: origin } });
   const raw = data?.wiped ? {} : storedState();
   if (spaces) {
     raw.spaces = spaces;
     const open = structuredClone(raw.openTabs);
-    open.tabSpace = Object.fromEntries(Object.keys(open.tabSpace ?? {}).map((t) => [t, spaces[0].id]));
+    open.tabSpace = Object.fromEntries(Object.keys(open.tabSpace ?? {}).map((t: string) => [t, spaces[0].id]));
     open.activeSpaceByWindow = Object.fromEntries(Object.keys(open.activeSpaceByWindow ?? {}).map((w) => [w, spaces[0].id]));
     raw.openTabs = open;
   }
@@ -269,9 +288,10 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
     Object.assign(raw.openTabs.tabs[newTabPage], { url: `${ORIGIN}/newtab/newtab.html`, title: 'New Tab' });
   }
   for (let i = 0; i < (data?.icons ?? 0); i++) (raw.favicons ??= {})[`https://icon${i}.test`] = { data: 'data:image/png;base64,' + 'A'.repeat(60_000), href: `https://icon${i}.test/favicon.ico`, at: 1 };
-  const s = { id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null, newWindow, nextWindow, play, drafts, calling: new Set() };
+  // (Its `send`: just below.)
+  const s = ({ id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null, newWindow, nextWindow, play, drafts, calling: new Set() } satisfies Omit<Sock, 'send'>) as Sock;
   sockets.set(id, s);
-  s.send = (m) => ws.send(JSON.stringify({ epoch: s.epoch, ...m }));
+  s.send = (m: Msg) => ws.send(JSON.stringify({ epoch: s.epoch, ...m }));
   const snapshot = () => s.send({ k: 'snapshot', seq: ++s.seq, state: s.raw, windows: s.windows });
   ws.onopen = () => say({ ev: 'open', id });
   ws.onerror = () => say({ ev: 'error', id });
@@ -304,7 +324,7 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
       case 'req': {
         say({ ev: 'req', id, msg: m });
         const played = m.epoch === s.epoch ? playWindow(s, m) : null;
-        const reply = (result) => s.send({ k: 'reply', id: m.id, ok: m.epoch === s.epoch, result: result ?? { type: m.type, windowId: m.windowId, payload: m.payload } });
+        const reply = (result: unknown) => s.send({ k: 'reply', id: m.id, ok: m.epoch === s.epoch, result: result ?? { type: m.type, windowId: m.windowId, payload: m.payload } });
         if (played instanceof Promise) return void played.then(reply);
         return reply(played);
       }
@@ -325,7 +345,7 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
 }
 
 // A client's frame (masked, as every client's must be).
-function clientFrame(opcode, payload) {
+function clientFrame(opcode: number, payload: Buffer | number[]) {
   const body = Buffer.from(payload);
   const mask = randomBytes(4);
   const head = body.length < 126 ? Buffer.from([0x80 | opcode, 0x80 | body.length]) : Buffer.from([0x80 | opcode, 0x80 | 126, body.length >> 8, body.length & 255]);
@@ -333,16 +353,16 @@ function clientFrame(opcode, payload) {
   return Buffer.concat([head, mask, masked]);
 }
 const raws = new Map(); // id → net.Socket
-function rawConnect({ id, profile = 'PR', upgrade = true, hello = true }) {
-  const sock = tcpConnect(link.port, '127.0.0.1');
+function rawConnect({ id, profile = 'PR', upgrade = true, hello = true }: Msg) {
+  const sock = tcpConnect(link!.port, '127.0.0.1'); // (\`link!\`: rawConnect comes once linked)
   raws.set(id, sock);
   let head = Buffer.alloc(0);
   let upgraded = false;
   sock.on('connect', () => {
     if (!upgrade) return;
-    sock.write(`GET /?t=${encodeURIComponent(link.token)} HTTP/1.1\r\nHost: 127.0.0.1:${link.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${randomBytes(16).toString('base64')}\r\nSec-WebSocket-Version: 13\r\nOrigin: ${ORIGIN}\r\n\r\n`);
+    sock.write(`GET /?t=${encodeURIComponent(link!.token)} HTTP/1.1\r\nHost: 127.0.0.1:${link!.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${randomBytes(16).toString('base64')}\r\nSec-WebSocket-Version: 13\r\nOrigin: ${ORIGIN}\r\n\r\n`);
   });
-  sock.on('data', (chunk) => {
+  sock.on('data', (chunk: Buffer) => {
     if (upgraded) return; // (the app's welcome and ticks: not read)
     head = Buffer.concat([head, chunk]);
     if (head.indexOf('\r\n\r\n') < 0) return;
@@ -366,7 +386,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     if (name === 'appUp') return say({ ev: 'appUp' });
     return say({ ev: 'native', name });
   }
-  const s = sockets.get(c.id);
+  const s = sockets.get(c.id)!; // (none for the commands that make one, which don't read it)
   switch (c.do) {
     case 'wantLink':
       nonce = randomUUID();
@@ -374,7 +394,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     case 'connect':
       return connect(c);
     case 'delta': {
-      for (const [key, change] of Object.entries(c.changes ?? {})) {
+      for (const [key, change] of Object.entries<Msg>(c.changes ?? {})) {
         if ('newValue' in change) s.raw[key] = change.newValue; else delete s.raw[key];
       }
       s.seq += c.skip ? 2 : 1;

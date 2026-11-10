@@ -5,7 +5,7 @@
 // patterns (its `box-patterns` scenario).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { pageBox, slot } from './harness/ui.ts';
 import { listPatterns } from '../box/serve.ts';
@@ -13,8 +13,8 @@ import { judge, measure } from '../box/rules.ts';
 
 const WINDOW = { w: 1440, h: 900 };
 const PATTERNS = listPatterns().filter((p) => p.engines !== 'webkit');
-let m;
-let s;
+let m: Margin;
+let s: { left: number, top: number, right: number, bottom: number };
 
 before(async () => {
   m = await startMargin({ name: 'box-patterns', seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } });
@@ -23,11 +23,11 @@ before(async () => {
 });
 after(async () => { await m?.close(); });
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Measured once the page has loaded and settled, then again for up to 1.5 s
 // while a rule is broken (fonts and late layout), as the WebKit host's checks do.
-async function run(p) {
+async function run(p: ReturnType<typeof listPatterns>[number]) {
   const w = WINDOW.w - s.left - s.right;
   const h = WINDOW.h - s.top - s.bottom;
   const ref = await m.context.newPage();

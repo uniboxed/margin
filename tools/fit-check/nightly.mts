@@ -37,14 +37,15 @@ import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, 
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { ChildProcess } from 'node:child_process';
 import { DEFAULT_DATA, readRound, rebuild, roundName, roundsOf, writeAtomic } from './store.mts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
 const argv = process.argv.slice(2);
-const has = (name) => argv.includes(`--${name}`);
-const opt = (name, fallback) => { const i = argv.indexOf(`--${name}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : fallback; };
-const expand = (p) => resolve(p.replace(/^~(?=\/|$)/, homedir()));
+const has = (name: string) => argv.includes(`--${name}`);
+const opt = <T extends string | null>(name: string, fallback: T): string | T => { const i = argv.indexOf(`--${name}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : fallback; };
+const expand = (p: string) => resolve(p.replace(/^~(?=\/|$)/, homedir()));
 const DATA = expand(opt('data', DEFAULT_DATA));
 const CODE = join(homedir(), 'Library/Caches/margin-fit-check/code');
 const PUBLISH = expand(opt('publish-dir', join(homedir(), 'Library/Caches/margin-fit-check/publish')));
@@ -57,11 +58,12 @@ const NIGHTLY_LOG = join(DATA, 'nightly.log');
 mkdirSync(DATA, { recursive: true });
 
 const now = () => new Date().toISOString();
-const say = (line) => { const s = `${now()} ${line}`; appendFileSync(NIGHTLY_LOG, `${s}\n`); if (!has('child')) console.log(s); };
-const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
-const readJson = (file) => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; } };
+const say = (line: string) => { const s = `${now()} ${line}`; appendFileSync(NIGHTLY_LOG, `${s}\n`); if (!has('child')) console.log(s); };
+const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; } };
+// (Its own files, read back: what's in them is checked where it's read.)
+const readJson = (file: string): Record<string, any> | null => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; } };
 const running = () => { const r = readJson(RUNNING); return r && alive(r.pid) ? r : null; };
-const git = (...args) => execFileSync('git', ['-C', ROOT, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const git = (...args: string[]) => execFileSync('git', ['-C', ROOT, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
 // The round to work on: the last one, unless it's finished (then the next).
 function currentRound() {
@@ -72,7 +74,7 @@ function currentRound() {
 }
 
 // ---- publishing: the data on its own branch, committed and pushed -------------------------------
-const gitIn = (dir, args, env = {}) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...env }, timeout: 300_000 }).trim();
+const gitIn = (dir: string, args: string[], env: Record<string, string> = {}) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...env }, timeout: 300_000 }).trim();
 const BRANCH_README = `# Margin's fit check
 
 Every night the top 10 000 sites (Tranco's list) are loaded through Margin's page box (the extension's own code, shrinking each page into the space beside the sidebar) and loaded plain, and the two are compared. This branch holds the results only; the tool is \`tools/fit-check/\` on main.
@@ -82,7 +84,7 @@ Every night the top 10 000 sites (Tranco's list) are loaded through Margin's pag
 - \`tools/fit-check/data/sites/<domain>.json\`: one site, every round.
 - \`tools/fit-check/data/rounds/NNNN/\`: each round as it was crawled (pictures: only each flagged or failed site's latest).
 `;
-function publish(pictures) {
+function publish(pictures: string[]) {
   // The branch's checkout: made the first time (from GitHub's branch if there is one, else a new branch with no history).
   if (!existsSync(join(PUBLISH, '.git'))) {
     mkdirSync(dirname(PUBLISH), { recursive: true });
@@ -120,12 +122,12 @@ function publish(pictures) {
     gitIn(PUBLISH, ['push', '-q', '-u', REMOTE, DATA_BRANCH]);
     return staged ? 'committed and pushed' : 'nothing new; pushed';
   } catch (e) {
-    return `committed, not pushed (${String(e.message).split('\n')[0].slice(0, 160)}); the next night pushes it`;
+    return `committed, not pushed (${String((e as Error).message).split('\n')[0].slice(0, 160)}); the next night pushes it`;
   }
 }
 
 // A round's pictures, here, are kept until the round after next begins (the round before stays, to compare).
-function pruneShots(round) {
+function pruneShots(round: number) {
   for (const r of roundsOf(DATA)) if (r < round - 1) rmSync(join(DATA, 'rounds', roundName(r), 'shots'), { recursive: true, force: true });
 }
 
@@ -140,7 +142,7 @@ if (has('status')) {
     // Counted from the round's results (progress.json only for the rate).
     const rows = [...readRound(DATA, last).values()];
     const total = existsSync(join(DATA, 'list.csv')) ? readFileSync(join(DATA, 'list.csv'), 'utf8').split('\n').filter((l) => /^\d+,[a-z0-9.-]+$/i.test(l.trim()) && Number(l.split(',')[0]) > 0).length : p?.total;
-    const by = rows.reduce((acc, row) => { acc[row.verdict] = (acc[row.verdict] ?? 0) + 1; return acc; }, {});
+    const by = rows.reduce<Record<string, number>>((acc, row) => { acc[row.verdict] = (acc[row.verdict] ?? 0) + 1; return acc; }, {});
     const parts = Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${v} ${k}`).join(', ');
     console.log(`Round ${last}: ${rows.length} of ${total} done (${parts})${r && p ? `; ${p.perMinute}/min, about ${p.etaHours} h of crawling left` : ''}.`);
   }
@@ -228,7 +230,7 @@ if (!has('wait') && !has('child')) {
   process.exit(0);
 }
 
-let crawl = null;
+let crawl: ChildProcess | null = null;
 let stopping = false;
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { stopping = true; say(`${sig}: stopping`); if (crawl) crawl.kill('SIGTERM'); });
 const done = () => { try { if (readJson(RUNNING)?.pid === process.pid) unlinkSync(RUNNING); } catch {} };
@@ -273,17 +275,17 @@ function prepareCode() {
   if (!existsSync(join(CODE, 'node_modules'))) symlinkSync(join(ROOT, 'node_modules'), join(CODE, 'node_modules'));
   // The crawl tool from this checkout (a fix to the tool needn't wait for main).
   mkdirSync(join(CODE, 'tools/fit-check'), { recursive: true });
-  for (const f of readdirSync(HERE)) if (f.endsWith('.mjs') || f === 'README.md') cpSync(join(HERE, f), join(CODE, 'tools/fit-check', f));
+  for (const f of readdirSync(HERE)) if (f.endsWith('.mts') || f === 'README.md') cpSync(join(HERE, f), join(CODE, 'tools/fit-check', f));
   execFileSync(process.execPath, [join(CODE, 'scripts/build.ts')], { cwd: CODE, stdio: 'ignore' });
   return { dir: CODE, commit: sha.slice(0, 7) };
 }
 
-function runRound(round, code, list) {
+function runRound(round: number, code: { dir: string, commit: string }, list: string) {
   const out = join(DATA, 'rounds', roundName(round));
   mkdirSync(out, { recursive: true });
   const log = openSync(join(out, 'run.out'), 'a');
   const args = [join(code.dir, 'tools/fit-check/check.mts'), '--list', list, '--out', out, '--workers', opt('workers', '3'), '--until', UNTIL.toISOString(), '--commit', code.commit];
-  return new Promise((done) => {
+  return new Promise<{ code: number | null, signal: NodeJS.Signals | null }>((done) => {
     crawl = spawn(process.execPath, args, { cwd: code.dir, stdio: ['ignore', log, log] });
     crawl.on('exit', (codeOut, signal) => { crawl = null; done({ code: codeOut, signal }); });
   });
@@ -316,10 +318,10 @@ try {
   }
   pruneShots(round);
   const s = rebuild(DATA);
-  if (!has('no-publish')) { try { say(`published: ${publish(s.pictures)} (${DATA_BRANCH})`); } catch (e) { say(`not published: ${String(e?.message ?? e).split('\n')[0].slice(0, 200)}`); } }
+  if (!has('no-publish')) { try { say(`published: ${publish(s.pictures)} (${DATA_BRANCH})`); } catch (e) { say(`not published: ${String((e as Error | null)?.message ?? e).split('\n')[0].slice(0, 200)}`); } }
   say(`end: ${s.sites} sites; ${JSON.stringify(s.verdicts)}; worse since the round before ${s.worse.length}, better ${s.better.length}. ${join(DATA, 'summary.md')}`);
 } catch (e) {
-  say(`stopped by an error: ${String(e?.stack ?? e).split('\n').slice(0, 3).join(' | ')}`);
+  say(`stopped by an error: ${String((e as Error | null)?.stack ?? e).split('\n').slice(0, 3).join(' | ')}`);
   try { rebuild(DATA); } catch {}
   process.exitCode = 1;
 }

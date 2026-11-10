@@ -8,26 +8,28 @@
 // Navigation API) drawn as loading.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { sidebar, tabRow, chip } from './harness/ui.ts';
+import type { Page } from 'playwright';
 
-let m;
-let ui;
-let windowId;
+let m: Margin;
+let ui: Page;
+let windowId: number | null;
 
 const view = () => sidebar(ui);
-const frontId = async () => (await m.front())?.id;
+// (`!`: a test's front tab is there; were it not, the id is still undefined and the test fails where it's used.)
+const frontId = async (): Promise<number> => (await m.front())?.id!;
 const order = async () => (await view()).tabs.map((r) => r.id);
 // A window not switched yet shows the first space.
-const spaceOfWindow = async () => (await m.state()).activeSpaceByWindow?.[windowId] ?? 'sp-home';
-async function show(id) {
+const spaceOfWindow = async () => (await m.state()).activeSpaceByWindow?.[windowId!] ?? 'sp-home';
+async function show(id: number) {
   await ui.click(tabRow(id));
   await m.until(async () => (await frontId()) === id && (await view()).tabs.find((r) => r.active)?.id === id, { what: `tab ${id} in front` });
   // A press after a switch by hand starts a new chain (background/navigation.ts): let the last one end.
   await new Promise((r) => setTimeout(r, 1600));
 }
-const pushes = (type, from = 0) => m.shell.received.slice(from).filter((x) => x.k === 'push' && x.msg?.type === type).map((x) => x.msg);
+const pushes = (type: string, from = 0) => m.shell.received.slice(from).filter((x) => x.k === 'push' && x.msg?.type === type).map((x) => x.msg);
 
 before(async () => {
   m = await startMargin({ name: 'navigation', seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } });
@@ -46,7 +48,7 @@ test('next and previous tab follow the sidebar\'s order and wrap', async (t) => 
   await m.until(async () => (await view()).tabs.find((r) => r.active)?.id === rows[2], { what: 'its highlight' });
   await m.shell.navigate('prev-tab');
   await m.until(async () => (await frontId()) === rows[1], { what: 'back up' });
-  await show(rows.at(-1));
+  await show(rows.at(-1)!);
   await m.shell.navigate('next-tab');
   await m.until(async () => (await frontId()) === rows[0], { what: 'from the last row to the first' });
   await m.shell.navigate('prev-tab');
@@ -130,7 +132,7 @@ test('next and previous space, wrapping', async (t) => {
 test('linked, the page\'s own keys: its next-tab key moves one tab; ⌘T only tells the app it was heard', async () => {
   const rows = await order();
   await show(rows[1]);
-  const page = await m.pageOf(rows[1]);
+  const page = (await m.pageOf(rows[1]))!;
   const key = (await m.stored('settings')).settings.shortcuts.nextTab;
   await page.bringToFront();
   await page.keyboard.press(key.replace(/\bCtrl\b/, 'Control'));
@@ -139,7 +141,7 @@ test('linked, the page\'s own keys: its next-tab key moves one tab; ⌘T only te
   assert.equal(await frontId(), rows[2], 'exactly one');
 
   // ⌘T is the app's hot key while it draws: a page that hears it anyway does nothing but say so.
-  const next = await m.pageOf(rows[2]);
+  const next = (await m.pageOf(rows[2]))!;
   const tabs = (await m.tabs()).length;
   const from = m.shell.received.length;
   await next.keyboard.press('Meta+KeyT');
@@ -189,10 +191,10 @@ test('Back, Forward and Reload from the overlay\'s buttons (Neubrutalism draws t
     await m.until(async () => (await m.tabs()).find((x) => x.id === tab)?.url === m.url('docs.test', '/guide/getting-started'), { what: 'back' });
     await ui.click('button[aria-label="Forward"]');
     await m.until(async () => (await m.tabs()).find((x) => x.id === tab)?.url === m.url('docs.test', '/guide/installation'), { what: 'forward' });
-    const page = await m.pageOf(tab);
-    await page.evaluate(() => { window.__before = true; });
+    const page = (await m.pageOf(tab))!;
+    await page.evaluate(() => { (window as Window & { __before?: boolean }).__before = true; });
     await ui.click('button[aria-label="Reload"]');
-    await m.until(() => page.evaluate(() => !window.__before).catch(() => false), { what: 'the page loaded again' });
+    await m.until(() => page.evaluate(() => !(window as Window & { __before?: boolean }).__before).catch(() => false), { what: 'the page loaded again' });
   } finally {
     await m.shell.request('updateSettings', { patch: { theme: 'arcadia' } }, windowId);
     await m.until(() => m.shell.themeId === 'arcadia', { what: 'Arcadia again' });

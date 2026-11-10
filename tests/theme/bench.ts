@@ -6,18 +6,22 @@
 // other request is refused.
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage } from './package.ts';
+import type { Harness } from './harness.ts';
+
+// What the harness puts on the page's window (harness.ts), as the page functions below read it.
+declare const T: Harness;
 
 const runs = Number(process.argv.find((a) => a.startsWith('--runs='))?.slice(7) ?? 50);
 const script = harnessScript();
 const pkg = themeForPage();
-const fmt = (v) => v.toFixed(2);
+const fmt = (v: number) => v.toFixed(2);
 
-const all = {};
-for (const [name, engine] of [['WebKit', webkit], ['Chromium', chromium]]) {
+const all: Record<string, { version: string, clock: Awaited<ReturnType<Harness['resolution']>>, batch: number, results: Awaited<ReturnType<Harness['bench']>>, stray: string[], sanitize: Awaited<ReturnType<Harness['timeSanitize']>> }> = {};
+for (const [name, engine] of [['WebKit', webkit], ['Chromium', chromium]] as const) {
   const browser = await engine.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
-  const stray = [];
+  const stray: string[] = [];
   await context.route('**/*', (route) => {
     if (route.request().url() === 'http://localhost:8765/') {
       return route.fulfill({
