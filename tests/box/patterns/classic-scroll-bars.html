@@ -1,7 +1,7 @@
 <!--
 pattern: with scroll bars that take space (a Mac set to always show them, or a mouse), what's fixed is laid out in the window less them, a centred <body> is centred in what they leave, and a modal dialog too
 from: GitHub issue #17 (CI's Macs have no trackpad): fixed bars and the patterns with them came out a scroll bar wider in the box than in a window. Run with classic scroll bars by `npm run test:classic` (MARGIN_SCROLL_BARS=always); with overlay ones it's a page like any other
-handled-by: content/page/box-bars.ts (<body>'s bars measured), shared/page-box.ts (boxCss, bodyFitCss: <html> narrower and shorter by them, <body> past it), content/page/box-body.ts (its margin), content/page/top-layer.ts
+handled-by: content/page/box-bars.ts (<body>'s bars measured), shared/page-box.ts (barsCss, bodyFitCss: <html> narrower and shorter by them, <body> past it), content/page/box-body.ts (its margin), content/page/top-layer.ts
 settle: 700
 -->
 <!doctype html>

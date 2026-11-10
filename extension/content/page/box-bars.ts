@@ -5,7 +5,7 @@
 // is the scroller, its bars inside it at the box's edges, and what's fixed is laid out in <html>, the whole box:
 // fixed bars came out a scroll bar wider than in a window, over <body>'s bar. So while <body>'s bars take space,
 // <html> is that much narrower (and shorter, for a bar along the bottom), and <body> reaches past it to the box's
-// edge (shared/page-box.ts boxCss and bodyFitCss, box-body.ts's padding sheet): what's fixed, <html> and the
+// edge (shared/page-box.ts barsCss and bodyFitCss, box-body.ts's padding sheet): what's fixed, <html> and the
 // width <body> is worked out from are as in a window, and <body> and its bar are where they were.
 //
 // A page's `overflow: scroll` on <html> shows the window's own bars, at the window's edge (the window never
