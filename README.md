@@ -118,14 +118,14 @@ extension/              The extension's shared source, as ES modules (browsers l
   ui/                   The UI runtime (view model, renderer, sanitizer, actions, behaviors), run by Margin.app's
                         overlay page (ui/host-app.ts) and by the browser tests (ui/host.ts).
   themes/<id>/          Theme packages (theme.json, theme.html, theme.css, fonts), first-paint.css: see themes/README.md.
-engines/                What differs per browser, by engine (engines/README.md): webkit/ (Safari: browsers/safari/,
-                        its manifest, profile and modules, and its side of Margin.app), chromium/ (Chrome, Edge and
-                        the rest: its manifest, profile and modules; app/, its host files, Rust), gecko/ later.
+  engines/              What differs per browser (engines/README.md): webkit/safari/ and chromium/, each its manifest,
+                        profile (what the browser can do) and own modules; gecko/ later. Each build takes only its own.
 app/                    Margin.app on every OS: shared/ (core/ in Rust, connector/ for Chrome and Edge in Rust,
                         host/ the page drawn over each browser window), macos/ (shell/, private/, startup/: Swift),
-                        windows/ (Rust), linux/ later.
+                        windows/ (Rust), linux/ later; engines/ its per-browser side (webkit/safari/: Safari's Swift
+                        and extension handler; chromium/: the browsers' host files, Rust).
 docs/                   PROTOCOL.md (the link's protocol), HANDOFF.md, DATA.md, PRIVATE-APIS.md, windows/.
-Cargo.toml              The Rust workspace (app/shared/core, app/shared/connector, app/windows, engines/chromium/app).
+Cargo.toml              The Rust workspace (app/shared/core, app/shared/connector, app/windows, app/engines/chromium).
 dist/webkit/, dist/chromium/, dist/app/
                         Builds from `npm run build`, one per engine, each with only its own engine's code (generated,
                         not committed): Safari loads dist/webkit/; Chrome and Edge, dist/chromium/

@@ -74,7 +74,7 @@ count() { grep -Ec "$1" "$PROJECT" || true; }
 APP_DIR=$(dirname "$PROJECT")/..
 cp app/macos/startup/AppDelegate.swift "$APP_DIR/Margin/AppDelegate.swift"
 cp app/macos/startup/ViewController.swift "$APP_DIR/Margin/ViewController.swift"
-cp engines/webkit/browsers/safari/app/handler/SafariWebExtensionHandler.swift "$APP_DIR/Margin Extension/SafariWebExtensionHandler.swift"
+cp app/engines/webkit/safari/handler/SafariWebExtensionHandler.swift "$APP_DIR/Margin Extension/SafariWebExtensionHandler.swift"
 perl -pi -e 's/(MACOSX_DEPLOYMENT_TARGET"?(?: = |: "))(?:1[0-3]|[0-9])(?:\.\d+)?\b/${1}14.0/' "$PROJECT"
 python3 scripts/xcode-add-sources.py "$PROJECT" .
 

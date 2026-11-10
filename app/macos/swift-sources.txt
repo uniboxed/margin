@@ -4,4 +4,4 @@
 # (its handler/ folder, copied by scripts/make-xcode.sh), and the connector a program of its own.
 app/macos/shell
 app/macos/private
-engines/webkit/browsers/safari/app
+app/engines/webkit/safari

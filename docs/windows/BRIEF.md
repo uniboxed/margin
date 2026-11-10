@@ -40,7 +40,7 @@ Then: do it in its own worktree and session, so macOS work goes on in the main c
 - `hello.browser` is only ever `chrome` or `safari`; nothing sends `edge`.
 - The app's socket allows only `safari-web-extension://` origins. The link details reach the extension only through
   `SFSafariApplication.dispatchMessage`, which is Safari's.
-- Only `engines/webkit/browsers/safari/extension/manifest.json` has `nativeMessaging`. No native-messaging host exists, except the e2e test
+- Only `extension/engines/webkit/safari/manifest.json` has `nativeMessaging`. No native-messaging host exists, except the e2e test
   harness's (`tests/e2e/harness/native-host.mts`: stdio, 4-byte little-endian length framing; `relay.ts`), which
   shows the shape.
 - Already prepared: `LinkMessage.Hello` takes `browser` safari, chrome or edge and a `pid` ("Chrome's relay helper

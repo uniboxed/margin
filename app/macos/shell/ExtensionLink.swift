@@ -212,7 +212,7 @@ final class SocketLink {
         guard listener == nil else { return }
         stopped = false
         listen()
-        // The extension handler's notification (engines/webkit/browsers/safari/app/handler/SafariWebExtensionHandler.swift): a JSON string.
+        // The extension handler's notification (app/engines/webkit/safari/handler/SafariWebExtensionHandler.swift): a JSON string.
         wakeObserver = DistributedNotificationCenter.default().addObserver(forName: wake, object: nil, queue: .main) { [weak self] note in
             let json = note.object as? String
             MainActor.assumeIsolated { self?.woken(json) }

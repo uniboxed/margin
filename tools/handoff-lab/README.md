@@ -119,7 +119,7 @@ G8 and G9 need `--person`: someone dismisses each prompt and does each step, the
 
 ### Margin.app with the dev hook (G1's second half, G16)
 
-These two run through Margin.app, never the lab's own calls. The lab posts WP12's dev hook (`engines/webkit/browsers/safari/app/DevHooks.swift`) and reads Margin's log. Margin refuses the hook unless `MarginDevHooks` is YES, and unless the window it shows and the target are Safari's own **Test A** and **Test B** (exact names, read from Safari's files with Full Disk Access). It can't reach any other profile.
+These two run through Margin.app, never the lab's own calls. The lab posts WP12's dev hook (`app/engines/webkit/safari/DevHooks.swift`) and reads Margin's log. Margin refuses the hook unless `MarginDevHooks` is YES, and unless the window it shows and the target are Safari's own **Test A** and **Test B** (exact names, read from Safari's files with Full Disk Access). It can't reach any other profile.
 
 Before:
 

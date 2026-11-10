@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 pub const HOST_NAME: &str = "io.tirth.margin";
 
 /// Margin's extension in every Chromium browser: the id its manifest's key gives
-/// (engines/chromium/extension/manifest.json; tests/build.test.ts checks the two agree).
+/// (extension/engines/chromium/manifest.json; tests/build.test.ts checks the two agree).
 pub const EXTENSION_IDS: &[&str] = &["njeebbcmlenfopaecfbphgcfihbdmkec"];
 
 /// One Chromium browser: where it keeps its user data on the Mac (under ~/Library/Application Support) and on

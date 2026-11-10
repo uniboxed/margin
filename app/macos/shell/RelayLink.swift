@@ -21,7 +21,7 @@ enum Connector {
     }
 
     // Chrome's, Edge's and the other Chromium browsers' host files (margin-connector --install: the connector's
-    // own knowledge of where each browser keeps them, engines/chromium/app/), written in the background; the
+    // own knowledge of where each browser keeps them, app/engines/chromium/), written in the background; the
     // log says how many changed.
     static func installHostFiles() {
         guard let url else { return Diagnostics.warn("no connector in this build (Contents/Helpers/margin-connector): Chrome and Edge can't link") }

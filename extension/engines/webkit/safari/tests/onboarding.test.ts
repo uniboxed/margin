@@ -1,4 +1,4 @@
-// engines/webkit/browsers/safari/extension/onboarding.ts: what the extension tells Margin's Mac app (its
+// extension/engines/webkit/safari/onboarding.ts: what the extension tells Margin's Mac app (its
 // set-up window), against a fake browser API (Safari's profile).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
