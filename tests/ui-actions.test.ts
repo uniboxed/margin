@@ -4,7 +4,7 @@
 // Arcadia's sidebar and palette send today.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTIONS, ACTION_MAP, BEHAVIOR_ONLY, checkAction, contextFromState, createDispatcher, requestFor } from '../extension/ui/actions.ts';
+import { ACTIONS, ACTION_MAP, BEHAVIOR_ONLY, checkAction, contextFromState, createDispatcher, requestFor, type ActionRequest } from '../extension/ui/actions.ts';
 import { paletteItems } from '../extension/ui/view-model.ts';
 import { readFileSync } from 'node:fs';
 import { smallState, W } from './ui/fixtures.ts';
@@ -15,7 +15,7 @@ const handlers = Object.fromEntries([...HANDLERS].map((name) => [name, () => {}]
 
 const state = smallState();
 const ctx = contextFromState(state, ['tab:12', 'go'], { menuIds: ['i0', 'i1'], colorIds: ['c0'] });
-const ok = (name, arg) => checkAction(name, arg, ctx).ok;
+const ok = (name: string, arg: unknown) => checkAction(name, arg, ctx).ok;
 
 test('arguments are checked against the state: open tabs (any window), spaces, folders, pins, archive, palette rows', () => {
   assert.equal(ok('tab.activate', 14), true);
@@ -65,10 +65,13 @@ test('every action has a way out, and the mapping table covers exactly the list'
 });
 
 const ui = { windowId: W, sidebar: 'open' };
-const req = (name, arg, extra = {}) => requestFor(name, arg, { state, ui, platform: { marginFullscreen: false }, ...extra });
+// A request as the tests read it: its fields looked at directly, whichever kind it is.
+type Req = ActionRequest & { payload?: Record<string, any> };
+type ReqOptions = Parameters<typeof requestFor>[2];
+const req = (name: string, arg?: unknown, extra: Partial<ReqOptions> = {}) => requestFor(name, arg, { state, ui, platform: { marginFullscreen: false }, ...extra }) as Req;
 
 test('the mapping: each action becomes the request the background handles', () => {
-  const send = (type, payload) => ({ kind: 'send', type, payload });
+  const send = (type: string, payload: Record<string, unknown>) => ({ kind: 'send', type, payload });
   assert.deepEqual(req('tab.activate', 14), send('activateTab', { tabId: 14 }));
   assert.deepEqual(req('tab.close', 14), send('closeTab', { tabId: 14 }));
   assert.deepEqual(req('tab.new', undefined), { kind: 'local', name: 'palette.open', arg: { newTab: true } }, 'Arcadia\'s + New Tab: the palette');
@@ -111,8 +114,8 @@ test('the mapping: with the sidebar open over the page (peek), a switch keeps it
 test('palette.run: the row\'s own request, as shared/search.ts made it', () => {
   const pui = { windowId: W, tabId: null, palette: { open: true, query: '' } };
   const items = paletteItems(state, pui, {});
-  const row = (id) => items.find((i) => i.id === id);
-  const run = (id, extra = {}) => req('palette.run', id, { row: row(id), ...extra });
+  const row = (id: string) => items.find((i) => i.id === id);
+  const run = (id: string, extra: Partial<ReqOptions> = {}) => req('palette.run', id, { row: row(id), ...extra });
   assert.deepEqual(run('tab:12'), { kind: 'send', type: 'activateTab', payload: { tabId: 12 } });
   assert.deepEqual(run('tab:12', { ui: { windowId: W, sidebar: 'peek' } }).payload, { tabId: 12, show: true });
   assert.deepEqual(run('action:new-window'), { kind: 'send', type: 'newWindow', payload: { fromWindowId: W } });
@@ -166,8 +169,8 @@ test('menu items, swatches and menus a button opens are checked too', () => {
 
 test('only behaviors and menus run two-value actions and space.delete; a theme\'s click never does', () => {
   assert.deepEqual([...BEHAVIOR_ONLY].sort(), ['folder.move', 'folder.setName', 'pin.move', 'profile.forget', 'space.delete', 'space.move', 'space.setName', 'space.update', 'tab.move', 'tab.moveToSpace', 'tab.pinAt']);
-  const ran = [];
-  const log = [];
+  const ran: [string, unknown][] = [];
+  const log: { name: string, arg: unknown, reason: string }[] = [];
   const dispatch = createDispatcher({ context: () => ctx, run: (n, a) => ran.push([n, a]), log: (e) => log.push(e) });
   assert.equal(dispatch('tab.moveToSpace', { tab: 14, space: 'work' }), false);
   assert.equal(dispatch('space.delete', 'side'), false);
@@ -177,7 +180,7 @@ test('only behaviors and menus run two-value actions and space.delete; a theme\'
 });
 
 test('the mapping: the behaviors\' and menus\' actions become the requests today\'s sidebar sends', () => {
-  const send = (type, payload) => ({ kind: 'send', type, payload });
+  const send = (type: string, payload: Record<string, unknown>) => ({ kind: 'send', type, payload });
   const hint = { url: 'https://mail.example/', index: 1, title: 'Mail', from: state.openTabsBy };
   assert.deepEqual(req('tab.move', { tab: 14, nextTo: 12, side: 'after' }), send('moveTab', { tabId: 14, nextTo: 12, side: 'after', nextToHint: hint }), 'with the address and place of the tab it goes next to');
   assert.deepEqual(req('tab.pinAt', { tab: 14, folder: 'f1', before: 'pb' }), send('pinTab', { tabId: 14, folderId: 'f1', beforeId: 'pb' }));
@@ -205,9 +208,9 @@ test('notices and prompts: a button of the one shown, checked by its id; closing
     assert.deepEqual(checkAction(name, undefined, c), { ok: true });
     assert.equal(checkAction(name, 'x', c).ok, false);
   }
-  for (const [name, arg] of [['notice.run', 'go'], ['notice.close', undefined], ['prompt.run', 'ok'], ['prompt.close', undefined], ['launcher.more', undefined]]) {
+  for (const [name, arg] of [['notice.run', 'go'], ['notice.close', undefined], ['prompt.run', 'ok'], ['prompt.close', undefined], ['launcher.more', undefined]] as [string, string | undefined][]) {
     assert.deepEqual(requestFor(name, arg, { state, ui: { windowId: W } }), arg === undefined ? { kind: 'local', name } : { kind: 'local', name, arg });
-    assert.equal(ACTION_MAP[name], 'local');
+    assert.equal((ACTION_MAP as Readonly<Record<string, string>>)[name], 'local'); // by any name
     assert.equal(BEHAVIOR_ONLY.has(name), false, 'a theme\'s button runs them');
   }
 });

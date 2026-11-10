@@ -8,30 +8,33 @@
 // tests/theme/arcadia.test.ts (npm run test:theme).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeTemplate, sanitizeCss, guardText, GUARDED_PARTS, TEXT_ATTRS } from '../extension/ui/sanitize.ts';
+import { sanitizeTemplate, sanitizeCss, guardText, GUARDED_PARTS, TEXT_ATTRS, type CleanElement, type CleanNode, type Removed } from '../extension/ui/sanitize.ts';
 import { sanitizeTheme, BUILTIN_THEMES } from '../extension/ui/theme-loader.ts';
 import { readTheme } from './theme/package.ts';
 
-const root = (inner) => `<div class="t">${inner}<m-page></m-page></div>`;
+const root = (inner: string) => `<div class="t">${inner}<m-page></m-page></div>`;
 // Every text node and attribute the sanitized tree keeps, inside the
 // template elements and slots it holds.
-function texts(tree) {
-  const out = [];
-  const walk = (n) => {
+// (A kept tree: its root, or a node in it; a test's tree is there, null only if sanitizing failed, which fails the test.)
+type Walked = CleanNode | { type: 'root', children: CleanNode[] };
+function texts(tree: Walked | null) {
+  const out: string[] = [];
+  const walk = (n: Walked) => {
     if (n.type === 'text') { if (n.value.trim()) out.push(n.value.trim()); return; }
-    for (const [name, value] of n.attrs ?? []) if (TEXT_ATTRS.includes(name)) out.push(`@${name}=${value}`);
+    // (The root has no attributes.)
+    for (const [name, value] of (n as CleanElement).attrs ?? []) if (TEXT_ATTRS.includes(name)) out.push(`@${name}=${value}`);
     for (const c of n.children ?? []) walk(c);
   };
-  walk(tree);
+  walk(tree!);
   return out;
 }
-const find = (tree, pred) => {
-  let hit = null;
-  const walk = (n) => { if (hit) return; if (n.type === 'el' && pred(n)) { hit = n; return; } for (const c of n.children ?? []) walk(c); };
-  walk(tree);
-  return hit;
+const find = (tree: Walked | null, pred: (n: CleanElement) => boolean) => {
+  let hit: CleanElement | null = null;
+  const walk = (n: Walked) => { if (hit) return; if (n.type === 'el' && pred(n)) { hit = n; return; } for (const c of (n as CleanElement).children ?? []) walk(c); }; // a text: none
+  walk(tree!);
+  return hit as CleanElement | null; // (set in walk)
 };
-const reasons = (r) => r.removed.map((x) => `${x.kind} ${x.name}: ${x.reason}`);
+const reasons = (r: { removed: Removed[] }) => r.removed.map((x) => `${x.kind} ${x.name}: ${x.reason}`);
 
 test('guarded parts: menus, notices, prompts, the space editor, Settings, iCloud Tabs and the switching cover', () => {
   assert.deepEqual([...GUARDED_PARTS].sort(), ['cloud-tabs', 'menu', 'menu-item', 'notice', 'prompt', 'settings', 'space-editor', 'switch-cover']);
@@ -67,7 +70,7 @@ test('a malicious menu part: a fake "Delete" label is removed and reported, Marg
   // Icons, images and decoration stay; the item without a label is an empty button.
   assert.ok(find(part, (n) => n.name === 'path'), 'the icon\'s shapes stay');
   assert.ok(find(part, (n) => n.name === 'img' && n.attrs.some(([k]) => k === 'src')), 'the image stays');
-  assert.equal(find(part, (n) => n.name === 'button').children.length, 0, 'the fake item has no words left');
+  assert.equal(find(part, (n) => n.name === 'button')!.children.length, 0, 'the fake item has no words left');
 });
 
 test('a malicious notice part: fake words, tooltips and placeholders go; the notice\'s text and buttons are Margin\'s', () => {
@@ -114,10 +117,11 @@ test('prompts and the space editor are guarded; bound attributes stay', () => {
       <button m-action="editor.delete" title="{{editor.deleteTitle}}">{{editor.deleteLabel}}</button>
       <button m-action="editor.save">Save</button>
     </template>`));
-  const [prompt, editor] = r.tree.children[0].children.filter((n) => n.name === 'template');
+  // The root's one element (root()'s <div>), and the templates in it.
+  const [prompt, editor] = (r.tree!.children[0] as CleanElement).children.filter((n) => (n as CleanElement).name === 'template');
   assert.deepEqual(texts(prompt), ['{{prompt.text}}']);
   assert.deepEqual(texts(editor), ['@title={{editor.deleteTitle}}', '{{editor.deleteLabel}}']);
-  const input = find(editor, (n) => n.name === 'input');
+  const input = find(editor, (n) => n.name === 'input')!;
   assert.deepEqual(input.attrs.map(([k]) => k).sort(), ['m-attr:aria-label', 'm-input']);
 });
 

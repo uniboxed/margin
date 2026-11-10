@@ -9,12 +9,12 @@ import { readFile } from 'node:fs/promises';
 import { THEME_SCHEMA, checkManifest, settingValueOk, MODES } from '../extension/ui/theme-schema.ts';
 import {
   BUILTIN_THEMES, PACKAGE_LIMITS, checkPackage, sanitizeTheme, resolveSettings, settingsCss, settingVar,
-  readBuiltinTheme, encodeStoredTheme, decodeStoredTheme, saveUserTheme, userThemeKey, USER_THEMES,
+  readBuiltinTheme, encodeStoredTheme, decodeStoredTheme, saveUserTheme, userThemeKey, USER_THEMES, type ThemePackage,
 } from '../extension/ui/theme-loader.ts';
 import { readTheme, NEO } from './theme/package.ts';
 
 const base = { format: 2, id: 'my-theme', name: 'My theme', version: '1.2.3' };
-const check = (extra, files = []) => checkManifest(JSON.stringify({ ...base, ...extra }), { files });
+const check = (extra: Record<string, unknown>, files: string[] = []) => checkManifest(JSON.stringify({ ...base, ...extra }), { files });
 
 // --- theme.json ------------------------------------------------------------------
 
@@ -61,7 +61,7 @@ test('theme.json: the built-in themes pass', async () => {
 });
 
 test('theme.json: what refuses a theme (its identity, the format, not JSON)', () => {
-  const bad = (text, pattern) => {
+  const bad = (text: string, pattern: RegExp) => {
     const r = checkManifest(text);
     assert.equal(r.manifest, null, text);
     assert.match(r.errors.join('\n'), pattern, text);
@@ -125,7 +125,7 @@ test('theme.json: what\'s removed and reported (unknown fields, bad fonts, image
     },
   }, ['fonts/a.woff2', 'fonts/a.ttf', 'images/a.png', 'theme.html']);
   assert.deepEqual(r.errors, []);
-  assert.deepEqual(r.manifest.fonts.map((f) => f.family), ['Good', 'Extra']);
+  assert.deepEqual(r.manifest.fonts.map((f: { family: string }) => f.family), ['Good', 'Extra']);
   assert.deepEqual(r.manifest.fonts[1], { family: 'Extra', file: 'fonts/a.woff2', weight: '400', style: 'normal' }, 'an unknown field in a font goes, the font stays');
   assert.deepEqual(r.manifest.images, ['images/a.png']);
   assert.deepEqual(Object.keys(r.manifest.settings), ['gap', 'tint']);
@@ -201,13 +201,14 @@ test('settings: the user\'s saved values where good, else the theme\'s defaults;
 // --- The package --------------------------------------------------------------
 
 const neo = () => readTheme(NEO);
-const bytes = (n) => new Uint8Array(n);
+const bytes = (n: number) => new Uint8Array(n);
 
 test('package caps and file kinds', () => {
   assert.deepEqual(checkPackage(neo()), [], 'Neubrutalism is within them');
   const ok = { manifest: '{}', html: '', css: '', files: {} };
   assert.deepEqual(checkPackage(ok), []);
-  const errs = (files, extra = {}) => checkPackage({ ...ok, ...extra, files }).join('\n');
+  // Files as they may come (checkPackage checks them: a text where bytes go too).
+  const errs = (files: Record<string, unknown>, extra = {}) => checkPackage({ ...ok, ...extra, files } as ThemePackage).join('\n');
   assert.match(errs({ 'fonts/big.woff2': bytes(PACKAGE_LIMITS.fontBytes + 1) }), /font larger/);
   assert.match(errs({ 'images/big.png': bytes(PACKAGE_LIMITS.imageBytes + 1) }), /image larger/);
   assert.match(errs({ 'notes.txt': bytes(PACKAGE_LIMITS.noteBytes + 1) }), /note larger/);
@@ -218,8 +219,9 @@ test('package caps and file kinds', () => {
   assert.match(errs({ 'a.png': 'text' }), /not bytes/);
   assert.match(errs(Object.fromEntries(Array.from({ length: PACKAGE_LIMITS.files + 1 }, (_, i) => [`images/${i}.png`, bytes(1)]))), /more than 64 files/);
   assert.match(errs(Object.fromEntries(Array.from({ length: 13 }, (_, i) => [`images/${i}.png`, bytes(PACKAGE_LIMITS.imageBytes)]))), /package: larger/);
-  assert.match(checkPackage({ ...ok, html: null }).join(), /html is not text/);
-  assert.match(checkPackage(null).join(), /not an object/);
+  // Not packages: what checkPackage refuses.
+  assert.match(checkPackage({ ...ok, html: null } as unknown as ThemePackage).join(), /html is not text/);
+  assert.match(checkPackage(null as unknown as ThemePackage).join(), /not an object/);
 });
 
 test('the whole package: Neubrutalism sanitizes with nothing removed; images only as declared', () => {
@@ -237,7 +239,7 @@ test('the whole package: Neubrutalism sanitizes with nothing removed; images onl
 });
 
 test('a built-in theme is read from its files: theme.json first, then only what it names', async () => {
-  const read = [];
+  const read: string[] = [];
   const pkg = await readBuiltinTheme('neubrutalism', { readFile: async (path) => { read.push(path); return readFile(new URL(path, `file://${NEO}`)); } });
   assert.deepEqual(read.slice(0, 3), ['theme.json', 'theme.html', 'theme.css']);
   assert.deepEqual(read.slice(3).sort(), ['fonts/archivo-black-latin-ext.woff2', 'fonts/archivo-black-latin.woff2', 'fonts/space-grotesk-latin-ext.woff2', 'fonts/space-grotesk-latin.woff2']);
@@ -247,7 +249,7 @@ test('a built-in theme is read from its files: theme.json first, then only what 
   assert.equal(sanitizeTheme({ ...pkg, files: Object.keys(pkg.files) }).ok, true);
   await assert.rejects(readBuiltinTheme('gone', { readFile: async () => '' }), /no built-in theme/);
   // A manifest naming a path outside the package: never asked for.
-  const asked = [];
+  const asked: string[] = [];
   await readBuiltinTheme('neubrutalism', { readFile: async (p) => { asked.push(p); return p === 'theme.json' ? JSON.stringify({ ...base, fonts: [{ family: 'A', file: '../../../secret.woff2' }, { family: 'B', file: 'https://evil.test/x.woff2' }] }) : ''; } });
   assert.deepEqual(asked, ['theme.json', 'theme.html', 'theme.css']);
 });
@@ -261,7 +263,7 @@ test('a user\'s theme, stored: one key per theme and an index; checked again as 
   assert.ok(Object.values(value.files).every((v) => typeof v === 'string'), 'bytes as base64 (storage holds JSON)');
   assert.deepEqual({ ...entry, bytes: 0 }, { id: 'neubrutalism', name: 'Neubrutalism', version: '0.1.0', author: 'Margin', bytes: 0, savedAt: 42 });
   assert.ok(entry.bytes < PACKAGE_LIMITS.storedBytes);
-  const back = decodeStoredTheme(JSON.parse(JSON.stringify(value)));
+  const back = decodeStoredTheme(JSON.parse(JSON.stringify(value)))!; // just encoded: it decodes
   assert.equal(back.manifest, t.manifest);
   assert.equal(back.html, t.html);
   for (const [path, b] of Object.entries(t.files)) assert.deepEqual([...back.files[path]], [...b], path);
@@ -270,14 +272,14 @@ test('a user\'s theme, stored: one key per theme and an index; checked again as 
   assert.throws(() => encodeStoredTheme({ ...t, html: '<div></div>' }), /m-page/);
   assert.throws(() => encodeStoredTheme({ ...t, files: { ...t.files, 'x.js': bytes(1) } }), /not a file a theme may bundle/);
   // Saving: the theme and the index in one write, a built-in's id refused.
-  const store = { [USER_THEMES]: [{ id: 'other', name: 'Other' }] };
-  const storage = { get: async (keys) => Object.fromEntries(keys.filter((k) => k in store).map((k) => [k, store[k]])), set: async (items) => { writes.push(Object.keys(items)); Object.assign(store, items); } };
-  const writes = [];
+  const store: Record<string, any> = { [USER_THEMES]: [{ id: 'other', name: 'Other' }] }; // stored JSON
+  const storage = { get: async (keys: string[]) => Object.fromEntries(keys.filter((k) => k in store).map((k) => [k, store[k]])), set: async (items: Record<string, any>) => { writes.push(Object.keys(items)); Object.assign(store, items); } };
+  const writes: string[][] = [];
   const mine = { ...t, manifest: JSON.stringify({ ...JSON.parse(t.manifest), id: 'mine', name: 'Mine' }) };
   assert.equal(await saveUserTheme(mine, { ...storage, now: 7 }), 'mine');
   assert.deepEqual(writes, [[userThemeKey('mine'), USER_THEMES]]);
-  assert.deepEqual(store[USER_THEMES].map((e) => e.id), ['other', 'mine']);
+  assert.deepEqual(store[USER_THEMES].map((e: { id: string }) => e.id), ['other', 'mine']);
   await saveUserTheme(mine, { ...storage, now: 8 });
-  assert.deepEqual(store[USER_THEMES].map((e) => [e.id, e.savedAt]), [['other', undefined], ['mine', 8]], 'saved again: replaced, not listed twice');
+  assert.deepEqual(store[USER_THEMES].map((e: { id: string, savedAt?: number }) => [e.id, e.savedAt]), [['other', undefined], ['mine', 8]], 'saved again: replaced, not listed twice');
   await assert.rejects(saveUserTheme(t, storage), /built-in/);
 });

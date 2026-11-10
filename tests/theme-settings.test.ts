@@ -5,7 +5,7 @@
 // the prompt Remove asks first.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { settingsFields, saveThemeField, removePrompt, userThemeList, themeText } from '../extension/ui/settings-form.ts';
+import { settingsFields, saveThemeField, removePrompt, userThemeList, themeText, type SettingsField } from '../extension/ui/settings-form.ts';
 import { PREVIEW_MS } from '../extension/ui/theme-preview.ts';
 
 const LIST = [{ id: 'mine', name: 'Mine', version: '1.2.0', author: 'Me', bytes: 9 }, { id: 'arcadia', name: 'Fake Arcadia' }, { id: '../x', name: 'Bad' }, { id: 'rtl', name: 'Safe‮txt.exe', version: '1.0.0', author: 'A​B' }];
@@ -19,13 +19,13 @@ const THEME = {
     shape: { type: 'choice', default: 'square', choices: ['square', 'round'], label: 'x'.repeat(60) },
   },
 };
-const byId = (fields) => Object.fromEntries(fields.map((f) => [f.id, f]));
+const byId = (fields: SettingsField[]) => Object.fromEntries(fields.map((f) => [f.id, f]));
 
 test('the theme choice lists the built-ins, then the imported themes by name (only valid ids, never a built-in\'s twice)', () => {
   const f = byId(settingsFields({ theme: 'mine' }, { userThemes: LIST }));
   assert.deepEqual(f.theme.options.map((o) => o.id), ['arcadia', 'neubrutalism', 'pixel', 'mine', 'rtl'].filter((id) => id !== 'pixel' || f.theme.options.some((o) => o.id === 'pixel')));
   assert.equal(f.theme.value, 'mine');
-  assert.equal(f.theme.options.find((o) => o.id === 'rtl').label, 'Safetxt.exe', 'bidi controls out');
+  assert.equal(f.theme.options.find((o) => o.id === 'rtl')!.label, 'Safetxt.exe', 'bidi controls out');
   assert.equal(byId(settingsFields({ theme: 'gone' }, { userThemes: LIST })).theme.value, 'arcadia', 'an id no longer listed: Arcadia');
 });
 
@@ -75,18 +75,20 @@ test('saving a theme\'s own setting: updateThemeSettings for that theme only, ch
   const f = byId(settingsFields({}, {}, { theme: THEME }));
   assert.deepEqual(saveThemeField(f['themeSetting:width'], '320', THEME), { type: 'updateThemeSettings', payload: { themeId: 'mine', patch: { width: '320px' } } });
   assert.equal(saveThemeField(f['themeSetting:width'], '999', THEME), null, 'over its max');
-  assert.deepEqual(saveThemeField(f['themeSetting:accent'], '#00ff00', THEME).payload.patch, { accent: '#00ff00' });
+  // Each a valid value: saved (null only when refused).
+  assert.deepEqual(saveThemeField(f['themeSetting:accent'], '#00ff00', THEME)!.payload.patch, { accent: '#00ff00' });
   assert.equal(saveThemeField(f['themeSetting:accent'], 'url(https://evil.test/)', THEME), null);
-  assert.deepEqual(saveThemeField(f['themeSetting:rows'], '10', THEME).payload.patch, { rows: 10 });
-  assert.deepEqual(saveThemeField(f['themeSetting:dense'], true, THEME).payload.patch, { dense: true });
-  assert.deepEqual(saveThemeField(f['themeSetting:shape'], 'round', THEME).payload.patch, { shape: 'round' });
+  assert.deepEqual(saveThemeField(f['themeSetting:rows'], '10', THEME)!.payload.patch, { rows: 10 });
+  assert.deepEqual(saveThemeField(f['themeSetting:dense'], true, THEME)!.payload.patch, { dense: true });
+  assert.deepEqual(saveThemeField(f['themeSetting:shape'], 'round', THEME)!.payload.patch, { shape: 'round' });
   assert.equal(saveThemeField(f['themeSetting:shape'], 'triangle', THEME), null);
-  assert.equal(saveThemeField({ id: 'theme' }, 'x', THEME), null, 'not a theme setting');
+  // A field of which only its id matters here.
+  assert.equal(saveThemeField({ id: 'theme' } as SettingsField, 'x', THEME), null, 'not a theme setting');
   assert.equal(saveThemeField(f['themeSetting:width'], '320', null), null, 'no theme');
 });
 
 test('Remove asks first, in Margin\'s words around the theme\'s name', () => {
-  const p = removePrompt('removeTheme:mine', LIST);
+  const p = removePrompt('removeTheme:mine', LIST)!; // a listed theme: asked
   assert.equal(p.id, 'remove-theme:mine');
   assert.equal(p.text, 'Remove “Mine”? Windows using it go back to Arcadia.');
   assert.deepEqual(p.actions.map((a) => a.id), ['remove', 'cancel']);
