@@ -837,7 +837,12 @@ Task { @MainActor in
         try? await Task.sleep(nanoseconds: 100_000_000)
       }
       if none { if let found { fail(label, "heard \(found.prefix(300))") } else { log("PASS \(label)") } }
-      else if let found { log("PASS \(label)"); _ = found } else { fail(label, "not heard since the mark (\(appLink.heard.count - appLink.mark) lines)") }
+      else if let found { log("PASS \(label)"); _ = found } else {
+        // The closest line heard: the one with the most of the texts, to see what differed.
+        let since = appLink.heard.dropFirst(appLink.mark)
+        let best = since.max { a, b in has.filter { a.contains($0) }.count < has.filter { b.contains($0) }.count }
+        fail(label, "not heard since the mark (\(since.count) lines)" + (best.map { "; closest: \($0.prefix(400))" } ?? ""))
+      }
     case "zoom": // { op: 'zoom', factor }: the shown tab's page zoom, as ⌘+ / ⌘− do
       host.window.active?.webView?.pageZoom = CGFloat(step["factor"] as! Double); log("zoom \(step["factor"]!)")
     case "state":
