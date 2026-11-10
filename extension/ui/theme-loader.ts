@@ -64,11 +64,43 @@ function utf8Text(bytes: Uint8Array): string | null {
     return text.includes('\u0000') ? null : text;
   } catch { return null; }
 }
-const SVG_START = /^\uFEFF?\s*(?:<\?xml[^>]{0,200}\?>\s*)?(?:<!--[\s\S]{0,4000}?-->\s*)*(?:<!DOCTYPE svg[^>]{0,400}>\s*)?<svg[\s>]/i;
+/**
+ * Does an svg's text start with its <svg> element: a byte-order mark, space,
+ * an `<?xml …?>` declaration (at most 200 characters), comments (each at most
+ * 4000, ended by the first `-->`, as XML has it), a `<!DOCTYPE svg …>` (at most
+ * 400), then `<svg` and a space or `>`? Read once from the start, so a crafted
+ * file can't make it slow: a regex with a repeated comment group backtracked
+ * for minutes on a few thousand empty comments (CodeQL js/redos, 2026-11-10).
+ */
+export function svgStarts(text: string): boolean {
+  let at = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const space = () => { while (at < text.length && /\s/.test(text[at])) at++; };
+  const opens = (word: string) => text.slice(at, at + word.length).toLowerCase() === word;
+  space();
+  if (opens('<?xml')) {
+    const end = text.indexOf('>', at + 5);
+    if (end < 0 || text[end - 1] !== '?' || end - 1 - (at + 5) > 200) return false;
+    at = end + 1;
+    space();
+  }
+  while (opens('<!--')) {
+    const end = text.indexOf('-->', at + 4);
+    if (end < 0 || end - (at + 4) > 4000) return false;
+    at = end + 3;
+    space();
+  }
+  if (opens('<!doctype svg')) {
+    const end = text.indexOf('>', at + 13);
+    if (end < 0 || end - (at + 13) > 400) return false;
+    at = end + 1;
+    space();
+  }
+  return opens('<svg') && at + 4 < text.length && /[\s>]/.test(text[at + 4]);
+}
 /** Does the file's content match its kind (by its extension)? */
 export function contentMatches(path: string, bytes: Uint8Array) {
   const ext = path.split('.').pop()!.toLowerCase();
-  if (ext === 'svg') { const text = utf8Text(bytes); return text !== null && SVG_START.test(text); }
+  if (ext === 'svg') { const text = utf8Text(bytes); return text !== null && svgStarts(text); }
   if (ext === 'txt' || ext === 'md') return utf8Text(bytes) !== null;
   return SIGNATURES[ext]?.(bytes) ?? false;
 }
