@@ -1,7 +1,7 @@
 // Safari's profile: what it can do, as shared code asks it (extension/shared/platform.ts). The Safari build
 // takes only this one (scripts/build.ts `#engine/profile`).
-import type { Profile } from '../../../../../extension/shared/platform.ts';
-import { NAVIGATION_DEFAULTS } from '../../../../../extension/shared/navigation-defaults.ts';
+import type { Profile } from '../../../shared/platform.ts';
+import { NAVIGATION_DEFAULTS } from '../../../shared/navigation-defaults.ts';
 
 export const profile: Profile = {
   name: 'safari',

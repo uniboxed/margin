@@ -1,7 +1,7 @@
 // Chromium's profile: what Chrome, Edge and the other Chromium browsers can do, as shared code asks it
 // (extension/shared/platform.ts). The Chromium build takes only this one (scripts/build.ts `#engine/profile`).
-import type { Profile } from '../../../extension/shared/platform.ts';
-import { NAVIGATION_DEFAULTS } from '../../../extension/shared/navigation-defaults.ts';
+import type { Profile } from '../../shared/platform.ts';
+import { NAVIGATION_DEFAULTS } from '../../shared/navigation-defaults.ts';
 
 // The Mac, by the browser's own word (its user agent says Macintosh): Chrome's and Edge's copies link to
 // Margin.app only there (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)").

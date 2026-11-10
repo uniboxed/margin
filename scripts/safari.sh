@@ -41,7 +41,7 @@ npm run build
 MADE_FROM="xcode/.made-from"
 # (The app's Swift folders: app/macos/swift-sources.txt, each folder's own *.swift.)
 SWIFT_FOLDERS=$(grep -v '^#' app/macos/swift-sources.txt | sed '/^$/d')
-FROM=$({ find app/macos/startup engines/webkit/browsers/safari/app/handler app/macos/swift-sources.txt scripts/make-xcode.sh scripts/xcode-add-sources.py -type f | LC_ALL=C sort | xargs shasum; (cd dist/webkit && find . -type f | LC_ALL=C sort); for d in $SWIFT_FOLDERS; do find "$d" -maxdepth 1 -name '*.swift'; done | LC_ALL=C sort; } | shasum | cut -d' ' -f1)
+FROM=$({ find app/macos/startup app/engines/webkit/safari/handler app/macos/swift-sources.txt scripts/make-xcode.sh scripts/xcode-add-sources.py -type f | LC_ALL=C sort | xargs shasum; (cd dist/webkit && find . -type f | LC_ALL=C sort); for d in $SWIFT_FOLDERS; do find "$d" -maxdepth 1 -name '*.swift'; done | LC_ALL=C sort; } | shasum | cut -d' ' -f1)
 if [ ! -d xcode/Margin/Margin.xcodeproj ] || [ "$(cat "$MADE_FROM" 2>/dev/null)" != "$FROM" ]; then
   sh scripts/make-xcode.sh
   echo "$FROM" > "$MADE_FROM"

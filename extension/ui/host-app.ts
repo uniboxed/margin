@@ -31,7 +31,7 @@
 //   that didn't happen;
 // - iCloud Tabs (Safari's windows only): the app's own data, never the
 //   copy's, in the hello (`cloudTabs`) and as `{ type: 'cloudTabs' }` when it
-//   changes (engines/webkit/browsers/safari/app/ShellCloudTabs.swift), checked (shared/cloud-tabs.ts
+//   changes (app/engines/webkit/safari/ShellCloudTabs.swift), checked (shared/cloud-tabs.ts
 //   cloudOf) and kept as the state's `cloudTabs`; the folder's Full Disk
 //   Access button and its Copy Link are the app's (`cloud.access`, `copyText`);
 // - the switch between profiles (docs/HANDOFF.md §5, §7): "Close windows to
@@ -292,7 +292,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (!arg?.value || typeof arg.value !== 'object') return false;
           void post('perform', { name, arg: { value: arg.value } }).catch(() => {});
           return true;
-        // iCloud Tabs (engines/webkit/browsers/safari/app/ShellCloudTabs.swift): System Settings at Full Disk Access, an address copied.
+        // iCloud Tabs (app/engines/webkit/safari/ShellCloudTabs.swift): System Settings at Full Disk Access, an address copied.
         case 'cloud.access':
           void post('perform', { name, arg: null }).catch(() => {});
           return true;

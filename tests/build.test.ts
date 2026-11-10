@@ -17,7 +17,7 @@ const listFiles = (dir, prefix = '') => readdirSync(dir).flatMap((name) => {
   return statSync(path).isDirectory() ? listFiles(path, `${prefix}${name}/`) : [`${prefix}${name}`];
 }).sort();
 
-test('dist/ is up to date with extension/ and engines/ (run `npm run build`)', () => {
+test('dist/ is up to date with extension/ (run `npm run build`)', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'margin-build-'));
   try {
     for (const target of TARGETS) {
@@ -169,13 +169,13 @@ test('the `search` permission (chrome.search) is Chrome-only; Safari has no sear
   assert.equal(PROFILES.safari.search, 'learn');
 });
 
-test('Chrome\'s build: a fixed key, whose id is the one Margin.app\'s host files name (engines/chromium/app/src/lib.rs, the connector\'s)', () => {
+test('Chrome\'s build: a fixed key, whose id is the one Margin.app\'s host files name (app/engines/chromium/src/lib.rs, the connector\'s)', () => {
   const key = manifestFor('chrome').key;
   assert.equal(typeof key, 'string');
   // Chrome's id from a key: the SHA-256 of its DER, its first 32 hex digits as a–p.
   const hex = createHash('sha256').update(Buffer.from(key, 'base64')).digest('hex').slice(0, 32);
   const id = [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
   assert.equal(id, 'njeebbcmlenfopaecfbphgcfihbdmkec');
-  assert.ok(readFileSync(new URL('../engines/chromium/app/src/lib.rs', import.meta.url), 'utf8').includes(`"${id}"`), 'the app names the same id');
+  assert.ok(readFileSync(new URL('../app/engines/chromium/src/lib.rs', import.meta.url), 'utf8').includes(`"${id}"`), 'the app names the same id');
   assert.equal(manifestFor('safari').key, undefined, 'Safari\'s build has none');
 });

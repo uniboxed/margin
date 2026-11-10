@@ -1,4 +1,4 @@
-// The ⌘T-opens-the-homepage note (engines/webkit/browsers/safari/extension/newtab-hint.ts) and finding a
+// The ⌘T-opens-the-homepage note (extension/engines/webkit/safari/newtab-hint.ts) and finding a
 // sleeping tab by its address (the rest of the old wake tests went with the wakes, Phase 2 step 8), against a fake
 // browser API (Safari's: the note is Safari-only).
 import { test } from 'node:test';
@@ -137,19 +137,19 @@ globalThis.chrome = {
   },
 };
 
-const { markMarginOpening, resolveTab, tabShown } = await import('../../../../../../extension/background/tabs.ts');
-const M = await import('../../../../../../extension/state/model.ts');
+const { markMarginOpening, resolveTab, tabShown } = await import('../../../../background/tabs.ts');
+const M = await import('../../../../state/model.ts');
 const hint = await import('../newtab-hint.ts');
 // Margin.app's overlay, linked: the notices pushed to it (background/notices.ts).
-const notices = await import('../../../../../../extension/background/notices.ts');
+const notices = await import('../../../../background/notices.ts');
 const pushed = [];
 let appLinked = true;
 notices.useLinkForTests({ linked: () => appLinked, push: (windowId, msg) => { if (!appLinked) return false; pushed.push({ windowId, msg }); return true; } });
 const noted = () => pushed.filter((p) => p.msg.kind === 'new-tab-setting').map((p) => p.msg.tabId);
-const { mutate, decided, load, markSynced } = await import('../../../../../../extension/background/store.ts');
-const V = await import('../../../../../../extension/shared/view.ts');
-const { navigate, showSpace } = await import('../../../../../../extension/background/navigation.ts');
-const { handlers } = await import('../../../../../../extension/background/handlers.ts');
+const { mutate, decided, load, markSynced } = await import('../../../../background/store.ts');
+const V = await import('../../../../shared/view.ts');
+const { navigate, showSpace } = await import('../../../../background/navigation.ts');
+const { handlers } = await import('../../../../background/handlers.ts');
 
 function reset(tabs) {
   fake.prepare = (args) => ({ ready: true, token: args?.[0]?.token });

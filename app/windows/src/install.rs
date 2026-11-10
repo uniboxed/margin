@@ -14,7 +14,7 @@ pub const MANIFEST_FILE: &str = "io.tirth.margin.json";
 const DESCRIPTION: &str = "Margin: links the Margin extension to the Margin app";
 
 /// The Margin extension's ids, in Chrome's and Edge's stores. TODO(Tirth): fill these in. Neither
-/// `engines/chromium/extension/manifest.json` nor anything else in the repo fixes one (no `key`): an unpacked build's id
+/// `extension/engines/chromium/manifest.json` nor anything else in the repo fixes one (no `key`): an unpacked build's id
 /// comes from its folder, the e2e harness makes a key per run (tests/e2e/harness/build.ts `extensionId`), and the
 /// stores give their own ids at the first upload. Until then, set `MARGIN_EXTENSION_IDS` (ids separated by
 /// commas) before starting the app, for an unpacked build's id (chrome://extensions shows it).

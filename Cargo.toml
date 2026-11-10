@@ -2,7 +2,7 @@
 # and tested on any OS; margin-windows (app/windows/) is the Windows shell. macOS stays Swift (app/macos/).
 [workspace]
 resolver = "3"
-members = ["app/shared/core", "app/shared/connector", "app/windows", "engines/chromium/app"]
+members = ["app/shared/core", "app/shared/connector", "app/windows", "app/engines/chromium"]
 
 [workspace.package]
 version = "0.1.0"

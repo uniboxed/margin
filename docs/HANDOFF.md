@@ -779,7 +779,7 @@ It also holds:
 
 For live tests without Accessibility, AppleScript or clicks.
 
-- **New `engines/webkit/browsers/safari/app/DevHooks.swift`.** It listens to `DistributedNotificationCenter` (as `ExtensionLink.swift:211` already does for `io.tirth.margin.setup`).
+- **New `app/engines/webkit/safari/DevHooks.swift`.** It listens to `DistributedNotificationCenter` (as `ExtensionLink.swift:211` already does for `io.tirth.margin.setup`).
 - **Off unless** `defaults write io.tirth.margin MarginDevHooks -bool YES`, checked at each notification.
 - **Only Test A and Test B:** it refuses a target unless Safari's own name for the profile (`SafariProfiles.swift`) is exactly "Test A" or "Test B". Without names it refuses everything.
 - **Notifications:**
@@ -791,7 +791,7 @@ For live tests without Accessibility, AppleScript or clicks.
 - **A sender:** `tools/handoff-lab/devswitch.swift`.
 - **Removal:** the file, its call sites and the sender go before production. Each has a `DEV-HOOK` comment so one grep finds them.
 
-Built (WP12): `engines/webkit/browsers/safari/app/DevHooks.swift` (`DevHooks`, `DevHookWorld`, `DevHookState`, `DevFailStep`, and the shell's side), `Shell.Options.devHooksOn` (set only in `forApp()`), the machine's caps and four fault sites in `Handoff.swift`, `Diagnostics.scrub`, the sender `tools/handoff-lab/devswitch.swift`, the live checklist in `TESTING.md`, and the G1/G16 runbook in `tools/handoff-lab/README.md`; tests in `engines/webkit/browsers/safari/app/tests/devhooks-tests.swift`. Settled on the way:
+Built (WP12): `app/engines/webkit/safari/DevHooks.swift` (`DevHooks`, `DevHookWorld`, `DevHookState`, `DevFailStep`, and the shell's side), `Shell.Options.devHooksOn` (set only in `forApp()`), the machine's caps and four fault sites in `Handoff.swift`, `Diagnostics.scrub`, the sender `tools/handoff-lab/devswitch.swift`, the live checklist in `TESTING.md`, and the G1/G16 runbook in `tools/handoff-lab/README.md`; tests in `app/engines/webkit/safari/tests/devhooks-tests.swift`. Settled on the way:
 
 - **"The current profile" is the window Margin shows** (where the last switch landed, else the one in front with its overlay, else the one Safari window with its overlay up). The sender runs in a terminal, so Safari usually isn't in front. It must be Test A's or Test B's for every kind, not only `switch`, and a switch's target the other one.
 - **The caps and faults can't reach another profile.** `dev.mode` and `dev.fail` are kept for the session, but a switch uses them only if `HandoffWorld.devHookAllows(A, B)` holds as it starts: the default YES at that moment, and both profiles Safari's Test A and Test B. Anything armed stays armed through other profiles' switches.
