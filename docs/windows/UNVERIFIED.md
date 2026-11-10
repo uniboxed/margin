@@ -1,49 +1,82 @@
 # What isn't verified yet
 
-Written against Microsoft's documentation and checked only by compiling for Windows on the Mac. One line each: what,
-why it might be wrong, how to check. Logs: `%LOCALAPPDATA%\Margin\logs\margin.log` and `relay.log`.
+Written against Microsoft's documentation and checked only by compiling for Windows on the Mac (and the OS-neutral
+parts, the link's listener among them, by tests on the Mac). One line each: what, why it might be wrong, how to check.
+Log: `%LOCALAPPDATA%\Margin\logs\margin.log`.
 
 ## margin-windows (the Windows layer)
 
-### The relay and the pipe (relay.rs, pipe.rs, handshake.rs)
+### The link's WebSocket (tcp.rs, margin-core socket.rs)
 
-- **Chrome starts the host through `cmd.exe /d /c`, so the browser is the relay's grandparent.** If Chrome starts it
-  directly or through something else, `browser` is wrong or `other`. Check: relay.log's "started for chrome (pid N)"
-  is chrome.exe's main process in Task Manager (Details, the one with no `--type=`); same for Edge (`edge`).
-- **`--parent-window` is 0 for a service worker's `connectNative`.** Then `parentWindow` is left out. Check: relay.log
-  says "parent window none" for Margin's link.
-- **A GUI-subsystem `margin.exe` keeps Chrome's redirected stdin/stdout.** If not, the relay links and nothing
-  flows. Check: `connectNative`, `port.postMessage({k:'ping'})`, and a `Frame` reaching the app (the shell logs it).
-- **Starting the app from the relay outlives the relay.** Chrome may run hosts in a job that kills its processes when
-  the host exits and refuses `CREATE_BREAKAWAY_FROM_JOB`. Check: quit Margin, `connectNative` (the relay starts it),
-  `port.disconnect()`; `margin.exe` must still be running in Task Manager.
-- **The relay inherits none of Chrome's handles to the app.** Otherwise Chrome's port wouldn't close when the relay
-  exits. Check: after `port.disconnect()`, the relay process is gone within a second.
-- **Overlapped I/O with cancellation (CancelIoEx, then waiting for the result) never hangs or crashes.** Check:
-  restart the app 20 times (`taskkill /im margin.exe` on the app's pid, start it) while a port is open; relay.log
-  says "linking again" then links; the relay never stays stuck.
-- **The pipe's DACL (`D:P(A;;GA;;;<SID>)`) lets this user's relay in and nobody else.** Check: linking works at all;
-  `runas /user:<other> margin.exe chrome-extension://x/` as another user can't open the pipe.
+- **Windows Firewall doesn't ask about a listener on 127.0.0.1.** It prompts for programs that listen on other
+  addresses; a loopback-only one shouldn't. Check: the first launch of a fresh `margin.exe` shows no "Windows Defender
+  Firewall has blocked some features" dialog; margin.log says `listening on 127.0.0.1:<port>`.
+- **Loopback is reachable by every local user and process, so the token carries it.** Another user's session on the
+  same PC (fast user switching, Remote Desktop) can connect to the port; only the token (32 random bytes, in the
+  `link`, which only this user's connector gets) lets a socket in. Check: from another user's PowerShell,
+  `(New-Object Net.Sockets.TcpClient).Connect('127.0.0.1', <port>)` connects, and a WebSocket request without the token
+  gets `403` (margin.log: `socket refused: wrong token`); never a `welcome`.
+- **Antivirus, proxies or "web protection" on loopback.** Some security products inspect or block local HTTP and
+  WebSocket traffic, or slow it. Check: with Windows Security (and any other antivirus) on, the link comes up within a
+  second of Chrome starting; margin.log has no `socket ended before its hello` lines in normal use; `tick`/`tock` keep
+  the link up over an hour.
+- **Chrome's service worker opens `ws://127.0.0.1` with Origin `chrome-extension://<id>`.** Chrome may send another
+  Origin from a worker, or none. Check: margin.log says `socket open` then `hello: chrome:p-…`, never
+  `socket refused: not from Margin's extension`. Same in Edge (`hello: edge:p-…`).
+- **Nagle off (`set_nodelay`) on the accepted socket.** Check: dragging a tab in the sidebar feels as quick as on the
+  Mac (no 40 ms steps); margin.log never says `a connection's Nagle couldn't be turned off`.
+- **The listener made again.** A bind that fails is tried every second, an accept failing for 5 s makes it again on a
+  new port (`listener waiting`, `listener still waiting after 5 s: made again`). Check after sleep and wake, and a
+  network change (Wi-Fi off and on, a VPN): the link comes back; a new port's `listening on` line if it was made again.
+- **The `bye`s on quitting.** Dropping the listener gives queued writes 0.3 s. Check: quit Margin with the copy linked;
+  its log says the app said goodbye (the overlay pages' `link: off` at once, not after 6 s).
+- **Ending a connection.** `end` writes what's queued, shuts down sending, and waits up to 2 s for the copy's end.
+  Check: a wrong token's 403 reaches the copy (its log says refused, not a timeout), and Task Manager's thread count
+  for margin.exe stays steady over a day of links coming and going.
+
+### The connector and the pipe (pipe.rs, app/shared/connector/src/windows.rs)
+
+- **Chrome starts the host through `cmd.exe /d /c`, so the browser is the connector's grandparent.** If Chrome starts
+  it directly or through something else, `browser` or `pid` is wrong. Check: the copy's hello in margin.log
+  (`hello: chrome:p-…`) and its windows getting overlays; the connector's pid's parent chain in Process Explorer ends
+  at chrome.exe's main process (the one with no `--type=`); same for Edge.
+- **The connector, a console program, flashes no console window** when Chrome starts it (Chrome hides its hosts'
+  consoles), nor when the app runs its `--install` (`CREATE_NO_WINDOW`). Check: nothing flashes at Margin's start or
+  when a page opens.
+- **The pipe's checks of both ends.** The app lets in only `margin-connector.exe` beside `margin.exe`
+  (`GetNamedPipeClientProcessId` → `QueryFullProcessImageNameW`); the connector links only to the `margin.exe` beside it
+  (`GetNamedPipeServerProcessId`). Paths compare case-insensitively without `\\?\`, but 8.3 short names, a `subst`
+  drive or a symbolic link may make them differ. Check: margin.log never says `relay: refused pid N: not Margin's
+  connector` for your own; try from a folder with a space and an accent in its path.
+- **The pipe's DACL (`D:P(A;;GA;;;<SID>)`) lets this user's connector in and nobody else.** Check: linking works at
+  all; another user's `margin-connector.exe` can't open the pipe.
 - **`FILE_FLAG_FIRST_PIPE_INSTANCE` refuses a pipe someone else made first.** Check: in PowerShell
-  `$s = New-Object IO.Pipes.NamedPipeServerStream('Margin-<your SID>')`, then start Margin: margin.log says "the pipe
-  couldn't be made" (`whoami /user` shows the SID).
-- **Image paths compare equal for the same `margin.exe`.** `QueryFullProcessImageNameW` and `GetModuleFileNameW` may
-  differ by 8.3 short names, a `subst` drive or a symbolic link (only case and `\\?\` are handled). Check: margin.log
-  says "a client (pid N) that isn't Margin" for your own relay only if this is wrong; try from a path with spaces.
-- **The relay's `relayDown` / `relayUp` frames are harmless to the copy.** Unknown kinds are ignored by both ends
-  (docs/PROTOCOL.md), but the Chromium link isn't built yet. Check when it lands: align them with the Mac's relay.
-- **Chrome's size limits: at most 1 MiB to Chrome, 64 MiB from it.** Larger app frames are dropped with a log line.
-  Check: relay.log never says "dropped" in normal use (themes go in chunks).
-- **The build check is only `CARGO_PKG_VERSION`.** Two different builds of one version link. Check: bump the version
-  for every release; a relay of another version exits (relay.log "the app is another build").
+  `$s = New-Object IO.Pipes.NamedPipeServerStream('Margin-<your SID>')`, then start Margin: margin.log says
+  `relay: Chrome and Edge can't find the app: the pipe couldn't be made` (`whoami /user` shows the SID).
+- **Overlapped I/O with cancellation (CancelIoEx, then waiting for the result) never hangs or crashes.** Check:
+  restart the app 20 times (`taskkill /im margin.exe`, start it) while Chrome is open; each time the copies link again
+  (the connector waits for the app and says `waited`; the app answers `appUp`).
+- **The connector starting the app outlives the connector.** Chrome may run hosts in a job that kills its processes
+  when the host exits and refuses `CREATE_BREAKAWAY_FROM_JOB`. Check: quit Margin, open a new tab in Chrome (the copy
+  asks; the connector starts the app); close the tab: `margin.exe` must still be running in Task Manager.
+- **The connector inherits none of Chrome's handles to the app.** Otherwise Chrome's port wouldn't close when the
+  connector exits. Check: after `port.disconnect()`, the connector process is gone within a second.
+- **The version check.** Built with the same `MARGIN_APP_VERSION`, both link; another version's connector exits on
+  the app's welcome (the browser starts the new one next time). Built without it, the connector isn't checked.
 
-### The host registration, one instance, sign-in (install.rs, instance.rs)
+### The host registration, one instance, sign-in (connector `--install`, app.rs, instance.rs)
 
 - **Chrome Beta, Dev and Canary read `HKCU\Software\Google\Chrome\NativeMessagingHosts`.** Canary may use its own
-  key (`Google\Chrome SxS`). Check: `connectNative` in each; "Specified native messaging host not found" means not.
+  key (`Google\Chrome SxS`). Check: the link comes up in each; "Specified native messaging host not found" in the
+  service worker's console means not.
 - **Brave and Chromium's keys.** Check the same way in each.
-- **The manifest's `path` with spaces or non-ASCII letters.** JSON-escaped, absolute. Check: install under a folder
+- **The host file's `path` with spaces or non-ASCII letters.** JSON-escaped, absolute. Check: install under a folder
   with a space and an accent.
+- **The install at each launch.** margin.log says `the browsers' host files written: N` (the registry keys are written
+  every time, so N is at least 4), never `weren't written` or `no connector beside margin.exe`.
+- **An older registration naming `margin.exe`** (from before the connector): Chrome starting it makes it exit at once;
+  the app's next launch points the browsers at the connector. The old `NativeMessagingHosts\io.tirth.margin.json`
+  under `%LOCALAPPDATA%\Margin` is left behind, unused.
 - **`Local\Margin-<SID>` is one per sign-in session.** Fast user switching gives each session its own app (wanted).
   Check: double-click `margin.exe` twice; margin.log says "another Margin is running" once.
 - **Opening at sign-in through the Run key.** Settings › Apps › Startup can turn it off apart (`StartupApproved`),
@@ -119,19 +152,21 @@ why it might be wrong, how to check. Logs: `%LOCALAPPDATA%\Margin\logs\margin.lo
 - **DPI awareness from `SetProcessDpiAwarenessContext` rather than a manifest.** Some APIs read the manifest only. Check:
   on a 150% monitor, overlays line up with Chrome's windows to the pixel; else embed a manifest (`dpiAwareness`
   PerMonitorV2) with a build script.
-- **The log rotating while several relays append.** Rust opens files with FILE_SHARE_DELETE, so a rename while
-  another process writes should work. Check: many relays at once (several profiles), relay.log rotates.
+- **The log rotating.** Rust opens files with FILE_SHARE_DELETE, so a rename while the file is open should work.
+  Check: margin.log rotates to margin.1.log at about 1 MiB.
 
 ## The shell's glue (margin-core `shell`, margin-windows `host.rs`)
 
 Ported from Shell.swift and tested on the Mac with fake inputs; what only Windows can confirm:
 
-- **The relay's facts win.** A hello is rewritten with the relay's `browser` (`chrome`/`edge`) and `pid` before the
-  link reads it, so Edge's copy is `edge:<profile>` (its data under `data\edge\…`). Check: Edge and Chrome linked at
-  once; margin.log says `hello: edge:p-…` and `hello: chrome:p-…`, and each overlay's `platform.browser` is right.
-- **A link's windows are its relay pid's process tree.** Chromium's top-level windows belong to its main process (the
-  relay's pid); the driver maps each window's process to its main one (same executable up its parents). Check: Chrome
-  and Chrome Beta (or two user-data folders) open at once: each binds only its own windows (margin.log's binder lines).
+- **The hello's browser and pid.** The copy says its browser by its user agent (`Edg/`: `edge`) and the pid its
+  connector told it (the browser's main process), and the shell trusts them, as the Mac does; Edge's copy is
+  `edge:<profile>` (its data under `data\edge\…`). Check: Edge and Chrome linked at once; margin.log says
+  `hello: edge:p-…` and `hello: chrome:p-…`, and each overlay's `platform.browser` is right.
+- **A link's windows are its hello pid's process tree.** Chromium's top-level windows belong to its main process (the
+  connector's grandparent); the driver maps each window's process to its main one (same executable up its parents).
+  Check: Chrome and Chrome Beta (or two user-data folders) open at once: each binds only its own windows (margin.log's
+  binder lines).
 - **Windows that aren't in full screen get an overlay too** (Tirth, 2026-11-09: `Options::windowed_too` on in
   host.rs; off on the Mac), over the page area only (`planner::windowed_frame`): the viewport's size, centred between
   the frame lines, its bottom on the visible frame's. Check: a normal and a maximized Chrome window: the sidebar sits
@@ -161,15 +196,15 @@ Ported from Shell.swift and tested on the Mac with fake inputs; what only Window
   restacks it if not. Check: click Chrome's page; the overlay is back above it within a read (at most 250 ms).
 - **Reads coalesced to 60 a second** (`READ_GAP`): a drag's location events are one read per 16 ms. Check: drag a
   window: CPU stays modest.
-- **Reconnecting.** A relay gone (the port closed, the service worker restarted): the overlays stay 6 s with
-  `link: reconnecting`, then close; a relay linking again within that takes them back. Check: reload Margin in
-  `chrome://extensions`: the overlay dims and comes back.
+- **Reconnecting.** A socket gone (the service worker restarted, `closed by the extension (1006, no close frame)`):
+  the overlays stay 6 s with `link: reconnecting`, then close; the copy linking again within that takes them back.
+  Check: reload Margin in `chrome://extensions`: the overlay dims and comes back.
 - **The theme picker** is `IFileOpenDialog` on its own thread, owned by the overlay's window: `.margintheme` files, or a
   theme folder's `theme.json` (its folder imported). Check: Settings › Import theme: the dialog comes up in front of
   full-screen Chrome; a folder through its theme.json imports; Cancel does nothing.
 - **`copyText`** writes `CF_UNICODETEXT`. Check: copy a link from the overlay, paste it in Notepad.
-- **The quit.** On WM_QUIT the shell says `bye` on each link before the pipe closes; the writes may not reach the
-  relays (the pipe is dropped right after). Check: quit Margin; relay.log says the app said goodbye.
+- **The quit.** On WM_QUIT the shell says `bye` on each link and closes the connectors' pipes; the listener gives the
+  `bye`s 0.3 s to go. Check: quit Margin; the copy's log says the app said goodbye.
 - **The profile switch** (close-based, `ProfileSwitch`) with Chromium's words (`BrowserWords::chromium`): a profile
   with no window can't be opened by Margin yet (`--profile-directory` isn't wired). Check: two Chrome profiles' spaces
   in one sidebar; a switch opens the other profile's window full screen and closes the old one (or keeps it with a
