@@ -122,26 +122,45 @@ export function startBody(ctx: any) {
     margins[0] = topMargin(margins[0], said, paddings[0], parseFloat(style.width) || 0, parse);
     return { sized: wide, grows: growsIn(said), column: said.column, margins, paddings };
   }
+  // <body>'s scroll bars where they take space (box-bars.ts): it reaches past <html>, which is narrower and shorter
+  // by them, to the box's edge, by its height here and its right margin below.
   function writeFit() {
-    const next = bodyFitCss({ ...fitted, held });
+    const next = bodyFitCss({ ...fitted, held, below: ctx.bars.bottom });
     const changed = next !== fit;
     if (changed) own.replace(own.sheets.fit, next);
     fit = next;
     return changed;
+  }
+  let edges: number[] = [0, 0, 0, 0]; // the page's margins and padding, together (applyBody)
+  function writePadding() {
+    const bar = ctx.bars.right;
+    // Padding can't be negative: what's less than nothing stays a margin.
+    const side = (pick: (...values: number[]) => number, less = [0, 0, 0, 0]) => edges.map((n: number, i: number) => `${pick(n, 0) - less[i]}px`).join(' ');
+    const padding = padded ? `@media screen { ${FITTED_BODY} { margin: ${side(Math.min, [0, bar, 0, 0])} !important; padding: ${side(Math.max)} !important; } }`
+      : bar ? `@media screen { ${FITTED_BODY} { margin-right: ${-bar}px !important; } }` : '';
+    const repadded = padding !== paddingCss;
+    if (repadded) own.replace(own.sheets.padding, padding);
+    paddingCss = padding;
+    return repadded;
   }
   function applyBody({ sized: wide, grows, column, margins, paddings }: ReturnType<typeof readLaidOut>) {
     ctx.sized = wide;
     fitted = { grows, column };
     const refit = writeFit();
     padded = margins.some(Boolean);
-    // Padding can't be negative: what's less than nothing stays a margin.
-    const edges = margins.map((n: number, i: number) => n + paddings[i]);
-    const side = (pick: (...values: number[]) => number) => edges.map((n: number) => `${pick(n, 0)}px`).join(' ');
-    const padding = !padded ? '' : `@media screen { ${FITTED_BODY} { margin: ${side(Math.min)} !important; padding: ${side(Math.max)} !important; } }`;
-    const repadded = padding !== paddingCss;
-    if (repadded) own.replace(own.sheets.padding, padding);
-    paddingCss = padding;
+    edges = margins.map((n: number, i: number) => n + paddings[i]);
+    const repadded = writePadding();
     return refit || repadded;
+  }
+  // The bars changed (box-bars.ts, in a ResizeObserver's callback): <body>'s own rules follow now, which keeps its
+  // content box as it was. What depends on <html>'s width (a centred or sized <body>: `whole` is <html>'s width)
+  // is read again in the next frame: a new padding now would change <body>'s size inside the observer's callback.
+  function barsChanged() {
+    if (!box.on || !document.body) return;
+    writeFit();
+    writePadding();
+    ctx.watch.stale(); // what was read for these attributes was read at <html>'s old width
+    if (ctx.sized) requestAnimationFrame(() => measureBody());
   }
   // A length on its way somewhere isn't what the page says: a read during a
   // transition or an animation of one is thrown away and made again as it ends
@@ -224,11 +243,13 @@ export function startBody(ctx: any) {
     fit = '';
     paddingCss = '';
     padded = false;
+    edges = [0, 0, 0, 0];
   }
 
   return {
     measureBody,
     applyKnown,
+    barsChanged,
     reset,
     /** Margin's own, in the page only during a read. */
     ownFlag: (node: Node) => node === readFlag || node === holdFlag,

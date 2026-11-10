@@ -74,10 +74,13 @@ const NO_TRANSITION = 'transition-duration: 0s !important; transition-delay: 0s 
 // children, so they're kept from shrinking here, and held still while a read
 // takes that away. `held`: a page whose elements inherit from <body> started
 // transitions in a read (content/page/box.ts): all of them are held from then on.
-export function bodyFitCss({ grows = false, column = false, held = false } = {}) {
-  const height = grows ? 'height: auto !important;' : 'height: 100% !important;';
+// `below`: <body>'s horizontal scroll bar where it takes space (barsCss, below): <html> is that much shorter, and
+// <body> reaches past it to the box's bottom edge.
+export function bodyFitCss({ grows = false, column = false, held = false, below = 0 } = {}) {
+  const full = below ? `calc(100% + ${below}px)` : '100%';
+  const height = grows ? 'height: auto !important;' : `height: ${full} !important;`;
   return `@media screen {
-    html > body:where(:first-of-type) { min-height: 100% !important; max-height: 100% !important; }
+    html > body:where(:first-of-type) { min-height: ${full} !important; max-height: ${full} !important; }
     ${FITTED_BODY} { left: auto !important; right: auto !important; width: auto !important; max-width: none !important; box-sizing: border-box !important; ${height} }
     ${grows && column ? `${FITTED_BODY} > * { flex-shrink: 0 !important; flex-basis: auto !important; } ${STILL} > * { ${NO_TRANSITION} }` : ''}
     ${held ? `${STILL} * { ${NO_TRANSITION} }` : ''}
@@ -86,6 +89,14 @@ export function bodyFitCss({ grows = false, column = false, held = false } = {})
 
 export const STILL_CSS = `${STILL}, ${STILL}::before, ${STILL}::after { ${NO_TRANSITION} }
   ${READ_ELEMENT}${WEIGHT}, ${HOLD_ELEMENT}${WEIGHT} { display: none !important; }`;
+
+// <body> a pixel narrower for one layout, within one task, while an element of Margin's is after it: as <body>'s
+// scroll bars change (content/page/box-bars.ts), so its children are laid out again. WebKit doesn't when a bar goes
+// because <body>'s overflow turned hidden (a scroll lock): its children kept the bar's width free (the WebKit host,
+// box pattern scroll-lock). Only in a page where scroll bars take space (Bars `seen`).
+export const RELAYOUT_ELEMENT = 'margin-relayout';
+const RELAYOUT_CSS = `${BODY}:not(${none(RELAYOUT_ELEMENT)})${WEIGHT} { margin-right: 1px !important; }
+    ${RELAYOUT_ELEMENT}${WEIGHT} { display: none !important; }`;
 
 // What the page says about <body>, without a layout: `::backdrop` has no box,
 // so what it inherits reads back as the page wrote it (`10%`, `auto`, `50%`),
@@ -142,6 +153,36 @@ export function boxCss(box: { left: number, top: number, right: number, bottom: 
     :fullscreen::backdrop { inset: 0 !important; }
     /* Full screen is the whole window again. */
     :fullscreen { --margin-box-dw: 0px; --margin-box-dh: 0px; }
+  }`;
+}
+
+/**
+ * <body>'s scroll bars where they take space (classic scroll bars: content/page/box-bars.ts), in the page's
+ * pixels: `right`, its vertical one's width, `bottom`, its horizontal one's height; `seen`, scroll bars have taken
+ * space in this page; `hideWindow`, the window's own are hidden (a page's `overflow: scroll` on <html> would show
+ * them). All 0 and false with overlay scroll bars.
+ * */
+export type Bars = { right: number, bottom: number, seen: boolean, hideWindow: boolean };
+export const NO_BARS: Bars = Object.freeze({ right: 0, bottom: 0, seen: false, hideWindow: false });
+
+// The bars' sheet, after the box's (boxCss: the same box and zoom), and empty with overlay scroll bars. In a window,
+// what's fixed is laid out in the window less its scroll bars; in the box, in <html>, while <body>'s bars are inside
+// <body>: so <html> is narrower and shorter by them, and <body> reaches past it to the box's edge (its margin,
+// content/page/box-body.ts; its height, bodyFitCss). `hideWindow`: the window's own scroll bars, which a page's
+// `overflow: scroll` on <html> would show at the window's edge, hidden (<body> shows the page's: box-locks.ts).
+// A sheet of its own, of rules about <html> and <body> only: as a bar comes or goes, Chromium styles those two again,
+// not the whole page (WebKit styles every element again for any sheet written, whichever).
+export function barsCss(box: { left: number, top: number, right: number, bottom: number, [more: string]: any }, zoom: number, bars: Bars) {
+  if (!bars.seen && !bars.right && !bars.bottom && !bars.hideWindow) return '';
+  const less = (whole: string, bar: number) => (bar ? `calc(${whole} - ${bar}px)` : '');
+  const width = less(`${100 / zoom}vw - ${(box.left + box.right) / zoom}px`, bars.right);
+  const height = less(`${100 / zoom}vh - ${(box.top + box.bottom) / zoom}px`, bars.bottom);
+  const size = (w: string, h: string) => `${w ? `width: ${w} !important;` : ''} ${h ? `height: ${h} !important;` : ''}`.trim();
+  return `@media screen {
+    ${width || height ? `${BOX_ROOT} { ${size(width, height)} }
+    ${BOX_ROOT}:fullscreen { ${size(less(`${100 / zoom}vw`, bars.right), less(`${100 / zoom}vh`, bars.bottom))} }` : ''}
+    ${bars.hideWindow ? `${BOX_ROOT} { scrollbar-width: none !important; }` : ''}
+    ${bars.seen ? RELAYOUT_CSS : ''}
   }`;
 }
 

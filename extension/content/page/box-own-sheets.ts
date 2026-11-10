@@ -3,7 +3,8 @@
 // read, and its background. Made in the page's own world and adopted, and kept
 // adopted whatever the page does with its list.
 import type { Accessor } from './accessor.ts';
-import { bodyFitCss, boxCss, NO_BOX_CSS, SAID_CSS, STILL_CSS } from '../../shared/page-box.ts';
+import { barsCss, bodyFitCss, boxCss, NO_BARS, NO_BOX_CSS, SAID_CSS, STILL_CSS } from '../../shared/page-box.ts';
+import type { Bars } from '../../shared/page-box.ts';
 
 // Made with the box, before anything is in the page; `start` puts them in.
 export function createOwnSheets() {
@@ -12,16 +13,17 @@ export function createOwnSheets() {
   const sheet = () => new CSSStyleSheet();
   const sheets = {
     box: sheet(),
+    bars: sheet(), // <body>'s scroll bars where they take space (box-bars.ts): after the box's, empty with overlay ones
     scroll: sheet(), // how <body> scrolls (box-locks.ts checkLocks)
     fit: sheet(), // <body>'s size in the box (box-body.ts measureBody)
     padding: sheet(), // <body>'s margin as padding (box-body.ts measureBody)
     read: sheet(), // how <body> is read (box-body.ts readWithout, readSaid)
     back: sheet(), // <body>'s background drawn on <body> (box-locks.ts checkBackground)
   };
-  const ours = [sheets.box, sheets.fit, sheets.scroll, sheets.padding, sheets.read, sheets.back];
+  const ours = [sheets.box, sheets.bars, sheets.fit, sheets.scroll, sheets.padding, sheets.read, sheets.back];
   // Each written only when its text changes: WebKit styles the whole page again after any sheet is replaced,
-  // even with the same text (20,000 rules: about 80 ms).
-  const written: Map<CSSStyleSheet, string> = new Map();
+  // even with the same text (20,000 rules: about 80 ms). The bars' starts empty, as it is made.
+  const written: Map<CSSStyleSheet, string> = new Map([[sheets.bars, '']]);
   const replace = (target: CSSStyleSheet, css: string) => {
     if (written.get(target) === css) return;
     written.set(target, css);
@@ -36,7 +38,11 @@ export function createOwnSheets() {
   let box: any = null; // (box.ts's, from start: it isn't typed yet)
   let rootZoom = 1; // the page's `zoom` on <html> (box-body.ts readSaid)
   let rootClipsY = true; // <html> clips up and down (box-locks.ts checkLocks: not while the page says its overflow-x)
-  const write = () => replace(sheets.box, box.on ? boxCss(box, rootZoom, rootClipsY) : NO_BOX_CSS);
+  let bars: Bars = NO_BARS; // <body>'s scroll bars where they take space (box-bars.ts)
+  const write = () => {
+    replace(sheets.box, box.on ? boxCss(box, rootZoom, rootClipsY) : NO_BOX_CSS);
+    replace(sheets.bars, box.on ? barsCss(box, rootZoom, bars) : '');
+  };
   function setRootZoom(next: number) {
     if (next === rootZoom) return;
     rootZoom = next;
@@ -45,6 +51,12 @@ export function createOwnSheets() {
   function setRootClipsY(next: boolean) {
     if (next === rootClipsY) return;
     rootClipsY = next;
+    write();
+  }
+
+  function setBars(next: Bars) {
+    if (next.right === bars.right && next.bottom === bars.bottom && next.seen === bars.seen && next.hideWindow === bars.hideWindow) return;
+    bars = { ...next };
     write();
   }
 
@@ -91,6 +103,7 @@ export function createOwnSheets() {
     write,
     setRootZoom,
     setRootClipsY,
+    setBars,
     /** The page's adopted sheets as the browser has them (Margin's among them). */
     adoptedNow: () => adopted.get.call(document),
     start,

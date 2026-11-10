@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { asksSize, declarations, hasUnits, shiftQuery, shiftStyle, shiftUnits } from '../extension/shared/page-css.ts';
 import { readFileSync } from 'node:fs';
-import { FITTED_BODY, HOLD_ELEMENT, bodyBackgroundCss, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS, bodyFitCss, boxCss, boxRules, BOX_ROOT } from '../extension/shared/page-box.ts';
+import { FITTED_BODY, HOLD_ELEMENT, barsCss, bodyBackgroundCss, NO_BARS, NO_BOX_CSS, READ_ELEMENT, RELAYOUT_ELEMENT, SAID_CSS, STILL_CSS, bodyFitCss, boxCss, boxRules, BOX_ROOT } from '../extension/shared/page-box.ts';
 
 test('a query about the window\'s size moves by the room the page doesn\'t have', () => {
   assert.equal(shiftQuery('(max-width: 900px)', 268, 16), '(max-width: 1168px)');
@@ -213,4 +213,44 @@ test('a body\'s background image is kept on <body>, which fills the box, not the
   assert.match(css, /^@media screen \{ :where\(html\) \{/, 'no weight: a page\'s own rule on <html> wins');
   assert.match(css, /background-color: rgb\(1, 2, 3\)/, 'the canvas keeps <body>\'s color');
   assert.match(css, /background-image: linear-gradient\(transparent, transparent\)/, 'something on <html> stops it going to the canvas');
+});
+
+// Classic scroll bars (GitHub issue #17; content/page/box-bars.ts, tests/box/patterns/classic-scroll-bars.html).
+test('with no scroll bar taking space, the bars\' sheet is empty and the box\'s CSS is as it was', () => {
+  const box = { left: 260, top: 8, right: 8, bottom: 8 };
+  for (const zoom of [1, 2]) assert.equal(barsCss(box, zoom, NO_BARS), '', 'overlay scroll bars (a trackpad\'s): nothing about them');
+  assert.equal(bodyFitCss({ below: 0 }), bodyFitCss());
+  assert.doesNotMatch(boxCss(box), /scrollbar-width|margin-right|margin-relayout/);
+});
+
+test('scroll bars that take space: <html> narrower and shorter by them, <body> reaching past it, the window\'s hidden', () => {
+  const box = { left: 260, top: 8, right: 8, bottom: 8 };
+  const bars = { right: 15, bottom: 15, seen: true, hideWindow: false };
+  const css = barsCss(box, 1, bars);
+  assert.ok(css.startsWith('@media screen {'));
+  assert.ok(css.includes(`${BOX_ROOT} { width: calc(100vw - 268px - 15px) !important; height: calc(100vh - 16px - 15px) !important; }`), 'what\'s fixed is laid out in the box less the bars, as in a window less its own');
+  assert.ok(css.includes(`${BOX_ROOT}:fullscreen { width: calc(100vw - 15px) !important; height: calc(100vh - 15px) !important; }`), 'and in full screen (the box\'s own full-screen rule has the same weight: this sheet comes after it)');
+  assert.doesNotMatch(css, /transform|--margin-box-dw|::backdrop/, 'drawn where it was, and the window the page is told of the same: a window\'s bars are in its innerWidth');
+  assert.ok(barsCss(box, 1, { ...bars, bottom: 0 }).includes(`${BOX_ROOT} { width: calc(100vw - 268px - 15px) !important; }`), 'a bar on one side only');
+  assert.doesNotMatch(css, /scrollbar-width/);
+  assert.ok(barsCss(box, 1, { ...bars, hideWindow: true }).includes(`${BOX_ROOT} { scrollbar-width: none !important; }`), 'a page\'s `overflow: scroll` on <html> mustn\'t show the window\'s at its edge');
+  assert.ok(barsCss(box, 2, bars).includes('width: calc(50vw - 134px - 15px) !important'), 'in the page\'s zoomed pixels, as measured on <body>');
+  assert.match(bodyFitCss({ below: 15 }), /min-height: calc\(100% \+ 15px\) !important; max-height: calc\(100% \+ 15px\) !important;/);
+  assert.match(bodyFitCss({ below: 15 }), /height: calc\(100% \+ 15px\) !important; \}/);
+  assert.match(bodyFitCss({ grows: true, below: 15 }), /height: auto !important;/);
+});
+
+test('the bars\' sheet is about <html> and <body> only, so Chromium styles nothing else again as a bar comes or goes', () => {
+  const css = barsCss({ left: 260, top: 8, right: 8, bottom: 8 }, 1, { right: 15, bottom: 15, seen: true, hideWindow: true });
+  const selectors = [...css.matchAll(/^\s*([^{}@\n][^{}\n]*?)\s*\{/gm)].map((m) => m[1]);
+  assert.ok(selectors.length >= 4, selectors.join(' | '));
+  for (const selector of selectors) assert.match(selector, /^(html:not\(#m#m#m#m#m\)(:fullscreen)?|html > body:where\(:first-of-type\):not\(.*\):not\(#m#m#m#m#m\)|margin-relayout:not\(#m#m#m#m#m\))$/, selector);
+});
+
+test('the relayout as a bar goes: a flag after <body>, only where bars take space, never shown', () => {
+  const box = { left: 260, top: 8, right: 8, bottom: 8 };
+  const css = barsCss(box, 1, { right: 0, bottom: 0, seen: true, hideWindow: false });
+  assert.ok(css.includes(`:not(:nth-last-child(1 of body:first-of-type, ${RELAYOUT_ELEMENT}))`), 'after <body>: `:nth-child` and `head + body` stay the page\'s');
+  assert.ok(css.includes(`${RELAYOUT_ELEMENT}:not(#m#m#m#m#m) { display: none !important; }`));
+  assert.doesNotMatch(css, /:has\(|width: calc/);
 });

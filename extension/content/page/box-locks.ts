@@ -23,6 +23,10 @@ export function startLocks(ctx: any) {
     // reads below as the page locking <html>: then the box clips only sideways, and what the page says up and down
     // shows (nothing: auto). Said once a page sets or drops it (a layout of <html> then, not at every check).
     own.setRootClipsY(!/hidden|auto|scroll/.test(root.overflowX));
+    // The page's `overflow: scroll` on <html> shows the window's scroll bars. Where scroll bars take space, those
+    // are hidden and <body>'s show, always, as a window's would (box-bars.ts): `scroll` for it, below.
+    ctx.scrollBars.rootSays(root.overflowX === 'scroll' || root.overflowY === 'scroll');
+    const scrolls = (rootSays: string) => (rootSays === 'scroll' && ctx.scrollBars.classic() ? 'scroll' : 'auto');
     // A lock that pins <body> (fixed, top: -Ypx) can't be read in computed style
     // (the box's rule holds it relative) and doesn't stop <body> scrolling: its
     // style attribute says so, and <body> is locked where it is.
@@ -40,9 +44,9 @@ export function startLocks(ctx: any) {
     const side = (ours: { value: string; said: string; forced: boolean; force: boolean; }, shown: string, rootSays: string) => {
       const said = ours.forced ? ours.said : ours.value && shown === ours.value ? 'visible' : shown;
       // Nothing said: as <html> says. It locks the window: locked with it.
-      if (said === 'visible') Object.assign(ours, { value: rootSays === 'hidden' ? 'hidden' : 'auto', said, forced: ours.force });
+      if (said === 'visible') Object.assign(ours, { value: rootSays === 'hidden' ? 'hidden' : scrolls(rootSays), said, forced: ours.force });
       // <html> scrolls and body only clips: in the box, body is what scrolls.
-      else if (said === 'hidden' && /auto|scroll/.test(rootSays)) Object.assign(ours, { value: 'auto', said, forced: true });
+      else if (said === 'hidden' && /auto|scroll/.test(rootSays)) Object.assign(ours, { value: scrolls(rootSays), said, forced: true });
       else Object.assign(ours, { value: '', said, forced: false, force: false });
       return ours.value && `${ours.value}${ours.forced ? ' !important' : ''}`;
     };
