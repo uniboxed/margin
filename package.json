@@ -14,8 +14,12 @@
       "default": "./extension/shared/any-engine-capabilities.ts"
     }
   },
-  "description": "Arc-style sidebar for Safari (prototype)",
+  "description": "Not a browser. Not a sidebar. A new interface for the browser you already use, for Safari, Chrome and Edge",
   "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/uniboxed/margin.git"
+  },
   "scripts": {
     "pretest": "node scripts/build.ts",
     "test": "tsc -p . && node --test tests/*.test.ts tests/security/*.test.ts 'extension/engines/**/tests/*.test.ts'",

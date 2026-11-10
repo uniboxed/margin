@@ -1,0 +1,43 @@
+name: Bug
+description: Something in Margin doesn't work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to see it
+      placeholder: |
+        1. Open …
+        2. Press …
+        3. …
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      multiple: true
+      options: [Safari, Chrome, Edge, Another Chromium browser]
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Margin's version (or commit), the browser's, and the system's.
+      placeholder: Margin 0.1.0, Safari 27.2, macOS 27.2
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Margin.app's log, if it helps
+      description: >-
+        On a Mac: `/usr/bin/log show --last 10m --predicate 'subsystem == "io.tirth.margin"'`. Margin's log never
+        has page addresses or titles, but look it over before pasting.
+      render: text

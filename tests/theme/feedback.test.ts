@@ -41,12 +41,14 @@ for (const [name, engine] of ENGINES) {
           assert.equal(await ev(() => T.rtCount('.busy')), 0);
           assert.equal(await ev((s) => T.rtVisible(s), sel.indicator), false, 'nothing loading: no indicator');
           assert.ok((await ev(() => T.rtLoading(true))) > 0);
-          await page.waitForTimeout(350); // past the indicator's fade in
+          // Past the indicator's fade in (it can take longer than its 350 ms on a slow machine).
+          await page.waitForFunction((s) => T.rtVisible(s), sel.indicator, { timeout: 3000 }).catch(() => {});
           assert.ok((await ev(() => T.rtCount('.busy'))) > 0, 'rows marked');
           if (sel.loadingRoot) assert.ok((await ev((r) => T.rtClasses(r), sel.root)).includes('loading'));
           assert.equal(await ev((s) => T.rtVisible(s), sel.indicator), true, 'the indicator shows');
           await ev(() => T.rtSetUi({ sidebar: 'hidden' }));
           await page.waitForTimeout(350);
+          await page.waitForFunction((s) => T.rtVisible(s), sel.indicator, { timeout: 3000 }).catch(() => {});
           assert.equal(await ev((s) => T.rtVisible(s), sel.indicator), true, 'with the sidebar hidden too, no hover');
           await ev(() => T.rtLoading(false));
           await ev(() => T.rtSetUi({ sidebar: 'open' }));

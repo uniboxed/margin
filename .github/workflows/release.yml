@@ -1,0 +1,199 @@
+# A release, from a version tag (v0.2.0: numbers only, as browsers take a version; matching extension/manifest.json and the Rust workspace's version):
+# everything built, checksums, and a draft GitHub Release with notes from the Conventional Commits since the
+# previous tag (scripts/release-notes.mjs). Nothing is published until someone presses Publish on the draft.
+#
+#   Margin-<version>-macOS.zip           Margin.app (Safari's extension inside, and the connector for Chrome and Edge)
+#   Margin-<version>-windows-x64.zip     margin.exe and margin-connector.exe (Windows, compile-checked so far)
+#   Margin-<version>-windows-arm64.zip   the same for Windows on Arm
+#   margin-<version>-safari-extension.zip, margin-<version>-chromium-extension.zip
+#                                        the extension builds, for loading by hand while developing
+#
+# Margin.app is signed with a Developer ID and notarized when these secrets are set (Settings → Secrets and
+# variables → Actions); without them it's built ad hoc signed, and macOS warns on first open:
+#   MACOS_CERTIFICATE_P12        the Developer ID Application certificate and its key, exported as .p12, base64
+#   MACOS_CERTIFICATE_PASSWORD   the .p12's password
+#   MACOS_SIGN_IDENTITY          its name, as "Developer ID Application: Name (TEAMID)"
+#   APPLE_TEAM_ID                the team's ID
+#   NOTARY_KEY_ID, NOTARY_ISSUER_ID, NOTARY_KEY_P8 (base64)
+#                                an App Store Connect API key for notarytool
+# workflow_dispatch builds everything without making a release (to try the build).
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "26"
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        name: The tag matches the code's version
+        run: |
+          manifest=$(node -p "require('./extension/manifest.json').version")
+          cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          [ "$manifest" = "$cargo" ] || { echo "::error::extension/manifest.json says $manifest, Cargo.toml says $cargo"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            [ "${GITHUB_REF_NAME#v}" = "$manifest" ] || { echo "::error::tag $GITHUB_REF_NAME, but the code's version is $manifest"; exit 1; }
+          fi
+          echo "version=$manifest" >> "$GITHUB_OUTPUT"
+
+  extension:
+    name: Extension builds
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: node scripts/build.ts
+      - name: Zip each engine's build
+        run: |
+          v=${{ needs.version.outputs.version }}
+          mkdir -p out
+          (cd dist/webkit && zip -qr "../../out/margin-$v-safari-extension.zip" .)
+          (cd dist/chromium && zip -qr "../../out/margin-$v-chromium-extension.zip" .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: out/
+
+  windows:
+    name: Windows (${{ matrix.arch }})
+    needs: version
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            target: x86_64-pc-windows-msvc
+          - arch: arm64
+            target: aarch64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust (stable, by the runner's own rustup)
+        run: rustup toolchain install stable --profile minimal --no-self-update --target ${{ matrix.target }} && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: ${{ matrix.target }}
+      - run: cargo build --release --locked -p margin-windows -p margin-connector --target ${{ matrix.target }}
+        env:
+          MARGIN_APP_VERSION: ${{ needs.version.outputs.version }}
+      - name: Zip
+        shell: pwsh
+        run: |
+          $v = "${{ needs.version.outputs.version }}"
+          New-Item -ItemType Directory -Force out | Out-Null
+          $dir = "target/${{ matrix.target }}/release"
+          Compress-Archive -Path "$dir/margin.exe", "$dir/margin-connector.exe" -DestinationPath "out/Margin-$v-windows-${{ matrix.arch }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: out/
+
+  macos:
+    name: Margin.app (macOS)
+    needs: version
+    runs-on: macos-latest
+    env:
+      HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The newest Xcode on the runner (not a beta)
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)" && xcodebuild -version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Rust (stable, by the runner's own rustup)
+        run: rustup toolchain install stable --profile minimal --no-self-update --target aarch64-apple-darwin,x86_64-apple-darwin && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: The Developer ID certificate, in a keychain of this run's own
+        if: env.HAS_SIGNING == 'true'
+        env:
+          P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/margin.keychain-db"
+          password=$(openssl rand -hex 24)
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+      - name: Build Margin.app (scripts/safari.sh --no-install)
+        env:
+          MARGIN_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          MARGIN_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          if [ "$HAS_SIGNING" = true ]; then sh scripts/safari.sh --no-install | tee build.log
+          else MARGIN_SIGN_IDENTITY= sh scripts/safari.sh --unsigned --no-install | tee build.log; fi
+          echo "APP=$(tail -1 build.log)" >> "$GITHUB_ENV"
+      - name: Zip
+        run: |
+          mkdir -p out
+          ditto -c -k --keepParent "$APP" "out/Margin-${{ needs.version.outputs.version }}-macOS.zip"
+      - name: Notarize and staple
+        if: env.HAS_SIGNING == 'true'
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: |
+          zip="out/Margin-${{ needs.version.outputs.version }}-macOS.zip"
+          echo "$NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          xcrun notarytool submit "$zip" --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" --wait
+          rm "$RUNNER_TEMP/notary.p8"
+          xcrun stapler staple "$APP"
+          rm "$zip" && ditto -c -k --keepParent "$APP" "$zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: out/
+
+  release:
+    name: Draft the release
+    if: github.ref_type == 'tag'
+    needs: [version, extension, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Checksums
+        run: (cd out && sha256sum * > SHA256SUMS.txt)
+      - name: Notes from the commits since the last release
+        run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > notes.md
+      - name: Draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* --draft --verify-tag \
+            --title "Margin ${{ needs.version.outputs.version }}" --notes-file notes.md

@@ -1,0 +1,24 @@
+# On each pull request: the dependencies it adds or changes, checked for known vulnerabilities and licenses
+# that don't fit Margin's. Needs the dependency graph, which a private repository on the free plan doesn't
+# have: until the repo is public the job skips itself.
+name: Dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: on-failure

@@ -56,7 +56,8 @@ function relaySocket(path: string, app: any) {
   })));
 }
 
-test('Chrome on the Mac: the real connector finds the app, and the copy links from its service worker, saying chrome and its process', { timeout: 120_000 }, async () => {
+// (The Mac's: the Chrome build links to Margin.app only on the Mac, by its user agent; CI's Linux runner skips it.)
+test('Chrome on the Mac: the real connector finds the app, and the copy links from its service worker, saying chrome and its process', { timeout: 120_000, skip: process.platform !== 'darwin' && 'the Mac only' }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'margin-connector-'));
   const app = await startFakeApp();
   let context: any = null;

@@ -1,0 +1,16 @@
+name: Idea
+description: Something Margin could do, or do better
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you'd like
+      description: What you want to do, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How it could work
+      description: Optional. How Arc or another browser does it, a sketch, anything.

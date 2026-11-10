@@ -1,0 +1,131 @@
+# Margin's checks on every pull request and every push to main: npm run gate's parts, each where it's meaningful.
+# Linux: the type check and the unit tests. macOS: the browser tests (theme, security, end to end) in Chromium and
+# WebKit, the browsers Margin runs on, and the app's Swift checks and the WebKit host. Rust: on Linux with both
+# Windows targets checked, and built and tested on Windows itself. The app's own end-to-end checks drive real
+# windows and wait on macOS's window server, which a CI virtual machine is too slow for: they run in npm run gate,
+# on a Mac, before main. The macOS jobs run on every push once the repository variable MACOS_CI is "true" (it is),
+# or when started by hand.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      macos:
+        description: Run the macOS jobs too
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: "26"
+
+jobs:
+  unit:
+    name: Unit tests (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: The type check and the unit tests
+        run: npm test
+
+  browsers:
+    name: Browser tests (macOS)
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.macos) ||
+      (github.event_name != 'workflow_dispatch' && vars.MACOS_CI == 'true')
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Chromium and WebKit for the browser tests (the theme tests run in both)
+        run: npx playwright install chromium webkit
+      - name: Rust (stable, by the runner's own rustup), for the connector's end-to-end test
+        run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Theme tests
+        run: npm run test:theme
+      - name: Security tests
+        run: npm run test:security
+      - name: End-to-end tests
+        run: npm run test:e2e
+      - name: Test results, when something failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-macos
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  rust:
+    name: Rust (Linux, Windows targets checked)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust (stable, by the runner's own rustup)
+        run: rustup toolchain install stable --profile minimal --no-self-update --component rustfmt,clippy --target x86_64-pc-windows-msvc,aarch64-pc-windows-msvc && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: scripts/rust-test.sh
+
+  windows:
+    name: Rust (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust (stable, by the runner's own rustup)
+        run: rustup toolchain install stable --profile minimal --no-self-update --component clippy && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Tests on Windows
+        run: cargo test --workspace --locked
+      - name: Clippy on Windows
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: margin.exe and margin-connector.exe
+        run: cargo build --release --locked -p margin-windows -p margin-connector
+
+  macos:
+    name: Margin.app (macOS)
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.macos) ||
+      (github.event_name != 'workflow_dispatch' && vars.MACOS_CI == 'true')
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: The newest Xcode on the runner (not a beta)
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)" && xcodebuild -version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Rust (stable, by the runner's own rustup)
+        run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: The app's Swift checks
+        run: node scripts/build.ts && tools/app-tests/run.sh unit
+      - name: Scroll bars that show while scrolling only, as on a Mac with a trackpad (the box patterns' setting)
+        run: defaults write -g AppleShowScrollBars -string WhenScrolling
+      - name: The WebKit host (Safari's extension engine)
+        run: npm run test:webkit

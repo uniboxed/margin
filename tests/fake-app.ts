@@ -83,8 +83,9 @@ export async function startFakeApp({ token = randomUUID(), key = randomUUID(), w
     /** What the app answers into the extension for `nonce` (ExtensionLink.swift answer). */
     linkInfo: (nonce) => ({ name: 'link', userInfo: { e: JSON.stringify({ v: 2, nonce, port, token, key, app: { version: '2.0' }, at: Date.now() }) } }),
     send(message) { for (const s of sockets) s.write(frame(JSON.stringify(message))); },
-    /** The first message of kind `k` (and `test`), after `from` received, waited for up to `ms`. */
-    async next(k, { from = 0, test = () => true, ms = 2000 } = {}) {
+    /** The first message of kind `k` (and `test`), after `from` received, waited for up to `ms` (5 s: a busy CI
+     * runner can take more than 2; it's back at once when the message comes). */
+    async next(k, { from = 0, test = () => true, ms = 5000 } = {}) {
       const find = () => received.slice(from).find((m) => m.k === k && test(m));
       const end = Date.now() + ms;
       while (!find() && Date.now() < end) await new Promise((resolve) => { waiters.add(resolve); setTimeout(() => { waiters.delete(resolve); resolve(undefined); }, 20); });

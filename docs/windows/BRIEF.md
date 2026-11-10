@@ -192,7 +192,7 @@ Windows counterpart; (c) Safari-only; (d) private macOS APIs.
 - `CLAUDE.md` and SPEC.md's Working rules apply: Conventional Commits, subject line only, no attribution of any kind;
   no assistant or tool names in branches, commits or PRs; commit as
   `git -c user.name="Tirth Patel" -c user.email="github@tirth.io"`.
-- Work on `feat/windows-shell`, in this worktree (`/Users/tirth/Projects/margin-windows`). Never touch `app/platforms/macos/shell/`,
+- Work on `feat/windows-shell`, in its own worktree (`margin-windows`, beside the main checkout). Never touch `app/platforms/macos/shell/`,
   `app/platforms/macos/startup/`, `xcode/` or the Safari build; never run `npm run safari` from here.
 - A change to shared code (`extension/`, `app/shared/host/`) must keep the macOS bundles identical, or differ only by
   the reviewed change: build, then compare every `dist/` bundle with main's byte for byte. Run `npm run test:quick`
