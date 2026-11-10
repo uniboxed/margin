@@ -37,7 +37,7 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: v
         name: The tag matches the code's version
         run: |
@@ -54,8 +54,8 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -67,7 +67,7 @@ jobs:
           mkdir -p out
           (cd dist/webkit && zip -qr "../../out/margin-$v-safari-extension.zip" .)
           (cd dist/chromium && zip -qr "../../out/margin-$v-chromium-extension.zip" .)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: extension
           path: out/
@@ -84,7 +84,7 @@ jobs:
           - arch: arm64
             target: aarch64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Rust (stable, by the runner's own rustup)
         run: rustup toolchain install stable --profile minimal --no-self-update --target ${{ matrix.target }} && rustup default stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -100,7 +100,7 @@ jobs:
           New-Item -ItemType Directory -Force out | Out-Null
           $dir = "target/${{ matrix.target }}/release"
           Compress-Archive -Path "$dir/margin.exe", "$dir/margin-connector.exe" -DestinationPath "out/Margin-$v-windows-${{ matrix.arch }}.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-${{ matrix.arch }}
           path: out/
@@ -112,10 +112,10 @@ jobs:
     env:
       HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: The newest Xcode on the runner (not a beta)
         run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)" && xcodebuild -version
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -164,7 +164,7 @@ jobs:
           rm "$RUNNER_TEMP/notary.p8"
           xcrun stapler staple "$APP"
           rm "$zip" && ditto -c -k --keepParent "$APP" "$zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: out/
@@ -177,13 +177,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: out
           merge-multiple: true
