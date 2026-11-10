@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Margin",
   "short_name": "Margin",
-  "description": "An Arc-style sidebar with spaces, pins, and a command palette.",
+  "description": "A new interface for the browser you already use: spaces, pinned tabs, folders and a command palette.",
   "version": "0.1.0",
   "icons": {
     "16": "icons/icon-16.png",
