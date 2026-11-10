@@ -279,3 +279,17 @@ test('Margin\'s own pages show no host: never the extension\'s id, and a letter 
     assert.equal(r.letter, 'N', 'the letter comes from the title');
   }
 });
+
+test('a tab playing sound: the browser\'s audible kept in its record, its row marked, and unmarked when it stops', async () => {
+  // The whole path from the browser's tab (it was never stored before 2026-11-10: the mark never showed).
+  const M = await import('../extension/state/model.ts');
+  let s = M.normalizeState({});
+  const tab = (audible: boolean) => ({ id: 31, windowId: W, index: 0, url: 'https://radio.test/', title: 'Radio', active: false, audible });
+  s = M.upsertTab(s, tab(true), 0);
+  assert.equal(s.tabs[31].audible, true, 'kept in its record');
+  const row = (state) => build(state).space.today.find((r) => r.id === 31);
+  assert.equal(row(s)?.audible, true, 'its row marked');
+  s = M.upsertTab(s, tab(false), 0);
+  assert.equal('audible' in s.tabs[31], false, 'no field once it stops');
+  assert.equal(row(s)?.audible, false);
+});

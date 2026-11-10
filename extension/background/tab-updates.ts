@@ -16,7 +16,8 @@ import { mutate, now } from './store.ts';
 
 export const GATHER_MS = 300;
 export const TITLE_EVERY_MS = 2000;
-const TRACKED = ['title', 'url', 'favIconUrl'];
+// (`audible`: the row's playing mark, ui/view-model.ts tabRow; it was never stored before 2026-11-10.)
+const TRACKED = ['title', 'url', 'favIconUrl', 'audible'];
 
 // Tab id → when the write that takes its last title alone was due.
 const titleDue = new Map();

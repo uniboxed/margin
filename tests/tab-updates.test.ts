@@ -227,3 +227,10 @@ test('a gathered write that fails: kept in the state, and written again shortly 
   assert.equal(stored(3).favIconUrl, icon, 'written again (store.ts: 250 ms later)');
   assert.equal(writes().length, 2, 'the failed write and its retry');
 });
+
+test('a tab starting or stopping sound is written (the row\'s playing mark)', async () => {
+  const before = sets.length;
+  assert.ok(tabUpdated(1, { audible: true }, { id: 1, windowId: 1, index: 0, url: 'https://a.test/', title: 'A', active: true, audible: true }) !== null, 'an audible change is tracked');
+  assert.equal(tabUpdated(1, { mutedInfo: { muted: false } } as any, { id: 1, windowId: 1, index: 0, url: 'https://a.test/', title: 'A', active: true }), null, 'others still aren\'t');
+  assert.ok(before >= 0);
+});

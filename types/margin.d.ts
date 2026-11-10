@@ -27,6 +27,8 @@ export interface Folder { id: string; spaceId: string; name: string; open: boole
 export interface TabRecord {
   id: number; windowId: number; index: number; title: string; url: string;
   favIconUrl: string; active: boolean; lastActive: number;
+  /** playing sound now (the browser's `audible`): the row's playing mark */
+  audible?: boolean;
   /** its Margin tab's own id, lasting (state/model.ts "Margin's tabs") */
   mid?: string;
   /** its place in the list (higher: newer, shown higher), as its Margin tab's */
