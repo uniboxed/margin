@@ -115,7 +115,8 @@ const openKept = (tab, name) => ({ op: 'eval', in: tab, js: `${KEPT(name)} retur
 const keepMid = (tab, name) => ({ op: 'eval', in: tab, js: `const { tabs } = await ${STATE}('tabs'); globalThis.__mid${name} = Object.values(tabs).find((t) => t.url.endsWith('/p/${name}'))?.mid; return globalThis.__mid${name} ?? 'none'` });
 // The page server's address (run.sh's MARGIN_HOST_PORT), for addresses Margin's own pages carry.
 import { firstReadKeys } from '../../extension/shared/stored.ts';
-import { listPatterns } from '../../tests/box/serve.ts';
+import { listPatterns, WALK_FILES } from '../../tests/box/serve.ts';
+import { MAX_AGE_MS } from '../../extension/shared/sheet-walk.ts';
 import { judge, measure } from '../../tests/box/rules.ts';
 const SERVER = `http://127.0.0.1:${process.env.MARGIN_HOST_PORT ?? 47811}`;
 // Margin's sleep page as an earlier build left a tab on it (Safari closes sleeping tabs now, and
@@ -171,6 +172,57 @@ const boxPatterns = () => {
     );
   });
   return steps;
+};
+
+// The page box's kept sheet walks (shared/sheet-walk.ts, GitHub issue #3), as tests/e2e/sheet-walk.test.ts in
+// Chromium: the kept-sheet-walk pattern loaded again and again, held to the box's rules each time, as its sheets
+// change under the same addresses (tests/box/serve.ts walkCss), and what Margin's world heard of the page's
+// walks (content/sheet-walk-link.ts marks: the files walked in full, the ones used as kept).
+const keptWalks = () => {
+  const p = listPatterns().find((x) => x.name === 'kept-sheet-walk');
+  const slot = { left: 260, top: 8, right: 8, bottom: 8 };
+  const win = { w: 1200, h: 800 };
+  const w = win.w - slot.left - slot.right;
+  const h = win.h - slot.top - slot.bottom;
+  const run = (fn, args) => `(${fn.toString()})(${args})`;
+  const settled = `window.__t0 ??= Date.now(); if (Date.now() - window.__t0 < ${p.settle}) return 'settling';`;
+  const key = JSON.stringify(`margin-box-ref:${p.name}`);
+  const files = (...names) => `[${names.map((n) => `location.origin + '/box/walk-css/${n}'`).join(', ')}].sort().join()`;
+  const MAIN = WALK_FILES.main;
+  const IMPORTED = WALK_FILES.imported;
+  const version = (v) => ({ op: 'page', in: 'A', js: `return await (await fetch('/box/walk-css-set?v=${v}')).text()` });
+  let n = 0;
+  const visit = (label, walked, used) => {
+    const i = n++;
+    return [
+      { op: 'open', name: `R${i}`, url: `/box/ref/${p.name}?w=${w}&h=${h}`, active: true },
+      checkPage(`R${i}`, `${label}: the plain reference measured`, `const f = document.getElementById('plain'); const d = f && f.contentDocument; if (!d || d.readyState !== 'complete') return 'loading'; ${settled} localStorage.setItem(${key}, JSON.stringify(f.contentWindow.Function('return ' + ${JSON.stringify(run(measure, ''))})())); return true;`, p.settle + 6000),
+      { op: 'close', name: `R${i}` },
+      { op: 'open', name: `C${i}`, url: `/box/pattern/${p.name}`, active: true },
+      boxed(`C${i}`),
+      checkPage(`C${i}`, `kept walks, ${label}: the box's rules hold`, `if (document.readyState !== 'complete') return 'loading'; ${settled} const fails = ${run(judge, `${run(measure, '')}, JSON.parse(localStorage.getItem(${key})), ${JSON.stringify({ slot, window: win, allow: p.allow })}`)}; return fails.length ? fails.join(' | ') : true;`, p.settle + 2500),
+      check(`C${i}`, `kept walks, ${label}: walked in full ${walked.length ? walked.join(', ') : 'nothing'}; used as kept ${used.length ? used.join(', ') : 'nothing'}`, `const m = Margin.content.marks(); if (!('sheetWalkUsed' in m)) return 'not told yet'; return (m.sheetWalkWalked ?? '') === ${files(...walked)} && (m.sheetWalkUsed ?? '') === ${files(...used)} || JSON.stringify(m)`, 4000),
+      { op: 'close', name: `C${i}` },
+    ];
+  };
+  const storedKey = 'const k = "sheetWalk:" + location.origin; const raw = await browser.storage.local.get(k); const g = raw[k];';
+  return [
+    ...startBoxed('A', '/p/A'),
+    version('a'),
+    ...visit('first visit', [MAIN, IMPORTED], []),
+    check('A', 'kept walks: both content-named files kept, the plain one not', `${storedKey} const f = g?.files ?? {}; const o = location.origin + '/box/walk-css/'; return !!f[o + '${MAIN}'] && !!f[o + '${IMPORTED}'] && !f[o + '${WALK_FILES.plain}']`, 4000),
+    ...visit('return visit', [], [MAIN, IMPORTED]),
+    version('b'),
+    ...visit('a kept rule changed under the same address', [MAIN], [IMPORTED]),
+    ...visit('the changed file again', [], [MAIN, IMPORTED]),
+    version('c'),
+    ...visit('a rule more under the same address', [MAIN], [IMPORTED]),
+    version('a'),
+    ...visit('back as it was', [MAIN], [IMPORTED]),
+    version('d'),
+    { op: 'eval', in: 'A', js: `${storedKey} g.files[location.origin + '/box/walk-css/${MAIN}'].t -= ${Math.ceil(MAX_AGE_MS / 1000) + 60}; await browser.storage.local.set({ [k]: g }); return 'aged'` },
+    ...visit('a day on, a change no check sees', [MAIN], [IMPORTED]),
+  ];
 };
 
 // The box's benchmark in WebKit (tests/box/bench.mts runs it, beside Chromium's): the same heavy pages
@@ -1599,6 +1651,7 @@ Object.assign(SCENARIOS, {
   // Another theme: its own first paint (its mark and its look), and none of
   // the theme registered before it, whose CSS WebKit keeps applying.
   'box-patterns': boxPatterns(),
+  'kept-walks': keptWalks(),
   'first-paint-theme': [
     appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), boxed('A'), settledLayout,
     ...pages('K', 1, [260, 8, 8, 8]),

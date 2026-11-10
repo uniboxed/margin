@@ -20,6 +20,7 @@
 //
 // The background (background/store.ts) and pages (content/core.ts, the
 // new-tab page) read through here. Pure.
+import { isSheetWalkKey } from './sheet-walk.ts';
 
 /** The state keys kept in `openTabs`. */
 export const OPEN_TABS_KEYS = Object.freeze(['tabs', 'tabSpace', 'activeSpaceByWindow', 'awayByWindow', 'keptTabs']);
@@ -82,7 +83,7 @@ export function toStorage(state: Record<string, any>, keys: string[], { origin, 
  * times for Margin.app (`dataMeta:<collection>`, written on their own:
  * background/store.ts): nothing to draw.
  * */
-export const onlyMark = (changes: Record<string, unknown>) => Object.keys(changes).every((key) => key === FAVICONS_MARK || key.startsWith('dataMeta:'));
+export const onlyMark = (changes: Record<string, unknown>) => Object.keys(changes).every((key) => key === FAVICONS_MARK || key.startsWith('dataMeta:') || isSheetWalkKey(key));
 
 // What a page reads besides the icons, whatever it has seen so far: the open
 // tabs and what the sidebar, the palette and the page's own start use. Keys
@@ -95,8 +96,9 @@ const PAGE_KEYS = Object.freeze([OPEN_TABS, 'spaces', 'pins', 'folders', 'archiv
 // step 7; before, its first read of everything took it, some 100 KB to 3 MB).
 const NOT_FOR_PAGES = new Set([FAVICONS, ...OPEN_TABS_KEYS, 'lostTabs', ...Object.values(RENAMED), 'workspace', 'workspaceBackup', 'uiTheme']);
 /** @param seen storage keys a page has seen */
-// Nor the lasting data set's queue (`dataMeta:<collection>`: shared/data-set.ts).
-export const pageKeys = (seen: Iterable<string> = []): string[] => [...new Set([...PAGE_KEYS, ...seen])].filter((key) => !NOT_FOR_PAGES.has(key) && !key.startsWith('dataMeta:'));
+// Nor the lasting data set's queue (`dataMeta:<collection>`: shared/data-set.ts), nor the page box's kept sheet
+// walks (`sheetWalk:<origin>`, read by content/sheet-walk-link.ts on its own: shared/sheet-walk.ts).
+export const pageKeys = (seen: Iterable<string> = []): string[] => [...new Set([...PAGE_KEYS, ...seen])].filter((key) => !NOT_FOR_PAGES.has(key) && !key.startsWith('dataMeta:') && !isSheetWalkKey(key));
 // A page's first read: what it reads every time, with the site icons and
 // Margin.app's link (`appLink`: shared/app-link.ts). Not all of storage
 // (until Margin 2 Phase 2 step 7 it was: get(null), the theme's package with it).

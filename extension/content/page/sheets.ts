@@ -5,12 +5,18 @@
 import type { Box } from './box.ts';
 import type { Accessor } from './accessor.ts';
 import { asksSize, hasUnits, shiftQuery, shiftStyle, shiftUnits } from '../../shared/page-css.ts';
+import { contentNamed, encodeItems, hash, pathText, planFrom, usable, type Entry, type Item, type Kind } from '../../shared/sheet-walk.ts';
 
 const SWEEP_FLOOR = 64;
 // Reading a sheet's selectors for :has(): slices of about this many ms, this
 // many ms apart.
 const HAS_SLICE = 4;
 const HAS_WAIT = 16;
+// The kept walks' format (shared/sheet-walk.ts): one more when what a walk keeps changes in a way the functions'
+// own text (walkMark) doesn't show.
+const WALK_FORMAT = 1;
+// What the page's world walked in full goes across this long after the last of it.
+const KEEP_WAIT = 1000;
 
 export function startSheets(box: Box) {
   const ours = new Set(box.ours);
@@ -38,18 +44,20 @@ export function startSheets(box: Box) {
     return !sheet || (sheet.ownerNode && !sheet.ownerNode.isConnected);
   };
   let sweepAt = SWEEP_FLOOR;
+  // What it read of the query, when it's about the size (a walk keeps it: walkRules), else ''.
   function moveHolder(holder: any, dw: number, dh: number) { // (a sheet, or a rule with a media list)
     const applied = moved.get(holder) ?? { dw: 0, dh: 0 };
     const list = holder.media;
-    if (!list) return;
+    if (!list) return '';
     const text = list.mediaText;
-    if (!asksSize(text)) return;
+    if (!asksSize(text)) return '';
     const next = shiftQuery(text, dw - applied.dw, dh - applied.dh);
     if (next !== text) mediaText.set.call(list, next);
     moved.set(holder, { dw, dh });
-    if (moved.size < sweepAt) return;
+    if (moved.size < sweepAt) return text;
     for (const held of moved.keys()) if (gone(held)) moved.delete(held);
     sweepAt = Math.max(SWEEP_FLOOR, 2 * moved.size);
+    return text;
   }
   function moveAll(dw: number, dh: number) {
     for (const holder of moved.keys()) {
@@ -82,26 +90,43 @@ export function startSheets(box: Box) {
   // `units`: false where the sheet's text has none, which saves serializing
   // every rule of it just to look. A rule's declarations are serialized, not
   // the rules nested in it (walked on their own), nor its selector (looked
-  // through for :has() apart: hasLater).
-  function walkRules(rules: CSSRuleList, units: boolean, dw: number, dh: number) {
-    for (const rule of Array.from(rules)) {
+  // through for :has() apart: hasLater). `rec`: a content-named file's walk,
+  // kept for its next visit (kept walks, below): each rule that needs work, at
+  // `at` (its parents' indices), with a hash of what was read there.
+  function walkRules(rules: CSSRuleList, units: boolean, dw: number, dh: number, rec: Walk | null = null, at: number[] = []) {
+    const list = Array.from(rules);
+    for (let i = 0; i < list.length; i++) {
+      const rule = list[i];
       try {
         if (rule instanceof CSSStyleRule) {
           if (units) {
             const style = ruleStyle.get.call(rule);
             const said = style.cssText;
-            if (hasUnits(said)) shiftStyle(style, scratch(), said);
+            if (hasUnits(said)) {
+              rec?.items.push({ kind: 'u', path: [...at, i], check: hash(`${selectorText.get.call(rule)}\n${said}`) });
+              shiftStyle(style, scratch(), said);
+            }
           }
         } else {
-          if (rule instanceof CSSMediaRule) moveHolder(rule, dw, dh);
+          if (rule instanceof CSSMediaRule) {
+            const query = moveHolder(rule, dw, dh);
+            if (query) rec?.items.push({ kind: 'm', path: [...at, i], check: hash(query) });
+          }
           // @font-face, @page, a keyframe, nested declarations.
           const style = (rule as any).style;
           const said = units && style ? style.cssText : '';
-          if (said && hasUnits(said)) shiftStyle(style, scratch(), said);
+          if (said && hasUnits(said)) {
+            rec?.items.push({ kind: 'u', path: [...at, i], check: hash(`\n${said}`) });
+            shiftStyle(style, scratch(), said);
+          }
+          // (Kept whether its sheet came or not: it may next time.)
+          if (rule instanceof CSSImportRule) rec?.items.push({ kind: 'i', path: [...at, i], check: hash(String(rule.href)) });
           if ((rule as any).styleSheet) visit((rule as any).styleSheet);
         }
-        if ((rule as any).cssRules?.length) walkRules((rule as any).cssRules, units, dw, dh);
-      } catch {}
+        if ((rule as any).cssRules?.length) walkRules((rule as any).cssRules, units, dw, dh, rec, rec ? [...at, i] : at);
+      } catch {
+        if (rec) rec.broken = true;
+      }
     }
   }
   function visit(sheet: CSSStyleSheet) {
@@ -126,15 +151,116 @@ export function startSheets(box: Box) {
     // A <style>'s text says what's in it, without a walk. Rules added later go
     // through insertRule. A sheet with neither units nor queries has nothing to do.
     const text = inline ? owner.textContent : '';
+    // A file whose address names its contents: what its walk found last time, checked and done, if it's here
+    // (kept walks, below); else the walk, kept.
+    const href = !inline ? sheet.href : null;
+    const integrity = owner?.localName === 'link' ? String((owner as HTMLLinkElement).integrity ?? '') : '';
+    const rec = href && contentNamed(href, integrity) ? fromKept(rules, href, integrity, dw, dh) : null;
+    if (rec === DONE) return;
     const units = !text || hasUnits(text);
-    if (units || /@(media|import)/i.test(text)) walkRules(rules, units, dw, dh);
-    if (!text) hasLater(rules);
+    if (units || /@(media|import)/i.test(text)) walkRules(rules, units, dw, dh, rec);
+    if (rec) rec.walked = true;
+    if (!text) hasLater(rules, rec);
     else if (text.includes(HAS)) collectHas(rules);
   }
   const visitRoot = (root: Document | ShadowRoot) => {
     for (const sheet of Array.from(root.styleSheets)) visit(sheet);
     for (const sheet of root.adoptedStyleSheets ?? []) visit(sheet);
   };
+
+  // ---- kept walks (shared/sheet-walk.ts) -------------------------------------
+  // A content-named file's walk, kept: what Margin's world read from storage for this origin comes across
+  // (content/sheet-walk-link.ts, `margin:sheet-walk`), and a file that's in it is checked rule by rule and only
+  // those rules are done; anything off (or nothing kept yet, or not here in time) is the full walk, as always,
+  // whose findings go back across (`margin:sheet-walk-keep`) to replace what was kept.
+  type Walk = { href: string, n: number, s: number, r: string, items: Item[], h: [string, string][], pending: number, walked: boolean, broken: boolean };
+  const DONE = Symbol('done');
+  const { parse, stringify } = JSON;
+  const { now } = Date;
+  const entriesByName = Performance.prototype.getEntriesByName;
+  let kept: Record<string, Entry> = {};
+  let mark = '';
+  // Changes with what decides what a walk keeps: Margin's code for it, and the browser's version.
+  const walkMark = () => (mark ||= hash([WALK_FORMAT, navigator.userAgent, String(hasUnits), String(asksSize), String(walkRules), String(visit), String(readSelectors), String(fromKept), String(readKept)].join('\n')));
+  document.addEventListener('margin:sheet-walk', (event) => {
+    try {
+      const group = parse(String((event as CustomEvent).detail));
+      if (group?.v === walkMark() && group.files && typeof group.files === 'object') kept = group.files;
+    } catch {}
+  });
+  document.dispatchEvent(new CustomEvent('margin:sheet-walk-ask'));
+  // The file's size as the browser decoded it, where it says (another origin's without Timing-Allow-Origin: 0).
+  const sizeOf = (href: string) => {
+    try {
+      return Number((entriesByName.call(performance, href, 'resource')[0] as PerformanceResourceTiming | undefined)?.decodedBodySize) || 0;
+    } catch {
+      return 0;
+    }
+  };
+  // What's there now, for a kept rule's check (shared/sheet-walk.ts planFrom): read as the walk reads it.
+  function readKept(kind: Kind | 'h', rule: any): { check: string, said: [CSSStyleDeclaration, string] | null } | null {
+    if (kind === 'u') {
+      const own = rule instanceof CSSStyleRule;
+      const style = own ? ruleStyle.get.call(rule) : rule.style;
+      if (!style) return null;
+      const said = style.cssText;
+      return { check: hash(`${own ? selectorText.get.call(rule) : ''}\n${said}`), said: [style, said] };
+    }
+    if (kind === 'm') return rule instanceof CSSMediaRule ? { check: hash(rule.media.mediaText), said: null } : null;
+    if (kind === 'i') return rule instanceof CSSImportRule ? { check: hash(String(rule.href)), said: null } : null;
+    return rule instanceof CSSStyleRule ? { check: selectorText.get.call(rule), said: null } : null;
+  }
+  // DONE when what was kept did it; else the walk to keep.
+  function fromKept(rules: CSSRuleList, href: string, integrity: string, dw: number, dh: number): Walk | typeof DONE {
+    const s = sizeOf(href);
+    const entry = kept[href];
+    const plan = usable(entry, now()) && (entry.r ?? '') === integrity && !(entry.s && s && entry.s !== s) ? planFrom(entry, rules, readKept) : null;
+    if (!plan) return { href, n: rules.length, s, r: integrity, items: [], h: [], pending: 0, walked: false, broken: false };
+    for (const { kind, rule, said } of plan.work) {
+      try {
+        if (kind === 'u' && said) shiftStyle(said[0], scratch(), said[1]);
+        else if (kind === 'm') moveHolder(rule, dw, dh);
+        else if (kind === 'i' && rule.styleSheet) visit(rule.styleSheet);
+      } catch {}
+    }
+    if (plan.has.length) {
+      knownHas.push(...plan.has);
+      unreadTask ||= setTimeout(readSelectors, HAS_WAIT);
+    }
+    used.add(href);
+    keepSoon();
+    return DONE;
+  }
+  // The :has() selectors kept for a file walked in full (`rec`) before they came, if the walk found what was kept.
+  function keptHas(rec: Walk, rules: ArrayLike<CSSRule>) {
+    const entry = kept[rec.href];
+    if (!usable(entry, now()) || rec.broken || !rec.walked || rec.pending !== 1 || entry.n !== rec.n || entry.w !== encodeItems(rec.items) || (entry.r ?? '') !== rec.r || (entry.s && rec.s && entry.s !== rec.s)) return null;
+    const plan = planFrom({ ...entry, w: '' }, rules, readKept);
+    if (plan) {
+      used.add(rec.href);
+      keepSoon();
+    }
+    return plan?.has ?? null;
+  }
+  const walked: Record<string, Entry> = {};
+  const used = new Set<string>();
+  let keepTimer: Timer | 0 = 0;
+  function walkDone(rec: Walk) {
+    if (rec.broken || !rec.walked || rec.pending) return;
+    walked[rec.href] = { n: rec.n, w: encodeItems(rec.items), t: Math.floor(now() / 1000), ...(rec.s ? { s: rec.s } : {}), ...(rec.r ? { r: rec.r } : {}), ...(rec.h.length ? { h: rec.h } : {}) };
+    keepSoon();
+  }
+  function keepSoon() {
+    clearTimeout(keepTimer);
+    keepTimer = setTimeout(() => {
+      keepTimer = 0;
+      const files = { ...walked };
+      for (const href of Object.keys(walked)) delete walked[href];
+      const detail = stringify({ v: walkMark(), files, used: [...used] });
+      used.clear();
+      document.dispatchEvent(new CustomEvent('margin:sheet-walk-keep', { detail }));
+    }, KEEP_WAIT);
+  }
 
   // Sheets a script writes: the units in its text, the queries once parsed
   // (they go through the same list as any, to follow the box).
@@ -332,21 +458,41 @@ export function startSheets(box: Box) {
   // load is when a page has least time. A rule already in the sheet applied
   // at the read its sheet brought, so only what it changes later hangs on
   // it; one about <html> or <body> found now is read for, to be sure.
-  const unread: [ArrayLike<CSSRule>, number][] = [];
+  // Each with where it is (its parents' indices) and the walk it's kept for, if it is (kept walks, above).
+  const unread: [ArrayLike<CSSRule>, number, number[], Walk | null][] = [];
+  // Selectors with :has() a kept walk had, looked at as the ones read here are.
+  const knownHas: string[] = [];
   let unreadTask: Timer | 0 = 0;
-  function hasLater(rules: CSSRuleList) {
-    unread.push([Array.from(rules), 0]);
+  function hasLater(rules: CSSRuleList, rec: Walk | null = null) {
+    unread.push([Array.from(rules), 0, [], rec]);
+    if (rec) rec.pending++;
     unreadTask ||= setTimeout(readSelectors, HAS_WAIT);
   }
   function readSelectors() {
     unreadTask = 0;
     const until = performance.now() + HAS_SLICE;
     let about = false;
+    const take = (selector: string) => {
+      if (hasRules.has(selector)) return;
+      hasRules.add(selector);
+      about ||= ask(withoutHas(selector)).includes('1');
+    };
+    for (const selector of knownHas.splice(0)) take(selector);
     while (unread.length) {
       const item = unread[unread.length - 1];
-      const [rules] = item;
+      const [rules, , at, rec] = item;
       if (item[1] >= rules.length) {
         unread.pop();
+        if (rec && !--rec.pending) walkDone(rec);
+        continue;
+      }
+      // A file walked before what was kept came, whose walk found just what was kept: its :has() selectors as kept
+      // (each checked at its place), not read again.
+      const has = rec && !at.length && !item[1] ? keptHas(rec, rules) : null;
+      if (has) {
+        unread.pop();
+        rec!.pending--;
+        has.forEach(take);
         continue;
       }
       if (performance.now() > until) {
@@ -359,14 +505,22 @@ export function startSheets(box: Box) {
         try {
           if (rule instanceof CSSStyleRule) {
             const selector = selectorText.get.call(rule);
-            if (selector.includes(HAS) && !hasRules.has(selector)) {
-              hasRules.add(selector);
-              about ||= ask(withoutHas(selector)).includes('1');
+            if (selector.includes(HAS)) {
+              rec?.h.push([pathText([...at, item[1]]), selector]);
+              if (!hasRules.has(selector)) {
+                hasRules.add(selector);
+                about ||= ask(withoutHas(selector)).includes('1');
+              }
             }
           }
           const inner = (rule as any).cssRules;
-          if (inner?.length) unread.push([Array.from(inner), 0]);
-        } catch {}
+          if (inner?.length) {
+            unread.push([Array.from(inner), 0, rec ? [...at, item[1]] : at, rec]);
+            if (rec) rec.pending++;
+          }
+        } catch {
+          if (rec) rec.broken = true;
+        }
       }
     }
     if (about) box.bodyMayHaveChanged();

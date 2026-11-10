@@ -22,6 +22,7 @@ import { closeTabs, noteClosing } from './closing.ts';
 import * as away from './away.ts';
 import { isAwayPage } from '../shared/away.ts';
 import { appLink } from './app-link.ts';
+import { createSheetWalks } from './sheet-walks.ts';
 import { noticeAnswered } from './notices.ts';
 import { isNoticeAction } from '../shared/notices.ts';
 import * as pageLoads from './page-loads.ts';
@@ -299,6 +300,9 @@ export async function newTabKey(tabArg: { windowId: number | undefined; } | Brow
   markMarginOpening();
   await api.tabs.create({ windowId: tab.windowId, url: api.runtime.getURL('newtab/newtab.html') });
 }
+
+// What the page box's walks of a site's style sheets found (keepSheetWalk: shared/sheet-walk.ts).
+const sheetWalks = createSheetWalks(() => api.storage.local);
 
 // Style sheets fetched for pages (fetchStyle), the latest few.
 const styleCache = new Map();
@@ -1146,6 +1150,15 @@ export const handlers = {
   // load anyway: not a local network's unless it's on one, after any redirect.
   // Null if it can't be had (Safari's per-site grants can refuse it): the
   // sheet then stays as it is.
+  // What the page box's walk found in a page's content-named style sheets, kept for its return visits
+  // (content/sheet-walk-link.ts), under the origin of the page that sent it, never another's.
+  async keepSheetWalk({ v, files }: { v: string, files: Record<string, unknown> }, sender: BrowserMessageSender) {
+    let origin = '';
+    try {
+      origin = new URL(sender?.url ?? sender?.tab?.url ?? '').origin;
+    } catch {}
+    return sheetWalks.keep(origin, v, files);
+  },
   async fetchStyle({ url }: { url: string }, sender: BrowserMessageSender) {
     const pageUrl = sender?.tab?.url ?? sender?.url ?? '';
     if (!styleUrlAllowed(url, pageUrl)) return null;

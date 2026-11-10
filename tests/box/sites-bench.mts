@@ -7,10 +7,15 @@
 // - WebKit: the WebKit host, in rounds: every site plain (Margin not installed), then Margin installed and every
 //   site in its box, then uninstalled; plain at the host's window size (1200×800), boxed at 932×784.
 // A load counts only if it was what it says (in its box, or not).
+// Boxed loads are return visits by default: what the box's walks of a site's content-named style sheets found is
+// kept (shared/sheet-walk.ts), from a boxed load before them (Chromium: the uncounted first load; WebKit: one boxed
+// load of each site after each install, uncounted). `--visits first`: first visits, nothing kept (Chromium: the kept
+// walks cleared before each boxed load; WebKit: each install's storage is new).
 //
 //   npm run bench:sites                                  both engines, the sites below
 //   npm run bench:sites -- --engine webkit --runs 5
 //   npm run bench:sites -- --sites github.com,bbc.com
+//   npm run bench:sites -- --visits first
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -31,6 +36,8 @@ const SITES = opt('sites', [
 const RUNS = Number(opt('runs', 3));
 const engine = opt('engine', null);
 if (engine && !['chromium', 'webkit'].includes(engine)) throw new Error(`--engine: chromium or webkit, not ${engine}`);
+const VISITS = opt('visits', 'return');
+if (!['first', 'return'].includes(VISITS)) throw new Error(`--visits: first or return, not ${VISITS}`);
 const LOAD_MS = 30_000;
 const SETTLE_MS = 500;
 const url = (site) => `https://${site.includes('/') ? site : `${site}/`}`;
@@ -72,6 +79,7 @@ async function chromiumSites() {
       await once(m.context, url(site), 'boxed');
       await once(plainCtx, url(site), 'plain');
       for (let i = 0; i < RUNS; i++) {
+        if (VISITS === 'first') await m.bg(() => chrome.storage.local.get(null).then((all) => chrome.storage.local.remove(Object.keys(all).filter((key) => key.startsWith('sheetWalk')))));
         loads.push({ site, ...(await once(m.context, url(site), 'boxed')) });
         loads.push({ site, ...(await once(plainCtx, url(site), 'plain')) });
       }
@@ -102,6 +110,7 @@ async function webkitSites() {
     for (const site of SITES) load(site, 'plain', true);
     if (round === 0) steps.push({ op: 'appStart', layout: [260, 8, 8, 8] }, { op: 'open', name: 'W', url: '/p/A', active: true }, { op: 'wait', ms: 800 });
     steps.push({ op: 'install' }, boxedCheck('W'));
+    if (VISITS === 'return') for (const site of SITES) load(site, 'boxed', false);
     for (const site of SITES) load(site, 'boxed', true);
     steps.push({ op: 'uninstall' }, bareCheck('W'));
   }
@@ -142,4 +151,5 @@ function summary(name, loads) {
   console.log(`  ${'slowest tenth'.padEnd(34)}${METRICS.map((k) => String(at(k, 0.9)).padStart(8)).join('')}`);
 }
 
+console.log(`boxed loads: ${VISITS} visits`);
 for (const e of engine ? [engine] : ['chromium', 'webkit']) summary(e, e === 'chromium' ? await chromiumSites() : await webkitSites());

@@ -16,6 +16,7 @@
 import type { State } from '../../types/margin';
 import * as V from '../shared/view.ts';
 import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '../shared/stored.ts';
+import { isSheetWalkKey } from '../shared/sheet-walk.ts';
 
 /**
  * Where the theme put the page (ui/render.ts View.measure): `<m-page>`'s
@@ -200,6 +201,8 @@ export function createInPageHost({
 
   const onChanged = (changes: Record<string, { newValue?: any }>, area: string) => {
     if (area !== 'local' || destroyed || dormant) return;
+    // The page box's kept sheet walks (shared/sheet-walk.ts): not state.
+    if (Object.keys(changes).every(isSheetWalkKey)) return;
     for (const key of Object.keys(changes)) seenKeys.add(key);
     if (!state) return void read();
     // The background's note of a tab being shown is for that page's own start.
