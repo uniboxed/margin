@@ -3667,3 +3667,25 @@ dismissed with the reason, so the Security tab lists only what matters.
   Rust (`#[cfg(test)]`'s fixed token), and false positives (an integer-checked key, Windows message constants read
   as bindings by an analysis without Windows, a promise compared with itself on purpose). `docs/` (design boards)
   isn't scanned.
+
+## CI: the theme tests by what a change reaches, a nightly full run, timing counted in work (2026-11-10)
+
+Each built-in theme ran the whole browser suite in two engines on every pull request, and themes keep coming. The
+`changes` job's plan (`scripts/ci-plan.mts`, tested in `tests/ci-plan.test.ts`) now picks the browser jobs:
+
+- **Every change to the extension:** every theme package checked with no browser, in `npm test` on Linux
+  (`tests/security/packages.test.ts`: caps, sanitizer, the tree audit, the parts a theme needs to be switched away
+  from, the first paint).
+- **A theme's folder:** its own browser tests (`tests/theme/<id>.test.ts`) and its entries in the tests that loop over
+  the themes, nobody else's. **The UI runtime, the host page, the harness or anything they import:** the
+  theme-agnostic tests (every `tests/theme/*.test.ts` but a theme's own) against the reference theme, Arcadia
+  (`MARGIN_TEST_THEMES=reference`; a file without Arcadia, `behaviors.test.ts`, takes its first). **A theme test
+  itself:** that file, in every theme. **The workflow, the lockfiles, the build or the plan; nightly; by hand:**
+  everything, every theme, both engines.
+- **`MARGIN_TEST_THEMES`** (`tests/theme/package.ts themesInScope`), not `MARGIN_THEMES`, which adds packages to the
+  security suite. Unset, every theme: `npm run gate` and local runs are unchanged.
+- **End to end** only when a change reaches it (the extension, the host page, the connector, its harness and pages):
+  a unit test or a theme test alone no longer starts them.
+- **"At once" counted in work:** `switch-plain`'s presses must reach the overlay and Safari before the event loop's
+  next turn (no timer, no write, no wait in between), not within 5 ms of wall clock, which a loaded runner missed. A
+  1 ms timer in the path fails it (checked); the old bound let it pass.

@@ -27,7 +27,9 @@ Thanks for helping. This page covers setting up, testing and sending a change. H
 | `npm run gate` | everything: unit, Rust, theme, security, the app's checks, end-to-end, the WebKit host | before a pull request is merged |
 
 The browser tests run headless and the Mac app's tests run off screen: nothing should appear on your screen. CI runs
-the same checks on every pull request.
+the same checks on every pull request, each only where the change reaches (a theme's folder runs that theme's
+browser tests, the UI runtime the theme-agnostic ones in Arcadia: `MARGIN_TEST_THEMES=reference npm run test:theme`
+does the same locally), and everything, every theme, every night.
 
 ## Commits and pull requests
 

@@ -1,19 +1,26 @@
 # Margin's checks on every pull request and every push to main: npm run gate's parts, each where it's meaningful.
-# Linux: the type check and the unit tests (the security suite's unit half among them). macOS: the browser tests
-# (theme, with the security suite's browser half, and end to end) in Chromium and WebKit, the browsers Margin runs on,
-# and the app's Swift checks and the WebKit host. Rust: on Linux with both Windows targets checked, and tested on
-# Windows itself. The app's own end-to-end checks drive real windows and wait on macOS's window server, which a CI
-# virtual machine is too slow for: they run in npm run gate, on a Mac, before main.
+# Linux: the type check and the unit tests (the security suite's unit half among them, with every theme package's
+# checks: no browser). macOS: the browser tests (theme, with the security suite's browser half, and end to end) in
+# Chromium and WebKit, the browsers Margin runs on, and the app's Swift checks and the WebKit host. Rust: on Linux with
+# both Windows targets checked, and tested on Windows itself. The app's own end-to-end checks drive real windows and
+# wait on macOS's window server, which a CI virtual machine is too slow for: they run in npm run gate, on a Mac, before
+# main.
 #
-# Each job runs only when the change can reach it (the `changes` job: a docs-only change runs nothing heavy); a job
-# skipped that way counts as passed for the required checks, so if `changes` itself fails, everything runs. The macOS jobs run on every push once the repository
-# variable MACOS_CI is "true" (it is), or when started by hand, which runs everything.
+# Each job runs only when the change can reach it (the `changes` job, scripts/ci-plan.mts: a docs-only change runs
+# nothing heavy), and the theme browser tests only for what it reaches: a theme's folder, that theme's tests; the UI
+# runtime, the host page or the theme harness, the theme-agnostic tests against one reference theme (Arcadia). A job
+# skipped that way counts as passed for the required checks, so if `changes` itself fails, everything runs. Every
+# night (and when started by hand) everything runs: every theme, both engines. The macOS jobs run on every push once
+# the repository variable MACOS_CI is "true" (it is), every night, or when started by hand.
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+  # Nightly: everything, every theme, both engines, whatever changed (a pull request runs only what it reaches).
+  schedule:
+    - cron: "17 4 * * *"
   workflow_dispatch:
     inputs:
       macos:
@@ -37,17 +44,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      unit: ${{ steps.diff.outputs.unit }}
-      extension: ${{ steps.diff.outputs.extension }}
-      rust: ${{ steps.diff.outputs.rust }}
-      app: ${{ steps.diff.outputs.app }}
-      macos: ${{ steps.diff.outputs.macos }}
+      unit: ${{ steps.plan.outputs.unit }}
+      rust: ${{ steps.plan.outputs.rust }}
+      app: ${{ steps.plan.outputs.app }}
+      browsers_any: ${{ steps.plan.outputs.browsers_any }}
+      browsers: ${{ steps.plan.outputs.browsers }}
+      macos: ${{ steps.plan.outputs.macos }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - id: diff
-        name: The files this change touches, by what they can reach
+      # (No npm ci: the plan is plain Node, with the theme list from extension/themes/packages.ts.)
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - id: plan
+        name: The files this change touches, by what they can reach (scripts/ci-plan.mts)
         env:
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
@@ -60,30 +72,17 @@ jobs:
             push) base="$BEFORE" ;;
             *) base="" ;;
           esac
-          if [ "$EVENT" = workflow_dispatch ]; then macos="$MACOS_INPUT"; else macos=$([ "$MACOS_VAR" = true ] && echo true || echo false); fi
+          if [ "$EVENT" = workflow_dispatch ]; then macos="$MACOS_INPUT"
+          elif [ "$EVENT" = schedule ]; then macos=true
+          else macos=$([ "$MACOS_VAR" = true ] && echo true || echo false); fi
           echo "macos=$macos" >> "$GITHUB_OUTPUT"
-          # By hand, a new branch, or a base that isn't here (a force-push): everything.
+          export MACOS="$macos"
+          # Nightly, by hand, a new branch, or a base that isn't here (a force-push): everything.
           if [ -z "$base" ] || [ "$base" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
-            for k in unit extension rust app; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
-            echo "Everything runs (no base to compare with)." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            node scripts/ci-plan.mts --everything < /dev/null
+          else
+            git diff --name-only "$base" HEAD | node scripts/ci-plan.mts
           fi
-          files=$(git diff --name-only "$base" HEAD)
-          # The workflow itself, the lockfiles and the shared build script reach everything.
-          all='^(\.github/workflows/ci\.yml|package(-lock)?\.json|tsconfig\.json|scripts/build\.ts)$'
-          reaches() { if echo "$files" | grep -qE "$all|$1"; then echo true; else echo false; fi; }
-          # (Unit tests read some of the app's files too: the Chromium crate's extension id, the host page; the browser
-          # tests' security suite reads the Mac app's page policy, OverlayWebView.swift.)
-          unit=$(reaches '^(extension|app|tests|types|scripts)/')
-          extension=$(reaches '^(extension|app/shared/host|tests|types|scripts)/|/OverlayWebView\.swift$')
-          rust=$(reaches '\.rs$|(^|/)Cargo\.(toml|lock)$|^rustfmt\.toml$|^scripts/rust-test\.sh$|^tests/fixtures/')
-          app=$(reaches '^(app|tools|extension|tests/fixtures)/|\.swift$')
-          { echo "unit=$unit"; echo "extension=$extension"; echo "rust=$rust"; echo "app=$app"; } >> "$GITHUB_OUTPUT"
-          {
-            echo "| Checks | Run |"; echo "|---|---|"
-            echo "| unit tests | $unit |"; echo "| browser tests (macOS: $macos) | $extension |"; echo "| Rust | $rust |"; echo "| Margin.app (macOS: $macos) | $app |"
-            echo; echo "<details><summary>$(echo "$files" | wc -l | tr -d ' ') changed files</summary>"; echo; echo '```'; echo "$files" | head -200; echo '```'; echo "</details>"
-          } >> "$GITHUB_STEP_SUMMARY"
 
   unit:
     name: Unit tests (Linux)
@@ -104,24 +103,16 @@ jobs:
   browsers:
     name: Browser tests (macOS, ${{ matrix.suite }})
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || (needs.changes.outputs.extension == 'true' && needs.changes.outputs.macos == 'true')) }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (needs.changes.outputs.browsers_any == 'true' && needs.changes.outputs.macos == 'true')) }}
     runs-on: macos-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # The theme tests (with the security suite's browser half) and the end-to-end tests, each in two halves on
-          # their own Macs. End to end one file at a time here (npm run test:e2e runs two at once): a few of them
-          # wait on timers that two Chromiums at once on a virtual Mac push past.
-          - suite: theme 1 of 2
-            run: node --test --test-concurrency=1 --test-shard=1/2 tests/theme/*.test.ts
-          - suite: theme 2 of 2
-            run: node --test --test-concurrency=1 --test-shard=2/2 tests/theme/*.test.ts
-          - suite: end to end 1 of 2
-            run: node --test --test-concurrency=1 --test-shard=1/2 tests/e2e/*.test.ts
-          - suite: end to end 2 of 2
-            run: node --test --test-concurrency=1 --test-shard=2/2 tests/e2e/*.test.ts
+      # The plan's jobs (scripts/ci-plan.mts): the theme tests it picked, in the themes it picked (MARGIN_TEST_THEMES;
+      # all of them on two Macs when everything runs), and the end-to-end tests in two halves, one file at a time
+      # (npm run test:e2e runs two at once: a few of them wait on timers that two Chromiums at once on a virtual Mac
+      # push past). If `changes` failed, everything.
+      matrix: ${{ fromJSON(needs.changes.outputs.browsers || '{"include":[{"suite":"theme 1 of 2","kind":"theme","files":"tests/theme/*.test.ts","themes":"","shard":"1/2"},{"suite":"theme 2 of 2","kind":"theme","files":"tests/theme/*.test.ts","themes":"","shard":"2/2"},{"suite":"end to end 1 of 2","kind":"e2e","files":"tests/e2e/*.test.ts","themes":"","shard":"1/2"},{"suite":"end to end 2 of 2","kind":"e2e","files":"tests/e2e/*.test.ts","themes":"","shard":"2/2"}]}') }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -139,16 +130,21 @@ jobs:
         if: steps.browsers.outputs.cache-hit != 'true'
         run: npx playwright install chromium webkit
       - name: Rust (stable, by the runner's own rustup), for the connector's end-to-end test
-        if: startsWith(matrix.suite, 'end to end')
+        if: matrix.kind == 'e2e'
         run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
-      - if: startsWith(matrix.suite, 'end to end')
+      - if: matrix.kind == 'e2e'
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Scroll bars that show while scrolling only, as on a Mac with a trackpad (the box patterns' setting)
         run: defaults write -g AppleShowScrollBars -string WhenScrolling
       - name: The build (the tests load it)
         run: node scripts/build.ts
       - name: ${{ matrix.suite }}
-        run: ${{ matrix.run }}
+        env:
+          FILES: ${{ matrix.files }}
+          SHARD: ${{ matrix.shard }}
+          MARGIN_TEST_THEMES: ${{ matrix.themes }}
+        # ($FILES unquoted: a list of test files, or a glob in the fallback.)
+        run: node --test --test-concurrency=1 --test-shard="$SHARD" $FILES
       - name: Test results, when something failed
         if: failure()
         uses: actions/upload-artifact@v7
