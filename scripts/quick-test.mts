@@ -5,7 +5,7 @@
 // What changed: this branch's commits since it left main (git merge-base), plus whatever is
 // staged, unstaged or untracked. Then:
 // - always: the build (dist/, 0.6 s) and the type checks (tsc, 1 s each: the code, the tests,
-//   tsconfig.tests.json, and the scripts, tools and browser tests done so far, scripts/tests-check.mts);
+//   tsconfig.tests.json, and tools and the browser tests done so far, scripts/tests-check.mts);
 // - JS tests (tests/*.test.ts, tests/security/, tests/theme/): those whose imports reach a
 //   changed file, followed through every relative import; tests that name a changed non-JS
 //   file (a theme's HTML or CSS, the new-tab page); every theme test when a theme changed;
@@ -26,12 +26,12 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
-const flag = (name) => args.includes(name);
-const option = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
+const flag = (name: string) => args.includes(name);
+const option = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
 const started = Date.now();
-const rel = (p) => relative(ROOT, p).split('\\').join('/');
-const git = (...a) => { try { return execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; } };
-const lines = (s) => s.split('\n').map((l) => l.trim()).filter(Boolean);
+const rel = (p: string) => relative(ROOT, p).split('\\').join('/');
+const git = (...a: string[]) => { try { return execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; } };
+const lines = (s: string) => s.split('\n').map((l) => l.trim()).filter(Boolean);
 
 // ---- what changed ----------------------------------------------------------------------------
 function changedFiles() {
@@ -49,7 +49,7 @@ function changedFiles() {
 
 // ---- the JS import graph ----------------------------------------------------------------------
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', '.git', 'xcode', 'site']);
-function walk(dir, out = []) {
+function walk(dir: string, out: string[] = []): string[] {
   if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir)) {
     if (SKIP_DIRS.has(name)) continue;
@@ -63,28 +63,28 @@ function walk(dir, out = []) {
 const IMPORT = /(?:import|export)\s[^'"`;]*?from\s*['"]([^'"]+)['"]|import\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g;
 // package.json "imports" (`#engine`, `#engine/capabilities`): as Node resolves them unbuilt, to their `default`,
 // which reaches every engine's modules.
-const IMPORTS = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).imports ?? {};
-function resolveImport(from, spec) {
+const IMPORTS: Record<string, string | Record<string, string>> = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).imports ?? {};
+function resolveImport(from: string, spec: string): string | null {
   if (spec.startsWith('#')) { const to = IMPORTS[spec]; const target = typeof to === 'string' ? to : to?.default; return target ? resolve(ROOT, target) : null; }
   if (!spec.startsWith('.')) return null;
   const base = resolve(dirname(from), spec);
   for (const c of [base, `${base}.ts`, `${base}.mts`, `${base}.js`, `${base}.mjs`, join(base, 'index.ts')]) if (existsSync(c) && statSync(c).isFile()) return c;
   return null;
 }
-const graph = new Map(); // file → files it imports
-const texts = new Map();
+const graph = new Map<string, Set<string>>(); // file → files it imports
+const texts = new Map<string, string>();
 for (const f of [...walk(join(ROOT, 'extension')), ...walk(join(ROOT, 'app')), ...walk(join(ROOT, 'tests')), ...walk(join(ROOT, 'scripts'))]) {
   const text = readFileSync(f, 'utf8');
   texts.set(f, text);
-  const deps = new Set();
+  const deps = new Set<string>();
   for (const m of text.matchAll(IMPORT)) { const r = resolveImport(f, m[1] ?? m[2] ?? m[3]); if (r) deps.add(r); }
   graph.set(f, deps);
 }
-const reachCache = new Map();
-function reach(file) { // every file `file` imports, directly or not
-  if (reachCache.has(file)) return reachCache.get(file);
-  const seen = new Set(); const stack = [file];
-  while (stack.length) { const f = stack.pop(); for (const d of graph.get(f) ?? []) if (!seen.has(d)) { seen.add(d); stack.push(d); } }
+const reachCache = new Map<string, Set<string>>();
+function reach(file: string): Set<string> { // every file `file` imports, directly or not
+  if (reachCache.has(file)) return reachCache.get(file)!;
+  const seen = new Set<string>(); const stack = [file];
+  while (stack.length) { const f = stack.pop()!; for (const d of graph.get(f) ?? []) if (!seen.has(d)) { seen.add(d); stack.push(d); } }
   reachCache.set(file, seen);
   return seen;
 }
@@ -100,8 +100,8 @@ const E2E = readdirSync(join(ROOT, 'tests/e2e')).filter((n) => n.endsWith('.test
 const all = flag('--all');
 const changed = all ? [] : changedFiles();
 const abs = changed.map((f) => resolve(ROOT, f));
-const why = new Map(); // test → the first reason it was picked
-const pick = (t, reason) => { if (!why.has(t)) why.set(t, reason); };
+const why = new Map<string, string>(); // test → the first reason it was picked
+const pick = (t: string, reason: string) => { if (!why.has(t)) why.set(t, reason); };
 
 const changedJs = abs.filter((f) => /\.m?[jt]s$/.test(f) && !f.includes('/tests/e2e/'));
 // Non-JS files the JS side loads: a theme's HTML and CSS, the new-tab page, manifests, fixtures
@@ -131,12 +131,12 @@ const swift = all || changed.some((f) => /^(app\/platforms\/macos|app\/engines|a
 // (The Rust workspace: any crate's source or the workspace's own files.)
 const rust = all || changed.some((f) => /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfmt\.toml$/.test(f));
 const e2eFiles = all ? [] : E2E.filter((t) => abs.includes(t));
-const notRun = [];
+const notRun: string[] = [];
 if (changed.some((f) => /^(extension|app\/shared\/host|tests\/e2e)\//.test(f)) && !e2eFiles.length) notRun.push('the e2e suite (npm run test:e2e)');
 if (changed.some((f) => /^(extension|tools\/webkit-host)\//.test(f))) notRun.push('the WebKit host (npm run test:webkit)');
 if (swift) notRun.push('the app\'s e2e checks (tools/app-tests/run.sh e2e)');
 
-const sel = (list) => list.filter((t) => why.has(t));
+const sel = (list: string[]) => list.filter((t) => why.has(t));
 const plan = { unit: sel([...UNIT, ...SECURITY]), theme: sel(THEME), e2e: e2eFiles, swift, rust };
 
 console.log(`quick tests: ${all ? 'everything quick' : `${changed.length} changed file(s)`}${option('--base') ? ` since ${option('--base')}` : ''}`);
@@ -148,8 +148,8 @@ if (!why.size && !swift && !rust && !plan.e2e.length) console.log('  no tests re
 if (flag('--dry')) process.exit(0);
 
 // ---- run -------------------------------------------------------------------------------------------
-const results = [];
-function step(label, cmd, cmdArgs, env = {}) {
+const results: { label: string, ok: boolean, s: string }[] = [];
+function step(label: string, cmd: string, cmdArgs: string[], env: Record<string, string> = {}) {
   const t0 = Date.now();
   process.stdout.write(`\n== ${label}\n`);
   const r = spawnSync(cmd, cmdArgs, { cwd: ROOT, stdio: 'inherit', env: { ...process.env, ...env } });
@@ -162,7 +162,7 @@ const quiet = ['--test-reporter=dot'];
 let ok = step('build', node, [join(ROOT, 'scripts/build.ts')]);
 ok = step('type check', node, [join(ROOT, 'node_modules/typescript/bin/tsc'), '-p', '.']) && ok;
 ok = step('type check (tests)', node, [join(ROOT, 'node_modules/typescript/bin/tsc'), '-p', 'tsconfig.tests.json']) && ok;
-ok = step('type check (scripts, tools, browser tests done so far)', node, [join(ROOT, 'scripts/tests-check.mts')]) && ok;
+ok = step('type check (tools, browser tests done so far)', node, [join(ROOT, 'scripts/tests-check.mts')]) && ok;
 if (plan.unit.length) ok = step(`unit (${plan.unit.length} files)`, node, ['--test', ...quiet, ...plan.unit.map(rel)]) && ok;
 if (plan.theme.length) ok = step(`theme (${plan.theme.length} files)`, node, ['--test', ...quiet, '--test-concurrency=2', ...plan.theme.map(rel)]) && ok;
 if (plan.swift) ok = step('Swift unit checks', join(ROOT, 'tools/app-tests/run.sh'), ['unit'], { WINDOW_RUNS: process.env.WINDOW_RUNS ?? '50', VISIBLE_RUNS: process.env.VISIBLE_RUNS ?? '80' }) && ok;

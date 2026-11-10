@@ -14,12 +14,10 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url));
 // The compiler of the typescript package Node finds from here (its package.json: the bin isn't exported).
 const TSC = join(dirname(createRequire(import.meta.url).resolve('typescript/package.json')), 'bin/tsc');
 // The files and folders (paths from the repo's root; a folder ends in /) whose type errors fail the check. A folder
-// once all of it is done, so a file added there is held at once. (What the unit tests import, the theme harness, the
-// e2e harness and site, the box patterns' rules and server, scripts/build.ts, ci-plan.mts and pack-theme.ts, is held by
-// tsconfig.tests.json already.)
+// once all of it is done, so a file added there is held at once; a folder all done moves to tsconfig.tests.json
+// (scripts/, 2026-11-10). (What the unit tests import, the theme harness, the e2e harness and site, the box patterns'
+// rules and server, is held there already.)
 export const DONE: string[] = [
-  'scripts/scroll-bars.mts',
-  'scripts/tests-check.mts',
   'tools/boards/',
 ];
 
