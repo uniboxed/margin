@@ -34,19 +34,20 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startMargin } from '../../tests/e2e/harness/margin.ts';
+import type { Browser, CDPSession, Page } from 'playwright';
+import { startMargin, type Margin } from '../../tests/e2e/harness/margin.ts';
 import { SPACES } from '../../tests/e2e/harness/seed.ts';
-import { ERROR_TRIES, HELD_RULES, HINTS, KEY, LOOSE_RULES, isBlocked } from './verdicts.mts';
-import { judge, measure as measureBox } from '../../tests/box/rules.ts';
+import { ERROR_TRIES, HELD_RULES, HINTS, KEY, LOOSE_RULES, isBlocked, type Cpu, type Row } from './verdicts.mts';
+import { judge, measure as measureBox, type Shot } from '../../tests/box/rules.ts';
 import { slot as slotOf } from '../../tests/e2e/harness/ui.ts';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('playwright');
+const { chromium } = require('playwright') as typeof import('playwright');
 
 // ---- options ----------------------------------------------------------------------------------
 const argv = process.argv.slice(2);
-const opt = (name, fallback) => { const i = argv.indexOf(`--${name}`); return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback; };
-const expand = (p) => resolve(p.replace(/^~(?=\/|$)/, homedir()));
+const opt = <T extends string | null>(name: string, fallback: T): string | T => { const i = argv.indexOf(`--${name}`); return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback; };
+const expand = (p: string) => resolve(p.replace(/^~(?=\/|$)/, homedir()));
 const LIST = expand(opt('list', fileURLToPath(new URL('./data/list.csv', import.meta.url))));
 if (!opt('out', null)) { console.error('--out: the folder for the results (npm run fit-check keeps them in tools/fit-check/data)'); process.exit(2); }
 const OUT = expand(opt('out', ''));
@@ -56,7 +57,7 @@ const UNTIL = opt('until', null) ? new Date(opt('until', '')).getTime() : Infini
 if (Number.isNaN(UNTIL)) throw new Error(`--until: not a time: ${opt('until', '')}`);
 const COMMIT = opt('commit', null);
 // --only: a file of the sites to check (a domain a line, or `rank,domain`), the rest of the list left out: a re-check.
-const ONLY = opt('only', null) ? new Set(readFileSync(expand(opt('only', '')), 'utf8').split('\n').map((l) => l.trim().split(',').pop().trim().toLowerCase()).filter(Boolean)) : null;
+const ONLY = opt('only', null) ? new Set(readFileSync(expand(opt('only', '')), 'utf8').split('\n').map((l) => l.trim().split(',').pop()!.trim().toLowerCase()).filter(Boolean)) : null;
 const NAV_MS = 30_000; // the first answer and the DOM
 const LOAD_MS = 12_000; // then the load event, at most
 const SETTLE_MS = 2_000; // then a moment for late content
@@ -69,14 +70,15 @@ const ADULT = /(porn|xxx|xvideo|xnxx|xhamster|sex|nude|naked|hentai|onlyfans|cam
 mkdirSync(join(OUT, 'shots'), { recursive: true });
 const RESULTS = join(OUT, 'results.jsonl');
 const LOG = join(OUT, 'log.txt');
-const log = (line) => { const s = `${new Date().toISOString()} ${line}`; appendFileSync(LOG, `${s}\n`); };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const log = (line: string) => { const s = `${new Date().toISOString()} ${line}`; appendFileSync(LOG, `${s}\n`); };
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // A promise with a deadline: rejects with `what` once it's past.
-const within = (ms, what, p) => {
-  let timer;
-  return Promise.race([p, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`timeout: ${what} (${ms} ms)`)), ms); })]).finally(() => clearTimeout(timer));
+const within = <T,>(ms: number, what: string, p: Promise<T>): Promise<T> => {
+  let timer: Timer | undefined;
+  return Promise.race([p, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`timeout: ${what} (${ms} ms)`)), ms); })]).finally(() => clearTimeout(timer));
 };
-const short = (e) => String(e?.message ?? e).split('\n')[0].slice(0, 300);
+// (Anything thrown: an Error's message, else itself.)
+const short = (e: unknown) => String((e as { message?: unknown } | null | undefined)?.message ?? e).split('\n')[0].slice(0, 300);
 
 process.on('unhandledRejection', (e) => log(`unhandled rejection: ${short(e)}`));
 process.on('uncaughtException', (e) => log(`uncaught exception: ${short(e)}`));
@@ -86,8 +88,8 @@ const sites = readFileSync(LIST, 'utf8').split('\n').map((l) => l.trim()).filter
   .map((l) => { const [rank, domain] = l.split(','); return { rank: Number(rank), domain: String(domain ?? '').trim().toLowerCase() }; })
   .filter((s) => s.rank > 0 && /^[a-z0-9.-]+$/.test(s.domain) && (!ONLY || ONLY.has(s.domain)));
 // A site's last line is what it came to; a crawler error (its own trouble, not the site's) is tried again.
-const last = new Map();
-const errorsOf = new Map();
+const last = new Map<string, string>();
+const errorsOf = new Map<string, number>();
 if (existsSync(RESULTS)) for (const l of readFileSync(RESULTS, 'utf8').split('\n')) {
   try {
     const r = JSON.parse(l);
@@ -95,11 +97,11 @@ if (existsSync(RESULTS)) for (const l of readFileSync(RESULTS, 'utf8').split('\n
     if (r.verdict === 'error') errorsOf.set(r.domain, (errorsOf.get(r.domain) ?? 0) + 1);
   } catch {}
 }
-const doneNow = (d) => last.has(d) && (last.get(d) !== 'error' || (errorsOf.get(d) ?? 0) >= ERROR_TRIES);
+const doneNow = (d: string) => last.has(d) && (last.get(d) !== 'error' || (errorsOf.get(d) ?? 0) >= ERROR_TRIES);
 const done = new Set([...last.keys()].filter(doneNow));
 const queue = sites.filter((s) => !done.has(s.domain)).slice(0, LIMIT || undefined);
-const counts = { done: done.size, ok: 0, flagged: 0, marginFailed: 0, hinted: 0, varied: 0, blocked: 0, notHtml: 0, plainFailed: 0, skipped: 0, errors: 0 };
-for (const d of done) counts[KEY[last.get(d)] ?? 'errors'] += 1;
+const counts: Record<string, number> = { done: done.size, ok: 0, flagged: 0, marginFailed: 0, hinted: 0, varied: 0, blocked: 0, notHtml: 0, plainFailed: 0, skipped: 0, errors: 0 };
+for (const d of done) counts[KEY[last.get(d)!] ?? 'errors'] += 1;
 const startedAt = Date.now();
 let doneThisRun = 0;
 const writeProgress = () => {
@@ -107,7 +109,7 @@ const writeProgress = () => {
   const left = sites.length - counts.done;
   writeFileSync(join(OUT, 'progress.json'), JSON.stringify({ ...counts, total: sites.length, left, perMinute: Math.round(rate * 10) / 10, etaHours: rate ? Math.round((left / rate / 60) * 10) / 10 : null, updatedAt: new Date().toISOString(), workers: WORKERS, pid: process.pid }, null, 2));
 };
-const record = (r) => {
+const record = (r: Row) => {
   appendFileSync(RESULTS, `${JSON.stringify(r)}\n`);
   if (r.verdict === 'error') errorsOf.set(r.domain, (errorsOf.get(r.domain) ?? 0) + 1);
   last.set(r.domain, r.verdict);
@@ -157,31 +159,38 @@ const MEASURE = () => {
   };
 };
 
+type Measured = ReturnType<typeof MEASURE>;
+// One load (`load` below).
+type Load = {
+  ok: boolean, status: number | null, finalHost: string | null, ms: number | null, cpu: Cpu | null, error: string | null,
+  errors: string[], m: Measured | null, box: Shot | null,
+};
+
 // A load's page title, to tell whether both loads were served the same page.
-const a2t = (load) => load.m?.title ?? '';
+const a2t = (load: Load) => load.m?.title ?? '';
 
 // The page's main-thread time, in Chromium's own counters (tasks, and in them script, style and layout), from just
 // before the load to just before it's measured: what Margin adds to a page's work, not only to its wait. Taken the
 // same way both sides; a site that moves to another process counts from there.
-const MAIN_THREAD = { TaskDuration: 'task', ScriptDuration: 'script', RecalcStyleDuration: 'style', LayoutDuration: 'layout' };
-async function mainThread(cdp) {
+const MAIN_THREAD: Record<string, keyof Cpu> = { TaskDuration: 'task', ScriptDuration: 'script', RecalcStyleDuration: 'style', LayoutDuration: 'layout' };
+async function mainThread(cdp: CDPSession | null): Promise<Cpu | null> {
   const res = cdp ? await within(5_000, 'metrics', cdp.send('Performance.getMetrics')).catch(() => null) : null;
   if (!res) return null;
-  const out = {};
+  const out: Partial<Cpu> = {};
   for (const { name, value } of res.metrics) if (MAIN_THREAD[name]) out[MAIN_THREAD[name]] = Math.round(value * 1000);
-  return out.task == null ? null : out;
+  return out.task == null ? null : out as Cpu;
 }
 
 // One load of `url` in `page`: what came back, how long, how much work, what the page is like, its errors.
-async function load(page, url) {
-  const errors = [];
-  const onError = (e) => { if (errors.length < 20) errors.push(short(e)); };
+async function load(page: Page, url: string) {
+  const errors: string[] = [];
+  const onError = (e: Error) => { if (errors.length < 20) errors.push(short(e)); };
   page.on('pageerror', onError);
   page.on('dialog', (d) => d.dismiss().catch(() => {}));
   const cdp = await within(5_000, 'cdp', page.context().newCDPSession(page)).catch(() => null);
   if (cdp) await within(5_000, 'cdp', cdp.send('Performance.enable')).catch(() => {});
   const t0 = Date.now();
-  const out = { ok: false, status: null, finalHost: null, ms: null, cpu: null, error: null, errors, m: null, box: null };
+  const out: Load = { ok: false, status: null, finalHost: null, ms: null, cpu: null, error: null, errors, m: null, box: null };
   try {
     const res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_MS });
     out.status = res?.status() ?? null;
@@ -197,13 +206,14 @@ async function load(page, url) {
         out.box = out.m.errorPage || !/html/.test(out.m.kind) ? null : await within(MEASURE_MS, 'measure', page.evaluate(measureBox));
         break;
       } catch (e) {
-        if (tries >= 2 || !/context was destroyed|navigat/i.test(String(e?.message ?? e))) throw e;
+        if (tries >= 2 || !/context was destroyed|navigat/i.test(String((e as Error | null)?.message ?? e))) throw e;
         await page.waitForLoadState('load', { timeout: LOAD_MS }).catch(() => {});
         await sleep(SETTLE_MS);
       }
     }
     out.finalHost = (() => { try { return new URL(page.url()).hostname; } catch { return null; } })();
-    if (out.m.errorPage) out.error = 'the browser\'s own error page (no such site, a bad certificate)';
+    // (out.m: the loop above ends only once it's measured.)
+    if (out.m!.errorPage) out.error = 'the browser\'s own error page (no such site, a bad certificate)';
     out.ok = !!out.m && !out.m.errorPage && (out.status == null || out.status < 400);
   } catch (e) {
     out.error = short(e);
@@ -219,32 +229,38 @@ async function load(page, url) {
 // Launched as the harness launches Margin's (Chrome's new headless mode), so the two browsers are alike in what
 // they tell sites (a first visit to Google came back dark in one and light in the other).
 // Each tagged (a switch Chromium ignores), so one that won't close is found and ended by it.
+type PlainBrowser = Browser & { tag: string };
+type World = {
+  m: Margin, plain: PlainBrowser, composer: Page | null, slot: { left: number, top: number, right: number, bottom: number },
+  ours: Set<Page>, scheme: 'dark' | 'light', sites: number,
+};
 let plains = 0;
-async function plainBrowser() {
+async function plainBrowser(): Promise<PlainBrowser> {
   const tag = `margin-fit-check-plain=${process.pid}x${++plains}x`; // (x…x: the 1st isn't found in the 10th's)
   const browser = await within(60_000, 'plain browser start', chromium.launch({ headless: false, args: ['--headless=new', '--mute-audio', '--disable-notifications', '--deny-permission-prompts', `--${tag}`] }));
   return Object.assign(browser, { tag });
 }
-async function compare(world, a, b) {
+async function compare(world: World, a: Buffer | null, b: Buffer | null) {
   if (!a || !b) return null;
   world.composer ??= await within(10_000, 'composer', world.plain.newContext().then((c) => c.newPage()));
-  return within(10_000, 'compare', world.composer.evaluate(async ([x, y]) => {
-    const grid = async (b64) => {
+  // (world.composer: made just above.)
+  return within(10_000, 'compare', world.composer!.evaluate(async ([x, y]) => {
+    const grid = async (b64: string) => {
       const img = new Image();
       img.src = `data:image/jpeg;base64,${b64}`;
       await img.decode();
       const c = document.createElement('canvas');
       c.width = 48; c.height = 30;
-      const g = c.getContext('2d');
+      const g = c.getContext('2d')!;
       g.drawImage(img, 0, 0, 48, 30);
       const d = g.getImageData(0, 0, 48, 30).data;
-      const lum = [];
+      const lum: number[] = [];
       for (let i = 0; i < d.length; i += 4) lum.push(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
       return lum;
     };
     const [p, q] = await Promise.all([grid(x), grid(y)]);
-    const mean = (v) => v.reduce((s, n) => s + n, 0) / v.length;
-    const sd = (v) => { const m = mean(v); return Math.sqrt(mean(v.map((n) => (n - m) ** 2))); };
+    const mean = (v: number[]) => v.reduce((s, n) => s + n, 0) / v.length;
+    const sd = (v: number[]) => { const m = mean(v); return Math.sqrt(mean(v.map((n) => (n - m) ** 2))); };
     let diff = 0;
     for (let i = 0; i < p.length; i++) diff += Math.abs(p[i] - q[i]);
     return { diff: Math.round(diff / p.length * 10) / 10, sdMargin: Math.round(sd(p) * 10) / 10, sdPlain: Math.round(sd(q) * 10) / 10 };
@@ -252,14 +268,14 @@ async function compare(world, a, b) {
 }
 
 // ---- a Margin world per worker ----------------------------------------------------------------
-async function newWorld(w) {
+async function newWorld(w: number): Promise<World> {
   for (let attempt = 1; ; attempt++) {
     try {
       const m = await within(120_000, 'Margin world start', startMargin({ name: `fit-check-${w}`, web: true, seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } }));
       const ui = await m.ui();
       const s = await within(10_000, 'the slot', m.until(() => slotOf(ui), { timeout: 8000, what: 'the slot' }));
       // The plain load in the same color scheme as Margin's browser (a dark page and a light one aren't a difference of Margin's).
-      const scheme = await within(5000, 'scheme', m.context.pages()[0].evaluate(() => (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))).catch(() => 'light');
+      const scheme = await within(5000, 'scheme', m.context.pages()[0].evaluate((): 'dark' | 'light' => (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))).catch((): 'light' => 'light');
       const ours = new Set(m.context.pages());
       // Pages a site opens by itself (pop-ups, new windows): closed.
       m.context.on('page', (p) => { setTimeout(() => { if (!ours.has(p) && !p.isClosed()) p.close().catch(() => {}); }, 1500); });
@@ -272,15 +288,15 @@ async function newWorld(w) {
     }
   }
 }
-async function endWorld(world) {
+async function endWorld(world: World | null) {
   if (!world) return;
   await within(30_000, 'Margin world close', world.m.close()).catch(() => {});
   const closed = await within(15_000, 'plain browser close', world.plain.close()).then(() => true, () => false);
   // Still there (not answering): its processes ended outright.
-  if (!closed) await new Promise((r) => execFile('pkill', ['-9', '-f', world.plain.tag], () => r()));
+  if (!closed) await new Promise<void>((r) => execFile('pkill', ['-9', '-f', world.plain.tag], () => r()));
 }
 
-async function visit(world, site) {
+async function visit(world: World, site: { rank: number, domain: string }): Promise<Row> {
   const url = `https://${site.domain}/`;
   const { m, slot } = world;
   const width = 1440 - slot.left - slot.right;
@@ -296,9 +312,9 @@ async function visit(world, site) {
     const look = await compare(world, shotMine, shotPlain).catch(() => null);
     // What's wrong, if anything (only what the plain load doesn't show too). First the box's own rules
     // (tests/box/rules.ts, the patterns' names), then hints.
-    const flags = [];
-    let broken = [];
-    const html = (load) => /html/.test(load.m?.kind ?? 'text/html');
+    const flags: string[] = [];
+    let broken: string[] = [];
+    const html = (load: Load) => /html/.test(load.m?.kind ?? 'text/html');
     if (mine.ok && theirs.ok && mine.box && theirs.box) {
       // A scroll bar's width either way isn't the box's doing. A site that tells a plain window a size other than its
       // own (adroll.com: 772 in 1172) tells the box the same: told-size says nothing there.
@@ -316,8 +332,9 @@ async function visit(world, site) {
       for (const line of broken) { const id = line.split(':')[0]; if (HELD_RULES.includes(id) && !flags.includes(id)) flags.push(id); }
     }
     if (mine.ok && theirs.ok) {
-      const a = mine.m;
-      const b = theirs.m;
+      // (Both ok: both measured.)
+      const a = mine.m!;
+      const b = theirs.m!;
       if (a.cut - b.cut > 3) flags.push('content-cut-off');
       if (b.text > 300 && a.text < b.text * 0.5) flags.push('text-missing');
       if (b.visible > 10 && a.visible < b.visible * 0.5) flags.push('elements-missing');
@@ -346,10 +363,11 @@ async function visit(world, site) {
       if (shotMine) writeFileSync(`${base}-margin.jpg`, shotMine);
       if (shotPlain) writeFileSync(`${base}-plain.jpg`, shotPlain);
     }
+    // (`ms!`: every load ends with its time.)
     return {
       rank: site.rank, domain: site.domain, verdict, flags, at: new Date().toISOString(), commit: COMMIT,
-      margin: { ok: mine.ok, status: mine.status, ms: mine.ms, cpu: mine.cpu, error: mine.error, finalHost: mine.finalHost, errors: mine.errors, m: mine.m, box: mine.box ? { root: mine.box.root, told: mine.box.told, window: mine.box.window, scroller: mine.box.scroller, overflowX: mine.box.overflowX } : null },
-      plain: { ok: theirs.ok, status: theirs.status, ms: theirs.ms, cpu: theirs.cpu, error: theirs.error, finalHost: theirs.finalHost, errors: theirs.errors, m: theirs.m, box: theirs.box ? { root: theirs.box.root, told: theirs.box.told, overflowX: theirs.box.overflowX } : null },
+      margin: { ok: mine.ok, status: mine.status, ms: mine.ms!, cpu: mine.cpu, error: mine.error, finalHost: mine.finalHost, errors: mine.errors, m: mine.m, box: mine.box ? { root: mine.box.root, told: mine.box.told, window: mine.box.window, scroller: mine.box.scroller, overflowX: mine.box.overflowX } : null },
+      plain: { ok: theirs.ok, status: theirs.status, ms: theirs.ms!, cpu: theirs.cpu, error: theirs.error, finalHost: theirs.finalHost, errors: theirs.errors, m: theirs.m, box: theirs.box ? { root: theirs.box.root, told: theirs.box.told, overflowX: theirs.box.overflowX } : null },
       rules: broken, samePage,
       slot: { left: slot.left, top: slot.top, right: slot.right, bottom: slot.bottom, width, height },
       look, shots: keepShots,
@@ -365,8 +383,8 @@ let next = 0;
 let stopping = false;
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stopping = true; log(`${sig}: stopping after the sites under way`); });
 
-async function worker(w) {
-  let world = null;
+async function worker(w: number) {
+  let world: World | null = null;
   while (!stopping) {
     const site = queue[next++];
     if (!site) break;

@@ -38,7 +38,8 @@ export type Margin = Awaited<ReturnType<typeof startMargin>>;
 // What `until` gives back: its check's value, once truthy.
 type Truthy<T> = Exclude<T, false | null | undefined | 0 | ''>;
 // A browser tab as `m.tabs()` reads it.
-type TabInfo = Pick<BrowserTab, 'id' | 'windowId' | 'index' | 'title' | 'url' | 'active' | 'status' | 'audible'>;
+// (`url`: the test build has host access to every page, so Chromium gives each tab's.)
+type TabInfo = Pick<BrowserTab, 'id' | 'windowId' | 'index' | 'title' | 'active' | 'status' | 'audible'> & { url: string };
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const APP_DIR = fileURLToPath(new URL('../../../dist/app/', import.meta.url));
@@ -151,7 +152,7 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
     /** Runs `fn(arg)` in the background. */
     bg: <R, Arg>(fn: (arg: Arg) => R | Promise<R>, arg?: Arg): Promise<R> => worker.evaluate(fn as (arg: unknown) => R | Promise<R>, arg),
     /** Every browser tab: { id, windowId, index, title, url, active, status }. */
-    tabs: (): Promise<TabInfo[]> => worker.evaluate(() => chrome.tabs.query({}).then((ts) => ts.map((t) => ({ id: t.id, windowId: t.windowId, index: t.index, title: t.title, url: t.url, active: t.active, status: t.status, audible: t.audible })))),
+    tabs: (): Promise<TabInfo[]> => worker.evaluate(() => chrome.tabs.query({}).then((ts) => ts.map((t) => ({ id: t.id, windowId: t.windowId, index: t.index, title: t.title, url: t.url!, active: t.active, status: t.status, audible: t.audible })))),
     /** The browser tab in front of a window (the front window by default). */
     async front(windowId: number | null = shell.frontWindowId()): Promise<TabInfo | null> {
       return (await m.tabs()).find((t) => t.windowId === windowId && t.active) ?? null;
