@@ -92,7 +92,8 @@ if [ "$UNSIGNED" = true ]; then
   SIGN="CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM="
   echo "Building unsigned (Safari turns it off at each launch)."
 elif [ -n "$IDENTITY_NAME" ]; then
-  SIGN="DEVELOPMENT_TEAM=$TEAM CODE_SIGN_STYLE=Manual OTHER_CODE_SIGN_FLAGS=--timestamp"
+  # (No get-task-allow: Xcode adds it unless told not to, and notarization refuses a build that has it.)
+  SIGN="DEVELOPMENT_TEAM=$TEAM CODE_SIGN_STYLE=Manual OTHER_CODE_SIGN_FLAGS=--timestamp CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO"
   echo "Signing with $IDENTITY_NAME (team $TEAM)."
 else
   SIGN="DEVELOPMENT_TEAM=$TEAM CODE_SIGN_STYLE=Automatic"

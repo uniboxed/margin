@@ -151,6 +151,15 @@ jobs:
         run: |
           mkdir -p out
           ditto -c -k --keepParent "$APP" "out/Margin-${{ needs.version.outputs.version }}-macOS.zip"
+      - name: Ready for notarizing (no debugging entitlement, a Developer ID signature with a secure timestamp)
+        if: env.HAS_SIGNING == 'true'
+        run: |
+          for bin in "$APP" "$APP/Contents/PlugIns/Margin Extension.appex" "$APP/Contents/Helpers/margin-connector" "$APP/Contents/Helpers/margin-helper"; do
+            if codesign -d --entitlements - "$bin" 2>/dev/null | grep -q get-task-allow; then echo "::error::$bin has get-task-allow"; exit 1; fi
+            codesign -dvv "$bin" 2>&1 | grep -q "^Authority=Developer ID Application" || { echo "::error::$bin isn't signed with the Developer ID"; exit 1; }
+            codesign -dvv "$bin" 2>&1 | grep -q "^Timestamp=" || { echo "::error::$bin has no secure timestamp"; exit 1; }
+          done
+          codesign --verify --deep --strict "$APP"
       - name: Notarize and staple
         if: env.HAS_SIGNING == 'true'
         env:
@@ -160,7 +169,14 @@ jobs:
         run: |
           zip="out/Margin-${{ needs.version.outputs.version }}-macOS.zip"
           echo "$NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary.p8"
-          xcrun notarytool submit "$zip" --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" --wait
+          out=$(xcrun notarytool submit "$zip" --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" --wait --output-format json)
+          echo "$out"
+          id=$(echo "$out" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+          if ! echo "$out" | grep -q '"status" *: *"Accepted"'; then
+            xcrun notarytool log "$id" --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID"
+            rm "$RUNNER_TEMP/notary.p8"
+            echo "::error::notarization: not accepted (Apple's log above)"; exit 1
+          fi
           rm "$RUNNER_TEMP/notary.p8"
           xcrun stapler staple "$APP"
           rm "$zip" && ditto -c -k --keepParent "$APP" "$zip"
