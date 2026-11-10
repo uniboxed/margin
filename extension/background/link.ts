@@ -1,9 +1,9 @@
 // The extension's end of the link to Margin.app (docs/PROTOCOL.md; the app's
-// end is app/macos/shell/ExtensionLink.swift). While it's up, the app draws all of
+// end is app/platforms/macos/shell/ExtensionLink.swift). While it's up, the app draws all of
 // Margin's UI around this copy's windows (pages never draw any): pages have
 // their box, which comes from the app's layout per window (setLayout), in
 // the windows the app draws over (`drawn`: a window it doesn't gets none).
-// Safari's copies, and Chrome's and Edge's on the Mac (shared/platform.ts linksApp), in the copy that owns its profile's state.
+// Safari's copies, and Chrome's and Edge's on the Mac (shared/capabilities.ts linksApp), in the copy that owns its profile's state.
 //
 // Getting linked (the app can't open anything into the extension, and the
 // extension can reach only the app's extension handler):
@@ -68,7 +68,7 @@
 // data.snapshot becomes the cache; data.changes both ways; data.ack keeps
 // how far the app has stored (`acked`, with the copy's profile id, in
 // storage.local `dataMeta:link`, which pages ignore).
-import { browserName, linksApp, platform } from '../shared/platform.ts';
+import { browserName, linksApp, capabilities } from '../shared/capabilities.ts';
 import { APP_LINK_KEY } from '../shared/app-link.ts';
 import { navigationFor } from '../shared/shortcuts.ts';
 import { DATA_FORMAT } from '../shared/data-merge.ts';
@@ -90,7 +90,7 @@ export const LAUNCH_ASKS = 20; // …this many times (10 s), then as any other t
 // Margin.app running but sending no link (the handler said appOpen, nothing came): asked
 // again after NO_LINK_ASK_MS, at most NO_LINK_ASKS times in a row, then less and less often
 // as any other time. An app replaced under itself by an update quits once it notices
-// (app/macos/shell/BundleWatch.swift), and the handler starts the new one at the next ask.
+// (app/platforms/macos/shell/BundleWatch.swift), and the handler starts the new one at the next ask.
 export const NO_LINK_ASK_MS = 5000;
 export const NO_LINK_ASKS = 3;
 // The extension handler's answer to wantLink, waited for this long at most. Safari 27.2 answers
@@ -127,7 +127,7 @@ const FAST_CLOSE_MS = 100; // a kept link closed this soon: refused (nothing lis
 // data set's times, this link's own key, page zoom or user themes.
 export const STATE_KEYS = ['openTabs', 'spaces', 'pins', 'folders', 'archive', 'settings', 'favicons', 'owner'];
 // What the app's UI may ask (ui/actions.ts, shared/search.ts rows,
-// app/macos/shell/Shell.swift's keys), and nothing else.
+// app/platforms/macos/shell/Shell.swift's keys), and nothing else.
 export const APP_REQUESTS = new Set([
   'activateTab', 'closeTab', 'newTab', 'pinTab', 'unpin', 'moveTabToSpace', 'moveTab', 'openPin', 'movePin',
   'setFolderOpen', 'createFolder', 'renameFolder', 'deleteFolder', 'moveFolder', 'setSpace', 'createSpace',
@@ -136,7 +136,7 @@ export const APP_REQUESTS = new Set([
   'setSidebarScroll', 'wakeSleeping', 'windowState', 'openHere', 'cancelNewTab',
   // A button of one of Margin's notices the overlay put up (background/notices.ts).
   'noticeAction',
-  // Margin.app's switch to another profile's space (app/macos/shell/ProfileSwitch.swift) and its order across profiles.
+  // Margin.app's switch to another profile's space (app/platforms/macos/shell/ProfileSwitch.swift) and its order across profiles.
   'openSpaceWindow', 'closeWindow', 'focusWindow', 'orderSpaces',
   // A palette the app couldn't show over a window (no overlay shown there): ⌘T's hand-off undone.
   'paletteDropped',
@@ -145,7 +145,7 @@ export const APP_REQUESTS = new Set([
   // The profile handoff (docs/HANDOFF.md §3.3): a window's state without taking focus, the frames of
   // its tab in front, and its drafts before a close.
   'setWindowState', 'frameProbe', 'windowDrafts',
-  // Margin.app's index of the person's imported themes (app/macos/shell/ShellThemes.swift).
+  // Margin.app's index of the person's imported themes (app/platforms/macos/shell/ShellThemes.swift).
   'userThemes',
 ]);
 // The requests that call windows.update or windows.remove for one window: each carries `notAfter`
@@ -223,9 +223,9 @@ export function createLink({
   WebSocket: Socket = globalThis.WebSocket,
   enabled = () => linksApp() && typeof api.runtime?.connectNative === 'function' && typeof Socket === 'function',
   // (A worker's WebSocket hangs WebKit's background, Transport step 9; Chrome's service worker has none of that.)
-  canSocket = () => !!platform?.socketInWorker || (typeof globalThis.document === 'object' && typeof ((globalThis as any)).WorkerGlobalScope === 'undefined'),
+  canSocket = () => !!capabilities?.socketInWorker || (typeof globalThis.document === 'object' && typeof ((globalThis as any)).WorkerGlobalScope === 'undefined'),
   // The socket guard (Transport step 9): WebKit's alone.
-  socketGuard = !!platform?.socketGuard,
+  socketGuard = !!capabilities?.socketGuard,
   data = null,
   theme = async () => null,
   commandKeys = () => ({}),
@@ -1114,7 +1114,7 @@ export function createLink({
   // Windows whose tab in front is in full screen (a page's own, or Safari's video full screen: content/core.ts): windowId → tabId.
   const fullscreens = new Map();
   // When this copy heard each of its windows focused and created (Date.now(), the app's clock too): the
-  // app tells same-bounds windows apart by them (app/macos/shell/WindowMatcher.swift). Not kept past the background.
+  // app tells same-bounds windows apart by them (app/platforms/macos/shell/WindowMatcher.swift). Not kept past the background.
   const focusedAt: Map<number, number> = new Map();
   const createdAt: Map<number, number> = new Map();
   // When this copy last heard windows.onFocusChanged with WINDOW_ID_NONE (none of its windows
@@ -1125,7 +1125,7 @@ export function createLink({
   // and only that tab's. Missing is unknown (never hidden): a page Margin's script can't run in, one
   // not loaded yet, one whose window just showed another tab (cleared, the new tab asked again).
   // Margin.app tells same-bounds full-screen windows of different profiles apart by it
-  // (app/macos/shell/WindowMatcher.swift, the visible rule). Not kept past the background.
+  // (app/platforms/macos/shell/WindowMatcher.swift, the visible rule). Not kept past the background.
   // (`source`, `heard`: what said it and when the background heard it, for the log.)
   const visibility: Map<number, { windowId: number, visible: boolean, at: number, source?: string, heard?: number }> = new Map();
   // Each page in front asked to say again whether it's shown (the background starting, a tab shown).
@@ -1499,7 +1499,7 @@ export function createLink({
       void windowsNow();
     },
     // A page in front gone into full screen or back (handlers.ts pageFullscreen): its window's `pageFullscreen` while it's
-    // that window's tab in front; Margin.app's layout leaves that window meanwhile (app/macos/shell/Shell.swift).
+    // that window's tab in front; Margin.app's layout leaves that window meanwhile (app/platforms/macos/shell/Shell.swift).
     pageFullscreen(windowId: number, tabId: number, on: boolean) {
       if (!Number.isInteger(windowId) || !Number.isInteger(tabId) || typeof on !== 'boolean') return;
       const had = fullscreens.get(windowId);

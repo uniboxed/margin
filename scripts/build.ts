@@ -1,8 +1,8 @@
 // Builds ready-to-load extensions, one per engine, from the one shared source:
-//   extension/ (shared) + its engine's own code (extension/engines/<engine>/: its profile, its modules)
+//   extension/ (shared) + its engine's own code (extension/engines/<engine>/: its capabilities, its modules)
 //   and manifest changes (MANIFESTS) → dist/<engine>/ (DIST: dist/webkit/ for Safari, dist/chromium/ for
 //   Chrome, Edge and the other Chromium browsers), and dist/app/ (Margin.app's host page).
-// Each build takes only its own engine's code: shared code reaches it as `#engine` and `#engine/profile`
+// Each build takes only its own engine's code: shared code reaches it as `#engine` and `#engine/capabilities`
 // (package.json "imports"), which the build resolves by its engine's condition (CONDITIONS); unbuilt (unit
 // tests), they pick either engine's by the extension's URL. Usage: node scripts/build.ts
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -15,7 +15,7 @@ import { WIDTH } from '../extension/themes/arcadia/theme.ts';
 
 const root = new URL('../', import.meta.url);
 const SOURCE = new URL('extension/', root);
-// The builds by their profile's name (platform.ts Profile.name: what saved data and the link call them), each
+// The builds by their name (shared/capabilities.ts Capabilities.name: what saved data and the link call them), each
 // one's dist/ folder by its engine, and the package.json "imports" condition that gives `#engine` its engine's code.
 export const TARGETS = ['chrome', 'safari'];
 export const DIST = { safari: 'webkit', chrome: 'chromium' };
@@ -54,7 +54,7 @@ export function manifestFor(target) {
   return manifest;
 }
 
-// One build: `profile` decides behavior (its engine's profile and modules), `manifest`
+// One build: `profile` decides behavior (its engine's capabilities and modules), `manifest`
 // which manifest overrides to use. They're the same for dist/; tests also
 // build the Safari profile with Chrome's manifest so Chromium can load it.
 export function buildTo(outDir, { profile, manifest = profile }) {

@@ -13,7 +13,7 @@ npm run test:e2e    # builds dist/, then the e2e suite: headless Chromium and We
 - the JS tests whose imports reach a changed file, followed through every relative import;
 - the tests that name a changed theme, page or fixture file;
 - every theme test when a theme or the UI runtime changed (two at a time: more made the drag tests flaky);
-- the Swift unit checks when `app/macos/shell`, `app/macos/startup` or `tools/app-tests` changed (compiled on every core; the randomized runs cut to 50 and 80);
+- the Swift unit checks when `app/platforms/macos/shell`, `app/platforms/macos/startup` or `tools/app-tests` changed (compiled on every core; the randomized runs cut to 50 and 80);
 - any e2e file that itself changed.
 
 At the end it lists what only the gate runs: the e2e suite, the WebKit host, the app's e2e checks. Options:

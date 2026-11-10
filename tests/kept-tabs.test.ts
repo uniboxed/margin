@@ -132,7 +132,7 @@ const store = await import('../extension/background/store.ts');
 const M = await import('../extension/state/model.ts');
 const V = await import('../extension/shared/view.ts');
 const { setSleepTiming } = await import('../extension/background/sleep.ts');
-const { platform } = await import('../extension/shared/platform.ts');
+const { capabilities } = await import('../extension/shared/capabilities.ts');
 setSleepTiming({ gapMs: 1, askMs: 100 });
 
 // Spaces as the test wants them, once the first sync is through.
@@ -245,7 +245,7 @@ test('auto-archive: a tab unused for archiveAfterHours goes to the archive wheth
 });
 
 test('sleep (Safari): a tab unused for sleepAfterHours is closed by Margin and kept, not open, in its space; the tab in front, one with a draft, one playing and the never-sleep list stay open', async () => {
-  assert.equal(platform.sleepTabs, 'close');
+  assert.equal(capabilities.sleepTabs, 'close');
   for (const t of [
     { id: 20, windowId: 1, url: 'https://s1.test/', title: 'S1', index: 10 },
     { id: 21, windowId: 1, url: 'https://draft.test/', title: 'Draft', index: 11 },

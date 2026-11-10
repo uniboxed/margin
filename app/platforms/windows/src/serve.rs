@@ -1,6 +1,6 @@
 //! What the overlay's web view may load (OS-neutral, tested on the Mac): the overlay page's own files, from
 //! `https://margin.invalid/<file>`, answered by the app itself (webview.rs `WebResourceRequested`), with the
-//! Mac's Content-Security-Policy (app/macos/shell/OverlayWebView.swift `OverlaySchemeHandler.policy`). Every other
+//! Mac's Content-Security-Policy (app/platforms/macos/shell/OverlayWebView.swift `OverlaySchemeHandler.policy`). Every other
 //! request, of any host and any scheme the web view lets the app see, is answered 403: the network is blocked,
 //! as on the Mac.
 //!

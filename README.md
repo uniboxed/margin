@@ -87,7 +87,7 @@ The script runs Apple's converter on the Safari build:
 xcrun safari-web-extension-converter dist/webkit --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open
 ```
 
-It then fixes the bundle IDs (the converter names the app `io.tirth.Margin`, the extension `io.tirth.margin.Extension`, and Xcode refuses an extension whose ID isn't prefixed by the app's: the script sets the app to `io.tirth.margin` and `extensionBundleIdentifier` in the app's Swift to match), turns the app's App Sandbox off (Developer ID: it listens on 127.0.0.1), and adds Margin.app's own code: `app/macos/startup/` (the set-up window, the app delegate, the extension handler), `app/macos/shell/` (the link to the extension, window tracking, the overlays drawn around the browser's windows, the data store) and the overlays' page (`dist/app/`, built from `app/shared/host/` and `extension/ui/`). Choose the **Margin (macOS)** scheme and Run (⌘R), with the same Team on both targets under Signing & Capabilities.
+It then fixes the bundle IDs (the converter names the app `io.tirth.Margin`, the extension `io.tirth.margin.Extension`, and Xcode refuses an extension whose ID isn't prefixed by the app's: the script sets the app to `io.tirth.margin` and `extensionBundleIdentifier` in the app's Swift to match), turns the app's App Sandbox off (Developer ID: it listens on 127.0.0.1), and adds Margin.app's own code: `app/platforms/macos/startup/` (the set-up window, the app delegate, the extension handler), `app/platforms/macos/shell/` (the link to the extension, window tracking, the overlays drawn around the browser's windows, the data store) and the overlays' page (`dist/app/`, built from `app/shared/host/` and `extension/ui/`). Choose the **Margin (macOS)** scheme and Run (⌘R), with the same Team on both targets under Signing & Capabilities.
 
 **After pulling new changes,** re-run `npm run safari`. By hand: re-run `scripts/make-xcode.sh` whenever files under `dist/webkit/` or `app/` are added or removed, else just Run again in Xcode.
 
@@ -100,7 +100,7 @@ Margin 2 (`PLAN.md`): Margin.app draws all of Margin's UI around each browser wi
 ```
 extension/              The extension's shared source, as ES modules (browsers load the bundles in dist/)
   manifest.json         MV3: tabs, storage, alarms, scripting, webNavigation; <all_urls>; newtab override; commands
-  shared/platform.ts    Per-browser profiles (favicon fetching, sleeping tabs, default shortcuts); stamped by the build
+  shared/capabilities.ts    Per-browser profiles (favicon fetching, sleeping tabs, default shortcuts); stamped by the build
   background.ts         State owner: registers every listener. Tab events → pure model → storage.local;
                         routes pages' and Margin.app's requests.
   background/           Its parts: store, handlers (the message protocol), link and app-link (Margin.app),
@@ -119,13 +119,13 @@ extension/              The extension's shared source, as ES modules (browsers l
                         overlay page (ui/host-app.ts) and by the browser tests (ui/host.ts).
   themes/<id>/          Theme packages (theme.json, theme.html, theme.css, fonts), first-paint.css: see themes/README.md.
   engines/              What differs per browser (engines/README.md): webkit/safari/ and chromium/, each its manifest,
-                        profile (what the browser can do) and own modules; gecko/ later. Each build takes only its own.
+                        capabilities (what the browser can do) and own modules; gecko/ later. Each build takes only its own.
 app/                    Margin.app on every OS: shared/ (core/ in Rust, connector/ for Chrome and Edge in Rust,
-                        host/ the page drawn over each browser window), macos/ (shell/, private/, startup/: Swift),
-                        windows/ (Rust), linux/ later; engines/ its per-browser side (webkit/safari/: Safari's Swift
+                        host/ the page drawn over each browser window); platforms/ each OS's own code: macos/ (shell/,
+                        private/, startup/: Swift), windows/ (Rust), linux/ later; engines/ its per-browser side (webkit/safari/: Safari's Swift
                         and extension handler; chromium/: the browsers' host files, Rust).
 docs/                   PROTOCOL.md (the link's protocol), HANDOFF.md, DATA.md, PRIVATE-APIS.md, windows/.
-Cargo.toml              The Rust workspace (app/shared/core, app/shared/connector, app/windows, app/engines/chromium).
+Cargo.toml              The Rust workspace (app/shared/core, app/shared/connector, app/platforms/windows, app/engines/chromium).
 dist/webkit/, dist/chromium/, dist/app/
                         Builds from `npm run build`, one per engine, each with only its own engine's code (generated,
                         not committed): Safari loads dist/webkit/; Chrome and Edge, dist/chromium/

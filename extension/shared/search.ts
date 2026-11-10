@@ -1,6 +1,6 @@
 // Pure input/search helpers shared by the new-tab launcher and the palette.
 import type { State } from '../../types/margin';
-import * as P from './platform.ts';
+import * as P from './capabilities.ts';
 import * as V from './view.ts';
 import { foreignKey, isMultiProfile, profileOf } from './across.ts';
 import { cloudShown, deviceNames, onDevice } from './cloud-tabs.ts';
@@ -87,8 +87,8 @@ function searchEngineOf(url: string) {
 const safariEngine = (settings: any) => (settings?.safariSearch?.template?.includes('%s') ? settings.safariSearch : SAFARI_DEFAULT);
 const searchUrl = (query: string, settings: any) => safariEngine(settings).template.replace('%s', encodeURIComponent(query));
 // For display: which engine a search goes to.
-const engineLabel = (settings: any, platform = P.platform) =>
-  (platform?.search === 'browser' ? 'Chrome’s search engine' : safariEngine(settings).name);
+const engineLabel = (settings: any, browserCan = P.capabilities) =>
+  (browserCan?.search === 'browser' ? 'Chrome’s search engine' : safariEngine(settings).name);
 
 const WITH_SCHEME = /^(https?|file|ftp):\/\//i;
 const OPAQUE_SCHEME = /^(about|data|mailto|view-source):/i;

@@ -1,4 +1,4 @@
-//! One overlay window over one browser window (app/macos/shell/Overlay.swift's counterpart). Windows only.
+//! One overlay window over one browser window (app/platforms/macos/shell/Overlay.swift's counterpart). Windows only.
 //!
 //! A top-level `WS_POPUP` with `WS_EX_TOOLWINDOW` (not in Alt+Tab or the taskbar), `WS_EX_NOACTIVATE` (a click
 //! doesn't take the keyboard from the browser), `WS_EX_NOREDIRECTIONBITMAP` (its content is the web view's

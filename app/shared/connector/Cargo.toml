@@ -19,7 +19,7 @@ serde_json.workspace = true
 libc.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-margin-windows = { path = "../../windows" }
+margin-windows = { path = "../../platforms/windows" }
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Registry", "Win32_System_Threading"] }
 
 [dev-dependencies]

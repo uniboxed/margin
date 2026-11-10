@@ -8,10 +8,10 @@
       "margin-chromium": "./extension/engines/chromium/engine.ts",
       "default": "./extension/shared/any-engine.ts"
     },
-    "#engine/profile": {
-      "margin-webkit": "./extension/engines/webkit/safari/profile.ts",
-      "margin-chromium": "./extension/engines/chromium/profile.ts",
-      "default": "./extension/shared/any-engine-profile.ts"
+    "#engine/capabilities": {
+      "margin-webkit": "./extension/engines/webkit/safari/capabilities.ts",
+      "margin-chromium": "./extension/engines/chromium/capabilities.ts",
+      "default": "./extension/shared/any-engine-capabilities.ts"
     }
   },
   "description": "Arc-style sidebar for Safari (prototype)",

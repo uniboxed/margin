@@ -27,7 +27,7 @@
 // late, after the first frames (the host, 2026-11-06). So whether the app
 // draws a window is followed at once (windowDrawnChanged), not after a
 // settle: the app already says it only as it changes, and off only after its
-// grace (app/macos/shell/Shell.swift DrawnOutbox); and so is a layout that leaves
+// grace (app/platforms/macos/shell/Shell.swift DrawnOutbox); and so is a layout that leaves
 // no box anywhere, and a lone one (layoutsChanged).
 // Once registered in a run of Safari it's only ever updated, never taken
 // away: no longer linked (or no box anywhere), it's updated to a layout of
@@ -41,7 +41,7 @@
 // Safari keeps registrations across launches and loads none of them if a
 // file one lists is missing, so a path registered once stays in the build
 // (scripts/build.ts LEGACY_FILES: the build before Phase 3's placeholders).
-import { platform } from '../shared/platform.ts';
+import { capabilities } from '../shared/capabilities.ts';
 import { APP_LINK_KEY, appDraws } from '../shared/app-link.ts';
 import { firstPaintFile, layoutFiles, layoutOfFiles, layoutOwnCss, spelled } from '../shared/page-box.ts';
 import { themeFor } from '../themes/index.ts';
@@ -62,7 +62,7 @@ const LAYOUT_SETTLE_MS = 2000;
 // out of windows with a toolbar itself (content/page/fullscreen-only.ts),
 // and the CSS draws only where it marks the page.
 // (`settings`: the stored settings, as they came: state.settings.)
-const worksInWindows = (settings: any) => !platform?.marginFullscreen || settings?.fullscreenOnly === false;
+const worksInWindows = (settings: any) => !capabilities?.marginFullscreen || settings?.fullscreenOnly === false;
 const anyFullscreen = async () => (await api.windows.getAll().catch((): BrowserWindow[] => [])).some((win) => win.state === 'fullscreen');
 
 export type Layout = { left: number, top: number, right: number, bottom: number, radius: number };

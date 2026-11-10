@@ -1,4 +1,4 @@
-// Checks of Margin.app's shell logic (app/macos/shell/), with no browser, no window
+// Checks of Margin.app's shell logic (app/platforms/macos/shell/), with no browser, no window
 // on screen and no link: the link's messages (LinkMessage.swift, version 2),
 // its WebSocket by hand (LinkSocket.swift), chunks (Chunks.swift), the app's
 // copy of a copy's state (StateMirror.swift), binding browser windows to the

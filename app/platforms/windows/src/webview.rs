@@ -1,4 +1,4 @@
-//! WebView2 in each overlay (app/macos/shell/OverlayWebView.swift's counterpart). Windows only.
+//! WebView2 in each overlay (app/platforms/macos/shell/OverlayWebView.swift's counterpart). Windows only.
 //!
 //! - One environment per app (`WebViewEnv`), its user data folder `%LOCALAPPDATA%\Margin\WebView2`; one web
 //!   view per overlay, made with the composition controller (visual hosting): its content is a

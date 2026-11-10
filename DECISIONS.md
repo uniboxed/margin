@@ -3510,25 +3510,32 @@ from before 2026-11-09, are the old ones** (`platform/`, `app/shell/`, `app/over
   of them needs its own `chromium/<browser>/`. The build never copies `extension/engines/` into a `dist/` folder (its
   code is bundled from there), so the builds came out byte-identical to before the move (567 files).
   `app/shared/{core,connector,host}/` is Margin's app on every OS (core and the connector in Rust, host the page drawn
-  over each browser window, the old `app/overlay/`), `app/macos/{shell,private,startup}/` the Mac's Swift,
-  `app/windows/` the Windows shell (Rust, merged from `feat/windows-shell`). `docs/` holds the protocol, the handoff,
+  over each browser window, the old `app/overlay/`), `app/platforms/macos/{shell,private,startup}/` the Mac's Swift,
+  `app/platforms/windows/` the Windows shell (Rust, merged from `feat/windows-shell`). `docs/` holds the protocol, the handoff,
   the data, the private APIs and the Windows notes. Only the `engines/` folders may ask which engine or browser this
   is; shared code asks what the browser can do.
+- **`app/platforms/` and `capabilities`** (Tirth, the same day). Each OS's own code is in `app/platforms/{macos,windows,
+  linux}/` (Linux a README until it starts), so `app/` reads as `shared/`, `engines/` (per browser) and `platforms/`
+  (per OS). `shared/platform.ts` became `shared/capabilities.ts` (export `capabilities`, type `Capabilities`, each
+  engine's `capabilities.ts`, `#engine/capabilities`, the debug global `Margin.capabilities`): it was named after the
+  old `platform/` folder of per-browser manifests and never meant the OS. The shared module re-exports its engine's
+  object (one binding, so the bundle's name stays `capabilities`; the e2e harness patches that exact text). The UI
+  runtime's own `platform` (the host's browser, OS and features, handed to themes) is a different thing and kept.
 - **One build per engine, with only its own code.** `dist/webkit/` (Safari) and `dist/chromium/` (Chrome, Edge and the
-  other Chromium browsers), plus `dist/app/`. Each engine's profile (`profile.ts`: its capabilities, the old
-  `PROFILES` of `shared/platform.ts`) and its own modules (`engine.ts`: Safari's `onboarding.ts` and
+  other Chromium browsers), plus `dist/app/`. Each engine's capabilities (`capabilities.ts`: what its browser can do, the
+  old `PROFILES` of `shared/platform.ts`, which is now `shared/capabilities.ts`) and its own modules (`engine.ts`: Safari's `onboarding.ts` and
   `newtab-hint.ts`, Chromium's `fullscreen.ts`) are in its folder. Shared code reaches them as `#engine` and
-  `#engine/profile`, mapped in `package.json` `"imports"` by condition: the build passes `margin-webkit` or
+  `#engine/capabilities`, mapped in `package.json` `"imports"` by condition: the build passes `margin-webkit` or
   `margin-chromium` to esbuild, so the other engine's modules and profile aren't in its bundles (about 2.3 KB less
   background each; the size gain is small, the point is the structure). Unbuilt (unit tests in Node, `tsc`),
   `default` resolves them to `extension/shared/any-engine*.ts`, which pick by the extension's URL as before. esbuild's
   sync API takes no plugins, hence conditions rather than a resolver. The build now bundles from the sources
-  themselves (no stamped copy of `platform.ts`). The remaining `platform.name` checks became capabilities
+  themselves (no stamped copy of `capabilities.ts`). The remaining `platform.name` checks became capabilities
   (`socketInWorker`, `socketGuard`, `pageCommandKeys`, `linksApp`, `browser`). Every build's default shortcuts, by the
   id settings save them under, are one table (`shared/navigation-defaults.ts`), since settings can come from another
   browser's copy. Verified: unit 965, theme 267, security 242, e2e 144 + 2 todo, WebKit host 33, the Swift 2046, and an
   Xcode build whose extension is byte-identical to `dist/webkit/` (bundle id unchanged, so Safari takes it as an update).
-- **One Rust workspace at the root** (`Cargo.toml`: `app/shared/core`, `app/shared/connector`, `app/windows`,
+- **One Rust workspace at the root** (`Cargo.toml`: `app/shared/core`, `app/shared/connector`, `app/platforms/windows`,
   `app/engines/chromium`), `npm run test:rust` (format, clippy with warnings failing, tests, and both Windows targets
   compile-checked when rustup has them), in the gate and in `test:quick` when a crate changes.
 - **The connector, in Rust, for every OS** (`app/shared/connector/`, binary `margin-connector`), replacing the Swift
@@ -3542,9 +3549,9 @@ from before 2026-11-09, are the old ones** (`platform/`, `app/shell/`, `app/over
   "edge"). Compile-checked for Windows only; the Windows shell still uses its own frames until it moves to this
   protocol. A Chrome or Edge left open across this update keeps its old relay waiting on the old socket: quit and
   reopen it once (TESTING.md says so).
-- **Tests beside what they test.** Each app folder's Swift checks are in its `tests/` (`app/macos/shell/tests/`,
-  `app/macos/private/tests/`, `app/engines/webkit/safari/tests/`), which `tools/app-tests/run.sh` finds from
-  `app/macos/swift-sources.txt` and the app never compiles (it takes each folder's own `*.swift` only); Safari's own
+- **Tests beside what they test.** Each app folder's Swift checks are in its `tests/` (`app/platforms/macos/shell/tests/`,
+  `app/platforms/macos/private/tests/`, `app/engines/webkit/safari/tests/`), which `tools/app-tests/run.sh` finds from
+  `app/platforms/macos/swift-sources.txt` and the app never compiles (it takes each folder's own `*.swift` only); Safari's own
   unit tests are in `extension/engines/webkit/safari/tests/` (`npm test` runs `engines/**/tests/*.test.ts`,
   `test:quick` follows `#engine` imports). Whole-system tests stay in `tests/` (e2e, theme,
   security) and `tools/` (the app's e2e, the WebKit host).

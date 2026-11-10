@@ -1,12 +1,12 @@
 // background/link.ts in Chrome's build (Chrome and Edge on the Mac, docs/PROTOCOL.md "Transport (Chrome and Edge, on
 // the Mac)"): the same link as Safari's, found through Margin.app's relay helper. Its socket opened from the service
 // worker, no socket guard, the browser's process (the relay's word) and Edge told apart in hello, the process kept
-// with the link through the worker starting again; and where the Chrome build links at all (shared/platform.ts).
+// with the link through the worker starting again; and where the Chrome build links at all (shared/capabilities.ts).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startFakeApp } from './fake-app.ts';
 
-// Chrome's build, as detected (shared/platform.ts detect): its own scheme.
+// Chrome's build, as detected (shared/capabilities.ts detect): its own scheme.
 globalThis.chrome = { runtime: { getURL: (p: string) => `chrome-extension://njeebbcmlenfopaecfbphgcfihbdmkec/${p}`, getManifest: () => ({ version: '2.0.0' }) } } as any;
 const setAgent = (userAgent: string) => Object.defineProperty(globalThis, 'navigator', { value: { userAgent }, configurable: true });
 const MAC_CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36';
@@ -14,7 +14,7 @@ const MAC_EDGE = `${MAC_CHROME} Edg/153.0.0.0`;
 const WINDOWS_CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36';
 setAgent(MAC_CHROME);
 const { createLink, SESSION_KEY } = await import('../extension/background/link.ts');
-const { platform, linksApp, browserName } = await import('../extension/shared/platform.ts');
+const { capabilities, linksApp, browserName } = await import('../extension/shared/capabilities.ts');
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -73,7 +73,7 @@ const makeLink = (api: any) => createLink({
 });
 
 test('Chrome\'s build: it links on the Mac only, and names Chrome or Edge', () => {
-  assert.equal(platform.name, 'chrome');
+  assert.equal(capabilities.name, 'chrome');
   setAgent(MAC_CHROME);
   assert.equal(linksApp(), true);
   assert.equal(browserName(), 'chrome');

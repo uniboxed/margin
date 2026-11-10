@@ -1,7 +1,7 @@
 # Margin's native shells
 
 `native/` is a Cargo workspace (docs/windows/BRIEF.md): `margin-core` (OS-neutral, tested on any OS) and `margin-windows`
-(the Windows shell, `margin.exe`). macOS stays Swift (`app/macos/shell/`).
+(the Windows shell, `margin.exe`). macOS stays Swift (`app/platforms/macos/shell/`).
 
 ## margin-windows: building and running on Windows
 

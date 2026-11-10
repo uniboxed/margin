@@ -1,4 +1,4 @@
-//! Margin's keys as the app's own hot keys (app/macos/shell/Shortcuts.swift; PLAN.md §6, docs/PROTOCOL.md "Keys"): a key
+//! Margin's keys as the app's own hot keys (app/platforms/macos/shell/Shortcuts.swift; PLAN.md §6, docs/PROTOCOL.md "Keys"): a key
 //! registered so never reaches the browser, so they're held only while a linked browser is the active app and its
 //! front window has Margin's overlay, and let go the moment it isn't (another app in front must get its own keys).
 //!
@@ -22,7 +22,7 @@
 //! the Windows key there (registered with `MOD_WIN`; most Windows-key combinations are the system's, and are then
 //! reported unavailable). But some combinations reach the app written for the Mac whatever the OS: the copy always
 //! sends `Meta+KeyT` for the palette (`background/link.ts keyBindings`), and its built-in navigation defaults are the
-//! Mac's (`shared/platform.ts`: `Ctrl+Meta+Arrow…`, Safari's `Alt+Meta+Arrow…`). Mapping every `Meta` to `Ctrl`
+//! Mac's (`shared/capabilities.ts`: `Ctrl+Meta+Arrow…`, Safari's `Alt+Meta+Arrow…`). Mapping every `Meta` to `Ctrl`
 //! would make those `Ctrl+Arrow…` (the text keys of every Windows app) and break a Windows recording. So on Windows
 //! only those Mac-written combinations, for the command they're written for ([`mac_written`]), are taken as that
 //! command's Windows default; everything else is as written. When the extension gets Windows defaults of its own
@@ -706,7 +706,7 @@ mod tests {
         }
     }
 
-    // app/macos/shell/tests/tests.swift shortcuts()
+    // app/platforms/macos/shell/tests/tests.swift shortcuts()
     #[test]
     fn parsing() {
         let down = c("Ctrl+Meta+ArrowDown");
@@ -802,7 +802,7 @@ mod tests {
 
     #[test]
     fn the_copys_keys_on_windows() {
-        // What a Chrome copy sends today (link.ts keyBindings with platform.ts's chrome defaults).
+        // What a Chrome copy sends today (link.ts keyBindings with capabilities.ts's chrome defaults).
         let chrome = keys(&[
             ("next-tab", &["Ctrl+Meta+ArrowDown"]),
             ("prev-tab", &["Ctrl+Meta+ArrowUp"]),

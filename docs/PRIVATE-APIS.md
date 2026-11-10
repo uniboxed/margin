@@ -1,6 +1,6 @@
 # Private APIs
 
-Every private macOS call, class, selector, key and file format Margin.app uses. Keep it up to date with every change to one of them. The design is in `docs/HANDOFF.md` §4 and §8.2. The code is `app/macos/private/PrivateCalls.swift`.
+Every private macOS call, class, selector, key and file format Margin.app uses. Keep it up to date with every change to one of them. The design is in `docs/HANDOFF.md` §4 and §8.2. The code is `app/platforms/macos/private/PrivateCalls.swift`.
 
 ## The rule
 
@@ -13,7 +13,7 @@ Every private macOS call, class, selector, key and file format Margin.app uses. 
 - Tests never call a real private function and never freeze the screen:
   - the real resolver (`RealPrivateResolver`) is made only in `Shell.forApp()`;
   - it and every wrapper (`SkyLight`) refuse to run when `MARGIN_APP_TESTS` is set, and `tools/app-tests/run.sh` sets it;
-  - tests use a fake resolver whose "functions" are their own (`app/macos/private/tests/private-calls-tests.swift`).
+  - tests use a fake resolver whose "functions" are their own (`app/platforms/macos/private/tests/private-calls-tests.swift`).
 - The log holds names, counts, results and milliseconds only. Never a title, an address or a page's words. Nothing is sent anywhere.
 
 ## The parts
@@ -67,7 +67,7 @@ Notes on the rows:
 
 | Name (kind) | Where | Used for | Check today | Fallback | Risk |
 |---|---|---|---|---|---|
-| `drawsBackground` (WebKit KVC key on `WKWebView`) | `app/macos/shell/OverlayWebView.swift` `makeWebView` | a see-through overlay web view | **none**: set unconditionally. `docs/HANDOFF.md` §4.1 says a `responds`/`value(forKey:)` check at launch, logged: still to add | to add: an opaque overlay is better than a crash on an unknown key | low: long-standing and widely used |
+| `drawsBackground` (WebKit KVC key on `WKWebView`) | `app/platforms/macos/shell/OverlayWebView.swift` `makeWebView` | a see-through overlay web view | **none**: set unconditionally. `docs/HANDOFF.md` §4.1 says a `responds`/`value(forKey:)` check at launch, logged: still to add | to add: an opaque overlay is better than a crash on an unknown key | low: long-standing and widely used |
 | `_AXUIElementGetWindow` (Accessibility function) | `app/engines/webkit/safari/SafariAX.swift` `number(of:)` | a Safari window's Accessibility element → its window-server number (exact binding) | an error or 0 reads as unknown | the window matched by its pages and focus (WindowBinder's other rules) | low: unchanged since about macOS 10.6, used by yabai, Hammerspoon, AltTab |
 | `_AXUIElementCreateWithRemoteToken` (Accessibility function), a 20-byte token (pid, 0, "coco", element id) | `app/engines/webkit/safari/SafariAX.swift` `scan(pid:)` | reaching Safari windows on other Spaces | nil or not a window reads as nothing found; 1 s cap | since 2026-11-07 only once per Safari launch, and for a window still unknown 2 s after it's listed, at most every 5 s (`shouldScan`): Safari's Accessibility events give every later window's element; without them, every 0.5 s while one is unknown | medium: an internal token format |
 | Safari's `SafariTabs.db` (file format, SQLite) | `app/engines/webkit/safari/SafariProfiles.swift` `read` | Safari's profile names | its schema checked on each read; read only | the names typed in Margin | medium: undocumented schema |

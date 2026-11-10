@@ -1,8 +1,8 @@
 # Margin's Rust, one workspace for every part (docs/windows/BRIEF.md): margin-core (app/shared/core/) is OS-neutral
-# and tested on any OS; margin-windows (app/windows/) is the Windows shell. macOS stays Swift (app/macos/).
+# and tested on any OS; margin-windows (app/platforms/windows/) is the Windows shell. macOS stays Swift (app/platforms/macos/).
 [workspace]
 resolver = "3"
-members = ["app/shared/core", "app/shared/connector", "app/windows", "app/engines/chromium"]
+members = ["app/shared/core", "app/shared/connector", "app/platforms/windows", "app/engines/chromium"]
 
 [workspace.package]
 version = "0.1.0"

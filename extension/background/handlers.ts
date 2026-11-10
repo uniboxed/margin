@@ -2,7 +2,7 @@
 // answered { ok, result } or { ok: false, error } (background.ts routes
 // them). types/margin.d.ts derives the protocol's types from this object.
 import type { State, TabRecord } from '../../types/margin';
-import { platform } from '../shared/platform.ts';
+import { capabilities } from '../shared/capabilities.ts';
 import * as M from '../state/model.ts';
 import * as V from '../shared/view.ts';
 import * as S from '../shared/search.ts';
@@ -323,7 +323,7 @@ export const handlers = {
   async hello(_message: object, sender: BrowserMessageSender) {
     engine.onboarding?.pageLoaded();
     const windowId = sender.tab?.windowId ?? null;
-    const fullscreen = windowId != null && platform?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(windowId) : false;
+    const fullscreen = windowId != null && capabilities?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(windowId) : false;
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.ts).
     return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, app: appState(windowId), since: thisCopy().since };
   },
@@ -468,7 +468,7 @@ export const handlers = {
     const text = String(query ?? '').trim();
     if (!text) return;
     const from = sender?.tab?.id != null ? sender.tab : null;
-    if (platform?.search === 'browser' && api.search?.query) {
+    if (capabilities?.search === 'browser' && api.search?.query) {
       if (tabId != null) return void (await api.search.query({ text, tabId }));
       if (from) return openBehind({ windowId, from, deadline, label: text, then: (tab) => api.search!.query({ text, tabId: tab.id }) }); // (checked above)
       return void (await api.search.query({ text, disposition: 'NEW_TAB' }));
@@ -724,7 +724,7 @@ export const handlers = {
     await mutate((s) => M.moveTab(s, tabId, spaceId));
   },
   async pageIcon({ href }: { href: string }, sender: BrowserMessageSender) {
-    if (!platform?.fetchFavicons) return; // the browser provides icons
+    if (!capabilities?.fetchFavicons) return; // the browser provides icons
     const pageUrl = sender.tab?.url ?? sender.url;
     let origin;
     try {
@@ -893,7 +893,7 @@ export const handlers = {
     return { windowId: win.id, state: win.state ?? 'normal', ...(bounds ? { bounds } : {}) };
   },
   // Margin.app switching to a space of this profile from another profile's
-  // window (app/macos/shell/ProfileSwitch.swift, PLAN.md §15): this copy makes a
+  // window (app/platforms/macos/shell/ProfileSwitch.swift, PLAN.md §15): this copy makes a
   // window showing the space, in full screen. In front: the space's tab used
   // last (it isn't open: the window the switch closed kept it); the others
   // that were open with it in that window open behind once it's up. Answers
@@ -1097,15 +1097,15 @@ export const handlers = {
   // "Margin full screen" on or off for this window (Chrome; extension/engines/chromium/fullscreen.ts).
   async toggleFullscreen({ windowId }: { windowId?: number }, sender: BrowserMessageSender) {
     const id = windowId ?? sender.tab?.windowId;
-    if (id == null || !platform?.marginFullscreen) return null;
+    if (id == null || !capabilities?.marginFullscreen) return null;
     return engine.fullscreen?.toggleMarginFullscreen(id) ?? null;
   },
   // Whether this page's window is in full screen (Chrome, "only in full screen").
   async windowState(_: object, sender: BrowserMessageSender) {
     const id = sender.tab?.windowId;
-    return { fullscreen: id != null && platform?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(id) : false };
+    return { fullscreen: id != null && capabilities?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(id) : false };
   },
-  // Margin.app's index of the themes the person imported (app/macos/shell/ThemeStore.swift: they're the
+  // Margin.app's index of the themes the person imported (app/platforms/macos/shell/ThemeStore.swift: they're the
   // Mac's, kept by the app; a copy holds only the list, never a package), sent as a copy links and
   // whenever it changes. Kept in storage.local (`userThemes`) for updateSettings and the theme's settings.
   async userThemes({ list }: { list: any[] }) {

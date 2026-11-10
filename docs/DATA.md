@@ -33,7 +33,7 @@ Every item is `{ updatedAt, value }`, or a tombstone `{ updatedAt, deleted: true
 | `settings` | the setting's name | the setting's value (any JSON); every setting but `themes` |
 | `themeSettings` | the theme's id | that theme's settings object |
 | `siteIcons` | the site's origin | `data` (a `data:` image), `href`, `at` |
-| `userThemes` | the theme's id | unused: imported themes belong to the Mac, kept by Margin.app outside the data sets (`app/macos/shell/ThemeStore.swift`); copies get the index by `req userThemes` (`docs/PROTOCOL.md` "User themes") |
+| `userThemes` | the theme's id | unused: imported themes belong to the Mac, kept by Margin.app outside the data sets (`app/platforms/macos/shell/ThemeStore.swift`); copies get the index by `req userThemes` (`docs/PROTOCOL.md` "User themes") |
 
 Only web pages are Margin tabs worth keeping: a new-tab page or an extension page isn't in `tabs`. In the extension, an open Margin tab is a browser tab's record with its Margin id (`mid`) and place (`order`); one that isn't open is in `keptTabs` (`state/model.ts`).
 
@@ -84,7 +84,7 @@ A change is `{ collection, id, updatedAt, value }` or `{ collection, id, updated
 
 ## The app's files
 
-Margin.app keeps each profile's data set in `~/Library/Application Support/Margin/data/` (`app/macos/shell/DataStore.swift`):
+Margin.app keeps each profile's data set in `~/Library/Application Support/Margin/data/` (`app/platforms/macos/shell/DataStore.swift`):
 
 ```text
 data/<browser>/<profile>/set.json                  { format, browser, profile, acked, rev, savedAt }
@@ -136,7 +136,7 @@ What the app does with each:
 
 Margin 2, Phase 2 step 4 (`PLAN.md` §15). Each space belongs to one browser profile: the profile whose data set has it. Nothing in a set names its profile, so a space can't be in two, and a profile's copy needs nothing new to keep its own.
 
-What spans profiles is kept by the app, one file per browser, beside its profiles' sets (`app/macos/shell/BrowserProfiles.swift`):
+What spans profiles is kept by the app, one file per browser, beside its profiles' sets (`app/platforms/macos/shell/BrowserProfiles.swift`):
 
 ```text
 data/<browser>/browser.json   { format: 1, browser, order: [[profile, spaceId]], profiles: { id: info }, switching: { closeWindows }, savedAt }

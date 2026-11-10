@@ -19,9 +19,9 @@ if [ ! -x "$BUILD/host" ] || [ host.swift -nt "$BUILD/host" ]; then
   swiftc -O host.swift -o "$BUILD/host" || exit 1
 fi
 
-# Margin.app's real end of the link (link-server/main.swift with app/macos/shell's link files, built
+# Margin.app's real end of the link (link-server/main.swift with app/platforms/macos/shell's link files, built
 # as the app target builds them) for the `app*` steps.
-LINK_SOURCES=(link-server/main.swift ../../app/macos/shell/ExtensionLink.swift ../../app/macos/shell/RelayLink.swift ../../app/macos/shell/LinkSocket.swift ../../app/macos/shell/LinkMessage.swift ../../app/macos/shell/Chunks.swift ../../app/macos/shell/Diagnostics.swift)
+LINK_SOURCES=(link-server/main.swift ../../app/platforms/macos/shell/ExtensionLink.swift ../../app/platforms/macos/shell/RelayLink.swift ../../app/platforms/macos/shell/LinkSocket.swift ../../app/platforms/macos/shell/LinkMessage.swift ../../app/platforms/macos/shell/Chunks.swift ../../app/platforms/macos/shell/Diagnostics.swift)
 if [ ! -x "$BUILD/link-server" ] || [ -n "$(find "${LINK_SOURCES[@]}" -newer "$BUILD/link-server" 2>/dev/null)" ]; then
   swiftc -swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault "${LINK_SOURCES[@]}" -o "$BUILD/link-server" || exit 1
 fi

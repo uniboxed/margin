@@ -1039,7 +1039,7 @@ export const SCENARIOS = {
     bare('A'), nothingDrawn('A', 'A: off: the page as it is, nothing of Margin\'s'),
     check('A', 'A: off', `!Margin.content.appDraws() && !Margin.content.boxed()`),
   ],
-  // The real extension linked to Margin.app's real end of the link (link-server: app/macos/shell's
+  // The real extension linked to Margin.app's real end of the link (link-server: app/platforms/macos/shell's
   // ExtensionLink, LinkSocket, LinkMessage, Chunks), through the host's native messaging:
   // wantLink, the link dispatched into the copy's port, the WebSocket with its token and the
   // app's key, hello, the snapshot, the theme in pieces, a setLayout the page's box follows,

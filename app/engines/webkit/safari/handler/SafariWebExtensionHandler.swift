@@ -9,7 +9,7 @@
 // again later).
 // A copy asking for its link to the app (wantLink, docs/PROTOCOL.md) is passed
 // on the same way, as only its type and nonce: the app answers into the
-// extension itself (app/macos/shell/ExtensionLink.swift). If the app isn't running,
+// extension itself (app/platforms/macos/shell/ExtensionLink.swift). If the app isn't running,
 // it's started in the background first (never activated, no window: opened
 // with --background), and the reply says so (`launching`): the copy asks
 // again shortly. A copy's `ping` (its lasting port, kept used so Safari keeps

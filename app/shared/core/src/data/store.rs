@@ -1,4 +1,4 @@
-//! Margin's files for the lasting data (docs/DATA.md "The app's files"; app/macos/shell/DataStore.swift): one data set per
+//! Margin's files for the lasting data (docs/DATA.md "The app's files"; app/platforms/macos/shell/DataStore.swift): one data set per
 //! browser and profile, one file per collection, so a change to a space doesn't rewrite every site icon. Under
 //! the root (macOS: `~/Library/Application Support/Margin/data`; Windows: `%LOCALAPPDATA%\Margin\data`):
 //!

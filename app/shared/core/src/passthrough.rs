@@ -1,4 +1,4 @@
-//! Clicks, scrolling and selection reach the page under an overlay (app/macos/shell/PassThrough.swift; Spike 1, PLAN.md
+//! Clicks, scrolling and selection reach the page under an overlay (app/platforms/macos/shell/PassThrough.swift; Spike 1, PLAN.md
 //! §6): a transparent window still takes the pointer wherever it is, so the overlay lets the pointer through while
 //! it's over the theme's page slot, and takes it everywhere else.
 //!
@@ -267,7 +267,7 @@ mod tests {
     const FRAME: Rect = Rect::new(100.0, 50.0, 1280.0, 800.0);
     const DOCKED: SlotInsets = SlotInsets { left: 260.0, top: 8.0, right: 8.0, bottom: 8.0, radius: 10.0 };
 
-    // app/macos/shell/tests/tests.swift passThrough()
+    // app/platforms/macos/shell/tests/tests.swift passThrough()
     #[test]
     fn the_slot_and_who_gets_the_pointer() {
         let slot = PassThrough::slot(FRAME, DOCKED, &[], false);
@@ -335,7 +335,7 @@ mod tests {
         assert!(!region.contains(p(-1.0, 10.0), FRAME.width, FRAME.height), "nothing outside the overlay");
     }
 
-    // app/macos/shell/tests/tests.swift edgeAndPointer()
+    // app/platforms/macos/shell/tests/tests.swift edgeAndPointer()
     #[test]
     fn the_edge_guard() {
         let hidden = PassThrough::slot(FRAME, SlotInsets::default(), &[], false);

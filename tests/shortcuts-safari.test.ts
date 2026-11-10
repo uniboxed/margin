@@ -3,7 +3,7 @@
 // own commands (menu key equivalents), and a page that turns ArrowDown down
 // whatever the modifiers (Outlook's list, Instagram's reels) ate ⌃⌘↓, so the
 // listener takes the commands' keys too, from the manifest (2026-11-04). The
-// profile is the build's, read as shared/platform.ts is first imported: this
+// profile is the build's, read as shared/capabilities.ts is first imported: this
 // file is Safari's.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,7 +19,7 @@ const manifest = { ...shipped, commands: { ...shipped.commands,
   'next-space': { ...shipped.commands['next-space'], ...withKeys('MacCtrl+Command+Right') } } };
 globalThis.chrome = ({ runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => manifest } } as any);
 const shortcuts = await import('../extension/shared/shortcuts.ts');
-const { platform } = await import('../extension/shared/platform.ts');
+const { capabilities } = await import('../extension/shared/capabilities.ts');
 
 // A window to listen on, and a key press as WebKit dispatches it there.
 function listening({ settings = { shortcuts: {} }, answer = async () => true } = {}) {
@@ -40,7 +40,7 @@ function listening({ settings = { shortcuts: {} }, answer = async () => true } =
 const ctrlCmd = { ctrlKey: true, metaKey: true };
 
 test('Safari: the commands\' keys come from the manifest (⌃⌘↓/↑ for tabs, ⌃⌘→ for the next space; the previous space has none there)', () => {
-  assert.equal(platform.name, 'safari');
+  assert.equal(capabilities.name, 'safari');
   assert.deepEqual(shortcuts.commandKeys(), { nextTab: 'Ctrl+Meta+ArrowDown', prevTab: 'Ctrl+Meta+ArrowUp', nextSpace: 'Ctrl+Meta+ArrowRight' });
   assert.equal(shortcuts.NAVIGATION.nextTab, 'Alt+Meta+ArrowDown', 'Settings say ⌥⌘↓');
 });
@@ -175,5 +175,5 @@ test('Safari: taken as cut off on a slow storage, the world is asked again at th
 
 test('Safari, the shipped manifest: no command keys, so ⌃⌘↓ is the page\'s, and ⌥⌘ arrows are Margin\'s (tabs and spaces)', () => {
   assert.deepEqual(shortcuts.commandKeysFrom(shipped), {});
-  assert.deepEqual(platform.navigation, { nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Alt+Meta+ArrowRight', prevSpace: 'Alt+Meta+ArrowLeft' });
+  assert.deepEqual(capabilities.navigation, { nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Alt+Meta+ArrowRight', prevSpace: 'Alt+Meta+ArrowLeft' });
 });

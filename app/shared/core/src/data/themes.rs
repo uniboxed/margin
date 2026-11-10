@@ -1,4 +1,4 @@
-//! The themes a person imported (docs/phase6-themes.md §3; app/macos/shell/ThemeStore.swift), kept by the app for the whole
+//! The themes a person imported (docs/phase6-themes.md §3; app/platforms/macos/shell/ThemeStore.swift), kept by the app for the whole
 //! computer, not per profile: a theme is the person's look in every browser and profile. Under the root (macOS:
 //! `~/Library/Application Support/Margin/themes/`; Windows: `%LOCALAPPDATA%\Margin\themes`):
 //!

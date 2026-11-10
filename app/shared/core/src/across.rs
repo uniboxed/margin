@@ -1,4 +1,4 @@
-//! Spaces across profiles, the shell's side (the OS-neutral parts of app/macos/shell/ShellProfiles.swift, and the
+//! Spaces across profiles, the shell's side (the OS-neutral parts of app/platforms/macos/shell/ShellProfiles.swift, and the
 //! `across`, `neighbour` and `spaceStep` of BrowserProfiles.swift; docs/DATA.md "Spaces across profiles", PROTOCOL.md):
 //!
 //! - each overlay gets `across` (every profile's spaces in the one order, the profiles' names and marks, each
@@ -762,7 +762,7 @@ mod tests {
         }
     }
 
-    // app/macos/shell/tests/tests.swift shortcuts(): the space step.
+    // app/platforms/macos/shell/tests/tests.swift shortcuts(): the space step.
     #[test]
     fn the_space_step() {
         let d = three();
