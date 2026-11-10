@@ -35,6 +35,8 @@ The same link as Safari's, from step 3 on: the copy's WebSocket to `127.0.0.1`, 
 3. **What the app answers.** Every message gets the reply Safari's handler gives (`{ ok, appOpen, launching }`), with `browser` and `pid`: a `wantLink` (with its nonce) is then answered as Safari's (Transport (Safari), step 2), by dispatching `{ name: 'link', userInfo: { e } }` into every relay of that browser process, where the copy's lasting port receives it as it would Safari's dispatch. `appUp` goes the same way to a relay that says `waited`. The app not running: the relay starts it (in the background, never activated, at most once per 10 s), answers `{ ok: true, appOpen: false, launching: true }` itself, and keeps trying the socket; a lasting port's relay stays and says `waited` once in.
 4. **Connect.** As Safari's, with the copy's Origin `chrome-extension://…`. Chrome's background is a service worker, and a WebSocket there is fine (WebKit's hang, step 9, is Safari's): the socket guard is Safari's alone. The copy's lasting port and the link's ticks keep the worker alive.
 
+**On Windows** it's the same (`docs/windows/BRIEF.md`): the connector is `margin-connector.exe` beside `margin.exe`, the app's connector socket is its named pipe `\\.\pipe\Margin-<user SID>` (this user only; each end checks the other is Margin's), the browser is the connector's first ancestor that isn't `cmd.exe`, and the host file is one file under `%LOCALAPPDATA%\Margin` named in each browser's registry key. The link is the copy's WebSocket to `127.0.0.1`, as here.
+
 A copy in Chrome or Edge says `browser` and `pid` in its `hello` as the relay told it. Its `profile` is its own (`p-…`): Chromium gives an extension no profile id.
 
 ## Messages
