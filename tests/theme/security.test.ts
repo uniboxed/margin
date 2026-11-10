@@ -16,6 +16,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { chromium, webkit } from 'playwright';
+import type { Browser, Page } from 'playwright';
 import { harnessScript, themesInScope } from './package.ts';
 import { HTML_PAYLOADS, CSS_PAYLOADS, TEMPLATE_PAYLOADS_2, CSS_PAYLOADS_2, CSS_KEPT_2 } from './payloads.ts';
 import { readSuitePackages } from '../security/packages.ts';
@@ -24,19 +25,19 @@ import type { Harness } from './harness.ts';
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;
 
-const ENGINES = [['webkit', webkit], ['chromium', chromium]];
+const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const MANIFEST = JSON.stringify({ format: 2, id: 'payload', name: 'Payload', version: '1.0.0' });
 const script = harnessScript();
-const b64 = (pkg) => ({ ...pkg, files: Object.fromEntries(Object.entries(pkg.files).map(([k, v]) => [k, Buffer.from(v).toString('base64')])) });
+const b64 = (pkg: Awaited<ReturnType<typeof readSuitePackages>>[number]['pkg']) => ({ ...pkg, files: Object.fromEntries(Object.entries(pkg.files).map(([k, v]) => [k, Buffer.from(v).toString('base64')])) });
 // (MARGIN_TEST_THEMES: the built-ins CI scoped this run to, tests/theme/package.ts themesInScope; MARGIN_THEMES' own packages always.)
 const packages = themesInScope(await readSuitePackages(), (p) => (p.builtin ? p.id : null)).map((p) => ({ label: p.label, pkg: b64(p.pkg) }));
 const swift = readFileSync(new URL('../../app/platforms/macos/shell/OverlayWebView.swift', import.meta.url), 'utf8');
 const POLICY = /static let policy = "([^"]+)"/.exec(swift)?.[1];
 
-async function open(browser, { viewport = { width: 1440, height: 900 } } = {}) {
+async function open(browser: Browser, { viewport = { width: 1440, height: 900 } } = {}) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
-  const seen = { requests: [], dialogs: [], errors: [] };
+  const seen: { requests: string[], dialogs: string[], errors: string[] } = { requests: [], dialogs: [], errors: [] };
   page.on('request', (r) => { if (!/^(data|blob|about):/.test(r.url())) seen.requests.push(r.url()); });
   page.on('dialog', (d) => { seen.dialogs.push(d.message()); d.dismiss().catch(() => {}); });
   page.on('pageerror', (e) => seen.errors.push(e.message));
@@ -45,7 +46,7 @@ async function open(browser, { viewport = { width: 1440, height: 900 } } = {}) {
   await page.addScriptTag({ content: script });
   return { context, page, seen };
 }
-const settle = async (page) => {
+const settle = async (page: Page) => {
   await page.waitForTimeout(800);
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 };
@@ -82,7 +83,7 @@ for (const [name, engine] of ENGINES) {
       await t.test('Phase 6 payloads in the document: nothing survives, nothing loads, the globals stay', async () => {
         const s = await open(browser);
         const before = await s.page.evaluate(() => T.globals());
-        const out = await s.page.evaluate(([m, a, b]) => T.runPayloads(m, a, b), [MANIFEST, TEMPLATE_PAYLOADS_2.map(([n, f]) => [n, f]), [...CSS_PAYLOADS_2, ...CSS_KEPT_2]]);
+        const out: { name: string, violations?: string[], css?: string }[] = await s.page.evaluate(([m, a, b]) => T.runPayloads(m, a, b), [MANIFEST, TEMPLATE_PAYLOADS_2.map(([n, f]): [string, string] => [n, f]), [...CSS_PAYLOADS_2, ...CSS_KEPT_2]] as [string, [string, string][], [string, string][]]);
         for (const r of out) {
           if (r.violations) assert.deepEqual(r.violations, [], r.name);
           if (r.css != null) assert.doesNotMatch(r.css, /evil\.test/, r.name);
@@ -95,11 +96,11 @@ for (const [name, engine] of ENGINES) {
         await s.context.close();
       });
 
-      const rawPage = async (policy) => {
+      const rawPage = async (policy: string | null | undefined) => {
         const context = await browser.newContext({ viewport: { width: 1200, height: 800 } });
         const page = await context.newPage();
-        const requests = [];
-        const errors = [];
+        const requests: string[] = [];
+        const errors: string[] = [];
         page.on('pageerror', (e) => errors.push(e.message));
         const ORIGIN = 'https://overlay.test';
         const tripwire = 'window.__tripped=[];window.__trip=function(n){window.__tripped.push(String(n))};window.alert=function(m){window.__tripped.push("alert:"+m)};';
@@ -115,7 +116,7 @@ for (const [name, engine] of ENGINES) {
           div.innerHTML = '<input class="a" value="a"><ul class="a"><li>x</li></ul>'; body.appendChild(div);
           try { fetch('https://evil.test/fetch').catch(() => {}); } catch {}
           try { new Image().src = 'https://evil.test/new-image.png'; } catch {}
-          window.__done = true;
+          (window as Window & { __done?: boolean }).__done = true;
         }})()`;
         const data = `window.__html=${JSON.stringify([...HTML_PAYLOADS, ...TEMPLATE_PAYLOADS_2].map(([, f]) => f))};window.__css=${JSON.stringify([...CSS_PAYLOADS, ...CSS_PAYLOADS_2].map(([, c]) => c).filter((c) => c.length < 100000))};`;
         await context.route('**/*', (route) => {

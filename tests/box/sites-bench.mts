@@ -23,10 +23,12 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import type { BrowserContext } from 'playwright';
+
 const require = createRequire(import.meta.url);
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const argv = process.argv.slice(2);
-const opt = (name, fallback) => (argv.includes(`--${name}`) ? argv[argv.indexOf(`--${name}`) + 1] : fallback);
+const opt = <T,>(name: string, fallback: T): string | T => (argv.includes(`--${name}`) ? argv[argv.indexOf(`--${name}`) + 1] : fallback);
 const SITES = opt('sites', [
   'github.com', 'en.wikipedia.org/wiki/Web_browser', 'www.bbc.com', 'www.apple.com', 'www.nytimes.com', 'www.theverge.com',
   'medium.com', 'developer.mozilla.org/en-US/', 'stripe.com', 'vercel.com', 'www.notion.com', 'www.figma.com',
@@ -40,18 +42,21 @@ const VISITS = opt('visits', 'return');
 if (!['first', 'return'].includes(VISITS)) throw new Error(`--visits: first or return, not ${VISITS}`);
 const LOAD_MS = 30_000;
 const SETTLE_MS = 500;
-const url = (site) => `https://${site.includes('/') ? site : `${site}/`}`;
+const url = (site: string) => `https://${site.includes('/') ? site : `${site}/`}`;
 
 // In the page, once it has loaded: its timings, and whether it's in its box (<html> moved by the box's transform).
 const TIMINGS = `const n = performance.getEntriesByType('navigation')[0]; const f = performance.getEntriesByName('first-contentful-paint')[0];
   const m = new DOMMatrix(getComputedStyle(document.documentElement).transform);
   return JSON.stringify({ dcl: n ? Math.round(n.domContentLoadedEventEnd) : 0, load: n ? Math.round(n.loadEventEnd) : 0, fcp: f ? Math.round(f.startTime) : 0, inBox: m.e > 0 });`;
 const LOADED = "document.readyState === 'complete' && (performance.getEntriesByType('navigation')[0]?.loadEventEnd ?? 0) > 0";
-const METRICS = ['fcp', 'dcl', 'load'];
-const median = (list) => (list.length ? [...list].sort((a, b) => a - b)[Math.floor(list.length / 2)] : null);
+const METRICS = ['fcp', 'dcl', 'load'] as const;
+type Metric = (typeof METRICS)[number];
+// One load's numbers (TIMINGS), its site's and its way's.
+type Load = { site: string, mode: string, inBox?: boolean } & Partial<Record<Metric, number>>;
+const median = (list: number[]) => (list.length ? [...list].sort((a, b) => a - b)[Math.floor(list.length / 2)] : null);
 
 async function chromiumSites() {
-  const { chromium } = require('playwright');
+  const { chromium } = require('playwright') as typeof import('playwright');
   const { startMargin } = await import('../e2e/harness/margin.ts');
   const { SPACES } = await import('../e2e/harness/seed.ts');
   const { HOST_RULES } = await import('../e2e/site/server.ts');
@@ -59,7 +64,7 @@ async function chromiumSites() {
   await m.ui();
   const plain = await chromium.launch({ headless: false, args: ['--headless=new', '--mute-audio', `--host-resolver-rules=${HOST_RULES.replace(', MAP * ~NOTFOUND', '')}`] });
   const plainCtx = await plain.newContext({ viewport: { width: 1172, height: 884 } });
-  const once = async (ctx, address, mode) => {
+  const once = async (ctx: BrowserContext, address: string, mode: string) => {
     const page = await ctx.newPage();
     try {
       await page.goto(address, { waitUntil: 'load', timeout: LOAD_MS });
@@ -72,7 +77,7 @@ async function chromiumSites() {
       await page.close().catch(() => {});
     }
   };
-  const loads = [];
+  const loads: Load[] = [];
   try {
     for (const site of SITES) {
       // A first load of each, either way, not counted: both browsers then load it from a warm cache (their own).
@@ -93,9 +98,9 @@ async function chromiumSites() {
 
 async function webkitSites() {
   const { boxedCheck, bareCheck } = await import('../../tools/webkit-host/scenarios.mts');
-  const steps = [];
+  const steps: Record<string, unknown>[] = [];
   let n = 0;
-  const load = (site, mode, logged) => {
+  const load = (site: string, mode: string, logged: boolean) => {
     const name = `${mode}${n++}`;
     steps.push(
       { op: 'open', name, url: url(site), active: true },
@@ -125,19 +130,19 @@ async function webkitSites() {
   writeFileSync(kept, out);
   console.log(`the WebKit host's log: ${kept}`);
   if (/^\[\s*\d+\] TIMEOUT$/m.test(out)) console.log('the WebKit host ran out of time: the loads before that count');
-  return [...out.matchAll(/ page \S+: SITE (\{.*\})$/gm)].map((m) => JSON.parse(m[1]));
+  return [...out.matchAll(/ page \S+: SITE (\{.*\})$/gm)].map((m): Load => JSON.parse(m[1]));
 }
 
 // Per site, the median of each way's loads that were what they say, and the box's extra; then across sites.
-function summary(name, loads) {
-  const ok = loads.filter((l) => l && l.load > 0 && (l.mode === 'boxed') === !!l.inBox);
-  const rows = [];
+function summary(name: string, loads: (Load | null)[]) {
+  const ok = loads.filter((l): l is Load => !!(l && l.load! > 0 && (l.mode === 'boxed') === !!l.inBox)); // (`!`: undefined > 0 is false)
+  const rows: ({ site: string } & Partial<Record<Metric, number | null>>)[] = [];
   for (const site of SITES) {
-    const of = (mode) => ok.filter((l) => l.site === site && l.mode === mode);
+    const of = (mode: string) => ok.filter((l) => l.site === site && l.mode === mode);
     if (!of('boxed').length || !of('plain').length) continue;
-    const row = { site };
+    const row: (typeof rows)[number] = { site };
     for (const k of METRICS) {
-      const values = (mode) => of(mode).map((l) => l[k]).filter((v) => v > 0);
+      const values = (mode: string) => of(mode).map((l) => l[k]).filter((v): v is number => v! > 0);
       const [b, p] = [median(values('boxed')), median(values('plain'))];
       row[k] = b != null && p != null ? b - p : null;
     }
@@ -146,7 +151,7 @@ function summary(name, loads) {
   console.log(`\n${name}: ${rows.length} of ${SITES.length} sites loaded both ways (${ok.length} loads counted); the box's extra, boxed minus plain, ms:`);
   console.log(`  ${'site'.padEnd(34)}${METRICS.map((k) => k.padStart(8)).join('')}`);
   for (const r of rows) console.log(`  ${r.site.padEnd(34)}${METRICS.map((k) => String(r[k] ?? '–').padStart(8)).join('')}`);
-  const at = (k, q) => { const list = rows.map((r) => r[k]).filter((v) => v != null).sort((a, b) => a - b); return list.length ? list[Math.min(list.length - 1, Math.floor(q * list.length))] : '–'; };
+  const at = (k: Metric, q: number) => { const list = rows.map((r) => r[k]).filter((v): v is number => v != null).sort((a, b) => a - b); return list.length ? list[Math.min(list.length - 1, Math.floor(q * list.length))] : '–'; };
   console.log(`  ${'median'.padEnd(34)}${METRICS.map((k) => String(at(k, 0.5)).padStart(8)).join('')}`);
   console.log(`  ${'slowest tenth'.padEnd(34)}${METRICS.map((k) => String(at(k, 0.9)).padStart(8)).join('')}`);
 }

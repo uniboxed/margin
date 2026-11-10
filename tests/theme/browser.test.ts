@@ -11,21 +11,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
+import type { Browser } from 'playwright';
 import { harnessScript, themeForPage } from './package.ts';
 import type { Harness } from './harness.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;
 
-const ENGINES = [['webkit', webkit], ['chromium', chromium]];
+const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const MANIFEST = JSON.stringify({ format: 2, id: 'payload', name: 'Payload', version: '1.0.0' });
 const script = harnessScript();
 const pkg = themeForPage();
 
-async function open(browser, viewport = { width: 1440, height: 900 }) {
+async function open(browser: Browser, viewport = { width: 1440, height: 900 }) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
-  const seen = { requests: [], dialogs: [], errors: [] };
+  const seen: { requests: string[], dialogs: string[], errors: string[] } = { requests: [], dialogs: [], errors: [] };
   page.on('request', (r) => { if (!/^(data|blob|about):/.test(r.url())) seen.requests.push(r.url()); });
   page.on('dialog', (d) => { seen.dialogs.push(d.message()); d.dismiss().catch(() => {}); });
   page.on('pageerror', (e) => seen.errors.push(e.message));
@@ -89,7 +90,7 @@ for (const [name, engine] of ENGINES) {
         await page.click('.chip >> nth=1');
         await page.click('.folder-head >> nth=0');
         await page.click('.new-tab');
-        await page.evaluate(() => document.querySelector('.margin-host')!.shadowRoot.querySelector('.today .tab').click());
+        await page.evaluate(() => document.querySelector('.margin-host')!.shadowRoot!.querySelector<HTMLElement>('.today .tab')!.click());
         const { ran } = await page.evaluate(() => T.actions());
         assert.deepEqual(ran, [['tab.activate', ids.today[2]], ['space.switch', 'work'], ['folder.toggle', ids.folder], ['tab.new', undefined]]);
       });
@@ -118,7 +119,7 @@ for (const [name, engine] of ENGINES) {
         assert.ok((await page.evaluate(() => T.rtText('.today .title'))).includes('Changed by the host'));
 
         // Real clicks, by position (the shadow root is closed).
-        const click = async (selector, nth = 0) => {
+        const click = async (selector: string, nth = 0) => {
           const box = await page.evaluate(({ s, n }) => T.rtBox(s, n), { s: selector, n: nth });
           assert.ok(box, selector);
           await page.mouse.click(box.x, box.y);
@@ -166,7 +167,7 @@ for (const [name, engine] of ENGINES) {
 
         // The sidebar setting goes off in the state: the page's place follows, and is reported.
         await page.evaluate(() => T.rtSettings({ sidebarPinnedOpen: false }));
-        await page.waitForFunction(() => T.rtLayouts().at(-1).left === 19);
+        await page.waitForFunction(() => T.rtLayouts().at(-1)!.left === 19);
         assert.deepEqual((await page.evaluate(() => T.rtLayouts())).at(-1), { left: 19, top: 19, right: 19, bottom: 19, radius: 15, width: 1440, height: 900, windowId: 1, mode: 'fullscreen' });
         assert.equal((await page.evaluate(() => T.rtVm())).sidebar, 'hidden');
         // And the window resized, in the document itself.
@@ -188,7 +189,7 @@ for (const [name, engine] of ENGINES) {
           for (const container of ['shadow', 'document']) {
             for (const sidebar of ['open', 'hidden', 'peek']) {
               await page.evaluate(({ w, h, c, s }) => { T.unmountAll(); T.mountNeo({ width: w, height: h, container: c }); if (s !== 'open') T.mutate('setSidebar', s); }, { w: width, h: height, c: container, s: sidebar });
-              const l = await page.evaluate(() => T.layout());
+              const l = (await page.evaluate(() => T.layout()))!;
               rows.push({ size: `${width}×${height}`, container, sidebar, ...l.insets, radius: l.radius, outer: l.outer });
               assert.deepEqual(l.container, { width, height });
               assert.deepEqual(l.insets, sidebar === 'open' ? { left: 291, top: 19, right: 19, bottom: 19 } : { left: 19, top: 19, right: 19, bottom: 19 }, `${width}×${height} ${container} ${sidebar}`);

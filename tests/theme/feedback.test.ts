@@ -14,12 +14,12 @@ import type { Harness } from './harness.ts';
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;
 
-const ENGINES = [['webkit', webkit], ['chromium', chromium]];
+const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const THEMES = [
   ['arcadia', ARCADIA, { root: '.arcadia', indicator: '.loader', loadingRoot: true }],
   ['neubrutalism', NEO, { root: '.nb', indicator: '.load-bar.on', loadingRoot: false }],
   ['pixel', PIXEL, { root: '.pixel', indicator: '.load-bar.on', loadingRoot: false }],
-];
+] as const;
 const script = harnessScript();
 
 for (const [name, engine] of ENGINES) {
@@ -29,17 +29,17 @@ for (const [name, engine] of ENGINES) {
       try {
         const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
         const page = await context.newPage();
-        const seen = { requests: [], errors: [] };
+        const seen: { requests: string[], errors: string[] } = { requests: [], errors: [] };
         page.on('request', (r) => { if (!/^(data|blob|about):/.test(r.url())) seen.requests.push(r.url()); });
         page.on('pageerror', (e) => seen.errors.push(e.message));
         await context.route('**/*', (route) => route.abort());
         await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"></body></html>');
         await page.addScriptTag({ content: script });
-        const ev = <R, A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
+        const ev = <R, const A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
         assert.equal((await ev(({ p, i }) => T.loadBuiltin(p, i), { p: themeForPage(dir), i: id })).ok, true);
         await ev(() => T.mountRuntime({ width: 1280, height: 800, mode: 'fullscreen', closed: false }));
         await page.waitForFunction(() => T.rtLayouts().length > 0);
-        const slot = (await ev(() => T.rtLayouts())).at(-1);
+        const slot = (await ev(() => T.rtLayouts())).at(-1)!;
 
         await t.test('a tab loading: its row marked, the indicator for the tab in front shown; hidden sidebar: still shown', async () => {
           assert.equal(await ev(() => T.rtCount('.busy')), 0);
@@ -48,7 +48,7 @@ for (const [name, engine] of ENGINES) {
           // Past the indicator's fade in (it can take longer than its 350 ms on a slow machine).
           await page.waitForFunction((s) => T.rtVisible(s), sel.indicator, { timeout: 3000 }).catch(() => {});
           assert.ok((await ev(() => T.rtCount('.busy'))) > 0, 'rows marked');
-          if (sel.loadingRoot) assert.ok((await ev((r) => T.rtClasses(r), sel.root)).includes('loading'));
+          if (sel.loadingRoot) assert.ok((await ev((r) => T.rtClasses(r), sel.root))!.includes('loading'));
           assert.equal(await ev((s) => T.rtVisible(s), sel.indicator), true, 'the indicator shows');
           await ev(() => T.rtSetUi({ sidebar: 'hidden' }));
           await page.waitForTimeout(350);
@@ -70,14 +70,14 @@ for (const [name, engine] of ENGINES) {
           // Armed: all the way in (it comes in from above with the pull).
           await ev(() => T.rtSetUi({ gesture: { kind: 'pull', state: 'armed', progress: 1 } }));
           assert.equal(await ev(() => T.rtCount('.gesture.pull.armed')), 1, 'armed');
-          const pull = await ev(() => T.rtRect('.gesture.pull'));
+          const pull = (await ev(() => T.rtRect('.gesture.pull')))!;
           assert.ok(pull.left >= slot.left && pull.right <= 1280 - slot.right && pull.top >= slot.top - 1, `over the page: ${JSON.stringify(pull)} in ${JSON.stringify(slot)}`);
           assert.ok(Math.abs(pull.x - (slot.left + (1280 - slot.left - slot.right) / 2)) < 4, 'centred over the page');
           await ev(() => T.rtSetUi({ gesture: { kind: 'swipe', state: 'armed', progress: 1, direction: -1 } }));
-          const back = await ev(() => T.rtRect('.gesture.swipe.back'));
+          const back = (await ev(() => T.rtRect('.gesture.swipe.back')))!;
           assert.ok(back.left >= slot.left - 1 && back.left < slot.left + 80, `back: at the page's left (${back.left})`);
           await ev(() => T.rtSetUi({ gesture: { kind: 'swipe', state: 'pulling', progress: 0.6, direction: 1 } }));
-          const forward = await ev(() => T.rtRect('.gesture.swipe.forward'));
+          const forward = (await ev(() => T.rtRect('.gesture.swipe.forward')))!;
           assert.ok(forward.right <= 1280 - slot.right + 1 && forward.right > 1280 - slot.right - 80, `forward: at the page's right (${forward.right})`);
           assert.equal(await ev(() => T.rtCount('.gesture svg')), 1, 'an icon, no words');
           assert.equal((await ev(() => T.rtText('.gesture'))).join(''), '');
@@ -89,7 +89,7 @@ for (const [name, engine] of ENGINES) {
           await ev(() => T.rtSetUi({ notice: { id: 'not-responding#1', text: 'Margin isn’t responding on this page (it was probably updated). Reload the page to fix it.', actions: [{ id: 'reload', label: 'Reload', primary: true }, { id: 'later', label: 'Not now' }] } }));
           assert.deepEqual(await ev(() => T.rtText('.notice .text, .notice button')), ['Margin isn’t responding on this page (it was probably updated). Reload the page to fix it.', 'Reload', 'Not now']);
           assert.equal(await ev(() => T.rtVisible('.notice')), true);
-          const reload = await ev(() => T.rtBox('.notice button.primary'));
+          const reload = (await ev(() => T.rtBox('.notice button.primary')))!;
           await page.mouse.click(reload.x, reload.y);
           assert.equal(await ev(() => T.rtCount('.notice')), 0);
           assert.deepEqual((await ev(() => T.rtPerformedFull())).at(-1), ['notice', { id: 'not-responding#1', action: 'reload' }]);

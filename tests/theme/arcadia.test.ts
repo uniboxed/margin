@@ -18,7 +18,7 @@ import type { Harness, HarnessRt } from './harness.ts';
 declare const T: Harness;
 declare const __rt: HarnessRt;
 
-const ENGINES = [['webkit', webkit], ['chromium', chromium]];
+const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const script = harnessScript();
 const pkg = themeForPage(ARCADIA);
 
@@ -28,7 +28,7 @@ for (const [name, engine] of ENGINES) {
     try {
       const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
       const page = await context.newPage();
-      const seen = { requests: [], errors: [] };
+      const seen: { requests: string[], errors: string[] } = { requests: [], errors: [] };
       page.on('request', (r) => { if (!/^(data|blob|about):/.test(r.url())) seen.requests.push(r.url()); });
       page.on('pageerror', (e) => seen.errors.push(e.message));
       await context.route('**/*', (route) => route.abort());
@@ -62,9 +62,9 @@ for (const [name, engine] of ENGINES) {
 
       await t.test('the width is the theme\'s setting (160–500, step 10); hidden, the page sits in the frame or fills the window', async () => {
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { themes: { 'arcadia': { sidebarWidth: 330 } } } }));
-        assert.equal((await layout()).left, 330);
+        assert.equal((await layout())!.left, 330);
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { themes: { 'arcadia': { sidebarWidth: 900 } } } }));
-        assert.equal((await layout()).left, 260, 'out of range: the default');
+        assert.equal((await layout())!.left, 260, 'out of range: the default');
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { sidebarPinnedOpen: false } }));
         assert.deepEqual(await layout(), { left: 8, top: 8, right: 8, bottom: 8, radius: 6.25, width: 1280, height: 800, windowId: 1, mode: 'inpage' }, 'the frame alone around the page');
         assert.equal(await page.evaluate(() => T.rtCount('.peek-zone')), 1);
@@ -72,7 +72,7 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(await layout(), { left: 0, top: 0, right: 0, bottom: 0, radius: 0, width: 1280, height: 800, windowId: 1, mode: 'inpage' }, 'no frame: the whole window');
         await page.evaluate(() => T.rtSetUi({ sidebar: 'peek' }));
         await page.waitForTimeout(50);
-        assert.equal((await page.evaluate(() => T.rtLayouts())).at(-1).left, 0, 'out over the page, the sidebar moves nothing');
+        assert.equal((await page.evaluate(() => T.rtLayouts())).at(-1)!.left, 0, 'out over the page, the sidebar moves nothing');
       });
 
       await t.test('every part: the palette, a menu, the space editor, a notice, a prompt', async () => {
@@ -103,7 +103,7 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.rtSetUi({ notice: { id: 'fs', text: 'Margin works in full screen.', actions: [{ id: 'go', label: 'Full screen', primary: true }, { id: 'no', label: 'Not now' }] } }));
         assert.deepEqual(await page.evaluate(() => T.rtText('.notice .text, .notice button')), ['Margin works in full screen.', 'Full screen', 'Not now']);
         const go = await page.evaluate(() => T.rtBox('.notice button.primary'));
-        await page.mouse.click(go.x, go.y);
+        await page.mouse.click(go!.x, go!.y);
         assert.equal(await page.evaluate(() => T.rtCount('.notice')), 0, 'a button closes it');
         assert.deepEqual(await page.evaluate(() => T.rtPerformedFull()), [['notice', { id: 'fs', action: 'go' }]], 'and the host runs it');
 
@@ -120,7 +120,7 @@ for (const [name, engine] of ENGINES) {
         assert.ok(await page.evaluate(() => T.rtCount('.launcher .tile')) > 0);
         assert.ok(await page.evaluate(() => T.rtCount('.launcher .archive-row')) > 0);
         assert.equal(await page.evaluate(() => T.rtActive()), 'launcher');
-        assert.equal((await layout()).left, 260, 'beside the sidebar, which stays');
+        assert.equal((await layout())!.left, 260, 'beside the sidebar, which stays');
         await page.keyboard.type('example.org');
         await page.keyboard.press('Enter');
         assert.deepEqual(await page.evaluate(() => T.rtPerformedFull()), [['navigate', { url: 'https://example.org' }]], 'an address: this tab goes there');
@@ -173,9 +173,9 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate((p) => T.mountRuntime({ container: 'document', mode: 'inpage', inNewTab: true, platform: p, replies: { wakeSleeping: 0 } }), platform);
         await page.evaluate(() => T.rtSetUi({ settingsOpen: true }));
         const form = () => page.evaluate(() => {
-          const q = (s) => [...document.querySelectorAll(s)];
+          const q = <El extends Element = HTMLInputElement>(s: string) => [...document.querySelectorAll<El>(s)];
           return {
-            select: q('.settings-form select').map((s) => [s.value, [...s.options].map((o) => o.textContent)]),
+            select: q<HTMLSelectElement>('.settings-form select').map((s) => [s.value, [...s.options].map((o) => o.textContent)]),
             numbers: q('.settings-form input[type="number"]').map((i) => i.value),
             toggles: q('.settings-form input[type="checkbox"][switch]').map((i) => [i.checked, i.disabled]),
             lists: q('.settings-form textarea').length,
@@ -189,14 +189,14 @@ for (const [name, engine] of ENGINES) {
         assert.equal(f.lists, 1);
         assert.equal(f.shortcuts.length, 5);
         assert.ok(f.shortcuts.every(([ro]) => ro));
-        const lastSent = (type) => page.evaluate((t) => T.rtSent().filter(([k]) => k === t).at(-1) ?? null, type);
+        const lastSent = (type: string) => page.evaluate((t) => T.rtSent().filter(([k]) => k === t).at(-1) ?? null, type);
         await page.click('label:has-text("keep the frame") input');
         assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { frameWhenHidden: false } }]);
         await page.selectOption('.settings-form select', 'neubrutalism');
         assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { theme: 'neubrutalism' } }]);
         await page.click('label:has-text("Next tab") input');
         await page.keyboard.press('Control+Alt+KeyN');
-        const saved = (await lastSent('updateSettings'))[1].patch.shortcuts;
+        const saved = (await lastSent('updateSettings'))![1].patch.shortcuts;
         assert.match(saved.nextTab, /KeyN$/);
         await page.click('label:has-text("Next space") input');
         await page.keyboard.press('Alt+KeyS');

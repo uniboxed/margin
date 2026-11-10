@@ -9,8 +9,12 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
 import { chromium, webkit } from 'playwright';
+import type { createPreviewBar } from '../../extension/ui/theme-preview.ts';
 
-const ENGINES = [['webkit', webkit], ['chromium', chromium]];
+// What the page below puts on its window: the preview bar it made, and what its buttons said.
+declare const P: { log: string[], make(ms: number): void, bar: ReturnType<typeof createPreviewBar> };
+
+const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const bundle = buildSync({
   stdin: {
     contents: `import { createPreviewBar } from './theme-preview.js';

@@ -12,14 +12,14 @@ import type { Harness } from './harness.ts';
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;
 
-const ENGINES = [['webkit', webkit], ['chromium', chromium]];
+const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const script = harnessScript();
 // Each theme's sidebar: its root, the page's left inset docked, and its
 // width setting's default, bounds and a 50 px drag (snapped to its step).
 const THEMES = [
   ['neubrutalism', NEO, { root: '.nb', docked: 291, def: 256, min: 200, max: 400, dragged: 306 }],
   ['pixel', PIXEL, { root: '.pixel', docked: 286, def: 252, min: 200, max: 360, dragged: 304 }],
-];
+] as const;
 const SCROLL = /^(sidebarScroll|setSidebarScroll)$/;
 
 for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInScope(THEMES)) {
@@ -31,28 +31,30 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
     // THROTTLE=6 npm run test:theme: Chromium's CPU that many times slower, as on a busy CI runner (what a check
     // made too early looks like there).
     if (process.env.THROTTLE && name === 'chromium') await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.THROTTLE) });
-    const seen = { requests: [], errors: [] };
+    const seen: { requests: string[], errors: string[] } = { requests: [], errors: [] };
     page.on('request', (r) => { if (!/^(data|blob|about):/.test(r.url())) seen.requests.push(r.url()); });
     page.on('pageerror', (e) => seen.errors.push(e.message));
     await context.route('**/*', (route) => route.abort());
     await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');
     await page.addScriptTag({ content: script });
-    const ev = <R, A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
+    const ev = <R, const A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
     assert.equal((await ev(([p, i]) => T.loadBuiltin(p, i), [themeForPage(dir), themeId])).ok, true);
 
     const mount = (options = {}) => ev((o) => T.mountRuntime(o), options);
     const sent = async ({ scroll = false } = {}) => (await ev(() => T.rtSent())).filter(([type]) => scroll || !SCROLL.test(type));
-    const lastSent = async (type) => (await sent({ scroll: true })).filter(([t2]) => t2 === type).at(-1) ?? null;
-    const vm = () => ev(() => T.rtVmFull());
+    const lastSent = async (type: string) => (await sent({ scroll: true })).filter(([t2]) => t2 === type).at(-1) ?? null;
+    // (`as`: a step reads the view model, the box of an element it names, once they're there: were one not, the step
+    // fails where it reads it.)
+    const vm = () => ev(() => T.rtVmFull()) as Promise<NonNullable<ReturnType<Harness['rtVmFull']>>>;
     const ui = () => ev(() => T.rtUi());
-    const rect = (selector, nth = 0) => ev(({ s, n }) => T.rtRect(s, n), { s: selector, n: nth });
+    const rect = (selector: string, nth = 0) => ev(({ s, n }) => T.rtRect(s, n), { s: selector, n: nth }) as Promise<NonNullable<ReturnType<Harness['rtRect']>>>;
     // Into view in its list first (rtBox), then its box.
-    const shown = async (selector, nth = 0) => { await ev(({ s, n }) => T.rtBox(s, n), { s: selector, n: nth }); return rect(selector, nth); };
-    const click = async (selector, nth = 0) => { const b = await shown(selector, nth); assert.ok(b, selector); await page.mouse.click(b.x, b.y); };
+    const shown = async (selector: string, nth = 0) => { await ev(({ s, n }) => T.rtBox(s, n), { s: selector, n: nth }); return rect(selector, nth); };
+    const click = async (selector: string, nth = 0) => { const b = await shown(selector, nth); assert.ok(b, selector); await page.mouse.click(b.x, b.y); };
     const today = () => ev(() => T.rtTodayIds(8));
     // Its box once it has stopped moving (the same twice, 50 ms apart): after a drop the list is drawn again, a
     // frame or more later on a slow machine, and a box read before that is where the row was.
-    const settled = async (selector, nth = 0) => {
+    const settled = async (selector: string, nth = 0) => {
       let last = await shown(selector, nth);
       for (let i = 0; i < 60; i++) {
         await new Promise((r) => setTimeout(r, 50));
@@ -62,10 +64,10 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
       }
       return last;
     };
-    const wait = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 3000 });
+    const wait = <A,>(fn: (arg: A) => unknown, arg?: A) => page.waitForFunction(fn as (arg: unknown) => unknown, arg, { timeout: 3000 });
     // An assertion tried again until it holds (or 3 s): what follows a pointer, a drop or a scroll is drawn and
     // sent a frame or more later on a slow machine.
-    const eventually = async (check, ms = 3000) => {
+    const eventually = async <T,>(check: () => T | Promise<T>, ms = 3000) => {
       const end = Date.now() + ms;
       for (;;) {
         try { return await check(); } catch (e) { if (Date.now() > end) throw e; await new Promise((r) => setTimeout(r, 25)); }
@@ -82,18 +84,18 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         // Still pressed: the switch is sent and the row is lit.
         assert.deepEqual(await lastSent('activateTab'), ['activateTab', { tabId: ids[1] }]);
         assert.equal((await ui()).switchingTo, ids[1]);
-        assert.ok((await ev(() => T.rtClasses('.today .tab', 1))).includes('on'), 'highlighted before the button comes up');
-        assert.ok((await ev(() => T.rtClasses('.today .tab', 1))).includes('m-pressed'));
+        assert.ok((await ev(() => T.rtClasses('.today .tab', 1)))!.includes('on'), 'highlighted before the button comes up');
+        assert.ok((await ev(() => T.rtClasses('.today .tab', 1)))!.includes('m-pressed'));
         await page.mouse.up();
         assert.equal((await sent()).filter(([type]) => type === 'activateTab').length, 1, 'the click is the same switch');
-        assert.equal((await ev(() => T.rtClasses('.today .tab', 1))).includes('m-pressed'), false);
+        assert.equal((await ev(() => T.rtClasses('.today .tab', 1)))!.includes('m-pressed'), false);
       });
 
       await t.test('palette: focused as it opens, typing re-ranks, arrows move, Enter runs, Escape closes, opened again empty', async () => {
         await mount();
         await click('.address');
         assert.equal((await ui()).palette.open, true);
-        assert.equal((await ev(() => T.rtFocus())).input, 'palette', 'the field has the focus');
+        assert.equal((await ev(() => T.rtFocus()))!.input, 'palette', 'the field has the focus');
         const before = (await vm()).rows;
         await page.keyboard.type('nimbus');
         const typed = await vm();
@@ -102,7 +104,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         assert.ok(typed.rows.length >= 2 && typed.rows.slice(0, 2).every((r) => /nimbus/i.test(r)), typed.rows.slice(0, 3).join(' | '));
         const first = typed.selected;
         await page.keyboard.press('ArrowDown');
-        const second = (await vm()).selected;
+        const second = (await vm()).selected!;
         assert.notEqual(second, first);
         await page.keyboard.press('ArrowUp');
         assert.equal((await vm()).selected, first);
@@ -112,14 +114,14 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         await page.keyboard.press('ArrowDown');
         assert.equal((await vm()).selected, second);
         await page.keyboard.press('Enter');
-        const [type, payload] = (await sent()).at(-1);
+        const [type, payload] = (await sent()).at(-1)!;
         if (second.startsWith('tab:')) assert.deepEqual([type, payload], ['activateTab', { tabId: Number(second.slice(4)) }]);
         else if (second.startsWith('pin:')) assert.deepEqual([type, payload], ['openPin', { pinId: second.slice(4), windowId: 1 }]);
         else assert.fail(`row ${second}`);
         assert.equal((await ui()).palette.open, false, 'closed by the choice');
         // Opened again: an empty field (a theme's m-if keeps its block), focused.
         await click('.address');
-        const focus = await ev(() => T.rtFocus());
+        const focus = (await ev(() => T.rtFocus()))!;
         assert.deepEqual([focus.input, focus.value], ['palette', '']);
         assert.equal((await vm()).query, '');
         await page.keyboard.type('xyz');
@@ -130,17 +132,17 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         // The new-tab palette (+ New Tab) works the same way.
         await click('.new-tab');
         assert.equal((await ui()).palette.newTab, true);
-        assert.equal((await ev(() => T.rtFocus())).value, '');
+        assert.equal((await ev(() => T.rtFocus()))!.value, '');
         await page.keyboard.type('margins.example');
         await page.keyboard.press('Enter');
         assert.equal((await ui()).palette.open, false);
-        assert.ok(['activateTab', 'openPin', 'newTab'].includes((await sent()).at(-1)[0]));
+        assert.ok(['activateTab', 'openPin', 'newTab'].includes((await sent()).at(-1)![0]));
       });
 
       await t.test('peek: the edge brings a hidden sidebar out, the page hides it again after the delay', async () => {
         await mount({ settings: { sidebarPinnedOpen: false } });
         assert.equal((await vm()).sidebar, 'hidden');
-        assert.match(await ev(() => T.rtStyle('.peek-zone', '--m-reveal-zone')), /^(10|24)px$/, 'today\'s reveal zone');
+        assert.match((await ev(() => T.rtStyle('.peek-zone', '--m-reveal-zone')))!, /^(10|24)px$/, 'today\'s reveal zone');
         await page.mouse.move(700, 450);
         await page.mouse.move(3, 450, { steps: 4 });
         await wait(() => T.rtVmFull().sidebar === 'peek');
@@ -194,7 +196,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         await page.mouse.move(handle.x, handle.y);
         await page.mouse.down();
         await page.mouse.move(handle.x + 20, handle.y, { steps: 2 });
-        await eventually(async () => assert.ok((await ev((r) => T.rtClasses(r), th.root)).includes('m-resizing')));
+        await eventually(async () => assert.ok((await ev((r) => T.rtClasses(r), th.root))!.includes('m-resizing')));
         await page.mouse.move(handle.x + 50, handle.y, { steps: 3 });
         await wait((x) => T.rtLayoutsAll().at(-1) === x, th.docked + 50);
         const live = await ev(() => T.rtLayoutsAll());
@@ -209,18 +211,18 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         await page.mouse.down();
         await page.mouse.move(h2.x + 600, h2.y, { steps: 4 });
         await page.mouse.up();
-        assert.deepEqual((await lastSent('updateThemeSettings'))[1].patch, { sidebarWidth: `${th.max}px` });
+        assert.deepEqual((await lastSent('updateThemeSettings'))![1].patch, { sidebarWidth: `${th.max}px` });
         await wait((x) => T.rtLayoutsAll().at(-1) === x, th.max + gap);
         const h3 = await rect('.resizer');
         await page.mouse.move(h3.x, h3.y);
         await page.mouse.down();
         await page.mouse.move(h3.x - 600, h3.y, { steps: 4 });
         await page.mouse.up();
-        assert.deepEqual((await lastSent('updateThemeSettings'))[1].patch, { sidebarWidth: `${th.min}px` });
+        assert.deepEqual((await lastSent('updateThemeSettings'))![1].patch, { sidebarWidth: `${th.min}px` });
         // Double-click: the default.
         const h4 = await rect('.resizer');
         await page.mouse.dblclick(h4.x, h4.y);
-        assert.deepEqual((await lastSent('updateThemeSettings'))[1].patch, { sidebarWidth: `${th.def}px` });
+        assert.deepEqual((await lastSent('updateThemeSettings'))![1].patch, { sidebarWidth: `${th.def}px` });
         await wait((x) => T.rtLayoutsAll().at(-1) === x, th.docked);
       });
 
@@ -229,14 +231,14 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         const ids = await today();
         const row = await shown('.today .tab', 0);
         await page.mouse.click(row.x, row.y, { button: 'right' });
-        const labels = (await vm()).menu;
+        const labels = (await vm()).menu!;
         assert.deepEqual(labels.slice(0, 4), ['Pin Tab', 'Pin to 📁 Reading', 'Pin to 📁 Lisbon', 'New Folder with Tab']);
         assert.ok(labels.includes('Move to 💼 Work') && labels.includes('Close Tab'));
         assert.equal(await ev(() => T.rtCount('m-menu .menu-item')), labels.filter((l) => l).length, 'drawn from the theme\'s part');
         const menuBox = await rect('m-menu');
         assert.ok(Math.abs(menuBox.left - row.x) <= 1, 'at the pointer');
         assert.ok(menuBox.top <= row.y + 1 && menuBox.bottom <= 900 - 4 + 1, 'kept inside the window');
-        const item = await ev(() => T.rtBoxText('.menu-item', 'Move to 💼 Work'));
+        const item = (await ev(() => T.rtBoxText('.menu-item', 'Move to 💼 Work')))!;
         await page.mouse.click(item.x, item.y);
         assert.deepEqual((await sent()).at(-1), ['moveTabToSpace', { tabId: ids[0], spaceId: 'work' }]);
         assert.equal((await ui()).menu, null, 'closed');
@@ -244,7 +246,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         // The keys: ↓ to the first item, Enter runs it.
         await page.mouse.click(row.x, row.y, { button: 'right' });
         await page.keyboard.press('ArrowDown');
-        assert.equal((await ev(() => T.rtFocus())).text, 'Pin Tab');
+        assert.equal((await ev(() => T.rtFocus()))!.text, 'Pin Tab');
         await page.keyboard.press('Enter');
         assert.deepEqual((await sent()).at(-1), ['pinTab', { tabId: ids[0] }]);
         // A press elsewhere closes it, Escape too.
@@ -256,11 +258,11 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         const chip = await rect('.chip', 1);
         await page.mouse.click(chip.x, chip.y, { button: 'right' });
         assert.deepEqual((await vm()).menu, ['Edit Space…', 'Rename Space', '', 'New Space', '', 'Delete Space']);
-        let del = await ev(() => T.rtBoxText('.menu-item', 'Delete Space'));
+        let del = (await ev(() => T.rtBoxText('.menu-item', 'Delete Space')))!;
         await page.mouse.click(del.x, del.y);
-        assert.equal((await vm()).menu.at(-1), 'Really delete?');
+        assert.equal((await vm()).menu!.at(-1), 'Really delete?');
         assert.equal((await sent()).length, count, 'nothing yet');
-        del = await ev(() => T.rtBoxText('.menu-item', 'Really delete?'));
+        del = (await ev(() => T.rtBoxText('.menu-item', 'Really delete?')))!;
         await page.mouse.click(del.x, del.y);
         assert.deepEqual((await sent()).at(-1), ['deleteSpace', { spaceId: 'work' }]);
         // The "+" button's menu, above it.
@@ -268,7 +270,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         assert.deepEqual((await vm()).menu, ['New Folder', 'New Space']);
         const plus = await rect('[aria-label="New folder or space"]');
         assert.ok((await rect('m-menu')).bottom <= plus.top, 'above the button');
-        const nf = await ev(() => T.rtBoxText('.menu-item', 'New Folder'));
+        const nf = (await ev(() => T.rtBoxText('.menu-item', 'New Folder')))!;
         await page.mouse.click(nf.x, nf.y);
         assert.deepEqual((await sent()).at(-1), ['createFolder', { windowId: 1 }]);
       });
@@ -281,7 +283,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         // Its first click toggled the folder: undone.
         assert.deepEqual((await sent()).map(([type, p]) => [type, p.open]), [['setFolderOpen', false], ['setFolderOpen', true]]);
         assert.deepEqual((await vm()).editing, { kind: 'folder', id: 'personal-f0' });
-        const focus = await ev(() => T.rtFocus());
+        const focus = (await ev(() => T.rtFocus()))!;
         assert.deepEqual([focus.editable, focus.text], [true, 'Reading']);
         await page.keyboard.type('Later reads');
         await page.keyboard.press('Enter');
@@ -335,7 +337,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
           const marks = Object.fromEntries(await ev(() => T.rtMarked()));
           assert.equal(marks['m-drag-ghost'], 1, 'a copy follows the pointer');
           assert.equal(marks['m-dragging'], 2, 'the row and the theme\'s root');
-          assert.ok((await ev(() => T.rtClasses('.today .tab:not(.m-drag-ghost)', 2))).includes('m-drop-after'));
+          assert.ok((await ev(() => T.rtClasses('.today .tab:not(.m-drag-ghost)', 2)))!.includes('m-drop-after'));
         });
         await page.mouse.up();
         const moved = await eventually(async () => { const m = (await sent()).find(([type]) => type === 'moveTab'); assert.ok(m, 'moveTab sent'); return m; });
@@ -350,7 +352,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         await page.mouse.move(row.x, row.y);
         await page.mouse.down();
         await page.mouse.move(chip.x, chip.y, { steps: 8 });
-        await eventually(async () => assert.ok((await ev(() => T.rtClasses('.chip', 1))).includes('m-drop-into'),
+        await eventually(async () => assert.ok((await ev(() => T.rtClasses('.chip', 1)))!.includes('m-drop-into'),
           `the chip's drop mark (chip ${JSON.stringify(chip)}, under the pointer ${JSON.stringify(await ev(({ x, y }) => T.rtAt(x, y), chip))})`));
         await page.mouse.up();
         await eventually(async () => assert.deepEqual((await sent()).at(-1), ['moveTabToSpace', { tabId: ids[1], spaceId: 'work' }]));
@@ -363,7 +365,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         await page.mouse.move(start.x, start.y);
         await page.mouse.down();
         await page.mouse.move(folder.x, folder.top + folder.height * 0.7, { steps: 8 });
-        await eventually(async () => assert.ok((await ev(() => T.rtClasses('.folder-head', 1))).includes('m-drop-into')));
+        await eventually(async () => assert.ok((await ev(() => T.rtClasses('.folder-head', 1)))!.includes('m-drop-into')));
         await page.mouse.up();
         await eventually(async () => assert.deepEqual((await sent()).at(-1), ['pinTab', { tabId: ids[3], folderId: 'personal-f1', beforeId: null }]));
 
@@ -389,7 +391,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         await wait(() => T.rtSent().some(([type, p]) => type === 'setSidebarScroll' && p.top > 300));
         // (Once the scroll has come to rest: a smooth scroll is still moving when its first position is saved.)
         await eventually(async () => {
-          const saved = await lastSent('setSidebarScroll');
+          const saved = (await lastSent('setSidebarScroll'))!;
           assert.equal(saved[1].windowId, 1);
           assert.equal(saved[1].top, await ev(() => T.rtScrollTop('.tabs')), `the saved scroll is the list's (saved ${JSON.stringify(saved)})`);
         });
@@ -430,7 +432,7 @@ for (const [name, engine] of ENGINES) {
     try {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const page = await context.newPage();
-      const errors = [];
+      const errors: string[] = [];
       page.on('pageerror', (e) => errors.push(e.message));
       await context.route('**/*', (route) => route.abort());
       await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');
@@ -438,7 +440,7 @@ for (const [name, engine] of ENGINES) {
       const pkg = themeForPage(NEO);
       const html = pkg.html.replace('m-action="folder.toggle" m-arg="{{g.id}}"', 'm-action="folder.toggle"');
       assert.notEqual(html, pkg.html, 'the toggle without its argument');
-      assert.equal((await page.evaluate(([p, i]) => T.loadBuiltin(p, i), [{ ...pkg, html }, 'neubrutalism'])).ok, true);
+      assert.equal((await page.evaluate(([p, i]) => T.loadBuiltin(p, i), [{ ...pkg, html }, 'neubrutalism'] as const)).ok, true);
       await page.evaluate(() => T.mountRuntime());
       // On its chevron, beside the name: the toggle's own double-click (a press on the name is the name's).
       await page.evaluate(() => T.rtBox('.folder-head .chev', 0));

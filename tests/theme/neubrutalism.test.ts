@@ -22,7 +22,7 @@ import type { Harness, HarnessRt } from './harness.ts';
 declare const T: Harness;
 declare const __rt: HarnessRt;
 
-const ENGINES = [['webkit', webkit], ['chromium', chromium]];
+const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const script = harnessScript();
 const pkg = themeForPage(NEO);
 const FIRST_PAINT = firstPaintCss('neubrutalism', readFileSync(new URL('first-paint.css', `file://${NEO}`), 'utf8'));
@@ -30,7 +30,7 @@ const INK = '#111111';
 const PAGE = '#ff00ff';
 
 // A screenshot's pixels (Playwright's PNGs: 8-bit RGB or RGBA, not interlaced).
-function decodePng(buf) {
+function decodePng(buf: Buffer) {
   let at = 8;
   let width = 0;
   let height = 0;
@@ -61,7 +61,7 @@ function decodePng(buf) {
       out[y * stride + x] = (line[x] + pred) & 255;
     }
   }
-  const at2 = (x, y) => { const i = y * stride + x * bpp; return `#${[out[i], out[i + 1], out[i + 2]].map((v) => v.toString(16).padStart(2, '0')).join('')}`; };
+  const at2 = (x: number, y: number) => { const i = y * stride + x * bpp; return `#${[out[i], out[i + 1], out[i + 2]].map((v) => v.toString(16).padStart(2, '0')).join('')}`; };
   return { width, height, at: at2 };
 }
 
@@ -71,25 +71,25 @@ for (const [name, engine] of ENGINES) {
     try {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const page = await context.newPage();
-      const seen = { requests: [], errors: [] };
+      const seen: { requests: string[], errors: string[] } = { requests: [], errors: [] };
       page.on('request', (r) => { if (!/^(data|blob|about):/.test(r.url())) seen.requests.push(r.url()); });
       page.on('pageerror', (e) => seen.errors.push(e.message));
       await context.route('**/*', (route) => route.abort());
       await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"></body></html>');
       await page.addScriptTag({ content: script });
-      const ev = <R, A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
-      const count = (s) => ev((x) => T.rtCount(x), s);
-      const computed = (s, p) => ev(([x, y]) => T.rtComputed(x, y), [s, p]);
+      const ev = <R, const A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
+      const count = (s: string) => ev((x) => T.rtCount(x), s);
+      const computed = (s: string, p: string) => ev(([x, y]) => T.rtComputed(x, y), [s, p]);
       // The last layout, once no more come (two frames with none new: a frame is later on a slow machine).
       const layout = async () => {
         await page.waitForFunction(() => T.rtLayouts().length > 0);
-        const frames = () => ev(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(T.rtLayouts().length)))));
+        const frames = () => ev(() => new Promise<number>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(T.rtLayouts().length)))));
         for (let n = -1, i = 0; i < 40; i++) { const now = await frames(); if (now === n) break; n = now; }
-        return (await ev(() => T.rtLayouts())).at(-1);
+        return (await ev(() => T.rtLayouts())).at(-1)!;
       };
       const mount = (o = {}) => ev((x) => T.mountRuntime({ width: 1440, height: 900, platform: { browser: 'safari', os: 'mac' }, ...x }), o);
       // The state as the background would change it.
-      const edit = (js) => ev((code) => { const rt = window.__rt; rt.mock.state = new Function('s', code)(rt.mock.state); rt.host.setState(rt.mock.state); }, js);
+      const edit = (js: string) => ev((code) => { const rt = (window as typeof window & { __rt: HarnessRt }).__rt; rt.mock.state = new Function('s', code)(rt.mock.state); rt.host.setState(rt.mock.state); }, js);
 
       await t.test('loads with nothing removed, as a package and as a built-in theme', async () => {
         const raw = await ev((p) => T.loadNeo(p), pkg);
@@ -111,7 +111,7 @@ for (const [name, engine] of ENGINES) {
 
       await t.test('rows: a close button on hover (tabs, and pins open in a tab), the speaker, the tab shown behind a new one', async () => {
         await mount();
-        const today = (await ev(() => T.rtVm())).today;
+        const today = (await ev(() => T.rtVm()))!.today;
         assert.equal(await count('.today .tab'), today);
         assert.equal(await count('.today .close'), today, 'every tab has its close button');
         assert.equal(await count('.folder .close'), await count('.folder .tab.pin.open'), 'pins: only those open in a tab');
@@ -121,13 +121,13 @@ for (const [name, engine] of ENGINES) {
         assert.equal(await ev(() => T.rtAttr('.folder .close', 'aria-label')), 'Close tab (stays pinned)');
         // Hovered: the ×, in a bordered box; a click closes the tab, nothing else.
         await ev(() => T.rtSentClear());
-        const row = await ev(() => T.rtBox('.today .tab', 0));
+        const row = (await ev(() => T.rtBox('.today .tab', 0)))!;
         await page.mouse.move(row.x, row.y);
         assert.equal(await ev(() => T.rtVisible('.today .close')), true, 'hovered: its ×');
         assert.equal(await computed('.today .close', 'border-top-style'), 'solid');
         assert.equal(await computed('.today .close', 'width'), '20px');
-        const x = await ev(() => T.rtRect('.today .close'));
-        const r = await ev(() => T.rtRect('.today .tab'));
+        const x = (await ev(() => T.rtRect('.today .close')))!;
+        const r = (await ev(() => T.rtRect('.today .tab')))!;
         assert.ok(x.right <= r.right && x.top >= r.top && x.bottom <= r.bottom, 'inside its row');
         const id = (await ev(() => T.rtTodayIds(1)))[0];
         await page.mouse.click(x.x, x.y);
@@ -149,14 +149,14 @@ for (const [name, engine] of ENGINES) {
         assert.equal(await count('.tab.behind'), 0);
         // Dragged, a row's copy follows the pointer (nothing around it holds
         // containment that would move or clip the fixed copy).
-        const g0 = await ev(() => T.rtBox('.today .tab', 1));
+        const g0 = (await ev(() => T.rtBox('.today .tab', 1)))!;
         await page.mouse.move(g0.x, g0.y);
         await page.mouse.down();
         await page.mouse.move(g0.x + 30, g0.y - 40, { steps: 5 });
         // The copy follows each move a frame or more later (on a loaded machine, more than 80 ms): asked again until it's there.
         const end = Date.now() + 3000;
         for (;;) {
-          const ghost = await ev(() => T.rtRect('.m-drag-ghost'));
+          const ghost = (await ev(() => T.rtRect('.m-drag-ghost')))!;
           const under = ghost && Math.abs(ghost.y - (g0.y - 40)) < 20 && Math.abs(ghost.x - (g0.x + 30)) < 40;
           if (under) break;
           assert.ok(Date.now() < end, `the copy under the pointer (${JSON.stringify([g0, ghost])})`);
@@ -180,11 +180,11 @@ for (const [name, engine] of ENGINES) {
         assert.equal(await count('.loose-card'), 2);
         assert.equal(await count('.loose-card .tab.pin.open'), 1);
         assert.equal(await count('.loose-card .close'), 1);
-        const a = await ev(() => T.rtRect('.loose-card', 0));
-        const b = await ev(() => T.rtRect('.loose-card', 1));
+        const a = (await ev(() => T.rtRect('.loose-card', 0)))!;
+        const b = (await ev(() => T.rtRect('.loose-card', 1)))!;
         assert.ok(Math.abs(b.top - a.bottom) < 0.5, `one card: no gap between them (${a.bottom} → ${b.top})`);
-        assert.equal(await ev(() => getComputedStyle(window.__rt.target.querySelectorAll('.loose-card')[0]).borderBottomLeftRadius), '0px');
-        assert.equal(await ev(() => getComputedStyle(window.__rt.target.querySelectorAll('.loose-card')[1]).borderTopLeftRadius), '0px');
+        assert.equal(await ev(() => getComputedStyle((window as typeof window & { __rt: HarnessRt }).__rt.target.querySelectorAll('.loose-card')[0]).borderBottomLeftRadius), '0px');
+        assert.equal(await ev(() => getComputedStyle((window as typeof window & { __rt: HarnessRt }).__rt.target.querySelectorAll('.loose-card')[1]).borderTopLeftRadius), '0px');
       });
 
       await t.test('the palette: eight rows then it scrolls, in the window with 200 tabs; the board\'s tags, each row\'s icon', async () => {
@@ -193,22 +193,22 @@ for (const [name, engine] of ENGINES) {
           await ev(() => T.rtDispatch('palette.open'));
           const rows = await count('.palette-row');
           assert.ok(rows > 8, `${rows} rows`);
-          const box = await ev(() => T.rtRect('.palette'));
+          const box = (await ev(() => T.rtRect('.palette')))!;
           assert.ok(box.top >= 0 && box.bottom <= height, `${height}: the box stays in the window (${box.top}–${box.bottom})`);
-          const list = await ev(() => T.rtRect('.palette-rows'));
+          const list = (await ev(() => T.rtRect('.palette-rows')))!;
           assert.ok(list.height <= 8 * 46 + 7 * 10 + 1, `${height}: eight rows at most (${list.height} px)`);
           assert.equal(await computed('.palette-rows', 'overflow-y'), 'auto');
         }
-        assert.equal(Math.round((await ev(() => T.rtRect('.palette'))).top), 102, 'a short window: nearer the top');
+        assert.equal(Math.round((await ev(() => T.rtRect('.palette')))!.top), 102, 'a short window: nearer the top');
         await mount();
         await ev(() => T.rtDispatch('palette.open'));
-        assert.equal(Math.round((await ev(() => T.rtRect('.palette'))).top), 150, 'the board\'s place');
+        assert.equal(Math.round((await ev(() => T.rtRect('.palette')))!.top), 150, 'the board\'s place');
         assert.equal(await ev(() => T.rtActive()), 'palette');
         for (let i = 0; i < 11; i++) await page.keyboard.press('ArrowDown');
         const vm = await ev(() => T.rtVmFull());
         assert.equal(vm.selected, vm.rowIds[11]);
-        const list = await ev(() => T.rtRect('.palette-rows'));
-        const on = await ev(() => T.rtRect('.palette-row.on'));
+        const list = (await ev(() => T.rtRect('.palette-rows')))!;
+        const on = (await ev(() => T.rtRect('.palette-row.on')))!;
         assert.ok(on.top >= list.top - 1 && on.bottom <= list.bottom + 1, 'the selected row scrolled into view');
         // Tags: the row's badge, in the space's color, capitals, a 2 px ink border.
         const n = await count('.palette-row');
@@ -221,10 +221,10 @@ for (const [name, engine] of ENGINES) {
         assert.equal(await count('.palette-row .fav'), n);
         assert.ok(await count('.palette-row img.fav') > 0);
         await page.keyboard.type('nimbus');
-        assert.ok((await ev(() => T.rtVmFull())).rows.slice(0, 2).every((r) => /nimbus/i.test(r)));
+        assert.ok((await ev(() => T.rtVmFull()))!.rows.slice(0, 2).every((r) => /nimbus/i.test(r)));
         await page.keyboard.press('Enter');
         assert.equal(await count('.palette'), 0);
-        assert.equal((await ev(() => T.rtSent())).at(-1)[0], 'activateTab');
+        assert.equal((await ev(() => T.rtSent())).at(-1)![0], 'activateTab');
         // In another space, its color.
         await ev(() => T.rtApply('switchSpace', 'work'));
         await ev(() => T.rtDispatch('palette.open'));
@@ -233,30 +233,30 @@ for (const [name, engine] of ENGINES) {
       });
 
       await t.test('the page\'s box: docked, hidden with the frame, and edge to edge with "keep the frame" off', async () => {
-        const at = (o) => ({ width: 1440, height: 900, windowId: 1, mode: 'fullscreen', ...o });
+        const at = (o: Record<string, unknown>) => ({ width: 1440, height: 900, windowId: 1, mode: 'fullscreen', ...o });
         await mount();
         assert.deepEqual(await layout(), at({ left: 291, top: 19, right: 19, bottom: 19, radius: 15 }), '16 + 256 + 16, inside the 3 px border');
         await mount({ settings: { sidebarPinnedOpen: false } });
         assert.deepEqual(await layout(), at({ left: 19, top: 19, right: 19, bottom: 19, radius: 15 }), 'hidden, with the frame');
         await ev(() => T.rtSetUi({ sidebar: 'peek' }));
         await page.waitForTimeout(60);
-        assert.equal((await ev(() => T.rtLayouts())).at(-1).left, 19, 'peek moves nothing');
+        assert.equal((await ev(() => T.rtLayouts())).at(-1)!.left, 19, 'peek moves nothing');
         await mount({ settings: { sidebarPinnedOpen: false, frameWhenHidden: false } });
         assert.deepEqual(await layout(), at({ left: 0, top: 0, right: 0, bottom: 0, radius: 0 }), 'no frame: the whole window, square');
-        assert.ok(!(await ev(() => T.rtClasses('.nb'))).includes('framed'));
+        assert.ok(!(await ev(() => T.rtClasses('.nb')))!.includes('framed'));
         await ev(() => T.rtSetUi({ sidebar: 'peek' }));
         await page.waitForTimeout(60);
         assert.deepEqual((await ev(() => T.rtLayouts())).at(-1), at({ left: 0, top: 0, right: 0, bottom: 0, radius: 0 }), 'and while the sidebar peeks');
-        const side = await ev(() => T.rtRect('.sidebar'));
+        const side = (await ev(() => T.rtRect('.sidebar')))!;
         assert.deepEqual([side.left, side.top], [16, 16], 'the peeking card still floats in from the edge');
         // Loading with no frame: the stripe along the page's top edge.
         await ev(() => T.rtLoading(true));
-        const bar = await ev(() => T.rtRect('.load-bar'));
+        const bar = (await ev(() => T.rtRect('.load-bar')))!;
         assert.deepEqual([bar.top, bar.left, bar.right], [0, 0, 1440]);
         await ev(() => T.rtLoading(false));
         // Docked, the setting changes nothing.
         await mount({ settings: { frameWhenHidden: false } });
-        assert.equal((await layout()).left, 291);
+        assert.equal((await layout())!.left, 291);
       });
 
       await t.test('a notice, a prompt or the space editor moves nothing: the page keeps its box', async () => {
@@ -303,7 +303,7 @@ for (const [name, engine] of ENGINES) {
       });
 
       await t.test('one look, the board\'s, in light and dark system modes', async () => {
-        const look = async (scheme) => {
+        const look = async (scheme: 'light' | 'dark') => {
           await page.emulateMedia({ colorScheme: scheme });
           await mount({ inNewTab: true });
           await ev(() => T.rtSetUi({ settingsOpen: true }));

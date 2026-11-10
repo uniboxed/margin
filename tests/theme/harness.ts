@@ -327,7 +327,8 @@ const T = {
 // before any step that reads them (null until then); `runtime` is null again once unmounted.
 const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null! };
 
-Object.assign(T, {
+// (Named, the same object as T, for its type: Harness below.)
+const withRuntime = Object.assign(T, {
   // Neubrutalism (or another built-in theme, with its font families) as a
   // built-in theme: its files read through readFile (here from the package
   // handed over, in the extension from its own URL).
@@ -395,7 +396,7 @@ Object.assign(T, {
     rt.mock.state = { ...rt.mock.state, settings: { ...rt.mock.state.settings, ...patch } };
     rt.host.setState(rt.mock.state);
   },
-  rtSent() { return rt.host.sent.map((s) => [s.type, s.payload]); },
+  rtSent() { return rt.host.sent.map((s): [string, any] => [s.type, s.payload]); }, // (a request's type and payload, as the host has it)
   // iCloud Tabs as Margin.app's host keeps them (shared/cloud-tabs.ts cloudOf):
   // the fixture's (tests/fixtures/cloud-tabs.ts), or `raw`; with every DOM
   // mutation the change made. `edit(raw)` changes the fixture first.
@@ -573,7 +574,7 @@ function target() {
 
 // --- The security suite (tests/theme/security.test.ts) ------------------------
 
-Object.assign(T, {
+const withSecurity = Object.assign(withRuntime, {
   // Any package (a built-in's or a user's) loaded as the overlay loads one.
   async loadPackage(pkg: PagePackage) {
     const theme = await loadTheme(unpack(pkg));
@@ -633,5 +634,6 @@ Object.assign(T, {
 w.T = T;
 
 // What the tests' page functions see on the window (declared in each test file that reads them).
-export type Harness = typeof T;
-export type HarnessRt = typeof rt;
+export type Harness = typeof withSecurity;
+// (`__rt` as the tests read it: once mounted and drawn, its runtime and view model there.)
+export type HarnessRt = Omit<typeof rt, 'runtime'> & { runtime: Runtime & { readonly vm: NonNullable<Runtime['vm']> } };

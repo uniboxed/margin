@@ -15,12 +15,12 @@ import type { Harness } from './harness.ts';
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;
 
-const ENGINES = [['webkit', webkit], ['chromium', chromium]];
-const THEMES = [['arcadia', ARCADIA], ['neubrutalism', NEO]];
+const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
+const THEMES = [['arcadia', ARCADIA], ['neubrutalism', NEO]] as const;
 const script = harnessScript();
 const HERE = 'here';
 const WORK = 's-work';
-const across = (phase, more = {}) => ({
+const across = (phase: string | null, more: Record<string, unknown> = {}) => ({
   v: 1,
   profile: HERE,
   profiles: [
@@ -32,19 +32,19 @@ const across = (phase, more = {}) => ({
   switching: phase ? { profile: WORK, space: 'mail', phase, from: { profile: HERE, windowId: 1 }, ...more } : undefined,
 });
 // A theme with no switch-cover part: Margin's own default fills its slot.
-const withoutPart = (pkg) => ({ ...pkg, html: pkg.html.replace(/<template m-part="switch-cover">[\s\S]*?<\/template>/, '') });
+const withoutPart = (pkg: ReturnType<typeof themeForPage>) => ({ ...pkg, html: pkg.html.replace(/<template m-part="switch-cover">[\s\S]*?<\/template>/, '') });
 
-async function open(engine, pkg, id) {
+async function open(engine: (typeof ENGINES)[number][1], pkg: ReturnType<typeof themeForPage>, id: string) {
   const browser = await engine.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
-  const seen = { requests: [], errors: [] };
+  const seen: { requests: string[], errors: string[] } = { requests: [], errors: [] };
   page.on('request', (r) => { if (!/^(data|blob|about):/.test(r.url())) seen.requests.push(r.url()); });
   page.on('pageerror', (e) => seen.errors.push(e.message));
   await context.route('**/*', (route) => route.abort());
   await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"></body></html>');
   await page.addScriptTag({ content: script });
-  const ev = <R, A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
+  const ev = <R, const A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
   assert.equal((await ev(([p, i]) => T.loadBuiltin(p, i), [pkg, id])).ok, true);
   return { browser, page, seen, ev };
 }
@@ -54,7 +54,7 @@ for (const [engineName, engine] of ENGINES) {
     test(`the switching cover in ${id}, ${engineName}`, async (t) => {
       const { browser, page, seen, ev } = await open(engine, themeForPage(dir), id);
       try {
-        const count = (s) => ev((x) => T.rtCount(x), s);
+        const count = (s: string) => ev((x) => T.rtCount(x), s);
         const mount = (o = {}) => ev((x) => T.mountRuntime({ container: 'document', mode: 'fullscreen', platform: { browser: 'safari', os: 'mac' }, ...x }), o);
 
         await t.test('over the page\'s place while the switch gets ready, in Margin\'s words; gone once it hands over', async () => {
@@ -70,12 +70,12 @@ for (const [engineName, engine] of ENGINES) {
           assert.equal(await ev(() => T.rtAttr('.switch-cover', 'aria-label')), 'Switching to Work… Mail');
           assert.equal(await ev(() => T.rtVisible('.switch-cover')), true);
           // It covers the page's place exactly, and takes the pointer there.
-          const pageBox = await ev(() => T.rtRect('m-page'));
-          const cover = await ev(() => T.rtRect('.switch-cover'));
-          for (const k of ['left', 'top', 'right', 'bottom']) assert.ok(Math.abs(pageBox[k] - cover[k]) <= 4, `${k}: page ${pageBox[k]}, cover ${cover[k]}`);
+          const pageBox = (await ev(() => T.rtRect('m-page')))!;
+          const cover = (await ev(() => T.rtRect('.switch-cover')))!;
+          for (const k of ['left', 'top', 'right', 'bottom'] as const) assert.ok(Math.abs(pageBox[k] - cover[k]) <= 4, `${k}: page ${pageBox[k]}, cover ${cover[k]}`);
           assert.ok((await ev(([x, y]) => T.rtHitClasses(x, y), [pageBox.x, pageBox.y])).some((c) => c.includes('switch-cover')), 'what\'s at the page\'s middle is the cover');
           const ground = await ev(() => T.rtComputed('.switch-cover', 'background-color'));
-          assert.ok(!/rgba\(0, 0, 0, 0\)|transparent/.test(ground), `solid: ${ground}`);
+          assert.ok(!/rgba\(0, 0, 0, 0\)|transparent/.test(ground!), `solid: ${ground}`);
           for (const phase of ['after', 'landed', 'settling']) {
             await ev((a) => T.rtAcross(a), across(phase));
             assert.equal(await count('.switch-cover'), 0, phase);
@@ -107,7 +107,7 @@ for (const [engineName, engine] of ENGINES) {
           await mount({ mode: 'inpage', inNewTab: true });
           assert.equal(await count('.launcher'), 1);
           await ev((a) => T.rtAcross(a), across('preparing'));
-          const pageBox = await ev(() => T.rtRect('m-page'));
+          const pageBox = (await ev(() => T.rtRect('m-page')))!;
           const hit = await ev(([x, y]) => T.rtHitClasses(x, y), [pageBox.x, pageBox.y]);
           assert.ok(hit.some((c) => c.includes('switch-cover')), `the cover over the launcher: ${hit.join(' < ')}`);
         });
@@ -145,10 +145,10 @@ for (const [engineName, engine] of ENGINES) {
       assert.deepEqual(await ev(() => T.rtText('.m-cover-space')), ['✉️ Mail']);
       assert.deepEqual(await ev(() => T.rtText('.m-cover-mark')), ['💼']);
       assert.equal(await ev(() => T.rtVisible('.m-cover')), true);
-      const pageBox = await ev(() => T.rtRect('m-page'));
-      const cover = await ev(() => T.rtRect('.m-cover'));
-      for (const k of ['left', 'top', 'right', 'bottom']) assert.ok(Math.abs(pageBox[k] - cover[k]) <= 4, `${k}: page ${pageBox[k]}, cover ${cover[k]}`);
-      assert.ok(!/rgba\(0, 0, 0, 0\)|transparent/.test(await ev(() => T.rtComputed('.m-cover', 'background-color'))), 'solid');
+      const pageBox = (await ev(() => T.rtRect('m-page')))!;
+      const cover = (await ev(() => T.rtRect('.m-cover')))!;
+      for (const k of ['left', 'top', 'right', 'bottom'] as const) assert.ok(Math.abs(pageBox[k] - cover[k]) <= 4, `${k}: page ${pageBox[k]}, cover ${cover[k]}`);
+      assert.ok(!/rgba\(0, 0, 0, 0\)|transparent/.test((await ev(() => T.rtComputed('.m-cover', 'background-color')))!), 'solid');
       await ev((a) => T.rtAcross(a), across('landed'));
       assert.equal(await ev(() => T.rtCount('.m-cover')), 0);
       assert.deepEqual(seen.requests, []);

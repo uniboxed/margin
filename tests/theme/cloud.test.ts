@@ -15,12 +15,12 @@ import type { Harness } from './harness.ts';
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
 declare const T: Harness;
 
-const ENGINES = [['webkit', webkit], ['chromium', chromium]];
+const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const THEMES = [
   ['arcadia', ARCADIA, { newTab: '.new-tab-row', list: '.tabs-section', section: '.result-section' }],
   ['neubrutalism', NEO, { newTab: '.new-tab', list: '.tabs', section: '.palette-section' }],
   ['pixel', PIXEL, { newTab: '.new-tab', list: '.tabs', section: '.palette-section' }],
-];
+] as const;
 const script = harnessScript();
 
 for (const [engineName, engine] of ENGINES) {
@@ -30,18 +30,18 @@ for (const [engineName, engine] of ENGINES) {
       try {
         const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
         const page = await context.newPage();
-        const seen = { requests: [], errors: [] };
+        const seen: { requests: string[], errors: string[] } = { requests: [], errors: [] };
         page.on('request', (r) => { if (!/^(data|blob|about):/.test(r.url())) seen.requests.push(r.url()); });
         page.on('pageerror', (e) => seen.errors.push(e.message));
         await context.route('**/*', (route) => route.abort());
         await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"></body></html>');
         await page.addScriptTag({ content: script });
-        const ev = <R, A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
+        const ev = <R, const A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
         assert.equal((await ev(([p, i]) => T.loadBuiltin(p, i), [themeForPage(dir), id])).ok, true);
-        const count = (s) => ev((x) => T.rtCount(x), s);
-        const box = async (s, n = 0) => { const b = await ev(([x, k]) => T.rtBox(x, k), [s, n]); assert.ok(b, s); return b; };
-        const click = async (s, n = 0, options = {}) => { const b = await box(s, n); await page.mouse.click(b.x, b.y, options); };
-        const lastSent = async (type) => (await ev(() => T.rtSent())).filter(([x]) => x === type).at(-1) ?? null;
+        const count = (s: string) => ev((x) => T.rtCount(x), s);
+        const box = async (s: string, n = 0) => { const b = await ev(([x, k]) => T.rtBox(x, k), [s, n]); assert.ok(b, s); return b; };
+        const click = async (s: string, n = 0, options: Parameters<typeof page.mouse.click>[2] = {}) => { const b = (await box(s, n))!; await page.mouse.click(b.x, b.y, options); };
+        const lastSent = async (type: string) => (await ev(() => T.rtSent())).filter(([x]) => x === type).at(-1) ?? null;
         const performed = () => ev(() => T.rtPerformedFull());
         await ev(() => T.mountRuntime({ width: 1440, height: 900, mode: 'fullscreen', platform: { browser: 'safari', os: 'mac' }, settings: { sidebarPinnedOpen: true } }));
 
@@ -70,9 +70,9 @@ for (const [engineName, engine] of ENGINES) {
           await click('.cloud-tab', 0);
           assert.deepEqual((await performed()).at(-1), ['navigate', { url: 'https://tagus.example/ferries' }]);
           await click('.cloud-tab', 3, { button: 'right' });
-          assert.deepEqual((await ev(() => T.rtVmFull())).menu, ['Open', 'Copy Link']);
-          const copy = await ev(() => T.rtBoxText('.menu-item', 'Copy Link'));
-          await page.mouse.click(copy.x, copy.y);
+          assert.deepEqual((await ev(() => T.rtVmFull()))!.menu, ['Open', 'Copy Link']);
+          const copy = (await ev(() => T.rtBoxText('.menu-item', 'Copy Link')))!;
+          await page.mouse.click(copy!.x, copy!.y);
           assert.deepEqual((await performed()).at(-1), ['copyText', { text: 'https://cloudrender.example/queue' }]);
           assert.equal((await ev(() => T.rtUi())).menu, null);
         });
@@ -138,14 +138,14 @@ for (const [engineName, engine] of ENGINES) {
         await t.test('the palette: typed, iCloud tabs in their own section per device; Enter opens one in this window', async () => {
           await ev(() => T.rtDispatch('palette.open'));
           await page.keyboard.type('ferry');
-          const rows = (await ev(() => T.rtVmFull())).rowIds;
+          const rows = (await ev(() => T.rtVmFull()))!.rowIds;
           assert.deepEqual(rows.filter((r) => r.startsWith('cloud:')), ['cloud:T-PHONE-1', 'cloud:T-AIR-2']);
           assert.equal(rows.at(-1), 'go', '"Search for …" last');
           assert.ok(rows.indexOf('cloud:T-PHONE-1') > rows.findLastIndex((r) => /^(tab|pin|action|archive):/.test(r)), 'after Margin\'s own rows');
           assert.deepEqual(await ev((s) => T.rtText(s), sel.section), ['On Nora’s iPhone', 'On Studio MacBook Air']);
           // Margin's own matches come first: down to the first iCloud tab, then Enter.
           for (let i = 0; i < rows.indexOf('cloud:T-PHONE-1'); i++) await page.keyboard.press('ArrowDown');
-          assert.equal((await ev(() => T.rtVmFull())).selected, 'cloud:T-PHONE-1');
+          assert.equal((await ev(() => T.rtVmFull()))!.selected, 'cloud:T-PHONE-1');
           await page.keyboard.press('Enter');
           assert.deepEqual(await lastSent('newTab'), ['newTab', { windowId: 1, url: 'https://tagus.example/ferries' }]);
           assert.equal((await ev(() => T.rtUi())).palette.open, false);
