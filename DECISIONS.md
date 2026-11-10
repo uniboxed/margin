@@ -3769,3 +3769,68 @@ return visit touches only those rules.
 - **Tests.** `tests/sheet-walk.test.ts` (addresses, entries and their checks, ages, merges, caps, the background's
   writer); the box pattern `kept-sheet-walk` (both engines); `tests/e2e/sheet-walk.test.ts` and the WebKit host's
   `kept-walks` (first visit, return visit, a kept rule changed, a rule more, a change no check sees once a day old).
+
+## The page box with classic scroll bars (2026-11-10)
+
+GitHub issue #17: on a Mac set to always show scroll bars (or with a mouse and no trackpad: CI's Macs), a page in
+the box came out a scroll bar wider than in a plain window wherever something is fixed (bars, banners, bubbles).
+
+- **The cause.** In the box `<html>` is the containing block for what's fixed (its `transform`) and `<body>` is the
+  scroller, its classic bar inside it at the box's right edge. What's fixed was laid out in `<html>`'s whole width,
+  bar strip included; a window lays it out in the window less its scroll bars (and `<html>` is that wide too). The
+  same along the bottom for a page wider than the box. Reproduced: Chromium 5 patterns (`#nav at 0,0,1172,57, plain
+  0,0,1157,57`), the WebKit host 5 (17 px bars; `scroll-lock` among them, below).
+- **The fix (`content/page/box-bars.ts`, `shared/page-box.ts barsCss`).** While `<body>`'s bars take space,
+  `<html>` is narrower (shorter) by them and `<body>` reaches past it to the box's edge: its right margin less the
+  bar (`box-body.ts writePadding`), its heights plus the bottom one (`bodyFitCss` `below`). So what's fixed, `<html>`,
+  `document.documentElement.clientWidth` and the width `<body>` is worked out from (`whole`, a centred `<body>`) are as
+  in a window, and `<body>` and its bar are where they were. Top-layer elements are placed against the box less the
+  bars (`top-layer.ts`), as a window's are, and a window-rooted IntersectionObserver's `rootBounds` is too. Not
+  `overflow-clip-margin` (no WebKit), not a border on `<html>` (its width, which `whole` is read from, would stay the
+  bar's strip wider), not a Margin scroller around `<body>` (DECISIONS 2026-11-01). `<html>`'s `overflow: clip`
+  propagates to the window (the root's overflow is the viewport's), so `<body>` sticking out of `<html>` isn't clipped,
+  in either engine.
+- **Measured, not guessed.** A ResizeObserver on `<body>` (a bar coming or going changes its content box), after
+  layout: the browser's own `offsetWidth - clientWidth` less the borders, and the same down. Written only when a
+  value changes, into a sheet of its own after the box's (`sheets.bars`), with rules about `<html>` and `<body>`
+  only: Chromium styles just those two again as a bar comes or goes. What's written keeps `<body>`'s content box as it
+  was, so the observer has nothing more to say in that frame (a new padding for a centred `<body>`, or `<body>`'s
+  overflow, waits for the next frame: changing its size in the callback would reach the page as the observer's loop
+  error). A bar on the left (right to left) is left as it is.
+- **Overlay scroll bars (the default with a trackpad): nothing changes.** Every bar measures 0, the bars' sheet stays
+  empty (never even replaced), the box's own sheet is byte for byte what it was, and the padding and fit sheets are
+  too (unit tests). What runs is the observer and its reads of sizes after layout. `npm run bench:box`: every size
+  within its baseline in both engines.
+- **`overflow: scroll` on `<html>`** (springer.com's `body-clips-sideways`) shows the window's own bars at the
+  window's edge, which never scrolls; Chromium's `100vw` then leaves them out, so `<html>` came out two bars narrow.
+  Where bars take space (`seen`: once `<body>`'s or the window's have), the window's are hidden
+  (`scrollbar-width: none` on `<html>`, which is the viewport's) and `<body>` gets `overflow: scroll` for the page's
+  `scroll` (`box-locks.ts`), as a window shows its bar always. Whether the window's take space is looked at once, in
+  the next frame, when the page starts saying `scroll`; with overlay bars `<body>` stays `auto` as before.
+- **WebKit doesn't lay `<body>`'s children out again when its classic bar goes because its overflow turned hidden**
+  (a scroll lock): they kept the bar's width free (`scroll-lock` in the host: sections 883 wide, plain 900), with or
+  without the box's change; only a change of `<body>`'s own width makes it. So when a bar goes or gets thinner,
+  `<body>` is a pixel narrower for one layout, within the observer's callback (an element of Margin's after it,
+  `margin-relayout`, as the reads' flags), then as it was, its scroll kept. Not when one comes (WebKit lays out
+  again itself then), and never on a page where no bar has taken space.
+- **The cost, with classic bars only.** As the first bar shows (a page's content growing past the box), one more
+  restyle and layout before that frame is painted. Chromium: nothing measurable (`bench:box` with classic bars, its
+  heavy page's load to frame -6 ms against -11 overlay). WebKit restyles every element for any sheet written: +60 to
+  +80 ms on the 20,000-rule bench page, +5 ms on the 2,000-rule one. The window's own layout has to lay the page out
+  again as its bar shows too.
+- **Tests.** `MARGIN_SCROLL_BARS` (`always` or `overlay`): `scripts/scroll-bars.mts` runs a command with Chrome for Testing's
+  own `AppleShowScrollBars` set and put back after (its app domain, never the Mac's global one); the WebKit host takes
+  it as its argument domain (`run.sh`: `-AppleShowScrollBars Always`, nothing written; `defaults write host …`
+  worked too but left a `host.plist` behind). Both box-pattern runs check first that the browser shows the bars
+  asked for. `npm run test:classic` (both engines; in `npm run gate`); CI runs the Chromium patterns with classic
+  bars on the first end-to-end Mac and the host's on the macOS job, beside the runs with the runner's
+  `WhenScrolling`. The rules measure the window's bars (`bars`: innerWidth less `<html>`'s clientWidth): `box-size`
+  and `told-size` allow a plain window's, and a new rule, `same-bars`, holds the box to them. New pattern
+  `classic-scroll-bars` (fixed bars top, bottom and corner, a percent-wide fixed bar, a centred `<body>`, a row wider
+  than the box, a modal dialog). Before, with classic bars: 5 of the 22 patterns failed in Chromium, and main's build failed 8 of these 23 in the host; this
+  one: all 23 pass in both engines with both settings. `tests/page-css.test.ts`: the bars' sheet empty with none,
+  its rules about `<html>` and `<body>` only, the relayout's flag after `<body>`.
+- **Not done.** A bar on the left for right-to-left pages; Chromium's `100vw` without the window's bar for a page
+  saying `overflow-y: scroll` on `<html>` (the box keeps `100vw` the window's); for such a page, the setting changed
+  in System Settings while it's open is followed only as far as `<body>`'s own bars. Needs a check in real Safari
+  with "Show scroll bars: Always" (only the WebKit host and Chromium were run).

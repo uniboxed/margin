@@ -45,8 +45,11 @@ export function startTopLayer(box: Box) {
     const map = element.computedStyleMap();
     const style = getComputedStyle(element);
     if ((style as any).positionAnchor && !/^(auto|none|normal)?$/.test((style as any).positionAnchor)) return;
-    const x = shift(map, 'left', 'right', 'margin-left', box.left, box.right, box.dw);
-    const y = shift(map, 'top', 'bottom', 'margin-top', box.top, box.bottom, box.dh);
+    // A window's top layer is laid out in the window less its scroll bars: here the box less <body>'s, where they
+    // take space (box-bars.ts; 0 with overlay scroll bars).
+    const { right: barX, bottom: barY } = box.bars();
+    const x = shift(map, 'left', 'right', 'margin-left', box.left, box.right + barX, box.dw + barX);
+    const y = shift(map, 'top', 'bottom', 'margin-top', box.top, box.bottom + barY, box.dh + barY);
     if (x == null || y == null) return;
     const [ownX = '0px', ownY = '0px', ownZ = ''] = style.translate === 'none' ? [] : style.translate.split(' ');
     placed.set(element, { value: element.style.getPropertyValue('translate'), priority: element.style.getPropertyPriority('translate') });
@@ -81,4 +84,5 @@ export function startTopLayer(box: Box) {
   const again = () => { for (const element of [...placed.keys()]) place(element); };
   box.onMove.push(again);
   box.onRest.push(again);
+  box.onBars.push(again);
 }

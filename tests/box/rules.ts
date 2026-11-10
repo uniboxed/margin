@@ -14,7 +14,8 @@
 /** The rules, by id, for the README and for a pattern's `allow:`. */
 export const RULES = Object.freeze({
   'box-at-slot': "<html> is drawn at the slot's corner (the box's place beside the sidebar)",
-  'box-size': "<html> is the slot's size: whatever the page says about <html>'s size, place or margins",
+  'box-size': "<html> is the slot's size, less the scroll bars where they take space (as a plain window's <html> is): whatever the page says about <html>'s size, place or margins",
+  'same-bars': 'scroll bars take the space they take in a plain window (none with overlay scroll bars; with classic ones, the page\'s, <body>\'s in the box)',
   'told-size': 'what the page is told its window is (innerWidth, innerHeight) is the box it is drawn in',
   'window-still': "the window itself never scrolls: <body> does (a page focusing something out of sight mustn't slide the box)",
   'same-scroller': 'document.scrollingElement is what it is in a plain window (<html>, its scrolling speaking for <body>, which scrolls in the box), and says the window\'s height',
@@ -70,6 +71,9 @@ export function measure(): any {
     root: { x: m ? m.e : 0, y: m ? m.f : 0, w: round(parseFloat(cs.width)), h: round(parseFloat(cs.height)) },
     // The window's own scroll (the layout viewport's), which no shim speaks for.
     window: { left: vv ? round(vv.pageLeft - vv.offsetLeft) : 0, top: vv ? round(vv.pageTop - vv.offsetTop) : 0, scale: vv ? vv.scale : 1 },
+    // The window's scroll bars where they take space (classic scroll bars; 0 with overlay ones): what's told of the
+    // window less what's left for the page. In the box, <html>'s answer is <body>'s, which scrolls.
+    bars: { w: round(innerWidth - de.clientWidth), h: round(innerHeight - de.clientHeight) },
     scroller: scroller === body ? 'body' : scroller === de ? 'html' : String(scroller && scroller.localName),
     scrollerHeight: scroller ? round(scroller.clientHeight) : 0,
     overflowX: scroller && !clipsX ? round(scroller.scrollWidth - scroller.clientWidth) : 0,
@@ -90,9 +94,14 @@ export function judge(boxed: any, plain: any, setup: { slot: { left: number, top
   const w = setup.window.w - slot.left - slot.right;
   const h = setup.window.h - slot.top - slot.bottom;
   const say = (rule, text) => { if (!off(rule)) fails.push(`${rule}: ${text}`); };
+  // Where scroll bars take space, <html> is the window less them, as in a plain window.
+  const bars = plain.bars || { w: 0, h: 0 };
+  const less = bars.w || bars.h ? ` less the plain window's scroll bars (${bars.w}×${bars.h})` : '';
   if (!near(boxed.root.x, slot.left, 0.5) || !near(boxed.root.y, slot.top, 0.5)) say('box-at-slot', `<html> at ${boxed.root.x},${boxed.root.y}, the slot at ${slot.left},${slot.top}`);
-  if (!near(boxed.root.w, w, 1) || !near(boxed.root.h, h, 1)) say('box-size', `<html> ${boxed.root.w}×${boxed.root.h}, the slot ${w}×${h}`);
-  if (!near(boxed.told.w, boxed.root.w, 1) || !near(boxed.told.h, boxed.root.h, 1)) say('told-size', `told ${boxed.told.w}×${boxed.told.h}, drawn ${boxed.root.w}×${boxed.root.h}`);
+  if (!near(boxed.root.w, w - bars.w, 1) || !near(boxed.root.h, h - bars.h, 1)) say('box-size', `<html> ${boxed.root.w}×${boxed.root.h}, the slot ${w}×${h}${less}`);
+  const own = boxed.bars || { w: 0, h: 0 };
+  if (!near(own.w, bars.w, 1) || !near(own.h, bars.h, 1)) say('same-bars', `scroll bars ${own.w}×${own.h}, plain ${bars.w}×${bars.h}`);
+  if (!near(boxed.told.w, boxed.root.w + bars.w, 1) || !near(boxed.told.h, boxed.root.h + bars.h, 1)) say('told-size', `told ${boxed.told.w}×${boxed.told.h}, drawn ${boxed.root.w}×${boxed.root.h}${less}`);
   if (boxed.window.left !== 0 || boxed.window.top !== 0) say('window-still', `the window scrolled to ${boxed.window.left},${boxed.window.top}`);
   if (boxed.scroller !== plain.scroller || !near(boxed.scrollerHeight, plain.scrollerHeight, 1)) say('same-scroller', `the scroller is <${boxed.scroller}>, ${boxed.scrollerHeight} high; plain <${plain.scroller}>, ${plain.scrollerHeight}`);
   if (boxed.overflowX > plain.overflowX + 1) say('no-overflow', `${boxed.overflowX}px past the box sideways, ${plain.overflowX}px plain`);

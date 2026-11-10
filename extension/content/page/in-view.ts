@@ -42,8 +42,10 @@ export function startInView(box: Box) {
     get() {
       const rect = rootBounds.call(this);
       if (!rect || !box.boxed()) return rect;
-      // The window with the page's margin around it: the same, for the box.
-      return windowRooted.has(this) ? new DOMRect(rect.x, rect.y, rect.width - box.dw, rect.height - box.dh) : box.toPage(rect);
+      // The window with the page's margin around it: the same, for the box, less <body>'s scroll bars where they
+      // take space, as a window's root is less its own (box-bars.ts).
+      const bars = box.bars();
+      return windowRooted.has(this) ? new DOMRect(rect.x, rect.y, rect.width - box.dw - bars.right, rect.height - box.dh - bars.bottom) : box.toPage(rect);
     },
   });
 

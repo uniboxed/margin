@@ -7,6 +7,7 @@
 //                      (the arithmetic: shared/body-fit.ts)
 //   box-chain.ts       the first children whose top margins count with <body>'s
 //   box-watch.ts       when to read again: attributes, children, a new <body> or <html>, resizes
+//   box-bars.ts        <body>'s scroll bars where they take space (classic scroll bars)
 // What the box promises, and every page pattern it handles: tests/box/README.md.
 import type { Accessor } from './accessor.ts';
 import { createOwnSheets } from './box-own-sheets.ts';
@@ -14,6 +15,9 @@ import { startLocks } from './box-locks.ts';
 import { startBody } from './box-body.ts';
 import { startChain } from './box-chain.ts';
 import { startWatch } from './box-watch.ts';
+import { startBars } from './box-bars.ts';
+import { NO_BARS } from '../../shared/page-box.ts';
+import type { Bars } from '../../shared/page-box.ts';
 
 const DEFAULT_LEFT = 260;
 const FRAME = 8;
@@ -74,6 +78,10 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     onToggle: [] as (() => void)[],
     /** Runs when a <body> arrives, the first or one the page swapped in. */
     onBody: [] as (() => void)[],
+    /** Runs when <body>'s scroll bars start or stop taking space, or change (box-bars.ts). */
+    onBars: [] as (() => void)[],
+    /** <body>'s scroll bars where they take space, in the page's pixels (box-bars.ts; all 0 with overlay ones). */
+    bars: (): Bars => ctx.bars,
     /** The page's styles changed: what it says about <body> is read again. */
     bodyMayHaveChanged: () => ctx.watch.bodyMayHaveChanged(),
     /** A rule was edited, whether or not it reaches <body> now: it might once a class changes. */
@@ -87,7 +95,7 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     /** Children came or went somewhere in the page (sheets.ts's observer). */
     childrenChanged: () => ctx.chain.childrenChanged(),
     /** Margin's own, in the page only during a read. */
-    ownFlag: (node: Node) => ctx.body.ownFlag(node),
+    ownFlag: (node: Node) => ctx.body.ownFlag(node) || ctx.scrollBars.ownFlag(node),
     loaded: () => ctx.watch.loaded(),
     set,
   };
@@ -105,13 +113,16 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     lastPage: '', // the same, without the box's width
     pageNew: false, // the last read found something new the page says, the box's width aside
     plainPage: true, // the page's <body> can be worked out without a layout
+    bars: NO_BARS as Bars, // <body>'s scroll bars where they take space (box-bars.ts)
      body: null as any,
      chain: null as any,
      locks: null as any,
      watch: null as any,
      moves: null as any,
+     scrollBars: null as any,
   };
   own.start(box);
+  ctx.scrollBars = startBars(ctx);
   ctx.body = startBody(ctx);
   ctx.chain = startChain(ctx);
   ctx.locks = startLocks(ctx);
