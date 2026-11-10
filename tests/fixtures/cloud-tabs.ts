@@ -6,7 +6,7 @@
 // relative to `now` (milliseconds).
 const MIN = 60_000;
 const DAY = 86_400_000;
-const midnight = (ms) => { const t = new Date(ms); t.setHours(0, 0, 0, 0); return t.getTime(); };
+const midnight = (ms: number) => { const t = new Date(ms); t.setHours(0, 0, 0, 0); return t.getTime(); };
 
 export const PHONE = 'A1B2C3D4-0000-4000-8000-000000000001';
 export const AIR = 'A1B2C3D4-0000-4000-8000-000000000002';

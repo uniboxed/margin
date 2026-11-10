@@ -3,9 +3,9 @@
 // (beforeunload). The unread count is in the title, "Inbox (4) — Post", and
 // in the icon, a data: URL drawn on a canvas; opening an unread message
 // lowers both.
-import { art, avatar, doc, esc, icon } from './common.ts';
+import { art, avatar, doc, esc, icon, type Site } from './common.ts';
 
-const MAIL = [
+const MAIL: [from: string, subject: string, preview: string, time: string, unread: boolean, label?: keyof typeof LABELS, selected?: boolean][] = [
   ['Nora Field', 'Thursday’s walk — route and timings', 'Here’s the plan for Thursday: we meet at the harbour steps at 8, take the cliff path to the lighthouse and', '9:41', true, 'Travel', true],
   ['Common Goods', 'Your order has shipped', 'Good news: your Canvas Tote is on its way. Track it with the link below. It should arrive by', '8:15', true, 'Receipts'],
   ['Hanna Ruus', 'Re: photos from the depot', 'These came out so well! Could we use the one of the tram on the bridge for the newsletter?', '7:02', true, 'Work'],
@@ -33,7 +33,7 @@ function inbox() {
   <aside class="side">
     <div class="brand"><svg width="30" height="30" viewBox="0 0 30 30"><rect width="30" height="30" rx="9" fill="#e5484d"/><path d="M7 10h16v11H7z" fill="#fff"/><path d="m7 10 8 6 8-6" stroke="#e5484d" stroke-width="2" fill="none"/></svg>Post</div>
     <button class="compose-btn" id="compose">${icon('plus', { size: 18 })} New message</button>
-    <nav>${[['inbox', 'Inbox', unread, 1], ['star', 'Starred'], ['clock', 'Snoozed'], ['send', 'Sent'], ['file', 'Drafts', 1], ['archive', 'Archive'], ['trash', 'Trash']].map(([i, n, c, on]) => `<a href="/inbox" class="${on ? 'on' : ''}">${icon(i, { size: 18 })}<span>${n}</span>${c ? `<b${n === 'Inbox' ? ' id="count"' : ''}>${c}</b>` : ''}</a>`).join('')}</nav>
+    <nav>${([['inbox', 'Inbox', unread, 1], ['star', 'Starred'], ['clock', 'Snoozed'], ['send', 'Sent'], ['file', 'Drafts', 1], ['archive', 'Archive'], ['trash', 'Trash']] as [icon: string, name: string, count?: number, on?: number][]).map(([i, n, c, on]) => `<a href="/inbox" class="${on ? 'on' : ''}">${icon(i, { size: 18 })}<span>${n}</span>${c ? `<b${n === 'Inbox' ? ' id="count"' : ''}>${c}</b>` : ''}</a>`).join('')}</nav>
     <h5>Labels</h5>
     <nav class="labels">${Object.entries(LABELS).map(([n, c]) => `<a href="/inbox"><i style="background:${c}"></i>${n}</a>`).join('')}</nav>
     <div class="storage"><span>4.2 GB of 15 GB used</span><div><i></i></div></div>
@@ -213,4 +213,4 @@ export default {
     ['GET', '/', () => ({ status: 302, location: '/inbox' })],
     ['GET', '/inbox', () => inbox()],
   ],
-};
+} satisfies Site;

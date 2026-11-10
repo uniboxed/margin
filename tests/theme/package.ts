@@ -16,8 +16,8 @@ const PACKAGE_FILES = new Set(['theme.json', 'theme.html', 'theme.css']);
 const BUNDLED = /^(fonts|images)\//;
 
 export function readTheme(dir = NEO): { manifest: string, html: string, css: string, files: Record<string, Buffer> } {
-  const files = {};
-  const walk = (sub) => {
+  const files: Record<string, Buffer> = {};
+  const walk = (sub: string) => {
     for (const name of readdirSync(join(dir, sub))) {
       const rel = sub ? `${sub}/${name}` : name;
       if (statSync(join(dir, rel)).isDirectory()) { if (BUNDLED.test(`${rel}/`)) walk(rel); }
@@ -25,7 +25,7 @@ export function readTheme(dir = NEO): { manifest: string, html: string, css: str
     }
   };
   walk('');
-  const text = (f) => readFileSync(join(dir, f), 'utf8');
+  const text = (f: string) => readFileSync(join(dir, f), 'utf8');
   return { manifest: text('theme.json'), html: text('theme.html'), css: text('theme.css'), files };
 }
 

@@ -1,11 +1,11 @@
 // margin.test: the index. A card for every page of the test site, with its
 // picture, title, address and what the suite uses it for.
-import { doc, esc } from './common.ts';
+import { doc, esc, type RouteContext, type Site } from './common.ts';
 
 const ICON = '<link rel="icon" href="/favicon.svg" type="image/svg+xml">';
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#ff6a88"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#g)"/><rect x="14" y="16" width="10" height="32" rx="3" fill="#fff" opacity=".9"/><rect x="28" y="16" width="22" height="32" rx="4" fill="#fff" opacity=".55"/></svg>`;
 
-function index({ sites, link }) {
+function index({ sites, link }: RouteContext) {
   const cards = sites
     .filter((s) => s.host !== 'margin.test')
     .flatMap((s) => (s.pages ?? []).map((p) => ({ site: s, ...p })))
@@ -59,4 +59,4 @@ export default {
   pages: [],
   assets: { '/favicon.svg': { type: 'image/svg+xml', body: FAVICON } },
   routes: [['GET', '/', index]],
-};
+} satisfies Site;

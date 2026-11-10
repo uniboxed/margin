@@ -1,4 +1,5 @@
 // Every site of the test site, by host name.
+import type { Site } from './common.ts';
 import margin from './margin.ts';
 import dispatch from './dispatch.ts';
 import shop from './shop.ts';
@@ -17,4 +18,4 @@ import radio from './radio.ts';
 import app from './app.ts';
 import search from './search.ts';
 
-export const SITES = [margin, dispatch, shop, reel, docs, murmur, metrics, post, noir, accounts, embed, maps, slow, harbor, focus, radio, app, search];
+export const SITES: Site[] = [margin, dispatch, shop, reel, docs, murmur, metrics, post, noir, accounts, embed, maps, slow, harbor, focus, radio, app, search];

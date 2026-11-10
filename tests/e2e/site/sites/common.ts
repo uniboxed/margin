@@ -1,7 +1,58 @@
 // What every site's pages share: escaping, the page shell, picture
-// addresses and the designed 404 page.
+// addresses and the designed 404 page. And the shape of a site (index.ts
+// SITES) and of what its routes answer (server.ts send).
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
-export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+/** What a route, an asset or a file answers (server.ts send): a string is an HTML page. */
+export type Out = string | {
+  status?: number,
+  type?: string,
+  body?: string | Uint8Array,
+  cache?: boolean,
+  delay?: number,
+  location?: string,
+  headers?: Record<string, string>,
+};
+/** An address on one of the test site's hosts (server.ts startSite url). */
+export type Link = (host: string, path?: string) => string;
+/** What a route's handler is given (server.ts route). */
+export type RouteContext = {
+  req: IncomingMessage, res: ServerResponse, url: URL, path: string, query: URLSearchParams,
+  /** the path's match: a string pattern's is `[path]` */
+  params: RegExpExecArray | string[],
+  body: string, form: URLSearchParams, link: Link, site: Site, sites: Site[],
+};
+/** A route's answer; `null`: not here (the 404), none (`undefined`): the handler wrote the response itself. */
+export type Handler = (ctx: RouteContext) => Out | null | void | Promise<Out | null | void>;
+export type Route = [method: string, pattern: string | RegExp, handler: Handler];
+export type Look = { bg?: string, ink?: string, accent?: string, font?: string, dark?: boolean };
+/** A page the suites go through (README.md, the screenshots): its address, title, what it's for and its picture. */
+export type Page = {
+  path: string, title: string, what: string, art: string,
+  /** its line under the title in the search results (search.ts) */
+  snippet?: string,
+  /** its title changes every second (site.test.ts) */
+  ticks?: boolean,
+};
+export type Site = {
+  host: string,
+  name: string,
+  blurb?: string,
+  look?: Look,
+  /** the <link rel=icon> markup on its pages ('' for none) */
+  iconLink?: string,
+  pages: Page[],
+  assets?: Record<string, { type: string, body: string | Uint8Array }>,
+  routes: Route[],
+  /** its folder in files/ and in the made files, when not its host's name */
+  dir?: string,
+  /** serves the neubrutalism theme's fonts at /fonts/ */
+  fonts?: boolean,
+  longTitle?: string,
+};
+
+const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+export const esc = (s: unknown) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
 
 // ?fp on any page: where <html> sits in each of the first 40 frames
 // (window.__fp), with Margin's word to the box held back until &late=N ms.
@@ -20,11 +71,12 @@ export const FIRST_FRAMES = `<script>(() => {
 })();</script>`;
 
 // A picture's address on this site (art.ts draws it).
-export const art = (kind, params = {}) => `/media/art/${kind}.svg?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]))}`;
-export const avatar = (name) => art('avatar', { name });
+export type ArtParams = Record<string, string | number | boolean>;
+export const art = (kind: string, params: ArtParams = {}) => `/media/art/${kind}.svg?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]))}`;
+export const avatar = (name: string) => art('avatar', { name });
 
 // A whole page. `icon` is the <link rel=icon> markup (or '' for none).
-export function doc({ title, body, head = '', icon = '', css = '/assets/site.css', themeColor, lang = 'en', bodyClass = '', htmlClass = '', description }) {
+export function doc({ title, body, head = '', icon = '', css = '/assets/site.css', themeColor, lang = 'en', bodyClass = '', htmlClass = '', description }: { title: string, body: string, head?: string, icon?: string, css?: string, themeColor?: string, lang?: string, bodyClass?: string, htmlClass?: string, description?: string }) {
   return `<!doctype html>
 <html lang="${lang}"${htmlClass ? ` class="${htmlClass}"` : ''}>
 <head>
@@ -41,7 +93,7 @@ ${body}
 }
 
 // A drawn icon in a page (stroke icons, 24 × 24).
-const PATHS = {
+const PATHS: Record<string, string> = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
   bag: '<path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
   heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
@@ -87,11 +139,11 @@ const PATHS = {
   back: '<path d="M19 5v14L9 12z"/><path d="M6 5v14"/>',
   volume: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M19 6a8 8 0 0 1 0 12"/>',
 };
-export const icon = (name, { size = 20, stroke = 1.8, cls = '' } = {}) =>
+export const icon = (name: string, { size = 20, stroke = 1.8, cls = '' } = {}) =>
   `<svg class="i ${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATHS[name] ?? ''}</svg>`;
 
 // The designed 404, in the site's own colours and type.
-export function notFound(site, path) {
+export function notFound(site: Site, path: string) {
   const look = { bg: '#f7f6f3', ink: '#1d1d1f', accent: '#3e63dd', font: '-apple-system, system-ui, sans-serif', ...site.look };
   const css = `
   :root { color-scheme: ${look.dark ? 'dark' : 'light'}; }

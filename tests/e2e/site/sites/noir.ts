@@ -1,7 +1,7 @@
 // noir.test: NOIR, a dark portfolio. Big type in Archivo Black and Space
 // Grotesk (the neubrutalism theme's bundled OFL fonts, served from the
 // repo, not copied), a grid of work, a dark theme-color. SVG icon.
-import { art, doc, esc, icon } from './common.ts';
+import { art, doc, esc, icon, type Site } from './common.ts';
 
 const ICON = '<link rel="icon" href="/favicon.svg" type="image/svg+xml">';
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#0b0b0c"/><circle cx="44" cy="20" r="7" fill="#ff5a36"/><path d="M16 48V16l22 32V16" stroke="#ece7df" stroke-width="7" fill="none" stroke-linejoin="bevel"/></svg>`;
@@ -109,4 +109,4 @@ export default {
     '/favicon.svg': { type: 'image/svg+xml', body: FAVICON },
   },
   routes: [['GET', '/', () => home()]],
-};
+} satisfies Site;

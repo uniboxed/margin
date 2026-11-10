@@ -2,7 +2,7 @@
 // sideways carousel of collections) and a product page per product
 // (gallery, colour swatches, sizes, Add to bag: the title becomes
 // "(1) Bag · …"). PNG icon.
-import { art, doc, esc, icon } from './common.ts';
+import { art, doc, esc, icon, type ArtParams, type Site } from './common.ts';
 import { rng } from '../art.ts';
 
 const ICON = '<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">\n<link rel="apple-touch-icon" href="/apple-touch-icon.png">';
@@ -22,9 +22,9 @@ const LINES = [
   ['headphones', 'Studio Headphones', '#2b2d42', 'Desk', 'Wireless Cans', '#e5989b'],
 ];
 // What each kind of thing costs, roughly.
-const BASE = { tote: 48, mug: 24, lamp: 120, sneaker: 95, backpack: 110, plant: 32, chair: 340, bottle: 28, cap: 34, notebook: 16, candle: 26, headphones: 180 };
+const BASE: Record<string, number> = { tote: 48, mug: 24, lamp: 120, sneaker: 95, backpack: 110, plant: 32, chair: 340, bottle: 28, cap: 34, notebook: 16, candle: 26, headphones: 180 };
 const GROUNDS = ['#efe9df', '#e4ece4', '#f3e6dc', '#e5e9f0', '#f1ede4', '#ebe4ee'];
-const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '');
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '');
 
 export const PRODUCTS = LINES.flatMap(([kind, a, ca, cat, b, cb], i) =>
   [[a, ca], [b, cb]].map(([name, color], k) => {
@@ -43,12 +43,13 @@ export const PRODUCTS = LINES.flatMap(([kind, a, ca, cat, b, cb], i) =>
     };
   }),
 );
+type Product = (typeof PRODUCTS)[number];
 // Canvas Tote first: the page the tests open.
-const pic = (p, extra = {}) => art('product', { kind: p.kind, c: p.color, bg: p.bg, ...extra });
-const money = (n) => `$${n.toFixed(2).replace(/\.00$/, '')}`;
-const stars = (r) => `<span class="stars" style="--r:${(r / 5) * 100}%" aria-label="${r} out of 5">★★★★★</span>`;
+const pic = (p: Product, extra: ArtParams = {}) => art('product', { kind: p.kind, c: p.color, bg: p.bg, ...extra });
+const money = (n: number) => `$${n.toFixed(2).replace(/\.00$/, '')}`;
+const stars = (r: number) => `<span class="stars" style="--r:${(r / 5) * 100}%" aria-label="${r} out of 5">★★★★★</span>`;
 
-function chrome(body, { bag = 0 } = {}) {
+function chrome(body: string, { bag = 0 } = {}) {
   return `
 <div class="promo">Free shipping on orders over $75 · Returns within 60 days · <a href="/">Gift cards</a></div>
 <header class="top"><div class="wrap">
@@ -66,13 +67,13 @@ ${body}
 <script src="/assets/shop.js" defer></script>`;
 }
 
-const productCard = (p) => `<a class="product" href="/p/${p.slug}">
+const productCard = (p: Product) => `<a class="product" href="/p/${p.slug}">
   <div class="ph"><img src="${pic(p)}" alt="${esc(p.name)}" loading="lazy" width="400" height="400">${p.badge ? `<span class="badge ${p.badge === 'Sale' ? 'sale' : ''}">${p.badge}</span>` : ''}<button class="fav" aria-label="Save" onclick="event.preventDefault(); this.classList.toggle('on')">${icon('heart', { size: 18 })}</button></div>
   <div class="pi"><h3>${esc(p.name)}</h3><span class="price">${p.badge === 'Sale' ? `<s>${money(Math.round(p.price * 1.25))}</s> ` : ''}${money(p.price)}</span></div>
   <div class="meta">${stars(p.rating)}<span>${p.rating} (${p.reviews})</span></div>
 </a>`;
 
-const COLLECTIONS = [
+const COLLECTIONS: [title: string, kind: string, art: ArtParams][] = [
   ['The kitchen shelf', 'landscape', { seed: 31, p: 'mint' }],
   ['Everyday carry', 'landscape', { seed: 4, p: 'desert' }],
   ['Slow mornings', 'landscape', { seed: 2, p: 'dawn' }],
@@ -113,7 +114,7 @@ function grid() {
   return doc({ title: 'All goods — Common Goods', icon: ICON, themeColor: '#2f5a3e', body: chrome(body) });
 }
 
-function productPage(p) {
+function productPage(p: Product) {
   const others = PRODUCTS.filter((o) => o.kind === p.kind && o !== p);
   const colors = [p.color, ...others.map((o) => o.color), '#3b3b3b', '#efe7da'].slice(0, 4);
   const shots = [pic(p), pic(p, { a: -8 }), pic(p, { a: 8, bg: '#f4f1ea' }), pic(p, { bg: '#e2e7ea' })];
@@ -349,4 +350,4 @@ export default {
       return p ? productPage(p) : null;
     }],
   ],
-};
+} satisfies Site;

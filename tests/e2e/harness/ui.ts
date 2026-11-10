@@ -1,14 +1,15 @@
 // Reading and driving the overlay (the theme Margin draws, Arcadia by
 // default) and the pages' box, for the e2e tests. Rows carry their ids as
 // data-* (extension/themes/arcadia/theme.html).
+import type { Page } from 'playwright';
 
 /** The sidebar as drawn: tab rows, pins, folders, chips, the space's name. @param ui the overlay's page */
-export function sidebar(ui: any) {
+export function sidebar(ui: Page) {
   return ui.evaluate(() => {
-    const q = (sel) => [...document.querySelectorAll(sel)];
-    const has = (el, c) => el.classList.contains(c);
-    const icon = (el) => {
-      const img = el.querySelector('img.avatar');
+    const q = (sel: string) => [...document.querySelectorAll<HTMLElement>(sel)];
+    const has = (el: Element, c: string) => el.classList.contains(c);
+    const icon = (el: Element) => {
+      const img = el.querySelector<HTMLImageElement>('img.avatar');
       if (img) return { kind: 'image', src: img.getAttribute('src') ?? '', loaded: img.complete && img.naturalWidth > 0 };
       const letter = el.querySelector('.avatar.letter');
       return letter ? { kind: 'letter', letter: letter.textContent.trim() } : null;
@@ -34,27 +35,27 @@ export function sidebar(ui: any) {
  * Waits for the overlay's transitions and animations that end (a sidebar
  * sliding out, an edge moving) to finish, for a picture of where they land.
  * */
-export function settled(ui: any) {
+export function settled(ui: Page) {
   return ui.evaluate(() => Promise.all(document.getAnimations()
     .filter((a) => Number.isFinite(Number(a.effect?.getComputedTiming().endTime)))
     .map((a) => a.finished.catch(() => {}))).then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))));
 }
 
 /** The palette as drawn: its rows (id, title, section, selected), its field's text and focus. */
-export function palette(ui: any) {
+export function palette(ui: Page) {
   return ui.evaluate(() => {
-    const field = document.querySelector('.palette .query');
+    const field = document.querySelector<HTMLInputElement>('.palette .query');
     return {
       open: !!document.querySelector('.palette'),
       query: field?.value ?? null,
       focused: !!field && document.activeElement === field,
-      rows: [...document.querySelectorAll('.palette .result[data-id]')].map((r) => ({ id: r.dataset.id, title: r.querySelector('.title')?.textContent ?? '', section: r.getAttribute('aria-description') ?? '', selected: r.getAttribute('aria-selected') === 'true', badge: r.querySelector('.badge')?.textContent ?? null })),
+      rows: [...document.querySelectorAll<HTMLElement>('.palette .result[data-id]')].map((r) => ({ id: r.dataset.id, title: r.querySelector('.title')?.textContent ?? '', section: r.getAttribute('aria-description') ?? '', selected: r.getAttribute('aria-selected') === 'true', badge: r.querySelector('.badge')?.textContent ?? null })),
     };
   });
 }
 
 /** Clicks a menu item by its words (the open menu). */
-export async function menuItem(ui: any, label: string|RegExp) {
+export async function menuItem(ui: Page, label: string|RegExp) {
   const item = ui.locator('.tab-menu .menu-item', { hasText: label }).first();
   await item.click();
 }
@@ -64,10 +65,10 @@ export async function menuItem(ui: any, label: string|RegExp) {
  * into the slot: content/page/box.ts), or null for no box.
  * @param page a site page
  */
-export function pageBox(page: any) {
+export function pageBox(page: Page) {
   return page.evaluate(() => {
     const cs = getComputedStyle(document.documentElement);
-    const num = (name) => { const v = cs.getPropertyValue(name).trim(); return v ? parseFloat(v) : null; };
+    const num = (name: string) => { const v = cs.getPropertyValue(name).trim(); return v ? parseFloat(v) : null; };
     const left = num('--margin-box-left');
     const dw = num('--margin-box-dw');
     if (left == null || dw == null) return null;
@@ -79,7 +80,7 @@ export function pageBox(page: any) {
 }
 
 /** The slot the overlay's theme left for the page (its <m-page>), in the window's points. */
-export function slot(ui: any) {
+export function slot(ui: Page) {
   return ui.evaluate(() => {
     const r = document.querySelector('m-page')?.getBoundingClientRect();
     return r ? { left: r.left, top: r.top, right: innerWidth - r.right, bottom: innerHeight - r.bottom } : null;
@@ -91,9 +92,10 @@ export function slot(ui: any) {
  * (the theme's m-drag: ui/behaviors/drag.ts). `at`: where on the target, as
  * a fraction of its height (0.2: its upper part, 0.8: its lower part).
  * */
-export async function drag(ui: any, from: string, to: string, { at = 0.5, steps = 12 } = {}) {
-  const a = await ui.locator(from).first().boundingBox();
-  const b = await ui.locator(to).first().boundingBox();
+export async function drag(ui: Page, from: string, to: string, { at = 0.5, steps = 12 } = {}) {
+  // (an element that isn't drawn fails here, on its null box)
+  const a = (await ui.locator(from).first().boundingBox())!;
+  const b = (await ui.locator(to).first().boundingBox())!;
   const x0 = a.x + Math.min(60, a.width / 2);
   const y0 = a.y + a.height / 2;
   const x1 = b.x + Math.min(60, b.width / 2);

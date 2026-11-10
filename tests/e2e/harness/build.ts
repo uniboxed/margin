@@ -77,13 +77,13 @@ export const HIDDEN_BEHIND = `// e2e: a tab behind the front one is hidden, as i
 export const SOCKET_GUARD = 'canSocket=()=>!!capabilities?.socketInWorker||typeof globalThis.document=="object"&&typeof globalThis.WorkerGlobalScope>"u"';
 
 /** The extension id Chromium gives an extension whose manifest has this public key (DER). */
-export function extensionId(der) {
+export function extensionId(der: Buffer) {
   const hex = createHash('sha256').update(der).digest('hex').slice(0, 32);
   return [...hex].map((h) => String.fromCharCode(97 + parseInt(h, 16))).join('');
 }
 
 /** Builds the test build into `dir` (made fresh). */
-export function testBuild(dir): { path: string, id: string } {
+export function testBuild(dir: string): { path: string, id: string } {
   const path = buildTo(join(dir, 'ext'), { profile: 'safari', manifest: 'chrome' });
   const { publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const der = publicKey.export({ type: 'spki', format: 'der' });

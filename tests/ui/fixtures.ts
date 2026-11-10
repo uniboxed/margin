@@ -4,14 +4,16 @@
 // not open, a sleeping tab, a playing one, a site with no icon, a tab with
 // no title, an archive.
 import { pngIcon } from '../theme/view-model.ts';
+import type { MockStored, MockTab } from '../theme/view-model.ts';
+import type { Favicon } from '../../types/margin';
 
-const icon = (rgb, at = 1) => ({ data: pngIcon(rgb), href: 'https://x.example/favicon.ico', at });
+const icon = (rgb: [number, number, number], at = 1): Favicon => ({ data: pngIcon(rgb), href: 'https://x.example/favicon.ico', at });
 
 export const W = 7; // the window drawn
 export const OTHER_WINDOW = 8;
 
 export function smallState() {
-  const tab = (id, windowId, index, url, title, extra = {}) => ({ id, windowId, index, url, title, favIconUrl: '', active: false, lastActive: index, ...extra });
+  const tab = (id: number, windowId: number, index: number, url: string, title: string, extra: Partial<MockTab> = {}): MockTab => ({ id, windowId, index, url, title, favIconUrl: '', active: false, lastActive: index, ...extra });
   const tabs = {
     11: tab(11, W, 0, 'https://news.example/a', 'News A', { sleeping: { at: 5, how: 'page' } }),
     12: tab(12, W, 1, 'https://mail.example/', 'Mail', { audible: true }),
@@ -59,7 +61,7 @@ export function smallState() {
     faviconsMark: '8:8',
     openTabsBy: { origin: 'safari-web-extension://margin', since: 1, synced: true },
     owner: null,
-  };
+  } satisfies MockStored;
 }
 
 export { icon };

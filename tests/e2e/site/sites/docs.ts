@@ -1,13 +1,13 @@
 // docs.test: Lattice's documentation. Sticky sidebar nav, a table of
 // contents with scroll spy, code blocks in colour with a copy button, heading
 // anchors, tabs, callouts, media queries and vw units. ICO icon.
-import { doc, esc, icon } from './common.ts';
+import { doc, esc, icon, type Site } from './common.ts';
 
 const ICON = '<link rel="icon" href="/favicon.ico" sizes="any">';
 
 const KEYWORDS = /\b(import|from|export|const|let|function|return|await|async|new|if|else|default|true|false|null|undefined)\b/;
 // A small highlighter: strings, comments, keywords, numbers, calls.
-function highlight(code, lang) {
+function highlight(code: string, lang: string) {
   if (lang === 'sh') return code.split('\n').map((l) => (l.startsWith('#') ? `<span class="c">${esc(l)}</span>` : `<span class="p">$</span> ${esc(l).replace(/^(\w+)/, '<span class="f">$1</span>')}`)).join('\n');
   const re = /(\/\/[^\n]*)|('[^'\n]*'|"[^"\n]*"|`[^`]*`)|(\b\d+(?:\.\d+)?\b)|(\b[A-Za-z_]\w*\b)(?=\s*\()|(\b[A-Za-z_]\w*\b)|(<\/?[A-Za-z][\w.]*)/g;
   let out = '';
@@ -25,11 +25,11 @@ function highlight(code, lang) {
   }
   return out + esc(code.slice(last));
 }
-const code = (src, lang = 'js', file) => `<div class="code">${file ? `<div class="code-h"><span>${icon('file', { size: 14 })}${esc(file)}</span><button class="copy">${icon('copy', { size: 14 })}<span>Copy</span></button></div>` : `<button class="copy solo">${icon('copy', { size: 14 })}<span>Copy</span></button>`}<pre><code class="lang-${lang}">${highlight(src.trim(), lang)}</code></pre></div>`;
-const h2 = (id, text) => `<h2 id="${id}"><a class="anchor" href="#${id}" aria-label="Link to this section">#</a>${esc(text)}</h2>`;
-const h3 = (id, text) => `<h3 id="${id}"><a class="anchor" href="#${id}" aria-label="Link to this section">#</a>${esc(text)}</h3>`;
+const code = (src: string, lang = 'js', file?: string) => `<div class="code">${file ? `<div class="code-h"><span>${icon('file', { size: 14 })}${esc(file)}</span><button class="copy">${icon('copy', { size: 14 })}<span>Copy</span></button></div>` : `<button class="copy solo">${icon('copy', { size: 14 })}<span>Copy</span></button>`}<pre><code class="lang-${lang}">${highlight(src.trim(), lang)}</code></pre></div>`;
+const h2 = (id: string, text: string) => `<h2 id="${id}"><a class="anchor" href="#${id}" aria-label="Link to this section">#</a>${esc(text)}</h2>`;
+const h3 = (id: string, text: string) => `<h3 id="${id}"><a class="anchor" href="#${id}" aria-label="Link to this section">#</a>${esc(text)}</h3>`;
 
-const NAV = [
+const NAV: [section: string, items: [slug: string, title: string][]][] = [
   ['Introduction', [['getting-started', 'Getting started'], ['installation', 'Installation'], ['core-concepts', 'Core concepts'], ['why-lattice', 'Why Lattice']]],
   ['Guides', [['stores', 'Stores'], ['derived-state', 'Derived state'], ['persistence', 'Persistence'], ['testing', 'Testing'], ['server-rendering', 'Server rendering']]],
   ['API reference', [['create-store', 'createStore'], ['derive', 'derive'], ['use-lattice', 'useLattice'], ['cli', 'Command line']]],
@@ -112,7 +112,7 @@ ${h2('next-steps', 'Next steps')}
 <nav class="pager"><span></span><a href="/guide/installation" class="nx"><small>Next</small>Installation ${icon('chevron', { size: 16 })}</a></nav>`;
 }
 
-function otherPage(slug, title, section) {
+function otherPage(slug: string, title: string, section: string) {
   return `
 <p class="eyebrow">${esc(section)}</p>
 <h1>${esc(title)}</h1>
@@ -136,7 +136,7 @@ ${h2('see-also', 'See also')}
 <ul><li><a href="/guide/getting-started">Getting started</a></li><li><a href="/guide/create-store">createStore</a></li></ul>`;
 }
 
-function page(slug) {
+function page(slug: string) {
   const entry = NAV.flatMap(([s, items]) => items.map(([h, t]) => ({ slug: h, title: t, section: s }))).find((e) => e.slug === slug);
   if (!entry) return null;
   const main = slug === 'getting-started' ? gettingStarted() : otherPage(slug, entry.title, entry.section);
@@ -285,4 +285,4 @@ export default {
     ['GET', '/', () => ({ status: 302, location: '/guide/getting-started' })],
     ['GET', /^\/guide\/([\w-]+)$/, ({ params }) => page(params[1])],
   ],
-};
+} satisfies Site;

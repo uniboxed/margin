@@ -4,7 +4,7 @@
 // pictures from itself, as real sites do from their own servers.
 
 // A seeded random source (mulberry32): the same picture every time.
-export function rng(seed) {
+export function rng(seed: string | number) {
   let a = typeof seed === 'number' ? seed : [...String(seed)].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 2654435761) >>> 0, 7);
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -15,24 +15,24 @@ export function rng(seed) {
   };
 }
 
-const f1 = (n) => Math.round(n * 10) / 10;
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const f1 = (n: number) => Math.round(n * 10) / 10;
+const esc = (s: unknown) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as Record<string, string>)[c]);
 
-export function shade(hex, amount) {
+export function shade(hex: string, amount: number) {
   const n = parseInt(hex.slice(1), 16);
   const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(amount < 0 ? v * (1 + amount) : v + (255 - v) * amount));
   return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
-const svg = (w, h, body, defs = '') =>
+const svg = (w: number, h: number, body: string, defs = '') =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid slice">${defs ? `<defs>${defs}</defs>` : ''}${body}</svg>`;
-const linear = (id, stops, x2 = 0, y2 = 1) =>
+const linear = (id: string, stops: string[], x2 = 0, y2 = 1) =>
   `<linearGradient id="${id}" x1="0" y1="0" x2="${x2}" y2="${y2}">${stops.map((c, i) => `<stop offset="${f1((i / (stops.length - 1)) * 100)}%" stop-color="${c}"/>`).join('')}</linearGradient>`;
-const radial = (id, inner, outer, opacity = 1) =>
+const radial = (id: string, inner: string, outer: string, opacity = 1) =>
   `<radialGradient id="${id}"><stop offset="0%" stop-color="${inner}" stop-opacity="${opacity}"/><stop offset="100%" stop-color="${outer}" stop-opacity="0"/></radialGradient>`;
 
 // A ridge line across the picture: a sum of slow waves.
-function ridge(r, w, h, base, height, roughness = 1) {
+function ridge(r: () => number, w: number, h: number, base: number, height: number, roughness = 1) {
   const waves = Array.from({ length: 4 }, (_, k) => ({ a: (height / (k + 1.2)) * (0.6 + r() * 0.8), f: ((k + 1) * (1.2 + r() * 1.6) * Math.PI * roughness) / w, p: r() * 10 }));
   const pts = [];
   for (let x = 0; x <= w; x += w / 60) {
@@ -42,7 +42,7 @@ function ridge(r, w, h, base, height, roughness = 1) {
   return `M0,${h} L${pts.join(' L')} L${w},${h} Z`;
 }
 
-const PALETTES = {
+const PALETTES: Record<string, { sky: string[], sun: string, near: string, far: string }> = {
   dawn: { sky: ['#fbe3c9', '#f5b494', '#d98b8f'], sun: '#fff4dd', near: '#3d2c4e', far: '#c49aa6' },
   dusk: { sky: ['#2b1e3f', '#83405f', '#f39270'], sun: '#ffd9a0', near: '#170f24', far: '#6c3d63' },
   alpine: { sky: ['#e6f3fb', '#a9d2ec'], sun: '#ffffff', near: '#1f3d55', far: '#8fb6cf' },
@@ -71,7 +71,7 @@ export function landscape({ w = 1200, h = 700, seed = 1, palette = 'dawn' }) {
   return svg(w, h, `<rect width="${w}" height="${h}" fill="url(#sky)"/>${stars}<circle cx="${f1(sx)}" cy="${f1(sy)}" r="${f1(h * 0.32)}" fill="url(#glow)"/><circle cx="${f1(sx)}" cy="${f1(sy)}" r="${f1(h * 0.07)}" fill="${p.sun}"/>${hills}`, defs);
 }
 
-function mixHex(a, b, t) {
+function mixHex(a: string, b: string, t: number) {
   const pa = parseInt(a.slice(1), 16);
   const pb = parseInt(b.slice(1), 16);
   const c = [16, 8, 0].map((s) => Math.round(((pa >> s) & 255) + ((((pb >> s) & 255) - ((pa >> s) & 255)) * t)));
@@ -86,7 +86,7 @@ export function city({ w = 1600, h = 900, seed = 3, palette = 'dawn' }) {
   const far = night ? '#2a3363' : '#a7a9c4';
   const near = night ? '#0d1230' : '#4a4a6a';
   const water = h * 0.78;
-  const row = (y0, minH, maxH, color, lit, step) => {
+  const row = (y0: number, minH: number, maxH: number, color: string, lit: number, step: number) => {
     let x = -10;
     let out = '';
     while (x < w) {
@@ -211,7 +211,7 @@ export function abstract({ w = 900, h = 1100, seed = 1, bg = '#151517' }) {
 }
 
 // Products for the shop: each drawn in its colour on a soft ground.
-const PRODUCTS = {
+const PRODUCTS: Record<string, (color: string) => string> = {
   tote: (c) => `<path d="M150,140 C150,70 250,70 250,140" fill="none" stroke="${shade(c, -0.25)}" stroke-width="12" stroke-linecap="round"/><path d="M170,140 C170,95 230,95 230,140" fill="none" stroke="${shade(c, -0.15)}" stroke-width="10" stroke-linecap="round"/><path d="M110,140 L290,140 L300,330 L100,330 Z" fill="url(#body)"/><path d="M110,140 L290,140 L291,160 L109,160 Z" fill="${shade(c, -0.12)}"/><rect x="150" y="215" width="100" height="70" rx="4" fill="${shade(c, 0.12)}" stroke="${shade(c, -0.2)}" stroke-dasharray="5 4" stroke-width="2"/><rect x="186" y="300" width="28" height="14" rx="2" fill="#2b2b2b" opacity="0.7"/>`,
   mug: (c) => `<path d="M270,175 C330,175 330,265 262,262" fill="none" stroke="${shade(c, -0.15)}" stroke-width="18"/><path d="M120,150 L280,150 L272,300 Q270,325 245,325 L155,325 Q130,325 128,300 Z" fill="url(#body)"/><ellipse cx="200" cy="150" rx="80" ry="18" fill="${shade(c, -0.3)}"/><ellipse cx="200" cy="152" rx="70" ry="13" fill="#4a2d1e"/><path d="M175,120 c-12,-20 12,-30 0,-55 M205,118 c-12,-20 12,-30 0,-55 M235,120 c-12,-20 12,-30 0,-55" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.7"/>`,
   lamp: (c) => `<ellipse cx="200" cy="215" rx="120" ry="90" fill="url(#glow)"/><path d="M140,100 L260,100 L295,195 L105,195 Z" fill="url(#body)"/><rect x="194" y="195" width="12" height="120" fill="#3a3a3a"/><ellipse cx="200" cy="322" rx="62" ry="14" fill="#2f2f2f"/><ellipse cx="200" cy="196" rx="95" ry="7" fill="${shade(c, -0.3)}"/>`,
@@ -235,7 +235,7 @@ export function product({ kind = 'tote', color = '#d9c6a5', bg = '#efe9df', w = 
 }
 
 // A round avatar with initials.
-export function avatar({ name = 'A B', size = 96, seed }) {
+export function avatar({ name = 'A B', size = 96, seed }: { name?: string, size?: number, seed?: string | number }) {
   const r = rng(`av${seed ?? name}`);
   const hue = Math.floor(r() * 360);
   const initials = String(name)
@@ -270,7 +270,7 @@ export function map({ w = 1200, h = 800, seed = 2, pins = 3 }) {
     }
     grid += `<path d="M${f1(cx + i * sp)},${f1(cy - big)} V${f1(cy + big)} M${f1(cx - big)},${f1(cy + i * sp)} H${f1(cx + big)}"/>`;
   }
-  const avenue = (y0, y1) => `M${f1(-40)},${f1(y0)} C${f1(w * 0.35)},${f1(y0 + (r() - 0.5) * 120)} ${f1(w * 0.65)},${f1(y1 + (r() - 0.5) * 120)} ${f1(w + 40)},${f1(y1)}`;
+  const avenue = (y0: number, y1: number) => `M${f1(-40)},${f1(y0)} C${f1(w * 0.35)},${f1(y0 + (r() - 0.5) * 120)} ${f1(w * 0.65)},${f1(y1 + (r() - 0.5) * 120)} ${f1(w + 40)},${f1(y1)}`;
   const av = [avenue(h * (0.1 + r() * 0.3), h * (0.3 + r() * 0.3)), `M${f1(w * (0.2 + r() * 0.3))},-40 C${f1(w * 0.4)},${f1(h * 0.4)} ${f1(w * 0.6)},${f1(h * 0.6)} ${f1(w * (0.6 + r() * 0.3))},${h + 40}`];
   const river = `<path d="M-40,${f1(h * 0.72)} C${f1(w * 0.25)},${f1(h * 0.58)} ${f1(w * 0.45)},${f1(h * 0.98)} ${f1(w * 0.7)},${f1(h * 0.8)} S${w + 40},${f1(h * 0.66)} ${w + 40},${f1(h * 0.66)}" fill="none" stroke="#a7d3ec" stroke-width="${f1(h * 0.09)}" stroke-linecap="round"/>`;
   const names = ['Mill Lane', 'Harbour Rd', 'Elm St', 'Station Ave', 'Kettle Way', 'Rope Walk'];
@@ -291,9 +291,9 @@ export function map({ w = 1200, h = 800, seed = 2, pins = 3 }) {
 }
 
 // One kind from a query: what /media/art/<kind>.svg serves.
-export function artFor(kind, q) {
-  const n = (k, d) => (q.has(k) ? Number(q.get(k)) : d);
-  const s = (k, d) => q.get(k) ?? d;
+export function artFor(kind: string, q: URLSearchParams) {
+  const n = (k: string, d: number) => (q.has(k) ? Number(q.get(k)) : d);
+  const s = (k: string, d: string) => q.get(k) ?? d;
   switch (kind) {
     case 'landscape':
       return landscape({ w: n('w', 1200), h: n('h', 700), seed: n('seed', 1), palette: s('p', 'dawn') });

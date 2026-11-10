@@ -13,7 +13,7 @@ control.on('close', () => process.exit(0));
 control.write(JSON.stringify({ start: true }) + '\n');
 
 let input = Buffer.alloc(0);
-process.stdin.on('data', (chunk) => {
+process.stdin.on('data', (chunk: Buffer) => {
   input = Buffer.concat([input, chunk]);
   while (input.length >= 4) {
     const size = input.readUInt32LE(0);

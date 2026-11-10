@@ -2,7 +2,7 @@
 // sparklines, a line chart and a donut in SVG, a stacked bar chart on a
 // canvas, a top pages table and a live "active now" number. The page links
 // no icon: the browser (and Margin) find /favicon.ico.
-import { avatar, doc, esc, icon } from './common.ts';
+import { avatar, doc, esc, icon, type Site } from './common.ts';
 import { rng } from '../art.ts';
 
 const r = rng('metrics');
@@ -10,7 +10,7 @@ const DAYS = 30;
 const visitors = Array.from({ length: DAYS }, (_, i) => Math.round(1400 + i * 22 + Math.sin(i / 2.2) * 260 + r() * 180 + (i % 7 > 4 ? -260 : 0)));
 const previous = visitors.map((v, i) => Math.round(v * (0.78 + Math.sin(i / 3) * 0.05)));
 
-function spark(values, color) {
+function spark(values: number[], color: string) {
   const max = Math.max(...values);
   const min = Math.min(...values);
   const pts = values.map((v, i) => `${(i / (values.length - 1)) * 120},${36 - ((v - min) / (max - min || 1)) * 32 - 2}`).join(' ');
@@ -22,21 +22,21 @@ function lineChart() {
   const h = 260;
   const pad = { l: 44, r: 12, t: 16, b: 28 };
   const max = Math.ceil(Math.max(...visitors) / 400) * 400;
-  const x = (i) => pad.l + (i / (DAYS - 1)) * (w - pad.l - pad.r);
-  const y = (v) => pad.t + (1 - v / max) * (h - pad.t - pad.b);
-  const path = (vals) => vals.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const x = (i: number) => pad.l + (i / (DAYS - 1)) * (w - pad.l - pad.r);
+  const y = (v: number) => pad.t + (1 - v / max) * (h - pad.t - pad.b);
+  const path = (vals: number[]) => vals.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   const grid = Array.from({ length: 5 }, (_, i) => {
     const v = (max / 4) * i;
     return `<line x1="${pad.l}" x2="${w - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="#eef0f6"/><text x="${pad.l - 8}" y="${y(v) + 4}" text-anchor="end">${v >= 1000 ? `${v / 1000}k` : v}</text>`;
   }).join('');
-  const day = (i) => (i + 7 > 31 ? `Nov ${i + 7 - 31}` : `Oct ${i + 7}`);
+  const day = (i: number) => (i + 7 > 31 ? `Nov ${i + 7 - 31}` : `Oct ${i + 7}`);
   const labels = [0, 7, 14, 21, 29].map((i) => `<text x="${x(i)}" y="${h - 8}" text-anchor="${i === 0 ? 'start' : i === 29 ? 'end' : 'middle'}">${day(i)}</text>`).join('');
   const hi = 22;
   return `<svg class="line" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6d5efc" stop-opacity=".28"/><stop offset="1" stop-color="#6d5efc" stop-opacity="0"/></linearGradient></defs><g class="axis">${grid}${labels}</g><path d="${path(previous)}" fill="none" stroke="#b9b4f0" stroke-width="2" stroke-dasharray="5 5"/><path d="${path(visitors)} L${x(DAYS - 1)},${y(0)} L${x(0)},${y(0)} Z" fill="url(#area)"/><path d="${path(visitors)}" fill="none" stroke="#6d5efc" stroke-width="2.5" stroke-linejoin="round"/><line x1="${x(hi)}" x2="${x(hi)}" y1="${pad.t}" y2="${y(0)}" stroke="#6d5efc" stroke-dasharray="3 3" opacity=".5"/><circle cx="${x(hi)}" cy="${y(visitors[hi])}" r="5" fill="#fff" stroke="#6d5efc" stroke-width="2.5"/><g transform="translate(${x(hi) + 10} ${y(visitors[hi]) - 46})"><rect width="128" height="40" rx="8" fill="#1d1b3a"/><text x="10" y="16" fill="#b9b4f0" font-size="11">${day(hi)}</text><text x="10" y="32" fill="#fff" font-size="13" font-weight="600">${visitors[hi].toLocaleString('en-US')} visitors</text></g></svg>`;
 }
 
 function donut() {
-  const parts = [['Desktop', 58, '#6d5efc'], ['Mobile', 34, '#36c5a3'], ['Tablet', 8, '#ffb547']];
+  const parts = [['Desktop', 58, '#6d5efc'], ['Mobile', 34, '#36c5a3'], ['Tablet', 8, '#ffb547']] as const;
   let at = 0;
   const C = 2 * Math.PI * 54;
   const rings = parts.map(([, v, c]) => {
@@ -50,7 +50,7 @@ function donut() {
 const PAGES = [['/pricing', 18420, 0.92], ['/blog/the-quiet-city', 14210, 0.71], ['/', 12890, 0.64], ['/docs/getting-started', 9310, 0.47], ['/shop/canvas-tote', 7120, 0.36], ['/about', 3480, 0.18]];
 
 function dashboard() {
-  const kpis = [
+  const kpis: [name: string, value: string, change: string, up: boolean, values: number[]][] = [
     ['Revenue', '$284,120', '+12.4%', true, visitors.map((v) => v * 1.3)],
     ['Active users', '48,210', '+5.1%', true, visitors],
     ['Conversion', '3.42%', '−0.3%', false, visitors.map((v, i) => 3000 - v + i * 10)],
@@ -60,7 +60,7 @@ function dashboard() {
 <div class="shell">
   <aside class="nav">
     <div class="brand"><svg width="30" height="30" viewBox="0 0 30 30"><rect width="30" height="30" rx="9" fill="#6d5efc"/><rect x="7" y="15" width="4" height="8" rx="1.5" fill="#c9c3ff"/><rect x="13" y="10" width="4" height="13" rx="1.5" fill="#fff"/><rect x="19" y="6" width="4" height="17" rx="1.5" fill="#7ef0c4"/></svg>Metrics</div>
-    <nav>${[['grid', 'Overview', 1], ['clock', 'Realtime'], ['user', 'Audience'], ['compass', 'Acquisition'], ['chart', 'Revenue'], ['file', 'Reports'], ['bell', 'Alerts']].map(([i, n, on]) => `<a href="/" class="${on ? 'on' : ''}">${icon(i, { size: 18 })}${n}</a>`).join('')}</nav>
+    <nav>${([['grid', 'Overview', 1], ['clock', 'Realtime'], ['user', 'Audience'], ['compass', 'Acquisition'], ['chart', 'Revenue'], ['file', 'Reports'], ['bell', 'Alerts']] as [icon: string, name: string, on?: number][]).map(([i, n, on]) => `<a href="/" class="${on ? 'on' : ''}">${icon(i, { size: 18 })}${n}</a>`).join('')}</nav>
     <div class="usage"><b>Plan usage</b><span>1.42M of 2M events</span><div class="bar"><i style="width:71%"></i></div><a href="/">Upgrade</a></div>
     <a class="set" href="/">${icon('settings', { size: 18 })}Settings</a>
   </aside>
@@ -200,4 +200,4 @@ export default {
     '/assets/metrics.js': { type: 'text/javascript; charset=utf-8', body: JS },
   },
   routes: [['GET', '/', () => dashboard()]],
-};
+} satisfies Site;

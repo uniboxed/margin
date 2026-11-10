@@ -4,9 +4,9 @@
 
 // A theme template around one payload (the sanitizer needs one root and one
 // <m-page>).
-export const wrap = (fragment) => `<div class="payload-root">${fragment}<m-page></m-page></div>`;
+export const wrap = (fragment: string) => `<div class="payload-root">${fragment}<m-page></m-page></div>`;
 
-const SVG_EXTERNAL_IMAGE_B64 = (typeof btoa === 'function' ? btoa : (s) => Buffer.from(s, 'binary').toString('base64'))(
+const SVG_EXTERNAL_IMAGE_B64 = (typeof btoa === 'function' ? btoa : (s: string) => Buffer.from(s, 'binary').toString('base64'))(
   "<svg xmlns='http://www.w3.org/2000/svg' onload='parent.__trip(\"svg-data-onload\")'><script>parent.__trip('svg-data-script')</script><image href='https://evil.test/svg-data-image.png' width='10' height='10'/></svg>",
 );
 
@@ -247,8 +247,8 @@ export const MANIFEST_REMOVED = [
   ['deep nesting in an unknown field', `{"format":2,"id":"mine","name":"Mine","version":"1.0.0","extra":${'['.repeat(400)}${']'.repeat(400)}}`, /extra: unknown field/],
 ];
 
-const bytes = (...parts) => {
-  const out = [];
+const bytes = (...parts: (string | number[])[]) => {
+  const out: number[] = [];
   for (const p of parts) for (const b of typeof p === 'string' ? [...p].map((c) => c.charCodeAt(0)) : p) out.push(b);
   return new Uint8Array(out);
 };

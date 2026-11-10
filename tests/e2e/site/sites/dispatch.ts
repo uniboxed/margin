@@ -2,7 +2,7 @@
 // with a hero picture, byline, drop cap, pull quotes, figures, a sticky
 // section bar with a reading-progress line, a sticky share rail and related
 // stories. SVG icon, theme-color.
-import { art, avatar, doc, esc, icon } from './common.ts';
+import { art, avatar, doc, esc, icon, type Site } from './common.ts';
 
 const ICON = '<link rel="icon" href="/favicon.svg" type="image/svg+xml">';
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#b3261e"/><text x="32" y="34" text-anchor="middle" dominant-baseline="central" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="44" fill="#fff8ef">D</text></svg>`;
@@ -78,7 +78,9 @@ const STORIES = [
   },
 ];
 
-const P = {
+type Story = (typeof STORIES)[number];
+
+const P: Record<string, string[]> = {
   city: [
     'At four in the morning the city sounds like a held breath. The buses have stopped and the bars have emptied, and in the long gap before the first trams there is only the hum of the refrigerated trucks outside the market halls and, somewhere on the other side of the river, a dog that will not stop barking.',
     'This is the hour that belongs to the people who start the city up again. Bakers and sweepers, tram drivers and nurses on the turn of a shift, the man who unlocks the flower market and the woman who washes the steps of the central library with a hose. For a month we followed them, from the first light in a bakery window on Weaver Street to the moment, around a quarter past six, when the rest of us begin to arrive and the city stops being theirs.',
@@ -116,7 +118,7 @@ const P = {
   ],
 };
 
-function paragraphs(kind) {
+function paragraphs(kind: string) {
   let first = true;
   return P[kind]
     .map((p) => {
@@ -135,7 +137,7 @@ function paragraphs(kind) {
 
 const SECTIONS = ['World', 'Cities', 'Culture', 'Science', 'Food', 'Travel', 'Long read', 'Opinion'];
 
-function chrome(body, { active } = {}) {
+function chrome(body: string, { active }: { active?: string } = {}) {
   return `
 <div class="topbar"><div class="wrap"><span>Friday, 6 November 2026</span><span class="tb-right"><a href="/">Today’s paper</a><a href="/subscribe" class="sub">Subscribe</a><a href="/signin">Sign in</a></span></div></div>
 <header class="masthead"><a href="/" class="brand">The Dispatch</a><p class="motto">Independent journalism since 1897</p></header>
@@ -145,7 +147,7 @@ ${body}
 <script src="/assets/site.js" defer></script>`;
 }
 
-function article(story) {
+function article(story: Story) {
   const related = STORIES.filter((s) => s !== story).slice(0, 3);
   const comments = 140 + story.title.length;
   const body = `
@@ -174,7 +176,7 @@ function article(story) {
   return doc({ title: `${story.title} | The Dispatch`, icon: ICON, themeColor: '#faf6ef', description: story.dek, body: chrome(body, { active: story.section }) });
 }
 
-const card = (s) => `<a class="card" href="${s.path}"><img src="${s.hero}" alt="" loading="lazy"><span class="kicker">${esc(s.section)}</span><h3>${esc(s.title)}</h3><p>${esc(s.dek)}</p><span class="meta">${esc(s.author)} · ${s.read} min read</span></a>`;
+const card = (s: Story) => `<a class="card" href="${s.path}"><img src="${s.hero}" alt="" loading="lazy"><span class="kicker">${esc(s.section)}</span><h3>${esc(s.title)}</h3><p>${esc(s.dek)}</p><span class="meta">${esc(s.author)} · ${s.read} min read</span></a>`;
 
 function front() {
   const [lead, ...rest] = STORIES;
@@ -323,4 +325,4 @@ export default {
       return story ? article(story) : null;
     }],
   ],
-};
+} satisfies Site;

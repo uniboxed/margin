@@ -211,7 +211,7 @@ export async function themePieces(pkg: any, sha256: (bytes: Uint8Array) => Promi
 const webSha256 = async (bytes: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', (bytes as any)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 
 // A message as it came (JSON from Margin.app, or a page's): an object whose fields each use checks.
-type Said = Record<string, any>;
+export type Said = Record<string, any>;
 // Where Margin.app listens, as it said (its port), and the link's secret and key.
 type KeptLink = { port: number, token: string, key: string, pid?: number };
 

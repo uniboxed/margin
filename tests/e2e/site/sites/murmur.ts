@@ -3,7 +3,7 @@
 // pages, then "all caught up"), and an unread count in the title:
 // "(3) Murmur". Opening Notifications clears it; ?live=<ms> brings a new
 // post that often and counts it. SVG icon.
-import { art, avatar, doc, esc, icon } from './common.ts';
+import { art, avatar, doc, esc, icon, type ArtParams, type Site } from './common.ts';
 import { rng } from '../art.ts';
 
 const ICON = '<link rel="icon" href="/favicon.svg" type="image/svg+xml">';
@@ -34,11 +34,11 @@ const TEXTS = [
 const TRENDS = [['Travel', 'Night trains', '18.2K posts'], ['Cities', '#QuietCity', '6,410 posts'], ['Food', 'Weaver Street', '2,108 posts'], ['Weather', 'First frost', '41.5K posts'], ['Sport', 'Harbour regatta', '3,977 posts']];
 
 // The nth post of the feed, the same every time.
-function post(n) {
+function post(n: number) {
   const r = rng(`post${n}`);
   const [name, handle] = PEOPLE[n % PEOPLE.length];
   const text = TEXTS[(n * 7) % TEXTS.length];
-  const kinds = [['landscape', { seed: n + 1, p: ['dawn', 'forest', 'alpine', 'dusk', 'mint', 'desert'][n % 6] }], ['coast', { seed: n + 2, p: n % 2 ? 'evening' : 'day' }], ['city', { seed: n + 3, p: n % 3 ? 'dawn' : 'night' }]];
+  const kinds: [kind: string, art: ArtParams][] = [['landscape', { seed: n + 1, p: ['dawn', 'forest', 'alpine', 'dusk', 'mint', 'desert'][n % 6] }], ['coast', { seed: n + 2, p: n % 2 ? 'evening' : 'day' }], ['city', { seed: n + 3, p: n % 3 ? 'dawn' : 'night' }]];
   const pics = n % 3 === 0 ? [kinds[n % 3]] : n % 5 === 1 ? [kinds[0], kinds[1]] : [];
   return {
     id: 1000 + n,
@@ -54,7 +54,8 @@ function post(n) {
   };
 }
 
-const postHtml = (p) => `<article class="post" data-id="${p.id}"><img class="av" src="${avatar(p.name)}" alt="" width="44" height="44"><div class="pb"><div class="ph"><b>${esc(p.name)}</b><span>@${p.handle} · ${p.time}</span><button aria-label="More">${icon('dots', { size: 16 })}</button></div><p>${esc(p.text)}</p>${p.pics.length ? `<div class="pics n${p.pics.length}">${p.pics.map((s) => `<img src="${s}" alt="" loading="lazy">`).join('')}</div>` : ''}<div class="acts"><button>${icon('chat', { size: 17 })}<span>${p.replies}</span></button><button class="rp">${icon('repeat', { size: 17 })}<span>${p.reposts}</span></button><button class="lk">${icon('heart', { size: 17 })}<span>${p.likes}</span></button><button>${icon('chart', { size: 17 })}<span>${p.views}</span></button><button>${icon('share', { size: 17 })}</button></div></div></article>`;
+type Post = ReturnType<typeof post>;
+const postHtml = (p: Post) => `<article class="post" data-id="${p.id}"><img class="av" src="${avatar(p.name)}" alt="" width="44" height="44"><div class="pb"><div class="ph"><b>${esc(p.name)}</b><span>@${p.handle} · ${p.time}</span><button aria-label="More">${icon('dots', { size: 16 })}</button></div><p>${esc(p.text)}</p>${p.pics.length ? `<div class="pics n${p.pics.length}">${p.pics.map((s) => `<img src="${s}" alt="" loading="lazy">`).join('')}</div>` : ''}<div class="acts"><button>${icon('chat', { size: 17 })}<span>${p.replies}</span></button><button class="rp">${icon('repeat', { size: 17 })}<span>${p.reposts}</span></button><button class="lk">${icon('heart', { size: 17 })}<span>${p.likes}</span></button><button>${icon('chart', { size: 17 })}<span>${p.views}</span></button><button>${icon('share', { size: 17 })}</button></div></div></article>`;
 
 const PER_PAGE = 8;
 const PAGES = 5;
@@ -232,4 +233,4 @@ export default {
       return { type: 'application/json', body: JSON.stringify({ html: postHtml(p).replace('class="post"', 'class="post new"') }) };
     }],
   ],
-};
+} satisfies Site;

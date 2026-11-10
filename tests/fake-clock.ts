@@ -1,14 +1,16 @@
 // A clock for tests (background/settle.ts's Clock): time moves only on
 // tick(ms), which runs the timers due by then in order, each at its time.
+import type { Clock } from '../extension/background/settle.ts';
+
 export function fakeClock(start = 1_000_000) {
   let t = start;
   let next = 1;
   const timers: Map<number, { at: number, fn: () => void }> = new Map();
   return {
     now: () => t,
-    set: (fn, ms) => { const id = next++; timers.set(id, { at: t + ms, fn }); return id; },
-    clear: (id) => { timers.delete(id); },
-    tick(ms) {
+    set: (fn: () => void, ms: number) => { const id = next++; timers.set(id, { at: t + ms, fn }); return id; },
+    clear: (id: number) => { timers.delete(id); },
+    tick(ms: number) {
       const until = t + ms;
       for (;;) {
         const due = [...timers].filter(([, x]) => x.at <= until).sort((a, b) => a[1].at - b[1].at)[0];
@@ -20,5 +22,5 @@ export function fakeClock(start = 1_000_000) {
       t = until;
     },
     pending: () => timers.size,
-  };
+  } satisfies Clock & { tick(ms: number): void, pending(): number };
 }

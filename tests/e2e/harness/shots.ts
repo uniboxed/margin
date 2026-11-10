@@ -7,18 +7,31 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Browser, Page } from 'playwright';
+
+// What these use of the file's world (margin.ts startMargin's).
+type World = {
+  name: string,
+  webkit: Browser,
+  shell: { frontWindowId(): number | null, overlays: { get(windowId: number | null): { page: Page | null } | undefined } },
+  front(windowId?: number | null): Promise<{ id?: number } | null>,
+  pageOf(tabId?: number | null): Promise<Page | null>,
+};
+/** The test a picture is for: node:test's context (its name), or a string. */
+export type ShotTest = string | { name?: string } | null | undefined;
+export type ShotOptions = { windowId?: number | null, page?: Page | null };
 
 export const SHOTS = process.env.MARGIN_E2E_SHOTS || join(tmpdir(), 'margin-e2e-shots');
 
-const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
+const slug = (s: unknown) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
 
-let composer = null;
+let composer: Page | null = null;
 
 /**
  * @param m the file's world (margin.ts)
  * @param t the test (node:test's context: its name), or a string
  */
-export async function shoot(m: any, t: any, label: string, { windowId = m.shell.frontWindowId(), page = null }: { windowId?: number, page?: any } = {}) {
+export async function shoot(m: World, t: ShotTest, label: string, { windowId = m.shell.frontWindowId(), page = null }: ShotOptions = {}) {
   const dir = join(SHOTS, `${slug(m.name)}-${slug(typeof t === 'string' ? t : t?.name ?? 'test')}`);
   mkdirSync(dir, { recursive: true });
   const base = join(dir, slug(label));
@@ -31,13 +44,13 @@ export async function shoot(m: any, t: any, label: string, { windowId = m.shell.
   if (overlayPng) writeFileSync(`${base}-overlay.png`, overlayPng);
   if (pagePng && overlayPng) {
     composer ??= await m.webkit.newContext({ viewport: { width: 1440, height: 900 } }).then((c) => c.newPage());
-    const png = await composer.evaluate(async ([a, b]) => {
-      const load = (b64) => new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = `data:image/png;base64,${b64}`; });
+    const png = await composer!.evaluate(async ([a, b]) => {
+      const load = (b64: string) => new Promise<HTMLImageElement>((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = `data:image/png;base64,${b64}`; });
       const [under, over] = await Promise.all([load(a), load(b)]);
       const c = document.createElement('canvas');
       c.width = over.width;
       c.height = over.height;
-      const g = c.getContext('2d');
+      const g = c.getContext('2d')!; // (a new canvas's 2d context is always there)
       g.fillStyle = '#000';
       g.fillRect(0, 0, c.width, c.height);
       g.drawImage(under, 0, 0, c.width, c.height);
@@ -56,15 +69,15 @@ export function forgetComposer() { composer = null; }
  * The colours of a few points of a screenshot ([r, g, b] each), read in the
  * composer's page (WebKit, outside Margin's browser).
  * */
-export async function pixels(m: any, png: Buffer, points: Array<[number, number]>) {
+export async function pixels(m: Pick<World, 'webkit'>, png: Buffer, points: Array<[number, number]>) {
   composer ??= await m.webkit.newContext({ viewport: { width: 1440, height: 900 } }).then((c) => c.newPage());
-  return composer.evaluate(async ([b64, at]) => {
-    const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = `data:image/png;base64,${b64}`; });
+  return composer!.evaluate(async ([b64, at]) => {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = `data:image/png;base64,${b64}`; });
     const c = document.createElement('canvas');
     c.width = img.width;
     c.height = img.height;
-    const g = c.getContext('2d');
+    const g = c.getContext('2d')!; // (a new canvas's 2d context is always there)
     g.drawImage(img, 0, 0);
     return at.map(([x, y]) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)]);
-  }, [png.toString('base64'), points]);
+  }, [png.toString('base64'), points] as const);
 }
