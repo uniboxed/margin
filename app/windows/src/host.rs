@@ -25,10 +25,9 @@ use std::path::{Path, PathBuf};
 
 use margin_core::geometry::Rect;
 use margin_core::planner::Display;
-use margin_core::shell::{HotKey, RelayFacts};
+use margin_core::shell::HotKey;
 use margin_core::time::Secs;
 
-use crate::handshake::RelayHello;
 use crate::screens::ScreenMap;
 
 /// The most often the windows are read (a burst of window events is one read).
@@ -42,11 +41,6 @@ pub fn chosen_theme_path(path: &Path) -> PathBuf {
         Some(parent) if is_manifest => parent.to_path_buf(),
         _ => path.to_path_buf(),
     }
-}
-
-/// A relay's hello as the shell takes it.
-pub fn relay_facts(hello: &RelayHello) -> RelayFacts {
-    RelayFacts { browser: hello.browser.clone(), pid: hello.pid, origin: hello.origin.clone() }
 }
 
 /// The shell's hot keys as RegisterHotKey's combinations (keys.rs); one that can't be held there is named.
@@ -103,7 +97,7 @@ mod win {
     };
     use windows::core::{HSTRING, w};
 
-    use super::{READ_GAP, chosen_theme_path, displays, hot_key_combos, placeable, relay_facts, wait_ms};
+    use super::{READ_GAP, chosen_theme_path, displays, hot_key_combos, placeable, wait_ms};
     use crate::app::App;
     use crate::browsers::{WinWindowSource, WindowEvents};
     use crate::hotkeys::{HotKeySpec, HotKeys};
@@ -306,15 +300,12 @@ mod win {
 
         fn pipe_event(self: &Rc<Self>, event: PipeEvent) {
             match event {
-                PipeEvent::Connected { id, hello, relay_pid } => {
+                PipeEvent::Connected { id, relay_pid, .. } => {
                     log::note(format!("relay {id} (pid {relay_pid}) linked"));
-                    self.feed(Input::RelayConnected { conn: id, relay: relay_facts(&hello) });
+                    self.feed(Input::RelayOpened { conn: id });
                 }
-                PipeEvent::Frame { id, body } => match String::from_utf8(body) {
-                    Ok(text) => self.feed(Input::RelayFrame { conn: id, text }),
-                    Err(_) => log::warn(format!("relay {id}: a frame that isn't UTF-8: left")),
-                },
-                PipeEvent::Closed { id, why } => self.feed(Input::RelayClosed { conn: id, why }),
+                PipeEvent::Frame { id, body } => self.feed(Input::RelayBytes { conn: id, bytes: body }),
+                PipeEvent::Closed { id, .. } => self.feed(Input::RelayEnded { conn: id }),
                 PipeEvent::Refused { why } => log::warn(format!("the pipe refused {why}")),
                 PipeEvent::Trouble { why } => log::warn(format!("the pipe: {why}")),
             }
@@ -322,18 +313,19 @@ mod win {
 
         fn carry_out(self: &Rc<Self>, c: Command) {
             match c {
-                Command::Send { conn, text } => {
-                    let sent = self.pipe.borrow().as_ref().is_some_and(|p| p.send(conn, text.into_bytes()));
+                Command::RelayWrite { conn, bytes } => {
+                    let sent = self.pipe.borrow().as_ref().is_some_and(|p| p.send(conn, bytes));
                     if !sent {
                         log::note(format!("relay {conn}: gone, a message not sent"));
                     }
                 }
-                Command::Close { conn, code, reason } => {
-                    log::note(format!("relay {conn} closed ({code} {reason})"));
+                Command::RelayEnd { conn } => {
                     if let Some(p) = self.pipe.borrow().as_ref() {
                         p.close(conn);
                     }
                 }
+                // (The link's own socket comes with the TCP listener.)
+                Command::Write { .. } | Command::End { .. } => {}
                 Command::CreateOverlay { id } => self.create_overlay(id),
                 Command::ShowOverlay { id, frame, above } => self.place(id, frame, above, true),
                 Command::PlaceOverlay { id, frame, above } => self.place(id, frame, above, false),
@@ -699,15 +691,6 @@ mod tests {
         assert_eq!(chosen_theme_path(Path::new("/t/mine/theme.json")), PathBuf::from("/t/mine"));
         assert_eq!(chosen_theme_path(Path::new("/t/mine/Theme.JSON")), PathBuf::from("/t/mine"));
         assert_eq!(chosen_theme_path(Path::new("/t/a.margintheme")), PathBuf::from("/t/a.margintheme"));
-    }
-
-    #[test]
-    fn the_relays_facts() {
-        let h = RelayHello::new("chrome-extension://abc/", "edge", Some(42), None);
-        assert_eq!(
-            relay_facts(&h),
-            RelayFacts { browser: "edge".into(), pid: Some(42), origin: "chrome-extension://abc/".into() }
-        );
     }
 
     #[test]

@@ -1,5 +1,6 @@
-//! The shell's scenarios, with fake inputs: a relay links, the copy says hello and its state, the windows are read, an
-//! overlay is made, shown and talks to its page, the keys are held, the link drops.
+//! The shell's scenarios, with fake inputs: a relay says hello and asks for the link, the copy opens its WebSocket
+//! with the token and says hello and its state, the windows are read, an overlay is made, shown and talks to its
+//! page, the keys are held, the link drops.
 
 use serde_json::{Value, json};
 
@@ -7,8 +8,11 @@ use super::*;
 use crate::geometry::Rect;
 use crate::planner::Display;
 use crate::system::ServerWindow;
+use crate::websocket::{client_frame, server_frames};
 
 const EDGE: u32 = 100;
+const PORT: u16 = 49_152;
+const ORIGIN: &str = "chrome-extension://njeebbcmlenfopaecfbphgcfihbdmkec";
 const BROWSER_WINDOW: i64 = 5001;
 const SCREEN: Rect = Rect::new(0.0, 0.0, 1920.0, 1080.0);
 const T0: Secs = 1_800_000_000.0;
@@ -35,12 +39,16 @@ impl H {
         let dir = tempfile::Builder::new().prefix("margin-shell-").tempdir().expect("a temporary folder");
         let mut opts = Options::new(dir.path().join("data"), dir.path().join("themes"));
         opts.own_pid = 999;
+        opts.app_version = "9.9".into();
         set(&mut opts);
         let mut shell = Shell::new(opts);
         let clock = std::sync::Arc::new(std::sync::Mutex::new(T0));
         let c = clock.clone();
         shell.data_mut().now = Box::new(move || c.lock().map(|t| *t * 1000.0).unwrap_or(0.0));
-        Self { shell, now: T0, _dir: dir, server: SCREEN, log: Vec::new() }
+        let mut h = Self { shell, now: T0, _dir: dir, server: SCREEN, log: Vec::new() };
+        let out = h.input(Input::Listening { port: Some(PORT) });
+        assert!(out.contains(&Command::Log { warn: false, text: format!("listening on 127.0.0.1:{PORT}") }));
+        h
     }
 
     fn input(&mut self, input: Input) -> Vec<Command> {
@@ -54,8 +62,71 @@ impl H {
         self.input(Input::Tick)
     }
 
+    /// One of the copy's messages on its socket (conn 1).
     fn frame(&mut self, v: Value) -> Vec<Command> {
-        self.input(Input::RelayFrame { conn: 1, text: v.to_string() })
+        self.say(1, v)
+    }
+
+    fn say(&mut self, conn: ConnId, v: Value) -> Vec<Command> {
+        self.input(Input::SocketBytes { conn, bytes: client_frame(1, v.to_string().as_bytes(), true) })
+    }
+
+    /// A relay of `browser`'s process `pid` connects and says hello.
+    fn relay(&mut self, conn: ConnId, browser: &str, pid: u32, waited: bool) -> Vec<Command> {
+        self.input(Input::RelayOpened { conn });
+        let hello = json!({ "k": "relay", "v": 1, "version": "9.9", "pid": pid, "browser": browser, "waited": waited });
+        self.relay_says(conn, hello)
+    }
+
+    fn relay_says(&mut self, conn: ConnId, v: Value) -> Vec<Command> {
+        let mut bytes = v.to_string().into_bytes();
+        bytes.push(b'\n');
+        self.input(Input::RelayBytes { conn, bytes })
+    }
+
+    /// What the app wrote to a relay: its lines.
+    fn relay_lines(out: &[Command], to: ConnId) -> Vec<Value> {
+        out.iter()
+            .filter_map(|c| match c {
+                Command::RelayWrite { conn, bytes } if *conn == to => Some(bytes.clone()),
+                _ => None,
+            })
+            .flat_map(|b| {
+                b.split(|&c| c == b'\n').filter_map(|l| serde_json::from_slice::<Value>(l).ok()).collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    /// A relay's copy asks for the link: the `link` dispatched into that relay, read.
+    fn want_link(&mut self, relay: ConnId) -> Value {
+        let out = self.relay_says(relay, json!({ "msg": { "type": "wantLink", "nonce": "n1" } }));
+        let link = H::relay_lines(&out, relay).into_iter().find(|m| m["name"] == "link").expect("the link dispatched");
+        serde_json::from_str(link["userInfo"]["e"].as_str().unwrap_or("")).expect("its JSON")
+    }
+
+    /// The copy's WebSocket request, with this token and Origin.
+    fn upgrade(token: &str, origin: &str) -> Vec<u8> {
+        format!(
+            "GET /?t={token} HTTP/1.1\r\nHost: 127.0.0.1:{PORT}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nOrigin: {origin}\r\n\r\n"
+        )
+        .into_bytes()
+    }
+
+    /// A socket opened with this token and Origin, its first answer.
+    fn connect(&mut self, conn: ConnId, token: &str, origin: &str) -> Vec<Command> {
+        self.input(Input::SocketOpened { conn });
+        self.input(Input::SocketBytes { conn, bytes: H::upgrade(token, origin) })
+    }
+
+    /// What the app wrote on a socket.
+    fn written(out: &[Command], to: ConnId) -> Vec<u8> {
+        out.iter()
+            .filter_map(|c| match c {
+                Command::Write { conn, bytes } if *conn == to => Some(bytes.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect()
     }
 
     fn read(&mut self, front: u32) -> Vec<Command> {
@@ -90,9 +161,19 @@ impl H {
             .collect()
     }
 
+    /// The app's messages on every socket (its text frames; a 101 before them skipped).
     fn sent(out: &[Command]) -> Vec<Value> {
         out.iter()
-            .filter_map(|c| if let Command::Send { text, .. } = c { serde_json::from_str(text).ok() } else { None })
+            .filter_map(|c| if let Command::Write { bytes, .. } = c { Some(bytes.as_slice()) } else { None })
+            .flat_map(|b| {
+                let frames = match b.windows(4).position(|w| w == b"\r\n\r\n") {
+                    Some(i) if b.starts_with(b"HTTP/1.1 ") => &b[i + 4..],
+                    _ => b,
+                };
+                server_frames(frames).unwrap_or_default()
+            })
+            .filter(|(op, _)| *op == 1)
+            .filter_map(|(_, p)| serde_json::from_slice(&p).ok())
             .collect()
     }
 
@@ -115,8 +196,8 @@ impl H {
         self.input(Input::PageOp { id, op: op.into(), body: obj(body), reply })
     }
 
-    /// A relay of Edge's linked, its copy (saying `chrome`, as Edge's may) linked with its state, theme and one
-    /// full-screen window.
+    /// A relay of Edge's linked, its copy linked over its socket (the token from the relay's `link`) with its state,
+    /// theme and one full-screen window.
     fn linked() -> Self {
         Self::linked_with(
             H::new(),
@@ -125,13 +206,17 @@ impl H {
     }
 
     fn linked_with(mut h: H, window: Value) -> Self {
-        let out = h.input(Input::RelayConnected {
-            conn: 1,
-            relay: RelayFacts { browser: "edge".into(), pid: Some(EDGE), origin: "chrome-extension://x/".into() },
-        });
-        assert_eq!(H::sent_kind(&out, "welcome").len(), 1, "welcome first");
-        h.frame(json!({ "k": "hello", "v": 2, "epoch": "e1", "profile": "p-a", "browser": "chrome", "owner": true, "instanceId": "i1" }));
-        assert_eq!(h.shell.link_keys(), vec!["edge:p-a".to_string()], "the relay's browser wins");
+        h.relay(1, "edge", EDGE, false);
+        let link = h.want_link(1);
+        let token = link["token"].as_str().unwrap_or("").to_owned();
+        let out = h.connect(1, &token, ORIGIN);
+        assert_eq!(
+            H::sent_kind(&out, "welcome"),
+            vec![json!({ "k": "welcome", "v": 2, "key": link["key"] })],
+            "welcome first"
+        );
+        h.frame(json!({ "k": "hello", "v": 2, "epoch": "e1", "profile": "p-a", "browser": "edge", "pid": EDGE, "owner": true, "instanceId": "i1" }));
+        assert_eq!(h.shell.link_keys(), vec!["edge:p-a".to_string()], "the hello's browser");
         h.frame(json!({
             "k": "snapshot", "epoch": "e1", "seq": 1,
             "state": { "settings": {}, "spaces": [{ "id": "s1", "name": "One" }], "openTabs": { "activeSpaceByWindow": { "7": "s1" } } },
@@ -177,7 +262,7 @@ impl H {
 }
 
 #[test]
-fn a_relay_links_and_an_overlay_shows_with_its_hello() {
+fn a_copy_links_and_an_overlay_shows_with_its_hello() {
     let (h, hello) = H::shown();
     let keys: Vec<&str> = hello.as_object().map(|o| o.keys().map(String::as_str).collect()).unwrap_or_default();
     assert_eq!(
@@ -308,8 +393,9 @@ fn a_palette_push_for_a_window_never_shown_is_dropped() {
 #[test]
 fn a_dropped_link_keeps_its_overlays_dimmed_for_6_s() {
     let (mut h, _) = H::shown();
-    let out = h.input(Input::RelayClosed { conn: 1, why: "the relay went".into() });
+    let out = h.input(Input::SocketEnded { conn: 1, error: None });
     assert!(H::received(&out).contains(&json!({ "type": "link", "state": "reconnecting" })));
+    assert!(h.logs().iter().any(|l| l == "link down (edge:p-a): closed by the extension (1006, no close frame)"));
     assert!(h.shell.is_reconnecting("edge:p-a"));
     assert!(!out.iter().any(|c| matches!(c, Command::DestroyOverlay { .. })));
     let out = h.later(5.0);
@@ -322,17 +408,14 @@ fn a_dropped_link_keeps_its_overlays_dimmed_for_6_s() {
 #[test]
 fn a_relink_within_the_grace_takes_the_overlays_back() {
     let (mut h, _) = H::shown();
-    h.input(Input::RelayClosed { conn: 1, why: "the relay went".into() });
+    h.input(Input::SocketEnded { conn: 1, error: None });
     h.now += 2.0;
-    h.input(Input::RelayConnected {
-        conn: 2,
-        relay: RelayFacts { browser: "edge".into(), pid: Some(EDGE), origin: "chrome-extension://x/".into() },
-    });
-    let out = h.input(Input::RelayFrame {
-        conn: 2,
-        text: json!({ "k": "hello", "v": 2, "epoch": "e2", "profile": "p-a", "browser": "chrome", "owner": true, "instanceId": "i1" })
-            .to_string(),
-    });
+    let token = h.shell.link.token().to_owned();
+    h.connect(2, &token, ORIGIN);
+    let out = h.say(
+        2,
+        json!({ "k": "hello", "v": 2, "epoch": "e2", "profile": "p-a", "browser": "edge", "pid": EDGE, "owner": true, "instanceId": "i1" }),
+    );
     assert!(H::received(&out).contains(&json!({ "type": "link", "state": "linked" })));
     assert!(!h.shell.is_reconnecting("edge:p-a"));
     assert!(h.logs().iter().any(|l| l == "edge:p-a is back: its overlays kept"));
@@ -360,7 +443,7 @@ fn the_data_round_trip_through_data_sync() {
     assert_eq!(ack.len(), 1, "{out:?}");
     assert_eq!(ack[0]["upTo"], 5);
     let p = crate::data::store::DataProfile::new("edge", "p-a");
-    assert!(h.shell.data_mut().set(&p).is_some(), "stored under the relay's browser");
+    assert!(h.shell.data_mut().set(&p).is_some(), "stored under the hello's browser");
 }
 
 #[test]
@@ -400,15 +483,14 @@ fn only_visibility_changes_are_told_apart() {
 }
 
 #[test]
-fn each_link_binds_only_its_relays_windows() {
+fn each_link_binds_only_its_browser_process_windows() {
     let mut h = H::linked();
     // Chrome's own relay and copy, its window at the same bounds as Edge's.
-    h.input(Input::RelayConnected {
-        conn: 2,
-        relay: RelayFacts { browser: "chrome".into(), pid: Some(200), origin: "chrome-extension://x/".into() },
-    });
-    let say = |v: Value| Input::RelayFrame { conn: 2, text: v.to_string() };
-    h.input(say(json!({ "k": "hello", "v": 2, "epoch": "c1", "profile": "p-b", "browser": "chrome", "owner": true })));
+    h.relay(2, "chrome", 200, false);
+    let token = h.want_link(2)["token"].as_str().unwrap_or("").to_owned();
+    h.connect(2, &token, ORIGIN);
+    let say = |v: Value| Input::SocketBytes { conn: 2, bytes: client_frame(1, v.to_string().as_bytes(), true) };
+    h.input(say(json!({ "k": "hello", "v": 2, "epoch": "c1", "profile": "p-b", "browser": "chrome", "pid": 200, "owner": true })));
     h.input(say(json!({
         "k": "snapshot", "epoch": "c1", "seq": 1, "state": { "settings": {} },
         "windows": [{ "windowId": 3, "left": 0, "top": 0, "width": 1920, "height": 1080, "state": "fullscreen", "focused": true }],
@@ -441,7 +523,14 @@ fn each_link_binds_only_its_relays_windows() {
 #[test]
 fn bad_input_is_lived_with() {
     let mut h = H::new();
-    h.input(Input::RelayFrame { conn: 5, text: "not json".into() });
+    h.input(Input::SocketBytes { conn: 5, bytes: b"not json".to_vec() });
+    h.input(Input::RelayBytes { conn: 5, bytes: b"not json\n".to_vec() });
+    h.input(Input::SocketOpened { conn: 6 });
+    h.input(Input::SocketBytes { conn: 6, bytes: vec![0xff; 20_000] });
+    h.input(Input::RelayOpened { conn: 6 });
+    h.input(Input::RelayBytes { conn: 6, bytes: b"[]\n".to_vec() });
+    h.input(Input::SocketEnded { conn: 6, error: Some("reset".into()) });
+    h.input(Input::RelayEnded { conn: 6 });
     h.input(Input::PageOp { id: 42, op: "hello".into(), body: Object::new(), reply: Some(1) });
     h.input(Input::HotKey { id: 7, repeat: true });
     h.input(Input::OverlayFocus { id: 3, has: false });
@@ -497,4 +586,90 @@ fn a_windowed_window_gets_no_overlay_without_windowed_too() {
         h.read(EDGE);
     }
     assert!(!h.log.iter().any(|c| matches!(c, Command::ShowOverlay { .. })), "the Mac's rule: full screen only");
+}
+
+#[test]
+fn a_relay_says_hello_and_is_welcomed() {
+    let mut h = H::new();
+    let out = h.relay(1, "edge", EDGE, false);
+    assert_eq!(H::relay_lines(&out, 1), vec![json!({ "k": "relayWelcome", "v": 1, "version": "9.9" })]);
+    // A relay that had to wait for the app: told appUp once in, as Safari's copies are when the app starts.
+    let out = h.relay(2, "chrome", 200, true);
+    let lines = H::relay_lines(&out, 2);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["name"], "appUp");
+    // Its first word not a relay's hello: closed.
+    h.input(Input::RelayOpened { conn: 3 });
+    let out = h.relay_says(3, json!({ "msg": { "type": "ping" } }));
+    assert!(out.contains(&Command::RelayEnd { conn: 3 }));
+}
+
+#[test]
+fn want_link_is_answered_then_the_link_dispatched_with_the_sockets_port_token_and_key() {
+    let mut h = H::new();
+    h.relay(1, "edge", EDGE, false);
+    h.relay(2, "edge", EDGE, false); // the copy's lasting port: another relay of the same process
+    h.relay(3, "chrome", 200, false);
+    let out = h.relay_says(1, json!({ "msg": { "type": "wantLink", "nonce": "n1" } }));
+    let reply = H::relay_lines(&out, 1);
+    assert_eq!(reply[0], json!({ "ok": true, "appOpen": true, "launching": false, "browser": "edge", "pid": EDGE }));
+    for relay in [1, 2] {
+        let link = H::relay_lines(&out, relay).into_iter().find(|m| m["name"] == "link").expect("dispatched");
+        let e: Value = serde_json::from_str(link["userInfo"]["e"].as_str().unwrap_or("")).unwrap_or(Value::Null);
+        assert_eq!(e["v"], 2);
+        assert_eq!(e["nonce"], "n1");
+        assert_eq!(e["port"], PORT);
+        assert_eq!(e["token"], h.shell.link.token());
+        assert_eq!(e["key"], h.shell.link.key());
+        assert_eq!(e["app"], json!({ "version": "9.9" }));
+    }
+    assert!(H::relay_lines(&out, 3).is_empty(), "not into another browser process's relays");
+    assert!(h.logs().iter().any(|l| l == &format!("wantLink: link handed to Edge (port {PORT}, #1)")));
+    assert!(h.logs().iter().any(|l| l == "link #1 reached the extension"));
+    // A log line from a copy: the app's log.
+    h.relay_says(3, json!({ "msg": { "type": "log", "line": "kept link try 1 of 3" } }));
+    assert!(h.logs().iter().any(|l| l == "chrome: kept link try 1 of 3"));
+}
+
+#[test]
+fn a_want_link_before_the_listener_has_its_port_waits_for_it() {
+    let mut h = H::new();
+    h.input(Input::Listening { port: None });
+    h.relay(1, "edge", EDGE, false);
+    let out = h.relay_says(1, json!({ "msg": { "type": "wantLink", "nonce": "n1" } }));
+    assert_eq!(H::relay_lines(&out, 1).len(), 1, "answered, the link not yet");
+    let out = h.input(Input::Listening { port: Some(PORT + 1) });
+    let link = H::relay_lines(&out, 1).into_iter().find(|m| m["name"] == "link").expect("then dispatched");
+    let e: Value = serde_json::from_str(link["userInfo"]["e"].as_str().unwrap_or("")).unwrap_or(Value::Null);
+    assert_eq!(e["port"], PORT + 1, "the new port");
+}
+
+#[test]
+fn a_wrong_token_or_origin_is_turned_away_with_403() {
+    let mut h = H::new();
+    h.relay(1, "edge", EDGE, false);
+    let token = h.want_link(1)["token"].as_str().unwrap_or("").to_owned();
+    let refused = b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec();
+    let out = h.connect(5, "nope", ORIGIN);
+    assert_eq!(H::written(&out, 5), refused, "a wrong token");
+    assert!(out.contains(&Command::End { conn: 5 }));
+    assert!(H::sent_kind(&out, "welcome").is_empty());
+    let out = h.connect(6, &token, "https://evil.example");
+    assert_eq!(H::written(&out, 6), refused, "a web page's Origin");
+    assert!(h.logs().iter().any(|l| l == "socket refused: wrong token"));
+    assert!(h.logs().iter().any(|l| l == "socket refused: not from Margin's extension"));
+    assert!(h.shell.link_keys().is_empty());
+    // The right ones: welcomed.
+    let out = h.connect(7, &token, ORIGIN);
+    assert!(H::written(&out, 7).starts_with(b"HTTP/1.1 101 Switching Protocols\r\n"));
+    assert_eq!(H::sent_kind(&out, "welcome").len(), 1);
+}
+
+#[test]
+fn quitting_says_bye_on_the_socket_and_closes_the_relays() {
+    let (mut h, _) = H::shown();
+    let out = h.input(Input::Stop { why: "Margin quit".into() });
+    assert_eq!(H::sent_kind(&out, "bye"), vec![json!({ "k": "bye", "why": "Margin quit" })]);
+    assert!(out.contains(&Command::End { conn: 1 }));
+    assert!(out.contains(&Command::RelayEnd { conn: 1 }));
 }

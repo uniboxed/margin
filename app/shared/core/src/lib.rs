@@ -9,10 +9,10 @@ pub mod time;
 // The link (ExtensionLink.swift, LinkSocket.swift, LinkMessage.swift, Chunks.swift, StateMirror.swift): the copies'
 // WebSockets on every OS.
 pub mod chunks;
-pub mod framing;
 pub mod link;
 pub mod mirror;
 pub mod protocol;
+pub mod relay;
 pub mod socket;
 pub mod websocket;
 
