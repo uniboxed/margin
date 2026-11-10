@@ -494,6 +494,15 @@ Object.assign(T, {
   },
   rtComputed(selector, prop) { const el = rt.target.querySelector(selector); return el ? getComputedStyle(el).getPropertyValue(prop) : null; },
   // Whether an element is drawn: in the layout, not hidden, not transparent.
+  // Drawn, whatever its opacity this instant: for what blinks (Pixel's cursors), which rtVisible would call hidden
+  // in the half of the blink it's faded out.
+  rtShown(selector) {
+    const el = rt.target.querySelector(selector);
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.visibility === 'visible' && s.display !== 'none';
+  },
   rtVisible(selector) {
     const el = rt.target.querySelector(selector);
     if (!el) return false;

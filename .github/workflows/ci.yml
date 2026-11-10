@@ -1,10 +1,13 @@
 # Margin's checks on every pull request and every push to main: npm run gate's parts, each where it's meaningful.
-# Linux: the type check and the unit tests. macOS: the browser tests (theme, security, end to end) in Chromium and
-# WebKit, the browsers Margin runs on, and the app's Swift checks and the WebKit host. Rust: on Linux with both
-# Windows targets checked, and built and tested on Windows itself. The app's own end-to-end checks drive real
-# windows and wait on macOS's window server, which a CI virtual machine is too slow for: they run in npm run gate,
-# on a Mac, before main. The macOS jobs run on every push once the repository variable MACOS_CI is "true" (it is),
-# or when started by hand.
+# Linux: the type check and the unit tests (the security suite's unit half among them). macOS: the browser tests
+# (theme, with the security suite's browser half, and end to end) in Chromium and WebKit, the browsers Margin runs on,
+# and the app's Swift checks and the WebKit host. Rust: on Linux with both Windows targets checked, and tested on
+# Windows itself. The app's own end-to-end checks drive real windows and wait on macOS's window server, which a CI
+# virtual machine is too slow for: they run in npm run gate, on a Mac, before main.
+#
+# Each job runs only when the change can reach it (the `changes` job: a docs-only change runs nothing heavy); a job
+# skipped that way counts as passed for the required checks, so if `changes` itself fails, everything runs. The macOS jobs run on every push once the repository
+# variable MACOS_CI is "true" (it is), or when started by hand, which runs everything.
 name: CI
 
 on:
@@ -29,8 +32,63 @@ env:
   NODE_VERSION: "26"
 
 jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      unit: ${{ steps.diff.outputs.unit }}
+      extension: ${{ steps.diff.outputs.extension }}
+      rust: ${{ steps.diff.outputs.rust }}
+      app: ${{ steps.diff.outputs.app }}
+      macos: ${{ steps.diff.outputs.macos }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        name: The files this change touches, by what they can reach
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          MACOS_INPUT: ${{ inputs.macos }}
+          MACOS_VAR: ${{ vars.MACOS_CI }}
+        run: |
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$BEFORE" ;;
+            *) base="" ;;
+          esac
+          if [ "$EVENT" = workflow_dispatch ]; then macos="$MACOS_INPUT"; else macos=$([ "$MACOS_VAR" = true ] && echo true || echo false); fi
+          echo "macos=$macos" >> "$GITHUB_OUTPUT"
+          # By hand, a new branch, or a base that isn't here (a force-push): everything.
+          if [ -z "$base" ] || [ "$base" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            for k in unit extension rust app; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
+            echo "Everything runs (no base to compare with)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          files=$(git diff --name-only "$base" HEAD)
+          # The workflow itself, the lockfiles and the shared build script reach everything.
+          all='^(\.github/workflows/ci\.yml|package(-lock)?\.json|tsconfig\.json|scripts/build\.ts)$'
+          reaches() { if echo "$files" | grep -qE "$all|$1"; then echo true; else echo false; fi; }
+          # (Unit tests read some of the app's files too: the Chromium crate's extension id, the host page; the browser
+          # tests' security suite reads the Mac app's page policy, OverlayWebView.swift.)
+          unit=$(reaches '^(extension|app|tests|types|scripts)/')
+          extension=$(reaches '^(extension|app/shared/host|tests|types|scripts)/|/OverlayWebView\.swift$')
+          rust=$(reaches '\.rs$|(^|/)Cargo\.(toml|lock)$|^rustfmt\.toml$|^scripts/rust-test\.sh$|^tests/fixtures/')
+          app=$(reaches '^(app|tools|extension|tests/fixtures)/|\.swift$')
+          { echo "unit=$unit"; echo "extension=$extension"; echo "rust=$rust"; echo "app=$app"; } >> "$GITHUB_OUTPUT"
+          {
+            echo "| Checks | Run |"; echo "|---|---|"
+            echo "| unit tests | $unit |"; echo "| browser tests (macOS: $macos) | $extension |"; echo "| Rust | $rust |"; echo "| Margin.app (macOS: $macos) | $app |"
+            echo; echo "<details><summary>$(echo "$files" | wc -l | tr -d ' ') changed files</summary>"; echo; echo '```'; echo "$files" | head -200; echo '```'; echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   unit:
     name: Unit tests (Linux)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.unit == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -44,12 +102,22 @@ jobs:
         run: npm test
 
   browsers:
-    name: Browser tests (macOS)
-    if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.macos) ||
-      (github.event_name != 'workflow_dispatch' && vars.MACOS_CI == 'true')
+    name: Browser tests (macOS, ${{ matrix.suite }})
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (needs.changes.outputs.extension == 'true' && needs.changes.outputs.macos == 'true')) }}
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The theme tests (with the security suite's browser half) in two halves, and the end-to-end tests.
+          - suite: theme 1 of 2
+            run: node --test --test-concurrency=1 --test-shard=1/2 tests/theme/*.test.ts
+          - suite: theme 2 of 2
+            run: node --test --test-concurrency=1 --test-shard=2/2 tests/theme/*.test.ts
+          - suite: end to end
+            run: npm run test:e2e
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -57,28 +125,37 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - name: Chromium and WebKit for the browser tests (the theme tests run in both)
+      - name: Playwright's browsers, cached by its version
+        id: browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Chromium and WebKit (the theme tests run in both)
+        if: steps.browsers.outputs.cache-hit != 'true'
         run: npx playwright install chromium webkit
       - name: Rust (stable, by the runner's own rustup), for the connector's end-to-end test
+        if: matrix.suite == 'end to end'
         run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - name: Theme tests
-        run: npm run test:theme
-      - name: Security tests
-        run: npm run test:security
-      - name: End-to-end tests
-        run: npm run test:e2e
+      - if: matrix.suite == 'end to end'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: The build (the tests load it)
+        run: node scripts/build.ts
+      - name: ${{ matrix.suite }}
+        run: ${{ matrix.run }}
       - name: Test results, when something failed
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-macos
+          name: test-results-macos-${{ strategy.job-index }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
 
   rust:
     name: Rust (Linux, Windows targets checked)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.rust == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -90,6 +167,8 @@ jobs:
 
   windows:
     name: Rust (Windows)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.rust == 'true') }}
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -97,20 +176,19 @@ jobs:
       - name: Rust (stable, by the runner's own rustup)
         run: rustup toolchain install stable --profile minimal --no-self-update --component clippy && rustup default stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - name: Tests on Windows
-        run: cargo test --workspace --locked
+      # (Clippy first: it compiles everything the tests need, so the tests build on its work. The release build of
+      # margin.exe is the release workflow's.)
       - name: Clippy on Windows
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: margin.exe and margin-connector.exe
-        run: cargo build --release --locked -p margin-windows -p margin-connector
+      - name: Tests on Windows
+        run: cargo test --workspace --locked
 
   macos:
     name: Margin.app (macOS)
-    if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.macos) ||
-      (github.event_name != 'workflow_dispatch' && vars.MACOS_CI == 'true')
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || (needs.changes.outputs.app == 'true' && needs.changes.outputs.macos == 'true')) }}
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: The newest Xcode on the runner (not a beta)

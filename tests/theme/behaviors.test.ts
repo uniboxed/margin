@@ -46,6 +46,18 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
     const shown = async (selector, nth = 0) => { await ev(({ s, n }) => T.rtBox(s, n), { s: selector, n: nth }); return rect(selector, nth); };
     const click = async (selector, nth = 0) => { const b = await shown(selector, nth); assert.ok(b, selector); await page.mouse.click(b.x, b.y); };
     const today = () => ev(() => T.rtTodayIds(8));
+    // Its box once it has stopped moving (the same twice, 50 ms apart): after a drop the list is drawn again, a
+    // frame or more later on a slow machine, and a box read before that is where the row was.
+    const settled = async (selector, nth = 0) => {
+      let last = await shown(selector, nth);
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        const now = await rect(selector, nth);
+        if (JSON.stringify(now) === JSON.stringify(last)) return now;
+        last = now;
+      }
+      return last;
+    };
     const wait = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 3000 });
     // An assertion tried again until it holds (or 3 s): what follows a pointer, a drop or a scroll is drawn and
     // sent a frame or more later on a slow machine.
@@ -309,8 +321,8 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
         await ev(() => T.rtSentClear());
         const ids = await today();
         await shown('.today .tab', 4); // the first rows in view, above the spaces bar
-        const from = await rect('.today .tab', 0);
-        const to = await rect('.today .tab', 2);
+        const from = await settled('.today .tab', 0);
+        const to = await settled('.today .tab', 2);
         await page.mouse.move(from.x, from.y);
         await page.mouse.down();
         await page.mouse.move(from.x, from.y + 2);
@@ -330,8 +342,8 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
 
         // Onto another space's chip.
         await shown('.today .tab', 4);
-        const row = await rect('.today .tab', 1);
-        const chip = await rect('.chip', 1);
+        const row = await settled('.today .tab', 1);
+        const chip = await settled('.chip', 1);
         await page.mouse.move(row.x, row.y);
         await page.mouse.down();
         await page.mouse.move(chip.x, chip.y, { steps: 8 });
@@ -342,8 +354,8 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
 
         // Into a folder (its row, below its top quarter): pinned there.
         await shown('.folder-head', 1);
-        const folder = await rect('.folder-head', 1);
-        const start = await rect('.today .tab', 3);
+        const folder = await settled('.folder-head', 1);
+        const start = await settled('.today .tab', 3);
         assert.ok(start.bottom < 830, 'the row in view');
         await page.mouse.move(start.x, start.y);
         await page.mouse.down();
@@ -354,7 +366,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
 
         // Escape: back, nothing sent.
         await shown('.today .tab', 4);
-        const r4 = await rect('.today .tab', 4);
+        const r4 = await settled('.today .tab', 4);
         await page.mouse.move(r4.x, r4.y);
         await page.mouse.down();
         await page.mouse.move(r4.x, r4.y + 60, { steps: 4 });
