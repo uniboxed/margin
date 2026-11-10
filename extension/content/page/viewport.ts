@@ -180,7 +180,7 @@ export function startViewport(box: Box) {
     const [x, y] = place;
     const body = box.body();
     let tries = 0;
-    let timer = 0;
+    let timer: Timer | 0 = 0;
     let at: number | null = null;
     const stop = () => {
       clearTimeout(timer);

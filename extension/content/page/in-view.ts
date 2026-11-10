@@ -115,7 +115,7 @@ export function startInView(box: Box) {
     // Targets whose answer came from a kept walk: chosen again once it ran
     // out, and the page hears it if that changed what it was told.
     const again = new Set<any>();
-    let againTimer = 0;
+    let againTimer: Timer | 0 = 0;
     function askAgain(state: any, ms: number) {
       again.add(state);
       againTimer ||= setTimeout(() => {

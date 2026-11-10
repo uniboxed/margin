@@ -6,7 +6,7 @@ import { api } from './store.ts';
 
 const KEY = 'sidebarScroll';
 let positions: Promise<any> | null = null; // Promise<{ [windowId]: px }>, read once (calls in between share it)
-let saveTimer: number | null = null;
+let saveTimer: Timer | null = null;
 
 function load() {
   positions ??= (async () => (await api.storage.session?.get(KEY).catch(() => null))?.[KEY] ?? {})();

@@ -323,7 +323,7 @@ async function frontOf(windowId: number) {
   const asking: Promise<{ tab: any }> = Promise.resolve().then(() => api.tabs.query({ active: true, windowId })).then(([tab]) => ({ tab: tab ?? null }));
   const known = isSynced() ? Object.values(cached()?.tabs ?? {}).find((t) => t.windowId === windowId && t.active) ?? null : null;
   if (!known) return (await asking).tab;
-  let timer: number | undefined;
+  let timer: Timer | undefined;
   const answer = await Promise.race([asking.catch(() => null), new Promise<any>((resolve) => { timer = setTimeout(() => resolve(null), FRONT_KNOWN_MS); })]).finally(() => clearTimeout(timer));
   return (answer as { tab: any } | null)?.tab ?? known;
 }

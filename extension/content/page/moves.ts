@@ -163,7 +163,7 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
     return false;
   }
 
-  let settleTimer = 0;
+  let settleTimer: Timer | 0 = 0;
   let settling = false; // the read to come is a settling one
   let settles = 0;
   for (const type of STARTS) on.addEventListener(type, started, true);

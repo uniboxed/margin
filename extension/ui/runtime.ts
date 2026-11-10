@@ -144,7 +144,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
      hold: null as { spaceId: string, until: number } | null,
   };
   // Re-drawn when the soonest of them runs out.
-  let expiryTimer: number | null = null;
+  let expiryTimer: Timer | null = null;
   function expireLater() {
     const ends = [pending.settings?.until, ...[...pending.folders.values()].map((p) => p.until), ...[...pending.spaces.values()].map((p) => p.until),
       pending.space ? pending.space.since + PENDING_MS + 50 : undefined, pending.hold ? pending.hold.until + 1 : undefined, pending.themeSettings && !pending.themeSettings.live ? pending.themeSettings.until : undefined].filter((t) => t != null);
@@ -283,7 +283,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (vm.cloudTabs?.hasDevices && !cloudTick) cloudTick = setTimeout(() => { cloudTick = null; render(); }, CLOUD_TICK_MS);
     return vm;
   }
-  let cloudTick: number | null = null;
+  let cloudTick: Timer | null = null;
 
   function setUi(patch: Partial<UiState> & Record<string, any>) {
     ui = { ...ui, ...patch };
@@ -470,7 +470,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     return { title: typeof payload?.query === 'string' ? payload.query.trim() : '', url: typeof payload?.url === 'string' ? payload.url : '', from: frontTab() };
   }
 
-  let newTabTimer: number | null = null;
+  let newTabTimer: Timer | null = null;
   function holdNewTab() {
     clearTimeout(newTabTimer);
     const done = () => { clearTimeout(newTabTimer); doc.removeEventListener('visibilitychange', onHidden); if (ui.newTabPending) setUi({ newTabPending: false }); };

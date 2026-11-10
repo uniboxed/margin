@@ -18,12 +18,12 @@ export const GESTURE_TELL_MS = 16;
 // there every frame (ui/gesture-motion.ts), follows the fingers smoothly
 // (2026-11-08: steps of 0.05 every 30 ms looked jumpy). Nothing while
 // it stays idle (most wheel events).
-export function gestureTeller(kind: 'pull' | 'swipe', tell: (g: { kind: string, state: string, progress: number, direction: number }) => void, now = () => performance.now(), later = (fn: () => void, ms: number) => setTimeout(fn, ms), cancel = (t: number) => clearTimeout(t)) {
+export function gestureTeller(kind: 'pull' | 'swipe', tell: (g: { kind: string, state: string, progress: number, direction: number }) => void, now = () => performance.now(), later = (fn: () => void, ms: number) => setTimeout(fn, ms), cancel = (t: Timer) => clearTimeout(t)) {
   let state = 'idle';
   let key = 'idle';
   let at = -Infinity;
   let held: { key: string; state: string; progress: number; direction: number; } | null = null;
-  let timer: number | null = null;
+  let timer: Timer | null = null;
   const say = (g: { key: string; state: string; progress: number; direction: number; }) => {
     if (timer != null) cancel(timer);
     timer = null;
@@ -69,7 +69,7 @@ export function startTrackpad(page: any) {
   // guard); this is Margin's: pull down at the top of a page past the
   // threshold and let go to reload. The gesture logic is shared/pull.ts.
   let pullRefreshing = false;
-  let pullStuckTimer: number | null = null;
+  let pullStuckTimer: Timer | null = null;
   // Also while an earlier copy is still in the page (its pull reloads too: the
   // same reload), unlike swipe below (two would go back twice).
   const pullEnabled = () => !page.dormant?.() && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.pullToRefresh !== false;
@@ -131,7 +131,7 @@ export function startTrackpad(page: any) {
   if (gestureGuard) {
     const pullTracker = createPullTracker();
     const swipeTracker = createSwipeTracker();
-    let endTimer: number | null = null;
+    let endTimer: Timer | null = null;
     // Where the gesture applies is asked lazily (shared/pull.ts): it walks
     // the event's path, which can cost a layout, only while it matters.
     const onWheel = (event: WheelEvent) => {

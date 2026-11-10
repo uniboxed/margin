@@ -233,7 +233,7 @@ const coverWatch = createCoverWatch({
 // What takes the pointer, measured again once a theme's animation ends (the sidebar sliding out over the page:
 // measured at the slide's start, it was still off screen, and the pointer went through it to the page, a real
 // session's recording 2026-11-07 2:11), and a moment after any change (an animation that ends unheard).
-let hitsLater = 0;
+let hitsLater: Timer | 0 = 0;
 function hitsAfter(ms: number) { clearTimeout(hitsLater); hitsLater = setTimeout(hitsSoon, ms); }
 for (const type of ['transitionend', 'transitioncancel', 'animationend']) addEventListener(type, () => hitsSoon(), true);
 // The space the sidebar shows, told to the app when it changes (its window's, by the view model: theme-blind), for the

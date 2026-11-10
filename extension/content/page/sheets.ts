@@ -154,7 +154,7 @@ export function startSheets(box: Box) {
   // with them, in one selector: thousands of them cost one match, and anything
   // that isn't a plain rule, or that a browser won't take, is simply read for.
   const edited = new Set<any>();
-  let judging = 0;
+  let judging: Timer | 0 = 0;
   function judge() {
     judging = 0;
     const rules = [...edited];
@@ -333,7 +333,7 @@ export function startSheets(box: Box) {
   // at the read its sheet brought, so only what it changes later hangs on
   // it; one about <html> or <body> found now is read for, to be sure.
   const unread: [ArrayLike<CSSRule>, number][] = [];
-  let unreadTask = 0;
+  let unreadTask: Timer | 0 = 0;
   function hasLater(rules: CSSRuleList) {
     unread.push([Array.from(rules), 0]);
     unreadTask ||= setTimeout(readSelectors, HAS_WAIT);

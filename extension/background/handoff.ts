@@ -108,7 +108,7 @@ export async function probeWindow(windowId: number, request: { width: number, he
     type: 'frameProbe', width: Number(request.width) || 0, height: Number(request.height) || 0,
     frames: clamp(request.frames, 1, 60, 6), nudgeMs: clamp(request.nudgeMs, 0, 1000, 80), timeoutMs,
   };
-  let timer: number | undefined;
+  let timer: Timer | undefined;
   const late = new Promise<any>((resolve) => { timer = setTimeout(() => resolve(null), timeoutMs + PROBE_GRACE_MS); });
   const asked = (async () => {
     const [front] = await api.tabs.query({ active: true, windowId }).catch(() => []);
