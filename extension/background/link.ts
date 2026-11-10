@@ -637,7 +637,12 @@ export function createLink({
         if (reply) note('wantLink: Margin.app isn\'t running and wasn\'t started');
         return failed({ appGone: reply?.appOpen === false });
       }
-      got = await within(given, T.linkWait);
+      // The link in the handler's answer itself, from the app's note (docs/PROTOCOL.md "Transport (Safari)" step
+      // 1): taken at once, nothing for Safari to pass on. Else the app's `link`, dispatched.
+      const inReply = reply?.link;
+      got = inReply?.v === VERSION && inReply.nonce === mine && validLink(inReply)
+        ? { port: inReply.port, token: inReply.token, key: inReply.key }
+        : await within(given, T.linkWait);
     }
     taken();
     if (!got || !on) {

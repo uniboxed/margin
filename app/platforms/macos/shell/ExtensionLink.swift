@@ -144,6 +144,39 @@ final class LinkConnection {
     }
 }
 
+// Where the link is, for Safari's extension handler to answer a copy's ask with at once (docs/PROTOCOL.md
+// "Transport (Safari)" step 1): `margin-link` in the extension's own container (its Caches, where the handler leaves
+// its launch note for the app), `{ v, port, token, key, app: { version }, pid, at }`, written as the listener gets
+// its port and as the token changes, removed when the listener goes. Only the handler (the extension's sandbox)
+// and this app read it; owner-only, replaced whole (a reader never sees half a file). None under the app's tests.
+struct LinkNote {
+    let url: URL?
+
+    static func standard() -> LinkNote {
+        guard ProcessInfo.processInfo.environment["MARGIN_APP_TESTS"] == nil else { return LinkNote(url: nil) }
+        let caches = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Containers/\(marginExtensionIdentifier)/Data/Library/Caches", isDirectory: true)
+        return LinkNote(url: caches.appendingPathComponent("margin-link"))
+    }
+
+    // The note now (`info` nil: none). Only into a container the extension has made (it has run once).
+    func write(_ info: JSONObject?) {
+        guard let url else { return }
+        guard let info, let data = try? JSONSerialization.data(withJSONObject: info) else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        let dir = url.deletingLastPathComponent()
+        guard FileManager.default.fileExists(atPath: dir.path) else { return }
+        let temp = dir.appendingPathComponent(".margin-link-\(ProcessInfo.processInfo.processIdentifier)")
+        guard FileManager.default.createFile(atPath: temp.path, contents: data, attributes: [.posixPermissions: 0o600]),
+              rename(temp.path, url.path) == 0 else {
+            try? FileManager.default.removeItem(at: temp)
+            return
+        }
+    }
+}
+
 final class SocketLink {
     struct Timing {
         var tick: TimeInterval = 5
@@ -167,6 +200,7 @@ final class SocketLink {
     var relay: RelayHub?
 
     private let dispatch: ExtensionDispatch
+    private let note: LinkNote
     private let safariSince: () -> Date?
     private let wake: Notification.Name
     private var listener: NWListener?
@@ -192,8 +226,9 @@ final class SocketLink {
     func connection(_ key: String) -> LinkConnection? { links[key] }
 
     init(dispatch: ExtensionDispatch = SafariDispatch(), safariSince: @escaping () -> Date? = safariRunningSince,
-         wake: Notification.Name = Notification.Name("io.tirth.margin.setup"), timing: Timing = Timing()) {
+         wake: Notification.Name = Notification.Name("io.tirth.margin.setup"), timing: Timing = Timing(), note: LinkNote = .standard()) {
         self.dispatch = dispatch
+        self.note = note
         self.safariSince = safariSince
         self.wake = wake
         self.timing = timing
@@ -254,6 +289,7 @@ final class SocketLink {
             listenWaitTimer = nil
             port = listener.port?.rawValue
             Diagnostics.note("listening on 127.0.0.1:\(port ?? 0)")
+            publish()
             let nonces = asked
             asked = []
             for each in nonces { answer(each.nonce, via: each.via) }
@@ -263,6 +299,7 @@ final class SocketLink {
             listener.cancel()
             self.listener = nil
             port = nil
+            publish()
             retryListen()
         case .waiting(let error):
             // As after sleep or wake, or a network change: made again if it lasts.
@@ -276,6 +313,7 @@ final class SocketLink {
             Diagnostics.warn("listener cancelled")
             self.listener = nil
             port = nil
+            publish()
             retryListen()
         @unknown default:
             Diagnostics.note("listener state: \(state)")
@@ -295,6 +333,7 @@ final class SocketLink {
                 self.listenerWaiting = false
                 self.listener = nil
                 self.port = nil
+                self.publish()
                 listener.cancel()
                 self.listen()
             }
@@ -334,6 +373,14 @@ final class SocketLink {
 
     private func take(_ nonce: String, via: ExtensionDispatch?) {
         if port == nil { asked = Array((asked + [(nonce, via)]).suffix(8)) } else { answer(nonce, via: via) }
+    }
+
+    // The link note as things are now: the port, token and key while listening, none otherwise.
+    private func publish() {
+        guard let port, !stopped else { return note.write(nil) }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        note.write(["v": LinkProtocol.version, "port": Int(port), "token": token, "key": key, "app": ["version": version],
+                    "pid": Int(ProcessInfo.processInfo.processIdentifier), "at": Self.at()])
     }
 
     private func answer(_ nonce: String, via: ExtensionDispatch? = nil) {
@@ -494,6 +541,7 @@ final class SocketLink {
                     guard let self, self.links.isEmpty else { return }
                     self.token = Self.secret()
                     self.key = Self.secret()
+                    self.publish()
                     Diagnostics.note("token changed")
                 }
             }
@@ -512,6 +560,7 @@ final class SocketLink {
         listener?.cancel()
         listener = nil
         port = nil
+        note.write(nil)
         for socket in sockets { socket.close(1001, why) }
         let open = connections
         guard !open.isEmpty else { return then() }

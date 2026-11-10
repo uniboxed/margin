@@ -94,12 +94,21 @@ func relayTests() {
   let alone = early.next()
   check("no app: answered by the connector, not open, not launching (MARGIN_CONNECTOR_NO_LAUNCH)", alone?["appOpen"] as? Bool == false && alone?["launching"] as? Bool == false && alone?["browser"] as? String == "edge", "\(alone ?? [:])")
 
-  let link = SocketLink(dispatch: NoSafari(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.relay.\(me)"))
+  // The link note (ExtensionLink.swift LinkNote) in a stand-in for the extension's Caches.
+  let noteDir = dir.appendingPathComponent("Caches", isDirectory: true)
+  try? FileManager.default.createDirectory(at: noteDir, withIntermediateDirectories: true)
+  let noteURL = noteDir.appendingPathComponent("margin-link")
+  let link = SocketLink(dispatch: NoSafari(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.relay.\(me)"), note: LinkNote(url: noteURL))
   let hub = RelayHub(path: path, version: "7", allows: { $0.uid == getuid() ? nil : "not this user" })
   link.relay = hub
   link.start()
   spin(3) { link.port != nil }
   check("the link listens", link.port != nil)
+  let noted = object(try? Data(contentsOf: noteURL))
+  check("the link note: the port, a token and a key, this process, v 2", noted?["port"] as? Int == link.port.map(Int.init) && (noted?["token"] as? String)?.count == 64
+          && (noted?["key"] as? String)?.count == 64 && noted?["pid"] as? Int == Int(getpid()) && noted?["v"] as? Int == LinkProtocol.version, "\(noted ?? [:])")
+  check("the link note: the owner's only, nothing else left beside it", (try? FileManager.default.attributesOfItem(atPath: noteURL.path)[.posixPermissions] as? Int) == 0o600
+          && (try? FileManager.default.contentsOfDirectory(atPath: noteDir.path)) == ["margin-link"])
   check("relay socket: this user's only", (try? FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? Int) == 0o600)
 
   // The relay that waited is in now: told appUp, as Safari's copies are when the app starts.
@@ -172,4 +181,10 @@ func relayTests() {
   strictLink.stop(why: "test done") { stopped += 1 }
   spin(1) { stopped == 2 }
   check("stopped: the relay socket removed", !FileManager.default.fileExists(atPath: path))
+  check("stopped: the link note removed", !FileManager.default.fileExists(atPath: noteURL.path))
+  check("the link note: none written where the extension has no container yet", { () -> Bool in
+    let none = dir.appendingPathComponent("no-container/margin-link")
+    LinkNote(url: none).write(["port": 1])
+    return !FileManager.default.fileExists(atPath: none.deletingLastPathComponent().path)
+  }())
 }
