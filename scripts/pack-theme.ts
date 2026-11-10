@@ -9,6 +9,7 @@ import { join, resolve, basename } from 'node:path';
 import { deflateRawSync } from 'node:zlib';
 import { packageFromFiles, crc32, IMPORT_LIMITS } from '../extension/ui/theme-import.ts';
 import { checkPackage, sanitizeTheme } from '../extension/ui/theme-loader.ts';
+import { motionAdvice, motionNotes } from './theme-motion.ts';
 
 const KEEP = /^(theme\.(json|html|css)|.+\.(woff2|png|jpe?g|gif|webp|avif|svg|txt|md))$/i;
 
@@ -80,7 +81,7 @@ export function packTheme(dir: string) {
   if (!report.ok) throw new Error(report.errors.join('\n'));
   const bytes = zipFiles(files);
   if (bytes.length > IMPORT_LIMITS.zipBytes) throw new Error(`the file would be ${bytes.length} bytes, over ${IMPORT_LIMITS.zipBytes}`);
-  return { bytes, id: report.manifest.id, version: report.manifest.version, left, removed: report.removed };
+  return { bytes, id: report.manifest.id, version: report.manifest.version, left, removed: report.removed, motion: motionNotes(read.pkg.css) };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -88,11 +89,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (!dirArg) { console.error('npm run theme:pack <theme folder> [out.margintheme]'); process.exit(2); }
   try {
     const dir = resolve(dirArg);
-    const { bytes, id, version, left, removed } = packTheme(dir);
+    const { bytes, id, version, left, removed, motion } = packTheme(dir);
     const out = resolve(outArg ?? `${basename(dir)}.margintheme`);
     writeFileSync(out, bytes);
     console.log(`${out}: ${id} ${version}, ${bytes.length} bytes`);
     if (left.length) console.log(`left out (not part of a theme package): ${left.join(', ')}`);
+    if (motion.length) console.log(`Motion that may not be smooth (packed anyway):\n${motionAdvice(motion).join('\n')}`);
     if (removed.length) console.log(`Margin will remove ${removed.length} thing${removed.length === 1 ? '' : 's'} when it loads it:\n${removed.slice(0, 20).map((r) => `  ${r.file}: ${r.kind} ${r.name}: ${r.reason}`).join('\n')}`);
   } catch (err) {
     console.error(`not packed:\n${err.message}`);

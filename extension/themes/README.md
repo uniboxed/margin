@@ -404,6 +404,18 @@ Classes and variables Margin sets for you to style:
 - `--m-menu-x`, `--m-menu-y` (`<m-menu>`), `--m-reveal-zone` (`m-peek`),
   `--m-<setting>` (your settings).
 
+## Motion
+
+Animate `transform`, `translate`, `scale`, `rotate` and `opacity`: the browser moves those on its compositor, and
+they stay smooth even on a busy machine. Animating `left`, `width`, `height`, `margin`, `padding` and the like (or
+`transition: all`) makes the browser lay the theme out again on every frame, which drops frames. Colours and
+shadows only repaint: fine on small elements.
+
+`npm run theme:pack` lists the transitions and keyframes that animate layout, with their lines (it packs the theme
+anyway). For a bar that grows, scale it from one end (`transform: scaleY(…)` with `transform-origin: bottom`, as
+Pixel's playing bars do); for something that slides, `translate` it. Keep a `prefers-reduced-motion: reduce` rule
+that stops what loops.
+
 ## Security rules
 
 A theme sees every tab's title and address, so it must not be able to run
