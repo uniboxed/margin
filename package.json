@@ -15,6 +15,7 @@
     }
   },
   "description": "Arc's way of browsing in Safari, Chrome and Edge: spaces, pins, a command palette and sleeping tabs",
+  "license": "GPL-3.0-or-later",
   "repository": {
     "type": "git",
     "url": "https://github.com/uniboxed/margin.git"

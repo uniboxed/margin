@@ -69,4 +69,7 @@ style. Please report security problems privately ([SECURITY.md](SECURITY.md)), a
 
 ## License
 
-[LICENSE](LICENSE).
+Margin is free software: you can use, study, share and change it under the
+[GNU General Public License, version 3 or later](LICENSE). Anything built from Margin and shared with others must be
+shared under the same license, with its source. Its themes' fonts are under the SIL Open Font License, each beside
+its font.

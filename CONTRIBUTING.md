@@ -45,6 +45,11 @@ the same checks on every pull request.
 Margin never sends anything anywhere, and its logs never contain page addresses, titles or page content. Keep it
 that way: a change that logs, stores or sends any of those won't be merged.
 
+## License of contributions
+
+Margin is licensed under the [GPL, version 3 or later](LICENSE). By sending a contribution you agree that it's your
+own work (or that you may share it) and that it's licensed the same way.
+
 ## Working with AI coding agents
 
 `AGENTS.md` and `CLAUDE.md` hold the project's rules for coding agents; the same rules apply to human contributors.
