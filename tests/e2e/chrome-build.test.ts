@@ -1,4 +1,4 @@
-// The Chrome build (dist/chrome) on its own: no Margin.app for Chrome until
+// The Chromium build (dist/chromium) on its own: no Margin.app for Chrome until
 // Phase 5. Its background starts and its new-tab page is Margin's (the old
 // smoke tests); Chrome's profile: its shortcuts, Chrome's own site icons (no
 // fetching), searches through chrome.search, no gesture blocking and the
@@ -18,7 +18,7 @@ import { shoot } from './harness/shots.ts';
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 
-const EXTENSION = fileURLToPath(new URL('../../dist/chrome', import.meta.url));
+const EXTENSION = fileURLToPath(new URL('../../dist/chromium', import.meta.url));
 
 let context;
 let worker;

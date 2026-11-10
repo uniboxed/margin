@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Add Margin.app's shell to the generated Xcode project (scripts/make-xcode.sh runs it): each
-app/shell/*.swift to the app target's sources, in a Shell group, and dist/app (the overlay's page,
-`npm run build`) as a folder copied to the app's Resources/app/. From feat/native-panel's version
-(its panel), with the paths changed.
+"""Add Margin.app's Swift to the generated Xcode project (scripts/make-xcode.sh runs it): every *.swift of
+the folders app/macos/swift-sources.txt lists (the Mac's own code, and each engine's and browser's app side on
+the Mac) to the app target's sources, in a Shell group, and dist/app (the host page, `npm run build`) as a
+folder copied to the app's Resources/app/. From feat/native-panel's version (its panel), with the paths changed.
 
   python3 scripts/xcode-add-sources.py <project file> <repo>
 
@@ -25,9 +25,14 @@ import sys
 APP_TARGET = 'Margin'
 
 
+# The app's Swift, from app/macos/swift-sources.txt: the repo (what the paths are from) and each file's path from it.
 def panel_files(repo):
-    swift_dir = os.path.join(repo, 'app', 'shell')
-    return swift_dir, sorted(n for n in os.listdir(swift_dir) if n.endswith('.swift'))
+    with open(os.path.join(repo, 'app', 'macos', 'swift-sources.txt')) as f:
+        folders = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+    files = []
+    for folder in folders:
+        files += ['%s/%s' % (folder, n) for n in sorted(os.listdir(os.path.join(repo, folder))) if n.endswith('.swift')]
+    return repo, files
 
 
 # ---- project.xcproj ----------------------------------------------------------------------------
@@ -92,7 +97,7 @@ def add_pbxproj(path, repo):
     with open(path) as f:
         text = f.read()
     swift_dir, swift = panel_files(repo)
-    panel_group = object_id('group:app/shell')
+    panel_group = object_id('group:swift-sources')
     folder_ref = object_id('folder:dist/app')
     folder_build = object_id('build:dist/app')
 
@@ -102,13 +107,14 @@ def add_pbxproj(path, repo):
         text = insert_in_list(text, app_group, 'children', ['%s /* Shell */' % panel_group])
     refs, builds, children, compiled = [], [], [], []
     for name in swift:
-        ref, build = object_id('file:app/shell/' + name), object_id('build:app/shell/' + name)
+        ref, build = object_id('file:' + name), object_id('build:' + name)
         if ref in text:
             continue
-        refs.append('\t\t%s /* %s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = %s; sourceTree = "<group>"; };\n' % (ref, name, name))
-        builds.append('\t\t%s /* %s in Sources */ = {isa = PBXBuildFile; fileRef = %s /* %s */; };\n' % (build, name, ref, name))
-        children.append('%s /* %s */' % (ref, name))
-        compiled.append('%s /* %s in Sources */' % (build, name))
+        short = os.path.basename(name)
+        refs.append('\t\t%s /* %s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "%s"; sourceTree = "<group>"; };\n' % (ref, short, name))
+        builds.append('\t\t%s /* %s in Sources */ = {isa = PBXBuildFile; fileRef = %s /* %s */; };\n' % (build, short, ref, short))
+        children.append('%s /* %s */' % (ref, short))
+        compiled.append('%s /* %s in Sources */' % (build, short))
     if children:
         text = insert_in_section(text, 'PBXFileReference', refs)
         text = insert_in_section(text, 'PBXBuildFile', builds)

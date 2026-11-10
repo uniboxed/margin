@@ -1,5 +1,5 @@
 // Tabs following the window in front through the background's own listeners (background.ts, background/away.ts,
-// app/WINDOWS.md §9), against a fake of Safari's API: the stand-in's events left out, the move, the focus coming
+// docs/BROWSER-WINDOWS.md §9), against a fake of Safari's API: the stand-in's events left out, the move, the focus coming
 // back, the stand-in clicked, the tab closed. The rules: tests/away.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

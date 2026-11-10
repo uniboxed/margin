@@ -53,7 +53,7 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
     : justShown && own?.windowId === windowId && !own.active && has(state.tabSpace?.[own.id]) ? state.tabSpace[own.id]
     : activeSpaceId(state, windowId);
   const known = own?.windowId === windowId;
-  // The space's tabs in every window of the profile, as one list (app/WINDOWS.md §9: the tab follows the window
+  // The space's tabs in every window of the profile, as one list (docs/BROWSER-WINDOWS.md §9: the tab follows the window
   // in front). Another window's tab is chosen here only when it's this window's away tab: then it's this window's
   // highlight, `away` (faded: it's live in the other window, a stand-in in front here).
   const away = state.awayByWindow?.[windowId as number] ?? null; // (no window yet: none away)

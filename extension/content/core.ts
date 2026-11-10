@@ -243,7 +243,7 @@ export function startCore() {
   // Safari can take part of a full-screen window: the Web Inspector docked at
   // the bottom, left or right (Safari's sidebar on the left). The page's area
   // is then smaller than the window, and Margin.app draws only over it
-  // (app/shell/Shell.swift overlayFrame), beside the inspector. Its size is
+  // (app/macos/shell/Shell.swift overlayFrame), beside the inspector. Its size is
   // the viewport's; where it starts is known exactly from any pointer event
   // (the event's screen point less the window's corner and its own point in
   // the page), else taken as: the width missing on the left (Safari's
@@ -627,7 +627,7 @@ export function startCore() {
   const onMessage = (message: any, _: BrowserMessageSender, sendResponse: (response?: any) => void) => {
     // Whether this page was opened from nothing (no referrer, its first
     // history entry), for the note on Safari's "New tabs open with"
-    // (background/newtab-hint.ts: Margin.app's overlay says it).
+    // (engines/webkit/browsers/safari/extension/newtab-hint.ts: Margin.app's overlay says it).
     if (message?.type === 'newtab-hint') return sendResponse({ fromNothing: !document.referrer && history.length === 1 });
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
     if (message?.type === 'reportVisibility') return tellVisibility();

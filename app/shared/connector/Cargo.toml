@@ -1,0 +1,29 @@
+[package]
+name = "margin-connector"
+description = "Margin's connector: the program Chrome, Edge and the other Chromium browsers start to reach Margin's app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "margin-connector"
+path = "src/main.rs"
+
+[dependencies]
+margin-chromium = { path = "../../../engines/chromium/app" }
+serde_json.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+margin-windows = { path = "../../windows" }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Registry", "Win32_System_Threading"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

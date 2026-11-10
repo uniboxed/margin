@@ -296,7 +296,7 @@ final class OffScreenWindow: NSWindow {
   let window = Win()
   override init() { super.init(); controller.delegate = self }
   func webExtensionController(_ c: WKWebExtensionController, openWindowsFor x: WKWebExtensionContext) -> [any WKWebExtensionWindow] { [window] }
-  // Native messaging, as Safari's extension handler and Margin.app do it (app/PROTOCOL.md):
+  // Native messaging, as Safari's extension handler and Margin.app do it (docs/PROTOCOL.md):
   // a copy's wantLink goes to the app's real end of the link (link-server/main.swift, started
   // by an `appStart` step), whose dispatches come into the copy's lasting port. Without it,
   // the handler's answer: the app isn't open. After an `appOnDemand` step, a wantLink with
@@ -576,7 +576,7 @@ Task { @MainActor in
       log("put \(t.name) to sleep")
     case "install": try! await host.install(sameId: (step["sameId"] as? Bool) == true)
     case "installOld":
-      // An old copy of Margin (MARGIN_HOST_OLD_EXT: run.sh puts main's dist/safari there, or
+      // An old copy of Margin (MARGIN_HOST_OLD_EXT: run.sh puts main's Safari build (dist/webkit) there, or
       // `dir`) running beside the installed one, sharing its storage.
       let dir = step["dir"] as? String ?? ProcessInfo.processInfo.environment["MARGIN_HOST_OLD_EXT"] ?? ""
       try! await host.installOld(dir: URL(fileURLWithPath: dir))

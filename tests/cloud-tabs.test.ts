@@ -3,7 +3,7 @@
 // (ui/view-model.ts cloudTabs), the palette's section (shared/search.ts),
 // the actions and the menu, the setting, and the app host taking them.
 // The app's reader is tested in Swift against made-up databases
-// (tools/app-tests/cloud-tabs-tests.swift); the folder drawn in both themes
+// (engines/webkit/browsers/safari/app/tests/cloud-tabs-tests.swift); the folder drawn in both themes
 // in tests/theme/cloud.test.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

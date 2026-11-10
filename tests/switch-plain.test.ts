@@ -134,7 +134,7 @@ function overlay() {
   const copy = backgroundSwitches();
   const onState = (changes, area) => { if (area === 'local' && 'openTabs' in changes) { switching.settle(); draw(); } };
   listeners.sChanged.push(onState);
-  // Each push as the overlay takes it (app/overlay/overlay.ts, ui/runtime.ts switchTo), as it comes.
+  // Each push as the overlay takes it (app/shared/host/overlay.ts, ui/runtime.ts switchTo), as it comes.
   const take = ({ msg }) => {
     if (msg.type === 'switching') {
       const request = copy.begin(msg.tabId, msg.switchId ?? null);

@@ -1,0 +1,7 @@
+# Margin.app's Swift, by folder: every *.swift in each is compiled into the app (scripts/xcode-add-sources.py), and
+# into its tests (tools/app-tests/run.sh); a change in one runs the Swift checks (scripts/quick-test.mts). The Mac's
+# own code, then each engine's and browser's app side on the Mac. Safari's extension handler is the extension's
+# (its handler/ folder, copied by scripts/make-xcode.sh), and the connector a program of its own.
+app/macos/shell
+app/macos/private
+engines/webkit/browsers/safari/app

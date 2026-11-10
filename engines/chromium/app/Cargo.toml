@@ -1,0 +1,21 @@
+[package]
+name = "margin-chromium"
+description = "Chromium's side of Margin's app on every OS: its browsers' native-messaging host files"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "margin_chromium"
+path = "src/lib.rs"
+
+[dependencies]
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

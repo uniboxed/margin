@@ -1,5 +1,5 @@
 // background/link.ts, the extension's end of the link to Margin.app, against
-// a fake app speaking app/PROTOCOL.md over a real WebSocket on 127.0.0.1
+// a fake app speaking docs/PROTOCOL.md over a real WebSocket on 127.0.0.1
 // (tests/fake-app.ts), with a fake browser API: getting linked (the native
 // port, wantLink and its nonce, the token, the app's key), hello, the
 // snapshot, the theme in pieces, the keys, data.hello and the queue, ticks,

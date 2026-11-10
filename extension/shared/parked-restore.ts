@@ -1,4 +1,4 @@
-// Windows Margin.app had parked (out of sight in a private Space, app/HANDOFF.md §2.5) coming back after Safari
+// Windows Margin.app had parked (out of sight in a private Space, docs/HANDOFF.md §2.5) coming back after Safari
 // quit and opened again: Safari restores every window it had, the parked ones too, as normal windows on the
 // Desktop (Tirth, 2026-11-07: "i see those hidden tabs as small windowed windows on the homescreen"). Window and tab
 // ids are new after a relaunch; Margin's own tab ids (`mid`, state/model.ts) are matched back to the restored tabs

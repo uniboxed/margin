@@ -1,4 +1,4 @@
-// iCloud Tabs in the overlay (Margin.app reads them: app/shell/CloudTabs.swift;
+// iCloud Tabs in the overlay (Margin.app reads them: engines/webkit/browsers/safari/app/CloudTabs.swift;
 // the overlay draws them: shared/cloud-tabs.ts, the theme's cloud-tabs part):
 // the folder above New Tab with each device and its tabs; devices closed and
 // opened; a tab opened as a new tab; Copy Link and Full Disk Access asked of

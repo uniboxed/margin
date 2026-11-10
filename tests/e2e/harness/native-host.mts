@@ -1,5 +1,5 @@
 // The native messaging host Chromium runs for `io.tirth.margin`: a stand-in
-// for Safari's extension handler (app/safari/SafariWebExtensionHandler.swift)
+// for Safari's extension handler (engines/webkit/browsers/safari/app/handler/SafariWebExtensionHandler.swift)
 // and for what Margin.app dispatches into the extension. It passes every
 // message from the extension to the test (relay.ts) over a local TCP socket,
 // one JSON line each, and writes back to Chromium what the test sends.

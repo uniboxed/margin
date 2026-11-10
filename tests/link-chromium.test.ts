@@ -1,4 +1,4 @@
-// background/link.ts in Chrome's build (Chrome and Edge on the Mac, app/PROTOCOL.md "Transport (Chrome and Edge, on
+// background/link.ts in Chrome's build (Chrome and Edge on the Mac, docs/PROTOCOL.md "Transport (Chrome and Edge, on
 // the Mac)"): the same link as Safari's, found through Margin.app's relay helper. Its socket opened from the service
 // worker, no socket guard, the browser's process (the relay's word) and Edge told apart in hello, the process kept
 // with the link through the worker starting again; and where the Chrome build links at all (shared/platform.ts).

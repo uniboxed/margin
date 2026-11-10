@@ -13,7 +13,7 @@
 //    Navigation API's transitions), which the browser doesn't count as a load.
 // Each lasts at most MAX_MS (a page that never says it's done). Not written
 // to storage (every write reaches every page): pushed to the window's
-// overlay as the set of its tabs loading (app/PROTOCOL.md `push` `loading`),
+// overlay as the set of its tabs loading (docs/PROTOCOL.md `push` `loading`),
 // a moment after it changes, and again for every window when the link comes.
 import { appLink } from './app-link.ts';
 

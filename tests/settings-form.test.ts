@@ -118,7 +118,7 @@ test('Settings in the view model: on Margin\'s own pages, while open; its button
   assert.deepEqual(requestFor('settings.open', undefined, { state, ui: { windowId: 7 } }), { kind: 'send', type: 'openLauncher', payload: { windowId: 7, settings: true } });
 });
 
-// DEV-HOOK: Margin.app's "ask before quitting" (its quit prompt, app/shell/QuitPrompt.swift), a development switch:
+// DEV-HOOK: Margin.app's "ask before quitting" (its quit prompt, app/macos/shell/QuitPrompt.swift), a development switch:
 // shown only when the app says it (`devAskBeforeQuit`), saved by the app.
 test('settings: the development switch for Margin\'s quit prompt, only when the app says it, saved by the app', () => {
   assert.equal(settingsFields({}, {}).find((f) => f.id === 'devAskBeforeQuit'), undefined, 'not said: not shown');

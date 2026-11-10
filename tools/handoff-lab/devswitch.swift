@@ -1,4 +1,4 @@
-// DEV-HOOK: goes before production with app/shell/DevHooks.swift (app/HANDOFF.md §9).
+// DEV-HOOK: goes before production with engines/webkit/browsers/safari/app/DevHooks.swift (docs/HANDOFF.md §9).
 //
 // The dev hook's sender: posts one io.tirth.margin.dev.* notification to Margin.app, which honours it
 // only while `defaults read io.tirth.margin MarginDevHooks` is YES, and only when the window it shows
@@ -10,7 +10,7 @@
 //   swift tools/handoff-lab/devswitch.swift dump
 //   swift tools/handoff-lab/devswitch.swift mode [--freeze on|off] [--old park|close|keep]
 //   swift tools/handoff-lab/devswitch.swift fail show|park|reveal|fullscreen
-//   swift tools/handoff-lab/devswitch.swift probe tabMove   Test A's one-shot tab-move probe (app/WINDOWS.md)
+//   swift tools/handoff-lab/devswitch.swift probe tabMove   Test A's one-shot tab-move probe (docs/BROWSER-WINDOWS.md)
 //   swift tools/handoff-lab/devswitch.swift alternate N [--every S] [--wait S]   Test B, Test A, … N switches
 //
 // --wait S: post after S seconds (time to click into Safari, so the switch starts with Safari in front,

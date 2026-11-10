@@ -1,4 +1,4 @@
-// Margin's stand-in page (background/away.ts, app/WINDOWS.md §9): in front of a window whose chosen tab is shown
+// Margin's stand-in page (background/away.ts, docs/BROWSER-WINDOWS.md §9): in front of a window whose chosen tab is shown
 // live in another window of the profile. It shows that tab's picture (taken as it left, kept in the background's
 // memory only), faded, and its title; a click, Return or Space brings the tab back to this window, as the window
 // coming to the front does. Never a Margin tab (state/model.ts upsertTab), never kept or synced. It answers

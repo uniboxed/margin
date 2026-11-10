@@ -1,15 +1,15 @@
-// Chrome and Edge on the Mac (app/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"), end to end: the real
-// Chrome build (dist/chrome's, its fixed key), in Chrome for Testing (headless), starts the real relay helper
-// (app/relay/main.swift, built here) through native messaging, the host file in the profile's own folder. A stand-in
-// for Margin.app's relay socket (RelayLink.swift's words) answers the copy's wantLink as the app does and hands it the
+// Chrome and Edge on the Mac (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"), end to end: the real
+// Chromium build (dist/chromium's, its fixed key), in Chrome for Testing (headless), starts the real connector
+// (app/shared/connector/, Rust, built here) through native messaging, the host file in the profile's own folder. A stand-in
+// for Margin.app's connector socket (RelayLink.swift's words) answers the copy's wantLink as the app does and hands it the
 // link; the copy then links over the same WebSocket as Safari's (tests/fake-app.ts) from its service worker, and says
-// it's Chrome, with the browser's process as the relay told it.
+// it's Chrome, with the browser's process as the connector told it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -56,26 +56,27 @@ function relaySocket(path: string, app: any) {
   })));
 }
 
-test('Chrome on the Mac: the real relay finds the app, and the copy links from its service worker, saying chrome and its process', { timeout: 120_000 }, async () => {
-  const root = mkdtempSync(join(tmpdir(), 'margin-relay-'));
+test('Chrome on the Mac: the real connector finds the app, and the copy links from its service worker, saying chrome and its process', { timeout: 120_000 }, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'margin-connector-'));
   const app = await startFakeApp();
   let context: any = null;
   let relay: any = null;
   try {
     const ext = join(root, 'ext');
     buildTo(ext, { profile: 'chrome', manifest: 'chrome' });
-    const binary = join(root, 'margin-relay');
-    execFileSync('swiftc', ['-O', '-swift-version', '5', join(ROOT, 'app/relay/main.swift'), '-o', binary], { stdio: 'ignore' });
+    const cargo = process.env.CARGO ?? (existsSync(join(homedir(), '.cargo/bin/cargo')) ? join(homedir(), '.cargo/bin/cargo') : 'cargo');
+    execFileSync(cargo, ['build', '-q', '--release', '-p', 'margin-connector', '--manifest-path', join(ROOT, 'Cargo.toml')], { stdio: 'ignore' });
+    const binary = join(ROOT, 'target/release/margin-connector');
     const socketPath = join(root, 'r.sock');
     relay = await relaySocket(socketPath, app);
 
     const userData = join(root, 'profile');
     mkdirSync(join(userData, 'NativeMessagingHosts'), { recursive: true });
     const host = join(root, 'host.sh');
-    writeFileSync(host, `#!/bin/sh\nMARGIN_RELAY_SOCKET="${socketPath}" MARGIN_RELAY_NO_LAUNCH=1 exec "${binary}" "$@"\n`);
+    writeFileSync(host, `#!/bin/sh\nMARGIN_CONNECTOR_SOCKET="${socketPath}" MARGIN_CONNECTOR_NO_LAUNCH=1 exec "${binary}" "$@"\n`);
     chmodSync(host, 0o755);
     writeFileSync(join(userData, 'NativeMessagingHosts', 'io.tirth.margin.json'), JSON.stringify({
-      name: 'io.tirth.margin', description: 'Margin e2e relay', path: host, type: 'stdio', allowed_origins: [`chrome-extension://${ID}/`],
+      name: 'io.tirth.margin', description: 'Margin e2e connector', path: host, type: 'stdio', allowed_origins: [`chrome-extension://${ID}/`],
     }));
     context = await chromium.launchPersistentContext(userData, {
       headless: false,

@@ -31,7 +31,7 @@ export interface TabRecord {
   mid?: string;
   /** its place in the list (higher: newer, shown higher), as its Margin tab's */
   order?: number;
-  /** as shared/view.ts sidebar shows it only: this window's choice, live in another window (app/WINDOWS.md §9) */
+  /** as shared/view.ts sidebar shows it only: this window's choice, live in another window (docs/BROWSER-WINDOWS.md §9) */
   away?: boolean;
   /** view.sidebar only: its page is on screen under the palette while a new tab is chosen */
   behind?: boolean;
@@ -106,7 +106,7 @@ export interface Settings {
 export interface State {
   spaces: Space[];
   activeSpaceByWindow: Record<number, string>;
-  /** The tab each window has chosen while it's live in another window (app/WINDOWS.md §9). */
+  /** The tab each window has chosen while it's live in another window (docs/BROWSER-WINDOWS.md §9). */
   awayByWindow?: Record<number, number>;
   tabSpace: Record<number, string>;
   pins: Pin[];

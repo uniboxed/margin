@@ -248,7 +248,7 @@ function paletteItems(state: State, ctx: { windowId: number | null; tabId: numbe
   action('new-window', 'New window', { type: 'newWindow', ...(ctx.windowId != null ? { fromWindowId: ctx.windowId } : {}) }, { emoji: '⧉' });
   if (!ctx.inNewTab) action('launcher', 'Margin start page & settings', { type: 'openLauncher', windowId: ctx.windowId }, { emoji: '⚙︎' });
   if (ctx.canToggleSidebar) action('toggle-sidebar', 'Toggle sidebar', { local: 'toggleSidebar' }, { emoji: '◧' });
-  // Chrome: full screen with no toolbar (background/fullscreen.ts).
+  // Chrome: full screen with no toolbar (engines/chromium/extension/fullscreen.ts).
   if (ctx.canFullscreen) action('fullscreen', 'Margin full screen (no toolbar) on/off', { type: 'toggleFullscreen', windowId: ctx.windowId }, { emoji: '⛶' });
   for (const s of state.spaces) {
     if (s.id === spaceId) continue;

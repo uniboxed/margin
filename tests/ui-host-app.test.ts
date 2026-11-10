@@ -1,6 +1,6 @@
 // Margin.app's host adapter (extension/ui/host-app.ts) against a stand-in
 // for the app's bridge, and the app's overlay page build (dist/app, from
-// app/overlay/). The app's own end is tested in Swift: npm run test:app.
+// app/shared/host/). The app's own end is tested in Swift: npm run test:app.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
@@ -159,14 +159,14 @@ test('hitRects: what takes the pointer over the slot, boxes inside others left o
   assert.deepEqual(hitRects((many as any), slot, { getStyle }), { rects: [], all: true });
 });
 
-test('dist/app is up to date with app/overlay and extension/ (run `npm run build`)', () => {
+test('dist/app is up to date with app/shared/host and extension/ (run `npm run build`)', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'margin-app-test-'));
   try {
     buildApp(tmp);
     assert.deepEqual(readdirSync(join(root, 'dist/app')).sort(), [...APP_FILES].sort());
     for (const f of APP_FILES) assert.ok(readFileSync(join(tmp, f)).equals(readFileSync(join(root, 'dist/app', f))), `dist/app/${f} is stale`);
     const js = readFileSync(join(tmp, 'overlay.js'), 'utf8');
-    assert.match(js, /BUILD_TARGET="safari"/, 'Safari\'s profile');
+    assert.ok(js.includes('name:"safari"') && !js.includes('name:"chrome"'), 'Safari\'s profile, only');
     assert.doesNotMatch(js, /\bimport\s*\(|importScripts|fetch\(/, 'one script, nothing loaded');
     assert.match(readFileSync(join(tmp, 'overlay.html'), 'utf8'), /<script src="overlay.js" defer><\/script>/);
   } finally {
@@ -212,7 +212,7 @@ test('the app host and themes: the index from the hello and `themes`; Import, a 
   host.destroy();
 });
 
-// A profile switch hands the sidebar the person is looking at to the window the switch goes to (app/shell
+// A profile switch hands the sidebar the person is looking at to the window the switch goes to (app/macos/shell
 // Shell.handOverOverlay): the same page, given that window's hello in place (`rekey`), so nothing reloads.
 test('the app host: handed to another window and profile (rekey): its window, state, mode and windows from the new hello', () => {
   const b = bridge();

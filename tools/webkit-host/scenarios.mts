@@ -1039,7 +1039,7 @@ export const SCENARIOS = {
     bare('A'), nothingDrawn('A', 'A: off: the page as it is, nothing of Margin\'s'),
     check('A', 'A: off', `!Margin.content.appDraws() && !Margin.content.boxed()`),
   ],
-  // The real extension linked to Margin.app's real end of the link (link-server: app/shell's
+  // The real extension linked to Margin.app's real end of the link (link-server: app/macos/shell's
   // ExtensionLink, LinkSocket, LinkMessage, Chunks), through the host's native messaging:
   // wantLink, the link dispatched into the copy's port, the WebSocket with its token and the
   // app's key, hello, the snapshot, the theme in pieces, a setLayout the page's box follows,
@@ -1469,7 +1469,7 @@ Object.assign(SCENARIOS, {
     { op: 'appHeard', label: 'let go: done', has: ['"type":"gesture"', '"kind":"pull"', '"state":"trigger"'] },
     checkPage('A', 'A: reloaded by the pull', '!window.__before', 4000),
   ],
-  // Margin.app's frame probe during a profile handoff (app/HANDOFF.md §3.2, R3), asked from the
+  // Margin.app's frame probe during a profile handoff (docs/HANDOFF.md §3.2, R3), asked from the
   // app's end (`appReq frameProbe`, as the handoff asks the target window's copy): the page in front
   // nudges with one 1×1 fixed element under <html> (its alpha changing frame to frame) and answers
   // the frames it drew at the window's size; nothing in the page moves in any frame (every element's

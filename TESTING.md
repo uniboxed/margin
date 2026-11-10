@@ -13,7 +13,7 @@ npm run test:e2e    # builds dist/, then the e2e suite: headless Chromium and We
 - the JS tests whose imports reach a changed file, followed through every relative import;
 - the tests that name a changed theme, page or fixture file;
 - every theme test when a theme or the UI runtime changed (two at a time: more made the drag tests flaky);
-- the Swift unit checks when `app/shell`, `app/safari` or `tools/app-tests` changed (compiled on every core; the randomized runs cut to 50 and 80);
+- the Swift unit checks when `app/macos/shell`, `app/macos/startup` or `tools/app-tests` changed (compiled on every core; the randomized runs cut to 50 and 80);
 - any e2e file that itself changed.
 
 At the end it lists what only the gate runs: the e2e suite, the WebKit host, the app's e2e checks. Options:
@@ -73,11 +73,11 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 
 ## Chrome and Edge on the Mac (2026-11-09)
 
-Margin.app now links Chrome's and Edge's copies the way it links Safari's (app/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"). Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'` (zsh's `log` is a builtin).
+Margin.app now links Chrome's and Edge's copies the way it links Safari's (docs/PROTOCOL.md "Transport (Chrome and Edge, on the Mac)"). Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'` (zsh's `log` is a builtin).
 
 **Set up once:**
-- `npm run safari` (it builds the relay helper into Margin.app). Margin.app writes the host files at launch: `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/io.tirth.margin.json` and Edge's (`Microsoft Edge/NativeMessagingHosts/`), naming `…/Margin.app/Contents/Helpers/margin-relay`.
-- `npm run build`, then in Chrome: `chrome://extensions` → Developer mode → Load unpacked → `dist/chrome`. Its ID must be `njeebbcmlenfopaecfbphgcfihbdmkec` (the build's fixed key; another ID can't reach the relay). Edge: `edge://extensions`, the same. A Chrome build you loaded before this one had another ID: it comes back as a new extension, and the old one's data stays with the old one.
+- `npm run safari` (it builds the connector, Rust, into Margin.app). Margin.app has it write the host files at launch (`margin-connector --install`): `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/io.tirth.margin.json` and Edge's (`Microsoft Edge/NativeMessagingHosts/`), naming `…/Margin.app/Contents/Helpers/margin-connector`. Chrome or Edge open while you install an older build's update: quit and reopen them once, so they start the new connector.
+- `npm run build`, then in Chrome: `chrome://extensions` → Developer mode → Load unpacked → `dist/chromium`. Its ID must be `njeebbcmlenfopaecfbphgcfihbdmkec` (the build's fixed key; another ID can't reach the connector). Edge: `edge://extensions`, the same. A Chrome build you loaded before this one had another ID: it comes back as a new extension, and the old one's data stays with the old one.
 
 **Check:**
 - [ ] Margin.app's log says `hello: chrome:p-…` (Edge: `edge:p-…`), and no `relay: refused`.
@@ -129,7 +129,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 **Recommended: temporary extension** (no Xcode, no "Allow unsigned extensions").
 
 1. Safari → Settings → Advanced → enable **Show features for web developers** (older Safari: "Show Develop menu in menu bar").
-2. **Develop → Add Temporary Extension…** → choose the repo's `dist/safari/` folder (not `extension/`). Redo this after every Safari relaunch. After pulling changes, reload Margin in Safari → Settings → Extensions, then reload pages.
+2. **Develop → Add Temporary Extension…** → choose the repo's `dist/webkit/` folder (not `extension/`). Redo this after every Safari relaunch. After pulling changes, reload Margin in Safari → Settings → Extensions, then reload pages.
 3. Safari → Settings → Extensions → Margin → set website access to **Always Allow on Every Website**.
 4. Safari → Settings → General → **New tabs open with** → **Margin**. Set **New windows open with** to Margin too if you like.
 5. If an Xcode-built Margin is also installed, turn it off in Safari → Settings → Extensions so only one copy runs.
@@ -139,7 +139,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 1. Run `scripts/make-xcode.sh`, open `xcode/Margin/Margin.xcodeproj`, choose the **Margin (macOS)** scheme, and Run (⌘R). The container app opens. You can close it.
 2. Safari → Settings → Developer (older Safari: the Develop menu) → enable **Allow unsigned extensions**. You'll be asked for your password. **This resets every time Safari quits.**
 3. Then steps 3–4 above, after checking **Margin** in Safari → Settings → Extensions.
-4. If Margin disappears from the Extensions list: press ⌘R in Xcode again, quit and reopen Safari, and toggle "Allow unsigned extensions" off and on. Re-run `scripts/make-xcode.sh` only when files under `dist/safari/` are added or removed. Regenerating is what most often leaves Safari pointing at a deleted app.
+4. If Margin disappears from the Extensions list: press ⌘R in Xcode again, quit and reopen Safari, and toggle "Allow unsigned extensions" off and on. Re-run `scripts/make-xcode.sh` only when files under `dist/webkit/` are added or removed. Regenerating is what most often leaves Safari pointing at a deleted app.
 
 ## M1 smoke check
 
@@ -334,7 +334,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 Retired 2026-11-01: there's no iframe now. Kept for its list of sites to try.
 
-Setup: load `dist/safari/` (Develop → Add Temporary Extension…), allow Margin on every website, turn **Keep open** on, then reload the tabs you test in. Turning Keep open on doesn't refit pages that are already open. To see why a page wasn't fitted, open its Web Inspector console with Debug messages shown: `[margin] fitted layout: …`.
+Setup: load `dist/webkit/` (Develop → Add Temporary Extension…), allow Margin on every website, turn **Keep open** on, then reload the tabs you test in. Turning Keep open on doesn't refit pages that are already open. To see why a page wasn't fitted, open its Web Inspector console with Debug messages shown: `[margin] fitted layout: …`.
 
 **Layout**
 - [ ] github.com, youtube.com, google.com, a news site: the page sits in the card beside the sidebar, and nothing is cut off on the right. Pinned headers span exactly the card, and the site's narrow (tablet) layout kicks in when you widen the sidebar. Dragging the sidebar edge re-lays the page out live.
@@ -380,7 +380,7 @@ Setup: load `dist/safari/` (Develop → Add Temporary Extension…), allow Margi
 
 ## After the restructuring (bundles, modules, background split; 2026-10-25)
 
-Files were added under `dist/safari/`, so re-run `scripts/make-xcode.sh`, then Run in Xcode.
+Files were added under `dist/webkit/`, so re-run `scripts/make-xcode.sh`, then Run in Xcode.
 
 - [ ] Sidebar appears on a fresh page; tabs, pins and spaces render; drag-resize works.
 - [ ] Option+K opens the palette on a web page and on the new-tab page; ⌘T hands off to the palette over the previous tab.
@@ -394,7 +394,7 @@ Files were added under `dist/safari/`, so re-run `scripts/make-xcode.sh`, then R
 
 ## Themes: Arcadia in its own folder (2026-10-25)
 
-Files were added and moved under `dist/safari/`: re-run `scripts/make-xcode.sh`, then Run in Xcode. Nothing should look or behave differently.
+Files were added and moved under `dist/webkit/`: re-run `scripts/make-xcode.sh`, then Run in Xcode. Nothing should look or behave differently.
 
 - [ ] After installing, pages you open show the sidebar as before (it now comes from `themes/arcadia/`). Also right after relaunching Safari: the first restored tabs still get it (they ask the background for the theme if Safari hasn't loaded its registrations yet).
 - [ ] "Keep open": the first paint already shows the frame (placeholder), pages push or fit as before, and resizing still saves the width (it's now Arcadia's own setting; your old width carries over).
@@ -695,7 +695,7 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 
 ## Margin 2: the profile handoff, live in Test A and Test B (2026-11-06)
 
-The freeze-based switch between profiles, with the window you leave parked out of sight (`app/HANDOFF.md`). Build Margin.app from `feat/profile-handoff`. **Only in Safari's Test A and Test B profiles**, never your own. Each switch holds the whole screen still for about a second.
+The freeze-based switch between profiles, with the window you leave parked out of sight (`docs/HANDOFF.md`). Build Margin.app from `feat/profile-handoff`. **Only in Safari's Test A and Test B profiles**, never your own. Each switch holds the whole screen still for about a second.
 
 Set-up:
 - Margin.app has Full Disk Access (for Safari's profile names). Test A and Test B have one window each, Test A's in full screen with Margin's sidebar.
@@ -764,7 +764,7 @@ The honest numbers, until gate G16 measures them:
 - [ ] `… alternate 30 --every 4`: 30 switches, Test B then Test A. Gate G16 does the same from the lab (`tools/handoff-lab/README.md`).
 
 **Before production.**
-- [ ] The dev hook goes: `git grep -n DEV-HOOK` lists every part. Delete `app/shell/DevHooks.swift`, `tools/app-tests/devhooks-tests.swift` and `tools/handoff-lab/devswitch.swift`, and every marked line in `Shell.swift`, `Handoff.swift`, `tools/app-tests/` (`run.sh`, `tests.swift`, the fake world in `handoff-tests.swift`) and the lab's `devSwitch` (G1's `--dev-hook` and G16 need another way to drive Margin by then). Then `npm run test:app`, and `defaults delete io.tirth.margin MarginDevHooks` on every test Mac.
+- [ ] The dev hook goes: `git grep -n DEV-HOOK` lists every part. Delete `engines/webkit/browsers/safari/app/DevHooks.swift`, `engines/webkit/browsers/safari/app/tests/devhooks-tests.swift` and `tools/handoff-lab/devswitch.swift`, and every marked line in `Shell.swift`, `Handoff.swift`, `tools/app-tests/` (`run.sh`, `tests.swift`, the fake world in `handoff-tests.swift`) and the lab's `devSwitch` (G1's `--dev-hook` and G16 need another way to drive Margin by then). Then `npm run test:app`, and `defaults delete io.tirth.margin MarginDevHooks` on every test Mac.
 - [ ] The handoff's gate (`MarginHandoff`) is decided by the gates' results, not left to a default someone set.
 ## Margin 2 Phase 6: user themes (2026-11-06)
 

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as model from '../extension/state/model.ts';
-import { PROFILES } from '../extension/shared/platform.ts';
+import { PROFILES } from '../extension/shared/any-engine-profile.ts';
 import * as shortcuts from '../extension/shared/shortcuts.ts';
 import * as view from '../extension/shared/view.ts';
 
@@ -310,7 +310,7 @@ test('view.sidebar: shows the window\'s active space, pins separately, newest ta
   s = M.moveTab(s, 2, 'work');
   const v = view.sidebar(s, 1);
   assert.equal(v.spaceId, 'personal');
-  assert.deepEqual(v.tabs.map((t) => t.id), [4, 3], 'the space\'s tabs in every window of the profile (app/WINDOWS.md §9)');
+  assert.deepEqual(v.tabs.map((t) => t.id), [4, 3], 'the space\'s tabs in every window of the profile (docs/BROWSER-WINDOWS.md §9)');
   assert.equal(v.tabs[0].active, false, 'another window\'s tab in front there isn\'t chosen here');
   assert.equal(v.pins[0].tabId, 1);
   assert.equal(v.pins[0].active, true);

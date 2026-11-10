@@ -1,4 +1,4 @@
-// The copy's side of Margin.app's profile handoff (app/HANDOFF.md §1.9, §2.5, §3.3, §6.1), against
+// The copy's side of Margin.app's profile handoff (docs/HANDOFF.md §1.9, §2.5, §3.3, §6.1), against
 // the real background with a fake of Safari's API: the windows calls (setWindowState, focusWindow,
 // closeWindow) refused past their notAfter and busy while another for the window is pending,
 // setWindowState waiting for the state to land and sending the window list at once; the frame probe
@@ -272,7 +272,7 @@ test('openSpaceWindow: answers the new window\'s bounds as Safari gave them and 
   fake.windows.get(1).focused = true;
 });
 
-// ---- newWindow: ⌘N (app/WINDOWS.md §5) -------------------------------------------------------------
+// ---- newWindow: ⌘N (docs/BROWSER-WINDOWS.md §5) -------------------------------------------------------------
 
 test('newWindow from a window: a Margin window of its own in full screen like it, on the space it shows, its tab in that space; bounds answered, the list sent at once', async () => {
   fresh();
@@ -686,7 +686,7 @@ test('Margin\'s new-tab page: answers the frame probe as a web page does', async
   }
 });
 
-// ---- the scroll record (DATA.md "The scroll record") ------------------------------------------
+// ---- the scroll record (docs/DATA.md "The scroll record") ------------------------------------------
 
 test('the scroll record in the model: on the record for its address only, kept with its Margin tab, taken once when it opens again, never in the data set', async () => {
   const { collectionFrom } = await import('../extension/shared/data-set.ts');

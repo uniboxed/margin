@@ -8,7 +8,7 @@ export const PACKAGE_THEME_NAMES = Object.freeze({ arcadia: 'Arcadia', 'neo-brut
 
 // Where the index of the user's imported themes is kept (storage.local).
 export const USER_THEMES_KEY = 'userThemes';
-// An imported theme's id (app/shell/ThemeStore.swift idOK checks the same).
+// An imported theme's id (app/macos/shell/ThemeStore.swift idOK checks the same).
 export const USER_THEME_ID = /^[a-z0-9][a-z0-9-]{0,40}$/;
 
 // A theme's own settings, as the background keeps them (settings.themes[id]):

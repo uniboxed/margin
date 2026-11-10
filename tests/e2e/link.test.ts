@@ -1,4 +1,4 @@
-// The link (app/PROTOCOL.md): the real extension, built with Safari's
+// The link (docs/PROTOCOL.md): the real extension, built with Safari's
 // profile, linking to the stand-in Margin.app through the native messaging
 // relay, and the real overlay drawing in WebKit. Then the page box, and the
 // app starting after Safari (appUp, and Start on Margin's new-tab page).

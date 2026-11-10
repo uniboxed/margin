@@ -2,7 +2,7 @@
 // what pages used to say in their own UI, now said by the window's overlay
 // through the theme's guarded `notice` part (themes/README.md: only Margin's
 // own words). The copy decides a notice and pushes its kind for a window
-// (background/notices.ts, app/PROTOCOL.md `push` `notice`); the overlay turns
+// (background/notices.ts, docs/PROTOCOL.md `push` `notice`); the overlay turns
 // the kind into these words and buttons (ui/app-notices.js), and a button
 // goes back to the copy as `req noticeAction` (background/handlers.ts). The
 // words live here, in Margin's code, never in a message: a link carries only
@@ -35,7 +35,7 @@ export const NOTICES: Readonly<Record<string, NoticeWords>> = Object.freeze({
   // A new tab from nothing opened the same web page twice (background/
   // newtab-hint.ts): Safari's "New tabs open with" isn't Margin (Safari sets
   // it back when it turns Margin off). The set-up window checks the same
-  // setting (app/safari/ViewController.swift), in the same words.
+  // setting (app/macos/startup/ViewController.swift), in the same words.
   'new-tab-setting': {
     text: 'If a new tab opened this page instead of Margin’s: in Safari Settings › General, set “New tabs open with” to Margin. Safari sets it back when it turns Margin off.',
     actions: [{ id: 'ok', label: 'OK' }, { id: 'never', label: 'Don’t show again' }],
@@ -47,7 +47,7 @@ export const NOTICES: Readonly<Record<string, NoticeWords>> = Object.freeze({
   'tab-gone': { text: 'That tab is no longer open.', actions: [], ms: 4000, tab: false },
   'no-answer': { text: 'Margin didn’t answer, so the tab didn’t switch. Try again.', actions: [], ms: 4000, tab: false },
   'not-shown': { text: 'Margin couldn’t show that tab. Try again.', actions: [], ms: 4000, tab: false },
-  // The overlay's own (app/overlay/overlay.ts fallBack): the theme it was
+  // The overlay's own (app/shared/host/overlay.ts fallBack): the theme it was
   // handed was refused, missing, or left no usable page, so it draws Arcadia,
   // bundled with the app. The theme's name isn't said: it may be what's broken.
   'theme-failed': {

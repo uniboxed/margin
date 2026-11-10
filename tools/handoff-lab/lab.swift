@@ -1,4 +1,4 @@
-// The handoff lab (app/HANDOFF.md §10.3, §10.4): one mode per gate G1-G18, plus `holds`, the
+// The handoff lab (docs/HANDOFF.md §10.3, §10.4): one mode per gate G1-G18, plus `holds`, the
 // freeze-holds check the product can't do. Each gate is a run on screen whose result decides what
 // the build turns on. README.md is the runbook; run nothing here without Tirth's go-ahead.
 //
@@ -20,7 +20,7 @@
 //   say "not measured".
 // - Everything kept or written is ids, window numbers, Space ids, counts and milliseconds. Never
 //   a page's address, title or words.
-// - Each run appends to results/<build>-<date>.md, which PRIVATE-APIS.md links.
+// - Each run appends to results/<build>-<date>.md, which docs/PRIVATE-APIS.md links.
 //
 //   handoff-lab list
 //   handoff-lab <gate…> [--dry-run] [--go] [--person] [--runs N] [--stp] [--dock-restart]
@@ -1100,7 +1100,7 @@ let g1 = Gate(
 
 // MARK: The handoff itself (HANDOFF.md §1.3), in STP or on the lab's own windows
 
-struct HandoffRun {
+struct LabHandoffRun {
     var t: [String: Double] = [:] // ms from the freeze
     var late = false
     var failure: String?
@@ -1141,9 +1141,9 @@ struct Side {
 
 // One handoff x → y (y parked), as §1.3 orders it: freeze, show y, y full screen once, R1+R2,
 // x to normal (latest start 1.15 s), x parked once normal and out of its Space, the settle, reveal.
-func handoff(_ lab: Lab, _ x: Side, _ y: Side, _ plan: HandoffPlan) async -> HandoffRun {
+func handoff(_ lab: Lab, _ x: Side, _ y: Side, _ plan: HandoffPlan) async -> LabHandoffRun {
     let c = lab.calls
-    var run = HandoffRun()
+    var run = LabHandoffRun()
     let xSpace = c.active()
     let fsBefore = c.fullScreen()
     let t0 = epochMs()
@@ -2219,7 +2219,7 @@ nonisolated final class Once: @unchecked Sendable {
 
 enum Runner {
     static let usage = """
-    handoff-lab: the handoff's gates (app/HANDOFF.md §10.4). README.md is the runbook.
+    handoff-lab: the handoff's gates (docs/HANDOFF.md §10.4). README.md is the runbook.
       handoff-lab list                       the gates
       handoff-lab <gate…> --dry-run          the plan and read-only checks; touches nothing
       handoff-lab <gate…> --go               runs them on screen (Tirth's go-ahead first)
@@ -2371,7 +2371,7 @@ enum Runner {
         var text = ""
         if !FileManager.default.fileExists(atPath: url.path) {
             text += "# Handoff lab: macOS \(c.version) (\(c.build)), \(day.string(from: started))\n\n"
-            text += "Written by `tools/handoff-lab` (`app/HANDOFF.md` §10.4), one section per run. Ids, window numbers, Space ids, counts and milliseconds only.\n"
+            text += "Written by `tools/handoff-lab` (`docs/HANDOFF.md` §10.4), one section per run. Ids, window numbers, Space ids, counts and milliseconds only.\n"
         }
         text += "\n## Run at \(time.string(from: started)): \(done.map(\.0.id).joined(separator: ", "))\n\n"
         text += "- Launch check: \(c.line)\n"

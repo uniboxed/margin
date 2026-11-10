@@ -28,7 +28,7 @@ Development happens on Tirth's Mac (macOS 27), with Xcode, Safari, Chrome, Edge,
 
 - Plain **Manifest V3 web extension** in `extension/`, **TypeScript + CSS, no framework, no runtime dependencies**. `extension/` is the source, written as ES modules; the build (`npm run build`) bundles each context (content script, background, the page's box, new-tab page; and Margin.app's overlay page) into one plain script with **esbuild** (a dev dependency; Tirth's decision, 2026-10-25), and `dist/<browser>/` is what browsers load. The source is TypeScript (Tirth's decision, 2026-11-09: it was JavaScript with JSDoc types until then), type-checked by `tsc` (TypeScript 7, `npm test` runs it) and turned into JavaScript only by esbuild's bundling: Node runs the tests and scripts from the `.ts` files as they are (its type stripping), so the code uses only TypeScript that erases (`erasableSyntaxOnly`: no enums, namespaces or parameter properties) and spells its imports with `.ts`.
 - **Do not generate the Xcode project.** Tirth will run this locally on his Mac:
-  `xcrun safari-web-extension-converter dist/safari --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open`
+  `xcrun safari-web-extension-converter dist/webkit --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open`
   Put that command, plus how to rebuild after pulling new changes, in `README.md` under "Building for Safari (local, macOS)". Add `xcode/` to `.gitignore` unless Tirth later commits it himself.
 - Unit tests for pure state logic with **`node --test`** (no test framework installs). E2E tests with **Playwright** (Chromium only) in `tests/e2e/`. Dev dependencies, declared in a root `package.json`, are Playwright, esbuild and TypeScript (the type checker; pinned versions). The extension itself stays dependency-free.
 - Use `browser.*` APIs (Safari supports them); fall back to `chrome.*` only if needed.
@@ -96,7 +96,7 @@ Margin 2: `settings.themes[id]` holds each theme's declared settings, imported t
 
 On browser restart, tab ids change: rebuild `tabSpace` by matching open tabs to pins by URL; unmatched tabs go to the active space.
 
-Margin 2 (Phase 2): Margin's sidebar is the real list of tabs. Each open tab's record carries its Margin tab's own lasting id (`mid`) and place in the list (`order`); Margin tabs with no browser tab are `keptTabs: { [id]: { id, url, title, favIconUrl, spaceId, order, lastActive, keptAt, why } }`, stored with the open tabs. After a restart, open tabs are matched to their Margin tabs by address and order; unmatched ones stay as kept tabs. The lasting data set Margin.app owns, its merge and its messages are in `DATA.md`.
+Margin 2 (Phase 2): Margin's sidebar is the real list of tabs. Each open tab's record carries its Margin tab's own lasting id (`mid`) and place in the list (`order`); Margin tabs with no browser tab are `keptTabs: { [id]: { id, url, title, favIconUrl, spaceId, order, lastActive, keptAt, why } }`, stored with the open tabs. After a restart, open tabs are matched to their Margin tabs by address and order; unmatched ones stay as kept tabs. The lasting data set Margin.app owns, its merge and its messages are in `docs/DATA.md`.
 
 ## Milestones
 

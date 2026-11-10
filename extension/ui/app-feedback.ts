@@ -1,6 +1,6 @@
 // What Margin.app's overlay says about the window's pages, besides the state
-// (app/overlay/overlay.ts; Margin 2 Phase 2 step 7): its notices and the
-// trackpad gestures' feedback, both told by the copy (app/PROTOCOL.md `push`)
+// (app/shared/host/overlay.ts; Margin 2 Phase 2 step 7): its notices and the
+// trackpad gestures' feedback, both told by the copy (docs/PROTOCOL.md `push`)
 // or found by the overlay itself (a switch it asked for that didn't happen).
 // Pure: no DOM, no browser API; the overlay gives it the runtime's setUi.
 

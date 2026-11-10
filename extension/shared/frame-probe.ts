@@ -1,4 +1,4 @@
-// A page's answer to Margin.app's frame probe (app/HANDOFF.md §3.2, R3): during a profile handoff,
+// A page's answer to Margin.app's frame probe (docs/HANDOFF.md §3.2, R3): during a profile handoff,
 // is the target window's page drawing fresh frames at the full-screen size yet? Content scripts
 // (content/core.ts) and Margin's new-tab page (newtab/newtab.ts) answer it, asked through the
 // background (background/handoff.ts probeWindow).

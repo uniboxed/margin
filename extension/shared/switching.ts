@@ -70,7 +70,7 @@ export const PASSED_MS = 1000;
 // from, or one it passed: that's the flicker, and it must never happen) or elsewhere (another tab
 // came to the front, a real switch it didn't make), and how long after its last target it ended.
 export type SwitchRun = { targets: number, landed: boolean, back: number, elsewhere: number, failed: boolean, ms: number };
-/** A chain as a line for the log (app/overlay/overlay.ts); null for a lone switch that landed. */
+/** A chain as a line for the log (app/shared/host/overlay.ts); null for a lone switch that landed. */
 export function describeSwitchRun(run: SwitchRun) {
   if (run.targets < 2 && run.landed) return null;
   const end = run.failed ? 'failed' : run.landed ? 'on its last target' : run.back ? 'back on a tab it had passed' : 'on another tab (a switch it didn\'t make)';
@@ -249,7 +249,7 @@ export function backgroundSwitches() {
 }
 
 // A chain of next/previous-tab presses: each goes on from the one before for this long, else from the tab in front.
-// The copy's (background/navigation.ts) and Margin.app's overlay's own (app/overlay/overlay.ts navTab), the same.
+// The copy's (background/navigation.ts) and Margin.app's overlay's own (app/shared/host/overlay.ts navTab), the same.
 export const NAV_CHAIN_MS = 1500;
 // The switch ids Margin.app's overlay gives the presses it highlights itself (overlay.ts navTab): the copy's
 // `switching` for them changes nothing there (the overlay is already on them, maybe on a newer one).

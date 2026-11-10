@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { PROFILES } from '../extension/shared/platform.ts';
+import { PROFILES } from '../extension/shared/any-engine-profile.ts';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FIRST_PAINT_THEMES, LEGACY_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.ts';
+import { DIST, FIRST_PAINT_THEMES, LEGACY_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.ts';
 import { allLayoutFiles, firstPaintFile, layoutFiles } from '../extension/shared/page-box.ts';
 import { PACKAGE_THEMES } from '../extension/themes/packages.ts';
 
@@ -17,15 +17,15 @@ const listFiles = (dir, prefix = '') => readdirSync(dir).flatMap((name) => {
   return statSync(path).isDirectory() ? listFiles(path, `${prefix}${name}/`) : [`${prefix}${name}`];
 }).sort();
 
-test('dist/ is up to date with extension/ and platform/ (run `npm run build`)', () => {
+test('dist/ is up to date with extension/ and engines/ (run `npm run build`)', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'margin-build-'));
   try {
     for (const target of TARGETS) {
       const fresh = buildTo(join(tmp, target), { profile: target });
-      const committed = join(root, 'dist', target);
-      assert.deepEqual(listFiles(committed), listFiles(fresh), `dist/${target}: file list`);
+      const committed = join(root, 'dist', DIST[target]);
+      assert.deepEqual(listFiles(committed), listFiles(fresh), `dist/${DIST[target]}: file list`);
       for (const f of listFiles(fresh)) {
-        assert.ok(readFileSync(join(committed, f)).equals(readFileSync(join(fresh, f))), `dist/${target}/${f} is stale`);
+        assert.ok(readFileSync(join(committed, f)).equals(readFileSync(join(fresh, f))), `dist/${DIST[target]}/${f} is stale`);
       }
     }
   } finally {
@@ -35,7 +35,7 @@ test('dist/ is up to date with extension/ and platform/ (run `npm run build`)', 
 
 test('each build loads one bundled script per context', () => {
   for (const target of TARGETS) {
-    const dir = join(root, 'dist', target);
+    const dir = join(root, 'dist', DIST[target]);
     const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
     assert.deepEqual(manifest.content_scripts[0].js, ['content/content.bundle.js'], target);
     // background/tabs.ts injectIntoOpenTabs finds the sidebar's entry this way.
@@ -76,11 +76,15 @@ test('each build loads one bundled script per context', () => {
   }
 });
 
-test('each build is stamped with its own profile', () => {
+test('each build has its own engine\'s profile and modules, and none of the other\'s', () => {
+  assert.deepEqual(DIST, { safari: 'webkit', chrome: 'chromium' }, 'named by engine');
+  // A function only one engine's module has: [the engine whose build has it, its name].
+  const only = [['safari', 'newTabPageSeen'], ['safari', 'reportEvent'], ['chrome', 'toggleMarginFullscreen'], ['chrome', 'followFullscreen']];
   for (const target of TARGETS) {
-    // (The sources aren't shipped: the stamp is in the bundles.)
-    const bundle = readFileSync(join(root, 'dist', target, 'background.bundle.js'), 'utf8');
-    assert.match(bundle, new RegExp(`BUILD_TARGET="${target}"`));
+    // (The sources aren't shipped: the profile is in the bundles.)
+    const bundle = readFileSync(join(root, 'dist', DIST[target], 'background.bundle.js'), 'utf8');
+    for (const name of TARGETS) assert.equal(bundle.includes(`name:"${name}"`), name === target, `${target}: ${name}'s profile`);
+    for (const [owner, fn] of only) assert.equal(new RegExp(`function ${fn}\\b`).test(bundle), owner === target, `${target}: ${fn}`);
   }
   assert.equal(PROFILES.safari.fetchFavicons, true, 'Safari gives no tab.favIconUrl');
   assert.equal(PROFILES.chrome.fetchFavicons, false, 'Chrome provides tab.favIconUrl');
@@ -157,7 +161,7 @@ test('the validators agree with what was verified by hand', () => {
 test('the `search` permission (chrome.search) is Chrome-only; Safari has no search API', () => {
   assert.ok(manifestFor('chrome').permissions.includes('search'));
   assert.ok(!manifestFor('safari').permissions.includes('search'));
-  // Both: nativeMessaging (Safari's extension handler; Chrome's and Edge's relay helper, app/PROTOCOL.md).
+  // Both: nativeMessaging (Safari's extension handler; Chrome's and Edge's connector, docs/PROTOCOL.md).
   assert.ok(manifestFor('safari').permissions.includes('nativeMessaging'));
   assert.ok(manifestFor('chrome').permissions.includes('nativeMessaging'));
   assert.deepEqual(manifestFor('chrome').permissions.filter((p) => p !== 'search').sort(), manifestFor('safari').permissions.slice().sort(), 'otherwise the same list');
@@ -165,13 +169,13 @@ test('the `search` permission (chrome.search) is Chrome-only; Safari has no sear
   assert.equal(PROFILES.safari.search, 'learn');
 });
 
-test('Chrome\'s build: a fixed key, whose id is the one Margin.app\'s host files name (app/shell/ChromiumHosts.swift)', () => {
+test('Chrome\'s build: a fixed key, whose id is the one Margin.app\'s host files name (engines/chromium/app/src/lib.rs, the connector\'s)', () => {
   const key = manifestFor('chrome').key;
   assert.equal(typeof key, 'string');
   // Chrome's id from a key: the SHA-256 of its DER, its first 32 hex digits as a–p.
   const hex = createHash('sha256').update(Buffer.from(key, 'base64')).digest('hex').slice(0, 32);
   const id = [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
   assert.equal(id, 'njeebbcmlenfopaecfbphgcfihbdmkec');
-  assert.ok(readFileSync(new URL('../app/shell/ChromiumHosts.swift', import.meta.url), 'utf8').includes(`"${id}"`), 'the app names the same id');
+  assert.ok(readFileSync(new URL('../engines/chromium/app/src/lib.rs', import.meta.url), 'utf8').includes(`"${id}"`), 'the app names the same id');
   assert.equal(manifestFor('safari').key, undefined, 'Safari\'s build has none');
 });

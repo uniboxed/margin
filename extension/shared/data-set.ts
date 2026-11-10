@@ -1,4 +1,4 @@
-// Margin's lasting data set (DATA.md; PLAN.md §6 "Where data lives"): what
+// Margin's lasting data set (docs/DATA.md; PLAN.md §6 "Where data lives"): what
 // Margin.app keeps in its files on the Mac, and the extension keeps a cache of.
 // Here: the data set's items from the extension's state (and the state from
 // them, to refill the cache), the converter from today's extension storage

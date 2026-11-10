@@ -490,7 +490,7 @@ test('clearToday: nothing of the space left open: its start page opens in it fir
   assert.equal(front(1), 4);
   const { handlers } = await import('../extension/background/handlers.ts');
   const closed = await handlers.clearToday({}, { tab: { id: 4, windowId: 1 } });
-  assert.deepEqual(closed.sort(), [3, 4, 5], 'the space\'s tabs in every window: its list is the space\'s (app/WINDOWS.md §9)');
+  assert.deepEqual(closed.sort(), [3, 4, 5], 'the space\'s tabs in every window: its list is the space\'s (docs/BROWSER-WINDOWS.md §9)');
   assert.equal(fake.calls.create.length, 2, 'a start page in each window that would be left without its tab in front');
   const s = await load();
   assert.equal(s.tabSpace[front(1)], 'work', 'the window that asked stays in the space');

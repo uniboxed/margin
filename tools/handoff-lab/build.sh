@@ -6,9 +6,11 @@
 # them, so a gate run tests what ships, not a copy: PrivateCalls.swift (the launch check and the
 # SkyLight wrappers), Freezer.swift (the freezer and its watchdog), SpaceReads.swift (the Space
 # reads and the bridge), BridgeParker.swift (the parker and the cross-process self-test), and
-# what those need (Diagnostics, WindowServer, ProfileSwitch's clock, LinkMessage's JSON).
-# BridgeParker.swift ends with an `extension Shell` (the self-test's launch hook), and the lab has
-# no Shell: that one block is left out of a copy in build/. If another file starts to need the
+# what those need (Diagnostics, WindowServer, ProfileSwitch's clock and the switch's notices, LinkMessage's
+# JSON, Handoff and WindowMatcher's window keys, Parking's registry and the data files it sits beside: DataStore,
+# DataSet, Chunks; DevHooks, the dev-only hook's state).
+# BridgeParker.swift and Parking.swift end with an `extension Shell` (the launch hooks), and the lab
+# has no Shell: those blocks are left out of copies in build/. If another file starts to need the
 # shell, this build fails and says which name is missing.
 #
 # Settings: the app target's (Swift 5, main actor by default), so the shared files compile here
@@ -20,10 +22,12 @@ set -u
 cd "$(dirname "$0")"
 BUILD="$PWD/build"
 mkdir -p "$BUILD"
-SHELL_DIR=../../app/shell
-SHARED=("$SHELL_DIR/PrivateCalls.swift" "$SHELL_DIR/Diagnostics.swift" "$SHELL_DIR/Freezer.swift" "$SHELL_DIR/SpaceReads.swift"
-  "$SHELL_DIR/WindowServer.swift" "$SHELL_DIR/ProfileSwitch.swift" "$SHELL_DIR/LinkMessage.swift")
-PARKER="$SHELL_DIR/BridgeParker.swift"
+SHELL_DIR=../../app/macos/shell
+PRIVATE_DIR=../../app/macos/private
+SHARED=("$PRIVATE_DIR/PrivateCalls.swift" "$SHELL_DIR/Diagnostics.swift" "$PRIVATE_DIR/Freezer.swift" "$PRIVATE_DIR/SpaceReads.swift"
+  "$SHELL_DIR/WindowServer.swift" "$SHELL_DIR/ProfileSwitch.swift" "$SHELL_DIR/LinkMessage.swift" "$SHELL_DIR/Handoff.swift" "$SHELL_DIR/WindowMatcher.swift"
+  "$SHELL_DIR/Parking.swift" "$SHELL_DIR/DataStore.swift" "$SHELL_DIR/DataSet.swift" "$SHELL_DIR/Chunks.swift" "../../engines/webkit/browsers/safari/app/DevHooks.swift")
+PARKER="$PRIVATE_DIR/BridgeParker.swift"
 FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -parse-as-library)
 
 for f in lab.swift "${SHARED[@]}" "$PARKER"; do
@@ -36,14 +40,20 @@ if [ "${1:-}" != "--force" ] && [ -x "$OUT" ] && [ -z "$(find lab.swift "${SHARE
   exit 0
 fi
 
-# BridgeParker.swift without its `extension Shell { … }` block (from that line to the next line
-# that is a lone closing brace).
-awk '/^extension Shell[ {]/ { skip = 1 } !skip { print } skip && /^}/ { skip = 0 }' "$PARKER" > "$BUILD/BridgeParker-lab.swift"
-if grep -q '^extension Shell' "$BUILD/BridgeParker-lab.swift"; then
-  echo "build.sh: couldn't leave BridgeParker.swift's extension Shell out" >&2; exit 1
-fi
+# Each shared file without its `extension Shell { … }` blocks (from that line to the next line
+# that is a lone closing brace): copies in build/lab-src/, the app's files untouched.
+rm -rf "$BUILD/lab-src" && mkdir -p "$BUILD/lab-src"
+LAB_SOURCES=()
+for f in "${SHARED[@]}" "$PARKER"; do
+  copy="$BUILD/lab-src/$(basename "$f")"
+  awk '/^extension Shell[ {:]/ { skip = 1 } !skip { print } skip && /^}/ { skip = 0 }' "$f" > "$copy"
+  if grep -q '^extension Shell' "$copy"; then
+    echo "build.sh: couldn't leave $(basename "$f")'s extension Shell out" >&2; exit 1
+  fi
+  LAB_SOURCES+=("$copy")
+done
 
-swiftc "${FLAGS[@]}" lab.swift "${SHARED[@]}" "$BUILD/BridgeParker-lab.swift" \
+swiftc "${FLAGS[@]}" lab.swift "${LAB_SOURCES[@]}" \
   -framework ScreenCaptureKit -framework WebKit -o "$OUT" || exit 1
 codesign --force --sign - --options runtime "$OUT" 2>/dev/null || echo "build.sh: not signed (codesign failed): the lab still runs, without the hardened runtime" >&2
 echo "built build/handoff-lab"

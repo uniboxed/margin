@@ -1,4 +1,4 @@
-// The "switching" cover (Margin's <m-switch-cover>, app/HANDOFF.md §7) in
+// The "switching" cover (Margin's <m-switch-cover>, docs/HANDOFF.md §7) in
 // both built-in themes and Margin's own default part, in Playwright's WebKit
 // and Chromium, headless, every network request refused, with the mock host
 // (ui/host.ts) holding `across` as Margin.app's host does: drawn over the

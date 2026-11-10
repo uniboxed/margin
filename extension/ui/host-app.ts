@@ -1,8 +1,8 @@
 // Margin.app's host adapter (PLAN.md §1, §2, §6): the same interface as the
 // in-page host (ui/host.ts), for the UI runtime drawn in one of the app's
-// overlays (app/overlay/overlay.ts, in a WKWebView over one browser window).
+// overlays (app/shared/host/overlay.ts, in a WKWebView over one browser window).
 // The page talks only to the app (webkit.messageHandlers.margin: `post`
-// here), and the app to the extension copy over the link (app/PROTOCOL.md):
+// here), and the app to the extension copy over the link (docs/PROTOCOL.md):
 //
 // - the state is the app's copy of the copy's stored values (its mirror):
 //   whole in the page's `hello`, then as the app passes changes on
@@ -31,14 +31,14 @@
 //   that didn't happen;
 // - iCloud Tabs (Safari's windows only): the app's own data, never the
 //   copy's, in the hello (`cloudTabs`) and as `{ type: 'cloudTabs' }` when it
-//   changes (app/shell/ShellCloudTabs.swift), checked (shared/cloud-tabs.ts
+//   changes (engines/webkit/browsers/safari/app/ShellCloudTabs.swift), checked (shared/cloud-tabs.ts
 //   cloudOf) and kept as the state's `cloudTabs`; the folder's Full Disk
 //   Access button and its Copy Link are the app's (`cloud.access`, `copyText`);
-// - the switch between profiles (app/HANDOFF.md §5, §7): "Close windows to
+// - the switch between profiles (docs/HANDOFF.md §5, §7): "Close windows to
 //   save memory" in Settings, for Safari with more than one profile, from
 //   `across.switchSettings` (`switchSettings`, a feature), saved by the app
 //   (`switch.closeWindows`); the "switching" cover drawn (`switch.coverShown`,
-//   app/overlay/overlay.ts); a button of the switch's notice
+//   app/shared/host/overlay.ts); a button of the switch's notice
 //   (`switch.notice`: its id is `switch:<kind>`).
 //
 // No browser API here: only the DOM and `post`.
@@ -128,7 +128,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let state: any = null;
   let windows = Array.isArray(hello?.windows) ? hello.windows : [];
   let mode = hello?.mode === 'windowed' ? 'windowed' : 'fullscreen';
-  // Every profile's spaces in the one order, and the profiles (app/shell/ShellProfiles.swift): `state.across`.
+  // Every profile's spaces in the one order, and the profiles (app/macos/shell/ShellProfiles.swift): `state.across`.
   let across = acrossOf(hello?.across);
   // iCloud Tabs, as the app read them (Safari only; null: none).
   let cloud = cloudOf(hello?.cloudTabs);
@@ -158,7 +158,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     if (((platform.features as any)).devAskBeforeQuit !== next) platform.features = ({ ...platform.features, devAskBeforeQuit: next } as any);
   }
   followDev(hello?.across);
-  // Themes: Margin.app imports them (its file picker), and keeps the index (`themes`: app/PROTOCOL.md "User themes").
+  // Themes: Margin.app imports them (its file picker), and keeps the index (`themes`: docs/PROTOCOL.md "User themes").
    (platform.features as any).importThemes = true;
    (platform.features as any).userThemes = Array.isArray(hello?.themes) ? hello.themes : [];
   // The window's tabs loading, as the copy last said (`push` `loading`).
@@ -276,7 +276,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
         case 'window.fullscreen':
           void post('perform', { name, arg: arg ?? null }).catch(() => {});
           return true;
-        // Across profiles (app/shell/ShellProfiles.swift performAcross).
+        // Across profiles (app/macos/shell/ShellProfiles.swift performAcross).
         case 'profile.switch':
         case 'profile.rename':
         case 'profile.forget':
@@ -284,7 +284,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
         case 'space.move':
           void post('perform', { name, arg: arg ?? null }).catch(() => {});
           return true;
-        // Themes (app/shell/ShellThemes.swift): the file picker; a checked theme kept; one removed.
+        // Themes (app/macos/shell/ShellThemes.swift): the file picker; a checked theme kept; one removed.
         case 'theme.import':
           void post('perform', { name, arg: null }).catch(() => {});
           return true;
@@ -292,7 +292,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (!arg?.value || typeof arg.value !== 'object') return false;
           void post('perform', { name, arg: { value: arg.value } }).catch(() => {});
           return true;
-        // iCloud Tabs (app/shell/ShellCloudTabs.swift): System Settings at Full Disk Access, an address copied.
+        // iCloud Tabs (engines/webkit/browsers/safari/app/ShellCloudTabs.swift): System Settings at Full Disk Access, an address copied.
         case 'cloud.access':
           void post('perform', { name, arg: null }).catch(() => {});
           return true;
@@ -309,7 +309,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           // The runtime closed it; the overlay's notices tell the copy what was chosen.
           onNotice(arg ?? {});
           return true;
-        // The switch between profiles (app/shell/ShellProfiles.swift performAcross).
+        // The switch between profiles (app/macos/shell/ShellProfiles.swift performAcross).
         case 'switch.closeWindows':
           if (typeof arg?.on !== 'boolean') return false;
           void post('perform', { name, arg: { on: arg.on } }).catch(() => {});
@@ -327,7 +327,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           return false; // history goes to the copy (goBack, goForward, reload); the window's other buttons are Phase 4's
       }
     },
-    /** What the app passes on (app/shell/Shell.swift forward, run, pointer). */
+    /** What the app passes on (app/macos/shell/Shell.swift forward, run, pointer). */
     receive(msg: any) {
       if (destroyed || !msg || typeof msg !== 'object') return;
       switch (msg.type) {
@@ -368,7 +368,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           return;
         }
         case 'rekey': {
-          // Handed to another window and profile by a switch (app/shell Shell.handOverOverlay): that window's hello,
+          // Handed to another window and profile by a switch (app/macos/shell Shell.handOverOverlay): that window's hello,
           // taken in place, so the page drawn already draws the new window's state without loading again.
           const next = msg.hello;
           if (!next || typeof next !== 'object' || !Number.isInteger(next.windowId)) return;

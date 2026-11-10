@@ -8,7 +8,7 @@
 //   runs, nothing loads, the DOM audit finds nothing;
 // - Phase 6's template and stylesheet payloads, rendered in the document;
 //   ids named like the overlay's globals leave those globals as they were;
-// - the overlay's policy on its own (app/shell/OverlayWebView.swift
+// - the overlay's policy on its own (app/macos/shell/OverlayWebView.swift
 //   OverlaySchemeHandler.policy, read from the source): a page served with it
 //   and the payloads put in raw, with no sanitizer at all, runs no script of
 //   theirs and makes no request.
@@ -25,7 +25,7 @@ const MANIFEST = JSON.stringify({ format: 2, id: 'payload', name: 'Payload', ver
 const script = harnessScript();
 const b64 = (pkg) => ({ ...pkg, files: Object.fromEntries(Object.entries(pkg.files).map(([k, v]) => [k, Buffer.from(v).toString('base64')])) });
 const packages = (await readSuitePackages()).map((p) => ({ label: p.label, pkg: b64(p.pkg) }));
-const swift = readFileSync(new URL('../../app/shell/OverlayWebView.swift', import.meta.url), 'utf8');
+const swift = readFileSync(new URL('../../app/macos/shell/OverlayWebView.swift', import.meta.url), 'utf8');
 const POLICY = /static let policy = "([^"]+)"/.exec(swift)?.[1];
 
 async function open(browser, { viewport = { width: 1440, height: 900 } } = {}) {

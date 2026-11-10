@@ -1,5 +1,5 @@
 // Margin's notices for a window, decided by this copy and drawn by Margin.app's
-// overlay of that window (Margin 2 Phase 2 step 7; app/PROTOCOL.md `push`
+// overlay of that window (Margin 2 Phase 2 step 7; docs/PROTOCOL.md `push`
 // `notice`): the copy sends only the kind and the tab it's about, the overlay
 // has the words (shared/notices.ts) and draws them in the theme's guarded
 // notice part, and a button comes back as `req noticeAction` (handlers.ts).
@@ -12,7 +12,7 @@
 // (a copy starting after an update finds the pages cut off from the copy
 // before it before it has linked), it's kept for PENDING_MS and said once
 // linked, if its tab is still in front with the same page (the app gives it
-// to the window's overlay when that's drawn: app/shell/Shell.swift
+// to the window's overlay when that's drawn: app/macos/shell/Shell.swift
 // HeldPushes). Not linked by then, nothing is said: there's nowhere to say it.
 import { isNotice } from '../shared/notices.ts';
 import { appLink } from './app-link.ts';

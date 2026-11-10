@@ -3,15 +3,15 @@
 # bundle IDs. The converter capitalizes the app's ID from --app-name
 # (io.tirth.Margin) while the extension keeps io.tirth.margin.Extension, and
 # Xcode rejects an extension whose ID isn't prefixed by the app's.
-# Wraps dist/safari/ (the Safari build; refresh it with `npm run build`), and
-# gives the app its shell (app/shell/: the link to the extension, the overlays
+# Wraps dist/webkit/ (the Safari build; refresh it with `npm run build`), and
+# gives the app its shell (app/macos/shell/: the link to the extension, the overlays
 # around the browser's windows) and the overlays' page (dist/app/).
 # Kept from before: xcode/.team (the team scripts/safari.sh signs with) and
 # xcode/build (its build folder); the rest is made again.
 set -eu
 cd "$(dirname "$0")/.."
 
-[ -f dist/safari/manifest.json ] || { echo "dist/safari/ is missing: run npm run build" >&2; exit 1; }
+[ -f dist/webkit/manifest.json ] || { echo "dist/webkit/ is missing: run npm run build" >&2; exit 1; }
 [ -f dist/app/overlay.html ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
 
 APP_ID=io.tirth.margin
@@ -20,7 +20,7 @@ EXT_ID="$APP_ID.Extension"
 if [ -d xcode ]; then
   find xcode -mindepth 1 -maxdepth 1 ! -name .team ! -name build -exec rm -rf {} +
 fi
-xcrun safari-web-extension-converter dist/safari \
+xcrun safari-web-extension-converter dist/webkit \
   --project-location xcode --app-name Margin --bundle-identifier "$APP_ID" \
   --macos-only --swift --no-open
 
@@ -64,7 +64,7 @@ count() { grep -Ec "$1" "$PROJECT" || true; }
   && [ "$(count 'ServiceManagement"?,')" = $EACH ] && [ "$(count 'INFOPLIST_KEY_LSUIElement"?( = |: ")YES')" = $EACH ] \
   || { echo "make-xcode.sh: the app's sandbox settings didn't come out as expected (has the converter's project changed?)" >&2; exit 1; }
 
-# Margin's own app code over the converter's template (app/safari/): the app
+# Margin's own app code over the converter's template (app/macos/startup/): the app
 # (AppDelegate.swift: no Dock icon while its window is closed, and the shell),
 # the set-up window (ViewController.swift, SwiftUI in the storyboard's window)
 # and the extension handler that passes the extension's reports and link
@@ -72,9 +72,9 @@ count() { grep -Ec "$1" "$PROJECT" || true; }
 # newer anyway). The shell's code and page are added to the app where they are
 # in the repo (scripts/xcode-add-sources.py).
 APP_DIR=$(dirname "$PROJECT")/..
-cp app/safari/AppDelegate.swift "$APP_DIR/Margin/AppDelegate.swift"
-cp app/safari/ViewController.swift "$APP_DIR/Margin/ViewController.swift"
-cp app/safari/SafariWebExtensionHandler.swift "$APP_DIR/Margin Extension/SafariWebExtensionHandler.swift"
+cp app/macos/startup/AppDelegate.swift "$APP_DIR/Margin/AppDelegate.swift"
+cp app/macos/startup/ViewController.swift "$APP_DIR/Margin/ViewController.swift"
+cp engines/webkit/browsers/safari/app/handler/SafariWebExtensionHandler.swift "$APP_DIR/Margin Extension/SafariWebExtensionHandler.swift"
 perl -pi -e 's/(MACOSX_DEPLOYMENT_TARGET"?(?: = |: "))(?:1[0-3]|[0-9])(?:\.\d+)?\b/${1}14.0/' "$PROJECT"
 python3 scripts/xcode-add-sources.py "$PROJECT" .
 

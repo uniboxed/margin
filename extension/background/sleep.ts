@@ -205,7 +205,7 @@ async function sleepTab(record: import('../../types/margin').TabRecord, afterMs:
   const tab = await api.tabs.get(record.id).catch(() => null);
   if (!tab) return 'gone';
   // A parked window's tab in front (out of sight while another profile's window is shown:
-  // app/HANDOFF.md §2.5) is the page shown when the window comes back: it never sleeps.
+  // docs/HANDOFF.md §2.5) is the page shown when the window comes back: it never sleeps.
   if (tab.active && isParked(tab.windowId)) return 'in front, parked';
   if (tab.active) return 'in front';
   if (tab.discarded) return 'asleep';
@@ -299,7 +299,7 @@ export function pageAnswer(rows: unknown) {
 }
 
 // ---- drafts, before Margin.app closes a window ------------------------------------------
-// The window's tabs with text typed and not sent (app/HANDOFF.md §4.5: the app closes a window only
+// The window's tabs with text typed and not sent (docs/HANDOFF.md §4.5: the app closes a window only
 // when there's none), asked in every tab at once with the same check as a sleep's (sleepInPage, its
 // drafts only, in every frame), DRAFTS_MS in all. `unknown`: a web page that couldn't say (no access,
 // no answer in time, a frame nothing can look into); the app keeps the window then too. Not asked: a

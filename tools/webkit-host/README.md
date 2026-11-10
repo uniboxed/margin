@@ -2,18 +2,18 @@
 
 A small stand-in for Safari, for testing Margin on Safari's own extension engine without opening or automating Safari.
 
-It is a macOS command-line program (`host.swift`) built on WebKit's `WKWebView` (the page engine) and `WKWebExtensionController` (the extension engine Safari uses: content scripts, the background page, `browser.*` APIs, registered scripts, native messaging). It loads Margin's Safari build (`dist/safari`) into one window with a few tabs, plays a scenario (open tabs, install or update Margin, switch tabs, put a tab to sleep, run JavaScript in a page, take a screenshot), and checks the results. The window is off screen (at −20000, −20000, ordered in behind everything) and the program never becomes the active app, so nothing appears while it runs. AppKit moves a titled window onto a screen as it's ordered in, so the host's window keeps its place by overriding `constrainFrameRect(_:to:)` (until 2026-11-06 it showed at the top left of the main display during every run).
+It is a macOS command-line program (`host.swift`) built on WebKit's `WKWebView` (the page engine) and `WKWebExtensionController` (the extension engine Safari uses: content scripts, the background page, `browser.*` APIs, registered scripts, native messaging). It loads Margin's Safari build (`dist/webkit`) into one window with a few tabs, plays a scenario (open tabs, install or update Margin, switch tabs, put a tab to sleep, run JavaScript in a page, take a screenshot), and checks the results. The window is off screen (at −20000, −20000, ordered in behind everything) and the program never becomes the active app, so nothing appears while it runs. AppKit moves a titled window onto a screen as it's ordered in, so the host's window keeps its place by overriding `constrainFrameRect(_:to:)` (until 2026-11-06 it showed at the top left of the main display during every run).
 
 ## Running it
 
 ```sh
-npm run build                         # the host tests dist/safari
+npm run build                         # the host tests dist/webkit (the Safari build)
 tools/webkit-host/run.sh all          # every scenario; exits 1 if a check failed
 tools/webkit-host/run.sh switching    # one scenario
 npm run test:webkit                   # the same as `run.sh all`
 ```
 
-Needs macOS with Xcode's command-line tools (`swiftc`) and Node. `run.sh` compiles the host into `build/` when `host.swift` changes, copies `dist/safari` to `build/ext` with a small hook (`hook.js`) that sends Margin's console output to the test server, starts the server (`server.mts`, port 47811, serving the test pages), runs the scenario and prints both logs: the host's steps with each check's `PASS`/`FAIL`, then Margin's console.
+Needs macOS with Xcode's command-line tools (`swiftc`) and Node. `run.sh` compiles the host into `build/` when `host.swift` changes, copies `dist/webkit` to `build/ext` with a small hook (`hook.js`) that sends Margin's console output to the test server, starts the server (`server.mts`, port 47811, serving the test pages), runs the scenario and prints both logs: the host's steps with each check's `PASS`/`FAIL`, then Margin's console.
 
 ## Scenarios
 
@@ -55,7 +55,7 @@ In `scenarios.mts`, each a list of steps (documented at the top of the file). A 
 | `relaunch-match` | A Safari relaunch (`restart` with `drop`: a tab Safari doesn't restore): the tabs it restores are the same Margin tabs under new ids, matched by address; the one it didn't stays, not open, in its space |
 | `bg-page` | Safari's background is a page now (Margin 2: the link to Margin.app): it still answers 12 s and 22 s after install (as a service worker it stopped after about 5 s here) |
 | `app-linked` | The copy's `appLink` written as the link client would: linked, the page's box is the window's layout from the app, and nothing of Margin's is in the page; a new layout moves it; reconnecting, the box stays; off, the page as it is |
-| `app-link` | The real extension linked to Margin.app's real end of the link (`link-server/`: `app/shell`'s ExtensionLink, LinkSocket, LinkMessage, Chunks) through the host's native messaging: wantLink, the link dispatched into the copy's lasting port, the socket with its token and the app's key, hello, snapshot, the theme's pieces adding up, a `setLayout` the page's box follows, a `req` the background runs (its effect seen in storage); then the app quitting (`bye`: off at once, the box gone), starting again (linked again as a page starts), and killed (reconnecting, then off after 6 s: the box goes) |
+| `app-link` | The real extension linked to Margin.app's real end of the link (`link-server/`: `app/macos/shell`'s ExtensionLink, LinkSocket, LinkMessage, Chunks) through the host's native messaging: wantLink, the link dispatched into the copy's lasting port, the socket with its token and the app's key, hello, snapshot, the theme's pieces adding up, a `setLayout` the page's box follows, a `req` the background runs (its effect seen in storage); then the app quitting (`bye`: off at once, the box gone), starting again (linked again as a page starts), and killed (reconnecting, then off after 6 s: the box goes) |
 | `app-link-lost` | The app back after quitting while the host never answers the copy's `wantLink`s (`appLoseAnswers`, as Safari 27.2 answers only one of several sent at once): the copy takes the link dispatched into its port without the answer and links again as a page starts |
 | `no-ui` | Not linked: nothing of Margin's in a page (no element, no frame, no box, none of Margin's page scripts), on a page open at install and on one loaded since; ⌘T in a page opens Margin's new-tab page (its notice that the app isn't running), once |
 | `link-drop` | Linked: nothing of Margin's in a page, its box the app's layout, from its first paint on a page loaded since; the app killed: reconnecting, the box kept; after the grace, off: no box on the page in front or behind, nor on one loaded then; the app back: the box back |

@@ -1,4 +1,4 @@
-// The merge of Margin's lasting data set (DATA.md), the reference the app's
+// The merge of Margin's lasting data set (docs/DATA.md), the reference the app's
 // Swift store follows (step 3 runs the same JSON vectors:
 // tests/fixtures/data-merge/*.json). Pure: no browser APIs, no clock.
 //
@@ -11,7 +11,7 @@
 // A change: { collection, id, updatedAt, value } or { collection, id,
 // updatedAt, deleted: true }, as queued by the extension while it isn't linked
 // to the app (shared/data-set.ts pendingChanges) and as either side sends one
-// on the link (DATA.md "Messages").
+// on the link (docs/DATA.md "Messages").
 //
 // The rule, per item: the later `updatedAt` wins (last write wins). On the
 // same `updatedAt`, a deletion wins over a live item; between two live items

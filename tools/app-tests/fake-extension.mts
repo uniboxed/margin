@@ -1,5 +1,5 @@
-// A stand-in for Margin's extension copies on the link (app/PROTOCOL.md), for
-// e2e.swift, which runs Margin.app's real end (app/shell/) against it:
+// A stand-in for Margin's extension copies on the link (docs/PROTOCOL.md), for
+// e2e.swift, which runs Margin.app's real end (app/macos/shell/) against it:
 //   node fake-extension.mts
 // It does what the host tells it on stdin, one JSON object a line, and says
 // what happened on stdout the same way. Several copies (profiles) at once,
@@ -37,7 +37,7 @@
 //     { ev: 'rawClosed', id };
 //   { do: 'rawClose', id, payload } → a close frame with that payload (an array of bytes, maybe
 //     empty); { do: 'rawEnd', id } → the TCP connection ended, no close frame.
-// The lasting data (DATA.md "Messages"), with `data` on connect:
+// The lasting data (docs/DATA.md "Messages"), with `data` on connect:
 //   data: { acked?, rev?, queue?, wiped?, icons?, parts?, now? } → after the
 //     state (and theme), data.hello with `acked` (default 0), `rev` (the set's
 //     revision the copy has, left out if none) and `queue` (default none). `wiped`: the copy's storage is empty (Safari wiped it: Margin's
@@ -61,7 +61,7 @@
 // list and answers { windowId, state }; closeWindow takes the window out and
 // sends the list; focusWindow and setSpace answer ok (setSpace also makes
 // the space the window's). Each says { ev: 'req', … } first, as any req.
-// The handoff's requests (app/HANDOFF.md §3.3), played the same way with
+// The handoff's requests (docs/HANDOFF.md §3.3), played the same way with
 // connect's `play` ({ enterMs, exitMs, listLagMs, normal }: how long Safari
 // takes to enter and leave full screen, how much later the copy's list says
 // so, and a normal window's bounds): setWindowState refuses past `notAfter`

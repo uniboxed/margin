@@ -7,16 +7,15 @@ import * as M from '../state/model.ts';
 import * as V from '../shared/view.ts';
 import * as S from '../shared/search.ts';
 import { api, load, mutate, newId, now, thisCopy } from './store.ts';
-import * as onboarding from './onboarding.ts';
 import { focusTab, inParkedWindow, reloadCutOff, handingOff, instanceId, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, resolveTab } from './tabs.ts';
 import { sleepIdle, wakeAll, windowDrafts } from './sleep.ts';
 import { probeWindow, setWindowState, windowCall } from './handoff.ts';
-import { newTabPageSeen } from './newtab-hint.ts';
 import { noteReopened, ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.ts';
 import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site-icons.ts';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.ts';
 import { THEMES } from '../themes/index.ts';
-import { isFullscreen, toggleMarginFullscreen } from './fullscreen.ts';
+// This engine's own modules (Safari's set-up messages and new-tab note, Chromium's full screen), or null.
+import { engine } from '#engine';
 import { getScroll, setScroll } from './scroll.ts';
 import { keepScroll, takeScroll } from './scroll-record.ts';
 import { closeTabs, noteClosing } from './closing.ts';
@@ -188,7 +187,7 @@ async function handOff(tab: BrowserTab) {
   if (!prev) return log('palette on the new-tab page', 'no other tab in this window: a new window'), false;
   // The Mac app's set-up window: Safari's own New Tab made a tab (its ⌘T, its
   // + button, its File menu). Not a tab Margin opened itself (newTabKey below).
-  if (!openedByMargin()) onboarding.reportEvent('safariNewTab');
+  if (!openedByMargin()) engine.onboarding?.reportEvent('safariNewTab');
   if (!/^https?:/.test(prev.url)) return log('palette on the new-tab page', `tab ${prev.id} isn't a web page`), false;
   // Not linked to Margin.app: no palette to hand off to (pages draw none of
   // Margin's UI); the new-tab page stays, with its notice and address field.
@@ -287,7 +286,7 @@ async function openKeptBehind(windowId: number, spaceId: string, keptIds: string
 const NEW_TAB_KEY_ONCE_MS = 600;
 const newTabKeyAt = new Map(); // window id → when
 export async function newTabKey(tabArg: { windowId: number | undefined; } | BrowserTab | null | undefined) {
-  onboarding.reportEvent('cmdTKey');
+  engine.onboarding?.reportEvent('cmdTKey');
   const windowId = tabArg?.windowId ?? (await api.windows?.getLastFocused())?.id;
   const now = Date.now();
   if (now - (newTabKeyAt.get(windowId ?? -1) ?? 0) < NEW_TAB_KEY_ONCE_MS) return;
@@ -322,9 +321,9 @@ export const handlers = {
   // A page starting: which tab and window it is, this copy, whether the window is in Margin's
   // full screen (Chrome), Margin.app's word on the link and the window's layout.
   async hello(_message: object, sender: BrowserMessageSender) {
-    onboarding.pageLoaded();
+    engine.onboarding?.pageLoaded();
     const windowId = sender.tab?.windowId ?? null;
-    const fullscreen = windowId != null && platform?.marginFullscreen ? await isFullscreen(windowId) : false;
+    const fullscreen = windowId != null && platform?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(windowId) : false;
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.ts).
     return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, app: appState(windowId), since: thisCopy().since };
   },
@@ -343,7 +342,7 @@ export const handlers = {
     const target = resolved ?? (await resolveTab(tabId, hint, sender.tab?.windowId, { deadline }));
     if (!target) throw new Error('That tab is no longer open');
     if (Number.isFinite(sidebarTop) && sender.tab?.windowId != null) void setScroll(sender.tab.windowId, sidebarTop as number); // (finite: checked)
-    // In another window of the profile: it comes to this one, the other keeps it chosen, away (app/WINDOWS.md §9).
+    // In another window of the profile: it comes to this one, the other keeps it chosen, away (docs/BROWSER-WINDOWS.md §9).
     const here = windowId ?? sender?.tab?.windowId;
     if (here != null && target.windowId != null && target.windowId !== here && away.follows(here)) {
       await away.bringTab(target, here, { source: 'activateTab', deadline });
@@ -592,7 +591,7 @@ export const handlers = {
     const [tab, other] = await Promise.all([resolveTab(tabId, hint, sender?.tab?.windowId), resolveTab(nextTo, nextToHint, sender?.tab?.windowId)]);
     if (!tab || !other || tab.id === other.id || !!tab.pinned !== !!other.pinned) return false;
     if (tab.windowId !== other.windowId) {
-      // Next to one in another window (the list is the space's: app/WINDOWS.md §9): a place in the list beside it,
+      // Next to one in another window (the list is the space's: docs/BROWSER-WINDOWS.md §9): a place in the list beside it,
       // and the tab where that place falls in its own window's strip.
       const before = await load();
       const spaceId = before.tabSpace[tab.id];
@@ -639,7 +638,7 @@ export const handlers = {
     });
     if (!ids.length) return keptIds;
     // Each window whose tab in front is closing (this one, and any other of the profile showing the space: its
-    // list is the space's, app/WINDOWS.md §9) stays in the space and isn't left empty (Safari closes a window
+    // list is the space's, docs/BROWSER-WINDOWS.md §9) stays in the space and isn't left empty (Safari closes a window
     // whose last tab closes): its most recent tab of the space it shows comes to the front, else its start page opens.
     const windows = new Set([win, ...ids.map((id) => s.tabs[id]?.windowId).filter((w) => w != null)]);
     for (const w of windows) {
@@ -684,11 +683,11 @@ export const handlers = {
     // would switch the window to that space.
     const key = M.normalizeUrl(pin.url);
     const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId);
-    // The window asking first, then one that isn't parked (out of sight: app/HANDOFF.md §2.5); a tab
+    // The window asking first, then one that isn't parked (out of sight: docs/HANDOFF.md §2.5); a tab
     // only in a parked window is shown by the app's handoff to it (focusTab).
     const existing = matches.find((t) => t.windowId === windowId) ?? matches.find((t) => !inParkedWindow(t)) ?? matches[0];
     if (existing) {
-      // In another window of the profile: it comes here (app/WINDOWS.md §9).
+      // In another window of the profile: it comes here (docs/BROWSER-WINDOWS.md §9).
       await away.showTab(existing.id, windowId ?? sender?.tab?.windowId, { source: 'openPin', deadline });
       return { shown: existing.id };
     }
@@ -749,7 +748,7 @@ export const handlers = {
   async openLauncher({ windowId, settings = false }: { windowId?: number, settings?: boolean }) {
     await openTab({ windowId, url: api.runtime.getURL(`newtab/newtab.html#${settings ? 'settings' : 'launcher'}`) });
   },
-  // DEV-HOOK: a one-shot probe for tabs following the window in front (app/WINDOWS.md), asked only by the
+  // DEV-HOOK: a one-shot probe for tabs following the window in front (docs/BROWSER-WINDOWS.md), asked only by the
   // app's dev hook, which asks only Safari's Test A (DevHooks.swift checks the name). One test tab and one
   // full-screen window made, the tab moved there and back; after each move, whether its page survived (a
   // marker in its memory, its scroll, a typed field) and how long the move took; one picture of it timed
@@ -863,7 +862,7 @@ export const handlers = {
     }
     return { summary: JSON.stringify(out) };
   },
-  // A real new window of this profile (⌘N through Margin.app, the palette's "New window": app/WINDOWS.md §5),
+  // A real new window of this profile (⌘N through Margin.app, the palette's "New window": docs/BROWSER-WINDOWS.md §5),
   // a Margin window of its own. With `fromWindowId`: in full screen if that window is (or as `fullscreen`
   // says), on the space it shows, set, not guessed, with its first tab in it too. Without one, the window
   // inherits the space (model.inheritSpace). Its new-tab page opens the palette. Answers its id, state and
@@ -894,7 +893,7 @@ export const handlers = {
     return { windowId: win.id, state: win.state ?? 'normal', ...(bounds ? { bounds } : {}) };
   },
   // Margin.app switching to a space of this profile from another profile's
-  // window (app/shell/ProfileSwitch.swift, PLAN.md §15): this copy makes a
+  // window (app/macos/shell/ProfileSwitch.swift, PLAN.md §15): this copy makes a
   // window showing the space, in full screen. In front: the space's tab used
   // last (it isn't open: the window the switch closed kept it); the others
   // that were open with it in that window open behind once it's up. Answers
@@ -925,7 +924,7 @@ export const handlers = {
     });
     if (rest.length) setTimeout(() => void openKeptBehind(win.id, spaceId, rest.map((k) => k.id)), SPACE_WINDOW_REST_MS);
     // Its bounds as Safari gave them, and the window list sent now: the app binds the window as made
-    // by Margin from them before the list's next look (app/HANDOFF.md §1.6). One full-screen request
+    // by Margin from them before the list's next look (docs/HANDOFF.md §1.6). One full-screen request
     // only: macOS puts a window made while Safari has one in full screen there itself.
     void appLink.windowsNow?.();
     const bounds = [win.left, win.top, win.width, win.height].every(Number.isFinite) && win.width! > 0 && win.height! > 0 // (finite: there)
@@ -950,7 +949,7 @@ export const handlers = {
       return { windowId, state: w?.state ?? null };
     });
   },
-  // Margin.app's profile handoff (app/HANDOFF.md §3.3): a window to full screen or normal, its focus
+  // Margin.app's profile handoff (docs/HANDOFF.md §3.3): a window to full screen or normal, its focus
   // left alone unless asked; answered once Safari says it's there (background/handoff.ts).
   async setWindowState(message: { windowId: number, state: 'fullscreen' | 'normal', focused?: boolean, notAfter?: number }) {
     return setWindowState(message);
@@ -967,7 +966,7 @@ export const handlers = {
     return windowDrafts(windowId);
   },
   // A page's scroll as it's hidden or left (content/core.ts), kept on its tab's record for its
-  // Margin tab (background/scroll-record.ts, DATA.md "The scroll record").
+  // Margin tab (background/scroll-record.ts, docs/DATA.md "The scroll record").
   async pageScroll({ y, url }: { y: number, url: string }, sender: BrowserMessageSender) {
     await keepScroll(sender?.tab?.id, url, y);
     return null;
@@ -1026,7 +1025,7 @@ export const handlers = {
     return { shown: tabId };
   },
   async newTabPage(_: object, sender: BrowserMessageSender) {
-    void newTabPageSeen(sender.tab);
+    void engine.newTabHint?.newTabPageSeen(sender.tab);
     if (!sender.tab) return { app: false };
     if (await newTabHandOff(sender.tab)) return { handled: true };
     // Margin.app linked: the new-tab page draws nothing, the app's overlay
@@ -1095,18 +1094,18 @@ export const handlers = {
     if ('theme' in patch && !THEMES[patch.theme] && !PACKAGE_THEMES.includes(patch.theme) && !(await userThemeListed(patch.theme))) return;
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   },
-  // "Margin full screen" on or off for this window (Chrome; background/fullscreen.ts).
+  // "Margin full screen" on or off for this window (Chrome; engines/chromium/extension/fullscreen.ts).
   async toggleFullscreen({ windowId }: { windowId?: number }, sender: BrowserMessageSender) {
     const id = windowId ?? sender.tab?.windowId;
     if (id == null || !platform?.marginFullscreen) return null;
-    return toggleMarginFullscreen(id);
+    return engine.fullscreen?.toggleMarginFullscreen(id) ?? null;
   },
   // Whether this page's window is in full screen (Chrome, "only in full screen").
   async windowState(_: object, sender: BrowserMessageSender) {
     const id = sender.tab?.windowId;
-    return { fullscreen: id != null && platform?.marginFullscreen ? await isFullscreen(id) : false };
+    return { fullscreen: id != null && platform?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(id) : false };
   },
-  // Margin.app's index of the themes the person imported (app/shell/ThemeStore.swift: they're the
+  // Margin.app's index of the themes the person imported (app/macos/shell/ThemeStore.swift: they're the
   // Mac's, kept by the app; a copy holds only the list, never a package), sent as a copy links and
   // whenever it changes. Kept in storage.local (`userThemes`) for updateSettings and the theme's settings.
   async userThemes({ list }: { list: any[] }) {

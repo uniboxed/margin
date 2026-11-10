@@ -144,7 +144,7 @@
 .row.on .cursor .now, .palette-row.on .cursor .now { visibility: visible; }
 /* In front in another window: a dim, still, hollow cursor. */
 .tab.behind:not(.on) .cursor .was { visibility: visible; opacity: .5; color: var(--muted); }
-/* Chosen here, live in another window (app/WINDOWS.md §9): the cursor stays, faded. */
+/* Chosen here, live in another window (docs/BROWSER-WINDOWS.md §9): the cursor stays, faded. */
 .tab.away { opacity: .55; }
 .tab .title { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fav { flex-shrink: 0; width: 18px; height: 18px; box-sizing: border-box; box-shadow: var(--pxs); background: var(--deep); object-fit: cover; image-rendering: pixelated; }

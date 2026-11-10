@@ -199,7 +199,7 @@ async function read() {
 // good at the collection's next write (it's looked at against the stored
 // meta again), with that later time. The queue of changes made while the app
 // isn't linked is every item and tombstone with a time (pendingQueue).
-// Margin.app takes it on link (step 3: DATA.md).
+// Margin.app takes it on link (step 3: docs/DATA.md).
 let dataMeta: Record<string, any> = {};
 const metaUnsaved = new Set<any>();
 const META_WRITE_MS = 1500;
@@ -261,7 +261,7 @@ function changedItems(collection: string, before: { items?: Record<string, [numb
   return out;
 }
 
-// ---- the app's data (DATA.md, background/link.ts) --------------------------------
+// ---- the app's data (docs/DATA.md, background/link.ts) --------------------------------
 // While Margin.app is linked, every change this copy makes to the data set is
 // told as it's written (`onDataChanges`: the changes trackKeys found). What
 // the app sends (its data set, or its own changes) becomes the state here,
@@ -316,7 +316,7 @@ export function adoptDataSet(setFor: (state: State) => { items?: Record<string, 
   });
 }
 /**
- * The app's whole data set (DATA.md "For the extension's end"), with the
+ * The app's whole data set (docs/DATA.md "For the extension's end"), with the
  * changes this copy made after its data.hello merged on top (a snapshot
  * crossing a change doesn't undo it), and the items the app left out
  * (`omitted`: [[collection, id]], too big to send) kept as this copy has them.

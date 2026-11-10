@@ -2,7 +2,8 @@
 // with `node --test` and called by background.ts. Functions never mutate
 // their input; untouched top-level keys keep their identity so the
 // background can write only the keys that changed.
-import { platform, PROFILES, PAST_NAVIGATION } from '../shared/platform.ts';
+import { platform } from '../shared/platform.ts';
+import { NAVIGATION_DEFAULTS } from '../shared/navigation-defaults.ts';
 import { THEMES, DEFAULT_THEME } from '../themes/index.ts';
 import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.ts';
 import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.ts';
@@ -45,10 +46,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   swipeNavigation: true, // Safari: Margin's two-finger swipe back/forward (shared/pull.ts)
   sidebarShortcut: 'Alt+KeyS', // show/hide the sidebar (Margin.app's key: background/link.ts keys)
   // Safari: a note when ⌘T seems to open Safari's homepage instead of Margin
-  // (background/newtab-hint.ts); turned off from the note.
+  // (engines/webkit/browsers/safari/extension/newtab-hint.ts); turned off from the note.
   newTabHint: true,
   // Chrome: whenever a window goes full screen, Margin full screen instead
-  // (no toolbar; background/fullscreen.ts).
+  // (no toolbar; engines/chromium/extension/fullscreen.ts).
   marginFullscreenAuto: true,
   // Chrome: Margin only in full screen; in a window that isn't, it stays out
   // of the way and offers full screen when reached for (content/core.ts).
@@ -83,7 +84,7 @@ function defaultState(): State {
     spaces: [{ ...DEFAULT_SPACE }],
     activeSpaceByWindow: {},
     // The tab each window has chosen while it's live in another window of the profile (the tab follows the
-    // window in front, app/WINDOWS.md §9): { [windowId]: tabId }. That window shows it away (faded), with the
+    // window in front, docs/BROWSER-WINDOWS.md §9): { [windowId]: tabId }. That window shows it away (faded), with the
     // stand-in page in front. A window not in it has its own active tab chosen, as ever.
     awayByWindow: {},
     tabSpace: {},
@@ -339,7 +340,7 @@ function keptWasTab(state: State, tabId: number) {
   return Object.values(state.keptTabs ?? {}).find((k) => k.wasTab === tabId) ?? null;
 }
 
-// ---- the scroll record (DATA.md "The scroll record") -------------------------------
+// ---- the scroll record (docs/DATA.md "The scroll record") -------------------------------
 // Where an open tab's page is scrolled, as its page last said (content/core.ts, as it's hidden or
 // left; background/sleep.ts, as it's asked before a close): `scroll` on its record, in px, for the
 // record's address only. Kept with its Margin tab when the tab closes and is kept (keptRecord), and
@@ -476,7 +477,7 @@ function placeKept(state: State, keptId: string, nextTo: number | string, side: 
   const next = { ...state, keptTabs: { ...state.keptTabs, [keptId]: { ...k, order } } };
   return tight(next) ? renumber(next) : next;
 }
-// An open tab dragged next to one in another window (the list is the space's: app/WINDOWS.md §9): a place
+// An open tab dragged next to one in another window (the list is the space's: docs/BROWSER-WINDOWS.md §9): a place
 // between that one and its neighbour, for its window's tab strip to follow (background/handlers.ts moveTab moves it
 // there: stripIndexFor). The state, unchanged if there's no such place.
 function placeOpen(state: State, tabId: number, nextTo: number | string, side: 'before' | 'after', spaceId: string) {
@@ -555,9 +556,8 @@ function normalizeShortcuts(rawSettings: any, baseSettings: any) {
   const saved = { ...rawSettings?.shortcuts };
   const from = rawSettings?.shortcutDefaults;
   if (from !== baseSettings.shortcutDefaults) {
-    // (A build's defaults by the id it saved: its navigationId, else its name; a past set of Safari's first.)
-    const build = from ? Object.values(PROFILES).find((p) => ((p as { navigationId?: string }).navigationId ?? p.name) === from) : null;
-    const old = (from && ((PAST_NAVIGATION as Record<string, any>)[from] ?? build?.navigation)) || LEGACY_SHORTCUTS;
+    // (A build's defaults by the id it saved, today's or a past one: shared/navigation-defaults.ts.)
+    const old = (from && (NAVIGATION_DEFAULTS as Record<string, any>)[from]) || LEGACY_SHORTCUTS;
     for (const [name, value] of Object.entries(saved)) if (value === old[name]) delete saved[name];
   }
   return { ...baseSettings.shortcuts, ...saved };
@@ -712,7 +712,7 @@ function removeTab(state: State, tabId: number) {
   return { ...state, tabs, tabSpace, awayByWindow };
 }
 
-// Window `windowId` has tab `tabId` chosen while it's live in another window (app/WINDOWS.md §9); `tabId` null:
+// Window `windowId` has tab `tabId` chosen while it's live in another window (docs/BROWSER-WINDOWS.md §9); `tabId` null:
 // it chooses its own front tab again.
 function setAway(state: State, windowId: number, tabId: number | null) {
   const away = state.awayByWindow ?? {};
@@ -737,7 +737,7 @@ function activateTab(state: State, tabId: number, windowId: number, now: number)
     else if (t.id === tabId) tabs[id] = { ...t, active: true, lastActive: now };
     else tabs[id] = t.active ? { ...t, active: false, lastActive: now } : t;
   }
-  // A tab of its own live in the window: it shows nothing away any more (app/WINDOWS.md §9).
+  // A tab of its own live in the window: it shows nothing away any more (docs/BROWSER-WINDOWS.md §9).
   const next = { ...state, tabs };
   return state.tabs[tabId]?.windowId === windowId ? setAway(next, windowId, null) : next;
 }
@@ -1048,7 +1048,7 @@ function createSpace(state: State, { id, name, emoji, color }: { id: string; nam
   return { ...state, spaces: [...state.spaces, space] };
 }
 
-// The spaces in the order given (Margin.app's order across profiles: app/shell/
+// The spaces in the order given (Margin.app's order across profiles: app/macos/shell/
 // BrowserProfiles.swift); ones it doesn't name keep their places after them.
 function orderSpaces(state: State, ids: string[]) {
   const rank = new Map(ids.map((id, i) => [id, i]));
