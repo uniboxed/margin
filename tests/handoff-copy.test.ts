@@ -420,7 +420,6 @@ test('windowDrafts: every tab of the window asked at once (its drafts only, ever
   for (const id of [...Object.keys(tabs), 57]) fake.tabs.delete(Number(id));
   fake.windows.delete(5);
   fake.denied.clear();
-  fake.drafts = () => 'none';
 
   fake.drafts = () => 'none';
   fake.windows.set(6, win(6));

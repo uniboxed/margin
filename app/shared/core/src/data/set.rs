@@ -28,9 +28,15 @@ fn is_true(v: Option<&Value>) -> bool {
     v == Some(&Value::Bool(true))
 }
 
-/// A collection's or an item's name: 1–256 UTF-16 units, as the reference (JS `length`) counts them.
+/// A name the reference can use as a key: never `__proto__` (it would change an object's prototype there), so
+/// the reference drops it everywhere and this does too.
+fn usable_key(s: &str) -> bool {
+    s != "__proto__"
+}
+
+/// A collection's or an item's name: 1–256 UTF-16 units, as the reference (JS `length`) counts them, and usable.
 fn is_name(v: Option<&Value>) -> bool {
-    json::string(v).is_some_and(|s| (1..=256).contains(&s.encode_utf16().count()))
+    json::string(v).is_some_and(|s| (1..=256).contains(&s.encode_utf16().count()) && usable_key(s))
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -161,8 +167,12 @@ impl DataSet {
 
     fn take_items(&mut self, collections: &Object) {
         for (collection, list) in collections {
-            let Some(list) = list.as_object() else { continue };
-            let kept = list.iter().filter_map(|(id, raw)| Some((id.clone(), DataItem::from_json(raw)?))).collect();
+            let Some(list) = list.as_object().filter(|_| usable_key(collection)) else { continue };
+            let kept = list
+                .iter()
+                .filter(|(id, _)| usable_key(id))
+                .filter_map(|(id, raw)| Some((id.clone(), DataItem::from_json(raw)?)))
+                .collect();
             self.items.insert(collection.clone(), kept);
         }
     }

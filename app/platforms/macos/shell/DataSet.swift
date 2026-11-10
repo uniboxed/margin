@@ -26,10 +26,14 @@ func isTrue(_ v: Any?) -> Bool {
     return n.boolValue
 }
 
-// A collection's or an item's name: 1–256 UTF-16 units, as the reference counts them.
+// A name the reference can use as a key: never `__proto__` (it would change an object's prototype there), so
+// the reference drops it everywhere and this does too.
+func isUsableDataKey(_ s: String) -> Bool { s != "__proto__" }
+
+// A collection's or an item's name: 1–256 UTF-16 units, as the reference counts them, and usable.
 func isDataName(_ v: Any?) -> Bool {
     guard let s = v as? String else { return false }
-    return (1...256).contains(s.utf16.count)
+    return (1...256).contains(s.utf16.count) && isUsableDataKey(s)
 }
 
 struct DataItem {
@@ -118,9 +122,9 @@ struct DataSet {
     init(json: Any?) {
         guard let o = json as? JSONObject, let collections = o["items"] as? JSONObject else { return }
         for (collection, list) in collections {
-            guard let list = list as? JSONObject else { continue }
+            guard isUsableDataKey(collection), let list = list as? JSONObject else { continue }
             var kept: [String: DataItem] = [:]
-            for (id, raw) in list { if let item = DataItem(json: raw) { kept[id] = item } }
+            for (id, raw) in list where isUsableDataKey(id) { if let item = DataItem(json: raw) { kept[id] = item } }
             items[collection] = kept
         }
     }

@@ -30,6 +30,25 @@ for (const file of vectors) {
   });
 }
 
+test('merge: no name changes an object\'s prototype (__proto__ from the app or another copy, CodeQL js/remote-property-injection)', () => {
+  // Parsed, as the link gives them: JSON makes __proto__ an own key, which `x[key] = …` would turn into a prototype.
+  const v = JSON.parse(fs.readFileSync(path.join(VECTORS, '09-reserved-name.json'), 'utf8'));
+  const plain = (o: unknown) => Object.getPrototypeOf(o) === Object.prototype;
+  for (const set of [mergeData(v.base, v.changes), pruneTombstones(v.base, 0)]) {
+    assert.ok(plain(set.items), 'the collections');
+    for (const [name, list] of Object.entries(set.items)) {
+      assert.ok(plain(list), `${name}'s items`);
+      assert.equal((list as Record<string, unknown>).polluted, undefined, `${name}: nothing inherited`);
+    }
+  }
+  // The app's tabs kept by a copy (keptTabs): an id of __proto__ is no tab.
+  const s = M.normalizeState({});
+  const set = JSON.parse(`{"format":1,"items":{"tabs":{"__proto__":{"updatedAt":1,"value":{"url":"https://evil.test/","spaceId":"${s.spaces[0].id}","order":0}}}}}`);
+  const next = stateFromDataSet(s, set);
+  assert.ok(plain(next.keptTabs), 'keptTabs');
+  assert.deepEqual(Object.keys(next.keptTabs), []);
+});
+
 test('merge: one whole set into another is the merge of its items as changes; tombstones older than a time can be pruned', () => {
   const a = { format: 1, items: { spaces: { s1: { updatedAt: 5, value: { name: 'A' } } }, pins: { p1: { updatedAt: 1, deleted: true } } } };
   const b = { format: 1, items: { spaces: { s1: { updatedAt: 9, value: { name: 'B' } }, s2: { updatedAt: 2, value: { name: 'C' } } } } };

@@ -97,7 +97,6 @@ const tick = 'await new Promise((resolve) => setTimeout(resolve, 80));';
 // A real key, no modifiers unless given (arrows: 125 down, 126 up, chars as AppKit's).
 const key = (tab, keyCode, chars, mods = []) => ({ op: 'key', in: tab, keyCode, chars: String.fromCharCode(chars), mods });
 const ARROW_DOWN = [125, 0xF701];
-const ARROW_UP = [126, 0xF700];
 const PAGE_DOWN = [121, 0xF72D];
 const pressIn = (tab, at) => [{ op: 'mouse', in: tab, type: 'down', at: `return ${JSON.stringify(at)}` }, { op: 'mouse', in: tab, type: 'up' }];
 

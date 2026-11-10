@@ -38,28 +38,7 @@ const fake = {
   // Tabs whose process Safari suspended (suspend()): their scripts wait for
   // its resume.
   suspended: new Map(),
-  // Keep-ready's holds (a keepAwake with a key) run on until the test ends.
-  holdsRun: false,
 };
-// A tab's process suspended: a script there waits until WebKit resumes it, at
-// background priority `backgroundMs` after the first script reached it, or
-// once the tab is brought to the front (its view in the window: a foreground
-// resume, `shownMs` later).
-function suspend(tabId, { backgroundMs = 2000, shownMs = 5 } = {}) {
-  let resume = () => {};
-  const resumed = new Promise((resolve) => { resume = resolve; });
-  let timer = null;
-  const done = () => { clearTimeout(timer); fake.suspended.delete(tabId); resume(); };
-  fake.suspended.set(tabId, {
-    wait() {
-      timer ??= setTimeout(done, backgroundMs);
-      return resumed;
-    },
-    shown() {
-      setTimeout(done, shownMs);
-    },
-  });
-}
 // readyInPage, as a page answers it: 'loaded' once its status says complete,
 // 'painted' once it has painted, 'timeout' at its limit.
 const readiness = async (tabId, [ms]) => {
@@ -109,7 +88,6 @@ globalThis.chrome = {
   scripting: {
     executeScript: ({ target, world, func, args, files, again = false }) => {
       if (!again) fake.scripts.push({ tabId: target.tabId, at: Date.now(), world, func: func ?? { name: 'files' }, args, files });
-      if (fake.holdsRun && func === keepAwake && typeof args?.[1] === 'string') return new Promise(() => {});
       const suspended = fake.suspended.get(target.tabId);
       if (suspended) return suspended.wait().then(() => chrome.scripting.executeScript({ target, world, func, args, files, again: true }));
       if (fake.scriptError?.(target.tabId)) return sleep(1).then(() => [{ result: null, error: 'Failed to execute script.' }]);
@@ -137,8 +115,7 @@ globalThis.chrome = {
   },
 };
 
-const { markMarginOpening, resolveTab, tabShown } = await import('../../../../background/tabs.ts');
-const M = await import('../../../../state/model.ts');
+const { markMarginOpening, resolveTab } = await import('../../../../background/tabs.ts');
 const hint = await import('../newtab-hint.ts');
 // Margin.app's overlay, linked: the notices pushed to it (background/notices.ts).
 const notices = await import('../../../../background/notices.ts');
@@ -146,10 +123,7 @@ const pushed = [];
 let appLinked = true;
 notices.useLinkForTests({ linked: () => appLinked, push: (windowId, msg) => { if (!appLinked) return false; pushed.push({ windowId, msg }); return true; } });
 const noted = () => pushed.filter((p) => p.msg.kind === 'new-tab-setting').map((p) => p.msg.tabId);
-const { mutate, decided, load, markSynced } = await import('../../../../background/store.ts');
-const V = await import('../../../../shared/view.ts');
-const { navigate, showSpace } = await import('../../../../background/navigation.ts');
-const { handlers } = await import('../../../../background/handlers.ts');
+const { mutate } = await import('../../../../background/store.ts');
 
 function reset(tabs) {
   fake.prepare = (args) => ({ ready: true, token: args?.[0]?.token });
@@ -161,7 +135,6 @@ function reset(tabs) {
   fake.scriptError = null;
   fake.cutOff = null;
   fake.suspended = new Map();
-  fake.holdsRun = false;
   fake.reply = true;
   fake.hintReply = { fromNothing: true };
   fake.contentScripts = undefined;
@@ -172,56 +145,6 @@ function reset(tabs) {
   fake.created = [];
   fake.activated = null;
 }
-
-
-
-
-// keepAwake in a fake page: it must always finish (WebKit keeps the tab
-// awake until it does).
-function fakePage() {
-  const listeners = { window: {}, document: {} };
-  const on = (where) => (type, fn) => { (listeners[where][type] ??= new Set()).add(fn); };
-  const off = (where) => (type, fn) => listeners[where][type]?.delete(fn);
-  globalThis.addEventListener = on('window');
-  globalThis.removeEventListener = off('window');
-  globalThis.document = { visibilityState: 'hidden', addEventListener: on('document'), removeEventListener: off('document') };
-  const fire = (where, type) => [...(listeners[where][type] ?? [])].forEach((fn) => fn());
-  globalThis.dispatchEvent = (event) => fire('window', event.type);
-  const count = () => Object.values(listeners).flatMap((l) => Object.values(l)).reduce((n, set) => n + set.size, 0);
-  return { fire, count, show() { globalThis.document.visibilityState = 'visible'; fire('document', 'visibilitychange'); } };
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ---- ⌘T opening Safari's homepage --------------------------------------------
 

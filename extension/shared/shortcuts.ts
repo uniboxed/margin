@@ -34,7 +34,7 @@ function format(text: unknown) {
   const s = parse(text);
   if (!s) return '';
   const ARROWS: Record<string, string> = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' };
-  const key = ARROWS[s.code] ?? s.code.replace(/^Key|^Digit/, '').replace(/^Slash$/, '/').replace(/^Period$/, '.').replace(/^Space$/, 'Space');
+  const key = ARROWS[s.code] ?? s.code.replace(/^Key|^Digit/, '').replace(/^Slash$/, '/').replace(/^Period$/, '.');
   return MODIFIERS.filter((m) => (s as Record<string, unknown>)[m.toLowerCase()]).map((m) => SYMBOLS[m]).join('') + key;
 }
 

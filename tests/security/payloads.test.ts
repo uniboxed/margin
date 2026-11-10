@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sanitizeTemplate, sanitizeCss, RESERVED_IDS } from '../../extension/ui/sanitize.ts';
 import { checkManifest } from '../../extension/ui/theme-schema.ts';
-import { checkPackage, contentMatches } from '../../extension/ui/theme-loader.ts';
+import { checkPackage, contentMatches, svgStarts } from '../../extension/ui/theme-loader.ts';
 import { TEMPLATE_PAYLOADS_2, CSS_PAYLOADS_2, CSS_KEPT_2, MANIFEST_PAYLOADS, MANIFEST_REMOVED, FILE_PAYLOADS, wrap } from '../theme/payloads.ts';
 import { auditTree } from '../theme/audit.ts';
 
@@ -92,4 +92,58 @@ test('first bytes: real signatures pass', () => {
   assert.ok(contentMatches('a.svg', b('<?xml version="1.0"?>\n<!-- x --><svg xmlns="http://www.w3.org/2000/svg"/>')));
   assert.ok(contentMatches('LICENSE.md', b('# Licence\n')));
   assert.ok(!contentMatches('a.woff2', b('wOFF')), 'woff 1 is not woff2');
+});
+
+// The svg check's rules, as the regex it replaced had them (on files that couldn't slow it down).
+const OLD_SVG_START = /^﻿?\s*(?:<\?xml[^>]{0,200}\?>\s*)?(?:<!--[\s\S]{0,4000}?-->\s*)*(?:<!DOCTYPE svg[^>]{0,400}>\s*)?<svg[\s>]/i;
+const SVG_CASES: Array<[string, string]> = [
+  ['plain', '<svg xmlns="http://www.w3.org/2000/svg"/>'],
+  ['closed at once', '<svg>'],
+  ['byte-order mark and space', '﻿ \n\t<svg viewBox="0 0 1 1"></svg>'],
+  ['xml declaration', '<?xml version="1.0" encoding="UTF-8"?>\n<svg/>'],
+  ['xml declaration with nothing in it', '<?xml?><svg/>'],
+  ['upper case', '<?XML version="1.0"?><!DOCTYPE SVG PUBLIC "-//W3C//DTD SVG 1.1//EN"><SVG/>'],
+  ['comments', '<!-- a --> <!----><!-- b\n-- c --><svg/>'],
+  ['a doctype', '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n<svg/>'],
+  ['everything', '﻿<?xml version="1.0"?>\n<!-- made by hand -->\n<!DOCTYPE svg>\n<svg>'],
+  ['an html page', '<!DOCTYPE html><html><svg/></html>'],
+  ['a script first', '<script>alert(1)</script><svg/>'],
+  ['text first', 'hello <svg/>'],
+  ['svg in a longer name', '<svgfoo/>'],
+  ['svg at the very end', '<svg'],
+  ['empty', ''],
+  ['an unclosed comment', '<!-- <svg/>'],
+  ['a comment over 4000', `<!--${'x'.repeat(4001)}--><svg/>`],
+  ['a comment of 4000', `<!--${'x'.repeat(4000)}--><svg/>`],
+  ['a declaration over 200', `<?xml ${'a'.repeat(200)}?><svg/>`],
+  ['a declaration of 200', `<?xml${'a'.repeat(199)}?><svg/>`],
+  ['a declaration ended by > alone', '<?xml version="1.0"><svg/>'],
+  ['a doctype over 400', `<!DOCTYPE svg${'a'.repeat(401)}><svg/>`],
+  ['a doctype of 400', `<!DOCTYPE svg${'a'.repeat(400)}><svg/>`],
+  ['a doctype of another kind', '<!DOCTYPE html><svg/>'],
+  ['two declarations', '<?xml version="1.0"?><?xml version="1.0"?><svg/>'],
+  ['a comment ends at its first -->', '<!-- a --> not space --> <svg/>'],
+  ['--> inside a comment', '<!-- a -- b --><svg/>'],
+];
+
+test('svg: the same files pass and fail as with the regex it replaced', () => {
+  for (const [name, text] of SVG_CASES) assert.equal(svgStarts(text), OLD_SVG_START.test(text), name);
+});
+
+test('svg: files made to slow the check are refused at once (CodeQL js/redos)', () => {
+  const crafted = [
+    '<!---->'.repeat(4000) + 'x', // took the regex minutes and more
+    '<!-- -->'.repeat(2000) + 'x',
+    '<!--' + '-->-->'.repeat(30000) + 'x',
+    '<!--' + '-'.repeat(200000),
+    ('<!-- a -->' + ' '.repeat(50)).repeat(1500) + 'x',
+    ' '.repeat(500000) + 'x',
+  ];
+  for (const text of crafted) {
+    const started = performance.now();
+    const ok = contentMatches('evil.svg', new TextEncoder().encode(text));
+    const took = performance.now() - started;
+    assert.equal(ok, false);
+    assert.ok(took < 200, `${text.length} characters checked in ${took.toFixed(1)} ms`);
+  }
 });

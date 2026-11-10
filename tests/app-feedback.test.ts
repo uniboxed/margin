@@ -24,7 +24,6 @@ const pick = (store, keys) => {
   const list = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys);
   return Object.fromEntries(list.filter((k) => k in store).map((k) => [k, structuredClone(store[k])]));
 };
-const NEW_TAB = 'safari-web-extension://test/newtab/newtab.html';
 globalThis.fetch = async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) });
 globalThis.chrome = {
   runtime: {

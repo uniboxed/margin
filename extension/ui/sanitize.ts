@@ -273,12 +273,12 @@ export function parseHtml(html: string): { root: ParsedRoot, removed: Removed[],
       // empty (its text is Margin's), the rest up to its end tag skipped.
       const kept = lname === 'textarea' && attrs.some(([n, v]) => n.toLowerCase() === 'm-input' && v === 'setting-list');
       if (!kept) report(removed, 'element', lname, 'not allowed (dropped with its content)', line(start));
-      if (lname === 'plaintext') { i = n; break; }
+      if (lname === 'plaintext') break; // the rest of the text is its content
       const re = new RegExp(`</${lname}[\\s/>]`, 'ig');
       re.lastIndex = i;
       const m = re.exec(html);
       if (kept) top().children.push({ type: 'el', name, lname, ns: HTML, attrs, children: [], at: line(start) });
-      if (!m) { i = n; break; }
+      if (!m) break; // no end tag: the rest is its content
       const end = html.indexOf('>', m.index);
       i = end < 0 ? n : end + 1;
       continue;

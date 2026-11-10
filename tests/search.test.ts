@@ -2,7 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as model from '../extension/state/model.ts';
 import * as search from '../extension/shared/search.ts';
-import * as view from '../extension/shared/view.ts';
 
 const { DEFAULT_SETTINGS, normalizeState } = model;
 

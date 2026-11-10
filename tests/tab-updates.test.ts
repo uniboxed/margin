@@ -16,7 +16,6 @@ const until = async (ready, ms = 1500) => {
 };
 const local = {};
 const sets = [];
-let failNext = false;
 globalThis.chrome = ({
   runtime: { getURL: (path) => `safari-web-extension://test/${path}` },
   storage: {
@@ -24,10 +23,6 @@ globalThis.chrome = ({
       get: async (keys) => (keys == null ? { ...local } : Object.fromEntries([].concat(keys).filter((k) => k in local).map((k) => [k, structuredClone(local[k])]))),
       set: async (items) => {
         sets.push(structuredClone(items));
-        if (failNext) {
-          failNext = false;
-          throw new Error('busy');
-        }
         Object.assign(local, structuredClone(items));
       },
       remove: async () => {},
