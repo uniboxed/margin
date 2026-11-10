@@ -287,7 +287,7 @@ function lookupTab(tabId: number): Promise<{ tab: any }> {
   return asking;
 }
 
-// When Margin last opened a tab or window itself (engines/webkit/browsers/safari/extension/newtab-hint.ts
+// When Margin last opened a tab or window itself (extension/engines/webkit/safari/newtab-hint.ts
 // leaves those out).
 let marginOpenedAt = 0;
 export function markMarginOpening() {

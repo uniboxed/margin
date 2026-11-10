@@ -13,7 +13,7 @@ build and run it in `app/windows/README.md`.
   (`host.rs`); Margin's connector (`app/shared/connector/`, `margin-connector.exe`) is the browsers' native-messaging
   host on every OS.
 - **One link, as on the Mac** (below): the copy's WebSocket to 127.0.0.1, found through the connector. Chrome's and
-  Edge's copies link on Windows as on the Mac (`engines/chromium/extension/profile.ts` `linksApp`).
+  Edge's copies link on Windows as on the Mac (`extension/engines/chromium/profile.ts` `linksApp`).
 - **Next:** Tirth's first run on Windows (`app/windows/README.md`, then `docs/windows/UNVERIFIED.md` line by line);
   the keys' defaults with Tirth (DECISIONS.md "Margin for Windows planned"); the overlay page's `platform.os` (it
   says `mac` whatever the app's hello says: `extension/ui/host-app.ts`, a reviewed change to the shared overlay page);
@@ -92,7 +92,7 @@ through Margin's connector, and on Windows the same way (above); what follows of
 - `hello.browser` is only ever `chrome` or `safari`; nothing sends `edge`.
 - The app's socket allows only `safari-web-extension://` origins. The link details reach the extension only through
   `SFSafariApplication.dispatchMessage`, which is Safari's.
-- Only `engines/webkit/browsers/safari/extension/manifest.json` has `nativeMessaging`. No native-messaging host exists, except the e2e test
+- Only `extension/engines/webkit/safari/manifest.json` has `nativeMessaging`. No native-messaging host exists, except the e2e test
   harness's (`tests/e2e/harness/native-host.mts`: stdio, 4-byte little-endian length framing; `relay.ts`), which
   shows the shape.
 - Already prepared: `LinkMessage.Hello` takes `browser` safari, chrome or edge and a `pid` ("Chrome's relay helper

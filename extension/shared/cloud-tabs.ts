@@ -1,6 +1,6 @@
 // iCloud Tabs (Margin.app with Safari; DECISIONS.md "Margin 2: iCloud Tabs"):
 // the tabs open in Safari on the person's other Apple devices, which the app
-// reads from Safari's own file (engines/webkit/browsers/safari/app/CloudTabs.swift) and gives each
+// reads from Safari's own file (app/engines/webkit/safari/CloudTabs.swift) and gives each
 // Safari overlay (`cloudTabs` in its hello, then `{ type: 'cloudTabs' }`:
 // docs/PROTOCOL.md). The extension never has them. This file checks what the
 // app sent (`cloudOf`), says whether they're shown (`cloudShown`: the

@@ -1,5 +1,5 @@
-// What differs between browsers, as what each one can do: its engine's profile (engines/webkit/browsers/safari/
-// extension/profile.ts, engines/chromium/extension/profile.ts) answers, and shared code asks it, never which
+// What differs between browsers, as what each one can do: its engine's profile (extension/engines/webkit/safari/
+// profile.ts, extension/engines/chromium/profile.ts) answers, and shared code asks it, never which
 // browser this is. A build resolves `#engine/profile` to its own engine's profile only (scripts/build.ts), so the
 // other's isn't in it; unbuilt (unit tests), extension/shared/any-engine-profile.ts picks one from the
 // extension's own URL scheme.

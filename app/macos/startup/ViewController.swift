@@ -1,12 +1,12 @@
 // Margin's app: a set-up window that walks through what Safari needs for
 // Margin, checking each step where it can. It sees itself whether Margin is
 // on in Safari (SFSafariExtensionManager); the rest only the extension can see
-// (engines/webkit/browsers/safari/extension/onboarding.ts → SafariWebExtensionHandler.swift → a distributed
+// (extension/engines/webkit/safari/onboarding.ts → SafariWebExtensionHandler.swift → a distributed
 // notification here): whether Margin may run on every website, whether ⌘T
 // reaches Margin, whether new tabs and windows open Margin's page. Itself
 // again, by trying to read Safari's data: whether Margin has Full Disk Access,
-// which shows Safari's own profile names (engines/webkit/browsers/safari/app/SafariProfiles.swift) and
-// iCloud Tabs (engines/webkit/browsers/safari/app/CloudTabs.swift); without it nothing else changes. Safari only for now; Chrome and Edge come later.
+// which shows Safari's own profile names (app/engines/webkit/safari/SafariProfiles.swift) and
+// iCloud Tabs (app/engines/webkit/safari/CloudTabs.swift); without it nothing else changes. Safari only for now; Chrome and Edge come later.
 // Copied into the generated Xcode project by scripts/make-xcode.sh (the
 // converter's storyboard window shows this view controller).
 

@@ -1,5 +1,5 @@
 // Margin's extension handler: the extension's native messages
-// (browser.runtime.sendNativeMessage, engines/webkit/browsers/safari/extension/onboarding.ts) about what it
+// (browser.runtime.sendNativeMessage, extension/engines/webkit/safari/onboarding.ts) about what it
 // sees in Safari are passed on to Margin's app (its set-up window,
 // ViewController.swift) as a distributed notification, while the app is open.
 // Both are sandboxed and share no storage; a notification's string object is

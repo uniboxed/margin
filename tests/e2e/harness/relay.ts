@@ -72,7 +72,7 @@ export async function startRelay({ wantLink, verbose = !!process.env.MARGIN_E2E_
           const { reply, link } = wantLink(String(msg.nonce ?? ''));
           write(c, reply);
           if (link) setTimeout(() => dispatch('link', link), 10);
-        } else write(c, { ok: true }); // the set-up window's checks (engines/webkit/browsers/safari/extension/onboarding.ts)
+        } else write(c, { ok: true }); // the set-up window's checks (extension/engines/webkit/safari/onboarding.ts)
       }
     });
     socket.on('error', () => {});

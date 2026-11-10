@@ -1,7 +1,7 @@
 #!/bin/bash
 # Margin.app's shell (app/macos/shell/), tested with no browser: npm run test:app.
 #   unit: each app folder's own tests/ (app/macos/shell/tests/, app/macos/private/tests/,
-#         engines/webkit/browsers/safari/app/tests/): tests.swift, data-tests.swift and
+#         app/engines/webkit/safari/tests/): tests.swift, data-tests.swift and
 #         window-tests.swift, the shell's logic on its own (no
 #         window, no link), the lasting data's merge (tests/fixtures/data-merge/),
 #         its files (in a temporary folder) and its messages; spaces across
@@ -49,7 +49,7 @@ BUILD="${MARGIN_APP_TESTS_BUILD:-$PWD/build}"
 mkdir -p "$BUILD"
 # Margin.app's Swift: every *.swift of each folder app/macos/swift-sources.txt lists (as the app's Xcode target has it).
 # Their unit checks: each such folder's own tests/ (app/macos/shell/tests/, app/macos/private/tests/,
-# engines/webkit/browsers/safari/app/tests/: never in the app, which takes each folder's own *.swift only).
+# app/engines/webkit/safari/tests/: never in the app, which takes each folder's own *.swift only).
 SHELL_SOURCES=()
 UNIT_TESTS=()
 while read -r folder; do
@@ -58,7 +58,7 @@ while read -r folder; do
   for t in ../../"$folder"/tests/*.swift; do [ -f "$t" ] && UNIT_TESTS+=("$t"); done
 done < ../../app/macos/swift-sources.txt
 # The stand-in for Safari's folder, for the unit checks and the end-to-end ones.
-FAKE_SAFARI=../../engines/webkit/browsers/safari/app/tests/fake-safari.swift
+FAKE_SAFARI=../../app/engines/webkit/safari/tests/fake-safari.swift
 FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault)
 # Compiled on every core (batch mode): about 4x faster than one job.
 JOBS=(-j"$(sysctl -n hw.ncpu 2>/dev/null || echo 4)")
@@ -93,7 +93,7 @@ warnings() { # label flags... -- sources...
 status=0
 if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   warnings "the app" "${XCODE_FLAGS[@]}" ../../app/macos/startup/AppDelegate.swift ../../app/macos/startup/ViewController.swift "${SHELL_SOURCES[@]}"
-  warnings "the extension handler" -swift-version 5 ../../engines/webkit/browsers/safari/app/handler/SafariWebExtensionHandler.swift
+  warnings "the extension handler" -swift-version 5 ../../app/engines/webkit/safari/handler/SafariWebExtensionHandler.swift
   # Chrome's and Edge's connector (app/shared/connector/, Rust), built as scripts/safari.sh builds it.
   CARGO="${CARGO:-$(command -v cargo || echo "$HOME/.cargo/bin/cargo")}"
   "$CARGO" build -q --release -p margin-connector --manifest-path ../../Cargo.toml || exit 1

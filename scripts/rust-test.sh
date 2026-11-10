@@ -1,6 +1,6 @@
 #!/bin/sh
 # npm run test:rust: the Rust workspace (Cargo.toml at the root: app/shared/core, app/shared/connector,
-# app/windows, engines/chromium/app): formatted, no clippy warnings, every test, and the Windows targets
+# app/windows, app/engines/chromium): formatted, no clippy warnings, every test, and the Windows targets
 # compile-checked from here when rustup has them (x86_64-pc-windows-msvc, aarch64-pc-windows-msvc).
 set -e
 cd "$(dirname "$0")/.."

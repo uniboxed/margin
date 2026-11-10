@@ -72,7 +72,7 @@ pub fn boot(login: bool) -> Result<Option<App>, String> {
 
 /// `Connector.installHostFiles`: Chrome's, Edge's and the other Chromium browsers' host files and registry keys,
 /// written by the connector beside `margin.exe` (`margin-connector.exe --install`: its own knowledge of where each
-/// browser looks, engines/chromium/app/), on a thread of its own; the log says how many it wrote. No console
+/// browser looks, app/engines/chromium/), on a thread of its own; the log says how many it wrote. No console
 /// window: `CREATE_NO_WINDOW`.
 fn install_host_files(exe: &Path) {
     use std::os::windows::process::CommandExt;

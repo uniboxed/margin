@@ -11,7 +11,7 @@ Two programs, side by side in one folder (docs/windows/BRIEF.md):
   --install` at each launch, which writes the browsers' host file and registry keys.
 
 The Rust is one workspace at the repo's root (`Cargo.toml`): `margin-core` (`app/shared/core/`, OS-neutral, tested on
-any OS), `margin-connector`, `margin-chromium` (`engines/chromium/app/`, where each browser looks for host files) and
+any OS), `margin-connector`, `margin-chromium` (`app/engines/chromium/`, where each browser looks for host files) and
 `margin-windows`. macOS stays Swift (`app/macos/`).
 
 ## Building and running on Windows
@@ -48,7 +48,7 @@ Nothing of it runs on the Mac: there it's compile-checked (`npm run test:rust` r
    didn't start: install the Evergreen Runtime from Microsoft.
 5. **The extension.** Load `dist\chromium` unpacked in `chrome://extensions` (or `edge://extensions`, Developer mode).
    Its manifest's `key` gives it Margin's id (`njeebbcmlenfopaecfbphgcfihbdmkec`), the one the host file allows
-   (`engines/chromium/app/src/lib.rs` `EXTENSION_IDS`), and it has `nativeMessaging`.
+   (`app/engines/chromium/src/lib.rs` `EXTENSION_IDS`), and it has `nativeMessaging`.
 6. **Start it.** Run `margin.exe` (no arguments). It has no window of its own: it runs the connector's install, listens
    on its pipe and on 127.0.0.1, and once a linked Chrome or Edge is in front follows its windows and draws the overlay
    over each one: over the whole window in full screen (F11), as Margin.app does over full-screen Safari, and over the

@@ -1,4 +1,4 @@
-// iCloud Tabs as Margin.app sends them to an overlay (engines/webkit/browsers/safari/app/CloudTabs.swift
+// iCloud Tabs as Margin.app sends them to an overlay (app/engines/webkit/safari/CloudTabs.swift
 // json): made-up devices and tabs, never anyone's own. An iPhone used a few
 // minutes ago (a pinned tab, a site Margin has an icon for and one it hasn't),
 // a MacBook Air used yesterday (its record's time only, rounded to the day as

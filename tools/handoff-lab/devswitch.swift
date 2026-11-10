@@ -1,4 +1,4 @@
-// DEV-HOOK: goes before production with engines/webkit/browsers/safari/app/DevHooks.swift (docs/HANDOFF.md §9).
+// DEV-HOOK: goes before production with app/engines/webkit/safari/DevHooks.swift (docs/HANDOFF.md §9).
 //
 // The dev hook's sender: posts one io.tirth.margin.dev.* notification to Margin.app, which honours it
 // only while `defaults read io.tirth.margin MarginDevHooks` is YES, and only when the window it shows

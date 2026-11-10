@@ -3504,20 +3504,24 @@ the Safari build are untouched by this work, which lives on `feat/windows-shell`
   registration are gone; the welcome's key is always there; the hello's browser and pid are trusted as on the Mac.
   The Chromium build's `linksApp` is the Mac and Windows. docs/windows/BRIEF.md has why.
 
-## The repo's layout: engines, app, docs (2026-11-09)
+## The repo's layout: extension, app, docs (2026-11-09)
 
 Tirth's layout (approved page: the folder map), on branch `refactor/repo-layout`. **Paths in the entries above,
 from before 2026-11-09, are the old ones** (`platform/`, `app/shell/`, `app/overlay/`, `app/relay/`, `app/safari/`,
 `native/`, `tools/app-tests/*-tests.swift`, `dist/safari/`, `dist/chrome/`); the history keeps them as they were.
 
-- **The folders.** `extension/` is the browser code every browser shares. `engines/<engine>/{extension,app}/` holds what
-  differs per browser, by engine (WebKit, Chromium, later Gecko), with `browsers/<browser>/{extension,app}/` for one
-  browser's own differences (Safari is WebKit's only browser, so its code is in `webkit/browsers/safari/`; Chrome and
-  Edge need nothing of their own yet). `app/shared/{core,connector,host}/` is Margin's app on every OS (core and the
-  connector in Rust, host the page drawn over each browser window, the old `app/overlay/`), `app/macos/{shell,private,
-  startup}/` the Mac's Swift, `app/windows/` the Windows shell (Rust, merged from `feat/windows-shell`). `docs/`
-  holds the protocol, the handoff, the data, the private APIs and the Windows notes. Only `engines/` may ask which
-  engine or browser this is; shared code asks what the browser can do.
+- **The folders.** The root is split by program only: `extension/`, `app/`, `docs/`. Each program keeps its own
+  per-browser side in its `engines/` (Tirth, the same day: an `engines/` at the root holding `extension/` and `app/`
+  again was confusing): `extension/engines/{webkit/safari,chromium}/` (manifest, profile, own modules, tests) and
+  `app/engines/{webkit/safari,chromium}/` (Safari's Swift and extension handler; Chromium's host files in Rust). Safari
+  is WebKit's only browser, so WebKit's code is Safari's; Chromium's is shared by Chrome, Edge and the rest until one
+  of them needs its own `chromium/<browser>/`. The build never copies `extension/engines/` into a `dist/` folder (its
+  code is bundled from there), so the builds came out byte-identical to before the move (567 files).
+  `app/shared/{core,connector,host}/` is Margin's app on every OS (core and the connector in Rust, host the page drawn
+  over each browser window, the old `app/overlay/`), `app/macos/{shell,private,startup}/` the Mac's Swift,
+  `app/windows/` the Windows shell (Rust, merged from `feat/windows-shell`). `docs/` holds the protocol, the handoff,
+  the data, the private APIs and the Windows notes. Only the `engines/` folders may ask which engine or browser this
+  is; shared code asks what the browser can do.
 - **One build per engine, with only its own code.** `dist/webkit/` (Safari) and `dist/chromium/` (Chrome, Edge and the
   other Chromium browsers), plus `dist/app/`. Each engine's profile (`profile.ts`: its capabilities, the old
   `PROFILES` of `shared/platform.ts`) and its own modules (`engine.ts`: Safari's `onboarding.ts` and
@@ -3533,12 +3537,12 @@ from before 2026-11-09, are the old ones** (`platform/`, `app/shell/`, `app/over
   browser's copy. Verified: unit 965, theme 267, security 242, e2e 144 + 2 todo, WebKit host 33, the Swift 2046, and an
   Xcode build whose extension is byte-identical to `dist/webkit/` (bundle id unchanged, so Safari takes it as an update).
 - **One Rust workspace at the root** (`Cargo.toml`: `app/shared/core`, `app/shared/connector`, `app/windows`,
-  `engines/chromium/app`), `npm run test:rust` (format, clippy with warnings failing, tests, and both Windows targets
+  `app/engines/chromium`), `npm run test:rust` (format, clippy with warnings failing, tests, and both Windows targets
   compile-checked when rustup has them), in the gate and in `test:quick` when a crate changes.
 - **The connector, in Rust, for every OS** (`app/shared/connector/`, binary `margin-connector`), replacing the Swift
   relay helper. The same protocol (`docs/PROTOCOL.md`); the socket is now `~/Library/Application Support/Margin/
   connector.sock` and the helper `Contents/Helpers/margin-connector`, signed as `io.tirth.margin.connector` (the app's
-  peer check names it). It writes the browsers' host files itself (`--install`, `engines/chromium/app/`, crate
+  peer check names it). It writes the browsers' host files itself (`--install`, `app/engines/chromium/`, crate
   `margin-chromium`: Chrome, Edge, their channels, Brave, Chromium; macOS, Linux, and on Windows the file plus each
   browser's registry key), so `ChromiumHosts.swift` is gone; Margin.app runs it at launch. The app's version is built
   into it (`MARGIN_APP_VERSION`, from the built app's Info.plist in `scripts/safari.sh`), as the Swift one read it from
@@ -3547,10 +3551,10 @@ from before 2026-11-09, are the old ones** (`platform/`, `app/shell/`, `app/over
   protocol. A Chrome or Edge left open across this update keeps its old relay waiting on the old socket: quit and
   reopen it once (TESTING.md says so).
 - **Tests beside what they test.** Each app folder's Swift checks are in its `tests/` (`app/macos/shell/tests/`,
-  `app/macos/private/tests/`, `engines/webkit/browsers/safari/app/tests/`), which `tools/app-tests/run.sh` finds from
+  `app/macos/private/tests/`, `app/engines/webkit/safari/tests/`), which `tools/app-tests/run.sh` finds from
   `app/macos/swift-sources.txt` and the app never compiles (it takes each folder's own `*.swift` only); Safari's own
-  unit tests are in `engines/webkit/browsers/safari/extension/tests/` (`npm test` runs `engines/**/tests/*.test.ts`,
-  `test:quick` follows `#engine` imports and walks `engines/`). Whole-system tests stay in `tests/` (e2e, theme,
+  unit tests are in `extension/engines/webkit/safari/tests/` (`npm test` runs `engines/**/tests/*.test.ts`,
+  `test:quick` follows `#engine` imports). Whole-system tests stay in `tests/` (e2e, theme,
   security) and `tools/` (the app's e2e, the WebKit host).
 - **The handoff lab builds again** (`tools/handoff-lab/build.sh` failed on main with 46 errors: the switch's code had
   grown to need `Handoff.swift`, `WindowMatcher.swift`, `Parking.swift` and the data files). It now takes those, leaves

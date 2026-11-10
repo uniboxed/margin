@@ -1,5 +1,5 @@
 // Builds ready-to-load extensions, one per engine, from the one shared source:
-//   extension/ (shared) + its engine's own code (engines/<engine>/…/extension/: its profile, its modules)
+//   extension/ (shared) + its engine's own code (extension/engines/<engine>/: its profile, its modules)
 //   and manifest changes (MANIFESTS) → dist/<engine>/ (DIST: dist/webkit/ for Safari, dist/chromium/ for
 //   Chrome, Edge and the other Chromium browsers), and dist/app/ (Margin.app's host page).
 // Each build takes only its own engine's code: shared code reaches it as `#engine` and `#engine/profile`
@@ -23,6 +23,9 @@ export const CONDITIONS = { safari: 'margin-webkit', chrome: 'margin-chromium' }
 // How esbuild reads Margin's TypeScript (the bundles are built from copies outside the repo's tsconfig.json too):
 // every import kept as written (a module's side effects stay, as in JavaScript), class fields as JavaScript's.
 const TSCONFIG = { compilerOptions: { verbatimModuleSyntax: true, useDefineForClassFields: true } };
+// extension/engines/ and everything in it: never copied into a build.
+const ENGINES_DIR = fileURLToPath(new URL('engines', SOURCE));
+const isEngines = (src: string) => src === ENGINES_DIR || src.startsWith(`${ENGINES_DIR}/`);
 // The sources, once bundled: not shipped (no page loads them; the bundles have them all).
 const isSource = (name: string) => /\.m?ts$/.test(name) && !name.endsWith('.d.ts');
 function dropSources(dir: string) {
@@ -38,8 +41,8 @@ function dropSources(dir: string) {
 // Each build's manifest changes, in its engine's folder: Safari's in WebKit's (its only browser there), Chrome's
 // build Chromium's own (Chrome, Edge and the other Chromium browsers run it).
 export const MANIFESTS = {
-  safari: 'engines/webkit/browsers/safari/extension/manifest.json',
-  chrome: 'engines/chromium/extension/manifest.json',
+  safari: 'extension/engines/webkit/safari/manifest.json',
+  chrome: 'extension/engines/chromium/manifest.json',
 };
 // Overrides replace top-level keys, except `add_permissions`, which is
 // appended to the shared `permissions` (so the list lives in one place).
@@ -58,8 +61,9 @@ export function buildTo(outDir, { profile, manifest = profile }) {
   const out = outDir instanceof URL ? fileURLToPath(outDir) : outDir;
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
-  // Skip Finder's .DS_Store files (git-ignored) so a Mac build matches CI.
-  cpSync(fileURLToPath(SOURCE), out, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') });
+  // The files pages load as they are. Skip Finder's .DS_Store files (git-ignored) so a Mac build matches CI, and
+  // extension/engines/ (each engine's code is bundled from there; its manifest goes through manifestFor).
+  cpSync(fileURLToPath(SOURCE), out, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') && !isEngines(src) });
   const built = manifestFor(manifest);
   bundle(out, built, profile);
   // The one plain script registered as a file, not bundled (background/registered.ts FULLSCREEN_ONLY_JS).
@@ -144,7 +148,7 @@ function bundle(out, manifest, profile) {
 
   // Chrome's background is a service worker; Safari's a page (`scripts`,
   // non-persistent, Manifest V3's default, so no `persistent` key: the converter
-  // warns on it; engines/webkit/browsers/safari/extension/manifest.json), since WebKit hangs a
+  // warns on it; extension/engines/webkit/safari/manifest.json), since WebKit hangs a
   // service worker that opens a WebSocket, and the link to Margin.app is one
   // (background/link.ts, PLAN.md §14 Spike 3). One bundle either way.
   const bg = manifest.background;

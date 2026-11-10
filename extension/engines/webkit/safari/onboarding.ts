@@ -15,8 +15,8 @@
 // window); access goes when it changes, and again until the app has heard it
 // (on page loads, less and less often while the app stays closed, and at once
 // when an event finds it open).
-import { platform } from '../../../../../extension/shared/platform.ts';
-import { api } from '../../../../../extension/background/store.ts';
+import { platform } from '../../../shared/platform.ts';
+import { api } from '../../../background/store.ts';
 
 const APP = 'io.tirth.margin';
 const ACCESS_EVERY_MS = 30_000; // a page loading re-checks access at most this often (grants from Safari's own controls send no event)
