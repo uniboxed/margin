@@ -111,13 +111,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The theme tests (with the security suite's browser half) in two halves, and the end-to-end tests.
+          # The theme tests (with the security suite's browser half) and the end-to-end tests, each in two halves on
+          # their own Macs. End to end one file at a time here (npm run test:e2e runs two at once): a few of them
+          # wait on timers that two Chromiums at once on a virtual Mac push past.
           - suite: theme 1 of 2
             run: node --test --test-concurrency=1 --test-shard=1/2 tests/theme/*.test.ts
           - suite: theme 2 of 2
             run: node --test --test-concurrency=1 --test-shard=2/2 tests/theme/*.test.ts
-          - suite: end to end
-            run: npm run test:e2e
+          - suite: end to end 1 of 2
+            run: node --test --test-concurrency=1 --test-shard=1/2 tests/e2e/*.test.ts
+          - suite: end to end 2 of 2
+            run: node --test --test-concurrency=1 --test-shard=2/2 tests/e2e/*.test.ts
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -135,10 +139,12 @@ jobs:
         if: steps.browsers.outputs.cache-hit != 'true'
         run: npx playwright install chromium webkit
       - name: Rust (stable, by the runner's own rustup), for the connector's end-to-end test
-        if: matrix.suite == 'end to end'
+        if: startsWith(matrix.suite, 'end to end')
         run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
-      - if: matrix.suite == 'end to end'
+      - if: startsWith(matrix.suite, 'end to end')
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Scroll bars that show while scrolling only, as on a Mac with a trackpad (the box patterns' setting)
+        run: defaults write -g AppleShowScrollBars -string WhenScrolling
       - name: The build (the tests load it)
         run: node scripts/build.ts
       - name: ${{ matrix.suite }}
@@ -205,5 +211,7 @@ jobs:
         run: node scripts/build.ts && tools/app-tests/run.sh unit
       - name: Scroll bars that show while scrolling only, as on a Mac with a trackpad (the box patterns' setting)
         run: defaults write -g AppleShowScrollBars -string WhenScrolling
-      - name: The WebKit host (Safari's extension engine)
+      - name: The WebKit host (Safari's extension engine), its waits twice as long on a virtual Mac
+        env:
+          MARGIN_HOST_SLOW: "2"
         run: npm run test:webkit

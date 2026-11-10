@@ -17,6 +17,9 @@ func fail(_ label: String, _ why: String) { failures += 1; log("FAIL \(label): \
 // JavaScript in a web view, given up on after `ms`: a page that never answers (busy for good, or held by
 // something nothing here answers: a real site's) fails that step and the run goes on.
 struct NoAnswer: LocalizedError { let ms: Double; var errorDescription: String? { "no answer in \(Int(ms)) ms" } }
+// MARGIN_HOST_SLOW: every wait this many times longer (CI's virtual Macs are slower than a real one; 1, the default,
+// everywhere else). What's waited for is the same; only how long before a check gives up.
+let SLOW: Double = max(1, Double(ProcessInfo.processInfo.environment["MARGIN_HOST_SLOW"] ?? "") ?? 1)
 @MainActor func inPage(_ wv: WKWebView, _ js: String, _ world: WKContentWorld, within ms: Double) async throws -> Any? {
   try await withCheckedThrowingContinuation { (answer: CheckedContinuation<Any?, Error>) in
     var done = false
@@ -26,7 +29,7 @@ struct NoAnswer: LocalizedError { let ms: Double; var errorDescription: String? 
       answer.resume(with: result)
     }
     wv.callAsyncJavaScript(js, arguments: [:], in: nil, in: world) { result in finish(result.map { $0 as Any? }) }
-    DispatchQueue.main.asyncAfter(deadline: .now() + ms / 1000) { MainActor.assumeIsolated { finish(.failure(NoAnswer(ms: ms))) } }
+    DispatchQueue.main.asyncAfter(deadline: .now() + ms * SLOW / 1000) { MainActor.assumeIsolated { finish(.failure(NoAnswer(ms: ms * SLOW))) } }
   }
 }
 
@@ -622,7 +625,7 @@ Task { @MainActor in
     case "checkProbe":
       // { op: 'checkProbe', name, maxMs, label }: the probed show of the tab had content within maxMs.
       let name = step["name"] as! String, maxMs = step["maxMs"] as! Double, label = step["label"] as! String
-      let deadline = Date().addingTimeInterval(3)
+      let deadline = Date().addingTimeInterval(3 * SLOW)
       while lastProbe?.name != name && Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
       if let ms = lastProbe?.contentMs, lastProbe?.name == name, ms <= maxMs { log(String(format: "PASS %@ (%.0f ms)", label, ms)) }
       else { fail(label, lastProbe?.name == name ? (lastProbe!.contentMs.map { String(format: "%.0f ms", $0) } ?? "no content") : "not shown") }
@@ -761,7 +764,7 @@ Task { @MainActor in
       let name = step["name"] as! String
       let label = step["label"] as? String ?? "\(name): its page's process has exited"
       let pid = recordedPids[name] ?? 0
-      let deadline = Date().addingTimeInterval(Double(step["timeout"] as? Int ?? 3000) / 1000)
+      let deadline = Date().addingTimeInterval(Double(step["timeout"] as? Int ?? 3000) * SLOW / 1000)
       while true {
         if pid > 0 && kill(pid, 0) != 0 && errno == ESRCH { log("PASS \(label)"); break }
         if Date() > deadline { fail(label, pid > 0 ? "process \(pid) still running" : "no process kept"); break }
@@ -774,7 +777,7 @@ Task { @MainActor in
       let name = step["in"] as! String
       let js = step["js"] as! String
       let label = step["label"] as? String ?? js
-      let deadline = Date().addingTimeInterval(Double(step["timeout"] as? Int ?? 3000) / 1000)
+      let deadline = Date().addingTimeInterval(Double(step["timeout"] as? Int ?? 3000) * SLOW / 1000)
       var last = "nil"
       while true {
         if let t = host.tab(name), let wv = t.webView, let world = op == "check" ? host.world() : .page {
@@ -826,7 +829,7 @@ Task { @MainActor in
       let re = (step["re"] as? String).flatMap { try? NSRegularExpression(pattern: $0) }
       let label = step["label"] as? String ?? "the app heard \(has)"
       let none = (step["none"] as? Bool) == true
-      let deadline = Date().addingTimeInterval((step["timeout"] as? Double ?? (none ? 1500 : 5000)) / 1000)
+      let deadline = Date().addingTimeInterval((step["timeout"] as? Double ?? (none ? 1500 : 5000)) * SLOW / 1000)
       var found: String?
       while true {
         found = appLink.heard.dropFirst(appLink.mark).first { line in has.allSatisfy { line.contains($0) } && (re.map { $0.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil } ?? true) }
@@ -900,6 +903,6 @@ func pinchField(_ n: UInt32) -> CGEventField { CGEventField(rawValue: n)! }
 }
 
 // A whole run's time limit in seconds (MARGIN_HOST_TIMEOUT, default 120).
-let limit = Double(ProcessInfo.processInfo.environment["MARGIN_HOST_TIMEOUT"] ?? "") ?? 120
+let limit = (Double(ProcessInfo.processInfo.environment["MARGIN_HOST_TIMEOUT"] ?? "") ?? 120) * SLOW
 DispatchQueue.main.asyncAfter(deadline: .now() + limit) { log("TIMEOUT"); exit(1) }
 app.run()
