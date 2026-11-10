@@ -1,9 +1,9 @@
-/* Neo-brutalism's look at a page's first paint, around the box
+/* Neubrutalism's look at a page's first paint, around the box
    (shared/page-box.ts firstPaintCss adds the box itself; scripts/build.ts
-   writes the two as content/layout/theme-neo-brutalism.css, registered
+   writes the two as content/layout/theme-neubrutalism.css, registered
    while Margin.app draws Margin: background/registered.ts). Margin.app's
    overlay draws the theme over this as soon as it shows; this is what's
-   there before. Every rule only under <html> marked for Neo-brutalism
+   there before. Every rule only under <html> marked for Neubrutalism
    (data-margin-at, set by the page's world: content/page/main.ts), so a
    registration WebKit keeps applying after it was dropped paints nothing.
    The card as theme.css's .page (its border, its hard shadow, the corner
@@ -11,7 +11,7 @@
    paints over the page; the ground the default space colour (--space):
    which space the window shows isn't known before Margin's scripts run. */
 @media screen {
-  html[data-margin-at="neo-brutalism"]::after {
+  html[data-margin-at="neubrutalism"]::after {
     content: "" !important;
     position: fixed !important;
     inset: 0 !important;

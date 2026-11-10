@@ -3,7 +3,7 @@
 // Arcadia's sidebar width. What every built-in theme looks like is its
 // package (themes/packages.ts, drawn by ui/runtime.ts), with its look at a
 // page's first paint (themes/<id>/first-paint.css); a package theme without
-// an entry here (Neo-brutalism) keeps its settings as saved.
+// an entry here (Neubrutalism) keeps its settings as saved.
 import arcadia from './arcadia/theme.ts';
 
 // (By id: a theme's settings, for the ones whose settings the background knows.)

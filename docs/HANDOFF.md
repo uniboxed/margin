@@ -717,7 +717,7 @@ New, kept small:
 
 - **`switchCover`** in the view model, only in A's overlay and only while `phase` is `preparing`, `waitingForLink` or `frozen`: `{ profile: { name, emoji, color, symbol? }, space: { name, emoji } }`.
 - **A guarded slot `<m-switch-cover>`** drawn over the page slot, like the launcher (`extension/themes/README.md:69`; slots in `ui/render.ts:38-69`, `ui/sanitize.ts:294`, `:373-385`). Every word is Margin's: "Switching to {profile}…", with the space's name under it. It's the one other exception, besides the launcher, to "never paint under `<m-page>`".
-- **Margin's default part** when a theme has none: a centred card in the theme's colours. Arcadia and Neo-brutalism each get their own part.
+- **Margin's default part** when a theme has none: a centred card in the theme's colours. Arcadia and Neubrutalism each get their own part.
 - No fade in the first build. The "animated later" Tirth mentioned is a later change.
 - **`coverShown`:** the overlay page posts `perform('switch.coverShown')` after the cover has been in the DOM for 2 animation frames and no swipe is settling (`m-settling`, `swipe.ts:63-72`).
 - **After the switch**, the cover goes from A's (now hidden) overlay with the next `across`. R4 makes sure A's page has drawn without it the next time A is shown.
@@ -730,11 +730,11 @@ New, kept small:
   - more than one display: today's slide (0.4-0.65 s);
   - today's slide, for comparison: 0.4-0.65 s, with Margin's overlay gone for about 180 ms (`PLAN.md` §15).
 
-Built (WP10, the overlay's side): `switchCover` in `ui/view-model.ts`, the guarded `<m-switch-cover>` slot and `switch-cover` part (`ui/sanitize.ts`, `ui/render.ts`, Margin's default in `DEFAULT_PARTS`), parts in Arcadia and Neo-brutalism, `extension/ui/switch-cover.ts` (`createCoverWatch`, `answerFramed`) wired in `app/shared/host/overlay.ts`, and the switch's notices by kind; tests in `tests/handoff-ui.test.ts`, `tests/theme/switch-cover.test.ts` and `app/platforms/macos/shell/tests/handoff-ui-tests.swift`. Settled on the way:
+Built (WP10, the overlay's side): `switchCover` in `ui/view-model.ts`, the guarded `<m-switch-cover>` slot and `switch-cover` part (`ui/sanitize.ts`, `ui/render.ts`, Margin's default in `DEFAULT_PARTS`), parts in Arcadia and Neubrutalism, `extension/ui/switch-cover.ts` (`createCoverWatch`, `answerFramed`) wired in `app/shared/host/overlay.ts`, and the switch's notices by kind; tests in `tests/handoff-ui.test.ts`, `tests/theme/switch-cover.test.ts` and `app/platforms/macos/shell/tests/handoff-ui-tests.swift`. Settled on the way:
 
 - **Which overlay is A's:** `across.switching.from { profile, windowId }` (the switcher's `from`). The view model draws the cover only when that's its own profile and window. Today's machine has none of the three phases, so it never shows one.
 - **The cover's shape:** `{ id, text, label, hasSpace, profile: { name, emoji, color, initial, symbol }, space: { name, emoji } }`. `text` is "Switching to Work…", with Margin's words in the view model.
-- **Where the themes put it:** over the page card, above the launcher and under a sidebar out over the page (so a swipe there keeps going). Arcadia's slot comes before its sidebar, and its launcher hides while the cover is up (`.arcadia.switching`). Neo-brutalism's sits at `z-index: 3`, between its launcher (2) and its floating sidebar (8).
+- **Where the themes put it:** over the page card, above the launcher and under a sidebar out over the page (so a swipe there keeps going). Arcadia's slot comes before its sidebar, and its launcher hides while the cover is up (`.arcadia.switching`). Neubrutalism's sits at `z-index: 3`, between its launcher (2) and its floating sidebar (8).
 - **Margin's default part** fills the slot of a theme with no part and nothing in it: a centred card in `--m-cover-ground`, `--m-cover-text` and `--m-cover-card`, else the system's colours. A theme with no `<m-switch-cover>` at all shows no cover, and the freeze starts at the 250 ms limit.
 - **`coverShown`** waits for two frames in a row with the cover in the DOM and no `m-swiping` or `m-settling` element. A swipe frame starts the count again, and a new target counts again. No frames (the overlay off screen): nothing is said.
 - **`framed`** is read at the frame after `shown`, so a `windows` list that came meanwhile counts. Only `fullscreen` or `windowed`.
@@ -849,7 +849,7 @@ These must keep passing: `npm test`, `npm run test:theme`, `npm run test:app`, `
   - the own-Space checks skipping the switch's windows;
   - quit returning every window.
 - **`npm test` (extension):** `setWindowState` (`notAfter`, `busy`, waiting for the state, pushing the list), `frameProbe` in the content script and the new-tab page (a fake rAF), `windowDrafts`, `parked` kept per epoch, `parkedActivity` (tab, focus not Margin's, raise), `focusTab`/`openPin` preferring an unparked window, sleep sparing a parked window's front tab, `openSpaceWindow`'s bounds, the settings field and its `perform`, the cover slot in the view model and sanitizer, and `framed { mode }`.
-- **`npm run test:theme`:** the cover slot in Arcadia and Neo-brutalism, and Margin's default part.
+- **`npm run test:theme`:** the cover slot in Arcadia and Neubrutalism, and Margin's default part.
 
 ### 10.2 The WebKit host (`tools/webkit-host/run.sh`)
 

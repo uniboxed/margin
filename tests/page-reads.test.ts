@@ -101,7 +101,7 @@ test('page reads: a key the page saw in an event is read again, one it never saw
 });
 
 test('page reads: the theme\'s package (Margin.app\'s) is never read, however big; the first read costs what the state does', async () => {
-  // Neo-brutalism's package is about 330 KB stored; a user theme can be 3 MB (themes/README.md).
+  // Neubrutalism's package is about 330 KB stored; a user theme can be 3 MB (themes/README.md).
   const uiTheme = { id: 'big', version: '1', pkg: { id: 'big', manifest: '{}', html: '<div></div>', css: '', files: { 'fonts/a.woff2': 'A'.repeat(3_000_000) } } };
   const storage = fakeStorage({ ...stored(), uiTheme, 'dataMeta:link': { profile: 'p-x', acked: 3 } });
   let state = null;

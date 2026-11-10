@@ -1603,9 +1603,9 @@ Object.assign(SCENARIOS, {
   'first-paint-theme': [
     appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), boxed('A'), settledLayout,
     ...pages('K', 1, [260, 8, 8, 8]),
-    { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { theme: "neo-brutalism" } }))' }, wait(1500),
-    ...pages('N', 2, [260, 8, 8, 8], { theme: 'neo-brutalism' }),
-    checkPage('N0', "N0: Neo-brutalism's look, not Arcadia's", `window.__fp.frames[0].frame.includes('rgb(255, 210, 63)') && !window.__fp.frames[0].frame.includes('rgb(156, 157, 161)')`),
+    { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { theme: "neubrutalism" } }))' }, wait(1500),
+    ...pages('N', 2, [260, 8, 8, 8], { theme: 'neubrutalism' }),
+    checkPage('N0', "N0: Neubrutalism's look, not Arcadia's", `window.__fp.frames[0].frame.includes('rgb(255, 210, 63)') && !window.__fp.frames[0].frame.includes('rgb(156, 157, 161)')`),
     { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { theme: "arcadia" } }))' }, wait(1500),
     ...pages('B', 1, [260, 8, 8, 8]),
     checkPage('B0', "B0: Arcadia's again", `window.__fp.frames[0].frame.includes('rgb(156, 157, 161)')`),

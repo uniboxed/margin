@@ -1,5 +1,5 @@
 // noir.test: NOIR, a dark portfolio. Big type in Archivo Black and Space
-// Grotesk (the neo-brutalism theme's bundled OFL fonts, served from the
+// Grotesk (the neubrutalism theme's bundled OFL fonts, served from the
 // repo, not copied), a grid of work, a dark theme-color. SVG icon.
 import { art, doc, esc, icon } from './common.ts';
 

@@ -3,7 +3,7 @@
 // port. Nothing here reaches the network: the pictures are drawn (art.ts),
 // the raster files are made in memory (make-media.mts), the video is a
 // committed file made by make-video.mts (files/<site>/), and fonts are the
-// system's or the neo-brutalism theme's bundled ones. README.md lists the
+// system's or the neubrutalism theme's bundled ones. README.md lists the
 // sites and what each one is for.
 //
 //   const site = await startSite();          // { port, url(host, path), sites, close }
@@ -39,7 +39,7 @@ export { SITES };
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const FILES = join(HERE, 'files');
-const FONTS = fileURLToPath(new URL('../../../extension/themes/neo-brutalism/fonts/', import.meta.url));
+const FONTS = fileURLToPath(new URL('../../../extension/themes/neubrutalism/fonts/', import.meta.url));
 const TYPES = { '.webm': 'video/webm', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json' };
 
 let made; // the raster files, made once a process

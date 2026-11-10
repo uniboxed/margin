@@ -54,7 +54,7 @@ before(async () => {
 after(async () => { await m?.close(); });
 
 test('every built-in theme is here', () => {
-  assert.ok(PACKAGE_THEMES.includes('arcadia') && PACKAGE_THEMES.includes('neo-brutalism'), PACKAGE_THEMES.join(', '));
+  assert.ok(PACKAGE_THEMES.includes('arcadia') && PACKAGE_THEMES.includes('neubrutalism'), PACKAGE_THEMES.join(', '));
   assert.equal(m.shell.themeId, PACKAGE_THEMES[0], 'the first is the one in use at the start');
 });
 

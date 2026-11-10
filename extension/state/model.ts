@@ -522,7 +522,7 @@ const withoutKeys = (obj: Record<string, unknown> | null | undefined, keys: stri
 // (Margin 2, Phase 1): what it saved joins Arcadia's own, Arcadia's
 // sidebarWidth first, then the package's, then a top-level one from before
 // themes (theme.ts settingsOf snaps it to 10 px, 160–500).
-const OLD_NAMES = Object.freeze({ arcadia: ['arcadium', 'arcadia-2'] });
+const OLD_NAMES = Object.freeze({ arcadia: ['arcadium', 'arcadia-2'], neubrutalism: ['neo-brutalism'] }); // (Neo-brutalism until 2026-11-10)
 // The active theme's id as saved: a built-in's (an earlier name of one: that
 // one), or any id an imported theme may have. The index of those (storage.local
 // userThemes) isn't read here, and what draws the theme (Margin.app, the
@@ -544,6 +544,14 @@ function normalizeThemes(rawSettings: any) {
     const merged = earlier.length ? Object.assign({}, ...[...earlier].reverse(), own ?? {}) : own;
     themes[theme.id] = theme.settingsOf({ ...rawSettings, themes: { ...saved, [theme.id]: merged ?? undefined } });
     for (const name of OLD_NAMES[theme.id] ?? []) delete themes[name]; // taken over just now
+  }
+  // A package theme renamed (Neo-brutalism → Neubrutalism): its settings as saved, under its earlier name if there are
+  // none under this one, and the earlier entry gone.
+  for (const [id, names] of Object.entries(OLD_NAMES)) {
+    if (Object.hasOwn(THEMES, id)) continue; // (a theme whose settings the background knows: above)
+    const earlier = names.map((name) => objectOr(saved[name])).find(Boolean);
+    if (earlier && !objectOr(saved[id])) themes[id] = earlier;
+    for (const name of names) delete themes[name];
   }
   return themes;
 }

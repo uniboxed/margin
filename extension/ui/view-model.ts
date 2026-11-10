@@ -219,7 +219,7 @@ const isLoading = (t: { status?: string, loading?: boolean } | null | undefined)
 
 // A tab's row: an open one by its browser tab's id, a Margin tab that isn't
 // open (shared/view.ts `kept`) by its own id (a string), `open` false and
-// `notOpen` true: a theme draws it as not open (Arcadia and Neo-brutalism dim
+// `notOpen` true: a theme draws it as not open (Arcadia and Neubrutalism dim
 // it), and a click opens it (tab.activate) where it was clicked.
 function tabRow(state: State, t: any): TabRow {
   const open = !t.kept;

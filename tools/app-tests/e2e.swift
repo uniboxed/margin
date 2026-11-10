@@ -382,15 +382,15 @@ func scenario() async {
   check("in its place: left alone", o7.reorders == reorders + 1)
 
   // ---- themes ----
-  fake.tell(["do": "theme", "id": "A", "theme": "neo-brutalism", "corrupt": true])
+  fake.tell(["do": "theme", "id": "A", "theme": "neubrutalism", "corrupt": true])
   try? await Task.sleep(nanoseconds: 400_000_000)
   check("a theme whose pieces don't add up: refused, Arcadia kept", shell.links["safari:P1"]?.themeId == "arcadia")
   mark = fake.events.count
-  fake.tell(["do": "theme", "id": "A", "theme": "neo-brutalism"])
-  check("another theme: taken", await until(5, { shell.links["safari:P1"]?.themeId == "neo-brutalism" }))
+  fake.tell(["do": "theme", "id": "A", "theme": "neubrutalism"])
+  check("another theme: taken", await until(5, { shell.links["safari:P1"]?.themeId == "neubrutalism" }))
   check("and drawn: its layout sent", await until(10, { fake.first("setLayout", since: mark) != nil }))
   let neo = fake.first("setLayout", since: mark)?["msg"] as? JSONObject ?? [:]
-  check("Neo-brutalism's page is somewhere else", num((neo["insets"] as? JSONObject)?["left"]) != 260, "\(neo)")
+  check("Neubrutalism's page is somewhere else", num((neo["insets"] as? JSONObject)?["left"]) != 260, "\(neo)")
   if env["MARGIN_APP_SHOT"] != nil { _ = await png(o7.webView, to: (shot as NSString).deletingPathExtension + "-neo.png") }
   fake.tell(["do": "theme", "id": "A", "theme": "arcadia"])
   check("back to Arcadia", await until(5, { shell.links["safari:P1"]?.themeId == "arcadia" }))

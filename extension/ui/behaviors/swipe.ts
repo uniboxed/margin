@@ -26,7 +26,7 @@ export function installSwipe(rt: Rt) {
   // The neighbouring spaces drawn beside the one shown, as Arc does (Tirth, 2026-11-07): the theme's own sidebar
   // rendered off screen with that space shown (rt.spaceView), its moving part (`data-swipe-pane`, else
   // `.space-pane` or `.swipes`) copied, inert, beside the real one, so the theme's own swipe rule moves both.
-  // (A theme may move several parts: Neo-brutalism and Pixel move the space's head and its list, each `.swipes`.)
+  // (A theme may move several parts: Neubrutalism and Pixel move the space's head and its list, each `.swipes`.)
   const panesOf = (root: ShadowRoot | HTMLElement) => (([...root.querySelectorAll('[data-swipe-pane]')].length
     ? [...root.querySelectorAll('[data-swipe-pane]')] : [...root.querySelectorAll('.space-pane, .swipes')]) as HTMLElement[]);
   function ghost(s: NonNullable<typeof swiping>, dir: string) {

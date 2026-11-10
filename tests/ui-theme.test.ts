@@ -204,7 +204,7 @@ const neo = () => readTheme(NEO);
 const bytes = (n) => new Uint8Array(n);
 
 test('package caps and file kinds', () => {
-  assert.deepEqual(checkPackage(neo()), [], 'Neo-brutalism is within them');
+  assert.deepEqual(checkPackage(neo()), [], 'Neubrutalism is within them');
   const ok = { manifest: '{}', html: '', css: '', files: {} };
   assert.deepEqual(checkPackage(ok), []);
   const errs = (files, extra = {}) => checkPackage({ ...ok, ...extra, files }).join('\n');
@@ -222,7 +222,7 @@ test('package caps and file kinds', () => {
   assert.match(checkPackage(null).join(), /not an object/);
 });
 
-test('the whole package: Neo-brutalism sanitizes with nothing removed; images only as declared', () => {
+test('the whole package: Neubrutalism sanitizes with nothing removed; images only as declared', () => {
   const t = neo();
   const r = sanitizeTheme({ ...t, files: Object.keys(t.files) });
   assert.deepEqual([r.ok, r.errors, r.removed], [true, [], []]);
@@ -238,7 +238,7 @@ test('the whole package: Neo-brutalism sanitizes with nothing removed; images on
 
 test('a built-in theme is read from its files: theme.json first, then only what it names', async () => {
   const read = [];
-  const pkg = await readBuiltinTheme('neo-brutalism', { readFile: async (path) => { read.push(path); return readFile(new URL(path, `file://${NEO}`)); } });
+  const pkg = await readBuiltinTheme('neubrutalism', { readFile: async (path) => { read.push(path); return readFile(new URL(path, `file://${NEO}`)); } });
   assert.deepEqual(read.slice(0, 3), ['theme.json', 'theme.html', 'theme.css']);
   assert.deepEqual(read.slice(3).sort(), ['fonts/archivo-black-latin-ext.woff2', 'fonts/archivo-black-latin.woff2', 'fonts/space-grotesk-latin-ext.woff2', 'fonts/space-grotesk-latin.woff2']);
   assert.equal(typeof pkg.manifest, 'string');
@@ -248,7 +248,7 @@ test('a built-in theme is read from its files: theme.json first, then only what 
   await assert.rejects(readBuiltinTheme('gone', { readFile: async () => '' }), /no built-in theme/);
   // A manifest naming a path outside the package: never asked for.
   const asked = [];
-  await readBuiltinTheme('neo-brutalism', { readFile: async (p) => { asked.push(p); return p === 'theme.json' ? JSON.stringify({ ...base, fonts: [{ family: 'A', file: '../../../secret.woff2' }, { family: 'B', file: 'https://evil.test/x.woff2' }] }) : ''; } });
+  await readBuiltinTheme('neubrutalism', { readFile: async (p) => { asked.push(p); return p === 'theme.json' ? JSON.stringify({ ...base, fonts: [{ family: 'A', file: '../../../secret.woff2' }, { family: 'B', file: 'https://evil.test/x.woff2' }] }) : ''; } });
   assert.deepEqual(asked, ['theme.json', 'theme.html', 'theme.css']);
 });
 
@@ -256,10 +256,10 @@ test('a user\'s theme, stored: one key per theme and an index; checked again as 
   const t = neo();
   const { value, entry } = encodeStoredTheme(t, { now: 42 });
   assert.equal(value.format, 2);
-  assert.equal(value.id, 'neo-brutalism');
+  assert.equal(value.id, 'neubrutalism');
   assert.deepEqual(Object.keys(value.files).sort(), Object.keys(t.files).sort());
   assert.ok(Object.values(value.files).every((v) => typeof v === 'string'), 'bytes as base64 (storage holds JSON)');
-  assert.deepEqual({ ...entry, bytes: 0 }, { id: 'neo-brutalism', name: 'Neo-brutalism', version: '0.1.0', author: 'Margin', bytes: 0, savedAt: 42 });
+  assert.deepEqual({ ...entry, bytes: 0 }, { id: 'neubrutalism', name: 'Neubrutalism', version: '0.1.0', author: 'Margin', bytes: 0, savedAt: 42 });
   assert.ok(entry.bytes < PACKAGE_LIMITS.storedBytes);
   const back = decodeStoredTheme(JSON.parse(JSON.stringify(value)));
   assert.equal(back.manifest, t.manifest);

@@ -1,23 +1,23 @@
-# Phase 6: Pixel, Neo-brutalism, and user themes
+# Phase 6: Pixel, Neubrutalism, and user themes
 
 Plan, 2026-11-06, on `feat/pixel-user-themes` (from `feat/margin-app`). `PLAN.md` §3, §4, §9 and §10 say what Phase 6 is. This file says how, checked against the code as it is today. Nothing in it is built yet.
 
 ## Sources
 
-- **Boards.** Tirth's "Browser Theme Explorations" canvas, copied into `docs/phase6/boards/`: `Pixel.dc.html` ("Sidebar · Pixel / 8-bit"), `Main.dc.html` ("Neo-brutalism"; it holds only that board, there's no Arcadia board), `WindowControls.dc.html` (four window-control sets, for Phase 4).
+- **Boards.** Tirth's "Browser Theme Explorations" canvas, copied into `docs/phase6/boards/`: `Pixel.dc.html` ("Sidebar · Pixel / 8-bit"), `Main.dc.html` ("Neubrutalism"; it holds only that board, there's no Arcadia board), `WindowControls.dc.html` (four window-control sets, for Phase 4).
 - **Seeing them.** `node tools/boards/render.mts <board> <out-dir> [name='{"state":…}'[|hover]]…` renders a board headless with every request refused and the fonts from the theme packages (the canvas's own runtime isn't in the repo; `tools/boards/dc-shim.js` stands in for it).
-- **Reference shots** in `docs/phase6/shots/`: the boards with their real fonts (`pixel-board*.png`, `neo-board*.png`), today's Neo-brutalism through the runtime and the mock host (`neo-now*.png`), and the two side by side at 2× (`neo-side-by-side-*.png`).
+- **Reference shots** in `docs/phase6/shots/`: the boards with their real fonts (`pixel-board*.png`, `neo-board*.png`), today's Neubrutalism through the runtime and the mock host (`neo-now*.png`), and the two side by side at 2× (`neo-side-by-side-*.png`).
 
 ## What exists today
 
-- **Themes.** `extension/themes/arcadia/` and `neo-brutalism/` are packages (`theme.json`, `theme.html`, `theme.css`, `first-paint.css`; Neo bundles four woff2 with `OFL-*.txt` and `SOURCES.txt`). `themes/packages.ts` lists them (`PACKAGE_THEMES`, `PACKAGE_THEME_NAMES`). Arcadia also has `theme.ts`, its settings for the background (the one JS file a theme folder keeps).
+- **Themes.** `extension/themes/arcadia/` and `neubrutalism/` are packages (`theme.json`, `theme.html`, `theme.css`, `first-paint.css`; Neo bundles four woff2 with `OFL-*.txt` and `SOURCES.txt`). `themes/packages.ts` lists them (`PACKAGE_THEMES`, `PACKAGE_THEME_NAMES`). Arcadia also has `theme.ts`, its settings for the background (the one JS file a theme folder keeps).
 - **Runtime.** `ui/theme-loader.ts` checks and loads a package: `checkPackage` (caps, file kinds), `sanitizeTheme` (manifest, template, CSS), fonts as `FontFace` from bytes. It can also store a user theme (`encodeStoredTheme`, `saveUserTheme`, `loadUserTheme`) in `storage.local` under `userTheme:<id>` and an index `userThemes`. Nothing calls those three yet.
 - **Packages reach the app** from the extension: `background/theme-package.ts` reads the active built-in theme and sends it in `theme` chunks (`docs/PROTOCOL.md` "Chunks"). An unknown `settings.theme` falls back to Arcadia there, in `registered.ts` (first paint) and in Settings.
 - **The overlay** (`app/shared/host/overlay.ts`) loads whatever package the app hands it. If `loadTheme` refuses it, the overlay logs an error and draws nothing: there's no fallback, and the app never shows the overlay (it waits for `ready`).
 - **The app's asks** go through `perform` (`Shell.swift perform` → `ShellProfiles.swift`, `ShellCloudTabs.swift`). That's where a file picker fits.
 - **Settings** (`ui/settings-form.ts`) offer a theme choice of the built-ins only. No import, no removal, no theme settings beyond the width that `m-resize` drags.
 - **Data.** `docs/DATA.md` lists a `userThemes` collection in each profile's data set, holding whole packages. A package can be 4.5 MB, more than the link's 1 MB cap, so the app leaves those out (`omitted`). `docs/DATA.md` notes "their changes aren't queued until Phase 6 builds importing".
-- **Security tests.** `tests/theme/payloads.ts` (HTML, CSS, view-model and action payloads), `tests/theme/audit.ts`, run in `tests/theme-sanitize.test.ts` and `tests/theme-guard.test.ts` (Node, `npm test`) and live in `tests/theme/browser.test.ts` (WebKit and Chromium, `npm run test:theme`). They run against Neo-brutalism and hand-made payload templates. Arcadia's package goes through the same rules in `arcadia.test.ts` and `theme-guard.test.ts`. There's no one command, and nothing for imported packages, zips or folders.
+- **Security tests.** `tests/theme/payloads.ts` (HTML, CSS, view-model and action payloads), `tests/theme/audit.ts`, run in `tests/theme-sanitize.test.ts` and `tests/theme-guard.test.ts` (Node, `npm test`) and live in `tests/theme/browser.test.ts` (WebKit and Chromium, `npm run test:theme`). They run against Neubrutalism and hand-made payload templates. Arcadia's package goes through the same rules in `arcadia.test.ts` and `theme-guard.test.ts`. There's no one command, and nothing for imported packages, zips or folders.
 - **The app on this branch has no switch cover.** Margin's notices (`notice` part) and the "Reconnecting to Safari…" dimming exist. The dimming is the overlay's own, not a theme's.
 
 ## 1. Pixel
@@ -83,7 +83,7 @@ Left out, as `PLAN.md` §9 says: the favorites tiles, the `?` Ask button and the
 - **Guarded parts take no theme text,** not even a glyph: `▶` and `▼` inside menus, notices, prompts, the editor, Settings and iCloud Tabs must be svg. Outside them (the sidebar, the palette, the launcher) text is fine, so `SELECT DESTINATION` and `STAGE CLEAR!` stay text.
 - Nothing else: every other binding, part, action and behavior exists.
 
-## 2. Neo-brutalism against its board
+## 2. Neubrutalism against its board
 
 Compared side by side (`docs/phase6/shots/neo-side-by-side-*.png`: the board's Work space against Neo's mock Work space, at 2×). Colours, type, borders, shadows, spacing, the toolbar, folder cards, the New Tab button, the divider and CLEAR, the chips and the page card match the board to the pixel where the data matches.
 
@@ -183,11 +183,11 @@ The form stays `ui/settings-form.ts` fields (guarded part, Margin's words, Margi
 - **The active theme's own settings,** from its `theme.json` `settings` (number, length, toggle, choice, colour), under a heading "Name’s settings". A theme's label is its own text inside Margin's form, so it's capped at 40 characters, bidi controls stripped, and drawn in a style that marks it as the theme's. These inputs only ever save `updateThemeSettings` for that theme.
 - **Colour fields** need a new input, `m-input="setting-color"`, a colour well. Margin sets its value; the theme only styles it.
 
-Arcadia, Neo-brutalism and Pixel each already draw `isInfo`, `isButton`, `isGroup`, `isChoice`, `isToggle` and `isNumber` fields generically. Each gets `setting-color` and a check that the new rows look right.
+Arcadia, Neubrutalism and Pixel each already draw `isInfo`, `isButton`, `isGroup`, `isChoice`, `isToggle` and `isNumber` fields generically. Each gets `setting-color` and a check that the new rows look right.
 
 ### The guide (for `extension/themes/README.md`, written with the import commit)
 
-> **Making and importing a theme.** Start from a copy of `neo-brutalism/` (it uses everything). Keep the folder's layout: `theme.json`, `theme.html` and `theme.css` at the top, fonts in `fonts/`, images in `images/`, licences as `.txt` or `.md`. Give it your own `id` (lower-case letters, digits and dashes) and bump `version` when you change it. Fonts: woff2 only, with their licence; no font services. To share it, zip the folder and name the file `something.margintheme` (`npm run theme:pack my-theme/` does it). In Margin: Settings › Theme › Import Theme…, pick the folder or the file, look at the preview, and choose Use Theme. Importing the same `id` again replaces it. If Margin can't draw your theme, it uses Arcadia and says so; Settings shows why. Margin checks every theme when it's imported and every time it loads; the rules are under "Security rules" below.
+> **Making and importing a theme.** Start from a copy of `neubrutalism/` (it uses everything). Keep the folder's layout: `theme.json`, `theme.html` and `theme.css` at the top, fonts in `fonts/`, images in `images/`, licences as `.txt` or `.md`. Give it your own `id` (lower-case letters, digits and dashes) and bump `version` when you change it. Fonts: woff2 only, with their licence; no font services. To share it, zip the folder and name the file `something.margintheme` (`npm run theme:pack my-theme/` does it). In Margin: Settings › Theme › Import Theme…, pick the folder or the file, look at the preview, and choose Use Theme. Importing the same `id` again replaces it. If Margin can't draw your theme, it uses Arcadia and says so; Settings shows why. Margin checks every theme when it's imported and every time it loads; the rules are under "Security rules" below.
 
 ## 4. The security suite
 
@@ -248,7 +248,7 @@ Each one is a commit (`…(themes): …`), with `npm test`, `npm run test:theme`
 2. **The security suite as one command.** `npm run test:security`, `tests/security/packages.test.ts` (every built-in, `MARGIN_THEMES`), the template, CSS and run-time payloads above, magic-byte checks in `checkPackage`, the guard against `use` in guarded parts. *Tests:* the new suite; the existing ones still pass with nothing removed from Arcadia and Neo.
 3. **Pixel, the sidebar and the page.** The package with fonts, licences and `SOURCES.txt`; `theme.json`, layout, the two settings, `first-paint.css`; toolbar, address, header, folders, rows and their states, today, chips, palette, hidden and peek, loading bar; `space.number` and `spaces[].number` in the view model; `packages.js`. *Tests:* `tests/theme/pixel.test.ts` (both engines: loads with nothing removed, fonts from bytes, rows and states, layout insets docked, hidden and peek, palette capped and keyboard-driven, no requests); unit tests for `number`, the build's first-paint file and the theme choice; the board side by side, checked by eye with `tools/boards/render.mts`.
 4. **Pixel, every other part.** Menu, editor, notice, prompt, launcher, Settings, iCloud Tabs, gestures, drag and drop, resize, profile marks, windowed controls. *Tests:* `pixel.test.ts` grows a test for each part; `theme-guard.test.ts` covers Pixel with nothing removed; `tests/theme/cloud.test.ts` and `behaviors.test.ts` run against all three themes.
-5. **Neo-brutalism to its board and to Arcadia's parts.** Palette cap and scroll, board-style tags, row icons in the palette, close buttons, audible, behind, loose pins' open state and card, `frameWhenHidden`, no folder count. *Tests:* `tests/theme/browser.test.ts` and `cloud.test.ts` cases for each; the palette within the window with 200 rows.
+5. **Neubrutalism to its board and to Arcadia's parts.** Palette cap and scroll, board-style tags, row icons in the palette, close buttons, audible, behind, loose pins' open state and card, `frameWhenHidden`, no folder count. *Tests:* `tests/theme/browser.test.ts` and `cloud.test.ts` cases for each; the palette within the window with 200 rows.
 6. **Each theme's own first-paint geometry.** `theme.json` `layout` box hints, read by `registered.ts layoutFromSettings`. *Tests:* `registered.test.ts` for Arcadia, Neo and Pixel, docked and hidden; schema tests.
 7. **Fallback to Arcadia.** `dist/app/arcadia.json` from `buildApp`; the overlay's fallback on refusal, a missing package or an unusable layout; the `theme-failed` notice. *Tests:* unit (the choice of package, the notice's words); `test:app` end-to-end: a broken theme in the real overlay draws Arcadia and says so; `build.test.ts` for the new file.
 8. **The package reader.** `ui/theme-import.ts` (folder file map or zip bytes to a package: root folder, skipped files, path rules, caps, inflating with counts); `scripts/pack-theme.ts` (`npm run theme:pack`); the README guide. *Tests:* `tests/theme-import.test.ts` with every zip, folder and path payload; a round trip of all three built-ins through `theme:pack` and the reader.

@@ -178,7 +178,7 @@ for (const [name, engine] of ENGINES) {
           };
         });
         const f = await form();
-        assert.deepEqual(f.select, [['arcadia', ['Arcadia', 'Neo-brutalism', 'Pixel']]]);
+        assert.deepEqual(f.select, [['arcadia', ['Arcadia', 'Neubrutalism', 'Pixel']]]);
         assert.equal(f.numbers.length, 3, 'two of Margin\'s, and Arcadia\'s own sidebar width (Settings of “Arcadia”)');
         assert.equal(f.toggles.length, 5);
         assert.equal(f.lists, 1);
@@ -187,8 +187,8 @@ for (const [name, engine] of ENGINES) {
         const lastSent = (type) => page.evaluate((t) => T.rtSent().filter(([k]) => k === t).at(-1) ?? null, type);
         await page.click('label:has-text("keep the frame") input');
         assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { frameWhenHidden: false } }]);
-        await page.selectOption('.settings-form select', 'neo-brutalism');
-        assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { theme: 'neo-brutalism' } }]);
+        await page.selectOption('.settings-form select', 'neubrutalism');
+        assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { theme: 'neubrutalism' } }]);
         await page.click('label:has-text("Next tab") input');
         await page.keyboard.press('Control+Alt+KeyN');
         const saved = (await lastSent('updateSettings'))[1].patch.shortcuts;
