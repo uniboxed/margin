@@ -43,6 +43,7 @@
     "fit-check": "node tools/fit-check/nightly.mts"
   },
   "devDependencies": {
+    "@types/node": "26.6.6",
     "esbuild": "0.28.2",
     "playwright": "1.65.0",
     "typescript": "7.0.2"
