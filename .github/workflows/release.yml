@@ -144,6 +144,8 @@ jobs:
           MARGIN_TEAM: ${{ secrets.APPLE_TEAM_ID }}
           MARGIN_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: |
+          # A failed build fails here (tee alone would answer for it), not as a missing app later.
+          set -o pipefail
           if [ "$HAS_SIGNING" = true ]; then sh scripts/safari.sh --no-install | tee build.log
           else MARGIN_SIGN_IDENTITY= sh scripts/safari.sh --unsigned --no-install | tee build.log; fi
           echo "APP=$(tail -1 build.log)" >> "$GITHUB_ENV"
