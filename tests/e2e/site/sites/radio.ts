@@ -2,7 +2,7 @@
 // tune (make-media.mts), custom controls, a waveform drawn on a canvas,
 // chapters that seek, and Media Session metadata. Nothing plays until the
 // play button (#play) or a test's play(). ICO icon.
-import { art, doc, esc, icon } from './common.ts';
+import { art, doc, esc, icon, type Site } from './common.ts';
 
 const ICON = '<link rel="icon" href="/favicon.ico">';
 const CHAPTERS = [[0, 'Cold open: the harbour at dawn'], [4, 'Why the tide matters'], [9, 'Recording on the mud flats'], [14, 'An interview with the lock keeper'], [19, 'What we heard at low water']];
@@ -143,4 +143,4 @@ export default {
     '/assets/radio.js': { type: 'text/javascript; charset=utf-8', body: JS },
   },
   routes: [['GET', '/', () => player()]],
-};
+} satisfies Site;

@@ -187,7 +187,7 @@ export function startCore() {
     screenScale = devicePixelRatio / Number(z);
     applyZoom(Number(z));
   }, () => {});
-  let zoomTimer: number | null = null;
+  let zoomTimer: Timer | null = null;
   addEventListener('resize', () => {
     if (screenScale) applyZoom(devicePixelRatio / screenScale);
     clearTimeout(zoomTimer);
@@ -213,7 +213,7 @@ export function startCore() {
     fullscreen = value;
     render();
   }
-  let recheck: number | null = null;
+  let recheck: Timer | null = null;
   const checkFullscreen = () => {
     if (!capabilities?.marginFullscreen) return;
     clearTimeout(recheck);
@@ -319,7 +319,7 @@ export function startCore() {
   for (const type of ['webkitpresentationmodechanged', 'webkitbeginfullscreen', 'webkitendfullscreen']) document.addEventListener(type, tellFullscreen, true);
   // At once (the next frame: Safari's resize as the inspector docks), and again once a drag of its
   // edge settles; the copy and the app pass it on without waiting (Margin's area follows quickly).
-  let viewportSettle = 0;
+  let viewportSettle: Timer | 0 = 0;
   let resizedAt = 0; // (for Margin.app's log: how long the word took)
   addEventListener('resize', () => {
     resizedAt = Date.now();

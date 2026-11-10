@@ -203,7 +203,7 @@ async function read() {
 let dataMeta: Record<string, any> = {};
 const metaUnsaved = new Set<any>();
 const META_WRITE_MS = 1500;
-let metaTimer: number | null = null;
+let metaTimer: Timer | null = null;
 function writeMetaSoon() {
   if (metaTimer || !metaUnsaved.size) return;
   metaTimer = setTimeout(() => {
@@ -350,7 +350,7 @@ export const dataMetas = () => ({ ...dataMeta });
 // a real session's log while two copies wrote at once): written again shortly, and
 // with the next write. The cache keeps the change meanwhile.
 const unsaved = new Set<any>();
-let retryTimer: number | null = null;
+let retryTimer: Timer | null = null;
 let retryMs = 250;
 // Writes `keys` from the cache, queued behind the state's other writes.
 function write(keys: Iterable<string>) {
@@ -364,7 +364,7 @@ function write(keys: Iterable<string>) {
 // Keys whose only change not yet sent can wait (mutate's `within`), and when
 // the write that takes them is due. Any write before then takes them along.
 const later = new Set<any>();
-let laterTimer: number | null = null;
+let laterTimer: Timer | null = null;
 let laterAt = Infinity;
 function writeWithin(ms: number) {
   const at = performance.now() + ms; // a clock that only runs forward, as the timer's

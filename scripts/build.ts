@@ -17,9 +17,10 @@ const root = new URL('../', import.meta.url);
 const SOURCE = new URL('extension/', root);
 // The builds by their name (shared/capabilities.ts Capabilities.name: what saved data and the link call them), each
 // one's dist/ folder by its engine, and the package.json "imports" condition that gives `#engine` its engine's code.
-export const TARGETS = ['chrome', 'safari'];
-export const DIST = { safari: 'webkit', chrome: 'chromium' };
-export const CONDITIONS = { safari: 'margin-webkit', chrome: 'margin-chromium' };
+export type Target = 'chrome' | 'safari';
+export const TARGETS: Target[] = ['chrome', 'safari'];
+export const DIST: Record<Target, string> = { safari: 'webkit', chrome: 'chromium' };
+export const CONDITIONS: Record<Target, string> = { safari: 'margin-webkit', chrome: 'margin-chromium' };
 // How esbuild reads Margin's TypeScript (the bundles are built from copies outside the repo's tsconfig.json too):
 // every import kept as written (a module's side effects stay, as in JavaScript), class fields as JavaScript's.
 const TSCONFIG = { compilerOptions: { verbatimModuleSyntax: true, useDefineForClassFields: true } };
@@ -40,13 +41,13 @@ function dropSources(dir: string) {
 
 // Each build's manifest changes, in its engine's folder: Safari's in WebKit's (its only browser there), Chrome's
 // build Chromium's own (Chrome, Edge and the other Chromium browsers run it).
-export const MANIFESTS = {
+export const MANIFESTS: Record<Target, string> = {
   safari: 'extension/engines/webkit/safari/manifest.json',
   chrome: 'extension/engines/chromium/manifest.json',
 };
 // Overrides replace top-level keys, except `add_permissions`, which is
 // appended to the shared `permissions` (so the list lives in one place).
-export function manifestFor(target) {
+export function manifestFor(target: Target) {
   const base = JSON.parse(readFileSync(new URL('manifest.json', SOURCE), 'utf8'));
   const { add_permissions: addPermissions = [], ...overrides } = JSON.parse(readFileSync(new URL(MANIFESTS[target], root), 'utf8'));
   const manifest = { ...base, ...overrides };
@@ -57,7 +58,7 @@ export function manifestFor(target) {
 // One build: `profile` decides behavior (its engine's capabilities and modules), `manifest`
 // which manifest overrides to use. They're the same for dist/; tests also
 // build the Safari profile with Chrome's manifest so Chromium can load it.
-export function buildTo(outDir, { profile, manifest = profile }) {
+export function buildTo(outDir: string | URL, { profile, manifest = profile }: { profile: Target, manifest?: Target }) {
   const out = outDir instanceof URL ? fileURLToPath(outDir) : outDir;
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
@@ -91,7 +92,7 @@ const BUNDLES = {
 // layout's digit files and at.css, and each built-in theme's
 // first-paint file, the box with the theme's look (themes/<id>/first-paint.css).
 export const FIRST_PAINT_THEMES = PACKAGE_THEMES.filter((id) => existsSync(new URL(`themes/${id}/first-paint.css`, SOURCE)));
-function firstPaintFiles(out) {
+function firstPaintFiles(out: string) {
   mkdirSync(`${out}/content/layout`, { recursive: true });
   for (const [file, css] of allLayoutFiles()) writeFileSync(`${out}/${file}`, css);
   for (const id of FIRST_PAINT_THEMES) writeFileSync(`${out}/${firstPaintFile(id)}`, firstPaintCss(id, readFileSync(new URL(`themes/${id}/first-paint.css`, SOURCE), 'utf8')));
@@ -117,13 +118,13 @@ export const LEGACY_FILES = [
 
 // What every bundle is built with: its engine's code for `#engine` (package.json "imports"), on top of
 // esbuild's own conditions.
-const engineOptions = (profile) => ({ conditions: [CONDITIONS[profile]], tsconfigRaw: TSCONFIG });
+const engineOptions = (profile: Target) => ({ conditions: [CONDITIONS[profile]], tsconfigRaw: TSCONFIG });
 
-function bundle(out, manifest, profile) {
+function bundle(out: string, manifest: Record<string, any>, profile: Target) {
   // From the sources themselves (the copy in `out` is for the files pages load as they are), so each engine's
   // modules and the shared ones they import are one module each.
   const source = fileURLToPath(SOURCE);
-  const write = (file, entries, { format = 'iife' } = {}) => buildSync({
+  const write = (file: string, entries: string[], { format = 'iife' }: { format?: 'iife' | 'esm' } = {}) => buildSync({
     // A module keeps its entry's exports (a theme's new-tab mount()).
     stdin: { contents: entries.map((f) => (format === 'esm' ? `export * from './${f}';` : `import './${f}';`)).join('\n'), resolveDir: source, sourcefile: 'margin-bundle-entry.js' },
     ...engineOptions(profile),
@@ -177,7 +178,7 @@ function bundle(out, manifest, profile) {
 // Resources/app/ (scripts/xcode-add-sources.py). Safari's profile for now
 // (Margin 2 Phase 2 is Safari's; Chrome and Edge are Phase 5).
 export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js'];
-export function buildApp(outDir, { profile = 'safari' } = {}) {
+export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile?: Target } = {}) {
   const out = outDir instanceof URL ? fileURLToPath(outDir) : outDir;
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
@@ -211,7 +212,7 @@ export function fallbackPackage() {
   const dir = new URL('themes/arcadia/', SOURCE);
   const manifest = readFileSync(new URL('theme.json', dir), 'utf8');
   const raw = JSON.parse(manifest);
-  const named = [...(raw.fonts ?? []).map((f) => f.file), ...(raw.images ?? [])];
+  const named: string[] = [...(raw.fonts ?? []).map((f: { file: string }) => f.file), ...(raw.images ?? [])];
   const files = Object.fromEntries(named.map((p) => [p, readFileSync(new URL(p, dir)).toString('base64')]));
   return { id: 'arcadia', manifest, html: readFileSync(new URL('theme.html', dir), 'utf8'), css: readFileSync(new URL('theme.css', dir), 'utf8'), files };
 }

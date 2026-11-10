@@ -31,8 +31,8 @@ export function installPeek(rt: Rt) {
   // is over the page again), the show/hide key ('toggle'), a moment after a
   // space switch by key ('flash'). Null: not out.
   let reason: 'hover' | 'toggle' | 'flash' | null = null;
-  let hideTimer: number | null = null;
-  let flashTimer: number | null = null;
+  let hideTimer: Timer | null = null;
+  let flashTimer: Timer | null = null;
   let drawnZone = '';
 
   // The zone's size in Margin's pixels; positions come in the page's (rt.scale).

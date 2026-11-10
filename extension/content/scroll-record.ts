@@ -17,7 +17,7 @@ export function startScrollRecord({ send, retired, boxed, doc = globalThis.docum
   const scrolled = () => Math.round(Math.max(doc.scrollingElement?.scrollTop ?? 0, doc.body?.scrollTop ?? 0));
   let said = 0; // a page never scrolled says nothing
   let saidAt = -Infinity;
-  let timer: number | null = null;
+  let timer: Timer | null = null;
   function tell(now = false) {
     clearTimeout(timer);
     if (retired()) return;
@@ -44,7 +44,7 @@ export function startScrollRecord({ send, retired, boxed, doc = globalThis.docum
   }
   function restore(y: number) {
     const until = Date.now() + restoreMs;
-    let again: number | null = null;
+    let again: Timer | null = null;
     const stop = () => {
       clearTimeout(again);
       for (const type of ACTS) win.removeEventListener(type, stop, true);

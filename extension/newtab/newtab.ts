@@ -33,7 +33,7 @@ const SEND_TIMEOUT_MS = 8000;
  * @param type a handler in background.ts
  * */
 async function send<K extends MessageType>(type: K, payload: Request<K> = ({} as any)): Promise<Result<K> | undefined> {
-  let timer: number | undefined;
+  let timer: Timer | undefined;
   const res = await Promise.race([
     Promise.resolve(api.runtime.sendMessage({ type, ...payload })).catch(() => null),
     new Promise<any>((resolve) => { timer = setTimeout(() => resolve(null), SEND_TIMEOUT_MS); }),
@@ -161,7 +161,7 @@ function showNotice() {
   if (linksApp()) {
     start.hidden = false;
     describe(appLinkNow);
-    let timer: number | null = null;
+    let timer: Timer | null = null;
     // Try again (Margin turned its link off): sockets on again; the page changes once it's linked.
     document.getElementById('retry')?.addEventListener('click', async () => {
       const retry = (document.getElementById('retry') as HTMLButtonElement);

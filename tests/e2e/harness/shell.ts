@@ -23,7 +23,25 @@
 // - the data messages: `data.hello` answered with the seed's `data.snapshot`
 //   for Safari's profile id (else `data.need`), `data.changes` kept.
 import { createHash } from 'node:crypto';
+import type { Browser, Page } from 'playwright';
+import type { Said } from '../../../extension/background/link.ts';
+import type { Geometry } from '../../../extension/ui/host.ts';
 import { startFakeApp } from '../../fake-app.ts';
+
+type FakeApp = Awaited<ReturnType<typeof startFakeApp>>;
+// A window as the copy lists it (background/link.ts windowList and known): what the shell reads of it.
+type LinkWindow = { windowId: number, state: string, focused: boolean, width: number, height: number, visible?: boolean, visibleAt?: number, [field: string]: unknown };
+type Size = { width: number, height: number };
+// One overlay page over a window, and what it said over the bridge.
+type Overlay = {
+  windowId: number, page: Page | null, ready: boolean, asked: boolean, layout: Geometry | null,
+  hits: { rects: unknown[], all: boolean } | null, focus: boolean, pointerWant: Said | null,
+  size: Size, chain: Promise<unknown>, opened: number, focusOnShow?: boolean, ready$?: Promise<void>,
+  push(msg: Said): void,
+  resize(win: Size): void,
+};
+// What `until` gives back: its check's value, once truthy.
+type Truthy<T> = Exclude<T, false | null | undefined | 0 | ''>;
 
 // Safari's id for the profile the copy runs in, as its extension handler gives it (the default profile's).
 export const SAFARI_PROFILE = 's-default';
@@ -32,23 +50,23 @@ const UNWANTED_GRACE_MS = 1500;
 const PALETTE_HOLD_MS = 1500;
 const HELD_TYPES = new Set(['notice', 'loading']);
 
-const half = (v) => Math.round(Number(v) * 2) / 2;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const half = (v: unknown) => Math.round(Number(v) * 2) / 2;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs = null, across = null, makeFullscreen = null, verbose = !!process.env.MARGIN_E2E_VERBOSE }: {
-  webkit: any,                       // a Playwright WebKit browser
+  webkit: Browser,                   // a Playwright WebKit browser
   overlayUrl: string,                // dist/app/overlay.html, served with the app's policy
-  dataSet?: any,                     // the app's data set for this profile (a seed), or null
-  cloudTabs?: any,                   // the app's iCloud Tabs ({ status, devices }) or null
-  across?: any,                      // spaces across profiles, or null
-  makeFullscreen?: (windowId: number) => Promise<void>, // what macOS does for a new window of a full-screen app
+  dataSet?: Said | null,             // the app's data set for this profile (a seed), or null
+  cloudTabs?: unknown,               // the app's iCloud Tabs ({ status, devices }) or null
+  across?: unknown,                  // spaces across profiles, or null
+  makeFullscreen?: ((windowId: number) => Promise<void>) | null, // what macOS does for a new window of a full-screen app
   verbose?: boolean,
 }) {
-  const say = (...args) => { if (verbose) console.log('[shell]', ...args); };
+  const say = (...args: unknown[]) => { if (verbose) console.log('[shell]', ...args); };
   const context = await webkit.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   // The overlay loads nothing from the web (the app's content rules): anything else is a failure.
   const overlayOrigin = new URL(overlayUrl).origin;
-  const blocked = [];
+  const blocked: string[] = [];
   await context.route('**/*', (route) => {
     const u = route.request().url();
     if (u.startsWith(overlayOrigin) || /^(data|blob):/.test(u)) return route.continue();
@@ -57,52 +75,53 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
   });
 
   /** Everything the copy sent, in order (all epochs). */
-  const received = [];
-  const requests = []; // the app's reqs, with their replies
-  const performs = []; // what overlays asked the app (`perform`)
-  const layoutsSent = []; // setLayout messages
-  const drawnSent = []; // drawn messages
-  const dataChanges = []; // the copy's data.changes
-  const overlayLogs = [];
-  const pageErrors = [];
-  const listeners = new Set();
+  const received: Said[] = [];
+  const requests: { id: number, type: string, payload: Record<string, unknown>, windowId: number | null, at: number, reply: Said | null }[] = []; // the app's reqs, with their replies
+  const performs: { windowId: number, name: unknown, arg: unknown, at: number }[] = []; // what overlays asked the app (`perform`)
+  const layoutsSent: Said[] = []; // setLayout messages
+  const drawnSent: Said[] = []; // drawn messages
+  const dataChanges: Said[] = []; // the copy's data.changes
+  const overlayLogs: { windowId: number, level: unknown, text: string }[] = [];
+  const pageErrors: { windowId: number, message: string }[] = [];
+  const listeners: Set<() => void> = new Set();
 
-  let app = null;
+  // (set by startApp before startShell returns, and never unset)
+  let app: FakeApp | null = null;
   let running = true; // Margin.app is running (the handler's `appOpen`)
   let launching = false; // the handler is starting it (`launching`)
   let linkAnswers = true; // the app answers wantLink with a link
-  let hello = null;
-  let epoch = null;
+  let hello: Said | null = null;
+  let epoch: string | null = null;
   let seq = 0;
   let resyncing = false;
-  let raw = null;
-  let windows = [];
-  let keys = null;
-  let themeJSON = null;
-  let themeId = null;
-  let parts = { transfer: null, got: new Map() };
-  let reconnectTimer = null;
-  let tickTimer = null;
+  let raw: Record<string, any> | null = null;
+  let windows: LinkWindow[] = [];
+  let keys: Record<string, string> | null = null;
+  let themeJSON: string | null = null;
+  let themeId: string | null = null;
+  let parts: { transfer: string | null, got: Map<number, string> } = { transfer: null, got: new Map() };
+  let reconnectTimer: Timer | null = null;
+  let tickTimer: Timer | null = null;
   let seed = dataSet;
   let cloud = cloudTabs;
   let acrossNow = across;
   let reqId = 0;
-  const waiting = new Map();
-  const overlays: Map<number, any> = new Map();
-  const drawnOn = new Map(); // windowId → the last `drawn` sent
-  const outbox = new Map(); // windowId → { seq, key } of setLayout
-  const unwanted = new Map(); // windowId → timer to say drawn false
-  const held = new Map(); // windowId (-1 every window) → type → msg
-  const heldPalette = new Map(); // windowId → { msg, until, newTab }
-  const fullscreenAsked = new Set();
-  const saidOff = new Set(); // windows a test said the app doesn't draw over (`drawn(id, false)`)
+  const waiting: Map<number, (reply: Said) => void> = new Map();
+  const overlays: Map<number, Overlay> = new Map();
+  const drawnOn: Map<number, boolean> = new Map(); // windowId → the last `drawn` sent
+  const outbox: Map<number, { seq: number, key: string }> = new Map(); // windowId → { seq, key } of setLayout
+  const unwanted: Map<number, Timer> = new Map(); // windowId → timer to say drawn false
+  const held: Map<number, Map<string, { msg: Said, at: number }>> = new Map(); // windowId (-1 every window) → type → msg
+  const heldPalette: Map<number, { msg: Said, until: number, newTab: boolean }> = new Map(); // windowId → { msg, until, newTab }
+  const fullscreenAsked: Set<number> = new Set();
+  const saidOff: Set<number> = new Set(); // windows a test said the app doesn't draw over (`drawn(id, false)`)
   let holding = false; // the app's word to its overlays held back (a test makes the overlay lag)
-  const backlog = [];
+  const backlog: [Overlay, Said][] = [];
 
   const notify = () => { for (const fn of [...listeners]) fn(); };
-  const send = (msg) => app?.send(msg);
+  const send = (msg: Said) => app?.send(msg);
 
-  async function startApp({ welcome = null } = {}) {
+  async function startApp({ welcome = null }: { welcome?: ((key: string) => Said) | null } = {}) {
     app = await startFakeApp({
       ...(welcome ? { welcome } : {}),
       onMessage: (m) => { received.push(m); take(m); notify(); },
@@ -114,7 +133,7 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
   await startApp();
 
   // ---- what the copy says ----------------------------------------------------
-  function take(m) {
+  function take(m: Said) {
     switch (m.k) {
       case 'hello': {
         const again = hello && hello.profile === m.profile && reconnectTimer;
@@ -148,7 +167,7 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
         seq = m.seq;
         if (m.k === 'delta') {
           raw = { ...(raw ?? {}) };
-          for (const [key, change] of Object.entries(m.changes ?? {})) {
+          for (const [key, change] of Object.entries((m.changes ?? {}) as Record<string, { newValue?: unknown } | null>)) {
             if (key === 'favicons') continue;
             if (change && 'newValue' in change) raw[key] = change.newValue; else delete raw[key];
           }
@@ -208,15 +227,15 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
     }
   }
 
-  const strip = (list) => list.map((w) => { const { visible, visibleAt, ...rest } = w; return rest; });
-  const onlyVisibility = (a, b) => a.length === b.length && b.length > 0 && JSON.stringify(strip(a)) === JSON.stringify(strip(b));
+  const strip = (list: LinkWindow[]) => list.map((w) => { const { visible, visibleAt, ...rest } = w; return rest; });
+  const onlyVisibility = (a: LinkWindow[], b: LinkWindow[]) => a.length === b.length && b.length > 0 && JSON.stringify(strip(a)) === JSON.stringify(strip(b));
 
-  function pushed(windowId, msg) {
+  function pushed(windowId: number | null, msg: Said) {
     if (!msg || typeof msg !== 'object') return;
     if (HELD_TYPES.has(msg.type)) {
       const k = windowId ?? -1;
       if (!held.has(k)) held.set(k, new Map());
-      held.get(k).set(msg.type, { msg, at: Date.now() });
+      held.get(k)!.set(msg.type, { msg, at: Date.now() });
     }
     if (msg.type === 'keyHeard') return void say('keyHeard', msg.command, msg.from);
     if (msg.type === 'palette' && windowId != null) {
@@ -237,14 +256,14 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
     for (const [id, o] of overlays) if (windowId == null || id === windowId) o.push({ type: 'push', msg });
   }
 
-  function heldFor(windowId) {
-    const out = [];
+  function heldFor(windowId: number) {
+    const out: { msg: Said, at: number }[] = [];
     for (const k of [-1, windowId]) for (const [type, { msg, at }] of held.get(k) ?? []) if (type !== 'notice' || Date.now() - at <= 60_000) out.push({ msg, at });
     return out.sort((a, b) => a.at - b.at).map((e) => e.msg);
   }
 
   // ---- the link going -------------------------------------------------------------
-  function linkDown(why) {
+  function linkDown(why: string) {
     if (!hello) return;
     say('link down:', why);
     for (const w of waiting.values()) w({ ok: false, error: 'link down' });
@@ -264,7 +283,7 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
   }
 
   // ---- the windows ---------------------------------------------------------------
-  function sendDrawn(windowId, on) {
+  function sendDrawn(windowId: number, on: boolean) {
     if (drawnOn.get(windowId) === on || epoch == null) return;
     drawnOn.set(windowId, on);
     const msg = { k: 'drawn', epoch, windowId, on, at: Date.now() };
@@ -280,7 +299,7 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
     for (const [id, t] of unwanted) if (!ids.has(id)) { clearTimeout(t); unwanted.delete(id); }
     for (const w of windows) {
       const id = w.windowId;
-      const wanted = w.state === 'fullscreen' && w.state !== 'minimized';
+      const wanted = w.state === 'fullscreen';
       if (wanted) {
         clearTimeout(unwanted.get(id));
         unwanted.delete(id);
@@ -306,27 +325,28 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
     }
   }
 
-  async function closeOverlay(id) {
+  async function closeOverlay(id: number) {
     const o = overlays.get(id);
     if (!o) return;
     overlays.delete(id);
     held.delete(id);
     notify();
-    await o.page.close().catch(() => {});
+    // (Its page is there unless it's closed before it opened: then this rejects, unhandled.)
+    await o.page!.close().catch(() => {});
   }
 
-  function openOverlay(w) {
+  function openOverlay(w: LinkWindow) {
     const id = w.windowId;
-    const o = {
+    const o: Overlay = {
       windowId: id, page: null, ready: false, asked: false, layout: null, hits: null, focus: false, pointerWant: null,
       size: { width: w.width, height: w.height }, chain: Promise.resolve(), opened: Date.now(),
-      push(msg) {
+      push(msg: Said) {
         if (!o.asked) return;
         if (holding) return void backlog.push([o, msg]);
         const json = JSON.stringify(msg);
-        o.chain = o.chain.then(() => o.page?.evaluate((j) => globalThis.marginApp?.receive(j), json)).catch(() => {});
+        o.chain = o.chain.then(() => o.page?.evaluate((j) => (globalThis as { marginApp?: { receive(json: string): void } }).marginApp?.receive(j), json)).catch(() => {});
       },
-      resize(win) {
+      resize(win: Size) {
         if (win.width === o.size.width && win.height === o.size.height) return;
         o.size = { width: win.width, height: win.height };
         void o.page?.setViewportSize(o.size).catch(() => {});
@@ -341,16 +361,16 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
       await page.setViewportSize(o.size);
       page.on('pageerror', (e) => { pageErrors.push({ windowId: id, message: e.message }); say('overlay error', e.message); });
       page.on('console', (c) => { if (c.type() === 'error') pageErrors.push({ windowId: id, message: c.text() }); });
-      await page.exposeBinding('__marginPost', (_, body) => bridge(o, body));
+      await page.exposeBinding('__marginPost', (_, body: Said) => bridge(o, body));
       await page.addInitScript(() => {
-         (window as any).webkit = { messageHandlers: { margin: { postMessage: (b) => (window as any).__marginPost(b) } } };
+         (window as any).webkit = { messageHandlers: { margin: { postMessage: (b: unknown) => (window as any).__marginPost(b) } } };
       });
       await page.goto(overlayUrl);
     })().catch((e) => { if (overlays.get(id) === o) say('overlay failed to open', e.message); });
     notify();
   }
 
-  async function bridge(o, body) {
+  async function bridge(o: Overlay, body: Said) {
     const op = body?.op;
     switch (op) {
       case 'hello': {
@@ -406,11 +426,11 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
   }
 
   // Only a layout measured at the window's size, and only a change (Shell.layoutChanged, the outbox).
-  function offerLayout(o) {
+  function offerLayout(o: Overlay) {
     const g = o.layout;
     if (!g || epoch == null || !drawnOn.get(o.windowId)) return;
     if (Math.abs(g.container.width - o.size.width) >= 1 || Math.abs(g.container.height - o.size.height) >= 1) return;
-    const insets = Object.fromEntries(['left', 'top', 'right', 'bottom'].map((k) => [k, half(g.insets[k] ?? 0)]));
+    const insets = Object.fromEntries((['left', 'top', 'right', 'bottom'] as const).map((k) => [k, half(g.insets[k] ?? 0)]));
     const key = JSON.stringify([insets, g.radius, g.radii]);
     const last = outbox.get(o.windowId);
     if (last?.key === key) return;
@@ -423,12 +443,12 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
   }
 
   /** The app's `req` for a window; resolves with the copy's reply ({ ok, result } or { ok: false, error }). */
-  function request(type, payload = {}, windowId = null) {
+  function request(type: string, payload: Record<string, unknown> = {}, windowId: number | null = null): Promise<Said> {
     if (!hello || epoch == null) return Promise.resolve({ ok: false, error: 'not linked' });
     const id = ++reqId;
-    const entry = { id, type, payload, windowId, at: Date.now(), reply: null };
+    const entry: (typeof requests)[number] = { id, type, payload, windowId, at: Date.now(), reply: null };
     requests.push(entry);
-    const got = new Promise((resolve) => {
+    const got = new Promise<Said>((resolve) => {
       const timer = setTimeout(() => { waiting.delete(id); resolve({ ok: false, error: 'no answer in 15 s' }); }, 15_000);
       waiting.set(id, (m) => { clearTimeout(timer); entry.reply = m; resolve(m); });
     });
@@ -439,11 +459,11 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
   const frontWindowId = () => (windows.find((w) => w.focused) ?? windows[0])?.windowId ?? null;
 
   /** Waits until `check()` is truthy (re-checked on every message and every 25 ms). */
-  async function until(check, { timeout = 5000, what = 'a condition' } = {}) {
+  async function until<T>(check: () => T, { timeout = 5000, what = 'a condition' } = {}): Promise<Truthy<T>> {
     const end = Date.now() + timeout;
     for (;;) {
       const v = check();
-      if (v) return v;
+      if (v) return v as Truthy<T>;
       if (Date.now() > end) throw new Error(`the shell waited ${timeout} ms for ${what}`);
       await new Promise((resolve) => {
         const done = () => { listeners.delete(done); clearTimeout(t); resolve(undefined); };
@@ -474,54 +494,54 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
      * What Safari's handler answers `wantLink` (relay.ts: SafariWebExtensionHandler.swift reply,
      * with Safari's id for the profile, `s-default` for the default one), and the link it dispatches.
      */
-    wantLink(nonce) {
+    wantLink(nonce: string) {
       if (!running) return { reply: { ok: true, appOpen: false, launching, profile: SAFARI_PROFILE } };
-      return { reply: { ok: true, appOpen: true, launching: false, profile: SAFARI_PROFILE }, link: linkAnswers ? JSON.parse(app.linkInfo(nonce).userInfo.e) : null };
+      return { reply: { ok: true, appOpen: true, launching: false, profile: SAFARI_PROFILE }, link: linkAnswers ? JSON.parse(app!.linkInfo(nonce).userInfo.e) : null };
     },
     /** The overlay over a window (its page drawn), waited for. */
-    async overlay(windowId = frontWindowId(), { timeout = 10_000 } = {}) {
-      const o = await until(() => { const x = overlays.get(windowId ?? frontWindowId()); return x?.ready && x; }, { timeout, what: `the overlay of window ${windowId}` });
+    async overlay(windowId: number | null = frontWindowId(), { timeout = 10_000 } = {}) {
+      const o = await until(() => { const x = overlays.get((windowId ?? frontWindowId()) as number); return x?.ready && x; }, { timeout, what: `the overlay of window ${windowId}` });
       await o.ready$;
       return o;
     },
     /** The app's hot key: `palette` and `toggle-sidebar` go to the front overlay; the rest are the copy's `navigate`. */
-    key(name, windowId = frontWindowId()) {
-      if (name === 'palette' || name === 'toggle-sidebar') return void overlays.get(windowId)?.push({ type: 'command', name });
+    key(name: string, windowId: number | null = frontWindowId()) {
+      if (name === 'palette' || name === 'toggle-sidebar') return void overlays.get(windowId as number)?.push({ type: 'command', name });
       return request('navigate', { action: name, windowId }, windowId);
     },
-    navigate(action, windowId = frontWindowId()) { return request('navigate', { action, windowId }, windowId); },
+    navigate(action: string, windowId: number | null = frontWindowId()) { return request('navigate', { action, windowId }, windowId); },
     /** What the app sends an overlay (pointer, pressOutside, blur, shown…). */
-    tell(windowId, msg) { overlays.get(windowId)?.push(msg); },
-    drawn(windowId, on) {
+    tell(windowId: number, msg: Said) { overlays.get(windowId)?.push(msg); },
+    drawn(windowId: number, on: boolean) {
       if (on) saidOff.delete(windowId); else saidOff.add(windowId);
       sendDrawn(windowId, on);
     },
     /** Holds back what the overlays are told (`true`), then gives it all in order (`false`). */
-    hold(on) {
+    hold(on: boolean) {
       holding = on;
       if (on) return;
       for (const [o, msg] of backlog.splice(0)) if (overlays.get(o.windowId) === o) o.push(msg);
     },
     /** The app's set for the next data.hello (a seed), or sent now when linked. */
-    seed(set, { now = false } = {}) {
+    seed(set: Said, { now = false } = {}) {
       seed = set;
       if (now && hello) send({ k: 'data.snapshot', epoch, profile: hello.profile, format: set.format ?? 1, set, transfer: `seed-${Date.now()}`, part: 0, parts: 1 });
     },
-    setCloudTabs(value) {
+    setCloudTabs(value: unknown) {
       cloud = value;
       for (const o of overlays.values()) o.push({ type: 'cloudTabs', cloudTabs: value });
     },
-    setAcross(value) {
+    setAcross(value: unknown) {
       acrossNow = value;
       for (const o of overlays.values()) o.push({ type: 'across', across: value });
     },
     /** The app killed: every socket dropped, no close frame; it stays "running" unless `gone`. */
-    drop({ gone = false } = {}) { if (gone) running = false; app.drop(); },
+    drop({ gone = false } = {}) { if (gone) running = false; app!.drop(); },
     /** The app's goodbye (it's quitting). */
-    bye(why = 'quitting') { send({ k: 'bye', why }); running = false; setTimeout(() => app.drop(), 50); linkDown('quit'); },
+    bye(why = 'quitting') { send({ k: 'bye', why }); running = false; setTimeout(() => app!.drop(), 50); linkDown('quit'); },
     /** Not running, or starting (the handler's answers). */
-    setRunning(on, { starting = false } = {}) { running = on; launching = starting; },
-    setLinkAnswers(on) { linkAnswers = on; },
+    setRunning(on: boolean, { starting = false } = {}) { running = on; launching = starting; },
+    setLinkAnswers(on: boolean) { linkAnswers = on; },
     /** The app gone (a crash, or quit without a word): its sockets dropped, nothing listening, not running. */
     async kill() {
       running = false;
@@ -532,7 +552,7 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
      * A new app: new port, token and key; then `appUp` (relay.dispatch is the caller's).
      * `welcome(key)`: what it says on a socket opening (the default: its own key).
      */
-    async restart({ welcome = null } = {}) {
+    async restart({ welcome = null }: { welcome?: ((key: string) => Said) | null } = {}) {
       app?.drop();
       await app?.close().catch(() => {});
       running = true;

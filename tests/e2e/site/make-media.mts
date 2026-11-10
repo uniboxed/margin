@@ -16,12 +16,12 @@ const CRC = new Uint32Array(256).map((_, n) => {
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
   return c >>> 0;
 });
-function crc32(buf) {
+function crc32(buf: Uint8Array) {
   let c = 0xffffffff;
   for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }
-function chunk(type, data) {
+function chunk(type: string, data: Buffer) {
   const out = Buffer.alloc(12 + data.length);
   out.writeUInt32BE(data.length, 0);
   out.write(type, 4, 'ascii');
@@ -31,7 +31,7 @@ function chunk(type, data) {
 }
 
 // RGBA bytes (w × h × 4) to a PNG file.
-export function encodePng(w, h, rgba) {
+export function encodePng(w: number, h: number, rgba: Uint8Array) {
   const raw = Buffer.alloc((w * 4 + 1) * h);
   for (let y = 0; y < h; y++) {
     raw[y * (w * 4 + 1)] = 0;
@@ -51,7 +51,7 @@ export function encodePng(w, h, rgba) {
 }
 
 // Several PNGs in one ICO file (PNG entries, as every browser reads them).
-export function encodeIco(pngs) {
+export function encodeIco(pngs: { size: number, bytes: Buffer }[]) {
   const head = Buffer.alloc(6 + 16 * pngs.length);
   head.writeUInt16LE(0, 0);
   head.writeUInt16LE(1, 2);
@@ -73,14 +73,26 @@ export function encodeIco(pngs) {
 // ---------- drawing ----------
 // Shapes in a 0..1 square, painted in order, 4 × 4 samples a pixel.
 
-const hex = (h) => {
+type Rgba = number[];
+type Gradient = { from: number[], to: number[], stops: string[] };
+type Fill = string | Gradient;
+type Shape = { fill: Fill, opacity?: number, clear?: boolean } & (
+  | { kind: 'rect', x: number, y: number, w: number, h: number, r: number }
+  | { kind: 'circle', cx: number, cy: number, r: number }
+  | { kind: 'ring', cx: number, cy: number, r: number, width: number, sweep?: number }
+  | { kind: 'line', x1: number, y1: number, x2: number, y2: number, width: number }
+  | { kind: 'poly', points: number[][] }
+);
+type Inside = (s: Shape, x: number, y: number) => boolean;
+
+const hex = (h: string): Rgba => {
   const v = h.replace('#', '');
   const n = parseInt(v.length === 3 ? [...v].map((c) => c + c).join('') : v.slice(0, 6), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255, v.length === 8 ? parseInt(v.slice(6), 16) / 255 : 1];
 };
-const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+const mix = (a: Rgba, b: Rgba, t: number) => a.map((v, i) => v + (b[i] - v) * t);
 // A fill: a colour, or a gradient from (x0, y0) to (x1, y1).
-const paint = (fill) => {
+const paint = (fill: Fill): (x: number, y: number) => Rgba => {
   if (typeof fill === 'string') {
     const c = hex(fill);
     return () => c;
@@ -91,10 +103,10 @@ const paint = (fill) => {
   const dx = x1 - x0;
   const dy = y1 - y0;
   const len = dx * dx + dy * dy;
-  return (x, y) => mix(a, b, Math.min(1, Math.max(0, ((x - x0) * dx + (y - y0) * dy) / len)));
+  return (x: number, y: number) => mix(a, b, Math.min(1, Math.max(0, ((x - x0) * dx + (y - y0) * dy) / len)));
 };
 
-const inside = {
+const inside: { [K in Shape['kind']]: (s: Extract<Shape, { kind: K }>, x: number, y: number) => boolean } = {
   rect: (s, x, y) => {
     const qx = Math.abs(x - (s.x + s.w / 2)) - (s.w / 2 - s.r);
     const qy = Math.abs(y - (s.y + s.h / 2)) - (s.h / 2 - s.r);
@@ -127,7 +139,7 @@ const inside = {
   },
 };
 
-export function draw(size, shapes) {
+export function draw(size: number, shapes: Shape[]) {
   const out = new Uint8Array(size * size * 4);
   const fills = shapes.map((s) => paint(s.fill));
   const N = 4;
@@ -144,7 +156,7 @@ export function draw(size, shapes) {
           let c = [0, 0, 0, 0];
           for (let i = 0; i < shapes.length; i++) {
             const s = shapes[i];
-            if (!inside[s.kind](s, x, y)) continue;
+            if (!(inside[s.kind] as Inside)(s, x, y)) continue; // each kind's test takes its own kind of shape
             const f = fills[i](x, y);
             const fa = f[3] * (s.opacity ?? 1);
             if (s.clear) c = [0, 0, 0, 0];
@@ -169,11 +181,11 @@ export function draw(size, shapes) {
   return out;
 }
 
-const tile = (fill, r = 0.22) => ({ kind: 'rect', x: 0, y: 0, w: 1, h: 1, r, fill });
-const grad = (a, b, from = [0, 0], to = [1, 1]) => ({ from, to, stops: [a, b] });
+const tile = (fill: Fill, r = 0.22): Shape => ({ kind: 'rect', x: 0, y: 0, w: 1, h: 1, r, fill });
+const grad = (a: string, b: string, from = [0, 0], to = [1, 1]): Gradient => ({ from, to, stops: [a, b] });
 
 // Each site's icon, as shapes.
-export const ICONS = {
+export const ICONS: Record<string, Shape[]> = {
   // Common Goods: a tote bag on sage.
   shop: [
     tile(grad('#3f6b4f', '#24432f')),
@@ -230,7 +242,7 @@ export const ICONS = {
   ],
 };
 
-export function iconPng(name, size) {
+export function iconPng(name: string, size: number) {
   return encodePng(size, size, draw(size, ICONS[name]));
 }
 
@@ -245,10 +257,10 @@ export function tune() {
   const seconds = bars * 4 * beat + 1.5;
   const n = Math.floor(seconds * rate);
   const s = new Float32Array(n);
-  const freq = (m) => 440 * 2 ** ((m - 69) / 12);
+  const freq = (m: number) => 440 * 2 ** ((m - 69) / 12);
   // C, A minor, F, G, twice.
   const chords = [[48, 55, 60, 64], [45, 52, 57, 60], [41, 48, 53, 57], [43, 50, 55, 59]];
-  const add = (start, dur, f, amp, attack, decay, partials = [1]) => {
+  const add = (start: number, dur: number, f: number, amp: number, attack: number, decay: number, partials = [1]) => {
     const i0 = Math.floor(start * rate);
     const len = Math.floor((dur + decay) * rate);
     for (let i = 0; i < len && i0 + i < n; i++) {
@@ -292,8 +304,8 @@ export function tune() {
 
 // Every raster file of the site: `${site}${path}` → { type, body }.
 export function media() {
-  const png = (name, size) => ({ type: 'image/png', body: iconPng(name, size) });
-  const ico = (name, sizes) => ({ type: 'image/x-icon', body: encodeIco(sizes.map((size) => ({ size, bytes: iconPng(name, size) }))) });
+  const png = (name: string, size: number) => ({ type: 'image/png', body: iconPng(name, size) });
+  const ico = (name: string, sizes: number[]) => ({ type: 'image/x-icon', body: encodeIco(sizes.map((size) => ({ size, bytes: iconPng(name, size) }))) });
   return new Map([
     ['shop/icon-192.png', png('shop', 192)],
     ['shop/apple-touch-icon.png', png('shop', 180)],

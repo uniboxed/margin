@@ -15,6 +15,8 @@
 // (`shell.blocked`) and any overlay error (`shell.pageErrors`).
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import type { Page, Worker } from 'playwright';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, extname } from 'node:path';
@@ -24,10 +26,19 @@ import { testBuild } from './build.ts';
 import { startRelay } from './relay.ts';
 import { startShell } from './shell.ts';
 import { seedSet } from './seed.ts';
-import { shoot, pixels, forgetComposer } from './shots.ts';
+import type { Said } from '../../../extension/background/link.ts';
+import { shoot, pixels, forgetComposer, type ShotTest, type ShotOptions } from './shots.ts';
 
 const require = createRequire(import.meta.url);
-const { chromium, webkit } = require('playwright');
+const { chromium, webkit } = require('playwright') as typeof import('playwright');
+
+type Shell = Awaited<ReturnType<typeof startShell>>;
+/** One e2e file's world, as startMargin gives it. */
+export type Margin = Awaited<ReturnType<typeof startMargin>>;
+// What `until` gives back: its check's value, once truthy.
+type Truthy<T> = Exclude<T, false | null | undefined | 0 | ''>;
+// A browser tab as `m.tabs()` reads it.
+type TabInfo = Pick<BrowserTab, 'id' | 'windowId' | 'index' | 'title' | 'url' | 'active' | 'status' | 'audible'>;
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const APP_DIR = fileURLToPath(new URL('../../../dist/app/', import.meta.url));
@@ -39,19 +50,19 @@ export const SIZE = { width: 1440, height: 900 };
 
 // The overlay's files, served as the app serves them (its own origin, its policy, nothing cached).
 async function serveOverlay() {
-  const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+  const types: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
   const server = createServer((req, res) => {
-    const name = new URL(req.url, 'http://x').pathname.slice(1);
+    const name = new URL(req.url!, 'http://x').pathname.slice(1); // (a request the server got has its url)
     const file = join(APP_DIR, name);
     if (!/^[\w.-]+$/.test(name) || !existsSync(file)) { res.writeHead(404, { 'content-security-policy': OVERLAY_POLICY }); return res.end(); }
     res.writeHead(200, { 'content-type': types[extname(file)] ?? 'application/octet-stream', 'content-security-policy': OVERLAY_POLICY, 'cache-control': 'no-store' });
     res.end(readFileSync(file));
   });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return { url: `http://127.0.0.1:${server.address().port}/overlay.html`, close: () => new Promise((r) => { server.closeAllConnections?.(); server.close(() => r()); }) };
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/overlay.html`, close: () => new Promise<void>((r) => { server.closeAllConnections?.(); server.close(() => r()); }) };
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function startMargin({ seed = null, fullscreen = true, running = true, cloudTabs = null, across = null, name = 'e2e', web = false }: {
   seed?: any,           // what the app's data set holds (seed.ts seedSet's input), or a data set;
@@ -70,7 +81,8 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
   const overlayServer = await serveOverlay();
   const wk = await webkit.launch({ headless: true });
 
-  let worker = null;
+  // The background's worker: null until it's found below (only makeFullscreen can run before, and it asks with ?.).
+  let worker: Worker = null!;
   const shell = await startShell({
     webkit: wk,
     overlayUrl: overlayServer.url,
@@ -106,7 +118,7 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
     env: { ...process.env, MARGIN_E2E_RELAY: String(relay.port) },
   });
   // The network guard: anything not for the test site, the extension or a page's own data is recorded.
-  const leaks = [];
+  const leaks: string[] = [];
   context.on('request', (r) => {
     const u = new URL(r.url());
     if (!/^https?:$|^wss?:$/.test(u.protocol)) return;
@@ -134,25 +146,25 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
     root, site, build, relay, shell, context, worker, extensionId, leaks, name, webkit: wk,
     startedAt: t0,
     /** The address of a page of the test site. */
-    url: (host, path = '/') => site.url(host, path),
+    url: (host: string, path = '/') => site.url(host, path),
     newTabUrl: () => `chrome-extension://${extensionId}/newtab/newtab.html`,
     /** Runs `fn(arg)` in the background. */
-    bg: (fn, arg) => worker.evaluate(fn, arg),
+    bg: <R, Arg>(fn: (arg: Arg) => R | Promise<R>, arg?: Arg): Promise<R> => worker.evaluate(fn as (arg: unknown) => R | Promise<R>, arg),
     /** Every browser tab: { id, windowId, index, title, url, active, status }. */
-    tabs: () => worker.evaluate(() => chrome.tabs.query({}).then((ts) => ts.map((t) => ({ id: t.id, windowId: t.windowId, index: t.index, title: t.title, url: t.url, active: t.active, status: t.status, audible: t.audible })))),
+    tabs: (): Promise<TabInfo[]> => worker.evaluate(() => chrome.tabs.query({}).then((ts) => ts.map((t) => ({ id: t.id, windowId: t.windowId, index: t.index, title: t.title, url: t.url, active: t.active, status: t.status, audible: t.audible })))),
     /** The browser tab in front of a window (the front window by default). */
-    async front(windowId = shell.frontWindowId()) {
+    async front(windowId: number | null = shell.frontWindowId()): Promise<TabInfo | null> {
       return (await m.tabs()).find((t) => t.windowId === windowId && t.active) ?? null;
     },
     /** All of storage.local (the copy's stored values). */
-    stored: (keys = null) => worker.evaluate((k) => chrome.storage.local.get(k), keys),
+    stored: (keys: string | string[] | null = null) => worker.evaluate((k) => chrome.storage.local.get(k), keys),
     /** The copy's state as pages read it (shared/stored.ts fromStorage's keys). */
-    async state() {
+    async state(): Promise<Record<string, any>> {
       const raw = await m.stored();
       return { ...raw, ...(raw.openTabs ?? {}) };
     },
     /** The Playwright page of a browser tab, by id (or the front tab's). */
-    async pageOf(tabId) {
+    async pageOf(tabId?: number | null): Promise<Page | null> {
       const tab = tabId == null ? await m.front() : (await m.tabs()).find((t) => t.id === tabId);
       if (!tab) return null;
       for (let i = 0; i < 100; i++) {
@@ -163,40 +175,40 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
       return null;
     },
     /** A site page opened in a new tab of the front window (Chromium's own way: a new page). Waits for its load. */
-    async open(host, path = '/', { wait = 'load' } = {}) {
+    async open(host: string, path = '/', { wait = 'load' }: { wait?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit' } = {}) {
       const page = await context.newPage();
       await page.goto(host.includes('://') ? host : site.url(host, path), { waitUntil: wait });
       return page;
     },
     /** The overlay page over a window (Playwright Page), once drawn. */
-    async ui(windowId = shell.frontWindowId()) {
-      return (await shell.overlay(windowId)).page;
+    async ui(windowId: number | null = shell.frontWindowId()) {
+      return (await shell.overlay(windowId)).page!; // (an overlay that's drawn has its page)
     },
     /** Waits until `check()` (sync or async) is truthy. */
-    async until(check, { timeout = 5000, interval = 30, what = 'a condition' } = {}) {
+    async until<T>(check: () => T | Promise<T>, { timeout = 5000, interval = 30, what = 'a condition' } = {}): Promise<Truthy<T>> {
       const end = Date.now() + timeout;
       let last;
       for (;;) {
         last = await check();
-        if (last) return last;
+        if (last) return last as Truthy<T>;
         if (Date.now() > end) throw new Error(`waited ${timeout} ms for ${what} (last: ${JSON.stringify(last)?.slice(0, 300)})`);
         await sleep(interval);
       }
     },
     /** Waits for the link: hello, snapshot, the theme and the keys. */
-    linked: () => waitLinked(m),
+    linked: (): Promise<void> => waitLinked(m),
     /** A window put in full screen (Margin draws over it there), and its overlay drawn. */
-    fullscreen: (windowId) => goFullscreen(m, windowId),
+    fullscreen: (windowId?: number): ReturnType<Shell['overlay']> => goFullscreen(m, windowId),
     /** Screenshots for a person to look at: page.png, overlay.png, window.png. */
-    shoot: (t, label, options = {}) => shoot(m, t, label, options),
+    shoot: (t: ShotTest, label: string, options: ShotOptions = {}): ReturnType<typeof shoot> => shoot(m, t, label, options),
     /** The colours ([r, g, b]) of points of a screenshot. */
-    pixels: (png, points) => pixels(m, png, points),
+    pixels: (png: Buffer, points: Array<[number, number]>): ReturnType<typeof pixels> => pixels(m, png, points),
     /** The app's set sent again (the seed, or another), as the app would after a change elsewhere. */
-    reseed(next = seed) {
+    reseed(next = seed): void {
       shell.seed(seedSet(typeof next === 'function' ? next(site.url) : next), { now: true });
     },
     /** What the guards caught so far: requests that left the test site, overlay loads from the web, overlay errors. */
-    problems() {
+    problems(): string[] {
       return [
         ...leaks.map((u) => `a request left the test site: ${u}`),
         ...shell.blocked.map((u) => `the overlay asked for something from the web: ${u}`),
@@ -204,7 +216,7 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
       ];
     },
     /** Closes everything, then fails the file (its `after` hook) if a guard caught anything. */
-    async close() {
+    async close(): Promise<void> {
       const problems = m.problems();
       await context.close().catch(() => {});
       await shell.close().catch(() => {});
@@ -222,19 +234,19 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
   await m.linked();
   // The window's first tab: the test site's index, as a start page (about:blank, which Margin leaves out,
   // until the seed is in: a tab opened before it is in the copy's default space, which the seed replaces).
-  if (seed?.spaces) await m.until(async () => (await m.stored('spaces')).spaces?.map((x) => x.id).join() === seed.spaces.map((x) => x.id).join(), { timeout: 5000, what: 'the seed taken' });
+  if (seed?.spaces) await m.until(async () => (await m.stored('spaces')).spaces?.map((x: { id: string }) => x.id).join() === seed.spaces.map((x: { id: string }) => x.id).join(), { timeout: 5000, what: 'the seed taken' });
   await context.pages()[0]?.goto(site.url('margin.test', '/')).catch(() => {});
   if (fullscreen) await m.fullscreen();
   return m;
 }
 
-async function waitLinked(m: any) {
+async function waitLinked(m: Margin) {
   const { shell } = m;
   await shell.until(() => shell.hello && shell.state && shell.windows.length && shell.themeId && shell.keys, { timeout: 15_000, what: 'the copy to link (hello, snapshot, theme, keys)' });
 }
 
-async function goFullscreen(m: any, windowId: number = m.shell.frontWindowId()) {
-  await m.bg((id) => chrome.windows.update(id, { state: 'fullscreen' }).then(() => {}), windowId);
+async function goFullscreen(m: Margin, windowId: number | null = m.shell.frontWindowId()): ReturnType<Shell['overlay']> {
+  await m.bg((id) => chrome.windows.update(id!, { state: 'fullscreen' }).then(() => {}), windowId);
   await m.shell.until(() => m.shell.windows.find((w) => w.windowId === windowId)?.state === 'fullscreen', { timeout: 5000, what: 'full screen' });
   return m.shell.overlay(windowId);
 }

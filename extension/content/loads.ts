@@ -23,7 +23,7 @@ export const TRANSITION_MS = 150;
 export function startLoads({ on, send, win = globalThis }: { on: () => boolean, send: (type: 'pageLoading', payload: { on: boolean, why: 'leaving' | 'navigating' }) => unknown, win?: any }) {
   const say = (loading: boolean, why: 'leaving' | 'navigating') => { if (on()) void send('pageLoading', { on: loading, why }); };
   let leaving = false;
-  let leavingTimer: number | null = null;
+  let leavingTimer: Timer | null = null;
   const stayed = () => {
     if (!leaving) return;
     leaving = false;

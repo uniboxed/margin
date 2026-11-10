@@ -103,7 +103,7 @@ function tooLate(deadline: number | undefined) {
 }
 // A Safari call held to `until`: its value, or null if it's not answered by then.
 async function answerBy<T>(promise: Promise<T>, until: number): Promise<T | null> {
-  let timer: number | undefined;
+  let timer: Timer | undefined;
   const late = new Promise<any>((resolve) => { timer = setTimeout(() => resolve(null), Math.max(0, until - Date.now())); });
   try {
     return (await Promise.race([promise, late]) as T | null);
@@ -356,7 +356,7 @@ export function pageChanged(tabId: number) {
 // (`func` runs in the page: its arguments are `args`.)
 export async function inPage<A extends any[]>(tabId: number, url: string | undefined, func: (...args: A) => unknown, args: A = [] as unknown as A, ms = 300) {
   if (!api.scripting?.executeScript || !(await mayAccessCached(url))) return 'unknown';
-  let timer: number | undefined;
+  let timer: Timer | undefined;
   const answer = await Promise.race([
     api.scripting.executeScript({ target: { tabId }, func, args }).then((r) => (ranAtAll(r) ? { result: r?.[0]?.result } : 'asleep'), () => 'asleep'),
     new Promise<any>((resolve) => { timer = setTimeout(() => resolve('unknown'), ms); }),
@@ -514,7 +514,7 @@ export async function openBehind({ windowId, url, from, then, created, label, de
 async function untilLoaded(tabId: number, until: () => number, left: () => boolean, fromId: number | null): Promise<'loaded' | 'timeout' | 'gone' | 'left' | 'moved'> {
   const SLOW = Symbol('slow');
   const ask = (id: number) => {
-    let timer: number | undefined;
+    let timer: Timer | undefined;
     return Promise.race([
       Promise.resolve().then(() => api.tabs.get(id)).catch(() => null),
       new Promise<any>((resolve) => { timer = setTimeout(() => resolve(SLOW), Math.max(POLL_MS, until() - Date.now())); }),

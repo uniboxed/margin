@@ -2,11 +2,11 @@
 // scroll, a sticky sub-nav, a fixed cookie bar, a fixed chat bubble and
 // panel, and a dates modal that locks the page's scroll (body overflow
 // hidden). ICO icon and an apple-touch-icon.
-import { art, avatar, doc, esc, icon } from './common.ts';
+import { art, avatar, doc, esc, icon, type ArtParams, type Site } from './common.ts';
 
 const ICON = '<link rel="icon" href="/favicon.ico" sizes="16x16 32x32">\n<link rel="apple-touch-icon" href="/icon-180.png">';
 
-const PLACES = [
+const PLACES: [name: string, region: string, kind: string, art: ArtParams, score: number, price: number][] = [
   ['Sennen Cove', 'Cornwall', 'coast', { seed: 5 }, 4.92, 148],
   ['Ilha da Berlenga', 'Portugal', 'coast', { seed: 12, p: 'evening' }, 4.88, 212],
   ['Lofoten', 'Norway', 'landscape', { seed: 21, p: 'alpine' }, 4.97, 265],
@@ -53,7 +53,7 @@ function home() {
   return doc({ title: 'Harbor — Quiet places by the sea', icon: ICON, themeColor: '#0b4d57', body });
 }
 
-function month(name, days, start, picked) {
+function month(name: string, days: number, start: number, picked: number[]) {
   const cells = Array.from({ length: start }, () => '<span></span>').concat(Array.from({ length: days }, (_, i) => `<button class="${picked.includes(i + 1) ? (i + 1 === picked[0] || i + 1 === picked.at(-1) ? 'pick end' : 'pick') : ''}${i + 1 < 6 && name.startsWith('Nov') ? ' past' : ''}">${i + 1}</button>`));
   return `<div class="month"><h4>${name}</h4><div class="dow">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<span>${d}</span>`).join('')}</div><div class="days">${cells.join('')}</div></div>`;
 }
@@ -210,4 +210,4 @@ export default {
     '/assets/harbor.js': { type: 'text/javascript; charset=utf-8', body: JS },
   },
   routes: [['GET', '/', () => home()]],
-};
+} satisfies Site;

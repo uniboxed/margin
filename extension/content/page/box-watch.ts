@@ -59,7 +59,7 @@ export function startWatch(ctx: any) {
   // longer be what the page says: read again when its styles change, before
   // the next paint. Out of sight it waits to be shown.
   let measureDue = false;
-  let measureTimer = 0;
+  let measureTimer: Timer | 0 = 0;
   let measureFrame = 0;
   let measureAt = 0;
   let measureCost = 0;

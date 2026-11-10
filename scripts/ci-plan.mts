@@ -25,7 +25,7 @@ import { PACKAGE_THEMES } from '../extension/themes/packages.ts';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 // The workflow itself, the lockfiles, the shared build script and this plan reach everything.
-const ALL = /^(\.github\/workflows\/ci\.yml|package(-lock)?\.json|tsconfig\.json|scripts\/build\.ts|scripts\/ci-plan\.mts)$/;
+const ALL = /^(\.github\/workflows\/ci\.yml|package(-lock)?\.json|tsconfig(\.tests)?\.json|scripts\/build\.ts|scripts\/ci-plan\.mts)$/;
 // (Unit tests read some of the app's files too: the Chromium crate's extension id, the host page. The end-to-end tests
 // load the built extension and the host page, their site, harness and fixtures, the box patterns' pages, and build the
 // connector for the Chromium relay's test.)

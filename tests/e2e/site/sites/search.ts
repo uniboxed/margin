@@ -2,13 +2,13 @@
 // an engine's address (context.route) and answer with searchResults(q):
 // this site's own pages that match, with no engine's name or look. Also
 // served at search.test/search?q=….
-import { doc, esc, icon } from './common.ts';
+import { doc, esc, icon, type Link, type Site } from './common.ts';
 import { SITES } from './index.ts';
 
 const ICON = '<link rel="icon" href="/favicon.svg" type="image/svg+xml">';
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="#2b2d42"/><circle cx="28" cy="28" r="12" fill="none" stroke="#fff" stroke-width="6"/><path d="M37 37l11 11" stroke="#8ecae6" stroke-width="7" stroke-linecap="round"/></svg>`;
 
-export function searchResults(q, link) {
+export function searchResults(q: string | null, link: Link) {
   const query = String(q ?? '').trim();
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const all = SITES.filter((s) => s.host !== 'margin.test' && s.host !== 'search.test').flatMap((s) => (s.pages ?? []).map((p) => ({ site: s, ...p })));
@@ -85,4 +85,4 @@ export default {
     ['GET', '/', ({ link }) => searchResults('', (h, p) => link(h, p))],
     ['GET', '/search', ({ query, link }) => searchResults(query.get('q'), (h, p) => link(h, p))],
   ],
-};
+} satisfies Site;

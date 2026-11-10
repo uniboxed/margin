@@ -100,15 +100,18 @@ export function listPatterns() {
     const name = f.slice(0, -5);
     if (!NAME.test(name)) throw new Error(`${f}: a pattern's name is lowercase letters, digits and dashes`);
     const html = readFileSync(join(PATTERNS_DIR, f), 'utf8');
-    try { return { name, ...parseHeader(html), html }; } catch (e) { throw new Error(`${f}: ${e.message}`); }
+    try { return { name, ...parseHeader(html), html }; } catch (e) { throw new Error(`${f}: ${(e as Error).message}`); } // parseHeader throws Errors
   });
 }
+
+/** A page or file, and, for one that arrives in parts, its parts (partsOf). */
+export type BoxPage = { type: string, body: string, parts?: { text: string, wait: number }[] };
 
 /**
  * A response for `path` (and its query), or null if it isn't one of these.
  * `other`: another origin's address for the same files, put in for `{{other}}`.
  * */
-export function boxPage(path: string, query: URLSearchParams, { other = '' }: { other?: string } = {}): { type: string, body: string } | null {
+export function boxPage(path: string, query: URLSearchParams, { other = '' }: { other?: string } = {}): BoxPage | null {
   const p = /^\/pattern\/([a-z0-9-]+)$/.exec(path);
   if (p && NAME.test(p[1])) {
     let body;
@@ -128,7 +131,8 @@ export function boxPage(path: string, query: URLSearchParams, { other = '' }: { 
     try { body = readFileSync(join(ASSETS_DIR, a[1]), 'utf8'); } catch { return null; }
     // `?wait=N`: its content N ms after its headers, as a slow server's (a sheet still loading as <body> comes).
     const wait = Math.min(Number(query.get('wait')) || 0, 5000);
-    return { type: TYPES[a[1].split('.').pop()], body, ...(wait > 0 ? { parts: [{ text: '', wait: 0 }, { text: body, wait }] } : {}) };
+    // ASSET: a .css or .js name.
+    return { type: TYPES[a[1].split('.').pop() as keyof typeof TYPES], body, ...(wait > 0 ? { parts: [{ text: '', wait: 0 }, { text: body, wait }] } : {}) };
   }
   const r = /^\/ref\/([a-z0-9-]+)$/.exec(path);
   if (r && NAME.test(r[1])) {

@@ -2,19 +2,20 @@
 // seconds, as a slow server streams a long page: the shell and a loading
 // bar at once, then each section, then pictures that arrive last, so the
 // page's load comes at about 3 s. ?ms=<total> changes the pace. PNG icon.
-import { FIRST_FRAMES, art, doc, esc } from './common.ts';
+import type { ServerResponse } from 'node:http';
+import { FIRST_FRAMES, art, doc, esc, type Site } from './common.ts';
 import { landscape } from '../art.ts';
 
 const ICON = '<link rel="icon" type="image/png" href="/icon.png">';
 
 const SECTIONS = [
   ['Summary', `<div class="kpis">${[['Field sites', '42', '+6 since Q2'], ['Samples', '18,240', '+12%'], ['Rain, mm', '312', '−18% on average'], ['Species seen', '1,027', '+41 new']].map(([n, v, d]) => `<div><span>${n}</span><b>${v}</b><em>${d}</em></div>`).join('')}</div><p>The third quarter was drier than any since records began on the coast. Most sites saw fewer samples in August, then a sharp recovery in September after the first storms. Below, the numbers site by site, and what we think they mean.</p>`],
-  ['Rainfall by month', `<div class="bars">${[['Jul', 64], ['Aug', 22], ['Sep', 88]].map(([m, v]) => `<div class="bar"><b>${v * 1.2 | 0} mm</b><i style="height:${v * 0.72}%"></i><span>${m}</span></div>`).join('')}</div><p>August was the driest month on record at 31 of the 42 sites. September’s storms brought almost half of the quarter’s rain in nine days.</p>`],
-  ['Sites', `<table><thead><tr><th>Site</th><th>Region</th><th>Samples</th><th>Change</th></tr></thead><tbody>${[['Sennen Point', 'West coast', 1204, 8], ['Kettle Marsh', 'Estuary', 988, -4], ['High Moor', 'Uplands', 742, 15], ['Saltings', 'Estuary', 1530, 21], ['Lantern Wood', 'Valley', 611, -9], ['Gull Rock', 'West coast', 902, 3]].map(([s, r, n, c]) => `<tr><td>${s}</td><td>${r}</td><td>${n.toLocaleString('en-US')}</td><td class="${c < 0 ? 'neg' : 'pos'}">${c > 0 ? '+' : ''}${c}%</td></tr>`).join('')}</tbody></table>`],
+  ['Rainfall by month', `<div class="bars">${([['Jul', 64], ['Aug', 22], ['Sep', 88]] as const).map(([m, v]) => `<div class="bar"><b>${v * 1.2 | 0} mm</b><i style="height:${v * 0.72}%"></i><span>${m}</span></div>`).join('')}</div><p>August was the driest month on record at 31 of the 42 sites. September’s storms brought almost half of the quarter’s rain in nine days.</p>`],
+  ['Sites', `<table><thead><tr><th>Site</th><th>Region</th><th>Samples</th><th>Change</th></tr></thead><tbody>${([['Sennen Point', 'West coast', 1204, 8], ['Kettle Marsh', 'Estuary', 988, -4], ['High Moor', 'Uplands', 742, 15], ['Saltings', 'Estuary', 1530, 21], ['Lantern Wood', 'Valley', 611, -9], ['Gull Rock', 'West coast', 902, 3]] as const).map(([s, r, n, c]) => `<tr><td>${s}</td><td>${r}</td><td>${n.toLocaleString('en-US')}</td><td class="${c < 0 ? 'neg' : 'pos'}">${c > 0 ? '+' : ''}${c}%</td></tr>`).join('')}</tbody></table>`],
   ['From the field', `<div class="photos"><figure><img src="/img/marsh.svg" alt="" width="600" height="400"><figcaption>Kettle Marsh, 14 August: the lowest water in twenty years.</figcaption></figure><figure><img src="/img/moor.svg" alt="" width="600" height="400"><figcaption>High Moor after the first September storm.</figcaption></figure></div>`],
 ];
 
-export function report(res, total = 3000, fp = false) {
+export function report(res: ServerResponse, total = 3000, fp = false) {
   const step = total / (SECTIONS.length + 1);
   res.statusCode = 200;
   res.setHeader('content-type', 'text/html; charset=utf-8');
@@ -111,4 +112,4 @@ export default {
       delay: 600,
     })],
   ],
-};
+} satisfies Site;

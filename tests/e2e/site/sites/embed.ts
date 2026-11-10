@@ -6,9 +6,9 @@
 // maps.test: Wayfinder, a map site, full page at / and framed at /embed.
 // Its icon link points at a file that isn't an image (a server that
 // answers with an HTML page): a bad icon, to be refused.
-import { art, avatar, doc, esc, icon } from './common.ts';
+import { art, avatar, doc, esc, icon, type RouteContext, type Site } from './common.ts';
 
-function post({ link }) {
+function post({ link }: RouteContext) {
   const maps = link('maps.test', '/embed?place=harbour');
   const poll = `<!doctype html><style>body{margin:0;font:15px/1.4 -apple-system,system-ui,sans-serif;color:#2b2118;background:#fffaf1}.p{padding:18px 20px}h3{margin:0 0 12px;font-size:17px}label{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid #ecdcc4;border-radius:10px;margin-bottom:8px;cursor:pointer;background:#fff}label:has(input:checked){border-color:#c2410c;background:#fff4ea}input{accent-color:#c2410c}button{margin-top:6px;border:0;background:#c2410c;color:#fff;font:600 14px -apple-system,system-ui;padding:9px 18px;border-radius:9px}small{color:#8a7a68;margin-left:10px}</style><div class="p"><h3>Which route should we take on Thursday?</h3><label><input type="radio" name="r" checked> The cliff path to the lighthouse</label><label><input type="radio" name="r"> Through the woods to the bay</label><label><input type="radio" name="r"> Along the river to the old mill</label><button>Vote</button><small>214 votes · closes Wednesday</small></div>`;
   const body = `
@@ -37,7 +37,7 @@ function post({ link }) {
 }
 
 function weather() {
-  const hours = [['Now', 'sun', 14], ['10', 'sun', 15], ['11', 'sun', 16], ['12', 'cloud', 16], ['13', 'cloud', 17], ['14', 'rain', 15], ['15', 'cloud', 14]];
+  const hours = [['Now', 'sun', 14], ['10', 'sun', 15], ['11', 'sun', 16], ['12', 'cloud', 16], ['13', 'cloud', 17], ['14', 'rain', 15], ['15', 'cloud', 14]] as const;
   const glyph = { sun: '☀️', cloud: '⛅', rain: '🌦️' };
   return doc({
     title: 'Weather',
@@ -80,7 +80,7 @@ h2 { font-size: 26px; color: var(--ink); margin: 40px 0 6px; }
 
 const PLACES = [['Sennen Lighthouse', 'Lighthouse · 2.1 km', '#e5484d'], ['Harbour steps', 'Meeting point · 0.2 km', '#3e63dd'], ['Lifeboat station café', 'Café · 1.4 km', '#f5a524'], ['The Anchor', 'Pub · 3.0 km', '#12a594']];
 
-function mapPage({ query }, embedded) {
+function mapPage({ query }: RouteContext, embedded: boolean) {
   const q = query.get('q') ?? '';
   const results = PLACES.filter(([n]) => !q || n.toLowerCase().includes(q.toLowerCase()));
   const body = `
@@ -135,7 +135,7 @@ export const maps = {
     ['GET', '/', (ctx) => mapPage(ctx, false)],
     ['GET', '/embed', (ctx) => mapPage(ctx, true)],
   ],
-};
+} satisfies Site;
 
 export default {
   host: 'embed.test',
@@ -150,4 +150,4 @@ export default {
     ['GET', '/widget/weather', () => weather()],
     ['GET', '/widget/comments', () => comments()],
   ],
-};
+} satisfies Site;

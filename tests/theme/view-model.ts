@@ -7,6 +7,32 @@
 // view model from it with ui/view-model.ts, passing the last model so that
 // what didn't change is shared. Runs in Node and in pages.
 import { buildViewModel } from '../../extension/ui/view-model.ts';
+import type { UiState, ViewModel, ViewModelInput } from '../../extension/ui/view-model.ts';
+import type { CloudTabs } from '../../extension/shared/cloud-tabs.ts';
+import type { Across } from '../../extension/shared/across.ts';
+import type { Owner } from '../../extension/shared/owner.ts';
+import type { ArchiveEntry, Favicon, Folder, Pin, Settings, Space, TabRecord } from '../../types/margin';
+
+/**
+ * A tab's record as these fixtures have it: with `audible` and `loading` too, which the view model reads
+ * (ui/view-model.ts tabRow, isLoading), though state/model.ts tabRecord doesn't store either.
+ */
+export type MockTab = TabRecord & { audible?: boolean, loading?: boolean };
+
+/**
+ * Margin's stored state as a page reads it (shared/stored.ts fromStorage), as these fixtures have it: the settings
+ * only the ones they set (the view model reads each with its default), and iCloud Tabs and the other profiles
+ * as the theme harness adds them.
+ */
+export type MockStored = {
+  spaces: Space[], activeSpaceByWindow: Record<number, string>, tabSpace: Record<number, string>,
+  tabs: Record<number, MockTab>, pins: Pin[], folders: Folder[], archive: ArchiveEntry[],
+  settings: Partial<Settings>, favicons: Record<string, Favicon>,
+  openTabsBy: { origin: string, since: number, synced: boolean } | null,
+  faviconsMark?: string, owner?: Owner | null,
+  cloudTabs?: CloudTabs | null, across?: Across | null,
+};
+type Rgb = [number, number, number];
 
 // --- Tiny PNG icons, as data: URLs (Margin stores icons this way). --------
 
@@ -19,13 +45,13 @@ const CRC = (() => {
   }
   return t;
 })();
-const crc32 = (bytes) => { let c = 0xffffffff; for (const b of bytes) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
-const adler32 = (bytes) => { let a = 1; let b = 0; for (const x of bytes) { a = (a + x) % 65521; b = (b + a) % 65521; } return ((b << 16) | a) >>> 0; };
-const u32 = (v) => [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255];
-const ascii = (s) => [...s].map((c) => c.charCodeAt(0));
-const chunk = (type, data) => { const body = [...ascii(type), ...data]; return [...u32(data.length), ...body, ...u32(crc32(body))]; };
+const crc32 = (bytes: number[]) => { let c = 0xffffffff; for (const b of bytes) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+const adler32 = (bytes: number[]) => { let a = 1; let b = 0; for (const x of bytes) { a = (a + x) % 65521; b = (b + a) % 65521; } return ((b << 16) | a) >>> 0; };
+const u32 = (v: number) => [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255];
+const ascii = (s: string) => [...s].map((c) => c.charCodeAt(0));
+const chunk = (type: string, data: number[]) => { const body = [...ascii(type), ...data]; return [...u32(data.length), ...body, ...u32(crc32(body))]; };
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-function base64(bytes) {
+function base64(bytes: number[]) {
   let out = '';
   for (let i = 0; i < bytes.length; i += 3) {
     const [a, b = 0, c = 0] = [bytes[i], bytes[i + 1], bytes[i + 2]];
@@ -35,9 +61,9 @@ function base64(bytes) {
   return out;
 }
 // A 16×16 icon: a colored square with a lighter corner.
-export function pngIcon([r, g, b]) {
+export function pngIcon([r, g, b]: Rgb) {
   const w = 16;
-  const raw = [];
+  const raw: number[] = [];
   for (let y = 0; y < w; y++) {
     raw.push(0);
     for (let x = 0; x < w; x++) {
@@ -53,7 +79,8 @@ export function pngIcon([r, g, b]) {
 
 // --- The sites --------------------------------------------------------------
 
-export const SITES = [
+// [title, host, path, icon color]
+export const SITES: [title: string, host: string, path: string, rgb: Rgb][] = [
   ['The quiet return of the analog camera | The Lantern', 'thelantern.example', '/culture/analog-return', [179, 38, 30]],
   ['Sourdough Hydration Chart: Stiff to Open Crumb – Bread Notes', 'breadnotes.example', '/hydration-chart', [138, 90, 25]],
   ['Slow software — Margins', 'margins.example', '/essays/slow-software', [31, 78, 121]],
@@ -76,7 +103,7 @@ export const NO_ICON = new Set(['skyroute.example', 'pinwall.example']);
 
 const ICONS = Object.fromEntries(SITES.filter((s) => !NO_ICON.has(s[1])).map((s) => [`https://${s[1]}`, { data: pngIcon(s[3]), href: `https://${s[1]}/favicon.ico`, at: 1 }]));
 
-const SPACES = [
+const SPACES: (Space & { folders: [name: string, count: number][], loose: number, today: number })[] = [
   { id: 'personal', name: 'Personal', emoji: '🙂', color: '#ffd23f', folders: [['Reading', 20], ['Lisbon', 10]], loose: 0, today: 170 },
   { id: 'work', name: 'Work', emoji: '💼', color: '#7fb3ff', folders: [['Q4', 3], ['Team', 2]], loose: 1, today: 3 },
   { id: 'studio', name: 'Studio Space', emoji: '🎨', color: '#ff8fd8', folders: [['Campaign', 3], ['Assets', 2]], loose: 0, today: 3 },
@@ -89,16 +116,16 @@ export const WINDOW = 1;
  * are tabs too), tab ids from 1000, the first pin of Personal's first folder
  * the active tab.
  */
-export function bigState() {
+export function bigState(): MockStored & { nextId: number } {
   let n = 0;
   let id = 1000;
-  const tabs = {};
-  const tabSpace = {};
-  const pins = [];
-  const folders = [];
-  const makeTab = (spaceId, url, title) => {
+  const tabs: Record<number, MockTab> = {};
+  const tabSpace: Record<number, string> = {};
+  const pins: Pin[] = [];
+  const folders: Folder[] = [];
+  const makeTab = (spaceId: string, url: string, title: string) => {
     const k = n++;
-    const t = { id: id++, windowId: WINDOW, index: k, title, url, favIconUrl: '', active: false, lastActive: k };
+    const t: MockTab = { id: id++, windowId: WINDOW, index: k, title, url, favIconUrl: '', active: false, lastActive: k };
     if (k % 11 === 4) t.sleeping = { at: 1, how: 'page' };
     if (k % 23 === 5) t.audible = true;
     tabs[t.id] = t;
@@ -106,7 +133,7 @@ export function bigState() {
     return t;
   };
   const site = () => SITES[n % SITES.length];
-  const page = (spaceId, extra = '') => {
+  const page = (spaceId: string, extra = '') => {
     const [title, host, path] = site();
     const round = Math.floor(n / SITES.length);
     return { url: `https://${host}${path}${round || extra ? `?n=${n}${extra}` : ''}`, title: round ? `${title} (${round + 1})` : title };
@@ -150,31 +177,38 @@ export function bigState() {
   };
 }
 
-const freeze = (o) => Object.freeze(o);
+const freeze = <T,>(o: T) => Object.freeze(o);
+
+type Palette = NonNullable<UiState['palette']>;
 
 export class MockState {
+  declare nextId: number;
+  declare state: MockStored;
+  declare ui: UiState & { windowId: number, tabId: number | null, palette: Readonly<Palette> };
+  /** Built in the constructor; each build is given the last one (none the first time). */
+  declare vm: ViewModel;
   constructor() {
     const { nextId, ...state } = bigState();
     this.nextId = nextId;
     this.state = state;
     this.ui = { windowId: WINDOW, tabId: null, mode: 'fullscreen', sidebar: 'open', palette: freeze({ open: false, query: '', selected: 0, newTab: false }) };
-    this.vm = null;
     this.build();
   }
 
   get space() { return this.vm.space; }
 
   build() {
-    this.vm = buildViewModel({ state: this.state, ui: this.ui, platform: { browser: 'safari', os: 'mac' }, settings: {} }, this.vm);
+    // (The fixture's settings are only some of Margin's, MockStored: the view model reads each with its default.)
+    this.vm = buildViewModel({ state: this.state as ViewModelInput['state'], ui: this.ui, platform: { browser: 'safari', os: 'mac' }, settings: {} }, this.vm);
     return this.vm;
   }
 
-  tabs(fn: (tabs: any) => any) { this.state = { ...this.state, tabs: fn({ ...this.state.tabs }) }; }
+  tabs(fn: (tabs: Record<number, MockTab>) => Record<number, MockTab>) { this.state = { ...this.state, tabs: fn({ ...this.state.tabs }) }; }
 
   // --- The updates the benchmark and tests make. Each returns the new vm.
 
-  retitle(id, title) { this.tabs((tabs) => ({ ...tabs, [id]: { ...tabs[id], title } })); return this.build(); }
-  activate(id) {
+  retitle(id: number, title: string) { this.tabs((tabs) => ({ ...tabs, [id]: { ...tabs[id], title } })); return this.build(); }
+  activate(id: number) {
     this.tabs((tabs) => {
       for (const t of Object.values(tabs)) if (t.active && t.id !== id) tabs[t.id] = { ...t, active: false };
       tabs[id] = { ...tabs[id], active: true };
@@ -183,7 +217,7 @@ export class MockState {
     return this.build();
   }
   // New tabs at the end of the window: the top of the list (newest first).
-  addTabs(count) {
+  addTabs(count: number) {
     const space = this.space.id;
     const top = Math.max(...Object.values(this.state.tabs).map((t) => t.index)) + 1;
     const tabSpace = { ...this.state.tabSpace };
@@ -199,15 +233,15 @@ export class MockState {
     this.state = { ...this.state, tabSpace };
     return this.build();
   }
-  removeTabs(count) {
-    const gone = this.space.today.slice(0, count).map((t) => t.id);
+  removeTabs(count: number) {
+    const gone = this.space.today.slice(0, count).map((t) => t.id as number); // (open tabs: the browser's ids, numbers)
     this.tabs((tabs) => { for (const id of gone) delete tabs[id]; return tabs; });
     return this.build();
   }
   // A tab moved in the list (as the sidebar shows it: newest first): the
   // window's order changes, nothing else.
-  moveTab(from, to) {
-    const ids = this.space.today.map((t) => t.id);
+  moveTab(from: number, to: number) {
+    const ids = this.space.today.map((t) => t.id as number); // (open tabs: the browser's ids, numbers)
     const slots = ids.map((id) => this.state.tabs[id].index).sort((a, b) => b - a);
     const [moved] = ids.splice(from, 1);
     ids.splice(to, 0, moved);
@@ -215,20 +249,20 @@ export class MockState {
     return this.build();
   }
   clearToday() {
-    const gone = this.space.today.map((t) => t.id);
+    const gone = this.space.today.map((t) => t.id as number); // (open tabs: the browser's ids, numbers)
     this.tabs((tabs) => { for (const id of gone) delete tabs[id]; return tabs; });
     return this.build();
   }
-  toggleFolder(id) {
+  toggleFolder(id: string) {
     this.state = { ...this.state, folders: this.state.folders.map((f) => (f.id === id ? { ...f, open: !f.open } : f)) };
     return this.build();
   }
-  switchSpace(id) {
+  switchSpace(id: string) {
     this.state = { ...this.state, activeSpaceByWindow: { ...this.state.activeSpaceByWindow, [WINDOW]: id } };
     return this.build();
   }
-  setSidebar(sidebar) { this.ui = { ...this.ui, sidebar }; return this.build(); }
-  setMode(mode) { this.ui = { ...this.ui, mode }; return this.build(); }
+  setSidebar(sidebar: UiState['sidebar']) { this.ui = { ...this.ui, sidebar }; return this.build(); }
+  setMode(mode: UiState['mode']) { this.ui = { ...this.ui, mode }; return this.build(); }
   openPalette(query = '') { this.ui = { ...this.ui, palette: freeze({ open: true, query, selected: 0, newTab: false }) }; return this.build(); }
   closePalette() { this.ui = { ...this.ui, palette: freeze({ open: false, query: '', selected: 0, newTab: false }) }; return this.build(); }
 }

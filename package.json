@@ -22,7 +22,7 @@
   },
   "scripts": {
     "pretest": "node scripts/build.ts",
-    "test": "tsc -p . && node --test tests/*.test.ts tests/security/*.test.ts 'extension/engines/**/tests/*.test.ts'",
+    "test": "tsc -p . && tsc -p tsconfig.tests.json && node --test tests/*.test.ts tests/security/*.test.ts 'extension/engines/**/tests/*.test.ts'",
     "test:security": "node --test tests/theme-sanitize.test.ts tests/theme-guard.test.ts tests/security/*.test.ts && node --test --test-concurrency=1 tests/theme/browser.test.ts tests/theme/security.test.ts",
     "test:e2e": "node scripts/build.ts && node --test --test-concurrency=2 tests/e2e/*.test.ts",
     "test:quick": "node scripts/quick-test.mts",
@@ -36,13 +36,14 @@
     "icons": "node scripts/make-icons.ts",
     "build": "node scripts/build.ts",
     "theme:pack": "node scripts/pack-theme.ts",
-    "typecheck": "tsc -p .",
+    "typecheck": "tsc -p . && tsc -p tsconfig.tests.json",
     "test:webkit": "node scripts/build.ts && tools/webkit-host/run.sh all",
     "safari": "sh scripts/safari.sh",
     "log:app": "scripts/margin-log.sh",
     "fit-check": "node tools/fit-check/nightly.mts"
   },
   "devDependencies": {
+    "@types/node": "26.6.6",
     "esbuild": "0.28.2",
     "playwright": "1.65.0",
     "typescript": "7.0.2"

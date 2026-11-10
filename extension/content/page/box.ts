@@ -120,7 +120,7 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
   // ---- moving it ---------------------------------------------------------------
   // The page's own layout follows when the box rests, and once it's in sight:
   // a hidden tab catches up as it's shown.
-  let restTimer = 0;
+  let restTimer: Timer | 0 = 0;
   let restFrom: { dw: number, dh: number } | null = null;
   function rest() {
     clearTimeout(restTimer);

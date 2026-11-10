@@ -5,11 +5,14 @@
 // its key, and records what the copy sends. It speaks only what the app
 // does: text frames, ping, close.
 import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
+import type { Duplex } from 'node:stream';
+import type { Said } from '../extension/background/link.ts';
 
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
-function frame(text, opcode = 1) {
+function frame(text: string, opcode = 1) {
   const body = Buffer.from(text, 'utf8');
   const head = body.length < 126 ? Buffer.from([0x80 | opcode, body.length])
     : body.length < 65536 ? Buffer.from([0x80 | opcode, 126, body.length >> 8, body.length & 255])
@@ -21,10 +24,10 @@ function frame(text, opcode = 1) {
  * `onMessage`, `onOpen` and `onClose` (optional): each message as it comes,
  * and each socket opening and closing (the e2e suite's shell follows them).
  */
-export async function startFakeApp({ token = randomUUID(), key = randomUUID(), welcome = (k) => ({ k: 'welcome', v: 2, key: k }), onMessage = () => {}, onOpen = () => {}, onClose = () => {} }: { token?: string, key?: string, welcome?: (key: string) => any, onMessage?: (message: any) => void, onOpen?: () => void, onClose?: () => void } = {}) {
-  const received: any[] = [];
-  const sockets = new Set();
-  const waiters = new Set();
+export async function startFakeApp({ token = randomUUID(), key = randomUUID(), welcome = (k) => ({ k: 'welcome', v: 2, key: k }), onMessage = () => {}, onOpen = () => {}, onClose = () => {} }: { token?: string, key?: string, welcome?: (key: string) => Said, onMessage?: (message: Said) => void, onOpen?: () => void, onClose?: () => void } = {}) {
+  const received: Said[] = [];
+  const sockets: Set<Duplex> = new Set();
+  const waiters: Set<() => void> = new Set();
   let refused = 0;
   const server = createServer((_, res) => { res.writeHead(404); res.end(); });
   server.on('upgrade', (req, socket) => {
@@ -42,7 +45,7 @@ export async function startFakeApp({ token = randomUUID(), key = randomUUID(), w
     socket.on('error', () => {});
     socket.write(frame(JSON.stringify(welcome(key))));
     let buf = Buffer.alloc(0);
-    let pieces = null; // a text message sent in fragments, until its last (FIN)
+    let pieces: Buffer[] | null = null; // a text message sent in fragments, until its last (FIN)
     socket.on('data', (chunk) => {
       buf = Buffer.concat([buf, chunk]);
       for (;;) {
@@ -65,30 +68,30 @@ export async function startFakeApp({ token = randomUUID(), key = randomUUID(), w
         if (opcode === 1 && !fin) { pieces = [body]; continue; }
         if (opcode === 0 && pieces) { pieces.push(body); if (!fin) continue; }
         else if (opcode !== 1) continue;
-        const text = (opcode === 0 ? Buffer.concat(pieces) : body).toString('utf8');
+        const text = (opcode === 0 ? Buffer.concat(pieces!) : body).toString('utf8');
         if (opcode === 0) pieces = null;
-        const message = JSON.parse(text);
+        const message: Said = JSON.parse(text);
         received.push(message);
         onMessage(message);
         for (const w of [...waiters]) w();
       }
     });
   });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const port = (server.address() as any).port;
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as AddressInfo).port; // (a TCP server's address is always one)
   return {
     port, token, key, received,
     get open() { return sockets.size; },
     get refused() { return refused; },
     /** What the app answers into the extension for `nonce` (ExtensionLink.swift answer). */
-    linkInfo: (nonce) => ({ name: 'link', userInfo: { e: JSON.stringify({ v: 2, nonce, port, token, key, app: { version: '2.0' }, at: Date.now() }) } }),
-    send(message) { for (const s of sockets) s.write(frame(JSON.stringify(message))); },
+    linkInfo: (nonce: string) => ({ name: 'link', userInfo: { e: JSON.stringify({ v: 2, nonce, port, token, key, app: { version: '2.0' }, at: Date.now() }) } }),
+    send(message: Said) { for (const s of sockets) s.write(frame(JSON.stringify(message))); },
     /** The first message of kind `k` (and `test`), after `from` received, waited for up to `ms` (5 s: a busy CI
      * runner can take more than 2; it's back at once when the message comes). */
-    async next(k, { from = 0, test = () => true, ms = 5000 } = {}) {
+    async next(k: string, { from = 0, test = (_m: Said) => true, ms = 5000 } = {}) {
       const find = () => received.slice(from).find((m) => m.k === k && test(m));
       const end = Date.now() + ms;
-      while (!find() && Date.now() < end) await new Promise((resolve) => { waiters.add(resolve); setTimeout(() => { waiters.delete(resolve); resolve(undefined); }, 20); });
+      while (!find() && Date.now() < end) await new Promise<void>((resolve) => { waiters.add(resolve); setTimeout(() => { waiters.delete(resolve); resolve(undefined); }, 20); });
       return find() ?? null;
     },
     /** Every socket dropped, as the app crashing would (no close frame). */
@@ -96,7 +99,7 @@ export async function startFakeApp({ token = randomUUID(), key = randomUUID(), w
     async close() {
       for (const s of sockets) s.destroy();
       sockets.clear();
-      await new Promise((resolve) => server.close(resolve));
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     },
   };
 }

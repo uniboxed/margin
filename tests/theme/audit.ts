@@ -1,5 +1,9 @@
 // What must never be in a sanitized template, checked on the sanitizer's tree
 // (Node) and on the DOM the renderer made (browsers).
+import type { CleanNode } from '../../extension/ui/sanitize.ts';
+
+// The sanitizer's tree (ui/sanitize.ts sanitizeTemplate's `tree`).
+type Tree = { type: 'root', children: CleanNode[] };
 
 const FORBIDDEN = new Set([
   'script', 'iframe', 'frame', 'frameset', 'object', 'embed', 'form', 'link', 'meta', 'base', 'style', 'foreignobject',
@@ -10,7 +14,7 @@ const FORBIDDEN_ATTRS = new Set(['srcdoc', 'formaction', 'action', 'srcset', 'pi
 const URL_ATTRS = new Set(['href', 'src', 'style', 'fill', 'stroke', 'filter', 'mask', 'clip-path', 'poster', 'data', 'background']);
 const BAD_VALUE = /evil\.test|javascript:|vbscript:|expression\(|data:text\//i;
 
-function checkAttr(element, name, value, out) {
+function checkAttr(element: string, name: string, value: string, out: string[]) {
   const n = name.toLowerCase();
   if (n.startsWith('on')) out.push(`<${element}> has ${name}`);
   if (FORBIDDEN_ATTRS.has(n)) out.push(`<${element}> has ${name}`);
@@ -21,9 +25,9 @@ function checkAttr(element, name, value, out) {
   if (n === 'type' && element === 'button' && value !== 'button') out.push(`<button type=${value}>`);
 }
 
-export function auditTree(tree) {
-  const out = [];
-  const walk = (node) => {
+export function auditTree(tree: Tree | null) {
+  const out: string[] = [];
+  const walk = (node: Tree | CleanNode) => {
     if (node.type === 'el') {
       const name = node.name.toLowerCase();
       if (FORBIDDEN.has(name) || name.includes(':')) out.push(`element <${node.name}>`);
@@ -33,16 +37,16 @@ export function auditTree(tree) {
       if (name === 'select' && (!node.attrs.some(([a, v]) => a === 'm-input' && v === 'setting-choice') || node.children?.length)) out.push('<select> not Margin\'s, or with content');
       for (const [a, v] of node.attrs) checkAttr(name, a, v, out);
     }
-    for (const c of node.children ?? []) walk(c);
+    for (const c of 'children' in node ? node.children : []) walk(c);
   };
   if (tree) walk(tree);
   return out;
 }
 
 // In a page: every element under `root` (a shadow root or an element).
-export function auditDom(root) {
-  const out = [];
-  const all = root.querySelectorAll('*');
+export function auditDom(root: ParentNode) {
+  const out: string[] = [];
+  const all = root.querySelectorAll<HTMLElement | SVGElement>('*'); // (a theme's elements: HTML and SVG, each with its style)
   for (const el of all) {
     const name = el.localName.toLowerCase();
     if (FORBIDDEN.has(name) || name.includes(':')) out.push(`element <${el.localName}>`);

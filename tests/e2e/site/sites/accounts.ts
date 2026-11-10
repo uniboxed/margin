@@ -2,7 +2,7 @@
 // me, errors in the page and from the server; the form posts to /signin,
 // which answers a wrong password with the form again (a page from a POST)
 // and anything else with a 302 to a signed-in page. SVG icon.
-import { art, avatar, doc, esc, icon } from './common.ts';
+import { art, avatar, doc, esc, icon, type Site } from './common.ts';
 
 const ICON = '<link rel="icon" href="/favicon.svg" type="image/svg+xml">';
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#0e7490"/></linearGradient></defs><rect width="64" height="64" rx="18" fill="url(#g)"/><circle cx="26" cy="32" r="10" fill="none" stroke="#fff" stroke-width="6"/><path d="M36 32h18M48 32v8" stroke="#fff" stroke-width="6" stroke-linecap="round"/></svg>`;
@@ -42,7 +42,7 @@ function signin({ email = '', error = '' } = {}) {
   return doc({ title: 'Sign in · Fieldpass', icon: ICON, themeColor: '#0e7490', body });
 }
 
-function welcome(name) {
+function welcome(name: string) {
   const display = name.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'there';
   const body = `
 <header class="bar"><a class="logo" href="/welcome">${LOGO}<span>Fieldpass</span></a><nav><a class="on">Overview</a><a>Security</a><a>Devices</a><a>Billing</a></nav><img class="me" src="${avatar(display)}" alt="" width="34" height="34"></header>
@@ -170,4 +170,4 @@ export default {
     }],
     ['GET', '/signout', () => ({ status: 302, location: '/signin', headers: { 'set-cookie': 'fieldpass=; Path=/; Max-Age=0' } })],
   ],
-};
+} satisfies Site;

@@ -3,7 +3,7 @@
 // Reports link is a plain link the Navigation API intercepts, with a slow
 // route (700 ms, a top loading bar) before the view is drawn
 // (.report-ready). Each view sets its title. SVG icon.
-import { avatar, doc } from './common.ts';
+import { avatar, doc, type Site } from './common.ts';
 
 const ICON = '<link rel="icon" href="/favicon.svg" type="image/svg+xml">';
 const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#111827"/><circle cx="32" cy="32" r="9" fill="#a78bfa"/><ellipse cx="32" cy="32" rx="22" ry="9" fill="none" stroke="#e5e7eb" stroke-width="3.5" transform="rotate(-30 32 32)"/><circle cx="50" cy="22" r="4" fill="#34d399"/></svg>`;
@@ -202,4 +202,4 @@ export default {
   },
   // The app's paths all get the shell; its router draws the view.
   routes: [['GET', /^\/(inbox|projects(\/[\w-]+)?|settings|reports)?$/, () => shell()]],
-};
+} satisfies Site;

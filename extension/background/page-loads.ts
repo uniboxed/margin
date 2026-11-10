@@ -29,8 +29,8 @@ const tabs: Map<number, { windowId: number | null, signs: Map<LoadSign, number> 
 /** window → what it was last told */
 const told: Map<number | null, string> = new Map();
 const dirty = new Set<any>();
-let pushTimer: number | null = null;
-let expiry: number | null = null;
+let pushTimer: Timer | null = null;
+let expiry: Timer | null = null;
 
 const loadingIn = (windowId: number | null, now = Date.now()) => [...tabs].filter(([, t]) => t.windowId === windowId && [...t.signs.values()].some((until) => until > now)).map(([id]) => id).sort((a, b) => a - b);
 

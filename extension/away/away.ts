@@ -9,7 +9,7 @@ import { probeFrames, watchVisible } from '../shared/frame-probe.ts';
 const api = globalThis.browser ?? globalThis.chrome;
 const SEND_TIMEOUT_MS = 8000;
 async function send(type: string, payload: Record<string, unknown> = {}) {
-  let timer: number | undefined;
+  let timer: Timer | undefined;
   const res = await Promise.race([
     Promise.resolve(api.runtime.sendMessage({ type, ...payload })).catch(() => null),
     new Promise<any>((resolve) => { timer = setTimeout(() => resolve(null), SEND_TIMEOUT_MS); }),

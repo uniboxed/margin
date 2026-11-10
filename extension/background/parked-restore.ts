@@ -20,7 +20,7 @@ export function createParkedRestore({ api, state, liveWindows, onFound, now = ()
   let loaded = false;
   const startedAt = now();
   const found: Set<number> = new Set();
-  let timer: number | null = null;
+  let timer: Timer | null = null;
 
   const save = () => api.storage?.local?.set?.({ [KEY]: records })?.catch?.(() => {});
   const load = Promise.resolve(api.storage?.local?.get?.(KEY)).then((got) => {

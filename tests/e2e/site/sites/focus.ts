@@ -3,7 +3,7 @@
 // the time left as a ring. ?paused starts it stopped; ?from=<seconds> sets
 // the time left. Browsers slow the clock in hidden tabs, so the title moves
 // less often there.
-import { doc, icon } from './common.ts';
+import { doc, icon, type Site } from './common.ts';
 
 function timer() {
   const body = `
@@ -19,7 +19,7 @@ function timer() {
     <section class="tasks">
       <h2>Today</h2>
       <div class="stats"><div><b>2</b><span>sessions</span></div><div><b>50m</b><span>focused</span></div><div><b>4</b><span>day streak</span></div></div>
-      <ul>${[['Write the river piece intro', true, 2], ['Reply to Nora about Thursday', true, 1], ['Edit the salt pans photos', false, 3], ['Plan next week', false, 1]].map(([t, d, n], i) => `<li class="${d ? 'done' : ''}${i === 2 ? ' cur' : ''}"><label><input type="checkbox" ${d ? 'checked' : ''}><span>${t}</span></label><em>${'●'.repeat(n)}</em></li>`).join('')}</ul>
+      <ul>${([['Write the river piece intro', true, 2], ['Reply to Nora about Thursday', true, 1], ['Edit the salt pans photos', false, 3], ['Plan next week', false, 1]] as const).map(([t, d, n], i) => `<li class="${d ? 'done' : ''}${i === 2 ? ' cur' : ''}"><label><input type="checkbox" ${d ? 'checked' : ''}><span>${t}</span></label><em>${'●'.repeat(n)}</em></li>`).join('')}</ul>
       <form class="add" onsubmit="event.preventDefault()">${icon('plus', { size: 18 })}<input placeholder="Add a task" aria-label="Add a task"></form>
     </section>
   </main>
@@ -122,4 +122,4 @@ export default {
     '/assets/focus.js': { type: 'text/javascript; charset=utf-8', body: JS },
   },
   routes: [['GET', '/', () => timer()]],
-};
+} satisfies Site;

@@ -13,7 +13,7 @@ export function seedSet(input: any, { now = Date.now() } = {}) {
   const set = dataSetFrom(state, { now });
   // Only what the seed names: a collection it leaves out stays as the copy has it.
   for (const c of Object.keys(set.items)) {
-    const named = { spaces: 'spaces', pins: 'pins', folders: 'folders', archive: 'archive', settings: 'settings', themeSettings: 'settings', siteIcons: 'favicons', tabs: 'tabs' }[c];
+    const named = ({ spaces: 'spaces', pins: 'pins', folders: 'folders', archive: 'archive', settings: 'settings', themeSettings: 'settings', siteIcons: 'favicons', tabs: 'tabs' } as Record<string, string>)[c];
     if (!named || !(named in (input ?? {}))) delete set.items[c];
   }
   return set;
@@ -27,10 +27,10 @@ export const SPACES = [
 ];
 
 // iCloud Tabs as the app sends them (tests/fixtures/cloud-tabs.ts: made-up
-// devices), with this test site's pages for their tabs. @param {(host: string, path?: string) => string} url
-export function cloudTabsOf(url, now = Date.now()) {
+// devices), with this test site's pages for their tabs.
+export function cloudTabsOf(url: (host: string, path?: string) => string, now = Date.now()) {
   const cloud = cloudFixture(now);
-  const pages = {
+  const pages: Record<string, [title: string, url: string]> = {
     'T-PHONE-1': ['Harbor — Quiet places by the sea', url('harbor.test', '/')],
     'T-PHONE-2': ['The Quiet City | The Dispatch', url('dispatch.test', '/2026/11/the-quiet-city')],
     'T-PHONE-3': ['Canvas Tote — Common Goods', url('shop.test', '/p/canvas-tote')],

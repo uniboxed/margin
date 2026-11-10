@@ -105,7 +105,7 @@ const SYNC_HINTED_MS = 1000;
 const untilSynced = (deadline = Infinity, hinted = false) => {
   if (isSynced()) return null;
   const ms = Math.max(0, Math.min(SYNC_WAIT_MS, deadline - SYNC_LEAVES_MS - Date.now(), deadline !== Infinity && hinted ? SYNC_HINTED_MS : Infinity));
-  let timer: number | undefined;
+  let timer: Timer | undefined;
   return Promise.race([firstSync, new Promise<any>((resolve) => { timer = setTimeout(resolve, ms); })]).finally(() => clearTimeout(timer));
 };
 // A background Safari stops and starts again (idle 30 s, then the next event)
@@ -353,7 +353,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // show, so the page hears it was shown rather than that it didn't happen.
   const latest = deadline !== Infinity && Number.isFinite(message.waitsUntil) ? Math.max(deadline, message.waitsUntil) : deadline;
   let answered = false;
-  let guard: number | null = null;
+  let guard: Timer | null = null;
   // A switch asked for: work that can wait (background/tabs.ts
   // injectIntoOpenTabs) gives way until it's answered (by the guard too).
   const over = TIMED.has(message.type) ? switchAsked() : null;

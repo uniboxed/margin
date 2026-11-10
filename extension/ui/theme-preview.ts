@@ -34,7 +34,7 @@ button.use{background:#0a84ff}button:focus-visible{outline:2px solid #fff;outlin
 export function createPreviewBar({ doc = globalThis.document, onUse, onCancel, ms = PREVIEW_MS, setTimer = setTimeout, clearTimer = clearTimeout }: { doc?: Document, onUse: () => void, onCancel: (why: 'button' | 'escape' | 'timeout') => void, ms?: number, setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout }) {
   let host: HTMLElement | null = null;
   let shadow: ShadowRoot | null = null;
-  let timer: number | null = null;
+  let timer: Timer | null = null;
   const keydown = (e: KeyboardEvent) => {
     if (e.key !== 'Escape' || !host) return;
     e.preventDefault();

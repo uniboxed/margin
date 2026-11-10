@@ -23,13 +23,14 @@
 // `box-cdn.test` serves the same files as another origin's (a CDN's, no CORS).
 //
 // Nothing is logged unless MARGIN_E2E_VERBOSE is set.
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { extname, join, normalize } from 'node:path';
 import { artFor } from './art.ts';
 import { media } from './make-media.mts';
-import { FIRST_FRAMES, notFound } from './sites/common.ts';
+import { FIRST_FRAMES, notFound, type Link, type Out, type Site } from './sites/common.ts';
 import { SITES } from './sites/index.ts';
 import { searchResults as resultsPage } from './sites/search.ts';
 import { boxPage } from '../../box/serve.ts';
@@ -40,26 +41,26 @@ export { SITES };
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const FILES = join(HERE, 'files');
 const FONTS = fileURLToPath(new URL('../../../extension/themes/neubrutalism/fonts/', import.meta.url));
-const TYPES = { '.webm': 'video/webm', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json' };
+const TYPES: Record<string, string> = { '.webm': 'video/webm', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json' };
 
-let made; // the raster files, made once a process
-const art = new Map(); // drawn pictures, by address
+let made: ReturnType<typeof media>; // the raster files, made once a process (startSite, before any request)
+const art: Map<string, string | null> = new Map(); // drawn pictures, by address
 
 export async function startSite({ port = 0, verbose = !!process.env.MARGIN_E2E_VERBOSE } = {}) {
   made ??= media();
   const byHost = new Map(SITES.map((s) => [s.host, s]));
   let actualPort = port;
-  const url = (host, path = '/') => `http://${host}:${actualPort}${path}`;
+  const url: Link = (host, path = '/') => `http://${host}:${actualPort}${path}`;
 
   const server = createServer(async (req, res) => {
     const hostname = (req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-    const u = new URL(req.url, `http://${hostname || 'margin.test'}`);
+    const u = new URL(req.url!, `http://${hostname || 'margin.test'}`);
     const site = byHost.get(hostname) ?? (hostname === '127.0.0.1' || hostname === 'localhost' ? byHost.get('margin.test') : null);
     if (verbose) console.log(`site ${req.method} ${hostname}${u.pathname}`);
     try {
       if (hostname === 'box.test' || hostname === 'box-cdn.test') { // box-cdn.test: another origin for the same files
         const out = boxPage(u.pathname, u.searchParams, { other: url('box-cdn.test', '').replace(/\/$/, '') });
-        if (out?.parts?.length > 1) { // a page that arrives in parts (tests/box/serve.ts partsOf)
+        if (out?.parts && out.parts.length > 1) { // a page that arrives in parts (tests/box/serve.ts partsOf)
           res.writeHead(200, { 'content-type': out.type, 'cache-control': 'no-store' });
           for (const part of out.parts) {
             if (part.wait) await new Promise((r) => setTimeout(r, part.wait));
@@ -83,23 +84,23 @@ export async function startSite({ port = 0, verbose = !!process.env.MARGIN_E2E_V
       else res.end();
     }
   });
-  await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
-  actualPort = server.address().port;
+  await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+  actualPort = (server.address() as AddressInfo).port; // a TCP server's address
   server.keepAliveTimeout = 1000;
   return {
     port: actualPort,
     url,
     sites: SITES,
-    close: () => new Promise((resolve) => { server.closeAllConnections?.(); server.close(() => resolve()); }),
+    close: () => new Promise<void>((resolve) => { server.closeAllConnections?.(); server.close(() => resolve()); }),
   };
 }
 
 // The local results page for a search (no engine's name or look).
-export function searchResults(query, port) {
+export function searchResults(query: string | null, port: number) {
   return resultsPage(query, (host, path = '/') => `http://${host}:${port}${path}`);
 }
 
-async function route(site, req, res, u, url) {
+async function route(site: Site, req: IncomingMessage, res: ServerResponse, u: URL, url: Link) {
   const path = u.pathname;
   // Shared on every site: drawn pictures, made files, the committed files.
   const drawn = /^\/media\/art\/(\w+)\.svg$/.exec(path);
@@ -110,7 +111,7 @@ async function route(site, req, res, u, url) {
     return body ? { type: 'image/svg+xml', body, cache: true } : notFoundOut(site, path);
   }
   const key = `${site.dir ?? site.host.replace('.test', '')}${path}`;
-  if (made.has(key)) return ranged(req, made.get(key).type, made.get(key).body);
+  if (made.has(key)) return ranged(req, made.get(key)!.type, made.get(key)!.body);
   if (path.startsWith('/fonts/') && site.fonts) return file(join(FONTS, path.slice('/fonts/'.length)), site, path);
   if (path.startsWith('/files/')) return file(join(FILES, site.dir ?? site.host.replace('.test', ''), path.slice('/files/'.length)), site, path, req);
   if (site.assets?.[path]) return { ...site.assets[path], cache: false };
@@ -127,9 +128,9 @@ async function route(site, req, res, u, url) {
   return notFoundOut(site, path);
 }
 
-const notFoundOut = (site, path) => ({ status: 404, body: notFound(site, path) });
+const notFoundOut = (site: Site, path: string) => ({ status: 404, body: notFound(site, path) });
 
-function file(full, site, path, req) {
+function file(full: string, site: Site, path: string, req?: IncomingMessage) {
   const clean = normalize(full);
   if (!clean.startsWith(FILES) && !clean.startsWith(normalize(FONTS))) return notFoundOut(site, path);
   if (!existsSync(clean)) return notFoundOut(site, path);
@@ -137,7 +138,7 @@ function file(full, site, path, req) {
 }
 
 // Audio and video are asked for in ranges.
-function ranged(req, type, bytes) {
+function ranged(req: IncomingMessage | undefined, type: string, bytes: Buffer): Out {
   const range = req?.headers.range && /bytes=(\d*)-(\d*)/.exec(req.headers.range);
   if (range) {
     const start = range[1] ? Number(range[1]) : 0;
@@ -147,16 +148,16 @@ function ranged(req, type, bytes) {
   return { type, body: bytes, cache: true, headers: { 'accept-ranges': 'bytes' } };
 }
 
-function readBody(req) {
-  return new Promise((resolve) => {
+function readBody(req: IncomingMessage) {
+  return new Promise<string>((resolve) => {
     let data = '';
     req.setEncoding('utf8');
-    req.on('data', (c) => (data += c));
+    req.on('data', (c: string) => (data += c));
     req.on('end', () => resolve(data));
   });
 }
 
-async function send(res, out, u) {
+async function send(res: ServerResponse, out: Out, u?: URL) {
   if (typeof out === 'string') out = { body: out };
   if (out.delay) await new Promise((r) => setTimeout(r, out.delay));
   const type = out.type ?? 'text/html; charset=utf-8';

@@ -61,7 +61,7 @@ export function installSwipe(rt: Rt) {
     });
     s.ghosts[dir] = copies;
   }
-  let endTimer: number | null = null;
+  let endTimer: Timer | null = null;
 
   // A mouse wheel, not a trackpad (sidebar.js mouseWheel): WebKit and
   // Chromium report a wheel's notches as multiples of 120 in the old

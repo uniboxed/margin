@@ -1,0 +1,21 @@
+// The tests' shared fakes and harnesses, checked against the real types under the same `strict` (in npm test and
+// npm run typecheck), with what they import: the extension's files again, the e2e test site, scripts/build.ts.
+// With Node's types: they run in Node (the theme harness and the e2e helpers' page functions run in a page, and are
+// checked against the DOM's as well). The test files themselves aren't in it yet (GitHub issue #4).
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": [
+    "types/*.d.ts",
+    "tests/fake-app.ts",
+    "tests/fake-clock.ts",
+    "tests/ui/fixtures.ts",
+    "tests/fixtures/*.ts",
+    "tests/theme/harness.ts",
+    "tests/theme/package.ts",
+    "tests/e2e/harness/*.ts",
+    "tests/e2e/harness/*.mts"
+  ]
+}

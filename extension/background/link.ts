@@ -211,7 +211,7 @@ export async function themePieces(pkg: any, sha256: (bytes: Uint8Array) => Promi
 const webSha256 = async (bytes: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', (bytes as any)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 
 // A message as it came (JSON from Margin.app, or a page's): an object whose fields each use checks.
-type Said = Record<string, any>;
+export type Said = Record<string, any>;
 // Where Margin.app listens, as it said (its port), and the link's secret and key.
 type KeptLink = { port: number, token: string, key: string, pid?: number };
 
@@ -322,7 +322,7 @@ export function createLink({
   let busySince = 0;
   let askAgain = false;
   let askMs = 0;
-  let askTimer: number | null = null;
+  let askTimer: Timer | null = null;
   let lastHeard = 0;
   // When a late check (a pause) last probed the app: its quiet is counted from then at the earliest.
   let resumedAt = -Infinity;
@@ -332,10 +332,10 @@ export function createLink({
     const value = { what, why: String(why).slice(0, 120), at: Date.now() };
     lastWrite = lastWrite.then(() => session()?.set({ [LAST_KEY]: value })).catch(() => {});
   };
-  let timers: number[] = [];
-  let pingTimer: number | null = null;
+  let timers: Timer[] = [];
+  let pingTimer: Timer | null = null;
   let pending: Record<string, { newValue?: any }> | null = null;
-  let pendingTimer: number | null = null;
+  let pendingTimer: Timer | null = null;
   let sentIcons: Map<string, string> | null = null;
   let lastWindows = '';
   let lastKeys = '';
@@ -350,8 +350,8 @@ export function createLink({
   // What pages see (storage.local appLink).
   // (`why`, `offAt`, `offUntil`: while off, why; `lastLayouts`: the layouts of an older epoch, kept for the first paint.)
   let pageState: { state: string, epoch: any, at: number, layouts: Record<number, any>, drawn: Record<number, boolean>, lastLayouts?: Record<number, any>, why?: string, offAt?: number, offUntil?: number } = { state: 'off', epoch: null, at: 0, layouts: {}, drawn: {} };
-  let goneTimer: number | null = null;
-  let layoutTimer: number | null = null;
+  let goneTimer: Timer | null = null;
+  let layoutTimer: Timer | null = null;
   let stateWrite = Promise.resolve();
   let profile: string | null = null;
   // Whether `profile` is Safari's own id for this profile (`s-…`: from the handler's answer, now or

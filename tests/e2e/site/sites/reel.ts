@@ -2,11 +2,11 @@
 // (files/reel/clip.webm, made by make-video.mts) in a <video>, with the
 // channel, description, comments and an Up next list. Nothing plays until
 // asked: a click on the player, or play() from a test. PNG icon.
-import { art, avatar, doc, esc, icon } from './common.ts';
+import { art, avatar, doc, esc, icon, type ArtParams, type Site } from './common.ts';
 
 const ICON = '<link rel="icon" type="image/png" href="/icon-32.png">';
 
-const NEXT = [
+const NEXT: [title: string, channel: string, views: string, length: string, kind: string, art: ArtParams][] = [
   ['Harbour lights, one night in 4K', 'Harbour Films', '1.2M', '12:48', 'city', { seed: 9, p: 'night' }],
   ['How a lighthouse lens works', 'Signal & Noise', '842K', '9:12', 'coast', { seed: 8, p: 'evening' }],
   ['Ten minutes of fog over the hills', 'Slow TV', '3.4M', '10:00', 'landscape', { seed: 12, p: 'dusk' }],
@@ -162,4 +162,4 @@ export default {
     ['GET', '/', () => ({ status: 302, location: '/watch' })],
     ['GET', '/watch', () => watch()],
   ],
-};
+} satisfies Site;
