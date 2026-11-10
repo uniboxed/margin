@@ -10,6 +10,11 @@ browsing anywhere.
   through your browser's own sync if you use it.
 - **Your open tabs** (their addresses, titles and icons) are read so Margin can show them in its interface. They're
   kept on your device only, and Margin's logs never contain page addresses, titles or page content.
+- **Notes on sites' style sheets.** For a site whose style sheet files are named by their contents (most large
+  sites), Margin keeps a short note of which of their rules it adjusts to fit the page beside its interface, so the
+  next visit is faster: the site's address, the files' addresses and fingerprints of those rules, never the page's
+  content. Kept in the browser's extension storage, a day at most per entry, at most 1 MB in all, never sent
+  anywhere.
 - **The link between the extension and Margin.app** is a connection on your own computer (`127.0.0.1`) protected by
   a secret only the two of them know. Nothing on it goes over the network.
 
