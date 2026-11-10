@@ -460,6 +460,13 @@ Object.assign(T, {
     const r = el.getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   },
+  // What's under a point of the window (inside the runtime's root, past the host page), for a test's message: the
+  // element's tag and classes, and those of the nearest space chip, row or folder it's in.
+  rtAt(x, y) {
+    const el = (rt.target.elementFromPoint ? rt.target.elementFromPoint(x, y) : document.elementFromPoint(x, y)) ?? null;
+    const describe = (e) => (e ? `${e.localName}${e.classList?.length ? `.${[...e.classList].join('.')}` : ''}` : null);
+    return { at: describe(el), in: describe(el?.closest?.('.chip, .tab, .folder-head') ?? null), viewport: [innerWidth, innerHeight] };
+  },
   rtClasses(selector, nth = 0) { const el = rt.target.querySelectorAll(selector)[nth]; return el ? [...el.classList] : null; },
   rtMarked() { return ['m-dragging', 'm-drop-before', 'm-drop-after', 'm-drop-into', 'm-drop-end', 'm-drag-ghost'].map((c) => [c, rt.target.querySelectorAll(`.${c}`).length]).filter(([, n]) => n); },
   rtScrollTop(selector) { return rt.target.querySelector(selector)?.scrollTop ?? null; },

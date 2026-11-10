@@ -322,7 +322,8 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
         await page.mouse.move(row.x, row.y);
         await page.mouse.down();
         await page.mouse.move(chip.x, chip.y, { steps: 8 });
-        assert.ok((await ev(() => T.rtClasses('.chip', 1))).includes('m-drop-into'));
+        const over = await ev(({ x, y }) => T.rtAt(x, y), chip);
+        assert.ok((await ev(() => T.rtClasses('.chip', 1))).includes('m-drop-into'), `the chip's drop mark (chip ${JSON.stringify(chip)}, under the pointer ${JSON.stringify(over)}, its classes ${JSON.stringify(await ev(() => T.rtClasses('.chip', 1)))})`);
         await page.mouse.up();
         assert.deepEqual((await sent()).at(-1), ['moveTabToSpace', { tabId: ids[1], spaceId: 'work' }]);
 
@@ -360,10 +361,12 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
         await wait(() => T.rtSent().some(([type, p]) => type === 'setSidebarScroll' && p.top > 300));
         const saved = await lastSent('setSidebarScroll');
         assert.equal(saved[1].windowId, 1);
-        assert.equal(saved[1].top, await ev(() => T.rtScrollTop('.tabs')));
+        assert.equal(saved[1].top, await ev(() => T.rtScrollTop('.tabs')), `the saved scroll is the list's (saved ${JSON.stringify(saved)}, all ${JSON.stringify((await sent({ scroll: true })).filter(([t]) => t === 'setSidebarScroll'))})`);
         // A space switched to: from its top, saved as the window's.
+        const chip2 = await shown('.chip', 2);
+        const over = await ev(({ x, y }) => T.rtAt(x, y), chip2);
         await click('.chip', 2);
-        assert.deepEqual(await lastSent('setSidebarScroll'), ['setSidebarScroll', { top: 0, windowId: 1 }]);
+        assert.deepEqual(await lastSent('setSidebarScroll'), ['setSidebarScroll', { top: 0, windowId: 1 }], `the chip clicked (chip ${JSON.stringify(chip2)}, under the pointer ${JSON.stringify(over)}, sent ${JSON.stringify((await sent()).slice(-4))})`);
       });
 
       // Playwright's wheel is a mouse's (notches of 120), which never swipes:

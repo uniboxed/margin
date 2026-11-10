@@ -43,8 +43,9 @@ jobs:
         run: |
           npx playwright install --with-deps chromium webkit
           sudo apt-get install -y --no-install-recommends fonts-noto-color-emoji
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Rust (stable, by the runner's own rustup)
+        run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Unit tests and the type check
         run: npm test
       - name: Theme tests
@@ -68,11 +69,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-          targets: x86_64-pc-windows-msvc, aarch64-pc-windows-msvc
-      - uses: Swatinem/rust-cache@v2
+      - name: Rust (stable, by the runner's own rustup)
+        run: rustup toolchain install stable --profile minimal --no-self-update --component rustfmt,clippy --target x86_64-pc-windows-msvc,aarch64-pc-windows-msvc && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: scripts/rust-test.sh
 
   windows:
@@ -81,10 +80,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - name: Rust (stable, by the runner's own rustup)
+        run: rustup toolchain install stable --profile minimal --no-self-update --component clippy && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Tests on Windows
         run: cargo test --workspace --locked
       - name: Clippy on Windows
@@ -101,16 +99,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
+      - name: The newest Xcode on the runner (not a beta)
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)" && xcodebuild -version
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Rust (stable, by the runner's own rustup)
+        run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: The app's Swift checks and end-to-end checks
         run: npm run test:app
       - name: The WebKit host (Safari's extension engine)
