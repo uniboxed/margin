@@ -6,20 +6,23 @@
 // are in link.test.ts.)
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { sidebar } from './harness/ui.ts';
+import type { Page } from 'playwright';
+import type { ArchiveEntry } from '../../types/margin.d.ts';
 
-let m;
-let ui;
+let m: Margin;
+let ui: Page;
 
-const SEED = (url) => ({
+const SEED = (url: (host: string, path: string) => string) => ({
   spaces: SPACES,
   archive: [{ id: 'ar-feed', url: url('murmur.test', '/home'), title: '(3) Murmur', spaceId: 'sp-home', favIconUrl: '', closedAt: Date.now() - 3600_000 }],
   settings: { sidebarPinnedOpen: true },
 });
 
-const frontId = async () => (await m.front())?.id;
+// (`!`: a test's front tab is there; were it not, the id is still undefined and the test fails where it's used.)
+const frontId = async (): Promise<number> => (await m.front())?.id!;
 async function newTabPage(hash = '') {
   const page = await m.context.newPage();
   await page.goto(m.newTabUrl() + hash);
@@ -40,7 +43,7 @@ test('linked, the overlay draws the launcher over Margin\'s new-tab page', async
   assert.ok((await sidebar(ui)).newTabActive, 'New Tab is the highlighted row');
   // The launcher sits in the page slot.
   const [l, s] = await Promise.all([ui.locator('.launcher-slot').boundingBox(), ui.locator('m-page').boundingBox()]);
-  assert.ok(l.x >= s.x - 1 && l.x + l.width <= s.x + s.width + 1, 'inside the slot');
+  assert.ok(l!.x >= s!.x - 1 && l!.x + l!.width <= s!.x + s!.width + 1, 'inside the slot');
   await m.shoot(t, 'launcher', { page });
   await page.close();
 });
@@ -77,7 +80,7 @@ test('an archived tab restored from the launcher takes the new-tab page\'s place
   const now = await m.tabs();
   assert.ok(!now.some((x) => x.id === tab.id && x.url.startsWith(m.newTabUrl())), 'the new-tab page is gone');
   assert.equal(now.length, before, 'in its place, not beside it');
-  await m.until(async () => !(await m.stored('archive')).archive.some((a) => a.id === 'ar-feed'), { what: 'out of the archive' });
+  await m.until(async () => !(await m.stored('archive')).archive.some((a: ArchiveEntry) => a.id === 'ar-feed'), { what: 'out of the archive' });
 });
 
 test('Settings open from the launcher', async (t) => {
@@ -115,7 +118,7 @@ test('a window the app says it doesn\'t draw over: the page says so itself', asy
   m.shell.drawn(windowId, false);
   try {
     await page.waitForFunction(() => document.getElementById('notice')?.hidden === false, null, { timeout: 8000 });
-    assert.equal((await page.textContent('#title')).trim(), 'Margin.app hasn’t placed this window yet');
+    assert.equal((await page.textContent('#title'))!.trim(), 'Margin.app hasn’t placed this window yet');
     assert.equal(await page.isVisible('#start'), false, 'no Start: the app is running');
     await m.shoot(t, 'undrawn', { page });
   } finally {

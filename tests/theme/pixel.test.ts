@@ -19,6 +19,11 @@ import { inflateSync } from 'node:zlib';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, PIXEL } from './package.ts';
 import { firstPaintCss, layoutOwnCss } from '../../extension/shared/page-box.ts';
+import type { Harness, HarnessRt } from './harness.ts';
+
+// What the harness puts on the page's window (harness.ts), as the page functions below read it.
+declare const T: Harness;
+declare const __rt: HarnessRt;
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const script = harnessScript();
@@ -74,7 +79,7 @@ for (const [name, engine] of ENGINES) {
       await context.route('**/*', (route) => route.abort());
       await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"></body></html>');
       await page.addScriptTag({ content: script });
-      const ev = (fn, arg) => page.evaluate(fn, arg);
+      const ev = <R, A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
       const count = (s) => ev((x) => T.rtCount(x), s);
       const text = (s) => ev((x) => T.rtText(x), s);
       // The last layout, once no more come (two frames with none new: a frame is later on a slow machine).

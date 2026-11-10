@@ -18,7 +18,7 @@ export function sidebar(ui: Page) {
       space: document.querySelector('.space-title .title')?.textContent.trim() ?? null,
       tabs: q('a.tab').map((a) => ({ id: Number(a.dataset.tabId), key: a.dataset.tabId ?? '', title: a.querySelector('.title')?.textContent ?? '', active: has(a, 'active'), busy: has(a, 'busy'), asleep: has(a, 'asleep'), notOpen: has(a, 'not-open'), audible: !!a.querySelector('.audible-icon'), icon: icon(a) })),
       pins: q('a.pin').map((a) => ({ id: a.dataset.pinId, title: a.querySelector('.title')?.textContent ?? '', active: has(a, 'active'), open: has(a, 'open'), nested: has(a, 'nested'), icon: icon(a) })),
-      folders: q('a.folder[data-folder-id]').map((a) => ({ id: a.dataset.folderId, name: a.querySelector('.title')?.textContent ?? '', open: has(a, 'open') })),
+      folders: q('a.folder[data-folder-id]').map((a) => ({ id: a.dataset.folderId!, name: a.querySelector('.title')?.textContent ?? '', open: has(a, 'open') })),
       chips: q('.chip').map((c) => ({ id: c.dataset.spaceId, active: has(c, 'active'), label: c.getAttribute('aria-label') ?? '' })),
       newTabActive: !!document.querySelector('.new-tab-row.active'),
       palette: !!document.querySelector('.palette'),
@@ -49,7 +49,8 @@ export function palette(ui: Page) {
       open: !!document.querySelector('.palette'),
       query: field?.value ?? null,
       focused: !!field && document.activeElement === field,
-      rows: [...document.querySelectorAll<HTMLElement>('.palette .result[data-id]')].map((r) => ({ id: r.dataset.id, title: r.querySelector('.title')?.textContent ?? '', section: r.getAttribute('aria-description') ?? '', selected: r.getAttribute('aria-selected') === 'true', badge: r.querySelector('.badge')?.textContent ?? null })),
+      // (`!`: the rows picked have a data-id.)
+      rows: [...document.querySelectorAll<HTMLElement>('.palette .result[data-id]')].map((r) => ({ id: r.dataset.id!, title: r.querySelector('.title')?.textContent ?? '', section: r.getAttribute('aria-description') ?? '', selected: r.getAttribute('aria-selected') === 'true', badge: r.querySelector('.badge')?.textContent ?? null })),
     };
   });
 }

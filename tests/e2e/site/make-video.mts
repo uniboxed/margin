@@ -25,7 +25,7 @@ const SECONDS = 6;
 
 function findFfmpeg() {
   if (process.env.FFMPEG) return process.env.FFMPEG;
-  const roots = [process.env.PLAYWRIGHT_BROWSERS_PATH, join(homedir(), 'Library/Caches/ms-playwright'), join(homedir(), '.cache/ms-playwright'), '/opt/pw-browsers'].filter(Boolean);
+  const roots = [process.env.PLAYWRIGHT_BROWSERS_PATH, join(homedir(), 'Library/Caches/ms-playwright'), join(homedir(), '.cache/ms-playwright'), '/opt/pw-browsers'].filter((r): r is string => !!r);
   for (const root of roots) {
     if (!existsSync(root)) continue;
     for (const dir of readdirSync(root).filter((d) => d.startsWith('ffmpeg')).sort().reverse()) {
@@ -113,9 +113,9 @@ const page = await browser.newPage({ viewport: { width: W, height: H } });
 await page.setContent(`<body style="margin:0;background:#000"><canvas width="${W}" height="${H}"></canvas><script>${SCENE}</script></body>`);
 mkdirSync(join(OUT, '..'), { recursive: true });
 const ffmpeg = spawn(findFfmpeg(), ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', 'pipe:0', '-c:v', 'libvpx', '-b:v', '420k', '-auto-alt-ref', '0', '-deadline', 'good', '-cpu-used', '1', '-pix_fmt', 'yuv420p', OUT], { stdio: ['pipe', 'inherit', 'inherit'] });
-const done = new Promise((resolve, reject) => ffmpeg.on('close', (code) => (code ? reject(new Error(`ffmpeg exited ${code}`)) : resolve())));
+const done = new Promise<void>((resolve, reject) => ffmpeg.on('close', (code) => (code ? reject(new Error(`ffmpeg exited ${code}`)) : resolve())));
 for (let i = 0; i < FPS * SECONDS; i++) {
-  const url = await page.evaluate((t) => window.draw(t), i / FPS);
+  const url = await page.evaluate((t: number) => (window as unknown as { draw: (t: number) => string }).draw(t), i / FPS);
   if (!ffmpeg.stdin.write(Buffer.from(url.slice(url.indexOf(',') + 1), 'base64'))) await new Promise((r) => ffmpeg.stdin.once('drain', r));
 }
 ffmpeg.stdin.end();

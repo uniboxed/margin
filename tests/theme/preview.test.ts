@@ -60,7 +60,7 @@ for (const [name, engine] of ENGINES) {
       await t.test('the hostile theme can\'t hide, shrink or cover it: it\'s on top where it is, and takes the press', async () => {
         const rect = await page.evaluate(() => P.bar.rect());
         assert.ok(rect && rect[2] > 300 && rect[3] > 30, JSON.stringify(rect));
-        const style = await page.evaluate(() => { const s = getComputedStyle(document.querySelector('margin-preview-bar')); return [s.display, s.opacity, s.visibility, s.pointerEvents, s.transform === 'none' ? 'none' : 'moved']; });
+        const style = await page.evaluate(() => { const s = getComputedStyle(document.querySelector('margin-preview-bar')!); return [s.display, s.opacity, s.visibility, s.pointerEvents, s.transform === 'none' ? 'none' : 'moved']; });
         assert.deepEqual(style.slice(0, 4), ['block', '1', 'visible', 'auto']);
         const [x, y] = [rect[0] + rect[2] - 40, rect[1] + rect[3] / 2];
         assert.equal(await page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.localName, [x, y]), 'margin-preview-bar', 'the bar is what\'s at its own place');

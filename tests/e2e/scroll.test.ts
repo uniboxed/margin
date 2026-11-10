@@ -10,21 +10,27 @@
 // in-page UI.)
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { slot, tabRow } from './harness/ui.ts';
+import type { Page } from 'playwright';
+import type { Settings } from '../../types/margin.d.ts';
 
-let m;
-let ui;
-let windowId;
+// What the tests leave on a page's window.
+type PageWindow = typeof window & { __wheel: boolean[], __before?: boolean };
 
-const frontId = async () => (await m.front())?.id;
-const gestures = (from) => m.shell.received.slice(from).filter((x) => x.k === 'push' && x.msg?.type === 'gesture').map((x) => x.msg);
-const setSettings = (patch) => m.shell.request('updateSettings', { patch }, windowId);
-const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+let m: Margin;
+let ui: Page;
+let windowId: number | null;
+
+// (`!`: a test's front tab is there; were it not, the id is still undefined and the test fails where it's used.)
+const frontId = async (): Promise<number> => (await m.front())?.id!;
+const gestures = (from: number) => m.shell.received.slice(from).filter((x) => x.k === 'push' && x.msg?.type === 'gesture').map((x) => x.msg);
+const setSettings = (patch: Partial<Settings>) => m.shell.request('updateSettings', { patch }, windowId);
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // A trackpad's run of small wheel events, ~16 ms apart, at the pointer.
-async function wheelRun(page, { dx = 0, dy = 0, n = 18, x = 800, y = 450 } = {}) {
+async function wheelRun(page: Page, { dx = 0, dy = 0, n = 18, x = 800, y = 450 } = {}) {
   await page.mouse.move(x, y);
   for (let i = 0; i < n; i++) {
     await page.mouse.wheel(dx ? dx + (i % 3) - 1 : 0, dy ? dy + (i % 3) - 1 : 0);
@@ -32,12 +38,12 @@ async function wheelRun(page, { dx = 0, dy = 0, n = 18, x = 800, y = 450 } = {})
   }
 }
 // Whether the page's own listener saw the last wheel events stopped (after Margin's capture listener).
-async function watchWheels(page) {
-  await page.evaluate(() => { window.__wheel = []; document.addEventListener('wheel', (e) => window.__wheel.push(e.defaultPrevented)); });
+async function watchWheels(page: Page) {
+  await page.evaluate(() => { (window as PageWindow).__wheel = []; document.addEventListener('wheel', (e) => (window as PageWindow).__wheel.push(e.defaultPrevented)); });
 }
-const stopped = async (page) => {
-  await m.until(() => page.evaluate(() => window.__wheel.length > 0), { what: 'the wheel seen' });
-  return page.evaluate(() => window.__wheel.splice(0).some(Boolean));
+const stopped = async (page: Page) => {
+  await m.until(() => page.evaluate(() => (window as PageWindow).__wheel.length > 0), { what: 'the wheel seen' });
+  return page.evaluate(() => (window as PageWindow).__wheel.splice(0).some(Boolean));
 };
 
 before(async () => {
@@ -49,12 +55,12 @@ after(async () => { await m?.close(); });
 
 test('the wheel scrolls the article in its box; its section bar sticks at the box\'s top', async (t) => {
   const page = await m.open('dispatch.test', '/2026/11/the-quiet-city');
-  const s = await slot(ui);
+  const s = (await slot(ui))!;
   await page.mouse.move(800, 500);
   for (let i = 0; i < 12; i++) await page.mouse.wheel(0, 150);
   await m.until(() => page.evaluate(() => scrollY > 1200), { what: 'scrolled down' });
-  await m.until(async () => Math.round((await page.locator('#sections').boundingBox()).y) === s.top, { what: 'the section bar stuck at the box\'s top' });
-  const progress = await page.evaluate(() => parseFloat(getComputedStyle(document.getElementById('progress')).width));
+  await m.until(async () => Math.round((await page.locator('#sections').boundingBox())!.y) === s.top, { what: 'the section bar stuck at the box\'s top' });
+  const progress = await page.evaluate(() => parseFloat(getComputedStyle(document.getElementById('progress')!).width));
   assert.ok(progress > 0, 'the reading progress follows the scroll');
   await m.shoot(t, 'scrolled');
   await page.close();
@@ -110,11 +116,11 @@ test('sideways swipes can\'t leave the page; scrolling and a sideways scroller a
   assert.equal(await stopped(page), false, 'scrolling: untouched');
   const carousel = page.locator('#carousel');
   await carousel.scrollIntoViewIfNeeded();
-  const c = await carousel.boundingBox();
+  const c = (await carousel.boundingBox())!;
   await page.mouse.move(c.x + c.width / 2, c.y + c.height / 2);
   await page.mouse.wheel(120, 0);
   assert.equal(await stopped(page), false, 'over the carousel: it scrolls');
-  await m.until(() => page.evaluate(() => document.getElementById('carousel').scrollLeft > 0), { what: 'the carousel scrolled' });
+  await m.until(() => page.evaluate(() => document.getElementById('carousel')!.scrollLeft > 0), { what: 'the carousel scrolled' });
   // The setting off: sideways swipes are Safari's again.
   await setSettings({ blockGestures: false });
   await m.until(async () => { await page.mouse.move(800, 200); await page.mouse.wheel(-80, 0); return !(await stopped(page)); }, { what: 'sideways left alone with blocking off' });
@@ -126,7 +132,7 @@ test('sideways swipes can\'t leave the page; scrolling and a sideways scroller a
 test('pulling down at the top: the overlay draws the pull, armed, then the page reloads', async (t) => {
   const page = await m.open('harbor.test', '/');
   const tab = await frontId();
-  await page.evaluate(() => { window.__before = true; });
+  await page.evaluate(() => { (window as PageWindow).__before = true; });
   const from = m.shell.received.length;
   const reloaded = page.waitForEvent('load', { timeout: 8000 });
   let drawnArmed = false;
@@ -141,7 +147,7 @@ test('pulling down at the top: the overlay draws the pull, armed, then the page 
   await wheelRun(page, { dy: -12 });
   await reloaded;
   await watch;
-  assert.equal(await page.evaluate(() => window.__before), undefined, 'the page loaded again');
+  assert.equal(await page.evaluate(() => (window as PageWindow).__before), undefined, 'the page loaded again');
   const states = gestures(from).filter((g) => g.kind === 'pull' && g.tabId === tab).map((g) => g.state);
   assert.ok(states.includes('pulling'), `pulling told: ${states.join(' ')}`);
   assert.ok(states.includes('armed'), 'armed told');
@@ -152,21 +158,21 @@ test('pulling down at the top: the overlay draws the pull, armed, then the page 
 
 test('the same pull scrolled down, a small one, or with the setting off: no reload', async () => {
   const page = await m.open('dispatch.test', '/2026/11/the-quiet-city');
-  await page.evaluate(() => { window.__before = true; scrollTo(0, 400); });
+  await page.evaluate(() => { (window as PageWindow).__before = true; scrollTo(0, 400); });
   await m.until(() => page.evaluate(() => scrollY === 400), { what: 'scrolled to 400' });
   const from = m.shell.received.length;
   // Back up to the top in the same gesture, then on: not a pull.
   await wheelRun(page, { dy: -14, n: 60 });
   await pause(500);
-  assert.equal(await page.evaluate(() => window.__before), true, 'not reloaded');
+  assert.equal(await page.evaluate(() => (window as PageWindow).__before), true, 'not reloaded');
   await wheelRun(page, { dy: -12, n: 5 });
   await pause(500);
-  assert.equal(await page.evaluate(() => window.__before), true, 'a small pull: not reloaded');
+  assert.equal(await page.evaluate(() => (window as PageWindow).__before), true, 'a small pull: not reloaded');
   assert.ok(!gestures(from).some((g) => g.state === 'trigger'), 'nothing triggered');
   await setSettings({ pullToRefresh: false });
   await wheelRun(page, { dy: -12 });
   await pause(500);
-  assert.equal(await page.evaluate(() => window.__before), true, 'setting off: not reloaded');
+  assert.equal(await page.evaluate(() => (window as PageWindow).__before), true, 'setting off: not reloaded');
   await setSettings({ pullToRefresh: true });
   await page.close();
 });
@@ -178,7 +184,7 @@ test('a two-finger swipe: the overlay draws the edge badge, then back and forwar
   await page.waitForURL(/installation/);
   await m.until(async () => (await m.tabs()).find((x) => x.id === tab)?.status === 'complete', { what: 'loaded' });
   const from = m.shell.received.length;
-  let drawn = null;
+  let drawn: { back: boolean, armed: boolean } | null = null;
   const watch = (async () => {
     const end = Date.now() + 4000;
     while (!drawn && Date.now() < end) {
@@ -191,7 +197,7 @@ test('a two-finger swipe: the overlay draws the edge badge, then back and forwar
   await wheelRun(page, { dx: -12, n: 14 });
   await page.waitForURL(/getting-started/);
   await watch;
-  assert.ok(drawn?.back, `the overlay drew the badge at the back edge: ${JSON.stringify(drawn)}`);
+  assert.ok((drawn as { back: boolean } | null)?.back, `the overlay drew the badge at the back edge: ${JSON.stringify(drawn)}`);
   assert.ok(gestures(from).some((g) => g.kind === 'swipe' && g.state === 'trigger' && g.direction < 0), 'a swipe back told');
   await m.until(async () => (await m.tabs()).find((x) => x.id === tab)?.status === 'complete', { what: 'loaded' });
   await wheelRun(page, { dx: 12, n: 14 });
@@ -215,8 +221,8 @@ test('no swipe over a sideways scroller, for a small one, toward no history, or 
   await page.waitForURL(m.url('shop.test', '/'));
   const carousel = page.locator('#carousel');
   await carousel.scrollIntoViewIfNeeded();
-  await page.evaluate(() => { document.getElementById('carousel').scrollLeft = 300; });
-  const c = await carousel.boundingBox();
+  await page.evaluate(() => { document.getElementById('carousel')!.scrollLeft = 300; });
+  const c = (await carousel.boundingBox())!;
   from = m.shell.received.length;
   await wheelRun(page, { dx: 12, n: 14, x: c.x + c.width / 2, y: c.y + c.height / 2 });
   await pause(400);

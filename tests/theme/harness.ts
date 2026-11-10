@@ -631,3 +631,7 @@ Object.assign(T, {
 });
 
 w.T = T;
+
+// What the tests' page functions see on the window (declared in each test file that reads them).
+export type Harness = typeof T;
+export type HarnessRt = typeof rt;

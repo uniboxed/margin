@@ -27,6 +27,7 @@ import { startRelay } from './relay.ts';
 import { startShell } from './shell.ts';
 import { seedSet } from './seed.ts';
 import type { Said } from '../../../extension/background/link.ts';
+import type { State } from '../../../types/margin.d.ts';
 import { shoot, pixels, forgetComposer, type ShotTest, type ShotOptions } from './shots.ts';
 
 const require = createRequire(import.meta.url);
@@ -159,8 +160,8 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
     },
     /** All of storage.local (the copy's stored values). */
     stored: (keys: string | string[] | null = null) => worker.evaluate((k) => chrome.storage.local.get(k), keys),
-    /** The copy's state as pages read it (shared/stored.ts fromStorage's keys). */
-    async state(): Promise<Record<string, any>> {
+    /** The copy's state as pages read it (shared/stored.ts fromStorage's keys): State's, and storage's other keys. */
+    async state(): Promise<State & Record<string, any>> {
       const raw = await m.stored();
       return { ...raw, ...(raw.openTabs ?? {}) };
     },

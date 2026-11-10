@@ -7,14 +7,15 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { request } from 'node:http';
 import { HOST_RULES, startSite } from './site/server.ts';
+import type { Browser, BrowserContext, Dialog } from 'playwright';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('playwright');
+const { chromium } = require('playwright') as typeof import('playwright');
 
-let site;
-let browser;
-let context;
-const leaks = [];
+let site: Awaited<ReturnType<typeof startSite>>;
+let browser: Browser;
+let context: BrowserContext;
+const leaks: string[] = [];
 
 before(async () => {
   site = await startSite();
@@ -32,8 +33,9 @@ after(async () => {
 });
 
 // A plain request to one of the site's hosts (no browser).
-const get = (host, path, encoding = 'utf8') =>
-  new Promise((resolve, reject) => {
+// (`type`: the content-type header.)
+const get = (host: string, path: string, encoding: BufferEncoding = 'utf8') =>
+  new Promise<{ status: number | undefined, type: string | undefined, body: string }>((resolve, reject) => {
     const req = request({ host: '127.0.0.1', port: site.port, path, headers: { host: `${host}:${site.port}` } }, (res) => {
       let body = '';
       res.setEncoding(encoding);
@@ -45,19 +47,19 @@ const get = (host, path, encoding = 'utf8') =>
   });
 
 // The slow report, fast: for checks that only read its HTML.
-const quick = (path) => (path === '/report' ? '/report?ms=200' : path);
+const quick = (path: string) => (path === '/report' ? '/report?ms=200' : path);
 
 const pages = () => site.sites.flatMap((s) => (s.pages ?? []).map((p) => ({ site: s, ...p })));
 
 test('every page loads whole: its title, its pictures, no errors, nothing outside the test hosts', async () => {
-  const list = [{ site: site.sites[0], path: '/', title: 'Margin test site' }, ...pages()];
+  const list: { site: (typeof site.sites)[number], path: string, title: string, ticks?: boolean }[] = [{ site: site.sites[0], path: '/', title: 'Margin test site' }, ...pages()];
   assert.ok(list.length >= 10);
   for (const { site: s, path, title, ticks } of list) {
     const page = await context.newPage();
-    const errors = [];
+    const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
     const res = await page.goto(site.url(s.host, path), { waitUntil: 'load' });
-    assert.equal(res.status(), 200, `${s.host}${path}`);
+    assert.equal(res!.status(), 200, `${s.host}${path}`);
     // A ticking title (the timer) has moved on by now: same shape, not the same time.
     if (ticks) assert.match(await page.title(), new RegExp(`^\\d\\d:\\d\\d${title.slice(5).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), `${s.host}${path} title`);
     else assert.equal(await page.title(), title, `${s.host}${path} title`);
@@ -100,10 +102,10 @@ test('each site’s icon is what the page says it is', async () => {
     'radio.test': 'image/x-icon',
     'app.test': 'image/svg+xml',
   };
-  const magic = { 'image/png': '\x89PNG', 'image/x-icon': '\0\0\x01\0', 'image/svg+xml': '<svg' };
+  const magic: Record<string, string> = { 'image/png': '\x89PNG', 'image/x-icon': '\0\0\x01\0', 'image/svg+xml': '<svg' };
   for (const [host, type] of Object.entries(want)) {
     const s = site.sites.find((x) => x.host === host);
-    const html = (await get(host, quick(s.pages[0].path))).body;
+    const html = (await get(host, quick(s!.pages[0].path))).body;
     const href = /<link rel="icon"[^>]*href="([^"]+)"/.exec(html)?.[1];
     assert.ok(href, `${host} links an icon`);
     const res = await get(host, href, 'latin1');
@@ -123,7 +125,7 @@ test('each site’s icon is what the page says it is', async () => {
   for (const [host, path] of [['post.test', '/inbox'], ['focus.test', '/']]) {
     const page = await context.newPage();
     await page.goto(site.url(host, path));
-    assert.match(await page.getAttribute('link[rel=icon]', 'href'), /^data:image\/png;base64,/, host);
+    assert.match((await page.getAttribute('link[rel=icon]', 'href'))!, /^data:image\/png;base64,/, host);
     await page.close();
   }
 });
@@ -141,8 +143,8 @@ test('any missing path is the site’s own 404 page', async () => {
 test('?fp puts the first-frames recorder at the top of <head>', async () => {
   const page = await context.newPage();
   await page.goto(site.url('dispatch.test', '/2026/11/the-quiet-city?fp&late=300'));
-  await page.waitForFunction(() => window.__fp?.frames.length >= 5);
-  const head = await page.evaluate(() => document.head.firstElementChild.tagName);
+  await page.waitForFunction(() => (window as unknown as { __fp?: { frames: unknown[] } }).__fp?.frames.length! >= 5);
+  const head = await page.evaluate(() => document.head.firstElementChild!.tagName);
   assert.equal(head, 'SCRIPT');
   await page.close();
 });
@@ -153,12 +155,12 @@ test('signing in posts, redirects and lands signed in; a wrong password is the f
   await page.fill('#email', 'nora@field.test');
   await page.fill('#password', 'wrong');
   await Promise.all([page.waitForNavigation(), page.click('button[type=submit]')]);
-  assert.match(await page.textContent('.alert'), /password isn’t right/);
+  assert.match((await page.textContent('.alert'))!, /password isn’t right/);
   await page.fill('#password', 'correct horse');
   const [res] = await Promise.all([page.waitForNavigation(), page.click('button[type=submit]')]);
   assert.equal(new URL(page.url()).pathname, '/welcome');
-  assert.equal(res.request().redirectedFrom()?.method(), 'POST');
-  assert.match(await page.textContent('h1'), /Good morning, Nora/);
+  assert.equal(res!.request().redirectedFrom()?.method(), 'POST');
+  assert.match((await page.textContent('h1'))!, /Good morning, Nora/);
   await page.close();
 });
 
@@ -172,11 +174,11 @@ test('the product page’s bag changes the title', async () => {
 
 test('the report arrives in parts over about 3 s', async () => {
   const t0 = Date.now();
-  const firstAt = await new Promise((resolve, reject) => {
+  const firstAt = await new Promise<[number, number]>((resolve, reject) => {
     const req = request({ host: '127.0.0.1', port: site.port, path: '/report', headers: { host: `slow.test:${site.port}` } }, (res) => {
-      let first;
+      let first: number | undefined;
       res.on('data', () => (first ??= Date.now() - t0));
-      res.on('end', () => resolve([first, Date.now() - t0]));
+      res.on('end', () => resolve([first!, Date.now() - t0])); // (`!`: undefined fails the check below)
     });
     req.on('error', reject);
     req.end();
@@ -196,7 +198,7 @@ test('the app moves by pushState, and its Reports route takes 700 ms through the
   const page = await context.newPage();
   await page.goto(site.url('app.test', '/'));
   assert.equal(await page.title(), 'Home · Orbit');
-  await page.evaluate(() => (window.__kept = true));
+  await page.evaluate(() => ((window as Window & { __kept?: boolean }).__kept = true));
   await page.click('a[href="/projects"]');
   assert.equal(new URL(page.url()).pathname, '/projects');
   assert.equal(await page.title(), 'Projects · Orbit');
@@ -205,7 +207,7 @@ test('the app moves by pushState, and its Reports route takes 700 ms through the
   await page.waitForSelector('.report-ready');
   assert.ok(Date.now() - start >= 650, 'the slow route');
   assert.equal(new URL(page.url()).pathname, '/reports');
-  assert.equal(await page.evaluate(() => window.__kept), true, 'the same document all along');
+  assert.equal(await page.evaluate(() => (window as Window & { __kept?: boolean }).__kept), true, 'the same document all along');
   await page.goBack();
   assert.equal(await page.title(), 'Projects · Orbit');
   await page.close();
@@ -219,7 +221,7 @@ test('the mail draft guards the page; opening an unread message lowers the count
   assert.equal(await page.title(), 'Inbox (3) — Post');
   await page.click('#compose');
   await page.fill('#c-body', 'Hi Nora');
-  const asked = new Promise((resolve) => page.once('dialog', async (d) => { resolve(d.type()); await d.accept(); }));
+  const asked = new Promise((resolve) => page.once('dialog', async (d: Dialog) => { resolve(d.type()); await d.accept(); }));
   await page.close({ runBeforeUnload: true });
   assert.equal(await asked, 'beforeunload');
 });
@@ -240,10 +242,10 @@ test('the video and the tune play', async () => {
   const page = await context.newPage();
   await page.goto(site.url('reel.test', '/watch'));
   await page.click('#big-play');
-  await page.waitForFunction(() => document.querySelector('video').currentTime > 0.2);
+  await page.waitForFunction(() => document.querySelector('video')!.currentTime > 0.2);
   await page.goto(site.url('radio.test', '/'));
   await page.click('#play');
-  await page.waitForFunction(() => document.querySelector('audio').currentTime > 0.2);
+  await page.waitForFunction(() => document.querySelector('audio')!.currentTime > 0.2);
   assert.equal(await page.getAttribute('#play', 'aria-label'), 'Pause');
   await page.close();
 });

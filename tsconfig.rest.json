@@ -1,5 +1,5 @@
-// What tsconfig.tests.json doesn't check yet (GitHub issue #4): the browser tests (tests/theme/, tests/e2e/), the box
-// patterns' and the e2e site's scripts, under the same `strict` with Node's types, with what they
+// What tsconfig.tests.json doesn't check yet (GitHub issue #4): the theme browser tests (tests/theme/) and the box
+// patterns' benchmarks (tests/box/*.mts), under the same `strict` with Node's types, with what they
 // import. Not checked with tsc directly: scripts/tests-check.mts runs it and fails only on errors in the folders and
 // files already brought up to it, so those can't slip back while the rest catches up.
 {

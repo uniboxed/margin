@@ -9,19 +9,21 @@
 // The WebKit host's `kept-walks` scenario does the same in WebKit.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { pageBox, slot } from './harness/ui.ts';
 import { listPatterns, WALK_FILES } from '../box/serve.ts';
 import { judge, measure } from '../box/rules.ts';
-import { MAX_AGE_MS, sheetWalkKey } from '../../extension/shared/sheet-walk.ts';
+import { MAX_AGE_MS, sheetWalkKey, type Group } from '../../extension/shared/sheet-walk.ts';
 
 const WINDOW = { w: 1440, h: 900 };
-const PATTERN = listPatterns().find((p) => p.name === 'kept-sheet-walk');
-let m;
-let s;
-let origin;
-const href = (file) => `${origin}/walk-css/${file}`;
+// What the pattern's page heard of its walks (`margin:sheet-walk-keep`), kept on its window.
+type PageWorld = { __keeps: { files: Record<string, unknown>, used: string[] }[] };
+const PATTERN = listPatterns().find((p) => p.name === 'kept-sheet-walk')!; // (tests/box/patterns/ has it)
+let m: Margin;
+let s: { left: number, top: number, right: number, bottom: number };
+let origin: string;
+const href = (file: string) => `${origin}/walk-css/${file}`;
 const MAIN = () => href(WALK_FILES.main);
 const IMPORTED = () => href(WALK_FILES.imported);
 
@@ -33,10 +35,10 @@ before(async () => {
 });
 after(async () => { await m?.close(); });
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const kept = async () => (await m.stored([sheetWalkKey(origin)]))[sheetWalkKey(origin)] ?? null;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const kept = async (): Promise<Group | null> => (await m.stored([sheetWalkKey(origin)]))[sheetWalkKey(origin)] ?? null;
 
-async function version(v) {
+async function version(v: string) {
   const page = await m.context.newPage();
   try {
     await page.goto(m.url('box.test', `/walk-css-set?v=${v}`));
@@ -63,7 +65,7 @@ async function visit() {
     await page.goto(m.url('box.test', `/pattern/${PATTERN.name}`), { waitUntil: 'load' });
     await m.until(async () => !!(await pageBox(page)), { what: 'the pattern in its box' });
     await sleep(PATTERN.settle);
-    const plain = await frame.evaluate(measure);
+    const plain = await frame!.evaluate(measure);
     let fails = [];
     let boxed;
     for (const t0 = Date.now(); ;) {
@@ -72,8 +74,8 @@ async function visit() {
       if (!fails.length || Date.now() - t0 > 1500) break;
       await sleep(150);
     }
-    await m.until(() => page.evaluate(() => (window as any).__keeps.length > 0), { what: 'the page\'s world told what it walked' });
-    const keeps = await page.evaluate(() => (window as any).__keeps);
+    await m.until(() => page.evaluate(() => (window as unknown as PageWorld).__keeps.length > 0), { what: 'the page\'s world told what it walked' });
+    const keeps = await page.evaluate(() => (window as unknown as PageWorld).__keeps);
     return { fails, els: boxed.els, walked: keeps.flatMap((k) => Object.keys(k.files)).sort(), used: keeps.flatMap((k) => k.used).sort() };
   } finally {
     await page.close().catch(() => {});

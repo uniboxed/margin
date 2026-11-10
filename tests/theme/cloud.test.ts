@@ -10,6 +10,10 @@ import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, themesInScope, ARCADIA, NEO, PIXEL } from './package.ts';
 import { AIR } from '../fixtures/cloud-tabs.ts';
+import type { Harness } from './harness.ts';
+
+// What the harness puts on the page's window (harness.ts), as the page functions below read it.
+declare const T: Harness;
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const THEMES = [
@@ -32,7 +36,7 @@ for (const [engineName, engine] of ENGINES) {
         await context.route('**/*', (route) => route.abort());
         await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"></body></html>');
         await page.addScriptTag({ content: script });
-        const ev = (fn, arg) => page.evaluate(fn, arg);
+        const ev = <R, A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
         assert.equal((await ev(([p, i]) => T.loadBuiltin(p, i), [themeForPage(dir), id])).ok, true);
         const count = (s) => ev((x) => T.rtCount(x), s);
         const box = async (s, n = 0) => { const b = await ev(([x, k]) => T.rtBox(x, k), [s, n]); assert.ok(b, s); return b; };

@@ -6,16 +6,18 @@
 // Safari used (learned from its own search addresses, not a site's).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { sidebar, palette } from './harness/ui.ts';
+import type { Page } from 'playwright';
+import type { ArchiveEntry } from '../../types/margin.d.ts';
 
-let m;
-let ui;
-const ids = {};
+let m: Margin;
+let ui: Page;
+const ids: Record<string, number> = {};
 
 const DAY = 24 * 3600_000;
-const SEED = (url) => ({
+const SEED = (url: (host: string, path: string) => string) => ({
   spaces: SPACES,
   pins: [{ id: 'pin-radio', spaceId: 'sp-home', url: url('radio.test', '/'), title: 'The sound of low tide · Radio Field', pos: 0 }],
   archive: [
@@ -25,13 +27,14 @@ const SEED = (url) => ({
   settings: { sidebarPinnedOpen: true },
 });
 
-const frontId = async () => (await m.front())?.id;
+// (`!`: a test's front tab is there; were it not, the id is still undefined and the test fails where it's used.)
+const frontId = async (): Promise<number> => (await m.front())?.id!;
 const settings = async () => (await m.stored('settings')).settings;
 async function openPalette() {
   m.shell.key('palette');
   return m.until(async () => { const p = await palette(ui); return p.open && p.focused && p; }, { what: 'the palette open, its field focused' });
 }
-async function type(text) {
+async function type(text: string) {
   await ui.keyboard.type(text);
   return m.until(async () => { const p = await palette(ui); return p.query === text && p.rows.length && p; }, { what: `rows for "${text}"` });
 }
@@ -87,7 +90,7 @@ test('archived tabs and pins are found, and an archived tab comes back in its sp
   await m.until(async () => (await m.front())?.url === m.url('shop.test', '/p/canvas-tote'), { what: 'the tote open again' });
   const tote = await frontId();
   assert.equal((await m.state()).tabSpace[tote], 'sp-home');
-  await m.until(async () => !(await m.stored('archive')).archive.some((a) => a.id === 'ar-tote'), { what: 'out of the archive' });
+  await m.until(async () => !(await m.stored('archive')).archive.some((a: ArchiveEntry) => a.id === 'ar-tote'), { what: 'out of the archive' });
 
   await openPalette();
   p = await type('low tide');
@@ -123,11 +126,11 @@ test('before Safari has searched, a search goes to Google with Safari\'s paramet
   await openPalette();
   const p = await type('tide tables');
   const go = p.rows.find((r) => r.id === 'go');
-  assert.equal(go.title, 'Search for “tide tables”');
+  assert.equal(go!.title, 'Search for “tide tables”');
   await ui.click('.palette .result[data-id="go"]');
   const tab = await m.until(async () => { const f = await m.front(); return f?.url.startsWith('https://www.google.com/') && f; }, { what: 'the search in front' });
   assert.equal(tab.url, 'https://www.google.com/search?client=safari&rls=en&q=tide%20tables&ie=UTF-8&oe=UTF-8');
-  const page = await m.pageOf(tab.id);
+  const page = (await m.pageOf(tab.id))!;
   await page.waitForLoadState('load');
   assert.match(await page.title(), /tide tables/);
   await m.shoot(t, 'results');
@@ -150,7 +153,7 @@ test('a search on an engine\'s own site isn\'t learned; Safari\'s own search is,
   await m.until(async () => (await m.front())?.url === 'https://duckduckgo.com/?q=two%20words&t=osx&ia=web', { what: 'the search on DuckDuckGo' });
 
   // Switching engines in Safari right after a Margin search, in the same tab: still learned.
-  const page = await m.pageOf(await frontId());
+  const page = (await m.pageOf(await frontId()))!;
   await page.goto('https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=second');
   await m.until(async () => (await settings()).safariSearch?.name === 'Yahoo', { what: 'Yahoo learned' });
   await openPalette();

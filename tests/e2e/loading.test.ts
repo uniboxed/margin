@@ -5,17 +5,19 @@
 // whose loading goes. (The old loader.test.js read the in-page pill.)
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { sidebar } from './harness/ui.ts';
+import type { Page } from 'playwright';
 
-let m;
-let ui;
+let m: Margin;
+let ui: Page;
 
-const frontId = async () => (await m.front())?.id;
-const row = async (id) => (await sidebar(ui)).tabs.find((r) => r.id === id) ?? null;
-const loadingPushes = (from) => m.shell.received.slice(from).filter((x) => x.k === 'push' && x.msg?.type === 'loading').map((x) => ({ ...x.msg, at: x.at }));
-const settle = async (id) => m.until(async () => (await row(id)) && !(await row(id)).busy, { timeout: 8000, what: `tab ${id} not busy` });
+// (`!`: a test's front tab is there; were it not, the id is still undefined and the test fails where it's used.)
+const frontId = async (): Promise<number> => (await m.front())?.id!;
+const row = async (id: number | undefined) => (await sidebar(ui)).tabs.find((r) => r.id === id) ?? null;
+const loadingPushes = (from: number) => m.shell.received.slice(from).filter((x) => x.k === 'push' && x.msg?.type === 'loading').map((x) => ({ ...x.msg, at: x.at }));
+const settle = async (id: number | undefined) => m.until(async () => (await row(id)) && !(await row(id))!.busy, { timeout: 8000, what: `tab ${id} not busy` });
 
 before(async () => {
   m = await startMargin({ name: 'loading', seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } });
@@ -30,7 +32,7 @@ test('a report that streams in: its row is busy until its last picture is in', a
   const tab = await m.until(async () => { const f = await m.front(); return f?.url.includes('slow.test') && f; }, { what: 'the report in front' });
   await m.until(async () => (await row(tab.id))?.busy, { what: 'its row busy' });
   await page.waitForSelector('section.sec');
-  assert.equal((await row(tab.id)).busy, true, 'still busy with half the report in');
+  assert.equal((await row(tab.id))!.busy, true, 'still busy with half the report in');
   await m.shoot(t, 'half-in', { page });
   await loaded;
   await settle(tab.id);
@@ -47,7 +49,7 @@ test('leaving a page shows loading at once, long before the slow server answers'
   await m.until(async () => (await row(tab))?.busy, { timeout: 1000, what: 'busy while the server takes 1.5 s' });
   const seenAfter = Date.now() - started;
   const was = (await m.tabs()).find((x) => x.id === tab);
-  assert.match(was.url, /getting-started/, 'still the old page: the next one hasn\'t come');
+  assert.match(was!.url, /getting-started/, 'still the old page: the next one hasn\'t come');
   assert.ok(seenAfter < 1000, `shown ${seenAfter} ms after leaving`);
   assert.ok(loadingPushes(from).some((p) => p.tabIds.includes(tab)), 'the copy pushed it');
   await m.shoot(t, 'leaving');

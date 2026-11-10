@@ -35,7 +35,7 @@ type Size = { width: number, height: number };
 // One overlay page over a window, and what it said over the bridge.
 type Overlay = {
   windowId: number, page: Page | null, ready: boolean, asked: boolean, layout: Geometry | null,
-  hits: { rects: unknown[], all: boolean } | null, focus: boolean, pointerWant: Said | null,
+  hits: { rects: [x: number, y: number, w: number, h: number][], all: boolean } | null, focus: boolean, pointerWant: Said | null,
   size: Size, chain: Promise<unknown>, opened: number, focusOnShow?: boolean, ready$?: Promise<void>,
   push(msg: Said): void,
   resize(win: Size): void,
@@ -76,7 +76,7 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
 
   /** Everything the copy sent, in order (all epochs). */
   const received: Said[] = [];
-  const requests: { id: number, type: string, payload: Record<string, unknown>, windowId: number | null, at: number, reply: Said | null }[] = []; // the app's reqs, with their replies
+  const requests: { id: number, type: string, payload: Said, windowId: number | null, at: number, reply: Said | null }[] = []; // the app's reqs, with their replies
   const performs: { windowId: number, name: unknown, arg: unknown, at: number }[] = []; // what overlays asked the app (`perform`)
   const layoutsSent: Said[] = []; // setLayout messages
   const drawnSent: Said[] = []; // drawn messages

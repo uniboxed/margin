@@ -6,17 +6,20 @@
 // sidebar.)
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { sidebar, chip, tabRow, menuItem } from './harness/ui.ts';
 import { foreignKey } from '../../extension/shared/across.ts';
+import type { Page } from 'playwright';
+import type { Space } from '../../types/margin.d.ts';
 
-let m;
-let ui;
+let m: Margin;
+let ui: Page;
 
 const view = () => sidebar(ui);
-const frontId = async () => (await m.front())?.id;
-const spaceOfWindow = async (windowId) => (await m.state()).activeSpaceByWindow?.[windowId];
+// (`!`: a test's front tab is there; were it not, the id is still undefined and the test fails where it's used.)
+const frontId = async (): Promise<number> => (await m.front())?.id!;
+const spaceOfWindow = async (windowId: number | null) => (await m.state()).activeSpaceByWindow?.[windowId!];
 
 before(async () => {
   m = await startMargin({ name: 'spaces', seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } });
@@ -71,15 +74,15 @@ test('a space made from +, renamed in place, coloured in the editor, and deleted
   await menuItem(ui, 'New Space');
   // A new space opens its editor.
   await m.until(async () => (await view()).editor, { what: 'the space editor' });
-  const made = await m.until(async () => (await m.state()).spaces.find((s) => !SPACES.some((x) => x.id === s.id)), { what: 'the new space stored' });
+  const made = await m.until(async () => (await m.state()).spaces.find((s: Space) => !SPACES.some((x) => x.id === s.id)) as Space | undefined, { what: 'the new space stored' });
   const name = ui.locator('.editor input.name');
   await name.fill('Reading list');
   await ui.locator('.editor .swatch').nth(3).click();
   const color = await ui.locator('.editor .swatch').nth(3).getAttribute('title');
   await m.shoot(t, 'editor');
   await ui.click('.editor .primary');
-  await m.until(async () => (await m.state()).spaces.find((s) => s.id === made.id)?.name === 'Reading list', { what: 'the name saved' });
-  assert.equal((await m.state()).spaces.find((s) => s.id === made.id).color, color);
+  await m.until(async () => (await m.state()).spaces.find((s: Space) => s.id === made.id)?.name === 'Reading list', { what: 'the name saved' });
+  assert.equal((await m.state()).spaces.find((s: Space) => s.id === made.id)!.color, color);
 
   // Renamed in place: a double-click on the space's name.
   await m.until(async () => (await view()).space === 'Reading list', { what: 'the new space shown' });
@@ -87,7 +90,7 @@ test('a space made from +, renamed in place, coloured in the editor, and deleted
   await ui.keyboard.press('Meta+A');
   await ui.keyboard.type('Weekend reads');
   await ui.keyboard.press('Enter');
-  await m.until(async () => (await m.state()).spaces.find((s) => s.id === made.id)?.name === 'Weekend reads', { what: 'renamed in place' });
+  await m.until(async () => (await m.state()).spaces.find((s: Space) => s.id === made.id)?.name === 'Weekend reads', { what: 'renamed in place' });
   await m.shoot(t, 'renamed');
 
   // A page opened now is the new space's: deleting the space moves it to the first space.
@@ -102,9 +105,9 @@ test('a space made from +, renamed in place, coloured in the editor, and deleted
   await m.until(async () => (await view()).menu.includes('Delete Space'), { what: 'the space\'s menu' });
   await menuItem(ui, 'Delete Space');
   await m.until(async () => (await view()).menu.includes('Really delete?'), { what: 'asked again' });
-  assert.ok((await m.state()).spaces.some((s) => s.id === made.id), 'not deleted by the first press');
+  assert.ok((await m.state()).spaces.some((s: Space) => s.id === made.id), 'not deleted by the first press');
   await menuItem(ui, 'Really delete?');
-  await m.until(async () => !(await m.state()).spaces.some((s) => s.id === made.id), { what: 'deleted' });
+  await m.until(async () => !(await m.state()).spaces.some((s: Space) => s.id === made.id), { what: 'deleted' });
   await m.until(async () => (await view()).chips.length === 3, { what: 'three chips again' });
   assert.equal((await m.state()).tabSpace[timer], 'sp-home', 'its tab moved to the first space');
   await m.until(async () => (await spaceOfWindow(windowId)) === 'sp-home' && (await view()).space === 'Home', { what: 'the window on Home' });
@@ -135,7 +138,7 @@ test('each window has its own space', async (t) => {
 });
 
 test('another profile\'s chip asks the app to switch', async (t) => {
-  const here = m.shell.hello.profile;
+  const here = m.shell.hello!.profile;
   m.shell.setAcross({
     profile: here,
     profiles: [

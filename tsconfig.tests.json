@@ -1,9 +1,10 @@
 // The tests and tools, checked against the real types under the same `strict` (in npm test and npm run typecheck): the
-// shared fakes and harnesses, every unit test file (tests/*.test.ts, tests/security/, the engines' tests/), scripts/
-// and tools/ (their TypeScript), with what they import: the extension's files again, the e2e test site. Folders by
-// glob, so a new file there is checked at once. With Node's types: they run in Node (the theme harness and the e2e
-// helpers' page functions run in a page, and are checked against the DOM's as well). What isn't here yet (the browser
-// tests):
+// shared fakes and harnesses, every unit test file (tests/*.test.ts, tests/security/, the engines' tests/), the e2e
+// tests (tests/e2e/: the files, their harness and test site; checked, run only by npm run test:e2e), scripts/ and
+// tools/ (their TypeScript), with what they import: the extension's files again. Folders by glob, so a new file there
+// is checked at once. With Node's types: they run in Node (the theme harness and the e2e tests' page functions run in a
+// page, and are checked against the DOM's as well). What isn't here yet (the theme browser tests, tests/box/'s
+// benchmarks):
 // tsconfig.rest.json, held folder by folder as each is brought up to it (scripts/tests-check.mts, GitHub issue #4).
 {
   "extends": "./tsconfig.json",
@@ -19,8 +20,8 @@
     "tests/fixtures/*.ts",
     "tests/theme/harness.ts",
     "tests/theme/package.ts",
-    "tests/e2e/harness/*.ts",
-    "tests/e2e/harness/*.mts",
+    "tests/e2e/**/*.ts",
+    "tests/e2e/**/*.mts",
     "tests/*.test.ts",
     "tests/security/*.ts",
     "extension/engines/**/tests/*.test.ts",

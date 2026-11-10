@@ -4,15 +4,17 @@
 // restored from there and from the palette into its own space.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { sidebar, palette, chip } from './harness/ui.ts';
+import type { Page } from 'playwright';
+import type { ArchiveEntry, Settings } from '../../types/margin.d.ts';
 
-let m;
-let ui;
+let m: Margin;
+let ui: Page;
 
 const HOUR = 3600_000;
-const SEED = (url) => ({
+const SEED = (url: (host: string, path: string) => string) => ({
   spaces: SPACES,
   archive: [
     { id: 'ar-dash', url: url('metrics.test', '/'), title: 'Overview · Metrics', spaceId: 'sp-work', favIconUrl: '', closedAt: Date.now() - 6 * HOUR },
@@ -21,9 +23,10 @@ const SEED = (url) => ({
   settings: { sidebarPinnedOpen: true },
 });
 
-const frontId = async () => (await m.front())?.id;
-const archive = async () => (await m.stored('archive')).archive ?? [];
-const setSettings = (patch) => m.shell.request('updateSettings', { patch }, m.shell.frontWindowId());
+// (`!`: a test's front tab is there; were it not, the id is still undefined and the test fails where it's used.)
+const frontId = async (): Promise<number> => (await m.front())?.id!;
+const archive = async (): Promise<ArchiveEntry[]> => (await m.stored('archive')).archive ?? [];
+const setSettings = (patch: Partial<Settings>) => m.shell.request('updateSettings', { patch }, m.shell.frontWindowId());
 
 before(async () => {
   m = await startMargin({ name: 'archive', seed: SEED });
@@ -32,7 +35,7 @@ before(async () => {
 after(async () => { await m?.close(); });
 
 test('the background schedules the archive check (browser.alarms)', async () => {
-  const alarm = await m.until(() => m.bg(() => chrome.alarms.get('margin-archive')), { what: 'the alarm' });
+  const alarm = await m.until(() => m.bg(() => chrome.alarms!.get('margin-archive')), { what: 'the alarm' });
   assert.equal(alarm.periodInMinutes, 15);
 });
 
@@ -52,7 +55,7 @@ test('stale tabs are closed and archived; a pinned one and the one in front stay
 
   assert.equal((await setSettings({ archiveAfterHours: 1 / 3600 })).ok, true); // one second
   await new Promise((r) => setTimeout(r, 1200));
-  const count = await m.bg(() => globalThis.margin.archiveNow());
+  const count = await m.bg(() => (globalThis.margin.archiveNow as () => Promise<number>)());
   assert.ok(count >= 2, `archived ${count}`);
   await setSettings({ archiveAfterHours: 12 });
 

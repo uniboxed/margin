@@ -12,6 +12,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage } from './package.ts';
+import type { Harness } from './harness.ts';
+
+// What the harness puts on the page's window (harness.ts), as the page functions below read it.
+declare const T: Harness;
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const MANIFEST = JSON.stringify({ format: 2, id: 'payload', name: 'Payload', version: '1.0.0' });
@@ -85,7 +89,7 @@ for (const [name, engine] of ENGINES) {
         await page.click('.chip >> nth=1');
         await page.click('.folder-head >> nth=0');
         await page.click('.new-tab');
-        await page.evaluate(() => document.querySelector('.margin-host').shadowRoot.querySelector('.today .tab').click());
+        await page.evaluate(() => document.querySelector('.margin-host')!.shadowRoot.querySelector('.today .tab').click());
         const { ran } = await page.evaluate(() => T.actions());
         assert.deepEqual(ran, [['tab.activate', ids.today[2]], ['space.switch', 'work'], ['folder.toggle', ids.folder], ['tab.new', undefined]]);
       });

@@ -12,6 +12,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, ARCADIA } from './package.ts';
+import type { Harness, HarnessRt } from './harness.ts';
+
+// What the harness puts on the page's window (harness.ts), as the page functions below read it.
+declare const T: Harness;
+declare const __rt: HarnessRt;
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const script = harnessScript();

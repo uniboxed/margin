@@ -6,18 +6,19 @@
 // wrong key, refused.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startMargin } from './harness/margin.ts';
+import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { sidebar, pageBox, slot } from './harness/ui.ts';
+import type { Page } from 'playwright';
 
-let m;
-let page;
+let m: Margin;
+let page: Page;
 
-const sides = (b) => b && { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
+const sides = (b: Awaited<ReturnType<typeof pageBox>>) => b && { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
 // The copy's own word on the link, as its pages read it (background/link.ts writePageState).
 const stored = async () => (await m.stored('appLink')).appLink ?? null;
 const hellos = () => m.shell.received.filter((x) => x.k === 'hello').length;
-const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // The new app says it's up (the handler's `appUp`): linked once the copy says hello to it.
 async function appUp() {
   const before = hellos();
@@ -29,7 +30,7 @@ async function appUp() {
 before(async () => {
   m = await startMargin({ name: 'link-drops', seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } });
   page = await m.open('harbor.test', '/');
-  const s = await slot(await m.ui());
+  const s = (await slot(await m.ui()))!;
   await m.until(async () => JSON.stringify(sides(await pageBox(page))) === JSON.stringify(s), { what: 'the travel page in its box' });
 });
 after(async () => { await m?.close(); });
@@ -48,7 +49,7 @@ test('a dropped socket is mended at once from the kept link', async () => {
 
 test('the app gone a moment: the overlay dimmed, "Reconnecting", pages keep their box; back within the grace, as it was', async (t) => {
   const ui = await m.ui();
-  await ui.evaluate(() => { window.__same = true; });
+  await ui.evaluate(() => { (window as Window & { __same?: boolean }).__same = true; });
   const box = sides(await pageBox(page));
   await m.shell.kill();
   await m.until(() => ui.evaluate(() => document.documentElement.hasAttribute('data-reconnecting')), { what: 'the overlay dimmed' });
@@ -61,7 +62,7 @@ test('the app gone a moment: the overlay dimmed, "Reconnecting", pages keep thei
   await m.shell.restart();
   await appUp();
   await m.until(() => ui.evaluate(() => !document.documentElement.hasAttribute('data-reconnecting')), { what: 'the overlay lit again' });
-  assert.equal(await ui.evaluate(() => window.__same === true), true, 'the same overlay page, not a new one');
+  assert.equal(await ui.evaluate(() => (window as Window & { __same?: boolean }).__same === true), true, 'the same overlay page, not a new one');
   assert.deepEqual(sides(await pageBox(page)), box);
   assert.ok((await sidebar(ui)).tabs.length >= 2, 'its rows still there');
 });
@@ -78,7 +79,7 @@ test('the app gone past 6 s: no box, the new-tab page says so; a new app links a
   const nt = await m.context.newPage();
   await nt.goto(m.newTabUrl());
   await nt.waitForSelector('#notice:not([hidden])');
-  assert.equal((await nt.textContent('#title')).trim(), 'Margin.app isn’t running');
+  assert.equal((await nt.textContent('#title'))!.trim(), 'Margin.app isn’t running');
   await m.shoot(t, 'off', { page: nt });
 
   await m.shell.restart();
@@ -116,7 +117,7 @@ test('a welcome with another key is refused: no hello on that socket', async () 
   await m.until(() => m.relay.asks.length > asked, { what: 'the copy asking for the new app\'s link' });
   await pause(2000);
   assert.equal(hellos(), before, 'no hello to an app that said the wrong key');
-  assert.equal(m.shell.app.received.length, 0, 'nothing sent on that socket');
+  assert.equal(m.shell.app!.received.length, 0, 'nothing sent on that socket');
   // The real app again.
   await m.shell.restart();
   await appUp();

@@ -19,6 +19,10 @@ import { chromium, webkit } from 'playwright';
 import { harnessScript, themesInScope } from './package.ts';
 import { HTML_PAYLOADS, CSS_PAYLOADS, TEMPLATE_PAYLOADS_2, CSS_PAYLOADS_2, CSS_KEPT_2 } from './payloads.ts';
 import { readSuitePackages } from '../security/packages.ts';
+import type { Harness } from './harness.ts';
+
+// What the harness puts on the page's window (harness.ts), as the page functions below read it.
+declare const T: Harness;
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const MANIFEST = JSON.stringify({ format: 2, id: 'payload', name: 'Payload', version: '1.0.0' });

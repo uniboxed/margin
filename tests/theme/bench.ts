@@ -6,6 +6,10 @@
 // other request is refused.
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage } from './package.ts';
+import type { Harness } from './harness.ts';
+
+// What the harness puts on the page's window (harness.ts), as the page functions below read it.
+declare const T: Harness;
 
 const runs = Number(process.argv.find((a) => a.startsWith('--runs='))?.slice(7) ?? 50);
 const script = harnessScript();
