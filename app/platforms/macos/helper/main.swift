@@ -13,8 +13,10 @@ import AppKit
 let browsers: Set<String> = ProcessInfo.processInfo.environment["MARGIN_HELPER_BROWSERS"].map { Set($0.split(separator: ",").map(String.init)) }
     ?? ["com.apple.Safari", "com.apple.SafariTechnologyPreview", "com.google.Chrome", "com.microsoft.edgemac"]
 
+// (Its own path as the system knows it: launchd starts it by the agent's BundleProgram, a path relative to the
+// bundle, so argv[0] is no way to find Margin.app.)
 let app: URL = ProcessInfo.processInfo.environment["MARGIN_HELPER_APP"].map { URL(fileURLWithPath: $0) }
-    ?? URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+    ?? URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0]).standardizedFileURL.resolvingSymlinksInPath()
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent() // Helpers → Contents → Margin.app
 let appId = Bundle(url: app)?.bundleIdentifier ?? "io.tirth.margin"
 
@@ -38,9 +40,10 @@ func startMargin(_ why: String) {
     }
 }
 
+// Not inside Margin.app: nothing to start, and a clean exit (the agent's KeepAlive starts it again only after a crash).
 guard app.pathExtension == "app" else {
     log("not inside Margin.app (\(app.path)): nothing to start")
-    exit(1)
+    exit(0)
 }
 // A browser open already (the helper started after it, or launchd started it again): at once.
 if let open = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier.map(browsers.contains) ?? false }) {
