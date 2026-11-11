@@ -2167,12 +2167,14 @@ func handoffTopologyTests() {
         check("topology: legacy failed-close retry has actually been scheduled", w.types(hA, "closeWindow").count == 1
               && w.win(hKA) != nil && s.run?.coverStartedAt == nil
               && s.history.contains { $0.contains("'s close failed") && $0.contains("again in") })
+        // A second display after the reveal: the switch ends on B at once; the old close's retry doesn't run (it would
+        // hold the screen again, which isn't for several displays), and A stays open (2026-11-11: it used to be restored).
         w.displays = 2
         shell.appsChanged("displays changed")
         sweep(w, s, seconds: 2)
-        check("topology: old close retry cannot run after source restoration or completion", !s.busy && w.fullAndInFront(hKA)
-              && w.types(hA, "closeWindow").count == 1 && w.win(hKA) != nil && s.session.parkOff != nil
-              && w.events.last == .cancelled(toB) && !w.freezer.isLive && w.strands.isEmpty)
+        check("topology: after the reveal the close retry doesn't run; the switch ends on B and A stays open", !s.busy && w.fullAndInFront(hKB)
+              && w.types(hA, "closeWindow").count == 1 && w.win(hKA) != nil
+              && w.events.last == .done(toB) && !w.freezer.isLive && w.strands.isEmpty)
     }
 
     do {
@@ -2211,15 +2213,33 @@ func handoffTopologyTests() {
         check("topology: disconnected source actually has a pending leave-fullscreen aftercare watch", s.phase == .after
               && s.session.watches.contains { $0.number == 1010 && $0.kind == .leaveFullScreen }
               && w.types(hA, "setWindowState").isEmpty && w.fullAndInFront(hKB))
+        // A second display after the reveal: B is what the person sees, so the switch stands (2026-11-11: it used to
+        // recover and bring A back). Parking A isn't for several displays: A stays where it is, its aftercare gone.
         w.displays = 2
         shell.appsChanged("displays changed")
-        check("topology: source recovery removes conflicting prior aftercare ownership", s.phase == .recovering
-              && !s.session.watches.contains { $0.number == 1010 })
+        check("topology after the reveal: no recovery, B kept, A's aftercare dropped", s.phase != .recovering
+              && w.fullAndInFront(hKB) && !s.session.watches.contains { $0.number == 1010 })
         w.linked.insert(hA)
         sweep(w, s, seconds: 4)
-        check("topology: relinked source restored without stale aftercare exiting or parking it", !s.busy
-              && w.events.last == .cancelled(toB) && w.fullAndInFront(hKA) && !w.registry.isParked(1010)
-              && !w.types(hA, "setWindowState").isEmpty && w.types(hA, "setWindowState").allSatisfy { $0.state == "fullscreen" }
-              && w.types(hA, "closeWindow").isEmpty && !s.session.watches.contains { $0.number == 1010 } && w.strands.isEmpty)
+        check("topology after the reveal: the switch lands on B; A left in its own Space, not exited, parked or closed", !s.busy
+              && w.events.last == .done(toB) && w.fullAndInFront(hKB) && !w.registry.isParked(1010)
+              && w.types(hA, "setWindowState").isEmpty && w.types(hA, "closeWindow").isEmpty
+              && !s.session.watches.contains { $0.number == 1010 } && w.strands.isEmpty)
+    }
+
+    do {
+        // The same after the reveal on one display (the Dock restarting): B kept, A's aftercare kept, the switch lands.
+        let (w, s) = handoffSetup { $0.coverOn = false }
+        let shell = routing(w, s)
+        w.onRequest = { r in
+            if r.link == hB, r.type == "setWindowState", r.state == "fullscreen" { w.linked.remove(hA) }
+        }
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 3) { s.phase == .after && s.session.watches.contains { $0.number == 1010 && $0.kind == .leaveFullScreen } }
+        shell.appsChanged("the Dock restarted")
+        check("Dock restart after the reveal: no recovery, B kept, A's aftercare kept (one display: it can still be parked)",
+              s.phase != .recovering && w.fullAndInFront(hKB) && s.session.watches.contains { $0.number == 1010 })
+        sweep(w, s, seconds: 4)
+        check("Dock restart after the reveal: the switch lands on B", !s.busy && w.events.last == .done(toB) && w.fullAndInFront(hKB))
     }
 }

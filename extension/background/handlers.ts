@@ -1,4 +1,4 @@
-import { openKept } from './kept.ts';
+import { makeKeptBehind, openKept } from './kept.ts';
 // What pages ask the background for: runtime messages { type, ...payload },
 // answered { ok, result } or { ok: false, error } (background.ts routes
 // them). types/margin.d.ts derives the protocol's types from this object.
@@ -242,13 +242,18 @@ async function openKeptBehind(windowId: number, spaceId: string, keptIds: string
     if (!win) return; // the window closed meanwhile
     markMarginOpening();
     noteReopened(kept.url);
-    const tab = await api.tabs.create({ windowId, url: kept.url, active: false }).catch(() => null);
-    if (!tab) continue;
-    await mutate((st) => {
-      let next = M.upsertTab(st, tab, now());
-      if (next.keptTabs?.[keptId]) next = M.linkKept(next, tab.id, keptId, now());
-      return M.moveTab(next, tab.id, spaceId);
+    // Linked before it's shared, so a click on its row meanwhile (restoreKept) gets this tab, linked.
+    const tab = await makeKeptBehind(keptId, async () => {
+      const made = await api.tabs.create({ windowId, url: kept.url, active: false }).catch(() => null);
+      if (!made) return null;
+      await mutate((st) => {
+        let next = M.upsertTab(st, made, now());
+        if (next.keptTabs?.[keptId]) next = M.linkKept(next, made.id, keptId, now());
+        return M.moveTab(next, made.id, spaceId);
+      });
+      return made;
     });
+    if (!tab) continue;
     await new Promise<any>((resolve) => setTimeout(resolve, SPACE_WINDOW_STEP_MS));
   }
 }

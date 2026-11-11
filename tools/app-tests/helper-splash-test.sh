@@ -20,7 +20,10 @@ PL
 cat > "$BUILD/browser.swift" <<'SWIFT'
 import AppKit
 NSApplication.shared.setActivationPolicy(.accessory)
-let window = NSPanel(contentRect: NSRect(x: -20000, y: -20000, width: 1000, height: 700), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+// Off every display: a full-screen window's size (the main display's), or a window's (MARGIN_TEST_STANDIN=window).
+let display = NSScreen.main?.frame.size ?? NSSize(width: 1512, height: 982)
+let size = ProcessInfo.processInfo.environment["MARGIN_TEST_STANDIN"] == "window" ? NSSize(width: 1000, height: 700) : display
+let window = NSPanel(contentRect: NSRect(origin: NSPoint(x: -20000, y: -20000), size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
 window.orderFront(nil)
 NSApplication.shared.run()
 SWIFT
@@ -92,6 +95,20 @@ check "app's drawn message ends the child" "$([ -n "$CHILD" ] && ! kill -0 "$CHI
 CHILD=""
 AFTER=$(ps -o rss= -p "$RESIDENT" | tr -d ' ')
 check "resident remains small afterwards ($AFTER KB)" "$([ "$AFTER" -lt 20000 ] && echo true || echo false)"
+# A browser whose window isn't full screen (a window's size): Margin won't draw over it, so no splash.
+kill "$BROWSER" 2>/dev/null || true; wait "$BROWSER" 2>/dev/null || true; BROWSER=""
+SHOWN_BEFORE=$(grep -c 'splash shown' "$BUILD/resident.log")
+open -n -g --env MARGIN_TEST_STANDIN=window "$BUILD/Browser.app"
+for _ in $(seq 1 50); do BROWSER=$(pgrep -f "^$BUILD/Browser.app/Contents/MacOS/run$" || true); [ -n "$BROWSER" ] && break; sleep 0.1; done
+sleep 1.5
+check "no splash over a window that isn't full screen" "$([ -n "$BROWSER" ] && [ "$(grep -c 'splash shown' "$BUILD/resident.log")" = "$SHOWN_BEFORE" ] && echo true || echo false)" "$(tail -3 "$BUILD/resident.log")"
+# The full-screen stand-in again, for the checks after this one.
+kill "$BROWSER" 2>/dev/null || true; wait "$BROWSER" 2>/dev/null || true; BROWSER=""
+open -n -g "$BUILD/Browser.app"
+for _ in $(seq 1 50); do BROWSER=$(pgrep -f "^$BUILD/Browser.app/Contents/MacOS/run$" || true); [ -n "$BROWSER" ] && break; sleep 0.1; done
+for _ in $(seq 1 50); do [ "$(grep -c 'splash shown' "$BUILD/resident.log")" -gt "$SHOWN_BEFORE" ] && break; sleep 0.1; done
+CHILD=$(pgrep -P "$RESIDENT" -f -- '--splash' || true); "$BUILD/notify" post "$BROWSER"
+for _ in $(seq 1 30); do [ -z "$CHILD" ] || kill -0 "$CHILD" 2>/dev/null || break; sleep 0.1; done; CHILD=""
 if [ -n "${MARGIN_HELPER_BASELINE:-}" ]; then
   "$MARGIN_HELPER_BASELINE" 2> "$BUILD/baseline.log" & BASELINE=$!
   sleep 0.5

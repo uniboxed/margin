@@ -1197,7 +1197,15 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // created, closed, moved or resized reads the window server at once. Window numbers only: no title is kept
     // or logged.
     func safariExact(list: [ServerWindow], pids: Set<pid_t>) -> [Int: String] {
-        guard options.safariAX, SafariAX.trusted, let pid = pids.first else { return [:] }
+        let wanted = safariRead(list: list, pids: pids)
+        return ax.exactProfiles.filter { wanted.contains($0.key) }
+    }
+
+    // What Accessibility knows of Safari's windows kept up to date (and asked again for the ones it hasn't named):
+    // the windows that matter (candidates), or none without Accessibility. The binder takes the profiles it proved
+    // (safariExact); the startup covers every one it named, the default profile's too (CoverPlan.profiles).
+    func safariRead(list: [ServerWindow], pids: Set<pid_t>) -> Set<Int> {
+        guard options.safariAX, SafariAX.trusted, let pid = pids.first else { return [] }
         let wanted = Set(WindowMatcher.candidates(list, pids: pids).map(\.number))
         ax.keep(listed: Set(list.map(\.number)))
         let names = profilesOf("safari").windowNames
@@ -1209,7 +1217,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 if !self.axLearn(found).isEmpty { self.burst("Accessibility named a window's profile") }
             }
         }
-        return ax.exactProfiles.filter { wanted.contains($0.key) }
+        return wanted
     }
 
     // What Accessibility read of Safari's windows, kept; the windows whose profile it named now.

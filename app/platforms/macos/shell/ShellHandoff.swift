@@ -71,6 +71,17 @@ struct HandoffParts {
 }
 
 extension Shell: HandoffWorld {
+    // A wake or an unlock can be heard before the session reads unlocked (CGSSessionScreenIsLocked clears a moment
+    // later): asked again every half second for up to 10 s, so the freeze and the live cover don't stay off after it.
+    static let unlockTries = 20
+    func wokeWhenUnlocked(tries: Int) {
+        if options.harness || SessionVisibility.allowsCover { return switcher.woke() }
+        guard tries > 0 else { return Diagnostics.note("woke, but the session still reads locked after 10 s: the freeze and the live cover stay off until the next wake") }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            MainActor.assumeIsolated { self?.wokeWhenUnlocked(tries: tries - 1) }
+        }
+    }
+
     // ---- the gate ----
 
     var handoffOn: Bool { options.handoff && spaceReads != nil }
@@ -236,7 +247,7 @@ extension Shell: HandoffWorld {
         case "will sleep", "screen sleep", "screen locked", "session inactive":
             switcher.revealNow(.sleep)
         case "woke", "screen wake", "screen unlocked", "session active":
-            if options.harness || SessionVisibility.allowsCover { switcher.woke() }
+            wokeWhenUnlocked(tries: Self.unlockTries)
         case "displays changed", "the Dock restarted":
             switcher.handoffEnvironmentChanged(why)
         case "app activated":

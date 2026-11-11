@@ -400,6 +400,10 @@ struct AXKnown {
     // A signing change or a corrected Safari read can replace a copy's id.
     // Forget its old identity so the next read can name the window again.
     @discardableResult mutating func keepProfiles(names: [String: String]) -> [Int] {
+        // No names: Safari's profiles unread (a failed read), not "no profiles" (it always has its default one): the
+        // identities learned stay, as nothing says they're wrong (2026-11-11: a failed read used to drop them all,
+        // and with no names none could be learned again).
+        guard !names.isEmpty else { return [] }
         let removed = profiles.keys.filter { n in
             guard let link = profiles[n] else { return false }
             return names[String(link.dropFirst("safari:".count))] == nil

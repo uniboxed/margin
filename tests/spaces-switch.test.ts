@@ -86,7 +86,8 @@ globalThis.chrome = fakeBrowser({
 const M = await import('../extension/state/model.ts');
 const V = await import('../extension/shared/view.ts');
 const { mutate, load } = await import('../extension/background/store.ts');
-const { showSpace, navigate } = await import('../extension/background/navigation.ts');
+const { showSpace, navigate, goneMeanwhile } = await import('../extension/background/navigation.ts');
+const { restoreKept } = await import('../extension/background/kept.ts');
 const { ensureCurrent, forgetCurrent, injectIntoOpenTabs } = await import('../extension/background/tabs.ts');
 // Tabs these tests didn't prove to have WebKit's mark count as having it, as
 // every tab did before it was tracked (background/tabs.ts; its own tests:
@@ -151,6 +152,15 @@ test('showSpace: an empty space opens the start page in it; an untouched start p
   await showSpace(1, 'empty2');
   assert.equal(fake.calls.create.length, 1, 'no second start page');
   assert.equal((await load()).tabSpace[opened], 'empty2', 'the untouched one moved');
+});
+
+test('showSpace: a tab gone between being chosen and shown is skipped for the next, a saved one too (2026-11-11)', async () => {
+  // What a saved tab opened or deleted meanwhile says (restoreKept), and a browser tab closed meanwhile.
+  const kept = await restoreKept('no-such-saved-tab').then(() => null, (err) => err);
+  assert.ok(kept, 'restoreKept refuses a saved tab that isn\'t there');
+  assert.equal(goneMeanwhile(kept), true, `"${kept?.message}" reads as gone meanwhile: the space tries its next tab`);
+  assert.equal(goneMeanwhile(new Error('No tab with id: 12.')), true);
+  assert.equal(goneMeanwhile(new Error('Too late')), false, 'any other failure is the switch failing');
 });
 
 test('showSpace: a space with only tabs that aren\'t open (kept): its top one opens, not a new tab (requested 2026-11-08)', async () => {

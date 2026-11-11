@@ -21,6 +21,11 @@ func log(_ line: String) {
 
 // Cosmetic handoff only: browser pid, no profile, page title, URL or link credentials. The query handles the
 // app drawing before the splash has installed its listener. Same names as HelperSplash in Overlay.swift.
+// A window the size of a display: a full-screen one. Margin draws only over those, so a splash over a window in a
+// window would show its 6 s with nothing after it (2026-11-11: Safari opened in a normal window).
+func fillsADisplay(_ bounds: CGRect) -> Bool {
+    NSScreen.screens.contains { abs($0.frame.width - bounds.width) < 1 && abs($0.frame.height - bounds.height) < 1 }
+}
 let splashReady = Notification.Name("com.unibox.margin.startup.ready")
 let splashQuery = Notification.Name("com.unibox.margin.startup.query")
 
@@ -91,7 +96,7 @@ func runSplash(browser: NSRunningApplication) -> Never {
               let window = list.first(where: {
                   ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == browser.processIdentifier
                       && ($0[kCGWindowLayer as String] as? NSNumber)?.intValue == 0
-                      && ($0[kCGWindowBounds as String] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0) }.map { $0.width >= 400 && $0.height >= 240 } == true
+                      && ($0[kCGWindowBounds as String] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0) }.map(fillsADisplay) == true
               }), let bounds = (window[kCGWindowBounds as String] as? NSDictionary).flatMap({ CGRect(dictionaryRepresentation: $0) }),
               let number = (window[kCGWindowNumber as String] as? NSNumber)?.intValue else { return }
         windowNumber = number

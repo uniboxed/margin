@@ -1639,6 +1639,11 @@ extension Tests {
       _ = k.learn([11: win(11, "Test A — Start Page")], names: ["s-old": "Test A"])
       check("startup: a corrected copy mapping drops an old window identity, keeping its full-screen fact",
             k.keepProfiles(names: ["s-new": "Test A"]) == [11] && k.profiles[11] == nil && k.fullScreen[11] == true)
+      do {
+        var known = AXKnown()
+        _ = known.learn([12: win(12, "Test A — Inbox")], names: ["s-a": "Test A"])
+        check("a failed profile read (no names) keeps the identities learned", known.keepProfiles(names: [:]).isEmpty && known.profiles[12] == "safari:s-a")
+      }
       check("startup: the restored window is named again for the current copy without closing Safari",
             k.learn([11: win(11, "Test A — Start Page")], names: ["s-new": "Test A"]) == [11] && k.profiles[11] == "safari:s-new")
       check("startup: an unchanged mapping keeps its exact identity", k.keepProfiles(names: ["s-new": "Test A"]).isEmpty)
@@ -1919,6 +1924,15 @@ extension Tests {
       return CoverPlan.decide(x)
     }
     check("covers: a full-screen window of a Margin profile, not laid out: covered; a window not filling its display: not", f { _ in }.wanted == [100])
+    // Safari's default profile: its windows' titles have no profile's prefix, so Accessibility names it by inference.
+    // The covers take that (CoverPlan.profiles); the binder's exact identities leave it out (2026-11-11: with those,
+    // no startup cover for any default-profile window).
+    var known = AXKnown()
+    _ = known.learn([100: SafariAX.Window(number: 100, title: "Start Page", fullScreen: true)], names: ["s-a": "Test A"])
+    check("covers: a default-profile window is covered (its profile as the covers take it)",
+          f { $0.profiles = CoverPlan.profiles(known, wanted: [100, 101]); $0.marginProfiles = ["safari:s-default"] }.wanted == [100], "\(known.profiles)")
+    check("covers: the binder's exact identities alone would leave it uncovered",
+          f { $0.profiles = known.exactProfiles; $0.marginProfiles = ["safari:s-default"] }.wanted.isEmpty)
     check("covers: not for a window Accessibility hasn't named, or a profile without Margin",
           f { $0.profiles = [:] }.wanted.isEmpty && f { $0.marginProfiles = [] }.wanted.isEmpty)
     check("covers: not once its layout is over it, while it's parked, during a switch, or once expired",

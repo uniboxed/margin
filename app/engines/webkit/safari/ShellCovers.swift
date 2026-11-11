@@ -96,6 +96,14 @@ enum CoverPlan {
         var expire: [Int] = [] // of those, the ones covered long enough (never again for that window)
     }
 
+    // The profile of each window the covers may cover: every one Accessibility named, the default profile's too (a
+    // title without a profile's prefix reads as the default's). Enough to cover a window Margin will draw over; not
+    // the binder's exact identities (AXKnown.exactProfiles), which leave that inference out, and with it every
+    // window of Safari's default profile (2026-11-11: no startup cover for most people).
+    static func profiles(_ ax: AXKnown, wanted: Set<Int>) -> [Int: String] {
+        ax.profiles.filter { wanted.contains($0.key) }
+    }
+
     static func decide(_ f: Facts, coverFor: Double = Shell.coverFor) -> Plan {
         var plan = Plan()
         for w in f.candidates.sorted(by: { $0.number < $1.number }) {
@@ -144,7 +152,8 @@ extension Shell {
         // A read the window server didn't answer: this tick skipped (covers kept as they are).
         guard let list = windowSource.read(of: pids.union([ProcessInfo.processInfo.processIdentifier])) else { return }
         let now = Diagnostics.now()
-        let exact = safariExact(list: list, pids: pids)
+        // Each window's profile as the covers take it (the default profile's too: CoverPlan.profiles).
+        let exact = CoverPlan.profiles(ax, wanted: safariRead(list: list, pids: pids))
         // (The map kept from this read too while covers are wanted: the trace has Safari's launch.)
         if !started || !covers.isEmpty {
             let changes = windowMap.update(now: now, list: list, browserPids: pids, marginPid: ProcessInfo.processInfo.processIdentifier, front: apps.frontPid, ax: ax,
