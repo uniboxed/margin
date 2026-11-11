@@ -19,6 +19,9 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
     private let pages: OverlayPages
     private let io: LiveCoverSpaceIO
     private let sessionAllowed: () -> Bool
+    private let presentation: CoverPresentation
+    private let layoutViews: () -> [WKWebView]
+    var presentationReason: String? { presentation.reason }
     private var context: LiveCoverContext?
     private var panel: NSPanel?
     private var webView: WKWebView?
@@ -31,8 +34,10 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
     private var pageVisible = false
     private var pageShown = false
 
-    init(pages: OverlayPages, io: LiveCoverSpaceIO, sessionAllowed: @escaping () -> Bool = { SessionVisibility.allowsCover }) {
+    init(pages: OverlayPages, io: LiveCoverSpaceIO, sessionAllowed: @escaping () -> Bool = { SessionVisibility.allowsCover },
+         presentation: CoverPresentation? = nil, layoutViews: @escaping () -> [WKWebView] = { [] }) {
         self.pages = pages; self.io = io; self.sessionAllowed = sessionAllowed
+        self.presentation = presentation ?? CoverPresentation(io: .real()); self.layoutViews = layoutViews
     }
 
     func prepare(_ context: LiveCoverContext) {
@@ -56,6 +61,13 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
         p.collectionBehavior = [.stationary, .ignoresCycle]
         p.alphaValue = 0
         let view = pages.makeWebView(size: context.viewport.size)
+        // Before the actual visibility transitions: the setter itself does not
+        // trigger a visibility update. Object identity survives overlay handover.
+        guard presentation.hold(view), layoutViews().allSatisfy({ presentation.hold($0) }) else {
+            fail("WebKit cover presentation unavailable")
+            p.close()
+            return
+        }
         view.frame = context.viewport
         let content = NSView(frame: CGRect(origin: .zero, size: context.display.size))
         content.addSubview(view)
@@ -146,13 +158,27 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
 
     func recovering() { webView?.evaluateJavaScript("window.marginCover?.recovering()", completionHandler: nil) }
 
+    // A newly linked/created target has no view during prepare(). Hold it before
+    // its window is shown; no background view is held outside this cover's life.
+    func keepRendering(_ view: WKWebView) -> Bool {
+        guard [.preparing, .prepared, .showing, .shown].contains(state) else { return true }
+        guard presentation.hold(view) else {
+            fail("destination presentation unavailable")
+            onEmergency?()
+            return false
+        }
+        return true
+    }
+
     @discardableResult func end(_ why: RevealWhy) -> Bool {
         generation += 1
         check?.invalidate(); check = nil
         watchdog?.cancel(); watchdog = nil
         panel?.orderOut(nil) // before Space destruction: never return a visible panel to Desktop
         CATransaction.flush()
-        let ok = lease?.close() ?? true
+        let rendered = presentation.restore()
+        let closed = lease?.close() ?? true
+        let ok = rendered && closed
         lease = nil
         if let webView { pages.bridge.unregister(webView); webView.navigationDelegate = nil; webView.stopLoading(); webView.removeFromSuperview() }
         panel?.close()

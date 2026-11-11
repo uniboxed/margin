@@ -53,6 +53,13 @@ Options:
 - `--app PATH`: Margin.app's path (default `/Applications/Margin.app`).
 - `--results DIR`: where the report goes (default `tools/handoff-lab/results`).
 
+The live gate's pure log-parser checks run off screen, with no windows or private calls:
+
+```sh
+swiftc -parse-as-library tools/handoff-lab/LiveLog.swift tools/handoff-lab/tests/live-log-tests.swift -o /tmp/margin-live-log-tests
+/tmp/margin-live-log-tests
+```
+
 ## The gates
 
 ### LIVE: issue #15's live-cover experiment
@@ -60,6 +67,10 @@ Options:
 `build/handoff-lab live --dry-run --app "$HOME/Applications/Margin.app"` prints the exact plan and launch checks without showing or moving anything. After approval, the same command with `--go --runs 2` uses only the guarded Test A/Test B dev hook. Prepare Test A in front and Test B as in G16; handoff/parking must be on, close-windows off, and no dev-hook caps or faults armed. An accepted read-only dump establishes those preconditions before any cover appears.
 
 The lab temporarily caps the freeze off for those two profiles, shows its own animated blue panel in a temporary level-400 Space, then asks Margin for Test B and Test A. It keeps that cover until each handoff ends and fresh reads verify the destination is full screen, active and frontmost and the source is parked or gone. It restores the cap, orders out its panel and destroys its own Space on completion, failure and SIGINT/SIGTERM. No browser is pre-created by this gate, no foreign window is written by its cover calls, and it stops at the first failure.
+
+If an approved two-switch run completes Test A → Test B but stops before returning, `live --return-to-a --dry-run` describes **one** remaining Test B → Test A return. After diagnosing the failure, `--go --return-to-a` consumes only that remaining approval, never another Test B request. The flag is included in the report. Do not count a successful browser transition as a frame-check pass if the recorder's counts were not saved.
+
+The log parser excludes replayed `dev hook: dump:` lines but accepts the legitimate `dev hook: cap` suffix on actual handoff summaries. Browser-front checks reuse `WindowMatcher.candidates`: `CGWindowSource` intentionally includes other apps' on-screen windows, so a raw first-window test would mistake Margin's own cover/layout for Safari.
 
 The optional recorder tests all 960 grid points over 90% of the display and counts changing complete frames. Unavailable capture produces **partial**, never a visual pass. A physical-camera check is separate. This pulse is a lab marker, not product UI; the product cover uses Margin's theme renderer and its own cached target-space data.
 
@@ -205,3 +216,25 @@ After:
 - **G5's enumerator search** calls `SLSCopyWindowsWithOptionsAndTags` with the signature the window managers that use it declare. It's the lab's only call that Margin.app doesn't make, so `docs/PRIVATE-APIS.md` row 13 holds its result, not its use.
 - **Child windows** (G5, G6, G13) are titled 800×500 windows at alpha 0 that macOS keeps mostly off screen. They're never seen, but they are real windows of another process, as Safari's are.
 - **Frames:** only complete frames count, because ScreenCaptureKit repeats old buffers while the screen is still. With no complete frame at all while frozen and a window changing every frame underneath, the screen held. A camera is still the only independent proof.
+
+
+## Themed cover comparison and read-only memory samples
+
+`compare --dry-run` describes exactly two guarded Test A → Test B → Test A requests, with no external lab panel. `compare --go` requires the installed feature default off and fresh freeze summaries. `compare --live-ui --dry-run` / `--go` requires the feature default on and actual `live cover` summaries; a fallback fails immediately before another request. Configure/restart the app separately, within the approval for that comparison. `--return-to-a` limits either comparison to one already-approved remaining return. Results are **recorded**: these state/timing checks do not establish physical-display smoothness or pixel coverage.
+
+`python3 tools/handoff-lab/memory.py --duration 25 > /tmp/margin-memory.jsonl` samples only metadata. It finds the unique installed Margin process, attributes WebKit GPU/network/content processes through XNU's resource coalition, and reports process-footprint/resident-byte sums, CPU counters and the login helper separately. It reads no process memory contents, browser pages or titles. Unknown coalition/ABI or unread members yield errors/incomplete totals. The cohort was independently distinct from Safari on the current host. These sums include compressed footprint and are not a claim of exclusively resident RAM; compare like window states and include idle samples after cleanup. The sampler is lab-only and adds no product work.
+
+The private metadata schema comes from [Apple's proc_info_private.h](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/proc_info_private.h) (`PROC_PIDCOALITIONINFO`, 40 bytes), [coalition.h](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/coalition.h) (resource index zero) and the installed SDK's public `rusage_info_v0` (96 bytes). Byte-count checks refuse changed/unknown reads; CPU Mach ticks use the host timebase.
+
+CPU units were independently calibrated in an owned Python process on 26B131: three 0.4-second arithmetic loops compared its `proc_pid_rusage` deltas with `time.process_time_ns()`. The host timebase was 125/3; converted counters matched within 0.006%, while treating the raw values as nanoseconds would undercount by 41.667×. Apple's current [task rusage implementation](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/kern/bsd_kern.c) obtains task-power counters from [Recount Mach-time metrics](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/kern/recount.h). That open-source revision is supporting evidence; the calibration establishes this host's units.
+
+The COMPARE gate preserves completed rows and a failing summary before stopping, so a failure on the return does not erase the first request's measurements from the report. A live-only readiness timeout also records cached R1–R5 progress in Margin's log. When window tracing is enabled, failed stacking checks retain the existing exact above-window metadata at most once per second, with up to 24 rows and the total count; no extra OS queries or page data are collected.
+
+### Owned off-screen WebKit presentation probe
+
+```sh
+swiftc -swift-version 5 -default-isolation MainActor -parse-as-library app/platforms/macos/private/CoverPresentation.swift tools/handoff-lab/presentation-probe.swift -o /tmp/margin-cover-presentation-probe
+/tmp/margin-cover-presentation-probe
+```
+
+This diagnostic creates only its own alpha-zero panel at (-20000,-20000), with two constant counter pages. It never drives a browser or shows a window. The production per-view wrapper checks getter/setter encodings, disables occlusion only on one owned view, reads back the write, then restores it. On 26B131 the normal view stayed at zero rAF callbacks; the held view advanced 60 in a second; restoration succeeded with zero outstanding leases. Unit tests never call the real SPI (`MARGIN_APP_TESTS` refuses it); this explicit owned diagnostic is separate.

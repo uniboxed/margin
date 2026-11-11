@@ -432,7 +432,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let sky = SkyLight(resolver: resolver, availability: privateCalls)
         skyLight = sky
         if options.liveProfileCover {
-            if privateCalls.liveCover { liveProfileCover = NativeHandoffCover(pages: pages, io: .real(sky)) }
+            if privateCalls.liveCover {
+                let cover = NativeHandoffCover(pages: pages, io: .real(sky), layoutViews: { [weak self] in
+                    guard let self, let run = self.switcher.run else { return [] }
+                    return [run.a, run.b].compactMap { $0.flatMap { self.overlays[$0]?.webView } }
+                })
+                if let why = cover.presentationReason { Diagnostics.note("live cover unavailable at launch (\(why)): degraded freeze/macOS slide fallback") }
+                else { liveProfileCover = cover; Diagnostics.note("live cover: per-view WebKit presentation checked") }
+            }
             else { Diagnostics.note("live cover unavailable at launch: degraded freeze/macOS slide fallback") }
         }
         // The freeze's session rules start off when the launch check didn't pass it (Freezer.swift).
@@ -959,6 +966,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     func forgetOverlayState(_ key: WindowKey) {
         placements[key] = nil; placementMisses[key] = nil; frameSaid[key] = nil; reorderedAt[key] = nil; joinTriedAt[key] = nil
         aheadFailedAt[key] = nil; ownSpaceSuspects[key] = nil; lastPointerPush[key] = nil; lastPointer[key] = nil; safariSidebar[key] = nil
+        coverStackSaidAt[key] = nil
         acrossSent[key] = nil; cloudSent[key] = nil
     }
 
@@ -1022,12 +1030,33 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     /// when that says no, asked exactly (the windows in front of the browser's window), since the every-window list's
     /// order isn't front to back between Margin's windows and Safari's (a real session's trace 2026-11-07): an overlay already
     /// in front isn't ordered in again on every read, and a switch's R4 isn't held back by a wrong "behind".
+    private var coverStackSaidAt: [WindowKey: Double] = [:]
     func isStacked(_ list: [ServerWindow], overlay: OverlayController, browser: ServerWindow, toolbar: Int?) -> Bool {
         let own = overlay.catcherWindowNumbers.union(liveProfileCover?.windowNumbers ?? [])
         if WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: browser.number, toolbar: toolbar, own: own) { return true }
-        guard let above = windowSource.above(browser.number) else { return false }
-        return WindowMatcher.stackedAboveExactly(aboveBrowser: above, aboveToolbar: toolbar.flatMap { windowSource.above($0) } ?? (toolbar == nil ? nil : []),
-                                                overlay: overlay.windowNumber, browser: browser.bounds, browserPid: browser.pid, own: own)
+        let above = windowSource.above(browser.number)
+        let aboveToolbar = above == nil ? nil : toolbar.flatMap { windowSource.above($0) }
+        let stacked = above.map {
+            WindowMatcher.stackedAboveExactly(aboveBrowser: $0, aboveToolbar: aboveToolbar ?? (toolbar == nil ? nil : []),
+                                             overlay: overlay.windowNumber, browser: browser.bounds, browserPid: browser.pid, own: own)
+        } ?? false
+        // The all-window trace cannot reconstruct CG's independent above-window
+        // answer. Keep that existing read on a live-only failure, at most once a
+        // second. No extra queries, page contents, capture or idle work.
+        if !stacked, options.trace != nil, liveProfileCover?.state == .shown {
+            let now = Diagnostics.now()
+            if now - (coverStackSaidAt[overlay.key] ?? -.infinity) >= 1 {
+                coverStackSaidAt[overlay.key] = now
+                func sample(_ rows: [ServerWindow]?) -> String {
+                    guard let rows else { return "unknown" }
+                    return "\(rows.count):[" + rows.prefix(24).map { w in
+                        "\(w.number)/p\(w.pid)/l\(w.layer)/a\(w.alpha)/\(WindowMatcher.describe(w.bounds))"
+                    }.joined(separator: ";") + "]"
+                }
+                Diagnostics.note("live cover stack blocked: overlay \(overlay.windowNumber), browser \(browser.number), toolbar \(toolbar.map(String.init) ?? "-"), own \(own.sorted()); above browser \(sample(above)); above toolbar \(sample(aboveToolbar))")
+            }
+        }
+        return stacked
     }
 
     func browserToolbar(_ list: [ServerWindow], browser: ServerWindow) -> ServerWindow? {
@@ -1386,6 +1415,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 continue
             }
             let overlay = existing ?? makeOverlay(key)
+            if let cover = liveProfileCover as? NativeHandoffCover, switcher.run?.a == key || switcher.run?.b == key {
+                guard cover.keepRendering(overlay.webView) else { continue }
+            }
             if let server = facts.window, !facts.modelPresentation { verifyModelGeometry(overlay, server: server, full: facts.full) }
             switch decision {
             case .hide(let why): overlay.hide(why); continue

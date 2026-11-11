@@ -829,6 +829,8 @@ struct LabOptions {
     var stp = false
     var dockRestart = false
     var devHook = false
+    var liveReturnToA = false // finish only an already-approved remaining B → A switch
+    var compareLive = false // COMPARE: require the real themed cover, not a freeze fallback
     var appPath = "/Applications/Margin.app"
     var port = 47944
     var labDir = labExecutable.deletingLastPathComponent().deletingLastPathComponent()
@@ -2142,13 +2144,6 @@ final class LabLiveCover {
     @discardableResult func close() -> Bool { panel.orderOut(nil); CATransaction.flush(); panel.close(); return lease.close() }
 }
 
-func liveShownNumber(_ text: String) -> Int? {
-    guard let regex = try? NSRegularExpression(pattern: #"shown [^\n]+\(([0-9]+)\);"#),
-          let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-          let range = Range(match.range(at: 1), in: text) else { return nil }
-    return Int(text[range])
-}
-
 let liveCoverGate = Gate(
     id: "LIVE", title: "Live cover over real Test A/Test B profile handoffs (issue #15)",
     decides: "whether the special Space keeps an own animated panel above actual Safari transitions; not product acceptance",
@@ -2157,7 +2152,7 @@ let liveCoverGate = Gate(
            "read-only dump must be accepted by Margin's Test A/Test B guard before any panel is shown",
            "disable freeze for Test A/Test B only; restore that cap on every normal, failure and signal cleanup",
            "show one nonactivating pass-through own panel in a temporary level-400 Space; Core Animation keeps its colour pulse live",
-           "ask Margin's dev hook for Test B, then Test A; it refuses every other profile",
+           "ask Margin's dev hook for Test B, then Test A; --return-to-a performs only the one remaining return to Test A; every other profile is refused",
            "keep the cover until the handoff summary and fresh reads prove B full screen, active and frontmost, and A parked or gone",
            "40×24 samples over 90% of the display must all be COVER; changed complete frames establish animation; unavailable capture is partial, never pass",
            "order out the owned panel before destroying its Space; stop on the first failure; a physical-camera check is still required"],
@@ -2181,7 +2176,7 @@ let liveCoverGate = Gate(
         }
         guard let current = lab.calls.server(source), current.onScreen, fills(current.bounds),
               let active = lab.calls.spaces.showing(onDisplayOf: source), lab.calls.fullScreen().contains(active), lab.calls.spacesOf(source).contains(active),
-              CGWindowSource().windows(of: [current.pid]).first(where: { $0.onScreen && $0.layer == 0 && $0.bounds.height > 160 })?.number == source else {
+              WindowMatcher.candidates(CGWindowSource().windows(of: [current.pid]), pids: [current.pid]).filter(\.onScreen).min(by: { $0.order < $1.order })?.number == source else {
             return Outcome(status: .notRun, lines: ["source test window must be full screen, active and frontmost; nothing shown or switched"])
         }
         let capStart = buffer.all.count
@@ -2190,7 +2185,7 @@ let liveCoverGate = Gate(
         lab.restoreCoverMode = true
         var lines: [String] = []
         let recorder = await lab.recorder([LabLiveCover.tint], wide: true)
-        for i in 1...min(2, lab.runs(2)) {
+        for i in 1...(lab.o.liveReturnToA ? 1 : min(2, lab.runs(2))) {
             let cover = try await LabLiveCover(lab.calls.sky)
             lab.liveCover = cover
             await pause(0.2)
@@ -2199,11 +2194,11 @@ let liveCoverGate = Gate(
                 guard await waitFor(1, every: 0.02, { recorder.frames(epochMs() - 300).last?.state == "COVER" }) else { throw Fail("no complete cover frame before asking Safari to switch") }
             }
             let first = buffer.all.count, started = epochMs()
-            Margin.devSwitch(to: i == 1 ? "Test B" : "Test A")
+            Margin.devSwitch(to: lab.o.liveReturnToA ? "Test A" : (i == 1 ? "Test B" : "Test A"))
             var summary: String?
             guard await waitFor(10, every: 0.02, {
                 let fresh = buffer.all.dropFirst(first)
-                summary = fresh.first { $0.contains("handoff:") && $0.contains("→") && !$0.contains("dev hook:") }
+                summary = fresh.first(where: liveSwitchSummary)
                 return summary != nil || fresh.contains { $0.contains("dev hook:") && $0.contains("refused:") }
             }), let summary, !summary.contains("frozen "), !summary.contains("recovered"), !summary.contains("aborted"), !summary.contains("failed") else {
                 throw Fail("real profile handoff refused, frozen, failed, or no summary in 10 s")
@@ -2212,7 +2207,7 @@ let liveCoverGate = Gate(
             guard state.contains("switch: idle"), let target = liveShownNumber(state), target != source,
                   let window = lab.calls.server(target), window.onScreen, fills(window.bounds),
                   let active = lab.calls.spaces.showing(onDisplayOf: target), lab.calls.fullScreen().contains(active), lab.calls.spacesOf(target).contains(active),
-                  CGWindowSource().windows(of: [window.pid]).first(where: { $0.onScreen && $0.layer == 0 && $0.bounds.height > 160 })?.number == target,
+                  WindowMatcher.candidates(CGWindowSource().windows(of: [window.pid]), pids: [window.pid]).filter(\.onScreen).min(by: { $0.order < $1.order })?.number == target,
                   lab.calls.server(source) == nil || lab.calls.parked(source) else { throw Fail("final B readiness or A parking/gone check failed; stop") }
             let ended = epochMs()
             let frames = recorder?.frames(started, ended) ?? []
@@ -2229,6 +2224,75 @@ let liveCoverGate = Gate(
         }
         lines.append("capture \(recorder == nil ? "unavailable: frame coverage and animation NOT MEASURED" : "measured, grid over 90% of display"); physical-camera verification still pending")
         return Outcome(status: recorder == nil ? .partial : .pass, lines: lines)
+    })
+
+// A bounded comparison through the same guarded hook, without a lab panel that
+// could hide a product failure. Exactly two requests; first failure stops it.
+let compareCoverGate = Gate(
+    id: "COMPARE", title: "Current freeze or actual themed-cover timing through Margin.app",
+    decides: "two successful guarded switches and their mode/timing; not physical-display or pixel-coverage acceptance",
+    needs: [.margin, .devHook], freezes: "current freeze normally; --live-ui requires the actual animated product cover with no freeze",
+    plan: ["Test A shown, Test B prepared; one display, parking on, close off, idle and no caps/faults",
+           "the installed MarginLiveProfileCover default must be off for baseline, on for --live-ui; configure/restart separately before this gate",
+           "ask only Test B then Test A (or one remaining Test A return with --return-to-a); no lab panel, no mode caps, no browser pre-creation",
+           "accept only a fresh successful summary in the requested mode; any fallback, failure, refusal or timeout stops before another request",
+           "after each, independently verify native full screen, active/front browser identity and the source parked/gone",
+           "record timing and summary; memory.py can sample the app and its attributed WebKit processes separately; no frame coverage is claimed"],
+    run: { lab in
+        guard Margin.running != nil, Margin.devHooksOn else { return Outcome(status: .notRun, lines: ["requires running Margin and guarded dev hook"] ) }
+        let flag = UserDefaults(suiteName: "com.unibox.margin")?.bool(forKey: "MarginLiveProfileCover") ?? false
+        guard flag == lab.o.compareLive else { return Outcome(status: .notRun, lines: ["installed feature default does not match requested comparison; nothing switched"]) }
+        let (process, buffer) = try Margin.stream()
+        defer { process.terminate() }
+        await pause(0.4)
+        @MainActor func dump() async -> String {
+            let at = buffer.all.count
+            Margin.dev("dump")
+            _ = await waitFor(2, every: 0.02) { buffer.all.dropFirst(at).contains { $0.contains("dev hook: dump: the last") || $0.contains("dev hook:") && $0.contains("refused:") } }
+            return buffer.all.dropFirst(at).joined(separator: "\n")
+        }
+        @MainActor func ready(_ number: Int) -> Bool {
+            guard let w = lab.calls.server(number), w.onScreen, fills(w.bounds),
+                  let active = lab.calls.spaces.showing(onDisplayOf: number), lab.calls.fullScreen().contains(active), lab.calls.spacesOf(number).contains(active) else { return false }
+            return WindowMatcher.candidates(CGWindowSource().windows(of: [w.pid]), pids: [w.pid]).filter(\.onScreen).min(by: { $0.order < $1.order })?.number == number
+        }
+        let before = await dump()
+        guard before.contains("handoff on, parking on"), before.contains("switch: idle"), before.contains("no caps; no faults armed"),
+              before.contains("close windows off; displays 1"), !before.contains("refused:"), var source = liveShownNumber(before), ready(source) else {
+            return Outcome(status: .notRun, lines: ["guarded source/preconditions not ready; nothing switched"])
+        }
+        let mode = lab.o.compareLive ? "themed live cover" : "freeze baseline"
+        var lines: [String] = []
+        for i in 1...(lab.o.liveReturnToA ? 1 : 2) {
+            let first = buffer.all.count, started = epochMs()
+            Margin.devSwitch(to: lab.o.liveReturnToA ? "Test A" : (i == 1 ? "Test B" : "Test A"))
+            var summary: String?
+            guard await waitFor(20, every: 0.02, {
+                let fresh = buffer.all.dropFirst(first)
+                summary = fresh.first(where: liveSwitchSummary)
+                return summary != nil || fresh.contains { $0.contains("dev hook:") && $0.contains("refused:") }
+            }), let summary, !summary.contains("recovered"), !summary.contains("aborted"), !summary.contains("failed"), !summary.contains("late (") else {
+                return Outcome(status: .fail, lines: lines + [
+                    "stopped at run \(i): \(mode) summary refused, failed, late or timed out; no further request",
+                    summary ?? "no fresh handoff summary received"
+                ])
+            }
+            let hasFreeze = summary.contains("frozen ")
+            guard lab.o.compareLive ? summary.contains("live cover ") && !hasFreeze : hasFreeze && !summary.contains("live cover ") else {
+                return Outcome(status: .fail, lines: lines + ["requested \(mode) did not run (fallback or mismatched app launch); stop", summary])
+            }
+            let state = await dump()
+            guard state.contains("switch: idle"), let target = liveShownNumber(state), target != source, ready(target),
+                  lab.calls.server(source) == nil || lab.calls.parked(source) else {
+                return Outcome(status: .fail, lines: lines + ["\(mode) final destination/source state did not verify; stop", summary])
+            }
+            let measured = "\(mode) run \(i): \(Int(epochMs() - started)) ms through final verified state; " + summary
+            lines.append(measured); note(measured)
+            source = target
+            await pause(1)
+        }
+        lines.append("no lab cover or recorder; actual physical-display smoothness still requires observation")
+        return Outcome(status: .recorded, lines: lines)
     })
 
 // MARK: G16: the acceptance, through Margin.app
@@ -2339,7 +2403,7 @@ let g18 = Gate(
         return Outcome(status: .recorded, lines: lines)
     })
 
-let allGates: [Gate] = [holdsGate, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15, g16, g17, g18, liveCoverGate]
+let allGates: [Gate] = [holdsGate, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15, g16, g17, g18, liveCoverGate, compareCoverGate]
 let ownGates = ["holds", "G5", "G6", "G7", "G10", "G12", "G13", "G14", "G15", "G17", "G18"]
 let stpGates = ["G2", "G3", "G4", "G8", "G9", "G11"]
 
@@ -2393,6 +2457,8 @@ enum Runner {
             case "--stp": o.stp = true
             case "--dock-restart": o.dockRestart = true
             case "--dev-hook": o.devHook = true
+            case "--return-to-a": o.liveReturnToA = true
+            case "--live-ui": o.compareLive = true
             case "--runs": i += 1; o.runs = i < args.count ? Int(args[i]) : nil
             case "--app": i += 1; if i < args.count { o.appPath = args[i] }
             case "--results": i += 1; if i < args.count { o.resultsDir = URL(fileURLWithPath: args[i]) }
@@ -2470,6 +2536,8 @@ enum Runner {
         if o.dryRun || !o.go {
             print(o.dryRun ? "Dry run: the plan, and read-only checks. Nothing on screen is touched." : "Not run: add --go to run these on screen (approval first; README.md).")
             for g in gates { printPlan(g) }
+            if o.liveReturnToA { print("\nOverride: only ONE remaining Test B → Test A return; no Test B request.") }
+            if o.compareLive { print("\nCOMPARE override: actual themed live cover required; a freeze/slide fallback fails the gate.") }
             print("\nChecks:")
             for l in preflight(o, gates) { print("  " + l) }
             return 0
@@ -2528,7 +2596,7 @@ enum Runner {
         text += "\n## Run at \(time.string(from: started)): \(done.map(\.0.id).joined(separator: ", "))\n\n"
         text += "- Launch check: \(c.line)\n"
         text += "- Screen Recording for the lab: \(Recorder.allowed ? "yes" : "no")\n"
-        let flags = [lab.o.person ? "--person" : nil, lab.o.stp ? "--stp" : nil, lab.o.runs.map { "--runs \($0)" }, lab.o.dockRestart ? "--dock-restart" : nil, lab.o.devHook ? "--dev-hook" : nil].compactMap { $0 }
+        let flags = [lab.o.person ? "--person" : nil, lab.o.stp ? "--stp" : nil, lab.o.runs.map { "--runs \($0)" }, lab.o.dockRestart ? "--dock-restart" : nil, lab.o.devHook ? "--dev-hook" : nil, lab.o.liveReturnToA ? "--return-to-a (one switch only)" : nil, lab.o.compareLive ? "--live-ui (actual themed cover required)" : nil].compactMap { $0 }
         text += "- Options: \(flags.isEmpty ? "none" : flags.joined(separator: " "))\n"
         for (g, out) in done {
             text += "\n### \(g.id): \(out.status.rawValue)\n\n\(g.title). Decides: \(g.decides).\n\n"

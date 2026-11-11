@@ -94,6 +94,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     oneMargin()
     cloudTabsTests() // cloud-tabs-tests.swift
     privateCallsTests() // private-calls-tests.swift
+    coverPresentationTests() // per-view occlusion lease, fake calls only
     handoffTests() // handoff-tests.swift
     liveHandoffTests() // live-handoff-tests.swift: fake-clock cover lifetime and ordering
     parkingTests() // parking-tests.swift

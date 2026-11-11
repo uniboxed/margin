@@ -424,11 +424,14 @@ func handoffScenario() async {
                                 hideWindow: { _ in false }, destroy: { _ in false }, spaces: { _ in nil })
   let coverPages = OverlayPages(root: options.root!)
   var sessionAllowed = true
-  let liveCover = NativeHandoffCover(pages: coverPages, io: noCalls, sessionAllowed: { sessionAllowed })
+  var visibility: [ObjectIdentifier: Bool] = [:]
+  let presentation = CoverPresentation(io: CoverPresentationIO(reason: nil, read: { visibility[ObjectIdentifier($0)] ?? true },
+      write: { visibility[ObjectIdentifier($0)] = $1; return true }))
+  let liveCover = NativeHandoffCover(pages: coverPages, io: noCalls, sessionAllowed: { sessionAllowed }, presentation: presentation)
   let liveContext = LiveCoverContext(hello: liveHello, display: full, viewport: CGRect(origin: .zero, size: full.size))
   liveCover.prepare(liveContext)
   check("live cover: real read-only page prepares off screen through its bridge", await until(3, { liveCover.state == .prepared }), "\(liveCover.state)")
-  check("live cover: prepared page disposes panel and bridge without Space calls", liveCover.end(.cancelled) && liveCover.state == .idle && liveCover.windowNumbers.isEmpty)
+  check("live cover: prepared page disposes panel and bridge without Space calls", liveCover.end(.cancelled) && liveCover.state == .idle && liveCover.windowNumbers.isEmpty && presentation.count == 0 && visibility.values.allSatisfy { $0 })
   liveCover.prepare(liveContext)
   _ = liveCover.end(.cancelled)
   try? await Task.sleep(nanoseconds: 200_000_000)

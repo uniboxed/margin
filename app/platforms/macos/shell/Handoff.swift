@@ -1179,7 +1179,10 @@ extension ProfileSwitch: FreezerDelegate {
         if run.way == .create, run.createdAt == nil {
             if now - (run.createAskedAt ?? now) >= options.createTimeout { return recover(run, hw, "Safari took too long to open its window") }
         } else if now - (run.createdAt ?? run.openedAt ?? run.stepsAt ?? run.freezeAt ?? now) >= options.settleTimeout {
-            if run.coverActive { return recover(run, hw, "live cover readiness/old-window timeout: restoring under cover") }
+            if run.coverActive {
+                note("live cover readiness timeout: R1 \(run.ms(run.r1At)), R2 \(run.ms(run.r2At)), R3 \(run.ms(run.r3At)), framed \(run.ms(run.framedAt)), R4 \(run.ms(run.r4At)), R5 \(run.ms(run.r5At)); A done \(run.aDone), overlay out \(run.aOverlayOut), parked \(run.ms(run.aParkedAt)); selected space matches \(run.b.map { hw.activeSpaceId(of: $0) == run.target.space } ?? false)")
+                return recover(run, hw, "live cover readiness/old-window timeout: restoring under cover")
+            }
             if run.r2At != nil {
                 note("settle timeout with B ready: A's part to the aftercare")
                 return enterAfter(run, hw)
