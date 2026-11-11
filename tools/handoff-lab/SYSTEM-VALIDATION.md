@@ -54,7 +54,7 @@ Shown proof combines the production audit with an **independent WindowServer
 read** of the actual cover number/PID, onscreen state, positive alpha and display
 bounds. The existing app trace records callbacks before Shell dispatch. Read
 only its five newest regular metadata files, bounded to 6 MiB each (the writer
-rotates at 5 MiB before its next row); ignore incomplete final rows. Require the
+rotates at 5 MiB before its next row); ignore incomplete final rows. Scope files to the current app launch creation cohort before selecting the newest five, so earlier-boot uptime rows cannot contaminate a post-reboot run. Require the
 named callback in the actual cover interval, with real unlock/wake where
 applicable. WindowTrace uses native boot uptime (Diagnostics.now), not Unix time.
 Derive removal from the unique matching switch-start trace plus the summary
@@ -118,4 +118,4 @@ swiftc -parse-as-library tools/handoff-lab/SystemEvidence.swift tools/handoff-la
 /tmp/margin-system-evidence-tests
 ```
 
-Actual results and consumed allowances: [system validation report](results/26B131-2026-11-11-system-validation.md). The corrected lock and actual lid-sleep cases pass their scoped checks. Monitor connection/MULTI remain unrun. No default-on acceptance is inferred.
+Actual results and consumed allowances: [system validation report](results/26B131-2026-11-11-system-validation.md). The corrected lock and actual lid-sleep cases pass their scoped checks. The real monitor connection now passes its direct-callback scope. MULTI first failed a lab summary matcher before its final audit; the separately approved corrected one-request follow-up passes its independent two-display keep/target/zero-allocation/cleanup scope. Earlier failures remain retained. No default-on acceptance is inferred.

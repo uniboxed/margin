@@ -4755,3 +4755,39 @@ Final local checks for the corrected lab follow-up pass: fresh npm test and
 test:e2e 1,031/150, 48 system-evidence and 89 plan/parser checks, lab compile and
 read-only plans. No production app changes/reinstall or newly claimed native
 app test run; the verified installed binary remains as tested previously.
+
+
+### 2026-11-11 — real monitor recovery and corrected multi-display classifier
+
+The first completed monitor attempt has no actual connection during the cover;
+retain its failure. User explicitly requests another attempt and supplies the
+new timing cue. After a host reboot, bound trace-file selection to the current
+app launch creation cohort before taking five files, avoiding stale earlier-boot
+uptime rows. All 50 pure evidence checks pass.
+
+The repeated real connection passes direct display callback proof: unchanged
+Safari, exact source restored fullscreen/active/front with two displays,
+2/2 native covers disposed, zero cover resources/failures. A bounded aftercare
+watch remains at the snapshot; expiry before the restoration restart is not
+claimed. The following MULTI correctly uses public slide/keep but the lab expects
+the keep reason in the wrong part of the summary and stops before independent
+final audit. Preserve that failure; fix the lab-only matcher and retain final
+diagnostics even on a classifier failure (100 parser/plan regressions pass).
+
+All 12 switches/14 restarts authorized through the repeated monitor phase are
+consumed, original off flag restored, both displays connected. Freeze a corrected
+one-switch/two-restart MULTI-only runner for separate approval; no cable action
+or preparation switch. No app source/binary change, default enablement or PR.
+See tools/handoff-lab/results/26B131-2026-11-11-system-validation.md.
+
+
+The user separately approves the corrected one-switch/two-restart MULTI-only
+follow-up. It passes independent two-display target/source readiness and
+unchanged 0/0 native cover allocation/disposal, zero pending calls, cover resources,
+cleanup failures and aftercare watches. The public slide/keep result is degraded
+fallback acceptance only. Original absent/off flag restored; owned gate/trace
+stopped; both displays remain connected. All 13 switches/16 restarts now authorized
+are consumed. Fresh JS unit/browser checks pass 1,031/150, evidence/parser checks
+50/100, lab compile, dry run and signed candidate hash checks pass. No app rebuild,
+install, source changes or newly claimed native test results. Keep prior failures
+and measured performance tradeoffs; do not enable by default or open a PR.

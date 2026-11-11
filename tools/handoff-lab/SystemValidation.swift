@@ -5,12 +5,14 @@ import AppKit
 @MainActor final class SystemValidationSession {
     let lab: Lab
     let pid: pid_t
+    let launchedAt: Date
     let process: Process
     let buffer: LineBuffer
     init(_ lab: Lab) throws {
         self.lab = lab
-        guard let app = Margin.running else { throw Fail("Margin not running") }
+        guard let app = Margin.running, let launchedAt = app.launchDate else { throw Fail("Margin launch identity unavailable") }
         pid = app.processIdentifier
+        self.launchedAt = launchedAt
         (process, buffer) = try Margin.stream()
     }
     func dump() async -> String {
@@ -68,7 +70,7 @@ func systemInterruptionGate(_ kind: String, id: String) -> Gate {
     let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Margin/traces")
     guard s.eligible(initial, displays: 1), let source = liveShownNumber(initial), s.ready(source),
           let name = validationTestProfile(initial), validationNumber(initial, after: "registry: ") == 1,
-          (try? ValidationSystemEvent.read(folder, since: ProcessInfo.processInfo.systemUptime)) != nil,
+          (try? ValidationSystemEvent.read(folder, since: ProcessInfo.processInfo.systemUptime, createdAfter: s.launchedAt)) != nil,
           let browserPID = lab.calls.server(source)?.pid else {
         return Outcome(status: .notRun, lines: ["source, parked target, trace or actual capability not ready; zero requests"])
     }
@@ -127,7 +129,7 @@ func systemInterruptionGate(_ kind: String, id: String) -> Gate {
     } while epochMs() < finalBy
     await pause(0.2) // let the existing utility trace queue append the final OS callback
     let displays = kind == "display" ? 2 : 1
-    let events = (try? ValidationSystemEvent.read(folder, since: requested)) ?? []
+    let events = (try? ValidationSystemEvent.read(folder, since: requested, createdAfter: s.launchedAt)) ?? []
     let target = summary.components(separatedBy: " → ").dropFirst().first?.split(separator: "#").first.map { String($0) }
     let reveal = liveSummaryNumber(summary, pattern: #"request to reveal ([0-9]+) ms"#)
     var ended: Double?
@@ -170,19 +172,15 @@ let realMultiDisplayGate = Gate(id: "MULTI", title: "One actual two-display degr
         Margin.devSwitch(to: name == "Test A" ? "Test B" : "Test A")
         var summary: String?
         _ = await waitFor(22, every: 0.02) { summary = s.buffer.all.dropFirst(mark).first(where: liveSwitchSummary); return summary != nil }
-        guard let summary, !summary.contains("live cover "), !summary.contains("frozen "), !summary.contains("recovered:"),
-              !summary.contains("aborted"), !summary.contains("late ("), summary.contains("focus ok"),
-              summary.contains("keep (2 displays: kept in its own Space)"), summary.contains("A kept (2 displays: kept in its own Space)"),
-              s.buffer.all.dropFirst(mark).contains(where: { $0.contains("live cover unavailable with multiple displays: degraded freeze/slide fallback") }) else {
-            return Outcome(status: .fail, lines: [summary ?? "no summary", "expected two-display refusal/degraded mechanism not established; stop"])
-        }
+        let expected = summary.map(multiDisplayTransitionIsExpected) == true
+            && s.buffer.all.dropFirst(mark).contains(where: { $0.contains("live cover unavailable with multiple displays: degraded freeze/slide fallback") })
         let final = await s.dump()
-        guard NSScreen.screens.count == 2, s.clean(final), let target = liveShownNumber(final), target != source, s.ready(target),
+        guard expected, let summary, NSScreen.screens.count == 2, s.clean(final), let target = liveShownNumber(final), target != source, s.ready(target),
               validationTestProfile(final) == (name == "Test A" ? "Test B" : "Test A"),
               validationNumber(final, after: "created ") == made,
               let old = lab.calls.server(source), fills(old.bounds),
               lab.calls.spacesOf(source).contains(where: { lab.calls.fullScreen().contains($0) }) else {
-            return Outcome(status: .fail, lines: [summary, "independent degraded final/allocation/cleanup proof failed; stop"])
+            return Outcome(status: .fail, lines: [summary ?? "no summary", final, "degraded mechanism or independent final/allocation/cleanup proof failed; stop"])
         }
         return Outcome(status: .recorded, lines: [summary, final, "public slide/keep is a degraded mode only, never live-goal acceptance"])
     })

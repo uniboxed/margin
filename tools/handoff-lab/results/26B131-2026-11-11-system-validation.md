@@ -130,3 +130,87 @@ build and read-only plans pass. Installed app main executable/signature is
 unchanged; its prior 2,345 native unit/555 integration results are not rerun or
 claimed as new results. No further on-screen action runs while monitor retry
 approval is pending.
+
+
+## Monitor follow-up: real connection recorded; MULTI checker stopped
+
+The next approved preparation and interrupted request consume two switches/two
+restarts but do not establish a monitor connection: no real display event occurs
+inside the cover interval. The fullscreen fault times out and restores the
+source; two native covers are disposed. Preserve this failed attempt in
+`build/2026-11-11-system-monitor-final-EVDISPLAY/`.
+The user subsequently confirms they did not plug the monitor in and explicitly
+requests a repeat, authorizing the new preparation/interruption and two restarts
+with the unused MULTI request. A host reboot has occurred in between.
+
+Before repeating, scope metadata trace files to the current app launch's file
+creation cohort. Old-boot uptime rows are incomparable after reboot; they must
+not invalidate the new run or be treated as current events. Apply the cohort
+filter before choosing the five newest files, while preserving clock/size/type
+checks. Two additional pure fixtures cover exclusion of an old-boot future-uptime
+file and rejection when the requested cohort has no files (50 total checks).
+No app behavior or observer changes.
+
+The fresh preparation records 1,312 ms request-to-reveal (1,106 ms live cover).
+The person actually connects the monitor during the next cover. EVDISPLAY passes
+the **direct display callback** path:
+
+- Native boot times: request 715.7768969583, independently shown 715.984895875,
+  derived cover end 721.1829980417, summary observed 721.5742543333.
+- Cover held 5,235 ms; request-to-reveal 5,404 ms under the deliberate fullscreen
+  fault. The summary explicitly restores the source on the current displays.
+- Safari PID 1787 is unchanged. Exact source Test B/native 348 returns fullscreen,
+  active and front with two displays, no pending calls or interruption.
+- Native audit: 2 created/2 disposed; zero windows, views, Spaces, presentation
+  leases, timers and cleanup failures; last native cover 362 independently gone.
+  One bounded target aftercare watch remains at the snapshot (9.6 seconds);
+  natural expiry is not certified before the restoration restart.
+
+The subsequent MULTI request uses the expected public slide/keep mechanism,
+with explicit multiple-display degradation, no live-cover/freeze summary and
+`A kept (2 displays: kept in its own Space)`. However, the lab incorrectly expects
+the keep reason in the headline mode token too. It fails before collecting its
+final independent audit. Preserve this failure; do not promote it to a pass.
+The corrected matcher checks the actual `(keep, parked target)` headline plus
+the separate kept-source reason, with 11 new positive/negative regressions
+(100 parser/plan checks total). MULTI now also retains final diagnostics when
+summary classification fails. Production code and installed signed app remain
+unchanged. Evidence: `build/2026-11-11-system-monitor-repeat-EVDISPLAY/`.
+
+All **12 browser switches and 14 Margin restarts** authorized through this
+repeat are consumed. Original absent/off preference and app were restored;
+both displays remain connected. A frozen MULTI-only runner prepares exactly
+one new switch/two restarts, no preparation switch or cable action, pending
+new approval. It will require independent target/source readiness, unchanged
+native allocation count and clean final audit. Default remains off; prior
+performance comparisons and failed matched capture are unchanged.
+
+
+## Separately approved corrected MULTI: recorded
+
+The user approves one additional two-display switch and two setup/restoration
+Margin restarts, with both monitors kept connected. No preparation switch,
+installation or cable action. The frozen corrected runner/hash manifest and
+outer log are retained alongside `multi.log`, `multi-plan.log`, metadata trace
+and native report in `build/2026-11-11-multi-final-MULTI/`.
+
+The single request records the expected `(keep, new window)` mode and explicit
+multiple-display degraded log; no live cover or freeze. Target Test B/native
+618 is independently fullscreen, active and front; original source native 221
+is independently retained in a real fullscreen Space. Same app PID 5046 throughout
+the trial, two displays, idle switch, no pending calls/interruption/faults or
+capability demotion. Native cover creation/disposal counters remain **0/0**;
+zero cover windows, views, Spaces, presentation leases, timers, cleanup failures
+and aftercare watches. This is a **public slide/keep degraded fallback pass**,
+not a claim of the live-cover goal on multiple displays. The earlier failed
+MULTI classifier run remains failed.
+
+All **13 actual switches and 16 Margin restarts** now authorized are consumed.
+Original absent/off preference and normal app are restored, owned gate/trace
+stopped, and both displays remain connected. Fresh local checks pass: 1,031 JS
+unit tests, 150 headless browser tests, 50 system-evidence checks and 100
+parser/plan checks; native lab build, read-only plan, signature/hash checks and
+diff whitespace checks pass. No app source changes, app rebuild/install, new
+native app test claim or PR. The earlier MATCHED batch remains failed and its
+slower/higher-transient-cost live figures remain applicable. These OS safety
+checks do not justify enabling the preference by default.

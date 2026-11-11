@@ -13,13 +13,18 @@ struct ValidationSystemEvent: Decodable, Equatable {
     }
     enum EvidenceError: Error { case invalid, unavailable, oversized }
 
-    static func read(_ folder: URL, since: Double) throws -> [Self] {
+    static func read(_ folder: URL, since: Double, createdAfter: Date? = nil) throws -> [Self] {
         // WindowTrace uses Diagnostics.now(): native boot uptime, NOT Unix time.
         let now = ProcessInfo.processInfo.systemUptime
         guard since.isFinite, since >= 0, since <= now + 1 else { throw EvidenceError.invalid }
         let files = try FileManager.default.contentsOfDirectory(at: folder,
-            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey])
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey, .creationDateKey])
             .filter { $0.lastPathComponent.hasPrefix("trace-") && $0.pathExtension == "jsonl" }
+            .filter { file in
+                guard let createdAfter else { return true }
+                guard let born = try file.resourceValues(forKeys: [.creationDateKey]).creationDate else { throw EvidenceError.unavailable }
+                return born >= createdAfter.addingTimeInterval(-1)
+            }
             .sorted { $0.lastPathComponent > $1.lastPathComponent }.prefix(5)
         guard !files.isEmpty else { throw EvidenceError.unavailable }
         var events: [Self] = []

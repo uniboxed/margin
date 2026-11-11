@@ -75,6 +75,13 @@ import Foundation
         do { _ = try ValidationSystemEvent.read(folder, since: 0); check(false) }
         catch ValidationSystemEvent.EvidenceError.invalid { check(true) }
         try FileManager.default.removeItem(at: epoch)
+        let cohort = Date().addingTimeInterval(-60)
+        try Data(("{\"t\":\(ProcessInfo.processInfo.systemUptime + 5000),\"ev\":\"screen locked\"}\n").utf8).write(to: epoch)
+        try FileManager.default.setAttributes([.creationDate: Date().addingTimeInterval(-7200)], ofItemAtPath: epoch.path)
+        check(try ValidationSystemEvent.read(folder, since: 12, createdAfter: cohort).map(\.ev) == ["screen unlocked", "displays changed"])
+        do { _ = try ValidationSystemEvent.read(folder, since: 0, createdAfter: Date().addingTimeInterval(60)); check(false) }
+        catch ValidationSystemEvent.EvidenceError.unavailable { check(true) }
+        try FileManager.default.removeItem(at: epoch)
         try FileManager.default.removeItem(at: second)
         try FileManager.default.createSymbolicLink(at: second, withDestinationURL: file)
         do { _ = try ValidationSystemEvent.read(folder, since: 0); check(false) } catch { check(true) }

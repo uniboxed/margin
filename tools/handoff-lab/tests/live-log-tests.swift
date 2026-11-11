@@ -127,6 +127,18 @@ import Foundation
             .init(phase: "close", mode: "live", fault: "fullscreen", recovers: true),
             .init(phase: "fault", mode: "live", fault: "park", recovers: true),
         ] { precondition(!validationExpectedFullscreenRecovery(step)) }
-        print("all 89 live-log/validation-plan checks passed (no windows or private calls)")
+        let multi = "handoff: safari:a#1 → safari:b#2 (keep, parked target): shown 17, B steady 854, overlay framed 901, A kept (2 displays: kept in its own Space), settled 909; focus ok"
+        precondition(multiDisplayTransitionIsExpected(multi))
+        precondition(multiDisplayTransitionIsExpected(multi.replacingOccurrences(of: "parked target", with: "full-screen target")))
+        precondition(multiDisplayTransitionIsExpected(multi.replacingOccurrences(of: "parked target", with: "new window")))
+        precondition(!multiDisplayTransitionIsExpected(multi.replacingOccurrences(of: "(keep,", with: "(park,")))
+        precondition(!multiDisplayTransitionIsExpected(multi.replacingOccurrences(of: "A kept (2 displays: kept in its own Space)", with: "A kept (unknown)")))
+        precondition(!multiDisplayTransitionIsExpected(multi + "; live cover 100 ms"))
+        precondition(!multiDisplayTransitionIsExpected(multi + "; frozen 100 ms"))
+        precondition(!multiDisplayTransitionIsExpected(multi + "; recovered: timeout"))
+        precondition(!multiDisplayTransitionIsExpected(multi + "; late (watchdog)"))
+        precondition(!multiDisplayTransitionIsExpected("dev hook: dump: " + multi))
+        precondition(!multiDisplayTransitionIsExpected(multi.replacingOccurrences(of: "focus ok", with: "focus failed")))
+        print("all 100 live-log/validation-plan checks passed (no windows or private calls)")
     }
 }

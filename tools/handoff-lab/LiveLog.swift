@@ -31,6 +31,15 @@ func liveSummaryNumber(_ text: String, pattern: String) -> Int? {
     return Int(text[range])
 }
 
+func multiDisplayTransitionIsExpected(_ summary: String) -> Bool {
+    guard liveSwitchSummary(summary), !summary.contains("\n"),
+          !["live cover ", "frozen ", "recovered:", "aborted", "late ("].contains(where: summary.contains),
+          summary.contains("focus ok"), summary.contains("A kept (2 displays: kept in its own Space)"),
+          let pattern = try? NSRegularExpression(pattern: #"\(keep, (?:parked target|full-screen target|normal target|new window)\):"#) else { return false }
+    // The reason is emitted in A kept, not inside the headline's mode token.
+    return pattern.firstMatch(in: summary, range: NSRange(summary.startIndex..., in: summary)) != nil
+}
+
 // This classifies only a candidate summary. Native destination, source, cleanup,
 // topology and capability checks must still succeed before it counts as a control.
 func matchedTransition(_ summary: String, mode: String) -> MatchedTransition? {
