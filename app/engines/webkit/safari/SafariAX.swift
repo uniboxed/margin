@@ -5,8 +5,9 @@
 // events never carry a title change; SafariTabs.db has no window numbers).
 //
 // With the permission, each Safari window's number in the window server (`_AXUIElementGetWindow`) and its title:
-// a named profile's window is titled "<profile> — <page>", the default profile's has no prefix. WindowBinder
-// takes "this number is that profile's" as exact (WindowBinder.update `exact`).
+// a named profile's window is titled "<profile> — <page>". A named prefix is exact
+// evidence for WindowBinder. No prefix is only a provisional default-profile
+// inference: a named window can temporarily have an ordinary page title.
 //
 // Windows on other Spaces aren't in Safari's AXWindows list (only the active Space's are), so they're found the
 // way window switchers find them: an AXUIElement for Safari's pid and each element id in turn
@@ -386,11 +387,15 @@ final class SafariAX: @unchecked Sendable {
 }
 
 /// What Accessibility has said of Safari's windows, on the main thread: the profile (link) each one's title named,
-/// once known (a window's profile never changes), and whether each is full screen (as last read). From reads
+/// confirmed named identities stay fixed; a provisional default can be upgraded.
+/// Also keeps whether each is full screen (as last read). From reads
 /// (`SafariAX.refresh`) and events (`SafariAX.watch`) alike.
 struct AXKnown {
     private(set) var profiles: [Int: String] = [:]
     private(set) var fullScreen: [Int: Bool] = [:]
+    // No prefix is only a default-profile inference: named windows can briefly
+    // have an ordinary page title. It must never veto independent window evidence.
+    var exactProfiles: [Int: String] { profiles.filter { $0.value != "safari:s-default" } }
 
     // A signing change or a corrected Safari read can replace a copy's id.
     // Forget its old identity so the next read can name the window again.
@@ -403,16 +408,18 @@ struct AXKnown {
         return removed
     }
 
-    /// Windows read: full screen kept for each; a profile named for each not known yet, with a title, when Safari's
+    /// Windows read: full screen kept; unnamed/provisional profiles learned when Safari's
     /// profile names are known (without them, every title would read as the default profile's). The windows whose
     /// profile was learned now, in order.
     mutating func learn(_ found: [Int: SafariAX.Window], names: [String: String]) -> [Int] {
         var learned: [Int] = []
         for (n, w) in found {
             fullScreen[n] = w.fullScreen
-            guard !names.isEmpty, profiles[n] == nil, !w.title.isEmpty,
+            guard !names.isEmpty, profiles[n] == nil || profiles[n] == "safari:s-default", !w.title.isEmpty,
                   let id = SafariAX.profile(ofTitle: w.title, names: names, defaultId: "s-default") else { continue }
-            profiles[n] = "safari:" + id
+            let link = "safari:" + id
+            guard profiles[n] != link else { continue }
+            profiles[n] = link
             learned.append(n)
         }
         return learned.sorted()

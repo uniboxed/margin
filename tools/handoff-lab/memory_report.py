@@ -225,8 +225,27 @@ def report(events, samples, tail_seconds=2):
     clock = ('mono' if time_events and all(number(e.get('mono')) for e in time_events)
              and samples and all(number(s.get('sample_end_mono')) and number(s.get('sample_start_mono')) for s in samples)
              else 'wall')
+    # Numeric monotonic timestamps need not share an origin across runtimes.
+    # Compare their wall-minus-mono offsets before treating them as one clock.
+    clock_offsets = {}
+    if clock == 'mono':
+        event_offsets = [e['at'] / 1000 - e['mono'] for e in time_events if number(e.get('at'))]
+        sample_offsets = [s['sample_end_at'] - s['sample_end_mono'] for s in samples if number(s.get('sample_end_at'))]
+        if event_offsets and sample_offsets:
+            clock_offsets = {
+                'event_offset_range_seconds': max(event_offsets) - min(event_offsets),
+                'sample_offset_range_seconds': max(sample_offsets) - min(sample_offsets),
+                'origins_differ_seconds': abs(event_offsets[0] - sample_offsets[0]),
+            }
+            if clock_offsets['origins_differ_seconds'] > .1:
+                clock = 'wall'
+                warnings.append('Monotonic origins differ across streams; preserved wall timestamps are used. Offset variation is reported, not assumed zero.')
     if clock == 'wall':
         warnings.append('Wall-clock fallback: no common complete monotonic timeline; clock adjustments/read skew are unresolved.')
+    unstable_wall = clock == 'wall' and any(clock_offsets.get(k, 0) > .1 for k in
+        ['event_offset_range_seconds', 'sample_offset_range_seconds'])
+    if unstable_wall:
+        warnings.append('Wall/monotonic offset variation exceeds 100 ms; normal matched measurements are ineligible.')
     invalid_samples = [s for s in samples if sample_bounds(s, clock)[0] is None]
     if invalid_samples:
         warnings.append(f'{len(invalid_samples)} samples have invalid/missing time boundaries and were excluded.')
@@ -246,6 +265,8 @@ def report(events, samples, tail_seconds=2):
         done = settled[0] if settled else None
         end = event_time(done, clock) if done else max(start, min(next_start, sample_bounds(samples[-1], clock)[1] if samples else start))
         flags = []
+        if unstable_wall:
+            flags.append('unstable_clock_alignment')
         valid_index = isinstance(index, int) and not isinstance(index, bool)
         if not valid_index or index in seen_indices:
             flags.append('duplicate_or_invalid_index')
@@ -325,7 +346,7 @@ def report(events, samples, tail_seconds=2):
     if len(app_ids) != 1:
         warnings.append('Capture does not have one stable app PID/start identity; same-process comparison is not established.')
     return {
-        'schema_version': 1, 'clock': clock, 'performance_grade': 'not_assigned',
+        'schema_version': 1, 'clock': clock, 'clock_offsets': clock_offsets, 'performance_grade': 'not_assigned',
         'matched_data_available': all(matched[m]['eligible'] for m in MODES) and len(app_ids) == 1,
         'warnings': warnings, 'metadata': [json.loads(m) for m in sorted(metadata_rows)],
         'app_identities': app_ids, 'matched': matched,

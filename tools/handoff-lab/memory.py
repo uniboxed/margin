@@ -49,6 +49,16 @@ class Native:
         tb = Timebase()
         known = system.mach_timebase_info(C.byref(tb)) == 0 and tb.denom > 0
         self.timebase = {'numer': tb.numer, 'denom': tb.denom} if known else None
+        self.absolute_ticks = system.mach_absolute_time
+        self.absolute_ticks.argtypes = []
+        self.absolute_ticks.restype = C.c_uint64
+
+    def monotonic(self):
+        # Some installed Python runtimes offset time.monotonic() per process.
+        # Raw Mach time shares ProcessInfo.systemUptime's boot origin.
+        if not self.timebase:
+            return time.monotonic()
+        return self.absolute_ticks() * self.timebase['numer'] / self.timebase['denom'] / 1e9
 
     def coal(self, pid):
         c = Coal()
@@ -94,7 +104,7 @@ def usage(pid):
 
 
 def stamp():
-    return {'at': time.time(), 'mono': time.monotonic()}
+    return {'at': time.time(), 'mono': native().monotonic()}
 
 
 def metadata(timebase):
@@ -105,7 +115,8 @@ def metadata(timebase):
         'python_version': platform.python_version(), 'timebase': timebase,
         'cpu_raw_unit': 'Mach timebase ticks', 'cpu_ns_unit': 'nanoseconds',
         'wall_unit': 'epoch seconds', 'mono_unit': 'seconds',
-        'monotonic_clock': time.get_clock_info('monotonic').implementation,
+        'monotonic_clock': 'raw mach_absolute_time()' if timebase else time.get_clock_info('monotonic').implementation,
+        'monotonic_origin': 'boot' if timebase else 'python runtime (origin unverified)',
         'app_path': APP, 'helper_path': HELPER,
         'coalition_bytes': C.sizeof(Coal), 'rusage_v0_bytes': C.sizeof(Usage),
     }

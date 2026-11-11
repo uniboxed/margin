@@ -307,6 +307,8 @@ final class WindowBinder {
     var timing: Timing
     var log: (String) -> Void
     private(set) var bindings: [WindowKey: Binding] = [:]
+    // This read's profile identities constrain every weaker binding rule.
+    private var exactProfiles: [Int: String] = [:]
 
     private struct Seen { let at: Double; let after: Double; let before: Bool } // first listed between `after` and `at`; `before`: there at the first read
     // `timed`: false for one seen across reads that told nothing (or with the front window missing) for longer than `blind`.
@@ -459,6 +461,7 @@ final class WindowBinder {
     func update(now: Double, ext: [ExtWindow], reporting: Set<String>, copies: [String: String] = [:], held: Set<String> = [],
                 server: [ServerWindow], pids: Set<pid_t>, browserInFront: Bool, listed: Bool = true, spaceChangedAt: Double = -.infinity,
                 parked: Set<Int> = [], exact: [Int: String] = [:]) -> [WindowKey: Int] {
+        exactProfiles = exact.filter { !parked.contains($0.key) }
         let first = reads == 0 // the first read that told something
         defer { lastRead = now; noteFront(now) }
         let T = timing
@@ -780,7 +783,7 @@ final class WindowBinder {
         for (key, b) in bindings.sorted(by: { $0.key < $1.key }) {
             guard !parked.contains(b.number), let e = byKey[key], e.state != "minimized", let eb = e.bounds, let own = present[b.number] else { drift[key] = nil; continue }
             if WindowMatcher.close(eb, own.bounds) { drift[key] = nil; continue }
-            let others = freeServer().filter { WindowMatcher.close(eb, $0.bounds) }
+            let others = freeServer().filter { profileAllows(key, $0.number) && WindowMatcher.close(eb, $0.bounds) }
             guard others.count == 1, missingFree(eb) == 0, let other = others.first, freeExt().allSatisfy({ !fits($0, other) }),
                   (extMoved[key]?.at ?? -.infinity) > b.at else { drift[key] = nil; continue }
             guard let d = drift[key], d.number == other.number else { drift[key] = (other.number, now); continue }
@@ -796,8 +799,8 @@ final class WindowBinder {
 
         // ---- exact: Accessibility names each window's profile (SafariAX.swift) ----
         // `exact`: window number → the link of the profile its title names. A binding to another profile's key is
-        // wrong and goes; a window is bound to its profile's one free window there (or the one free window of
-        // its profile with its bounds and state, when the profile has several), with nothing else to wait for.
+        // wrong and goes; weaker rules cannot put it back. Geometry must also
+        // agree: the profile's only old report can lag a newly created window.
         if !exact.isEmpty {
             for (number, link) in exact.sorted(by: { $0.key < $1.key }) where !parked.contains(number) && present[number] != nil {
                 if let (key, _) = bindings.first(where: { $0.value.number == number }), key.link != link {
@@ -809,7 +812,9 @@ final class WindowBinder {
                 let free = byKey.values.filter { $0.key.link == link && bindings[$0.key] == nil && !parkedKey($0.key) && $0.state != "minimized" }.sorted { $0.key < $1.key }
                 // The profile's windows the window server lists and no binding has: one, and one of its copy's free.
                 let unbound = exact.filter { $0.value == link && present[$0.key] != nil && !parked.contains($0.key) && !bound.contains($0.key) }.count
-                if free.count == 1, unbound == 1 {
+                // A profile title identifies the profile, not its extension window.
+                // Its older report can precede a newly created native window.
+                if free.count == 1, unbound == 1, free[0].bounds.map({ has(number, $0) }) == true {
                     bind(free[0].key, number, now, "Accessibility: its title names \(link), the profile's one window")
                 } else if free.count > 1 {
                     let fitting = free.filter { e in (e.bounds.map { WindowMatcher.close($0, w.bounds) } ?? false) || (e.bounds.map { has(number, $0) } ?? false) }
@@ -898,6 +903,7 @@ final class WindowBinder {
             guard !retired.contains(number) else { log("\(heard): window \(number), in front then, was a closed window's"); continue }
             // Its window missing from this read: weighed again when it's back (or gone).
             guard let w = present[number] else { if missing(number) { focusEvents[i].decided = false }; continue }
+            guard profileAllows(ev.key, number) else { continue }
             // (Its bounds, or the ones it settled in: a window offset for a moment, in a Space's slide, still has
             // its own. A real session's log, 2026-11-06 21:25:22: the focus change that told it was lost to one.)
             guard fits(e, w) || (e.bounds.map { has(number, $0) } ?? false) else { log("\(heard): doesn't fit window \(number) (\(e.bounds.map(WindowMatcher.describe) ?? "no bounds") and \(WindowMatcher.describe(w.bounds)))"); continue }
@@ -952,7 +958,7 @@ final class WindowBinder {
                 changed = false
                 let server = freeServer(), free = freeExt()
                 for e in free {
-                    let windows = server.filter { has($0.number, e.bounds!) }
+                    let windows = server.filter { profileAllows(e.key, $0.number) && has($0.number, e.bounds!) }
                     guard windows.count == 1, let w = windows.first, fits(e, w), free.filter({ fits($0, w) }).count == 1, missingFree(e.bounds!) == 0, !pagesDeny(e, w) else { continue }
                     let group = extFitting(w.bounds)
                     if group.contains(where: { $0.state == "fullscreen" }), copiesAway || serverHaving(w.bounds) != group.count { continue }
@@ -1169,13 +1175,20 @@ final class WindowBinder {
         frontNotedAt = now
     }
 
-    private func bind(_ key: WindowKey, _ number: Int, _ now: Double, _ why: String, was: Int? = nil) {
+    private func profileAllows(_ key: WindowKey, _ number: Int) -> Bool {
+        exactProfiles[number].map { $0 == key.link } ?? true
+    }
+
+    @discardableResult
+    private func bind(_ key: WindowKey, _ number: Int, _ now: Double, _ why: String, was: Int? = nil) -> Bool {
+        guard profileAllows(key, number) else { return false }
         bindings[key] = Binding(number: number, why: why, at: now)
         conflicts[key] = nil
         drift[key] = nil
         waitingSaid[key] = nil
         pending.removeAll { $0.key == key || $0.number == number }
         log("\(key) is window \(number)\(was.map { " (was \($0))" } ?? ""): \(why)")
+        return true
     }
 
     private func drop(_ key: WindowKey, _ why: String) {

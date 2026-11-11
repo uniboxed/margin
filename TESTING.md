@@ -1959,3 +1959,53 @@ The signed candidate is built only; the installed live feature remains off.
 Native fake session/display events, the owned alpha/cleanup probe and read-only
 metadata do not establish physical lock delivery, sleep/display changes, a
 physical-camera result or the complete real 20-second watchdog path.
+
+### Approved validation result — first warmup failed
+
+The approved 50-request batch stopped after request 1, a freeze-control warmup.
+The target native Safari window was full screen, but the matcher assigned it
+to the profile's older normal extension window before the new report arrived.
+The summary reported a full-screen timeout/recovery, with a 1,707 ms watchdog
+and 1,788 ms request-to-reveal. No live, matched, idle, deliberate-fault or close
+request ran. The sampler was stopped before restoring the original absent flag
+and restarting Margin; live cover remains off. See the latest VALIDATE entry
+in [the dated lab report](tools/handoff-lab/results/26B131-2026-11-10.md).
+
+The off-screen trace replay fails four new checks on the old matcher. Its
+correction requires geometry agreement for the exact-profile shortcut and
+prevents weaker binding rules from overriding this read's contrary profile
+identity. Both the Swift matcher and shared Rust implementation cover the
+lagged report, immediate new-window binding and delayed old-window identity.
+Local verification and a signed corrected candidate precede another real run;
+the failed warmup establishes no performance or reliability acceptance.
+
+- [ ] Repeat the guarded real validation after the matching correction;
+  verify the new target binds to its own extension ID, cleanup stays balanced,
+  and complete matched timing/resource, recovery and close-mode checks.
+
+The corrected candidate's initial source guard was **not run**, with zero
+additional switch requests. A cached unprefixed title had provisionally named
+the real Test A window as the default profile. The exact binder input now
+excludes that inference; named-title evidence can upgrade it without adding
+metadata calls. Additional checks cover this confidence boundary. The three
+remaining warmups and all 42 normal/four fault-or-close requests remain unused.
+
+### Completed live-only observation
+
+The confidence fix passes 2,251 native logic and 545 integration checks. The
+real matched attempt then passes its two live warmups but stops at a late
+freeze-control watchdog. That matched experiment stays failed. A separate
+36-request live-only observation stays inside the original 50-request approval:
+40 total requests consumed, ten unused. See the [detailed results](tools/handoff-lab/results/26B131-2026-11-10-live-validation.md).
+
+- [x] 30/30 normal live transitions with exact destination/source state.
+- [x] Covered fullscreen-failure recovery, both close cases and park-failure close fallback.
+- [x] Cleanup after every live-only request; final 36/36 disposed, zero resources/failures; no contradictory AX drops.
+- [x] Pre/post-idle resource capture before faults, complete attribution in 800 samples; helper identity and CPU separately tracked.
+- [x] Clock-origin mismatch diagnosed; raw data retained, explicit wall alignment used; future raw Mach clock independently checked against native uptime. All 22 resource tests and 52 lab parser/plan checks pass.
+- [ ] Matched performance acceptance: control hit its watchdog; no speed comparison is established.
+- [ ] Review transient/retained memory cost: median per-switch peak 601 MiB, maximum 623 MiB; idle footprint 362→376 MiB. Similar idle CPU is not a whole-system energy or long-term leak check.
+- [ ] Physical animation/pixel coverage, actual lock/sleep/display delivery, multiple displays/OS builds and complete real 20-second Native watchdog.
+
+The original absent live-cover flag is restored and the installed matching
+corrections remain active. The experimental cover stays off by default. No PR.

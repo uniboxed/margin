@@ -1207,7 +1207,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 if !self.axLearn(found).isEmpty { self.burst("Accessibility named a window's profile") }
             }
         }
-        return ax.profiles.filter { wanted.contains($0.key) }
+        return ax.exactProfiles.filter { wanted.contains($0.key) }
     }
 
     // What Accessibility read of Safari's windows, kept; the windows whose profile it named now.

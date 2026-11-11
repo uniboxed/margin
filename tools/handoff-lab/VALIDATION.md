@@ -68,6 +68,32 @@ The gate prints its metadata-only events JSONL path under build/. The outer
 runner owns/stops its sampler and restores the preference; do not leave the
 ten-minute sampler running merely to fill the file.
 
+After the first freeze warmup failed with the diagnosed window-binding race,
+`--after-failed-warmup build/validation-EPOCH.jsonl` permits only the remaining
+requests 2–50 after the correction passes local checks. The proof file must
+contain exactly that one failed freeze warmup, no other request or injected
+fault, and a different app PID. A live/later failure cannot resume this way.
+The failed request remains a failure in its original report. The corrected
+process runs three fresh excluded warmups (live/live/freeze), warming both paths
+before pre-idle; all 24 balanced matched, 18 repeated and four fault/close
+requests remain. Timing/resources use only the corrected process's new capture.
+This consumes the existing maximum 50-request approval without adding requests
+or resetting genuine capability demotions. Stop again on any new unexpected
+failure; dry-run this explicit remaining plan before installation.
+
+The corrected live warmups passed, but the first fresh freeze-control warmup
+landed late through its watchdog. That **matched experiment remains failed**.
+`--live-after-freeze-watchdog build/validation-EPOCH.jsonl` accepts only proof
+of those two passed live warmups followed by that successful-reveal, late
+freeze control (no recovery or injected failure). A separate fresh-process
+**live-only observation** may then consume 36 more requests: two excluded live
+warmups, pre-idle, 30 measured live switches, post-idle, the same four fault/close
+cases. Request numbers remain 5–40, within the original 50 maximum. Every native
+readiness/cleanup/session guard remains unchanged and the next unexpected
+failure stops this observation. Later/live failures cannot use either restart
+option. The failed controls remain recorded and no matched comparison, speed
+advantage or performance acceptance can be inferred from the live-only capture.
+
 ## Measurement
 
 Events have wall and monotonic timestamps for requests, verified final states
@@ -75,6 +101,13 @@ and idle intervals. The sampler records process-start identities, sample/per-rea
 boundaries, host/timebase/schema, exact installed-helper executable identity,
 attribution failures and observed resources. Helper launch argv0 can be relative;
 proc_pidpath verifies its actual executable.
+
+Monotonic values must share an origin before correlation. This Mac's installed
+Python runtime offsets its clock per process, so older captures require explicit
+wall alignment and a clock/read-skew warning; the reporter checks wall-minus-mono
+offsets and rejects matched eligibility when fallback offsets vary by over
+100 ms. Preserve both raw streams. New sampler stamps use raw Mach boot time
+with the host timebase, independently checked against native system uptime.
 
 ~~~sh
 python3 tools/handoff-lab/memory_report.py \

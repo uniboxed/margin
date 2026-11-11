@@ -832,6 +832,8 @@ struct LabOptions {
     var liveReturnToA = false // finish only an already-approved remaining B → A switch
     var compareLive = false // COMPARE: require the real themed cover, not a freeze fallback
     var compareReverse = false // COMPARE: start from Test B, request Test A then Test B
+    var validationAfterFailedWarmup: String? // VALIDATE: proof of one consumed failed first freeze warmup
+    var validationAfterFreezeWatchdog: String? // separate live-only observation, no matched acceptance
     var appPath = "/Applications/Margin.app"
     var port = 47944
     var labDir = labExecutable.deletingLastPathComponent().deletingLastPathComponent()
@@ -2464,6 +2466,14 @@ enum Runner {
             case "--return-to-a": o.liveReturnToA = true
             case "--live-ui": o.compareLive = true
             case "--reverse": o.compareReverse = true
+            case "--after-failed-warmup":
+                i += 1
+                guard i < args.count else { return nil }
+                o.validationAfterFailedWarmup = args[i]
+            case "--live-after-freeze-watchdog":
+                i += 1
+                guard i < args.count else { return nil }
+                o.validationAfterFreezeWatchdog = args[i]
             case "--runs": i += 1; o.runs = i < args.count ? Int(args[i]) : nil
             case "--app": i += 1; if i < args.count { o.appPath = args[i] }
             case "--results": i += 1; if i < args.count { o.resultsDir = URL(fileURLWithPath: args[i]) }
@@ -2538,12 +2548,33 @@ enum Runner {
     static var signals: [DispatchSourceSignal] = []
 
     static func run(_ o: LabOptions, _ gates: [Gate]) async -> Int32 {
+        if let path = o.validationAfterFreezeWatchdog {
+            guard o.validationAfterFailedWarmup == nil, gates.count == 1, gates[0].id == "VALIDATE",
+                  let data = try? Data(contentsOf: URL(fileURLWithPath: path)), validationFreezeWatchdogPID(data) != nil else {
+                print("refusing: live-only remainder requires the two passed live warmups and diagnosed late freeze control; nothing switched")
+                return 2
+            }
+        }
+        if let path = o.validationAfterFailedWarmup {
+            guard gates.count == 1, gates[0].id == "VALIDATE",
+                  let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                  validationFailedFirstWarmupPID(data) != nil else {
+                print("refusing: remaining validation requires proof of exactly one diagnosed failed first freeze warmup; nothing switched")
+                return 2
+            }
+        }
         if o.dryRun || !o.go {
             print(o.dryRun ? "Dry run: the plan, and read-only checks. Nothing on screen is touched." : "Not run: add --go to run these on screen (approval first; README.md).")
             for g in gates { printPlan(g) }
             if o.liveReturnToA { print("\nOverride: only ONE remaining Test B → Test A return; no Test B request.") }
             if o.compareLive { print("\nCOMPARE override: actual themed live cover required; a freeze/slide fallback fails the gate.") }
             if o.compareReverse { print("\nCOMPARE order: Test A then Test B, starting from Test B; still at most TWO requests.") }
+            if o.validationAfterFailedWarmup != nil {
+                print("\nVALIDATE remaining: request 1 failed and remains excluded; only requests 2–50 may run (49 maximum), with THREE fresh warmups before pre-idle. All 42 normal measurements and four fault/close requests remain. Fresh corrected candidate/process required; any unexpected failure stops again.")
+            }
+            if o.validationAfterFreezeWatchdog != nil {
+                print("\nVALIDATE live-only observation: matched comparison remains FAILED. Four requests already consumed; at most 36 more (requests 5–40): two excluded live warmups, pre-idle, 30 measured live switches, post-idle, fullscreen recovery, two close requests, suppressed park. No freeze control or matched speed claim. Fresh process/capture required; first unexpected failure stops again.")
+            }
             print("\nChecks:")
             for l in preflight(o, gates) { print("  " + l) }
             return 0

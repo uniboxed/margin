@@ -19,6 +19,22 @@ let profileValidationGate = Gate(
             return Outcome(status: .notRun, lines: ["requires running opted-in candidate and guarded hook; nothing switched"])
         }
         let appPID = app.processIdentifier
+        var consumedRequests = 0
+        let liveOnly = lab.o.validationAfterFreezeWatchdog != nil
+        if let path = lab.o.validationAfterFreezeWatchdog {
+            guard let priorPID = validationFreezeWatchdogPID(try Data(contentsOf: URL(fileURLWithPath: path))),
+                  priorPID != Int(appPID) else {
+                return Outcome(status: .notRun, lines: ["live-only observation requires the diagnosed late control and a fresh process; nothing switched"])
+            }
+            consumedRequests = 4
+        }
+        if let path = lab.o.validationAfterFailedWarmup {
+            guard let priorPID = validationFailedFirstWarmupPID(try Data(contentsOf: URL(fileURLWithPath: path))),
+                  priorPID != Int(appPID) else {
+                return Outcome(status: .notRun, lines: ["resume requires exactly one failed first freeze warmup and a fresh corrected candidate; nothing switched"])
+            }
+            consumedRequests = 1
+        }
         let (process, buffer) = try Margin.stream()
         defer { process.terminate() }
         await pause(0.4)
@@ -67,6 +83,11 @@ let profileValidationGate = Gate(
             try event("idle_end", step: .init(phase: phase, mode: "live"))
         }
         var lines = ["events: \(events.path)", "same-process matched control; no external cover or recorder"]
+        if liveOnly {
+            lines.append("matched comparison remains FAILED; separate live-only observation: 36 maximum requests (5–40), two warmups, 30 normal live, pre/post-idle and four fault/close cases")
+        } else if consumedRequests == 1 {
+            lines.append("one failed first freeze warmup remains recorded separately; at most 49 remaining requests, three fresh warmups, all 42 normal measurements retained")
+        }
         let initial = await dump()
         guard initial.contains("handoff on, parking on"), initial.contains("close windows off; displays 1"),
               initial.contains("no caps; no faults armed"), initial.contains("live cover session: on"),
@@ -78,14 +99,18 @@ let profileValidationGate = Gate(
         // Only subtractive test caps are restored, not real FreezeRules/parking/cover demotions.
         lab.restoreValidationMode = true
         defer { Margin.dev("mode", ["freeze": "on", "cover": "on", "old": "park"]); lab.restoreValidationMode = false }
-        var index = 0
+        var index = consumedRequests
+        let finalIndex = liveOnly ? 40 : 50
+        let numbered = liveOnly
+            ? profileLiveReliabilityPlan().enumerated().map { ($0.offset + 5, $0.element) }
+            : profileValidationPlan().enumerated().dropFirst(consumedRequests).map { ($0.offset + 1, $0.element) }
         do {
-            try event("validation_begin")
-            let steps = profileValidationPlan()
-            for (offset, step) in steps.enumerated() {
-                index = offset + 1
-                if index == 5 { try await idle("pre_idle") }
-                if index == 47 { try await idle("post_idle") }
+            try event("validation_begin", extra: ["prior_requests_consumed": consumedRequests,
+                       "prior_failed_warmups": liveOnly ? 2 : consumedRequests, "validation_kind": liveOnly ? "live_only" : "matched"])
+            for (number, step) in numbered {
+                index = number
+                if index == (liveOnly ? 7 : 5) { try await idle("pre_idle") }
+                if index == (liveOnly ? 37 : 47) { try await idle("post_idle") }
                 guard Margin.running?.processIdentifier == appPID else { throw Fail("Margin restarted; comparison invalid") }
                 let state = await dump()
                 guard let source = liveShownNumber(state), ready(source), clean(state),
@@ -142,7 +167,7 @@ let profileValidationGate = Gate(
                     }
                 }
                 // A real demotion is never silently reset to finish the benchmark.
-                if index < 50 {
+                if index < finalIndex {
                     guard final.contains("park on;"), final.contains("choices: freeze on"), final.contains("live cover session: on") else {
                         throw Fail("genuine capability/session demotion; stop")
                     }
@@ -155,7 +180,7 @@ let profileValidationGate = Gate(
                 await pause(1)
             }
             try event("validation_end", extra: ["ok": true])
-            lines.append("50 requests checked; comparative post-idle precedes fault/close cases; physical-display and resource analysis remain separate")
+            lines.append("\(numbered.count) requests checked here; post-idle precedes fault/close cases; physical-display and resource analysis remain separate\(liveOnly ? "; matched comparison still failed" : "")")
             return Outcome(status: .recorded, lines: lines)
         } catch {
             try? event("settled", index: index, extra: ["ok": false, "status": "fail", "error": "\(error)"])

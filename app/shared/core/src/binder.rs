@@ -589,6 +589,8 @@ pub struct WindowBinder {
     pub clock_offset: Secs,
     log: Log,
     bindings: BTreeMap<WindowKey, Binding>,
+    // This read's profile identities constrain every weaker binding rule.
+    exact_profiles: BTreeMap<i64, String>,
 
     reads: u64,
     last_read: Secs,
@@ -669,6 +671,7 @@ impl WindowBinder {
             clock_offset: 0.0,
             log,
             bindings: BTreeMap::new(),
+            exact_profiles: BTreeMap::new(),
             reads: 0,
             last_read: 0.0,
             seen: BTreeMap::new(),
@@ -779,7 +782,14 @@ impl WindowBinder {
         }
     }
 
-    fn bind(&mut self, key: &WindowKey, number: i64, now: Secs, why: String, was: Option<i64>) {
+    fn profile_allows(&self, key: &WindowKey, number: i64) -> bool {
+        self.exact_profiles.get(&number).is_none_or(|link| *link == key.link)
+    }
+
+    fn bind(&mut self, key: &WindowKey, number: i64, now: Secs, why: String, was: Option<i64>) -> bool {
+        if !self.profile_allows(key, number) {
+            return false;
+        }
         let was = was.map(|n| format!(" (was {n})")).unwrap_or_default();
         self.note(format!("{key} is window {number}{was}: {why}"));
         self.bindings.insert(key.clone(), Binding { number, why, at: now });
@@ -787,6 +797,7 @@ impl WindowBinder {
         self.drift.remove(key);
         self.waiting_said.remove(key);
         self.pending.retain(|p| p.key != *key && p.number != number);
+        true
     }
 
     fn drop_binding(&mut self, key: &WindowKey, why: String) {
@@ -896,6 +907,8 @@ impl WindowBinder {
 
     /// One read of the window server and what the copies say: every binding after it. See `Update` for the inputs.
     pub fn update(&mut self, u: &Update) -> BTreeMap<WindowKey, i64> {
+        self.exact_profiles =
+            u.exact.iter().filter(|(n, _)| !u.parked.contains(n)).map(|(n, l)| (*n, l.clone())).collect();
         let out = self.update_read(u);
         self.last_read = u.now;
         self.note_front(u.now);
@@ -1505,7 +1518,11 @@ impl WindowBinder {
                 self.drift.remove(&key);
                 continue;
             }
-            let others: Vec<ServerWindow> = self.free_server(f).into_iter().filter(|w| close(&eb, &w.bounds)).collect();
+            let others: Vec<ServerWindow> = self
+                .free_server(f)
+                .into_iter()
+                .filter(|w| self.profile_allows(&key, w.number) && close(&eb, &w.bounds))
+                .collect();
             let moved_at = self.ext_moved.get(&key).map(|m| m.1);
             if others.len() != 1
                 || self.missing_free(f, &eb) != 0
@@ -1590,7 +1607,9 @@ impl WindowBinder {
                 .iter()
                 .filter(|(n, l)| *l == link && f.present.contains_key(n) && !f.parked.contains(n) && !bound.contains(n))
                 .count();
-            if free.len() == 1 && unbound == 1 {
+            // A profile title is not an extension-window identity: an older
+            // normal report can precede a newly created full-screen window.
+            if free.len() == 1 && unbound == 1 && free[0].bounds.is_some_and(|b| self.has(f, *number, &b)) {
                 let why = format!("Accessibility: its title names {link}, the profile's one window");
                 self.bind(&free[0].key, *number, now, why, None);
             } else if free.len() > 1 {
@@ -1877,6 +1896,9 @@ impl WindowBinder {
                 }
                 continue;
             };
+            if !self.profile_allows(&ev.key, number) {
+                continue;
+            }
             // (Its bounds, or the ones it settled in: a window offset for a moment, in a Space's slide, still has
             // its own. A real session's log, 2026-11-06 21:25:22.)
             if !(fits(e, w) || e.bounds.is_some_and(|b| self.has(f, number, &b))) {
@@ -1935,7 +1957,10 @@ impl WindowBinder {
             let free = self.free_ext(f);
             for e in &free {
                 let Some(eb) = e.bounds else { continue };
-                let windows: Vec<&ServerWindow> = server.iter().filter(|w| self.has(f, w.number, &eb)).collect();
+                let windows: Vec<&ServerWindow> = server
+                    .iter()
+                    .filter(|w| self.profile_allows(&e.key, w.number) && self.has(f, w.number, &eb))
+                    .collect();
                 if windows.len() != 1 {
                     continue;
                 }
@@ -1964,9 +1989,10 @@ impl WindowBinder {
                 let also =
                     if others > 0 { format!("; {others} other(s) with them already bound") } else { String::new() };
                 let why = format!("the only free window with its bounds ({}){also}", w.bounds.describe());
-                self.bind(&e.key, w.number, f.now, why, None);
-                changed = true;
-                break;
+                if self.bind(&e.key, w.number, f.now, why, None) {
+                    changed = true;
+                    break;
+                }
             }
         }
     }
@@ -5185,6 +5211,31 @@ mod tests {
             !out.contains_key(&k(b, 2)) && out.get(&k(a, 1)) == Some(&100),
             "a parked window is the registry's: {out:?}"
         );
+    }
+
+    #[test]
+    fn exact_profile_does_not_steal_a_new_window_from_a_lagging_report() {
+        let (a, b) = ("safari:s-default", "safari:s-b");
+        let mut w = World::new();
+        w.add(100, LEFT, true);
+        w.put(b, 2, Some(LEFT)).state = "normal".into();
+        w.exact.insert(100, a.into());
+        w.run(2.0);
+        assert!(w.numbers().is_empty() && !w.said().contains(" is window "), "{}", w.said());
+        w.add(101, SCREEN, true);
+        w.exact.insert(101, b.into());
+        w.truth = map(&[(k(b, 2), 100)]);
+        w.read0();
+        assert!(w.numbers().is_empty() && w.wrong.is_empty(), "{}", w.said());
+        w.put(b, 3, Some(SCREEN));
+        w.truth.insert(k(b, 3), 101);
+        w.read0();
+        assert_eq!(w.numbers(), map(&[(k(b, 3), 101)]), "{}", w.said());
+        assert!(w.wrong.is_empty());
+        w.exact.insert(100, b.into());
+        w.read0();
+        assert_eq!(w.numbers(), w.truth, "{}", w.said());
+        assert!(w.wrong.is_empty());
     }
 
     // ---- an overlay in front of its window (stacked_above, stacked_above_exactly, full_screen_toolbar) ----

@@ -1666,6 +1666,22 @@ extension Tests {
       _ = k.learn([10: win(10, "Start Page")], names: names)
       k.keep(listed: [10])
       check("only windows the window server lists are kept", k.profiles == [10: "safari:s-default"] && k.fullScreen.keys.sorted() == [10], "\(k.profiles)")
+      check("an unprefixed title's default inference is not an exact identity veto", k.exactProfiles.isEmpty)
+      check("a later named title upgrades the provisional default identity without another scan",
+            k.learn([10: win(10, "Test A — Inbox")], names: names) == [10] && k.exactProfiles[10] == "safari:s-c")
+      check("a confirmed named identity survives a later unprefixed title",
+            k.learn([10: win(10, "Inbox")], names: names).isEmpty && k.exactProfiles[10] == "safari:s-c")
+      var provisional = AXKnown()
+      _ = provisional.learn([20: win(20, "Start Page", full: false)], names: names)
+      let w = World()
+      let normal = CGRect(x: 252, y: 169, width: 1000, height: 700)
+      w.add(20, normal, on: true)
+      w.put("safari:s-c", 7, normal, state: "normal")
+      w.truth = [WindowKey(link: "safari:s-c", windowId: 7): 20]
+      w.exact = provisional.exactProfiles
+      w.run(2)
+      check("a provisional default cannot block a named profile's independent unique-geometry binding",
+            w.binder.numbers == w.truth && w.wrong.isEmpty && w.lines.filter { $0.contains(" is window ") }.count == 1, w.said)
     }
   }
 
@@ -2104,6 +2120,33 @@ extension Tests {
       w.exact = [100: A, 101: A]
       let out = w.read()
       check("one profile's two windows: each by its own bounds", out[k(A, 1)] == 100 && out[k(A, 2)] == 101, "\(out)")
+    }
+    // Real validation trace: the old normal window's AX title temporarily names
+    // the default profile; the new full-screen window arrives before its report.
+    do {
+      let w = World()
+      let left = CGRect(x: 252, y: 169, width: 1000, height: 700)
+      w.add(100, left, on: true)
+      w.put(B, 2, left, state: "normal")
+      w.exact = [100: A]
+      w.run(2)
+      check("Accessibility contradiction: bounds cannot rebind the other profile on every read",
+            w.binder.numbers.isEmpty && !w.said.contains(" is window "), w.said)
+      w.add(101, screen, on: true)
+      w.exact[101] = B
+      w.truth = [k(B, 2): 100]
+      w.read()
+      check("Accessibility lag: a new full-screen window cannot become the older normal extension window",
+            w.binder.numbers.isEmpty && w.wrong.isEmpty, w.said)
+      w.put(B, 3, screen)
+      w.truth[k(B, 3)] = 101
+      w.read()
+      check("Accessibility lag: the new report binds its own window immediately",
+            w.binder.numbers == [k(B, 3): 101] && w.wrong.isEmpty, w.said)
+      w.exact[100] = B
+      w.read()
+      check("Accessibility lag: the older window binds once its own profile identity is confirmed",
+            w.binder.numbers == w.truth && w.wrong.isEmpty, w.said)
     }
     // A window not yet named (its title empty) waits; a parked window is never named.
     do {

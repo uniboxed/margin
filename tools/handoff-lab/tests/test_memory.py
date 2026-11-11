@@ -44,6 +44,17 @@ def event(kind, index, phase, mode, mono, **extra):
 
 
 class SamplerTests(unittest.TestCase):
+    def test_raw_mach_stamp_has_boot_origin_and_uses_host_timebase(self):
+        n = memory.Native.__new__(memory.Native)
+        n.timebase = {'numer': 125, 'denom': 3}
+        n.absolute_ticks = lambda: 48000000
+        self.assertEqual(n.monotonic(), 2)
+
+    def test_native_clock_metadata_states_its_origin(self):
+        meta = memory.metadata({'numer': 125, 'denom': 3})
+        self.assertEqual(meta['monotonic_origin'], 'boot')
+        self.assertEqual(meta['monotonic_clock'], 'raw mach_absolute_time()')
+
     def collect(self, processes=None, coal=None, usage=None, path=None):
         tick = iter(range(100))
         def clock():
@@ -227,6 +238,31 @@ class ReportTests(unittest.TestCase):
         s = reporter.report(events, samples)['steps'][0]
         self.assertEqual(s['during']['footprint_mib']['max'], 200)
         self.assertEqual(s['sampled_peak_minus_before_mib']['footprint_mib'], 100)
+
+    def test_process_relative_monotonic_origins_use_preserved_wall_times(self):
+        events = [event('request', 1, 'repeated', 'live', .5),
+                  event('settled', 1, 'repeated', 'live', 2.5, ok=True)]
+        samples = [sample(t) for t in range(4)]
+        for s in samples:
+            s['sample_start_mono'] += 10000
+            s['sample_end_mono'] += 10000
+        r = reporter.report(events, samples)
+        self.assertEqual(r['clock'], 'wall')
+        self.assertEqual(r['steps'][0]['during']['samples'], 2)
+        self.assertEqual(r['steps'][0]['cpu']['categories']['app']['observed_cpu_ms'], 2)
+        self.assertTrue(any('origins differ' in w for w in r['warnings']))
+
+    def test_clock_offset_jumps_cannot_enter_matched_statistics(self):
+        events = [event('request', 1, 'matched', 'live', .5),
+                  event('settled', 1, 'matched', 'live', 2.5, ok=True)]
+        samples = [sample(t) for t in range(4)]
+        for s in samples:
+            s['sample_start_mono'] += 10000
+            s['sample_end_mono'] += 10000
+        samples[-1]['sample_end_at'] += 2
+        r = reporter.report(events, samples)
+        self.assertFalse(r['steps'][0]['normal_matched_eligible'])
+        self.assertIn('unstable_clock_alignment', r['steps'][0]['flags'])
 
     def test_cli_outputs_json_and_sampler_help_never_loads_native(self):
         subprocess.run([sys.executable, str(ROOT / 'memory.py'), '--help'], check=True, capture_output=True)

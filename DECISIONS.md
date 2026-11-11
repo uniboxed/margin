@@ -4357,3 +4357,109 @@ installed build. The new gate's dry run prints exactly the bounded 50-request
 plan and read-only host checks. A fresh, specific on-screen approval is the
 remaining dependency; no new Safari switch, preference change or app restart
 has been performed during this preparation. No PR is created.
+
+### 2026-11-10 — approved validation stopped at the first warmup
+
+The user approved the bounded 50-request VALIDATE batch. The signed candidate
+was installed, its deep/strict signature checked, and the original absent
+`MarginLiveProfileCover` preference saved. Request 1 (freeze control, Test A to
+Test B, new window) recovered after 7.46 s: freeze watchdog at 1,707 ms and
+request-to-reveal 1,788 ms, no B-steady observation. No later request ran.
+The sampler stopped before restoring the preference and restarting Margin.
+This is a failed validation, with no matched performance or idle comparison.
+
+The actual trace contradicts the generic full-screen timeout: Safari created
+a native full-screen target, but the binder assigned it to the profile's older
+normal extension window before the new window's report arrived. The older
+window also generated 177 bind/drop pairs in this candidate's trace: bounds
+elimination immediately reversed Accessibility's contrary profile identity.
+An off-screen replay reproduces all four new regression failures on the
+unchanged binder. The correction makes this read's exact profile identity
+constrain every weaker binding rule, including moves and focus swaps before
+they discard existing bindings. The one-free-window shortcut also requires
+current or previously settled geometry agreement. Parked identity stays with
+the registry. Swift and the shared Rust binder keep the same policy; no new
+timer, browser request or global scan is introduced.
+
+The remaining on-screen requests were stopped, not counted as passes. The
+live cover stays off by default; the matching correction still needs its local
+checks and a newly prepared candidate before another real validation run.
+
+The correction passes 2,247 native logic checks (including the four previously
+failing replay assertions), all 545 native integration checks, 1,031 unit and
+150 browser checks. Rust formatting, warning-free workspace/Windows-target
+checks and all 303 workspace tests pass. The signed build-only candidate passes
+deep/strict verification. The guarded remaining-run option passes 42 pure
+plan/parser checks and its dry run: it accepts only proof of that single
+failed first freeze warmup, requires a fresh app process, and consumes requests
+2–50 only. Three fresh warmups still warm both paths before the same-process
+matched comparison. The failed first request is never promoted to a pass or
+included in the corrected capture. The remaining 49 requests start under the
+existing approval after the diagnosis/correction; any new unexpected failure
+stops them again. No PR is created.
+
+The corrected candidate's first source preflight was not run: no additional
+switch request was sent. It exposed a confidence boundary in the new negative
+identity guard: AXKnown had cached an ordinary page title as the default
+profile, although the window belonged to Test A. An absent profile prefix is
+now explicitly provisional, excluded from Shell's exact binder input. A later
+positive named title may upgrade that provisional entry; confirmed named
+identities remain stable. Existing metadata refresh/event cadence is unchanged
+(no new scan, title observer, timer or polling). Four additional native checks
+cover the provisional identity, upgrade, retention and independent geometry
+binding. All 49 remaining requests are still unused at this preflight stop.
+
+The confidence correction passes 2,251 native checks, 545 integration checks
+and deep/strict signed-build verification. The real corrected run then passes
+live requests 2 and 3: new window and parked return, request-to-reveal 1,206 and
+2,260 ms, fresh final-state checks 1,715 and 2,765 ms. Each cleanup independently
+verifies the last panel is gone; the native audit is idle with zero resources,
+zero failures and balanced created/disposed counts (1/1, then 2/2).
+
+Request 4 is a late freeze-control warmup, so all later requests stop. Its B
+steady time is 1,584 ms. The existing budget guard deliberately does not start
+A's exit under that freeze, and the successful watchdog reveal occurs before
+the late landing (held 1,685 ms, request-to-reveal 1,763 ms). This is not another
+window-identity failure or a reason to extend the freeze deadline. No normal
+matched or idle sample ran. The original absent preference is restored and
+the sampler stopped before restart.
+
+Keep the matched experiment failed. Within the remaining 46 approved requests,
+prepare a separate live-only observation of 36 requests (two warmups, 30 normal
+live, pre/post-idle and four fault/close cases), with fresh same-process resource
+data and no matched acceptance claim. Its guarded option accepts only the
+specific prior record of two passed live warmups and the late successful-reveal
+control, not a live failure or real capability demotion. The pure plan/proof
+suite passes 52 checks; the explicit dry run shows requests 5–40 only. Any next
+unexpected failure stops again. The installed product code is unchanged during
+this tool-only preparation; no additional app rebuild is needed.
+
+The separate live-only observation completes all 36 requests: two excluded
+warmups, **30/30 normal live switches**, covered fullscreen-fault recovery,
+both close-mode cases and suppressed-park close fallback. Every final native
+readiness and cleanup check passes; the final audit has zero resources/failures
+and 36 panels created/disposed. There are no contradictory Accessibility drops
+in this trace. Total approved requests consumed across the stopped and completed
+observations: 40/50. No further request is needed to report these results.
+
+Median normal request-to-reveal is 1,487 ms (p95 1,922; range 1,337–1,963),
+with median final verification 2,003 ms including lab overhead. The 800 complete
+resource samples expose a reporter assumption: this installed Python's
+monotonic timestamps are process-relative, unlike native uptime. Preserve the
+raw capture and correlate its wall timestamps explicitly; observed offset
+variation is 1.34/1.36 ms, with clock/read-skew limitations retained. Future
+samples use raw Mach boot time; an actual native uptime bracket and four new
+synthetic clock checks pass (22 sampler/report tests total). Never treat empty
+resource windows as zero CPU or a performance pass.
+
+Combined app/attributed-WebKit idle footprint rises about 14 MiB (362→376),
+with unchanged two-WebContent idle topology and comparable app idle CPU
+(3.17→3.13% of one core over the two ~63-second intervals). Transient sampled
+per-switch footprint peaks at 623 MiB, median 601, with median +188 MiB above
+the preceding sample and a temporary third WebContent process. The helper stays
+at 3.16 MiB footprint/8.89 MiB resident. These costs are recorded rather than
+called unchanged efficiency or long-term leak freedom. The failed matched
+comparison, transient/retained cost review, physical composition and remaining
+OS/watchdog checks leave overall acceptance open. The original absent flag is
+restored, owned sampling is stopped, and no PR is created. See the detailed
+`tools/handoff-lab/results/26B131-2026-11-10-live-validation.md` report.
