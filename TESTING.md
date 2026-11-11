@@ -1,5 +1,18 @@
 # Testing Margin
 
+## Live profile cover acceptance (pending, 2026-11-11)
+
+The launch default stays off. [Component results](tools/handoff-lab/results/26B131-2026-11-11-renderer-components.md)
+include actual owned renderer allocation/crash checks and the full local suite;
+they do not establish real OS delivery or physical composition. The
+[lab rules](tools/handoff-lab/README.md) require approval before anything runs on screen.
+
+- [ ] Run the new [MATCHED protocol](tools/handoff-lab/VALIDATION.md) on one display: 50 guarded Test A/Test B requests, same process/topology, complete resource samples, separate degraded freeze reveal and verified completion. Preserve prior failed runs.
+- [ ] Run the [actual 20-second watchdog and cancel/reuse checks](tools/handoff-lab/WATCHDOG-SESSION-VALIDATION.md): three passive corner appearances, independent alpha observation during the owned main-thread block, verified cleanup and no stale deadline affecting reuse.
+- [ ] Check real lock/unlock and system sleep/wake, including a profile still connecting:cover disposed, source restored or visible fallback, no stale queued/late-link transition, fresh deliberate switch after allowed wake.
+- [ ] With the available second monitor, connect/disconnect during early preparation and a moving handoff. Verify immediate cover disposal, bounded source recovery, no late close/repark, then fresh two-display conservative keep/no-freeze behavior. This fallback is not the single-display live-cover goal.
+- [ ] Observe/record physical transitions for flashes, sliding Safari/Desktop, theme animation and final sidebar alignment. Metadata alpha/readiness alone cannot pass this check. Other macOS builds retain separate acceptance.
+
 ## Automated (cloud / any machine with Node 22)
 
 ```sh

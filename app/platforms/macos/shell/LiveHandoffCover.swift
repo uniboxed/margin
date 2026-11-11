@@ -21,6 +21,7 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
     private let sessionAllowed: () -> Bool
     private let presentation: CoverPresentation
     private let layoutViews: () -> [WKWebView]
+    private let renderer: CoverRenderer
     var presentationReason: String? { presentation.reason }
     private var context: LiveCoverContext?
     private var panel: NSPanel?
@@ -37,13 +38,14 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
     private var cleanupFailures = 0
     private var createdWindows = 0, disposedWindows = 0, lastWindow = 0
     var validationStatus: String {
-        "live cover audit: state \(state), windows \(windowNumbers.count), views \(webView == nil ? 0 : 1), spaces \((lease == nil ? 0 : 1) + failedSpaces.count), presentation \(presentation.count), timers \((check == nil ? 0 : 1) + (watchdog == nil ? 0 : 1)), cleanup failures \(cleanupFailures); created \(createdWindows), disposed \(disposedWindows), last window \(lastWindow)"
+        "live cover audit: state \(state), windows \(windowNumbers.count), views \(webView == nil ? 0 : 1), spaces \((lease == nil ? 0 : 1) + failedSpaces.count), presentation \(presentation.count), timers \((check == nil ? 0 : 1) + (watchdog == nil ? 0 : 1)), cleanup failures \(cleanupFailures); created \(createdWindows), disposed \(disposedWindows), last window \(lastWindow); renderer \(renderer.detail)"
     }
 
     init(pages: OverlayPages, io: LiveCoverSpaceIO, sessionAllowed: @escaping () -> Bool = { SessionVisibility.allowsCover },
-         presentation: CoverPresentation? = nil, layoutViews: @escaping () -> [WKWebView] = { [] }) {
+         presentation: CoverPresentation? = nil, layoutViews: @escaping () -> [WKWebView] = { [] }, renderer: CoverRenderer? = nil) {
         self.pages = pages; self.io = io; self.sessionAllowed = sessionAllowed
         self.presentation = presentation ?? CoverPresentation(io: .real()); self.layoutViews = layoutViews
+        self.renderer = renderer ?? CoverRenderer()
     }
 
     func prepare(_ context: LiveCoverContext) {
@@ -66,10 +68,12 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
         p.animationBehavior = .none
         p.collectionBehavior = [.stationary, .ignoresCycle]
         p.alphaValue = 0
-        let view = pages.makeWebView(size: context.viewport.size)
+        let layouts = layoutViews()
+        let configuration = renderer.configuration(base: pages.configuration, views: layouts)
+        let view = pages.makeWebView(size: context.viewport.size, configuration: configuration)
         // Before the actual visibility transitions: the setter itself does not
         // trigger a visibility update. Object identity survives overlay handover.
-        guard presentation.hold(view), layoutViews().allSatisfy({ presentation.hold($0) }) else {
+        guard presentation.hold(view), layouts.allSatisfy({ presentation.hold($0) }) else {
             fail("WebKit cover presentation unavailable")
             p.close()
             return
@@ -194,6 +198,7 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
         if let webView { pages.bridge.unregister(webView); webView.navigationDelegate = nil; webView.stopLoading(); webView.removeFromSuperview() }
         if let panel { panel.close(); disposedWindows += 1 }
         panel = nil; webView = nil; context = nil
+        renderer.detach()
         state = ok ? .idle : .failed("cleanup unverified")
         if !ok { cleanupFailures += 1; Diagnostics.warn("live cover cleanup refused: live cover must be disabled for this session") }
         return ok
@@ -203,7 +208,11 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
     func pageHello() -> String { context?.hello ?? "null" }
     func pageSend(type: String, payload: JSONObject) async throws -> JSONObject { throw LinkError.down }
     func pageSaid(_ op: String, _ body: JSONObject) {
-        if op == "cover.prepared", state == .preparing { state = .prepared }
+        if op == "cover.prepared", state == .preparing {
+            if let webView { renderer.prepared(webView) }
+            Diagnostics.note("live cover renderer: \(renderer.detail)")
+            state = .prepared
+        }
         if op == "cover.visible", state == .showing { pageVisible = true }
         if op == "cover.failed" { fail("theme could not draw the switch") }
     }

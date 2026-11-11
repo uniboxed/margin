@@ -135,3 +135,34 @@ Actual themed follow-up on 26B131: first request passed state/timing checks, but
 The subsequent diagnostic identifies a public-metadata ordering bug rather than a failed Space primitive: the exact query puts the layout above Safari's hidden toolbar, whose bottom merely touches the page. R4 incorrectly treats that nonoverlapping bar as an ordering constraint. The correction uses the same toolbar identity/Space checks but anchors only a visible, positive-alpha bar with positive-area page overlap; visible-toolbar and foreign-window checks remain strict. The off-screen real-Shell replay fails on old code and passes corrected code. Installed verification follows within the remaining approved request; broader product acceptance remains open.
 
 That remaining installed request passes: cover ready 218.5 ms, 2,007 ms request-to-reveal, outgoing window parked and destination independently verified, no freeze/recovery. The original off flag is restored and verified at fresh launch. This validates the hidden-toolbar correction for that case; it does not complete physical-display, repeated-switch or performance acceptance.
+
+
+## Experimental cover renderer reuse (2026-11-11)
+
+`private/CoverRenderer.swift` optionally relates a disposable cover to the
+outgoing owned Margin layout page. The existing live-cover flag remains off by
+default. This optimization does not enable a Space capability or change a
+readiness, coverage, recovery or cleanup gate.
+
+| Selector | Receiver / signature | Exact checked encoding | Verification / fallback |
+|---|---|---|---|
+| `_relatedWebView` | WKWebViewConfiguration, `() -> object?` | `@16@0:8` | Read back the exact source object after setting a copied configuration; failure keeps the existing isolated configuration path. |
+| `_setRelatedWebView:` | WKWebViewConfiguration, `(object?) -> Void` | `v24@0:8@16` | Only the exact owned overlay URL, a non-loading source, identical data-store and bridge objects and a positive process identity qualify. Never modifies the common configuration or source view. |
+| `_webProcessIdentifier` | WKWebView, `() -> Int32` | `i16@0:8` | Positive actual source/cover PIDs must match before the audit reports `shared`; WebKit may still choose another process. |
+
+All selectors and encodings are resolved together when the cover is constructed
+at launch. Missing/changed methods disable the optimization, not the cover;
+real calls refuse under `MARGIN_APP_TESTS`. The weak anchor is cleared at end.
+The cover copies the qualifying source configuration, preserving its process
+pool as well as its store: [WebKit rejects mismatched related-view pools/stores](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/API/Cocoa/WKWebView.mm#L603).
+Only the copied cover configuration requests sharing; there is no global
+process-pool or process-count preference and no persistent warm cover.
+
+WebKit [declares this related-view property deprecated since macOS 15.2](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/API/Cocoa/WKWebViewConfigurationPrivate.h#L53).
+It is therefore an optional measured optimization, not a compatibility promise.
+Documents retain separate globals, no opener and per-view bridge owners, but
+**share process lifetime**: a crash may terminate both the cover and the source
+sidebar. The owned crash probe must verify real delegate recovery and disposal;
+this is not process isolation. Renderer caches may remain in the surviving
+source process after the disposable cover view has gone. Resource and crash
+results belong in the dated report, not an unconditional efficiency claim.

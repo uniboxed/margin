@@ -1,6 +1,11 @@
 import Foundation
 
 func coverPresentationTests() {
+    check("cover renderer: accepts only verified object/PID ABI", CoverRendererIO.accepts(get: "@16@0:8", set: "v24@0:8@16", pid: "i16@0:8")
+          && !CoverRendererIO.accepts(get: nil, set: nil, pid: nil)
+          && !CoverRendererIO.accepts(get: "@16@0:8", set: "B24@0:8@16", pid: "i16@0:8")
+          && !CoverRendererIO.accepts(get: "@16@0:8", set: "v24@0:8@16", pid: "q16@0:8"))
+    check("cover renderer: real SPI refuses under app tests", CoverRendererIO.real().reason == "app tests")
     var values: [ObjectIdentifier: Bool] = [:]
     var writes: [(ObjectIdentifier, Bool)] = []
     var refuses = false, unread = false, ignores = false

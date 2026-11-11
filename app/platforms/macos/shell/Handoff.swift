@@ -206,6 +206,7 @@ final class HandoffRun {
     var coverFailed = false
     var coverActive = false
     var deferredSpaceSelection = false
+    var spaceSelectionAsked = false // setSpace can focus its browser window before other transition steps
     var coverStartedAt: Double?
     var coverEndedAt: Double?
     var stepsAt: Double?
@@ -387,7 +388,16 @@ extension ProfileSwitch: FreezerDelegate {
     // wakes; quitting, never again (and nothing queued starts). A switch not frozen yet is given up
     // with nothing touched, so its next step can't freeze the screen as the Mac sleeps or Margin goes.
     func revealNow(_ why: RevealWhy) {
-        if why == .sleep, session.noFreeze == nil { session.noFreeze = .sleep }
+        if why == .sleep {
+            if session.noFreeze == nil { session.noFreeze = .sleep }
+            queued = nil
+            // A late profile/link arrival must not resume a choice made before
+            // sleep. Opening a profile or selecting its space may already have
+            // changed focus, so use the same bounded source restoration.
+            if [.preparing, .covering, .waitingForLink, .waitingForProfile].contains(phase) {
+                return interruptHandoff("sleep", reveal: .sleep)
+            }
+        }
         if why == .quit {
             session.noFreeze = .quit
             queued = nil
@@ -408,6 +418,40 @@ extension ProfileSwitch: FreezerDelegate {
         guard session.noFreeze == .sleep else { return }
         session.noFreeze = nil
         note("the Mac woke: the freeze may run again")
+    }
+
+    // A display/Dock event invalidates the choices captured at start, including
+    // a run still waiting for its link or a pending call before cover setup.
+    // Never continue that old one-display freeze/park choice on the new topology.
+    func handoffEnvironmentChanged(_ why: String) {
+        interruptHandoff(why, reveal: .aborted)
+    }
+
+    private func interruptHandoff(_ why: String, reveal revealWhy: RevealWhy) {
+        queued = nil // a later deliberate request will read the new environment
+        guard let run, let hw = handoffWorld else { return }
+        note("\(why): current handoff invalidated")
+        let before = [.preparing, .covering, .waitingForLink, .waitingForProfile].contains(phase)
+        let untouched = before && !run.awaitedProfile && !run.spaceSelectionAsked && !run.showAsked && run.shownAt == nil
+            && run.stateAskedAt == nil && run.createAskedAt == nil && run.openedAt == nil
+            && run.aAskedAt == nil && !run.aParkAsked && !run.aCloseAsked
+        if untouched {
+            endLiveCover(run, hw, revealWhy)
+            return finish(.cancelled(run.target), "\(why) before moving windows: nothing done",
+                          landed: run.a.map { ($0.link, $0.windowId) })
+        }
+        // Waiting for a profile can already have asked Safari to open/focus a
+        // window. Restore the known source through the normal bounded recovery.
+        if [.waitingForProfile, .waitingForLink, .preparing, .covering].contains(phase),
+           (run.awaitedProfile || run.spaceSelectionAsked), !run.aGone, run.restore == .none, run.a != nil { run.restore = .fullScreen }
+        // Unlike the ordinary pre-freeze interruption, this path may already
+        // have opened a profile window while awaiting its link. Do not finish
+        // that run before its source restoration has had a chance to execute.
+        if run.live { reveal(run, hw, revealWhy) }
+        if run.coverPreparedAt != nil || run.coverActive { endLiveCover(run, hw, revealWhy) }
+        if run.closeLive { revealClose(run, hw, revealWhy) }
+        guard self.run === run, phase != .recovering else { return }
+        recover(run, hw, "\(why): restoring the source on the current displays", reveal: revealWhy, event: .cancelled(run.target))
     }
 
     // ---- the freezer's reports (FreezeRules, and the watchdog) ----
@@ -774,6 +818,7 @@ extension ProfileSwitch: FreezerDelegate {
     private func selectTargetSpace(_ run: HandoffRun, _ hw: HandoffWorld) {
         run.deferredSpaceSelection = false
         if let b = run.b, hw.activeSpaceId(of: b) != run.target.space {
+            run.spaceSelectionAsked = true
             hw.request(b.link, "setSpace", ["windowId": b.windowId, "spaceId": run.target.space], windowId: b.windowId) { _, _ in }
         }
     }
@@ -1443,11 +1488,13 @@ extension ProfileSwitch: FreezerDelegate {
         if !ParkingRegistry.mayHaveMoved(r.park) {
             switch r.park.failure {
             case .busy?:
+                guard mayFinishSourceHandling(run) else { return }
                 run.aParkAsked = false
                 if run.aParkBusy { return }
                 run.aParkBusy = true
                 return note("\(a)'s park: a step for it is under way: asked again")
             case .gone?:
+                guard mayFinishSourceHandling(run) else { return }
                 run.aGone = true
                 run.aDone = true
                 return note("\(a) gone as it was parked: nothing to park")
@@ -1457,6 +1504,9 @@ extension ProfileSwitch: FreezerDelegate {
         }
         run.aParkFailed = true
         demotePark("window \(n)'s park didn't land in \(r.park.ms) ms (\(ParkSelfTest.describe(r.park.failure)))")
+        // A real sent failure still demotes parking, even if recovery has taken
+        // ownership of A. Its old close fallback must not act on restored A.
+        guard mayFinishSourceHandling(run) else { return }
         closeOrKeepA(run, hw, a)
     }
 
@@ -1552,8 +1602,14 @@ extension ProfileSwitch: FreezerDelegate {
 
     // A drafts check before every close (§1.1, §4.5): a draft or no answer keeps it, and the person is
     // told in B's overlay, with a Close window button (§13.4).
+    private func mayFinishSourceHandling(_ run: HandoffRun) -> Bool {
+        guard self.run === run, run.failure == nil,
+              [.frozen, .covered, .after, .landed].contains(phase) else { return false }
+        return run.coverStartedAt == nil || phase == .covered
+    }
+
     private func closeOrKeepA(_ run: HandoffRun, _ hw: HandoffWorld, _ a: WindowKey) {
-        guard !run.aCloseAsked, mayCloseA(run, hw, a) else { return }
+        guard mayFinishSourceHandling(run), !run.aCloseAsked, mayCloseA(run, hw, a) else { return }
         run.aCloseAsked = true
         outA(run, hw, a)
         closeA(run, hw, a, tries: 1)
@@ -1571,10 +1627,10 @@ extension ProfileSwitch: FreezerDelegate {
     }
 
     private func closeA(_ run: HandoffRun, _ hw: HandoffWorld, _ a: WindowKey, tries: Int) {
-        if run.coverStartedAt != nil, self.run !== run || phase != .covered { return }
+        guard mayFinishSourceHandling(run) else { return }
         windowCall(hw, a, .closeWindow(windowId: a.windowId, notAfter: msNow(options.closeTimeout))) { [weak self, weak run] answer, error in
             guard let self, let run else { return }
-            if run.coverStartedAt != nil, self.run !== run || self.phase != .covered { return }
+            guard self.mayFinishSourceHandling(run) else { return }
             if error == nil, answer?.called != false {
                 run.aClosedAt = self.clock.now()
                 run.aDone = true
@@ -1966,6 +2022,9 @@ extension ProfileSwitch: FreezerDelegate {
         if run.way == .parked, run.showAsked, let n = run.bNumber { returnUnshownB(n, hw) }
         var aBack = false
         if let a = run.a, let n = run.aNumber, !run.aGone, reads?.window(n) != nil || hw.copyWindows(a.link).contains(where: { $0.key == a }) {
+            // Recovery owns the source again. An earlier leave/park watch must
+            // not take it back out of full screen when its copy reconnects.
+            dropWatch(n)
             aBack = hw.isLinked(a.link) || run.aAskedAt == nil
             if run.aParkAsked, hw.parking != nil {
                 // Parked (or on its way): shown again first, then full screen.

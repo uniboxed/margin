@@ -4463,3 +4463,117 @@ comparison, transient/retained cost review, physical composition and remaining
 OS/watchdog checks leave overall acceptance open. The original absent flag is
 restored, owned sampling is stopped, and no PR is created. See the detailed
 `tools/handoff-lab/results/26B131-2026-11-10-live-validation.md` report.
+
+### Live cover renderer retained (2026-11-10)
+
+The user chooses to keep the WebView cover for now so themes can have their
+own transition animations. Retain the existing sanitized HTML/CSS theme
+renderer and CSS-only animation contract; a simpler SwiftUI loading cover is
+not the current direction. Continue performance work within this renderer.
+This preference does not enable the experimental flag or clear the remaining
+performance/physical-display/watchdog gates. The no-PR instruction persists.
+
+### Prospective degraded freeze baseline (2026-11-11)
+
+Prepare a new `MATCHED` gate, protocol `matched-v2-degraded-freeze`, to measure
+the existing freeze baseline's known watchdog reveal followed by late landing.
+Only a successful freeze release waiting for A not started may become a
+degraded control, after independent native destination/source, cleanup,
+capability and fixed Test A/Test B topology checks. Preserve its early reveal
+hazard and report reveal latency separately from verified final completion.
+Live late/recovery/fallback, other freeze failures and genuine demotions still
+stop the run. The original `VALIDATE` remains strict and old failed runs stay
+failed; neither their proof files nor their unused allowance authorize this
+new 50-request batch.
+
+Use one process, excluded warmups, direction-balanced controls and equal idle
+mode/topology. The reporter requires actual parsed mechanism evidence alongside
+verification fields, separates on-time/degraded counts and assigns no grade.
+All 28 Python sampler/report tests pass after parser hardening. The 82-check
+Swift fixture passes, including nine checks constraining the expected fullscreen
+recovery exception to its exact declared fault step. No on-screen run is approved or
+performed here. The user has a second monitor available for separately prepared
+physical/multiple-display checks; this matched batch still requires one active
+display. The renderer reuse candidate does not enable the main live-cover flag.
+
+
+### Optional owned cover renderer reuse (2026-11-11)
+
+Keep the themed WebView. The experimental cover can request related-page
+renderer reuse from its outgoing owned layout using a copied configuration.
+Exact selector ABI, identical ephemeral store/bridge, owned overlay URL and
+positive source PID are required; real calls refuse in app tests. Missing SPI
+retains isolated allocation, actual post-prepare PID comparison labels the mode,
+and every end clears the weak anchor. No browser pre-creation, persistent cover,
+global process preference or readiness/recovery change. WebKit deprecated this
+private configuration property in macOS 15.2; document it as optional, with a
+fallback, rather than a compatibility guarantee.
+
+All three real theme component probes reduce sampled transient footprint but
+retain caches; a simple HTML control did not reduce RAM. The actual production
+Native prepare/end probe passes eight cycles per mode at measured 1x scale:
+median sampled peak 186→155 MiB and begin-to-ready 116→51 ms, post-idle
+117→128 MiB. All 553 in-window resource samples are complete; every cover view
+is weakly deallocated, bridge registrations return to two, and native resources
+are zero with balanced 8/8 created/disposed. These are component figures, not
+retina/whole-app switch savings or a long-term cache bound.
+
+The guarded actual shared-WebContent crash passes: the cover ends with one
+emergency, source A reloads with new PID/time origin, B stays unchanged, original
+presentation settings restore, bridge count 2→3→2→0, weak cover disappears,
+all owned windows are gone. Sharing couples process lifetime despite separate
+document globals/bridge ownership. The exact owned executable/PID/birth and
+resource-coalition guard refuses unrelated targets; no installed Margin/browser
+is affected. The actual 20-second native watchdog tool is built/dry-run only.
+The dated component report retains scope, raw-evidence paths and limitations.
+Default-on still awaits real matched and physical/OS-event acceptance; no PR.
+
+### Display topology invalidates in-flight choices (2026-11-11)
+
+Review of the real OS-event path finds a race before cover preparation: a
+single-display request waiting on a link/profile/pending call could retain its
+freeze/park choices after another display connects. The old event handler only
+interrupted runs with a prepared cover. Route display/Dock changes through one
+handoff invalidation entry point for every active run, clear queued targets,
+cancel untouched preparation and use existing bounded source recovery after
+windows may have moved. Repeated events do not restart recovery. A later
+explicit request reads the current topology; two-display keep/no-freeze remains
+the conservative mode. No extra timer, IPC loop or background observer.
+
+New regressions call the actual Shell.appsChanged route over independent
+browser/Space fakes and a temporary store, including late link/cover/profile
+callbacks, pending source calls, parked-source restoration with the registry's
+actual system-event sweep order, and dropping a queued third profile. Native
+compilation/test execution follows this source review; real physical display
+change still needs the prepared on-screen check.
+
+Independent review of that invalidation path also closes concrete late-work
+hazards: selecting B's space can already focus its window, so a run-local
+space-selection marker triggers bounded source restoration rather than an
+untouched cancellation; genuine failed parking still demotes the capability,
+but its old close fallback/retry cannot close a recovering or replaced source;
+recovery drops A's conflicting old aftercare watch. Sleep/lock also cancels a
+waiting-for-profile request and its queue, so a late connection cannot resume
+its pre-sleep park choice. The sleep gate remains until a permitted wake and
+source restoration uses the existing bounded machinery. All these cases have
+real Shell-dispatch regressions over independent fake state; actual OS delivery
+and physical composition still require the prepared manual run.
+
+Final local gates pass after the interruption regressions: 1,031 JS unit,
+150 browser, 305 theme/security, 2,299 native unit, 555 native integration,
+82 plan/parser and 46 Python resource/guard tests; Xcode-setting warning checks
+are clean. The corrected focus regression uses separate actual fake full-screen
+Spaces rather than assuming two windows in one Space have exclusive membership.
+No failed assertion is waived. The Release candidate is built without install,
+deep/strict signature verification passes, and the hardened-runtime signing
+team matches the installed local development build.
+
+A final prospectively stamped eight-cycle matrix reverses the mode order and
+confirms the same bounded component tradeoff: sampled median peak 186.9→155.3 MiB,
+component preparation 117.9→48.6 ms, post-idle 117.7→128.1 MiB; 568/568 resource
+samples complete, all 16 views released, both audits 8/8 and zero resources,
+no owned windows after exit. Measured DPR/backing 1, so no full-app/retina/freeze/
+energy claim. The actual guarded crash passes again on final sources. Evidence
+and scope: `tools/handoff-lab/results/26B131-2026-11-11-renderer-components.md`.
+The installed app and absent/off launch preference remain as before; new
+on-screen acceptance still needs the lab-required approval. No PR.

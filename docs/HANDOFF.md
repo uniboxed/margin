@@ -11,6 +11,8 @@ This addendum overrides freeze-specific presentation below only when the opt-in 
 
 Preparation reuses the outgoing overlay's immutable hello and cached target-space content. A disposable read-only page loads the delivered sanitized theme, including its actual sidebar and CSS progress indicator. It has no interactive runtime, subscription, browser commands, layout reports, network access or JavaScript animation loop. No browser is created until requested. There is no cover panel or WebView while idle; the login helper is unchanged.
 
+**Renderer decision (2026-11-10):** retain the WebView cover so each theme can provide its own CSS transition animation. Performance improvements should preserve that theme support. A simpler SwiftUI loading cover is deferred; this decision does not clear the outstanding acceptance gates or enable the experimental flag.
+
 Before B is selected, shown or created, activation verifies the panel's owned pid, exact private Space membership (mask 15), level 400, bounds/on-screen/alpha metadata and a visible-page acknowledgement after two animation frames. Setters are asynchronous Void calls, so their register residue is never treated as a status code. Setup waits at most 0.8 seconds for content and 0.3 seconds for activation; failure disposes resources, disables the cover for the session and logs the degraded freeze/slide path. Selecting B's sidebar space is deferred under the cover because it can activate a window.
 
 R1/R2 must establish B's new full-screen active Space and steady display-filling bounds before A leaves full screen. Reveal also requires B's framed/stacked overlay, current front-window identity and cached selected-space echo, plus A actually parked/gone or explicitly retained off screen. The short legacy framed timeout does not bypass this gate. Closing A, when configured or a parking fallback, stays under the same live cover and retains the drafts rules.
@@ -1033,3 +1035,15 @@ Smaller points, partly rejected:
 - **3's "have the copy refuse a stuck call":** a call already made can't be refused. The copy's check covers only requests that arrive late, so the aftercare (§1.9) handles calls that were made and then stuck.
 - **5's "a private Space per attempt":** per window was chosen. A window's Space is destroyed once it's shown, so each park is a new attempt anyway.
 - **11's "refuse to raise":** the copy asks the app instead of refusing, so a pin click still does what the person meant.
+
+
+Experimental renderer reuse (2026-11-11): the WebView design is retained. A
+checked related-view configuration may reuse the outgoing owned layout's
+WebContent process for the disposable cover. Missing SPI or incompatible source
+keeps the existing isolated path; actual PID readback labels the chosen mode.
+The configuration is copied, the source is held weakly, bridge ownership stays
+per view, and end unregisters/releases the cover. This reduces process startup
+in component experiments but introduces shared crash lifetime and retained
+renderer caches; see `docs/PRIVATE-APIS.md` and the owned crash/resource probes.
+No readiness or recovery gate is relaxed, and default-on acceptance remains
+open until the real matched, watchdog, OS-event and physical checks pass.

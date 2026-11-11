@@ -237,7 +237,7 @@ extension Shell: HandoffWorld {
         case "woke", "screen wake", "screen unlocked", "session active":
             if options.harness || SessionVisibility.allowsCover { switcher.woke() }
         case "displays changed", "the Dock restarted":
-            if switcher.run?.coverPreparedAt != nil { switcher.revealNow(.aborted) }
+            switcher.handoffEnvironmentChanged(why)
         case "app activated":
             if let front = apps.frontPid {
                 if browserPids("safari").contains(front) { safariActivated = true }

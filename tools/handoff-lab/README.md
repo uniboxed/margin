@@ -56,7 +56,7 @@ Options:
 The live gate's pure log-parser checks run off screen, with no windows or private calls:
 
 ```sh
-swiftc -parse-as-library tools/handoff-lab/LiveLog.swift tools/handoff-lab/tests/live-log-tests.swift -o /tmp/margin-live-log-tests
+swiftc -parse-as-library tools/handoff-lab/LiveLog.swift tools/handoff-lab/ValidationPlan.swift tools/handoff-lab/tests/live-log-tests.swift -o /tmp/margin-live-log-tests
 /tmp/margin-live-log-tests
 ```
 
@@ -245,3 +245,96 @@ swiftc -swift-version 5 -default-isolation MainActor -parse-as-library app/platf
 ```
 
 This diagnostic creates only its own alpha-zero panel at (-20000,-20000), with two constant counter pages. It never drives a browser or shows a window. The production per-view wrapper checks getter/setter encodings, disables occlusion only on one owned view, reads back the write, then restores it. On 26B131 the normal view stayed at zero rAF callbacks; the held view advanced 60 in a second; restoration succeeded with zero outstanding leases. Unit tests never call the real SPI (`MARGIN_APP_TESTS` refuses it); this explicit owned diagnostic is separate.
+
+### Owned native prepared-allocation matrix
+
+`cover-memory-native.sh` wraps **only** the production `NativeHandoffCover`
+prepared variant of `cover-memory-probe.swift`. Its no-argument/default and
+`--dry-run` paths print a plan without building, loading native libraries,
+generating a fixture, sampling resources or creating an application/window:
+
+```sh
+tools/handoff-lab/cover-memory-native.sh --dry-run --rounds 8 --idle 30
+```
+
+The coordinator must serialize the following build with all native compilation
+and timing captures. `--build` generates a synthetic Arcadia fixture, compiles
+every Swift source named by `app/platforms/macos/swift-sources.txt` with `-O`,
+both `MARGIN_THEMED_COVER_PROBE` and `MARGIN_NATIVE_PREPARED_MEMORY_PROBE`, and
+`-j` from `sysctl hw.ncpu` (fallback 4), then signs ad hoc with the hardened
+runtime and verifies the signature. It never builds dist assets or launches
+the resulting executable:
+
+```sh
+tools/handoff-lab/cover-memory-native.sh --build
+```
+
+The separate `build/cover-memory-native/` binary, fixture and stamp leave prior
+probe binaries/captures alone. The stamp covers the complete Swift inventory,
+wrapper/sampler/fixture inputs, theme files/fonts/images, built overlay/cover
+asset tree, fixture and signed binary. Changed, added, missing or symlink inputs
+refuse the next run until a fresh serialized build; a failed build removes the
+old stamp. The wrapper lock prevents concurrent invocations of this wrapper,
+but cannot serialize unrelated compiler commands. The coordinator still owns
+that boundary.
+
+Only explicit `--go` launches the matrix, with no automatic build or installed
+Margin/browser control. Use a new output directory (existing paths refuse):
+
+```sh
+tools/handoff-lab/cover-memory-native.sh --go --rounds 8 --idle 30 \
+  --output /tmp/margin-native-prepared-YYYYMMDD-HHMMSS
+```
+
+Default order is isolated then related; `--order related-isolated` reverses it.
+Rounds are 1–30, post-idle 4–60 seconds, sampling interval 0.1–2 seconds (default
+0.25). Each mode has its own exact owned executable/PID/start identity and an
+outer deadline of `30 + 15 × rounds + idle` seconds, at most 540 seconds per mode.
+The probe warms two off-screen layout pages, then prepares/cancels the actual
+native cover each round, verifies cleanup, and observes post-idle. It never
+shows the prepared cover or assigns it a private Space. The expected measured
+cover DPR/backing scale is 1; another scale refuses this component protocol.
+
+Related mode uses the production renderer's copy of a qualifying source view's
+configuration, preserving the identical WebKit process pool/data store required
+by the related-view constructor. Source configuration changes therefore require
+a new binary stamp, even if earlier probes passed. Native events must prove
+actual cover/source PID sharing in related mode, separation in isolated mode,
+unchanged layout PIDs, isolated page globals and clean balanced native audits.
+This wrapper does not inject source-process crashes or certify their recovery;
+the separately owned crash probe and native cancellation/session tests cover
+their own stated scopes.
+
+Each mode preserves `manifest.json`, parsed `events.jsonl`, raw `stdout.log`,
+`stderr.log`, `samples.jsonl` and `result.json`; the parent directory retains
+matrix provenance/results. All stdout is drained and validated in the supervisor's
+main loop. Malformed/truncated/non-finite JSON, failed/missing/out-of-order events,
+wrong process grouping/scale, cleanup failure, nonzero exit, timeout or incomplete
+resource capture stops the matrix before another mode. Parse failures retain
+remaining raw stdout after terminating only the owned child. SIGINT/TERM/HUP
+also clean up that exact child; no process-name kill or browser restart is used.
+The public window observer checks only that exited child's windows are gone.
+
+Resources reuse `memory.py` accounting, with the root selected by exact owned
+PID/start/executable path, independent of argv0. Other WebKit candidates receive
+only coalition checks before attributed rusage. No installed-app/helper rusage
+is included. A WebKit member born at/before the owned root cannot belong to this
+new probe: retain it as unread contamination, withhold totals and fail the
+measurement. At least one complete census must include both A/B source PIDs in
+each stable baseline, cover-ready round and post-idle interval; transition-edge
+samples need not independently prove that census. These checks add no additional
+process reads beyond the sampler's existing inventory/rusage calls.
+
+This is **off-screen DPR1 component evidence**, with separate process/cache
+cohorts per mode. Footprint/resident sums, missed sub-sample peaks and exiting
+process CPU retain `memory.py`'s limitations. The matrix is not a full-app
+performance grade, physical display/high-DPI result, live shown-cover/Space
+composition check, or permission for on-screen Safari cases. It changes no
+launch default and does not enable the main cover flag.
+
+Pure guard tests use fake native readers/processes; they never compile or run
+the probe:
+
+```sh
+python3 -m unittest discover -s tools/handoff-lab/tests -p 'test_cover_memory_native.py'
+```

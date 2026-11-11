@@ -129,6 +129,99 @@ class SamplerTests(unittest.TestCase):
 
 
 class ReportTests(unittest.TestCase):
+    CONTROL = ('handoff: safari:A#1 → safari:B#2 (park+freeze, parked target), '
+               'frozen 1685 ms (result 0), request to reveal 1763 ms: shown 11, '
+               'B steady 1584, A asked 1726, overlay framed 1721, A normal 1814, '
+               'A parked 1871, settled 1721; focus ok; '
+               'late (watchdog at 1685 ms, waiting for A not started); dev hook: cover off')
+    COVERED = ('handoff: safari:B#2 → safari:A#1 (park, parked target), live cover 1500 ms (no freeze), '
+               'request to reveal 1550 ms: B steady 1300, A parked 1500, settled 1400; focus ok')
+
+    def prospective(self):
+        protocol = reporter.MATCHED_PROTOCOL
+        events = [dict(event='validation_begin', protocol=protocol, gate='MATCHED', prior_requests_consumed=0)]
+        for i, (mode, summary) in enumerate([('freeze', self.CONTROL), ('live', self.COVERED)], 1):
+            evidence = reporter.comparison_summary(summary, mode)
+            events += [event('request', i, 'matched', mode, i * 3 - 2.5,
+                             protocol=protocol, old='park', source=i,
+                             source_profile='Test A' if i == 1 else 'Test B',
+                             target_profile='Test B' if i == 1 else 'Test A'),
+                       event('settled', i, 'matched', mode, i * 3 - .5,
+                             protocol=protocol, ok=True, status='pass', source=i, destination=3 - i,
+                             summary=summary, final_verified=True, cleanup_verified=True,
+                             mechanism_verified=True, capabilities_preserved=True, topology_verified=True,
+                             final_verified_ms=2000, degraded_control=mode == 'freeze', **evidence)]
+        return events
+
+    def test_prospective_degraded_control_keeps_reveal_hazard_separate_from_completion(self):
+        r = reporter.report(self.prospective(), [sample(t) for t in range(8)])
+        self.assertTrue(r['prospective_protocol_established'])
+        self.assertTrue(r['matched_data_available'])
+        control = r['matched']['freeze']
+        self.assertEqual(control['eligible'], 1)
+        self.assertEqual(control['degraded_controls'], 1)
+        self.assertEqual(control['on_time_controls'], 0)
+        self.assertEqual(control['early_reveal_hazards_observed'], 1)
+        self.assertEqual(control['request_to_reveal_ms']['p50'], 1763)
+        self.assertEqual(control['independently_verified_completion_ms']['p50'], 2000)
+        self.assertEqual(control['on_time_verified_completion_ms']['count'], 0)
+        self.assertEqual(r['matched']['live']['degraded_controls'], 0)
+        self.assertEqual(r['performance_grade'], 'not_assigned')
+
+    def test_prospective_flags_without_actual_mechanism_never_establish_control(self):
+        for bad in ['', 'frozen 1685 ms (result 0)', self.COVERED,
+                    self.CONTROL.replace('result 0', 'result 1'),
+                    self.CONTROL.replace('waiting for A not started', 'waiting for B'),
+                    self.CONTROL.replace('focus ok', 'focus failed'),
+                    self.CONTROL.replace('focus ok', 'focus okay'),
+                    self.CONTROL.replace('(result 0)', '(result 1), close frozen 1 ms (result 0)'),
+                    self.CONTROL.replace('(park+freeze, parked target)', '(park, parked target)'),
+                    self.CONTROL.replace('; focus ok;', '; late (watchdog at 1 ms, waiting for B); focus ok;'),
+                    self.CONTROL + '; recovered: error', self.CONTROL + '; aborted']:
+            with self.subTest(summary=bad):
+                events = self.prospective(); events[2]['summary'] = bad
+                r = reporter.report(events, [sample(t) for t in range(8)])
+                self.assertEqual(r['matched']['freeze']['eligible'], 0)
+
+    def test_prospective_requires_fresh_protocol_and_all_native_verification(self):
+        mutations = [lambda es: es.pop(0),
+                     lambda es: es[0].update(prior_requests_consumed=4),
+                     lambda es: es[0].update(gate='VALIDATE'),
+                     lambda es: es[1].pop('protocol'),
+                     lambda es: es[2].update(protocol='legacy'),
+                     lambda es: es[2].update(ok=False, status='fail'),
+                     lambda es: es[2].update(destination=1),
+                     lambda es: es[2].update(request_to_reveal_ms=10),
+                     lambda es: es[2].update(final_verified_ms=1700)]
+        for key in ['final_verified', 'cleanup_verified', 'mechanism_verified', 'capabilities_preserved', 'topology_verified']:
+            mutations.append(lambda es, key=key: es[2].update({key: False}))
+        for mutation in mutations:
+            events = self.prospective(); mutation(events)
+            self.assertEqual(reporter.report(events, [sample(t) for t in range(8)])['matched']['freeze']['eligible'], 0)
+
+    def test_legacy_failed_control_stays_failed_even_with_v2_looking_summary(self):
+        for ok in [False, True]:
+            events = [event('request', 1, 'matched', 'freeze', .5),
+                      event('settled', 1, 'matched', 'freeze', 2.5, ok=ok, summary=self.CONTROL)]
+            r = reporter.report(events, [sample(t) for t in range(4)])
+            self.assertEqual(r['matched']['freeze']['eligible'], 0)
+            self.assertEqual(r['steps'][0]['gate_ok'], ok)
+            self.assertTrue(r['steps'][0]['early_reveal_hazard'])
+
+    def test_prospective_live_late_or_recovery_cannot_be_a_degraded_control(self):
+        for suffix in ['; late (watchdog at 1700 ms, waiting for A not started); dev hook: cover off', '; recovered: failure']:
+            events = self.prospective(); events[4]['summary'] += suffix
+            events[4].update(degraded_control=True, transition='degraded_freeze', early_reveal_hazard=True)
+            self.assertEqual(reporter.report(events, [sample(t) for t in range(8)])['matched']['live']['eligible'], 0)
+
+    def test_prospective_degraded_warmup_does_not_enter_matched_stats(self):
+        events = self.prospective()
+        events[1]['phase'] = events[2]['phase'] = 'warmup'
+        r = reporter.report(events, [sample(t) for t in range(8)])
+        self.assertTrue(r['steps'][0]['early_reveal_hazard'])
+        self.assertEqual(r['matched']['freeze']['attempted'], 0)
+        self.assertFalse(r['matched_data_available'])
+
     def test_matched_only_statistics_exclude_warmup_repeated_fault_close(self):
         events = []
         for i, (phase, mode) in enumerate([('warmup', 'live'), ('matched', 'freeze'),

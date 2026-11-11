@@ -102,6 +102,7 @@ protocol OverlayPageOwner: AnyObject {
 // The pages' messages, for every overlay's page (one configuration), each to its own overlay.
 final class OverlayBridge: NSObject, WKScriptMessageHandlerWithReply {
     private var owners: [ObjectIdentifier: () -> OverlayPageOwner?] = [:]
+    var registrationCount: Int { owners.count }
 
     func register(_ webView: WKWebView, _ owner: OverlayPageOwner) {
         owners[ObjectIdentifier(webView)] = { [weak owner] in owner }
@@ -196,8 +197,8 @@ final class OverlayPages {
     // The app's own copy of the page (scripts/xcode-add-sources.py puts dist/app there).
     static var appRoot: URL { Bundle.main.resourceURL!.appendingPathComponent("app", isDirectory: true) }
 
-    func makeWebView(size: NSSize) -> OverlayWebView {
-        let webView = OverlayWebView(frame: NSRect(origin: .zero, size: size), configuration: configuration)
+    func makeWebView(size: NSSize, configuration viewConfiguration: WKWebViewConfiguration? = nil) -> OverlayWebView {
+        let webView = OverlayWebView(frame: NSRect(origin: .zero, size: size), configuration: viewConfiguration ?? configuration)
         webView.setValue(false, forKey: "drawsBackground")
         webView.underPageBackgroundColor = .clear
         webView.allowsMagnification = false

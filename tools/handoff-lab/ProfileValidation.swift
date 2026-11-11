@@ -2,8 +2,12 @@
 // through the existing Test A/Test B-only hook. No profile/window pre-creation.
 import AppKit
 
-let profileValidationGate = Gate(
-    id: "VALIDATE", title: "Matched freeze/live reliability, cleanup and resource validation",
+let profileValidationGate = makeProfileValidationGate(prospective: false)
+let matchedProfileValidationGate = makeProfileValidationGate(prospective: true)
+
+private func makeProfileValidationGate(prospective: Bool) -> Gate { Gate(
+    id: prospective ? "MATCHED" : "VALIDATE",
+    title: prospective ? "Prospective matched comparison with degraded freeze controls" : "Matched freeze/live reliability, cleanup and resource validation",
     decides: "42 normal measured switches, 4 warmups, 2 guarded faults and 2 close-mode requests; physical display remains a separate check",
     needs: [.margin, .devHook], freezes: "up to 50 Test A/Test B requests, about 7 minutes including two 60-second idle samples",
     plan: ["installed opted-in candidate, one display, foreground full-screen Test A or Test B; parking on, close setting off, no caps/faults",
@@ -12,11 +16,17 @@ let profileValidationGate = Gate(
            "60-second normal post-idle BEFORE fault/close cases; then suppressed-fullscreen recovery, two close requests, one suppressed park with close fallback",
            "fresh summary and native destination/source verification, cover audit and closed-window check after EVERY request; never reset genuine failure gates",
            "write timestamped request/settled/idle events; run memory.py separately; no pixel coverage/physical-camera acceptance inferred",
-           "first unexpected failure stops all further requests; restore test caps on every exit; outer runner restores the launch preference"],
+           "first unexpected failure stops all further requests; restore test caps on every exit; outer runner restores the launch preference"] + (prospective ? [
+           "NEW protocol \(matchedValidationProtocol): no prior allowance/proof reuse; requires separate approval of all 50 requests",
+           "only successful watchdog release waiting for A not started may count as degraded freeze, after independent final/cleanup verification; live late/recovery/fallback still fails",
+           "fixed Test A/Test B native window identities after warmups; one shown/one parked; equal no-cap park mode in both idles; reveal hazard and verified completion reported separately"] : []),
     run: { lab in
         guard let app = Margin.running, Margin.devHooksOn,
               UserDefaults(suiteName: "com.unibox.margin")?.bool(forKey: "MarginLiveProfileCover") == true else {
             return Outcome(status: .notRun, lines: ["requires running opted-in candidate and guarded hook; nothing switched"])
+        }
+        if prospective && (lab.o.validationAfterFailedWarmup != nil || lab.o.validationAfterFreezeWatchdog != nil) {
+            return Outcome(status: .notRun, lines: ["MATCHED is a new 50-request protocol; prior failed runs/allowances cannot resume it; nothing switched"])
         }
         let appPID = app.processIdentifier
         var consumedRequests = 0
@@ -45,6 +55,7 @@ let profileValidationGate = Gate(
         @MainActor func event(_ kind: String, index: Int = 0, step: ProfileValidationStep? = nil, extra: [String: Any] = [:]) throws {
             var row: [String: Any] = ["event": kind, "index": index, "at": epochMs(),
                                       "mono": ProcessInfo.processInfo.systemUptime, "app_pid": appPID]
+            if prospective { row["protocol"] = matchedValidationProtocol }
             if let step { row["phase"] = step.phase; row["mode"] = step.mode; row["old"] = step.old; row["fault"] = step.fault }
             row.merge(extra) { _, new in new }
             var data = try JSONSerialization.data(withJSONObject: row, options: [.sortedKeys])
@@ -71,7 +82,23 @@ let profileValidationGate = Gate(
             guard let n = validationNumber(state, after: "last window ") else { return false }
             return n == 0 || lab.calls.server(n) == nil
         }
+        var profileWindows: [String: Int] = [:]
+        @MainActor func fixedTopology(_ state: String) -> Bool {
+            guard let name = validationTestProfile(state), let source = liveShownNumber(state),
+                  profileWindows.count == 2, profileWindows[name] == source,
+                  let other = profileWindows[name == "Test A" ? "Test B" : "Test A"],
+                  other != source, state.contains("registry: 1 parked;"),
+                  lab.calls.server(other) != nil, lab.calls.parked(other) else { return false }
+            return ready(source)
+        }
         @MainActor func idle(_ phase: String) async throws {
+            if prospective {
+                Margin.dev("mode", ["freeze": "on", "cover": "on", "old": "park"])
+                let state = await dump()
+                guard state.contains("no caps; no faults armed"), state.contains("park on;"),
+                      state.contains("choices: freeze on"), state.contains("live cover session: on"),
+                      clean(state), fixedTopology(state) else { throw Fail("equal idle mode/topology not ready") }
+            }
             try event("idle_begin", step: .init(phase: phase, mode: "live"))
             await pause(60)
             let state = await dump()
@@ -79,6 +106,11 @@ let profileValidationGate = Gate(
                   let n = liveShownNumber(state), ready(n),
                   validationForegroundAllowed(NSWorkspace.shared.frontmostApplication?.processIdentifier, browser: lab.calls.server(n)?.pid, app: appPID) else {
                 throw Fail("\(phase) idle cleanup/source state changed")
+            }
+            if prospective {
+                guard state.contains("no caps; no faults armed"), state.contains("park on;"),
+                      state.contains("choices: freeze on"), state.contains("live cover session: on"),
+                      fixedTopology(state) else { throw Fail("idle mode/topology/capability changed") }
             }
             try event("idle_end", step: .init(phase: phase, mode: "live"))
         }
@@ -96,6 +128,7 @@ let profileValidationGate = Gate(
               validationForegroundAllowed(NSWorkspace.shared.frontmostApplication?.processIdentifier, browser: browser.pid, app: appPID) else {
             return Outcome(status: .notRun, lines: lines + ["guarded foreground source/capability/preconditions not ready; nothing switched"])
         }
+        if prospective, let name = validationTestProfile(initial) { profileWindows[name] = firstSource }
         // Only subtractive test caps are restored, not real FreezeRules/parking/cover demotions.
         lab.restoreValidationMode = true
         defer { Margin.dev("mode", ["freeze": "on", "cover": "on", "old": "park"]); lab.restoreValidationMode = false }
@@ -106,7 +139,7 @@ let profileValidationGate = Gate(
             : profileValidationPlan().enumerated().dropFirst(consumedRequests).map { ($0.offset + 1, $0.element) }
         do {
             try event("validation_begin", extra: ["prior_requests_consumed": consumedRequests,
-                       "prior_failed_warmups": liveOnly ? 2 : consumedRequests, "validation_kind": liveOnly ? "live_only" : "matched"])
+                       "prior_failed_warmups": liveOnly ? 2 : consumedRequests, "validation_kind": liveOnly ? "live_only" : "matched", "gate": prospective ? "MATCHED" : "VALIDATE"])
             for (number, step) in numbered {
                 index = number
                 if index == (liveOnly ? 7 : 5) { try await idle("pre_idle") }
@@ -118,6 +151,10 @@ let profileValidationGate = Gate(
                       state.contains("live cover session: on") else { throw Fail("source or cleanup not ready before request \(index)") }
                 guard validationForegroundAllowed(NSWorkspace.shared.frontmostApplication?.processIdentifier, browser: lab.calls.server(source)?.pid, app: appPID) else {
                     throw Fail("foreground app changed; no further request")
+                }
+                if prospective && step.phase != "fault" && step.phase != "close" {
+                    if let expected = profileWindows[sourceName], expected != source { throw Fail("test profile native identity changed") }
+                    if step.phase != "warmup", !fixedTopology(state) { throw Fail("normal two-window topology changed before request") }
                 }
                 // Both injected failures require their intended operation to be reachable.
                 if step.fault == "fullscreen", !state.contains("registry: 1 parked;") { throw Fail("fullscreen fault needs an existing parked target; nothing requested") }
@@ -142,8 +179,14 @@ let profileValidationGate = Gate(
                 }), let summary else { throw Fail("no fresh summary/refused request \(index)") }
                 let frozen = summary.contains("frozen "), live = summary.contains("live cover ")
                 guard step.mode == "live" ? live && !frozen : frozen && !live else { throw Fail("requested mechanism did not execute: \(summary)") }
-                guard !summary.contains("late ("), !summary.contains("aborted"),
-                      !summary.contains("recovered") || step.recovers else { throw Fail("unexpected failed/recovered transition: \(summary)") }
+                let expectedRecovery = validationExpectedFullscreenRecovery(step)
+                let transition = prospective && !expectedRecovery ? matchedTransition(summary, mode: step.mode) : nil
+                if prospective && !expectedRecovery {
+                    guard transition != nil else { throw Fail("unexpected mechanism/late/recovered transition: \(summary)") }
+                } else {
+                    guard !summary.contains("late ("), !summary.contains("aborted"),
+                          !summary.contains("recovered") || step.recovers else { throw Fail("unexpected failed/recovered transition: \(summary)") }
+                }
                 if let fault = step.fault {
                     guard summary.components(separatedBy: "dev hook:").last?.contains(fault) == true else { throw Fail("armed fault never reached intended step") }
                     if step.recovers && !summary.contains("recovered:") { throw Fail("suppressed fullscreen did not exercise recovery") }
@@ -166,6 +209,12 @@ let profileValidationGate = Gate(
                         guard lab.calls.server(source) == nil else { throw Fail("close/fallback did not actually close outgoing test window") }
                     }
                 }
+                if prospective && step.fault == nil && step.old == "park" {
+                    guard lab.calls.server(source) != nil, lab.calls.parked(source) else { throw Fail("normal control used a close fallback") }
+                    if let expected = profileWindows[targetName], expected != destination { throw Fail("target native identity changed") }
+                    profileWindows[targetName] = destination
+                    guard fixedTopology(final) else { throw Fail("normal two-window topology changed after request") }
+                }
                 // A real demotion is never silently reset to finish the benchmark.
                 if index < finalIndex {
                     guard final.contains("park on;"), final.contains("choices: freeze on"), final.contains("live cover session: on") else {
@@ -173,8 +222,20 @@ let profileValidationGate = Gate(
                     }
                 }
                 let elapsed = Int(epochMs() - started)
-                try event("settled", index: index, step: step, extra: ["ok": true, "status": step.fault == nil ? "pass" : "expected_fault",
-                          "source": source, "destination": destination, "elapsed_ms": elapsed, "summary": summary])
+                var verified: [String: Any] = ["ok": true, "status": step.fault == nil ? "pass" : "expected_fault",
+                          "source": source, "destination": destination, "elapsed_ms": elapsed, "summary": summary]
+                if prospective {
+                    verified.merge(["transition": transition?.rawValue ?? "expected_fault",
+                        "degraded_control": transition == .degradedFreeze,
+                        "early_reveal_hazard": transition == .degradedFreeze,
+                        "final_verified": true, "cleanup_verified": true, "mechanism_verified": true,
+                        "capabilities_preserved": index == finalIndex ? false : true,
+                        "topology_verified": step.fault == nil && step.old == "park",
+                        "final_verified_ms": elapsed]) { _, new in new }
+                    if let reveal = liveSummaryNumber(summary, pattern: #"request to reveal ([0-9]+) ms"#) { verified["request_to_reveal_ms"] = reveal }
+                    if let held = liveSummaryNumber(summary, pattern: #"frozen ([0-9]+) ms \(result 0\)"#) { verified["freeze_held_ms"] = held }
+                }
+                try event("settled", index: index, step: step, extra: verified)
                 let measured = "\(index)/50 \(step.phase)/\(step.mode): \(elapsed) ms final verified; \(summary)"
                 lines.append(measured); note(measured)
                 await pause(1)
@@ -187,4 +248,4 @@ let profileValidationGate = Gate(
             lines.append("stopped at \(index)/50: \(error); no further request")
             return Outcome(status: .fail, lines: lines)
         }
-    })
+    }) }

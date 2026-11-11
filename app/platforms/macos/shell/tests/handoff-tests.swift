@@ -71,6 +71,7 @@ func handoffTests() {
     freezerTests()
     handoffMachineTests() // the switch's machine (Handoff.swift), below
     handoffReviewTests() // what a review of the machine found, each case failing before its fix
+    handoffTopologyTests() // actual shell event dispatch over independent browser/Space fakes
 }
 
 func freezerTests() {
@@ -373,6 +374,7 @@ final class FakeHandoffWorld: HandoffWorld {
     var blockedOverlays: Set<WindowKey> = []
     var blockedFront: Set<WindowKey> = [] // browser reports another window above this one, independent of its active Space
     var spaceSelectionLag: Double = 0 // selected-space storage echo, independent of tab/native readiness
+    var spaceSelectionFocuses = false // Safari may activate that window when its selected space changes
     var framedOn = true
     var hung: Set<WindowKey> = [] // its windows calls held (a hung tab), until `unhang`
     private var held: [WindowKey: () -> Void] = [:]
@@ -578,6 +580,7 @@ final class FakeHandoffWorld: HandoffWorld {
             }
         case "setSpace":
             later(spaceSelectionLag) { [self] in update(key) { $0.space = r.payload["spaceId"] as? String ?? $0.space } }
+            if spaceSelectionFocuses { focus(key) }
             reply([:], nil)
         case "windowDrafts":
             if silentDrafts { return }
@@ -1932,5 +1935,290 @@ func handoffReviewTests() {
         s2.start(toB, from: hA, windowId: 10)
         check("review: preparing: the keys are the switch's", s2.phase == .preparing && s2.keysMidSwitch)
         withExtendedLifetime((w, w2)) {} // the switch's world is weak
+    }
+}
+
+// The real shell event entry point with independent fake browser/Space state.
+// No event is posted to macOS; no window, native private call or browser runs.
+func handoffTopologyTests() {
+    let echo = Diagnostics.echo
+    Diagnostics.echo = { _ in }
+    defer { Diagnostics.echo = echo }
+    let toB = ProfileSwitch.Target(profile: hB, space: "b1")
+    let toC = ProfileSwitch.Target(profile: hC, space: "c1")
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-topology-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    func routing(_ w: FakeHandoffWorld, _ s: ProfileSwitch) -> Shell {
+        var options = Shell.Options()
+        options.harness = true; options.dataRoot = root; options.switchClock = w.clock
+        let shell = Shell(link: SocketLink(), windows: StubWindows(), apps: StubApps(), hotKeys: FakeRegistrar(), options: options)
+        shell.switcher = s
+        shell.parking = w.registry // actual systemEvent ordering before source recovery
+        return shell
+    }
+    func sweep(_ w: FakeHandoffWorld, _ s: ProfileSwitch, seconds: Double) {
+        var left = seconds
+        while left > 1e-9 {
+            let step = min(0.004, left)
+            w.clock.advance(step); left -= step
+            _ = w.registry.sweep(SweepRead(pids: [w.pid], ext: w.linked.flatMap { w.copyWindows($0) },
+                                         reporting: w.linked, moving: s.movingNumbers))
+        }
+    }
+
+    for why in ["screen locked", "will sleep"] {
+        do {
+            let (w, s) = handoffSetup { $0.noFreezer = true; $0.coverOn = false; $0.linked.remove(hC); $0.opensWindows = true }
+            let shell = routing(w, s)
+            s.start(toC, from: hA, windowId: 10)
+            check("session \(why): missing profile wait has actually opened its window", s.phase == .waitingForProfile
+                  && s.run?.awaitedProfile == true && w.openedWindowFor == [hC])
+            w.setActive(w.desktop)
+            shell.appsChanged(why)
+            let kc = w.add(hC, id: 30, number: 3030, state: "normal") // arrival while cancellation restores A
+            handoffRun(w, 2)
+            check("session \(why): late profile cannot resume or park source after interruption", !s.busy
+                  && w.events.last == .cancelled(toC) && s.session.noFreeze == .sleep && s.queued == nil
+                  && w.fullAndInFront(hKA) && !w.registry.isParked(1010)
+                  && w.types(hC, "setWindowState").isEmpty && w.types(hC, "setSpace").isEmpty
+                  && w.types(hA, "setWindowState").allSatisfy { $0.state == "fullscreen" }
+                  && w.win(kc)?.state == "normal" && w.freezer.calls.isEmpty)
+            shell.appsChanged(why == "screen locked" ? "screen unlocked" : "woke")
+            check("session \(why): wake clears sleep gate without resuming cancelled request", s.session.noFreeze == nil && !s.busy
+                  && w.events.filter { $0 == .started(toC) }.count == 1)
+            s.start(toB, from: hA, windowId: 10)
+            handoffRun(w, 4)
+            check("session \(why): fresh deliberate request succeeds after wake", w.events.last == .done(toB)
+                  && w.fullAndInFront(hKB) && w.registry.isParked(1010) && w.strands.isEmpty)
+        }
+
+        do {
+            let (w, s) = handoffSetup { $0.coverOn = false; $0.linked.remove(hC); $0.opensWindows = true }
+            let shell = routing(w, s)
+            s.start(toC, from: hA, windowId: 10)
+            handoffUntil(w, max: 1) { s.phase == .frozen && w.openedWindowFor == [hC] }
+            s.start(toB, from: hA, windowId: 10)
+            check("session \(why): later target actually queued under the profile-opening freeze", s.queued == toB)
+            handoffRun(w, 2)
+            check("session \(why): watchdog actually left a waiting profile with queued work", s.phase == .waitingForProfile
+                  && s.queued == toB && !w.freezer.isLive)
+            shell.appsChanged(why)
+            w.add(hC, id: 30, number: 3030, state: "normal")
+            handoffRun(w, 3)
+            check("session \(why): late profile never launches pre-sleep queued target", !s.busy && s.queued == nil
+                  && !w.events.contains(.started(toB)) && w.events.last == .cancelled(toC)
+                  && w.fullAndInFront(hKA) && !w.registry.isParked(1010) && w.registry.isParked(2020)
+                  && w.types(hC, "setWindowState").isEmpty && w.freezer.calls.filter { $0.hasPrefix("freeze") }.count == 1)
+        }
+
+        do {
+            let (w, s) = handoffSetup { $0.coverOn = false; $0.linked.remove(hB) }
+            let shell = routing(w, s)
+            s.start(toB, from: hA, windowId: 10)
+            check("session \(why): parked target waits for its copy before any browser mutation", s.phase == .waitingForLink)
+            shell.appsChanged(why)
+            w.linked.insert(hB)
+            handoffRun(w, 1)
+            check("session \(why): late link cannot restart a pre-sleep parked-window request", !s.busy
+                  && w.events.last == .cancelled(toB) && w.freezer.calls.isEmpty && w.types(nil, "setWindowState").isEmpty
+                  && w.registry.isParked(2020) && w.fullAndInFront(hKA) && s.session.noFreeze == .sleep)
+        }
+    }
+
+    for why in ["displays changed", "the Dock restarted"] {
+        let (w, s) = handoffSetup { $0.coverOn = false }
+        let shell = routing(w, s)
+        s.start(toB, from: hA, windowId: 10)
+        check("topology \(why): legacy preparation has no live cover handle", s.phase == .preparing && s.run?.coverPreparedAt == nil)
+        if why == "displays changed" { w.displays = 2 }
+        shell.appsChanged(why)
+        handoffRun(w, 0.4)
+        check("topology \(why): untouched run cancelled before any stale freeze/show", !s.busy && w.events.last == .cancelled(toB)
+              && w.freezer.calls.isEmpty && w.types(nil, "setWindowState").isEmpty && w.registry.isParked(2020)
+              && w.fullAndInFront(hKA) && w.registry.inSystemWindow)
+    }
+
+    do {
+        let (w, s) = handoffSetup { $0.linked.remove(hB) }
+        let cover = FakeHandoffCover(clock: w.clock); w.liveCover = cover
+        let shell = routing(w, s)
+        s.start(toB, from: hA, windowId: 10)
+        check("topology: link wait captures a one-display choice before cover preparation", s.phase == .waitingForLink
+              && s.run?.coverPreparedAt == nil && s.run?.choice.freeze == true)
+        w.displays = 2
+        shell.appsChanged("displays changed")
+        w.linked.insert(hB)
+        handoffRun(w, 0.4)
+        check("topology: a later link cannot resume the invalidated choice", !s.busy && w.events.last == .cancelled(toB)
+              && cover.contexts.isEmpty && w.freezer.calls.isEmpty && w.types(nil, "setWindowState").isEmpty && w.fullAndInFront(hKA))
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("topology: a fresh two-display request uses keep/no-freeze without demotion", w.events.last == .done(toB)
+              && w.freezer.calls.isEmpty && cover.contexts.isEmpty && w.win(hKA)?.state == "fullscreen" && !w.registry.isParked(1010)
+              && w.fullAndInFront(hKB) && s.session.rules.on && s.session.coverOff == nil && s.session.parkOff == nil)
+    }
+
+    do {
+        let (w, s) = handoffSetup { $0.coverOn = false }
+        let shell = routing(w, s)
+        s.session.pending[hKA] = ("focusWindow", 42, w.clock.now())
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 0.04)
+        check("topology: pending source holds preparation before cover setup", s.phase == .preparing && s.run?.coverPreparedAt == nil)
+        w.displays = 2
+        shell.appsChanged("displays changed")
+        s.session.pending[hKA] = nil
+        handoffRun(w, 0.5)
+        check("topology: pending completion cannot restart the cancelled preparation", !s.busy && w.freezer.calls.isEmpty
+              && w.types(nil, "setWindowState").isEmpty && w.registry.isParked(2020) && w.fullAndInFront(hKA))
+    }
+
+    do {
+        let (w, s) = handoffSetup()
+        let cover = FakeHandoffCover(clock: w.clock); w.liveCover = cover
+        let shell = routing(w, s)
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 0.3) { !cover.contexts.isEmpty }
+        cover.prepared()
+        handoffUntil(w, max: 0.3) { !cover.activations.isEmpty }
+        check("topology: activation acknowledgement is still pending", s.phase == .covering && cover.activations.count == 1)
+        w.displays = 2
+        shell.appsChanged("displays changed")
+        if !cover.activations.isEmpty { cover.staleAcknowledgement(0, true) }
+        handoffRun(w, 0.3)
+        check("topology: stale cover activation cannot start a browser transition", !s.busy && cover.ends.map(\.why) == [.aborted]
+              && cover.state == .idle && w.types(nil, "setWindowState").isEmpty && w.types(nil, "openSpaceWindow").isEmpty
+              && w.registry.isParked(2020) && w.fullAndInFront(hKA))
+    }
+
+    do {
+        let (w, s) = handoffSetup { $0.noFreezer = true; $0.linked.remove(hC); $0.opensWindows = true }
+        let shell = routing(w, s)
+        s.start(toC, from: hA, windowId: 10)
+        check("topology: awaiting profile may already have asked Safari to open it", s.phase == .waitingForProfile && w.openedWindowFor == [hC])
+        w.setActive(w.desktop) // opening a profile may already have taken focus
+        w.displays = 2
+        shell.appsChanged("displays changed")
+        handoffRun(w, 1.5)
+        w.add(hC, id: 30, number: 3030, state: "normal") // late copy/window arrival
+        handoffRun(w, 0.3)
+        check("topology: awaiting profile restores source and ignores late target arrival", !s.busy && w.events.last == .cancelled(toC)
+              && w.fullAndInFront(hKA) && w.types(hA, "setWindowState").last?.state == "fullscreen"
+              && w.types(hC, "setWindowState").isEmpty && w.types(hC, "openSpaceWindow").isEmpty && w.freezer.calls.isEmpty)
+    }
+
+    do {
+        let (w, s) = handoffSetup { $0.noFreezer = true; $0.coverOn = false; $0.spaceSelectionFocuses = true }
+        w.registry.show(number: 2020, cause: .handoff)
+        handoffRun(w, 0.05)
+        // Give B its own actual fake full-screen Space. Merely showing a
+        // normal B can put it in A's active Space, where both inFront reads
+        // would be true even when setSpace really focused B.
+        w.enter(hKB) { _ in }
+        handoffRun(w, 1)
+        w.update(hKB) { $0.space = "b0" } // independent selected-space mismatch
+        w.focus(hKA)
+        let shell = routing(w, s)
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 0.15) { w.types(hB, "setSpace").count == 1 && w.inFrontNow(hKB) }
+        check("topology: legacy preparation can already focus target through space selection", s.phase == .preparing
+              && s.run?.spaceSelectionAsked == true && w.inFrontNow(hKB) && !w.inFrontNow(hKA))
+        w.displays = 2
+        shell.appsChanged("displays changed")
+        handoffRun(w, 1.5)
+        check("topology: pretransition space selection restores source rather than claiming untouched", !s.busy
+              && w.fullAndInFront(hKA) && w.events.last == .cancelled(toB)
+              && w.types(hA, "setWindowState").last?.state == "fullscreen"
+              && w.types(hA, "closeWindow").isEmpty && w.freezer.calls.isEmpty)
+    }
+
+    do {
+        let (w, s) = handoffSetup { $0.slowExit[hKB] = 1.5 }
+        let cover = FakeHandoffCover(clock: w.clock); w.liveCover = cover
+        s.session.coverOff = "legacy fallback for this regression"
+        let shell = routing(w, s)
+        w.onRequest = { r in
+            if r.link == hA, r.type == "setWindowState", r.state == "normal" { w.reads.dropNext = 2 }
+        }
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 2) { w.registry.entries[1010]?.stepping == true }
+        check("topology: legacy source park is actually pending before its delayed failure", s.phase == .frozen
+              && s.run?.coverStartedAt == nil && w.registry.entries[1010]?.stepping == true && w.types(hA, "closeWindow").isEmpty)
+        w.displays = 2
+        shell.appsChanged("displays changed")
+        sweep(w, s, seconds: 4)
+        check("topology: genuine late failed park still demotes capability during recovery", s.session.parkOff?.contains("park didn't land") == true
+              && s.session.coverOff == "legacy fallback for this regression")
+        check("topology: delayed legacy park failure cannot close restoring source", !s.busy && w.fullAndInFront(hKA)
+              && w.win(hKA) != nil && w.types(hA, "closeWindow").isEmpty && !w.registry.isParked(1010)
+              && w.events.last == .cancelled(toB) && cover.contexts.isEmpty && !w.freezer.isLive && w.strands.isEmpty)
+    }
+
+    do {
+        let (w, s) = handoffSetup { $0.closeFails = 1; $0.enterLag[hA] = 0.1 }
+        s.session.coverOff = "legacy fallback for this regression"
+        let shell = routing(w, s)
+        w.onRequest = { r in
+            if r.link == hA, r.type == "setWindowState", r.state == "normal" { w.reads.dropNext = 2 }
+        }
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 3) { s.history.contains { $0.contains("'s close failed") && $0.contains("again in") } }
+        check("topology: legacy failed-close retry has actually been scheduled", w.types(hA, "closeWindow").count == 1
+              && w.win(hKA) != nil && s.run?.coverStartedAt == nil
+              && s.history.contains { $0.contains("'s close failed") && $0.contains("again in") })
+        w.displays = 2
+        shell.appsChanged("displays changed")
+        sweep(w, s, seconds: 2)
+        check("topology: old close retry cannot run after source restoration or completion", !s.busy && w.fullAndInFront(hKA)
+              && w.types(hA, "closeWindow").count == 1 && w.win(hKA) != nil && s.session.parkOff != nil
+              && w.events.last == .cancelled(toB) && !w.freezer.isLive && w.strands.isEmpty)
+    }
+
+    do {
+        let (w, s) = handoffSetup { $0.blockedOverlays = [hKB] }
+        let cover = FakeHandoffCover(clock: w.clock); w.liveCover = cover
+        let shell = routing(w, s)
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 0.3) { !cover.contexts.isEmpty }; cover.prepared()
+        handoffUntil(w, max: 0.3) { !cover.activations.isEmpty }; cover.acknowledge(true)
+        handoffUntil(w, max: 3) { w.registry.isParked(1010) }
+        check("topology: source is parked under an acknowledged live cover", s.phase == .covered && w.registry.isParked(1010) && cover.state == .shown)
+        s.start(toC, from: hA, windowId: 10)
+        check("topology: a later target is queued behind the moving run", s.queued == toC)
+        w.displays = 2
+        shell.appsChanged("displays changed")
+        let recoveringDeadline = s.deadline
+        shell.appsChanged("displays changed")
+        check("topology: immediate disposal, one bounded recovery, queued target dropped", cover.ends.map(\.why) == [.aborted]
+              && s.phase == .recovering && s.queued == nil && s.deadline == recoveringDeadline && w.registry.inSystemWindow)
+        sweep(w, s, seconds: 4)
+        check("topology: registry system sweep does not repark the restoring source", !s.busy && w.fullAndInFront(hKA)
+              && !w.registry.isParked(1010) && w.registry.entries[1010] == nil && w.registry.isParked(2020)
+              && w.types(hA, "setWindowState").filter { $0.state == "normal" }.count == 1 && w.strands.isEmpty)
+        check("topology: no queued profile starts after recovery on changed displays", !w.events.contains(.started(toC))
+              && w.types(hC, "openSpaceWindow").isEmpty && w.events.last == .cancelled(toB) && w.freezer.calls.isEmpty)
+    }
+
+    do {
+        let (w, s) = handoffSetup { $0.coverOn = false }
+        let shell = routing(w, s)
+        w.onRequest = { r in
+            if r.link == hB, r.type == "setWindowState", r.state == "fullscreen" { w.linked.remove(hA) }
+        }
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 3) { s.phase == .after && s.session.watches.contains { $0.number == 1010 && $0.kind == .leaveFullScreen } }
+        check("topology: disconnected source actually has a pending leave-fullscreen aftercare watch", s.phase == .after
+              && s.session.watches.contains { $0.number == 1010 && $0.kind == .leaveFullScreen }
+              && w.types(hA, "setWindowState").isEmpty && w.fullAndInFront(hKB))
+        w.displays = 2
+        shell.appsChanged("displays changed")
+        check("topology: source recovery removes conflicting prior aftercare ownership", s.phase == .recovering
+              && !s.session.watches.contains { $0.number == 1010 })
+        w.linked.insert(hA)
+        sweep(w, s, seconds: 4)
+        check("topology: relinked source restored without stale aftercare exiting or parking it", !s.busy
+              && w.events.last == .cancelled(toB) && w.fullAndInFront(hKA) && !w.registry.isParked(1010)
+              && !w.types(hA, "setWindowState").isEmpty && w.types(hA, "setWindowState").allSatisfy { $0.state == "fullscreen" }
+              && w.types(hA, "closeWindow").isEmpty && !s.session.watches.contains { $0.number == 1010 } && w.strands.isEmpty)
     }
 }

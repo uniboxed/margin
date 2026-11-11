@@ -7,6 +7,8 @@
 
 **Margin 2, issue #15 (2026-11-10):** a requested cross-profile switch may use a temporary live, read-only themed cover in Margin’s own high-level Space. No browser pre-creation and no capture in the mechanism. B must be full screen, active, frontmost and laid out, with its selected space confirmed, and A parked/gone or explicitly kept before reveal. Recovery remains covered and bounded, with an independent emergency watchdog. Missing or failed capability falls back to freeze, then macOS slide with a degraded-mode log. `MarginLiveProfileCover` remains off by default until the real switch, cleanup and performance gates pass; see `docs/HANDOFF.md` for the implementation contract.
 
+**Issue #15 resource candidate (2026-11-11):** retain the themed WebView. Optional checked WebKit related-view SPI may reuse an owned layout renderer for the disposable cover, with isolated allocation as fallback. No global renderer preferences, persistent warm cover or readiness bypass. Shared process crashes and retained cache costs require explicit validation; the live-cover default remains off. Details: `docs/PRIVATE-APIS.md`.
+
 You are building a working prototype of **Margin**, a Safari Web Extension for macOS that recreates the feel of the Arc browser *inside real Safari*: a hover-reveal sidebar with spaces and pinned tabs, a custom new-tab page, and a command palette. Work autonomously through the milestones below. Commit after each milestone. Do not stop to ask me questions unless you hit a genuine blocker; when a decision is ambiguous, pick the simplest reasonable option, note it in `DECISIONS.md`, and keep going.
 
 ## Environment (important)

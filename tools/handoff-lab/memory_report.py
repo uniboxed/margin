@@ -9,11 +9,13 @@ from collections import defaultdict
 import json
 import math
 from pathlib import Path
+import re
 import statistics
 
 MIB = 1024 * 1024
 NORMAL_PHASES = {'matched', 'repeated'}
 MODES = ('freeze', 'live')
+MATCHED_PROTOCOL = 'matched-v2-degraded-freeze'
 
 
 def number(value):
@@ -217,10 +219,49 @@ def gate_ok(event):
     return None
 
 
+def comparison_summary(summary, mode):
+    """Candidate mechanism evidence, never independent final-state proof.
+
+    A successful watchdog release is an early-reveal hazard, even when the
+    independently verified eventual landing can be used as a degraded control.
+    """
+    if not isinstance(summary, str):
+        return None
+    if ('handoff:' not in summary or '→' not in summary or '\n' in summary
+            or 'dev hook: dump:' in summary
+            or any(word in summary for word in ['aborted', 'recovered', 'refused', 'A kept', 'window left over'])
+            or not re.search(r'; focus ok(?:;|$)', summary)
+            or not re.search(r'settled ([0-9]+)(?:,|;)', summary)):
+        return None
+    if mode == 'live':
+        header = re.search(r'\((?:park|close), (?:parked target|new window)\), live cover [0-9]+ ms \(no freeze\), request to reveal ([0-9]+) ms:', summary)
+        if not header or 'frozen ' in summary or 'late (' in summary:
+            return None
+        return {'transition': 'on_time', 'request_to_reveal_ms': int(header[1]),
+                'freeze_held_ms': None, 'early_reveal_hazard': False}
+    header = re.search(r'\(park\+freeze, (?:parked target|new window)\), frozen ([0-9]+) ms \(result 0\), request to reveal ([0-9]+) ms:', summary)
+    if mode != 'freeze' or 'live cover ' in summary or 'dev hook: cover off' not in summary or not header:
+        return None
+    result = {'transition': 'on_time', 'request_to_reveal_ms': int(header[2]),
+              'freeze_held_ms': int(header[1]), 'early_reveal_hazard': False}
+    if 'late (' in summary:
+        if summary.count('; late (') != 1 or not re.search(r'; late \(watchdog at [0-9]+ ms, waiting for A not started\); dev hook: cover off$', summary):
+            return None
+        result.update(transition='degraded_freeze', early_reveal_hazard=True)
+    return result
+
+
 def report(events, samples, tail_seconds=2):
     warnings = []
     events = list(events)
     samples = list(samples)
+    begins = [e for e in events if e.get('event') == 'validation_begin']
+    protocols = {e.get('protocol') for e in events if e.get('protocol') is not None}
+    prospective = MATCHED_PROTOCOL in protocols
+    protocol_valid = (len(begins) == 1 and begins[0].get('protocol') == MATCHED_PROTOCOL
+                      and begins[0].get('gate') == 'MATCHED'
+                      and begins[0].get('prior_requests_consumed') == 0
+                      and protocols == {MATCHED_PROTOCOL})
     time_events = [e for e in events if e.get('event') in {'request', 'settled', 'idle_begin', 'idle_end'}]
     clock = ('mono' if time_events and all(number(e.get('mono')) for e in time_events)
              and samples and all(number(s.get('sample_end_mono')) and number(s.get('sample_start_mono')) for s in samples)
@@ -281,6 +322,34 @@ def report(events, samples, tail_seconds=2):
         ok = gate_ok(done)
         if done and ok is None:
             flags.append('settled_success_unverified')
+        mechanism = comparison_summary(done.get('summary'), request.get('mode')) if done else None
+        if not prospective and done and isinstance(done.get('summary'), str) and 'late (' in done['summary']:
+            flags.append('legacy_late_control_remains_ineligible')
+        if prospective:
+            if not protocol_valid or request.get('protocol') != MATCHED_PROTOCOL or (done and done.get('protocol') != MATCHED_PROTOCOL):
+                flags.append('prospective_protocol_not_established')
+            if request.get('phase') in {'warmup', 'matched', 'repeated'}:
+                if request.get('old') != 'park' or request.get('fault') is not None or not mechanism:
+                    flags.append('comparison_mechanism_unverified')
+                if not done or any(done.get(k) is not True for k in ['final_verified', 'cleanup_verified', 'mechanism_verified', 'capabilities_preserved', 'topology_verified']):
+                    flags.append('independent_comparison_verification_missing')
+                final_ms = done.get('final_verified_ms') if done else None
+                if not number(final_ms) or final_ms < 0 or (mechanism and final_ms < mechanism['request_to_reveal_ms']):
+                    flags.append('independent_completion_time_invalid')
+                if mechanism and done:
+                    degraded = mechanism['transition'] == 'degraded_freeze'
+                    if (done.get('transition') != mechanism['transition']
+                            or done.get('degraded_control') is not degraded
+                            or done.get('early_reveal_hazard') is not degraded
+                            or done.get('request_to_reveal_ms') != mechanism['request_to_reveal_ms']
+                            or (request.get('mode') == 'freeze' and done.get('freeze_held_ms') != mechanism['freeze_held_ms'])):
+                        flags.append('comparison_summary_metadata_mismatch')
+                source, destination = request.get('source'), done.get('destination') if done else None
+                if (not isinstance(source, int) or isinstance(source, bool) or source <= 0
+                        or not isinstance(destination, int) or isinstance(destination, bool) or destination <= 0
+                        or source == destination or not done or done.get('source') != source
+                        or {request.get('source_profile'), request.get('target_profile')} != {'Test A', 'Test B'}):
+                    flags.append('comparison_destination_identity_unverified')
         during = [s for s in samples if sample_bounds(s, clock)[0] >= start and sample_bounds(s, clock)[1] <= end]
         before = [s for s in samples if sample_bounds(s, clock)[1] <= start]
         # Never borrow a later fault/close request's memory for a normal tail.
@@ -307,6 +376,11 @@ def report(events, samples, tail_seconds=2):
             'window_start': start, 'window_end': end,
             'settled_at_ms': done.get('at') if done else None, 'settled_mono': done.get('mono') if done else None,
             'duration_ms': (end - start) * 1000 if done else None,
+            'transition': mechanism['transition'] if mechanism else None,
+            'early_reveal_hazard': mechanism['early_reveal_hazard'] if mechanism else None,
+            'request_to_reveal_ms': mechanism['request_to_reveal_ms'] if mechanism else None,
+            'freeze_held_ms': mechanism['freeze_held_ms'] if mechanism else None,
+            'final_verified_ms': done.get('final_verified_ms') if done and done.get('final_verified') is True else None,
             'gate_ok': ok, 'flags': flags, 'normal_matched_eligible': eligible,
             'before': previous, 'sampled_peak_minus_before_mib': delta,
             'during': resources, 'tail': resource_summary(tail), 'tail_last': snapshot(tail[-1]) if tail else None,
@@ -335,7 +409,14 @@ def report(events, samples, tail_seconds=2):
         matched[mode] = {
             'attempted': len(attempted), 'eligible': len(eligible),
             'gate_successes': sum(s['gate_ok'] is True for s in attempted),
+            'on_time_controls': sum(s['transition'] == 'on_time' for s in eligible),
+            'degraded_controls': sum(s['transition'] == 'degraded_freeze' for s in eligible),
+            'early_reveal_hazards_observed': sum(s['early_reveal_hazard'] is True for s in attempted),
             'duration_ms': distribution([s['duration_ms'] for s in eligible]),
+            'request_to_reveal_ms': distribution([s['request_to_reveal_ms'] for s in eligible]),
+            'independently_verified_completion_ms': distribution([s['final_verified_ms'] for s in eligible]),
+            'on_time_verified_completion_ms': distribution([s['final_verified_ms'] for s in eligible if s['transition'] == 'on_time']),
+            'degraded_verified_completion_ms': distribution([s['final_verified_ms'] for s in eligible if s['transition'] == 'degraded_freeze']),
             'sampled_peak_footprint_mib': distribution([s['during']['footprint_mib']['max'] for s in eligible]),
             'sampled_peak_resident_mib': distribution([s['during']['resident_mib']['max'] for s in eligible]),
         }
@@ -347,6 +428,8 @@ def report(events, samples, tail_seconds=2):
         warnings.append('Capture does not have one stable app PID/start identity; same-process comparison is not established.')
     return {
         'schema_version': 1, 'clock': clock, 'clock_offsets': clock_offsets, 'performance_grade': 'not_assigned',
+        'comparison_protocol': MATCHED_PROTOCOL if prospective else 'legacy_strict',
+        'prospective_protocol_established': protocol_valid if prospective else None,
         'matched_data_available': all(matched[m]['eligible'] for m in MODES) and len(app_ids) == 1,
         'warnings': warnings, 'metadata': [json.loads(m) for m in sorted(metadata_rows)],
         'app_identities': app_ids, 'matched': matched,
@@ -355,6 +438,8 @@ def report(events, samples, tail_seconds=2):
         'limitations': ['Descriptive p95 uses nearest rank; small samples do not establish a performance promise.',
                         'Peaks and process births/exits may fall between samples.',
                         'Summed resident bytes are not unique physical RAM; Safari/WindowServer are excluded.',
+                        'A degraded freeze reveal can precede readiness; its reveal latency is not a readiness or smoothness result.',
+                        'Protocol/event checks audit recorded native verification; metadata cannot independently reconstruct physical display output.',
                         'Fault, close, warmup and repeated phases do not enter normal matched summaries.'],
     }
 

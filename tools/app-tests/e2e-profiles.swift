@@ -15,6 +15,7 @@
 // macOS's Spaces that both read (SpaceWindows), played as Safari would from
 // what the fake copies say.
 import AppKit
+import WebKit
 
 @MainActor
 func profilesScenario() async {
@@ -423,6 +424,42 @@ func handoffScenario() async {
                                 add: { _, _ in false }, show: { _ in false }, hide: { _ in false },
                                 hideWindow: { _ in false }, destroy: { _ in false }, spaces: { _ in nil })
   let coverPages = OverlayPages(root: options.root!)
+  // Sharing is an optional resource optimization: failures may not mutate the
+  // common configuration, cross data stores/bridges or weaken the cover gates.
+  let sourceView = o7.webView
+  let sourceConfiguration = sourceView.configuration
+  var relatedCopy: WKWebViewConfiguration?
+  var relatedSource: WKWebView?
+  let sharing = CoverRenderer(io: CoverRendererIO(reason: nil, relate: { configuration, view in
+    relatedCopy = configuration; relatedSource = view; return true
+  }, process: { _ in 42 }))
+  let isolated = CoverRenderer(io: CoverRendererIO(reason: "missing", relate: { _, _ in fatalError("unavailable relation invoked") },
+                                                process: { _ in fatalError("unavailable PID read") }))
+  check("cover renderer: unavailable ABI keeps original configuration path", isolated.configuration(base: sourceConfiguration, views: [sourceView]) == nil)
+  let copied = sharing.configuration(base: sourceConfiguration, views: [sourceView])
+  check("cover renderer: relates a disposable copy, never the common configuration", copied != nil && copied !== sourceConfiguration
+        && relatedCopy === copied && relatedSource === sourceView)
+  check("cover renderer: copied configuration preserves store and bridge", copied?.websiteDataStore === sourceConfiguration.websiteDataStore
+        && copied?.userContentController === sourceConfiguration.userContentController)
+  sharing.prepared(sourceView)
+  check("cover renderer: sharing label requires a verified renderer PID", sharing.detail == "shared")
+  relatedCopy = nil; relatedSource = nil
+  check("cover renderer: a foreign data store cannot be related", sharing.configuration(base: coverPages.configuration, views: [sourceView]) == nil && relatedCopy == nil)
+  let foreignBridge = sourceConfiguration.copy() as! WKWebViewConfiguration
+  foreignBridge.userContentController = WKUserContentController()
+  check("cover renderer: a foreign message bridge cannot be related", sharing.configuration(base: foreignBridge, views: [sourceView]) == nil && relatedCopy == nil)
+  let declined = CoverRenderer(io: CoverRendererIO(reason: nil, relate: { _, _ in false }, process: { _ in 42 }))
+  check("cover renderer: a refused relation uses the original isolated path", declined.configuration(base: sourceConfiguration, views: [sourceView]) == nil)
+  _ = sharing.configuration(base: sourceConfiguration, views: [sourceView])
+  sharing.detach(); sharing.prepared(sourceView)
+  check("cover renderer: a lost source cannot be reported as shared", sharing.detail.hasPrefix("isolated"))
+  let changedPID = CoverRenderer(io: CoverRendererIO(reason: nil, relate: { _, _ in true },
+      process: { $0 === sourceView ? 42 : 43 }))
+  _ = changedPID.configuration(base: sourceConfiguration, views: [sourceView])
+  changedPID.prepared(coverPages.makeWebView(size: .zero))
+  check("cover renderer: framework process separation never claims sharing", changedPID.detail == "isolated (framework process policy)")
+  let noPID = CoverRenderer(io: CoverRendererIO(reason: nil, relate: { _, _ in fatalError("unknown process related") }, process: { _ in nil }))
+  check("cover renderer: missing source process identity preserves isolated path", noPID.configuration(base: sourceConfiguration, views: [sourceView]) == nil)
   var sessionAllowed = true
   var refusesRestore = false
   var visibility: [ObjectIdentifier: Bool] = [:]

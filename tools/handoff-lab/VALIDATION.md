@@ -10,12 +10,12 @@ defines the prepared experiment, not a result or permission to run it.
 | Readiness/recovery | Real state machine with independent clocks/browser/Space fakes: R1–R5, selection, drafts, delayed replies, disconnect, cancellation, session loss and fallbacks. |
 | Actual page/bridge | Off-screen WKWebView integration, including persistent failed restoration, retained cleanup and refusal of another allocation while cleanup is unverified. |
 | Private components | Owned off-screen probe: actual membership/level400, background alpha hide while its own main thread is blocked, level0, restored view setting and removed window; three rounds, no browser. |
-| Real Safari | The guarded VALIDATE gate below, on this Mac/build only. |
+| Real Safari | The original strict VALIDATE gate and the separately prepared prospective MATCHED gate below, on this Mac/build only. |
 | Physical display | Observe animation, flashes and final alignment. Metadata cannot establish pixel coverage or physical smoothness; a camera remains independent evidence. |
 | Lock/sleep/displays | Fake event routing/capability refusal are automated. Actual OS lock delivery, physical sleep/display changes, several displays and other macOS builds are not inferred. |
 | Emergency watchdog | The owned off-main-thread hide primitive is tested; the complete real 20-second NativeHandoffCover/watchdog path is not inferred from the component probe. |
 
-## Prepared on-screen gate
+## Original strict gate (VALIDATE)
 
 VALIDATE requests **at most 50** switches between Safari's exact Test A/Test B
 profiles, with no external lab cover that could hide a product failure. It
@@ -93,6 +93,90 @@ readiness/cleanup/session guard remains unchanged and the next unexpected
 failure stops this observation. Later/live failures cannot use either restart
 option. The failed controls remain recorded and no matched comparison, speed
 advantage or performance acceptance can be inferred from the live-only capture.
+
+## Prospective matched gate (MATCHED)
+
+`MATCHED` is a **new, unrun 50-request experiment**, protocol
+`matched-v2-degraded-freeze`. It requires a new approval for the complete batch;
+the ten unused requests from the original allowance do not authorize it. The
+original failed runs remain failed, their proof parsers and strict `VALIDATE`
+behavior are unchanged, and neither legacy resume option is accepted by
+`MATCHED`. Select it explicitly; `all` excludes it. The live-cover launch flag
+remains off outside an approved experiment.
+
+The original control exposed a known degraded baseline: its successful freeze
+watchdog reveal can occur while A's exit has not started, followed by a correct
+late landing. A comparison that stops at every occurrence cannot describe that
+baseline's eventual completion or resource cost. This prospectively defined
+protocol records that outcome as a **degraded freeze control**, with an early
+reveal hazard retained. It does not extend the freeze deadline, call the early
+reveal ready, or promote a historical failure.
+
+Only this narrow normal freeze outcome is eligible: a fresh actual
+`(park+freeze, …), frozen N ms (result 0), request to reveal N ms` summary,
+numeric settled time, `focus ok`, and exactly one final
+`late (watchdog at N ms, waiting for A not started); dev hook: cover off` suffix.
+Another wait reason, failed release, abort, recovery, leftover/kept source,
+missing mechanism, or live late transition still stops the run. A candidate
+summary alone is insufficient. Before recording success, the runner independently
+checks native destination full-screen/active/front identity and the selected
+test profile, the original source parked and still present, no pending calls,
+zero cover resources/failures, balanced created/disposed counts, and disappearance
+of the last cover window. Real parking/freeze/live-cover demotions are never
+reset to complete the comparison. The intentional final park-fault demotion
+remains confined to its existing fault case.
+
+Only the declared live/fullscreen fault step with `recovers: true` bypasses
+normal successful-transition classification, because its intended recovery can
+log `settled -`. It must still use the actual live mechanism, reach the fullscreen
+fault marker, report recovery without late/abort, and independently restore the
+original native source/profile/front state with clean resources. The park fault
+does not receive this exception.
+
+The request plan stays four excluded freeze/live/live/freeze warmups, six
+direction-balanced ABBA blocks (12 controls and 12 live), 18 further live
+requests, then the same four fault/close cases. Native Test A/Test B window IDs
+are remembered during warmup and must remain fixed through the normal sequence:
+one shown and one parked, with no normal close fallback. Both 60-second idle
+intervals use the same no-cap, cover-enabled, old-window-park mode and that same
+topology. Post-idle still precedes all fault/close cases. Keep the installed
+candidate and renderer allocation policy fixed throughout; evaluate another
+candidate/policy in its own approved capture.
+
+The runner emits the protocol on every event and records `transition`,
+`degraded_control`, `early_reveal_hazard`, actual-summary reveal/held times,
+`final_verified_ms`, and independent mechanism/final/cleanup/topology/capability
+verification fields. `capabilities_preserved` is deliberately false for the
+last intentional demotion case; fault/close phases never enter matched results.
+The reporter requires the new begin/request/settled protocol context, parsed
+actual mechanism and matching timing/classification fields, successful gate
+outcome, native verification fields and valid sampled continuity. Protocol and
+booleans alone cannot establish an eligible degraded control.
+
+Report on-time and degraded control counts separately, including every observed
+early reveal hazard. Show native request-to-reveal, independently verified final
+completion, on-time/degraded completion subsets and sampled resource costs.
+The final completion metric includes lab verification overhead; the freeze's
+early reveal metric can precede readiness. Twelve controls yield a descriptive
+nearest-rank p95 equal to that group's maximum, not a stable tail estimate.
+Same PID and balanced direction do not eliminate serial cache/carryover or
+WebKit process-lifetime uncertainty. `matched_data_available` means both modes
+have eligible observations; it does not certify that all 50 requests completed.
+The reporter assigns no performance grade.
+
+After the candidate/off-screen checks and approval of this new batch, use the
+existing outer launch-preference restoration and owned-sampler cleanup workflow
+with an explicit gate selection. Its read-only plan command is:
+
+~~~sh
+tools/handoff-lab/build/handoff-lab matched --dry-run --app "$HOME/Applications/Margin.app"
+~~~
+
+No new on-screen approval has been given. A second monitor is available for
+separate physical/multiple-display observations, but `MATCHED` still requires
+one active display. Do not attach/configure it or infer multi-display acceptance
+from this batch; prepare and approve those cases separately, including the
+expected capability refusal and cleanup behavior.
 
 ## Measurement
 

@@ -85,6 +85,41 @@ import Foundation
         precondition(watchPID(bad) == nil)
         bad = watchRows; bad[0]["prior_failed_warmups"] = 2
         precondition(watchPID(bad) == nil)
-        print("all 52 live-log/validation-plan checks passed (no windows or private calls)")
+        let control = "handoff: safari:A#1 → safari:B#2 (park+freeze, parked target), frozen 1685 ms (result 0), request to reveal 1763 ms: shown 11, B steady 1584, A asked 1726, overlay framed 1721, A normal 1814, A parked 1871, settled 1721; focus ok; late (watchdog at 1685 ms, waiting for A not started); dev hook: cover off"
+        precondition(matchedValidationProtocol == "matched-v2-degraded-freeze")
+        precondition(matchedTransition(control, mode: "freeze") == .degradedFreeze)
+        precondition(matchedTransition(control, mode: "live") == nil)
+        precondition(matchedTransition(control.replacingOccurrences(of: "; late (watchdog at 1685 ms, waiting for A not started)", with: ""), mode: "freeze") == .onTime)
+        for invalid in [
+            control.replacingOccurrences(of: "result 0", with: "result 1"),
+            control.replacingOccurrences(of: "waiting for A not started", with: "waiting for B"),
+            control.replacingOccurrences(of: "focus ok", with: "focus failed"),
+            control.replacingOccurrences(of: "focus ok", with: "focus okay"),
+            control.replacingOccurrences(of: "(result 0)", with: "(result 1), close frozen 1 ms (result 0)"),
+            control.replacingOccurrences(of: "(park+freeze, parked target)", with: "(park, parked target)"),
+            control.replacingOccurrences(of: "; focus ok;", with: "; late (watchdog at 1 ms, waiting for B); focus ok;"),
+            control.replacingOccurrences(of: "settled 1721", with: "settled -"),
+            control.replacingOccurrences(of: "request to reveal 1763", with: "request to reveal -"),
+            control + "; recovered: failure", control + "; aborted", "dev hook: dump: " + control,
+            control.replacingOccurrences(of: "dev hook: cover off", with: "dev hook: cap"),
+        ] { precondition(matchedTransition(invalid, mode: "freeze") == nil) }
+        let covered = "handoff: safari:A#1 → safari:B#2 (park, parked target), live cover 1500 ms (no freeze), request to reveal 1550 ms: B steady 1300, A parked 1500, settled 1400; focus ok"
+        precondition(matchedTransition(covered, mode: "live") == .onTime)
+        precondition(matchedTransition(covered + "; late (watchdog at 1700 ms, waiting for A not started); dev hook: cover off", mode: "live") == nil)
+        precondition(matchedTransition(covered + "; recovered: failure", mode: "live") == nil)
+        precondition(liveSummaryNumber(control, pattern: #"request to reveal ([0-9]+) ms"#) == 1763)
+        precondition(plan.indices.filter { validationExpectedFullscreenRecovery(plan[$0]) } == [46])
+        let recovery = "handoff: safari:A#1 → safari:B#2 (park, parked target), live cover 6032 ms (no freeze), request to reveal 6251 ms: shown 26, B steady -, overlay framed -, settled -; recovered: live cover readiness/old-window timeout: restoring under cover; dev hook: fullscreen"
+        precondition(liveSwitchSummary(recovery) && matchedTransition(recovery, mode: "live") == nil)
+        precondition(validationExpectedFullscreenRecovery(.init(phase: "fault", mode: "live", fault: "fullscreen", recovers: true)))
+        for step in [
+            ProfileValidationStep(phase: "fault", mode: "live"),
+            .init(phase: "fault", mode: "live", fault: "fullscreen"),
+            .init(phase: "fault", mode: "freeze", fault: "fullscreen", recovers: true),
+            .init(phase: "warmup", mode: "live", fault: "fullscreen", recovers: true),
+            .init(phase: "close", mode: "live", fault: "fullscreen", recovers: true),
+            .init(phase: "fault", mode: "live", fault: "park", recovers: true),
+        ] { precondition(!validationExpectedFullscreenRecovery(step)) }
+        print("all 82 live-log/validation-plan checks passed (no windows or private calls)")
     }
 }

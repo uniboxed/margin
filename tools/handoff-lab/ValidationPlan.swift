@@ -8,6 +8,10 @@ struct ProfileValidationStep: Equatable {
     var recovers = false
 }
 
+func validationExpectedFullscreenRecovery(_ step: ProfileValidationStep) -> Bool {
+    step.phase == "fault" && step.mode == "live" && step.fault == "fullscreen" && step.recovers
+}
+
 func validationForegroundAllowed(_ front: Int32?, browser: Int32?, app: Int32) -> Bool {
     guard let front, let browser else { return false }
     return front == browser || front == app
