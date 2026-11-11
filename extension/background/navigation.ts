@@ -349,6 +349,12 @@ async function frontOf(windowId: number) {
   const answer = await Promise.race([asking.catch(() => null), new Promise<any>((resolve) => { timer = setTimeout(() => resolve(null), FRONT_KNOWN_MS); })]).finally(() => clearTimeout(timer));
   return (answer as { tab: any } | null)?.tab ?? known;
 }
+// A space's tab gone between being chosen and being shown: a browser tab closed (the browser's "No tab with id"),
+// or a saved tab opened or deleted meanwhile (restoreKept's "no longer there"). The space then tries its next one.
+export function goneMeanwhile(err: unknown): boolean {
+  return /No tab with id|no longer there/i.test(String((err as Error | undefined)?.message ?? err));
+}
+
 export async function showSpace(windowId: number | null | undefined, spaceId: string, { bringTab = true, deadline }: { bringTab?: boolean, deadline?: number } = {}): Promise<{ tab: any } | undefined> {
   if (windowId == null) return;
   const shown = bringTab ? await frontOf(windowId) : null;
@@ -386,7 +392,7 @@ export async function showSpace(windowId: number | null | undefined, spaceId: st
     } catch (err) {
       // Closed meanwhile: the next one. Anything else (Safari didn't switch,
       // too late) is this switch failing, not a reason to open a start page.
-      if (!/No tab with id/i.test(String((err as Error | undefined)?.message ?? err))) {
+      if (!goneMeanwhile(err)) {
         if (!anyFocusing()) await goBack();
         throw err;
       }
