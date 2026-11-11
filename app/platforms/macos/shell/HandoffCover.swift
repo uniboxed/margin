@@ -1,5 +1,12 @@
 import Foundation
 
+enum LiveCoverPolicy {
+    // Explicit NO remains the diagnostic opt-out; normal launches prefer live.
+    static func requested(_ defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: "MarginLiveProfileCover") as? Bool ?? true
+    }
+}
+
 struct LiveCoverContext {
     var hello: String
     var display: CGRect // AppKit coordinates

@@ -2061,3 +2061,26 @@ run. Each requires the new bounded batch approval and a per-phase timing cue.
 
 The original absent live-cover flag is restored and the installed matching
 corrections remain active. The experimental cover stays off by default. No PR.
+
+### 2026-11-11: default live cover and Low Power Mode
+
+The user accepts the measured live-cover cost for normal use. An absent
+`MarginLiveProfileCover` preference now enables the feature; explicit NO keeps
+the freeze baseline/opt-out. Native regressions cover all three preference
+states, Low Power Mode selecting freeze without preparing a live page, returning
+to live on the next request without restart/demotion, and finishing an existing
+live cover safely if power mode changes mid-switch. The public power-state
+property is read once per request, with no timer or observer.
+
+Manual follow-up: with one display, compare a normal profile switch, a switch
+requested with macOS Low Power Mode on, and one after turning it off. Existing
+multi-display/capability/session fallbacks still apply. The physical setting
+was not toggled by automated tests for this change. Earlier measured costs and
+failed full-batch cases remain recorded in the handoff lab reports; the default
+change is a user decision, not a new full-batch or energy/performance pass.
+
+Fresh policy-change validation: 1,031 JS unit, 150 headless browser, 2,355 native
+unit and 555 native integration checks pass; handoff lab compile and signed
+Release build pass. Installed via the standard same-team updater and verified
+with deep/strict codesign checks. No browser was running at the final check,
+so this update does not claim a new real switch or physical power-toggle run.

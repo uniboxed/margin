@@ -304,6 +304,7 @@ func freezerTests() {
 // cover drawn, `framed` after a window enters full screen, ordered out) and the notices.
 
 final class FakeHandoffWorld: HandoffWorld {
+    var handoffLowPowerMode = false
     var off: Set<String> = [] // profiles Margin is turned off in (the browser's settings)
     func marginOff(_ profile: String) -> Bool { off.contains(profile) }
     // Safari's own menu opening a profile's window (Shell.openProfileWindow, through Accessibility): asked for these.

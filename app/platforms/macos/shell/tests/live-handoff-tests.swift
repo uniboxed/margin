@@ -61,6 +61,43 @@ func liveHandoffTests() {
     let toB = ProfileSwitch.Target(profile: hB, space: "b1")
     let toC = ProfileSwitch.Target(profile: hC, space: "c1")
 
+    do {
+        let suite = "margin-live-policy-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        check("live policy: absent preference enables live cover", LiveCoverPolicy.requested(defaults))
+        defaults.set(false, forKey: "MarginLiveProfileCover")
+        check("live policy: explicit opt-out remains respected", !LiveCoverPolicy.requested(defaults))
+        defaults.set(true, forKey: "MarginLiveProfileCover")
+        check("live policy: explicit opt-in remains respected", LiveCoverPolicy.requested(defaults))
+    }
+    do {
+        let (w, s, cover) = liveHandoffSetup { $0.handoffLowPowerMode = true }
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 5) { !s.busy }
+        check("low power: freeze completes with no live allocation", w.events.last == .done(toB)
+              && cover.contexts.isEmpty && w.freezer.calls.contains("freeze 1.7 s: 0"))
+        check("low power: source parked and target ready without demoting live", w.registry.isParked(1010)
+              && w.fullAndInFront(hKB) && s.session.coverOff == nil && s.session.rules.on)
+        w.handoffLowPowerMode = false
+        s.start(.init(profile: hA, space: "a1"), from: hB, windowId: 20)
+        check("low power off: next switch prepares live without restart", handoffUntil(w, max: 0.5) { !cover.contexts.isEmpty })
+        cover.prepared()
+        handoffUntil(w, max: 0.3) { !cover.activations.isEmpty }
+        cover.acknowledge(true)
+        handoffUntil(w, max: 5) { !s.busy }
+        check("low power off: return completes with live cleanup", w.events.last == .done(.init(profile: hA, space: "a1"))
+              && cover.ends.map(\.why) == [.ready] && w.fullAndInFront(hKA))
+    }
+    do {
+        let (w, s, cover) = liveHandoffSetup()
+        beginLiveHandoff(w, s, cover, toB)
+        w.handoffLowPowerMode = true
+        handoffUntil(w, max: 5) { !s.busy }
+        check("low power mid-switch: existing cover finishes and disposes normally", w.events.last == .done(toB)
+              && cover.ends.map(\.why) == [.ready] && w.freezer.calls.isEmpty && w.fullAndInFront(hKB))
+    }
+
     for allowed in [false, true] {
         let (w, s, cover) = liveHandoffSetup { $0.devAllowed = allowed }
         s.session.dev.cover = false

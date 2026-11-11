@@ -89,6 +89,7 @@ extension Shell: HandoffWorld {
 
     var handoffFreezer: Freezer? { freezer }
     var handoffCover: HandoffCover? { liveProfileCover }
+    var handoffLowPowerMode: Bool { options.lowPowerMode() }
 
     func handoffCoverContext(from a: WindowKey, to: ProfileSwitch.Target) -> LiveCoverContext? {
         guard NSScreen.screens.count == 1, let display = NSScreen.screens.first?.frame,

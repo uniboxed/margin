@@ -66,6 +66,8 @@ protocol HandoffWorld: SwitchWorld {
     var handoffOn: Bool { get }
     var handoffFreezer: Freezer? { get } // nil: no freeze calls
     var handoffCover: HandoffCover? { get }
+    var handoffLowPowerMode: Bool { get } // read once when choosing this switch
+
     func handoffCoverContext(from: WindowKey, to: ProfileSwitch.Target) -> LiveCoverContext?
     var spaceReads: SpaceReads? { get } // nil: no Space reads, and so the close-based switch
     var parker: BridgeParker? { get }
@@ -100,6 +102,7 @@ protocol HandoffWorld: SwitchWorld {
 extension HandoffWorld {
     var handoffOn: Bool { true }
     var handoffCover: HandoffCover? { nil }
+    var handoffLowPowerMode: Bool { false }
     func handoffCoverContext(from: WindowKey, to: ProfileSwitch.Target) -> LiveCoverContext? { nil }
     func handOverOverlay(from a: WindowKey, to b: WindowKey) -> Bool { false }
     func devHookAllows(_ a: String, _ b: String) -> Bool { false } // DEV-HOOK
@@ -534,7 +537,8 @@ extension ProfileSwitch: FreezerDelegate {
         // Closing without a freeze is today's switch (plus its drafts check), unless there's a parked
         // window to show, or a window's own activity asked.
         let coverCapped = devTest && session.dev.cover == false // DEV-HOOK: subtractive, never touches the real session gate
-        let liveCover = !coverCapped && hw.handoffCover != nil && session.coverOff == nil && session.noFreeze == nil && displays == 1 && a != nil
+        let lowPower = hw.handoffLowPowerMode
+        let liveCover = !lowPower && !coverCapped && hw.handoffCover != nil && session.coverOff == nil && session.noFreeze == nil && displays == 1 && a != nil
         if !choice.freeze, !liveCover, choice.old == .close, !hasParked, asked == nil, a != nil {
             note("\(choice): the close-based switch")
             return false
@@ -548,6 +552,7 @@ extension ProfileSwitch: FreezerDelegate {
             ?? (a == nil ? parking?.recentLine : nil)
         run.choice = choice
         run.coverEligible = liveCover
+        if hw.handoffCover != nil, lowPower { note("Low Power Mode: prefer freeze; live cover skipped for this switch") }
         if hw.handoffCover != nil, displays != 1 { note("live cover unavailable with multiple displays: degraded freeze/slide fallback") }
         run.devTest = devTest // DEV-HOOK
         if devCapped { run.devUsed.append("cap") } // DEV-HOOK

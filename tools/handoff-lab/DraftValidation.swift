@@ -13,7 +13,7 @@ let closeFallbackGate = Gate(
            "restore test caps; caller restores original flag/app after expected parking demotion; separate approval required"],
     run: { lab in
         guard let app = Margin.running, Margin.devHooksOn,
-              UserDefaults(suiteName: "com.unibox.margin")?.bool(forKey: "MarginLiveProfileCover") == true else {
+              LiveCoverPolicy.requested(UserDefaults(suiteName: "com.unibox.margin") ?? .standard) else {
             return Outcome(status: .notRun, lines: ["requires running opted-in candidate; nothing switched"])
         }
         let appPID = app.processIdentifier
@@ -90,7 +90,7 @@ let closeFallbackGate = Gate(
         guard armed.contains("armed: park"), liveShownNumber(armed) == source, ready(source),
               armed.contains("close windows off; displays 1"), armed.contains("park on;"), armed.contains("live cover session: on"),
               armed.contains("session interruption: none"), validationTestProfile(armed) == name,
-              UserDefaults(suiteName: "com.unibox.margin")?.bool(forKey: "MarginLiveProfileCover") == true,
+              LiveCoverPolicy.requested(UserDefaults(suiteName: "com.unibox.margin") ?? .standard),
               Margin.running?.processIdentifier == appPID,
               validationForegroundAllowed(NSWorkspace.shared.frontmostApplication?.processIdentifier, browser: browser, app: appPID) else {
             return Outcome(status: .notRun, lines: lines + ["fault/source guard not ready; nothing switched"])

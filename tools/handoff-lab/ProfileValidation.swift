@@ -22,7 +22,7 @@ private func makeProfileValidationGate(prospective: Bool) -> Gate { Gate(
            "fixed Test A/Test B native window identities after warmups; one shown/one parked; equal no-cap park mode in both idles; reveal hazard and verified completion reported separately"] : []),
     run: { lab in
         guard let app = Margin.running, Margin.devHooksOn,
-              UserDefaults(suiteName: "com.unibox.margin")?.bool(forKey: "MarginLiveProfileCover") == true else {
+              LiveCoverPolicy.requested(UserDefaults(suiteName: "com.unibox.margin") ?? .standard) else {
             return Outcome(status: .notRun, lines: ["requires running opted-in candidate and guarded hook; nothing switched"])
         }
         if prospective && (lab.o.validationAfterFailedWarmup != nil || lab.o.validationAfterFreezeWatchdog != nil) {

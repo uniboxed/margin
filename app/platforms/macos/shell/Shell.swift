@@ -196,7 +196,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Off until gate G1 has passed for Margin.app itself (§10.4): every switch is then the
         // close-based one, exactly as before. `MarginHandoff` in the defaults turns it on (forApp).
         var handoff = false
-        var liveProfileCover = false // issue #15: opt-in session until the live gates pass
+        var liveProfileCover = false // harness opts in; forApp uses LiveCoverPolicy
+        var lowPowerMode: () -> Bool = { false } // sampled once per requested handoff
         // A harness's stand-ins for the Space reads, the parker and the freezer (never the system's):
         // given, they're used as the launch check's would be, with no self-test.
         var handoffParts: HandoffParts?
@@ -407,8 +408,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // On by default since 2026-11-07 (decided: the switch to another profile without Safari's slide, its window
         // parked); `defaults write com.unibox.margin MarginHandoff -bool NO` turns it off (the close-based switch).
         options.handoff = UserDefaults.standard.object(forKey: "MarginHandoff") as? Bool ?? true
-        options.liveProfileCover = UserDefaults.standard.bool(forKey: "MarginLiveProfileCover")
-        Diagnostics.note("live profile cover: \(options.liveProfileCover ? "requested for this session" : "off (experimental gate)")")
+        options.liveProfileCover = LiveCoverPolicy.requested()
+        options.lowPowerMode = { ProcessInfo.processInfo.isLowPowerModeEnabled }
+        Diagnostics.note("live profile cover: \(options.liveProfileCover ? "on (freeze preferred in Low Power Mode)" : "off (explicit preference)")")
         Diagnostics.note(options.handoff ? "handoff: on: profile switches hand off when the private calls allow"
                          : "handoff: off (MarginHandoff is NO): every profile switch is the close-based one")
         options.devHooksOn = { DevHooks.appDefault() } // DEV-HOOK

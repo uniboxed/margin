@@ -4791,3 +4791,34 @@ are consumed. Fresh JS unit/browser checks pass 1,031/150, evidence/parser check
 50/100, lab compile, dry run and signed candidate hash checks pass. No app rebuild,
 install, source changes or newly claimed native test results. Keep prior failures
 and measured performance tradeoffs; do not enable by default or open a PR.
+
+
+### 2026-11-11 — prefer live cover normally, freeze in Low Power Mode
+
+The user explicitly accepts live as the normal default and requests the freeze
+path in battery-saving mode, plus an issue #15 progress/follow-up comment. This
+supersedes the prior default-off decision; it does not promote failed historical
+captures or claim lower cost. Absent MarginLiveProfileCover enables live; explicit
+NO still opts out. Harness defaults remain off unless injected.
+
+Read the public ProcessInfo Low Power Mode value once when choosing each switch;
+no power polling/observer, idle cover or new renderer. Select the unchanged freeze
+path when enabled, then normal fallback if unavailable. A change while live is
+already showing affects only the next request, preserving its lifecycle/cleanup.
+Keep the same capability/session gates and multi-display public slide/keep rule.
+Update lab preconditions to interpret absent defaults consistently, so a normal
+live launch cannot be mistaken for an explicitly configured freeze baseline.
+Add native regressions for absent/explicit preference values, Low Power Mode
+freeze without live allocation, resuming live on the next switch, and safe
+completion when power mode changes during a shown cover. No PR requested.
+
+Validation for this policy change passes: fresh 1,031 JS unit / 150 headless
+browser tests, 2,355 native unit / 555 native integration checks, native lab
+compilation and signed Release build. The standard same-team installer updates
+~/Applications/Margin.app and deep/strict signature verification passes. The
+live preference remains absent, using the new normal default; no global power
+setting is changed. Safari/Margin are not running at the final read-only check,
+so no real browser switch is claimed for this new policy. The login helper
+remains responsible for browser-triggered launch. Actual Low Power Mode toggling
+is retained as a manual check; selection/lifecycle are verified with injected
+native state. No new lab switch or PR.

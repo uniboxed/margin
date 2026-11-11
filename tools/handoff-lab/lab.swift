@@ -2246,7 +2246,7 @@ let compareCoverGate = Gate(
            "record timing and summary; memory.py can sample the app and its attributed WebKit processes separately; no frame coverage is claimed"],
     run: { lab in
         guard Margin.running != nil, Margin.devHooksOn else { return Outcome(status: .notRun, lines: ["requires running Margin and guarded dev hook"] ) }
-        let flag = UserDefaults(suiteName: "com.unibox.margin")?.bool(forKey: "MarginLiveProfileCover") ?? false
+        let flag = LiveCoverPolicy.requested(UserDefaults(suiteName: "com.unibox.margin") ?? .standard)
         guard flag == lab.o.compareLive else { return Outcome(status: .notRun, lines: ["installed feature default does not match requested comparison; nothing switched"]) }
         let (process, buffer) = try Margin.stream()
         defer { process.terminate() }

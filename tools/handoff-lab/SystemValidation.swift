@@ -36,7 +36,7 @@ import AppKit
         return last == 0 || lab.calls.server(last) == nil
     }
     func eligible(_ state: String, displays: Int) -> Bool {
-        UserDefaults(suiteName: Margin.bundle)?.bool(forKey: "MarginLiveProfileCover") == true && Margin.devHooksOn
+        LiveCoverPolicy.requested(UserDefaults(suiteName: Margin.bundle) ?? .standard) && Margin.devHooksOn
             && state.contains("handoff on, parking on") && state.contains("park on;")
             && state.contains("no caps; no faults armed") && state.contains("close windows off; displays \(displays)")
             && state.contains("live cover session: on") && clean(state)
@@ -59,7 +59,7 @@ func systemInterruptionGate(_ kind: String, id: String) -> Gate {
 
 @MainActor func runSystemInterruption(_ lab: Lab, kind: String) async throws -> Outcome {
     guard lab.o.person, Margin.running != nil, Margin.devHooksOn, NSScreen.screens.count == 1,
-          UserDefaults(suiteName: Margin.bundle)?.bool(forKey: "MarginLiveProfileCover") == true,
+          LiveCoverPolicy.requested(UserDefaults(suiteName: Margin.bundle) ?? .standard),
           UserDefaults(suiteName: Margin.bundle)?.object(forKey: "MarginWindowTrace") as? Bool != false else {
         return Outcome(status: .notRun, lines: ["requires prepared opted-in one-display app, tracing and person; zero requests"])
     }

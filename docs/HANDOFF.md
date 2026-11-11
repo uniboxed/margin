@@ -7,7 +7,7 @@ Draft 2, 2026-11-06 (revised after two critics' reviews: Appendix A). Nothing he
 
 ## Issue #15 addendum: live cover (2026-11-10)
 
-This addendum overrides freeze-specific presentation below only when the opt-in `MarginLiveProfileCover` launch default is true and the independent capability passes. The default remains false until acceptance. `covering` prepares and activates a temporary Margin-owned panel in a level-400 private Space; `covered` runs the handoff without `Freezer`, its 1.7-second watchdog or its latest-A-start limit. All original window identities, drafts checks and parking safety still apply.
+This addendum overrides freeze-specific presentation below when `MarginLiveProfileCover` is enabled and the independent capability passes. By explicit user decision on 2026-11-11, an absent preference now enables it; explicit `NO` opts out. Each new switch samples `ProcessInfo.isLowPowerModeEnabled` once and prefers the existing freeze path when enabled. A power-mode change during a switch never hides or replaces its active cover. No polling, power observer or extra idle WebView is added. Multi-display and capability/session fallback rules remain unchanged. The measured extra time, CPU and transient footprint are accepted for this default; this decision does not turn the earlier failed matched batch into a pass. `covering` prepares and activates a temporary Margin-owned panel in a level-400 private Space; `covered` runs the handoff without `Freezer`, its 1.7-second watchdog or its latest-A-start limit. All original window identities, drafts checks and parking safety still apply.
 
 Preparation reuses the outgoing overlay's immutable hello and cached target-space content. A disposable read-only page loads the delivered sanitized theme, including its actual sidebar and CSS progress indicator. It has no interactive runtime, subscription, browser commands, layout reports, network access or JavaScript animation loop. No browser is created until requested. There is no cover panel or WebView while idle; the login helper is unchanged.
 
@@ -1045,5 +1045,4 @@ The configuration is copied, the source is held weakly, bridge ownership stays
 per view, and end unregisters/releases the cover. This reduces process startup
 in component experiments but introduces shared crash lifetime and retained
 renderer caches; see `docs/PRIVATE-APIS.md` and the owned crash/resource probes.
-No readiness or recovery gate is relaxed, and default-on acceptance remains
-open until the real matched, watchdog, OS-event and physical checks pass.
+No readiness or recovery gate is relaxed. The 2026-11-11 user decision above enables the normal default with the measured tradeoffs accepted; broader macOS/physical/performance validation remains follow-up work.
