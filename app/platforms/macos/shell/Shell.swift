@@ -1060,7 +1060,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     func browserToolbar(_ list: [ServerWindow], browser: ServerWindow) -> ServerWindow? {
-        WindowMatcher.fullScreenToolbar(list, browser: browser, spacesOf: { windowMap.snapshot.windows[$0]?.spaces })
+        WindowMatcher.orderingToolbar(list, browser: browser, spacesOf: { windowMap.snapshot.windows[$0]?.spaces })
     }
 
     private func readModelBounds(_ number: Int) -> CGRect? {

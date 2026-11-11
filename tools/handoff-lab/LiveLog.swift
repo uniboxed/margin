@@ -1,6 +1,11 @@
 // Read-only parsing shared by the live gate and its off-screen regression.
 import Foundation
 
+func liveCompareTargets(returnToA: Bool, reverse: Bool) -> [String] {
+    if returnToA { return ["Test A"] } // a remaining single request always stays single
+    return reverse ? ["Test A", "Test B"] : ["Test B", "Test A"]
+}
+
 func liveSwitchSummary(_ line: String) -> Bool {
     // A real summary may end with `dev hook: cap`. Exclude only the dump's
     // replay of old summaries, never that legitimate suffix.

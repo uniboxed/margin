@@ -86,6 +86,39 @@ func preparedWindowsScenario() async {
   check("preparation moves only the overlay into that window's Space", await until(1, { world.spaces(of: o2.windowNumber) == [11] }) && world.spaces(of: b.windowNumber) == [11])
   check("placed within one second of drawing", Date().timeIntervalSince(readyAt) < 1.5)
   guard await until(15, { o1.isReady && o1.isShown }) else { check("front overlay draws", false); return }
+  // 26B131 live-cover failure: exact order put the layout above a toolbar
+  // whose bottom only touched the page's top. Replay the independent lists,
+  // including their disagreement about a foreign window, against the real shell.
+  do {
+    let browser = ServerWindow(number: a.windowNumber, pid: browserPid, bounds: r1, order: 63)
+    let panel = ServerWindow(number: o1.windowNumber, pid: ProcessInfo.processInfo.processIdentifier, bounds: r1, order: 9)
+    let catches = o1.catcherWindowNumbers.map { ServerWindow(number: $0, pid: panel.pid, bounds: r1, order: 10) }
+    let foreign = ServerWindow(number: 99001, pid: 4242, layer: 24, bounds: r1, order: 51)
+    func bar(_ overlap: CGFloat) -> ServerWindow {
+      ServerWindow(number: 99002, pid: browserPid, bounds: CGRect(x: r1.minX, y: r1.minY - 52 + overlap, width: r1.width, height: 52), order: 19)
+    }
+    var toolbar = bar(0)
+    var exact = [foreign, panel] + catches + [toolbar]
+    var aboveToolbar: [ServerWindow]? = [foreign, panel] + catches
+    windows.aboveRead = { $0 == browser.number ? exact : ($0 == toolbar.number ? aboveToolbar : nil) }
+    func stacked() -> Bool {
+      let list = [panel] + catches + [toolbar, foreign, browser]
+      return shell.isStacked(list, overlay: o1, browser: browser, toolbar: shell.browserToolbar(list, browser: browser)?.number)
+    }
+    check("hidden toolbar touching page edge cannot block exact layout readiness", stacked())
+    toolbar = bar(1)
+    exact = [foreign, panel] + catches + [toolbar]
+    check("toolbar covering even one point of the page still requires correct order", !stacked())
+    exact = [foreign, toolbar, panel] + catches
+    aboveToolbar = [foreign]
+    check("revealed toolbar above the layout permits readiness", stacked())
+    toolbar = bar(0)
+    exact = [panel, foreign] + catches + [toolbar]
+    check("a foreign obstruction still blocks beneath a hidden toolbar", !stacked())
+    windows.aboveRead = { _ in nil }
+    check("unknown exact order remains blocked when the batch order is wrong", !stacked())
+    windows.aboveRead = nil
+  }
   // Deferred NSPanel helpers receive their real window numbers only when first ordered. Register those
   // numbers too: the stand-in otherwise loses the successful move sent before that number was in its table.
   for (o, space) in [(o1, UInt64(10)), (o2, UInt64(11))] {

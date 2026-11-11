@@ -831,6 +831,7 @@ struct LabOptions {
     var devHook = false
     var liveReturnToA = false // finish only an already-approved remaining B → A switch
     var compareLive = false // COMPARE: require the real themed cover, not a freeze fallback
+    var compareReverse = false // COMPARE: start from Test B, request Test A then Test B
     var appPath = "/Applications/Margin.app"
     var port = 47944
     var labDir = labExecutable.deletingLastPathComponent().deletingLastPathComponent()
@@ -2234,7 +2235,7 @@ let compareCoverGate = Gate(
     needs: [.margin, .devHook], freezes: "current freeze normally; --live-ui requires the actual animated product cover with no freeze",
     plan: ["Test A shown, Test B prepared; one display, parking on, close off, idle and no caps/faults",
            "the installed MarginLiveProfileCover default must be off for baseline, on for --live-ui; configure/restart separately before this gate",
-           "ask only Test B then Test A (or one remaining Test A return with --return-to-a); no lab panel, no mode caps, no browser pre-creation",
+           "ask only Test B then Test A (--reverse: Test A then Test B; --return-to-a: only Test A); no lab panel, no mode caps, no browser pre-creation",
            "accept only a fresh successful summary in the requested mode; any fallback, failure, refusal or timeout stops before another request",
            "after each, independently verify native full screen, active/front browser identity and the source parked/gone",
            "record timing and summary; memory.py can sample the app and its attributed WebKit processes separately; no frame coverage is claimed"],
@@ -2263,9 +2264,10 @@ let compareCoverGate = Gate(
         }
         let mode = lab.o.compareLive ? "themed live cover" : "freeze baseline"
         var lines: [String] = []
-        for i in 1...(lab.o.liveReturnToA ? 1 : 2) {
+        for (index, targetName) in liveCompareTargets(returnToA: lab.o.liveReturnToA, reverse: lab.o.compareReverse).enumerated() {
+            let i = index + 1
             let first = buffer.all.count, started = epochMs()
-            Margin.devSwitch(to: lab.o.liveReturnToA ? "Test A" : (i == 1 ? "Test B" : "Test A"))
+            Margin.devSwitch(to: targetName)
             var summary: String?
             guard await waitFor(20, every: 0.02, {
                 let fresh = buffer.all.dropFirst(first)
@@ -2459,6 +2461,7 @@ enum Runner {
             case "--dev-hook": o.devHook = true
             case "--return-to-a": o.liveReturnToA = true
             case "--live-ui": o.compareLive = true
+            case "--reverse": o.compareReverse = true
             case "--runs": i += 1; o.runs = i < args.count ? Int(args[i]) : nil
             case "--app": i += 1; if i < args.count { o.appPath = args[i] }
             case "--results": i += 1; if i < args.count { o.resultsDir = URL(fileURLWithPath: args[i]) }
@@ -2538,6 +2541,7 @@ enum Runner {
             for g in gates { printPlan(g) }
             if o.liveReturnToA { print("\nOverride: only ONE remaining Test B → Test A return; no Test B request.") }
             if o.compareLive { print("\nCOMPARE override: actual themed live cover required; a freeze/slide fallback fails the gate.") }
+            if o.compareReverse { print("\nCOMPARE order: Test A then Test B, starting from Test B; still at most TWO requests.") }
             print("\nChecks:")
             for l in preflight(o, gates) { print("  " + l) }
             return 0
@@ -2596,7 +2600,7 @@ enum Runner {
         text += "\n## Run at \(time.string(from: started)): \(done.map(\.0.id).joined(separator: ", "))\n\n"
         text += "- Launch check: \(c.line)\n"
         text += "- Screen Recording for the lab: \(Recorder.allowed ? "yes" : "no")\n"
-        let flags = [lab.o.person ? "--person" : nil, lab.o.stp ? "--stp" : nil, lab.o.runs.map { "--runs \($0)" }, lab.o.dockRestart ? "--dock-restart" : nil, lab.o.devHook ? "--dev-hook" : nil, lab.o.liveReturnToA ? "--return-to-a (one switch only)" : nil, lab.o.compareLive ? "--live-ui (actual themed cover required)" : nil].compactMap { $0 }
+        let flags = [lab.o.person ? "--person" : nil, lab.o.stp ? "--stp" : nil, lab.o.runs.map { "--runs \($0)" }, lab.o.dockRestart ? "--dock-restart" : nil, lab.o.devHook ? "--dev-hook" : nil, lab.o.liveReturnToA ? "--return-to-a (one switch only)" : nil, lab.o.compareLive ? "--live-ui (actual themed cover required)" : nil, lab.o.compareReverse ? "--reverse (Test A then Test B)" : nil].compactMap { $0 }
         text += "- Options: \(flags.isEmpty ? "none" : flags.joined(separator: " "))\n"
         for (g, out) in done {
             text += "\n### \(g.id): \(out.status.rawValue)\n\n\(g.title). Decides: \(g.decides).\n\n"

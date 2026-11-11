@@ -16,6 +16,10 @@ import Foundation
         for missing in ["shown -; 0 handoffs", "shown safari:A#1 (0);", "shown safari:A#1 (-1);"] {
             precondition(liveShownNumber(missing) == nil)
         }
-        print("all 10 live-log checks passed (no windows or private calls)")
+        precondition(liveCompareTargets(returnToA: false, reverse: false) == ["Test B", "Test A"])
+        precondition(liveCompareTargets(returnToA: false, reverse: true) == ["Test A", "Test B"])
+        precondition(liveCompareTargets(returnToA: true, reverse: false) == ["Test A"])
+        precondition(liveCompareTargets(returnToA: true, reverse: true) == ["Test A"])
+        print("all 14 live-log/plan checks passed (no windows or private calls)")
     }
 }

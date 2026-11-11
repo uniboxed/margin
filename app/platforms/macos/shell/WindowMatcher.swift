@@ -187,6 +187,17 @@ nonisolated enum WindowMatcher {
         return (matching.isEmpty ? unknown : matching).max { $0.order < $1.order }
     }
 
+    /// Only a toolbar drawing over the browser is an ordering anchor. Safari
+    /// lists its hidden bar as on screen at y=-19,h=52 above a page at y=33.
+    /// Demanding that the layout be below that nonoverlapping window held R4
+    /// forever, even in the independent exact order. As soon as any part slides
+    /// over the page, the anchor changes nil → toolbar and show orders below it.
+    static func orderingToolbar(_ list: [ServerWindow], browser: ServerWindow, spacesOf: (Int) -> [UInt64]? = { _ in nil }) -> ServerWindow? {
+        guard let toolbar = fullScreenToolbar(list, browser: browser, spacesOf: spacesOf),
+              toolbar.onScreen, toolbar.alpha > 0, !toolbar.bounds.intersection(browser.bounds).isEmpty else { return nil }
+        return toolbar
+    }
+
     /// Whether `overlay` is just above `browser` in the window server's list:
     /// both on screen, the overlay nearer the front, and no other normal or
     /// higher window (any app's, another overlay) between them.

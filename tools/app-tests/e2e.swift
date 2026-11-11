@@ -105,6 +105,8 @@ final class ScriptedWindows: WindowSource {
   weak var shell: Shell?
   var somethingBetween = false
   var noList = false // the window server giving no list at all (CGWindowListCopyWindowInfo's nil)
+  var aboveRead: ((Int) -> [ServerWindow]?)? // independent exact order, when a regression supplies it
+  func above(_ number: Int) -> [ServerWindow]? { aboveRead?(number) }
   // Whether an overlay over a window reads as on screen (nil: always; e2e-overlays.swift plays Spaces with it).
   var overlayOnScreen: ((ServerWindow) -> Bool)?
   func read(of pids: Set<pid_t>) -> [ServerWindow]? { noList ? nil : windows(of: pids) }
