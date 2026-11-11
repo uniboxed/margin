@@ -248,7 +248,7 @@ final class DevHooks {
 extension Shell: DevHookWorld {
     func devSafariName(_ link: String) -> String? {
         guard link.hasPrefix("safari:") else { return nil }
-        return profilesOf("safari").browserNames[SwitchNotice.profileId(link)]?.name
+        return profilesOf("safari").windowNames[SwitchNotice.profileId(link)]
     }
 
     func devProbe(_ link: String, _ what: String) -> String? {
@@ -263,7 +263,7 @@ extension Shell: DevHookWorld {
     }
 
     func devSafariLinks(named name: String) -> [String] {
-        profilesOf("safari").browserNames.filter { $0.value.name == name }.keys.sorted().map { "safari:\($0)" }
+        profilesOf("safari").windowNames.filter { $0.value == name }.keys.sorted().map { "safari:\($0)" }
     }
 
     // Where the last switch landed, or the one in front with its overlay; else the one Safari window
@@ -300,7 +300,10 @@ extension Shell: DevHookWorld {
         let s = switcher.session
         let displays = spaceReads?.managedDisplayCount().map(String.init) ?? "unread"
         out.append("choices: freeze \(s.rules.on ? "on" : "off (\(s.rules.off ?? "-"))"), \(s.rules.watchdogs) watchdog reveals; park \(s.parkOff.map { "off (\($0))" } ?? "on"); close windows \(profilesOf("safari").closeWindows ? "on" : "off"); displays \(displays); the dev hook: \(s.dev.description)")
-        out.append("switch: \(switcher.phase.rawValue)\(switcher.target.map { " to \($0)" } ?? ""); shown \(s.shown.map { "\($0.key) (\($0.number.map(String.init) ?? "-"))" } ?? "-"); \(s.runs) handoffs, \(s.pending.count) windows calls pending")
+        // The hook can start before the first handoff this launch. Report the
+        // same exact shown overlay its guard accepted, not only session history.
+        let shown = devShownWindow().map { key in "\(key) (\(number(of: key).map(String.init) ?? "-"))" } ?? "-"
+        out.append("switch: \(switcher.phase.rawValue)\(switcher.target.map { " to \($0)" } ?? ""); shown \(shown); \(s.runs) handoffs, \(s.pending.count) windows calls pending")
         if let parking {
             let now = options.switchClock.now()
             out.append("registry: \(parking.entries.count) parked; home windows \(parking.lastShown.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))")

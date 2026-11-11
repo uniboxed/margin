@@ -177,14 +177,14 @@ function bundle(out: string, manifest: Record<string, any>, profile: Target) {
 // host, extension/ui/host-app.ts) as one script and its page, for the app's
 // Resources/app/ (scripts/xcode-add-sources.py). Safari's profile for now
 // (Margin 2 Phase 2 is Safari's; Chrome and Edge are Phase 5).
-export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js'];
+export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js', 'handoff-cover.html', 'handoff-cover.js'];
 export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile?: Target } = {}) {
   const out = outDir instanceof URL ? fileURLToPath(outDir) : outDir;
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   // The page's entry and the extension's modules it imports, with the profile's engine's code.
-  buildSync({
-    entryPoints: [fileURLToPath(new URL('app/shared/host/overlay.ts', root))],
+  for (const entry of ['overlay', 'handoff-cover']) buildSync({
+    entryPoints: [fileURLToPath(new URL(`app/shared/host/${entry}.ts`, root))],
     ...engineOptions(profile),
     bundle: true,
     format: 'iife',
@@ -193,10 +193,11 @@ export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile
     minifySyntax: true,
     legalComments: 'none',
     charset: 'utf8',
-    outfile: `${out}/overlay.js`,
+    outfile: `${out}/${entry}.js`,
     logLevel: 'warning',
   });
   cpSync(fileURLToPath(new URL('app/shared/host/overlay.html', root)), `${out}/overlay.html`);
+  cpSync(fileURLToPath(new URL('app/shared/host/handoff-cover.html', root)), `${out}/handoff-cover.html`);
   writeFileSync(`${out}/${FALLBACK_FILE}`, fallbackScript());
   return out;
 }

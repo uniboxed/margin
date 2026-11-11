@@ -1,4 +1,4 @@
-<div class="pixel" m-attr:data-mode="{{window.mode}}" m-attr:data-sidebar="{{window.sidebar}}" m-class:framed="{{window.frameWhenHidden}}" m-class:newtab="{{launcher}}" m-class:blink="{{settings.blink}}" m-style:--space="{{space.color}}">
+<div class="pixel" m-attr:data-mode="{{window.mode}}" m-attr:data-sidebar="{{window.sidebar}}" m-class:framed="{{window.frameWhenHidden}}" m-class:newtab="{{launcher}}" m-class:blink="{{settings.blink}}" m-class:switching="{{switchCover}}" m-style:--space="{{space.color}}">
 
   <!-- Pixel: the "Sidebar · Pixel / 8-bit" board (Pixel.dc.html). The
        PICO-8 palette on a dotted night ground, notched pixel borders (four
@@ -227,10 +227,25 @@
   </m-if>
 
   <m-launcher class="launcher-slot"></m-launcher>
+  <m-switch-cover class="switch-cover-slot"></m-switch-cover>
   <m-menu class="menu-slot"></m-menu>
   <m-editor class="editor-slot"></m-editor>
   <m-notice class="notice-slot"></m-notice>
   <m-prompt class="prompt-slot"></m-prompt>
+
+  <template m-part="switch-cover">
+    <div class="switch-cover" role="status" m-attr:aria-label="{{switchCover.label}}">
+      <div class="switch-cover-card">
+        <m-if test="switchCover.profile.emoji">
+          <span class="switch-cover-mark emoji" aria-hidden="true">{{switchCover.profile.emoji}}</span>
+          <m-else><span class="switch-cover-mark" aria-hidden="true" m-style:--profile="{{switchCover.profile.color}}">{{switchCover.profile.initial}}</span></m-else>
+        </m-if>
+        <span class="switch-cover-text">{{switchCover.text}}</span>
+        <span class="switch-cover-progress" aria-hidden="true"><i></i><i></i><i></i></span>
+        <m-if test="switchCover.hasSpace"><span class="switch-cover-space">{{switchCover.space.emoji}} {{switchCover.space.name}}</span></m-if>
+      </div>
+    </div>
+  </template>
 
   <!-- iCloud Tabs: the tabs open on the person's other devices, a folder that's
        plainly live: a pixel cloud, nothing to drag in or out; each device a

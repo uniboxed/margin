@@ -25,6 +25,8 @@ mkdir -p "$BUILD"
 SHELL_DIR=../../app/platforms/macos/shell
 PRIVATE_DIR=../../app/platforms/macos/private
 SHARED=("$PRIVATE_DIR/PrivateCalls.swift" "$SHELL_DIR/Diagnostics.swift" "$PRIVATE_DIR/Freezer.swift" "$PRIVATE_DIR/SpaceReads.swift"
+  "$PRIVATE_DIR/LiveCoverSpace.swift"
+  "$SHELL_DIR/HandoffCover.swift"
   "$SHELL_DIR/WindowServer.swift" "$SHELL_DIR/ProfileSwitch.swift" "$SHELL_DIR/LinkMessage.swift" "$SHELL_DIR/Handoff.swift" "$SHELL_DIR/WindowMatcher.swift"
   "$SHELL_DIR/Parking.swift" "$SHELL_DIR/DataStore.swift" "$SHELL_DIR/DataSet.swift" "$SHELL_DIR/Chunks.swift" "../../app/engines/webkit/safari/DevHooks.swift")
 PARKER="$PRIVATE_DIR/BridgeParker.swift"

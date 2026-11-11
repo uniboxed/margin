@@ -129,9 +129,30 @@ protocol AppWatch: AnyObject {
     func stop()
 }
 
+enum SessionVisibility {
+    // The lock key is private; public console/login keys and workspace events
+    // are additional guards. Unknown session state never permits a high cover.
+    static func allowsCover(_ session: [String: Any]?) -> Bool {
+        guard let session, session[kCGSessionOnConsoleKey as String] as? Bool == true,
+              session[kCGSessionLoginDoneKey as String] as? Bool == true else { return false }
+        return session["CGSSessionScreenIsLocked"] as? Bool != true
+    }
+    static var allowsCover: Bool { allowsCover(CGSessionCopyCurrentDictionary() as? [String: Any]) }
+}
+
+final class WorkspaceLockEvents: NSObject {
+    let changed: (String) -> Void
+    init(_ changed: @escaping (String) -> Void) { self.changed = changed }
+    @objc nonisolated func heard(_ note: Notification) {
+        let why = note.name.rawValue == "com.apple.screenIsLocked" ? "screen locked" : "screen unlocked"
+        Task { @MainActor [weak self] in self?.changed(why) }
+    }
+}
+
 final class WorkspaceApps: AppWatch {
     var onChange: ((String) -> Void)?
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
+    private var lockEvents: WorkspaceLockEvents?
 
     var frontPid: pid_t? { NSWorkspace.shared.frontmostApplication?.processIdentifier }
 
@@ -167,12 +188,21 @@ final class WorkspaceApps: AppWatch {
             (workspace, NSWorkspace.willSleepNotification, "will sleep"),
             (workspace, NSWorkspace.willPowerOffNotification, "will power off"),
             (workspace, NSWorkspace.didWakeNotification, "woke"),
+            (workspace, NSWorkspace.sessionDidResignActiveNotification, "session inactive"),
+            (workspace, NSWorkspace.sessionDidBecomeActiveNotification, "session active"),
+            (workspace, NSWorkspace.screensDidSleepNotification, "screen sleep"),
+            (workspace, NSWorkspace.screensDidWakeNotification, "screen wake"),
             (NotificationCenter.default, NSApplication.didChangeScreenParametersNotification, "displays changed"),
         ]
         for (center, name, why) in names {
             observers.append((center, center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.onChange?(why) }
             }))
+        }
+        let locks = WorkspaceLockEvents { [weak self] why in self?.onChange?(why) }
+        lockEvents = locks
+        for name in ["com.apple.screenIsLocked", "com.apple.screenIsUnlocked"] {
+            DistributedNotificationCenter.default().addObserver(locks, selector: #selector(WorkspaceLockEvents.heard(_:)), name: Notification.Name(name), object: nil)
         }
         // A launch: the Dock's own (it restarted, and WindowManager with it) is a system event.
         observers.append((workspace, workspace.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] note in
@@ -182,6 +212,8 @@ final class WorkspaceApps: AppWatch {
     }
 
     func stop() {
+        if let lockEvents { DistributedNotificationCenter.default().removeObserver(lockEvents) }
+        lockEvents = nil
         for (center, observer) in observers { center.removeObserver(observer) }
         observers = []
     }

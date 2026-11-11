@@ -67,6 +67,7 @@ struct HandoffParts {
     var reads: SpaceReads
     var parker: BridgeParker
     var freezer: Freezer?
+    var cover: HandoffCover? = nil
 }
 
 extension Shell: HandoffWorld {
@@ -79,6 +80,7 @@ extension Shell: HandoffWorld {
         spaceReads = parts.reads
         parker = parts.parker
         freezer = parts.freezer
+        liveProfileCover = parts.cover
         parking = ParkingRegistry(parker: parts.parker, reads: parts.reads, clock: options.switchClock, marker: parkingMarkerURL, build: nil,
                                   parkingOn: { [weak self] in self?.parkingOn == true && self?.handoffOn == true })
     }
@@ -86,6 +88,17 @@ extension Shell: HandoffWorld {
     // ---- HandoffWorld ----
 
     var handoffFreezer: Freezer? { freezer }
+    var handoffCover: HandoffCover? { liveProfileCover }
+
+    func handoffCoverContext(from a: WindowKey, to: ProfileSwitch.Target) -> LiveCoverContext? {
+        guard NSScreen.screens.count == 1, let display = NSScreen.screens.first?.frame,
+              let front = apps.frontPid, front == ProcessInfo.processInfo.processIdentifier || browserPids("safari").contains(front),
+              let overlay = overlays[a], overlay.isReady, overlay.isShown, !overlay.isConcealed else { return nil }
+        let frame = ScreenGeometry.appKitRect(overlay.frameTopLeft)
+        guard frame.width > 0, frame.height > 0, display.contains(frame) else { return nil }
+        return LiveCoverContext(hello: hello(for: overlay), display: display,
+                                viewport: frame.offsetBy(dx: -display.minX, dy: -display.minY))
+    }
 
     func closesWindows(_ link: String) -> Bool { profilesOf(Self.browser(of: link)).closeWindows }
 
@@ -136,7 +149,7 @@ extension Shell: HandoffWorld {
         guard let overlay = overlays[key], overlay.isShown, let number = matches[key], overlay.aboveWindow == number else { return false }
         let list = windowSource.windows(of: [ProcessInfo.processInfo.processIdentifier, overlay.browserPid])
         guard let browser = list.first(where: { $0.number == number }) else { return false }
-        return isStacked(list, overlay: overlay, browser: browser, toolbar: WindowMatcher.fullScreenToolbar(list, browser: browser)?.number)
+        return isStacked(list, overlay: overlay, browser: browser, toolbar: browserToolbar(list, browser: browser)?.number)
     }
 
     // ---- what the shell asks of it ----
@@ -219,12 +232,17 @@ extension Shell: HandoffWorld {
             parking.endAll(cause: .quit, within: Shell.quitCloseWithin, close: parkedCloser()) { end in
                 Diagnostics.note("before the power off: closed \(end.closed), returned \(end.returned), \(end.left) left (\(end.ms) ms)")
             }
-        case "will sleep":
+        case "will sleep", "screen sleep", "screen locked", "session inactive":
             switcher.revealNow(.sleep)
-        case "woke":
-            switcher.woke()
+        case "woke", "screen wake", "screen unlocked", "session active":
+            if options.harness || SessionVisibility.allowsCover { switcher.woke() }
+        case "displays changed", "the Dock restarted":
+            if switcher.run?.coverPreparedAt != nil { switcher.revealNow(.aborted) }
         case "app activated":
-            if let front = apps.frontPid, browserPids("safari").contains(front) { safariActivated = true }
+            if let front = apps.frontPid {
+                if browserPids("safari").contains(front) { safariActivated = true }
+                else if front != ProcessInfo.processInfo.processIdentifier, switcher.run?.coverPreparedAt != nil { switcher.revealNow(.aborted) }
+            }
         case "app quit":
             if switcher.run != nil, browserPids("safari").isEmpty { switcher.revealNow(.safariQuit) }
         default:

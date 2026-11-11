@@ -198,14 +198,16 @@ nonisolated struct Frame: Sendable {
 nonisolated final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     let tints: [Tint]
     let watch: CGRect? // the part whose changes count (0-1 of the display, top left); nil: all of it
+    let wide: Bool // the live-cover gate checks the grid over 90% of the display
     private let lock = NSLock()
     private var kept: [Frame] = []
     private var stream: SCStream?
     private let queue = DispatchQueue(label: "handoff-lab.recorder")
 
-    init(tints: [Tint], watch: CGRect? = nil) {
+    init(tints: [Tint], watch: CGRect? = nil, wide: Bool = false) {
         self.tints = tints
         self.watch = watch
+        self.wide = wide
     }
 
     // Checked, never asked for: asking would show a prompt.
@@ -254,7 +256,8 @@ nonisolated final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, @u
         var n = 0
         for row in 0..<24 {
             for col in 0..<40 {
-                let (r, g, b) = pixel(0.25 + Double(col) * 0.5 / 40, 0.25 + Double(row) * 0.5 / 24)
+                let (r, g, b) = pixel((wide ? 0.05 : 0.25) + Double(col) * (wide ? 0.9 : 0.5) / 40,
+                                      (wide ? 0.05 : 0.25) + Double(row) * (wide ? 0.9 : 0.5) / 24)
                 n += 1
                 var best = -1, bestD = Int.max
                 for (i, tint) in tints.enumerated() {
@@ -265,7 +268,7 @@ nonisolated final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, @u
             }
         }
         var state = "OTHER"
-        if let i = counts.firstIndex(where: { Double($0) / Double(n) > 0.9 }) {
+        if let i = counts.firstIndex(where: { Double($0) / Double(n) > (wide ? 0.999 : 0.9) }) {
             state = tints[i].name
         } else if counts.filter({ Double($0) / Double(n) > 0.02 }).count >= 2 {
             state = "MIXED"
@@ -806,6 +809,13 @@ enum Margin {
         DistributedNotificationCenter.default().postNotificationName(NSNotification.Name("com.unibox.margin.dev.switch"), object: nil,
                                                                       userInfo: ["to": profile, "pid": String(ProcessInfo.processInfo.processIdentifier)], deliverImmediately: true)
     }
+
+    static func dev(_ kind: String, _ fields: [String: String] = [:]) {
+        var fields = fields
+        fields["pid"] = String(ProcessInfo.processInfo.processIdentifier)
+        DistributedNotificationCenter.default().postNotificationName(NSNotification.Name("com.unibox.margin.dev." + kind), object: nil,
+                                                                      userInfo: fields, deliverImmediately: true)
+    }
 }
 
 // MARK: - The lab: options, what it opened, cleanup
@@ -833,6 +843,8 @@ final class Lab {
     private var panels: [LabPanel] = []
     private var children: [Child] = []
     private var recorders: [Recorder] = []
+    var liveCover: LabLiveCover?
+    var restoreCoverMode = false
     let previousApp = NSWorkspace.shared.frontmostApplication
 
     init(_ o: LabOptions) { self.o = o }
@@ -883,9 +895,9 @@ final class Lab {
     }
 
     // Frames, or nil without Screen Recording (never asked for).
-    func recorder(_ tints: [Tint], watch: CGRect? = nil) async -> Recorder? {
+    func recorder(_ tints: [Tint], watch: CGRect? = nil, wide: Bool = false) async -> Recorder? {
         guard Recorder.allowed else { return nil }
-        let r = Recorder(tints: tints, watch: watch)
+        let r = Recorder(tints: tints, watch: watch, wide: wide)
         do { try await r.start() } catch { note("frames: the recorder didn't start (\(error))"); return nil }
         recorders.append(r)
         await pause(0.3)
@@ -902,6 +914,9 @@ final class Lab {
     // After each gate, and at the end (`final`: the server stops too; between gates it stays, so
     // the extension keeps its place in the queue).
     func cleanup(final: Bool) async {
+        if let liveCover, !liveCover.close() { note("live cover cleanup: Space destruction did not verify") }
+        liveCover = nil
+        if restoreCoverMode { Margin.dev("mode", ["freeze": "on"]); restoreCoverMode = false }
         if let madeCalls { await madeCalls.bringBack() }
         if let madeStp {
             await madeStp.closeAll()
@@ -2079,6 +2094,143 @@ let g15 = Gate(
         return Outcome(status: foreign == 0 ? .pass : .recorded, lines: lines)
     })
 
+// Issue #15's first gate: an independent live cover over the real, unfrozen Test A/B handoff.
+final class LabLivePanel: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+final class LabLiveCover {
+    static let tint = Tint("COVER", 0x19416e)
+    let panel: NSPanel
+    let lease: LiveCoverSpace
+    init(_ sky: SkyLight) async throws {
+        panel = LabLivePanel(contentRect: displayFrame(), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        panel.collectionBehavior = [.stationary, .ignoresCycle]
+        panel.animationBehavior = .none
+        panel.isOpaque = true
+        panel.backgroundColor = NSColor(calibratedRed: 25 / 255, green: 65 / 255, blue: 110 / 255, alpha: 1)
+        panel.alphaValue = 0
+        let view = NSView(frame: NSRect(origin: .zero, size: displayFrame().size))
+        view.wantsLayer = true
+        view.layer?.backgroundColor = panel.backgroundColor.cgColor
+        panel.contentView = view
+        panel.orderFrontRegardless()
+        panel.displayIfNeeded()
+        CATransaction.flush() // registration must reach WindowServer before the ownership read
+        switch LiveCoverSpace.open(window: UInt32(panel.windowNumber), io: .real(sky)) {
+        case .success(let lease): self.lease = lease
+        case .failure(let why): panel.orderOut(nil); panel.close(); throw Fail("live cover setup \(why.rawValue)")
+        }
+        guard await waitFor(0.5, every: 0.02, { lease.isReady }) else {
+            panel.orderOut(nil); CATransaction.flush(); _ = lease.close(); panel.close()
+            throw Fail("live cover Space membership/level did not verify")
+        }
+        let pulse = CABasicAnimation(keyPath: "backgroundColor")
+        pulse.fromValue = panel.backgroundColor.cgColor
+        pulse.toValue = NSColor(calibratedRed: 45 / 255, green: 85 / 255, blue: 130 / 255, alpha: 1).cgColor
+        pulse.duration = 0.5; pulse.autoreverses = true; pulse.repeatCount = .infinity
+        view.layer?.add(pulse, forKey: "lab-cover-pulse")
+        panel.alphaValue = 1
+        panel.displayIfNeeded()
+        CATransaction.flush()
+    }
+    @discardableResult func close() -> Bool { panel.orderOut(nil); CATransaction.flush(); panel.close(); return lease.close() }
+}
+
+func liveShownNumber(_ text: String) -> Int? {
+    guard let regex = try? NSRegularExpression(pattern: #"shown [^\n]+\(([0-9]+)\);"#),
+          let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+          let range = Range(match.range(at: 1), in: text) else { return nil }
+    return Int(text[range])
+}
+
+let liveCoverGate = Gate(
+    id: "LIVE", title: "Live cover over real Test A/Test B profile handoffs (issue #15)",
+    decides: "whether the special Space keeps an own animated panel above actual Safari transitions; not product acceptance",
+    needs: [.margin, .devHook, .frames], freezes: "none; an animated blue cover during two profile switches (about 15-30 s)",
+    plan: ["requires one display, Test A shown and Test B prepared, handoff/parking on, no dev-hook caps or armed faults",
+           "read-only dump must be accepted by Margin's Test A/Test B guard before any panel is shown",
+           "disable freeze for Test A/Test B only; restore that cap on every normal, failure and signal cleanup",
+           "show one nonactivating pass-through own panel in a temporary level-400 Space; Core Animation keeps its colour pulse live",
+           "ask Margin's dev hook for Test B, then Test A; it refuses every other profile",
+           "keep the cover until the handoff summary and fresh reads prove B full screen, active and frontmost, and A parked or gone",
+           "40×24 samples over 90% of the display must all be COVER; changed complete frames establish animation; unavailable capture is partial, never pass",
+           "order out the owned panel before destroying its Space; stop on the first failure; a physical-camera check is still required"],
+    run: { lab in
+        guard Margin.running != nil, Margin.devHooksOn, NSScreen.screens.count == 1, lab.calls.availability.liveCover else {
+            return Outcome(status: .notRun, lines: ["requires running Margin, enabled dev hook, one display and checked live-cover calls"])
+        }
+        let (process, buffer) = try Margin.stream()
+        defer { process.terminate() }
+        await pause(0.4)
+        @MainActor func dump() async -> String {
+            let before = buffer.all.count
+            Margin.dev("dump")
+            _ = await waitFor(2, every: 0.02) { buffer.all.dropFirst(before).contains { $0.contains("dev hook: dump: the last") || $0.contains("dev hook:") && $0.contains("refused:") } }
+            return buffer.all.dropFirst(before).joined(separator: "\n")
+        }
+        let before = await dump()
+        guard before.contains("handoff on, parking on"), before.contains("switch: idle"), before.contains("no caps; no faults armed"),
+              before.contains("close windows off; displays 1"), !before.contains("refused:"), var source = liveShownNumber(before) else {
+            return Outcome(status: .fail, lines: ["preflight dump did not establish idle, guarded Test A/Test B with parking, one display and no caps; nothing shown"])
+        }
+        guard let current = lab.calls.server(source), current.onScreen, fills(current.bounds),
+              let active = lab.calls.spaces.showing(onDisplayOf: source), lab.calls.fullScreen().contains(active), lab.calls.spacesOf(source).contains(active),
+              CGWindowSource().windows(of: [current.pid]).first(where: { $0.onScreen && $0.layer == 0 && $0.bounds.height > 160 })?.number == source else {
+            return Outcome(status: .notRun, lines: ["source test window must be full screen, active and frontmost; nothing shown or switched"])
+        }
+        let capStart = buffer.all.count
+        Margin.dev("mode", ["freeze": "off"])
+        guard await waitFor(2, every: 0.02, { buffer.all.dropFirst(capStart).contains { $0.contains("mode freeze off for Test A and Test B") } }) else { throw Fail("freeze-off cap not acknowledged; nothing shown") }
+        lab.restoreCoverMode = true
+        var lines: [String] = []
+        let recorder = await lab.recorder([LabLiveCover.tint], wide: true)
+        for i in 1...min(2, lab.runs(2)) {
+            let cover = try await LabLiveCover(lab.calls.sky)
+            lab.liveCover = cover
+            await pause(0.2)
+            guard lab.calls.server(cover.panel.windowNumber)?.onScreen == true else { throw Fail("own cover is not on screen") }
+            if let recorder {
+                guard await waitFor(1, every: 0.02, { recorder.frames(epochMs() - 300).last?.state == "COVER" }) else { throw Fail("no complete cover frame before asking Safari to switch") }
+            }
+            let first = buffer.all.count, started = epochMs()
+            Margin.devSwitch(to: i == 1 ? "Test B" : "Test A")
+            var summary: String?
+            guard await waitFor(10, every: 0.02, {
+                let fresh = buffer.all.dropFirst(first)
+                summary = fresh.first { $0.contains("handoff:") && $0.contains("→") && !$0.contains("dev hook:") }
+                return summary != nil || fresh.contains { $0.contains("dev hook:") && $0.contains("refused:") }
+            }), let summary, !summary.contains("frozen "), !summary.contains("recovered"), !summary.contains("aborted"), !summary.contains("failed") else {
+                throw Fail("real profile handoff refused, frozen, failed, or no summary in 10 s")
+            }
+            let state = await dump()
+            guard state.contains("switch: idle"), let target = liveShownNumber(state), target != source,
+                  let window = lab.calls.server(target), window.onScreen, fills(window.bounds),
+                  let active = lab.calls.spaces.showing(onDisplayOf: target), lab.calls.fullScreen().contains(active), lab.calls.spacesOf(target).contains(active),
+                  CGWindowSource().windows(of: [window.pid]).first(where: { $0.onScreen && $0.layer == 0 && $0.bounds.height > 160 })?.number == target,
+                  lab.calls.server(source) == nil || lab.calls.parked(source) else { throw Fail("final B readiness or A parking/gone check failed; stop") }
+            let ended = epochMs()
+            let frames = recorder?.frames(started, ended) ?? []
+            let changed = recorder?.changed(started, ended).changed ?? 0
+            let leaks = frames.filter { $0.state != "COVER" }.count
+            let measured = "run \(i): \(Int(ended - started)) ms; B full screen/active/frontmost, A parked/gone; \(frames.count) complete frames, \(changed) changes, \(leaks) uncovered; no freeze"
+            lines.append(measured)
+            note(measured) // keep completed-run evidence even if a later run fails
+            let cleaned = cover.close(); lab.liveCover = nil
+            guard cleaned else { throw Fail("own cover Space cleanup did not verify; stop") }
+            guard leaks == 0, recorder == nil || !frames.isEmpty && changed > 1 else { throw Fail("frame coverage or animation check failed; stop") }
+            source = target
+            await pause(0.5)
+        }
+        lines.append("capture \(recorder == nil ? "unavailable: frame coverage and animation NOT MEASURED" : "measured, grid over 90% of display"); physical-camera verification still pending")
+        return Outcome(status: recorder == nil ? .partial : .pass, lines: lines)
+    })
+
 // MARK: G16: the acceptance, through Margin.app
 
 let g16 = Gate(
@@ -2187,7 +2339,7 @@ let g18 = Gate(
         return Outcome(status: .recorded, lines: lines)
     })
 
-let allGates: [Gate] = [holdsGate, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15, g16, g17, g18]
+let allGates: [Gate] = [holdsGate, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15, g16, g17, g18, liveCoverGate]
 let ownGates = ["holds", "G5", "G6", "G7", "G10", "G12", "G13", "G14", "G15", "G17", "G18"]
 let stpGates = ["G2", "G3", "G4", "G8", "G9", "G11"]
 

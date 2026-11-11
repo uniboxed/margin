@@ -796,6 +796,12 @@
 .switch-cover-mark { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; background: var(--profile, var(--space-color)); color: #fff; font-size: 18px; font-weight: 700; }
 .switch-cover-mark.emoji { background: rgba(255, 255, 255, 0.6); font-size: 24px; }
 .switch-cover-text { font-size: 15px; font-weight: 600; }
+.switch-cover-progress { display: flex; gap: 5px; padding: 4px; }
+.switch-cover-progress i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: arcadia-cover-progress .9s ease-in-out infinite alternate; }
+.switch-cover-progress i:nth-child(2) { animation-delay: .15s; }
+.switch-cover-progress i:nth-child(3) { animation-delay: .3s; }
+@keyframes arcadia-cover-progress { from { opacity: .25; } to { opacity: .85; } }
+@media (prefers-reduced-motion: reduce) { .switch-cover-progress i { animation: none; opacity: .6; } }
 .switch-cover-space { font-size: 13px; color: var(--muted); }
 
 /* ---- The new-tab launcher (Margin's <m-launcher>, the "launcher" part) ------- */

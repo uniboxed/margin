@@ -95,6 +95,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     cloudTabsTests() // cloud-tabs-tests.swift
     privateCallsTests() // private-calls-tests.swift
     handoffTests() // handoff-tests.swift
+    liveHandoffTests() // live-handoff-tests.swift: fake-clock cover lifetime and ordering
     parkingTests() // parking-tests.swift
     handoffUiTests() // handoff-ui-tests.swift
     devHooksTests() // devhooks-tests.swift (DEV-HOOK: removed with the hook)
@@ -769,6 +770,14 @@ final class FakeRegistrar: HotKeyRegistrar {
     let lower = ServerWindow(number: 7, pid: pid, bounds: CGRect(x: 0, y: 500, width: 1512, height: 52), order: 100)
     check("not a popover, another app's window, one behind the window, nor one lower down", WindowMatcher.fullScreenToolbar([popover, otherApp, below, lower, main], browser: main) == nil)
     check("no toolbar (windowed, or none drawn yet): none", WindowMatcher.fullScreenToolbar([overlay, main], browser: main) == nil)
+    let stale = ServerWindow(number: 9946, pid: pid, bounds: CGRect(x: 0, y: 0, width: 1512, height: 33), onScreen: false, order: 164)
+    let known: [Int: [UInt64]] = [main.number: [406], parked.number: [406], stale.number: []]
+    check("toolbar: the recorded off-screen other-profile bar cannot replace this Space's toolbar",
+          WindowMatcher.fullScreenToolbar([stale, parked, main], browser: main, spacesOf: { known[$0] })?.number == parked.number)
+    check("toolbar: known same-Space membership takes precedence over unknown geometry",
+          WindowMatcher.fullScreenToolbar([stale, parked, main], browser: main, spacesOf: { $0 == stale.number ? nil : known[$0] })?.number == parked.number)
+    check("toolbar: a known bar in another Space is not a toolbar for this window",
+          WindowMatcher.fullScreenToolbar([stale, main], browser: main, spacesOf: { $0 == main.number ? [406] : [407] }) == nil)
     // Margin goes between the window and its toolbar: the toolbar slides over Margin as over the page.
     let between = ServerWindow(number: 14589, pid: 9, bounds: main.bounds, order: 120)
     check("the overlay above the toolbar (as recorded): put back", !WindowMatcher.stackedAbove([overlay, parked, main], overlay: 14589, browser: 14375, toolbar: 14553))

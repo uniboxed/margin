@@ -55,6 +55,14 @@ Options:
 
 ## The gates
 
+### LIVE: issue #15's live-cover experiment
+
+`build/handoff-lab live --dry-run --app "$HOME/Applications/Margin.app"` prints the exact plan and launch checks without showing or moving anything. After approval, the same command with `--go --runs 2` uses only the guarded Test A/Test B dev hook. Prepare Test A in front and Test B as in G16; handoff/parking must be on, close-windows off, and no dev-hook caps or faults armed. An accepted read-only dump establishes those preconditions before any cover appears.
+
+The lab temporarily caps the freeze off for those two profiles, shows its own animated blue panel in a temporary level-400 Space, then asks Margin for Test B and Test A. It keeps that cover until each handoff ends and fresh reads verify the destination is full screen, active and frontmost and the source is parked or gone. It restores the cap, orders out its panel and destroys its own Space on completion, failure and SIGINT/SIGTERM. No browser is pre-created by this gate, no foreign window is written by its cover calls, and it stops at the first failure.
+
+The optional recorder tests all 960 grid points over 90% of the display and counts changing complete frames. Unavailable capture produces **partial**, never a visual pass. A physical-camera check is separate. This pulse is a lab marker, not product UI; the product cover uses Margin's theme renderer and its own cached target-space data.
+
 | Gate | Where | Needs | Look at |
 |---|---|---|---|
 | `holds` | a small lab window | frames | no complete frame while frozen; changes before and after; the watchdog's reveal off the main thread |

@@ -50,6 +50,30 @@ func devHooksTests() {
     func untouched(_ w: FakeDevWorld) -> Bool { w.switches.isEmpty && w.dumps == 0 && w.devState.isEmpty }
     let pid = ["pid": "42"]
 
+    do {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-dev-mapping-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        var options = Shell.Options(); options.harness = true; options.dataRoot = root
+        let shell = Shell(link: SocketLink(), windows: StubWindows(), apps: StubApps(), hotKeys: FakeRegistrar(), options: options)
+        let profiles = shell.profilesOf("safari")
+        profiles.refresh(spaces: ["s-old": ["b"]], linked: [])
+        profiles.useBrowserNames([SafariProfile(serverId: "test-b", uuid: "b", name: "Test B", symbol: "", margin: "s-old")])
+        profiles.useBrowserNames([SafariProfile(serverId: "test-b", uuid: "b", name: "Test B", symbol: "", margin: "s-current")])
+        check("dev hook: historical signing aliases cannot duplicate a current test profile", profiles.browserNames["s-old"]?.name == "Test B"
+              && shell.devSafariLinks(named: "Test B") == ["safari:s-current"] && shell.devSafariName("safari:s-old") == nil)
+        profiles.useBrowserNames([SafariProfile(serverId: "test-b", uuid: "b", name: "Test B", symbol: "", margin: "s-current"),
+                                 SafariProfile(serverId: "other-b", uuid: "other", name: "Test B", symbol: "", margin: "s-other")])
+        check("dev hook: two real current profiles remain ambiguous", shell.devSafariLinks(named: "Test B").count == 2)
+    }
+
+    do {
+        let ready: [String: Any] = [kCGSessionOnConsoleKey as String: true, kCGSessionLoginDoneKey as String: true]
+        check("live cover session: console and login are required", SessionVisibility.allowsCover(ready)
+              && !SessionVisibility.allowsCover(nil) && !SessionVisibility.allowsCover([:]))
+        check("live cover session: lock or inactive session refuses", !SessionVisibility.allowsCover(ready.merging(["CGSSessionScreenIsLocked": true]) { _, b in b })
+              && !SessionVisibility.allowsCover(ready.merging([kCGSessionOnConsoleKey as String: false]) { _, b in b }))
+    }
+
     // ---- off unless the default says YES, read at each notification ----
     do {
         let (w, hooks, toggle) = setup(false)

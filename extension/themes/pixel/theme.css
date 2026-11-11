@@ -391,6 +391,22 @@
 
 /* Margin's new-tab page: a title screen in the page card, and Settings. */
 .launcher-slot { position: absolute; top: var(--gutter); right: var(--gutter); bottom: var(--gutter); left: var(--page-left); overflow: hidden; z-index: 2; }
+
+/* The target world's cached rows stay beside this passive switching card. */
+.switch-cover-slot { position: absolute; top: var(--gutter); right: var(--gutter); bottom: var(--gutter); left: var(--page-left); overflow: hidden; z-index: 2; }
+.pixel.switching .launcher-slot { visibility: hidden; }
+.switch-cover { position: absolute; inset: 0; display: grid; place-items: center; background: var(--ground); pointer-events: auto; }
+.switch-cover-card { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 80%; color: var(--ink); text-align: center; }
+.switch-cover-mark { width: 36px; height: 36px; display: grid; place-items: center; background: var(--profile, var(--space)); color: var(--deep); box-shadow: var(--pxs); font-size: 24px; }
+.switch-cover-mark.emoji { background: var(--side); color: var(--ink); }
+.switch-cover-text { font-family: 'Press Start 2P', ui-monospace, monospace; font-size: 11px; line-height: 1.8; }
+.switch-cover-progress { display: flex; gap: 6px; padding: 4px; color: var(--yellow); }
+.switch-cover-progress i { width: 6px; height: 6px; background: currentColor; animation: pixel-cover-progress .9s steps(2, end) infinite alternate; }
+.switch-cover-progress i:nth-child(2) { animation-delay: .15s; }
+.switch-cover-progress i:nth-child(3) { animation-delay: .3s; }
+@keyframes pixel-cover-progress { from { opacity: .25; } to { opacity: .85; } }
+@media (prefers-reduced-motion: reduce) { .switch-cover-progress i { animation: none; opacity: .6; } }
+.switch-cover-space { color: var(--muted); }
 .launcher { height: 100%; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 30px; padding: 12vh 32px 48px; background-color: var(--ground); background-image: radial-gradient(var(--dots) 1px, transparent 1px); background-size: 16px 16px; scrollbar-width: thin; scrollbar-color: var(--field) transparent; }
 .launcher > * { width: min(640px, 100%); flex: none; }
 .title-screen { display: flex; flex-direction: column; align-items: center; gap: 14px; }

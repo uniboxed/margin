@@ -52,6 +52,11 @@ template{display:none!important}
 .m-cover-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px 28px;border-radius:12px;background:var(--m-cover-card,transparent);font:500 15px/1.35 -apple-system,system-ui,sans-serif;text-align:center;max-width:80%}
 .m-cover-mark{font-size:28px;line-height:1}
 .m-cover-space{font-weight:400;font-size:13px;opacity:.7}
+.m-cover-progress{display:flex;gap:5px;padding:4px}
+.m-cover-progress i{width:5px;height:5px;border-radius:var(--m-cover-dot-radius,50%);background:currentColor;animation:m-cover-progress .9s ease-in-out infinite alternate}
+.m-cover-progress i:nth-child(2){animation-delay:.15s}.m-cover-progress i:nth-child(3){animation-delay:.3s}
+@keyframes m-cover-progress{from{opacity:.25}to{opacity:.85}}
+@media(prefers-reduced-motion:reduce){.m-cover-progress i{animation:none;opacity:.6}}
 `;
 
 // `m-passthrough` and `m-away` are the host's, on the theme's root (a theme
@@ -90,6 +95,7 @@ const DEFAULT_PARTS: Record<string, { children: CleanNode[] }> = {
       tag('div', [['class', 'm-cover-card']],
         tag('m-if', [['test', 'switchCover.profile.emoji']], tag('div', [['class', 'm-cover-mark'], ['aria-hidden', 'true']], hole('switchCover.profile.emoji'))),
         tag('div', [['class', 'm-cover-text']], hole('switchCover.text')),
+        tag('span', [['class', 'm-cover-progress'], ['aria-hidden', 'true']], tag('i', []), tag('i', []), tag('i', [])),
         tag('m-if', [['test', 'switchCover.hasSpace']], tag('div', [['class', 'm-cover-space']], hole('switchCover.space.emoji'), { type: 'text', value: ' ' }, hole('switchCover.space.name'))))),
   ] },
 };

@@ -167,14 +167,24 @@ nonisolated enum WindowMatcher {
     /// revealed; listed above the window. Margin's overlay goes between the two, so the toolbar
     /// slides over Margin as it does over the page. The nearest such window above it, if any.
     static let toolbarMaxHeight: CGFloat = 160
-    static func fullScreenToolbar(_ list: [ServerWindow], browser: ServerWindow) -> ServerWindow? {
+    static func fullScreenToolbar(_ list: [ServerWindow], browser: ServerWindow, spacesOf: (Int) -> [UInt64]? = { _ in nil }) -> ServerWindow? {
         let b = browser.bounds
-        return list.filter { w in
+        let browserSpaces = spacesOf(browser.number).map(Set.init)
+        let candidates = list.filter { w in
             w.number != browser.number && w.pid == browser.pid && w.layer == 0 && w.order < browser.order
                 && abs(w.bounds.minX - b.minX) <= 1 && abs(w.bounds.width - b.width) <= 1
                 && w.bounds.height > 0 && w.bounds.height <= toolbarMaxHeight
                 && w.bounds.minY >= b.minY - w.bounds.height - 1 && w.bounds.minY <= b.minY + 1
-        }.max { $0.order < $1.order }
+        }
+        var matching: [ServerWindow] = [], unknown: [ServerWindow] = []
+        for w in candidates {
+            if let browserSpaces, !browserSpaces.isEmpty, let spaces = spacesOf(w.number) {
+                if !browserSpaces.isDisjoint(with: spaces) { matching.append(w) }
+            } else { unknown.append(w) }
+        }
+        // Geometry alone can select another profile's hidden toolbar. Prefer known
+        // membership in this window's Space; unknown reads keep the geometry fallback.
+        return (matching.isEmpty ? unknown : matching).max { $0.order < $1.order }
     }
 
     /// Whether `overlay` is just above `browser` in the window server's list:

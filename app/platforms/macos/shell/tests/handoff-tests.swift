@@ -330,6 +330,7 @@ final class FakeHandoffWorld: HandoffWorld {
         let payload: JSONObject
         let at: Double
         let frozen: Bool // the freeze was live when it was sent
+        var covered = false // an independently acknowledged live cover was shown when it was sent
         var windowId: Int? { int(payload["windowId"]) }
         var state: String? { payload["state"] as? String }
     }
@@ -367,6 +368,11 @@ final class FakeHandoffWorld: HandoffWorld {
     var framedLag = 0.03
     var coverLag = 0.03
     var coverOn = true
+    var liveCover: HandoffCover?
+    var liveContextAvailable = true
+    var blockedOverlays: Set<WindowKey> = []
+    var blockedFront: Set<WindowKey> = [] // browser reports another window above this one, independent of its active Space
+    var spaceSelectionLag: Double = 0 // selected-space storage echo, independent of tab/native readiness
     var framedOn = true
     var hung: Set<WindowKey> = [] // its windows calls held (a hung tab), until `unhang`
     private var held: [WindowKey: () -> Void] = [:]
@@ -522,6 +528,10 @@ final class FakeHandoffWorld: HandoffWorld {
 
     var handoffOn: Bool { !gateOff }
     var handoffFreezer: Freezer? { noFreezer ? nil : freezer }
+    var handoffCover: HandoffCover? { liveCover }
+    func handoffCoverContext(from: WindowKey, to: ProfileSwitch.Target) -> LiveCoverContext? {
+        liveContextAvailable ? LiveCoverContext(hello: "{}", display: display, viewport: display) : nil
+    }
     var spaceReads: SpaceReads? { noReads ? nil : reads }
     var parker: BridgeParker? { spaceParker }
     var parking: ParkingRegistry? { registry }
@@ -530,7 +540,7 @@ final class FakeHandoffWorld: HandoffWorld {
     func isLinked(_ profile: String) -> Bool { linked.contains(profile) }
 
     func request(_ profile: String, _ type: String, _ payload: JSONObject, windowId: Int?, done: @escaping (JSONObject?, String?) -> Void) {
-        let r = Req(link: profile, type: type, payload: payload, at: clock.now(), frozen: freezer.isLive)
+        let r = Req(link: profile, type: type, payload: payload, at: clock.now(), frozen: freezer.isLive, covered: liveCover?.state == .shown)
         requests.append(r)
         onRequest?(r)
         let reply = { [self] (result: JSONObject?, error: String?) in self.later(self.lag) { done(result, error) } }
@@ -567,7 +577,7 @@ final class FakeHandoffWorld: HandoffWorld {
                 self.enter(WindowKey(link: r.link, windowId: id)) { _ in }
             }
         case "setSpace":
-            update(key) { $0.space = r.payload["spaceId"] as? String ?? $0.space }
+            later(spaceSelectionLag) { [self] in update(key) { $0.space = r.payload["spaceId"] as? String ?? $0.space } }
             reply([:], nil)
         case "windowDrafts":
             if silentDrafts { return }
@@ -623,7 +633,10 @@ final class FakeHandoffWorld: HandoffWorld {
     }
 
     func windows(of profile: String) -> [(id: Int, state: String)] { copyWindows(profile).map { ($0.key.windowId, $0.state) } }
-    func inFront(_ profile: String, windowId: Int) -> Bool { inFrontNow(WindowKey(link: profile, windowId: windowId)) }
+    func inFront(_ profile: String, windowId: Int) -> Bool {
+        let key = WindowKey(link: profile, windowId: windowId)
+        return !blockedFront.contains(key) && inFrontNow(key)
+    }
     func switchChanged(_ event: ProfileSwitch.Event) {
         events.append(event)
         onEvent?(event)
@@ -666,7 +679,7 @@ final class FakeHandoffWorld: HandoffWorld {
     }
     func overlayOffScreen(_ key: WindowKey) -> Bool { outOverlays.contains(key) || !inFrontNow(key) }
     func overlayAbove(_ key: WindowKey) -> Bool {
-        framedOn && inFrontNow(key) && win(key).flatMap { reads.windows[$0.number]?.bounds }.map(fillsDisplay) == true
+        !blockedOverlays.contains(key) && framedOn && inFrontNow(key) && win(key).flatMap { reads.windows[$0.number]?.bounds }.map(fillsDisplay) == true
     }
     func showSwitchNotice(_ notice: SwitchNotice) { notices.append(notice) }
     func devHookAllows(_ a: String, _ b: String) -> Bool { devAllowed } // DEV-HOOK

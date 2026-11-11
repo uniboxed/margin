@@ -357,6 +357,12 @@
 .switch-cover-card { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 80%; padding: 22px 28px; border: 3px solid var(--ink); border-radius: 18px; background: var(--yellow); box-shadow: 6px 6px 0 var(--ink); text-align: center; }
 .switch-cover-mark { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 3px solid var(--ink); border-radius: 12px; background: var(--profile, var(--paper)); font-family: 'Archivo Black', system-ui, sans-serif; font-size: 20px; }
 .switch-cover-text { font-family: 'Archivo Black', system-ui, sans-serif; font-size: 18px; }
+.switch-cover-progress { display: flex; gap: 5px; padding: 3px; }
+.switch-cover-progress i { width: 7px; height: 7px; background: var(--ink); animation: neo-cover-progress .8s steps(2) infinite alternate; }
+.switch-cover-progress i:nth-child(2) { animation-delay: .15s; }
+.switch-cover-progress i:nth-child(3) { animation-delay: .3s; }
+@keyframes neo-cover-progress { from { opacity: .2; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .switch-cover-progress i { animation: none; opacity: .6; } }
 .switch-cover-space { font-weight: 600; }
 .launcher { height: 100%; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 14vh 32px 48px; background: var(--cream); }
 .launcher > * { width: min(640px, 100%); flex: none; }

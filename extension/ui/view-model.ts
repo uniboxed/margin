@@ -565,7 +565,7 @@ function fresh(input: ViewModelInput): ViewModel {
 // ---------------------------------------------------------------------------
 // The target space of a switch started from this window, as rows (shared/across.ts `content`): its pins (in
 // folders and not), its tabs newest first, the one used last highlighted. Ids `x:`-prefixed (never this copy's).
-const FOREIGN_PHASES = new Set(['preparing', 'waitingForLink', 'waitingForProfile', 'frozen']);
+const FOREIGN_PHASES = new Set(['preparing', 'waitingForLink', 'waitingForProfile', 'frozen', 'covering', 'covered']);
 function foreignSpace(across: any, windowId: number | null) {
   const sw = across?.switching;
   const c = sw?.content;
@@ -609,7 +609,7 @@ function spaceRows(c: AcrossContent | null) {
 
 // The phases before and under the freeze (docs/HANDOFF.md §1.2): the cover is
 // up only then. Today's close-based switch has none of them, so it never shows one.
-const COVER_PHASES = new Set(['preparing', 'waitingForLink', 'waitingForProfile', 'frozen']);
+const COVER_PHASES = new Set(['preparing', 'waitingForLink', 'waitingForProfile', 'frozen', 'covering', 'covered']);
 
 /**
  * The cover, in the overlay of the window the switch leaves only.

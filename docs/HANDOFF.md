@@ -4,6 +4,21 @@ Draft 2, 2026-11-06 (revised after two critics' reviews: Appendix A). Nothing he
 
 **Margin windows (2026-11-09):** this design had one chain of windows (one home window per profile, one shown window). `docs/BROWSER-WINDOWS.md` replaces that with a window per profile for **each** Margin window, and it overrides what this document says about home windows, the shown window, §6.2, §13.8 and §13.11 (answers 8 and 11). Where the two differ, WINDOWS.md holds.
 
+
+## Issue #15 addendum: live cover (2026-11-10)
+
+This addendum overrides freeze-specific presentation below only when the opt-in `MarginLiveProfileCover` launch default is true and the independent capability passes. The default remains false until acceptance. `covering` prepares and activates a temporary Margin-owned panel in a level-400 private Space; `covered` runs the handoff without `Freezer`, its 1.7-second watchdog or its latest-A-start limit. All original window identities, drafts checks and parking safety still apply.
+
+Preparation reuses the outgoing overlay's immutable hello and cached target-space content. A disposable read-only page loads the delivered sanitized theme, including its actual sidebar and CSS progress indicator. It has no interactive runtime, subscription, browser commands, layout reports, network access or JavaScript animation loop. No browser is created until requested. There is no cover panel or WebView while idle; the login helper is unchanged.
+
+Before B is selected, shown or created, activation verifies the panel's owned pid, exact private Space membership (mask 15), level 400, bounds/on-screen/alpha metadata and a visible-page acknowledgement after two animation frames. Setters are asynchronous Void calls, so their register residue is never treated as a status code. Setup waits at most 0.8 seconds for content and 0.3 seconds for activation; failure disposes resources, disables the cover for the session and logs the degraded freeze/slide path. Selecting B's sidebar space is deferred under the cover because it can activate a window.
+
+R1/R2 must establish B's new full-screen active Space and steady display-filling bounds before A leaves full screen. Reveal also requires B's framed/stacked overlay, current front-window identity and cached selected-space echo, plus A actually parked/gone or explicitly retained off screen. The short legacy framed timeout does not bypass this gate. Closing A, when configured or a parking fallback, stays under the same live cover and retains the drafts rules.
+
+A 12-second soft cover deadline starts recovery, rather than revealing an unfinished transition. Recovery redraws the status and keeps protection until A and its layout are back in front, with a bounded six-second degraded recovery exit. An independent 20-second private-queue watchdog directly sets only the independently owned cover's alpha to zero even if the main thread is blocked; main-actor disposal follows. Order out and flush the panel before hiding/destroying its Space; verify the destroyed Space level reads zero. Every cancellation/replacement, link/process failure, quit, lock/sleep/session loss, display change and Dock restart disposes prepared resources. Unrelated foreground activation respects user intent and removes protection immediately. Multiple displays use the logged degraded path for now.
+
+The LIVE lab gate checks a simple animated owned cover over exactly two guarded Test A/Test B switches, not full product acceptance. Capture is lab-only metadata/hash sampling; no page pixels are retained. Unavailable capture is partial. Product renderer, recovery, lock/display edges, helper idle use and timing/RAM acceptance require separate checks. See the dated report under `tools/handoff-lab/results/` and `TESTING.md`; do not infer a visual pass from fake-world tests.
+
 Where things are:
 
 - **Repo:** this repository, read at `merge/icloud-tabs` (df6877e). File:line references are to that commit.

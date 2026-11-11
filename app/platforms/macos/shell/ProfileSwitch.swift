@@ -90,6 +90,8 @@ final class ProfileSwitch {
         case waitingForLink // its copy isn't linked, but it has a parked window: up to 3 s
         case preparing // the cover up, the target picked, blockers checked, its space set, drafts asked
         case frozen // the steps: under the freeze when there is one, else the same steps seen
+        case covering // live cover activating; no browser transition has started
+        case covered // live cover's readiness/old-window gates, independent of FreezeRules
         case after // unfrozen: a late park, the focus check, then landed
         case landed // every step done, waiting for the Spaces to stay still
         case recovering // a step failed: back to a visible window (§4.4)
@@ -314,7 +316,7 @@ final class ProfileSwitch {
             return finish(.failed(to, "Safari stopped answering"), "\(to.profile)'s copy went away mid-switch")
         }
         switch phase {
-        case .idle, .waitingForLink, .preparing, .frozen, .after, .landed, .recovering:
+        case .idle, .waitingForLink, .preparing, .covering, .covered, .frozen, .after, .landed, .recovering:
             return
         case .waitingForProfile:
             if world.isLinked(to.profile), let w = ownWindow(to.profile, awaited: true) {
@@ -409,6 +411,7 @@ final class ProfileSwitch {
     // done, else the old one). What was asked meanwhile starts from there.
     func finish(_ event: Event, _ why: String, landed given: (profile: String, windowId: Int?)? = nil) {
         guard let world else { return }
+        if let run, let hw = world as? HandoffWorld { endLiveCover(run, hw, .cancelled) }
         note(why)
         let landed: (profile: String, windowId: Int?)?
         if let given {

@@ -65,6 +65,8 @@ protocol HandoffWorld: SwitchWorld {
     // drafts asked, no notices).
     var handoffOn: Bool { get }
     var handoffFreezer: Freezer? { get } // nil: no freeze calls
+    var handoffCover: HandoffCover? { get }
+    func handoffCoverContext(from: WindowKey, to: ProfileSwitch.Target) -> LiveCoverContext?
     var spaceReads: SpaceReads? { get } // nil: no Space reads, and so the close-based switch
     var parker: BridgeParker? { get }
     var parking: ParkingRegistry? { get }
@@ -97,11 +99,15 @@ protocol HandoffWorld: SwitchWorld {
 
 extension HandoffWorld {
     var handoffOn: Bool { true }
+    var handoffCover: HandoffCover? { nil }
+    func handoffCoverContext(from: WindowKey, to: ProfileSwitch.Target) -> LiveCoverContext? { nil }
     func handOverOverlay(from a: WindowKey, to b: WindowKey) -> Bool { false }
     func devHookAllows(_ a: String, _ b: String) -> Bool { false } // DEV-HOOK
 }
 
 struct HandoffOptions {
+    var coverSetupWait: Double = 0.8 // warmed alongside the existing source-cover/drafts checks
+    var liveCoverWait: Double = 12 // soft deadline: recover under the live cover, never a 1.7 s reveal
     var poll: Double = 0.008 // §3.2: the freeze's own reads
     var watchPoll: Double = 0.1 // the aftercare, with no switch running
     var coverWait: Double = 0.25 // §1.5: the freeze starts on coverShown, or this long after the start
@@ -195,6 +201,14 @@ final class HandoffRun {
     var waitingSince: Double?
     var prepared = false
     var coverAt: Double?
+    var coverPreparedAt: Double?
+    var coverEligible = false
+    var coverFailed = false
+    var coverActive = false
+    var deferredSpaceSelection = false
+    var coverStartedAt: Double?
+    var coverEndedAt: Double?
+    var stepsAt: Double?
     var drafts: WindowDrafts?
     var draftsAsked = false
 
@@ -288,8 +302,8 @@ final class HandoffRun {
     }
 
     func ms(_ t: Double?) -> String {
-        guard let t, let freezeAt else { return "-" }
-        return String(Int(((t - freezeAt) * 1000).rounded()))
+        guard let t, let origin = stepsAt ?? freezeAt else { return "-" }
+        return String(Int(((t - origin) * 1000).rounded()))
     }
 }
 
@@ -317,6 +331,7 @@ struct AftercareWatch {
 
 // What lasts the session (until Margin.app quits).
 struct HandoffSession {
+    var coverOff: String? // separate from FreezeRules; a cover failure cannot demote the freezer
     var rules = FreezeRules()
     var parkOff: String? // parking off for this session: why
     var pending: [WindowKey: (type: String, token: Int, at: Double)] = [:] // windows calls not answered yet
@@ -341,9 +356,11 @@ extension ProfileSwitch: FreezerDelegate {
     // The numbers this switch is moving (its A and B): the registry's sweep leaves them alone.
     var movingNumbers: Set<Int> { run.map { Set([$0.aNumber, $0.bNumber].compactMap { $0 }) } ?? [] }
     // The switch's target window (its overlay is made from the start, §2.3).
-    func isTarget(_ key: WindowKey) -> Bool { run?.b == key }
+    private var liveCoverRecovery: Bool { run?.coverStartedAt != nil && run?.failure != nil }
+    var inHandoffTransition: Bool { phase == .frozen || phase == .covered }
+    func isTarget(_ key: WindowKey) -> Bool { liveCoverRecovery ? run?.a == key : run?.b == key }
     // The window the switch leaves.
-    var leaving: WindowKey? { run?.a }
+    var leaving: WindowKey? { liveCoverRecovery ? run?.b : run?.a }
 
     // A's overlay drew the cover (app/shared/host/overlay.ts `switch.coverShown`).
     func coverShown(in key: WindowKey) {
@@ -377,12 +394,13 @@ extension ProfileSwitch: FreezerDelegate {
         }
         guard let run, let hw = handoffWorld else { return }
         if run.live { reveal(run, hw, why) }
+        if run.coverPreparedAt != nil || run.coverActive { endLiveCover(run, hw, why) }
         if run.closeLive { revealClose(run, hw, why) }
-        if [.preparing, .waitingForLink].contains(phase) {
-            guard why != .safariQuit else { return } // its copies go: the steps see it
+        if [.preparing, .covering, .waitingForLink].contains(phase) {
+            guard why != .safariQuit || run.coverEligible else { return } // legacy: its copies go, the steps see it
             return finish(.cancelled(run.target), "\(why.rawValue) before the freeze: nothing done", landed: run.a.map { ($0.link, $0.windowId) })
         }
-        if [.frozen].contains(phase), why != .quit { recover(run, hw, "the switch was interrupted (\(why.rawValue))") }
+        if [.frozen, .covered].contains(phase), why != .quit { recover(run, hw, "the switch was interrupted (\(why.rawValue))") }
     }
 
     // The Mac woke: the freeze may run again (unless Margin is quitting).
@@ -471,7 +489,8 @@ extension ProfileSwitch: FreezerDelegate {
         let hasParked = !(parking?.entries(of: to.profile).isEmpty ?? true)
         // Closing without a freeze is today's switch (plus its drafts check), unless there's a parked
         // window to show, or a window's own activity asked.
-        if !choice.freeze, choice.old == .close, !hasParked, asked == nil, a != nil {
+        let liveCover = hw.handoffCover != nil && session.coverOff == nil && session.noFreeze == nil && displays == 1 && a != nil
+        if !choice.freeze, !liveCover, choice.old == .close, !hasParked, asked == nil, a != nil {
             note("\(choice): the close-based switch")
             return false
         }
@@ -483,6 +502,8 @@ extension ProfileSwitch: FreezerDelegate {
             ?? asked.flatMap { hw.number(of: $0) }.flatMap { parking?.line(of: $0) }
             ?? (a == nil ? parking?.recentLine : nil)
         run.choice = choice
+        run.coverEligible = liveCover
+        if hw.handoffCover != nil, displays != 1 { note("live cover unavailable with multiple displays: degraded freeze/slide fallback") }
         run.devTest = devTest // DEV-HOOK
         if devCapped { run.devUsed.append("cap") } // DEV-HOOK
         target = to
@@ -505,7 +526,7 @@ extension ProfileSwitch: FreezerDelegate {
     func handoffAgain(_ to: Target, _ run: HandoffRun) {
         guard let hw = handoffWorld else { return }
         if to == run.target { return }
-        guard [.preparing, .waitingForLink, .waitingForProfile].contains(phase) else {
+        guard [.preparing, .covering, .waitingForLink, .waitingForProfile].contains(phase) else {
             queued = to
             return note("\(to) asked mid-switch: after this one")
         }
@@ -517,6 +538,7 @@ extension ProfileSwitch: FreezerDelegate {
         }
         note("\(to) asked before the freeze: in place of \(run.target)")
         let (fromProfile, windowId) = (run.a?.link ?? from?.profile ?? "", run.a?.windowId)
+        endLiveCover(run, hw, .cancelled)
         self.run = nil
         phase = .idle
         target = nil
@@ -539,7 +561,7 @@ extension ProfileSwitch: FreezerDelegate {
                 return finish(.failed(run.target, "Margin is turned off in it"), "Margin is turned off in \(link) (the browser's settings)")
             } else if phase != .waitingForProfile, run.way == .openProfile {
                 return // asked under the freeze (showB), or about to be (preparing)
-            } else if phase != .waitingForProfile, freezes(run, hw) {
+            } else if phase != .waitingForProfile, protectsSwitch(run, hw) {
                 // Its copy starts with a window Margin asks Safari for (its own menu, through Accessibility). A window
                 // opened beside a full-screen one is put in full screen by macOS, which slides to it (§1.6), so it's
                 // asked under the freeze, as a create: the cover, the freeze, then the window (showB). The switch
@@ -551,7 +573,7 @@ extension ProfileSwitch: FreezerDelegate {
                 run.prepared = false
                 newWindow = nil
                 if phase != .preparing { enter(.preparing, for: options.settleTimeout) }
-                note("\(link) isn't linked: its window to be asked for under the freeze")
+                note("\(link) isn't linked: its window to be asked for under the transition cover")
             } else if phase != .waitingForProfile {
                 // No freeze: asked now, and seen (the switch goes on once that copy links). Else the person is told.
                 let opened = world?.openProfileWindow(link) == true
@@ -631,7 +653,11 @@ extension ProfileSwitch: FreezerDelegate {
         case .preparing:
             prepareStep(run, hw, now)
         case .frozen:
-            frozenStep(run, hw, now)
+            transitionStep(run, hw, now)
+        case .covering:
+            if now >= deadline { coverFallback(run, hw, "activation timed out") }
+        case .covered:
+            coveredStep(run, hw, now)
         case .after:
             afterStep(run, hw, now)
         case .recovering:
@@ -699,15 +725,36 @@ extension ProfileSwitch: FreezerDelegate {
             run.prepared = true
             // §1.10: a sheet or dialog on A.
             if dialogOver(run, hw) { return blocked(run, hw, .dialogOpen, profile: run.a?.link ?? run.target.profile, "a dialog is up in \(run.a.map(\.description) ?? "-")") }
-            // B's space while it's still hidden.
-            if let b = run.b, hw.activeSpaceId(of: b) != run.target.space {
-                hw.request(b.link, "setSpace", ["windowId": b.windowId, "spaceId": run.target.space], windowId: b.windowId) { _, _ in }
+            if run.coverEligible, !run.coverFailed, let a = run.a, let cover = hw.handoffCover {
+                if let context = hw.handoffCoverContext(from: a, to: run.target) {
+                    run.coverPreparedAt = now
+                    cover.prepare(context)
+                } else {
+                    run.coverFailed = true
+                    note("live cover unavailable for this window: degraded freeze/slide fallback")
+                }
             }
+            // Selecting a space may activate its browser window. Live mode
+            // defers that request until the cover has visibly acknowledged.
+            run.deferredSpaceSelection = run.coverEligible && !run.coverFailed
+            if !run.deferredSpaceSelection { selectTargetSpace(run, hw) }
             // A's drafts, whenever this switch may close it (a close, or a park that may fail).
             if run.choice.old != .keep, let a = run.a { askDrafts(run, hw, a) }
         }
         // The cover drawn in A (or 250 ms), then the cooldown (§1.5).
         guard run.a == nil || run.coverAt != nil || now - run.startedAt >= ho.coverWait else { return }
+        if run.coverPreparedAt != nil, !run.coverFailed, let cover = hw.handoffCover {
+            switch cover.state {
+            case .prepared:
+                return startLiveCover(run, hw, cover)
+            case .failed(let why):
+                coverFallback(run, hw, why)
+                return
+            default:
+                if now - (run.coverPreparedAt ?? now) >= ho.coverSetupWait { coverFallback(run, hw, "content preparation timed out") }
+                return
+            }
+        }
         if run.choice.freeze, !cooledDown(now) { return }
         freezeAndGo(run, hw, now)
     }
@@ -716,6 +763,78 @@ extension ProfileSwitch: FreezerDelegate {
     // window yet to be opened).
     private func freezes(_ run: HandoffRun, _ hw: HandoffWorld) -> Bool {
         run.choice.freeze && session.rules.on && session.noFreeze == nil && hw.handoffFreezer != nil
+    }
+
+    private func protectsSwitch(_ run: HandoffRun, _ hw: HandoffWorld) -> Bool {
+        freezes(run, hw) || (run.coverEligible && !run.coverFailed && session.coverOff == nil && hw.handoffCover != nil)
+    }
+
+    private func selectTargetSpace(_ run: HandoffRun, _ hw: HandoffWorld) {
+        run.deferredSpaceSelection = false
+        if let b = run.b, hw.activeSpaceId(of: b) != run.target.space {
+            hw.request(b.link, "setSpace", ["windowId": b.windowId, "spaceId": run.target.space], windowId: b.windowId) { _, _ in }
+        }
+    }
+
+    private func startLiveCover(_ run: HandoffRun, _ hw: HandoffWorld, _ cover: HandoffCover) {
+        captureStartSpaces(run, hw)
+        enter(.covering, for: ho.coverSetupWait)
+        cover.onEmergency = { [weak self, weak run, weak hw] in
+            guard let self, let run, let hw, self.run === run else { return }
+            self.session.coverOff = "cover process or emergency watchdog"
+            if self.phase == .covered {
+                self.endLiveCover(run, hw, .failed)
+                self.recover(run, hw, "live cover ended unexpectedly: degraded recovery")
+            } else if self.phase == .preparing || self.phase == .covering {
+                self.coverFallback(run, hw, "cover preparation ended unexpectedly")
+            }
+        }
+        cover.activate { [weak self, weak run, weak hw] ok in
+            guard let self, let run, let hw, self.run === run, self.phase == .covering else { return }
+            guard ok else { return self.coverFallback(run, hw, "activation refused") }
+            run.coverActive = true
+            run.coverStartedAt = self.clock.now()
+            run.stepsAt = self.clock.now()
+            self.enter(.covered, for: self.ho.liveCoverWait)
+            self.handOver(run, hw)
+            self.showB(run, hw) // never before the live cover's own readiness acknowledgement
+        }
+    }
+
+    private func coverFallback(_ run: HandoffRun, _ hw: HandoffWorld, _ why: String) {
+        run.coverFailed = true
+        session.coverOff = why
+        endLiveCover(run, hw, .failed)
+        note("live cover off this session (\(why)): degraded \(freezes(run, hw) ? "freeze" : "macOS slide") fallback")
+        enter(.preparing, for: options.settleTimeout)
+        prepareStep(run, hw, clock.now())
+    }
+
+    // Also used by finish/replacement/quit: prepared but not shown pages must be disposed too.
+    func endLiveCover(_ run: HandoffRun, _ hw: HandoffWorld, _ why: RevealWhy) {
+        guard run.coverPreparedAt != nil || run.coverActive else { return }
+        run.coverActive = false
+        if run.coverStartedAt != nil, run.coverEndedAt == nil { run.coverEndedAt = clock.now() }
+        if hw.handoffCover?.end(why) == false { session.coverOff = "cover cleanup refused" }
+    }
+
+    private func coveredStep(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
+        guard run.coverActive, hw.handoffCover?.state == .shown else {
+            session.coverOff = "cover stopped while switching"
+            endLiveCover(run, hw, .failed)
+            return recover(run, hw, "live cover stopped: degraded recovery")
+        }
+        if now >= deadline { return recover(run, hw, "live cover soft deadline: restoring the old window under cover") }
+        transitionStep(run, hw, now)
+    }
+
+    private func captureStartSpaces(_ run: HandoffRun, _ hw: HandoffWorld) {
+        let reads = hw.spaceReads
+        run.activeAtFreeze = run.aNumber.flatMap { reads?.showing(onDisplayOf: $0) } ?? reads?.activeSpace()
+        run.fullScreenAtFreeze = reads?.fullScreenSpaces() ?? []
+        if let n = run.aNumber, let spaces = reads?.spaces(of: n) {
+            run.aSpace = spaces.first { run.fullScreenAtFreeze.contains($0) } ?? run.activeAtFreeze
+        } else { run.aSpace = run.activeAtFreeze }
     }
 
     private func cooledDown(_ now: Double) -> Bool {
@@ -759,15 +878,7 @@ extension ProfileSwitch: FreezerDelegate {
     // ---- the freeze, and the steps under it ----
 
     private func freezeAndGo(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
-        let reads = hw.spaceReads
-        // (The Space showing on A's display: each display has its own; one display, the active Space.)
-        run.activeAtFreeze = run.aNumber.flatMap { reads?.showing(onDisplayOf: $0) } ?? reads?.activeSpace()
-        run.fullScreenAtFreeze = reads?.fullScreenSpaces() ?? []
-        if let n = run.aNumber, let spaces = reads?.spaces(of: n) {
-            run.aSpace = spaces.first { run.fullScreenAtFreeze.contains($0) } ?? run.activeAtFreeze
-        } else {
-            run.aSpace = run.activeAtFreeze
-        }
+        captureStartSpaces(run, hw)
         // A parked target its copy hasn't named yet is shown by number, seen (§1.5).
         if run.way == .parked, run.b == nil, run.choice.freeze {
             run.choice.freeze = false
@@ -793,6 +904,7 @@ extension ProfileSwitch: FreezerDelegate {
             }
         }
         run.freezeAt = clock.now()
+        run.stepsAt = run.freezeAt
         enter(.frozen, for: options.settleTimeout)
         showB(run, hw)
     }
@@ -800,6 +912,7 @@ extension ProfileSwitch: FreezerDelegate {
     // §1.3 step 2: a parked B into the active Space (or a normal one from its Space), then step 3.
     private func showB(_ run: HandoffRun, _ hw: HandoffWorld) {
         let now = clock.now()
+        if run.deferredSpaceSelection { selectTargetSpace(run, hw) }
         switch run.way {
         case .parked:
             guard let n = run.bNumber, let parking = hw.parking else { return recover(run, hw, "Margin couldn’t find its window") }
@@ -810,7 +923,7 @@ extension ProfileSwitch: FreezerDelegate {
             }
             parking.show(number: n, cause: .handoff) { [weak self, weak run] o in
                 guard let self, let run, self.run === run else { return }
-                guard self.phase == .frozen else {
+                guard self.inHandoffTransition else {
                     // Shown after the switch gave up: parked again once it's normal (it is).
                     if o.ok { self.addWatch(AftercareWatch(key: run.b, number: n, kind: .parkWhenNormal, since: self.clock.now(), until: self.clock.now() + self.ho.aftercareFor, runs: self.session.runs, cause: .recovery, link: run.target.profile)) }
                     return
@@ -825,7 +938,7 @@ extension ProfileSwitch: FreezerDelegate {
             if bridgeShows(run, hw), let n = run.bNumber, let parker = hw.parker {
                 run.showAsked = true
                 parker.show(n) { [weak self, weak run] o in
-                    guard let self, let run, self.run === run, self.phase == .frozen else { return }
+                    guard let self, let run, self.run === run, self.inHandoffTransition else { return }
                     // A normal window on another Space: its full-screen request brings it anyway, but by
                     // macOS's slide to its Desktop, which the freeze would abort: revealed, then seen.
                     if !o.ok {
@@ -855,12 +968,25 @@ extension ProfileSwitch: FreezerDelegate {
         let link = run.target.profile
         guard world?.openProfileWindow(link) == true else {
             note("\(link) isn't linked: waiting for one of its windows")
+            if run.coverActive {
+                // No browser transition has been requested. The person must be
+                // able to use Safari's menu, rather than waiting behind a cover
+                // until its emergency watchdog. A later manual opening follows
+                // the existing visible path for this run.
+                run.coverFailed = true
+                endLiveCover(run, hw, .failed)
+                // No browser work ran under this cover. Its later manual path
+                // must use ordinary fallback close/recovery ownership rules.
+                run.coverStartedAt = nil
+                run.coverEndedAt = nil
+                note("live cover ended before manual profile opening: degraded macOS slide fallback")
+            }
             reveal(run, hw, .failed)
             enter(.waitingForProfile, for: options.profileWait)
             world?.switchChanged(.needsProfile(run.target))
             return
         }
-        note("\(link) isn't linked: asked the browser for a new window of it under the freeze, waiting for its copy")
+        note("\(link) isn't linked: asked the browser for a new window of it under transition protection, waiting for its copy")
     }
 
     // The show variant's window can go through the bridge (§1.5 rule 5): known, and parking on.
@@ -892,7 +1018,7 @@ extension ProfileSwitch: FreezerDelegate {
         }
         hw.request(b.link, "windowDrafts", HandoffRequest.windowDrafts(windowId: b.windowId).payload, windowId: b.windowId) { [weak self, weak run] result, _ in
             // Answered after the switch gave up: B is in no Space now, whatever its drafts say.
-            guard let self, let run, self.run === run, self.phase == .frozen else { self?.returnUnshownB(n, hw); return }
+            guard let self, let run, self.run === run, self.inHandoffTransition else { self?.returnUnshownB(n, hw); return }
             guard result.flatMap({ WindowDrafts($0) })?.mayClose == true else {
                 hw.parking?.returnToDesktop(number: n, cause: .recovery)
                 self.notices.append(SwitchNotice(.windowKeptDraft, profile: b.link, shownIn: run.a, kept: b))
@@ -933,7 +1059,7 @@ extension ProfileSwitch: FreezerDelegate {
         windowCall(hw, b, .setWindowState(windowId: b.windowId, state: .fullscreen, focused: true, notAfter: notAfter)) { [weak self, weak run] answer, error in
             guard let self, let run, self.run === run else { return }
             run.stateAnswer = answer
-            guard self.phase == .frozen, run.r2At == nil else { return }
+            guard self.inHandoffTransition, run.r2At == nil else { return }
             switch answer {
             case .busy?: self.recover(run, hw, "Safari is busy in that window")
             case .refused?: self.recover(run, hw, "Safari was too slow")
@@ -950,7 +1076,7 @@ extension ProfileSwitch: FreezerDelegate {
         hw.request(link, "openSpaceWindow", HandoffRequest.openSpaceWindow(spaceId: run.target.space).payload, windowId: nil) { [weak self, weak run] result, error in
             guard let self else { return }
             let made = result.flatMap { SpaceWindowAnswer($0) }
-            guard let run, self.run === run, self.phase == .frozen else {
+            guard let run, self.run === run, self.inHandoffTransition else {
                 // Answered after the switch gave up: its window would be a second one.
                 if let made {
                     self.note("late window \(made.windowId) of \(link): closed")
@@ -970,7 +1096,7 @@ extension ProfileSwitch: FreezerDelegate {
         }
     }
 
-    private func frozenStep(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
+    private func transitionStep(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
         let reads = hw.spaceReads
         // The freeze gone by itself (the watchdog), its report still on its way.
         if run.live, hw.handoffFreezer?.isLive != true { late(run, now) }
@@ -1030,13 +1156,14 @@ extension ProfileSwitch: FreezerDelegate {
             note("\(a) closed mid-switch: nothing to park")
         }
         // §1.2: under the freeze, the active Space may only be A's, or a full-screen one holding B.
-        if run.live, let reads, let active = (run.aNumber ?? run.bNumber).flatMap({ reads.showing(onDisplayOf: $0) }) ?? reads.activeSpace() {
+        if run.live || run.coverActive, let reads, let active = (run.aNumber ?? run.bNumber).flatMap({ reads.showing(onDisplayOf: $0) }) ?? reads.activeSpace() {
             let fs = reads.fullScreenSpaces() ?? []
             let holdsB = run.bNumber.flatMap { reads.spaces(of: $0)?.contains(active) } ?? !run.fullScreenAtFreeze.contains(active)
             if active != run.aSpace, !(fs.contains(active) && holdsB) {
                 let since = run.foreignSince ?? now
                 run.foreignSince = since
                 if now - since >= ho.foreignFor - 1e-9 {
+                    if run.coverActive { endLiveCover(run, hw, .aborted) }
                     recover(run, hw, "aborted: the active Space moved to \(active)", reveal: .aborted)
                     // A swipe or Mission Control: the person's, so B landing after it is no late landing.
                     // Marked after recovery made its watches (the clock moves while it reveals), so no
@@ -1051,7 +1178,8 @@ extension ProfileSwitch: FreezerDelegate {
         // Deadlines (§1.4): the create's answer, then the settle timeout from the freeze (or the answer).
         if run.way == .create, run.createdAt == nil {
             if now - (run.createAskedAt ?? now) >= options.createTimeout { return recover(run, hw, "Safari took too long to open its window") }
-        } else if now - (run.createdAt ?? run.openedAt ?? run.freezeAt ?? now) >= options.settleTimeout {
+        } else if now - (run.createdAt ?? run.openedAt ?? run.stepsAt ?? run.freezeAt ?? now) >= options.settleTimeout {
+            if run.coverActive { return recover(run, hw, "live cover readiness/old-window timeout: restoring under cover") }
             if run.r2At != nil {
                 note("settle timeout with B ready: A's part to the aftercare")
                 return enterAfter(run, hw)
@@ -1062,8 +1190,32 @@ extension ProfileSwitch: FreezerDelegate {
         readB(run, hw, n, now)
         retryIfStuck(run, hw, n, now)
         guard run.r2At != nil else { return }
+        // A fullscreen Space existing and being active does not establish that
+        // B is the front browser window. Never dismantle A behind a live cover
+        // until that independent identity check also holds.
+        if run.coverActive, let b = run.b, !bInFront(run, hw, b) {
+            if run.checkTries == 0 {
+                run.checkTries = 1
+                windowCall(hw, b, .focusWindow(windowId: b.windowId, fullscreen: true, notAfter: msNow(options.frontCheck))) { _, _ in }
+            }
+            return
+        }
         aSteps(run, hw, now)
         guard r3(run, now), r4(run, hw, now), r5(run, hw, now) else { return }
+        if run.coverActive {
+            guard let b = run.b else { return }
+            // A browser-tab echo can precede its selected-space storage echo.
+            // Keep the live cover until the cached sidebar selection agrees.
+            guard hw.activeSpaceId(of: b) == run.target.space else { return }
+            guard bInFront(run, hw, b), hw.overlayAbove(b) else {
+                if run.checkTries == 0 {
+                    run.checkTries = 1
+                    windowCall(hw, b, .focusWindow(windowId: b.windowId, fullscreen: true, notAfter: msNow(options.frontCheck))) { _, _ in }
+                }
+                return
+            }
+            endLiveCover(run, hw, .ready)
+        }
         reveal(run, hw, .ready)
         enterAfter(run, hw)
     }
@@ -1114,7 +1266,7 @@ extension ProfileSwitch: FreezerDelegate {
     // in place; B's own (if any) is A's now, and goes out with A's (outA). Once per switch, only under a freeze (the
     // hand-over would be seen otherwise); B not known yet (a window the switch makes): at R2.
     private func handOver(_ run: HandoffRun, _ hw: HandoffWorld) {
-        guard run.live, !run.handedOver, let a = run.a, let b = run.b, a != b else { return }
+        guard run.live || run.coverActive, !run.handedOver, let a = run.a, let b = run.b, a != b else { return }
         run.handedOver = true
         if hw.handOverOverlay(from: a, to: b) { note("A's sidebar handed to \(b)") }
     }
@@ -1162,6 +1314,7 @@ extension ProfileSwitch: FreezerDelegate {
     private func r4(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) -> Bool {
         if run.r4At != nil { return true }
         if run.framedAt != nil, let b = run.b, hw.overlayAbove(b) { run.r4At = now; return true }
+        if run.coverActive { return false } // a live cover cannot reveal an unframed destination
         guard let r2 = run.r2At, now - r2 >= ho.framedWait else { return false }
         run.r4At = now
         note("B's overlay not framed in \(Int(ho.framedWait * 1000)) ms")
@@ -1191,6 +1344,10 @@ extension ProfileSwitch: FreezerDelegate {
         switch run.choice.old {
         case .keep, .close:
             outA(run, hw, a)
+            if run.coverActive, run.choice.old == .close {
+                guard run.drafts != nil || now - run.startedAt >= ho.draftsWait else { return }
+                closeOrKeepA(run, hw, a)
+            }
             if run.choice.old == .keep, !run.aDone {
                 run.aKept = run.choice.why ?? "kept"
                 run.aDone = true
@@ -1300,6 +1457,16 @@ extension ProfileSwitch: FreezerDelegate {
 
     private func r5(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) -> Bool {
         if run.r5At != nil { return true }
+        if run.coverActive, let a = run.a, let n = run.aNumber, !run.aGone {
+            guard run.aDone, hw.overlayOffScreen(a) else { return false }
+            if run.aClosedAt != nil {
+                guard hw.spaceReads?.window(n) == nil, !hw.copyWindows(a.link).contains(where: { $0.key == a }) else { return false }
+            } else if run.aParkedAt != nil {
+                guard hw.spaceReads?.readsParked(n) == true else { return false }
+            } else if run.aKept != nil {
+                guard hw.spaceReads?.window(n)?.onScreen == false else { return false }
+            } else { return false }
+        }
         let holds: Bool = {
             guard let a = run.a, let n = run.aNumber, !run.aGone else { return true }
             if run.aDeferred || run.aParkFailed { return true }
@@ -1399,8 +1566,10 @@ extension ProfileSwitch: FreezerDelegate {
     }
 
     private func closeA(_ run: HandoffRun, _ hw: HandoffWorld, _ a: WindowKey, tries: Int) {
+        if run.coverStartedAt != nil, self.run !== run || phase != .covered { return }
         windowCall(hw, a, .closeWindow(windowId: a.windowId, notAfter: msNow(options.closeTimeout))) { [weak self, weak run] answer, error in
             guard let self, let run else { return }
+            if run.coverStartedAt != nil, self.run !== run || self.phase != .covered { return }
             if error == nil, answer?.called != false {
                 run.aClosedAt = self.clock.now()
                 run.aDone = true
@@ -1733,6 +1902,10 @@ extension ProfileSwitch: FreezerDelegate {
     // §8.1: one line per switch, numbers only.
     private func summary(_ run: HandoffRun, _ hw: HandoffWorld) -> String {
         var s = "handoff: \(run.a.map(\.description) ?? "nothing") → \(run.b.map(\.description) ?? run.target.profile) (\(run.choice.old.rawValue)\(run.choice.freeze && run.handle != nil ? "+freeze" : ""), \(run.way.rawValue))"
+        if let start = run.coverStartedAt {
+            s += ", live cover \(Int(((run.coverEndedAt ?? clock.now()) - start) * 1000)) ms (no freeze)"
+            if let ended = run.coverEndedAt { s += ", request to reveal \(Int(((ended - run.startedAt) * 1000).rounded())) ms" }
+        }
         if let freezeAt = run.freezeAt, let revealed = run.revealedAt, run.handle != nil {
             s += ", frozen \(Int(((revealed - freezeAt) * 1000).rounded())) ms" + (run.revealResult.map { " (result \($0))" } ?? "")
         }
@@ -1778,6 +1951,7 @@ extension ProfileSwitch: FreezerDelegate {
         guard self.run === run, phase != .recovering else { return }
         note("recovered: \(why)")
         reveal(run, hw, revealWhy)
+        if run.coverActive { hw.handoffCover?.recovering() }
         run.failure = why
         run.endEvent = event ?? .failed(run.target, why)
         enter(.recovering, for: options.settleTimeout)
@@ -1861,8 +2035,16 @@ extension ProfileSwitch: FreezerDelegate {
             let full = hw.copyWindows(a.link).first { $0.key == a }?.state == "fullscreen"
             return full && reads.spaces(of: n)?.contains(active) == true && (reads.fullScreenSpaces()?.contains(active) ?? false)
         }()
-        guard back || now >= deadline else { return }
+        let liveReady: Bool = {
+            guard run.coverActive, let a = run.a, !run.aGone else { return true }
+            return back && hw.inFront(a.link, windowId: a.windowId) && hw.overlayAbove(a)
+        }()
+        guard back && liveReady || now >= deadline else { return }
         if !back { note("\(run.a.map(\.description) ?? "-") not back in full screen in \(Int(options.settleTimeout)) s") }
+        if run.coverActive {
+            if !liveReady { session.coverOff = "recovery readiness timeout"; note("live cover recovery readiness timed out: degraded reveal") }
+            endLiveCover(run, hw, .failed)
+        }
         enterLanded(run, hw)
     }
 

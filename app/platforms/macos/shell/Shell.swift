@@ -196,6 +196,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Off until gate G1 has passed for Margin.app itself (§10.4): every switch is then the
         // close-based one, exactly as before. `MarginHandoff` in the defaults turns it on (forApp).
         var handoff = false
+        var liveProfileCover = false // issue #15: opt-in session until the live gates pass
         // A harness's stand-ins for the Space reads, the parker and the freezer (never the system's):
         // given, they're used as the launch check's would be, with no self-test.
         var handoffParts: HandoffParts?
@@ -345,6 +346,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // ---- the profile handoff in the shell (ShellHandoff.swift) ----
     var freezer: Freezer? // the freeze (RealFreezer, from what the launch check passed), or a harness's
+    var liveProfileCover: HandoffCover?
     var heldOut: Set<WindowKey> = [] // overlays a switch ordered out (its A's, §2.3): kept out until it's over
     var windowsHeld: Set<WindowKey> = [] // overlays whose `windows` push waits for their copy's full screen (§2.4)
     var windowsPushes: [WindowKey: Int] = [:] // `windows` pushes given to each overlay (the tests read it)
@@ -405,6 +407,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // On by default since 2026-11-07 (decided: the switch to another profile without Safari's slide, its window
         // parked); `defaults write com.unibox.margin MarginHandoff -bool NO` turns it off (the close-based switch).
         options.handoff = UserDefaults.standard.object(forKey: "MarginHandoff") as? Bool ?? true
+        options.liveProfileCover = UserDefaults.standard.bool(forKey: "MarginLiveProfileCover")
+        Diagnostics.note("live profile cover: \(options.liveProfileCover ? "requested for this session" : "off (experimental gate)")")
         Diagnostics.note(options.handoff ? "handoff: on: profile switches hand off when the private calls allow"
                          : "handoff: off (MarginHandoff is NO): every profile switch is the close-based one")
         options.devHooksOn = { DevHooks.appDefault() } // DEV-HOOK
@@ -427,6 +431,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         privateCalls = PrivateCalls.check(resolver: resolver, defaults: options.privateCallsDefaults)
         let sky = SkyLight(resolver: resolver, availability: privateCalls)
         skyLight = sky
+        if options.liveProfileCover {
+            if privateCalls.liveCover { liveProfileCover = NativeHandoffCover(pages: pages, io: .real(sky)) }
+            else { Diagnostics.note("live cover unavailable at launch: degraded freeze/macOS slide fallback") }
+        }
         // The freeze's session rules start off when the launch check didn't pass it (Freezer.swift).
         switcher.session.rules = FreezeRules(availability: privateCalls)
         if privateCalls.freeze { freezer = RealFreezer(skyLight: sky) }
@@ -468,6 +476,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     private func stopNow(_ then: @escaping () -> Void) {
+        _ = liveProfileCover?.end(.quit)
         stopped = true
         if !options.harness { HelperSplash.stop() }
         edgeFence = nil
@@ -1014,10 +1023,15 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     /// order isn't front to back between Margin's windows and Safari's (a real session's trace 2026-11-07): an overlay already
     /// in front isn't ordered in again on every read, and a switch's R4 isn't held back by a wrong "behind".
     func isStacked(_ list: [ServerWindow], overlay: OverlayController, browser: ServerWindow, toolbar: Int?) -> Bool {
-        if WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: browser.number, toolbar: toolbar, own: overlay.catcherWindowNumbers) { return true }
+        let own = overlay.catcherWindowNumbers.union(liveProfileCover?.windowNumbers ?? [])
+        if WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: browser.number, toolbar: toolbar, own: own) { return true }
         guard let above = windowSource.above(browser.number) else { return false }
         return WindowMatcher.stackedAboveExactly(aboveBrowser: above, aboveToolbar: toolbar.flatMap { windowSource.above($0) } ?? (toolbar == nil ? nil : []),
-                                                overlay: overlay.windowNumber, browser: browser.bounds, browserPid: browser.pid, own: overlay.catcherWindowNumbers)
+                                                overlay: overlay.windowNumber, browser: browser.bounds, browserPid: browser.pid, own: own)
+    }
+
+    func browserToolbar(_ list: [ServerWindow], browser: ServerWindow) -> ServerWindow? {
+        WindowMatcher.fullScreenToolbar(list, browser: browser, spacesOf: { windowMap.snapshot.windows[$0]?.spaces })
     }
 
     private func readModelBounds(_ number: Int) -> CGRect? {
@@ -1437,7 +1451,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             overlay.windowFrame = server.bounds
             overlay.size(to: frame)
             // Below the window's full-screen toolbar (its own window), so it slides over Margin too.
-            let toolbar = WindowMatcher.fullScreenToolbar(list, browser: server)?.number
+            let toolbar = browserToolbar(list, browser: server)?.number
             let showed = overlay.show(over: number, frame: frame, toolbar: toolbar, why: spaceChanged ? "its window is on screen after the Space changed" : "its window is on screen")
             if showed, wasShown, !isStacked(list, overlay: overlay, browser: server, toolbar: toolbar) {
                 overlay.reorder()

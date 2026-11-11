@@ -21,6 +21,7 @@
 
 import AppKit
 import ObjectiveC
+import OSLog
 
 nonisolated enum PrivateFramework: String, CaseIterable, Sendable {
     case skyLight = "SkyLight.framework"
@@ -58,7 +59,8 @@ enum PrivateCalls {
     nonisolated static let spaceFunctions = ["SLSMainConnectionID", "SLSGetActiveSpace", "SLSCopySpacesForWindows", "SLSCopyManagedDisplaySpaces"]
     nonisolated static let geometryFunctions = ["SLSMainConnectionID", "SLSGetWindowBounds"]
     nonisolated static let parkFunctions = ["SLSSpaceCreate", "SLSSpaceDestroy"] // and the Space reads, to verify
-    nonisolated static var functions: [String] { var seen = Set<String>(); return (freezeFunctions + spaceFunctions + parkFunctions + geometryFunctions).filter { seen.insert($0).inserted } }
+    nonisolated static let liveCoverFunctions = ["SLSMainConnectionID", "SLSSpaceCreate", "SLSSpaceDestroy", "SLSSpaceSetAbsoluteLevel", "SLSSpaceGetAbsoluteLevel", "SLSShowSpaces", "SLSHideSpaces", "SLSSpaceAddWindowsAndRemoveFromSpaces", "SLSCopySpacesForWindows", "SLSSetWindowAlpha"]
+    nonisolated static var functions: [String] { var seen = Set<String>(); return (freezeFunctions + spaceFunctions + parkFunctions + geometryFunctions + liveCoverFunctions).filter { seen.insert($0).inserted } }
 
     nonisolated static let addRemoveClass = "SLSBridgedSpaceAddWindowsAndRemoveFromSpacesOperation"
     nonisolated static let removeClass = "SLSBridgedRemoveWindowsFromSpacesOperation"
@@ -91,6 +93,7 @@ enum PrivateCalls {
         var freeze = false // the freeze and its reveal
         var spaces = false // the Space reads (R1, where to show, verifying parks and shows)
         var geometry = false // untransformed window geometry, independent of Mission Control presentation
+        var liveCover = false // a special Space for Margin's own temporary animated cover only
         var park = false // the private Spaces and the bridge (needs spaces)
         var enumerator = false // §4.1 row 13: off until gate G5
         var missing: [String] = [] // frameworks, functions, classes and "Class -selector"
@@ -108,7 +111,7 @@ enum PrivateCalls {
             let encodings = mismatched.isEmpty ? "encodings ok" : "\(mismatched.count) encoding\(mismatched.count == 1 ? "" : "s") changed"
             let enumeration = enumerator ? "enumerator ok" : "enumerator off (\(candidateFound ? "candidate found, " : "")gate G5)"
             return "private calls on macOS \(version) (\(build ?? "build unknown")): \(part("freeze", freeze)), \(part("spaces", spaces)), \(part("park", park)), \(part("geometry", geometry)) "
-                + "(\(functionsFound)/\(functionsTotal) functions, \(classesFound)/\(classesTotal) classes, \(selectorsFound)/\(selectorsTotal) selectors, \(encodings)); \(enumeration)"
+                + "(\(functionsFound)/\(functionsTotal) functions, \(classesFound)/\(classesTotal) classes, \(selectorsFound)/\(selectorsTotal) selectors, \(encodings)); \(part("live cover", liveCover)); \(enumeration)"
         }
     }
 
@@ -159,6 +162,7 @@ enum PrivateCalls {
         let skyProblem = sky ? [] : ["SkyLight.framework didn't open"]
         let freezeProblems = skyProblem + freezeFunctions.filter { sky && !found.contains($0) }.map { "\($0) missing" }
         let geometryProblems = skyProblem + geometryFunctions.filter { sky && !found.contains($0) }.map { "\($0) missing" }
+        let coverProblems = skyProblem + liveCoverFunctions.filter { sky && !found.contains($0) }.map { "\($0) missing" }
         let spaceProblems = skyProblem + spaceFunctions.filter { sky && !found.contains($0) }.map { "\($0) missing" }
         var parkProblems = skyProblem + (wm ? [] : ["WindowManagement.framework didn't open"])
         parkProblems += parkFunctions.filter { sky && !found.contains($0) }.map { "\($0) missing" }
@@ -167,6 +171,8 @@ enum PrivateCalls {
         if spaceProblems.isEmpty == false, parkProblems.isEmpty { parkProblems = ["the Space reads are off"] }
 
         a.geometry = geometryProblems.isEmpty
+        a.liveCover = coverProblems.isEmpty
+        a.reasons["live cover"] = why(coverProblems)
         a.reasons["geometry"] = why(geometryProblems)
         a.freeze = freezeProblems.isEmpty
         a.spaces = spaceProblems.isEmpty
@@ -283,6 +289,13 @@ nonisolated struct SkyLight: @unchecked Sendable {
     typealias CopyManagedDisplaySpaces = @convention(c) (UInt32) -> Unmanaged<CFArray>?
     typealias SpaceCreate = @convention(c) (UInt32, Int32, CFDictionary?) -> UInt64
     typealias SpaceDestroy = @convention(c) (UInt32, UInt64) -> Void
+    // Current macOS dispatches these mutations through asynchronous bridged
+    // operations. Their return register is not a CGError (26B131 disassembly).
+    typealias SpaceSetAbsoluteLevel = @convention(c) (UInt32, UInt64, Int32) -> Void
+    typealias SpaceGetAbsoluteLevel = @convention(c) (UInt32, UInt64) -> Int32
+    typealias ShowHideSpaces = @convention(c) (UInt32, CFArray) -> Void
+    typealias SpaceAddOwnedWindow = @convention(c) (UInt32, UInt64, CFArray, Int32) -> Void
+    typealias SetWindowAlpha = @convention(c) (UInt32, UInt32, Float) -> Int32
     // The receiver goes in as a raw pointer: init consumes the object alloc made and may return
     // another, so Swift must never retain or release it. The result is +1 (an init's).
     typealias InitAddRemove = @convention(c) (UnsafeMutableRawPointer, ObjectiveC.Selector, UInt64, NSArray, UInt32) -> Unmanaged<AnyObject>?
@@ -290,6 +303,8 @@ nonisolated struct SkyLight: @unchecked Sendable {
     typealias Perform = @convention(c) (AnyObject, ObjectiveC.Selector) -> Void
 
     let refuses: Bool
+    private let canPark: Bool
+    private let canCover: Bool
     private var mainConnectionID: MainConnectionID?
     private var newTransition: NewTransition?
     private var invokeTransition: InvokeTransition?
@@ -300,6 +315,12 @@ nonisolated struct SkyLight: @unchecked Sendable {
     private var copyManagedDisplaySpaces: CopyManagedDisplaySpaces?
     private var spaceCreate: SpaceCreate?
     private var spaceDestroy: SpaceDestroy?
+    private var spaceSetAbsoluteLevel: SpaceSetAbsoluteLevel?
+    private var spaceGetAbsoluteLevel: SpaceGetAbsoluteLevel?
+    private var showSpaces: ShowHideSpaces?
+    private var hideSpaces: ShowHideSpaces?
+    private var spaceAddOwnedWindow: SpaceAddOwnedWindow?
+    private var setWindowAlpha: SetWindowAlpha?
     private var addRemoveClass: AnyClass?
     private var removeClass: AnyClass?
     private var initAddRemove: InitAddRemove?
@@ -315,23 +336,37 @@ nonisolated struct SkyLight: @unchecked Sendable {
     // against its own fake functions.
     init(resolver: PrivateResolver, availability: PrivateCalls.Availability, refusing: Bool = PrivateCalls.inTests) {
         refuses = refusing
+        canPark = availability.park
+        canCover = availability.liveCover
         func fn<T>(_ name: String, _: T.Type) -> T? { resolver.function(name, in: .skyLight).map { unsafeBitCast($0, to: T.self) } }
         func imp<T>(_ cls: String, _ sel: String, _: T.Type) -> T? { resolver.implementation(cls, sel).map { unsafeBitCast($0, to: T.self) } }
-        if availability.freeze || availability.spaces || availability.geometry { mainConnectionID = fn("SLSMainConnectionID", MainConnectionID.self) }
+        if availability.freeze || availability.spaces || availability.geometry || availability.liveCover { mainConnectionID = fn("SLSMainConnectionID", MainConnectionID.self) }
         if availability.geometry { getWindowBounds = fn("SLSGetWindowBounds", GetWindowBounds.self) }
         if availability.freeze {
             newTransition = fn("SLSNewTransition", NewTransition.self)
             invokeTransition = fn("SLSInvokeTransition", InvokeTransition.self)
             releaseTransition = fn("SLSReleaseTransition", ReleaseTransition.self)
         }
+        if availability.spaces || availability.liveCover {
+            copySpacesForWindows = fn("SLSCopySpacesForWindows", CopySpacesForWindows.self)
+        }
         if availability.spaces {
             getActiveSpace = fn("SLSGetActiveSpace", GetActiveSpace.self)
-            copySpacesForWindows = fn("SLSCopySpacesForWindows", CopySpacesForWindows.self)
             copyManagedDisplaySpaces = fn("SLSCopyManagedDisplaySpaces", CopyManagedDisplaySpaces.self)
         }
-        if availability.park {
+        if availability.park || availability.liveCover {
             spaceCreate = fn("SLSSpaceCreate", SpaceCreate.self)
             spaceDestroy = fn("SLSSpaceDestroy", SpaceDestroy.self)
+        }
+        if availability.liveCover {
+            spaceSetAbsoluteLevel = fn("SLSSpaceSetAbsoluteLevel", SpaceSetAbsoluteLevel.self)
+            spaceGetAbsoluteLevel = fn("SLSSpaceGetAbsoluteLevel", SpaceGetAbsoluteLevel.self)
+            showSpaces = fn("SLSShowSpaces", ShowHideSpaces.self)
+            hideSpaces = fn("SLSHideSpaces", ShowHideSpaces.self)
+            spaceAddOwnedWindow = fn("SLSSpaceAddWindowsAndRemoveFromSpaces", SpaceAddOwnedWindow.self)
+            setWindowAlpha = fn("SLSSetWindowAlpha", SetWindowAlpha.self)
+        }
+        if availability.park {
             addRemoveClass = resolver.objcClass(PrivateCalls.addRemoveClass)
             removeClass = resolver.objcClass(PrivateCalls.removeClass)
             initAddRemove = imp(PrivateCalls.addRemoveClass, PrivateCalls.initAddRemove, InitAddRemove.self)
@@ -408,15 +443,68 @@ nonisolated struct SkyLight: @unchecked Sendable {
 
     // A new private Space (SLSSpaceCreate(cid, 1, nil), as the labs made it); nil when it's 0.
     func createSpace() -> UInt64? {
-        guard let cid = connection(), let spaceCreate else { return nil }
+        guard canPark, let cid = connection(), let spaceCreate else { return nil }
         let space = spaceCreate(cid, 1, nil)
         return space == 0 ? nil : space
     }
 
     // SLSSpaceDestroy returns nothing: true means it was called.
     func destroySpace(_ space: UInt64) -> Bool {
-        guard let cid = connection(), let spaceDestroy else { return false }
+        guard canPark, let cid = connection(), let spaceDestroy else { return false }
         spaceDestroy(cid, space)
+        return true
+    }
+
+    // Only LiveCoverSpace uses these. Its ownership check refuses a foreign window before any write.
+    private func coverResult(_ result: Int32, _ operation: String) -> Bool {
+        if result != 0 { Logger(subsystem: "com.unibox.margin", category: "shell").error("live cover \(operation, privacy: .public): result \(result)") }
+        return result == 0
+    }
+    func createCoverSpace() -> UInt64? {
+        guard canCover, let cid = connection(), cid != 0, let spaceCreate else { return nil }
+        let number = spaceCreate(cid, 1, nil)
+        return number == 0 ? nil : number
+    }
+
+    func destroyCoverSpace(_ space: UInt64) -> Bool {
+        guard canCover, space > 0, let cid = connection(), cid != 0, let spaceDestroy else { return false }
+        spaceDestroy(cid, space)
+        return true
+    }
+
+    func setCoverLevel(_ space: UInt64) -> Bool {
+        guard space > 0, let cid = connection(), cid != 0, let spaceSetAbsoluteLevel else { return false }
+        spaceSetAbsoluteLevel(cid, space, 400)
+        return true // sent; the getter and membership are the caller's readiness gate
+    }
+
+    func coverLevel(_ space: UInt64) -> Int32? {
+        guard space > 0, let cid = connection(), cid != 0, let spaceGetAbsoluteLevel else { return nil }
+        return spaceGetAbsoluteLevel(cid, space)
+    }
+
+    // The emergency path avoids the asynchronous WM bridge and AppKit. Only an
+    // independently ownership-checked cover window is passed by LiveCoverSpaceIO.
+    func hideCoverWindow(_ window: UInt32) -> Bool {
+        guard window > 0, let cid = connection(), cid != 0, let setWindowAlpha else { return false }
+        return coverResult(setWindowAlpha(cid, window, 0), "emergency own-window alpha")
+    }
+
+    func addCoverWindow(_ window: UInt32, to space: UInt64) -> Bool {
+        guard space > 0, window > 0, let cid = connection(), cid != 0, let spaceAddOwnedWindow else { return false }
+        spaceAddOwnedWindow(cid, space, [NSNumber(value: window)] as CFArray, 7)
+        return true
+    }
+
+    func showCoverSpace(_ space: UInt64) -> Bool {
+        guard space > 0, let cid = connection(), cid != 0, let showSpaces else { return false }
+        showSpaces(cid, [NSNumber(value: space)] as CFArray)
+        return true
+    }
+
+    func hideCoverSpace(_ space: UInt64) -> Bool {
+        guard space > 0, let cid = connection(), cid != 0, let hideSpaces else { return false }
+        hideSpaces(cid, [NSNumber(value: space)] as CFArray)
         return true
     }
 

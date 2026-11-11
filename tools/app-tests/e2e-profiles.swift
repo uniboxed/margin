@@ -380,6 +380,7 @@ func handoffScenario() async {
   }
   // (To P2's second space, Office: its window 8 shows its first, Job, until then, so the sidebar can be seen showing the wrong one.)
   shell.performAcross(from: o7, "profile.switch", ["profile": "P2", "space": "home"])
+  let liveHello = shell.hello(for: o7) // immutable real source hello during this exact switch
   check("1: a handoff, not the close-based switch", shell.switcher.run != nil && shell.switcher.busy, "\(shell.switcher.history.suffix(3))")
   let done1 = await until(8, { !shell.switcher.busy })
   seen.watching = false
@@ -416,6 +417,25 @@ func handoffScenario() async {
   let hello = shell.overlays[k7].flatMap { (try? JSONSerialization.jsonObject(with: Data(shell.hello(for: $0).utf8))) as? JSONObject }
   check("1: the parked window's hello says full screen though its copy says normal", hello?["mode"] as? String == "fullscreen"
         && ExtWindow.parse(shell.links["safari:P1"]?.mirror.windows ?? [], link: "safari:P1").first?.state == "normal")
+  // The actual disposable WKWebView and message bridge, off every display.
+  // Setup must finish from DOM preparation without waiting for visible rAFs.
+  let noCalls = LiveCoverSpaceIO(owns: { _ in false }, create: { nil }, level: { _ in false }, readLevel: { _ in nil },
+                                add: { _, _ in false }, show: { _ in false }, hide: { _ in false },
+                                hideWindow: { _ in false }, destroy: { _ in false }, spaces: { _ in nil })
+  let coverPages = OverlayPages(root: options.root!)
+  var sessionAllowed = true
+  let liveCover = NativeHandoffCover(pages: coverPages, io: noCalls, sessionAllowed: { sessionAllowed })
+  let liveContext = LiveCoverContext(hello: liveHello, display: full, viewport: CGRect(origin: .zero, size: full.size))
+  liveCover.prepare(liveContext)
+  check("live cover: real read-only page prepares off screen through its bridge", await until(3, { liveCover.state == .prepared }), "\(liveCover.state)")
+  check("live cover: prepared page disposes panel and bridge without Space calls", liveCover.end(.cancelled) && liveCover.state == .idle && liveCover.windowNumbers.isEmpty)
+  liveCover.prepare(liveContext)
+  _ = liveCover.end(.cancelled)
+  try? await Task.sleep(nanoseconds: 200_000_000)
+  check("live cover: delayed preparation cannot resurrect a cancelled page", liveCover.state == .idle && liveCover.windowNumbers.isEmpty)
+  sessionAllowed = false
+  liveCover.prepare(liveContext)
+  check("live cover: locked session refuses before allocating a panel", liveCover.state == .failed("session is locked or unavailable") && liveCover.windowNumbers.isEmpty)
   // Its copy's list again (the window still normal): held from its overlay.
   let pushes7 = shell.windowsPushes[k7] ?? 0
   fake.tell(["do": "windows", "id": "A", "list": [box(normal1).merging(["windowId": 7, "state": "normal", "focused": false, "activeTabId": 12]) { $1 }]])
