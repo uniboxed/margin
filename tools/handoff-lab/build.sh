@@ -32,12 +32,12 @@ SHARED=("$PRIVATE_DIR/PrivateCalls.swift" "$SHELL_DIR/Diagnostics.swift" "$PRIVA
 PARKER="$PRIVATE_DIR/BridgeParker.swift"
 FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -parse-as-library)
 
-for f in lab.swift LiveLog.swift ValidationPlan.swift ProfileValidation.swift DraftLog.swift DraftValidation.swift "${SHARED[@]}" "$PARKER"; do
+for f in lab.swift LiveLog.swift ValidationPlan.swift ProfileValidation.swift DraftLog.swift DraftValidation.swift SystemEvidence.swift SystemValidation.swift "${SHARED[@]}" "$PARKER"; do
   [ -f "$f" ] || { echo "build.sh: $f is missing" >&2; exit 1; }
 done
 
 OUT="$BUILD/handoff-lab"
-if [ "${1:-}" != "--force" ] && [ -x "$OUT" ] && [ -z "$(find lab.swift LiveLog.swift ValidationPlan.swift ProfileValidation.swift DraftLog.swift DraftValidation.swift "${SHARED[@]}" "$PARKER" -newer "$OUT" 2>/dev/null)" ]; then
+if [ "${1:-}" != "--force" ] && [ -x "$OUT" ] && [ -z "$(find lab.swift LiveLog.swift ValidationPlan.swift ProfileValidation.swift DraftLog.swift DraftValidation.swift SystemEvidence.swift SystemValidation.swift "${SHARED[@]}" "$PARKER" -newer "$OUT" 2>/dev/null)" ]; then
   echo "build/handoff-lab is up to date"
   exit 0
 fi
@@ -55,7 +55,7 @@ for f in "${SHARED[@]}" "$PARKER"; do
   LAB_SOURCES+=("$copy")
 done
 
-swiftc "${FLAGS[@]}" lab.swift LiveLog.swift ValidationPlan.swift ProfileValidation.swift DraftLog.swift DraftValidation.swift "${LAB_SOURCES[@]}" \
+swiftc "${FLAGS[@]}" lab.swift LiveLog.swift ValidationPlan.swift ProfileValidation.swift DraftLog.swift DraftValidation.swift SystemEvidence.swift SystemValidation.swift "${LAB_SOURCES[@]}" \
   -framework ScreenCaptureKit -framework WebKit -o "$OUT" || exit 1
 codesign --force --sign - --options runtime "$OUT" 2>/dev/null || echo "build.sh: not signed (codesign failed): the lab still runs, without the hardened runtime" >&2
 echo "built build/handoff-lab"

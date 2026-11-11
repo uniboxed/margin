@@ -2232,14 +2232,15 @@ let liveCoverGate = Gate(
     })
 
 // A bounded comparison through the same guarded hook, without a lab panel that
-// could hide a product failure. Exactly two requests; first failure stops it.
+// could hide a product failure. Two requests by default; --runs 1 keeps a
+// remaining single-request allowance single. First failure stops it.
 let compareCoverGate = Gate(
     id: "COMPARE", title: "Current freeze or actual themed-cover timing through Margin.app",
-    decides: "two successful guarded switches and their mode/timing; not physical-display or pixel-coverage acceptance",
+    decides: "up to two successful guarded switches and their mode/timing; not physical-display or pixel-coverage acceptance",
     needs: [.margin, .devHook], freezes: "current freeze normally; --live-ui requires the actual animated product cover with no freeze",
     plan: ["Test A shown, Test B prepared; one display, parking on, close off, idle and no caps/faults",
            "the installed MarginLiveProfileCover default must be off for baseline, on for --live-ui; configure/restart separately before this gate",
-           "ask only Test B then Test A (--reverse: Test A then Test B; --return-to-a: only Test A); no lab panel, no mode caps, no browser pre-creation",
+           "ask only Test B then Test A (--reverse: Test A then Test B; --return-to-a: only Test A; --runs 1: only the first request); no lab panel, no mode caps, no browser pre-creation",
            "accept only a fresh successful summary in the requested mode; any fallback, failure, refusal or timeout stops before another request",
            "after each, independently verify native full screen, active/front browser identity and the source parked/gone",
            "record timing and summary; memory.py can sample the app and its attributed WebKit processes separately; no frame coverage is claimed"],
@@ -2262,13 +2263,17 @@ let compareCoverGate = Gate(
             return WindowMatcher.candidates(CGWindowSource().windows(of: [w.pid]), pids: [w.pid]).filter(\.onScreen).min(by: { $0.order < $1.order })?.number == number
         }
         let before = await dump()
+        let targets = liveCompareTargets(returnToA: lab.o.liveReturnToA, reverse: lab.o.compareReverse, limit: lab.runs(2))
         guard before.contains("handoff on, parking on"), before.contains("switch: idle"), before.contains("no caps; no faults armed"),
-              before.contains("close windows off; displays 1"), !before.contains("refused:"), var source = liveShownNumber(before), ready(source) else {
+              before.contains("close windows off; displays 1"), !before.contains("refused:"), var source = liveShownNumber(before), ready(source),
+              let sourceName = validationTestProfile(before), sourceName != targets.first,
+              !lab.o.compareLive || (before.contains("live cover session: on") && validationAuditIsClean(before)
+                  && before.contains("session interruption: none") && before.contains("0 windows calls pending")) else {
             return Outcome(status: .notRun, lines: ["guarded source/preconditions not ready; nothing switched"])
         }
         let mode = lab.o.compareLive ? "themed live cover" : "freeze baseline"
         var lines: [String] = []
-        for (index, targetName) in liveCompareTargets(returnToA: lab.o.liveReturnToA, reverse: lab.o.compareReverse).enumerated() {
+        for (index, targetName) in targets.enumerated() {
             let i = index + 1
             let first = buffer.all.count, started = epochMs()
             Margin.devSwitch(to: targetName)
@@ -2289,6 +2294,8 @@ let compareCoverGate = Gate(
             }
             let state = await dump()
             guard state.contains("switch: idle"), let target = liveShownNumber(state), target != source, ready(target),
+                  !lab.o.compareLive || (validationAuditIsClean(state) && state.contains("0 windows calls pending")
+                    && validationNumber(state, after: "last window ").map({ $0 == 0 || lab.calls.server($0) == nil }) == true),
                   lab.calls.server(source) == nil || lab.calls.parked(source) else {
                 return Outcome(status: .fail, lines: lines + ["\(mode) final destination/source state did not verify; stop", summary])
             }
@@ -2409,7 +2416,7 @@ let g18 = Gate(
         return Outcome(status: .recorded, lines: lines)
     })
 
-let allGates: [Gate] = [holdsGate, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15, g16, g17, g18, liveCoverGate, compareCoverGate, profileValidationGate, matchedProfileValidationGate, closeFallbackGate]
+let allGates: [Gate] = [holdsGate, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15, g16, g17, g18, liveCoverGate, compareCoverGate, profileValidationGate, matchedProfileValidationGate, closeFallbackGate, realLockGate, realSleepGate, realDisplayGate, realMultiDisplayGate]
 let ownGates = ["holds", "G5", "G6", "G7", "G10", "G12", "G13", "G14", "G15", "G17", "G18"]
 let stpGates = ["G2", "G3", "G4", "G8", "G9", "G11"]
 
@@ -2445,9 +2452,10 @@ enum Runner {
       handoff-lab list                       the gates
       handoff-lab <gate…> --dry-run          the plan and read-only checks; touches nothing
       handoff-lab <gate…> --go               runs them on screen (approval first)
-    gates: holds, g1 … g18, LIVE, COMPARE, VALIDATE, MATCHED, FALLBACK, own, stp, all
+    gates: holds, g1 … g18, LIVE, COMPARE, VALIDATE, MATCHED, FALLBACK, EVLOCK, EVSLEEP, EVDISPLAY, MULTI, own, stp, all
     MATCHED: new 50-request prospective protocol; explicit selection and separate approval required; excluded from all
     FALLBACK: one separately approved live park-failure close fallback after guarded draft readiness; excluded from all
+    EVLOCK/EVSLEEP/EVDISPLAY/MULTI: separately approved user-initiated physical checks, --person required; excluded from all
     options: --person (guided steps), --runs N, --stp (G7/G15 in STP too), --dock-restart (G5),
              --dev-hook (G1's Margin switch), --app PATH (default /Applications/Margin.app),
              --results DIR (default tools/handoff-lab/results)
@@ -2493,7 +2501,7 @@ enum Runner {
         var ids: [String] = []
         for n in names {
             switch n.lowercased() {
-            case "all": ids += allGates.filter { !["MATCHED", "FALLBACK"].contains($0.id) }.map(\.id)
+            case "all": ids += allGates.filter { !["MATCHED", "FALLBACK", "EVLOCK", "EVSLEEP", "EVDISPLAY", "MULTI"].contains($0.id) }.map(\.id)
             case "own": ids += ownGates
             case "stp": ids += stpGates
             default:

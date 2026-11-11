@@ -296,4 +296,26 @@ epoch, native binding, tab set and idle handoff generation. Replies repeat those
 guards. It logs only IDs/counts; no URL/title/peer error contents. Session dump
 also reports the existing interruption gate for future user-assisted OS checks.
 Fake async refusals/stale replies, Shell unbound refusal and metadata parsing
-are automated; positive real transport still needs this separately approved run.
+are automated. The separately approved November 11 follow-up now passes actual
+transport (two empty answers for one unchanged tab), the independent fresh
+production check and actual source-close/target/cleanup checks. The user reports
+continuous/aligned visuals for one normal live and this live fault transition.
+The earlier failed MATCHED capture is not promoted. See the
+[follow-up report](results/26B131-2026-11-11-observed-followup.md), including two
+instrumentation mistakes, all three consumed actual switches and remaining scope.
+
+COMPARE defaults to two requests; `--runs 1` limits it to the first request in
+either direction without expanding an allowance. Its live preflight requires
+actual clean native audit availability as well as the logical session, no
+interruption/pending calls and a source different from the first target.
+Post-switch live checks also require balanced clean audit and independently
+absent last cover window. A persisted preference or `live cover session: on`
+alone does not prove launch allocation; the session word only means no demotion.
+
+The remaining actual OS cases and bounded seven-switch plan are prepared in
+[SYSTEM-VALIDATION.md](SYSTEM-VALIDATION.md). They have not run or received new
+approval. EVLOCK/EVSLEEP/EVDISPLAY require actual app-trace callbacks during an
+independently observed shown cover and exact source restoration/cleanup. MULTI
+verifies the actual declared two-display public-slide/keep degraded path without
+live allocation. None of these can be inferred from fake event tests, the
+watchdog component, or the user's scoped normal/fault observation.

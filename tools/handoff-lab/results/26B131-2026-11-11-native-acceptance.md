@@ -178,3 +178,11 @@ original launch preference and restarts Margin afterward. Candidate/lab/sender/
 runner hashes are frozen in `/tmp/margin-observed-fallback-20261111.sha256`.
 The runner's default is dry-run; no further switch, install or restart has run.
 Actual OS-event/display cases remain separate, not silently included.
+
+That follow-up has now run under its separate approval. One same-target
+notification is refused without a transition; a revised runner's missing restart
+then causes one mismatched freeze switch and stops. The corrected remaining one
+normal live switch and one guarded close-fallback switch pass; the user reports
+both continuous/aligned. All three actual approved switches are consumed,
+original off flag restored. Preserve the mistakes and the still-failed full
+MATCHED result. Details: [observed follow-up](26B131-2026-11-11-observed-followup.md).

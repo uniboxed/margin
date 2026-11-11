@@ -2030,8 +2030,22 @@ approved requests (four aborted instrumentation warmups plus fresh 50) are
 consumed. Original flag restored off. Detailed timings/resource caveats and
 raw evidence paths: `tools/handoff-lab/results/26B131-2026-11-11-native-acceptance.md`.
 
-- [ ] One separately approved FALLBACK request after guarded real draft readiness: actual source close, target readiness and independent cleanup. Preflight observations are advisory; production fresh check still protects unknown/draft content. Do not turn the failed MATCHED batch into a pass.
-- [ ] Two separately approved observed normal live switches, with the user watching cover continuity and sidebar alignment. No lab panel may hide the product.
+- [x] Separately approved FALLBACK request after guarded real draft readiness: one real tab, two empty drafts/unknown observations, independent fresh production check, actual source close, target readiness and balanced cleanup. Earlier failed MATCHED batch remains failed.
+- [x] User confirms continuous cover and aligned sidebar in the follow-up's one normal live and one live fault transition; no external panel/capture. This does not certify two normal directions or broader physical behavior.
+
+Follow-up report: `tools/handoff-lab/results/26B131-2026-11-11-observed-followup.md`.
+All three actual approved switches are consumed, including an instrumentation
+mistake that used freeze; one earlier same-target notification was refused with
+no browser transition. The final two live checks pass state/cleanup and scoped
+human observation. Original absent/off flag restored. No further on-screen run
+is authorized.
+
+Prepared remaining real-system protocol: `tools/handoff-lab/SYSTEM-VALIDATION.md`.
+EVLOCK/EVSLEEP/EVDISPLAY require actual OS callbacks during independently shown
+cover and exact source recovery/cleanup; MULTI checks the declared two-display
+public-slide/keep degraded path with no allocation. Native lab compile, 24
+event-evidence fixtures and all explicit/default dry runs pass; no OS phase has
+run. Each requires the new bounded batch approval and a per-phase timing cue.
 
 The original absent live-cover flag is restored and the installed matching
 corrections remain active. The experimental cover stays off by default. No PR.

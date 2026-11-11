@@ -1,9 +1,9 @@
 // Read-only parsing shared by the live gate and its off-screen regression.
 import Foundation
 
-func liveCompareTargets(returnToA: Bool, reverse: Bool) -> [String] {
+func liveCompareTargets(returnToA: Bool, reverse: Bool, limit: Int = 2) -> [String] {
     if returnToA { return ["Test A"] } // a remaining single request always stays single
-    return reverse ? ["Test A", "Test B"] : ["Test B", "Test A"]
+    return Array((reverse ? ["Test A", "Test B"] : ["Test B", "Test A"]).prefix(max(1, min(2, limit))))
 }
 
 func liveSwitchSummary(_ line: String) -> Bool {

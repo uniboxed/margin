@@ -4649,3 +4649,63 @@ Signed Release build without install passes deep/strict verification and keeps
 the installed Apple Development team VSNN5UW99X/hardened runtime. Candidate and
 prepared bounded three-request runner hashes are frozen for review. The
 installed app/absent flag remain unchanged; new on-screen approval is pending.
+
+### Three approved follow-up switches, guarded close fallback passes (2026-11-11)
+
+Install the verified diagnostic candidate under the new approval. The first
+same-target notification is refused with no browser transition: actual shown
+profile was Test B rather than the sequence's assumed Test A. A revised outer
+runner selects direction from fresh metadata, but omits the explicit restart
+when reusing the installed app. Its first actual switch uses freeze; stop and
+restore the flag. Preserve both instrument/operator failures. One actual switch
+is consumed, leaving two, not a fresh three-request allowance.
+
+Correct the restart and require a fresh available/clean native-cover audit before
+any request. Add lab-only COMPARE --runs 1, clamped to at most two, so the remaining
+allowance stays one normal plus one fault. Actual live A → B passes (1,029 ms
+request-to-reveal); actual suppressed-park B → A passes (1,419 ms), with source
+independently gone. Two actual advisory draft observations return the same one
+tab, zero drafts/unknown at 66/73 ms; production fresh draft protection remains
+independent. Final native audit 2 created/2 disposed, zero resources/failures,
+last window absent; both renderers shared. Original absent/off flag restored,
+Margin restarted after the expected parking demotion, fresh clean idle dump.
+
+All three actual switches are consumed, including the mismatched freeze; the
+successful fault is not a second normal observation, and earlier failed MATCHED
+remains failed. User confirms both final live transitions continuous/aligned.
+Real lock/sleep/display and
+multi-display checks remain open; no default-on or PR. Report:
+`tools/handoff-lab/results/26B131-2026-11-11-observed-followup.md`.
+
+Harden the lab against both setup mistakes before another future approved run:
+verify actual audit availability plus the logical session, no pending calls or
+interruption, correct source direction, and post-switch balanced audit/last
+window disappearance. The dump's `live cover session: on` means no demotion,
+not launch allocation. Final lab compile and 89 pure parser/plan checks pass;
+production app code and its verified installed signature are unchanged.
+
+Prepare the remaining real OS cases as separate opt-in lab gates, excluded from
+`all`: EVLOCK, EVSLEEP, EVDISPLAY and MULTI. The person alone initiates actual
+lock/unlock, lid sleep/wake and monitor connection. At most one preparatory
+normal plus one interrupted request per OS phase, then one two-display degraded
+request: seven new switches maximum and six setup/restoration restarts, subject
+to a new approval. Pause for timing readiness after preparation; cue expires at
+120 s, each OS gate has a 120 s user-return bound and 180 s outer deadline. No
+automatic OS action, capture, app reinstall or genuine-demotion reset.
+
+Shown proof combines native audit with independent WindowServer cover-number/
+PID/onscreen/alpha/bounds reads. Actual callbacks come from the existing
+metadata-only trace, bounded to five files/6 MiB each, no incomplete rows or
+stale/future timestamps. Require the matching OS-caused recovery and exact
+original native source/profile/front/fullscreen, expected display count, no
+interruption/pending calls and balanced cleanup/last-window disappearance.
+MULTI must refuse allocation, explicitly choose public slide/keep with no freeze,
+retain the source in its real fullscreen Space, and verify target/cleanup; this
+is degraded behavior, not live-goal acceptance. The product app remains unchanged.
+
+Off-screen preparation: 24 event-evidence checks, 89 existing plan/parser checks,
+native lab compilation and explicit/all dry-run checks pass; the new gates are
+absent from `all`. An actual read-only trace-format check passes (no recent real
+OS events, no delivery claim). Fresh npm test/test:e2e pass 1,031/150. Run plan:
+`tools/handoff-lab/SYSTEM-VALIDATION.md`; actual OS gates remain unrun and no new
+switch allowance is authorized. Default off, no PR.

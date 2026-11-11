@@ -72,6 +72,11 @@ swiftc -parse-as-library tools/handoff-lab/DraftLog.swift tools/handoff-lab/test
 
 ## The gates
 
+The separately approved, user-initiated real lock/sleep/display and two-display
+checks are prepared in [SYSTEM-VALIDATION.md](SYSTEM-VALIDATION.md). They require
+`--person`, are excluded from `all`, and never initiate an OS lock/sleep/display
+change. Their default/dry-run paths switch nothing.
+
 The prepared issue #15 VALIDATE gate and resource protocol are in
 [VALIDATION.md](VALIDATION.md). It is a separately approved, fixed maximum of
 50 guarded requests, outside earlier two/four-switch approvals. Do not use the

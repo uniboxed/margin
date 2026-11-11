@@ -20,6 +20,13 @@ import Foundation
         precondition(liveCompareTargets(returnToA: false, reverse: true) == ["Test A", "Test B"])
         precondition(liveCompareTargets(returnToA: true, reverse: false) == ["Test A"])
         precondition(liveCompareTargets(returnToA: true, reverse: true) == ["Test A"])
+        precondition(liveCompareTargets(returnToA: false, reverse: false, limit: 1) == ["Test B"])
+        precondition(liveCompareTargets(returnToA: false, reverse: true, limit: 1) == ["Test A"])
+        precondition(liveCompareTargets(returnToA: true, reverse: false, limit: 1) == ["Test A"])
+        precondition(liveCompareTargets(returnToA: true, reverse: true, limit: 1) == ["Test A"])
+        precondition(liveCompareTargets(returnToA: false, reverse: true, limit: 50).count == 2)
+        precondition(liveCompareTargets(returnToA: false, reverse: false, limit: 0).count == 1)
+        precondition(!validationAuditIsClean("dev hook: dump: live cover audit: unavailable\ndev hook: dump: live cover session: on\n"))
         let plan = profileValidationPlan()
         precondition(plan.count == 50 && plan.prefix(4).allSatisfy { $0.phase == "warmup" })
         let matched = plan.filter { $0.phase == "matched" }
@@ -120,6 +127,6 @@ import Foundation
             .init(phase: "close", mode: "live", fault: "fullscreen", recovers: true),
             .init(phase: "fault", mode: "live", fault: "park", recovers: true),
         ] { precondition(!validationExpectedFullscreenRecovery(step)) }
-        print("all 82 live-log/validation-plan checks passed (no windows or private calls)")
+        print("all 89 live-log/validation-plan checks passed (no windows or private calls)")
     }
 }
