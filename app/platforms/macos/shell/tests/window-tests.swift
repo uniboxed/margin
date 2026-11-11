@@ -1919,6 +1919,15 @@ extension Tests {
       return CoverPlan.decide(x)
     }
     check("covers: a full-screen window of a Margin profile, not laid out: covered; a window not filling its display: not", f { _ in }.wanted == [100])
+    // Safari's default profile: its windows' titles have no profile's prefix, so Accessibility names it by inference.
+    // The covers take that (CoverPlan.profiles); the binder's exact identities leave it out (2026-11-11: with those,
+    // no startup cover for any default-profile window).
+    var known = AXKnown()
+    _ = known.learn([100: SafariAX.Window(number: 100, title: "Start Page", fullScreen: true)], names: ["s-a": "Test A"])
+    check("covers: a default-profile window is covered (its profile as the covers take it)",
+          f { $0.profiles = CoverPlan.profiles(known, wanted: [100, 101]); $0.marginProfiles = ["safari:s-default"] }.wanted == [100], "\(known.profiles)")
+    check("covers: the binder's exact identities alone would leave it uncovered",
+          f { $0.profiles = known.exactProfiles; $0.marginProfiles = ["safari:s-default"] }.wanted.isEmpty)
     check("covers: not for a window Accessibility hasn't named, or a profile without Margin",
           f { $0.profiles = [:] }.wanted.isEmpty && f { $0.marginProfiles = [] }.wanted.isEmpty)
     check("covers: not once its layout is over it, while it's parked, during a switch, or once expired",
