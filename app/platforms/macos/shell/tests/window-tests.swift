@@ -1639,6 +1639,11 @@ extension Tests {
       _ = k.learn([11: win(11, "Test A — Start Page")], names: ["s-old": "Test A"])
       check("startup: a corrected copy mapping drops an old window identity, keeping its full-screen fact",
             k.keepProfiles(names: ["s-new": "Test A"]) == [11] && k.profiles[11] == nil && k.fullScreen[11] == true)
+      do {
+        var known = AXKnown()
+        _ = known.learn([12: win(12, "Test A — Inbox")], names: ["s-a": "Test A"])
+        check("a failed profile read (no names) keeps the identities learned", known.keepProfiles(names: [:]).isEmpty && known.profiles[12] == "safari:s-a")
+      }
       check("startup: the restored window is named again for the current copy without closing Safari",
             k.learn([11: win(11, "Test A — Start Page")], names: ["s-new": "Test A"]) == [11] && k.profiles[11] == "safari:s-new")
       check("startup: an unchanged mapping keeps its exact identity", k.keepProfiles(names: ["s-new": "Test A"]).isEmpty)
