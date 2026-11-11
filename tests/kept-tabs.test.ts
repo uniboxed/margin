@@ -206,6 +206,22 @@ test('a tab that isn\'t open, clicked: it opens in the window where it was click
   assert.equal(Object.values(s2.tabs).find((t) => t.url === 'https://c.test/')?.windowId, 2);
 });
 
+test('the same saved tab asked for twice at once (one ask naming a window, one not): one browser tab, shown to both', async () => {
+  // c is open in window 2 (the test before): closed with its window, it's saved again.
+  const open = Object.values((await state()).tabs).find((t) => t.url === 'https://c.test/')!;
+  await closeInSafari(open.id, true);
+  await settled();
+  const kept = Object.values((await state()).keptTabs).find((k) => k.url === 'https://c.test/')!;
+  fake.created.length = 0;
+  const [a, b] = await Promise.all([ask('activateTab', { tabId: kept.id }, 1), ask('activateTab', { tabId: kept.id, windowId: 2 }, 1)]);
+  await settled();
+  assert.equal(a.ok && b.ok, true, JSON.stringify([a, b]));
+  assert.equal(fake.created.length, 1, `one browser tab made: ${JSON.stringify(fake.created)}`);
+  assert.equal(a.result.shown, b.result.shown, 'both asks shown the same tab');
+  const s = await state();
+  assert.equal(Object.values(s.tabs).filter((t) => t.mid === kept.id).length, 1, 'one tab is that Margin tab');
+});
+
 test('a tab that isn\'t open: closed from Margin it goes to the archive; pinned, its pin is it from then on; moved to another space', async () => {
   const c = Object.values((await state()).tabs).find((t) => t.url === 'https://c.test/')!;
   await closeInSafari(c.id, true);
