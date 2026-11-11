@@ -23,7 +23,7 @@ Every private macOS call, class, selector, key and file format Margin.app uses. 
 | **freeze** | rows 1-4 | the switch runs without a freeze: the person sees macOS's slide |
 | **spaces** | rows 1, 5-7 | no readiness reads and no parking: today's close-based switch |
 | **geometry** | rows 1, 14 | Mission Control uses transient hiding; other parts remain available |
-| **live cover** (issue #15, gated) | rows 1, 6, 8-9, 15-20 | the existing freeze, then macOS's slide: degraded fallbacks, not the live-cover goal |
+| **live cover** (issue #15: on by default since 2026-11-11; Low Power Mode and `MarginLiveProfileCover=NO` take the freeze) | rows 1, 6, 8-9, 15-20 | the existing freeze, then macOS's slide: degraded fallbacks, not the live-cover goal |
 | **park** | spaces, rows 8-12, both encodings | `close` (drafts permitting) or `keep` (`docs/HANDOFF.md` §1.1) |
 | **enumerator** | row 13, and gate G5 passed | no orphan check of private Spaces (`docs/HANDOFF.md` §4.4 invariant 3) |
 
@@ -140,9 +140,9 @@ That remaining installed request passes: cover ready 218.5 ms, 2,007 ms request-
 ## Experimental cover renderer reuse (2026-11-11)
 
 `private/CoverRenderer.swift` optionally relates a disposable cover to the
-outgoing owned Margin layout page. The existing live-cover flag remains off by
-default. This optimization does not enable a Space capability or change a
-readiness, coverage, recovery or cleanup gate.
+outgoing owned Margin layout page. (When this was written the live cover was off by default; it has been the
+default since 39d853da, 2026-11-11, with Low Power Mode and `MarginLiveProfileCover=NO` taking the freeze.) This
+optimization does not enable a Space capability or change a readiness, coverage, recovery or cleanup gate.
 
 | Selector | Receiver / signature | Exact checked encoding | Verification / fallback |
 |---|---|---|---|
