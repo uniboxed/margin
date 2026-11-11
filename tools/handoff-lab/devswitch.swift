@@ -51,6 +51,7 @@ let wait = seconds("--wait", 0)
 let every = seconds("--every", 4)
 let space = option("--space")
 let freeze = option("--freeze")
+let cover = option("--cover")
 let old = option("--old")
 guard let command = args.first else {
     fail("switch \"Test B\" [--space ID] | dump | mode [--freeze on|off] [--old park|close|keep] | fail STEP | alternate N [--every S] (see the file's head)")
@@ -74,8 +75,9 @@ case "dump":
 case "mode":
     var f: [String: String] = [:]
     if let freeze { guard ["on", "off"].contains(freeze) else { fail("--freeze on|off") }; f["freeze"] = freeze }
+    if let cover { guard ["on", "off"].contains(cover) else { fail("--cover on|off") }; f["cover"] = cover }
     if let old { guard ["park", "close", "keep"].contains(old) else { fail("--old park|close|keep") }; f["old"] = old }
-    guard !f.isEmpty else { fail("mode needs --freeze or --old") }
+    guard !f.isEmpty else { fail("mode needs --freeze, --cover or --old") }
     post("mode", f)
 case "fail":
     guard args.count == 2, ["show", "park", "reveal", "fullscreen"].contains(args[1]) else { fail("fail show|park|reveal|fullscreen") }

@@ -848,6 +848,7 @@ final class Lab {
     private var recorders: [Recorder] = []
     var liveCover: LabLiveCover?
     var restoreCoverMode = false
+    var restoreValidationMode = false
     let previousApp = NSWorkspace.shared.frontmostApplication
 
     init(_ o: LabOptions) { self.o = o }
@@ -917,6 +918,7 @@ final class Lab {
     // After each gate, and at the end (`final`: the server stops too; between gates it stays, so
     // the extension keeps its place in the queue).
     func cleanup(final: Bool) async {
+        if restoreValidationMode { Margin.dev("mode", ["freeze": "on", "cover": "on", "old": "park"]); restoreValidationMode = false }
         if let liveCover, !liveCover.close() { note("live cover cleanup: Space destruction did not verify") }
         liveCover = nil
         if restoreCoverMode { Margin.dev("mode", ["freeze": "on"]); restoreCoverMode = false }
@@ -2405,7 +2407,7 @@ let g18 = Gate(
         return Outcome(status: .recorded, lines: lines)
     })
 
-let allGates: [Gate] = [holdsGate, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15, g16, g17, g18, liveCoverGate, compareCoverGate]
+let allGates: [Gate] = [holdsGate, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15, g16, g17, g18, liveCoverGate, compareCoverGate, profileValidationGate]
 let ownGates = ["holds", "G5", "G6", "G7", "G10", "G12", "G13", "G14", "G15", "G17", "G18"]
 let stpGates = ["G2", "G3", "G4", "G8", "G9", "G11"]
 

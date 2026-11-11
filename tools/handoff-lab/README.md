@@ -62,6 +62,11 @@ swiftc -parse-as-library tools/handoff-lab/LiveLog.swift tools/handoff-lab/tests
 
 ## The gates
 
+The prepared issue #15 VALIDATE gate and resource protocol are in
+[VALIDATION.md](VALIDATION.md). It is a separately approved, fixed maximum of
+50 guarded requests, outside earlier two/four-switch approvals. Do not use the
+older freeze-only G16 parser as live-cover acceptance.
+
 ### LIVE: issue #15's live-cover experiment
 
 `build/handoff-lab live --dry-run --app "$HOME/Applications/Margin.app"` prints the exact plan and launch checks without showing or moving anything. After approval, the same command with `--go --runs 2` uses only the guarded Test A/Test B dev hook. Prepare Test A in front and Test B as in G16; handoff/parking must be on, close-windows off, and no dev-hook caps or faults armed. An accepted read-only dump establishes those preconditions before any cover appears.

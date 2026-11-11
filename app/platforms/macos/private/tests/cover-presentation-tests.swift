@@ -25,8 +25,15 @@ func coverPresentationTests() {
           && values[ObjectIdentifier(b)] == false && lease.count == 0)
     let before = writes.count
     check("cover presentation: repeated cleanup has no work", lease.restore() && writes.count == before)
+    _ = lease.hold(a)
+    refuses = true
+    check("cover presentation: failed restore retains the surviving view's original", !lease.restore() && lease.count == 1 && values[ObjectIdentifier(a)] == false)
+    check("cover presentation: repeated failure cannot silently erase restoration", !lease.restore() && lease.count == 1)
+    refuses = false
+    check("cover presentation: later cleanup restores the retained original", lease.restore() && lease.count == 0 && values[ObjectIdentifier(a)] == true)
+    let afterRetry = writes.count
     unread = true
-    check("cover presentation: unknown getter refuses before a write", !lease.hold(a) && writes.count == before && lease.count == 0)
+    check("cover presentation: unknown getter refuses before a write", !lease.hold(a) && writes.count == afterRetry && lease.count == 0)
     unread = false; refuses = true
     check("cover presentation: refused setter does not claim protection", !lease.hold(a))
     refuses = false

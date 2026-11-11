@@ -1940,3 +1940,22 @@ The subsequent two-switch diagnostic approval has used one request. It stops at 
 - [ ] In installed full-screen Safari, reveal and hide the native toolbar: its visible controls stay above Margin, without repeated layout restacking once hidden. Repeat the profile transition with the pointer away from and near the toolbar before enabling live-cover mode by default.
 
 The remaining approved Test B → Test A request passes with the correction installed: cover ready 218.5 ms, request-to-reveal 2,007 ms, 2,519 ms through fresh final-state checks, no freeze/recovery, outgoing window parked and focus OK. All latest two diagnostic requests are consumed. The original absent flag is restored and fresh launch verifies live cover off. Final checks: 1,031 unit, 150 browser, 2,223 native logic, 541 integration and 14 lab parser/plan checks pass. This verifies the new-window readiness correction; physical-display and broader performance/edge acceptance remain open. No PR is created.
+
+### Comprehensive validation preparation
+
+The current prepared candidate passes 1,031 unit, 150 browser, 2,243 native logic
+and the latest 545 native integration checks, 35 pure plan/parser checks and 18
+synthetic sampler/report checks. The actual owned off-screen component probe
+passes three rounds. The earlier unexplained lifetime-read failure and the
+unchanged assertion's diagnostic/rerun evidence are recorded in DECISIONS.md.
+
+The [validation protocol](tools/handoff-lab/VALIDATION.md) defines a separately
+approved maximum 50-request Test A/Test B experiment with balanced same-process
+controls, 30 measured normal live transitions, pre/post-idle, covered recovery
+and close fallback. It stops at the first unexpected failure and checks actual
+resource cleanup after every request. No requests in this new batch have run.
+The signed candidate is built only; the installed live feature remains off.
+
+Native fake session/display events, the owned alpha/cleanup probe and read-only
+metadata do not establish physical lock delivery, sleep/display changes, a
+physical-camera result or the complete real 20-second watchdog path.

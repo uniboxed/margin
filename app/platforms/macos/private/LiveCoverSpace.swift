@@ -34,21 +34,45 @@ nonisolated enum LiveCoverSpaceFailure: String, Error, Sendable {
     case ownership, create, level, add, membership, show
 }
 
+// Failed setup must retain the owned Space handle until cleanup verifies.
+// No timer/polling: the owner retries only during its bounded cleanup paths.
+nonisolated final class CoverSpaceCleanup: @unchecked Sendable {
+    private let lock = NSLock()
+    private var pending: [LiveCoverSpace] = []
+    var count: Int { lock.lock(); defer { lock.unlock() }; return pending.count }
+    func retain(_ space: LiveCoverSpace) { lock.lock(); pending.append(space); lock.unlock() }
+    func retry() -> Bool {
+        lock.lock(); let spaces = pending; pending = []; lock.unlock()
+        let failed = spaces.filter { !$0.close() }
+        lock.lock(); pending.append(contentsOf: failed); let clean = pending.isEmpty; lock.unlock()
+        return clean
+    }
+}
+
 nonisolated final class LiveCoverSpace: @unchecked Sendable {
     let number: UInt64
     let window: UInt32
     private let io: LiveCoverSpaceIO
     private let lock = NSLock()
     private var ended = false
+    private var closing = false
     private var hidden = false
 
     private init(number: UInt64, window: UInt32, io: LiveCoverSpaceIO) { self.number = number; self.window = window; self.io = io }
 
-    static func open(window: UInt32, io: LiveCoverSpaceIO) -> Result<LiveCoverSpace, LiveCoverSpaceFailure> {
+    static func open(window: UInt32, io: LiveCoverSpaceIO, onFailedCleanup: @Sendable (LiveCoverSpace) -> Void = { _ in }) -> Result<LiveCoverSpace, LiveCoverSpaceFailure> {
         guard window != 0, io.owns(window) else { return .failure(.ownership) }
         guard let number = io.create(), number != 0 else { return .failure(.create) }
         let lease = LiveCoverSpace(number: number, window: window, io: io)
-        func failed(_ why: LiveCoverSpaceFailure) -> Result<LiveCoverSpace, LiveCoverSpaceFailure> { _ = lease.close(); return .failure(why) }
+        func failed(_ why: LiveCoverSpaceFailure) -> Result<LiveCoverSpace, LiveCoverSpaceFailure> {
+            var cleaned = lease.close()
+            for _ in 0..<2 where !cleaned { cleaned = lease.close() }
+            if !cleaned {
+                onFailedCleanup(lease)
+                Task { @MainActor in Diagnostics.warn("live cover failed-setup cleanup unverified for owned Space \(number)") }
+            }
+            return .failure(why)
+        }
         guard io.level(number) else { return failed(.level) }
         // Match the independently tested operator: show the empty special Space
         // before assigning its own window. The panel is still alpha zero.
@@ -82,11 +106,14 @@ nonisolated final class LiveCoverSpace: @unchecked Sendable {
     @discardableResult func close() -> Bool {
         lock.lock()
         guard !ended else { lock.unlock(); return true }
-        ended = true
+        guard !closing else { lock.unlock(); return false }
+        closing = true
         lock.unlock() // never hold the watchdog's lock across a synchronous bridge read
         let hid = io.hide(number) || io.hide(number)
         let destroyed = io.destroy(number)
-        return hid && destroyed && io.readLevel(number) == 0
+        let verified = destroyed && io.readLevel(number) == 0
+        lock.lock(); ended = verified; closing = false; lock.unlock()
+        return hid && verified
     }
 
     var isHidden: Bool { lock.lock(); defer { lock.unlock() }; return hidden || ended }

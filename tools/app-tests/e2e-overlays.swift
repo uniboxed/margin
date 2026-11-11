@@ -15,7 +15,7 @@ import WebKit
 // display, and all Space reads/moves are in FakeSpaceWorld (no private macOS calls, no real browser).
 @MainActor
 func preparedWindowsScenario() async {
-  func check(_ label: String, _ ok: Bool) { e2eCheck("prepared windows: \(label)", ok) }
+  func check(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") { e2eCheck("prepared windows: \(label)", ok, detail()) }
   let fake = Fake()
   do { try fake.start() } catch { check("fake extension starts", false); return }
   defer { fake.stop() }
@@ -128,7 +128,12 @@ func preparedWindowsScenario() async {
     }
   }
   let ids = [o1.windowNumber, o2.windowNumber]
-  let origins = [await js(o1.webView, "return performance.timeOrigin"), await js(o2.webView, "return performance.timeOrigin")]
+  func origin(_ web: WKWebView) async -> (value: Any?, error: String?) {
+    do { return (try await web.callAsyncJavaScript("return performance.timeOrigin", arguments: [:], in: nil, contentWorld: .page), nil) }
+    catch { let e = error as NSError; return (nil, "\(e.domain)/\(e.code)") }
+  }
+  let initialOriginReads = [await origin(o1.webView), await origin(o2.webView)]
+  let origins = initialOriginReads.map(\.value)
   let movesBeforeVisits = world.calls.count
   let visitsAt = ProcessInfo.processInfo.systemUptime
   var kept = true
@@ -188,8 +193,10 @@ func preparedWindowsScenario() async {
   check("a genuine one-point move of both model and presentation is followed", o1.frameTopLeft == moved)
   modelFrames[a.windowNumber] = r1
   show(false); shell.track()
-  let returnedOrigins = [await js(o1.webView, "return performance.timeOrigin"), await js(o2.webView, "return performance.timeOrigin")]
-  check("presentation and return reuse each WebView", origins.allSatisfy { $0 as? NSNumber != nil } && zip(origins, returnedOrigins).allSatisfy { same($0, $1) })
+  let returnedOriginReads = [await origin(o1.webView), await origin(o2.webView)]
+  let returnedOrigins = returnedOriginReads.map(\.value)
+  check("presentation and return reuse each WebView", origins.allSatisfy { $0 as? NSNumber != nil } && zip(origins, returnedOrigins).allSatisfy { same($0, $1) },
+        "initial \(initialOriginReads), returned \(returnedOriginReads)")
   windows.noList = true
   shell.track()
   check("a missing batch read does not blank layouts independently confirmed in their full-screen Spaces", !o1.isConcealed && !o2.isConcealed)

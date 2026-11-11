@@ -4302,3 +4302,58 @@ Final-source automated checks pass: `npm test` 1,031/1,031, normal two-worker `n
 The corrected signed install passes deep/strict verification. The single remaining approved B → A request passes: live cover ready 218.5 ms; destination created 905 ms, steady 928 ms, framed 1,044 ms; outgoing window parked 1,675 ms, settled 1,745 ms; cover 1,755 ms without freeze, request-to-reveal 2,007 ms, through independent final-state verification 2,519 ms, focus OK and no recovery. A temporary Safari transition window initially keeps the strict stacking gate waiting; it is not bypassed. Both requests from this latest approval are now consumed. The original absent flag is restored and fresh process 91941 logs experimental live cover off. No further switch is run.
 
 This establishes the hidden-toolbar correction in the captured new-window case, not physical-display smoothness or broader live-cover performance acceptance. The temporary cover's resource cost and wider repeated/edge runs remain pending, so the live feature remains default off. The corrected native ordering behavior is installed for ordinary layouts too. Post-update extension reconnection after the automatic restore/restart is separate from the measured switch and is not included in a startup-speed claim. No PR is created.
+
+### Preparing comprehensive issue #15 validation (2026-11-10)
+
+The user asks to finish validation properly, including reliability, performance,
+efficiency and speed. All earlier counted on-screen approvals are consumed.
+The testing-strategy workflow maps the remaining evidence; no new real Safari
+switch has run yet. tools/handoff-lab/VALIDATION.md defines a maximum 50-request
+batch: four warmups, 24 balanced same-process controls/live comparisons, 18
+additional live requests, normal pre/post-idle before two fault and two close
+cases. The last four are excluded from normal performance analysis. Its
+subtractive Test A/Test B cover cap cannot enable missing capability or affect
+other profiles, and never resets genuine failure demotions.
+
+Read-only audit found cleanup gaps before a longer run: presentation restoration
+forgot originals on failure, and Space cleanup could declare a failed destruction
+finished and lose its setup handle. Failed surviving-view originals now remain
+weakly tracked; cleanup makes bounded retries. Unverified own Space handles remain
+available for later cleanup, and another preparation is refused until cleanup
+verifies. No idle retry timer is added. The dev-only dump exposes lifecycle counts,
+pending resources and cleanup failures; long benchmark diagnostics retain only
+128 recent entries so the instrumentation itself does not grow indefinitely.
+Freeze summaries now include request-to-reveal for the same metric as live mode.
+
+The new real-Space owned off-screen probe passes three rounds: level400/exact
+membership, actual nonzero-to-zero alpha change from a background queue while
+its own main thread is blocked, level0 and original view setting restored, owned
+window removed. It touches no Safari window. It does not prove physical lock
+delivery, actual multi-display behavior or the complete 20-second native watchdog.
+
+The sampler/report preserve sample/per-PID timing and process-start identities,
+explicit attribution failures and host/timebase metadata. Helper identity uses
+proc_pidpath because launchctl's COMM can be relative. A read-only smoke identifies
+the installed helper correctly; unknown identity is no longer counted as zero CPU.
+Eighteen synthetic report/sampler regressions pass; plan/parser checks cover the
+bounded schedule and cleanup refusals. Final source suites and a signed build-only
+candidate are being verified before requesting the specific on-screen batch.
+
+An initial final native run passed 2,243 logic checks but failed the existing
+WebView lifetime comparison once without reporting its read values. There is no
+corresponding WebKit crash/reload log. The focused 48-check window-readiness run
+passes. The assertion remains strict; its initial/returned values and JavaScript
+error codes are now reported on failure. The full instrumented integration rerun
+passes all 545 checks without a product change to that window path. This
+unreproduced initial read failure is recorded, not presented as a diagnosed fix.
+Final unit checks pass 1,031/1,031; the final browser suite is in progress.
+
+Preparation is now verified: final browser suite 150/150, native logic
+2,243/2,243 with no app/handler/helper compiler warnings, latest native
+integration 545/545, plan/parser checks 35/35, synthetic resource checks 18/18,
+and three actual owned off-screen component rounds. The signed build-only
+candidate passes deep/strict signature verification; it has not replaced the
+installed build. The new gate's dry run prints exactly the bounded 50-request
+plan and read-only host checks. A fresh, specific on-screen approval is the
+remaining dependency; no new Safari switch, preference change or app restart
+has been performed during this preparation. No PR is created.

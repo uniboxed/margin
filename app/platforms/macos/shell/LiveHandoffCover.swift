@@ -26,6 +26,7 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
     private var panel: NSPanel?
     private var webView: WKWebView?
     private var lease: LiveCoverSpace?
+    private let failedSpaces = CoverSpaceCleanup()
     private var generation = 0
     private var showingAt: Double = 0
     private var check: Timer?
@@ -33,6 +34,11 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
     private var started: Double = 0
     private var pageVisible = false
     private var pageShown = false
+    private var cleanupFailures = 0
+    private var createdWindows = 0, disposedWindows = 0, lastWindow = 0
+    var validationStatus: String {
+        "live cover audit: state \(state), windows \(windowNumbers.count), views \(webView == nil ? 0 : 1), spaces \((lease == nil ? 0 : 1) + failedSpaces.count), presentation \(presentation.count), timers \((check == nil ? 0 : 1) + (watchdog == nil ? 0 : 1)), cleanup failures \(cleanupFailures); created \(createdWindows), disposed \(disposedWindows), last window \(lastWindow)"
+    }
 
     init(pages: OverlayPages, io: LiveCoverSpaceIO, sessionAllowed: @escaping () -> Bool = { SessionVisibility.allowsCover },
          presentation: CoverPresentation? = nil, layoutViews: @escaping () -> [WKWebView] = { [] }) {
@@ -41,7 +47,7 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
     }
 
     func prepare(_ context: LiveCoverContext) {
-        _ = end(.cancelled)
+        guard end(.cancelled) else { state = .failed("previous cleanup unverified"); return }
         guard sessionAllowed() else { state = .failed("session is locked or unavailable"); return }
         self.context = context
         state = .preparing
@@ -73,6 +79,7 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
         content.addSubview(view)
         p.contentView = content
         panel = p; webView = view
+        createdWindows += 1; lastWindow = p.windowNumber
         view.navigationDelegate = self
         pages.bridge.register(view, self)
         pages.ready { [weak self, weak view] in
@@ -89,7 +96,8 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
         panel.orderFrontRegardless() // alpha zero until the own Space is verified
         panel.displayIfNeeded()
         CATransaction.flush() // commit the owned window's registration before querying its owner
-        switch LiveCoverSpace.open(window: UInt32(panel.windowNumber), io: io) {
+        let failed = failedSpaces
+        switch LiveCoverSpace.open(window: UInt32(panel.windowNumber), io: io, onFailedCleanup: { failed.retain($0) }) {
         case .failure(let why):
             fail("Space setup \(why.rawValue)")
             return done(false)
@@ -176,15 +184,18 @@ final class NativeHandoffCover: NSObject, HandoffCover, OverlayPageOwner, WKNavi
         watchdog?.cancel(); watchdog = nil
         panel?.orderOut(nil) // before Space destruction: never return a visible panel to Desktop
         CATransaction.flush()
-        let rendered = presentation.restore()
-        let closed = lease?.close() ?? true
-        let ok = rendered && closed
-        lease = nil
+        var rendered = presentation.restore()
+        for _ in 0..<2 where !rendered { rendered = presentation.restore() }
+        var closed = lease?.close() ?? true
+        for _ in 0..<2 where !closed { closed = lease?.close() ?? true }
+        let failedClean = failedSpaces.retry()
+        let ok = rendered && closed && failedClean
+        if closed { lease = nil } // retain an unverified own Space for the next bounded cleanup attempt
         if let webView { pages.bridge.unregister(webView); webView.navigationDelegate = nil; webView.stopLoading(); webView.removeFromSuperview() }
-        panel?.close()
+        if let panel { panel.close(); disposedWindows += 1 }
         panel = nil; webView = nil; context = nil
-        state = .idle
-        if !ok { Diagnostics.warn("live cover cleanup refused: live cover must be disabled for this session") }
+        state = ok ? .idle : .failed("cleanup unverified")
+        if !ok { cleanupFailures += 1; Diagnostics.warn("live cover cleanup refused: live cover must be disabled for this session") }
         return ok
     }
 

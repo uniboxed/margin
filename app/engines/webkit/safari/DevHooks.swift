@@ -49,10 +49,11 @@ enum DevFailStep: String, CaseIterable {
 // Test A and Test B uses it (HandoffRun.devTest).
 struct DevHookState: Equatable {
     var freeze: Bool? // false: no freeze
+    var cover: Bool? // false: suppress the live cover for this guarded test switch only
     var old: HandoffChoice.Old? // close: no park; keep: neither park nor close
     var fails: Set<DevFailStep> = []
 
-    var isEmpty: Bool { freeze == nil && old == nil && fails.isEmpty }
+    var isEmpty: Bool { freeze == nil && cover == nil && old == nil && fails.isEmpty }
 
     // The switch's choices with the caps on. A cap only takes away: `freeze: on` and `old: park` are no cap.
     func capped(_ choice: HandoffChoice) -> HandoffChoice {
@@ -77,7 +78,7 @@ struct DevHookState: Equatable {
     mutating func take(_ step: DevFailStep) -> Bool { fails.remove(step) != nil }
 
     var description: String {
-        let caps = [freeze == false ? "freeze off" : nil, old.flatMap { $0 == .park ? nil : "old \($0.rawValue)" }].compactMap { $0 }
+        let caps = [freeze == false ? "freeze off" : nil, cover == false ? "cover off" : nil, old.flatMap { $0 == .park ? nil : "old \($0.rawValue)" }].compactMap { $0 }
         let armed = fails.map(\.rawValue).sorted()
         return (caps.isEmpty ? "no caps" : caps.joined(separator: ", ")) + "; " + (armed.isEmpty ? "no faults armed" : "armed: " + armed.joined(separator: ", "))
     }
@@ -103,6 +104,7 @@ protocol DevHookWorld: AnyObject {
 
 // DEV-HOOK: the hook itself.
 final class DevHooks {
+    static let retainedLineLimit = 128
     static let names: Set<String> = ["Test A", "Test B"]
     static let prefix = "com.unibox.margin.dev."
     static let defaultsKey = "MarginDevHooks"
@@ -195,7 +197,12 @@ final class DevHooks {
                 state.old = old == .park ? nil : old
                 set.append("old \(o)")
             }
-            guard !set.isEmpty else { return refuse("neither freeze nor old") }
+            if let c = fields["cover"] {
+                guard c == "on" || c == "off" else { return refuse("cover isn't on or off") }
+                state.cover = c == "on" ? nil : false // on removes a cap; it never enables missing capability
+                set.append("cover \(c)")
+            }
+            guard !set.isEmpty else { return refuse("neither freeze, cover nor old") }
             world.devState = state
             return say("dev hook: mode \(set.joined(separator: ", ")) for Test A and Test B's switches this session (\(state.description)) \(asked)")
         case .probe:
@@ -209,6 +216,7 @@ final class DevHooks {
 
     @discardableResult private func say(_ line: String) -> String {
         lines.append(line)
+        if lines.count > Self.retainedLineLimit { lines.removeFirst(lines.count - Self.retainedLineLimit) }
         Diagnostics.note(line)
         return line
     }
@@ -304,6 +312,10 @@ extension Shell: DevHookWorld {
         // same exact shown overlay its guard accepted, not only session history.
         let shown = devShownWindow().map { key in "\(key) (\(number(of: key).map(String.init) ?? "-"))" } ?? "-"
         out.append("switch: \(switcher.phase.rawValue)\(switcher.target.map { " to \($0)" } ?? ""); shown \(shown); \(s.runs) handoffs, \(s.pending.count) windows calls pending")
+        if let key = devShownWindow(), let name = devSafariName(key.link), DevHooks.names.contains(name) { out.append("test profile: \(name)") }
+        if let cover = liveProfileCover as? NativeHandoffCover { out.append(cover.validationStatus) }
+        else { out.append("live cover audit: unavailable") }
+        out.append("live cover session: \(s.coverOff ?? "on")")
         if let parking {
             let now = options.switchClock.now()
             out.append("registry: \(parking.entries.count) parked; home windows \(parking.lastShown.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))")

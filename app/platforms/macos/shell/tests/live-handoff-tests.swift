@@ -61,6 +61,21 @@ func liveHandoffTests() {
     let toB = ProfileSwitch.Target(profile: hB, space: "b1")
     let toC = ProfileSwitch.Target(profile: hC, space: "c1")
 
+    for allowed in [false, true] {
+        let (w, s, cover) = liveHandoffSetup { $0.devAllowed = allowed }
+        s.session.dev.cover = false
+        if allowed {
+            s.start(toB, from: hA, windowId: 10)
+            handoffUntil(w, max: 5) { !s.busy }
+            check("live cover benchmark: guarded cap uses actual freeze without allocating cover", w.events.last == .done(toB) && cover.contexts.isEmpty && w.freezer.calls.contains("freeze 1.7 s: 0"))
+        } else {
+            beginLiveHandoff(w, s, cover, toB)
+            handoffUntil(w, max: 5) { !s.busy }
+            check("live cover benchmark: cap cannot affect a non-test switch", w.events.last == .done(toB) && cover.ends.map(\.why) == [.ready] && w.freezer.calls.isEmpty)
+        }
+        check("live cover benchmark: cap does not reset or demote genuine session gates", s.session.coverOff == nil && s.session.rules.on)
+    }
+
     do {
         let (w, s) = handoffSetup()
         s.start(toB, from: hA, windowId: 10)

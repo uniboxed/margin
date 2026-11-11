@@ -66,13 +66,14 @@ final class CoverPresentation {
 
     @discardableResult func restore() -> Bool {
         var ok = true
-        for entry in held.values {
+        var remaining: [ObjectIdentifier: Held] = [:]
+        for (id, entry) in held {
             guard let view = entry.view else { continue }
             if io.read(view) == entry.original { continue }
             let sent = io.write(view, entry.original)
-            if !sent || io.read(view) != entry.original { ok = false }
+            if !sent || io.read(view) != entry.original { ok = false; remaining[id] = entry }
         }
-        held = [:]
+        held = remaining // a failed restoration must not forget the surviving view's original value
         return ok
     }
 }

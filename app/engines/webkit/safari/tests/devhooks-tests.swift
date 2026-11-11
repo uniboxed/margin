@@ -166,13 +166,23 @@ func devHooksTests() {
         check("dev hook: mode: one field at a time", w.devState.freeze == false && w.devState.old == .keep)
         hooks.heard(.mode, ["freeze": "on", "old": "park"])
         check("dev hook: mode: on and park are no cap", w.devState.isEmpty)
-        for bad in [["freeze": "maybe"], ["old": "drop"], [:]] {
+        hooks.heard(.mode, ["cover": "off"])
+        check("dev hook: cover cap is explicit and independent of freeze", w.devState.cover == false && w.devState.freeze == nil && w.devState.description.contains("cover off"))
+        hooks.heard(.mode, ["cover": "on"])
+        check("dev hook: cover on only removes its subtractive cap", w.devState.isEmpty)
+        for bad in [["freeze": "maybe"], ["old": "drop"], ["cover": "maybe"], [:]] {
             check("dev hook: mode with \(bad.keys.sorted()) not known: refused, nothing changed", hooks.heard(.mode, bad).contains("refused") && w.devState.isEmpty)
         }
         hooks.heard(.fail, ["step": "park"])
         hooks.heard(.fail, ["step": "reveal"])
         check("dev hook: fail arms the step", w.devState.fails == [.park, .reveal])
         check("dev hook: fail with a step not known: refused", hooks.heard(.fail, ["step": "close"]).contains("refused: a step") && w.devState.fails.count == 2)
+    }
+    do {
+        let (w, hooks, _) = setup()
+        for i in 0..<160 { hooks.heard(.mode, ["cover": i % 2 == 0 ? "off" : "on"]) }
+        check("dev hook: long benchmarks retain only bounded recent diagnostics", hooks.lines.count == DevHooks.retainedLineLimit
+              && hooks.lines.last?.contains("mode cover on") == true && w.devState.isEmpty)
     }
     // ---- the fields: userInfo's strings, or the extension's JSON string ----
     do {

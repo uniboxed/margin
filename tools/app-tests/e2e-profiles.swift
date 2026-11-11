@@ -424,10 +424,12 @@ func handoffScenario() async {
                                 hideWindow: { _ in false }, destroy: { _ in false }, spaces: { _ in nil })
   let coverPages = OverlayPages(root: options.root!)
   var sessionAllowed = true
+  var refusesRestore = false
   var visibility: [ObjectIdentifier: Bool] = [:]
   let presentation = CoverPresentation(io: CoverPresentationIO(reason: nil, read: { visibility[ObjectIdentifier($0)] ?? true },
-      write: { visibility[ObjectIdentifier($0)] = $1; return true }))
-  let liveCover = NativeHandoffCover(pages: coverPages, io: noCalls, sessionAllowed: { sessionAllowed }, presentation: presentation)
+      write: { if $1 && refusesRestore { return false }; visibility[ObjectIdentifier($0)] = $1; return true }))
+  let liveCover = NativeHandoffCover(pages: coverPages, io: noCalls, sessionAllowed: { sessionAllowed }, presentation: presentation,
+                                  layoutViews: { shell.overlays[k7].map { [$0.webView] } ?? [] })
   let liveContext = LiveCoverContext(hello: liveHello, display: full, viewport: CGRect(origin: .zero, size: full.size))
   liveCover.prepare(liveContext)
   check("live cover: real read-only page prepares off screen through its bridge", await until(3, { liveCover.state == .prepared }), "\(liveCover.state)")
@@ -436,6 +438,15 @@ func handoffScenario() async {
   _ = liveCover.end(.cancelled)
   try? await Task.sleep(nanoseconds: 200_000_000)
   check("live cover: delayed preparation cannot resurrect a cancelled page", liveCover.state == .idle && liveCover.windowNumbers.isEmpty)
+  liveCover.prepare(liveContext)
+  check("live cover: restoration regression prepares actual page", await until(3, { liveCover.state == .prepared }))
+  refusesRestore = true
+  check("live cover: failed restoration remains visible in cleanup audit", !liveCover.end(.failed) && presentation.count > 0
+        && liveCover.validationStatus.contains("cleanup failures 1") && liveCover.windowNumbers.isEmpty)
+  liveCover.prepare(liveContext)
+  check("live cover: unverified cleanup cannot allocate another cover", liveCover.state == .failed("previous cleanup unverified") && liveCover.windowNumbers.isEmpty)
+  refusesRestore = false
+  check("live cover: later cleanup restores retained source view without an idle timer", liveCover.end(.cancelled) && presentation.count == 0 && visibility.values.allSatisfy { $0 })
   sessionAllowed = false
   liveCover.prepare(liveContext)
   check("live cover: locked session refuses before allocating a panel", liveCover.state == .failed("session is locked or unavailable") && liveCover.windowNumbers.isEmpty)

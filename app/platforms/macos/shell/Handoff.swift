@@ -489,7 +489,8 @@ extension ProfileSwitch: FreezerDelegate {
         let hasParked = !(parking?.entries(of: to.profile).isEmpty ?? true)
         // Closing without a freeze is today's switch (plus its drafts check), unless there's a parked
         // window to show, or a window's own activity asked.
-        let liveCover = hw.handoffCover != nil && session.coverOff == nil && session.noFreeze == nil && displays == 1 && a != nil
+        let coverCapped = devTest && session.dev.cover == false // DEV-HOOK: subtractive, never touches the real session gate
+        let liveCover = !coverCapped && hw.handoffCover != nil && session.coverOff == nil && session.noFreeze == nil && displays == 1 && a != nil
         if !choice.freeze, !liveCover, choice.old == .close, !hasParked, asked == nil, a != nil {
             note("\(choice): the close-based switch")
             return false
@@ -506,6 +507,7 @@ extension ProfileSwitch: FreezerDelegate {
         if hw.handoffCover != nil, displays != 1 { note("live cover unavailable with multiple displays: degraded freeze/slide fallback") }
         run.devTest = devTest // DEV-HOOK
         if devCapped { run.devUsed.append("cap") } // DEV-HOOK
+        if coverCapped { run.devUsed.append("cover off") } // DEV-HOOK
         target = to
         from = (fromProfile, windowId)
         newWindow = nil
@@ -1911,6 +1913,7 @@ extension ProfileSwitch: FreezerDelegate {
         }
         if let freezeAt = run.freezeAt, let revealed = run.revealedAt, run.handle != nil {
             s += ", frozen \(Int(((revealed - freezeAt) * 1000).rounded())) ms" + (run.revealResult.map { " (result \($0))" } ?? "")
+            if run.coverStartedAt == nil { s += ", request to reveal \(Int(((revealed - run.startedAt) * 1000).rounded())) ms" }
         }
         var parts: [String] = []
         if run.openedAt != nil { parts.append("profile window linked \(run.ms(run.openedAt))") }
