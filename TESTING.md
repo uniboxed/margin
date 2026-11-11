@@ -2040,6 +2040,18 @@ no browser transition. The final two live checks pass state/cleanup and scoped
 human observation. Original absent/off flag restored. No further on-screen run
 is authorized.
 
+Real OS follow-up: corrected lock and actual lid sleep/wake now pass their
+scoped event/source/cleanup checks; the first failed lock remains failed.
+Monitor connection/MULTI are still unrun. The lab clock fix uses native uptime
+and actual cover removal, with 48 evidence fixtures; see
+`tools/handoff-lab/results/26B131-2026-11-11-system-validation.md` for exact
+allowance consumption, setup refusal and expired monitor cue. Default off.
+
+- [x] Corrected real lock/unlock: unchanged Safari and exact original source, bounded early secure-login protection, balanced cover cleanup.
+- [x] Real lid sleep/wake: actual will-sleep/wake, exact source restoration, zero pending calls/aftercare and balanced cover cleanup.
+- [ ] Actual monitor connection during a cover and exact recovery with two displays.
+- [ ] Actual two-display public-slide/keep degraded path with no live allocation.
+
 Prepared remaining real-system protocol: `tools/handoff-lab/SYSTEM-VALIDATION.md`.
 EVLOCK/EVSLEEP/EVDISPLAY require actual OS callbacks during independently shown
 cover and exact source recovery/cleanup; MULTI checks the declared two-display

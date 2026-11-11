@@ -1,12 +1,12 @@
 # Prepared real-system follow-up
 
-This is a plan, **not a result or approval**. The production live-cover preference
+This is a protocol, **not permission for another run**. The production live-cover preference
 stays off outside an approved phase. The app binary is unchanged; these gates
 are lab tools. The latest observed normal/live-fault follow-up passes its stated
 scope; see [results](results/26B131-2026-11-11-observed-followup.md).
 
-The [runbook](README.md) requires **“Ask before any run on screen.”** A new
-approval covers at most **seven** Test A/Test B switches across these three
+The [runbook](README.md) requires **“Ask before any run on screen.”** The original
+approval covered at most **seven** Test A/Test B switches across these three
 phases, with six setup/restoration Margin restarts. No previous allowance is
 reused. Start with one active built-in display, Test A/Test B prepared without
 work in use, a foreground full-screen test window and the external monitor
@@ -25,8 +25,10 @@ The preparation leaves a real target parked. There is no browser pre-creation
 outside the normal product mechanism. After preparation the outer runner writes
 `prepared` and waits: obtain the person's **timing readiness**, then create that
 phase's `continue` file. This cue is not another switch approval and cannot
-extend the seven-switch limit. It expires after 120 seconds without a cue;
-do not rerun preparation automatically if time is missed.
+extend the seven-switch limit. The original cue expired after 120 seconds without a reply. The prepared
+monitor-only retry allows a ten-minute idle timing window, subject to approval
+of its extra preparation/restarts; actual product/OS-trial bounds stay unchanged.
+Do not rerun preparation automatically if a cue expires.
 
 After the cue there is a five-second return-to-Safari delay. The next cover is
 the interrupted trial. Let its animation run **one second**, then:
@@ -53,15 +55,26 @@ read** of the actual cover number/PID, onscreen state, positive alpha and displa
 bounds. The existing app trace records callbacks before Shell dispatch. Read
 only its five newest regular metadata files, bounded to 6 MiB each (the writer
 rotates at 5 MiB before its next row); ignore incomplete final rows. Require the
-named callback after the shown observation and before the matching interrupted
-summary, with real unlock/wake where applicable. Stale/missing/malformed or
-future timestamps cannot pass. No capture or new app observer is added.
+named callback in the actual cover interval, with real unlock/wake where
+applicable. WindowTrace uses native boot uptime (Diagnostics.now), not Unix time.
+Derive removal from the unique matching switch-start trace plus the summary
+request-to-reveal duration; late summary receipt cannot extend that interval.
+Only 5 ms of rounding/read tolerance is allowed. Reject mixed clock origins.
+
+Two prospectively labelled orderings also apply: secure-login activation just
+before the public lock callback (independent system-app observation near cover
+removal, public lock within 500 ms, then unlock and unchanged browser/source);
+or screen sleep followed within two seconds by actual will-sleep and later wake.
+An arbitrary app activation or screen sleep alone cannot pass. Collect final
+recovery/cleanup evidence even on classification failure. Stale/missing/malformed
+or future timestamps cannot pass. No capture or new app observer is added.
 
 Within 120 seconds, including the person's return, require the matching recovery
 reason, actual live/parked-target/fullscreen-fault mechanism, unchanged app PID,
 exact original source/profile fullscreen/active/front, expected display count,
 no interruption/pending calls and independent balanced native cleanup/last-window
-disappearance. The outer owned-process deadline is 180 seconds; no wake/unlock
+disappearance. After the person returns, final source readiness has at most ten seconds within
+that overall bound. The outer owned-process deadline is 180 seconds; no wake/unlock
 is forced. A missed action or failed proof stops the phase, rather than being
 reclassified as successful. Genuine capability demotions are not reset to finish
 the comparison.
@@ -82,7 +95,8 @@ tools/handoff-lab/build/handoff-lab evlock evsleep evdisplay multi --dry-run --p
 bash /tmp/margin-system-case-20261111.sh --dry-run
 ```
 
-The host-specific prepared outer runner is frozen with candidate/lab/sender
+The initial host-specific outer runner and corrected V2/monitor-only variants
+are frozen with candidate/lab/sender
 hashes before approval. Only afterward, run one phase at a time:
 
 ```sh
@@ -103,3 +117,5 @@ Off-screen evidence checks (no app/window/OS action):
 swiftc -parse-as-library tools/handoff-lab/SystemEvidence.swift tools/handoff-lab/tests/system-evidence-tests.swift -o /tmp/margin-system-evidence-tests
 /tmp/margin-system-evidence-tests
 ```
+
+Actual results and consumed allowances: [system validation report](results/26B131-2026-11-11-system-validation.md). The corrected lock and actual lid-sleep cases pass their scoped checks. Monitor connection/MULTI remain unrun. No default-on acceptance is inferred.

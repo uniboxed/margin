@@ -4709,3 +4709,49 @@ absent from `all`. An actual read-only trace-format check passes (no recent real
 OS events, no delivery claim). Fresh npm test/test:e2e pass 1,031/150. Run plan:
 `tools/handoff-lab/SYSTEM-VALIDATION.md`; actual OS gates remain unrun and no new
 switch allowance is authorized. Default off, no PR.
+
+### Actual lock/sleep follow-up and clock correction (2026-11-11)
+
+The user approves the seven-switch/six-restart OS plan. First preparatory live
+switch passes, but lock trial fails its strict classification: foreign focus
+ends the cover as aborted, followed by public screen lock/unlock; Safari also
+exits. The user is unsure whether they quit it. Preserve the failed gate, without
+claiming its skipped final independent audit or assigning a Safari-exit cause.
+
+The lab has a clock-origin bug: WindowTrace/Diagnostics uses native system uptime,
+but it filtered/observed in Unix time. Correct it, reject mixed origins, and
+derive actual cover removal from the unique matching native switch-start event
+and summary duration; summary receipt after recovery is not cover-hide time.
+Add explicit prospective pre-lock protection proof (independently observed
+secure-login app, tight callback interval, actual lock/unlock, unchanged browser
+and exact source) and screen-sleep lead-in proof requiring actual sleep/wake.
+Retain final evidence even on a classification failure. All 48 pure evidence
+checks and lab compile pass; corrected read-only replay finds real lock/unlock.
+Production app code is unchanged.
+
+The user explicitly requests a lock repeat (up to two extra switches/two
+restarts). It passes the secure-login-before-public-lock path: unchanged Safari,
+original source fullscreen/active/front, no pending/interruption state, 2/2
+native cover disposal and zero cover resources/failures. A bounded target
+aftercare watch remains at that snapshot; natural expiry is not certified before
+the approved app restart. Actual lid sleep then passes the direct sleep path,
+including will-sleep/wake, exact source recovery, 2/2 disposal, no pending calls
+or aftercare watches and zero cover resources/failures. Restore original off
+flag after each. Neither result promotes the failed first lock attempt.
+
+First monitor setup correctly refuses with no switch: at the exact guard,
+ChatGPT is front and Safari's fullscreen Space is inactive. The initial toolbar
+diagnosis is wrong (its 52-point height is already excluded); correct it rather
+than relaxing predicates. User approves two additional restarts. That retry's
+preparatory switch passes, but its 120-second timing cue expires unanswered;
+stop before display/MULTI, restore flag/app. Seven switches and ten restarts are
+consumed, with two approved switches unused. A prepared monitor-only retry asks
+for exactly one added preparatory switch/two restarts and uses a ten-minute
+idle human-reply window; product emergency and actual trial bounds are unchanged.
+No active runner/cover while approval is pending; default off, no PR. Evidence:
+`tools/handoff-lab/results/26B131-2026-11-11-system-validation.md`.
+
+Final local checks for the corrected lab follow-up pass: fresh npm test and
+test:e2e 1,031/150, 48 system-evidence and 89 plan/parser checks, lab compile and
+read-only plans. No production app changes/reinstall or newly claimed native
+app test run; the verified installed binary remains as tested previously.
