@@ -336,6 +336,10 @@ struct AftercareWatch {
 // What lasts the session (until Margin.app quits).
 struct HandoffSession {
     var coverOff: String? // separate from FreezeRules; a cover failure cannot demote the freezer
+    // Live covers in a row that ran out of time (activation, content): one is that switch's freeze, not the session's
+    // (a slow moment of the window server); this many in a row turn the cover off, as a failure does at once.
+    var coverTimeouts = 0
+    static let coverTimeoutsOff = 3
     var rules = FreezeRules()
     var parkOff: String? // parking off for this session: why
     var pending: [WindowKey: (type: String, token: Int, at: Double)] = [:] // windows calls not answered yet
@@ -721,7 +725,7 @@ extension ProfileSwitch: FreezerDelegate {
         case .frozen:
             transitionStep(run, hw, now)
         case .covering:
-            if now >= deadline { coverFallback(run, hw, "activation timed out") }
+            if now >= deadline { coverFallback(run, hw, "activation timed out", timedOut: true) }
         case .covered:
             coveredStep(run, hw, now)
         case .after:
@@ -817,7 +821,7 @@ extension ProfileSwitch: FreezerDelegate {
                 coverFallback(run, hw, why)
                 return
             default:
-                if now - (run.coverPreparedAt ?? now) >= ho.coverSetupWait { coverFallback(run, hw, "content preparation timed out") }
+                if now - (run.coverPreparedAt ?? now) >= ho.coverSetupWait { coverFallback(run, hw, "content preparation timed out", timedOut: true) }
                 return
             }
         }
@@ -868,11 +872,14 @@ extension ProfileSwitch: FreezerDelegate {
         }
     }
 
-    private func coverFallback(_ run: HandoffRun, _ hw: HandoffWorld, _ why: String) {
+    private func coverFallback(_ run: HandoffRun, _ hw: HandoffWorld, _ why: String, timedOut: Bool = false) {
         run.coverFailed = true
-        session.coverOff = why
+        if timedOut { session.coverTimeouts += 1 }
+        // A failure, or time run out too often in a row: off for the session. One time-out: this switch only.
+        let off = !timedOut || session.coverTimeouts >= HandoffSession.coverTimeoutsOff
+        if off { session.coverOff = timedOut ? "\(why), \(session.coverTimeouts) times in a row" : why }
         endLiveCover(run, hw, .failed)
-        note("live cover off this session (\(why)): degraded \(freezes(run, hw) ? "freeze" : "macOS slide") fallback")
+        note("live cover \(off ? "off this session" : "not for this switch") (\(why)): degraded \(freezes(run, hw) ? "freeze" : "macOS slide") fallback")
         enter(.preparing, for: options.settleTimeout)
         prepareStep(run, hw, clock.now())
     }
@@ -1284,6 +1291,7 @@ extension ProfileSwitch: FreezerDelegate {
                 }
                 return
             }
+            session.coverTimeouts = 0 // a live cover through to the end: the count of time-outs in a row starts again
             endLiveCover(run, hw, .ready)
         }
         reveal(run, hw, .ready)

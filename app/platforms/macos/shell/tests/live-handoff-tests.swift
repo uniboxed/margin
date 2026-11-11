@@ -277,13 +277,42 @@ func liveHandoffTests() {
             handoffUntil(w, max: 0.3) { !cover.activations.isEmpty }
             if failure == "activation refused" { cover.acknowledge(false) }
         }
-        handoffUntil(w, max: 2) { s.session.coverOff != nil }
+        handoffUntil(w, max: 2) { !cover.ends.isEmpty }
         let activationsBefore = cover.activations.count
         if activationsBefore > 0 { cover.staleAcknowledgement(0, true) }
         handoffUntil(w, max: 4) { !s.busy }
         check("live cover \(failure): fallback cleans page and makes one transition", cover.ends.map(\.why) == [.failed]
               && cover.state == .idle && w.events.last == .done(toB)
               && w.types(hB, "setWindowState").count == 1 && w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 0"])
+        // A refusal is a failure: off for the session. A time-out is that switch's: the next one tries the cover again.
+        if failure == "activation refused" {
+            check("live cover activation refused: off for the session", s.session.coverOff != nil)
+        } else {
+            check("live cover \(failure): one time-out doesn't turn the cover off for the session",
+                  s.session.coverOff == nil && s.session.coverTimeouts == 1, "\(s.session.coverOff ?? "on") \(s.session.coverTimeouts)")
+        }
+    }
+
+    // Time run out on several switches in a row: off then, as a failure is at once; a live cover through to the end
+    // starts the count again.
+    do {
+        var session = HandoffSession()
+        session.coverTimeouts = HandoffSession.coverTimeoutsOff - 1
+        let (w, s, cover) = liveHandoffSetup()
+        s.session = session
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 0.3) { !cover.contexts.isEmpty }
+        handoffUntil(w, max: 4) { !s.busy }
+        check("live cover: \(HandoffSession.coverTimeoutsOff) time-outs in a row turn it off for the session",
+              s.session.coverOff?.contains("\(HandoffSession.coverTimeoutsOff) times in a row") == true, s.session.coverOff ?? "on")
+    }
+    do {
+        let (w, s, cover) = liveHandoffSetup()
+        s.session.coverTimeouts = HandoffSession.coverTimeoutsOff - 1
+        beginLiveHandoff(w, s, cover, toB)
+        handoffUntil(w, max: 4) { !s.busy }
+        check("live cover: one through to the end starts the time-outs' count again", cover.ends.map(\.why) == [.ready]
+              && s.session.coverTimeouts == 0 && s.session.coverOff == nil)
     }
 
     do {
