@@ -443,6 +443,21 @@ extension ProfileSwitch: FreezerDelegate {
             return finish(.cancelled(run.target), "\(why) before moving windows: nothing done",
                           landed: run.a.map { ($0.link, $0.windowId) })
         }
+        // Shown already (B revealed: the switch's `after` and `landed`): the switch is done for the person, and a
+        // display change or the Dock restarting doesn't undo it (2026-11-11: a monitor plugged in within the ~1.5 s
+        // after a switch brought A back). What's left goes by the new layout: on one display A's parking holds and
+        // its aftercare goes on; on several, A stays where it is, as a new switch would keep it (HandoffChoice.pick:
+        // no parking with several displays until G11), so its pending aftercare (leave full screen, park) goes.
+        if [.after, .landed].contains(phase) {
+            if run.coverPreparedAt != nil || run.coverActive { endLiveCover(run, hw, revealWhy) }
+            // One display (the Dock restarting): nothing the switch still does depends on the change; it goes on.
+            guard (hw.spaceReads?.managedDisplayCount() ?? 2) > 1 else { return note("\(why) after the reveal: \(run.target) kept, the switch goes on") }
+            // Several: no more steps under the old layout (a close retry would hold the screen again, which isn't for
+            // several displays): the switch ends on B now, and A stays open where it is.
+            if let n = run.aNumber { dropWatch(n) }
+            note("\(why) after the reveal: \(run.target) kept; A left where it is (several displays)")
+            return end(run, hw)
+        }
         // Waiting for a profile can already have asked Safari to open/focus a
         // window. Restore the known source through the normal bounded recovery.
         if [.waitingForProfile, .waitingForLink, .preparing, .covering].contains(phase),
