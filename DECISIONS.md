@@ -4577,3 +4577,75 @@ energy claim. The actual guarded crash passes again on final sources. Evidence
 and scope: `tools/handoff-lab/results/26B131-2026-11-11-renderer-components.md`.
 The installed app and absent/off launch preference remain as before; new
 on-screen acceptance still needs the lab-required approval. No PR.
+
+### Real watchdog and interrupted resource attempt (2026-11-11)
+
+Under the approved three corner appearances, the actual Native20s watchdog
+passes with an independent alpha0 observation at20.030s while its own main
+thread is blocked22s. Cancel/reuse passes across the cancelled old deadline,
+with no emergency on the second panel. All three panels/settings/bridges/Spaces
+clean up, audits are balanced and independent post-exit window checks pass.
+This is actual native metadata evidence, not physical pixels or Shell OS-event
+recovery.
+
+The installed candidate then passes four native warmups. The operator's outer
+runner incorrectly requests a1200s sampler duration despite its600s limit; the
+sampler refuses and writes no resource data. Stop during pre-idle, restore caps
+and the original absent flag, restart Margin, verify idle/no pending calls/no
+caps or faults. Exact event proof contains only4 requests and no measured normal
+request. Keep this as an aborted instrumentation attempt, with no performance
+conclusion. Four of50 requests are consumed;46 remain. Fresh complete50 needs
+approval for4 additional requests; do not add them or reduce the protocol
+silently. All three corner appearances are already complete.
+
+A new validation-capture supervisor checks two healthy samples before any
+request and continuously stops the gate on resource failure. Default is dry
+run; --check cannot switch. All 54 resource/guard tests pass, and an actual
+read-only sampler preflight passes. Product sources are unchanged. Report:
+`tools/handoff-lab/results/26B131-2026-11-11-native-acceptance.md`.
+
+### Fresh matched capture and protected close-fallback follow-up (2026-11-11)
+
+With the explicitly approved four additional requests, the fixed supervisor
+records a fresh 50-request comparison. All 54 browser requests and three corner
+appearances are now consumed; no further on-screen run is authorized. All 42
+normal measurements pass, as do the fullscreen recovery and two actual-close
+cases. Final suppressed parking leaves A intact because its draft answer has
+two unknown tabs; the required close-fallback case correctly fails and stops.
+Preserve the failed overall MATCHED result and its lack of a final independent
+audit for request 50. Original absent/off flag and clean app launch restored.
+
+Same-process matched medians: live request-to-reveal 1,971 ms vs freeze 1,417 ms;
+sampled app + attributed WebKit peak footprint 577.8 vs 550.8 MiB; observed CPU
+687.2 vs 438.8 ms/request. One freeze control has a degraded early watchdog
+reveal, explicitly retained as a hazard; all 30 normal live requests are on time.
+All 958 resource samples are complete; actual live preparations reuse an owned
+renderer and normal WebContent count remains two. No safe proven latency
+shortcut was found: Safari's reply does not replace native fullscreen-exit proof.
+Idle/cache differences and sampled sums do not establish unique RAM or leak
+freedom. Keep default off; no speed/equal-cost claim. Detailed evidence/limits
+are in the native acceptance report; the user was not watching closely, so
+physical continuity remains unverified.
+
+Prepare one separately approved FALLBACK request, excluded from `all`, after
+two consecutive real empty drafts/unknown observations of the unchanged shown
+test source, at most three observations within two seconds. New dev-hook
+observation is opt-in/nonce guarded, binds actual connection/native/tab/idle
+identity and rejects stale replies; it only logs IDs/counts and never grants a
+close capability. Production draft timeout/protection and fresh handoff check
+are unchanged. Actual unknown content still keeps A and fails the intended
+close test. Never relabel the failed batch. The existing interruption gate is
+included in diagnostic dumps for future actual OS-event checks. No PR.
+
+Final checks for this diagnostic/tooling follow-up pass: 1,031 JS unit,
+150 browser, 2,345 native unit, 555 native integration, 82 existing plan/parser,
+20 new draft-parser and 54 Python resource/guard tests. App/handler/helper Xcode
+warning checks are clean. The lab and sender compile; FALLBACK and the bounded
+two-observed-plus-one-fault outer plan pass dry run only. Positive real draft
+transport, physical observation and actual OS-event checks remain unrun. No
+production timeout, close guard or launch default is weakened.
+
+Signed Release build without install passes deep/strict verification and keeps
+the installed Apple Development team VSNN5UW99X/hardened runtime. Candidate and
+prepared bounded three-request runner hashes are frozen for review. The
+installed app/absent flag remain unchanged; new on-screen approval is pending.

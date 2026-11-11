@@ -13,7 +13,7 @@ defines the prepared experiment, not a result or permission to run it.
 | Real Safari | The original strict VALIDATE gate and the separately prepared prospective MATCHED gate below, on this Mac/build only. |
 | Physical display | Observe animation, flashes and final alignment. Metadata cannot establish pixel coverage or physical smoothness; a camera remains independent evidence. |
 | Lock/sleep/displays | Fake event routing/capability refusal are automated. Actual OS lock delivery, physical sleep/display changes, several displays and other macOS builds are not inferred. |
-| Emergency watchdog | The owned off-main-thread hide primitive is tested; the complete real 20-second NativeHandoffCover/watchdog path is not inferred from the component probe. |
+| Emergency watchdog | The actual NativeHandoffCover 20-second watchdog and cancel/reuse across its old deadline pass on this host; independent metadata observer, not physical pixels or Shell OS-event recovery. |
 
 ## Original strict gate (VALIDATE)
 
@@ -96,8 +96,8 @@ advantage or performance acceptance can be inferred from the live-only capture.
 
 ## Prospective matched gate (MATCHED)
 
-`MATCHED` is a **new, unrun 50-request experiment**, protocol
-`matched-v2-degraded-freeze`. It requires a new approval for the complete batch;
+`MATCHED` is a **separately approved 50-request experiment**, protocol
+`matched-v2-degraded-freeze`. Each new run requires approval for the complete batch;
 the ten unused requests from the original allowance do not authorize it. The
 original failed runs remain failed, their proof parsers and strict `VALIDATE`
 behavior are unchanged, and neither legacy resume option is accepted by
@@ -172,7 +172,12 @@ with an explicit gate selection. Its read-only plan command is:
 tools/handoff-lab/build/handoff-lab matched --dry-run --app "$HOME/Applications/Margin.app"
 ~~~
 
-No new on-screen approval has been given. A second monitor is available for
+The approved November 11 capture has now run: all 42 normal measurements and
+three recovery/close cases pass; the final park-fault keeps two unknown tabs and
+fails the required actual-close check. The overall gate remains failed. See the
+[actual report](results/26B131-2026-11-11-native-acceptance.md) for performance,
+resource limits and consumed approvals. No further request is authorized.
+A second monitor is available for
 separate physical/multiple-display observations, but `MATCHED` still requires
 one active display. Do not attach/configure it or infer multi-display acceptance
 from this batch; prepare and approve those cases separately, including the
@@ -223,3 +228,72 @@ matched latency, transient cost, process births/exits and idle recovery.
 Persistent unexplained tails, extra idle rendering or timing regression need
 investigation before enabling the cover. Passing this batch establishes its
 state/cleanup scope here, not blanket multi-display/OS/camera acceptance.
+
+
+## Resource process supervision (2026-11-11)
+
+The [current acceptance follow-up](results/26B131-2026-11-11-native-acceptance.md)
+records three passed native watchdog/cancel-reuse appearances and a separately
+aborted MATCHED attempt: four warmups, no measured requests, no resource data,
+original flag restored. Its outer runner exceeded the sampler's supported
+600-second bound. The fixed 50 protocol remains unchanged and that failed
+capture is not promoted or resumed. Four requests were consumed; a fresh 50
+needed approval for four additional requests beyond the 46 remaining. That
+approval was received and the fresh 50 completed with the final fault-case
+failure described above. All 54 requests are consumed.
+
+Use `validation-capture.py` for an already prepared/opted-in app. It does not
+install/restart apps or restore launch preferences; the outer runner must still
+own those operations. Its default dry run starts nothing. `--check` verifies
+read-only resource health and cannot switch. After explicit full-batch approval,
+`--go --approved-50 --output NEW_DIRECTORY` waits for two complete stable
+PID/birth samples, then launches MATCHED. A sampler exit/stall, invalid census
+or identity change stops its owned gate immediately; the lab restores caps.
+Raw stdout and validated JSONL are separate. The sampler uses 600 s and the gate
+has a shorter 570 s outer deadline. No other test/build runs during capture.
+
+```sh
+python3 tools/handoff-lab/validation-capture.py --dry-run
+python3 tools/handoff-lab/validation-capture.py --check --output /tmp/NEW-health-directory
+# Only after approval, with the app opted-in and original-flag restoration owned:
+python3 tools/handoff-lab/validation-capture.py --go --approved-50 --output /tmp/NEW-approved-capture
+```
+
+## One missing close-fallback check (FALLBACK)
+
+This separately selected gate is excluded from `all`, and sends at most **one**
+Test A/Test B request. It requires a new on-screen approval, a tested opted-in
+candidate with the guarded draft observation, and the same one-display, idle,
+foreground-fullscreen/native identity and clean-resource preconditions. No
+sleep/lock gate, caps, faults or genuine demotions may already be present.
+
+Before arming anything, it asks the actual shown test window's existing
+`windowDrafts` checker at most three times within two seconds. Two consecutive
+empty drafts/unknown answers must have identical app/source/native/browser/caller
+and tab identities. Unknown resets the streak; stale/unavailable/changed/refused
+results stop before switching. This is an advisory observation (the existing
+checker also saves scroll metadata), never permission to close. The handoff still
+performs its own fresh draft check, and keeps unknown content protected.
+
+Only then arm one suppressed park and request the other test profile. Require
+the live on-time mechanism, actual source disappearance, target fullscreen/
+active/front identity, no pending calls and independent zero-resource/balanced
+cover cleanup. A kept source fails the intended fault case. No retries or
+reclassification of the failed MATCHED capture. Restore caps on every exit;
+the outer runner owns original-flag restoration and Margin restart after the
+expected parking demotion. Exit zero alone is not success: require the final
+`== FALLBACK: recorded` marker; a refused preflight sends nothing.
+
+```sh
+tools/handoff-lab/build/handoff-lab fallback --dry-run --app "$HOME/Applications/Margin.app"
+# Only after this one-request run is approved, with outer restoration prepared:
+tools/handoff-lab/build/handoff-lab fallback --go --app "$HOME/Applications/Margin.app"
+```
+
+The draft observation dev hook requires opt-in, exact uniquely named Test A/B,
+one pending request, nonce replay protection, a stable actual connection and
+epoch, native binding, tab set and idle handoff generation. Replies repeat those
+guards. It logs only IDs/counts; no URL/title/peer error contents. Session dump
+also reports the existing interruption gate for future user-assisted OS checks.
+Fake async refusals/stale replies, Shell unbound refusal and metadata parsing
+are automated; positive real transport still needs this separately approved run.

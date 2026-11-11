@@ -8,6 +8,7 @@
 //
 //   swift tools/handoff-lab/devswitch.swift switch "Test B" [--space ID] [--wait S]
 //   swift tools/handoff-lab/devswitch.swift dump
+//   swift tools/handoff-lab/devswitch.swift drafts UUID   Observe only; never permits a close
 //   swift tools/handoff-lab/devswitch.swift mode [--freeze on|off] [--old park|close|keep]
 //   swift tools/handoff-lab/devswitch.swift fail show|park|reveal|fullscreen
 //   swift tools/handoff-lab/devswitch.swift probe tabMove   Test A's one-shot tab-move probe (docs/BROWSER-WINDOWS.md)
@@ -72,6 +73,9 @@ case "switch":
     post("switch", f)
 case "dump":
     post("dump", [:])
+case "drafts":
+    guard args.count == 2, UUID(uuidString: args[1]) != nil else { fail("drafts takes a caller-generated UUID nonce") }
+    post("drafts", ["nonce": args[1]])
 case "mode":
     var f: [String: String] = [:]
     if let freeze { guard ["on", "off"].contains(freeze) else { fail("--freeze on|off") }; f["freeze"] = freeze }

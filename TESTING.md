@@ -8,7 +8,7 @@ they do not establish real OS delivery or physical composition. The
 [lab rules](tools/handoff-lab/README.md) require approval before anything runs on screen.
 
 - [ ] Run the new [MATCHED protocol](tools/handoff-lab/VALIDATION.md) on one display: 50 guarded Test A/Test B requests, same process/topology, complete resource samples, separate degraded freeze reveal and verified completion. Preserve prior failed runs.
-- [ ] Run the [actual 20-second watchdog and cancel/reuse checks](tools/handoff-lab/WATCHDOG-SESSION-VALIDATION.md): three passive corner appearances, independent alpha observation during the owned main-thread block, verified cleanup and no stale deadline affecting reuse.
+- [x] On 26B131 (2026-11-11), run the [actual 20-second watchdog and cancel/reuse checks](tools/handoff-lab/WATCHDOG-SESSION-VALIDATION.md): three passive corner appearances, independent alpha observation during the owned main-thread block, verified cleanup and no stale deadline affecting reuse.
 - [ ] Check real lock/unlock and system sleep/wake, including a profile still connecting:cover disposed, source restored or visible fallback, no stale queued/late-link transition, fresh deliberate switch after allowed wake.
 - [ ] With the available second monitor, connect/disconnect during early preparation and a moving handoff. Verify immediate cover disposal, bounded source recovery, no late close/repark, then fresh two-display conservative keep/no-freeze behavior. This fallback is not the single-display live-cover goal.
 - [ ] Observe/record physical transitions for flashes, sliding Safari/Desktop, theme animation and final sidebar alignment. Metadata alpha/readiness alone cannot pass this check. Other macOS builds retain separate acceptance.
@@ -2016,9 +2016,22 @@ freeze-control watchdog. That matched experiment stays failed. A separate
 - [x] Cleanup after every live-only request; final 36/36 disposed, zero resources/failures; no contradictory AX drops.
 - [x] Pre/post-idle resource capture before faults, complete attribution in 800 samples; helper identity and CPU separately tracked.
 - [x] Clock-origin mismatch diagnosed; raw data retained, explicit wall alignment used; future raw Mach clock independently checked against native uptime. All 22 resource tests and 52 lab parser/plan checks pass.
-- [ ] Matched performance acceptance: control hit its watchdog; no speed comparison is established.
+- [ ] Matched performance acceptance: earlier controls failed. The November 11 prospective capture now provides descriptive same-process comparison, but live is slower/costlier and the full batch fails its final protected close-fallback case; no default-on acceptance.
 - [ ] Review transient/retained memory cost: median per-switch peak 601 MiB, maximum 623 MiB; idle footprint 362→376 MiB. Similar idle CPU is not a whole-system energy or long-term leak check.
-- [ ] Physical animation/pixel coverage, actual lock/sleep/display delivery, multiple displays/OS builds and complete real 20-second Native watchdog.
+- [ ] Physical animation/pixel coverage, actual lock/sleep/display delivery and multiple displays/OS builds. User was not watching the latest batch closely; continuity remains unverified.
+
+November 11 follow-up: the real production 20-second Native watchdog passes
+while its own main thread is blocked, independently observed hidden at 20.030 s;
+cancel/reuse also passes across the cancelled deadline, all resources balanced.
+Fresh MATCHED capture completes four warmups, 42 normal measurements, covered
+fullscreen recovery and two actual-close checks. Final park fault keeps a source
+with two unknown tabs and correctly fails the close-fallback check. All 54
+approved requests (four aborted instrumentation warmups plus fresh 50) are
+consumed. Original flag restored off. Detailed timings/resource caveats and
+raw evidence paths: `tools/handoff-lab/results/26B131-2026-11-11-native-acceptance.md`.
+
+- [ ] One separately approved FALLBACK request after guarded real draft readiness: actual source close, target readiness and independent cleanup. Preflight observations are advisory; production fresh check still protects unknown/draft content. Do not turn the failed MATCHED batch into a pass.
+- [ ] Two separately approved observed normal live switches, with the user watching cover continuity and sidebar alignment. No lab panel may hide the product.
 
 The original absent live-cover flag is restored and the installed matching
 corrections remain active. The experimental cover stays off by default. No PR.

@@ -25,6 +25,10 @@ final class FakeDevWorld: DevHookWorld {
     }
     var probes: [String] = []
     func devProbe(_ link: String, _ what: String) -> String? { probes.append("\(link) \(what)"); return nil }
+    var draftSource: DevDraftSnapshot?
+    var draftCalls: [(source: DevDraftSnapshot, done: (JSONObject?, String?) -> Void)] = []
+    func devDraftSnapshot() -> DevDraftSnapshot? { draftSource }
+    func devObserveDrafts(_ source: DevDraftSnapshot, done: @escaping (JSONObject?, String?) -> Void) { draftCalls.append((source, done)) }
     func devDump() -> [String] {
         dumps += 1
         return ["registry: 1 parked", "  window 2020 (safari:b#20) parked"]
@@ -43,11 +47,12 @@ func devHooksTests() {
         let w = FakeDevWorld()
         w.names = [a: "Test A", b: "Test B", work: "Work"]
         w.shown = shownA
+        w.draftSource = DevDraftSnapshot(key: shownA, number: 101, pid: 500, epoch: "connection-a", connection: ObjectIdentifier(w), tabs: [11, 12], handoffs: 0)
         var flag = on
         let hooks = DevHooks(world: w, isOn: { flag })
         return (w, hooks, { flag.toggle() })
     }
-    func untouched(_ w: FakeDevWorld) -> Bool { w.switches.isEmpty && w.dumps == 0 && w.devState.isEmpty }
+    func untouched(_ w: FakeDevWorld) -> Bool { w.switches.isEmpty && w.dumps == 0 && w.devState.isEmpty && w.draftCalls.isEmpty }
     let pid = ["pid": "42"]
 
     do {
@@ -64,6 +69,10 @@ func devHooksTests() {
         profiles.useBrowserNames([SafariProfile(serverId: "test-b", uuid: "b", name: "Test B", symbol: "", margin: "s-current"),
                                  SafariProfile(serverId: "other-b", uuid: "other", name: "Test B", symbol: "", margin: "s-other")])
         check("dev hook: two real current profiles remain ambiguous", shell.devSafariLinks(named: "Test B").count == 2)
+        shell.switcher.session.noFreeze = .sleep
+        check("dev hook: dump exposes the sleep interruption without changing it", shell.devDump().contains("session interruption: sleep") && shell.switcher.session.noFreeze == .sleep)
+        shell.switcher.woke()
+        check("dev hook: dump distinguishes an allowed wake", shell.devDump().contains("session interruption: none"))
     }
 
     do {
@@ -107,6 +116,102 @@ func devHooksTests() {
         let (w, hooks, _) = setup()
         w.shown = nil
         check("dev hook: no window shown: refused", hooks.heard(.switch, ["to": "Test B"]).contains("refused: no window shown") && untouched(w))
+    }
+    // ---- one bounded observation, independent of the handoff's close permission ----
+    do {
+        let (w, hooks, _) = setup()
+        let nonce = UUID().uuidString
+        for bad in [["nonce": nonce], ["nonce": nonce, "pid": "0"], ["nonce": "https://secret.example/private", "pid": "42"]] {
+            let line = hooks.heard(.drafts, bad)
+            check("dev drafts: invalid correlation refused without echoing fields", line.contains("invalid nonce or caller pid")
+                  && !line.contains("secret") && w.draftCalls.isEmpty)
+        }
+        w.names["safari:duplicate"] = "Test A"
+        check("dev drafts: ambiguous current profile refused", hooks.heard(.drafts, ["nonce": nonce, "pid": "42"]).contains("not idle, uniquely named and bound") && w.draftCalls.isEmpty)
+        w.names.removeValue(forKey: "safari:duplicate")
+        w.draftSource = nil
+        check("dev drafts: unavailable source refuses before request", hooks.heard(.drafts, ["nonce": nonce, "pid": "42"]).contains("not idle, uniquely named and bound") && w.draftCalls.isEmpty)
+    }
+    do {
+        let (w, hooks, _) = setup()
+        let nonce = UUID().uuidString
+        let fields = ["nonce": nonce, "pid": "42"]
+        check("dev drafts: exact shown identity dispatched", hooks.heard(.drafts, fields).contains("drafts requested")
+              && w.draftCalls.count == 1 && w.draftCalls[0].source == w.draftSource)
+        check("dev drafts: only one request pending", hooks.heard(.drafts, ["nonce": UUID().uuidString, "pid": "42"]).contains("observation is pending") && w.draftCalls.count == 1)
+        w.draftCalls[0].done(["drafts": [], "unknown": [12], "title": "PRIVATE", "url": "https://secret.example/"], nil)
+        let line = hooks.lines.last ?? ""
+        check("dev drafts: unknown preserved and only numeric metadata logged", line.contains("drafts observed") && line.contains("nonce \(nonce)")
+              && line.contains("native 101, pid 500") && line.contains("unknown 1 [12]") && !line.contains("PRIVATE") && !line.contains("secret")
+              && w.devState.isEmpty && w.switches.isEmpty)
+        check("dev drafts: nonce replay refused after completion", hooks.heard(.drafts, fields).contains("nonce already observed") && w.draftCalls.count == 1)
+        hooks.heard(.drafts, ["nonce": UUID().uuidString, "pid": "42"])
+        w.draftCalls[1].done(nil, "https://secret.example/ PRIVATE")
+        check("dev drafts: peer failure releases slot without leaking error", hooks.lines.last?.contains("drafts unavailable") == true
+              && !hooks.lines.last!.contains("secret") && !hooks.lines.last!.contains("PRIVATE"))
+        hooks.heard(.drafts, ["nonce": UUID().uuidString, "pid": "42"])
+        check("dev drafts: existing request timeout callback allows a later observation", w.draftCalls.count == 3)
+        w.draftCalls[2].done(["drafts": [], "unknown": []], nil)
+        check("dev drafts: empty result remains observation, never caps or faults", hooks.lines.last?.contains("drafts 0 [], unknown 0 []") == true && w.devState.isEmpty)
+    }
+    do {
+        let (w, hooks, _) = setup()
+        let shownB = WindowKey(link: b, windowId: 2)
+        w.shown = shownB
+        w.draftSource = DevDraftSnapshot(key: shownB, number: 202, pid: 500, epoch: "connection-b", connection: ObjectIdentifier(w), tabs: [21], handoffs: 0)
+        hooks.heard(.drafts, ["nonce": UUID().uuidString, "pid": "42"])
+        check("dev drafts: Test B's currently shown window is also observed", w.draftCalls.count == 1 && w.draftCalls[0].source.key == shownB)
+        hooks.stop()
+        check("dev drafts: stop retains one pending request until its existing callback/deadline", hooks.heard(.drafts, ["nonce": UUID().uuidString, "pid": "42"]).contains("observation is pending") && w.draftCalls.count == 1)
+        let stoppedCount = hooks.lines.count
+        w.draftCalls[0].done(["drafts": [], "unknown": []], nil)
+        check("dev drafts: stopped callback releases slot without publishing result", hooks.lines.count == stoppedCount)
+        hooks.heard(.drafts, ["nonce": UUID().uuidString, "pid": "42"])
+        let count = hooks.lines.count
+        w.draftCalls[0].done(["drafts": [], "unknown": []], nil)
+        check("dev drafts: stopped generation cannot clear a newer pending observation", hooks.lines.count == count
+              && hooks.heard(.drafts, ["nonce": UUID().uuidString, "pid": "42"]).contains("observation is pending") && w.draftCalls.count == 2)
+        w.draftCalls[1].done(["drafts": [21], "unknown": []], nil)
+        check("dev drafts: actual positive draft remains metadata only", hooks.lines.last?.contains("drafts 1 [21], unknown 0 []") == true && w.devState.isEmpty)
+    }
+    for change in ["shown", "native", "pid", "epoch", "connection", "tabs", "handoffs", "busy", "name", "duplicate", "flag", "stop"] {
+        let (w, hooks, toggle) = setup()
+        let source = w.draftSource!
+        hooks.heard(.drafts, ["nonce": UUID().uuidString, "pid": "42"])
+        switch change {
+        case "shown": w.shown = WindowKey(link: b, windowId: 2)
+        case "name": w.names[a] = "Work"
+        case "duplicate": w.names["safari:duplicate"] = "Test A"
+        case "flag": toggle()
+        case "stop": hooks.stop()
+        case "busy": w.draftSource = nil
+        default:
+            w.draftSource = DevDraftSnapshot(key: source.key, number: change == "native" ? 102 : source.number,
+                pid: change == "pid" ? 501 : source.pid, epoch: change == "epoch" ? "new-connection" : source.epoch,
+                connection: change == "connection" ? ObjectIdentifier(hooks) : source.connection, tabs: change == "tabs" ? [11, 13] : source.tabs,
+                handoffs: change == "handoffs" ? 1 : source.handoffs)
+        }
+        let count = hooks.lines.count
+        w.draftCalls[0].done(["drafts": [], "unknown": []], nil)
+        check("dev drafts: \(change) change invalidates asynchronous result", change == "stop" ? hooks.lines.count == count : hooks.lines.last?.contains("drafts stale") == true)
+        check("dev drafts: stale result never grants machine capability", w.devState.isEmpty && w.switches.isEmpty)
+    }
+    do {
+        check("dev drafts: malformed ids cannot become an empty close-looking answer", DevHooks.draftAnswer(["drafts": [], "unknown": [true]], tabs: [1]) == nil
+              && DevHooks.draftAnswer(["drafts": [], "unknown": [99]], tabs: [11]) == nil
+              && DevHooks.draftAnswer(["drafts": [], "unknown": "PRIVATE"], tabs: [11]) == nil)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-dev-drafts-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        var options = Shell.Options(); options.harness = true; options.dataRoot = root
+        let shell = Shell(link: SocketLink(), windows: StubWindows(), apps: StubApps(), hotKeys: FakeRegistrar(), options: options)
+        let source = DevDraftSnapshot(key: shownA, number: 101, pid: 500, epoch: "connection", connection: ObjectIdentifier(shell), tabs: [11], handoffs: 0)
+        var refused = false
+        shell.devObserveDrafts(source) { result, error in refused = result == nil && error == "stale source" }
+        check("dev drafts Shell: unbound/unlinked source refused before actual request", shell.devDraftSnapshot() == nil && refused && shell.switcher.session.pending.isEmpty)
+        let open: JSONObject = ["tabs": ["12": ["windowId": 1, "url": "https://secret.example/"], "11": ["windowId": 1], "13": ["windowId": 2]]]
+        check("dev drafts Shell: metadata identity selects only current window tab ids", Shell.devDraftTabIDs(open, windowId: 1) == [11, 12]
+              && Shell.devDraftTabIDs(open, windowId: 2) == [13] && Shell.devDraftTabIDs(open, windowId: 3) == nil
+              && Shell.devDraftTabIDs(["tabs": ["bad": ["windowId": 1]]], windowId: 1) == nil)
     }
     // ---- the tab-move probe: Test A's copy only, by Safari's name, whatever window is shown ----
     do {

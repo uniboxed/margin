@@ -26,10 +26,13 @@
 //   - `probe { what: tabMove }`: Test A's copy's one-shot tab-move probe (docs/BROWSER-WINDOWS.md: tabs following the
 //     window in front): one tab and one window made, the tab moved there and back, what survived, closed
 //     again. Only Test A's (by Safari's name), whatever window is shown; its answer is numbers and booleans.
+//   - `drafts { nonce: UUID }`: observe the shown test window's actual windowDrafts answer. Never
+//     authorizes a close; the handoff asks independently. The checker also records scroll positions.
 // - Each notification is one log line, honoured or refused: the kind, "Test A" or "Test B", ids and the
 //   sender's pid (as it says it). Nothing else it sent is ever logged.
 
 import AppKit
+import CoreFoundation
 
 // DEV-HOOK: a step the dev hook can make count as not landed (HANDOFF.md §9).
 enum DevFailStep: String, CaseIterable {
@@ -99,7 +102,20 @@ protocol DevHookWorld: AnyObject {
     func devDump() -> [String]
     // A probe asked of this link's copy (Test A's); nil if asked, else why not. Its answer is logged.
     func devProbe(_ link: String, _ what: String) -> String?
+    func devDraftSnapshot() -> DevDraftSnapshot?
+    // The existing request deadline bounds this one observation, including a silent peer.
+    func devObserveDrafts(_ source: DevDraftSnapshot, done: @escaping (JSONObject?, String?) -> Void)
     var devState: DevHookState { get set }
+}
+
+struct DevDraftSnapshot: Equatable {
+    let key: WindowKey
+    let number: Int
+    let pid: pid_t
+    let epoch: String // actual connection identity, never the storage revision
+    let connection: ObjectIdentifier
+    let tabs: [Int]
+    let handoffs: Int
 }
 
 // DEV-HOOK: the hook itself.
@@ -108,12 +124,15 @@ final class DevHooks {
     static let names: Set<String> = ["Test A", "Test B"]
     static let prefix = "com.unibox.margin.dev."
     static let defaultsKey = "MarginDevHooks"
-    enum Kind: String, CaseIterable { case `switch`, dump, mode, fail, probe }
+    enum Kind: String, CaseIterable { case `switch`, dump, mode, fail, probe, drafts }
 
     weak var world: DevHookWorld?
     let isOn: () -> Bool // the MarginDevHooks default, read each time
     private var receiver: Receiver?
     private(set) var lines: [String] = [] // what it said (the tests read it)
+    private var pendingDrafts: UUID?
+    private var draftGeneration = UUID()
+    private var draftNonces: [String] = []
 
     init(world: DevHookWorld, isOn: @escaping () -> Bool) {
         self.world = world
@@ -136,6 +155,7 @@ final class DevHooks {
     }
 
     func stop(_ center: DistributedNotificationCenter = .default()) {
+        draftGeneration = UUID() // keep the request slot until its existing deadline, but ignore its result
         guard let r = receiver else { return }
         center.removeObserver(r)
         receiver = nil
@@ -167,6 +187,38 @@ final class DevHooks {
         guard let here = world.devSafariName(shown.link) else { return refuse("the window shown has no name from Safari (Full Disk Access, or not a Safari profile)") }
         guard Self.names.contains(here) else { return refuse("the window shown isn't Test A's or Test B's") }
         switch kind {
+        case .drafts:
+            guard let nonce = fields["nonce"], UUID(uuidString: nonce) != nil,
+                  let caller = fields["pid"].flatMap(Int.init), caller > 0, caller <= Int(Int32.max) else { return refuse("invalid nonce or caller pid") }
+            guard pendingDrafts == nil else { return refuse("a drafts observation is pending") }
+            guard !draftNonces.contains(nonce.lowercased()) else { return refuse("nonce already observed") }
+            guard Self.names.allSatisfy({ world.devSafariLinks(named: $0).count == 1 }),
+                  world.devSafariLinks(named: here) == [shown.link], let source = world.devDraftSnapshot(), source.key == shown else {
+                return refuse("drafts source is not idle, uniquely named and bound")
+            }
+            let observation = UUID()
+            let generation = draftGeneration
+            pendingDrafts = observation
+            draftNonces.append(nonce.lowercased())
+            if draftNonces.count > Self.retainedLineLimit { draftNonces.removeFirst(draftNonces.count - Self.retainedLineLimit) }
+            let began = ProcessInfo.processInfo.systemUptime
+            let line = say("dev hook: drafts requested: nonce \(nonce), window \(source.key.windowId), native \(source.number), pid \(source.pid), caller \(caller)")
+            world.devObserveDrafts(source) { [weak self, weak world] result, error in
+                guard let self, self.pendingDrafts == observation else { return }
+                self.pendingDrafts = nil
+                guard self.draftGeneration == generation else { return }
+                let ms = max(0, Int((ProcessInfo.processInfo.systemUptime - began) * 1000))
+                let identity = "nonce \(nonce), window \(source.key.windowId), native \(source.number), pid \(source.pid), caller \(caller), elapsed \(ms) ms"
+                guard self.isOn(), let world, world.devShownWindow() == shown,
+                      world.devSafariName(shown.link) == here, Self.names.allSatisfy({ world.devSafariLinks(named: $0).count == 1 }),
+                      world.devSafariLinks(named: here) == [shown.link],
+                      world.devDraftSnapshot() == source else { self.say("dev hook: drafts stale: \(identity)"); return }
+                guard error == nil, let result, let answer = Self.draftAnswer(result, tabs: source.tabs) else {
+                    self.say("dev hook: drafts unavailable: \(identity)"); return
+                }
+                self.say("dev hook: drafts observed: \(identity), tabs \(source.tabs), drafts \(answer.drafts.count) \(answer.drafts), unknown \(answer.unknown.count) \(answer.unknown)")
+            }
+            return line
         case .switch:
             guard let to = fields["to"], Self.names.contains(to) else { return refuse("a target that isn't exactly Test A or Test B") }
             guard to != here else { return refuse("\(to)'s window is the one shown") }
@@ -225,6 +277,21 @@ final class DevHooks {
         !s.isEmpty && s.count <= 64 && s.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
     }
 
+    // Reject malformed/out-of-window ids rather than logging arbitrary peer fields.
+    static func draftAnswer(_ result: JSONObject, tabs: [Int]) -> WindowDrafts? {
+        guard let drafts = result["drafts"] as? [Any], let unknown = result["unknown"] as? [Any] else { return nil }
+        func ids(_ raw: [Any]) -> [Int]? {
+            let ids = raw.compactMap { value -> Int? in
+                if let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() { return nil }
+                guard let id = int(value), id > 0, tabs.contains(id) else { return nil }
+                return id
+            }
+            return ids.count == raw.count ? Array(Set(ids)).sorted() : nil
+        }
+        guard let d = ids(drafts), let u = ids(unknown) else { return nil }
+        return WindowDrafts(drafts: d, unknown: u)
+    }
+
     // A notification's fields: userInfo's strings, then a JSON string object's (the extension's way).
     nonisolated static func fields(object: Any?, userInfo: [AnyHashable: Any]?) -> [String: String] {
         var out: [String: String] = [:]
@@ -254,6 +321,42 @@ final class DevHooks {
 
 // DEV-HOOK: the shell's side.
 extension Shell: DevHookWorld {
+    // Metadata only. No titles/addresses leave the mirror in this observation.
+    static func devDraftTabIDs(_ open: JSONObject?, windowId: Int) -> [Int]? {
+        guard let records = open?["tabs"] as? JSONObject else { return nil }
+        var ids: [Int] = []
+        for (id, value) in records {
+            guard let record = value as? JSONObject, let window = int(record["windowId"]) else { return nil }
+            if window == windowId {
+                guard let tab = Int(id), tab > 0 else { return nil }
+                ids.append(tab)
+            }
+        }
+        return ids.isEmpty ? nil : ids.sorted()
+    }
+
+    func devDraftSnapshot() -> DevDraftSnapshot? {
+        guard !switcher.busy, switcher.queued == nil, switcher.session.pending.isEmpty,
+              let key = devShownWindow(), let name = devSafariName(key.link), DevHooks.names.contains(name),
+              devSafariLinks(named: name) == [key.link], isLinked(key.link),
+              let entry = links[key.link], entry.connection.hello.browser == "safari",
+              let number = number(of: key), let server = browserWindows(of: key.link).first(where: { $0.number == number }),
+              !switcher.session.watches.contains(where: { $0.number == number }), !isParkedKey(key),
+              server.onScreen, server.alpha > 0, inFront(key.link, windowId: key.windowId),
+              let front = apps.frontPid, front == server.pid || front == ProcessInfo.processInfo.processIdentifier,
+              let tabs = Self.devDraftTabIDs(entry.mirror.value("openTabs") as? JSONObject, windowId: key.windowId) else { return nil }
+        return DevDraftSnapshot(key: key, number: number, pid: server.pid, epoch: entry.connection.epoch,
+                                connection: ObjectIdentifier(entry.connection), tabs: tabs, handoffs: switcher.session.runs)
+    }
+
+    func devObserveDrafts(_ source: DevDraftSnapshot, done: @escaping (JSONObject?, String?) -> Void) {
+        guard devDraftSnapshot() == source else { return done(nil, "stale source") }
+        // Observational, with the checker's existing scroll bookkeeping. This
+        // answer never enters HandoffRun.drafts or any session capability gate.
+        request(source.key.link, "windowDrafts", HandoffRequest.windowDrafts(windowId: source.key.windowId).payload,
+                windowId: source.key.windowId, done: done)
+    }
+
     func devSafariName(_ link: String) -> String? {
         guard link.hasPrefix("safari:") else { return nil }
         return profilesOf("safari").windowNames[SwitchNotice.profileId(link)]
@@ -308,6 +411,7 @@ extension Shell: DevHookWorld {
         let s = switcher.session
         let displays = spaceReads?.managedDisplayCount().map(String.init) ?? "unread"
         out.append("choices: freeze \(s.rules.on ? "on" : "off (\(s.rules.off ?? "-"))"), \(s.rules.watchdogs) watchdog reveals; park \(s.parkOff.map { "off (\($0))" } ?? "on"); close windows \(profilesOf("safari").closeWindows ? "on" : "off"); displays \(displays); the dev hook: \(s.dev.description)")
+        out.append("session interruption: \(s.noFreeze?.rawValue ?? "none")")
         // The hook can start before the first handoff this launch. Report the
         // same exact shown overlay its guard accepted, not only session history.
         let shown = devShownWindow().map { key in "\(key) (\(number(of: key).map(String.init) ?? "-"))" } ?? "-"

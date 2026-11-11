@@ -60,6 +60,16 @@ swiftc -parse-as-library tools/handoff-lab/LiveLog.swift tools/handoff-lab/Valid
 /tmp/margin-live-log-tests
 ```
 
+The separately approved one-request `FALLBACK` follow-up is excluded from
+`all`; its advisory real-draft preflight never authorizes a close. Read the
+prepared protocol and actual failed batch in [VALIDATION.md](VALIDATION.md)
+before selecting it. Its metadata parser checks run without an app or window:
+
+```sh
+swiftc -parse-as-library tools/handoff-lab/DraftLog.swift tools/handoff-lab/tests/draft-log-tests.swift -o /tmp/margin-draft-log-tests
+/tmp/margin-draft-log-tests
+```
+
 ## The gates
 
 The prepared issue #15 VALIDATE gate and resource protocol are in

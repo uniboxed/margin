@@ -2409,7 +2409,7 @@ let g18 = Gate(
         return Outcome(status: .recorded, lines: lines)
     })
 
-let allGates: [Gate] = [holdsGate, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15, g16, g17, g18, liveCoverGate, compareCoverGate, profileValidationGate, matchedProfileValidationGate]
+let allGates: [Gate] = [holdsGate, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15, g16, g17, g18, liveCoverGate, compareCoverGate, profileValidationGate, matchedProfileValidationGate, closeFallbackGate]
 let ownGates = ["holds", "G5", "G6", "G7", "G10", "G12", "G13", "G14", "G15", "G17", "G18"]
 let stpGates = ["G2", "G3", "G4", "G8", "G9", "G11"]
 
@@ -2445,8 +2445,9 @@ enum Runner {
       handoff-lab list                       the gates
       handoff-lab <gate…> --dry-run          the plan and read-only checks; touches nothing
       handoff-lab <gate…> --go               runs them on screen (approval first)
-    gates: holds, g1 … g18, LIVE, COMPARE, VALIDATE, MATCHED, own, stp, all
+    gates: holds, g1 … g18, LIVE, COMPARE, VALIDATE, MATCHED, FALLBACK, own, stp, all
     MATCHED: new 50-request prospective protocol; explicit selection and separate approval required; excluded from all
+    FALLBACK: one separately approved live park-failure close fallback after guarded draft readiness; excluded from all
     options: --person (guided steps), --runs N, --stp (G7/G15 in STP too), --dock-restart (G5),
              --dev-hook (G1's Margin switch), --app PATH (default /Applications/Margin.app),
              --results DIR (default tools/handoff-lab/results)
@@ -2492,7 +2493,7 @@ enum Runner {
         var ids: [String] = []
         for n in names {
             switch n.lowercased() {
-            case "all": ids += allGates.filter { $0.id != "MATCHED" }.map(\.id)
+            case "all": ids += allGates.filter { !["MATCHED", "FALLBACK"].contains($0.id) }.map(\.id)
             case "own": ids += ownGates
             case "stp": ids += stpGates
             default:
