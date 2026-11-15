@@ -129,7 +129,8 @@ extension Shell {
 
     /// Safari launched or came forward: the covers' loop runs (it stops itself when nothing wants a cover).
     func coversSoon() {
-        guard options.safariAX, coverTimer == nil else { return }
+        // Margin as the app (MarginHosted): no overlays over Safari's own windows, so nothing to cover them for.
+        guard options.safariAX, !options.hosted, coverTimer == nil else { return }
         coverTimer = Timer.scheduledTimer(withTimeInterval: Self.coverEvery, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateCovers() }
         }
@@ -145,7 +146,7 @@ extension Shell {
 
     func updateCovers() {
         let pids = Set(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Safari").map(\.processIdentifier))
-        guard options.safariAX, SafariAX.trusted, !pids.isEmpty else {
+        guard options.safariAX, !options.hosted, SafariAX.trusted, !pids.isEmpty else {
             coverExpired = []
             return endCovers()
         }

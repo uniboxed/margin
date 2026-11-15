@@ -46,6 +46,7 @@ protocol HostedWindow: AnyObject {
     var number: Int { get } // the window server's
     var isFullScreen: Bool { get }
     var hostedPageRect: CGRect? { get } // the page area while hosting (top left), nil until worked out
+    var pageAreaWhyNot: String { get } // why there's none yet, for the log
     func toFullScreen()
     func setHosting(_ on: Bool)
     func tile() // the sidebar's tile now (the hosted window's tile is coming in)
@@ -57,6 +58,12 @@ extension MarginWindowController: HostedWindow {
     // (Only from a layout its page measured in full screen, a moment after it was told the sidebar is all it draws:
     // a layout from before is followed by that one.)
     var hostedPageRect: CGRect? { hosting && layout?.mode == "fullscreen" && Diagnostics.now() - hostingSince >= 0.25 ? window.pageRect : nil }
+    var pageAreaWhyNot: String {
+        if !hosting { return "not hosting" }
+        guard let layout else { return "no layout from its page" }
+        if layout.mode != "fullscreen" { return "its page's layout says \(layout.mode)" }
+        return window.pageRect == nil ? "the window has no page rect (display \(hostDisplay.map { "\(Int($0.width))×\(Int($0.height))" } ?? "unknown"), layout \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)))" : "too soon"
+    }
     func toFullScreen() { if !isFullScreen { toggleFullScreen() } }
 }
 
@@ -234,7 +241,7 @@ final class HostedSession: LibraryDelegate {
         w.setHosting(true)
         hostingWindow = w.id
         guard await wait(options.pageWait, { w.hostedPageRect != nil }), let rect = w.hostedPageRect else {
-            note("Margin's window \(w.id): no page area")
+            note("Margin's window \(w.id): no page area (\(w.pageAreaWhyNot))")
             return nil
         }
         return (rect, engine.fullScreenSpace(ofWindow: w.number) ?? 0)

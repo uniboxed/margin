@@ -85,6 +85,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private(set) var tiled = false // its content no wider than the sidebar's tile (tile(), as the hosted tile comes in)
     private(set) var hostingSince: TimeInterval = 0
     private(set) var hostDisplay: CGRect?
+    private var hostingLayoutSaid: String? // the last layout logged while hosting (numbers only)
     private(set) var wideRight: Double?
     private var frameBeforeHosting: NSRect?
 
@@ -388,6 +389,13 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             owner?.onReady?(self)
         case "layout":
             guard let geometry = body["geometry"] as? JSONObject, let layout = PageLayout(geometry: geometry) else { return }
+            if hosting {
+                let said = "\(layout.mode) \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)) in \(Int(layout.width))×\(Int(layout.height))"
+                if said != hostingLayoutSaid {
+                    hostingLayoutSaid = said
+                    Diagnostics.note("Margin's window \(id): hosting, its page measured \(said) (window \(Int(window.frame.width))×\(Int(window.frame.height)), full screen \(window.styleMask.contains(.fullScreen)))")
+                }
+            }
             self.layout = layout
             if MarginWindowGeometry.hasPage(layout) { wideRight = layout.right }
             updatePage()

@@ -9,6 +9,7 @@ import AppKit
 import Foundation
 
 final class FakeHostedWindow: HostedWindow {
+    var pageAreaWhyNot: String { "fake" }
     let id: Int
     let number: Int
     var isFullScreen = false
