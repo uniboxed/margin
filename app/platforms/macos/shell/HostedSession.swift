@@ -75,6 +75,11 @@ extension MarginWindowController: HostedWindow {
 protocol HostedLinks: AnyObject {
     func safariProfiles() -> [String] // the Safari copies linked now
     func request(profile: String, _ type: String, _ payload: JSONObject) async -> (result: JSONObject?, error: String?)
+    // A profile with no window has no copy running: one of its windows opened from Safari's own File › New Window menu
+    // (Accessibility), so its copy starts and links. False: it couldn't be asked.
+    func openProfileWindow(_ profile: String) -> Bool
+    // That profile's windows, as its copy lists them.
+    func windowIds(of profile: String) -> [Int]
 }
 
 final class HostedSession: LibraryDelegate {
@@ -309,8 +314,22 @@ final class HostedSession: LibraryDelegate {
 
     func safariLinked(_ profile: String?) async -> Bool {
         let p = resolve(profile)
-        return await wait(options.linkWait) { self.links.safariProfiles().contains(p) }
+        if links.safariProfiles().contains(p) { return true }
+        // Safari is open but this profile has no window, so its copy isn't running (seen 2026-11-15: a space of a
+        // profile with no window never linked): one window of it from Safari's menu; Margin closes it again once its
+        // own window is made (requestSafariWindow).
+        if !wokenByMenu.keys.contains(p), links.openProfileWindow(p) {
+            note("a Safari profile with no window: one opened from Safari's menu so its copy links")
+            wokenByMenu[p] = []
+        }
+        guard await wait(options.linkWait, { self.links.safariProfiles().contains(p) }) else { return false }
+        if wokenByMenu[p] != nil {
+            _ = await wait(1.5) { !self.links.windowIds(of: p).isEmpty }
+            wokenByMenu[p] = links.windowIds(of: p)
+        }
+        return true
     }
+    private var wokenByMenu: [String: [Int]] = [:] // a profile woken through Safari's menu: the windows it had then
 
     func requestSafariWindow(_ profile: String?) async -> Bool {
         let p = resolve(profile)
@@ -321,6 +340,13 @@ final class HostedSession: LibraryDelegate {
         }
         safariWindows[p] = made.windowId
         note("Safari window \(made.windowId) made for hosting")
+        // The window opened only to wake the profile's copy: closed again (Margin opened it; it has no page of the person's).
+        if let woken = wokenByMenu.removeValue(forKey: p) {
+            for id in woken where id != made.windowId {
+                let (_, error) = await links.request(profile: p, "closeWindow", ["windowId": id])
+                note("the window opened to wake the profile closed: \(error ?? "ok")")
+            }
+        }
         return true
     }
 

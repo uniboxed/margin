@@ -25,6 +25,9 @@ final class ShellHostedLinks: HostedLinks {
         return shell.links.values.filter { $0.connection.isUp && $0.connection.hello.browser == "safari" }.map(\.connection.hello.profile).sorted()
     }
 
+    func openProfileWindow(_ profile: String) -> Bool { shell?.openProfileWindow("safari:\(profile)") ?? false }
+    func windowIds(of profile: String) -> [Int] { shell?.windows(of: "safari:\(profile)").map(\.id) ?? [] }
+
     func request(profile: String, _ type: String, _ payload: JSONObject) async -> (result: JSONObject?, error: String?) {
         guard let entry = shell?.links["safari:\(profile)"], entry.connection.isUp else { return (nil, "not linked") }
         do {

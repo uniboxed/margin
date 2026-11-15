@@ -42,6 +42,15 @@ final class FakeHostedLinks: HostedLinks {
     var onNewWindow: (() -> Void)?
     var refuse: Set<String> = []
     func safariProfiles() -> [String] { profiles }
+    var menuOpens: [String] = [] // profiles woken through Safari's menu
+    var wakes: Set<String> = [] // profiles that link when woken
+    var windowsOf: [String: [Int]] = [:]
+    func openProfileWindow(_ profile: String) -> Bool {
+        menuOpens.append(profile)
+        if wakes.contains(profile) { profiles.append(profile); windowsOf[profile, default: []].append(77) }
+        return true
+    }
+    func windowIds(of profile: String) -> [Int] { windowsOf[profile] ?? [] }
     func request(profile: String, _ type: String, _ payload: JSONObject) async -> (result: JSONObject?, error: String?) {
         asked.append((profile, type, payload))
         guard profiles.contains(profile) else { return (nil, "not linked") }
@@ -201,6 +210,25 @@ func hostedTests() {
     let wasHosting = session.hostingWindow == 1 && window.hosting
     session.leftFullScreen(window)
     check("hosted: Margin's window left full screen while hosting: its whole width again, nothing shown in it", wasHosting && !window.hosting && session.hostingWindow == nil && session.shown[1] == nil)
+    // ---- a profile with no window: woken through Safari's menu, its waking window closed after Margin's is made ----
+    do {
+        let woken = FakeHostedLinks()
+        woken.wakes = ["s-quiet"]
+        let s2 = HostedSession(library: library, engine: engine, links: woken)
+        s2.sleep = { _ in await Task.yield() }
+        var linked = false, made = false
+        hostRun { linked = await s2.safariLinked("s-quiet"); made = await s2.requestSafariWindow("s-quiet") }
+        check("hosted: a profile with no window is woken once through Safari's menu", woken.menuOpens == ["s-quiet"], "\(woken.menuOpens)")
+        check("hosted: then linked, its window made, the waking window closed", linked && made && woken.asked.map(\.type) == ["newWindow", "closeWindow"]
+              && int(woken.asked.last?.payload["windowId"]) == 77, "\(woken.asked.map(\.type))")
+        let none = FakeHostedLinks()
+        let s3 = HostedSession(library: library, engine: engine, links: none)
+        s3.sleep = { _ in await Task.yield() }
+        s3.options.linkWait = 0.05
+        var never = true
+        hostRun { never = await s3.safariLinked("s-gone") }
+        check("hosted: a profile that never links: woken once, then given up", !never && none.menuOpens == ["s-gone"] && none.asked.isEmpty)
+    }
     run { await engine.quitAll() }
 
     // ---- Margin's window that won't go full screen: nothing hosted ----
