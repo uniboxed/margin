@@ -119,6 +119,7 @@ final class SlotKeeper {
     private(set) var offWhy: String? // the slot off for the session
     private var failuresInARow = 0
     private var missing: [Int: Int] = [:]
+    private var pids: [Int: pid_t] = [:] // each slotted window's process, from the reads (its toolbar is a window of the same one)
     private var strayAt: [Int: Double] = [:] // a landed window first read at another size
 
     init(spaces: SlotSpaces, marker: URL?, pid: Int32 = ProcessInfo.processInfo.processIdentifier) {
@@ -194,6 +195,7 @@ final class SlotKeeper {
                 continue
             }
             missing[number] = nil
+            pids[number] = window.pid
             if sameSize(window.bounds, slot.rect) {
                 strayAt[number] = nil
                 if slot.landedAt == nil {
@@ -235,13 +237,42 @@ final class SlotKeeper {
     // nothing reserved. Landed and at its slot's size, its real place is kept (a window sliding with its Space
     // slides in the model too); while it's still resizing, its full frame (steady, so the layout isn't
     // measured against a window in motion).
+    //
+    // And its full-screen toolbar with it. The browser draws that as a window of its own, laid out with the
+    // tile: with a slot it has the slot's left edge and width, and sits the top edge's reservation lower. Left
+    // at its real bounds it no longer lines up with its window's model frame, and hidden it overlaps that
+    // frame's top by the reservation, so it read as a foreign window between Margin's layout and the page (a
+    // real Safari, 2026-11-15: the profile switch's cover never saw its layout stacked, and backed out). It's
+    // put where it would be with nothing reserved, by the rule the shell knows a toolbar by
+    // (WindowMatcher.fullScreenToolbar), against its window's real bounds.
     func model(_ list: [ServerWindow]) -> [ServerWindow] {
+        if pids.count > slots.count { pids = pids.filter { slots[$0.key] != nil } }
         guard !slots.isEmpty else { return list }
+        for w in list where slots[w.number] != nil { pids[w.number] = w.pid }
+        // Each slotted window's real bounds now: as listed while it's at its slot's size, its slot's otherwise.
+        var real: [(slot: Slot, pid: pid_t, bounds: CGRect)] = []
+        for number in slots.keys.sorted() {
+            guard let slot = slots[number], slot.landedAt != nil, let pid = pids[number] else { continue }
+            let listed = list.first { $0.number == number }.map(\.bounds)
+            real.append((slot, pid, listed.flatMap { sameSize($0, slot.rect) ? $0 : nil } ?? slot.rect))
+        }
         return list.map { w in
-            guard let slot = slots[w.number] else { return w }
-            let bounds = slot.landedAt != nil && sameSize(w.bounds, slot.rect) ? slot.edges.outset(w.bounds) : slot.full
+            if let slot = slots[w.number] {
+                let bounds = slot.landedAt != nil && sameSize(w.bounds, slot.rect) ? slot.edges.outset(w.bounds) : slot.full
+                return ServerWindow(number: w.number, pid: w.pid, layer: w.layer, bounds: bounds, onScreen: w.onScreen, alpha: w.alpha, order: w.order)
+            }
+            guard w.layer == 0, let of = real.first(where: { $0.pid == w.pid && Self.isToolbar(w.bounds, of: $0.bounds) }) else { return w }
+            let e = of.slot.edges
+            let bounds = CGRect(x: w.bounds.minX - e.left, y: w.bounds.minY - e.top, width: w.bounds.width + e.left + e.right, height: w.bounds.height)
             return ServerWindow(number: w.number, pid: w.pid, layer: w.layer, bounds: bounds, onScreen: w.onScreen, alpha: w.alpha, order: w.order)
         }
+    }
+
+    // A full-screen window's toolbar by its place (WindowMatcher.fullScreenToolbar's rule): the window's left edge
+    // and width, short, from just above the window's top to slid down over it.
+    static func isToolbar(_ w: CGRect, of window: CGRect) -> Bool {
+        abs(w.minX - window.minX) <= 1 && abs(w.width - window.width) <= 1 && w.height > 0 && w.height <= WindowMatcher.toolbarMaxHeight
+            && w.minY >= window.minY - w.height - 1 && w.minY <= window.minY + 1
     }
 
     // One window's bounds as the extension or another read gave them (real ones), in the model.

@@ -180,4 +180,55 @@ func slotTests() {
         let none = SlotKeeper(spaces: spaces, marker: nil)
         check("slot: a keeper with no marker file keeps none", none.want(number: 1, space: 8, bounds: full, edges: edges, now: 0) == .slot && none.recover(fullScreen: nil, running: { _ in false }) == 0)
     }
+
+    quiet {
+        // ---- the full-screen toolbar, a window of the browser's own (a real Safari's list, 2026-11-15) ----
+        // The windows in front of a slotted Safari window as the window server gave them when a profile switch's
+        // cover never saw Margin's layout stacked: Margin's cover, the Dock's, the menu bar's, Margin's catchers and
+        // overlay, and last Safari's hidden toolbar, 8 pt lower than with nothing reserved.
+        let spaces = FakeSlotSpaces()
+        spaces.reservedNow = [6301: .zero]
+        let keeper = SlotKeeper(spaces: spaces, marker: nil)
+        let safari: pid_t = 53329, margin: pid_t = 53063
+        func w(_ number: Int, _ pid: pid_t, _ layer: Int, _ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat, order: Int) -> ServerWindow {
+            ServerWindow(number: number, pid: pid, layer: layer, bounds: CGRect(x: x, y: y, width: width, height: height), onScreen: true, alpha: 1, order: order)
+        }
+        let browser = w(40428, safari, 0, 250, 41, 1254, 933, order: 10)
+        let above = [
+            w(40462, margin, 0, 0, 0, 1512, 982, order: 0), w(24008, 925, 2147483628, 1511, 981, 1, 1, order: 1),
+            w(24006, 925, 2147483628, 0, 0, 1512, 491, order: 2), w(24005, 925, 2147483628, 0, 491, 1512, 491, order: 3),
+            w(40461, 637, 25, 0, 0, 1512, 33, order: 4), w(40435, 417, 24, 0, 0, 1512, 33, order: 5),
+            w(40448, margin, 0, 0, 33, 4, 949, order: 6), w(40445, margin, 0, 0, 33, 1512, 949, order: 7),
+            w(40447, margin, 0, 0, 33, 1512, 949, order: 8), w(40432, safari, 0, 250, -11, 1254, 52, order: 9),
+        ]
+        func stacked(_ rows: [ServerWindow]) -> Bool {
+            WindowMatcher.stackedAboveExactly(aboveBrowser: rows, aboveToolbar: nil, overlay: 40445, browser: full, browserPid: safari, own: [40447, 40462])
+        }
+        check("slot: (the failure) the toolbar at its real bounds reads as a window between the layout and the page's model frame", !stacked(above))
+        _ = keeper.want(number: 40428, space: 6301, bounds: full, edges: SlotEdges(left: 250, right: 8, top: 8, bottom: 8), now: 0)
+        check("slot: a toolbar isn't moved before its window has landed", keeper.model(above) == above)
+        _ = keeper.read([browser], now: 0.1)
+        let modelled = keeper.model(above)
+        check("slot: its toolbar is put where it would be with nothing reserved (the window's full width, the top's reservation higher)",
+              modelled.last?.bounds == CGRect(x: 0, y: -19, width: 1512, height: 52), "\(String(describing: modelled.last?.bounds))")
+        check("slot: nothing else in the list is touched", Array(modelled.dropLast()) == Array(above.dropLast()))
+        check("slot: the list in front of the window, which doesn't have the window itself: the layout reads as stacked", stacked(modelled))
+        let whole = keeper.model(above + [browser])
+        check("slot: the shell finds the toolbar by its place again", WindowMatcher.fullScreenToolbar(whole, browser: whole.last!)?.number == 40432)
+        check("slot: hidden, it isn't an ordering anchor (it doesn't draw over the page)", WindowMatcher.orderingToolbar(whole, browser: whole.last!) == nil)
+        let slidDown = above.dropLast() + [w(40432, safari, 0, 250, 41, 1254, 52, order: 9), browser]
+        let shown = keeper.model(Array(slidDown))
+        check("slot: slid down over the page, it's the anchor, at the model's top", WindowMatcher.orderingToolbar(shown, browser: shown.last!)?.bounds == CGRect(x: 0, y: 33, width: 1512, height: 52))
+        check("slot: another process's window of the same shape isn't a toolbar", keeper.model([w(7, 999, 0, 250, -11, 1254, 52, order: 0)]).first?.bounds.minX == 250)
+        check("slot: the browser's own popover (not layer 0) stays where it is", keeper.model([w(8, safari, 3, 250, -11, 1254, 52, order: 0)]).first?.bounds.minX == 250)
+        check("slot: a short window that doesn't have the slot's left edge and width stays where it is",
+              keeper.model([w(9, safari, 0, 250, -11, 1512, 52, order: 0)]).first?.bounds == CGRect(x: 250, y: -11, width: 1512, height: 52))
+        check("slot: the window sliding with its Space: its toolbar slides with it in the model",
+              keeper.model([w(40432, safari, 0, 1150, -11, 1254, 52, order: 0), w(40428, safari, 0, 1150, 41, 1254, 933, order: 1)]).first?.bounds == CGRect(x: 900, y: -19, width: 1512, height: 52))
+        _ = keeper.want(number: 40428, space: 6301, bounds: full, edges: SlotEdges(left: 8, right: 8, top: 8, bottom: 8), now: 1)
+        _ = keeper.read([w(40428, safari, 0, 8, 41, 1496, 933, order: 1)], now: 1.1)
+        check("slot: the sidebar hidden: the toolbar follows the new slot", keeper.model([w(40432, safari, 0, 8, -11, 1496, 52, order: 0)]).first?.bounds == CGRect(x: 0, y: -19, width: 1512, height: 52))
+        keeper.release(40428, why: "test")
+        check("slot: given back: the toolbar's bounds are its own again", keeper.model([w(40432, safari, 0, 0, -19, 1512, 52, order: 0)]).first?.bounds == CGRect(x: 0, y: -19, width: 1512, height: 52))
+    }
 }

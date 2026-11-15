@@ -28,7 +28,7 @@ Off by default: every check below starts with `defaults write com.unibox.margin 
 - [ ] A video in full screen fills the display (`given back (its page took the screen)`), and the layout is back after (`reserved`, `landed`).
 - [ ] Leave full screen (⌃⌘F): the window is a normal window at its old size, with no reserved margins. Back into full screen: the slot again.
 - [ ] A second full-screen window, and swiping between the two: each keeps its own slot, and the layout is there as each slides in.
-- [ ] A profile switch (the handoff) with the slot on: the target window lands in its slot before the reveal, or the page is seen to resize once after it. Note which.
+- [ ] (Failed 2026-11-15 before the toolbar fix: `live cover stack blocked`, the switch backed out. Try again.) A profile switch (the handoff) with the slot on: the target window lands in its slot before the reveal, or the page is seen to resize once after it. Note which.
 - [ ] Quit Margin (`killall -TERM Margin`): the Safari window takes the whole display again at once. Start Margin again: the slot again.
 - [ ] Kill Margin (`kill -9`): the window stays in its slot. Start Margin: the log says `a marker from a Margin that didn't quit cleanly … given back`, then the slot is taken again.
 - [ ] Unplug or plug in a display with a slotted window showing: `given back (the displays changed)`, then the slot again at the new size.
