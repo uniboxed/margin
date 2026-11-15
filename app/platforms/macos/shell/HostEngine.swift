@@ -357,7 +357,21 @@ final class HostEngine {
             return await giveUp(host, isNew: isNew, .tile, "its full-screen Space doesn't have exactly one tile", previous: retrying ? nil : previous)
         }
         host.tile = tile
+        // Margin's window narrowed to the sidebar's tile, and laid out at that width ALONE in its Space, before the
+        // hosted tile comes in: macOS places the split from the tiles' widths at that moment (seen 2026-11-15: narrowed
+        // at the same moment, Margin's 250 pt tile stood centred in half the screen and the hosted one got 643 pt).
+        let wide = sys.bounds(window: marginWindow)?.width
         willTile?(host.id)
+        if let wide {
+            let narrowed = await wait(options.tileWait) { (self.sys.bounds(window: self.marginWindow)?.width ?? wide) < wide - 1 }
+            var last = sys.bounds(window: marginWindow)?.width ?? 0
+            _ = await wait(0.6) { // steady for a moment (its resize animates)
+                let now = self.sys.bounds(window: self.marginWindow)?.width ?? 0
+                defer { last = now }
+                return narrowed && abs(now - last) < 0.5
+            }
+            Diagnostics.note("host: Margin's tile \(narrowed ? "narrowed to \(Int(last))" : "not narrowed (still \(Int(wide)))") before \(host.id) came in")
+        }
         guard sys.moveTile(tile, to: marginSpace, at: 1), await wait(options.tileWait, {
             self.sys.tiles(of: self.marginSpace)?.contains(tile) == true && self.sys.spaces(window: host.window) == [self.marginSpace]
                 && self.sys.tiles(of: own)?.isEmpty != false
