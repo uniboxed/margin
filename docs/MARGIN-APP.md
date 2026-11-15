@@ -62,11 +62,23 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
    apps); Safari's own sidebar must be hidden in hosted windows. Next run
    tests these one by one.
 2. **Mission Control.** A hosted app's full-screen Space is listed by Mission
-   Control (`SLSCopyManagedDisplaySpaces`: 6334/t4/pid of STP). Leads: the
-   hosted window as a tile of Margin's own Space (`SLSSpaceTileMoveToSpaceAtIndex`,
-   two tiles max: Margin + the shown app), windows not shown parked in a
-   private Space (not listed, proven for parking), and what Mission Control
-   uses to list a Space (reverse engineering).
+   Control (`SLSCopyManagedDisplaySpaces`). **Found 2026-11-15 (own test
+   windows, `/tmp/margin-toolbar-test/mc/mc1–4`):** move the hosted window's
+   tile into Margin's own full-screen Space
+   (`SLSSpaceTileMoveToSpaceAtIndex`, index 1), then destroy its emptied Space
+   with the window manager's bridged `SLSBridgedSpaceDestroyOperation
+   initWithSpaceID:` → Mission Control lists ONE Space (Margin's, 2 tiles);
+   the hosted window stays full screen in it; cleanup leaves no orphan Space.
+   Margin's own window with a content max width of 260 gets a 260-wide tile on
+   the left and the hosted window the rest (272,0 1240×949, 12 pt spacing by
+   default, settable). A tiled window parked in a private Space leaves the list
+   but keeps its tile (the other tile doesn't grow), so only the app on screen
+   is a tile; apps not shown leave full screen and are parked (not listed,
+   proven by parking). Open: what Mission Control's label shows for Margin's
+   2-tile Space (both names?), the cost of switching between apps that way
+   (a full-screen entry each time, about 1 s for Safari, under the freeze),
+   and a faster swap of the second tile; destroying the current Space drops
+   the screen to the desktop, so switch to Margin's Space first.
 3. **Safari already running** (decided by Tirth, 2026-11-15): Margin never
    restarts it. If Safari is open the normal way, Margin opens its own new
    window in it, and Safari's Dock icon stays; Mission Control must still show
