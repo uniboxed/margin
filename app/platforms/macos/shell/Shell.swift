@@ -243,7 +243,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var setAskBeforeQuit: (Bool) -> Void = { UserDefaults.standard.set($0, forKey: "MarginAskBeforeQuit") }
         // Margin as the app, hosting apps in its page area (docs/MARGIN-APP.md). Off unless `MarginHosted` is set
         // (forApp); off, none of it runs: no library (Library.swift, ShellLibrary.swift: the spaces owned by the app in
-        // data/app, the profiles' sets imported once), no app catalog, no `apps` pushes, no app rows (ShellApps.swift).
+        // data/app, the profiles' sets imported once), no app catalog, no `apps` pushes, no app rows (ShellApps.swift),
+        // no host engine (HostEngine.swift: other apps' windows in the page area).
         var hosted = false
         var appCatalog = AppCatalogWatcher.Options() // where apps are read from, the icons' cache (a test: its own folders)
     }
@@ -380,6 +381,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
     // The parked windows (Parking.swift), made with the parker. Nil: nothing can be parked.
     var parking: ParkingRegistry?
+    // The host (HostEngine.swift, ShellHost.swift): made at launch only with `hosted` on and its calls passed.
+    var host: HostEngine?
+    var hostQuitting = false
 
     // ---- the profile handoff in the shell (ShellHandoff.swift) ----
     var freezer: Freezer? // the freeze (RealFreezer, from what the launch check passed), or a harness's
@@ -454,7 +458,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Margin as the app (docs/MARGIN-APP.md): spaces owned by the app (the library), installed apps in the palette;
         // off until it's built; `defaults write com.unibox.margin MarginHosted -bool YES` turns it on.
         options.hosted = UserDefaults.standard.object(forKey: "MarginHosted") as? Bool ?? false
-        if options.hosted { Diagnostics.note("hosted: on (MarginHosted): the library, installed apps in the palette") }
+        if options.hosted { Diagnostics.note("hosted: on (MarginHosted): the library, installed apps in the palette, the host engine") }
         // Opening Margin opens its browser inside it: with the slot unless said otherwise (MarginOpensBrowser).
         options.enter = UserDefaults.standard.object(forKey: "MarginOpensBrowser") as? Bool ?? options.slot
         options.openBrowser = Shell.openBrowserApp
@@ -505,6 +509,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         guard privateCalls.spaces else { return }
         let spaces = SkyLightSpaces(sky: sky, availability: privateCalls)
         spaceReads = spaces
+        startHost(resolver: resolver, sky: sky, spaces: spaces)
         if privateCalls.slot { startSlots(spaces: SkyLightSlots(sky: sky), reads: spaces) }
         else if options.slot { Diagnostics.note("slot: asked for (MarginNativeSlot), but its calls didn't pass the launch check (\(privateCalls.reasons["slot"] ?? "not checked")): the page box") }
         if privateCalls.park {
@@ -534,6 +539,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // (no drafts check; one whose copy can't be asked returned to its Desktop), 300 ms in all, then the
     // rest. The copies' links stay up until then.
     func stop(then: @escaping () -> Void) {
+        // The hosted apps first, while the copies' links are still up (Safari windows Margin made are closed by them).
+        if let host, host.hasHosts, !hostQuitting { return stopHost { [weak self] in self?.stop(then: then) } }
         guard !stopped else { return stopNow(then) }
         switcher.revealNow(.quit)
         guard let parking else { return stopNow(then) }

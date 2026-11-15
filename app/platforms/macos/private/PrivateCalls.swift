@@ -28,11 +28,14 @@ import OSLog
 nonisolated enum PrivateFramework: String, CaseIterable, Sendable {
     case skyLight = "SkyLight.framework"
     case windowManagement = "WindowManagement.framework"
+    // Public, but the host's calls in it are private (HostCalls.swift): its no-Dock launch and its notifications.
+    case launchServices = "LaunchServices.framework"
 
     var path: String {
         switch self {
         case .skyLight: return "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight"
         case .windowManagement: return "/System/Library/PrivateFrameworks/WindowManagement.framework/WindowManagement"
+        case .launchServices: return "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/LaunchServices"
         }
     }
 }
