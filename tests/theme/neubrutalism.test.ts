@@ -352,6 +352,17 @@ for (const [name, engine] of ENGINES) {
         await fp.close();
       });
 
+      await t.test('Margin.app\'s own window with nothing hosted: its page area the launcher, opaque, never a see-through hole', async () => {
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'windowed', appWindow: true }));
+        const e = await page.evaluate(() => T.rtEmptyPage());
+        assert.ok(e.page && e.launcher, 'a launcher drawn in the page card');
+        const [px, py, pw, ph] = e.page!, [lx, ly, lw, lh] = e.launcher!;
+        assert.ok(Math.abs(px + pw / 2 - (lx + lw / 2)) <= 1 && Math.abs(py + ph / 2 - (ly + lh / 2)) <= 1 && lw >= pw - 8 && lh >= ph - 8, `the page's box covered: ${e.page} ${e.launcher}`);
+        const alpha = /^rgba\(/.test(e.background!) ? Number(e.background!.split(',').at(-1)!.replace(')', '')) : 1;
+        assert.ok(/^rgba?\(/.test(e.background!) && alpha === 1, `opaque: ${e.background}`);
+        await page.evaluate(() => T.unmountRuntime());
+      });
+
       await t.test('no request was made, no error thrown', () => {
         assert.deepEqual(seen.requests, []);
         assert.deepEqual(seen.errors, []);

@@ -3,11 +3,12 @@
 // every display, never key, the app never active, fed by a stand-in source (no browser, no link).
 //
 // What it follows: the page knows it's in Margin's window (`app-window`, windowed), draws the source's spaces
-// and says where its page area is, which the window publishes in screen points; the window ignores the mouse
-// over that area only, and over the palette drawn there it doesn't; the menu's New Tab opens the palette and
-// again closes it; Toggle Sidebar widens the page area (the source keeps the setting); full screen is the
-// page's mode; a resize moves the area; a press on a pin is a request of the source for this window; the
-// source's change is drawn; New Window makes a second window; the shell's windows draw the library.
+// and says where its page area is, which the window publishes in screen points; with nothing hosted, the page
+// area is the theme's launcher, opaque, and the window (opaque too) takes the mouse there; the menu's New Tab
+// opens the palette and again closes it; Toggle Sidebar asks the source to turn Keep open off, the sidebar
+// staying beside the launcher (as on Margin's new-tab page); full screen is the page's mode; a resize moves the
+// area; a press on a pin is a request of the source for this window; the source's change is drawn; New Window
+// makes a second window; the shell's windows draw the library.
 import AppKit
 import WebKit
 
@@ -81,9 +82,22 @@ func hostedScenario() async {
   check("published with its callback", published.last == page, "\(published)")
   check("the theme's window controls reported (the buttons go there)", await until(3, { c.controls != nil }) && (c.controls?.width ?? 0) > 0, "\(String(describing: c.controls))")
 
-  // ---- the pointer through to the window behind ----
+  // ---- nothing hosted: the page area is Margin's own, the theme's launcher, opaque ----
+  check("the window's background is opaque (no edge of it see-through), its corners still macOS's",
+        (c.window.backgroundColor.usingColorSpace(.sRGB)?.alphaComponent ?? 0) == 1 && !c.window.isOpaque)
+  let launcher = await js(c.webView, """
+    const l = document.querySelector('.launcher'); if (!l) return null;
+    const r = l.getBoundingClientRect(), bg = getComputedStyle(l).backgroundColor;
+    return [r.x, r.y, r.width, r.height, bg];
+    """) as? [Any]
+  let box = launcher.flatMap { l in rect(Array(l.prefix(4))) }
+  let bg = launcher?.last as? String ?? ""
+  let local = page.offsetBy(dx: -content.minX, dy: -content.minY)
+  check("with nothing hosted, the theme's launcher fills the page area", box.map { abs($0.minX - local.minX) <= 1 && abs($0.minY - local.minY) <= 1 && abs($0.width - local.width) <= 1 && abs($0.height - local.height) <= 1 } == true,
+        "\(String(describing: box)) page \(local)")
+  check("… opaque: its background has no transparency", bg.hasPrefix("rgb(") || (bg.hasPrefix("rgba(") && !bg.hasSuffix(", 0)") && bg.contains(", 1)")), bg)
   c.pointerMoved(CGPoint(x: page.midX, y: page.midY), buttonsDown: false)
-  check("over the page area: the window ignores the mouse", c.window.ignoresMouseEvents)
+  check("over the page area: the window takes the mouse (nothing is behind it)", !c.window.ignoresMouseEvents && c.slot == nil)
   c.pointerMoved(CGPoint(x: content.minX + 60, y: page.midY), buttonsDown: false)
   check("over the sidebar: the window takes it", !c.window.ignoresMouseEvents)
 
@@ -107,21 +121,12 @@ func hostedScenario() async {
           await until(3, { source.asked.contains { $0.type == "openPin" && $0.payload["windowId"] as? Int == c.id } }), "\(source.asked.map(\.type))")
   } else { check("the pin's row", false) }
 
-  // ---- Toggle Sidebar: the page area widens; out again over the page, Margin's there ----
+  // ---- Toggle Sidebar: Keep open off; with nothing hosted, the sidebar stays beside the launcher ----
   let before = page
   windows.perform(.toggleSidebar)
   check("View › Toggle Sidebar: Keep open off, asked of the source", await until(3, { source.asked.contains { $0.type == "updateSettings" } }), "\(source.asked.map(\.type))")
-  check("the sidebar hidden: the page area widens, published", await until(5, { (c.window.pageRect?.minX ?? .infinity) < before.minX - 100 }), "\(String(describing: c.window.pageRect)) was \(before)")
-  let wide = c.window.pageRect ?? .zero
-  windows.perform(.toggleSidebar)
-  let overSidebar = CGPoint(x: content.minX + 60, y: content.minY + 300)
-  check("toggled out over the page: what it draws there is reported", await until(5, { c.hits.contains { $0.contains(CGPoint(x: 60, y: 300)) } || c.captureAll }), "\(c.hits)")
-  c.pointerMoved(overSidebar, buttonsDown: false)
-  check("the sidebar out over the page: the page area stays, the window takes the mouse over the sidebar", c.window.pageRect == wide && wide.contains(overSidebar) && !c.window.ignoresMouseEvents)
-  windows.perform(.toggleSidebar)
-  // (Put away, it slides off with a transition, which a page off every display doesn't run: its box stays reported
-  // where it was until a frame is drawn. What's checked is that the UI put it away.)
-  check("toggled away: the sidebar hidden again", await waitJS(c.webView, "return document.querySelector('.arcadia')?.dataset.sidebar === 'hidden'"))
+  check("with nothing hosted the sidebar stays beside the launcher (as on Margin's new-tab page): the page area as it was",
+        await waitJS(c.webView, "return document.querySelector('.arcadia')?.dataset.sidebar === 'open'") && c.window.pageRect == before, "\(String(describing: c.window.pageRect)) was \(before)")
   var settings = source.state["settings"] as? JSONObject ?? [:]
   settings["sidebarPinnedOpen"] = true
   source.state["settings"] = settings

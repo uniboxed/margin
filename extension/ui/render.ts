@@ -45,6 +45,7 @@ template{display:none!important}
 [m-passthrough]{pointer-events:none!important}
 :where([m-passthrough])>:where(:not(m-page)){pointer-events:auto}
 [m-away]{visibility:hidden!important}
+[m-sidebar-fixed] [m-resize]{display:none!important}
 [m-away] :is(m-notice,m-prompt){visibility:visible!important}
 .m-drag-ghost{position:fixed!important;margin:0!important;pointer-events:none!important;z-index:2147483601!important;box-sizing:border-box}
 [contenteditable].m-renaming{cursor:text;user-select:text;-webkit-user-select:text}
@@ -59,12 +60,14 @@ template{display:none!important}
 @media(prefers-reduced-motion:reduce){.m-cover-progress i{animation:none;opacity:.6}}
 `;
 
-// `m-passthrough` and `m-away` are the host's, on the theme's root (a theme
+// `m-passthrough`, `m-away` and `m-sidebar-fixed` are the host's, on the theme's root (a theme
 // can't write m- attributes of its own): the pointer over the page's slot
 // goes to the page under it, past the root's own background (the in-page
 // host sets it while the pointer is there; what the theme draws over the
 // page still takes it), and Margin out of the way (Chrome outside full
-// screen, a copy that stood back) shows only its notices and prompts.
+// screen, a copy that stood back) shows only its notices and prompts, and
+// the sidebar's width can't be dragged (Margin.app's own window hosting
+// beside it: its handle goes).
 //
 // Margin's slots, and what each shows: a theme's part (`<template m-part>`),
 // else what the theme put inside the slot, while `test` holds.

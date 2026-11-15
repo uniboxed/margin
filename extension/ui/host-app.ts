@@ -51,7 +51,11 @@
 //   While the window hosts another app's window beside it (app/platforms/macos/shell/HostedSession.swift: Margin's
 //   window is then only its sidebar's tile in its full-screen Space, the page area a window of its own), the hello's
 //   `pageOutside` is true, and `{ type: 'pageOutside', on }` says when that changes: the UI is laid out with no page
-//   area of its own (`pageOutside`: the sidebar always shown, docked, never hidden or out over a page that isn't here).
+//   area of its own (`pageOutside`: the sidebar always shown, docked, never hidden or out over a page that isn't here,
+//   its width not dragged: Margin's tile can't change size while it's a tile). Each layout says whether it was
+//   measured that way (`pageOutside`), and a layout of another mode is reported even when its insets didn't change
+//   (the app waits for the full-screen one). With nothing hosted in it (no `pageOutside`), Margin's window draws its
+//   page area itself: the theme's launcher, opaque (`launcher`), as Margin's new-tab page draws it over a browser.
 //
 // No browser API here: only the DOM and `post`.
 import type { Geometry, Host } from './host.ts';
@@ -280,7 +284,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get mode() { return (mode as 'fullscreen' | 'windowed'); },
     // Margin's start page (#launcher, #settings) chooses a new tab; a new-tab page opens it there.
     get inNewTab() { const p = frontPage(); return !!p && !/#(launcher|settings)\b/.test(p.url); },
-    get launcher() { return !!frontPage(); },
+    // Margin's own window with nothing hosted beside it: its page area is the launcher (never a see-through hole).
+    get launcher() { return appWindow ? !pageOutside : !!frontPage(); },
     // Its Settings asked for (the new-tab page's #settings: a Settings button elsewhere).
     get settingsAsked() { return !!frontPage()?.url.includes('#settings'); },
     get pageTabId() { return frontPage()?.id ?? null; },
@@ -301,10 +306,14 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     onState(cb: (state: any) => void) { listeners.add(cb); return () => listeners.delete(cb); },
     send,
     reportLayout(geometry: Geometry) {
-      // Twice for one change (the runtime's own frame, and the page's measure after it): once.
-      if (layout && JSON.stringify([layout.insets, layout.radius, layout.container]) === JSON.stringify([geometry.insets, geometry.radius, geometry.container])) return;
-      layout = geometry;
-      void post('layout', { geometry }).catch(() => {});
+      // Twice for one change (the runtime's own frame, and the page's measure after it): once. Its mode and whether it
+      // was measured with the sidebar alone count too (seen 2026-11-15: the window's full-screen layout, at the size
+      // the windowed one was already measured at, never reached the app).
+      const next = { ...geometry, mode: geometry.mode ?? mode, pageOutside };
+      const key = (g: any) => JSON.stringify([g.insets, g.radius, g.container, g.mode ?? null, !!g.pageOutside]);
+      if (layout && key(layout) === key(next)) return;
+      layout = next;
+      void post('layout', { geometry: next }).catch(() => {});
     },
     get layout() { return layout; },
     get windows() { return windows; },

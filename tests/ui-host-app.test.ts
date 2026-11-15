@@ -130,6 +130,48 @@ test('the app host: layout reports go to the app once per change; what only the 
   assert.equal(host.perform('notice', { id: 'n', action: 'ok' }), true);
 });
 
+test("the app host: a layout of another mode, or measured with the sidebar alone, reaches the app even at the same insets", () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'windowed' }), post: b.post });
+  const g = { insets: { left: 260, top: 8, right: 8, bottom: 8 }, radius: 6, radii: [6, 6, 6, 6], outer: { left: 260, top: 8, right: 8, bottom: 8, radius: 6 }, container: { width: 1512, height: 982 } };
+  host.reportLayout({ ...g, mode: 'windowed' });
+  // (Seen 2026-11-15: resized to the display before its mode was heard, the full-screen layout was dropped as the same.)
+  host.reportLayout({ ...g, mode: 'fullscreen' });
+  host.reportLayout({ ...g, mode: 'fullscreen' });
+  host.receive({ type: 'pageOutside', on: true });
+  host.reportLayout({ ...g, mode: 'fullscreen' });
+  const sent = b.posts.filter((p) => p.op === 'layout').map((p) => [p.geometry.mode, p.geometry.pageOutside]);
+  assert.deepEqual(sent, [['windowed', false], ['fullscreen', false], ['fullscreen', true]]);
+});
+
+test('the sidebar\'s width isn\'t dragged while Margin\'s window hosts beside it (its tile can\'t change size)', async () => {
+  const { installResize } = await import('../extension/ui/behaviors/resize.ts');
+  const listeners: Record<string, (e: any) => void> = {};
+  const handle = { classList: { add() {}, remove() {} }, setPointerCapture() {}, releasePointerCapture() {} };
+  const saved: any[] = [];
+  let pageOutside = false;
+  const rt: any = {
+    view: { behaviorAt: () => ({ el: handle }), rootElement: () => ({ classList: { add() {}, remove() {} } }), scheduleLayout() {} },
+    theme: { id: 'arcadia', manifest: { settings: { sidebarWidth: { type: 'number', default: 260, min: 160, max: 500 } }, layout: {} } },
+    get vm() { return { window: { pageOutside }, settings: { sidebarWidth: 260 } }; },
+    container: {}, warn() {}, scale: () => 1,
+    listen: (_el: unknown, type: string, fn: (e: any) => void) => { listeners[type] = fn; },
+    setThemeSettings: (v: any) => saved.push(v),
+    host: { send: async () => undefined },
+  };
+  installResize(rt);
+  const ev = (x: number) => ({ button: 0, pointerId: 1, clientX: x, target: handle, preventDefault() {}, stopPropagation() {} });
+  pageOutside = true;
+  listeners.pointerdown(ev(260));
+  listeners.pointermove(ev(300));
+  listeners.dblclick(ev(260));
+  assert.deepEqual(saved, [], 'hosting: no drag, no reset');
+  pageOutside = false;
+  listeners.pointerdown(ev(260));
+  listeners.pointermove(ev(300));
+  assert.deepEqual(saved.at(-1), { sidebarWidth: 300 }, 'nothing hosted: dragged as before');
+});
+
 test('the app host: other messages are the page\'s; nothing after destroy', () => {
   const got: string[] = [];
   const host = createAppHost({ hello: hello(), post: bridge().post, onMessage: (m) => got.push(m.type) });
@@ -153,7 +195,12 @@ test("the app host in Margin's own window: said by the hello's host, its mode th
   host.onState(() => drawn.push(host.mode));
   host.receive({ type: 'windows', list: [{ windowId: W, id: W, state: 'fullscreen', focused: true }] });
   assert.deepEqual(drawn, ['fullscreen'], 'Margin\'s window into full screen: drawn so');
-  assert.equal(host.launcher, false, 'no browser tab in front: no launcher-in-a-tab');
+  assert.equal(host.launcher, true, 'nothing hosted beside it: its page area is the launcher, never a see-through hole');
+  assert.equal(host.inNewTab, false, 'not a browser tab: what the launcher opens is a new item (newTab)');
+  host.receive({ type: 'pageOutside', on: true });
+  assert.equal(host.launcher, false, 'hosting beside it: no page area of its own, no launcher');
+  host.receive({ type: 'pageOutside', on: false });
+  assert.equal(host.launcher, true, 'nothing hosted again: the launcher again');
   assert.equal(host.perform('navigate', { url: 'https://example.com/' }), false, 'an address opens as a new tab (the runtime sends newTab)');
   assert.equal(host.perform('window.fullscreen'), true);
   assert.deepEqual(b.posts.at(-1), { op: 'perform', name: 'window.fullscreen', arg: null });

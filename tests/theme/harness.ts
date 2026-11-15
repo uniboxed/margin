@@ -343,18 +343,20 @@ const withRuntime = Object.assign(T, {
 
   // `replies`: what the host answers a request of each type with (values);
   // `settings`: the stored settings changed first.
-  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false }: {
+  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false, appWindow = false }: {
     width?: number, height?: number, container?: 'shadow' | 'document', closed?: boolean,
     platform?: { browser: string, os: string, marginFullscreen?: boolean }, replies?: Record<string, unknown>,
     settings?: Record<string, unknown> | null, mode?: 'fullscreen' | 'windowed' | 'inpage', inNewTab?: boolean,
     focusLauncherAtMount?: boolean, warnings?: unknown,
     staysOnScreen?: boolean,
+    // Margin.app's own window with nothing hosted beside it (ui/host-app.ts): its page area is the launcher.
+    appWindow?: boolean,
   } = {}) {
     (T as typeof T & { unmountRuntime(): void }).unmountRuntime(); // (added with these steps)
     const mock = new MockState();
     if (settings) mock.state = { ...mock.state, settings: { ...mock.state.settings, ...settings } };
     const answers = { createSpace: () => ({ spaceId: 'studio' }), ...Object.fromEntries(Object.entries(replies).map(([k, v]) => [k, () => v])) };
-    const host = Object.assign(createMockHost({ state: mock.state, windowId: 1, platform, mode, inNewTab, focusLauncherAtMount, replies: answers }), { staysOnScreen });
+    const host = Object.assign(createMockHost({ state: mock.state, windowId: 1, platform, mode, inNewTab, focusLauncherAtMount, replies: answers }), { staysOnScreen }, appWindow ? { appWindow: true, launcher: true, inNewTab: false } : {});
     let target: Target;
     let el: HTMLElement | null = null;
     if (container === 'document') {
@@ -545,6 +547,12 @@ const withRuntime = Object.assign(T, {
   rtFolderRename(folderId: string, name: string) { rt.mock.state = { ...rt.mock.state, folders: rt.mock.state.folders.map((f) => (f.id === folderId ? { ...f, name } : f)) }; rt.host.setState(rt.mock.state); },
   rtVm() { const vm = rt.runtime!.vm!; return { space: vm.space.id, sidebar: vm.window.sidebar, palette: vm.palette.open, rows: vm.palette.rows.length, today: vm.space.today.length }; },
   rtCount(selector: string) { return rt.target.querySelectorAll(selector).length; },
+  // The page's box (<m-page>) and the launcher's, with the launcher's background (Margin.app's empty window).
+  rtEmptyPage() {
+    const box = (el: Element | null) => { const r = el?.getBoundingClientRect(); return r ? [r.left, r.top, r.width, r.height] : null; };
+    const launcher = rt.target.querySelector('.launcher');
+    return { page: box(rt.target.querySelector('m-page')), launcher: box(launcher), background: launcher ? getComputedStyle(launcher).backgroundColor : null };
+  },
   rtText(selector: string) { return [...rt.target.querySelectorAll(selector)].map((e) => e.textContent!.trim()); },
   rtTodayIds(n = 3) { return rt.runtime!.vm!.space.today.slice(0, n).map((t) => t.id); },
   rtDispatch(name: string, arg?: unknown) { return rt.runtime!.dispatch(name, arg); },

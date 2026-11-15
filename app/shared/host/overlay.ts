@@ -215,7 +215,7 @@ function measureNow() {
   if (!g || !host) return;
   // (The mode too: Margin's own window learns it went full screen after its new size was measured, and the app
   // takes a layout as the window's only with the window's mode in it: MarginWindowController.)
-  const key = JSON.stringify([g.insets, g.radius, g.container, host.mode]);
+  const key = JSON.stringify([g.insets, g.radius, g.container, host.mode, !!host.pageOutside]);
   if (key === lastLayout) return;
   lastLayout = key;
   host.reportLayout({ ...g, windowId: host.windowId, mode: host.mode });
@@ -268,6 +268,13 @@ function reportSpace() {
 }
 const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); coverWatch.check(); });
 addEventListener('resize', () => { measureNow(); hitsSoon(); });
+
+// Margin's own window hosting beside it (host-app.ts pageOutside): the sidebar's width isn't dragged (its window is a
+// full-screen tile, whose size can't change), so the theme's handle goes (render.ts `m-sidebar-fixed`).
+function followOutside() {
+  const root = runtime?.view.rootElement();
+  if (root) root.toggleAttribute('m-sidebar-fixed', !!host?.pageOutside);
+}
 
 // ---- the theme --------------------------------------------------------------------------
 
@@ -379,6 +386,7 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
   const root = runtime.view.rootElement();
   // The pointer over the page slot is the page's (the app lets it through); what the theme draws there keeps it.
   root?.setAttribute('m-passthrough', '');
+  followOutside();
   if (root) watcher.observe(root, { subtree: true, childList: true, attributes: true, characterData: false });
   lastHits = '';
   lastLayout = '';
@@ -563,7 +571,7 @@ function onMessage(msg: any) {
       // The app's keys (app/platforms/macos/shell/Shortcuts.swift, following the Settings shortcuts).
       if (msg.name === 'palette') {
         if (runtime?.paletteOpen) runtime.closePalette();
-        else openPaletteTimed({ newTab: !host?.launcher }, 'the app\'s key');
+        else openPaletteTimed({ newTab: !!host?.appWindow || !host?.launcher }, 'the app\'s key');
       } else if (msg.name === 'toggle-sidebar') runtime?.sidebar.toggle();
       else if (msg.name === 'next-tab' || msg.name === 'prev-tab') navTab(msg.name);
       // Margin's own window, its first run (app/platforms/macos/shell/HostedSession.swift): the space it made, in the
@@ -601,7 +609,7 @@ function onMessage(msg: any) {
       // The app showed this overlay (it wasn't): `palette`, over a new window in front (⌘N, New
       // Window): the palette opens over its new tab, as ⌘T's does (2026-11-09), never as the
       // page first draws. (`focus`: the launcher's field instead, for a host that asks for that.)
-      if (msg.palette === true) openPaletteTimed({ newTab: !host?.launcher }, 'a new window');
+      if (msg.palette === true) openPaletteTimed({ newTab: !!host?.appWindow || !host?.launcher }, 'a new window');
       else if (msg.focus === true) runtime?.focusLauncher();
       // Drawn, and in which mode, on the next frame (R4).
       answerFramed({ requestFrame: (fn) => requestAnimationFrame(fn), mode: () => host?.mode ?? 'fullscreen', post: (op, body) => post(op, body).catch(() => {}) });
@@ -676,6 +684,9 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
       }
       // A notice about one tab's page goes once another tab is in front.
       if (msg?.type === 'windows' || msg?.type === 'state' || msg?.type === 'changes') notices.front(host?.frontTabId ?? null);
+      // The window's mode, or the sidebar alone in Margin's own window: measured again after this drawing (a theme
+      // whose drawing doesn't change with it changes nothing the watcher sees, and the app waits for that layout).
+      if (msg?.type === 'windows' || msg?.type === 'pageOutside') { followOutside(); queueMicrotask(measureNow); }
       // The first state after a hello without one: the theme can draw now.
       if (!before && host?.getState() && !runtime && pendingTheme) mounting = mounting.then(() => mount(pendingTheme));
     });
