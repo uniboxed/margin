@@ -10,6 +10,7 @@ import AppKit
 
 // DEV-HOOK
 final class FakeDevWorld: DevHookWorld {
+    func devHost(app: String?, url: String?) -> String? { "not in the fake" }
     var names: [String: String] = [:] // link → Safari's name
     var shown: WindowKey?
     var switches: [(from: WindowKey, to: String, space: String?)] = []
@@ -83,6 +84,19 @@ func devHooksTests() {
               && !SessionVisibility.allowsCover(ready.merging([kCGSessionOnConsoleKey as String: false]) { _, b in b }))
     }
 
+    // ---- host: a palette pick for the hosting checks (Margin as the app) ----
+    do {
+        let (offWorld, off, _) = setup(false)
+        check("dev hook: host, off: refused like every kind", off.heard(.host, ["app": "test.margin.pane"]).contains("refused: MarginDevHooks isn't YES"))
+        let (world, hooks, _) = setup(true)
+        check("dev hook: host, on: needs one of app or url", hooks.heard(.host, [:]).contains("refused: give app or url"))
+        check("dev hook: host, on: a bundle id with other characters refused", hooks.heard(.host, ["app": "a/b"]).contains("refused: not a bundle id"))
+        check("dev hook: host, on: only http(s) addresses", hooks.heard(.host, ["url": "file:///etc"]).contains("refused: not an http(s) address"))
+        let line = hooks.heard(.host, ["url": "https://example.com/private"])
+        check("dev hook: host, on: asked of the shell, the address never in the line", line.contains("refused: not in the fake") && !line.contains("example"), line)
+        withExtendedLifetime((offWorld, world)) {}
+    }
+
     // ---- off unless the default says YES, read at each notification ----
     do {
         let (w, hooks, toggle) = setup(false)
@@ -101,14 +115,14 @@ func devHooksTests() {
     do {
         let (w, hooks, _) = setup()
         w.names = [:]
-        let lines = DevHooks.Kind.allCases.filter { $0 != .probe }.map { hooks.heard($0, ["to": "Test B", "old": "keep", "step": "show"]) }
+        let lines = DevHooks.Kind.allCases.filter { $0 != .probe && $0 != .host }.map { hooks.heard($0, ["to": "Test B", "old": "keep", "step": "show"]) }
         check("dev hook: no names from Safari (no Full Disk Access): everything refused",
               lines.allSatisfy { $0.contains("refused: the window shown has no name from Safari") } && untouched(w) && !hooks.allows(a, b), "\(lines)")
     }
     do {
         let (w, hooks, _) = setup()
         w.shown = WindowKey(link: work, windowId: 9)
-        let lines = DevHooks.Kind.allCases.filter { $0 != .probe }.map { hooks.heard($0, ["to": "Test B", "freeze": "off", "step": "reveal"]) }
+        let lines = DevHooks.Kind.allCases.filter { $0 != .probe && $0 != .host }.map { hooks.heard($0, ["to": "Test B", "freeze": "off", "step": "reveal"]) }
         check("dev hook: another profile's window shown: everything refused", lines.allSatisfy { $0.contains("isn't Test A's or Test B's") } && untouched(w), "\(lines)")
         check("dev hook: a switch from another profile may not use it", !hooks.allows(work, b) && !hooks.allows(b, work))
     }

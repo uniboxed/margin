@@ -106,6 +106,9 @@ protocol DevHookWorld: AnyObject {
     // The existing request deadline bounds this one observation, including a silent peer.
     func devObserveDrafts(_ source: DevDraftSnapshot, done: @escaping (JSONObject?, String?) -> Void)
     var devState: DevHookState { get set }
+    // Margin as the app (MarginHosted): what a palette pick does, an installed app by bundle id or an address in a new
+    // web item, in Margin's front window. Nil if asked, else why not.
+    func devHost(app: String?, url: String?) -> String?
 }
 
 struct DevDraftSnapshot: Equatable {
@@ -124,7 +127,7 @@ final class DevHooks {
     static let names: Set<String> = ["Test A", "Test B"]
     static let prefix = "com.unibox.margin.dev."
     static let defaultsKey = "MarginDevHooks"
-    enum Kind: String, CaseIterable { case `switch`, dump, mode, fail, probe, drafts }
+    enum Kind: String, CaseIterable { case `switch`, dump, mode, fail, probe, drafts, host }
 
     weak var world: DevHookWorld?
     let isOn: () -> Bool // the MarginDevHooks default, read each time
@@ -175,6 +178,16 @@ final class DevHooks {
         func refuse(_ why: String) -> String { say("dev hook: \(Self.prefix)\(kind.rawValue) refused: \(why) \(asked)") }
         guard isOn() else { return refuse("\(Self.defaultsKey) isn't YES") }
         guard let world else { return refuse("no shell") }
+        // Margin as the app: a palette pick, for the on-screen checks of hosting (no window of Safari's needed). The
+        // address itself is never logged.
+        if kind == .host {
+            let app = fields["app"], url = fields["url"]
+            if let app, !(app.count <= 155 && app.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" })) { return refuse("not a bundle id") }
+            if let url, !(url.hasPrefix("https://") || url.hasPrefix("http://")) || url.count > 2000 { return refuse("not an http(s) address") }
+            guard (app == nil) != (url == nil) else { return refuse("give app or url") }
+            if let why = world.devHost(app: app, url: url) { return refuse(why) }
+            return say("dev hook: host \(app.map { "app \($0)" } ?? "url (\(url?.count ?? 0) characters)") \(asked)")
+        }
         // A probe acts only in Test A's own copy, whatever window is shown.
         if kind == .probe {
             guard fields["what"] == "tabMove" else { return refuse("a probe that isn't tabMove") }
@@ -257,7 +270,7 @@ final class DevHooks {
             guard !set.isEmpty else { return refuse("neither freeze, cover nor old") }
             world.devState = state
             return say("dev hook: mode \(set.joined(separator: ", ")) for Test A and Test B's switches this session (\(state.description)) \(asked)")
-        case .probe:
+        case .probe, .host:
             return refuse("unreachable")
         case .fail:
             guard let s = fields["step"], let step = DevFailStep(rawValue: s) else { return refuse("a step that isn't show, park, reveal or fullscreen") }
@@ -321,6 +334,18 @@ final class DevHooks {
 
 // DEV-HOOK: the shell's side.
 extension Shell: DevHookWorld {
+    func devHost(app: String?, url: String?) -> String? {
+        guard options.hosted else { return "MarginHosted isn't on" }
+        if let app {
+            guard let openApp else { return "no host" }
+            openApp(app)
+            return nil
+        }
+        guard let url, let front = marginWindows?.front else { return "no Margin window" }
+        front.ask("newTab", ["url": url])
+        return nil
+    }
+
     // Metadata only. No titles/addresses leave the mirror in this observation.
     static func devDraftTabIDs(_ open: JSONObject?, windowId: Int) -> [Int]? {
         guard let records = open?["tabs"] as? JSONObject else { return nil }
