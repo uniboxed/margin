@@ -100,6 +100,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     parkingTests() // parking-tests.swift
     slotTests() // slot-tests.swift
     enterTests() // enter-tests.swift
+    marginWindowTests() // margin-window-tests.swift: Margin's own window (MarginHosted)
     handoffUiTests() // handoff-ui-tests.swift
     devHooksTests() // devhooks-tests.swift (DEV-HOOK: removed with the hook)
     themeTests() // theme-tests.swift

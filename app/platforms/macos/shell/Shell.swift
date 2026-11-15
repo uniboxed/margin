@@ -215,6 +215,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Opening Margin brings its browser's window up inside it (ShellEnter.swift), in place of the set-up window.
         // Off unless `MarginOpensBrowser` is set, or the slot is on (forApp).
         var enter = false
+        // Margin's own window (MarginWindow.swift, ShellHosted.swift: docs/MARGIN-APP.md phase 2), in place of the
+        // set-up window and of opening the browser. Off unless `MarginHosted` is set (forApp); off, none is made.
+        var hosted = false
         var enterWait: TimeInterval = 15 // a browser started cold, its copy linked and its window listed
         var enterEvery: TimeInterval = 0.25
         // A browser opened by its bundle id (started, or brought to the front): the app's is NSWorkspace's;
@@ -271,7 +274,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     let shortcuts: AppShortcuts
     private let pointer = PointerWatch()
     private(set) var options: Options
-    private lazy var pages = OverlayPages(root: options.root ?? OverlayPages.appRoot)
+    lazy var pages = OverlayPages(root: options.root ?? OverlayPages.appRoot) // (Margin's windows use it too: ShellHosted.swift)
+    var marginWindows: MarginWindows? // made the first time one is opened, with `hosted` only
 
     private(set) var links: [String: Link] = [:]
     var overlays: [WindowKey: OverlayController] = [:]
@@ -438,6 +442,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         options.slot = UserDefaults.standard.object(forKey: "MarginNativeSlot") as? Bool ?? false
         // Opening Margin opens its browser inside it: with the slot unless said otherwise (MarginOpensBrowser).
         options.enter = UserDefaults.standard.object(forKey: "MarginOpensBrowser") as? Bool ?? options.slot
+        // Margin's own window: off until its phase is checked; `defaults write com.unibox.margin MarginHosted -bool YES` turns it on.
+        options.hosted = UserDefaults.standard.bool(forKey: "MarginHosted")
+        if options.hosted { Diagnostics.note("open: opening Margin shows Margin's own window (MarginHosted)") }
         options.openBrowser = Shell.openBrowserApp
         options.enterBrowser = { UserDefaults.standard.string(forKey: "MarginLastBrowser") ?? "safari" }
         options.sawBrowser = { browser in
@@ -550,6 +557,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         cloudWatcher = nil
         for overlay in overlays.values { overlay.close() }
         overlays = [:]
+        marginWindows?.closeAll()
         link.stop(why: "Margin.app quit", then: then)
     }
 

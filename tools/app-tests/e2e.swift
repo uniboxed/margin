@@ -715,6 +715,11 @@ final class Runner: NSObject, NSApplicationDelegate {
         print(failures == 0 ? "all \(passed) opening checks passed" : "\(failures) opening checks failed")
         exit(failures == 0 ? 0 : 1)
       }
+      if env["MARGIN_E2E_ONLY"] == "hosted" {
+        await hostedScenario()
+        print(failures == 0 ? "all \(passed) Margin window checks passed" : "\(failures) Margin window checks failed")
+        exit(failures == 0 ? 0 : 1)
+      }
       if env["MARGIN_E2E_ONLY"] == "slot" {
         await slotScenario()
         print(failures == 0 ? "all \(passed) slot checks passed" : "\(failures) slot checks failed")
@@ -739,6 +744,7 @@ final class Runner: NSObject, NSApplicationDelegate {
       await sidebarSlideScenario()
       await slotScenario() // e2e-slot.swift
       await enterScenario() // e2e-enter.swift
+      await hostedScenario() // e2e-hosted.swift
       print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
       exit(failures == 0 ? 0 : 1)
     }
