@@ -318,11 +318,22 @@ final class HostedSession: LibraryDelegate {
         // Safari is open but this profile has no window, so its copy isn't running (seen 2026-11-15: a space of a
         // profile with no window never linked): one window of it from Safari's menu; Margin closes it again once its
         // own window is made (requestSafariWindow).
-        if !wokenByMenu.keys.contains(p), links.openProfileWindow(p) {
-            note("a Safari profile with no window: one opened from Safari's menu so its copy links")
-            wokenByMenu[p] = []
+        // A Safari just started (by Margin, with no Dock icon) has no menus and no copies for a while (~12 s to the first
+        // link, docs/MARGIN-APP.md): its own copies first (the profile may be among them), the menu only after.
+        if links.safariProfiles().isEmpty {
+            _ = await wait(options.linkWait) { !self.links.safariProfiles().isEmpty }
+            if links.safariProfiles().contains(p) { return true }
         }
-        guard await wait(options.linkWait, { self.links.safariProfiles().contains(p) }) else { return false }
+        // Asked through the menu twice at most (seen 2026-11-15: a press while Safari was still starting did nothing).
+        var linked = false
+        for attempt in 1...2 where !linked {
+            if links.openProfileWindow(p) {
+                note("a Safari profile with no window: one opened from Safari's menu so its copy links (try \(attempt))")
+                wokenByMenu[p] = []
+            }
+            linked = await wait(attempt == 1 ? options.linkWait / 2 : options.linkWait) { self.links.safariProfiles().contains(p) }
+        }
+        guard linked else { return false }
         if wokenByMenu[p] != nil {
             _ = await wait(1.5) { !self.links.windowIds(of: p).isEmpty }
             wokenByMenu[p] = links.windowIds(of: p)

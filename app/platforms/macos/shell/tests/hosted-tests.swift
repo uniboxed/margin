@@ -255,7 +255,7 @@ func hostedTests() {
         s3.options.linkWait = 0.05
         var never = true
         hostRun { never = await s3.safariLinked("s-gone") }
-        check("hosted: a profile that never links: woken once, then given up", !never && none.menuOpens == ["s-gone"] && none.asked.isEmpty)
+        check("hosted: a profile that never links: asked through the menu twice, then given up", !never && none.menuOpens == ["s-gone", "s-gone"] && none.asked.isEmpty, "\(none.menuOpens)")
     }
     run { await engine.quitAll() }
 
