@@ -370,6 +370,8 @@
 .palette-row { flex-shrink: 0; width: 100%; height: 40px; justify-content: flex-start; gap: 12px; padding: 0 10px; font-size: 17px; }
 .palette-row.on { background: var(--hover); }
 .palette-row .fav { margin: 0 2px; }
+/* An installed app's icon (Margin.app): its own shape, no notched frame, drawn smooth. */
+.palette-row .fav.app { box-shadow: none; background: none; object-fit: contain; image-rendering: auto; }
 .fav.glyph { display: grid; place-items: center; color: var(--yellow); }
 .fav.glyph .pix { width: 13.5px; height: 13.5px; }
 /* The heading of a run of rows from one place (iCloud Tabs: "On Nora's iPhone"). */

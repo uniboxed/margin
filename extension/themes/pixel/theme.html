@@ -206,7 +206,7 @@
                 <span class="fav emoji" aria-hidden="true">{{r.emoji}}</span>
                 <m-else>
                   <m-if test="r.icon">
-                    <img class="fav" alt="" m-icon="{{r.icon}}">
+                    <img class="fav" alt="" m-class:app="{{r.isApp}}" m-icon="{{r.icon}}">
                     <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{r.color}}">{{r.letter}}</span></m-else>
                   </m-if>
                 </m-else>

@@ -333,6 +333,8 @@
    capitals, one width for every row so the icons and titles after it line up. */
 .tag { flex-shrink: 0; width: 92px; text-align: center; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 700; line-height: 15px; text-transform: uppercase; letter-spacing: .3px; border: 2px solid var(--ink); border-radius: 6px; padding: 2px 6px; background: var(--tag, var(--paper)); }
 .palette-row .fav { width: 20px; height: 20px; }
+/* An installed app's icon (Margin.app): its own shape, no frame. */
+.palette-row .fav.app { border: 0; border-radius: 0; background: none; object-fit: contain; }
 /* Search and Open: an icon in the board's ink, in a box like a site's. */
 .fav.glyph { display: flex; align-items: center; justify-content: center; box-sizing: border-box; border: 2px solid var(--ink); border-radius: 6px; background: var(--paper); }
 .fav.glyph .ico { width: 14px; height: 14px; stroke-width: 3; }

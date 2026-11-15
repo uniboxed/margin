@@ -4,6 +4,7 @@ import * as P from './capabilities.ts';
 import * as V from './view.ts';
 import { foreignKey, isMultiProfile, profileOf } from './across.ts';
 import { cloudShown, deviceNames, onDevice } from './cloud-tabs.ts';
+import type { InstalledApp } from './apps.ts';
 
 
 // ---- the browser's search engine ------------------------------------------
@@ -148,7 +149,7 @@ function matchScore(query: string, item: PaletteItem) {
 
 const isWebUrl = (url: string | null | undefined) => /^https?:/i.test(url ?? '');
 
-// One thing the palette can offer: a tab, a pin, an archived tab, an action, an iCloud tab. `boost` lifts it in
+// One thing the palette can offer: a tab, a pin, an archived tab, an action, an iCloud tab, an installed app. `boost` lifts it in
 // the ranking, `recency` breaks ties (its last use); `action`, what choosing it asks for.
 export type PaletteItem = {
   id: string, kind: string, title: string, subtitle: string, url?: string, favIconUrl?: string, badge?: string,
@@ -315,6 +316,53 @@ function cloudMatches(state: State, q: string, ctx: { windowId: number | null; t
   return out.map((item, i) => ({ ...item, sectionStart: i === 0 || out[i - 1].section !== item.section }));
 }
 
+// Installed apps (Margin.app with hosting on: shared/apps.ts, the state's
+// `apps`) matching what's typed, ranked among Margin's own rows. Never before
+// typing, nor for one letter, and only by their names' words: each typed word
+// must start a word of the name ("code" finds Visual Studio Code, not Xcode),
+// so an ordinary query isn't swamped by apps. The name typed in full ranks
+// first (APP_EXACT); typed from its start, about level with a matching tab of
+// this space (APP_PREFIX); otherwise below tabs and pins; at most APP_MAX.
+// Chosen, the app is asked to open it in the page area (`app.open`).
+const APP_MAX = 5;
+const APP_EXACT = 60;
+const APP_PREFIX = 20;
+function wordStartAt(text: string, token: string) {
+  for (let at = text.indexOf(token); at >= 0; at = text.indexOf(token, at + 1)) if (isWordStart(text, at)) return at;
+  return -1;
+}
+// A row's id for an app: an action's argument has no dots (ui/actions.ts ID_TEXT), and a bundle id never has a
+// colon, so its dots become colons; one too long for an id is named by a hash of it.
+function appRowId(bundleId: string) {
+  const id = `app:${bundleId.replace(/\./g, ':')}`;
+  if (id.length <= 64) return id;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bundleId.length; i++) h = Math.imul(h ^ bundleId.charCodeAt(i), 0x01000193);
+  return `app-${(h >>> 0).toString(36)}-${bundleId.length}`;
+}
+function appMatches(state: State, q: string) {
+  const apps = (state as { apps?: InstalledApp[] | null }).apps;
+  const typed = q.toLowerCase().replace(/\s+/g, ' ');
+  if (!Array.isArray(apps) || !apps.length || typed.length < 2) return [];
+  const tokens = typed.split(' ');
+  const hits: { item: PaletteItem & { boost: number }, score: number }[] = [];
+  for (const a of apps) {
+    const name = a.name.toLowerCase();
+    let score = 0;
+    for (const t of tokens) {
+      if (wordStartAt(name, t) < 0) { score = -Infinity; break; }
+      score += fuzzyScore(t, a.name);
+    }
+    if (score === -Infinity) continue;
+    const boost = name === typed ? APP_EXACT : name.startsWith(typed) ? APP_PREFIX : 0;
+    hits.push({
+      item: { id: appRowId(a.bundleId), kind: 'app', title: a.name, subtitle: '', favIconUrl: a.icon ?? undefined, badge: 'App', boost, action: { perform: 'app.open', arg: { bundleId: a.bundleId, name: a.name } } },
+      score,
+    });
+  }
+  return hits.sort((x, y) => y.score + y.item.boost - (x.score + x.item.boost) || x.item.title.localeCompare(y.item.title)).slice(0, APP_MAX);
+}
+
 // Ranked palette results for `query`, including an "Open URL / Search for"
 // entry: first when the text is a URL, last when it's a search.
 function rankPalette(state: State, query: string, ctx: { windowId: number | null; tabId: number | null; inNewTab: boolean; canToggleSidebar: boolean; canFullscreen: boolean; }, limit = 40) {
@@ -326,9 +374,7 @@ function rankPalette(state: State, query: string, ctx: { windowId: number | null
       .filter((i) => i.kind !== 'archive' && i.id !== `tab:${ctx.tabId}`)
       .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.boost - a.boost || (b.recency ?? 0) - (a.recency ?? 0));
   } else {
-    ranked = items
-      .map((item) => ({ item, score: matchScore(q, item) }))
-      .filter((r) => r.score > -Infinity)
+    ranked = [...items.map((item) => ({ item, score: matchScore(q, item) })).filter((r) => r.score > -Infinity), ...appMatches(state, q)]
       .map((r) => ({ ...r, score: r.score + r.item.boost }))
       .sort((a, b) => b.score - a.score || (b.item.recency ?? 0) - (a.item.recency ?? 0))
       .map((r) => r.item);
