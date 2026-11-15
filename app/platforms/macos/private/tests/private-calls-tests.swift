@@ -49,6 +49,22 @@ let fakeCoverShow: SkyLight.ShowHideSpaces = { cid, spaces in fakeSkyCalls.appen
 let fakeCoverHide: SkyLight.ShowHideSpaces = { cid, spaces in fakeSkyCalls.append("hide cover \(cid) \(CFArrayGetCount(spaces))") }
 let fakeCoverAdd: SkyLight.SpaceAddOwnedWindow = { cid, space, windows, options in fakeSkyCalls.append("add cover \(cid) \(space) \(CFArrayGetCount(windows)) \(options)") }
 let fakeCoverAlpha: SkyLight.SetWindowAlpha = { cid, window, alpha in fakeSkyCalls.append("cover alpha \(cid) \(window) \(alpha)"); return 0 }
+// The slot's: the last reservation set is what the values read back (0 the set one, 1 nil, 2 no layout manager, 3 an edge not a number).
+nonisolated(unsafe) var fakeReserved: [String: Any] = ["Left": 0, "Right": 0, "Top": 0, "Bottom": 0]
+nonisolated(unsafe) var fakeValuesAnswer: Int = 0
+let fakeReserveEdges: SkyLight.SpaceSetEdgeReservation = { cid, space, mask, left, right, top, bottom in
+    fakeSkyCalls.append("reserve \(cid) \(space) m\(mask) \(left) \(right) \(top) \(bottom)")
+    fakeReserved = ["Left": left, "Right": right, "Top": top, "Bottom": bottom]
+}
+let fakeSpaceValues: SkyLight.SpaceCopyValues = { cid, space in
+    fakeSkyCalls.append("values \(cid) \(space)")
+    switch fakeValuesAnswer {
+    case 1: return nil
+    case 2: return Unmanaged.passRetained(["type": 0] as CFDictionary)
+    case 3: return Unmanaged.passRetained(["TileLayoutManager": ["ReservedArea": ["Left": "x", "Right": 0, "Top": 0, "Bottom": 0]]] as CFDictionary)
+    default: return Unmanaged.passRetained(["type": 4, "TileLayoutManager": ["ReservedArea": fakeReserved, "Layout Rect": ["X": 0, "Y": 0, "Width": 1512, "Height": 982]]] as CFDictionary)
+    }
+}
 // The bridge's: init consumes the object alloc made (released here) and returns its own, +1.
 let fakeInitAddRemove: SkyLight.InitAddRemove = { raw, _, space, windows, options in
     Unmanaged<AnyObject>.fromOpaque(raw).release()
@@ -93,6 +109,8 @@ final class FakePrivateResolver: PrivateResolver, @unchecked Sendable {
         case "SLSShowSpaces": return p(fakeCoverShow)
         case "SLSHideSpaces": return p(fakeCoverHide)
         case "SLSSpaceAddWindowsAndRemoveFromSpaces": return p(fakeCoverAdd)
+        case "SLSSpaceSetEdgeReservation": return p(fakeReserveEdges)
+        case "SLSSpaceCopyValues": return p(fakeSpaceValues)
         default: return p(fakeMainConnection) // the enumerator's candidate: looked up, never called
         }
     }
@@ -129,8 +147,8 @@ func privateCallsTests() {
     let all = PrivateCalls.evaluate(FakePrivateResolver())
     check("private calls: all there: freeze, spaces and park on, nothing missing or changed",
           all.freeze && all.spaces && all.park && all.missing.isEmpty && all.mismatched.isEmpty && all.reasons.isEmpty, "\(all)")
-    check("private calls: the counts (16 functions, 2 classes, 4 selectors)",
-          all.functionsFound == 16 && all.functionsTotal == 16 && all.classesFound == 2 && all.classesTotal == 2 && all.selectorsFound == 4 && all.selectorsTotal == 4, "\(all)")
+    check("private calls: the counts (18 functions, 2 classes, 4 selectors)",
+          all.functionsFound == 18 && all.functionsTotal == 18 && all.classesFound == 2 && all.classesTotal == 2 && all.selectorsFound == 4 && all.selectorsTotal == 4, "\(all)")
     check("private calls: the enumerator stays off until gate G5, its candidate found", !all.enumerator && all.candidateFound)
     check("private calls: the enumerator once G5 passed", PrivateCalls.evaluate(FakePrivateResolver(), enumeratorPassed: true).enumerator)
     do {
@@ -157,7 +175,7 @@ func privateCallsTests() {
     }
     for name in ["SLSSpaceCreate", "SLSSpaceDestroy"] {
         let a = without(function: name)
-        check("private calls: no \(name): parking and live cover off", a.freeze && a.spaces && !a.park && !a.liveCover && a.missing == [name] && a.functionsFound == 15, "\(a)")
+        check("private calls: no \(name): parking and live cover off", a.freeze && a.spaces && !a.park && !a.liveCover && a.missing == [name] && a.functionsFound == 17, "\(a)")
     }
     for name in PrivateCalls.classes {
         let r = FakePrivateResolver()
@@ -224,17 +242,32 @@ func privateCallsTests() {
         let line = said.last ?? ""
         check("private calls: the launch line",
               line.hasPrefix("private calls on macOS 27.2 (26B123): freeze ok, spaces ok, park off: -initWithSpaceID:windows:options: encoding changed (@40@0:8, expected @36@0:8Q16@24I32)")
-              && line.contains("(16/16 functions, 2/2 classes, 4/4 selectors, 1 encoding changed); live cover ok; enumerator off (candidate found, gate G5) in "), line)
+              && line.contains("(18/18 functions, 2/2 classes, 4/4 selectors, 1 encoding changed); live cover ok; slot ok; enumerator off (candidate found, gate G5) in "), line)
         said = []
         Diagnostics.echo = { said.append($0) }
         _ = PrivateCalls.check(resolver: FakePrivateResolver(), defaults: nil)
         Diagnostics.echo = echo
-        check("private calls: check with no defaults: the launch line only, all ok", said.count == 1 && said[0].contains("freeze ok, spaces ok, park ok, geometry ok (16/16 functions, 2/2 classes, 4/4 selectors, encodings ok)"), "\(said)")
+        check("private calls: check with no defaults: the launch line only, all ok", said.count == 1 && said[0].contains("freeze ok, spaces ok, park ok, geometry ok (18/18 functions, 2/2 classes, 4/4 selectors, encodings ok); live cover ok; slot ok;"), "\(said)")
     } else { check("private calls: a test's defaults", false) }
 
     do {
         let a = without(function: "SLSGetWindowBounds")
         check("private calls: missing model geometry disables only native preview geometry", !a.geometry && a.freeze && a.spaces && a.park && a.reasons["geometry"] == "SLSGetWindowBounds missing")
+    }
+    // ---- the slot's part ----
+    check("slot: all there: on, with no reason", all.slot && all.reasons["slot"] == nil, "\(all)")
+    for name in ["SLSSpaceSetEdgeReservation", "SLSSpaceCopyValues"] {
+        let a = without(function: name)
+        check("slot: no \(name): the slot off, everything else on", !a.slot && a.freeze && a.spaces && a.park && a.geometry && a.liveCover && a.missing == [name] && a.reasons["slot"] == "\(name) missing", "\(a)")
+    }
+    do {
+        let a = without(function: "SLSCopySpacesForWindows")
+        check("slot: no Space reads: the slot off (a window's Space is unknown)", !a.slot && a.reasons["slot"] == "the Space reads are off", "\(a)")
+        let b = without(function: "SLSGetWindowBounds")
+        check("slot: no model geometry: the slot off (nothing to verify with)", !b.slot && b.reasons["slot"] == "model geometry is off", "\(b)")
+        let r = FakePrivateResolver()
+        r.encodings[PrivateCalls.selectors[0].label] = "x"
+        check("slot: parking off for a changed encoding: the slot stays on", PrivateCalls.evaluate(r).slot)
     }
     // ---- the wrappers ----
     do {
@@ -244,6 +277,7 @@ func privateCallsTests() {
         let refused = sky.freeze() == nil && sky.reveal(9) == nil && sky.release(9) == nil && sky.activeSpace() == nil
             && sky.modelBounds(of: 3) == nil && sky.spaces(forWindows: [3]) == nil && sky.managedDisplaySpaces() == nil && sky.createSpace() == nil
             && !sky.destroySpace(2431) && !sky.bridgeAdd(windows: [3], toSpace: 2431) && !sky.bridgeRemove(windows: [3], fromSpaces: [2431])
+            && !sky.reserveEdges(of: 7, left: 248, right: 8, top: 8, bottom: 8) && sky.reservedEdges(of: 7) == nil
         check("private calls: refused: every wrapper answers nothing, and no function is called", refused && fakeSkyCalls.isEmpty, "\(fakeSkyCalls)")
     }
     do {
@@ -278,6 +312,24 @@ func privateCallsTests() {
         fakeSkyCalls = []
         check("private calls: the bridge: add with options 7, then perform", sky.bridgeAdd(windows: [3, 4], toSpace: 2431) && fakeSkyCalls == ["init add 2431 2 7", "perform performWithWMBridgeDelegate"], "\(fakeSkyCalls)")
         fakeSkyCalls = []
+        fakeSkyCalls = []
+        fakeValuesAnswer = 0
+        check("slot: all four edges sent as whole points, mask 15", sky.reserveEdges(of: 7, left: 248.4, right: 8, top: 7.6, bottom: 8) && fakeSkyCalls == ["cid", "reserve 42 7 m15 248.0 8.0 8.0 8.0"], "\(fakeSkyCalls)")
+        let read = sky.reservedEdges(of: 7)
+        check("slot: the reservation read back from the Space's values", read?.left == 248 && read?.right == 8 && read?.top == 8 && read?.bottom == 8 && fakeSkyCalls.last == "values 42 7", "\(fakeSkyCalls)")
+        fakeSkyCalls = []
+        check("slot: a negative, infinite or missing edge, or no Space, is never sent",
+              !sky.reserveEdges(of: 7, left: -1, right: 0, top: 0, bottom: 0) && !sky.reserveEdges(of: 7, left: .infinity, right: 0, top: 0, bottom: 0)
+              && !sky.reserveEdges(of: 7, left: .nan, right: 0, top: 0, bottom: 0) && !sky.reserveEdges(of: 0, left: 8, right: 8, top: 8, bottom: 8) && sky.reservedEdges(of: 0) == nil && fakeSkyCalls.isEmpty, "\(fakeSkyCalls)")
+        fakeValuesAnswer = 1
+        check("slot: nil values read as unknown", sky.reservedEdges(of: 7) == nil)
+        fakeValuesAnswer = 2
+        check("slot: a Space with no layout manager (a Desktop) reads as unknown", sky.reservedEdges(of: 7) == nil)
+        fakeValuesAnswer = 3
+        check("slot: an edge that isn't a number reads as unknown", sky.reservedEdges(of: 7) == nil)
+        fakeValuesAnswer = 0
+        check("slot: zeros give the whole Space back", sky.reserveEdges(of: 7, left: 0, right: 0, top: 0, bottom: 0) && sky.reservedEdges(of: 7)?.left == 0)
+        fakeSkyCalls = []
         check("private calls: the bridge: remove, then perform", sky.bridgeRemove(windows: [3], fromSpaces: [2431, 1]) && fakeSkyCalls == ["init remove 1 2", "perform performWithWMBridgeDelegate"], "\(fakeSkyCalls)")
     }
     do {
@@ -293,6 +345,13 @@ func privateCallsTests() {
         let none = SkyLight(resolver: FakePrivateResolver(), availability: .off, refusing: false)
         fakeSkyCalls = []
         check("private calls: nothing passed: nothing called", none.freeze() == nil && none.activeSpace() == nil && fakeSkyCalls.isEmpty, "\(fakeSkyCalls)")
+        do {
+            let r = FakePrivateResolver()
+            r.functions.remove("SLSSpaceCopyValues")
+            let noSlot = SkyLight(resolver: r, availability: PrivateCalls.evaluate(r), refusing: false)
+            fakeSkyCalls = []
+            check("slot: off: no reservation is set or read, the freeze still there", !noSlot.reserveEdges(of: 7, left: 8, right: 8, top: 8, bottom: 8) && noSlot.reservedEdges(of: 7) == nil && !fakeSkyCalls.contains { $0.hasPrefix("reserve") || $0.hasPrefix("values") } && noSlot.freeze() != nil, "\(fakeSkyCalls)")
+        }
     }
 
     // ---- the real resolver, made here only to see it refuse ----

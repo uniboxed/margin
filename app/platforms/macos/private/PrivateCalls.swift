@@ -2,7 +2,9 @@
 // docs/PRIVATE-APIS.md, which lists each one with its fallback): SkyLight's
 // freeze (SLSNewTransition and its reveal), its Space reads, a private Space
 // per parked window, and the window-management bridge that moves another
-// process's window between Spaces.
+// process's window between Spaces. Also the slot (docs/PRIVATE-APIS.md, "The
+// slot"): a full-screen Space's reserved edges, which make macOS size the
+// browser's own window to the page's place in the layout.
 //
 // - Checked at launch (PrivateCalls.check, from AppDelegate.startShell before
 //   the shell starts): each function looked up with dlsym, each class with
@@ -60,7 +62,9 @@ enum PrivateCalls {
     nonisolated static let geometryFunctions = ["SLSMainConnectionID", "SLSGetWindowBounds"]
     nonisolated static let parkFunctions = ["SLSSpaceCreate", "SLSSpaceDestroy"] // and the Space reads, to verify
     nonisolated static let liveCoverFunctions = ["SLSMainConnectionID", "SLSSpaceCreate", "SLSSpaceDestroy", "SLSSpaceSetAbsoluteLevel", "SLSSpaceGetAbsoluteLevel", "SLSShowSpaces", "SLSHideSpaces", "SLSSpaceAddWindowsAndRemoveFromSpaces", "SLSCopySpacesForWindows", "SLSSetWindowAlpha"]
-    nonisolated static var functions: [String] { var seen = Set<String>(); return (freezeFunctions + spaceFunctions + parkFunctions + geometryFunctions + liveCoverFunctions).filter { seen.insert($0).inserted } }
+    // The slot: a full-screen Space's reserved edges set, and its values read back to verify.
+    nonisolated static let slotFunctions = ["SLSMainConnectionID", "SLSSpaceSetEdgeReservation", "SLSSpaceCopyValues"]
+    nonisolated static var functions: [String] { var seen = Set<String>(); return (freezeFunctions + spaceFunctions + parkFunctions + geometryFunctions + liveCoverFunctions + slotFunctions).filter { seen.insert($0).inserted } }
 
     nonisolated static let addRemoveClass = "SLSBridgedSpaceAddWindowsAndRemoveFromSpacesOperation"
     nonisolated static let removeClass = "SLSBridgedRemoveWindowsFromSpacesOperation"
@@ -95,6 +99,7 @@ enum PrivateCalls {
         var geometry = false // untransformed window geometry, independent of Mission Control presentation
         var liveCover = false // a special Space for Margin's own temporary animated cover only
         var park = false // the private Spaces and the bridge (needs spaces)
+        var slot = false // a full-screen Space's reserved edges (needs spaces, to know a window's Space, and geometry, to verify)
         var enumerator = false // §4.1 row 13: off until gate G5
         var missing: [String] = [] // frameworks, functions, classes and "Class -selector"
         var mismatched: [String] = [] // "Class -selector" whose type encoding changed
@@ -111,7 +116,7 @@ enum PrivateCalls {
             let encodings = mismatched.isEmpty ? "encodings ok" : "\(mismatched.count) encoding\(mismatched.count == 1 ? "" : "s") changed"
             let enumeration = enumerator ? "enumerator ok" : "enumerator off (\(candidateFound ? "candidate found, " : "")gate G5)"
             return "private calls on macOS \(version) (\(build ?? "build unknown")): \(part("freeze", freeze)), \(part("spaces", spaces)), \(part("park", park)), \(part("geometry", geometry)) "
-                + "(\(functionsFound)/\(functionsTotal) functions, \(classesFound)/\(classesTotal) classes, \(selectorsFound)/\(selectorsTotal) selectors, \(encodings)); \(part("live cover", liveCover)); \(enumeration)"
+                + "(\(functionsFound)/\(functionsTotal) functions, \(classesFound)/\(classesTotal) classes, \(selectorsFound)/\(selectorsTotal) selectors, \(encodings)); \(part("live cover", liveCover)); \(part("slot", slot)); \(enumeration)"
         }
     }
 
@@ -169,6 +174,9 @@ enum PrivateCalls {
         parkProblems += classes.filter { sky && !classFound.contains($0) }.map { "\($0) missing" }
         parkProblems += selectorProblems
         if spaceProblems.isEmpty == false, parkProblems.isEmpty { parkProblems = ["the Space reads are off"] }
+        var slotProblems = skyProblem + slotFunctions.filter { sky && !found.contains($0) }.map { "\($0) missing" }
+        if slotProblems.isEmpty, !spaceProblems.isEmpty { slotProblems = ["the Space reads are off"] }
+        if slotProblems.isEmpty, !geometryProblems.isEmpty { slotProblems = ["model geometry is off"] }
 
         a.geometry = geometryProblems.isEmpty
         a.liveCover = coverProblems.isEmpty
@@ -180,6 +188,8 @@ enum PrivateCalls {
         a.reasons["freeze"] = why(freezeProblems)
         a.reasons["spaces"] = why(spaceProblems)
         a.reasons["park"] = why(parkProblems)
+        a.slot = slotProblems.isEmpty
+        a.reasons["slot"] = why(slotProblems)
 
         a.candidateFound = sky && resolver.function(enumeratorCandidate, in: .skyLight) != nil
         a.enumerator = a.candidateFound && enumeratorPassed
@@ -296,6 +306,10 @@ nonisolated struct SkyLight: @unchecked Sendable {
     typealias ShowHideSpaces = @convention(c) (UInt32, CFArray) -> Void
     typealias SpaceAddOwnedWindow = @convention(c) (UInt32, UInt64, CFArray, Int32) -> Void
     typealias SetWindowAlpha = @convention(c) (UInt32, UInt32, Float) -> Int32
+    // (connection, Space, edge mask, left, right, top, bottom): mask bits 1 left, 2 top, 4 right,
+    // 8 bottom. Returns nothing; the Space's values and the window's bounds are the check.
+    typealias SpaceSetEdgeReservation = @convention(c) (UInt32, UInt64, UInt64, Double, Double, Double, Double) -> Void
+    typealias SpaceCopyValues = @convention(c) (UInt32, UInt64) -> Unmanaged<CFDictionary>?
     // The receiver goes in as a raw pointer: init consumes the object alloc made and may return
     // another, so Swift must never retain or release it. The result is +1 (an init's).
     typealias InitAddRemove = @convention(c) (UnsafeMutableRawPointer, ObjectiveC.Selector, UInt64, NSArray, UInt32) -> Unmanaged<AnyObject>?
@@ -321,6 +335,8 @@ nonisolated struct SkyLight: @unchecked Sendable {
     private var hideSpaces: ShowHideSpaces?
     private var spaceAddOwnedWindow: SpaceAddOwnedWindow?
     private var setWindowAlpha: SetWindowAlpha?
+    private var spaceSetEdgeReservation: SpaceSetEdgeReservation?
+    private var spaceCopyValues: SpaceCopyValues?
     private var addRemoveClass: AnyClass?
     private var removeClass: AnyClass?
     private var initAddRemove: InitAddRemove?
@@ -340,7 +356,7 @@ nonisolated struct SkyLight: @unchecked Sendable {
         canCover = availability.liveCover
         func fn<T>(_ name: String, _: T.Type) -> T? { resolver.function(name, in: .skyLight).map { unsafeBitCast($0, to: T.self) } }
         func imp<T>(_ cls: String, _ sel: String, _: T.Type) -> T? { resolver.implementation(cls, sel).map { unsafeBitCast($0, to: T.self) } }
-        if availability.freeze || availability.spaces || availability.geometry || availability.liveCover { mainConnectionID = fn("SLSMainConnectionID", MainConnectionID.self) }
+        if availability.freeze || availability.spaces || availability.geometry || availability.liveCover || availability.slot { mainConnectionID = fn("SLSMainConnectionID", MainConnectionID.self) }
         if availability.geometry { getWindowBounds = fn("SLSGetWindowBounds", GetWindowBounds.self) }
         if availability.freeze {
             newTransition = fn("SLSNewTransition", NewTransition.self)
@@ -365,6 +381,10 @@ nonisolated struct SkyLight: @unchecked Sendable {
             hideSpaces = fn("SLSHideSpaces", ShowHideSpaces.self)
             spaceAddOwnedWindow = fn("SLSSpaceAddWindowsAndRemoveFromSpaces", SpaceAddOwnedWindow.self)
             setWindowAlpha = fn("SLSSetWindowAlpha", SetWindowAlpha.self)
+        }
+        if availability.slot {
+            spaceSetEdgeReservation = fn("SLSSpaceSetEdgeReservation", SpaceSetEdgeReservation.self)
+            spaceCopyValues = fn("SLSSpaceCopyValues", SpaceCopyValues.self)
         }
         if availability.park {
             addRemoveClass = resolver.objcClass(PrivateCalls.addRemoveClass)
@@ -437,6 +457,32 @@ nonisolated struct SkyLight: @unchecked Sendable {
     func managedDisplaySpaces() -> [[String: Any]]? {
         guard let cid = connection(), let copyManagedDisplaySpaces else { return nil }
         return copyManagedDisplaySpaces(cid)?.takeRetainedValue() as? [[String: Any]]
+    }
+
+    // ---- the slot: a full-screen Space's reserved edges ----
+
+    // All four edges at once (mask 15), in whole points from the Space's own edges: the window
+    // manager lays the Space's tile out again and the app sizes its full-screen window to it.
+    // Zeros give the whole Space back. Any process may set another app's Space (no ownership, no
+    // permission), and the reservation outlives the process that set it. True means it was sent.
+    func reserveEdges(of space: UInt64, left: Double, right: Double, top: Double, bottom: Double) -> Bool {
+        guard space > 0, [left, right, top, bottom].allSatisfy({ $0.isFinite && $0 >= 0 }),
+              let cid = connection(), cid != 0, let spaceSetEdgeReservation else { return false }
+        spaceSetEdgeReservation(cid, space, 15, left.rounded(), right.rounded(), top.rounded(), bottom.rounded())
+        return true // sent; reservedEdges(of:) and the window's bounds are the caller's check
+    }
+
+    // What a full-screen Space reserves now ("TileLayoutManager" → "ReservedArea"); nil: unknown,
+    // or not a Space that lays tiles out (a Desktop has no layout manager).
+    func reservedEdges(of space: UInt64) -> (left: Double, right: Double, top: Double, bottom: Double)? {
+        guard space > 0, let cid = connection(), cid != 0, let spaceCopyValues,
+              let values = spaceCopyValues(cid, space)?.takeRetainedValue() as? [String: Any],
+              let manager = values["TileLayoutManager"] as? [String: Any],
+              let area = manager["ReservedArea"] as? [String: Any] else { return nil }
+        func edge(_ key: String) -> Double? { (area[key] as? NSNumber)?.doubleValue }
+        guard let left = edge("Left"), let right = edge("Right"), let top = edge("Top"), let bottom = edge("Bottom"),
+              [left, right, top, bottom].allSatisfy(\.isFinite) else { return nil }
+        return (left, right, top, bottom)
     }
 
     // ---- private Spaces and the bridge (parking) ----
