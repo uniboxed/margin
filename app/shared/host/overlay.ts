@@ -213,7 +213,9 @@ function measureNow() {
   stats.measures++;
   stats.measureMs += performance.now() - from;
   if (!g || !host) return;
-  const key = JSON.stringify([g.insets, g.radius, g.container]);
+  // (The mode too: Margin's own window learns it went full screen after its new size was measured, and the app
+  // takes a layout as the window's only with the window's mode in it: MarginWindowController.)
+  const key = JSON.stringify([g.insets, g.radius, g.container, host.mode]);
   if (key === lastLayout) return;
   lastLayout = key;
   host.reportLayout({ ...g, windowId: host.windowId, mode: host.mode });
