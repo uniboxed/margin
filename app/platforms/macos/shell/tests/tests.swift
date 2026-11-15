@@ -102,6 +102,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     slotTests() // slot-tests.swift
     hostTests() // host-tests.swift: the host engine against a stand-in window manager, and its calls' check
     enterTests() // enter-tests.swift
+    marginWindowTests() // margin-window-tests.swift: Margin's own window (MarginHosted)
     handoffUiTests() // handoff-ui-tests.swift
     devHooksTests() // devhooks-tests.swift (DEV-HOOK: removed with the hook)
     themeTests() // theme-tests.swift

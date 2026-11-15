@@ -18,12 +18,18 @@
 // While a switch to another profile runs (docs/HANDOFF.md §7): that the
 // "switching" cover is drawn (`switch.coverShown`, ui/switch-cover.ts), and,
 // after each `shown`, that the page has drawn and in which mode (`framed`).
+//
+// In Margin's own window (the hello's `host` 'app-window': app/platforms/macos/shell/MarginWindowController.swift)
+// the same page draws the whole app: its mode is the window's (windowed or full screen), it says where the theme
+// draws the window's buttons and its drag regions (`chrome`), a layer over the whole window (the palette's) takes the
+// pointer there (hitRects keepEqual), it never says it's reconnecting to a browser, and with
+// no theme package from the app it draws Arcadia, bundled beside it, as its own (no notice: nothing failed).
 import { createRuntime } from '../../../extension/ui/runtime.ts';
 import { createGestureMotion } from '../../../extension/ui/gesture-motion.ts';
 import { loadTheme, encodeStoredTheme } from '../../../extension/ui/theme-loader.ts';
 import { readThemeFile } from '../../../extension/ui/theme-import.ts';
 import { createPreviewBar } from '../../../extension/ui/theme-preview.ts';
-import { createAppHost, hitRects } from '../../../extension/ui/host-app.ts';
+import { chromeRects, createAppHost, hitRects } from '../../../extension/ui/host-app.ts';
 import { createAppNotices, createGestureFeedback } from '../../../extension/ui/app-feedback.ts';
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../../extension/shared/switching.ts';
 import { cycleTab } from '../../../extension/shared/view.ts';
@@ -167,7 +173,7 @@ function reportHits() {
   const { insets, container } = geometry;
   const slot = { left: insets.left, top: insets.top, right: container.width - insets.right, bottom: container.height - insets.bottom };
   const from = performance.now();
-  const { rects, all } = timed('measuring what is over the page', () => `${root.getElementsByTagName('*').length} elements`, () => hitRects(root, slot));
+  const { rects, all } = timed('measuring what is over the page', () => `${root.getElementsByTagName('*').length} elements`, () => hitRects(root, slot, { keepEqual: !!host?.appWindow }));
   const ms = performance.now() - from;
   stats.hits++;
   stats.hitsMs += ms;
@@ -175,10 +181,21 @@ function reportHits() {
   // The preview's bar (Margin's own, outside the theme) takes the pointer too.
   const bar = preview.bar.rect();
   if (bar && !all) rects.push(bar);
+  reportChrome(root);
   const key = JSON.stringify([rects, all]);
   if (key === lastHits) return;
   lastHits = key;
   void post('hits', { rects, all }).catch(() => {});
+}
+// Margin's own window: where the theme draws its buttons and where a drag moves it (host-app.ts chromeRects).
+let lastChrome = '';
+function reportChrome(root: Element) {
+  if (!host?.appWindow) return;
+  const chrome = chromeRects(root);
+  const key = JSON.stringify(chrome);
+  if (key === lastChrome) return;
+  lastChrome = key;
+  void post('chrome', chrome).catch(() => {});
 }
 function hitsSoon() {
   if (hitsQueued) return;
@@ -364,6 +381,7 @@ async function mount(pkg: any, { fallback = false, preview: previewing = false }
   lastHits = '';
   lastLayout = '';
   lastWant = '';
+  lastChrome = '';
   measureNow();
   if (previewing && !usableLayout()) { previewFailed('Margin couldn’t use it: its page is too small to show, or outside the window.'); return false; }
   if (!fallback && !usableLayout()) return fallBack(id, 'its page slot is too small or outside the window');
@@ -548,6 +566,8 @@ function onMessage(msg: any) {
       else if (msg.name === 'next-tab' || msg.name === 'prev-tab') navTab(msg.name);
       return;
     case 'link':
+      // (Margin's own window has no copy's link to lose.)
+      if (host?.appWindow) return;
       // The link to the copy dropped (`reconnecting`: the last picture stays,
       // dimmed, saying so, until it's back or the app closes the overlay) or came back.
       setReconnecting(msg.state === 'reconnecting');
@@ -663,6 +683,8 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   stats: () => JSON.parse(JSON.stringify(stats)),
   // The window this page draws for (a switch's hand-over changes it: host-app.ts `rekey`). The app's tests read it.
   windowId: () => host?.windowId ?? null,
+  // Drawn in Margin's own window, in which mode, and whether its palette is open (the app's tests read them).
+  appWindow: () => ({ appWindow: !!host?.appWindow, mode: host?.mode ?? null, palette: !!runtime?.paletteOpen }),
   // The theme the overlay couldn't draw, if it fell back to Arcadia (the app's tests read it).
   themeFailure: () => (themeFailure ? { ...themeFailure } : null),
   // The preview's bar, for the app's tests: what it says, and a press of one of its buttons.
@@ -722,7 +744,14 @@ async function start() {
   // notice, the tabs loading: app/platforms/macos/shell/Shell.swift HeldPushes), as if it came now.
   for (const msg of Array.isArray(hello.held) ? hello.held : []) host.receive({ type: 'push', msg });
   pendingTheme = hello.theme ?? null;
-  if (hello.theme && host.getState()) mounting = mounting.then(() => mount(hello.theme));
+  // Margin's own window with no package from the app (no copy has said its theme): Arcadia, as its own.
+  if (!pendingTheme && host.appWindow) {
+    const arcadia = await fallbackPackage();
+    // (A package the app pushed meanwhile is the one, drawn as it came.)
+    if (pendingTheme) return;
+    pendingTheme = arcadia;
+  }
+  if (pendingTheme && host.getState()) { const pkg = pendingTheme; mounting = mounting.then(() => mount(pkg)); }
 }
 
 start().catch((err) => log('error', 'the overlay failed to start:', String(err?.stack ?? err)));

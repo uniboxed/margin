@@ -244,7 +244,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Margin as the app, hosting apps in its page area (docs/MARGIN-APP.md). Off unless `MarginHosted` is set
         // (forApp); off, none of it runs: no library (Library.swift, ShellLibrary.swift: the spaces owned by the app in
         // data/app, the profiles' sets imported once), no app catalog, no `apps` pushes, no app rows (ShellApps.swift),
-        // no host engine (HostEngine.swift: other apps' windows in the page area).
+        // no host engine (HostEngine.swift: other apps' windows in the page area), no Margin window (MarginWindow.swift,
+        // ShellHosted.swift: in place of the set-up window and of opening the browser).
         var hosted = false
         var appCatalog = AppCatalogWatcher.Options() // where apps are read from, the icons' cache (a test: its own folders)
     }
@@ -279,7 +280,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     let shortcuts: AppShortcuts
     private let pointer = PointerWatch()
     private(set) var options: Options
-    private lazy var pages = OverlayPages(root: options.root ?? OverlayPages.appRoot)
+    lazy var pages = OverlayPages(root: options.root ?? OverlayPages.appRoot) // (Margin's windows use it too: ShellHosted.swift)
+    var marginWindows: MarginWindows? // made the first time one is opened, with `hosted` only
 
     private(set) var links: [String: Link] = [:]
     var overlays: [WindowKey: OverlayController] = [:]
@@ -458,7 +460,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Margin as the app (docs/MARGIN-APP.md): spaces owned by the app (the library), installed apps in the palette;
         // off until it's built; `defaults write com.unibox.margin MarginHosted -bool YES` turns it on.
         options.hosted = UserDefaults.standard.object(forKey: "MarginHosted") as? Bool ?? false
-        if options.hosted { Diagnostics.note("hosted: on (MarginHosted): the library, installed apps in the palette, the host engine") }
+        if options.hosted { Diagnostics.note("hosted: on (MarginHosted): Margin's own window, the library, installed apps in the palette, the host engine") }
         // Opening Margin opens its browser inside it: with the slot unless said otherwise (MarginOpensBrowser).
         options.enter = UserDefaults.standard.object(forKey: "MarginOpensBrowser") as? Bool ?? options.slot
         options.openBrowser = Shell.openBrowserApp
@@ -578,6 +580,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         appsStop()
         for overlay in overlays.values { overlay.close() }
         overlays = [:]
+        marginWindows?.closeAll()
         link.stop(why: "Margin.app quit", then: then)
     }
 

@@ -39,7 +39,9 @@
 #         can't draw replaced by Arcadia, and said; and e2e-slot.swift, the slot: a layout reserved in its
 #         window's Space with a stand-in playing the window manager, the copy sent no insets, the page box
 #         for a window that won't take it, everything given back at quit; and e2e-enter.swift, opening Margin:
-#         its browser opened once, the window used last asked for in full screen, a failure when nothing links
+#         its browser opened once, the window used last asked for in full screen, a failure when nothing links; and
+#         e2e-hosted.swift, Margin's own window (MarginHosted) off every display with the real page: its page area
+#         published, the pointer through it, the menu's New Tab opening the palette, its sidebar, full screen, resize
 # window-tests.swift's randomized runs take WINDOW_RUNS (default 300),
 # WINDOW_LAG (the flags' lag, default 1.2 s) and WINDOW_SEED (one run, printed).
 # Built with swiftc as the app target builds it (Swift 5, main actor by
@@ -119,7 +121,7 @@ if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
   [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
-  build e2e e2e.swift e2e-data.swift e2e-profiles.swift e2e-windows.swift e2e-keyboard.swift e2e-overlays.swift e2e-cloud.swift e2e-themes.swift e2e-slot.swift e2e-enter.swift "$FAKE_SAFARI" "${SHELL_SOURCES[@]}"
+  build e2e e2e.swift e2e-data.swift e2e-profiles.swift e2e-windows.swift e2e-keyboard.swift e2e-overlays.swift e2e-cloud.swift e2e-themes.swift e2e-slot.swift e2e-enter.swift e2e-hosted.swift "$FAKE_SAFARI" "${SHELL_SOURCES[@]}"
   MARGIN_APP_ROOT="$PWD/../../dist/app" MARGIN_FAKE_EXTENSION="$PWD/fake-extension.mts" MARGIN_NODE="$NODE" \
     MARGIN_APP_SHOT="${MARGIN_APP_SHOT:-$BUILD/overlay.png}" "$BUILD/e2e" || status=1
 fi
