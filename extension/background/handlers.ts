@@ -23,6 +23,7 @@ import { closeTabs, noteClosing } from './closing.ts';
 import * as away from './away.ts';
 import { isAwayPage } from '../shared/away.ts';
 import { appLink } from './app-link.ts';
+import { createHostedTabs, type HostedTabsApi } from './hosted.ts';
 import { createSheetWalks } from './sheet-walks.ts';
 import { noticeAnswered } from './notices.ts';
 import { isNoticeAction } from '../shared/notices.ts';
@@ -308,6 +309,8 @@ const appState = (windowId: number | null) => {
 };
 
 const launcherOpening = new Map<string, Promise<{ tabId: number, shown: number }>>();
+// Margin.app hosting this profile's window in its page area (background/hosted.ts): its items' tabs.
+const hostedTabs = createHostedTabs(() => api.tabs as unknown as HostedTabsApi);
 
 export const handlers = {
   // A page starting: which tab and window it is, this copy, whether the window is in Margin's
@@ -1114,6 +1117,16 @@ export const handlers = {
   async windowState(_: object, sender: BrowserMessageSender) {
     const id = sender.tab?.windowId;
     return { fullscreen: id != null && capabilities?.marginFullscreen && engine.fullscreen ? await engine.fullscreen.isFullscreen(id) : false };
+  },
+  // Margin.app hosting Safari in its page area (docs/MARGIN-APP.md, background/hosted.ts): an item of its library
+  // shown as a tab of the window it hosts for this profile, and closed. The app's word only.
+  async hostShow(message: { windowId?: number, itemId?: string, url?: string }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.show(message);
+  },
+  async hostClose(message: { itemId?: string }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.close(message);
   },
   // Margin.app's index of the themes the person imported (app/platforms/macos/shell/ThemeStore.swift: they're the
   // Mac's, kept by the app; a copy holds only the list, never a package), sent as a copy links and
