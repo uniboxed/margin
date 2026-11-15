@@ -462,6 +462,8 @@ final class HostEngine {
                 return false
             }
             if HostLayout.near(hosted, pageRect, within: options.tolerance) { return true }
+            func r(_ c: CGRect) -> String { "\(Int(c.minX)),\(Int(c.minY)) \(Int(c.width))×\(Int(c.height))" }
+            Diagnostics.note("host: place \(host.id) attempt \(attempt): Margin's tile \(r(margin)), hosted \(r(hosted)), reserved \((sys.reserved(space: marginSpace) ?? .zero).text), page \(r(pageRect))")
             var plan = HostLayout.plan(margin: margin, hosted: hosted, reserved: sys.reserved(space: marginSpace) ?? .zero, page: pageRect)
             if plan == nil {
                 // Margin's tile still being laid out at its new width: read again for a moment.
@@ -472,9 +474,12 @@ final class HostEngine {
                 }
             }
             guard let plan else {
-                emit(.failed(host.id, .place, "the page area can't be reached beside Margin's tile"))
+                let m2 = sys.bounds(window: marginWindow).map(r) ?? "?", h2 = sys.bounds(window: host.window).map(r) ?? "?"
+            Diagnostics.note("host: place \(host.id): no plan (Margin's tile \(m2), hosted \(h2), reserved \((sys.reserved(space: marginSpace) ?? .zero).text))")
+            emit(.failed(host.id, .place, "the page area can't be reached beside Margin's tile"))
                 return false
             }
+            Diagnostics.note("host: place \(host.id) attempt \(attempt): reserving \(plan.edges.text), spacing \(Int(plan.spacing))")
             _ = sys.setTileSpacing(plan.spacing, space: marginSpace)
             _ = sys.reserve(plan.edges, space: marginSpace)
             if await wait(options.placeWait, { self.sys.bounds(window: host.window).map { HostLayout.near($0, self.pageRect, within: self.options.tolerance) } ?? false }) {
