@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyChanges, createAppHost, hitRects, modeOf } from '../extension/ui/host-app.ts';
+import { applyChanges, chromeRects, createAppHost, hitRects, modeOf } from '../extension/ui/host-app.ts';
 import { toStorage } from '../extension/shared/stored.ts';
 import { buildViewModel } from '../extension/ui/view-model.ts';
 import { APP_FILES, buildApp } from '../scripts/build.ts';
@@ -142,6 +142,32 @@ test('the app host: other messages are the page\'s; nothing after destroy', () =
   assert.deepEqual(got, ['command', 'pointer']);
 });
 
+test("the app host in Margin's own window: said by the hello's host, its mode the window's; not otherwise", () => {
+  const over = createAppHost({ hello: hello(), post: bridge().post });
+  assert.equal(over.appWindow, false, 'over a browser window by default');
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'windowed', windows: [{ windowId: W, id: W, state: 'normal', focused: true }] }), post: b.post });
+  assert.equal(host.appWindow, true);
+  assert.equal(host.mode, 'windowed');
+  const drawn: (string | undefined)[] = [];
+  host.onState(() => drawn.push(host.mode));
+  host.receive({ type: 'windows', list: [{ windowId: W, id: W, state: 'fullscreen', focused: true }] });
+  assert.deepEqual(drawn, ['fullscreen'], 'Margin\'s window into full screen: drawn so');
+  assert.equal(host.launcher, false, 'no browser tab in front: no launcher-in-a-tab');
+  assert.equal(host.perform('navigate', { url: 'https://example.com/' }), false, 'an address opens as a new tab (the runtime sends newTab)');
+  assert.equal(host.perform('window.fullscreen'), true);
+  assert.deepEqual(b.posts.at(-1), { op: 'perform', name: 'window.fullscreen', arg: null });
+});
+
+test('chromeRects: the first window-controls with a box, every drag region with one', () => {
+  type FakeEl = { getBoundingClientRect: () => { left: number, top: number, width: number, height: number } };
+  const el = (r: number[]): FakeEl => ({ getBoundingClientRect: () => ({ left: r[0], top: r[1], width: r[2], height: r[3] }) });
+  const root = (controls: FakeEl[], drags: FakeEl[]) => ({ querySelectorAll: (sel: string) => (sel === 'm-window-controls' ? controls : sel === 'm-drag-region' ? drags : []) }) as unknown as Element;
+  assert.deepEqual(chromeRects(root([el([0, 0, 0, 0]), el([6.2, 7, 60, 14])], [el([80, 0, 180, 28]), el([0, 0, 0, 10])])), { controls: [6, 7, 60, 14], drags: [[80, 0, 180, 28]] });
+  assert.deepEqual(chromeRects(root([el([0, 0, 0, 0])], [])), { controls: null, drags: [] }, 'hidden (full screen): none');
+  assert.deepEqual(chromeRects(null), { controls: null, drags: [] });
+});
+
 test('applyChanges leaves the old values alone', () => {
   const raw = { a: 1, favicons: { x: 1 } };
   const next = applyChanges(raw, { a: { newValue: 2 }, b: { newValue: null }, favicons: { newValue: {} } }, { set: { y: 2 } });
@@ -170,6 +196,12 @@ test('hitRects: what takes the pointer over the slot, boxes inside others left o
   ]);
   const getStyle = (e: Element) => (e as unknown as FakeEl).style;
   assert.deepEqual(hitRects((tree as unknown as Element), slot, { getStyle }), { rects: [[380, 100, 520, 400]], all: false });
+  // A layer over the whole window with a backdrop of the same size (Arcadia's palette): in Margin's own window the
+  // layer, once; over a browser's window none of it (a press on the page reaches it, and closes the palette).
+  const layer = el('div', [0, 0, 1280, 800], {}, [el('button', [0, 0, 1280, 800]), el('div', [380, 100, 520, 60])]);
+  const withLayer = el('div', [0, 0, 1280, 800], {}, [el('m-page', [260, 8, 1012, 784]), el('m-if', [0, 0, 0, 0], {}, [layer])]);
+  assert.deepEqual(hitRects((withLayer as unknown as Element), slot, { getStyle, keepEqual: true }), { rects: [[0, 0, 1280, 800]], all: false });
+  assert.deepEqual(hitRects((withLayer as unknown as Element), slot, { getStyle }), { rects: [], all: false });
   const many = el('div', [0, 0, 1280, 800], {}, Array.from({ length: 70 }, (_, i) => el('b', [300 + i * 10, 100, 5, 5])));
   assert.deepEqual(hitRects((many as unknown as Element), slot, { getStyle }), { rects: [], all: true });
 });

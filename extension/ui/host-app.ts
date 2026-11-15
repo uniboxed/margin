@@ -40,6 +40,10 @@
 //   (`switch.closeWindows`); the "switching" cover drawn (`switch.coverShown`,
 //   app/shared/host/overlay.ts); a button of the switch's notice
 //   (`switch.notice`: its id is `switch:<kind>`).
+// - Margin's own window (docs/MARGIN-APP.md phase 2, app/platforms/macos/shell/MarginWindowController.swift):
+//   the hello's `host` is 'app-window' (`appWindow`): the UI is drawn in Margin's window, not over a
+//   browser's, its mode the window's own (windowed or full screen, from `windows`); where the theme
+//   draws the window's buttons and its drag regions go to the app (`chromeRects`, { op: 'chrome' }).
 //
 // No browser API here: only the DOM and `post`.
 import type { Geometry, Host } from './host.ts';
@@ -79,11 +83,15 @@ export const modeOf = (w: any) => (w?.state === 'fullscreen' ? 'fullscreen' : 'w
  * through as the in-page host's does (`m-passthrough`: its children keep
  * theirs). Boxes inside another are left out. `all`: more than `limit`
  * (the app then takes the whole window, never letting the page miss one).
+ * `keepEqual`: of nested boxes with the same bounds (Arcadia's palette layer and its backdrop, over the whole
+ * window) the first is kept, and what's inside it goes (Margin's own window: its palette takes the pointer).
+ * Without it each counts as inside the other and all of them go, the palette with them: over a browser's
+ * window a press on the page then still reaches the page, and closes the palette (the overlay's behaviour).
  * @param root the theme's root
  * @param slot in the container's pixels
  * [x, y, width, height] each
  */
-export function hitRects(root: Element, slot: { left: number, top: number, right: number, bottom: number }, { limit = 64, getStyle = (el) => (el.ownerDocument.defaultView as any).getComputedStyle(el) }: { limit?: number, getStyle?: (el: Element) => { pointerEvents: string, visibility: string } } = {}): { rects: number[][], all: boolean } {
+export function hitRects(root: Element, slot: { left: number, top: number, right: number, bottom: number }, { limit = 64, keepEqual = false, getStyle = (el) => (el.ownerDocument.defaultView as any).getComputedStyle(el) }: { limit?: number, keepEqual?: boolean, getStyle?: (el: Element) => { pointerEvents: string, visibility: string } } = {}): { rects: number[][], all: boolean } {
   const found: DOMRect[] = [];
   const walk = (el: Element) => {
     for (const child of (el.children as any)) {
@@ -98,9 +106,26 @@ export function hitRects(root: Element, slot: { left: number, top: number, right
   };
   walk(root);
   const inside = (a: DOMRect, b: DOMRect) => a !== b && a.left >= b.left && a.right <= b.right && a.top >= b.top && a.bottom <= b.bottom;
-  const kept = found.filter((r, i) => !found.some((o, j) => inside(r, o) || (j < i && o.left === r.left && o.top === r.top && o.right === r.right && o.bottom === r.bottom)));
+  const same = (a: DOMRect, b: DOMRect) => a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
+  const kept = keepEqual
+    ? found.filter((r, i) => !found.some((o, j) => j !== i && (same(r, o) ? j < i : inside(r, o))))
+    : found.filter((r, i) => !found.some((o, j) => inside(r, o) || (j < i && same(o, r))));
   if (kept.length > limit) return { rects: [], all: true };
   return { rects: kept.map((r) => [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 2) / 2)), all: false };
+}
+
+/**
+ * Where the theme draws the window's buttons (`<m-window-controls>`, the first one with a box) and
+ * where a drag moves the window (`<m-drag-region>`), in the container's pixels: for Margin's own
+ * window, whose traffic lights go there and which moves by those regions. null / []: none drawn.
+ * [x, y, width, height] each, to the half pixel.
+ * */
+export function chromeRects(root: Element | null): { controls: number[] | null, drags: number[][] } {
+  const box = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 2) / 2) : null; };
+  if (!root) return { controls: null, drags: [] };
+  const controls = [...root.querySelectorAll('m-window-controls')].map(box).find((r) => r) ?? null;
+  const drags = [...root.querySelectorAll('m-drag-region')].map(box).filter((r): r is number[] => !!r).slice(0, 32);
+  return { controls, drags };
 }
 
 /**
@@ -121,13 +146,15 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   onMessage?: (msg: any) => void,
   onNotice?: (arg: { id?: string, action?: string }) => void,
   warn?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
   // (Its window can change: a profile switch hands the sidebar to the window it goes to, `rekey`.)
   let windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
   let state: any = null;
   let windows = Array.isArray(hello?.windows) ? hello.windows : [];
   let mode = hello?.mode === 'windowed' ? 'windowed' : 'fullscreen';
+  // Drawn in Margin's own window (its hello's `host`), not over a browser's: never changes for a page.
+  const appWindow = hello?.host === 'app-window';
   // Every profile's spaces in the one order, and the profiles (app/platforms/macos/shell/ShellProfiles.swift): `state.across`.
   let across = acrossOf(hello?.across);
   // iCloud Tabs, as the app read them (Safari only; null: none).
@@ -228,6 +255,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   return {
     platform,
     get windowId() { return windowId; },
+    get appWindow() { return appWindow; },
     // The overlay stays on screen through a switch (ui/runtime.ts: the highlight waits for the state).
     staysOnScreen: true,
     // Not on screen as it first draws: its launcher takes the focus only when the app says (the `shown` push's `focus`).
