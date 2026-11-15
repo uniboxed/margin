@@ -1,5 +1,21 @@
 # Testing Margin
 
+## Opening Margin (pending, 2026-11-15)
+
+On with the slot (`MarginNativeSlot`), or by itself with `defaults write com.unibox.margin MarginOpensBrowser -bool YES`; `-bool NO` keeps the set-up window with the slot on. Nothing here has been run with a real browser yet (`DECISIONS.md`, "Opening Margin").
+
+- [ ] `npm run log:app` at launch says `open: opening Margin brings its browser's window up inside it`.
+- [ ] Safari not running, Margin running in the background: open Margin (Spotlight, Finder or its Dock icon). Safari starts, its window goes into full screen and Margin is around it. The log: `open: safari (not running): opened`, then `open: safari:…#N (normal), asked for in full screen and in front`, then `answered`.
+- [ ] Neither running: open Margin. The same, with no set-up window on the way.
+- [ ] Safari running with a normal window on the Desktop, another app in front: open Margin. That window goes into full screen, in front, with Margin around it.
+- [ ] Safari already in full screen with Margin, another app in front: open Margin. macOS goes to that window's Space; nothing else changes.
+- [ ] Two Safari windows: the one used last is the one that comes up.
+- [ ] Safari running with no window: open Margin. Safari makes a window and it goes into full screen.
+- [ ] Margin's extension turned off in Safari: open Margin. After 15 s the log says `open: given up … no browser's copy of Margin linked` and the set-up window opens.
+- [ ] Open Margin holding Option: the set-up window, and no browser window touched.
+- [ ] The set-up window open: opening Margin again brings the set-up window forward (no browser window touched).
+- [ ] Chrome or Edge as the browser last linked, not running: opening Margin starts that one.
+
 ## The slot (pending, 2026-11-15)
 
 Off by default: every check below starts with `defaults write com.unibox.margin MarginNativeSlot -bool YES`, then `npm run safari`. `defaults delete com.unibox.margin MarginNativeSlot` and a relaunch go back to the page box. Nothing here has been run in real Safari yet (`DECISIONS.md`, "The slot").

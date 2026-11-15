@@ -99,6 +99,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     liveHandoffTests() // live-handoff-tests.swift: fake-clock cover lifetime and ordering
     parkingTests() // parking-tests.swift
     slotTests() // slot-tests.swift
+    enterTests() // enter-tests.swift
     handoffUiTests() // handoff-ui-tests.swift
     devHooksTests() // devhooks-tests.swift (DEV-HOOK: removed with the hook)
     themeTests() // theme-tests.swift

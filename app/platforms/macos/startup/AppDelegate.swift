@@ -3,7 +3,10 @@
 // Dock icon (an accessory app), linked to Margin's extension copies and
 // drawing Margin around the browser's windows (app/platforms/macos/shell/Shell.swift), which
 // does nothing until a linked browser is in front. Opening the app again
-// shows the set-up window again. Quitting, the copies are told first; a
+// shows the set-up window again; or, with `MarginOpensBrowser` (or the slot)
+// on, opening it by hand or again brings its browser's window up inside it
+// (ShellEnter.swift), the set-up window only when that can't be done or
+// Option is held. Quitting, the copies are told first; a
 // SIGTERM quits the same way. scripts/safari.sh puts a new build in place of
 // the installed one, then sends a SIGTERM to the Margin.app it found running
 // from there (a KILL after 5 s), and if Safari is running and nothing has
@@ -107,6 +110,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 window.orderOut(nil)
                 NSApp.setActivationPolicy(.accessory)
                 Diagnostics.note(atLogin ? "Margin.app opened at login: no set-up window" : background ? "Margin.app started with --background: no set-up window" : "Margin.app started for a link (the extension's note): no set-up window")
+            } else if opensBrowser {
+                // Opened by the person, to use it: its browser's window comes up inside it once the shell has
+                // started (ShellEnter.swift). The set-up window only if that can't be done, or opened holding Option.
+                window.orderOut(nil)
+                NSApp.setActivationPolicy(.accessory)
+                enterAtStart = true
+                Diagnostics.note("Margin.app opened by hand: its browser's window comes up inside it (no set-up window)")
             } else {
                 // An agent app (LSUIElement, scripts/make-xcode.sh): opened by
                 // the person, it gets its Dock icon and comes forward.
@@ -212,6 +222,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         idleCheck = Timer.scheduledTimer(withTimeInterval: Self.idleCheckEvery, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkIdle() }
         }
+        if enterAtStart {
+            enterAtStart = false
+            enter()
+        }
     }
 
     // Started on demand, Margin.app quits by itself once no copy has been
@@ -284,8 +298,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showSetup()
+        // Opened again: its browser's window in front inside it, unless the set-up window is what's open (or asked for).
+        guard opensBrowser, setup?.window?.isVisible != true else {
+            showSetup()
+            return false
+        }
+        if idleCheck != nil { enter() } else {
+            // No shell yet (waiting for a browser, or for an older Margin.app to end): started now, or as soon as it may.
+            enterAtStart = true
+            watching = false
+            if let o = browserLaunch { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+            browserLaunch = nil
+            if othersTimer == nil { startShell() }
+        }
         return false
+    }
+
+    // Opening Margin opens its browser inside it (the shell's setting), unless Option is held: the set-up window then.
+    private var enterAtStart = false
+    private var opensBrowser: Bool { shell.options.enter && !NSEvent.modifierFlags.contains(.option) }
+    private func enter() {
+        shell.enter { [weak self] result in
+            guard case .failed(let why) = result, why != "Margin is quitting" else { return }
+            Diagnostics.note("Margin.app shows its set-up window: \(why)")
+            self?.showSetup()
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

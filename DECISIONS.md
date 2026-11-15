@@ -4851,3 +4851,23 @@ Asked by Tirth on 2026-11-15, after two days of tests outside the repo: build th
 - A window that loses its binding while slotted is bound again only after its slot is given back (about 6 s).
 - The edge stop keeps its fence at the display's left edge, not the window's.
 - Other apps as tabs, Margin in a window, and the Mission Control and outside-open questions from the tests are later stages, not started here.
+
+## Opening Margin: its browser's window comes up inside it (2026-11-15)
+
+Asked by Tirth on 2026-11-15, on trying the slot's build: Margin should be what is opened, with the browser coming up inside it, as the test kit did with its apps, and not Margin waiting for Safari to be opened and put in full screen by hand.
+
+**What it is.** Opened by hand, or opened again while it runs (Spotlight, Finder, a kept Dock icon), Margin.app asks its shell to `enter` (`ShellEnter.swift`) in place of showing the set-up window. The shell picks the window the person last used among the linked copies' windows (`EnterPick`: the focused one, then the one focused last, then the one made last; a minimized one only when there's no other; never a parked one), asks its copy for it in full screen and in front with the request the profile switch already sends (`focusWindow`), and brings its browser to the front. From there nothing is new: the overlay over the full-screen window, its page in the slot or the page box.
+
+**No window to open into.** The browser is opened once through `NSWorkspace` (started if it isn't running; one running with no window makes one): a linked one, else one that's running, else the one Margin was last linked with (`MarginLastBrowser`, written at each link; Safari the first time). Its copy's link and its window are then waited for, 15 s at most. Nothing by then, the app is told why and shows its set-up window, which is where a missing extension is seen.
+
+**The set-up window** is still there: when the opening fails, when Margin is opened holding Option, and when it's already open.
+
+**The setting.** On with the slot (`MarginNativeSlot`), since the two together are the Margin Tirth asked for; `MarginOpensBrowser` turns it on or off by itself. Off, opening Margin shows the set-up window exactly as before.
+
+**Mine, not asked:** which window (the last used), the Option key for the set-up window, the 15 s, and that the browser keeps its own Dock icon and its name in Mission Control for now. Hiding those needs the browser started by Margin without a Dock icon, which the test kit did for other apps and nobody has tried with a browser (an AppKit app started that way could not go into full screen in the kit: `multi-app` notes); it is its own step.
+
+**Verified.** `enter-tests.swift` (18 checks: the window and the browser chosen) and `e2e-enter.swift` (15 checks through the real link and shell against the fake extension, with a recorder in place of `NSWorkspace`): one browser opened once and waited for, the window asked for once in full screen, two asks at once one request, a failure only after the wait, quitting ends one under way.
+
+**Not verified.** Anything with a real browser (`TESTING.md`, "Opening Margin"): that `focusWindow` with full screen brings a Desktop window of a browser that isn't in front into full screen and forward, how long a cold Safari takes to link, and what the first seconds look like (the helper's launch card, the window's own full-screen animation).
+
+**Not done yet (the rest of what was asked).** Other apps as items in the sidebar that open in the page's place; Margin's own name on the Dock, the menu bar and Mission Control in place of the browser's; the page box removed once the slot has held up.

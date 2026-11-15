@@ -212,6 +212,17 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // A harness's stand-in for the Spaces' reserved edges (never the system's), and for a window's full-screen Space.
         var slotSpaces: SlotSpaces?
         var slotSpaceOf: ((Int) -> UInt64?)?
+        // Opening Margin brings its browser's window up inside it (ShellEnter.swift), in place of the set-up window.
+        // Off unless `MarginOpensBrowser` is set, or the slot is on (forApp).
+        var enter = false
+        var enterWait: TimeInterval = 15 // a browser started cold, its copy linked and its window listed
+        var enterEvery: TimeInterval = 0.25
+        // A browser opened by its bundle id (started, or brought to the front): the app's is NSWorkspace's;
+        // a test's, and the harness's, open nothing.
+        var openBrowser: (String) -> Bool = { _ in false }
+        // The browser Margin was last linked with ("safari", "chrome", "edge"), and each link's told.
+        var enterBrowser: () -> String = { "safari" }
+        var sawBrowser: ((String) -> Void)?
         // DEV-HOOK: the dev-only test hook (DevHooks.swift, removed before production): whether
         // MarginDevHooks is YES, read at each notification. Nil (every test, the harness): not listened for.
         var devHooksOn: (() -> Bool)?
@@ -255,6 +266,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     let slotBox = SlotBox()
     var slotLayouts: [WindowKey: PageLayout] = [:] // each window's last layout as its overlay measured it (with a keeper only)
     var slotUnboundSince: [Int: TimeInterval] = [:]
+    var entering: Entering? // Margin opened, its browser's window on its way (ShellEnter.swift)
     let apps: AppWatch
     let shortcuts: AppShortcuts
     private let pointer = PointerWatch()
@@ -424,6 +436,15 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         options.liveProfileCover = LiveCoverPolicy.requested()
         // The slot: off until it has been checked in real Safari; `defaults write com.unibox.margin MarginNativeSlot -bool YES` turns it on.
         options.slot = UserDefaults.standard.object(forKey: "MarginNativeSlot") as? Bool ?? false
+        // Opening Margin opens its browser inside it: with the slot unless said otherwise (MarginOpensBrowser).
+        options.enter = UserDefaults.standard.object(forKey: "MarginOpensBrowser") as? Bool ?? options.slot
+        options.openBrowser = Shell.openBrowserApp
+        options.enterBrowser = { UserDefaults.standard.string(forKey: "MarginLastBrowser") ?? "safari" }
+        options.sawBrowser = { browser in
+            if UserDefaults.standard.string(forKey: "MarginLastBrowser") != browser { UserDefaults.standard.set(browser, forKey: "MarginLastBrowser") }
+        }
+        Diagnostics.note(options.enter ? "open: opening Margin brings its browser's window up inside it (the set-up window: opened holding Option)"
+                         : "open: opening Margin shows the set-up window (MarginOpensBrowser isn't set)")
         options.lowPowerMode = { ProcessInfo.processInfo.isLowPowerModeEnabled }
         Diagnostics.note("live profile cover: \(options.liveProfileCover ? "on (freeze preferred in Low Power Mode)" : "off (explicit preference)")")
         Diagnostics.note(options.handoff ? "handoff: on: profile switches hand off when the private calls allow"
@@ -504,6 +525,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private func stopNow(_ then: @escaping () -> Void) {
         _ = liveProfileCover?.end(.quit)
         slots?.releaseAll(why: "Margin quits") // a reservation outlives the process: every window gets its whole Space back
+        enterStopped()
         stopped = true
         if !options.harness { HelperSplash.stop() }
         edgeFence = nil
@@ -549,6 +571,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         if let hub = link.relay, let warning = Self.unheardPid(connection.key, connection.hello, heard: hub.heardPid) { Diagnostics.warn(warning) }
         links[connection.key] = entry
         linkedAt[connection.key] = options.clock()
+        options.sawBrowser?(connection.hello.browser)
         options.trace?.event("link up \(connection.key)", at: Diagnostics.now())
         data.linkUp(connection)
         // A switch on its way to this profile: given the leaving window's settings as soon as its copy is here.
