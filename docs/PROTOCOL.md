@@ -185,6 +185,15 @@ The tabs open in Safari on the person's other devices, which the app reads itsel
 - **Reads:** after a file change, at most once a second, and none when `CloudTabs.db` and its `-wal` have the same size, time and inode as at the last good read; no access or no file is tried again every 10 s, a busy database after 2 s. The log says counts only (`icloud tabs: …`), never a title, an address or a name.
 - **What the overlay asks** (`perform`): `cloud.access` (System Settings at Full Disk Access, the URL the set-up window's step opens) and `copyText { text }` (up to 8,192 characters, to the pasteboard: an iCloud tab's Copy Link). Opening an iCloud tab is an ordinary `req`: `newTab { windowId, url }`, or `openHere` over Margin's new-tab page, as for an address typed in the palette.
 
+### Installed apps (the app's own data, to its overlays)
+
+The Mac's apps Margin can open in its page area (`docs/MARGIN-APP.md`, phase 4), read by the app itself (`app/platforms/macos/shell/AppCatalog.swift`, `ShellApps.swift`). Off unless `MarginHosted` is set in the app's defaults (`Shell.Options.hosted`): off, nothing is read, the hellos say `apps: null` and nothing is pushed.
+
+- **Read from:** `/Applications`, `/Applications/Utilities`, `/System/Applications` (and its `Utilities`), `~/Applications`, `/System/Library/CoreServices/Applications` (each with one level of plain subfolders), then what Spotlight lists as an application elsewhere, outside other bundles, the Trash, hidden folders, `/Volumes`, `/Library`, `/System`, `~/Library`. One entry per bundle id (the first folder's). Read off the main thread at start, then again 2 s after a change in those folders (FSEvents) or in Spotlight's list.
+- **Which apps:** `AppCatalog.hostable`, the one rule: an application bundle (`CFBundlePackageType` `APPL` or none) with a bundle id; not `LSUIElement` or `LSBackgroundOnly` (agents and background apps); not Margin itself; not an installer or uninstaller, nor Finder and the system's own parts.
+- **What:** each overlay's hello has `apps`, and every overlay gets `{ type: 'apps', apps }` whenever the list changed (the same JSON is never sent twice to one overlay): `[{ bundleId, name, icon }]`, sorted by name, `name` as Finder shows it (localized), `icon` a 32 px PNG data URL (cached in `~/Library/Application Support/Margin/cache/app-icons/`, by bundle id and the app's `Info.plist` time) or null. The page checks it again (`extension/shared/apps.ts appsOf`) and keeps it as the state's `apps` (`ui/host-app.ts`); the palette finds them (`shared/search.ts`). The log says counts only.
+- **What the overlay asks** (`perform`): `app.open { bundleId }`: the app's `Shell.openApp`, which the host (phase 3) sets; until then it is only logged.
+
 ### User themes (the app's own data, to its overlays)
 
 The themes the person imported belong to the Mac, not a profile: the app keeps them (`app/platforms/macos/shell/ThemeStore.swift`, `~/Library/Application Support/Margin/themes/`: `<id>.json`, the stored package, and `index.json`). A copy gets only the index, never a package. `DECISIONS.md` "Margin 2, Phase 6: user themes".
