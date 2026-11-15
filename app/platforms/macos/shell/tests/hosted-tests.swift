@@ -11,6 +11,7 @@ import Foundation
 final class FakeHostedWindow: HostedWindow {
     var pageAreaWhyNot: String { "fake" }
     var fullScreenState: String { "fake" }
+    var layoutMode: String? { isFullScreen ? "fullscreen" : "windowed" }
     let id: Int
     let number: Int
     var isFullScreen = false

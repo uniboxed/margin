@@ -49,6 +49,7 @@ protocol HostedWindow: AnyObject {
     var pageAreaWhyNot: String { get } // why there's none yet, for the log
     func toFullScreen()
     var fullScreenState: String { get } // for the log
+    var layoutMode: String? { get } // the mode of the page's last layout
     func setHosting(_ on: Bool)
     func tile() // the sidebar's tile now (the hosted window's tile is coming in)
     func push(_ json: String)
@@ -58,11 +59,12 @@ extension MarginWindowController: HostedWindow {
     var number: Int { window.windowNumber }
     // (Only from a layout its page measured in full screen, a moment after it was told the sidebar is all it draws:
     // a layout from before is followed by that one.)
-    var hostedPageRect: CGRect? { hosting && layout?.mode == "fullscreen" && Diagnostics.now() - hostingSince >= 0.25 ? window.pageRect : nil }
+    var hostedPageRect: CGRect? { hosting && isFullScreen && layout != nil && Diagnostics.now() - hostingSince >= 0.25 ? window.pageRect : nil }
+    var layoutMode: String? { layout?.mode }
     var pageAreaWhyNot: String {
         if !hosting { return "not hosting" }
         guard let layout else { return "no layout from its page" }
-        if layout.mode != "fullscreen" { return "its page's layout says \(layout.mode)" }
+        if !isFullScreen { return "not in full screen" }
         return window.pageRect == nil ? "the window has no page rect (display \(hostDisplay.map { "\(Int($0.width))×\(Int($0.height))" } ?? "unknown"), layout \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)))" : "too soon"
     }
     func toFullScreen() { if !isFullScreen { toggleFullScreen() } }
@@ -243,6 +245,12 @@ final class HostedSession: LibraryDelegate {
                 note("Margin's window \(w.id) didn't go full screen (\(w.fullScreenState)): nothing hosted")
                 return nil
             }
+        }
+        // The page measured at the full-screen size before it's told to draw the sidebar alone (which leaves nothing
+        // to measure): the page area's insets come from that layout (seen 2026-11-15: hosting turned on at once
+        // kept the windowed layout for good).
+        if await !wait(1.5, { w.layoutMode == "fullscreen" }) {
+            note("Margin's window \(w.id): no full-screen layout from its page in 1.5 s (\(w.layoutMode ?? "none")): its last one is used")
         }
         w.setHosting(true)
         hostingWindow = w.id
