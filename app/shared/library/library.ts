@@ -1,0 +1,536 @@
+// Margin.app's library (docs/MARGIN-APP.md, phase 1; DECISIONS.md "Margin.app owns the spaces"): the person's
+// spaces, pins, folders and Margin tabs ("items"), owned by the app in one data set of its own
+// (app/platforms/macos/shell/Library.swift, data/app/), not by each profile's copy of the extension. An item is a
+// web page (shown in a browser's profile) or a Mac app (its bundle id): its `target`.
+//
+// The edit rules are state/model.ts's, run here unchanged: the library's values become a model State (its items as
+// kept tabs: a Margin tab with no browser tab, which is what an item is to the app), the model's function runs, and
+// the values that changed come back as changes for the app to merge into its set (shared/data-merge.ts's rules,
+// DataSet.swift). The app runs this file in JavaScriptCore (LibraryRules.swift), built into dist/app/library.js by
+// scripts/build.ts; the unit tests import it as it is (tests/library.test.ts). Pure: no clock (the app gives `now`),
+// no randomness the app doesn't give (`ids`), no browser API.
+//
+// What needs a browser or an app (showing a tab, opening an address, closing a page) isn't done here: each such
+// action returns a request (`requests`) for the hosting phase (Library.swift's delegate), with the item and its
+// target resolved.
+import * as M from '../../../extension/state/model.ts';
+import { fingerprint } from '../../../extension/shared/data-set.ts';
+import type { State } from '../../../types/margin';
+
+/** The library's collections (the data set's), and `imports`: the import's marker. */
+export const COLLECTIONS = Object.freeze(['spaces', 'pins', 'folders', 'tabs', 'archive', 'windows', 'imports']);
+export const FORMAT = 1;
+
+export type WebTarget = { kind: 'web', browser: string, profile: string | null };
+export type AppTarget = { kind: 'app', bundleId: string, name: string };
+export type Target = WebTarget | AppTarget;
+/** collection → id → value (the data set's live values) */
+export type Values = Record<string, Record<string, any>>;
+export type Change = { collection: string, id: string, value: any } | { collection: string, id: string, deleted: true };
+export type Request = { type: string, windowId?: string | number | null, item?: string | null, url?: string, target?: Target | null, [key: string]: any };
+export type Env = { now: number, ids?: string[] };
+export type Outcome = { ok: boolean, result?: any, error?: string, changes: Change[], requests: Request[] };
+
+const BROWSERS = new Set(['safari', 'chrome', 'edge']);
+const BUNDLE_ID = /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/;
+const str = (v: unknown, max = 2000) => (typeof v === 'string' ? v.slice(0, max) : '');
+const finite = (v: unknown, or = 0): number => (Number.isFinite(v) ? v as number : or);
+const isObject = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
+const own = (o: unknown, key: string) => isObject(o) && Object.hasOwn(o, key);
+
+// ---- targets -------------------------------------------------------------------------------------
+
+/** A target as given (stored, or an action's), checked; null if it isn't one. */
+export function targetOf(raw: unknown): Target | null {
+  if (!isObject(raw)) return null;
+  if (raw.kind === 'app') {
+    const bundleId = str(raw.bundleId, 255);
+    return BUNDLE_ID.test(bundleId) ? { kind: 'app', bundleId, name: str(raw.name, 100) || bundleId } : null;
+  }
+  if (raw.kind === 'web') {
+    const browser = BROWSERS.has(raw.browser) ? raw.browser : 'safari';
+    return { kind: 'web', browser, profile: typeof raw.profile === 'string' && raw.profile ? raw.profile.slice(0, 256) : null };
+  }
+  return null;
+}
+const webTarget = (browser: string, profile: string | null): WebTarget => ({ kind: 'web', browser, profile });
+/** An app item's address: what the model matches items and pins by (never a web page: never archived). */
+export const appUrl = (bundleId: string) => `app://${bundleId}`;
+
+// ---- the model's state from the values, and back ---------------------------------------------------
+// Items are the model's kept tabs (keyed by their own `t-` ids); open tabs are the hosting's, never here. Each
+// space, pin, item and archive entry carries its extras (a space's browser and profile, the others' target) through
+// the model's functions, which spread what they change; the few that make a new object get them back here.
+
+type LibSpace = State['spaces'][number] & { browser?: string, profile?: string | null };
+type LibState = Omit<State, 'spaces'> & { spaces: LibSpace[] };
+
+const sorted = (list: Record<string, any>) => Object.entries(isObject(list) ? list : {}).filter(([, v]) => isObject(v));
+
+export function stateOf(values: Values): LibState {
+  const base = M.defaultState();
+  const spaces = sorted(values?.spaces).sort((a, b) => finite(a[1].order) - finite(b[1].order) || a[0].localeCompare(b[0]))
+    .map(([id, s]) => ({ id, name: str(s.name, 200), emoji: str(s.emoji, 16), color: str(s.color, 32), browser: BROWSERS.has(s.browser) ? s.browser : 'safari', profile: typeof s.profile === 'string' && s.profile ? s.profile : null }));
+  const pins = sorted(values?.pins).filter(([, p]) => typeof p.spaceId === 'string' && typeof p.url === 'string')
+    .map(([id, p]) => ({ id, spaceId: p.spaceId, url: p.url, title: str(p.title), ...(typeof p.folderId === 'string' && p.folderId ? { folderId: p.folderId } : {}), pos: finite(p.pos), target: targetOf(p.target) ?? webTarget('safari', null) }));
+  const folders = sorted(values?.folders).filter(([, f]) => typeof f.spaceId === 'string')
+    .map(([id, f]) => ({ id, spaceId: f.spaceId, name: str(f.name, 200), open: f.open !== false, pos: finite(f.pos) }));
+  const archive = sorted(values?.archive).filter(([, a]) => typeof a.url === 'string')
+    .sort((a, b) => finite(b[1].closedAt) - finite(a[1].closedAt) || a[0].localeCompare(b[0]))
+    .map(([id, a]) => ({ id, url: a.url, title: str(a.title), spaceId: str(a.spaceId, 256), favIconUrl: str(a.icon, 100_000), closedAt: finite(a.closedAt), target: targetOf(a.target) ?? webTarget('safari', null) }));
+  const keptTabs: Record<string, any> = {};
+  for (const [id, t] of sorted(values?.tabs)) {
+    if (!M.isTabId(id) || typeof t.url !== 'string' || typeof t.spaceId !== 'string') continue;
+    keptTabs[id] = {
+      id, url: t.url, title: str(t.title), favIconUrl: str(t.icon, 100_000), spaceId: t.spaceId, order: finite(t.order),
+      lastActive: finite(t.lastUsed), wasActive: t.selected === true, keptAt: finite(t.lastUsed), why: 'library',
+      target: targetOf(t.target) ?? webTarget('safari', null),
+      ...(isObject(t.imported) ? { imported: { browser: str(t.imported.browser, 32), profile: str(t.imported.profile, 256), id: str(t.imported.id, 256) } } : {}),
+    };
+  }
+  const activeSpaceByWindow: Record<string, string> = {};
+  for (const [w, v] of sorted(values?.windows)) if (typeof v.spaceId === 'string') activeSpaceByWindow[w] = v.spaceId;
+  return { ...base, spaces, pins, folders, archive, keptTabs, activeSpaceByWindow, tabs: {}, tabSpace: {}, awayByWindow: {}, favicons: {} } as unknown as LibState;
+}
+
+export function valuesOf(state: LibState, imports: Record<string, any> = {}): Values {
+  const out: Values = { spaces: {}, pins: {}, folders: {}, tabs: {}, archive: {}, windows: {}, imports: { ...imports } };
+  state.spaces.forEach((s, i) => { out.spaces[s.id] = { name: s.name ?? '', emoji: s.emoji ?? '', color: s.color ?? '', order: i, browser: s.browser ?? 'safari', profile: s.profile ?? null }; });
+  state.pins.forEach((p: any, i) => { out.pins[p.id] = { spaceId: p.spaceId, url: p.url, title: p.title ?? '', folderId: p.folderId ?? null, pos: finite(p.pos, i), target: targetOf(p.target) ?? webTarget('safari', null) }; });
+  (state.folders ?? []).forEach((f, i) => { out.folders[f.id] = { spaceId: f.spaceId, name: f.name ?? '', open: f.open !== false, pos: finite(f.pos, i) }; });
+  for (const k of Object.values(state.keptTabs ?? {}) as any[]) {
+    out.tabs[k.id] = {
+      url: k.url, title: k.title ?? '', icon: k.favIconUrl ?? '', spaceId: k.spaceId, order: finite(k.order), lastUsed: finite(k.lastActive), selected: !!k.wasActive,
+      target: targetOf(k.target) ?? webTarget('safari', null), ...(k.imported ? { imported: k.imported } : {}),
+    };
+  }
+  for (const a of state.archive as any[]) out.archive[a.id] = { url: a.url, title: a.title ?? '', spaceId: a.spaceId ?? '', icon: a.favIconUrl ?? '', closedAt: finite(a.closedAt), target: targetOf(a.target) ?? webTarget('safari', null) };
+  for (const [w, spaceId] of Object.entries(state.activeSpaceByWindow ?? {})) out.windows[w] = { spaceId };
+  return out;
+}
+
+/** The changes from `before` to `after` (values each), by collection then id. */
+export function diff(before: Values, after: Values): Change[] {
+  const out: Change[] = [];
+  for (const collection of COLLECTIONS) {
+    const a = before?.[collection] ?? {};
+    const b = after?.[collection] ?? {};
+    for (const id of Object.keys(b).sort()) if (JSON.stringify(a[id]) !== JSON.stringify(b[id])) out.push({ collection, id, value: b[id] });
+    for (const id of Object.keys(a).sort()) if (!(id in b)) out.push({ collection, id, deleted: true });
+  }
+  return out;
+}
+
+// ---- ids ----------------------------------------------------------------------------------------------
+// The app gives a few random letters per action (`env.ids`, from SecRandom); a test gives its own. With none
+// left, Math.random (JavaScriptCore has no crypto).
+function idMaker(env: Env) {
+  const given = [...(env?.ids ?? [])];
+  const letters = () => {
+    const next = given.shift();
+    if (typeof next === 'string' && /^[A-Za-z0-9]{4,30}$/.test(next)) return next;
+    return Array.from({ length: 10 }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]).join('');
+  };
+  return { tab: () => `t-${letters()}`, other: (prefix: string) => `${prefix}-${letters()}` };
+}
+
+// ---- the actions ----------------------------------------------------------------------------------------
+// The same names (and payloads) the UI sends its copy today (ui/actions.ts, background/handlers.ts), where
+// they mean something to the library, and the hosting's own (addItem, updateItem, itemClosed, removeItem,
+// setSpaceProfile, forgetWindow). A tab id here is always an item's (a string).
+
+const win = (p: any) => (typeof p?.windowId === 'number' || (typeof p?.windowId === 'string' && p.windowId) ? String(p.windowId) : null);
+const hasSpace = (s: LibState, id: unknown) => typeof id === 'string' && s.spaces.some((sp) => sp.id === id);
+const spaceOf = (s: LibState, id: string) => s.spaces.find((sp) => sp.id === id) ?? null;
+/** The space a window shows (null: none yet, or no spaces). */
+const windowSpace = (s: LibState, w: string | null) => (w != null && hasSpace(s, s.activeSpaceByWindow[w as any]) ? s.activeSpaceByWindow[w as any] : s.spaces[0]?.id ?? null);
+const itemsOf = (s: LibState, spaceId: string) => Object.values(s.keptTabs ?? {}).filter((k) => k.spaceId === spaceId);
+/** A space's item used last (the selected one breaks a tie). */
+const frontOf = (s: LibState, spaceId: string, except: string | null = null) => itemsOf(s, spaceId).filter((k) => k.id !== except)
+  .sort((a, b) => finite(b.lastActive) - finite(a.lastActive) || Number(!!b.wasActive) - Number(!!a.wasActive) || a.id.localeCompare(b.id))[0] ?? null;
+const lastPlace = (s: LibState) => Math.max(-1, ...Object.values(s.keptTabs ?? {}).map((k) => finite(k.order)));
+const targetOfItem = (k: any): Target => targetOf(k?.target) ?? webTarget('safari', null);
+/** The target a new web item of this space gets: the space's browser and profile. */
+const spaceTarget = (s: LibState, spaceId: string): WebTarget => { const sp = spaceOf(s, spaceId); return webTarget(sp?.browser ?? 'safari', sp?.profile ?? null); };
+
+// The item `id` used now, selected in its space (the others not), and the window showing its space.
+function used(s: LibState, id: string, w: string | null, now: number): LibState {
+  const k = s.keptTabs[id];
+  if (!k) return s;
+  const keptTabs = { ...s.keptTabs };
+  for (const other of itemsOf(s, k.spaceId)) if (other.id !== id && other.wasActive) keptTabs[other.id] = { ...other, wasActive: false };
+  keptTabs[id] = { ...k, lastActive: now, wasActive: true };
+  const next = { ...s, keptTabs };
+  return w != null ? M.setActiveSpace(next, w as any, k.spaceId) as LibState : next;
+}
+
+// A new item, in the list's newest place.
+function addItem(s: LibState, id: string, { spaceId, url, title, icon, target, now }: { spaceId: string, url: string, title: string, icon: string, target: Target, now: number }): LibState {
+  const item = { id, url, title, favIconUrl: icon, spaceId, order: lastPlace(s) + 1, lastActive: now, wasActive: false, keptAt: now, why: 'library', target };
+  return { ...s, keptTabs: { ...s.keptTabs, [id]: item } } as LibState;
+}
+
+// An item to the archive (a web page's), or forgotten (an app's, or a page that isn't http): the model's archiveKept,
+// with the entry's target.
+function archiveItem(s: LibState, id: string, archiveId: string, now: number): LibState {
+  const k: any = s.keptTabs[id];
+  if (!k) return s;
+  const next = M.archiveKept(s, id, { id: archiveId, closedAt: now }) as LibState;
+  if (!next.archive.some((a) => a.id === archiveId)) return next;
+  return { ...next, archive: next.archive.map((a) => (a.id === archiveId ? { ...a, target: targetOfItem(k) } : a)) } as LibState;
+}
+
+type Ctx = { s: LibState, p: any, now: number, ids: ReturnType<typeof idMaker>, requests: Request[] };
+type Handler = (ctx: Ctx) => { s: LibState, result?: any, error?: string };
+const fail = (s: LibState, error: string) => ({ s, error });
+
+const ACTIONS: Record<string, Handler> = {
+  // ---- spaces ----
+  setSpace({ s, p, requests }) {
+    const w = win(p);
+    if (w == null || !hasSpace(s, p.spaceId)) return fail(s, 'no such window or space');
+    const next = M.setActiveSpace(s, w as any, p.spaceId) as LibState;
+    const front = frontOf(next, p.spaceId);
+    requests.push({ type: 'setSpace', windowId: p.windowId, spaceId: p.spaceId, item: front?.id ?? null, ...(front ? { url: front.url, target: targetOfItem(front) } : {}) });
+    return { s: next, result: { spaceId: p.spaceId, shown: front?.id ?? null } };
+  },
+  createSpace({ s, p, ids }) {
+    const id = ids.other('sp');
+    const w = win(p);
+    // Its browser and profile: as asked, else those of the space the window shows.
+    const from = spaceOf(s, windowSpace(s, w) ?? '');
+    const browser = BROWSERS.has(p?.browser) ? p.browser : from?.browser ?? 'safari';
+    const profile = own(p, 'profile') ? (typeof p.profile === 'string' && p.profile ? p.profile : null) : from?.profile ?? null;
+    let next = M.createSpace(s, { id, name: p?.name, emoji: p?.emoji, color: p?.color }) as LibState;
+    next = { ...next, spaces: next.spaces.map((sp) => (sp.id === id ? { ...sp, browser, profile } : sp)) };
+    if (w != null) next = M.setActiveSpace(next, w as any, id) as LibState;
+    return { s: next, result: { spaceId: id } };
+  },
+  renameSpace({ s, p }) {
+    if (!hasSpace(s, p?.spaceId)) return fail(s, 'no such space');
+    let next = M.updateSpace(s, p.spaceId, { name: p.name, emoji: p.emoji, color: p.color }) as LibState;
+    if (own(p, 'profile')) next = ACTIONS.setSpaceProfile({ s: next, p, now: 0, ids: null as any, requests: [] }).s;
+    return { s: next };
+  },
+  // A space's browser profile (null: the browser's default), for its new web items.
+  setSpaceProfile({ s, p }) {
+    if (!hasSpace(s, p?.spaceId)) return fail(s, 'no such space');
+    const profile = typeof p.profile === 'string' && p.profile ? p.profile.slice(0, 256) : null;
+    return { s: { ...s, spaces: s.spaces.map((sp) => (sp.id === p.spaceId ? { ...sp, profile, ...(BROWSERS.has(p.browser) ? { browser: p.browser } : {}) } : sp)) } };
+  },
+  // Its items, pins, folders, archive entries and windows go to the first space left (the model's cascade).
+  deleteSpace({ s, p }) {
+    if (!hasSpace(s, p?.spaceId)) return fail(s, 'no such space');
+    if (s.spaces.length < 2) return fail(s, 'the last space');
+    return { s: M.deleteSpace(s, p.spaceId) as LibState, result: { into: s.spaces.find((sp) => sp.id !== p.spaceId)!.id } };
+  },
+  orderSpaces({ s, p }) {
+    if (!Array.isArray(p?.spaceIds)) return fail(s, 'no order');
+    return { s: M.orderSpaces(s, p.spaceIds.filter((id: unknown) => typeof id === 'string')) as LibState };
+  },
+  // ---- items ----
+  // The page or app asked for opened in the window's space (or `spaceId`): a new item, shown (the hosting opens it).
+  newTab({ s, p, now, ids, requests }) {
+    const w = win(p);
+    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : windowSpace(s, w);
+    if (!spaceId) return fail(s, 'no space');
+    const target = targetOf(p?.target) ?? spaceTarget(s, spaceId);
+    const url = target.kind === 'app' ? appUrl(target.bundleId) : str(p?.url);
+    if (!url) return fail(s, 'no address'); // (⌘T with nothing typed is the palette: the UI's own)
+    const id = ids.tab();
+    let next = addItem(s, id, { spaceId, url, title: target.kind === 'app' ? target.name : str(p.title) || url, icon: '', target, now });
+    next = used(next, id, w, now);
+    requests.push({ type: 'newTab', windowId: p?.windowId ?? null, item: id, url, target, spaceId });
+    return { s: next, result: { tabId: id } };
+  },
+  // An item the hosting opened itself (a link Safari opened in a new tab, an app picked in the palette): added, not
+  // shown by the library (`front`: used now).
+  addItem({ s, p, now, ids }) {
+    const w = win(p);
+    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : windowSpace(s, w);
+    if (!spaceId) return fail(s, 'no space');
+    const target = targetOf(p?.target) ?? spaceTarget(s, spaceId);
+    const url = target.kind === 'app' ? appUrl(target.bundleId) : str(p?.url);
+    if (!url) return fail(s, 'no address');
+    const id = ids.tab();
+    let next = addItem(s, id, { spaceId, url, title: target.kind === 'app' ? str(p.title) || target.name : str(p.title) || url, icon: str(p.icon, 100_000), target, now });
+    if (p.front) next = used(next, id, w, now);
+    return { s: next, result: { tabId: id } };
+  },
+  // The page an item's tab shows now (its address, title, icon), as the hosting saw it. A web item's only.
+  updateItem({ s, p }) {
+    const k: any = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    if (targetOfItem(k).kind === 'app') {
+      const title = str(p.title);
+      return { s: title && title !== k.title ? { ...s, keptTabs: { ...s.keptTabs, [k.id]: { ...k, title } } } : s };
+    }
+    const patch: Record<string, string> = {};
+    if (typeof p.url === 'string' && /^(https?|file):/i.test(p.url)) patch.url = p.url;
+    if (typeof p.title === 'string') patch.title = str(p.title);
+    if (typeof p.icon === 'string') patch.favIconUrl = str(p.icon, 100_000);
+    return { s: { ...s, keptTabs: { ...s.keptTabs, [k.id]: { ...k, ...patch } } } };
+  },
+  activateTab({ s, p, now, requests }) {
+    const k = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    requests.push({ type: 'activateTab', windowId: p.windowId ?? null, item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId });
+    return { s: used(s, k.id, win(p), now), result: { shown: k.id } };
+  },
+  // Closed from Margin (its ×, ⌘W): to the archive (a web page), and the hosting closes its page.
+  closeTab({ s, p, now, ids, requests }) {
+    const k = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    const next = archiveItem(s, k.id, ids.other('a'), now);
+    const after = frontOf(next, k.spaceId);
+    requests.push({ type: 'closeTab', item: k.id, url: k.url, target: targetOfItem(k), spaceId: k.spaceId, next: after?.id ?? null });
+    return { s: next };
+  },
+  // Its page closed outside Margin (the browser's own tab bar, the app quit): archived as closeTab, nothing asked.
+  itemClosed({ s, p, now, ids }) {
+    if (!s.keptTabs[p?.tabId]) return fail(s, 'no such item');
+    return { s: archiveItem(s, p.tabId, ids.other('a'), now) };
+  },
+  // Gone without a trace (not archived).
+  removeItem({ s, p }) {
+    if (!s.keptTabs[p?.tabId]) return fail(s, 'no such item');
+    return { s: M.forgetKept(s, p.tabId) as LibState };
+  },
+  moveTabToSpace({ s, p }) {
+    if (!s.keptTabs[p?.tabId] || !hasSpace(s, p.spaceId)) return fail(s, 'no such item or space');
+    return { s: M.moveTab(s, String(p.tabId), p.spaceId) as LibState };
+  },
+  // Dragged in the list beside another item (`side` as the list shows them: 'before' is above).
+  moveTab({ s, p }) {
+    const k = s.keptTabs[p?.tabId];
+    if (!k || typeof p.nextTo !== 'string' || (p.side !== 'before' && p.side !== 'after')) return fail(s, 'no such item');
+    const next = M.placeKept(s, k.id, p.nextTo, p.side, k.spaceId) as LibState;
+    return { s: next, result: next.keptTabs[k.id]?.order !== k.order };
+  },
+  // "Clear": the window's space's items go to the archive; the hosting closes their pages.
+  clearToday({ s, p, now, ids, requests }) {
+    const spaceId = windowSpace(s, win(p));
+    if (!spaceId) return { s, result: [] };
+    const closing = itemsOf(s, spaceId).map((k) => k.id).sort();
+    const next = closing.reduce((st, id) => archiveItem(st, id, ids.other('a'), now), s);
+    if (closing.length) requests.push({ type: 'clearToday', windowId: p?.windowId ?? null, spaceId, items: closing });
+    return { s: next, result: closing };
+  },
+  restoreArchive({ s, p, now, ids, requests }) {
+    const entry: any = s.archive.find((a) => a.id === p?.archiveId);
+    if (!entry) return fail(s, 'no such entry');
+    const spaceId = hasSpace(s, entry.spaceId) ? entry.spaceId : windowSpace(s, win(p));
+    if (!spaceId) return fail(s, 'no space');
+    const id = ids.tab();
+    const target = targetOf(entry.target) ?? spaceTarget(s, spaceId);
+    let next = addItem(M.removeArchived(s, entry.id) as LibState, id, { spaceId, url: entry.url, title: entry.title, icon: entry.favIconUrl ?? '', target, now });
+    next = used(next, id, win(p), now);
+    requests.push({ type: 'restoreArchive', windowId: p.windowId ?? null, item: id, url: entry.url, target, spaceId });
+    return { s: next, result: { tabId: id } };
+  },
+  // ---- pins ----
+  // An item pinned in its space: the item becomes the pin (as a kept tab does in the extension), its target the pin's.
+  pinTab({ s, p, ids }) {
+    const k: any = s.keptTabs[p?.tabId];
+    if (!k) return fail(s, 'no such item');
+    const id = ids.other('p');
+    const next = M.addPin(s, { id, spaceId: k.spaceId, url: k.url, title: k.title, folderId: p.folderId ?? null, beforeId: p.beforeId ?? null }) as LibState;
+    if (next === s) return { s, result: null };
+    const withTarget = { ...next, pins: next.pins.map((pin) => (pin.id === id ? { ...pin, target: targetOfItem(k) } : pin)) } as LibState;
+    return { s: M.forgetKept(withTarget, k.id) as LibState, result: id };
+  },
+  // Unpinned: the pin goes; the hosting keeps its page open as an item if it has one open (addItem).
+  unpin({ s, p, requests }) {
+    const pin: any = s.pins.find((x) => x.id === p?.pinId);
+    if (!pin) return fail(s, 'no such pin');
+    requests.push({ type: 'unpin', pin: pin.id, url: pin.url, target: targetOf(pin.target), spaceId: pin.spaceId });
+    return { s: M.removePin(s, pin.id) as LibState };
+  },
+  // Shown in the window: its item in the space if there is one (an address the space has), else the hosting opens it.
+  openPin({ s, p, now, requests }) {
+    const pin: any = s.pins.find((x) => x.id === p?.pinId);
+    if (!pin) return fail(s, 'no such pin');
+    const w = win(p);
+    const item = M.keptForUrl(s, pin.url, pin.spaceId);
+    let next = w != null ? M.setActiveSpace(s, w as any, pin.spaceId) as LibState : s;
+    if (item) next = used(next, item.id, w, now);
+    requests.push({ type: 'openPin', windowId: p.windowId ?? null, pin: pin.id, item: item?.id ?? null, url: pin.url, target: targetOf(pin.target), spaceId: pin.spaceId });
+    return { s: next, result: { pin: pin.id, item: item?.id ?? null } };
+  },
+  movePin({ s, p }) {
+    return { s: M.movePin(s, p?.pinId, { folderId: p?.folderId ?? null, beforeId: p?.beforeId ?? null }) as LibState };
+  },
+  // ---- folders ----
+  // In the window's space (or `spaceId`), holding `pinIds`, or the item `tabId` pinned into it (it's the pin then).
+  createFolder({ s, p, ids }) {
+    const id = ids.other('f');
+    const k: any = typeof p?.tabId === 'string' ? s.keptTabs[p.tabId] : null;
+    const spaceId = hasSpace(s, p?.spaceId) ? p.spaceId : k ? k.spaceId : windowSpace(s, win(p));
+    if (!spaceId) return fail(s, 'no space');
+    const pinIds: string[] = Array.isArray(p?.pinIds) ? p.pinIds.filter((x: unknown) => typeof x === 'string') : [];
+    const firstPin = s.pins.find((x) => x.id === pinIds[0] && x.spaceId === spaceId);
+    const before = p?.beforeId ?? (firstPin && !firstPin.folderId ? firstPin.id : null);
+    let next = M.createFolder(s, { id, spaceId, name: p?.name, pinIds, beforeId: before }) as LibState;
+    if (k) {
+      const pinId = ids.other('p');
+      const pinned = M.addPin(next, { id: pinId, spaceId, url: k.url, title: k.title, folderId: id }) as LibState;
+      if (pinned !== next) next = M.forgetKept({ ...pinned, pins: pinned.pins.map((pin) => (pin.id === pinId ? { ...pin, target: targetOfItem(k) } : pin)) }, k.id) as LibState;
+    }
+    return { s: next, result: next === s ? null : id };
+  },
+  renameFolder({ s, p }) { return { s: M.renameFolder(s, p?.folderId, p?.name) as LibState }; },
+  setFolderOpen({ s, p }) { return { s: M.setFolderOpen(s, p?.folderId, !!p?.open) as LibState }; },
+  deleteFolder({ s, p }) { return { s: M.deleteFolder(s, p?.folderId) as LibState }; },
+  moveFolder({ s, p }) { return { s: M.moveFolder(s, p?.folderId, { beforeId: p?.beforeId ?? null }) as LibState }; },
+  // ---- Margin's windows ----
+  // A Margin window closed for good: its space is forgotten (a new one starts in the first space).
+  forgetWindow({ s, p }) {
+    const w = win(p);
+    if (w == null || !(w in s.activeSpaceByWindow)) return { s };
+    const activeSpaceByWindow = { ...s.activeSpaceByWindow } as Record<string, string>;
+    delete activeSpaceByWindow[w];
+    return { s: { ...s, activeSpaceByWindow } };
+  },
+};
+
+/** The actions the library takes (the rest are refused: `unsupported`). */
+export const ACTION_NAMES = Object.freeze(Object.keys(ACTIONS).sort());
+
+/**
+ * One action on the library's values: the changes to merge (values, not yet timed: the app stamps them), what it
+ * answers, and what it asks of the hosting. Never throws: a bad action is `ok: false` with no changes.
+ */
+export function perform(values: Values, action: string, payload: any = {}, env: Env = { now: 0 }): Outcome {
+  const handler = Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : null;
+  if (!handler) return { ok: false, error: 'unsupported', changes: [], requests: [] };
+  const state = stateOf(values);
+  const before = valuesOf(state, values?.imports ?? {});
+  const requests: Request[] = [];
+  let out;
+  try {
+    out = handler({ s: state, p: isObject(payload) ? payload : {}, now: finite(env?.now), ids: idMaker(env), requests });
+  } catch (e) {
+    return { ok: false, error: `failed: ${(e as Error)?.message ?? e}`, changes: [], requests: [] };
+  }
+  if (out.error) return { ok: false, error: out.error, changes: [], requests: [] };
+  return { ok: true, result: out.result ?? null, changes: diff(before, valuesOf(out.s, values?.imports ?? {})), requests };
+}
+
+/**
+ * What the UI draws (extension/ui/host-app.ts takes it as its stored values: shared/stored.ts fromStorage): the
+ * spaces, pins, folders and archive as the extension stores them, and the items as kept tabs (`openTabs.keptTabs`),
+ * each with its target; no open tabs (the hosting adds those it has). `library` says it's the library's.
+ */
+export function snapshot(values: Values) {
+  const s = stateOf(values);
+  return {
+    library: { v: FORMAT, imported: isObject(values?.imports?.done) },
+    spaces: s.spaces,
+    pins: s.pins,
+    folders: s.folders,
+    archive: s.archive,
+    openTabs: { origin: 'margin-app', since: 0, synced: true, tabs: {}, tabSpace: {}, activeSpaceByWindow: s.activeSpaceByWindow, awayByWindow: {}, keptTabs: s.keptTabs },
+  };
+}
+
+// ---- the import (decided by Tirth, 2026-11-15) ----------------------------------------------------------------
+// Each profile's data set, as the app keeps it (DataStore.swift), into the library once: its spaces with the profile
+// as their own, its pins, folders, Margin tabs (open or kept: all become items, web pages in that profile) and archive.
+// Ids are namespaced, so two profiles' `personal` stay two spaces: a space, pin, folder or archive entry by
+// `<browser>:<profile>:<id>`, an item by `t-` and a hash of the same (the model takes only `t-` ids for tabs). The same
+// sets give the same ids, so an import run again (a crash before its marker was written) merges into itself.
+// `order`: every space as [browser, profile, id] in the person's order (browser.json's, read by the app), the
+// others after it in their sets' order. Nothing in the sets is changed or deleted.
+
+export type ImportSet = { browser: string, profile: string, values: Values };
+
+const NAME_MAX = 256;
+export function nsId(browser: string, profile: string, id: string) {
+  const name = `${browser}:${profile}:${id}`;
+  return name.length <= NAME_MAX ? name : `${browser}:${fingerprint(profile)}${fingerprint(`${profile}\n`)}:${fingerprint(id)}${fingerprint(`${id}\n`)}`;
+}
+export function nsTabId(browser: string, profile: string, id: string) {
+  const key = `${browser}\n${profile}\n${id}`;
+  return `t-${fingerprint(key)}${fingerprint(`${key}\n`)}`;
+}
+
+export function importValues(current: Values, sets: ImportSet[], order: [string, string, string][] = [], env: Env = { now: 0 }) {
+  const now = finite(env?.now);
+  const next: Values = Object.fromEntries(COLLECTIONS.map((c) => [c, { ...(current?.[c] ?? {}) }]));
+  const counts = { spaces: 0, pins: 0, folders: 0, tabs: 0, archive: 0 };
+  const placed: string[] = []; // space ids in the order they go
+  const rank = new Map(order.map(([b, p, id], i) => [nsId(b, p, id), i]));
+  const ok = sets.filter((set) => set && BROWSERS.has(set.browser) && typeof set.profile === 'string' && set.profile && isObject(set.values));
+  for (const { browser, profile, values } of ok) {
+    const target = webTarget(browser, profile);
+    const spaceIds = new Map<string, string>();
+    const own = sorted(values.spaces).sort((a, b) => finite(a[1].order) - finite(b[1].order) || a[0].localeCompare(b[0]));
+    for (const [id, sp] of own) {
+      const lib = nsId(browser, profile, id);
+      spaceIds.set(id, lib);
+      placed.push(lib);
+      next.spaces[lib] = { name: str(sp.name, 200), emoji: str(sp.emoji, 16), color: str(sp.color, 32), order: 0, browser, profile };
+      counts.spaces++;
+    }
+    const folderIds = new Map<string, string>();
+    for (const [id, f] of sorted(values.folders)) {
+      const spaceId = spaceIds.get(f.spaceId);
+      if (!spaceId) continue;
+      const lib = nsId(browser, profile, id);
+      folderIds.set(id, lib);
+      next.folders[lib] = { spaceId, name: str(f.name, 200), open: f.open !== false, pos: finite(f.pos) };
+      counts.folders++;
+    }
+    for (const [id, pin] of sorted(values.pins)) {
+      const spaceId = spaceIds.get(pin.spaceId);
+      if (!spaceId || typeof pin.url !== 'string') continue;
+      next.pins[nsId(browser, profile, id)] = { spaceId, url: pin.url, title: str(pin.title), folderId: (typeof pin.folderId === 'string' && folderIds.get(pin.folderId)) || null, pos: finite(pin.pos), target };
+      counts.pins++;
+    }
+    for (const [id, t] of sorted(values.tabs)) {
+      const spaceId = spaceIds.get(t.spaceId);
+      if (!spaceId || typeof t.url !== 'string' || !/^(https?|file):/i.test(t.url)) continue;
+      next.tabs[nsTabId(browser, profile, id)] = {
+        url: t.url, title: str(t.title), icon: /^(https?|data):/.test(t.icon ?? '') ? str(t.icon, 100_000) : '', spaceId, order: finite(t.order),
+        lastUsed: finite(t.lastUsed), selected: t.selected === true, target, imported: { browser, profile, id },
+      };
+      counts.tabs++;
+    }
+    for (const [id, a] of sorted(values.archive)) {
+      if (typeof a.url !== 'string') continue;
+      // An entry of a space the set no longer has: the profile's first.
+      const spaceId = spaceIds.get(a.spaceId) ?? spaceIds.get(own[0]?.[0]);
+      if (!spaceId) continue;
+      next.archive[nsId(browser, profile, id)] = { url: a.url, title: str(a.title), spaceId, icon: str(a.icon, 100_000), closedAt: finite(a.closedAt), target };
+      counts.archive++;
+    }
+  }
+  // The order: what the library had first, then the person's order, then the rest as the sets gave them.
+  const had = sorted(current?.spaces).sort((a, b) => finite(a[1].order) - finite(b[1].order)).map(([id]) => id).filter((id) => !placed.includes(id));
+  const incoming = placed.map((id, i) => ({ id, i })).sort((a, b) => (rank.get(a.id) ?? order.length + a.i) - (rank.get(b.id) ?? order.length + b.i)).map((x) => x.id);
+  [...had, ...incoming].forEach((id, i) => { next.spaces[id] = { ...next.spaces[id], order: i }; });
+  // Items' places: the list is one per space, so each profile's own numbers keep their order within its spaces.
+  next.imports.done = { at: now, sets: ok.map((set) => `${set.browser}:${set.profile}`), ...counts };
+  // Through the model's reading once, so what's stored is what stateOf/valuesOf give (no change on the next action).
+  const normal = valuesOf(stateOf(next), next.imports);
+  return { changes: diff(current ?? {}, normal), counts };
+}
+
+// ---- the app's entry (JavaScriptCore) -----------------------------------------------------------------------------
+// One function, JSON in and out (no object bridging): marginLibrary.call(name, argsJSON) → resultJSON.
+const API: Record<string, (...args: any[]) => any> = {
+  perform: (values, action, payload, env) => perform(values, action, payload, env),
+  snapshot: (values) => snapshot(values),
+  importValues: (current, sets, order, env) => importValues(current, sets, order, env),
+  actions: () => ACTION_NAMES,
+};
+export function call(name: string, args: string) {
+  if (!Object.hasOwn(API, name)) return JSON.stringify({ error: `no function ${name}` });
+  try {
+    const list = JSON.parse(args);
+    return JSON.stringify({ value: API[name](...(Array.isArray(list) ? list : [])) });
+  } catch (e) {
+    return JSON.stringify({ error: String((e as Error)?.message ?? e) });
+  }
+}
+(globalThis as any).marginLibrary = { call, version: FORMAT };

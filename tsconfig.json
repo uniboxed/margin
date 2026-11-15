@@ -19,6 +19,7 @@
   "include": [
     "extension/**/*.ts",
     "app/shared/host/*.ts",
+    "app/shared/library/*.ts",
     "types/*.d.ts"
   ],
   "exclude": [
