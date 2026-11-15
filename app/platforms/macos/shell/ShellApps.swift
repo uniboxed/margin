@@ -36,6 +36,7 @@ extension Shell {
             overlay.push(raw: #"{"type":"apps","apps":"# + json + "}")
         }
         appsSent = appsSent.filter { overlays[$0.key] != nil }
+        marginWindows?.pushApps()
     }
 
     // For an overlay's hello: the list now (null with hosting off, or before the first scan).

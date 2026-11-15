@@ -59,6 +59,8 @@ export type UiState = {
   justShown?: boolean,
   inNewTab?: boolean,
   launcherPage?: boolean,
+  /** Margin.app's own window hosting another app's window beside it: no page area here (ui/host-app.ts pageOutside). */
+  pageOutside?: boolean,
   pageLoading?: boolean,
   gesture?: { kind: 'pull' | 'swipe', state: 'pulling' | 'armed' | 'done' | 'leaving', progress?: number, direction?: number } | null,
   theme?: { id: string, name: string, settings: Record<string, any> } | null,
@@ -153,7 +155,7 @@ export type ViewModel = {
   ready: boolean,
   window: {
     id: number | null, mode: WindowMode, focused: boolean, sidebar: SidebarState,
-    sidebarOpen: boolean, peek: boolean, pinnedOpen: boolean, frameWhenHidden: boolean,
+    sidebarOpen: boolean, peek: boolean, pinnedOpen: boolean, pageOutside: boolean, frameWhenHidden: boolean,
   },
   space: SpaceView,
   spaces: SpaceChip[],
@@ -275,8 +277,9 @@ function fresh(input: ViewModelInput): ViewModel {
   const platform = { browser: input.platform?.browser ?? 'unknown', os: input.platform?.os ?? 'unknown' };
   const settings = input.settings ?? {};
   const pinnedOpen = !!state?.settings?.sidebarPinnedOpen;
-  // Margin's own pages (the launcher) always show the sidebar beside it.
-  const sidebar = ui.sidebar === 'open' || ui.sidebar === 'hidden' || ui.sidebar === 'peek' ? ui.sidebar : pinnedOpen || ui.launcherPage ? 'open' : 'hidden';
+  // Margin's own pages (the launcher) always show the sidebar beside it. With no page area of its own (Margin.app's
+  // window hosting another app's window beside it: `pageOutside`), the sidebar is all there is: always docked.
+  const sidebar = ui.pageOutside ? 'open' : ui.sidebar === 'open' || ui.sidebar === 'hidden' || ui.sidebar === 'peek' ? ui.sidebar : pinnedOpen || ui.launcherPage ? 'open' : 'hidden';
   const windowId = ui.windowId ?? null;
   const win = {
     id: windowId,
@@ -286,6 +289,8 @@ function fresh(input: ViewModelInput): ViewModel {
     sidebarOpen: sidebar === 'open',
     peek: sidebar === 'peek',
     pinnedOpen,
+    // The page area is another window's, beside this one (Margin.app hosting): a theme may style the sidebar alone.
+    pageOutside: !!ui.pageOutside,
     // The sidebar hidden: Margin's frame stays around the page (a setting).
     frameWhenHidden: state?.settings?.frameWhenHidden !== false,
   };

@@ -564,6 +564,9 @@ function onMessage(msg: any) {
         else openPaletteTimed({ newTab: !host?.launcher }, 'the app\'s key');
       } else if (msg.name === 'toggle-sidebar') runtime?.sidebar.toggle();
       else if (msg.name === 'next-tab' || msg.name === 'prev-tab') navTab(msg.name);
+      // Margin's own window, its first run (app/platforms/macos/shell/HostedSession.swift): the space it made, in the
+      // space editor for the person to name (the UI's own editor, as a new space opens in it).
+      else if (msg.name === 'edit-space' && host?.appWindow && typeof msg.spaceId === 'string') runtime?.dispatch('space.edit', msg.spaceId, 'behavior');
       return;
     case 'link':
       // (Margin's own window has no copy's link to lose.)

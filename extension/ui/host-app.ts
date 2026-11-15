@@ -48,6 +48,10 @@
 //   the hello's `host` is 'app-window' (`appWindow`): the UI is drawn in Margin's window, not over a
 //   browser's, its mode the window's own (windowed or full screen, from `windows`); where the theme
 //   draws the window's buttons and its drag regions go to the app (`chromeRects`, { op: 'chrome' }).
+//   While the window hosts another app's window beside it (app/platforms/macos/shell/HostedSession.swift: Margin's
+//   window is then only its sidebar's tile in its full-screen Space, the page area a window of its own), the hello's
+//   `pageOutside` is true, and `{ type: 'pageOutside', on }` says when that changes: the UI is laid out with no page
+//   area of its own (`pageOutside`: the sidebar always shown, docked, never hidden or out over a page that isn't here).
 //
 // No browser API here: only the DOM and `post`.
 import type { Geometry, Host } from './host.ts';
@@ -151,7 +155,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   onMessage?: (msg: any) => void,
   onNotice?: (arg: { id?: string, action?: string }) => void,
   warn?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
   // (Its window can change: a profile switch hands the sidebar to the window it goes to, `rekey`.)
   let windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
@@ -160,6 +164,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let mode = hello?.mode === 'windowed' ? 'windowed' : 'fullscreen';
   // Drawn in Margin's own window (its hello's `host`), not over a browser's: never changes for a page.
   const appWindow = hello?.host === 'app-window';
+  // Margin's window hosting another app's window beside it: no page area of its own (only in Margin's own window).
+  let pageOutside = appWindow && hello?.pageOutside === true;
   // Every profile's spaces in the one order, and the profiles (app/platforms/macos/shell/ShellProfiles.swift): `state.across`.
   let across = acrossOf(hello?.across);
   // iCloud Tabs, as the app read them (Safari only; null: none).
@@ -264,6 +270,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     platform,
     get windowId() { return windowId; },
     get appWindow() { return appWindow; },
+    /** The page area is another window's, beside Margin's (Margin's own window hosting): the sidebar alone here. */
+    get pageOutside() { return pageOutside; },
     // The overlay stays on screen through a switch (ui/runtime.ts: the highlight waits for the state).
     staysOnScreen: true,
     // Not on screen as it first draws: its launcher takes the focus only when the app says (the `shown` push's `focus`).
@@ -398,6 +406,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           apps = appsOf(msg.apps);
           rebuild();
           return emit();
+        case 'pageOutside': {
+          const next = appWindow && msg.on === true;
+          if (next === pageOutside) return;
+          pageOutside = next;
+          return emit();
+        }
         case 'themes':
           // Margin.app's index of imported themes changed (Settings lists them).
           if (!Array.isArray(msg.list)) return;

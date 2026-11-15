@@ -248,6 +248,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // ShellHosted.swift: in place of the set-up window and of opening the browser).
         var hosted = false
         var appCatalog = AppCatalogWatcher.Options() // where apps are read from, the icons' cache (a test: its own folders)
+        // A harness's stand-in for the system the host engine runs on (never the real one: ShellHost.swift makes that
+        // from the private calls' check). Given with `hosted`, the engine is made at once on it, with no marker.
+        var hostSystem: HostSystem?
+        var hostOptions: HostEngine.Options?
+        var hostedOptions: HostedSession.Options?
     }
 
     final class Link {
@@ -321,7 +326,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // A linked browser has been in front since the first link came up: the shell is at work.
     private(set) var started = false
     private(set) var tracks = 0
-    private var pollTimer: Timer?
+    var pollTimer: Timer? // (the hosted read schedules it too: ShellHostedGlue.swift)
     private var burstUntil: TimeInterval = 0
     private var trackSoon = false
     private var lastPointerPush: [WindowKey: TimeInterval] = [:]
@@ -386,6 +391,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // The host (HostEngine.swift, ShellHost.swift): made at launch only with `hosted` on and its calls passed.
     var host: HostEngine?
     var hostQuitting = false
+    // The library's items shown by the host in Margin's window (HostedSession.swift, ShellHostedGlue.swift).
+    var hosted: HostedSession?
 
     // ---- the profile handoff in the shell (ShellHandoff.swift) ----
     var freezer: Freezer? // the freeze (RealFreezer, from what the launch check passed), or a harness's
@@ -421,6 +428,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         data = DataSync(store: DataStore(root: dataRoot))
         link.delegate = self
         if options.hosted { startLibrary(dataRoot: dataRoot) }
+        if options.hosted, let system = options.hostSystem { host = HostEngine(system: system, marker: nil, options: options.hostOptions ?? HostEngine.Options()) }
         if let stand = options.slotSpaces { startSlots(spaces: stand, reads: nil) }
         data.onChange = { [weak self] _, collections in
             if collections.contains("spaces") || collections.contains("tabs") { self?.acrossSoon() }
@@ -463,6 +471,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         if options.hosted { Diagnostics.note("hosted: on (MarginHosted): Margin's own window, the library, installed apps in the palette, the host engine") }
         // Opening Margin opens its browser inside it: with the slot unless said otherwise (MarginOpensBrowser).
         options.enter = UserDefaults.standard.object(forKey: "MarginOpensBrowser") as? Bool ?? options.slot
+        // Hosted, Margin's own window is what opens and the host shows Safari in it: no slot, no opening of the browser
+        // over which Margin draws (ShellHostedGlue.swift: the overlays are off too).
+        if options.hosted { options.slot = false; options.enter = false }
         options.openBrowser = Shell.openBrowserApp
         options.enterBrowser = { UserDefaults.standard.string(forKey: "MarginLastBrowser") ?? "safari" }
         options.sawBrowser = { browser in
@@ -1373,6 +1384,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let allPids = linkedPids().values.reduce(into: Set<pid_t>()) { $0.formUnion($1) } // the keys': live links only
         let front = apps.frontPid
         let browserInFront = front.map(readPids.contains) ?? false
+        // Hosted: no overlay over any browser window, no binding, no layout to a copy (ShellHostedGlue.swift); the
+        // host's own poll.
+        if options.hosted { return hostedTrack() }
         if !started {
             guard browserInFront else { return updateKeys(list: [], allPids: allPids) } // nothing until a linked browser is in front
             started = true

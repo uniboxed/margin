@@ -235,6 +235,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     mode: host.mode ?? 'inpage',
     inNewTab: !!host.inNewTab,
     launcherPage: !!host.launcher,
+    // Margin.app's own window hosting another app's window beside it: no page area here (ui/host-app.ts).
+    pageOutside: !!(host as { pageOutside?: boolean }).pageOutside,
     settingsPage: !!host.settingsAsked || !!ui.settingsPage,
     // The active theme, for Settings' "Settings of …" (ui/settings-form.ts): its id, name and theme.json settings.
     theme: themeInfo,

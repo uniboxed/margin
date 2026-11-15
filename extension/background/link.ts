@@ -147,6 +147,8 @@ export const APP_REQUESTS = new Set([
   'setWindowState', 'frameProbe', 'windowDrafts',
   // Margin.app's index of the person's imported themes (app/platforms/macos/shell/ShellThemes.swift).
   'userThemes',
+  // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed.
+  'hostShow', 'hostClose',
 ]);
 // The requests that call windows.update or windows.remove for one window: each carries `notAfter`
 // from the handoff, and only one runs per window at a time (docs/HANDOFF.md §1.9).

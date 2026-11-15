@@ -91,6 +91,12 @@ final class HostEngine {
     var requestSafariWindow: ((String?) async -> Bool)?
     // Wired by the shell to the extension's close of a window Margin made (by its window number). True: asked.
     var closeSafariWindow: ((Int) async -> Bool)?
+    // Wired by the shell: waits until that profile's extension copy is linked (true), before Safari's windows are read
+    // and a window asked for, so windows a Safari just started restores meanwhile are never taken for Margin's own.
+    var safariLinked: ((String?) async -> Bool)?
+    // Told just before a host's tile goes into Margin's Space (the shell makes Margin's window the sidebar's tile then:
+    // alone in its Space, a narrow window would stand in the middle of it while an app starts).
+    var willTile: ((HostID) -> Void)?
 
     private var tail: Task<Void, Never>?
     private var jumps = 0
@@ -172,6 +178,19 @@ final class HostEngine {
         await serial { await self.recoverNow() }
     }
 
+    // ---- what the hosting reads ----
+
+    // Whether `id` is hosted now (opened, shown or parked).
+    func isHosted(_ id: HostID) -> Bool { hosts[id] != nil }
+
+    // The host whose window is `number` (a Safari window the extension made: closed by its copy).
+    func target(ofWindow number: Int) -> HostTarget? { hosts.values.first { $0.window == number }?.target }
+
+    // The full-screen Space `number` (Margin's window) is in, nil if it's in none.
+    func fullScreenSpace(ofWindow number: Int) -> UInt64? {
+        sys.spaces(window: number)?.first { sys.spaceType($0) == ManagedSpace.fullScreenType }
+    }
+
     // ---- one at a time ----
 
     private func serial<T: Sendable>(_ body: @escaping () async -> T) async -> T {
@@ -239,6 +258,10 @@ final class HostEngine {
                 case nil: Diagnostics.note("host: Safari's AutoShowToolbarInFullScreen didn't read: its own setting decides whether its toolbar shows")
                 default: break
                 }
+            }
+            if let linked = safariLinked, await !linked(profile) {
+                if startedNow { await quitApp(app.pid, bundle: bundle) }
+                return fail(id, .window, "Safari's extension didn't link")
             }
             let before = Set((await sys.windows(pid: app.pid) ?? []).map(\.number))
             guard let request = requestSafariWindow, await request(profile) else {
@@ -334,6 +357,7 @@ final class HostEngine {
             return await giveUp(host, isNew: isNew, .tile, "its full-screen Space doesn't have exactly one tile", previous: retrying ? nil : previous)
         }
         host.tile = tile
+        willTile?(host.id)
         guard sys.moveTile(tile, to: marginSpace, at: 1), await wait(options.tileWait, {
             self.sys.tiles(of: self.marginSpace)?.contains(tile) == true && self.sys.spaces(window: host.window) == [self.marginSpace]
                 && self.sys.tiles(of: own)?.isEmpty != false
@@ -438,7 +462,16 @@ final class HostEngine {
                 return false
             }
             if HostLayout.near(hosted, pageRect, within: options.tolerance) { return true }
-            guard let plan = HostLayout.plan(margin: margin, hosted: hosted, reserved: sys.reserved(space: marginSpace) ?? .zero, page: pageRect) else {
+            var plan = HostLayout.plan(margin: margin, hosted: hosted, reserved: sys.reserved(space: marginSpace) ?? .zero, page: pageRect)
+            if plan == nil {
+                // Margin's tile still being laid out at its new width: read again for a moment.
+                _ = await wait(options.placeWait) {
+                    guard let m = self.sys.bounds(window: self.marginWindow), let h = self.sys.bounds(window: host.window) else { return false }
+                    plan = HostLayout.plan(margin: m, hosted: h, reserved: self.sys.reserved(space: self.marginSpace) ?? .zero, page: self.pageRect)
+                    return plan != nil
+                }
+            }
+            guard let plan else {
                 emit(.failed(host.id, .place, "the page area can't be reached beside Margin's tile"))
                 return false
             }

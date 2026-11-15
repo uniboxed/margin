@@ -54,8 +54,8 @@ extension Shell {
         keeper.recover(fullScreen: reads?.fullScreenSpaces(), running: { pid in
             NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == Bundle.main.bundleIdentifier
         })
-        guard options.slot else {
-            Diagnostics.note("slot: off (MarginNativeSlot isn't set): the page box, as before")
+        guard options.slot, !options.hosted else {
+            Diagnostics.note(options.hosted ? "slot: off (MarginHosted: Margin hosts the browser's window itself)" : "slot: off (MarginNativeSlot isn't set): the page box, as before")
             return
         }
         slots = keeper
