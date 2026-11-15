@@ -48,6 +48,7 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
 | Margin's frame in each hosted app's Space, direct switch 5–20 ms | proven in the kit | kit margin5 |
 | Margin's own menu bar on top-edge hover; app's buttons never shown | proven in the kit (TestPane), hand-tested | `no-dock-margin-menubar` |
 | **Real Safari started with no Dock icon (hosted launch arguments): Margin's extension links** (both profiles, 12 s), its windows restored, still no Dock icon; quit and reopened normally after | **proven 2026-11-15** (Tirth away, his OK) | `safari-host/real1.log` |
+| **Margin as the app, on screen (2026-11-15):** an app (the kit's TestPane) and a Safari web item (Safari not running: started by Margin with no Dock icon) hosted beside Margin's sidebar tile, exactly in the page area, Safari's toolbar out of sight, Mission Control one Space for Margin; quit gives everything back | **proven** (Tirth away) | `/tmp/margin-toolbar-test/hosted/check1.swift`, `check3.swift` |
 | Several apps side by side in one full-screen Space | proven by numbers (3 apps) | `floating-pane-windowed` |
 | Windowed Margin (hosted full-screen window as a desktop member) | proven for real apps, Stage Manager needs work | same |
 
