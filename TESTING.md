@@ -1,5 +1,24 @@
 # Testing Margin
 
+## The slot (pending, 2026-11-15)
+
+Off by default: every check below starts with `defaults write com.unibox.margin MarginNativeSlot -bool YES`, then `npm run safari`. `defaults delete com.unibox.margin MarginNativeSlot` and a relaunch go back to the page box. Nothing here has been run in real Safari yet (`DECISIONS.md`, "The slot").
+
+- [ ] `npm run log:app` at launch says `slot ok` in the private-calls line and `slot: on`.
+- [ ] A full-screen Safari window with Margin's layout: the log says `slot: window N in Space S: L/T/R/B reserved` and `landed in N ms`. The page fills its place exactly, with no gap and nothing of the page under the sidebar.
+- [ ] Web Inspector on the page: no `--margin-box-*` styles and no box elements (the page box is off).
+- [ ] Hide and show the sidebar: the page follows each time (`slot: … → …`, `landed`), with no layout left behind.
+- [ ] Typing, scrolling, text selection, drag and drop, a context menu, a select menu, a page dialog: all as in plain Safari.
+- [ ] A video in full screen fills the display (`given back (its page took the screen)`), and the layout is back after (`reserved`, `landed`).
+- [ ] Leave full screen (⌃⌘F): the window is a normal window at its old size, with no reserved margins. Back into full screen: the slot again.
+- [ ] A second full-screen window, and swiping between the two: each keeps its own slot, and the layout is there as each slides in.
+- [ ] A profile switch (the handoff) with the slot on: the target window lands in its slot before the reveal, or the page is seen to resize once after it. Note which.
+- [ ] Quit Margin (`killall -TERM Margin`): the Safari window takes the whole display again at once. Start Margin again: the slot again.
+- [ ] Kill Margin (`kill -9`): the window stays in its slot. Start Margin: the log says `a marker from a Margin that didn't quit cleanly … given back`, then the slot is taken again.
+- [ ] Unplug or plug in a display with a slotted window showing: `given back (the displays changed)`, then the slot again at the new size.
+- [ ] Note what the gaps listed in `DECISIONS.md` look like: square page corners, a reflow when the slot is first taken, Safari's title strip on a top-edge hover.
+- [ ] Chrome and Edge in full screen: the same first three checks.
+
 ## Live profile cover acceptance (pending, 2026-11-11)
 
 The launch default stays off. [Component results](tools/handoff-lab/results/26B131-2026-11-11-renderer-components.md)

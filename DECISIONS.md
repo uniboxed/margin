@@ -4822,3 +4822,32 @@ so no real browser switch is claimed for this new policy. The login helper
 remains responsible for browser-triggered launch. Actual Low Power Mode toggling
 is retained as a manual check; selection/lifecycle are verified with injected
 native state. No new lab switch or PR.
+
+## The slot: the browser's own window sized to the page, in place of the page box (2026-11-15)
+
+Asked by Tirth on 2026-11-15, after two days of tests outside the repo: build the slot into Margin itself and do the rest of the testing here.
+
+**What it is.** Every full-screen Space lays its window out in a tile and can reserve room at its edges (`SLSSpaceSetEdgeReservation`, `docs/PRIVATE-APIS.md` rows 21-22). With the layout's insets reserved, macOS lays the tile out again and the browser sizes its own full-screen window to what's left. The page is then the whole window: nothing is added to it, where the page box sizes the page inside a full-size window (its cost per page is in "What the box costs, measured").
+
+**Off by default.** `defaults write com.unibox.margin MarginNativeSlot -bool YES` turns it on. Off, no keeper is made and every window keeps the page box exactly as before. It stays off until it has been checked in real Safari (`TESTING.md`, "The slot").
+
+**How it's built (branch `feat/native-slot`).**
+- *One seam.* `Shell.layoutChanged` is where a window's layout goes to its copy. For a full-screen window drawn over whole, the layout's insets are reserved in its Space, and its copy is sent a layout with no insets: the extension's existing "no box" path, first paint included. The extension is not changed. Anything else gets the layout as before.
+- *The keeper* (`Slot.swift`). One slot per browser window: its Space, its full frame, the edges, whether it landed. Every reservation is verified against the window's own bounds within 1.5 s, sent once more, then given back; that window keeps the page box for the session, and two windows failing in a row turn the slot off for the session.
+- *The model.* The rest of the shell works on windows that fill their display (overlay frames, the planner and placer, the handoff's readiness, the covers). Rewriting all of that for a smaller window was the risky way. Instead every read of the window server goes through `SlotWindows`, which gives a slotted window at the bounds it would have with nothing reserved; the copy's own bounds for that window and the model-geometry read are put in the same terms. With no slot set, it is the identity.
+- *A steady full frame.* While a window is resizing into its slot, the model gives its recorded full frame, not one worked out from bounds in motion: the overlay must not be sized, and its layout measured, against a moving window.
+- *Giving it back.* A reservation outlives the process that set it, unlike everything else Margin sets through private calls. So: zeros when the window leaves full screen, when its page takes the screen (a video in full screen should fill the display), when it's parked, when no linked window is bound to it for longer than a dropped link is kept, when the displays change, and at quit; a marker (`slots.json`: Space numbers and a pid) read at the next launch after a crash, whether or not the setting is still on; and a Space found already reserved is given back before it's used.
+- *macOS only.* The Rust core (Windows) isn't touched.
+
+**Verified.** The launch check and wrappers against fake functions, the keeper against a stand-in for the Spaces, and the whole seam through the real shell and overlay with a stand-in that plays the window manager (`tools/app-tests/e2e-slot.swift`): the layout reserved, no insets sent, the overlay kept over the whole display, the copy's smaller bounds still bound, out of full screen and back, a window that won't take the slot given the page box, quit. The existing unit and end-to-end checks pass unchanged with the setting off.
+
+**Not verified: anything in real Safari, Chrome or Edge.** The private call itself was only run from test code outside the repo (macOS 27.2.1, 26B131: Safari, Chrome for Testing, Maps and others), not from this code.
+
+**Known gaps, for the Safari check to judge.**
+- The page's corners are square (the browser's window is), where the page box rounds them.
+- When the slot is first taken, the copy is told to drop the box at the same moment the window starts to shrink: the page may be seen to reflow once.
+- Safari's own full-screen title strip still slides over the top of the page when the menu bar is revealed, as in plain full-screen Safari today.
+- The full-screen toolbar's stacking is looked up against the model's bounds, so the overlay may sit above it instead of below; it's over the page area, where the overlay draws nothing.
+- A window that loses its binding while slotted is bound again only after its slot is given back (about 6 s).
+- The edge stop keeps its fence at the display's left edge, not the window's.
+- Other apps as tabs, Margin in a window, and the Mission Control and outside-open questions from the tests are later stages, not started here.

@@ -79,7 +79,7 @@ struct ViewportTimes: Equatable { var resized: Double?; var said: Double?; var h
 
 struct ExtWindow: Equatable {
     let key: WindowKey
-    let bounds: CGRect?
+    var bounds: CGRect? // (var: a slotted window's are put in the model's terms, ShellSlot.swift)
     let state: String // normal, fullscreen, maximized, minimized
     let focused: Bool
     let activeTabId: Int?

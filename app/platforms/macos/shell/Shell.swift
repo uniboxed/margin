@@ -206,6 +206,12 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var fillsDisplay: ((CGRect) -> Bool)?
         // Tests inject model geometry; the app uses the checked, read-only SkyLight getter.
         var modelBounds: ((Int) -> CGRect?)?
+        // The slot (Slot.swift, ShellSlot.swift): a full-screen window sized by macOS to its page's place in the layout,
+        // in place of the page box. Off unless `MarginNativeSlot` is set (forApp); off, nothing of it runs.
+        var slot = false
+        // A harness's stand-in for the Spaces' reserved edges (never the system's), and for a window's full-screen Space.
+        var slotSpaces: SlotSpaces?
+        var slotSpaceOf: ((Int) -> UInt64?)?
         // DEV-HOOK: the dev-only test hook (DevHooks.swift, removed before production): whether
         // MarginDevHooks is YES, read at each notification. Nil (every test, the harness): not listened for.
         var devHooksOn: (() -> Bool)?
@@ -244,7 +250,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     let link: SocketLink
     // The lasting data, one set per browser profile (DataSync.swift: the read API is there).
     let data: DataSync
-    let windowSource: WindowSource
+    let windowSource: WindowSource // every read through the slot's model (ShellSlot.swift): the same as `rawWindows` with no slot set
+    let rawWindows: WindowSource // the window server's own bounds: only the slot keeper's check reads these
+    let slotBox = SlotBox()
+    var slotLayouts: [WindowKey: PageLayout] = [:] // each window's last layout as its overlay measured it (with a keeper only)
+    var slotUnboundSince: [Int: TimeInterval] = [:]
     let apps: AppWatch
     let shortcuts: AppShortcuts
     private let pointer = PointerWatch()
@@ -368,7 +378,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     init(link: SocketLink, windows: WindowSource, apps: AppWatch, hotKeys: HotKeyRegistrar, options: Options = Options()) {
         self.link = link
-        self.windowSource = windows
+        self.rawWindows = windows
+        self.windowSource = SlotWindows(inner: windows, box: slotBox)
         self.apps = apps
         self.shortcuts = AppShortcuts(registrar: hotKeys)
         self.options = options
@@ -377,12 +388,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             ?? (options.harness ? FileManager.default.temporaryDirectory.appendingPathComponent("margin-harness-\(UUID().uuidString)", isDirectory: true) : DataStore.appRoot)
         data = DataSync(store: DataStore(root: dataRoot))
         link.delegate = self
+        if let stand = options.slotSpaces { startSlots(spaces: stand, reads: nil) }
         data.onChange = { [weak self] _, collections in
             if collections.contains("spaces") || collections.contains("tabs") { self?.acrossSoon() }
         }
         apps.onChange = { [weak self] why in
             if why == "app launched" || why == "app activated" || why == "Space changed" { self?.coversSoon() }
             if why == "Space changed" || why == "displays changed" { self?.windowMap.spacesChanged(at: Diagnostics.now()) }
+            if why == "displays changed" { self?.slotsDisplaysChanged() }
             self?.options.trace?.event(why, at: Diagnostics.now())
             if why == "Space changed" { self?.spaceDidChange() } else { self?.appsChanged(why) }
         }
@@ -409,6 +422,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // parked); `defaults write com.unibox.margin MarginHandoff -bool NO` turns it off (the close-based switch).
         options.handoff = UserDefaults.standard.object(forKey: "MarginHandoff") as? Bool ?? true
         options.liveProfileCover = LiveCoverPolicy.requested()
+        // The slot: off until it has been checked in real Safari; `defaults write com.unibox.margin MarginNativeSlot -bool YES` turns it on.
+        options.slot = UserDefaults.standard.object(forKey: "MarginNativeSlot") as? Bool ?? false
         options.lowPowerMode = { ProcessInfo.processInfo.isLowPowerModeEnabled }
         Diagnostics.note("live profile cover: \(options.liveProfileCover ? "on (freeze preferred in Low Power Mode)" : "off (explicit preference)")")
         Diagnostics.note(options.handoff ? "handoff: on: profile switches hand off when the private calls allow"
@@ -450,6 +465,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         guard privateCalls.spaces else { return }
         let spaces = SkyLightSpaces(sky: sky, availability: privateCalls)
         spaceReads = spaces
+        if privateCalls.slot { startSlots(spaces: SkyLightSlots(sky: sky), reads: spaces) }
+        else if options.slot { Diagnostics.note("slot: asked for (MarginNativeSlot), but its calls didn't pass the launch check (\(privateCalls.reasons["slot"] ?? "not checked")): the page box") }
         if privateCalls.park {
             let parker = SpaceParker(reads: spaces, bridge: spaces, clock: options.switchClock)
             self.parker = parker
@@ -486,6 +503,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     private func stopNow(_ then: @escaping () -> Void) {
         _ = liveProfileCover?.end(.quit)
+        slots?.releaseAll(why: "Margin quits") // a reservation outlives the process: every window gets its whole Space back
         stopped = true
         if !options.harness { HelperSplash.stop() }
         edgeFence = nil
@@ -1066,8 +1084,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     private func readModelBounds(_ number: Int) -> CGRect? {
-        if let read = options.modelBounds { return read(number) }
-        return skyLight?.modelBounds(of: number)
+        // (A slotted window's, as the model has them: the same terms as the window list it's compared with.)
+        let bounds = options.modelBounds.map { $0(number) } ?? skyLight?.modelBounds(of: number)
+        return bounds.map { slots?.model($0, of: number) ?? $0 }
     }
 
     private func verifyModelGeometry(_ overlay: OverlayController, server: ServerWindow, full: Bool) {
@@ -1308,7 +1327,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         tracks += 1
         var own = readPids
         own.insert(ProcessInfo.processInfo.processIdentifier)
-        let read = windowSource.read(of: own)
+        // The window server's own bounds for the slot keeper's check; the model's for everything after.
+        let rawRead = rawWindows.read(of: own)
+        if let rawRead { slotsRead(rawRead) }
+        let read = rawRead.map { slots?.model($0) ?? $0 }
         let list = read ?? []
         let byNumber = Dictionary(list.map { ($0.number, $0) }, uniquingKeysWith: { a, _ in a })
         // The browser's windows coming on or going off screen (a swipe between full-screen windows starts; macOS
@@ -1334,7 +1356,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         for (browser, pids) in byBrowser {
             let all = links.values.filter { $0.connection.hello.browser == browser }
             let entries = all.filter { $0.mirror.hasState }
-            let windows = entries.flatMap { entry in ExtWindow.parse(entry.mirror.windows, link: entry.connection.key).map { ($0, entry) } }
+            let windows = entries.flatMap { entry in ExtWindow.parse(entry.mirror.windows, link: entry.connection.key).map { (slotModel($0), entry) } }
             for (w, entry) in windows { ext[w.key] = (w, entry) }
             // Kept as they are: a link without its state yet, one that dropped a moment ago.
             let held = Set(all.filter { !$0.mirror.hasState }.map(\.connection.key)).union(reconnecting.keys.filter { $0.hasPrefix(browser + ":") })
@@ -1356,6 +1378,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         }
         let before = matches
         matches = next
+        tendSlots(ext)
         // The map, from this read (and the trace, when there's one: what changed, and what the copies said).
         windowMap.reads = spaceReads
         let mapChanges = windowMap.update(now: Diagnostics.now(), list: read, browserPids: readPids, marginPid: ProcessInfo.processInfo.processIdentifier, front: front, ax: ax,
@@ -2046,7 +2069,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let size = overlay.frameTopLeft.size
         guard abs(layout.width - size.width) < 1, abs(layout.height - size.height) < 1 else { return }
         let window = overlay.windowFrame ?? overlay.frameTopLeft
-        let inWindow = layout.inWindow(overlay: overlay.frameTopLeft, window: window)
+        var inWindow = layout.inWindow(overlay: overlay.frameTopLeft, window: window)
+        if slots != nil {
+            slotLayouts[overlay.key] = layout
+            inWindow = slotLayout(overlay, inWindow, window: window)
+        }
         guard let entry = links[overlay.key.link], let (seq, rounded) = entry.outbox.offer(windowId: overlay.key.windowId, inWindow) else { return }
         entry.connection.send(.setLayout(epoch: entry.connection.epoch, windowId: overlay.key.windowId, seq: seq, layout: rounded))
     }
