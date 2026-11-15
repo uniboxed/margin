@@ -553,7 +553,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // rest. The copies' links stay up until then.
     func stop(then: @escaping () -> Void) {
         // The hosted apps first, while the copies' links are still up (Safari windows Margin made are closed by them).
-        if let host, host.hasHosts, !hostQuitting { return stopHost { [weak self] in self?.stop(then: then) } }
+        if let host, host.hasHosts || host.hasLeftSafariWindows, !hostQuitting { return stopHost { [weak self] in self?.stop(then: then) } }
         guard !stopped else { return stopNow(then) }
         switcher.revealNow(.quit)
         guard let parking else { return stopNow(then) }

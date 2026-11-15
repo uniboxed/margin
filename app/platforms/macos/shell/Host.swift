@@ -54,6 +54,7 @@ nonisolated enum HostEvent: Equatable, Sendable {
     case quitByUser(HostID) // the app quit, not by Margin
     case windowClosed(HostID) // its window went, its app still running
     case closed(HostID)
+    case unshown(HostID) // the one shown parked with nothing in its place (Margin's window left full screen, its window strayed)
     case orphans([UInt64]) // ownerless full-screen Spaces found (Mission Control would list them)
 }
 
@@ -138,19 +139,32 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
     }
 }
 
-// The page area's other edges, worked out from what the window manager has laid out now: Margin's tile on the left
-// (its window's width is its content's max width, the sidebar's), the hosted window's tile beside it.
+// Where a hosted window goes, as Margin's window works it out (top-left coordinates, as the window server's bounds):
+// `page`, the page area; `area`, the display's full-screen area the tiles divide (its frame below the camera housing);
+// `tileWidth`, Margin's own tile (the sidebar's: its window's content max width), flush with the area's left edge.
+nonisolated struct HostPlacement: Equatable, Sendable {
+    var page: CGRect
+    var area: CGRect
+    var tileWidth: CGFloat
+    static let zero = HostPlacement(page: .zero, area: .zero, tileWidth: 0)
+    var text: String {
+        func r(_ c: CGRect) -> String { "\(Int(c.minX)),\(Int(c.minY)) \(Int(c.width))×\(Int(c.height))" }
+        return "page \(r(page)) in \(r(area)), Margin's tile \(Int(tileWidth))"
+    }
+}
+
+// The page area's edges and the tiles' spacing, from the placement alone: Margin's tile at the area's left edge (left
+// 0), the page's other edges reserved at the Space's edges, the gap from Margin's tile to the page the spacing. Never
+// from the windows' bounds now: right after a tile move the hosted window still has its full-screen frame while a
+// reservation is already set, and a plan from that counted the reservation twice, growing it at every step (seen
+// 2026-11-15: 0/7/8/8, then 0/14/16/16, then 0/21/24/24). The same placement always gives the same plan.
 nonisolated enum HostLayout {
-    // `margin`, `hosted`: both windows' bounds now; `reserved` the Space's reservation now; `page` where the hosted
-    // window must be (top-left coordinates, as the window server's bounds). Nil: the page can't be reached that way
-    // (it starts before Margin's tile ends, or leaves less than a point).
-    static func plan(margin: CGRect, hosted: CGRect, reserved: SlotEdges, page: CGRect) -> (edges: SlotEdges, spacing: Double)? {
-        let area = CGRect(x: margin.minX - reserved.left, y: hosted.minY - reserved.top,
-                          width: hosted.maxX + reserved.right - (margin.minX - reserved.left),
-                          height: hosted.maxY + reserved.bottom - (hosted.minY - reserved.top))
-        let edges = SlotEdges(left: reserved.left, right: area.maxX - page.maxX, top: page.minY - area.minY, bottom: area.maxY - page.maxY).whole
-        let spacing = (page.minX - (area.minX + edges.left + margin.width)).rounded()
-        guard edges.usable, spacing >= 0, page.width >= 1, page.height >= 1 else { return nil }
+    // Nil: the page can't be reached that way (it starts before Margin's tile ends, passes the area, or leaves less
+    // than a point).
+    static func plan(_ p: HostPlacement) -> (edges: SlotEdges, spacing: Double)? {
+        let edges = SlotEdges(left: 0, right: p.area.maxX - p.page.maxX, top: p.page.minY - p.area.minY, bottom: p.area.maxY - p.page.maxY).whole
+        let spacing = Double(p.page.minX - (p.area.minX + p.tileWidth)).rounded()
+        guard edges.usable, spacing >= 0, p.tileWidth >= 1, p.page.width >= 1, p.page.height >= 1, p.area.width >= 1 else { return nil }
         return (edges, spacing)
     }
 

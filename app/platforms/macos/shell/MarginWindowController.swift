@@ -13,18 +13,21 @@
 // - Its `layout` (where `<m-page>` sits) and the window's frame make the page
 //   area (MarginWindow.pageRect, top left, points), redone as the window moves,
 //   resizes, enters or leaves full screen, and as the page measures again (the
-//   sidebar shown or hidden, another theme). The window ignores the mouse only
-//   while the pointer is over that area and not over what the theme draws there
-//   (its `hits`), as an overlay does (PassThrough.swift, the same decision and
-//   the same fill): the window behind, the hosted one, gets it there.
+//   sidebar shown or hidden, another theme). Nothing passes through the window
+//   (it's opaque, and a hosted window is beside it, never behind it): with
+//   nothing hosted, its page area is the theme's launcher (ui/host-app.ts).
 // - Its `chrome`: where the theme draws the window's buttons (the traffic
 //   lights go there) and its drag regions.
 // - Hosting (HostedSession.swift, behind `MarginHosted`): while another app's window is shown beside it, the window
-//   is in full screen and is only the first tile of its Space, the sidebar's (`setHosting`): its content's max width
-//   is the theme's sidebar with its margins (the page's left inset), its page says `pageOutside` (the sidebar alone,
-//   docked: ui/host-app.ts), nothing passes through it, and its page area is worked out from the tiles
-//   (MarginWindowGeometry.hostedPageRect: the display less Margin's tile and the theme's other insets), not from a
-//   hole in the window. Back to the whole width when nothing is hosted.
+//   is in full screen and is only the first tile of its Space, the sidebar's (`setHosting`): its page says
+//   `pageOutside` (the sidebar alone, docked, its width not dragged: ui/host-app.ts), and its placement is worked out
+//   from the tiles (MarginWindowGeometry.hostedPageRect: the display less Margin's tile and the theme's other insets).
+//   Its content's max width becomes the sidebar's tile (the page's left inset) only in `tile()`, which the engine
+//   calls while Margin's window is alone in its Space, just before the hosted tile comes in: its size constraints
+//   never change while the hosted tile is beside it (seen 2026-11-15: a sidebar drag changed them, and macOS took the
+//   window out of full screen, leaving the hosted app alone in its own). A sidebar of another width (another theme)
+//   is a new placement: the engine parks the one shown and brings it in again (HostEngine.pageRectChanged). Back to
+//   the whole width when nothing is hosted.
 // - MarginWindows: every such window, the menu bar's actions (to the key one),
 //   and the source's changes passed to each.
 
@@ -82,8 +85,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // Hosting another app's window beside it (setHosting): the display the tiles divide (top left), and the page's
     // right inset as last measured with room for a page (in the sidebar's tile there's none to measure).
     private(set) var hosting = false
-    private(set) var tiled = false // its content no wider than the sidebar's tile (tile(), as the hosted tile comes in)
-    private(set) var hostingSince: TimeInterval = 0
+    private(set) var tiledWidth: CGFloat? // its content's max width as the sidebar's tile (tile(), as the hosted tile comes in)
     private(set) var hostDisplay: CGRect?
     private var hostingLayoutSaid: String? // the last layout logged while hosting (numbers only)
     private(set) var wideRight: Double?
@@ -163,12 +165,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // The content's frame, top left.
     var contentFrame: CGRect { MarginWindowGeometry.content(of: window.frame) }
 
-    // Where the page area is, and what the theme draws over it, as the pass-through decides (PassThrough.swift).
-    // Hosting: none (the page area is another window, beside this one: nothing passes through).
-    var slot: Slot? {
-        guard let layout, !hosting else { return nil }
-        return PassThrough.slot(in: contentFrame, layout: layout, hits: hits, captureAll: captureAll)
-    }
+    // Where the pointer goes through to a window behind (PassThrough.swift): nowhere. The window is opaque and a hosted
+    // window is beside it, never behind it; with nothing hosted, its page area is the theme's launcher.
+    var slot: Slot? { nil }
 
     // The page area again (the layout, the window's frame or what's over the page changed).
     func updatePage() {
@@ -177,8 +176,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         fill.region = region
         guard let layout else { return window.setPageRect(nil, radius: 0) }
         if hosting {
-            applyTile()
-            return window.setPageRect(hostDisplay.flatMap { MarginWindowGeometry.hostedPageRect(display: $0, layout: layout, right: wideRight) }, radius: CGFloat(layout.radius))
+            // (Only published: its size constraints are tile()'s, never changed here while it may be a tile.)
+            return window.setPageRect(hostedPlacement?.page, radius: CGFloat(layout.radius))
         }
         // (A layout from before a resize changes nothing: the page's next one, at the new size, does.)
         guard MarginWindowGeometry.measuredAt(layout, content.size) else { return }
@@ -194,8 +193,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func setHosting(_ on: Bool) {
         guard on != hosting else { return }
         hosting = on
-        tiled = false
-        hostingSince = Diagnostics.now()
+        tiledWidth = nil
         if on {
             frameBeforeHosting = window.frame
             hostDisplay = window.screen.map { MarginWindowGeometry.fullScreenArea($0) } ?? contentFrame
@@ -213,17 +211,22 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         updatePage()
     }
 
-    // The sidebar's tile now (the host is moving its window's tile in beside it).
-    func tile() {
-        guard hosting, !tiled else { return }
-        tiled = true
-        updatePage()
+    // Where the hosted window goes while hosting: the page area beside the sidebar's tile (its width the page's left
+    // inset now), the display's full-screen area, the tile's width. Only from a layout its page measured in full screen
+    // with the sidebar alone (`pageOutside`): one from before is followed by that one. Nil until then.
+    var hostedPlacement: HostPlacement? {
+        guard hosting, isFullScreen, let layout, layout.outside, layout.mode == "fullscreen", let area = hostDisplay,
+              let page = MarginWindowGeometry.hostedPageRect(display: area, layout: layout, right: wideRight) else { return nil }
+        return HostPlacement(page: page, area: area, tileWidth: MarginWindowGeometry.tileWidth(layout))
     }
 
-    // The sidebar's tile: the window's content no wider than the page's left inset (macOS lays the tile out that wide).
-    private func applyTile() {
-        guard hosting, tiled, let layout else { return }
+    // The sidebar's tile now: the host is moving its window's tile in beside this one, alone in its Space meanwhile
+    // (the only moment its size constraints change while hosting). The window's content no wider than the page's left
+    // inset: macOS lays the tile out that wide.
+    func tile() {
+        guard hosting, let layout else { return }
         let width = MarginWindowGeometry.tileWidth(layout)
+        tiledWidth = width
         if window.contentMaxSize.width != width {
             window.contentMinSize = NSSize(width: min(width, MarginWindow.minimum.width), height: min(MarginWindow.minimum.height, 200))
             window.minSize = window.contentMinSize
@@ -320,6 +323,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func windowDidResize(_ notification: Notification) { updatePage(); placeButtons() }
     func windowDidMove(_ notification: Notification) { updatePage() }
     func windowDidEnterFullScreen(_ notification: Notification) { fullScreenChanged(true) }
+    // About to leave full screen while hosting: the one shown goes first, while its tile is still beside this one.
+    func windowWillExitFullScreen(_ notification: Notification) { if hosting { owner?.onLeavingFullScreen?(self) } }
     func windowDidExitFullScreen(_ notification: Notification) { fullScreenChanged(false) }
     func windowDidBecomeKey(_ notification: Notification) { owner?.becameKey(self); placeButtons() }
     func windowDidResignKey(_ notification: Notification) { placeButtons() }
@@ -404,7 +409,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         case "layout":
             guard let geometry = body["geometry"] as? JSONObject, let layout = PageLayout(geometry: geometry) else { return }
             if hosting {
-                let said = "\(layout.mode) \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)) in \(Int(layout.width))×\(Int(layout.height))"
+                let said = "\(layout.mode)\(layout.outside ? " (the sidebar alone)" : "") \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)) in \(Int(layout.width))×\(Int(layout.height))"
                 if said != hostingLayoutSaid {
                     hostingLayoutSaid = said
                     Diagnostics.note("Margin's window \(id): hosting, its page measured \(said) (window \(Int(window.frame.width))×\(Int(window.frame.height)), full screen \(window.styleMask.contains(.fullScreen)))")
@@ -424,7 +429,15 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             placeButtons()
         case "focus":
             pageWantsKeyboard = body["on"] as? Bool == true
-            if pageWantsKeyboard, !options.harness, window.firstResponder !== webView { window.makeFirstResponder(webView) }
+            guard pageWantsKeyboard, !options.harness else { return }
+            // A field of Margin's wants the keys (the palette, ⌘T or the menu's New Tab): Margin and this window take
+            // the keyboard, which a hosted app beside it may have had (seen 2026-11-15: the palette opened while the
+            // hosted app kept the keys).
+            if !NSApp.isActive || !window.isKeyWindow {
+                NSApp.activate()
+                window.makeKey()
+            }
+            if window.firstResponder !== webView { window.makeFirstResponder(webView) }
         case "pointerWant":
             pointerWant = PointerWant(body)
         case "perform":
@@ -479,6 +492,7 @@ final class MarginWindows {
     // A window's page area changed (MarginWindow.pageRect: hosting's own, or the hole's); its page drawn.
     var onPageRect: ((MarginWindowController, CGRect?) -> Void)?
     var onReady: ((MarginWindowController) -> Void)?
+    var onLeavingFullScreen: ((MarginWindowController) -> Void)? // about to leave full screen while hosting
     var onLeftFullScreen: ((MarginWindowController) -> Void)? // left full screen while hosting
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)
     private(set) var controllers: [MarginWindowController] = []

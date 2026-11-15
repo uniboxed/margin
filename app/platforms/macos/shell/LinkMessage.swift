@@ -35,8 +35,10 @@ struct PageLayout: Equatable {
     var radii: [Double] // top-left, top-right, bottom-right, bottom-left
     var width: Double, height: Double // the overlay's (the window's) size it was measured at
     var mode: String
+    // Measured with no page area of its own (Margin's own window hosting beside it: the sidebar alone, `pageOutside`).
+    var outside = false
 
-    // From the page's report ({ insets, radius, radii, container, mode }); nil if it isn't one.
+    // From the page's report ({ insets, radius, radii, container, mode, pageOutside }); nil if it isn't one.
     init?(geometry g: JSONObject) {
         guard let insets = g["insets"] as? JSONObject,
               let l = num(insets["left"]), let t = num(insets["top"]), let r = num(insets["right"]), let b = num(insets["bottom"]),
@@ -47,6 +49,7 @@ struct PageLayout: Equatable {
         self.init(left: l, top: t, right: r, bottom: b, radius: radius.isFinite ? max(0, radius) : 0,
                   radii: radii.count == 4 ? radii : [radius, radius, radius, radius], width: w, height: h,
                   mode: g["mode"] as? String ?? "fullscreen")
+        outside = g["pageOutside"] as? Bool == true
     }
 
     init(left: Double, top: Double, right: Double, bottom: Double, radius: Double, radii: [Double], width: Double, height: Double, mode: String) {

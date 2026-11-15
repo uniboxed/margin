@@ -215,7 +215,8 @@ func glueScenario() async {
   _ = await js(c.webView, "document.querySelector('[m-action=\"editor.cancel\"]')?.click(); return true")
 
   // ---- an app picked in the palette: an item, Margin's window to full screen and the sidebar's tile, the app opened ----
-  check("windowed at first, its page area a hole", !c.isFullScreen && c.window.pageRect != nil)
+  let emptyLauncher = await waitJS(c.webView, "return !!document.querySelector('.launcher')")
+  check("windowed at first, nothing hosted: its page area the theme's launcher, never a see-through hole", !c.isFullScreen && c.window.pageRect != nil && emptyLauncher)
   let display = c.contentFrame
   world.display = display // (full screen in a test is the window's state only: the display is its frame)
   _ = await js(c.webView, "window.webkit.messageHandlers.margin.postMessage({ op: 'perform', name: 'app.open', arg: { bundleId: 'com.apple.TextEdit' } }); return true")
@@ -229,7 +230,10 @@ func glueScenario() async {
   let tile = c.window.frame.width
   let layout = c.layout
   check("Margin's window is the sidebar's tile: as wide as the page's left inset", layout.map { MarginWindowGeometry.tileWidth($0) == tile } == true && tile < 400, "\(tile) \(String(describing: layout))")
-  check("its page draws the sidebar alone, docked (pageOutside)", await waitJS(c.webView, "return document.querySelector('.arcadia')?.dataset.sidebar === 'open'"))
+  let alone = await waitJS(c.webView, "const r = document.querySelector('.arcadia'); return r?.dataset.sidebar === 'open' && !document.querySelector('.launcher') && r.hasAttribute('m-sidebar-fixed') && getComputedStyle(document.querySelector('[m-resize]')).display === 'none'")
+  check("its page draws the sidebar alone, docked (pageOutside), no launcher, its width not dragged", alone)
+  check("the placement from a layout measured in full screen with the sidebar alone (no fallback to an older one)", c.layout?.outside == true && c.layout?.mode == "fullscreen"
+        && !session.done.contains { $0.contains("no full-screen layout") }, "\(String(describing: c.layout)) \(session.done.filter { $0.contains("layout") })")
   let expected = layout.flatMap { MarginWindowGeometry.hostedPageRect(display: display, layout: $0, right: c.wideRight) }
   check("the engine got the page area from the tiles: the display less Margin's tile and the theme's insets",
         expected != nil && engine.pageRect == expected && expected?.minX == display.minX + tile && c.window.pageRect == expected, "\(engine.pageRect) \(String(describing: expected))")

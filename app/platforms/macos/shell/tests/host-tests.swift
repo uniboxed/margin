@@ -14,7 +14,14 @@ final class FakeHostWorld: HostSystem {
 
     static let marginSpace: UInt64 = 100, marginTile: UInt64 = 101, desktop: UInt64 = 1, marginWindow = 1
     static let display = CGRect(x: 0, y: 33, width: 1512, height: 949) // a full-screen Space's layout area
-    static let marginWidth: CGFloat = 260
+    // Margin's window's width as macOS lays its tile out (its content's max width); `narrowing`: a new width it takes
+    // at that time on the clock (its resize animates), as Margin's window does after `willTile`.
+    var marginWidth: CGFloat = 260
+    var narrowing: (width: CGFloat, at: Double)?
+    // A window whose tile just moved into Margin's Space keeps its full-screen frame (the whole area) this long, as
+    // the real window manager reads mid-transition (2026-11-15: hosted 0,33 1512×949 with 0/7/8/8 already reserved).
+    var tileLag = 0.0
+    var movedAt: [Int: Double] = [:]
 
     var clock = 0.0
     var calls: [String] = []
@@ -50,7 +57,11 @@ final class FakeHostWorld: HostSystem {
 
     init() { wins[Self.marginWindow] = Win(pid: 1, spaces: [Self.marginSpace]) }
 
-    func now() -> Double { clock }
+    func now() -> Double {
+        if let n = narrowing, clock >= n.at { marginWidth = n.width; narrowing = nil }
+        return clock
+    }
+    func narrow(to width: CGFloat, after seconds: Double) { narrowing = (width, clock + seconds) }
     func sleep(_ seconds: Double) async { clock += seconds; await Task.yield() }
 
     // ---- apps ----
@@ -164,12 +175,14 @@ final class FakeHostWorld: HostSystem {
         let sidebar = apps[w.pid]?.sidebarOpen == true
         let area = (sidebar ? .zero : (reservation[space] ?? .zero)).inset(Self.display)
         let list = tiles[space] ?? []
+        _ = now() // (Margin's window's width at this time)
         if space == Self.marginSpace {
             if window == Self.marginWindow {
-                return list.count == 1 ? CGRect(x: (Self.display.width - Self.marginWidth) / 2, y: Self.display.minY, width: Self.marginWidth, height: Self.display.height)
-                    : CGRect(x: area.minX, y: area.minY, width: Self.marginWidth, height: area.height)
+                return list.count == 1 ? CGRect(x: (Self.display.width - marginWidth) / 2, y: Self.display.minY, width: marginWidth, height: Self.display.height)
+                    : CGRect(x: area.minX, y: area.minY, width: marginWidth, height: area.height)
             }
-            let x = area.minX + Self.marginWidth + CGFloat(spacing[space] ?? 12)
+            if let at = movedAt[window], clock < at + tileLag { return Self.display } // (its full-screen frame still)
+            let x = area.minX + marginWidth + CGFloat(spacing[space] ?? 12)
             return CGRect(x: x, y: area.minY, width: area.maxX - x, height: area.height)
         }
         return area
@@ -193,6 +206,7 @@ final class FakeHostWorld: HostSystem {
         list.insert(tile, at: min(index, list.count))
         tiles[space] = list
         if let n = tileWindow[tile], var w = wins[n], w.priv == nil { w.spaces = [space]; wins[n] = w }
+        if let n = tileWindow[tile] { movedAt[n] = clock }
         return true
     }
     func setTileSpacing(_ value: Double, space: UInt64) -> Bool { calls.append("spacing \(Int(value))"); spacing[space] = value; return true }
@@ -235,6 +249,20 @@ final class FakeHostWorld: HostSystem {
 
     var hostedTiles: [UInt64] { (tiles[Self.marginSpace] ?? []).filter { $0 != Self.marginTile } }
 
+    // Margin's window leaving full screen as macOS does it with a hosted tile beside it: Margin's Space goes, the
+    // hosted window stands alone in a full-screen Space of its own (what the person saw, 2026-11-15).
+    func marginLeavesFullScreen() {
+        for tile in hostedTiles {
+            guard let n = tileWindow[tile], let pid = wins[n]?.pid else { continue }
+            let space = nextId
+            nextId += 1
+            tiles[space] = [tile]
+            owner[space] = pid
+            wins[n]?.spaces = [space]
+        }
+        tiles[Self.marginSpace] = [Self.marginTile]
+    }
+
     // A window closed by its app (a Safari copy's closeWindow): its tile and its own full-screen Space go with it.
     func closeWindow(_ n: Int) {
         guard let w = wins.removeValue(forKey: n) else { return }
@@ -254,6 +282,8 @@ final class FakeSafariCopy {
     var asked: [String?] = []
     var closed: [Int] = []
     var fullScreens: [String] = [] // "<id> on|off"
+    var closesOnlyNormal = false // Safari closes only a normal window (on a Desktop, not full screen), as seen at quit 2026-11-15
+    var closedAs: [String] = [] // each window as it was asked to close: "normal", "parked" or "full screen"
     var windowOf: [Int: Int] = [:] // the copy's id → the window server's number
     var nextId = 7914
     var makesWindow = true // Safari makes the window it's asked for
@@ -288,11 +318,17 @@ final class FakeSafariCopy {
         closed.append(id)
         world.calls.append("copy close \(id)")
         guard closes else { return false }
+        if let n = windowOf[id], let w = world.wins[n] {
+            let state = w.priv != nil ? "parked" : w.fullScreen ? "full screen" : "normal"
+            closedAs.append(state)
+            if closesOnlyNormal, state != "normal" { return true } // (asked; Safari doesn't)
+        }
         if let n = windowOf.removeValue(forKey: id) { world.closeWindow(n) }
         return true
     }
     func fullScreen(_ id: Int, _ on: Bool) -> Bool {
         fullScreens.append("\(id) \(on ? "on" : "off")")
+        world.calls.append("copy fullScreen \(id) \(on)")
         guard answersFullScreen, let n = windowOf[id], let p = world.wins[n]?.pid else { return false }
         if fullScreenWorks || !on { world.applyFullScreen(pid: p, window: n, on) }
         return true
@@ -337,16 +373,22 @@ func hostTests() {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("margin-host-tests-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: folder) }
     var made = 0
+    // Margin's window told to become the sidebar's tile while the hosted tile was beside it (its size constraints would
+    // change while it's a tile: what took it out of full screen, 2026-11-15). Must stay 0.
+    var tiledShared = 0
     func world() -> (FakeHostWorld, HostEngine, URL) {
         made += 1
         let w = FakeHostWorld()
         let url = folder.appendingPathComponent("\(made)/\(HostMarker.fileName)")
-        return (w, HostEngine(system: w, marker: url, pid: 1), url)
+        let e = HostEngine(system: w, marker: url, pid: 1)
+        e.willTile = { _ in if !w.hostedTiles.isEmpty { tiledShared += 1 } }
+        return (w, e, url)
     }
     let page = CGRect(x: 276, y: 41, width: 1228, height: 933) // 16 pt after Margin's tile, 8 pt from the other edges
+    @Sendable func placed(_ rect: CGRect, tile: CGFloat = 260) -> HostPlacement { HostPlacement(page: rect, area: FakeHostWorld.display, tileWidth: tile) }
     let textEdit = HostTarget.app("com.apple.TextEdit"), notes = HostTarget.app("com.apple.Notes")
     func open(_ e: HostEngine, _ t: HostTarget, _ rect: CGRect = page) -> HostResult? {
-        hostRun { await e.open(app: t, in: rect, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        hostRun { await e.open(app: t, in: placed(rect), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
     }
     func clean(_ w: FakeHostWorld) -> Bool { w.ownerlessFullScreenSpaces() == [] && w.dropped == 0 && w.destroyedWithTiles == 0 }
 
@@ -376,7 +418,7 @@ func hostTests() {
 
         // the page area changes
         let page2 = CGRect(x: 272, y: 61, width: 1220, height: 900)
-        check("host: a new page area taken", hostRun { await e.pageRectChanged(page2) } == true && w.bounds(window: window) == page2 && w.spacing[FakeHostWorld.marginSpace] == 12)
+        check("host: a new page area taken", hostRun { await e.pageRectChanged(placed(page2)) } == true && w.bounds(window: window) == page2 && w.spacing[FakeHostWorld.marginSpace] == 12)
 
         // ---- outside open, promotion ----
         w.openFromOutside(pid)
@@ -401,7 +443,7 @@ func hostTests() {
     }
     do {
         let (w, e, _) = world()
-        let r = hostRun { await e.open(app: textEdit, in: page, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.desktop) }
+        let r = hostRun { await e.open(app: textEdit, in: placed(page), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.desktop) }
         check("host: Margin's window not in a full-screen Space: refused, nothing started", { if case .failed(.margin, _)? = r { return true }; return false }() && w.apps.isEmpty)
     }
 
@@ -433,7 +475,7 @@ func hostTests() {
               && events.contains { if case .failed(_, .destroy, _) = $0 { return true }; return false } && HostMarker.read(marker)?.leftSpaces == left)
         w.fail = []
         e.poll()
-        _ = hostRun { await e.pageRectChanged(page) } // the next operation, after the poll's retry
+        _ = hostRun { await e.pageRectChanged(placed(page)) } // the next operation, after the poll's retry
         check("host: the emptied Space destroyed on a later poll", clean(w) && e.leftSpaces.isEmpty, "\(String(describing: w.ownerlessFullScreenSpaces()))")
     }
     do {
@@ -641,8 +683,13 @@ func hostTests() {
               && w.wins[mine]?.priv != nil && w.wins[mine]?.fullScreen == false && !w.calls.contains("fullScreen false \(mine)"), "\(copy.fullScreens)")
         let back = hostRun { await e.show(target.id) }
         check("host: shown again: full screen by its copy again, fitted", back == .shown(target.id, placed: true) && copy.fullScreens.last == "7914 on" && w.spaces(window: mine) == [FakeHostWorld.marginSpace] && clean(w), "\(String(describing: back))")
+        copy.closesOnlyNormal = true
+        w.calls = []
         hostRun { await e.quitAll() }
-        check("host: quit: Margin's Safari window out of full screen and closed by its copy, Safari left running", copy.closed == [ext] && w.wins[mine] == nil && w.apps[safariPid] != nil && clean(w) && e.leftSafariWindows.isEmpty)
+        check("host: quit: Margin's Safari window out of full screen and closed by its copy, Safari left running", copy.closed == [ext] && w.wins[mine] == nil && w.apps[safariPid] != nil && clean(w) && e.leftSafariWindows.isEmpty,
+              "\(copy.closed) \(copy.closedAs) \(e.leftSafariWindows)")
+        let normalAt = w.calls.firstIndex(of: "copy fullScreen 7914 false") ?? 99, closeAt = w.calls.firstIndex(of: "copy close 7914") ?? -1
+        check("host: quit: the shown Safari window put normal by its copy, then closed as a normal window", normalAt < closeAt && copy.closedAs == ["normal"], "\(w.calls) \(copy.closedAs)")
     }
     do {
         let (w, e, _) = world()
@@ -746,7 +793,7 @@ func hostTests() {
         check("host: … out of full screen and on the Desktop meanwhile, in no full-screen Space", w.wins[copy.windowOf[7914] ?? 0]?.fullScreen == false && clean(w))
         copy.closes = true
         e.poll()
-        _ = hostRun { await e.pageRectChanged(page) } // the next operation, after the poll's try
+        _ = hostRun { await e.pageRectChanged(placed(page)) } // the next operation, after the poll's try
         check("host: … closed by its copy on a later poll, the marker gone", !copy.isOpen(7914) && e.leftSafariWindows.isEmpty && !FileManager.default.fileExists(atPath: markerURL.path))
     }
     do {
@@ -792,12 +839,131 @@ func hostTests() {
         check("host: Safari already open and no link to ask for a window: failed, Safari untouched", { if case .failed(.window, _)? = r { return true }; return false }() && w.apps[safariPid] != nil && !w.calls.contains { $0.hasPrefix("fullScreen") })
     }
 
+    // ---- the reservation from the placement: the same whatever the windows' bounds mid-transition ----
+    do {
+        let (w, e, _) = world()
+        w.tileLag = 1.0 // the hosted window keeps its full-screen frame for a second after its tile moves
+        let want = SlotEdges(left: 0, right: 8, top: 8, bottom: 8)
+        _ = open(e, textEdit)
+        let a = w.apps[w.running(bundleId: "com.apple.TextEdit")[0].pid]!.windows[0]
+        check("host: a tile that lags in its full-screen frame: placed at the page area, reserved once as planned", w.bounds(window: a) == page && w.reservation[FakeHostWorld.marginSpace] == want,
+              "\(String(describing: w.reservation[FakeHostWorld.marginSpace])) \(w.calls.filter { $0.hasPrefix("reserve") })")
+        for _ in 0..<3 {
+            _ = open(e, notes)
+            _ = hostRun { await e.show(textEdit.id) }
+            _ = hostRun { await e.pageRectChanged(placed(page)) }
+        }
+        let reserves = Set(w.calls.filter { $0.hasPrefix("reserve") })
+        check("host: switches and the same placement again, mid-transition each time: the reservation never grows", reserves == ["reserve \(want.text)"] && w.reservation[FakeHostWorld.marginSpace] == want,
+              "\(reserves)")
+        check("host: … and the window is at the page area after each", w.bounds(window: a) == page && clean(w))
+    }
+
+    // ---- Margin's window narrowing: waited for only when it really narrows, until it's there ----
+    do {
+        let (w, e, _) = world()
+        w.marginWidth = 1512 // Margin's window alone in its Space, its whole width
+        var lines: [String] = []
+        let echo = Diagnostics.echo
+        Diagnostics.echo = { lines.append($0) }
+        e.willTile = { _ in if w.marginWidth != 260 { w.narrow(to: 260, after: 0.2) } } // (its resize animates)
+        let t0 = w.clock
+        _ = open(e, textEdit)
+        let first = w.clock - t0
+        let t1 = w.clock
+        _ = open(e, notes)
+        let second = w.clock - t1
+        Diagnostics.echo = echo
+        func tileStep(_ id: HostID) -> Int? {
+            guard let line = lines.last(where: { $0.contains("host: \(id) shown in") }), let r = line.range(of: "tile ") else { return nil }
+            return Int(line[r.upperBound...].prefix { $0.isNumber })
+        }
+        let a = tileStep(textEdit.id) ?? -1, b = tileStep(notes.id) ?? -1
+        check("host: Margin's window narrowing: the tile step waits until it's at the tile's width and steady (200 ms here), never the fixed 2.1 s", a >= 200 && a <= 400 && w.marginWidth == 260, "tile \(a) ms, \(lines.filter { $0.contains("narrowed") })")
+        check("host: Margin's window at the tile's width already (every switch after the first): no wait at all", b == 0 && lines.filter { $0.contains("narrowed") }.count == 1, "tile \(b) ms")
+        check("host: the whole switch's time with Margin's tile already narrow, against the first open's", second < first && second < 0.5, "first \(first) s, second \(second) s")
+        e.willTile = nil
+    }
+
+    // ---- Margin's window leaving full screen: the one shown parked at once, nothing left alone ----
+    do {
+        let (w, e, _) = world()
+        var events: [HostEvent] = []
+        e.onEvent = { events.append($0) }
+        _ = open(e, textEdit)
+        let a = w.apps[w.running(bundleId: "com.apple.TextEdit")[0].pid]!.windows[0]
+        hostRun { await e.parkShown(why: "Margin's window left full screen") }
+        check("host: Margin's window leaving full screen: the one shown parked (private Space, out of full screen), nothing shown, said",
+              e.shown == nil && e.hosts[textEdit.id]?.phase == .parked && w.wins[a]?.priv != nil && w.wins[a]?.fullScreen == false && events.last == .unshown(textEdit.id), "\(events)")
+        check("host: … Margin's Space keeps its own tile only, its reservation given back, nothing ownerless", w.hostedTiles.isEmpty && w.reservation[FakeHostWorld.marginSpace] == .zero && clean(w))
+        let back = open(e, textEdit)
+        check("host: Margin in full screen again and the item shown: hosted again, fitted", back == .shown(textEdit.id, placed: true) && e.shown == textEdit.id && w.spaces(window: a) == [FakeHostWorld.marginSpace] && clean(w), "\(String(describing: back))")
+
+        // macOS took Margin's window out of full screen first (no word of it before): the poll finds the one shown alone.
+        w.marginLeavesFullScreen()
+        let alone = w.spaces(window: a)?.first ?? 0
+        check("host: (the stand-in) the hosted window alone in a full-screen Space of its own", alone != FakeHostWorld.marginSpace && w.spaceType(alone) == 4)
+        e.poll()
+        check("host: one read outside Margin's Space: not yet (a read can miss mid-transition)", e.shown == textEdit.id)
+        e.poll()
+        _ = hostRun { await e.pageRectChanged(placed(page)) } // (the next operation, after the poll's)
+        check("host: found outside Margin's Space twice: parked at once, its own Space given back, nothing shown", e.shown == nil && e.hosts[textEdit.id]?.phase == .parked
+              && w.wins[a]?.priv != nil && w.wins[a]?.fullScreen == false && w.tiles[alone] == nil && clean(w) && events.last == .unshown(textEdit.id), "\(w.tiles) \(events.suffix(3))")
+
+        // A parked window macOS (or its app) put on a Desktop: parked again.
+        w.wins[a]?.priv = nil
+        w.wins[a]?.spaces = [FakeHostWorld.desktop]
+        e.poll(); e.poll()
+        _ = hostRun { await e.pageRectChanged(placed(page)) }
+        check("host: a parked window found on a Desktop: parked again, out of sight", w.wins[a]?.priv != nil && w.spaces(window: a) == [] && e.hosts[textEdit.id]?.phase == .parked)
+        hostRun { await e.quitAll() }
+        check("host: … and quit as any", w.apps.isEmpty && clean(w))
+    }
+
+    // ---- another tile width: parked and brought in again, never resized while tiled ----
+    do {
+        let (w, e, _) = world()
+        _ = open(e, textEdit)
+        let a = w.apps[w.running(bundleId: "com.apple.TextEdit")[0].pid]!.windows[0]
+        var tiles = 0
+        e.willTile = { _ in
+            tiles += 1
+            if !w.hostedTiles.isEmpty { tiledShared += 1 }
+            w.marginWidth = 300 // (Margin's window takes the new width, alone in its Space)
+        }
+        let wider = CGRect(x: 316, y: 41, width: 1188, height: 933)
+        let r = hostRun { await e.pageRectChanged(placed(wider, tile: 300)) }
+        check("host: a new tile width (another theme): parked and brought in again beside it, fitted", r == true && tiles == 1 && w.bounds(window: a) == wider && e.shown == textEdit.id && e.tiledWidth == 300 && clean(w),
+              "\(String(describing: r)) \(String(describing: w.bounds(window: a)))")
+        let again = hostRun { await e.pageRectChanged(placed(CGRect(x: 316, y: 61, width: 1188, height: 900), tile: 300)) }
+        check("host: the same width, other edges: only reserved again, nothing re-tiled", again == true && tiles == 1)
+        e.willTile = nil
+    }
+    check("host: Margin's window never made the sidebar's tile while a hosted tile was beside it", tiledShared == 0, "\(tiledShared)")
+
+    // ---- quit: a parked Safari window made a normal one before its copy closes it ----
+    do {
+        let (w, e, _) = world()
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        copy.closesOnlyNormal = true
+        _ = open(e, .safariWindow(nil))
+        let mine = copy.windowOf[7914] ?? 0
+        _ = open(e, textEdit) // Safari's window parked
+        check("host: (Safari's window parked)", w.wins[mine]?.priv != nil && e.hosts[HostTarget.safariWindow(nil).id]?.phase == .parked)
+        hostRun { await e.quitAll() }
+        check("host: quit: a parked Safari window out of its private Space onto the Desktop, then closed by its copy as a normal window", copy.closedAs == ["normal"] && w.wins[mine] == nil && e.leftSafariWindows.isEmpty && w.privates.isEmpty && clean(w),
+              "\(copy.closedAs) \(e.leftSafariWindows)")
+        check("host: quit: Safari (not Margin's) left running, the app Margin started quit", w.apps[safariPid] != nil && w.running(bundleId: "com.apple.TextEdit").isEmpty)
+    }
+
     // ---- one at a time ----
     do {
         let (w, e, _) = world()
         let both = hostRun { () async -> [HostResult] in
-            async let one = e.open(app: textEdit, in: page, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace)
-            async let two = e.open(app: notes, in: page, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace)
+            async let one = e.open(app: textEdit, in: placed(page), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace)
+            async let two = e.open(app: notes, in: placed(page), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace)
             return await [one, two]
         }
         check("host: two opens at once run one after the other: both shown in turn, two tiles", both?.allSatisfy { if case .shown = $0 { return true }; return false } == true && w.tiles[FakeHostWorld.marginSpace]?.count == 2 && clean(w), "\(String(describing: both))")
@@ -805,14 +971,16 @@ func hostTests() {
 }
 
 func hostLayoutTests() {
-    let margin = CGRect(x: 0, y: 33, width: 260, height: 949), hosted = CGRect(x: 272, y: 33, width: 1240, height: 949)
-    let plan = HostLayout.plan(margin: margin, hosted: hosted, reserved: .zero, page: CGRect(x: 280, y: 41, width: 1224, height: 933))
-    check("host layout: the page area's edges and the spacing from the tiles now", plan?.edges == SlotEdges(left: 0, right: 8, top: 8, bottom: 8) && plan?.spacing == 20, "\(String(describing: plan))")
-    let again = HostLayout.plan(margin: CGRect(x: 0, y: 41, width: 260, height: 933), hosted: CGRect(x: 280, y: 41, width: 1224, height: 933),
-                                reserved: SlotEdges(left: 0, right: 8, top: 8, bottom: 8), page: CGRect(x: 272, y: 33, width: 1240, height: 949))
-    check("host layout: from a reservation already set, back to none", again?.edges == .zero && again?.spacing == 12, "\(String(describing: again))")
-    check("host layout: a page area under Margin's tile can't be reached", HostLayout.plan(margin: margin, hosted: hosted, reserved: .zero, page: CGRect(x: 200, y: 41, width: 1300, height: 900)) == nil)
-    check("host layout: a page area past the display can't be reached", HostLayout.plan(margin: margin, hosted: hosted, reserved: .zero, page: CGRect(x: 280, y: 20, width: 1224, height: 900)) == nil)
+    let area = CGRect(x: 0, y: 33, width: 1512, height: 949)
+    let p = HostPlacement(page: CGRect(x: 280, y: 41, width: 1224, height: 933), area: area, tileWidth: 260)
+    let plan = HostLayout.plan(p)
+    check("host layout: the page area's edges and the spacing from the placement", plan?.edges == SlotEdges(left: 0, right: 8, top: 8, bottom: 8) && plan?.spacing == 20, "\(String(describing: plan))")
+    check("host layout: the same placement, the same plan, every time (nothing read from the windows)", (0..<5).allSatisfy { _ in HostLayout.plan(p)?.edges == plan?.edges && HostLayout.plan(p)?.spacing == plan?.spacing })
+    let whole = HostLayout.plan(HostPlacement(page: CGRect(x: 260, y: 33, width: 1252, height: 949), area: area, tileWidth: 260))
+    check("host layout: the page area the rest of the display: nothing reserved, no spacing", whole?.edges == .zero && whole?.spacing == 0, "\(String(describing: whole))")
+    check("host layout: a page area under Margin's tile can't be reached", HostLayout.plan(HostPlacement(page: CGRect(x: 200, y: 41, width: 1300, height: 900), area: area, tileWidth: 260)) == nil)
+    check("host layout: a page area past the display can't be reached", HostLayout.plan(HostPlacement(page: CGRect(x: 280, y: 20, width: 1224, height: 900), area: area, tileWidth: 260)) == nil)
+    check("host layout: on a display left of the main one: in its coordinates", HostLayout.plan(HostPlacement(page: CGRect(x: -1652, y: 8, width: 1644, height: 1064), area: CGRect(x: -1920, y: 0, width: 1920, height: 1080), tileWidth: 260))?.spacing == 8)
     check("host ids: an app by its bundle id, Safari's default profile by name, another profile never", HostTarget.app("com.apple.Notes").id.description == "app:com.apple.Notes" && HostTarget.safariWindow(nil).id.description == "safari:default"
           && !HostTarget.safariWindow("Personal").id.description.contains("Personal") && HostTarget.safariWindow("A").id != HostTarget.safariWindow("B").id)
     var m = HostMarker(pid: 3, marginSpace: 9)

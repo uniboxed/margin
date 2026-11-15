@@ -1,9 +1,11 @@
 // Margin's own window (docs/MARGIN-APP.md, phase 2): a regular app window,
 // windowed or full screen (its own Space), with Margin's UI drawn edge to edge
-// under a transparent title bar, and its page area a hole: whatever window is
-// behind it there (the hosted app's, sized by macOS to `pageRect`: another
-// phase) shows through and takes the pointer. Behind `MarginHosted` (off: none
-// of this runs; Shell.forApp).
+// under a transparent title bar. It's opaque, its corners rounded as macOS
+// draws a window's: a hosted window is never behind it but beside it, a tile
+// of its full-screen Space (HostedSession.swift), so nothing shows through and
+// nothing passes through; with nothing hosted, its page area is the theme's
+// launcher (ui/host-app.ts). Behind `MarginHosted` (off: none of this runs;
+// Shell.forApp).
 //
 // - MarginWindow: the NSWindow. `pageRect` is the page area in the window
 //   server's coordinates (top left, points), published with `onPageRectChange`
@@ -43,8 +45,10 @@ final class MarginWindow: NSWindow {
         titlebarAppearsTransparent = true
         titleVisibility = .hidden
         title = "Margin"
+        // (Not opaque to AppKit, so its corners stay rounded; filled, so no edge of it is ever see-through. Seen
+        // 2026-11-15: a clear background showed the Desktop through its page area and edges at the first open.)
         isOpaque = false
-        backgroundColor = .clear
+        backgroundColor = .windowBackgroundColor
         hasShadow = true
         isReleasedWhenClosed = false
         isMovableByWindowBackground = false

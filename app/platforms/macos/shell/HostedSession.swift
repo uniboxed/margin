@@ -12,8 +12,14 @@
 //   Chrome and Edge items: not hosted yet (said in the log).
 // - Margin's window while hosting (v1 rule, decided here): it's taken to full screen first (its own Space: the tiles
 //   need it; windowed hosting is a later phase), its page drawing the sidebar alone (MarginWindowController.setHosting),
-//   the sidebar's tile once the hosted tile comes in (`willTile`), and the engine is given the page area worked out
-//   from the tiles. Nothing hosted any more: its whole width again.
+//   the sidebar's tile once the hosted tile comes in (`willTile`), and the engine is given the placement worked out
+//   from the tiles (the page area, the display's area, Margin's tile width). It's the sidebar's tile only while the
+//   engine shows something in it: nothing shown any more (closed, quit, parked), its whole width again, the theme's
+//   launcher in its page area. Leaving full screen (the person's ⌃⌘F, the green button, anything), the one shown is
+//   parked at once (`leavingFullScreen`): nothing hosted ever stands alone in a full-screen Space of its own.
+// - A show asked for is the window's item in front at once (`requested`: the sidebar's switch lands as it's asked,
+//   while an app can take seconds to come in), and a show overtaken by a newer one for the same window before it
+//   started is skipped (fast clicks don't queue a full switch each).
 // - An app picked in the palette (`app.open`): an item of the window's space (the one it has for that app, else a new
 //   one, `addItem`), then shown. Safari picked: a new web item instead (a blank page, the space's profile). Chrome
 //   and Edge picked: not supported yet, nothing done.
@@ -27,10 +33,12 @@ import AppKit
 
 // What the session asks of the host engine (HostEngine.swift; a test's stand-in).
 protocol HostedEngine: AnyObject {
-    func open(app target: HostTarget, in pageRect: CGRect, marginWindow: Int, marginSpace: UInt64) async -> HostResult
+    // Opens it, or shows it again if it's hosted (always with Margin's window's placement and Space as they are now).
+    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult
     func show(_ id: HostID) async -> HostResult
     func close(_ id: HostID) async
-    func pageRectChanged(_ rect: CGRect) async -> Bool
+    func pageRectChanged(_ placement: HostPlacement) async -> Bool
+    func parkShown(why: String) async
     var shown: HostID? { get }
     var hasHosts: Bool { get }
     func isHosted(_ id: HostID) -> Bool
@@ -45,7 +53,7 @@ protocol HostedWindow: AnyObject {
     var id: Int { get }
     var number: Int { get } // the window server's
     var isFullScreen: Bool { get }
-    var hostedPageRect: CGRect? { get } // the page area while hosting (top left), nil until worked out
+    var hostedPlacement: HostPlacement? { get } // the page area, the display's area, its tile's width while hosting; nil until worked out
     var pageAreaWhyNot: String { get } // why there's none yet, for the log
     func toFullScreen()
     var fullScreenState: String { get } // for the log
@@ -57,15 +65,14 @@ protocol HostedWindow: AnyObject {
 
 extension MarginWindowController: HostedWindow {
     var number: Int { window.windowNumber }
-    // (Only from a layout its page measured in full screen, a moment after it was told the sidebar is all it draws:
-    // a layout from before is followed by that one.)
-    var hostedPageRect: CGRect? { hosting && isFullScreen && layout != nil && Diagnostics.now() - hostingSince >= 0.25 ? window.pageRect : nil }
     var layoutMode: String? { layout?.mode }
     var pageAreaWhyNot: String {
         if !hosting { return "not hosting" }
         guard let layout else { return "no layout from its page" }
         if !isFullScreen { return "not in full screen" }
-        return window.pageRect == nil ? "the window has no page rect (display \(hostDisplay.map { "\(Int($0.width))×\(Int($0.height))" } ?? "unknown"), layout \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)))" : "too soon"
+        if !layout.outside { return "no layout measured with the sidebar alone yet" }
+        if layout.mode != "fullscreen" { return "its last layout is a \(layout.mode) one" }
+        return "the window has no page rect (display \(hostDisplay.map { "\(Int($0.width))×\(Int($0.height))" } ?? "unknown"), layout \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)))"
     }
     func toFullScreen() { if !isFullScreen { toggleFullScreen() } }
 }
@@ -116,6 +123,9 @@ final class HostedSession: LibraryDelegate {
     private(set) var open: [String: OpenItem] = [:]
     private(set) var safariWindows: [String: Int] = [:]
     private(set) var hostingWindow: Int?
+    // Each Margin window's item asked to be shown and not shown yet (the newest): drawn in front at once.
+    private(set) var requested: [Int: String] = [:]
+    static let showRequests: Set<String> = ["activateTab", "newTab", "restoreArchive", "setSpace", "openPin"]
     // The first run's space (the library was empty), for the UI's editor once a window's page is drawn.
     var firstSpace: String?
     // The UI's numbers for open items (it takes only numbers for open tabs), this session's.
@@ -157,16 +167,34 @@ final class HostedSession: LibraryDelegate {
     // ---- the library's requests ----
 
     func library(_ library: Library, wants request: LibraryRequest) {
+        // The item in front in its window at once (the sidebar's switch highlight lands as it's asked: an app's switch
+        // takes seconds, and the highlight went back to the item left meanwhile, "back on a tab it had passed").
+        if Self.showRequests.contains(request.type), let item = request.item, let w = window(request.windowId), requested[w.id] != item {
+            requested[w.id] = item
+            onChange?()
+        }
         enqueue { await self.handle(request) }
     }
 
+    // A show overtaken before it started by a newer one for its window (fast clicks): skipped.
+    private func overtaken(_ item: String, windowId: Int?) -> Bool {
+        guard let w = window(windowId), let newest = requested[w.id], newest != item else { return false }
+        note("\(item): not shown, \(newest) asked for since")
+        return true
+    }
+
     private func handle(_ r: LibraryRequest) async {
+        defer { settleHosting() }
         switch r.type {
         case "activateTab", "newTab", "restoreArchive", "setSpace":
             guard let item = r.item else { return } // (a space with no items: nothing to show)
+            if overtaken(item, windowId: r.windowId) { return }
             await show(item, url: r.url, target: r.target, windowId: r.windowId)
         case "openPin":
-            if let item = r.item { return await show(item, url: r.url, target: r.target, windowId: r.windowId) }
+            if let item = r.item {
+                if overtaken(item, windowId: r.windowId) { return }
+                return await show(item, url: r.url, target: r.target, windowId: r.windowId)
+            }
             var payload: JSONObject = ["url": r.url ?? "", "front": true]
             if let space = r.spaceId { payload["spaceId"] = space }
             if let w = r.windowId { payload["windowId"] = w }
@@ -177,8 +205,10 @@ final class HostedSession: LibraryDelegate {
         case "closeTab":
             guard let item = r.item else { return }
             let windows = shown.filter { $0.value == item }.map(\.key)
+            let next = r.body["next"] as? String
+            if let next, let window = windows.first, requested[window] == nil { requested[window] = next } // (in front at once)
             await close(item, target: r.target)
-            if let next = r.body["next"] as? String, let window = windows.first {
+            if let next, let window = windows.first {
                 await show(next, url: nil, target: library.target(ofItem: next), windowId: window)
             }
         case "clearToday":
@@ -193,8 +223,11 @@ final class HostedSession: LibraryDelegate {
     // An item in a Margin window's page area (nil: the front window): its app or its Safari profile's window shown,
     // and for a web item its tab in front there.
     func show(_ item: String, url: String?, target: ItemTarget?, windowId: Int?) async {
-        guard let target = target ?? library.target(ofItem: item) else { return note("\(item): no target") }
         guard let w = window(windowId) else { return note("\(item): no Margin window to show it in") }
+        // (Shown or not, it's no longer one asked for: a failure draws the item shown before in front again.)
+        var drawn = false
+        defer { if requested[w.id] == item { requested[w.id] = nil; if !drawn { onChange?() } } }
+        guard let target = target ?? library.target(ofItem: item) else { return note("\(item): no target") }
         let address = url ?? (library.items().first { $0.id == item }?.value["url"] as? String) ?? ""
         switch target {
         case .app(let bundle, _):
@@ -214,29 +247,38 @@ final class HostedSession: LibraryDelegate {
             note("\(item): shown in Safari window \(windowId)")
         }
         shown[w.id] = item
+        if requested[w.id] == item { requested[w.id] = nil }
+        drawn = true
         onChange?()
     }
 
     // The engine's open (the first time) or show, into `w`'s page area; Margin's window made ready first. False: not shown.
     private func host(_ target: HostTarget, in w: HostedWindow) async -> Bool {
-        guard let (rect, space) = await prepare(w) else { return false }
-        let result = engine.isHosted(target.id) ? await engine.show(target.id) : await engine.open(app: target, in: rect, marginWindow: w.number, marginSpace: space)
+        guard let (placement, space) = await prepare(w) else { settleHosting(); return false }
+        // (Hosted already, or not: opened or shown again with Margin's window's placement and Space as they are now,
+        // which change when its window left full screen and came back.)
+        let result = await engine.open(app: target, in: placement, marginWindow: w.number, marginSpace: space)
         switch result {
         case .shown(let id, let placed):
             note("\(id): shown\(placed ? "" : " (not fitted to the page area)")")
             return true
         case .failed(let step, let why):
             note("\(target.id): \(step.rawValue) failed: \(why)")
-            if !engine.hasHosts { stopHosting() }
+            settleHosting()
             return false
         }
     }
 
     // Margin's window ready to host beside it: in full screen (v1: its own Space; windowed hosting is later), the
     // sidebar's tile, its page area worked out. Nil: it couldn't be.
-    private func prepare(_ w: HostedWindow) async -> (CGRect, UInt64)? {
+    private func prepare(_ w: HostedWindow) async -> (HostPlacement, UInt64)? {
         if let other = hostingWindow, other != w.id, let was = window(other) {
-            was.setHosting(false) // (one Margin window hosts at a time)
+            // (One Margin window hosts at a time: the one shown in the other parked first, so that window's size
+            // constraints change only once no hosted tile is beside it.)
+            await engine.parkShown(why: "another Margin window hosts")
+            shown[other] = nil
+            hostingWindow = nil
+            was.setHosting(false)
         }
         if !w.isFullScreen {
             note("Margin's window \(w.id) to full screen first (hosting needs its own Space)")
@@ -252,41 +294,58 @@ final class HostedSession: LibraryDelegate {
             }
         }
         // The page measured at the full-screen size before it's told to draw the sidebar alone (which leaves nothing
-        // to measure): the page area's insets come from that layout (seen 2026-11-15: hosting turned on at once
-        // kept the windowed layout for good).
+        // to measure): the page area's right inset comes from that layout (seen 2026-11-15: hosting turned on at once
+        // kept the windowed layout for good). It comes as soon as the page hears the window's new mode.
         if await !wait(1.5, { w.layoutMode == "fullscreen" }) {
             note("Margin's window \(w.id): no full-screen layout from its page in 1.5 s (\(w.layoutMode ?? "none")): its last one is used")
         }
         w.setHosting(true)
         hostingWindow = w.id
-        guard await wait(options.pageWait, { w.hostedPageRect != nil }), let rect = w.hostedPageRect else {
+        // (A layout measured with the sidebar alone, in full screen: comes once the page has heard `pageOutside`.)
+        guard await wait(options.pageWait, { w.hostedPlacement != nil }), let placement = w.hostedPlacement else {
             note("Margin's window \(w.id): no page area (\(w.pageAreaWhyNot))")
             return nil
         }
-        return (rect, engine.fullScreenSpace(ofWindow: w.number) ?? 0)
+        return (placement, engine.fullScreenSpace(ofWindow: w.number) ?? 0)
     }
 
-    // Margin's window left full screen while hosting (the person's ⌃⌘F, its green button): its whole width again; what
-    // the engine hosts is left to it (its poll sees a window gone, the next show takes Margin's window to full screen).
+    // Margin's window about to leave full screen while hosting (the person's ⌃⌘F, its green button, anything): the one
+    // shown parked at once, while its tile is still in Margin's Space (macOS would leave it alone in a full-screen
+    // Space of its own). Not queued behind the session's own work: the engine takes it next.
+    func leavingFullScreen(_ w: HostedWindow) {
+        guard w.id == hostingWindow, engine.shown != nil else { return }
+        note("Margin's window \(w.id) leaving full screen while hosting: the one shown parked")
+        Task { await self.engine.parkShown(why: "Margin's window left full screen") }
+    }
+
+    // Margin's window left full screen while hosting: the one shown parked (if leaving didn't already), its whole width
+    // again once it's windowed (its size constraints never change while it's a full-screen tile), nothing shown in it.
+    // Shown again when an item is: the show takes it to full screen again.
     func leftFullScreen(_ w: HostedWindow) {
         guard w.id == hostingWindow else { return }
         note("Margin's window \(w.id) left full screen while hosting: its whole width again")
+        if engine.shown != nil { Task { await self.engine.parkShown(why: "Margin's window left full screen") } }
         hostingWindow = nil
         w.setHosting(false)
         shown[w.id] = nil
         onChange?()
     }
 
-    // The engine is moving a host's tile into Margin's Space: the hosting window becomes the sidebar's tile.
+    // The engine is moving a host's tile into Margin's Space (Margin's window alone in it): the hosting window becomes
+    // the sidebar's tile, at its width now.
     func willTile() {
         guard let id = hostingWindow else { return }
         window(id)?.tile()
     }
 
-    private func stopHosting() {
-        guard let id = hostingWindow else { return }
+    // Margin's window is the sidebar's tile only while the engine shows something in it: nothing shown, its whole
+    // width again (after each of the session's steps, and the engine's events, once the engine is done).
+    private func settleHosting() {
+        guard engine.shown == nil, let id = hostingWindow else { return }
         hostingWindow = nil
+        shown[id] = nil
         window(id)?.setHosting(false)
+        onChange?()
     }
 
     // ---- closing ----
@@ -306,7 +365,6 @@ final class HostedSession: LibraryDelegate {
             break
         }
         note("\(item): closed")
-        if !engine.hasHosts { stopHosting() }
         onChange?()
     }
 
@@ -390,31 +448,36 @@ final class HostedSession: LibraryDelegate {
 
     // What the engine says happened outside Margin: an app or its window gone, its items have no page any more.
     func hostEvent(_ event: HostEvent) {
-        let gone: HostID
         switch event {
-        case .quitByUser(let id), .windowClosed(let id), .closed(let id): gone = id
-        default: return
-        }
-        let items = open.filter { $0.value.host == gone }.map(\.key)
-        // (A Safari window's close by its copy already forgot it here: nothing hosted any more still ends the hosting.)
-        guard !items.isEmpty || safariWindows.keys.contains(where: { HostTarget.safariWindow($0).id == gone }) else {
-            if !engine.hasHosts, hostingWindow != nil { stopHosting(); onChange?() }
+        case .unshown(let id):
+            // Parked with nothing in its place (Margin's window left full screen, its window strayed): its items keep
+            // their page, none is shown.
+            for (w, i) in shown where open[i]?.host == id { shown[w] = nil }
+        case .quitByUser(let id), .windowClosed(let id), .closed(let id):
+            let items = open.filter { $0.value.host == id }.map(\.key)
+            for item in items { open[item] = nil }
+            for (w, i) in shown where items.contains(i) { shown[w] = nil }
+            for p in safariWindows.keys where HostTarget.safariWindow(p).id == id { safariWindows[p] = nil }
+        default:
             return
         }
-        for item in items { open[item] = nil }
-        for (w, i) in shown where items.contains(i) { shown[w] = nil }
-        for p in safariWindows.keys where HostTarget.safariWindow(p).id == gone { safariWindows[p] = nil }
-        if !engine.hasHosts { stopHosting() }
         onChange?()
+        // (Whether Margin's window is still a tile is settled once the engine is done: these come mid-operation.)
+        enqueue { self.settleHosting() }
     }
 
     // ---- the page area moved (the sidebar's width, another theme, another display) ----
 
-    func pageRectChanged(_ window: HostedWindow, _ rect: CGRect?) {
-        guard window.id == hostingWindow, let rect, engine.shown != nil else { return }
+    // Taken once per run of changes (a theme's layout reports come in bursts): the newest placement, when its turn comes.
+    private var placing = false
+    func pageRectChanged(_ window: HostedWindow) {
+        guard window.id == hostingWindow, engine.shown != nil, !placing else { return }
+        placing = true
         enqueue {
-            let placed = await self.engine.pageRectChanged(rect)
-            self.note("page area changed: \(Int(rect.width))×\(Int(rect.height))\(placed ? "" : " (not fitted)")")
+            self.placing = false
+            guard window.id == self.hostingWindow, self.engine.shown != nil, let placement = window.hostedPlacement else { return }
+            let placed = await self.engine.pageRectChanged(placement)
+            self.note("page area changed: \(Int(placement.page.width))×\(Int(placement.page.height)), Margin's tile \(Int(placement.tileWidth))\(placed ? "" : " (not fitted)")")
         }
     }
 
@@ -473,17 +536,20 @@ final class HostedSession: LibraryDelegate {
     // The library's snapshot (stored values' shape) with the items that have a page as open tabs of the Margin
     // window hosting them, the one shown active there.
     func live(_ snapshot: JSONObject) -> JSONObject {
-        guard var openTabs = snapshot["openTabs"] as? JSONObject, !open.isEmpty else { return snapshot }
+        let windowId = hostingWindow ?? shown.keys.min() ?? requested.keys.min() ?? 1
+        // In front: the item asked for (not shown yet), else the one shown.
+        let front = requested[windowId] ?? shown[windowId]
+        let listed = Set(open.keys).union(front.map { [$0] } ?? [])
+        guard var openTabs = snapshot["openTabs"] as? JSONObject, !listed.isEmpty else { return snapshot }
         var kept = openTabs["keptTabs"] as? JSONObject ?? [:]
         var tabs: JSONObject = [:], tabSpace: JSONObject = [:]
-        let windowId = hostingWindow ?? shown.keys.min() ?? 1
         var index = 0
-        for item in open.keys.sorted() {
+        for item in listed.sorted() {
             guard let k = kept[item] as? JSONObject, let space = k["spaceId"] as? String else { continue }
             let n = number(ofItem: item)
             tabs[String(n)] = [
                 "id": n, "windowId": windowId, "index": index, "title": k["title"] ?? "", "url": k["url"] ?? "", "favIconUrl": k["favIconUrl"] ?? "",
-                "active": shown[windowId] == item, "lastActive": k["lastActive"] ?? 0, "mid": item, "order": k["order"] ?? 0,
+                "active": front == item, "lastActive": k["lastActive"] ?? 0, "mid": item, "order": k["order"] ?? 0,
             ]
             tabSpace[String(n)] = space
             kept[item] = nil

@@ -23,7 +23,12 @@
 //   7. destroy  its emptied Space destroyed by the window manager (Mission Control then lists Margin's Space
 //               only); never while it's the one showing (that drops the display to the Desktop).
 //   8. place    the page area's other edges reserved, and the spacing between the tiles set, until the window's
-//               bounds are the page area within 1 pt.
+//               bounds are the page area within 1 pt. Planned from the placement Margin's window gives (the page
+//               area, the display's full-screen area, Margin's tile width: HostLayout.plan), never from the windows'
+//               bounds mid-transition, so the same placement always gives the same reservation.
+// Margin's window leaving full screen (`parkShown`), or the shown window found outside Margin's Space by the poll:
+// the one shown is parked at once (nothing of it stands alone in a full-screen Space of its own or on a Desktop);
+// shown again when it's asked for in Margin's full screen.
 // A failure falls back without leaving anything behind: the window out of full screen (its Space then goes), an
 // emptied Space destroyed, an app Margin started for that open quit again, the one shown before shown again. A
 // Safari window Margin asked for is closed by its copy at every failure after the ask; one whose close isn't
@@ -42,7 +47,9 @@ final class HostEngine {
         var windowWait = 12.0 // its first window (Safari restoring windows can take a while)
         var fullScreenWait = 6.0
         var fullScreenAskAgain = 4.0 // AXFullScreen asked once more if no Space came by then (as the kit did)
-        var tileWait = 1.5
+        var tileWait = 1.5 // its tile in Margin's Space after the move
+        var narrowWait = 0.6 // Margin's window at the sidebar's tile width and steady, when it really narrows
+        var narrowEvery = 0.05
         var destroyWait = 1.5
         var placeWait = 1.5
         var parkWait = 0.6 // two tries of 300 ms, as the parker
@@ -72,6 +79,7 @@ final class HostEngine {
         var promoted = false
         var outsideOpens = 0
         var unread = 0 // polls in a row its window's bounds didn't read
+        var strays = 0 // polls in a row it was found where it mustn't be (shown: outside Margin's Space; parked: in a user Space)
         init(id: HostID, target: HostTarget, pid: pid_t, window: Int, launchedByMargin: Bool, madeByMargin: Bool, safariWindow: Int? = nil) {
             self.id = id
             self.target = target
@@ -96,7 +104,9 @@ final class HostEngine {
     private(set) var launched: [pid_t: HostApp] = [:] // apps Margin started, while they run
     private(set) var leftSpaces: Set<UInt64> = [] // emptied full-screen Spaces a destroy hasn't taken yet
     private(set) var leftSafariWindows: [HostMarker.SafariWindow] = [] // Safari windows Margin asked for, their close not confirmed
-    private(set) var pageRect = CGRect.zero // top-left coordinates, as the window server's bounds
+    private(set) var placement = HostPlacement.zero // the page area, the display's area, Margin's tile (top-left coordinates)
+    var pageRect: CGRect { placement.page }
+    private(set) var tiledWidth: CGFloat? // Margin's tile width the one shown was tiled beside (it's never changed while tiled)
     private(set) var marginWindow = 0
     private(set) var marginSpace: UInt64 = 0
     private(set) var busy = false
@@ -133,9 +143,11 @@ final class HostEngine {
 
     // ---- the API ----
 
-    func open(app target: HostTarget, in pageRect: CGRect, marginWindow: Int, marginSpace: UInt64) async -> HostResult {
+    // Opens `target` (shows it again if it's hosted already) beside Margin's window, at `placement`.
+    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult {
         await serial {
-            self.pageRect = pageRect
+            if marginSpace != self.marginSpace || marginWindow != self.marginWindow { self.tiledWidth = nil } // (another Space: nothing tiled there yet)
+            self.placement = placement
             self.marginWindow = marginWindow
             self.marginSpace = marginSpace
             return await self.openNow(target)
@@ -154,12 +166,30 @@ final class HostEngine {
         await serial { await self.closeNow(id, why: "closed") }
     }
 
-    func pageRectChanged(_ rect: CGRect) async -> Bool {
+    // The placement moved (another theme, the display). Margin's tile width is never changed while the hosted tile is
+    // beside it (macOS takes a full-screen tile whose size constraints change out of full screen: seen 2026-11-15 on a
+    // sidebar drag), so a new tile width is taken by parking the one shown and bringing it in again (Margin's window
+    // takes the new width alone in its Space, `willTile`); anything else is a new reservation.
+    func pageRectChanged(_ placement: HostPlacement) async -> Bool {
         await serial {
-            self.pageRect = rect
+            self.placement = placement
             guard let id = self.shown, let host = self.hosts[id] else { return true }
+            if let tiled = self.tiledWidth, abs(tiled - placement.tileWidth) > 0.5 {
+                Diagnostics.note("host: Margin's tile \(Int(tiled)) → \(Int(placement.tileWidth)): \(id) parked and brought in again beside the new width")
+                let frozen = self.sys.freeze()
+                defer { if frozen { self.sys.reveal() } }
+                guard await self.retire(host, putBack: true) else { return await self.place(host) }
+                if case .shown = await self.bringIn(host, isNew: false, freezing: false) { return self.shown == id }
+                return false
+            }
             return await self.place(host)
         }
+    }
+
+    // The one shown parked at once, nothing in its place (Margin's window leaving full screen: the hosted window must
+    // never be left in a full-screen Space of its own or on a Desktop). Shown again by the next open or show.
+    func parkShown(why: String) async {
+        await serial { await self.parkShownNow(why: why) }
     }
 
     // Margin quits: the one shown out of full screen while it's still tiled, then every app Margin started quit, the
@@ -167,6 +197,7 @@ final class HostEngine {
     func quitAll() async {
         await serial {
             let started = self.sys.now()
+            // (The one shown first, out of full screen while it's still tiled; then the parked ones.)
             let order = (self.shown.map { [$0] } ?? []) + self.hosts.keys.filter { $0 != self.shown }.sorted { $0.raw < $1.raw }
             for id in order { await self.closeNow(id, why: "Margin quits") }
             await self.closeLeftSafariWindows()
@@ -187,7 +218,17 @@ final class HostEngine {
             if sys.app(pid: host.pid) == nil { appQuit(host.pid); continue }
             if host.launchedByMargin, !host.promoted, sys.policy(pid: host.pid) == .regular { promote(host, why: "its policy reads regular") }
             if sys.bounds(window: host.window) == nil { host.unread += 1 } else { host.unread = 0 }
-            if host.unread >= 2 { windowGone(host) } // twice in a row: one read can miss mid-transition
+            if host.unread >= 2 { windowGone(host); continue } // twice in a row: one read can miss mid-transition
+            // Where it mustn't be, twice in a row (one read can miss mid-transition): the one shown outside Margin's
+            // Space (Margin's window left full screen, the app left full screen itself), a parked one in a user Space.
+            let spaces = sys.spaces(window: host.window)
+            let strayed = host.phase == .shown ? (spaces.map { $0 != [marginSpace] } ?? false) : host.phase == .parked && !(spaces ?? []).isEmpty
+            host.strays = strayed ? host.strays + 1 : 0
+            if host.strays >= 2 {
+                host.strays = 0
+                let id = host.id
+                Task { await serial { await self.strayed(id) } }
+            }
         }
         if !leftSpaces.isEmpty, marginSpace > 0, sys.currentSpace(onDisplayOf: marginSpace) == marginSpace {
             Task { await serial { await self.destroyLeftSpaces() } }
@@ -236,12 +277,12 @@ final class HostEngine {
 
     private func openNow(_ target: HostTarget) async -> HostResult {
         let id = target.id
+        guard sys.spaceType(marginSpace) == ManagedSpace.fullScreenType, sys.spaces(window: marginWindow)?.contains(marginSpace) == true else {
+            return fail(id, .margin, "Margin's window isn't in a full-screen Space of its own (\(marginSpace))")
+        }
         if let host = hosts[id] {
             if shown == id { return .shown(id, placed: await place(host)) }
             return await bringIn(host, isNew: false)
-        }
-        guard sys.spaceType(marginSpace) == ManagedSpace.fullScreenType, sys.spaces(window: marginWindow)?.contains(marginSpace) == true else {
-            return fail(id, .margin, "Margin's window isn't in a full-screen Space of its own (\(marginSpace))")
         }
         let started = sys.now()
         var times: [String] = []
@@ -350,12 +391,13 @@ final class HostEngine {
 
     // ---- showing ----
 
-    private func bringIn(_ host: Host, isNew: Bool, retrying: Bool = false) async -> HostResult {
+    // `freezing`: false when the caller froze the screen already.
+    private func bringIn(_ host: Host, isNew: Bool, retrying: Bool = false, freezing: Bool = true) async -> HostResult {
         let started = sys.now()
         var times: [String] = []
         func step(_ name: String, _ t0: Double) { times.append("\(name) \(ms(since: t0))") }
         jumps = 0
-        let frozen = sys.freeze()
+        let frozen = freezing ? sys.freeze() : false
         defer { if frozen { sys.reveal() } }
         let previous = shown.flatMap { $0 == host.id ? nil : hosts[$0] }
 
@@ -416,18 +458,21 @@ final class HostEngine {
         // Margin's window narrowed to the sidebar's tile, and laid out at that width ALONE in its Space, before the
         // hosted tile comes in: macOS places the split from the tiles' widths at that moment (seen 2026-11-15: narrowed
         // at the same moment, Margin's 250 pt tile stood centred in half the screen and the hosted one got 643 pt).
-        let wide = sys.bounds(window: marginWindow)?.width
+        // Waited for only when it really narrows, until it's at the tile's width and steady (its resize animates); at
+        // that width already (every switch after the first), not at all (it was a fixed 2.1 s at each switch).
+        let target = placement.tileWidth
         willTile?(host.id)
-        if let wide {
-            let narrowed = await wait(options.tileWait) { (self.sys.bounds(window: self.marginWindow)?.width ?? wide) < wide - 1 }
-            var last = sys.bounds(window: marginWindow)?.width ?? 0
-            _ = await wait(0.6) { // steady for a moment (its resize animates)
-                let now = self.sys.bounds(window: self.marginWindow)?.width ?? 0
+        if let wide = sys.bounds(window: marginWindow)?.width, abs(wide - target) > 1 {
+            let n0 = sys.now()
+            var last = wide
+            let steady = await wait(options.narrowWait, every: options.narrowEvery) {
+                let now = self.sys.bounds(window: self.marginWindow)?.width ?? last
                 defer { last = now }
-                return narrowed && abs(now - last) < 0.5
+                return abs(now - target) <= 1 && abs(now - last) < 0.5
             }
-            Diagnostics.note("host: Margin's tile \(narrowed ? "narrowed to \(Int(last))" : "not narrowed (still \(Int(wide)))") before \(host.id) came in")
+            Diagnostics.note("host: Margin's tile \(steady ? "narrowed \(Int(wide)) → \(Int(last))" : "not at \(Int(target)) (\(Int(last)))") in \(ms(since: n0)) ms before \(host.id) came in")
         }
+        tiledWidth = target
         guard sys.moveTile(tile, to: marginSpace, at: 1), await wait(options.tileWait, {
             self.sys.tiles(of: self.marginSpace)?.contains(tile) == true && self.sys.spaces(window: host.window) == [self.marginSpace]
                 && self.sys.tiles(of: own)?.isEmpty != false
@@ -584,47 +629,81 @@ final class HostEngine {
         saveMarker()
     }
 
-    // The page area: the edges and the spacing reserved, verified on the window's own bounds, sent once more.
+    // The page area: the edges and the spacing reserved, as planned from the placement (HostLayout.plan), verified on
+    // the window's own bounds, sent once more.
     @discardableResult private func place(_ host: Host) async -> Bool {
         guard host.phase == .shown else { return false }
+        func r(_ c: CGRect) -> String { "\(Int(c.minX)),\(Int(c.minY)) \(Int(c.width))×\(Int(c.height))" }
+        guard let plan = HostLayout.plan(placement) else {
+            Diagnostics.note("host: place \(host.id): no plan (\(placement.text))")
+            emit(.failed(host.id, .place, "the page area can't be reached beside Margin's tile"))
+            return false
+        }
         for attempt in 1...2 {
-            guard let margin = sys.bounds(window: marginWindow), let hosted = sys.bounds(window: host.window) else {
+            guard let hosted = sys.bounds(window: host.window) else {
                 emit(.failed(host.id, .place, "the windows' bounds didn't read"))
                 return false
             }
-            if HostLayout.near(hosted, pageRect, within: options.tolerance) { return true }
-            func r(_ c: CGRect) -> String { "\(Int(c.minX)),\(Int(c.minY)) \(Int(c.width))×\(Int(c.height))" }
-            Diagnostics.note("host: place \(host.id) attempt \(attempt): Margin's tile \(r(margin)), hosted \(r(hosted)), reserved \((sys.reserved(space: marginSpace) ?? .zero).text), page \(r(pageRect))")
-            var plan = HostLayout.plan(margin: margin, hosted: hosted, reserved: sys.reserved(space: marginSpace) ?? .zero, page: pageRect)
-            if plan == nil {
-                // Margin's tile still being laid out at its new width: read again for a moment.
-                _ = await wait(options.placeWait) {
-                    guard let m = self.sys.bounds(window: self.marginWindow), let h = self.sys.bounds(window: host.window) else { return false }
-                    plan = HostLayout.plan(margin: m, hosted: h, reserved: self.sys.reserved(space: self.marginSpace) ?? .zero, page: self.pageRect)
-                    return plan != nil
-                }
-            }
-            guard let plan else {
-                let m2 = sys.bounds(window: marginWindow).map(r) ?? "?", h2 = sys.bounds(window: host.window).map(r) ?? "?"
-            Diagnostics.note("host: place \(host.id): no plan (Margin's tile \(m2), hosted \(h2), reserved \((sys.reserved(space: marginSpace) ?? .zero).text))")
-            emit(.failed(host.id, .place, "the page area can't be reached beside Margin's tile"))
-                return false
-            }
-            Diagnostics.note("host: place \(host.id) attempt \(attempt): reserving \(plan.edges.text), spacing \(Int(plan.spacing))")
+            if HostLayout.near(hosted, placement.page, within: options.tolerance) { return true }
+            let reserved = sys.reserved(space: marginSpace) ?? .zero
+            Diagnostics.note("host: place \(host.id) attempt \(attempt): Margin's tile \(sys.bounds(window: marginWindow).map(r) ?? "?"), hosted \(r(hosted)), reserved \(reserved.text), \(placement.text) → reserving \(plan.edges.text), spacing \(Int(plan.spacing))")
             _ = sys.setTileSpacing(plan.spacing, space: marginSpace)
-            _ = sys.reserve(plan.edges, space: marginSpace)
-            if await wait(options.placeWait, { self.sys.bounds(window: host.window).map { HostLayout.near($0, self.pageRect, within: self.options.tolerance) } ?? false }) {
+            if reserved != plan.edges || attempt == 2 { _ = sys.reserve(plan.edges, space: marginSpace) }
+            if await wait(options.placeWait, { self.sys.bounds(window: host.window).map { HostLayout.near($0, self.placement.page, within: self.options.tolerance) } ?? false }) {
                 return true
             }
-            if attempt == 2 { break }
         }
         emit(.failed(host.id, .place, "its window didn't take the page area's size"))
         return false
     }
 
+    // The one shown parked with nothing in its place: out of Margin's Space into a private one, out of full screen
+    // there; failing that, out of full screen wherever it is, then parked. Margin's Space's reservation given back
+    // (Margin's own tile alone takes its whole Space again).
+    private func parkShownNow(why: String) async {
+        guard let id = shown, let host = hosts[id] else { return }
+        let t0 = sys.now()
+        // (Strayed, it may be in a full-screen Space of its own by now: given back once it's emptied.)
+        let was = (sys.spaces(window: host.window) ?? []).filter { $0 != marginSpace && sys.spaceType($0) == ManagedSpace.fullScreenType }
+        if await !retire(host, putBack: false) {
+            await backOut(host)
+            await park(host)
+            emit(.parked(id))
+        }
+        shown = nil
+        tiledWidth = nil
+        for space in was where sys.spaceExists(space) == true && sys.tiles(of: space)?.isEmpty != false {
+            if await !destroyEmptied(space) { leftSpaces.insert(space) }
+        }
+        if marginSpace > 0, sys.spaceExists(marginSpace) == true, let r = sys.reserved(space: marginSpace), !r.isZero { _ = sys.reserve(.zero, space: marginSpace) }
+        saveMarker()
+        Diagnostics.note("host: \(id) parked, nothing shown (\(why)) in \(ms(since: t0)) ms")
+        emit(.unshown(id))
+    }
+
+    // The poll found a host where it mustn't be: the one shown outside Margin's Space parked with nothing in its place;
+    // a parked one in a user Space (macOS put it on a Desktop, its app took it to full screen) parked again.
+    private func strayed(_ id: HostID) async {
+        guard let host = hosts[id] else { return }
+        if host.phase == .shown, shown == id {
+            await parkShownNow(why: "its window left Margin's Space")
+        } else if host.phase == .parked, let spaces = sys.spaces(window: host.window), !spaces.isEmpty {
+            Diagnostics.note("host: \(id): parked, found in a user Space: parked again")
+            if await isFullScreen(host) == true || spaces.contains(where: { sys.spaceType($0) == ManagedSpace.fullScreenType }) { await backOut(host) }
+            if let priv = host.privateSpace, sys.move(window: host.window, to: priv) {
+                _ = await wait(options.parkWait) { self.sys.spaces(window: host.window) == [] }
+            } else {
+                host.privateSpace = nil
+                await park(host)
+            }
+            saveMarker()
+        }
+    }
+
     // The one shown before: parked in a private Space, then out of full screen there (its tile then leaves
-    // Margin's Space), then checked still parked.
-    private func retire(_ host: Host) async -> Bool {
+    // Margin's Space), then checked still parked. `putBack`: still full screen, it's put back in Margin's Space (a
+    // switch that can't go on); else (Margin's window leaving full screen) it's left to the caller.
+    private func retire(_ host: Host, putBack: Bool = true) async -> Bool {
         guard let tile = host.tile else { return false }
         guard let priv = sys.createPrivateSpace() else { return false }
         guard sys.move(window: host.window, to: priv), await wait(options.parkWait, { self.sys.spaces(window: host.window) == [] }) else {
@@ -638,14 +717,18 @@ final class HostEngine {
         let out = await wait(options.exitWait) {
             // (Through the copy, in its private Space the window's full screen doesn't read: its tile leaving tells.)
             let full = await self.isFullScreen(host)
-            return (copy ? full != true : full == false) && self.sys.tiles(of: self.marginSpace)?.contains(tile) == false
+            // (Margin's Space gone with its window's full screen: no tile of it left there either.)
+            return (copy ? full != true : full == false) && self.sys.tiles(of: self.marginSpace)?.contains(tile) != true
         }
         guard out else {
-            // Still full screen: back in Margin's Space, as it was.
-            _ = sys.move(window: host.window, to: marginSpace)
-            _ = sys.destroyPrivateSpace(priv)
-            host.privateSpace = nil
-            saveMarker()
+            // Still full screen: back in Margin's Space, as it was (a switch), or left to the caller in its private
+            // Space (Margin's window leaving full screen: never put back).
+            if putBack {
+                _ = sys.move(window: host.window, to: marginSpace)
+                _ = sys.destroyPrivateSpace(priv)
+                host.privateSpace = nil
+                saveMarker()
+            }
             return false
         }
         // Out of full screen macOS may put it on a Desktop: parked again.
@@ -683,7 +766,9 @@ final class HostEngine {
             _ = await setFullScreen(host, false)
             _ = await wait(options.exitWait) {
                 let full = await self.isFullScreen(host)
-                return (copy ? full != true : full == false) && (host.tile.map { self.sys.tiles(of: self.marginSpace)?.contains($0) == false } ?? true)
+                // (Through the copy, out of a private Space: a normal window is one on a Desktop, read by the window
+                // server; in no Space at all it's still leaving full screen.)
+                return (copy && host.privateSpace != nil ? full != true : full == false) && (host.tile.map { self.sys.tiles(of: self.marginSpace)?.contains($0) != true } ?? true)
             }
         }
         if let own, sys.spaceExists(own) == true, sys.tiles(of: own)?.isEmpty != false, await !destroyEmptied(own) { leftSpaces.insert(own) }
@@ -713,8 +798,11 @@ final class HostEngine {
         let sharesApp = hosts.values.contains { $0.id != id && $0.pid == host.pid }
         let quits = host.launchedByMargin && !sharesApp
         if let ext = host.safariWindow {
-            // A window a copy made for Margin: closed by that copy (before its Safari is quit, if Margin started it:
-            // a window closed isn't one Safari restores).
+            // A window a copy made for Margin: a normal window first (out of its private Space onto the Desktop, out of
+            // full screen), then closed by that copy and confirmed by the window server (before its Safari is quit, if
+            // Margin started it: a window closed isn't one Safari restores). Seen 2026-11-15: asked to close while
+            // still parked or full screen, it wasn't.
+            await toNormal(host)
             let closed = await closeAskedSafariWindow(ext, profile: host.profile, pid: host.pid, number: host.window, why: why)
             if !closed, !quits, host.privateSpace != nil, let desktop = sys.desktop(onDisplayOf: marginSpace) {
                 _ = sys.move(window: host.window, to: desktop) // not closed yet: on the Desktop meanwhile, closed later
@@ -735,6 +823,21 @@ final class HostEngine {
         saveMarker()
         Diagnostics.note("host: \(id) closed (\(why)) in \(ms(since: started)) ms")
         emit(.closed(id))
+    }
+
+    // A Safari window Margin made, back to a normal window before its copy closes it: out of its private Space onto
+    // its display's Desktop, then out of full screen there (by its copy), waited for until the window server has it in
+    // a Space that isn't a full-screen one.
+    private func toNormal(_ host: Host) async {
+        if let priv = host.privateSpace, let desktop = sys.desktop(onDisplayOf: marginSpace), sys.move(window: host.window, to: desktop) {
+            _ = await wait(options.parkWait) { self.sys.spaces(window: host.window)?.contains(desktop) == true }
+            _ = sys.destroyPrivateSpace(priv)
+            host.privateSpace = nil
+            saveMarker()
+        }
+        guard await isFullScreen(host) == true else { return }
+        _ = await setFullScreen(host, false)
+        _ = await wait(options.exitWait) { await self.isFullScreen(host) == false }
     }
 
     // An app Margin started, quit (politely): once gone it's forgotten. One that doesn't quit (it may be asking about
@@ -947,12 +1050,12 @@ final class HostEngine {
 
     private func ms(since t: Double) -> Int { Int(((sys.now() - t) * 1000).rounded()) }
 
-    private func wait(_ seconds: Double, _ done: () async -> Bool) async -> Bool {
+    private func wait(_ seconds: Double, every: Double? = nil, _ done: () async -> Bool) async -> Bool {
         let until = sys.now() + seconds
         while true {
             if await done() { return true }
             if sys.now() >= until { return false }
-            await sys.sleep(options.every)
+            await sys.sleep(every ?? options.every)
         }
     }
 }
