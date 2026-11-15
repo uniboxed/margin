@@ -16,7 +16,9 @@
 #         marker in a temporary folder (parking-tests.swift); the switch's setting in
 #         browser.json and its notices by kind (handoff-ui-tests.swift); the dev-only test hook
 #         against a fake world, and no title or address in the switch's lines (devhooks-tests.swift);
-#         the user themes' store and what the picker chose, read (theme-tests.swift, in a temporary folder)
+#         the user themes' store and what the picker chose, read (theme-tests.swift, in a temporary folder);
+#         the app's own spaces with MarginHosted (library-tests.swift: its rules from dist/app/library.js in
+#         JavaScriptCore, its files and the import in temporary folders)
 #   e2e:  e2e.swift, the real link, shell and overlays (off screen, in an
 #         accessory app that never activates) against a stand-in for the
 #         extension (fake-extension.mts, Node), and a picture of the overlay
@@ -107,8 +109,13 @@ if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   CARGO="${CARGO:-$(command -v cargo || echo "$HOME/.cargo/bin/cargo")}"
   "$CARGO" build -q --release -p margin-connector --manifest-path ../../Cargo.toml || exit 1
   CONNECTOR="$(cd ../.. && pwd)/target/release/margin-connector"
+  # The library's rules (dist/app/library.js, scripts/build.ts) for library-tests.swift: built when missing or older than its sources.
+  LIBRARY_JS="$PWD/../../dist/app/library.js"
+  if [ ! -f "$LIBRARY_JS" ] || [ -n "$(find ../../app/shared/library ../../extension -name '*.ts' -newer "$LIBRARY_JS" 2>/dev/null | head -1)" ]; then
+    "$NODE" ../../scripts/build.ts >/dev/null || exit 1
+  fi
   build tests "${UNIT_TESTS[@]}" "${SHELL_SOURCES[@]}"
-  MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_CONNECTOR_BIN="$CONNECTOR" "$BUILD/tests" || status=1
+  MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_CONNECTOR_BIN="$CONNECTOR" MARGIN_LIBRARY_JS="$LIBRARY_JS" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
   [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }

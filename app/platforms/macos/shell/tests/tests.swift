@@ -89,6 +89,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     dataStore()
     dataSync()
     dataCarry() // data-tests.swift
+    libraryTests() // library-tests.swift: the app's own spaces (MarginHosted), its rules in JavaScriptCore
     profilesTests()
     safariProfilesTests() // safari-profiles-tests.swift
     oneMargin()

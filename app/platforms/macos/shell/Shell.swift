@@ -215,6 +215,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Opening Margin brings its browser's window up inside it (ShellEnter.swift), in place of the set-up window.
         // Off unless `MarginOpensBrowser` is set, or the slot is on (forApp).
         var enter = false
+        // Margin.app owns the spaces (Library.swift, ShellLibrary.swift): its library in data/app, the profiles' sets
+        // imported into it once. Off unless `MarginHosted` is set (forApp); off, nothing of it runs or is read.
+        var hosted = false
         var enterWait: TimeInterval = 15 // a browser started cold, its copy linked and its window listed
         var enterEvery: TimeInterval = 0.25
         // A browser opened by its bundle id (started, or brought to the front): the app's is NSWorkspace's;
@@ -261,6 +264,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     let link: SocketLink
     // The lasting data, one set per browser profile (DataSync.swift: the read API is there).
     let data: DataSync
+    // The app's own spaces, pins, folders and items, with Options.hosted only (ShellLibrary.swift).
+    var library: Library?
     let windowSource: WindowSource // every read through the slot's model (ShellSlot.swift): the same as `rawWindows` with no slot set
     let rawWindows: WindowSource // the window server's own bounds: only the slot keeper's check reads these
     let slotBox = SlotBox()
@@ -400,6 +405,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             ?? (options.harness ? FileManager.default.temporaryDirectory.appendingPathComponent("margin-harness-\(UUID().uuidString)", isDirectory: true) : DataStore.appRoot)
         data = DataSync(store: DataStore(root: dataRoot))
         link.delegate = self
+        if options.hosted { startLibrary(dataRoot: dataRoot) }
         if let stand = options.slotSpaces { startSlots(spaces: stand, reads: nil) }
         data.onChange = { [weak self] _, collections in
             if collections.contains("spaces") || collections.contains("tabs") { self?.acrossSoon() }
@@ -436,6 +442,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         options.liveProfileCover = LiveCoverPolicy.requested()
         // The slot: off until it has been checked in real Safari; `defaults write com.unibox.margin MarginNativeSlot -bool YES` turns it on.
         options.slot = UserDefaults.standard.object(forKey: "MarginNativeSlot") as? Bool ?? false
+        // The spaces owned by the app: off until its window and hosting exist; `defaults write com.unibox.margin MarginHosted -bool YES`.
+        options.hosted = UserDefaults.standard.bool(forKey: "MarginHosted")
         // Opening Margin opens its browser inside it: with the slot unless said otherwise (MarginOpensBrowser).
         options.enter = UserDefaults.standard.object(forKey: "MarginOpensBrowser") as? Bool ?? options.slot
         options.openBrowser = Shell.openBrowserApp

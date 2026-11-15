@@ -78,8 +78,13 @@ final class DataStore {
         return support.appendingPathComponent("Margin/data", isDirectory: true)
     }
 
-    init(root: URL, background: Bool = true) {
+    // `flat`: one data set, in the root itself (Margin.app's library: data/app/set.json and items/, Library.swift),
+    // not one per browser and profile under it.
+    let flat: Bool
+
+    init(root: URL, background: Bool = true, flat: Bool = false) {
         self.root = root
+        self.flat = flat
         queue = background ? DispatchQueue(label: "com.unibox.margin.data", qos: .utility) : nil
     }
 
@@ -109,7 +114,8 @@ final class DataStore {
     }
 
     func directory(_ p: DataProfile) -> URL {
-        root.appendingPathComponent(Self.fileName(p.browser), isDirectory: true).appendingPathComponent(Self.fileName(p.profile), isDirectory: true)
+        if flat { return root }
+        return root.appendingPathComponent(Self.fileName(p.browser), isDirectory: true).appendingPathComponent(Self.fileName(p.profile), isDirectory: true)
     }
 
     // ---- reading ----
