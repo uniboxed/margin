@@ -212,6 +212,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // A harness's stand-in for the Spaces' reserved edges (never the system's), and for a window's full-screen Space.
         var slotSpaces: SlotSpaces?
         var slotSpaceOf: ((Int) -> UInt64?)?
+        // Margin as the app (docs/MARGIN-APP.md): other apps' windows hosted in its page area (HostEngine.swift).
+        // Off unless `MarginHosted` is set (forApp); off, nothing of it runs.
+        var hosted = false
         // Opening Margin brings its browser's window up inside it (ShellEnter.swift), in place of the set-up window.
         // Off unless `MarginOpensBrowser` is set, or the slot is on (forApp).
         var enter = false
@@ -366,6 +369,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
     // The parked windows (Parking.swift), made with the parker. Nil: nothing can be parked.
     var parking: ParkingRegistry?
+    // The host (HostEngine.swift, ShellHost.swift): made at launch only with `hosted` on and its calls passed.
+    var host: HostEngine?
+    var hostQuitting = false
 
     // ---- the profile handoff in the shell (ShellHandoff.swift) ----
     var freezer: Freezer? // the freeze (RealFreezer, from what the launch check passed), or a harness's
@@ -436,6 +442,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         options.liveProfileCover = LiveCoverPolicy.requested()
         // The slot: off until it has been checked in real Safari; `defaults write com.unibox.margin MarginNativeSlot -bool YES` turns it on.
         options.slot = UserDefaults.standard.object(forKey: "MarginNativeSlot") as? Bool ?? false
+        options.hosted = UserDefaults.standard.object(forKey: "MarginHosted") as? Bool ?? false
         // Opening Margin opens its browser inside it: with the slot unless said otherwise (MarginOpensBrowser).
         options.enter = UserDefaults.standard.object(forKey: "MarginOpensBrowser") as? Bool ?? options.slot
         options.openBrowser = Shell.openBrowserApp
@@ -486,6 +493,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         guard privateCalls.spaces else { return }
         let spaces = SkyLightSpaces(sky: sky, availability: privateCalls)
         spaceReads = spaces
+        startHost(resolver: resolver, sky: sky, spaces: spaces)
         if privateCalls.slot { startSlots(spaces: SkyLightSlots(sky: sky), reads: spaces) }
         else if options.slot { Diagnostics.note("slot: asked for (MarginNativeSlot), but its calls didn't pass the launch check (\(privateCalls.reasons["slot"] ?? "not checked")): the page box") }
         if privateCalls.park {
@@ -514,6 +522,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // (no drafts check; one whose copy can't be asked returned to its Desktop), 300 ms in all, then the
     // rest. The copies' links stay up until then.
     func stop(then: @escaping () -> Void) {
+        // The hosted apps first, while the copies' links are still up (Safari windows Margin made are closed by them).
+        if let host, host.hasHosts, !hostQuitting { return stopHost { [weak self] in self?.stop(then: then) } }
         guard !stopped else { return stopNow(then) }
         switcher.revealNow(.quit)
         guard let parking else { return stopNow(then) }
