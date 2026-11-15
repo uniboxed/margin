@@ -4,7 +4,7 @@
 // - Margin's windows draw the library (LibraryWindowSource) once it opened; the read-only stand-in
 //   (DataSetWindowSource) only when it didn't (its rules didn't load), and for the settings either way.
 // - The library's requests go to the session, which drives the host engine and the Safari copies' tabs; the engine's
-//   Safari window requests are the copies' (`newWindow`, `closeWindow`, after their link); its events tell the session
+//   Safari window requests are the copies' (`newWindow`, `setWindowState`, `closeWindow`, after their link); its events tell the session
 //   what went outside Margin; a palette pick (`openApp`) is the session's.
 // - The overlay path is off: with `hosted`, the shell's read of the window server does no binding, no overlay, no
 //   `drawn` and no layout for any browser window (`hostedTrack`), the slot and opening the browser are off (forApp);
@@ -77,8 +77,9 @@ extension Shell {
     // The engine's hooks to the session (the Safari windows it asks for, the moment it tiles, its events): when the
     // session is made with an engine already there, or when the engine starts after the session.
     func wire(_ host: HostEngine, to session: HostedSession) {
-        host.requestSafariWindow = { [weak session] profile in await session?.requestSafariWindow(profile) ?? false }
-        host.closeSafariWindow = { [weak session] number in await session?.closeSafariWindow(number) ?? false }
+        host.requestSafariWindow = { [weak session] profile in await session?.requestSafariWindow(profile) }
+        host.closeSafariWindow = { [weak session] profile, id in await session?.closeSafariWindow(profile, id) ?? false }
+        host.safariFullScreen = { [weak session] profile, id, on in await session?.safariFullScreen(profile, id, on) ?? false }
         host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
         host.willTile = { [weak session] _ in session?.willTile() }
         let before = host.onEvent
@@ -143,7 +144,7 @@ extension Shell {
     // browser window); the host's poll, while it hosts something or a copy is linked.
     func hostedTrack() {
         host?.poll()
-        guard host?.hasHosts == true || !links.isEmpty else { return }
+        guard host?.hasHosts == true || host?.hasLeftSafariWindows == true || !links.isEmpty else { return }
         pollTimer = Timer.scheduledTimer(withTimeInterval: options.restPoll, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.track() }
         }

@@ -10,7 +10,7 @@ import Foundation
 
 final class FakeHostWorld: HostSystem {
     struct App { var pid: pid_t; var bundle: String; var launchedAt: Double?; var policy: HostPolicy; var windows: [Int]; var refusesQuit = false; var sidebarOpen = false }
-    struct Win { var pid: pid_t; var fullScreen = false; var spaces: [UInt64]; var priv: UInt64? }
+    struct Win { var pid: pid_t; var fullScreen = false; var spaces: [UInt64]; var priv: UInt64?; var frame: CGRect? = nil } // frame: on a Desktop (none: 100,100 800×600)
 
     static let marginSpace: UInt64 = 100, marginTile: UInt64 = 101, desktop: UInt64 = 1, marginWindow = 1
     static let display = CGRect(x: 0, y: 33, width: 1512, height: 949) // a full-screen Space's layout area
@@ -42,6 +42,11 @@ final class FakeHostWorld: HostSystem {
     var lastArguments: [String] = []
     var listeners: [pid_t: (Int32) -> Void] = [:]
     var onAppQuit: ((pid_t) -> Void)?
+    // Accessibility as on the real Mac: an app's windows listed (and its full screen read or set, its main window
+    // read) only while they're on the current Space (verified 2026-11-15: 0 of Safari's 7 windows listed while
+    // another Space was current).
+    var axCurrentOnly = false
+    func onCurrent(_ window: Int) -> Bool { wins[window].map { $0.priv == nil && $0.spaces.contains(current) } ?? false }
 
     init() { wins[Self.marginWindow] = Win(pid: 1, spaces: [Self.marginSpace]) }
 
@@ -88,10 +93,15 @@ final class FakeHostWorld: HostSystem {
     // ---- windows ----
     func windows(pid: pid_t) async -> [HostWindow]? {
         guard !fail.contains("ax"), let a = apps[pid] else { return nil }
-        return a.windows.compactMap { n in wins[n].map { HostWindow(number: n, fullScreen: $0.fullScreen) } }
+        return a.windows.filter { !axCurrentOnly || onCurrent($0) }.compactMap { n in wins[n].map { HostWindow(number: n, fullScreen: $0.fullScreen) } }
     }
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool {
         calls.append("fullScreen \(on) \(window)")
+        guard !axCurrentOnly || onCurrent(window) else { return false }
+        return applyFullScreen(pid: pid, window: window, on)
+    }
+    // Full screen as macOS does it, whoever asked (Accessibility, or a Safari copy's setWindowState).
+    @discardableResult func applyFullScreen(pid: pid_t, window: Int, _ on: Bool) -> Bool {
         guard var w = wins[window], w.pid == pid else { return false }
         if on {
             guard !w.fullScreen, !fail.contains("fullScreen") else { return true }
@@ -116,9 +126,15 @@ final class FakeHostWorld: HostSystem {
         wins[window] = w
         return true
     }
-    func isFullScreen(pid: pid_t, window: Int) async -> Bool? { wins[window].flatMap { $0.pid == pid ? $0.fullScreen : nil } }
+    func isFullScreen(pid: pid_t, window: Int) async -> Bool? {
+        guard !axCurrentOnly || onCurrent(window) else { return nil }
+        return wins[window].flatMap { $0.pid == pid ? $0.fullScreen : nil }
+    }
     var main: [pid_t: Int] = [:] // the app's main window; none set: its last window
-    func mainWindow(pid: pid_t) async -> Int? { main[pid] ?? apps[pid]?.windows.last }
+    func mainWindow(pid: pid_t) async -> Int? {
+        guard let n = main[pid] ?? apps[pid]?.windows.last else { return nil }
+        return !axCurrentOnly || onCurrent(n) ? n : nil
+    }
     func safariSidebar(pid: pid_t) async -> HostSidebar {
         guard sidebarKnown, let a = apps[pid] else { return .unknown }
         return a.sidebarOpen ? .open : .closed
@@ -132,10 +148,19 @@ final class FakeHostWorld: HostSystem {
     func safariAutoShowsToolbar() -> Bool? { autoShow }
 
     // ---- the window server ----
+    var serverExtra: [ServerWindow] = [] // windows only the window server lists (a small panel, another layer)
+    func serverWindows(pid: pid_t) -> [ServerWindow]? {
+        guard !fail.contains("server") else { return nil }
+        let own = wins.keys.sorted().compactMap { n -> ServerWindow? in
+            guard let w = wins[n], w.pid == pid, let b = bounds(window: n) else { return nil }
+            return ServerWindow(number: n, pid: pid, bounds: b, onScreen: onCurrent(n))
+        }
+        return own + serverExtra.filter { $0.pid == pid }
+    }
     func spaceOf(window: Int) -> UInt64? { tiles.first { $0.value.contains { tileWindow[$0] == window } }?.key }
     func bounds(window: Int) -> CGRect? {
         guard let w = wins[window] else { return nil }
-        guard w.priv == nil, let space = spaceOf(window: window), w.fullScreen || window == Self.marginWindow else { return CGRect(x: 100, y: 100, width: 800, height: 600) }
+        guard w.priv == nil, let space = spaceOf(window: window), w.fullScreen || window == Self.marginWindow else { return w.frame ?? CGRect(x: 100, y: 100, width: 800, height: 600) }
         let sidebar = apps[w.pid]?.sidebarOpen == true
         let area = (sidebar ? .zero : (reservation[space] ?? .zero)).inset(Self.display)
         let list = tiles[space] ?? []
@@ -209,6 +234,71 @@ final class FakeHostWorld: HostSystem {
     }
 
     var hostedTiles: [UInt64] { (tiles[Self.marginSpace] ?? []).filter { $0 != Self.marginTile } }
+
+    // A window closed by its app (a Safari copy's closeWindow): its tile and its own full-screen Space go with it.
+    func closeWindow(_ n: Int) {
+        guard let w = wins.removeValue(forKey: n) else { return }
+        for (space, list) in tiles where list.contains(where: { tileWindow[$0] == n }) {
+            tiles[space] = list.filter { tileWindow[$0] != n }
+            if owner[space] == w.pid, tiles[space]?.isEmpty == true { tiles[space] = nil; owner[space] = nil }
+        }
+        apps[w.pid]?.windows.removeAll { $0 == n }
+    }
+}
+
+// A Safari profile's copy as the engine asks it (HostedSession's newWindow, setWindowState, closeWindow): the windows
+// it makes open on the Desktop (a normal window can't open in Margin's full-screen Space), with the copy's own ids.
+final class FakeSafariCopy {
+    let world: FakeHostWorld
+    let pid: () -> pid_t?
+    var asked: [String?] = []
+    var closed: [Int] = []
+    var fullScreens: [String] = [] // "<id> on|off"
+    var windowOf: [Int: Int] = [:] // the copy's id → the window server's number
+    var nextId = 7914
+    var makesWindow = true // Safari makes the window it's asked for
+    var answersFullScreen = true // the copy asks Safari (false: not linked, busy)
+    var fullScreenWorks = true // Safari's window goes full screen when asked
+    var closes = true // the copy closes a window when asked
+    var bounds: CGRect? = CGRect(x: 100, y: 100, width: 800, height: 600) // as its `windows` list has a new window
+    var windowFrame: CGRect? // where Safari opens it (none: at `bounds`)
+    var extraOnRequest: [ServerWindow] = [] // other windows Safari makes at that moment (the window server lists them)
+    init(_ world: FakeHostWorld, pid: @escaping () -> pid_t?) { self.world = world; self.pid = pid }
+    func wire(_ e: HostEngine) {
+        e.requestSafariWindow = { [unowned self] p in self.request(p) }
+        e.closeSafariWindow = { [unowned self] _, id in self.close(id) }
+        e.safariFullScreen = { [unowned self] _, id, on in self.fullScreen(id, on) }
+    }
+    func request(_ profile: String?) -> HostSafariWindow? {
+        asked.append(profile)
+        guard let pid = pid() else { return nil }
+        let id = nextId
+        nextId += 1
+        world.serverExtra += extraOnRequest
+        if makesWindow {
+            let n = world.nextWindow
+            world.nextWindow += 1
+            world.wins[n] = FakeHostWorld.Win(pid: pid, spaces: [FakeHostWorld.desktop], frame: windowFrame ?? bounds)
+            world.apps[pid]?.windows.append(n)
+            windowOf[id] = n
+        }
+        return HostSafariWindow(id: id, bounds: bounds)
+    }
+    func close(_ id: Int) -> Bool {
+        closed.append(id)
+        world.calls.append("copy close \(id)")
+        guard closes else { return false }
+        if let n = windowOf.removeValue(forKey: id) { world.closeWindow(n) }
+        return true
+    }
+    func fullScreen(_ id: Int, _ on: Bool) -> Bool {
+        fullScreens.append("\(id) \(on ? "on" : "off")")
+        guard answersFullScreen, let n = windowOf[id], let p = world.wins[n]?.pid else { return false }
+        if fullScreenWorks || !on { world.applyFullScreen(pid: p, window: n, on) }
+        return true
+    }
+    // Whether the window it made for `id` is still open.
+    func isOpen(_ id: Int) -> Bool { windowOf[id].map { world.wins[$0] != nil } ?? false }
 }
 
 // The host's private calls, by name (a fake resolver: only lookups, nothing is called).
@@ -511,53 +601,189 @@ func hostTests() {
         check("host: a window that fits: no sidebar pressed for an app that isn't Safari", !w.calls.contains { $0.hasPrefix("sidebar") })
     }
     do {
-        let (w, e, _) = world()
+        let (w, e, markerURL) = world()
         let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 2) // opened the normal way, with the person's windows
         w.apps[safariPid]?.sidebarOpen = true
         w.autoShow = false
+        w.axCurrentOnly = true // Accessibility lists only the current Space's windows (Margin's is current)
         let theirs = w.apps[safariPid]!.windows
-        var asked: [String?] = []
-        var closed: [Int] = []
-        e.requestSafariWindow = { profile in
-            asked.append(profile)
-            let n = w.nextWindow
-            w.nextWindow += 1
-            w.wins[n] = FakeHostWorld.Win(pid: safariPid, spaces: [FakeHostWorld.desktop])
-            w.apps[safariPid]?.windows.append(n)
-            return true
-        }
-        e.closeSafariWindow = { n in closed.append(n); w.wins[n] = nil; w.apps[safariPid]?.windows.removeAll { $0 == n }; return true }
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        // Safari also makes a small panel and a window on another layer as it opens one (only the window server lists them).
+        copy.extraOnRequest = [ServerWindow(number: 4001, pid: safariPid, bounds: CGRect(x: 0, y: 0, width: 120, height: 40)),
+                               ServerWindow(number: 4002, pid: safariPid, layer: 8, bounds: CGRect(x: 0, y: 0, width: 900, height: 700))]
         var lines: [String] = []
         let echo = Diagnostics.echo
         Diagnostics.echo = { lines.append($0) }
         let target = HostTarget.safariWindow("Work")
+        let axBefore = hostRun { await w.windows(pid: safariPid) }
         let r = open(e, target)
         Diagnostics.echo = echo
         let mine = e.hosts[target.id]?.window ?? 0
-        check("host: Safari already open: a window of Margin's own asked of its extension, for the profile", r == .shown(target.id, placed: true) && asked == ["Work"] && !theirs.contains(mine) && e.hosts[target.id]?.madeByMargin == true)
+        let ext = e.hosts[target.id]?.safariWindow ?? 0
+        check("host: Safari's windows on a Desktop while Margin's Space is current: Accessibility lists none (as on the real Mac)", axBefore == [], "\(String(describing: axBefore))")
+        check("host: Safari already open: a window of Margin's own asked of its extension, for the profile", r == .shown(target.id, placed: true) && copy.asked == ["Work"] && !theirs.contains(mine) && e.hosts[target.id]?.madeByMargin == true,
+              "\(String(describing: r)) \(w.calls)")
+        check("host: the new Safari window found by the window server, not Accessibility (the copy's window, not its panel or another layer's)", mine == copy.windowOf[ext] && mine != 4001 && mine != 4002 && ext == 7914)
+        check("host: put in full screen by its copy (setWindowState), never through Accessibility", copy.fullScreens == ["7914 on"] && !w.calls.contains("fullScreen true \(mine)") && w.wins[mine]?.fullScreen == true, "\(copy.fullScreens) \(w.calls)")
         check("host: Safari already open: never restarted, its windows untouched", !w.calls.contains { $0.hasPrefix("launch") || $0.hasPrefix("terminate") } && theirs.allSatisfy { w.wins[$0]?.fullScreen == false && w.spaces(window: $0) == [FakeHostWorld.desktop] })
-        check("host: in Margin's own Safari window (Safari's main one) its sidebar is hidden", w.apps[safariPid]?.sidebarOpen == false)
+        check("host: Safari's main window unread in its own Space: read again once its tile is in Margin's Space, then its sidebar hidden",
+              w.apps[safariPid]?.sidebarOpen == false && w.calls.filter { $0.hasPrefix("sidebar") }.count == 1 && lines.contains { $0.contains("read again once its tile is in Margin's Space") })
         check("host: Safari's AutoShowToolbarInFullScreen off: said as a known gap, its setting not changed", lines.contains { $0.contains("AutoShowToolbarInFullScreen is off") } && w.autoShow == false)
         check("host: the profile's name is never in the log", !lines.contains { $0.contains("Work") } && target.id.description.hasPrefix("safari:p"))
+        let m = HostMarker.read(markerURL)
+        check("host: the marker has the copy's id for the window, its profile and Safari's launch", m?.windows.first?.safariWindow == ext && m?.windows.first?.profile == "Work" && m?.windows.first?.appLaunchedAt == w.apps[safariPid]?.launchedAt, "\(String(describing: m))")
+
+        // ---- parked (another app shown) and shown again: out of full screen and back by its copy ----
+        w.axCurrentOnly = false // (an app Margin starts: its window is found and put in full screen by Accessibility, as on the real Mac)
+        _ = open(e, textEdit)
+        check("host: Margin's Safari window parked by its copy (normal in its private Space), not Accessibility", copy.fullScreens == ["7914 on", "7914 off"] && e.hosts[target.id]?.phase == .parked
+              && w.wins[mine]?.priv != nil && w.wins[mine]?.fullScreen == false && !w.calls.contains("fullScreen false \(mine)"), "\(copy.fullScreens)")
+        let back = hostRun { await e.show(target.id) }
+        check("host: shown again: full screen by its copy again, fitted", back == .shown(target.id, placed: true) && copy.fullScreens.last == "7914 on" && w.spaces(window: mine) == [FakeHostWorld.marginSpace] && clean(w), "\(String(describing: back))")
         hostRun { await e.quitAll() }
-        check("host: quit: Margin's Safari window out of full screen and closed by its extension, Safari left running", closed == [mine] && w.apps[safariPid] != nil && clean(w))
+        check("host: quit: Margin's Safari window out of full screen and closed by its copy, Safari left running", copy.closed == [ext] && w.wins[mine] == nil && w.apps[safariPid] != nil && clean(w) && e.leftSafariWindows.isEmpty)
     }
     do {
         let (w, e, _) = world()
         let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
         w.apps[safariPid]?.sidebarOpen = true
         w.main[safariPid] = w.apps[safariPid]!.windows[0] // the person's own window stays Safari's main one
-        e.requestSafariWindow = { _ in
-            let n = w.nextWindow
-            w.nextWindow += 1
-            w.wins[n] = FakeHostWorld.Win(pid: safariPid, spaces: [FakeHostWorld.desktop])
-            w.apps[safariPid]?.windows.append(n)
-            return true
-        }
-        e.closeSafariWindow = { n in w.wins[n] = nil; return true }
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
         let r = open(e, .safariWindow(nil))
         check("host: Margin's Safari window not Safari's main one: its View menu never pressed (it would act on the person's window)",
               !w.calls.contains { $0.hasPrefix("sidebar") } && { if case .shown(_, placed: false)? = r { return true }; return false }(), "\(String(describing: r))")
+    }
+    do {
+        let (w, e, _) = world()
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        w.apps[safariPid]?.sidebarOpen = true
+        w.axCurrentOnly = true
+        w.main[safariPid] = 9999 // Safari's main window on another Space: never readable
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        var lines: [String] = []
+        let echo = Diagnostics.echo
+        Diagnostics.echo = { lines.append($0) }
+        _ = open(e, .safariWindow(nil))
+        Diagnostics.echo = echo
+        check("host: Safari's main window never reads: its sidebar left as it is, said, never pressed blindly",
+              !w.calls.contains { $0.hasPrefix("sidebar") } && lines.contains { $0.contains("still doesn't read") }, "\(lines.filter { $0.contains("sidebar") })")
+    }
+    do {
+        let (w, e, _) = world()
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        copy.bounds = CGRect(x: 300, y: 200, width: 900, height: 700)
+        // Two new windows at once (another of the person's opened meanwhile): the one at the copy's bounds is Margin's.
+        copy.extraOnRequest = [ServerWindow(number: 4100, pid: safariPid, bounds: CGRect(x: 100, y: 100, width: 800, height: 600))]
+        let r = open(e, .safariWindow(nil))
+        let picked = e.hosts[HostTarget.safariWindow(nil).id]?.window
+        check("host: two new Safari windows: the one at the copy's bounds taken", r == .shown(HostTarget.safariWindow(nil).id, placed: true) && picked == copy.windowOf[7914] && picked != 4100, "\(String(describing: r))")
+    }
+    do {
+        let (w, e, _) = world()
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        copy.windowFrame = CGRect(x: 500, y: 500, width: 800, height: 600) // (not where the copy said)
+        copy.bounds = CGRect(x: 300, y: 200, width: 900, height: 700)
+        copy.extraOnRequest = [ServerWindow(number: 4100, pid: safariPid, bounds: CGRect(x: 100, y: 100, width: 800, height: 600))]
+        let r = open(e, .safariWindow(nil))
+        check("host: two new Safari windows, neither at the copy's bounds: neither taken, the one asked for closed by its copy",
+              { if case .failed(.window, _)? = r { return true }; return false }() && copy.closed == [7914] && !copy.isOpen(7914) && w.serverWindows(pid: safariPid)?.contains { $0.number == 4100 } == true, "\(String(describing: r))")
+    }
+
+    // ---- every failure after a Safari window was asked for closes it ----
+    for (what, step) in [("no window", HostStep.window), ("copy refuses full screen", .fullScreen), ("full screen never comes", .fullScreen),
+                         ("moveTile", .tile), ("park", .park), ("Margin started Safari, moveTile", .tile)] {
+        let (w, e, markerURL) = world()
+        let startsSafari = what.hasPrefix("Margin started")
+        var safariPid: pid_t = 0
+        if !startsSafari { safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1) }
+        let copy = FakeSafariCopy(w) { w.running(bundleId: "com.apple.Safari").first?.pid }
+        copy.wire(e)
+        if what == "park" { _ = open(e, textEdit) }
+        w.axCurrentOnly = true
+        switch what {
+        case "no window": copy.makesWindow = false
+        case "copy refuses full screen": copy.answersFullScreen = false
+        case "full screen never comes": copy.fullScreenWorks = false
+        case "park": w.fail = ["park"]
+        default: w.fail = ["moveTile"]
+        }
+        w.calls = []
+        let r = open(e, .safariWindow("Work"))
+        w.fail = []
+        let ok: Bool = { if case .failed(step, _)? = r { return true }; return false }()
+        check("host: Safari, \(what): \(step.rawValue) failed", ok, "\(String(describing: r)) \(w.calls)")
+        check("host: Safari, \(what): the window Margin asked for closed by its copy, nothing of it left", copy.closed == [7914] && !copy.isOpen(7914) && e.hosts[HostTarget.safariWindow("Work").id] == nil
+              && e.leftSafariWindows.isEmpty && clean(w) && w.privates.isEmpty && w.freezes == w.reveals, "\(copy.closed) \(w.tiles) \(e.leftSafariWindows)")
+        if startsSafari {
+            let close = w.calls.firstIndex(of: "copy close 7914") ?? 99, quit = w.calls.firstIndex { $0.hasPrefix("terminate") } ?? -1
+            check("host: Safari, \(what): closed by its copy before the Safari Margin started is quit", close < quit && w.running(bundleId: "com.apple.Safari").isEmpty, "\(w.calls)")
+            check("host: Safari, \(what): the marker gone", !FileManager.default.fileExists(atPath: markerURL.path))
+        } else if what == "park" {
+            check("host: Safari, park: the app shown before still shown", e.shown == textEdit.id && w.apps[safariPid] != nil)
+        } else {
+            check("host: Safari, \(what): Safari left running, the person's window untouched, the marker gone", w.apps[safariPid]?.windows.count == 1 && !FileManager.default.fileExists(atPath: markerURL.path))
+        }
+    }
+    do {
+        let (w, e, markerURL) = world()
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        copy.closes = false // its copy gone quiet
+        w.fail = ["moveTile"]
+        let r = open(e, .safariWindow("Work"))
+        w.fail = []
+        let left = e.leftSafariWindows.first
+        check("host: a failed open whose close isn't confirmed: kept to close later, in the marker", { if case .failed(.tile, _)? = r { return true }; return false }() && copy.isOpen(7914)
+              && left?.safariWindow == 7914 && left?.profile == "Work" && left?.number == copy.windowOf[7914] && HostMarker.read(markerURL)?.leftSafariWindows == [left!], "\(String(describing: left))")
+        check("host: … out of full screen and on the Desktop meanwhile, in no full-screen Space", w.wins[copy.windowOf[7914] ?? 0]?.fullScreen == false && clean(w))
+        copy.closes = true
+        e.poll()
+        _ = hostRun { await e.pageRectChanged(page) } // the next operation, after the poll's try
+        check("host: … closed by its copy on a later poll, the marker gone", !copy.isOpen(7914) && e.leftSafariWindows.isEmpty && !FileManager.default.fileExists(atPath: markerURL.path))
+    }
+    do {
+        // Margin crashed while Margin's Safari window was shown: the next launch closes it by its copy.
+        let (w, e, markerURL) = world()
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        _ = open(e, .safariWindow("Work"))
+        let mine = copy.windowOf[7914] ?? 0
+        w.onAppQuit = nil
+        let next = HostEngine(system: w, marker: markerURL, pid: 2)
+        let later = FakeSafariCopy(w) { safariPid }
+        later.windowOf = copy.windowOf
+        later.closes = false // its copy not linked yet at launch
+        later.wire(next)
+        hostRun { await next.recover() }
+        check("host: recovery: Margin's Safari window kept to close (its copy not linked yet), in the marker", next.leftSafariWindows.map(\.safariWindow) == [7914] && w.apps[safariPid] != nil
+              && HostMarker.read(markerURL)?.leftSafariWindows?.first?.number == mine, "\(next.leftSafariWindows)")
+        later.closes = true
+        next.poll()
+        _ = hostRun { await next.recover() } // (the next operation, after the poll's try)
+        check("host: recovery: closed by its copy once it links, the marker gone, Safari left running", w.wins[mine] == nil && next.leftSafariWindows.isEmpty && !FileManager.default.fileExists(atPath: markerURL.path) && w.apps[safariPid] != nil && clean(w),
+              "\(next.leftSafariWindows) \(w.tiles)")
+    }
+    do {
+        // Safari restarted since (its pid used again): a window of that number is never closed for Margin's.
+        let (w, _, markerURL) = world()
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+        var m = HostMarker(pid: 1, marginSpace: nil)
+        m.leftSafariWindows = [HostMarker.SafariWindow(safariWindow: 3, profile: nil, pid: safariPid, appLaunchedAt: 5, number: w.apps[safariPid]!.windows[0])]
+        _ = m.write(markerURL)
+        let next = HostEngine(system: w, marker: markerURL, pid: 2)
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(next)
+        hostRun { await next.recover() }
+        check("host: recovery: a Safari window of another Safari launch: forgotten, never closed", copy.closed.isEmpty && next.leftSafariWindows.isEmpty && !FileManager.default.fileExists(atPath: markerURL.path))
     }
     do {
         let (w, e, _) = world()

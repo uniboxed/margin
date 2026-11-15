@@ -39,7 +39,9 @@ final class FakeHostedLinks: HostedLinks {
     var profiles: [String] = []
     var asked: [(profile: String, type: String, payload: JSONObject)] = []
     var nextWindow = 90, nextTab = 500
-    var onNewWindow: (() -> Void)?
+    var onNewWindow: ((Int) -> Void)? // the copy's id for the window it makes
+    var onSetWindowState: ((Int, Bool) -> Void)? // the copy's id, full screen or not
+    var onCloseWindow: ((Int) -> Void)?
     var refuse: Set<String> = []
     func safariProfiles() -> [String] { profiles }
     var menuOpens: [String] = [] // profiles woken through Safari's menu
@@ -57,9 +59,16 @@ final class FakeHostedLinks: HostedLinks {
         if refuse.contains(type) { return (nil, "refused") }
         switch type {
         case "newWindow":
-            onNewWindow?()
+            onNewWindow?(nextWindow)
             nextWindow += 1
             return (["windowId": nextWindow - 1, "state": "normal"], nil)
+        case "setWindowState":
+            guard let id = int(payload["windowId"]) else { return (nil, "no window") }
+            onSetWindowState?(id, payload["state"] as? String == "fullscreen")
+            return (["windowId": id, "state": payload["state"] ?? "", "landedAt": 1], nil)
+        case "closeWindow":
+            if let id = int(payload["windowId"]) { onCloseWindow?(id) }
+            return ([:], nil)
         case "hostShow":
             nextTab += 1
             return (["tabId": nextTab - 1, "created": true], nil)
@@ -92,21 +101,31 @@ func hostedTests() {
     session.window = { id in id == nil || id == 1 ? window : nil }
     session.appName = { $0 == "com.apple.TextEdit" ? "TextEdit" : nil }
     engine.requestSafariWindow = { await session.requestSafariWindow($0) }
-    engine.closeSafariWindow = { await session.closeSafariWindow($0) }
+    engine.closeSafariWindow = { await session.closeSafariWindow($0, $1) }
+    engine.safariFullScreen = { await session.safariFullScreen($0, $1, $2) }
     engine.safariLinked = { await session.safariLinked($0) }
     engine.onEvent = { session.hostEvent($0) }
     engine.willTile = { _ in session.willTile() }
     library.delegate = session
     var changes = 0
     session.onChange = { changes += 1 }
-    // A Safari Margin starts links its copy (the default profile's), and the copy's newWindow makes a window.
-    links.onNewWindow = {
+    // A Safari Margin starts links its copy (the default profile's), and the copy's newWindow makes a window, on the
+    // Desktop: Accessibility doesn't see it there while Margin's Space is current; its copy's setWindowState and
+    // closeWindow act on it.
+    var copyWindows: [Int: Int] = [:]
+    links.onNewWindow = { id in
         guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }
         let n = w.nextWindow
         w.nextWindow += 1
         w.wins[n] = FakeHostWorld.Win(pid: pid, spaces: [FakeHostWorld.desktop])
         w.apps[pid]?.windows.append(n)
+        copyWindows[id] = n
     }
+    links.onSetWindowState = { id, on in
+        guard let n = copyWindows[id], let pid = w.wins[n]?.pid else { return }
+        w.applyFullScreen(pid: pid, window: n, on)
+    }
+    links.onCloseWindow = { id in if let n = copyWindows.removeValue(forKey: id) { w.closeWindow(n) } }
     let page = CGRect(x: 260, y: 41, width: 1244, height: 933)
     func run(_ body: @escaping () async -> Void) { hostRun { await body(); await session.idle() } }
 
@@ -137,7 +156,12 @@ func hostedTests() {
     let aItem = library.items(space: home).first { $0.value["url"] as? String == "https://a.example/" }?.id ?? ""
     let safari = HostTarget.safariWindow("s-default").id
     check("hosted: newTab: Safari started with no Dock icon, its window shown", w.calls.contains("launch com.apple.Safari") && engine.shown == safari, "\(w.calls.suffix(5))")
-    check("hosted: the window asked of the default profile's copy, then the item's tab in it", links.types(since: mark) == ["newWindow", "hostShow"] && links.asked.last?.profile == "s-default", "\(links.types(since: mark))")
+    check("hosted: the window asked of the default profile's copy, put in full screen by it, then the item's tab in it", links.types(since: mark) == ["newWindow", "setWindowState", "hostShow"] && links.asked.last?.profile == "s-default", "\(links.types(since: mark))")
+    let state = links.asked.first { $0.type == "setWindowState" }?.payload ?? [:]
+    let safariWindow = copyWindows[90] ?? 0
+    check("hosted: setWindowState names the copy's window, full screen, focused, with a notAfter", int(state["windowId"]) == 90 && state["state"] as? String == "fullscreen" && state["focused"] as? Bool == true
+          && (num(state["notAfter"]) ?? 0) > Date().timeIntervalSince1970 * 1000, "\(state)")
+    check("hosted: Safari's window never put in full screen through Accessibility", !w.calls.contains("fullScreen true \(safariWindow)") && w.wins[safariWindow]?.fullScreen == true)
     let show = links.asked.last?.payload ?? [:]
     check("hosted: hostShow names the hosted window, the item and its address", int(show["windowId"]) == 90 && show["itemId"] as? String == aItem && show["url"] as? String == "https://a.example/", "\(show)")
     check("hosted: the app shown before is parked (two tiles in Margin's Space)", engine.hosts[HostTarget.app("com.apple.TextEdit").id]?.phase == .parked && w.tiles[FakeHostWorld.marginSpace]?.count == 2)
@@ -174,7 +198,8 @@ func hostedTests() {
 
     // ---- the app's item again: the engine shows it (unparked) ----
     run { _ = library.perform("activateTab", ["windowId": 1, "tabId": editItem]) }
-    check("hosted: the app's item again: shown by the engine, Safari's window parked", engine.shown == HostTarget.app("com.apple.TextEdit").id && engine.hosts[safari]?.phase == .parked)
+    check("hosted: the app's item again: shown by the engine, Safari's window parked (out of full screen by its copy)", engine.shown == HostTarget.app("com.apple.TextEdit").id && engine.hosts[safari]?.phase == .parked
+          && links.asked.last { $0.type == "setWindowState" }?.payload["state"] as? String == "normal")
 
     // ---- Safari and Chrome picked as apps ----
     let before = library.items().count
@@ -200,9 +225,11 @@ func hostedTests() {
     run { _ = library.perform("closeTab", ["windowId": 1, "tabId": editItem]) }
     check("hosted: an app item closed: the engine closes its app (quit, Margin started it)", !engine.isHosted(HostTarget.app("com.apple.TextEdit").id) && w.running(bundleId: "com.apple.TextEdit").isEmpty)
     for item in library.items().map(\.id) where session.open[item] != nil { run { _ = library.perform("closeTab", ["windowId": 1, "tabId": item]) } }
+    let closeMark = links.asked.count
     run { await engine.close(safari) }
     session.hostEvent(.closed(safari))
-    check("hosted: nothing hosted any more: Margin's window its whole width again", window.hostings.last == false && session.hostingWindow == nil && !engine.hasHosts, "\(window.hostings)")
+    check("hosted: Safari's window closed by its copy before the Safari Margin started is quit", links.types(since: closeMark).contains("closeWindow") && w.wins[safariWindow] == nil && engine.leftSafariWindows.isEmpty, "\(links.types(since: closeMark))")
+    check("hosted: nothing hosted any more: Margin's window its whole width again", window.hostings.last == false && session.hostingWindow == nil && !engine.hasHosts, "\(window.hostings) \(engine.hosts.keys) \(engine.launched) \(w.calls.suffix(8))")
     check("hosted: the Safari window Margin started quit with Safari, nothing left in Margin's Space", w.running(bundleId: "com.apple.Safari").isEmpty && w.tiles[FakeHostWorld.marginSpace]?.count == 1, "\(String(describing: w.tiles[FakeHostWorld.marginSpace]))")
 
     // ---- Margin's window out of full screen while hosting: its whole width again ----
@@ -216,10 +243,11 @@ func hostedTests() {
         woken.wakes = ["s-quiet"]
         let s2 = HostedSession(library: library, engine: engine, links: woken)
         s2.sleep = { _ in await Task.yield() }
-        var linked = false, made = false
+        var linked = false
+        var made: HostSafariWindow?
         hostRun { linked = await s2.safariLinked("s-quiet"); made = await s2.requestSafariWindow("s-quiet") }
         check("hosted: a profile with no window is woken once through Safari's menu", woken.menuOpens == ["s-quiet"], "\(woken.menuOpens)")
-        check("hosted: then linked, its window made, the waking window closed", linked && made && woken.asked.map(\.type) == ["newWindow", "closeWindow"]
+        check("hosted: then linked, its window made, the waking window closed", linked && made != nil && woken.asked.map(\.type) == ["newWindow", "closeWindow"]
               && int(woken.asked.last?.payload["windowId"]) == 77, "\(woken.asked.map(\.type))")
         let none = FakeHostedLinks()
         let s3 = HostedSession(library: library, engine: engine, links: none)
@@ -284,7 +312,7 @@ func hostedShellTests(script: URL) {
     check("hosted shell: Margin's windows draw the library", source is LibraryWindowSource && shell.hosted != nil && shell.library?.delegate === shell.hosted)
     check("hosted shell: the first run with nothing to import: one space made, for the person to name in the editor",
           shell.library?.spaces().count == 1 && shell.hosted?.firstSpace == shell.library?.spaces().first?.id)
-    check("hosted shell: the engine's Safari windows are the copies'", shell.host?.requestSafariWindow != nil && shell.host?.closeSafariWindow != nil && shell.host?.safariLinked != nil && shell.host?.willTile != nil)
+    check("hosted shell: the engine's Safari windows are the copies'", shell.host?.requestSafariWindow != nil && shell.host?.closeSafariWindow != nil && shell.host?.safariFullScreen != nil && shell.host?.safariLinked != nil && shell.host?.willTile != nil)
     check("hosted shell: a palette pick goes to the session", shell.openApp != nil)
     shell.startSlots(spaces: FakeSlotSpaces(), reads: nil)
     check("hosted shell: no slot (Margin hosts the browser's window itself)", shell.slots == nil)

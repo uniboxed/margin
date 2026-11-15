@@ -4,8 +4,8 @@
 //
 // What the shell still wires once Margin's own window drives it (docs/MARGIN-APP.md phase 2): `open` with the
 // window's page area, Margin's window number and its full-screen Space; `requestSafariWindow` to the extension's
-// `newWindow` / `openSpaceWindow` request for a profile; `closeSafariWindow` to its `closeWindow`; `poll` on the
-// shell's poll.
+// `newWindow` request for a profile; `safariFullScreen` to its `setWindowState`; `closeSafariWindow` to its
+// `closeWindow`; `poll` on the shell's poll.
 
 import AppKit
 

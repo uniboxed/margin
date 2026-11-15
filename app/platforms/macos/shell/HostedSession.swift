@@ -310,7 +310,7 @@ final class HostedSession: LibraryDelegate {
         onChange?()
     }
 
-    // ---- the engine's Safari windows (HostEngine's requestSafariWindow, closeSafariWindow, safariLinked) ----
+    // ---- the engine's Safari windows (HostEngine's requestSafariWindow, closeSafariWindow, safariFullScreen, safariLinked) ----
 
     func safariLinked(_ profile: String?) async -> Bool {
         let p = resolve(profile)
@@ -331,12 +331,12 @@ final class HostedSession: LibraryDelegate {
     }
     private var wokenByMenu: [String: [Int]] = [:] // a profile woken through Safari's menu: the windows it had then
 
-    func requestSafariWindow(_ profile: String?) async -> Bool {
+    func requestSafariWindow(_ profile: String?) async -> HostSafariWindow? {
         let p = resolve(profile)
         let (result, error) = await links.request(profile: p, "newWindow", ["fullscreen": false])
         guard let made = result.flatMap({ SpaceWindowAnswer($0) }) else {
             note("Safari window for a profile: not made (\(error ?? "no answer"))")
-            return false
+            return nil
         }
         safariWindows[p] = made.windowId
         note("Safari window \(made.windowId) made for hosting")
@@ -347,14 +347,34 @@ final class HostedSession: LibraryDelegate {
                 note("the window opened to wake the profile closed: \(error ?? "ok")")
             }
         }
+        return HostSafariWindow(id: made.windowId, bounds: made.bounds)
+    }
+
+    // A window a profile's copy made for Margin, closed by that copy (by the copy's id). True: the copy asked Safari.
+    func closeSafariWindow(_ profile: String?, _ windowId: Int) async -> Bool {
+        let p = resolve(profile)
+        if safariWindows[p] == windowId { safariWindows[p] = nil }
+        let (result, error) = await links.request(profile: p, "closeWindow", ["windowId": windowId])
+        guard let result, WindowCallAnswer(result).called else {
+            note("Safari window \(windowId): not closed by its copy (\(error ?? "busy"))")
+            return false
+        }
         return true
     }
 
-    func closeSafariWindow(_ number: Int) async -> Bool {
-        guard case .safariWindow(let profile)? = engine.target(ofWindow: number), let p = profile, let windowId = safariWindows[p] else { return false }
-        safariWindows[p] = nil
-        let (result, _) = await links.request(profile: p, "closeWindow", ["windowId": windowId])
-        return result != nil
+    // A window a profile's copy made for Margin, into full screen (focused) or out of it, by that copy
+    // (`setWindowState`): Accessibility can't while the window is on a Space that isn't current. True: Safari was asked.
+    func safariFullScreen(_ profile: String?, _ windowId: Int, _ on: Bool) async -> Bool {
+        let p = resolve(profile)
+        let request = HandoffRequest.setWindowState(windowId: windowId, state: on ? .fullscreen : .normal, focused: on, notAfter: (Date().timeIntervalSince1970 + 2) * 1000)
+        let (result, error) = await links.request(profile: p, request.type, request.payload)
+        guard let result else {
+            note("Safari window \(windowId): \(on ? "full screen" : "normal") not asked of its copy (\(error ?? "no answer"))")
+            return false
+        }
+        let answer = WindowCallAnswer(result)
+        note("Safari window \(windowId) \(on ? "to full screen" : "out of full screen") by its copy: \(answer)")
+        return answer.called
     }
 
     // What the engine says happened outside Margin: an app or its window gone, its items have no page any more.
@@ -365,7 +385,11 @@ final class HostedSession: LibraryDelegate {
         default: return
         }
         let items = open.filter { $0.value.host == gone }.map(\.key)
-        guard !items.isEmpty || safariWindows.keys.contains(where: { HostTarget.safariWindow($0).id == gone }) else { return }
+        // (A Safari window's close by its copy already forgot it here: nothing hosted any more still ends the hosting.)
+        guard !items.isEmpty || safariWindows.keys.contains(where: { HostTarget.safariWindow($0).id == gone }) else {
+            if !engine.hasHosts, hostingWindow != nil { stopHosting(); onChange?() }
+            return
+        }
         for item in items { open[item] = nil }
         for (w, i) in shown where items.contains(i) { shown[w] = nil }
         for p in safariWindows.keys where HostTarget.safariWindow(p).id == gone { safariWindows[p] = nil }

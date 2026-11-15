@@ -72,6 +72,13 @@ nonisolated struct HostWindow: Equatable, Sendable {
     let fullScreen: Bool
 }
 
+// A Safari window a profile's copy made for Margin (its `newWindow` answer): the copy's id for it, and its bounds as
+// the copy's `windows` list has them (top-left coordinates, as the window server's), if it said.
+nonisolated struct HostSafariWindow: Equatable, Sendable {
+    let id: Int
+    let bounds: CGRect?
+}
+
 // Safari's own sidebar in a hosted window: it must be hidden there (with it open, the window doesn't take the page
 // area's size). Read from its View menu's item (SafariAX).
 nonisolated enum HostSidebar: Equatable, Sendable { case open, closed, unknown }
@@ -91,14 +98,29 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
         var ownSafariWindow: Bool // a window Margin made in a Safari it didn't start: never quit, only out of full screen
         var privateSpace: UInt64?
         var fullScreenSpace: UInt64?
+        // A Safari window a copy made for Margin: the copy's id for it, its profile (the copy's own id), and when
+        // that Safari started (a pid used again by another Safari is never taken for it).
+        var safariWindow: Int? = nil
+        var profile: String? = nil
+        var appLaunchedAt: Double? = nil
+    }
+    // A Safari window Margin asked a copy for and whose close wasn't confirmed: closed by that copy later (the poll,
+    // the next launch's recovery). `number`: the window server's, when it was found.
+    struct SafariWindow: Codable, Equatable, Sendable {
+        var safariWindow: Int
+        var profile: String?
+        var pid: Int32
+        var appLaunchedAt: Double?
+        var number: Int?
     }
     var pid: Int32 // this Margin's
     var marginSpace: UInt64?
     var apps: [App] = []
     var windows: [Window] = []
     var leftSpaces: [UInt64] = [] // emptied full-screen Spaces a destroy didn't take yet
+    var leftSafariWindows: [SafariWindow]? = nil // (optional: a marker from before them reads)
 
-    var isEmpty: Bool { apps.isEmpty && windows.isEmpty && leftSpaces.isEmpty && marginSpace == nil }
+    var isEmpty: Bool { apps.isEmpty && windows.isEmpty && leftSpaces.isEmpty && (leftSafariWindows ?? []).isEmpty && marginSpace == nil }
 
     static func read(_ url: URL) -> HostMarker? {
         guard let data = try? Data(contentsOf: url) else { return nil }

@@ -91,6 +91,9 @@ final class GlueHostWorld: HostSystem {
   func safariSidebar(pid: pid_t) async -> HostSidebar { .closed }
   func pressSafariSidebar(pid: pid_t) async -> Bool { true }
   func safariAutoShowsToolbar() -> Bool? { true }
+  func serverWindows(pid: pid_t) -> [ServerWindow]? {
+    wins.keys.sorted().compactMap { n in wins[n].flatMap { $0.pid == pid ? bounds(window: n).map { ServerWindow(number: n, pid: pid, bounds: $0) } : nil } }
+  }
   func bounds(window: Int) -> CGRect? {
     let area = (reservation[Self.marginSpace] ?? .zero).inset(display)
     if window == marginWindow { return CGRect(x: area.minX, y: area.minY, width: marginWidth(), height: area.height) }
@@ -193,8 +196,15 @@ func glueScenario() async {
   // (Safari's window its copy makes, in the stand-in window manager too.)
   let ask = engine.requestSafariWindow
   engine.requestSafariWindow = { profile in
-    let ok = await ask?(profile) ?? false
-    if ok, let pid = world.running(bundleId: safariIdentifier).first?.pid { world.addWindow(pid) }
+    let made = await ask?(profile)
+    if made != nil, let pid = world.running(bundleId: safariIdentifier).first?.pid { world.addWindow(pid) }
+    return made
+  }
+  // (Its full screen, asked of the copy (setWindowState), in the stand-in window manager too once the copy answers.)
+  let fullScreen = engine.safariFullScreen
+  engine.safariFullScreen = { profile, id, on in
+    let ok = await fullScreen?(profile, id, on) ?? false
+    if ok, let host = engine.hosts.values.first(where: { $0.safariWindow == id }) { _ = await world.setFullScreen(pid: host.pid, window: host.window, on) }
     return ok
   }
   guard await until(15, { c.isReady }) else { return check("Margin's window's page drawn", false) }
@@ -239,7 +249,7 @@ func glueScenario() async {
   await session.idle()
   let web = library.items(space: first).first { $0.value["url"] as? String == "https://example.com/" }?.id ?? ""
   let asked = fake.all("req", since: since).compactMap { ($0["msg"] as? JSONObject)?["type"] as? String }
-  check("Safari started with no Dock icon, then a window asked of its copy, then the item's tab", world.calls.contains("launch \(safariIdentifier)") && asked == ["newWindow", "hostShow"], "\(asked)")
+  check("Safari started with no Dock icon, then a window asked of its copy, put in full screen by it, then the item's tab", world.calls.contains("launch \(safariIdentifier)") && asked == ["newWindow", "setWindowState", "hostShow"], "\(asked)")
   let shown = fake.first("hostShow", since: since)?["payload"] as? JSONObject ?? [:]
   check("hostShow names the copy's new window, the item and its address", int(shown["windowId"]) == 90 && shown["itemId"] as? String == web && shown["url"] as? String == "https://example.com/", "\(shown)")
   check("the engine shows Safari's window in the page area, the app parked", engine.shown == HostTarget.safariWindow("s-default").id && engine.hosts[textEdit]?.phase == .parked && engine.pageRect == expected)

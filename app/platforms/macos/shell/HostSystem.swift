@@ -29,6 +29,10 @@ protocol HostSystem: AnyObject {
     func safariAutoShowsToolbar() -> Bool? // Safari's own AutoShowToolbarInFullScreen; nil: not readable
 
     // ---- the window server ----
+    // Every window of `pid` on every Space (CGWindowListCopyWindowInfo .optionAll): Accessibility lists only the
+    // current Space's windows, so a window that opened on another one (Safari's, asked for while Margin's full-screen
+    // Space is current) is found here. Nil: no list.
+    func serverWindows(pid: pid_t) -> [ServerWindow]?
     func bounds(window: Int) -> CGRect? // model bounds, top-left coordinates; nil: gone or unknown
     func spaces(window: Int) -> [UInt64]? // its user Spaces (a private Space isn't one); nil: unknown
     func spaceType(_ space: UInt64) -> Int?
@@ -246,6 +250,7 @@ final class RealHostSystem: HostSystem {
         return nil
     }
 
+    func serverWindows(pid: pid_t) -> [ServerWindow]? { CGWindowSource().read(of: [pid])?.filter { $0.pid == pid } }
     func bounds(window: Int) -> CGRect? { sky.modelBounds(of: window) }
     func spaces(window: Int) -> [UInt64]? { spacesRW.spaces(of: window) }
     func spaceType(_ space: UInt64) -> Int? { calls.spaceType(space) }
