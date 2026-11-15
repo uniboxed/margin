@@ -43,7 +43,7 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
 | Piece | Status | Evidence |
 |---|---|---|
 | App started with no Dock icon (`_LSOpenURLsWithCompletionHandler` + UIElement option) | proven, 15 apps | kit `multi-app-test-kit` |
-| **Safari (Technology Preview) with no Dock icon goes full screen** (AX `AXFullScreen`) | **proven 2026-11-15** | `safari-host/probe*.log`: accessory policy, full screen in 1.6 s |
+| **Safari (Technology Preview) with no Dock icon goes full screen** (AX `AXFullScreen`), no toolbar band with the launch arguments above | **proven 2026-11-15** | `safari-host/probe*.log`: accessory policy, full screen in 1.6 s |
 | Its window sized to any rect by the edge reservation | proven (STP no-Dock: 248,41 1256×933 in < 1 s) | same |
 | Margin's frame in each hosted app's Space, direct switch 5–20 ms | proven in the kit | kit margin5 |
 | Margin's own menu bar on top-edge hover; app's buttons never shown | proven in the kit (TestPane), hand-tested | `no-dock-margin-menubar` |
@@ -52,15 +52,16 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
 
 ## Not solved yet (must be before it ships)
 
-1. **Safari's toolbar band.** In every no-Dock STP run a 52 pt toolbar strip
-   sat at the top of the page (address field shown while it had focus;
-   after the sidebar was hidden, a blank band, page 881 high instead of 933).
-   The control run with a normal launch looked the same, so it isn't the
-   no-Dock launch. Candidates: the toolbar stays revealed until the pointer
-   moves after entering full screen; the kit's
-   `-NSToolbarFullScreenDefaultAutoHidingEnabled YES` (removed the bar for two
-   apps); Safari's own sidebar must be hidden in hosted windows. Next run
-   tests these one by one.
+1. **Safari's toolbar band: solved 2026-11-15** (Safari Technology Preview,
+   no Dock icon, `safari-host/probe6`): with the launch arguments
+   `-NSMenuEnableMenuBarAgent NO -AutoShowToolbarInFullScreen YES` and Safari's
+   own sidebar hidden, the page fills the page area (1256×933 reported by the
+   page), the toolbar window rests above it (y −11) and nothing of it shows.
+   `AutoShowToolbarInFullScreen` = 1 means the toolbar hides (Tirth's Safari
+   has 1; STP had 0, which is "always show" and gave the band). A Safari
+   already open the normal way gets no launch arguments: its own setting
+   decides. Safari's sidebar must be hidden in hosted windows (Margin
+   replaces it).
 2. **Mission Control.** A hosted app's full-screen Space is listed by Mission
    Control (`SLSCopyManagedDisplaySpaces`). **Found 2026-11-15 (own test
    windows, `/tmp/margin-toolbar-test/mc/mc1–4`):** move the hosted window's
