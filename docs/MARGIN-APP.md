@@ -47,6 +47,7 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
 | Its window sized to any rect by the edge reservation | proven (STP no-Dock: 248,41 1256×933 in < 1 s) | same |
 | Margin's frame in each hosted app's Space, direct switch 5–20 ms | proven in the kit | kit margin5 |
 | Margin's own menu bar on top-edge hover; app's buttons never shown | proven in the kit (TestPane), hand-tested | `no-dock-margin-menubar` |
+| **Real Safari started with no Dock icon (hosted launch arguments): Margin's extension links** (both profiles, 12 s), its windows restored, still no Dock icon; quit and reopened normally after | **proven 2026-11-15** (Tirth away, his OK) | `safari-host/real1.log` |
 | Several apps side by side in one full-screen Space | proven by numbers (3 apps) | `floating-pane-windowed` |
 | Windowed Margin (hosted full-screen window as a desktop member) | proven for real apps, Stage Manager needs work | same |
 
