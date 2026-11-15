@@ -133,10 +133,12 @@ nonisolated struct HostPrivate: @unchecked Sendable {
     typealias SetCurrentSpace = @convention(c) (UInt32, CFString, UInt64) -> Void
     typealias InitDestroy = @convention(c) (UnsafeMutableRawPointer, ObjectiveC.Selector, UInt64) -> Unmanaged<AnyObject>?
     typealias OpenCompletion = @convention(block) (CFTypeRef?, Bool, CFError?) -> Void
-    typealias OpenURLs = @convention(c) (CFArray?, CFURL, CFDictionary, OpenCompletion) -> Void
+    // (Both blocks are kept by LaunchServices and called later: @escaping, or Swift's runtime check stops the app the
+    // moment one is kept: "non-escaping closure has escaped", seen 2026-11-15 on the first real hosted launch.)
+    typealias OpenURLs = @convention(c) (CFArray?, CFURL, CFDictionary, @escaping OpenCompletion) -> Void
     // (code, time, info, the app's ASN, and two more nobody reads).
     typealias NoteBlock = @convention(block) (Int32, Double, CFTypeRef?, CFTypeRef?, Int32, UnsafeRawPointer?) -> Void
-    typealias ScheduleNotification = @convention(c) (Int32, CFTypeRef?, DispatchQueue, NoteBlock) -> UnsafeRawPointer?
+    typealias ScheduleNotification = @convention(c) (Int32, CFTypeRef?, DispatchQueue, @escaping NoteBlock) -> UnsafeRawPointer?
     // (id, codes added: count and list, codes removed: count and list, the app's ASN, nil).
     typealias ModifyNotification = @convention(c) (UnsafeRawPointer?, UInt32, UnsafePointer<Int32>?, UInt32, UnsafePointer<Int32>?, CFTypeRef?, CFTypeRef?) -> Int32
     typealias ASNCreateWithPid = @convention(c) (CFAllocator?, pid_t) -> Unmanaged<AnyObject>?
