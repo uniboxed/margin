@@ -72,6 +72,8 @@ extension Shell {
     // Margin opened: its browser's window in front, in full screen, with Margin around it. Asked again
     // while one is under way, both are answered by the one.
     func enter(done: @escaping (EnterResult) -> Void = { _ in }) {
+        // Hosted: Margin's own window opens, never the browser to draw over (ShellHostedGlue.swift).
+        if options.hosted { return done(.failed("Margin hosts the browser itself (MarginHosted)")) }
         if let entering {
             entering.done.append(done)
             return

@@ -131,6 +131,32 @@ enum MarginWindowGeometry {
     }
 
     static func inDragRegion(_ p: CGPoint, _ regions: [CGRect]) -> Bool { regions.contains { $0.contains(p) } }
+
+    // ---- hosting: Margin's window the sidebar's tile, the hosted window the page area's (HostedSession.swift) ----
+
+    // The sidebar's tile: as wide as the page's left inset (the sidebar with its margins), a point at least.
+    static func tileWidth(_ layout: PageLayout) -> CGFloat { max(1, CGFloat(layout.left.rounded(.up))) }
+
+    // Whether a layout was measured with room for a page (its right inset is then the theme's own).
+    static func hasPage(_ layout: PageLayout) -> Bool { layout.width - layout.left - layout.right >= 100 }
+
+    // The page area while hosting (top left, points): the display the tiles divide, less Margin's tile on the left
+    // and the theme's other insets (`right` as last measured with room for a page, else the top one), which the host
+    // reserves at the Space's edges. Nil: no room left.
+    static func hostedPageRect(display: CGRect, layout: PageLayout, right: Double?) -> CGRect? {
+        let left = tileWidth(layout)
+        let top = CGFloat(max(0, layout.top)), bottom = CGFloat(max(0, layout.bottom)), right = CGFloat(max(0, right ?? layout.top))
+        let width = display.width - left - right, height = display.height - top - bottom
+        return width >= 1 && height >= 1 ? CGRect(x: display.minX + left, y: display.minY + top, width: width, height: height) : nil
+    }
+
+    // A display's full-screen layout area (top left): its frame below the camera housing, where a full-screen
+    // window's tiles go.
+    static func fullScreenArea(_ screen: NSScreen) -> CGRect {
+        var frame = screen.frame
+        frame.size.height -= screen.safeAreaInsets.top
+        return ScreenGeometry.appKitRect(frame)
+    }
 }
 
 // ---- Margin's menu bar ----

@@ -2119,3 +2119,11 @@ unit and 555 native integration checks pass; handoff lab compile and signed
 Release build pass. Installed via the standard same-team updater and verified
 with deep/strict codesign checks. No browser was running at the final check,
 so this update does not claim a new real switch or physical power-toggle run.
+
+## Margin as the app, joined (2026-11-15)
+
+`defaults write com.unibox.margin MarginHosted -bool YES` (off again: `-bool NO`). Smallest first; stop at the first thing that's wrong. After each: Mission Control lists one Space (Margin's), nothing new on the Dock, `defaults read` of the hosted app unchanged.
+
+1. **An app (TestPane, the kit's).** Open Margin: its window, the library's spaces (or Personal in the space editor the first time). ⌘T, type TestPane, Enter: Margin's window goes full screen, narrows to the sidebar, TestPane fills the rest (no title strip, no Dock icon). The sidebar's TestPane row is lit. Drag the sidebar wider: TestPane follows. Close its row (×): TestPane quits, Margin's window its whole width again.
+2. **Safari Technology Preview** (`defaults write com.unibox.margin MarginHostedSafari com.apple.SafariTechnologyPreview`, STP not running, Margin's extension on in it). ⌘T, type an address: STP starts with no Dock icon, its copy links (up to 20 s), a window of its own comes in beside the sidebar, the page loads in it, no toolbar band. A second address: a tab switch (no Space animation). The TestPane row: TestPane back, STP parked; the STP row: STP back. Quit Margin: STP quits.
+3. **Real Safari** (only with Tirth's OK while he's away, as before): the same with Safari not running, then with Safari open the normal way (a new window of Margin's own in it, his windows untouched, Safari not restarted, its Dock icon stays).

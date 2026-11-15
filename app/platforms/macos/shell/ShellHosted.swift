@@ -1,8 +1,9 @@
 // Margin's own window in the shell (MarginWindow.swift, MarginWindowController.swift; docs/MARGIN-APP.md
 // phase 2), behind `MarginHosted` (Shell.forApp; off, nothing here runs and the app is as before).
 //
-// Until the app owns the spaces (the library phase: its store's snapshot() and perform()), the windows are fed
-// by DataSetWindowSource: one browser profile's lasting data set (DataSync.swift, read only), turned into the
+// The windows draw the library (LibraryWindowSource, HostedSession.swift, made in ShellHostedGlue.swift) once it
+// opened. DataSetWindowSource is the fallback when it didn't, and gives the settings either way: one browser
+// profile's lasting data set (DataSync.swift, read only), turned into the
 // State shape pages draw as the extension's stateFromDataSet would (extension/shared/data-set.ts), every Margin
 // tab a kept tab (nothing is open in Margin's window yet). Choosing a space (per window), a setting and a theme's
 // setting changed (the sidebar kept open, its width) are kept here, in memory; nothing is written anywhere.
@@ -46,24 +47,25 @@ final class DataSetWindowSource: MarginWindowSource {
         return state
     }
 
-    func perform(_ type: String, _ payload: JSONObject) {
+    @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject? {
         if type == "setSpace", let space = payload["spaceId"] as? String, let window = payload["windowId"] as? Int {
             active[window] = space
             onChange?()
-            return
+            return nil
         }
         if type == "updateSettings", let patch = payload["patch"] as? JSONObject, !patch.isEmpty {
             settings.merge(patch) { _, new in new }
             onChange?()
-            return
+            return nil
         }
         if type == "updateThemeSettings", let theme = payload["themeId"] as? String, let patch = payload["patch"] as? JSONObject, !patch.isEmpty {
             themeSettings[theme, default: [:]].merge(patch) { _, new in new }
             onChange?()
-            return
+            return nil
         }
         unhandled[type, default: 0] += 1
         if unhandled[type] == 1 { Diagnostics.note("Margin's window: \(type) isn't done yet (its spaces are read only until the app owns them)") }
+        return nil
     }
 
     static let defaultSpace: JSONObject = ["id": "personal", "name": "Personal", "emoji": "🏠", "color": "#6c5ce7"]
@@ -136,13 +138,14 @@ extension Shell {
         if let marginWindows { return marginWindows }
         var o = windowOptions ?? MarginWindows.Options()
         o.harness = o.harness || options.harness
-        let source = DataSetWindowSource(data: data, pick: { [weak self] in self?.hostedProfile() })
+        let source = makeHostedSource()
         let windows = MarginWindows(pages: pages, source: source, options: o)
         windows.theme = { [weak self] in self?.hostedTheme() }
         windows.themes = { [weak self] in self?.themesListJSON ?? "[]" }
         windows.browser = options.enterBrowser()
         marginWindows = windows
-        Diagnostics.note("Margin's window: on (MarginHosted), its spaces read from \(hostedProfile().map(\.key) ?? "no data set yet")")
+        joinHosted(windows)
+        Diagnostics.note("Margin's window: on (MarginHosted), its settings read from \(hostedProfile().map(\.key) ?? "no data set yet")")
         return windows
     }
 

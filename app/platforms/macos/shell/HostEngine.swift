@@ -91,6 +91,9 @@ final class HostEngine {
     var requestSafariWindow: ((String?) async -> Bool)?
     // Wired by the shell to the extension's close of a window Margin made (by its window number). True: asked.
     var closeSafariWindow: ((Int) async -> Bool)?
+    // Wired by the shell: waits until that profile's extension copy is linked (true), before Safari's windows are read
+    // and a window asked for, so windows a Safari just started restores meanwhile are never taken for Margin's own.
+    var safariLinked: ((String?) async -> Bool)?
 
     private var tail: Task<Void, Never>?
     private var jumps = 0
@@ -172,6 +175,19 @@ final class HostEngine {
         await serial { await self.recoverNow() }
     }
 
+    // ---- what the hosting reads ----
+
+    // Whether `id` is hosted now (opened, shown or parked).
+    func isHosted(_ id: HostID) -> Bool { hosts[id] != nil }
+
+    // The host whose window is `number` (a Safari window the extension made: closed by its copy).
+    func target(ofWindow number: Int) -> HostTarget? { hosts.values.first { $0.window == number }?.target }
+
+    // The full-screen Space `number` (Margin's window) is in, nil if it's in none.
+    func fullScreenSpace(ofWindow number: Int) -> UInt64? {
+        sys.spaces(window: number)?.first { sys.spaceType($0) == ManagedSpace.fullScreenType }
+    }
+
     // ---- one at a time ----
 
     private func serial<T: Sendable>(_ body: @escaping () async -> T) async -> T {
@@ -239,6 +255,10 @@ final class HostEngine {
                 case nil: Diagnostics.note("host: Safari's AutoShowToolbarInFullScreen didn't read: its own setting decides whether its toolbar shows")
                 default: break
                 }
+            }
+            if let linked = safariLinked, await !linked(profile) {
+                if startedNow { await quitApp(app.pid, bundle: bundle) }
+                return fail(id, .window, "Safari's extension didn't link")
             }
             let before = Set((await sys.windows(pid: app.pid) ?? []).map(\.number))
             guard let request = requestSafariWindow, await request(profile) else {

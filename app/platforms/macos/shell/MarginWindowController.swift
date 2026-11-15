@@ -19,6 +19,12 @@
 //   the same fill): the window behind, the hosted one, gets it there.
 // - Its `chrome`: where the theme draws the window's buttons (the traffic
 //   lights go there) and its drag regions.
+// - Hosting (HostedSession.swift, behind `MarginHosted`): while another app's window is shown beside it, the window
+//   is in full screen and is only the first tile of its Space, the sidebar's (`setHosting`): its content's max width
+//   is the theme's sidebar with its margins (the page's left inset), its page says `pageOutside` (the sidebar alone,
+//   docked: ui/host-app.ts), nothing passes through it, and its page area is worked out from the tiles
+//   (MarginWindowGeometry.hostedPageRect: the display less Margin's tile and the theme's other insets), not from a
+//   hole in the window. Back to the whole width when nothing is hosted.
 // - MarginWindows: every such window, the menu bar's actions (to the key one),
 //   and the source's changes passed to each.
 
@@ -28,10 +34,11 @@ import WebKit
 // Where Margin's windows get their spaces (until the app owns them: the library phase's store, with the same
 // two calls). `snapshot()`: the whole state, in the shape pages draw (types/margin.d.ts State, as
 // shared/stored.ts fromStorage gives it); `perform`: a request of the UI's (its `send` type and payload, or a
-// `perform` name and argument), the window's id in the payload as `windowId`; `onChange`: the snapshot changed.
+// `perform` name and argument), the window's id in the payload as `windowId`, answered as the page's request is
+// (`{ ok, result }` or `{ ok: false, error }`; nil: done, `{ ok: true, result: true }`); `onChange`: the snapshot changed.
 protocol MarginWindowSource: AnyObject {
     func snapshot() -> JSONObject
-    func perform(_ type: String, _ payload: JSONObject)
+    @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject?
     var onChange: (() -> Void)? { get set }
 }
 
@@ -72,6 +79,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private(set) var pushes = 0
     // The source's requests from this window (the tests read it).
     private(set) var asks: [String] = []
+    // Hosting another app's window beside it (setHosting): the display the tiles divide (top left), and the page's
+    // right inset as last measured with room for a page (in the sidebar's tile there's none to measure).
+    private(set) var hosting = false
+    private(set) var hostDisplay: CGRect?
+    private(set) var wideRight: Double?
+    private var frameBeforeHosting: NSRect?
 
     init(id: Int, pages: OverlayPages, options: Options = Options()) {
         self.id = id
@@ -148,8 +161,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     var contentFrame: CGRect { MarginWindowGeometry.content(of: window.frame) }
 
     // Where the page area is, and what the theme draws over it, as the pass-through decides (PassThrough.swift).
+    // Hosting: none (the page area is another window, beside this one: nothing passes through).
     var slot: Slot? {
-        guard let layout else { return nil }
+        guard let layout, !hosting else { return nil }
         return PassThrough.slot(in: contentFrame, layout: layout, hits: hits, captureAll: captureAll)
     }
 
@@ -159,9 +173,53 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         let region = CatchRegion.of(frame: content, slot: slot)
         fill.region = region
         guard let layout else { return window.setPageRect(nil, radius: 0) }
+        if hosting {
+            applyTile()
+            return window.setPageRect(hostDisplay.flatMap { MarginWindowGeometry.hostedPageRect(display: $0, layout: layout, right: wideRight) }, radius: CGFloat(layout.radius))
+        }
         // (A layout from before a resize changes nothing: the page's next one, at the new size, does.)
         guard MarginWindowGeometry.measuredAt(layout, content.size) else { return }
         window.setPageRect(MarginWindowGeometry.pageRect(layout: layout, content: content), radius: CGFloat(layout.radius))
+    }
+
+    // ---- hosting another app's window beside it (HostedSession.swift) ----
+
+    // On: the window is the sidebar's tile, its page draws the sidebar alone, its page area from the tiles. Off: the
+    // whole width again. The window must be in full screen (its own Space) for the tiles; a test's window plays the
+    // window manager's part (its width set to the tile's, off every display).
+    func setHosting(_ on: Bool) {
+        guard on != hosting else { return }
+        hosting = on
+        if on {
+            frameBeforeHosting = window.frame
+            hostDisplay = window.screen.map { MarginWindowGeometry.fullScreenArea($0) } ?? contentFrame
+            Diagnostics.note("Margin's window \(id): hosting beside it: its tile is the sidebar's, the page area \(hostDisplay.map { "in \(Int($0.width))×\(Int($0.height))" } ?? "not known yet")")
+        } else {
+            window.contentMaxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            window.contentMinSize = MarginWindow.minimum
+            window.minSize = MarginWindow.minimum
+            if options.harness, let before = frameBeforeHosting { window.setFrame(before, display: false) }
+            frameBeforeHosting = nil
+            hostDisplay = nil
+            Diagnostics.note("Margin's window \(id): hosting nothing: its whole width again")
+        }
+        push(#"{"type":"pageOutside","on":\#(on)}"#)
+        updatePage()
+    }
+
+    // The sidebar's tile: the window's content no wider than the page's left inset (macOS lays the tile out that wide).
+    private func applyTile() {
+        guard hosting, let layout else { return }
+        let width = MarginWindowGeometry.tileWidth(layout)
+        if window.contentMaxSize.width != width {
+            window.contentMinSize = NSSize(width: min(width, MarginWindow.minimum.width), height: min(MarginWindow.minimum.height, 200))
+            window.minSize = window.contentMinSize
+            window.contentMaxSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        }
+        // (A test's window: as the window manager would lay its tile out, off every display.)
+        if options.harness, let display = hostDisplay, window.frame.width != width {
+            window.setFrame(ScreenGeometry.appKitRect(CGRect(x: display.minX, y: display.minY, width: width, height: display.height)), display: false)
+        }
     }
 
     // The window's buttons where the theme draws its window controls (AppKit's own place when it draws none).
@@ -221,6 +279,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard on != isFullScreen else { return }
         isFullScreen = on
         Diagnostics.note("Margin's window \(id): \(on ? "in full screen (its own Space)" : "windowed")")
+        if !on, hosting { owner?.onLeftFullScreen?(self) } // (hosting needs its own Space: HostedSession.swift)
         push(#"{"type":"windows","list":"# + windowsJSON + "}")
         updatePage()
         placeButtons()
@@ -272,11 +331,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
     }
 
-    func ask(_ type: String, _ payload: JSONObject) {
+    @discardableResult func ask(_ type: String, _ payload: JSONObject) -> JSONObject? {
         var payload = payload
         if payload["windowId"] == nil { payload["windowId"] = id }
         asks.append(type)
-        owner?.source.perform(type, payload)
+        return owner?.source.perform(type, payload)
     }
 
     func pageHello() -> String {
@@ -290,6 +349,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         var json = String((jsonString(head) ?? "{}").dropLast())
         json += #","windows":"# + windowsJSON
         json += #","themes":"# + owner.themes()
+        json += #","apps":"# + owner.apps()
+        json += #","pageOutside":"# + (hosting ? "true" : "false")
         let theme = owner.theme()
         themeSent = theme
         json += #","theme":"# + (theme ?? "null") + "}"
@@ -302,8 +363,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             toggleFullScreen()
             return ["ok": true, "result": true]
         }
-        ask(type, payload)
-        return ["ok": true, "result": true]
+        return ask(type, payload) ?? ["ok": true, "result": true]
     }
 
     func pageSaid(_ op: String, _ body: JSONObject) {
@@ -313,9 +373,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             isReady = true
             Diagnostics.note("Margin's window \(id): its page drawn")
             show()
+            owner?.onReady?(self)
         case "layout":
             guard let geometry = body["geometry"] as? JSONObject, let layout = PageLayout(geometry: geometry) else { return }
             self.layout = layout
+            if MarginWindowGeometry.hasPage(layout) { wideRight = layout.right }
             updatePage()
         case "hits":
             let rects = (body["rects"] as? [[Any]] ?? []).compactMap { Self.rect($0) }
@@ -379,6 +441,11 @@ final class MarginWindows {
     // The theme package the windows draw (JSON), nil for Arcadia; the imported themes' index (JSON).
     var theme: () -> String? = { nil }
     var themes: () -> String = { "[]" }
+    var apps: () -> String = { "null" } // the installed apps (ShellApps.swift), null with none read
+    // A window's page area changed (MarginWindow.pageRect: hosting's own, or the hole's); its page drawn.
+    var onPageRect: ((MarginWindowController, CGRect?) -> Void)?
+    var onReady: ((MarginWindowController) -> Void)?
+    var onLeftFullScreen: ((MarginWindowController) -> Void)? // left full screen while hosting
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)
     private(set) var controllers: [MarginWindowController] = []
     private var lastKey: MarginWindowController?
@@ -419,6 +486,10 @@ final class MarginWindows {
         let controller = MarginWindowController(id: nextId, pages: pages, options: o)
         nextId += 1
         controller.owner = self
+        controller.window.onPageRectChange = { [weak self, weak controller] rect in
+            guard let self, let controller else { return }
+            self.onPageRect?(controller, rect)
+        }
         controllers.append(controller)
         if !options.harness { pointer.start() }
         Diagnostics.note("Margin's window \(controller.id) opened (\(controllers.count) open)")
@@ -455,5 +526,11 @@ final class MarginWindows {
 
     private func sourceChanged() {
         for c in controllers { c.stateChanged() }
+    }
+
+    // The installed apps changed: every window told (each page checks them: shared/apps.ts).
+    func pushApps() {
+        let json = apps()
+        for c in controllers { c.push(#"{"type":"apps","apps":"# + json + "}") }
     }
 }

@@ -101,6 +101,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     parkingTests() // parking-tests.swift
     slotTests() // slot-tests.swift
     hostTests() // host-tests.swift: the host engine against a stand-in window manager, and its calls' check
+    hostedTests() // hosted-tests.swift: the library, the host engine and the Safari copies joined (MarginHosted)
     enterTests() // enter-tests.swift
     marginWindowTests() // margin-window-tests.swift: Margin's own window (MarginHosted)
     handoffUiTests() // handoff-ui-tests.swift

@@ -72,6 +72,10 @@
 // none by default); frameProbe answers { none }. openSpaceWindow also says
 // { ev: 'made', id, windowId } and closeWindow { ev: 'closed', id, windowId },
 // so the host can play the window server's side.
+// Margin.app hosting (e2e-glue.swift): with `newWindow`, newWindow adds a window with those bounds (normal, or
+// full screen if asked), sends the list, says { ev: 'made', id, windowId } and answers { windowId, state, bounds };
+// hostShow { windowId, itemId, url } answers { tabId, created } (the item's tab kept, ids from 700) and hostClose
+// { itemId } { closed }, each said as { ev: 'hostShow' | 'hostClose', id, payload } after its req.
 // What the app sends: tick → { ev: 'tick' } and tock (unless muted); req →
 // { ev: 'req', msg } and its reply ({ ok: true, result: { type, windowId,
 // payload } }); setLayout → { ev: 'setLayout', msg }; drawn →
@@ -103,7 +107,7 @@ type Sock = {
   windows: Win[], data: Msg | null, acked: number, rev: string | null, cache: DataSet | null,
   incoming: { transfer: string, parts: Map<number, Msg>, bytes: number } | null, newWindow: Bounds | null, nextWindow: number,
   play: { enterMs?: number, exitMs?: number, listLagMs?: number, normal?: Bounds }, drafts: Record<string, number[]> | null,
-  calling: Set<number>, send: (m: Msg) => void,
+  calling: Set<number>, send: (m: Msg) => void, hosted?: Map<string, number>, nextTab?: number,
 };
 // Node's WebSocket (undici's) takes the request's headers; the DOM's type doesn't say so.
 type NodeWebSocket = new (url: string, init: { headers: Record<string, string> }) => WebSocket;
@@ -208,8 +212,24 @@ function takeData(s: Sock, m: Msg) {
   }
 }
 
+// Margin.app hosting this copy's window (above): an item's tab shown or closed; null: not one of these.
+function playHosted(s: Sock, m: Msg) {
+  if (m.type !== 'hostShow' && m.type !== 'hostClose') return null;
+  s.hosted ??= new Map();
+  const item = m.payload?.itemId;
+  say({ ev: m.type, id: s.id, payload: m.payload });
+  if (m.type === 'hostClose') { const had = s.hosted.delete(item); return { closed: had }; }
+  const had = s.hosted.get(item);
+  if (had != null) return { tabId: had, created: false };
+  s.nextTab = (s.nextTab ?? 700) + 1;
+  s.hosted.set(item, s.nextTab);
+  return { tabId: s.nextTab, created: true };
+}
+
 // A window request played as Safari would (above); null: the usual echo. A promise: answered when it settles.
 function playWindow(s: Sock, m: Msg) {
+  const hosted = playHosted(s, m);
+  if (hosted) return hosted;
   if (!s.newWindow) return null;
   const sendWindows = () => s.send({ k: 'windows', seq: ++s.seq, list: s.windows });
   const windowId = m.payload?.windowId;
@@ -218,6 +238,15 @@ function playWindow(s: Sock, m: Msg) {
   if (windowCall && typeof m.payload?.notAfter === 'number' && Date.now() > m.payload.notAfter) return { refused: 'late', pastMs: Date.now() - m.payload.notAfter };
   if (windowCall && s.calling.has(windowId)) return { busy: true };
   switch (m.type) {
+    case 'newWindow': {
+      const id = s.nextWindow++;
+      const b = s.newWindow;
+      const state = m.payload?.fullscreen ? 'fullscreen' : 'normal';
+      s.windows = [...s.windows, { windowId: id, left: b.left, top: b.top, width: b.width, height: b.height, state, focused: true, focusedAt: Date.now() }];
+      say({ ev: 'made', id: s.id, windowId: id });
+      sendWindows();
+      return { windowId: id, state, bounds: b };
+    }
     case 'openSpaceWindow': {
       const id = s.nextWindow++;
       const b = s.newWindow;

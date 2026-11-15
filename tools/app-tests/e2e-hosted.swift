@@ -7,7 +7,7 @@
 // over that area only, and over the palette drawn there it doesn't; the menu's New Tab opens the palette and
 // again closes it; Toggle Sidebar widens the page area (the source keeps the setting); full screen is the
 // page's mode; a resize moves the area; a press on a pin is a request of the source for this window; the
-// source's change is drawn; New Window makes a second window; the shell's stand-in source reads a data set.
+// source's change is drawn; New Window makes a second window; the shell's windows draw the library.
 import AppKit
 import WebKit
 
@@ -17,7 +17,7 @@ final class FakeWindowSource: MarginWindowSource {
   var asked: [(type: String, payload: JSONObject)] = []
   init(_ state: JSONObject) { self.state = state }
   func snapshot() -> JSONObject { state }
-  func perform(_ type: String, _ payload: JSONObject) {
+  @discardableResult func perform(_ type: String, _ payload: JSONObject) -> JSONObject? {
     asked.append((type, payload))
     if type == "updateSettings", let patch = payload["patch"] as? JSONObject {
       var settings = state["settings"] as? JSONObject ?? [:]
@@ -25,6 +25,7 @@ final class FakeWindowSource: MarginWindowSource {
       state["settings"] = settings
       onChange?()
     }
+    return nil
   }
 }
 
@@ -155,7 +156,7 @@ func hostedScenario() async {
   check("closed: one window left", await until(3, { windows.controllers.count == 1 }), "\(windows.controllers.count)")
   check("nothing warned: the page drew the source's state as it is, and nothing asked for a display", warned.isEmpty, "\(warned.prefix(5))")
 
-  // ---- the shell's stand-in source: a data set, read only ----
+  // ---- the shell's source: the library (the stand-in only when its rules don't load) ----
   let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-hosted-\(UUID().uuidString)")
   defer { try? FileManager.default.removeItem(at: root) }
   var options = Shell.Options()
@@ -168,6 +169,7 @@ func hostedScenario() async {
   let shell = Shell(link: link, windows: ScriptedWindows(), apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
   let made = shell.makeMarginWindows()
   check("the shell's windows: made once, in a test never on a display", made === shell.makeMarginWindows() && made.options.harness)
-  check("the shell's stand-in source: no data set yet, Personal", ((made.source.snapshot()["spaces"] as? [JSONObject])?.first?["id"] as? String) == "personal")
+  check("the shell's windows draw the library: nothing imported, a first space, Personal", made.source is LibraryWindowSource
+        && ((made.source.snapshot()["spaces"] as? [JSONObject])?.first?["name"] as? String) == "Personal")
   shell.stop {}
 }
