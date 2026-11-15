@@ -58,6 +58,10 @@ final class FakeHostedLinks: HostedLinks {
         return true
     }
     func windowIds(of profile: String) -> [Int] { windowsOf[profile] ?? [] }
+    var restored: [String: [Int]] = [:]
+    var epochs: [String: String] = [:]
+    func restoredWindowIds(of profile: String) -> [Int]? { profiles.contains(profile) ? (restored[profile] ?? []) : nil }
+    func linkEpoch(of profile: String) -> String? { profiles.contains(profile) ? (epochs[profile] ?? "e1") : nil }
     func request(profile: String, _ type: String, _ payload: JSONObject) async -> (result: JSONObject?, error: String?) {
         asked.append((profile, type, payload))
         guard profiles.contains(profile) else { return (nil, "not linked") }
@@ -84,6 +88,54 @@ final class FakeHostedLinks: HostedLinks {
     func types(since: Int = 0) -> [String] { asked.dropFirst(since).map(\.type) }
 }
 
+// An engine that only says which app Margin started (the restored-window sweep's one question).
+final class StubLaunchEngine: HostedEngine {
+    var safariPid: pid_t?
+    func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.margin, "stub") }
+    func show(_ id: HostID) async -> HostResult { .failed(.margin, "stub") }
+    func close(_ id: HostID) async {}
+    func pageRectChanged(_ placement: HostPlacement) async -> Bool { false }
+    func parkShown(why: String) async {}
+    var shown: HostID? { nil }
+    var hasHosts: Bool { false }
+    func isHosted(_ id: HostID) -> Bool { false }
+    func fullScreenSpace(ofWindow number: Int) -> UInt64? { nil }
+    func target(ofWindow number: Int) -> HostTarget? { nil }
+    func launchedPid(bundleId: String) -> pid_t? { bundleId == safariIdentifier ? safariPid : nil }
+}
+
+func restoredSweepTests(_ library: Library) {
+    let stub = StubLaunchEngine()
+    let links = FakeHostedLinks()
+    links.profiles = ["s-default", "s-work"]
+    links.restored = ["s-default": [5, 6], "s-work": [9]]
+    let s = HostedSession(library: library, engine: stub, links: links)
+    s.sleep = { _ in await Task.yield() }
+    func closes() -> [String] { links.asked.filter { $0.type == "closeWindow" }.map { "\($0.profile):\(int($0.payload["windowId"]) ?? -1)" }.sorted() }
+    s.sweepRestoredSafariWindows()
+    hostRun { await Task.yield() }
+    check("hosted sweep: a Safari the person opened (not started by Margin): none of its windows closed", closes().isEmpty)
+    stub.safariPid = 4242
+    s.sweepRestoredSafariWindows()
+    hostRun { for _ in 0..<5 { await Task.yield() } }
+    check("hosted sweep: Safari started by Margin: every restored window of each linked profile closed by its copy", closes() == ["s-default:5", "s-default:6", "s-work:9"], "\(closes())")
+    links.asked = []
+    s.sweepRestoredSafariWindows()
+    hostRun { for _ in 0..<5 { await Task.yield() } }
+    check("hosted sweep: once per link (the next poll closes nothing again)", closes().isEmpty, "\(closes())")
+    links.epochs["s-work"] = "e2"
+    links.restored["s-work"] = [11]
+    s.sweepRestoredSafariWindows()
+    hostRun { for _ in 0..<5 { await Task.yield() } }
+    check("hosted sweep: a profile linked again (Safari reopened it): swept again", closes() == ["s-work:11"], "\(closes())")
+    links.asked = []
+    s.options.closesRestoredSafariWindows = false
+    links.epochs["s-default"] = "e3"
+    s.sweepRestoredSafariWindows()
+    hostRun { for _ in 0..<5 { await Task.yield() } }
+    check("hosted sweep: off: nothing closed", closes().isEmpty)
+}
+
 func hostedTests() {
     let echo = Diagnostics.echo
     Diagnostics.echo = { _ in }
@@ -94,6 +146,7 @@ func hostedTests() {
     let dataRoot = tempFolder("hosted")
     defer { try? FileManager.default.removeItem(at: dataRoot) }
     guard let library = Library.open(dataRoot: dataRoot, script: script, background: false) else { return check("hosted: the library opens (\(scriptPath): npm run build)", false) }
+    restoredSweepTests(library)
     var n = 0
     library.randomIds = { (0..<4).map { _ in n += 1; return "h\(n)x" } }
 

@@ -27,6 +27,14 @@ final class ShellHostedLinks: HostedLinks {
 
     func openProfileWindow(_ profile: String) -> Bool { shell?.openProfileWindow("safari:\(profile)") ?? false }
     func windowIds(of profile: String) -> [Int] { shell?.windows(of: "safari:\(profile)").map(\.id) ?? [] }
+    func restoredWindowIds(of profile: String) -> [Int]? {
+        guard let entry = shell?.links["safari:\(profile)"], entry.connection.isUp, entry.mirror.hasState else { return nil }
+        return ExtWindow.parse(entry.mirror.windows, link: "safari:\(profile)").filter { $0.createdAt == nil }.map(\.key.windowId)
+    }
+    func linkEpoch(of profile: String) -> String? {
+        guard let entry = shell?.links["safari:\(profile)"], entry.connection.isUp else { return nil }
+        return entry.connection.hello.epoch
+    }
 
     func request(profile: String, _ type: String, _ payload: JSONObject) async -> (result: JSONObject?, error: String?) {
         guard let entry = shell?.links["safari:\(profile)"], entry.connection.isUp else { return (nil, "not linked") }
@@ -52,6 +60,7 @@ final class NoHostEngine: HostedEngine {
     func isHosted(_ id: HostID) -> Bool { false }
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { nil }
     func target(ofWindow number: Int) -> HostTarget? { nil }
+    func launchedPid(bundleId: String) -> pid_t? { nil }
 }
 
 // The engine as the session sees it: the shell's at the time of each call (it may start after the session is made),
@@ -73,6 +82,7 @@ final class LateHostEngine: HostedEngine {
     func isHosted(_ id: HostID) -> Bool { engine.isHosted(id) }
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { engine.fullScreenSpace(ofWindow: number) }
     func target(ofWindow number: Int) -> HostTarget? { engine.target(ofWindow: number) }
+    func launchedPid(bundleId: String) -> pid_t? { resolve()?.launchedPid(bundleId: bundleId) }
 }
 
 extension Shell {
@@ -147,6 +157,7 @@ extension Shell {
     // browser window); the host's poll, while it hosts something or a copy is linked.
     func hostedTrack() {
         host?.poll()
+        hosted?.sweepRestoredSafariWindows()
         guard host?.hasHosts == true || host?.hasLeftSafariWindows == true || !links.isEmpty else { return }
         pollTimer = Timer.scheduledTimer(withTimeInterval: options.restPoll, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.track() }

@@ -44,6 +44,7 @@ protocol HostedEngine: AnyObject {
     func isHosted(_ id: HostID) -> Bool
     func fullScreenSpace(ofWindow number: Int) -> UInt64?
     func target(ofWindow number: Int) -> HostTarget?
+    func launchedPid(bundleId: String) -> pid_t?
 }
 
 extension HostEngine: HostedEngine {}
@@ -87,6 +88,11 @@ protocol HostedLinks: AnyObject {
     func openProfileWindow(_ profile: String) -> Bool
     // That profile's windows, as its copy lists them.
     func windowIds(of profile: String) -> [Int]
+    // Its windows that were there before its copy started (Safari restored them at launch), once its copy has listed its
+    // windows; nil: not listed yet.
+    func restoredWindowIds(of profile: String) -> [Int]?
+    // The epoch of that profile's link now (a new link: a new epoch), nil: not linked.
+    func linkEpoch(of profile: String) -> String?
 }
 
 final class HostedSession: LibraryDelegate {
@@ -96,6 +102,7 @@ final class HostedSession: LibraryDelegate {
         var pageWait = 3.0 // its page area worked out (the sidebar's tile measured)
         var every = 0.05
         var safariBundles: Set<String> = [safariIdentifier, "com.apple.SafariTechnologyPreview"]
+        var closesRestoredSafariWindows = true // (Tirth, 2026-11-15) a Safari Margin started: its restored windows closed
     }
 
     // Where an item's page is: its host, and for a web item its profile.
@@ -369,6 +376,29 @@ final class HostedSession: LibraryDelegate {
     }
 
     // ---- the engine's Safari windows (HostEngine's requestSafariWindow, closeSafariWindow, safariFullScreen, safariLinked) ----
+
+    // Decided by Tirth (2026-11-15): when Safari was started by Margin (no Dock icon), the windows Safari restored from its
+    // last session are closed, so they don't come back next time (a restored full-screen one stood as its own Space in
+    // Mission Control). Only in a Safari Margin started; only windows that were there before their profile's copy
+    // started (Margin's own are made after); once per link; closed by their copy. A Safari the person opened is never
+    // touched. Called from the shell's poll.
+    func sweepRestoredSafariWindows() {
+        guard options.closesRestoredSafariWindows else { return }
+        guard options.safariBundles.contains(where: { engine.launchedPid(bundleId: $0) != nil }) else { swept = [:]; return }
+        for p in links.safariProfiles() {
+            guard let epoch = links.linkEpoch(of: p), swept[p] != epoch, let restored = links.restoredWindowIds(of: p) else { continue }
+            swept[p] = epoch
+            let ours = Set(safariWindows.values)
+            let close = restored.filter { !ours.contains($0) }
+            guard !close.isEmpty else { continue }
+            note("Safari started by Margin: \(close.count) window(s) it restored from its last session closed")
+            Task { [weak self] in
+                guard let self else { return }
+                for id in close { _ = await self.links.request(profile: p, "closeWindow", ["windowId": id]) }
+            }
+        }
+    }
+    private var swept: [String: String] = [:] // each profile's link epoch already swept
 
     func safariLinked(_ profile: String?) async -> Bool {
         let p = resolve(profile)

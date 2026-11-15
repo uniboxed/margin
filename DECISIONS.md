@@ -4943,3 +4943,15 @@ His first try (16:13 to 16:15: a Safari web item, Maps from the palette, switche
 - **Also:** the page's full-screen layout was dropped by `host-app.ts`'s dedupe (same insets, only its mode new), so every open waited 1.5 s and used the windowed one; the mode and `pageOutside` now count, and the page measures again after either changes. Each switch logged "back on a tab it had passed": the library answered at once while the show took seconds; the item asked for is now drawn in front at once (`requested`), and a show overtaken by a newer one before it started is skipped. A field of Margin's taking the keys (the palette) makes Margin active and its window key, so the palette opened over a hosted app gets the typing.
 
 **Left:** the reserved strips around the page show the Space's backdrop, not the theme's frame; keys while the hosted app has them are still its own (Safari's ⌘T); the palette is still drawn in the sidebar's narrow tile while hosting; an app opened from outside while hosted (Maps' promotion) is only logged. **Verified:** `host-tests.swift`, `hosted-tests.swift`, `e2e-glue.swift`, `e2e-hosted.swift`, `tests/ui-host-app.test.ts`, the three theme tests. Not on the real screen (`TESTING.md`, "Margin as the app, joined", step 3).
+
+## A Safari Margin started: the windows it restored are closed (2026-11-15)
+
+Decided by Tirth on 2026-11-15, after a Safari Margin started (no Dock icon) restored his last session's windows and a
+full-screen one stood as its own Space in Mission Control: close them, so they don't come back the next time.
+
+`HostedSession.sweepRestoredSafariWindows`, from the shell's poll while hosted: only while a Safari Margin started is
+running (`HostEngine.launchedPid`); for each linked Safari profile, once per link (its epoch), the windows its copy lists
+that were there before the copy started (`createdAt` unknown: Safari restored them) and aren't Margin's own, closed by
+that copy (`closeWindow`), so they leave Safari's saved session. A Safari the person opened is never touched. Their tabs
+and unsent text go with them (his choice). `Options.closesRestoredSafariWindows` turns it off. Unit-tested
+(`hosted-tests.swift`, "hosted sweep"); not yet seen on screen.

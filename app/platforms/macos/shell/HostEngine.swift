@@ -139,6 +139,8 @@ final class HostEngine {
     }
 
     var hasHosts: Bool { !hosts.isEmpty || !launched.isEmpty }
+    // The pid of a running app of this bundle that Margin started itself (no Dock icon), if any.
+    func launchedPid(bundleId: String) -> pid_t? { launched.first { $0.value.bundleId == bundleId }?.key }
     var hasLeftSafariWindows: Bool { !leftSafariWindows.isEmpty }
 
     // ---- the API ----
