@@ -50,7 +50,41 @@ final class NoHostEngine: HostedEngine {
     func target(ofWindow number: Int) -> HostTarget? { nil }
 }
 
+// The engine as the session sees it: the shell's at the time of each call (it may start after the session is made),
+// the stand-in that fails every show while there is none.
+final class LateHostEngine: HostedEngine {
+    let resolve: () -> HostEngine?
+    private let none = NoHostEngine()
+    init(_ resolve: @escaping () -> HostEngine?) { self.resolve = resolve }
+    private var engine: HostedEngine { resolve() ?? none }
+    func open(app target: HostTarget, in pageRect: CGRect, marginWindow: Int, marginSpace: UInt64) async -> HostResult {
+        await engine.open(app: target, in: pageRect, marginWindow: marginWindow, marginSpace: marginSpace)
+    }
+    func show(_ id: HostID) async -> HostResult { await engine.show(id) }
+    func close(_ id: HostID) async { await engine.close(id) }
+    func pageRectChanged(_ rect: CGRect) async -> Bool { await engine.pageRectChanged(rect) }
+    var shown: HostID? { engine.shown }
+    var hasHosts: Bool { engine.hasHosts }
+    func isHosted(_ id: HostID) -> Bool { engine.isHosted(id) }
+    func fullScreenSpace(ofWindow number: Int) -> UInt64? { engine.fullScreenSpace(ofWindow: number) }
+    func target(ofWindow number: Int) -> HostTarget? { engine.target(ofWindow: number) }
+}
+
 extension Shell {
+    // The engine's hooks to the session (the Safari windows it asks for, the moment it tiles, its events): when the
+    // session is made with an engine already there, or when the engine starts after the session.
+    func wire(_ host: HostEngine, to session: HostedSession) {
+        host.requestSafariWindow = { [weak session] profile in await session?.requestSafariWindow(profile) ?? false }
+        host.closeSafariWindow = { [weak session] number in await session?.closeSafariWindow(number) ?? false }
+        host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
+        host.willTile = { [weak session] _ in session?.willTile() }
+        let before = host.onEvent
+        host.onEvent = { [weak session] event in
+            before?(event)
+            session?.hostEvent(event)
+        }
+    }
+
     // The source Margin's windows draw, and the session that hosts what they show: the library's, made once.
     func makeHostedSource() -> MarginWindowSource {
         let profiles = DataSetWindowSource(data: data, pick: { [weak self] in self?.hostedProfile() })
@@ -58,23 +92,15 @@ extension Shell {
             Diagnostics.note("Margin's window: no library (its rules didn't load): a profile's spaces, read only")
             return profiles
         }
-        let engine: HostedEngine = host ?? NoHostEngine()
+        // The engine looked up at each call: Margin's window (and so this session) is made when Margin is opened by hand,
+        // before the private calls are checked and the engine started (seen 2026-11-15: the session kept the stand-in).
+        let engine = LateHostEngine { [weak self] in self?.host }
         let session = HostedSession(library: library, engine: engine, links: ShellHostedLinks(shell: self), options: options.hostedOptions ?? HostedSession.Options())
         if let name = UserDefaults.standard.string(forKey: "MarginHostedSafari"), !options.harness { session.options.safariBundles.insert(name) }
         session.appName = { [weak self] id in self?.installedAppName(id) }
         library.delegate = session
         hosted = session
-        if let host {
-            host.requestSafariWindow = { [weak session] profile in await session?.requestSafariWindow(profile) ?? false }
-            host.closeSafariWindow = { [weak session] number in await session?.closeSafariWindow(number) ?? false }
-            host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
-            host.willTile = { [weak session] _ in session?.willTile() }
-            let before = host.onEvent
-            host.onEvent = { [weak session] event in
-                before?(event)
-                session?.hostEvent(event)
-            }
-        }
+        if let host { wire(host, to: session) }
         openApp = { [weak session] id in session?.openApp(id, windowId: nil) }
         // The first run, nothing imported: a space to start in, named by the person in the UI's editor.
         if library.spaces().isEmpty {

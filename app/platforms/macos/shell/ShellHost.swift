@@ -30,6 +30,7 @@ extension Shell {
         guard options.hosted else { return }
         engine.onEvent = { event in Diagnostics.note("host: event \(event)") }
         host = engine
+        if let session = hosted { wire(engine, to: session) } // (Margin's window was opened first)
         Diagnostics.note("host: on (MarginHosted): apps are hosted in Margin's page area")
     }
 
