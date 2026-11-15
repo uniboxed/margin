@@ -252,8 +252,21 @@ func glueScenario() async {
   guard await until(10, { fake.first("hostShow", since: since) != nil }) else { return check("a web item: its tab asked of the copy", false, "\(world.calls.suffix(6)) \(session.done.suffix(4))") }
   await session.idle()
   let web = library.items(space: first).first { $0.value["url"] as? String == "https://example.com/" }?.id ?? ""
-  let asked = fake.all("req", since: since).compactMap { ($0["msg"] as? JSONObject)?["type"] as? String }
+  let reqs = fake.all("req", since: since).compactMap { $0["msg"] as? JSONObject }
+  let asked = reqs.compactMap { $0["type"] as? String }.filter { $0 != "closeWindow" }
   check("Safari started with no Dock icon, then a window asked of its copy, put in full screen by it, then the item's tab", world.calls.contains("launch \(safariIdentifier)") && asked == ["newWindow", "setWindowState", "hostShow"], "\(asked)")
+  // (Tirth, 2026-11-15) a Safari Margin started: the windows it restored are closed; Margin's own one never is.
+  var madeId: Int?
+  for r in reqs where r["type"] as? String == "setWindowState" {
+    let payload = r["payload"] as? JSONObject
+    madeId = int(payload?["windowId"])
+  }
+  var closed: [Int] = []
+  for r in reqs where r["type"] as? String == "closeWindow" {
+    let payload = r["payload"] as? JSONObject
+    if let id = int(payload?["windowId"]) { closed.append(id) }
+  }
+  check("the window Safari had before its copy started (restored) closed, Margin's own never", madeId != nil && !closed.contains(madeId!) && !closed.isEmpty, "made \(String(describing: madeId)) closed \(closed)")
   let shown = fake.first("hostShow", since: since)?["payload"] as? JSONObject ?? [:]
   check("hostShow names the copy's new window, the item and its address", int(shown["windowId"]) == 90 && shown["itemId"] as? String == web && shown["url"] as? String == "https://example.com/", "\(shown)")
   check("the engine shows Safari's window in the page area, the app parked", engine.shown == HostTarget.safariWindow("s-default").id && engine.hosts[textEdit]?.phase == .parked && engine.pageRect == expected)

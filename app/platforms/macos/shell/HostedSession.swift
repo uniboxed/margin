@@ -385,10 +385,10 @@ final class HostedSession: LibraryDelegate {
     func sweepRestoredSafariWindows() {
         guard options.closesRestoredSafariWindows else { return }
         guard options.safariBundles.contains(where: { engine.launchedPid(bundleId: $0) != nil }) else { swept = [:]; return }
-        for p in links.safariProfiles() {
+        for p in links.safariProfiles() where !requesting.contains(p) {
             guard let epoch = links.linkEpoch(of: p), swept[p] != epoch, let restored = links.restoredWindowIds(of: p) else { continue }
             swept[p] = epoch
-            let ours = Set(safariWindows.values)
+            let ours = Set(safariWindows.values).union(made_)
             let close = restored.filter { !ours.contains($0) }
             guard !close.isEmpty else { continue }
             note("Safari started by Margin: \(close.count) window(s) it restored from its last session closed")
@@ -399,6 +399,8 @@ final class HostedSession: LibraryDelegate {
         }
     }
     private var swept: [String: String] = [:] // each profile's link epoch already swept
+    private var requesting: Set<String> = [] // profiles a window is being asked of right now
+    private var made_: Set<Int> = [] // every Safari window Margin has made (the copies' ids): never swept
 
     func safariLinked(_ profile: String?) async -> Bool {
         let p = resolve(profile)
@@ -432,12 +434,15 @@ final class HostedSession: LibraryDelegate {
 
     func requestSafariWindow(_ profile: String?) async -> HostSafariWindow? {
         let p = resolve(profile)
+        requesting.insert(p) // (the restored-window sweep leaves this profile alone meanwhile)
+        defer { requesting.remove(p) }
         let (result, error) = await links.request(profile: p, "newWindow", ["fullscreen": false])
         guard let made = result.flatMap({ SpaceWindowAnswer($0) }) else {
             note("Safari window for a profile: not made (\(error ?? "no answer"))")
             return nil
         }
         safariWindows[p] = made.windowId
+        made_.insert(made.windowId)
         note("Safari window \(made.windowId) made for hosting")
         // The window opened only to wake the profile's copy: closed again (Margin opened it; it has no page of the person's).
         if let woken = wokenByMenu.removeValue(forKey: p) {
