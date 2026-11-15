@@ -85,7 +85,7 @@ test('spaces, the active tab, the window, the archive', () => {
   assert.equal(buildViewModel({ state: null, ui: {}, platform: PLATFORM, settings: {} }).space.number, 1, 'before the state: 1, never 0');
   // The window has a tab in front.
   assert.deepEqual([vm.tab!.id, vm.tab!.host, vm.tab!.pinned, vm.tab!.asleep, vm.tab!.newTab], [13, 'docs.example', true, false, false], 'the window\'s active tab');
-  assert.deepEqual(vm.window, { id: W, mode: 'inpage', focused: true, sidebar: 'hidden', sidebarOpen: false, peek: false, pinnedOpen: false, frameWhenHidden: true });
+  assert.deepEqual(vm.window, { id: W, mode: 'inpage', focused: true, sidebar: 'hidden', sidebarOpen: false, peek: false, pinnedOpen: false, pageOutside: false, frameWhenHidden: true });
   assert.deepEqual(ids(vm.archive), ['ar1', 'ar2'], 'newest first, as stored');
   assert.equal(vm.archive[1].title, 'https://news.example/b');
   assert.equal(vm.archive[0].icon, smallState().favicons['https://gone.example'].data);
@@ -100,7 +100,7 @@ test('spaces, the active tab, the window, the archive', () => {
   assert.equal(inPage.space.folders[1].hasShown, false, 'the closed folder\'s tab isn\'t in front now: it shows nothing');
   // The sidebar: the setting, unless the UI says (peek).
   assert.equal(build({ ...smallState(), settings: { sidebarPinnedOpen: true } }).window.sidebar, 'open');
-  assert.deepEqual(build(smallState(), { sidebar: 'peek', mode: 'fullscreen' }).window, { id: W, mode: 'fullscreen', focused: true, sidebar: 'peek', sidebarOpen: false, peek: true, pinnedOpen: false, frameWhenHidden: true });
+  assert.deepEqual(build(smallState(), { sidebar: 'peek', mode: 'fullscreen' }).window, { id: W, mode: 'fullscreen', focused: true, sidebar: 'peek', sidebarOpen: false, peek: true, pinnedOpen: false, pageOutside: false, frameWhenHidden: true });
 });
 
 test('the palette: shared/search.ts ranks its rows; ids, the selection, no actions in the model', () => {

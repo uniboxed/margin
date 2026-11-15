@@ -159,6 +159,30 @@ test("the app host in Margin's own window: said by the hello's host, its mode th
   assert.deepEqual(b.posts.at(-1), { op: 'perform', name: 'window.fullscreen', arg: null });
 });
 
+test("the app host: Margin's own window hosting another app's window beside it (pageOutside): the sidebar alone, always docked", () => {
+  const over = createAppHost({ hello: hello({ pageOutside: true }), post: bridge().post });
+  assert.equal(over.pageOutside, false, 'only in Margin\'s own window');
+  const host = createAppHost({ hello: hello({ host: 'app-window', pageOutside: true }), post: bridge().post });
+  assert.equal(host.pageOutside, true, 'from the hello');
+  const drawn: boolean[] = [];
+  host.onState(() => drawn.push(host.pageOutside));
+  host.receive({ type: 'pageOutside', on: false });
+  host.receive({ type: 'pageOutside', on: false });
+  host.receive({ type: 'pageOutside', on: true });
+  assert.deepEqual(drawn, [false, true], 'drawn again each time it changes, only then');
+  // The view model: the sidebar docked even with Keep open off, or put away by its key (peek, hidden).
+  const state = host.getState() as PageState;
+  const closed = { ...state, settings: { ...state.settings, sidebarPinnedOpen: false } };
+  for (const sidebar of [undefined, 'hidden', 'peek'] as const) {
+    const vm = buildViewModel({ state: closed, ui: { windowId: W, mode: 'fullscreen', pageOutside: true, ...(sidebar ? { sidebar } : {}) }, platform: host.platform });
+    assert.equal(vm.window.sidebar, 'open', `${sidebar ?? 'Keep open off'}: docked`);
+    assert.equal(vm.window.pageOutside, true);
+  }
+  const plain = buildViewModel({ state: closed, ui: { windowId: W, mode: 'fullscreen' }, platform: host.platform });
+  assert.equal(plain.window.sidebar, 'hidden', 'not hosting: Keep open off hides it, as before');
+  assert.equal(plain.window.pageOutside, false);
+});
+
 test('chromeRects: the first window-controls with a box, every drag region with one', () => {
   type FakeEl = { getBoundingClientRect: () => { left: number, top: number, width: number, height: number } };
   const el = (r: number[]): FakeEl => ({ getBoundingClientRect: () => ({ left: r[0], top: r[1], width: r[2], height: r[3] }) });
