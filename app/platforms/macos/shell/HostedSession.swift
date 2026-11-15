@@ -48,6 +48,7 @@ protocol HostedWindow: AnyObject {
     var hostedPageRect: CGRect? { get } // the page area while hosting (top left), nil until worked out
     var pageAreaWhyNot: String { get } // why there's none yet, for the log
     func toFullScreen()
+    var fullScreenState: String { get } // for the log
     func setHosting(_ on: Bool)
     func tile() // the sidebar's tile now (the hosted window's tile is coming in)
     func push(_ json: String)
@@ -233,8 +234,13 @@ final class HostedSession: LibraryDelegate {
         if !w.isFullScreen {
             note("Margin's window \(w.id) to full screen first (hosting needs its own Space)")
             w.toFullScreen()
+            // One more ask if it hasn't started (the first can be dropped while Margin comes forward).
+            if await !wait(2, { w.isFullScreen }) {
+                note("Margin's window \(w.id) not in full screen after 2 s (\(w.fullScreenState)): asked again")
+                w.toFullScreen()
+            }
             guard await wait(options.fullScreenWait, { w.isFullScreen }) else {
-                note("Margin's window \(w.id) didn't go full screen: nothing hosted")
+                note("Margin's window \(w.id) didn't go full screen (\(w.fullScreenState)): nothing hosted")
                 return nil
             }
         }

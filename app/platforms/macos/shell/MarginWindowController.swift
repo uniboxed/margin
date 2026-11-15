@@ -300,7 +300,21 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     func toggleFullScreen() {
         guard !options.harness else { return fullScreenChanged(!isFullScreen) } // (a test's window never leaves its place)
+        // macOS ignores the toggle for a window of an app that isn't active, or one not on the current Space (seen
+        // 2026-11-15 when Margin was opened from behind another app's full screen): Margin forward and its window key
+        // first, then the toggle a moment later.
+        if !NSApp.isActive || !window.isKeyWindow || !window.isOnActiveSpace {
+            NSApp.activate()
+            window.makeKeyAndOrderFront(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.window.toggleFullScreen(nil) }
+            return
+        }
         window.toggleFullScreen(nil)
+    }
+
+    // For the log when it doesn't happen (numbers only).
+    var fullScreenState: String {
+        "active \(NSApp.isActive), key \(window.isKeyWindow), on the current Space \(window.isOnActiveSpace), visible \(window.isVisible), full screen \(isFullScreen)"
     }
 
     func windowDidResize(_ notification: Notification) { updatePage(); placeButtons() }
