@@ -11,8 +11,9 @@
 //   front). Two web items of one profile: a tab switch only, the engine isn't asked. Closed: `hostClose { itemId }`.
 //   Chrome and Edge items: not hosted yet (said in the log).
 // - Margin's window while hosting (v1 rule, decided here): it's taken to full screen first (its own Space: the tiles
-//   need it; windowed hosting is a later phase), then made the sidebar's tile (MarginWindowController.setHosting),
-//   and the engine is given the page area worked out from the tiles. Nothing hosted any more: its whole width again.
+//   need it; windowed hosting is a later phase), its page drawing the sidebar alone (MarginWindowController.setHosting),
+//   the sidebar's tile once the hosted tile comes in (`willTile`), and the engine is given the page area worked out
+//   from the tiles. Nothing hosted any more: its whole width again.
 // - An app picked in the palette (`app.open`): an item of the window's space (the one it has for that app, else a new
 //   one, `addItem`), then shown. Safari picked: a new web item instead (a blank page, the space's profile). Chrome
 //   and Edge picked: not supported yet, nothing done.
@@ -47,13 +48,15 @@ protocol HostedWindow: AnyObject {
     var hostedPageRect: CGRect? { get } // the page area while hosting (top left), nil until worked out
     func toFullScreen()
     func setHosting(_ on: Bool)
+    func tile() // the sidebar's tile now (the hosted window's tile is coming in)
     func push(_ json: String)
 }
 
 extension MarginWindowController: HostedWindow {
     var number: Int { window.windowNumber }
-    // (Only from a layout its page measured in full screen: one from the window before is followed by that one.)
-    var hostedPageRect: CGRect? { hosting && layout?.mode == "fullscreen" ? window.pageRect : nil }
+    // (Only from a layout its page measured in full screen, a moment after it was told the sidebar is all it draws:
+    // a layout from before is followed by that one.)
+    var hostedPageRect: CGRect? { hosting && layout?.mode == "fullscreen" && Diagnostics.now() - hostingSince >= 0.25 ? window.pageRect : nil }
     func toFullScreen() { if !isFullScreen { toggleFullScreen() } }
 }
 
@@ -246,6 +249,12 @@ final class HostedSession: LibraryDelegate {
         w.setHosting(false)
         shown[w.id] = nil
         onChange?()
+    }
+
+    // The engine is moving a host's tile into Margin's Space: the hosting window becomes the sidebar's tile.
+    func willTile() {
+        guard let id = hostingWindow else { return }
+        window(id)?.tile()
     }
 
     private func stopHosting() {

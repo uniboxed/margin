@@ -82,6 +82,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // Hosting another app's window beside it (setHosting): the display the tiles divide (top left), and the page's
     // right inset as last measured with room for a page (in the sidebar's tile there's none to measure).
     private(set) var hosting = false
+    private(set) var tiled = false // its content no wider than the sidebar's tile (tile(), as the hosted tile comes in)
+    private(set) var hostingSince: TimeInterval = 0
     private(set) var hostDisplay: CGRect?
     private(set) var wideRight: Double?
     private var frameBeforeHosting: NSRect?
@@ -184,12 +186,15 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // ---- hosting another app's window beside it (HostedSession.swift) ----
 
-    // On: the window is the sidebar's tile, its page draws the sidebar alone, its page area from the tiles. Off: the
-    // whole width again. The window must be in full screen (its own Space) for the tiles; a test's window plays the
-    // window manager's part (its width set to the tile's, off every display).
+    // On: its page draws the sidebar alone (docked), nothing passes through it, its page area from the tiles; it becomes
+    // the sidebar's tile once the hosted tile comes in (`tile`: alone in its Space, a narrow window would stand in the
+    // middle of it while an app starts). Off: the whole width again. The window must be in full screen (its own Space)
+    // for the tiles; a test's window plays the window manager's part (its width set to the tile's, off every display).
     func setHosting(_ on: Bool) {
         guard on != hosting else { return }
         hosting = on
+        tiled = false
+        hostingSince = Diagnostics.now()
         if on {
             frameBeforeHosting = window.frame
             hostDisplay = window.screen.map { MarginWindowGeometry.fullScreenArea($0) } ?? contentFrame
@@ -207,9 +212,16 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         updatePage()
     }
 
+    // The sidebar's tile now (the host is moving its window's tile in beside it).
+    func tile() {
+        guard hosting, !tiled else { return }
+        tiled = true
+        updatePage()
+    }
+
     // The sidebar's tile: the window's content no wider than the page's left inset (macOS lays the tile out that wide).
     private func applyTile() {
-        guard hosting, let layout else { return }
+        guard hosting, tiled, let layout else { return }
         let width = MarginWindowGeometry.tileWidth(layout)
         if window.contentMaxSize.width != width {
             window.contentMinSize = NSSize(width: min(width, MarginWindow.minimum.width), height: min(MarginWindow.minimum.height, 200))

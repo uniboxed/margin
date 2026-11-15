@@ -68,6 +68,7 @@ extension Shell {
             host.requestSafariWindow = { [weak session] profile in await session?.requestSafariWindow(profile) ?? false }
             host.closeSafariWindow = { [weak session] number in await session?.closeSafariWindow(number) ?? false }
             host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
+            host.willTile = { [weak session] _ in session?.willTile() }
             let before = host.onEvent
             host.onEvent = { [weak session] event in
                 before?(event)

@@ -28,6 +28,8 @@ final class FakeHostedWindow: HostedWindow {
         hostedPageRect = on ? MarginWindowGeometry.hostedPageRect(display: FakeHostWorld.display, layout: layout, right: 8) : nil
     }
     func push(_ json: String) { pushed.append(json) }
+    var tiles = 0
+    func tile() { tiles += 1 }
 }
 
 final class FakeHostedLinks: HostedLinks {
@@ -81,6 +83,7 @@ func hostedTests() {
     engine.closeSafariWindow = { await session.closeSafariWindow($0) }
     engine.safariLinked = { await session.safariLinked($0) }
     engine.onEvent = { session.hostEvent($0) }
+    engine.willTile = { _ in session.willTile() }
     library.delegate = session
     var changes = 0
     session.onChange = { changes += 1 }
@@ -104,7 +107,7 @@ func hostedTests() {
     let editItem = textEdit?.id ?? ""
     check("hosted: a palette pick: an item of the window's space, its app's name from the catalog",
           textEdit != nil && library.target(ofItem: editItem) == .app(bundleId: "com.apple.TextEdit", name: "TextEdit"), "\(library.items())")
-    check("hosted: Margin's window taken to full screen first, then the sidebar's tile", window.fullScreenAsks == 1 && window.isFullScreen && window.hostings == [true], "\(window.hostings)")
+    check("hosted: Margin's window taken to full screen first, then the sidebar's tile as the app's tile came in", window.fullScreenAsks == 1 && window.isFullScreen && window.hostings == [true] && window.tiles == 1, "\(window.hostings)")
     check("hosted: the engine opened the app (started with no Dock icon) and shows it", w.calls.contains("launch com.apple.TextEdit") && engine.shown == HostTarget.app("com.apple.TextEdit").id, "\(w.calls)")
     let editWindow = w.running(bundleId: "com.apple.TextEdit").first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0
     check("hosted: the engine was given the page area from the tiles, and its window is there", engine.pageRect == page && w.bounds(window: editWindow) == page, "\(engine.pageRect) \(String(describing: w.bounds(window: editWindow)))")
@@ -250,7 +253,7 @@ func hostedShellTests(script: URL) {
     check("hosted shell: Margin's windows draw the library", source is LibraryWindowSource && shell.hosted != nil && shell.library?.delegate === shell.hosted)
     check("hosted shell: the first run with nothing to import: one space made, for the person to name in the editor",
           shell.library?.spaces().count == 1 && shell.hosted?.firstSpace == shell.library?.spaces().first?.id)
-    check("hosted shell: the engine's Safari windows are the copies'", shell.host?.requestSafariWindow != nil && shell.host?.closeSafariWindow != nil && shell.host?.safariLinked != nil)
+    check("hosted shell: the engine's Safari windows are the copies'", shell.host?.requestSafariWindow != nil && shell.host?.closeSafariWindow != nil && shell.host?.safariLinked != nil && shell.host?.willTile != nil)
     check("hosted shell: a palette pick goes to the session", shell.openApp != nil)
     shell.startSlots(spaces: FakeSlotSpaces(), reads: nil)
     check("hosted shell: no slot (Margin hosts the browser's window itself)", shell.slots == nil)
