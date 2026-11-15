@@ -110,6 +110,8 @@ export type PaletteRow = {
   id: string, kind: string, title: string, subtitle: string, badge: string, spaceColor: string,
   emoji: string, isSearch: boolean, isOpen: boolean, icon: string | null, letter: string, color: string,
   selected: boolean, goes: boolean, section: string, sectionStart: boolean,
+  /** an installed app (Margin.app, hosting on): its icon is the app's own shape, drawn without a tile */
+  isApp: boolean,
 };
 export type CloudTabRow = Face & { kind: 'cloud', id: string, pinned: boolean, deviceId: string, label: string };
 export type CloudDeviceRow = {
@@ -436,6 +438,7 @@ function fresh(input: ViewModelInput): ViewModel {
         // The typed text as a search, or as an address to open (a theme may draw its own icon).
         isSearch: item.kind === 'go' && item.search === true,
         isOpen: item.kind === 'go' && item.search === false,
+        isApp: item.kind === 'app',
         icon: checkIconUrl(icon) ? icon : null,
         letter,
         color,
@@ -746,7 +749,7 @@ const PROFILE_EDITOR_SAFARI_LABELS = Object.freeze({
 });
 
 // Rows that go somewhere (Arcadia's arrow button).
-const GOES = new Set(['tab', 'pin', 'archive', 'go', 'cloud']);
+const GOES = new Set(['tab', 'pin', 'archive', 'go', 'cloud', 'app']);
 
 /**
  * What shared/search.ts ranks the palette for: this window and tab.

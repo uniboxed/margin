@@ -283,8 +283,9 @@ host. Immutable: rows that didn't change are the same objects.
   (`ago` too), `palette` (`open`, `query`, `rows[]`: `title`, `subtitle`,
   `badge`, `spaceColor` (the badge's space's color, `''` for Archived,
   Search…), `emoji`, `isSearch` and `isOpen` (the typed text as a search or
-  an address: draw an icon of your own), `icon`, `letter`, `color`,
-  `selected`, `goes`; `hasRows`),
+  an address: draw an icon of your own), `isApp` (an installed app, in
+  Margin.app: its `icon` is the app's own shape, best drawn without a
+  tile), `icon`, `letter`, `color`, `selected`, `goes`; `hasRows`),
   `menu` (`label`, `items[]`: `id`, `label`, `separator`, `danger`,
   `confirming`), `settingsForm` (`fields[]`, above), `editor` (`name`, `emoji`, `color`, `colors[]`,
   `deleteLabel`, `deleteTitle`, `cannotDelete`, `confirmDelete`, `labels`:

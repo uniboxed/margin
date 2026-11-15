@@ -322,7 +322,8 @@ export function contextFromState(state: any, paletteIds: Iterable<string> = [], 
 // |                    |                   |                               | setSpace, newTab, search, pinTab,       |
 // |                    |                   |                               | newWindow, openLauncher,                |
 // |                    |                   |                               | toggleFullscreen; or local:             |
-// |                    |                   |                               | toggleSidebar, navigate, search         |
+// |                    |                   |                               | toggleSidebar, navigate, search; or     |
+// |                    |                   |                               | host: app.open { bundleId, name }       |
 // | menu.open          | 'add'             | local: that menu, at the button |                                       |
 // | menu.run           | item id           | the item's own action         | (ui/behaviors/menu-items.ts)            |
 // | menu.close         | none              | local                         |                                         |
@@ -496,6 +497,8 @@ export function requestFor(name: string, arg: any, { state, ui, platform, row }:
       const action = row?.action;
       if (!action) return { kind: 'none', reason: 'palette.run: no such row' };
       if (action.local) return { kind: 'local', name: `palette.${action.local}`, arg: action };
+      // What only the app does (an installed app opened in the page area: `app.open`).
+      if (typeof action.perform === 'string') return { kind: 'host', name: action.perform, arg: action.arg };
       const { type, ...payload } = action;
       return send(type, type === 'activateTab' || type === 'openPin' || type === 'setSpace' ? { ...payload, ...show } : payload);
     }

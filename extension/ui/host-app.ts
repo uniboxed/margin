@@ -39,7 +39,11 @@
 //   `across.switchSettings` (`switchSettings`, a feature), saved by the app
 //   (`switch.closeWindows`); the "switching" cover drawn (`switch.coverShown`,
 //   app/shared/host/overlay.ts); a button of the switch's notice
-//   (`switch.notice`: its id is `switch:<kind>`).
+//   (`switch.notice`: its id is `switch:<kind>`);
+// - installed apps (Margin.app with hosting on, `MarginHosted`): the app's list, in the hello (`apps`) and as
+//   `{ type: 'apps' }` when it changes (app/platforms/macos/shell/ShellApps.swift), checked (shared/apps.ts appsOf)
+//   and kept as the state's `apps` (the palette finds them: shared/search.ts); one picked is the app's to open
+//   in the page area (`app.open`, its bundle id only).
 //
 // No browser API here: only the DOM and `post`.
 import type { Geometry, Host } from './host.ts';
@@ -47,6 +51,7 @@ import { fromStorage } from '../shared/stored.ts';
 import { isLauncherPage } from '../shared/view.ts';
 import { acrossOf, foreignSpace } from '../shared/across.ts';
 import { cloudOf } from '../shared/cloud-tabs.ts';
+import { appsOf, isBundleId } from '../shared/apps.ts';
 import { capabilities } from '../shared/capabilities.ts';
 
 /**
@@ -132,6 +137,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let across = acrossOf(hello?.across);
   // iCloud Tabs, as the app read them (Safari only; null: none).
   let cloud = cloudOf(hello?.cloudTabs);
+  // Installed apps, as the app read them (null: hosting off, or none read yet).
+  let apps = appsOf(hello?.apps);
   let layout: Geometry | null = null;
   let destroyed = false;
   const listeners = new Set<any>();
@@ -171,6 +178,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     const next = raw ? fromStorage(raw) : null;
     let built = next?.spaces?.length ? (across ? { ...next, across } : next) : null;
     if (built && cloud) built = { ...built, cloudTabs: cloud };
+    if (built && apps) built = { ...built, apps };
     if (built && loading.size && built.tabs) {
       const tabs = { ...built.tabs };
       for (const id of loading) if (tabs[id]) tabs[id] = { ...tabs[id], loading: true };
@@ -302,6 +310,11 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (typeof arg?.text !== 'string') return false;
           void post('perform', { name, arg: { text: arg.text } }).catch(() => {});
           return true;
+        // An installed app picked in the palette (app/platforms/macos/shell/ShellApps.swift): opened in the page area.
+        case 'app.open':
+          if (!isBundleId(arg?.bundleId)) return false;
+          void post('perform', { name, arg: { bundleId: arg.bundleId } }).catch(() => {});
+          return true;
         case 'notice':
           // The switch's notice (the view model's `switch:<kind>`): the app's to do.
           if (typeof arg?.id === 'string' && arg.id.startsWith('switch:')) {
@@ -353,6 +366,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           cloud = cloudOf(msg.cloudTabs);
           rebuild();
           return emit();
+        case 'apps':
+          apps = appsOf(msg.apps);
+          rebuild();
+          return emit();
         case 'themes':
           // Margin.app's index of imported themes changed (Settings lists them).
           if (!Array.isArray(msg.list)) return;
@@ -381,6 +398,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           across = acrossOf(next.across);
           followDev(next.across);
           cloud = cloudOf(next.cloudTabs);
+          if ('apps' in next) apps = appsOf(next.apps); // the Mac's, not the window's: kept unless said
           if (Array.isArray(next.themes)) (platform.features as any).userThemes = next.themes;
           followSwitchSettings();
           loading = new Set<any>();

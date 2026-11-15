@@ -241,6 +241,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // (MarginAskBeforeQuit in the app's defaults; a test keeps its own).
         var asksBeforeQuit: () -> Bool = { UserDefaults.standard.object(forKey: "MarginAskBeforeQuit") as? Bool ?? true }
         var setAskBeforeQuit: (Bool) -> Void = { UserDefaults.standard.set($0, forKey: "MarginAskBeforeQuit") }
+        // Margin as the app, hosting apps in its page area (docs/MARGIN-APP.md). Off unless `MarginHosted` is set
+        // (forApp); off, none of it runs: no app catalog, no `apps` pushes, no app rows in the palette (ShellApps.swift).
+        var hosted = false
+        var appCatalog = AppCatalogWatcher.Options() // where apps are read from, the icons' cache (a test: its own folders)
     }
 
     final class Link {
@@ -349,6 +353,13 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var cloudJSON: String? // what was read last, as the overlays get it
     var cloudSent: [WindowKey: String] = [:]
     var opened: [URL] = [] // a test's: what the overlays asked to open
+
+    // ---- installed apps (ShellApps.swift, hosting on only) ----
+    var appCatalog: AppCatalogWatcher?
+    var appsJSON: String? // the list last read, as the overlays get it
+    var appsSent: [WindowKey: String] = [:]
+    /// An app picked in the palette (`app.open`), by its bundle id: the host opens it in the page area (phase 3).
+    var openApp: ((String) -> Void)?
     var copied: [String] = [] // a test's: what they asked to copy
 
     // ---- private calls (PrivateCalls.swift, docs/HANDOFF.md §4.2) ----
@@ -436,6 +447,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         options.liveProfileCover = LiveCoverPolicy.requested()
         // The slot: off until it has been checked in real Safari; `defaults write com.unibox.margin MarginNativeSlot -bool YES` turns it on.
         options.slot = UserDefaults.standard.object(forKey: "MarginNativeSlot") as? Bool ?? false
+        // Margin as the app (docs/MARGIN-APP.md): off until it's built; `defaults write com.unibox.margin MarginHosted -bool YES` turns it on.
+        options.hosted = UserDefaults.standard.object(forKey: "MarginHosted") as? Bool ?? false
+        if options.hosted { Diagnostics.note("hosted: on (MarginHosted): installed apps in the palette") }
         // Opening Margin opens its browser inside it: with the slot unless said otherwise (MarginOpensBrowser).
         options.enter = UserDefaults.standard.object(forKey: "MarginOpensBrowser") as? Bool ?? options.slot
         options.openBrowser = Shell.openBrowserApp
@@ -503,6 +517,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         startSafariNames()
         coversSoon()
         startKeyRelay()
+        appsStart()
         // DEV-HOOK: heard only while MarginDevHooks is YES, and only for Safari's Test A and Test B.
         if let on = options.devHooksOn, devHooks == nil {
             devHooks = DevHooks(world: self, isOn: on)
@@ -548,6 +563,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         devHooks = nil // DEV-HOOK
         cloudWatcher?.stop()
         cloudWatcher = nil
+        appsStop()
         for overlay in overlays.values { overlay.close() }
         overlays = [:]
         link.stop(why: "Margin.app quit", then: then)
@@ -1010,7 +1026,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         placements[key] = nil; placementMisses[key] = nil; frameSaid[key] = nil; reorderedAt[key] = nil; joinTriedAt[key] = nil
         aheadFailedAt[key] = nil; ownSpaceSuspects[key] = nil; lastPointerPush[key] = nil; lastPointer[key] = nil; safariSidebar[key] = nil
         coverStackSaidAt[key] = nil
-        acrossSent[key] = nil; cloudSent[key] = nil
+        acrossSent[key] = nil; cloudSent[key] = nil; appsSent[key] = nil
     }
 
     /// Whether a window its copy says it had parked before Safari quit is closed now: not one Margin has parked now
@@ -2050,6 +2066,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         json += #","windows":"# + (jsonString(entry.mirror.windows) ?? "[]")
         json += #","across":"# + (acrossJSON(for: overlay) ?? "null")
         json += #","cloudTabs":"# + cloudTabsJSON(for: overlay)
+        json += #","apps":"# + appsJSON(for: overlay)
         json += #","held":"# + (jsonString(entry.held.messages(for: overlay.key.windowId)) ?? "[]")
         json += #","themes":"# + themesListJSON
         json += #","theme":"# + (overlayTheme(for: entry, overlay: overlay) ?? "null") + "}"
@@ -2122,6 +2139,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     func perform(from overlay: OverlayController, _ name: String, _ arg: Any?) {
         // A click in Margin: what lands late isn't the person's choice any more (§1.9). (The cover's word is the page's.)
         if name != "switch.coverShown" { switcher.personActed() }
+        if name.hasPrefix("app.") { return performApp(name, arg) } // installed apps (ShellApps.swift): the Mac's, not a link's
         guard let entry = links[overlay.key.link] else { return }
         switch name {
         case "window.fullscreen":
