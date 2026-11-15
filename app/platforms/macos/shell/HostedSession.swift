@@ -428,7 +428,11 @@ final class HostedSession: LibraryDelegate {
             note("Safari window \(windowId): not closed by its copy (\(error ?? "busy"))")
             return false
         }
-        return true
+        // Confirmed by the copy's own list: Safari keeps a closed window's window-server window for a while, in no Space
+        // and off screen (seen 2026-11-15), so the window server can't say it's gone.
+        let gone = await wait(3) { !self.links.windowIds(of: p).contains(windowId) }
+        if !gone { note("Safari window \(windowId): closed by its copy, still in its list after 3 s") }
+        return gone
     }
 
     // A window a profile's copy made for Margin, into full screen (focused) or out of it, by that copy

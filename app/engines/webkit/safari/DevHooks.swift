@@ -109,6 +109,7 @@ protocol DevHookWorld: AnyObject {
     // Margin as the app (MarginHosted): what a palette pick does, an installed app by bundle id or an address in a new
     // web item, in Margin's front window. Nil if asked, else why not.
     func devHost(app: String?, url: String?) -> String?
+    func devForgetTestItems() -> String? // nil if done, else why not
 }
 
 struct DevDraftSnapshot: Equatable {
@@ -181,6 +182,12 @@ final class DevHooks {
         // Margin as the app: a palette pick, for the on-screen checks of hosting (no window of Safari's needed). The
         // address itself is never logged.
         if kind == .host {
+            // `forget`: the items the on-screen checks themselves added, removed from the library (only these test
+            // targets: the kit's test app, example.com / example.org).
+            if fields["forget"] == "test" {
+                if let why = world.devForgetTestItems() { return refuse(why) }
+                return say("dev hook: host forget test items \(asked)")
+            }
             let app = fields["app"], url = fields["url"]
             if let app, !(app.count <= 155 && app.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" })) { return refuse("not a bundle id") }
             if let url, !(url.hasPrefix("https://") || url.hasPrefix("http://")) || url.count > 2000 { return refuse("not an http(s) address") }
@@ -334,6 +341,20 @@ final class DevHooks {
 
 // DEV-HOOK: the shell's side.
 extension Shell: DevHookWorld {
+    func devForgetTestItems() -> String? {
+        guard options.hosted, let library else { return "MarginHosted isn't on" }
+        let test: (JSONObject) -> Bool = { v in
+            let target = v["target"] as? JSONObject
+            if target?["bundleId"] as? String == "test.margin.pane" { return true }
+            guard let url = v["url"] as? String, let host = URL(string: url)?.host else { return false }
+            return host == "example.com" || host == "example.org"
+        }
+        let ids = library.items().filter { test($0.value) }.map(\.id)
+        for id in ids { library.perform("removeItem", ["tabId": id]) }
+        Diagnostics.note("dev hook: \(ids.count) test item(s) removed from the library")
+        return nil
+    }
+
     func devHost(app: String?, url: String?) -> String? {
         guard options.hosted else { return "MarginHosted isn't on" }
         if let app {

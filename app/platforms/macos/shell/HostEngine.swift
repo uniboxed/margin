@@ -862,8 +862,10 @@ final class HostEngine {
     // known. Not confirmed: kept in the marker (`leftSafariWindows`) and closed later. True: closed.
     @discardableResult private func closeAskedSafariWindow(_ ext: Int, profile: String?, pid: pid_t, number: Int?, why: String) async -> Bool {
         var closed = false
+        // The copy's word that it's gone from Safari's windows is the confirmation (HostedSession.closeSafariWindow): the
+        // window server keeps a closed Safari window's number for a while, so it can't confirm it.
         if let closer = closeSafariWindow, await closer(profile, ext) {
-            closed = await gone(number)
+            closed = true
         }
         leftSafariWindows.removeAll { $0.pid == pid && $0.safariWindow == ext }
         if !closed {
@@ -892,7 +894,7 @@ final class HostEngine {
                 continue
             }
             guard let closer = closeSafariWindow, await closer(entry.profile, entry.safariWindow) else { continue }
-            if await gone(entry.number) {
+            do { // (the copy's word is the confirmation: closeAskedSafariWindow)
                 leftSafariWindows.removeAll { $0 == entry }
                 Diagnostics.note("host: a Safari window Margin asked for (the copy's \(entry.safariWindow)) closed later by its copy")
             }
