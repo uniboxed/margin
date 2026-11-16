@@ -12,7 +12,7 @@ import { focusTab, inParkedWindow, reloadCutOff, handingOff, instanceId, keepHan
 import { sleepIdle, wakeAll, windowDrafts } from './sleep.ts';
 import { probeWindow, setWindowState, windowCall } from './handoff.ts';
 import { noteReopened, ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.ts';
-import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site-icons.ts';
+import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.ts';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.ts';
 import { THEMES } from '../themes/index.ts';
 // This engine's own modules (Safari's set-up messages and new-tab note, Chromium's full screen), or null.
@@ -24,7 +24,6 @@ import * as away from './away.ts';
 import { isAwayPage } from '../shared/away.ts';
 import { appLink } from './app-link.ts';
 import { createHostedTabs, type HostedTabsApi } from './hosted.ts';
-import { createSheetWalks } from './sheet-walks.ts';
 import { noticeAnswered } from './notices.ts';
 import { isNoticeAction } from '../shared/notices.ts';
 import * as pageLoads from './page-loads.ts';
@@ -91,8 +90,8 @@ export function drawnChanged(windowId: number, on: boolean) {
   if (on && Date.now() - (paletteDroppedAt.get(windowId) ?? Infinity) >= 1000) paletteDroppedAt.delete(windowId);
 }
 
-// The zoom each site was last seen at, so its pages place their box at its
-// size before they've asked (content/core.ts); Safari
+// The zoom each site was last seen at, so its pages know it before they've
+// asked (content/core.ts); Safari
 // and Chrome keep a site's zoom across its pages. Storage `pageZoom`:
 // origin → [zoom, when], only sites zoomed away from the browser's default
 // zoom (Chrome's setting; 100% where unknown), which is kept once as '*';
@@ -288,24 +287,14 @@ export async function newTabKey(tabArg: { windowId: number | undefined; } | Brow
   await api.tabs.create({ windowId: tab.windowId, url: api.runtime.getURL('newtab/newtab.html') });
 }
 
-// What the page box's walks of a site's style sheets found (keepSheetWalk: shared/sheet-walk.ts).
-const sheetWalks = createSheetWalks(() => api.storage.local);
 
-// Style sheets fetched for pages (fetchStyle), the latest few.
-const styleCache = new Map();
-const STYLE_CACHE_SIZE = 50;
-const STYLE_CACHE_CHARS = 8_000_000; // and no more than this in all
-const STYLE_CACHED_MAX_CHARS = 1_000_000; // a larger one is fetched each time
-const STYLE_MAX_CHARS = 8_000_000;
-
-
-// Whether Margin.app draws the UI for a page's window, and where its box goes
-// (background/link.ts): in `hello`, so a page knows before it draws.
+// Whether Margin.app draws the UI for a page's window (background/link.ts):
+// in `hello`, so a page knows at once.
 // `drawn`: whether the app said it draws over the window (left out: not said).
 const appState = (windowId: number | null) => {
   if (appLink.pageState() === 'off') return null;
   const drawn = appLink.drawn(windowId);
-  return { state: appLink.pageState(), layout: windowId != null ? appLink.layout(windowId) : null, ...(typeof drawn === 'boolean' ? { drawn } : {}) };
+  return { state: appLink.pageState(), ...(typeof drawn === 'boolean' ? { drawn } : {}) };
 };
 
 const launcherOpening = new Map<string, Promise<{ tabId: number, shown: number }>>();
@@ -417,8 +406,8 @@ export const handlers = {
       await mutate((st) => M.setActiveSpace(M.removeArchived(st, archiveId), tab.windowId, spaceId));
     }
   },
-  // Page zoom (the browser's own, like ⌘+): for the page's box (in the
-  // page's zoomed pixels); remembered per site.
+  // Page zoom (the browser's own, like ⌘+): for where the page's area sits in
+  // its window (in the page's zoomed pixels); remembered per site.
   // Where the page in front's area sits in its window, when Safari takes part of it (the docked Web
   // Inspector: content/core.ts viewportNow), for Margin.app's overlay (background/link.ts viewport).
   // `measured`: the page found where its area starts from a pointer event (else it's a guess).
@@ -1153,58 +1142,5 @@ export const handlers = {
       const own = theme.settingsOf({ themes: { [themeId]: { ...themes[themeId], ...patch } } });
       return { ...s, settings: { ...s.settings, themes: { ...themes, [themeId]: own } } };
     });
-  },
-  // The page's script in the page's world, for a page that didn't get it from
-  // its registration (content/page-link.ts): `left` (where its box starts
-  // until it's told: content/page/main.ts), then the script.
-  async injectPage({ left }: { left?: number }, sender: BrowserMessageSender) {
-    const tabId = sender.tab?.id;
-    if (tabId == null || !api.scripting?.executeScript) return false;
-    const target = { tabId };
-    await api.scripting.executeScript({
-      target, world: 'MAIN', injectImmediately: true, args: [left ?? null],
-      func: (at) => { (window as any)[Symbol.for('margin.page.start')] = { left: at ?? undefined }; },
-    });
-    await api.scripting.executeScript({ target, world: 'MAIN', injectImmediately: true, files: ['content/page.bundle.js'] });
-    return true;
-  },
-  // A style sheet the page can't read (another origin's, no CORS:
-  // content/page-link.ts). No cookies, as a <link> of another origin needs none.
-  // The page gets the text, so this is only for real style sheets that it could
-  // load anyway: not a local network's unless it's on one, after any redirect.
-  // Null if it can't be had (Safari's per-site grants can refuse it): the
-  // sheet then stays as it is.
-  // What the page box's walk found in a page's content-named style sheets, kept for its return visits
-  // (content/sheet-walk-link.ts), under the origin of the page that sent it, never another's.
-  async keepSheetWalk({ v, files }: { v: string, files: Record<string, unknown> }, sender: BrowserMessageSender) {
-    let origin = '';
-    try {
-      origin = new URL(sender?.url ?? sender?.tab?.url ?? '').origin;
-    } catch {}
-    return sheetWalks.keep(origin, v, files);
-  },
-  async fetchStyle({ url }: { url: string }, sender: BrowserMessageSender) {
-    const pageUrl = sender?.tab?.url ?? sender?.url ?? '';
-    if (!styleUrlAllowed(url, pageUrl)) return null;
-    if (styleCache.has(url)) return styleCache.get(url);
-    const text = await fetch(url, { credentials: 'omit' }).then((res) => {
-      const css = /^text\/css\b/i.test(res.headers.get('content-type') ?? '');
-      return res.ok && css && styleUrlAllowed(res.url, pageUrl) ? res.text() : null;
-    }).catch(() => null);
-    if (text == null) return null;
-    if (text.length > STYLE_MAX_CHARS) {
-      console.warn('[margin] a style sheet too large to rewrite', url, text.length);
-      return null;
-    }
-    if (text.length > STYLE_CACHED_MAX_CHARS) return text;
-    styleCache.set(url, text);
-    let chars = 0;
-    for (const kept of styleCache.values()) chars += kept.length;
-    for (const oldest of styleCache.keys()) {
-      if (styleCache.size <= STYLE_CACHE_SIZE && chars <= STYLE_CACHE_CHARS) break;
-      chars -= styleCache.get(oldest).length;
-      styleCache.delete(oldest);
-    }
-    return text;
   },
 };

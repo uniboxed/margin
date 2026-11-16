@@ -210,7 +210,7 @@ test('readThemeFile: what Margin.app hands over, folder or zip, as base64; its e
 for (const id of PACKAGE_THEMES) {
   test(`round trip: ${id} through npm run theme:pack and the reader is the same package`, async () => {
     const { bytes, left } = packTheme(join(THEMES, id));
-    assert.ok(left.every((f) => /^(first-paint\.css|theme\.ts)$/.test(f)), left.join());
+    assert.ok(left.every((f) => /^theme\.ts$/.test(f)), left.join());
     const r = (await packageFromZip(bytes)) as Read;
     assert.equal(r.ok, true, JSON.stringify(r.errors));
     const disk = readTheme(join(THEMES, id));

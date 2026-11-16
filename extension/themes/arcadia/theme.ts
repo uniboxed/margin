@@ -1,12 +1,9 @@
 // Arcadia, Margin's first theme: Arc's look (a gray frame around the page
 // card, a sidebar of space chips, pins and tabs, a dark command palette).
 // The theme itself is the package in this folder (theme.json, theme.html,
-// theme.css: Margin 2, drawn by ui/runtime.ts; first-paint.css, its look at
-// a page's first paint). This file describes what the background needs
-// before anything draws it: its settings, and its sidebar's width for the
-// first paint when no layout of Margin.app's is known yet
-// (background/registered.ts). UI-free: the background, the state model and
-// the build import it.
+// theme.css: Margin 2, drawn by ui/runtime.ts). This file describes what the
+// background needs before anything draws it: its settings, and its sidebar's
+// width. UI-free: the background, the state model and the build import it.
 
 // Sidebar width: resizable by dragging its right edge. Range measured from
 // Arc (screenshots of it): 160–500 CSS px. Stored widths snap to 10px
@@ -36,7 +33,7 @@ export default Object.freeze({
   description: 'Arc’s look: a frame around the page, space chips, pins and tabs.',
   defaults,
   settingsOf,
-  // Where the page's box starts with Keep open: the sidebar's edge (background/registered.ts).
+  // The sidebar's width, from the settings.
   sidebarWidth,
 });
 

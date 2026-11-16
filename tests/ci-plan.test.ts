@@ -28,7 +28,7 @@ test('everything (a nightly, by hand, no base) and the workflow itself: every th
 });
 
 test('the UI runtime, the host page or the harness: the theme-agnostic tests, against the reference theme', () => {
-  for (const f of ['extension/ui/render.ts', 'extension/ui/behaviors/drag.ts', 'app/shared/host/overlay.html', 'tests/theme/harness.ts', 'extension/shared/page-box.ts', 'extension/themes/packages.ts']) {
+  for (const f of ['extension/ui/render.ts', 'extension/ui/behaviors/drag.ts', 'app/shared/host/overlay.html', 'tests/theme/harness.ts', 'extension/shared/view.ts', 'extension/themes/packages.ts']) {
     const p = plan([f]);
     assert.deepEqual(p.themes.files, AGNOSTIC, f);
     assert.equal(p.themes.scope, 'reference', f);
@@ -69,7 +69,7 @@ test('a unit test alone: the unit tests, no browser', () => {
 });
 
 test('a tool alone: the unit tests (npm test type-checks tools/), no browser', () => {
-  for (const f of ['tools/fit-check/store.mts', 'tools/webkit-host/scenarios.mts']) {
+  for (const f of ['tools/store-shots.mts', 'tools/webkit-host/scenarios.mts']) {
     const p = plan([f]);
     assert.equal(p.unit, true, f);
     assert.deepEqual(p.browsers.include, [], f);

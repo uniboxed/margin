@@ -32,8 +32,7 @@ export function themesInScope<T>(themes: readonly T[], idOf: (t: T) => string | 
 
 const PACKAGE_FILES = new Set(['theme.json', 'theme.html', 'theme.css']);
 // A package's own files: the three, and what's under fonts/ and images/.
-// (Arcadia's folder also holds its first-paint placeholders and their
-// descriptor, theme.ts: not the package's.)
+// (A built-in theme's folder also holds its descriptor, theme.ts: not the package's.)
 const BUNDLED = /^(fonts|images)\//;
 
 export function readTheme(dir = NEO): { manifest: string, html: string, css: string, files: Record<string, Buffer> } {

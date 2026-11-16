@@ -30,21 +30,6 @@ export function iconUrlAllowed(href: string, pageUrl: string | undefined) {
   return u.protocol === 'https:' && !PRIVATE_HOST.test(u.hostname);
 }
 
-// The same care for a style sheet: a page has its sheets fetched by the
-// background (content/page-link.ts) and can read what comes back, so a sheet
-// on a local network is only for a page that's on one too.
-export function styleUrlAllowed(href: string, pageUrl: string) {
-  try {
-    const u = new URL(href);
-    if (!/^https?:$/.test(u.protocol)) return false;
-    if (!PRIVATE_HOST.test(u.hostname)) return true;
-    const page = new URL(pageUrl);
-    return u.hostname === page.hostname || PRIVATE_HOST.test(page.hostname);
-  } catch {
-    return false;
-  }
-}
-
 async function shrinkIcon(bytes: Uint8Array<ArrayBuffer>, type: string) {
   if (type === 'image/svg+xml' || typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') return null;
   try {

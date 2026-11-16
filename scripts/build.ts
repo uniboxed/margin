@@ -5,13 +5,10 @@
 // Each build takes only its own engine's code: shared code reaches it as `#engine` and `#engine/capabilities`
 // (package.json "imports"), which the build resolves by its engine's condition (CONDITIONS); unbuilt (unit
 // tests), they pick either engine's by the extension's URL. Usage: node scripts/build.ts
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { buildSync, transformSync } from 'esbuild';
+import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { buildSync } from 'esbuild';
 import { fileURLToPath } from 'node:url';
-import { allLayoutFiles, firstPaintCss, firstPaintFile } from '../extension/shared/page-box.ts';
-import { PACKAGE_THEMES } from '../extension/themes/packages.ts';
-import { WIDTH } from '../extension/themes/arcadia/theme.ts';
 
 const root = new URL('../', import.meta.url);
 const SOURCE = new URL('extension/', root);
@@ -67,9 +64,6 @@ export function buildTo(outDir: string | URL, { profile, manifest = profile }: {
   cpSync(fileURLToPath(SOURCE), out, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') && !isEngines(src) });
   const built = manifestFor(manifest);
   bundle(out, built, profile);
-  // The one plain script registered as a file, not bundled (background/registered.ts FULLSCREEN_ONLY_JS).
-  const plain = `${out}/content/page/fullscreen-only`;
-  writeFileSync(`${plain}.js`, transformSync(readFileSync(`${plain}.ts`, 'utf8'), { loader: 'ts', tsconfigRaw: TSCONFIG }).code);
   dropSources(out);
   writeFileSync(`${out}/manifest.json`, `${JSON.stringify(built, null, 2)}\n`);
   return out;
@@ -84,38 +78,9 @@ export function buildTo(outDir: string | URL, { profile, manifest = profile }: {
 const BUNDLES = {
   content: 'content/content.bundle.js',
   background: 'background.bundle.js',
-  page: 'content/page.bundle.js',
   newtab: 'newtab/newtab.bundle.js',
   away: 'away/away.bundle.js',
 };
-// The first paint (shared/page-box.ts, background/registered.ts): the
-// layout's digit files and at.css, and each built-in theme's
-// first-paint file, the box with the theme's look (themes/<id>/first-paint.css).
-export const FIRST_PAINT_THEMES = PACKAGE_THEMES.filter((id) => existsSync(new URL(`themes/${id}/first-paint.css`, SOURCE)));
-function firstPaintFiles(out: string) {
-  mkdirSync(`${out}/content/layout`, { recursive: true });
-  for (const [file, css] of allLayoutFiles()) writeFileSync(`${out}/${file}`, css);
-  for (const id of FIRST_PAINT_THEMES) writeFileSync(`${out}/${firstPaintFile(id)}`, firstPaintCss(id, readFileSync(new URL(`themes/${id}/first-paint.css`, SOURCE), 'utf8')));
-}
-// Safari keeps registrations across launches and loads none of them if a file
-// one lists is missing (DECISIONS.md, 2026-10-25: WebKit validates them all
-// together at load, and `getRegisteredContentScripts` then lists none, so the
-// background can't drop them). The build before Margin 2 Phase 3 registered
-// a first-paint placeholder per sidebar width and a file per left edge for the
-// page's script: they stay as empty files until no Safari has that
-// registration, so an update from that build loads its registrations, and
-// the background replaces them (background/registered.ts). Remove after a
-// release or two of Phase 3.
-const WIDTHS = Array.from({ length: (WIDTH.max - WIDTH.min) / WIDTH.step + 1 }, (_, i) => WIDTH.min + i * WIDTH.step);
-export const LEGACY_FILES = [
-  ...WIDTHS.map((w) => `themes/arcadia/docked/w-${w}.css`),
-  'themes/arcadia/docked/closed.css',
-  ...[8, ...WIDTHS].map((left) => `content/page/at-${left}.js`),
-  // Neubrutalism's first paint by its name until 2026-11-10 (Neo-brutalism): registered while it was the theme,
-  // so kept, empty, as the files above, until no Safari has that registration.
-  'content/layout/theme-neo-brutalism.css',
-];
-
 // What every bundle is built with: its engine's code for `#engine` (package.json "imports"), on top of
 // esbuild's own conditions.
 const engineOptions = (profile: Target) => ({ conditions: [CONDITIONS[profile]], tsconfigRaw: TSCONFIG });
@@ -139,12 +104,6 @@ function bundle(out: string, manifest: Record<string, any>, profile: Target) {
     logLevel: 'warning',
   });
 
-  firstPaintFiles(out);
-  for (const file of LEGACY_FILES) {
-    mkdirSync(dirname(`${out}/${file}`), { recursive: true });
-    writeFileSync(`${out}/${file}`, '');
-  }
-
   // Margin's content script (its core on web pages, with the UI runtime).
   const [sidebar] = manifest.content_scripts;
   write(BUNDLES.content, sidebar.js);
@@ -159,9 +118,6 @@ function bundle(out: string, manifest: Record<string, any>, profile: Target) {
   write(BUNDLES.background, bg.service_worker ? [bg.service_worker] : bg.scripts);
   if (bg.service_worker) bg.service_worker = BUNDLES.background;
   else bg.scripts = [BUNDLES.background];
-
-  // The page's box, in the page's world (registered by the background).
-  write(BUNDLES.page, ['content/page/main.ts']);
 
   // The new-tab page and the stand-in for a tab shown in another window (modules: they await at the top level).
   for (const [page, file] of [['newtab', BUNDLES.newtab], ['away', BUNDLES.away]]) {

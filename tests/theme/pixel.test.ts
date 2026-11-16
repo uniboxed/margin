@@ -7,18 +7,15 @@
 // hidden with and without the frame, peek, the width setting); never paints
 // over the page's box (checked on screen, pixel by pixel); caps the palette
 // and drives it from the keyboard; draws every part with Margin's words only;
-// blinks only while its setting is on and motion is allowed; and its first
-// paint draws the card's pixel border and the ground around the box, nothing
-// inside it. `npm run test:theme`. (Its iCloud Tabs, loading, gestures,
+// and blinks only while its setting is on and motion is allowed.
+// `npm run test:theme`. (Its iCloud Tabs, loading, gestures,
 // notices and behaviors run in cloud.test.ts, feedback.test.ts and
 // behaviors.test.ts with the other themes.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, PIXEL } from './package.ts';
-import { firstPaintCss, layoutOwnCss } from '../../extension/shared/page-box.ts';
 import type { Harness, HarnessRt } from './harness.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
@@ -29,7 +26,6 @@ const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const script = harnessScript();
 const pkg = themeForPage(PIXEL);
 const FONTS = ['Press Start 2P', 'Pixelify Sans'];
-const FIRST_PAINT = firstPaintCss('pixel', readFileSync(new URL('first-paint.css', `file://${PIXEL}`), 'utf8'));
 
 // A screenshot's pixels (Playwright's PNGs: 8-bit RGB or RGBA, not interlaced).
 function decodePng(buf: Buffer) {
@@ -363,25 +359,6 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(await look('light'), await look('dark'));
         await page.emulateMedia({ colorScheme: null });
         await ev(() => T.unmountRuntime());
-      });
-
-      await t.test('first paint: the card\'s light pixel border and the night ground around the box, nothing inside it', async () => {
-        const fp = await context.newPage();
-        await fp.setContent(`<!doctype html><html data-margin-at="pixel"><head><meta charset="utf-8"><style>${FIRST_PAINT}\n${layoutOwnCss({ left: 286, top: 16, right: 16, bottom: 16, radius: 0 })}</style></head><body style="margin:0;background:#ff00ff"><p style="margin:0">a page</p></body></html>`);
-        await fp.waitForTimeout(60);
-        const shot = decodePng(await fp.screenshot());
-        assert.equal(shot.at(700, 450), '#ff00ff', 'the page inside its box');
-        assert.equal(shot.at(287, 17), '#ff00ff', 'right to its corner');
-        assert.equal(shot.at(700, 14), '#f1f1f1', 'the border above');
-        assert.equal(shot.at(284, 450), '#f1f1f1', 'and at its left');
-        assert.equal(shot.at(284, 14), '#1d1b33', 'a notched corner');
-        assert.equal(shot.at(100, 450), '#1d1b33', 'the ground where the sidebar will be');
-        assert.equal(shot.at(1436, 896), '#1d1b33');
-        // Not marked for Pixel (another theme's, or none): nothing at all.
-        await fp.evaluate(() => document.documentElement.removeAttribute('data-margin-at'));
-        await fp.waitForTimeout(60);
-        assert.equal(decodePng(await fp.screenshot()).at(100, 450), '#ff00ff');
-        await fp.close();
       });
 
       await t.test('Margin.app\'s own window with nothing hosted: its page area the launcher, opaque, never a see-through hole', async () => {

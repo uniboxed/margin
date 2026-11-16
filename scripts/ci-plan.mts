@@ -12,7 +12,7 @@
 //   tests/theme/package.ts themesInScope);
 // - a theme test file itself changed: that file, in every theme it has.
 // The cheap check of every theme package with no browser (tests/security/packages.test.ts: caps, sanitizer, the
-// parts an imported theme needs, the first paint) is in npm test, which every change to the extension reaches.
+// parts an imported theme needs) is in npm test, which every change to the extension reaches.
 //
 // Usage: git diff --name-only BASE HEAD | node scripts/ci-plan.mts [--everything]
 // With GITHUB_OUTPUT set it writes the job's outputs there (and a summary to GITHUB_STEP_SUMMARY); else it prints the
@@ -28,11 +28,11 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ALL = /^(\.github\/workflows\/ci\.yml|package(-lock)?\.json|tsconfig(\.tests)?\.json|scripts\/build\.ts|scripts\/ci-plan\.mts)$/;
 // (Unit tests read some of the app's files too: the Chromium crate's extension id, the host page; and npm test
 // type-checks tools/ and the browser tests. The end-to-end tests
-// load the built extension and the host page, their site, harness and fixtures, the box patterns' pages, and build the
+// load the built extension and the host page, their site, harness and fixtures, and build the
 // connector for the Chromium relay's test.)
 const REACH = {
   unit: /^(extension|app|tests|types|scripts|tools)\//,
-  e2e: /^(extension|app\/shared\/(host|connector)|types|scripts|tests\/(e2e|fixtures|box))\/|^tests\/fake-app\.ts$/,
+  e2e: /^(extension|app\/shared\/(host|connector)|types|scripts|tests\/(e2e|fixtures))\/|^tests\/fake-app\.ts$/,
   rust: /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfmt\.toml$|^scripts\/rust-test\.sh$|^tests\/fixtures\//,
   app: /^(app|tools|extension|tests\/fixtures)\/|\.swift$/,
 };

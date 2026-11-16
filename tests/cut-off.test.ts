@@ -82,7 +82,7 @@ test('cut off: something typed makes it busy (not loaded again)', async () => {
   assert.equal((await run(playing)).busy, true, 'media playing');
 });
 
-test('cut off: quiet takes the dead Margin\'s box off (the page has the window), and touches nothing else', async () => {
+test('cut off: quiet takes the dead Margin\'s box off (an older build\'s page box: the page has the window), and touches nothing else', async () => {
   const p = page({ body: { opacity: '0' } });
   const said: [string, unknown][] = [];
   p.doc.dispatchEvent = (event) => { said.push([event.type, event.detail]); return true; };
