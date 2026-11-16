@@ -77,6 +77,18 @@ func marginWindowTests() {
     check("hosted: always full screen: no Enter/Exit Full Screen item, no ⌃⌘F, Toggle Sidebar still there", !always.contains { $0.action == #selector(NSWindow.toggleFullScreen(_:)) }
           && !always.contains { $0.keyEquivalent == "f" && $0.keyEquivalentModifierMask == [.command, .control] } && always.contains { $0.representedObject as? String == MarginMenuAction.toggleSidebar.rawValue })
     check("hosted: Margin's windows are always full screen by default (MarginHosted)", MarginWindows.Options().alwaysFullScreen && !MarginWindowController.Options().alwaysFullScreen)
+    // Its toggle ignored (Margin opened by a script, not active): asked again once per activation, never looping.
+    var retry = FullScreenRetry()
+    check("hosted: full screen: never asked again before its first ask", !retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: false))
+    check("hosted: full screen: not in after its first ask: asked again once", retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: true))
+    check("hosted: full screen: its window key or main again in the same activation: not asked again (no loop)", !retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: true))
+    retry.activated()
+    check("hosted: full screen: on its way in, or closed, when Margin activates: not asked, the activation's ask kept",
+          !retry.shouldAsk(inFullScreen: false, entering: true, closed: false, firstAsked: true) && !retry.shouldAsk(inFullScreen: false, entering: false, closed: true, firstAsked: true))
+    check("hosted: full screen: Margin active again, still not in: asked once more, then not", retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: true)
+          && !retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: true))
+    retry.activated()
+    check("hosted: full screen: already in when Margin activates: not asked", !retry.shouldAsk(inFullScreen: true, entering: false, closed: false, firstAsked: true))
     check("hosted: the standard app menu: About, Hide, Hide Others, Show All, Quit ⌘Q",
           [#selector(NSApplication.orderFrontStandardAboutPanel(_:)), #selector(NSApplication.hide(_:)), #selector(NSApplication.hideOtherApplications(_:)),
            #selector(NSApplication.unhideAllApplications(_:)), #selector(NSApplication.terminate(_:))].allSatisfy { sel in bar.items[0].submenu?.items.contains { $0.action == sel } == true }

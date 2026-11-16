@@ -146,6 +146,29 @@ func hostedScenario() async {
   c.toggleFullScreen()
   check("windowed again", await waitJS(c.webView, "return marginApp.appWindow().mode === 'windowed'") && c.mode == "windowed")
 
+  // ---- always full screen, its toggle ignored (Margin not active, opened by a script): asked again as it activates ----
+  do {
+    var macOSEnters = false // (macOS's answer to the toggle: ignored until Margin is "active")
+    // (Its own source: a source tells one set of windows of its changes.)
+    let always = MarginWindows(pages: pages, source: FakeWindowSource(source.state), options: .init(harness: true, alwaysFullScreen: true))
+    defer { always.closeAll() }
+    var o = MarginWindowController.Options()
+    o.harnessEnters = { macOSEnters }
+    let w = always.open(o)
+    check("always full screen, the toggle ignored: asked once, not in", w.fullScreenAsks == 1 && !w.isFullScreen && w.fullScreenRetries == 0)
+    w.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: w.window))
+    w.windowDidBecomeMain(Notification(name: NSWindow.didBecomeMainNotification, object: w.window))
+    check("its window key, then main (still ignored): asked again once, not twice in one activation", w.fullScreenAsks == 2 && w.fullScreenRetries == 1 && !w.isFullScreen)
+    macOSEnters = true
+    w.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: w.window))
+    check("key again in the same activation: still not asked (no loop)", w.fullScreenAsks == 2 && !w.isFullScreen)
+    NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
+    check("Margin active: asked again, in full screen", await until(3, { w.isFullScreen }) && w.fullScreenAsks == 3 && w.fullScreenRetries == 2, "\(w.fullScreenAsks) \(w.fullScreenRetries)")
+    NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
+    w.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: w.window))
+    check("in full screen: activations and key never ask again", w.fullScreenAsks == 3 && w.fullScreenRetries == 2 && w.isFullScreen)
+  }
+
   // ---- the source changed: drawn ----
   var pins = source.state["pins"] as? [JSONObject] ?? []
   if !pins.isEmpty { pins[0]["title"] = "Renamed Site" }
