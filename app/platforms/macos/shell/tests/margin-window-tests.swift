@@ -72,6 +72,11 @@ func marginWindowTests() {
     let items = bar.items.flatMap { $0.submenu?.items ?? [] }
     let fullScreen = items.first { $0.action == #selector(NSWindow.toggleFullScreen(_:)) }
     check("hosted: Enter Full Screen is the window's own (⌃⌘F, titled by AppKit), no target", fullScreen?.keyEquivalent == "f" && fullScreen?.keyEquivalentModifierMask == [.command, .control] && fullScreen?.target == nil)
+    // (Tirth, 2026-11-15) while hosting is on Margin is always full screen: no item to leave it, no ⌃⌘F.
+    let always = MarginMenu.build(target: target, fullScreenItem: false).items.flatMap { $0.submenu?.items ?? [] }
+    check("hosted: always full screen: no Enter/Exit Full Screen item, no ⌃⌘F, Toggle Sidebar still there", !always.contains { $0.action == #selector(NSWindow.toggleFullScreen(_:)) }
+          && !always.contains { $0.keyEquivalent == "f" && $0.keyEquivalentModifierMask == [.command, .control] } && always.contains { $0.representedObject as? String == MarginMenuAction.toggleSidebar.rawValue })
+    check("hosted: Margin's windows are always full screen by default (MarginHosted)", MarginWindows.Options().alwaysFullScreen && !MarginWindowController.Options().alwaysFullScreen)
     check("hosted: the standard app menu: About, Hide, Hide Others, Show All, Quit ⌘Q",
           [#selector(NSApplication.orderFrontStandardAboutPanel(_:)), #selector(NSApplication.hide(_:)), #selector(NSApplication.hideOtherApplications(_:)),
            #selector(NSApplication.unhideAllApplications(_:)), #selector(NSApplication.terminate(_:))].allSatisfy { sel in bar.items[0].submenu?.items.contains { $0.action == sel } == true }

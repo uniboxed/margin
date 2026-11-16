@@ -4,10 +4,12 @@
 // - LaunchServices: an app started with no Dock icon (`_LSOpenURLsWithCompletionHandler` with the UIElement
 //   option), and its notifications, which say when someone opens that app from outside (the Dock, Finder, a link):
 //   code 659 an open request, 561 the no-Dock instance promoted to a normal app.
-// - SkyLight: a full-screen Space's tiles (`SLSSpaceCopyTileSpaces`), a tile moved into Margin's own full-screen
-//   Space (`SLSSpaceTileMoveToSpaceAtIndex`), the spacing between its tiles, a Space's type, the display's current
-//   Space set back, and the emptied Space destroyed through the window manager's bridge
-//   (`SLSBridgedSpaceDestroyOperation -initWithSpaceID:`, then `-performWithWMBridgeDelegate`).
+// - SkyLight: a Space's type, the display's current Space set back, and a hosted window's own full-screen Space
+//   destroyed through the window manager's bridge once its window is a member of Margin's Space
+//   (`SLSBridgedSpaceDestroyOperation -initWithSpaceID:`, then `-performWithWMBridgeDelegate`). The window's move into
+//   Margin's Space is the parker's bridge (PrivateCalls' park part), its edges the slot's reservation (the slot part).
+//   (The tile calls of the first build, `SLSSpaceCopyTileSpaces`, `SLSSpaceTileMoveToSpaceAtIndex` and
+//   `SLSSpaceSetInterTileSpacing`, went with the tiles on 2026-11-15: nothing checks or calls them now.)
 //
 // The same rules as PrivateCalls.swift: everything looked up at launch (`HostCalls.check`, one log line), anything
 // missing or an encoding changed turns the host off for the run (Margin then never hosts; the setting says so in
@@ -20,8 +22,7 @@ import ObjectiveC
 
 enum HostCalls {
     // SkyLight's (the Space reads, parking, the slot and geometry are PrivateCalls' parts, which the host also needs).
-    nonisolated static let skyFunctions = ["SLSMainConnectionID", "SLSSpaceCopyTileSpaces", "SLSSpaceTileMoveToSpaceAtIndex", "SLSSpaceSetInterTileSpacing",
-                                           "SLSSpaceGetType", "SLSManagedDisplaySetCurrentSpace"]
+    nonisolated static let skyFunctions = ["SLSMainConnectionID", "SLSSpaceGetType", "SLSManagedDisplaySetCurrentSpace"]
     // LaunchServices': the open and its option keys (data symbols: each a CFStringRef).
     nonisolated static let launchFunctions = ["_LSOpenURLsWithCompletionHandler"]
     nonisolated static let launchKeys = ["_kLSOpenOptionUIElementLaunchKey", "_kLSOpenOptionActivateKey", "_kLSOpenOptionHideKey",
@@ -42,7 +43,7 @@ enum HostCalls {
     nonisolated static let promotedCode: Int32 = 561
 
     nonisolated struct Availability: Equatable, Sendable {
-        var host = false // launch, tiles, destroy: everything the engine needs of its own
+        var host = false // launch, Spaces' types, the current Space, destroy: everything the engine needs of its own
         var opens = false // the outside-open notifications
         var missing: [String] = []
         var mismatched: [String] = []
@@ -125,10 +126,6 @@ enum HostCalls {
 // they can't do. Only what the check passed is filled in.
 nonisolated struct HostPrivate: @unchecked Sendable {
     typealias MainConnectionID = @convention(c) () -> UInt32
-    typealias CopyTileSpaces = @convention(c) (UInt32, UInt64) -> Unmanaged<CFArray>?
-    // (connection, tile, into Space, at index): 0 is moved.
-    typealias TileMoveToSpaceAtIndex = @convention(c) (UInt32, UInt64, UInt64, UInt64) -> Int32
-    typealias SetInterTileSpacing = @convention(c) (UInt32, UInt64, CGSize) -> Void
     typealias SpaceGetType = @convention(c) (UInt32, UInt64) -> Int32
     typealias SetCurrentSpace = @convention(c) (UInt32, CFString, UInt64) -> Void
     typealias InitDestroy = @convention(c) (UnsafeMutableRawPointer, ObjectiveC.Selector, UInt64) -> Unmanaged<AnyObject>?
@@ -145,9 +142,6 @@ nonisolated struct HostPrivate: @unchecked Sendable {
 
     let refuses: Bool
     private var mainConnectionID: MainConnectionID?
-    private var copyTileSpaces: CopyTileSpaces?
-    private var tileMove: TileMoveToSpaceAtIndex?
-    private var setSpacing: SetInterTileSpacing?
     private var spaceGetType: SpaceGetType?
     private var setCurrentSpace: SetCurrentSpace?
     private var destroyClass: AnyClass?
@@ -165,9 +159,6 @@ nonisolated struct HostPrivate: @unchecked Sendable {
         guard availability.host else { return }
         func fn<T>(_ name: String, _ framework: PrivateFramework, _: T.Type) -> T? { resolver.function(name, in: framework).map { unsafeBitCast($0, to: T.self) } }
         mainConnectionID = fn("SLSMainConnectionID", .skyLight, MainConnectionID.self)
-        copyTileSpaces = fn("SLSSpaceCopyTileSpaces", .skyLight, CopyTileSpaces.self)
-        tileMove = fn("SLSSpaceTileMoveToSpaceAtIndex", .skyLight, TileMoveToSpaceAtIndex.self)
-        setSpacing = fn("SLSSpaceSetInterTileSpacing", .skyLight, SetInterTileSpacing.self)
         spaceGetType = fn("SLSSpaceGetType", .skyLight, SpaceGetType.self)
         setCurrentSpace = fn("SLSManagedDisplaySetCurrentSpace", .skyLight, SetCurrentSpace.self)
         destroyClass = resolver.objcClass(HostCalls.destroyClass)
@@ -192,25 +183,6 @@ nonisolated struct HostPrivate: @unchecked Sendable {
         return cid == 0 ? nil : cid
     }
 
-    // A full-screen Space's tiles (each a tile Space's number); nil: unknown.
-    func tiles(of space: UInt64) -> [UInt64]? {
-        guard space > 0, let cid = connection(), let copyTileSpaces,
-              let list = copyTileSpaces(cid, space)?.takeRetainedValue() as? [NSNumber] else { return nil }
-        return list.map(\.uint64Value)
-    }
-
-    func moveTile(_ tile: UInt64, to space: UInt64, at index: Int) -> Bool {
-        guard tile > 0, space > 0, index >= 0, let cid = connection(), let tileMove else { return false }
-        return tileMove(cid, tile, space, UInt64(index)) == 0
-    }
-
-    // Sent (it returns nothing): the windows' bounds are the caller's check.
-    func setTileSpacing(_ spacing: Double, space: UInt64) -> Bool {
-        guard space > 0, spacing.isFinite, spacing >= 0, let cid = connection(), let setSpacing else { return false }
-        setSpacing(cid, space, CGSize(width: spacing.rounded(), height: spacing.rounded()))
-        return true
-    }
-
     func spaceType(_ space: UInt64) -> Int? {
         guard space > 0, let cid = connection(), let spaceGetType else { return nil }
         return Int(spaceGetType(cid, space))
@@ -222,8 +194,9 @@ nonisolated struct HostPrivate: @unchecked Sendable {
         return true
     }
 
-    // The window manager's own destroy, for a full-screen Space emptied by a tile move. Sent; whether it went is the
-    // caller's to read (the Space gone from the managed list). Never for the Space showing: that drops to the Desktop.
+    // The window manager's own destroy, for a hosted window's full-screen Space once its window is a member of Margin's
+    // (its tile stays behind, with no window). Sent; whether it went is the caller's to read (the Space gone from the
+    // managed list). Never for the Space showing: that drops to the Desktop.
     func destroyFullScreenSpace(_ space: UInt64) -> Bool {
         guard space > 0, !refuses, let initDestroy, let performDestroy,
               let cls = destroyClass as? NSObject.Type, let made = cls.perform(NSSelectorFromString("alloc")) else { return false }

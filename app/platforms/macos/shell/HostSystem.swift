@@ -58,18 +58,19 @@ protocol HostSystem: AnyObject {
     func setCurrentSpace(_ space: UInt64) -> Bool
     func desktop(onDisplayOf space: UInt64) -> UInt64?
     func ownerlessFullScreenSpaces() -> [UInt64]?
+    // Every full-screen Space the managed displays list (SLSCopyManagedDisplaySpaces: what Mission Control shows). Nil: unread.
+    func listedFullScreenSpaces() -> [UInt64]?
 
-    // ---- tiles and the page area's edges ----
-    func tiles(of space: UInt64) -> [UInt64]?
-    func moveTile(_ tile: UInt64, to space: UInt64, at index: Int) -> Bool
-    func setTileSpacing(_ spacing: Double, space: UInt64) -> Bool
+    // ---- a full-screen Space's edges, and its destroy ----
     func destroyFullScreenSpace(_ space: UInt64) -> Bool
     func reserve(_ edges: SlotEdges, space: UInt64) -> Bool
     func reserved(space: UInt64) -> SlotEdges?
 
-    // ---- parking ----
+    // ---- parking, and members of Margin's Space ----
     func createPrivateSpace() -> UInt64?
-    func move(window: Int, to space: UInt64) -> Bool // into `space`, out of every other (the bridge, options 7)
+    // Into `space`, out of every other (the bridge, options 7): parking, a window-mode window into Margin's Space, and a
+    // full-screen window into Margin's Space as a plain member (it stays full screen, at its frame).
+    func move(window: Int, to space: UInt64) -> Bool
     func destroyPrivateSpace(_ space: UInt64) -> Bool
 
     // ---- the freeze ----
@@ -416,9 +417,8 @@ final class RealHostSystem: HostSystem {
         return out
     }
 
-    func tiles(of space: UInt64) -> [UInt64]? { calls.tiles(of: space) }
-    func moveTile(_ tile: UInt64, to space: UInt64, at index: Int) -> Bool { calls.moveTile(tile, to: space, at: index) }
-    func setTileSpacing(_ spacing: Double, space: UInt64) -> Bool { calls.setTileSpacing(spacing, space: space) }
+    func listedFullScreenSpaces() -> [UInt64]? { spacesRW.displays()?.flatMap(\.fullScreen) }
+
     func destroyFullScreenSpace(_ space: UInt64) -> Bool { calls.destroyFullScreenSpace(space) }
     func reserve(_ edges: SlotEdges, space: UInt64) -> Bool { slots.reserve(edges, space: space) }
     func reserved(space: UInt64) -> SlotEdges? { slots.reserved(space: space) }

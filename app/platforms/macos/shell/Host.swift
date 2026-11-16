@@ -34,16 +34,19 @@ nonisolated enum HostStep: String, Sendable, Codable {
     case margin = "Margin's Space" // Margin's window isn't in a full-screen Space of its own
     case launch, window
     case fullScreen = "full screen"
-    case sidebar, tile, destroy, place, park, unpark
+    case sidebar, destroy, place, park, unpark
+    case member = "into Margin's Space" // its full-screen window moved into Margin's Space as a member
     case exitFullScreen = "exit full screen"
     case quit
     case windowMode = "window mode" // its window into Margin's Space as a window (one that can't go full screen)
 }
 
-// How a host is shown. `fullScreen`: its window full screen, its tile beside Margin's (the sidebar's) in Margin's
-// Space. `window`: its normal window (one that can't go full screen: AXFullScreen not settable, or its full screen
-// failed), moved into Margin's full-screen Space as a window and placed in the page area by Accessibility, Margin's
-// window its whole width below it (DECISIONS.md "Apps that can't go full screen: window mode").
+// How a host is shown, Margin's window its whole width below it either way. `fullScreen`: its window full screen in a
+// Space of its own, sized to the page area by that Space's edge reservation, then moved into Margin's full-screen Space
+// as a plain member and its own Space destroyed (DECISIONS.md "Hosted apps as members of Margin's Space"); parked and
+// shown again by moving it, still full screen. `window`: its normal window (one that can't go full screen: AXFullScreen
+// not settable, or its full screen failed), moved into Margin's full-screen Space as a window and placed in the page
+// area by Accessibility (DECISIONS.md "Almost every app in Margin: window mode").
 nonisolated enum HostMode: String, Codable, Sendable { case fullScreen = "full screen", window }
 
 nonisolated enum HostResult: Equatable, Sendable {
@@ -63,6 +66,7 @@ nonisolated enum HostEvent: Equatable, Sendable {
     case closed(HostID)
     case unshown(HostID) // the one shown parked with nothing in its place (Margin's window left full screen, its window strayed)
     case orphans([UInt64]) // ownerless full-screen Spaces found (Mission Control would list them)
+    case listed([UInt64]) // a hosted window's own full-screen Space still listed after an operation (Mission Control shows it)
 }
 
 nonisolated enum HostPolicy: Equatable, Sendable { case regular, accessory, prohibited }
@@ -123,6 +127,9 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
         var originalSpace: UInt64? = nil // the Space it was in before (a Desktop)
         var frameChanged: Bool? = nil // Margin set its frame and hasn't put it back yet
         var resizable: Bool? = nil
+        // A full-screen window moved into Margin's Space as a member (its own Space destroyed): still full screen,
+        // shown there or parked in `privateSpace`; given back by leaving full screen on the current Space.
+        var member: Bool? = nil
     }
     // A Safari window Margin asked a copy for and whose close wasn't confirmed: closed by that copy later (the poll,
     // the next launch's recovery). `number`: the window server's, when it was found.
@@ -159,34 +166,29 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
 }
 
 // Where a hosted window goes, as Margin's window works it out (top-left coordinates, as the window server's bounds):
-// `page`, the page area; `area`, the display's full-screen area the tiles divide (its frame below the camera housing);
-// `tileWidth`, Margin's own tile (the sidebar's: its window's content max width), flush with the area's left edge.
-// `windowed`: Margin's window its whole width (a window-mode host above it), `page` from its own layout, no tile.
+// `page`, the page area (from Margin's own layout, its window its whole width: the theme's frame drawn around it);
+// `area`, the display's full-screen area (its frame below the camera housing), which a full-screen window's own Space
+// lays its window out in.
 nonisolated struct HostPlacement: Equatable, Sendable {
     var page: CGRect
     var area: CGRect
-    var tileWidth: CGFloat
-    var windowed = false
-    static let zero = HostPlacement(page: .zero, area: .zero, tileWidth: 0)
+    static let zero = HostPlacement(page: .zero, area: .zero)
     var text: String {
         func r(_ c: CGRect) -> String { "\(Int(c.minX)),\(Int(c.minY)) \(Int(c.width))×\(Int(c.height))" }
-        return windowed ? "page \(r(page)) in \(r(area)), Margin's window its whole width" : "page \(r(page)) in \(r(area)), Margin's tile \(Int(tileWidth))"
+        return "page \(r(page)) in \(r(area))"
     }
 }
 
-// The page area's edges and the tiles' spacing, from the placement alone: Margin's tile at the area's left edge (left
-// 0), the page's other edges reserved at the Space's edges, the gap from Margin's tile to the page the spacing. Never
-// from the windows' bounds now: right after a tile move the hosted window still has its full-screen frame while a
-// reservation is already set, and a plan from that counted the reservation twice, growing it at every step (seen
-// 2026-11-15: 0/7/8/8, then 0/14/16/16, then 0/21/24/24). The same placement always gives the same plan.
+// The edges a hosted window's own full-screen Space reserves so its window is the page area: the page's distances from
+// the area's four edges, whole points. From the placement alone, never from the windows' bounds (seen 2026-11-15: a plan
+// read from bounds mid-transition counted a reservation twice and grew at every step), so the same placement always
+// gives the same reservation.
 nonisolated enum HostLayout {
-    // Nil: the page can't be reached that way (it starts before Margin's tile ends, passes the area, or leaves less
-    // than a point).
-    static func plan(_ p: HostPlacement) -> (edges: SlotEdges, spacing: Double)? {
-        let edges = SlotEdges(left: 0, right: p.area.maxX - p.page.maxX, top: p.page.minY - p.area.minY, bottom: p.area.maxY - p.page.maxY).whole
-        let spacing = Double(p.page.minX - (p.area.minX + p.tileWidth)).rounded()
-        guard edges.usable, spacing >= 0, p.tileWidth >= 1, p.page.width >= 1, p.page.height >= 1, p.area.width >= 1 else { return nil }
-        return (edges, spacing)
+    // Nil: the page can't be reached that way (it passes the area, or leaves less than a point).
+    static func plan(_ p: HostPlacement) -> SlotEdges? {
+        let edges = SlotEdges(left: p.page.minX - p.area.minX, right: p.area.maxX - p.page.maxX, top: p.page.minY - p.area.minY, bottom: p.area.maxY - p.page.maxY).whole
+        guard edges.usable, p.page.width >= 1, p.page.height >= 1, p.area.width >= 1, p.area.height >= 1 else { return nil }
+        return edges
     }
 
     static func near(_ a: CGRect, _ b: CGRect, within: CGFloat = 1) -> Bool {

@@ -144,14 +144,15 @@ test("the app host: a layout of another mode, or measured with the sidebar alone
   assert.deepEqual(sent, [['windowed', false], ['fullscreen', false], ['fullscreen', true]]);
 });
 
-test('the sidebar\'s width isn\'t dragged while Margin\'s window hosts beside it (its tile can\'t change size)', async () => {
+test('the sidebar\'s width isn\'t dragged while Margin\'s window hosts another app\'s window (a new page area is a slow placing again)', async () => {
   const { installResize } = await import('../extension/ui/behaviors/resize.ts');
   const listeners: Record<string, (e: any) => void> = {};
   const handle = { classList: { add() {}, remove() {} }, setPointerCapture() {}, releasePointerCapture() {} };
   const saved: any[] = [];
   let pageOutside = false;
+  let fixed = false; // the theme's root marked by the host while hosting (overlay.ts followOutside)
   const rt: any = {
-    view: { behaviorAt: () => ({ el: handle }), rootElement: () => ({ classList: { add() {}, remove() {} } }), scheduleLayout() {} },
+    view: { behaviorAt: () => ({ el: handle }), rootElement: () => ({ classList: { add() {}, remove() {} }, hasAttribute: (n: string) => fixed && n === 'm-sidebar-fixed' }), scheduleLayout() {} },
     theme: { id: 'arcadia', manifest: { settings: { sidebarWidth: { type: 'number', default: 260, min: 160, max: 500 } }, layout: {} } },
     get vm() { return { window: { pageOutside }, settings: { sidebarWidth: 260 } }; },
     container: {}, warn() {}, scale: () => 1,
@@ -170,6 +171,12 @@ test('the sidebar\'s width isn\'t dragged while Margin\'s window hosts beside it
   listeners.pointerdown(ev(260));
   listeners.pointermove(ev(300));
   assert.deepEqual(saved.at(-1), { sidebarWidth: 300 }, 'nothing hosted: dragged as before');
+  listeners.pointerup?.(ev(300));
+  saved.length = 0;
+  fixed = true;
+  listeners.pointerdown(ev(260));
+  listeners.pointermove(ev(320));
+  assert.deepEqual(saved, [], 'hosting above its page area (m-sidebar-fixed): no drag');
 });
 
 test('the app host: other messages are the page\'s; nothing after destroy', () => {

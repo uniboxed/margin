@@ -59,7 +59,7 @@ final class NoHostEngine: HostedEngine {
     var hasHosts: Bool { false }
     func isHosted(_ id: HostID) -> Bool { false }
     func mode(of id: HostID) -> HostMode? { nil }
-    var windowedShown: Int? { nil }
+    var shownAbove: Int? { nil }
     func activateShown(at point: CGPoint?) async {}
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { nil }
     func target(ofWindow number: Int) -> HostTarget? { nil }
@@ -84,7 +84,7 @@ final class LateHostEngine: HostedEngine {
     var hasHosts: Bool { engine.hasHosts }
     func isHosted(_ id: HostID) -> Bool { engine.isHosted(id) }
     func mode(of id: HostID) -> HostMode? { engine.mode(of: id) }
-    var windowedShown: Int? { engine.windowedShown }
+    var shownAbove: Int? { engine.shownAbove }
     func activateShown(at point: CGPoint?) async { await engine.activateShown(at: point) }
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { engine.fullScreenSpace(ofWindow: number) }
     func target(ofWindow number: Int) -> HostTarget? { engine.target(ofWindow: number) }
@@ -92,15 +92,14 @@ final class LateHostEngine: HostedEngine {
 }
 
 extension Shell {
-    // The engine's hooks to the session (the Safari windows it asks for, the moment it tiles, its events): when the
+    // The engine's hooks to the session (the Safari windows it asks for, its loading steps, its events): when the
     // session is made with an engine already there, or when the engine starts after the session.
     func wire(_ host: HostEngine, to session: HostedSession) {
         host.requestSafariWindow = { [weak session] profile in await session?.requestSafariWindow(profile) }
         host.closeSafariWindow = { [weak session] profile, id in await session?.closeSafariWindow(profile, id) ?? false }
         host.safariFullScreen = { [weak session] profile, id, on in await session?.safariFullScreen(profile, id, on) ?? false }
         host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
-        host.willTile = { [weak session] _ in session?.willTile() }
-        host.willWindow = { [weak session] _ in await session?.willWindow() }
+        host.loading = { [weak session] id in session?.loading(id) }
         host.keepAbove = { [weak session] number in session?.keepBelow(number) }
         let before = host.onEvent
         host.onEvent = { [weak session] event in
@@ -152,6 +151,7 @@ extension Shell {
         }
         windows.onLeavingFullScreen = { [weak session] controller in session?.leavingFullScreen(controller) }
         windows.onLeftFullScreen = { [weak session] controller in session?.leftFullScreen(controller) }
+        windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
         windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
         windows.apps = { [weak self] in self?.appsJSON ?? "null" }
     }

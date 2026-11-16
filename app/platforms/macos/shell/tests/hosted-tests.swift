@@ -3,7 +3,8 @@
 // manager (host-tests.swift FakeHostWorld), with a stand-in Margin window and stand-in Safari copies. What follows:
 // a library request becomes the engine's open or show and the copy's hostShow; two web items of one profile are a
 // tab switch only; a palette pick is an item added and opened; Safari picked is a web item, Chrome nothing; closing;
-// what the UI draws (open items as the window's tabs, the one shown in front); the page area from the tiles; the
+// what the UI draws (open items as the window's tabs, the one shown in front); the page area from Margin's own layout,
+// the loading animation, Margin's window back into full screen with what it showed; the
 // shell with hosting on: no slot, no opening of the browser, no overlay path.
 import AppKit
 import Foundation
@@ -14,13 +15,13 @@ final class FakeHostedWindow: HostedWindow {
     var layoutMode: String? { isFullScreen ? "fullscreen" : "windowed" }
     let id: Int
     let number: Int
-    var isFullScreen = false
+    var isFullScreen = true // (always, while hosting is on)
     var hosting = false
     var pushed: [String] = []
     var hostings: [Bool] = []
     var fullScreenAsks = 0
     var goesFullScreen = true
-    // The theme's layout: Arcadia's in full screen, its sidebar 260 pt, the page card 8 pt from the other edges.
+    // The theme's layout at the window's whole width: Arcadia's in full screen, its sidebar 260 pt, the page card 8 pt from the other edges.
     var layout = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 6, radii: [6, 6, 6, 6], width: 1512, height: 949, mode: "fullscreen")
     init(id: Int, number: Int) { self.id = id; self.number = number }
     func toFullScreen() { fullScreenAsks += 1; if goesFullScreen { isFullScreen = true } }
@@ -28,41 +29,22 @@ final class FakeHostedWindow: HostedWindow {
         guard on != hosting else { return }
         hosting = on
         hostings.append(on)
-        if !on { hostingWindowed = false; below = nil }
+        if !on { below = nil; loading = nil }
     }
-    var hostingWindowed = false
-    var windowedSet: [Bool] = [] // each change of window mode, in order
-    var untiles = 0
     var below: Int?
     var belows: [Int?] = [] // each keepBelow, in order
-    var onUntile: (() -> Void)? // the window manager laying it out its whole width again
-    func setWindowed(_ on: Bool) { guard on != hostingWindowed else { return }; hostingWindowed = on; windowedSet.append(on) }
-    func untile() { untiles += 1; onUntile?() }
     func keepBelow(_ number: Int?) { guard number != below else { return }; below = number; belows.append(number) }
-    // (As the real one: from its layout now, while hosting in full screen; window mode: its own page area, its whole width.)
-    // `stale`: its page's last layout is from before the window took its whole width (no frame drawn since), so window
-    // mode has no placement of its own until the page measures; `measuresAfter`: asks to measure until it does (nil:
-    // never, its web content not answering either).
-    var stale = false
-    var measuresAfter: Int? = 1
+    var loading: String?
+    var loadings: [String?] = [] // each setLoading, in order
+    func setLoading(_ label: String?) { guard label != loading else { return }; loading = label; loadings.append(label) }
     var remeasures = 0
-    func remeasure() {
-        remeasures += 1
-        if stale, let n = measuresAfter, remeasures >= n { stale = false }
-    }
+    func remeasure() { remeasures += 1 }
+    // (As the real one: the page area from its own layout, while hosting in full screen.)
     var hostedPlacement: HostPlacement? {
-        guard hosting, isFullScreen, let page = MarginWindowGeometry.hostedPageRect(display: FakeHostWorld.display, layout: layout, right: 8) else { return nil }
-        if hostingWindowed { return stale ? nil : HostPlacement(page: page, area: FakeHostWorld.display, tileWidth: 0, windowed: true) }
-        return HostPlacement(page: page, area: FakeHostWorld.display, tileWidth: MarginWindowGeometry.tileWidth(layout))
-    }
-    var hostedPlacementWorkedOut: HostPlacement? {
-        guard hosting, hostingWindowed, isFullScreen, let page = MarginWindowGeometry.dockedPageRect(content: FakeHostWorld.display, layout: layout, right: 8) else { return nil }
-        return HostPlacement(page: page, area: FakeHostWorld.display, tileWidth: 0, windowed: true)
+        guard hosting, isFullScreen, let page = MarginWindowGeometry.pageRect(layout: layout, content: FakeHostWorld.display) else { return nil }
+        return HostPlacement(page: page, area: FakeHostWorld.display)
     }
     func push(_ json: String) { pushed.append(json) }
-    var tiles = 0
-    var onTile: ((CGFloat) -> Void)? // the window manager laying its tile out at the new width
-    func tile() { tiles += 1; onTile?(MarginWindowGeometry.tileWidth(layout)) }
 }
 
 final class FakeHostedLinks: HostedLinks {
@@ -125,7 +107,7 @@ final class StubLaunchEngine: HostedEngine {
     var hasHosts: Bool { false }
     func isHosted(_ id: HostID) -> Bool { false }
     func mode(of id: HostID) -> HostMode? { nil }
-    var windowedShown: Int? { nil }
+    var shownAbove: Int? { nil }
     func activateShown(at point: CGPoint?) async {}
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { nil }
     func target(ofWindow number: Int) -> HostTarget? { nil }
@@ -191,8 +173,7 @@ func hostedTests() {
     engine.safariFullScreen = { await session.safariFullScreen($0, $1, $2) }
     engine.safariLinked = { await session.safariLinked($0) }
     engine.onEvent = { session.hostEvent($0) }
-    engine.willTile = { _ in session.willTile() }
-    engine.willWindow = { _ in await session.willWindow() }
+    engine.loading = { session.loading($0) }
     engine.keepAbove = { session.keepBelow($0) }
     library.delegate = session
     var changes = 0
@@ -226,10 +207,13 @@ func hostedTests() {
     let editItem = textEdit?.id ?? ""
     check("hosted: a palette pick: an item of the window's space, its app's name from the catalog",
           textEdit != nil && library.target(ofItem: editItem) == .app(bundleId: "com.apple.TextEdit", name: "TextEdit"), "\(library.items())")
-    check("hosted: Margin's window taken to full screen first, then the sidebar's tile as the app's tile came in", window.fullScreenAsks == 1 && window.isFullScreen && window.hostings == [true] && window.tiles == 1, "\(window.hostings)")
+    check("hosted: Margin's window already full screen (it always is): never asked, hosting above its own layout", window.fullScreenAsks == 0 && window.isFullScreen && window.hostings == [true], "\(window.hostings)")
     check("hosted: the engine opened the app (started with no Dock icon) and shows it", w.calls.contains("launch com.apple.TextEdit") && engine.shown == HostTarget.app("com.apple.TextEdit").id, "\(w.calls)")
     let editWindow = w.running(bundleId: "com.apple.TextEdit").first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0
-    check("hosted: the engine was given the page area from the tiles, and its window is there", engine.pageRect == page && w.bounds(window: editWindow) == page, "\(engine.pageRect) \(String(describing: w.bounds(window: editWindow)))")
+    check("hosted: the engine was given the page area from Margin's own layout, and its window is there, a member of Margin's Space", engine.pageRect == page && w.bounds(window: editWindow) == page
+          && w.wins[editWindow]?.member == true && w.listsMarginOnly, "\(engine.pageRect) \(String(describing: w.bounds(window: editWindow)))")
+    check("hosted: the loading animation named the app while it opened, then went", window.loadings == ["TextEdit", nil], "\(window.loadings)")
+    check("hosted: Margin's window kept below the app's window", window.below == editWindow, "\(window.belows)")
     check("hosted: it's the window's item shown, open", session.shown[1] == editItem && session.open[editItem]?.host == HostTarget.app("com.apple.TextEdit").id && changes > 0)
 
     // ---- the same app picked again: its item, no second launch ----
@@ -252,7 +236,8 @@ func hostedTests() {
     check("hosted: Safari's window never put in full screen through Accessibility", !w.calls.contains("fullScreen true \(safariWindow)") && w.wins[safariWindow]?.fullScreen == true)
     let show = links.asked.last?.payload ?? [:]
     check("hosted: hostShow names the hosted window, the item and its address", int(show["windowId"]) == 90 && show["itemId"] as? String == aItem && show["url"] as? String == "https://a.example/", "\(show)")
-    check("hosted: the app shown before is parked (two tiles in Margin's Space)", engine.hosts[HostTarget.app("com.apple.TextEdit").id]?.phase == .parked && w.tiles[FakeHostWorld.marginSpace]?.count == 2)
+    check("hosted: the app shown before is parked (still full screen), Safari's window alone in Margin's Space", engine.hosts[HostTarget.app("com.apple.TextEdit").id]?.phase == .parked
+          && w.wins[editWindow]?.fullScreen == true && w.inMargin == [safariWindow] && window.loadings.suffix(2) == ["Safari", nil], "\(w.inMargin) \(window.loadings)")
 
     // ---- a second web item of the same profile: a tab switch only ----
     let calls = w.calls.count
@@ -284,10 +269,13 @@ func hostedTests() {
     check("hosted: a request the library doesn't take: refused, said to the page", unsupported?["ok"] as? Bool == false)
     check("hosted: the UI's own bookkeeping requests: answered quietly", source.perform("sidebarScroll", ["windowId": 1])?["ok"] as? Bool == true)
 
-    // ---- the app's item again: the engine shows it (unparked) ----
+    // ---- the app's item again: an instant switch ----
+    let setStates = links.types().filter { $0 == "setWindowState" }.count
+    let loadingsBefore = window.loadings.count
     run { _ = library.perform("activateTab", ["windowId": 1, "tabId": editItem]) }
-    check("hosted: the app's item again: shown by the engine, Safari's window parked (out of full screen by its copy)", engine.shown == HostTarget.app("com.apple.TextEdit").id && engine.hosts[safari]?.phase == .parked
-          && links.asked.last { $0.type == "setWindowState" }?.payload["state"] as? String == "normal")
+    check("hosted: the app's item again: shown by the engine at once (no loading), Safari's window parked as it is (its copy not asked)",
+          engine.shown == HostTarget.app("com.apple.TextEdit").id && engine.hosts[safari]?.phase == .parked && w.wins[safariWindow]?.fullScreen == true
+          && links.types().filter { $0 == "setWindowState" }.count == setStates && window.loadings.count == loadingsBefore && window.below == editWindow, "\(window.loadings)")
 
     // ---- Safari and Chrome picked as apps ----
     let before = library.items().count
@@ -295,19 +283,18 @@ func hostedTests() {
     check("hosted: Chrome picked: not supported yet, nothing added or launched", library.items().count == before && !w.calls.contains { $0.contains("Chrome") })
     run { session.openApp("com.apple.Safari", windowId: 1) }
     check("hosted: Safari picked: a new web item in Safari (not Safari hosted as an app)", library.items().count == before + 1
-          && library.items().contains { $0.value["url"] as? String == "about:blank" } && engine.shown == safari && !w.calls.contains { $0 == "launch com.apple.Safari" && false })
+          && library.items().contains { $0.value["url"] as? String == "about:blank" } && engine.shown == safari)
 
-    // ---- the page area moved: the engine told ----
-    window.onTile = { w.marginWidth = $0 }
-    let tilesBefore = window.tiles
+    // ---- the page area moved (another theme): the one shown placed again, with the loading animation ----
     window.layout.left = 300
     let moved = window.hostedPlacement
+    let loadingsNow = window.loadings.count
     session.pageRectChanged(window)
     session.pageRectChanged(window) // (a burst of layouts: taken once)
     run {}
-    let safariNow = w.wins.keys.first { w.wins[$0]?.pid == w.running(bundleId: "com.apple.Safari").first?.pid && w.wins[$0]?.fullScreen == true } ?? 0
-    check("hosted: the page area changed (a wider sidebar): Margin's tile given the width alone in its Space, the window placed there", moved?.page.minX == 300 && engine.pageRect == moved?.page
-          && window.tiles == tilesBefore + 1 && w.bounds(window: safariNow) == moved?.page, "\(String(describing: moved)) \(engine.pageRect) \(window.tiles - tilesBefore)")
+    check("hosted: the page area changed: the engine told, Safari's window placed there again, the loading animation meanwhile", moved?.page.minX == 300 && engine.pageRect == moved?.page
+          && w.bounds(window: safariWindow) == moved?.page && Array(window.loadings.dropFirst(loadingsNow)) == ["Safari", nil] && w.listsMarginOnly,
+          "\(String(describing: moved)) \(engine.pageRect) \(window.loadings)")
 
     // ---- closing ----
     let mark4 = links.asked.count
@@ -321,26 +308,34 @@ func hostedTests() {
     run { await engine.close(safari) }
     session.hostEvent(.closed(safari))
     check("hosted: Safari's window closed by its copy before the Safari Margin started is quit", links.types(since: closeMark).contains("closeWindow") && w.wins[safariWindow] == nil && engine.leftSafariWindows.isEmpty, "\(links.types(since: closeMark))")
-    check("hosted: nothing hosted any more: Margin's window its whole width again", window.hostings.last == false && session.hostingWindow == nil && !engine.hasHosts, "\(window.hostings) \(engine.hosts.keys) \(engine.launched) \(w.calls.suffix(8))")
-    check("hosted: the Safari window Margin started quit with Safari, nothing left in Margin's Space", w.running(bundleId: "com.apple.Safari").isEmpty && w.tiles[FakeHostWorld.marginSpace]?.count == 1, "\(String(describing: w.tiles[FakeHostWorld.marginSpace]))")
+    run {}
+    check("hosted: nothing hosted any more: Margin's window its launcher again", window.hostings.last == false && session.hostingWindow == nil && !engine.hasHosts, "\(window.hostings) \(engine.hosts.keys) \(engine.launched) \(w.calls.suffix(8))")
+    check("hosted: the Safari window Margin started quit with Safari, nothing left in Margin's Space", w.running(bundleId: "com.apple.Safari").isEmpty && w.inMargin.isEmpty && w.listsMarginOnly, "\(w.inMargin)")
 
-    // ---- Margin's window out of full screen while hosting: the app parked at once, its whole width again ----
+    // ---- macOS took Margin's window out of full screen while hosting: the app parked at once, back with Margin ----
     run { session.openApp("com.apple.TextEdit", windowId: 1) }
     let wasHosting = session.hostingWindow == 1 && window.hosting
     let editId = HostTarget.app("com.apple.TextEdit").id
     let editNow = w.running(bundleId: "com.apple.TextEdit").first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0
+    let editItemNow = session.shown[1]
     session.leavingFullScreen(window)
     window.isFullScreen = false
-    w.marginLeavesFullScreen() // (what macOS does with a tile left beside it: alone in a full-screen Space of its own)
+    w.marginLeavesFullScreen() // (macOS: Margin's window on the Desktop, its Space left with the member in it)
     session.leftFullScreen(window)
     hostRun { await engine.parkShown(why: "the test's") } // (after the session's own ask)
     run {}
-    check("hosted: Margin's window left full screen while hosting: its whole width again, nothing shown in it", wasHosting && !window.hosting && session.hostingWindow == nil && session.shown[1] == nil)
-    check("hosted: … the app parked at once: out of full screen in a private Space, never alone in a full-screen Space of its own", engine.shown == nil && engine.hosts[editId]?.phase == .parked
-          && w.wins[editNow]?.fullScreen == false && w.wins[editNow]?.priv != nil && w.ownerlessFullScreenSpaces() == [] && w.tiles.count == 1, "\(w.tiles) \(String(describing: w.wins[editNow]))")
-    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": library.items().first { $0.value["url"] as? String == "app://com.apple.TextEdit" }?.id ?? ""]) }
-    check("hosted: the item shown again: Margin's window to full screen again, the app hosted again beside it", window.isFullScreen && window.hosting && engine.shown == editId
-          && w.spaces(window: editNow) == [FakeHostWorld.marginSpace] && session.shown[1] != nil, "\(session.done.suffix(4))")
+    check("hosted: Margin's window out of full screen while hosting: nothing shown in it, the item kept to show again", wasHosting && !window.hosting && session.hostingWindow == nil
+          && session.shown[1] == nil && session.resume[1] == editItemNow && editItemNow != nil)
+    check("hosted: … the app parked at once, still full screen, in a private Space; Margin's old Space destroyed", engine.shown == nil && engine.hosts[editId]?.phase == .parked
+          && w.wins[editNow]?.fullScreen == true && w.wins[editNow]?.priv != nil && w.tiles[FakeHostWorld.marginSpace] == nil && w.destroyedWithWindows == 0, "\(w.tiles) \(String(describing: w.wins[editNow]))")
+    // Margin's window goes straight back into full screen (MarginWindowController), and the session hosts it again.
+    window.isFullScreen = true
+    w.marginEntersFullScreen()
+    session.enteredFullScreen(window)
+    run {}
+    check("hosted: Margin's window back in full screen: the item it showed hosted again, in its Space, at once",
+          window.hosting && engine.shown == editId && w.spaces(window: editNow) == [FakeHostWorld.marginSpace] && session.shown[1] == editItemNow && session.resume.isEmpty
+          && window.below == editNow && w.listsMarginOnly, "\(session.done.suffix(4))")
     // ---- a profile with no window: woken through Safari's menu, its waking window closed after Margin's is made ----
     do {
         let woken = FakeHostedLinks()
@@ -361,56 +356,29 @@ func hostedTests() {
         hostRun { never = await s3.safariLinked("s-gone") }
         check("hosted: a profile that never links: asked through the menu twice, then given up", !never && none.menuOpens == ["s-gone", "s-gone"] && none.asked.isEmpty, "\(none.menuOpens)")
     }
-    // ---- an app that can't go full screen (window mode): Margin's window its whole width, kept below its window ----
+    // ---- an app that can't go full screen (window mode): above Margin's own layout, kept below its window ----
     do {
-        window.onUntile = { w.marginWidth = 1512 }
-        let tilesBefore = window.tiles, untilesBefore = window.untiles
         let ftId = HostTarget.app("com.apple.FaceTime").id, editId = HostTarget.app("com.apple.TextEdit").id
         run { session.openApp("com.apple.FaceTime", windowId: 1) }
         let ftItem = library.items(space: home).first { $0.value["url"] as? String == "app://com.apple.FaceTime" }?.id ?? ""
         let ftPid = w.running(bundleId: "com.apple.FaceTime").first?.pid ?? 0
         let ftWindow = w.apps[ftPid]?.windows.first ?? 0
         check("hosted window mode: FaceTime picked: shown in window mode, its window at Margin's own page area", engine.shown == ftId && engine.mode(of: ftId) == .window
-              && w.bounds(window: ftWindow) == window.hostedPlacement?.page && window.hostedPlacement?.windowed == true && session.shown[1] == ftItem, "\(session.done.suffix(4))")
-        check("hosted window mode: Margin's window its whole width and its own layout (untiled, windowed), never made the sidebar's tile for it",
-              window.hostingWindowed && window.untiles > untilesBefore && window.tiles == tilesBefore && window.hosting, "\(window.windowedSet)")
+              && w.bounds(window: ftWindow) == window.hostedPlacement?.page && session.shown[1] == ftItem, "\(session.done.suffix(4))")
         check("hosted window mode: Margin's window kept right below FaceTime's window; TextEdit parked", window.below == ftWindow && engine.hosts[editId]?.phase == .parked, "\(window.belows)")
         session.pagePressed(window)
         hostRun { for _ in 0..<5 { await Task.yield() } }
         check("hosted window mode: a press in the page area around it: FaceTime given the keyboard (activated, raised)", w.calls.contains("activate \(ftPid) \(ftWindow)"), "\(w.calls.suffix(3))")
 
-        // to an app tiled beside the sidebar, and back
+        // to the full-screen app, and back: both instant
         let editNowItem = library.items().first { $0.value["url"] as? String == "app://com.apple.TextEdit" }?.id ?? ""
         run { _ = library.perform("activateTab", ["windowId": 1, "tabId": editNowItem]) }
-        check("hosted window mode → full screen: TextEdit tiled beside the sidebar again (pageOutside, tile), Margin's window kept below nothing",
-              engine.shown == editId && !window.hostingWindowed && window.tiles == tilesBefore + 1 && window.below == nil && engine.hosts[ftId]?.phase == .parked, "\(window.belows) \(session.done.suffix(4))")
+        check("hosted window mode → full screen: TextEdit back in Margin's Space, Margin's window kept below it", engine.shown == editId && window.below == editNow && engine.hosts[ftId]?.phase == .parked, "\(window.belows) \(session.done.suffix(4))")
         run { _ = library.perform("activateTab", ["windowId": 1, "tabId": ftItem]) }
-        check("hosted full screen → window mode: FaceTime shown again, Margin's window its own layout, kept below it", engine.shown == ftId && window.hostingWindowed && window.below == ftWindow
-              && w.bounds(window: ftWindow) == window.hostedPlacement?.page && w.hostedTiles.isEmpty, "\(session.done.suffix(4))")
+        check("hosted full screen → window mode: FaceTime shown again, Margin's window kept below it", engine.shown == ftId && window.below == ftWindow
+              && w.bounds(window: ftWindow) == window.hostedPlacement?.page && w.inMargin == [ftWindow], "\(session.done.suffix(4))")
 
-        // tile → window with the page's layout late (seen 2026-11-15: the tile gone, Margin's window its whole width,
-        // its page's last layout still the tile's for 4.8 s: the switch waited 3.2 s for it): asked to measure at every
-        // look, and worked out from its docked layout if it never does; well under a second either way
-        var slept = 0.0
-        session.sleep = { slept += $0; await Task.yield() }
-        window.onUntile = { w.marginWidth = 1512; window.stale = true }
-        for (asks, label) in [(2 as Int?, "measured after 2 asks"), (nil, "never measured: worked out")] {
-            run { _ = library.perform("activateTab", ["windowId": 1, "tabId": editNowItem]) }
-            window.remeasures = 0
-            window.measuresAfter = asks
-            slept = 0
-            run { _ = library.perform("activateTab", ["windowId": 1, "tabId": ftItem]) }
-            let expected = MarginWindowGeometry.hostedPageRect(display: FakeHostWorld.display, layout: window.layout, right: 8)
-            check("hosted tile → window, its page's layout late (\(label)): FaceTime shown at the page area in \(Int(slept * 1000)) ms of waiting, not 3 s",
-                  engine.shown == ftId && w.bounds(window: ftWindow) == expected && slept < (asks == nil ? 0.5 : 0.2) && window.remeasures >= (asks ?? 1)
-                  && session.done.contains { $0.contains(asks == nil ? "worked out from its docked layout" : "measured there after 2 asks") },
-                  "\(slept) \(window.remeasures) \(String(describing: w.bounds(window: ftWindow))) \(session.done.suffix(3))")
-            window.stale = false
-        }
-        window.onUntile = { w.marginWidth = 1512 }
-        session.sleep = { _ in await Task.yield() }
-
-        // the page area moves (the sidebar toggled): placed again, not parked
+        // the page area moves (another theme): placed again by Accessibility, not parked
         let moves = w.calls.filter { $0.hasPrefix("move \(ftWindow) ") }.count
         window.layout.left = 240
         session.pageRectChanged(window)
@@ -423,44 +391,31 @@ func hostedTests() {
         check("hosted window mode: FaceTime's item closed: its frame given back before it was quit", w.frameAtQuit["com.apple.FaceTime"] == FakeHostWorld.defaultFrame && w.running(bundleId: "com.apple.FaceTime").isEmpty
               && w.saved["com.apple.FaceTime"] == FakeHostWorld.defaultFrame, "\(String(describing: w.frameAtQuit))")
         window.layout.left = 300
-        window.onUntile = nil
     }
     run { await engine.quitAll() }
 
-    // ---- Margin's window that won't go full screen: nothing hosted ----
+    // ---- Margin's window found windowed anyway (it never should be): asked once more; it won't: nothing hosted ----
     window.isFullScreen = false
     window.goesFullScreen = false
     session.options.fullScreenWait = 0.2
     let launches = w.calls.filter { $0.hasPrefix("launch") }.count
+    let asks = window.fullScreenAsks
     run { session.openApp("com.apple.Notes", windowId: 1) }
-    check("hosted: Margin's window not in full screen: nothing opened (hosting needs its own Space)", w.calls.filter { $0.hasPrefix("launch") }.count == launches && !engine.hasHosts)
+    check("hosted: Margin's window not in full screen (a safety check): asked once, it didn't go: nothing opened", w.calls.filter { $0.hasPrefix("launch") }.count == launches && !engine.hasHosts
+          && window.fullScreenAsks == asks + 1 && session.done.contains { $0.contains("it always is while hosting is on") })
+    window.goesFullScreen = true
+    window.isFullScreen = true
 
     hostedShellTests(script: script)
 }
 
-// The page area while hosting, from the tiles.
+// The page area while hosting: Margin's own layout at its whole width (the theme's frame around it).
 func hostedGeometryTests() {
     let arcadia = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 6, radii: [6, 6, 6, 6], width: 1512, height: 949, mode: "fullscreen")
-    check("hosted: the sidebar's tile as wide as the page's left inset", MarginWindowGeometry.tileWidth(arcadia) == 260)
-    check("hosted: a left inset with a fraction: the tile a whole point wider", MarginWindowGeometry.tileWidth(PageLayout(left: 271.5, top: 0, right: 0, bottom: 0, radius: 0, radii: [], width: 900, height: 600, mode: "fullscreen")) == 272)
     let display = CGRect(x: 0, y: 33, width: 1512, height: 949)
-    check("hosted: the page area: the display less Margin's tile and the theme's insets",
-          MarginWindowGeometry.hostedPageRect(display: display, layout: arcadia, right: 8) == CGRect(x: 260, y: 41, width: 1244, height: 933))
-    // In the sidebar's tile the page has no room: its right inset as last measured with room.
-    let narrow = PageLayout(left: 260, top: 8, right: 0, bottom: 8, radius: 6, radii: [6, 6, 6, 6], width: 260, height: 933, mode: "fullscreen")
-    check("hosted: measured in the sidebar's tile: no page there (its right inset not the theme's)", !MarginWindowGeometry.hasPage(narrow) && MarginWindowGeometry.hasPage(arcadia))
-    check("hosted: the right inset kept from a wide measure, else the top one",
-          MarginWindowGeometry.hostedPageRect(display: display, layout: narrow, right: 12)?.maxX == 1500 && MarginWindowGeometry.hostedPageRect(display: display, layout: narrow, right: nil)?.maxX == 1504)
-    check("hosted: on a display another display's left: in its coordinates", MarginWindowGeometry.hostedPageRect(display: CGRect(x: -1920, y: 0, width: 1920, height: 1080), layout: arcadia, right: 8)?.minX == -1660)
-    // Window mode at its whole width, its page's last layout still the tile's (the 2026-11-15 log: 250/8/0/8 in 250×933,
-    // the window 1512×949): the page area from that docked layout, the right inset as last measured with room.
-    let tileLayout = PageLayout(left: 250, top: 8, right: 0, bottom: 8, radius: 6, radii: [6, 6, 6, 6], width: 250, height: 933, mode: "fullscreen")
-    check("hosted: window mode worked out from the tile's layout: the content less its left, top and bottom insets and the right one kept",
-          MarginWindowGeometry.dockedPageRect(content: display, layout: tileLayout, right: 8) == CGRect(x: 250, y: 41, width: 1254, height: 933)
-          && MarginWindowGeometry.dockedPageRect(content: display, layout: tileLayout, right: nil) == CGRect(x: 250, y: 41, width: 1254, height: 933)
-          && MarginWindowGeometry.dockedPageRect(content: display, layout: arcadia, right: nil) == CGRect(x: 260, y: 41, width: 1244, height: 933)
-          && MarginWindowGeometry.dockedPageRect(content: CGRect(x: 0, y: 0, width: 200, height: 600), layout: arcadia, right: 8) == nil)
-    check("hosted: a sidebar wider than the display: no page area", MarginWindowGeometry.hostedPageRect(display: CGRect(x: 0, y: 0, width: 200, height: 600), layout: arcadia, right: 8) == nil)
+    check("hosted: the page area: Margin's whole window less the theme's insets", MarginWindowGeometry.pageRect(layout: arcadia, content: display) == CGRect(x: 260, y: 41, width: 1244, height: 933))
+    check("hosted: a layout measured at another size: no page area until the page measures again", MarginWindowGeometry.pageRect(layout: arcadia, content: CGRect(x: 0, y: 33, width: 1200, height: 800)) == nil)
+    check("hosted: that page area as its own Space's reservation", HostLayout.plan(HostPlacement(page: CGRect(x: 260, y: 41, width: 1244, height: 933), area: display)) == SlotEdges(left: 260, right: 8, top: 8, bottom: 8))
     check("hosted: a search's address: the engine Safari uses, as learned, else Google's", LibraryWindowSource.searchUrl("a b&c", settings: nil).hasPrefix("https://www.google.com/search?client=safari")
           && LibraryWindowSource.searchUrl("a b&c", settings: nil).contains("q=a%20b%26c")
           && LibraryWindowSource.searchUrl("x", settings: ["safariSearch": ["template": "https://duckduckgo.com/?q=%s"]]) == "https://duckduckgo.com/?q=x"
@@ -488,8 +443,8 @@ func hostedShellTests(script: URL) {
     check("hosted shell: Margin's windows draw the library", source is LibraryWindowSource && shell.hosted != nil && shell.library?.delegate === shell.hosted)
     check("hosted shell: the first run with nothing to import: one space made, for the person to name in the editor",
           shell.library?.spaces().count == 1 && shell.hosted?.firstSpace == shell.library?.spaces().first?.id)
-    check("hosted shell: the engine's Safari windows are the copies'", shell.host?.requestSafariWindow != nil && shell.host?.closeSafariWindow != nil && shell.host?.safariFullScreen != nil && shell.host?.safariLinked != nil && shell.host?.willTile != nil)
-    check("hosted shell: window mode wired: Margin's window readied for a window and kept below it", shell.host?.willWindow != nil && shell.host?.keepAbove != nil)
+    check("hosted shell: the engine's Safari windows are the copies'", shell.host?.requestSafariWindow != nil && shell.host?.closeSafariWindow != nil && shell.host?.safariFullScreen != nil && shell.host?.safariLinked != nil && shell.host?.loading != nil)
+    check("hosted shell: Margin's window kept below the hosted window", shell.host?.keepAbove != nil)
     check("hosted shell: a palette pick goes to the session", shell.openApp != nil)
     shell.startSlots(spaces: FakeSlotSpaces(), reads: nil)
     check("hosted shell: no slot (Margin hosts the browser's window itself)", shell.slots == nil)

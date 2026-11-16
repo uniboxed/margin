@@ -4,23 +4,24 @@
 // - The library (Library.swift) says what needs a browser or an app (its requests: activateTab, newTab, closeTab,
 //   setSpace, openPin, clearToday, restoreArchive); this is its delegate, and does each one, one at a time, in order.
 // - An app item: its app opened by the engine the first time (`.app(bundleId)`: started with no Dock icon, its
-//   window the second tile of Margin's full-screen Space), shown again by the engine after; closed, the engine closes it.
+//   window full screen and sized to the page area in a Space of its own, then a member of Margin's full-screen Space;
+//   Margin's page area shows a loading animation meanwhile), shown again by the engine after (an instant switch);
+//   closed, the engine closes it.
 // - A web item (Safari): one hosted Safari window per Safari profile in use (`.safariWindow(profile)`), made by that
 //   profile's copy (`newWindow`, asked by the engine once the copy has linked) and shown by the engine; the item is a
 //   tab of it (the copy's `hostShow { windowId, itemId, url }`: its tab used again, or made, and brought to the
 //   front). Two web items of one profile: a tab switch only, the engine isn't asked. Closed: `hostClose { itemId }`.
 //   Chrome and Edge items: not hosted yet (said in the log).
-// - Margin's window while hosting (v1 rule, decided here): it's taken to full screen first (its own Space: the tiles
-//   need it; windowed hosting is a later phase), its page drawing the sidebar alone (MarginWindowController.setHosting),
-//   the sidebar's tile once the hosted tile comes in (`willTile`), and the engine is given the placement worked out
-//   from the tiles (the page area, the display's area, Margin's tile width). A host in window mode (an app that can't
-//   go full screen): Margin's window its whole width, its own layout (`setWindowed`, `untile` in `willWindow`), the
-//   placement its own page area, and it's kept right below the hosted window (`keepBelow`, from the engine's
-//   `keepAbove`); a press in its page area around that window gives the app the keyboard (`pagePressed`). It's the
-//   sidebar's tile only while the
-//   engine shows something in it: nothing shown any more (closed, quit, parked), its whole width again, the theme's
-//   launcher in its page area. Leaving full screen (the person's ⌃⌘F, the green button, anything), the one shown is
-//   parked at once (`leavingFullScreen`): nothing hosted ever stands alone in a full-screen Space of its own.
+// - Margin's window while hosting: always full screen (Tirth, 2026-11-15: MarginWindowController's
+//   `alwaysFullScreen`; a window found windowed is asked once more, as a safety check), its whole width, its page
+//   drawing its own layout with the sidebar docked (`setHosting`), the engine given the page area from that layout
+//   (its placement); the hosted window above it in its Space, Margin's window kept right below it (`keepBelow`, from
+//   the engine's `keepAbove`); a press in its page area around that window gives the app the keyboard (`pagePressed`).
+//   While the engine opens an app for the first time or places it again, its page area shows the loading animation
+//   (`setLoading`, from the engine's `loading`). Nothing shown any more (closed, quit, parked): the theme's launcher
+//   in its page area again. Taken out of full screen anyway (the green button, Mission Control): the one shown is
+//   parked at once (`leavingFullScreen`), the window goes back into full screen by itself, and the item shown is
+//   hosted again then (`enteredFullScreen`).
 // - A show asked for is the window's item in front at once (`requested`: the sidebar's switch lands as it's asked,
 //   while an app can take seconds to come in), and a show overtaken by a newer one for the same window before it
 //   started is skipped (fast clicks don't queue a full switch each).
@@ -47,7 +48,7 @@ protocol HostedEngine: AnyObject {
     var hasHosts: Bool { get }
     func isHosted(_ id: HostID) -> Bool
     func mode(of id: HostID) -> HostMode? // how a host is shown (nil: not hosted)
-    var windowedShown: Int? { get } // the window-mode host's window shown in Margin's Space (Margin's window kept below it)
+    var shownAbove: Int? { get } // the window of the host shown in Margin's Space (Margin's window kept below it)
     func activateShown(at point: CGPoint?) async // that app in front (a press in Margin's page area around its window; top-left)
     func fullScreenSpace(ofWindow number: Int) -> UInt64?
     func target(ofWindow number: Int) -> HostTarget?
@@ -61,23 +62,16 @@ protocol HostedWindow: AnyObject {
     var id: Int { get }
     var number: Int { get } // the window server's
     var isFullScreen: Bool { get }
-    var hostedPlacement: HostPlacement? { get } // the page area, the display's area, its tile's width while hosting; nil until worked out
-    // Window mode at its whole width, when its page hasn't measured at that width yet: the page area from the last
-    // docked layout's insets (the sidebar's width, the theme's margins). Nil: no such layout, or not at its whole width.
-    var hostedPlacementWorkedOut: HostPlacement? { get }
+    var hostedPlacement: HostPlacement? { get } // the page area and the display's area while hosting; nil until measured
     var pageAreaWhyNot: String { get } // why there's none yet, for the log
     // Its page asked to measure where `<m-page>` sits now (a size it took without a frame drawn since: no resize event).
     func remeasure()
     func toFullScreen()
     var fullScreenState: String { get } // for the log
     var layoutMode: String? { get } // the mode of the page's last layout
+    // While hosting: its own layout, the sidebar docked, no launcher in the page area (the hosted window is above it).
     func setHosting(_ on: Bool)
-    // While hosting: Margin's window drawing its own layout, its page area the hosted window's (window mode), or the
-    // sidebar alone (a tile beside it). Only what its page draws: its size constraints are tile()'s and untile()'s.
-    func setWindowed(_ on: Bool)
-    var hostingWindowed: Bool { get }
-    func tile() // the sidebar's tile now (the hosted window's tile is coming in)
-    func untile() // its whole width again (a window-mode host is coming in; no hosted tile beside it)
+    func setLoading(_ label: String?) // the loading animation over the page area with the app's name, nil: none
     func keepBelow(_ number: Int?) // kept right below that window (another app's), nil: no more
     func push(_ json: String)
 }
@@ -90,16 +84,9 @@ extension MarginWindowController: HostedWindow {
         guard let layout else { return "no layout from its page" }
         if !isFullScreen { return "not in full screen" }
         if layout.mode != "fullscreen" { return "its last layout is a \(layout.mode) one" }
-        if hostingWindowed {
-            let content = contentFrame, view = webView.frame.size
-            func size(_ s: CGSize) -> String { "\(Int(s.width))×\(Int(s.height))" }
-            let sizes = "its page measured at \(Int(layout.width))×\(Int(layout.height)), its content \(size(content.size)), its web view \(size(view))"
-            if layout.outside { return "no layout of its own yet (\(sizes))" }
-            if let area = hostDisplay, abs(content.width - area.width) > 1 { return "not at its whole width yet (\(sizes), the display \(Int(area.width)))" }
-            return "no layout at its size yet (\(sizes))"
-        }
-        if !layout.outside { return "no layout measured with the sidebar alone yet" }
-        return "the window has no page rect (display \(hostDisplay.map { "\(Int($0.width))×\(Int($0.height))" } ?? "unknown"), layout \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)))"
+        let content = contentFrame, view = webView.frame.size
+        func size(_ s: CGSize) -> String { "\(Int(s.width))×\(Int(s.height))" }
+        return "no layout at its size yet (its page measured at \(Int(layout.width))×\(Int(layout.height)), its content \(size(content.size)), its web view \(size(view)))"
     }
     func toFullScreen() { if !isFullScreen { toggleFullScreen() } }
 }
@@ -125,10 +112,7 @@ final class HostedSession: LibraryDelegate {
     struct Options {
         var linkWait = 20.0 // a Safari copy's link (a Safari Margin just started takes ~12 s: docs/MARGIN-APP.md)
         var fullScreenWait = 6.0 // Margin's window into full screen
-        var pageWait = 3.0 // its page area worked out (the sidebar's tile measured)
-        // Window mode: its page measured at its whole width (asked again at every look), else the page area worked out
-        // from its docked layout (seen 2026-11-15: after a tile left, the page measured only 4.8 s later)
-        var windowLayoutWait = 0.4
+        var pageWait = 3.0 // its page area measured (its layout in full screen, hosting)
         var every = 0.05
         var safariBundles: Set<String> = [safariIdentifier, "com.apple.SafariTechnologyPreview"]
         var closesRestoredSafariWindows = true // (Tirth, 2026-11-15) a Safari Margin started: its restored windows closed
@@ -159,6 +143,10 @@ final class HostedSession: LibraryDelegate {
     private(set) var open: [String: OpenItem] = [:]
     private(set) var safariWindows: [String: Int] = [:]
     private(set) var hostingWindow: Int?
+    // Each Margin window's item shown when macOS took the window out of full screen: hosted again once it's back in.
+    private(set) var resume: [Int: String] = [:]
+    // What the loading animation names for a host (the app's name; Safari).
+    private var labels: [HostID: String] = [:]
     // Each Margin window's item asked to be shown and not shown yet (the newest): drawn in front at once.
     private(set) var requested: [Int: String] = [:]
     static let showRequests: Set<String> = ["activateTab", "newTab", "restoreArchive", "setSpace", "openPin"]
@@ -266,13 +254,15 @@ final class HostedSession: LibraryDelegate {
         guard let target = target ?? library.target(ofItem: item) else { return note("\(item): no target") }
         let address = url ?? (library.items().first { $0.id == item }?.value["url"] as? String) ?? ""
         switch target {
-        case .app(let bundle, _):
+        case .app(let bundle, let name):
+            labels[HostTarget.app(bundle).id] = appName(bundle) ?? (name.isEmpty ? nil : name) ?? bundle
             guard await host(.app(bundle), in: w) else { return }
             open[item] = OpenItem(host: HostTarget.app(bundle).id, profile: nil)
         case .web(let browser, let profile):
             guard browser == "safari" else { return note("\(item): \(browser) isn't hosted yet") }
             let p = resolve(profile)
             let id = HostTarget.safariWindow(p).id
+            labels[id] = "Safari"
             if engine.shown != id || hostingWindow != w.id {
                 guard await host(.safariWindow(p), in: w) else { return }
             }
@@ -305,12 +295,11 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
-    // Margin's window ready to host beside it: in full screen (v1: its own Space; windowed hosting is later), the
-    // sidebar's tile, its page area worked out. Nil: it couldn't be.
+    // Margin's window ready to host above its page area: in full screen (it always is; asked once more if it isn't, a
+    // safety check), its page drawing its own layout for hosting, its page area measured. Nil: it couldn't be.
     private func prepare(_ w: HostedWindow, for target: HostTarget) async -> (HostPlacement, UInt64)? {
         if let other = hostingWindow, other != w.id, let was = window(other) {
-            // (One Margin window hosts at a time: the one shown in the other parked first, so that window's size
-            // constraints change only once no hosted tile is beside it.)
+            // (One Margin window hosts at a time: the one shown in the other parked first.)
             await engine.parkShown(why: "another Margin window hosts")
             shown[other] = nil
             hostingWindow = nil
@@ -318,33 +307,19 @@ final class HostedSession: LibraryDelegate {
             was.setHosting(false)
         }
         if !w.isFullScreen {
-            note("Margin's window \(w.id) to full screen first (hosting needs its own Space)")
+            note("Margin's window \(w.id) not in full screen (it always is while hosting is on: \(w.fullScreenState)): asked")
             w.toFullScreen()
-            // One more ask if it hasn't started (the first can be dropped while Margin comes forward).
-            if await !wait(2, { w.isFullScreen }) {
-                note("Margin's window \(w.id) not in full screen after 2 s (\(w.fullScreenState)): asked again")
-                w.toFullScreen()
-            }
             guard await wait(options.fullScreenWait, { w.isFullScreen }) else {
                 note("Margin's window \(w.id) didn't go full screen (\(w.fullScreenState)): nothing hosted")
                 return nil
             }
         }
-        // The page measured at the full-screen size before it's told to draw the sidebar alone (which leaves nothing
-        // to measure): the page area's right inset comes from that layout (seen 2026-11-15: hosting turned on at once
-        // kept the windowed layout for good). It comes as soon as the page hears the window's new mode.
         if await !wait(1.5, { w.layoutMode == "fullscreen" }) {
             note("Margin's window \(w.id): no full-screen layout from its page in 1.5 s (\(w.layoutMode ?? "none")): its last one is used")
         }
-        // A host known to be shown in window mode, with nothing tiled beside Margin's window now: its own layout, its
-        // whole width. Anything else (a new one too: most go full screen): the sidebar alone, for the tile; a new one
-        // that turns out to be a window gets its own layout in `willWindow`.
-        let windowed = engine.mode(of: target.id) == .window && (engine.shown.map { engine.mode(of: $0) == .window } ?? true)
-        w.setWindowed(windowed)
         w.setHosting(true)
         hostingWindow = w.id
-        // (A layout measured with the sidebar alone, in full screen: comes once the page has heard `pageOutside`. Asked
-        // to measure again at every look: a size the window took may not have been drawn yet, willWindow.)
+        // (Asked to measure again at every look: a size the window took may not have been drawn yet.)
         guard await wait(options.pageWait, { if w.hostedPlacement != nil { return true }; w.remeasure(); return false }), let placement = w.hostedPlacement else {
             note("Margin's window \(w.id): no page area (\(w.pageAreaWhyNot))")
             return nil
@@ -352,93 +327,72 @@ final class HostedSession: LibraryDelegate {
         return (placement, engine.fullScreenSpace(ofWindow: w.number) ?? 0)
     }
 
-    // Margin's window about to leave full screen while hosting (the person's ⌃⌘F, its green button, anything): the one
-    // shown parked at once, while its tile is still in Margin's Space (macOS would leave it alone in a full-screen
-    // Space of its own). Not queued behind the session's own work: the engine takes it next.
+    // Margin's window about to leave full screen while hosting (macOS's green button, Mission Control: Margin itself
+    // never asks): the one shown parked at once, while it's still in Margin's Space. Not queued behind the session's own
+    // work: the engine takes it next.
     func leavingFullScreen(_ w: HostedWindow) {
         guard w.id == hostingWindow, engine.shown != nil else { return }
         note("Margin's window \(w.id) leaving full screen while hosting: the one shown parked")
         Task { await self.engine.parkShown(why: "Margin's window left full screen") }
     }
 
-    // Margin's window left full screen while hosting: the one shown parked (if leaving didn't already), its whole width
-    // again once it's windowed (its size constraints never change while it's a full-screen tile), nothing shown in it.
-    // Shown again when an item is: the show takes it to full screen again.
+    // Margin's window left full screen while hosting: the one shown parked (if leaving didn't already), nothing shown in
+    // it; it goes back into full screen by itself (always full screen), and the item shown is hosted again then.
     func leftFullScreen(_ w: HostedWindow) {
         guard w.id == hostingWindow else { return }
-        note("Margin's window \(w.id) left full screen while hosting: its whole width again")
+        note("Margin's window \(w.id) left full screen while hosting: nothing shown in it until it's back in full screen")
         if engine.shown != nil { Task { await self.engine.parkShown(why: "Margin's window left full screen") } }
+        if let item = requested[w.id] ?? shown[w.id] { resume[w.id] = item }
         hostingWindow = nil
         w.keepBelow(nil)
+        w.setLoading(nil)
         w.setHosting(false)
         shown[w.id] = nil
         onChange?()
     }
 
-    // The engine is moving a host's tile into Margin's Space (Margin's window alone in it): the hosting window becomes
-    // the sidebar's tile, at its width now.
-    func willTile() {
-        guard let id = hostingWindow, let w = window(id) else { return }
-        w.setWindowed(false)
-        w.tile()
+    // Margin's window in full screen again (after macOS took it out): the item it showed hosted again.
+    func enteredFullScreen(_ w: HostedWindow) {
+        guard let item = resume.removeValue(forKey: w.id) else { return }
+        note("Margin's window \(w.id) back in full screen: \(item) hosted again")
+        requested[w.id] = item
+        onChange?()
+        enqueue {
+            if self.overtaken(item, windowId: w.id) { return }
+            await self.show(item, url: nil, target: self.library.target(ofItem: item), windowId: w.id)
+            self.settleHosting()
+        }
     }
 
-    // The engine is bringing a window-mode host into Margin's Space (nothing tiled beside Margin's window any more):
-    // Margin's window its whole width and its own layout, its page area (from that layout) answered once it's measured.
-    // Its page measures again on its own only when a frame is drawn after the window took its new size, which can take
-    // seconds (seen 2026-11-15, the tile gone: the window 1512 wide, its page's last layout 250 wide for 4.8 s, until an
-    // unrelated push made it measure), so it's asked to measure at every look; still not measured there after
-    // `windowLayoutWait`, the page area is worked out from its docked layout (its page's next layout places it again
-    // if that differs).
-    func willWindow() async -> HostPlacement? {
-        guard let id = hostingWindow, let w = window(id) else { return nil }
-        w.setWindowed(true)
-        w.untile()
-        var asks = 0
-        func measured() -> Bool {
-            if w.hostedPlacement?.windowed == true { return true }
-            asks += 1
-            w.remeasure()
-            return false
-        }
-        let said = { asks == 0 ? "at once" : "after \(asks) ask\(asks == 1 ? "" : "s") to measure" }
-        if await wait(options.windowLayoutWait, measured), let placement = w.hostedPlacement {
-            note("Margin's window \(id): its whole width, its page measured there \(said())")
-            return placement
-        }
-        if let placement = w.hostedPlacementWorkedOut {
-            note("Margin's window \(id): its page not measured at its whole width within \(Int(options.windowLayoutWait * 1000)) ms (\(w.pageAreaWhyNot)): the page area worked out from its docked layout")
-            return placement
-        }
-        guard await wait(max(0, options.pageWait - options.windowLayoutWait), measured), let placement = w.hostedPlacement else {
-            note("Margin's window \(id): no page area of its own for a window (\(w.pageAreaWhyNot)): the one it had is used")
-            return nil
-        }
-        note("Margin's window \(id): its whole width, its page measured there \(said())")
-        return placement
+    // The engine's slow step for a host started (its first open, its placing again: nil when it's over): the hosting
+    // window's page area shows the loading animation with the app's name.
+    func loading(_ id: HostID?) {
+        guard let wid = hostingWindow, let w = window(wid) else { return }
+        w.setLoading(id.map { labels[$0] ?? $0.description })
     }
 
-    // The engine's window-mode host shown (its window), or none: the hosting Margin window kept right below it.
+    // The engine's host shown (its window), or none: the hosting Margin window kept right below it.
     func keepBelow(_ number: Int?) {
         guard let id = hostingWindow, let w = window(id) else { return }
         w.keepBelow(number)
     }
 
-    // A press in a Margin window's page area while a window-mode host is shown there (around its window: on it, the app
-    // has it already): that app given the keyboard (activated, its window raised), never a click.
+    // A press in a Margin window's page area while a host is shown there (around its window: on it, the app has it
+    // already): that app given the keyboard (activated, its window raised), never a click.
     // `point`: where (top-left coordinates): a press on the hosted window itself is the app's already.
     func pagePressed(_ w: HostedWindow, at point: CGPoint? = nil) {
-        guard w.id == hostingWindow, engine.windowedShown != nil else { return }
+        guard w.id == hostingWindow, engine.shownAbove != nil else { return }
         Task { await self.engine.activateShown(at: point) }
     }
 
-    // Margin's window is the sidebar's tile only while the engine shows something in it: nothing shown, its whole
-    // width again (after each of the session's steps, and the engine's events, once the engine is done).
+    // Margin's window hosts only while the engine shows something in it: nothing shown, its launcher in the page area
+    // again (after each of the session's steps, and the engine's events, once the engine is done).
     private func settleHosting() {
         guard engine.shown == nil, let id = hostingWindow else { return }
         hostingWindow = nil
         shown[id] = nil
         window(id)?.keepBelow(nil)
+        window(id)?.setLoading(nil)
         window(id)?.setHosting(false)
         onChange?()
     }
@@ -589,7 +543,7 @@ final class HostedSession: LibraryDelegate {
             return
         }
         onChange?()
-        // (Whether Margin's window is still a tile is settled once the engine is done: these come mid-operation.)
+        // (Whether Margin's window still hosts is settled once the engine is done: these come mid-operation.)
         enqueue { self.settleHosting() }
     }
 
@@ -604,7 +558,7 @@ final class HostedSession: LibraryDelegate {
             self.placing = false
             guard window.id == self.hostingWindow, self.engine.shown != nil, let placement = window.hostedPlacement else { return }
             let placed = await self.engine.pageRectChanged(placement)
-            self.note("page area changed: \(Int(placement.page.width))×\(Int(placement.page.height)), Margin's tile \(Int(placement.tileWidth))\(placed ? "" : " (not fitted)")")
+            self.note("page area changed: \(Int(placement.page.width))×\(Int(placement.page.height))\(placed ? "" : " (not fitted)")")
         }
     }
 

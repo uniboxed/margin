@@ -1,11 +1,12 @@
 // Margin's own window (docs/MARGIN-APP.md, phase 2): a regular app window,
 // windowed or full screen (its own Space), with Margin's UI drawn edge to edge
 // under a transparent title bar. It's opaque, its corners rounded as macOS
-// draws a window's: a hosted window is never behind it but beside it, a tile
-// of its full-screen Space (HostedSession.swift), so nothing shows through and
-// nothing passes through; with nothing hosted, its page area is the theme's
-// launcher (ui/host-app.ts). Behind `MarginHosted` (off: none of this runs;
-// Shell.forApp).
+// draws a window's: a hosted window is never behind it but above it, a member
+// of its full-screen Space in its page area (HostedSession.swift), so nothing
+// shows through and nothing passes through; with nothing hosted, its page area
+// is the theme's launcher (ui/host-app.ts). Behind `MarginHosted` (off: none
+// of this runs; Shell.forApp). While hosting is on it's always full screen
+// (`locksFullScreen`: AppKit's toggle refused once it's in).
 //
 // - MarginWindow: the NSWindow. `pageRect` is the page area in the window
 //   server's coordinates (top left, points), published with `onPageRectChange`
@@ -38,6 +39,10 @@ final class MarginWindow: NSWindow {
     var dragRegions: [CGRect] = []
     // Presses that moved or zoomed the window (the tests read it).
     private(set) var drags = 0
+    // Always full screen (MarginWindowController.Options.alwaysFullScreen): AppKit's toggle (the green button, a menu
+    // item anywhere) refused while it's in full screen; into it always taken.
+    var locksFullScreen = false
+    private(set) var refusedToggles = 0
 
     init(frame topLeft: CGRect, harness: Bool) {
         self.harness = harness
@@ -61,6 +66,14 @@ final class MarginWindow: NSWindow {
     }
 
     var onADisplay: Bool { NSScreen.screens.contains { $0.frame.intersects(frame) } }
+
+    override func toggleFullScreen(_ sender: Any?) {
+        if locksFullScreen, styleMask.contains(.fullScreen) {
+            refusedToggles += 1
+            return Diagnostics.note("Margin's window: leaving full screen refused (Margin is always full screen)")
+        }
+        super.toggleFullScreen(sender)
+    }
 
     func setPageRect(_ rect: CGRect?, radius: CGFloat) {
         guard rect != pageRect || radius != pageRadius else { return }
@@ -136,35 +149,8 @@ enum MarginWindowGeometry {
 
     static func inDragRegion(_ p: CGPoint, _ regions: [CGRect]) -> Bool { regions.contains { $0.contains(p) } }
 
-    // ---- hosting: Margin's window the sidebar's tile, the hosted window the page area's (HostedSession.swift) ----
-
-    // The sidebar's tile: as wide as the page's left inset (the sidebar with its margins), a point at least.
-    static func tileWidth(_ layout: PageLayout) -> CGFloat { max(1, CGFloat(layout.left.rounded(.up))) }
-
-    // Whether a layout was measured with room for a page (its right inset is then the theme's own).
-    static func hasPage(_ layout: PageLayout) -> Bool { layout.width - layout.left - layout.right >= 100 }
-
-    // The page area while hosting (top left, points): the display the tiles divide, less Margin's tile on the left
-    // and the theme's other insets (`right` as last measured with room for a page, else the top one), which the host
-    // reserves at the Space's edges. Nil: no room left.
-    static func hostedPageRect(display: CGRect, layout: PageLayout, right: Double?) -> CGRect? {
-        let left = tileWidth(layout)
-        let top = CGFloat(max(0, layout.top)), bottom = CGFloat(max(0, layout.bottom)), right = CGFloat(max(0, right ?? layout.top))
-        let width = display.width - left - right, height = display.height - top - bottom
-        return width >= 1 && height >= 1 ? CGRect(x: display.minX + left, y: display.minY + top, width: width, height: height) : nil
-    }
-
-    // The page area in `content` (top left) from a docked layout measured at another size: its left, top and bottom
-    // insets, and `right` (as last measured with room for a page; else its own, else its top one). Nil: no room left.
-    static func dockedPageRect(content: CGRect, layout: PageLayout, right: Double?) -> CGRect? {
-        let left = CGFloat(max(0, layout.left)), top = CGFloat(max(0, layout.top)), bottom = CGFloat(max(0, layout.bottom))
-        let r = CGFloat(max(0, right ?? (hasPage(layout) ? layout.right : layout.top)))
-        let width = content.width - left - r, height = content.height - top - bottom
-        return width >= 1 && height >= 1 ? CGRect(x: content.minX + left, y: content.minY + top, width: width, height: height) : nil
-    }
-
     // A display's full-screen layout area (top left): its frame below the camera housing, where a full-screen
-    // window's tiles go.
+    // window (Margin's, and a hosted window's in its own Space) is laid out.
     static func fullScreenArea(_ screen: NSScreen) -> CGRect {
         var frame = screen.frame
         frame.size.height -= screen.safeAreaInsets.top
@@ -214,7 +200,8 @@ final class MarginMenuTarget: NSObject, NSMenuItemValidation {
 
 enum MarginMenu {
     // The whole menu bar: Margin's app menu, File, Edit (a field of the UI needs its keys), View, Window.
-    static func build(target: MarginMenuTarget, appName: String = "Margin") -> NSMenu {
+    // `fullScreenItem`: View › Enter Full Screen (⌃⌘F); none while Margin is always full screen.
+    static func build(target: MarginMenuTarget, appName: String = "Margin", fullScreenItem: Bool = true) -> NSMenu {
         let bar = NSMenu(title: "Main Menu")
         func menu(_ title: String, _ items: [NSMenuItem]) -> NSMenu {
             let m = NSMenu(title: title)
@@ -260,12 +247,9 @@ enum MarginMenu {
             item("Paste", #selector(NSText.paste(_:)), "v"),
             item("Select All", #selector(NSText.selectAll(_:)), "a"),
         ])
-        _ = menu("View", [
-            own("Toggle Sidebar", .toggleSidebar, "s", [.command, .control]),
-            .separator(),
-            // AppKit titles it Enter or Exit Full Screen as the key window is.
-            item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
-        ])
+        // (AppKit titles it Enter or Exit Full Screen as the key window is.)
+        _ = menu("View", [own("Toggle Sidebar", .toggleSidebar, "s", [.command, .control])]
+                 + (fullScreenItem ? [.separator(), item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])] : []))
         let window = menu("Window", [
             item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
             item("Zoom", #selector(NSWindow.performZoom(_:))),
@@ -282,5 +266,50 @@ enum MarginMenu {
             if let found = top.submenu?.items.first(where: { $0.representedObject as? String == action.rawValue }) { return found }
         }
         return nil
+    }
+}
+
+// The loading animation over the page area while a host's first open or placing again runs: a spinner and "Opening
+// <name>…", centred, drawn natively (the hosted window isn't there yet, and a press goes through to the page).
+final class HostLoadingView: NSView {
+    private let spinner = NSProgressIndicator()
+    private let label = NSTextField(labelWithString: "")
+    private(set) var text = ""
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        spinner.style = .spinning
+        spinner.controlSize = .regular
+        spinner.isDisplayedWhenStopped = false
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+        addSubview(spinner)
+        addSubview(label)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func layout() {
+        super.layout()
+        let size = spinner.fittingSize
+        spinner.frame = NSRect(x: (bounds.width - size.width) / 2, y: bounds.midY + 4, width: size.width, height: size.height)
+        label.frame = NSRect(x: 8, y: bounds.midY - 26, width: max(0, bounds.width - 16), height: 20)
+    }
+
+    func show(_ name: String) {
+        text = "Opening \(name)…"
+        label.stringValue = text
+        isHidden = false
+        spinner.startAnimation(nil)
+        needsLayout = true
+    }
+
+    func hide() {
+        guard !isHidden else { return }
+        isHidden = true
+        spinner.stopAnimation(nil)
     }
 }

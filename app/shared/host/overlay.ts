@@ -269,11 +269,12 @@ function reportSpace() {
 const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); coverWatch.check(); });
 addEventListener('resize', () => { measureNow(); hitsSoon(); });
 
-// Margin's own window hosting beside it (host-app.ts pageOutside): the sidebar's width isn't dragged (its window is a
-// full-screen tile, whose size can't change), so the theme's handle goes (render.ts `m-sidebar-fixed`).
+// Margin's own window hosting another app's window (host-app.ts sidebarDocked: pageHosted, or the older pageOutside):
+// the sidebar's width isn't dragged (each new page area places the hosted window again, out of full screen and in), so
+// the theme's handle goes (render.ts `m-sidebar-fixed`).
 function followOutside() {
   const root = runtime?.view.rootElement();
-  if (root) root.toggleAttribute('m-sidebar-fixed', !!host?.pageOutside);
+  if (root) root.toggleAttribute('m-sidebar-fixed', !!(host as { sidebarDocked?: boolean } | null)?.sidebarDocked);
 }
 
 // ---- the theme --------------------------------------------------------------------------
@@ -704,7 +705,7 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
       if (msg?.type === 'windows' || msg?.type === 'state' || msg?.type === 'changes') notices.front(host?.frontTabId ?? null);
       // The window's mode, or the sidebar alone in Margin's own window: measured again after this drawing (a theme
       // whose drawing doesn't change with it changes nothing the watcher sees, and the app waits for that layout).
-      if (msg?.type === 'windows' || msg?.type === 'pageOutside') { followOutside(); queueMicrotask(measureNow); }
+      if (msg?.type === 'windows' || msg?.type === 'pageOutside' || msg?.type === 'pageHosted') { followOutside(); queueMicrotask(measureNow); }
       // The app asks for a measure now: the window took a size its page hasn't drawn yet (no frame since, so no resize
       // event; seen 2026-11-15 after a hosted tile left: 4.8 s), and the web view's size is what a measure reads.
       if (msg?.type === 'measure') measureNow();

@@ -11,10 +11,9 @@
 // the default. The handle has the class `m-resizing` while dragged, and so
 // does the theme's root. The sidebar grows toward the page: rightward for a
 // theme whose sidebar reveals from the left (theme.json `layout.reveal`),
-// leftward from the right. Not while the UI has no page area of its own
-// (Margin.app's window hosting beside it, `pageOutside`): its window is a
-// full-screen tile there, whose size can't change (the handle is hidden too:
-// render.ts `m-sidebar-fixed`).
+// leftward from the right. Not while Margin.app's window hosts another app's
+// window (the host marks the theme's root `m-sidebar-fixed`, which hides the
+// handle too: a new page area places the hosted window again, a slow step).
 import type { Rt } from '../runtime.ts';
 
 const SETTING = 'sidebarWidth';
@@ -40,7 +39,7 @@ export function installResize(rt: Rt) {
   // The width now: the setting as the theme gets it (saved, else its default).
   const current = () => { const w = px(rt.vm?.settings?.[SETTING]); return Number.isFinite(w) ? w : bounds().def; };
   const usable = () => {
-    if (rt.vm?.window.pageOutside) return false;
+    if (rt.vm?.window.pageOutside || view.rootElement()?.hasAttribute?.('m-sidebar-fixed')) return false;
     if (spec()) return true;
     if (!warned) { warned = true; rt.warn(`m-resize="sidebar": the theme has no ${SETTING} setting`); }
     return false;

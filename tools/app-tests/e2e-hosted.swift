@@ -57,7 +57,8 @@ func hostedScenario() async {
   let echo = Diagnostics.echo
   Diagnostics.echo = { line in if line.hasPrefix("warning: ") { warned.append(line) }; echo?(line) }
   defer { Diagnostics.echo = echo }
-  let windows = MarginWindows(pages: pages, source: source, options: .init(harness: true))
+  // (Windowed Margin is kept for later: this run checks its window both ways, so not always full screen.)
+  let windows = MarginWindows(pages: pages, source: source, options: .init(harness: true, alwaysFullScreen: false))
   defer { windows.closeAll() }
   let c = windows.open()
   var published: [CGRect?] = []
