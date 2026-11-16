@@ -11,7 +11,7 @@ import AppKit
 // DEV-HOOK
 final class FakeDevWorld: DevHookWorld {
     func devHost(app: String?, url: String?) -> String? { "not in the fake" }
-    func devForgetTestItems() -> String? { "not in the fake" }
+    func devForgetTestItems(also apps: [String]) -> String? { "not in the fake" }
     var names: [String: String] = [:] // link → Safari's name
     var shown: WindowKey?
     var switches: [(from: WindowKey, to: String, space: String?)] = []

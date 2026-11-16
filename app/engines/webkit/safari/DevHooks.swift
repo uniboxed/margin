@@ -109,7 +109,7 @@ protocol DevHookWorld: AnyObject {
     // Margin as the app (MarginHosted): what a palette pick does, an installed app by bundle id or an address in a new
     // web item, in Margin's front window. Nil if asked, else why not.
     func devHost(app: String?, url: String?) -> String?
-    func devForgetTestItems() -> String? // nil if done, else why not
+    func devForgetTestItems(also apps: [String]) -> String? // nil if done, else why not (`apps`: app items a check added)
 }
 
 struct DevDraftSnapshot: Equatable {
@@ -185,7 +185,7 @@ final class DevHooks {
             // `forget`: the items the on-screen checks themselves added, removed from the library (only these test
             // targets: the kit's test app, example.com / example.org).
             if fields["forget"] == "test" {
-                if let why = world.devForgetTestItems() { return refuse(why) }
+                if let why = world.devForgetTestItems(also: (fields["apps"] ?? "").split(separator: ",").map(String.init).filter { id in id.count <= 155 && id.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "." || $0 == "-") } }) { return refuse(why) }
                 return say("dev hook: host forget test items \(asked)")
             }
             let app = fields["app"], url = fields["url"]
@@ -341,11 +341,12 @@ final class DevHooks {
 
 // DEV-HOOK: the shell's side.
 extension Shell: DevHookWorld {
-    func devForgetTestItems() -> String? {
+    func devForgetTestItems(also apps: [String]) -> String? {
         guard options.hosted, let library else { return "MarginHosted isn't on" }
+        let bundles = Set(["test.margin.pane"] + apps)
         let test: (JSONObject) -> Bool = { v in
             let target = v["target"] as? JSONObject
-            if target?["bundleId"] as? String == "test.margin.pane" { return true }
+            if let b = target?["bundleId"] as? String, bundles.contains(b) { return true }
             guard let url = v["url"] as? String, let host = URL(string: url)?.host else { return false }
             return host == "example.com" || host == "example.org"
         }
