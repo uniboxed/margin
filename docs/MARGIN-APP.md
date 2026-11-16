@@ -92,8 +92,11 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
    instance to a normal app with a Dock icon; the detection signal is known
    (LaunchServices notifications 659/561). What Margin does then is open.
 5. **AppKit apps that can't go full screen without a Dock icon** (Dictionary,
-   Calculator, Music, Reminders, …): hosted windowed inside Margin, or with a
-   Dock icon, or not offered.
+   Calculator, Music, Reminders, …): *built 2026-11-15 (`feat/hosted-apps`,
+   DECISIONS.md "Almost every app in Margin")*: window mode, their normal window
+   in Margin's full-screen Space, placed in the page area by Accessibility, its
+   frame given back before it leaves; apps already open the normal way (Phone)
+   hosted as they are and given back. On-screen checks pending.
 6. **Accessibility** is needed to put a non-browser app into full screen;
    Safari can be put there by Margin's extension (`windows.update`), untested
    from a no-Dock Safari.
