@@ -1,5 +1,27 @@
 # Testing Margin
 
+## External protected-app cover (2026-11-16)
+
+- [x] Installed protected Chrome, Edge and TextEdit: sampled composited display pixels conceal the
+  controls through settled move/resize/reactivation, then restore them. Native app-only captures
+  still show the controls; this is a visual cover. Pointer/windowed/deactivation/cleanup checks pass.
+- [x] Retain Chrome failures 1–5; accepted attempt 6 uses delivered AX events and bounded settling.
+  Successful WS notification registration with no observed callbacks is not a working observer.
+- [x] Direct exact-build global-clip server message: valid partial owner positive control/restoration,
+  but no foreign effect in a disposable child. Strict native removal remains unestablished.
+- [ ] Verify continuous drag and activation for flashes with a high-rate physical-display recording.
+  Current capture-request-timed screen crops are only about 1.4 fps.
+- [ ] Verify actual click/hover delivery, same-app windows/sheets, titlebar changes, Spaces/Mission
+  Control, displays/scales/other builds, independent crash recovery and Safari before adoption.
+- [ ] Decide whether Margin's own opaque theme chrome is acceptable. Adjacent-strip matching still
+  leaves a visible rectangle on TextEdit's glass and cannot reproduce arbitrary titlebar materials.
+
+See [lab reproduction](tools/traffic-lights-lab/README.md) and the
+[current report](docs/TRAFFIC-LIGHTS-RESEARCH.md). Raw/annotated clips are local in
+`test-results/traffic-lights-external-2026-11-16/`; committed metadata/hashes identify accepted and
+failed runs. Fresh unit tests pass 1,031. Full E2E is attempted/bounded after missing pinned browser
+setup failures and pending teardown; no full-suite pass or download. No shipping app change.
+
 ## Real Chromium traffic-light launch experiment (2026-11-16)
 
 - [x] On 25G342, launch the installed load-permissive Chrome for Testing with a temporary library;

@@ -4,10 +4,49 @@ The request is to hide close, minimise and zoom/fullscreen buttons while keeping
 in ordinary windowed mode, using Accessibility and private macOS APIs. This spike is isolated from
 Margin.app. Read the findings and proposed architecture in [the research report](../../docs/TRAFFIC-LIGHTS-RESEARCH.md).
 
-**Finding:** private AppKit hiding works in the owned window and now in real Chrome for Testing through
+**Latest finding:** an external private WindowServer cover visually conceals the three controls in
+protected Chrome, Edge and TextEdit, with move/resize, app switching and restoration verified after
+settling. No target code loading is required. The native controls remain underneath; TextEdit's glass
+patch is visibly imperfect, and continuous dragging/flicker/click delivery remain unverified.
+
+Private AppKit hiding works in the owned window and in real Chrome for Testing through
 a temporary launch-loaded library, with verified pixels, resize and restoration. Installed protected
 Chrome did not load that library. AX writes and foreign clipping did not change the native controls.
 This is a bounded Chromium backend, not general external Safari/Chrome/Edge support.
+
+## External protected-app cover
+
+```sh
+swiftc -parse-as-library -D COVER_LAB -warnings-as-errors tools/traffic-lights-lab/visual.swift tools/traffic-lights-lab/cover.swift -o /tmp/margin-external-cover
+/tmp/margin-external-cover --case chrome --output /absolute/new/run
+/tmp/margin-external-cover --case chrome --output /absolute/new/run --run
+python3 tools/traffic-lights-lab/verify-cover.py /absolute/new/run
+swiftc tools/traffic-lights-lab/video-bands.swift -o /tmp/margin-cover-bands
+python3 tools/traffic-lights-lab/render-cover.py /absolute/new/run /tmp/margin-cover-bands 'Google Chrome — external cover'
+python3 tools/traffic-lights-lab/verify-cover.py /absolute/new/run
+```
+
+The first invocation is dry. Actual runs require 25G342, AX and capture access. Cases: `chrome`, `edge`,
+`textedit`. Each launches one fresh target plus another fresh app for occlusion (TextEdit for browsers,
+Chrome for TextEdit), refusing existing app sessions. All profiles/documents are temporary. A blank
+owned backdrop confines captured screen crops to the test canvas. The probe tests normal-level private
+surface allocation/drawing/ordering, AX move/resize and app activation with three bounded settling
+checks, pointer targets, withdrawal while another app is active, restoration and owned cleanup.
+Native controls stay drawn in a target-only capture. No injection, target modifications or system
+settings. A 50-second emergency exit terminates known owned test PIDs and releases controller surfaces.
+
+Screen crops are actual display composition, sampled about 1.4 fps with capture-request timestamps;
+acquisition occurs during the subprocess. They cannot prove frame-perfect tracking or no flicker.
+Color-managed adjacent-strip matching works better on Chrome's flat background than TextEdit's glass;
+use an opaque Margin theme surface for a product candidate. Actual click/hover delivery, AX-action
+blocking, titlebar replacement, same-app sheets/windows, Spaces/Mission Control, other scales/builds
+and crash recovery remain unverified. Normal original app behavior is restored on withdrawal.
+
+Accepted Chrome attempt 6, Edge attempt 1 and TextEdit attempt 1 have 23 samples each. Chrome attempts
+1–5 fail reactivation and remain saved with exact source/binary snapshots. WS observer registrations
+return zero but yield no observed reorder callbacks; the accepted variant uses delivered AX events
+and bounded activation checks. A first color conversion mismatch is also retained. Metadata/hashes:
+`results/external-25G342/`; local media/failures: `test-results/traffic-lights-external-2026-11-16/`.
 
 ## Real Chromium launch-loaded backend
 
@@ -41,9 +80,11 @@ Use the existing `video-bands.swift` build plus `render-recordings.py RUN BANDS_
 ## Deeper AX loader and transaction ownership probes
 
 ```sh
-swiftc -warnings-as-errors tools/traffic-lights-lab/deeper.swift -o /tmp/margin-deeper
+clang -c -Wall -Wextra -Werror tools/traffic-lights-lab/wire-clip.c -o /tmp/margin-wire-clip.o
+swiftc -warnings-as-errors tools/traffic-lights-lab/deeper.swift /tmp/margin-wire-clip.o -o /tmp/margin-deeper
 /tmp/margin-deeper
 /tmp/margin-deeper --run --output /absolute/nonexistent/directory
+/tmp/margin-deeper --wire --run --output /absolute/another/nonexistent/directory
 swiftc -warnings-as-errors tools/traffic-lights-lab/bundle-policy.swift -o /tmp/margin-bundle-policy
 /tmp/margin-bundle-policy
 /tmp/margin-bundle-policy --run
@@ -57,6 +98,13 @@ Run-1/run-2 were invalid due to zero initial geometry; run-3 has a valid partial
 foreign effect. The requirement decoder is read-only and refuses other builds/architectures; its
 cache-relative offset and expected bytes are specific to this host. It decodes `anchor apple`, not a
 general entitlement bypass. Disassembly excerpts and compact observations accompany the saved result.
+
+`--wire` uses the new C shim instead of the transaction for both owner and foreign sends. It reconstructs
+only the observed 0x7614 message for one validated disposable window, checking structure offsets,
+25G342/arm64 and the exact SkyLight image UUID before resolving the internal connection-port getter.
+The owner positive control works; the identical foreign request does not. A zero send result is only
+transport success. This gets beyond the exported setter's local guard, without demonstrating foreign
+native hiding. Compact evidence is in `results/external-25G342/wire-compact.json`.
 
 ## Reproduce the owned-process experiment
 

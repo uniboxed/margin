@@ -1,0 +1,73 @@
+[
+  {
+    "event" : "launched",
+    "pid" : 2177,
+    "uptime" : 260431.89152425001
+  },
+  {
+    "event" : "window-geometry",
+    "position" : "{22, 56}",
+    "size" : "{900, 650}",
+    "uptime" : 260432.99125375002
+  },
+  {
+    "button" : "AXCloseButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{34, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 260432.99300520835,
+    "window" : "75046"
+  },
+  {
+    "button" : "AXMinimizeButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{57, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 260432.99423604168,
+    "window" : "75046"
+  },
+  {
+    "button" : "AXZoomButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{80, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 260432.99516112503,
+    "window" : "75046"
+  },
+  {
+    "bundle" : "com.google.Chrome",
+    "event" : "target",
+    "pid" : 2177,
+    "uptime" : 260432.99906804168,
+    "window" : 75046
+  },
+  {
+    "event" : "resize",
+    "result" : 0,
+    "uptime" : 260440.48895516669
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 260447.74316900002
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 260450.25557337501
+  },
+  {
+    "event" : "close-owned-window",
+    "result" : 0,
+    "uptime" : 260450.26858108334
+  },
+  {
+    "event" : "cleanup",
+    "profileRemoved" : true,
+    "targetGone" : true,
+    "uptime" : 260450.42648558336
+  }
+]

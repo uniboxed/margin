@@ -1,0 +1,458 @@
+[
+  {
+    "canvas" : "{{18, 52}, {1060, 780}}",
+    "event" : "binding",
+    "kind" : "external compositor cover; native buttons unchanged",
+    "pid" : 2177,
+    "seconds" : 1.0124989785254002e-05,
+    "window" : 75046
+  },
+  {
+    "event" : "palette",
+    "seconds" : 0.048135624994756654,
+    "sourceColorSpace" : "unknown",
+    "x" : 80
+  },
+  {
+    "event" : "observer-registration",
+    "name" : "AXMoved",
+    "result" : 0,
+    "seconds" : 0.048546999983955175
+  },
+  {
+    "event" : "observer-registration",
+    "name" : "AXResized",
+    "result" : 0,
+    "seconds" : 0.048852416657609865
+  },
+  {
+    "event" : "observer-registration",
+    "name" : "AXUIElementDestroyed",
+    "result" : 0,
+    "seconds" : 0.049128791666589677
+  },
+  {
+    "event" : "observer-registration",
+    "name" : "AXWindowMiniaturized",
+    "result" : 0,
+    "seconds" : 0.049395916663343087
+  },
+  {
+    "event" : "observer-registration",
+    "name" : "AXApplicationActivated",
+    "result" : 0,
+    "seconds" : 0.049662958335829899
+  },
+  {
+    "event" : "observer-registration",
+    "name" : "AXApplicationDeactivated",
+    "result" : 0,
+    "seconds" : 0.049964583333348855
+  },
+  {
+    "event" : "observer-registration",
+    "name" : "AXFocusedWindowChanged",
+    "result" : 0,
+    "seconds" : 0.050205499981530011
+  },
+  {
+    "event" : "observer-registration",
+    "name" : "AXMainWindowChanged",
+    "result" : 0,
+    "seconds" : 0.050448666646843776
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75046,
+    "label" : "baseline",
+    "owner" : 1997887,
+    "result" : 0,
+    "seconds" : 0.051287833339301869,
+    "window" : 75046
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75046,
+    "label" : "baseline",
+    "owner" : 1997887,
+    "result" : 0,
+    "seconds" : 0.051556624996010214,
+    "window" : 75046
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75046,
+    "label" : "baseline",
+    "owner" : 1997887,
+    "result" : 0,
+    "seconds" : 0.051838958315784112,
+    "window" : 75046
+  },
+  {
+    "buttons" : [
+      "{{34, 68.5}, {16, 16}}",
+      "{{57, 68.5}, {16, 16}}",
+      "{{80, 68.5}, {16, 16}}"
+    ],
+    "event" : "windowed",
+    "label" : "baseline",
+    "seconds" : 0.052320958318887278
+  },
+  {
+    "event" : "phase",
+    "label" : "Baseline — protected app, native controls visible",
+    "seconds" : 0.052590791659895331
+  },
+  {
+    "event" : "cover-position",
+    "frame" : "{{32, 66}, {66, 21}}",
+    "seconds" : 2.3547050833294634,
+    "window" : 75070
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75070,
+    "label" : "covered",
+    "owner" : 2141187,
+    "result" : 0,
+    "seconds" : 2.5703394166484941,
+    "window" : 75070
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75070,
+    "label" : "covered",
+    "owner" : 2141187,
+    "result" : 0,
+    "seconds" : 2.5720480000018142,
+    "window" : 75070
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75070,
+    "label" : "covered",
+    "owner" : 2141187,
+    "result" : 0,
+    "seconds" : 2.5729086250066757,
+    "window" : 75070
+  },
+  {
+    "buttons" : [
+      "{{34, 68.5}, {16, 16}}",
+      "{{57, 68.5}, {16, 16}}",
+      "{{80, 68.5}, {16, 16}}"
+    ],
+    "event" : "windowed",
+    "label" : "covered",
+    "seconds" : 2.5744510416698176
+  },
+  {
+    "event" : "phase",
+    "label" : "Covered externally — native controls remain underneath",
+    "seconds" : 2.611428916658042
+  },
+  {
+    "event" : "move-request",
+    "result" : 0,
+    "seconds" : 4.7969495833385736
+  },
+  {
+    "event" : "phase",
+    "label" : "Moved — cover follows Accessibility notifications",
+    "seconds" : 4.797486208321061
+  },
+  {
+    "event" : "ax-notification",
+    "name" : "AXMoved",
+    "seconds" : 4.7978189166460652
+  },
+  {
+    "event" : "cover-position",
+    "frame" : "{{97, 111}, {66, 21}}",
+    "seconds" : 4.8068943749822211,
+    "window" : 75070
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75070,
+    "label" : "moved",
+    "owner" : 2141187,
+    "result" : 0,
+    "seconds" : 6.4470532083360013,
+    "window" : 75070
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75070,
+    "label" : "moved",
+    "owner" : 2141187,
+    "result" : 0,
+    "seconds" : 6.447706000006292,
+    "window" : 75070
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75070,
+    "label" : "moved",
+    "owner" : 2141187,
+    "result" : 0,
+    "seconds" : 6.4481369583227206,
+    "window" : 75070
+  },
+  {
+    "buttons" : [
+      "{{99, 113.5}, {16, 16}}",
+      "{{122, 113.5}, {16, 16}}",
+      "{{145, 113.5}, {16, 16}}"
+    ],
+    "event" : "windowed",
+    "label" : "moved",
+    "seconds" : 6.4487114583316725
+  },
+  {
+    "event" : "phase",
+    "label" : "Resized — cover follows Accessibility notifications",
+    "seconds" : 6.4517787916702218
+  },
+  {
+    "event" : "ax-notification",
+    "name" : "AXResized",
+    "seconds" : 6.4521508333273232
+  },
+  {
+    "event" : "cover-position",
+    "frame" : "{{97, 111}, {66, 21}}",
+    "seconds" : 6.4534919583238661,
+    "window" : 75070
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75070,
+    "label" : "resized",
+    "owner" : 2141187,
+    "result" : 0,
+    "seconds" : 8.0610918749880511,
+    "window" : 75070
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75070,
+    "label" : "resized",
+    "owner" : 2141187,
+    "result" : 0,
+    "seconds" : 8.061687791661825,
+    "window" : 75070
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75070,
+    "label" : "resized",
+    "owner" : 2141187,
+    "result" : 0,
+    "seconds" : 8.0620639583212323,
+    "window" : 75070
+  },
+  {
+    "buttons" : [
+      "{{99, 113.5}, {16, 16}}",
+      "{{122, 113.5}, {16, 16}}",
+      "{{145, 113.5}, {16, 16}}"
+    ],
+    "event" : "windowed",
+    "label" : "resized",
+    "seconds" : 8.0626218333200086
+  },
+  {
+    "event" : "activation",
+    "pid" : 2353,
+    "seconds" : 8.2067098333209287
+  },
+  {
+    "event" : "ax-notification",
+    "name" : "AXApplicationDeactivated",
+    "seconds" : 8.2106524583359715
+  },
+  {
+    "epoch" : 2,
+    "event" : "activation-settle",
+    "seconds" : 8.3173115416720975
+  },
+  {
+    "epoch" : 2,
+    "event" : "activation-settle",
+    "seconds" : 8.4464934583229478
+  },
+  {
+    "epoch" : 2,
+    "event" : "activation-settle",
+    "seconds" : 8.7049990833329502
+  },
+  {
+    "event" : "deactivated-confirmed",
+    "otherPID" : 2353,
+    "seconds" : 9.4708122916636057
+  },
+  {
+    "event" : "phase",
+    "label" : "Different app in front — cover is withdrawn",
+    "seconds" : 9.4736733750032727
+  },
+  {
+    "event" : "deactivated-cover",
+    "result" : 0,
+    "seconds" : 11.578275749983732,
+    "visible" : false
+  },
+  {
+    "event" : "activation",
+    "pid" : 2177,
+    "seconds" : 11.686396458331728
+  },
+  {
+    "event" : "ax-notification",
+    "name" : "AXApplicationActivated",
+    "seconds" : 11.710372999979882
+  },
+  {
+    "event" : "cover-occluded",
+    "otherWindow" : 75066,
+    "seconds" : 11.721172291669063
+  },
+  {
+    "event" : "phase",
+    "label" : "Browser active again — cover restored",
+    "seconds" : 11.78826958333957
+  },
+  {
+    "event" : "cover-occluded",
+    "otherWindow" : 75066,
+    "seconds" : 11.805531166668516
+  },
+  {
+    "epoch" : 4,
+    "event" : "activation-settle",
+    "seconds" : 11.806123249989469
+  },
+  {
+    "event" : "cover-position",
+    "frame" : "{{97, 111}, {66, 21}}",
+    "seconds" : 12.616063749999739,
+    "window" : 75070
+  },
+  {
+    "epoch" : 4,
+    "event" : "activation-settle",
+    "seconds" : 12.616675458324607
+  },
+  {
+    "event" : "cover-position",
+    "frame" : "{{97, 111}, {66, 21}}",
+    "seconds" : 13.189113500004169,
+    "window" : 75070
+  },
+  {
+    "epoch" : 4,
+    "event" : "activation-settle",
+    "seconds" : 13.189938083320158
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75070,
+    "label" : "reactivated",
+    "owner" : 2141187,
+    "result" : 0,
+    "seconds" : 13.701196791662369,
+    "window" : 75070
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75070,
+    "label" : "reactivated",
+    "owner" : 2141187,
+    "result" : 0,
+    "seconds" : 13.701864333328558,
+    "window" : 75070
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75070,
+    "label" : "reactivated",
+    "owner" : 2141187,
+    "result" : 0,
+    "seconds" : 13.702317416667938,
+    "window" : 75070
+  },
+  {
+    "buttons" : [
+      "{{99, 113.5}, {16, 16}}",
+      "{{122, 113.5}, {16, 16}}",
+      "{{145, 113.5}, {16, 16}}"
+    ],
+    "event" : "windowed",
+    "label" : "reactivated",
+    "seconds" : 13.703100291662849
+  },
+  {
+    "event" : "ax-notification",
+    "name" : "AXResized",
+    "seconds" : 13.706641875003697
+  },
+  {
+    "event" : "ax-notification",
+    "name" : "AXMoved",
+    "seconds" : 13.707128041656688
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75046,
+    "label" : "restored",
+    "owner" : 1997887,
+    "result" : 0,
+    "seconds" : 14.028423458337784,
+    "window" : 75046
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75046,
+    "label" : "restored",
+    "owner" : 1997887,
+    "result" : 0,
+    "seconds" : 14.029852416657377,
+    "window" : 75046
+  },
+  {
+    "event" : "pointer-target",
+    "expected" : 75046,
+    "label" : "restored",
+    "owner" : 1997887,
+    "result" : 0,
+    "seconds" : 14.030825249996269,
+    "window" : 75046
+  },
+  {
+    "buttons" : [
+      "{{34, 68.5}, {16, 16}}",
+      "{{57, 68.5}, {16, 16}}",
+      "{{80, 68.5}, {16, 16}}"
+    ],
+    "event" : "windowed",
+    "label" : "restored",
+    "seconds" : 14.032698625000194
+  },
+  {
+    "event" : "phase",
+    "label" : "Restored — original controls and geometry",
+    "seconds" : 14.034249624994118
+  },
+  {
+    "event" : "finished",
+    "frames" : 23,
+    "seconds" : 16.215121083339909
+  },
+  {
+    "event" : "cleanup",
+    "patchReleased" : true,
+    "seconds" : 16.389367625000887,
+    "targetGone" : true
+  }
+]

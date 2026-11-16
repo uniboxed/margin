@@ -4,11 +4,13 @@ import ApplicationServices
 import ImageIO
 import Darwin
 
+@_silgen_name("margin_wire_clip") private func wireClip(_ connection: UInt32, _ window: UInt32, _ region: UnsafeMutableRawPointer) -> Int32
+
 setbuf(stdout, nil)
 let args = CommandLine.arguments
 func emit(_ row: [String: Any]) { print(String(decoding: try! JSONSerialization.data(withJSONObject: row, options: .sortedKeys), as: UTF8.self)) }
 guard args.contains("--run") || args.contains("--child") else {
-    emit(["plan": "One visible owned child window: private AX bundle-load request; owned and foreign transaction clipping; saved native state and exact-window pixels; close child. No browser, user window or system setting changed."]); exit(0)
+    emit(["plan": "One visible owned child window: private AX bundle-load request; owned and foreign clipping (transaction by default, --wire for exact-build raw global-clip message); saved native state/pixels; close child. No browser, user window or system setting changed."]); exit(0)
 }
 var buildSize = 0; sysctlbyname("kern.osversion", nil, &buildSize, nil, 0)
 var build = [CChar](repeating: 0, count: buildSize); sysctlbyname("kern.osversion", &build, &buildSize, nil, 0)
@@ -35,6 +37,9 @@ func apply(_ wid: UInt32, _ rect: CGRect) {
     guard fn(cg, "CGSNewRegionWithRect", NewRegion.self)(&rect, &region) == 0, let region,
           let transaction = fn(sky, "SLSTransactionCreate", Create.self)(cid)?.takeRetainedValue() else { exit(2) }
     defer { fn(cg, "CGRegionRelease", Release.self)(region) }
+    if args.contains("--wire") {
+        emit(["wireSend": wireClip(cid, wid, region), "window": wid]); return
+    }
     fn(sky, "SLSTransactionSetWindowGlobalClipShape", GlobalClip.self)(transaction, wid, region)
     fn(sky, "SLSTransactionCommit", Commit.self)(transaction, 1)
 }
@@ -107,7 +112,7 @@ try FileManager.default.createDirectory(at: directory, withIntermediateDirectori
 let former = NSWorkspace.shared.frontmostApplication?.processIdentifier
 let child = Process()
 child.executableURL = URL(fileURLWithPath: args[0]).standardizedFileURL
-child.arguments = ["--child", "--output", directory.path]
+child.arguments = ["--child", "--output", directory.path] + (args.contains("--wire") ? ["--wire"] : [])
 try child.run()
 func finish(_ code: Int32) -> Never {
     if child.isRunning { child.terminate(); child.waitUntilExit() }

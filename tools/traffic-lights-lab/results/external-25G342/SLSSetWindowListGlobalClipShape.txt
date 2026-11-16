@@ -1,0 +1,122 @@
+_SLSSetWindowListGlobalClipShape:
+0x187036E1C   pacibsp                       
+0x187036E20   stp      x26, x25, [sp, #-0x50]! 
+0x187036E24   stp      x24, x23, [sp, #0x10] 
+0x187036E28   stp      x22, x21, [sp, #0x20] 
+0x187036E2C   stp      x20, x19, [sp, #0x30] 
+0x187036E30   stp      x29, x30, [sp, #0x40] 
+0x187036E34   add      x29, sp, #0x40       
+0x187036E38   mov      w9, #0x1060          
+0x187036E3C   adrp     x17, 423287          ; 0x1ee5ad000
+0x187036E40   add      x17, x17, #0x8d0     
+0x187036E44   ldr      x16, [x17]           
+0x187036E48   blraa    x16, x17             
+0x187036E4C   sub      sp, sp, #0x1, lsl #12 
+0x187036E50   sub      sp, sp, #0x60        
+0x187036E54   mov      x20, x3              
+0x187036E58   mov      x21, x2              
+0x187036E5C   mov      x23, x1              
+0x187036E60   mov      x22, x0              
+0x187036E64   adrp     x8, 389536           ; 0x1e61d6000
+0x187036E68   ldr      x8, [x8, #0xab0]     
+0x187036E6C   ldr      x8, [x8]             
+0x187036E70   stur     x8, [x29, #-0x48]    
+0x187036E74   bl       _objc_autoreleasePoolPush 
+0x187036E78   mov      x19, x0              
+0x187036E7C   mov      x0, x22              
+0x187036E80   bl       _CGSGetConnectionPortById 
+0x187036E84   mov      w24, #0x3e8          
+0x187036E88   cbz      x21, 0x187036fb8     
+0x187036E8C   cbz      w20, 0x187036fb8     
+0x187036E90   mov      x22, x0              
+0x187036E94   mov      x24, #0x0            
+0x187036E98   ubfiz    x25, x20, #2, #32    
+0x187036E9C   bl       _SLSMainConnection   
+0x187036EA0   ldr      w1, [x21, x24]       
+0x187036EA4   mov      w2, #0x1             
+0x187036EA8   bl       _CGSWindowGetMappedImpl 
+0x187036EAC   cbz      x0, 0x187036f1c      
+0x187036EB0   add      x24, x24, #0x4       
+0x187036EB4   cmp      x25, x24             
+0x187036EB8   b.ne     0x187036e9c          
+0x187036EBC   cbz      x23, 0x187036f24     
+0x187036EC0   mov      x8, sp               
+0x187036EC4   adrp     x16, 389536          ; 0x1e61d6000
+0x187036EC8   ldr      x16, [x16, #0xa90]   
+0x187036ECC   mov      x17, x8              
+0x187036ED0   movk     x17, #0x6ae1, lsl #48 
+0x187036ED4   pacda    x16, x17             
+0x187036ED8   str      x16, [sp]            
+0x187036EDC   adrp     x9, 416              ; 0x1871d6000
+0x187036EE0   ldr      d0, [x9, #0x5b0]     
+0x187036EE4   str      d0, [sp, #0x8]       
+0x187036EE8   add      x8, x8, #0x10        
+0x187036EEC   adrp     x16, 1               ; 0x187037000
+0x187036EF0   add      x16, x16, #0x0       ; ___SLSSetWindowListGlobalClipShape_block_invoke
+0x187036EF4   pacia    x16, x8              
+0x187036EF8   adrp     x8, 390918           ; 0x1e673c000
+0x187036EFC   add      x8, x8, #0x378       ; ___block_descriptor_tmp.109.20590
+0x187036F00   stp      x16, x8, [sp, #0x10] 
+0x187036F04   str      x21, [sp, #0x20]     
+0x187036F08   stp      w22, w20, [sp, #0x28] 
+0x187036F0C   mov      x1, sp               
+0x187036F10   mov      x0, x23              
+0x187036F14   bl       _SLSRegionPerformWithSerializedBytes 
+0x187036F18   b        0x187036fb4          
+0x187036F1C   mov      w24, #0x3e8          
+0x187036F20   b        0x187036fb8          
+0x187036F24   add      x24, sp, #0x34       
+0x187036F28   add      x0, x24, #0x4        
+0x187036F2C   mov      w1, #0xaa            
+0x187036F30   mov      w2, #0x1020          
+0x187036F34   bl       _memset              
+0x187036F38   adrp     x8, 389536           ; 0x1e61d6000
+0x187036F3C   ldr      x8, [x8, #0xce8]     
+0x187036F40   ldr      x8, [x8]             
+0x187036F44   stur     x8, [sp, #0x4c]      
+0x187036F48   cmp      w20, #0x400          
+0x187036F4C   b.ls     0x187036f58          
+0x187036F50   mov      w24, #-0x133         
+0x187036F54   b        0x187036fb8          
+0x187036F58   lsl      w23, w20, #2         
+0x187036F5C   add      x0, x24, #0x24       
+0x187036F60   mov      x1, x21              
+0x187036F64   mov      x2, x23              
+0x187036F68   mov      w3, #0x1000          
+0x187036F6C   bl       ___memcpy_chk        
+0x187036F70   mov      w8, #0x13            
+0x187036F74   str      w8, [sp, #0x34]      
+0x187036F78   str      w22, [sp, #0x3c]     
+0x187036F7C   mov      w8, #0x7617          
+0x187036F80   str      w20, [sp, #0x54]     
+0x187036F84   str      w8, [sp, #0x48]      
+0x187036F88   str      xzr, [sp, #0x40]     
+0x187036F8C   add      x0, sp, #0x34        
+0x187036F90   bl       _voucher_mach_msg_set 
+0x187036F94   add      x0, sp, #0x34        
+0x187036F98   add      w2, w23, #0x24       
+0x187036F9C   mov      w1, #0x1             
+0x187036FA0   mov      w3, #0x0             
+0x187036FA4   mov      w4, #0x0             
+0x187036FA8   mov      w5, #0x0             
+0x187036FAC   mov      w6, #0x0             
+0x187036FB0   bl       _mach_msg            
+0x187036FB4   mov      x24, x0              
+0x187036FB8   mov      x0, x19              
+0x187036FBC   bl       _objc_autoreleasePoolPop 
+0x187036FC0   ldur     x8, [x29, #-0x48]    
+0x187036FC4   adrp     x9, 389536           ; 0x1e61d6000
+0x187036FC8   ldr      x9, [x9, #0xab0]     
+0x187036FCC   ldr      x9, [x9]             
+0x187036FD0   cmp      x9, x8               
+0x187036FD4   b.ne     0x187036ffc          
+0x187036FD8   mov      x0, x24              
+0x187036FDC   add      sp, sp, #0x1, lsl #12 
+0x187036FE0   add      sp, sp, #0x60        
+0x187036FE4   ldp      x29, x30, [sp, #0x40] 
+0x187036FE8   ldp      x20, x19, [sp, #0x30] 
+0x187036FEC   ldp      x22, x21, [sp, #0x20] 
+0x187036FF0   ldp      x24, x23, [sp, #0x10] 
+0x187036FF4   ldp      x26, x25, [sp], #0x50 
+0x187036FF8   retab                         
+0x187036FFC   bl       ___stack_chk_fail    

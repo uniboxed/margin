@@ -176,6 +176,7 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
 @MainActor final class VisualRun {
     let name: String, directory: URL
     let hookLibrary: String?
+    var externalCaption: String?
     let capture: any VisualCapture
     var events: [[String: Any]] = []
     var native: NSWindow?, status: NSTextField?
@@ -255,7 +256,8 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
         let started = Date()
         if name == "textedit" {
             let file = temporary.appendingPathComponent("Traffic-light visual test.txt")
-            try "TEXTEDIT — EXTERNAL ACCESSIBILITY TEST\n\nOnly this temporary document is recorded.\n\nThe red, yellow and green buttons are the actual controls.\nThe recording shows baseline, AXHidden request, window resize and restoration.\n\nNo plugin or code is running inside TextEdit.\n".write(to: file, atomically: true, encoding: .utf8)
+            let description = externalCaption ?? "The recording shows baseline, AXHidden request, window resize and restoration."
+            try "TEXTEDIT — EXTERNAL CONTROL TEST\n\nOnly this temporary document is recorded.\n\nThe red, yellow and green buttons are the actual controls.\n\(description)\n\nNo plugin or code is running inside TextEdit.\n".write(to: file, atomically: true, encoding: .utf8)
             process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
             process.arguments = ["-n", "-W", "-a", "/System/Applications/TextEdit.app", file.path, "--args", "-ApplePersistenceIgnoreState", "YES"]
         } else {
@@ -267,7 +269,7 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
             try """
             <!doctype html><meta charset="utf-8"><title>Traffic-light visual test</title>
             <style>body{font:22px -apple-system;background:#eff4f9;color:#172a3c;margin:50px}h1{font-size:34px}p{line-height:1.6}small{font-size:17px}.track{height:9px;background:#dae2ed;margin-top:45px;overflow:hidden}.pulse{height:100%;width:90px;background:#3073c7;animation:slide 2s linear infinite alternate}@keyframes slide{to{transform:translateX(500px)}}</style>
-            <h1>\(app)</h1><p>The three buttons above are the actual native window controls.</p><p>Baseline → hide request → resize → restoration</p><small>\(name == "launch" ? "A temporary library runs inside this disposable Chromium process. The application binary and signature are unchanged." : "External Accessibility only. No plugin or injected code.")<br>This temporary page contains no JavaScript or network resources.</small><div class="track"><div class="pulse"></div></div>
+            <h1>\(app)</h1><p>The three buttons above are the actual native window controls.</p><p>Baseline → hide request → resize → restoration</p><small>\(externalCaption ?? (name == "launch" ? "A temporary library runs inside this disposable Chromium process. The application binary and signature are unchanged." : "External Accessibility only. No plugin or injected code."))<br>This temporary page contains no JavaScript or network resources.</small><div class="track"><div class="pulse"></div></div>
             """.write(to: file, atomically: true, encoding: .utf8)
             process.arguments = ["--user-data-dir=" + temporary.appendingPathComponent("profile").path, "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--disable-sync", "--disable-default-apps", "--disable-extensions", "--window-size=900,650", "--new-window", file.absoluteString]
             if name == "launch" {
@@ -428,6 +430,7 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
     }
 }
 
+#if !COVER_LAB
 @main struct Main {
     @MainActor static func main() async {
         setbuf(stdout, nil)
@@ -457,3 +460,4 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
         } catch { print("REFUSED: \(error)"); exit(2) }
     }
 }
+#endif

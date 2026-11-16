@@ -1,0 +1,29 @@
+{
+  "sip": "System Integrity Protection status: enabled.",
+  "apps": [
+    {
+      "app": "/Applications/Google Chrome.app",
+      "version": "157.0.8103.79",
+      "signature": "Executable=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\nIdentifier=com.google.Chrome\nFormat=app bundle with Mach-O universal (x86_64 arm64)\nCodeDirectory v=20500 size=765 flags=0x12a00(kill,restrict,library-validation,runtime) hashes=13+7 location=embedded\nSignature size=8991\nAuthority=Developer ID Application: Google LLC (EQHXZ8M8AV)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=Nov 11, 2026 at 00:24:42\nNotarization Ticket=stapled\nInfo.plist entries=44\nTeamIdentifier=EQHXZ8M8AV\nRuntime Version=27.0.0\nSealed Resources version=2 rules=13 files=63\nInternal requirements count=1 size=288\n",
+      "strictExit": 0,
+      "strictOutput": "",
+      "mainExecutableSHA256": "23010a3aeff294b54c6e8dc9a88e61388ec4655e2c10216c8a4ae2c050bfcb1b"
+    },
+    {
+      "app": "/Applications/Microsoft Edge.app",
+      "version": "157.0.4341.57",
+      "signature": "Executable=/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge\nIdentifier=com.microsoft.edgemac\nFormat=app bundle with Mach-O universal (x86_64 arm64)\nCodeDirectory v=20500 size=769 flags=0x12a00(kill,restrict,library-validation,runtime) hashes=13+7 location=embedded\nSignature size=9012\nAuthority=Developer ID Application: Microsoft Corporation (UBF8T346G9)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=Nov 12, 2026 at 04:40:24\nInfo.plist entries=45\nTeamIdentifier=UBF8T346G9\nRuntime Version=27.0.0\nSealed Resources version=2 rules=13 files=94\nInternal requirements count=1 size=184\n",
+      "strictExit": 0,
+      "strictOutput": "",
+      "mainExecutableSHA256": "526bbba060d5d4cfa6432d44f48a5c522919b4e6396886f6fd728f5008e6c008"
+    },
+    {
+      "app": "/System/Applications/TextEdit.app",
+      "version": "1.20",
+      "signature": "Executable=/System/Applications/TextEdit.app/Contents/MacOS/TextEdit\nIdentifier=com.apple.TextEdit\nFormat=app bundle with Mach-O universal (x86_64 arm64e)\nCodeDirectory v=20400 size=1099 flags=0x0(none) hashes=24+7 location=embedded\nPlatform identifier=26\nSignature size=4567\nAuthority=macOS Software Signing\nAuthority=Apple Code Signing Certification Authority\nAuthority=Apple Root CA\nSigned Time=Oct 12, 2026 at 06:59:57\nInfo.plist entries=34\nTeamIdentifier=not set\nSealed Resources version=2 rules=2 files=0\nInternal requirements count=1 size=68\n",
+      "strictExit": 0,
+      "strictOutput": "",
+      "mainExecutableSHA256": "df6d3eae82efe315758bf1db030c0e7d6eef3321b0acef60b31b95ce0428058f"
+    }
+  ]
+}

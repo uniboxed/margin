@@ -1,0 +1,119 @@
+[
+  {
+    "attempt": 1,
+    "failure": [
+      {
+        "event": "failure",
+        "reason": "pointer target disagrees",
+        "seconds": 13.423439416685142
+      }
+    ],
+    "server_observer": [],
+    "observed_ws_reorder_callbacks": 0,
+    "cleanup": {
+      "event": "cleanup",
+      "patchReleased": true,
+      "seconds": 13.623998374998337,
+      "targetGone": true
+    }
+  },
+  {
+    "attempt": 2,
+    "failure": [
+      {
+        "event": "failure",
+        "reason": "pointer target disagrees",
+        "seconds": 12.947908625006676
+      }
+    ],
+    "server_observer": [],
+    "observed_ws_reorder_callbacks": 0,
+    "cleanup": {
+      "event": "cleanup",
+      "patchReleased": true,
+      "seconds": 13.158657249994576,
+      "targetGone": true
+    }
+  },
+  {
+    "attempt": 3,
+    "failure": [
+      {
+        "event": "failure",
+        "reason": "pointer target disagrees",
+        "seconds": 13.12858054167009
+      }
+    ],
+    "server_observer": [
+      {
+        "event": "server-observer",
+        "eventCode": 808,
+        "register": 0,
+        "request": 0,
+        "seconds": 0.061409541667671874,
+        "window": 74895
+      }
+    ],
+    "observed_ws_reorder_callbacks": 0,
+    "cleanup": {
+      "event": "cleanup",
+      "patchReleased": true,
+      "seconds": 13.312922874989454,
+      "targetGone": true
+    }
+  },
+  {
+    "attempt": 4,
+    "failure": [
+      {
+        "event": "failure",
+        "reason": "pointer target disagrees",
+        "seconds": 13.017618749989197
+      }
+    ],
+    "server_observer": [
+      {
+        "event": "server-observer",
+        "eventCode": 808,
+        "register": 0,
+        "request": 0,
+        "seconds": 0.05788729168125428,
+        "window": 74946
+      }
+    ],
+    "observed_ws_reorder_callbacks": 0,
+    "cleanup": {
+      "event": "cleanup",
+      "patchReleased": true,
+      "seconds": 13.217445041664178,
+      "targetGone": true
+    }
+  },
+  {
+    "attempt": 5,
+    "failure": [
+      {
+        "event": "failure",
+        "reason": "pointer target disagrees",
+        "seconds": 12.922273708332796
+      }
+    ],
+    "server_observer": [
+      {
+        "event": "server-observer",
+        "eventCode": 808,
+        "register": 0,
+        "request": 0,
+        "seconds": 0.058502541680354625,
+        "window": 74997
+      }
+    ],
+    "observed_ws_reorder_callbacks": 0,
+    "cleanup": {
+      "event": "cleanup",
+      "patchReleased": true,
+      "seconds": 13.113077625021106,
+      "targetGone": true
+    }
+  }
+]

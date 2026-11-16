@@ -4939,3 +4939,50 @@ Fresh npm test: 1031 pass. Full npm run test:e2e reattempted with a 15-second ou
 after missing pinned WebKit 2388 setup failures/pending teardown; Chromium 1254 also remains absent.
 No browser download or full-suite pass. Changed/new native sources compile with warnings as errors,
 saved native/pixel/resize/restore/windowed/cleanup verification passes. No app install or PR.
+
+### External protected-app traffic-light cover and direct server message (2026-11-16)
+
+The user rejects permissive loading as a broad deployment assumption and asks for more research.
+Continue the isolated spike. A controller-owned private WindowServer surface now visually conceals
+the three controls in installed protected Chrome 157.0.8103.79, Edge 157.0.4341.57 and TextEdit 1.20,
+with no target code loading, patching, re-signing, entitlement or system-setting change. Native
+controls remain drawn underneath and accessible through AX; do not call this native hiding.
+
+The raw surface uses private allocation/context/flush/tags/opacity/move/order; AX binds live PID and
+window identity and observes move/resize/activation. Normal-level relative ordering withdraws when
+another window obscures the target or the app deactivates. Three bounded event-triggered activation
+settle checks handle late native raising/closing. There is no resident polling. The initial sampled
+adjacent strip retains its color profile; manual device-RGB conversion created an incorrect bright
+patch. Chrome/Edge fit better than TextEdit's glass, where a rectangle remains visible. An opaque
+Margin theme surface is the product candidate; no product implementation or policy changes here.
+
+Retain Chrome failures 1–5, exact source/binary snapshots and screen crops. They conceal controls and
+track geometry but fail reactivation pointer checks. The first unbundled occluder does not establish
+a true app switch; later runs use a real second disposable app. WS global/connection-specific event
+808 registration and notification requests return zero, including event-port/dedicated-connection
+experiments, but no reorder callbacks are observed. Do not treat these as a working observer. Accepted
+Chrome attempt 6 uses delivered AX events and bounded checks; Edge/TextEdit first attempts then pass.
+
+Each accepted case has 23 actual composited screen crops, about 1.4 fps, with monotonic capture-request
+timestamps; actual acquisition occurs during each screenshot command. No no-flicker/drag-latency
+claim. Source PNG and corresponding raw-H264 checks find all three colors at baseline/restoration,
+zero after concealment/move/resize/reactivation, and all colors in the app-only capture underneath.
+Pointer queries select the surface at all three centers in four covered states and the target again
+after restore. This is pointer targeting, not an actual click-delivery test. Windowed/deactivation/
+ordered-out state and root/occluder profile/document/process cleanup pass. Raw and annotated recordings
+remain local at test-results/traffic-lights-external-2026-11-16; compact logs/hashes are committed.
+
+Further native-route test: reconstruct the exact 25G342 list-global-clip IPC message 0x7614, with a
+compile-checked descriptor, valid serialized region, nonexported connection-port getter guarded by
+build/arch/SkyLight UUID, and only an independently verified owned child window. This bypasses the
+exported function's local mapped-window check. Owner clips 1008/2072 samples and restores to zero;
+foreign sender leaves zero transparent samples. Transport success is not mutation success. This
+locates a restriction beyond the exported client guard but proves no universal impossibility.
+
+Keep distinct native-hidden/visually-covered/withdrawn/unsupported capabilities. Strict external
+native removal in protected apps remains unestablished. Continuous drag, real click/hover, same-app
+occlusion/sheets, titlebar reconstruction, Spaces/Mission Control, other displays/builds, crash
+recovery and Safari require further acceptance. New Swift/C compile with warnings as errors;
+independent saved visual/state checks pass. Fresh npm test: 1031 pass. Full npm run test:e2e reattempted
+with a 15-second bound after missing pinned WebKit 2388 setup failures/pending teardown (Chromium
+1254 also absent). No download, full-suite pass, app install or PR. Report: docs/TRAFFIC-LIGHTS-RESEARCH.md.

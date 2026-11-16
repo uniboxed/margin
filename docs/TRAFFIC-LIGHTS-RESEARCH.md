@@ -4,8 +4,14 @@ The target is the three close, minimise and zoom/fullscreen buttons, leaving the
 window title and other application chrome alone. Research is restricted to Accessibility and private
 macOS APIs for control. No product behavior is changed by this spike.
 
-**The private AppKit solution now works in a real third-party Chromium browser through a temporary
-launch-loaded library.** Its three buttons disappear, stay hidden through resize and return, while the
+**An external private WindowServer surface now visually conceals the controls in protected installed
+Chrome, Edge and TextEdit, without loading code into those apps.** Sampled display pixels, pointer
+target queries, move/resize, app deactivation/reactivation and restoration pass on 25G342. This is a
+cover: the original buttons remain in each app and are still exposed through Accessibility. It is not
+native removal, seamless titlebar matching or a flicker-free production result. See the latest section.
+
+The private AppKit solution also works in a real third-party Chromium browser through a temporary
+launch-loaded library. Its three buttons disappear, stay hidden through resize and return, while the
 browser remains windowed. This was verified in Chrome for Testing 156.0.8078.4 on 25G342; the same
 library did **not** load in installed Google Chrome 157.0.8103.79. There is still no demonstrated general
 external solution for arbitrary protected applications. Accessibility
@@ -152,13 +158,14 @@ and **failed/restored**. Do not persist a boolean “hidden” merely because an
   does not remove native controls or their AX semantics. A transparent overlay cannot erase the
   buttons. Matching a translucent/glass titlebar with a small flat patch is unreliable. Cover stacking,
   occlusion, drag/resize, Mission Control and display changes need a separate native experiment. This
-  backend was neither implemented nor validated here, and is not presented as exact native hiding.
+  backend now has the bounded protected-app prototype documented below. It is not exact native hiding.
 
 For the installed protected Safari/Chrome/Edge builds, **no working native removal backend was
 established**. The viable exact solution is an in-process implementation, now also demonstrated through
 launch loading in Chrome for Testing. If the product
 goal only requires that users not see/click the original lights under Margin's own opaque chrome, the
-cover design is the next bounded research target. That is a different guarantee and must be labelled.
+cover prototype is now a concrete candidate for further validation. That is a different guarantee and
+must be labelled.
 
 ## Verification still required
 
@@ -328,3 +335,120 @@ browser download or full-suite pass is claimed. Changed/new native probes compil
 errors; independent saved-video/native-state verification passes. Still unverified: other OS builds,
 titlebar reconstruction, repeated open/close, crash restoration, hover/inactive/Spaces behavior and
 protected-browser support. The positive Chromium result does not close those acceptance items.
+
+## External protected-app prototype and direct server control (2026-11-16)
+
+The user's objection to permissive host loading is valid for a general product. This follow-up removes
+that dependency entirely for **visual concealment**, while continuing to test native compositor routes.
+No target app is patched, re-signed, injected or given a new entitlement. SIP remains enabled.
+
+### Checking beyond client-side ownership guards
+
+Disassembly shows `SLSSetWindowListGlobalClipShape` checking its local mapped-window cache before
+serializing a request. A successful/no-effect exported call therefore does not alone locate the
+boundary at the server. `wire-clip.c` reconstructs its observed **0x7614** list-global-clip message,
+with one valid serialized region and one exact disposable-child window. The descriptor layout is
+checked at compile time. A read-only, nonexported connection-port getter is resolved at image+0x5b04,
+only after checking build 25G342, arm64 and SkyLight UUID D422F0A4-1C28-35B7-A6F5-9EB7BBE0801E.
+There is no message-ID guessing, memory patching, target attachment or protection change.
+
+The owner sends this same wire format and clips 1,008/2,072 sampled pixels, then restores to zero.
+The parent sends it directly for the verified child's window, bypassing the exported function's local
+guard, and sees zero transparent samples. All transport results are zero, and all native button states
+stay unchanged. This establishes no foreign clipping effect even after getting past the client guard;
+it does not establish every server handler's authorization policy or prove all private APIs impossible.
+Original region logs, native states, screenshots and cleanup are retained. Only owned test processes
+are involved; this direct-message experiment is not sent to the installed browsers.
+
+### The external surface that does work
+
+`cover.swift` creates a tiny **controller-owned raw WindowServer window** over the AX-reported union of
+the three controls, expanded by two points. For Chrome the patch is 66×21 points. Allocation uses
+`SLSNewWindow`, a private `SLWindowContextCreate` drawing context, private flush/opacity/tags, and
+`SLSOrderWindow` relative to the exact target. It stays at normal window level. Opaque event tags mean
+it becomes the WindowServer pointer target in that region. It never changes the target's NSButton
+objects, style mask or signing state. Public CoreGraphics drawing and owned AppKit fixtures are setup;
+the concealment surface's creation, movement and ordering use private APIs. AX supplies target geometry
+and lifecycle observations. Public screenshot capture is measurement infrastructure.
+
+The prototype repeats an adjacent one-pixel background strip across the patch, retaining the source
+image's color profile. An initial manual device-RGB conversion produced a visible bright rectangle;
+drawing the color-managed image fixes that mismatch in Chrome. TextEdit's glass/translucent titlebar
+still has a visible rectangular patch. This is a real limit: copying one nearby column cannot
+reconstruct arbitrary material, wallpaper tinting, hover effects or spatially varying titlebar content.
+For Margin, an intentionally opaque theme surface is the stronger design, with no need to reproduce
+the original titlebar's material. Continuous target capture is not part of the prototype's mechanism;
+only the initial strip is sampled once, using the already granted capture permission.
+
+AX move/resize notifications update geometry. App activation/focus events check exact target ownership,
+live bounds and AX frontmost state; another window above the button center makes the cover withdraw
+rather than raising it over that window. Activation schedules three additional checks after successive
+80/120/250 ms waits, superseded by a newer event or shutdown. These are bounded event-triggered checks,
+not a resident timer. Screenshot subprocesses can delay their actual execution, so these delays do not
+establish a display-latency bound. Unsupported geometry or failed reads withdraw/revoke the cover.
+
+Ordering required real negative controls. Chrome attempts 1–5 conceal controls and follow geometry,
+but fail the reactivation pointer check. Activation can precede completion of the other app's closing
+and Chrome's own raise. Attempt 1 also uses an unbundled owned occluder that does not establish a real
+app switch. Later tests use a fresh real TextEdit/Chrome process and independently confirm target
+deactivation. Global and connection-specific WindowServer event-808 registrations return zero but
+produce **no observed reorder callbacks** in these harness attempts, including event-port draining
+and a separate notification connection. They are not counted as a working observer or retained in the
+accepted implementation. The final AX-driven bounded-settle variant is Chrome attempt 6.
+
+### Accepted recordings and independent checks
+
+| Target | Actual samples | Display result after settling | Underlying app-only capture |
+| --- | ---: | --- | --- |
+| Google Chrome 157.0.8103.79 | 23 | Controls concealed through move, resize and app reactivation; visible after restore | All three native controls still drawn |
+| Microsoft Edge 157.0.4341.57 | 23 | Same bounded sequence passes | All three still drawn |
+| TextEdit 1.20 | 23 | Same sequence passes; glass patch remains visibly imperfect | All three still drawn |
+
+Each test has a separate blank owned backdrop below the target and records only that disposable
+canvas using actual **composited screen crops**, not a browser-only image with an artificial patch
+added afterward. The capture uses `screencapture -R`; it did not introduce the SCK sharing capsule.
+Original PNGs and monotonic **capture-request** timestamps are retained. Acquisition occurs during
+each screenshot subprocess, not at an asserted exact presentation instant. Sampling is roughly
+1.4 frames/second. VFR raw clips follow the recorded intervals; presentation clips duplicate frames
+to add labels and a magnifier outside original pixels. No continuous-drag or flicker-free claim.
+
+Independent checks decode both source PNGs and corresponding raw H.264 samples. Chrome's native-button
+crop has red/yellow/green counts **608/608/616** at baseline and restoration, and **0/0/0** after cover,
+move, resize and reactivation. Edge and TextEdit pass the same color-presence/absence checks. The
+private capture of each app alone while covered still contains every native traffic-light color,
+independently proving this is not native hiding. `SLSFindWindowAndOwner` selects the cover at all three
+button centers in four covered states, then the browser/document at baseline and restore. This tests
+pointer targeting, not delivery of an actual click or accessibility-action blocking. All six states
+remain AX-confirmed windowed. The real second app deactivates the target and the cover is independently
+read as ordered out. The second app, test target and temporary profile/document are cleaned up.
+
+Source snapshots, early failures, raw PNGs/times and videos remain local at
+`test-results/traffic-lights-external-2026-11-16/`. Reproduction and hashes, accepted state/pixel logs,
+compact direct-message observations and the failed observer outcomes are in
+`tools/traffic-lights-lab/results/external-25G342/` and the lab README.
+
+The private surface declarations and event numbers were cross-checked against primary implementations
+in [JankyBorders' declarations](https://github.com/FelixKratz/JankyBorders/blob/main/src/misc/extern.h)
+and [event handling](https://github.com/FelixKratz/JankyBorders/blob/main/src/events.c), then inspected
+in this host's disassembly. Their presence or prior use is not substituted for the current tests.
+
+### Architecture decision and remaining acceptance
+
+For a visual product result, put the cover inside Margin's own opaque chrome, bind PID/process lifetime
+plus window number, and observe exact window geometry and application/focus state. Keep capability
+states distinct: native-hidden, visually-covered, withdrawn, unsupported. Native AX actions can still
+operate the underlying controls. Revoke on destruction/minimization, uncertain identity or geometry;
+show the original controls on failure. A production backend still needs real click/hover tests,
+continuous dragging, repeated windows/titlebar reconstruction, same-app occlusion/sheets, Spaces,
+Mission Control, multi-display/scale changes, independent crash cleanup and other macOS builds.
+The 50-second lab watchdog releases controller surfaces on exit and terminates known owned test PIDs;
+it is not a production crash-recovery acceptance test. Safari was not tested.
+
+This establishes an external visual solution in three protected apps. **Strict native removal in
+arbitrary protected apps remains unestablished.** The direct server test strengthens that negative
+finding without claiming a mathematical impossibility. No shipping Margin behavior changes.
+
+Fresh unit tests pass 1,031. Full E2E is reattempted and bounded after missing pinned WebKit 2388 setup
+failures/pending teardown; pinned Chromium 1254 also remains absent. No download or full-suite pass.
+Swift/C compile with warnings as errors, all three saved PNG/raw-video/pointer/lifecycle verifiers pass,
+and the earlier native/AX/launch evidence remains separately scoped.

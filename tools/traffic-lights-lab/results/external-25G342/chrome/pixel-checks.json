@@ -1,0 +1,118 @@
+{
+  "frames": 23,
+  "duration": 16.041479000006802,
+  "mean_interval_seconds": 0.7116939526511653,
+  "decoded_display_pixels": [
+    {
+      "phase": "baseline",
+      "sample": {
+        "file": "screen-0002.png",
+        "seconds": 1.9641876249806955
+      },
+      "red_yellow_green_pixels": [
+        608,
+        608,
+        616
+      ],
+      "raw_mp4_red_yellow_green_pixels": [
+        595,
+        608,
+        616
+      ]
+    },
+    {
+      "phase": "covered",
+      "sample": {
+        "file": "screen-0006.png",
+        "seconds": 4.410143374989275
+      },
+      "red_yellow_green_pixels": [
+        0,
+        0,
+        0
+      ],
+      "raw_mp4_red_yellow_green_pixels": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "moved",
+      "sample": {
+        "file": "screen-0009.png",
+        "seconds": 6.000988708314253
+      },
+      "red_yellow_green_pixels": [
+        0,
+        0,
+        0
+      ],
+      "raw_mp4_red_yellow_green_pixels": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "resized",
+      "sample": {
+        "file": "screen-0012.png",
+        "seconds": 7.671274374995846
+      },
+      "red_yellow_green_pixels": [
+        0,
+        0,
+        0
+      ],
+      "raw_mp4_red_yellow_green_pixels": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "reactivated",
+      "sample": {
+        "file": "screen-0018.png",
+        "seconds": 13.316541166655952
+      },
+      "red_yellow_green_pixels": [
+        0,
+        0,
+        0
+      ],
+      "raw_mp4_red_yellow_green_pixels": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "phase": "restored",
+      "sample": {
+        "file": "screen-0022.png",
+        "seconds": 15.830909041658742
+      },
+      "red_yellow_green_pixels": [
+        608,
+        608,
+        616
+      ],
+      "raw_mp4_red_yellow_green_pixels": [
+        594,
+        608,
+        616
+      ]
+    },
+    {
+      "target_alone_under_cover_still_has_native_controls": [
+        150,
+        146,
+        154
+      ]
+    }
+  ],
+  "pointer_windowed_move_resize_activation_restore_cleanup": "pass",
+  "limits": "settled sampled screen crops; not continuous drag, flicker-free behavior or actual click delivery"
+}

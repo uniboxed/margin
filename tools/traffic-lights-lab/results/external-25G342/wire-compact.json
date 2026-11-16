@@ -1,0 +1,285 @@
+[
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 2
+        }
+      ],
+      "pid": 89193,
+      "window": 74732,
+      "windowed": true
+    },
+    "stage": "baseline"
+  },
+  {
+    "axBundleRequest": 0
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 2
+        }
+      ],
+      "pid": 89193,
+      "window": 74732,
+      "windowed": true
+    },
+    "stage": "after-ax-load"
+  },
+  {
+    "loadedBundleDifference": [
+      "com.apple.RawCamera.bundle"
+    ]
+  },
+  {
+    "window": 74732,
+    "wireSend": 0
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 1008,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 2
+        }
+      ],
+      "pid": 89193,
+      "window": 74732,
+      "windowed": true
+    },
+    "stage": "owner-logical-screen"
+  },
+  {
+    "window": 74732,
+    "wireSend": 0
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 2
+        }
+      ],
+      "pid": 89193,
+      "window": 74732,
+      "windowed": true
+    },
+    "stage": "restored-logical-screen"
+  },
+  {
+    "provenCoordinates": "logical-screen",
+    "rect": [
+      180,
+      588,
+      680,
+      226
+    ],
+    "scale": 2
+  },
+  {
+    "window": 74732,
+    "wireSend": 0
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 2
+        }
+      ],
+      "pid": 89193,
+      "window": 74732,
+      "windowed": true
+    },
+    "stage": "foreign-global"
+  },
+  {
+    "window": 74732,
+    "wireSend": 0
+  },
+  {
+    "window": 74732,
+    "wireSend": 0
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "type": 2
+        }
+      ],
+      "pid": 89193,
+      "window": 74732,
+      "windowed": true
+    },
+    "stage": "foreign-restored"
+  },
+  {
+    "childRunning": false,
+    "cleanup": true,
+    "exit": 0
+  }
+]

@@ -1,0 +1,52 @@
+_SLSCopyRegionSerializedBytes:
+0x1870A1AF4   pacibsp                       
+0x1870A1AF8   sub      sp, sp, #0x50        
+0x1870A1AFC   stp      x22, x21, [sp, #0x20] 
+0x1870A1B00   stp      x20, x19, [sp, #0x30] 
+0x1870A1B04   stp      x29, x30, [sp, #0x40] 
+0x1870A1B08   add      x29, sp, #0x40       
+0x1870A1B0C   mov      x20, x2              
+0x1870A1B10   mov      x21, x1              
+0x1870A1B14   adrp     x8, 389429           ; 0x1e61d6000
+0x1870A1B18   ldr      x8, [x8, #0xab0]     
+0x1870A1B1C   ldr      x8, [x8]             
+0x1870A1B20   str      x8, [sp, #0x18]      
+0x1870A1B24   str      xzr, [sp, #0x8]      
+0x1870A1B28   cmp      x0, #0x0             
+0x1870A1B2C   cset     w19, eq              
+0x1870A1B30   cbz      x0, 0x1870a1b6c      
+0x1870A1B34   mov      x8, #-0x5555555555555556 
+0x1870A1B38   str      x8, [sp, #0x10]      
+0x1870A1B3C   add      x1, sp, #0x10        
+0x1870A1B40   mov      x2, x20              
+0x1870A1B44   bl       _CGSGetRegionData    
+0x1870A1B48   cbnz     w0, 0x1870a1b6c      
+0x1870A1B4C   adrp     x8, 389429           ; 0x1e61d6000
+0x1870A1B50   ldr      x8, [x8, #0xd78]     
+0x1870A1B54   ldr      w0, [x8]             
+0x1870A1B58   ldr      w2, [x20]            
+0x1870A1B5C   add      x1, sp, #0x8         
+0x1870A1B60   mov      w3, #0x1             
+0x1870A1B64   bl       _mach_vm_allocate    
+0x1870A1B68   cbz      w0, 0x1870a1ba4      
+0x1870A1B6C   str      xzr, [x21]           
+0x1870A1B70   str      wzr, [x20]           
+0x1870A1B74   ldr      x8, [sp, #0x18]      
+0x1870A1B78   adrp     x9, 389429           ; 0x1e61d6000
+0x1870A1B7C   ldr      x9, [x9, #0xab0]     
+0x1870A1B80   ldr      x9, [x9]             
+0x1870A1B84   cmp      x9, x8               
+0x1870A1B88   b.ne     0x1870a1bbc          
+0x1870A1B8C   mov      x0, x19              
+0x1870A1B90   ldp      x29, x30, [sp, #0x40] 
+0x1870A1B94   ldp      x20, x19, [sp, #0x30] 
+0x1870A1B98   ldp      x22, x21, [sp, #0x20] 
+0x1870A1B9C   add      sp, sp, #0x50        
+0x1870A1BA0   retab                         
+0x1870A1BA4   ldp      x0, x1, [sp, #0x8]   
+0x1870A1BA8   str      x0, [x21]            
+0x1870A1BAC   ldr      w2, [x20]            
+0x1870A1BB0   bl       _memcpy              
+0x1870A1BB4   mov      w19, #0x1            
+0x1870A1BB8   b        0x1870a1b74          
+0x1870A1BBC   bl       ___stack_chk_fail    

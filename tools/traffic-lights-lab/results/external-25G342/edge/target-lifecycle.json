@@ -1,0 +1,73 @@
+[
+  {
+    "event" : "launched",
+    "pid" : 3041,
+    "uptime" : 260489.72935170835
+  },
+  {
+    "event" : "window-geometry",
+    "position" : "{22, 56}",
+    "size" : "{900, 650}",
+    "uptime" : 260491.91464462501
+  },
+  {
+    "button" : "AXCloseButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{34, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 260491.91597487501,
+    "window" : "75091"
+  },
+  {
+    "button" : "AXMinimizeButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{57, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 260491.91728608334,
+    "window" : "75091"
+  },
+  {
+    "button" : "AXZoomButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{80, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 260491.91809587501,
+    "window" : "75091"
+  },
+  {
+    "bundle" : "com.microsoft.edgemac",
+    "event" : "target",
+    "pid" : 3041,
+    "uptime" : 260491.91952541668,
+    "window" : 75091
+  },
+  {
+    "event" : "resize",
+    "result" : 0,
+    "uptime" : 260499.94739462502
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 260506.53948841669
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 260509.05934341668
+  },
+  {
+    "event" : "close-owned-window",
+    "result" : 0,
+    "uptime" : 260509.07412583334
+  },
+  {
+    "event" : "cleanup",
+    "profileRemoved" : true,
+    "targetGone" : true,
+    "uptime" : 260509.31708395836
+  }
+]

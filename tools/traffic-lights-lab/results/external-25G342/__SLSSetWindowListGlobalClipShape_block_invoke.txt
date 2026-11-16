@@ -1,0 +1,82 @@
+___SLSSetWindowListGlobalClipShape_block_invoke:
+0x187037000   pacibsp                       
+0x187037004   stp      x28, x27, [sp, #-0x50]! 
+0x187037008   stp      x24, x23, [sp, #0x10] 
+0x18703700C   stp      x22, x21, [sp, #0x20] 
+0x187037010   stp      x20, x19, [sp, #0x30] 
+0x187037014   stp      x29, x30, [sp, #0x40] 
+0x187037018   add      x29, sp, #0x40       
+0x18703701C   mov      w9, #0x1050          
+0x187037020   adrp     x17, 423286          ; 0x1ee5ad000
+0x187037024   add      x17, x17, #0x8d0     
+0x187037028   ldr      x16, [x17]           
+0x18703702C   blraa    x16, x17             
+0x187037030   sub      sp, sp, #0x1, lsl #12 
+0x187037034   sub      sp, sp, #0x50        
+0x187037038   mov      x20, x2              
+0x18703703C   mov      x21, x1              
+0x187037040   adrp     x8, 389535           ; 0x1e61d6000
+0x187037044   ldr      x8, [x8, #0xab0]     
+0x187037048   ldr      x8, [x8]             
+0x18703704C   stur     x8, [x29, #-0x48]    
+0x187037050   ldr      x19, [x0, #0x20]     
+0x187037054   ldp      w23, w22, [x0, #0x28] 
+0x187037058   add      x24, sp, #0xc        
+0x18703705C   add      x0, x24, #0x4        
+0x187037060   mov      w1, #0xaa            
+0x187037064   mov      w2, #0x1038          
+0x187037068   bl       _memset              
+0x18703706C   mov      w8, #0x1             
+0x187037070   str      w8, [sp, #0x24]      
+0x187037074   stur     x21, [sp, #0x28]     
+0x187037078   mov      w8, #0x101           
+0x18703707C   movk     w8, #0x1aa, lsl #16  
+0x187037080   stp      w8, w20, [sp, #0x30] 
+0x187037084   adrp     x8, 389535           ; 0x1e61d6000
+0x187037088   ldr      x8, [x8, #0xce8]     
+0x18703708C   ldr      x8, [x8]             
+0x187037090   stur     x8, [sp, #0x38]      
+0x187037094   str      w20, [sp, #0x40]     
+0x187037098   cmp      w22, #0x400          
+0x18703709C   b.ls     0x1870370a8          
+0x1870370A0   mov      w0, #-0x133          
+0x1870370A4   b        0x187037108          
+0x1870370A8   lsl      x20, x22, #2         
+0x1870370AC   add      x0, x24, #0x3c       
+0x1870370B0   mov      x1, x19              
+0x1870370B4   mov      x2, x20              
+0x1870370B8   mov      w3, #0x1000          
+0x1870370BC   bl       ___memcpy_chk        
+0x1870370C0   mov      w8, #0x13            
+0x1870370C4   movk     w8, #0x8000, lsl #16 
+0x1870370C8   str      w8, [sp, #0xc]       
+0x1870370CC   str      w23, [sp, #0x14]     
+0x1870370D0   mov      w8, #0x7614          
+0x1870370D4   str      w22, [sp, #0x44]     
+0x1870370D8   str      w8, [sp, #0x20]      
+0x1870370DC   str      xzr, [sp, #0x18]     
+0x1870370E0   add      x0, sp, #0xc         
+0x1870370E4   bl       _voucher_mach_msg_set 
+0x1870370E8   add      x0, sp, #0xc         
+0x1870370EC   add      w2, w20, #0x3c       
+0x1870370F0   mov      w1, #0x1             
+0x1870370F4   mov      w3, #0x0             
+0x1870370F8   mov      w4, #0x0             
+0x1870370FC   mov      w5, #0x0             
+0x187037100   mov      w6, #0x0             
+0x187037104   bl       _mach_msg            
+0x187037108   ldur     x8, [x29, #-0x48]    
+0x18703710C   adrp     x9, 389535           ; 0x1e61d6000
+0x187037110   ldr      x9, [x9, #0xab0]     
+0x187037114   ldr      x9, [x9]             
+0x187037118   cmp      x9, x8               
+0x18703711C   b.ne     0x187037140          
+0x187037120   add      sp, sp, #0x1, lsl #12 
+0x187037124   add      sp, sp, #0x50        
+0x187037128   ldp      x29, x30, [sp, #0x40] 
+0x18703712C   ldp      x20, x19, [sp, #0x30] 
+0x187037130   ldp      x22, x21, [sp, #0x20] 
+0x187037134   ldp      x24, x23, [sp, #0x10] 
+0x187037138   ldp      x28, x27, [sp], #0x50 
+0x18703713C   retab                         
+0x187037140   bl       ___stack_chk_fail    

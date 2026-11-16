@@ -1,0 +1,73 @@
+[
+  {
+    "event" : "launched",
+    "pid" : 4478,
+    "uptime" : 260579.69019908336
+  },
+  {
+    "event" : "window-geometry",
+    "position" : "{182, 83}",
+    "size" : "{656, 422}",
+    "uptime" : 260580.29209958334
+  },
+  {
+    "button" : "AXCloseButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{190, 91}",
+    "size" : "{16, 16}",
+    "uptime" : 260580.29444287502,
+    "window" : "75160"
+  },
+  {
+    "button" : "AXMinimizeButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{213, 91}",
+    "size" : "{16, 16}",
+    "uptime" : 260580.29607050002,
+    "window" : "75160"
+  },
+  {
+    "button" : "AXZoomButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{236, 91}",
+    "size" : "{16, 16}",
+    "uptime" : 260580.29756587502,
+    "window" : "75160"
+  },
+  {
+    "bundle" : "com.apple.TextEdit",
+    "event" : "target",
+    "pid" : 4479,
+    "uptime" : 260580.30029733334,
+    "window" : 75160
+  },
+  {
+    "event" : "resize",
+    "result" : 0,
+    "uptime" : 260588.39551900001
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 260595.81146337502
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 260598.43946566668
+  },
+  {
+    "event" : "close-owned-window",
+    "result" : 0,
+    "uptime" : 260598.54235554169
+  },
+  {
+    "event" : "cleanup",
+    "profileRemoved" : true,
+    "targetGone" : true,
+    "uptime" : 260598.66188508336
+  }
+]
