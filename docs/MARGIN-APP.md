@@ -149,7 +149,7 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
    *Joined 2026-11-15 (`feat/hosted-glue`, DECISIONS.md "Margin as the app: the parts joined"):* the library drawn in
    Margin's window, its items hosted by the engine (apps, and Safari windows per profile driven by `hostShow`),
    palette picks as items; Margin's window full screen and the sidebar's tile while hosting. On-screen checks pending.
-6. **Removal.** The overlay-over-Safari path, the page box, the edge stop,
+6. **Removal.** The overlay-over-Safari path, the page box (removed 2026-11-16, for every browser: `DECISIONS.md` "Hosted only"), the edge stop,
    the handoff covers: removed once 1–5 hold up in daily use.
    *Done 2026-11-16 (decided by Tirth: hosted only; DECISIONS.md "Hosted only: the overlay over Safari removed"):*
    Margin.app's side (`refactor/hosted-only-app`): the `MarginHosted` option is gone and hosting is the only mode;

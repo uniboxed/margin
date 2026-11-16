@@ -94,8 +94,8 @@ export const THEME_SCHEMA = Object.freeze({
     licence: { type: 'string', pattern: text(1, 200) },
     // The modes it styles; one it leaves out gets the runtime's defaults.
     modes: { type: 'array', items: { enum: MODES }, maxItems: 3, uniqueItems: true },
-    // What Margin needs before the theme renders (first paint, the in-page
-    // fallback): where a hidden sidebar is revealed, and its widths.
+    // What Margin needs before the theme renders: where a hidden sidebar is
+    // revealed, and its widths.
     layout: {
       type: 'object',
       check: 'layout',

@@ -806,7 +806,7 @@ test('the draft answers: each page\'s scroll with them, written to its tab just 
   assert.equal(s.tabs[91].scroll, 640);
   assert.equal(s.tabs[92].scroll, undefined, 'at the top (said nothing of it): none');
 
-  // The page's own answer: <html>'s place, or <body>'s while Margin's box scrolls it; the top frame only.
+  // The page's own answer: <html>'s place, or <body>'s where the page scrolls it; the top frame only.
   const { sleepInPage } = await import('../extension/background/sleep.ts');
   const run = (html: number, body: number, top = true): { ok: boolean, scrollY?: number } => {
     const doc = { visibilityState: 'hidden', querySelectorAll: () => [], scrollingElement: { scrollTop: html }, body: { scrollTop: body } };
@@ -820,7 +820,7 @@ test('the draft answers: each page\'s scroll with them, written to its tab just 
     }
   };
   assert.equal(run(320.4, 0).scrollY, 320);
-  assert.equal(run(0, 900).scrollY, 900, 'the box\'s <body>');
+  assert.equal(run(0, 900).scrollY, 900, 'a page that scrolls its <body>');
   assert.equal(run(0, 0).scrollY, undefined, 'at the top: not said');
   assert.equal(run(320, 0, false).scrollY, undefined, 'another frame says nothing of it');
   for (const t of tabs) fake.tabs.delete(t.id);
@@ -851,8 +851,7 @@ test('the page\'s part: its scroll said as it\'s hidden (once a second, the last
     return { doc, win, html, body, sent, answers, send, emit, on };
   };
   const p = page();
-  let boxed = false;
-  const rec = startScrollRecord({ send: p.send, retired: () => false, boxed: () => boxed, doc: p.doc, win: p.win, everyMs: 60, restoreMs: 300 });
+  const rec = startScrollRecord({ send: p.send, retired: () => false, doc: p.doc, win: p.win, everyMs: 60, restoreMs: 300 });
   p.doc.visibilityState = 'hidden';
   p.emit('doc:visibilitychange');
   assert.deepEqual(p.sent, [], 'never scrolled: nothing said');
@@ -870,33 +869,29 @@ test('the page\'s part: its scroll said as it\'s hidden (once a second, the last
   p.emit('win:pagehide');
   assert.deepEqual(p.sent.at(-1), { type: 'pageScroll', y: 520, url: 'https://page.test/a' }, 'left: at once');
 
-  // Reopened: asked once, set until it's there (the page growing), with the box on: <body>.
+  // Reopened: asked once, set until it's there (the page growing).
   const q = page();
   q.answers.takeScroll = 1800;
-  boxed = true;
-  q.body.scrollTop = 0;
   let tall = false;
-  Object.defineProperty(q.body, 'scrollTop', { get() { return this._y ?? 0; }, set(v) { this._y = tall ? v : Math.min(v, 300); }, configurable: true });
-  const rec2 = startScrollRecord({ send: q.send, retired: () => false, boxed: () => boxed, doc: q.doc, win: q.win, everyMs: 60, restoreMs: 1000 });
+  Object.defineProperty(q.html, 'scrollTop', { get() { return this._y ?? 0; }, set(v) { this._y = tall ? v : Math.min(v, 300); }, configurable: true });
+  const rec2 = startScrollRecord({ send: q.send, retired: () => false, doc: q.doc, win: q.win, everyMs: 60, restoreMs: 1000 });
   rec2.take(false);
   assert.deepEqual(q.sent, [], 'no place on its record: not asked');
   rec2.take(true);
   rec2.take(true);
   await sleep(5);
   assert.deepEqual(q.sent, [{ type: 'takeScroll', url: 'https://page.test/a' }], 'asked once');
-  assert.equal(q.body.scrollTop, 300, 'as far as the page goes yet');
+  assert.equal(q.html.scrollTop, 300, 'as far as the page goes yet');
   tall = true;
   await sleep(250);
-  assert.equal(q.body.scrollTop, 1800, 'then there');
-  assert.equal(q.html.scrollTop, 0, '<html> left alone under the box');
+  assert.equal(q.html.scrollTop, 1800, 'then there');
   assert.ok((q.on['win:wheel'] ?? []).length === 0, 'done: its listeners gone');
 
   // The person scrolls first: left where they put it.
   const r = page();
   r.answers.takeScroll = 5000;
-  boxed = false;
   Object.defineProperty(r.html, 'scrollTop', { get() { return this._y ?? 0; }, set(v) { this._y = Math.min(v, 100); }, configurable: true });
-  const rec3 = startScrollRecord({ send: r.send, retired: () => false, boxed: () => boxed, doc: r.doc, win: r.win, everyMs: 60, restoreMs: 2000 });
+  const rec3 = startScrollRecord({ send: r.send, retired: () => false, doc: r.doc, win: r.win, everyMs: 60, restoreMs: 2000 });
   rec3.take(true);
   await sleep(5);
   r.emit('win:wheel');
@@ -907,7 +902,7 @@ test('the page\'s part: its scroll said as it\'s hidden (once a second, the last
   const t = page();
   t.answers.takeScroll = 70;
   t.doc.readyState = 'loading';
-  startScrollRecord({ send: t.send, retired: () => false, boxed: () => false, doc: t.doc, win: t.win }).take(true);
+  startScrollRecord({ send: t.send, retired: () => false, doc: t.doc, win: t.win }).take(true);
   await sleep(5);
   assert.equal(t.html.scrollTop, 0);
   t.emit('doc:DOMContentLoaded');

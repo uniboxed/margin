@@ -17,7 +17,7 @@ import { learnSearchEngine } from './background/search-engine.ts';
 import { drawnChanged, handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.ts';
 // This engine's own modules (Safari's set-up messages and new-tab note, Chromium's full screen), or null.
 import { engine } from '#engine';
-import { layoutsChanged, queueRegistrations, setLayoutSource, watchCommits, windowDrawnChanged } from './background/registered.ts';
+import { storeActiveTheme } from './background/theme-package.ts';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.ts';
 import { sleepIdle, sleepIdleThrottled } from './background/sleep.ts';
 import { navActivated, navigate, NAV_ACTIONS } from './background/navigation.ts';
@@ -28,7 +28,6 @@ import * as handoff from './background/handoff.ts';
 import * as pageLoads from './background/page-loads.ts';
 import * as away from './background/away.ts';
 import { linkedAgain } from './background/notices.ts';
-import { APP_LINK_KEY, appDraws } from './shared/app-link.ts';
 
 // ---- which copy is in charge ------------------------------------------------
 // Safari can keep an older copy of Margin running beside a newer one until it
@@ -301,8 +300,6 @@ api.tabs.onDetached?.addListener(owned(() => resync({ fresh: false })));
 // Chrome: a window going full screen becomes Margin full screen.
 const { fullscreen } = engine;
 if (fullscreen) api.windows?.onBoundsChanged?.addListener(owned((win) => fullscreen.followFullscreen(win.id)));
-// A closed window may have been the one in full screen (registered.ts syncPage).
-if (capabilities?.marginFullscreen) api.windows?.onRemoved.addListener(owned(() => queueRegistrations()));
 api.windows?.onRemoved.addListener(owned((windowId) => {
   away.windowGone(windowId);
   return mutate((s) => {
@@ -331,7 +328,7 @@ async function withTab(message: Record<string, any>, sender: BrowserMessageSende
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.ts). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'owner', 'sidebarScroll', 'setSidebarScroll', 'getZoom', 'pageIcon', 'windowState', 'injectPage', 'fetchStyle', 'keepSheetWalk', 'appKeyHeard', 'newTabKey', 'startApp', 'retryLink', 'pageLoading', 'gesture', 'viewport', 'visibility', 'pageFullscreen']);
+const BEFORE_SYNC = new Set(['hello', 'owner', 'sidebarScroll', 'setSidebarScroll', 'getZoom', 'pageIcon', 'windowState', 'appKeyHeard', 'newTabKey', 'startApp', 'retryLink', 'pageLoading', 'gesture', 'viewport', 'visibility', 'pageFullscreen']);
 // Requests whose page stops waiting at their `deadline` (content/core.ts
 // TIMED_REQUESTS) are answered before it, whatever is still under way: by
 // REPLY_GUARD_MS before it, an answer that the switch didn't happen (it
@@ -443,26 +440,12 @@ appLink.onPageState((state) => {
   if (state === 'linked') void linkedAgain().catch(() => {});
   if (state === 'linked') void Promise.resolve(api.windows?.getAll?.()).then((wins) => pageLoads.tellAll((wins ?? []).map((w) => w.id)), () => pageLoads.tellAll());
 });
-// A window's layout: its page in front gets its box at once (the rest read
-// it from storage, appLink, as they're shown or start), and new pages get it
-// at their first paint (background/registered.ts: the registered layout
-// follows at once for a lone change, once layouts settle for a burst; a
-// window with another gets its own as each page commits).
-appLink.onLayout((windowId, layout) => {
-  void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout, drawn: appLink.drawn(windowId) }).catch(() => {}), () => {});
-  layoutsChanged();
-});
-// Whether the app draws over a window (its `drawn`): the same way. Its pages lose their box
-// where it draws nothing (and get it back from the window's layout when it draws there again),
-// and new pages there get none from their first paint: the registration follows at once
-// (registered.ts windowDrawnChanged; until then fixUp's sheet as each page commits).
+// Whether the app draws over a window (its `drawn`): its page in front is told at once (the
+// rest read it from storage, appLink, as they're shown or start), for where Margin's keys go.
 appLink.onDrawn((windowId, drawn) => {
   drawnChanged(windowId, drawn);
-  void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout: appLink.layout(windowId), drawn }).catch(() => {}), () => {});
-  windowDrawnChanged();
+  void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appDrawn', windowId, drawn }).catch(() => {}), () => {});
 });
-setLayoutSource(() => appLink.view());
-watchCommits();
 
 // What a page's zoom answer keeps (handlers.ts getZoom), in every copy: a
 // copy that doesn't own the state now may again.
@@ -470,13 +453,25 @@ api.tabs.onZoomChange?.addListener(zoomChanged);
 api.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.pageZoom) zoomStored();
 });
-// The first paint follows the settings (the theme) and the link to
-// Margin.app (registered only while it's linked: background/registered.ts).
-const linkTurned = (change: BrowserStorageChange) => !!change && appDraws(change.oldValue) !== appDraws(change.newValue);
+// The theme Margin.app draws with follows the settings (background/theme-package.ts), one write at a time.
+let themeWrites = Promise.resolve();
+const queueTheme = () => (themeWrites = themeWrites.then(storeActiveTheme).catch((err) => console.warn('[margin] theme', err)));
 api.storage.onChanged.addListener(owned((changes, area) => {
-  if (area === 'local' && (changes.settings || linkTurned(changes[APP_LINK_KEY]))) queueRegistrations();
+  if (area === 'local' && changes.settings) void queueTheme();
 }));
-owned(queueRegistrations)();
+owned(queueTheme)();
+// What the page box left (removed 2026-11-16, DECISIONS.md "Hosted only"): its content script
+// registrations (kept by Safari and Chrome across launches) and its kept sheet walks.
+owned(async () => {
+  const ids = ['margin-page', 'margin-docked'];
+  if (api.scripting?.unregisterContentScripts) {
+    const there = await Promise.resolve(api.scripting.getRegisteredContentScripts({ ids })).catch(() => []);
+    if (there?.length) await Promise.resolve(api.scripting.unregisterContentScripts({ ids: there.map((s) => s.id) })).catch(() => {});
+  }
+  // (The index names every origin kept: { [origin]: … }.)
+  const index = (await api.storage.local.get(['sheetWalkIndex']).catch(() => null))?.sheetWalkIndex;
+  if (index && typeof index === 'object') await api.storage.local.remove(['sheetWalkIndex', ...Object.keys(index).map((origin) => `sheetWalk:${origin}`)]).catch(() => {});
+})();
 
 // ---- auto-archive -----------------------------------------------------------
 
@@ -496,7 +491,7 @@ if (api.alarms) {
 // Debug hook for Web Inspector and tests: `margin.archiveNow()`;
 // `margin.sleepNow(ms)`: a pass of sleeping tabs now, for tabs unused for `ms`
 // (the setting's hours if left out).
-globalThis.margin = { archiveNow: archiveStale, sleepNow: (ms: number | undefined) => sleepIdle(Number.isFinite(ms) ? { afterMs: ms } : {}), syncRegistrations: queueRegistrations, navigate };
+globalThis.margin = { archiveNow: archiveStale, sleepNow: (ms: number | undefined) => sleepIdle(Number.isFinite(ms) ? { afterMs: ms } : {}), navigate };
 
 // ---- commands -------------------------------------------------------------
 

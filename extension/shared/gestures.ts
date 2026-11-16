@@ -106,7 +106,7 @@ function containScroll(el: HTMLElement) {
 // has nothing to ask of its style.
 function atPageTop(event: WheelEvent, doc: Document) {
   const scrollingElement = doc.scrollingElement ?? doc.documentElement;
-  // (In a page's box, <body> is what scrolls: content/page/box.ts.)
+  // (Some pages scroll <body> itself.)
   if (scrollingElement.scrollTop > 0 || doc.body?.scrollTop > 0) return false;
   for (const node of event.composedPath() as Element[]) {
     if (node.nodeType !== 1 || node === scrollingElement || node === doc.body) continue;

@@ -4,15 +4,14 @@
 // closed by Margin.app's switch, a tab put to sleep) opens there again. Reopened, the page takes that
 // place once: asked when its tab's record says there is one (`restoreScroll`), then set as soon as the
 // document is parsed and again while the page grows, until it's there, the person scrolls, types or
-// clicks, or RESTORE_MS pass. <html> scrolls the page, or <body> while Margin's page box is on
-// (content/page/viewport.ts). Nothing about the page is logged.
+// clicks, or RESTORE_MS pass. Nothing about the page is logged.
 
 const EVERY_MS = 1000;
 const RESTORE_MS = 5000;
 const AGAIN_MS = 200;
 const ACTS = ['wheel', 'keydown', 'pointerdown', 'touchstart'];
 
-export function startScrollRecord({ send, retired, boxed, doc = globalThis.document, win = globalThis, everyMs = EVERY_MS, restoreMs = RESTORE_MS }: { send: (type: any, payload: any, retry?: boolean) => Promise<any>, retired: () => boolean, boxed: () => boolean,
+export function startScrollRecord({ send, retired, doc = globalThis.document, win = globalThis, everyMs = EVERY_MS, restoreMs = RESTORE_MS }: { send: (type: any, payload: any, retry?: boolean) => Promise<any>, retired: () => boolean,
   doc?: any, win?: any, everyMs?: number, restoreMs?: number }) {
   const scrolled = () => Math.round(Math.max(doc.scrollingElement?.scrollTop ?? 0, doc.body?.scrollTop ?? 0));
   let said = 0; // a page never scrolled says nothing
@@ -52,8 +51,7 @@ export function startScrollRecord({ send, retired, boxed, doc = globalThis.docum
     };
     function go() {
       if (retired()) return stop();
-      const el = boxed() && doc.body ? doc.body : doc.scrollingElement;
-      if (el) el.scrollTop = y;
+      if (doc.scrollingElement) doc.scrollingElement.scrollTop = y;
       if (scrolled() >= y - 2 || Date.now() > until) return stop();
       again = setTimeout(go, AGAIN_MS); // the page not that tall yet
     }

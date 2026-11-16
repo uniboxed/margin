@@ -1,6 +1,6 @@
-// Scrolling and Margin's trackpad gestures in Safari's profile, on pages in
-// their box (content/trackpad.ts, shared/gestures.ts, shared/pull.ts):
-// the wheel scrolls the page, a sticky bar sticks at the box's top, the
+// Scrolling and Margin's trackpad gestures in Safari's profile
+// (content/trackpad.ts, shared/gestures.ts, shared/pull.ts):
+// the wheel scrolls the page, a sticky bar sticks at the page's top, the
 // feed loads more, scroll is kept across switches; no page bounce and no
 // sideways swipes leaving the page while blocking is on; Margin's pull to
 // refresh and swipe back and forward, their feedback drawn by the overlay
@@ -12,7 +12,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
-import { slot, tabRow } from './harness/ui.ts';
+import { tabRow } from './harness/ui.ts';
 import type { CDPSession, Page } from 'playwright';
 import type { Settings } from '../../types/margin.d.ts';
 
@@ -64,13 +64,12 @@ before(async () => {
 });
 after(async () => { await m?.close(); });
 
-test('the wheel scrolls the article in its box; its section bar sticks at the box\'s top', async (t) => {
+test('the wheel scrolls the article; its section bar sticks at the page\'s top', async (t) => {
   const page = await m.open('dispatch.test', '/2026/11/the-quiet-city');
-  const s = (await slot(ui))!;
   await page.mouse.move(800, 500);
   for (let i = 0; i < 12; i++) await page.mouse.wheel(0, 150);
   await m.until(() => page.evaluate(() => scrollY > 1200), { what: 'scrolled down' });
-  await m.until(async () => Math.round((await page.locator('#sections').boundingBox())!.y) === s.top, { what: 'the section bar stuck at the box\'s top' });
+  await m.until(async () => Math.round((await page.locator('#sections').boundingBox())!.y) === 0, { what: 'the section bar stuck at the page\'s top' });
   const progress = await page.evaluate(() => parseFloat(getComputedStyle(document.getElementById('progress')!).width));
   assert.ok(progress > 0, 'the reading progress follows the scroll');
   await m.shoot(t, 'scrolled');

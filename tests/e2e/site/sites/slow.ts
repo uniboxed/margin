@@ -3,7 +3,7 @@
 // bar at once, then each section, then pictures that arrive last, so the
 // page's load comes at about 3 s. ?ms=<total> changes the pace. PNG icon.
 import type { ServerResponse } from 'node:http';
-import { FIRST_FRAMES, art, doc, esc, type Site } from './common.ts';
+import { art, doc, esc, type Site } from './common.ts';
 import { landscape } from '../art.ts';
 
 const ICON = '<link rel="icon" type="image/png" href="/icon.png">';
@@ -15,13 +15,12 @@ const SECTIONS = [
   ['From the field', `<div class="photos"><figure><img src="/img/marsh.svg" alt="" width="600" height="400"><figcaption>Kettle Marsh, 14 August: the lowest water in twenty years.</figcaption></figure><figure><img src="/img/moor.svg" alt="" width="600" height="400"><figcaption>High Moor after the first September storm.</figcaption></figure></div>`],
 ];
 
-export function report(res: ServerResponse, total = 3000, fp = false) {
+export function report(res: ServerResponse, total = 3000) {
   const step = total / (SECTIONS.length + 1);
   res.statusCode = 200;
   res.setHeader('content-type', 'text/html; charset=utf-8');
   res.setHeader('cache-control', 'no-store');
-  let head = doc({ title: 'Q3 2026 Field Report · Almanac', icon: ICON, themeColor: '#fdf8ef', body: '@@' }).split('@@')[0];
-  if (fp) head = head.replace('<head>', `<head>\n${FIRST_FRAMES}`);
+  const head = doc({ title: 'Q3 2026 Field Report · Almanac', icon: ICON, themeColor: '#fdf8ef', body: '@@' }).split('@@')[0];
   res.write(`${head}
 <div class="loading" id="loading"><i></i></div>
 <header class="top"><a class="logo" href="/report"><img src="/icon.png" alt="" width="28" height="28">Almanac</a><nav><a href="/report" class="on">Reports</a><a href="/report">Data</a><a href="/report">Methods</a><a href="/report">About</a></nav></header>
@@ -100,11 +99,11 @@ export default {
   blurb: 'Field reports from the coast and the uplands.',
   look: { bg: '#fdf8ef', ink: '#1f1a14', accent: '#d9771f' },
   iconLink: ICON,
-  pages: [{ path: '/report', title: 'Q3 2026 Field Report · Almanac', what: 'A report sent in parts over 3 s, pictures last: loading in the sidebar, first paint of a slow page', art: art('landscape', { seed: 4, p: 'desert', w: 1200, h: 700 }) }],
+  pages: [{ path: '/report', title: 'Q3 2026 Field Report · Almanac', what: 'A report sent in parts over 3 s, pictures last: loading in the sidebar, a slow page', art: art('landscape', { seed: 4, p: 'desert', w: 1200, h: 700 }) }],
   assets: { '/assets/site.css': { type: 'text/css; charset=utf-8', body: CSS } },
   routes: [
     ['GET', '/', () => ({ status: 302, location: '/report' })],
-    ['GET', '/report', ({ res, query }) => report(res, Math.min(20000, Number(query.get('ms')) || 3000), query.has('fp'))],
+    ['GET', '/report', ({ res, query }) => report(res, Math.min(20000, Number(query.get('ms')) || 3000))],
     // The pictures arrive last: whatever's left of the 3 s, and a little more.
     ['GET', /^\/img\/(marsh|moor)\.svg$/, ({ params }) => ({
       type: 'image/svg+xml',

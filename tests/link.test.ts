@@ -3,8 +3,7 @@
 // (tests/fake-app.ts), with a fake browser API: getting linked (the native
 // port, wantLink and its nonce, the token, the app's key), hello, the
 // snapshot, the theme in pieces, the keys, data.hello and the queue, ticks,
-// requests run as the window's, deltas, windows, setLayout kept per window
-// for pages, a resync, a drop and its reconnect, the app gone, a goodbye,
+// requests run as the window's, deltas, windows, a resync, a drop and its reconnect, the app gone, a goodbye,
 // and the data messages both ways.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,7 +16,7 @@ type FakeApp = Awaited<ReturnType<typeof startFakeApp>>;
 
 globalThis.chrome = fakeBrowser({ runtime: { getURL: (p) => `safari-web-extension://test/${p}`, getManifest: () => ({ version: '2.0.0' }) } });
 const { createLink, keyBindings, themePieces, SESSION_KEY, LINK_META, STATE_KEYS, APP_REQUESTS, WINDOW_CALLS, PARKED_WHY, windowCallRefusal } = await import('../extension/background/link.ts');
-const { APP_LINK_KEY, appDraws, boxFromLayout, drawsWindow, layoutFor, NOT_DRAWN, unpinchedSize } = await import('../extension/shared/app-link.ts');
+const { APP_LINK_KEY, appDraws, drawsWindow, unpinchedSize } = await import('../extension/shared/app-link.ts');
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(test: () => unknown, ms = 2000) {
@@ -129,33 +128,9 @@ test('link: helpers — the keys from Settings, the theme in checked pieces, wha
   assert.ok(pieces.every((p) => Buffer.from(p.data, 'base64').length <= 512 * 1024), 'no piece over 512 KB of bytes');
   assert.deepEqual(JSON.parse(whole.toString('utf8')), THEME);
   assert.ok(appDraws({ state: 'linked' }) && appDraws({ state: 'reconnecting' }) && !appDraws({ state: 'off' }) && !appDraws(null));
-  const a = { insets: { left: 260, top: 8, right: 8, bottom: 8 }, container: { width: 1280, height: 800 }, mode: 'fullscreen' };
-  assert.equal(layoutFor({ layouts: { 7: a } }, null), a, 'one window: its layout before the page knows its window');
-  assert.equal(layoutFor({ layouts: { 7: a, 8: { ...a, insets: { ...a.insets, left: 8 } } } }, null), null, 'two that differ: not known yet');
-  assert.equal(layoutFor({ layouts: { 7: a, 8: a } }, 9), null, 'another window: none');
-  assert.equal(layoutFor({ layouts: { 7: a } }, 9), null, 'another window, the only layout another\'s: none (not measured yet: the page keeps its box)');
-  // A window Margin.app said it draws nothing over: a layout of zeros (no box), not "not measured yet".
-  const undrawn = { state: 'linked', layouts: { 7: a, 8: a }, drawn: { 7: false, 8: true } };
-  assert.equal(layoutFor(undrawn, 7), NOT_DRAWN);
-  assert.equal(boxFromLayout(layoutFor(undrawn, 7), { outerWidth: 1280, outerHeight: 800, innerWidth: 1280, innerHeight: 800 }), null, 'no box');
-  assert.equal(layoutFor(undrawn, 8), a, 'a drawn window: its own');
-  assert.equal(layoutFor({ layouts: { 7: a } , drawn: { 7: false } }, null), null, 'a page that doesn\'t know its window yet: never an undrawn window\'s');
+  const undrawn = { state: 'linked', drawn: { 7: false, 8: true } };
   assert.ok(!drawsWindow(undrawn, 7) && drawsWindow(undrawn, 8) && drawsWindow(undrawn, 9) && drawsWindow(undrawn, null), 'drawn unless the app said not');
   assert.ok(!drawsWindow({ state: 'off', drawn: {} }, 8), 'not linked: none');
-  assert.deepEqual(boxFromLayout(a, { outerWidth: 1280, outerHeight: 800, innerWidth: 1280, innerHeight: 800 }), { left: 260, top: 8, right: 8, bottom: 8 }, 'full screen: the insets as they are');
-  assert.deepEqual(boxFromLayout(a, { outerWidth: 1280, outerHeight: 800, innerWidth: 1280, innerHeight: 748 }), { left: 260, top: 0, right: 8, bottom: 8 }, 'a toolbar 52 pt above the page: the top inset less that');
-  assert.deepEqual(boxFromLayout(a, { outerWidth: 1280, outerHeight: 800, innerWidth: 1024, innerHeight: 640, zoom: 1.25 }), { left: 208, top: 6.5, right: 6.5, bottom: 6.5 }, 'zoomed: in the page\'s pixels');
-  assert.deepEqual(boxFromLayout(a, { outerWidth: 1280, outerHeight: 800, innerWidth: 1060, innerHeight: 800 }), { left: 40, top: 8, right: 8, bottom: 8 }, 'Safari\'s sidebar open (220 pt): the left inset less that');
-  assert.equal(boxFromLayout({ insets: { left: 0, top: 0, right: 0, bottom: 0 } }, { outerWidth: 1, outerHeight: 1, innerWidth: 1, innerHeight: 1 }), null);
-  // The Web Inspector docked (Phase 2 step 8): the overlay is over the page's part only, and the
-  // insets the app sends are from the window's edges (the inspector's size in them).
-  const bottom = { insets: { left: 260, top: 8, right: 8, bottom: 308 } };
-  assert.deepEqual(boxFromLayout(bottom, { outerWidth: 1280, outerHeight: 800, innerWidth: 1280, innerHeight: 500, x: 0, y: 0 }), { left: 260, top: 8, right: 8, bottom: 8 }, 'docked at the bottom: the page\'s own frame below it');
-  const right = { insets: { left: 260, top: 8, right: 408, bottom: 8 } };
-  assert.deepEqual(boxFromLayout(right, { outerWidth: 1280, outerHeight: 800, innerWidth: 880, innerHeight: 800, x: 0, y: 0 }), { left: 260, top: 8, right: 8, bottom: 8 }, 'docked on the right');
-  const left = { insets: { left: 660, top: 8, right: 8, bottom: 8 } };
-  assert.deepEqual(boxFromLayout(left, { outerWidth: 1280, outerHeight: 800, innerWidth: 880, innerHeight: 800, x: 400, y: 0 }), { left: 260, top: 8, right: 8, bottom: 8 }, 'docked on the left');
-  assert.deepEqual(boxFromLayout(a, { outerWidth: 1280, outerHeight: 800, innerWidth: 1060, innerHeight: 800, x: 9999 }), { left: 40, top: 8, right: 8, bottom: 8 }, 'a corner past the room there is: held to it');
   assert.ok(STATE_KEYS.includes('openTabs') && !STATE_KEYS.includes('uiTheme'));
   for (const type of ['activateTab', 'navigate', 'openHere', 'search']) assert.ok(APP_REQUESTS.has(type), type);
   for (const type of ['hello', 'reloadForUpdate', 'getZoom', 'injectPage', 'fetchStyle']) assert.ok(!APP_REQUESTS.has(type), type);
@@ -435,7 +410,7 @@ test('link: asked for now (the new-tab page\'s "Start Margin.app"): from the sta
   }
 });
 
-test('link: ticks, requests as the window\'s, deltas, windows, setLayout for pages, resync', async () => {
+test('link: ticks, requests as the window\'s, deltas, windows, resync', async () => {
   const app = await startFakeApp();
   const api = browser({ app, local: STATE });
   const routed: { m: Said, sender: unknown }[] = [];
@@ -508,19 +483,6 @@ test('link: ticks, requests as the window\'s, deltas, windows, setLayout for pag
     const from6 = app.received.length;
     link.pageFullscreen(7, 13, false);
     assert.ok(!('pageFullscreen' in (await app.next('windows', { from: from6, test: (m) => !m.list[0].pageFullscreen }))!.list[0]), 'out of it: gone');
-    // The app's layout for window 7: kept for pages, the page in front told.
-    const told: [number, number][] = [];
-    link.onLayout((w, l) => told.push([w, l.insets.left]));
-    app.send({ k: 'setLayout', epoch: hello.epoch, windowId: 7, seq: 2, insets: { left: 260, top: 8, right: 8, bottom: 8 }, radius: 6.5, radii: [6.5, 6.5, 6.5, 6.5], container: { width: 1440, height: 800 }, mode: 'fullscreen', at: 1 });
-    app.send({ k: 'setLayout', epoch: hello.epoch, windowId: 7, seq: 1, insets: { left: 8, top: 8, right: 8, bottom: 8 }, container: { width: 1440, height: 800 }, mode: 'fullscreen', at: 1 });
-    assert.ok(await until(() => api.storage.local.data[APP_LINK_KEY]?.layouts?.[7]?.insets?.left === 260));
-    await wait(50);
-    assert.equal(api.storage.local.data[APP_LINK_KEY].layouts[7].insets.left, 260, 'an older one (a lower seq) left');
-    assert.deepEqual(told, [[7, 260]]);
-    assert.equal(link.layout(7).radius, 6.5);
-    // A window closed: its layout goes.
-    api.windowList = [];
-    assert.ok(await until(() => !api.storage.local.data[APP_LINK_KEY]?.layouts?.[7]));
     // A gap on the app's side: the whole state again.
     const before = app.received.length;
     app.send({ k: 'resync', epoch: hello.epoch });
@@ -541,7 +503,7 @@ test('link: ticks, requests as the window\'s, deltas, windows, setLayout for pag
   }
 });
 
-test('link: drawn — whether the app draws over each window, kept for pages apart from the layouts; dropped with older epochs\' layouts on a new epoch\'s hello and when off; a closed window\'s goes', async () => {
+test('link: drawn — whether the app draws over each window, kept for pages; dropped on a new epoch\'s hello and when off; a closed window\'s goes', async () => {
   const app = await startFakeApp();
   const api = browser({ app, local: STATE });
   api.windowList = [...api.windowList, { id: 8, left: 0, top: 0, width: 1280, height: 800, state: 'fullscreen', focused: false }];
@@ -551,21 +513,18 @@ test('link: drawn — whether the app draws over each window, kept for pages apa
     const hello = (await app.next('hello'))!;
     const told: [number, boolean][] = [];
     link.onDrawn((w, on) => told.push([w, on]));
-    const layout = { insets: { left: 260, top: 8, right: 8, bottom: 8 }, radius: 6.5, container: { width: 1280, height: 800 }, mode: 'fullscreen' };
-    app.send({ k: 'setLayout', epoch: hello.epoch, windowId: 7, seq: 1, ...layout, at: 1 });
     app.send({ k: 'drawn', epoch: hello.epoch, windowId: 7, on: true, at: 1 });
     app.send({ k: 'drawn', epoch: hello.epoch, windowId: 8, on: false, at: 1 });
     app.send({ k: 'drawn', epoch: 'old', windowId: 8, on: true, at: 1 });
     app.send({ k: 'drawn', epoch: hello.epoch, windowId: 8, on: false, at: 2 });
     const stored = () => api.storage.local.data[APP_LINK_KEY];
-    assert.ok(await until(() => stored()?.drawn?.[8] === false && stored()?.drawn?.[7] === true && stored()?.layouts?.[7]));
+    assert.ok(await until(() => stored()?.drawn?.[8] === false && stored()?.drawn?.[7] === true));
     await wait(40);
     assert.deepEqual(told, [[7, true], [8, false]], 'a change only, this epoch\'s only');
     assert.equal(link.drawn(8), false);
     assert.equal(link.drawn(9), undefined, 'not said');
     assert.ok(link.drawsWindow(7) && !link.drawsWindow(8) && link.drawsWindow(9));
     assert.deepEqual(link.view().drawn, { 7: true, 8: false });
-    assert.equal(stored().layouts[7].insets.left, 260, 'the layouts apart from it');
     assert.ok(!drawsWindow(stored(), 8) && drawsWindow(stored(), 7), 'pages read the same');
     // Window 8 closed: what the app said of it goes.
     api.windowList = api.windowList.slice(0, 1);
@@ -580,8 +539,6 @@ test('link: drawn — whether the app draws over each window, kept for pages apa
     assert.notEqual(again.epoch, hello.epoch);
     assert.ok(await until(() => stored()?.state === 'linked' && stored()?.epoch === again.epoch));
     assert.deepEqual(stored().drawn, {}, 'drawn: none said yet this epoch');
-    assert.deepEqual(stored().layouts, {}, 'the epoch before\'s layouts gone');
-    assert.equal(stored().lastLayouts?.[7]?.insets?.left, 260, 'kept apart, only for the first paint\'s registration to start from');
     assert.ok(link.drawsWindow(7), 'not said: drawn (an app that never says behaves as before)');
     // Off: none either.
     app.send({ k: 'drawn', epoch: again.epoch, windowId: 7, on: false, at: 4 });
@@ -598,9 +555,8 @@ test('link: drawn — whether the app draws over each window, kept for pages apa
 });
 
 test('link: a background started again keeps what the one before said of the windows Safari still lists, and nothing while off', async () => {
-  const layout = { insets: { left: 260, top: 8, right: 8, bottom: 8 }, radius: 6.5, epoch: 'e0', seq: 1 };
   // (Margin.app running but sending no link: the state stays as read for a while, then off.)
-  const api = browser({ appOpen: () => true, local: { ...STATE, [APP_LINK_KEY]: { state: 'linked', epoch: 'e0', layouts: { 7: layout, 41: layout }, drawn: { 7: true, 41: false } } } });
+  const api = browser({ appOpen: () => true, local: { ...STATE, [APP_LINK_KEY]: { state: 'linked', epoch: 'e0', drawn: { 7: true, 41: false } } } });
   const writes: Record<string, any>[] = []; // what was written under APP_LINK_KEY (stored JSON)
   const set = api.storage.local.set.bind(api.storage.local);
   api.storage.local.set = async (values) => { if (values[APP_LINK_KEY]) writes.push(structuredClone(values[APP_LINK_KEY])); return set(values); };
@@ -609,10 +565,9 @@ test('link: a background started again keeps what the one before said of the win
     await link.start({ route: async () => ({ ok: true }) });
     assert.ok(await until(() => writes.length > 0));
     assert.equal(writes[0].state, 'reconnecting');
-    assert.deepEqual(Object.keys(writes[0].layouts), ['7'], 'window 41 isn\'t open any more');
-    assert.deepEqual(writes[0].drawn, { 7: true });
+    assert.deepEqual(writes[0].drawn, { 7: true }, 'window 41 isn\'t open any more');
     assert.ok(await until(() => writes.at(-1)!.state === 'off', 3000), 'no link: off');
-    assert.deepEqual([writes.at(-1)!.layouts, writes.at(-1)!.drawn], [{}, {}], 'off: nothing of the windows kept');
+    assert.deepEqual(writes.at(-1)!.drawn, {}, 'off: nothing of the windows kept');
   } finally {
     link.stop();
   }
@@ -1176,15 +1131,10 @@ test('link: the handoff\'s words — its requests taken, others refused, the win
 
 // A pinch magnifies the page; its area stays the window's (shared/app-link.ts unpinchedSize). WebKit's own numbers,
 // measured 2026-11-07 in a 1512 × 949 web view: pinched 3×, innerWidth 504, innerHeight 316, visualViewport
-// 504 × 316.328125 at scale 3 (what made Margin draw its sidebar in a corner and drop the page's box).
+// 504 × 316.328125 at scale 3 (what made Margin draw its sidebar in a corner).
 test('a pinch: the page\'s area as before it, not a third of it', () => {
   assert.deepEqual(unpinchedSize({ innerWidth: 1512, innerHeight: 949, visualViewport: { width: 1512, height: 949, scale: 1 } }), { width: 1512, height: 949 }, 'unpinched: as it is');
   const pinched = unpinchedSize({ innerWidth: 504, innerHeight: 316, visualViewport: { width: 504, height: 316.328125, scale: 3 } });
   assert.ok(Math.abs(pinched.width - 1512) < 0.5 && Math.abs(pinched.height - 949) < 0.5, JSON.stringify(pinched));
   assert.deepEqual(unpinchedSize({ innerWidth: 800, innerHeight: 600 }), { width: 800, height: 600 }, 'no visual viewport: as it is');
-  // The page's box from the pinched size, unpinched: the same box as unpinched.
-  const layout = { insets: { left: 260, top: 8, right: 8, bottom: 8 } };
-  const box = (inner: { width: number, height: number }) => boxFromLayout(layout, { outerWidth: 1512, outerHeight: 949, innerWidth: inner.width, innerHeight: inner.height });
-  assert.deepEqual(box(pinched), box({ width: 1512, height: 949 }), 'the box doesn\'t change with a pinch');
-  assert.notDeepEqual(box({ width: 504, height: 316 }), box({ width: 1512, height: 949 }), '(the raw pinched size would change it)');
 });

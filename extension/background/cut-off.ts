@@ -7,22 +7,22 @@
 // a new one). Safari then keeps Margin's content-script world in the pages
 // that were open, `browser` and all, still bound to the copy that's gone:
 // every message and storage call from it neither arrives nor fails, so the
-// old copy's switches, keys and box wait for ever until the page is
+// old copy's switches and keys wait for ever until the page is
 // reloaded. The new copy can't run
 // there either: its content script finds the old copy's `Margin.content` in
 // the same world and stops (content/core.ts), and it would get the same dead
 // `browser` anyway. A script the background runs there
 // (scripting.executeScript) still works, and sees the world's `browser` with
 // the old copy's address: that's how such a page is told (cutOffInPage), and
-// it's reloaded when that loses nothing, else its dead Margin's box is taken
-// off (background/tabs.ts repairCutOff). (When the world isn't kept, as in
+// it's reloaded when that loses nothing, else its dead Margin is put out of
+// the way (background/tabs.ts repairCutOff). (When the world isn't kept, as in
 // WebKit by itself, the new copy starts beside the old one in a world of its
 // own.)
 
 // Executed in the tab's page, in Margin's content-script world (self-contained:
 // it's sent as source). `own`: this copy's address (runtime.getURL('')).
-// `quiet`: take a cut-off page's dead Margin out of the way (its box: the page
-// has the window). Answers
+// `quiet`: take a cut-off page's dead Margin out of the way (an older build's
+// page box: the page has the window). Answers
 // { cutOff: false } for a page whose world is this copy's, and
 // { cutOff: false, otherCopy: true } for one bound to another copy that still
 // answers: one Safari keeps running beside this one until it quits
@@ -94,7 +94,7 @@ export async function cutOffInPage(own: string, quiet: boolean = false, keys: st
   } catch {}
   if (quiet) {
     try {
-      // Its box goes: the page has the window (content/page/box.ts).
+      // The page box of a build before its removal (2026-11-16, DECISIONS.md "Hosted only") goes: the page has the window.
       document.dispatchEvent(new CustomEvent('margin:box', { detail: 'off' }));
     } catch {}
   }

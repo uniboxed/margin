@@ -14,7 +14,7 @@ export type NoticeWords = { text: string, actions: NoticeButton[], ms: number, t
 
 export const NOTICES: Readonly<Record<string, NoticeWords>> = Object.freeze({
   // A page in front whose content-script world is still bound to a copy of
-  // Margin that's gone (background/cut-off.ts): its box, keys and gestures
+  // Margin that's gone (background/cut-off.ts): its keys and gestures
   // can't work until it's loaded again. (Before step 5 the page said it
   // itself when its own requests went unanswered: content/core.ts noAnswer.)
   'not-responding': {

@@ -1,8 +1,7 @@
 // The extension's end of the link to Margin.app (docs/PROTOCOL.md; the app's
 // end is app/platforms/macos/shell/ExtensionLink.swift). While it's up, the app draws all of
-// Margin's UI around this copy's windows (pages never draw any): pages have
-// their box, which comes from the app's layout per window (setLayout), in
-// the windows the app draws over (`drawn`: a window it doesn't gets none).
+// Margin's UI around this copy's windows (pages never draw any), and says
+// which windows it draws over (`drawn`).
 // Safari's copies, and Chrome's and Edge's on the Mac and Windows (shared/capabilities.ts linksApp), in the copy that owns its profile's state.
 //
 // Getting linked (the app can't open anything into the extension, and the
@@ -37,11 +36,11 @@
 //
 // What pages see (storage.local appLink, shared/app-link.ts): 'linked', then
 // on a drop 'reconnecting' for GONE_MS (the app keeps the last picture,
-// dimmed, saying it's reconnecting), and only then 'off' (pages lose their
-// box: no Margin then), with `why: 'no-link'` while Margin.app is running but
-// sends no link (NO_LINK_ASK_MS). The app saying goodbye (it quit) is 'off' at once. Each
-// window's layout is kept there too (pages new and old read it), and the
-// window's page in front is told at once (`appLayout`).
+// dimmed, saying it's reconnecting), and only then 'off' (no Margin then),
+// with `why: 'no-link'` while Margin.app is running but sends no link
+// (NO_LINK_ASK_MS). The app saying goodbye (it quit) is 'off' at once. Whether
+// the app draws each window is kept there too (pages new and old read it), and
+// the window's page in front is told at once (`appDrawn`).
 //
 // The background must be a page here: in a worker WebKit's `new WebSocket`
 // never returns and hangs the background until Safari restarts
@@ -84,7 +83,7 @@ const OPEN_WAIT_MS = 2000; // a socket opening, and the app's welcome
 const KEPT_WAIT_MS = 400; // the kept link, at a start
 export const RECONNECT_MS = [250, 500, 1000, 2000, 4000];
 export const ASK_MS = [5000, 60_000]; // asked again after this long, doubling up to the second
-export const GONE_MS = 6000; // a drop not mended in this long: 'off', pages lose their box
+export const GONE_MS = 6000; // a drop not mended in this long: 'off'
 export const LAUNCH_ASK_MS = 500; // the app being started on demand: asked again this often…
 export const LAUNCH_ASKS = 20; // …this many times (10 s), then as any other time
 // Margin.app running but sending no link (the handler said appOpen, nothing came): asked
@@ -350,8 +349,8 @@ export function createLink({
   let hung: { count: number, at: number } | null = null;
   let toldWorker = false;
   // What pages see (storage.local appLink).
-  // (`why`, `offAt`, `offUntil`: while off, why; `lastLayouts`: the layouts of an older epoch, kept for the first paint.)
-  let pageState: { state: string, epoch: any, at: number, layouts: Record<number, any>, drawn: Record<number, boolean>, lastLayouts?: Record<number, any>, why?: string, offAt?: number, offUntil?: number } = { state: 'off', epoch: null, at: 0, layouts: {}, drawn: {} };
+  // (`why`, `offAt`, `offUntil`: while off, why.)
+  let pageState: { state: string, epoch: any, at: number, drawn: Record<number, boolean>, why?: string, offAt?: number, offUntil?: number } = { state: 'off', epoch: null, at: 0, drawn: {} };
   let goneTimer: Timer | null = null;
   let layoutTimer: Timer | null = null;
   let stateWrite = Promise.resolve();
@@ -382,17 +381,14 @@ export function createLink({
   };
 
   // ---- what pages see -------------------------------------------------------
-  // A new state is written at once; layouts a moment later (several at once in one write).
-  // A new epoch's hello, or off: what the app said of each window is another epoch's (its
-  // layouts and whether it draws them), and goes; a new link says it again. The layouts are kept
-  // as `lastLayouts`, only for the first paint's registration to start from (registered.ts
-  // chooseLayout): no page takes its box from them.
+  // A new state is written at once; what the app draws a moment later (several at once in one write).
+  // A new epoch's hello, or off: what the app said of each window (whether it draws it) is another
+  // epoch's, and goes; a new link says it again.
   function setPageState(state: string) {
     if (state === pageState.state && pageState.epoch === epoch) return;
     const changed = state !== pageState.state;
     const fresh = state === 'off' || (state === 'linked' && epoch !== pageState.epoch);
-    const last = Object.keys(pageState.layouts ?? {}).length ? pageState.layouts : pageState.lastLayouts ?? {};
-    pageState = { ...pageState, state, epoch, at: Date.now(), ...(fresh ? { layouts: ofEpoch(pageState.layouts, epoch), drawn: {}, lastLayouts: last } : {}) };
+    pageState = { ...pageState, state, epoch, at: Date.now(), ...(fresh ? { drawn: {} } : {}) };
     if (state !== 'off') {
       delete pageState.why;
       delete pageState.offAt;
@@ -401,7 +397,6 @@ export function createLink({
     if (changed) for (const cb of [...listeners]) cb(state);
     writePageState(0);
   }
-  const ofEpoch = (layouts: Record<number, any>, at: string | null) => Object.fromEntries(Object.entries(layouts ?? {}).filter(([, l]) => at != null && l?.epoch === at));
   function writePageState(ms: number) {
     if (!isOwner()) return;
     clearTimeout(layoutTimer);
@@ -660,7 +655,7 @@ export function createLink({
     return failed(tried.how === 'sockets off' ? { socketsOff: true } : {});
   }
   // No app to link to: asked again later (and when a page starts, or the app
-  // says it's up). Pages lose their box once it's clear.
+  // says it's up). Pages hear it's off once it's clear.
   let launches = 0;
   let noLinks = 0;
   // `lost`: the handler's answer never came (and no link): asked again like `noLink`, a little
@@ -876,7 +871,7 @@ export function createLink({
     dropped(why);
     closeSocket(socket, why);
   }
-  // `bye`: the app said goodbye (it quit): pages lose their box at once, and
+  // `bye`: the app said goodbye (it quit): pages hear it's off at once, and
   // the app is asked for later. Else a drop: tried again.
   function dropped(why: string, { bye = false } = {}) {
     if (!ws) return;
@@ -934,8 +929,6 @@ export function createLink({
         return void send({ k: 'tock', at: Date.now() });
       case 'req':
         return void request(message);
-      case 'setLayout':
-        return setLayout(message);
       case 'drawn':
         return drawn(message);
       case 'parked':
@@ -983,19 +976,8 @@ export function createLink({
     if (epoch !== at) return;
     send({ k: 'reply', id, ...(answer && typeof answer === 'object' ? answer : { ok: true, result: answer ?? null }) });
   }
-  // Each window's layout, newest per window (a new epoch starts its count again).
-  function setLayout(m: Said) {
-    if (m.epoch !== epoch || !Number.isInteger(m.windowId) || !m.insets || !Number.isInteger(m.seq)) return;
-    const had = pageState.layouts[m.windowId];
-    if (had && had.epoch === m.epoch && had.seq >= m.seq) return;
-    const layout = { insets: m.insets, radius: m.radius ?? 0, radii: m.radii ?? null, container: m.container ?? null, mode: m.mode ?? 'fullscreen', seq: m.seq, epoch: m.epoch };
-    pageState = { ...pageState, layouts: { ...pageState.layouts, [m.windowId]: layout } };
-    writePageState(T.layoutWrite);
-    for (const cb of [...layoutListeners]) cb(m.windowId, layout);
-  }
-  const layoutListeners = new Set<any>();
   // Whether the app draws over a window (its binding, not whether its overlay is on screen now):
-  // false, its pages get no box (shared/app-link.ts layoutFor). Only a change is sent; this
+  // false, Margin's keys there go the unlinked way (shared/app-link.ts drawsWindow). Only a change is sent; this
   // epoch's only.
   function drawn(m: Said) {
     if (m.epoch !== epoch || !Number.isInteger(m.windowId) || typeof m.on !== 'boolean') return;
@@ -1029,15 +1011,13 @@ export function createLink({
   const parkedListeners = new Set<any>();
   // A window gone: what the app said of it goes too.
   function forgetWindows(ids: string[]) {
-    const layouts = { ...pageState.layouts };
     const drawnNow = { ...pageState.drawn };
     let changed = false;
     for (const id of ids) {
-      if (id in layouts) { delete (layouts as Record<string, unknown>)[id]; changed = true; }
       if (id in drawnNow) { delete (drawnNow as Record<string, unknown>)[id]; changed = true; }
     }
     if (!changed) return;
-    pageState = { ...pageState, layouts, drawn: drawnNow };
+    pageState = { ...pageState, drawn: drawnNow };
     writePageState(T.layoutWrite);
   }
 
@@ -1185,14 +1165,14 @@ export function createLink({
     flagsAt = Date.now();
     note(`windows report at ${clock(Date.now())}: ${flags(true) || 'no windows'}`);
   }
-  // Sent when any of it changed; a closed window's layout goes too.
+  // Sent when any of it changed; what the app said of a closed window goes too.
   async function windowsNow() {
     if (!ws || snapshotting) return;
     const at = epoch;
     const list = await windowList();
     if (!ws || epoch !== at) return;
     const ids = new Set(list.map((w) => w.windowId));
-    forgetWindows([...Object.keys(pageState.layouts), ...Object.keys(pageState.drawn ?? {})].filter((id) => !ids.has(Number(id))));
+    forgetWindows(Object.keys(pageState.drawn ?? {}).filter((id) => !ids.has(Number(id))));
     const json = JSON.stringify(list);
     if (json === lastWindows) return;
     lastWindows = json;
@@ -1361,8 +1341,7 @@ export function createLink({
       const ids = Array.isArray(wins) ? new Set(wins.map((w) => String(w?.id))) : null;
       const listed = (o: unknown) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([id]) => !ids || ids.has(id)));
       const off = before.state === 'off';
-      const last = before.layouts && typeof before.layouts === 'object' && Object.keys(before.layouts).length ? before.layouts : before.lastLayouts ?? {};
-      pageState = { state: off ? 'off' : 'reconnecting', epoch: null, at: Date.now(), layouts: off ? {} : listed(before.layouts), drawn: off ? {} : listed(before.drawn), lastLayouts: last };
+      pageState = { state: off ? 'off' : 'reconnecting', epoch: null, at: Date.now(), drawn: off ? {} : listed(before.drawn) };
     }
     if (pageState.state !== 'off') writePageState(0);
     return was;
@@ -1578,18 +1557,14 @@ export function createLink({
     linked: () => !!ws,
     // 'linked', 'reconnecting' or 'off', as pages see it.
     pageState: () => pageState.state,
-    layout: (windowId: number) => pageState.layouts[windowId] ?? null,
-    layouts: () => ({ ...pageState.layouts }),
-    // What the app said of each window, for the first paint (background/registered.ts): this
-    // epoch's layouts and whether it draws each window.
-    view: () => ({ epoch: pageState.epoch, layouts: { ...pageState.layouts }, drawn: { ...pageState.drawn }, lastLayouts: { ...pageState.lastLayouts } }),
+    // What the app said of each window this epoch: whether it draws it.
+    view: () => ({ epoch: pageState.epoch, drawn: { ...pageState.drawn } }),
     // Whether the app said it draws over the window (true, false), or hasn't said (undefined).
     drawn: (windowId: number | null | undefined) => (windowId == null ? undefined : pageState.drawn?.[windowId]),
     // Whether the app draws Margin around the window: linked or reconnecting, and not said
     // otherwise for it (shared/app-link.ts drawsWindow).
     drawsWindow: (windowId: number | null | undefined) => pageState.state !== 'off' && (windowId == null || pageState.drawn?.[windowId] !== false),
     onPageState(cb: (state: string) => void) { listeners.add(cb); return () => listeners.delete(cb); },
-    onLayout(cb: (windowId: number, layout: any) => void) { layoutListeners.add(cb); return () => layoutListeners.delete(cb); },
     onDrawn(cb: (windowId: number, on: boolean) => void) { drawnListeners.add(cb); return () => drawnListeners.delete(cb); },
     profile: () => profile,
     acked: () => acked,

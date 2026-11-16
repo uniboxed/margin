@@ -7,15 +7,12 @@
 // eight rows (then it scrolls, the selected row in view) with the board's
 // tags and each row's icon, inside the window with 200 tabs; "keep the frame
 // when hidden" off, the page edge to edge; nothing painted over the page's box
-// (on screen); one look in light and dark system modes; and the first paint
-// drawn around the box, not over it. `npm run test:theme`.
+// (on screen); and one look in light and dark system modes. `npm run test:theme`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, NEO } from './package.ts';
-import { firstPaintCss, layoutOwnCss } from '../../extension/shared/page-box.ts';
 import type { Harness, HarnessRt } from './harness.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
@@ -25,7 +22,6 @@ declare const __rt: HarnessRt;
 const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const script = harnessScript();
 const pkg = themeForPage(NEO);
-const FIRST_PAINT = firstPaintCss('neubrutalism', readFileSync(new URL('first-paint.css', `file://${NEO}`), 'utf8'));
 const INK = '#111111';
 const PAGE = '#ff00ff';
 
@@ -332,24 +328,6 @@ for (const [name, engine] of ENGINES) {
         assert.equal(await computed('.settings-form input.toggle', 'border-top-left-radius'), '999px');
         assert.equal(await computed('.settings-form .small', 'white-space'), 'nowrap');
         await ev(() => T.unmountRuntime());
-      });
-
-      await t.test('first paint: the card\'s border, shadow and ground around the box, nothing inside it', async () => {
-        const fp = await context.newPage();
-        await fp.setContent(`<!doctype html><html data-margin-at="neubrutalism"><head><meta charset="utf-8"><style>${FIRST_PAINT}\n${layoutOwnCss({ left: 291, top: 19, right: 19, bottom: 19, radius: 15 })}</style></head><body style="margin:0;background:${PAGE}"><p style="margin:0">a page</p></body></html>`);
-        await fp.waitForTimeout(60);
-        const shot = decodePng(await fp.screenshot());
-        assert.equal(shot.at(700, 450), PAGE, 'the page inside its box');
-        assert.equal(shot.at(292, 450), PAGE, 'right to its left edge');
-        assert.equal(shot.at(700, 20), PAGE, 'and its top');
-        assert.equal(shot.at(700, 17), INK, 'the border above');
-        assert.equal(shot.at(289, 450), INK, 'and at its left');
-        assert.equal(shot.at(1424, 450), INK, 'the hard shadow at its right');
-        assert.equal(shot.at(100, 450), '#ffd23f', 'the ground where the sidebar will be');
-        await fp.evaluate(() => document.documentElement.removeAttribute('data-margin-at'));
-        await fp.waitForTimeout(60);
-        assert.equal(decodePng(await fp.screenshot()).at(100, 450), PAGE, 'not marked for Neubrutalism: nothing');
-        await fp.close();
       });
 
       await t.test('Margin.app\'s own window with nothing hosted: its page area the launcher, opaque, never a see-through hole', async () => {
