@@ -163,10 +163,11 @@ final class OverlayPages {
         configuration.userContentController.addScriptMessageHandler(bridge, contentWorld: .page, name: "margin")
         configuration.preferences.isElementFullscreenEnabled = false
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-        // Issue #14, both off unless set (`defaults write com.unibox.margin <name> -bool YES`, then Margin restarted):
-        // MarginOverlayFullFrameRate draws the overlay at the display's rate (WebKit holds an app's web view near
-        // 60 fps), MarginFrameProbe logs how often the overlay really draws while something moves. Measured first.
-        if UserDefaults.standard.bool(forKey: "MarginOverlayFullFrameRate") {
+        // Issue #14: Margin's own web views draw at the display's rate (WebKit holds an app's web view near 60 fps;
+        // Safari and other apps keep their own setting). On by default since 2026-11-16; `defaults write
+        // com.unibox.margin MarginOverlayFullFrameRate -bool NO` (then Margin restarted) keeps WebKit's 60 fps.
+        // MarginFrameProbe (off unless set) logs how often the page really draws while something moves.
+        if UserDefaults.standard.object(forKey: "MarginOverlayFullFrameRate") as? Bool ?? true {
             Diagnostics.note("overlay frame rate: \(OverlayFrameRate.uncap(configuration.preferences))")
         }
         if UserDefaults.standard.bool(forKey: "MarginFrameProbe") {
