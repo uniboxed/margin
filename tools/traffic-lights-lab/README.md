@@ -73,4 +73,53 @@ xcrun dyld_info -disassemble /System/Library/Frameworks/AppKit.framework/AppKit
 Inspect `SLSSetWindowClipShape`, `SLSCopyWindowClipShape`, `-[NSThemeFrame setButtonRevealAmount:]`,
 `-[NSView _setHidden:setNeedsDisplay:]` and `-[NSWindow _findStandardWindowButton:]`. A symbol's presence
 is not evidence of cross-process authority. Neither return code zero nor an AX readback alone proves
-visual disappearance. No pixel capture or real Safari/Edge hiding is claimed.
+visual disappearance. The initial probe does not capture pixels. The visual follow-up below adds
+actual recordings, including a negative external AX result in Edge.
+
+## Visual follow-up: native demo, Chrome, Edge and TextEdit
+
+```sh
+swiftc -parse-as-library -warnings-as-errors tools/traffic-lights-lab/visual.swift -o /tmp/margin-buttons-visual
+/tmp/margin-buttons-visual --case chrome --output /absolute/new/output/directory
+/tmp/margin-buttons-visual --case chrome --output /absolute/new/output/directory --run
+```
+
+Cases are `native`, `chrome`, `edge`, and `textedit`; default is dry run. External apps must not already
+be running. Browser profiles are temporary. TextEdit gets one temporary text file in a fresh instance
+with restoration suppressed only by its launch argument. Each case shows baseline, hide request,
+resize while held, and restoration, then closes only its owned window/process. `/usr/bin/open` is used
+only to launch the TextEdit document; external hiding and resizing use AX. No browser extension,
+automation protocol, plugin or injected code is used.
+
+SCK window sharing replaced the external apps' traffic lights with a sharing capsule before any AX
+mutation. Child-window inclusion and a display-bound window filter did not fix this observer effect.
+Those invalid-baseline recordings are retained separately, never counted as button hiding or as valid
+negative visibility evidence. No privacy indicator or setting was disabled.
+
+Accepted external recordings instead sample only the exact owned window with `SLSHWCaptureWindowList`,
+option `0x0200` (nominal resolution), after checking Screen Recording permission. Every frame rechecks
+its owner PID. Every PNG and monotonic timestamp is retained; ffmpeg encodes the measured durations.
+Actual sampling rates are about seven fps, not a 30 fps performance claim. The native positive control
+uses a 30 fps exact-window SCK stream. No audio or full desktop is captured. Public SCK and AppKit
+getters/fixture creation are instrumentation; the hiding mechanism remains AX/private AppKit only.
+
+The local media is under `test-results/traffic-lights-visual-2026-11-16/` (ignored by Git).
+`comparison.mp4` joins native, Chrome, Edge and TextEdit. The four named `.mp4` files are individual
+presentations; labels and a magnifier are outside the original window pixels. Raw recordings, PNGs,
+timestamps and recorded source snapshots are retained. Native recording-start callback timing is not
+frame-perfect synchronization; no latency measurement is claimed.
+
+```sh
+swiftc -warnings-as-errors tools/traffic-lights-lab/video-bands.swift -o /tmp/margin-video-bands
+python3 tools/traffic-lights-lab/render-recordings.py /absolute/run/directory /tmp/margin-video-bands
+python3 tools/traffic-lights-lab/verify-visual.py /absolute/run/directory
+```
+
+The renderer expects the native source at the root and accepted external sources under `sampled/`.
+The verifier checks native hidden/hit states, decoded pixel differences, red/yellow/green pixels in
+every external phase, windowed state, timestamps and cleanup. It is scoped to these fixtures, not a
+general image classifier. Committed metadata and hashes are under `results/visual-25G342/`.
+The native recording predates external capture corrections; its original source snapshot is preserved.
+Earlier failed discovery and sharing-capsule recordings remain separate. All accepted external clips
+show controls remaining visible under AXHidden, including through resize; private native hiding works
+only in the owned test app.

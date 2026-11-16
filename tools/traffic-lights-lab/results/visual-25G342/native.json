@@ -1,0 +1,178 @@
+[
+  {
+    "event" : "recording-started",
+    "pid" : 803,
+    "scope" : "desktop-independent exact window; no audio",
+    "uptime" : 253217.19289312503,
+    "videoSeconds" : 0.11873591665062122,
+    "window" : 73053
+  },
+  {
+    "event" : "phase",
+    "label" : "Baseline — buttons visible",
+    "uptime" : 253217.19359004169,
+    "videoSeconds" : 0.11943283330765553
+  },
+  {
+    "buttons" : [
+      {
+        "alpha" : 1,
+        "hidden" : false,
+        "hit" : true,
+        "type" : 0
+      },
+      {
+        "alpha" : 1,
+        "hidden" : false,
+        "hit" : true,
+        "type" : 1
+      },
+      {
+        "alpha" : 1,
+        "hidden" : false,
+        "hit" : true,
+        "type" : 2
+      }
+    ],
+    "event" : "snapshot",
+    "frame" : "{{150, 160}, {900, 602}}",
+    "label" : "baseline",
+    "uptime" : 253217.19397279169,
+    "videoSeconds" : 0.11981545831076801,
+    "windowed" : true
+  },
+  {
+    "event" : "private-hide",
+    "hidden" : true,
+    "uptime" : 253219.77654120835,
+    "videoSeconds" : 2.7023856666637585
+  },
+  {
+    "event" : "phase",
+    "label" : "Private API — three buttons hidden",
+    "uptime" : 253219.77855062502,
+    "videoSeconds" : 2.7043958749854937
+  },
+  {
+    "buttons" : [
+      {
+        "alpha" : 1,
+        "hidden" : true,
+        "hit" : false,
+        "type" : 0
+      },
+      {
+        "alpha" : 1,
+        "hidden" : true,
+        "hit" : false,
+        "type" : 1
+      },
+      {
+        "alpha" : 1,
+        "hidden" : true,
+        "hit" : false,
+        "type" : 2
+      }
+    ],
+    "event" : "snapshot",
+    "frame" : "{{150, 160}, {900, 602}}",
+    "label" : "hide-attempt",
+    "uptime" : 253219.77961820835,
+    "videoSeconds" : 2.7054617499816231,
+    "windowed" : true
+  },
+  {
+    "event" : "phase",
+    "label" : "Resize while hide request remains active",
+    "uptime" : 253222.97039266667,
+    "videoSeconds" : 5.8962361249723472
+  },
+  {
+    "buttons" : [
+      {
+        "alpha" : 1,
+        "hidden" : true,
+        "hit" : false,
+        "type" : 0
+      },
+      {
+        "alpha" : 1,
+        "hidden" : true,
+        "hit" : false,
+        "type" : 1
+      },
+      {
+        "alpha" : 1,
+        "hidden" : true,
+        "hit" : false,
+        "type" : 2
+      }
+    ],
+    "event" : "snapshot",
+    "frame" : "{{150, 115}, {980, 647}}",
+    "label" : "resized",
+    "uptime" : 253222.971265375,
+    "videoSeconds" : 5.897108124976512,
+    "windowed" : true
+  },
+  {
+    "event" : "private-hide",
+    "hidden" : false,
+    "uptime" : 253225.63173704169,
+    "videoSeconds" : 8.5575809166475665
+  },
+  {
+    "event" : "phase",
+    "label" : "Restored — original buttons and size",
+    "uptime" : 253225.63612841669,
+    "videoSeconds" : 8.5619729166501202
+  },
+  {
+    "buttons" : [
+      {
+        "alpha" : 1,
+        "hidden" : false,
+        "hit" : true,
+        "type" : 0
+      },
+      {
+        "alpha" : 1,
+        "hidden" : false,
+        "hit" : true,
+        "type" : 1
+      },
+      {
+        "alpha" : 1,
+        "hidden" : false,
+        "hit" : true,
+        "type" : 2
+      }
+    ],
+    "event" : "snapshot",
+    "frame" : "{{150, 160}, {900, 602}}",
+    "label" : "restored",
+    "uptime" : 253225.63747891667,
+    "videoSeconds" : 8.5633226666541304,
+    "windowed" : true
+  },
+  {
+    "completeFrames" : 329,
+    "event" : "recording-finished",
+    "uptime" : 253228.48970900002,
+    "video" : "native-raw.mp4",
+    "videoSeconds" : 11.415555583313107
+  },
+  {
+    "event" : "private-hide",
+    "hidden" : false,
+    "uptime" : 253228.49216954169,
+    "videoSeconds" : 11.418014833325287
+  },
+  {
+    "event" : "cleanup",
+    "profileRemoved" : true,
+    "targetGone" : true,
+    "uptime" : 253228.56391120836,
+    "videoSeconds" : 11.489756666647736
+  }
+]

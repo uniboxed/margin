@@ -1,0 +1,116 @@
+{
+  "os": "macOS 26.7.3 / 25G342 arm64",
+  "date": "2026-11-16",
+  "permissions": {
+    "accessibility": true,
+    "screenRecording": true
+  },
+  "apps": {
+    "chrome": "157.0.8103.79",
+    "edge": "157.0.4341.57",
+    "textedit": "1.20",
+    "native": "owned AppKit fixture"
+  },
+  "media": {
+    "native": {
+      "path": "test-results/traffic-lights-visual-2026-11-16/native.mp4",
+      "sha256": "60dcf49dee8149bcf88725f49cb133f5efcb2b86162ab7bad2957e95e22c6608",
+      "seconds": 11.2,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 1074
+        }
+      ],
+      "raw_video_sha256": "c73908738e361e77fae216f209e80f707b212b1eb287fcb9706b2dd301fd8d5e"
+    },
+    "chrome": {
+      "path": "test-results/traffic-lights-visual-2026-11-16/chrome.mp4",
+      "sha256": "b04c02aed29bca596e27e13e58820729ca3e1a8b9c074d21ecc0615ab56b5093",
+      "seconds": 10.733333,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 1144
+        }
+      ],
+      "raw_frames_sha256_index": "c8f700146577fca5122788f5075dcaf324ad5b8ac7b4057648a020991def9783",
+      "timestamps_sha256": "8731425a9ae95b966249058a28deb1d7b2443f1d45e5a5a7b3f4943a569f0c0e",
+      "raw_video_sha256": "1596a84fa4a62db808e0dbd9c7cd20671d141c3b967f9032ad3859e90eed1c14"
+    },
+    "edge": {
+      "path": "test-results/traffic-lights-visual-2026-11-16/edge.mp4",
+      "sha256": "9d2b6754d6860cc7e006c76b146a0fdcc6fa46274d5a4c78b84d092abe7c6b95",
+      "seconds": 10.733333,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 1144
+        }
+      ],
+      "raw_frames_sha256_index": "b932f65f29f9f15c18ed6454f738f0e19541cc8da0282aba16f909929ed69fe6",
+      "timestamps_sha256": "8a68f2a647c7c089526615b180dfc473d295bb761bdf7712c7698189c6697ce6",
+      "raw_video_sha256": "40ad2105bc0ff0dc34e7092c6bb1d312cc25f271f9ba4ecad0efa572dd3d9d51"
+    },
+    "textedit": {
+      "path": "test-results/traffic-lights-visual-2026-11-16/textedit.mp4",
+      "sha256": "73c03b765ab4c1d97f119f155d629b04dfe82134fbe67a17fa4f8b15c818e7db",
+      "seconds": 10.866667,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 1144
+        }
+      ],
+      "raw_frames_sha256_index": "ad3a959aa6b2eb4d8b74fc7a9b199cc35ce1e2ac9becc51c77bab17da20f4d49",
+      "timestamps_sha256": "08b7efcf325aa257c86ad77ab667c622434f967b085ceb59ce9faa827a51cc94",
+      "raw_video_sha256": "939f63d622526883bf2b92a7dba9f4197e34601ec35e42822f08abe060d495e6"
+    },
+    "comparison": {
+      "path": "test-results/traffic-lights-visual-2026-11-16/comparison.mp4",
+      "sha256": "e013f2025cfbe9bab6421313225a552d704777cd722df0981b257561a50167b7",
+      "seconds": 43.533333,
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 1144
+        }
+      ]
+    }
+  },
+  "current_sources_sha256": {
+    "tools/traffic-lights-lab/visual.swift": "8de3738ddae9659822a868bccdb95c66c7fbfc6eeceed907f1951abd4b45dab3",
+    "tools/traffic-lights-lab/video-bands.swift": "061b4b97a857e08b03f1f57bd9cd75e9bce22491473fe0976ae85740d67fc13e",
+    "tools/traffic-lights-lab/render-recordings.py": "59ee63d6aa0d8f6eb2b7dbd8d58b6ccca8badb79c8a7c655075454a237268798",
+    "tools/traffic-lights-lab/verify-visual.py": "f1a024614482ad20d0efb898951f535feb3002e43965878c92fafd7d9607c4d3"
+  },
+  "recorded_native_source_sha256": "01ac9e8a491cc89cbcd290404c8f44e3f916382088990a38a22e1f1e9f266a74",
+  "recorded_external_source_sha256": "8de3738ddae9659822a868bccdb95c66c7fbfc6eeceed907f1951abd4b45dab3",
+  "tested_external_binary_sha256": "975f02add4baffcbb316c17aa2ea42d0844977224d1654f72ec65f513f8592bd",
+  "notes": [
+    "Native source predates external discovery/recording corrections; exact source snapshots are kept with local media",
+    "SCK browser streams (including child/display variants) replace lights with sharing capsule before mutation; retained as invalid baselines, excluded from accepted media",
+    "One earlier Chrome discovery setup failed and is retained separately",
+    "External videos are variable-rate encodes of real PNGs and monotonic acquisition intervals, about seven fps; native is an SCK stream at 30 fps",
+    "Native baseline controls were inactive gray; active/inactive/hover coverage is not claimed",
+    "Labels/magnifiers are outside the original window image; raw media retained",
+    "No audio, full desktop, indicator suppression, injection or product behavior change"
+  ],
+  "validation": {
+    "npm test": "1031 pass",
+    "npm run test:e2e": "attempted; absent pinned browser revisions; setup failures, terminated at 10-second outer bound",
+    "visual": "four accepted recordings independently decoded and verified; see pixel-checks.json"
+  },
+  "evidence_sha256": {
+    "native.json": "f8fe768fe5108e87c818926322041694d6228de6c853b0972265d9d43d4b8c47",
+    "chrome.json": "e9ebedea21f7dd47b48e259c9aa17c18f4f07b43e4941e05b20e87a3a8094f7c",
+    "edge.json": "437064b5d8a9c07152d313267ed7d272be40f8ea7cd5e2fb12176128386464e8",
+    "textedit.json": "53fd460b8d97cbeae13bf55a86e2e8919ac9f82228b148a1de4fcc440c0fcf24",
+    "pixel-checks.json": "b721657ba8e0c760bb20860080eeb56bd54cef735d0b2bd281afc48f4aa752bc"
+  }
+}

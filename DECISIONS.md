@@ -4864,3 +4864,35 @@ uncommitted Playwright executable-path adapter, installed Chromium 1248 passes t
 chrome-build/site subset 19/19. This is partial validation, not a passing full suite or Phase 4
 acceptance. An initial concurrent-build shared-dist race was corrected for the subsequent attempts;
 no source/lockfile/test assertion was changed to accommodate this environment. No app install or PR.
+
+### Visual traffic-light tests and the recording observer effect (2026-11-16)
+
+User explicitly requests visual tests on several apps and recordings. AX and Screen Recording access
+both preflight true. Record one native positive control and disposable Chrome/Edge/TextEdit windows;
+refuse an already running target app. No personal profile/window, injection or app install is used.
+
+The native private-only hide is visibly successful, survives resize and restores with the title intact.
+Initial Chrome discovery fails; preserve it and bind the directly launched browser PID in the follow-up.
+SCK external window capture then replaces the lights with a sharing capsule before any hide request.
+Child inclusion and display-bound inclusion do not fix that baseline. Preserve these invalid recordings;
+they prove neither hide success nor a valid visibility failure. No privacy indicator is disabled.
+
+Use checked private SLSHWCaptureWindowList (0x0200 nominal resolution), verifying exact test-window
+owner PID before every frame, with the existing capture permission. Save actual PNGs/timestamps and
+encode measured intervals. Accepted Chrome 157.0.8103.79, Edge 157.0.4341.57 and TextEdit 1.20 show all
+three lights throughout the held AXHidden request, resize and restoration. AX returns zero/non-settable
+as before. The recordings close the earlier visual-evidence gap for these bounded negative AX cases;
+they do not provide a native external hide backend or validate Safari.
+
+Accepted native/Chrome/Edge/TextEdit recordings contain 329 SCK-complete / 75 / 79 / 78 sampled frames.
+A separate decoder finds every traffic-light color in all twelve external phases. Native hide changes
+1,891 crop pixels above threshold; restored crop changes zero. Native hidden/hit/resize and AX windowed
+state agree. Window/document/profile/process cleanup passes. Source snapshots, raw frames, failed runs
+and presentation clips remain local under test-results/traffic-lights-visual-2026-11-16; committed
+metadata and hashes are in tools/traffic-lights-lab/results/visual-25G342. Annotations/magnification stay
+outside the original recording pixels. Sampled clips are about seven fps, not performance measurements.
+
+Fresh npm test passes 1,031 tests. Full npm run test:e2e is reattempted with a ten-second outer bound;
+setup fails with the same absent pinned Chromium 1254/WebKit 2388, then the owned run is terminated.
+No browser download and no full-suite pass claimed. New Swift visual/label tools compile with warnings
+as errors, video pixel/state/cleanup verification passes. No shipping app change or PR.

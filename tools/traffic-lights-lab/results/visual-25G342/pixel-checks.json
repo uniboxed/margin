@@ -1,0 +1,113 @@
+{
+  "native": {
+    "duration": 11.18,
+    "frames": 329,
+    "baseline_vs_hidden_changed_pixels": 1891,
+    "baseline_vs_restored_changed_pixels": 0
+  },
+  "chrome": {
+    "duration": 10.719,
+    "frames": 75,
+    "button_color_pixels": [
+      {
+        "phase": "Baseline \u2014 buttons visible",
+        "red_pixels": 142,
+        "yellow_pixels": 145,
+        "green_pixels": 154
+      },
+      {
+        "phase": "External AXHidden request held",
+        "red_pixels": 142,
+        "yellow_pixels": 145,
+        "green_pixels": 154
+      },
+      {
+        "phase": "Resize while hide request remains active",
+        "red_pixels": 118,
+        "yellow_pixels": 122,
+        "green_pixels": 131
+      },
+      {
+        "phase": "Restored \u2014 original buttons and size",
+        "red_pixels": 141,
+        "yellow_pixels": 145,
+        "green_pixels": 153
+      }
+    ],
+    "sample_intervals_seconds": {
+      "min": 0.12949824999668635,
+      "max": 0.1844369166647084,
+      "mean": 0.14389302759003397
+    }
+  },
+  "edge": {
+    "duration": 10.727,
+    "frames": 79,
+    "button_color_pixels": [
+      {
+        "phase": "Baseline \u2014 buttons visible",
+        "red_pixels": 136,
+        "yellow_pixels": 138,
+        "green_pixels": 144
+      },
+      {
+        "phase": "External AXHidden request held",
+        "red_pixels": 136,
+        "yellow_pixels": 138,
+        "green_pixels": 144
+      },
+      {
+        "phase": "Resize while hide request remains active",
+        "red_pixels": 117,
+        "yellow_pixels": 120,
+        "green_pixels": 126
+      },
+      {
+        "phase": "Restored \u2014 original buttons and size",
+        "red_pixels": 136,
+        "yellow_pixels": 139,
+        "green_pixels": 145
+      }
+    ],
+    "sample_intervals_seconds": {
+      "min": 0.1190598749963101,
+      "max": 0.18408974999329075,
+      "mean": 0.1361880892095192
+    }
+  },
+  "textedit": {
+    "duration": 10.857,
+    "frames": 78,
+    "button_color_pixels": [
+      {
+        "phase": "Baseline \u2014 buttons visible",
+        "red_pixels": 288,
+        "yellow_pixels": 275,
+        "green_pixels": 299
+      },
+      {
+        "phase": "External AXHidden request held",
+        "red_pixels": 288,
+        "yellow_pixels": 275,
+        "green_pixels": 299
+      },
+      {
+        "phase": "Resize while hide request remains active",
+        "red_pixels": 221,
+        "yellow_pixels": 219,
+        "green_pixels": 230
+      },
+      {
+        "phase": "Restored \u2014 original buttons and size",
+        "red_pixels": 286,
+        "yellow_pixels": 276,
+        "green_pixels": 293
+      }
+    ],
+    "sample_intervals_seconds": {
+      "min": 0.11667058334569447,
+      "max": 0.1667336666432675,
+      "mean": 0.1405362830086847
+    }
+  }
+}

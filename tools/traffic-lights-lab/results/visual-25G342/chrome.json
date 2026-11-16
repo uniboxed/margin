@@ -1,0 +1,194 @@
+[
+  {
+    "event" : "launched",
+    "pid" : 7806,
+    "uptime" : 253700.32116529168
+  },
+  {
+    "event" : "window-geometry",
+    "position" : "{22, 56}",
+    "size" : "{900, 650}",
+    "uptime" : 253701.52389475002
+  },
+  {
+    "button" : "AXCloseButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{34, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 253701.525318625,
+    "window" : "73285"
+  },
+  {
+    "button" : "AXMinimizeButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{57, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 253701.52627029168,
+    "window" : "73285"
+  },
+  {
+    "button" : "AXZoomButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{80, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 253701.52706254169,
+    "window" : "73285"
+  },
+  {
+    "bundle" : "com.google.Chrome",
+    "event" : "target",
+    "pid" : 7806,
+    "uptime" : 253701.5286994167,
+    "window" : 73285
+  },
+  {
+    "event" : "recording-started",
+    "pid" : 7806,
+    "scope" : "SLSHWCaptureWindowList exact-window sampled frames, 0x0200 nominal resolution; actual timestamps; no audio",
+    "uptime" : 253702.65264483335,
+    "videoSeconds" : 0.081068541679996997,
+    "window" : 73285
+  },
+  {
+    "event" : "phase",
+    "label" : "Baseline — buttons visible",
+    "uptime" : 253702.65305587501,
+    "videoSeconds" : 0.08147929166443646
+  },
+  {
+    "event" : "snapshot",
+    "fullscreen" : false,
+    "fullscreenRead" : 0,
+    "label" : "baseline",
+    "uptime" : 253702.6534394167,
+    "videoSeconds" : 0.081862791674211621
+  },
+  {
+    "button" : "AXCloseButton",
+    "event" : "ax-hide",
+    "result" : 0,
+    "settable" : false,
+    "settableResult" : 0,
+    "uptime" : 253705.17952487501,
+    "videoSeconds" : 2.6079503333312459
+  },
+  {
+    "button" : "AXMinimizeButton",
+    "event" : "ax-hide",
+    "result" : 0,
+    "settable" : false,
+    "settableResult" : 0,
+    "uptime" : 253705.18173220835,
+    "videoSeconds" : 2.6101567916630302
+  },
+  {
+    "button" : "AXZoomButton",
+    "event" : "ax-hide",
+    "result" : 0,
+    "settable" : false,
+    "settableResult" : 0,
+    "uptime" : 253705.18305420835,
+    "videoSeconds" : 2.6114782083313912
+  },
+  {
+    "event" : "phase",
+    "label" : "External AXHidden request held",
+    "uptime" : 253705.18380845836,
+    "videoSeconds" : 2.6122322916635312
+  },
+  {
+    "event" : "snapshot",
+    "fullscreen" : false,
+    "fullscreenRead" : 0,
+    "label" : "hide-attempt",
+    "uptime" : 253705.18465458334,
+    "videoSeconds" : 2.6130782499967609
+  },
+  {
+    "event" : "resize",
+    "result" : 0,
+    "uptime" : 253708.25275804169,
+    "videoSeconds" : 5.6811834583349992
+  },
+  {
+    "event" : "phase",
+    "label" : "Resize while hide request remains active",
+    "uptime" : 253708.25392004169,
+    "videoSeconds" : 5.6823439166764729
+  },
+  {
+    "event" : "snapshot",
+    "fullscreen" : false,
+    "fullscreenRead" : 0,
+    "label" : "resized",
+    "uptime" : 253708.25571416668,
+    "videoSeconds" : 5.6841377916571219
+  },
+  {
+    "event" : "ax-restore",
+    "result" : 0,
+    "uptime" : 253710.76838537501,
+    "videoSeconds" : 8.1968097916687839
+  },
+  {
+    "event" : "ax-restore",
+    "result" : 0,
+    "uptime" : 253710.76917241668,
+    "videoSeconds" : 8.1975964166631456
+  },
+  {
+    "event" : "ax-restore",
+    "result" : 0,
+    "uptime" : 253710.76973904169,
+    "videoSeconds" : 8.198162583343219
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 253710.77280245835,
+    "videoSeconds" : 8.2012262916541658
+  },
+  {
+    "event" : "phase",
+    "label" : "Restored — original buttons and size",
+    "uptime" : 253710.77333012503,
+    "videoSeconds" : 8.2017535833292641
+  },
+  {
+    "event" : "snapshot",
+    "fullscreen" : false,
+    "fullscreenRead" : 0,
+    "label" : "restored",
+    "uptime" : 253710.77445950001,
+    "videoSeconds" : 8.2028830833442044
+  },
+  {
+    "completeFrames" : 75,
+    "event" : "recording-finished",
+    "uptime" : 253713.54501829168,
+    "video" : "chrome-raw.mp4",
+    "videoSeconds" : 10.973442624992458
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 253713.54593516668,
+    "videoSeconds" : 10.974358833336737
+  },
+  {
+    "event" : "close-owned-window",
+    "result" : 0,
+    "uptime" : 253713.56008387503,
+    "videoSeconds" : 10.988508208334679
+  },
+  {
+    "event" : "cleanup",
+    "profileRemoved" : true,
+    "targetGone" : true,
+    "uptime" : 253713.70310979168,
+    "videoSeconds" : 11.131535041669849
+  }
+]

@@ -2108,3 +2108,11 @@ Future acceptance checks before adopting a native backend:
   A transparent patch cannot erase native buttons; label covering separately from native hiding.
 - On a different macOS build, expect the private probe to refuse. Recheck signatures and independently
   measured effects before extending the build gate; finding an exported symbol is insufficient.
+
+Visual follow-up completed on 25G342 (2026-11-16): native AppKit positive control, Chrome 157,
+Edge 157 and TextEdit 1.20, each baseline/hide/resize/restore. Review the local combined recording at
+`test-results/traffic-lights-visual-2026-11-16/comparison.mp4`, or the four named individual clips.
+The native buttons hide/restore; all three external apps retain visible buttons during AXHidden.
+Independent decoded-pixel, windowed-state, timestamp and cleanup checks pass. Raw material is retained.
+Earlier SCK recordings with sharing capsules are invalid baselines and are not acceptance evidence.
+Real Safari, repeated host/titlebar recreation, crash recovery and other OS/display states remain open.

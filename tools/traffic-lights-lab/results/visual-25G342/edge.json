@@ -1,0 +1,194 @@
+[
+  {
+    "event" : "launched",
+    "pid" : 8364,
+    "uptime" : 253732.04653479168
+  },
+  {
+    "event" : "window-geometry",
+    "position" : "{22, 56}",
+    "size" : "{900, 650}",
+    "uptime" : 253733.45221175
+  },
+  {
+    "button" : "AXCloseButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{34, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 253733.45374250002,
+    "window" : "73313"
+  },
+  {
+    "button" : "AXMinimizeButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{57, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 253733.45477112502,
+    "window" : "73313"
+  },
+  {
+    "button" : "AXZoomButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{80, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 253733.455888625,
+    "window" : "73313"
+  },
+  {
+    "bundle" : "com.microsoft.edgemac",
+    "event" : "target",
+    "pid" : 8364,
+    "uptime" : 253733.45785729168,
+    "window" : 73313
+  },
+  {
+    "event" : "recording-started",
+    "pid" : 8364,
+    "scope" : "SLSHWCaptureWindowList exact-window sampled frames, 0x0200 nominal resolution; actual timestamps; no audio",
+    "uptime" : 253734.55573366667,
+    "videoSeconds" : 0.076108875015052035,
+    "window" : 73313
+  },
+  {
+    "event" : "phase",
+    "label" : "Baseline — buttons visible",
+    "uptime" : 253734.55620508335,
+    "videoSeconds" : 0.076579958345973864
+  },
+  {
+    "event" : "snapshot",
+    "fullscreen" : false,
+    "fullscreenRead" : 0,
+    "label" : "baseline",
+    "uptime" : 253734.55661558334,
+    "videoSeconds" : 0.076990375004243106
+  },
+  {
+    "button" : "AXCloseButton",
+    "event" : "ax-hide",
+    "result" : 0,
+    "settable" : false,
+    "settableResult" : 0,
+    "uptime" : 253737.07294933335,
+    "videoSeconds" : 2.5933247916691471
+  },
+  {
+    "button" : "AXMinimizeButton",
+    "event" : "ax-hide",
+    "result" : 0,
+    "settable" : false,
+    "settableResult" : 0,
+    "uptime" : 253737.07506858336,
+    "videoSeconds" : 2.595443416677881
+  },
+  {
+    "button" : "AXZoomButton",
+    "event" : "ax-hide",
+    "result" : 0,
+    "settable" : false,
+    "settableResult" : 0,
+    "uptime" : 253737.07555183335,
+    "videoSeconds" : 2.5959267500147689
+  },
+  {
+    "event" : "phase",
+    "label" : "External AXHidden request held",
+    "uptime" : 253737.07588429167,
+    "videoSeconds" : 2.5962589583359659
+  },
+  {
+    "event" : "snapshot",
+    "fullscreen" : false,
+    "fullscreenRead" : 0,
+    "label" : "hide-attempt",
+    "uptime" : 253737.07623854169,
+    "videoSeconds" : 2.5966132500034291
+  },
+  {
+    "event" : "resize",
+    "result" : 0,
+    "uptime" : 253740.09347283334,
+    "videoSeconds" : 5.6138485416595358
+  },
+  {
+    "event" : "phase",
+    "label" : "Resize while hide request remains active",
+    "uptime" : 253740.09403279168,
+    "videoSeconds" : 5.6144077083445154
+  },
+  {
+    "event" : "snapshot",
+    "fullscreen" : false,
+    "fullscreenRead" : 0,
+    "label" : "resized",
+    "uptime" : 253740.09439329169,
+    "videoSeconds" : 5.6147681250004098
+  },
+  {
+    "event" : "ax-restore",
+    "result" : 0,
+    "uptime" : 253742.68346904169,
+    "videoSeconds" : 8.2038441666809376
+  },
+  {
+    "event" : "ax-restore",
+    "result" : 0,
+    "uptime" : 253742.68404616669,
+    "videoSeconds" : 8.2044209166779183
+  },
+  {
+    "event" : "ax-restore",
+    "result" : 0,
+    "uptime" : 253742.68445916669,
+    "videoSeconds" : 8.204834166681394
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 253742.68748579168,
+    "videoSeconds" : 8.2078607083240058
+  },
+  {
+    "event" : "phase",
+    "label" : "Restored — original buttons and size",
+    "uptime" : 253742.68827875002,
+    "videoSeconds" : 8.2086534583359025
+  },
+  {
+    "event" : "snapshot",
+    "fullscreen" : false,
+    "fullscreenRead" : 0,
+    "label" : "restored",
+    "uptime" : 253742.69082366669,
+    "videoSeconds" : 8.2111985000083223
+  },
+  {
+    "completeFrames" : 79,
+    "event" : "recording-finished",
+    "uptime" : 253745.46322091669,
+    "video" : "edge-raw.mp4",
+    "videoSeconds" : 10.983596708334517
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 253745.47019450003,
+    "videoSeconds" : 10.99056949999067
+  },
+  {
+    "event" : "close-owned-window",
+    "result" : 0,
+    "uptime" : 253745.48533887501,
+    "videoSeconds" : 11.005715000006603
+  },
+  {
+    "event" : "cleanup",
+    "profileRemoved" : true,
+    "targetGone" : true,
+    "uptime" : 253745.70523854168,
+    "videoSeconds" : 11.225615625007777
+  }
+]

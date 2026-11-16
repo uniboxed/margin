@@ -60,7 +60,7 @@ Actions such as AXPress or AXShowMenu operate the control; they do not expose a 
 All recorded fixture phases stay outside native fullscreen. The Chromium window reports fullscreen=false
 before and after its tests, its AX close action succeeds, the launched process exits, its temporary
 profile is removed, and restoring the previous foreground app returns success. These are metadata
-observations; no pixel capture or human-observed browser disappearance is asserted.
+observations from the initial spike; the visual follow-up below adds independently decoded pixels.
 
 ## The private method that works, and its boundary
 
@@ -153,15 +153,15 @@ cover design is the next bounded research target. That is a different guarantee 
 
 ## Verification still required
 
-The owned private solution needs on-screen observation with the complete titlebar intact, repeated
-titlebar reconstruction/tabbing, active/inactive and hover behavior, and crash/detach restoration in a
-real cooperating host. The external browser test needs independent visual observation; its AX results
-alone do not establish pixel visibility. Real Safari and Edge behavior was not tested or claimed.
+The visual follow-up now checks the owned private solution on screen with the complete titlebar intact
+and restoration through resize. It still needs repeated titlebar reconstruction/tabbing, active/inactive
+and hover behavior, and crash/detach restoration in a real cooperating host. The follow-up supplies pixels
+for Chrome, Edge and TextEdit. Real Safari behavior remains untested.
 Other macOS builds, multiple displays, Spaces/Mission Control, RTL layouts, scaled displays and custom
 traffic-light implementations remain unvalidated. The current implementation stays research-only.
 
 The three main limitations are the **process-execution boundary**, **private-ABI/host-specific behavior**,
-and **lack of end-to-end visual validation in the intended third-party apps**.
+and **lack of a working native hide backend in unmodified third-party apps**.
 
 ## Repository validation
 
@@ -181,3 +181,49 @@ runs the Chromium-only `chrome-build.test.ts` and `site.test.ts`: **19/19 pass**
 with installed Chromium 156.0.8078.4, not equivalent to the complete 150-test suite and not validation
 of native hiding. The adapter changes only Playwright launch executable paths; source/lockfiles and
 test assertions are unchanged. No production browser behavior was modified to make tests pass.
+
+## Visual follow-up (2026-11-16)
+
+Four accepted recordings now show baseline, hide request, resize and restoration on the same 25G342
+host. Native state or successful AXFullScreen reads confirm all recorded phases stay windowed.
+
+| App | Control path | Accepted visual result |
+| --- | --- | --- |
+| Native AppKit test app | Private in-process button lookup/hidden setter | Three controls disappear, stay hidden through resize and return; the title stays |
+| Google Chrome 157.0.8103.79 | External AXHidden=true on each button | All three controls remain visible in every phase |
+| Microsoft Edge 157.0.4341.57 | Same external AX request | Controls remain visible in every phase |
+| TextEdit 1.20 | Same external AX request | Controls remain visible in every phase |
+
+The first Chrome setup could not discover its disposable window and stopped. The follow-up binds the
+exact directly launched browser PID instead of relying on the running-app list. That setup failure is
+retained and is not a button-control result.
+
+Recording also introduced an observer effect: external window SCK streams replaced the traffic lights
+with macOS's sharing capsule before any AX write. Neither child inclusion nor a display-bound window
+filter restored the baseline. Those recordings are unsuitable for judging visibility and remain separate.
+No privacy indicator, persistent setting or system protection was disabled.
+
+Accepted external clips use permission-checked `SLSHWCaptureWindowList` snapshots of only the exact
+owned test window, verifying owner PID before every frame. The declaration is also used by
+[yabai](https://github.com/asmvik/yabai/blob/master/src/misc/extern.h); `0x0200` nominal resolution is
+specified in [WebKit's SPI header](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/PAL/pal/spi/cg/CoreGraphicsSPI.h).
+Local stub/common-path disassembly was checked first. Real PNGs and monotonic timestamps are retained,
+and playback uses measured sample intervals (about seven captures/second). These are sampled window
+recordings, not 30 fps performance or physical-display continuity measurements. The native case uses
+an SCK stream at 30 fps and has a separate recorded source snapshot.
+
+Visual inspection confirms controls in each accepted real-app baseline and attempt. Independent
+video decoding finds red, yellow and green pixels in the titlebar region in all twelve real-app phases.
+The native baseline-versus-hidden crop changes 1,891 pixels above a per-channel threshold of 18;
+baseline-versus-restored changes zero. Native hidden/hit readback agrees. These bounded checks do not
+establish behavior in every app, window state or OS version.
+
+The native clip has 329 SCK complete frames; Chrome/Edge/TextEdit have 75/79/78 timestamped acquired
+frames. The early sampled logs call this field `completeFrames`; it is an acquired-PNG count there,
+not an SCFrameStatus assertion. All owned windows/processes and temporary profiles/documents are
+cleaned up. No existing app window is used or mutated.
+
+Local media: `test-results/traffic-lights-visual-2026-11-16/`. The combined clip presents native, Chrome,
+Edge, then TextEdit. Presentation labels and enlarged recorded-pixel crops sit outside the window;
+raw sources remain. Metadata, pixel checks, hashes and instructions are in
+`tools/traffic-lights-lab/results/visual-25G342/` and its README. No product behavior changes.
