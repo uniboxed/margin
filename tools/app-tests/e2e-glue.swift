@@ -102,6 +102,8 @@ final class GlueHostWorld: HostSystem {
     return true
   }
   func activate(pid: pid_t, window: Int) async -> Bool { false }
+  func close(pid: pid_t, window: Int) async -> Bool { false }
+  func isUIKitApp(pid: pid_t) -> Bool { false }
   func safariSidebar(pid: pid_t) async -> HostSidebar { .closed }
   func pressSafariSidebar(pid: pid_t) async -> Bool { true }
   func safariAutoShowsToolbar() -> Bool? { true }
@@ -324,6 +326,13 @@ func glueScenario() async {
   check("Calculator: no launcher under its window (its field would take the keys), no field of Margin's has them", noLauncher && !c.pageWantsKeyboard, focused)
   check("Calculator: Margin's window kept right below its window", c.below == calcWindow && c.belowOrders >= 1 && engine.windowedShown == calcWindow,
         "below \(String(describing: c.below)) orders \(c.belowOrders) shown \(String(describing: engine.windowedShown)) calc \(calcWindow) keys \(c.pageWantsKeyboard)")
+  // (The engine asks Margin's window's page to measure at every look while it waits for a layout at its whole width:
+  // a size the window took isn't measured until a frame is drawn, which can be seconds late. The page measures at once.)
+  let measuresBefore = await js(c.webView, "return marginApp.stats().measures") as? Int ?? -1
+  c.remeasure()
+  let measuredAgain = await waitJS(c.webView, "return marginApp.stats().measures > \(measuresBefore)")
+  check("Calculator: Margin's window's page measures when asked (no frame needed)", measuresBefore >= 0 && measuredAgain && c.layout?.outside == false && abs((c.layout?.width ?? 0) - display.width) <= 1,
+        "\(measuresBefore) \(String(describing: c.layout))")
 
   // ---- the overlay path off ----
   shell.track()

@@ -71,7 +71,8 @@ final class HostEngine {
         var placeSettle = 0.1 // ...or as soon as its bounds changed and then held this long (the size it took: its own limits)
         var parkWait = 0.6 // two tries of 300 ms, as the parker
         var exitWait = 7.0 // out of full screen (an app animates it)
-        var quitWait = 5.0
+        var quitWait = 6.0 // (an iPad app with a window open quits after its own 5 s watchdog: seen out 6 ms after a 5 s wait)
+        var closeWait = 1.0 // an iPad app's window closed by its close button before its quit: pressed, then gone
         var every = 0.02
         var tolerance: CGFloat = 1
         var safariBundle = safariIdentifier
@@ -263,7 +264,7 @@ final class HostEngine {
             for id in order { await self.closeNow(id, why: "Margin quits") }
             await self.closeLeftSafariWindows()
             // (An app asked already by its window's close and still running isn't asked and waited for again: one polite
-            // quit each, 5 s at most each.)
+            // quit each, 6 s at most each.)
             for (pid, app) in self.launched where !self.quitAsked.contains(pid) { await self.quitApp(pid, bundle: app.bundleId) }
             if self.marginSpace > 0, let r = self.sys.reserved(space: self.marginSpace), !r.isZero { _ = self.sys.reserve(.zero, space: self.marginSpace) }
             await self.destroyLeftSpaces()
@@ -1212,9 +1213,12 @@ final class HostEngine {
             await restoreFrame(host)
             if shown == id { shown = nil }
         } else if host.phase == .shown || host.fullScreenSpace != nil { await backOut(host) }
-        if host.mode == .window || host.personApp { await returnHome(host) }
         let sharesApp = hosts.values.contains { $0.id != id && $0.pid == host.pid }
         let quits = host.launchedByMargin && !sharesApp
+        // An iPad app Margin quits: its window closed first, its frame back already (its quit waits 5 s for a window
+        // that's open: closeBeforeQuit). Closed, there's nothing to take home; not closed, it goes home as any.
+        let closed = quits && host.safariWindow == nil && sys.isUIKitApp(pid: host.pid) ? await closeBeforeQuit(host) : false
+        if !closed, host.mode == .window || host.personApp { await returnHome(host) }
         if let ext = host.safariWindow {
             // A window a copy made for Margin: a normal window first (out of its private Space onto the Desktop, out of
             // full screen), then closed by that copy and confirmed by the window server (before its Safari is quit, if
@@ -1256,6 +1260,39 @@ final class HostEngine {
         guard await isFullScreen(host) == true else { return }
         _ = await setFullScreen(host, false)
         _ = await wait(options.exitWait) { await self.isFullScreen(host) == false }
+    }
+
+    // An iPad or Mac Catalyst app's window closed before Margin quits that app (only one Margin started, never the
+    // person's): such an app's own quit hides its windows first, and for one started with no Dock icon that hide never
+    // comes while a window of its is ordered in, on any Space (its logs, 2026-11-15: FaceTime parked or given back to
+    // its Desktop, Maps parked: "App took too long to enter the background-only state", out after its own 5 s
+    // watchdog; FaceTime with no window ordered in: out in 0.5 s). Its frame is back first (closing saves it as it is).
+    // Accessibility presses its close button on the current Space (where it reads windows): a window elsewhere is
+    // brought there first, under the freeze. Gone by the window server's reading: true.
+    private func closeBeforeQuit(_ host: Host) async -> Bool {
+        let t0 = sys.now()
+        let frozen = holdFreeze()
+        defer { releaseFreeze(frozen) }
+        guard let current = sys.currentSpace(onDisplayOf: host.originalSpace ?? marginSpace) else { return false }
+        if sys.spaces(window: host.window)?.contains(current) != true {
+            host.away = true
+            guard sys.move(window: host.window, to: current), await wait(options.parkWait, { self.sys.spaces(window: host.window)?.contains(current) == true }) else {
+                Diagnostics.note("host: \(host.id): its window didn't come to the current Space to be closed: quit with it open")
+                return false
+            }
+            if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv); host.privateSpace = nil }
+            saveMarker()
+        }
+        // (Accessibility may list a window brought here a moment late: pressed again until it takes it.)
+        let pressed = await wait(options.closeWait, every: options.lookEvery) { await self.sys.close(pid: host.pid, window: host.window) }
+        guard pressed, await wait(options.closeWait, { self.sys.bounds(window: host.window) == nil }) else {
+            Diagnostics.note("host: \(host.id): its window didn't close by its close button in \(ms(since: t0)) ms (\(pressed ? "pressed" : "not pressed")): quit with it open")
+            return false
+        }
+        host.away = false
+        saveMarker()
+        Diagnostics.note("host: \(host.id): its window closed before its quit in \(ms(since: t0)) ms (an iPad app's quit waits 5 s for a window that's open)")
+        return true
     }
 
     // An app Margin started, quit (politely): once gone it's forgotten. One that doesn't quit (it may be asking about
@@ -1377,7 +1414,13 @@ final class HostEngine {
                 Diagnostics.note("host: \(host.id): opened from outside (LaunchServices \(code)): kept hosted")
                 emit(.outsideOpen(host.id))
             case HostCalls.promotedCode where host.launchedByMargin && !host.promoted:
-                promote(host, why: "LaunchServices \(code)")
+                // (LaunchServices' 561 says its type changed, not to what: an iPad app quitting makes itself a background
+                // app first, seen 2026-11-15 with FaceTime, the Dock saying "App background type did not change". A
+                // promotion whose policy reads regular only later is the poll's.)
+                switch sys.policy(pid: pid) {
+                case .regular?: promote(host, why: "LaunchServices \(code)")
+                case let p: Diagnostics.note("host: \(host.id): its type changed (LaunchServices \(code)), now \(p == .prohibited ? "a background app" : p == .accessory ? "still no Dock icon" : "unread")\(quitAsked.contains(pid) ? ", as it quits" : ""): not a Dock app")
+                }
             default: break
             }
         }

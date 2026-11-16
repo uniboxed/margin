@@ -19,6 +19,11 @@ protocol HostSystem: AnyObject {
     // Started with no Dock icon (only a fresh launch). True: asked; the engine waits for its pid.
     func launchDockless(bundleId: String, arguments: [String]) -> Bool
     func terminate(pid: pid_t) -> Bool // a polite quit (the app may ask about unsaved work), never a forced one
+    // An iPad or Mac Catalyst app (UIKit's, its bundle's Info.plist has UIDeviceFamily): its quit first hides its
+    // windows itself, which never finishes for one started with no Dock icon while a window of its is ordered in (in
+    // any Space): it waits out its own 5 s watchdog (FaceTime and Maps, 2026-11-15, their logs: "App took too long to
+    // enter the background-only state"); with no window open it quits at once.
+    func isUIKitApp(pid: pid_t) -> Bool
     var onAppQuit: ((pid_t) -> Void)? { get set }
 
     // ---- windows, through Accessibility: read, full screen set, a window-mode host's frame set ----
@@ -37,6 +42,8 @@ protocol HostSystem: AnyObject {
     func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool
     // Its app in front and the window raised and made its main one (AXRaise, AXMain): never a click. True: asked.
     func activate(pid: pid_t, window: Int) async -> Bool
+    // Closed as its close button would (AXPress on its AXCloseButton, an action, never a click). True: asked.
+    func close(pid: pid_t, window: Int) async -> Bool
 
     // ---- the window server ----
     // Every window of `pid` on every Space (CGWindowListCopyWindowInfo .optionAll): Accessibility lists only the
@@ -240,6 +247,17 @@ nonisolated final class HostAX: @unchecked Sendable {
         }
     }
 
+    // Its close button pressed (an action, never a click).
+    func close(pid: pid_t, window: Int) async -> Bool {
+        guard !refuses, AXIsProcessTrusted() else { return false }
+        return await withCheckedContinuation { c in
+            queue.async {
+                guard let e = self.element(pid, window), let b = self.attr(e, kAXCloseButtonAttribute), CFGetTypeID(b) == AXUIElementGetTypeID() else { return c.resume(returning: false) }
+                c.resume(returning: AXUIElementPerformAction(b as! AXUIElement, kAXPressAction as CFString) == .success)
+            }
+        }
+    }
+
     func forget(pid: pid_t) { queue.async { self.elements = self.elements.filter { $0.value.pid != pid } } }
 }
 
@@ -312,6 +330,13 @@ final class RealHostSystem: HostSystem {
         ax.forget(pid: pid)
         return a.terminate()
     }
+
+    func isUIKitApp(pid: pid_t) -> Bool {
+        guard let url = NSRunningApplication(processIdentifier: pid)?.bundleURL, let info = Bundle(url: url)?.infoDictionary else { return false }
+        return info["UIDeviceFamily"] != nil
+    }
+
+    func close(pid: pid_t, window: Int) async -> Bool { await ax.close(pid: pid, window: window) }
 
     func windows(pid: pid_t) async -> [HostWindow]? { await ax.windows(pid: pid) }
     func window(pid: pid_t, number: Int) async -> HostWindow? { await ax.window(pid: pid, number: number) }

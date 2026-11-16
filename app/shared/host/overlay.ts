@@ -705,6 +705,9 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
       // The window's mode, or the sidebar alone in Margin's own window: measured again after this drawing (a theme
       // whose drawing doesn't change with it changes nothing the watcher sees, and the app waits for that layout).
       if (msg?.type === 'windows' || msg?.type === 'pageOutside') { followOutside(); queueMicrotask(measureNow); }
+      // The app asks for a measure now: the window took a size its page hasn't drawn yet (no frame since, so no resize
+      // event; seen 2026-11-15 after a hosted tile left: 4.8 s), and the web view's size is what a measure reads.
+      if (msg?.type === 'measure') measureNow();
       // The first state after a hello without one: the theme can draw now.
       if (!before && host?.getState() && !runtime && pendingTheme) mounting = mounting.then(() => mount(pendingTheme));
     });

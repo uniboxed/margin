@@ -40,10 +40,24 @@ final class FakeHostedWindow: HostedWindow {
     func untile() { untiles += 1; onUntile?() }
     func keepBelow(_ number: Int?) { guard number != below else { return }; below = number; belows.append(number) }
     // (As the real one: from its layout now, while hosting in full screen; window mode: its own page area, its whole width.)
+    // `stale`: its page's last layout is from before the window took its whole width (no frame drawn since), so window
+    // mode has no placement of its own until the page measures; `measuresAfter`: asks to measure until it does (nil:
+    // never, its web content not answering either).
+    var stale = false
+    var measuresAfter: Int? = 1
+    var remeasures = 0
+    func remeasure() {
+        remeasures += 1
+        if stale, let n = measuresAfter, remeasures >= n { stale = false }
+    }
     var hostedPlacement: HostPlacement? {
         guard hosting, isFullScreen, let page = MarginWindowGeometry.hostedPageRect(display: FakeHostWorld.display, layout: layout, right: 8) else { return nil }
-        if hostingWindowed { return HostPlacement(page: page, area: FakeHostWorld.display, tileWidth: 0, windowed: true) }
+        if hostingWindowed { return stale ? nil : HostPlacement(page: page, area: FakeHostWorld.display, tileWidth: 0, windowed: true) }
         return HostPlacement(page: page, area: FakeHostWorld.display, tileWidth: MarginWindowGeometry.tileWidth(layout))
+    }
+    var hostedPlacementWorkedOut: HostPlacement? {
+        guard hosting, hostingWindowed, isFullScreen, let page = MarginWindowGeometry.dockedPageRect(content: FakeHostWorld.display, layout: layout, right: 8) else { return nil }
+        return HostPlacement(page: page, area: FakeHostWorld.display, tileWidth: 0, windowed: true)
     }
     func push(_ json: String) { pushed.append(json) }
     var tiles = 0
@@ -374,6 +388,28 @@ func hostedTests() {
         check("hosted full screen → window mode: FaceTime shown again, Margin's window its own layout, kept below it", engine.shown == ftId && window.hostingWindowed && window.below == ftWindow
               && w.bounds(window: ftWindow) == window.hostedPlacement?.page && w.hostedTiles.isEmpty, "\(session.done.suffix(4))")
 
+        // tile → window with the page's layout late (seen 2026-11-15: the tile gone, Margin's window its whole width,
+        // its page's last layout still the tile's for 4.8 s: the switch waited 3.2 s for it): asked to measure at every
+        // look, and worked out from its docked layout if it never does; well under a second either way
+        var slept = 0.0
+        session.sleep = { slept += $0; await Task.yield() }
+        window.onUntile = { w.marginWidth = 1512; window.stale = true }
+        for (asks, label) in [(2 as Int?, "measured after 2 asks"), (nil, "never measured: worked out")] {
+            run { _ = library.perform("activateTab", ["windowId": 1, "tabId": editNowItem]) }
+            window.remeasures = 0
+            window.measuresAfter = asks
+            slept = 0
+            run { _ = library.perform("activateTab", ["windowId": 1, "tabId": ftItem]) }
+            let expected = MarginWindowGeometry.hostedPageRect(display: FakeHostWorld.display, layout: window.layout, right: 8)
+            check("hosted tile → window, its page's layout late (\(label)): FaceTime shown at the page area in \(Int(slept * 1000)) ms of waiting, not 3 s",
+                  engine.shown == ftId && w.bounds(window: ftWindow) == expected && slept < (asks == nil ? 0.5 : 0.2) && window.remeasures >= (asks ?? 1)
+                  && session.done.contains { $0.contains(asks == nil ? "worked out from its docked layout" : "measured there after 2 asks") },
+                  "\(slept) \(window.remeasures) \(String(describing: w.bounds(window: ftWindow))) \(session.done.suffix(3))")
+            window.stale = false
+        }
+        window.onUntile = { w.marginWidth = 1512 }
+        session.sleep = { _ in await Task.yield() }
+
         // the page area moves (the sidebar toggled): placed again, not parked
         let moves = w.calls.filter { $0.hasPrefix("move \(ftWindow) ") }.count
         window.layout.left = 240
@@ -416,6 +452,14 @@ func hostedGeometryTests() {
     check("hosted: the right inset kept from a wide measure, else the top one",
           MarginWindowGeometry.hostedPageRect(display: display, layout: narrow, right: 12)?.maxX == 1500 && MarginWindowGeometry.hostedPageRect(display: display, layout: narrow, right: nil)?.maxX == 1504)
     check("hosted: on a display another display's left: in its coordinates", MarginWindowGeometry.hostedPageRect(display: CGRect(x: -1920, y: 0, width: 1920, height: 1080), layout: arcadia, right: 8)?.minX == -1660)
+    // Window mode at its whole width, its page's last layout still the tile's (the 2026-11-15 log: 250/8/0/8 in 250×933,
+    // the window 1512×949): the page area from that docked layout, the right inset as last measured with room.
+    let tileLayout = PageLayout(left: 250, top: 8, right: 0, bottom: 8, radius: 6, radii: [6, 6, 6, 6], width: 250, height: 933, mode: "fullscreen")
+    check("hosted: window mode worked out from the tile's layout: the content less its left, top and bottom insets and the right one kept",
+          MarginWindowGeometry.dockedPageRect(content: display, layout: tileLayout, right: 8) == CGRect(x: 250, y: 41, width: 1254, height: 933)
+          && MarginWindowGeometry.dockedPageRect(content: display, layout: tileLayout, right: nil) == CGRect(x: 250, y: 41, width: 1254, height: 933)
+          && MarginWindowGeometry.dockedPageRect(content: display, layout: arcadia, right: nil) == CGRect(x: 260, y: 41, width: 1244, height: 933)
+          && MarginWindowGeometry.dockedPageRect(content: CGRect(x: 0, y: 0, width: 200, height: 600), layout: arcadia, right: 8) == nil)
     check("hosted: a sidebar wider than the display: no page area", MarginWindowGeometry.hostedPageRect(display: CGRect(x: 0, y: 0, width: 200, height: 600), layout: arcadia, right: 8) == nil)
     check("hosted: a search's address: the engine Safari uses, as learned, else Google's", LibraryWindowSource.searchUrl("a b&c", settings: nil).hasPrefix("https://www.google.com/search?client=safari")
           && LibraryWindowSource.searchUrl("a b&c", settings: nil).contains("q=a%20b%26c")

@@ -62,7 +62,12 @@ protocol HostedWindow: AnyObject {
     var number: Int { get } // the window server's
     var isFullScreen: Bool { get }
     var hostedPlacement: HostPlacement? { get } // the page area, the display's area, its tile's width while hosting; nil until worked out
+    // Window mode at its whole width, when its page hasn't measured at that width yet: the page area from the last
+    // docked layout's insets (the sidebar's width, the theme's margins). Nil: no such layout, or not at its whole width.
+    var hostedPlacementWorkedOut: HostPlacement? { get }
     var pageAreaWhyNot: String { get } // why there's none yet, for the log
+    // Its page asked to measure where `<m-page>` sits now (a size it took without a frame drawn since: no resize event).
+    func remeasure()
     func toFullScreen()
     var fullScreenState: String { get } // for the log
     var layoutMode: String? { get } // the mode of the page's last layout
@@ -84,8 +89,16 @@ extension MarginWindowController: HostedWindow {
         if !hosting { return "not hosting" }
         guard let layout else { return "no layout from its page" }
         if !isFullScreen { return "not in full screen" }
-        if !layout.outside { return "no layout measured with the sidebar alone yet" }
         if layout.mode != "fullscreen" { return "its last layout is a \(layout.mode) one" }
+        if hostingWindowed {
+            let content = contentFrame, view = webView.frame.size
+            func size(_ s: CGSize) -> String { "\(Int(s.width))×\(Int(s.height))" }
+            let sizes = "its page measured at \(Int(layout.width))×\(Int(layout.height)), its content \(size(content.size)), its web view \(size(view))"
+            if layout.outside { return "no layout of its own yet (\(sizes))" }
+            if let area = hostDisplay, abs(content.width - area.width) > 1 { return "not at its whole width yet (\(sizes), the display \(Int(area.width)))" }
+            return "no layout at its size yet (\(sizes))"
+        }
+        if !layout.outside { return "no layout measured with the sidebar alone yet" }
         return "the window has no page rect (display \(hostDisplay.map { "\(Int($0.width))×\(Int($0.height))" } ?? "unknown"), layout \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)))"
     }
     func toFullScreen() { if !isFullScreen { toggleFullScreen() } }
@@ -113,6 +126,9 @@ final class HostedSession: LibraryDelegate {
         var linkWait = 20.0 // a Safari copy's link (a Safari Margin just started takes ~12 s: docs/MARGIN-APP.md)
         var fullScreenWait = 6.0 // Margin's window into full screen
         var pageWait = 3.0 // its page area worked out (the sidebar's tile measured)
+        // Window mode: its page measured at its whole width (asked again at every look), else the page area worked out
+        // from its docked layout (seen 2026-11-15: after a tile left, the page measured only 4.8 s later)
+        var windowLayoutWait = 0.4
         var every = 0.05
         var safariBundles: Set<String> = [safariIdentifier, "com.apple.SafariTechnologyPreview"]
         var closesRestoredSafariWindows = true // (Tirth, 2026-11-15) a Safari Margin started: its restored windows closed
@@ -327,8 +343,9 @@ final class HostedSession: LibraryDelegate {
         w.setWindowed(windowed)
         w.setHosting(true)
         hostingWindow = w.id
-        // (A layout measured with the sidebar alone, in full screen: comes once the page has heard `pageOutside`.)
-        guard await wait(options.pageWait, { w.hostedPlacement != nil }), let placement = w.hostedPlacement else {
+        // (A layout measured with the sidebar alone, in full screen: comes once the page has heard `pageOutside`. Asked
+        // to measure again at every look: a size the window took may not have been drawn yet, willWindow.)
+        guard await wait(options.pageWait, { if w.hostedPlacement != nil { return true }; w.remeasure(); return false }), let placement = w.hostedPlacement else {
             note("Margin's window \(w.id): no page area (\(w.pageAreaWhyNot))")
             return nil
         }
@@ -368,14 +385,36 @@ final class HostedSession: LibraryDelegate {
 
     // The engine is bringing a window-mode host into Margin's Space (nothing tiled beside Margin's window any more):
     // Margin's window its whole width and its own layout, its page area (from that layout) answered once it's measured.
+    // Its page measures again on its own only when a frame is drawn after the window took its new size, which can take
+    // seconds (seen 2026-11-15, the tile gone: the window 1512 wide, its page's last layout 250 wide for 4.8 s, until an
+    // unrelated push made it measure), so it's asked to measure at every look; still not measured there after
+    // `windowLayoutWait`, the page area is worked out from its docked layout (its page's next layout places it again
+    // if that differs).
     func willWindow() async -> HostPlacement? {
         guard let id = hostingWindow, let w = window(id) else { return nil }
         w.setWindowed(true)
         w.untile()
-        guard await wait(options.pageWait, { w.hostedPlacement?.windowed == true }), let placement = w.hostedPlacement else {
+        var asks = 0
+        func measured() -> Bool {
+            if w.hostedPlacement?.windowed == true { return true }
+            asks += 1
+            w.remeasure()
+            return false
+        }
+        let said = { asks == 0 ? "at once" : "after \(asks) ask\(asks == 1 ? "" : "s") to measure" }
+        if await wait(options.windowLayoutWait, measured), let placement = w.hostedPlacement {
+            note("Margin's window \(id): its whole width, its page measured there \(said())")
+            return placement
+        }
+        if let placement = w.hostedPlacementWorkedOut {
+            note("Margin's window \(id): its page not measured at its whole width within \(Int(options.windowLayoutWait * 1000)) ms (\(w.pageAreaWhyNot)): the page area worked out from its docked layout")
+            return placement
+        }
+        guard await wait(max(0, options.pageWait - options.windowLayoutWait), measured), let placement = w.hostedPlacement else {
             note("Margin's window \(id): no page area of its own for a window (\(w.pageAreaWhyNot)): the one it had is used")
             return nil
         }
+        note("Margin's window \(id): its whole width, its page measured there \(said())")
         return placement
     }
 

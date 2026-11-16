@@ -154,6 +154,15 @@ enum MarginWindowGeometry {
         return width >= 1 && height >= 1 ? CGRect(x: display.minX + left, y: display.minY + top, width: width, height: height) : nil
     }
 
+    // The page area in `content` (top left) from a docked layout measured at another size: its left, top and bottom
+    // insets, and `right` (as last measured with room for a page; else its own, else its top one). Nil: no room left.
+    static func dockedPageRect(content: CGRect, layout: PageLayout, right: Double?) -> CGRect? {
+        let left = CGFloat(max(0, layout.left)), top = CGFloat(max(0, layout.top)), bottom = CGFloat(max(0, layout.bottom))
+        let r = CGFloat(max(0, right ?? (hasPage(layout) ? layout.right : layout.top)))
+        let width = content.width - left - r, height = content.height - top - bottom
+        return width >= 1 && height >= 1 ? CGRect(x: content.minX + left, y: content.minY + top, width: width, height: height) : nil
+    }
+
     // A display's full-screen layout area (top left): its frame below the camera housing, where a full-screen
     // window's tiles go.
     static func fullScreenArea(_ screen: NSScreen) -> CGRect {

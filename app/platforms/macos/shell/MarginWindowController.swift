@@ -294,6 +294,22 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         return HostPlacement(page: page, area: area, tileWidth: MarginWindowGeometry.tileWidth(layout))
     }
 
+    // Window mode at its whole width with no layout measured there yet (its page draws a new size only with its next
+    // frame, which can be seconds late after a tile left: seen 2026-11-15): the page area from the last full-screen
+    // layout's insets, docked as every hosting layout is (the right one as last measured with room for a page).
+    var hostedPlacementWorkedOut: HostPlacement? {
+        guard hosting, hostingWindowed, isFullScreen, let layout, layout.mode == "fullscreen", let area = hostDisplay else { return nil }
+        let content = contentFrame
+        guard abs(content.width - area.width) <= 1, let page = MarginWindowGeometry.dockedPageRect(content: content, layout: layout, right: wideRight) else { return nil }
+        return HostPlacement(page: page, area: area, tileWidth: 0, windowed: true)
+    }
+
+    // Its page asked to measure now (overlay.ts `measure`): it reads the size the web view has, drawn or not.
+    func remeasure() {
+        guard hosting, asked else { return }
+        push(#"{"type":"measure"}"#)
+    }
+
     // The sidebar's tile now: the host is moving its window's tile in beside this one, alone in its Space meanwhile
     // (the only moment its size constraints change while hosting). The window's content no wider than the page's left
     // inset: macOS lays the tile out that wide.

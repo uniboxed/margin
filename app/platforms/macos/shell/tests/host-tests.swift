@@ -98,7 +98,27 @@ final class FakeHostWorld: HostSystem {
         return clock
     }
     func narrow(to width: CGFloat, after seconds: Double) { narrowing = (width, clock + seconds) }
-    func sleep(_ seconds: Double) async { clock += seconds; await Task.yield() }
+    func sleep(_ seconds: Double) async {
+        clock += seconds
+        for (pid, at) in uikitQuits where clock >= at { uikitQuits[pid] = nil; quitNow(pid) }
+        await Task.yield()
+    }
+
+    // iPad apps (FaceTime, Phone: UIKit's), as their logs show (2026-11-15): asked to quit with a window of theirs
+    // ordered in (any Space, a private one too), they make themselves a background app (LaunchServices' 561, their
+    // policy prohibited) and quit only after their own 5 s watchdog; with none, at once.
+    var uikit: Set<String> = ["com.apple.FaceTime", "com.apple.mobilephone"]
+    var uikitQuits: [pid_t: Double] = [:]
+    func isUIKitApp(pid: pid_t) -> Bool { apps[pid].map { uikit.contains($0.bundle) } ?? false }
+    // Its close button pressed by Accessibility: only for a window Accessibility reads on the current Space (when
+    // axCurrentOnly) and lists; the app saves its frame as it closes.
+    func close(pid: pid_t, window: Int) async -> Bool {
+        calls.append("close \(window)")
+        guard !fail.contains("ax"), !fail.contains("close"), let w = wins[window], w.pid == pid, !axCurrentOnly || onCurrent(window), axLists(window) || axSeen.contains(window) && onCurrent(window) else { return false }
+        if let bundle = apps[pid]?.bundle { saved[bundle] = w.frame ?? Self.defaultFrame; frameAtQuit[bundle] = w.frame ?? Self.defaultFrame }
+        closeWindow(window)
+        return true
+    }
 
     // ---- apps ----
     func running(bundleId: String) -> [HostApp] { apps.values.filter { $0.bundle == bundleId }.sorted { $0.pid < $1.pid }.map { HostApp(pid: $0.pid, bundleId: $0.bundle, launchedAt: $0.launchedAt) } }
@@ -137,6 +157,12 @@ final class FakeHostWorld: HostSystem {
         guard let a = apps[pid] else { return false }
         if let n = a.windows.first, let win = wins[n] { frameAtQuit[a.bundle] = win.frame ?? Self.defaultFrame }
         if a.refusesQuit { return true }
+        if uikit.contains(a.bundle), a.windows.contains(where: { wins[$0] != nil }) {
+            apps[pid]?.policy = .prohibited
+            listeners[pid]?(HostCalls.promotedCode)
+            uikitQuits[pid] = clock + 5.0
+            return true
+        }
         quitNow(pid)
         return true
     }
@@ -1265,8 +1291,60 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         let lines = said { hostRun { await e.quitAll() } }
         check("window mode: an app that doesn't quit within 5 s: asked politely once, left running, the log says why it may be",
               w.calls.filter { $0 == "terminate \(p)" }.count == 1 && w.apps[p] != nil
-              && lines.contains { $0.contains("didn't quit within 5 s (still no Dock icon; 1 other window of its own on screen (it may be asking something); Accessibility still answers for it)") },
+              && lines.contains { $0.contains("didn't quit within 6 s (still no Dock icon; 1 other window of its own on screen (it may be asking something); Accessibility still answers for it)") },
               "\(lines.filter { $0.contains("quit") })")
+    }
+
+    // ---- an iPad app (FaceTime) Margin quits: its window closed first, so its own quit doesn't wait out its 5 s
+    // watchdog (2026-11-15: parked, given back to its Desktop, then asked to quit: 5 s, and its 561 read as a promotion) ----
+    for path in ["parked", "shown"] {
+        let (w, e, _) = world()
+        _ = wired(e)
+        var events: [HostEvent] = []
+        e.onEvent = { events.append($0) }
+        _ = open(e, faceTime)
+        let p = pid(w, "com.apple.FaceTime"), n = window(w, "com.apple.FaceTime")
+        w.axCurrentOnly = true
+        if path == "parked" { w.axCurrentOnly = false; _ = open(e, notes); w.axCurrentOnly = true }
+        check("iPad app at quit (\(path)): FaceTime \(path) before Margin quits", path == "parked" ? w.wins[n]?.priv != nil : e.shown == faceTime.id)
+        w.calls = []
+        let freezes = w.freezes
+        let t0 = w.clock
+        let lines = said { hostRun { await e.quitAll() } }
+        let took = w.clock - t0
+        check("iPad app at quit (\(path)): its window closed by its close button before it was asked to quit, \(path == "parked" ? "brought to the current Space first (under the freeze), never onto its Desktop" : "where it was")",
+              at(w, "close \(n)") >= 0 && at(w, "close \(n)") < at(w, "terminate \(p)") && !w.calls.contains("move \(n) \(FakeHostWorld.desktop)")
+              && (path == "shown" || (at(w, "move \(n) \(FakeHostWorld.marginSpace)") >= 0 && at(w, "move \(n) \(FakeHostWorld.marginSpace)") < at(w, "close \(n)") && w.freezes > freezes)), "\(w.calls)")
+        check("iPad app at quit (\(path)): quit at once (\(Int(took * 1000)) ms in all, not its 5 s watchdog), its saved frame its own, nothing left",
+              took < 1 && w.apps[p] == nil && w.saved["com.apple.FaceTime"] == original && w.privates.isEmpty && clean(w)
+              && lines.contains { $0.contains("its window closed before its quit") } && !lines.contains { $0.contains("didn't quit") }, "\(took) \(w.calls) \(lines.filter { $0.contains("FaceTime") })")
+        check("iPad app at quit (\(path)): never taken for a Dock app", !events.contains(.promoted(faceTime.id)), "\(events)")
+    }
+    do {
+        // Its close button not taking (a sheet, Accessibility refusing): quit with its window open, as before, and its
+        // 561 (a background app now, as it quits) not taken for a promotion; out after its own watchdog.
+        let (w, e, _) = world()
+        _ = wired(e)
+        var events: [HostEvent] = []
+        e.onEvent = { events.append($0) }
+        _ = open(e, faceTime)
+        let p = pid(w, "com.apple.FaceTime")
+        w.fail = ["close"]
+        let lines = said { hostRun { await e.quitAll() } }
+        check("iPad app at quit, its close refused: asked to quit with its window open, its type change not a promotion, out by its own watchdog (seen quitting)",
+              w.calls.contains("terminate \(p)") && w.apps[p] == nil && !events.contains(.promoted(faceTime.id))
+              && lines.contains { $0.contains("its type changed (LaunchServices 561), now a background app, as it quits: not a Dock app") } && !lines.contains { $0.contains("didn't quit") },
+              "\(events) \(lines.filter { $0.contains("FaceTime") })")
+        check("iPad app at quit, its close refused: its frame still its own", w.saved["com.apple.FaceTime"] == original && w.frameAtQuit["com.apple.FaceTime"] == original)
+    }
+    do {
+        // An AppKit app (Calculator) isn't closed first: closing its windows would change what it restores.
+        let (w, e, _) = world()
+        _ = wired(e)
+        _ = open(e, calculator)
+        let p = pid(w, "com.apple.calculator")
+        hostRun { await e.quitAll() }
+        check("an AppKit app at quit: asked to quit with its window open, never closed first", w.calls.contains("terminate \(p)") && !w.calls.contains { $0.hasPrefix("close ") } && w.apps[p] == nil, "\(w.calls)")
     }
 
     // ---- placing a window: as soon as it's there, or as soon as it holds the size it took ----
