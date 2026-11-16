@@ -1,5 +1,5 @@
-// What macOS says about Spaces, for the profile handoff (docs/HANDOFF.md §3.2,
-// §6.7, §4.3): the active Space, each window's Spaces, every display's Spaces
+// What macOS says about Spaces, for the host (HostSystem.swift; first written for the profile handoff,
+// docs/HANDOFF.md §3.2, §6.7, §4.3): the active Space, each window's Spaces, every display's Spaces
 // (the full-screen ones, the Desktops, and how many displays are managed), and
 // the window server's own read of one window.
 //
@@ -16,9 +16,7 @@
 // - The window read is CGWindowListCopyWindowInfo(.optionIncludingWindow, n):
 //   public, no permission, nil when the window isn't listed.
 // - SkyLightSpaces refuses under MARGIN_APP_TESTS (every read nil, every
-//   bridge call false), as SkyLight's own wrappers do. FakeSpaceWorld is the
-//   tests' and the harness's: Spaces and windows in memory, the bridge's ops
-//   landing on a SwitchClock.
+//   bridge call false), as SkyLight's own wrappers do.
 // - Nothing here logs a title or an address: there are only numbers.
 
 import AppKit
@@ -208,114 +206,5 @@ final class SkyLightSpaces: SpaceReads, SpaceBridge {
     func remove(_ window: Int, from space: UInt64) -> Bool {
         guard canPark, let n = UInt32(exactly: window), n > 0 else { return false }
         return sky.bridgeRemove(windows: [n], fromSpaces: [space])
-    }
-}
-
-// ---- the stand-in ----
-
-// The tests' and the harness's Spaces: windows, displays and the active Space in memory. A bridge
-// op lands `lag` seconds after it's sent, on the clock, unless it's scripted not to. A window in a
-// private Space reads as in no user Space and off screen, as mask 7 reads it.
-final class FakeSpaceWorld: SpaceReads, SpaceBridge {
-    struct Window {
-        var pid: pid_t
-        var bounds: CGRect
-        var spaces: [UInt64] // every Space it's in, private ones too
-    }
-
-    var canPark = true
-    var active: UInt64?
-    var displayList: [DisplaySpaces]?
-    var windows: [Int: Window] = [:]
-    var displayOf: [String: CGRect] = [:] // display identifier → its frame (top left), for display(at:)
-    var lag: Double = 0.004
-    var dropNext = 0 // the next ops sent don't land at all (counted down per op)
-    var refuseAdds: [Bool] = [] // each add takes the next: true, its op couldn't be made (nothing sent)
-    var unknown = false // every Space read answers nil
-    var nextSpace: UInt64 = 2431
-    var createFails = false
-    private(set) var made: [UInt64] = [] // private Spaces made, in order
-    private(set) var destroyed: [UInt64] = []
-    private(set) var calls: [String] = [] // "create 2431", "add 5 → 2431", "remove 5 from 2431", "destroy 2431"
-
-    private let clock: SwitchClock
-
-    init(clock: SwitchClock) { self.clock = clock }
-
-    var privateSpaces: Set<UInt64> { Set(made).subtracting(destroyed) }
-
-    func activeSpace() -> UInt64? { unknown ? nil : active }
-
-    func spaces(of window: Int) -> [UInt64]? {
-        guard !unknown else { return nil }
-        guard let w = windows[window] else { return [] }
-        let hidden = Set(made)
-        return w.spaces.filter { !hidden.contains($0) }
-    }
-
-    func displays() -> [DisplaySpaces]? { unknown ? nil : displayList }
-
-    func window(_ number: Int) -> ServerWindow? {
-        guard let w = windows[number] else { return nil }
-        let onScreen = active.map { w.spaces.contains($0) } ?? false
-        return ServerWindow(number: number, pid: w.pid, bounds: w.bounds, onScreen: onScreen)
-    }
-
-    func display(at bounds: CGRect) -> String? {
-        displayOf.first { $0.value.contains(CGPoint(x: bounds.midX, y: bounds.midY)) }?.key
-    }
-
-    func createSpace() -> UInt64? {
-        guard canPark, !createFails else { return nil }
-        let space = nextSpace
-        nextSpace += 1
-        made.append(space)
-        calls.append("create \(space)")
-        return space
-    }
-
-    func destroySpace(_ space: UInt64) -> Bool {
-        guard canPark else { return false }
-        destroyed.append(space)
-        calls.append("destroy \(space)")
-        // A window still in it is left in no Space at all, as SkyLight would leave it.
-        for (n, var w) in windows where w.spaces.contains(space) {
-            w.spaces.removeAll { $0 == space }
-            windows[n] = w
-        }
-        return true
-    }
-
-    func add(_ window: Int, to space: UInt64) -> Bool {
-        guard canPark else { return false }
-        if !refuseAdds.isEmpty, refuseAdds.removeFirst() {
-            calls.append("add \(window) → \(space) refused")
-            return false
-        }
-        calls.append("add \(window) → \(space)")
-        land { w in w.spaces = [space] } (window)
-        return true
-    }
-
-    func remove(_ window: Int, from space: UInt64) -> Bool {
-        guard canPark else { return false }
-        calls.append("remove \(window) from \(space)")
-        land { w in w.spaces.removeAll { $0 == space } } (window)
-        return true
-    }
-
-    // A window coming back by itself (Margin.app gone, a Dock restart): into `space`, out of the rest.
-    func comeBack(_ number: Int, to space: UInt64) { windows[number]?.spaces = [space] }
-
-    private func land(_ change: @escaping (inout Window) -> Void) -> (Int) -> Void {
-        { [weak self] number in
-            guard let self else { return }
-            if self.dropNext > 0 { self.dropNext -= 1; return }
-            self.clock.after(self.lag) { [weak self] in
-                guard let self, var w = self.windows[number] else { return }
-                change(&w)
-                self.windows[number] = w
-            }
-        }
     }
 }

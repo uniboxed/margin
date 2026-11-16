@@ -618,21 +618,17 @@ func hostedGeometryTests() {
           && LibraryWindowSource.searchUrl("x", settings: ["safariSearch": ["template": "javascript:%s"]]).hasPrefix("https://www.google.com/"))
 }
 
-// The shell with hosting on: the library is the windows' source, the first run's space, no slot, no opening of the browser.
+// The shell: the library is the windows' source, the first run's space, the engine wired to the session.
 func hostedShellTests(script: URL) {
     let root = tempFolder("hosted-shell")
     defer { try? FileManager.default.removeItem(at: root) }
     var options = Shell.Options()
     options.harness = true
-    options.overlay.harness = true
     options.root = script.deletingLastPathComponent()
     options.dataRoot = root
-    options.hosted = true
-    options.slot = true
-    options.enter = true
     let w = FakeHostWorld()
     options.hostSystem = w
-    let shell = Shell(link: SocketLink(), windows: StubWindows(), apps: StubApps(), hotKeys: FakeRegistrar(), options: options)
+    let shell = Shell(link: SocketLink(), apps: StubApps(), hotKeys: FakeRegistrar(), options: options)
     defer { shell.stop {} }
     check("hosted shell: the host engine made on the harness's system", shell.host != nil && shell.library != nil)
     let source = shell.makeHostedSource()
@@ -642,11 +638,6 @@ func hostedShellTests(script: URL) {
     check("hosted shell: the engine's Safari windows are the copies'", shell.host?.requestSafariWindow != nil && shell.host?.closeSafariWindow != nil && shell.host?.safariFullScreen != nil && shell.host?.safariLinked != nil && shell.host?.loading != nil)
     check("hosted shell: Margin's window kept below the hosted window", shell.host?.keepAbove != nil)
     check("hosted shell: a palette pick goes to the session", shell.openApp != nil)
-    shell.startSlots(spaces: FakeSlotSpaces(), reads: nil)
-    check("hosted shell: no slot (Margin hosts the browser's window itself)", shell.slots == nil)
-    var entered: [EnterResult] = []
-    shell.enter { entered.append($0) }
-    check("hosted shell: opening Margin never opens the browser to draw over", entered.count == 1 && shell.entering == nil, "\(entered)")
     shell.track()
-    check("hosted shell: the window server's read makes no overlay", shell.overlays.isEmpty)
+    check("hosted shell: a read polls the host, nothing to come back for with nothing hosted or linked", shell.pollTimer == nil)
 }

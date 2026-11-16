@@ -171,18 +171,14 @@ extension Tests {
   // The setting: off, no library and no folder; on, the library opened and imported.
   static func shellChecks() {
     let appRoot = URL(fileURLWithPath: ProcessInfo.processInfo.environment["MARGIN_LIBRARY_JS"] ?? "../../dist/app/library.js").deletingLastPathComponent()
-    for hosted in [false, true] {
-      let root = tempFolder("library-shell")
-      defer { try? FileManager.default.removeItem(at: root) }
-      var options = Shell.Options()
-      options.harness = true
-      options.dataRoot = root
-      options.root = appRoot
-      options.hosted = hosted
-      let shell = Shell(link: SocketLink(), windows: StubWindows(), apps: StubApps(), hotKeys: FakeRegistrar(), options: options)
-      let made = FileManager.default.fileExists(atPath: Library.folder(in: root).path)
-      if hosted { check("library: MarginHosted on: the library opened and imported", shell.library?.isImported == true && made) }
-      else { check("library: MarginHosted off: no library, nothing made", shell.library == nil && !made) }
-    }
+    let root = tempFolder("library-shell")
+    defer { try? FileManager.default.removeItem(at: root) }
+    var options = Shell.Options()
+    options.harness = true
+    options.dataRoot = root
+    options.root = appRoot
+    let shell = Shell(link: SocketLink(), apps: StubApps(), hotKeys: FakeRegistrar(), options: options)
+    let made = FileManager.default.fileExists(atPath: Library.folder(in: root).path)
+    check("library: opened and imported with the shell", shell.library?.isImported == true && made)
   }
 }

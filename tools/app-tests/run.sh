@@ -1,54 +1,26 @@
 #!/bin/bash
 # Margin.app's shell (app/platforms/macos/shell/), tested with no browser: npm run test:app.
 #   unit: each app folder's own tests/ (app/platforms/macos/shell/tests/, app/platforms/macos/private/tests/,
-#         app/engines/webkit/safari/tests/): tests.swift, data-tests.swift and
-#         window-tests.swift, the shell's logic on its own (no
-#         window, no link), the lasting data's merge (tests/fixtures/data-merge/),
-#         its files (in a temporary folder) and its messages; spaces across
-#         profiles (profiles-tests.swift: the order, the names' file, the
-#         cross-profile switch against a fake world and clock); Safari's profile
-#         names and iCloud Tabs read from stand-ins for Safari's files
-#         (safari-profiles-tests.swift, cloud-tabs-tests.swift); macOS's private calls'
-#         launch check and wrappers against a fake resolver (private-calls-tests.swift);
-#         the handoff's freezer on a fake clock and fake functions (handoff-tests.swift);
-#         the Space reads, the parker and its cross-process self-test against a fake
-#         world and a stand-in child, nothing spawned, and the parking registry with its crash
-#         marker in a temporary folder (parking-tests.swift); the switch's setting in
-#         browser.json and its notices by kind (handoff-ui-tests.swift); the dev-only test hook
-#         against a fake world, and no title or address in the switch's lines (devhooks-tests.swift);
-#         the user themes' store and what the picker chose, read (theme-tests.swift, in a temporary folder);
-#         the app's own spaces with MarginHosted (library-tests.swift: its rules from dist/app/library.js in
-#         JavaScriptCore, its files and the import in temporary folders)
-#   e2e:  e2e.swift, the real link, shell and overlays (off screen, in an
-#         accessory app that never activates) against a stand-in for the
-#         extension (fake-extension.mts, Node), and a picture of the overlay
-#         drawing Arcadia (MARGIN_APP_SHOT, default build/overlay.png); then
-#         e2e-data.swift, the lasting data over the real link, in a temporary
-#         folder (never ~/Library/Application Support/Margin); and e2e-profiles.swift,
-#         two profiles' copies and the app driving a switch between them with
-#         stand-in windows, the close-based one with the handoff's gate off, then
-#         the handoff with stand-ins for macOS's Spaces, the parker and the freeze
-#         (parking, showing, the keys mid-switch, a wake, a parked window used, a
-#         dialog, the shown window closed, a crash's marker, quit); and e2e-windows.swift, which window is which with
-#         two profiles and several same-bounds windows, Spaces played by
-#         on-screen flags and the copies' focus flags lagging; and e2e-keyboard.swift,
-#         the overlay's keyboard and its page's focus through shows, put-aways and relinks;
-#         e2e-overlays.swift, overlays through a window closing, a link dropping and Safari's
-#         own sidebar sliding in; and e2e-cloud.swift, iCloud Tabs from a stand-in for
-#         Safari's file drawn live in the overlay; and e2e-themes.swift, a theme the overlay
-#         can't draw replaced by Arcadia, and said; and e2e-slot.swift, the slot: a layout reserved in its
-#         window's Space with a stand-in playing the window manager, the copy sent no insets, the page box
-#         for a window that won't take it, everything given back at quit; and e2e-enter.swift, opening Margin:
-#         its browser opened once, the window used last asked for in full screen, a failure when nothing links; and
-#         e2e-hosted.swift, Margin's own window (MarginHosted) off every display with the real page: its page area
-#         published, the pointer through it, the menu's New Tab opening the palette, its sidebar, full screen, resize;
-#         and e2e-glue.swift, the hosted parts joined: the library's first run, an app and a web item picked, the host
-#         engine on a stand-in window manager given the page area from the tiles, the copy's newWindow and hostShow
-# window-tests.swift's randomized runs take WINDOW_RUNS (default 300),
-# WINDOW_LAG (the flags' lag, default 1.2 s) and WINDOW_SEED (one run, printed).
-# Built with swiftc as the app target builds it (Swift 5, main actor by
-# default), no XCTest. Exits 1 if a check failed. Nothing shows on screen and
-# nothing reaches Safari. ./run.sh [unit|e2e|all] (default all).
+#         app/engines/webkit/safari/tests/): tests.swift and data-tests.swift, the shell's logic on its own (no
+#         window, no link), the lasting data's merge (tests/fixtures/data-merge/), its files (in a temporary folder)
+#         and its messages; a browser's profiles (profiles-tests.swift: the order, the names' file); Safari's profile
+#         names and iCloud Tabs read from stand-ins for Safari's files (safari-profiles-tests.swift,
+#         cloud-tabs-tests.swift); macOS's private calls' launch check and wrappers against a fake resolver
+#         (private-calls-tests.swift); the dev-only test hook against a fake world (devhooks-tests.swift); the user
+#         themes' store and what the picker chose, read (theme-tests.swift, in a temporary folder); the app's own
+#         spaces (library-tests.swift: its rules from dist/app/library.js in JavaScriptCore, its files and the import
+#         in temporary folders); the host engine on a stand-in window manager (host-tests.swift), the library, the
+#         engine and the Safari copies joined (hosted-tests.swift), Margin's own window (margin-window-tests.swift),
+#         installed apps (apps-tests.swift), Chrome's and Edge's relay (relay-tests.swift)
+#   e2e:  e2e.swift, the harness (a stand-in for the extension: fake-extension.mts, Node; scripted apps and keys);
+#         e2e-data.swift, the lasting data over the real link, in a temporary folder (never
+#         ~/Library/Application Support/Margin); e2e-hosted.swift, Margin's own window off every display with the real
+#         page: its page area published, the pointer through it, the menu's New Tab opening the palette, its sidebar,
+#         full screen, resize; and e2e-glue.swift, the hosted parts joined: the library's first run, an app and a web
+#         item picked, the host engine on a stand-in window manager given the page area from the tiles, the copy's
+#         newWindow and hostShow
+# Built with swiftc as the app target builds it (Swift 5, main actor by default), no XCTest. Exits 1 if a check
+# failed. Nothing shows on screen and nothing reaches Safari. ./run.sh [unit|e2e|all] (default all).
 # MARGIN_APP_TESTS is set for every binary here: macOS's private calls refuse to
 # run under it (PrivateCalls.swift), so no test calls one or freezes the screen.
 set -u
@@ -123,8 +95,7 @@ if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
   [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
-  build e2e e2e.swift e2e-data.swift e2e-profiles.swift e2e-windows.swift e2e-keyboard.swift e2e-overlays.swift e2e-cloud.swift e2e-themes.swift e2e-slot.swift e2e-enter.swift e2e-hosted.swift e2e-glue.swift "$FAKE_SAFARI" "${SHELL_SOURCES[@]}"
-  MARGIN_APP_ROOT="$PWD/../../dist/app" MARGIN_FAKE_EXTENSION="$PWD/fake-extension.mts" MARGIN_NODE="$NODE" \
-    MARGIN_APP_SHOT="${MARGIN_APP_SHOT:-$BUILD/overlay.png}" "$BUILD/e2e" || status=1
+  build e2e e2e.swift e2e-data.swift e2e-hosted.swift e2e-glue.swift "$FAKE_SAFARI" "${SHELL_SOURCES[@]}"
+  MARGIN_APP_ROOT="$PWD/../../dist/app" MARGIN_FAKE_EXTENSION="$PWD/fake-extension.mts" MARGIN_NODE="$NODE" "$BUILD/e2e" || status=1
 fi
 exit $status

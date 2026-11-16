@@ -179,14 +179,14 @@ function bundle(out: string, manifest: Record<string, any>, profile: Target) {
 // page's, run by Margin.app in JavaScriptCore: app/platforms/macos/shell/LibraryRules.swift). Safari's profile for now
 // (Margin 2 Phase 2 is Safari's; Chrome and Edge are Phase 5).
 export const LIBRARY_FILE = 'library.js';
-export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js', 'handoff-cover.html', 'handoff-cover.js', LIBRARY_FILE];
+export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js', LIBRARY_FILE];
 export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile?: Target } = {}) {
   const out = outDir instanceof URL ? fileURLToPath(outDir) : outDir;
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   // The page's entry and the extension's modules it imports, with the profile's engine's code.
   // And the library's rules (app/shared/library/library.ts: state/model.ts's, for the app's JavaScriptCore, LibraryRules.swift).
-  for (const [entry, from] of [['overlay', 'host'], ['handoff-cover', 'host'], ['library', 'library']]) buildSync({
+  for (const [entry, from] of [['overlay', 'host'], ['library', 'library']]) buildSync({
     entryPoints: [fileURLToPath(new URL(`app/shared/${from}/${entry}.ts`, root))],
     ...engineOptions(profile),
     bundle: true,
@@ -200,7 +200,6 @@ export function buildApp(outDir: string | URL, { profile = 'safari' }: { profile
     logLevel: 'warning',
   });
   cpSync(fileURLToPath(new URL('app/shared/host/overlay.html', root)), `${out}/overlay.html`);
-  cpSync(fileURLToPath(new URL('app/shared/host/handoff-cover.html', root)), `${out}/handoff-cover.html`);
   writeFileSync(`${out}/${FALLBACK_FILE}`, fallbackScript());
   return out;
 }

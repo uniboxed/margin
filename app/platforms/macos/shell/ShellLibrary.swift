@@ -1,12 +1,8 @@
-// The library in the shell (Library.swift): with `MarginHosted` on (Shell.Options.hosted, read in forApp), the app's
-// own spaces, pins, folders and items, opened at launch from data/app beside the profiles' sets, with the rules from
-// the app's page folder (Resources/app/library.js, or a harness's dist/app), and every profile's set imported into it
-// the first time (Library.importOnce: once, its marker kept, the profiles' files never written). Off, nothing here
-// runs: no file is read or made, and every profile's copy keeps its own spaces exactly as before.
-//
-// What the library is for comes in the next phases (docs/MARGIN-APP.md): Margin's own window draws it
-// (`library.snapshot()`, `library.perform(_:_:)`, `library.observe`), and the hosting shows what it asks for
-// (`library.delegate`). Until then it's kept, imported, and logged.
+// The library in the shell (Library.swift): the app's own spaces, pins, folders and items, opened at launch from
+// data/app beside the profiles' sets, with the rules from the app's page folder (Resources/app/library.js, or a
+// harness's dist/app), and every profile's set imported into it the first time (Library.importOnce: once, its marker
+// kept, the profiles' files never written). Margin's own window draws it (`library.snapshot()`,
+// `library.perform(_:_:)`, `library.observe`), and the hosting shows what it asks for (`library.delegate`).
 
 import Foundation
 

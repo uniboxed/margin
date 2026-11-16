@@ -4,8 +4,7 @@
 // draws a window's: a hosted window is never behind it but above it, a member
 // of its full-screen Space in its page area (HostedSession.swift), so nothing
 // shows through and nothing passes through; with nothing hosted, its page area
-// is the theme's launcher (ui/host-app.ts). Behind `MarginHosted` (off: none
-// of this runs; Shell.forApp). While hosting is on it's always full screen
+// is the theme's launcher (ui/host-app.ts). It's always full screen
 // (`locksFullScreen`: AppKit's toggle refused once it's in).
 //
 // - MarginWindow: the NSWindow. `pageRect` is the page area in the window

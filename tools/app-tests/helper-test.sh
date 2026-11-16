@@ -71,5 +71,4 @@ kill $HELPER 2>/dev/null; wait $HELPER 2>/dev/null
 # The stand-ins forgotten by the system again.
 pkill -f "$BUILD/Browser.app/Contents/MacOS/run" 2>/dev/null; pkill -f "$BUILD/Margin.app/Contents/MacOS/run" 2>/dev/null
 "$LSR" -u "$BUILD/Margin.app" 2>/dev/null; "$LSR" -u "$BUILD/Browser.app" 2>/dev/null
-./helper-splash-test.sh "$BUILD/margin-helper" || fail=1
 exit $fail
