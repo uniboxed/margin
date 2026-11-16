@@ -1,0 +1,2086 @@
+-[NSThemeFrame _canFloatForTabsOrTitlebar:]:
+0x184A11B88   pacibsp
+0x184A11B8C   sub      sp, sp, #0x40
+0x184A11B90   stp      x22, x21, [sp, #0x10]
+0x184A11B94   stp      x20, x19, [sp, #0x20]
+0x184A11B98   stp      x29, x30, [sp, #0x30]
+0x184A11B9C   add      x29, sp, #0x30
+0x184A11BA0   mov      x19, x2
+0x184A11BA4   mov      x20, x0
+0x184A11BA8   adrp     x8, 399301           ; 0x1e61d6000
+0x184A11BAC   ldr      x8, [x8, #0xab0]
+0x184A11BB0   ldr      x8, [x8]
+0x184A11BB4   str      x8, [sp, #0x8]
+0x184A11BB8   bl       _objc_msgSend$_effectiveStyleMask
+0x184A11BBC   mov      x21, x0
+0x184A11BC0   adrp     x8, 427416           ; 0x1ecfa9000
+0x184A11BC4   add      x8, x8, #0x76c       ; _sNSWindowShouldAlwaysFloatTitlebarComputedValue
+0x184A11BC8   ldarb    w8, [x8]
+0x184A11BCC   cmp      w8, #0x2
+0x184A11BD0   b.eq     0x184a11bec
+0x184A11BD4   cbz      w8, 0x184a11cf4
+0x184A11BD8   adrp     x8, 416653           ; 0x1ea59e000
+0x184A11BDC   ldrsw    x8, [x8, #0x204]
+0x184A11BE0   add      x8, x20, x8
+0x184A11BE4   ldrb     w8, [x8, #0x1]
+0x184A11BE8   tbz      w8, #0x3, 0x184a11c34
+0x184A11BEC   tbz      w21, #0xf, 0x184a11c10
+0x184A11BF0   mov      x0, x20
+0x184A11BF4   bl       _objc_opt_class
+0x184A11BF8   mov      x22, x0
+0x184A11BFC   adrp     x8, 400498           ; 0x1e6683000
+0x184A11C00   ldr      x0, [x8, #0xec0]     ; _OBJC_CLASS_$_NSToolbarItemBadge@got
+0x184A11C04   bl       _objc_opt_class
+0x184A11C08   cmp      x22, x0
+0x184A11C0C   b.eq     0x184a11c34
+0x184A11C10   tbnz     w19, #0x0, 0x184a11c18
+0x184A11C14   tbnz     w21, #0xe, 0x184a11c34
+0x184A11C18   mov      x0, x20
+0x184A11C1C   bl       _objc_msgSend$_isHUDWindow
+0x184A11C20   tbnz     w0, #0x0, 0x184a11c34
+0x184A11C24   mov      x0, x20
+0x184A11C28   bl       _objc_msgSend$effectiveAppearance
+0x184A11C2C   bl       _objc_msgSend$allowsVibrancy
+0x184A11C30   tbz      w0, #0x0, 0x184a11c68
+0x184A11C34   mov      w21, #0x1
+0x184A11C38   ldr      x8, [sp, #0x8]
+0x184A11C3C   adrp     x9, 399301           ; 0x1e61d6000
+0x184A11C40   ldr      x9, [x9, #0xab0]
+0x184A11C44   ldr      x9, [x9]
+0x184A11C48   cmp      x9, x8
+0x184A11C4C   b.ne     0x184a11d24
+0x184A11C50   mov      x0, x21
+0x184A11C54   ldp      x29, x30, [sp, #0x30]
+0x184A11C58   ldp      x20, x19, [sp, #0x20]
+0x184A11C5C   ldp      x22, x21, [sp, #0x10]
+0x184A11C60   add      sp, sp, #0x40
+0x184A11C64   retab
+0x184A11C68   mov      x0, x20
+0x184A11C6C   bl       _objc_msgSend$effectiveAppearance
+0x184A11C70   mov      x22, x0
+0x184A11C74   adrp     x8, 400514           ; 0x1e6693000
+0x184A11C78   add      x8, x8, #0x5f0       ; _NSAppearanceNameDarkAqua
+0x184A11C7C   ldr      x8, [x8]
+0x184A11C80   str      x8, [sp]
+0x184A11C84   adrp     x8, 399175           ; 0x1e6158000
+0x184A11C88   ldr      x0, [x8, #0x6d0]
+0x184A11C8C   mov      w21, #0x1
+0x184A11C90   mov      x2, sp
+0x184A11C94   mov      w3, #0x1
+0x184A11C98   bl       "_objc_msgSend$arrayWithObjects:count:"
+0x184A11C9C   mov      x2, x0
+0x184A11CA0   mov      x0, x22
+0x184A11CA4   bl       "_objc_msgSend$bestMatchFromAppearancesWithNames:"
+0x184A11CA8   cbnz     x0, 0x184a11c38
+0x184A11CAC   adrp     x8, 416653           ; 0x1ea59e000
+0x184A11CB0   ldrsw    x8, [x8, #0x204]
+0x184A11CB4   ldr      w8, [x20, x8]
+0x184A11CB8   tbnz     w19, #0x0, 0x184a11cc0
+0x184A11CBC   tbnz     w8, #0xc, 0x184a11c34
+0x184A11CC0   tbnz     w8, #0xb, 0x184a11cec
+0x184A11CC4   adrp     x8, 427399           ; 0x1ecf98000
+0x184A11CC8   ldrsw    x8, [x8, #0x420]
+0x184A11CCC   ldr      x0, [x20, x8]
+0x184A11CD0   bl       _objc_msgSend$count
+0x184A11CD4   cbnz     x0, 0x184a11c34
+0x184A11CD8   mov      x0, x20
+0x184A11CDC   bl       _objc_msgSend$_titlebarViewControllerIfAvailable
+0x184A11CE0   cmp      x0, #0x0
+0x184A11CE4   csinc    w21, w19, wzr, eq
+0x184A11CE8   b        0x184a11c38
+0x184A11CEC   mov      w21, #0x0
+0x184A11CF0   b        0x184a11c38
+0x184A11CF4   adrp     x0, 434224           ; 0x1eea41000
+0x184A11CF8   add      x0, x0, #0xc8
+0x184A11CFC   adrp     x2, 427416           ; 0x1ecfa9000
+0x184A11D00   add      x2, x2, #0x76c       ; _sNSWindowShouldAlwaysFloatTitlebarComputedValue
+0x184A11D04   adrp     x16, 0               ; 0x184a11000
+0x184A11D08   add      x16, x16, #0xd28     ; _NSWindowShouldAlwaysFloatTitlebarDefaultValueFunction
+0x184A11D0C   paciza   x16
+0x184A11D10   mov      x3, x16
+0x184A11D14   mov      w1, #0x1
+0x184A11D18   bl       __NSGetBoolAppConfig
+0x184A11D1C   cbnz     w0, 0x184a11bd8
+0x184A11D20   b        0x184a11bec
+0x184A11D24   bl       ___stack_chk_fail
+
+-[NSThemeFrame _updateButtons]:
+0x184A1EC9C   pacibsp
+0x184A1ECA0   sub      sp, sp, #0x140
+0x184A1ECA4   stp      x28, x27, [sp, #0xe0]
+0x184A1ECA8   stp      x26, x25, [sp, #0xf0]
+0x184A1ECAC   stp      x24, x23, [sp, #0x100]
+0x184A1ECB0   stp      x22, x21, [sp, #0x110]
+0x184A1ECB4   stp      x20, x19, [sp, #0x120]
+0x184A1ECB8   stp      x29, x30, [sp, #0x130]
+0x184A1ECBC   add      x29, sp, #0x130
+0x184A1ECC0   mov      x19, x0
+0x184A1ECC4   bl       _objc_msgSend$_wantsLeftHandButtons
+0x184A1ECC8   cbz      w0, 0x184a1ecdc
+0x184A1ECCC   mov      x0, x19
+0x184A1ECD0   bl       _objc_msgSend$_isHUDWindow
+0x184A1ECD4   eor      w24, w0, #0x1
+0x184A1ECD8   b        0x184a1ece0
+0x184A1ECDC   mov      w24, #0x0
+0x184A1ECE0   mov      x0, x19
+0x184A1ECE4   bl       _objc_msgSend$_isHUDWindow
+0x184A1ECE8   cbz      w0, 0x184a1ecfc
+0x184A1ECEC   mov      x0, x19
+0x184A1ECF0   bl       _objc_msgSend$_isClosable
+0x184A1ECF4   mov      x21, x0
+0x184A1ECF8   b        0x184a1ed00
+0x184A1ECFC   mov      w21, #0x0
+0x184A1ED00   mov      x0, x19
+0x184A1ED04   bl       _objc_msgSend$_hasToolbar
+0x184A1ED08   adrp     x8, 416640           ; 0x1ea59e000
+0x184A1ED0C   add      x8, x8, #0x988       ; _OBJC_IVAR_$_NSView._window
+0x184A1ED10   ldrsw    x23, [x8]
+0x184A1ED14   cbz      w0, 0x184a1ed28
+0x184A1ED18   ldr      x0, [x19, x23]
+0x184A1ED1C   bl       _objc_msgSend$showsToolbarButton
+0x184A1ED20   str      w0, [sp, #0x10]
+0x184A1ED24   b        0x184a1ed2c
+0x184A1ED28   str      wzr, [sp, #0x10]
+0x184A1ED2C   ldr      x0, [x19, x23]
+0x184A1ED30   bl       _objc_msgSend$showsLockButton
+0x184A1ED34   str      w0, [sp, #0x1c]
+0x184A1ED38   mov      x0, x19
+0x184A1ED3C   bl       _objc_msgSend$_showsAutosaveButton
+0x184A1ED40   mov      x20, x0
+0x184A1ED44   mov      x0, x19
+0x184A1ED48   bl       _objc_msgSend$window
+0x184A1ED4C   bl       _objc_msgSend$_zoomButtonIsFullScreenButton
+0x184A1ED50   tbz      w0, #0x0, 0x184a1ed5c
+0x184A1ED54   mov      w25, #0x0
+0x184A1ED58   b        0x184a1ed68
+0x184A1ED5C   ldr      x0, [x19, x23]
+0x184A1ED60   bl       _objc_msgSend$showsFullScreenButton
+0x184A1ED64   mov      x25, x0
+0x184A1ED68   mov      x0, x19
+0x184A1ED6C   bl       _objc_msgSend$window
+0x184A1ED70   bl       _objc_msgSend$showsWindowSharingTitlebarButton
+0x184A1ED74   str      w0, [sp, #0x18]
+0x184A1ED78   orr      w22, w24, w21
+0x184A1ED7C   mov      x0, x19
+0x184A1ED80   bl       _objc_msgSend$sharingIndicator
+0x184A1ED84   str      x0, [sp, #0x20]
+0x184A1ED88   mov      x0, x19
+0x184A1ED8C   bl       _objc_msgSend$titlebarView
+0x184A1ED90   cmp      x0, #0x0
+0x184A1ED94   csel     x21, x19, x0, eq
+0x184A1ED98   adrp     x8, 416638           ; 0x1ea59c000
+0x184A1ED9C   add      x8, x8, #0x8         ; _OBJC_IVAR_$_NSFrameView.closeButton
+0x184A1EDA0   ldrsw    x27, [x8]
+0x184A1EDA4   ldr      x0, [x19, x27]
+0x184A1EDA8   str      x21, [sp, #0x28]
+0x184A1EDAC   str      w22, [sp, #0x14]
+0x184A1EDB0   tbz      w22, #0x0, 0x184a1edd0
+0x184A1EDB4   cbz      x0, 0x184a1ee34
+0x184A1EDB8   bl       _objc_msgSend$superview
+0x184A1EDBC   cmp      x0, x21
+0x184A1EDC0   b.eq     0x184a1ee28
+0x184A1EDC4   mov      x22, x20
+0x184A1EDC8   ldr      x2, [x19, x27]
+0x184A1EDCC   b        0x184a1ee48
+0x184A1EDD0   cbz      x0, 0x184a1ee28
+0x184A1EDD4   ldr      x8, [sp, #0x20]
+0x184A1EDD8   cbz      x8, 0x184a1ee18
+0x184A1EDDC   bl       _objc_msgSend$disableGeometryInWindowDidChangeNotification
+0x184A1EDE0   bl       _viewGeometryNotificationCenter
+0x184A1EDE4   adrp     x8, 400491           ; 0x1e6689000
+0x184A1EDE8   ldr      x3, [x8, #0xed0]     ; _NSViewGeometryInWindowDidChangeNotification
+0x184A1EDEC   ldr      x4, [x19, x27]
+0x184A1EDF0   mov      x2, x19
+0x184A1EDF4   bl       "_objc_msgSend$removeObserver:name:object:"
+0x184A1EDF8   ldr      x0, [x19, x27]
+0x184A1EDFC   adrp     x3, 434158           ; 0x1eea0c000
+0x184A1EE00   add      x3, x3, #0x2a8
+0x184A1EE04   adrp     x4, 400497           ; 0x1e668f000
+0x184A1EE08   add      x4, x4, #0xf48       ; _NSThemeFrameCloseButtonHiddenContext
+0x184A1EE0C   mov      x2, x19
+0x184A1EE10   bl       "_objc_msgSend$removeObserver:forKeyPath:context:"
+0x184A1EE14   ldr      x0, [x19, x27]
+0x184A1EE18   mov      x22, x20
+0x184A1EE1C   bl       _objc_msgSend$removeFromSuperview
+0x184A1EE20   str      xzr, [x19, x27]
+0x184A1EE24   b        0x184a1ee50
+0x184A1EE28   mov      x22, x20
+0x184A1EE2C   mov      w20, #0x0
+0x184A1EE30   b        0x184a1ee54
+0x184A1EE34   mov      x22, x20
+0x184A1EE38   mov      x0, x19
+0x184A1EE3C   bl       _objc_msgSend$newCloseButton
+0x184A1EE40   mov      x2, x0
+0x184A1EE44   str      x0, [x19, x27]
+0x184A1EE48   mov      x0, x19
+0x184A1EE4C   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1EE50   mov      w20, #0x1
+0x184A1EE54   ldr      x26, [x19, x27]
+0x184A1EE58   adrp     x28, 400486          ; 0x1e6684000
+0x184A1EE5C   ldr      x0, [x28, #0x478]    ; _OBJC_CLASS_$__TtC6AppKit17NSLivingColorView@got
+0x184A1EE60   bl       _objc_opt_class
+0x184A1EE64   mov      x1, x0
+0x184A1EE68   mov      x0, x26
+0x184A1EE6C   bl       _objc_opt_isKindOfClass
+0x184A1EE70   tst      w0, #0x1
+0x184A1EE74   csel     x0, x26, xzr, ne
+0x184A1EE78   bl       _objc_msgSend$_enableTranslatesAutoresizingMaskIntoConstraintsIfNotSet
+0x184A1EE7C   ldr      x26, [x19, x27]
+0x184A1EE80   mov      x0, x19
+0x184A1EE84   bl       _objc_msgSend$_isClosable
+0x184A1EE88   mov      x3, x0
+0x184A1EE8C   mov      x0, x19
+0x184A1EE90   mov      x2, x26
+0x184A1EE94   bl       "_objc_msgSend$_setButton:canBeEnabled:"
+0x184A1EE98   adrp     x8, 416638           ; 0x1ea59c000
+0x184A1EE9C   add      x8, x8, #0x10        ; _OBJC_IVAR_$_NSFrameView.zoomButton
+0x184A1EEA0   ldrsw    x21, [x8]
+0x184A1EEA4   ldr      x0, [x19, x21]
+0x184A1EEA8   str      w20, [sp, #0xc]
+0x184A1EEAC   cbz      w24, 0x184a1eecc
+0x184A1EEB0   cbz      x0, 0x184a1eedc
+0x184A1EEB4   bl       _objc_msgSend$superview
+0x184A1EEB8   ldr      x8, [sp, #0x28]
+0x184A1EEBC   cmp      x0, x8
+0x184A1EEC0   b.eq     0x184a1eef8
+0x184A1EEC4   ldr      x2, [x19, x21]
+0x184A1EEC8   b        0x184a1eeec
+0x184A1EECC   cbz      x0, 0x184a1eef8
+0x184A1EED0   bl       _objc_msgSend$removeFromSuperview
+0x184A1EED4   str      xzr, [x19, x21]
+0x184A1EED8   b        0x184a1eef4
+0x184A1EEDC   mov      x0, x19
+0x184A1EEE0   bl       _objc_msgSend$newZoomButton
+0x184A1EEE4   mov      x2, x0
+0x184A1EEE8   str      x0, [x19, x21]
+0x184A1EEEC   mov      x0, x19
+0x184A1EEF0   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1EEF4   mov      w20, #0x1
+0x184A1EEF8   ldr      x26, [x19, x21]
+0x184A1EEFC   ldr      x0, [x28, #0x478]
+0x184A1EF00   bl       _objc_opt_class
+0x184A1EF04   mov      x1, x0
+0x184A1EF08   mov      x0, x26
+0x184A1EF0C   bl       _objc_opt_isKindOfClass
+0x184A1EF10   tst      w0, #0x1
+0x184A1EF14   csel     x0, x26, xzr, ne
+0x184A1EF18   bl       _objc_msgSend$_enableTranslatesAutoresizingMaskIntoConstraintsIfNotSet
+0x184A1EF1C   ldr      x26, [x19, x21]
+0x184A1EF20   mov      x0, x19
+0x184A1EF24   bl       _objc_msgSend$_isZoomButtonEnabled
+0x184A1EF28   mov      x3, x0
+0x184A1EF2C   mov      x0, x19
+0x184A1EF30   mov      x2, x26
+0x184A1EF34   bl       "_objc_msgSend$_setButton:canBeEnabled:"
+0x184A1EF38   adrp     x8, 416638           ; 0x1ea59c000
+0x184A1EF3C   add      x8, x8, #0xc         ; _OBJC_IVAR_$_NSFrameView.minimizeButton
+0x184A1EF40   ldrsw    x21, [x8]
+0x184A1EF44   ldr      x0, [x19, x21]
+0x184A1EF48   cbz      w24, 0x184a1ef68
+0x184A1EF4C   cbz      x0, 0x184a1ef78
+0x184A1EF50   bl       _objc_msgSend$superview
+0x184A1EF54   ldr      x8, [sp, #0x28]
+0x184A1EF58   cmp      x0, x8
+0x184A1EF5C   b.eq     0x184a1ef94
+0x184A1EF60   ldr      x2, [x19, x21]
+0x184A1EF64   b        0x184a1ef88
+0x184A1EF68   cbz      x0, 0x184a1ef94
+0x184A1EF6C   bl       _objc_msgSend$removeFromSuperview
+0x184A1EF70   str      xzr, [x19, x21]
+0x184A1EF74   b        0x184a1ef90
+0x184A1EF78   mov      x0, x19
+0x184A1EF7C   bl       _objc_msgSend$newMiniaturizeButton
+0x184A1EF80   mov      x2, x0
+0x184A1EF84   str      x0, [x19, x21]
+0x184A1EF88   mov      x0, x19
+0x184A1EF8C   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1EF90   mov      w20, #0x1
+0x184A1EF94   ldr      x26, [x19, x21]
+0x184A1EF98   ldr      x0, [x28, #0x478]
+0x184A1EF9C   bl       _objc_opt_class
+0x184A1EFA0   mov      x1, x0
+0x184A1EFA4   mov      x0, x26
+0x184A1EFA8   bl       _objc_opt_isKindOfClass
+0x184A1EFAC   tst      w0, #0x1
+0x184A1EFB0   csel     x0, x26, xzr, ne
+0x184A1EFB4   bl       _objc_msgSend$_enableTranslatesAutoresizingMaskIntoConstraintsIfNotSet
+0x184A1EFB8   ldr      x26, [x19, x21]
+0x184A1EFBC   mov      x0, x19
+0x184A1EFC0   bl       _objc_msgSend$_isMiniaturizable
+0x184A1EFC4   mov      x3, x0
+0x184A1EFC8   mov      x0, x19
+0x184A1EFCC   mov      x2, x26
+0x184A1EFD0   bl       "_objc_msgSend$_setButton:canBeEnabled:"
+0x184A1EFD4   adrp     x8, 427386           ; 0x1ecf98000
+0x184A1EFD8   ldrsw    x21, [x8, #0x410]
+0x184A1EFDC   ldr      x0, [x19, x21]
+0x184A1EFE0   mov      x28, x22
+0x184A1EFE4   cbz      w25, 0x184a1f00c
+0x184A1EFE8   ldr      x26, [sp, #0x28]
+0x184A1EFEC   cbz      x0, 0x184a1f024
+0x184A1EFF0   bl       _objc_msgSend$superview
+0x184A1EFF4   cmp      x0, x26
+0x184A1EFF8   b.eq     0x184a1f078
+0x184A1EFFC   ldr      x2, [x19, x21]
+0x184A1F000   mov      x0, x19
+0x184A1F004   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F008   b        0x184a1f01c
+0x184A1F00C   ldr      x26, [sp, #0x28]
+0x184A1F010   cbz      x0, 0x184a1f078
+0x184A1F014   bl       _objc_msgSend$removeFromSuperview
+0x184A1F018   str      xzr, [x19, x21]
+0x184A1F01C   mov      w20, #0x1
+0x184A1F020   b        0x184a1f078
+0x184A1F024   mov      x0, x19
+0x184A1F028   bl       _objc_msgSend$newFullScreenButton
+0x184A1F02C   str      x0, [x19, x21]
+0x184A1F030   mov      w2, #0x3
+0x184A1F034   bl       "_objc_msgSend$_setSemanticContext:"
+0x184A1F038   ldr      x0, [x19, x21]
+0x184A1F03C   bl       _objc_msgSend$cell
+0x184A1F040   mov      x25, x0
+0x184A1F044   mov      x0, x19
+0x184A1F048   bl       _objc_msgSend$_backgroundStyleForTitleTextField
+0x184A1F04C   mov      x2, x0
+0x184A1F050   mov      x0, x25
+0x184A1F054   bl       "_objc_msgSend$setBackgroundStyle:"
+0x184A1F058   ldr      x2, [x19, x21]
+0x184A1F05C   mov      x0, x19
+0x184A1F060   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F064   ldr      x2, [x19, x21]
+0x184A1F068   mov      w20, #0x1
+0x184A1F06C   mov      x0, x19
+0x184A1F070   mov      w3, #0x1
+0x184A1F074   bl       "_objc_msgSend$_setButton:canBeEnabled:"
+0x184A1F078   mov      x0, x19
+0x184A1F07C   bl       _objc_msgSend$_shouldShowDocumentIcon
+0x184A1F080   mov      x8, x0
+0x184A1F084   adrp     x9, 416639           ; 0x1ea59e000
+0x184A1F088   add      x9, x9, #0x270       ; _OBJC_IVAR_$_NSTitledFrame.fileButton
+0x184A1F08C   ldrsw    x24, [x9]
+0x184A1F090   ldr      x0, [x19, x24]
+0x184A1F094   cbz      w8, 0x184a1f0b8
+0x184A1F098   cbz      x0, 0x184a1f0cc
+0x184A1F09C   bl       _objc_msgSend$superview
+0x184A1F0A0   cmp      x0, x26
+0x184A1F0A4   b.eq     0x184a1f170
+0x184A1F0A8   ldr      x2, [x19, x24]
+0x184A1F0AC   mov      x0, x19
+0x184A1F0B0   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F0B4   b        0x184a1f0c4
+0x184A1F0B8   cbz      x0, 0x184a1f170
+0x184A1F0BC   bl       _objc_msgSend$removeFromSuperview
+0x184A1F0C0   str      xzr, [x19, x24]
+0x184A1F0C4   mov      w20, #0x1
+0x184A1F0C8   b        0x184a1f170
+0x184A1F0CC   mov      x0, x19
+0x184A1F0D0   bl       _objc_msgSend$newFileButton
+0x184A1F0D4   mov      x2, x0
+0x184A1F0D8   str      x0, [x19, x24]
+0x184A1F0DC   mov      x0, x19
+0x184A1F0E0   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F0E4   ldr      x0, [x19, x23]
+0x184A1F0E8   bl       _objc_msgSend$representedURL
+0x184A1F0EC   mov      x25, x0
+0x184A1F0F0   ldr      x0, [x19, x24]
+0x184A1F0F4   adrp     x8, 487762           ; 0x1fbb71000
+0x184A1F0F8   add      x1, x8, #0x982
+0x184A1F0FC   bl       _objc_opt_respondsToSelector
+0x184A1F100   ldr      x26, [x19, x24]
+0x184A1F104   tbz      w0, #0x0, 0x184a1f118
+0x184A1F108   mov      x0, x26
+0x184A1F10C   mov      x2, x25
+0x184A1F110   bl       "_objc_msgSend$setRepresentedURL:"
+0x184A1F114   b        0x184a1f12c
+0x184A1F118   mov      x0, x25
+0x184A1F11C   bl       _objc_msgSend$path
+0x184A1F120   mov      x2, x0
+0x184A1F124   mov      x0, x26
+0x184A1F128   bl       "_objc_msgSend$setRepresentedFilename:"
+0x184A1F12C   ldr      x0, [x19, x24]
+0x184A1F130   mov      w2, #0x3
+0x184A1F134   bl       "_objc_msgSend$_setSemanticContext:"
+0x184A1F138   ldr      x0, [x19, x24]
+0x184A1F13C   bl       _objc_msgSend$cell
+0x184A1F140   mov      x25, x0
+0x184A1F144   mov      x0, x19
+0x184A1F148   bl       _objc_msgSend$_backgroundStyleForTitleTextField
+0x184A1F14C   mov      x2, x0
+0x184A1F150   mov      x0, x25
+0x184A1F154   bl       "_objc_msgSend$setBackgroundStyle:"
+0x184A1F158   mov      x0, x19
+0x184A1F15C   bl       _objc_msgSend$buttonRevealAmount
+0x184A1F160   ldr      x0, [x19, x24]
+0x184A1F164   bl       "_objc_msgSend$setAlphaValue:"
+0x184A1F168   mov      w20, #0x1
+0x184A1F16C   ldr      x26, [sp, #0x28]
+0x184A1F170   adrp     x8, 427385           ; 0x1ecf98000
+0x184A1F174   ldrsw    x21, [x8, #0x408]
+0x184A1F178   ldr      x0, [x19, x21]
+0x184A1F17C   ldr      w8, [sp, #0x10]
+0x184A1F180   cbz      w8, 0x184a1f1a4
+0x184A1F184   cbz      x0, 0x184a1f1b8
+0x184A1F188   bl       _objc_msgSend$superview
+0x184A1F18C   cmp      x0, x26
+0x184A1F190   b.eq     0x184a1f1e4
+0x184A1F194   ldr      x2, [x19, x21]
+0x184A1F198   mov      x0, x19
+0x184A1F19C   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F1A0   b        0x184a1f1b0
+0x184A1F1A4   cbz      x0, 0x184a1f1e4
+0x184A1F1A8   bl       _objc_msgSend$removeFromSuperview
+0x184A1F1AC   str      xzr, [x19, x21]
+0x184A1F1B0   mov      w20, #0x1
+0x184A1F1B4   b        0x184a1f1e4
+0x184A1F1B8   mov      x0, x19
+0x184A1F1BC   bl       _objc_msgSend$newToolbarButton
+0x184A1F1C0   mov      x2, x0
+0x184A1F1C4   str      x0, [x19, x21]
+0x184A1F1C8   mov      w20, #0x1
+0x184A1F1CC   mov      x0, x19
+0x184A1F1D0   mov      w3, #0x1
+0x184A1F1D4   bl       "_objc_msgSend$_setButton:canBeEnabled:"
+0x184A1F1D8   ldr      x2, [x19, x21]
+0x184A1F1DC   mov      x0, x19
+0x184A1F1E0   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F1E4   ldp      w9, w8, [sp, #0x14]
+0x184A1F1E8   and      w21, w8, w9
+0x184A1F1EC   adrp     x8, 427385           ; 0x1ecf98000
+0x184A1F1F0   ldrsw    x22, [x8, #0x40c]
+0x184A1F1F4   ldr      x0, [x19, x22]
+0x184A1F1F8   ldr      w8, [sp, #0x1c]
+0x184A1F1FC   cbz      w8, 0x184a1f228
+0x184A1F200   cbz      x0, 0x184a1f23c
+0x184A1F204   bl       _objc_msgSend$superview
+0x184A1F208   cmp      x0, x26
+0x184A1F20C   b.eq     0x184a1f270
+0x184A1F210   ldr      x2, [x19, x22]
+0x184A1F214   mov      x0, x19
+0x184A1F218   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F21C   ldr      x0, [x19, x22]
+0x184A1F220   bl       _objc_msgSend$sizeToFit
+0x184A1F224   b        0x184a1f234
+0x184A1F228   cbz      x0, 0x184a1f270
+0x184A1F22C   bl       _objc_msgSend$removeFromSuperview
+0x184A1F230   str      xzr, [x19, x22]
+0x184A1F234   mov      w20, #0x1
+0x184A1F238   b        0x184a1f270
+0x184A1F23C   mov      x0, x19
+0x184A1F240   bl       _objc_msgSend$newLockButton
+0x184A1F244   mov      x2, x0
+0x184A1F248   str      x0, [x19, x22]
+0x184A1F24C   mov      w20, #0x1
+0x184A1F250   mov      x0, x19
+0x184A1F254   mov      w3, #0x1
+0x184A1F258   bl       "_objc_msgSend$_setButton:canBeEnabled:"
+0x184A1F25C   ldr      x2, [x19, x22]
+0x184A1F260   mov      x0, x19
+0x184A1F264   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F268   ldr      x0, [x19, x22]
+0x184A1F26C   bl       _objc_msgSend$sizeToFit
+0x184A1F270   eor      w24, w21, #0x1
+0x184A1F274   mov      x0, x19
+0x184A1F278   bl       _objc_msgSend$autosaveButton
+0x184A1F27C   cmp      x0, #0x0
+0x184A1F280   csel     w8, wzr, w28, ne
+0x184A1F284   cmp      w8, #0x1
+0x184A1F288   b.ne     0x184a1f338
+0x184A1F28C   mov      x0, x19
+0x184A1F290   bl       _objc_msgSend$newAutosaveButton
+0x184A1F294   mov      x22, x0
+0x184A1F298   mov      w20, #0x1
+0x184A1F29C   mov      x0, x19
+0x184A1F2A0   mov      x2, x22
+0x184A1F2A4   mov      w3, #0x1
+0x184A1F2A8   bl       "_objc_msgSend$_setButton:canBeEnabled:"
+0x184A1F2AC   mov      x0, x22
+0x184A1F2B0   bl       _objc_msgSend$cell
+0x184A1F2B4   mov      x23, x0
+0x184A1F2B8   mov      x0, x19
+0x184A1F2BC   bl       _objc_msgSend$_backgroundStyleForTitleTextField
+0x184A1F2C0   mov      x2, x0
+0x184A1F2C4   mov      x0, x23
+0x184A1F2C8   bl       "_objc_msgSend$setBackgroundStyle:"
+0x184A1F2CC   mov      x0, x19
+0x184A1F2D0   bl       _objc_msgSend$window
+0x184A1F2D4   bl       _objc_msgSend$_documentEditingState
+0x184A1F2D8   mov      x2, x0
+0x184A1F2DC   mov      x0, x22
+0x184A1F2E0   mov      w3, #0x0
+0x184A1F2E4   bl       "_objc_msgSend$setDocumentEditingState:animate:"
+0x184A1F2E8   mov      x0, x19
+0x184A1F2EC   bl       _objc_msgSend$window
+0x184A1F2F0   bl       _objc_msgSend$_documentAutosavingError
+0x184A1F2F4   mov      x2, x0
+0x184A1F2F8   mov      x0, x22
+0x184A1F2FC   bl       "_objc_msgSend$setDocumentAutosavingError:"
+0x184A1F300   mov      x0, x19
+0x184A1F304   bl       _objc_msgSend$window
+0x184A1F308   bl       _objc_msgSend$_nonModalDocumentError
+0x184A1F30C   mov      x2, x0
+0x184A1F310   mov      x0, x22
+0x184A1F314   bl       "_objc_msgSend$setNonModalDocumentError:"
+0x184A1F318   mov      x0, x19
+0x184A1F31C   mov      x2, x22
+0x184A1F320   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F324   mov      x0, x19
+0x184A1F328   mov      x2, x22
+0x184A1F32C   bl       "_objc_msgSend$_setAutosaveButton:"
+0x184A1F330   ldr      x21, [sp, #0x20]
+0x184A1F334   b        0x184a1f388
+0x184A1F338   mov      x22, x0
+0x184A1F33C   cmp      x0, #0x0
+0x184A1F340   csinc    w8, w28, wzr, ne
+0x184A1F344   ldr      x21, [sp, #0x20]
+0x184A1F348   tbz      w8, #0x0, 0x184a1f370
+0x184A1F34C   cbz      x22, 0x184a1f388
+0x184A1F350   mov      x0, x22
+0x184A1F354   bl       _objc_msgSend$superview
+0x184A1F358   cmp      x0, x26
+0x184A1F35C   b.eq     0x184a1f388
+0x184A1F360   mov      x0, x19
+0x184A1F364   mov      x2, x22
+0x184A1F368   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F36C   b        0x184a1f384
+0x184A1F370   mov      x0, x22
+0x184A1F374   bl       _objc_msgSend$removeFromSuperview
+0x184A1F378   mov      x0, x19
+0x184A1F37C   mov      x2, #0x0
+0x184A1F380   bl       "_objc_msgSend$_setAutosaveButton:"
+0x184A1F384   mov      w20, #0x1
+0x184A1F388   cmp      x21, #0x0
+0x184A1F38C   csinc    w8, w24, wzr, eq
+0x184A1F390   tbz      w8, #0x0, 0x184a1f3f8
+0x184A1F394   csel     w8, wzr, w24, eq
+0x184A1F398   cmp      w8, #0x1
+0x184A1F39C   b.ne     0x184a1f4f8
+0x184A1F3A0   mov      x0, x21
+0x184A1F3A4   bl       _objc_msgSend$removeFromSuperview
+0x184A1F3A8   mov      x0, x19
+0x184A1F3AC   mov      x2, #0x0
+0x184A1F3B0   bl       "_objc_msgSend$setSharingIndicator:"
+0x184A1F3B4   ldr      x0, [x19, x27]
+0x184A1F3B8   cbz      x0, 0x184a1f518
+0x184A1F3BC   bl       _objc_msgSend$disableGeometryInWindowDidChangeNotification
+0x184A1F3C0   bl       _viewGeometryNotificationCenter
+0x184A1F3C4   adrp     x8, 400490           ; 0x1e6689000
+0x184A1F3C8   ldr      x3, [x8, #0xed0]     ; _NSViewGeometryInWindowDidChangeNotification
+0x184A1F3CC   ldr      x4, [x19, x27]
+0x184A1F3D0   mov      x2, x19
+0x184A1F3D4   bl       "_objc_msgSend$removeObserver:name:object:"
+0x184A1F3D8   ldr      x0, [x19, x27]
+0x184A1F3DC   adrp     x3, 434157           ; 0x1eea0c000
+0x184A1F3E0   add      x3, x3, #0x2a8
+0x184A1F3E4   adrp     x4, 400496           ; 0x1e668f000
+0x184A1F3E8   add      x4, x4, #0xf48       ; _NSThemeFrameCloseButtonHiddenContext
+0x184A1F3EC   mov      x2, x19
+0x184A1F3F0   bl       "_objc_msgSend$removeObserver:forKeyPath:context:"
+0x184A1F3F4   b        0x184a1f518
+0x184A1F3F8   mov      x0, x19
+0x184A1F3FC   bl       _objc_msgSend$newSharingIndicator
+0x184A1F400   mov      x21, x0
+0x184A1F404   sub      x8, x29, #0x80
+0x184A1F408   adrp     x16, 399287          ; 0x1e61d6000
+0x184A1F40C   ldr      x16, [x16, #0xa90]
+0x184A1F410   mov      x17, x8
+0x184A1F414   movk     x17, #0x6ae1, lsl #48
+0x184A1F418   pacda    x16, x17
+0x184A1F41C   stur     x16, [x29, #-0x80]
+0x184A1F420   adrp     x9, 4513             ; 0x185bc0000
+0x184A1F424   ldr      d0, [x9, #0x278]
+0x184A1F428   stur     d0, [x29, #-0x78]
+0x184A1F42C   add      x8, x8, #0x10
+0x184A1F430   adrp     x16, 722             ; 0x184cf1000
+0x184A1F434   add      x16, x16, #0x614     ; ___30-[NSThemeFrame _updateButtons]_block_invoke
+0x184A1F438   pacia    x16, x8
+0x184A1F43C   adrp     x8, 434073           ; 0x1ee9b8000
+0x184A1F440   add      x8, x8, #0x268       ; ___block_descriptor_40_e8_32o_e5_v8?0l
+0x184A1F444   stp      x16, x8, [x29, #-0x70]
+0x184A1F448   stur     x19, [x29, #-0x60]
+0x184A1F44C   sub      x2, x29, #0x80
+0x184A1F450   bl       "_objc_msgSend$setPositionSharingIndicatorCallback:"
+0x184A1F454   mov      x0, x19
+0x184A1F458   bl       _objc_msgSend$buttonRevealAmount
+0x184A1F45C   mov      x0, x21
+0x184A1F460   bl       "_objc_msgSend$setAlphaValue:"
+0x184A1F464   mov      x0, x19
+0x184A1F468   mov      x2, x21
+0x184A1F46C   bl       "_objc_msgSend$setSharingIndicator:"
+0x184A1F470   mov      x0, x21
+0x184A1F474   bl       _objc_release
+0x184A1F478   ldr      x0, [x19, x27]
+0x184A1F47C   bl       _objc_msgSend$enableGeometryInWindowDidChangeNotification
+0x184A1F480   bl       _viewGeometryNotificationCenter
+0x184A1F484   adrp     x8, 487683           ; 0x1fbb22000
+0x184A1F488   add      x3, x8, #0xd12
+0x184A1F48C   adrp     x8, 400490           ; 0x1e6689000
+0x184A1F490   ldr      x4, [x8, #0xed0]     ; _NSViewGeometryInWindowDidChangeNotification
+0x184A1F494   ldr      x5, [x19, x27]
+0x184A1F498   mov      x2, x19
+0x184A1F49C   bl       "_objc_msgSend$addObserver:selector:name:object:"
+0x184A1F4A0   ldr      x0, [x19, x27]
+0x184A1F4A4   adrp     x3, 434157           ; 0x1eea0c000
+0x184A1F4A8   add      x3, x3, #0x2a8
+0x184A1F4AC   adrp     x5, 400496           ; 0x1e668f000
+0x184A1F4B0   add      x5, x5, #0xf48       ; _NSThemeFrameCloseButtonHiddenContext
+0x184A1F4B4   mov      x2, x19
+0x184A1F4B8   mov      x4, #0x0
+0x184A1F4BC   bl       "_objc_msgSend$addObserver:forKeyPath:options:context:"
+0x184A1F4C0   mov      x0, x19
+0x184A1F4C4   mov      x2, x21
+0x184A1F4C8   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F4CC   mov      x0, x19
+0x184A1F4D0   bl       _objc_msgSend$closeButtonDidChangeGeometry
+0x184A1F4D4   mov      x0, x19
+0x184A1F4D8   bl       _objc_msgSend$closeButtonDidHideOrShow
+0x184A1F4DC   mov      w24, #0x1
+0x184A1F4E0   mov      x0, x19
+0x184A1F4E4   mov      w2, #0x1
+0x184A1F4E8   bl       "_objc_msgSend$setNeedsLayout:"
+0x184A1F4EC   cmp      x21, #0x0
+0x184A1F4F0   cset     w23, ne
+0x184A1F4F4   b        0x184a1f520
+0x184A1F4F8   cbz      x21, 0x184a1f724
+0x184A1F4FC   mov      x0, x21
+0x184A1F500   bl       _objc_msgSend$superview
+0x184A1F504   cmp      x0, x26
+0x184A1F508   b.eq     0x184a1f730
+0x184A1F50C   mov      x0, x19
+0x184A1F510   mov      x2, x21
+0x184A1F514   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F518   mov      w23, #0x1
+0x184A1F51C   mov      w24, #0x1
+0x184A1F520   mov      w20, #0x1
+0x184A1F524   mov      x0, x19
+0x184A1F528   bl       _objc_msgSend$_autosaveButtonSeparatorField
+0x184A1F52C   mov      x21, x0
+0x184A1F530   cmp      x22, #0x0
+0x184A1F534   csel     w8, wzr, w28, eq
+0x184A1F538   tbz      w8, #0x0, 0x184a1f5b4
+0x184A1F53C   mov      x0, x22
+0x184A1F540   bl       _objc_msgSend$_shouldShowSeparatorField
+0x184A1F544   cmp      x21, #0x0
+0x184A1F548   cset     w8, eq
+0x184A1F54C   cbz      w0, 0x184a1f5c0
+0x184A1F550   cbnz     x21, 0x184a1f5c0
+0x184A1F554   adrp     x8, 400484           ; 0x1e6683000
+0x184A1F558   ldr      x0, [x8, #0x110]     ; _OBJC_CLASS_$_NSBitmapGraphicsContext@got
+0x184A1F55C   add      x8, sp, #0x80
+0x184A1F560   adrp     x16, 399287          ; 0x1e61d6000
+0x184A1F564   ldr      x16, [x16, #0xa90]
+0x184A1F568   mov      x17, x8
+0x184A1F56C   movk     x17, #0x6ae1, lsl #48
+0x184A1F570   pacda    x16, x17
+0x184A1F574   str      x16, [sp, #0x80]
+0x184A1F578   adrp     x9, 4513             ; 0x185bc0000
+0x184A1F57C   ldr      d0, [x9, #0x278]
+0x184A1F580   str      d0, [sp, #0x88]
+0x184A1F584   add      x8, x8, #0x10
+0x184A1F588   adrp     x9, 434073           ; 0x1ee9b8000
+0x184A1F58C   add      x9, x9, #0x7d8       ; ___block_descriptor_48_e8_32o40o_e28_v16?0"NSAnimationContext"8l
+0x184A1F590   adrp     x16, 3186            ; 0x185691000
+0x184A1F594   add      x16, x16, #0x6dc     ; ___30-[NSThemeFrame _updateButtons]_block_invoke_2
+0x184A1F598   pacia    x16, x8
+0x184A1F59C   stp      x16, x9, [sp, #0x90]
+0x184A1F5A0   stp      x19, x22, [sp, #0xa0]
+0x184A1F5A4   add      x2, sp, #0x80
+0x184A1F5A8   mov      x3, #0x0
+0x184A1F5AC   bl       "_objc_msgSend$runAnimationGroup:completionHandler:"
+0x184A1F5B0   b        0x184a1f6bc
+0x184A1F5B4   mov      w0, #0x0
+0x184A1F5B8   cmp      x21, #0x0
+0x184A1F5BC   cset     w8, eq
+0x184A1F5C0   tbnz     w0, #0x0, 0x184a1f674
+0x184A1F5C4   tbnz     w8, #0x0, 0x184a1f674
+0x184A1F5C8   adrp     x20, 400484          ; 0x1e6683000
+0x184A1F5CC   ldr      x0, [x20, #0x110]    ; _OBJC_CLASS_$_NSBitmapGraphicsContext@got
+0x184A1F5D0   bl       _objc_msgSend$currentContext
+0x184A1F5D4   bl       _objc_msgSend$allowsImplicitAnimation
+0x184A1F5D8   cbz      w0, 0x184a1f6a8
+0x184A1F5DC   ldr      x0, [x20, #0x110]
+0x184A1F5E0   add      x8, sp, #0x58
+0x184A1F5E4   adrp     x16, 399287          ; 0x1e61d6000
+0x184A1F5E8   ldr      x16, [x16, #0xa90]
+0x184A1F5EC   mov      x17, x8
+0x184A1F5F0   movk     x17, #0x6ae1, lsl #48
+0x184A1F5F4   pacda    x16, x17
+0x184A1F5F8   stp      x21, x16, [sp, #0x50]
+0x184A1F5FC   adrp     x9, 4513             ; 0x185bc0000
+0x184A1F600   ldr      d0, [x9, #0x278]
+0x184A1F604   str      d0, [sp, #0x60]
+0x184A1F608   add      x8, x8, #0x10
+0x184A1F60C   adrp     x9, 434073           ; 0x1ee9b8000
+0x184A1F610   add      x9, x9, #0x808       ; ___block_descriptor_40_e8_32o_e28_v16?0"NSAnimationContext"8l
+0x184A1F614   adrp     x16, 3186            ; 0x185691000
+0x184A1F618   add      x16, x16, #0x838     ; ___30-[NSThemeFrame _updateButtons]_block_invoke.163
+0x184A1F61C   pacia    x16, x8
+0x184A1F620   stp      x16, x9, [sp, #0x68]
+0x184A1F624   str      x21, [sp, #0x78]
+0x184A1F628   add      x8, sp, #0x30
+0x184A1F62C   adrp     x16, 399287          ; 0x1e61d6000
+0x184A1F630   ldr      x16, [x16, #0xa90]
+0x184A1F634   mov      x17, x8
+0x184A1F638   movk     x17, #0x6ae1, lsl #48
+0x184A1F63C   pacda    x16, x17
+0x184A1F640   str      x16, [sp, #0x30]
+0x184A1F644   str      d0, [sp, #0x38]
+0x184A1F648   add      x8, x8, #0x10
+0x184A1F64C   adrp     x16, 3186            ; 0x185691000
+0x184A1F650   add      x16, x16, #0x88c     ; ___30-[NSThemeFrame _updateButtons]_block_invoke.166
+0x184A1F654   pacia    x16, x8
+0x184A1F658   adrp     x8, 434073           ; 0x1ee9b8000
+0x184A1F65C   add      x8, x8, #0x268       ; ___block_descriptor_40_e8_32o_e5_v8?0l
+0x184A1F660   stp      x16, x8, [sp, #0x40]
+0x184A1F664   add      x2, sp, #0x58
+0x184A1F668   add      x3, sp, #0x30
+0x184A1F66C   bl       "_objc_msgSend$runAnimationGroup:completionHandler:"
+0x184A1F670   b        0x184a1f6b0
+0x184A1F674   tbnz     w8, #0x0, 0x184a1f698
+0x184A1F678   mov      x0, x21
+0x184A1F67C   bl       _objc_msgSend$superview
+0x184A1F680   cmp      x0, x26
+0x184A1F684   b.eq     0x184a1f698
+0x184A1F688   mov      x0, x19
+0x184A1F68C   mov      x2, x21
+0x184A1F690   bl       "_objc_msgSend$addTitlebarSubview:"
+0x184A1F694   b        0x184a1f6bc
+0x184A1F698   mov      x0, x19
+0x184A1F69C   bl       _objc_msgSend$_updateButtonState
+0x184A1F6A0   tbnz     w20, #0x0, 0x184a1f6c4
+0x184A1F6A4   b        0x184a1f704
+0x184A1F6A8   mov      x0, x21
+0x184A1F6AC   bl       _objc_msgSend$removeFromSuperview
+0x184A1F6B0   mov      x0, x19
+0x184A1F6B4   mov      x2, #0x0
+0x184A1F6B8   bl       "_objc_msgSend$_setAutosaveButtonSeparatorField:"
+0x184A1F6BC   mov      x0, x19
+0x184A1F6C0   bl       _objc_msgSend$_updateButtonState
+0x184A1F6C4   mov      x0, x19
+0x184A1F6C8   mov      w2, #0x1
+0x184A1F6CC   bl       "_objc_msgSend$_tileTitlebarAndRedisplay:"
+0x184A1F6D0   ldr      w8, [sp, #0xc]
+0x184A1F6D4   orr      w8, w8, w24
+0x184A1F6D8   cmp      w8, #0x1
+0x184A1F6DC   b.ne     0x184a1f704
+0x184A1F6E0   mov      x0, x19
+0x184A1F6E4   bl       _objc_msgSend$_updateObscuredStateOfButtonsForWindowSharingSession
+0x184A1F6E8   orr      w8, w23, w24
+0x184A1F6EC   cmp      w8, #0x1
+0x184A1F6F0   b.ne     0x184a1f704
+0x184A1F6F4   mov      x0, x19
+0x184A1F6F8   bl       _objc_msgSend$window
+0x184A1F6FC   bl       _objc_msgSend$_localSharingWindowController
+0x184A1F700   bl       _objc_msgSend$hostButtonDidChange
+0x184A1F704   ldp      x29, x30, [sp, #0x130]
+0x184A1F708   ldp      x20, x19, [sp, #0x120]
+0x184A1F70C   ldp      x22, x21, [sp, #0x110]
+0x184A1F710   ldp      x24, x23, [sp, #0x100]
+0x184A1F714   ldp      x26, x25, [sp, #0xf0]
+0x184A1F718   ldp      x28, x27, [sp, #0xe0]
+0x184A1F71C   add      sp, sp, #0x140
+0x184A1F720   retab
+0x184A1F724   mov      w23, #0x0
+0x184A1F728   mov      w24, #0x0
+0x184A1F72C   b        0x184a1f524
+0x184A1F730   mov      w24, #0x0
+0x184A1F734   mov      w23, #0x1
+0x184A1F738   b        0x184a1f524
+
+-[NSThemeFrame _wantsLeftHandButtons]:
+0x184A1F73C   pacibsp
+0x184A1F740   stp      x20, x19, [sp, #-0x20]!
+0x184A1F744   stp      x29, x30, [sp, #0x10]
+0x184A1F748   add      x29, sp, #0x10
+0x184A1F74C   mov      x19, x0
+0x184A1F750   bl       _objc_msgSend$window
+0x184A1F754   bl       _objc_msgSend$_inFullScreen
+0x184A1F758   tbz      w0, #0x0, 0x184a1f764
+0x184A1F75C   mov      w0, #0x1
+0x184A1F760   b        0x184a1f798
+0x184A1F764   adrp     x8, 416639           ; 0x1ea59e000
+0x184A1F768   ldrsw    x20, [x8, #0x214]
+0x184A1F76C   ldr      w8, [x19, x20]
+0x184A1F770   cmp      w8, #0x1
+0x184A1F774   b.eq     0x184a1f784
+0x184A1F778   mov      x0, x19
+0x184A1F77C   bl       _objc_msgSend$_isSheet
+0x184A1F780   tbz      w0, #0x0, 0x184a1f7a4
+0x184A1F784   adrp     x8, 416639           ; 0x1ea59e000
+0x184A1F788   ldrsw    x8, [x8, #0x204]
+0x184A1F78C   add      x8, x19, x8
+0x184A1F790   ldrb     w8, [x8, #0x1]
+0x184A1F794   ubfx     w0, w8, #4, #1
+0x184A1F798   ldp      x29, x30, [sp, #0x10]
+0x184A1F79C   ldp      x20, x19, [sp], #0x20
+0x184A1F7A0   retab
+0x184A1F7A4   mov      x0, x19
+0x184A1F7A8   bl       _objc_msgSend$_isClosable
+0x184A1F7AC   tbnz     w0, #0x0, 0x184a1f75c
+0x184A1F7B0   mov      x0, x19
+0x184A1F7B4   bl       _objc_msgSend$_isResizable
+0x184A1F7B8   tbnz     w0, #0x0, 0x184a1f75c
+0x184A1F7BC   mov      x0, x19
+0x184A1F7C0   bl       _objc_msgSend$_isMiniaturizable
+0x184A1F7C4   tbnz     w0, #0x0, 0x184a1f75c
+0x184A1F7C8   ldr      w8, [x19, x20]
+0x184A1F7CC   cmp      w8, #0x2
+0x184A1F7D0   b.eq     0x184a1f75c
+0x184A1F7D4   b        0x184a1f784
+
+-[NSThemeFrame newCloseButton]:
+0x184A20848   pacibsp
+0x184A2084C   stp      x20, x19, [sp, #-0x20]!
+0x184A20850   stp      x29, x30, [sp, #0x10]
+0x184A20854   add      x29, sp, #0x10
+0x184A20858   mov      x19, x0
+0x184A2085C   adrp     x8, 416638           ; 0x1ea59e000
+0x184A20860   add      x8, x8, #0x988       ; _OBJC_IVAR_$_NSView._window
+0x184A20864   ldrsw    x8, [x8]
+0x184A20868   ldr      x0, [x0, x8]
+0x184A2086C   bl       _objc_opt_class
+0x184A20870   mov      x20, x0
+0x184A20874   mov      x0, x19
+0x184A20878   bl       _objc_msgSend$_effectiveStyleMask
+0x184A2087C   mov      x3, x0
+0x184A20880   mov      x0, x20
+0x184A20884   mov      x2, #0x0
+0x184A20888   bl       "_objc_msgSend$standardWindowButton:forStyleMask:"
+0x184A2088C   mov      x20, x0
+0x184A20890   mov      x0, x19
+0x184A20894   bl       _objc_msgSend$window
+0x184A20898   mov      x2, x0
+0x184A2089C   mov      x0, x20
+0x184A208A0   bl       "_objc_msgSend$setTarget:"
+0x184A208A4   mov      x0, x20
+0x184A208A8   mov      x2, #0x0
+0x184A208AC   bl       "_objc_msgSend$setTag:"
+0x184A208B0   mov      x0, x20
+0x184A208B4   ldp      x29, x30, [sp, #0x10]
+0x184A208B8   ldp      x20, x19, [sp], #0x20
+0x184A208BC   retab
+
+-[NSThemeFrame newZoomButton]:
+0x184A26EE4   pacibsp
+0x184A26EE8   stp      x20, x19, [sp, #-0x20]!
+0x184A26EEC   stp      x29, x30, [sp, #0x10]
+0x184A26EF0   add      x29, sp, #0x10
+0x184A26EF4   mov      x19, x0
+0x184A26EF8   adrp     x8, 416632           ; 0x1ea59e000
+0x184A26EFC   add      x8, x8, #0x988       ; _OBJC_IVAR_$_NSView._window
+0x184A26F00   ldrsw    x8, [x8]
+0x184A26F04   ldr      x0, [x0, x8]
+0x184A26F08   bl       _objc_opt_class
+0x184A26F0C   mov      x20, x0
+0x184A26F10   mov      x0, x19
+0x184A26F14   bl       _objc_msgSend$_effectiveStyleMask
+0x184A26F18   mov      x3, x0
+0x184A26F1C   mov      x0, x20
+0x184A26F20   mov      w2, #0x2
+0x184A26F24   bl       "_objc_msgSend$standardWindowButton:forStyleMask:"
+0x184A26F28   mov      x20, x0
+0x184A26F2C   mov      x0, x19
+0x184A26F30   bl       _objc_msgSend$window
+0x184A26F34   mov      x2, x0
+0x184A26F38   mov      x0, x20
+0x184A26F3C   bl       "_objc_msgSend$setTarget:"
+0x184A26F40   mov      x0, x20
+0x184A26F44   mov      w2, #0x2
+0x184A26F48   bl       "_objc_msgSend$setTag:"
+0x184A26F4C   mov      x0, x20
+0x184A26F50   ldp      x29, x30, [sp, #0x10]
+0x184A26F54   ldp      x20, x19, [sp], #0x20
+0x184A26F58   retab
+
+-[NSThemeFrame newMiniaturizeButton]:
+0x184A281C0   pacibsp
+0x184A281C4   stp      x20, x19, [sp, #-0x20]!
+0x184A281C8   stp      x29, x30, [sp, #0x10]
+0x184A281CC   add      x29, sp, #0x10
+0x184A281D0   mov      x19, x0
+0x184A281D4   adrp     x8, 416630           ; 0x1ea59e000
+0x184A281D8   add      x8, x8, #0x988       ; _OBJC_IVAR_$_NSView._window
+0x184A281DC   ldrsw    x8, [x8]
+0x184A281E0   ldr      x0, [x0, x8]
+0x184A281E4   bl       _objc_opt_class
+0x184A281E8   mov      x20, x0
+0x184A281EC   mov      x0, x19
+0x184A281F0   bl       _objc_msgSend$_effectiveStyleMask
+0x184A281F4   mov      x3, x0
+0x184A281F8   mov      x0, x20
+0x184A281FC   mov      w2, #0x1
+0x184A28200   bl       "_objc_msgSend$standardWindowButton:forStyleMask:"
+0x184A28204   mov      x20, x0
+0x184A28208   mov      x0, x19
+0x184A2820C   bl       _objc_msgSend$window
+0x184A28210   mov      x2, x0
+0x184A28214   mov      x0, x20
+0x184A28218   bl       "_objc_msgSend$setTarget:"
+0x184A2821C   mov      x0, x20
+0x184A28220   mov      w2, #0x1
+0x184A28224   bl       "_objc_msgSend$setTag:"
+0x184A28228   mov      x0, x20
+0x184A2822C   ldp      x29, x30, [sp, #0x10]
+0x184A28230   ldp      x20, x19, [sp], #0x20
+0x184A28234   retab
+
+-[NSThemeFrame _updateButtonState]:
+0x184A28604   pacibsp
+0x184A28608   stp      x22, x21, [sp, #-0x30]!
+0x184A2860C   stp      x20, x19, [sp, #0x10]
+0x184A28610   stp      x29, x30, [sp, #0x20]
+0x184A28614   add      x29, sp, #0x20
+0x184A28618   mov      x19, x0
+0x184A2861C   adrp     x8, 416628           ; 0x1ea59c000
+0x184A28620   add      x8, x8, #0x8         ; _OBJC_IVAR_$_NSFrameView.closeButton
+0x184A28624   ldrsw    x21, [x8]
+0x184A28628   ldr      x0, [x0, x21]
+0x184A2862C   adrp     x8, 483913           ; 0x1fac71000
+0x184A28630   add      x20, x8, #0xd30
+0x184A28634   mov      x1, x20
+0x184A28638   bl       _objc_opt_respondsToSelector
+0x184A2863C   tbz      w0, #0x0, 0x184a28648
+0x184A28640   ldr      x0, [x19, x21]
+0x184A28644   bl       _objc_msgSend$update
+0x184A28648   adrp     x8, 416628           ; 0x1ea59c000
+0x184A2864C   add      x8, x8, #0x10        ; _OBJC_IVAR_$_NSFrameView.zoomButton
+0x184A28650   ldrsw    x21, [x8]
+0x184A28654   ldr      x0, [x19, x21]
+0x184A28658   mov      x1, x20
+0x184A2865C   bl       _objc_opt_respondsToSelector
+0x184A28660   tbz      w0, #0x0, 0x184a2866c
+0x184A28664   ldr      x0, [x19, x21]
+0x184A28668   bl       _objc_msgSend$update
+0x184A2866C   adrp     x8, 416628           ; 0x1ea59c000
+0x184A28670   add      x8, x8, #0xc         ; _OBJC_IVAR_$_NSFrameView.minimizeButton
+0x184A28674   ldrsw    x21, [x8]
+0x184A28678   ldr      x0, [x19, x21]
+0x184A2867C   mov      x1, x20
+0x184A28680   bl       _objc_opt_respondsToSelector
+0x184A28684   tbz      w0, #0x0, 0x184a28690
+0x184A28688   ldr      x0, [x19, x21]
+0x184A2868C   bl       _objc_msgSend$update
+0x184A28690   adrp     x8, 427376           ; 0x1ecf98000
+0x184A28694   ldrsw    x21, [x8, #0x408]
+0x184A28698   ldr      x0, [x19, x21]
+0x184A2869C   mov      x1, x20
+0x184A286A0   bl       _objc_opt_respondsToSelector
+0x184A286A4   tbz      w0, #0x0, 0x184a286cc
+0x184A286A8   ldr      x0, [x19, x21]
+0x184A286AC   ldp      x29, x30, [sp, #0x20]
+0x184A286B0   ldp      x20, x19, [sp, #0x10]
+0x184A286B4   ldp      x22, x21, [sp], #0x30
+0x184A286B8   autibsp
+0x184A286BC   eor      x16, x30, x30, lsl #1
+0x184A286C0   tbz      x16, #0x3e, 0x184a286c8
+0x184A286C4   brk      #0xc471
+0x184A286C8   b        _objc_msgSend$update
+0x184A286CC   ldp      x29, x30, [sp, #0x20]
+0x184A286D0   ldp      x20, x19, [sp, #0x10]
+0x184A286D4   ldp      x22, x21, [sp], #0x30
+0x184A286D8   retab
+
+-[NSThemeFrame _updateButtonPositions]:
+0x184A2A5CC   pacibsp
+0x184A2A5D0   stp      x20, x19, [sp, #-0x20]!
+0x184A2A5D4   stp      x29, x30, [sp, #0x10]
+0x184A2A5D8   add      x29, sp, #0x10
+0x184A2A5DC   mov      x19, x0
+0x184A2A5E0   adrp     x8, 427374           ; 0x1ecf98000
+0x184A2A5E4   ldrsw    x8, [x8, #0x408]
+0x184A2A5E8   ldr      x20, [x0, x8]
+0x184A2A5EC   cbz      x20, 0x184a2a608
+0x184A2A5F0   mov      x0, x19
+0x184A2A5F4   bl       _objc_msgSend$_toolbarButtonOrigin
+0x184A2A5F8   mov      x0, x19
+0x184A2A5FC   bl       "_objc_msgSend$_adjustPointToTitlebarView:"
+0x184A2A600   mov      x0, x20
+0x184A2A604   bl       "_objc_msgSend$setFrameOrigin:"
+0x184A2A608   adrp     x8, 427374           ; 0x1ecf98000
+0x184A2A60C   ldrsw    x8, [x8, #0x40c]
+0x184A2A610   ldr      x20, [x19, x8]
+0x184A2A614   cbz      x20, 0x184a2a630
+0x184A2A618   mov      x0, x19
+0x184A2A61C   bl       _objc_msgSend$_lockButtonOrigin
+0x184A2A620   mov      x0, x19
+0x184A2A624   bl       "_objc_msgSend$_adjustPointToTitlebarView:"
+0x184A2A628   mov      x0, x20
+0x184A2A62C   bl       "_objc_msgSend$setFrameOrigin:"
+0x184A2A630   adrp     x8, 416626           ; 0x1ea59c000
+0x184A2A634   add      x8, x8, #0x8         ; _OBJC_IVAR_$_NSFrameView.closeButton
+0x184A2A638   ldrsw    x8, [x8]
+0x184A2A63C   ldr      x20, [x19, x8]
+0x184A2A640   cbz      x20, 0x184a2a660
+0x184A2A644   mov      x0, x19
+0x184A2A648   bl       _objc_msgSend$_closeButtonOrigin
+0x184A2A64C   mov      x0, x19
+0x184A2A650   bl       "_objc_msgSend$_adjustPointToTitlebarView:"
+0x184A2A654   mov      x0, x19
+0x184A2A658   mov      x2, x20
+0x184A2A65C   bl       "_objc_msgSend$_setWidget:frameOrigin:"
+0x184A2A660   adrp     x8, 416626           ; 0x1ea59c000
+0x184A2A664   add      x8, x8, #0xc         ; _OBJC_IVAR_$_NSFrameView.minimizeButton
+0x184A2A668   ldrsw    x8, [x8]
+0x184A2A66C   ldr      x20, [x19, x8]
+0x184A2A670   cbz      x20, 0x184a2a690
+0x184A2A674   mov      x0, x19
+0x184A2A678   bl       _objc_msgSend$_collapseButtonOrigin
+0x184A2A67C   mov      x0, x19
+0x184A2A680   bl       "_objc_msgSend$_adjustPointToTitlebarView:"
+0x184A2A684   mov      x0, x19
+0x184A2A688   mov      x2, x20
+0x184A2A68C   bl       "_objc_msgSend$_setWidget:frameOrigin:"
+0x184A2A690   adrp     x8, 416626           ; 0x1ea59c000
+0x184A2A694   add      x8, x8, #0x10        ; _OBJC_IVAR_$_NSFrameView.zoomButton
+0x184A2A698   ldrsw    x8, [x8]
+0x184A2A69C   ldr      x20, [x19, x8]
+0x184A2A6A0   cbz      x20, 0x184a2a6c0
+0x184A2A6A4   mov      x0, x19
+0x184A2A6A8   bl       _objc_msgSend$_zoomButtonOrigin
+0x184A2A6AC   mov      x0, x19
+0x184A2A6B0   bl       "_objc_msgSend$_adjustPointToTitlebarView:"
+0x184A2A6B4   mov      x0, x19
+0x184A2A6B8   mov      x2, x20
+0x184A2A6BC   bl       "_objc_msgSend$_setWidget:frameOrigin:"
+0x184A2A6C0   mov      x0, x19
+0x184A2A6C4   bl       _objc_msgSend$_updateCornerInsets
+0x184A2A6C8   adrp     x8, 427374           ; 0x1ecf98000
+0x184A2A6CC   ldrsw    x8, [x8, #0x410]
+0x184A2A6D0   ldr      x20, [x19, x8]
+0x184A2A6D4   cbz      x20, 0x184a2a6f0
+0x184A2A6D8   mov      x0, x19
+0x184A2A6DC   bl       _objc_msgSend$_fullScreenButtonOrigin
+0x184A2A6E0   mov      x0, x19
+0x184A2A6E4   bl       "_objc_msgSend$_adjustPointToTitlebarView:"
+0x184A2A6E8   mov      x0, x20
+0x184A2A6EC   bl       "_objc_msgSend$setFrameOrigin:"
+0x184A2A6F0   adrp     x8, 416628           ; 0x1ea59e000
+0x184A2A6F4   add      x8, x8, #0x270       ; _OBJC_IVAR_$_NSTitledFrame.fileButton
+0x184A2A6F8   ldrsw    x8, [x8]
+0x184A2A6FC   ldr      x20, [x19, x8]
+0x184A2A700   cbz      x20, 0x184a2a718
+0x184A2A704   mov      x0, x19
+0x184A2A708   bl       _objc_msgSend$_fileButtonOrigin
+0x184A2A70C   mov      x0, x19
+0x184A2A710   mov      x2, x20
+0x184A2A714   bl       "_objc_msgSend$_setButton:frameOrigin:"
+0x184A2A718   mov      x0, x19
+0x184A2A71C   bl       _objc_msgSend$_autosaveButtonSeparatorField
+0x184A2A720   cbz      x0, 0x184a2a740
+0x184A2A724   mov      x20, x0
+0x184A2A728   mov      x0, x19
+0x184A2A72C   bl       _objc_msgSend$_autosaveButtonSeparatorFieldOrigin
+0x184A2A730   mov      x0, x19
+0x184A2A734   bl       "_objc_msgSend$_adjustPointToTitlebarView:"
+0x184A2A738   mov      x0, x20
+0x184A2A73C   bl       "_objc_msgSend$setFrameOrigin:"
+0x184A2A740   mov      x0, x19
+0x184A2A744   bl       _objc_msgSend$autosaveButton
+0x184A2A748   cbz      x0, 0x184a2a768
+0x184A2A74C   mov      x20, x0
+0x184A2A750   mov      x0, x19
+0x184A2A754   bl       _objc_msgSend$_autosaveButtonOrigin
+0x184A2A758   mov      x0, x19
+0x184A2A75C   bl       "_objc_msgSend$_adjustPointToTitlebarView:"
+0x184A2A760   mov      x0, x20
+0x184A2A764   bl       "_objc_msgSend$setFrameOrigin:"
+0x184A2A768   mov      x0, x19
+0x184A2A76C   bl       _objc_msgSend$renameField
+0x184A2A770   cbz      x0, 0x184a2a7b0
+0x184A2A774   mov      x20, x0
+0x184A2A778   bl       _objc_msgSend$superview
+0x184A2A77C   cbz      x0, 0x184a2a7b0
+0x184A2A780   mov      x0, x19
+0x184A2A784   bl       _objc_msgSend$_titlebarTitleRect
+0x184A2A788   mov      x0, x19
+0x184A2A78C   bl       "_objc_msgSend$_adjustRectToTitlebarView:"
+0x184A2A790   mov      x0, x20
+0x184A2A794   ldp      x29, x30, [sp, #0x10]
+0x184A2A798   ldp      x20, x19, [sp], #0x20
+0x184A2A79C   autibsp
+0x184A2A7A0   eor      x16, x30, x30, lsl #1
+0x184A2A7A4   tbz      x16, #0x3e, 0x184a2a7ac
+0x184A2A7A8   brk      #0xc471
+0x184A2A7AC   b        "_objc_msgSend$setFrame:"
+0x184A2A7B0   ldp      x29, x30, [sp, #0x10]
+0x184A2A7B4   ldp      x20, x19, [sp], #0x20
+0x184A2A7B8   retab
+
+-[NSWindow standardWindowButton:]:
+0x184AA3D80   pacibsp
+0x184AA3D84   stp      x24, x23, [sp, #-0x40]!
+0x184AA3D88   stp      x22, x21, [sp, #0x10]
+0x184AA3D8C   stp      x20, x19, [sp, #0x20]
+0x184AA3D90   stp      x29, x30, [sp, #0x30]
+0x184AA3D94   add      x29, sp, #0x30
+0x184AA3D98   mov      x20, x2
+0x184AA3D9C   mov      x21, x0
+0x184AA3DA0   adrp     x8, 399042           ; 0x1e6165000
+0x184AA3DA4   ldr      x0, [x8, #0xc48]
+0x184AA3DA8   bl       "_objc_msgSend$numberWithInteger:"
+0x184AA3DAC   mov      x19, x0
+0x184AA3DB0   adrp     x8, 427272           ; 0x1ecfab000
+0x184AA3DB4   add      x8, x8, #0xbfe       ; _sNSWindowShouldCacheStandardWindowButtonComputedValue
+0x184AA3DB8   ldarb    w8, [x8]
+0x184AA3DBC   cmp      w8, #0x2
+0x184AA3DC0   b.eq     0x184aa3e4c
+0x184AA3DC4   cbz      w8, 0x184aa3e2c
+0x184AA3DC8   adrp     x8, 416507           ; 0x1ea59e000
+0x184AA3DCC   ldrsw    x23, [x8, #0xa94]
+0x184AA3DD0   ldr      x0, [x21, x23]
+0x184AA3DD4   bl       _objc_msgSend$cachedStandardButtons
+0x184AA3DD8   mov      x22, x0
+0x184AA3DDC   cbnz     x0, 0x184aa3dfc
+0x184AA3DE0   adrp     x8, 399029           ; 0x1e6158000
+0x184AA3DE4   ldr      x0, [x8, #0x7a8]
+0x184AA3DE8   bl       _objc_msgSend$dictionary
+0x184AA3DEC   mov      x22, x0
+0x184AA3DF0   ldr      x0, [x21, x23]
+0x184AA3DF4   mov      x2, x22
+0x184AA3DF8   bl       "_objc_msgSend$setCachedStandardButtons:"
+0x184AA3DFC   mov      x0, x22
+0x184AA3E00   mov      x2, x19
+0x184AA3E04   bl       "_objc_msgSend$objectForKeyedSubscript:"
+0x184AA3E08   cbz      x0, 0x184aa3e50
+0x184AA3E0C   mov      x23, x0
+0x184AA3E10   bl       _objc_msgSend$window
+0x184AA3E14   cmp      x0, x21
+0x184AA3E18   b.ne     0x184aa3e50
+0x184AA3E1C   mov      x0, x23
+0x184AA3E20   bl       _objc_msgSend$isHidden
+0x184AA3E24   cbnz     w0, 0x184aa3e50
+0x184AA3E28   b        0x184aa3e64
+0x184AA3E2C   adrp     x0, 434088           ; 0x1eea4b000
+0x184AA3E30   add      x0, x0, #0xc8
+0x184AA3E34   adrp     x2, 427272           ; 0x1ecfab000
+0x184AA3E38   add      x2, x2, #0xbfe       ; _sNSWindowShouldCacheStandardWindowButtonComputedValue
+0x184AA3E3C   mov      w1, #0x1
+0x184AA3E40   mov      x3, #0x0
+0x184AA3E44   bl       __NSGetBoolAppConfig
+0x184AA3E48   cbnz     w0, 0x184aa3dc8
+0x184AA3E4C   mov      x22, #0x0
+0x184AA3E50   mov      x0, x21
+0x184AA3E54   mov      x2, x20
+0x184AA3E58   bl       "_objc_msgSend$_findStandardWindowButton:"
+0x184AA3E5C   mov      x23, x0
+0x184AA3E60   cbz      x0, 0x184aa3e74
+0x184AA3E64   mov      x0, x22
+0x184AA3E68   mov      x2, x23
+0x184AA3E6C   mov      x3, x19
+0x184AA3E70   bl       "_objc_msgSend$setObject:forKeyedSubscript:"
+0x184AA3E74   mov      x0, x23
+0x184AA3E78   ldp      x29, x30, [sp, #0x30]
+0x184AA3E7C   ldp      x20, x19, [sp, #0x20]
+0x184AA3E80   ldp      x22, x21, [sp, #0x10]
+0x184AA3E84   ldp      x24, x23, [sp], #0x40
+0x184AA3E88   retab
+
+-[NSObject(NSAccessibilityOverridingAttributes) accessibilitySetOverrideValue:forAttribute:]:
+0x184ABEEFC   pacibsp
+0x184ABEF00   sub      sp, sp, #0x80
+0x184ABEF04   stp      x22, x21, [sp, #0x50]
+0x184ABEF08   stp      x20, x19, [sp, #0x60]
+0x184ABEF0C   stp      x29, x30, [sp, #0x70]
+0x184ABEF10   add      x29, sp, #0x70
+0x184ABEF14   mov      x19, x3
+0x184ABEF18   mov      x20, x2
+0x184ABEF1C   mov      x21, x0
+0x184ABEF20   bl       _NSAccessibilityEnabled
+0x184ABEF24   cbz      w0, 0x184abefac
+0x184ABEF28   cbz      x21, 0x184abefc0
+0x184ABEF2C   adrp     x8, 416502           ; 0x1ea5b4000
+0x184ABEF30   ldr      x1, [x8, #0xd90]     ; __NSAccessibilityOverridesAlwaysTakePrecedenceKey
+0x184ABEF34   mov      x0, x21
+0x184ABEF38   bl       _objc_getAssociatedObject
+0x184ABEF3C   bl       _objc_msgSend$boolValue
+0x184ABEF40   cbz      w0, 0x184abefc0
+0x184ABEF44   mov      x0, x19
+0x184ABEF48   mov      w1, #0x0
+0x184ABEF4C   bl       _NSAccessibilityAssociatedObjectKeyForAttribute
+0x184ABEF50   add      x8, sp, #0x8
+0x184ABEF54   adrp     x16, 399128          ; 0x1e61d6000
+0x184ABEF58   ldr      x16, [x16, #0xa90]
+0x184ABEF5C   mov      x17, x8
+0x184ABEF60   movk     x17, #0x6ae1, lsl #48
+0x184ABEF64   pacda    x16, x17
+0x184ABEF68   str      x16, [sp, #0x8]
+0x184ABEF6C   adrp     x9, 4354             ; 0x185bc0000
+0x184ABEF70   ldr      d0, [x9, #0x278]
+0x184ABEF74   str      d0, [sp, #0x10]
+0x184ABEF78   add      x8, x8, #0x10
+0x184ABEF7C   adrp     x16, 2381            ; 0x18540b000
+0x184ABEF80   add      x16, x16, #0x46c     ; ___NSAccessibilityOverrideSetObjectValueForAttribute_block_invoke
+0x184ABEF84   pacia    x16, x8
+0x184ABEF88   adrp     x8, 433915           ; 0x1ee9b9000
+0x184ABEF8C   add      x8, x8, #0xac0       ; ___block_descriptor_72_e8_32o40o48o_e5_v8?0l
+0x184ABEF90   stp      x16, x8, [sp, #0x18]
+0x184ABEF94   stp      x21, x20, [sp, #0x28]
+0x184ABEF98   stp      x19, x0, [sp, #0x38]
+0x184ABEF9C   str      xzr, [sp, #0x48]
+0x184ABEFA0   add      x0, sp, #0x8
+0x184ABEFA4   bl       _NSAccessibilityPerformOverrideAttribute
+0x184ABEFA8   mov      w0, #0x1
+0x184ABEFAC   ldp      x29, x30, [sp, #0x70]
+0x184ABEFB0   ldp      x20, x19, [sp, #0x60]
+0x184ABEFB4   ldp      x22, x21, [sp, #0x50]
+0x184ABEFB8   add      sp, sp, #0x80
+0x184ABEFBC   retab
+0x184ABEFC0   mov      x0, x21
+0x184ABEFC4   mov      x1, x19
+0x184ABEFC8   mov      x2, x20
+0x184ABEFCC   mov      w3, #0x0
+0x184ABEFD0   ldp      x29, x30, [sp, #0x70]
+0x184ABEFD4   ldp      x20, x19, [sp, #0x60]
+0x184ABEFD8   ldp      x22, x21, [sp, #0x50]
+0x184ABEFDC   add      sp, sp, #0x80
+0x184ABEFE0   autibsp
+0x184ABEFE4   eor      x16, x30, x30, lsl #1
+0x184ABEFE8   tbz      x16, #0x3e, 0x184abeff0
+0x184ABEFEC   brk      #0xc471
+0x184ABEFF0   b        _NSAccessibilitySetOverriddenAttributesForUIElement
+
+-[NSThemeFrame setButtonRevealAmount:]:
+0x184CA02A4   pacibsp
+0x184CA02A8   sub      sp, sp, #0x90
+0x184CA02AC   stp      d9, d8, [sp, #0x50]
+0x184CA02B0   stp      x22, x21, [sp, #0x60]
+0x184CA02B4   stp      x20, x19, [sp, #0x70]
+0x184CA02B8   stp      x29, x30, [sp, #0x80]
+0x184CA02BC   add      x29, sp, #0x80
+0x184CA02C0   mov.16b  v9, v0
+0x184CA02C4   mov      x19, x0
+0x184CA02C8   bl       _objc_msgSend$buttonRevealAmount
+0x184CA02CC   fcmp     d0, d9
+0x184CA02D0   b.eq     0x184ca0520
+0x184CA02D4   mov.16b  v8, v0
+0x184CA02D8   adrp     x8, 487039           ; 0x1fbb1f000
+0x184CA02DC   add      x20, x8, #0xbf6
+0x184CA02E0   fmov     d0, #1.00000000
+0x184CA02E4   fcmp     d9, d0
+0x184CA02E8   b.eq     0x184ca0304
+0x184CA02EC   adrp     x8, 398533           ; 0x1e6165000
+0x184CA02F0   ldr      x0, [x8, #0xc48]
+0x184CA02F4   mov.16b  v0, v9
+0x184CA02F8   bl       "_objc_msgSend$numberWithDouble:"
+0x184CA02FC   mov      x2, x0
+0x184CA0300   b        0x184ca0308
+0x184CA0304   mov      x2, #0x0
+0x184CA0308   mov      x0, x19
+0x184CA030C   mov      x1, x20
+0x184CA0310   mov      w3, #0x303
+0x184CA0314   bl       _objc_setAssociatedObject
+0x184CA0318   adrp     x8, 415996           ; 0x1ea59c000
+0x184CA031C   add      x8, x8, #0x8         ; _OBJC_IVAR_$_NSFrameView.closeButton
+0x184CA0320   ldrsw    x8, [x8]
+0x184CA0324   ldr      x0, [x19, x8]
+0x184CA0328   mov.16b  v0, v9
+0x184CA032C   bl       "_objc_msgSend$setAlphaValue:"
+0x184CA0330   adrp     x8, 415996           ; 0x1ea59c000
+0x184CA0334   add      x8, x8, #0xc         ; _OBJC_IVAR_$_NSFrameView.minimizeButton
+0x184CA0338   ldrsw    x8, [x8]
+0x184CA033C   ldr      x0, [x19, x8]
+0x184CA0340   mov.16b  v0, v9
+0x184CA0344   bl       "_objc_msgSend$setAlphaValue:"
+0x184CA0348   adrp     x20, 426744          ; 0x1ecf98000
+0x184CA034C   add      x20, x20, #0x40c
+0x184CA0350   ldrsw    x21, [x20, #0x4]
+0x184CA0354   ldr      x0, [x19, x21]
+0x184CA0358   mov.16b  v0, v9
+0x184CA035C   bl       "_objc_msgSend$setAlphaValue:"
+0x184CA0360   adrp     x8, 415996           ; 0x1ea59c000
+0x184CA0364   add      x8, x8, #0x10        ; _OBJC_IVAR_$_NSFrameView.zoomButton
+0x184CA0368   ldrsw    x8, [x8]
+0x184CA036C   ldr      x0, [x19, x8]
+0x184CA0370   mov.16b  v0, v9
+0x184CA0374   bl       "_objc_msgSend$setAlphaValue:"
+0x184CA0378   ldr      x0, [x19, x21]
+0x184CA037C   mov.16b  v0, v9
+0x184CA0380   bl       "_objc_msgSend$setAlphaValue:"
+0x184CA0384   ldrsw    x8, [x20]
+0x184CA0388   ldr      x0, [x19, x8]
+0x184CA038C   mov.16b  v0, v9
+0x184CA0390   bl       "_objc_msgSend$setAlphaValue:"
+0x184CA0394   mov      x0, x19
+0x184CA0398   bl       _objc_msgSend$autosaveButton
+0x184CA039C   mov.16b  v0, v9
+0x184CA03A0   bl       "_objc_msgSend$setAlphaValue:"
+0x184CA03A4   mov      x0, x19
+0x184CA03A8   bl       _objc_msgSend$renameField
+0x184CA03AC   mov.16b  v0, v9
+0x184CA03B0   bl       "_objc_msgSend$setAlphaValue:"
+0x184CA03B4   mov      x0, x19
+0x184CA03B8   bl       _objc_msgSend$_autosaveButtonSeparatorField
+0x184CA03BC   mov.16b  v0, v9
+0x184CA03C0   bl       "_objc_msgSend$setAlphaValue:"
+0x184CA03C4   mov      x0, x19
+0x184CA03C8   bl       _objc_msgSend$_titleTextField
+0x184CA03CC   mov.16b  v0, v9
+0x184CA03D0   bl       "_objc_msgSend$setAlphaValue:"
+0x184CA03D4   mov      x0, x19
+0x184CA03D8   bl       _objc_msgSend$fileButton
+0x184CA03DC   mov.16b  v0, v9
+0x184CA03E0   bl       "_objc_msgSend$setAlphaValue:"
+0x184CA03E4   mov      x0, x19
+0x184CA03E8   bl       _objc_msgSend$sharingIndicator
+0x184CA03EC   mov.16b  v0, v9
+0x184CA03F0   bl       "_objc_msgSend$setAlphaValue:"
+0x184CA03F4   mov      x0, x19
+0x184CA03F8   bl       _objc_msgSend$_titlebarViewControllerIfAvailable
+0x184CA03FC   mov.16b  v0, v9
+0x184CA0400   bl       "_objc_msgSend$setRevealAmount:"
+0x184CA0404   mov      x0, x19
+0x184CA0408   bl       _objc_msgSend$window
+0x184CA040C   bl       _objc_msgSend$_localSharingWindowController
+0x184CA0410   bl       _objc_msgSend$hostButtonRevealAmountDidChange
+0x184CA0414   mov      x0, x19
+0x184CA0418   bl       _objc_msgSend$_trafficLightsAreInlineWithToolbar
+0x184CA041C   cbz      w0, 0x184ca0440
+0x184CA0420   mov      x0, x19
+0x184CA0424   bl       _objc_msgSend$window
+0x184CA0428   bl       _objc_msgSend$toolbar
+0x184CA042C   cbz      x0, 0x184ca0440
+0x184CA0430   mov      x0, x19
+0x184CA0434   bl       _objc_msgSend$_toolbarView
+0x184CA0438   mov      w2, #0x1
+0x184CA043C   bl       "_objc_msgSend$setNeedsLayout:"
+0x184CA0440   mov      x0, x19
+0x184CA0444   bl       _objc_msgSend$_isFullScreen
+0x184CA0448   cbz      w0, 0x184ca050c
+0x184CA044C   mov      x0, x19
+0x184CA0450   bl       _objc_msgSend$_auxViewControllers
+0x184CA0454   bl       _objc_msgSend$count
+0x184CA0458   cbz      x0, 0x184ca050c
+0x184CA045C   add      x8, sp, #0x30
+0x184CA0460   stp      xzr, x8, [sp, #0x30]
+0x184CA0464   adrp     x9, 3872             ; 0x185bc0000
+0x184CA0468   ldr      d0, [x9, #0x330]
+0x184CA046C   str      d0, [sp, #0x40]
+0x184CA0470   strb     wzr, [sp, #0x48]
+0x184CA0474   add      x9, sp, #0x8
+0x184CA0478   adrp     x16, 398646          ; 0x1e61d6000
+0x184CA047C   ldr      x16, [x16, #0xa90]
+0x184CA0480   mov      x17, x9
+0x184CA0484   movk     x17, #0x6ae1, lsl #48
+0x184CA0488   pacda    x16, x17
+0x184CA048C   str      x16, [sp, #0x8]
+0x184CA0490   adrp     x10, 3872            ; 0x185bc0000
+0x184CA0494   ldr      d0, [x10, #0x278]
+0x184CA0498   str      d0, [sp, #0x10]
+0x184CA049C   add      x9, x9, #0x10
+0x184CA04A0   adrp     x16, 78              ; 0x184cee000
+0x184CA04A4   add      x16, x16, #0x180     ; ___38-[NSThemeFrame setButtonRevealAmount:]_block_invoke
+0x184CA04A8   pacia    x16, x9
+0x184CA04AC   adrp     x9, 433453           ; 0x1ee9cd000
+0x184CA04B0   add      x9, x9, #0xf48       ; ___block_descriptor_40_e8_32r_e47_v24?0"NSTitlebarAccessoryViewController"8^B16l
+0x184CA04B4   stp      x16, x9, [sp, #0x18]
+0x184CA04B8   str      x8, [sp, #0x28]
+0x184CA04BC   add      x3, sp, #0x8
+0x184CA04C0   mov      x0, x19
+0x184CA04C4   mov      w2, #0x4
+0x184CA04C8   bl       "_objc_msgSend$_enumerateAuxViewControllersOfType:handler:"
+0x184CA04CC   ldr      x8, [sp, #0x38]
+0x184CA04D0   ldrb     w8, [x8, #0x18]
+0x184CA04D4   cmp      w8, #0x1
+0x184CA04D8   b.ne     0x184ca04e4
+0x184CA04DC   mov      x0, x19
+0x184CA04E0   bl       _objc_msgSend$_relayoutBottomAuxiliaryViews
+0x184CA04E4   mov      x0, x19
+0x184CA04E8   bl       _objc_msgSend$window
+0x184CA04EC   bl       _objc_msgSend$titleVisibility
+0x184CA04F0   cmp      x0, #0x1
+0x184CA04F4   b.ne     0x184ca0500
+0x184CA04F8   mov      x0, x19
+0x184CA04FC   bl       _objc_msgSend$_syncSideAuxillaryViewPositions
+0x184CA0500   add      x0, sp, #0x30
+0x184CA0504   mov      w1, #0x8
+0x184CA0508   bl       __Block_object_dispose
+0x184CA050C   fcmp     d8, #0.0
+0x184CA0510   b.hi     0x184ca0520
+0x184CA0514   mov      x0, x19
+0x184CA0518   bl       _objc_msgSend$titlebarView
+0x184CA051C   bl       _objc_msgSend$updateTrackingAreas
+0x184CA0520   ldp      x29, x30, [sp, #0x80]
+0x184CA0524   ldp      x20, x19, [sp, #0x70]
+0x184CA0528   ldp      x22, x21, [sp, #0x60]
+0x184CA052C   ldp      d9, d8, [sp, #0x50]
+0x184CA0530   add      sp, sp, #0x90
+0x184CA0534   retab
+0x184CA0538   mov      x19, x0
+0x184CA053C   add      x0, sp, #0x30
+0x184CA0540   mov      w1, #0x8
+0x184CA0544   bl       __Block_object_dispose
+0x184CA0548   mov      x0, x19
+0x184CA054C   bl       __Unwind_Resume
+
+-[NSWindow(NSWindow_Theme) _updateButtonsForModeChanged]:
+0x184CA6E1C   pacibsp
+0x184CA6E20   stp      x20, x19, [sp, #-0x20]!
+0x184CA6E24   stp      x29, x30, [sp, #0x10]
+0x184CA6E28   add      x29, sp, #0x10
+0x184CA6E2C   mov      x19, x0
+0x184CA6E30   bl       _objc_msgSend$_borderView
+0x184CA6E34   adrp     x8, 487006           ; 0x1fbb04000
+0x184CA6E38   add      x1, x8, #0x91b
+0x184CA6E3C   bl       _objc_opt_respondsToSelector
+0x184CA6E40   tbz      w0, #0x0, 0x184ca6e68
+0x184CA6E44   mov      x0, x19
+0x184CA6E48   bl       _objc_msgSend$_borderView
+0x184CA6E4C   ldp      x29, x30, [sp, #0x10]
+0x184CA6E50   ldp      x20, x19, [sp], #0x20
+0x184CA6E54   autibsp
+0x184CA6E58   eor      x16, x30, x30, lsl #1
+0x184CA6E5C   tbz      x16, #0x3e, 0x184ca6e64
+0x184CA6E60   brk      #0xc471
+0x184CA6E64   b        _objc_msgSend$_updateButtonState
+0x184CA6E68   ldp      x29, x30, [sp, #0x10]
+0x184CA6E6C   ldp      x20, x19, [sp], #0x20
+0x184CA6E70   retab
+
+_NSAccessibilitySetAttributeValue:
+0x184CFF7BC   pacibsp
+0x184CFF7C0   stp      x22, x21, [sp, #-0x30]!
+0x184CFF7C4   stp      x20, x19, [sp, #0x10]
+0x184CFF7C8   stp      x29, x30, [sp, #0x20]
+0x184CFF7CC   add      x29, sp, #0x20
+0x184CFF7D0   mov      x20, x2
+0x184CFF7D4   mov      x19, x1
+0x184CFF7D8   mov      x21, x0
+0x184CFF7DC   adrp     x8, 399755           ; 0x1e668a000
+0x184CFF7E0   add      x8, x8, #0xa20       ; _NSAccessibilityRoleAttribute
+0x184CFF7E4   ldr      x2, [x8]
+0x184CFF7E8   mov      x0, x1
+0x184CFF7EC   bl       "_objc_msgSend$isEqualToString:"
+0x184CFF7F0   tbnz     w0, #0x0, 0x184cff808
+0x184CFF7F4   mov      x0, x21
+0x184CFF7F8   mov      x1, x19
+0x184CFF7FC   mov      w2, #0x0
+0x184CFF800   bl       __NSAccessibilityEntryPointIsAttributeSupported
+0x184CFF804   cbz      w0, 0x184cff89c
+0x184CFF808   adrp     x1, 3806             ; 0x185bdd000
+0x184CFF80C   add      x1, x1, #0x622       ; _.str.61
+0x184CFF810   adrp     x3, 3806             ; 0x185bdd000
+0x184CFF814   add      x3, x3, #0x633       ; _.str.62
+0x184CFF818   mov      x0, x19
+0x184CFF81C   mov      w2, #0x10
+0x184CFF820   bl       _AttributeSelector
+0x184CFF824   mov      x22, x0
+0x184CFF828   mov      x0, x21
+0x184CFF82C   mov      x1, x19
+0x184CFF830   bl       _NSAccessibilityEntryPointIsAttributeSettable
+0x184CFF834   cbz      w0, 0x184cff874
+0x184CFF838   mov      x0, x21
+0x184CFF83C   mov      x1, x22
+0x184CFF840   bl       _objc_opt_respondsToSelector
+0x184CFF844   tbz      w0, #0x0, 0x184cff8c4
+0x184CFF848   mov      x0, x21
+0x184CFF84C   mov      x2, x22
+0x184CFF850   mov      x3, x20
+0x184CFF854   ldp      x29, x30, [sp, #0x20]
+0x184CFF858   ldp      x20, x19, [sp, #0x10]
+0x184CFF85C   ldp      x22, x21, [sp], #0x30
+0x184CFF860   autibsp
+0x184CFF864   eor      x16, x30, x30, lsl #1
+0x184CFF868   tbz      x16, #0x3e, 0x184cff870
+0x184CFF86C   brk      #0xc471
+0x184CFF870   b        "_objc_msgSend$performSelector:withObject:"
+0x184CFF874   mov      x0, x21
+0x184CFF878   mov      x1, x19
+0x184CFF87C   ldp      x29, x30, [sp, #0x20]
+0x184CFF880   ldp      x20, x19, [sp, #0x10]
+0x184CFF884   ldp      x22, x21, [sp], #0x30
+0x184CFF888   autibsp
+0x184CFF88C   eor      x16, x30, x30, lsl #1
+0x184CFF890   tbz      x16, #0x3e, 0x184cff898
+0x184CFF894   brk      #0xc471
+0x184CFF898   b        _NSAccessibilitySetUnsettableAttributeError
+0x184CFF89C   mov      x0, x21
+0x184CFF8A0   mov      x1, x19
+0x184CFF8A4   ldp      x29, x30, [sp, #0x20]
+0x184CFF8A8   ldp      x20, x19, [sp, #0x10]
+0x184CFF8AC   ldp      x22, x21, [sp], #0x30
+0x184CFF8B0   autibsp
+0x184CFF8B4   eor      x16, x30, x30, lsl #1
+0x184CFF8B8   tbz      x16, #0x3e, 0x184cff8c0
+0x184CFF8BC   brk      #0xc471
+0x184CFF8C0   b        _NSAccessibilitySetUnsupportedAttributeError
+0x184CFF8C4   mov      x0, x21
+0x184CFF8C8   mov      x1, x19
+0x184CFF8CC   ldp      x29, x30, [sp, #0x20]
+0x184CFF8D0   ldp      x20, x19, [sp, #0x10]
+0x184CFF8D4   ldp      x22, x21, [sp], #0x30
+0x184CFF8D8   autibsp
+0x184CFF8DC   eor      x16, x30, x30, lsl #1
+0x184CFF8E0   tbz      x16, #0x3e, 0x184cff8e8
+0x184CFF8E4   brk      #0xc471
+0x184CFF8E8   b        _NSAccessibilitySetUnimplementedAttributeError
+
+-[NSResponder setAccessibilityCloseButton:]:
+0x18551B168   mov      x1, x2
+0x18551B16C   adrp     x8, 397679           ; 0x1e668a000
+0x18551B170   add      x8, x8, #0xeb0       ; _NSAccessibilityCloseButtonAttribute
+0x18551B174   ldr      x2, [x8]
+0x18551B178   mov      x3, x2
+0x18551B17C   mov      x4, #0x0
+0x18551B180   b        _NSAccessibilitySetObjectValueForAttribute
+
+-[NSResponder setAccessibilityMinimizeButton:]:
+0x18551BF3C   mov      x1, x2
+0x18551BF40   adrp     x8, 397679           ; 0x1e668a000
+0x18551BF44   add      x8, x8, #0xec0       ; _NSAccessibilityMinimizeButtonAttribute
+0x18551BF48   ldr      x2, [x8]
+0x18551BF4C   mov      x3, x2
+0x18551BF50   mov      x4, #0x0
+0x18551BF54   b        _NSAccessibilitySetObjectValueForAttribute
+
+-[NSResponder setAccessibilityZoomButton:]:
+0x18551CAD8   mov      x1, x2
+0x18551CADC   adrp     x8, 397678           ; 0x1e668a000
+0x18551CAE0   add      x8, x8, #0xeb8       ; _NSAccessibilityZoomButtonAttribute
+0x18551CAE4   ldr      x2, [x8]
+0x18551CAE8   mov      x3, x2
+0x18551CAEC   mov      x4, #0x0
+0x18551CAF0   b        _NSAccessibilitySetObjectValueForAttribute
+
+-[NSThemeFrame setTitlebarHidden:]:
+0x185696BB8   pacibsp
+0x185696BBC   stp      x20, x19, [sp, #-0x20]!
+0x185696BC0   stp      x29, x30, [sp, #0x10]
+0x185696BC4   add      x29, sp, #0x10
+0x185696BC8   mov      x19, x2
+0x185696BCC   bl       _objc_msgSend$titlebarContainerView
+0x185696BD0   mov      x2, x19
+0x185696BD4   ldp      x29, x30, [sp, #0x10]
+0x185696BD8   ldp      x20, x19, [sp], #0x20
+0x185696BDC   autibsp
+0x185696BE0   eor      x16, x30, x30, lsl #1
+0x185696BE4   tbz      x16, #0x3e, 0x185696bec
+0x185696BE8   brk      #0xc471
+0x185696BEC   b        "_objc_msgSend$setHidden:"
+
+-[NSWindow _findStandardWindowButton:]:
+0x185739F00   pacibsp
+0x185739F04   sub      sp, sp, #0x50
+0x185739F08   stp      x22, x21, [sp, #0x20]
+0x185739F0C   stp      x20, x19, [sp, #0x30]
+0x185739F10   stp      x29, x30, [sp, #0x40]
+0x185739F14   add      x29, sp, #0x40
+0x185739F18   mov      x20, x2
+0x185739F1C   mov      x19, x0
+0x185739F20   adrp     x8, 395933           ; 0x1e61d6000
+0x185739F24   ldr      x8, [x8, #0xab0]
+0x185739F28   ldr      x8, [x8]
+0x185739F2C   str      x8, [sp, #0x18]
+0x185739F30   adrp     x8, 413285           ; 0x1ea59e000
+0x185739F34   ldrsw    x21, [x8, #0xa30]
+0x185739F38   ldr      x0, [x0, x21]
+0x185739F3C   adrp     x8, 484203           ; 0x1fbaa4000
+0x185739F40   add      x1, x8, #0x911
+0x185739F44   bl       _objc_opt_respondsToSelector
+0x185739F48   cmp      x20, #0x3
+0x185739F4C   b.gt     0x185739fec
+0x185739F50   cmp      x20, #0x1
+0x185739F54   b.gt     0x18573a08c
+0x185739F58   cbz      x20, 0x18573a1bc
+0x185739F5C   cmp      x20, #0x1
+0x185739F60   b.ne     0x18573a3c0
+0x185739F64   tbz      w0, #0x0, 0x185739f98
+0x185739F68   mov      x0, x19
+0x185739F6C   bl       _objc_msgSend$_borderView
+0x185739F70   mov      x20, x0
+0x185739F74   adrp     x8, 397131           ; 0x1e6684000
+0x185739F78   ldr      x0, [x8, #0x478]     ; _OBJC_CLASS_$__TtC6AppKit17NSLivingColorView@got
+0x185739F7C   bl       _objc_opt_class
+0x185739F80   mov      x2, x0
+0x185739F84   adrp     x8, 484371           ; 0x1fbb4c000
+0x185739F88   add      x3, x8, #0xbe3
+0x185739F8C   mov      x0, x20
+0x185739F90   bl       "_objc_msgSend$_buttonOfClass:action:"
+0x185739F94   cbnz     x0, 0x18573a40c
+0x185739F98   ldr      x0, [x19, x21]
+0x185739F9C   adrp     x8, 484371           ; 0x1fbb4c000
+0x185739FA0   add      x1, x8, #0xc16
+0x185739FA4   bl       _objc_opt_respondsToSelector
+0x185739FA8   tbz      w0, #0x0, 0x18573a408
+0x185739FAC   ldr      x0, [x19, x21]
+0x185739FB0   ldr      x8, [sp, #0x18]
+0x185739FB4   adrp     x9, 395933           ; 0x1e61d6000
+0x185739FB8   ldr      x9, [x9, #0xab0]
+0x185739FBC   ldr      x9, [x9]
+0x185739FC0   cmp      x9, x8
+0x185739FC4   b.ne     0x18573a438
+0x185739FC8   ldp      x29, x30, [sp, #0x40]
+0x185739FCC   ldp      x20, x19, [sp, #0x30]
+0x185739FD0   ldp      x22, x21, [sp, #0x20]
+0x185739FD4   add      sp, sp, #0x50
+0x185739FD8   autibsp
+0x185739FDC   eor      x16, x30, x30, lsl #1
+0x185739FE0   tbz      x16, #0x3e, 0x185739fe8
+0x185739FE4   brk      #0xc471
+0x185739FE8   b        _objc_msgSend$minimizeButton
+0x185739FEC   cmp      x20, #0x5
+0x185739FF0   b.gt     0x18573a124
+0x185739FF4   cmp      x20, #0x4
+0x185739FF8   b.eq     0x18573a23c
+0x185739FFC   cmp      x20, #0x5
+0x18573A000   b.ne     0x18573a3c0
+0x18573A004   tbz      w0, #0x0, 0x18573a038
+0x18573A008   mov      x0, x19
+0x18573A00C   bl       _objc_msgSend$_borderView
+0x18573A010   mov      x20, x0
+0x18573A014   adrp     x8, 397130           ; 0x1e6684000
+0x18573A018   ldr      x0, [x8, #0x478]     ; _OBJC_CLASS_$__TtC6AppKit17NSLivingColorView@got
+0x18573A01C   bl       _objc_opt_class
+0x18573A020   mov      x2, x0
+0x18573A024   adrp     x8, 484368           ; 0x1fbb4a000
+0x18573A028   add      x3, x8, #0x9e3
+0x18573A02C   mov      x0, x20
+0x18573A030   bl       "_objc_msgSend$_buttonOfClass:action:"
+0x18573A034   cbnz     x0, 0x18573a40c
+0x18573A038   ldr      x0, [x19, x21]
+0x18573A03C   adrp     x8, 484368           ; 0x1fbb4a000
+0x18573A040   add      x1, x8, #0x9d8
+0x18573A044   bl       _objc_opt_respondsToSelector
+0x18573A048   tbz      w0, #0x0, 0x18573a408
+0x18573A04C   ldr      x0, [x19, x21]
+0x18573A050   ldr      x8, [sp, #0x18]
+0x18573A054   adrp     x9, 395932           ; 0x1e61d6000
+0x18573A058   ldr      x9, [x9, #0xab0]
+0x18573A05C   ldr      x9, [x9]
+0x18573A060   cmp      x9, x8
+0x18573A064   b.ne     0x18573a438
+0x18573A068   ldp      x29, x30, [sp, #0x40]
+0x18573A06C   ldp      x20, x19, [sp, #0x30]
+0x18573A070   ldp      x22, x21, [sp, #0x20]
+0x18573A074   add      sp, sp, #0x50
+0x18573A078   autibsp
+0x18573A07C   eor      x16, x30, x30, lsl #1
+0x18573A080   tbz      x16, #0x3e, 0x18573a088
+0x18573A084   brk      #0xc471
+0x18573A088   b        _objc_msgSend$lockButton
+0x18573A08C   cmp      x20, #0x2
+0x18573A090   b.eq     0x18573a2e4
+0x18573A094   cmp      x20, #0x3
+0x18573A098   b.ne     0x18573a3c0
+0x18573A09C   tbz      w0, #0x0, 0x18573a0d0
+0x18573A0A0   mov      x0, x19
+0x18573A0A4   bl       _objc_msgSend$_borderView
+0x18573A0A8   mov      x20, x0
+0x18573A0AC   adrp     x8, 397130           ; 0x1e6684000
+0x18573A0B0   ldr      x0, [x8, #0x478]     ; _OBJC_CLASS_$__TtC6AppKit17NSLivingColorView@got
+0x18573A0B4   bl       _objc_opt_class
+0x18573A0B8   mov      x2, x0
+0x18573A0BC   adrp     x8, 484295           ; 0x1fbb01000
+0x18573A0C0   add      x3, x8, #0xa60
+0x18573A0C4   mov      x0, x20
+0x18573A0C8   bl       "_objc_msgSend$_buttonOfClass:action:"
+0x18573A0CC   cbnz     x0, 0x18573a40c
+0x18573A0D0   ldr      x0, [x19, x21]
+0x18573A0D4   adrp     x8, 484425           ; 0x1fbb83000
+0x18573A0D8   add      x1, x8, #0xec4
+0x18573A0DC   bl       _objc_opt_respondsToSelector
+0x18573A0E0   tbz      w0, #0x0, 0x18573a408
+0x18573A0E4   ldr      x0, [x19, x21]
+0x18573A0E8   ldr      x8, [sp, #0x18]
+0x18573A0EC   adrp     x9, 395932           ; 0x1e61d6000
+0x18573A0F0   ldr      x9, [x9, #0xab0]
+0x18573A0F4   ldr      x9, [x9]
+0x18573A0F8   cmp      x9, x8
+0x18573A0FC   b.ne     0x18573a438
+0x18573A100   ldp      x29, x30, [sp, #0x40]
+0x18573A104   ldp      x20, x19, [sp, #0x30]
+0x18573A108   ldp      x22, x21, [sp, #0x20]
+0x18573A10C   add      sp, sp, #0x50
+0x18573A110   autibsp
+0x18573A114   eor      x16, x30, x30, lsl #1
+0x18573A118   tbz      x16, #0x3e, 0x18573a120
+0x18573A11C   brk      #0xc471
+0x18573A120   b        _objc_msgSend$toolbarButton
+0x18573A124   cmp      x20, #0x6
+0x18573A128   b.eq     0x18573a36c
+0x18573A12C   cmp      x20, #0x7
+0x18573A130   b.ne     0x18573a3c0
+0x18573A134   tbz      w0, #0x0, 0x18573a168
+0x18573A138   mov      x0, x19
+0x18573A13C   bl       _objc_msgSend$_borderView
+0x18573A140   mov      x20, x0
+0x18573A144   adrp     x8, 397130           ; 0x1e6684000
+0x18573A148   ldr      x0, [x8, #0x478]     ; _OBJC_CLASS_$__TtC6AppKit17NSLivingColorView@got
+0x18573A14C   bl       _objc_opt_class
+0x18573A150   mov      x2, x0
+0x18573A154   adrp     x8, 484425           ; 0x1fbb83000
+0x18573A158   add      x3, x8, #0x11d
+0x18573A15C   mov      x0, x20
+0x18573A160   bl       "_objc_msgSend$_buttonOfClass:action:"
+0x18573A164   cbnz     x0, 0x18573a40c
+0x18573A168   ldr      x0, [x19, x21]
+0x18573A16C   adrp     x8, 482407           ; 0x1fb3a1000
+0x18573A170   add      x1, x8, #0x969
+0x18573A174   bl       _objc_opt_respondsToSelector
+0x18573A178   tbz      w0, #0x0, 0x18573a408
+0x18573A17C   ldr      x0, [x19, x21]
+0x18573A180   ldr      x8, [sp, #0x18]
+0x18573A184   adrp     x9, 395932           ; 0x1e61d6000
+0x18573A188   ldr      x9, [x9, #0xab0]
+0x18573A18C   ldr      x9, [x9]
+0x18573A190   cmp      x9, x8
+0x18573A194   b.ne     0x18573a438
+0x18573A198   ldp      x29, x30, [sp, #0x40]
+0x18573A19C   ldp      x20, x19, [sp, #0x30]
+0x18573A1A0   ldp      x22, x21, [sp, #0x20]
+0x18573A1A4   add      sp, sp, #0x50
+0x18573A1A8   autibsp
+0x18573A1AC   eor      x16, x30, x30, lsl #1
+0x18573A1B0   tbz      x16, #0x3e, 0x18573a1b8
+0x18573A1B4   brk      #0xc471
+0x18573A1B8   b        _objc_msgSend$fullScreenButton
+0x18573A1BC   tbz      w0, #0x0, 0x18573a1e8
+0x18573A1C0   ldr      x20, [x19, x21]
+0x18573A1C4   adrp     x8, 424040           ; 0x1ecfa2000
+0x18573A1C8   add      x0, x8, #0x418       ; _OBJC_CLASS_$__NSThemeCloseWidget
+0x18573A1CC   bl       _objc_opt_class
+0x18573A1D0   mov      x2, x0
+0x18573A1D4   adrp     x8, 480914           ; 0x1fadcc000
+0x18573A1D8   add      x3, x8, #0x121
+0x18573A1DC   mov      x0, x20
+0x18573A1E0   bl       "_objc_msgSend$_buttonOfClass:action:"
+0x18573A1E4   cbnz     x0, 0x18573a40c
+0x18573A1E8   ldr      x0, [x19, x21]
+0x18573A1EC   adrp     x8, 484328           ; 0x1fbb22000
+0x18573A1F0   add      x1, x8, #0xd06
+0x18573A1F4   bl       _objc_opt_respondsToSelector
+0x18573A1F8   tbz      w0, #0x0, 0x18573a408
+0x18573A1FC   ldr      x0, [x19, x21]
+0x18573A200   ldr      x8, [sp, #0x18]
+0x18573A204   adrp     x9, 395932           ; 0x1e61d6000
+0x18573A208   ldr      x9, [x9, #0xab0]
+0x18573A20C   ldr      x9, [x9]
+0x18573A210   cmp      x9, x8
+0x18573A214   b.ne     0x18573a438
+0x18573A218   ldp      x29, x30, [sp, #0x40]
+0x18573A21C   ldp      x20, x19, [sp, #0x30]
+0x18573A220   ldp      x22, x21, [sp, #0x20]
+0x18573A224   add      sp, sp, #0x50
+0x18573A228   autibsp
+0x18573A22C   eor      x16, x30, x30, lsl #1
+0x18573A230   tbz      x16, #0x3e, 0x18573a238
+0x18573A234   brk      #0xc471
+0x18573A238   b        _objc_msgSend$closeButton
+0x18573A23C   tbz      w0, #0x0, 0x18573a26c
+0x18573A240   mov      x0, x19
+0x18573A244   bl       _objc_msgSend$_borderView
+0x18573A248   mov      x20, x0
+0x18573A24C   adrp     x8, 397129           ; 0x1e6683000
+0x18573A250   ldr      x0, [x8, #0xeb8]     ; _OBJC_CLASS_$_NSToolbarItem@got
+0x18573A254   bl       _objc_opt_class
+0x18573A258   mov      x2, x0
+0x18573A25C   mov      x0, x20
+0x18573A260   mov      x3, #0x0
+0x18573A264   bl       "_objc_msgSend$_buttonOfClass:action:"
+0x18573A268   cbnz     x0, 0x18573a40c
+0x18573A26C   ldr      x0, [x19, x21]
+0x18573A270   adrp     x8, 484344           ; 0x1fbb32000
+0x18573A274   add      x1, x8, #0xc89
+0x18573A278   bl       _objc_opt_respondsToSelector
+0x18573A27C   tbz      w0, #0x0, 0x18573a28c
+0x18573A280   ldr      x0, [x19, x21]
+0x18573A284   bl       _objc_msgSend$fileButton
+0x18573A288   cbnz     x0, 0x18573a40c
+0x18573A28C   mov      x0, x19
+0x18573A290   bl       _objc_msgSend$_effectiveTitlePosition
+0x18573A294   cmp      x0, #0x1
+0x18573A298   b.ne     0x18573a408
+0x18573A29C   mov      x0, x19
+0x18573A2A0   bl       _objc_msgSend$toolbar
+0x18573A2A4   bl       _objc_msgSend$_toolbarView
+0x18573A2A8   ldr      x8, [sp, #0x18]
+0x18573A2AC   adrp     x9, 395932           ; 0x1e61d6000
+0x18573A2B0   ldr      x9, [x9, #0xab0]
+0x18573A2B4   ldr      x9, [x9]
+0x18573A2B8   cmp      x9, x8
+0x18573A2BC   b.ne     0x18573a438
+0x18573A2C0   ldp      x29, x30, [sp, #0x40]
+0x18573A2C4   ldp      x20, x19, [sp, #0x30]
+0x18573A2C8   ldp      x22, x21, [sp, #0x20]
+0x18573A2CC   add      sp, sp, #0x50
+0x18573A2D0   autibsp
+0x18573A2D4   eor      x16, x30, x30, lsl #1
+0x18573A2D8   tbz      x16, #0x3e, 0x18573a2e0
+0x18573A2DC   brk      #0xc471
+0x18573A2E0   b        "-[NSToolbarView _fileButton]"
+0x18573A2E4   tbz      w0, #0x0, 0x18573a318
+0x18573A2E8   mov      x0, x19
+0x18573A2EC   bl       _objc_msgSend$_borderView
+0x18573A2F0   mov      x20, x0
+0x18573A2F4   adrp     x8, 424040           ; 0x1ecfa2000
+0x18573A2F8   add      x0, x8, #0x378       ; _OBJC_CLASS_$__NSThemeZoomWidget
+0x18573A2FC   bl       _objc_opt_class
+0x18573A300   mov      x2, x0
+0x18573A304   adrp     x8, 484279           ; 0x1fbaf1000
+0x18573A308   add      x3, x8, #0xabb
+0x18573A30C   mov      x0, x20
+0x18573A310   bl       "_objc_msgSend$_buttonOfClass:action:"
+0x18573A314   cbnz     x0, 0x18573a40c
+0x18573A318   ldr      x0, [x19, x21]
+0x18573A31C   adrp     x8, 484435           ; 0x1fbb8d000
+0x18573A320   add      x1, x8, #0x53a
+0x18573A324   bl       _objc_opt_respondsToSelector
+0x18573A328   tbz      w0, #0x0, 0x18573a408
+0x18573A32C   ldr      x0, [x19, x21]
+0x18573A330   ldr      x8, [sp, #0x18]
+0x18573A334   adrp     x9, 395932           ; 0x1e61d6000
+0x18573A338   ldr      x9, [x9, #0xab0]
+0x18573A33C   ldr      x9, [x9]
+0x18573A340   cmp      x9, x8
+0x18573A344   b.ne     0x18573a438
+0x18573A348   ldp      x29, x30, [sp, #0x40]
+0x18573A34C   ldp      x20, x19, [sp, #0x30]
+0x18573A350   ldp      x22, x21, [sp, #0x20]
+0x18573A354   add      sp, sp, #0x50
+0x18573A358   autibsp
+0x18573A35C   eor      x16, x30, x30, lsl #1
+0x18573A360   tbz      x16, #0x3e, 0x18573a368
+0x18573A364   brk      #0xc471
+0x18573A368   b        _objc_msgSend$zoomButton
+0x18573A36C   ldr      x0, [x19, x21]
+0x18573A370   adrp     x8, 484323           ; 0x1fbb1d000
+0x18573A374   add      x1, x8, #0x56
+0x18573A378   bl       _objc_opt_respondsToSelector
+0x18573A37C   tbz      w0, #0x0, 0x18573a408
+0x18573A380   ldr      x0, [x19, x21]
+0x18573A384   ldr      x8, [sp, #0x18]
+0x18573A388   adrp     x9, 395932           ; 0x1e61d6000
+0x18573A38C   ldr      x9, [x9, #0xab0]
+0x18573A390   ldr      x9, [x9]
+0x18573A394   cmp      x9, x8
+0x18573A398   b.ne     0x18573a438
+0x18573A39C   ldp      x29, x30, [sp, #0x40]
+0x18573A3A0   ldp      x20, x19, [sp, #0x30]
+0x18573A3A4   ldp      x22, x21, [sp, #0x20]
+0x18573A3A8   add      sp, sp, #0x50
+0x18573A3AC   autibsp
+0x18573A3B0   eor      x16, x30, x30, lsl #1
+0x18573A3B4   tbz      x16, #0x3e, 0x18573a3bc
+0x18573A3B8   brk      #0xc471
+0x18573A3BC   b        _objc_msgSend$autosaveButton
+0x18573A3C0   bl       ___AppKitLogWindow
+0x18573A3C4   mov      x19, x0
+0x18573A3C8   mov      w1, #0x10
+0x18573A3CC   bl       _os_log_type_enabled
+0x18573A3D0   cbz      w0, 0x18573a408
+0x18573A3D4   adrp     x8, 1158             ; 0x185bc0000
+0x18573A3D8   ldr      d0, [x8, #0x438]
+0x18573A3DC   str      s0, [sp]
+0x18573A3E0   stur     x20, [sp, #0x4]
+0x18573A3E4   adrp     x0, -3448            ; 0x1849c2000
+0x18573A3E8   add      x0, x0, #0x0
+0x18573A3EC   adrp     x3, 1443             ; 0x185cdd000
+0x18573A3F0   add      x3, x3, #0x248
+0x18573A3F4   mov      x4, sp
+0x18573A3F8   mov      x1, x19
+0x18573A3FC   mov      w2, #0x10
+0x18573A400   mov      w5, #0xc
+0x18573A404   bl       __os_log_impl
+0x18573A408   mov      x0, #0x0
+0x18573A40C   ldr      x8, [sp, #0x18]
+0x18573A410   adrp     x9, 395932           ; 0x1e61d6000
+0x18573A414   ldr      x9, [x9, #0xab0]
+0x18573A418   ldr      x9, [x9]
+0x18573A41C   cmp      x9, x8
+0x18573A420   b.ne     0x18573a438
+0x18573A424   ldp      x29, x30, [sp, #0x40]
+0x18573A428   ldp      x20, x19, [sp, #0x30]
+0x18573A42C   ldp      x22, x21, [sp, #0x20]
+0x18573A430   add      sp, sp, #0x50
+0x18573A434   retab
+0x18573A438   bl       ___stack_chk_fail
+
+-[NSWindow setStandardWindowTitleButtonsAlphaValue:]:
+0x18574D32C   pacibsp
+0x18574D330   stp      d9, d8, [sp, #-0x20]!
+0x18574D334   stp      x29, x30, [sp, #0x10]
+0x18574D338   add      x29, sp, #0x10
+0x18574D33C   mov.16b  v8, v0
+0x18574D340   bl       _objc_msgSend$_themeFrame
+0x18574D344   mov.16b  v0, v8
+0x18574D348   ldp      x29, x30, [sp, #0x10]
+0x18574D34C   ldp      d9, d8, [sp], #0x20
+0x18574D350   autibsp
+0x18574D354   eor      x16, x30, x30, lsl #1
+0x18574D358   tbz      x16, #0x3e, 0x18574d360
+0x18574D35C   brk      #0xc471
+0x18574D360   b        "_objc_msgSend$setButtonRevealAmount:"
+
+-[NSWindow setTitlebarHidden:]:
+0x18574D3B4   pacibsp
+0x18574D3B8   stp      x20, x19, [sp, #-0x20]!
+0x18574D3BC   stp      x29, x30, [sp, #0x10]
+0x18574D3C0   add      x29, sp, #0x10
+0x18574D3C4   mov      x19, x2
+0x18574D3C8   bl       _objc_msgSend$_themeFrame
+0x18574D3CC   mov      x2, x19
+0x18574D3D0   ldp      x29, x30, [sp, #0x10]
+0x18574D3D4   ldp      x20, x19, [sp], #0x20
+0x18574D3D8   autibsp
+0x18574D3DC   eor      x16, x30, x30, lsl #1
+0x18574D3E0   tbz      x16, #0x3e, 0x18574d3e8
+0x18574D3E4   brk      #0xc471
+0x18574D3E8   b        "_objc_msgSend$setTitlebarHidden:"
+
+-[NSWindow(NSWindowAccessibility) accessibilityIsCloseButtonAttributeSettable]:
+0x1857541AC   mov      w0, #0x0
+0x1857541B0   ret
+
+-[NSWindow(NSWindowAccessibility) accessibilityIsZoomButtonAttributeSettable]:
+0x1857541E0   mov      w0, #0x0
+0x1857541E4   ret
+
+-[NSWindow(NSWindowAccessibility) accessibilityIsMinimizeButtonAttributeSettable]:
+0x185754214   mov      w0, #0x0
+0x185754218   ret
+
+-[NSWindow(NSFullScreen) _didExitFullScreen]:
+0x185A70E10   pacibsp
+0x185A70E14   stp      x22, x21, [sp, #-0x30]!
+0x185A70E18   stp      x20, x19, [sp, #0x10]
+0x185A70E1C   stp      x29, x30, [sp, #0x20]
+0x185A70E20   add      x29, sp, #0x20
+0x185A70E24   mov      x20, x1
+0x185A70E28   mov      x19, x0
+0x185A70E2C   adrp     x8, 412462           ; 0x1ea59e000
+0x185A70E30   add      x8, x8, #0xa94       ; _OBJC_IVAR_$_NSWindow._auxiliaryStorage
+0x185A70E34   ldrsw    x21, [x8]
+0x185A70E38   ldr      x8, [x0, x21]
+0x185A70E3C   ldr      x9, [x8, #0x100]
+0x185A70E40   orr      x9, x9, #0x800000000
+0x185A70E44   str      x9, [x8, #0x100]
+0x185A70E48   bl       _objc_msgSend$_reparentSheetsToSelfOnFullScreenExit
+0x185A70E4C   adrp     x8, 423232           ; 0x1ecfb0000
+0x185A70E50   add      x8, x8, #0x9d8       ; __MergedGlobals
+0x185A70E54   ldarb    w8, [x8]
+0x185A70E58   cmp      w8, #0x2
+0x185A70E5C   b.eq     0x185a70e90
+0x185A70E60   cbnz     w8, 0x185a70e9c
+0x185A70E64   adrp     x0, 430088           ; 0x1eea78000
+0x185A70E68   add      x0, x0, #0x848
+0x185A70E6C   adrp     x2, 423232           ; 0x1ecfb0000
+0x185A70E70   add      x2, x2, #0x9d8       ; __MergedGlobals
+0x185A70E74   adrp     x16, 3               ; 0x185a73000
+0x185A70E78   add      x16, x16, #0x794     ; _NSWindowAlwaysResetStyleMaskOnFullScreenCloseDefaultValueFunction
+0x185A70E7C   paciza   x16
+0x185A70E80   mov      x3, x16
+0x185A70E84   mov      w1, #0x1
+0x185A70E88   bl       __NSGetBoolAppConfig
+0x185A70E8C   tbnz     w0, #0x0, 0x185a70e9c
+0x185A70E90   mov      x0, x19
+0x185A70E94   bl       _objc_msgSend$_isDeallocating
+0x185A70E98   tbnz     w0, #0x0, 0x185a70eb0
+0x185A70E9C   mov      x0, x19
+0x185A70EA0   bl       _objc_msgSend$styleMask
+0x185A70EA4   and      x2, x0, #0xffffffffffffbfff
+0x185A70EA8   mov      x0, x19
+0x185A70EAC   bl       "_objc_msgSend$setStyleMask:"
+0x185A70EB0   mov      x0, x19
+0x185A70EB4   bl       _objc_msgSend$_updateButtonsForModeChanged
+0x185A70EB8   mov      x0, x19
+0x185A70EBC   mov      w2, #0x0
+0x185A70EC0   bl       "_objc_msgSend$_setLocationTemporary:"
+0x185A70EC4   mov      x0, x19
+0x185A70EC8   mov      w2, #0x0
+0x185A70ECC   bl       "_objc_msgSend$_setForceIsOnActiveSpace:"
+0x185A70ED0   adrp     x22, 423224          ; 0x1ecfa8000
+0x185A70ED4   add      x22, x22, #0xad0     ; _NSApp
+0x185A70ED8   ldr      x0, [x22]
+0x185A70EDC   bl       _objc_msgSend$_updateActiveWindowForSpaceChange
+0x185A70EE0   adrp     x8, 423232           ; 0x1ecfb0000
+0x185A70EE4   add      x8, x8, #0x9d9
+0x185A70EE8   ldarb    w8, [x8]
+0x185A70EEC   cmp      w8, #0x2
+0x185A70EF0   b.eq     0x185a70f14
+0x185A70EF4   cbz      w8, 0x185a70fc8
+0x185A70EF8   adrp     x0, 430088           ; 0x1eea78000
+0x185A70EFC   add      x0, x0, #0x888
+0x185A70F00   bl       _NSClassFromString
+0x185A70F04   mov      x1, x0
+0x185A70F08   mov      x0, x19
+0x185A70F0C   bl       _objc_opt_isKindOfClass
+0x185A70F10   tbnz     w0, #0x0, 0x185a70f20
+0x185A70F14   ldr      x8, [x19, x21]
+0x185A70F18   ldr      x8, [x8, #0x190]
+0x185A70F1C   cbnz     x8, 0x185a70ff8
+0x185A70F20   mov      x0, x19
+0x185A70F24   mov      w2, #0x0
+0x185A70F28   mov      w3, #0x1
+0x185A70F2C   bl       "_objc_msgSend$_positionSheetsConstrained:andDisplay:"
+0x185A70F30   adrp     x8, 394997           ; 0x1e6165000
+0x185A70F34   ldr      x0, [x8, #0xc38]
+0x185A70F38   bl       _objc_msgSend$defaultCenter
+0x185A70F3C   adrp     x8, 396313           ; 0x1e6689000
+0x185A70F40   add      x8, x8, #0xdb0       ; _NSWindowDidExitFullScreenNotification
+0x185A70F44   ldr      x2, [x8]
+0x185A70F48   mov      x3, x19
+0x185A70F4C   bl       "_objc_msgSend$postNotificationName:object:"
+0x185A70F50   ldr      x0, [x22]
+0x185A70F54   adrp     x3, 429934           ; 0x1ee9de000
+0x185A70F58   add      x3, x3, #0x288       ; ___block_literal_global
+0x185A70F5C   mov      w2, #0x1
+0x185A70F60   bl       "_objc_msgSend$enumerateWindowsWithOptions:usingBlock:"
+0x185A70F64   mov      x0, x19
+0x185A70F68   bl       _objc_msgSend$_tabbedWindowsDidExitFullScreen
+0x185A70F6C   mov      x0, x19
+0x185A70F70   mov      w2, #0x0
+0x185A70F74   bl       "_objc_msgSend$_applyWindowLevelWithTagUpdateNeeded:"
+0x185A70F78   ldr      x8, [x19, x21]
+0x185A70F7C   ldrb     w8, [x8, #0x106]
+0x185A70F80   tbz      w8, #0x0, 0x185a70f8c
+0x185A70F84   mov      x0, x19
+0x185A70F88   bl       _objc_msgSend$_minimizeToDock
+0x185A70F8C   mov      x0, x19
+0x185A70F90   bl       _objc_msgSend$invalidateRestorableState
+0x185A70F94   ldr      x8, [x19, x21]
+0x185A70F98   ldr      x9, [x8, #0x100]
+0x185A70F9C   and      x9, x9, #0xfffffff7ffffffff
+0x185A70FA0   str      x9, [x8, #0x100]
+0x185A70FA4   mov      x0, x19
+0x185A70FA8   ldp      x29, x30, [sp, #0x20]
+0x185A70FAC   ldp      x20, x19, [sp, #0x10]
+0x185A70FB0   ldp      x22, x21, [sp], #0x30
+0x185A70FB4   autibsp
+0x185A70FB8   eor      x16, x30, x30, lsl #1
+0x185A70FBC   tbz      x16, #0x3e, 0x185a70fc4
+0x185A70FC0   brk      #0xc471
+0x185A70FC4   b        "-[NSWindow _updateWMWindowPresentationMode]"
+0x185A70FC8   adrp     x0, 430088           ; 0x1eea78000
+0x185A70FCC   add      x0, x0, #0x8a8
+0x185A70FD0   adrp     x2, 423232           ; 0x1ecfb0000
+0x185A70FD4   add      x2, x2, #0x9d9
+0x185A70FD8   adrp     x16, 3               ; 0x185a73000
+0x185A70FDC   add      x16, x16, #0x7c4     ; _NSWindowIsChromeBefore60_1DefaultValueFunction
+0x185A70FE0   paciza   x16
+0x185A70FE4   mov      x3, x16
+0x185A70FE8   mov      w1, #0x0
+0x185A70FEC   bl       __NSGetBoolAppConfig
+0x185A70FF0   cbnz     w0, 0x185a70ef8
+0x185A70FF4   b        0x185a70f14
+0x185A70FF8   adrp     x8, 394997           ; 0x1e6165000
+0x185A70FFC   ldr      x0, [x8, #0x8a8]
+0x185A71000   bl       _objc_msgSend$currentHandler
+0x185A71004   adrp     x4, 430087           ; 0x1eea78000
+0x185A71008   add      x4, x4, #0x7a8
+0x185A7100C   adrp     x6, 430087           ; 0x1eea78000
+0x185A71010   add      x6, x6, #0x7c8
+0x185A71014   mov      x2, x20
+0x185A71018   mov      x3, x19
+0x185A7101C   mov      w5, #0x20f
+0x185A71020   bl       "_objc_msgSend$handleFailureInMethod:object:file:lineNumber:description:"
+0x185A71024   b        0x185a70f20
+0x185A71028   bl       _objc_begin_catch
+0x185A7102C   ldr      x8, [x19, x21]
+0x185A71030   ldr      x9, [x8, #0x100]
+0x185A71034   and      x9, x9, #0xfffffff7ffffffff
+0x185A71038   str      x9, [x8, #0x100]
+0x185A7103C   bl       _objc_exception_rethrow
+0x185A71040   brk      #0x1
+0x185A71044   mov      x19, x0
+0x185A71048   bl       _objc_end_catch
+0x185A7104C   mov      x0, x19
+0x185A71050   bl       __Unwind_Resume
+0x185A71054   bl       _objc_terminate

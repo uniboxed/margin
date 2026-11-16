@@ -10,7 +10,12 @@ restoration, with no injected library or saved corner-preference writes. Chrome 
 matched test. This concerns corner radius; native external traffic-light hiding remains unestablished.
 
 **Current requirement:** actual native control suppression. The user rejects image covers; the cover
-below is historical evidence, not an accepted solution. The latest native-only pass finds button-region
+below is historical evidence, not an accepted solution. The newest configuration/AX routing pass
+inventories direct configuration consumers and compares owner AX relationship overrides with foreign
+writes, native hit states and entire-window pixels. Metadata changes do not hide native controls;
+external writes returning success do not establish either mutation. No new protected-app native hide.
+See `results/routing-25G342/` for source-level findings, two rejected setup attempts and completed evidence.
+An earlier native-only pass finds button-region
 metadata changes without any button-pixel changes, and no extra foreign clipping authority from a
 retained window proxy. Static titlebar-service and WindowManagement paths provide no established
 remote hide operation. See `results/native-25G342/` and the report for the limits of these observations.
@@ -21,6 +26,21 @@ Chrome did not load that library. AX writes and foreign clipping did not change 
 This is a bounded Chromium backend, not general external Safari/Chrome/Edge support.
 
 ## Native-only button-region and retained-proxy probes
+
+### Button configuration and AX relationship routing
+
+Use the `deeper.swift` build below with `--ax-relations --output /absolute/new/run` first (dry),
+then add `--run`. It targets only its own visible child, checks a native hide positive control,
+rotates owner Accessibility references via a private ABI-checked setter, compares foreign writes,
+clears the overrides and closes the child. `verify-button-routing.py ARCHIVE_ROOT` checks the saved
+three-attempt evidence layout, original whole-window PNGs, native state and AX metadata offline.
+No new protected app is opened and no video is claimed for this still-capture experiment.
+
+`native-strings --selectors` checks current button method availability without invoking them;
+`--all-constants` emits the full loaded AppKit constant-address map. `audit-button-config.py DUMP
+CONSTANTS_JSONL NEW_OUTPUT` inventories direct config reads and selected lifecycle/AX excerpts.
+Its nearby literal labels are not full branch dataflow, a complete call graph or a configuration
+absence proof. Exact reproduction/scope is in `results/routing-25G342/README.md`.
 
 ### Private AppKit launch configuration
 

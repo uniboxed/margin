@@ -2199,3 +2199,16 @@ failures remain rejected; no global key writes or injection. All 12 test windows
 Needs manual/new host verification for Safari, Edge, utility panels and other OS/display states;
 requires relaunch, does not establish a live setter or traffic-light hiding. Unit 1031 pass; native
 build/evidence checks pass; full E2E blocked by missing pinned browser setup after bounded attempt.
+
+Traffic-light configuration/AX routing follow-up (25G342): `verify-button-routing.py ARCHIVE_ROOT`
+checks original whole-window PNGs, independent native hidden/hit states, owner/foreign AX metadata,
+restoration and all attempt cleanup logs. Native hide changes 516 pixels; owner AX relationship
+overrides change reported geometry only, with zero changed pixels. Non-settable foreign relationship
+writes return zero but change neither metadata nor native pixels. Runs 1/2 stop before foreign writes
+because identity and then role/subrole matching are invalid for AppKit's overridden AX wrappers;
+corrected run 3 completes using distinct position/size matches, explicitly not native identity.
+All three fixture processes/windows are gone. Runtime availability/static configuration audit is
+read-only; no new protected-app native hide or Safari acceptance. See `results/routing-25G342/` in
+the traffic-light lab. Native warnings-as-errors builds, independent archived-pixel checks and fresh
+unit tests (1031) pass. Full E2E attempted/bounded at 15 seconds after missing pinned WebKit 2388
+setup errors; no pinned Chromium 1254 or `/opt/pw-browsers`, no downloads/full pass. Product unchanged.

@@ -1,0 +1,66 @@
+{
+  "saved_pixels_native_state_AX_metadata_restoration_cleanup": "pass",
+  "changed_pixels_entire_window": {
+    "baseline": 0,
+    "native-hidden-control": 516,
+    "native-restored-control": 0,
+    "owner-relations-rotated": 0,
+    "foreign-relationship-0": 0,
+    "foreign-relationship-1": 0,
+    "foreign-relationship-2": 0,
+    "owner-relations-restored": 0
+  },
+  "foreign_writes": [
+    {
+      "relationshipWrite": "AXCloseButton",
+      "result": 0,
+      "settable": false,
+      "settableQuery": 0
+    },
+    {
+      "relationshipWrite": "AXMinimizeButton",
+      "result": 0,
+      "settable": false,
+      "settableQuery": 0
+    },
+    {
+      "relationshipWrite": "AXZoomButton",
+      "result": 0,
+      "settable": false,
+      "settableQuery": 0
+    }
+  ],
+  "geometry_matches": {
+    "baseline": [
+      0,
+      1,
+      2
+    ],
+    "owner-rotated": [
+      1,
+      2,
+      0
+    ],
+    "foreign-0": [
+      1,
+      2,
+      0
+    ],
+    "foreign-1": [
+      1,
+      2,
+      0
+    ],
+    "foreign-2": [
+      1,
+      2,
+      0
+    ],
+    "restored": [
+      0,
+      1,
+      2
+    ]
+  },
+  "limits": "owned AppKit child only; overridden AX geometry identifies locations, not native object identity; no new protected-app hide established"
+}

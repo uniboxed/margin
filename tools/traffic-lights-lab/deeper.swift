@@ -12,7 +12,7 @@ setbuf(stdout, nil)
 let args = CommandLine.arguments
 func emit(_ row: [String: Any]) { print(String(decoding: try! JSONSerialization.data(withJSONObject: row, options: .sortedKeys), as: UTF8.self)) }
 guard args.contains("--run") || args.contains("--child") else {
-    emit(["plan": "One visible owned child window. --launch-observe --corners observes startup/AX resize/restore only; --override-corners adds private NSConvolutionOverride1/2=0.01 only to child launch arguments. No preferences written. Other modes: --buttons, --proxy-clips, --corners, --corner-mask/--storage-control. Saves actual pixels and cleans up. No browser, user window or system setting changed."]); exit(0)
+    emit(["plan": "One visible owned child window. --ax-relations compares private owner AX relationship overrides, foreign relationship writes and actual native controls. --launch-observe --corners observes startup/AX resize/restore only; --override-corners adds private NSConvolutionOverride1/2=0.01 only to child launch arguments. No preferences written. Other modes: --buttons, --proxy-clips, --corners, --corner-mask/--storage-control. Saves actual pixels and cleans up. No browser, user window or system setting changed."]); exit(0)
 }
 var buildSize = 0; sysctlbyname("kern.osversion", nil, &buildSize, nil, 0)
 var build = [CChar](repeating: 0, count: buildSize); sysctlbyname("kern.osversion", &build, &buildSize, nil, 0)
@@ -264,6 +264,18 @@ if args.contains("--child") {
                 unsafeBitCast(method_getImplementation(method), to: Hide.self)(button, selector, name == "native-hide", true)
             }
         }
+        if name == "ax-relations-rotate" || name == "ax-relations-restore" {
+            let selector = NSSelectorFromString("accessibilitySetOverrideValue:forAttribute:")
+            guard let method = class_getInstanceMethod(type(of: window), selector),
+                  String(cString: method_getTypeEncoding(method)!) == "B32@0:8@16@24" else { exit(2) }
+            typealias Override = @convention(c) (AnyObject, Selector, AnyObject?, NSString) -> Bool
+            let override = unsafeBitCast(method_getImplementation(method), to: Override.self)
+            let keys = ["AXCloseButton", "AXMinimizeButton", "AXZoomButton"]
+            for (index, key) in keys.enumerated() {
+                let replacement = name == "ax-relations-rotate" ? window.standardWindowButton(NSWindow.ButtonType(rawValue: UInt((index + 1) % 3))!) : nil
+                guard override(window, selector, replacement, key as NSString) else { exit(2) }
+            }
+        }
         if name == "proxy" { emit(["ownerProxy": proxy(wid)]) }
         if name == "owner-global" { apply(wid, bounds.insetBy(dx: 0, dy: bounds.height / 4)) }
         if name == "owner-local" { apply(wid, CGRect(x: 0, y: bounds.height / 4, width: bounds.width, height: bounds.height / 2)) }
@@ -283,7 +295,7 @@ try FileManager.default.createDirectory(at: directory, withIntermediateDirectori
 let former = NSWorkspace.shared.frontmostApplication?.processIdentifier
 let child = Process()
 child.executableURL = URL(fileURLWithPath: args[0]).standardizedFileURL
-child.arguments = ["--child", "--output", directory.path] + ["--wire", "--buttons", "--proxy-clips", "--corners", "--corner-mask", "--system-only", "--launch-observe"].filter { args.contains($0) }
+child.arguments = ["--child", "--output", directory.path] + ["--wire", "--buttons", "--proxy-clips", "--corners", "--corner-mask", "--system-only", "--launch-observe", "--ax-relations"].filter { args.contains($0) }
 if args.contains("--override-corners") {
     child.arguments! += ["-NSConvolutionOverride1", "0.01", "-NSConvolutionOverride2", "0.01"]
 }
@@ -337,6 +349,74 @@ func observe(_ name: String) -> [String: Any] {
     return row
 }
 let baseline = observe("baseline")
+if args.contains("--ax-relations") {
+    let app = AXUIElementCreateApplication(child.processIdentifier)
+    AXUIElementSetMessagingTimeout(app, 0.5)
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(app, "AXWindows" as CFString, &value) == .success,
+          let windows = value as? [AXUIElement], let target = windows.first(where: {
+              var id: UInt32 = 0; return axWindowNumber($0, &id) == .success && id == wid
+          }) else { emit(["refused": "exact AX fixture window missing"]); finish(2) }
+    let keys = ["AXCloseButton", "AXMinimizeButton", "AXZoomButton"]
+    let originals: [AXUIElement] = keys.map { key in
+        var element: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(target, key as CFString, &element) == .success,
+              let element, CFGetTypeID(element) == AXUIElementGetTypeID() else { finish(2) }
+        return unsafeBitCast(element, to: AXUIElement.self)
+    }
+    func fingerprint(_ element: AXUIElement) -> [String: String] {
+        var result: [String: String] = [:]
+        for key in ["AXRole", "AXSubrole", "AXPosition", "AXSize"] {
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, key as CFString, &value) == .success, let value else { continue }
+            if CFGetTypeID(value) == AXValueGetTypeID() {
+                let axValue = unsafeBitCast(value, to: AXValue.self)
+                var point = CGPoint.zero, size = CGSize.zero
+                if AXValueGetValue(axValue, .cgPoint, &point) { result[key] = NSStringFromPoint(point) }
+                else if AXValueGetValue(axValue, .cgSize, &size) { result[key] = NSStringFromSize(size) }
+            } else if let string = value as? String { result[key] = string }
+        }
+        return result
+    }
+    let originalFingerprints = originals.map(fingerprint)
+    guard Set(originalFingerprints.compactMap { $0["AXSubrole"] }).count == 3,
+          originalFingerprints.allSatisfy({ $0.count == 4 }) else { emit(["refused": "distinct complete AX button fingerprints missing"]); finish(2) }
+    func relations(_ stage: String) -> [Int] {
+        var readbacks: [[String: String]] = []
+        let indices = keys.map { key -> Int in
+            var element: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(target, key as CFString, &element) == .success, let element,
+                  CFGetTypeID(element) == AXUIElementGetTypeID() else { return -1 }
+            let fields = fingerprint(unsafeBitCast(element, to: AXUIElement.self))
+            readbacks.append(fields)
+            // AppKit wraps overrides as new AXUnknown elements. Geometry identifies the
+            // referenced button location; it does not establish native object identity.
+            return originalFingerprints.firstIndex(where: { original in
+                fields["AXPosition"] == original["AXPosition"] && fields["AXSize"] == original["AXSize"]
+            }) ?? -2
+        }
+        emit(["relationsStage": stage, "geometryMatchedButtonIndices": indices, "fingerprints": readbacks]); return indices
+    }
+    guard relations("baseline") == [0, 1, 2] else { finish(2) }
+    _ = request("native-hide"); let hidden = observe("native-hidden-control")
+    guard (hidden["native"] as! [String: Any])["buttons"] is [[String: Any]],
+          ((hidden["native"] as! [String: Any])["buttons"] as! [[String: Any]]).allSatisfy({ $0["hidden"] as? Bool == true && $0["hit"] as? Bool == false }) else {
+        emit(["refused": "native hide control failed"]); finish(2)
+    }
+    _ = request("native-restore"); _ = observe("native-restored-control")
+    _ = request("ax-relations-rotate"); _ = observe("owner-relations-rotated")
+    guard relations("owner-rotated") == [1, 2, 0] else { emit(["refused": "owner AX metadata control failed"]); finish(2) }
+    for (index, key) in keys.enumerated() {
+        var settable = DarwinBoolean(false)
+        let query = AXUIElementIsAttributeSettable(target, key as CFString, &settable)
+        let write = AXUIElementSetAttributeValue(target, key as CFString, originals[index])
+        emit(["relationshipWrite": key, "settableQuery": query.rawValue, "settable": settable.boolValue, "result": write.rawValue])
+        _ = observe("foreign-relationship-\(index)"); _ = relations("foreign-\(index)")
+    }
+    _ = request("ax-relations-restore"); _ = observe("owner-relations-restored")
+    guard relations("restored") == [0, 1, 2] else { emit(["refused": "AX metadata restore failed"]); finish(2) }
+    _ = request("quit"); child.waitUntilExit(); finish(child.terminationStatus)
+}
 if args.contains("--launch-observe") {
     var value: CFTypeRef?
     let app = AXUIElementCreateApplication(child.processIdentifier)

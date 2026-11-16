@@ -5111,3 +5111,33 @@ builds/displays/stability pending. No global configuration change, injection, ta
 change or product implementation. Fresh unit tests 1031 pass; new/changed and legacy visual/cover
 probes compile with warnings as errors; full E2E attempted/bounded after missing pinned WebKit setup,
 no download/full pass, app install or PR.
+
+### Return to traffic-light configuration and AX routing (2026-11-16)
+
+The user parks corner work and requests deeper research into hiding only the three native window
+buttons. Keep product behavior unchanged. Extend loaded-AppKit read-only inspection with a complete
+constant-address map and current selector encodings. Inventory 3,566 selected window/frame/titlebar/
+widget methods and blocks including categories: 192 direct AppConfig reads in 138 methods, 191 with
+a nearby literal. This is not complete branch analysis, a transitive call graph or an absence proof.
+Review exact lifecycle/AX excerpts: caching is lookup policy, alpha aliases broader reveal, hidden
+titlebar hides its container, historical _setButtonsShown:/_setButtonHidingView: are absent. Trace
+fullscreen-exit reset to clearing bit 0x4000 and button refresh; no selective hide consumer established.
+Frame-key constants still have no demonstrated live launch-default consumer; no guessed app defaults
+or saved-state edits. Original SIMBL plugin sources use owner-process swizzling/local button views.
+
+New matched child experiment distinguishes AX relationship metadata from actual controls. Owner
+private accessibilitySetOverrideValue:forAttribute: rotates close/minimize/zoom geometry [1,2,0]
+while native visible/hit states and all pixels remain unchanged. AppKit wraps overrides as AXUnknown
+objects: two initial runs stop before foreign writes because AX identity and then role/subrole matching
+are invalid; retain all source/binary/capture evidence. Corrected run 3 uses distinct position/size
+matches, never calls those native object identities. Each non-settable foreign relationship write
+returns zero but changes neither reported geometry nor native pixels. Owner clear restores ordinary
+AXButton roles/subroles/geometry. Separate native hide changes 516 pixels/all three hit targets and
+restores exactly. All three child PIDs/window IDs absent. No new protected-app execution/hide claimed.
+
+The missing component remains a demonstrated owner configuration consumer or system-to-owner native
+hide operation. Preserve bounded owner/cooperating and permissive Chromium results; no silent covers
+or universal impossibility claim. Add tools/evidence/report in
+tools/traffic-lights-lab/results/routing-25G342/ and the report's final section. Native warnings-as-errors builds and independent original PNG
+checks pass; fresh unit 1031 pass; E2E attempted/bounded at 15 seconds after missing pinned WebKit 2388,
+no browser download/full-suite pass, product install or PR.

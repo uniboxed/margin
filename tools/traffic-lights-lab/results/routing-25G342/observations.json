@@ -1,0 +1,645 @@
+[
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {},
+      "nativeCornerRadius": -1,
+      "pid": 17893,
+      "window": 80224,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "baseline"
+  },
+  {
+    "fingerprints": [
+      {
+        "AXPosition": "{188, 483}",
+        "AXRole": "AXButton",
+        "AXSize": "{16, 16}",
+        "AXSubrole": "AXCloseButton"
+      },
+      {
+        "AXPosition": "{211, 483}",
+        "AXRole": "AXButton",
+        "AXSize": "{16, 16}",
+        "AXSubrole": "AXMinimizeButton"
+      },
+      {
+        "AXPosition": "{234, 483}",
+        "AXRole": "AXButton",
+        "AXSize": "{16, 16}",
+        "AXSubrole": "AXZoomButton"
+      }
+    ],
+    "geometryMatchedButtonIndices": [
+      0,
+      1,
+      2
+    ],
+    "relationsStage": "baseline"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": true,
+          "hit": false,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": true,
+          "hit": false,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": true,
+          "hit": false,
+          "type": 2
+        }
+      ],
+      "cornerMask": {},
+      "nativeCornerRadius": -1,
+      "pid": 17893,
+      "window": 80224,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "native-hidden-control"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {},
+      "nativeCornerRadius": -1,
+      "pid": 17893,
+      "window": 80224,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "native-restored-control"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {},
+      "nativeCornerRadius": -1,
+      "pid": 17893,
+      "window": 80224,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-relations-rotated"
+  },
+  {
+    "fingerprints": [
+      {
+        "AXPosition": "{211, 483}",
+        "AXRole": "AXUnknown",
+        "AXSize": "{16, 16}"
+      },
+      {
+        "AXPosition": "{234, 483}",
+        "AXRole": "AXUnknown",
+        "AXSize": "{16, 16}"
+      },
+      {
+        "AXPosition": "{188, 483}",
+        "AXRole": "AXUnknown",
+        "AXSize": "{16, 16}"
+      }
+    ],
+    "geometryMatchedButtonIndices": [
+      1,
+      2,
+      0
+    ],
+    "relationsStage": "owner-rotated"
+  },
+  {
+    "relationshipWrite": "AXCloseButton",
+    "result": 0,
+    "settable": false,
+    "settableQuery": 0
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {},
+      "nativeCornerRadius": -1,
+      "pid": 17893,
+      "window": 80224,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "foreign-relationship-0"
+  },
+  {
+    "fingerprints": [
+      {
+        "AXPosition": "{211, 483}",
+        "AXRole": "AXUnknown",
+        "AXSize": "{16, 16}"
+      },
+      {
+        "AXPosition": "{234, 483}",
+        "AXRole": "AXUnknown",
+        "AXSize": "{16, 16}"
+      },
+      {
+        "AXPosition": "{188, 483}",
+        "AXRole": "AXUnknown",
+        "AXSize": "{16, 16}"
+      }
+    ],
+    "geometryMatchedButtonIndices": [
+      1,
+      2,
+      0
+    ],
+    "relationsStage": "foreign-0"
+  },
+  {
+    "relationshipWrite": "AXMinimizeButton",
+    "result": 0,
+    "settable": false,
+    "settableQuery": 0
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {},
+      "nativeCornerRadius": -1,
+      "pid": 17893,
+      "window": 80224,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "foreign-relationship-1"
+  },
+  {
+    "fingerprints": [
+      {
+        "AXPosition": "{211, 483}",
+        "AXRole": "AXUnknown",
+        "AXSize": "{16, 16}"
+      },
+      {
+        "AXPosition": "{234, 483}",
+        "AXRole": "AXUnknown",
+        "AXSize": "{16, 16}"
+      },
+      {
+        "AXPosition": "{188, 483}",
+        "AXRole": "AXUnknown",
+        "AXSize": "{16, 16}"
+      }
+    ],
+    "geometryMatchedButtonIndices": [
+      1,
+      2,
+      0
+    ],
+    "relationsStage": "foreign-1"
+  },
+  {
+    "relationshipWrite": "AXZoomButton",
+    "result": 0,
+    "settable": false,
+    "settableQuery": 0
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {},
+      "nativeCornerRadius": -1,
+      "pid": 17893,
+      "window": 80224,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "foreign-relationship-2"
+  },
+  {
+    "fingerprints": [
+      {
+        "AXPosition": "{211, 483}",
+        "AXRole": "AXUnknown",
+        "AXSize": "{16, 16}"
+      },
+      {
+        "AXPosition": "{234, 483}",
+        "AXRole": "AXUnknown",
+        "AXSize": "{16, 16}"
+      },
+      {
+        "AXPosition": "{188, 483}",
+        "AXRole": "AXUnknown",
+        "AXSize": "{16, 16}"
+      }
+    ],
+    "geometryMatchedButtonIndices": [
+      1,
+      2,
+      0
+    ],
+    "relationsStage": "foreign-2"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {},
+      "nativeCornerRadius": -1,
+      "pid": 17893,
+      "window": 80224,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-relations-restored"
+  },
+  {
+    "fingerprints": [
+      {
+        "AXPosition": "{188, 483}",
+        "AXRole": "AXButton",
+        "AXSize": "{16, 16}",
+        "AXSubrole": "AXCloseButton"
+      },
+      {
+        "AXPosition": "{211, 483}",
+        "AXRole": "AXButton",
+        "AXSize": "{16, 16}",
+        "AXSubrole": "AXMinimizeButton"
+      },
+      {
+        "AXPosition": "{234, 483}",
+        "AXRole": "AXButton",
+        "AXSize": "{16, 16}",
+        "AXSubrole": "AXZoomButton"
+      }
+    ],
+    "geometryMatchedButtonIndices": [
+      0,
+      1,
+      2
+    ],
+    "relationsStage": "restored"
+  },
+  {
+    "childRunning": false,
+    "cleanup": true,
+    "exit": 0
+  }
+]

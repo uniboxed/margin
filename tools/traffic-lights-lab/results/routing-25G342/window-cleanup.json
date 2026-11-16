@@ -1,0 +1,10 @@
+{
+  "checkedAtUTC": "2026-11-16T21:19:54.710689+00:00",
+  "windowIDs": [
+    80206,
+    80216,
+    80224
+  ],
+  "present": [],
+  "method": "CGWindowListCopyWindowInfo optionAll filtered to known fixture IDs"
+}

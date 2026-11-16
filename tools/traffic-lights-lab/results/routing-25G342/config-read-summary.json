@@ -1,0 +1,1652 @@
+[
+  {
+    "method": "-[NSWindow _commonInitFrame:styleMask:backing:defer:]",
+    "reads": [
+      {
+        "instruction": "0x184A0CE70   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAssertFrameLimits",
+        "constant_address": "0x1eea4ace8"
+      },
+      {
+        "instruction": "0x184A0CEA0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowsDisplayWhenScreenProfileChanges",
+        "constant_address": "0x1eea4ad28"
+      },
+      {
+        "instruction": "0x184A0CEC4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldSaveCreationBacktraces",
+        "constant_address": "0x1eea4ad48"
+      },
+      {
+        "instruction": "0x184A0CEE8   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAllowDeferredWake",
+        "constant_address": "0x1eea4ad08"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _validateFirstResponder:]",
+    "reads": [
+      {
+        "instruction": "0x184A0D558   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldValidateFirstResponder",
+        "constant_address": "0x1eea4b568"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindow_NonARC) _firstResponderCanBeWeak]",
+    "reads": [
+      {
+        "instruction": "0x184A0D710   b        __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowFirstResponderCanBeWeak",
+        "constant_address": "0x1eea56ca8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _setWindowNumber:]",
+    "reads": [
+      {
+        "instruction": "0x184A0DDE0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowDelayWindowBackingCleanup",
+        "constant_address": "0x1eea4afc8"
+      },
+      {
+        "instruction": "0x184A0DE24   bl       __NSGetNSIntegerAppConfig",
+        "adjacent_literal_key": "NSWindowExcessiveWindowWarningCount",
+        "constant_address": "0x1eea4afe8"
+      },
+      {
+        "instruction": "0x184A0DE90   bl       __NSGetNSIntegerAppConfig",
+        "adjacent_literal_key": "NSWindowExcessiveWindowWarningCount",
+        "constant_address": "0x1eea4afe8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame _canFloatForTabsOrTitlebar:]",
+    "reads": [
+      {
+        "instruction": "0x184A11D18   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldAlwaysFloatTitlebar",
+        "constant_address": "0x1eea410c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame _titlebarViewAppearsTransparent]",
+    "reads": [
+      {
+        "instruction": "0x184A189FC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldMakeTitlebarTransparentForTexturedWindows",
+        "constant_address": "0x1eea41188"
+      }
+    ]
+  },
+  {
+    "method": "-[NSTitlebarView setTransparent:]",
+    "reads": [
+      {
+        "instruction": "0x184A1B490   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSTitlebarViewClear",
+        "constant_address": "0x1eea64448"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame updateTitlebarViewBlendingMode]",
+    "reads": [
+      {
+        "instruction": "0x184A1B5E4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSFullScreenToolbarOpacityFollowsBackgroundColor",
+        "constant_address": "0x1eea41248"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSDisplayCycle) _updateStructuralRegionsOnNextDisplayCycle]",
+    "reads": [
+      {
+        "instruction": "0x184A1CE7C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldCheckDisplayCycleLimit",
+        "constant_address": "0x1eea3f948"
+      },
+      {
+        "instruction": "0x184A1CEE0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowUseViewCountForDisplayCycleLimit",
+        "constant_address": "0x1eea3f968"
+      },
+      {
+        "instruction": "0x184A1D070   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAssertWhenDisplayCycleLimitReached",
+        "constant_address": "0x1eea3f8c8"
+      },
+      {
+        "instruction": "0x184A1D28C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAssertWhenDisplayCycleLimitReached",
+        "constant_address": "0x1eea3f8c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame contentFill]",
+    "reads": [
+      {
+        "instruction": "0x184A1E328   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSThemeFrameContentFillShouldApplyiMovieWorkaround",
+        "constant_address": "0x1eea41088"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame _moveTitlebarViewsToView:]",
+    "reads": [
+      {
+        "instruction": "0x184A1EC48   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSThemeFramePopoverDetachmentWorkaround40668688",
+        "constant_address": "0x1eea41028"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _implicitlyAllowsFullScreenPrimary]",
+    "reads": [
+      {
+        "instruction": "0x184A1FD74   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAllowsImplicitFullScreen",
+        "constant_address": "0x1eea78a88"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _implicitlyDisallowTiling]",
+    "reads": [
+      {
+        "instruction": "0x184A20094   b        __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowDisallowsFullScreenTiling",
+        "constant_address": "0x1eea78a68"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _supportsDockInitiatedFullScreen]",
+    "reads": [
+      {
+        "instruction": "0x184A200D8   b        __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowSupportsDockInitiatedFullScreen",
+        "constant_address": "0x1eea78908"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _implicitlyTileable]",
+    "reads": [
+      {
+        "instruction": "0x184A202AC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAllowsImplicitTiling",
+        "constant_address": "0x1eea78a48"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _canMiniaturizeCheckingMask:forButtonEnabledState:]",
+    "reads": [
+      {
+        "instruction": "0x184A283F4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAllowMiniturizeInFullScreen",
+        "constant_address": "0x1eea4b688"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _userInterfaceItemIsTemporarilyDisabled:]",
+    "reads": [
+      {
+        "instruction": "0x184A28A58   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAllowMiniturizeInFullScreen",
+        "constant_address": "0x1eea4b688"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame _updateContentLayoutGuideFrame]",
+    "reads": [
+      {
+        "instruction": "0x184A2949C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSThemeFrameAppliesSafeAreaInsetsForTransparentTitlebar",
+        "constant_address": "0x1eea41128"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow windowTitlebarLayoutDirection]",
+    "reads": [
+      {
+        "instruction": "0x184A2AD14   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldFlipTitleControlsForRTL",
+        "constant_address": "0x1eea4bdc8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame _defaultTitlebarTitleRect]",
+    "reads": [
+      {
+        "instruction": "0x184A2CF18   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSThemeFrameCompatibilityTitleAlignment",
+        "constant_address": "0x1eea412e8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _borderViewChanged]",
+    "reads": [
+      {
+        "instruction": "0x184A347D4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSMightNeedToWorkAroundBadAdobeReleaseBug",
+        "constant_address": "0x1eea4ad88"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _lighterViewDetaching:]",
+    "reads": [
+      {
+        "instruction": "0x184A36208   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldSetContentViewToNilWhenRemoved",
+        "constant_address": "0x1eea4ae28"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow initialFirstResponder]",
+    "reads": [
+      {
+        "instruction": "0x184A363BC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowInitialFirstResponderCanBeWeak",
+        "constant_address": "0x1eea4afa8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowResizing) _updateEdgeResizingTrackingAreas]",
+    "reads": [
+      {
+        "instruction": "0x184A37818   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShowResizeDebugOverlay",
+        "constant_address": "0x1eea70368"
+      }
+    ]
+  },
+  {
+    "method": "+[NSWindow(NSWindowResizing) _getResizeEdgeAndCornerThicknesses:forStyleMask:]",
+    "reads": [
+      {
+        "instruction": "0x184A38504   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "AppleEdgeResizeCornerSize",
+        "constant_address": "0x1eea70528"
+      },
+      {
+        "instruction": "0x184A38520   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "AppleEdgeResizeCornerSizeNW",
+        "constant_address": "0x1eea70548"
+      },
+      {
+        "instruction": "0x184A3853C   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "AppleEdgeResizeCornerSizeNE",
+        "constant_address": "0x1eea70568"
+      },
+      {
+        "instruction": "0x184A38558   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "AppleEdgeResizeCornerSizeSW",
+        "constant_address": "0x1eea70588"
+      },
+      {
+        "instruction": "0x184A38574   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "AppleEdgeResizeCornerSizeSE",
+        "constant_address": "0x1eea705a8"
+      },
+      {
+        "instruction": "0x184A38590   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "AppleEdgeResizeBorderSize",
+        "constant_address": "0x1eea704c8"
+      }
+    ]
+  },
+  {
+    "method": "+[NSWindow(NSWindowResizing) _getExteriorResizeEdgeThicknesses:forStyleMask:]",
+    "reads": [
+      {
+        "instruction": "0x184A386E0   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "AppleEdgeResizeExteriorSize",
+        "constant_address": "0x1eea705c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _needsTilingConstraintUpdate]",
+    "reads": [
+      {
+        "instruction": "0x184A38910   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAlwaysUpdateTilingConstraints",
+        "constant_address": "0x1eea789a8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow setDelegate:]",
+    "reads": [
+      {
+        "instruction": "0x184A38FC8   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowDelegateLifetimeBug",
+        "constant_address": "0x1eea4b068"
+      }
+    ]
+  },
+  {
+    "method": "___25-[NSWindow setStyleMask:]_block_invoke",
+    "reads": [
+      {
+        "instruction": "0x184A3CA40   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowFullScreenBitManipulationRaisesException",
+        "constant_address": "0x1eea4b2e8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _setFrameCommon:display:fromServer:]",
+    "reads": [
+      {
+        "instruction": "0x184A3DC5C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSAvoidDisplayInSetFrame",
+        "constant_address": "0x1eea4b1e8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _reallySetFrame:]",
+    "reads": [
+      {
+        "instruction": "0x184A3E79C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAssertFrameLimits",
+        "constant_address": "0x1eea4ace8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame setFrameSize:]",
+    "reads": [
+      {
+        "instruction": "0x184A3EE84   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowForceContentViewConstraintUpdate",
+        "constant_address": "0x1eea411e8"
+      }
+    ]
+  },
+  {
+    "method": "___22-[NSThemeFrame layout]_block_invoke",
+    "reads": [
+      {
+        "instruction": "0x184A40E2C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSThemeFrameSkipUpdatingTitleBarFieldWhenLayingOut",
+        "constant_address": "0x1eea41048"
+      }
+    ]
+  },
+  {
+    "method": "-[NSTitlebarViewController insertChildViewController:atIndex:]",
+    "reads": [
+      {
+        "instruction": "0x184A54924   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowSupportsTitlebarAccessoryViewControllerWithTopAttribute",
+        "constant_address": "0x1eea0f608"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame _effectiveLayoutAttributeForAttribute:]",
+    "reads": [
+      {
+        "instruction": "0x184A57464   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSTitlebarAccessoryViewControllerFlipsAttributesForRTL",
+        "constant_address": "0x1eea41228"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _preserveAnimatingFrames]",
+    "reads": [
+      {
+        "instruction": "0x184A9F084   b        __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSViewPreserveAnimatingFrames",
+        "constant_address": "0x1eea4be28"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow displayIfNeeded]",
+    "reads": [
+      {
+        "instruction": "0x184A9F69C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldCheckNestedVibrantBlending",
+        "constant_address": "0x1eea4b548"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowContentsHostedInLayerSurface) hostsLayersInWindowServer]",
+    "reads": [
+      {
+        "instruction": "0x184AA13AC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAllowLocalContexts",
+        "constant_address": "0x1eea4bfa8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame contentLayoutGuide]",
+    "reads": [
+      {
+        "instruction": "0x184AA2020   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowUseNSLayoutGuideForContentLayoutGuide",
+        "constant_address": "0x1eea410a8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow standardWindowButton:]",
+    "reads": [
+      {
+        "instruction": "0x184AA3E44   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldCacheStandardWindowButton",
+        "constant_address": "0x1eea4b0c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _canAddUnderTitlebarViews]",
+    "reads": [
+      {
+        "instruction": "0x184AACB0C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSUseMirrorViewForFullSizeContentView",
+        "constant_address": "0x1eea4b128"
+      },
+      {
+        "instruction": "0x184AACB94   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAllowsAddingUnderTitlebarViews",
+        "constant_address": "0x1eea4b148"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame _toolbarTrailingSpace]",
+    "reads": [
+      {
+        "instruction": "0x184AC41EC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowLeaveTrailingSpaceInNormalTitlebars",
+        "constant_address": "0x1eea41308"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame _growContentReshapeContentAndToolbarView:animate:]",
+    "reads": [
+      {
+        "instruction": "0x184AD9360   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldConstrainContentSize",
+        "constant_address": "0x1eea41208"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow showsToolbarButton]",
+    "reads": [
+      {
+        "instruction": "0x184AD9620   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSShowToolbarButton",
+        "constant_address": "0x1eea4b588"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _shouldIgnoreSetFrameOrigin]",
+    "reads": [
+      {
+        "instruction": "0x184ADC278   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowIgnoreSetFrameInWindowDragRegion",
+        "constant_address": "0x1eea4b208"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow setFrameFromString:]",
+    "reads": [
+      {
+        "instruction": "0x184ADC784   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAutosaveFrameMovesToActiveDisplay",
+        "constant_address": "0x1eea4ba48"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _setFrameFromString:overrideTopLeft:preferActiveDisplay:constrainFullFrame:force:]",
+    "reads": [
+      {
+        "instruction": "0x184ADCCF0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowEnableSavedFrameStringAdditions",
+        "constant_address": "0x1eea4ba28"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _validSize:forFullScreen:force:]",
+    "reads": [
+      {
+        "instruction": "0x184ADD12C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowSupportsAutoLayoutValidSize",
+        "constant_address": "0x1eea4bac8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _adjustDynamicDepthLimit]",
+    "reads": [
+      {
+        "instruction": "0x184AEC688   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowForceDeepBackingStores",
+        "constant_address": "0x1eea4b7c8"
+      },
+      {
+        "instruction": "0x184AEC748   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAllowsDeepBackingStores",
+        "constant_address": "0x1eea4a088"
+      },
+      {
+        "instruction": "0x184AEC7E8   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowReallyDeepBackingStores",
+        "constant_address": "0x1eea4b828"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _defaultColorSpaceForScreen]",
+    "reads": [
+      {
+        "instruction": "0x184AECCAC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowUsesZeroScreenForDefaultColorSpace",
+        "constant_address": "0x1eea4bd28"
+      },
+      {
+        "instruction": "0x184AECD4C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowUsesExtendedRangeSRGBForWideGamutScreen",
+        "constant_address": "0x1eea4bd48"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _setColorSpace:sendNotification:displayIfChanged:]",
+    "reads": [
+      {
+        "instruction": "0x184AECFB0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowSetColorSpaceDisplaysImmediately",
+        "constant_address": "0x1eea4bd68"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _changeKeyAndMainLimitedOK:]",
+    "reads": [
+      {
+        "instruction": "0x184AF0FB4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSPreserveLionBehaviorForShareKey",
+        "constant_address": "0x1eea4ba08"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _canAdjustSizeForScreensHaveSeparateSpacesIfFillingSecondaryScreen]",
+    "reads": [
+      {
+        "instruction": "0x184AF2EA4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAdjustSecondaryScreenFillingWindows",
+        "constant_address": "0x1eea4ae08"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow setInitialFirstResponder:]",
+    "reads": [
+      {
+        "instruction": "0x184AF5C8C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowInitialFirstResponderCanBeWeak",
+        "constant_address": "0x1eea4afa8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow restoreStateWithCoder:]",
+    "reads": [
+      {
+        "instruction": "0x184AFAF5C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowRestorationAllowSecureDecodingOfResponder",
+        "constant_address": "0x1eea4ba68"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _autoPositionMask]",
+    "reads": [
+      {
+        "instruction": "0x184AFC934   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowUsesImprovedDefaultAutopositionMask",
+        "constant_address": "0x1eea4b5e8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _tryWindowDragWithEvent:]",
+    "reads": [
+      {
+        "instruction": "0x184B1F018   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldDragOnGesture",
+        "constant_address": "0x1eea4b5c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow becomeKeyWindow]",
+    "reads": [
+      {
+        "instruction": "0x184B45338   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSFocusWindowRef",
+        "constant_address": "0x1eea4b608"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow cascadeTopLeftFromPoint:]",
+    "reads": [
+      {
+        "instruction": "0x184B5D9E4   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSWindowHorizontalCascadeAmount",
+        "constant_address": "0x1eea4bb08"
+      },
+      {
+        "instruction": "0x184B5DA08   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSWindowVerticalCascadeAmount",
+        "constant_address": "0x1eea4bb28"
+      },
+      {
+        "instruction": "0x184B5DA28   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSWindowVerticalCascadeAmount",
+        "constant_address": "0x1eea4bb28"
+      },
+      {
+        "instruction": "0x184B5DA48   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSWindowVerticalCascadeAmount",
+        "constant_address": "0x1eea4bb28"
+      },
+      {
+        "instruction": "0x184B5DA68   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSWindowHorizontalCascadeAmount",
+        "constant_address": "0x1eea4bb08"
+      },
+      {
+        "instruction": "0x184B5DA88   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSWindowVerticalCascadeAmount",
+        "constant_address": "0x1eea4bb28"
+      },
+      {
+        "instruction": "0x184B5DAA8   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSWindowHorizontalCascadeAmount",
+        "constant_address": "0x1eea4bb08"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame _noteToolbarLayoutChanged]",
+    "reads": [
+      {
+        "instruction": "0x184B6CAB0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSThemeFrameForceToolbarSyncOnLayoutChange",
+        "constant_address": "0x1eea41148"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow endEditingFor:]",
+    "reads": [
+      {
+        "instruction": "0x184B7B130   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowEndEditingShouldInvalidateTextField",
+        "constant_address": "0x1eea4b0e8"
+      },
+      {
+        "instruction": "0x184B7B160   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowEndEditingShouldInvalidateTextField",
+        "constant_address": "0x1eea4b0e8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSEventRouting) _handleMouseDownEvent:isDelayedEvent:]",
+    "reads": [
+      {
+        "instruction": "0x184B90954   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowBecomesKeyOnlyIfNeededAllowsFirstMouse",
+        "constant_address": "0x1eea53ae8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow setParentWindow:]",
+    "reads": [
+      {
+        "instruction": "0x184BB691C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAllowNonNilSetParentWindow",
+        "constant_address": "0x1eea4bce8"
+      },
+      {
+        "instruction": "0x184BB6CD8   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowRaiseOnNonNilSetParent",
+        "constant_address": "0x1eea4bd08"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow setOpaque:]",
+    "reads": [
+      {
+        "instruction": "0x184BE0E68   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowClearBackgroundColor",
+        "constant_address": "0x1eea4bc68"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow dealloc]",
+    "reads": [
+      {
+        "instruction": "0x184BE79C4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldSetContentViewToNilWhenRemoved",
+        "constant_address": "0x1eea4ae28"
+      },
+      {
+        "instruction": "0x184BE7EDC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowInitialFirstResponderCanBeWeak",
+        "constant_address": "0x1eea4afa8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame mouseUp:]",
+    "reads": [
+      {
+        "instruction": "0x184BEB728   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowTitlebarDoubleClickSwapsAppearance",
+        "constant_address": "0x1eea41328"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowResizing) _shouldSnapSizeOnDoubleClick]",
+    "reads": [
+      {
+        "instruction": "0x184BEB868   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldSnapSizeOnDoubleClick",
+        "constant_address": "0x1eea70608"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _cornerMaskChanged]",
+    "reads": [
+      {
+        "instruction": "0x184C07B5C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowPreferCornerRadiusAndPath",
+        "constant_address": "0x1eea4b1c8"
+      },
+      {
+        "instruction": "0x184C07DC0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSShouldSetZeroRadiusInSkylight",
+        "constant_address": "0x1eea4b188"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow flushWindow]",
+    "reads": [
+      {
+        "instruction": "0x184C15B5C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowFlushTransactionInFlushWindow",
+        "constant_address": "0x1eea4b308"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow preventsApplicationTerminationWhenModal]",
+    "reads": [
+      {
+        "instruction": "0x184C23274   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSModalWindowAllowApplicationTerminationHeuristics",
+        "constant_address": "0x1eea498c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame _updateUnderTitlebarViewFrame:associatedView:titlebarViewFrame:]",
+    "reads": [
+      {
+        "instruction": "0x184C2D0D4   bl       __NSGetNSIntegerAppConfig",
+        "adjacent_literal_key": "NSTitlebarViewOutset",
+        "constant_address": "0x1eea411a8"
+      },
+      {
+        "instruction": "0x184C2D0F8   bl       __NSGetNSIntegerAppConfig",
+        "adjacent_literal_key": "NSTitlebarViewOutset",
+        "constant_address": "0x1eea411a8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSSheets) _attachSheetWindow:]",
+    "reads": [
+      {
+        "instruction": "0x184C60F74   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowSheetsInheritParentAppearance",
+        "constant_address": "0x1eea32868"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame startingYLocationForSheets]",
+    "reads": [
+      {
+        "instruction": "0x184C614C4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowTransparentTitlebarWithToolbarPositionSheetAtTop",
+        "constant_address": "0x1eea41268"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowResizing) _resizeWithEvent:]",
+    "reads": [
+      {
+        "instruction": "0x184CC8E64   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldSnapSizeToScreenEdgesWhenResizing",
+        "constant_address": "0x1eea70628"
+      },
+      {
+        "instruction": "0x184CC8E90   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSWindowShouldSnapSizeToScreenEdgesWhenResizingDeltaValue",
+        "constant_address": "0x1eea70648"
+      },
+      {
+        "instruction": "0x184CC8EB8   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSWindowShouldSnapSizeToScreenEdgesWhenResizingDeltaValue",
+        "constant_address": "0x1eea70648"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow miniaturize:]",
+    "reads": [
+      {
+        "instruction": "0x184CD0534   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAllowMiniturizeInFullScreen",
+        "constant_address": "0x1eea4b688"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _wantsSnapshotProxyWindowForOrderOutAnimation]",
+    "reads": [
+      {
+        "instruction": "0x184D1ED3C   b        __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAnimationUseSnapshotProxyWindow",
+        "constant_address": "0x1eea4b628"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowTabbing_Private) _supportsTabbing]",
+    "reads": [
+      {
+        "instruction": "0x1851A301C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowTabbingEnabled",
+        "constant_address": "0x1ee9ecde8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowTabbing_Private) _doWindowTabOrderOut]",
+    "reads": [
+      {
+        "instruction": "0x1851A4534   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowTabbingDontHideWindows",
+        "constant_address": "0x1ee9ed108"
+      }
+    ]
+  },
+  {
+    "method": "+[NSWindow _allowsAutomaticWindowTabbing]",
+    "reads": [
+      {
+        "instruction": "0x1851A9138   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSDisableAutomaticWindowTabbing",
+        "constant_address": "0x1ee9ed248"
+      },
+      {
+        "instruction": "0x1851A9184   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowTabbingEnabled",
+        "constant_address": "0x1ee9ecde8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSTitlebarBackgroundView _updatePocketViewWithHardPocket:]",
+    "reads": [
+      {
+        "instruction": "0x1856336D0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSTitlebarPocketEnabled",
+        "constant_address": "0x1eea3df48"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSDisplayCycle) _postWindowNeedsUpdateConstraints]",
+    "reads": [
+      {
+        "instruction": "0x18565729C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldCheckDisplayCycleLimit",
+        "constant_address": "0x1eea3f948"
+      },
+      {
+        "instruction": "0x1856572FC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowUseViewCountForDisplayCycleLimit",
+        "constant_address": "0x1eea3f968"
+      },
+      {
+        "instruction": "0x185657480   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAssertWhenDisplayCycleLimitReached",
+        "constant_address": "0x1eea3f8c8"
+      },
+      {
+        "instruction": "0x1856576A4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAssertWhenDisplayCycleLimitReached",
+        "constant_address": "0x1eea3f8c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSDisplayCycle) _postWindowNeedsLayout]",
+    "reads": [
+      {
+        "instruction": "0x185657C00   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldCheckDisplayCycleLimit",
+        "constant_address": "0x1eea3f948"
+      },
+      {
+        "instruction": "0x185657C64   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowUseViewCountForDisplayCycleLimit",
+        "constant_address": "0x1eea3f968"
+      },
+      {
+        "instruction": "0x185657DF4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAssertWhenDisplayCycleLimitReached",
+        "constant_address": "0x1eea3f8c8"
+      },
+      {
+        "instruction": "0x185658018   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAssertWhenDisplayCycleLimitReached",
+        "constant_address": "0x1eea3f8c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSDisplayCycle) _postWindowNeedsDisplay]",
+    "reads": [
+      {
+        "instruction": "0x185658574   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldCheckDisplayCycleLimit",
+        "constant_address": "0x1eea3f948"
+      },
+      {
+        "instruction": "0x1856585D8   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowUseViewCountForDisplayCycleLimit",
+        "constant_address": "0x1eea3f968"
+      },
+      {
+        "instruction": "0x185658768   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAssertWhenDisplayCycleLimitReached",
+        "constant_address": "0x1eea3f8c8"
+      },
+      {
+        "instruction": "0x18565898C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAssertWhenDisplayCycleLimitReached",
+        "constant_address": "0x1eea3f8c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame _convolutionOverride]",
+    "reads": [
+      {
+        "instruction": "0x18568FDD0   b        __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSConvolutionOverride1",
+        "constant_address": "0x1eea40e08"
+      }
+    ]
+  },
+  {
+    "method": "___41-[NSThemeFrame _moveTitlebarViewsToView:]_block_invoke",
+    "reads": [
+      {
+        "instruction": "0x185692600   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSThemeFramePopoverDetachmentWorkaround40668688",
+        "constant_address": "0x1eea41028"
+      }
+    ]
+  },
+  {
+    "method": "-[NSThemeFrame setTemporaryContentView:]",
+    "reads": [
+      {
+        "instruction": "0x185692828   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowHideContentViewWhenShowingTabPicker",
+        "constant_address": "0x1eea411c8"
+      },
+      {
+        "instruction": "0x1856928C0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowHideContentViewWhenShowingTabPicker",
+        "constant_address": "0x1eea411c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _matchingWindowLayoutForScreen:respectingResizeGeneration:usingLastUserLayout:]",
+    "reads": [
+      {
+        "instruction": "0x185732EA4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSScreenLayoutIgnoreHistoricalFrame",
+        "constant_address": "0x1eea49628"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSScreenLayout) _adjustWindowFrame:forMoveFromScreen:toScreen:location:]",
+    "reads": [
+      {
+        "instruction": "0x1857345B8   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSScreenLayoutAdjustOnWindowMove",
+        "constant_address": "0x1eea49648"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSScreenLayout) _adjustWindowFrame:forMoveFromScreen:toScreen:]",
+    "reads": [
+      {
+        "instruction": "0x1857346C0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSScreenLayoutAdjustOnWindowMove",
+        "constant_address": "0x1eea49648"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _validateStyleMask:]",
+    "reads": [
+      {
+        "instruction": "0x1857385B0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSAllowNonactivatingSheetWindow",
+        "constant_address": "0x1eea4ada8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow description]",
+    "reads": [
+      {
+        "instruction": "0x1857392F4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowVerboseDescription",
+        "constant_address": "0x1eea4b008"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _visualEffectViewAlwaysUseWSAwareBackdrops]",
+    "reads": [
+      {
+        "instruction": "0x185739AD4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowForceWSAwareBackdropsWhenTransparent",
+        "constant_address": "0x1eea4b028"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _cornerMaskShouldDefineShadow]",
+    "reads": [
+      {
+        "instruction": "0x18573B334   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSShouldSetZeroRadiusInSkylight",
+        "constant_address": "0x1eea4b188"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _postWindowDidChangeBackingPropertiesAndDisplayWindowForPreviousBackingScaleFactor:previousColorSpace:]",
+    "reads": [
+      {
+        "instruction": "0x18573BD38   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAvoidUnnecessaryDisplays",
+        "constant_address": "0x1eea4b268"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _showDragBeginFeedback]",
+    "reads": [
+      {
+        "instruction": "0x18573DB60   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldDragOnGestureFeedback",
+        "constant_address": "0x1eea4b5a8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _finishClosingWindow]",
+    "reads": [
+      {
+        "instruction": "0x18573EDB0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowSuppressWillAndDidCloseNotificationsFromTUINSWindow",
+        "constant_address": "0x1eea4b668"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _canMiniaturize]",
+    "reads": [
+      {
+        "instruction": "0x18573F0A0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowRespectMiniaturizableMask",
+        "constant_address": "0x1eea4b6a8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _orderOut:calculatingKeyWithOptions:documentWindow:]",
+    "reads": [
+      {
+        "instruction": "0x1857426F4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowProposeAllKeyWindowOnResign",
+        "constant_address": "0x1eea4b8a8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _doOrderOutEndedButAttachedSheets]",
+    "reads": [
+      {
+        "instruction": "0x18574282C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": null,
+        "constant_address": null
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _shouldSynchronizeGroupVisibilityForOptions:]",
+    "reads": [
+      {
+        "instruction": "0x185743BEC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowSynchronizeOrderingGroupVisibility",
+        "constant_address": "0x1eea4b908"
+      }
+    ]
+  },
+  {
+    "method": "___46-[NSWindow _reallyDoOrderWindowOutRelativeTo:]_block_invoke",
+    "reads": [
+      {
+        "instruction": "0x185744078   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowOrderOutApplyAdobeMuseWorkaround",
+        "constant_address": "0x1eea4b8c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _wmWindowTilingStateDidChange]",
+    "reads": [
+      {
+        "instruction": "0x1857463B8   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowEnableSavedFrameStringAdditions",
+        "constant_address": "0x1eea4ba28"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _stringWithFrame:onScreen:tilingState:adjustingForToolbar:]",
+    "reads": [
+      {
+        "instruction": "0x185747630   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowEnableSavedFrameStringAdditions",
+        "constant_address": "0x1eea4ba28"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _overrideDefeatingConstrainFrameRect:toScreen:fullScreenConstrainToTile:]",
+    "reads": [
+      {
+        "instruction": "0x185748810   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldCallConstrainFrameRectInFullScreen",
+        "constant_address": "0x1eea4baa8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow initWithCoder:]",
+    "reads": [
+      {
+        "instruction": "0x18574927C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAssertFrameLimits",
+        "constant_address": "0x1eea4ace8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _validateTileChange]",
+    "reads": [
+      {
+        "instruction": "0x185749670   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowEnableQuickTileActions",
+        "constant_address": "0x1eea4bb48"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _effectiveToolbarStyle]",
+    "reads": [
+      {
+        "instruction": "0x18574C998   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowToolbarDiscourageUnifiedCompact",
+        "constant_address": "0x1eea4bd88"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow setTitlebarAppearsTransparentWhenFullscreen:]",
+    "reads": [
+      {
+        "instruction": "0x18574CD50   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSAllowToolbarTransparencyInFullScreen",
+        "constant_address": "0x1eea4bda8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow _skipIntelligenceWindowSnapshot]",
+    "reads": [
+      {
+        "instruction": "0x18574E08C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowIntelligenceSkipSnapshot",
+        "constant_address": "0x1eea4be48"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindow_Carbon) windowRefWithCompositedAttribute:andFrameworkScaledAttribute:]",
+    "reads": [
+      {
+        "instruction": "0x18574FE5C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSAutoCreateWindowRef",
+        "constant_address": "0x1eea4bec8"
+      }
+    ]
+  },
+  {
+    "method": "___74-[NSWindow(TelemetryAnalytics) _sendAnalyticsForDismissModalForTerminate:]_block_invoke",
+    "reads": [
+      {
+        "instruction": "0x185750FF8   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSModalWindowAllowApplicationTerminationHeuristics",
+        "constant_address": "0x1eea498c8"
+      }
+    ]
+  },
+  {
+    "method": "-[_NSThemeWidget updateConstraints]",
+    "reads": [
+      {
+        "instruction": "0x1857C4C40   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSThemeWidgetEnableOutlookConstraintFix",
+        "constant_address": "0x1eea539e8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSEventRouting) _cancelKey:]",
+    "reads": [
+      {
+        "instruction": "0x1857C6EC0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowCancelKeyAttemptsEscapeCompletion",
+        "constant_address": "0x1eea53ac8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSTitlebarView _updateSectionTransparency]",
+    "reads": [
+      {
+        "instruction": "0x1858C2D40   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSForceClearTitlebarVEVsForNonDefaultWindowBackgroundColor",
+        "constant_address": "0x1eea64468"
+      },
+      {
+        "instruction": "0x1858C2E50   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSTitlebarViewClear",
+        "constant_address": "0x1eea64448"
+      }
+    ]
+  },
+  {
+    "method": "___44-[NSTitlebarView _updateSectionTransparency]_block_invoke",
+    "reads": [
+      {
+        "instruction": "0x1858C2FEC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSTitlebarUseTransparentTitlebarForUnscrolledRemotelyHostedContent",
+        "constant_address": "0x1eea64488"
+      }
+    ]
+  },
+  {
+    "method": "-[NSTitlebarContainerView _startForceShadowContentDividersTimer]",
+    "reads": [
+      {
+        "instruction": "0x1858C4EBC   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSTitlebarForceDisplayShadowDelay",
+        "constant_address": "0x1eea644a8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSTitlebarContainerView _updateDividerLayerForController:animated:]",
+    "reads": [
+      {
+        "instruction": "0x1858C6CDC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSTitlebarSeparatorCanBeHostedInAdapters",
+        "constant_address": "0x1eea644c8"
+      },
+      {
+        "instruction": "0x1858C6D00   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSTitlebarSeparatorAnimationDuration",
+        "constant_address": "0x1eea64168"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowResizing) _wantsRoundedCornerResize]",
+    "reads": [
+      {
+        "instruction": "0x1859CDB38   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowUseRoundedResizeTarget",
+        "constant_address": "0x1eea704a8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowResizing) _updateRoundedCornersUnifiedTrackingArea]",
+    "reads": [
+      {
+        "instruction": "0x1859CDED4   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "AppleEdgeResizeBorderSize",
+        "constant_address": "0x1eea704c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowResizing) _updateRoundRectEventPaths]",
+    "reads": [
+      {
+        "instruction": "0x1859CE4E8   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShowResizeDebugOverlay",
+        "constant_address": "0x1eea70368"
+      },
+      {
+        "instruction": "0x1859CE508   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "AppleEdgeResizeBorderSize",
+        "constant_address": "0x1eea704c8"
+      },
+      {
+        "instruction": "0x1859CE524   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSWindowRoundedResizeInnerRadiusOffset",
+        "constant_address": "0x1eea704e8"
+      },
+      {
+        "instruction": "0x1859CE540   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSWindowRoundedResizeOuterRadiusOffset",
+        "constant_address": "0x1eea70508"
+      }
+    ]
+  },
+  {
+    "method": "+[NSWindow(NSWindowResizing) _getResizeEdgeAndCornerThicknesses:forStyleMask:cornerRadius:]",
+    "reads": [
+      {
+        "instruction": "0x1859CE61C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowUseRoundedResizeTarget",
+        "constant_address": "0x1eea704a8"
+      },
+      {
+        "instruction": "0x1859CE63C   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "AppleEdgeResizeCornerSize",
+        "constant_address": "0x1eea70528"
+      }
+    ]
+  },
+  {
+    "method": "+[NSWindow(NSWindowResizing) _tileDividerInteriorResizeEdgeThickness]",
+    "reads": [
+      {
+        "instruction": "0x1859CE680   b        __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSTileDividerInteriorBoundsExtension",
+        "constant_address": "0x1eea705e8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowResizing) _scrollViewIntersectsSoutheastGrowCorner:]",
+    "reads": [
+      {
+        "instruction": "0x1859CEB50   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "AppleEdgeResizeCornerSizeSE",
+        "constant_address": "0x1eea705a8"
+      },
+      {
+        "instruction": "0x1859CEB70   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "AppleEdgeResizeCornerSize",
+        "constant_address": "0x1eea70528"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowResizing) _frame:resizedFromEdge:withDelta:withEvent:withState:]",
+    "reads": [
+      {
+        "instruction": "0x1859CFCA0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldSnapSizeToScreenEdgesWhenResizing",
+        "constant_address": "0x1eea70628"
+      },
+      {
+        "instruction": "0x1859CFCC8   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldSnapSizeToOtherWindowsWhenResizing",
+        "constant_address": "0x1eea706e8"
+      },
+      {
+        "instruction": "0x1859CFCEC   bl       __NSGetCGFloatAppConfig",
+        "adjacent_literal_key": "NSWindowSnapSizeDelay",
+        "constant_address": "0x1eea706c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowResizing) _allowsSizeSnapping]",
+    "reads": [
+      {
+        "instruction": "0x1859D17C0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldSnapSizeToScreenEdgesWhenResizing",
+        "constant_address": "0x1eea70628"
+      },
+      {
+        "instruction": "0x1859D1814   b        __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldSnapSizeToOtherWindowsWhenResizing",
+        "constant_address": "0x1eea706e8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowResizing) _toggleDebugResizeOverlay]",
+    "reads": [
+      {
+        "instruction": "0x1859D1AC0   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShowResizeDebugOverlay",
+        "constant_address": "0x1eea70368"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSWindowResizing) _debugDrawResizeRegions]",
+    "reads": [
+      {
+        "instruction": "0x1859D1FF8   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShowResizeDebugOverlay",
+        "constant_address": "0x1eea70368"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSConstraintBasedLayoutInternal) _refreshWindowResizeConstraintsWithSize:]",
+    "reads": [
+      {
+        "instruction": "0x185A020BC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowMinMaxSizesRespectedByAutolayout",
+        "constant_address": "0x1eea72f28"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _frameForFullScreenModeInRect:]",
+    "reads": [
+      {
+        "instruction": "0x185A7088C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowTilingShouldTrimToFitTiles",
+        "constant_address": "0x1eea78828"
+      },
+      {
+        "instruction": "0x185A708BC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowTilingShouldTrimToFitTiles",
+        "constant_address": "0x1eea78828"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _didExitFullScreen]",
+    "reads": [
+      {
+        "instruction": "0x185A70E88   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowAlwaysResetStyleMaskOnFullScreenClose",
+        "constant_address": "0x1eea78848"
+      },
+      {
+        "instruction": "0x185A70FEC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowIsChromeBefore60_1",
+        "constant_address": "0x1eea788a8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _enterFullScreenModeWithTransition:]",
+    "reads": [
+      {
+        "instruction": "0x185A71754   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSFullScreenAllowEnterDuringExit",
+        "constant_address": "0x1eea788c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _enterAutomaticFullScreen]",
+    "reads": [
+      {
+        "instruction": "0x185A71930   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSAnimateNewFullScreenFromFullScreen",
+        "constant_address": "0x1eea78808"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _wantsFullScreenTileDropTargets]",
+    "reads": [
+      {
+        "instruction": "0x185A7222C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSFullScreenTabDropTargetsEverywhere",
+        "constant_address": "0x1eea789c8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _createSiblingTileForWindow:preferredPositions:responseHandler:]",
+    "reads": [
+      {
+        "instruction": "0x185A7265C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSFullScreenTileAnimateOpenClose",
+        "constant_address": "0x1eea789e8"
+      }
+    ]
+  },
+  {
+    "method": "___89-[NSWindow(NSFullScreen) _createSiblingTileForWindow:preferredPositions:responseHandler:]_block_invoke",
+    "reads": [
+      {
+        "instruction": "0x185A7286C   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSFullScreenTileAnimateOpenClose",
+        "constant_address": "0x1eea789e8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _joinFullScreenSpace:usingPosition:withTransition:]",
+    "reads": [
+      {
+        "instruction": "0x185A72DF8   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSFullScreenTileAnimateOpenClose",
+        "constant_address": "0x1eea789e8"
+      },
+      {
+        "instruction": "0x185A730FC   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSFullScreenTileAnimateOpenClose",
+        "constant_address": "0x1eea789e8"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _wantsFullScreenCleanupOnOrderOut]",
+    "reads": [
+      {
+        "instruction": "0x185A73398   b        __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSWindowShouldCleanupFullScreenSpacesOnOrderOut",
+        "constant_address": "0x1eea78a08"
+      }
+    ]
+  },
+  {
+    "method": "-[NSWindow(NSFullScreen) _doFullScreenCleanupForOrderOut]",
+    "reads": [
+      {
+        "instruction": "0x185A734C4   bl       __NSGetBoolAppConfig",
+        "adjacent_literal_key": "NSFullScreenTileAnimateOpenClose",
+        "constant_address": "0x1eea789e8"
+      }
+    ]
+  }
+]

@@ -1,0 +1,14 @@
+{"available":0,"class":"NSThemeFrame","encoding":null,"selector":"_setButtonsShown:"}
+{"available":0,"class":"NSThemeFrame","encoding":null,"selector":"_setButtonHidingView:"}
+{"available":1,"class":"NSThemeFrame","encoding":"v24@0:8d16","selector":"setButtonRevealAmount:"}
+{"available":1,"class":"NSThemeFrame","encoding":"B16@0:8","selector":"_wantsLeftHandButtons"}
+{"available":1,"class":"NSThemeFrame","encoding":"B20@0:8B16","selector":"_canFloatForTabsOrTitlebar:"}
+{"available":1,"class":"NSView","encoding":"v24@0:8B16B20","selector":"_setHidden:setNeedsDisplay:"}
+{"available":1,"class":"NSWindow","encoding":"@24@0:8Q16","selector":"_findStandardWindowButton:"}
+{"available":1,"class":"NSWindow","encoding":"v24@0:8d16","selector":"setStandardWindowTitleButtonsAlphaValue:"}
+{"available":1,"class":"NSWindow","encoding":"v20@0:8B16","selector":"setTitlebarHidden:"}
+{"available":1,"class":"NSWindow","encoding":"v32@0:8{CGSize=dd}16","selector":"setStandardWindowButtonGroupOffset:"}
+{"available":1,"class":"NSWindow","encoding":"B32@0:8@16@24","selector":"accessibilitySetOverrideValue:forAttribute:"}
+{"available":1,"class":"NSWindow","encoding":"B16@0:8","selector":"accessibilityIsCloseButtonAttributeSettable"}
+{"available":1,"class":"NSWindow","encoding":"B16@0:8","selector":"accessibilityIsMinimizeButtonAttributeSettable"}
+{"available":1,"class":"NSWindow","encoding":"B16@0:8","selector":"accessibilityIsZoomButtonAttributeSettable"}

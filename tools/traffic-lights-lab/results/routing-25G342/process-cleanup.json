@@ -1,0 +1,21 @@
+{
+  "children": [
+    {
+      "pid": 16651,
+      "absent": true
+    },
+    {
+      "pid": 17360,
+      "absent": true
+    },
+    {
+      "pid": 17893,
+      "absent": true
+    }
+  ],
+  "windowIDs": [
+    80206,
+    80216,
+    80224
+  ]
+}

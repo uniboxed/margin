@@ -4,7 +4,12 @@ The target is the three close, minimise and zoom/fullscreen buttons, leaving the
 window title and other application chrome alone. Research is restricted to Accessibility and private
 macOS APIs for control. No product behavior is changed by this spike.
 
-**Corner-radius update:** private AppKit **launch configuration works in installed TextEdit and
+**Latest traffic-light pass:** native external hiding remains unestablished. A broader configuration
+inventory and a new owner/foreign Accessibility relationship experiment distinguish changes to the
+accessibility model from native control suppression. See the final section for current findings,
+remaining research gaps and the implementation decision. Corner work is parked for this request.
+
+**Separate corner-radius result:** private AppKit **launch configuration works in installed TextEdit and
 Preview on 25G342**, without injection, re-signing, SIP changes or saved corner-preference writes.
 The effect survives resize and disappears on a normal relaunch. Chrome is unchanged in the matched
 test. This corrects the earlier practical limit drawn from live WindowServer setters; see the final
@@ -12,7 +17,7 @@ section for recordings, exact scope and reproduction. Traffic-light hiding remai
 
 **External native traffic-light hiding remains unestablished for protected apps on 25G342. The user
 explicitly rejects image covers; the earlier cover experiment does not meet this requirement.**
-The latest native-only pass tests private button-region transactions and retained foreign-window
+An earlier native-only pass tests private button-region transactions and retained foreign-window
 proxies with matched owner controls, and traces Apple's titlebar service and WindowManagement bridge.
 None establishes a remote native-button visibility operation. Detailed evidence is appended below.
 
@@ -771,3 +776,117 @@ are retained there. Committed evidence/hashes: `tools/traffic-lights-lab/results
 Fresh unit tests pass 1,031. New/changed native probes and legacy visual/cover entry points compile
 with warnings as errors. Full E2E is attempted/bounded after missing pinned WebKit 2388 setup failures;
 no browser installation, full-suite pass, production app install or PR.
+
+## Return to native traffic lights: configuration and AX routing (2026-11-16)
+
+**Result:** no new external native hide for protected apps. The precise working mechanism remains
+the owner's individual button-view hide; the missing capability is making an unmodified protected
+owner perform it. This pass investigates two routes that could otherwise look like a solution:
+startup configuration and Accessibility's button-reference setters. It does not treat negative
+findings as a proof that every private route is impossible.
+
+### Configuration and historical selectors
+
+Read the actual loaded AppKit `__AUTH_CONST,__cfstring` section to map 20,089 constant addresses.
+The new offline inventory scans 3,566 disassembled methods/blocks in the selected NSWindow,
+NSFrameView, NSThemeFrame, NSTitlebar* and NSThemeWidget* families, including categories. It identifies 192 direct
+`_NSGet*AppConfig` call sites in 138 methods/blocks; 191 have a nearby literal key materialization.
+This is an inventory, **not a complete call graph, symbolic execution or enumeration of all possible
+argument values**. For example, the corner override's branches supply different keys to one call;
+the inventory labels its nearest literal and does not resolve all branches. Dynamic dispatch,
+standalone helper functions, indirect constants and other frameworks require separate analysis.
+
+Review the actual lifecycle excerpts, rather than assuming a key's name implies visibility:
+
+| Lead | Evidence on 25G342 | Meaning for this requirement |
+| --- | --- | --- |
+| `_updateButtons` and `_wantsLeftHandButtons` | Local style, closability/resizability/miniaturizability, widget/fullscreen state drive native subview creation/removal | No startup hide setting established in these paths |
+| `NSWindowShouldCacheStandardWindowButton` | `standardWindowButton:` chooses cached versus fresh lookup, then calls `_findStandardWindowButton:` | Lookup policy; no native hide |
+| `NSShowToolbarButton` | Consumed by `showsToolbarButton` | Refers to the separate toolbar button |
+| `NSWindowShouldAlwaysFloatTitlebar` | Consumed in `_canFloatForTabsOrTitlebar:` alongside style/appearance/frame state | Floating layout eligibility; no selective three-button suppression established |
+| `NSWindowAlwaysResetStyleMaskOnFullScreenClose` | `_didExitFullScreen` clears only fullscreen bit `0x4000`; for a live, non-deallocating window it reaches this operation even when the setting is false, then refreshes button state | No selective close/minimize/zoom style-bit removal; not a reason to disrupt real Spaces with a speculative toggle |
+| `setStandardWindowTitleButtonsAlphaValue:` | Tail-calls theme frame's `setButtonRevealAmount:` | Alias for the already reviewed broader titlebar reveal path, including title/document/other elements |
+| `setTitlebarHidden:` | NSWindow forwards to theme frame, which hides the titlebar container | Hides more than the requested controls; still owner-local |
+| Historical `_setButtonsShown:` / `_setButtonHidingView:` | Both absent in runtime NSThemeFrame lookup | Old examples are not current callable implementations |
+| `NSWindowCloseButtonFrame`, `NSWindowMiniaturizeButtonFrame`, `NSWindowZoomButtonFrame` | Exact loaded constants confirmed; no live defaults consumer established | Not justified as launch flags; no restoration-based external backend demonstrated |
+
+The historical lead comes from [Mozilla's original investigation](https://bugzilla.mozilla.org/show_bug.cgi?id=851652)
+and [older class-dumped headers](https://github.com/w0lfschild/macOS_headers/blob/master/macOS/Frameworks/AppKit/1348.17/NSThemeFrame.h).
+Neither establishes availability or cross-process invocation on this build. No real app was restarted
+with guessed button defaults. Window restoration remains unproven; no user's saved state was edited.
+
+### Accessibility model versus native controls: a new matched experiment
+
+[Apple describes `setAccessibilityCloseButton` as setting the child accessibility element](https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol/setaccessibilityclosebutton(_:)).
+It does not promise native visibility control. Static AppKit tracing shows the analogous close,
+minimize and zoom setters enter the Accessibility attribute machinery. The three NSWindow
+`accessibilityIs*ButtonAttributeSettable` methods each return false. The reviewed legacy attribute
+dispatcher checks support and settability before selecting an accessibility setter; it is not a
+general remote Objective-C invocation interface. This does not trace every modern AX transport path.
+
+Test a fresh, independently identified AppKit child from another process, with actual target-window
+PNG capture and owner native hidden/alpha/enabled/hit-test snapshots:
+
+1. Establish ordinary windowed controls. Exercise the private native hide as a separate rendering
+   control, then restore: **516 changed pixels**, all three native controls hidden and non-hit;
+   restoration returns zero changed pixels against baseline.
+2. Inside the owner only, call ABI-checked `accessibilitySetOverrideValue:forAttribute:` to rotate
+   the close/minimize/zoom references. AX now reports their positions in order `[1,2,0]`. AppKit wraps
+   these as new AXUnknown elements; this is changed metadata, not native object identity. **Zero
+   changed pixels across the entire 680×452 window**, and all native buttons remain visible/hittable.
+3. From outside, try restoring each relationship through `AXUIElementSetAttributeValue` using its
+   original AX element. All three report non-settable; all three writes nevertheless return zero.
+   **Neither the rotated AX geometry nor the native controls/pixels change.** A success return code
+   does not establish that the requested semantic mutation occurred.
+4. Clear the owner's private overrides. Normal AXButton roles/subroles/geometry return, with zero
+   changed pixels and the original native state. Close the child and verify its PID/window are gone.
+
+Two earlier attempts stop before foreign writes and remain invalid. The first wrongly assumes AX
+identities survive overriding; the second wrongly expects preserved role/subrole fingerprints.
+The corrected test compares distinct known positions/sizes, labels this as a geometry match, and
+retains independent native and pixel evidence. All three fixture PIDs/window IDs are absent at the
+final cleanup check. No protected-app runtime success is inferred from these owned-child tests.
+
+### External implementations and the architecture decision
+
+Read original implementations rather than inferring a mechanism from screenshots:
+
+- [StopStoplightLight source](https://github.com/shishkabibal/StopStoplightLight/blob/main/StopStoplightLight/StopStoplightLight.m)
+  swizzles NSWindow inside the host and hides its local buttons after `makeKeyAndOrderFront:`.
+  Its [installation instructions](https://github.com/shishkabibal/StopStoplightLight) require MacForge/SIMBL.
+- [INTrafficLightsDisabler source](https://github.com/indragiek/INTrafficLightsDisabler/blob/master/INTrafficLightsDisabler/INTrafficLightsDisabler.m)
+  hooks owner initialization/nib loading and enumerates that process's NSApp windows. It is another
+  owner-process plugin, not evidence of AX or WindowServer hiding arbitrary foreign native views.
+- [Chromeless](https://github.com/antiwork/chromeless/blob/main/main.swift) creates its own WKWebView
+  browser window. Its control over its own traffic lights does not establish control over an existing
+  Chrome, Edge or Safari window.
+
+These sources were read, not installed or executed. They reinforce why a working hide implementation
+and a deployable external invocation are separate engineering problems.
+
+For Margin, retain a capability-based design: an owner backend resolves the actual three controls,
+saves their prior hidden states, hides them on the main thread and restores those same states.
+It must revalidate controls after frame/toolbar reconstruction and close/reopen, and handle independent
+windows without relying on a process-wide assumed state. Those lifecycle cases remain acceptance
+work, not established product support. AX remains useful for discovery, geometry and lifecycle
+observation; relationship metadata cannot replace the owner hide.
+
+An external backend should be accepted only after an **identified owner configuration consumer or
+specific system-to-owner operation** actually suppresses native pixels/hit targets in an unchanged
+protected target, with restoration and resize controls. Existing private WindowServer region/proxy
+tests and reviewed service/WindowManagement paths have not supplied that operation. Authorization
+and the full server-to-owner path remain open research gaps; finding another local NSWindow setter
+alone does not fill them. No overlay, privacy-indicator substitution or undocumented success return
+should enable this capability. Existing permissive Chromium launch loading stays a bounded lab result.
+
+Compact evidence, exact runtime encodings, configuration inventory, 24 static lifecycle/AX excerpts,
+independent pixel checks and source/binary hashes are in
+[`results/routing-25G342`](../tools/traffic-lights-lab/results/routing-25G342/README.md).
+Raw captures and both failed attempts are retained under `test-results/traffic-lights-routing-2026-11-16/`.
+This pass changes research tools/docs only. Safari and general protected-app native hiding still
+need separate verification; no production support is claimed.
+
+Validation: native probes build with warnings as errors and the saved-pixel verifier passes. Fresh
+unit tests pass 1,031. Full E2E was attempted and bounded at 15 seconds after setup errors for missing
+pinned WebKit 2388; pinned Chromium 1254 and `/opt/pw-browsers` are absent. No browser download or
+full-suite pass. No product app install or PR.
