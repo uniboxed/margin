@@ -1,0 +1,56 @@
+_connection_holds_rights_on_window:
+0x186EEDA84   pacibsp
+0x186EEDA88   stp      x24, x23, [sp, #-0x40]!
+0x186EEDA8C   stp      x22, x21, [sp, #0x10]
+0x186EEDA90   stp      x20, x19, [sp, #0x20]
+0x186EEDA94   stp      x29, x30, [sp, #0x30]
+0x186EEDA98   add      x29, sp, #0x30
+0x186EEDA9C   mov      x22, x0
+0x186EEDAA0   mov      w0, #0x0
+0x186EEDAA4   cbz      x22, 0x186eedae0
+0x186EEDAA8   mov      x20, x2
+0x186EEDAAC   cbz      x2, 0x186eedae0
+0x186EEDAB0   ldrb     w8, [x20, #0x92d]
+0x186EEDAB4   tbnz     w8, #0x7, 0x186eedadc
+0x186EEDAB8   mov      x23, x4
+0x186EEDABC   mov      x19, x3
+0x186EEDAC0   mov      x21, x1
+0x186EEDAC4   mov      x0, x22
+0x186EEDAC8   mov      x1, x4
+0x186EEDACC   bl       __ConnectionCheckUniversalOwnerAccess
+0x186EEDAD0   tbz      w0, #0x0, 0x186eedaf4
+0x186EEDAD4   mov      w0, #0x1
+0x186EEDAD8   b        0x186eedae0
+0x186EEDADC   mov      w0, #0x0
+0x186EEDAE0   ldp      x29, x30, [sp, #0x30]
+0x186EEDAE4   ldp      x20, x19, [sp, #0x20]
+0x186EEDAE8   ldp      x22, x21, [sp, #0x10]
+0x186EEDAEC   ldp      x24, x23, [sp], #0x40
+0x186EEDAF0   retab
+0x186EEDAF4   mov      w0, #0x0
+0x186EEDAF8   mov      w8, #0x7
+0x186EEDAFC   movk     w8, #0x3, lsl #16
+0x186EEDB00   tst      w21, w8
+0x186EEDB04   b.eq     0x186eedae0
+0x186EEDB08   and      w8, w21, #0xfffffff8
+0x186EEDB0C   and      w8, w8, #0xfffcffff
+0x186EEDB10   cbnz     w8, 0x186eedae0
+0x186EEDB14   tbz      w23, #0x2, 0x186eedb2c
+0x186EEDB18   ldr      w8, [x20, #0x8a4]
+0x186EEDB1C   cmp      w8, #0x2
+0x186EEDB20   b.ne     0x186eedb2c
+0x186EEDB24   ldr      x8, [x20, #0x30]
+0x186EEDB28   cbz      x8, 0x186eedad4
+0x186EEDB2C   mov      x0, x22
+0x186EEDB30   mov      x1, x21
+0x186EEDB34   mov      x2, x20
+0x186EEDB38   mov      x3, x19
+0x186EEDB3C   ldp      x29, x30, [sp, #0x30]
+0x186EEDB40   ldp      x20, x19, [sp, #0x20]
+0x186EEDB44   ldp      x22, x21, [sp, #0x10]
+0x186EEDB48   ldp      x24, x23, [sp], #0x40
+0x186EEDB4C   autibsp
+0x186EEDB50   eor      x16, x30, x30, lsl #1
+0x186EEDB54   tbz      x16, #0x3e, 0x186eedb5c
+0x186EEDB58   brk      #0xc471
+0x186EEDB5C   b        __ConnectionHoldsRightsOnWindow

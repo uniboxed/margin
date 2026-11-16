@@ -1,0 +1,60 @@
+__ZL32_PKGTransactionCheckWindowAccessP13CGXConnectionjijj:
+0x1870C8D2C   pacibsp
+0x1870C8D30   sub      sp, sp, #0x70
+0x1870C8D34   stp      x24, x23, [sp, #0x30]
+0x1870C8D38   stp      x22, x21, [sp, #0x40]
+0x1870C8D3C   stp      x20, x19, [sp, #0x50]
+0x1870C8D40   stp      x29, x30, [sp, #0x60]
+0x1870C8D44   add      x29, sp, #0x60
+0x1870C8D48   mov      x21, x4
+0x1870C8D4C   mov      x22, x3
+0x1870C8D50   mov      x23, x2
+0x1870C8D54   mov      x20, x0
+0x1870C8D58   adrp     x8, 389390           ; 0x1e61d6000
+0x1870C8D5C   ldr      x8, [x8, #0xab0]
+0x1870C8D60   ldr      x8, [x8]
+0x1870C8D64   str      x8, [sp, #0x28]
+0x1870C8D68   mov      x0, x1
+0x1870C8D6C   bl       __ZL12window_by_idj
+0x1870C8D70   mov      x19, x0
+0x1870C8D74   cbz      x0, 0x1870c8dc0
+0x1870C8D78   mov      x0, x20
+0x1870C8D7C   mov      x1, x23
+0x1870C8D80   mov      x2, x19
+0x1870C8D84   mov      w3, #0x0
+0x1870C8D88   mov      x4, x22
+0x1870C8D8C   bl       _connection_holds_rights_on_window
+0x1870C8D90   tbnz     w0, #0x0, 0x1870c8dc0
+0x1870C8D94   cbz      w21, 0x1870c8dbc
+0x1870C8D98   ldr      w8, [x19, #0x8a4]
+0x1870C8D9C   cmp      w8, #0x2
+0x1870C8DA0   b.ne     0x1870c8dbc
+0x1870C8DA4   cbz      x20, 0x1870c8df4
+0x1870C8DA8   ldp      q0, q1, [x20, #0x270]
+0x1870C8DAC   stp      q0, q1, [sp]
+0x1870C8DB0   mov      x0, sp
+0x1870C8DB4   bl       _WSAuditTokenIsScreenCaptureAllowed
+0x1870C8DB8   tbnz     w0, #0x0, 0x1870c8dc0
+0x1870C8DBC   mov      x19, #0x0
+0x1870C8DC0   ldr      x8, [sp, #0x28]
+0x1870C8DC4   adrp     x9, 389390           ; 0x1e61d6000
+0x1870C8DC8   ldr      x9, [x9, #0xab0]
+0x1870C8DCC   ldr      x9, [x9]
+0x1870C8DD0   cmp      x9, x8
+0x1870C8DD4   b.ne     0x1870c8e14
+0x1870C8DD8   mov      x0, x19
+0x1870C8DDC   ldp      x29, x30, [sp, #0x60]
+0x1870C8DE0   ldp      x20, x19, [sp, #0x50]
+0x1870C8DE4   ldp      x22, x21, [sp, #0x40]
+0x1870C8DE8   ldp      x24, x23, [sp, #0x30]
+0x1870C8DEC   add      sp, sp, #0x70
+0x1870C8DF0   retab
+0x1870C8DF4   adrp     x0, 338              ; 0x18721a000
+0x1870C8DF8   add      x0, x0, #0xd3d
+0x1870C8DFC   adrp     x1, 338              ; 0x18721a000
+0x1870C8E00   add      x1, x1, #0x5a1
+0x1870C8E04   adrp     x3, 338              ; 0x18721a000
+0x1870C8E08   add      x3, x3, #0x84b
+0x1870C8E0C   mov      w2, #0x15b2
+0x1870C8E10   bl       ___assert_rtn
+0x1870C8E14   bl       ___stack_chk_fail

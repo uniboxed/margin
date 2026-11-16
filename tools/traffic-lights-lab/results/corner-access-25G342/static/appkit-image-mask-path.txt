@@ -1,0 +1,29 @@
+0x185997590   tbz      w25, #0x5, 0x1859978f0
+0x185997594   ldr      x22, [x19, #0x58]
+0x185997598   mov      x0, x22
+0x18599759C   bl       _objc_msgSend$definesShadowShape
+0x1859975A0   cbz      w0, 0x18599789c
+0x1859975A4   movi.2d  v0, #0000000000000000
+0x1859975A8   stp      q0, q0, [sp]
+0x1859975AC   fmov     d0, #2.00000000
+0x1859975B0   fminnm   d0, d8, d0
+0x1859975B4   ldp      d1, d2, [x19, #0x78]
+0x1859975B8   mov      x2, sp
+0x1859975BC   mov      x0, x22
+0x1859975C0   bl       "_objc_msgSend$slImageForScale:size:center:"
+0x1859975C4   cbz      x0, 0x185997a24
+0x1859975C8   mov      x23, x0
+0x1859975CC   mov      x0, x20
+0x1859975D0   mov      x1, x21
+0x1859975D4   bl       _SLSTransactionClearWindowCornerRadius
+0x1859975D8   mov      x0, x20
+0x1859975DC   mov      x1, x21
+0x1859975E0   mov      x2, #0x0
+0x1859975E4   bl       _SLSTransactionSetWindowBoundsPath
+0x1859975E8   ldp      d0, d1, [sp]
+0x1859975EC   ldp      d2, d3, [sp, #0x10]
+0x1859975F0   mov      x0, x20
+0x1859975F4   mov      x1, x21
+0x1859975F8   mov      x2, x23
+0x1859975FC   mov      w3, #0xf
+0x185997600   b        0x1859978d8

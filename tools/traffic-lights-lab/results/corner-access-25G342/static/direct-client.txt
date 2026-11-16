@@ -1,0 +1,125 @@
+_SLSSetWindowCornerMask:
+0x18702ADEC   pacibsp
+0x18702ADF0   sub      sp, sp, #0xe0
+0x18702ADF4   stp      d11, d10, [sp, #0x80]
+0x18702ADF8   stp      d9, d8, [sp, #0x90]
+0x18702ADFC   stp      x24, x23, [sp, #0xa0]
+0x18702AE00   stp      x22, x21, [sp, #0xb0]
+0x18702AE04   stp      x20, x19, [sp, #0xc0]
+0x18702AE08   stp      x29, x30, [sp, #0xd0]
+0x18702AE0C   add      x29, sp, #0xd0
+0x18702AE10   mov.16b  v8, v3
+0x18702AE14   mov.16b  v9, v2
+0x18702AE18   mov.16b  v10, v1
+0x18702AE1C   mov.16b  v11, v0
+0x18702AE20   mov      x21, x2
+0x18702AE24   mov      x22, x1
+0x18702AE28   mov      x19, x0
+0x18702AE2C   adrp     x8, 389548           ; 0x1e61d6000
+0x18702AE30   ldr      x8, [x8, #0xab0]
+0x18702AE34   ldr      x8, [x8]
+0x18702AE38   stur     x8, [x29, #-0x58]
+0x18702AE3C   bl       _CGSGetMainConnectionMachPort
+0x18702AE40   mov      x20, x0
+0x18702AE44   cbz      x22, 0x18702af00
+0x18702AE48   mov      x0, x22
+0x18702AE4C   bl       _CGImageGetWidth
+0x18702AE50   mov      x23, x0
+0x18702AE54   mov      x0, x22
+0x18702AE58   bl       _CGImageGetHeight
+0x18702AE5C   add      x8, sp, #0x8
+0x18702AE60   adrp     x16, 389548          ; 0x1e61d6000
+0x18702AE64   ldr      x16, [x16, #0xa90]
+0x18702AE68   mov      x17, x8
+0x18702AE6C   movk     x17, #0x6ae1, lsl #48
+0x18702AE70   pacda    x16, x17
+0x18702AE74   str      x16, [sp, #0x8]
+0x18702AE78   adrp     x9, 428              ; 0x1871d6000
+0x18702AE7C   ldr      d0, [x9, #0x5b0]
+0x18702AE80   str      d0, [sp, #0x10]
+0x18702AE84   add      x8, x8, #0x10
+0x18702AE88   adrp     x16, 0               ; 0x18702a000
+0x18702AE8C   add      x16, x16, #0xfdc     ; ___SLSSetWindowCornerMask_block_invoke
+0x18702AE90   pacia    x16, x8
+0x18702AE94   adrp     x8, 390930           ; 0x1e673c000
+0x18702AE98   add      x8, x8, #0x138       ; ___block_descriptor_tmp.63.20532
+0x18702AE9C   stp      x16, x8, [sp, #0x18]
+0x18702AEA0   mul      x8, x0, x23
+0x18702AEA4   stp      x23, x0, [sp, #0x28]
+0x18702AEA8   stp      w20, w19, [sp, #0x68]
+0x18702AEAC   stp      x22, x8, [sp, #0x38]
+0x18702AEB0   str      w21, [sp, #0x70]
+0x18702AEB4   stp      d11, d10, [sp, #0x48]
+0x18702AEB8   stp      d9, d8, [sp, #0x58]
+0x18702AEBC   add      x1, sp, #0x8
+0x18702AEC0   mov      x0, x8
+0x18702AEC4   bl       _SLPerformWithVMAllocation
+0x18702AEC8   ldur     x8, [x29, #-0x58]
+0x18702AECC   adrp     x9, 389548           ; 0x1e61d6000
+0x18702AED0   ldr      x9, [x9, #0xab0]
+0x18702AED4   ldr      x9, [x9]
+0x18702AED8   cmp      x9, x8
+0x18702AEDC   b.ne     0x18702afd8
+0x18702AEE0   ldp      x29, x30, [sp, #0xd0]
+0x18702AEE4   ldp      x20, x19, [sp, #0xc0]
+0x18702AEE8   ldp      x22, x21, [sp, #0xb0]
+0x18702AEEC   ldp      x24, x23, [sp, #0xa0]
+0x18702AEF0   ldp      d9, d8, [sp, #0x90]
+0x18702AEF4   ldp      d11, d10, [sp, #0x80]
+0x18702AEF8   add      sp, sp, #0xe0
+0x18702AEFC   retab
+0x18702AF00   adrp     x8, 389423           ; 0x1e6159000
+0x18702AF04   ldr      x8, [x8, #0xad0]
+0x18702AF08   ldp      d10, d11, [x8]
+0x18702AF0C   ldp      d8, d9, [x8, #0x10]
+0x18702AF10   mov.16b  v0, v10
+0x18702AF14   mov.16b  v1, v11
+0x18702AF18   mov.16b  v2, v8
+0x18702AF1C   mov.16b  v3, v9
+0x18702AF20   bl       _CGRectIsNull
+0x18702AF24   tbz      w0, #0x0, 0x18702af40
+0x18702AF28   movi.2d  v2, #0000000000000000
+0x18702AF2C   mov      x8, #0x7ff0000000000000
+0x18702AF30   fmov     d0, x8
+0x18702AF34   mov.16b  v1, v0
+0x18702AF38   movi.2d  v3, #0000000000000000
+0x18702AF3C   b        0x18702af74
+0x18702AF40   mov.16b  v0, v10
+0x18702AF44   mov.16b  v1, v11
+0x18702AF48   mov.16b  v2, v8
+0x18702AF4C   mov.16b  v3, v9
+0x18702AF50   bl       _CGRectIsInfinite
+0x18702AF54   cmp      w0, #0x0
+0x18702AF58   movi.2d  v1, #0000000000000000
+0x18702AF5C   fcsel    d0, d1, d10, ne
+0x18702AF60   fcsel    d1, d1, d11, ne
+0x18702AF64   mov      x8, #0x7ff0000000000000
+0x18702AF68   fmov     d3, x8
+0x18702AF6C   fcsel    d2, d3, d8, ne
+0x18702AF70   fcsel    d3, d3, d9, ne
+0x18702AF74   ldur     x8, [x29, #-0x58]
+0x18702AF78   adrp     x9, 389548           ; 0x1e61d6000
+0x18702AF7C   ldr      x9, [x9, #0xab0]
+0x18702AF80   ldr      x9, [x9]
+0x18702AF84   cmp      x9, x8
+0x18702AF88   b.ne     0x18702afd8
+0x18702AF8C   mov      x0, x20
+0x18702AF90   mov      x1, x19
+0x18702AF94   mov      x2, #0x0
+0x18702AF98   mov      w3, #0x0
+0x18702AF9C   mov      w4, #0x0
+0x18702AFA0   mov      w5, #0x0
+0x18702AFA4   mov      w6, #0x0
+0x18702AFA8   ldp      x29, x30, [sp, #0xd0]
+0x18702AFAC   ldp      x20, x19, [sp, #0xc0]
+0x18702AFB0   ldp      x22, x21, [sp, #0xb0]
+0x18702AFB4   ldp      x24, x23, [sp, #0xa0]
+0x18702AFB8   ldp      d9, d8, [sp, #0x90]
+0x18702AFBC   ldp      d11, d10, [sp, #0x80]
+0x18702AFC0   add      sp, sp, #0xe0
+0x18702AFC4   autibsp
+0x18702AFC8   eor      x16, x30, x30, lsl #1
+0x18702AFCC   tbz      x16, #0x3e, 0x18702afd4
+0x18702AFD0   brk      #0xc471
+0x18702AFD4   b        __CGSSetWindowCornerMask
+0x18702AFD8   bl       ___stack_chk_fail

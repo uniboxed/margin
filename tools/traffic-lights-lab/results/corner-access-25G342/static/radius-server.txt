@@ -1,0 +1,71 @@
+__ZL35PKGTransactionSetWindowCornerRadiusP22_PKGTransactionContext:
+0x1870CBCDC   pacibsp
+0x1870CBCE0   sub      sp, sp, #0x50
+0x1870CBCE4   stp      d9, d8, [sp, #0x10]
+0x1870CBCE8   stp      x22, x21, [sp, #0x20]
+0x1870CBCEC   stp      x20, x19, [sp, #0x30]
+0x1870CBCF0   stp      x29, x30, [sp, #0x40]
+0x1870CBCF4   add      x29, sp, #0x40
+0x1870CBCF8   mov      x19, x0
+0x1870CBCFC   adrp     x8, 389387           ; 0x1e61d6000
+0x1870CBD00   ldr      x8, [x8, #0xab0]
+0x1870CBD04   ldr      x8, [x8]
+0x1870CBD08   str      x8, [sp, #0x8]
+0x1870CBD0C   mov      x8, #-0x5555555555555556
+0x1870CBD10   str      x8, [sp]
+0x1870CBD14   add      x0, x0, #0x10
+0x1870CBD18   mov      x1, sp
+0x1870CBD1C   bl       __SLSTransactionDecode_packed64
+0x1870CBD20   tbz      w0, #0x0, 0x1870cbdb8
+0x1870CBD24   ldr      x9, [x19, #0x18]
+0x1870CBD28   cbz      x9, 0x1870cbdb8
+0x1870CBD2C   ldr      w20, [sp]
+0x1870CBD30   sub      x11, x9, #0x1
+0x1870CBD34   ldr      x10, [x19, #0x10]
+0x1870CBD38   add      x8, x10, #0x1
+0x1870CBD3C   stp      x8, x11, [x19, #0x10]
+0x1870CBD40   cbz      x10, 0x1870cbdb8
+0x1870CBD44   ldrb     w1, [x10], #0x9
+0x1870CBD48   cmp      w1, #0x88
+0x1870CBD4C   b.ne     0x1870cbd68
+0x1870CBD50   subs     x9, x9, #0x9
+0x1870CBD54   b.lo     0x1870cbdb8
+0x1870CBD58   stp      x10, x9, [x19, #0x10]
+0x1870CBD5C   cbz      x8, 0x1870cbdb8
+0x1870CBD60   ldr      d8, [x8]
+0x1870CBD64   b        0x1870cbd88
+0x1870CBD68   mov      x8, #-0x5555555555555556
+0x1870CBD6C   str      x8, [sp]
+0x1870CBD70   add      x0, x19, #0x10
+0x1870CBD74   mov      x2, sp
+0x1870CBD78   bl       __ZL34_SLSTransactionDecode_packed64_tagP25_SLSTransactionReadStreamhPv
+0x1870CBD7C   cbz      w0, 0x1870cbdb8
+0x1870CBD80   ldr      d0, [sp]
+0x1870CBD84   scvtf    d8, d0
+0x1870CBD88   ldr      x0, [x19, #0x8]
+0x1870CBD8C   mov      w21, #0x1
+0x1870CBD90   mov      x1, x20
+0x1870CBD94   mov      w2, #0x1
+0x1870CBD98   mov      w3, #0x0
+0x1870CBD9C   mov      w4, #0x0
+0x1870CBDA0   bl       __ZL32_PKGTransactionCheckWindowAccessP13CGXConnectionjijj
+0x1870CBDA4   cbz      x0, 0x1870cbdbc
+0x1870CBDA8   ldr      x1, [x19, #0x8]
+0x1870CBDAC   mov.16b  v0, v8
+0x1870CBDB0   bl       __ZN9CGXWindow17set_corner_radiusEP13CGXConnectiond
+0x1870CBDB4   b        0x1870cbdbc
+0x1870CBDB8   mov      w21, #0x0
+0x1870CBDBC   ldr      x8, [sp, #0x8]
+0x1870CBDC0   adrp     x9, 389387           ; 0x1e61d6000
+0x1870CBDC4   ldr      x9, [x9, #0xab0]
+0x1870CBDC8   ldr      x9, [x9]
+0x1870CBDCC   cmp      x9, x8
+0x1870CBDD0   b.ne     0x1870cbdf0
+0x1870CBDD4   mov      x0, x21
+0x1870CBDD8   ldp      x29, x30, [sp, #0x40]
+0x1870CBDDC   ldp      x20, x19, [sp, #0x30]
+0x1870CBDE0   ldp      x22, x21, [sp, #0x20]
+0x1870CBDE4   ldp      d9, d8, [sp, #0x10]
+0x1870CBDE8   add      sp, sp, #0x50
+0x1870CBDEC   retab
+0x1870CBDF0   bl       ___stack_chk_fail

@@ -1,0 +1,50 @@
+__CGSSetWindowCornerMask:
+0x186D0AF0C   pacibsp
+0x186D0AF10   sub      sp, sp, #0x80
+0x186D0AF14   stp      x29, x30, [sp, #0x70]
+0x186D0AF18   add      x29, sp, #0x70
+0x186D0AF1C   adrp     x8, 390348           ; 0x1e61d6000
+0x186D0AF20   ldr      x8, [x8, #0xab0]
+0x186D0AF24   ldr      x8, [x8]
+0x186D0AF28   stur     x8, [x29, #-0x8]
+0x186D0AF2C   mov      x8, #-0x5555555555555556
+0x186D0AF30   movk     x8, #0x13
+0x186D0AF34   movk     x8, #0x8000, lsl #16
+0x186D0AF38   str      x8, [sp]
+0x186D0AF3C   stur     x2, [sp, #0x1c]
+0x186D0AF40   mov      w8, #0x101
+0x186D0AF44   movk     w8, #0x1aa, lsl #16
+0x186D0AF48   stp      w8, w3, [sp, #0x24]
+0x186D0AF4C   adrp     x8, 390348           ; 0x1e61d6000
+0x186D0AF50   ldr      x8, [x8, #0xce8]
+0x186D0AF54   ldr      x8, [x8]
+0x186D0AF58   stur     x8, [sp, #0x2c]
+0x186D0AF5C   stp      w1, w3, [sp, #0x34]
+0x186D0AF60   stp      w4, w5, [sp, #0x3c]
+0x186D0AF64   str      w6, [sp, #0x44]
+0x186D0AF68   stp      d0, d1, [sp, #0x48]
+0x186D0AF6C   stp      d2, d3, [sp, #0x58]
+0x186D0AF70   str      w0, [sp, #0x8]
+0x186D0AF74   adrp     x8, 1230             ; 0x1871d8000
+0x186D0AF78   ldr      q0, [x8, #0xad0]
+0x186D0AF7C   stur     q0, [sp, #0xc]
+0x186D0AF80   mov      x0, sp
+0x186D0AF84   bl       _voucher_mach_msg_set
+0x186D0AF88   mov      x0, sp
+0x186D0AF8C   mov      w1, #0x1
+0x186D0AF90   mov      w2, #0x68
+0x186D0AF94   mov      w3, #0x0
+0x186D0AF98   mov      w4, #0x0
+0x186D0AF9C   mov      w5, #0x0
+0x186D0AFA0   mov      w6, #0x0
+0x186D0AFA4   bl       _mach_msg
+0x186D0AFA8   ldur     x8, [x29, #-0x8]
+0x186D0AFAC   adrp     x9, 390348           ; 0x1e61d6000
+0x186D0AFB0   ldr      x9, [x9, #0xab0]
+0x186D0AFB4   ldr      x9, [x9]
+0x186D0AFB8   cmp      x9, x8
+0x186D0AFBC   b.ne     0x186d0afcc
+0x186D0AFC0   ldp      x29, x30, [sp, #0x70]
+0x186D0AFC4   add      sp, sp, #0x80
+0x186D0AFC8   retab
+0x186D0AFCC   bl       ___stack_chk_fail

@@ -2177,3 +2177,13 @@ no-effect, unchanged buttons/windowed state and restoration/cleanup. Near-zero o
 titlebar paint artifacts. No real protected app or resize persistence is validated. Evidence in
 `tools/traffic-lights-lab/results/corners-25G342/`; production unchanged. Unit: 1031 pass; E2E bounded
 after missing pinned browser setup, no full pass.
+
+Deeper corner access (25G342): `verify-corner-mask.py RUN RUN.jsonl` validates the completed direct
+mask storage experiment, distinguishing actual nonuniform mask readback from content corner pixels.
+Runs 1-3 refuse before foreign requests and remain invalid; run 4 completes with owner storage/clear
+controls and foreign no-effect. `verify-corners.py` validates the separate system-only run with an
+ordinary-owner rendering control. Server owner-right/entitlement findings are static; no global
+privilege registration is invoked. See `results/corner-access-25G342/` in the traffic-light lab.
+Protected-app support and composited shadow changes remain unestablished. Five fixtures cleaned up;
+unit 1031 pass, native warnings-as-errors compile and saved evidence checks pass; E2E blocked by
+missing pinned WebKit setup after a bounded attempt. Production unchanged.

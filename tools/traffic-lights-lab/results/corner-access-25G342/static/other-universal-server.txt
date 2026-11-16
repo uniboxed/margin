@@ -1,0 +1,94 @@
+__XSetOtherUniversalConnection:
+0x1871C14A0   pacibsp
+0x1871C14A4   sub      sp, sp, #0x60
+0x1871C14A8   stp      x22, x21, [sp, #0x30]
+0x1871C14AC   stp      x20, x19, [sp, #0x40]
+0x1871C14B0   stp      x29, x30, [sp, #0x50]
+0x1871C14B4   add      x29, sp, #0x50
+0x1871C14B8   mov      x19, x1
+0x1871C14BC   adrp     x8, 389141           ; 0x1e61d6000
+0x1871C14C0   ldr      x8, [x8, #0xab0]
+0x1871C14C4   ldr      x8, [x8]
+0x1871C14C8   str      x8, [sp, #0x28]
+0x1871C14CC   ldr      w8, [x0]
+0x1871C14D0   tbnz     w8, #0x1f, 0x1871c15cc
+0x1871C14D4   ldr      w8, [x0, #0x4]
+0x1871C14D8   cmp      w8, #0x24
+0x1871C14DC   b.ne     0x1871c15cc
+0x1871C14E0   ldr      w8, [x0, #0xc]
+0x1871C14E4   ldr      w20, [x0, #0x20]
+0x1871C14E8   mov      x0, x8
+0x1871C14EC   bl       _CGXConnectionForPort
+0x1871C14F0   mov      x21, x0
+0x1871C14F4   mov      x0, x20
+0x1871C14F8   bl       _CGXConnectionForConnectionID
+0x1871C14FC   ldrb     w8, [x21, #0x8b]
+0x1871C1500   tbz      w8, #0x4, 0x1871c15c4
+0x1871C1504   mov      x22, x0
+0x1871C1508   cbz      x0, 0x1871c15c4
+0x1871C150C   ldr      w8, [x22, #0x88]
+0x1871C1510   orr      w8, w8, #0x10000000
+0x1871C1514   str      w8, [x22, #0x88]
+0x1871C1518   adrp     x8, 417280           ; 0x1ecfc1000
+0x1871C151C   ldr      x20, [x8, #0xbc8]    ; _default_log
+0x1871C1520   mov      x0, x20
+0x1871C1524   mov      w1, #0x0
+0x1871C1528   bl       _os_log_type_enabled
+0x1871C152C   cbz      w0, 0x1871c15c4
+0x1871C1530   ldr      w8, [x22, #0x50]
+0x1871C1534   ldr      x9, [x22, #0x268]
+0x1871C1538   ldr      w10, [x21, #0x50]
+0x1871C153C   adrp     x11, 406594          ; 0x1ea603000
+0x1871C1540   ldr      x11, [x11, #0x550]   ; ___sessionControlRef
+0x1871C1544   ldr      x12, [x11, #0x20]
+0x1871C1548   ldr      w13, [x12]
+0x1871C154C   ldr      x11, [x11, #0x10]
+0x1871C1550   adrp     x14, 89              ; 0x18721a000
+0x1871C1554   add      x14, x14, #0x693
+0x1871C1558   adrp     x15, 89              ; 0x18721a000
+0x1871C155C   add      x15, x15, #0x690
+0x1871C1560   cmp      x12, x11
+0x1871C1564   csel     x11, x15, x14, eq
+0x1871C1568   adrp     x12, 21              ; 0x1871d6000
+0x1871C156C   ldr      d0, [x12, #0x6c0]
+0x1871C1570   str      s0, [sp]
+0x1871C1574   str      w8, [sp, #0x4]
+0x1871C1578   mov      w8, #0x400
+0x1871C157C   strh     w8, [sp, #0x8]
+0x1871C1580   stur     w9, [sp, #0xa]
+0x1871C1584   strh     w8, [sp, #0xe]
+0x1871C1588   str      w10, [sp, #0x10]
+0x1871C158C   strh     w8, [sp, #0x14]
+0x1871C1590   stur     w13, [sp, #0x16]
+0x1871C1594   mov      w8, #0x820
+0x1871C1598   strh     w8, [sp, #0x1a]
+0x1871C159C   stur     x11, [sp, #0x1c]
+0x1871C15A0   adrp     x0, -1219            ; 0x186cfe000
+0x1871C15A4   add      x0, x0, #0x0
+0x1871C15A8   adrp     x3, 160              ; 0x187261000
+0x1871C15AC   add      x3, x3, #0x36
+0x1871C15B0   mov      x4, sp
+0x1871C15B4   mov      x1, x20
+0x1871C15B8   mov      w2, #0x0
+0x1871C15BC   mov      w5, #0x24
+0x1871C15C0   bl       __os_log_impl
+0x1871C15C4   str      wzr, [x19, #0x20]
+0x1871C15C8   b        0x1871c15e4
+0x1871C15CC   mov      w8, #-0x130
+0x1871C15D0   str      w8, [x19, #0x20]
+0x1871C15D4   adrp     x8, 389141           ; 0x1e61d6000
+0x1871C15D8   ldr      x8, [x8, #0xce8]
+0x1871C15DC   ldr      x8, [x8]
+0x1871C15E0   str      x8, [x19, #0x18]
+0x1871C15E4   ldr      x8, [sp, #0x28]
+0x1871C15E8   adrp     x9, 389141           ; 0x1e61d6000
+0x1871C15EC   ldr      x9, [x9, #0xab0]
+0x1871C15F0   ldr      x9, [x9]
+0x1871C15F4   cmp      x9, x8
+0x1871C15F8   b.ne     0x1871c1610
+0x1871C15FC   ldp      x29, x30, [sp, #0x50]
+0x1871C1600   ldp      x20, x19, [sp, #0x40]
+0x1871C1604   ldp      x22, x21, [sp, #0x30]
+0x1871C1608   add      sp, sp, #0x60
+0x1871C160C   retab
+0x1871C1610   bl       ___stack_chk_fail

@@ -1,0 +1,16 @@
+__ConnectionCheckUniversalOwnerAccess:
+0x186EED9C8   tbz      w1, #0x0, 0x186eed9dc
+0x186EED9CC   ldr      w8, [x0, #0x88]
+0x186EED9D0   tbz      w8, #0x1c, 0x186eed9dc
+0x186EED9D4   mov      w0, #0x1
+0x186EED9D8   ret
+0x186EED9DC   ldrh     w8, [x0, #0x2f0]
+0x186EED9E0   and      w9, w8, #0x20
+0x186EED9E4   and      w8, w8, w1
+0x186EED9E8   lsr      w10, w1, #6
+0x186EED9EC   ubfx     w11, w8, #3, #1
+0x186EED9F0   and      w8, w8, #0x10
+0x186EED9F4   orr      w8, w11, w8, lsr #4
+0x186EED9F8   and      w9, w10, w9, lsr #5
+0x186EED9FC   orr      w0, w8, w9
+0x186EEDA00   ret

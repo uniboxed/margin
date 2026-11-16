@@ -1,0 +1,208 @@
+__XSetUniversalOwner:
+0x1871C1614   pacibsp
+0x1871C1618   sub      sp, sp, #0x80
+0x1871C161C   stp      x24, x23, [sp, #0x40]
+0x1871C1620   stp      x22, x21, [sp, #0x50]
+0x1871C1624   stp      x20, x19, [sp, #0x60]
+0x1871C1628   stp      x29, x30, [sp, #0x70]
+0x1871C162C   add      x29, sp, #0x70
+0x1871C1630   mov      x19, x1
+0x1871C1634   adrp     x8, 389141           ; 0x1e61d6000
+0x1871C1638   ldr      x8, [x8, #0xab0]
+0x1871C163C   ldr      x8, [x8]
+0x1871C1640   str      x8, [sp, #0x38]
+0x1871C1644   ldr      w8, [x0]
+0x1871C1648   tbnz     w8, #0x1f, 0x1871c1698
+0x1871C164C   ldr      w8, [x0, #0x4]
+0x1871C1650   cmp      w8, #0x18
+0x1871C1654   b.ne     0x1871c1698
+0x1871C1658   ldr      w20, [x0, #0xc]
+0x1871C165C   adrp     x0, 89               ; 0x18721a000
+0x1871C1660   add      x0, x0, #0x697
+0x1871C1664   mov      w1, #0x0
+0x1871C1668   bl       __ZL24caller_holds_entitlementPKcb
+0x1871C166C   tbz      w0, #0x0, 0x1871c16e0
+0x1871C1670   mov      x0, x20
+0x1871C1674   bl       _CGXConnectionForPort
+0x1871C1678   mov      x20, x0
+0x1871C167C   adrp     x22, 406594          ; 0x1ea603000
+0x1871C1680   ldr      x9, [x22, #0x550]    ; ___sessionControlRef
+0x1871C1684   cbz      x9, 0x1871c1700
+0x1871C1688   ldr      x8, [x9, #0x20]
+0x1871C168C   cbz      x8, 0x1871c1704
+0x1871C1690   ldr      x8, [x8, #0xb0]
+0x1871C1694   b        0x1871c1704
+0x1871C1698   mov      w8, #-0x130
+0x1871C169C   adrp     x9, 389141           ; 0x1e61d6000
+0x1871C16A0   ldr      x9, [x9, #0xce8]
+0x1871C16A4   str      w8, [x19, #0x20]
+0x1871C16A8   ldr      x8, [x9]
+0x1871C16AC   str      x8, [x19, #0x18]
+0x1871C16B0   ldr      x8, [sp, #0x38]
+0x1871C16B4   adrp     x9, 389141           ; 0x1e61d6000
+0x1871C16B8   ldr      x9, [x9, #0xab0]
+0x1871C16BC   ldr      x9, [x9]
+0x1871C16C0   cmp      x9, x8
+0x1871C16C4   b.ne     0x1871c194c
+0x1871C16C8   ldp      x29, x30, [sp, #0x70]
+0x1871C16CC   ldp      x20, x19, [sp, #0x60]
+0x1871C16D0   ldp      x22, x21, [sp, #0x50]
+0x1871C16D4   ldp      x24, x23, [sp, #0x40]
+0x1871C16D8   add      sp, sp, #0x80
+0x1871C16DC   retab
+0x1871C16E0   adrp     x8, 406593           ; 0x1ea602000
+0x1871C16E4   ldr      x8, [x8, #0x2b0]     ; _sCurrentTrailer
+0x1871C16E8   cbz      x8, 0x1871c16f8
+0x1871C16EC   ldr      w9, [x8, #0x4]
+0x1871C16F0   cmp      w9, #0x34
+0x1871C16F4   b.hs     0x1871c1838
+0x1871C16F8   mov      w20, #0x0
+0x1871C16FC   b        0x1871c1850
+0x1871C1700   mov      x8, #0x0
+0x1871C1704   ldr      w10, [x8, #0x10]
+0x1871C1708   cbz      w10, 0x1871c1758
+0x1871C170C   ldr      x9, [x9, #0x20]
+0x1871C1710   ldr      x23, [x9, #0xb0]
+0x1871C1714   ldr      x23, [x23]
+0x1871C1718   cbz      x23, 0x1871c1758
+0x1871C171C   ldr      w9, [x23, #0x50]
+0x1871C1720   cmp      w9, w10
+0x1871C1724   b.ne     0x1871c1714
+0x1871C1728   ldr      w8, [x20, #0x88]
+0x1871C172C   and      w8, w8, #0xefffffff
+0x1871C1730   str      w8, [x20, #0x88]
+0x1871C1734   bl       _SLSLogBreak
+0x1871C1738   adrp     x8, 417280           ; 0x1ecfc1000
+0x1871C173C   ldr      x21, [x8, #0xbc8]    ; _default_log
+0x1871C1740   mov      x0, x21
+0x1871C1744   mov      w1, #0x10
+0x1871C1748   bl       _os_log_type_enabled
+0x1871C174C   cbnz     w0, 0x1871c18ac
+0x1871C1750   mov      w8, #0x3e8
+0x1871C1754   b        0x1871c169c
+0x1871C1758   ldr      w0, [x20, #0x50]
+0x1871C175C   str      w0, [x8, #0x10]
+0x1871C1760   ldr      w8, [x20, #0x88]
+0x1871C1764   orr      w8, w8, #0x10000000
+0x1871C1768   str      w8, [x20, #0x88]
+0x1871C176C   adrp     x8, 389015           ; 0x1e6158000
+0x1871C1770   ldr      x8, [x8, #0xe48]
+0x1871C1774   ldr      x2, [x8]
+0x1871C1778   adrp     x1, 424756           ; 0x1eecf5000
+0x1871C177C   add      x1, x1, #0x9b8
+0x1871C1780   bl       _CGXSetConnectionProperty
+0x1871C1784   adrp     x8, 417280           ; 0x1ecfc1000
+0x1871C1788   ldr      x21, [x8, #0xbc8]    ; _default_log
+0x1871C178C   mov      x0, x21
+0x1871C1790   mov      w1, #0x0
+0x1871C1794   bl       _os_log_type_enabled
+0x1871C1798   cbz      w0, 0x1871c1820
+0x1871C179C   ldr      w8, [x20, #0x50]
+0x1871C17A0   ldr      x9, [x20, #0x268]
+0x1871C17A4   ldr      x10, [x22, #0x550]
+0x1871C17A8   ldr      x11, [x10, #0x20]
+0x1871C17AC   ldr      w12, [x11]
+0x1871C17B0   ldr      x10, [x10, #0x10]
+0x1871C17B4   adrp     x13, 89              ; 0x18721a000
+0x1871C17B8   add      x13, x13, #0x693
+0x1871C17BC   adrp     x14, 89              ; 0x18721a000
+0x1871C17C0   add      x14, x14, #0x690
+0x1871C17C4   cmp      x11, x10
+0x1871C17C8   csel     x10, x14, x13, eq
+0x1871C17CC   adrp     x11, 21              ; 0x1871d6000
+0x1871C17D0   ldr      d0, [x11, #0x718]
+0x1871C17D4   str      s0, [sp]
+0x1871C17D8   str      w8, [sp, #0x4]
+0x1871C17DC   mov      w8, #0x400
+0x1871C17E0   strh     w8, [sp, #0x8]
+0x1871C17E4   stur     w9, [sp, #0xa]
+0x1871C17E8   strh     w8, [sp, #0xe]
+0x1871C17EC   str      w12, [sp, #0x10]
+0x1871C17F0   mov      w8, #0x820
+0x1871C17F4   strh     w8, [sp, #0x14]
+0x1871C17F8   stur     x10, [sp, #0x16]
+0x1871C17FC   adrp     x0, -1219            ; 0x186cfe000
+0x1871C1800   add      x0, x0, #0x0
+0x1871C1804   adrp     x3, 159              ; 0x187260000
+0x1871C1808   add      x3, x3, #0xfee
+0x1871C180C   mov      x4, sp
+0x1871C1810   mov      x1, x21
+0x1871C1814   mov      w2, #0x0
+0x1871C1818   mov      w5, #0x1e
+0x1871C181C   bl       __os_log_impl
+0x1871C1820   mov      w0, #0x614
+0x1871C1824   mov      x1, #0x0
+0x1871C1828   mov      x2, #0x0
+0x1871C182C   bl       _WSPostLocalNotification
+0x1871C1830   mov      w8, #0x0
+0x1871C1834   b        0x1871c169c
+0x1871C1838   ldur     q0, [x8, #0x14]
+0x1871C183C   ldur     q1, [x8, #0x24]
+0x1871C1840   stp      q0, q1, [sp]
+0x1871C1844   mov      x0, sp
+0x1871C1848   bl       _audit_token_to_pid
+0x1871C184C   mov      x20, x0
+0x1871C1850   bl       _SLSLogBreak
+0x1871C1854   adrp     x8, 417280           ; 0x1ecfc1000
+0x1871C1858   ldr      x21, [x8, #0xbc8]    ; _default_log
+0x1871C185C   mov      x0, x21
+0x1871C1860   mov      w1, #0x10
+0x1871C1864   bl       _os_log_type_enabled
+0x1871C1868   cbnz     w0, 0x1871c1874
+0x1871C186C   mov      w8, #0x3ea
+0x1871C1870   b        0x1871c169c
+0x1871C1874   adrp     x8, 21               ; 0x1871d6000
+0x1871C1878   ldr      d0, [x8, #0x5d8]
+0x1871C187C   str      s0, [sp]
+0x1871C1880   str      w20, [sp, #0x4]
+0x1871C1884   adrp     x0, -1219            ; 0x186cfe000
+0x1871C1888   add      x0, x0, #0x0
+0x1871C188C   adrp     x3, 160              ; 0x187261000
+0x1871C1890   add      x3, x3, #0x5a3
+0x1871C1894   mov      x4, sp
+0x1871C1898   mov      x1, x21
+0x1871C189C   mov      w2, #0x10
+0x1871C18A0   mov      w5, #0x8
+0x1871C18A4   bl       __os_log_error_impl
+0x1871C18A8   b        0x1871c186c
+0x1871C18AC   ldr      w8, [x20, #0x50]
+0x1871C18B0   ldr      x9, [x20, #0x268]
+0x1871C18B4   ldr      w10, [x23, #0x50]
+0x1871C18B8   ldr      x11, [x23, #0x268]
+0x1871C18BC   ldr      x12, [x22, #0x550]
+0x1871C18C0   ldr      x13, [x12, #0x20]
+0x1871C18C4   ldr      w14, [x13]
+0x1871C18C8   ldr      x12, [x12, #0x10]
+0x1871C18CC   adrp     x15, 89              ; 0x18721a000
+0x1871C18D0   add      x15, x15, #0x693
+0x1871C18D4   adrp     x16, 89              ; 0x18721a000
+0x1871C18D8   add      x16, x16, #0x690
+0x1871C18DC   cmp      x13, x12
+0x1871C18E0   csel     x12, x16, x15, eq
+0x1871C18E4   adrp     x13, 21              ; 0x1871d6000
+0x1871C18E8   ldr      d0, [x13, #0x6d0]
+0x1871C18EC   str      s0, [sp]
+0x1871C18F0   str      w8, [sp, #0x4]
+0x1871C18F4   mov      w8, #0x400
+0x1871C18F8   strh     w8, [sp, #0x8]
+0x1871C18FC   stur     w9, [sp, #0xa]
+0x1871C1900   strh     w8, [sp, #0xe]
+0x1871C1904   str      w10, [sp, #0x10]
+0x1871C1908   strh     w8, [sp, #0x14]
+0x1871C190C   stur     w11, [sp, #0x16]
+0x1871C1910   strh     w8, [sp, #0x1a]
+0x1871C1914   str      w14, [sp, #0x1c]
+0x1871C1918   mov      w8, #0x820
+0x1871C191C   strh     w8, [sp, #0x20]
+0x1871C1920   stur     x12, [sp, #0x22]
+0x1871C1924   adrp     x0, -1219            ; 0x186cfe000
+0x1871C1928   add      x0, x0, #0x0
+0x1871C192C   adrp     x3, 159              ; 0x187260000
+0x1871C1930   add      x3, x3, #0xf8e
+0x1871C1934   mov      x4, sp
+0x1871C1938   mov      x1, x21
+0x1871C193C   mov      w2, #0x10
+0x1871C1940   mov      w5, #0x2a
+0x1871C1944   bl       __os_log_error_impl
+0x1871C1948   b        0x1871c1750
+0x1871C194C   bl       ___stack_chk_fail

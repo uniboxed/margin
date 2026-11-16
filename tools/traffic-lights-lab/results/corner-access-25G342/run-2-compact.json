@@ -1,0 +1,216 @@
+[
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentCornerPixels": [
+        63,
+        63,
+        63,
+        63
+      ],
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {
+        "present": false
+      },
+      "nativeCornerRadius": 16,
+      "pid": 97144,
+      "window": 76647,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "baseline"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentCornerPixels": [
+        55,
+        55,
+        55,
+        55
+      ],
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {
+        "present": false
+      },
+      "nativeCornerRadius": 16,
+      "pid": 97144,
+      "window": 76647,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-prepared-image-path"
+  },
+  {
+    "operation": "mask-image",
+    "ownerDirectMaskSend": 0
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentCornerPixels": [
+        55,
+        55,
+        55,
+        55
+      ],
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {
+        "center": "{{0.375, 0.375}, {0.25, 0.25}}",
+        "flags": 15,
+        "height": 64,
+        "present": true,
+        "width": 64
+      },
+      "nativeCornerRadius": 16,
+      "pid": 97144,
+      "window": 76647,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-mask-image"
+  },
+  {
+    "refused": "owner mask had no positive pixel effect; foreign test skipped"
+  },
+  {
+    "childRunning": false,
+    "cleanup": true,
+    "exit": 2
+  }
+]

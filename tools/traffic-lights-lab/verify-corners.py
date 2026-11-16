@@ -31,7 +31,7 @@ for stage, corners in decoded.items():
     transparent = [sum(c[i] < 128 for i in range(3, len(c), 4)) for c in corners]
     changed = [sum(max(abs(c[k+j]-b[k+j]) for j in range(4)) > 8 for k in range(0, len(c), 4))
                for c, b in zip(corners, original)]
-    if stage.startswith('foreign-') or 'restore' in stage or 'native-zero' in stage:
+    if stage.startswith('foreign-') or 'restore' in stage or 'native-zero' in stage or stage.startswith('owner-system-'):
         assert changed == [0]*4, (stage, changed)
     if 'native-small' in stage:
         assert transparent == [0]*4
@@ -40,7 +40,10 @@ for stage, corners in decoded.items():
     summary[stage] = {'transparent_pixels_per_40px_corner': transparent,
                       'changed_pixels_per_corner_vs_baseline': changed}
 assert all(sum(c[i] < 128 for i in range(3, len(c), 4)) > 0 for c in original)
+scope = ('owned fixture only; native 0.01 removes corner transparency but titlebar paint artifacts remain'
+         if any('native-small' in stage for stage in decoded)
+         else 'owned fixture only; no native 0.01 result is asserted for this run')
 result = {'verification': 'pass', 'observations': summary,
-          'scope': 'owned fixture only; native 0.01 removes corner transparency but titlebar paint artifacts remain; foreign transaction requests have no observed corner effect'}
+          'scope': scope + '; foreign transaction requests have no observed corner effect'}
 (directory / 'corner-checks.json').write_text(json.dumps(result, indent=2) + '\n')
 print('PASS: decoded corner pixels, native positive controls, foreign no-effect, windowed state, restoration and cleanup')

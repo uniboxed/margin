@@ -1,0 +1,27 @@
+[
+  {
+    "case": "run-1",
+    "rejected": true,
+    "exit": 1
+  },
+  {
+    "case": "run-2",
+    "rejected": true,
+    "exit": 1
+  },
+  {
+    "case": "run-3",
+    "rejected": true,
+    "exit": 1
+  },
+  {
+    "case": "uniform-owner-mask",
+    "rejected": true,
+    "exit": 1
+  },
+  {
+    "case": "foreign-mask-unexpectedly-installed",
+    "rejected": true,
+    "exit": 1
+  }
+]

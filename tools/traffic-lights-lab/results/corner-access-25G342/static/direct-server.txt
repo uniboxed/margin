@@ -1,0 +1,169 @@
+__XSetWindowCornerMask:
+0x1871BF5DC   pacibsp
+0x1871BF5E0   stp      d11, d10, [sp, #-0x80]!
+0x1871BF5E4   stp      d9, d8, [sp, #0x10]
+0x1871BF5E8   stp      x28, x27, [sp, #0x20]
+0x1871BF5EC   stp      x26, x25, [sp, #0x30]
+0x1871BF5F0   stp      x24, x23, [sp, #0x40]
+0x1871BF5F4   stp      x22, x21, [sp, #0x50]
+0x1871BF5F8   stp      x20, x19, [sp, #0x60]
+0x1871BF5FC   stp      x29, x30, [sp, #0x70]
+0x1871BF600   add      x29, sp, #0x70
+0x1871BF604   mov      x19, x1
+0x1871BF608   ldr      w8, [x0]
+0x1871BF60C   tbz      w8, #0x1f, 0x1871bf72c
+0x1871BF610   mov      x20, x0
+0x1871BF614   ldr      w8, [x0, #0x18]
+0x1871BF618   cmp      w8, #0x1
+0x1871BF61C   b.ne     0x1871bf72c
+0x1871BF620   ldr      w8, [x20, #0x4]
+0x1871BF624   cmp      w8, #0x68
+0x1871BF628   b.ne     0x1871bf72c
+0x1871BF62C   ldrb     w8, [x20, #0x27]
+0x1871BF630   cmp      w8, #0x1
+0x1871BF634   b.ne     0x1871bf768
+0x1871BF638   ldr      w26, [x20, #0x28]
+0x1871BF63C   ldr      w8, [x20, #0x38]
+0x1871BF640   cmp      w26, w8
+0x1871BF644   b.ne     0x1871bf768
+0x1871BF648   ldr      w0, [x20, #0xc]
+0x1871BF64C   ldr      w21, [x20, #0x34]
+0x1871BF650   ldur     x28, [x20, #0x1c]
+0x1871BF654   ldp      w24, w25, [x20, #0x3c]
+0x1871BF658   ldr      w23, [x20, #0x44]
+0x1871BF65C   ldp      d8, d9, [x20, #0x48]
+0x1871BF660   ldp      d10, d11, [x20, #0x58]
+0x1871BF664   bl       _CGXConnectionForPort
+0x1871BF668   mov      x22, x0
+0x1871BF66C   mov      x0, x21
+0x1871BF670   bl       __ZL12window_by_idj
+0x1871BF674   cbz      x0, 0x1871bf858
+0x1871BF678   mov      x21, x0
+0x1871BF67C   adrp     x3, 107              ; 0x18722a000
+0x1871BF680   add      x3, x3, #0xf9d
+0x1871BF684   mov      x0, x22
+0x1871BF688   mov      x1, x21
+0x1871BF68C   mov      w2, #0x1
+0x1871BF690   mov      w4, #0x1
+0x1871BF694   mov      w5, #0x0
+0x1871BF698   bl       _WSCheckWindowRights
+0x1871BF69C   cbnz     w0, 0x1871bf858
+0x1871BF6A0   umull    x8, w24, w25
+0x1871BF6A4   tst      x8, #0xffffffff00000000
+0x1871BF6A8   b.ne     0x1871bf874
+0x1871BF6AC   mov      x27, #0x0
+0x1871BF6B0   cbz      x28, 0x1871bf7d4
+0x1871BF6B4   sub      w8, w8, #0x1
+0x1871BF6B8   cmp      w8, w26
+0x1871BF6BC   b.hs     0x1871bf7d4
+0x1871BF6C0   mov      x0, #0x0
+0x1871BF6C4   mov      x1, x28
+0x1871BF6C8   mov      x2, x26
+0x1871BF6CC   bl       _CFDataCreate
+0x1871BF6D0   mov      x26, x0
+0x1871BF6D4   fmov     x8, d8
+0x1871BF6D8   and      x9, x8, #0x7fffffffffffffff
+0x1871BF6DC   mov      x8, #0x7ff0000000000000
+0x1871BF6E0   cmp      x9, x8
+0x1871BF6E4   b.eq     0x1871bf770
+0x1871BF6E8   fmov     x9, d10
+0x1871BF6EC   and      x9, x9, #0x7fffffffffffffff
+0x1871BF6F0   cmp      x9, x8
+0x1871BF6F4   b.ne     0x1871bf7a0
+0x1871BF6F8   fmov     x8, d11
+0x1871BF6FC   and      x8, x8, #0x7fffffffffffffff
+0x1871BF700   mov      x9, #0x7ff0000000000000
+0x1871BF704   cmp      x8, x9
+0x1871BF708   cset     w8, eq
+0x1871BF70C   fcmp     d8, #0.0
+0x1871BF710   b.ne     0x1871bf7a0
+0x1871BF714   cbz      w8, 0x1871bf7a0
+0x1871BF718   fcmp     d9, #0.0
+0x1871BF71C   b.ne     0x1871bf7a0
+0x1871BF720   adrp     x8, 389018           ; 0x1e6159000
+0x1871BF724   ldr      x8, [x8, #0xac0]
+0x1871BF728   b        0x1871bf798
+0x1871BF72C   mov      w8, #-0x130
+0x1871BF730   str      w8, [x19, #0x20]
+0x1871BF734   adrp     x8, 389143           ; 0x1e61d6000
+0x1871BF738   ldr      x8, [x8, #0xce8]
+0x1871BF73C   ldr      x8, [x8]
+0x1871BF740   str      x8, [x19, #0x18]
+0x1871BF744   ldp      x29, x30, [sp, #0x70]
+0x1871BF748   ldp      x20, x19, [sp, #0x60]
+0x1871BF74C   ldp      x22, x21, [sp, #0x50]
+0x1871BF750   ldp      x24, x23, [sp, #0x40]
+0x1871BF754   ldp      x26, x25, [sp, #0x30]
+0x1871BF758   ldp      x28, x27, [sp, #0x20]
+0x1871BF75C   ldp      d9, d8, [sp, #0x10]
+0x1871BF760   ldp      d11, d10, [sp], #0x80
+0x1871BF764   retab
+0x1871BF768   mov      w8, #-0x12c
+0x1871BF76C   b        0x1871bf730
+0x1871BF770   fmov     x9, d9
+0x1871BF774   and      x9, x9, #0x7fffffffffffffff
+0x1871BF778   cmp      x9, x8
+0x1871BF77C   b.ne     0x1871bf6e8
+0x1871BF780   fcmp     d10, #0.0
+0x1871BF784   b.ne     0x1871bf6e8
+0x1871BF788   fcmp     d11, #0.0
+0x1871BF78C   b.ne     0x1871bf6e8
+0x1871BF790   adrp     x8, 389018           ; 0x1e6159000
+0x1871BF794   ldr      x8, [x8, #0xad0]
+0x1871BF798   ldp      d8, d9, [x8]
+0x1871BF79C   ldp      d10, d11, [x8, #0x10]
+0x1871BF7A0   mov      x0, x26
+0x1871BF7A4   mov      x1, x24
+0x1871BF7A8   mov      x2, x25
+0x1871BF7AC   mov.16b  v0, v8
+0x1871BF7B0   mov.16b  v1, v9
+0x1871BF7B4   mov.16b  v2, v10
+0x1871BF7B8   mov.16b  v3, v11
+0x1871BF7BC   mov      x3, x23
+0x1871BF7C0   bl       _WSWindowMaskCreate
+0x1871BF7C4   mov      x27, x0
+0x1871BF7C8   cbz      x26, 0x1871bf7d4
+0x1871BF7CC   mov      x0, x26
+0x1871BF7D0   bl       _CFRelease
+0x1871BF7D4   ldr      x8, [x21, #0x480]
+0x1871BF7D8   cmp      x27, x8
+0x1871BF7DC   b.eq     0x1871bf84c
+0x1871BF7E0   cbz      x27, 0x1871bf7fc
+0x1871BF7E4   cbz      x8, 0x1871bf7fc
+0x1871BF7E8   ldr      x9, [x27, #0x60]
+0x1871BF7EC   ldr      x8, [x8, #0x60]
+0x1871BF7F0   cmp      x9, x8
+0x1871BF7F4   b.ne     0x1871bf804
+0x1871BF7F8   b        0x1871bf850
+0x1871BF7FC   orr      x8, x27, x8
+0x1871BF800   cbz      x8, 0x1871bf858
+0x1871BF804   mov      x0, x21
+0x1871BF808   mov      x1, x27
+0x1871BF80C   bl       _WSWindowSetWindowMask
+0x1871BF810   mov      x0, x21
+0x1871BF814   mov      x1, x22
+0x1871BF818   bl       __ZN9CGXWindow23invalidate_shadow_frameEP13CGXConnection
+0x1871BF81C   ldr      x8, [x21, #0x388]
+0x1871BF820   cbz      x8, 0x1871bf830
+0x1871BF824   ldrb     w8, [x21, #0x380]
+0x1871BF828   orr      w8, w8, #0x1
+0x1871BF82C   strb     w8, [x21, #0x380]
+0x1871BF830   ldr      x8, [x21, #0x3c8]
+0x1871BF834   cbz      x8, 0x1871bf844
+0x1871BF838   ldrb     w8, [x21, #0x3c0]
+0x1871BF83C   orr      w8, w8, #0x1
+0x1871BF840   strb     w8, [x21, #0x3c0]
+0x1871BF844   mov      x0, x21
+0x1871BF848   bl       __ZN9CGXWindow24release_shadow_resourcesEv
+0x1871BF84C   cbz      x27, 0x1871bf858
+0x1871BF850   mov      x0, x27
+0x1871BF854   bl       _CFRelease
+0x1871BF858   str      wzr, [x19, #0x20]
+0x1871BF85C   ldur     x0, [x20, #0x1c]
+0x1871BF860   ldr      w1, [x20, #0x28]
+0x1871BF864   bl       _mig_deallocate
+0x1871BF868   stur     xzr, [x20, #0x1c]
+0x1871BF86C   str      wzr, [x20, #0x28]
+0x1871BF870   b        0x1871bf744
+0x1871BF874   mov      x27, #0x0
+0x1871BF878   b        0x1871bf7d4

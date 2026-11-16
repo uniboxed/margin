@@ -27,6 +27,25 @@ The 0.01 owner setter removes corner transparency but leaves titlebar paint arti
 the native default. Foreign requests have no observed effect. Resize persistence and real apps are
 unvalidated. Evidence: `results/corners-25G342/`; raw material: `test-results/window-corners-2026-11-16/`.
 
+The deeper corner-access experiment uses the same executable with
+`--corner-mask --storage-control --output /absolute/new/run` (dry), then `--run` with stdout saved
+to `/absolute/new/run.jsonl`. Validate with `verify-corner-mask.py RUN RUN.jsonl`. It compares direct
+`SLSSetWindowCornerMask` owner/foreign image/clear requests with a **storage** positive control:
+a nonuniform 64x64 mask is independently copied back from the owner. This does not establish that
+the mask controls visible content corners. The separate `--corners --system-only` mode isolates
+system-radius requests; use `verify-corners.py RUN RUN.jsonl` for its saved original PNGs.
+
+Direct-mask runs 1/2 stop before foreign requests because their owner content-pixel control does not
+change; clearing numerical radii in run 2 does not fix that. Run 3 stops before foreign requests because
+the inspector wrongly expects alpha-only image encoding. A no-window format experiment confirms
+CoreGraphics returns an 8-bit mask (`isMask=true`, alphaInfo=none); corrected run 4 validates actual
+nonuniform mask bytes, then shows foreign image/clear requests leave owner mask state unchanged.
+System-only run 1 leaves corner pixels unchanged in both processes, with a separate ordinary owner
+radius rendering control. All failures are retained; successful runs restore and all children close.
+Static server access checks, relevant runtime string/right-name confirmations and hashes are in
+`results/corner-access-25G342/`; raw evidence is in `test-results/window-corners-deeper-2026-11-16/`.
+This remains research, with no protected-app compatibility or external native corner-removal success.
+
 ```sh
 clang -c -Wall -Wextra -Werror tools/traffic-lights-lab/wire-clip.c -o /tmp/margin-wire-clip.o
 swiftc -warnings-as-errors tools/traffic-lights-lab/deeper.swift /tmp/margin-wire-clip.o -o /tmp/margin-native-probe

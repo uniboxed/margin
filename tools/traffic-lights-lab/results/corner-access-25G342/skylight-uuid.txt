@@ -1,0 +1,3 @@
+/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight [arm64e]:
+    -uuid:
+        D422F0A4-1C28-35B7-A6F5-9EB7BBE0801E

@@ -1,0 +1,33 @@
+0x186F5D334   adrp     x0, 701              ; 0x18721a000
+0x186F5D338   add      x0, x0, #0xefb
+0x186F5D33C   mov      w1, #0x1
+0x186F5D340   bl       __ZL24caller_holds_entitlementPKcb
+0x186F5D344   ldrh     w8, [x23, #0x2f0]
+0x186F5D348   mov      w9, #0x8
+0x186F5D34C   cmp      w0, #0x0
+0x186F5D350   csel     w9, w9, wzr, ne
+0x186F5D354   and      w8, w8, #0xfffffff7
+0x186F5D358   orr      w8, w8, w9
+0x186F5D35C   strh     w8, [x23, #0x2f0]
+0x186F5D360   adrp     x0, 701              ; 0x18721a000
+0x186F5D364   add      x0, x0, #0xf1e
+0x186F5D368   mov      w1, #0x1
+0x186F5D36C   bl       __ZL24caller_holds_entitlementPKcb
+0x186F5D370   ldrh     w8, [x23, #0x2f0]
+0x186F5D374   mov      w9, #0x10
+0x186F5D378   cmp      w0, #0x0
+0x186F5D37C   csel     w9, w9, wzr, ne
+0x186F5D380   and      w8, w8, #0xffffffef
+0x186F5D384   orr      w8, w8, w9
+0x186F5D388   strh     w8, [x23, #0x2f0]
+0x186F5D38C   adrp     x0, 701              ; 0x18721a000
+0x186F5D390   add      x0, x0, #0xf47
+0x186F5D394   mov      w1, #0x1
+0x186F5D398   bl       __ZL24caller_holds_entitlementPKcb
+0x186F5D39C   ldrh     w8, [x23, #0x2f0]
+0x186F5D3A0   mov      w9, #0x20
+0x186F5D3A4   cmp      w0, #0x0
+0x186F5D3A8   csel     w9, w9, wzr, ne
+0x186F5D3AC   and      w8, w8, #0xffffffdf
+0x186F5D3B0   orr      w8, w8, w9
+0x186F5D3B4   strh     w8, [x23, #0x2f0]

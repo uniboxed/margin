@@ -1,0 +1,120 @@
+{
+  "verification": "pass",
+  "positiveControl": "owner stores and clears a nonuniform image mask; not a content rendering control",
+  "externalResult": "cannot clear owner mask or install mask after owner clears it",
+  "observations": {
+    "baseline": {
+      "transparentPixelsPerCorner": [
+        63,
+        63,
+        63,
+        63
+      ],
+      "changedVsReferencePerCorner": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "owner-prepared-image-path": {
+      "transparentPixelsPerCorner": [
+        55,
+        55,
+        55,
+        55
+      ],
+      "changedVsReferencePerCorner": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "owner-mask-image": {
+      "transparentPixelsPerCorner": [
+        55,
+        55,
+        55,
+        55
+      ],
+      "changedVsReferencePerCorner": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "foreign-clear-owner-mask": {
+      "transparentPixelsPerCorner": [
+        55,
+        55,
+        55,
+        55
+      ],
+      "changedVsReferencePerCorner": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "owner-mask-cleared": {
+      "transparentPixelsPerCorner": [
+        55,
+        55,
+        55,
+        55
+      ],
+      "changedVsReferencePerCorner": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "foreign-mask-image": {
+      "transparentPixelsPerCorner": [
+        55,
+        55,
+        55,
+        55
+      ],
+      "changedVsReferencePerCorner": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "foreign-mask-cleared": {
+      "transparentPixelsPerCorner": [
+        55,
+        55,
+        55,
+        55
+      ],
+      "changedVsReferencePerCorner": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "final-mask-restored": {
+      "transparentPixelsPerCorner": [
+        63,
+        63,
+        63,
+        63
+      ],
+      "changedVsReferencePerCorner": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "restorationCleanup": "pass"
+}

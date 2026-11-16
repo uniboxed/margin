@@ -5045,3 +5045,31 @@ other builds/displays and real apps remain unvalidated. Saved pixel verifier and
 build pass. Fresh npm test: 1031 pass. npm run test:e2e attempted/bounded at 15 seconds with missing
 pinned WebKit setup, no browser download/full pass. Results: tools/traffic-lights-lab/results/corners-25G342/;
 raw material: test-results/window-corners-2026-11-16/. No production change, install or PR.
+
+### Deeper native corner access: server checks and direct mask storage (2026-11-16)
+
+Continue the user's external native-corner research. Trace current 25G342/D422F0A4 SkyLight server
+handlers: ordinary radius and direct image-mask setters check right 1, confirmed read-only as
+kCGSWindowRightOwner. System-radius access uses the private skylight.windowmanager entitlement path;
+isolate that call because the earlier combined owner result did not prove the system component.
+Owner and foreign system-only zero/32 requests leave original corner RGBA unchanged; a separate
+ordinary owner radius 32 rendering control works and restores. The UniversalOwner registration
+handler checks skylight.universal-owner. Do not invoke global registration or change protections.
+
+Direct-mask runs 1/2 change owner mask storage without changing content corner pixels and stop before
+foreign requests; they are invalid rendering controls. Run 2 clears radius/bounds-path state first.
+Run 3's explicit storage-control experiment stops on a verifier format assumption. A no-window bitmap
+test confirms the returned image is an 8-bit mask with alphaInfo=none. Corrected run 4 verifies 500/4096
+low-valued mask samples, real owner install/clear readback, then observes foreign direct clear/image
+requests leave owner mask state unchanged. Zero sends are transport results. Content pixels stay
+unchanged relative to preparation; final original corners restore. Do not claim shadow behavior or
+native content suppression from image-mask storage. Retain every refusal and exact source/binary.
+
+Review CornerFix/macos-corner-fix primary loader/source; they run code inside the host and establish
+no missing external capability. No third-party code executed, browser or app preference changed,
+injection, entitlement change or overlay. Strict external corner removal remains unestablished,
+with no universal impossibility claim. Read-only runtime entitlement strings are confirmed at actual
+disassembly addresses. All five fixtures are cleaned up. Native build/saved-pixel/readback checks
+pass; fresh npm test 1031 pass. E2E attempted/bounded at 15 seconds, missing pinned WebKit 2388, no
+download/full-suite pass. Results: tools/traffic-lights-lab/results/corner-access-25G342/; raw evidence
+under test-results/window-corners-deeper-2026-11-16/. No product install or PR.

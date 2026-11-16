@@ -1,0 +1,5 @@
+1: kCGSWindowRightOwner
+2: kCGSWindowRightEventReceiver
+4: kCGSWindowRightPresenter
+65536: kCGSWindowRightBackingStoreReader
+131072: kCGSWindowRightBackingStoreWriter

@@ -591,3 +591,92 @@ under `test-results/window-corners-2026-11-16/`. No resize/hover, display-scale,
 or real protected-app acceptance is claimed. Native compile and corner verification pass; fresh
 unit tests pass 1,031. E2E is attempted/bounded at 15 seconds after missing pinned WebKit setup;
 no browser download or full-suite pass. Production code remains unchanged.
+
+## Deeper corner-access follow-up (2026-11-16)
+
+The user asks for further investigation of actual external corner removal. This pass traces the
+current SkyLight server implementations, tests the separate direct image-mask message, isolates
+the system-radius override, and reviews existing corner-fix source projects. No target injection,
+overlay, re-signing, privilege registration, preference or system-protection change is performed.
+
+### The restriction is in the reviewed server paths
+
+The exact SkyLight arm64e UUID is `D422F0A4-1C28-35B7-A6F5-9EB7BBE0801E` on 25G342.
+`PKGTransactionSetWindowCornerRadius` calls `_PKGTransactionCheckWindowAccess` with right 1 before
+calling `CGXWindow::set_corner_radius`. Read-only runtime `SLSWindowRightKeyForMask(1)` names that
+right `kCGSWindowRightOwner`. The server's direct `__XSetWindowCornerMask` handler likewise calls
+`WSCheckWindowRights` with right 1 before installing or clearing the mask. Thus the direct setter
+does not bypass authorization simply because it avoids the transaction mechanism.
+
+The system-radius operation uses different arguments: `_PKGTransactionCheckWindowAccess` receives
+right-mask `0xfffcfff8` and universal-access option `0x10`. Tracing its checker and connection setup
+ties that option to `com.apple.private.skylight.windowmanager`. The reviewed ordinary Accessibility
+permission is not a substitute in that path. The earlier combined setter called ordinary and system
+radius operations together; its owner positive result did not independently validate the system call.
+
+`SLSSetUniversalOwner` is also not an established ordinary-client registration shortcut. The reviewed
+`__XSetUniversalOwner` handler checks `com.apple.private.skylight.universal-owner`; its denial branch
+returns error 1002. `SetOtherUniversalConnection` checks the calling connection's universal-owner
+flag before marking another connection. These are static findings, not runtime registration tests.
+The operations were not invoked. They do not establish that all potential broker/service routes have
+been ruled out, nor that every private API needs these exact entitlements.
+
+Relevant entitlement strings were confirmed at the **loaded image addresses actually referenced by
+the disassembly**, rather than trusting offsets in an earlier string-section listing. Read-only
+runtime scripts/outputs, UUID and reviewed excerpts are retained with the evidence.
+
+### Direct corner-mask experiment: storage is distinct from content rendering
+
+`SLSSetWindowCornerMask` takes a window ID, image, flags and normalized stretch center; it selects
+the caller's main connection internally. Its one-way message returns transport status. The probe uses
+a generated 64x64 alpha pattern with 24-point rounded corners, AppKit-observed flags `0xf`, and center
+`{0.375,0.375,0.25,0.25}`. This is a native mask parameter, not an opaque image drawn over the app.
+
+Runs 1/2 install and read back the owner's mask but fail the owner **content-pixel** positive control;
+they stop before foreign requests. Run 2 additionally matches AppKit's clear-numerical-radius/bounds-
+path preparation. The owner's content corner transparency changes from 63 to 55 pixels per corner
+because of that preparation, but installing the mask itself leaves it at 55. These runs are invalid
+as visual controls and are not negative external-rendering evidence.
+
+Run 3 explicitly switches to a storage positive control, but refuses before foreign requests because
+its inspector expects alpha-only image encoding. A separate no-window bitmap experiment shows that
+CoreGraphics exposes the returned 8-bit image as `isMask=true`, alphaInfo=none. Corrected run 4 checks
+that format and reads 500 samples below 128 in the actual returned 4096-sample mask plane.
+
+In completed run 4, the owner installs this nonuniform mask and subsequently clears it. An external
+direct clear leaves the owner's stored image/flags/center/sample count unchanged; an external image
+request after owner clearing leaves the mask absent. All sends return zero. Independent decoded
+content-corner RGBA remains unchanged relative to the prepared state. Final owner restoration returns
+the original corner pixels. This establishes **mask storage/readback** and an external no-effect
+observation for these direct operations. It does not establish direct-mask control of visible window
+content or characterize its effect on the composited shadow; no shadow result is claimed.
+
+### Isolated system-radius requests and existing implementations
+
+A separate completed `--corners --system-only` run sends only the system-radius operation at zero and
+32 from each process. Every system-only corner crop equals baseline. A separate ordinary-owner radius
+32 control increases transparent pixels from 63 to 233 per corner, then restores to 63. This agrees
+with the distinct access paths seen in the server; it does not assume zero return means acceptance.
+
+The reviewed [CornerFix loader](https://github.com/makalin/CornerFix/blob/main/LOADER.md) launches a
+target with `DYLD_INSERT_LIBRARIES` and explicitly describes its hardened/system-app limits. The
+[macos-corner-fix source](https://github.com/m4rkw/macos-corner-fix/blob/master/SafariCornerTweak.m)
+replaces private NSThemeFrame implementations from a constructor inside the host process. These are
+concrete in-process approaches, not evidence of a generally usable external AX/private-API setter.
+None was installed or executed. This pass does not relax the user's deployment constraints.
+
+### Result and reproducibility
+
+No compliant native external square-corner backend is established. The new evidence locates actual
+server access checks and distinguishes content rendering, image-mask storage and transport success.
+The earlier owner-only 0.01 result remains limited by titlebar paint artifacts and lack of general
+protected-app invocation. Real protected-app compatibility, resize persistence, shadow behavior,
+other builds/displays and complete broker-service coverage remain open.
+
+Evidence: `tools/traffic-lights-lab/results/corner-access-25G342/`; local PNGs, all failed attempts,
+source/binary snapshots and read-only probes: `test-results/window-corners-deeper-2026-11-16/`.
+Successful saved-data checks independently decode original PNGs and validate owner storage controls,
+foreign readback, windowed state, restoration and cleanup. Setup failures remain rejected. All five
+fixture processes/windows are removed. Fresh unit tests pass 1,031, Swift/C compile with warnings as
+errors, and E2E is attempted/bounded at 15 seconds after missing pinned WebKit 2388 setup failures.
+No browser download, full E2E pass, production install or PR.

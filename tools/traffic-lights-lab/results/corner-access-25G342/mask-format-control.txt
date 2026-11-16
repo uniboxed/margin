@@ -1,0 +1,2 @@
+bpp 8 bpc 8 alpha 0 isMask true row 64
+bytes 4096

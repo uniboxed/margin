@@ -1,0 +1,125 @@
+__ZL41PKGTransactionSetWindowSystemCornerRadiusP22_PKGTransactionContext:
+0x1870CB9E8   pacibsp
+0x1870CB9EC   sub      sp, sp, #0x70
+0x1870CB9F0   stp      d9, d8, [sp, #0x40]
+0x1870CB9F4   stp      x20, x19, [sp, #0x50]
+0x1870CB9F8   stp      x29, x30, [sp, #0x60]
+0x1870CB9FC   add      x29, sp, #0x60
+0x1870CBA00   mov      x19, x0
+0x1870CBA04   adrp     x8, 389387           ; 0x1e61d6000
+0x1870CBA08   ldr      x8, [x8, #0xab0]
+0x1870CBA0C   ldr      x8, [x8]
+0x1870CBA10   stur     x8, [x29, #-0x28]
+0x1870CBA14   mov      x8, #-0x5555555555555556
+0x1870CBA18   str      x8, [sp, #0x8]
+0x1870CBA1C   add      x0, x0, #0x10
+0x1870CBA20   add      x1, sp, #0x8
+0x1870CBA24   bl       __SLSTransactionDecode_packed64
+0x1870CBA28   tbz      w0, #0x0, 0x1870cba70
+0x1870CBA2C   ldr      x9, [x19, #0x18]
+0x1870CBA30   cbz      x9, 0x1870cba70
+0x1870CBA34   ldr      w20, [sp, #0x8]
+0x1870CBA38   sub      x11, x9, #0x1
+0x1870CBA3C   ldr      x10, [x19, #0x10]
+0x1870CBA40   add      x8, x10, #0x1
+0x1870CBA44   stp      x8, x11, [x19, #0x10]
+0x1870CBA48   cbz      x10, 0x1870cba70
+0x1870CBA4C   ldrb     w1, [x10], #0x9
+0x1870CBA50   cmp      w1, #0x88
+0x1870CBA54   b.ne     0x1870cbaa0
+0x1870CBA58   subs     x9, x9, #0x9
+0x1870CBA5C   b.lo     0x1870cba70
+0x1870CBA60   stp      x10, x9, [x19, #0x10]
+0x1870CBA64   cbz      x8, 0x1870cba70
+0x1870CBA68   ldr      d9, [x8]
+0x1870CBA6C   b        0x1870cbac0
+0x1870CBA70   mov      w0, #0x0
+0x1870CBA74   ldur     x8, [x29, #-0x28]
+0x1870CBA78   adrp     x9, 389387           ; 0x1e61d6000
+0x1870CBA7C   ldr      x9, [x9, #0xab0]
+0x1870CBA80   ldr      x9, [x9]
+0x1870CBA84   cmp      x9, x8
+0x1870CBA88   b.ne     0x1870cbbd4
+0x1870CBA8C   ldp      x29, x30, [sp, #0x60]
+0x1870CBA90   ldp      x20, x19, [sp, #0x50]
+0x1870CBA94   ldp      d9, d8, [sp, #0x40]
+0x1870CBA98   add      sp, sp, #0x70
+0x1870CBA9C   retab
+0x1870CBAA0   mov      x8, #-0x5555555555555556
+0x1870CBAA4   str      x8, [sp, #0x8]
+0x1870CBAA8   add      x0, x19, #0x10
+0x1870CBAAC   add      x2, sp, #0x8
+0x1870CBAB0   bl       __ZL34_SLSTransactionDecode_packed64_tagP25_SLSTransactionReadStreamhPv
+0x1870CBAB4   cbz      w0, 0x1870cba74
+0x1870CBAB8   ldr      d0, [sp, #0x8]
+0x1870CBABC   scvtf    d9, d0
+0x1870CBAC0   ldr      x0, [x19, #0x8]
+0x1870CBAC4   mov      x1, x20
+0x1870CBAC8   mov      w2, #0xfff8
+0x1870CBACC   movk     w2, #0xfffc, lsl #16
+0x1870CBAD0   mov      w3, #0x10
+0x1870CBAD4   mov      w4, #0x0
+0x1870CBAD8   bl       __ZL32_PKGTransactionCheckWindowAccessP13CGXConnectionjijj
+0x1870CBADC   cbz      x0, 0x1870cbbcc
+0x1870CBAE0   mov      x20, x0
+0x1870CBAE4   ldr      x19, [x19, #0x8]
+0x1870CBAE8   bl       __ZNK9CGXWindow22resolved_corner_radiusEv
+0x1870CBAEC   mov.16b  v8, v0
+0x1870CBAF0   fcvt     s0, d9
+0x1870CBAF4   mov      w8, #0x43960000
+0x1870CBAF8   fmov     s1, w8
+0x1870CBAFC   fcmp     s0, s1
+0x1870CBB00   fcsel    s1, s1, s0, gt
+0x1870CBB04   frinta   s1, s1
+0x1870CBB08   fcmp     s0, #0.0
+0x1870CBB0C   movi.2d  v0, #0000000000000000
+0x1870CBB10   fcsel    s0, s0, s1, mi
+0x1870CBB14   fcvt     d0, s0
+0x1870CBB18   ldr      x8, [x20, #0x928]
+0x1870CBB1C   orr      x8, x8, #0x8000
+0x1870CBB20   str      x8, [x20, #0x928]
+0x1870CBB24   str      d0, [x20, #0x7b8]
+0x1870CBB28   add      x8, sp, #0x8
+0x1870CBB2C   adrp     x16, 389387          ; 0x1e61d6000
+0x1870CBB30   ldr      x16, [x16, #0xa90]
+0x1870CBB34   mov      x17, x8
+0x1870CBB38   movk     x17, #0x6ae1, lsl #48
+0x1870CBB3C   pacda    x16, x17
+0x1870CBB40   str      x16, [sp, #0x8]
+0x1870CBB44   adrp     x9, 267              ; 0x1871d6000
+0x1870CBB48   ldr      d0, [x9, #0x5c0]
+0x1870CBB4C   str      d0, [sp, #0x10]
+0x1870CBB50   add      x8, x8, #0x10
+0x1870CBB54   adrp     x9, 390770           ; 0x1e673d000
+0x1870CBB58   add      x9, x9, #0x7c0       ; ___block_descriptor_48_e5_v8?0l
+0x1870CBB5C   adrp     x16, -94             ; 0x18706d000
+0x1870CBB60   add      x16, x16, #0x668     ; ____ZN9CGXWindow21set_sfx_corner_radiusEP13CGXConnectiond_block_invoke
+0x1870CBB64   pacia    x16, x8
+0x1870CBB68   stp      x16, x9, [sp, #0x18]
+0x1870CBB6C   stp      x20, x19, [sp, #0x28]
+0x1870CBB70   adrp     x3, 348              ; 0x187227000
+0x1870CBB74   add      x3, x3, #0xdfe
+0x1870CBB78   add      x1, sp, #0x8
+0x1870CBB7C   add      x2, x20, #0x900
+0x1870CBB80   mov      x0, x19
+0x1870CBB84   bl       _WSConnectionTrackOverrideImpl
+0x1870CBB88   mov      x0, x20
+0x1870CBB8C   bl       __ZNK9CGXWindow22resolved_corner_radiusEv
+0x1870CBB90   fcmp     d0, d8
+0x1870CBB94   b.eq     0x1870cbbcc
+0x1870CBB98   mov      x0, x20
+0x1870CBB9C   mov      x1, x19
+0x1870CBBA0   bl       __ZN9CGXWindow23invalidate_shadow_frameEP13CGXConnection
+0x1870CBBA4   ldr      x8, [x20, #0x388]
+0x1870CBBA8   cbz      x8, 0x1870cbbb8
+0x1870CBBAC   ldrb     w8, [x20, #0x380]
+0x1870CBBB0   orr      w8, w8, #0x1
+0x1870CBBB4   strb     w8, [x20, #0x380]
+0x1870CBBB8   ldr      x8, [x20, #0x3c8]
+0x1870CBBBC   cbz      x8, 0x1870cbbcc
+0x1870CBBC0   ldrb     w8, [x20, #0x3c0]
+0x1870CBBC4   orr      w8, w8, #0x1
+0x1870CBBC8   strb     w8, [x20, #0x3c0]
+0x1870CBBCC   mov      w0, #0x1
+0x1870CBBD0   b        0x1870cba74
+0x1870CBBD4   bl       ___stack_chk_fail

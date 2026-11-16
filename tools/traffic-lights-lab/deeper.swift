@@ -11,7 +11,7 @@ setbuf(stdout, nil)
 let args = CommandLine.arguments
 func emit(_ row: [String: Any]) { print(String(decoding: try! JSONSerialization.data(withJSONObject: row, options: .sortedKeys), as: UTF8.self)) }
 guard args.contains("--run") || args.contains("--child") else {
-    emit(["plan": "One visible owned child window. Default: AX bundle request and owner/foreign clipping (--wire selects direct message). --buttons tests button metadata; --proxy-clips adds matched clipping. --corners tests owner native zero and owner/foreign WindowServer zero/32 radius, saves actual corner pixels, restores and closes the fixture. No browser, user window or system setting changed."]); exit(0)
+    emit(["plan": "One visible owned child window. Default: AX bundle request and owner/foreign clipping (--wire selects direct message). --buttons tests button metadata; --proxy-clips adds matched clipping. --corners tests radii. --corner-mask compares direct owner/foreign mask requests; --storage-control uses nonuniform mask readback as its positive control, making no content-rendering claim. Saves actual pixels, restores and cleans up. No browser, user window or system setting changed."]); exit(0)
 }
 var buildSize = 0; sysctlbyname("kern.osversion", nil, &buildSize, nil, 0)
 var build = [CChar](repeating: 0, count: buildSize); sysctlbyname("kern.osversion", &build, &buildSize, nil, 0)
@@ -33,6 +33,44 @@ typealias Create = @convention(c) (UInt32) -> Unmanaged<CFTypeRef>?
 typealias GlobalClip = @convention(c) (CFTypeRef, UInt32, UnsafeMutableRawPointer) -> Void
 typealias Commit = @convention(c) (CFTypeRef, Int32) -> Void
 let cid = fn(sky, "SLSMainConnectionID", Main.self)()
+func cornerMaskMetadata(_ wid: UInt32) -> [String: Any] {
+    typealias CopyMask = @convention(c) (UInt32, UnsafeMutablePointer<UInt32>, UnsafeMutablePointer<CGRect>) -> Unmanaged<CGImage>?
+    var flags: UInt32 = 0, center = CGRect.zero
+    guard let mask = fn(sky, "SLSCopyWindowCornerMask", CopyMask.self)(wid, &flags, &center)?.takeRetainedValue() else { return ["present": false] }
+    var samplesBelow128 = -1
+    if mask.bitsPerPixel == 8, mask.isMask || mask.alphaInfo == .alphaOnly, let data = mask.dataProvider?.data {
+        let bytes = CFDataGetBytePtr(data)!
+        samplesBelow128 = (0..<mask.height).reduce(0) { total, y in total + (0..<mask.width).filter { bytes[y * mask.bytesPerRow + $0] < 128 }.count }
+    }
+    return ["present": true, "width": mask.width, "height": mask.height, "flags": flags,
+            "center": NSStringFromRect(center), "samplesBelow128": samplesBelow128, "bitsPerPixel": mask.bitsPerPixel,
+            "isMask": mask.isMask, "alphaInfo": mask.alphaInfo.rawValue]
+}
+func directCornerMask(_ wid: UInt32, image: Bool) -> Int32 {
+    typealias SetMask = @convention(c) (UInt32, CGImage?, UInt32, CGRect) -> Int32
+    var mask: CGImage?
+    if image {
+        guard let context = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 256,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { exit(2) }
+        context.setFillColor(gray: 1, alpha: 1)
+        context.addPath(CGPath(roundedRect: CGRect(x: 0, y: 0, width: 64, height: 64), cornerWidth: 24, cornerHeight: 24, transform: nil))
+        context.fillPath(); mask = context.makeImage()
+        guard mask != nil else { exit(2) }
+    }
+    // Current AppKit uses flags 0xf for an image defining the corner/shadow shape.
+    return fn(sky, "SLSSetWindowCornerMask", SetMask.self)(wid, mask, image ? 0xf : 0,
+        image ? CGRect(x: 0.375, y: 0.375, width: 0.25, height: 0.25) : .null)
+}
+func prepareCornerImage(_ wid: UInt32) {
+    typealias Clear = @convention(c) (CFTypeRef, UInt32) -> Void
+    typealias Path = @convention(c) (CFTypeRef, UInt32, CGPath?) -> Void
+    guard let transaction = fn(sky, "SLSTransactionCreate", Create.self)(cid)?.takeRetainedValue() else { exit(2) }
+    for name in ["SLSTransactionClearWindowCornerRadius", "SLSTransactionClearWindowSystemCornerRadius"] {
+        fn(sky, name, Clear.self)(transaction, wid)
+    }
+    fn(sky, "SLSTransactionSetWindowBoundsPath", Path.self)(transaction, wid, nil)
+    fn(sky, "SLSTransactionCommit", Commit.self)(transaction, 1)
+}
 func setCornerRadius(_ wid: UInt32, _ radius: Double) {
     typealias Radius = @convention(c) (CFTypeRef, UInt32, Double) -> Void
     typealias Path = @convention(c) (CFTypeRef, UInt32, CGPath?) -> Void
@@ -41,6 +79,12 @@ func setCornerRadius(_ wid: UInt32, _ radius: Double) {
     fn(sky, "SLSTransactionSetWindowBoundsPath", Path.self)(transaction, wid, nil)
     fn(sky, "SLSTransactionSetWindowCornerMask", Mask.self)(transaction, wid, nil, 0, .null)
     fn(sky, "SLSTransactionSetWindowCornerRadius", Radius.self)(transaction, wid, radius)
+    fn(sky, "SLSTransactionSetWindowSystemCornerRadius", Radius.self)(transaction, wid, radius)
+    fn(sky, "SLSTransactionCommit", Commit.self)(transaction, 1)
+}
+func setSystemCornerRadiusOnly(_ wid: UInt32, _ radius: Double) {
+    typealias Radius = @convention(c) (CFTypeRef, UInt32, Double) -> Void
+    guard let transaction = fn(sky, "SLSTransactionCreate", Create.self)(cid)?.takeRetainedValue() else { exit(2) }
     fn(sky, "SLSTransactionSetWindowSystemCornerRadius", Radius.self)(transaction, wid, radius)
     fn(sky, "SLSTransactionCommit", Commit.self)(transaction, 1)
 }
@@ -124,7 +168,7 @@ if args.contains("--child") {
         return unsafeBitCast(method_getImplementation(method), to: Get.self)(window, selector)
     }
     RunLoop.main.run(until: Date().addingTimeInterval(0.3))
-    let originalRadius = args.contains("--corners") ? nativeRadius() : 0
+    let originalRadius = args.contains("--corners") || args.contains("--corner-mask") ? nativeRadius() : 0
     var originalButtons: UnsafeMutableRawPointer?
     typealias CopyClip = @convention(c) (UInt32, UInt32, UnsafeMutablePointer<UnsafeMutableRawPointer?>) -> Int32
     typealias ClientClip = @convention(c) (UInt32, UInt32, UnsafeMutableRawPointer?) -> Int32
@@ -170,7 +214,8 @@ if args.contains("--child") {
         return ["window": wid, "pid": getpid(), "bounds": [bounds.minX, bounds.minY, bounds.width, bounds.height],
                 "windowed": !window.styleMask.contains(.fullScreen), "buttons": buttons,
                 "buttonRegion": buttonMetadata(wid), "windowRights": windowRights(wid),
-                "nativeCornerRadius": args.contains("--corners") ? nativeRadius() : -1,
+                "nativeCornerRadius": args.contains("--corners") || args.contains("--corner-mask") ? nativeRadius() : -1,
+                "cornerMask": args.contains("--corner-mask") ? cornerMaskMetadata(wid) : [:],
                 "bundles": (Bundle.allBundles + Bundle.allFrameworks).compactMap { $0.bundleIdentifier }.sorted()]
     }
     saveJSON(snapshot(), directory.appendingPathComponent("ready.json"))
@@ -180,7 +225,13 @@ if args.contains("--child") {
         let request = directory.appendingPathComponent("request.json")
         guard let data = try? Data(contentsOf: request), let command = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let name = command["name"] as? String else { continue }
         try? FileManager.default.removeItem(at: request)
+        if name == "mask-prepare" { prepareCornerImage(wid) }
+        if name == "mask-image" || name == "mask-clear" {
+            emit(["ownerDirectMaskSend": directCornerMask(wid, image: name == "mask-image"), "operation": name])
+        }
         if name == "corner-native-zero" { _ = nativeRadius(0) }
+        if name == "system-zero" { setSystemCornerRadiusOnly(wid, 0) }
+        if name == "system-large" { setSystemCornerRadiusOnly(wid, 32) }
         if name == "corner-native-small" { _ = nativeRadius(0.01) }
         if name == "corner-zero" { setCornerRadius(wid, 0) }
         if name == "corner-large" { setCornerRadius(wid, 32) }
@@ -229,7 +280,7 @@ try FileManager.default.createDirectory(at: directory, withIntermediateDirectori
 let former = NSWorkspace.shared.frontmostApplication?.processIdentifier
 let child = Process()
 child.executableURL = URL(fileURLWithPath: args[0]).standardizedFileURL
-child.arguments = ["--child", "--output", directory.path] + ["--wire", "--buttons", "--proxy-clips", "--corners"].filter { args.contains($0) }
+child.arguments = ["--child", "--output", directory.path] + ["--wire", "--buttons", "--proxy-clips", "--corners", "--corner-mask", "--system-only"].filter { args.contains($0) }
 try child.run()
 func finish(_ code: Int32) -> Never {
     if child.isRunning { child.terminate(); child.waitUntilExit() }
@@ -269,12 +320,52 @@ func observe(_ name: String) -> [String: Any] {
     for y in stride(from: 10, to: bitmap.pixelsHigh, by: 12) {
         for x in stride(from: 10, to: bitmap.pixelsWide, by: 12) { count += 1; if (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) < 0.5 { transparent += 1 } }
     }
-    let row: [String: Any] = ["stage": name, "native": native, "image": ["width": image.width, "height": image.height, "transparentSamples": transparent, "samples": count]]
+    var imageInfo: [String: Any] = ["width": image.width, "height": image.height, "transparentSamples": transparent, "samples": count]
+    if args.contains("--corner-mask") {
+        imageInfo["transparentCornerPixels"] = [(0, 0), (image.width-40, 0), (0, image.height-40), (image.width-40, image.height-40)].map { x0, y0 in
+            (y0..<(y0+40)).reduce(0) { total, y in total + (x0..<(x0+40)).filter { (bitmap.colorAt(x: $0, y: y)?.alphaComponent ?? 0) < 0.5 }.count }
+        }
+    }
+    let row: [String: Any] = ["stage": name, "native": native, "image": imageInfo]
     saveJSON(row, directory.appendingPathComponent(name + ".json")); emit(row)
     return row
 }
-_ = observe("baseline")
+let baseline = observe("baseline")
+if args.contains("--corner-mask") {
+    guard (initial["cornerMask"] as? [String: Any])?["present"] as? Bool == false else { emit(["refused": "fixture already has image mask"]); finish(2) }
+    _ = request("mask-prepare"); let prepared = observe("owner-prepared-image-path")
+    _ = request("mask-image"); let positive = observe("owner-mask-image")
+    let before = (prepared["image"] as! [String: Any])["transparentCornerPixels"] as! [Int]
+    let changed = (positive["image"] as! [String: Any])["transparentCornerPixels"] as! [Int]
+    let mask = (positive["native"] as! [String: Any])["cornerMask"] as! [String: Any]
+    let storageControl = args.contains("--storage-control")
+    emit(["controlKind": storageControl ? "nonuniform stored image mask; no content rendering claim" : "content corner pixels"])
+    guard (storageControl || zip(changed, before).allSatisfy({ $0 > $1 + 20 })),
+          mask["present"] as? Bool == true, mask["width"] as? Int == 64, mask["height"] as? Int == 64,
+          !storageControl || ((mask["samplesBelow128"] as? Int ?? -1) > 100 && (mask["samplesBelow128"] as? Int ?? 4096) < 4000) else {
+        emit(["refused": "owner mask had no positive pixel effect; foreign test skipped"]); finish(2)
+    }
+    emit(["foreignDirectMaskSend": directCornerMask(wid, image: false), "operation": "clear"])
+    _ = observe("foreign-clear-owner-mask")
+    _ = request("mask-clear"); let restored = observe("owner-mask-cleared")
+    guard ((restored["image"] as! [String: Any])["transparentCornerPixels"] as! [Int]) == before else { emit(["refused": "owner restoration failed"]); finish(2) }
+    emit(["foreignDirectMaskSend": directCornerMask(wid, image: true), "operation": "image"])
+    _ = observe("foreign-mask-image")
+    emit(["foreignDirectMaskSend": directCornerMask(wid, image: false), "operation": "clear"])
+    _ = observe("foreign-mask-cleared")
+    _ = request("mask-clear"); _ = request("corner-restore"); _ = observe("final-mask-restored")
+    _ = request("quit"); child.waitUntilExit(); finish(child.terminationStatus)
+}
 if args.contains("--corners") {
+    if args.contains("--system-only") {
+        for name in ["system-zero", "system-large"] { _ = request(name); _ = observe("owner-" + name) }
+        _ = request("corner-large"); _ = observe("owner-corner-large-control")
+        _ = request("corner-restore"); _ = observe("owner-corner-restored-control")
+        setSystemCornerRadiusOnly(wid, 0); _ = observe("foreign-system-zero")
+        setSystemCornerRadiusOnly(wid, 32); _ = observe("foreign-system-large")
+        _ = request("corner-restore"); _ = observe("final-corner-restored")
+        _ = request("quit"); child.waitUntilExit(); finish(child.terminationStatus)
+    }
     for name in ["corner-native-zero", "corner-restore", "corner-native-small", "corner-restore", "corner-zero", "corner-large", "corner-restore"] {
         _ = request(name); _ = observe("owner-" + name + "-\(UUID().uuidString)")
     }

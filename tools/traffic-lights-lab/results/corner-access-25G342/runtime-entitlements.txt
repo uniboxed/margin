@@ -1,0 +1,5 @@
+0x18721a697: com.apple.private.skylight.universal-owner
+0x18721aefb: com.apple.private.skylight.expanse
+0x18721af1e: com.apple.private.skylight.windowmanager
+0x18721af47: com.apple.private.skylight.capturegroupmodifier
+0x18721af77: com.apple.private.skylight.statusbar
