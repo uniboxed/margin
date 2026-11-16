@@ -100,6 +100,8 @@ final class HostEngine {
         var lookEvery = 0.05
         var desktopLookWait = 1.0 // still unlisted: read once more with its Desktop made current (under the freeze)
         var serverAfter = 3.0 // an app Margin started whose window Accessibility doesn't list by then: the window server's
+        var unhideWait = 0.5 // a hidden app unhidden: no longer hidden by then
+        var enhancedLookWait = 1.0 // still unlisted in Margin's Space: read again this long with AXEnhancedUserInterface on
     }
 
     enum Phase: Equatable { case preparing, shown, parked }
@@ -186,7 +188,11 @@ final class HostEngine {
     // Told when a slow step starts for a host (its first open, its placing again: Margin's page area shows a loading
     // animation for it) and when it's over (nil).
     var loading: ((HostID?) -> Void)?
+    // Told the window of a new app brought into Margin's Space only to be read (not placed or shown yet: Margin's window
+    // is ordered above it meanwhile, so it's never seen standing on its own over Margin), nil once that's over.
+    var cover: ((Int?) -> Void)?
     private var aboveSaid: Int?
+    private var coverSaid: Int?
     private var loadingSaid: HostID?
     private var frozenNow = false
 
@@ -343,6 +349,12 @@ final class HostEngine {
         keepAbove?(now)
     }
 
+    private func say(cover number: Int?) {
+        guard number != coverSaid else { return }
+        coverSaid = number
+        cover?(number)
+    }
+
     private func say(loading id: HostID?) {
         guard id != loadingSaid else { return }
         loadingSaid = id
@@ -492,6 +504,7 @@ final class HostEngine {
         if case .app = target { isApp = true }
         var info: HostWindow?
         var minimizedOnly = false
+        var unhidden = false
         let looking = sys.now()
         _ = await wait(personal ? options.personWindowWait : options.windowWait) {
             let listed = (await self.sys.windows(pid: app.pid) ?? []).filter { !self.isHosted(window: $0.number) }
@@ -503,7 +516,14 @@ final class HostEngine {
                 number = info?.number
                 return true
             }
-            if isApp, personal || self.sys.now() - looking >= self.options.serverAfter, !minimizedOnly, let n = self.frontServerWindow(pid: app.pid) { number = n; return true }
+            // (An app Margin started that's still hidden lists nothing to Accessibility: the window server's window at once,
+            // unhidden in `take`. One with no window at all while hidden, unhidden now: some make theirs only then.)
+            let hidden = !personal && (unhidden || self.sys.isHidden(pid: app.pid) == true)
+            if isApp, personal || hidden || self.sys.now() - looking >= self.options.serverAfter, !minimizedOnly, let n = self.frontServerWindow(pid: app.pid) { number = n; return true }
+            if isApp, hidden, !unhidden, self.sys.now() - looking >= self.options.unhideWait, self.sys.unhide(pid: app.pid) {
+                unhidden = true
+                Diagnostics.note("host: \(id): its app hidden with no window yet: unhidden")
+            }
             return false
         }
         guard let window = number else {
@@ -569,6 +589,10 @@ final class HostEngine {
         host.away = true // (from here on, it's put back where it was when it's given back)
         saveMarker()
         guard host.unseen else { return nil }
+        // Unhidden before it's a member of Margin's Space (as the kit found: a hidden app's window isn't listed), and
+        // covered by Margin's window while it's there to be read.
+        await unhideIfHidden(host)
+        say(cover: host.window)
         guard sys.move(window: host.window, to: marginSpace), await wait(options.parkWait, { self.sys.spaces(window: host.window) == [self.marginSpace] }) else {
             return (.windowMode, "its window didn't come into Margin's Space to be read")
         }
@@ -602,6 +626,21 @@ final class HostEngine {
             Diagnostics.note("host: \(host.id): Accessibility found its window in Margin's Space after \(ms(since: t0)) ms (by its number\(info?.role.map { ", \($0)" } ?? ""))")
             return info
         }
+        // Still unlisted: its app unhidden if it hid again, and asked once with AXEnhancedUserInterface on (what assistive
+        // apps set: some apps expose their windows only then), set back as it was after.
+        let unhid = await unhideIfHidden(host)
+        let enhancedBefore = await sys.enhancedUserInterface(pid: host.pid)
+        var enhanced = false
+        if enhancedBefore != true { enhanced = await sys.setEnhancedUserInterface(pid: host.pid, true) }
+        let t2 = sys.now()
+        var seenEnhanced = false
+        if unhid || enhanced { seenEnhanced = await wait(options.enhancedLookWait, every: options.lookEvery, found) }
+        if enhanced { _ = await sys.setEnhancedUserInterface(pid: host.pid, false) }
+        if seenEnhanced {
+            Diagnostics.note("host: \(host.id): Accessibility found its window in Margin's Space after \(ms(since: t0)) ms, \(ms(since: t2)) ms after \([unhid ? "its app was unhidden" : nil, enhanced ? "AXEnhancedUserInterface was on" : nil].compactMap { $0 }.joined(separator: " and ")) (by its number\(info?.role.map { ", \($0)" } ?? ""))")
+            return info
+        }
+        if !unhid, !enhanced { Diagnostics.note("host: \(host.id): AXEnhancedUserInterface \(enhancedBefore == true ? "was on already" : "wasn't taken")") }
         let frozen = holdFreeze()
         defer { releaseFreeze(frozen) }
         guard frozenNow, let desktop = home(host.originalSpace, display: host.originalSpace ?? marginSpace), desktop != marginSpace else {
@@ -623,6 +662,21 @@ final class HostEngine {
         if back { back = await wait(options.parkWait) { self.sys.spaces(window: host.window) == [self.marginSpace] } }
         Diagnostics.note("host: \(host.id): Accessibility didn't list its window in Margin's Space within \(ms(since: t0)) ms; with its Desktop current \(seen ? "it found it (by its number\(info?.role.map { ", \($0)" } ?? ""))" : wentThere ? "it didn't either" : "(not made current)") in \(ms(since: t1)) ms\(back ? "" : "; its window didn't come back into Margin's Space")")
         return seen && back ? info : nil
+    }
+
+    // An app hidden (started so: LaunchServices' hide option) unhidden, never activated: a hidden app's windows aren't in
+    // Accessibility's list (seen 2026-11-15: Dictionary's window, read by the window server only, never listed in
+    // Margin's Space or on its Desktop). Waited for at most `unhideWait`. True: it was hidden and isn't now.
+    @discardableResult private func unhideIfHidden(_ host: Host) async -> Bool {
+        guard sys.isHidden(pid: host.pid) == true else { return false }
+        let t0 = sys.now()
+        guard sys.unhide(pid: host.pid) else {
+            Diagnostics.note("host: \(host.id): its app is hidden and wasn't unhidden")
+            return false
+        }
+        let done = await wait(options.unhideWait) { self.sys.isHidden(pid: host.pid) == false }
+        Diagnostics.note("host: \(host.id): its app was hidden: \(done ? "unhidden in \(ms(since: t0)) ms" : "asked to unhide, still hidden after \(ms(since: t0)) ms")")
+        return done
     }
 
     // ---- window mode ----
@@ -809,6 +863,7 @@ final class HostEngine {
     private func bringIn(_ host: Host, isNew: Bool, retrying: Bool = false) async -> HostResult {
         jumps = 0
         // A new app's window as it was (its frame, its Space) before anything moves it; then how it's shown.
+        defer { say(cover: nil) } // (the window taken in to be read: shown by now, or given back)
         if isNew, case .app = host.target, !host.taken, let (failed, why) = await take(host) {
             guard host.taken else {
                 // (Nothing of it was touched: forgotten, never backed out of a full screen that's the person's.)
@@ -1414,6 +1469,12 @@ final class HostEngine {
         // that's open: closeBeforeQuit). Closed, there's nothing to take home; not closed, it goes home as any.
         let closed = quits && host.safariWindow == nil && sys.isUIKitApp(pid: host.pid) ? await closeBeforeQuit(host) : false
         if !closed, host.mode == .window || host.personApp { await returnHome(host) }
+        // An app Margin quits whose window is still in Margin's Space (taken in to be read, its open failed): out of
+        // sight in a private Space until its quit is done, never standing on its own over Margin meanwhile (seen
+        // 2026-11-15: Dictionary's window over Margin while it quit). One that doesn't quit goes to the Desktop then.
+        if quits, !closed, host.safariWindow == nil, host.privateSpace == nil, sys.spaces(window: host.window)?.contains(marginSpace) == true {
+            if await parkMember(host, emitting: false) { Diagnostics.note("host: \(id): its window out of sight before its quit") }
+        }
         if let ext = host.safariWindow {
             // A window a copy made for Margin: a normal window first (a member parked and out of full screen through its
             // copy, then out of its private Space onto the Desktop), then closed by that copy and confirmed (before its

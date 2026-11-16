@@ -100,6 +100,40 @@ final class FakeHostWorld: HostSystem {
         if axDesktopOnly.contains(n), current != Self.desktop { return false }
         return axDelay == 0 || clock - max(arrivedAt[n] ?? 0, currentSince) >= axDelay
     }
+    // Apps started hidden (LaunchServices' hide option) that stay so until unhidden: Accessibility lists none of their
+    // windows while they're hidden (Dictionary, 2026-11-15); some make their window only once unhidden. Apps whose
+    // windows Accessibility lists only with AXEnhancedUserInterface on.
+    var launchesHidden: Set<String> = []
+    var windowOnlyUnhidden: Set<String> = []
+    var needsEnhanced: Set<String> = []
+    var hidden: Set<pid_t> = []
+    var enhanced: [pid_t: Bool] = [:]
+    var unhideRefused = false
+    func axHides(_ pid: pid_t) -> Bool {
+        hidden.contains(pid) || (apps[pid].map { needsEnhanced.contains($0.bundle) } == true && enhanced[pid] != true)
+    }
+    func isHidden(pid: pid_t) -> Bool? { apps[pid] == nil ? nil : hidden.contains(pid) }
+    func unhide(pid: pid_t) -> Bool {
+        calls.append("unhide \(pid)")
+        guard let a = apps[pid], !unhideRefused else { return false }
+        hidden.remove(pid)
+        if windowOnlyUnhidden.contains(a.bundle), a.windows.isEmpty {
+            let n = nextWindow
+            nextWindow += 1
+            var win = Win(pid: pid, spaces: [Self.desktop])
+            win.canFullScreen = !notFullScreen.contains(a.bundle)
+            wins[n] = win
+            apps[pid]?.windows = [n]
+        }
+        return true
+    }
+    func enhancedUserInterface(pid: pid_t) async -> Bool? { apps[pid] == nil ? nil : enhanced[pid] ?? false }
+    func setEnhancedUserInterface(pid: pid_t, _ on: Bool) async -> Bool {
+        calls.append("enhanced \(pid) \(on)")
+        guard apps[pid] != nil, !fail.contains("ax") else { return false }
+        enhanced[pid] = on
+        return true
+    }
     // The window server's bounds of a window Accessibility just set: its old frame this long after (none: at once).
     var frameLag = 0.0
     var lagging: [Int: (frame: CGRect, until: Double)] = [:]
@@ -157,8 +191,9 @@ final class FakeHostWorld: HostSystem {
         calls.append("launch \(bundleId)")
         lastArguments = arguments
         guard !fail.contains("launch"), installed.contains(bundleId), running(bundleId: bundleId).isEmpty else { return false }
-        let pid = start(bundleId, policy: .accessory, windows: launchWindows)
+        let pid = start(bundleId, policy: .accessory, windows: windowOnlyUnhidden.contains(bundleId) ? 0 : launchWindows)
         apps[pid]?.sidebarOpen = sidebarOpenAtLaunch
+        if launchesHidden.contains(bundleId) || windowOnlyUnhidden.contains(bundleId) { hidden.insert(pid) }
         return true
     }
     var frameAtQuit: [String: CGRect] = [:] // each app's window's frame as it was asked to quit
@@ -189,6 +224,7 @@ final class FakeHostWorld: HostSystem {
     // ---- windows ----
     func windows(pid: pid_t) async -> [HostWindow]? {
         guard !fail.contains("ax"), let a = apps[pid] else { return nil }
+        if axHides(pid) { return [] }
         let listed = a.windows.filter { axLists($0) && wins[$0].map { $0.axRole == nil || $0.canFullScreen } == true }
         axSeen.formUnion(listed)
         return listed.compactMap { n in
@@ -197,7 +233,7 @@ final class FakeHostWorld: HostSystem {
     }
     func window(pid: pid_t, number: Int) async -> HostWindow? {
         lookups += 1
-        guard !fail.contains("ax"), let a = apps[pid], a.windows.contains(number), axLists(number), let w = wins[number] else { return nil }
+        guard !fail.contains("ax"), let a = apps[pid], a.windows.contains(number), axLists(number), !axHides(pid), let w = wins[number] else { return nil }
         axSeen.insert(number)
         return HostWindow(number: number, fullScreen: w.fullScreen, canFullScreen: w.canFullScreen, resizable: w.resizable, minimized: w.minimized, role: w.axRole ?? "AXWindow/AXStandardWindow")
     }
@@ -1330,6 +1366,75 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         check("window mode: not listed anywhere: not hosted, said so; Calculator quit, Margin's Space current, nothing left",
               r == .failed(.window, "Accessibility doesn't list its window, even on the current Space or with its Desktop current") && w.running(bundleId: "com.apple.calculator").isEmpty
               && w.current == FakeHostWorld.marginSpace && w.privates.isEmpty && clean(w) && e.hosts.isEmpty, "\(String(describing: r))")
+    }
+
+    // ---- an app started hidden (Dictionary, 2026-11-15: its window read by the window server, never by Accessibility,
+    // and seen on its own over Margin while the open failed and it quit) ----
+    let dictionary = HostTarget.app("com.apple.Dictionary")
+    func covered(_ e: HostEngine, _ w: FakeHostWorld) { e.cover = { w.calls.append("cover \($0.map(String.init) ?? "none")") } }
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        covered(e, w)
+        w.installed.insert("com.apple.Dictionary")
+        w.launchesHidden = ["com.apple.Dictionary"]
+        w.axCurrentOnly = true
+        var r: HostResult?
+        let lines = said { r = open(e, dictionary) }
+        let p = pid(w, "com.apple.Dictionary"), n = window(w, "com.apple.Dictionary")
+        let unhid = at(w, "unhide \(p)"), cover = at(w, "cover \(n)"), moveIn = at(w, "move \(n) \(FakeHostWorld.marginSpace)")
+        check("hidden app: Dictionary started hidden, Accessibility listing none of its windows: unhidden before its window comes into Margin's Space, hosted full screen at the page area",
+              r == .shown(dictionary.id, placed: true) && e.mode(of: dictionary.id) == .fullScreen && w.wins[n]?.member == true && w.bounds(window: n) == page
+              && unhid >= 0 && cover > unhid && moveIn > cover && !w.hidden.contains(p), "\(String(describing: r)) \(w.calls.prefix(12))")
+        check("hidden app: its window taken from the window server at once (no 3 s wait for Accessibility), found in Margin's Space, no Desktop made current, never activated hidden",
+              !w.calls.contains("current \(FakeHostWorld.desktop)") && lines.contains { $0.contains("its app was hidden: unhidden") } && lines.contains { $0.contains("Accessibility found its window in Margin's Space") }
+              && (lines.first { $0.contains("opened (pid") }.map { $0.range(of: #"window \d{1,3} \(by the window server"#, options: .regularExpression) != nil } ?? false), "\(lines.filter { $0.contains("Dictionary") })")
+        check("hidden app: Margin's window over it only while it's read (covered, then kept below it once shown)", w.calls.contains("cover none") && at(w, "cover none") > moveIn, "\(w.calls.filter { $0.hasPrefix("cover") })")
+        hostRun { await e.quitAll() }
+        check("hidden app: quit: nothing left", w.apps[p] == nil && clean(w) && w.privates.isEmpty)
+    }
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        w.installed.insert("com.apple.Dictionary")
+        w.windowOnlyUnhidden = ["com.apple.Dictionary"] // (no window at all until it's unhidden)
+        w.axCurrentOnly = true
+        let r = open(e, dictionary)
+        let p = pid(w, "com.apple.Dictionary"), n = window(w, "com.apple.Dictionary")
+        check("hidden app: one that makes its window only once unhidden: unhidden after a moment, its window then hosted", r == .shown(dictionary.id, placed: true) && n > 0 && w.wins[n]?.member == true && at(w, "unhide \(p)") >= 0 && w.clock < 5,
+              "\(String(describing: r)) \(w.clock)")
+        hostRun { await e.quitAll() }
+    }
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        w.installed.insert("com.apple.Dictionary")
+        w.needsEnhanced = ["com.apple.Dictionary"] // (its windows listed only with AXEnhancedUserInterface on)
+        w.axCurrentOnly = true
+        var r: HostResult?
+        let lines = said { r = open(e, dictionary) }
+        let p = pid(w, "com.apple.Dictionary"), n = window(w, "com.apple.Dictionary")
+        check("enhanced interface: windows listed only with AXEnhancedUserInterface on: asked once with it on, found, hosted",
+              r == .shown(dictionary.id, placed: true) && w.wins[n]?.member == true && at(w, "enhanced \(p) true") >= 0 && lines.contains { $0.contains("AXEnhancedUserInterface was on") }, "\(String(describing: r)) \(lines.filter { $0.contains("Accessibility") })")
+        check("enhanced interface: set back off once it was read, never left on, no Desktop made current", w.enhanced[p] == false && at(w, "enhanced \(p) false") > at(w, "enhanced \(p) true") && !w.calls.contains("current \(FakeHostWorld.desktop)"))
+        hostRun { await e.quitAll() }
+    }
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        covered(e, w)
+        w.installed.insert("com.apple.Dictionary")
+        w.launchesHidden = ["com.apple.Dictionary"]
+        w.unhideRefused = true // (it stays hidden: Accessibility never lists it)
+        w.axCurrentOnly = true
+        let r = open(e, dictionary)
+        let quit = w.calls.firstIndex { $0.hasPrefix("terminate") } ?? -1
+        let n = w.calls.compactMap { c -> Int? in c.hasPrefix("move ") ? Int(c.split(separator: " ")[1]) : nil }.first ?? -1
+        let lastIn = w.calls.lastIndex(of: "move \(n) \(FakeHostWorld.marginSpace)") ?? -1
+        let parked = w.calls.indices.first { i in i > lastIn && i < quit && w.calls[i].hasPrefix("move \(n) ") && w.calls[i] != "move \(n) \(FakeHostWorld.desktop)" } ?? -1
+        check("hidden app: never listed: not hosted; its window covered while read, out of sight in a private Space before its quit, never left over Margin",
+              { if case .failed(.window, _)? = r { return true }; return false }() && quit > 0 && parked > lastIn && parked < quit && at(w, "cover none") > quit
+              && w.running(bundleId: "com.apple.Dictionary").isEmpty && w.privates.isEmpty && clean(w) && e.hosts.isEmpty && w.inMargin.isEmpty, "\(String(describing: r)) \(w.calls)")
     }
 
     // ---- the keyboard to the app only on a press around its window; giving a window back never activates its app ----

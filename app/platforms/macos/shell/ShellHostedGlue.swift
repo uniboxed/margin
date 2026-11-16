@@ -101,6 +101,7 @@ extension Shell {
         host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
         host.loading = { [weak session] id in session?.loading(id) }
         host.keepAbove = { [weak session] number in session?.keepBelow(number) }
+        host.cover = { [weak session] number in session?.cover(number) }
         let before = host.onEvent
         host.onEvent = { [weak session] event in
             before?(event)
@@ -163,13 +164,58 @@ extension Shell {
     }
 
     // The shell's read while hosted: none of the overlay path (no binding, overlay, `drawn`, layout or slot for any
-    // browser window); the host's poll, while it hosts something or a copy is linked.
+    // browser window); the host's poll, while it hosts something or a copy is linked; Margin's keys.
     func hostedTrack() {
+        updateHostedKeys()
         host?.poll()
         hosted?.sweepRestoredSafariWindows()
         guard host?.hasHosts == true || host?.hasLeftSafariWindows == true || !links.isEmpty else { return }
         pollTimer = Timer.scheduledTimer(withTimeInterval: options.restPoll, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.track() }
         }
+    }
+
+    // ---- Margin's keys while hosting (Shortcuts.swift ShortcutSet.hostedActive) ----
+
+    // Held while Margin or an app it hosts is in front (with a Margin window on the current Space), let go otherwise;
+    // the combinations the first linked copy's Settings say, else the defaults. Never the quit guard (no browser of the
+    // person's is in front of Margin's windows).
+    func updateHostedKeys() {
+        let own = ProcessInfo.processInfo.processIdentifier
+        let windows = marginWindows?.controllers ?? []
+        let hostedPids = Set(host?.hosts.values.map(\.pid) ?? [])
+        let here = options.harness ? !windows.isEmpty : windows.contains { $0.window.isVisible && $0.window.isOnActiveSpace }
+        let active = ShortcutSet.hostedActive(frontPid: apps.frontPid, ownPid: own, hostedPids: hostedPids, marginWindowOpen: !windows.isEmpty, marginOnCurrentSpace: here)
+        if active {
+            let said = links.keys.sorted().lazy.compactMap { self.links[$0] }.first { $0.connection.isUp && $0.keys != nil }?.keys
+            var bindings = ShortcutSet.bindings(from: said ?? [:])
+            // (A hosted app in front: the sidebar stays docked while hosting, so its key would only take the app's typing.)
+            if apps.frontPid != own { bindings = bindings.filter { $0.value != .toggleSidebar } }
+            shortcuts.rebind(bindings)
+        }
+        if active != shortcuts.isActive { Diagnostics.note("Margin's keys \(active ? "held: Margin or an app it hosts is in front" : "let go: another app is in front")") }
+        shortcuts.set(active: active)
+        shortcuts.setQuitGuard(active: false)
+    }
+
+    // A key of Margin's while hosting: to the Margin window hosting (else the front one), whose page does it as its own
+    // (the palette; the sidebar; the next or previous item of its space, an app or a web item, shown as a sidebar pick;
+    // the next or previous space: overlay.ts), or a new Margin window.
+    func runHosted(_ command: AppCommand, isRepeat: Bool) {
+        guard let windows = marginWindows else { return }
+        let w = hosted?.hostingWindow.flatMap { id in windows.controllers.first { $0.id == id } } ?? windows.front
+        switch command {
+        case .newWindow:
+            windows.open()
+        case .palette:
+            Diagnostics.note("the palette's key: sent to Margin's window \(w?.id ?? 0)")
+            w?.push(#"{"type":"command","name":"palette"}"#)
+        case .toggleSidebar:
+            w?.push(#"{"type":"command","name":"toggle-sidebar"}"#)
+        case .nextTab, .prevTab, .nextSpace, .prevSpace:
+            w?.push(#"{"type":"command","name":"\#(command.rawValue)","repeat":\#(isRepeat)}"#)
+        }
+        w.map { hostedKeysRun.append("\(command.rawValue) → \($0.id)") }
+        if hostedKeysRun.count > 50 { hostedKeysRun.removeFirst(hostedKeysRun.count - 50) }
     }
 }

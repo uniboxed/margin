@@ -563,6 +563,13 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("gate: the linked browser in front with its overlay", ShortcutSet.active(frontPid: 10, linkedPids: [10], frontWindowHasOverlay: true))
     check("gate: another app in front", !ShortcutSet.active(frontPid: 11, linkedPids: [10], frontWindowHasOverlay: true))
     check("gate: the browser in front, its front window without an overlay", !ShortcutSet.active(frontPid: 10, linkedPids: [10], frontWindowHasOverlay: false))
+    // Hosting (MarginHosted): Margin itself, or an app it hosts with a Margin window on the current Space.
+    check("hosted gate: Margin in front with a window", ShortcutSet.hostedActive(frontPid: 1, ownPid: 1, hostedPids: [], marginWindowOpen: true, marginOnCurrentSpace: false))
+    check("hosted gate: a hosted app in front, Margin's window on the current Space", ShortcutSet.hostedActive(frontPid: 20, ownPid: 1, hostedPids: [20, 21], marginWindowOpen: true, marginOnCurrentSpace: true))
+    check("hosted gate: a hosted app in front, Margin's window on another Space: let go", !ShortcutSet.hostedActive(frontPid: 20, ownPid: 1, hostedPids: [20], marginWindowOpen: true, marginOnCurrentSpace: false))
+    check("hosted gate: an app Margin doesn't host: let go", !ShortcutSet.hostedActive(frontPid: 30, ownPid: 1, hostedPids: [20], marginWindowOpen: true, marginOnCurrentSpace: true))
+    check("hosted gate: no Margin window open, or no app in front: let go", !ShortcutSet.hostedActive(frontPid: 1, ownPid: 1, hostedPids: [], marginWindowOpen: false, marginOnCurrentSpace: true)
+          && !ShortcutSet.hostedActive(frontPid: nil, ownPid: 1, hostedPids: [20], marginWindowOpen: true, marginOnCurrentSpace: true))
     check("gate: nothing in front", !ShortcutSet.active(frontPid: nil, linkedPids: [10], frontWindowHasOverlay: true))
     let fake = FakeRegistrar()
     let keys = AppShortcuts(registrar: fake)

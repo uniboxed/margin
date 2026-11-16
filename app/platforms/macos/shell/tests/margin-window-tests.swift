@@ -150,4 +150,41 @@ func marginWindowTests() {
           changed == 3 && settings?["sidebarPinnedOpen"] as? Bool == false && ((settings?["themes"] as? JSONObject)?["arcadia"] as? JSONObject)?["sidebarWidth"] as? Int == 300)
     sync.onChange?(DataProfile(browser: "safari", profile: "P"), ["spaces"])
     check("hosted source: the shell still hears the data set's changes (the source's comes after)", shellHeard == 1)
+
+    // ---- the page card's corners over a hosted window (HostCorners) ----
+    do {
+        let page = CGRect(x: 276, y: 41, width: 1228, height: 933)
+        let squares = HostCorners.squares(page: page, radii: [6.25, 6.25, 6.25, 6.25])
+        check("corners: one 7 pt square per corner, at the page area's corners (top left, clockwise)", squares.map(\.rect) == [
+            CGRect(x: 276, y: 41, width: 7, height: 7), CGRect(x: 1497, y: 41, width: 7, height: 7),
+            CGRect(x: 1497, y: 967, width: 7, height: 7), CGRect(x: 276, y: 967, width: 7, height: 7)] && squares.map(\.corner) == [0, 1, 2, 3] && squares.allSatisfy { $0.radius == 6.25 }, "\(squares)")
+        check("corners: none for a square corner, a radius kept within half the page", HostCorners.squares(page: page, radii: [0, 15, 0, 0]).map(\.corner) == [1]
+              && HostCorners.squares(page: CGRect(x: 0, y: 0, width: 20, height: 20), radii: [50, 50, 50, 50]).allSatisfy { $0.rect.width == 10 })
+        // The mask: the corner's own point filled, the point just inside the curve not, for each corner (AppKit's y up).
+        for corner in 0..<4 {
+            let path = HostCorners.path(size: 7, radius: 6.25, corner: corner)
+            let outer = CGPoint(x: corner == 0 || corner == 3 ? 0.3 : 6.7, y: corner == 0 || corner == 1 ? 6.7 : 0.3)
+            let inner = CGPoint(x: corner == 0 || corner == 3 ? 6.5 : 0.5, y: corner == 0 || corner == 1 ? 0.5 : 6.5)
+            check("corners: corner \(corner)'s mask fills the page's corner and leaves the curve's inside clear", path.contains(outer, using: .evenOdd) && !path.contains(inner, using: .evenOdd))
+        }
+        // A border's band: between the page area's curve and the card's outer edge; outside that, the card's fill.
+        let band = HostCorners.band(size: 15, radius: 15, corner: 0, width: 3), out = HostCorners.path(size: 15, radius: 15, corner: 0, out: 3)
+        let r = 15.0 / 2.0.squareRoot() // (a point on the diagonal `d` from the curve's centre: 15 - d/√2 in from the corner)
+        func diagonal(_ d: Double) -> CGPoint { CGPoint(x: 15 - d / 2.0.squareRoot(), y: d / 2.0.squareRoot()) }
+        check("corners: a border's band and the fill beyond it, the inside clear", band.contains(diagonal(16.5), using: .evenOdd) && !band.contains(diagonal(14), using: .evenOdd) && !band.contains(diagonal(19), using: .evenOdd)
+              && out.contains(diagonal(19.5), using: .evenOdd) && !out.contains(diagonal(16.5), using: .evenOdd) && r > 0)
+        let ink = HostCorners.color("rgb(17, 17, 17)"), frame = HostCorners.color("rgba(156, 157, 161, 0.5)"), srgb = HostCorners.color("color(srgb 1 0.5 0 / 1)")
+        check("corners: the page's computed colours read (rgb, rgba, color(srgb))", abs((ink?.redComponent ?? 0) - 17.0 / 255) < 0.001 && frame?.alphaComponent == 0.5 && srgb?.greenComponent == 0.5)
+        check("corners: a see-through or unknown colour isn't one", HostCorners.color("rgba(0, 0, 0, 0)") == nil && HostCorners.color("transparent") == nil && HostCorners.color("hsl(1 2 3)") == nil)
+        let corners = HostCorners(harness: true)
+        corners.show(page: CGRect(x: -20000, y: -20000, width: 800, height: 600), radii: [6.25, 6.25, 6.25, 6.25], fills: [.gray, .gray, .gray, .gray], edge: nil)
+        let drawn = corners.draws
+        corners.show(page: CGRect(x: -20000, y: -20000, width: 800, height: 600), radii: [6.25, 6.25, 6.25, 6.25], fills: [.gray, .gray, .gray, .gray], edge: nil)
+        check("corners: shown off every display, four panels above normal windows that never take the mouse; the same again draws nothing",
+              corners.isShown && corners.frames.count == 4 && corners.draws == drawn && corners.panels.allSatisfy { $0.level == .floating && $0.ignoresMouseEvents && $0.collectionBehavior == HostCorners.behavior })
+        corners.show(page: CGRect(x: -20000, y: -20000, width: 900, height: 600), radii: [6.25, 6.25, 6.25, 6.25], fills: [.gray, .gray, .gray, .gray], edge: nil)
+        check("corners: a new page area: drawn again, there", corners.draws == drawn + 1 && corners.frames[1].maxX == -20000 + 900)
+        corners.hide()
+        check("corners: hidden: none ordered in", !corners.isShown && corners.frames.isEmpty && corners.panels.allSatisfy { !$0.isVisible })
+    }
 }

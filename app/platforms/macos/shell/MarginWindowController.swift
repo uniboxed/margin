@@ -32,8 +32,11 @@
 //   activated, a click in the sidebar, shown) it's ordered right below that window again (`keepBelow`), except while a
 //   field of Margin's has the keys (the palette is drawn in this window: it's in front then); a press in the page area
 //   around the hosted window (never on it: the app has that press already) gives that app the keyboard
-//   (`onPagePress`). While a host's first open or placing again runs, a spinner and the app's name are drawn over the
-//   page area (`setLoading`, HostLoadingView), natively: the hosted window isn't there yet.
+//   (`onPagePress`). While a host's first open or placing again runs, and while a hosted Safari tab loads, the theme's
+//   own loading bar on the page card's edge shows for that item (`setLoadingTabs`: the page's `loading`, as a browser
+//   copy's push draws it over a browser); no spinner of Margin's own. A new app's window brought into Margin's Space only
+//   to be read is covered by this window meanwhile (`cover`). The page card's rounded corners are drawn over the hosted
+//   window by small panels of their own (`corners`, HostCorners: MarginWindow.swift).
 // - MarginWindows: every such window, the menu bar's actions (to the key one),
 //   and the source's changes passed to each.
 
@@ -96,9 +99,14 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private var hostingLayoutSaid: String? // the last layout logged while hosting (numbers only)
     private(set) var below: Int? // the hosted window: this one kept right below it (keepBelow)
     private(set) var belowOrders = 0 // how many times it was ordered below it (the tests read it)
-    // The loading animation over the page area (a host's first open or placing again): the app's name, nil: none.
+    // A host's first open or placing again: the app's name, nil: none (the bar is its item's: setLoadingTabs).
     private(set) var loadingLabel: String?
-    let loadingView = HostLoadingView(frame: .zero)
+    // The items loading as the page was last told (the UI's numbers), and a window this one is ordered above (cover).
+    private(set) var loadingTabs: [Int] = []
+    private(set) var covering: Int?
+    private(set) var coverOrders = 0
+    // The page card's corners over the hosted window (HostCorners: MarginWindow.swift).
+    let corners: HostCorners
     // Always full screen: its first entry (the window see-through until it's in), and the times it went back in.
     private var enteringFirst = false
     private(set) var backIntoFullScreen = 0
@@ -110,6 +118,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         self.options = options
         let frame = options.harness ? (options.frame ?? Self.harnessFrame) : (options.frame ?? Self.centred())
         window = MarginWindow(frame: frame, harness: options.harness)
+        corners = HostCorners(harness: options.harness)
         webView = pages.makeWebView(size: frame.size)
         super.init()
         let content = NSView(frame: NSRect(origin: .zero, size: frame.size))
@@ -121,8 +130,6 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         webView.frame = content.bounds
         webView.autoresizingMask = [.width, .height]
         content.addSubview(webView)
-        loadingView.isHidden = true
-        content.addSubview(loadingView)
         window.contentView = content
         window.locksFullScreen = options.alwaysFullScreen
         window.delegate = self
@@ -190,6 +197,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func teardown() {
         guard !isClosed else { return }
         isClosed = true
+        corners.hide()
         pages.bridge.unregister(webView)
         webView.navigationDelegate = nil
         webView.stopLoading()
@@ -215,7 +223,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         let content = contentFrame
         let region = CatchRegion.of(frame: content, slot: slot)
         fill.region = region
-        defer { layoutLoading() }
+        defer { placeCorners() }
         guard let layout else { return window.setPageRect(nil, radius: 0) }
         if hosting { return window.setPageRect(hostedPlacement?.page, radius: CGFloat(layout.radius)) }
         // (A layout from before a resize changes nothing: the page's next one, at the new size, does.)
@@ -236,6 +244,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             Diagnostics.note("Margin's window \(id): hosting above its page area\(hostDisplay.map { " (the display's full-screen area \(Int($0.width))×\(Int($0.height)))" } ?? "")")
         } else {
             below = nil
+            covering = nil
             loadingLabel = nil
             hostDisplay = nil
             Diagnostics.note("Margin's window \(id): hosting nothing: its launcher in the page area again")
@@ -244,21 +253,31 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         updatePage()
     }
 
-    // The loading animation over the page area (a host's first open, or its placing again): a spinner and the app's
-    // name, drawn natively above the page (the theme's frame and page card show around it); nil: none.
+    // A host's first open, or its placing again (the app's name; nil: over). What's drawn is the theme's loading bar,
+    // for the item it's opened for (setLoadingTabs).
     func setLoading(_ label: String?) {
         guard label != loadingLabel else { return }
         loadingLabel = label
         Diagnostics.note("Margin's window \(id): \(label == nil ? "loading done" : "loading an app in the page area")")
-        layoutLoading()
     }
 
-    private func layoutLoading() {
-        guard hosting, let label = loadingLabel, let page = window.pageRect else { return loadingView.hide() }
-        let content = contentFrame
-        // (Top-left page area → the content view's own bottom-left coordinates.)
-        loadingView.frame = NSRect(x: page.minX - content.minX, y: content.height - (page.maxY - content.minY), width: page.width, height: page.height)
-        loadingView.show(label)
+    // The items loading (the UI's numbers for them): the page's `loading`, as a browser copy's push says it over a
+    // browser (host-app.ts receive): the bar on the page card's edge for the one in front, each one's row.
+    func setLoadingTabs(_ numbers: [Int]) {
+        guard numbers != loadingTabs else { return }
+        loadingTabs = numbers
+        push(#"{"type":"push","msg":{"type":"loading","tabIds":"# + (jsonString(numbers) ?? "[]") + "}}")
+    }
+
+    // Ordered right above `number` (a new app's window brought into Margin's Space only to be read: never seen on its
+    // own over Margin), nil: no more (ordered below the hosted window again, if there is one).
+    func cover(_ number: Int?) {
+        guard number != covering else { return }
+        covering = number
+        guard let number else { return orderBelowHosted() }
+        guard hosting, !isClosed else { return }
+        window.order(.above, relativeTo: number)
+        coverOrders += 1
     }
 
     // Kept right below `number` (the hosted window, another app's), now and whenever it comes to the front; nil: no more.
@@ -267,6 +286,25 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         below = number
         Diagnostics.note("Margin's window \(id): \(number.map { "kept below the hosted window \($0)" } ?? "no hosted window above it")")
         orderBelowHosted()
+        placeCorners()
+    }
+
+    // The page card's rounded corners over the hosted window (it's above this one, its corners square): drawn by
+    // HostCorners only while a hosted window is shown in this window's page area and this window is on the current
+    // Space, at the page area's corners, with the page's inner radius and the colour the theme draws around them.
+    func placeCorners() {
+        // (Not while a field of Margin's has the keys: this window is in front of the hosted one then, the palette over it.)
+        guard hosting, below != nil, !pageWantsKeyboard, !isClosed, let page = window.pageRect, let layout else { return corners.hide() }
+        let radii = layout.radii.map { CGFloat($0) }
+        let fills = (0..<4).map { i in i < layout.fills.count ? HostCorners.color(layout.fills[i]) ?? HostCorners.fallback : HostCorners.fallback }
+        let edge = layout.edge.flatMap { e in HostCorners.color(e.color).map { HostCorners.Edge(width: CGFloat(e.width), color: $0) } }
+        // (Ordered in only while this window's Space is current, so they join it and no other; shown already as they
+        // should be, they stay where they are, in its Space, while another is current.)
+        if !options.harness, !(window.isVisible && window.isOnActiveSpace) {
+            if !corners.shows(page: page, radii: radii, fills: fills, edge: edge) { corners.hide() }
+            return
+        }
+        corners.show(page: page, radii: radii, fills: fills, edge: edge)
     }
 
     // Ordered right below the hosted window, unless a field of Margin's has the keys (the palette is drawn here).
@@ -403,6 +441,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     }
 
     func windowDidResize(_ notification: Notification) { updatePage(); placeButtons() }
+    // (Its Space current again, or another: the corners shown only over its own Space's hosted window.)
+    func windowDidChangeOcclusionState(_ notification: Notification) { placeCorners() }
     func windowDidMove(_ notification: Notification) { updatePage() }
     func windowDidEnterFullScreen(_ notification: Notification) { fullScreenChanged(true) }
     // About to leave full screen while hosting: the one shown parked first, while it's still in this window's Space.
@@ -514,6 +554,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             // (Window mode: the palette is drawn in this window, so it's in front while it has the keys, below the hosted
             // window again after.)
             if !pageWantsKeyboard { orderBelowHosted() }
+            placeCorners()
             guard pageWantsKeyboard, !options.harness else { return }
             if below != nil { window.orderFront(nil) }
             // A field of Margin's wants the keys (the palette, ⌘T or the menu's New Tab): Margin and this window take

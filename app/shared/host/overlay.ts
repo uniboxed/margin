@@ -29,10 +29,10 @@ import { createGestureMotion } from '../../../extension/ui/gesture-motion.ts';
 import { loadTheme, encodeStoredTheme } from '../../../extension/ui/theme-loader.ts';
 import { readThemeFile } from '../../../extension/ui/theme-import.ts';
 import { createPreviewBar } from '../../../extension/ui/theme-preview.ts';
-import { chromeRects, createAppHost, hitRects } from '../../../extension/ui/host-app.ts';
+import { chromeRects, cornerFill, createAppHost, hitRects } from '../../../extension/ui/host-app.ts';
 import { createAppNotices, createGestureFeedback } from '../../../extension/ui/app-feedback.ts';
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../../extension/shared/switching.ts';
-import { cycleTab } from '../../../extension/shared/view.ts';
+import { cycleSpace, cycleTab } from '../../../extension/shared/view.ts';
 import { answerFramed, createCoverWatch } from '../../../extension/ui/switch-cover.ts';
 import { pickBridge } from '../../../extension/ui/overlay-bridge.ts';
 
@@ -99,8 +99,18 @@ function flushNav() {
   const state = (host?.getState() as any);
   const windowId = host?.windowId;
   const ask = (extra: Record<string, any>) => { void Promise.resolve(host?.send('navigate', { action, ...extra })).catch(() => {}); };
-  if (!runtime || !Number.isInteger(windowId)) return ask({});
+  if (!runtime || !Number.isInteger(windowId)) return host?.appWindow ? undefined : ask({});
   let target = pickNavTab(state, (windowId as number), localNav, dir, cycleTab);
+  // Margin's own window (it owns the items: app/platforms/macos/shell/HostedSession.swift): nothing in front yet, the first
+  // (or last) of the space's rows; the item picked shown as a sidebar pick is (`tab.activate`: an app or a web item).
+  if (host?.appWindow) {
+    if (target === undefined && state) target = cycleTab(state, (windowId as number), null, dir);
+    for (let i = 1; i < Math.abs(steps) && target != null; i++) target = cycleTab(state, (windowId as number), target, dir);
+    if (target == null) return;
+    localNav = { tabId: target, at: Date.now() };
+    runtime.dispatch('tab.activate', target, 'behavior');
+    return;
+  }
   // Nothing in front known yet: the copy works it out (and highlights it, as before).
   if (target === undefined) return ask({});
   for (let i = 1; i < Math.abs(steps) && target != null; i++) target = cycleTab(state, (windowId as number), target, dir);
@@ -215,10 +225,12 @@ function measureNow() {
   if (!g || !host) return;
   // (The mode too: Margin's own window learns it went full screen after its new size was measured, and the app
   // takes a layout as the window's only with the window's mode in it: MarginWindowController.)
-  const key = JSON.stringify([g.insets, g.radius, g.container, host.mode, !!host.pageOutside]);
+  // (Margin's own window: the colour around the page's rounded corners too, drawn over a hosted app's window.)
+  const corner = host.appWindow ? cornerFill(runtime?.view.pageEl) : null;
+  const key = JSON.stringify([g.insets, g.radius, g.radii, g.container, host.mode, !!host.pageOutside, corner]);
   if (key === lastLayout) return;
   lastLayout = key;
-  host.reportLayout({ ...g, windowId: host.windowId, mode: host.mode });
+  host.reportLayout({ ...g, windowId: host.windowId, mode: host.mode, ...(corner ? { fills: corner.fills, edge: corner.edge } : {}) });
 }
 // Which pointer positions the app hands in (runtime.pointer: only peek uses
 // them): none while the sidebar is docked (nothing to bring out), those in
@@ -575,6 +587,12 @@ function onMessage(msg: any) {
         else openPaletteTimed({ newTab: !!host?.appWindow || !host?.launcher }, 'the app\'s key');
       } else if (msg.name === 'toggle-sidebar') runtime?.sidebar.toggle();
       else if (msg.name === 'next-tab' || msg.name === 'prev-tab') navTab(msg.name);
+      // Margin's own window: the next or previous space (the copy picks it over a browser: background/navigation.ts).
+      else if ((msg.name === 'next-space' || msg.name === 'prev-space') && host?.appWindow) {
+        const state = (host.getState() as any);
+        const id = state && Number.isInteger(host.windowId) ? cycleSpace(state, (host.windowId as number), msg.name === 'next-space' ? 1 : -1) : null;
+        if (id) runtime?.dispatch('space.switch', id, 'behavior');
+      }
       // Margin's own window, its first run (app/platforms/macos/shell/HostedSession.swift): the space it made, in the
       // space editor for the person to name (the UI's own editor, as a new space opens in it).
       else if (msg.name === 'edit-space' && host?.appWindow && typeof msg.spaceId === 'string') runtime?.dispatch('space.edit', msg.spaceId, 'behavior');

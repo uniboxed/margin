@@ -129,6 +129,18 @@ enum ShortcutSet {
     }
 }
 
+extension ShortcutSet {
+    /// Margin hosting apps in its own window (MarginHosted: no overlay over any browser window): its keys are the app's
+    /// while Margin itself is the active app (one of its windows open), or while an app it hosts is (Safari's hosted
+    /// window's included) with a Margin window on the current Space; let go otherwise, so other apps keep their keys.
+    /// Carbon's hot keys reach Margin only: the hosted app never gets the same press too.
+    static func hostedActive(frontPid: pid_t?, ownPid: pid_t, hostedPids: Set<pid_t>, marginWindowOpen: Bool, marginOnCurrentSpace: Bool) -> Bool {
+        guard let frontPid, marginWindowOpen else { return false }
+        if frontPid == ownPid { return true }
+        return hostedPids.contains(frontPid) && marginOnCurrentSpace
+    }
+}
+
 // Registering and letting go of a hot key (Carbon's, or a test's stand-in).
 protocol HotKeyRegistrar: AnyObject {
     // False if it can't be had (another app has it).

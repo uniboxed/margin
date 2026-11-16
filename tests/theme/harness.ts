@@ -6,6 +6,7 @@ import { buildTemplate, View } from '../../extension/ui/render.ts';
 import { loadTheme, loadBuiltinTheme, sanitizeTheme } from '../../extension/ui/theme-loader.ts';
 import { createRuntime } from '../../extension/ui/runtime.ts';
 import { createMockHost } from '../../extension/ui/host.ts';
+import { cornerFill } from '../../extension/ui/host-app.ts';
 import { createDispatcher, contextFromState } from '../../extension/ui/actions.ts';
 import { MockState } from './view-model.ts';
 import { auditDom } from './audit.ts';
@@ -468,6 +469,9 @@ const withRuntime = Object.assign(T, {
     return result;
   },
   rtLayouts() { return rt.host.layouts.map((l) => ({ ...l.insets, radius: l.radius, width: l.container.width, height: l.container.height, windowId: l.windowId, mode: l.mode })); },
+  // Margin.app's own window: what's drawn around <m-page>'s rounded corners (ui/host-app.ts cornerFill), and each corner's inner radius.
+  rtCornerFill() { return cornerFill(rt.target.querySelector('m-page')); },
+  rtRadii() { return rt.host.layouts.at(-1)?.radii ?? null; },
   rtRefused() { return rt.runtime!.refused.map((r) => [r.name, r.reason]); },
   rtPerformed() { return rt.host.performed.map((p) => p.name); },
   rtUi() { const { palette, sidebar, editing, menu, editor, switchingTo } = rt.runtime!.ui; return { palette, sidebar, editing, menu, editor, switchingTo }; },

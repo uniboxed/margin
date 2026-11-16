@@ -393,6 +393,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var hostQuitting = false
     // The library's items shown by the host in Margin's window (HostedSession.swift, ShellHostedGlue.swift).
     var hosted: HostedSession?
+    var hostedKeysRun: [String] = [] // Margin's keys run while hosting, newest last (the tests read it)
 
     // ---- the profile handoff in the shell (ShellHandoff.swift) ----
     var freezer: Freezer? // the freeze (RealFreezer, from what the launch check passed), or a harness's
@@ -679,6 +680,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             switch msg["type"] as? String {
             case "keyHeard": return keyHeard(entry, windowId, msg)
             case "palette" where windowId != nil: return palettePush(entry, windowId!, json, newTab: msg["newTab"] as? Bool == true)
+            // Hosted: a Safari copy's tabs loading in the window Margin hosts for its profile, drawn as Margin's window's
+            // loading bar (HostedSession.copyLoading); no overlay is over any browser window then.
+            case "loading" where options.hosted && connection.hello.browser == "safari":
+                let ids = (msg["tabIds"] as? [Any] ?? []).compactMap { int($0) }
+                hosted?.copyLoading(profile: connection.hello.profile, windowId: windowId, tabIds: ids)
             default: break
             }
             for overlay in overlays(of: entry) where windowId == nil || overlay.key.windowId == windowId { overlay.push(raw: json) }
@@ -2054,6 +2060,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // `isRepeat`: a held key's repeat (AppShortcuts), not a press.
     func run(_ command: AppCommand, isRepeat: Bool = false) {
+        if options.hosted { return runHosted(command, isRepeat: isRepeat) } // (Margin's own windows: ShellHostedGlue.swift)
         switcher.personActed()
         if switcher.keysMidSwitch { return runMidSwitch(command, isRepeat: isRepeat) }
         guard let overlay = frontOverlay(), let entry = links[overlay.key.link] else { return }

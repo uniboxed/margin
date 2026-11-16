@@ -39,6 +39,12 @@ final class FakeHostedWindow: HostedWindow {
     func setLoading(_ label: String?) { guard label != loading else { return }; loading = label; loadings.append(label) }
     var remeasures = 0
     func remeasure() { remeasures += 1 }
+    var loadingTabs: [Int] = []
+    var loadingTabsSaid: [[Int]] = [] // each setLoadingTabs, in order
+    func setLoadingTabs(_ numbers: [Int]) { guard numbers != loadingTabs else { return }; loadingTabs = numbers; loadingTabsSaid.append(numbers) }
+    var covering: Int?
+    var covers: [Int?] = []
+    func cover(_ number: Int?) { guard number != covering else { return }; covering = number; covers.append(number) }
     // (As the real one: the page area from its own layout, while hosting in full screen.)
     var hostedPlacement: HostPlacement? {
         guard hosting, isFullScreen, let page = MarginWindowGeometry.pageRect(layout: layout, content: FakeHostWorld.display) else { return nil }
@@ -215,6 +221,8 @@ func hostedTests() {
     check("hosted: the loading animation named the app while it opened, then went", window.loadings == ["TextEdit", nil], "\(window.loadings)")
     check("hosted: Margin's window kept below the app's window", window.below == editWindow, "\(window.belows)")
     check("hosted: it's the window's item shown, open", session.shown[1] == editItem && session.open[editItem]?.host == HostTarget.app("com.apple.TextEdit").id && changes > 0)
+    let editNumber = session.number(ofItem: editItem)
+    check("hosted: the theme's loading bar for the app's item while it opened (the page's `loading`), none once it's shown", window.loadingTabsSaid == [[editNumber], []], "\(window.loadingTabsSaid)")
 
     // ---- the same app picked again: its item, no second launch ----
     run { session.openApp("com.apple.TextEdit", windowId: 1) }
@@ -238,6 +246,15 @@ func hostedTests() {
     check("hosted: hostShow names the hosted window, the item and its address", int(show["windowId"]) == 90 && show["itemId"] as? String == aItem && show["url"] as? String == "https://a.example/", "\(show)")
     check("hosted: the app shown before is parked (still full screen), Safari's window alone in Margin's Space", engine.hosts[HostTarget.app("com.apple.TextEdit").id]?.phase == .parked
           && w.wins[editWindow]?.fullScreen == true && w.inMargin == [safariWindow] && window.loadings.suffix(2) == ["Safari", nil], "\(w.inMargin) \(window.loadings)")
+    let aNumber = session.number(ofItem: aItem)
+    check("hosted: Safari's first open: the web item's loading bar meanwhile, none after", window.loadingTabsSaid.suffix(2) == [[aNumber], []] && session.safariTabs[aItem] == 500, "\(window.loadingTabsSaid) \(session.safariTabs)")
+    session.copyLoading(profile: "s-default", windowId: 90, tabIds: [500])
+    check("hosted: the copy says the hosted window's tab is loading: that item's bar", window.loadingTabs == [aNumber], "\(window.loadingTabs)")
+    session.copyLoading(profile: "s-default", windowId: 3, tabIds: [500, 501])
+    session.copyLoading(profile: "s-work", windowId: 90, tabIds: [])
+    check("hosted: another window's (or profile's) loading changes nothing", window.loadingTabs == [aNumber], "\(window.loadingTabs)")
+    session.copyLoading(profile: "s-default", windowId: 90, tabIds: [])
+    check("hosted: loaded: no bar", window.loadingTabs == [], "\(window.loadingTabs)")
 
     // ---- a second web item of the same profile: a tab switch only ----
     let calls = w.calls.count

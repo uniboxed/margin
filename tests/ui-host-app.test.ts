@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyChanges, chromeRects, createAppHost, hitRects, modeOf } from '../extension/ui/host-app.ts';
+import { applyChanges, chromeRects, cornerFill, createAppHost, hitRects, modeOf, splitShadows } from '../extension/ui/host-app.ts';
 import { toStorage } from '../extension/shared/stored.ts';
 import { buildViewModel } from '../extension/ui/view-model.ts';
 import { APP_FILES, buildApp } from '../scripts/build.ts';
@@ -142,6 +142,56 @@ test("the app host: a layout of another mode, or measured with the sidebar alone
   host.reportLayout({ ...g, mode: 'fullscreen' });
   const sent = b.posts.filter((p) => p.op === 'layout').map((p) => [p.geometry.mode, p.geometry.pageOutside]);
   assert.deepEqual(sent, [['windowed', false], ['fullscreen', false], ['fullscreen', true]]);
+});
+
+test("the app host: Margin's own window's layout carries the colour around the page's corners, and a new colour or radii reach the app", () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });
+  const g = { insets: { left: 260, top: 8, right: 8, bottom: 8 }, radius: 6, radii: [6, 6, 6, 6], outer: { left: 260, top: 8, right: 8, bottom: 8, radius: 6 }, container: { width: 1512, height: 982 }, mode: 'fullscreen' };
+  const grey = Array(4).fill('rgb(156, 157, 161)'), ink = Array(4).fill('rgb(17, 17, 17)');
+  host.reportLayout({ ...g, fills: grey });
+  host.reportLayout({ ...g, fills: [...grey] });
+  host.reportLayout({ ...g, fills: ink }); // (another theme, its page area where it was)
+  host.reportLayout({ ...g, fills: ink, edge: { width: 3, color: 'rgb(17, 17, 17)' } });
+  host.reportLayout({ ...g, radii: [15, 15, 15, 15], fills: ink, edge: { width: 3, color: 'rgb(17, 17, 17)' } });
+  assert.deepEqual(b.posts.filter((p) => p.op === 'layout').map((p) => [p.geometry.fills[0], p.geometry.edge?.width ?? 0, p.geometry.radii[0]]), [['rgb(156, 157, 161)', 0, 6], ['rgb(17, 17, 17)', 0, 6], ['rgb(17, 17, 17)', 3, 6], ['rgb(17, 17, 17)', 3, 15]]);
+});
+
+test("the app host in Margin's own window: the app's `loading` for its items draws each one's row and the bar of the one in front", () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });
+  const front = Object.values((host.getState() as any).tabs as Record<string, any>).find((t) => t.active)!;
+  host.receive({ type: 'push', msg: { type: 'loading', tabIds: [front.id] } });
+  assert.equal((host.getState() as any).tabs[front.id].loading, true);
+  const vm = buildViewModel({ state: host.getState() as any, ui: { windowId: W, mode: host.mode }, platform: host.platform });
+  assert.equal(vm.tab?.loading, true, 'the tab in front: the theme\'s bar');
+  host.receive({ type: 'push', msg: { type: 'loading', tabIds: [] } });
+  assert.notEqual((host.getState() as any).tabs[front.id].loading, true);
+});
+
+test('cornerFill: what the theme draws around the page\'s rounded corners, from computed styles: each corner\'s colour (its sharp shadows as painted, else a background) and the border', () => {
+  const el = (style: Record<string, string>, parent: any = null) => ({ style, parentElement: parent });
+  const base = { borderTopWidth: '0px', borderLeftWidth: '0px', borderRightWidth: '0px', borderBottomWidth: '0px', borderTopStyle: 'none', borderTopColor: 'rgb(0, 0, 0)', paddingTop: '0px', paddingLeft: '0px', paddingRight: '0px', paddingBottom: '0px', boxShadow: 'none', backgroundColor: 'rgba(0, 0, 0, 0)', borderTopLeftRadius: '0px', borderTopRightRadius: '0px', borderBottomRightRadius: '0px', borderBottomLeftRadius: '0px' };
+  const getStyle = (e: any) => ({ ...base, ...e.style });
+  const getBox = () => ({ width: 1000, height: 800 });
+  const radius = (r: string) => ({ borderTopLeftRadius: r, borderTopRightRadius: r, borderBottomRightRadius: r, borderBottomLeftRadius: r });
+  // Neubrutalism: a 3 px ink border (its inner edge is the rounded page area), an ink shadow 6 px down and right over
+  // the space's colour as a spread: ink at the bottom right only.
+  const nb = { borderTopWidth: '3px', borderLeftWidth: '3px', borderRightWidth: '3px', borderBottomWidth: '3px', borderTopStyle: 'solid', borderTopColor: 'rgb(17, 17, 17)', ...radius('18px'), boxShadow: 'rgb(17, 17, 17) 6px 6px 0px 0px, rgb(255, 222, 0) 0px 0px 0px 1512px' };
+  assert.deepEqual(cornerFill(el(nb) as any, { getStyle, getBox }), { fills: ['rgb(255, 222, 0)', 'rgb(255, 222, 0)', 'rgb(17, 17, 17)', 'rgb(255, 222, 0)'], edge: { width: 3, color: 'rgb(17, 17, 17)' } });
+  // Arcadia: its frame, a spread shadow; its soft card shadow (blurred) left out; no border.
+  assert.deepEqual(cornerFill(el({ ...radius('6.25px'), boxShadow: 'rgb(156, 157, 161) 0px 0px 0px 1512px' }) as any, { getStyle, getBox }), { fills: Array(4).fill('rgb(156, 157, 161)'), edge: null });
+  // Offset ink edges cover a rounded corner's point where they're painted (up: the top ones; right: the right ones), a
+  // blurred and an inset one never, the ground as a spread elsewhere.
+  assert.deepEqual(cornerFill(el({ ...radius('12px'), boxShadow: 'rgb(0, 0, 0) 0px -12px 0px 0px, rgb(0, 0, 0) 12px 0px 0px 0px, rgba(0, 0, 0, 0.2) 0px 0px 4px 2px, rgb(1, 2, 3) 0px 0px 0px 20px inset, rgb(40, 50, 60) 0px 0px 0px 1512px' }) as any, { getStyle, getBox })?.fills,
+    ['rgb(0, 0, 0)', 'rgb(0, 0, 0)', 'rgb(0, 0, 0)', 'rgb(40, 50, 60)']);
+  // Pixel: a square card: its corner points are inside it (no shadow painted there): what's behind it.
+  assert.deepEqual(cornerFill(el({ boxShadow: 'rgb(0, 0, 0) 0px -3px 0px 0px, rgb(40, 50, 60) 0px 0px 0px 1512px' }, el({ backgroundColor: 'rgb(1, 1, 1)' })) as any, { getStyle, getBox })?.fills, Array(4).fill('rgb(1, 1, 1)'));
+  // None: the nearest background drawn above it; nothing at all: null.
+  assert.deepEqual(cornerFill(el({}, el({ backgroundColor: 'rgba(0, 0, 0, 0)' }, el({ backgroundColor: 'rgb(9, 9, 9)' }))) as any, { getStyle, getBox })?.fills, Array(4).fill('rgb(9, 9, 9)'));
+  assert.equal(cornerFill(el({ boxShadow: 'rgba(0, 0, 0, 0) 0px 0px 0px 100px' }) as any, { getStyle, getBox }), null);
+  assert.equal(cornerFill(null), null);
+  assert.deepEqual(splitShadows('rgb(1, 2, 3) 0px 0px 0px 4px, color(srgb 1 0 0 / 0.5) 1px 1px 0px 0px'), ['rgb(1, 2, 3) 0px 0px 0px 4px', 'color(srgb 1 0 0 / 0.5) 1px 1px 0px 0px']);
 });
 
 test('the sidebar\'s width isn\'t dragged while Margin\'s window hosts another app\'s window (a new page area is a slow placing again)', async () => {

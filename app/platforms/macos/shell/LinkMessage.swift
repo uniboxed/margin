@@ -29,6 +29,12 @@ enum LinkProtocol {
 // Where the theme put the page in one browser window (ui/host.ts Geometry):
 // `<m-page>`'s content box as insets from the window's edges, in points (CSS
 // pixels at zoom 1 in the overlay, which is exactly over the window).
+// A page card's border, as its page computes it (host-app.ts cornerFill): its width and its CSS colour.
+struct PageEdge: Equatable {
+    var width: Double
+    var color: String
+}
+
 struct PageLayout: Equatable {
     var left: Double, top: Double, right: Double, bottom: Double
     var radius: Double
@@ -37,6 +43,11 @@ struct PageLayout: Equatable {
     var mode: String
     // Measured with no page area of its own (Margin's own window hosting beside it: the sidebar alone, `pageOutside`).
     var outside = false
+    // What the theme draws around the page area's rounded corners (Margin's own window only: host-app.ts cornerFill), for
+    // the corners drawn over a hosted window (HostCorners): each corner's colour outside the card (CSS colours, top left
+    // clockwise; empty: not said) and its border, if it has one.
+    var fills: [String] = []
+    var edge: PageEdge?
 
     // From the page's report ({ insets, radius, radii, container, mode, pageOutside }); nil if it isn't one.
     init?(geometry g: JSONObject) {
@@ -50,6 +61,9 @@ struct PageLayout: Equatable {
                   radii: radii.count == 4 ? radii : [radius, radius, radius, radius], width: w, height: h,
                   mode: g["mode"] as? String ?? "fullscreen")
         outside = g["pageOutside"] as? Bool == true
+        let said = (g["fills"] as? [Any])?.prefix(4).map { ($0 as? String).flatMap { $0.count <= 80 ? $0 : nil } ?? "" } ?? []
+        fills = said.count == 4 ? said : []
+        if let e = g["edge"] as? JSONObject, let w = num(e["width"]), w.isFinite, w > 0, w < 200, let c = e["color"] as? String, c.count <= 80 { edge = PageEdge(width: w, color: c) }
     }
 
     init(left: Double, top: Double, right: Double, bottom: Double, radius: Double, radii: [Double], width: Double, height: Double, mode: String) {

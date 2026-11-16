@@ -132,6 +132,81 @@ export function hitRects(root: Element, slot: { left: number, top: number, right
   return { rects: kept.map((r) => [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 2) / 2)), all: false };
 }
 
+// A computed colour that draws something (not transparent, nor alpha 0).
+const drawn = (c: unknown): c is string => typeof c === 'string' && c.trim() !== '' && c.trim() !== 'transparent'
+  && !/^rgba\([^)]*,\s*0(\.0+)?\s*\)$/.test(c.trim()) && !/\/\s*0(\.0+)?\s*\)$/.test(c.trim());
+
+/** One computed box-shadow list split at its top-level commas (a colour's own commas kept). */
+export function splitShadows(value: string): string[] {
+  const out: string[] = [];
+  let depth = 0, from = 0;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    else if (ch === ',' && depth === 0) { out.push(value.slice(from, i).trim()); from = i + 1; }
+  }
+  const last = value.slice(from).trim();
+  if (last) out.push(last);
+  return out;
+}
+
+/**
+ * What the theme draws around `<m-page>`'s rounded corners, for Margin's own window, where a hosted app's window sits
+ * above the page area with square corners and Margin draws the card's corners over it
+ * (app/platforms/macos/shell/MarginWindow.swift HostCorners): `fills`, each corner's colour outside the card (top left,
+ * clockwise), and `edge`, the card's border (width and colour) when it has one: the band between the page area's rounded
+ * corner (the border's inner edge) and the card's outer edge, which share a centre. A corner's fill is the colour at the
+ * page area's corner point (outside the card's own rounded edge; inside it, its border or what's behind it): of the
+ * card's sharp box shadows (no blur, not inset) the first that covers it, as they're painted (a frame drawn as a spread: Arcadia's, Pixel's; Neubrutalism's offset ink shadow at its bottom right), else
+ * the nearest background an ancestor draws. A blurred shadow is left out (Arcadia's soft card shadow: a few levels
+ * darker there on screen). Null: nothing found (the app's window colour is used). Computed styles only: no pixel read.
+ * */
+export function cornerFill(el: Element | null | undefined, { getStyle = (e: Element) => (e.ownerDocument.defaultView as any).getComputedStyle(e), getBox = (e: Element) => e.getBoundingClientRect() }: { getStyle?: (e: Element) => any, getBox?: (e: Element) => { width: number, height: number } } = {}): { fills: (string | null)[], edge: { width: number, color: string } | null } | null {
+  if (!el) return null;
+  const cs = getStyle(el);
+  const px = (v: unknown) => parseFloat(String(v ?? '')) || 0;
+  const width = px(cs.borderTopWidth);
+  const edge = width > 0 && cs.borderTopStyle !== 'none' && cs.borderTopStyle !== 'hidden' && drawn(cs.borderTopColor) ? { width: Math.round(width * 100) / 100, color: String(cs.borderTopColor).trim() } : null;
+  const { width: w, height: h } = getBox(el);
+  const radii = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map((v) => px(String(v ?? '0').split(' ')[0]));
+  const inL = px(cs.borderLeftWidth) + px(cs.paddingLeft), inT = px(cs.borderTopWidth) + px(cs.paddingTop);
+  const inR = px(cs.borderRightWidth) + px(cs.paddingRight), inB = px(cs.borderBottomWidth) + px(cs.paddingBottom);
+  // Each corner's point of the page area, half a pixel in (the border box's own coordinates).
+  const points = [[inL + 0.5, inT + 0.5], [w - inR - 0.5, inT + 0.5], [w - inR - 0.5, h - inB - 0.5], [inL + 0.5, h - inB - 0.5]];
+  // The sharp shadows, first painted on top.
+  const shadows: { x: number, y: number, spread: number, color: string }[] = [];
+  for (const shadow of splitShadows(String(cs.boxShadow ?? ''))) {
+    if (shadow === 'none' || /\binset\b/.test(shadow)) continue;
+    const color = /(rgba?\([^)]*\)|color\([^)]*\)|#[0-9a-f]{3,8}\b)/i.exec(shadow)?.[1];
+    const lengths = shadow.replace(/(rgba?\([^)]*\)|color\([^)]*\)|#[0-9a-f]{3,8}\b)/ig, ' ').trim().split(/\s+/).filter(Boolean).map((v) => parseFloat(v));
+    if (!color || !drawn(color) || lengths.length < 2 || lengths.some((v) => !Number.isFinite(v))) continue;
+    const [x, y, blur = 0, spread = 0] = lengths;
+    if (blur === 0) shadows.push({ x, y, spread, color });
+  }
+  // Whether a shadow (the border box moved and grown by its spread, its corners rounded the same, grown too) covers p.
+  const covers = (s: { x: number, y: number, spread: number }, [px0, py0]: number[]) => {
+    const left = s.x - s.spread, top = s.y - s.spread, right = w + s.x + s.spread, bottom = h + s.y + s.spread;
+    if (px0 < left || px0 > right || py0 < top || py0 > bottom) return false;
+    const corner = [[left, top, 1, 1], [right, top, -1, 1], [right, bottom, -1, -1], [left, bottom, 1, -1]];
+    for (const [i, [cx, cy, dx, dy]] of corner.entries()) {
+      const r = radii[i] > 0 ? radii[i] + s.spread : 0;
+      if (r <= 0) continue;
+      const ox = cx + dx * r, oy = cy + dy * r; // the curve's centre
+      if ((px0 - ox) * dx < 0 && (py0 - oy) * dy < 0 && Math.hypot(px0 - ox, py0 - oy) > r) return false;
+    }
+    return true;
+  };
+  let background: string | null = null;
+  for (let up = el.parentElement; !background && up; up = up.parentElement) {
+    const bg = getStyle(up).backgroundColor;
+    if (drawn(bg)) background = String(bg).trim();
+  }
+  // (A point inside the card itself: no shadow is painted under a box; its border there, else what's behind it.)
+  const fills = points.map((p) => covers({ x: 0, y: 0, spread: 0 }, p) ? edge?.color ?? background : shadows.find((s) => covers(s, p))?.color.trim() ?? background);
+  return fills.some(Boolean) || edge ? { fills, edge } : null;
+}
+
 /**
  * Where the theme draws the window's buttons (`<m-window-controls>`, the first one with a box) and
  * where a drag moves the window (`<m-drag-region>`), in the container's pixels: for Margin's own
@@ -321,7 +396,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
       // was measured with the sidebar alone count too (seen 2026-11-15: the window's full-screen layout, at the size
       // the windowed one was already measured at, never reached the app).
       const next = { ...geometry, mode: geometry.mode ?? mode, pageOutside };
-      const key = (g: any) => JSON.stringify([g.insets, g.radius, g.container, g.mode ?? null, !!g.pageOutside]);
+      const key = (g: any) => JSON.stringify([g.insets, g.radius, g.radii ?? null, g.container, g.mode ?? null, !!g.pageOutside, g.fills ?? null, g.edge ?? null]);
       if (layout && key(layout) === key(next)) return;
       layout = next;
       void post('layout', { geometry: next }).catch(() => {});

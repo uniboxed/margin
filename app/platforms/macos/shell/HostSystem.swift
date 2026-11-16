@@ -25,6 +25,12 @@ protocol HostSystem: AnyObject {
     // enter the background-only state"); with no window open it quits at once.
     func isUIKitApp(pid: pid_t) -> Bool
     var onAppQuit: ((pid_t) -> Void)? { get set }
+    // Whether it's hidden (nil: not running). An app started with no Dock icon is started hidden (LaunchServices' hide
+    // option): a hidden app's windows aren't in Accessibility's list, and some apps make or expose their window only
+    // once they're unhidden (Dictionary, 2026-11-15: its window read by the window server, never by Accessibility).
+    func isHidden(pid: pid_t) -> Bool?
+    // Unhidden (NSRunningApplication.unhide: never activated). True: asked.
+    func unhide(pid: pid_t) -> Bool
 
     // ---- windows, through Accessibility: read, full screen set, a window-mode host's frame set ----
     // (Accessibility lists only the current Space's windows: the engine moves a window there before it sets its frame.)
@@ -44,6 +50,10 @@ protocol HostSystem: AnyObject {
     func activate(pid: pid_t, window: Int) async -> Bool
     // Closed as its close button would (AXPress on its AXCloseButton, an action, never a click). True: asked.
     func close(pid: pid_t, window: Int) async -> Bool
+    // AXEnhancedUserInterface on the app's element (what assistive apps set; some apps expose their windows to
+    // Accessibility only with it): read (nil: unread), and set. True: Accessibility took it.
+    func enhancedUserInterface(pid: pid_t) async -> Bool?
+    func setEnhancedUserInterface(pid: pid_t, _ on: Bool) async -> Bool
 
     // ---- the window server ----
     // Every window of `pid` on every Space (CGWindowListCopyWindowInfo .optionAll): Accessibility lists only the
@@ -259,6 +269,29 @@ nonisolated final class HostAX: @unchecked Sendable {
         }
     }
 
+    // The app's AXEnhancedUserInterface (an attribute of its application element, not a window's).
+    func enhancedUserInterface(pid: pid_t) async -> Bool? {
+        guard !refuses, AXIsProcessTrusted() else { return nil }
+        return await withCheckedContinuation { c in
+            queue.async {
+                let app = AXUIElementCreateApplication(pid)
+                AXUIElementSetMessagingTimeout(app, 1)
+                c.resume(returning: self.attr(app, "AXEnhancedUserInterface") as? Bool)
+            }
+        }
+    }
+
+    func setEnhancedUserInterface(pid: pid_t, _ on: Bool) async -> Bool {
+        guard !refuses, AXIsProcessTrusted() else { return false }
+        return await withCheckedContinuation { c in
+            queue.async {
+                let app = AXUIElementCreateApplication(pid)
+                AXUIElementSetMessagingTimeout(app, 1)
+                c.resume(returning: AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, on ? kCFBooleanTrue : kCFBooleanFalse) == .success)
+            }
+        }
+    }
+
     func forget(pid: pid_t) { queue.async { self.elements = self.elements.filter { $0.value.pid != pid } } }
 }
 
@@ -338,6 +371,19 @@ final class RealHostSystem: HostSystem {
     }
 
     func close(pid: pid_t, window: Int) async -> Bool { await ax.close(pid: pid, window: window) }
+
+    func isHidden(pid: pid_t) -> Bool? {
+        guard let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return nil }
+        return a.isHidden
+    }
+
+    func unhide(pid: pid_t) -> Bool {
+        guard !PrivateCalls.inTests, let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return false }
+        return a.unhide()
+    }
+
+    func enhancedUserInterface(pid: pid_t) async -> Bool? { await ax.enhancedUserInterface(pid: pid) }
+    func setEnhancedUserInterface(pid: pid_t, _ on: Bool) async -> Bool { await ax.setEnhancedUserInterface(pid: pid, on) }
 
     func windows(pid: pid_t) async -> [HostWindow]? { await ax.windows(pid: pid) }
     func window(pid: pid_t, number: Int) async -> HostWindow? { await ax.window(pid: pid, number: number) }

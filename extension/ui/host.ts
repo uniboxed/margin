@@ -31,6 +31,9 @@ export type Geometry = {
   container: { width: number, height: number },
   windowId?: number | null,
   mode?: string,
+  /** Margin's own window: what the theme draws around the page's rounded corners (host-app.ts cornerFill). */
+  fills?: (string | null)[] | null,
+  edge?: { width: number, color: string } | null,
 };
 
 /**

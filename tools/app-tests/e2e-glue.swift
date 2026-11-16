@@ -108,6 +108,10 @@ final class GlueHostWorld: HostSystem {
   }
   func activate(pid: pid_t, window: Int) async -> Bool { calls.append("activate \(apps[pid]?.bundle ?? "?")"); return apps[pid] != nil }
   func close(pid: pid_t, window: Int) async -> Bool { false }
+  func isHidden(pid: pid_t) -> Bool? { apps[pid] == nil ? nil : false }
+  func unhide(pid: pid_t) -> Bool { apps[pid] != nil }
+  func enhancedUserInterface(pid: pid_t) async -> Bool? { false }
+  func setEnhancedUserInterface(pid: pid_t, _ on: Bool) async -> Bool { false }
   func isUIKitApp(pid: pid_t) -> Bool { false }
   func safariSidebar(pid: pid_t) async -> HostSidebar { .closed }
   func pressSafariSidebar(pid: pid_t) async -> Bool { true }
@@ -182,7 +186,9 @@ func glueScenario() async {
   options.hostedOptions = hostedOptions
   let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.glue.\(ProcessInfo.processInfo.processIdentifier)"))
   let windows = ScriptedWindows()
-  let shell = Shell(link: link, windows: windows, apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
+  let apps = ScriptedApps()
+  let keys = FakeKeys()
+  let shell = Shell(link: link, windows: windows, apps: apps, hotKeys: keys, options: options)
   windows.shell = shell
   shell.start()
   var stopped = false
@@ -206,7 +212,8 @@ func glueScenario() async {
   defer { made.closeAll() }
   world.marginWindow = c.window.windowNumber
   var loadingAtLaunch: [String: String?] = [:]
-  world.onLaunch = { bundle in loadingAtLaunch[bundle] = c.loadingView.isHidden ? nil : c.loadingView.text }
+  var loadingTabsAtLaunch: [String: [Int]] = [:]
+  world.onLaunch = { bundle in loadingAtLaunch[bundle] = c.loadingLabel; loadingTabsAtLaunch[bundle] = c.loadingTabs }
   // (Safari's window its copy makes, in the stand-in window manager too.)
   let ask = engine.requestSafariWindow
   engine.requestSafariWindow = { profile in
@@ -242,6 +249,8 @@ func glueScenario() async {
   // ---- an app picked in the palette: an item, the app opened above Margin's page area ----
   let display = c.contentFrame
   world.display = display // (full screen in a test is the window's state only: the display is its frame)
+  // (Whether the theme's loading bar is ever drawn from here: Arcadia's root gets `loading` while the tab in front loads.)
+  _ = await js(c.webView, "window.__sawLoading = false; new MutationObserver(() => { if (document.querySelector('.arcadia.loading')) window.__sawLoading = true; }).observe(document, { subtree: true, attributes: true, attributeFilter: ['class'] }); return true")
   _ = await js(c.webView, "window.webkit.messageHandlers.margin.postMessage({ op: 'perform', name: 'app.open', arg: { bundleId: 'com.apple.TextEdit' } }); return true")
   let textEdit = HostTarget.app("com.apple.TextEdit").id
   guard await until(10, { engine.shown == textEdit }) else { return check("the app picked: opened by the engine", false, "\(world.calls) \(session.done.suffix(4))") }
@@ -249,8 +258,10 @@ func glueScenario() async {
   let item = library.items(space: first).first { $0.value["url"] as? String == "app://com.apple.TextEdit" }?.id ?? ""
   check("the pick: an item of the window's space", !item.isEmpty && library.target(ofItem: item) != nil)
   check("the app started with no Dock icon (the stand-in's launch)", world.calls.contains("launch com.apple.TextEdit"))
-  check("the loading animation over the page area as it launched (the app's name), gone once it's shown", loadingAtLaunch["com.apple.TextEdit"] == .some("Opening com.apple.TextEdit…")
-        && c.loadingView.isHidden && c.loadingLabel == nil, "\(loadingAtLaunch)")
+  let barSeen = await waitJS(c.webView, "return window.__sawLoading === true && !document.querySelector('.arcadia.loading')")
+  check("the theme's loading bar for the app's item as it launched (the page told its number is loading), gone once it's shown; no spinner of Margin's own",
+        loadingAtLaunch["com.apple.TextEdit"] == .some("com.apple.TextEdit") && loadingTabsAtLaunch["com.apple.TextEdit"] == [session.number(ofItem: item)]
+        && barSeen && c.loadingLabel == nil && c.loadingTabs.isEmpty && c.pushed.contains { $0.contains(#""type":"loading""#) }, "\(loadingAtLaunch) \(loadingTabsAtLaunch) \(barSeen)")
   check("Margin's window its whole width (never a tile)", abs(c.window.frame.width - display.width) <= 1, "\(c.window.frame)")
   let dockedFixed = await waitJS(c.webView, "const r = document.querySelector('.arcadia'); return r?.dataset.sidebar === 'open' && !document.querySelector('.launcher') && r.hasAttribute('m-sidebar-fixed') && getComputedStyle(document.querySelector('[m-resize]')).display === 'none'")
   check("its page draws its own layout, the sidebar docked (pageHosted), no launcher, its width not dragged", dockedFixed)
@@ -263,6 +274,15 @@ func glueScenario() async {
   check("the app's window there, a member of Margin's Space, still full screen; Mission Control Margin's Space only", world.bounds(window: editWindow) == expected && world.inMargin == [editWindow]
         && world.wins[editWindow]?.fullScreen == true && world.listsMarginOnly && world.calls.last == "activate com.apple.TextEdit", "\(String(describing: world.bounds(window: editWindow))) \(world.calls.suffix(3))")
   check("Margin's window kept right below it", c.below == editWindow)
+  // (The page card's rounded corners over the hosted window: Arcadia's 6.25 pt radius, its frame's grey around them.)
+  let radius = CGFloat(c.layout?.radii.first ?? 0), side = radius.rounded(.up)
+  let page = expected ?? .zero
+  let wantCorners = [CGRect(x: page.minX, y: page.minY, width: side, height: side), CGRect(x: page.maxX - side, y: page.minY, width: side, height: side),
+                     CGRect(x: page.maxX - side, y: page.maxY - side, width: side, height: side), CGRect(x: page.minX, y: page.maxY - side, width: side, height: side)]
+  check("the page card's corners drawn over the hosted window: one small panel each, at the page area's corners, the theme's frame colour, above normal windows, never taking the mouse",
+        radius > 0 && c.corners.isShown && c.corners.frames == wantCorners && c.layout?.fills == Array(repeating: "rgb(156, 157, 161)", count: 4) && c.layout?.edge == nil
+        && c.corners.panels.prefix(4).allSatisfy { $0.level == .floating && $0.ignoresMouseEvents && !$0.isOpaque && !$0.canBecomeKey && $0.collectionBehavior.contains(.transient) && !$0.collectionBehavior.contains(.canJoinAllSpaces) },
+        "\(c.corners.frames) want \(wantCorners) fills \(String(describing: c.layout?.fills))")
   check("nothing passes through Margin's window while hosting", c.slot == nil && !c.window.ignoresMouseEvents)
   // (Its title: the app's name as the catalog read it, else its bundle id.)
   let title = library.items().first { $0.id == item }?.value["title"] as? String ?? "?"
@@ -303,7 +323,7 @@ func glueScenario() async {
   guard await until(5, { engine.shown == textEdit }) else { return check("back to the app", false, "\(session.done.suffix(4))") }
   await session.idle()
   check("back to the app: no full-screen exit or entry, no loading animation, Safari's window parked as it is", Date().timeIntervalSince(backAt) < 2 && world.inMargin == [editWindow]
-        && !world.calls.suffix(4).contains { $0.hasPrefix("fullScreen") } && c.loadingView.isHidden && world.wins[safariWin]?.fullScreen == true, "\(world.calls.suffix(6))")
+        && !world.calls.suffix(4).contains { $0.hasPrefix("fullScreen") } && c.loadingLabel == nil && c.loadingTabs.isEmpty && world.wins[safariWin]?.fullScreen == true, "\(world.calls.suffix(6))")
   _ = library.perform("activateTab", ["windowId": c.id, "tabId": web])
   guard await until(5, { engine.shown == HostTarget.safariWindow("s-default").id }) else { return check("back to Safari", false) }
   await session.idle()
@@ -352,12 +372,47 @@ func glueScenario() async {
   check("Calculator: Margin's window's page measures when asked (no frame needed)", measuresBefore >= 0 && measuredAgain && c.layout?.outside == false && abs((c.layout?.width ?? 0) - display.width) <= 1,
         "\(measuresBefore) \(String(describing: c.layout))")
 
+  // ---- Margin's keys while hosting: held while Margin or a hosted app is in front, the next/previous item of the space ----
+  apps.bringToFront(1) // (an app Margin doesn't host)
+  shell.track()
+  check("keys: another app in front: Margin's keys let go", !shell.shortcuts.isActive && keys.held.isEmpty)
+  let calcPid = world.apps.values.first { $0.bundle == GlueHostWorld.calculator }?.pid ?? 0
+  apps.bringToFront(calcPid)
+  shell.track()
+  check("keys: a hosted app in front (Calculator): Margin's keys held, the defaults (⌥⌘↑/↓, ⌘T…) but the sidebar's (docked while hosting), never the quit guard", shell.shortcuts.isActive && keys.held.values.contains(Combo.parse("Alt+Meta+ArrowDown")!)
+        && !shell.shortcuts.guardsQuit && !keys.held.values.contains(Combo.parse("Alt+KeyS")!), "\(keys.held.values)")
+  let calcItem = session.shown[c.id] ?? ""
+  keys.press("Alt+Meta+ArrowUp")
+  let movedOn = await until(5, { (session.shown[c.id] ?? calcItem) != calcItem })
+  await session.idle()
+  let prevItem = session.shown[c.id] ?? ""
+  check("keys: ⌥⌘↑ with a hosted app in front: the previous item of the space shown (as a sidebar pick)", movedOn && !prevItem.isEmpty && shell.hostedKeysRun.last == "prev-tab → \(c.id)"
+        && library.requests.last { $0.type == "activateTab" }?.item == prevItem, "\(shell.hostedKeysRun) \(session.done.suffix(4))")
+  keys.press("Alt+Meta+ArrowDown")
+  let back = await until(5, { session.shown[c.id] == calcItem && engine.shown == calculator })
+  await session.idle()
+  check("keys: ⌥⌘↓ then: the next one, Calculator again", back && shell.hostedKeysRun.last == "next-tab → \(c.id)", "\(String(describing: session.shown[c.id])) \(shell.hostedKeysRun)")
+  apps.bringToFront(ProcessInfo.processInfo.processIdentifier)
+  shell.track()
+  check("keys: Margin itself in front: held, its sidebar key too", shell.shortcuts.isActive && keys.held.values.contains(Combo.parse("Alt+KeyS")!))
+  let pushes = c.pushes
+  keys.press("Meta+KeyT")
+  check("keys: ⌘T: the palette, in Margin's window", c.pushed.suffix(max(1, c.pushes - pushes)).contains(#"{"type":"command","name":"palette"}"#))
+  keys.press("Meta+KeyT") // (and closed again)
+  _ = await waitJS(c.webView, "return !document.querySelector('[m-input=\"palette\"]:focus')")
+  apps.bringToFront(1)
+  shell.track()
+  check("keys: let go again once another app is in front", !shell.shortcuts.isActive)
+  if c.below != calcWindow { c.orderBelowHosted() }
+
   // ---- macOS takes Margin's window out of full screen anyway: straight back in, the app shown back with it ----
   c.fullScreenChanged(false)
   guard await until(5, { engine.shown == calculator && c.hosting && c.below == calcWindow }) else { return check("back into full screen with Calculator", false, "\(session.done.suffix(5))") }
   await session.idle()
   check("out of full screen by macOS: back into it at once, Calculator hosted again at the page area", c.isFullScreen && c.backIntoFullScreen == 1 && world.bounds(window: calcWindow) == centred
         && session.done.contains { $0.contains("back in full screen") }, "\(session.done.suffix(5))")
+
+  check("the corners follow the page area (window mode: Calculator)", c.corners.isShown && c.corners.frames.first?.origin == c.window.pageRect?.origin, "\(c.corners.frames)")
 
   // ---- the overlay path off ----
   shell.track()
@@ -368,6 +423,7 @@ func glueScenario() async {
   stopped = true
   shell.stop { done = true }
   guard await until(10, { done }) else { return check("quit", false) }
+  check("quit: nothing hosted: the corners gone", !c.corners.isShown && c.corners.panels.allSatisfy { !$0.isVisible })
   check("quit: Calculator back at its own frame before it was quit", world.frameAtQuit[GlueHostWorld.calculator] == GlueHostWorld.calculatorFrame, "\(world.frameAtQuit)")
   check("quit: the apps Margin started quit, nothing left in Margin's Space, Mission Control Margin's Space only", world.apps.isEmpty && world.inMargin.isEmpty && world.listsMarginOnly
         && (world.reservation[GlueHostWorld.marginSpace] ?? .zero).isZero, "\(world.apps.values.map(\.bundle)) \(world.fullScreenSpaces)")
