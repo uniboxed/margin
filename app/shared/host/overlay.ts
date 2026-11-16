@@ -650,13 +650,31 @@ function onMessage(msg: any) {
 
 const editable = (el: any) => !!el && (el.localName === 'input' || el.localName === 'textarea' || el.localName === 'select' || el.isContentEditable);
 let hasKeys = false;
+// A field that has the keys and is then taken out of the page (an editor closed, the launcher gone) fires no focusout
+// in WebKit, which left the app thinking a field of Margin's still had them (seen 2026-11-15 in the hosted e2e: a
+// window-mode app was never put back in front of Margin's window). While a field has them, the page's changes say
+// when it's gone (one check per turn, only then).
+let keysWatch: MutationObserver | null = null;
+let keysCheck = false;
+const stillHasKeys = () => editable(document.activeElement) || preview.bar.shown;
 const setKeys = (on: boolean) => {
   if (on === hasKeys) return;
   hasKeys = on;
+  if (on && !keysWatch && typeof MutationObserver === 'function') {
+    keysWatch = new MutationObserver(() => {
+      if (keysCheck) return;
+      keysCheck = true;
+      setTimeout(() => { keysCheck = false; if (hasKeys && !stillHasKeys()) setKeys(false); }, 0);
+    });
+    keysWatch.observe(document.documentElement, { childList: true, subtree: true });
+  } else if (!on) {
+    keysWatch?.disconnect();
+    keysWatch = null;
+  }
   void post('focus', { on }).catch(() => {});
 };
 document.addEventListener('focusin', (e) => { if (editable(e.target)) setKeys(true); });
-document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) setTimeout(() => setKeys(editable(document.activeElement) || preview.bar.shown), 0); });
+document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) setTimeout(() => setKeys(stillHasKeys()), 0); });
 
 // ---- start ----------------------------------------------------------------------------------
 
