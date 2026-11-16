@@ -12,8 +12,10 @@ guard let executableIndex = args.firstIndex(of: "--executable"), args.count > ex
     emit(["kind": "usage", "description": "Pass --executable /absolute/path/to/browser [--run]. Default is dry run."]); exit(0)
 }
 let executable = URL(fileURLWithPath: args[executableIndex + 1]).standardizedFileURL
+let libraryIndex = args.firstIndex(of: "--launch-library")
+let launchLibrary = libraryIndex.flatMap { args.count > $0 + 1 ? args[$0 + 1] : nil }
 guard args.contains("--run") else {
-    emit(["kind": "plan", "executable": executable.path, "description": "Launch once with a temporary profile and about:blank; inspect one window's traffic-light attributes; attempt AXHidden/AXEnabled with immediate restoration; close only this window and terminate only the launched PID; restore former app focus. No extension, CDP, Apple events or injection."])
+    emit(["kind": "plan", "executable": executable.path, "launchLibrary": launchLibrary ?? "none", "description": "Launch once with a temporary profile and about:blank; inspect/restore AX attributes; close only the owned window/PID and restore focus. Default has no injected code; optional --launch-library separately tests launch-loader acceptance without sending component commands."])
     exit(0)
 }
 guard AXIsProcessTrusted(), FileManager.default.isExecutableFile(atPath: executable.path) else {
@@ -28,6 +30,14 @@ browser.arguments = ["--user-data-dir=" + directory.path, "--no-first-run", "--n
                      "--disable-background-networking", "--disable-sync", "--disable-default-apps", "--disable-extensions",
                      "--window-size=800,600", "--new-window", "about:blank"]
 browser.standardOutput = FileHandle.nullDevice; browser.standardError = FileHandle.nullDevice
+if let launchLibrary {
+    guard FileManager.default.isReadableFile(atPath: launchLibrary) else { emit(["kind": "refused", "reason": "launch library missing"]); exit(2) }
+    var environment = ProcessInfo.processInfo.environment
+    environment["DYLD_INSERT_LIBRARIES"] = launchLibrary
+    environment["MARGIN_BUTTONS_TARGET_EXECUTABLE"] = executable.path
+    environment["MARGIN_BUTTONS_DIR"] = directory.path
+    browser.environment = environment
+}
 try browser.run()
 // Bound cleanup, including abnormal control-flow exits. Only the exact launched process is signalled.
 let ownedPID = browser.processIdentifier
@@ -60,6 +70,13 @@ while browser.isRunning && Date() < deadline {
 }
 guard windows.count == 1 else { emit(["kind": "refused", "reason": "expected exactly one owned window", "windows": windows.count]); finish(2) }
 let window = windows[0]
+if launchLibrary != nil {
+    Thread.sleep(forTimeInterval: 1)
+    let marker = directory.appendingPathComponent("hook-loaded.json")
+    let data = try? Data(contentsOf: marker)
+    let row = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    emit(["kind": "launch-loader", "requested": true, "componentLoaded": row?["pid"] as? pid_t == ownedPID])
+}
 emit(["kind": "browser", "pid": ownedPID, "executable": executable.path, "windowCount": windows.count,
       "fullscreen": read(window, "AXFullScreen").1 as? Bool ?? false, "os": ProcessInfo.processInfo.operatingSystemVersionString])
 for name in ["AXCloseButton", "AXMinimizeButton", "AXZoomButton", "AXFullScreenButton"] {

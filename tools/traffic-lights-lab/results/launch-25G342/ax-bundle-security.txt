@@ -1,0 +1,126 @@
+_AXBBundleManagerCheckSecurityAllowsLoading:
+0x2317AD3B4   pacibsp                       
+0x2317AD3B8   sub      sp, sp, #0x40        
+0x2317AD3BC   stp      x22, x21, [sp, #0x10] 
+0x2317AD3C0   stp      x20, x19, [sp, #0x20] 
+0x2317AD3C4   stp      x29, x30, [sp, #0x30] 
+0x2317AD3C8   add      x29, sp, #0x30       
+0x2317AD3CC   mov      x20, x0              
+0x2317AD3D0   bl       _objc_msgSend$isFileURL 
+0x2317AD3D4   cbz      w0, 0x2317ad3f8      
+0x2317AD3D8   mov      x0, x20              
+0x2317AD3DC   bl       _objc_msgSend$path   
+0x2317AD3E0   adrp     x2, 431715           ; 0x29ae10000
+0x2317AD3E4   add      x2, x2, #0xf70       
+0x2317AD3E8   bl       "_objc_msgSend$hasPrefix:" 
+0x2317AD3EC   tbz      w0, #0x0, 0x2317ad3f8 
+0x2317AD3F0   mov      w20, #0x1            
+0x2317AD3F4   b        0x2317ad49c          
+0x2317AD3F8   stp      xzr, xzr, [sp]       
+0x2317AD3FC   adrp     x8, 384925           ; 0x28f74a000
+0x2317AD400   ldr      x8, [x8, #0xf48]     
+0x2317AD404   ldr      x3, [x8]             
+0x2317AD408   adrp     x1, 5                ; 0x2317b2000
+0x2317AD40C   add      x1, x1, #0x588       ; _AXBBundleManagerCheckBundleIsCodesignedByApple.kCodeSignRequirement
+0x2317AD410   mov      x0, #0x0             
+0x2317AD414   mov      w2, #0x10            
+0x2317AD418   bl       "-[AXBBundleManager init]" 
+0x2317AD41C   cbz      x0, 0x2317ad498      
+0x2317AD420   mov      x19, x0              
+0x2317AD424   add      x2, sp, #0x8         
+0x2317AD428   mov      w1, #0x0             
+0x2317AD42C   bl       "-[AXBBundleManager init]" 
+0x2317AD430   cbnz     w0, 0x2317ad470      
+0x2317AD434   mov      x2, sp               
+0x2317AD438   mov      x0, x20              
+0x2317AD43C   mov      w1, #0x0             
+0x2317AD440   bl       "-[AXBBundleManager init]" 
+0x2317AD444   cbnz     w0, 0x2317ad470      
+0x2317AD448   ldp      x0, x2, [sp]         
+0x2317AD44C   mov      w1, #0x11            
+0x2317AD450   bl       "-[AXBBundleManager init]" 
+0x2317AD454   cbz      w0, 0x2317ad4b4      
+0x2317AD458   mov      x21, x0              
+0x2317AD45C   adrp     x0, 385079           ; 0x28f7e4000
+0x2317AD460   ldr      x0, [x0, #0xc70]     
+0x2317AD464   mov      w1, #0x10            
+0x2317AD468   bl       "-[AXBBundleManager init]" 
+0x2317AD46C   cbnz     w0, 0x2317ad4cc      
+0x2317AD470   mov      w20, #0x0            
+0x2317AD474   ldr      x0, [sp]             
+0x2317AD478   cbz      x0, 0x2317ad480      
+0x2317AD47C   bl       "-[AXBBundleManager init]" 
+0x2317AD480   mov      x0, x19              
+0x2317AD484   bl       "-[AXBBundleManager init]" 
+0x2317AD488   ldr      x0, [sp, #0x8]       
+0x2317AD48C   cbz      x0, 0x2317ad49c      
+0x2317AD490   bl       "-[AXBBundleManager init]" 
+0x2317AD494   b        0x2317ad49c          
+0x2317AD498   mov      w20, #0x0            
+0x2317AD49C   mov      x0, x20              
+0x2317AD4A0   ldp      x29, x30, [sp, #0x30] 
+0x2317AD4A4   ldp      x20, x19, [sp, #0x20] 
+0x2317AD4A8   ldp      x22, x21, [sp, #0x10] 
+0x2317AD4AC   add      sp, sp, #0x40        
+0x2317AD4B0   retab                         
+0x2317AD4B4   ldr      x0, [sp]             
+0x2317AD4B8   mov      w1, #0x0             
+0x2317AD4BC   bl       "-[AXBBundleManager init]" 
+0x2317AD4C0   cmp      w0, #0x0             
+0x2317AD4C4   cset     w20, eq              
+0x2317AD4C8   b        0x2317ad474          
+0x2317AD4CC   mov      x0, x20              
+0x2317AD4D0   mov      x1, x21              
+0x2317AD4D4   bl       _AXBBundleManagerCheckSecurityAllowsLoading.cold.1 
+0x2317AD4D8   b        0x2317ad470          
+-[AXBBundleManager loadedAXBundleWithIdentifier:]:
+0x2317AD4DC   pacibsp                       
+0x2317AD4E0   sub      sp, sp, #0x120       
+0x2317AD4E4   stp      x28, x27, [sp, #0xd0] 
+0x2317AD4E8   stp      x24, x23, [sp, #0xe0] 
+0x2317AD4EC   stp      x22, x21, [sp, #0xf0] 
+0x2317AD4F0   stp      x20, x19, [sp, #0x100] 
+0x2317AD4F4   stp      x29, x30, [sp, #0x110] 
+0x2317AD4F8   add      x29, sp, #0x110      
+0x2317AD4FC   mov      x19, x2              
+0x2317AD500   adrp     x8, 385079           ; 0x28f7e4000
+0x2317AD504   ldr      x8, [x8, #0x838]     
+0x2317AD508   ldr      x8, [x8]             
+0x2317AD50C   stur     x8, [x29, #-0x48]    
+0x2317AD510   movi.2d  v0, #0000000000000000 
+0x2317AD514   stp      q0, q0, [sp]         
+0x2317AD518   stp      q0, q0, [sp, #0x20]  
+0x2317AD51C   ldr      x20, [x0, #0x30]     
+0x2317AD520   mov      x2, sp               
+0x2317AD524   add      x3, sp, #0x48        
+0x2317AD528   mov      x0, x20              
+0x2317AD52C   mov      w4, #0x10            
+0x2317AD530   bl       "_objc_msgSend$countByEnumeratingWithState:objects:count:" 
+0x2317AD534   cbz      x0, 0x2317ad5a4      
+0x2317AD538   mov      x21, x0              
+0x2317AD53C   ldr      x8, [sp, #0x10]      
+0x2317AD540   ldr      x23, [x8]            
+0x2317AD544   mov      x24, #0x0            
+0x2317AD548   ldr      x8, [sp, #0x10]      
+0x2317AD54C   ldr      x8, [x8]             
+0x2317AD550   cmp      x8, x23              
+0x2317AD554   b.eq     0x2317ad560          
+0x2317AD558   mov      x0, x20              
+0x2317AD55C   bl       "-[AXBBundleManager init]" 
+0x2317AD560   ldr      x8, [sp, #0x8]       
+0x2317AD564   ldr      x22, [x8, x24, lsl #3] 
+0x2317AD568   mov      x0, x22              
+0x2317AD56C   bl       _objc_msgSend$bundleIdentifier 
+0x2317AD570   mov      x2, x19              
+0x2317AD574   bl       "_objc_msgSend$isEqualToString:" 
+0x2317AD578   tbnz     w0, #0x0, 0x2317ad5a8 
+0x2317AD57C   add      x24, x24, #0x1       
+0x2317AD580   cmp      x21, x24             
+0x2317AD584   b.ne     0x2317ad548          
+0x2317AD588   mov      x2, sp               
+0x2317AD58C   add      x3, sp, #0x48        
+0x2317AD590   mov      x0, x20              
+0x2317AD594   mov      w4, #0x10            
+0x2317AD598   bl       "_objc_msgSend$countByEnumeratingWithState:objects:count:" 
+0x2317AD59C   mov      x21, x0              
+0x2317AD5A0   cbnz     x0, 0x2317ad544      

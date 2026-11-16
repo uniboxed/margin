@@ -1,0 +1,273 @@
+[
+  {
+    "event" : "launched",
+    "pid" : 33004,
+    "uptime" : 255463.99688945836
+  },
+  {
+    "event" : "window-geometry",
+    "position" : "{22, 56}",
+    "size" : "{900, 650}",
+    "uptime" : 255465.41943716668
+  },
+  {
+    "button" : "AXCloseButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{34, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 255465.42224362501,
+    "window" : "73734"
+  },
+  {
+    "button" : "AXMinimizeButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{57, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 255465.42544308334,
+    "window" : "73734"
+  },
+  {
+    "button" : "AXZoomButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{80, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 255465.42670800001,
+    "window" : "73734"
+  },
+  {
+    "bundle" : "com.google.chrome.for.testing",
+    "event" : "target",
+    "pid" : 33004,
+    "uptime" : 255465.42908337503,
+    "window" : 73734
+  },
+  {
+    "event" : "recording-started",
+    "pid" : 33004,
+    "scope" : "SLSHWCaptureWindowList exact-window sampled frames, 0x0200 nominal resolution; actual timestamps; no audio",
+    "uptime" : 255466.55567070836,
+    "videoSeconds" : 0.077988208329770714,
+    "window" : 73734
+  },
+  {
+    "event" : "phase",
+    "label" : "Baseline — buttons visible",
+    "uptime" : 255466.55647120834,
+    "videoSeconds" : 0.078788458340568468
+  },
+  {
+    "event" : "snapshot",
+    "fullscreen" : false,
+    "fullscreenRead" : 0,
+    "label" : "baseline",
+    "uptime" : 255466.55687745835,
+    "videoSeconds" : 0.079194499994628131
+  },
+  {
+    "action" : "hide",
+    "buttons" : [
+      {
+        "alpha" : 1,
+        "hidden" : true,
+        "hit" : 0,
+        "type" : 0
+      },
+      {
+        "alpha" : 1,
+        "hidden" : true,
+        "hit" : 0,
+        "type" : 1
+      },
+      {
+        "alpha" : 1,
+        "hidden" : true,
+        "hit" : 0,
+        "type" : 2
+      }
+    ],
+    "event" : "hook-response",
+    "id" : "E4E431EB-A766-4664-829C-0EC6D72CB53D",
+    "pid" : 33004,
+    "success" : true,
+    "uptime" : 255469.14549820835,
+    "videoSeconds" : 2.66781641668058,
+    "window" : 73734,
+    "windowed" : true
+  },
+  {
+    "event" : "phase",
+    "label" : "Launch-loaded private API — buttons hidden",
+    "uptime" : 255469.14608637503,
+    "videoSeconds" : 2.6684037916711532
+  },
+  {
+    "event" : "snapshot",
+    "fullscreen" : false,
+    "fullscreenRead" : 0,
+    "label" : "hide-attempt",
+    "uptime" : 255469.14663558334,
+    "videoSeconds" : 2.6689530416624621
+  },
+  {
+    "event" : "resize",
+    "result" : 0,
+    "uptime" : 255472.17103116668,
+    "videoSeconds" : 5.6933493333344813
+  },
+  {
+    "event" : "phase",
+    "label" : "Resize while hide request remains active",
+    "uptime" : 255472.17159941667,
+    "videoSeconds" : 5.6939167916716542
+  },
+  {
+    "event" : "snapshot",
+    "fullscreen" : false,
+    "fullscreenRead" : 0,
+    "label" : "resized",
+    "uptime" : 255472.17375266668,
+    "videoSeconds" : 5.6960699166811537
+  },
+  {
+    "action" : "inspect",
+    "buttons" : [
+      {
+        "alpha" : 1,
+        "hidden" : true,
+        "hit" : 0,
+        "type" : 0
+      },
+      {
+        "alpha" : 1,
+        "hidden" : true,
+        "hit" : 0,
+        "type" : 1
+      },
+      {
+        "alpha" : 1,
+        "hidden" : true,
+        "hit" : 0,
+        "type" : 2
+      }
+    ],
+    "event" : "hook-response",
+    "id" : "617511D8-4448-40A2-8C48-D5A5BBE7680E",
+    "pid" : 33004,
+    "success" : true,
+    "uptime" : 255474.76449441668,
+    "videoSeconds" : 8.2868125833338127,
+    "window" : 73734,
+    "windowed" : true
+  },
+  {
+    "action" : "restore",
+    "buttons" : [
+      {
+        "alpha" : 1,
+        "hidden" : false,
+        "hit" : 1,
+        "type" : 0
+      },
+      {
+        "alpha" : 1,
+        "hidden" : false,
+        "hit" : 1,
+        "type" : 1
+      },
+      {
+        "alpha" : 1,
+        "hidden" : false,
+        "hit" : 1,
+        "type" : 2
+      }
+    ],
+    "event" : "hook-response",
+    "id" : "1F394AD5-102C-44D2-B75A-CA873F328FDA",
+    "pid" : 33004,
+    "success" : true,
+    "uptime" : 255474.80987704167,
+    "videoSeconds" : 8.3321945833449718,
+    "window" : 73734,
+    "windowed" : true
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 255474.81749045834,
+    "videoSeconds" : 8.3398081666673534
+  },
+  {
+    "event" : "phase",
+    "label" : "Restored — original buttons and size",
+    "uptime" : 255474.81795162501,
+    "videoSeconds" : 8.3402686666813679
+  },
+  {
+    "event" : "snapshot",
+    "fullscreen" : false,
+    "fullscreenRead" : 0,
+    "label" : "restored",
+    "uptime" : 255474.81944183336,
+    "videoSeconds" : 8.3417589166783728
+  },
+  {
+    "completeFrames" : 76,
+    "event" : "recording-finished",
+    "uptime" : 255477.72314066667,
+    "video" : "launch-raw.mp4",
+    "videoSeconds" : 11.245459041674621
+  },
+  {
+    "action" : "restore",
+    "buttons" : [
+      {
+        "alpha" : 1,
+        "hidden" : false,
+        "hit" : 1,
+        "type" : 0
+      },
+      {
+        "alpha" : 1,
+        "hidden" : false,
+        "hit" : 1,
+        "type" : 1
+      },
+      {
+        "alpha" : 1,
+        "hidden" : false,
+        "hit" : 1,
+        "type" : 2
+      }
+    ],
+    "event" : "hook-response",
+    "id" : "896EA672-85D0-4A06-A7A7-5B0DD3E73FA7",
+    "pid" : 33004,
+    "success" : true,
+    "uptime" : 255477.76756208335,
+    "videoSeconds" : 11.289880083349999,
+    "window" : 73734,
+    "windowed" : true
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 255477.76962633335,
+    "videoSeconds" : 11.291943833348341
+  },
+  {
+    "event" : "close-owned-window",
+    "result" : 0,
+    "uptime" : 255477.79108841668,
+    "videoSeconds" : 11.313406666682567
+  },
+  {
+    "event" : "cleanup",
+    "profileRemoved" : true,
+    "targetGone" : true,
+    "uptime" : 255477.93766179169,
+    "videoSeconds" : 11.459980666666524
+  }
+]

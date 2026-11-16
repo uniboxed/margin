@@ -1,0 +1,18 @@
+{
+  "sip": "System Integrity Protection status: enabled.",
+  "checks": [
+    {
+      "app": "/Users/patelti4/Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64/Google Chrome for Testing.app",
+      "signature": "Executable=/Users/patelti4/Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing\nIdentifier=Google Chrome for Testing\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20400 size=536 flags=0x20002(adhoc,linker-signed) hashes=13+0 location=embedded\nSignature=adhoc\nInfo.plist=not bound\nTeamIdentifier=not set\nSealed Resources=none\nInternal requirements=none\n",
+      "verifyStrictExit": 1,
+      "verifyStrictOutput": "/Users/patelti4/Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64/Google Chrome for Testing.app: code has no resources but signature indicates they must be present\n"
+    },
+    {
+      "app": "/Applications/Google Chrome.app",
+      "signature": "Executable=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\nIdentifier=com.google.Chrome\nFormat=app bundle with Mach-O universal (x86_64 arm64)\nCodeDirectory v=20500 size=765 flags=0x12a00(kill,restrict,library-validation,runtime) hashes=13+7 location=embedded\nSignature size=8991\nAuthority=Developer ID Application: Google LLC (EQHXZ8M8AV)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=Nov 11, 2026 at 00:24:42\nNotarization Ticket=stapled\nInfo.plist entries=44\nTeamIdentifier=EQHXZ8M8AV\nRuntime Version=27.0.0\nSealed Resources version=2 rules=13 files=63\nInternal requirements count=1 size=288\n",
+      "verifyStrictExit": 0,
+      "verifyStrictOutput": ""
+    }
+  ],
+  "mutation": "none: no browser bundle files written or re-signed"
+}

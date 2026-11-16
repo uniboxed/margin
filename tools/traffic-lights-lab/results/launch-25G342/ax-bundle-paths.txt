@@ -1,0 +1,66 @@
+-[AXBBundleManager _axBundlePaths]:
+0x2317AD23C   adrp     x0, 431716           ; 0x29ae11000
+0x2317AD240   add      x0, x0, #0xef8       
+0x2317AD244   ret                           
+-[AXBBundleManager _axBundlePathsForBundle:]:
+0x2317AD248   b        _objc_msgSend$_axBundlePaths 
+-[AXBBundleManager _axBundleWithFilename:searchPaths:]:
+0x2317AD24C   pacibsp                       
+0x2317AD250   sub      sp, sp, #0x140       
+0x2317AD254   stp      x28, x27, [sp, #0xe0] 
+0x2317AD258   stp      x26, x25, [sp, #0xf0] 
+0x2317AD25C   stp      x24, x23, [sp, #0x100] 
+0x2317AD260   stp      x22, x21, [sp, #0x110] 
+0x2317AD264   stp      x20, x19, [sp, #0x120] 
+0x2317AD268   stp      x29, x30, [sp, #0x130] 
+0x2317AD26C   add      x29, sp, #0x130      
+0x2317AD270   mov      x19, x3              
+0x2317AD274   mov      x20, x2              
+0x2317AD278   adrp     x8, 385079           ; 0x28f7e4000
+0x2317AD27C   ldr      x8, [x8, #0x838]     
+0x2317AD280   ldr      x8, [x8]             
+0x2317AD284   stur     x8, [x29, #-0x58]    
+0x2317AD288   movi.2d  v0, #0000000000000000 
+0x2317AD28C   stp      q0, q0, [sp, #0x10]  
+0x2317AD290   stp      q0, q0, [sp, #0x30]  
+0x2317AD294   add      x2, sp, #0x10        
+0x2317AD298   add      x3, sp, #0x58        
+0x2317AD29C   mov      x0, x19              
+0x2317AD2A0   mov      w4, #0x10            
+0x2317AD2A4   bl       "_objc_msgSend$countByEnumeratingWithState:objects:count:" 
+0x2317AD2A8   cbz      x0, 0x2317ad370      
+0x2317AD2AC   mov      x21, x0              
+0x2317AD2B0   ldr      x8, [sp, #0x20]      
+0x2317AD2B4   ldr      x24, [x8]            
+0x2317AD2B8   adrp     x25, 384934          ; 0x28f753000
+0x2317AD2BC   mov      x26, #0x0            
+0x2317AD2C0   ldr      x8, [sp, #0x20]      
+0x2317AD2C4   ldr      x8, [x8]             
+0x2317AD2C8   cmp      x8, x24              
+0x2317AD2CC   b.eq     0x2317ad2d8          
+0x2317AD2D0   mov      x0, x19              
+0x2317AD2D4   bl       "-[AXBBundleManager init]" 
+0x2317AD2D8   ldr      x8, [sp, #0x18]      
+0x2317AD2DC   ldr      x0, [x8, x26, lsl #3] 
+0x2317AD2E0   mov      x2, x20              
+0x2317AD2E4   bl       "_objc_msgSend$stringByAppendingPathComponent:" 
+0x2317AD2E8   mov      x23, x0              
+0x2317AD2EC   ldr      x0, [x25, #0xc10]    
+0x2317AD2F0   mov      x2, x23              
+0x2317AD2F4   bl       "_objc_msgSend$bundleWithPath:" 
+0x2317AD2F8   cbnz     x0, 0x2317ad328      
+0x2317AD2FC   add      x26, x26, #0x1       
+0x2317AD300   cmp      x21, x26             
+0x2317AD304   b.ne     0x2317ad2c0          
+0x2317AD308   add      x2, sp, #0x10        
+0x2317AD30C   add      x3, sp, #0x58        
+0x2317AD310   mov      x0, x19              
+0x2317AD314   mov      w4, #0x10            
+0x2317AD318   bl       "_objc_msgSend$countByEnumeratingWithState:objects:count:" 
+0x2317AD31C   mov      x21, x0              
+0x2317AD320   cbnz     x0, 0x2317ad2bc      
+0x2317AD324   b        0x2317ad370          
+0x2317AD328   mov      x22, x0              
+0x2317AD32C   adrp     x8, 384925           ; 0x28f74a000
+0x2317AD330   ldr      x0, [x8, #0xd70]     
+0x2317AD334   mov      x2, x23              

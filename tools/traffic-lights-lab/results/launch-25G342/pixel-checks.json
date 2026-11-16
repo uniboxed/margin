@@ -1,0 +1,36 @@
+{
+  "frames": 76,
+  "duration": 10.924,
+  "colors": [
+    {
+      "phase": "Baseline \u2014 buttons visible",
+      "red": 138,
+      "yellow": 144,
+      "green": 153
+    },
+    {
+      "phase": "Launch-loaded private API \u2014 buttons hidden",
+      "red": 0,
+      "yellow": 0,
+      "green": 0
+    },
+    {
+      "phase": "Resize while hide request remains active",
+      "red": 0,
+      "yellow": 0,
+      "green": 0
+    },
+    {
+      "phase": "Restored \u2014 original buttons and size",
+      "red": 140,
+      "yellow": 145,
+      "green": 152
+    }
+  ],
+  "sample_intervals_seconds": {
+    "min": 0.12397024998790585,
+    "max": 0.18992570834234357,
+    "mean": 0.14393911999999545
+  },
+  "native_state_hit_restoration_windowed_cleanup": "pass"
+}

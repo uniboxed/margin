@@ -175,6 +175,7 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
 
 @MainActor final class VisualRun {
     let name: String, directory: URL
+    let hookLibrary: String?
     let capture: any VisualCapture
     var events: [[String: Any]] = []
     var native: NSWindow?, status: NSTextField?
@@ -182,7 +183,7 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
     var restoreValues: [(AXUIElement, CFTypeRef)] = []
     var ownedDirectory: URL?
     let former = NSWorkspace.shared.frontmostApplication?.processIdentifier
-    init(name: String, directory: URL) { self.name = name; self.directory = directory; self.capture = name == "native" ? Capture() : FrameCapture() }
+    init(name: String, directory: URL, hookLibrary: String? = nil) { self.name = name; self.directory = directory; self.hookLibrary = hookLibrary; self.capture = name == "native" ? Capture() : FrameCapture() }
     func log(_ event: String, _ values: [String: Any] = [:]) {
         var row = values
         row["event"] = event; row["uptime"] = ProcessInfo.processInfo.systemUptime
@@ -245,7 +246,7 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
         log("private-hide", ["hidden": hidden])
     }
     func createExternal() async throws -> UInt32 {
-        let bundle = name == "chrome" ? "com.google.Chrome" : name == "edge" ? "com.microsoft.edgemac" : "com.apple.TextEdit"
+        let bundle = name == "launch" ? "com.google.chrome.for.testing" : name == "chrome" ? "com.google.Chrome" : name == "edge" ? "com.microsoft.edgemac" : "com.apple.TextEdit"
         try check(!NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundle }, "target app already running; refusing to touch existing windows")
         let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("margin-visual-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: false)
@@ -258,15 +259,25 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
             process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
             process.arguments = ["-n", "-W", "-a", "/System/Applications/TextEdit.app", file.path, "--args", "-ApplePersistenceIgnoreState", "YES"]
         } else {
-            let app = name == "chrome" ? "Google Chrome" : "Microsoft Edge"
-            process.executableURL = URL(fileURLWithPath: "/Applications/\(app).app/Contents/MacOS/\(app)")
+            let app = name == "launch" ? "Chromium — launch-loaded private API" : name == "chrome" ? "Google Chrome" : "Microsoft Edge"
+            process.executableURL = name == "launch"
+                ? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing")
+                : URL(fileURLWithPath: "/Applications/\(app).app/Contents/MacOS/\(app)")
             let file = temporary.appendingPathComponent("test.html")
             try """
             <!doctype html><meta charset="utf-8"><title>Traffic-light visual test</title>
             <style>body{font:22px -apple-system;background:#eff4f9;color:#172a3c;margin:50px}h1{font-size:34px}p{line-height:1.6}small{font-size:17px}.track{height:9px;background:#dae2ed;margin-top:45px;overflow:hidden}.pulse{height:100%;width:90px;background:#3073c7;animation:slide 2s linear infinite alternate}@keyframes slide{to{transform:translateX(500px)}}</style>
-            <h1>\(app) — external AX test</h1><p>The three buttons above are the actual native window controls.</p><p>Baseline → AXHidden request → resize → restoration</p><small>No extension, browser automation protocol, plugin or injected code.<br>This temporary page contains no JavaScript or network resources.</small><div class="track"><div class="pulse"></div></div>
+            <h1>\(app)</h1><p>The three buttons above are the actual native window controls.</p><p>Baseline → hide request → resize → restoration</p><small>\(name == "launch" ? "A temporary library runs inside this disposable Chromium process. The application binary and signature are unchanged." : "External Accessibility only. No plugin or injected code.")<br>This temporary page contains no JavaScript or network resources.</small><div class="track"><div class="pulse"></div></div>
             """.write(to: file, atomically: true, encoding: .utf8)
             process.arguments = ["--user-data-dir=" + temporary.appendingPathComponent("profile").path, "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--disable-sync", "--disable-default-apps", "--disable-extensions", "--window-size=900,650", "--new-window", file.absoluteString]
+            if name == "launch" {
+                guard let hookLibrary, FileManager.default.isReadableFile(atPath: hookLibrary) else { throw Failure("launch mode requires --library") }
+                var environment = ProcessInfo.processInfo.environment
+                environment["DYLD_INSERT_LIBRARIES"] = hookLibrary
+                environment["MARGIN_BUTTONS_TARGET_EXECUTABLE"] = process.executableURL!.path
+                environment["MARGIN_BUTTONS_DIR"] = directory.path
+                process.environment = environment
+            }
         }
         let errors = directory.appendingPathComponent(name + "-launch.stderr")
         FileManager.default.createFile(atPath: errors.path, contents: nil)
@@ -279,6 +290,7 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
                 ? NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundle && ($0.launchDate ?? .distantPast) >= started.addingTimeInterval(-1) })
                 : NSRunningApplication(processIdentifier: process.processIdentifier)
             if let app = candidate {
+                if app.bundleIdentifier == nil { try await pause(0.05); continue }
                 try check(app.bundleIdentifier == bundle, "target bundle identity differs")
                 if name != "textedit" { try check(app.processIdentifier == process.processIdentifier, "browser redirected to another process") }
                 targetPID = app.processIdentifier
@@ -341,6 +353,27 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
             log("ax-hide", ["button": name, "settableResult": sr.rawValue, "settable": writable.boolValue, "result": result.rawValue])
         }
     }
+    func hook(_ action: String) async throws {
+        guard let window = axWindow, let pid = targetPID else { throw Failure("hook target missing") }
+        var number: UInt32 = 0
+        try check(windowNumber(window, &number) == .success, "hook window number")
+        let identifier = UUID().uuidString
+        let response = directory.appendingPathComponent("hook-response.json")
+        try? FileManager.default.removeItem(at: response)
+        try JSONSerialization.data(withJSONObject: ["id": identifier, "action": action, "window": number]).write(to: directory.appendingPathComponent("hook-command.json"), options: .atomic)
+        let end = ProcessInfo.processInfo.systemUptime + 3
+        while ProcessInfo.processInfo.systemUptime < end {
+            if let data = try? Data(contentsOf: response), let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any], row["id"] as? String == identifier {
+                log("hook-response", row)
+                try check(row["pid"] as? pid_t == pid && row["window"] as? UInt32 == number && row["success"] as? Bool == true && row["windowed"] as? Bool == true, "hook acknowledgement invalid")
+                let buttons = row["buttons"] as? [[String: Any]] ?? []
+                try check(buttons.count == 3 && buttons.allSatisfy { ($0["hidden"] as? Bool) == (action != "restore") }, "native button state disagrees")
+                return
+            }
+            try await pause(0.04)
+        }
+        throw Failure("launch hook did not acknowledge")
+    }
     func restoreExternal() {
         for (button, value) in restoreValues { log("ax-restore", ["result": AXUIElementSetAttributeValue(button, "AXHidden" as CFString, value).rawValue]) }
         restoreValues = []
@@ -355,6 +388,7 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
         log("resize", ["result": result.rawValue]); try check(result == .success, "resize rejected")
     }
     func cleanup() async {
+        if name == "launch", axWindow != nil { try? await hook("restore") }
         if native != nil { try? privateButtons(false); native?.close(); native = nil }
         restoreExternal()
         if let window = axWindow, let value = read(window, "AXCloseButton").1, CFGetTypeID(value) == AXUIElementGetTypeID() {
@@ -376,7 +410,9 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
         try await capture.start(pid: targetPID!, number: number, url: directory.appendingPathComponent(name + "-raw.mp4"))
         log("recording-started", ["pid": targetPID!, "window": number, "scope": name == "native" ? "desktop-independent exact window; no audio" : "SLSHWCaptureWindowList exact-window sampled frames, 0x0200 nominal resolution; actual timestamps; no audio"])
         phase("Baseline — buttons visible"); snapshot("baseline"); try await pause(2.5)
-        if name == "native" {
+        if name == "launch" {
+            try await hook("hide"); phase("Launch-loaded private API — buttons hidden")
+        } else if name == "native" {
             try privateButtons(true); phase("Private API — three buttons hidden")
         } else {
             try hideExternal(); phase("External AXHidden request held")
@@ -384,6 +420,7 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
         snapshot("hide-attempt"); try await pause(3)
         if let native { native.setContentSize(NSSize(width: 980, height: 615)) } else { try resizeExternal() }
         phase("Resize while hide request remains active"); snapshot("resized"); try await pause(2.5)
+        if name == "launch" { try await hook("inspect"); try await hook("restore") }
         if let native { try privateButtons(false); native.setContentSize(NSSize(width: 900, height: 570)) } else { restoreExternal() }
         phase("Restored — original buttons and size"); snapshot("restored"); try await pause(2.5)
         try await capture.stop()
@@ -397,8 +434,8 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
         let args = CommandLine.arguments
         guard let ci = args.firstIndex(of: "--case"), args.count > ci + 1,
               let oi = args.firstIndex(of: "--output"), args.count > oi + 1,
-              ["native", "chrome", "edge", "textedit"].contains(args[ci + 1]) else {
-            print("Usage: visual --case native|chrome|edge|textedit --output /absolute/directory [--run]"); return
+              ["native", "chrome", "edge", "textedit", "launch"].contains(args[ci + 1]) else {
+            print("Usage: visual --case native|chrome|edge|textedit|launch --output /absolute/directory [--library /absolute/hook.dylib] [--run]"); return
         }
         let name = args[ci + 1], directory = URL(fileURLWithPath: args[oi + 1], isDirectory: true)
         guard args.contains("--run") else {
@@ -412,7 +449,9 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try check(!FileManager.default.fileExists(atPath: directory.appendingPathComponent(name + "-raw.mp4").path), "output already exists; preserve prior run")
             if name != "native" { NSApplication.shared.setActivationPolicy(.accessory); NSApplication.shared.finishLaunching() }
-            let run = VisualRun(name: name, directory: directory)
+            let libraryIndex = args.firstIndex(of: "--library")
+            let library = libraryIndex.flatMap { args.count > $0 + 1 ? args[$0 + 1] : nil }
+            let run = VisualRun(name: name, directory: directory, hookLibrary: library)
             do { try await run.run(); await run.cleanup() }
             catch { run.log("failure", ["description": String(describing: error)]); try? await run.capture.stop(); await run.cleanup(); exit(2) }
         } catch { print("REFUSED: \(error)"); exit(2) }

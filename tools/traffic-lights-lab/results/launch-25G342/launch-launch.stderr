@@ -1,0 +1,2 @@
+[33223:24822932:1116/005231.290955:ERROR:base/apple/mach_port_rendezvous_mac.cc:256] bootstrap_look_up com.google.chrome.for.testing.MachPortRendezvousServer.1: Permission denied (1100)
+[33223:24822932:1116/005231.291546:ERROR:base/memory/shared_memory_switch.cc:261] No rendezvous client, terminating process (parent died?)

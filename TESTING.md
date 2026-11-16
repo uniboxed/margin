@@ -1,5 +1,24 @@
 # Testing Margin
 
+## Real Chromium traffic-light launch experiment (2026-11-16)
+
+- [x] On 25G342, launch the installed load-permissive Chrome for Testing with a temporary library;
+  observe three native buttons disappear, remain hidden through resize and return, staying windowed.
+  Independent decoded video pixels and native hidden/hit state agree; owned PID/profile cleanup passes.
+  Recording: `test-results/traffic-lights-launch-2026-11-16/retry/launch.mp4`. See
+  [reproduction and deployment limits](tools/traffic-lights-lab/README.md).
+- [x] Matched installed Chrome loader control: no loaded marker after owned-window discovery plus one
+  second; no component hide commands sent. This does not establish protected-browser native support.
+- [ ] Before adopting a supported-browser backend, verify repeated windows/titlebar replacement,
+  inactive/hover behavior, detach/crash restoration, Spaces/Mission Control and other display scales.
+- [ ] Other macOS builds and protected Safari/Edge require separate evidence. Never infer support from
+  AX access, selector existence or zero return codes. No production adoption in this research change.
+
+The new saved-video verifier passes; native sources compile with warnings as errors. Fresh `npm test`
+passes 1,031 tests. Full `npm run test:e2e` is attempted but blocked by missing pinned WebKit 2388
+(Chromium 1254 also absent), then bounded/stopped during pending teardown. No browser download or
+full-suite pass. Historical validation sections below retain their original scope.
+
 ## Live profile cover acceptance (pending, 2026-11-11)
 
 The launch default stays off. [Component results](tools/handoff-lab/results/26B131-2026-11-11-renderer-components.md)

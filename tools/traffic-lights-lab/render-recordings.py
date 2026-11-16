@@ -6,7 +6,7 @@ import sys
 
 root = pathlib.Path(sys.argv[1]).resolve()
 helper = pathlib.Path(sys.argv[2]).resolve()
-pairs = [('native', root), *[(name, root / 'sampled') for name in ['chrome', 'edge', 'textedit']]]
+pairs = [('native', root), *[(name, root / 'sampled') for name in ['chrome', 'edge', 'textedit']], ('launch', root)]
 for name, directory in pairs:
     source = directory / f'{name}-raw.mp4'
     if not source.exists():
@@ -21,8 +21,8 @@ for name, directory in pairs:
     height = stream['streams'][0]['height']
     body_height = round((1280 * height / width) / 2) * 2
     crop_width, crop_height = (260, 70) if width >= 1500 else (130, 35)
-    app = {'native': 'Native AppKit test app', 'chrome': 'Google Chrome', 'edge': 'Microsoft Edge', 'textedit': 'TextEdit'}[name]
-    mode = 'IN-PROCESS PRIVATE API' if name == 'native' else 'EXTERNAL ACCESSIBILITY / sampled frames'
+    app = {'native': 'Native AppKit test app', 'chrome': 'Google Chrome', 'edge': 'Microsoft Edge', 'textedit': 'TextEdit', 'launch': 'Real Chromium — launch-loaded library'}[name]
+    mode = 'PRIVATE API / launch library inside Chromium' if name == 'launch' else 'IN-PROCESS PRIVATE API' if name == 'native' else 'EXTERNAL ACCESSIBILITY / sampled frames'
     assets = root / 'presentation-assets'
     assets.mkdir(exist_ok=True)
     command = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-i', str(source)]

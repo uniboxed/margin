@@ -1,0 +1,146 @@
+-[NSThemeFrame _updateObscuredStateOfButtonsForWindowSharingSession]:
+0x185691894   pacibsp                       
+0x185691898   stp      x22, x21, [sp, #-0x30]! 
+0x18569189C   stp      x20, x19, [sp, #0x10] 
+0x1856918A0   stp      x29, x30, [sp, #0x20] 
+0x1856918A4   add      x29, sp, #0x20       
+0x1856918A8   mov      x19, x0              
+0x1856918AC   bl       _objc_msgSend$window 
+0x1856918B0   bl       _objc_msgSend$showsWindowSharingTitlebarButton 
+0x1856918B4   mov      x20, x0              
+0x1856918B8   adrp     x8, 413451           ; 0x1ea59c000
+0x1856918BC   add      x8, x8, #0x8         ; _OBJC_IVAR_$_NSFrameView.closeButton
+0x1856918C0   ldrsw    x22, [x8]            
+0x1856918C4   ldr      x0, [x19, x22]       
+0x1856918C8   bl       _objc_msgSend$cell   
+0x1856918CC   adrp     x8, 483737           ; 0x1fb82a000
+0x1856918D0   add      x21, x8, #0x730      
+0x1856918D4   mov      x1, x21              
+0x1856918D8   bl       _objc_opt_respondsToSelector 
+0x1856918DC   tbz      w0, #0x0, 0x1856918f0 
+0x1856918E0   ldr      x0, [x19, x22]       
+0x1856918E4   bl       _objc_msgSend$cell   
+0x1856918E8   mov      x2, x20              
+0x1856918EC   bl       "_objc_msgSend$setObscured:" 
+0x1856918F0   adrp     x8, 413451           ; 0x1ea59c000
+0x1856918F4   add      x8, x8, #0x10        ; _OBJC_IVAR_$_NSFrameView.zoomButton
+0x1856918F8   ldrsw    x22, [x8]            
+0x1856918FC   ldr      x0, [x19, x22]       
+0x185691900   bl       _objc_msgSend$cell   
+0x185691904   mov      x1, x21              
+0x185691908   bl       _objc_opt_respondsToSelector 
+0x18569190C   tbz      w0, #0x0, 0x185691920 
+0x185691910   ldr      x0, [x19, x22]       
+0x185691914   bl       _objc_msgSend$cell   
+0x185691918   mov      x2, x20              
+0x18569191C   bl       "_objc_msgSend$setObscured:" 
+0x185691920   adrp     x8, 413451           ; 0x1ea59c000
+0x185691924   add      x8, x8, #0xc         ; _OBJC_IVAR_$_NSFrameView.minimizeButton
+0x185691928   ldrsw    x22, [x8]            
+0x18569192C   ldr      x0, [x19, x22]       
+0x185691930   bl       _objc_msgSend$cell   
+0x185691934   mov      x1, x21              
+0x185691938   bl       _objc_opt_respondsToSelector 
+0x18569193C   tbz      w0, #0x0, 0x18569196c 
+0x185691940   ldr      x0, [x19, x22]       
+0x185691944   bl       _objc_msgSend$cell   
+0x185691948   mov      x2, x20              
+0x18569194C   ldp      x29, x30, [sp, #0x20] 
+0x185691950   ldp      x20, x19, [sp, #0x10] 
+0x185691954   ldp      x22, x21, [sp], #0x30 
+0x185691958   autibsp                       
+0x18569195C   eor      x16, x30, x30, lsl #1 
+0x185691960   tbz      x16, #0x3e, 0x185691968 
+0x185691964   brk      #0xc471              
+0x185691968   b        "_objc_msgSend$setObscured:" 
+0x18569196C   ldp      x29, x30, [sp, #0x20] 
+0x185691970   ldp      x20, x19, [sp, #0x10] 
+0x185691974   ldp      x22, x21, [sp], #0x30 
+0x185691978   retab                         
+-[NSThemeFrame _updateButtonsForWindowSharingSession]:
+0x18569197C   b        _objc_msgSend$_updateButtons 
+-[NSThemeFrame newToolbarButton]:
+0x185691980   pacibsp                       
+0x185691984   stp      x20, x19, [sp, #-0x20]! 
+0x185691988   stp      x29, x30, [sp, #0x10] 
+0x18569198C   add      x29, sp, #0x10       
+0x185691990   mov      x19, x0              
+0x185691994   adrp     x8, 413453           ; 0x1ea59e000
+0x185691998   add      x8, x8, #0x988       ; _OBJC_IVAR_$_NSView._window
+0x18569199C   ldrsw    x8, [x8]             
+0x1856919A0   ldr      x0, [x0, x8]         
+0x1856919A4   bl       _objc_opt_class      
+0x1856919A8   mov      x20, x0              
+0x1856919AC   mov      x0, x19              
+0x1856919B0   bl       _objc_msgSend$_effectiveStyleMask 
+0x1856919B4   mov      x3, x0               
+0x1856919B8   mov      x0, x20              
+0x1856919BC   mov      w2, #0x3             
+0x1856919C0   bl       "_objc_msgSend$standardWindowButton:forStyleMask:" 
+0x1856919C4   mov      x20, x0              
+0x1856919C8   mov      x0, x19              
+0x1856919CC   bl       _objc_msgSend$window 
+0x1856919D0   mov      x2, x0               
+0x1856919D4   mov      x0, x20              
+0x1856919D8   bl       "_objc_msgSend$setTarget:" 
+0x1856919DC   mov      x0, x20              
+0x1856919E0   mov      w2, #0x3             
+0x1856919E4   bl       "_objc_msgSend$setTag:" 
+0x1856919E8   mov      x0, x20              
+0x1856919EC   ldp      x29, x30, [sp, #0x10] 
+0x1856919F0   ldp      x20, x19, [sp], #0x20 
+0x1856919F4   retab                         
+-[NSThemeFrame newLockButton]:
+0x1856919F8   pacibsp                       
+0x1856919FC   stp      x20, x19, [sp, #-0x20]! 
+0x185691A00   stp      x29, x30, [sp, #0x10] 
+0x185691A04   add      x29, sp, #0x10       
+0x185691A08   mov      x19, x0              
+0x185691A0C   adrp     x8, 413453           ; 0x1ea59e000
+0x185691A10   add      x8, x8, #0x988       ; _OBJC_IVAR_$_NSView._window
+0x185691A14   ldrsw    x8, [x8]             
+0x185691A18   ldr      x0, [x0, x8]         
+0x185691A1C   bl       _objc_opt_class      
+0x185691A20   mov      x20, x0              
+0x185691A24   mov      x0, x19              
+0x185691A28   bl       _objc_msgSend$_effectiveStyleMask 
+0x185691A2C   mov      x3, x0               
+0x185691A30   mov      x0, x20              
+0x185691A34   mov      w2, #0x5             
+0x185691A38   bl       "_objc_msgSend$standardWindowButton:forStyleMask:" 
+0x185691A3C   mov      x20, x0              
+0x185691A40   mov      x0, x19              
+0x185691A44   bl       _objc_msgSend$window 
+0x185691A48   mov      x2, x0               
+0x185691A4C   mov      x0, x20              
+0x185691A50   bl       "_objc_msgSend$setTarget:" 
+0x185691A54   mov      x0, x20              
+0x185691A58   mov      w2, #0x5             
+0x185691A5C   bl       "_objc_msgSend$setTag:" 
+0x185691A60   mov      x0, x20              
+0x185691A64   ldp      x29, x30, [sp, #0x10] 
+0x185691A68   ldp      x20, x19, [sp], #0x20 
+0x185691A6C   retab                         
+-[NSThemeFrame newFullScreenButton]:
+0x185691A70   pacibsp                       
+0x185691A74   stp      x20, x19, [sp, #-0x20]! 
+0x185691A78   stp      x29, x30, [sp, #0x10] 
+0x185691A7C   add      x29, sp, #0x10       
+0x185691A80   mov      x19, x0              
+0x185691A84   adrp     x8, 413453           ; 0x1ea59e000
+0x185691A88   add      x8, x8, #0x988       ; _OBJC_IVAR_$_NSView._window
+0x185691A8C   ldrsw    x8, [x8]             
+0x185691A90   ldr      x0, [x0, x8]         
+0x185691A94   bl       _objc_opt_class      
+0x185691A98   mov      x20, x0              
+0x185691A9C   mov      x0, x19              
+0x185691AA0   bl       _objc_msgSend$_effectiveStyleMask 
+0x185691AA4   mov      x3, x0               
+0x185691AA8   mov      x0, x20              
+0x185691AAC   mov      w2, #0x7             
+0x185691AB0   bl       "_objc_msgSend$standardWindowButton:forStyleMask:" 
+0x185691AB4   mov      x20, x0              
+0x185691AB8   mov      x0, x19              
+0x185691ABC   bl       _objc_msgSend$window 
+0x185691AC0   mov      x2, x0               
+0x185691AC4   mov      x0, x20              

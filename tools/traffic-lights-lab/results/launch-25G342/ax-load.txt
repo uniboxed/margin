@@ -1,0 +1,101 @@
+__AXUIElementLoadAccessibilityBundles:
+0x187BD7754   cbz      x0, 0x187bd77f8      
+0x187BD7758   pacibsp                       
+0x187BD775C   sub      sp, sp, #0x90        
+0x187BD7760   stp      x22, x21, [sp, #0x60] 
+0x187BD7764   stp      x20, x19, [sp, #0x70] 
+0x187BD7768   stp      x29, x30, [sp, #0x80] 
+0x187BD776C   add      x29, sp, #0x80       
+0x187BD7770   stur     wzr, [x29, #-0x24]   
+0x187BD7774   stur     xzr, [x29, #-0x30]   
+0x187BD7778   stur     wzr, [x29, #-0x34]   
+0x187BD777C   sturb    wzr, [x29, #-0x35]   
+0x187BD7780   stur     wzr, [x29, #-0x3c]   
+0x187BD7784   sub      x1, x29, #0x35       
+0x187BD7788   sub      x2, x29, #0x30       
+0x187BD778C   sub      x3, x29, #0x34       
+0x187BD7790   sub      x4, x29, #0x3c       
+0x187BD7794   mov      x5, #0x0             
+0x187BD7798   bl       __AXUIElementValidate 
+0x187BD779C   mov      x19, x0              
+0x187BD77A0   mov      w0, #-0x6272         
+0x187BD77A4   cmp      w19, #0x1            
+0x187BD77A8   b.lt     0x187bd78a0          
+0x187BD77AC   ldurb    w8, [x29, #-0x35]    
+0x187BD77B0   cbnz     w8, 0x187bd78a0      
+0x187BD77B4   bl       _getpid              
+0x187BD77B8   cmp      w19, w0              
+0x187BD77BC   b.ne     0x187bd7800          
+0x187BD77C0   movi.2d  v0, #0000000000000000 
+0x187BD77C4   stp      q0, q0, [sp, #0x20]  
+0x187BD77C8   mov      w8, #0x8             
+0x187BD77CC   str      w8, [sp]             
+0x187BD77D0   adrp     x8, 386559           ; 0x1e61d6000
+0x187BD77D4   ldr      x8, [x8, #0xd78]     
+0x187BD77D8   ldr      w0, [x8]             
+0x187BD77DC   add      x2, sp, #0x20        
+0x187BD77E0   mov      x3, sp               
+0x187BD77E4   mov      w1, #0xf             
+0x187BD77E8   bl       _task_info           
+0x187BD77EC   cbz      w0, 0x187bd784c      
+0x187BD77F0   mov      w19, #0x5            
+0x187BD77F4   b        0x187bd7890          
+0x187BD77F8   mov      w0, #-0x6271         
+0x187BD77FC   ret                           
+0x187BD7800   mov      x0, x19              
+0x187BD7804   bl       _getServerPortFromCache 
+0x187BD7808   mov      x20, x0              
+0x187BD780C   bl       _getClientPortFromCache 
+0x187BD7810   mov      x21, x0              
+0x187BD7814   mov      w0, #-0x6274         
+0x187BD7818   cbz      w20, 0x187bd78a0     
+0x187BD781C   cbz      w21, 0x187bd78a0     
+0x187BD7820   ldur     w22, [x29, #-0x3c]   
+0x187BD7824   bl       __axIPCRequester     
+0x187BD7828   mov      x4, x0               
+0x187BD782C   sub      x5, x29, #0x24       
+0x187BD7830   mov      x0, x20              
+0x187BD7834   mov      x1, x21              
+0x187BD7838   mov      x2, x22              
+0x187BD783C   mov      x3, x19              
+0x187BD7840   bl       __AXMIGLoadAccessibilityBundles 
+0x187BD7844   mov      x19, x0              
+0x187BD7848   b        0x187bd7890          
+0x187BD784C   adrp     x20, 414702          ; 0x1ecfc5000
+0x187BD7850   add      x20, x20, #0xa98     ; _gAXPortLock
+0x187BD7854   mov      x0, x20              
+0x187BD7858   bl       __os_nospin_lock_lock 
+0x187BD785C   bl       __axIPCRequester     
+0x187BD7860   mov      x3, x0               
+0x187BD7864   ldp      q0, q1, [sp, #0x20]  
+0x187BD7868   stp      q0, q1, [sp]         
+0x187BD786C   sub      x4, x29, #0x24       
+0x187BD7870   mov      x5, sp               
+0x187BD7874   mov      w0, #0x0             
+0x187BD7878   mov      w1, #0x0             
+0x187BD787C   mov      x2, x19              
+0x187BD7880   bl       __AXXMIGLoadAccessibilityBundles 
+0x187BD7884   mov      x19, x0              
+0x187BD7888   mov      x0, x20              
+0x187BD788C   bl       __os_nospin_lock_unlock 
+0x187BD7890   ldur     w8, [x29, #-0x24]    
+0x187BD7894   mov      w9, #-0x6274         
+0x187BD7898   cmp      w19, #0x0            
+0x187BD789C   csel     w0, w8, w9, eq       
+0x187BD78A0   ldp      x29, x30, [sp, #0x80] 
+0x187BD78A4   ldp      x20, x19, [sp, #0x70] 
+0x187BD78A8   ldp      x22, x21, [sp, #0x60] 
+0x187BD78AC   add      sp, sp, #0x90        
+0x187BD78B0   autibsp                       
+0x187BD78B4   ret                           
+__XXMIGPostNotification:
+0x187BD78B8   pacibsp                       
+0x187BD78BC   stp      x28, x27, [sp, #-0x60]! 
+0x187BD78C0   stp      x26, x25, [sp, #0x10] 
+0x187BD78C4   stp      x24, x23, [sp, #0x20] 
+0x187BD78C8   stp      x22, x21, [sp, #0x30] 
+0x187BD78CC   stp      x20, x19, [sp, #0x40] 
+0x187BD78D0   stp      x29, x30, [sp, #0x50] 
+0x187BD78D4   add      x29, sp, #0x50       
+0x187BD78D8   sub      sp, sp, #0x40        
+0x187BD78DC   mov      x26, x5              

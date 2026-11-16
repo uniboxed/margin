@@ -1,0 +1,116 @@
+_NSAccessibilitySetObjectValueForAttribute:
+0x184A4BC10   pacibsp                       
+0x184A4BC14   sub      sp, sp, #0x80        
+0x184A4BC18   stp      d9, d8, [sp, #0x10]  
+0x184A4BC1C   stp      x28, x27, [sp, #0x20] 
+0x184A4BC20   stp      x26, x25, [sp, #0x30] 
+0x184A4BC24   stp      x24, x23, [sp, #0x40] 
+0x184A4BC28   stp      x22, x21, [sp, #0x50] 
+0x184A4BC2C   stp      x20, x19, [sp, #0x60] 
+0x184A4BC30   stp      x29, x30, [sp, #0x70] 
+0x184A4BC34   add      x29, sp, #0x70       
+0x184A4BC38   mov      x28, x4              
+0x184A4BC3C   mov      x20, x3              
+0x184A4BC40   mov      x22, x2              
+0x184A4BC44   mov      x21, x1              
+0x184A4BC48   mov      x19, x0              
+0x184A4BC4C   adrp     x8, 487622           ; 0x1fbb11000
+0x184A4BC50   add      x23, x8, #0xed8      
+0x184A4BC54   adrp     x8, 487625           ; 0x1fbb14000
+0x184A4BC58   add      x9, x8, #0x80b       
+0x184A4BC5C   adrp     x8, 487621           ; 0x1fbb10000
+0x184A4BC60   add      x8, x8, #0x8a6       
+0x184A4BC64   stp      x8, x9, [sp]         
+0x184A4BC68   adrp     x8, 400447           ; 0x1e668a000
+0x184A4BC6C   add      x8, x8, #0xac0       ; _NSAccessibilitySizeAttribute
+0x184A4BC70   ldr      x25, [x8]            
+0x184A4BC74   adrp     x8, 400447           ; 0x1e668a000
+0x184A4BC78   add      x8, x8, #0xab8       ; _NSAccessibilityPositionAttribute
+0x184A4BC7C   ldr      x27, [x8]            
+0x184A4BC80   adrp     x26, 434131          ; 0x1eea1e000
+0x184A4BC84   add      x26, x26, #0xce8     
+0x184A4BC88   adrp     x24, 399131          ; 0x1e6166000
+0x184A4BC8C   cbz      x2, 0x184a4bcec      
+0x184A4BC90   mov      x0, x19              
+0x184A4BC94   mov      x1, x23              
+0x184A4BC98   bl       _objc_opt_respondsToSelector 
+0x184A4BC9C   tbz      w0, #0x0, 0x184a4bcec 
+0x184A4BCA0   mov      x0, x19              
+0x184A4BCA4   ldr      x1, [sp, #0x8]       
+0x184A4BCA8   bl       _objc_opt_respondsToSelector 
+0x184A4BCAC   tbz      w0, #0x0, 0x184a4bcec 
+0x184A4BCB0   mov      x0, x19              
+0x184A4BCB4   ldr      x1, [sp]             
+0x184A4BCB8   bl       _objc_opt_respondsToSelector 
+0x184A4BCBC   tbz      w0, #0x0, 0x184a4bcec 
+0x184A4BCC0   mov      x0, x19              
+0x184A4BCC4   ldr      x1, [sp]             
+0x184A4BCC8   bl       _objc_msgSend        
+0x184A4BCCC   mov      x2, x22              
+0x184A4BCD0   bl       "_objc_msgSend$containsObject:" 
+0x184A4BCD4   cbz      w0, 0x184a4bcec      
+0x184A4BCD8   mov      x0, x19              
+0x184A4BCDC   mov      x1, x23              
+0x184A4BCE0   mov      x2, x22              
+0x184A4BCE4   bl       _objc_msgSend        
+0x184A4BCE8   cbnz     w0, 0x184a4bddc      
+0x184A4BCEC   mov      x0, x22              
+0x184A4BCF0   mov      x2, x26              
+0x184A4BCF4   bl       "_objc_msgSend$isEqualToString:" 
+0x184A4BCF8   cbz      w0, 0x184a4bd98      
+0x184A4BCFC   ldr      x0, [x24, #0x10]     
+0x184A4BD00   bl       _objc_opt_class      
+0x184A4BD04   mov      x1, x0               
+0x184A4BD08   mov      x0, x21              
+0x184A4BD0C   bl       _objc_opt_isKindOfClass 
+0x184A4BD10   tbz      w0, #0x0, 0x184a4bd98 
+0x184A4BD14   mov      x0, x21              
+0x184A4BD18   bl       _objc_msgSend$rectValue 
+0x184A4BD1C   mov.16b  v8, v0               
+0x184A4BD20   mov.16b  v9, v1               
+0x184A4BD24   mov.16b  v0, v2               
+0x184A4BD28   mov.16b  v1, v3               
+0x184A4BD2C   ldr      x0, [x24, #0x10]     
+0x184A4BD30   bl       "_objc_msgSend$valueWithSize:" 
+0x184A4BD34   mov      x22, x0              
+0x184A4BD38   ldr      x0, [x24, #0x10]     
+0x184A4BD3C   mov.16b  v0, v8               
+0x184A4BD40   mov.16b  v1, v9               
+0x184A4BD44   bl       "_objc_msgSend$valueWithPoint:" 
+0x184A4BD48   mov      x21, x0              
+0x184A4BD4C   mov      x0, x19              
+0x184A4BD50   mov      x1, x22              
+0x184A4BD54   mov      x2, x25              
+0x184A4BD58   mov      x3, x25              
+0x184A4BD5C   mov      x4, #0x0             
+0x184A4BD60   bl       _NSAccessibilitySetObjectValueForAttribute 
+0x184A4BD64   mov      x28, #0x0            
+0x184A4BD68   mov      x22, x27             
+0x184A4BD6C   mov      x20, x27             
+0x184A4BD70   cbnz     x27, 0x184a4bc90     
+0x184A4BD74   b        0x184a4bcec          
+0x184A4BD78   mov      x28, x0              
+0x184A4BD7C   cmp      w1, #0x1             
+0x184A4BD80   b.ne     0x184a4be8c          
+0x184A4BD84   mov      x0, x28              
+0x184A4BD88   bl       _objc_begin_catch    
+0x184A4BD8C   bl       __HIE_WillSwallowException 
+0x184A4BD90   bl       _objc_end_catch      
+0x184A4BD94   b        0x184a4bcec          
+0x184A4BD98   mov      x0, x19              
+0x184A4BD9C   mov      x1, x21              
+0x184A4BDA0   mov      x2, x22              
+0x184A4BDA4   mov      x3, x20              
+0x184A4BDA8   ldp      x29, x30, [sp, #0x70] 
+0x184A4BDAC   ldp      x20, x19, [sp, #0x60] 
+0x184A4BDB0   ldp      x22, x21, [sp, #0x50] 
+0x184A4BDB4   ldp      x24, x23, [sp, #0x40] 
+0x184A4BDB8   ldp      x26, x25, [sp, #0x30] 
+0x184A4BDBC   ldp      x28, x27, [sp, #0x20] 
+0x184A4BDC0   ldp      d9, d8, [sp, #0x10]  
+0x184A4BDC4   add      sp, sp, #0x80        
+0x184A4BDC8   autibsp                       
+0x184A4BDCC   eor      x16, x30, x30, lsl #1 
+0x184A4BDD0   tbz      x16, #0x3e, 0x184a4bdd8 
+0x184A4BDD4   brk      #0xc471              
+0x184A4BDD8   b        __NSAccessibilityStoreAssociatedObjectForAttribute 

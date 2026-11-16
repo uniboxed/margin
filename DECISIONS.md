@@ -4896,3 +4896,46 @@ Fresh npm test passes 1,031 tests. Full npm run test:e2e is reattempted with a t
 setup fails with the same absent pinned Chromium 1254/WebKit 2388, then the owned run is terminated.
 No browser download and no full-suite pass claimed. New Swift visual/label tools compile with warnings
 as errors, video pixel/state/cleanup verification passes. No shipping app change or PR.
+
+### Deeper traffic-light research: real Chromium launch backend (2026-11-16)
+
+The user asks for further investigation after the own-window-only result. Continue the isolated
+research, without promoting a production policy. A temporary launch-inserted library now hides the
+three real native controls in installed Chrome for Testing 156.0.8078.4 (ad-hoc/linker-signed 0x20002).
+The actual hide uses checked private AppKit selectors, running inside the browser; AX identifies and
+resizes the exact owned window. Its executable/bundle/signature are unchanged and SIP stays enabled.
+No attach, re-signing, protection change, persistent injection or privacy-indicator suppression.
+The cached ad-hoc test bundle has no sealed resources and fails whole-bundle strict signature
+verification; installed protected Chrome passes. Preserve both outcomes; no signing repair attempted.
+
+The accepted 76-frame/10.924-second sampled recording shows baseline, hide, resize while hidden and
+restore. Independent raw-video crop counts are 138/144/153 RGB control-color pixels at baseline,
+zero/zero/zero for hide and resize, then 140/145/152 restored. Native hidden/hit state agrees, alpha
+stays one and the window stays windowed. The CSS page animation remains live; browser-wide stability
+is not established. Preserve a helper rendezvous stderr at shutdown without assigning its cause.
+Owned PID exits and profile is removed. Initial wrong bundle-ID discovery stops before capture;
+accepted retry uses observed com.google.chrome.for.testing. Source snapshots/failures remain local.
+
+The same library and fresh-profile launch in installed Google Chrome 157.0.8103.79 produces no loaded
+marker after window discovery plus one second; report componentLoaded=false, with no hide commands.
+Do not generalize the permissive-build success to protected Chrome, Edge or Safari. Launch insertion
+is explicit code loading: it supplies the missing execution capability, not a new remote AX setter.
+
+Further controlled research: AX private bundle-load IPC returns zero without native changes; static
+loader checks protected paths and a decoded anchor-apple signing requirement. A newer transaction
+global-clip API produces a valid partial clip in its owner (1008/2072 transparent samples), restores
+to zero, but the identical foreign request has zero transparent samples. Two preceding runs have
+invalid transient-zero initial geometry and are retained as invalid, not negative evidence. Corrected
+source waits for positive bounds agreeing with AppKit. Sharing-session obscuring follows the sharing
+titlebar-button state; no clean external hide switch was demonstrated or indicator suppressed.
+
+Keep production unchanged. Optional future native support can target an explicitly supported
+load-permissive browser, with ABI/process/window negotiation and lifecycle restoration; do not infer
+support from AX permission. Other builds/titlebar replacement/crashes/Spaces remain unvalidated.
+Report and reproducible probes: docs/TRAFFIC-LIGHTS-RESEARCH.md, tools/traffic-lights-lab/. Video remains
+local at test-results/traffic-lights-launch-2026-11-16/retry/launch.mp4; compact logs/hashes are committed.
+
+Fresh npm test: 1031 pass. Full npm run test:e2e reattempted with a 15-second outer bound, then stopped
+after missing pinned WebKit 2388 setup failures/pending teardown; Chromium 1254 also remains absent.
+No browser download or full-suite pass. Changed/new native sources compile with warnings as errors,
+saved native/pixel/resize/restore/windowed/cleanup verification passes. No app install or PR.

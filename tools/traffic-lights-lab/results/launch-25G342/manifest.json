@@ -1,0 +1,61 @@
+{
+  "host": {
+    "macOS": "26.7.3",
+    "build": "25G342",
+    "arch": "arm64",
+    "sip": "System Integrity Protection status: enabled."
+  },
+  "result": "native hiding in launch-loaded Chrome for Testing 156.0.8078.4; protected Chrome 157.0.8103.79 component not observed loaded",
+  "media": "/Users/patelti4/Documents/projects/personal/margin/test-results/traffic-lights-launch-2026-11-16/retry",
+  "limitations": [
+    "requires relaunch and loader-permissive binary",
+    "one build/window/resize lifecycle; no protected Safari/Edge result",
+    "sampled window capture ~7fps, not physical display continuity or browser stability suite",
+    "ad-hoc test bundle has no sealed resources; whole-bundle strict verification fails; no repair attempted"
+  ],
+  "failures": [
+    "initial launch uses wrong assumed bundle ID; stops before capture, accepted retry corrected",
+    "deeper run-1/run-2 invalid transient zero geometry; use run-3 only",
+    "helper rendezvous stderr at shutdown retained, cause undetermined"
+  ],
+  "validation": {
+    "unit": "1031 pass",
+    "e2e": "attempted; absent pinned browsers, bounded teardown; no full-suite pass",
+    "native": "warnings-as-errors compile and independent saved video/native verification pass"
+  },
+  "sha256": {
+    "test-results/traffic-lights-launch-2026-11-16/retry/source/launch-hook.m": "b00a1d5b2f53501d5535c101474898b90214409628b73e1dc080ffbae0c01304",
+    "test-results/traffic-lights-launch-2026-11-16/retry/source/visual.swift": "8bb8099eb5e1d23cd770b2cd34ccc30b65f1e5e76b47b86a816e48ae4e3ff970",
+    "test-results/traffic-lights-launch-2026-11-16/retry/source/verify-launch.py": "b6c0b342164ca100a590674ad7891be23e3eb572cbc1018163a20026ac8a24c9",
+    "test-results/traffic-lights-launch-2026-11-16/retry/source/render-recordings.py": "4aa390aff8beb16ccb96ee8925ee84681d0f3bfcbbd81525a41af219b10101fe",
+    "test-results/traffic-lights-launch-2026-11-16/retry/source/deeper.swift": "71d4f5b5fe4e5fafb1cb9e17648618a81d6a320c2d309974f4fbb9ef84860db6",
+    "test-results/traffic-lights-launch-2026-11-16/retry/source/browser-probe.swift": "c98bdc6fe73ef49b85c5770cb4373a4ccaccc856952828fb8afca3a20f1aa830",
+    "test-results/traffic-lights-launch-2026-11-16/retry/source/bundle-policy.swift": "9c021d2d88acc37724f5580676da0ad3c5d2832bc7f474c77392fb98464e6c47",
+    "tools/traffic-lights-lab/results/launch-25G342/ax-bundle-security.txt": "471d7c91b0423129a62622fc24082579f8df0dfdbafeb4eb2ab643a945c168a9",
+    "tools/traffic-lights-lab/results/launch-25G342/sharing-obscure.txt": "f608b5976caced2e0bd7d5d0e1393e065683807a781f62c07961b8c7b5688efd",
+    "tools/traffic-lights-lab/results/launch-25G342/protected-loader-control.jsonl": "ff99c76ba58d26d32c455bdfc52094106e77448aab8ee8bca26867baaaa6a366",
+    "tools/traffic-lights-lab/results/launch-25G342/ax-bundle-paths.txt": "7cf9c44fbc4995293569afa0db697d57e8b03166c19e362f75ab3b8f147b6e1a",
+    "tools/traffic-lights-lab/results/launch-25G342/ax-dispatch.txt": "5cd21e6898b8bbbbae4ec2451d8490092a0a1fb3739aaf6538883d2197715f8f",
+    "tools/traffic-lights-lab/results/launch-25G342/signatures.json": "e1aa1dc701f38545de2a5261efdb00045a57e6d0587b7a0b37ec54729611e344",
+    "tools/traffic-lights-lab/results/launch-25G342/ax-load.txt": "5c56533b51b0c08bad6c8ed295138d5330a76d9d04bc71424aff1e2b7cdcc872",
+    "tools/traffic-lights-lab/results/launch-25G342/pixel-checks.json": "977c82cebbfe5a95236731fcb4949e150f160a0f8d8aa835c7bd78e405eb369b",
+    "tools/traffic-lights-lab/results/launch-25G342/hook-loaded.json": "7755896ea35362cd646da3f563e060f79c5e830a5d56dab73a17ed04dbff8851",
+    "tools/traffic-lights-lab/results/launch-25G342/launch.json": "f2b92c448fe2fc9025a055201fe0a0b4bf21d5cddedf7a6f2ba0a4b1ea55342a",
+    "tools/traffic-lights-lab/results/launch-25G342/launch-launch.stderr": "84d3baf8253fb630f625dd04f4a72cadc99e329028788da505eec2e1604effed",
+    "tools/traffic-lights-lab/results/launch-25G342/ax-setobject.txt": "0f9672ed13fbd5067e1296433c3ea55b71cfbd402e9b8707fe5c19dac18add7e",
+    "tools/traffic-lights-lab/results/launch-25G342/deeper-compact.json": "4cc2260874ccacd7fa14df61b98b968cfdf7618cc9df2054729605c939df4943",
+    "test-results/traffic-lights-launch-2026-11-16/retry/launch-raw.mp4": "4564899faf0540ece7b534fbb596fd2e80e85b367636fb82d7551dbb14946d9e",
+    "test-results/traffic-lights-launch-2026-11-16/retry/launch.mp4": "f839c6822a6b462affbbf60e25e65fa6d0e7ab4f98d44212b447039d0d4680f0",
+    "test-results/traffic-lights-launch-2026-11-16/retry/launch-raw.frames/timestamps.json": "313d9e2f7be57eb3b0f48a118c99f2284cadea97a71931500230f1c8f5bba7b2",
+    "/tmp/margin-traffic-lights-research/deeper/launch-hook.dylib": "5f45416c3fcf335412d7adbd3ba715478ecec787ba9b455103339ba535f537af",
+    "/tmp/margin-traffic-lights-research/deeper/launch-visual": "69d6f5fefeabf5c92cafaf745dd46f30c157db5f176d3272af041ffe7677261e",
+    "/tmp/margin-traffic-lights-research/deeper/loader-control": "6debab05c7fafe7075b301621a148844e5fc102a3420a035ba058023d22c38fe",
+    "/tmp/margin-traffic-lights-research/deeper/probe": "d6b4258972761a8d76548e3302e746a332a1e73339471029d74112fe7e36d05d",
+    "/tmp/margin-traffic-lights-research/deeper/bundle-policy-checked": "85a242cceaeaac2004b447fda4539d06e84cf72229803a7f2e53cdb4753e84f8",
+    "tools/traffic-lights-lab/results/launch-25G342/README.md": "88c25aa591823c30d6e2db830cbd4a9c90ff05d978f5f3ae5eb1978d2eebfbb9"
+  },
+  "browser_executable_sha256": {
+    "/Users/patelti4/Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing": "c8509aee32abd6977968e9999769980b7a420dea05402d90042d9e5b41db15ef",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome": "23010a3aeff294b54c6e8dc9a88e61388ec4655e2c10216c8a4ae2c050bfcb1b"
+  }
+}

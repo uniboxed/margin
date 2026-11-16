@@ -1,0 +1,136 @@
+_NSAccessibilitySetAttributeValue:
+0x184CFF7BC   pacibsp                       
+0x184CFF7C0   stp      x22, x21, [sp, #-0x30]! 
+0x184CFF7C4   stp      x20, x19, [sp, #0x10] 
+0x184CFF7C8   stp      x29, x30, [sp, #0x20] 
+0x184CFF7CC   add      x29, sp, #0x20       
+0x184CFF7D0   mov      x20, x2              
+0x184CFF7D4   mov      x19, x1              
+0x184CFF7D8   mov      x21, x0              
+0x184CFF7DC   adrp     x8, 399755           ; 0x1e668a000
+0x184CFF7E0   add      x8, x8, #0xa20       ; _NSAccessibilityRoleAttribute
+0x184CFF7E4   ldr      x2, [x8]             
+0x184CFF7E8   mov      x0, x1               
+0x184CFF7EC   bl       "_objc_msgSend$isEqualToString:" 
+0x184CFF7F0   tbnz     w0, #0x0, 0x184cff808 
+0x184CFF7F4   mov      x0, x21              
+0x184CFF7F8   mov      x1, x19              
+0x184CFF7FC   mov      w2, #0x0             
+0x184CFF800   bl       __NSAccessibilityEntryPointIsAttributeSupported 
+0x184CFF804   cbz      w0, 0x184cff89c      
+0x184CFF808   adrp     x1, 3806             ; 0x185bdd000
+0x184CFF80C   add      x1, x1, #0x622       ; _.str.61
+0x184CFF810   adrp     x3, 3806             ; 0x185bdd000
+0x184CFF814   add      x3, x3, #0x633       ; _.str.62
+0x184CFF818   mov      x0, x19              
+0x184CFF81C   mov      w2, #0x10            
+0x184CFF820   bl       _AttributeSelector   
+0x184CFF824   mov      x22, x0              
+0x184CFF828   mov      x0, x21              
+0x184CFF82C   mov      x1, x19              
+0x184CFF830   bl       _NSAccessibilityEntryPointIsAttributeSettable 
+0x184CFF834   cbz      w0, 0x184cff874      
+0x184CFF838   mov      x0, x21              
+0x184CFF83C   mov      x1, x22              
+0x184CFF840   bl       _objc_opt_respondsToSelector 
+0x184CFF844   tbz      w0, #0x0, 0x184cff8c4 
+0x184CFF848   mov      x0, x21              
+0x184CFF84C   mov      x2, x22              
+0x184CFF850   mov      x3, x20              
+0x184CFF854   ldp      x29, x30, [sp, #0x20] 
+0x184CFF858   ldp      x20, x19, [sp, #0x10] 
+0x184CFF85C   ldp      x22, x21, [sp], #0x30 
+0x184CFF860   autibsp                       
+0x184CFF864   eor      x16, x30, x30, lsl #1 
+0x184CFF868   tbz      x16, #0x3e, 0x184cff870 
+0x184CFF86C   brk      #0xc471              
+0x184CFF870   b        "_objc_msgSend$performSelector:withObject:" 
+0x184CFF874   mov      x0, x21              
+0x184CFF878   mov      x1, x19              
+0x184CFF87C   ldp      x29, x30, [sp, #0x20] 
+0x184CFF880   ldp      x20, x19, [sp, #0x10] 
+0x184CFF884   ldp      x22, x21, [sp], #0x30 
+0x184CFF888   autibsp                       
+0x184CFF88C   eor      x16, x30, x30, lsl #1 
+0x184CFF890   tbz      x16, #0x3e, 0x184cff898 
+0x184CFF894   brk      #0xc471              
+0x184CFF898   b        _NSAccessibilitySetUnsettableAttributeError 
+0x184CFF89C   mov      x0, x21              
+0x184CFF8A0   mov      x1, x19              
+0x184CFF8A4   ldp      x29, x30, [sp, #0x20] 
+0x184CFF8A8   ldp      x20, x19, [sp, #0x10] 
+0x184CFF8AC   ldp      x22, x21, [sp], #0x30 
+0x184CFF8B0   autibsp                       
+0x184CFF8B4   eor      x16, x30, x30, lsl #1 
+0x184CFF8B8   tbz      x16, #0x3e, 0x184cff8c0 
+0x184CFF8BC   brk      #0xc471              
+0x184CFF8C0   b        _NSAccessibilitySetUnsupportedAttributeError 
+0x184CFF8C4   mov      x0, x21              
+0x184CFF8C8   mov      x1, x19              
+0x184CFF8CC   ldp      x29, x30, [sp, #0x20] 
+0x184CFF8D0   ldp      x20, x19, [sp, #0x10] 
+0x184CFF8D4   ldp      x22, x21, [sp], #0x30 
+0x184CFF8D8   autibsp                       
+0x184CFF8DC   eor      x16, x30, x30, lsl #1 
+0x184CFF8E0   tbz      x16, #0x3e, 0x184cff8e8 
+0x184CFF8E4   brk      #0xc471              
+0x184CFF8E8   b        _NSAccessibilitySetUnimplementedAttributeError 
+-[NSComboBoxCell(NSComboBoxCellAccessibility) accessibilityAttributeNames]:
+0x184CFF8EC   pacibsp                       
+0x184CFF8F0   sub      sp, sp, #0x40        
+0x184CFF8F4   stp      x29, x30, [sp, #0x30] 
+0x184CFF8F8   add      x29, sp, #0x30       
+0x184CFF8FC   add      x8, sp, #0x8         
+0x184CFF900   adrp     x16, 398551          ; 0x1e61d6000
+0x184CFF904   ldr      x16, [x16, #0xa90]   
+0x184CFF908   mov      x17, x8              
+0x184CFF90C   movk     x17, #0x6ae1, lsl #48 
+0x184CFF910   pacda    x16, x17             
+0x184CFF914   str      x16, [sp, #0x8]      
+0x184CFF918   adrp     x9, 3777             ; 0x185bc0000
+0x184CFF91C   ldr      d0, [x9, #0x278]     
+0x184CFF920   str      d0, [sp, #0x10]      
+0x184CFF924   add      x8, x8, #0x10        
+0x184CFF928   adrp     x16, 1454            ; 0x1852ad000
+0x184CFF92C   add      x16, x16, #0x41c     ; ___74-[NSComboBoxCell(NSComboBoxCellAccessibility) accessibilityAttributeNames]_block_invoke
+0x184CFF930   pacia    x16, x8              
+0x184CFF934   adrp     x8, 433337           ; 0x1ee9b8000
+0x184CFF938   add      x8, x8, #0x268       ; ___block_descriptor_40_e8_32o_e5_v8?0l
+0x184CFF93C   stp      x16, x8, [sp, #0x18] 
+0x184CFF940   str      x0, [sp, #0x28]      
+0x184CFF944   adrp     x8, 426671           ; 0x1ecfae000
+0x184CFF948   ldr      x8, [x8, #0x6c8]     ; __MergedGlobals
+0x184CFF94C   cmn      x8, #0x1             
+0x184CFF950   b.ne     0x184cff968          
+0x184CFF954   adrp     x8, 426671           ; 0x1ecfae000
+0x184CFF958   ldr      x0, [x8, #0x6d0]     
+0x184CFF95C   ldp      x29, x30, [sp, #0x30] 
+0x184CFF960   add      sp, sp, #0x40        
+0x184CFF964   retab                         
+0x184CFF968   adrp     x0, 426671           ; 0x1ecfae000
+0x184CFF96C   add      x0, x0, #0x6c8       ; __MergedGlobals
+0x184CFF970   add      x1, sp, #0x8         
+0x184CFF974   bl       _dispatch_once       
+0x184CFF978   b        0x184cff954          
+-[NSComboBoxCell(NSComboBoxCellAccessibility) accessibilityRoleAttribute]:
+0x184CFF97C   adrp     x8, 399756           ; 0x1e668b000
+0x184CFF980   add      x8, x8, #0x3f8       ; _NSAccessibilityComboBoxRole
+0x184CFF984   ldr      x0, [x8]             
+0x184CFF988   ret                           
+_NSAccessibilityEntryPointIsAttributeSettable:
+0x184CFF98C   cbz      x0, 0x184cffa10      
+0x184CFF990   pacibsp                       
+0x184CFF994   sub      sp, sp, #0x50        
+0x184CFF998   stp      x29, x30, [sp, #0x40] 
+0x184CFF99C   add      x29, sp, #0x40       
+0x184CFF9A0   adrp     x8, 426665           ; 0x1ecfa8000
+0x184CFF9A4   ldr      x8, [x8, #0x978]     ; __NSAccessibilityIsInEntryPoint
+0x184CFF9A8   cmp      x8, #0x1             
+0x184CFF9AC   cset     w8, lt               
+0x184CFF9B0   add      x9, sp, #0x8         
+0x184CFF9B4   adrp     x16, 398551          ; 0x1e61d6000
+0x184CFF9B8   ldr      x16, [x16, #0xa90]   
+0x184CFF9BC   mov      x17, x9              
+0x184CFF9C0   movk     x17, #0x6ae1, lsl #48 
+0x184CFF9C4   pacda    x16, x17             
+0x184CFF9C8   str      x16, [sp, #0x8]      
