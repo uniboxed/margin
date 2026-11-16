@@ -2170,3 +2170,10 @@ service acceptance. No new protected-app native hide or Safari result is claimed
 image covers, so visual-cover checks above are historical and cannot satisfy this feature's acceptance.
 Fresh unit tests: 1,031 pass. Full E2E attempted/bounded after missing pinned WebKit 2388 setup failures;
 Chromium 1254 and `/opt/pw-browsers` absent. No downloads. Native sources compile with warnings as errors.
+
+Quick corner test (25G342): `verify-corners.py RUN RUN.jsonl` confirms original RGBA corner pixels,
+native owner zero/default versus 0.01/opaque corners, owner WindowServer 32 positive control, external
+no-effect, unchanged buttons/windowed state and restoration/cleanup. Near-zero owner shape retains
+titlebar paint artifacts. No real protected app or resize persistence is validated. Evidence in
+`tools/traffic-lights-lab/results/corners-25G342/`; production unchanged. Unit: 1031 pass; E2E bounded
+after missing pinned browser setup, no full pass.

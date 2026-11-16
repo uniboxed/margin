@@ -1,0 +1,520 @@
+[
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 47998,
+      "window": 76268,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "baseline"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 47998,
+      "window": 76268,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-corner-native-zero-58E13429-3C73-4E08-A862-DAE00B7F9B66"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 47998,
+      "window": 76268,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-corner-restore-64CF817E-57D4-4594-AF3F-C1C3A046FE0B"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 47998,
+      "window": 76268,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-corner-zero-56A2409B-B3BF-42E6-8F5A-C9B27BE36A90"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 47998,
+      "window": 76268,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-corner-large-98AC592C-2798-4F13-B6CB-FCFF606F5190"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 47998,
+      "window": 76268,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-corner-restore-41E492C9-2ADB-4635-9B23-CB2E036D1A6D"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 47998,
+      "window": 76268,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "foreign-corner-zero"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 47998,
+      "window": 76268,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "foreign-corner-large"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 47998,
+      "window": 76268,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "final-corner-restored"
+  },
+  {
+    "childRunning": false,
+    "cleanup": true,
+    "exit": 0
+  }
+]

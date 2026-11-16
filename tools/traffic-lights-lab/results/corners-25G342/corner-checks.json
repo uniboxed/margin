@@ -1,0 +1,160 @@
+{
+  "verification": "pass",
+  "observations": {
+    "baseline": {
+      "transparent_pixels_per_40px_corner": [
+        63,
+        63,
+        63,
+        63
+      ],
+      "changed_pixels_per_corner_vs_baseline": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "owner-corner-native-zero-036B3272-7B0A-459B-9623-A5C4C9AD1AF1": {
+      "transparent_pixels_per_40px_corner": [
+        63,
+        63,
+        63,
+        63
+      ],
+      "changed_pixels_per_corner_vs_baseline": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "owner-corner-restore-194E046F-91A1-44D5-8EDD-ED637B3C5A03": {
+      "transparent_pixels_per_40px_corner": [
+        63,
+        63,
+        63,
+        63
+      ],
+      "changed_pixels_per_corner_vs_baseline": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "owner-corner-native-small-44AEDE63-E6F8-423A-913D-D791A24EF8DA": {
+      "transparent_pixels_per_40px_corner": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "changed_pixels_per_corner_vs_baseline": [
+        87,
+        87,
+        87,
+        87
+      ]
+    },
+    "owner-corner-restore-02AF3F9D-E0FD-48CA-90AB-CF7B2776F0E2": {
+      "transparent_pixels_per_40px_corner": [
+        63,
+        63,
+        63,
+        63
+      ],
+      "changed_pixels_per_corner_vs_baseline": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "owner-corner-zero-13101C7A-9929-45BF-AE67-C119BF027FE3": {
+      "transparent_pixels_per_40px_corner": [
+        55,
+        55,
+        55,
+        55
+      ],
+      "changed_pixels_per_corner_vs_baseline": [
+        42,
+        42,
+        43,
+        43
+      ]
+    },
+    "owner-corner-large-B3A6E49A-8A37-471F-964B-A5C89A8B7109": {
+      "transparent_pixels_per_40px_corner": [
+        233,
+        233,
+        233,
+        233
+      ],
+      "changed_pixels_per_corner_vs_baseline": [
+        228,
+        228,
+        230,
+        230
+      ]
+    },
+    "owner-corner-restore-A7DA0FCB-2B0A-4A58-A805-7DAEF113579A": {
+      "transparent_pixels_per_40px_corner": [
+        63,
+        63,
+        63,
+        63
+      ],
+      "changed_pixels_per_corner_vs_baseline": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "foreign-corner-zero": {
+      "transparent_pixels_per_40px_corner": [
+        63,
+        63,
+        63,
+        63
+      ],
+      "changed_pixels_per_corner_vs_baseline": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "foreign-corner-large": {
+      "transparent_pixels_per_40px_corner": [
+        63,
+        63,
+        63,
+        63
+      ],
+      "changed_pixels_per_corner_vs_baseline": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "final-corner-restored": {
+      "transparent_pixels_per_40px_corner": [
+        63,
+        63,
+        63,
+        63
+      ],
+      "changed_pixels_per_corner_vs_baseline": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "scope": "owned fixture only; native 0.01 removes corner transparency but titlebar paint artifacts remain; foreign transaction requests have no observed corner effect"
+}

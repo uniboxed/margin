@@ -11,7 +11,7 @@ setbuf(stdout, nil)
 let args = CommandLine.arguments
 func emit(_ row: [String: Any]) { print(String(decoding: try! JSONSerialization.data(withJSONObject: row, options: .sortedKeys), as: UTF8.self)) }
 guard args.contains("--run") || args.contains("--child") else {
-    emit(["plan": "One visible owned child window. Default: AX bundle request and owner/foreign clipping (--wire selects direct message). --buttons instead tests private button-region metadata with owner/foreign empty/sentinel regions, native-hide pixel positive control, window rights/proxy readback, restoration and cleanup. Add --proxy-clips for matched owner/foreign local/global clips with a retained foreign proxy and verified restoration. No browser, user window or system setting changed."]); exit(0)
+    emit(["plan": "One visible owned child window. Default: AX bundle request and owner/foreign clipping (--wire selects direct message). --buttons tests button metadata; --proxy-clips adds matched clipping. --corners tests owner native zero and owner/foreign WindowServer zero/32 radius, saves actual corner pixels, restores and closes the fixture. No browser, user window or system setting changed."]); exit(0)
 }
 var buildSize = 0; sysctlbyname("kern.osversion", nil, &buildSize, nil, 0)
 var build = [CChar](repeating: 0, count: buildSize); sysctlbyname("kern.osversion", &build, &buildSize, nil, 0)
@@ -33,6 +33,17 @@ typealias Create = @convention(c) (UInt32) -> Unmanaged<CFTypeRef>?
 typealias GlobalClip = @convention(c) (CFTypeRef, UInt32, UnsafeMutableRawPointer) -> Void
 typealias Commit = @convention(c) (CFTypeRef, Int32) -> Void
 let cid = fn(sky, "SLSMainConnectionID", Main.self)()
+func setCornerRadius(_ wid: UInt32, _ radius: Double) {
+    typealias Radius = @convention(c) (CFTypeRef, UInt32, Double) -> Void
+    typealias Path = @convention(c) (CFTypeRef, UInt32, CGPath?) -> Void
+    typealias Mask = @convention(c) (CFTypeRef, UInt32, CGImage?, UInt32, CGRect) -> Void
+    guard let transaction = fn(sky, "SLSTransactionCreate", Create.self)(cid)?.takeRetainedValue() else { exit(2) }
+    fn(sky, "SLSTransactionSetWindowBoundsPath", Path.self)(transaction, wid, nil)
+    fn(sky, "SLSTransactionSetWindowCornerMask", Mask.self)(transaction, wid, nil, 0, .null)
+    fn(sky, "SLSTransactionSetWindowCornerRadius", Radius.self)(transaction, wid, radius)
+    fn(sky, "SLSTransactionSetWindowSystemCornerRadius", Radius.self)(transaction, wid, radius)
+    fn(sky, "SLSTransactionCommit", Commit.self)(transaction, 1)
+}
 typealias LegacyButtons = @convention(c) (UInt32) -> UnsafeMutableRawPointer?
 typealias EmptyRegion = @convention(c) () -> UnsafeMutableRawPointer?
 typealias CopyRegion = @convention(c) (UnsafeMutableRawPointer) -> UnsafeMutableRawPointer?
@@ -98,6 +109,22 @@ if args.contains("--child") {
     window.contentView!.addSubview(label)
     window.makeKeyAndOrderFront(nil); NSApplication.shared.activate()
     let wid = UInt32(window.windowNumber)
+    func nativeRadius(_ value: Double? = nil) -> Double {
+        let selector = NSSelectorFromString(value == nil ? "_cornerRadius" : "_setCornerRadius:")
+        guard let method = class_getInstanceMethod(type(of: window), selector) else { exit(2) }
+        let encoding = String(cString: method_getTypeEncoding(method)!)
+        if let value {
+            guard encoding == "v24@0:8d16" else { emit(["refusedCornerABI": encoding]); exit(2) }
+            typealias Set = @convention(c) (AnyObject, Selector, Double) -> Void
+            unsafeBitCast(method_getImplementation(method), to: Set.self)(window, selector, value)
+            return value
+        }
+        guard encoding == "d16@0:8" else { emit(["refusedCornerABI": encoding]); exit(2) }
+        typealias Get = @convention(c) (AnyObject, Selector) -> Double
+        return unsafeBitCast(method_getImplementation(method), to: Get.self)(window, selector)
+    }
+    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    let originalRadius = args.contains("--corners") ? nativeRadius() : 0
     var originalButtons: UnsafeMutableRawPointer?
     typealias CopyClip = @convention(c) (UInt32, UInt32, UnsafeMutablePointer<UnsafeMutableRawPointer?>) -> Int32
     typealias ClientClip = @convention(c) (UInt32, UInt32, UnsafeMutableRawPointer?) -> Int32
@@ -143,6 +170,7 @@ if args.contains("--child") {
         return ["window": wid, "pid": getpid(), "bounds": [bounds.minX, bounds.minY, bounds.width, bounds.height],
                 "windowed": !window.styleMask.contains(.fullScreen), "buttons": buttons,
                 "buttonRegion": buttonMetadata(wid), "windowRights": windowRights(wid),
+                "nativeCornerRadius": args.contains("--corners") ? nativeRadius() : -1,
                 "bundles": (Bundle.allBundles + Bundle.allFrameworks).compactMap { $0.bundleIdentifier }.sorted()]
     }
     saveJSON(snapshot(), directory.appendingPathComponent("ready.json"))
@@ -152,6 +180,11 @@ if args.contains("--child") {
         let request = directory.appendingPathComponent("request.json")
         guard let data = try? Data(contentsOf: request), let command = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let name = command["name"] as? String else { continue }
         try? FileManager.default.removeItem(at: request)
+        if name == "corner-native-zero" { _ = nativeRadius(0) }
+        if name == "corner-native-small" { _ = nativeRadius(0.01) }
+        if name == "corner-zero" { setCornerRadius(wid, 0) }
+        if name == "corner-large" { setCornerRadius(wid, 32) }
+        if name == "corner-restore" { _ = nativeRadius(originalRadius); setCornerRadius(wid, originalRadius) }
         if name == "buttons-empty", let empty = fn(cg, "CGRegionCreateEmptyRegion", EmptyRegion.self)() {
             setButtons(wid, region: empty); fn(cg, "CGRegionRelease", Release.self)(empty)
         }
@@ -196,7 +229,7 @@ try FileManager.default.createDirectory(at: directory, withIntermediateDirectori
 let former = NSWorkspace.shared.frontmostApplication?.processIdentifier
 let child = Process()
 child.executableURL = URL(fileURLWithPath: args[0]).standardizedFileURL
-child.arguments = ["--child", "--output", directory.path] + ["--wire", "--buttons", "--proxy-clips"].filter { args.contains($0) }
+child.arguments = ["--child", "--output", directory.path] + ["--wire", "--buttons", "--proxy-clips", "--corners"].filter { args.contains($0) }
 try child.run()
 func finish(_ code: Int32) -> Never {
     if child.isRunning { child.terminate(); child.waitUntilExit() }
@@ -241,6 +274,15 @@ func observe(_ name: String) -> [String: Any] {
     return row
 }
 _ = observe("baseline")
+if args.contains("--corners") {
+    for name in ["corner-native-zero", "corner-restore", "corner-native-small", "corner-restore", "corner-zero", "corner-large", "corner-restore"] {
+        _ = request(name); _ = observe("owner-" + name + "-\(UUID().uuidString)")
+    }
+    setCornerRadius(wid, 0); _ = observe("foreign-corner-zero")
+    setCornerRadius(wid, 32); _ = observe("foreign-corner-large")
+    _ = request("corner-restore"); _ = observe("final-corner-restored")
+    _ = request("quit"); child.waitUntilExit(); finish(child.terminationStatus)
+}
 if args.contains("--buttons") {
     emit(["foreignRights": windowRights(wid), "foreignProxy": proxy(wid)])
     emit(["foreignRightsAfterRetainedProxy": windowRights(wid)])

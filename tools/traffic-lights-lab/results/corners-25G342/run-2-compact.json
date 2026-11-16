@@ -1,0 +1,634 @@
+[
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 49388,
+      "window": 76274,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "baseline"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 49388,
+      "window": 76274,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-corner-native-zero-036B3272-7B0A-459B-9623-A5C4C9AD1AF1"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 49388,
+      "window": 76274,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-corner-restore-194E046F-91A1-44D5-8EDD-ED637B3C5A03"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 0.01,
+      "pid": 49388,
+      "window": 76274,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-corner-native-small-44AEDE63-E6F8-423A-913D-D791A24EF8DA"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 49388,
+      "window": 76274,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-corner-restore-02AF3F9D-E0FD-48CA-90AB-CF7B2776F0E2"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 49388,
+      "window": 76274,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-corner-zero-13101C7A-9929-45BF-AE67-C119BF027FE3"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 49388,
+      "window": 76274,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-corner-large-B3A6E49A-8A37-471F-964B-A5C89A8B7109"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 49388,
+      "window": 76274,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "owner-corner-restore-A7DA0FCB-2B0A-4A58-A805-7DAEF113579A"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 49388,
+      "window": 76274,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "foreign-corner-zero"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 49388,
+      "window": 76274,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "foreign-corner-large"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "nativeCornerRadius": 16,
+      "pid": 49388,
+      "window": 76274,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "final-corner-restored"
+  },
+  {
+    "childRunning": false,
+    "cleanup": true,
+    "exit": 0
+  }
+]

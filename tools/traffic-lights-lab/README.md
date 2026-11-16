@@ -17,6 +17,16 @@ This is a bounded Chromium backend, not general external Safari/Chrome/Edge supp
 
 ## Native-only button-region and retained-proxy probes
 
+Quick corner experiment: build `deeper.swift` with `wire-clip.c` as below, then run
+`/tmp/margin-native-probe --corners --output /absolute/new/run` (dry), followed by the same command
+with `--run`, redirecting stdout to `/absolute/new/run.jsonl`. It targets only its own titled child,
+compares owner native radius zero/0.01 and owner/foreign WindowServer radius zero/32, restores its
+original numerical radius, and closes the fixture. No protected app is modified. Validate original
+corner PNGs with `python3 tools/traffic-lights-lab/verify-corners.py RUN RUN.jsonl`.
+The 0.01 owner setter removes corner transparency but leaves titlebar paint artifacts; zero resets to
+the native default. Foreign requests have no observed effect. Resize persistence and real apps are
+unvalidated. Evidence: `results/corners-25G342/`; raw material: `test-results/window-corners-2026-11-16/`.
+
 ```sh
 clang -c -Wall -Wextra -Werror tools/traffic-lights-lab/wire-clip.c -o /tmp/margin-wire-clip.o
 swiftc -warnings-as-errors tools/traffic-lights-lab/deeper.swift /tmp/margin-wire-clip.o -o /tmp/margin-native-probe

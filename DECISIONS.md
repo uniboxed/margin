@@ -5027,3 +5027,21 @@ under test-results/traffic-lights-native-2026-11-16/. Fresh npm test: 1031 pass.
 attempted with a 15-second bound; missing pinned WebKit 2388 setup failures, Chromium 1254 and
 /opt/pw-browsers absent. No download/full-suite pass. Native Swift/Objective-C/C warnings-as-errors
 builds and saved native/pixel/restoration/cleanup verification pass. No app install or PR.
+
+### Quick window-corner probe (2026-11-16)
+
+The user requests a quick live corner-radius test. Add an isolated --corners mode to the existing
+owned-child lab. On 25G342, native radius zero resolves back to the fixture's default 16; private
+native radius 0.01 removes all 63 transparent pixels per 40x40 corner, with dark titlebar paint
+artifacts still visible. Owner WindowServer radius zero leaves 55 transparent pixels, radius 32
+produces 233; foreign zero/32 transactions leave all corner RGBA crops unchanged. No protected app
+is touched and no generic external capability is established. Both children close; original numerical
+radius and baseline corner pixels restore. The first complete run precedes the additional 0.01 case;
+both source/binary snapshots are retained. No overlay, preference or security-setting change.
+
+Keep this research separate from the traffic-light question. Square owner shape is demonstrated at
+near-zero radius, seamless titlebar painting is not. External supported API, resize persistence,
+other builds/displays and real apps remain unvalidated. Saved pixel verifier and warnings-as-errors
+build pass. Fresh npm test: 1031 pass. npm run test:e2e attempted/bounded at 15 seconds with missing
+pinned WebKit setup, no browser download/full pass. Results: tools/traffic-lights-lab/results/corners-25G342/;
+raw material: test-results/window-corners-2026-11-16/. No production change, install or PR.

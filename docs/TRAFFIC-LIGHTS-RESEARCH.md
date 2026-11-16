@@ -564,3 +564,30 @@ baseline PNG in place of the native-hide positive control. Final readback finds 
 or fixture processes remaining.
 `npm run test:e2e` is attempted with a 15-second bound and reports missing pinned WebKit 2388; pinned
 Chromium 1254 and `/opt/pw-browsers` are also absent. No browser download or full E2E pass is claimed.
+
+## Quick corner-radius experiment (2026-11-16)
+
+The user separately requests a quick test of removing rounding from windowed apps. On 25G342, test
+one ordinary titled owned child from both its owner and an external process. The first run checks
+native zero and WindowServer zero/32; a second adds native 0.01 after zero is confirmed to restore the
+default. Both finish and close their child; neither manipulates a protected app.
+
+The child's private `_cornerRadius` starts at 16. `_setCornerRadius:0` still reads 16 and leaves all
+corner pixels unchanged. `_setCornerRadius:0.01` reads 0.01 and reduces alpha<128 pixels in each
+40x40 corner from 63 to zero. This removes corner transparency, but the captured titlebar retains
+dark corner paint artifacts: do not call it a finished seamless square titlebar.
+
+The transaction clears bounds path and image mask, sets corner radius and system corner radius,
+then commits synchronously. In the owner, zero leaves 55 transparent pixels per corner (not fully
+square), while radius 32 increases it to 233. These are working rendering positive controls.
+The same zero/32 operations from the external controller leave all four corner crops identical to
+baseline, including RGBA within threshold 8. Every numerical-radius restore matches baseline corner
+pixels; the fixture remains windowed and its native buttons are unchanged. This is not proof about
+every corner API, and it does not demonstrate support for arbitrary external apps.
+
+`verify-corners.py` independently decodes original PNGs. Compact observations/hashes are in
+`tools/traffic-lights-lab/results/corners-25G342/`; raw images, source/binary snapshots and logs remain
+under `test-results/window-corners-2026-11-16/`. No resize/hover, display-scale, shadow, crash recovery
+or real protected-app acceptance is claimed. Native compile and corner verification pass; fresh
+unit tests pass 1,031. E2E is attempted/bounded at 15 seconds after missing pinned WebKit setup;
+no browser download or full-suite pass. Production code remains unchanged.
