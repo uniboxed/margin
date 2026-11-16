@@ -107,6 +107,19 @@ final class FakeHostWorld: HostSystem {
     var windowOnlyUnhidden: Set<String> = []
     var needsEnhanced: Set<String> = []
     var hidden: Set<pid_t> = []
+    // Windows with no window-server window while their app is hidden (a hidden Safari's unfocused new window, the
+    // real Mac 2026-11-16; or a restored one): ordered in `orderInAfterUnhide` after their app is unhidden.
+    var madeOnUnhide: Set<Int> = []
+    var restoredOnUnhide: Set<String> = [] // apps whose windows at launch (restored ones) are made only once they're unhidden
+    var orderInAfterUnhide = 0.05
+    var unhiddenAt: [pid_t: Double] = [:]
+    var serverFrom: [Int: Double] = [:] // windows the window server lists only from then on (a new window Safari is still making)
+    func serverMade(_ n: Int) -> Bool {
+        if let at = serverFrom[n], clock + 1e-9 < at { return false }
+        guard madeOnUnhide.contains(n) else { return true }
+        guard let pid = wins[n]?.pid, !hidden.contains(pid), let at = unhiddenAt[pid] else { return false }
+        return clock - at + 1e-9 >= orderInAfterUnhide
+    }
     // Apps that make spare windows (Dictionary started with no Dock icon, the probe of 2026-11-15): `count` more
     // windows of the real one's size and a 500×500 one, never ordered in (in no Space, never on screen), made before the
     // real one (lower numbers: the window server's front one is a spare). Accessibility lists those of its size
@@ -130,7 +143,7 @@ final class FakeHostWorld: HostSystem {
     func unhide(pid: pid_t) -> Bool {
         calls.append("unhide \(pid)")
         guard let a = apps[pid], !unhideRefused else { return false }
-        hidden.remove(pid)
+        if hidden.remove(pid) != nil { unhiddenAt[pid] = clock }
         if orderedInOnUnhide { for n in a.windows where spareOf[n] == nil && wins[n]?.spaces.isEmpty == true && wins[n]?.priv == nil { wins[n]?.spaces = [Self.desktop] } }
         if windowOnlyUnhidden.contains(a.bundle), a.windows.isEmpty {
             let n = nextWindow
@@ -301,6 +314,7 @@ final class FakeHostWorld: HostSystem {
             focused[pid] = real
         }
         if launchesHidden.contains(bundleId) || windowOnlyUnhidden.contains(bundleId) { hidden.insert(pid) }
+        if restoredOnUnhide.contains(bundleId) { madeOnUnhide.formUnion(apps[pid]?.windows ?? []) }
         return true
     }
     var frameAtQuit: [String: CGRect] = [:] // each app's window's frame as it was asked to quit
@@ -458,7 +472,7 @@ final class FakeHostWorld: HostSystem {
     func serverWindows(pid: pid_t) -> [ServerWindow]? {
         guard !fail.contains("server") else { return nil }
         let own = wins.keys.sorted().compactMap { n -> ServerWindow? in
-            guard let w = wins[n], w.pid == pid, let b = bounds(window: n) else { return nil }
+            guard let w = wins[n], w.pid == pid, serverMade(n), let b = bounds(window: n) else { return nil }
             return ServerWindow(number: n, pid: pid, bounds: b, onScreen: onCurrent(n))
         }
         return own + serverExtra.filter { $0.pid == pid }

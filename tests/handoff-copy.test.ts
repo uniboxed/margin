@@ -315,11 +315,11 @@ test('newWindow from a window: a Margin window of its own in full screen like it
   fake.windows.get(1)!.focused = true;
 });
 
-test('newWindow made ready out of sight (Margin.app at its launch): a blank page, not focused; any other address ignored', async () => {
+test('newWindow made ready out of sight (Margin.app at its launch): a blank page, focused (a hidden Safari orders no unfocused window in); any other address ignored', async () => {
   fresh();
   fake.createdWith = [];
-  const blank = (await handlers.newWindow({ fullscreen: false, url: 'about:blank', background: true }))!;
-  assert.deepEqual(fake.createdWith[0], { focused: false, url: 'about:blank' });
+  const blank = (await handlers.newWindow({ fullscreen: false, url: 'about:blank', background: true } as any))!;
+  assert.deepEqual(fake.createdWith[0], { focused: true, url: 'about:blank' }, 'focused, whatever an older app asks');
   assert.equal(fake.tabs.get(blank.windowId * 10)?.url, 'about:blank', 'nothing loaded in it');
   const other = (await handlers.newWindow({ fullscreen: false, url: 'https://a.example/' }))!;
   assert.deepEqual(fake.createdWith[1], { focused: true }, 'only a blank page is taken');

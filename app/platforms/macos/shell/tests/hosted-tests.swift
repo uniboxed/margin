@@ -63,7 +63,7 @@ final class FakeHostedLinks: HostedLinks {
     var profiles: [String] = []
     var asked: [(profile: String, type: String, payload: JSONObject)] = []
     var nextWindow = 90, nextTab = 500
-    var onNewWindow: ((Int) -> Void)? // the copy's id for the window it makes
+    var onNewWindow: ((Int, JSONObject) -> Void)? // the copy's id for the window it makes, and what it was asked
     var onSetWindowState: ((Int, Bool) -> Void)? // the copy's id, full screen or not
     var onCloseWindow: ((Int) -> Void)?
     var refuse: Set<String> = []
@@ -87,7 +87,7 @@ final class FakeHostedLinks: HostedLinks {
         if refuse.contains(type) { return (nil, "refused") }
         switch type {
         case "newWindow":
-            onNewWindow?(nextWindow)
+            onNewWindow?(nextWindow, payload)
             nextWindow += 1
             return (["windowId": nextWindow - 1, "state": "normal"], nil)
         case "setWindowState":
@@ -181,13 +181,27 @@ func preparedBrowserTests(_ library: Library) {
         engine.cover = { session.cover($0) }
         final class Box { var windows: [Int: Int] = [:] }
         let box = Box()
-        links.onNewWindow = { id in
+        // As the real Mac (2026-11-16): a Safari started with no Dock icon is started hidden; asked for an unfocused
+        // window while hidden it answers the window's id but orders nothing in (no window-server window until it's
+        // unhidden). Asked focused, it comes to the front (unhidden) and macOS switches to the Space its new window
+        // opens in, the Desktop.
+        w.launchesHidden = ["com.apple.Safari"]
+        links.onNewWindow = { id, payload in
             guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }
             let n = w.nextWindow
             w.nextWindow += 1
             w.wins[n] = FakeHostWorld.Win(pid: pid, spaces: [FakeHostWorld.desktop])
             w.apps[pid]?.windows.append(n)
             box.windows[id] = n
+            w.serverFrom[n] = w.clock + 0.25 // (made in ~250 ms, as the real Mac's log shows for a focused one)
+            let focused = payload["background"] as? Bool != true && payload["focused"] as? Bool != false
+            if focused {
+                if w.hidden.remove(pid) != nil { w.unhiddenAt[pid] = w.clock }
+                w.current = FakeHostWorld.desktop
+                w.currentSince = w.clock
+            } else if w.hidden.contains(pid) {
+                w.madeOnUnhide.insert(n)
+            }
         }
         links.onSetWindowState = { id, on in
             guard let n = box.windows[id], let pid = w.wins[n]?.pid else { return }
@@ -213,8 +227,14 @@ func preparedBrowserTests(_ library: Library) {
         let host = r.engine.hosts[safari]
         check("prepared: Safari started with no Dock icon at launch, counted as Margin's (its restored windows swept, quit at quit)",
               r.w.calls.contains("launch com.apple.Safari") && r.engine.launchedPid(bundleId: safariIdentifier) != nil, "\(r.w.calls)")
-        check("prepared: its window asked of the copy as a blank page, not focused", r.links.asked.first { $0.type == "newWindow" }.map { $0.payload["url"] as? String == "about:blank" && $0.payload["background"] as? Bool == true } == true,
-              "\(r.links.asked.map(\.type))")
+        check("prepared: its window asked of the copy as a blank page, focused (a hidden Safari orders no unfocused window in)",
+              r.links.asked.first { $0.type == "newWindow" }.map { $0.payload["url"] as? String == "about:blank" && $0.payload["background"] == nil && $0.payload["focused"] == nil } == true,
+              "\(r.links.asked.first { $0.type == "newWindow" }?.payload ?? [:])")
+        let unhide = r.w.calls.firstIndex { $0.hasPrefix("unhide") } ?? -1, ask = r.w.calls.firstIndex { $0.hasPrefix("copy") || $0.hasPrefix("reserve") } ?? -1
+        check("prepared: the hidden Safari unhidden (never activated) before its window was asked, and the window found",
+              unhide >= 0 && (ask < 0 || unhide < ask) && r.w.hidden.isEmpty && n != 0 && r.engine.hosts[safari]?.window == n, "\(r.w.calls)")
+        check("prepared: macOS's switch to the Desktop as Safari came to the front undone at once", r.w.current == FakeHostWorld.marginSpace && r.w.offMargin == 0
+              && r.w.calls.contains("current \(FakeHostWorld.marginSpace)") && r.w.dropped == 0, "\(r.w.calls)")
         check("prepared: full screen at the page area by the early path, then parked out of sight (a private Space), nothing shown",
               host?.phase == .parked && host?.member == true && r.w.wins[n]?.fullScreen == true && r.w.wins[n]?.priv != nil && r.engine.shown == nil
               && r.w.bounds(window: n) == CGRect(x: 260, y: 41, width: 1244, height: 933), "\(String(describing: host?.phase)) \(String(describing: r.w.wins[n]))")
@@ -239,6 +259,27 @@ func preparedBrowserTests(_ library: Library) {
         check("prepared: quit: its window closed by its copy, Safari (Margin's) quit, nothing left", r.links.types().contains("closeWindow") && r.w.running(bundleId: "com.apple.Safari").isEmpty
               && r.w.listsMarginOnly && r.w.privates.isEmpty, "\(r.links.types()) \(r.w.apps.keys)")
         for item in library.items().map(\.id) { _ = library.perform("closeTab", ["windowId": 1, "tabId": item]) }
+    }
+    do {
+        // The list the new window is told apart from read after Safari's unhide settled: its restored window, ordered in
+        // only as it's unhidden, is in it and never taken for the new one. Read at once after the unhide, the restored one
+        // looks new (and comes first).
+        for settle in [true, false] {
+            let r = rig()
+            r.w.restoredOnUnhide = ["com.apple.Safari"]
+            r.w.axCurrentOnly = true // (Accessibility lists only the current Space's windows: not Safari's on the Desktop)
+            if !settle { r.engine.options.unhideSettle = 0; r.engine.options.windowWait = 1 }
+            let lines = prepare(r)
+            let n = r.copy()[90] ?? 0
+            if settle {
+                check("prepared: Safari's restored window ordered in as it's unhidden is read before the ask: the new window found, prepared",
+                      r.engine.hosts[safari]?.phase == .parked && r.engine.hosts[safari]?.window == n && lines.contains { $0.contains("browser prepared in") }, "\(lines.filter { $0.contains("prepared") || $0.contains("Safari") })")
+            } else {
+                check("prepared: (the list read at once after the unhide: its restored window, ordered in first, taken for the new one)",
+                      r.engine.hosts[safari].map { $0.window != n } ?? true, "\(String(describing: r.engine.hosts[safari]?.window)) \(n) \(lines.filter { $0.contains("prepared") })")
+            }
+            hostRun { await r.engine.quitAll() }
+        }
     }
     do {
         // The prepared window quit unused: closed by its copy too.
@@ -326,7 +367,7 @@ func hostedTests() {
     // Desktop: Accessibility doesn't see it there while Margin's Space is current; its copy's setWindowState and
     // closeWindow act on it.
     var copyWindows: [Int: Int] = [:]
-    links.onNewWindow = { id in
+    links.onNewWindow = { id, _ in
         guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }
         let n = w.nextWindow
         w.nextWindow += 1

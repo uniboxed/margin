@@ -113,6 +113,11 @@ final class HostEngine {
         var desktopLookWait = 1.0 // still unlisted: read once more with its Desktop made current (under the freeze)
         var serverAfter = 3.0 // an app Margin started whose window Accessibility doesn't list by then: the window server's
         var unhideWait = 0.5 // a hidden app unhidden: no longer hidden by then
+        // A Safari Margin started (started hidden) unhidden before a window is made ready out of sight in it: its window
+        // server's list settled (unchanged this long, at most `unhideSettleWait`) before the list the new window is told
+        // apart from is read, so windows it orders in as it's unhidden are never taken for the new one.
+        var unhideSettle = 0.15
+        var unhideSettleWait = 1.0
         var enhancedLookWait = 1.0 // still unlisted in Margin's Space: read again this long with AXEnhancedUserInterface on
     }
 
@@ -533,17 +538,48 @@ final class HostEngine {
                 if startedNow { await quitApp(app.pid, bundle: bundle) }
                 return fail(id, .window, "Safari's extension didn't link")
             }
-            // Every window Safari has now, on every Space (the window server's), and the ones Accessibility lists.
+            // A window made ready out of sight in a Safari started hidden (LaunchServices' hide option, as every app Margin
+            // starts with no Dock icon): unhidden first, never activated. Seen on the real Mac 2026-11-16: a hidden
+            // Safari asked for an unfocused window answers its id but orders nothing in, so the window server never
+            // lists it. It's asked focused (as every other window Margin asks of Safari), so Safari unhides and orders
+            // it in anyway; unhidden first, the windows it orders in as it's unhidden come before the list below.
+            if preparing, sys.isHidden(pid: app.pid) == true {
+                let t = sys.now()
+                if sys.unhide(pid: app.pid) {
+                    var last = Set((sys.serverWindows(pid: app.pid) ?? []).map(\.number)), since = sys.now()
+                    _ = await wait(options.unhideSettleWait, every: options.memberEvery) {
+                        let now = Set((self.sys.serverWindows(pid: app.pid) ?? []).map(\.number))
+                        if now != last { last = now; since = self.sys.now() }
+                        return self.sys.isHidden(pid: app.pid) != true && self.sys.now() - since >= self.options.unhideSettle
+                    }
+                    times.append("unhidden \(ms(since: t))")
+                } else {
+                    Diagnostics.note("host: \(id): Safari is hidden and didn't take the unhide: its window asked anyway")
+                }
+            }
+            // Every window Safari has now, on every Space (the window server's), and the ones Accessibility lists: read
+            // before the ask, so the window it makes is the one that wasn't there.
             let before = Set((sys.serverWindows(pid: app.pid) ?? []).map(\.number)).union((await sys.windows(pid: app.pid) ?? []).map(\.number))
+            // Out of sight: Margin's Space kept current while Safari makes its window (asked focused, Safari comes to the
+            // front and macOS may switch to the Space its new window opens in, the Desktop): undone at once.
+            let keepSpace = preparing && sys.currentSpace(onDisplayOf: marginSpace) == marginSpace
+            var undone = 0
+            func keepMarginCurrent() {
+                guard keepSpace, let now = sys.currentSpace(onDisplayOf: marginSpace), now != marginSpace else { return }
+                if sys.setCurrentSpace(marginSpace) { undone += 1 }
+            }
             guard let request = requestSafariWindow, let asked = await request(profile) else {
                 if startedNow { await quitApp(app.pid, bundle: bundle) }
                 return fail(id, .window, "Safari's extension wasn't asked for a window (no link)")
             }
+            keepMarginCurrent()
             var seen = 0
             _ = await wait(options.windowWait) {
+                keepMarginCurrent()
                 (number, seen) = self.newSafariWindow(pid: app.pid, before: before, near: asked.bounds)
                 return number != nil
             }
+            if undone > 0 { times.append("\(undone) Space change\(undone == 1 ? "" : "s") undone") }
             guard let window = number else {
                 await closeAskedSafariWindow(asked.id, profile: profile, pid: app.pid, number: nil, why: "its window wasn't found")
                 if startedNow { await quitApp(app.pid, bundle: bundle) }

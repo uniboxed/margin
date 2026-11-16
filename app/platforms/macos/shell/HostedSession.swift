@@ -635,8 +635,11 @@ final class HostedSession: LibraryDelegate {
         let p = resolve(profile)
         requesting.insert(p) // (the restored-window sweep leaves this profile alone meanwhile)
         defer { requesting.remove(p) }
-        // (A window made ready out of sight: a blank page, nothing loaded in it, and not focused.)
-        let payload: JSONObject = preparingProfile == p ? ["fullscreen": false, "url": "about:blank", "background": true] : ["fullscreen": false]
+        // (A window made ready out of sight: a blank page, nothing loaded in it. Focused, as every window Margin asks of
+        // Safari: a Safari Margin started is hidden, and asked for an unfocused window there it answers its id but never
+        // orders it in, so the window server never lists it (the real Mac, 2026-11-16). The engine unhides it first and
+        // keeps Margin's Space current while it's made; Margin is activated again after.)
+        let payload: JSONObject = preparingProfile == p ? ["fullscreen": false, "url": "about:blank"] : ["fullscreen": false]
         let (result, error) = await links.request(profile: p, "newWindow", payload)
         guard let made = result.flatMap({ SpaceWindowAnswer($0) }) else {
             note("Safari window for a profile: not made (\(error ?? "no answer"))")
