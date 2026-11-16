@@ -115,6 +115,8 @@ Everything else is there in both: the cloud-tabs part, notices, prompts, editor,
 
 ### The first paint before Margin.app has measured
 
+> Removed 2026-11-16 with the page box (`DECISIONS.md` "Hosted only"): no first paint, no `first-paint.css`.
+
 `registered.ts layoutFromSettings` uses Arcadia's geometry for every theme (8 px frame, radius 6.25, Arcadia's width) until the app's first `setLayout`. With Neo or Pixel, a page that loads before that gets Arcadia's box for a moment. Fix: `theme.json` `layout` gains the docked and hidden box (`dockedInsets`, `hiddenInsets`, `radius`), read by the background for built-in themes. Neo: 16 px gutters, the card at `16 + width + 16`, radius 18. Pixel: 16 px and 18 px, radius 0.
 
 ## 3. User themes
@@ -141,7 +143,7 @@ Today nothing reads either: `scripts/build.ts` copies the built-in folders as th
 - **By Margin.app, for the whole Mac, not per profile.** A theme is the person's look, the same in every browser and profile. `~/Library/Application Support/Margin/themes/<id>.json` holds the stored package in `encodeStoredTheme`'s format (format 2, files as base64), written as `DataStore` writes (a temporary file, `fsync`, `.bak`, rename). `themes/index.json` is the short list: `id`, `name`, `version`, `author`, `bytes`, `savedAt`.
 - **The extension gets only the index,** never a package. It goes in each profile's data set as the `userThemes` collection, with the index entry as the item's value (a few hundred bytes, so no `omitted`), and the copy keeps it in `storage.local` `userThemes`. That's the key `handlers.ts updatePackageThemeSettings` already reads. `updateSettings` then accepts a `theme` that's in the index. `docs/DATA.md`'s `userThemes` row changes from "the stored package" to "the index entry". The `userTheme:<id>` storage keys go, unused: import was never built, so no copy has any.
 - **Which package an overlay draws:** the app's own when the profile's `settings.theme` is in its index. Otherwise the built-in the copy sends (the copy sends Arcadia for an id it doesn't ship).
-- **First paint:** a user theme has no `first-paint.css` (registrations are build files). Pages get a plain one: the box at the layout, nothing around it (`content/layout/theme-plain.css`, built like the others). Not Arcadia's frame, which would flash a different look.
+- **First paint (removed 2026-11-16 with the page box):** a user theme has no `first-paint.css` (registrations are build files). Pages get a plain one: the box at the layout, nothing around it (`content/layout/theme-plain.css`, built like the others). Not Arcadia's frame, which would flash a different look.
 
 ### Import, step by step
 

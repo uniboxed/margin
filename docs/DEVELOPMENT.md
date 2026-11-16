@@ -107,15 +107,14 @@ extension/              The extension's shared source, as ES modules (browsers l
                         routes pages' and Margin.app's requests.
   background/           Its parts: store, handlers (the message protocol), link and app-link (Margin.app),
                         tabs (the plain switch, opening, the open-tab repair), navigation, sleep, archive,
-                        registered (the page's first paint), notices, page-loads, switch-log (lines in
+                        notices, page-loads, switch-log (lines in
                         Margin.app's log), cut-off, site-icons, search-engine, theme-package.
   state/model.ts        Pure state functions (no browser APIs), unit tested: tabs, kept tabs, spaces, pins, folders.
   shared/               Pure helpers: view (what the sidebar shows), search, shortcuts, stored (storage
-                        format), data-set and data-merge (the data Margin.app owns), page-box (the box's CSS
-                        and the first paint's), page-css, app-link, sleep, notices, gestures, pull.
-  content/core.ts       Margin on web pages, no UI: the box from Margin.app's layout, gestures, the
-                        draft check, navigation keys and ⌘T, icons and zoom, copies standing back.
-  content/page/         The page's box in the page's own world (one bundle, registered while Margin.app draws).
+                        format), data-set and data-merge (the data Margin.app owns), app-link, sleep,
+                        notices, gestures, pull.
+  content/core.ts       Margin on web pages, no UI and no box (the page box was removed 2026-11-16): gestures,
+                        the draft check, navigation keys and ⌘T, icons and zoom, copies standing back.
   newtab/               Margin's new-tab page: drawn by Margin.app while linked; else a notice and an address field.
   ui/                   The UI runtime (view model, renderer, sanitizer, actions, behaviors), run by Margin.app's
                         overlay page (ui/host-app.ts) and by the browser tests (ui/host.ts).
@@ -143,7 +142,7 @@ Design decisions and every Safari fallback are in [DECISIONS.md](../DECISIONS.md
 
 ## Development
 
-`npm run build` copies `extension/` into `dist/<browser>/` with that browser's manifest overrides and profile, writes the first paint's files, bundles each context's scripts into one file with esbuild (`content/content.bundle.js`, `background.bundle.js`, `content/page.bundle.js`, `newtab/newtab.bundle.js`) and builds Margin.app's overlay page into `dist/app/`. Run `npm install` once. Node 22+.
+`npm run build` copies `extension/` into `dist/<browser>/` with that browser's manifest overrides and profile, bundles each context's scripts into one file with esbuild (`content/content.bundle.js`, `background.bundle.js`, `newtab/newtab.bundle.js`, `away/away.bundle.js`) and builds Margin.app's overlay page into `dist/app/`. Run `npm install` once. Node 22+.
 
 ```sh
 npm run build       # after any change under extension/, platform/ or app/shared/host/: regenerate dist/ (a test checks it)
@@ -158,4 +157,4 @@ npm run icons       # regenerate extension/icons
 
 ### Adding a theme
 
-A theme is HTML and CSS, no JavaScript: a package in `extension/themes/<id>/` (`theme.json`, `theme.html`, `theme.css`, bundled fonts), listed in `themes/packages.ts`, with its look at a page's first paint in `first-paint.css`. `extension/themes/README.md` is the guide.
+A theme is HTML and CSS, no JavaScript: a package in `extension/themes/<id>/` (`theme.json`, `theme.html`, `theme.css`, bundled fonts), listed in `themes/packages.ts`. `extension/themes/README.md` is the guide.

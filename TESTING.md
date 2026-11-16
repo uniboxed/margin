@@ -97,14 +97,14 @@ What each file covers:
 
 | File | What |
 |---|---|
-| `link` | linking, the page box at once, the app starting late |
+| `link` | linking, the overlay following the state, the app starting late |
 | `link-drops` | a drop mended, the app gone a moment and past 6 s, a goodbye, a wrong welcome key |
 | `data` | the app's set as the cache, changes sent, changes queued while unlinked, a wiped profile refilled |
 | `tabs`, `spaces`, `pins-folders` | the sidebar in the overlay |
 | `palette`, `newtab`, `archive` | the palette, the launcher, searches, the archive |
 | `icons-titles`, `navigation` | site icons and titles, next and previous, history |
 | `sleep` | sleeping tabs: idle pages closed and kept, busy ones awake |
-| `page-box`, `scroll` | every site in its box, fixed and sticky parts, frames, gestures |
+| `scroll` | scrolling, sticky parts, gestures |
 | `loading` | a streamed page, leaving, a reload, a page that stays |
 | `cloud-tabs` | iCloud Tabs in the sidebar and the palette |
 | `themes` | each built-in theme chosen in Settings and drawn with real content |

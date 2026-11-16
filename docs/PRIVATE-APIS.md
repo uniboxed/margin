@@ -25,7 +25,7 @@ Every private macOS call, class, selector, key and file format Margin.app uses. 
 | **geometry** | rows 1, 14 | Mission Control uses transient hiding; other parts remain available |
 | **live cover** (issue #15: on by default since 2026-11-11; Low Power Mode and `MarginLiveProfileCover=NO` take the freeze) | rows 1, 6, 8-9, 15-20 | the existing freeze, then macOS's slide: degraded fallbacks, not the live-cover goal |
 | **park** | spaces, rows 8-12, both encodings | `close` (drafts permitting) or `keep` (`docs/HANDOFF.md` §1.1) |
-| **slot** (off unless `MarginNativeSlot` is set; `DECISIONS.md` "The slot") | spaces, geometry, rows 1, 21-22 | the page box, as before: the extension sizes the page inside a full-size window |
+| **slot** (off unless `MarginNativeSlot` is set; `DECISIONS.md` "The slot") | spaces, geometry, rows 1, 21-22 | the page box, as before: the extension sizes the page inside a full-size window (the page box was removed 2026-11-16, `DECISIONS.md` "Hosted only": no fallback in the extension now) |
 | **enumerator** | row 13, and gate G5 passed | no orphan check of private Spaces (`docs/HANDOFF.md` §4.4 invariant 3) |
 | **host** (off unless `MarginHosted` is set; `DECISIONS.md` "The host engine"; its own launch line, `HostCalls.swift`) | spaces, park, slot, geometry, rows 1, 23-32 | nothing is hosted (a crashed run's marker is still cleaned up when the calls are there) |
 | **outside opens** (within the host) | host, rows 33-35 | an open of a hosted app from the Dock or Finder isn't heard (its promotion is still read from its activation policy) |

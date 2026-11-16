@@ -105,7 +105,7 @@ Margin's slots:
 
 | Slot | Shows | While |
 |---|---|---|
-| `<m-page>` (one, required) | the browser's page: its box is the page's place (insets and corner radius reported to the host); never paints, never takes the pointer | always |
+| `<m-page>` (one, required) | the browser's page: its box is the page's place, where Margin.app puts the hosted window (its insets and corner radius reported to the host); never paints, never takes the pointer | always |
 | `<m-menu>` | the `menu` part; placed by Margin at `--m-menu-x`, `--m-menu-y` | `menu` |
 | `<m-editor>` | the `space-editor` part | `editor` |
 | `<m-palette>` | the `palette` part (or draw it yourself inside `<m-if test="palette.open">`) | `palette.open` |
