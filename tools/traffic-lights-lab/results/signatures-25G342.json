@@ -1,0 +1,34 @@
+{
+  "sip": "System Integrity Protection status: enabled.",
+  "uid": "503",
+  "main_executable_signatures": [
+    {
+      "path": "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app",
+      "signature": [
+        "Identifier=com.apple.Safari",
+        "CodeDirectory v=20400 size=649 flags=0x2000(library-validation) hashes=9+8 location=embedded",
+        "TeamIdentifier=not set"
+      ],
+      "injection_exceptions": {}
+    },
+    {
+      "path": "/Applications/Google Chrome.app",
+      "signature": [
+        "Identifier=com.google.Chrome",
+        "CodeDirectory v=20500 size=765 flags=0x12a00(kill,restrict,library-validation,runtime) hashes=13+7 location=embedded",
+        "TeamIdentifier=EQHXZ8M8AV"
+      ],
+      "injection_exceptions": {}
+    },
+    {
+      "path": "/Applications/Microsoft Edge.app",
+      "signature": [
+        "Identifier=com.microsoft.edgemac",
+        "CodeDirectory v=20500 size=769 flags=0x12a00(kill,restrict,library-validation,runtime) hashes=13+7 location=embedded",
+        "TeamIdentifier=UBF8T346G9"
+      ],
+      "injection_exceptions": {}
+    }
+  ],
+  "scope": "read-only main executable inspection; not an exhaustive injection/entitlement-chain analysis"
+}

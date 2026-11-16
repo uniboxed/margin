@@ -4822,3 +4822,45 @@ so no real browser switch is claimed for this new policy. The login helper
 remains responsible for browser-triggered launch. Actual Low Power Mode toggling
 is retained as a manual check; selection/lifecycle are verified with injected
 native state. No new lab switch or PR.
+
+### Windowed traffic-light hiding: research only (2026-11-15)
+
+The user requests in-depth Accessibility/private-API research, then clarifies that the target is
+only the three close/minimise/fullscreen buttons, not the macOS menu bar, and grants AX access.
+Treat that as authorization for this isolated spike; do not silently adopt a new product policy.
+No production app, extension, installed browser, system protection or persistent setting is changed.
+
+Actual host: macOS 26.7.3 / 25G342 arm64, SIP enabled, ordinary UID 503. Do not reuse the older
+26B131 experiments as evidence on this host. In an owned, invisible off-screen window, private
+NSWindow `_findStandardWindowButton:` plus NSView `_setHidden:setNeedsDisplay:` hides exactly the
+three native views, removes their native hit targets, stays windowed through resize, and restores
+original state. NSThemeFrame `setButtonRevealAmount:` also makes them transparent/disabled but has
+other titlebar targets in disassembly; prefer the narrower method for a cooperating host.
+
+An independently owned child reads native button state during each external AX write, before
+restoration. AXHidden/AXEnabled report non-settable, yet writes return zero and do not change those
+native states. Foreign SLSSetWindowClipShape also returns zero without changing independently read
+clip geometry; the owner positive control changes/restores it. Finish AppKit launch before AX
+window discovery; retain the earlier failed discovery separately. Earlier off-screen geometry
+guards caught AppKit constraining the frame; the corrected fixture overrides that constraint.
+
+One disposable Chromium 156.0.8078.4 window confirms the AX false-success pattern (AXEnabled still
+true, AXHidden unsupported), stays windowed and is closed/terminated with its profile removed and
+former focus requested back. No visual disappearance, Safari/Edge behavior or injected backend is
+claimed. Private AppKit selectors require in-process execution; AX permission is not that capability.
+Main executable signature checks show library validation on Safari/Chrome/Edge. Exact external
+native removal remains unsupported by the tested routes. A Margin-owned opaque cover is a separate,
+unvalidated visual approach, not actual native hiding. Keep the spike out of the app.
+
+Report, source, raw state/clip/cleanup observations and hashes: docs/TRAFFIC-LIGHTS-RESEARCH.md and
+tools/traffic-lights-lab/. Saved-evidence validation rejects a fabricated false-success native change.
+Swift probes compile with warnings as errors. Further visual/host/version checks are in TESTING.md.
+
+Repository validation for the spike: locked dependencies restored with npm ci --ignore-scripts;
+1,031 unit tests pass. Full npm run test:e2e is blocked by missing pinned Chromium 1254/WebKit 2388,
+then stopped after setup failures/stalled teardown. No browser install/download. Existing WebKit
+2287 fails a separate smoke check (unknown PushAPIEnabled protocol setting). With a temporary,
+uncommitted Playwright executable-path adapter, installed Chromium 1248 passes the Chromium-only
+chrome-build/site subset 19/19. This is partial validation, not a passing full suite or Phase 4
+acceptance. An initial concurrent-build shared-dist race was corrected for the subsequent attempts;
+no source/lockfile/test assertion was changed to accommodate this environment. No app install or PR.

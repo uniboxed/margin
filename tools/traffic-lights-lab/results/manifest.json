@@ -1,0 +1,32 @@
+{
+  "os": "macOS 26.7.3",
+  "build": "25G342",
+  "architecture": "arm64",
+  "swift": "6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)",
+  "chromium": "156.0.8078.4",
+  "capture": "none; native state/hit-test readback and AX/WindowServer metadata only",
+  "source_and_evidence_sha256": {
+    "tools/traffic-lights-lab/probe.swift": "43cbc9ec20de1fe39fa7aaea6331d4eebf530c195492fd19dcb75f59bb3ff94c",
+    "tools/traffic-lights-lab/browser-probe.swift": "34e173fed0748e73c038cc942e3b1dc22025729cae7f0293c69eb5607d21311c",
+    "tools/traffic-lights-lab/verify.py": "4fb9a8c3c024b942d37e699217bc71c3da59880cc7836d0462f7971acaf08bd1",
+    "tools/traffic-lights-lab/results/chromium-25G342.jsonl": "60301a116397843f01e01b26782801d3143fc150163de35f34ac8e444d5cf47c",
+    "tools/traffic-lights-lab/results/failed-discovery-25G342.jsonl": "88b962f06bef9d6aad6d631ad1931dddc84e4132d716a60fa2f5b19d390a0d4c",
+    "tools/traffic-lights-lab/results/owned-25G342.jsonl": "022c93067b711ee27f2f0855c29a357ef0878fc2bcab3bd5c79b1b8ae3f56af9",
+    "tools/traffic-lights-lab/results/signatures-25G342.json": "5dea284d89427244c46b524270c9e9cfad5f243aa4ff852d6df751f44fd34e69"
+  },
+  "tested_executable_sha256": {
+    "/tmp/margin-traffic-lights-research/probe": "8f05b69b6d19f11ba681a7191f0ab42d682215ff0d7b564ed34a7d60c689a50c",
+    "/tmp/margin-traffic-lights-research/browser-probe": "66d6018e1fd93b006504ea3c79afcebc399d95ff73523b0dcc5abc78d731a079"
+  },
+  "notes": [
+    "failed-discovery is a retained failed earlier run, not evidence from the final source",
+    "ordinary repo tests exercise existing extension behavior, not native traffic-light hiding"
+  ],
+  "repository_validation": {
+    "unit": "npm test: 1031 pass",
+    "full_e2e": "attempted; missing pinned Chromium 1254/WebKit 2388; stopped after setup failure/stalled teardown",
+    "installed_webkit_smoke": "2287: incompatible Page.overrideSetting / PushAPIEnabled",
+    "installed_chromium_subset": "1248 / Chromium 156.0.8078.4: chrome-build.test.ts and site.test.ts, 19 pass; temporary launch-path adapter only",
+    "browser_downloads": false
+  }
+}

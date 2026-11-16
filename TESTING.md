@@ -2084,3 +2084,27 @@ unit and 555 native integration checks pass; handoff lab compile and signed
 Release build pass. Installed via the standard same-team updater and verified
 with deep/strict codesign checks. No browser was running at the final check,
 so this update does not claim a new real switch or physical power-toggle run.
+
+## Windowed traffic-light research (isolated; not a shipping feature)
+
+See `docs/TRAFFIC-LIGHTS-RESEARCH.md` and `tools/traffic-lights-lab/README.md`. Completed on macOS
+26.7.3 / 25G342: owned-process native state and hit testing, resize/restoration, foreign-versus-owner
+clip readback, and one disposable Chromium AX attribute observation. Neither the invisible fixture
+nor successful AX return codes establish a visually verified third-party-app hiding feature.
+
+Future acceptance checks before adopting a native backend:
+
+- In an explicitly cooperating visible host, inspect all three buttons before/while/after the private
+  individual-view hide. The title, toolbar and menu bar must stay intact, the window must remain
+  windowed, and there must be no invisible click targets at the former button positions.
+- Verify active/inactive appearance, hover, dragging, resizing, native tabs, titlebar reconstruction,
+  and restoration of the actual original hidden state on detach. Never unhide a host-hidden button.
+- Verify host/plugin failure and process restart recovery. A stopped external controller must not
+  leave an uncontrolled in-process modification. Do not assume the lab fixture provides such a host.
+- Observe real Safari/Edge AX behavior separately if needed, in disposable windows, and do not infer
+  native disappearance from AXHidden writes or a zero return. No Safari/Edge hiding is claimed here.
+- For any separate visual-cover experiment, verify exact stacking, occlusion by other apps, button
+  hit interception, glass/translucent backgrounds, Mission Control/Spaces, display changes and RTL.
+  A transparent patch cannot erase native buttons; label covering separately from native hiding.
+- On a different macOS build, expect the private probe to refuse. Recheck signatures and independently
+  measured effects before extending the build gate; finding an exported symbol is insufficient.
