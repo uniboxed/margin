@@ -187,4 +187,88 @@ func marginWindowTests() {
         corners.hide()
         check("corners: hidden: none ordered in", !corners.isShown && corners.frames.isEmpty && corners.panels.allSatisfy { !$0.isVisible })
     }
+
+    // ---- the corners where the real screen showed them wrong (2026-11-15: TestPane hosted in Arcadia, the page area
+    // 250,41 1254×933 in a 1512×982 display): each panel's screen frame, its radius, and what it draws, pixel by pixel ----
+    do {
+        let page = CGRect(x: 250, y: 41, width: 1254, height: 933)
+        let frames = HostCorners.panelFrames(page: page, radii: [6.25, 6.25, 6.25, 6.25], mainHeight: 982)
+        // (AppKit's frames are bottom left: the top corners near y = 982 - 41 - 7, the bottom ones near 982 - 974.)
+        check("corners on screen: the four panels' AppKit frames at the page area's own corners (top ones at the top, bottom ones at the bottom)", frames.map(\.frame) == [
+            CGRect(x: 250, y: 934, width: 7, height: 7), CGRect(x: 1497, y: 934, width: 7, height: 7),
+            CGRect(x: 1497, y: 8, width: 7, height: 7), CGRect(x: 250, y: 8, width: 7, height: 7)] && frames.map(\.corner) == [0, 1, 2, 3], "\(frames.map(\.frame))")
+        check("corners on screen: back in the window server's coordinates, each touches its page corner exactly; each at the card's radius (6.25 pt, points not pixels)",
+              frames.map { ScreenGeometry.appKitRect($0.frame, mainHeight: 982) }.enumerated().allSatisfy { i, r in
+                  (i == 0 || i == 3 ? r.minX == page.minX : r.maxX == page.maxX) && (i == 0 || i == 1 ? r.minY == page.minY : r.maxY == page.maxY) } && frames.allSatisfy { $0.radius == 6.25 })
+        check("corners on screen: the colours Arcadia's page reports for its frame read as its grey, all four",
+              ["rgb(156, 157, 161)", "rgb(156, 157, 161)", "rgb(156, 157, 161)", "rgb(156, 157, 161)"].compactMap(HostCorners.color).allSatisfy { abs($0.redComponent * 255 - 156) < 0.5 && abs($0.greenComponent * 255 - 157) < 0.5 && abs($0.blueComponent * 255 - 161) < 0.5 })
+
+        // What each panel draws (its layers rendered, at 4×): the corner's own point the fill, the curve's inside clear, the
+        // border's band its colour; the layers' coordinates as the screen's (nothing flipped on the way up).
+        func rendered(_ panel: NSPanel, scale: CGFloat = 4) -> (pixel: (CGFloat, CGFloat) -> [Int], flipped: Bool)? {
+            guard let layer = panel.contentView?.layer else { return nil }
+            let side = Int((panel.frame.width * scale).rounded())
+            guard let ctx = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+            ctx.scaleBy(x: scale, y: scale)
+            layer.render(in: ctx)
+            var flipped = false
+            for l in sequence(first: layer as CALayer?, next: { $0?.superlayer }) { if l?.isGeometryFlipped == true { flipped.toggle() } }
+            let data = Array(UnsafeBufferPointer(start: ctx.data!.assumingMemoryBound(to: UInt8.self), count: side * side * 4)) // (copied: the context's goes with it)
+            // (x, y in points, AppKit's y up; memory's first row is the top.)
+            return ({ x, y in
+                let px = min(side - 1, Int(x * scale)), py = min(side - 1, Int(y * scale))
+                let i = (side - 1 - py) * side * 4 + px * 4
+                return [Int(data[i]), Int(data[i + 1]), Int(data[i + 2]), Int(data[i + 3])]
+            }, flipped)
+        }
+        let grey = HostCorners.color("rgb(156, 157, 161)")!
+        let arcadia = HostCorners(harness: true)
+        let off = CGRect(x: -20000, y: -20000, width: page.width, height: page.height)
+        arcadia.show(page: off, radii: [6.25, 6.25, 6.25, 6.25], fills: [grey, grey, grey, grey], edge: nil)
+        let want = HostCorners.panelFrames(page: off, radii: [6.25, 6.25, 6.25, 6.25])
+        check("corners shown: each panel's frame is the computed one", arcadia.panels.prefix(4).map(\.frame) == want.map(\.frame), "\(arcadia.panels.map(\.frame))")
+        for (i, panel) in arcadia.panels.prefix(4).enumerated() {
+            guard let r = rendered(panel) else { check("corners drawn: corner \(i) renders", false); continue }
+            // The page's corner point (outside the curve) and a point inside it, in the panel's own points (y up).
+            let left = i == 0 || i == 3, top = i == 0 || i == 1
+            let cornerPoint = (left ? 0.2 : 6.8, top ? 6.8 : 0.2), inside = (left ? 6.0 : 1.0, top ? 1.0 : 6.0)
+            let c = r.pixel(cornerPoint.0, cornerPoint.1), clear = r.pixel(inside.0, inside.1)
+            check("corners drawn: \(["top left", "top right", "bottom right", "bottom left"][i]): the frame's grey at the page's corner, clear inside the curve, nothing flipped",
+                  abs(c[0] - 156) <= 2 && abs(c[1] - 157) <= 2 && abs(c[2] - 161) <= 2 && c[3] == 255 && clear[3] == 0 && !r.flipped, "\(c) \(clear)")
+        }
+        arcadia.hide()
+        // Neubrutalism: a 3 pt ink border round a 12 pt card, its offset ink shadow at the bottom right, the gutter elsewhere.
+        let ink = HostCorners.color("rgb(17, 17, 17)")!, gutter = HostCorners.color("rgb(240, 236, 228)")!
+        let nb = HostCorners(harness: true)
+        nb.show(page: off, radii: [9, 9, 9, 9], fills: [gutter, gutter, ink, gutter], edge: HostCorners.Edge(width: 3, color: ink))
+        for (i, panel) in nb.panels.prefix(4).enumerated() {
+            guard let r = rendered(panel) else { check("corners drawn (Neubrutalism): corner \(i) renders", false); continue }
+            let left = i == 0 || i == 3, top = i == 0 || i == 1
+            // (Along the diagonal from the curve's centre, 9 in from the corner: d < 9 the page, 9-12 the border, beyond the fill.)
+            func at(_ d: CGFloat) -> [Int] {
+                let o = d / 2.0.squareRoot()
+                return r.pixel(left ? 9 - o : panel.frame.width - 9 + o, top ? panel.frame.height - 9 + o : 9 - o)
+            }
+            let fill = i == 2 ? [17, 17, 17] : [240, 236, 228]
+            let page = at(7), band = at(10.5), beyond = at(12.6)
+            check("corners drawn (Neubrutalism): \(["top left", "top right", "bottom right", "bottom left"][i]): clear inside, the ink border in its band, \(i == 2 ? "the ink shadow" : "the gutter") beyond",
+                  page[3] == 0 && band[0] <= 20 && band[3] == 255 && zip(beyond.prefix(3), fill).allSatisfy { abs($0 - $1) <= 3 } && beyond[3] == 255, "\(page) \(band) \(beyond)")
+        }
+        nb.hide()
+        // A square corner (Pixel): nothing drawn.
+        let pixel = HostCorners(harness: true)
+        pixel.show(page: off, radii: [0, 0, 0, 0], fills: [grey, grey, grey, grey], edge: nil)
+        check("corners: square corners (Pixel): no panel", !pixel.isShown && pixel.panels.allSatisfy { !$0.isVisible })
+        // A panel no longer shown (ordered in while another Space was current, gone with it): ordered in again though nothing changed.
+        let again = HostCorners(harness: true)
+        again.show(page: off, radii: [6.25, 6.25, 6.25, 6.25], fills: [grey, grey, grey, grey], edge: nil)
+        again.panels[0].orderOut(nil)
+        let draws = again.draws
+        again.show(page: off, radii: [6.25, 6.25, 6.25, 6.25], fills: [grey, grey, grey, grey], edge: nil)
+        check("corners: one gone from the screen is ordered in again (not drawn again)", again.panels[0].isVisible && again.reorders == 1 && again.draws == draws)
+        again.hide()
+        check("corners: the colour most corners have (Neubrutalism's ink shadow at one corner aside), none for none",
+              HostCorners.common([gutter, gutter, ink, gutter]) == gutter && HostCorners.common([ink, grey]) == ink && HostCorners.common([]) == nil)
+    }
 }

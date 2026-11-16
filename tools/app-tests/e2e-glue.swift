@@ -211,6 +211,7 @@ func glueScenario() async {
   let c = made.open()
   defer { made.closeAll() }
   world.marginWindow = c.window.windowNumber
+  c.hostedBounds = { world.bounds(window: $0) } // (the hosted window's bounds: the stand-in window manager's)
   var loadingAtLaunch: [String: String?] = [:]
   var loadingTabsAtLaunch: [String: [Int]] = [:]
   world.onLaunch = { bundle in loadingAtLaunch[bundle] = c.loadingLabel; loadingTabsAtLaunch[bundle] = c.loadingTabs }
@@ -283,6 +284,11 @@ func glueScenario() async {
         radius > 0 && c.corners.isShown && c.corners.frames == wantCorners && c.layout?.fills == Array(repeating: "rgb(156, 157, 161)", count: 4) && c.layout?.edge == nil
         && c.corners.panels.prefix(4).allSatisfy { $0.level == .floating && $0.ignoresMouseEvents && !$0.isOpaque && !$0.canBecomeKey && $0.collectionBehavior.contains(.transient) && !$0.collectionBehavior.contains(.canJoinAllSpaces) },
         "\(c.corners.frames) want \(wantCorners) fills \(String(describing: c.layout?.fills))")
+  check("the hosted window placed in Margin's own full-screen frame (the area its own Space lays it out in), never the display less its inset",
+        c.hostedPlacement?.area == c.contentFrame, "\(String(describing: c.hostedPlacement))")
+  let grey = HostCorners.color("rgb(156, 157, 161)")
+  check("under a hosted window covering the page area, the page area's ground is the frame's grey (any sliver it leaves is the frame, never dark)",
+        c.pageGround == grey && c.window.backgroundColor == grey, "\(String(describing: c.pageGround))")
   check("nothing passes through Margin's window while hosting", c.slot == nil && !c.window.ignoresMouseEvents)
   // (Its title: the app's name as the catalog read it, else its bundle id.)
   let title = library.items().first { $0.id == item }?.value["title"] as? String ?? "?"
@@ -413,6 +419,7 @@ func glueScenario() async {
         && session.done.contains { $0.contains("back in full screen") }, "\(session.done.suffix(5))")
 
   check("the corners follow the page area (window mode: Calculator)", c.corners.isShown && c.corners.frames.first?.origin == c.window.pageRect?.origin, "\(c.corners.frames)")
+  check("window mode (Calculator, smaller than the page area): the window's own ground around it, not the frame's", c.pageGround == nil && c.window.backgroundColor == .windowBackgroundColor, "\(String(describing: c.pageGround))")
 
   // ---- the overlay path off ----
   shell.track()
@@ -423,7 +430,7 @@ func glueScenario() async {
   stopped = true
   shell.stop { done = true }
   guard await until(10, { done }) else { return check("quit", false) }
-  check("quit: nothing hosted: the corners gone", !c.corners.isShown && c.corners.panels.allSatisfy { !$0.isVisible })
+  check("quit: nothing hosted: the corners gone, the window's own ground again", !c.corners.isShown && c.corners.panels.allSatisfy { !$0.isVisible } && c.pageGround == nil)
   check("quit: Calculator back at its own frame before it was quit", world.frameAtQuit[GlueHostWorld.calculator] == GlueHostWorld.calculatorFrame, "\(world.frameAtQuit)")
   check("quit: the apps Margin started quit, nothing left in Margin's Space, Mission Control Margin's Space only", world.apps.isEmpty && world.inMargin.isEmpty && world.listsMarginOnly
         && (world.reservation[GlueHostWorld.marginSpace] ?? .zero).isZero, "\(world.apps.values.map(\.bundle)) \(world.fullScreenSpaces)")

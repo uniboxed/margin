@@ -314,6 +314,12 @@ final class HostCorners {
         return out
     }
 
+    // Each corner panel's frame in AppKit's coordinates (bottom left, y up: what NSWindow.setFrame takes), from the
+    // squares above (top left), with its corner and radius.
+    static func panelFrames(page: CGRect, radii: [CGFloat], mainHeight: CGFloat = ScreenGeometry.mainHeight) -> [(frame: CGRect, corner: Int, radius: CGFloat)] {
+        squares(page: page, radii: radii).map { (ScreenGeometry.appKitRect($0.rect, mainHeight: mainHeight), $0.corner, $0.radius) }
+    }
+
     // A circle of `r` round the curve's centre (`radius` in from the page's corner) in a corner's square (AppKit's
     // bottom-left coordinates, y up).
     private static func circle(size: CGFloat, radius: CGFloat, corner: Int, r: CGFloat) -> CGRect {
@@ -345,15 +351,27 @@ final class HostCorners {
         return placed.page == page && placed.radii == radii && placed.fills == fills && placed.edge == edge
     }
 
+    private(set) var reorders = 0 // panels ordered in again (not shown, or in another Space) though nothing changed (the tests read it)
+
     func show(page: CGRect, radii: [CGFloat], fills: [NSColor], edge: Edge?) {
-        if shows(page: page, radii: radii, fills: fills, edge: edge) { return }
-        let squares = Self.squares(page: page, radii: radii)
+        if shows(page: page, radii: radii, fills: fills, edge: edge) {
+            // (Nothing to draw again, but each still shown, in the current Space: one ordered in while another Space was
+            // current, during a first open's jump, joined that Space and went with it; it joins this one again.)
+            for panel in panels.prefix(Self.squares(page: page, radii: radii).count) where !panel.isVisible || !panel.isOnActiveSpace {
+                if harness, NSScreen.screens.contains(where: { $0.frame.intersects(panel.frame) }) { continue }
+                panel.orderOut(nil)
+                panel.orderFrontRegardless()
+                reorders += 1
+            }
+            return
+        }
+        let squares = Self.panelFrames(page: page, radii: radii)
         placed = (page, radii, fills, edge)
         while panels.count < squares.count { panels.append(Self.panel()) }
         for (i, panel) in panels.enumerated() {
             guard i < squares.count else { panel.orderOut(nil); continue }
-            let (rect, corner, radius) = squares[i]
-            let frame = ScreenGeometry.appKitRect(rect)
+            let (frame, corner, radius) = squares[i]
+            let rect = CGRect(origin: .zero, size: frame.size)
             panel.setFrame(frame, display: false)
             guard let root = panel.contentView?.layer, let layers = root.sublayers as? [CAShapeLayer], layers.count == 2 else { continue }
             let fill = corner < fills.count ? fills[corner] : Self.fallback
@@ -407,6 +425,13 @@ final class HostCorners {
         }
         p.contentView = v
         return p
+    }
+
+    // The colour most of the corners have (the theme's frame; a sharp shadow at one corner aside), the first on a tie.
+    static func common(_ colors: [NSColor]) -> NSColor? {
+        let counts = colors.map { c in colors.filter { $0 == c }.count }
+        guard let top = counts.max(), let i = counts.firstIndex(of: top) else { return nil }
+        return colors[i]
     }
 
     // A CSS colour as the page computes it ("rgb(r, g, b)", "rgba(r, g, b, a)", or "color(srgb r g b / a)"); nil: none

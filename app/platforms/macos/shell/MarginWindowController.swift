@@ -107,6 +107,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private(set) var coverOrders = 0
     // The page card's corners over the hosted window (HostCorners: MarginWindow.swift).
     let corners: HostCorners
+    // The hosted window's bounds by the window server (top left; nil: unread). A test's stand-in reads its own.
+    var hostedBounds: (Int) -> CGRect? = { MarginWindowController.serverBounds($0) }
+    // Under a hosted window that covers the page area, the page area's ground is the colour around the card (the
+    // theme's frame), not the window's: any sliver the hosted window leaves (its own rounded corners, a point short) is
+    // the frame, never a dark gap. Nil: the window's own background.
+    private(set) var pageGround: NSColor?
     // Always full screen: its first entry (the window see-through until it's in), and the times it went back in.
     private var enteringFirst = false
     private(set) var backIntoFullScreen = 0
@@ -294,10 +300,17 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // Space, at the page area's corners, with the page's inner radius and the colour the theme draws around them.
     func placeCorners() {
         // (Not while a field of Margin's has the keys: this window is in front of the hosted one then, the palette over it.)
-        guard hosting, below != nil, !pageWantsKeyboard, !isClosed, let page = window.pageRect, let layout else { return corners.hide() }
+        guard hosting, let below, !pageWantsKeyboard, !isClosed, let page = window.pageRect, let layout else {
+            setPageGround(nil)
+            return corners.hide()
+        }
         let radii = layout.radii.map { CGFloat($0) }
-        let fills = (0..<4).map { i in i < layout.fills.count ? HostCorners.color(layout.fills[i]) ?? HostCorners.fallback : HostCorners.fallback }
+        let said = (0..<4).map { i in i < layout.fills.count ? HostCorners.color(layout.fills[i]) : nil }
+        // (A corner the page said nothing for: the colour of the others, not the window's own, dark in dark mode.)
+        let common = HostCorners.common(said.compactMap { $0 })
+        let fills = said.map { $0 ?? common ?? HostCorners.fallback }
         let edge = layout.edge.flatMap { e in HostCorners.color(e.color).map { HostCorners.Edge(width: CGFloat(e.width), color: $0) } }
+        setPageGround(hostedBounds(below).map { HostLayout.near($0, page, within: 2) } == true ? common : nil)
         // (Ordered in only while this window's Space is current, so they join it and no other; shown already as they
         // should be, they stay where they are, in its Space, while another is current.)
         if !options.harness, !(window.isVisible && window.isOnActiveSpace) {
@@ -305,6 +318,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             return
         }
         corners.show(page: page, radii: radii, fills: fills, edge: edge)
+    }
+
+    private func setPageGround(_ color: NSColor?) {
+        guard color != pageGround else { return }
+        pageGround = color
+        window.backgroundColor = color ?? .windowBackgroundColor
     }
 
     // Ordered right below the hosted window, unless a field of Margin's has the keys (the palette is drawn here).
@@ -316,10 +335,20 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // Where the hosted window goes while hosting: the page area from its own layout, measured in full screen at its
     // size (the theme's frame around it), and the display's full-screen area its own Space lays it out in. Nil until then.
+    // The area is this window's own frame: a full-screen window, laid out exactly where the hosted window's own Space
+    // lays out its full-screen window (seen 2026-11-15: the display's frame less its top safe-area inset said 0,32
+    // 1512×950, both windows were at 0,33 1512×949, so the hosted window landed a point below the page area).
     var hostedPlacement: HostPlacement? {
-        guard hosting, isFullScreen, let layout, layout.mode == "fullscreen", let area = hostDisplay,
+        guard hosting, isFullScreen, let layout, layout.mode == "fullscreen", hostDisplay != nil,
               let page = MarginWindowGeometry.pageRect(layout: layout, content: contentFrame) else { return nil }
-        return HostPlacement(page: page, area: area)
+        return HostPlacement(page: page, area: contentFrame)
+    }
+
+    // A window's bounds by the window server (CGWindowListCopyWindowInfo: no permission needed for bounds).
+    nonisolated static func serverBounds(_ number: Int) -> CGRect? {
+        guard let n = CGWindowID(exactly: number), let list = CGWindowListCopyWindowInfo(.optionIncludingWindow, n) as? [[String: Any]],
+              let raw = list.first?[kCGWindowBounds as String] else { return nil }
+        return CGRect(dictionaryRepresentation: raw as! CFDictionary)
     }
 
     // Its page asked to measure now (overlay.ts `measure`): it reads the size the web view has, drawn or not.
@@ -645,10 +674,22 @@ final class MarginWindows {
         activeObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.orderBelowHosted() } }
         }
+        // Another Space current, or another app in front (a hosted app activated): the page card's corners placed again
+        // (ordered back into Margin's Space if they were ordered in while another Space was current).
+        let workspace = NSWorkspace.shared.notificationCenter
+        cornerObservers = [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification].map { name in
+            workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.placeCorners() } }
+            }
+        }
     }
 
     private var activeObserver: NSObjectProtocol?
-    deinit { if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) } }
+    private var cornerObservers: [NSObjectProtocol] = []
+    deinit {
+        if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
+        for o in cornerObservers { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+    }
 
     var anyVisible: Bool { controllers.contains { $0.window.isVisible } }
 
