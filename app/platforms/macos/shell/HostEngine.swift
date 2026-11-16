@@ -80,6 +80,12 @@ final class HostEngine {
         var windowWait = 12.0 // its first window (Safari restoring windows can take a while)
         var fullScreenWait = 6.0
         var fullScreenAskAgain = 4.0 // AXFullScreen asked once more if no Space came by then (as the kit did)
+        // The early path (no freeze): its new Space listed, reserved, the window at the page area, moved in and the Space
+        // destroyed, all before macOS's Space switch. At most this long from the ask (measured: the Space at ~40 ms, the
+        // page frame at ~110 ms, in place at ~130 ms), read this often; else the slow path, under the freeze.
+        var earlyFullScreen = true
+        var earlyWait = 1.5
+        var earlyEvery = 0.005
         var memberWait = 0.6 // a window moved by the bridge (into Margin's Space, or parked): there by then
         var memberEvery = 0.005 // ...read this often (a switch is a move each way: well under 100 ms in all)
         var destroyWait = 1.5
@@ -1010,16 +1016,27 @@ final class HostEngine {
             }
             step("unpark", t0)
         }
-        // 3. full screen, in a Space of its own; macOS's jump there undone, under the freeze.
-        if !frozen { frozen = holdFreeze() }
+        // 3. full screen. The early path first, with no freeze: its new Space reserved to the page area as soon as it's
+        // listed, its window moved into Margin's Space and that Space destroyed once the window has the page frame, all
+        // before macOS's Space switch (Margin's Space kept current meanwhile). Else the slow path: in a Space of its own,
+        // macOS's jump there undone, under the freeze (held on from a seen exit above), then steps 5-7.
         t0 = sys.now()
         jumps = 0
-        let failed = await enterFullScreen(host)
+        let entry = await enterFullScreen(host, frozen: &frozen)
         releaseFreeze(frozen)
-        if let reason = failed { return await fallBack(host, isNew: isNew, retrying: retrying, .fullScreen, reason, previous: previous) }
-        step("full screen\(jumps > 0 ? " (\(jumps) jump\(jumps == 1 ? "" : "s") undone\(frozen ? " under the freeze" : ", no freeze"))" : "")", t0)
+        let early: Bool
+        switch entry {
+        case .failed(let reason):
+            return await fallBack(host, isNew: isNew, retrying: retrying, .fullScreen, reason, previous: previous)
+        case .own:
+            early = false
+            step("full screen\(jumps > 0 ? " (\(jumps) jump\(jumps == 1 ? "" : "s") undone\(frozen ? " under the freeze" : ", no freeze"))" : "")", t0)
+        case .member(let how):
+            early = true
+            step("full screen, at the page area and in Margin's Space early (\(how)\(frozen ? "; under the freeze of its exit" : "; no freeze"))", t0)
+        }
 
-        // 4. Safari's own sidebar hidden, in a window Margin may touch.
+        // 4. Safari's own sidebar hidden, in a window Margin may touch (early: read in Margin's Space, the current one).
         let sidebarOurs = isSafari(host) && (host.launchedByMargin || host.madeByMargin)
         var sidebar = HostSidebar.closed
         var mainOurs = false
@@ -1029,38 +1046,40 @@ final class HostEngine {
             step("sidebar", t0)
         }
 
-        // 5. its own Space's edges reserved: its window the page area.
-        t0 = sys.now()
-        var placed = await reserve(host)
-        if !placed, sidebarOurs, mainOurs, sidebar == .unknown {
-            // Its sidebar's state didn't read (another language, its closed title not learned yet): pressed once, and
-            // back if the window still doesn't fit.
-            if await withOwnSpaceCurrent(host, { await self.sys.pressSafariSidebar(pid: host.pid) }) == true {
-                placed = await reserve(host)
-                if !placed { _ = await withOwnSpaceCurrent(host, { await self.sys.pressSafariSidebar(pid: host.pid) }) }
-                Diagnostics.note("host: \(host.id): its window didn't fit with its sidebar unread: pressed once, \(placed ? "it fits" : "pressed back")")
-            }
-        }
-        step("place", t0)
-        guard placed else {
-            // (A member that doesn't fit would cover Margin's sidebar: never shown so.)
-            return await fallBack(host, isNew: isNew, retrying: retrying, .place, "its window didn't take the page area's size in its own Space", previous: previous)
-        }
-
-        // 6. into Margin's Space, a plain member (still full screen, at its frame).
-        t0 = sys.now()
-        guard await enterMargin(host) else {
-            return await giveUp(host, isNew: isNew, .member, "its window didn't come into Margin's Space", previous: previous)
-        }
-        step("into Margin's Space", t0)
-
-        // 7. its own Space, emptied of its window, destroyed: Mission Control lists Margin's Space only.
-        if let own = host.fullScreenSpace {
+        if !early {
+            // 5. its own Space's edges reserved: its window the page area.
             t0 = sys.now()
-            host.fullScreenSpace = nil
-            if await destroyOwn(own) { step("destroy", t0) } else {
-                leftSpaces.insert(own)
-                emit(.failed(host.id, .destroy, "its own Space \(own) didn't go: tried again later"))
+            var placed = await reserve(host)
+            if !placed, sidebarOurs, mainOurs, sidebar == .unknown {
+                // Its sidebar's state didn't read (another language, its closed title not learned yet): pressed once, and
+                // back if the window still doesn't fit.
+                if await withOwnSpaceCurrent(host, { await self.sys.pressSafariSidebar(pid: host.pid) }) == true {
+                    placed = await reserve(host)
+                    if !placed { _ = await withOwnSpaceCurrent(host, { await self.sys.pressSafariSidebar(pid: host.pid) }) }
+                    Diagnostics.note("host: \(host.id): its window didn't fit with its sidebar unread: pressed once, \(placed ? "it fits" : "pressed back")")
+                }
+            }
+            step("place", t0)
+            guard placed else {
+                // (A member that doesn't fit would cover Margin's sidebar: never shown so.)
+                return await fallBack(host, isNew: isNew, retrying: retrying, .place, "its window didn't take the page area's size in its own Space", previous: previous)
+            }
+
+            // 6. into Margin's Space, a plain member (still full screen, at its frame).
+            t0 = sys.now()
+            guard await enterMargin(host) else {
+                return await giveUp(host, isNew: isNew, .member, "its window didn't come into Margin's Space", previous: previous)
+            }
+            step("into Margin's Space", t0)
+
+            // 7. its own Space, emptied of its window, destroyed: Mission Control lists Margin's Space only.
+            if let own = host.fullScreenSpace {
+                t0 = sys.now()
+                host.fullScreenSpace = nil
+                if await destroyOwn(own) { step("destroy", t0) } else {
+                    leftSpaces.insert(own)
+                    emit(.failed(host.id, .destroy, "its own Space \(own) didn't go: tried again later"))
+                }
             }
         }
         host.member = true
@@ -1158,7 +1177,14 @@ final class HostEngine {
         return list.contains { sys.spaceType($0) == ManagedSpace.fullScreenType }
     }
 
-    private func enterFullScreen(_ host: Host) async -> String? {
+    // How a window went into full screen: in a Space of its own (the slow path: steps 5-7 to come), already a member of
+    // Margin's Space at the page area (the early path), or not at all.
+    private enum Entry { case own, member(String), failed(String) }
+
+    // Full screen asked (Accessibility's AXFullScreen; a Safari window Margin's copy made: its copy's setWindowState),
+    // the early path tried first with no freeze; failing it, the slow path under the freeze (`frozen`: taken here if
+    // it isn't held yet, released by the caller).
+    private func enterFullScreen(_ host: Host, frozen: inout Bool) async -> Entry {
         func ownSpace() -> UInt64? {
             guard let list = sys.spaces(window: host.window) else { return nil }
             return list.first { $0 != marginSpace && sys.spaceType($0) == ManagedSpace.fullScreenType }
@@ -1173,12 +1199,39 @@ final class HostEngine {
             ask = a
             Task { a.answer = await self.setFullScreen(host, true) }
         }
+        // The full-screen Spaces listed before the ask: the early path watches for a new one (nil: not tried, as when
+        // its window already has a Space of its own, or the list doesn't read).
+        var before: Set<UInt64>?
+        if options.earlyFullScreen, ownSpace() == nil, let owners = sys.fullScreenSpaceOwners() { before = Set(owners.keys) }
         if copy {
             if ownSpace() == nil { askCopy() }
         } else if await sys.isFullScreen(pid: host.pid, window: host.window) != true {
-            guard await sys.setFullScreen(pid: host.pid, window: host.window, true) else { return "AXFullScreen couldn't be set" }
+            guard await sys.setFullScreen(pid: host.pid, window: host.window, true) else { return .failed("AXFullScreen couldn't be set") }
+        } else {
+            before = nil // (already full screen: its Space is the slow path's to read)
         }
-        let asked = sys.now()
+        var asked = sys.now()
+        if let before {
+            let t = sys.now()
+            switch await early(host, before: before, refused: { copy && ask?.answer == false }) {
+            case .placed(let how):
+                Diagnostics.note("host: \(host.id): full screen by the early path in \(ms(since: t)) ms (\(how)), no freeze")
+                return .member(how)
+            case .slow(let why):
+                Diagnostics.note("host: \(host.id): the early full screen fell back after \(ms(since: t)) ms (\(why)): the slow path, under the freeze")
+            case .again(let why):
+                Diagnostics.note("host: \(host.id): the early full screen fell back after \(ms(since: t)) ms (\(why)): backed out and asked again, the slow path, under the freeze")
+                if !frozen { frozen = holdFreeze() }
+                await backOut(host)
+                if copy {
+                    askCopy()
+                } else if await sys.isFullScreen(pid: host.pid, window: host.window) != true {
+                    guard await sys.setFullScreen(pid: host.pid, window: host.window, true) else { return .failed("AXFullScreen couldn't be set again") }
+                }
+                asked = sys.now()
+            }
+        }
+        if !frozen { frozen = holdFreeze() }
         var askedAgain = false
         var space: UInt64?
         let came = await wait(options.fullScreenWait) {
@@ -1201,14 +1254,104 @@ final class HostEngine {
             return false
         }
         guard came, let space else {
-            if copy, ask?.answer == false { return "its copy didn't ask Safari for full screen (setWindowState)" }
-            return "no full-screen Space of its own within \(Int(options.fullScreenWait)) s"
+            if copy, ask?.answer == false { return .failed("its copy didn't ask Safari for full screen (setWindowState)") }
+            return .failed("no full-screen Space of its own within \(Int(options.fullScreenWait)) s")
         }
         host.fullScreenSpace = space
         ownSpaces.insert(space)
         saveMarker()
         undoJump(to: space)
-        return nil
+        return .own
+    }
+
+    private enum Early { case placed(String), slow(String), again(String) }
+
+    // The early full screen (measured on the real Mac 2026-11-16, /tmp/margin-toolbar-test/fsopen/early2.swift, a test
+    // app with a stand-in Margin's Space current): a window asked into full screen has its new Space listed, owned by
+    // its app, at ~40 ms, well before the window server says the window is in it (~600 ms, with macOS's Space switch).
+    // That Space's edges reserved at once give the window the page frame at ~110 ms though it isn't a member yet; moved
+    // into Margin's Space then and its own Space destroyed, it's in place at ~130 ms, still full screen, and with Margin's
+    // Space kept current the screen never left it: no slide to hide, so no freeze. Never destroyed before the window has
+    // the page frame (destroyed earlier, the window keeps the display's whole size). `.slow`: nothing undone, the ask
+    // still running (the slow path takes it from there, its Space as the one found); `.again`: the window isn't where it
+    // should be after the move and destroy (backed out and asked again by the caller).
+    private func early(_ host: Host, before: Set<UInt64>, refused: () -> Bool) async -> Early {
+        guard let edges = HostLayout.plan(placement) else { return .slow("no plan for the page area (\(placement.text))") }
+        let t0 = sys.now()
+        let page = placement.page
+        var space: UInt64?
+        var times: [String] = []
+        func mark(_ what: String) { times.append("\(what) \(ms(since: t0))") }
+        func said() -> String { times.joined(separator: ", ") + (jumps > 0 ? "; \(jumps) Space change\(jumps == 1 ? "" : "s") undone" : "") }
+        func there() -> Bool { sys.bounds(window: host.window).map { HostLayout.near($0, page, within: options.tolerance) } ?? false }
+        func inOwn(_ s: UInt64) -> Bool { sys.spaces(window: host.window)?.contains(s) == true }
+        // Margin's Space kept current: a Space made current that wasn't listed before the ask (macOS's switch to the new
+        // one) is undone at once; a Space the person had is left alone.
+        func keepCurrent() {
+            guard let now = sys.currentSpace(onDisplayOf: marginSpace), now != marginSpace, !before.contains(now) else { return }
+            if sys.setCurrentSpace(marginSpace) { jumps += 1 }
+        }
+        // 1. its new Space listed (owned by its app, or holding its window), its edges reserved to the page area at once;
+        // 2. its window at the page area (that Space lays it out before it's a member of it).
+        while true {
+            if refused() { return .slow("its copy didn't ask Safari for full screen") }
+            if let s = space, inOwn(s) { return .slow("its window was in its own Space before it had the page area (\(said()))") }
+            if space == nil, let owners = sys.fullScreenSpaceOwners() {
+                let new = owners.keys.filter { s in !before.contains(s) && s != marginSpace && (owners[s] == host.pid || inOwn(s)) }.sorted()
+                if new.count > 1 { return .slow("\(new.count) new full-screen Spaces of its app: which is its window's isn't known") }
+                if let s = new.first {
+                    mark("listed")
+                    space = s
+                    host.fullScreenSpace = s
+                    ownSpaces.insert(s)
+                    saveMarker()
+                    if inOwn(s) { return .slow("its window was already in its new Space") }
+                    _ = sys.reserve(edges, space: s)
+                    mark("reserved \(edges.text)")
+                }
+            }
+            keepCurrent()
+            if space != nil, there() { break }
+            if sys.now() - t0 >= options.earlyWait {
+                return .slow(space == nil ? "no new full-screen Space listed within \(ms(since: t0)) ms" : "its window didn't take the page area within \(ms(since: t0)) ms (\(said()))")
+            }
+            await sys.sleep(options.earlyEvery)
+        }
+        guard let own = space else { return .slow("no Space") }
+        mark("page-sized")
+        // 3. into Margin's Space, then its own Space destroyed (Margin's current), then checked: in Margin's Space only, at
+        // the page area, its Space no longer listed, still full screen.
+        keepCurrent()
+        guard sys.move(window: host.window, to: marginSpace) else { return .slow("the bridge didn't take its move into Margin's Space") }
+        let destroyed = sys.currentSpace(onDisplayOf: marginSpace) != own && sys.destroyFullScreenSpace(own)
+        mark(destroyed ? "moved in, its Space destroyed" : "moved in")
+        var inPlace = false, gone = false
+        _ = await wait(options.memberWait, every: options.earlyEvery) {
+            keepCurrent()
+            inPlace = self.sys.spaces(window: host.window) == [self.marginSpace] && there()
+            gone = self.sys.spaceExists(own) == false
+            return inPlace && gone
+        }
+        var full = false
+        if inPlace { full = await isFullScreen(host) == true }
+        if inPlace, full {
+            host.fullScreenSpace = nil
+            if gone {
+                ownSpaces.remove(own)
+            } else {
+                leftSpaces.insert(own)
+                emit(.failed(host.id, .destroy, "its own Space \(own) didn't go: tried again later"))
+            }
+            mark(gone ? "in place, its Space gone" : "in place, its Space still listed")
+            return .placed(said())
+        }
+        let where_ = "\(sys.bounds(window: host.window).map(r) ?? "?") in \(sys.spaces(window: host.window).map { "\($0)" } ?? "?"), full screen \(inPlace ? "\(full)" : "unread")"
+        if inOwn(own), sys.spaceExists(own) == true { return .slow("its window went into its own Space instead: \(where_) (\(said()))") }
+        if gone { host.fullScreenSpace = nil; ownSpaces.remove(own) }
+        let stillFull = await isFullScreen(host) == true
+        host.member = sys.spaces(window: host.window) == [marginSpace] && stillFull
+        saveMarker()
+        return .again("not in place after its move and destroy: \(where_) (\(said()))")
     }
 
     // macOS shows a window's new full-screen Space: the display set back to Margin's at once (under the freeze it

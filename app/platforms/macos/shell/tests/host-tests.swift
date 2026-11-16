@@ -154,11 +154,69 @@ final class FakeHostWorld: HostSystem {
     var lagging: [Int: (frame: CGRect, until: Double)] = [:]
     var onSetFrame: (() async -> Void)? // (a test's: something that happens while a frame is being set)
 
+    // Full screen as the real Mac paces it (`staged`, measured 2026-11-16, /tmp/margin-toolbar-test/fsopen/early2.swift);
+    // off, the window is in its new Space at once (macOS's jump with it). On: its new Space listed (owned by its app)
+    // `stageList` after the ask, the window still where it was; that Space's reservation lays it out `stageFrame` after
+    // it's set (not a Safari window with its sidebar open; never with `stageNoFrame`); the window in its Space, and the
+    // jump, `stageEnter` after the ask. Moved into Margin's Space before that, it's a member at the bounds it has then (the
+    // display's whole size if it hadn't the reserved frame yet); its Space destroyed before the frame came: it keeps the
+    // display's whole size (the order mistake the research run showed). `stageJump`: macOS makes the new Space current
+    // this long after the ask while the window isn't in it yet (to check Margin's Space is kept current).
+    var staged = false
+    var stageList = 0.04, stageFrame = 0.065, stageEnter = 0.6
+    var stageNoFrame = false
+    var stageJump: Double?
+    var stageJumpTo: UInt64? // (the Space made current then: none, the new one)
+    struct Pending { var space: UInt64; var tile: UInt64; var asked: Double; var listed = false; var reservedAt: Double?; var framed = false; var jumped = false }
+    var pending: [Int: Pending] = [:]
+    var framedSpaces: Set<UInt64> = []
+    var stagedSpaces: Set<UInt64> = []
+    var destroyedBeforeFrame = 0
+    var movedBeforeFrame = 0
+    var offMargin = 0.0 // seconds on the clock the current Space wasn't Margin's
+    var framedAt: [Int: Double] = [:]
+    var askedAt: [Int: Double] = [:]
+    var destroyedAt: [UInt64: Double] = [:]
+    var entered: Set<Int> = [] // windows macOS put in their own Space (the slow path's state)
+    var moveLosesFrame = 0 // the next N moves of a pending window into Margin's Space leave it at the display's whole size
+    func advance() {
+        for n in pending.keys.sorted() {
+            guard var p = pending[n], var w = wins[n] else { pending[n] = nil; continue }
+            let since = clock - p.asked + 1e-9
+            if !p.listed, since >= stageList || since >= stageEnter {
+                p.listed = true
+                tiles[p.space] = [p.tile]
+                owner[p.space] = w.pid
+                tileWindow[p.tile] = n
+                noteListing()
+            }
+            if let at = p.reservedAt, !p.framed, !stageNoFrame, apps[w.pid]?.sidebarOpen != true, clock - at + 1e-9 >= stageFrame {
+                p.framed = true
+                framedSpaces.insert(p.space)
+                framedAt[n] = clock
+            }
+            if let j = stageJump, p.listed, !p.jumped, since >= j { p.jumped = true; current = stageJumpTo ?? p.space; currentSince = clock }
+            if since >= stageEnter {
+                w.spaces = [p.space]
+                w.priv = nil
+                wins[n] = w
+                pending[n] = nil
+                entered.insert(n)
+                if jumpOnFullScreen { current = p.space; currentSince = clock }
+                continue
+            }
+            pending[n] = p
+        }
+    }
+    func fullScreenSpaceOwners() -> [UInt64: pid_t]? { Dictionary(uniqueKeysWithValues: tiles.keys.map { ($0, owner[$0] ?? 0) }) }
+
     init() { wins[Self.marginWindow] = Win(pid: 1, spaces: [Self.marginSpace]) }
 
     func now() -> Double { clock }
     func sleep(_ seconds: Double) async {
+        if current != Self.marginSpace { offMargin += seconds }
         clock += seconds
+        advance()
         for (pid, at) in uikitQuits where clock >= at { uikitQuits[pid] = nil; quitNow(pid) }
         await Task.yield()
     }
@@ -317,6 +375,16 @@ final class FakeHostWorld: HostSystem {
             guard !w.fullScreen, !fail.contains("fullScreen") else { return true }
             let space = nextId, tile = nextId + 1
             nextId += 2
+            if staged {
+                pending[window] = Pending(space: space, tile: tile, asked: clock)
+                askedAt[window] = clock
+                stagedSpaces.insert(space)
+                w.fullScreen = true
+                w.member = false
+                w.memberFrame = nil
+                wins[window] = w
+                return true
+            }
             tiles[space] = [tile]
             owner[space] = pid
             tileWindow[tile] = window
@@ -329,6 +397,7 @@ final class FakeHostWorld: HostSystem {
         } else {
             guard w.fullScreen, !fail.contains("exitFullScreen") else { return true }
             w.fullScreen = false
+            if let p = pending.removeValue(forKey: window) { tiles[p.space] = nil; owner[p.space] = nil }
             if w.member {
                 // (A member leaves full screen where it is: a normal window in that Space, or still parked.)
                 w.member = false
@@ -389,6 +458,7 @@ final class FakeHostWorld: HostSystem {
         guard let w = wins[window] else { return nil }
         if let lag = lagging[window], clock < lag.until { return lag.frame }
         if window == Self.marginWindow { return Self.display }
+        if let p = pending[window] { return p.framed ? (reservation[p.space] ?? .zero).inset(Self.display) : (w.frame ?? Self.defaultFrame) }
         if w.member, let f = w.memberFrame { return f }
         guard w.fullScreen, w.priv == nil, let space = w.spaces.first, tiles[space] != nil else { return w.frame ?? Self.defaultFrame }
         let sidebar = apps[w.pid]?.sidebarOpen == true
@@ -411,6 +481,14 @@ final class FakeHostWorld: HostSystem {
     func destroyFullScreenSpace(_ space: UInt64) -> Bool {
         calls.append("destroy \(space)")
         guard !fail.contains("destroy") else { return true }
+        destroyedAt[space] = clock
+        for (n, p) in pending where p.space == space {
+            if !p.framed { destroyedBeforeFrame += 1 }
+            // (Destroyed before its window had the page frame: full screen where it is, at the display's whole size.)
+            pending[n] = nil
+            wins[n]?.member = true
+            wins[n]?.memberFrame = Self.display
+        }
         if current == space { dropped += 1; current = Self.desktop }
         if wins.values.contains(where: { $0.priv == nil && $0.spaces.contains(space) }) { destroyedWithWindows += 1 }
         tiles[space] = nil
@@ -418,7 +496,13 @@ final class FakeHostWorld: HostSystem {
         noteListing()
         return true
     }
-    func reserve(_ edges: SlotEdges, space: UInt64) -> Bool { calls.append("reserve \(edges.text)"); reservation[space] = edges; reserves.append((space, edges)); return true }
+    func reserve(_ edges: SlotEdges, space: UInt64) -> Bool {
+        calls.append("reserve \(edges.text)")
+        reservation[space] = edges
+        reserves.append((space, edges))
+        for (n, p) in pending where p.space == space && p.reservedAt == nil { pending[n]?.reservedAt = clock }
+        return true
+    }
     func reserved(space: UInt64) -> SlotEdges? { reservation[space] ?? .zero }
 
     // ---- parking, members ----
@@ -427,6 +511,21 @@ final class FakeHostWorld: HostSystem {
         calls.append("move \(window) \(space)")
         guard var w = wins[window], !(fail.contains("moveIn") && space == Self.marginSpace), !(noMoveIn.contains(window) && space == Self.marginSpace) else { return false }
         let before = spaces(window: window) ?? []
+        if let p = pending[window], !privates.contains(space), tiles[space] != nil {
+            // (Moved in before macOS put it in its own Space: a member here at the bounds it has now; the transition's off.)
+            pending[window] = nil
+            if !p.framed { movedBeforeFrame += 1 }
+            let loses = moveLosesFrame > 0
+            if loses { moveLosesFrame -= 1 }
+            w.memberFrame = p.framed && !loses ? (reservation[p.space] ?? .zero).inset(Self.display) : Self.display
+            w.member = true
+            w.priv = nil
+            w.spaces = [space]
+            arrivedAt[window] = clock
+            wins[window] = w
+            if moveLag > 0 { landing[window] = (before, clock + moveLag) }
+            return true
+        }
         if privates.contains(space) {
             guard !fail.contains("park"), !unparkable.contains(window) else { return false }
             w.priv = space
@@ -678,6 +777,150 @@ func hostTests() {
         let (w, e, _) = world()
         let r = hostRun { await e.open(app: textEdit, in: placed(page), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.desktop) }
         check("host: Margin's window not in a full-screen Space: refused, nothing started", { if case .failed(.margin, _)? = r { return true }; return false }() && w.apps.isEmpty)
+    }
+
+    // ---- the early full screen (the real Mac's pacing, `staged`): its new Space reserved as soon as it's listed, the
+    // window moved in and that Space destroyed once it has the page frame, before macOS's Space switch: no freeze ----
+    do {
+        let (w, e, marker) = world()
+        w.staged = true
+        let said = watch(e)
+        var lines: [String] = []
+        let echo = Diagnostics.echo
+        Diagnostics.echo = { lines.append($0) }
+        let r = open(e, textEdit)
+        Diagnostics.echo = echo
+        let n = window(w, "com.apple.TextEdit"), p = pid(w, "com.apple.TextEdit")
+        let own = w.reserves.first?.space ?? 0
+        let asked = w.askedAt[n] ?? -1, framed = w.framedAt[n] ?? -1, destroyed = w.destroyedAt[own] ?? -1
+        check("early: shown, a member of Margin's Space at the page area, still full screen", r == .shown(textEdit.id, placed: true) && w.spaces(window: n) == [FakeHostWorld.marginSpace]
+              && w.wins[n]?.member == true && w.wins[n]?.fullScreen == true && w.bounds(window: n) == page, "\(String(describing: r)) \(String(describing: w.wins[n])) \(w.calls)")
+        check("early: its Space reserved while listed but before its window was in it (never in it at all)", w.reserves.map(\.edges) == [edges] && w.stagedSpaces.contains(own)
+              && !w.entered.contains(n), "\(w.reserves) \(w.entered)")
+        let reserve = at(w, "reserve \(edges.text)"), move = at(w, "move \(n) \(FakeHostWorld.marginSpace)"), destroy = at(w, "destroy \(own)")
+        check("early: reserved, then (the page frame) moved in, then its Space destroyed: never destroyed or moved before the frame",
+              reserve >= 0 && reserve < move && move < destroy && w.destroyedBeforeFrame == 0 && w.movedBeforeFrame == 0 && framed >= 0 && framed <= destroyed, "\(w.calls)")
+        check("early: no freeze, the screen never left Margin's Space", w.freezes == 0 && w.reveals == 0 && w.offMargin == 0 && w.current == FakeHostWorld.marginSpace, "\(w.freezes) \(w.offMargin)")
+        check("early: in place about 0.1 s after the ask (\(Int((destroyed - asked) * 1000)) ms on the stand-in's clock; the slow path waited for macOS's 0.6 s switch)",
+              asked >= 0 && destroyed - asked >= 0.1 && destroyed - asked < 0.2, "\(asked) \(framed) \(destroyed)")
+        check("early: Mission Control listed its Space only that moment; nothing left", w.episodes.count == 1 && (w.episodes.first ?? 9) < 0.2 && clean(w), "\(w.episodes)")
+        check("early: its app in front, Margin's window kept below it, the loading bar for it", w.calls.last == "activate \(p) \(n)" && said.above == [n] && said.loading == [textEdit.id, nil])
+        check("early: the log says the early path and each step's ms", lines.contains { $0.contains("full screen by the early path") && $0.contains("listed") && $0.contains("page-sized") && $0.contains("in place, its Space gone") }
+              && lines.contains { $0.contains("early (listed") }, "\(lines.filter { $0.contains("early") })")
+        check("early: the marker lists it as a member, no Space of its own", HostMarker.read(marker)?.windows.first?.member == true && HostMarker.read(marker)?.windows.first?.fullScreenSpace == nil)
+        check("early: a switch back and forth after it still instant", { _ = open(e, notes); let t = w.clock; _ = hostRun { await e.show(textEdit.id) }; return w.clock - t < 0.1 && w.inMargin == [n] && clean(w) }())
+        check("early: the second app early too, no freeze at all", w.freezes == 0 && w.entered.isEmpty, "\(w.freezes) \(w.entered)")
+
+        // ---- placed again (the page area moved): its exit seen (under the freeze), its entry early under the same freeze ----
+        let page2 = CGRect(x: 272, y: 61, width: 1220, height: 900)
+        w.calls = []
+        let ok = hostRun { await e.pageRectChanged(placed(page2)) }
+        check("early: placed again at a new page area, through the early path, one freeze for its exit", ok == true && w.bounds(window: n) == page2 && w.wins[n]?.member == true
+              && w.freezes == 1 && w.reveals == 1 && w.entered.isEmpty && w.destroyedBeforeFrame == 0 && clean(w), "\(w.calls) \(w.freezes)")
+        hostRun { await e.quitAll() }
+        check("early: quit: nothing left", w.apps.isEmpty && clean(w) && w.privates.isEmpty)
+    }
+    do {
+        // macOS makes the new Space current early (the window not in it yet): Margin's Space made current again at once.
+        let (w, e, _) = world()
+        w.staged = true
+        w.stageJump = 0.05
+        let r = open(e, textEdit)
+        let n = window(w, "com.apple.TextEdit")
+        let own = w.reserves.first?.space ?? 0
+        check("early: the new Space made current by macOS: Margin's current again at once (\(Int(w.offMargin * 1000)) ms off it), still early, no freeze",
+              r == .shown(textEdit.id, placed: true) && w.offMargin <= 0.0051 && w.calls.contains("current \(FakeHostWorld.marginSpace)") && w.freezes == 0 && w.bounds(window: n) == page
+              && w.tiles[own] == nil && w.dropped == 0 && clean(w), "\(w.offMargin) \(w.calls)")
+    }
+    do {
+        // A Space the person went to themselves meanwhile (listed before the ask) is left alone.
+        let (w, e, _) = world()
+        w.staged = true
+        let theirs: UInt64 = 900
+        w.tiles[theirs] = [901]
+        w.theirSpaces = [theirs]
+        w.stageJump = 0.05
+        w.stageJumpTo = theirs
+        let r = open(e, textEdit)
+        check("early: a Space the person went to meanwhile left current, never undone; still early", r == .shown(textEdit.id, placed: true) && w.current == theirs
+              && !w.calls.contains("current \(FakeHostWorld.marginSpace)") && w.freezes == 0 && w.dropped == 0, "\(w.calls)")
+    }
+    do {
+        // Fallback: no new Space listed within the cap: the slow path, under the freeze, from the same ask.
+        let (w, e, _) = world()
+        w.staged = true
+        w.stageList = 2.0
+        w.stageEnter = 2.1
+        var lines: [String] = []
+        let echo = Diagnostics.echo
+        Diagnostics.echo = { lines.append($0) }
+        let r = open(e, textEdit)
+        Diagnostics.echo = echo
+        let n = window(w, "com.apple.TextEdit")
+        check("early fallback: no new Space within 1.5 s: the slow path, under one freeze, shown at the page area, asked once",
+              r == .shown(textEdit.id, placed: true) && w.freezes == 1 && w.reveals == 1 && w.entered.contains(n) && w.bounds(window: n) == page && w.wins[n]?.member == true
+              && w.calls.filter { $0 == "fullScreen true \(n)" }.count == 1 && clean(w), "\(String(describing: r)) \(w.calls)")
+        check("early fallback: said, with the time", lines.contains { $0.contains("the early full screen fell back after 15") && $0.contains("no new full-screen Space listed") }, "\(lines.filter { $0.contains("early") })")
+    }
+    do {
+        // Fallback: listed and reserved but the window never takes the page frame before macOS puts it in its Space.
+        let (w, e, _) = world()
+        w.staged = true
+        w.stageNoFrame = true
+        let r = open(e, textEdit)
+        let n = window(w, "com.apple.TextEdit")
+        let own = w.reserves.first?.space ?? 0
+        check("early fallback: no page frame before macOS's switch: its Space never destroyed early, the slow path under the freeze takes it from its own Space",
+              r == .shown(textEdit.id, placed: true) && w.destroyedBeforeFrame == 0 && w.movedBeforeFrame == 0 && w.entered.contains(n) && w.freezes == 1 && w.reveals == 1
+              && w.bounds(window: n) == page && w.tiles[own] == nil && clean(w), "\(w.calls)")
+    }
+    do {
+        // Fallback: moved in and destroyed, but not at the page area (the check fails): backed out under the freeze and
+        // asked again, the slow path.
+        let (w, e, _) = world()
+        w.staged = true
+        w.moveLosesFrame = 1
+        var lines: [String] = []
+        let echo = Diagnostics.echo
+        Diagnostics.echo = { lines.append($0) }
+        let r = open(e, textEdit)
+        Diagnostics.echo = echo
+        let n = window(w, "com.apple.TextEdit")
+        let off = at(w, "fullScreen false \(n)"), again = w.calls.lastIndex(of: "fullScreen true \(n)") ?? -1
+        check("early fallback: not in place after the move: out of full screen, asked again, then shown at the page area under one freeze",
+              r == .shown(textEdit.id, placed: true) && off >= 0 && off < again && w.bounds(window: n) == page && w.wins[n]?.member == true && w.freezes == 1 && w.reveals == 1 && clean(w),
+              "\(String(describing: r)) \(w.calls)")
+        check("early fallback: said as not in place", lines.contains { $0.contains("not in place after its move and destroy") }, "\(lines.filter { $0.contains("early") })")
+    }
+    do {
+        // Fallback: the bridge refuses the move in: no destroy before it, the slow path (whose move is refused too) gives up cleanly.
+        let (w, e, _) = world()
+        w.staged = true
+        w.fail = ["moveIn"]
+        let r = open(e, textEdit)
+        check("early fallback: the move in refused: its Space never destroyed while the window wasn't in Margin's, nothing left, the app quit",
+              { if case .failed(.member, _)? = r { return true }; return false }() && w.destroyedBeforeFrame == 0 && w.apps.isEmpty && clean(w) && w.privates.isEmpty,
+              "\(String(describing: r)) \(w.tiles) \(w.calls)")
+    }
+    do {
+        // Safari's window Margin's copy made: full screen asked through its copy, the early path the same (no freeze);
+        // with its sidebar open it can't take the page frame: the slow path hides it.
+        for open_ in [false, true] {
+            let (w, e, _) = world()
+            w.staged = true
+            let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 1)
+            w.apps[safariPid]?.sidebarOpen = open_
+            w.axCurrentOnly = true
+            let copy = FakeSafariCopy(w) { safariPid }
+            copy.wire(e)
+            let target = HostTarget.safariWindow(nil)
+            let r = open(e, target)
+            let mine = e.hosts[target.id]?.window ?? 0
+            check("early: Safari's window \(open_ ? "with its sidebar open: the slow path, its sidebar hidden, under the freeze" : "early through its copy, no freeze")",
+                  r == .shown(target.id, placed: true) && copy.fullScreens == ["7914 on"] && w.bounds(window: mine) == page && w.wins[mine]?.member == true
+                  && w.apps[safariPid]?.sidebarOpen == false && (open_ ? w.freezes >= 1 && w.entered.contains(mine) : w.freezes == 0 && !w.entered.contains(mine))
+                  && w.destroyedBeforeFrame == 0 && clean(w), "\(String(describing: r)) \(w.freezes) \(w.calls)")
+        }
     }
 
     // ---- a failure at each step falls back, leaving nothing ----

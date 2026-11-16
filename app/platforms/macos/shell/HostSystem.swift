@@ -71,6 +71,10 @@ protocol HostSystem: AnyObject {
     func ownerlessFullScreenSpaces() -> [UInt64]?
     // Every full-screen Space the managed displays list (SLSCopyManagedDisplaySpaces: what Mission Control shows). Nil: unread.
     func listedFullScreenSpaces() -> [UInt64]?
+    // ...each with its owner's pid (0: none, Margin's or an emptied one). A window asked into full screen gets its new
+    // Space listed here, owned by its app, ~40 ms after the ask, well before the window server says the window is in it
+    // (~600 ms, at macOS's Space switch): measured 2026-11-16 (/tmp/margin-toolbar-test/fsopen/early2.swift). Nil: unread.
+    func fullScreenSpaceOwners() -> [UInt64: pid_t]?
 
     // ---- a full-screen Space's edges, and its destroy ----
     func destroyFullScreenSpace(_ space: UInt64) -> Bool
@@ -96,6 +100,8 @@ protocol HostSystem: AnyObject {
 extension HostSystem {
     // (A stand-in that doesn't play it: none.)
     func focusedWindow(pid: pid_t) async -> Int? { nil }
+    // (A stand-in that doesn't play it: unread, so the engine's early full screen isn't tried.)
+    func fullScreenSpaceOwners() -> [UInt64: pid_t]? { nil }
 }
 
 // ---- the real one ----
@@ -475,6 +481,18 @@ final class RealHostSystem: HostSystem {
     }
 
     func listedFullScreenSpaces() -> [UInt64]? { spacesRW.displays()?.flatMap(\.fullScreen) }
+
+    func fullScreenSpaceOwners() -> [UInt64: pid_t]? {
+        guard let raw = sky.managedDisplaySpaces() else { return nil }
+        var out: [UInt64: pid_t] = [:]
+        for d in raw {
+            for s in (d["Spaces"] as? [[String: Any]]) ?? [] {
+                guard (s["type"] as? NSNumber)?.intValue == ManagedSpace.fullScreenType, let id = (s["id64"] as? NSNumber)?.uint64Value else { continue }
+                out[id] = (s["pid"] as? NSNumber)?.int32Value ?? 0
+            }
+        }
+        return out
+    }
 
     func destroyFullScreenSpace(_ space: UInt64) -> Bool { calls.destroyFullScreenSpace(space) }
     func reserve(_ edges: SlotEdges, space: UInt64) -> Bool { slots.reserve(edges, space: space) }
