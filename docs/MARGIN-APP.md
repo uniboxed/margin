@@ -82,6 +82,15 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
    (a full-screen entry each time, about 1 s for Safari, under the freeze),
    and a faster swap of the second tile; destroying the current Space drops
    the screen to the desktop, so switch to Margin's Space first.
+   **Replaced 2026-11-15 (real apps, `mc/mc8`, `mc10`):** no tiles. The hosted
+   window goes full screen in its own Space, that Space's edges are reserved
+   so the window is the page area, then it's moved into Margin's Space as a
+   plain member (bridged add/remove, options 7) and its own Space destroyed:
+   Mission Control lists Margin's Space only, several apps can be members,
+   Margin's window keeps its whole width (the theme's frame around the page
+   area), and a switch is a move each way (parked in a private Space, still
+   full screen), no full-screen exit. Built on `feat/hosted-apps` (DECISIONS.md
+   "Hosted apps as members of Margin's Space").
 3. **Safari already running** (decided by Tirth, 2026-11-15): Margin never
    restarts it. If Safari is open the normal way, Margin opens its own new
    window in it, and Safari's Dock icon stays; Mission Control must still show
