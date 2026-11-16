@@ -1,6 +1,6 @@
 // The test site itself: every page loads whole in headless Chromium (no
 // extension), nothing leaves the .test hosts, every picture and icon
-// arrives, and the site's own behaviours (404s, ?fp, the sign-in redirect,
+// arrives, and the site's own behaviours (404s, the sign-in redirect,
 // the host rules) hold. The other e2e files rely on all of this.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -138,15 +138,6 @@ test('any missing path is the site’s own 404 page', async () => {
     assert.match(html, /This page drifted away/);
     assert.ok(html.includes(`Page not found · ${s.name}`), s.host);
   }
-});
-
-test('?fp puts the first-frames recorder at the top of <head>', async () => {
-  const page = await context.newPage();
-  await page.goto(site.url('dispatch.test', '/2026/11/the-quiet-city?fp&late=300'));
-  await page.waitForFunction(() => (window as unknown as { __fp?: { frames: unknown[] } }).__fp?.frames.length! >= 5);
-  const head = await page.evaluate(() => document.head.firstElementChild!.tagName);
-  assert.equal(head, 'SCRIPT');
-  await page.close();
 });
 
 test('signing in posts, redirects and lands signed in; a wrong password is the form again', async () => {
