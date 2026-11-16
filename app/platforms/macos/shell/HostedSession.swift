@@ -13,7 +13,11 @@
 // - Margin's window while hosting (v1 rule, decided here): it's taken to full screen first (its own Space: the tiles
 //   need it; windowed hosting is a later phase), its page drawing the sidebar alone (MarginWindowController.setHosting),
 //   the sidebar's tile once the hosted tile comes in (`willTile`), and the engine is given the placement worked out
-//   from the tiles (the page area, the display's area, Margin's tile width). It's the sidebar's tile only while the
+//   from the tiles (the page area, the display's area, Margin's tile width). A host in window mode (an app that can't
+//   go full screen): Margin's window its whole width, its own layout (`setWindowed`, `untile` in `willWindow`), the
+//   placement its own page area, and it's kept right below the hosted window (`keepBelow`, from the engine's
+//   `keepAbove`); a press in its page area around that window gives the app the keyboard (`pagePressed`). It's the
+//   sidebar's tile only while the
 //   engine shows something in it: nothing shown any more (closed, quit, parked), its whole width again, the theme's
 //   launcher in its page area. Leaving full screen (the person's ⌃⌘F, the green button, anything), the one shown is
 //   parked at once (`leavingFullScreen`): nothing hosted ever stands alone in a full-screen Space of its own.
@@ -42,6 +46,9 @@ protocol HostedEngine: AnyObject {
     var shown: HostID? { get }
     var hasHosts: Bool { get }
     func isHosted(_ id: HostID) -> Bool
+    func mode(of id: HostID) -> HostMode? // how a host is shown (nil: not hosted)
+    var windowedShown: Int? { get } // the window-mode host's window shown in Margin's Space (Margin's window kept below it)
+    func activateShown() async // that app in front (a press in Margin's page area around its window)
     func fullScreenSpace(ofWindow number: Int) -> UInt64?
     func target(ofWindow number: Int) -> HostTarget?
     func launchedPid(bundleId: String) -> pid_t?
@@ -60,7 +67,13 @@ protocol HostedWindow: AnyObject {
     var fullScreenState: String { get } // for the log
     var layoutMode: String? { get } // the mode of the page's last layout
     func setHosting(_ on: Bool)
+    // While hosting: Margin's window drawing its own layout, its page area the hosted window's (window mode), or the
+    // sidebar alone (a tile beside it). Only what its page draws: its size constraints are tile()'s and untile()'s.
+    func setWindowed(_ on: Bool)
+    var hostingWindowed: Bool { get }
     func tile() // the sidebar's tile now (the hosted window's tile is coming in)
+    func untile() // its whole width again (a window-mode host is coming in; no hosted tile beside it)
+    func keepBelow(_ number: Int?) // kept right below that window (another app's), nil: no more
     func push(_ json: String)
 }
 
@@ -261,7 +274,7 @@ final class HostedSession: LibraryDelegate {
 
     // The engine's open (the first time) or show, into `w`'s page area; Margin's window made ready first. False: not shown.
     private func host(_ target: HostTarget, in w: HostedWindow) async -> Bool {
-        guard let (placement, space) = await prepare(w) else { settleHosting(); return false }
+        guard let (placement, space) = await prepare(w, for: target) else { settleHosting(); return false }
         // (Hosted already, or not: opened or shown again with Margin's window's placement and Space as they are now,
         // which change when its window left full screen and came back.)
         let result = await engine.open(app: target, in: placement, marginWindow: w.number, marginSpace: space)
@@ -278,13 +291,14 @@ final class HostedSession: LibraryDelegate {
 
     // Margin's window ready to host beside it: in full screen (v1: its own Space; windowed hosting is later), the
     // sidebar's tile, its page area worked out. Nil: it couldn't be.
-    private func prepare(_ w: HostedWindow) async -> (HostPlacement, UInt64)? {
+    private func prepare(_ w: HostedWindow, for target: HostTarget) async -> (HostPlacement, UInt64)? {
         if let other = hostingWindow, other != w.id, let was = window(other) {
             // (One Margin window hosts at a time: the one shown in the other parked first, so that window's size
             // constraints change only once no hosted tile is beside it.)
             await engine.parkShown(why: "another Margin window hosts")
             shown[other] = nil
             hostingWindow = nil
+            was.keepBelow(nil)
             was.setHosting(false)
         }
         if !w.isFullScreen {
@@ -306,6 +320,11 @@ final class HostedSession: LibraryDelegate {
         if await !wait(1.5, { w.layoutMode == "fullscreen" }) {
             note("Margin's window \(w.id): no full-screen layout from its page in 1.5 s (\(w.layoutMode ?? "none")): its last one is used")
         }
+        // A host known to be shown in window mode, with nothing tiled beside Margin's window now: its own layout, its
+        // whole width. Anything else (a new one too: most go full screen): the sidebar alone, for the tile; a new one
+        // that turns out to be a window gets its own layout in `willWindow`.
+        let windowed = engine.mode(of: target.id) == .window && (engine.shown.map { engine.mode(of: $0) == .window } ?? true)
+        w.setWindowed(windowed)
         w.setHosting(true)
         hostingWindow = w.id
         // (A layout measured with the sidebar alone, in full screen: comes once the page has heard `pageOutside`.)
@@ -333,6 +352,7 @@ final class HostedSession: LibraryDelegate {
         note("Margin's window \(w.id) left full screen while hosting: its whole width again")
         if engine.shown != nil { Task { await self.engine.parkShown(why: "Margin's window left full screen") } }
         hostingWindow = nil
+        w.keepBelow(nil)
         w.setHosting(false)
         shown[w.id] = nil
         onChange?()
@@ -341,8 +361,35 @@ final class HostedSession: LibraryDelegate {
     // The engine is moving a host's tile into Margin's Space (Margin's window alone in it): the hosting window becomes
     // the sidebar's tile, at its width now.
     func willTile() {
-        guard let id = hostingWindow else { return }
-        window(id)?.tile()
+        guard let id = hostingWindow, let w = window(id) else { return }
+        w.setWindowed(false)
+        w.tile()
+    }
+
+    // The engine is bringing a window-mode host into Margin's Space (nothing tiled beside Margin's window any more):
+    // Margin's window its whole width and its own layout, its page area (from that layout) answered once it's measured.
+    func willWindow() async -> HostPlacement? {
+        guard let id = hostingWindow, let w = window(id) else { return nil }
+        w.setWindowed(true)
+        w.untile()
+        guard await wait(options.pageWait, { w.hostedPlacement?.windowed == true }), let placement = w.hostedPlacement else {
+            note("Margin's window \(id): no page area of its own for a window (\(w.pageAreaWhyNot)): the one it had is used")
+            return nil
+        }
+        return placement
+    }
+
+    // The engine's window-mode host shown (its window), or none: the hosting Margin window kept right below it.
+    func keepBelow(_ number: Int?) {
+        guard let id = hostingWindow, let w = window(id) else { return }
+        w.keepBelow(number)
+    }
+
+    // A press in a Margin window's page area while a window-mode host is shown there (around its window: on it, the app
+    // has it already): that app given the keyboard (activated, its window raised), never a click.
+    func pagePressed(_ w: HostedWindow) {
+        guard w.id == hostingWindow, engine.windowedShown != nil else { return }
+        Task { await self.engine.activateShown() }
     }
 
     // Margin's window is the sidebar's tile only while the engine shows something in it: nothing shown, its whole
@@ -351,6 +398,7 @@ final class HostedSession: LibraryDelegate {
         guard engine.shown == nil, let id = hostingWindow else { return }
         hostingWindow = nil
         shown[id] = nil
+        window(id)?.keepBelow(nil)
         window(id)?.setHosting(false)
         onChange?()
     }

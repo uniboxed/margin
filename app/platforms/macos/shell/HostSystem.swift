@@ -1,6 +1,8 @@
 // What the host engine (HostEngine.swift) runs on: the system's (RealHostSystem), or a test's stand-in. Every
-// write here is to a window Margin hosts or a Space Margin made or was given; nothing moves or resizes a window
-// through Accessibility (apps save their frames), and nothing posts a click or a key.
+// write here is to a window Margin hosts or a Space Margin made or was given. The one window Accessibility moves or
+// resizes is a window-mode host's (`setFrame`), and only after the engine recorded its frame, which it gives back
+// before that window leaves Margin's Space and before its app is quit (apps save their frames). Nothing posts a click
+// or a key.
 
 import AppKit
 import ApplicationServices
@@ -19,14 +21,20 @@ protocol HostSystem: AnyObject {
     func terminate(pid: pid_t) -> Bool // a polite quit (the app may ask about unsaved work), never a forced one
     var onAppQuit: ((pid_t) -> Void)? { get set }
 
-    // ---- windows, through Accessibility: only read, and full screen set ----
-    func windows(pid: pid_t) async -> [HostWindow]? // the ones that can go full screen; nil: not readable
+    // ---- windows, through Accessibility: read, full screen set, a window-mode host's frame set ----
+    // (Accessibility lists only the current Space's windows: the engine moves a window there before it sets its frame.)
+    func windows(pid: pid_t) async -> [HostWindow]? // its standard windows and the ones that can go full screen; nil: not readable
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool
     func isFullScreen(pid: pid_t, window: Int) async -> Bool?
     func mainWindow(pid: pid_t) async -> Int? // the app's main window (its View menu acts on that one)
     func safariSidebar(pid: pid_t) async -> HostSidebar
     func pressSafariSidebar(pid: pid_t) async -> Bool
     func safariAutoShowsToolbar() -> Bool? // Safari's own AutoShowToolbarInFullScreen; nil: not readable
+    func frame(pid: pid_t, window: Int) async -> CGRect? // its position and size (top-left coordinates); nil: unread
+    // Its position, and its size too when `size` (a resizable window). True: Accessibility took both.
+    func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool
+    // Its app in front and the window raised and made its main one (AXRaise, AXMain): never a click. True: asked.
+    func activate(pid: pid_t, window: Int) async -> Bool
 
     // ---- the window server ----
     // Every window of `pid` on every Space (CGWindowListCopyWindowInfo .optionAll): Accessibility lists only the
@@ -80,22 +88,34 @@ nonisolated final class HostAX: @unchecked Sendable {
         return AXUIElementCopyAttributeValue(e, name as CFString, &v) == .success ? v : nil
     }
 
+    private func settable(_ e: AXUIElement, _ name: String) -> Bool {
+        var settable: DarwinBoolean = false
+        return AXUIElementIsAttributeSettable(e, name as CFString, &settable) == .success && settable.boolValue
+    }
+
+    // A window Margin can host: a standard one, or one whose AXFullScreen is settable. Nil: neither, or gone.
+    private func describe(_ w: AXUIElement, _ number: Int) -> HostWindow? {
+        guard (attr(w, kAXRoleAttribute) as? String) == kAXWindowRole else { return nil }
+        let fullScreen = settable(w, "AXFullScreen")
+        guard fullScreen || (attr(w, kAXSubroleAttribute) as? String) == kAXStandardWindowSubrole else { return nil }
+        return HostWindow(number: number, fullScreen: (attr(w, "AXFullScreen") as? Bool) == true, canFullScreen: fullScreen,
+                          resizable: settable(w, kAXSizeAttribute), minimized: (attr(w, kAXMinimizedAttribute) as? Bool) == true)
+    }
+
     private func read(_ pid: pid_t) -> [HostWindow]? {
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 1)
         guard let list = attr(app, kAXWindowsAttribute) as? [AXUIElement] else { return nil }
         var out: [HostWindow] = []
         for w in list {
-            var settable: DarwinBoolean = false
-            guard AXUIElementIsAttributeSettable(w, "AXFullScreen" as CFString, &settable) == .success, settable.boolValue else { continue }
             var n: CGWindowID = 0
-            guard hostWindowNumber(w, &n) == .success, n > 0 else { continue }
+            guard hostWindowNumber(w, &n) == .success, n > 0, let window = describe(w, Int(n)) else { continue }
             elements[Int(n)] = (pid, w)
-            out.append(HostWindow(number: Int(n), fullScreen: (attr(w, "AXFullScreen") as? Bool) == true))
+            out.append(window)
         }
         // Kept windows not listed now (on another Space) are still read through their element.
         for (number, kept) in elements where kept.pid == pid && !out.contains(where: { $0.number == number }) {
-            if let fs = attr(kept.element, "AXFullScreen") as? Bool { out.append(HostWindow(number: number, fullScreen: fs)) } else { elements[number] = nil }
+            if let window = describe(kept.element, number) { out.append(window) } else { elements[number] = nil }
         }
         return out.sorted { $0.number < $1.number }
     }
@@ -141,6 +161,50 @@ nonisolated final class HostAX: @unchecked Sendable {
                 var n: CGWindowID = 0
                 guard hostWindowNumber(v as! AXUIElement, &n) == .success, n > 0 else { return c.resume(returning: nil) }
                 c.resume(returning: Int(n))
+            }
+        }
+    }
+
+    func frame(pid: pid_t, window: Int) async -> CGRect? {
+        guard !refuses, AXIsProcessTrusted() else { return nil }
+        return await withCheckedContinuation { c in
+            queue.async {
+                guard let e = self.element(pid, window), let p = self.attr(e, kAXPositionAttribute), let s = self.attr(e, kAXSizeAttribute),
+                      CFGetTypeID(p) == AXValueGetTypeID(), CFGetTypeID(s) == AXValueGetTypeID() else { return c.resume(returning: nil) }
+                var origin = CGPoint.zero, size = CGSize.zero
+                guard AXValueGetValue(p as! AXValue, .cgPoint, &origin), AXValueGetValue(s as! AXValue, .cgSize, &size) else { return c.resume(returning: nil) }
+                c.resume(returning: CGRect(origin: origin, size: size))
+            }
+        }
+    }
+
+    // Position, then size, then position again (an app can move a window it's resizing to keep it on its display).
+    func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool {
+        guard !refuses, AXIsProcessTrusted(), frame.width.isFinite, frame.height.isFinite, frame.minX.isFinite, frame.minY.isFinite else { return false }
+        return await withCheckedContinuation { c in
+            queue.async {
+                guard let e = self.element(pid, window) else { return c.resume(returning: false) }
+                var origin = frame.origin, extent = frame.size
+                guard let p = AXValueCreate(.cgPoint, &origin), let s = AXValueCreate(.cgSize, &extent) else { return c.resume(returning: false) }
+                var ok = AXUIElementSetAttributeValue(e, kAXPositionAttribute as CFString, p) == .success
+                if size {
+                    ok = AXUIElementSetAttributeValue(e, kAXSizeAttribute as CFString, s) == .success && ok
+                    ok = AXUIElementSetAttributeValue(e, kAXPositionAttribute as CFString, p) == .success && ok
+                }
+                c.resume(returning: ok)
+            }
+        }
+    }
+
+    // The window raised and made its app's main one (actions and attributes, never a click).
+    func raise(pid: pid_t, window: Int) async -> Bool {
+        guard !refuses, AXIsProcessTrusted() else { return false }
+        return await withCheckedContinuation { c in
+            queue.async {
+                guard let e = self.element(pid, window) else { return c.resume(returning: false) }
+                let raised = AXUIElementPerformAction(e, kAXRaiseAction as CFString) == .success
+                _ = AXUIElementSetAttributeValue(e, kAXMainAttribute as CFString, kCFBooleanTrue)
+                c.resume(returning: raised)
             }
         }
     }
@@ -222,6 +286,14 @@ final class RealHostSystem: HostSystem {
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool { await ax.setFullScreen(pid: pid, window: window, on) }
     func isFullScreen(pid: pid_t, window: Int) async -> Bool? { await ax.isFullScreen(pid: pid, window: window) }
     func mainWindow(pid: pid_t) async -> Int? { await ax.mainWindow(pid: pid) }
+    func frame(pid: pid_t, window: Int) async -> CGRect? { await ax.frame(pid: pid, window: window) }
+    func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool { await ax.setFrame(pid: pid, window: window, frame, size: size) }
+
+    func activate(pid: pid_t, window: Int) async -> Bool {
+        guard !PrivateCalls.inTests, let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return false }
+        let raised = await ax.raise(pid: pid, window: window)
+        return a.activate(from: NSRunningApplication.current, options: []) || raised
+    }
 
     // The View › Show Sidebar item's title (SafariAX, ShellSafariSidebar.swift): "Hide Sidebar" while it's open, or
     // anything but the title the shell learned with it closed.

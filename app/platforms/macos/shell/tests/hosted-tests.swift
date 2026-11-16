@@ -28,10 +28,21 @@ final class FakeHostedWindow: HostedWindow {
         guard on != hosting else { return }
         hosting = on
         hostings.append(on)
+        if !on { hostingWindowed = false; below = nil }
     }
-    // (As the real one: from its layout now, while hosting in full screen.)
+    var hostingWindowed = false
+    var windowedSet: [Bool] = [] // each change of window mode, in order
+    var untiles = 0
+    var below: Int?
+    var belows: [Int?] = [] // each keepBelow, in order
+    var onUntile: (() -> Void)? // the window manager laying it out its whole width again
+    func setWindowed(_ on: Bool) { guard on != hostingWindowed else { return }; hostingWindowed = on; windowedSet.append(on) }
+    func untile() { untiles += 1; onUntile?() }
+    func keepBelow(_ number: Int?) { guard number != below else { return }; below = number; belows.append(number) }
+    // (As the real one: from its layout now, while hosting in full screen; window mode: its own page area, its whole width.)
     var hostedPlacement: HostPlacement? {
         guard hosting, isFullScreen, let page = MarginWindowGeometry.hostedPageRect(display: FakeHostWorld.display, layout: layout, right: 8) else { return nil }
+        if hostingWindowed { return HostPlacement(page: page, area: FakeHostWorld.display, tileWidth: 0, windowed: true) }
         return HostPlacement(page: page, area: FakeHostWorld.display, tileWidth: MarginWindowGeometry.tileWidth(layout))
     }
     func push(_ json: String) { pushed.append(json) }
@@ -99,6 +110,9 @@ final class StubLaunchEngine: HostedEngine {
     var shown: HostID? { nil }
     var hasHosts: Bool { false }
     func isHosted(_ id: HostID) -> Bool { false }
+    func mode(of id: HostID) -> HostMode? { nil }
+    var windowedShown: Int? { nil }
+    func activateShown() async {}
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { nil }
     func target(ofWindow number: Int) -> HostTarget? { nil }
     func launchedPid(bundleId: String) -> pid_t? { bundleId == safariIdentifier ? safariPid : nil }
@@ -164,6 +178,8 @@ func hostedTests() {
     engine.safariLinked = { await session.safariLinked($0) }
     engine.onEvent = { session.hostEvent($0) }
     engine.willTile = { _ in session.willTile() }
+    engine.willWindow = { _ in await session.willWindow() }
+    engine.keepAbove = { session.keepBelow($0) }
     library.delegate = session
     var changes = 0
     session.onChange = { changes += 1 }
@@ -331,6 +347,48 @@ func hostedTests() {
         hostRun { never = await s3.safariLinked("s-gone") }
         check("hosted: a profile that never links: asked through the menu twice, then given up", !never && none.menuOpens == ["s-gone", "s-gone"] && none.asked.isEmpty, "\(none.menuOpens)")
     }
+    // ---- an app that can't go full screen (window mode): Margin's window its whole width, kept below its window ----
+    do {
+        window.onUntile = { w.marginWidth = 1512 }
+        let tilesBefore = window.tiles, untilesBefore = window.untiles
+        let ftId = HostTarget.app("com.apple.FaceTime").id, editId = HostTarget.app("com.apple.TextEdit").id
+        run { session.openApp("com.apple.FaceTime", windowId: 1) }
+        let ftItem = library.items(space: home).first { $0.value["url"] as? String == "app://com.apple.FaceTime" }?.id ?? ""
+        let ftPid = w.running(bundleId: "com.apple.FaceTime").first?.pid ?? 0
+        let ftWindow = w.apps[ftPid]?.windows.first ?? 0
+        check("hosted window mode: FaceTime picked: shown in window mode, its window at Margin's own page area", engine.shown == ftId && engine.mode(of: ftId) == .window
+              && w.bounds(window: ftWindow) == window.hostedPlacement?.page && window.hostedPlacement?.windowed == true && session.shown[1] == ftItem, "\(session.done.suffix(4))")
+        check("hosted window mode: Margin's window its whole width and its own layout (untiled, windowed), never made the sidebar's tile for it",
+              window.hostingWindowed && window.untiles > untilesBefore && window.tiles == tilesBefore && window.hosting, "\(window.windowedSet)")
+        check("hosted window mode: Margin's window kept right below FaceTime's window; TextEdit parked", window.below == ftWindow && engine.hosts[editId]?.phase == .parked, "\(window.belows)")
+        session.pagePressed(window)
+        hostRun { for _ in 0..<5 { await Task.yield() } }
+        check("hosted window mode: a press in the page area around it: FaceTime given the keyboard (activated, raised)", w.calls.contains("activate \(ftPid) \(ftWindow)"), "\(w.calls.suffix(3))")
+
+        // to an app tiled beside the sidebar, and back
+        let editNowItem = library.items().first { $0.value["url"] as? String == "app://com.apple.TextEdit" }?.id ?? ""
+        run { _ = library.perform("activateTab", ["windowId": 1, "tabId": editNowItem]) }
+        check("hosted window mode → full screen: TextEdit tiled beside the sidebar again (pageOutside, tile), Margin's window kept below nothing",
+              engine.shown == editId && !window.hostingWindowed && window.tiles == tilesBefore + 1 && window.below == nil && engine.hosts[ftId]?.phase == .parked, "\(window.belows) \(session.done.suffix(4))")
+        run { _ = library.perform("activateTab", ["windowId": 1, "tabId": ftItem]) }
+        check("hosted full screen → window mode: FaceTime shown again, Margin's window its own layout, kept below it", engine.shown == ftId && window.hostingWindowed && window.below == ftWindow
+              && w.bounds(window: ftWindow) == window.hostedPlacement?.page && w.hostedTiles.isEmpty, "\(session.done.suffix(4))")
+
+        // the page area moves (the sidebar toggled): placed again, not parked
+        let moves = w.calls.filter { $0.hasPrefix("move \(ftWindow) ") }.count
+        window.layout.left = 240
+        session.pageRectChanged(window)
+        run {}
+        check("hosted window mode: the page area moved: FaceTime placed there again, never parked for it", w.bounds(window: ftWindow) == window.hostedPlacement?.page && window.hostedPlacement?.page.minX == 240
+              && w.calls.filter { $0.hasPrefix("move \(ftWindow) ") }.count == moves, "\(String(describing: w.bounds(window: ftWindow)))")
+
+        // closed: its frame back, then quit
+        run { _ = library.perform("closeTab", ["windowId": 1, "tabId": ftItem]) }
+        check("hosted window mode: FaceTime's item closed: its frame given back before it was quit", w.frameAtQuit["com.apple.FaceTime"] == FakeHostWorld.defaultFrame && w.running(bundleId: "com.apple.FaceTime").isEmpty
+              && w.saved["com.apple.FaceTime"] == FakeHostWorld.defaultFrame, "\(String(describing: w.frameAtQuit))")
+        window.layout.left = 300
+        window.onUntile = nil
+    }
     run { await engine.quitAll() }
 
     // ---- Margin's window that won't go full screen: nothing hosted ----
@@ -387,6 +445,7 @@ func hostedShellTests(script: URL) {
     check("hosted shell: the first run with nothing to import: one space made, for the person to name in the editor",
           shell.library?.spaces().count == 1 && shell.hosted?.firstSpace == shell.library?.spaces().first?.id)
     check("hosted shell: the engine's Safari windows are the copies'", shell.host?.requestSafariWindow != nil && shell.host?.closeSafariWindow != nil && shell.host?.safariFullScreen != nil && shell.host?.safariLinked != nil && shell.host?.willTile != nil)
+    check("hosted shell: window mode wired: Margin's window readied for a window and kept below it", shell.host?.willWindow != nil && shell.host?.keepAbove != nil)
     check("hosted shell: a palette pick goes to the session", shell.openApp != nil)
     shell.startSlots(spaces: FakeSlotSpaces(), reads: nil)
     check("hosted shell: no slot (Margin hosts the browser's window itself)", shell.slots == nil)

@@ -201,6 +201,14 @@ test("the app host in Margin's own window: said by the hello's host, its mode th
   assert.equal(host.launcher, false, 'hosting beside it: no page area of its own, no launcher');
   host.receive({ type: 'pageOutside', on: false });
   assert.equal(host.launcher, true, 'nothing hosted again: the launcher again');
+  host.receive({ type: 'pageHosted', on: true });
+  assert.equal(host.pageHosted, true);
+  assert.equal(host.launcher, false, 'a hosted app\'s window above the page area (window mode): no launcher (its field would take the keys)');
+  assert.equal(host.pageOutside, false, 'window mode: laid out with a page area of its own');
+  host.receive({ type: 'pageHosted', on: false });
+  assert.equal(host.launcher, true, 'that window gone: the launcher again');
+  assert.equal(createAppHost({ hello: hello({ pageHosted: true }), post: bridge().post }).pageHosted, false, 'only in Margin\'s own window');
+  assert.equal(createAppHost({ hello: hello({ host: 'app-window', pageHosted: true }), post: bridge().post }).launcher, false, 'from the hello');
   assert.equal(host.perform('navigate', { url: 'https://example.com/' }), false, 'an address opens as a new tab (the runtime sends newTab)');
   assert.equal(host.perform('window.fullscreen'), true);
   assert.deepEqual(b.posts.at(-1), { op: 'perform', name: 'window.fullscreen', arg: null });

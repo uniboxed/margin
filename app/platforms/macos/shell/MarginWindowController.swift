@@ -28,6 +28,13 @@
 //   window out of full screen, leaving the hosted app alone in its own). A sidebar of another width (another theme)
 //   is a new placement: the engine parks the one shown and brings it in again (HostEngine.pageRectChanged). Back to
 //   the whole width when nothing is hosted.
+//   Window mode (a hosted app that can't go full screen, HostEngine.swift): the window stays its whole width
+//   (`untile`) and draws its own layout (`setWindowed`: no `pageOutside`; `pageHosted`: no launcher under the hosted
+//   window, whose search field would take the keys), its page area the hosted window's place;
+//   the hosted window is above it in its Space, so whenever this window comes to the front (Margin activated, a click
+//   in the sidebar, shown) it's ordered right below that window again (`keepBelow`), except while a field of Margin's
+//   has the keys (the palette is drawn in this window: it's in front then); a press in the page area around the
+//   hosted window gives that app the keyboard (`onPagePress`).
 // - MarginWindows: every such window, the menu bar's actions (to the key one),
 //   and the source's changes passed to each.
 
@@ -90,6 +97,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private var hostingLayoutSaid: String? // the last layout logged while hosting (numbers only)
     private(set) var wideRight: Double?
     private var frameBeforeHosting: NSRect?
+    private(set) var hostingWindowed = false // window mode: its own layout, its whole width (setWindowed)
+    private(set) var below: Int? // a window-mode host's window: this one kept right below it (keepBelow)
+    private(set) var belowOrders = 0 // how many times it was ordered below it (the tests read it)
 
     init(id: Int, pages: OverlayPages, options: Options = Options()) {
         self.id = id
@@ -141,6 +151,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         isShown = true
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
+        orderBelowHosted()
         placeButtons()
     }
 
@@ -176,7 +187,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         fill.region = region
         guard let layout else { return window.setPageRect(nil, radius: 0) }
         if hosting {
-            // (Only published: its size constraints are tile()'s, never changed here while it may be a tile.)
+            // (Only published: its size constraints are tile()'s and untile()'s, never changed here while it may be a tile.)
             return window.setPageRect(hostedPlacement?.page, radius: CGFloat(layout.radius))
         }
         // (A layout from before a resize changes nothing: the page's next one, at the new size, does.)
@@ -194,6 +205,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard on != hosting else { return }
         hosting = on
         tiledWidth = nil
+        if !on {
+            hostingWindowed = false
+            below = nil
+        }
         if on {
             frameBeforeHosting = window.frame
             hostDisplay = window.screen.map { MarginWindowGeometry.fullScreenArea($0) } ?? contentFrame
@@ -207,16 +222,66 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             hostDisplay = nil
             Diagnostics.note("Margin's window \(id): hosting nothing: its whole width again")
         }
-        push(#"{"type":"pageOutside","on":\#(on)}"#)
+        push(#"{"type":"pageOutside","on":\#(on && !hostingWindowed)}"#)
+        push(#"{"type":"pageHosted","on":\#(on && hostingWindowed)}"#)
         updatePage()
+    }
+
+    // Window mode on or off while hosting (or for the next setHosting): its page draws its own layout (no
+    // `pageOutside`), or the sidebar alone. Only what the page draws: the width is tile()'s and untile()'s.
+    func setWindowed(_ on: Bool) {
+        guard on != hostingWindowed else { return }
+        hostingWindowed = on
+        guard hosting else { return }
+        Diagnostics.note("Margin's window \(id): hosting \(on ? "a window above its own layout (window mode)" : "beside the sidebar's tile")")
+        push(#"{"type":"pageOutside","on":\#(!on)}"#)
+        push(#"{"type":"pageHosted","on":\#(on)}"#) // (no launcher under the hosted window: its field would take the keys)
+        updatePage()
+    }
+
+    // Its whole width again while hosting (a window-mode host is coming in: no hosted tile is beside it now, so its size
+    // constraints may change).
+    func untile() {
+        guard hosting else { return }
+        tiledWidth = nil
+        if window.contentMaxSize.width != CGFloat.greatestFiniteMagnitude {
+            window.contentMaxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            window.contentMinSize = MarginWindow.minimum
+            window.minSize = MarginWindow.minimum
+        }
+        // (A test's window: as the window manager lays a full-screen window out alone, off every display.)
+        if options.harness, let display = hostDisplay, window.frame.width != display.width {
+            window.setFrame(ScreenGeometry.appKitRect(display), display: false)
+        }
+    }
+
+    // Kept right below `number` (a window-mode host's window, another app's), now and whenever it comes to the front;
+    // nil: no more.
+    func keepBelow(_ number: Int?) {
+        guard number != below else { return }
+        below = number
+        Diagnostics.note("Margin's window \(id): \(number.map { "kept below the hosted window \($0)" } ?? "no hosted window above it")")
+        orderBelowHosted()
+    }
+
+    // Ordered right below the hosted window, unless a field of Margin's has the keys (the palette is drawn here).
+    func orderBelowHosted() {
+        guard let below, hosting, !pageWantsKeyboard, !isClosed else { return }
+        window.order(.below, relativeTo: below)
+        belowOrders += 1
     }
 
     // Where the hosted window goes while hosting: the page area beside the sidebar's tile (its width the page's left
     // inset now), the display's full-screen area, the tile's width. Only from a layout its page measured in full screen
     // with the sidebar alone (`pageOutside`): one from before is followed by that one. Nil until then.
+    // Window mode: the page area from its own layout, measured at its whole width (`windowed`).
     var hostedPlacement: HostPlacement? {
-        guard hosting, isFullScreen, let layout, layout.outside, layout.mode == "fullscreen", let area = hostDisplay,
-              let page = MarginWindowGeometry.hostedPageRect(display: area, layout: layout, right: wideRight) else { return nil }
+        guard hosting, isFullScreen, let layout, layout.mode == "fullscreen", let area = hostDisplay else { return nil }
+        if hostingWindowed {
+            guard !layout.outside, abs(contentFrame.width - area.width) <= 1, let page = MarginWindowGeometry.pageRect(layout: layout, content: contentFrame) else { return nil }
+            return HostPlacement(page: page, area: area, tileWidth: 0, windowed: true)
+        }
+        guard layout.outside, let page = MarginWindowGeometry.hostedPageRect(display: area, layout: layout, right: wideRight) else { return nil }
         return HostPlacement(page: page, area: area, tileWidth: MarginWindowGeometry.tileWidth(layout))
     }
 
@@ -274,7 +339,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     }
 
     // A press on the page area (the hosted window's) or outside: a field of Margin's lets go, the palette goes.
+    // Window mode: a press in the page area (around the hosted window; on it, the app has it already) gives that app
+    // the keyboard. Only while this window is on screen in the current Space (the monitor hears every app's presses).
     func pressed(_ at: CGPoint) {
+        if below != nil, hosting, !pageWantsKeyboard, window.isVisible, window.isOnActiveSpace, let page = window.pageRect, page.contains(at) {
+            owner?.onPagePress?(self)
+        }
         guard pageWantsKeyboard, !contentFrame.contains(at) || PassThrough.pageGets(at, slot) else { return }
         push(#"{"type":"pressOutside"}"#)
     }
@@ -326,7 +396,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // About to leave full screen while hosting: the one shown goes first, while its tile is still beside this one.
     func windowWillExitFullScreen(_ notification: Notification) { if hosting { owner?.onLeavingFullScreen?(self) } }
     func windowDidExitFullScreen(_ notification: Notification) { fullScreenChanged(false) }
-    func windowDidBecomeKey(_ notification: Notification) { owner?.becameKey(self); placeButtons() }
+    func windowDidBecomeKey(_ notification: Notification) { owner?.becameKey(self); orderBelowHosted(); placeButtons() }
+    func windowDidBecomeMain(_ notification: Notification) { orderBelowHosted() }
     func windowDidResignKey(_ notification: Notification) { placeButtons() }
     func windowWillClose(_ notification: Notification) { owner?.closed(self) }
 
@@ -382,7 +453,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         json += #","windows":"# + windowsJSON
         json += #","themes":"# + owner.themes()
         json += #","apps":"# + owner.apps()
-        json += #","pageOutside":"# + (hosting ? "true" : "false")
+        json += #","pageOutside":"# + (hosting && !hostingWindowed ? "true" : "false")
+        json += #","pageHosted":"# + (hosting && hostingWindowed ? "true" : "false")
         let theme = owner.theme()
         themeSent = theme
         json += #","theme":"# + (theme ?? "null") + "}"
@@ -429,7 +501,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             placeButtons()
         case "focus":
             pageWantsKeyboard = body["on"] as? Bool == true
+            // (Window mode: the palette is drawn in this window, so it's in front while it has the keys, below the hosted
+            // window again after.)
+            if !pageWantsKeyboard { orderBelowHosted() }
             guard pageWantsKeyboard, !options.harness else { return }
+            if below != nil { window.orderFront(nil) }
             // A field of Margin's wants the keys (the palette, ⌘T or the menu's New Tab): Margin and this window take
             // the keyboard, which a hosted app beside it may have had (seen 2026-11-15: the palette opened while the
             // hosted app kept the keys).
@@ -494,6 +570,7 @@ final class MarginWindows {
     var onReady: ((MarginWindowController) -> Void)?
     var onLeavingFullScreen: ((MarginWindowController) -> Void)? // about to leave full screen while hosting
     var onLeftFullScreen: ((MarginWindowController) -> Void)? // left full screen while hosting
+    var onPagePress: ((MarginWindowController) -> Void)? // a press in its page area around a window-mode host's window
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)
     private(set) var controllers: [MarginWindowController] = []
     private var lastKey: MarginWindowController?
@@ -511,7 +588,14 @@ final class MarginWindows {
         menuTarget.enabled = { [weak self] action in action == .newWindow || self?.front != nil }
         pointer.onMove = { [weak self] at in for c in self?.controllers ?? [] { c.pointerMoved(at) } }
         pointer.onPress = { [weak self] at in for c in self?.controllers ?? [] { c.pressed(at) } }
+        // Margin activated (its Dock icon, ⌘-Tab): a window kept below a window-mode host's window ordered there again.
+        activeObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.orderBelowHosted() } }
+        }
     }
+
+    private var activeObserver: NSObjectProtocol?
+    deinit { if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) } }
 
     var anyVisible: Bool { controllers.contains { $0.window.isVisible } }
 

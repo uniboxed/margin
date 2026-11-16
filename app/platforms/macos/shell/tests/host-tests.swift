@@ -10,7 +10,11 @@ import Foundation
 
 final class FakeHostWorld: HostSystem {
     struct App { var pid: pid_t; var bundle: String; var launchedAt: Double?; var policy: HostPolicy; var windows: [Int]; var refusesQuit = false; var sidebarOpen = false }
-    struct Win { var pid: pid_t; var fullScreen = false; var spaces: [UInt64]; var priv: UInt64?; var frame: CGRect? = nil } // frame: on a Desktop (none: 100,100 800×600)
+    // frame: a normal window's (none: 100,100 800×600). canFullScreen: AXFullScreen settable; resizable: AXSize settable;
+    // minSize/maxSize: the app's own limits, kept when Accessibility sizes it.
+    struct Win { var pid: pid_t; var fullScreen = false; var spaces: [UInt64]; var priv: UInt64?; var frame: CGRect? = nil
+                 var canFullScreen = true; var resizable = true; var minSize: CGSize? = nil; var maxSize: CGSize? = nil; var minimized = false }
+    static let defaultFrame = CGRect(x: 100, y: 100, width: 800, height: 600)
 
     static let marginSpace: UInt64 = 100, marginTile: UInt64 = 101, desktop: UInt64 = 1, marginWindow = 1
     static let display = CGRect(x: 0, y: 33, width: 1512, height: 949) // a full-screen Space's layout area
@@ -26,7 +30,14 @@ final class FakeHostWorld: HostSystem {
     var clock = 0.0
     var calls: [String] = []
     var fail: Set<String> = [] // launch, ax, fullScreen, exitFullScreen, moveTile, destroy, park, setCurrent
-    var installed: Set<String> = ["com.apple.TextEdit", "com.apple.Notes", "com.apple.Safari"]
+    var installed: Set<String> = ["com.apple.TextEdit", "com.apple.Notes", "com.apple.Safari", "com.apple.FaceTime", "com.apple.calculator", "com.apple.mobilephone"]
+    // Apps whose windows can't go full screen (started with no Dock icon, as on the real Mac), a fixed size's, limits.
+    var notFullScreen: Set<String> = ["com.apple.FaceTime", "com.apple.calculator", "com.apple.mobilephone"]
+    var fixedSize: [String: CGSize] = ["com.apple.calculator": CGSize(width: 230, height: 408)]
+    var maxSize: [String: CGSize] = [:]
+    var minSize: [String: CGSize] = [:]
+    // What each app last saved as its window's frame (AppKit writes it as the window moves or resizes, and at quit).
+    var saved: [String: CGRect] = [:]
     var apps: [pid_t: App] = [:]
     var wins: [Int: Win] = [:]
     var tiles: [UInt64: [UInt64]] = [FakeHostWorld.marginSpace: [FakeHostWorld.marginTile]] // full-screen Spaces and their tiles
@@ -52,8 +63,12 @@ final class FakeHostWorld: HostSystem {
     // Accessibility as on the real Mac: an app's windows listed (and its full screen read or set, its main window
     // read) only while they're on the current Space (verified 2026-11-15: 0 of Safari's 7 windows listed while
     // another Space was current).
+    // A window Accessibility listed once is still read and its full screen set through its element on another Space
+    // (HostAX keeps them); its position and size only on the current Space (the kit's finding, 2026-11-15).
     var axCurrentOnly = false
+    var axSeen: Set<Int> = []
     func onCurrent(_ window: Int) -> Bool { wins[window].map { $0.priv == nil && $0.spaces.contains(current) } ?? false }
+    func axReads(_ window: Int) -> Bool { !axCurrentOnly || onCurrent(window) || axSeen.contains(window) }
 
     init() { wins[Self.marginWindow] = Win(pid: 1, spaces: [Self.marginSpace]) }
 
@@ -72,7 +87,17 @@ final class FakeHostWorld: HostSystem {
         let pid = nextPid
         nextPid += 1
         var list: [Int] = []
-        for _ in 0..<windows { let n = nextWindow; nextWindow += 1; wins[n] = Win(pid: pid, spaces: [Self.desktop]); list.append(n) }
+        for _ in 0..<windows {
+            let n = nextWindow
+            nextWindow += 1
+            var win = Win(pid: pid, spaces: [Self.desktop])
+            win.canFullScreen = !notFullScreen.contains(bundle)
+            if let size = fixedSize[bundle] { win.resizable = false; win.frame = CGRect(origin: CGPoint(x: 400, y: 300), size: size) }
+            win.maxSize = maxSize[bundle]
+            win.minSize = minSize[bundle]
+            wins[n] = win
+            list.append(n)
+        }
         apps[pid] = App(pid: pid, bundle: bundle, launchedAt: 1_000_000 + Double(pid), policy: policy, windows: list)
         return pid
     }
@@ -84,15 +109,18 @@ final class FakeHostWorld: HostSystem {
         apps[pid]?.sidebarOpen = sidebarOpenAtLaunch
         return true
     }
+    var frameAtQuit: [String: CGRect] = [:] // each app's window's frame as it was asked to quit
     func terminate(pid: pid_t) -> Bool {
         calls.append("terminate \(pid)")
         guard let a = apps[pid] else { return false }
+        if let n = a.windows.first, let win = wins[n] { frameAtQuit[a.bundle] = win.frame ?? Self.defaultFrame }
         if a.refusesQuit { return true }
         quitNow(pid)
         return true
     }
     func quitNow(_ pid: pid_t) {
         guard let a = apps.removeValue(forKey: pid) else { return }
+        if let n = a.windows.first, let w = wins[n] { saved[a.bundle] = w.frame ?? Self.defaultFrame } // (its frame at quit)
         for n in a.windows {
             for (space, list) in tiles { tiles[space] = list.filter { tileWindow[$0] != n } }
             wins[n] = nil
@@ -104,16 +132,42 @@ final class FakeHostWorld: HostSystem {
     // ---- windows ----
     func windows(pid: pid_t) async -> [HostWindow]? {
         guard !fail.contains("ax"), let a = apps[pid] else { return nil }
-        return a.windows.filter { !axCurrentOnly || onCurrent($0) }.compactMap { n in wins[n].map { HostWindow(number: n, fullScreen: $0.fullScreen) } }
+        let listed = a.windows.filter { !axCurrentOnly || onCurrent($0) }
+        axSeen.formUnion(listed)
+        return listed.compactMap { n in
+            wins[n].map { HostWindow(number: n, fullScreen: $0.fullScreen, canFullScreen: $0.canFullScreen, resizable: $0.resizable, minimized: $0.minimized) }
+        }
     }
+    func frame(pid: pid_t, window: Int) async -> CGRect? {
+        guard !fail.contains("ax"), let w = wins[window], w.pid == pid, !axCurrentOnly || onCurrent(window), !w.fullScreen else { return nil }
+        return w.frame ?? Self.defaultFrame
+    }
+    // Accessibility's position and size: only a window on the current Space (when axCurrentOnly), the app's own limits
+    // kept, a fixed-size window only moved; the app saves the frame it took.
+    func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool {
+        calls.append("frame \(window) \(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))×\(Int(frame.height))\(size ? "" : " (moved)")")
+        guard !fail.contains("ax"), !fail.contains("frame"), var w = wins[window], w.pid == pid, !axCurrentOnly || onCurrent(window), !w.fullScreen else { return false }
+        var extent = (w.frame ?? Self.defaultFrame).size
+        if size, w.resizable {
+            extent = frame.size
+            if let m = w.minSize { extent = CGSize(width: max(extent.width, m.width), height: max(extent.height, m.height)) }
+            if let m = w.maxSize { extent = CGSize(width: min(extent.width, m.width), height: min(extent.height, m.height)) }
+        }
+        w.frame = CGRect(origin: frame.origin, size: extent)
+        wins[window] = w
+        if let bundle = apps[pid]?.bundle { saved[bundle] = w.frame }
+        return true
+    }
+    func activate(pid: pid_t, window: Int) async -> Bool { calls.append("activate \(pid) \(window)"); return apps[pid] != nil }
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool {
         calls.append("fullScreen \(on) \(window)")
-        guard !axCurrentOnly || onCurrent(window) else { return false }
+        guard axReads(window) else { return false }
         return applyFullScreen(pid: pid, window: window, on)
     }
     // Full screen as macOS does it, whoever asked (Accessibility, or a Safari copy's setWindowState).
     @discardableResult func applyFullScreen(pid: pid_t, window: Int, _ on: Bool) -> Bool {
         guard var w = wins[window], w.pid == pid else { return false }
+        if on, !w.canFullScreen { return false } // (AXFullScreen isn't settable)
         if on {
             guard !w.fullScreen, !fail.contains("fullScreen") else { return true }
             let space = nextId, tile = nextId + 1
@@ -138,7 +192,7 @@ final class FakeHostWorld: HostSystem {
         return true
     }
     func isFullScreen(pid: pid_t, window: Int) async -> Bool? {
-        guard !axCurrentOnly || onCurrent(window) else { return nil }
+        guard axReads(window) else { return nil }
         return wins[window].flatMap { $0.pid == pid ? $0.fullScreen : nil }
     }
     var main: [pid_t: Int] = [:] // the app's main window; none set: its last window
@@ -171,7 +225,7 @@ final class FakeHostWorld: HostSystem {
     func spaceOf(window: Int) -> UInt64? { tiles.first { $0.value.contains { tileWindow[$0] == window } }?.key }
     func bounds(window: Int) -> CGRect? {
         guard let w = wins[window] else { return nil }
-        guard w.priv == nil, let space = spaceOf(window: window), w.fullScreen || window == Self.marginWindow else { return w.frame ?? CGRect(x: 100, y: 100, width: 800, height: 600) }
+        guard w.priv == nil, let space = spaceOf(window: window), w.fullScreen || window == Self.marginWindow else { return w.frame ?? Self.defaultFrame }
         let sidebar = apps[w.pid]?.sidebarOpen == true
         let area = (sidebar ? .zero : (reservation[space] ?? .zero)).inset(Self.display)
         let list = tiles[space] ?? []
@@ -226,7 +280,7 @@ final class FakeHostWorld: HostSystem {
     func createPrivateSpace() -> UInt64? { let s = nextId; nextId += 1; privates.insert(s); return s }
     func move(window: Int, to space: UInt64) -> Bool {
         calls.append("move \(window) \(space)")
-        guard var w = wins[window] else { return false }
+        guard var w = wins[window], !(fail.contains("moveIn") && space == Self.marginSpace) else { return false }
         if privates.contains(space) {
             guard !fail.contains("park") else { return false }
             w.priv = space
@@ -437,18 +491,12 @@ func hostTests() {
     // ---- refused before anything is touched ----
     do {
         let (w, e, _) = world()
-        let pid = w.start("com.apple.TextEdit", policy: .regular, windows: 1)
-        let r = open(e, textEdit)
-        check("host: an app already running, not started by Margin: refused, never touched", { if case .failed(.launch, _) = r { return true }; return false }() && !w.calls.contains { $0.hasPrefix("fullScreen") } && w.apps[pid] != nil, "\(String(describing: r))")
-    }
-    do {
-        let (w, e, _) = world()
         let r = hostRun { await e.open(app: textEdit, in: placed(page), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.desktop) }
         check("host: Margin's window not in a full-screen Space: refused, nothing started", { if case .failed(.margin, _)? = r { return true }; return false }() && w.apps.isEmpty)
     }
 
     // ---- a failure at each step falls back, leaving nothing ----
-    for (what, step) in [("launch", HostStep.launch), ("ax", .window), ("fullScreen", .fullScreen), ("moveTile", .tile)] {
+    for (what, step) in [("launch", HostStep.launch), ("ax", .window), ("moveTile", .tile)] {
         let (w, e, marker) = world()
         w.fail = [what]
         let r = open(e, textEdit)
@@ -958,6 +1006,9 @@ func hostTests() {
         check("host: quit: Safari (not Margin's) left running, the app Margin started quit", w.apps[safariPid] != nil && w.running(bundleId: "com.apple.TextEdit").isEmpty)
     }
 
+    windowModeTests(world: world)
+    check("host: Margin's window never made the sidebar's tile while a hosted tile was beside it (window mode too)", tiledShared == 0, "\(tiledShared)")
+
     // ---- one at a time ----
     do {
         let (w, e, _) = world()
@@ -968,6 +1019,294 @@ func hostTests() {
         }
         check("host: two opens at once run one after the other: both shown in turn, two tiles", both?.allSatisfy { if case .shown = $0 { return true }; return false } == true && w.tiles[FakeHostWorld.marginSpace]?.count == 2 && clean(w), "\(String(describing: both))")
     }
+}
+
+// Window mode (apps that can't go full screen) and apps the person opened (2026-11-15): the stand-in's FaceTime,
+// Calculator and Phone windows can't go full screen (as with no Dock icon on the real Mac); Calculator is a fixed
+// 230×408; every Accessibility frame set is in `calls` ("frame <window> …"), and each app's saved frame (`saved`, what
+// AppKit writes as a window moves and at quit) and its frame as it was asked to quit (`frameAtQuit`) are kept.
+func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
+    let page = CGRect(x: 276, y: 41, width: 1228, height: 933)
+    let original = FakeHostWorld.defaultFrame
+    let faceTime = HostTarget.app("com.apple.FaceTime"), calculator = HostTarget.app("com.apple.calculator"), phone = HostTarget.app("com.apple.mobilephone")
+    let textEdit = HostTarget.app("com.apple.TextEdit"), notes = HostTarget.app("com.apple.Notes")
+    func tiled(_ rect: CGRect = page) -> HostPlacement { HostPlacement(page: rect, area: FakeHostWorld.display, tileWidth: 260) }
+    func windowed(_ rect: CGRect = page) -> HostPlacement { HostPlacement(page: rect, area: FakeHostWorld.display, tileWidth: 0, windowed: true) }
+    func open(_ e: HostEngine, _ t: HostTarget) -> HostResult? {
+        hostRun { await e.open(app: t, in: tiled(), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+    }
+    func clean(_ w: FakeHostWorld) -> Bool { w.ownerlessFullScreenSpaces() == [] && w.dropped == 0 && w.destroyedWithTiles == 0 }
+    func window(_ w: FakeHostWorld, _ bundle: String) -> Int { w.running(bundleId: bundle).first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0 }
+    func pid(_ w: FakeHostWorld, _ bundle: String) -> pid_t { w.running(bundleId: bundle).first?.pid ?? 0 }
+    func at(_ w: FakeHostWorld, _ call: String) -> Int { w.calls.firstIndex(of: call) ?? -1 }
+    func last(_ w: FakeHostWorld, _ prefix: String) -> Int { w.calls.lastIndex { $0.hasPrefix(prefix) } ?? -1 }
+    func frameCall(_ n: Int, _ r: CGRect, moved: Bool = false) -> String { "frame \(n) \(Int(r.minX)),\(Int(r.minY)) \(Int(r.width))×\(Int(r.height))\(moved ? " (moved)" : "")" }
+    // The engine as the shell wires it: Margin's window's own page area for a window (willWindow), kept below it.
+    final class Hooks { var windows = 0; var tiles = 0; var above: [Int?] = [] }
+    func wired(_ e: HostEngine) -> Hooks {
+        let h = Hooks()
+        let tile = e.willTile
+        e.willTile = { tile?($0); h.tiles += 1 }
+        e.willWindow = { _ in h.windows += 1; return windowed() }
+        e.keepAbove = { h.above.append($0) }
+        return h
+    }
+
+    // ---- an app that can't go full screen, started by Margin: window mode ----
+    do {
+        let (w, e, marker) = world()
+        let h = wired(e)
+        let r = open(e, faceTime)
+        let p = pid(w, "com.apple.FaceTime"), n = window(w, "com.apple.FaceTime")
+        check("window mode: FaceTime (AXFullScreen not settable) shown, fitted to the page area", r == .shown(faceTime.id, placed: true) && e.mode(of: faceTime.id) == .window, "\(String(describing: r))")
+        check("window mode: started with no Dock icon, never put in full screen, no Space of its own", w.apps[p]?.policy == .accessory && w.wins[n]?.fullScreen == false
+              && !w.calls.contains("fullScreen true \(n)") && w.tiles.count == 1 && clean(w), "\(w.calls)")
+        check("window mode: its window in Margin's Space as a window (the bridge), at the page area by Accessibility (position and size)",
+              w.spaces(window: n) == [FakeHostWorld.marginSpace] && w.bounds(window: n) == page && w.calls.contains(frameCall(n, page)) && at(w, "move \(n) \(FakeHostWorld.marginSpace)") < at(w, frameCall(n, page)), "\(w.calls)")
+        check("window mode: no tile, no narrowing, nothing reserved: Margin's window its whole width (willWindow asked, willTile never)",
+              h.tiles == 0 && h.windows == 1 && w.hostedTiles.isEmpty && (w.reservation[FakeHostWorld.marginSpace] ?? .zero) == .zero && !w.calls.contains { $0.hasPrefix("tile") } && e.tiledWidth == nil)
+        check("window mode: Margin's window kept below it (keepAbove its number)", h.above == [n] && e.windowedShown == n, "\(h.above)")
+        check("window mode: under one freeze, revealed", w.freezes == 1 && w.reveals == 1)
+        let m = HostMarker.read(marker)?.windows.first
+        check("window mode: the marker has its mode, its frame and Space before Margin moved it, and that its frame is changed",
+              m?.mode == .window && m?.frame == original && m?.originalSpace == FakeHostWorld.desktop && m?.frameChanged == true && m?.personApp == false && m?.bundleId == "com.apple.FaceTime", "\(String(describing: m))")
+
+        // the page area moves (a sidebar toggle, another theme): placed again, never parked
+        let page2 = CGRect(x: 320, y: 41, width: 1184, height: 933)
+        w.calls = []
+        check("window mode: a new page area: placed again by Accessibility, not parked", hostRun { await e.pageRectChanged(windowed(page2)) } == true && w.bounds(window: n) == page2
+              && w.calls == [frameCall(n, page2)], "\(w.calls)")
+        hostRun { await e.activateShown() }
+        check("window mode: a press in the page area around it: its app in front, its window raised (no click)", w.calls.last == "activate \(p) \(n)")
+
+        // switching to an app shown full screen, and back
+        w.axCurrentOnly = true // (Accessibility sees only the current Space's windows, as on the real Mac)
+        w.calls = []
+        let t = open(e, textEdit)
+        let tw = window(w, "com.apple.TextEdit")
+        check("window mode → full screen: TextEdit tiled beside Margin's sidebar tile, fitted", t == .shown(textEdit.id, placed: true) && w.hostedTiles.count == 1 && h.tiles == 1 && w.bounds(window: tw) == page, "\(String(describing: t))")
+        check("window mode → full screen: FaceTime's frame given back on the current Space, then parked in a private Space (no full-screen exit)",
+              w.wins[n]?.frame == original && w.wins[n]?.priv != nil && at(w, frameCall(n, original)) >= 0 && at(w, frameCall(n, original)) < last(w, "move \(n) ") && !w.calls.contains("fullScreen false \(n)"), "\(w.calls)")
+        check("window mode → full screen: Margin's window no longer kept below anything; FaceTime saved its own frame", h.above.last == .some(nil) && e.windowedShown == nil && w.saved["com.apple.FaceTime"] == original, "\(h.above)")
+        w.calls = []
+        let back = hostRun { await e.show(faceTime.id) }
+        check("full screen → window mode: FaceTime back in Margin's Space at the page area, TextEdit parked out of full screen", back == .shown(faceTime.id, placed: true) && w.spaces(window: n) == [FakeHostWorld.marginSpace]
+              && w.bounds(window: n) == page && w.wins[tw]?.priv != nil && w.wins[tw]?.fullScreen == false && e.hosts[textEdit.id]?.phase == .parked && clean(w), "\(String(describing: back)) \(w.calls)")
+        check("full screen → window mode: the tiles' reservation given back (Margin's window its whole width), Margin's window kept below FaceTime again",
+              (w.reservation[FakeHostWorld.marginSpace] ?? .zero) == .zero && w.hostedTiles.isEmpty && h.above.last == .some(n) && h.windows == 2 && w.privates.count == 1)
+
+        // quit: its frame back before it's quit
+        w.calls = []
+        hostRun { await e.quitAll() }
+        check("window mode: quit: FaceTime's frame given back before it's quit, so it saves the frame it had", at(w, frameCall(n, original)) >= 0 && at(w, frameCall(n, original)) < at(w, "terminate \(p)")
+              && w.frameAtQuit["com.apple.FaceTime"] == original && w.saved["com.apple.FaceTime"] == original, "\(w.calls)")
+        check("window mode: quit: both apps quit, nothing left, the marker gone", w.apps.isEmpty && w.privates.isEmpty && clean(w) && !FileManager.default.fileExists(atPath: marker.path) && h.above.last == .some(nil))
+    }
+
+    // ---- a fixed-size window (Calculator): centred; one with a maximum size: that size, centred ----
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        let r = open(e, calculator)
+        let n = window(w, "com.apple.calculator"), p = pid(w, "com.apple.calculator")
+        let want = CGRect(x: 775, y: 304, width: 230, height: 408)
+        check("window mode: a fixed-size window (Calculator 230×408) centred in the page area, only moved", r == .shown(calculator.id, placed: true) && w.bounds(window: n) == want
+              && w.calls.contains(frameCall(n, want, moved: true)), "\(String(describing: w.bounds(window: n))) \(w.calls)")
+        w.axCurrentOnly = true
+        hostRun { await e.close(calculator.id) }
+        check("window mode: Calculator closed: back at its own place, then quit; its saved frame as it was", w.frameAtQuit["com.apple.calculator"] == CGRect(x: 400, y: 300, width: 230, height: 408)
+              && w.saved["com.apple.calculator"] == CGRect(x: 400, y: 300, width: 230, height: 408) && w.apps[p] == nil && clean(w), "\(w.calls)")
+    }
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        w.maxSize["com.apple.FaceTime"] = CGSize(width: 1000, height: 700)
+        let r = open(e, faceTime)
+        let n = window(w, "com.apple.FaceTime")
+        check("window mode: a window with its own maximum size: that size, centred in what's left", r == .shown(faceTime.id, placed: true) && w.bounds(window: n) == CGRect(x: 390, y: 158, width: 1000, height: 700),
+              "\(String(describing: w.bounds(window: n)))")
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- full screen that fails: backed out, then window mode ----
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        w.fail = ["fullScreen"] // (its AXFullScreen is settable, but no full-screen Space ever comes)
+        let r = open(e, textEdit)
+        let n = window(w, "com.apple.TextEdit"), p = pid(w, "com.apple.TextEdit")
+        check("full screen fails: backed out, shown in window mode, fitted", r == .shown(textEdit.id, placed: true) && e.mode(of: textEdit.id) == .window && w.bounds(window: n) == page
+              && w.wins[n]?.fullScreen == false && w.tiles.count == 1 && clean(w), "\(String(describing: r))")
+        w.fail = []
+        hostRun { await e.close(textEdit.id) }
+        check("full screen fails: closed: its frame back, then quit", w.frameAtQuit["com.apple.TextEdit"] == original && w.apps[p] == nil && clean(w))
+    }
+
+    // ---- an app the person opened (Phone, its Dock icon), its window on their Desktop ----
+    do {
+        let (w, e, marker) = world()
+        let h = wired(e)
+        let p = w.start("com.apple.mobilephone", policy: .regular, windows: 1)
+        let n = w.apps[p]!.windows[0]
+        w.axCurrentOnly = true // (its window on the Desktop: Accessibility doesn't list it while Margin's Space is current)
+        let r = open(e, phone)
+        check("person's app: Phone, already running, hosted (not refused), fitted, in window mode", r == .shown(phone.id, placed: true) && e.mode(of: phone.id) == .window && w.bounds(window: n) == page, "\(String(describing: r)) \(w.calls)")
+        check("person's app: never started again, its Dock icon left, not Margin's to quit", !w.calls.contains { $0.hasPrefix("launch") } && w.apps[p]?.policy == .regular && e.launched.isEmpty)
+        check("person's app: found by the window server, brought into Margin's Space before Accessibility sets anything", at(w, "move \(n) \(FakeHostWorld.marginSpace)") >= 0 && at(w, "move \(n) \(FakeHostWorld.marginSpace)") < last(w, "frame \(n)") && h.above.last == .some(n))
+        let m = HostMarker.read(marker)?.windows.first
+        check("person's app: the marker says it's the person's, its launch, its frame and its Desktop", m?.personApp == true && m?.appLaunchedAt == w.apps[p]?.launchedAt && m?.frame == original && m?.originalSpace == FakeHostWorld.desktop && HostMarker.read(marker)?.apps.isEmpty == true)
+        w.calls = []
+        hostRun { await e.close(phone.id) }
+        check("person's app: closed: its frame given back (on the current Space), then back on its Desktop, still running, never quit",
+              w.wins[n]?.frame == original && w.spaces(window: n) == [FakeHostWorld.desktop] && w.apps[p] != nil && !w.calls.contains("terminate \(p)")
+              && at(w, frameCall(n, original)) >= 0 && at(w, frameCall(n, original)) < at(w, "move \(n) \(FakeHostWorld.desktop)") && w.saved["com.apple.mobilephone"] == original, "\(w.calls)")
+        check("person's app: nothing left: no private Space, the marker gone, Margin's window kept below nothing", w.privates.isEmpty && clean(w) && !FileManager.default.fileExists(atPath: marker.path) && h.above.last == .some(nil))
+    }
+    do {
+        // Phone parked behind a full-screen app, then Margin quits: back on its Desktop as it was, running.
+        let (w, e, _) = world()
+        _ = wired(e)
+        let p = w.start("com.apple.mobilephone", policy: .regular, windows: 1)
+        let n = w.apps[p]!.windows[0]
+        w.axCurrentOnly = true
+        _ = open(e, phone)
+        w.axCurrentOnly = false
+        _ = open(e, notes)
+        w.axCurrentOnly = true
+        check("person's app parked: its frame already given back, in a private Space", w.wins[n]?.priv != nil && w.wins[n]?.frame == original)
+        hostRun { await e.quitAll() }
+        check("person's app parked, Margin quits: back on its Desktop at its frame, still running; the app Margin started quit",
+              w.spaces(window: n) == [FakeHostWorld.desktop] && w.wins[n]?.frame == original && w.apps[p] != nil && !w.calls.contains("terminate \(p)") && w.running(bundleId: "com.apple.Notes").isEmpty && w.privates.isEmpty && clean(w))
+    }
+    do {
+        // The person's app whose window can go full screen: hosted full screen, given back out of it, on its Desktop.
+        let (w, e, _) = world()
+        let h = wired(e)
+        let p = w.start("com.apple.TextEdit", policy: .regular, windows: 1)
+        let n = w.apps[p]!.windows[0]
+        w.axCurrentOnly = true
+        let r = open(e, textEdit)
+        check("person's app that can go full screen: read in Margin's Space, then tiled, fitted", r == .shown(textEdit.id, placed: true) && e.mode(of: textEdit.id) == .fullScreen && w.hostedTiles.count == 1 && h.tiles == 1 && w.bounds(window: n) == page,
+              "\(String(describing: r)) \(w.calls)")
+        _ = open(e, notes) // (parked behind another)
+        hostRun { await e.close(textEdit.id) }
+        check("person's app that can go full screen: closed while parked: out of full screen, on its Desktop, its frame as it was, running",
+              w.wins[n]?.fullScreen == false && w.spaces(window: n) == [FakeHostWorld.desktop] && w.wins[n]?.priv == nil && (w.wins[n]?.frame ?? original) == original && w.apps[p] != nil && !w.calls.contains("terminate \(p)") && clean(w), "\(w.calls)")
+        hostRun { await e.quitAll() }
+    }
+    do {
+        // The person's window already full screen in a Space of its own: left alone.
+        let (w, e, _) = world()
+        w.jumpOnFullScreen = false
+        let p = w.start("com.apple.TextEdit", policy: .regular, windows: 1)
+        let n = w.apps[p]!.windows[0]
+        w.applyFullScreen(pid: p, window: n, true)
+        let theirs = w.spaces(window: n) ?? []
+        w.calls = []
+        let r = open(e, textEdit)
+        check("person's app already full screen in its own Space: not hosted, said why, its window never touched", { if case .failed(.fullScreen, let why)? = r { return why.contains("already in full screen") }; return false }()
+              && !w.calls.contains { $0.hasPrefix("move") || $0.hasPrefix("fullScreen") || $0.hasPrefix("frame") || $0.hasPrefix("tile") } && w.spaces(window: n) == theirs && w.wins[n]?.fullScreen == true && w.apps[p] != nil, "\(String(describing: r)) \(w.calls)")
+    }
+
+    // ---- Margin's window leaving full screen while a window is shown ----
+    do {
+        let (w, e, _) = world()
+        let h = wired(e)
+        _ = open(e, faceTime)
+        let n = window(w, "com.apple.FaceTime")
+        w.axCurrentOnly = true
+        hostRun { await e.parkShown(why: "Margin's window left full screen") }
+        check("window mode: Margin's window leaving full screen: the window's frame given back, then parked, nothing shown", w.wins[n]?.priv != nil && w.wins[n]?.frame == original && e.shown == nil && h.above.last == .some(nil))
+        let again = open(e, faceTime)
+        check("window mode: shown again: back at the page area", again == .shown(faceTime.id, placed: true) && w.bounds(window: n) == page && h.above.last == .some(n))
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- the restore always runs before an app Margin started is quit, whatever the path ----
+    let paths = ["closed while shown", "closed while parked", "Margin quits while shown", "Margin quits while parked", "parked as Margin left full screen, then quit",
+                 "a failed switch that couldn't park it, then quit", "its own show failing", "the next launch after a crash"]
+    for path in paths {
+        let (w, e, marker) = world()
+        _ = wired(e)
+        _ = open(e, faceTime)
+        let p = pid(w, "com.apple.FaceTime"), n = window(w, "com.apple.FaceTime")
+        w.axCurrentOnly = true
+        switch path {
+        case "closed while shown": hostRun { await e.close(faceTime.id) }
+        case "closed while parked": w.axCurrentOnly = false; _ = open(e, notes); w.axCurrentOnly = true; hostRun { await e.close(faceTime.id) }
+        case "Margin quits while shown": hostRun { await e.quitAll() }
+        case "Margin quits while parked": w.axCurrentOnly = false; _ = open(e, notes); w.axCurrentOnly = true; hostRun { await e.quitAll() }
+        case "parked as Margin left full screen, then quit": hostRun { await e.parkShown(why: "test") }; hostRun { await e.quitAll() }
+        case "a failed switch that couldn't park it, then quit":
+            w.axCurrentOnly = false
+            w.fail = ["park"]
+            let r = open(e, notes)
+            w.fail = []
+            check("restore before quit: \(path): the switch failed, FaceTime still shown at the page area", { if case .failed? = r { return true }; return false }() && e.shown == faceTime.id && w.bounds(window: n) == page, "\(String(describing: r))")
+            w.axCurrentOnly = true
+            hostRun { await e.quitAll() }
+        case "its own show failing":
+            hostRun { await e.close(faceTime.id) }
+            w.fail = ["moveIn"]
+            let r = open(e, faceTime)
+            w.fail = []
+            check("restore before quit: \(path): failed, given back", { if case .failed(.windowMode, _)? = r { return true }; return false }() && w.apps.isEmpty, "\(String(describing: r))")
+        default: // a crash: Margin's Space goes with it, its window in no Space; the next launch reads the marker
+            w.onAppQuit = nil
+            w.tiles[FakeHostWorld.marginSpace] = nil
+            w.wins[n]?.spaces = []
+            w.current = FakeHostWorld.desktop
+            let next = HostEngine(system: w, marker: marker, pid: 2)
+            hostRun { await next.recover() }
+        }
+        hostRun { await e.quitAll() } // (whatever else is hosted: the next check's "nothing left")
+        let started = w.running(bundleId: "com.apple.FaceTime")
+        check("restore before quit: \(path): FaceTime's frame was the one it had when it was asked to quit, and that's what it saved",
+              w.frameAtQuit["com.apple.FaceTime"] == original && w.saved["com.apple.FaceTime"] == original && started.isEmpty && w.apps[p] == nil, "\(String(describing: w.frameAtQuit)) \(w.calls.suffix(8))")
+        check("restore before quit: \(path): nothing left", w.privates.isEmpty && clean(w) && !FileManager.default.fileExists(atPath: marker.path), "\(w.privates) \(w.tiles)")
+    }
+
+    // ---- a crash with the person's app shown in window mode: given back at the next launch, never quit ----
+    do {
+        let (w, e, marker) = world()
+        _ = wired(e)
+        let p = w.start("com.apple.mobilephone", policy: .regular, windows: 1)
+        let n = w.apps[p]!.windows[0]
+        _ = open(e, faceTime) // (Margin's: parked once Phone is shown)
+        let f = window(w, "com.apple.FaceTime"), fp = pid(w, "com.apple.FaceTime")
+        w.axCurrentOnly = true
+        _ = open(e, phone)
+        check("crash: (Phone shown at the page area, FaceTime parked at its own frame)", w.bounds(window: n) == page && w.wins[f]?.priv != nil && w.wins[f]?.frame == original)
+        w.onAppQuit = nil
+        w.tiles[FakeHostWorld.marginSpace] = nil
+        w.wins[n]?.spaces = []
+        w.current = FakeHostWorld.desktop
+        w.calls = []
+        let next = HostEngine(system: w, marker: marker, pid: 2)
+        hostRun { await next.recover() }
+        check("crash: the person's Phone back on its Desktop at its frame, still running, never quit", w.spaces(window: n) == [FakeHostWorld.desktop] && w.wins[n]?.frame == original && w.apps[p] != nil
+              && !w.calls.contains("terminate \(p)") && w.saved["com.apple.mobilephone"] == original, "\(w.calls)")
+        check("crash: FaceTime (Margin's) out of its private Space and quit at its own frame", w.apps[fp] == nil && w.frameAtQuit["com.apple.FaceTime"] == original && w.privates.isEmpty && !FileManager.default.fileExists(atPath: marker.path), "\(w.calls)")
+    }
+    do {
+        // A pid used again by another launch of the person's app: never moved or resized for the old one.
+        let (w, _, marker) = world()
+        let p = w.start("com.apple.mobilephone", policy: .regular, windows: 1)
+        var m = HostMarker(pid: 1, marginSpace: FakeHostWorld.marginSpace)
+        m.windows = [HostMarker.Window(number: w.apps[p]!.windows[0], pid: p, ownSafariWindow: false, privateSpace: nil, fullScreenSpace: nil, appLaunchedAt: 5, mode: .window,
+                                       bundleId: "com.apple.mobilephone", personApp: true, frame: CGRect(x: 1, y: 2, width: 300, height: 300), originalSpace: FakeHostWorld.desktop, frameChanged: true)]
+        _ = m.write(marker)
+        let next = HostEngine(system: w, marker: marker, pid: 2)
+        hostRun { await next.recover() }
+        check("crash: a marker's window of another launch (its pid used again): never moved or resized", !w.calls.contains { $0.hasPrefix("move") || $0.hasPrefix("frame") || $0.hasPrefix("terminate") } && !FileManager.default.fileExists(atPath: marker.path), "\(w.calls)")
+    }
+    check("host marker: a window-mode window's fields written and read back", {
+        var m = HostMarker(pid: 3, marginSpace: 9)
+        m.windows = [HostMarker.Window(number: 5, pid: 4, ownSafariWindow: false, privateSpace: nil, fullScreenSpace: nil, mode: .window, bundleId: "b", personApp: true, frame: CGRect(x: 1, y: 2, width: 3, height: 4), originalSpace: 1, frameChanged: true, resizable: false)]
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("margin-host-marker-\(UUID().uuidString)/\(HostMarker.fileName)")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        return m.write(url) && HostMarker.read(url) == m
+    }())
 }
 
 func hostLayoutTests() {

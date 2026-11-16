@@ -56,6 +56,10 @@
 //   measured that way (`pageOutside`), and a layout of another mode is reported even when its insets didn't change
 //   (the app waits for the full-screen one). With nothing hosted in it (no `pageOutside`), Margin's window draws its
 //   page area itself: the theme's launcher, opaque (`launcher`), as Margin's new-tab page draws it over a browser.
+//   A hosted app's window above Margin's page area (window mode: an app that can't go full screen, Margin's window
+//   its whole width under it): the hello's `pageHosted` and `{ type: 'pageHosted', on }`: laid out as usual (its own
+//   layout, the sidebar as its setting says), but no launcher in the page area (its field would take the keys from
+//   the app above it).
 //
 // No browser API here: only the DOM and `post`.
 import type { Geometry, Host } from './host.ts';
@@ -159,7 +163,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   onMessage?: (msg: any) => void,
   onNotice?: (arg: { id?: string, action?: string }) => void,
   warn?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
   // (Its window can change: a profile switch hands the sidebar to the window it goes to, `rekey`.)
   let windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
@@ -170,6 +174,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   const appWindow = hello?.host === 'app-window';
   // Margin's window hosting another app's window beside it: no page area of its own (only in Margin's own window).
   let pageOutside = appWindow && hello?.pageOutside === true;
+  // A hosted app's window above the page area (window mode): nothing of Margin's drawn there.
+  let pageHosted = appWindow && hello?.pageHosted === true;
   // Every profile's spaces in the one order, and the profiles (app/platforms/macos/shell/ShellProfiles.swift): `state.across`.
   let across = acrossOf(hello?.across);
   // iCloud Tabs, as the app read them (Safari only; null: none).
@@ -276,6 +282,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get appWindow() { return appWindow; },
     /** The page area is another window's, beside Margin's (Margin's own window hosting): the sidebar alone here. */
     get pageOutside() { return pageOutside; },
+    /** The page area is a hosted app's window above Margin's (window mode): no launcher there. */
+    get pageHosted() { return pageHosted; },
     // The overlay stays on screen through a switch (ui/runtime.ts: the highlight waits for the state).
     staysOnScreen: true,
     // Not on screen as it first draws: its launcher takes the focus only when the app says (the `shown` push's `focus`).
@@ -285,7 +293,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     // Margin's start page (#launcher, #settings) chooses a new tab; a new-tab page opens it there.
     get inNewTab() { const p = frontPage(); return !!p && !/#(launcher|settings)\b/.test(p.url); },
     // Margin's own window with nothing hosted beside it: its page area is the launcher (never a see-through hole).
-    get launcher() { return appWindow ? !pageOutside : !!frontPage(); },
+    get launcher() { return appWindow ? !pageOutside && !pageHosted : !!frontPage(); },
     // Its Settings asked for (the new-tab page's #settings: a Settings button elsewhere).
     get settingsAsked() { return !!frontPage()?.url.includes('#settings'); },
     get pageTabId() { return frontPage()?.id ?? null; },
@@ -419,6 +427,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           const next = appWindow && msg.on === true;
           if (next === pageOutside) return;
           pageOutside = next;
+          return emit();
+        }
+        case 'pageHosted': {
+          const next = appWindow && msg.on === true;
+          if (next === pageHosted) return;
+          pageHosted = next;
           return emit();
         }
         case 'themes':

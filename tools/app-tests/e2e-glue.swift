@@ -19,7 +19,10 @@ import WebKit
 // beside it, the Space's reserved edges and the tiles' spacing laying it out.
 final class GlueHostWorld: HostSystem {
   struct App { var pid: pid_t; var bundle: String; var policy: HostPolicy; var windows: [Int] }
-  struct Win { var pid: pid_t; var fullScreen = false; var spaces: [UInt64]; var priv: UInt64? }
+  // frame: a normal window's (none: 100,100 800×600); Calculator's can't go full screen and is a fixed 230×408.
+  struct Win { var pid: pid_t; var fullScreen = false; var spaces: [UInt64]; var priv: UInt64?; var frame: CGRect? = nil; var canFullScreen = true; var resizable = true }
+  static let calculator = "com.apple.calculator", calculatorFrame = CGRect(x: 400, y: 300, width: 230, height: 408)
+  var frameAtQuit: [String: CGRect] = [:]
   static let marginSpace: UInt64 = 100, marginTile: UInt64 = 101, desktop: UInt64 = 1
   var display: CGRect = .zero
   var marginWindow = 0
@@ -53,21 +56,22 @@ final class GlueHostWorld: HostSystem {
   @discardableResult func addWindow(_ pid: pid_t) -> Int {
     let n = nextWindow
     nextWindow += 1
-    wins[n] = Win(pid: pid, spaces: [Self.desktop])
+    wins[n] = apps[pid]?.bundle == Self.calculator ? Win(pid: pid, spaces: [Self.desktop], frame: Self.calculatorFrame, canFullScreen: false, resizable: false) : Win(pid: pid, spaces: [Self.desktop])
     apps[pid]?.windows.append(n)
     return n
   }
   func terminate(pid: pid_t) -> Bool {
     calls.append("terminate \(apps[pid]?.bundle ?? "?")")
     guard let a = apps.removeValue(forKey: pid) else { return false }
+    if let n = a.windows.first, let w = wins[n] { frameAtQuit[a.bundle] = w.frame ?? CGRect(x: 100, y: 100, width: 800, height: 600) }
     for n in a.windows { for (space, list) in tiles { tiles[space] = list.filter { tileWindow[$0] != n } }; wins[n] = nil }
     onAppQuit?(pid)
     return true
   }
-  func windows(pid: pid_t) async -> [HostWindow]? { apps[pid].map { $0.windows.compactMap { n in wins[n].map { HostWindow(number: n, fullScreen: $0.fullScreen) } } } }
+  func windows(pid: pid_t) async -> [HostWindow]? { apps[pid].map { $0.windows.compactMap { n in wins[n].map { HostWindow(number: n, fullScreen: $0.fullScreen, canFullScreen: $0.canFullScreen, resizable: $0.resizable) } } } }
   func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool {
     calls.append("fullScreen \(on)")
-    guard var w = wins[window], w.pid == pid else { return false }
+    guard var w = wins[window], w.pid == pid, !on || w.canFullScreen else { return false }
     if on, !w.fullScreen {
       let space = nextId, tile = nextId + 1
       nextId += 2
@@ -88,6 +92,15 @@ final class GlueHostWorld: HostSystem {
   }
   func isFullScreen(pid: pid_t, window: Int) async -> Bool? { wins[window].flatMap { $0.pid == pid ? $0.fullScreen : nil } }
   func mainWindow(pid: pid_t) async -> Int? { apps[pid]?.windows.last }
+  func frame(pid: pid_t, window: Int) async -> CGRect? { wins[window].map { $0.frame ?? CGRect(x: 100, y: 100, width: 800, height: 600) } }
+  func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool {
+    calls.append("frame \(window)")
+    guard var w = wins[window], w.pid == pid, !w.fullScreen else { return false }
+    w.frame = CGRect(origin: frame.origin, size: size && w.resizable ? frame.size : (w.frame ?? CGRect(x: 100, y: 100, width: 800, height: 600)).size)
+    wins[window] = w
+    return true
+  }
+  func activate(pid: pid_t, window: Int) async -> Bool { false }
   func safariSidebar(pid: pid_t) async -> HostSidebar { .closed }
   func pressSafariSidebar(pid: pid_t) async -> Bool { true }
   func safariAutoShowsToolbar() -> Bool? { true }
@@ -98,7 +111,7 @@ final class GlueHostWorld: HostSystem {
     let area = (reservation[Self.marginSpace] ?? .zero).inset(display)
     if window == marginWindow { return CGRect(x: area.minX, y: area.minY, width: marginWidth(), height: area.height) }
     guard let w = wins[window] else { return nil }
-    guard w.priv == nil, w.fullScreen, let space = tiles.first(where: { $0.value.contains { tileWindow[$0] == window } })?.key else { return CGRect(x: 100, y: 100, width: 800, height: 600) }
+    guard w.priv == nil, w.fullScreen, let space = tiles.first(where: { $0.value.contains { tileWindow[$0] == window } })?.key else { return w.frame ?? CGRect(x: 100, y: 100, width: 800, height: 600) }
     guard space == Self.marginSpace else { return display }
     let x = area.minX + marginWidth() + CGFloat(spacing[space] ?? 12)
     return CGRect(x: x, y: area.minY, width: area.maxX - x, height: area.height)
@@ -280,6 +293,28 @@ func glueScenario() async {
   await session.idle()
   check("a second web item of the profile: only its tab, the engine not asked", world.calls.count == calls && fake.all("req", since: since2).count == 1, "\(world.calls.dropFirst(calls))")
 
+  // ---- an app that can't go full screen (Calculator): window mode, Margin's window its whole width below it ----
+  let since3 = world.calls.count
+  _ = await js(c.webView, "window.webkit.messageHandlers.margin.postMessage({ op: 'perform', name: 'app.open', arg: { bundleId: '\(GlueHostWorld.calculator)' } }); return true")
+  let calculator = HostTarget.app(GlueHostWorld.calculator).id
+  guard await until(10, { engine.shown == calculator }) else { return check("Calculator picked: shown by the engine", false, "\(world.calls.dropFirst(since3)) \(session.done.suffix(4))") }
+  await session.idle()
+  let calcWindow = world.apps.values.first { $0.bundle == GlueHostWorld.calculator }?.windows.first ?? 0
+  check("Calculator: in window mode, never put in full screen, no tile of its own", engine.mode(of: calculator) == .window && world.wins[calcWindow]?.fullScreen == false
+        && world.tiles[GlueHostWorld.marginSpace] == [GlueHostWorld.marginTile] && world.spaces(window: calcWindow) == [GlueHostWorld.marginSpace], "\(world.calls.dropFirst(since3))")
+  check("Calculator: Margin's window its whole width again, drawing its own layout (no pageOutside), nothing reserved",
+        c.hostingWindowed && abs(c.window.frame.width - display.width) <= 1 && c.layout?.outside == false && (world.reservation[GlueHostWorld.marginSpace] ?? .zero).isZero, "\(c.window.frame) \(String(describing: c.layout))")
+  let calcPage = c.window.pageRect ?? .zero
+  let centred = CGRect(x: (calcPage.minX + (calcPage.width - 230) / 2).rounded(), y: (calcPage.minY + (calcPage.height - 408) / 2).rounded(), width: 230, height: 408)
+  check("Calculator: centred in Margin's own page area (its layout's), only moved", calcPage.width > 400 && world.bounds(window: calcWindow) == centred && engine.windowPage == calcPage,
+        "\(String(describing: world.bounds(window: calcWindow))) in \(calcPage)")
+  let noLauncher = await waitJS(c.webView, "return !document.querySelector('.launcher')")
+  // (The first run's space editor, its field focused, went as hosting began: a field taken out of the page fires no
+  // focusout in WebKit, and the page says the keys are free anyway.)
+  check("Calculator: no launcher under its window (its field would take the keys), no field of Margin's has them", noLauncher && !c.pageWantsKeyboard)
+  check("Calculator: Margin's window kept right below its window", c.below == calcWindow && c.belowOrders >= 1 && engine.windowedShown == calcWindow,
+        "below \(String(describing: c.below)) orders \(c.belowOrders) shown \(String(describing: engine.windowedShown)) calc \(calcWindow) keys \(c.pageWantsKeyboard)")
+
   // ---- the overlay path off ----
   shell.track()
   check("no overlay over the copy's windows, nothing drawn or laid out for them", shell.overlays.isEmpty && fake.first("drawn") == nil && fake.first("setLayout") == nil)
@@ -289,6 +324,7 @@ func glueScenario() async {
   stopped = true
   shell.stop { done = true }
   guard await until(10, { done }) else { return check("quit", false) }
+  check("quit: Calculator back at its own frame before it was quit", world.frameAtQuit[GlueHostWorld.calculator] == GlueHostWorld.calculatorFrame, "\(world.frameAtQuit)")
   check("quit: the apps Margin started quit, nothing left in Margin's Space", world.apps.isEmpty && world.tiles[GlueHostWorld.marginSpace] == [GlueHostWorld.marginTile] && (world.reservation[GlueHostWorld.marginSpace] ?? .zero).isZero,
         "\(world.apps.values.map(\.bundle)) \(String(describing: world.tiles[GlueHostWorld.marginSpace]))")
 }

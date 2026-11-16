@@ -58,6 +58,9 @@ final class NoHostEngine: HostedEngine {
     var shown: HostID? { nil }
     var hasHosts: Bool { false }
     func isHosted(_ id: HostID) -> Bool { false }
+    func mode(of id: HostID) -> HostMode? { nil }
+    var windowedShown: Int? { nil }
+    func activateShown() async {}
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { nil }
     func target(ofWindow number: Int) -> HostTarget? { nil }
     func launchedPid(bundleId: String) -> pid_t? { nil }
@@ -80,6 +83,9 @@ final class LateHostEngine: HostedEngine {
     var shown: HostID? { engine.shown }
     var hasHosts: Bool { engine.hasHosts }
     func isHosted(_ id: HostID) -> Bool { engine.isHosted(id) }
+    func mode(of id: HostID) -> HostMode? { engine.mode(of: id) }
+    var windowedShown: Int? { engine.windowedShown }
+    func activateShown() async { await engine.activateShown() }
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { engine.fullScreenSpace(ofWindow: number) }
     func target(ofWindow number: Int) -> HostTarget? { engine.target(ofWindow: number) }
     func launchedPid(bundleId: String) -> pid_t? { resolve()?.launchedPid(bundleId: bundleId) }
@@ -94,6 +100,8 @@ extension Shell {
         host.safariFullScreen = { [weak session] profile, id, on in await session?.safariFullScreen(profile, id, on) ?? false }
         host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
         host.willTile = { [weak session] _ in session?.willTile() }
+        host.willWindow = { [weak session] _ in await session?.willWindow() }
+        host.keepAbove = { [weak session] number in session?.keepBelow(number) }
         let before = host.onEvent
         host.onEvent = { [weak session] event in
             before?(event)
@@ -144,6 +152,7 @@ extension Shell {
         }
         windows.onLeavingFullScreen = { [weak session] controller in session?.leavingFullScreen(controller) }
         windows.onLeftFullScreen = { [weak session] controller in session?.leftFullScreen(controller) }
+        windows.onPagePress = { [weak session] controller in session?.pagePressed(controller) }
         windows.apps = { [weak self] in self?.appsJSON ?? "null" }
     }
 

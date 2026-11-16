@@ -37,7 +37,14 @@ nonisolated enum HostStep: String, Sendable, Codable {
     case sidebar, tile, destroy, place, park, unpark
     case exitFullScreen = "exit full screen"
     case quit
+    case windowMode = "window mode" // its window into Margin's Space as a window (one that can't go full screen)
 }
+
+// How a host is shown. `fullScreen`: its window full screen, its tile beside Margin's (the sidebar's) in Margin's
+// Space. `window`: its normal window (one that can't go full screen: AXFullScreen not settable, or its full screen
+// failed), moved into Margin's full-screen Space as a window and placed in the page area by Accessibility, Margin's
+// window its whole width below it (DECISIONS.md "Apps that can't go full screen: window mode").
+nonisolated enum HostMode: String, Codable, Sendable { case fullScreen = "full screen", window }
 
 nonisolated enum HostResult: Equatable, Sendable {
     case shown(HostID, placed: Bool) // placed: its window fits the page area (within 1 pt)
@@ -67,10 +74,13 @@ nonisolated struct HostApp: Equatable, Sendable {
     let launchedAt: Double?
 }
 
-// One of an app's windows that can go full screen (Accessibility's AXFullScreen is settable).
+// One of an app's windows, as Accessibility lists it (a standard window, or one whose AXFullScreen is settable).
 nonisolated struct HostWindow: Equatable, Sendable {
     let number: Int
     let fullScreen: Bool
+    var canFullScreen = true // AXFullScreen settable (no: shown in window mode)
+    var resizable = true // AXSize settable (no: a fixed-size window, only moved)
+    var minimized = false
 }
 
 // A Safari window a profile's copy made for Margin (its `newWindow` answer): the copy's id for it, and its bounds as
@@ -103,7 +113,15 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
         // that Safari started (a pid used again by another Safari is never taken for it).
         var safariWindow: Int? = nil
         var profile: String? = nil
-        var appLaunchedAt: Double? = nil
+        var appLaunchedAt: Double? = nil // (also an app the person opened: a pid used again is never taken for it)
+        // Window mode and the person's own apps (2026-11-15): what giving the window back needs after a crash.
+        var mode: HostMode? = nil // nil: full screen (a marker from before)
+        var bundleId: String? = nil
+        var personApp: Bool? = nil // an app the person opened (its Dock icon, running before Margin hosted it): never quit
+        var frame: CGRect? = nil // its frame before Margin moved it (top-left coordinates)
+        var originalSpace: UInt64? = nil // the Space it was in before (a Desktop)
+        var frameChanged: Bool? = nil // Margin set its frame and hasn't put it back yet
+        var resizable: Bool? = nil
     }
     // A Safari window Margin asked a copy for and whose close wasn't confirmed: closed by that copy later (the poll,
     // the next launch's recovery). `number`: the window server's, when it was found.
@@ -142,14 +160,16 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
 // Where a hosted window goes, as Margin's window works it out (top-left coordinates, as the window server's bounds):
 // `page`, the page area; `area`, the display's full-screen area the tiles divide (its frame below the camera housing);
 // `tileWidth`, Margin's own tile (the sidebar's: its window's content max width), flush with the area's left edge.
+// `windowed`: Margin's window its whole width (a window-mode host above it), `page` from its own layout, no tile.
 nonisolated struct HostPlacement: Equatable, Sendable {
     var page: CGRect
     var area: CGRect
     var tileWidth: CGFloat
+    var windowed = false
     static let zero = HostPlacement(page: .zero, area: .zero, tileWidth: 0)
     var text: String {
         func r(_ c: CGRect) -> String { "\(Int(c.minX)),\(Int(c.minY)) \(Int(c.width))×\(Int(c.height))" }
-        return "page \(r(page)) in \(r(area)), Margin's tile \(Int(tileWidth))"
+        return windowed ? "page \(r(page)) in \(r(area)), Margin's window its whole width" : "page \(r(page)) in \(r(area)), Margin's tile \(Int(tileWidth))"
     }
 }
 
