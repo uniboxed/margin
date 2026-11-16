@@ -393,6 +393,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var hostQuitting = false
     // The library's items shown by the host in Margin's window (HostedSession.swift, ShellHostedGlue.swift).
     var hosted: HostedSession?
+    var browserPrepared = false // (the default browser made ready once per launch: prepareBrowserOnce)
     var hostedKeysRun: [String] = [] // Margin's keys run while hosting, newest last (the tests read it)
 
     // ---- the profile handoff in the shell (ShellHandoff.swift) ----

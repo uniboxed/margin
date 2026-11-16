@@ -24,6 +24,9 @@
 //               it); done once the window is in a full-screen Space of its own, as the window server reads it. Under
 //               the freeze from the ask until macOS's jump to that Space is undone (the display set back to Margin's
 //               Space): the only moment macOS would visibly change Spaces; the loading animation shows otherwise.
+//               First tried early, with no freeze (`early`): the new Space reserved as soon as it's listed (~40 ms),
+//               the window moved into Margin's Space and that Space destroyed once it has the page frame (~110 ms),
+//               before macOS's Space switch (~600 ms): steps 5-7 done then. Any doubt: this slow path, from the same ask.
 //   4. sidebar  (Safari, a window Margin made or a Safari Margin started) its own sidebar hidden by its View menu,
 //               only while the hosted window is surely Safari's main one; Accessibility reads it only on the current
 //               Space, so its own Space is made current a moment for it, under the freeze.
@@ -201,6 +204,7 @@ final class HostEngine {
     private var coverSaid: Int?
     private var loadingSaid: HostID?
     private var frozenNow = false
+    private var preparing = false // a window made ready out of sight (`prepare`): parked once it's placed, never shown
 
     private var tail: Task<Void, Never>?
     private var jumps = 0
@@ -229,6 +233,51 @@ final class HostEngine {
             self.marginSpace = marginSpace
             let r = await self.openNow(target)
             self.checkListed("after \(target.id)'s open")
+            return r
+        }
+    }
+
+    // An app (the person's default browser, at Margin's launch) started with no Dock icon if it isn't running, as a
+    // first open starts it (it counts as Margin's: quit at Margin's quit, its restored windows swept); running already
+    // (the person's): used as it is, never started again. Nil: it couldn't be started.
+    func start(bundleId: String) async -> HostApp? {
+        await serial {
+            if let running = self.sys.running(bundleId: bundleId).first { return running }
+            let arguments = bundleId == self.options.safariBundle ? self.options.safariArguments : self.options.appArguments
+            guard self.sys.launchDockless(bundleId: bundleId, arguments: arguments) else { return nil }
+            var found: HostApp?
+            _ = await self.wait(self.options.launchWait) { found = self.sys.running(bundleId: bundleId).first; return found != nil }
+            guard let found else { return nil }
+            self.launched[found.pid] = found
+            self.saveMarker()
+            Diagnostics.note("host: \(bundleId) started with no Dock icon, to be prepared (pid \(found.pid))")
+            return found
+        }
+    }
+
+    var preparesOutOfSight: Bool { options.earlyFullScreen && sys.fullScreenSpaceOwners() != nil }
+
+    // Made ready out of sight (the person's default browser's window, at Margin's launch, Tirth 2026-11-16): opened as a
+    // first open is, never shown: no loading bar, covered by Margin's window (`cover`) while it's a member of Margin's
+    // Space, then parked at once (a private Space), its app never activated; its next show is a switch. Only with the
+    // early full screen (no Space switch to hide) and nothing shown in Margin's Space (it would come in over that);
+    // else not prepared, said (its first use opens it as before). `.shown` here: prepared (parked).
+    func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult {
+        await serial {
+            let id = target.id
+            if self.hosts[id] != nil { return .shown(id, placed: true) }
+            guard self.shown == nil else { return .failed(.park, "something is shown in Margin's Space: not prepared out of sight") }
+            guard self.options.earlyFullScreen, self.sys.fullScreenSpaceOwners() != nil else { return .failed(.fullScreen, "the early full screen isn't available: not prepared out of sight") }
+            self.placement = placement
+            self.marginWindow = marginWindow
+            self.marginSpace = marginSpace
+            guard self.sys.spaceType(marginSpace) == ManagedSpace.fullScreenType, self.sys.spaces(window: marginWindow)?.contains(marginSpace) == true else {
+                return self.fail(id, .margin, "Margin's window isn't in a full-screen Space of its own (\(marginSpace))")
+            }
+            self.preparing = true
+            defer { self.preparing = false }
+            let r = await self.openNew(target)
+            self.checkListed("after \(id)'s preparing")
             return r
         }
     }
@@ -974,8 +1023,13 @@ final class HostEngine {
         let started = sys.now()
         var times: [String] = []
         func step(_ name: String, _ t0: Double) { times.append("\(name) \(ms(since: t0))") }
-        say(loading: host.id)
-        defer { say(loading: nil) }
+        let prepared = preparing && !host.member
+        if prepared {
+            say(cover: host.window) // (Margin's window above it while it's in Margin's Space: never seen)
+        } else {
+            say(loading: host.id)
+        }
+        defer { if !prepared { say(loading: nil) } }
         let again = host.member
         let previous = shown.flatMap { $0 == host.id ? nil : hosts[$0] }
         // 1. the one shown before out (parked), so the loading animation is what's seen.
@@ -1084,6 +1138,18 @@ final class HostEngine {
         }
         host.member = true
         host.placedPage = placement.page
+        if prepared {
+            // 8. made ready out of sight: parked at once, its app not activated.
+            t0 = sys.now()
+            cover?(host.window) // (ordered above it again now it's in Margin's Space)
+            guard await parkMember(host) else {
+                return await giveUp(host, isNew: isNew, .park, "prepared, but its window couldn't leave Margin's Space", previous: nil)
+            }
+            step("parked", t0)
+            let total = ms(since: started)
+            Diagnostics.note("host: \(host.id) prepared out of sight in \(total) ms (\(times.joined(separator: ", ")))")
+            return .shown(host.id, placed: true)
+        }
         host.phase = .shown
         shown = host.id // (Margin's window kept below it from now: keepAbove)
         saveMarker()
@@ -1101,7 +1167,8 @@ final class HostEngine {
     // whatever it reached and shown in window mode (many AppKit apps refuse full screen with no Dock icon); Safari's
     // fails (its window is Margin's own).
     private func fallBack(_ host: Host, isNew: Bool, retrying: Bool, _ step: HostStep, _ reason: String, previous: Host?) async -> HostResult {
-        guard case .app = host.target else { return await giveUp(host, isNew: isNew, step, reason, previous: previous) }
+        // (Being prepared out of sight: never shown as a window instead.)
+        guard case .app = host.target, !preparing else { return await giveUp(host, isNew: isNew, step, reason, previous: previous) }
         Diagnostics.note("host: \(host.id): \(step.rawValue) failed (\(reason)): backed out, shown in window mode")
         let frozen = holdFreeze()
         await backOut(host)

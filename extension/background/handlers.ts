@@ -878,17 +878,20 @@ export const handlers = {
   // a Margin window of its own. With `fromWindowId`: in full screen if that window is (or as `fullscreen`
   // says), on the space it shows, set, not guessed, with its first tab in it too. Without one, the window
   // inherits the space (model.inheritSpace). Its new-tab page opens the palette. Answers its id, state and
-  // bounds, which the app binds it by as Margin's.
-  async newWindow({ fromWindowId, fullscreen }: { fromWindowId?: number, fullscreen?: boolean } = {}) {
+  // bounds, which the app binds it by as Margin's. `url: 'about:blank'` with `background`: a window Margin.app makes
+  // ready out of sight at its launch (HostedSession.prepareBrowser): nothing loaded in it, not focused.
+  async newWindow({ fromWindowId, fullscreen, url, background }: { fromWindowId?: number, fullscreen?: boolean, url?: string, background?: boolean } = {}) {
     const from = Number.isInteger(fromWindowId) ? await api.windows.get(fromWindowId as number).catch(() => null) : null;
     const spaceId = from ? M.activeSpaceId(await load(), from.id) : null;
     const full = fullscreen ?? from?.state === 'fullscreen';
+    const props = { focused: !background, ...(url === 'about:blank' ? { url } : {}) };
     markMarginOpening();
     let win;
     try {
-      win = await api.windows.create({ focused: true, ...(full ? { state: 'fullscreen' } : {}) });
+      win = await api.windows.create({ ...props, ...(full ? { state: 'fullscreen' } : {}) });
     } catch {
-      win = await api.windows.create({ focused: true }); // a browser that won't make it full screen at once
+      win = await api.windows.create(props).catch(() => null) // a browser that won't make it full screen at once
+        ?? await api.windows.create({ focused: true }); // (or not unfocused)
     }
     if (!win) return null;
     if (spaceId) {

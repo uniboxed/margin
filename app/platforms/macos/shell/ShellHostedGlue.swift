@@ -89,6 +89,11 @@ final class LateHostEngine: HostedEngine {
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { engine.fullScreenSpace(ofWindow: number) }
     func target(ofWindow number: Int) -> HostTarget? { engine.target(ofWindow: number) }
     func launchedPid(bundleId: String) -> pid_t? { resolve()?.launchedPid(bundleId: bundleId) }
+    var preparesOutOfSight: Bool { resolve()?.preparesOutOfSight ?? false }
+    func start(bundleId: String) async -> HostApp? { await resolve()?.start(bundleId: bundleId) }
+    func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult {
+        await engine.prepare(target, in: placement, marginWindow: marginWindow, marginSpace: marginSpace)
+    }
 }
 
 extension Shell {
@@ -124,7 +129,9 @@ extension Shell {
         session.appName = { [weak self] id in self?.installedAppName(id) }
         library.delegate = session
         hosted = session
-        if let host { wire(host, to: session) }
+        session.marginActive = { NSApp.isActive }
+        session.activateMargin = { NSApp.activate() }
+        if let host { wire(host, to: session); prepareBrowserOnce() }
         openApp = { [weak session] id in session?.openApp(id, windowId: nil) }
         // The first run, nothing imported: a space to start in, named by the person in the UI's editor.
         if library.spaces().isEmpty {
@@ -134,6 +141,15 @@ extension Shell {
         }
         Diagnostics.note("Margin's window: the library's \(library.spaces().count) space(s), \(library.items().count) item(s); hosting \(host == nil ? "off (no host engine)" : "on")")
         return LibraryWindowSource(library: library, session: session, profileSource: profiles)
+    }
+
+    // The person's default browser made ready out of sight (HostedSession.prepareBrowser), once both the session and the
+    // engine are up (either may come first), in the background: Margin's own window isn't held up for it.
+    func prepareBrowserOnce() {
+        guard let session = hosted, host != nil, !browserPrepared else { return }
+        browserPrepared = true
+        let setting = UserDefaults.standard.string(forKey: DefaultBrowser.key)
+        Task { await session.prepareBrowser(setting: setting) }
     }
 
     // Margin's windows joined to the session: which window is which, their page areas, the first run's editor.

@@ -53,9 +53,36 @@ protocol HostedEngine: AnyObject {
     func fullScreenSpace(ofWindow number: Int) -> UInt64?
     func target(ofWindow number: Int) -> HostTarget?
     func launchedPid(bundleId: String) -> pid_t?
+    // The person's default browser at Margin's launch: started with no Dock icon if it isn't running (the person's
+    // running one used as it is), and its window made ready out of sight (HostEngine `start`, `prepare`).
+    var preparesOutOfSight: Bool { get } // a window can be made ready with nothing seen (the early full screen reads)
+    func start(bundleId: String) async -> HostApp?
+    func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult
+}
+
+extension HostedEngine {
+    // (A stand-in that doesn't play them: nothing started or prepared.)
+    var preparesOutOfSight: Bool { false }
+    func start(bundleId: String) async -> HostApp? { nil }
+    func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
 }
 
 extension HostEngine: HostedEngine {}
+
+// The browser web items open in (UserDefaults `MarginDefaultBrowser`, decided by Tirth 2026-11-16, default "safari"),
+// by the setting's value. Only Safari is hosted now: Chrome and Edge join this table (and the show's browser check)
+// when they are, with no change to the flow. An unsupported value: Safari, said once.
+enum DefaultBrowser {
+    static let key = "MarginDefaultBrowser"
+    static let fallback = "safari"
+    static let supported: [String: String] = ["safari": safariIdentifier]
+    static func resolve(_ value: String?) -> (name: String, bundleId: String) {
+        let v = (value ?? fallback).trimmingCharacters(in: .whitespaces).lowercased()
+        if let bundle = supported[v] { return (v, bundle) }
+        Diagnostics.note("hosted: the default browser setting (\(value ?? "")) isn't supported yet: Safari")
+        return (fallback, supported[fallback] ?? safariIdentifier)
+    }
+}
 
 // One of Margin's windows, as the session drives it (MarginWindowController; a test's stand-in).
 protocol HostedWindow: AnyObject {
@@ -63,6 +90,10 @@ protocol HostedWindow: AnyObject {
     var number: Int { get } // the window server's
     var isFullScreen: Bool { get }
     var hostedPlacement: HostPlacement? { get } // the page area and the display's area while hosting; nil until measured
+    // The page area as its page draws it now, not hosting (the launcher's), in full screen, measured at its size; nil
+    // until then. A window prepared out of sight is placed there: hosting's own rect when the sidebar is docked in both
+    // (Keep open); a hidden sidebar's wider page area means its first show places it again (the engine says so).
+    var idlePlacement: HostPlacement? { get }
     var pageAreaWhyNot: String { get } // why there's none yet, for the log
     // Its page asked to measure where `<m-page>` sits now (a size it took without a frame drawn since: no resize event).
     func remeasure()
@@ -120,6 +151,8 @@ final class HostedSession: LibraryDelegate {
         var every = 0.05
         var safariBundles: Set<String> = [safariIdentifier, "com.apple.SafariTechnologyPreview"]
         var closesRestoredSafariWindows = true // (Tirth, 2026-11-15) a Safari Margin started: its restored windows closed
+        var preparesBrowser = true // (Tirth, 2026-11-16) the default browser's window made ready out of sight at launch
+        var prepareWindowWait = 30.0 // a Margin window in full screen with its page area measured, at launch
     }
 
     // Where an item's page is: its host, and for a web item its profile.
@@ -141,6 +174,10 @@ final class HostedSession: LibraryDelegate {
     // The live state changed (what's open, what's shown): the windows draw again.
     var onChange: (() -> Void)?
     var sleep: (Double) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) }
+    var now: () -> Double = { ProcessInfo.processInfo.systemUptime }
+    // Whether Margin is the active app, and making it so again (a browser's window made ready may take the focus).
+    var marginActive: () -> Bool = { false }
+    var activateMargin: () -> Void = {}
 
     // Each Margin window's item shown; each item with a page; each Safari profile's hosted window (the copy's id).
     private(set) var shown: [Int: String] = [:]
@@ -428,7 +465,7 @@ final class HostedSession: LibraryDelegate {
     // A new app's window taken into Margin's Space to be read (HostEngine `cover`): the hosting Margin window ordered
     // right above it meanwhile.
     func cover(_ number: Int?) {
-        guard let id = hostingWindow, let w = window(id) else { return }
+        guard let id = hostingWindow ?? preparingWindow, let w = window(id) else { return }
         w.cover(number)
     }
 
@@ -481,6 +518,61 @@ final class HostedSession: LibraryDelegate {
         note("\(item): closed")
         onChange?()
     }
+
+    // ---- the default browser made ready at launch ----
+
+    // Decided by Tirth (2026-11-16): with MarginHosted on, the person's default browser (`DefaultBrowser`) is made ready
+    // in the background at Margin's launch, so the first web item is a switch-in plus its page load: started with no
+    // Dock icon if it isn't running (the person's running one used as it is, never restarted), its copy for the profile
+    // web items will use linked (the front Margin window's space's profile, else the default one), Margin's window asked
+    // of it (a blank page) and taken all the way to ready by the engine's early full screen, then parked out of sight
+    // (never seen on screen, in Mission Control or the Dock). Not possible out of sight (no early full screen, something
+    // shown): not prepared, said; its first use opens it as before. Another profile's window: on its first use, as before.
+    // Called by the shell once the library and the engine are up; it never delays Margin's own window.
+    func prepareBrowser(setting: String?) async {
+        guard options.preparesBrowser else { return }
+        let started = now()
+        let browser = DefaultBrowser.resolve(setting)
+        func skip(_ why: String) { note("browser not prepared: \(why)") }
+        // 1. a Margin window in full screen, its page area measured.
+        guard await wait(options.prepareWindowWait, { self.window(nil).map { $0.isFullScreen && $0.idlePlacement != nil } ?? false }), let w = window(nil) else {
+            return skip("no Margin window in full screen with its page area within \(Int(options.prepareWindowWait)) s")
+        }
+        let space = library.space(ofWindow: w.id) ?? library.spaces().first?.id
+        let spaceProfile = (library.spaces().first { $0.id == space }?.value["profile"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        // 2. the browser running, its copy linked (outside the session's and the engine's queues: the person's picks
+        // meanwhile aren't held up).
+        guard browser.name == "safari" else { return skip("\(browser.name) isn't hosted yet") }
+        guard engine.preparesOutOfSight else { return skip("the early full screen isn't available, so it can't be made ready out of sight") }
+        guard await engine.start(bundleId: browser.bundleId) != nil else { return skip("\(browser.bundleId) couldn't be started with no Dock icon") }
+        let p = resolve(spaceProfile)
+        guard await safariLinked(p) else { return skip("its extension didn't link") }
+        let target = HostTarget.safariWindow(p)
+        // 3. its window made ready out of sight, one at a time with the person's requests.
+        enqueue {
+            guard !self.engine.isHosted(target.id) else { return self.note("browser not prepared: its window is hosted already") }
+            guard self.engine.shown == nil else { return skip("something is shown in Margin's window") }
+            guard let mw = self.window(w.id), let placement = mw.idlePlacement, let marginSpace = self.engine.fullScreenSpace(ofWindow: mw.number) else {
+                return skip("Margin's window isn't in full screen with its page area")
+            }
+            let wasActive = self.marginActive()
+            self.preparingWindow = mw.id
+            self.preparingProfile = p
+            let t0 = self.now()
+            let result = await self.engine.prepare(target, in: placement, marginWindow: mw.number, marginSpace: marginSpace)
+            self.preparingWindow = nil
+            self.preparingProfile = nil
+            if wasActive, !self.marginActive() { self.activateMargin() }
+            switch result {
+            case .shown:
+                self.note("browser prepared in \(Int(((self.now() - started) * 1000).rounded())) ms (its window \(Int(((self.now() - t0) * 1000).rounded())) ms), parked out of sight")
+            case .failed(let step, let why):
+                skip("\(step.rawValue): \(why)")
+            }
+        }
+    }
+    private(set) var preparingWindow: Int? // the Margin window a browser's window is made ready over (covered by it)
+    private var preparingProfile: String?
 
     // ---- the engine's Safari windows (HostEngine's requestSafariWindow, closeSafariWindow, safariFullScreen, safariLinked) ----
 
@@ -543,7 +635,9 @@ final class HostedSession: LibraryDelegate {
         let p = resolve(profile)
         requesting.insert(p) // (the restored-window sweep leaves this profile alone meanwhile)
         defer { requesting.remove(p) }
-        let (result, error) = await links.request(profile: p, "newWindow", ["fullscreen": false])
+        // (A window made ready out of sight: a blank page, nothing loaded in it, and not focused.)
+        let payload: JSONObject = preparingProfile == p ? ["fullscreen": false, "url": "about:blank", "background": true] : ["fullscreen": false]
+        let (result, error) = await links.request(profile: p, "newWindow", payload)
         guard let made = result.flatMap({ SpaceWindowAnswer($0) }) else {
             note("Safari window for a profile: not made (\(error ?? "no answer"))")
             return nil

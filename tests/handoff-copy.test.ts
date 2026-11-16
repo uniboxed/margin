@@ -33,7 +33,7 @@ const pick = (store: Record<string, any>, keys?: string | string[] | Record<stri
 const fake = {
   tabs: new Map<number, BrowserTab>(), windows: new Map<number, BrowserWindow>(), local: {} as Record<string, any>, session: {} as Record<string, any>, // stored JSON
   windowUpdates: [] as ({ id: number } & Record<string, unknown>)[], tabUpdates: [] as ({ id: number } & Record<string, unknown>)[],
-  removedWindows: [] as number[], created: [] as number[], scripts: [] as { tabId: number, args?: any[], allFrames: boolean }[],
+  removedWindows: [] as number[], created: [] as number[], createdWith: [] as any[], scripts: [] as { tabId: number, args?: any[], allFrames: boolean }[],
   landMs: 0, holdUpdate: false, release: (() => {}) as (value?: unknown) => void,
   probe: (_tabId: number, _m: any) => (undefined as any),
   drafts: (_tabId: number) => 'none',
@@ -70,7 +70,8 @@ globalThis.chrome = fakeBrowser({
     },
     create: async (props) => {
       const id = 100 + fake.windows.size;
-      const w = win(id, { state: props.state ?? 'normal', focused: true, left: 10, top: 25, width: 1200, height: 800 });
+      fake.createdWith.push(props);
+      const w = win(id, { state: props.state ?? 'normal', focused: props.focused !== false, left: 10, top: 25, width: 1200, height: 800 });
       fake.windows.set(id, w);
       // (One address, as Margin opens them.)
       const tab = { id: id * 10, windowId: id, url: (props.url ?? 'safari-web-extension://test/newtab/newtab.html') as string, title: '', index: 0, active: true, status: 'loading' };
@@ -311,6 +312,18 @@ test('newWindow from a window: a Margin window of its own in full screen like it
   assert.equal(bare.state, 'normal');
   for (const w of [answer, normal, bare]) { fake.windows.delete(w.windowId); fake.tabs.delete(w.windowId * 10); }
   fake.windows.get(1)!.state = 'fullscreen';
+  fake.windows.get(1)!.focused = true;
+});
+
+test('newWindow made ready out of sight (Margin.app at its launch): a blank page, not focused; any other address ignored', async () => {
+  fresh();
+  fake.createdWith = [];
+  const blank = (await handlers.newWindow({ fullscreen: false, url: 'about:blank', background: true }))!;
+  assert.deepEqual(fake.createdWith[0], { focused: false, url: 'about:blank' });
+  assert.equal(fake.tabs.get(blank.windowId * 10)?.url, 'about:blank', 'nothing loaded in it');
+  const other = (await handlers.newWindow({ fullscreen: false, url: 'https://a.example/' }))!;
+  assert.deepEqual(fake.createdWith[1], { focused: true }, 'only a blank page is taken');
+  for (const w of [blank, other]) { fake.windows.delete(w.windowId); fake.tabs.delete(w.windowId * 10); }
   fake.windows.get(1)!.focused = true;
 });
 

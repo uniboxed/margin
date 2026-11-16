@@ -50,6 +50,12 @@ final class FakeHostedWindow: HostedWindow {
         guard hosting, isFullScreen, let page = MarginWindowGeometry.pageRect(layout: layout, content: FakeHostWorld.display) else { return nil }
         return HostPlacement(page: page, area: FakeHostWorld.display)
     }
+    // (Its launcher's layout, not hosting: the same rect while the sidebar's docked in both.)
+    var idleLayout: PageLayout?
+    var idlePlacement: HostPlacement? {
+        guard isFullScreen, let page = MarginWindowGeometry.pageRect(layout: idleLayout ?? layout, content: FakeHostWorld.display) else { return nil }
+        return HostPlacement(page: page, area: FakeHostWorld.display)
+    }
     func push(_ json: String) { pushed.append(json) }
 }
 
@@ -152,6 +158,137 @@ func restoredSweepTests(_ library: Library) {
     check("hosted sweep: off: nothing closed", closes().isEmpty)
 }
 
+// The default browser made ready out of sight at Margin's launch (HostedSession.prepareBrowser, Tirth 2026-11-16): the
+// real engine on the stand-in window manager playing the real Mac's full-screen pacing (`staged`).
+func preparedBrowserTests(_ library: Library) {
+    struct Rig { let w: FakeHostWorld; let engine: HostEngine; let links: FakeHostedLinks; let session: HostedSession; let window: FakeHostedWindow; let copy: () -> [Int: Int] }
+    func rig() -> Rig {
+        let w = FakeHostWorld()
+        w.staged = true
+        let engine = HostEngine(system: w, marker: nil, pid: 1)
+        let links = FakeHostedLinks()
+        let session = HostedSession(library: library, engine: engine, links: links)
+        session.sleep = { _ in await Task.yield() }
+        let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
+        session.window = { id in id == nil || id == 1 ? window : nil }
+        engine.requestSafariWindow = { await session.requestSafariWindow($0) }
+        engine.closeSafariWindow = { await session.closeSafariWindow($0, $1) }
+        engine.safariFullScreen = { await session.safariFullScreen($0, $1, $2) }
+        engine.safariLinked = { await session.safariLinked($0) }
+        engine.onEvent = { session.hostEvent($0) }
+        engine.loading = { session.loading($0) }
+        engine.keepAbove = { session.keepBelow($0) }
+        engine.cover = { session.cover($0) }
+        final class Box { var windows: [Int: Int] = [:] }
+        let box = Box()
+        links.onNewWindow = { id in
+            guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }
+            let n = w.nextWindow
+            w.nextWindow += 1
+            w.wins[n] = FakeHostWorld.Win(pid: pid, spaces: [FakeHostWorld.desktop])
+            w.apps[pid]?.windows.append(n)
+            box.windows[id] = n
+        }
+        links.onSetWindowState = { id, on in
+            guard let n = box.windows[id], let pid = w.wins[n]?.pid else { return }
+            w.applyFullScreen(pid: pid, window: n, on)
+        }
+        links.onCloseWindow = { id in if let n = box.windows.removeValue(forKey: id) { w.closeWindow(n) } }
+        links.profiles = ["s-default"] // (its copy links as Safari starts)
+        return Rig(w: w, engine: engine, links: links, session: session, window: window, copy: { box.windows })
+    }
+    let safari = HostTarget.safariWindow("s-default").id
+    func prepare(_ r: Rig, _ setting: String? = nil) -> [String] {
+        var lines: [String] = []
+        let echo = Diagnostics.echo
+        Diagnostics.echo = { lines.append($0) }
+        hostRun { await r.session.prepareBrowser(setting: setting); await r.session.idle() }
+        Diagnostics.echo = echo
+        return lines
+    }
+    do {
+        let r = rig()
+        let lines = prepare(r)
+        let n = r.copy()[90] ?? 0
+        let host = r.engine.hosts[safari]
+        check("prepared: Safari started with no Dock icon at launch, counted as Margin's (its restored windows swept, quit at quit)",
+              r.w.calls.contains("launch com.apple.Safari") && r.engine.launchedPid(bundleId: safariIdentifier) != nil, "\(r.w.calls)")
+        check("prepared: its window asked of the copy as a blank page, not focused", r.links.asked.first { $0.type == "newWindow" }.map { $0.payload["url"] as? String == "about:blank" && $0.payload["background"] as? Bool == true } == true,
+              "\(r.links.asked.map(\.type))")
+        check("prepared: full screen at the page area by the early path, then parked out of sight (a private Space), nothing shown",
+              host?.phase == .parked && host?.member == true && r.w.wins[n]?.fullScreen == true && r.w.wins[n]?.priv != nil && r.engine.shown == nil
+              && r.w.bounds(window: n) == CGRect(x: 260, y: 41, width: 1244, height: 933), "\(String(describing: host?.phase)) \(String(describing: r.w.wins[n]))")
+        check("prepared: never seen: no freeze needed, the screen never left Margin's Space, Mission Control Margin's only, Margin's window above it while it was in its Space",
+              r.w.freezes == 0 && r.w.offMargin == 0 && r.w.listsMarginOnly && r.w.entered.isEmpty && r.window.covers == [n, nil] && r.window.hostings.isEmpty, "\(r.window.covers) \(r.w.freezes)")
+        check("prepared: its app never activated, no loading bar", !r.w.calls.contains { $0.hasPrefix("activate") } && r.window.loadings.isEmpty && r.window.loadingTabsSaid.isEmpty)
+        check("prepared: said with its time", lines.contains { $0.contains("browser prepared in") && $0.contains("parked out of sight") }, "\(lines.filter { $0.contains("prepared") })")
+
+        // ---- the first web item: a switch-in, then its tab ----
+        let mark = r.links.asked.count, freezes = r.w.freezes
+        if library.space(ofWindow: 1) == nil { _ = library.perform("createSpace", ["windowId": 1, "name": "Prepared", "emoji": "⚡"]) }
+        library.delegate = r.session
+        defer { library.delegate = nil }
+        let t0 = r.w.clock
+        hostRun { _ = library.perform("newTab", ["windowId": 1, "url": "https://first.example/"]); await r.session.idle() }
+        check("prepared: the first web item a switch-in (no new window, no full screen), then its tab",
+              r.engine.shown == safari && r.links.types(since: mark) == ["hostShow"] && r.w.inMargin == [n] && r.w.freezes == freezes && r.w.clock - t0 < 0.1,
+              "\(r.links.types(since: mark)) \(r.w.clock - t0) \(r.w.inMargin)")
+
+        // ---- quit: the prepared window closed by its copy, the Safari Margin started quit ----
+        hostRun { await r.engine.quitAll() }
+        check("prepared: quit: its window closed by its copy, Safari (Margin's) quit, nothing left", r.links.types().contains("closeWindow") && r.w.running(bundleId: "com.apple.Safari").isEmpty
+              && r.w.listsMarginOnly && r.w.privates.isEmpty, "\(r.links.types()) \(r.w.apps.keys)")
+        for item in library.items().map(\.id) { _ = library.perform("closeTab", ["windowId": 1, "tabId": item]) }
+    }
+    do {
+        // The prepared window quit unused: closed by its copy too.
+        let r = rig()
+        _ = prepare(r)
+        hostRun { await r.engine.quitAll() }
+        check("prepared: quit before it's used: its window closed by its copy, Safari quit", r.links.types().contains("closeWindow") && r.w.running(bundleId: "com.apple.Safari").isEmpty && r.w.listsMarginOnly)
+    }
+    do {
+        // The person's own Safari, running with their windows: used as it is (never restarted or quit, its Dock icon left).
+        let r = rig()
+        let pid = r.w.start("com.apple.Safari", policy: .regular, windows: 2)
+        let theirs = r.w.apps[pid]?.windows ?? []
+        _ = prepare(r)
+        let n = r.copy()[90] ?? 0
+        check("prepared: the person's Safari used as it is: never launched, its windows untouched, Margin's own window prepared",
+              !r.w.calls.contains { $0.hasPrefix("launch") } && r.engine.launchedPid(bundleId: safariIdentifier) == nil && r.engine.hosts[safari]?.madeByMargin == true
+              && r.engine.hosts[safari]?.phase == .parked && !theirs.contains(n) && theirs.allSatisfy { r.w.wins[$0]?.fullScreen == false && r.w.spaces(window: $0) == [FakeHostWorld.desktop] }, "\(r.w.calls)")
+        hostRun { await r.engine.quitAll() }
+        check("prepared: quit: Margin's window closed, the person's Safari left running", r.w.apps[pid] != nil && r.w.wins[n] == nil && theirs.allSatisfy { r.w.wins[$0] != nil })
+    }
+    do {
+        // An unsupported setting: Safari, said.
+        let r = rig()
+        let lines = prepare(r, "chrome")
+        check("prepared: an unsupported default browser (chrome): Safari prepared, said once", r.engine.hosts[safari]?.phase == .parked
+              && lines.filter { $0.contains("isn't supported yet: Safari") }.count == 1, "\(lines.filter { $0.contains("browser") })")
+        check("prepared: the setting's table: safari only, by its bundle", DefaultBrowser.resolve(nil) == ("safari", safariIdentifier) && DefaultBrowser.resolve("Safari").bundleId == safariIdentifier)
+        hostRun { await r.engine.quitAll() }
+    }
+    do {
+        // No early full screen: not prepared (it couldn't be out of sight), nothing started.
+        let r = rig()
+        r.engine.options.earlyFullScreen = false
+        let lines = prepare(r)
+        check("prepared: no early full screen: not prepared, nothing started, said", r.w.calls.isEmpty && r.engine.hosts.isEmpty
+              && lines.contains { $0.contains("browser not prepared") && $0.contains("out of sight") }, "\(r.w.calls) \(lines.filter { $0.contains("prepared") })")
+    }
+    do {
+        // Something shown already (the person picked an app first): not prepared, the app left as it is.
+        let r = rig()
+        r.engine.options.earlyFullScreen = true
+        hostRun { _ = await r.engine.open(app: .app("com.apple.TextEdit"), in: r.window.idlePlacement!, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        let lines = prepare(r)
+        check("prepared: something shown in Margin's window: not prepared, it stays shown", r.engine.shown == HostTarget.app("com.apple.TextEdit").id && r.engine.hosts[safari] == nil
+              && lines.contains { $0.contains("browser not prepared") }, "\(lines.filter { $0.contains("prepared") })")
+        hostRun { await r.engine.quitAll() }
+    }
+}
+
 func hostedTests() {
     let echo = Diagnostics.echo
     Diagnostics.echo = { _ in }
@@ -163,6 +300,7 @@ func hostedTests() {
     defer { try? FileManager.default.removeItem(at: dataRoot) }
     guard let library = Library.open(dataRoot: dataRoot, script: script, background: false) else { return check("hosted: the library opens (\(scriptPath): npm run build)", false) }
     restoredSweepTests(library)
+    preparedBrowserTests(library)
     var n = 0
     library.randomIds = { (0..<4).map { _ in n += 1; return "h\(n)x" } }
 

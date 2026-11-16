@@ -297,7 +297,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard number != covering else { return }
         covering = number
         guard let number else { return orderBelowHosted() }
-        guard hosting, !isClosed else { return }
+        // (Hosting, or a window made ready out of sight over it: HostedSession.prepareBrowser.)
+        guard !isClosed else { return }
         window.order(.above, relativeTo: number)
         coverOrders += 1
     }
@@ -356,6 +357,14 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // 1512×950, both windows were at 0,33 1512×949, so the hosted window landed a point below the page area).
     var hostedPlacement: HostPlacement? {
         guard hosting, isFullScreen, let layout, layout.mode == "fullscreen", hostDisplay != nil,
+              let page = MarginWindowGeometry.pageRect(layout: layout, content: contentFrame) else { return nil }
+        return HostPlacement(page: page, area: contentFrame)
+    }
+
+    // The page area as its page draws it now, not hosting (its launcher's layout), in full screen at its size: where a
+    // browser's window made ready out of sight is placed (hosting's rect too while the sidebar is docked). Nil until measured.
+    var idlePlacement: HostPlacement? {
+        guard isFullScreen, let layout, layout.mode == "fullscreen", MarginWindowGeometry.measuredAt(layout, contentFrame.size),
               let page = MarginWindowGeometry.pageRect(layout: layout, content: contentFrame) else { return nil }
         return HostPlacement(page: page, area: contentFrame)
     }
