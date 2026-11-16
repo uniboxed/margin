@@ -110,7 +110,7 @@ final class HostEngine {
         let id: HostID
         let target: HostTarget
         let pid: pid_t
-        let window: Int
+        var window: Int // (an app's: chosen again just before it's first moved, HostWindowChoice)
         let launchedByMargin: Bool // its app was started by Margin (with no Dock icon)
         let madeByMargin: Bool // a Safari window Margin's extension made in a Safari Margin didn't start
         let safariWindow: Int? // a Safari window a copy made for Margin: the copy's id for it (full screen and close go through it)
@@ -505,21 +505,22 @@ final class HostEngine {
         var info: HostWindow?
         var minimizedOnly = false
         var unhidden = false
+        var rule: HostWindowChoice.Rule?
         let looking = sys.now()
         _ = await wait(personal ? options.personWindowWait : options.windowWait) {
             let listed = (await self.sys.windows(pid: app.pid) ?? []).filter { !self.isHosted(window: $0.number) }
             let usable = listed.filter { !$0.minimized }
             minimizedOnly = !listed.isEmpty && usable.isEmpty
-            if !usable.isEmpty {
-                let main = await self.sys.mainWindow(pid: app.pid)
-                info = usable.first { $0.number == main } ?? usable.first
-                number = info?.number
-                return true
-            }
             // (An app Margin started that's still hidden lists nothing to Accessibility: the window server's window at once,
             // unhidden in `take`. One with no window at all while hidden, unhidden now: some make theirs only then.)
             let hidden = !personal && (unhidden || self.sys.isHidden(pid: app.pid) == true)
-            if isApp, personal || hidden || self.sys.now() - looking >= self.options.serverAfter, !minimizedOnly, let n = self.frontServerWindow(pid: app.pid) { number = n; return true }
+            let serverAllowed = isApp && !minimizedOnly && (personal || hidden || self.sys.now() - looking >= self.options.serverAfter)
+            if let chosen = await self.chooseWindow(pid: app.pid, listed: listed, serverAllowed: serverAllowed) {
+                number = chosen.number
+                rule = chosen.rule
+                info = usable.first { $0.number == chosen.number }
+                return true
+            }
             if isApp, hidden, !unhidden, self.sys.now() - looking >= self.options.unhideWait, self.sys.unhide(pid: app.pid) {
                 unhidden = true
                 Diagnostics.note("host: \(id): its app hidden with no window yet: unhidden")
@@ -532,6 +533,7 @@ final class HostEngine {
             return fail(id, .window, "no window within \(Int(options.windowWait)) s")
         }
         times.append("window \(ms(since: windowStarted))\(info == nil ? " (by the window server: on another Space)" : "")\(personal ? ", an app the person opened" : "")")
+        if let rule { Diagnostics.note("host: \(id): its window \(window) chosen as \(rule.rawValue)") }
         let host = Host(id: id, target: target, pid: app.pid, window: window, launchedByMargin: launchedByMargin, madeByMargin: false)
         host.bundleId = bundle
         host.appLaunchedAt = app.launchedAt
@@ -566,11 +568,37 @@ final class HostEngine {
         return (fresh.count == 1 ? fresh[0].number : nil, fresh.count)
     }
 
-    // An app's front window by the window server (every Space): layer 0, drawn, at least 100×100, not hosted.
-    private func frontServerWindow(pid: pid_t) -> Int? {
-        (sys.serverWindows(pid: pid) ?? []).filter {
-            $0.pid == pid && $0.layer == 0 && $0.alpha > 0 && $0.bounds.width >= 100 && $0.bounds.height >= 100 && !isHosted(window: $0.number)
-        }.min { $0.order < $1.order }?.number
+    // Which of an app's windows to host (HostWindowChoice: Accessibility's main or focused window, else the window
+    // server's on screen, else a standard one Accessibility lists, else one in a Space, else its front one), from what
+    // Accessibility lists now (`listed`; its minimized ones never) and the window server's windows on every Space.
+    private func chooseWindow(pid: pid_t, listed: [HostWindow], serverAllowed: Bool, for host: Host? = nil) async -> (number: Int, rule: HostWindowChoice.Rule)? {
+        let minimized = Set(listed.filter(\.minimized).map(\.number))
+        let taken = Set(hosts.values.filter { $0 !== host }.map(\.window)) // (hosted by another)
+        let candidates = HostWindowChoice.candidates(sys.serverWindows(pid: pid) ?? [], pid: pid) { taken.contains($0) || minimized.contains($0) }
+        let main = await sys.mainWindow(pid: pid)
+        let focused = main == nil ? await sys.focusedWindow(pid: pid) : nil
+        let standard = listed.filter { !$0.minimized }.map(\.number)
+        return HostWindowChoice.choose(candidates: candidates, inSpace: { !(self.sys.spaces(window: $0) ?? []).isEmpty }, main: main.flatMap { minimized.contains($0) ? nil : $0 },
+                                       focused: focused.flatMap { minimized.contains($0) ? nil : $0 }, standard: standard, serverAllowed: serverAllowed)
+    }
+
+    // An app's window Accessibility didn't list, chosen again right before it's first moved (its app unhidden by then: a
+    // hidden app's windows may all be ordered out, the real one ordered in only once it's unhidden). Another chosen:
+    // that one's hosted, said.
+    private func chooseAgain(_ host: Host) async {
+        guard case .app = host.target, host.unseen else { return }
+        let others = Set(hosts.values.filter { $0 !== host }.map(\.window))
+        let listed = (await sys.windows(pid: host.pid) ?? []).filter { !others.contains($0.number) }
+        guard let chosen = await chooseWindow(pid: host.pid, listed: listed, serverAllowed: true, for: host) else { return }
+        guard chosen.number != host.window else { return }
+        Diagnostics.note("host: \(host.id): its window chosen again before it's moved: \(chosen.number) (\(chosen.rule.rawValue)), not \(host.window)")
+        host.window = chosen.number
+        if let info = listed.first(where: { $0.number == chosen.number && !$0.minimized }) {
+            host.unseen = false
+            host.mode = info.canFullScreen ? .fullScreen : .window
+            host.resizable = info.resizable
+        }
+        saveMarker()
     }
 
     // ---- a new app's window, taken as it is ----
@@ -579,6 +607,12 @@ final class HostEngine {
     // its own: left alone (Margin doesn't move other people's full-screen windows). One Accessibility didn't list (on
     // another Space): brought into Margin's Space (current), where it's read (`look`); still unread: not hosted.
     private func take(_ host: Host) async -> (HostStep, String)? {
+        if host.unseen {
+            // Unhidden first (as the kit found: a hidden app's window isn't listed, and may not be ordered in at all), then
+            // its window chosen again, before anything records or moves it.
+            await unhideIfHidden(host)
+            await chooseAgain(host)
+        }
         let spaces = sys.spaces(window: host.window) ?? []
         if host.personApp, spaces.contains(where: { sys.spaceType($0) == ManagedSpace.fullScreenType && $0 != marginSpace }) {
             return (.fullScreen, "its window is already in full screen in a Space of its own (the person's): left alone")
@@ -589,9 +623,7 @@ final class HostEngine {
         host.away = true // (from here on, it's put back where it was when it's given back)
         saveMarker()
         guard host.unseen else { return nil }
-        // Unhidden before it's a member of Margin's Space (as the kit found: a hidden app's window isn't listed), and
-        // covered by Margin's window while it's there to be read.
-        await unhideIfHidden(host)
+        // Covered by Margin's window while it's in Margin's Space to be read (its app unhidden above).
         say(cover: host.window)
         guard sys.move(window: host.window, to: marginSpace), await wait(options.parkWait, { self.sys.spaces(window: host.window) == [self.marginSpace] }) else {
             return (.windowMode, "its window didn't come into Margin's Space to be read")

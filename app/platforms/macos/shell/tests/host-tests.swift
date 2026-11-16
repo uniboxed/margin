@@ -107,6 +107,20 @@ final class FakeHostWorld: HostSystem {
     var windowOnlyUnhidden: Set<String> = []
     var needsEnhanced: Set<String> = []
     var hidden: Set<pid_t> = []
+    // Apps that make spare windows (Dictionary started with no Dock icon, the probe of 2026-11-15): `count` more
+    // windows of the real one's size and a 500×500 one, never ordered in (in no Space, never on screen), made before the
+    // real one (lower numbers: the window server's front one is a spare). Accessibility lists those of its size
+    // (AXWindow/AXDialog, the real one too) while the real one is listed and the app hasn't been activated; once it has, the real one only
+    // (AXWindow/AXStandardWindow). The real one is the app's main and focused window. `orderedInOnUnhide`: started
+    // hidden, its real window is ordered out too until it's unhidden (then on the Desktop).
+    var spares: [String: Int] = [:]
+    var orderedInOnUnhide = false
+    var spareOf: [Int: Int] = [:] // a spare → the real window
+    var activated: Set<pid_t> = []
+    func spareListed(_ n: Int) -> Bool {
+        guard let real = spareOf[n], let w = wins[n], !activated.contains(w.pid), w.frame?.size == wins[real]?.frame?.size else { return false } // (the small one never)
+        return onCurrent(real) && axLists(real) && !axHides(w.pid) // (as the probe saw them: the real one on the current Space)
+    }
     var enhanced: [pid_t: Bool] = [:]
     var unhideRefused = false
     func axHides(_ pid: pid_t) -> Bool {
@@ -117,6 +131,7 @@ final class FakeHostWorld: HostSystem {
         calls.append("unhide \(pid)")
         guard let a = apps[pid], !unhideRefused else { return false }
         hidden.remove(pid)
+        if orderedInOnUnhide { for n in a.windows where spareOf[n] == nil && wins[n]?.spaces.isEmpty == true && wins[n]?.priv == nil { wins[n]?.spaces = [Self.desktop] } }
         if windowOnlyUnhidden.contains(a.bundle), a.windows.isEmpty {
             let n = nextWindow
             nextWindow += 1
@@ -191,8 +206,31 @@ final class FakeHostWorld: HostSystem {
         calls.append("launch \(bundleId)")
         lastArguments = arguments
         guard !fail.contains("launch"), installed.contains(bundleId), running(bundleId: bundleId).isEmpty else { return false }
+        let spareCount = spares[bundleId] ?? 0
+        let firstSpare = nextWindow
+        if spareCount > 0 { nextWindow += spareCount }
         let pid = start(bundleId, policy: .accessory, windows: windowOnlyUnhidden.contains(bundleId) ? 0 : launchWindows)
         apps[pid]?.sidebarOpen = sidebarOpenAtLaunch
+        if spareCount > 0, let real = apps[pid]?.windows.first {
+            let size = CGSize(width: 1292, height: 888)
+            wins[real]?.frame = CGRect(origin: CGPoint(x: 110, y: 60), size: size)
+            if orderedInOnUnhide { wins[real]?.spaces = [] }
+            var made: [Int] = []
+            for i in 0..<spareCount { made.append(firstSpare + i) }
+            made.append(nextWindow) // (the small one)
+            nextWindow += 1
+            for n in made {
+                var spare = Win(pid: pid, spaces: [])
+                spare.frame = CGRect(origin: CGPoint(x: 110, y: 60), size: n == made.last ? CGSize(width: 500, height: 500) : size)
+                spare.canFullScreen = false
+                spare.axRole = "AXWindow/AXDialog"
+                wins[n] = spare
+                spareOf[n] = real
+            }
+            apps[pid]?.windows = [real] + made
+            main[pid] = real
+            focused[pid] = real
+        }
         if launchesHidden.contains(bundleId) || windowOnlyUnhidden.contains(bundleId) { hidden.insert(pid) }
         return true
     }
@@ -225,7 +263,11 @@ final class FakeHostWorld: HostSystem {
     func windows(pid: pid_t) async -> [HostWindow]? {
         guard !fail.contains("ax"), let a = apps[pid] else { return nil }
         if axHides(pid) { return [] }
-        let listed = a.windows.filter { axLists($0) && wins[$0].map { $0.axRole == nil || $0.canFullScreen } == true }
+        let listed = a.windows.filter { n in
+            if spareOf[n] != nil { return false } // (a dialog's subrole, can't go full screen: never in the listing)
+            if spares[a.bundle] != nil, !activated.contains(pid) { return false } // (the real one a dialog too until its app's activated)
+            return axLists(n) && wins[n].map { $0.axRole == nil || $0.canFullScreen } == true
+        }
         axSeen.formUnion(listed)
         return listed.compactMap { n in
             wins[n].map { HostWindow(number: n, fullScreen: $0.fullScreen, canFullScreen: $0.canFullScreen, resizable: $0.resizable, minimized: $0.minimized) }
@@ -233,9 +275,10 @@ final class FakeHostWorld: HostSystem {
     }
     func window(pid: pid_t, number: Int) async -> HostWindow? {
         lookups += 1
-        guard !fail.contains("ax"), let a = apps[pid], a.windows.contains(number), axLists(number), !axHides(pid), let w = wins[number] else { return nil }
+        guard !fail.contains("ax"), let a = apps[pid], a.windows.contains(number), spareOf[number] == nil ? axLists(number) : spareListed(number), !axHides(pid), let w = wins[number] else { return nil }
         axSeen.insert(number)
-        return HostWindow(number: number, fullScreen: w.fullScreen, canFullScreen: w.canFullScreen, resizable: w.resizable, minimized: w.minimized, role: w.axRole ?? "AXWindow/AXStandardWindow")
+        let dialog = spares[a.bundle] != nil && !activated.contains(pid)
+        return HostWindow(number: number, fullScreen: w.fullScreen, canFullScreen: w.canFullScreen, resizable: w.resizable, minimized: w.minimized, role: dialog ? "AXWindow/AXDialog" : w.axRole ?? "AXWindow/AXStandardWindow")
     }
     func frame(pid: pid_t, window: Int) async -> CGRect? {
         guard !fail.contains("ax"), let w = wins[window], w.pid == pid, !axCurrentOnly || onCurrent(window), !w.fullScreen else { return nil }
@@ -260,7 +303,7 @@ final class FakeHostWorld: HostSystem {
         await onSetFrame?()
         return true
     }
-    func activate(pid: pid_t, window: Int) async -> Bool { calls.append("activate \(pid) \(window)"); return apps[pid] != nil }
+    func activate(pid: pid_t, window: Int) async -> Bool { calls.append("activate \(pid) \(window)"); activated.insert(pid); return apps[pid] != nil }
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool {
         calls.append("fullScreen \(on) \(window)")
         guard axReads(window) else { return false }
@@ -308,8 +351,14 @@ final class FakeHostWorld: HostSystem {
         return wins[window].flatMap { $0.pid == pid ? $0.fullScreen : nil }
     }
     var main: [pid_t: Int] = [:] // the app's main window; none set: its last window
+    var focused: [pid_t: Int] = [:] // its focused window; none set: none
+    var axAppUnread = false // the app's main and focused windows don't read
     func mainWindow(pid: pid_t) async -> Int? {
-        guard let n = main[pid] ?? apps[pid]?.windows.last else { return nil }
+        guard !axAppUnread, !axHides(pid), let n = main[pid] ?? apps[pid]?.windows.last else { return nil }
+        return !axCurrentOnly || onCurrent(n) ? n : nil
+    }
+    func focusedWindow(pid: pid_t) async -> Int? {
+        guard !axAppUnread, !axHides(pid), let n = focused[pid] else { return nil }
         return !axCurrentOnly || onCurrent(n) ? n : nil
     }
     func safariSidebar(pid: pid_t) async -> HostSidebar {
@@ -1435,6 +1484,112 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         check("hidden app: never listed: not hosted; its window covered while read, out of sight in a private Space before its quit, never left over Margin",
               { if case .failed(.window, _)? = r { return true }; return false }() && quit > 0 && parked > lastIn && parked < quit && at(w, "cover none") > quit
               && w.running(bundleId: "com.apple.Dictionary").isEmpty && w.privates.isEmpty && clean(w) && e.hosts.isEmpty && w.inMargin.isEmpty, "\(String(describing: r)) \(w.calls)")
+    }
+
+    // ---- which window: an app's spares (Dictionary, the probe of 2026-11-15: three 1292×888 server windows and a 500×500
+    // one, only one on screen; Accessibility lists all three as dialogs before its activation, only the real one after, as a
+    // standard window, its main and focused window) ----
+    do {
+        func sw(_ n: Int, _ w: CGFloat, _ h: CGFloat, on: Bool, order: Int) -> ServerWindow {
+            ServerWindow(number: n, pid: 9, bounds: CGRect(x: 110, y: 60, width: w, height: h), onScreen: on, order: order)
+        }
+        // The probe's own list, front first: 52070 500×500 off, 52069 1292×888 on, 52068 and 52067 1292×888 off.
+        let server = [sw(52070, 500, 500, on: false, order: 0), sw(52069, 1292, 888, on: true, order: 1), sw(52068, 1292, 888, on: false, order: 2), sw(52067, 1292, 888, on: false, order: 3)]
+        let cands = HostWindowChoice.candidates(server, pid: 9)
+        let none: (Int) -> Bool = { _ in false }
+        let pick = { (main: Int?, focused: Int?, standard: [Int], allowed: Bool) in
+            HostWindowChoice.choose(candidates: cands, inSpace: { $0 == 52069 }, main: main, focused: focused, standard: standard, serverAllowed: allowed)
+        }
+        check("window choice: Accessibility's main window first (the probe: 52069), before Accessibility lists it as a standard window", pick(52069, 52069, [], false).map { $0 == (52069, .main) } == true)
+        check("window choice: its focused window when the main one doesn't read", pick(nil, 52069, [], false).map { $0 == (52069, .focused) } == true)
+        check("window choice: neither read: the window server's one on screen, never the front spare (52070) nor another of its size",
+              pick(nil, nil, [], true).map { $0 == (52069, .onScreen) } == true, "\(String(describing: pick(nil, nil, [], true)))")
+        check("window choice: an off-screen duplicate named main while the on-screen one is there: not taken", pick(52068, nil, [], true).map { $0 == (52069, .onScreen) } == true)
+        check("window choice: the window server's alone not yet allowed (its window may still be coming): nothing chosen", pick(nil, nil, [], false) == nil)
+        // Nothing on screen (another Space current): Accessibility's standard window among the same-size ones, else the one in a Space.
+        let off = server.map { sw($0.number, $0.bounds.width, $0.bounds.height, on: false, order: $0.order) }
+        let offCands = HostWindowChoice.candidates(off, pid: 9)
+        check("window choice: none on screen: the one Accessibility lists as a standard window (after its activation), not the front spare",
+              HostWindowChoice.choose(candidates: offCands, inSpace: none, main: nil, focused: nil, standard: [52069], serverAllowed: true).map { $0 == (52069, .standard) } == true)
+        check("window choice: none on screen, none listed: the one in a Space (the spares, never ordered in, in none)",
+              HostWindowChoice.choose(candidates: offCands, inSpace: { $0 == 52069 }, main: nil, focused: nil, standard: [], serverAllowed: true).map { $0 == (52069, .inSpace) } == true)
+        check("window choice: nothing tells them apart: the front one, said so; one window alone: its only one",
+              HostWindowChoice.choose(candidates: offCands, inSpace: none, main: nil, focused: nil, standard: [], serverAllowed: true).map { $0 == (52070, .front) } == true
+              && HostWindowChoice.choose(candidates: [off[1]], inSpace: none, main: nil, focused: nil, standard: [], serverAllowed: true).map { $0 == (52069, .only) } == true)
+        check("window choice: the window server's list unread: Accessibility's main window only if it lists it",
+              HostWindowChoice.choose(candidates: [], inSpace: none, main: 7, focused: nil, standard: [7], serverAllowed: true).map { $0 == (7, .main) } == true
+              && HostWindowChoice.choose(candidates: [], inSpace: none, main: 7, focused: nil, standard: [], serverAllowed: true) == nil)
+        check("window choice: candidates are layer 0, drawn, 100×100 at least, not excluded, front first",
+              HostWindowChoice.candidates(server + [ServerWindow(number: 1, pid: 9, layer: 3, bounds: CGRect(x: 0, y: 0, width: 400, height: 400)), ServerWindow(number: 2, pid: 9, bounds: CGRect(x: 0, y: 0, width: 50, height: 400)), ServerWindow(number: 3, pid: 9, bounds: CGRect(x: 0, y: 0, width: 400, height: 400), alpha: 0), ServerWindow(number: 4, pid: 8, bounds: CGRect(x: 0, y: 0, width: 400, height: 400))], pid: 9, excluded: { $0 == 52068 }).map(\.number) == [52070, 52069, 52067])
+    }
+    do {
+        // The stand-in plays the probe: with its Desktop current, the real one on screen, all three listed as dialogs before its activation, the real one only after.
+        let w = FakeHostWorld()
+        w.installed.insert("com.apple.Dictionary")
+        w.spares = ["com.apple.Dictionary": 2]
+        w.current = FakeHostWorld.desktop
+        _ = w.launchDockless(bundleId: "com.apple.Dictionary", arguments: [])
+        let p = w.running(bundleId: "com.apple.Dictionary").first?.pid ?? 0, real = w.apps[p]?.windows.first ?? 0
+        let all = w.apps[p]?.windows ?? []
+        let server = w.serverWindows(pid: p) ?? []
+        let roles = { () -> [String] in all.compactMap { n in hostRun { await w.window(pid: p, number: n) }??.role.map { "\(n) \($0)" } } }
+        let before = roles().sorted()
+        _ = hostRun { await w.activate(pid: p, window: real) }
+        let after = roles()
+        let main = hostRun { await w.mainWindow(pid: p) } ?? nil
+        check("window choice: the stand-in's spares as the probe saw them: four server windows, three of one size, only the real one on screen",
+              server.count == 4 && Set(server.filter { $0.bounds.size == CGSize(width: 1292, height: 888) }.map(\.number)).count == 3 && server.filter(\.onScreen).map(\.number) == [real]
+              && server.min { $0.number < $1.number }?.number != real, "\(server)")
+        check("window choice: Accessibility lists the three as dialogs before its activation, the real one only after, as a standard window; the real one its main window",
+              before == all.filter { w.wins[$0]?.frame?.width == 1292 }.sorted().map { "\($0) AXWindow/AXDialog" } && after == ["\(real) AXWindow/AXStandardWindow"] && main == real, "\(before) → \(after)")
+        let chosen = HostWindowChoice.choose(candidates: HostWindowChoice.candidates(server, pid: p), inSpace: { !(w.spaces(window: $0) ?? []).isEmpty }, main: nil, focused: nil, standard: [], serverAllowed: true)
+        check("window choice: on the stand-in, main unread: the one on screen", chosen.map { $0 == (real, .onScreen) } == true, "\(String(describing: chosen))")
+    }
+    // The engine: Margin's Space current, Dictionary's window on its Desktop with its spares (the real log: "window 3024 (by
+    // the window server: on another Space)", then never listed).
+    func spared(_ setup: (FakeHostWorld) -> Void) -> (FakeHostWorld, HostEngine, HostResult?, [String]) {
+        let (w, e, _) = world()
+        _ = wired(e)
+        w.installed.insert("com.apple.Dictionary")
+        w.spares = ["com.apple.Dictionary": 2]
+        setup(w)
+        var r: HostResult?
+        let lines = said { r = open(e, dictionary) }
+        return (w, e, r, lines)
+    }
+    do {
+        let (w, e, r, lines) = spared { _ in }
+        let p = pid(w, "com.apple.Dictionary"), n = window(w, "com.apple.Dictionary")
+        check("spares: Accessibility's main window read: the real one hosted at once (never a spare), full screen at the page area",
+              r == .shown(dictionary.id, placed: true) && e.mode(of: dictionary.id) == .fullScreen && w.wins[n]?.member == true && w.bounds(window: n) == page
+              && lines.contains { $0.contains("its window \(n) chosen as Accessibility's main window") } && w.clock < 3, "\(String(describing: r)) \(lines.filter { $0.contains("Dictionary") })")
+        check("spares: no spare ever moved", !w.calls.contains { c in w.spareOf.keys.contains { c.hasPrefix("move \($0) ") } }, "\(w.calls.filter { $0.hasPrefix("move") })")
+        hostRun { await e.quitAll() }
+        check("spares: quit: nothing left", w.apps[p] == nil && clean(w) && w.privates.isEmpty)
+    }
+    do {
+        let (w, e, r, lines) = spared { $0.axCurrentOnly = true } // (Accessibility reads nothing on its Desktop: no main window, no listing)
+        let n = window(w, "com.apple.Dictionary")
+        check("spares: nothing from Accessibility, none on screen: the window server's one in a Space (the spares in none), found in Margin's Space, hosted",
+              r == .shown(dictionary.id, placed: true) && w.wins[n]?.member == true && lines.contains { $0.contains("its window \(n) chosen as the one in a Space") }
+              && lines.contains { $0.contains("Accessibility found its window in Margin's Space") } && !w.calls.contains { c in w.spareOf.keys.contains { c.hasPrefix("move \($0) ") } },
+              "\(String(describing: r)) \(lines.filter { $0.contains("Dictionary") })")
+        hostRun { await e.quitAll() }
+    }
+    do {
+        // Started hidden, every window ordered out until it's unhidden: nothing tells them apart at first (the front one, a
+        // spare); chosen again once it's unhidden, before it's moved: the real one.
+        let (w, e, r, lines) = spared { w in w.axCurrentOnly = true; w.launchesHidden = ["com.apple.Dictionary"]; w.orderedInOnUnhide = true }
+        let p = pid(w, "com.apple.Dictionary"), n = window(w, "com.apple.Dictionary")
+        let spare = w.spareOf.keys.min() ?? -1
+        check("spares: started hidden, all ordered out: the front one taken first (a spare), said",
+              lines.contains { $0.contains("its window \(spare) chosen as the window server's front one") }, "\(lines.filter { $0.contains("Dictionary") })")
+        check("spares: unhidden, then chosen again before it's moved: the real one (in a Space now), hosted; no spare ever moved",
+              r == .shown(dictionary.id, placed: true) && w.wins[n]?.member == true && at(w, "unhide \(p)") >= 0 && at(w, "unhide \(p)") < at(w, "move \(n) \(FakeHostWorld.marginSpace)")
+              && lines.contains { $0.contains("its window chosen again before it's moved: \(n)") } && !w.calls.contains { c in w.spareOf.keys.contains { c.hasPrefix("move \($0) ") } },
+              "\(String(describing: r)) \(w.calls.prefix(14)) \(lines.filter { $0.contains("Dictionary") })")
+        hostRun { await e.quitAll() }
+        check("spares: quit: nothing left", w.apps[p] == nil && clean(w) && w.privates.isEmpty)
     }
 
     // ---- the keyboard to the app only on a press around its window; giving a window back never activates its app ----

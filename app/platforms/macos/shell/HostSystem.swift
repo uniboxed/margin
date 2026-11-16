@@ -40,6 +40,7 @@ protocol HostSystem: AnyObject {
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool
     func isFullScreen(pid: pid_t, window: Int) async -> Bool?
     func mainWindow(pid: pid_t) async -> Int? // the app's main window (its View menu acts on that one)
+    func focusedWindow(pid: pid_t) async -> Int? // the app's focused window (its keyboard's); nil: none or unread
     func safariSidebar(pid: pid_t) async -> HostSidebar
     func pressSafariSidebar(pid: pid_t) async -> Bool
     func safariAutoShowsToolbar() -> Bool? // Safari's own AutoShowToolbarInFullScreen; nil: not readable
@@ -90,6 +91,11 @@ protocol HostSystem: AnyObject {
     // ---- outside opens: LaunchServices' codes for one app ----
     func watchOpens(pid: pid_t, _ heard: @escaping (Int32) -> Void) -> Bool
     func stopWatchingOpens(pid: pid_t)
+}
+
+extension HostSystem {
+    // (A stand-in that doesn't play it: none.)
+    func focusedWindow(pid: pid_t) async -> Int? { nil }
 }
 
 // ---- the real one ----
@@ -200,13 +206,17 @@ nonisolated final class HostAX: @unchecked Sendable {
         }
     }
 
-    func mainWindow(pid: pid_t) async -> Int? {
+    func mainWindow(pid: pid_t) async -> Int? { await appWindow(pid, kAXMainWindowAttribute) }
+    func focusedWindow(pid: pid_t) async -> Int? { await appWindow(pid, kAXFocusedWindowAttribute) }
+
+    // The number of the app's window an attribute of its element names (its main or focused window).
+    private func appWindow(_ pid: pid_t, _ name: String) async -> Int? {
         guard !refuses, AXIsProcessTrusted() else { return nil }
         return await withCheckedContinuation { c in
             queue.async {
                 let app = AXUIElementCreateApplication(pid)
                 AXUIElementSetMessagingTimeout(app, 1)
-                guard let v = self.attr(app, kAXMainWindowAttribute), CFGetTypeID(v) == AXUIElementGetTypeID() else { return c.resume(returning: nil) }
+                guard let v = self.attr(app, name), CFGetTypeID(v) == AXUIElementGetTypeID() else { return c.resume(returning: nil) }
                 var n: CGWindowID = 0
                 guard hostWindowNumber(v as! AXUIElement, &n) == .success, n > 0 else { return c.resume(returning: nil) }
                 c.resume(returning: Int(n))
@@ -390,6 +400,7 @@ final class RealHostSystem: HostSystem {
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool { await ax.setFullScreen(pid: pid, window: window, on) }
     func isFullScreen(pid: pid_t, window: Int) async -> Bool? { await ax.isFullScreen(pid: pid, window: window) }
     func mainWindow(pid: pid_t) async -> Int? { await ax.mainWindow(pid: pid) }
+    func focusedWindow(pid: pid_t) async -> Int? { await ax.focusedWindow(pid: pid) }
     func frame(pid: pid_t, window: Int) async -> CGRect? { await ax.frame(pid: pid, window: window) }
     func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool { await ax.setFrame(pid: pid, window: window, frame, size: size) }
 

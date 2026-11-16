@@ -195,3 +195,61 @@ nonisolated enum HostLayout {
         abs(a.minX - b.minX) <= within && abs(a.minY - b.minY) <= within && abs(a.width - b.width) <= within && abs(a.height - b.height) <= within
     }
 }
+
+// Which of an app's windows is hosted. Seen 2026-11-15 (a stand-alone probe of Dictionary started with no Dock icon):
+// the app makes three server windows of the same size and a smaller one, only one of them ordered in (on screen);
+// before its activation Accessibility lists all three (AXDialog), after it only the real one (AXStandardWindow), which is
+// also its main and focused window. The window server's front window was a spare: moved into Margin's Space, it was
+// never listed and the open failed. So, with no per-app rule, in this order:
+//   1. Accessibility's main window, else its focused one (their numbers), when readable;
+//   2. the window server's window that's on screen (the current Space's, ordered in);
+//   3. a window Accessibility lists as a standard one (or one that can go full screen);
+//   4. one in a Space (a spare never ordered in is in none);
+//   5. the window server's front one (its only one, or nothing tells them apart: said so).
+// Never an off-screen window while an on-screen one of the same size is there. Rules 2, 4 and 5 (the window server's
+// alone) only when `serverAllowed` (the engine's timing: an app Margin started may still be making its window).
+nonisolated enum HostWindowChoice {
+    enum Rule: String, Equatable, Sendable {
+        case main = "Accessibility's main window"
+        case focused = "Accessibility's focused window"
+        case onScreen = "the window server's one on screen"
+        case standard = "a standard window as Accessibility lists it"
+        case inSpace = "the one in a Space (the others in none: never ordered in)"
+        case front = "the window server's front one (nothing else told them apart)"
+        case only = "its only window by the window server"
+    }
+
+    // An app's windows Margin could host, by the window server: layer 0, drawn, at least 100×100, not `excluded`
+    // (hosted already, or minimized), front first.
+    static func candidates(_ server: [ServerWindow], pid: pid_t, excluded: (Int) -> Bool = { _ in false }) -> [ServerWindow] {
+        server.filter { $0.pid == pid && $0.layer == 0 && $0.alpha > 0 && $0.bounds.width >= 100 && $0.bounds.height >= 100 && !excluded($0.number) }
+            .sorted { $0.order < $1.order }
+    }
+
+    // `candidates` (front first; empty: the window server's list didn't read), whether each is in a Space, Accessibility's
+    // main and focused windows, the windows it lists as hostable (`standard`). Nil: none chosen (yet).
+    static func choose(candidates: [ServerWindow], inSpace: (Int) -> Bool, main: Int?, focused: Int?, standard: [Int], serverAllowed: Bool) -> (number: Int, rule: Rule)? {
+        let onScreen = candidates.filter(\.onScreen)
+        let known = Set(candidates.map(\.number))
+        // (An off-screen window with an on-screen one of its size: a spare.)
+        func spare(_ n: Int) -> Bool {
+            guard let w = candidates.first(where: { $0.number == n }), !w.onScreen else { return false }
+            return onScreen.contains { $0.number != n && abs($0.bounds.width - w.bounds.width) < 1 && abs($0.bounds.height - w.bounds.height) < 1 }
+        }
+        // (One of the app's: by the window server's list, or by Accessibility's when that list didn't read.)
+        func usable(_ n: Int?) -> Int? {
+            guard let n, candidates.isEmpty ? standard.contains(n) : known.contains(n), !spare(n) else { return nil }
+            return n
+        }
+        if let n = usable(main) { return (n, .main) }
+        if let n = usable(focused) { return (n, .focused) }
+        if serverAllowed, let w = onScreen.first(where: { standard.contains($0.number) }) ?? onScreen.first { return (w.number, .onScreen) }
+        let onScreenNumbers = Set(onScreen.map(\.number))
+        if let n = standard.first(where: { usable($0) != nil && onScreenNumbers.contains($0) }) ?? standard.first(where: { usable($0) != nil }) { return (n, .standard) }
+        guard serverAllowed, let front = candidates.first else { return nil }
+        if candidates.count == 1 { return (front.number, .only) }
+        let placed = candidates.filter { inSpace($0.number) }
+        if let w = placed.first, placed.count < candidates.count { return (w.number, .inSpace) }
+        return (front.number, .front)
+    }
+}
