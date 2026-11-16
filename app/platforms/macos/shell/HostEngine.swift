@@ -84,10 +84,13 @@ final class HostEngine {
         var fullScreenWait = 6.0
         var fullScreenAskAgain = 4.0 // AXFullScreen asked once more if no Space came by then (as the kit did)
         // The early path (no freeze): its new Space listed, reserved, the window at the page area, moved in and the Space
-        // destroyed, all before macOS's Space switch. At most this long from the ask (measured: the Space at ~40 ms, the
-        // page frame at ~110 ms, in place at ~130 ms), read this often; else the slow path, under the freeze.
+        // destroyed. Its new Space listed at most `earlyWait` from the ask, the window at the page area at most
+        // `earlyFrameWait` from that Space's reservation (measured: the Space at ~40 ms, the page frame at ~110 ms, in
+        // place at ~130 ms; the window may be reported in its own Space before it has the frame: not a failure), read
+        // `earlyEvery`; else the slow path, under the freeze.
         var earlyFullScreen = true
         var earlyWait = 1.5
+        var earlyFrameWait = 1.0
         var earlyEvery = 0.005
         var memberWait = 0.6 // a window moved by the bridge (into Margin's Space, or parked): there by then
         var memberEvery = 0.005 // ...read this often (a switch is a move each way: well under 100 ms in all)
@@ -1339,7 +1342,10 @@ final class HostEngine {
     // That Space's edges reserved at once give the window the page frame at ~110 ms though it isn't a member yet; moved
     // into Margin's Space then and its own Space destroyed, it's in place at ~130 ms, still full screen, and with Margin's
     // Space kept current the screen never left it: no slide to hide, so no freeze. Never destroyed before the window has
-    // the page frame (destroyed earlier, the window keeps the display's whole size). `.slow`: nothing undone, the ask
+    // the page frame (destroyed earlier, the window keeps the display's whole size). The window reported in its own Space
+    // before it has the page frame is normal (macOS adds it to that Space as it lays it out, seen on the real Mac
+    // 2026-11-16: every first open fell back on that rule): waited past, Margin's Space kept current all along (macOS's
+    // switch to the new Space undone at once), until the page frame or `earlyFrameWait`. `.slow`: nothing undone, the ask
     // still running (the slow path takes it from there, its Space as the one found); `.again`: the window isn't where it
     // should be after the move and destroy (backed out and asked again by the caller).
     private func early(_ host: Host, before: Set<UInt64>, refused: () -> Bool) async -> Early {
@@ -1347,6 +1353,8 @@ final class HostEngine {
         let t0 = sys.now()
         let page = placement.page
         var space: UInt64?
+        var reservedAt = t0
+        var memberSeen = false
         var times: [String] = []
         func mark(_ what: String) { times.append("\(what) \(ms(since: t0))") }
         func said() -> String { times.joined(separator: ", ") + (jumps > 0 ? "; \(jumps) Space change\(jumps == 1 ? "" : "s") undone" : "") }
@@ -1359,10 +1367,10 @@ final class HostEngine {
             if sys.setCurrentSpace(marginSpace) { jumps += 1 }
         }
         // 1. its new Space listed (owned by its app, or holding its window), its edges reserved to the page area at once;
-        // 2. its window at the page area (that Space lays it out before it's a member of it).
+        // 2. its window at the page area (that Space lays it out; the window may be reported in it before or after).
         while true {
             if refused() { return .slow("its copy didn't ask Safari for full screen") }
-            if let s = space, inOwn(s) { return .slow("its window was in its own Space before it had the page area (\(said()))") }
+            if let s = space, !memberSeen, inOwn(s) { memberSeen = true; mark("in its Space") }
             if space == nil, let owners = sys.fullScreenSpaceOwners() {
                 let new = owners.keys.filter { s in !before.contains(s) && s != marginSpace && (owners[s] == host.pid || inOwn(s)) }.sorted()
                 if new.count > 1 { return .slow("\(new.count) new full-screen Spaces of its app: which is its window's isn't known") }
@@ -1372,15 +1380,20 @@ final class HostEngine {
                     host.fullScreenSpace = s
                     ownSpaces.insert(s)
                     saveMarker()
-                    if inOwn(s) { return .slow("its window was already in its new Space") }
+                    if inOwn(s) { memberSeen = true; mark("in its Space") }
                     _ = sys.reserve(edges, space: s)
+                    reservedAt = sys.now()
                     mark("reserved \(edges.text)")
                 }
             }
             keepCurrent()
             if space != nil, there() { break }
-            if sys.now() - t0 >= options.earlyWait {
-                return .slow(space == nil ? "no new full-screen Space listed within \(ms(since: t0)) ms" : "its window didn't take the page area within \(ms(since: t0)) ms (\(said()))")
+            if space == nil, sys.now() - t0 >= options.earlyWait {
+                return .slow("no new full-screen Space listed within \(ms(since: t0)) ms")
+            }
+            if space != nil, sys.now() - reservedAt >= options.earlyFrameWait {
+                let b = sys.bounds(window: host.window).map(r) ?? "?"
+                return .slow("its window didn't take the page area \(r(page)) within \(ms(since: reservedAt)) ms of the reservation, at \(b) (\(said()))")
             }
             await sys.sleep(options.earlyEvery)
         }
