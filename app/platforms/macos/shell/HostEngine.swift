@@ -73,7 +73,8 @@
 // after a crash (`recover`), which brings each to the current Space, takes it out of full screen, gives a window-mode
 // window its frame and its Desktop back, puts the person's apps' windows back where they were, and quits only the apps
 // Margin started (never leaving an app saved as in full screen or at Margin's page area). Every operation runs one at
-// a time, in order; Margin's quit gives its hosts back at once inside its own, and never waits for an app's exit.
+// a time, in order; Margin's quit gives its hosts back at once inside its own, and neither it nor a row's close waits
+// for an app's exit (heard in the background; an open of that app meanwhile waits for it).
 
 import AppKit
 
@@ -100,9 +101,9 @@ final class HostEngine {
         var placeSettle = 0.1 // ...or as soon as its bounds changed and then held this long (the size it took: its own limits)
         var parkWait = 0.6 // two tries of 300 ms, as the parker
         var exitWait = 7.0 // out of full screen (an app animates it)
-        // A close outside Margin's quit (its row closed, a failed open) waits this long for the app's exit (an iPad app
-        // with a window open quits after its own 5 s watchdog: seen out 6 ms after a 5 s wait); Margin's quit never waits
-        // for an app's exit (`quitAll`).
+        // A failed open's close waits this long for the app's exit (an iPad app with a window open quits after its own
+        // 5 s watchdog: seen out 6 ms after a 5 s wait). A row's close and Margin's quit never wait for an app's exit
+        // (`close`, `quitAll`): a row's app still running this long after it was asked didn't quit (said, Margin's again).
         var quitWait = 6.0
         var closeWait = 0.6 // a window closed by its close button before its app's quit: gone by then (seen: 70-290 ms)
         var closePressWait = 0.3 // ...its press retried this long when the window was just brought to the current Space (listed late)
@@ -194,6 +195,10 @@ final class HostEngine {
     private(set) var busy = false
     private(set) var quitting = false // Margin quits: nothing is shown or activated any more
     private var quitAsked: Set<pid_t> = [] // apps asked to quit during Margin's quit
+    // Apps Margin started, asked to quit by their row's close (Margin keeps running) and not gone yet: no longer
+    // Margin's (`launched` doesn't have them), their exit heard in the background (`appQuit`); in the marker as asked.
+    private struct Exiting { let app: HostApp; let id: HostID; let askedAt: Double }
+    private var exiting: [pid_t: Exiting] = [:]
     private var leftWindows: [HostMarker.Window] = [] // windows Margin's quit couldn't finish giving back: the marker's, for the next launch
     private var ownSpaces: Set<UInt64> = [] // every full-screen Space a hosted window went into, until it's gone (Mission Control's check)
     var onEvent: ((HostEvent) -> Void)?
@@ -239,6 +244,8 @@ final class HostEngine {
     // The pid of a running app of this bundle that Margin started itself (no Dock icon), if any.
     func launchedPid(bundleId: String) -> pid_t? { launched.first { $0.value.bundleId == bundleId }?.key }
     var hasLeftSafariWindows: Bool { !leftSafariWindows.isEmpty }
+    // Apps asked to quit by their row's close and still finishing (not Margin's any more).
+    var exitingPids: [pid_t] { exiting.keys.sorted() }
 
     // ---- the API ----
 
@@ -259,6 +266,7 @@ final class HostEngine {
     // (the person's): used as it is, never started again. Nil: it couldn't be started.
     func start(bundleId: String) async -> HostApp? {
         await serial {
+            _ = await self.awaitExits(of: bundleId)
             if let running = self.sys.running(bundleId: bundleId).first { return running }
             let arguments = bundleId == self.options.safariBundle ? self.options.safariArguments : self.options.appArguments
             guard self.sys.launchDockless(bundleId: bundleId, arguments: arguments) else { return nil }
@@ -308,9 +316,12 @@ final class HostEngine {
         }
     }
 
+    // A row closed (Margin keeps running): given back as Margin's quit does it (its frame first, closed first when
+    // that's harmless, else home), its app (Margin's) asked to quit once and forgotten at once; the queue is released
+    // without waiting for that exit (Maps holds its quit 5 s, its own watchdog), which is heard in the background.
     func close(_ id: HostID) async {
         await serial {
-            await self.closeNow(id, why: "closed")
+            await self.closeNow(id, why: "closed", exit: .watched)
             self.checkListed("after \(id)'s close")
         }
     }
@@ -348,6 +359,9 @@ final class HostEngine {
             let order = (self.shown.map { [$0] } ?? []) + self.hosts.keys.filter { $0 != self.shown }.sorted { $0.raw < $1.raw }
             await self.closeAtOnce(order)
             await self.closeLeftSafariWindows()
+            // (An app a row's close asked to quit and still running `quitWait` later didn't quit: Margin's again, asked
+            // again below; one still finishing isn't asked twice, kept in the marker as asked.)
+            for pid in self.overdue() { if let back = self.takeBack(pid) { await self.sayNotQuit(back) } }
             // (An app asked already by its window's close isn't asked again: one polite quit each, never waited for.)
             for (pid, app) in self.launched.sorted(by: { $0.key < $1.key }) where !self.quitAsked.contains(pid) { self.askQuit(pid, bundle: app.bundleId) }
             // (A reservation on Margin's own Space is never made now; one left by an older build is given back.)
@@ -356,7 +370,7 @@ final class HostEngine {
             self.checkOrphans("at quit")
             self.checkListed("at quit")
             self.saveMarker()
-            let finishing = self.launched.values.filter { self.quitAsked.contains($0.pid) }.map(\.bundleId).sorted()
+            let finishing = (self.launched.values.filter { self.quitAsked.contains($0.pid) } + self.exiting.values.map(\.app)).map(\.bundleId).sorted()
             let left = self.leftWindows.count
             Diagnostics.note("host: quit: everything given back in \(self.ms(since: started)) ms (\(order.count) host\(order.count == 1 ? "" : "s") at once"
                              + (finishing.isEmpty ? "" : "; still quitting on their own, not waited for: \(finishing.joined(separator: ", "))")
@@ -367,7 +381,7 @@ final class HostEngine {
     // Each host given back in a task of its own, all at once (their waits overlap: the quit takes the slowest one's
     // time, not their sum), every one finished before this returns.
     private func closeAtOnce(_ ids: [HostID]) async {
-        let tasks = ids.map { id in Task { await self.closeNow(id, why: "Margin quits", atQuit: true) } }
+        let tasks = ids.map { id in Task { await self.closeNow(id, why: "Margin quits", exit: .atQuit) } }
         for task in tasks { await task.value }
     }
 
@@ -375,6 +389,8 @@ final class HostEngine {
     // operation runs (it reads the same things).
     func poll() {
         guard !busy else { return }
+        // (An app a row's close asked to quit, still running `quitWait` later: it didn't quit, Margin's again.)
+        for pid in overdue() { if let back = takeBack(pid) { Task { await self.sayNotQuit(back) } } }
         // (Margin's window out of its Space, macOS took it out of full screen: the one shown is a stray too.)
         let marginHere = marginWindow == 0 || sys.spaces(window: marginWindow).map { $0.contains(marginSpace) } ?? true
         for host in hosts.values {
@@ -528,6 +544,8 @@ final class HostEngine {
         case .app(let b): bundle = b
         case .safariWindow: bundle = options.safariBundle
         }
+        // (Its last instance asked to quit by a row's close and still finishing: its exit waited for, never hosting it.)
+        if let waited = await awaitExits(of: bundle) { times.append("its last instance's exit waited for \(waited) ms") }
         let running = sys.running(bundleId: bundle)
         var app: HostApp
         var startedNow = false
@@ -1791,11 +1809,14 @@ final class HostEngine {
     // Safari window parked first and out through its copy, unseen), a window-mode one its frame as it was, the windows
     // of the person's apps and window-mode ones back in their Space, then an app Margin started quit (after its frame
     // is back, so it saves that one; its window closed first when that's harmless: `closesFirst`); an app the person
-    // opened is never quit. `atQuit` (Margin quits, every host at once): the app is asked to quit and not waited for, so
-    // its window is never left in a private Space (Margin isn't there to take it out if the app doesn't quit) but on its
-    // Desktop; what isn't done is kept for the marker (`leftWindows`). Each step's time is in the log line.
-    private func closeNow(_ id: HostID, why: String, atQuit: Bool = false) async {
+    // opened is never quit. Not waiting for its exit (`.watched`: a row closed; `.atQuit`: Margin quits, every host at
+    // once): the app is asked to quit once, so its window is never left in a private Space (no one takes it out if the
+    // app doesn't quit) but on its Desktop; at Margin's quit what isn't done is kept for the marker (`leftWindows`).
+    // `.waited` (a failed open): its exit waited for. Each step's time is in the log line.
+    enum CloseExit { case waited, watched, atQuit }
+    private func closeNow(_ id: HostID, why: String, exit: CloseExit = .waited) async {
         guard let host = hosts[id] else { return }
+        let atQuit = exit == .atQuit, waits = exit == .waited
         let started = sys.now()
         var times: [String] = []
         var t0 = started
@@ -1829,13 +1850,14 @@ final class HostEngine {
         }
         if quits, !closed, anApp, host.safariWindow == nil {
             let inMargin = sys.spaces(window: host.window)?.contains(marginSpace) == true
-            if atQuit, inMargin || host.privateSpace != nil {
-                // Margin quits (not waiting for the app): on its Desktop before it's asked, out of Margin's Spaces; one that
-                // doesn't quit (unsaved work) is the person's there. (A private Space goes with Margin, and its window with it.)
+            if !waits, inMargin || host.privateSpace != nil {
+                // Not waiting for the app (a row closed, Margin quits): on its Desktop before it's asked, out of Margin's
+                // Spaces; one that doesn't quit (unsaved work) is the person's there. (A private Space is destroyed below, or
+                // goes with Margin, and its window with it.)
                 host.away = true
                 await returnHome(host)
                 step("home")
-            } else if !atQuit, inMargin, host.privateSpace == nil {
+            } else if waits, inMargin, host.privateSpace == nil {
                 // An app Margin quits whose window is still in Margin's Space (taken in to be read, its open failed): out of
                 // sight in a private Space until its quit is done, never standing on its own over Margin meanwhile (seen
                 // 2026-11-15: Dictionary's window over Margin while it quit). One that doesn't quit goes to the Desktop then.
@@ -1851,7 +1873,7 @@ final class HostEngine {
             step("normal")
             let closed = await closeAskedSafariWindow(ext, profile: host.profile, pid: host.pid, number: host.window, why: why)
             step(closed ? "closed by its copy" : "not closed by its copy")
-            if !closed, !quits || atQuit, host.privateSpace != nil, let desktop = sys.desktop(onDisplayOf: marginSpace) {
+            if !closed, !quits || !waits, host.privateSpace != nil, let desktop = sys.desktop(onDisplayOf: marginSpace) {
                 _ = sys.move(window: host.window, to: desktop) // not closed yet: on the Desktop meanwhile, closed later
                 Diagnostics.note("host: \(id): Safari's window wasn't closed by its extension: on the Desktop until its copy closes it")
             }
@@ -1863,7 +1885,11 @@ final class HostEngine {
         }
         if quits {
             let bundle = sys.app(pid: host.pid)?.bundleId ?? id.raw
-            if atQuit { askQuit(host.pid, bundle: bundle); step("asked to quit") } else { await quitApp(host.pid, bundle: bundle, parked: host); step("quit") }
+            switch exit {
+            case .atQuit: askQuit(host.pid, bundle: bundle); step("asked to quit")
+            case .watched: askQuitWatched(host.pid, bundle: bundle, id: id); step("asked to quit")
+            case .waited: await quitApp(host.pid, bundle: bundle, parked: host); step("quit")
+            }
         }
         if atQuit, let left = unfinished(host) { leftWindows.append(left) }
         if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv) }
@@ -1956,6 +1982,62 @@ final class HostEngine {
         saveMarker()
     }
 
+    // A row closed (Margin keeps running): an app Margin started asked to quit once (never forced) and forgotten at
+    // once, so the close and whatever comes after it never wait for its exit (Maps holds its quit 5 s, its own watchdog).
+    // Its exit is heard in the background (`appQuit`, NSWorkspace's termination notice), which takes it out of the
+    // marker. One still running `quitWait` after the ask didn't quit (unsaved work): Margin's again (`takeBack`), seen
+    // by the poll, an open of that app, or Margin's quit, whichever comes first. An open of the same app meanwhile
+    // waits for that exit (`awaitExits`): the dying instance is never hosted.
+    private func askQuitWatched(_ pid: pid_t, bundle: String, id: HostID) {
+        guard let now = sys.app(pid: pid) else { launched[pid] = nil; leftSafariWindows.removeAll { $0.pid == pid }; saveMarker(); return }
+        exiting[pid] = Exiting(app: launched.removeValue(forKey: pid) ?? now, id: id, askedAt: sys.now())
+        if !sys.terminate(pid: pid) { Diagnostics.warn("host: \(bundle) (pid \(pid)) wasn't asked to quit (the system refused the ask)") }
+        saveMarker()
+    }
+
+    // Heard: an app asked to quit by its row's close is gone. Out of the marker.
+    private func exited(_ pid: pid_t) {
+        guard let entry = exiting.removeValue(forKey: pid) else { return }
+        leftSafariWindows.removeAll { $0.pid == pid } // its windows went with it
+        Diagnostics.note("host: \(entry.app.bundleId) (pid \(pid)) quit \(ms(since: entry.askedAt)) ms after its row's close asked it")
+        saveMarker()
+    }
+
+    // An app a row's close asked to quit, `quitWait` later: still that same launch running, it didn't quit: Margin's
+    // again (an open reuses it, Margin's quit asks it again), said with what can be read of why. Gone unheard: forgotten.
+    // Nil: nothing taken back.
+    private func takeBack(_ pid: pid_t) -> Exiting? {
+        guard let entry = exiting[pid] else { return nil }
+        guard let now = sys.app(pid: pid), now.bundleId == entry.app.bundleId, now.launchedAt == entry.app.launchedAt else { exited(pid); return nil }
+        exiting[pid] = nil
+        launched[pid] = entry.app
+        saveMarker()
+        emit(.failed(entry.id, .quit, "didn't quit"))
+        return entry
+    }
+    private func sayNotQuit(_ entry: Exiting) async {
+        Diagnostics.warn("host: \(entry.app.bundleId) (pid \(entry.app.pid)) didn't quit within \(Int(options.quitWait)) s (\(await whyNotQuit(entry.app.pid, hosted: nil))): left running, its window on the Desktop")
+    }
+    private func overdue() -> [pid_t] { exiting.filter { sys.now() - $0.value.askedAt >= options.quitWait }.map(\.key).sorted() }
+
+    // An open (or start) of an app whose last instance a row's close asked to quit and is still finishing: waits for
+    // that exit (heard, or until `quitWait` after the ask: then it's Margin's again, reused), so the dying instance is
+    // never hosted, nor taken for the person's. Nil: nothing to wait for; else the ms waited.
+    private func awaitExits(of bundle: String) async -> Int? {
+        let dying = exiting.filter { $0.value.app.bundleId == bundle }.map(\.key).sorted()
+        guard !dying.isEmpty else { return nil }
+        let t0 = sys.now()
+        for pid in dying {
+            guard let entry = exiting[pid] else { continue }
+            _ = await wait(max(0, entry.askedAt + options.quitWait - sys.now())) {
+                if self.exiting[pid] != nil, self.sys.app(pid: pid) == nil { self.exited(pid) } // (its notice not heard yet)
+                return self.exiting[pid] == nil
+            }
+            if let back = takeBack(pid) { await sayNotQuit(back) }
+        }
+        return ms(since: t0)
+    }
+
     // An app Margin started, quit (politely): once gone it's forgotten. One that doesn't quit (it may be asking about
     // unsaved work) has its window put on the Desktop for the person.
     private func quitApp(_ pid: pid_t, bundle: String, parked: Host? = nil) async {
@@ -2041,6 +2123,7 @@ final class HostEngine {
     // ---- what the system says ----
 
     private func appQuit(_ pid: pid_t) {
+        exited(pid)
         let gone = hosts.values.filter { $0.pid == pid }
         let wasLaunched = launched.removeValue(forKey: pid) != nil
         guard !gone.isEmpty || wasLaunched else { return }
@@ -2122,7 +2205,7 @@ final class HostEngine {
         var m = HostMarker(pid: ownPid, marginSpace: hosts.isEmpty && leftWindows.isEmpty ? nil : marginSpace)
         m.apps = launched.values.sorted { $0.pid < $1.pid }.map {
             HostMarker.App(pid: $0.pid, bundleId: $0.bundleId, launchedAt: $0.launchedAt, quitAsked: quitting && quitAsked.contains($0.pid) ? true : nil)
-        }
+        } + exiting.values.sorted { $0.app.pid < $1.app.pid }.map { HostMarker.App(pid: $0.app.pid, bundleId: $0.app.bundleId, launchedAt: $0.app.launchedAt, quitAsked: true) }
         m.windows = hosts.values.sorted { $0.window < $1.window }.map(markerWindow) + leftWindows
         m.leftSpaces = leftSpaces.sorted()
         m.leftSafariWindows = leftSafariWindows.isEmpty ? nil : leftSafariWindows

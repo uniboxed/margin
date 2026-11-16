@@ -1123,7 +1123,10 @@ func hostTests() {
         w.apps[p]?.refusesQuit = true
         var events: [HostEvent] = []
         e.onEvent = { events.append($0) }
-        hostRun { await e.close(textEdit.id) }
+        hostRun { await e.close(textEdit.id) } // (its exit not waited for: still running 6 s after the ask, the poll says so)
+        check("host: an app that doesn't quit: its row's close didn't wait, nothing said yet", w.apps[p] != nil && e.exitingPids == [p] && events.allSatisfy { if case .failed = $0 { return false }; return true })
+        hostRun { await w.sleep(6) }
+        e.poll()
         check("host: an app that doesn't quit (asking about its work): said, left running, out of full screen", w.apps[p] != nil && w.wins[w.apps[p]!.windows[0]]?.fullScreen == false
               && events.contains { if case .failed(_, .quit, _) = $0 { return true }; return false } && clean(w))
     }
@@ -1950,11 +1953,110 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         let p = pid(w, "com.apple.FaceTime")
         w.apps[p]?.refusesQuit = true
         w.serverExtra = [ServerWindow(number: 9001, pid: p, layer: 8, bounds: CGRect(x: 600, y: 400, width: 300, height: 160))] // (an alert of its own)
-        let lines = said { hostRun { await e.close(faceTime.id) } }
+        let lines = said { hostRun { await e.close(faceTime.id); await w.sleep(6) }; e.poll(); hostRun { await w.sleep(0.1) } } // (not waited for: the poll says it 6 s later)
         check("window mode: an app that doesn't quit within 6 s (its row closed): asked politely once, left running, the log says why it may be",
-              w.calls.filter { $0 == "terminate \(p)" }.count == 1 && w.apps[p] != nil
+              w.calls.filter { $0 == "terminate \(p)" }.count == 1 && w.apps[p] != nil && e.launched[p] != nil && e.exitingPids.isEmpty
               && lines.contains { $0.contains("didn't quit within 6 s (still no Dock icon; 1 other window of its own on screen (it may be asking something); Accessibility still answers for it)") },
               "\(lines.filter { $0.contains("quit") })")
+    }
+    // ---- a row closed while Margin keeps running: given back as Margin's quit does it, its app asked once and
+    // forgotten at once, the queue released; its exit heard in the background (Maps, 2026-11-16: its own 5 s watchdog
+    // held the queue, and every open or switch meanwhile) ----
+    for keeps in [false, true] {
+        let (w, e, marker) = world()
+        _ = wired(e)
+        if keeps { w.keepsWindows = ["com.apple.Notes"] } // (never closed first: taken home instead)
+        _ = open(e, textEdit)
+        _ = open(e, notes) // (shown; TextEdit parked)
+        let np = pid(w, "com.apple.Notes"), nn = window(w, "com.apple.Notes")
+        w.quitsAfter["com.apple.Notes"] = 5 // (Maps: out only after its own 5 s watchdog)
+        w.calls = []
+        var lines: [String] = []
+        let r = hostRun { () -> (Double, Bool) in
+            let t0 = w.clock
+            let echo = Diagnostics.echo
+            Diagnostics.echo = { lines.append($0) }
+            await e.close(notes.id)
+            Diagnostics.echo = echo
+            return (w.clock - t0, w.apps[np] != nil)
+        }
+        let took = r?.0 ?? 99
+        let how = keeps ? "kept windows: taken home" : "closed first"
+        check("row closed (\(how)): returned without waiting for its exit (\(Int(took * 1000)) ms), the app still finishing, asked once, forgotten at once",
+              took < 1 && r?.1 == true && w.calls.filter { $0 == "terminate \(np)" }.count == 1 && e.hosts[notes.id] == nil && e.launched[np] == nil && e.exitingPids == [np]
+              && lines.contains { $0.contains("com.apple.Notes closed (closed)") && $0.contains("asked to quit") }, "\(took) \(w.calls) \(lines)")
+        check("row closed (\(how)): given back as Margin's quit does it, before the ask (\(keeps ? "on its Desktop, out of full screen" : "its close button"))",
+              keeps ? (w.spaces(window: nn) == [FakeHostWorld.desktop] && w.wins[nn]?.fullScreen == false && !w.calls.contains("close \(nn)") && last(w, "move \(nn) \(FakeHostWorld.desktop)") < at(w, "terminate \(np)"))
+                    : (at(w, "close \(nn)") >= 0 && at(w, "close \(nn)") < at(w, "terminate \(np)") && w.wins[nn] == nil),
+              "\(w.calls)")
+        check("row closed (\(how)): nothing of it in Margin's Spaces or a private one (TextEdit's only), the marker has the app as asked", !w.inMargin.contains(nn) && w.wins[nn]?.priv == nil && w.privates.count == 1 && clean(w)
+              && HostMarker.read(marker)?.apps.contains { $0.pid == np && $0.quitAsked == true } == true, "\(w.inMargin) \(w.privates) \(String(describing: HostMarker.read(marker)))")
+        // A switch right after: never behind that exit.
+        let t1 = w.clock
+        let s = hostRun { await e.show(textEdit.id) }
+        check("row closed (\(how)): a switch right after isn't delayed (\(Int((w.clock - t1) * 1000)) ms), Notes still finishing", s == .shown(textEdit.id, placed: true) && w.clock - t1 < 1 && w.apps[np] != nil, "\(String(describing: s)) \(w.clock - t1)")
+        // Its exit heard in the background: out of the marker, said.
+        let heard = said { hostRun { await w.sleep(5) } }
+        check("row closed (\(how)): its exit heard later, out of the marker, said", w.apps[np] == nil && e.exitingPids.isEmpty && HostMarker.read(marker)?.apps.contains { $0.pid == np } != true
+              && heard.contains { $0.contains("com.apple.Notes (pid \(np)) quit") }, "\(heard) \(String(describing: HostMarker.read(marker)))")
+        hostRun { await e.quitAll() }
+        check("row closed (\(how)): Margin's quit after it asks only TextEdit", w.calls.filter { $0 == "terminate \(np)" }.count == 1 && w.apps.values.allSatisfy { $0.bundle != "com.apple.TextEdit" })
+    }
+    do {
+        // The same app opened again while its old instance is still finishing: that exit waited for, a new one started
+        // (the dying one never hosted, nor taken for the person's).
+        let (w, e, _) = world()
+        _ = wired(e)
+        _ = open(e, notes)
+        let old = pid(w, "com.apple.Notes")
+        w.quitsAfter["com.apple.Notes"] = 5
+        hostRun { await e.close(notes.id) }
+        w.quitsAfter = [:]
+        check("reopen during its exit: (the old instance still finishing)", w.apps[old] != nil && e.exitingPids == [old])
+        let lines = said { _ = open(e, notes) }
+        let now = pid(w, "com.apple.Notes")
+        check("reopen during its exit: waited for the old instance's exit, then a new one started and hosted as Margin's",
+              e.isHosted(notes.id) && e.shown == notes.id && w.apps[old] == nil && now != old && now != 0 && e.launched[now] != nil && e.exitingPids.isEmpty
+              && w.calls.filter { $0 == "launch com.apple.Notes" }.count == 2 && lines.contains { $0.contains("its last instance's exit waited for") }, "\(w.calls.suffix(12)) \(lines.filter { $0.contains("Notes") })")
+        hostRun { await e.quitAll() }
+        check("reopen during its exit: nothing left", w.apps.isEmpty && clean(w))
+    }
+    do {
+        // ...and an old instance that doesn't quit (unsaved work): after `quitWait` it's Margin's again, reused (no
+        // second launch), said once.
+        let (w, e, _) = world()
+        _ = wired(e)
+        var events: [HostEvent] = []
+        e.onEvent = { events.append($0) }
+        _ = open(e, notes)
+        let old = pid(w, "com.apple.Notes")
+        w.apps[old]?.refusesQuit = true
+        hostRun { await e.close(notes.id) }
+        let r = open(e, notes)
+        check("reopen of one that doesn't quit: Margin's again after 6 s, reused (never launched twice), said",
+              r == .shown(notes.id, placed: true) && pid(w, "com.apple.Notes") == old && e.launched[old] != nil && e.exitingPids.isEmpty
+              && w.calls.filter { $0 == "launch com.apple.Notes" }.count == 1 && events.contains { if case .failed(_, .quit, _) = $0 { return true }; return false }, "\(String(describing: r)) \(events)")
+        w.apps[old]?.refusesQuit = false
+        hostRun { await e.quitAll() }
+        check("reopen of one that doesn't quit: Margin's quit asks it again", w.apps[old] == nil && clean(w))
+    }
+    do {
+        // Margin quits while a row's app is still finishing: not asked again, kept in the marker as asked; the next
+        // launch asks again only if that same launch still runs.
+        let (w, e, marker) = world()
+        _ = wired(e)
+        _ = open(e, notes)
+        let old = pid(w, "com.apple.Notes")
+        w.apps[old]?.refusesQuit = true
+        hostRun { await e.close(notes.id) }
+        hostRun { await e.quitAll() }
+        let m = HostMarker.read(marker)
+        check("Margin quits while a row's app finishes: asked once only, in the marker as asked", w.calls.filter { $0 == "terminate \(old)" }.count == 1 && m?.apps.map(\.pid) == [old] && m?.apps.first?.quitAsked == true,
+              "\(w.calls) \(String(describing: m))")
+        w.apps[old]?.refusesQuit = false
+        let next = HostEngine(system: w, marker: marker, pid: 2)
+        hostRun { await next.recover() }
+        check("Margin quits while a row's app finishes: the next launch asks it again, the marker gone", w.calls.filter { $0 == "terminate \(old)" }.count == 2 && w.apps[old] == nil && !FileManager.default.fileExists(atPath: marker.path))
     }
     do {
         // ...the same at Margin's quit: asked once, never waited for; its window on its Desktop (not a private Space that
