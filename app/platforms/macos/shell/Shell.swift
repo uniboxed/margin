@@ -61,6 +61,7 @@ final class Shell: ExtensionLinkDelegate {
         var themeId: String?
         var resyncTimer: Timer?
         var keys: [String: [String]]? // the copy's shortcuts, once it said
+        var drawnSent: [Int: Bool] = [:] // what the copy was last told of each of its windows (tellDrawn)
         init(_ connection: LinkConnection) { self.connection = connection }
     }
 
@@ -235,6 +236,7 @@ final class Shell: ExtensionLinkDelegate {
                 if case .snapshot = message { profilesSoon(); cloudTabsCheck(); themesTellCopy(entry) }
                 if case .delta(_, _, let changes, _) = message, changes["spaces"] != nil { profilesSoon() }
                 if case .delta(_, _, let changes, _) = message, changes["settings"] != nil { cloudTabsCheck() }
+                tellDrawn(entry)
                 soon()
             case .gap(let expected, let got):
                 Diagnostics.warn("\(connection.key): number \(got) came, \(expected) was next: the state asked for again")
@@ -320,6 +322,23 @@ final class Shell: ExtensionLinkDelegate {
         } }
     }
 
+    // Which of a copy's windows Margin draws (`drawn`, background/link.ts): true only for the Safari window the session
+    // hosts for that profile, false for every other, the person's own (hosted only, 2026-11-16: their ⌘T and keys stay
+    // the browser's, the copy's new-tab page; a linked copy takes a window it wasn't told of as drawn). Sent on change.
+    func tellDrawn(_ entry: Link) {
+        guard entry.connection.isUp, entry.mirror.hasState else { return }
+        let hello = entry.connection.hello
+        let hostedId = hello.browser == "safari" ? hosted?.safariWindows[hello.profile] : nil
+        let ids = windows(of: entry.connection.key).map(\.id)
+        for id in ids {
+            let on = id == hostedId
+            guard entry.drawnSent[id] != on else { continue }
+            entry.drawnSent[id] = on
+            entry.connection.send(.drawn(epoch: entry.connection.epoch, windowId: id, on: on))
+        }
+        entry.drawnSent = entry.drawnSent.filter { ids.contains($0.key) }
+    }
+
     // One read: Margin's keys, the host's poll, Safari's restored windows; the next one while the host has something
     // or a copy is linked.
     func track() {
@@ -329,6 +348,7 @@ final class Shell: ExtensionLinkDelegate {
         updateHostedKeys()
         host?.poll()
         hosted?.sweepRestoredSafariWindows()
+        for entry in links.values { tellDrawn(entry) }
         guard host?.hasHosts == true || host?.hasLeftSafariWindows == true || !links.isEmpty else { return }
         pollTimer = Timer.scheduledTimer(withTimeInterval: options.restPoll, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.track() }
