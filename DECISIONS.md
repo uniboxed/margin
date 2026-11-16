@@ -5178,3 +5178,48 @@ raw under test-results/traffic-lights-invocation-2026-11-16/. Native warnings-as
 independent saved-pixel/rights/protocol checks pass; fresh unit 1031 pass. Full E2E attempted/bounded
 at 15 seconds after missing pinned WebKit 2388 setup errors; no downloads/full pass, product install
 or PR. Continue native-only research without promoting capability/readback state to a hiding result.
+### Fully automatic Safari profile creation research (2026-11-16)
+
+The user shifts from native traffic-light research to creating real Safari browsing
+profiles without Full Disk Access, Automation or Accessibility, and specifies fully
+automatic creation. Create branch `chore/safari-profile-research`; no product change.
+No verified solution meets that full requirement. Do not promote a scratch profile
+row, an existing-profile selector or a settings dialog to a working implementation.
+
+Trace Safari's real create-button path through WBProfile and
+WBTabGroupManager.appendProfile:completionHandler:, native directory provisioning
+and database insertion. Checked host is macOS 26.7.3/25G342 arm64, Safari
+27.2/21625.2.8.18.4. Native debug-store probe succeeds with explicit scratch path,
+external notifications disabled and nil directory manager. Independently verify
+SQLite integrity and exact new local/server IDs, title and symbol; derived default
+display title differs from the empty stored default title. This is metadata-only,
+not a usable Safari profile or Safari acceptance. No Safari launch/live database write.
+
+Confine helpers against Safari directories, writes outside owned fixture, Apple
+Events, network and selected browser/AX/TCC/cloud brokers; final fixture also denies
+preferences/distributed-notification brokers. Canary read/write denials and unchanged
+hash pass; real container read-only preflight gets EPERM, missing legacy path ENOENT.
+These imposed restrictions are not a measurement of the host's inherited TCC grants
+and intentionally block brokers, so cannot establish universal unavailability.
+
+Runtime protocol confirms an actual cycler createProfile RPC, but its target
+listener checks com.apple.private.Safari.can-use-cycler before export/resume.
+Independently validate the exact loaded constant. Reviewed sync-agent protocol and
+settings gateway have no declared create-profile method. Import-service listener
+also checks an entitlement. Sandbox broker gives unentitled callers a restricted
+object, not full access; no creation method found. App Intent profile selection,
+public extension profile IDs, installed scripting/scheme/document surfaces and
+internal-install-gated test arguments yield no demonstrated unattended creation
+contract. Inventories/string searches are not exhaustive absence proofs. Do not
+run destructive cycler operations, claim private entitlements or copy scratch DBs
+into Safari. A narrower directory grant remains a separate untested user-setup
+candidate, not zero-permission creation; manual Safari setup fails this requirement.
+
+Retain failed guard/code-0-NSError attempts and all source/binary/policy logs. First
+inspect failure is an ENOENT classification error; first fixture failure is the
+getter wrapping SQLITE_OK in NSError. Diagnose both before corrected runs. Tools,
+compact evidence and detailed report: tools/safari-profile-lab/. Native warnings-
+as-errors build, read-only inspection and final fixture/independent verifier pass;
+unit tests 1,031 pass. Full E2E attempted/bounded at 15 seconds after missing pinned
+WebKit 2388, no browser download/full pass, app install or PR. Further work requires
+an actual authorized creation endpoint plus fresh-user and Safari acceptance.

@@ -1,5 +1,29 @@
 # Testing Margin
 
+## Safari profile creation without three permissions (2026-11-16)
+
+- [x] Confined native WebBookmarks probe on macOS 26.7.3/25G342, Safari 27.2:
+  append a profile to an owned debug database; verify callback/native readback and
+  independently verify persisted identifiers/title/symbol and SQLite integrity.
+  Real Safari directories, Apple Events and selected AX/browser/TCC/cloud brokers
+  denied. The final fixture also denies preferences/distributed-notification brokers.
+- [x] Read-only runtime method/protocol inspection and exact loaded cycler
+  entitlement literal corroborate selected static creation/authorization traces.
+- [ ] Demonstrate a legitimate ordinary-client operation that creates a **real**
+  Safari profile fully automatically without FDA, Automation or Accessibility.
+- [ ] If a viable candidate is established, verify in Safari under a fresh user:
+  persistence/relaunch, actual data isolation, extensions and existing-profile/iCloud
+  integrity. No Safari launch or live profile write occurred in this pass.
+- [ ] Optional separate experiment: determine whether a user-selected directory
+  grant can reach the protected store. This is unverified and requires user setup.
+
+This is native API/fixture validation, not a fresh-user TCC test or Safari acceptance.
+See [report](tools/safari-profile-lab/research.md) and
+[reproduction](tools/safari-profile-lab/README.md). Raw source/binaries/policies and
+failed attempts remain under ignored `test-results/safari-profiles-2026-11-16/`.
+Unit tests: 1,031 passed. Full E2E attempted and bounded at 15 seconds after missing
+pinned WebKit 2388 setup errors; no download or full-suite pass. Product unchanged.
+
 ## External protected-app cover (2026-11-16)
 
 - [x] Installed protected Chrome, Edge and TextEdit: sampled composited display pixels conceal the

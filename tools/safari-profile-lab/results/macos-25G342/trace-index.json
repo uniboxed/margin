@@ -1,0 +1,211 @@
+[
+  {
+    "file": "safari-disassembly.txt",
+    "heading": "-[BrowserDataImportingServiceListenerDelegate listener:shouldAcceptNewConnection:]",
+    "line": 438485,
+    "address": "0x1B868920C",
+    "selectedCallsites": [
+      "0x1B868923C   bl       \"_objc_msgSend$valueForEntitlement:\" ",
+      "0x1B868924C   bl       _objc_msgSend$boolValue ",
+      "0x1B8689278   bl       \"_objc_msgSend$setExportedInterface:\" ",
+      "0x1B868929C   bl       \"_objc_msgSend$setExportedObject:\" ",
+      "0x1B86892A4   bl       _objc_msgSend$resume "
+    ]
+  },
+  {
+    "file": "safari-disassembly.txt",
+    "heading": "-[CreateProfilePreferencesViewController createButtonClicked:]",
+    "line": 778213,
+    "address": "0x1B87CF3B4",
+    "selectedCallsites": [
+      "0x1B87CF3D4   bl       _objc_msgSend$_createNewFavoritesFolderAndUpdateServerIDIfNeeded ",
+      "0x1B87CF3E0   bl       _objc_msgSend$sharedAppController ",
+      "0x1B87CF3F0   bl       _objc_msgSend$tabGroupManager ",
+      "0x1B87CF430   bl       \"_objc_msgSend$initWithTitle:symbolImageName:favoritesFolderServerID:\" ",
+      "0x1B87CF43C   bl       _objc_msgSend$hasMultipleProfiles ",
+      "0x1B87CF4BC   bl       \"_objc_msgSend$appendProfile:completionHandler:\" "
+    ]
+  },
+  {
+    "file": "safari-disassembly.txt",
+    "heading": "-[DebugUtilities _parseArgumentsForTestingIfNeeded:atIndex:]",
+    "line": 804544,
+    "address": "0x1B87E87A8",
+    "selectedCallsites": [
+      "0x1B87E87E8   bl       _objc_msgSend$isInternalInstall ",
+      "0x1B87E87F4   bl       _objc_msgSend$count  ",
+      "0x1B87E880C   bl       \"_objc_msgSend$objectAtIndexedSubscript:\" ",
+      "0x1B87E8824   bl       \"_objc_msgSend$isEqualToString:\" ",
+      "0x1B87E8838   bl       \"_objc_msgSend$isEqualToString:\" ",
+      "0x1B87E884C   bl       \"_objc_msgSend$isEqualToString:\" ",
+      "0x1B87E8860   bl       \"_objc_msgSend$isEqualToString:\" ",
+      "0x1B87E889C   bl       \"_objc_msgSend$objectAtIndex:\" ",
+      "0x1B87E88B4   bl       \"_objc_msgSend$isEqualToString:\" ",
+      "0x1B87E88D0   bl       \"_objc_msgSend$objectAtIndex:\" ",
+      "0x1B87E88E8   bl       \"_objc_msgSend$objectAtIndex:\" ",
+      "0x1B87E8900   bl       _objc_msgSend$string ",
+      "0x1B87E891C   bl       \"_objc_msgSend$indexOfObject:\" ",
+      "0x1B87E893C   bl       \"_objc_msgSend$objectAtIndexedSubscript:\" ",
+      "0x1B87E896C   bl       \"_objc_msgSend$arrayWithObjects:\" ",
+      "0x1B87E89E4   bl       \"_objc_msgSend$_performBlockAfterApplicationHasFinishLaunching:\" "
+    ]
+  },
+  {
+    "file": "bookmarks-disassembly.txt",
+    "heading": "+[WebBookmarkDebugSafariTabCollection safariDirectoryPath]",
+    "line": 36123,
+    "address": "0x27C50E76C",
+    "selectedCallsites": [
+      "0x27C50E788   bl       _objc_msgSend$defaultManager ",
+      "0x27C50E798   bl       _objc_msgSend$safari_productionSafariContainerSettingsDirectory ",
+      "0x27C50E7A8   bl       _objc_msgSend$filePathURL ",
+      "0x27C50E7B8   bl       _objc_msgSend$path   "
+    ]
+  },
+  {
+    "file": "bookmarks-disassembly.txt",
+    "heading": "-[WebBookmarkCollection _errorForMostRecentSQLiteErrorWithErrorCode:]",
+    "line": 69926,
+    "address": "0x27C52ECA8",
+    "selectedCallsites": [
+      "0x27C52ECEC   bl       \"_objc_msgSend$stringWithUTF8String:\" ",
+      "0x27C52ED30   bl       \"_objc_msgSend$dictionaryWithObjects:forKeys:count:\" ",
+      "0x27C52ED5C   bl       \"_objc_msgSend$initWithDomain:code:userInfo:\" "
+    ]
+  },
+  {
+    "file": "bookmarks-disassembly.txt",
+    "heading": "-[WBTabCollection initWithConfiguration:openDatabase:checkIntegrity:]",
+    "line": 104010,
+    "address": "0x27C54F880",
+    "selectedCallsites": [
+      "0x27C54F8B8   bl       _objc_msgSend$collectionType ",
+      "0x27C54F8F4   bl       _objc_msgSend$copy   ",
+      "0x27C54F910   bl       _objc_msgSend$maximumTabsPerTabGroup ",
+      "0x27C54F920   bl       _objc_msgSend$_createDatabaseQueue ",
+      "0x27C54F938   bl       \"_objc_msgSend$_collectionWithConfiguration:checkIntegrity:\" ",
+      "0x27C54F95C   bl       _objc_msgSend$_commonInit "
+    ]
+  },
+  {
+    "file": "bookmarks-disassembly.txt",
+    "heading": "+[WBCollectionConfiguration debugTabCollectionConfiguration]",
+    "line": 131818,
+    "address": "0x27C56A39C",
+    "selectedCallsites": [
+      "0x27C56A3AC   bl       _objc_msgSend$safariTabCollectionConfiguration ",
+      "0x27C56A3C0   bl       \"_objc_msgSend$setStoreOwner:\" ",
+      "0x27C56A3CC   bl       _objc_msgSend$currentDevice ",
+      "0x27C56A3E4   bl       \"_objc_msgSend$setDevice:\" "
+    ]
+  },
+  {
+    "file": "bookmarks-disassembly.txt",
+    "heading": "-[WBTabGroupManager appendProfile:completionHandler:]",
+    "line": 156994,
+    "address": "0x27C5823DC",
+    "selectedCallsites": [
+      "0x27C582448   bl       _objc_msgSend$mutableCopy ",
+      "0x27C582454   bl       _objc_msgSend$_profiles ",
+      "0x27C582464   bl       _objc_msgSend$lastObject ",
+      "0x27C582480   bl       \"_objc_msgSend$_generatePositionForProfile:afterProfile:\" ",
+      "0x27C582498   bl       \"_objc_msgSend$setSyncPosition:\" ",
+      "0x27C5824BC   bl       _objc_msgSend$identifier ",
+      "0x27C5824D8   bl       \"_objc_msgSend$setObject:forKeyedSubscript:\" ",
+      "0x27C5824F4   bl       _objc_msgSend$serverID ",
+      "0x27C58250C   bl       _objc_msgSend$identifier ",
+      "0x27C582528   bl       \"_objc_msgSend$ensureProfileDirectoriesExistForProfileWithServerID:profileIdentifier:\" ",
+      "0x27C582550   bl       _objc_msgSend$copy   ",
+      "0x27C582564   bl       \"_objc_msgSend$countByEnumeratingWithState:objects:count:\" ",
+      "0x27C5825B8   bl       _objc_msgSend$identifier ",
+      "0x27C5825D4   bl       \"_objc_msgSend$tabGroupManager:didInsertProfileWithIdentifier:\" ",
+      "0x27C5825FC   bl       \"_objc_msgSend$countByEnumeratingWithState:objects:count:\" ",
+      "0x27C582620   bl       _objc_msgSend$copy   ",
+      "0x27C582634   bl       \"_objc_msgSend$countByEnumeratingWithState:objects:count:\" ",
+      "0x27C58268C   bl       \"_objc_msgSend$tabGroupManagerDidUpdateProfiles:\" ",
+      "0x27C5826AC   bl       \"_objc_msgSend$countByEnumeratingWithState:objects:count:\" ",
+      "0x27C5826D8   bl       \"_objc_msgSend$arrayWithObjects:count:\" ",
+      "0x27C582764   bl       \"_objc_msgSend$insertItemsIntoPlace:inParentWithID:completionHandler:\" "
+    ]
+  },
+  {
+    "file": "bookmarks-disassembly.txt",
+    "heading": "___53-[WBTabGroupManager appendProfile:completionHandler:]_block_invoke_2",
+    "line": 157322,
+    "address": "0x27C5828F4",
+    "selectedCallsites": [
+      "0x27C582920   bl       _objc_msgSend$copy   "
+    ]
+  },
+  {
+    "file": "shared-disassembly.txt",
+    "heading": "-[WBSCyclerConnectionManager listener:shouldAcceptNewConnection:]",
+    "line": 121122,
+    "address": "0x1AD6E7A20",
+    "selectedCallsites": [
+      "0x1AD6E7AAC   bl       \"_objc_msgSend$valueForEntitlement:\" ",
+      "0x1AD6E7ABC   bl       _objc_msgSend$boolValue ",
+      "0x1AD6E7AE0   bl       \"_objc_msgSend$interfaceWithProtocol:\" ",
+      "0x1AD6E7AF8   bl       \"_objc_msgSend$setExportedInterface:\" ",
+      "0x1AD6E7B0C   bl       \"_objc_msgSend$setExportedObject:\" ",
+      "0x1AD6E7B14   bl       _objc_msgSend$resume "
+    ]
+  },
+  {
+    "file": "shared-disassembly.txt",
+    "heading": "-[WBSCyclerCreateProfileOperation _createRandomProfileWithContext:completionHandler:]",
+    "line": 121798,
+    "address": "0x1AD6E8484",
+    "selectedCallsites": [
+      "0x1AD6E84D0   bl       _objc_msgSend$randomItemTitle ",
+      "0x1AD6E84E4   bl       _objc_msgSend$topLevelItem ",
+      "0x1AD6E84F4   bl       _objc_msgSend$numberOfChildren ",
+      "0x1AD6E855C   bl       _objc_msgSend$testTarget ",
+      "0x1AD6E8570   bl       _objc_msgSend$topLevelItem ",
+      "0x1AD6E8580   bl       _objc_msgSend$uniqueIdentifier ",
+      "0x1AD6E8614   bl       \"_objc_msgSend$createProfileWithTitle:symbolName:inListWithIdentifier:reply:\" "
+    ]
+  },
+  {
+    "file": "shared-disassembly.txt",
+    "heading": "-[WBSProfileDataManager ensureProfileDirectoriesExistForProfileWithServerID:profileIdentifier:]",
+    "line": 365064,
+    "address": "0x1AD7D17BC",
+    "selectedCallsites": [
+      "0x1AD7D17F0   bl       _objc_msgSend$defaultManager ",
+      "0x1AD7D1808   bl       \"_objc_msgSend$safari_profileDirectoryURLWithID:createIfNeeded:\" ",
+      "0x1AD7D1820   bl       _objc_msgSend$defaultManager ",
+      "0x1AD7D1838   bl       \"_objc_msgSend$safari_profileDirectoryURLWithID:createIfNeeded:\" "
+    ]
+  },
+  {
+    "file": "sandboxbroker-disassembly.txt",
+    "heading": "-[SafariSandboxBrokerServiceDelegate listener:shouldAcceptNewConnection:]",
+    "line": 62,
+    "address": "0x100000F1B",
+    "selectedCallsites": [
+      "0x100001056   leaq     0x1fa3(%rip), %rdx   ; @\"com.apple.private.safari.can-use-sandbox-broker\""
+    ]
+  },
+  {
+    "file": "sandboxbroker-disassembly.txt",
+    "heading": "-[SafariSandboxBrokerServiceDelegate listener:shouldAcceptNewConnection:]",
+    "line": 521,
+    "address": "0x100001018",
+    "selectedCallsites": [
+      "0x100001078   bl       _objc_msgSend$processIdentifier ",
+      "0x1000010CC   bl       \"_objc_msgSend$setExportedInterface:\" ",
+      "0x1000010E4   bl       _objc_msgSend$processIdentifier ",
+      "0x1000010F8   bl       _objc_msgSend$auditToken ",
+      "0x100001114   bl       \"_objc_msgSend$makeSharedSandboxBrokerWithPID:auditToken:\" ",
+      "0x100001124   add      x2, x2, #0x0         ; @\"com.apple.private.safari.can-use-sandbox-broker\"",
+      "0x10000112C   bl       \"_objc_msgSend$valueForEntitlement:\" ",
+      "0x100001138   bl       _objc_msgSend$boolValue ",
+      "0x100001154   bl       \"_objc_msgSend$setExportedObject:\" ",
+      "0x100001180   bl       _objc_msgSend$processIdentifier ",
+      "0x1000011D0   bl       \"_objc_msgSend$initWithSandboxBroker:\" ",
+      "0x1000011E0   bl       \"_objc_msgSend$setExportedObject:\" ",
+      "0x1000011F0   bl       _objc_msgSend$resume "
+    ]
+  }
+]

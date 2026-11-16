@@ -1,0 +1,438 @@
+{
+  "test-results/safari-profiles-2026-11-16/e2e.log": {
+    "bytes": 46892,
+    "sha256": "7d55c4e84694ad6a756a536d37540bff3faf913c8d049b96d4b47260962f926a"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-1/allowed/.margin-profile-fixture": {
+    "bytes": 33,
+    "sha256": "2bdcf279248cf34d13e628a95ae5fa48f0ad8acefaeeee5890a9c019c6185ff4"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-1/allowed/SafariTabs.db": {
+    "bytes": 4096,
+    "sha256": "a209ba85773882b79b8147779c406fbb67a12dcb723ba7c4ea7ca3168e651cc8"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-1/allowed/SafariTabs.db-shm": {
+    "bytes": 32768,
+    "sha256": "cbbf434a10d0148215c920b14988e1749bc3f0e9eec9f88501fe40a933782aa9"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-1/allowed/SafariTabs.db-wal": {
+    "bytes": 412032,
+    "sha256": "236452202be2de8ce01f7c2ac2f5ca1d42b60a0bbee2fcbfcd607ea37446eed8"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-1/allowed/probe.jsonl": {
+    "bytes": 1164,
+    "sha256": "c7ef2c2a9b4bfe678473315782c9ae8cd5a797f43fd9c89170e7d1fe397cfdca"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-1/allowed/probe.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-1/forbidden.txt": {
+    "bytes": 35,
+    "sha256": "566a88227d4c4d773f989de08444f57c5c45a586f6bce7af9966a3274a15d15f"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-1/policy.sb": {
+    "bytes": 879,
+    "sha256": "0adb82330f738d6573bff10d6406621557e6043bc92032737fdaeb2ba28d436a"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-1/probe": {
+    "bytes": 73136,
+    "sha256": "7b8b81fb57070969a4015742d28d975c45489de5fd99596c72c39b79a539dcb4"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-1/profile-probe.m": {
+    "bytes": 11302,
+    "sha256": "361d52f381ecd7b385f069c0cf833a54cae8b5ff9d4111789df962d2441fecf4"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-1/result.json": {
+    "bytes": 280,
+    "sha256": "c83d217d0469abb66f3795ef43088317a2a8c4b2d8c8ce2e50f0b5390021cfb9"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-2/allowed/.margin-profile-fixture": {
+    "bytes": 33,
+    "sha256": "2bdcf279248cf34d13e628a95ae5fa48f0ad8acefaeeee5890a9c019c6185ff4"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-2/allowed/SafariTabs.db": {
+    "bytes": 167936,
+    "sha256": "64c64c75d595725427a49585a8e13f455d4b7ce52415b113eff66ce19e41b90a"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-2/allowed/SafariTabs.db-shm": {
+    "bytes": 32768,
+    "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-2/allowed/SafariTabs.db-wal": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-2/allowed/probe.jsonl": {
+    "bytes": 1722,
+    "sha256": "8e563acc02d9bbf5caa10438b46c7d8007920a5041c8858cc5fa7eb555693292"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-2/allowed/probe.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-2/forbidden.txt": {
+    "bytes": 35,
+    "sha256": "566a88227d4c4d773f989de08444f57c5c45a586f6bce7af9966a3274a15d15f"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-2/policy.sb": {
+    "bytes": 879,
+    "sha256": "73bf134f0690e4a9eee10af30d002e089c8d3c0db06e33c2ac5a6288925827a1"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-2/probe": {
+    "bytes": 73144,
+    "sha256": "c09c5d836ab3954635a5daebb9041a5f99a667ff940acef9c73cd8fd57a97e7b"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-2/profile-probe.m": {
+    "bytes": 11581,
+    "sha256": "a1841cbb4ef3761a46eec33f65caa9643b2b7250dc1e7541cd05485a1c6f8a04"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-2/result.json": {
+    "bytes": 280,
+    "sha256": "bcc4e0de875ead59abc3ec78fb0f4fab25cc3d466e4cbe88e9a59be3aeb7c5f2"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/allowed/.margin-profile-fixture": {
+    "bytes": 33,
+    "sha256": "2bdcf279248cf34d13e628a95ae5fa48f0ad8acefaeeee5890a9c019c6185ff4"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/allowed/SafariTabs.db": {
+    "bytes": 167936,
+    "sha256": "61cec05f5908a95de8d2a42bbcbd4b63d0e8ff987b044bad8f4f300472bc7108"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/allowed/SafariTabs.db-shm": {
+    "bytes": 32768,
+    "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/allowed/SafariTabs.db-wal": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/allowed/probe.jsonl": {
+    "bytes": 1722,
+    "sha256": "f4a711a871d3e375772fac95c5f15d9a6095f936f3a0628f29212cd96523a586"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/allowed/probe.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/forbidden.txt": {
+    "bytes": 35,
+    "sha256": "566a88227d4c4d773f989de08444f57c5c45a586f6bce7af9966a3274a15d15f"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/policy.sb": {
+    "bytes": 914,
+    "sha256": "e4df6f2ed79d398045cf40f9da687b025a6709d2c09576888b3eda939136b518"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/probe": {
+    "bytes": 73808,
+    "sha256": "7cf04cf03646ce282be7296969ed6c9ab5d2a85ca68e6e605d345ce381c77e25"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/profile-probe.m": {
+    "bytes": 14384,
+    "sha256": "6f2a52101a3d3787f891567252f1c2dc3cf02677d0184689b87aa5ad5e1806bd"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/result.json": {
+    "bytes": 280,
+    "sha256": "5df6e46ec33c33d37a2b1d77178f53dd21174bcb3c7251d7e7f71f95cad5a5d3"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/run-probe.py": {
+    "bytes": 3167,
+    "sha256": "446966a2af5b9e702713189282ea5b91d81741746b6238551e2270bde5df2ce6"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3/sqlite-verification.json": {
+    "bytes": 224,
+    "sha256": "b440819e2d81be57c58c6b9d14c110221f2e2efde1030bfb267e29a94bca531a"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-3-dry.jsonl": {
+    "bytes": 250,
+    "sha256": "ca7d7459879c558c9e9ee75a14af815f9202915dad46cdcbfb4f8975c4138373"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-build.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-checked-build.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-checked-dry.jsonl": {
+    "bytes": 373,
+    "sha256": "cfdc54265cee1c47c10cf08aac6bebd32fd80467e0f3eb64c63a64066f074dc1"
+  },
+  "test-results/safari-profiles-2026-11-16/fixture-dry.jsonl": {
+    "bytes": 373,
+    "sha256": "cfdc54265cee1c47c10cf08aac6bebd32fd80467e0f3eb64c63a64066f074dc1"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-1/allowed/.margin-profile-fixture": {
+    "bytes": 33,
+    "sha256": "2bdcf279248cf34d13e628a95ae5fa48f0ad8acefaeeee5890a9c019c6185ff4"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-1/allowed/probe.jsonl": {
+    "bytes": 71,
+    "sha256": "5ff5fa7d20bf8d630c2ab009e12aa60e14af36d7ec6c1d4ae618bd445aae833e"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-1/allowed/probe.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-1/forbidden.txt": {
+    "bytes": 35,
+    "sha256": "566a88227d4c4d773f989de08444f57c5c45a586f6bce7af9966a3274a15d15f"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-1/policy.sb": {
+    "bytes": 879,
+    "sha256": "54b1be55749489652f7ee7e2a7a67ba2bfd6cbd03055de5a9c493e2a35f6a753"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-1/probe": {
+    "bytes": 53672,
+    "sha256": "1c9f312b711b662e5c26afa6cdb02382ce695b91d2d3b173efa0df61b1063e29"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-1/profile-probe.m": {
+    "bytes": 4874,
+    "sha256": "eb913aacd076b6fc6be45888200b7b405c67171a07bc899a4a12364f38411304"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-1/result.json": {
+    "bytes": 273,
+    "sha256": "dcdefc90347a58bd91d22da32118a8e5f6270d9342feead2e99725e3dde3302b"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-2/allowed/.margin-profile-fixture": {
+    "bytes": 33,
+    "sha256": "2bdcf279248cf34d13e628a95ae5fa48f0ad8acefaeeee5890a9c019c6185ff4"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-2/allowed/probe.jsonl": {
+    "bytes": 21732,
+    "sha256": "5f6e2e1cdc526b9b422e3129807c8707163b754b74d1b58ad137eecee3bc4dec"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-2/allowed/probe.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-2/forbidden.txt": {
+    "bytes": 35,
+    "sha256": "566a88227d4c4d773f989de08444f57c5c45a586f6bce7af9966a3274a15d15f"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-2/policy.sb": {
+    "bytes": 879,
+    "sha256": "375d4befe7ad2e6b0dadb4ba5be32b915b150e2684f0a6a0ccb13bc7aba0f62c"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-2/probe": {
+    "bytes": 53872,
+    "sha256": "8fd2cb3dd6a47cff5f66c0f036a92ade027c8f6cfa2f5e4cb0a3b8d66b0bfef4"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-2/profile-probe.m": {
+    "bytes": 5370,
+    "sha256": "b48df1e88a660d30f0f6a517afbaef64ae39e87fa43f14d28d13d15f4a1ca6b7"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-2/result.json": {
+    "bytes": 273,
+    "sha256": "831bfcab649be0b9d490c8c52755252b5826251f2015a549e0b15c9a2edc612a"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-3/allowed/.margin-profile-fixture": {
+    "bytes": 33,
+    "sha256": "2bdcf279248cf34d13e628a95ae5fa48f0ad8acefaeeee5890a9c019c6185ff4"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-3/allowed/probe.jsonl": {
+    "bytes": 32789,
+    "sha256": "19d69c826dd5c998bbe72df15ca05f429ba91eb96cab975f4690f640582c95d0"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-3/allowed/probe.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-3/forbidden.txt": {
+    "bytes": 35,
+    "sha256": "566a88227d4c4d773f989de08444f57c5c45a586f6bce7af9966a3274a15d15f"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-3/policy.sb": {
+    "bytes": 879,
+    "sha256": "8e458654cdffc3241a1d86cebfb68ac602b4d55263bd941d683c961ccc4a7a42"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-3/probe": {
+    "bytes": 73808,
+    "sha256": "7cf04cf03646ce282be7296969ed6c9ab5d2a85ca68e6e605d345ce381c77e25"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-3/profile-probe.m": {
+    "bytes": 14384,
+    "sha256": "6f2a52101a3d3787f891567252f1c2dc3cf02677d0184689b87aa5ad5e1806bd"
+  },
+  "test-results/safari-profiles-2026-11-16/inspect-3/result.json": {
+    "bytes": 273,
+    "sha256": "63a9c00998992fdd5ebb0839be1f9b626dac8c4985194216b0f53a0ee5ccbb3f"
+  },
+  "test-results/safari-profiles-2026-11-16/probe-checked-dry.jsonl": {
+    "bytes": 247,
+    "sha256": "223ad68ed65ab27319f4984dfcc97a5467aa1094821662a518d0e8117156039c"
+  },
+  "test-results/safari-profiles-2026-11-16/probe-dry.jsonl": {
+    "bytes": 247,
+    "sha256": "223ad68ed65ab27319f4984dfcc97a5467aa1094821662a518d0e8117156039c"
+  },
+  "test-results/safari-profiles-2026-11-16/repository-tests.json": {
+    "bytes": 182,
+    "sha256": "0a2eb3b16844b7619c7053dcc6f40b977fc6237fe91ddab5162da7e0672aed38"
+  },
+  "test-results/safari-profiles-2026-11-16/runner-dry.jsonl": {
+    "bytes": 250,
+    "sha256": "ca7d7459879c558c9e9ee75a14af815f9202915dad46cdcbfb4f8975c4138373"
+  },
+  "test-results/safari-profiles-2026-11-16/surfaces-build.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-16/surfaces-dry.jsonl": {
+    "bytes": 373,
+    "sha256": "cfdc54265cee1c47c10cf08aac6bebd32fd80467e0f3eb64c63a64066f074dc1"
+  },
+  "test-results/safari-profiles-2026-11-16/unit.log": {
+    "bytes": 126462,
+    "sha256": "4bf41d508e003ae463f66ae12aeb40680c52e0713e8a7d263c9599033cc28843"
+  },
+  "/tmp/margin-safari-profile-research/-_CreateProfilePreferencesViewController_createButtonClicked__.txt": {
+    "bytes": 5324,
+    "sha256": "1a5ec90894130b90378008b017ca06866547ad282affb43cde5029ce82b2de96"
+  },
+  "/tmp/margin-safari-profile-research/-_DebugUtilities__parseArgumentsForTestingIfNeeded_atIndex__.txt": {
+    "bytes": 9868,
+    "sha256": "2e3d7734aaae7f2ce9e214dfa5888182630892278c28b97569cd6ff36b314b87"
+  },
+  "/tmp/margin-safari-profile-research/-_ProfilesPreferences__createProfilePresentingViewController_.txt": {
+    "bytes": 7864,
+    "sha256": "c581043c7e85cabe8bd18d6aaa8893b95282e640479c955bf9719aecf8962793"
+  },
+  "/tmp/margin-safari-profile-research/-_WBSCyclerConnectionManager_listener_shouldAcceptNewConnection__.txt": {
+    "bytes": 4294,
+    "sha256": "90282f2bef781a930dd26ee372ebae6198b73f2fe43abf62c550691edc1c74f0"
+  },
+  "/tmp/margin-safari-profile-research/-_WBSCyclerCreateProfileOperation__createRandomProfileWithContext_completionHandler__.txt": {
+    "bytes": 6654,
+    "sha256": "b490a16b55825cb1190acc1f88804ed0cb99b8b72d8b1f042c76a8849278d4ef"
+  },
+  "/tmp/margin-safari-profile-research/-_WBTabCollection_initWithConfiguration_openDatabase_checkIntegrity__.txt": {
+    "bytes": 4514,
+    "sha256": "0d0dbe9e12bb464e2f0c8093a0fb934ccb979b49ba9adb0367bc56416aec9eed"
+  },
+  "/tmp/margin-safari-profile-research/-_WBTabGroupManager_appendProfile_completionHandler__.txt": {
+    "bytes": 13524,
+    "sha256": "0950c485a98669a032e6b63cd231bbbc878807759dc3624abc220d8d9564a2b2"
+  },
+  "/tmp/margin-safari-profile-research/-_WebBookmarkTabCollection_initWithConfiguration_checkIntegrity__.txt": {
+    "bytes": 761,
+    "sha256": "e5a3e4c0aaeddb23592c563d1516eae50ad74a0c066ef312b7153d57fe2d153b"
+  },
+  "/tmp/margin-safari-profile-research/-_WebContentLayoutAnalyzerController__invokeMethod_withArguments__.txt": {
+    "bytes": 3538,
+    "sha256": "2dcf7e5cbe46a4005fd3f03e0364abd716c625d123e571a4c28257cffe3bc71a"
+  },
+  "/tmp/margin-safari-profile-research/__WBTabCollection_databasePathForConfiguration__.txt": {
+    "bytes": 860,
+    "sha256": "2cfdb8dcb3ac524545c0c68e256b806d4d760d2f024130a2832b0e36f9d60954"
+  },
+  "/tmp/margin-safari-profile-research/___53-_WBTabGroupManager_appendProfile_completionHandler___block_invoke.txt": {
+    "bytes": 3895,
+    "sha256": "659825e23c25388a874cba88f24dfef0afd044cc54ba916772b3df77cd2aa889"
+  },
+  "/tmp/margin-safari-profile-research/___53-_WBTabGroupManager_appendProfile_completionHandler___block_invoke_2.txt": {
+    "bytes": 1836,
+    "sha256": "f0ce545d0b9ef779acf6ecc4648f9e6e642eff6d827366733de7882de0bd643f"
+  },
+  "/tmp/margin-safari-profile-research/___53-_WBTabGroupManager_appendProfile_completionHandler___block_invoke_3.txt": {
+    "bytes": 3725,
+    "sha256": "c255ca22e02f9dc01c932d4d6c681efca2bf7c8556d0bb11de96729974c74c54"
+  },
+  "/tmp/margin-safari-profile-research/bookmarks-cstrings.txt": {
+    "bytes": 76884,
+    "sha256": "c52f7f27acdb220f7ddc4d2555c17fd3183c03e22d4e4eeacb71a874ca9481ec"
+  },
+  "/tmp/margin-safari-profile-research/bookmarks-disassembly.txt": {
+    "bytes": 10593994,
+    "sha256": "904c7e6dbd61fe710a6418e6564f9f4e4bfb4c87a52df4c82e7d2040d4acc43a"
+  },
+  "/tmp/margin-safari-profile-research/bookmarks-exports.txt": {
+    "bytes": 18775,
+    "sha256": "c664aff92a0d0bb233cbfc8f4699cda931accf08bda299e82bf6409c1db8e48d"
+  },
+  "/tmp/margin-safari-profile-research/core-cstrings.txt": {
+    "bytes": 134375,
+    "sha256": "a93cb2a938c768767a0d7386eef2f43ed140dbce84d7afd5c42fa29af0d88414"
+  },
+  "/tmp/margin-safari-profile-research/core-objc.txt": {
+    "bytes": 165,
+    "sha256": "68e375f1f52c2277f65180eb8e192262da95a3a6a7c96caf483f1078e080b07b"
+  },
+  "/tmp/margin-safari-profile-research/import-disassembly.txt": {
+    "bytes": 1476,
+    "sha256": "58e46ce0ffdae16c2d813788f5fed1925798c64fa29d6e55c03342773695d46f"
+  },
+  "/tmp/margin-safari-profile-research/safari-cstrings.txt": {
+    "bytes": 377341,
+    "sha256": "e0fe5af7dee3975f345ddad3315267f1c4c34adcdb0db8bf5533d10bf7d4eb38"
+  },
+  "/tmp/margin-safari-profile-research/safari-disassembly.txt": {
+    "bytes": 105490050,
+    "sha256": "4da6c479ca661c7d26065245940caafd16d3c1657e1003ac66be3260dafd53b7"
+  },
+  "/tmp/margin-safari-profile-research/safari-exports.txt": {
+    "bytes": 117903,
+    "sha256": "79fccdf29f4a8df10f1ece634381ec6270cd3b80f2b1b089400f057b2122f0a4"
+  },
+  "/tmp/margin-safari-profile-research/safari-objc.txt": {
+    "bytes": 157,
+    "sha256": "80463e6d079842ea92ef0c61e7db2a46fe7600262eca05a61149fe31d5a56884"
+  },
+  "/tmp/margin-safari-profile-research/sandboxbroker-disassembly.txt": {
+    "bytes": 55718,
+    "sha256": "d7624d7779b5c7370bcb5a48a02c3361865a52a082191e69b3a52d8567a96f2f"
+  },
+  "/tmp/margin-safari-profile-research/shared-cfstrings-auth.txt": {
+    "bytes": 417623,
+    "sha256": "7c8f4ec950469510772a692ec0f6d2e36e8746ed06fcca1609d261c0399b562e"
+  },
+  "/tmp/margin-safari-profile-research/shared-cfstrings.txt": {
+    "bytes": 80,
+    "sha256": "c8557c2106190563be278867f1647501089e290955a5bb95441639123d55939b"
+  },
+  "/tmp/margin-safari-profile-research/shared-cstrings.txt": {
+    "bytes": 178807,
+    "sha256": "43aa7935759b263e679bb7bf87d93190d2b9f4a1cad00b9465bdd17e1eeacd85"
+  },
+  "/tmp/margin-safari-profile-research/shared-disassembly.txt": {
+    "bytes": 27118046,
+    "sha256": "f56ff81dd6321ba495e49e2617958292ac7f49fdb54ea34e60402e318e4a028a"
+  },
+  "/tmp/margin-safari-profile-research/shared-exports.txt": {
+    "bytes": 159769,
+    "sha256": "e24714c1319b856bef472b3a97852557bbd2bca5ac8f0602ff793f683d650d31"
+  },
+  "/tmp/margin-safari-profile-research/shared-objc.txt": {
+    "bytes": 169,
+    "sha256": "b548deb62e28075936444ad3641e577a9a5fb8a2cfd61942ce3ac7a83685193c"
+  },
+  "/tmp/margin-safari-profile-research/swift-cstrings.txt": {
+    "bytes": 6619,
+    "sha256": "3edba4c6ca669bff495a25795d2d83f02ba921b4bb9ce268701f5b5835875dba"
+  },
+  "/tmp/margin-safari-profile-research/swift-exports.txt": {
+    "bytes": 5103,
+    "sha256": "0cbbba01fea2c6c8b9ceb6f9996c160a09e7e01479943c21953b7d75e59fb7a8"
+  },
+  "tools/safari-profile-lab/README.md": {
+    "bytes": 2978,
+    "sha256": "dc05dbbbf0b047f2b4d8461afc50ec2a4f0fe67c9571b907566515b406104068"
+  },
+  "tools/safari-profile-lab/profile-probe.m": {
+    "bytes": 14384,
+    "sha256": "6f2a52101a3d3787f891567252f1c2dc3cf02677d0184689b87aa5ad5e1806bd"
+  },
+  "tools/safari-profile-lab/research.md": {
+    "bytes": 12385,
+    "sha256": "fdbeca362c774b48a8763632248cda4e66e2f8632eca1661ad13a7e03ef5062c"
+  },
+  "tools/safari-profile-lab/run-probe.py": {
+    "bytes": 3167,
+    "sha256": "446966a2af5b9e702713189282ea5b91d81741746b6238551e2270bde5df2ce6"
+  },
+  "tools/safari-profile-lab/verify-fixture.py": {
+    "bytes": 2372,
+    "sha256": "150a33f97eeb36a99bc0f99e22deba1918c2af15230ef4c2a855da1f72153047"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "date": "2026-11-16",
+  "environment": {
+    "macOS": "26.7.3",
+    "build": "25G342",
+    "architecture": "arm64",
+    "Safari": "27.2",
+    "SafariBundleVersion": "21625.2.8.18.4"
+  },
+  "requirement": "Fully automatic creation of real Safari profiles without FDA, Automation or AX",
+  "requirementSatisfied": false,
+  "realSafariLaunched": false,
+  "liveSafariProfileWritesAttempted": false,
+  "permissionModel": "Explicit seatbelt denials; not fresh-user TCC state measurement",
+  "finalFixture": {
+    "integrity": "ok",
+    "activeProfileRows": 2,
+    "nativeIdentifiersMatchDisk": true,
+    "newTitleAndSymbolMatchDisk": true,
+    "canaryUnchanged": true,
+    "liveSafariFilesOpened": false,
+    "realSafariProfileCreated": false
+  },
+  "runtimeSurfaceRows": 253,
+  "experiments": [
+    {
+      "run": "inspect-1",
+      "exit": 2,
+      "canaryUnchanged": true,
+      "mode": "inspect",
+      "scope": "seatbelt confinement, not a measurement of inherited host TCC grants"
+    },
+    {
+      "run": "inspect-2",
+      "exit": 0,
+      "canaryUnchanged": true,
+      "mode": "inspect",
+      "scope": "seatbelt confinement, not a measurement of inherited host TCC grants"
+    },
+    {
+      "run": "inspect-3",
+      "exit": 0,
+      "canaryUnchanged": true,
+      "mode": "inspect",
+      "scope": "seatbelt confinement, not a measurement of inherited host TCC grants"
+    },
+    {
+      "run": "fixture-1",
+      "exit": 2,
+      "canaryUnchanged": true,
+      "mode": "fixture-create",
+      "scope": "seatbelt confinement, not a measurement of inherited host TCC grants"
+    },
+    {
+      "run": "fixture-2",
+      "exit": 0,
+      "canaryUnchanged": true,
+      "mode": "fixture-create",
+      "scope": "seatbelt confinement, not a measurement of inherited host TCC grants"
+    },
+    {
+      "run": "fixture-3",
+      "exit": 0,
+      "canaryUnchanged": true,
+      "mode": "fixture-create",
+      "scope": "seatbelt confinement, not a measurement of inherited host TCC grants"
+    }
+  ],
+  "repositoryTests": [
+    {
+      "name": "unit",
+      "exit": 0,
+      "bounded": false,
+      "limitSeconds": 120
+    },
+    {
+      "name": "e2e",
+      "exit": -15,
+      "bounded": true,
+      "limitSeconds": 15
+    }
+  ],
+  "e2eLimitation": "Missing pinned WebKit 2388; bounded at 15 seconds; no complete pass/no browser download",
+  "rawRoot": "test-results/safari-profiles-2026-11-16/",
+  "discoveryRoot": "/tmp/margin-safari-profile-research/"
+}
