@@ -1,0 +1,303 @@
+__WindowSendRightsGrantOfferedNotification
+0x186EEDF6C   pacibsp
+0x186EEDF70   stp      x26, x25, [sp, #-0x50]!
+0x186EEDF74   stp      x24, x23, [sp, #0x10]
+0x186EEDF78   stp      x22, x21, [sp, #0x20]
+0x186EEDF7C   stp      x20, x19, [sp, #0x30]
+0x186EEDF80   stp      x29, x30, [sp, #0x40]
+0x186EEDF84   add      x29, sp, #0x40
+0x186EEDF88   sub      sp, sp, #0x2e0
+0x186EEDF8C   mov      x19, x0
+0x186EEDF90   adrp     x8, 389865           ; 0x1e61d6000
+0x186EEDF94   ldr      x8, [x8, #0xab0]
+0x186EEDF98   ldr      x8, [x8]
+0x186EEDF9C   stur     x8, [x29, #-0x48]
+0x186EEDFA0   ldr      x9, [x0, #0x58]
+0x186EEDFA4   ldr      x8, [x0, #0x30]
+0x186EEDFA8   ldr      s4, [x0]
+0x186EEDFAC   cbz      x9, 0x186eedfb4
+0x186EEDFB0   ldr      w9, [x9, #0x50]
+0x186EEDFB4   mov.s    v4[1], w9
+0x186EEDFB8   cbz      x8, 0x186eedfc4
+0x186EEDFBC   ldr      w0, [x8, #0x268]
+0x186EEDFC0   b        0x186eedfd0
+0x186EEDFC4   str      q4, [sp]
+0x186EEDFC8   bl       _getpid
+0x186EEDFCC   ldr      q4, [sp]
+0x186EEDFD0   mov.s    v4[2], w0
+0x186EEDFD4   ldr      x0, [x19, #0x70]
+0x186EEDFD8   cbz      x0, 0x186eedff0
+0x186EEDFDC   str      q4, [sp]
+0x186EEDFE0   bl       _CFRetain
+0x186EEDFE4   ldr      q4, [sp]
+0x186EEDFE8   mov      x20, x0
+0x186EEDFEC   b        0x186eedff4
+0x186EEDFF0   mov      x20, #0x0
+0x186EEDFF4   adrp     x8, 749              ; 0x1871da000
+0x186EEDFF8   add      x8, x8, #0x2d8
+0x186EEDFFC   ldp      q0, q1, [x8]
+0x186EEE000   ldr      q2, [x19, #0x30]
+0x186EEE004   stp      q0, q1, [sp, #0x20]
+0x186EEE008   ldp      q0, q3, [x8, #0x20]
+0x186EEE00C   stp      q0, q3, [sp, #0x40]
+0x186EEE010   add      x8, x19, #0x68
+0x186EEE014   ld1.s    { v4 }[3], [x8]
+0x186EEE018   stp      q4, q2, [sp]
+0x186EEE01C   ldp      x8, x2, [x19, #0x40]
+0x186EEE020   str      x8, [sp, #0x20]
+0x186EEE024   mov      x0, #0x0
+0x186EEE028   cbz      x2, 0x186eee034
+0x186EEE02C   mov      x1, #0x0
+0x186EEE030   bl       _CFArrayCreateMutableCopy
+0x186EEE034   str      x0, [sp, #0x28]
+0x186EEE038   ldr      x2, [x19, #0x50]
+0x186EEE03C   cbz      x2, 0x186eee050
+0x186EEE040   mov      x0, #0x0
+0x186EEE044   mov      x1, #0x0
+0x186EEE048   bl       _CFArrayCreateMutableCopy
+0x186EEE04C   b        0x186eee054
+0x186EEE050   mov      x0, #0x0
+0x186EEE054   ldr      x8, [x19, #0x58]
+0x186EEE058   stp      x0, x8, [sp, #0x30]
+0x186EEE05C   ldr      d0, [x19, #0x60]
+0x186EEE060   str      d0, [sp, #0x40]
+0x186EEE064   ldr      w8, [x19, #0x68]
+0x186EEE068   str      w8, [sp, #0x48]
+0x186EEE06C   ldr      x0, [x19, #0x70]
+0x186EEE070   cbz      x0, 0x186eee078
+0x186EEE074   bl       _CFRetain
+0x186EEE078   str      x0, [sp, #0x50]
+0x186EEE07C   ldr      d0, [x19, #0x78]
+0x186EEE080   str      d0, [sp, #0x58]
+0x186EEE084   add      x0, sp, #0x10
+0x186EEE088   bl       __RightsRecordApplyGrant
+0x186EEE08C   adrp     x22, 389739          ; 0x1e6159000
+0x186EEE090   ldr      x22, [x22, #0x3d0]
+0x186EEE094   mov      x0, #0x0
+0x186EEE098   mov      x1, #0x0
+0x186EEE09C   mov      x2, x22
+0x186EEE0A0   bl       _CFArrayCreateMutable
+0x186EEE0A4   mov      x21, x0
+0x186EEE0A8   mov      x0, #0x0
+0x186EEE0AC   mov      x1, #0x0
+0x186EEE0B0   mov      x2, x22
+0x186EEE0B4   bl       _CFArrayCreateMutable
+0x186EEE0B8   mov      x22, x0
+0x186EEE0BC   add      x8, sp, #0x98
+0x186EEE0C0   adrp     x16, 389864          ; 0x1e61d6000
+0x186EEE0C4   ldr      x16, [x16, #0xa90]
+0x186EEE0C8   mov      x17, x8
+0x186EEE0CC   movk     x17, #0x6ae1, lsl #48
+0x186EEE0D0   pacda    x16, x17
+0x186EEE0D4   str      x16, [sp, #0x98]
+0x186EEE0D8   adrp     x9, 744              ; 0x1871d6000
+0x186EEE0DC   ldr      d0, [x9, #0x5a8]
+0x186EEE0E0   str      d0, [sp, #0xa0]
+0x186EEE0E4   add      x24, x8, #0x10
+0x186EEE0E8   adrp     x16, 0               ; 0x186eee000
+0x186EEE0EC   add      x16, x16, #0x424     ; ____RightsRecordCreateDescriptionDictionary_block_invoke_2
+0x186EEE0F0   pacia    x16, x24
+0x186EEE0F4   mov      x8, x16
+0x186EEE0F8   adrp     x9, 425449           ; 0x1eecd7000
+0x186EEE0FC   add      x9, x9, #0xe70       ; ___block_descriptor_tmp.61.9008
+0x186EEE100   stp      x16, x9, [sp, #0xa8]
+0x186EEE104   adrp     x9, 425449           ; 0x1eecd7000
+0x186EEE108   add      x9, x9, #0xe50       ; ___block_literal_global.9007
+0x186EEE10C   stp      x9, x21, [sp, #0xb8]
+0x186EEE110   str      x0, [sp, #0xc8]
+0x186EEE114   add      x10, sp, #0x60
+0x186EEE118   adrp     x16, 389864          ; 0x1e61d6000
+0x186EEE11C   ldr      x16, [x16, #0xa90]
+0x186EEE120   mov      x17, x10
+0x186EEE124   movk     x17, #0x6ae1, lsl #48
+0x186EEE128   pacda    x16, x17
+0x186EEE12C   str      x16, [sp, #0x60]
+0x186EEE130   str      d0, [sp, #0x68]
+0x186EEE134   add      x25, x10, #0x10
+0x186EEE138   adrp     x16, 0               ; 0x186eee000
+0x186EEE13C   add      x16, x16, #0x47c     ; ____RightsRecordCreateDescriptionDictionary_block_invoke.62
+0x186EEE140   pacia    x16, x25
+0x186EEE144   adrp     x10, 425449          ; 0x1eecd7000
+0x186EEE148   add      x10, x10, #0xea0     ; ___block_descriptor_tmp.66.9009
+0x186EEE14C   stp      x16, x10, [sp, #0x70]
+0x186EEE150   stp      x9, x21, [sp, #0x80]
+0x186EEE154   str      x0, [sp, #0x90]
+0x186EEE158   ldr      x23, [sp, #0x10]
+0x186EEE15C   cbz      x23, 0x186eee190
+0x186EEE160   adrp     x8, 389740           ; 0x1e615a000
+0x186EEE164   ldr      x8, [x8, #0x360]
+0x186EEE168   ldr      x1, [x8]
+0x186EEE16C   mov      x0, x21
+0x186EEE170   bl       _CFArrayAppendValue
+0x186EEE174   ldr      x0, [sp, #0xb8]
+0x186EEE178   ldr      x1, [sp, #0xc8]
+0x186EEE17C   mov      x8, x0
+0x186EEE180   ldr      x9, [x8, #0x10]!
+0x186EEE184   mov      x2, x23
+0x186EEE188   blraa    x9, x8
+0x186EEE18C   ldr      x8, [sp, #0xa8]
+0x186EEE190   adrp     x9, 389740           ; 0x1e615a000
+0x186EEE194   ldr      x9, [x9, #0x368]
+0x186EEE198   ldr      x1, [x9]
+0x186EEE19C   ldr      x2, [sp, #0x20]
+0x186EEE1A0   add      x0, sp, #0x98
+0x186EEE1A4   blraa    x8, x24
+0x186EEE1A8   adrp     x8, 389740           ; 0x1e615a000
+0x186EEE1AC   ldr      x8, [x8, #0x358]
+0x186EEE1B0   ldr      x1, [x8]
+0x186EEE1B4   ldr      x2, [sp, #0x18]
+0x186EEE1B8   ldr      x8, [sp, #0xa8]
+0x186EEE1BC   add      x0, sp, #0x98
+0x186EEE1C0   blraa    x8, x24
+0x186EEE1C4   adrp     x8, 389740           ; 0x1e615a000
+0x186EEE1C8   ldr      x8, [x8, #0x348]
+0x186EEE1CC   ldr      x1, [x8]
+0x186EEE1D0   ldr      x2, [sp, #0x28]
+0x186EEE1D4   ldr      x8, [sp, #0x70]
+0x186EEE1D8   add      x0, sp, #0x60
+0x186EEE1DC   blraa    x8, x25
+0x186EEE1E0   adrp     x8, 389740           ; 0x1e615a000
+0x186EEE1E4   ldr      x8, [x8, #0x350]
+0x186EEE1E8   ldr      x1, [x8]
+0x186EEE1EC   ldr      x2, [sp, #0x30]
+0x186EEE1F0   ldr      x8, [sp, #0x70]
+0x186EEE1F4   add      x0, sp, #0x60
+0x186EEE1F8   blraa    x8, x25
+0x186EEE1FC   movi.16b v0, #0xaa
+0x186EEE200   stp      q0, q0, [sp, #0x2b0]
+0x186EEE204   stp      q0, q0, [sp, #0x290]
+0x186EEE208   stp      q0, q0, [sp, #0x270]
+0x186EEE20C   stp      q0, q0, [sp, #0x250]
+0x186EEE210   stp      q0, q0, [sp, #0x230]
+0x186EEE214   stp      q0, q0, [sp, #0x210]
+0x186EEE218   stp      q0, q0, [sp, #0x1f0]
+0x186EEE21C   stp      q0, q0, [sp, #0x1d0]
+0x186EEE220   stp      q0, q0, [sp, #0x1b0]
+0x186EEE224   stp      q0, q0, [sp, #0x190]
+0x186EEE228   stp      q0, q0, [sp, #0x170]
+0x186EEE22C   stp      q0, q0, [sp, #0x150]
+0x186EEE230   stp      q0, q0, [sp, #0x130]
+0x186EEE234   stp      q0, q0, [sp, #0x110]
+0x186EEE238   stp      q0, q0, [sp, #0xf0]
+0x186EEE23C   stp      q0, q0, [sp, #0xd0]
+0x186EEE240   mov      x0, x21
+0x186EEE244   bl       _CFArrayGetCount
+0x186EEE248   mov      x23, x0
+0x186EEE24C   mov      x0, x22
+0x186EEE250   bl       _CFArrayGetCount
+0x186EEE254   cmp      x23, x0
+0x186EEE258   csel     x0, x21, x22, lt
+0x186EEE25C   bl       _CFArrayGetCount
+0x186EEE260   mov      x23, x0
+0x186EEE264   add      x3, sp, #0x1d0
+0x186EEE268   mov      x0, x21
+0x186EEE26C   mov      x1, #0x0
+0x186EEE270   mov      x2, x23
+0x186EEE274   bl       _CFArrayGetValues
+0x186EEE278   add      x3, sp, #0xd0
+0x186EEE27C   mov      x0, x22
+0x186EEE280   mov      x1, #0x0
+0x186EEE284   mov      x2, x23
+0x186EEE288   bl       _CFArrayGetValues
+0x186EEE28C   adrp     x24, 389739          ; 0x1e6159000
+0x186EEE290   ldr      x24, [x24, #0x3e8]
+0x186EEE294   adrp     x25, 389739          ; 0x1e6159000
+0x186EEE298   ldr      x25, [x25, #0x3f0]
+0x186EEE29C   add      x1, sp, #0x1d0
+0x186EEE2A0   add      x2, sp, #0xd0
+0x186EEE2A4   mov      x0, #0x0
+0x186EEE2A8   mov      x3, x23
+0x186EEE2AC   mov      x4, x24
+0x186EEE2B0   mov      x5, x25
+0x186EEE2B4   bl       _CFDictionaryCreate
+0x186EEE2B8   mov      x23, x0
+0x186EEE2BC   mov      x0, x21
+0x186EEE2C0   bl       _CFRelease
+0x186EEE2C4   mov      x0, x22
+0x186EEE2C8   bl       _CFRelease
+0x186EEE2CC   add      x0, sp, #0x10
+0x186EEE2D0   bl       _CGXWindowRightsRecordFinalize
+0x186EEE2D4   mov      x0, #0x0
+0x186EEE2D8   mov      x1, #0x0
+0x186EEE2DC   mov      x2, x24
+0x186EEE2E0   mov      x3, x25
+0x186EEE2E4   bl       _CFDictionaryCreateMutable
+0x186EEE2E8   mov      x22, x0
+0x186EEE2EC   cbz      x0, 0x186eee34c
+0x186EEE2F0   cbz      x23, 0x186eee308
+0x186EEE2F4   adrp     x1, 425486           ; 0x1eecfc000
+0x186EEE2F8   add      x1, x1, #0xaf8
+0x186EEE2FC   mov      x0, x22
+0x186EEE300   mov      x2, x23
+0x186EEE304   bl       _CFDictionarySetValue
+0x186EEE308   cbz      x20, 0x186eee320
+0x186EEE30C   adrp     x1, 425486           ; 0x1eecfc000
+0x186EEE310   add      x1, x1, #0xb18
+0x186EEE314   mov      x0, x22
+0x186EEE318   mov      x2, x20
+0x186EEE31C   bl       _CFDictionarySetValue
+0x186EEE320   mov      x0, x22
+0x186EEE324   bl       _CGSPropertyListCreateSerializedData
+0x186EEE328   mov      x21, x0
+0x186EEE32C   mov      x0, x22
+0x186EEE330   bl       _CFRelease
+0x186EEE334   cbz      x21, 0x186eee354
+0x186EEE338   mov      x0, x21
+0x186EEE33C   bl       _CFDataGetLength
+0x186EEE340   mov      x22, x0
+0x186EEE344   mov      w25, #0x0
+0x186EEE348   b        0x186eee35c
+0x186EEE34C   mov      x21, #0x0
+0x186EEE350   b        0x186eee358
+0x186EEE354   mov      x22, #0x0
+0x186EEE358   mov      w25, #0x1
+0x186EEE35C   mov      w8, w22
+0x186EEE360   add      x8, x8, #0x17
+0x186EEE364   mov      x2, #0x77d5
+0x186EEE368   movk     x2, #0xa86a, lsl #16
+0x186EEE36C   movk     x2, #0x40, lsl #32
+0x186EEE370   movk     x2, #0x100, lsl #48
+0x186EEE374   and      x1, x8, #0x1fffffffc
+0x186EEE378   mov      w0, #0x1
+0x186EEE37C   bl       _malloc_type_calloc
+0x186EEE380   mov      x24, x0
+0x186EEE384   ldr      q0, [sp]
+0x186EEE388   str      q0, [x0]
+0x186EEE38C   str      w22, [x0, #0x10]
+0x186EEE390   tbnz     w25, #0x0, 0x186eee3b0
+0x186EEE394   add      x3, x24, #0x14
+0x186EEE398   mov      x0, x21
+0x186EEE39C   mov      x1, #0x0
+0x186EEE3A0   mov      x2, x22
+0x186EEE3A4   bl       _CFDataGetBytes
+0x186EEE3A8   mov      x0, x21
+0x186EEE3AC   bl       _CFRelease
+0x186EEE3B0   cbz      x23, 0x186eee3bc
+0x186EEE3B4   mov      x0, x23
+0x186EEE3B8   bl       _CFRelease
+0x186EEE3BC   cbz      x20, 0x186eee3c8
+0x186EEE3C0   mov      x0, x20
+0x186EEE3C4   bl       _CFRelease
+0x186EEE3C8   ldr      w8, [x24, #0x10]
+0x186EEE3CC   add      w8, w8, #0x17
+0x186EEE3D0   and      w3, w8, #0xfffffffc
+0x186EEE3D4   ldr      x0, [x19, #0x58]
+0x186EEE3D8   mov      w1, #0x32c
+0x186EEE3DC   mov      x2, x24
+0x186EEE3E0   bl       _WSPostNotificationToConnectionOrLocal
+0x186EEE3E4   mov      x0, x24
+0x186EEE3E8   bl       _free
+0x186EEE3EC   ldur     x8, [x29, #-0x48]
+0x186EEE3F0   adrp     x9, 389864           ; 0x1e61d6000
+0x186EEE3F4   ldr      x9, [x9, #0xab0]
+0x186EEE3F8   ldr      x9, [x9]
+0x186EEE3FC   cmp      x9, x8
+0x186EEE400   b.ne     0x186eee420
+0x186EEE404   add      sp, sp, #0x2e0
+0x186EEE408   ldp      x29, x30, [sp, #0x40]
+0x186EEE40C   ldp      x20, x19, [sp, #0x30]
+0x186EEE410   ldp      x22, x21, [sp, #0x20]
+0x186EEE414   ldp      x24, x23, [sp, #0x10]
+0x186EEE418   ldp      x26, x25, [sp], #0x50
+0x186EEE41C   retab
+0x186EEE420   bl       ___stack_chk_fail

@@ -2212,3 +2212,17 @@ read-only; no new protected-app native hide or Safari acceptance. See `results/r
 the traffic-light lab. Native warnings-as-errors builds, independent archived-pixel checks and fresh
 unit tests (1031) pass. Full E2E attempted/bounded at 15 seconds after missing pinned WebKit 2388
 setup errors; no pinned Chromium 1254 or `/opt/pw-browsers`, no downloads/full pass. Product unchanged.
+
+Invocation/rights/filter follow-up (25G342): `verify-invocation.py ARCHIVE_ROOT` independently checks
+the no-window filter catalog and both rights experiments. Two fixed SkyLight filter names allocate
+and release successfully; CIColorMatrix/CIBlendWithAlphaMask/CICrop return 1006/zero ID. No filter is
+attached and no rendering behavior is inferred. The foreign self-grant returns 1001 with unchanged
+rights. Explicit owner grant plus matching offer acceptance gains BackingStoreWriter 0x20000;
+held-rights readback verifies it, then relinquishment restores baseline. No actual backing-store
+write; the native owner, controls/hit states, geometry and every captured pixel remain unchanged.
+First run stops on missing notification/completion; second pumps the harness's AppKit queue and
+completes. Both source/binary/log versions retained and both fixture PIDs/windows gone. Static
+client/server ABI, Presenter check for filters and grant authorization are archived, not general
+broker or protected-app acceptance. No Safari result. Native warnings-as-errors builds, saved-state/
+pixel checks and fresh unit tests 1031 pass; E2E attempted/bounded after missing pinned WebKit 2388,
+no download/full pass or product change. See `tools/traffic-lights-lab/results/invocation-25G342/`.

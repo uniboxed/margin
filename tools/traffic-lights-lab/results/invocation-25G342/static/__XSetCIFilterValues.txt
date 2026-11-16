@@ -1,0 +1,172 @@
+__XSetCIFilterValues
+0x1871B3320   pacibsp
+0x1871B3324   sub      sp, sp, #0x90
+0x1871B3328   stp      x26, x25, [sp, #0x40]
+0x1871B332C   stp      x24, x23, [sp, #0x50]
+0x1871B3330   stp      x22, x21, [sp, #0x60]
+0x1871B3334   stp      x20, x19, [sp, #0x70]
+0x1871B3338   stp      x29, x30, [sp, #0x80]
+0x1871B333C   add      x29, sp, #0x80
+0x1871B3340   mov      x19, x1
+0x1871B3344   adrp     x8, 389155           ; 0x1e61d6000
+0x1871B3348   ldr      x8, [x8, #0xab0]
+0x1871B334C   ldr      x8, [x8]
+0x1871B3350   str      x8, [sp, #0x38]
+0x1871B3354   ldr      w8, [x0]
+0x1871B3358   tbz      w8, #0x1f, 0x1871b3554
+0x1871B335C   mov      x20, x0
+0x1871B3360   ldr      w8, [x0, #0x18]
+0x1871B3364   cmp      w8, #0x1
+0x1871B3368   b.ne     0x1871b3554
+0x1871B336C   ldr      w8, [x20, #0x4]
+0x1871B3370   cmp      w8, #0x3c
+0x1871B3374   b.ne     0x1871b3554
+0x1871B3378   ldrb     w8, [x20, #0x27]
+0x1871B337C   cmp      w8, #0x1
+0x1871B3380   b.ne     0x1871b35a0
+0x1871B3384   ldr      w22, [x20, #0x28]
+0x1871B3388   ldr      w8, [x20, #0x38]
+0x1871B338C   cmp      w22, w8
+0x1871B3390   b.ne     0x1871b35a0
+0x1871B3394   ldr      w0, [x20, #0xc]
+0x1871B3398   ldr      w26, [x20, #0x34]
+0x1871B339C   ldur     x23, [x20, #0x1c]
+0x1871B33A0   bl       _CGXConnectionForPort
+0x1871B33A4   cbz      x0, 0x1871b35a8
+0x1871B33A8   mov      x21, x0
+0x1871B33AC   adrp     x24, 406608          ; 0x1ea603000
+0x1871B33B0   ldr      x8, [x24, #0x550]    ; ___sessionControlRef
+0x1871B33B4   cbz      x8, 0x1871b33c4
+0x1871B33B8   ldr      x8, [x8, #0x20]
+0x1871B33BC   cbz      x8, 0x1871b33c4
+0x1871B33C0   ldr      x8, [x8, #0x90]
+0x1871B33C4   add      x25, x8, #0x70
+0x1871B33C8   ldr      x25, [x25]
+0x1871B33CC   cbz      x25, 0x1871b354c
+0x1871B33D0   ldr      w8, [x25, #0x14]
+0x1871B33D4   cmp      w8, w26
+0x1871B33D8   b.ne     0x1871b33c8
+0x1871B33DC   ldr      w8, [x25, #0xc]
+0x1871B33E0   cmp      w8, #0x1
+0x1871B33E4   b.ne     0x1871b34d0
+0x1871B33E8   bl       _CFDictionaryGetTypeID
+0x1871B33EC   mov      x2, x0
+0x1871B33F0   mov      x0, x23
+0x1871B33F4   mov      x1, x22
+0x1871B33F8   bl       _CGSPropertyListCreateWithSerializedBytesRequiringType
+0x1871B33FC   cbz      x0, 0x1871b34d0
+0x1871B3400   mov      x22, x0
+0x1871B3404   mov      x8, #-0x5555555555555556
+0x1871B3408   str      x8, [sp, #0x8]
+0x1871B340C   adrp     x1, 424774           ; 0x1eecf9000
+0x1871B3410   add      x1, x1, #0xf18
+0x1871B3414   add      x2, sp, #0x8
+0x1871B3418   bl       _CFDictionaryGetValueIfPresent
+0x1871B341C   cbz      w0, 0x1871b3448
+0x1871B3420   ldr      x0, [sp, #0x8]
+0x1871B3424   bl       _CFGetTypeID
+0x1871B3428   mov      x23, x0
+0x1871B342C   bl       _CFNumberGetTypeID
+0x1871B3430   cmp      x23, x0
+0x1871B3434   b.ne     0x1871b3448
+0x1871B3438   ldr      x0, [sp, #0x8]
+0x1871B343C   add      x2, x25, #0x28
+0x1871B3440   mov      w1, #0x5
+0x1871B3444   bl       _CFNumberGetValue
+0x1871B3448   adrp     x1, 424774           ; 0x1eecf9000
+0x1871B344C   add      x1, x1, #0xf38
+0x1871B3450   add      x2, sp, #0x8
+0x1871B3454   mov      x0, x22
+0x1871B3458   bl       _CFDictionaryGetValueIfPresent
+0x1871B345C   cbz      w0, 0x1871b3488
+0x1871B3460   ldr      x0, [sp, #0x8]
+0x1871B3464   bl       _CFGetTypeID
+0x1871B3468   mov      x23, x0
+0x1871B346C   bl       _CFStringGetTypeID
+0x1871B3470   cmp      x23, x0
+0x1871B3474   b.ne     0x1871b3488
+0x1871B3478   ldr      x0, [sp, #0x8]
+0x1871B347C   add      x1, x25, #0x18
+0x1871B3480   add      x2, x25, #0x1c
+0x1871B3484   bl       _extract_ci_vector2
+0x1871B3488   adrp     x1, 424774           ; 0x1eecf9000
+0x1871B348C   add      x1, x1, #0xf58
+0x1871B3490   add      x2, sp, #0x8
+0x1871B3494   mov      x0, x22
+0x1871B3498   bl       _CFDictionaryGetValueIfPresent
+0x1871B349C   cbz      w0, 0x1871b34c8
+0x1871B34A0   ldr      x0, [sp, #0x8]
+0x1871B34A4   bl       _CFGetTypeID
+0x1871B34A8   mov      x23, x0
+0x1871B34AC   bl       _CFStringGetTypeID
+0x1871B34B0   cmp      x23, x0
+0x1871B34B4   b.ne     0x1871b34c8
+0x1871B34B8   ldr      x0, [sp, #0x8]
+0x1871B34BC   add      x1, x25, #0x20
+0x1871B34C0   add      x2, x25, #0x24
+0x1871B34C4   bl       _extract_ci_vector2
+0x1871B34C8   mov      x0, x22
+0x1871B34CC   bl       _CFRelease
+0x1871B34D0   mov      x0, x21
+0x1871B34D4   bl       _WSConnectionDisableUpdateInternalToken
+0x1871B34D8   mov      x22, x0
+0x1871B34DC   add      x8, sp, #0x8
+0x1871B34E0   adrp     x16, 389155          ; 0x1e61d6000
+0x1871B34E4   ldr      x16, [x16, #0xa90]
+0x1871B34E8   mov      x17, x8
+0x1871B34EC   movk     x17, #0x6ae1, lsl #48
+0x1871B34F0   pacda    x16, x17
+0x1871B34F4   str      x16, [sp, #0x8]
+0x1871B34F8   adrp     x9, 35               ; 0x1871d6000
+0x1871B34FC   ldr      d0, [x9, #0x5b0]
+0x1871B3500   str      d0, [sp, #0x10]
+0x1871B3504   add      x8, x8, #0x10
+0x1871B3508   adrp     x16, -425            ; 0x18700a000
+0x1871B350C   add      x16, x16, #0x5b0     ; ___set_ci_filter_values_block_invoke
+0x1871B3510   pacia    x16, x8
+0x1871B3514   adrp     x8, 390534           ; 0x1e6739000
+0x1871B3518   add      x8, x8, #0xdb0       ; ___block_descriptor_tmp.18799
+0x1871B351C   stp      x16, x8, [sp, #0x18]
+0x1871B3520   stp      x25, x21, [sp, #0x28]
+0x1871B3524   ldr      x8, [x24, #0x550]
+0x1871B3528   ldr      x8, [x8, #0x20]
+0x1871B352C   ldr      x8, [x8, #0x90]
+0x1871B3530   ldr      x1, [x8]
+0x1871B3534   add      x0, sp, #0x8
+0x1871B3538   bl       __ZL40WSWindowSessionForEachWindowInSessionMapU13block_pointerFvP9CGXWindowPbEP19CGXWindowSessionMap
+0x1871B353C   mov      x0, x21
+0x1871B3540   mov      x1, x22
+0x1871B3544   mov      x2, #0x0
+0x1871B3548   bl       _WSConnectionReenableUpdateInternalToken
+0x1871B354C   mov      w8, #0x0
+0x1871B3550   b        0x1871b35ac
+0x1871B3554   mov      w8, #-0x130
+0x1871B3558   str      w8, [x19, #0x20]
+0x1871B355C   adrp     x8, 389155           ; 0x1e61d6000
+0x1871B3560   ldr      x8, [x8, #0xce8]
+0x1871B3564   ldr      x8, [x8]
+0x1871B3568   str      x8, [x19, #0x18]
+0x1871B356C   ldr      x8, [sp, #0x38]
+0x1871B3570   adrp     x9, 389155           ; 0x1e61d6000
+0x1871B3574   ldr      x9, [x9, #0xab0]
+0x1871B3578   ldr      x9, [x9]
+0x1871B357C   cmp      x9, x8
+0x1871B3580   b.ne     0x1871b35c8
+0x1871B3584   ldp      x29, x30, [sp, #0x80]
+0x1871B3588   ldp      x20, x19, [sp, #0x70]
+0x1871B358C   ldp      x22, x21, [sp, #0x60]
+0x1871B3590   ldp      x24, x23, [sp, #0x50]
+0x1871B3594   ldp      x26, x25, [sp, #0x40]
+0x1871B3598   add      sp, sp, #0x90
+0x1871B359C   retab
+0x1871B35A0   mov      w8, #-0x12c
+0x1871B35A4   b        0x1871b3558
+0x1871B35A8   mov      w8, #0x3eb
+0x1871B35AC   str      w8, [x19, #0x20]
+0x1871B35B0   ldur     x0, [x20, #0x1c]
+0x1871B35B4   ldr      w1, [x20, #0x28]
+0x1871B35B8   bl       _mig_deallocate
+0x1871B35BC   stur     xzr, [x20, #0x1c]
+0x1871B35C0   str      wzr, [x20, #0x28]
+0x1871B35C4   b        0x1871b356c
+0x1871B35C8   bl       ___stack_chk_fail

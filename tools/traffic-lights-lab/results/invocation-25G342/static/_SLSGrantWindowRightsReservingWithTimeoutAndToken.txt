@@ -1,0 +1,181 @@
+_SLSGrantWindowRightsReservingWithTimeoutAndToken
+0x1870B4AA8   pacibsp
+0x1870B4AAC   stp      d9, d8, [sp, #-0x70]!
+0x1870B4AB0   stp      x28, x27, [sp, #0x10]
+0x1870B4AB4   stp      x26, x25, [sp, #0x20]
+0x1870B4AB8   stp      x24, x23, [sp, #0x30]
+0x1870B4ABC   stp      x22, x21, [sp, #0x40]
+0x1870B4AC0   stp      x20, x19, [sp, #0x50]
+0x1870B4AC4   stp      x29, x30, [sp, #0x60]
+0x1870B4AC8   add      x29, sp, #0x60
+0x1870B4ACC   sub      sp, sp, #0x850
+0x1870B4AD0   mov      x26, x4
+0x1870B4AD4   mov.16b  v8, v0
+0x1870B4AD8   mov      x22, x3
+0x1870B4ADC   mov      x24, x2
+0x1870B4AE0   mov      x23, x1
+0x1870B4AE4   mov      x25, x0
+0x1870B4AE8   adrp     x8, 389410           ; 0x1e61d6000
+0x1870B4AEC   ldr      x8, [x8, #0xab0]
+0x1870B4AF0   ldr      x8, [x8]
+0x1870B4AF4   stur     x8, [x29, #-0x68]
+0x1870B4AF8   bl       _objc_autoreleasePoolPush
+0x1870B4AFC   mov      x19, x0
+0x1870B4B00   bl       _SLSMainConnection
+0x1870B4B04   mov      x1, x23
+0x1870B4B08   mov      w2, #0x0
+0x1870B4B0C   bl       _CGSWindowGetMappedImpl
+0x1870B4B10   cbz      x0, 0x1870b4bf0
+0x1870B4B14   mov      x20, x0
+0x1870B4B18   ldr      x8, [x0, #0x30]
+0x1870B4B1C   ldr      w0, [x8, #0x98]
+0x1870B4B20   bl       _CGSGetConnectionPortById
+0x1870B4B24   cbz      w0, 0x1870b4bf8
+0x1870B4B28   mov      x21, x0
+0x1870B4B2C   add      x0, sp, #0x8
+0x1870B4B30   mov      w1, #0xaa
+0x1870B4B34   mov      w2, #0x400
+0x1870B4B38   bl       _memset
+0x1870B4B3C   cbz      x26, 0x1870b4bf0
+0x1870B4B40   mov      x0, x26
+0x1870B4B44   bl       _CFGetTypeID
+0x1870B4B48   mov      x27, x0
+0x1870B4B4C   bl       _CFStringGetTypeID
+0x1870B4B50   cmp      x27, x0
+0x1870B4B54   b.ne     0x1870b4bf0
+0x1870B4B58   mov      x0, x26
+0x1870B4B5C   bl       _CFStringGetLength
+0x1870B4B60   cmp      x0, #0x100
+0x1870B4B64   b.hi     0x1870b4bf0
+0x1870B4B68   add      x1, sp, #0x8
+0x1870B4B6C   mov      x0, x26
+0x1870B4B70   mov      w2, #0x100
+0x1870B4B74   mov      w3, #0x100
+0x1870B4B78   movk     w3, #0x800, lsl #16
+0x1870B4B7C   bl       _CFStringGetCString
+0x1870B4B80   cbz      w0, 0x1870b4bf0
+0x1870B4B84   mov      x0, x20
+0x1870B4B88   bl       _CGSWindowSynchronizeBacking
+0x1870B4B8C   ldr      x0, [x20, #0x40]
+0x1870B4B90   bl       _CGSBackingStoreLock
+0x1870B4B94   adrp     x1, 326              ; 0x1871fa000
+0x1870B4B98   add      x1, x1, #0xff0
+0x1870B4B9C   add      x26, sp, #0x408
+0x1870B4BA0   add      x0, sp, #0x408
+0x1870B4BA4   mov      w2, #0x440
+0x1870B4BA8   bl       _memcpy
+0x1870B4BAC   adrp     x8, 389410           ; 0x1e61d6000
+0x1870B4BB0   ldr      x8, [x8, #0xce8]
+0x1870B4BB4   ldr      x8, [x8]
+0x1870B4BB8   str      x8, [sp, #0x420]
+0x1870B4BBC   str      w24, [sp, #0x428]
+0x1870B4BC0   str      w25, [sp, #0x42c]
+0x1870B4BC4   str      w23, [sp, #0x430]
+0x1870B4BC8   str      w22, [sp, #0x434]
+0x1870B4BCC   str      d8, [sp, #0x438]
+0x1870B4BD0   adrp     x8, 423161           ; 0x1ee5ad000
+0x1870B4BD4   ldr      x8, [x8, #0x948]
+0x1870B4BD8   cbz      x8, 0x1870b4c44
+0x1870B4BDC   add      x0, x26, #0x40
+0x1870B4BE0   add      x1, sp, #0x8
+0x1870B4BE4   mov      w2, #0x400
+0x1870B4BE8   bl       _mig_strncpy_zerofill
+0x1870B4BEC   b        0x1870b4c54
+0x1870B4BF0   mov      w21, #0x3e9
+0x1870B4BF4   b        0x1870b4bfc
+0x1870B4BF8   mov      w21, #0x3ea
+0x1870B4BFC   mov      x0, x19
+0x1870B4C00   bl       _objc_autoreleasePoolPop
+0x1870B4C04   ldur     x8, [x29, #-0x68]
+0x1870B4C08   adrp     x9, 389410           ; 0x1e61d6000
+0x1870B4C0C   ldr      x9, [x9, #0xab0]
+0x1870B4C10   ldr      x9, [x9]
+0x1870B4C14   cmp      x9, x8
+0x1870B4C18   b.ne     0x1870b4d74
+0x1870B4C1C   mov      x0, x21
+0x1870B4C20   add      sp, sp, #0x850
+0x1870B4C24   ldp      x29, x30, [sp, #0x60]
+0x1870B4C28   ldp      x20, x19, [sp, #0x50]
+0x1870B4C2C   ldp      x22, x21, [sp, #0x40]
+0x1870B4C30   ldp      x24, x23, [sp, #0x30]
+0x1870B4C34   ldp      x26, x25, [sp, #0x20]
+0x1870B4C38   ldp      x28, x27, [sp, #0x10]
+0x1870B4C3C   ldp      d9, d8, [sp], #0x70
+0x1870B4C40   retab
+0x1870B4C44   add      x0, x26, #0x40
+0x1870B4C48   add      x1, sp, #0x8
+0x1870B4C4C   mov      w2, #0x400
+0x1870B4C50   bl       _mig_strncpy
+0x1870B4C54   str      w0, [sp, #0x444]
+0x1870B4C58   str      wzr, [sp, #0x440]
+0x1870B4C5C   add      w8, w0, #0x3
+0x1870B4C60   and      w22, w8, #0xfffffffc
+0x1870B4C64   bl       _mig_get_special_reply_port
+0x1870B4C68   str      w0, [sp, #0x414]
+0x1870B4C6C   mov      w8, #0x1513
+0x1870B4C70   str      w8, [sp, #0x408]
+0x1870B4C74   str      w21, [sp, #0x410]
+0x1870B4C78   adrp     x8, 291              ; 0x1871d7000
+0x1870B4C7C   ldr      d0, [x8, #0x908]
+0x1870B4C80   str      d0, [sp, #0x418]
+0x1870B4C84   add      x0, sp, #0x408
+0x1870B4C88   bl       _voucher_mach_msg_set
+0x1870B4C8C   ldr      w4, [sp, #0x414]
+0x1870B4C90   add      x0, sp, #0x408
+0x1870B4C94   add      w2, w22, #0x40
+0x1870B4C98   mov      w1, #0x4003
+0x1870B4C9C   movk     w1, #0x30, lsl #16
+0x1870B4CA0   mov      w3, #0x2c
+0x1870B4CA4   mov      w5, #0x0
+0x1870B4CA8   mov      w6, #0x0
+0x1870B4CAC   bl       _mach_msg
+0x1870B4CB0   mov      x21, x0
+0x1870B4CB4   ldr      w8, [sp, #0x41c]
+0x1870B4CB8   mov      w9, #-0x134
+0x1870B4CBC   cmp      w8, #0x47
+0x1870B4CC0   csel     w1, w9, w0, eq
+0x1870B4CC4   adrp     x0, 386              ; 0x187236000
+0x1870B4CC8   add      x0, x0, #0xe81
+0x1870B4CCC   bl       _SLSServerPortCheckError
+0x1870B4CD0   mov      w8, #0xfffe
+0x1870B4CD4   movk     w8, #0xefff, lsl #16
+0x1870B4CD8   add      w8, w21, w8
+0x1870B4CDC   cmp      w8, #0xe
+0x1870B4CE0   b.hi     0x1870b4cf8
+0x1870B4CE4   mov      w9, #0x1
+0x1870B4CE8   lsl      w8, w9, w8
+0x1870B4CEC   mov      w9, #0x4003
+0x1870B4CF0   tst      w8, w9
+0x1870B4CF4   b.ne     0x1870b4d60
+0x1870B4CF8   cbnz     w21, 0x1870b4d40
+0x1870B4CFC   ldr      w8, [sp, #0x41c]
+0x1870B4D00   cmp      w8, #0x47
+0x1870B4D04   b.eq     0x1870b4d4c
+0x1870B4D08   mov      w9, #0x76a6
+0x1870B4D0C   cmp      w8, w9
+0x1870B4D10   b.ne     0x1870b4d54
+0x1870B4D14   ldr      w8, [sp, #0x408]
+0x1870B4D18   mov      w21, #-0x12c
+0x1870B4D1C   tbnz     w8, #0x1f, 0x1870b4d58
+0x1870B4D20   ldr      w8, [sp, #0x40c]
+0x1870B4D24   cmp      w8, #0x24
+0x1870B4D28   b.ne     0x1870b4d58
+0x1870B4D2C   ldr      w8, [sp, #0x410]
+0x1870B4D30   cbnz     w8, 0x1870b4d58
+0x1870B4D34   ldr      w21, [sp, #0x428]
+0x1870B4D38   cbnz     w21, 0x1870b4d58
+0x1870B4D3C   b        0x1870b4d60
+0x1870B4D40   ldr      w0, [sp, #0x414]
+0x1870B4D44   bl       _mig_dealloc_special_reply_port
+0x1870B4D48   b        0x1870b4d60
+0x1870B4D4C   mov      w21, #-0x134
+0x1870B4D50   b        0x1870b4d58
+0x1870B4D54   mov      w21, #-0x12d
+0x1870B4D58   add      x0, sp, #0x408
+0x1870B4D5C   bl       _mach_msg_destroy
+0x1870B4D60   mov      x0, x20
+0x1870B4D64   bl       _window_update_rights_cache
+0x1870B4D68   ldr      x0, [x20, #0x40]
+0x1870B4D6C   bl       _CGSBackingStoreUnlock
+0x1870B4D70   b        0x1870b4bfc
+0x1870B4D74   bl       ___stack_chk_fail

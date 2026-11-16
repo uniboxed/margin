@@ -1,0 +1,7 @@
+{"build":"25G342","connection":1184595,"pid":35188,"uuid":"D422F0A4-1C28-35B7-A6F5-9EB7BBE0801E"}
+{"createResult":0,"filter":"CIColorInvert","identifier":1,"releaseResult":0}
+{"createResult":0,"filter":"CIShapedWaterRipple","identifier":2,"releaseResult":0}
+{"createResult":1006,"filter":"CIColorMatrix","identifier":0,"releaseResult":-1}
+{"createResult":1006,"filter":"CIBlendWithAlphaMask","identifier":0,"releaseResult":-1}
+{"createResult":1006,"filter":"CICrop","identifier":0,"releaseResult":-1}
+{"allAllocatedFiltersReleased":true,"complete":true}

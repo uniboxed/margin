@@ -12,7 +12,7 @@ setbuf(stdout, nil)
 let args = CommandLine.arguments
 func emit(_ row: [String: Any]) { print(String(decoding: try! JSONSerialization.data(withJSONObject: row, options: .sortedKeys), as: UTF8.self)) }
 guard args.contains("--run") || args.contains("--child") else {
-    emit(["plan": "One visible owned child window. --ax-relations compares private owner AX relationship overrides, foreign relationship writes and actual native controls. --launch-observe --corners observes startup/AX resize/restore only; --override-corners adds private NSConvolutionOverride1/2=0.01 only to child launch arguments. No preferences written. Other modes: --buttons, --proxy-clips, --corners, --corner-mask/--storage-control. Saves actual pixels and cleans up. No browser, user window or system setting changed."]); exit(0)
+    emit(["plan": "One visible owned child window. --rights-grant compares foreign self-grant versus explicit owner grant of BackingStoreWriter only, readback and relinquishment; no backing store is written and no exclusive rights are transferred. --ax-relations compares private owner AX relationship overrides, foreign relationship writes and actual native controls. --launch-observe --corners observes startup/AX resize/restore only; --override-corners adds private NSConvolutionOverride1/2=0.01 only to child launch arguments. No preferences written. Other modes: --buttons, --proxy-clips, --corners, --corner-mask/--storage-control. Saves actual pixels and cleans up. No browser, user window or system setting changed."]); exit(0)
 }
 var buildSize = 0; sysctlbyname("kern.osversion", nil, &buildSize, nil, 0)
 var build = [CChar](repeating: 0, count: buildSize); sysctlbyname("kern.osversion", &build, &buildSize, nil, 0)
@@ -133,11 +133,20 @@ func apply(_ wid: UInt32, _ rect: CGRect) {
     fn(sky, "SLSTransactionCommit", Commit.self)(transaction, 1)
 }
 func saveJSON(_ row: [String: Any], _ path: URL) { try! JSONSerialization.data(withJSONObject: row, options: [.prettyPrinted, .sortedKeys]).write(to: path, options: .atomic) }
+func pumpRightsNotifications() {
+    guard args.contains("--rights-grant") else { return }
+    // This lab has no NSApplication.run loop. Drain only this process's AppKit
+    // event queue so its WindowServer process-notification dispatcher can run.
+    if let event = NSApplication.shared.nextEvent(matching: .any, until: Date().addingTimeInterval(0.005), inMode: .default, dequeue: true) {
+        NSApplication.shared.sendEvent(event)
+    }
+}
 func waitJSON(_ path: URL, seconds: Double) -> [String: Any]? {
     let end = Date().addingTimeInterval(seconds)
     while Date() < end {
         if let data = try? Data(contentsOf: path), let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { return row }
         RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        pumpRightsNotifications()
     }
     return nil
 }
@@ -214,7 +223,7 @@ if args.contains("--child") {
             return ["type": type.rawValue, "hidden": b.isHiddenOrHasHiddenAncestor, "alpha": b.alphaValue, "enabled": b.isEnabled,
                     "hit": b.superview?.hitTest(NSPoint(x: b.frame.midX, y: b.frame.midY)) === b]
         }
-        return ["window": wid, "pid": getpid(), "bounds": [liveBounds.minX, liveBounds.minY, liveBounds.width, liveBounds.height],
+        return ["window": wid, "pid": getpid(), "connection": cid, "bounds": [liveBounds.minX, liveBounds.minY, liveBounds.width, liveBounds.height],
                 "windowed": !window.styleMask.contains(.fullScreen), "buttons": buttons,
                 "buttonRegion": buttonMetadata(wid), "windowRights": windowRights(wid),
                 "nativeCornerRadius": args.contains("--corners") || args.contains("--corner-mask") ? nativeRadius() : -1,
@@ -276,6 +285,18 @@ if args.contains("--child") {
                 guard override(window, selector, replacement, key as NSString) else { exit(2) }
             }
         }
+        if name == "grant-writer", args.contains("--rights-grant"),
+           let recipient = command["grantee"] as? UInt32, let token = command["token"] as? String {
+            typealias PID = @convention(c) (UInt32, UnsafeMutablePointer<pid_t>) -> Int32
+            var recipientPID: pid_t = 0
+            guard recipient != cid, fn(sky, "SLSConnectionGetPID", PID.self)(recipient, &recipientPID) == 0,
+                  recipientPID == getppid() else { emit(["refused": "grant recipient is not parent"]); window.close(); exit(2) }
+            typealias Grant = @convention(c) (UInt32, UInt32, UInt32, UInt32, CFString, Double) -> Int32
+            // Verified against both the client encoder and server decoder:
+            // grantMask, window, recipientConnection, reservedMask, token, timeout.
+            let result = fn(sky, "SLSGrantWindowRightsReservingWithTimeoutAndToken", Grant.self)(0x20000, wid, recipient, 0, token as CFString, 3)
+            emit(["ownerGrantWriter": result, "grantee": recipient, "window": wid])
+        }
         if name == "proxy" { emit(["ownerProxy": proxy(wid)]) }
         if name == "owner-global" { apply(wid, bounds.insetBy(dx: 0, dy: bounds.height / 4)) }
         if name == "owner-local" { apply(wid, CGRect(x: 0, y: bounds.height / 4, width: bounds.width, height: bounds.height / 2)) }
@@ -295,7 +316,7 @@ try FileManager.default.createDirectory(at: directory, withIntermediateDirectori
 let former = NSWorkspace.shared.frontmostApplication?.processIdentifier
 let child = Process()
 child.executableURL = URL(fileURLWithPath: args[0]).standardizedFileURL
-child.arguments = ["--child", "--output", directory.path] + ["--wire", "--buttons", "--proxy-clips", "--corners", "--corner-mask", "--system-only", "--launch-observe", "--ax-relations"].filter { args.contains($0) }
+child.arguments = ["--child", "--output", directory.path] + ["--wire", "--buttons", "--proxy-clips", "--corners", "--corner-mask", "--system-only", "--launch-observe", "--ax-relations", "--rights-grant"].filter { args.contains($0) }
 if args.contains("--override-corners") {
     child.arguments! += ["-NSConvolutionOverride1", "0.01", "-NSConvolutionOverride2", "0.01"]
 }
@@ -314,9 +335,10 @@ typealias PID = @convention(c) (UInt32, UnsafeMutablePointer<pid_t>) -> Int32
 var owner: UInt32 = 0, ownerPID: pid_t = 0
 guard fn(sky, "SLSGetWindowOwner", Owner.self)(cid, wid, &owner) == 0,
       fn(sky, "SLSConnectionGetPID", PID.self)(owner, &ownerPID) == 0, ownerPID == child.processIdentifier else { finish(2) }
-func request(_ name: String, rect: CGRect? = nil) -> [String: Any] {
+func request(_ name: String, rect: CGRect? = nil, fields: [String: Any] = [:]) -> [String: Any] {
     try? FileManager.default.removeItem(at: directory.appendingPathComponent("response.json"))
     var command: [String: Any] = ["name": name]
+    command.merge(fields) { existing, _ in existing }
     if let rect { command["rect"] = [rect.minX, rect.minY, rect.width, rect.height] }
     saveJSON(command, directory.appendingPathComponent("request.json"))
     guard let response = waitJSON(directory.appendingPathComponent("response.json"), seconds: 2) else { emit(["refused": "child request timeout", "name": name]); finish(2) }
@@ -349,6 +371,67 @@ func observe(_ name: String) -> [String: Any] {
     return row
 }
 let baseline = observe("baseline")
+if args.contains("--rights-grant") {
+    typealias Offered = @convention(block) (UnsafePointer<UInt32>) -> Void
+    typealias Register = @convention(c) (CFString, Offered?) -> Void
+    typealias Complete = @convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int32
+    typealias Grant = @convention(c) (UInt32, UInt32, UInt32, UInt32, CFString, Double) -> Int32
+    typealias Relinquish = @convention(c) (UInt32, UInt32, UInt32) -> Int32
+    let token = "margin-owned-writer-" + UUID().uuidString
+    let lock = NSLock()
+    var completion: [String: Any]?
+    let register = fn(sky, "SLSWindowRightsSetGrantOfferedBlockForToken", Register.self)
+    let block: Offered = { record in
+        // Current notification handler copies four UInt32s before its retained
+        // metadata fields: window, recipient connection, sender PID, serial.
+        let words = Array(UnsafeBufferPointer(start: record, count: 4))
+        guard words[0] == wid, words[1] == cid, words[2] == UInt32(child.processIdentifier), words[3] != 0 else {
+            lock.lock(); completion = ["refused": "unexpected rights offer", "record": words]; lock.unlock(); return
+        }
+        let result = fn(sky, "SLSCompleteWindowRightsGrant", Complete.self)(cid, wid, words[3], 0)
+        lock.lock(); completion = ["completeGrant": result, "record": words]; lock.unlock()
+    }
+    register(token as CFString, block)
+    let before = windowRights(wid)
+    emit(["foreignRightsBaseline": before])
+    guard let beforeWords = before["rawOutputs"] as? [UInt32], beforeWords.count == 3,
+          beforeWords.allSatisfy({ $0 & 0x20000 == 0 }) else { register(token as CFString, nil); finish(2) }
+    let attempted = fn(sky, "SLSGrantWindowRightsReservingWithTimeoutAndToken", Grant.self)(0x20000, wid, cid, 0, token as CFString, 3)
+    emit(["foreignSelfGrantWriter": attempted])
+    RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+    let afterSelf = windowRights(wid)
+    emit(["foreignRightsAfterSelfGrant": afterSelf])
+    guard attempted != 0, (afterSelf["rawOutputs"] as? [UInt32]) == beforeWords else {
+        emit(["refused": "unexpected foreign self-grant; inspect before proceeding"]); register(token as CFString, nil); finish(2)
+    }
+    _ = request("grant-writer", fields: ["grantee": cid, "token": token])
+    let deadline = Date().addingTimeInterval(3)
+    var accepted: [String: Any]?
+    repeat {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        pumpRightsNotifications()
+        lock.lock(); accepted = completion; lock.unlock()
+    } while accepted == nil && Date() < deadline
+    emit(["offerCompletion": accepted ?? ["missing": true]])
+    let granted = windowRights(wid)
+    emit(["foreignRightsAfterOwnerGrant": granted])
+    guard accepted?["completeGrant"] as? Int32 == 0,
+          let grantedWords = granted["rawOutputs"] as? [UInt32], grantedWords.contains(where: { $0 & 0x20000 != 0 }) else {
+        emit(["refused": "owner grant control not established"]); register(token as CFString, nil); finish(2)
+    }
+    _ = observe("writer-granted-no-rendering-change")
+    let relinquished = fn(sky, "SLSConnectionRelinquishWindowRights", Relinquish.self)(cid, wid, 0x20000)
+    emit(["relinquishWriter": relinquished])
+    RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+    let restored = windowRights(wid)
+    emit(["foreignRightsRestored": restored])
+    guard relinquished == 0, restored["rawOutputs"] as? [UInt32] == beforeWords else {
+        emit(["refused": "rights restoration failed"]); register(token as CFString, nil); finish(2)
+    }
+    _ = observe("writer-relinquished")
+    register(token as CFString, nil)
+    _ = request("quit"); child.waitUntilExit(); finish(child.terminationStatus)
+}
 if args.contains("--ax-relations") {
     let app = AXUIElementCreateApplication(child.processIdentifier)
     AXUIElementSetMessagingTimeout(app, 0.5)

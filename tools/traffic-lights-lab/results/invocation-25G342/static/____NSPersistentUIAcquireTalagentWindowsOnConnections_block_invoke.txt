@@ -1,0 +1,83 @@
+____NSPersistentUIAcquireTalagentWindowsOnConnections_block_invoke
+0x185A6E528   pacibsp
+0x185A6E52C   sub      sp, sp, #0x50
+0x185A6E530   stp      x22, x21, [sp, #0x20]
+0x185A6E534   stp      x20, x19, [sp, #0x30]
+0x185A6E538   stp      x29, x30, [sp, #0x40]
+0x185A6E53C   add      x29, sp, #0x40
+0x185A6E540   mov      x19, x1
+0x185A6E544   mov      x20, x0
+0x185A6E548   adrp     x8, 395112           ; 0x1e61d6000
+0x185A6E54C   ldr      x8, [x8, #0xab0]
+0x185A6E550   ldr      x8, [x8]
+0x185A6E554   str      x8, [sp, #0x18]
+0x185A6E558   adrp     x8, 394999           ; 0x1e6165000
+0x185A6E55C   ldr      x0, [x8, #0xe38]
+0x185A6E560   bl       _objc_msgSend$isMainThread
+0x185A6E564   tbz      w0, #0x0, 0x185a6e64c
+0x185A6E568   ldr      x8, [x20, #0x28]
+0x185A6E56C   ldr      x8, [x8, #0x8]
+0x185A6E570   ldrb     w3, [x8, #0x18]
+0x185A6E574   ldr      w0, [x20, #0x30]
+0x185A6E578   ldr      w1, [x19]
+0x185A6E57C   ldr      w2, [x19, #0xc]
+0x185A6E580   bl       _CGSCompleteWindowRightsGrant
+0x185A6E584   cbz      w0, 0x185a6e604
+0x185A6E588   mov      x21, x0
+0x185A6E58C   cmp      w0, #0x3e9
+0x185A6E590   b.eq     0x185a6e620
+0x185A6E594   bl       ___AppKitLogStateRestoration
+0x185A6E598   mov      x29, x29
+0x185A6E59C   bl       _objc_retainAutoreleasedReturnValue
+0x185A6E5A0   mov      x22, x0
+0x185A6E5A4   mov      w1, #0x10
+0x185A6E5A8   bl       _os_log_type_enabled
+0x185A6E5AC   cbz      w0, 0x185a6e5f8
+0x185A6E5B0   adrp     x8, 339              ; 0x185bc1000
+0x185A6E5B4   ldr      d0, [x8, #0x770]
+0x185A6E5B8   str      s0, [sp]
+0x185A6E5BC   adrp     x8, 537              ; 0x185c87000
+0x185A6E5C0   add      x8, x8, #0xad2
+0x185A6E5C4   stur     x8, [sp, #0x4]
+0x185A6E5C8   mov      w8, #0x400
+0x185A6E5CC   strh     w8, [sp, #0xc]
+0x185A6E5D0   stur     w21, [sp, #0xe]
+0x185A6E5D4   adrp     x0, -4268            ; 0x1849c2000
+0x185A6E5D8   add      x0, x0, #0x0
+0x185A6E5DC   adrp     x3, 632              ; 0x185ce6000
+0x185A6E5E0   add      x3, x3, #0x8c8
+0x185A6E5E4   mov      x4, sp
+0x185A6E5E8   mov      x1, x22
+0x185A6E5EC   mov      w2, #0x10
+0x185A6E5F0   mov      w5, #0x12
+0x185A6E5F4   bl       __os_log_impl
+0x185A6E5F8   mov      x0, x22
+0x185A6E5FC   bl       _objc_release
+0x185A6E600   cbnz     w21, 0x185a6e620
+0x185A6E604   ldr      x8, [x20, #0x28]
+0x185A6E608   ldr      x8, [x8, #0x8]
+0x185A6E60C   ldrb     w8, [x8, #0x18]
+0x185A6E610   tbnz     w8, #0x0, 0x185a6e620
+0x185A6E614   ldr      x0, [x20, #0x20]
+0x185A6E618   ldr      w2, [x19]
+0x185A6E61C   bl       "_objc_msgSend$addIndex:"
+0x185A6E620   ldr      x8, [sp, #0x18]
+0x185A6E624   adrp     x9, 395112           ; 0x1e61d6000
+0x185A6E628   ldr      x9, [x9, #0xab0]
+0x185A6E62C   ldr      x9, [x9]
+0x185A6E630   cmp      x9, x8
+0x185A6E634   b.ne     0x185a6e66c
+0x185A6E638   ldp      x29, x30, [sp, #0x40]
+0x185A6E63C   ldp      x20, x19, [sp, #0x30]
+0x185A6E640   ldp      x22, x21, [sp, #0x20]
+0x185A6E644   add      sp, sp, #0x50
+0x185A6E648   retab
+0x185A6E64C   adrp     x0, 537              ; 0x185c87000
+0x185A6E650   add      x0, x0, #0xa92
+0x185A6E654   adrp     x1, 537              ; 0x185c87000
+0x185A6E658   add      x1, x1, #0x8bb
+0x185A6E65C   adrp     x3, 360              ; 0x185bd6000
+0x185A6E660   add      x3, x3, #0x7cb
+0x185A6E664   mov      w2, #0xf7
+0x185A6E668   bl       ___assert_rtn
+0x185A6E66C   bl       ___stack_chk_fail

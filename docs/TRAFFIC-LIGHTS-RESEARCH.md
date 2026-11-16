@@ -4,10 +4,12 @@ The target is the three close, minimise and zoom/fullscreen buttons, leaving the
 window title and other application chrome alone. Research is restricted to Accessibility and private
 macOS APIs for control. No product behavior is changed by this spike.
 
-**Latest traffic-light pass:** native external hiding remains unestablished. A broader configuration
-inventory and a new owner/foreign Accessibility relationship experiment distinguish changes to the
-accessibility model from native control suppression. See the final section for current findings,
-remaining research gaps and the implementation decision. Corner work is parked for this request.
+**Latest traffic-light pass:** native external hiding remains unestablished. An actual WindowServer
+rights handoff now demonstrates cooperative delegation without library loading: a foreign process
+cannot grant itself writer access, but can receive and relinquish an explicit owner's grant. This
+does not hide controls. The historical compositor-filter API also rejects mask/crop filters on this
+build. See the final section for protocol details, measured limits and remaining broker research.
+Corner work is parked for this request.
 
 **Separate corner-radius result:** private AppKit **launch configuration works in installed TextEdit and
 Preview on 25G342**, without injection, re-signing, SIP changes or saved corner-preference writes.
@@ -890,3 +892,113 @@ Validation: native probes build with warnings as errors and the saved-pixel veri
 unit tests pass 1,031. Full E2E was attempted and bounded at 15 seconds after setup errors for missing
 pinned WebKit 2388; pinned Chromium 1254 and `/opt/pw-browsers` are absent. No browser download or
 full-suite pass. No product app install or PR.
+
+## Invocation research: delegated rights and compositor filters (2026-11-16)
+
+**Result:** a real owner-to-recipient capability handoff is demonstrated, but there is still no new
+native-button hide for unchanged protected apps. This pass tests the missing authorization layer
+and a possible compositor erasure route, rather than adding more local hide selectors.
+
+### WindowServer's filter entry point is not a general image pipeline
+
+Follow `SLSNewCIFilterByName` through its client encoder to `__XNewCIFilter`. The current server
+compares names against exactly two constants and constructs fixed filter types. Independently
+inspect the loaded SkyLight constants at the exact referenced addresses, then exercise the API on
+the probe's own connection, immediately releasing every allocated ID:
+
+| Requested filter | Create result | Nonzero ID | Release result |
+| --- | --- | --- | --- |
+| `CIColorInvert` | 0 | yes | 0 |
+| `CIShapedWaterRipple` | 0 | yes | 0 |
+| `CIColorMatrix` | 1006 | no | no allocation |
+| `CIBlendWithAlphaMask` | 1006 | no | no allocation |
+| `CICrop` | 1006 | no | no allocation |
+
+SkyLight UUID is checked before invoking these ABIs. The setter's traced server path handles the
+ripple's fixed `inputPhase`, `inputPoint0` and `inputPoint1` parameters, also confirmed as loaded
+constants. This entry point does not forward arbitrary Core Image kernels, image masks or filter
+graphs. It does not supply selective three-button erasure on this build. This is not a claim about
+every compositor facility or macOS release. No filter is attached to any window or display in this
+experiment, and no rendered inversion/ripple behavior is claimed.
+
+Attachment is a separate authorization issue: `SLSAddWindowFilter` leads to one-way Mach message
+`0x7610`, and its server handler checks the **Presenter right (`4`)** through `WSCheckWindowRights`.
+Client send success does not establish server acceptance or rendered state. The previously tested
+clipping route's owner requirement cannot simply be generalized to all compositor operations.
+
+### Explicit owner delegation: a real two-process protocol test
+
+Trace both sides of `SLSGrantWindowRightsReservingWithTimeoutAndToken`, its offer notification and
+completion, rather than assuming a window ID or Accessibility trust confers authority. The verified
+arm64 call layout is:
+
+```text
+grant(grantMask, windowID, recipientConnectionID, reservedMask, token, timeout)
+complete(recipientConnectionID, windowID, offerSerial, disposition)
+```
+
+The client serializes these integers in a different order in its Mach message; infer the exported
+symbol's arguments from **both the encoder and decoder**, not from the symbol name. The server's
+grant handler requires the caller to hold ownership plus the rights it is offering, checks the
+recipient connection, and records a pending offer/token. An offer is not the completed transfer.
+AppKit's persistent-UI acquisition path also calls the CGS compatibility completion entry; that is
+a legitimate system use of the mechanism, not a generic request to edit live foreign NSViews.
+
+The new fixture tests only nonexclusive **BackingStoreWriter (`0x20000`)**, with no actual backing
+store writes, filter attachment, transfer of Owner/Presenter/EventReceiver, or protected-app target:
+
+1. Start a fresh child and independently bind its PID, window ID and WindowServer connection. With
+   AX/capture preflight required by the harness, the parent reads raw rights `[0,0,65536]`.
+2. Parent attempts to grant itself writer access to that child's window: **1001**, rights unchanged.
+3. Child explicitly offers writer access to its verified parent's connection, using a unique token
+   and a three-second offer timeout. The recipient validates the callback's exact window, recipient
+   connection, sender PID and nonzero offer serial, then accepts that matching offer.
+4. Owner request and recipient completion return zero. Independent held-rights readback becomes
+   **`[131072,0,65536]`**. The child's Owner right, connection, geometry, native button state and
+   entire captured window remain unchanged. This demonstrates capability state, not a rendering
+   mutation or native control suppression.
+5. Recipient calls `SLSConnectionRelinquishWindowRights` for only `0x20000`: zero, followed by exact
+   restoration to `[0,0,65536]`. Remove the callback, close the fixture and verify PID/window cleanup.
+
+Run 1 is rejected as incomplete: the owner call returned zero, but the recipient received no offer
+callback and its rights never changed. It stops without claiming delegation. The corrected harness
+in run 2 pumps its own AppKit event queue as well as its run loop and completes the handshake. This
+matters because a command-line harness is not running `NSApplication.run`; static tracing locates
+the internal offered/completed notification dispatchers (`0x32c`/`0x32d`) in `CGSWindowInitialize`.
+Both versions, binaries, raw logs and PNGs remain archived. Both fixture PIDs/windows are absent.
+
+### What this changes in the architecture
+
+The distinction is more precise than “all foreign operations are forbidden.” WindowServer supports
+explicit delegation without loading code into the recipient, and different operations require
+different rights. **AX inspection/read access, delegated backing-store write access, Presenter
+authority and access to the owner's AppKit view objects are separate capabilities.** The writer
+handoff does not grant Presenter/Owner or invoke the native view hide, and no backing-store writes
+were exercised here. It is not the missing universal backend.
+
+A qualifying general solution still needs either an existing per-app consumer that suppresses its
+own controls or an identified broker operation that can authorize and perform the required change
+for an unchanged protected target. The remaining research is to identify such an operation and
+trace its inbound request all the way to native visibility and interaction changes. The verified
+owner gate for this grant API is not proof that every system broker has the same gate.
+
+For comparison, [Ghostty documents an app-owned `macos-window-buttons = hidden` setting](https://ghostty.org/docs/config/reference#macos-window-buttons)
+which applies to new windows. This is a concrete cooperation model, not evidence that an external
+AX/private-API controller can change an arbitrary app. Ghostty is not installed/tested here; this
+pass does not add that configuration path to Margin or install another app.
+
+Read-only tracing also reaches WindowManagerAgent's `handleXPCWindowTransaction:completionHandler:`
+entry. Use arm64e `LC_FUNCTION_STARTS` to separate its six-instruction Objective-C entry from the
+shared forwarding code and stripped Swift implementation; taking everything until the next named
+method would wrongly combine unrelated functions. The forwarder invokes the passed implementation.
+Full Swift handler semantics and broker authorization remain incomplete, and no fabricated system
+transaction, private entitlement or global privilege registration is used. The archived entry
+functions are a research starting point, not a demonstrated hide operation or an impossibility proof.
+
+Exact static client/server traces, runtime constants, both rights attempts, catalog results, original
+pixel verification and hashes are in
+[`results/invocation-25G342`](../tools/traffic-lights-lab/results/invocation-25G342/README.md).
+Raw material is local under `test-results/traffic-lights-invocation-2026-11-16/`. No new recording or
+protected-app hiding success is claimed. Native warnings-as-errors builds and saved-evidence checks
+pass; fresh unit tests pass 1,031. Full E2E is attempted/bounded at 15 seconds after missing pinned
+WebKit 2388 setup errors; no browser download/full-suite pass, product app install or PR.

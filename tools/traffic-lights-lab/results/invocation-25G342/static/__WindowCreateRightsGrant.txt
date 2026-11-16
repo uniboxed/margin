@@ -1,0 +1,66 @@
+__WindowCreateRightsGrant
+0x186EEDE68   pacibsp
+0x186EEDE6C   stp      d9, d8, [sp, #-0x50]!
+0x186EEDE70   stp      x24, x23, [sp, #0x10]
+0x186EEDE74   stp      x22, x21, [sp, #0x20]
+0x186EEDE78   stp      x20, x19, [sp, #0x30]
+0x186EEDE7C   stp      x29, x30, [sp, #0x40]
+0x186EEDE80   add      x29, sp, #0x40
+0x186EEDE84   mov      x20, x4
+0x186EEDE88   mov      x21, x3
+0x186EEDE8C   mov      x22, x2
+0x186EEDE90   mov      x23, x1
+0x186EEDE94   mov      x19, x0
+0x186EEDE98   fcmp     d0, #0.0
+0x186EEDE9C   b.le     0x186eedeb0
+0x186EEDEA0   mov.16b  v8, v0
+0x186EEDEA4   bl       _SLSCurrentRealTime
+0x186EEDEA8   fadd     d8, d8, d0
+0x186EEDEAC   b        0x186eedeb8
+0x186EEDEB0   mov      x8, #0x7ff0000000000000
+0x186EEDEB4   fmov     d8, x8
+0x186EEDEB8   str      x23, [x19, #0x58]
+0x186EEDEBC   stp      w22, w21, [x19, #0x60]
+0x186EEDEC0   mov      x0, x20
+0x186EEDEC4   bl       _CFRetain
+0x186EEDEC8   str      x0, [x19, #0x70]
+0x186EEDECC   str      d8, [x19, #0x78]
+0x186EEDED0   add      x8, x19, #0x68
+0x186EEDED4   mov      w9, #0x1
+0x186EEDED8   ldadd    w9, w8, [x8]
+0x186EEDEDC   mov      x8, #0x7ff0000000000000
+0x186EEDEE0   fmov     d0, x8
+0x186EEDEE4   fcmp     d8, d0
+0x186EEDEE8   b.eq     0x186eedf04
+0x186EEDEEC   ldr      w2, [x19]
+0x186EEDEF0   adrp     x8, 407318           ; 0x1ea603000
+0x186EEDEF4   ldr      x8, [x8, #0x550]     ; ___sessionControlRef
+0x186EEDEF8   cbz      x8, 0x186eedf1c
+0x186EEDEFC   ldr      x3, [x8, #0x20]
+0x186EEDF00   b        0x186eedf20
+0x186EEDF04   ldp      x29, x30, [sp, #0x40]
+0x186EEDF08   ldp      x20, x19, [sp, #0x30]
+0x186EEDF0C   ldp      x22, x21, [sp, #0x20]
+0x186EEDF10   ldp      x24, x23, [sp, #0x10]
+0x186EEDF14   ldp      d9, d8, [sp], #0x50
+0x186EEDF18   retab
+0x186EEDF1C   mov      x3, #0x0
+0x186EEDF20   adrp     x0, 407316           ; 0x1ea601000
+0x186EEDF24   add      x0, x0, #0xe50       ; _gMainThreadQueue
+0x186EEDF28   adrp     x16, 0               ; 0x186eed000
+0x186EEDF2C   add      x16, x16, #0x510     ; __WindowRightsGrantExpirationCallback
+0x186EEDF30   paciza   x16
+0x186EEDF34   mov      x1, x16
+0x186EEDF38   mov.16b  v0, v8
+0x186EEDF3C   mov      w4, #0x0
+0x186EEDF40   mov      w5, #0x0
+0x186EEDF44   ldp      x29, x30, [sp, #0x40]
+0x186EEDF48   ldp      x20, x19, [sp, #0x30]
+0x186EEDF4C   ldp      x22, x21, [sp, #0x20]
+0x186EEDF50   ldp      x24, x23, [sp, #0x10]
+0x186EEDF54   ldp      d9, d8, [sp], #0x50
+0x186EEDF58   autibsp
+0x186EEDF5C   eor      x16, x30, x30, lsl #1
+0x186EEDF60   tbz      x16, #0x3e, 0x186eedf68
+0x186EEDF64   brk      #0xc471
+0x186EEDF68   b        _reschedule_callback_on_session

@@ -1,0 +1,36 @@
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf03d8","value":"filterType"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf05d8","value":"Could not obtain content filter."}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf0698","value":"Create stream with filter failed"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf0738","value":"Initialize stream with filter failed"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf0778","value":"Update filter failed"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf0798","value":"Invalid filter."}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf08b8","value":"Unknown filter type."}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf08d8","value":"Filter is nil."}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf27d8","value":"SLSBrightnessControlRequestFilteredAmbient"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf3af8","value":"kCGSExcludeShadowFromParentTitlebar"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf7038","value":"SLSScreenshotFilterKey"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf7058","value":"SLSScreenshotFilterDisplayIDKey"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf8118","value":"HIDPointerButtonCount"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf8258","value":"HIDPointerButtonMode"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf8838","value":"WindowFilterIncludedApps"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf8858","value":"WindowFilterExcludedApps"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf8878","value":"WindowFilterIncludedWindows"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf8898","value":"WindowFilterExcludedWindows"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf88b8","value":"WindowFilterIncludedPIDS"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf88d8","value":"WindowFilterExcludedPIDS"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf88f8","value":"WindowFilterPolicy"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf8918","value":"WindowFilterHideMenuBar"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf8938","value":"WindowFilterEnforceSharingType"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf8958","value":"WindowFilterShieldWindow"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf89b8","value":"SelectiveSharingStateWindowFilter"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf9ed8","value":"CIShapedWaterRipple"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf9ef8","value":"CIColorInvert"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf9f18","value":"inputPhase"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf9f38","value":"inputPoint0"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecf9f58","value":"inputPoint1"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecfa278","value":"filters"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecfba38","value":"FilterParams"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecfcaf8","value":"kCGSWindowRightsGrantDescriptionKey"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecfcb18","value":"kCGSWindowRightsGrantTokenKey"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecfcf58","value":"buttonNumber"}
+{"image":"\/System\/Library\/PrivateFrameworks\/SkyLight.framework\/Versions\/A\/SkyLight","unslidAddress":"0x1eecfecb8","value":"kPkgButtonRegion"}

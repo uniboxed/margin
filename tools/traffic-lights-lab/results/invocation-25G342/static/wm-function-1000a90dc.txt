@@ -1,0 +1,35 @@
+LC_FUNCTION_STARTS interval 0x1000a90dc..0x1000a9164; stripped Swift body, semantic name unproven
+0x1000A90DC   pacibsp
+0x1000A90E0   stp      x22, x21, [sp, #-0x30]!
+0x1000A90E4   stp      x20, x19, [sp, #0x10]
+0x1000A90E8   stp      x29, x30, [sp, #0x20]
+0x1000A90EC   add      x29, sp, #0x20
+0x1000A90F0   mov      x19, x4
+0x1000A90F4   mov      x20, x2
+0x1000A90F8   mov      x21, x0
+0x1000A90FC   mov      x0, x3
+0x1000A9100   bl       __Block_copy
+0x1000A9104   mov      x22, x0
+0x1000A9108   bl       __Block_copy
+0x1000A910C   mov      x0, x20
+0x1000A9110   bl       _objc_retain
+0x1000A9114   bl       0x1000b95ac
+0x1000A9118   bl       _objc_retain
+0x1000A911C   bl       0x1000b92f8
+0x1000A9120   mov      x1, x21
+0x1000A9124   mov      x2, x22
+0x1000A9128   mov      x17, #0x257
+0x1000A912C   blraa    x19, x17
+0x1000A9130   mov      x0, x22
+0x1000A9134   bl       __Block_release
+0x1000A9138   mov      x0, x20
+0x1000A913C   bl       _objc_release
+0x1000A9140   mov      x0, x21
+0x1000A9144   ldp      x29, x30, [sp, #0x20]
+0x1000A9148   ldp      x20, x19, [sp, #0x10]
+0x1000A914C   ldp      x22, x21, [sp], #0x30
+0x1000A9150   autibsp
+0x1000A9154   eor      x16, x30, x30, lsl #1
+0x1000A9158   tbz      x16, #0x3e, 0x1000a9160
+0x1000A915C   brk      #0xc471
+0x1000A9160   b        _objc_release

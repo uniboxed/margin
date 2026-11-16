@@ -1,0 +1,284 @@
+LC_FUNCTION_STARTS interval 0x1000a6bc8..0x1000a7034; stripped Swift body, semantic name unproven
+0x1000A6BC8   pacibsp
+0x1000A6BCC   stp      x28, x27, [sp, #-0x60]!
+0x1000A6BD0   stp      x26, x25, [sp, #0x10]
+0x1000A6BD4   stp      x24, x23, [sp, #0x20]
+0x1000A6BD8   stp      x22, x21, [sp, #0x30]
+0x1000A6BDC   stp      x20, x19, [sp, #0x40]
+0x1000A6BE0   stp      x29, x30, [sp, #0x50]
+0x1000A6BE4   add      x29, sp, #0x50
+0x1000A6BE8   sub      sp, sp, #0x60
+0x1000A6BEC   stur     x2, [x29, #-0x88]
+0x1000A6BF0   mov      x27, x1
+0x1000A6BF4   mov      x20, x0
+0x1000A6BF8   mov      x0, #0x0
+0x1000A6BFC   bl       _$s8Dispatch0A13WorkItemFlagsVMa
+0x1000A6C00   mov      x21, x0
+0x1000A6C04   mov      x9, x0
+0x1000A6C08   ldr      x8, [x9, #-0x8]!
+0x1000A6C0C   mov      x16, x8
+0x1000A6C10   mov      x17, x9
+0x1000A6C14   movk     x17, #0x2e3f, lsl #48
+0x1000A6C18   autda    x16, x17
+0x1000A6C1C   mov      x17, x16
+0x1000A6C20   xpacd    x17
+0x1000A6C24   cmp      x16, x17
+0x1000A6C28   b.eq     0x1000a6c30
+0x1000A6C2C   brk      #0xc472
+0x1000A6C30   stur     x16, [x29, #-0x90]
+0x1000A6C34   mov      x16, x8
+0x1000A6C38   mov      x17, x9
+0x1000A6C3C   movk     x17, #0x2e3f, lsl #48
+0x1000A6C40   autda    x16, x17
+0x1000A6C44   ldr      x8, [x16, #0x40]
+0x1000A6C48   mov      x9, x8
+0x1000A6C4C   adrp     x17, 887             ; 0x10041d000
+0x1000A6C50   add      x17, x17, #0x628
+0x1000A6C54   ldr      x16, [x17]
+0x1000A6C58   blraa    x16, x17
+0x1000A6C5C   mov      x9, sp
+0x1000A6C60   add      x8, x8, #0xf
+0x1000A6C64   and      x8, x8, #0xfffffffffffffff0
+0x1000A6C68   sub      x24, x9, x8
+0x1000A6C6C   mov      sp, x24
+0x1000A6C70   mov      x0, #0x0
+0x1000A6C74   bl       _$s8Dispatch0A3QoSVMa
+0x1000A6C78   stur     x0, [x29, #-0x98]
+0x1000A6C7C   mov      x9, x0
+0x1000A6C80   ldr      x8, [x9, #-0x8]!
+0x1000A6C84   mov      x16, x8
+0x1000A6C88   mov      x17, x9
+0x1000A6C8C   movk     x17, #0x2e3f, lsl #48
+0x1000A6C90   autda    x16, x17
+0x1000A6C94   mov      x17, x16
+0x1000A6C98   xpacd    x17
+0x1000A6C9C   cmp      x16, x17
+0x1000A6CA0   b.eq     0x1000a6ca8
+0x1000A6CA4   brk      #0xc472
+0x1000A6CA8   mov      x25, x16
+0x1000A6CAC   mov      x16, x8
+0x1000A6CB0   mov      x17, x9
+0x1000A6CB4   movk     x17, #0x2e3f, lsl #48
+0x1000A6CB8   autda    x16, x17
+0x1000A6CBC   ldr      x8, [x16, #0x40]
+0x1000A6CC0   mov      x9, x8
+0x1000A6CC4   adrp     x17, 887             ; 0x10041d000
+0x1000A6CC8   add      x17, x17, #0x628
+0x1000A6CCC   ldr      x16, [x17]
+0x1000A6CD0   blraa    x16, x17
+0x1000A6CD4   mov      x9, sp
+0x1000A6CD8   add      x8, x8, #0xf
+0x1000A6CDC   and      x8, x8, #0xfffffffffffffff0
+0x1000A6CE0   sub      x26, x9, x8
+0x1000A6CE4   mov      sp, x26
+0x1000A6CE8   mov      x0, #0x0
+0x1000A6CEC   bl       _$s8Dispatch0A9PredicateOMa
+0x1000A6CF0   mov      x28, x0
+0x1000A6CF4   mov      x9, x0
+0x1000A6CF8   ldr      x8, [x9, #-0x8]!
+0x1000A6CFC   mov      x16, x8
+0x1000A6D00   mov      x17, x9
+0x1000A6D04   movk     x17, #0x2e3f, lsl #48
+0x1000A6D08   autda    x16, x17
+0x1000A6D0C   mov      x17, x16
+0x1000A6D10   xpacd    x17
+0x1000A6D14   cmp      x16, x17
+0x1000A6D18   b.eq     0x1000a6d20
+0x1000A6D1C   brk      #0xc472
+0x1000A6D20   mov      x23, x16
+0x1000A6D24   mov      x16, x8
+0x1000A6D28   mov      x17, x9
+0x1000A6D2C   movk     x17, #0x2e3f, lsl #48
+0x1000A6D30   autda    x16, x17
+0x1000A6D34   ldr      x8, [x16, #0x40]
+0x1000A6D38   mov      x9, x8
+0x1000A6D3C   adrp     x17, 887             ; 0x10041d000
+0x1000A6D40   add      x17, x17, #0x628
+0x1000A6D44   ldr      x16, [x17]
+0x1000A6D48   blraa    x16, x17
+0x1000A6D4C   mov      x9, sp
+0x1000A6D50   add      x8, x8, #0xf
+0x1000A6D54   and      x8, x8, #0xfffffffffffffff0
+0x1000A6D58   sub      x19, x9, x8
+0x1000A6D5C   mov      sp, x19
+0x1000A6D60   adrp     x8, 953              ; 0x10045f000
+0x1000A6D64   ldr      x8, [x8, #0xf60]
+0x1000A6D68   ldr      x22, [x27, x8]
+0x1000A6D6C   str      x22, [x19]
+0x1000A6D70   adrp     x8, 886              ; 0x10041c000
+0x1000A6D74   ldr      x8, [x8, #0x358]     ; _$s8Dispatch0A9PredicateO7onQueueyACSo17OS_dispatch_queueCcACmFWC@got
+0x1000A6D78   ldr      w1, [x8]
+0x1000A6D7C   mov      x8, x23
+0x1000A6D80   ldr      x9, [x8, #0x68]!
+0x1000A6D84   mov      x0, x19
+0x1000A6D88   mov      x2, x28
+0x1000A6D8C   mov      x17, x8
+0x1000A6D90   movk     x17, #0xb2e4, lsl #48
+0x1000A6D94   blraa    x9, x17
+0x1000A6D98   mov      x0, x22
+0x1000A6D9C   bl       _objc_retain
+0x1000A6DA0   mov      x0, x19
+0x1000A6DA4   bl       _$s8Dispatch25_dispatchPreconditionTestySbAA0A9PredicateOF
+0x1000A6DA8   mov      x22, x0
+0x1000A6DAC   ldr      x8, [x23, #0x8]!
+0x1000A6DB0   mov      x0, x19
+0x1000A6DB4   mov      x1, x28
+0x1000A6DB8   mov      x17, x23
+0x1000A6DBC   movk     x17, #0x4f8, lsl #48
+0x1000A6DC0   blraa    x8, x17
+0x1000A6DC4   tbz      w22, #0x0, 0x1000a7030
+0x1000A6DC8   adrp     x8, 953              ; 0x10045f000
+0x1000A6DCC   ldr      x8, [x8, #0xf68]
+0x1000A6DD0   ldrb     w8, [x27, x8]
+0x1000A6DD4   mov      w9, #0x1
+0x1000A6DD8   bic      w1, w9, w8
+0x1000A6DDC   mov      x0, x20
+0x1000A6DE0   mov      x20, x27
+0x1000A6DE4   bl       0x1000a67c4
+0x1000A6DE8   mov      x19, x0
+0x1000A6DEC   mov      x22, x1
+0x1000A6DF0   adrp     x1, 950              ; 0x10045c000
+0x1000A6DF4   add      x1, x1, #0x780
+0x1000A6DF8   adrp     x2, 885              ; 0x10041b000
+0x1000A6DFC   add      x2, x2, #0x828       ; _OBJC_CLASS_$_OS_dispatch_queue@got
+0x1000A6E00   mov      x0, #0x0
+0x1000A6E04   bl       0x1000111d0
+0x1000A6E08   mov      x20, x0
+0x1000A6E0C   bl       _$sSo17OS_dispatch_queueC8DispatchE4mainABvgZ
+0x1000A6E10   mov      x28, x0
+0x1000A6E14   adrp     x0, 895              ; 0x100425000
+0x1000A6E18   add      x0, x0, #0x658
+0x1000A6E1C   mov      w1, #0x18
+0x1000A6E20   mov      w2, #0x7
+0x1000A6E24   bl       _swift_allocObject
+0x1000A6E28   mov      x20, x0
+0x1000A6E2C   add      x0, x0, #0x10
+0x1000A6E30   mov      x1, x27
+0x1000A6E34   bl       _swift_unknownObjectWeakInit
+0x1000A6E38   adrp     x8, 953              ; 0x10045f000
+0x1000A6E3C   ldr      x8, [x8, #0xf78]
+0x1000A6E40   add      x23, x27, x8
+0x1000A6E44   adrp     x0, 895              ; 0x100425000
+0x1000A6E48   add      x0, x0, #0x948
+0x1000A6E4C   mov      w1, #0x38
+0x1000A6E50   mov      w2, #0x7
+0x1000A6E54   bl       _swift_allocObject
+0x1000A6E58   stp      x20, x19, [x0, #0x10]
+0x1000A6E5C   str      x22, [x0, #0x20]
+0x1000A6E60   ldr      x19, [x23, #0x8]
+0x1000A6E64   ldr      q0, [x23]
+0x1000A6E68   stur     q0, [x29, #-0xb0]
+0x1000A6E6C   stur     q0, [x0, #0x28]
+0x1000A6E70   adrp     x16, 18              ; 0x1000b8000
+0x1000A6E74   add      x16, x16, #0xf64
+0x1000A6E78   mov      x17, #0xf08
+0x1000A6E7C   pacia    x16, x17
+0x1000A6E80   stp      x16, x0, [x29, #-0x60]
+0x1000A6E84   sub      x8, x29, #0x80
+0x1000A6E88   adrp     x16, 885             ; 0x10041b000
+0x1000A6E8C   ldr      x16, [x16, #0x838]   ; __NSConcreteStackBlock@got
+0x1000A6E90   mov      x17, x8
+0x1000A6E94   movk     x17, #0x6ae1, lsl #48
+0x1000A6E98   pacda    x16, x17
+0x1000A6E9C   stur     x16, [x29, #-0x80]
+0x1000A6EA0   adrp     x9, 734              ; 0x100384000
+0x1000A6EA4   ldr      d0, [x9, #0x288]
+0x1000A6EA8   stur     d0, [x29, #-0x78]
+0x1000A6EAC   add      x8, x8, #0x10
+0x1000A6EB0   adrp     x16, -162            ; 0x100004000
+0x1000A6EB4   add      x16, x16, #0xd84
+0x1000A6EB8   pacia    x16, x8
+0x1000A6EBC   adrp     x8, 895              ; 0x100425000
+0x1000A6EC0   add      x8, x8, #0x960
+0x1000A6EC4   stp      x16, x8, [x29, #-0x70]
+0x1000A6EC8   sub      x0, x29, #0x80
+0x1000A6ECC   bl       __Block_copy
+0x1000A6ED0   mov      x27, x0
+0x1000A6ED4   ldur     x20, [x29, #-0x58]
+0x1000A6ED8   ldur     q0, [x29, #-0xb0]
+0x1000A6EDC   fmov     x0, d0
+0x1000A6EE0   bl       _swift_bridgeObjectRetain
+0x1000A6EE4   mov      x0, x19
+0x1000A6EE8   bl       _swift_bridgeObjectRetain
+0x1000A6EEC   mov      x0, x20
+0x1000A6EF0   bl       _swift_release
+0x1000A6EF4   mov      x8, x26
+0x1000A6EF8   bl       _$s8Dispatch0A3QoSV11unspecifiedACvgZ
+0x1000A6EFC   adrp     x8, 886              ; 0x10041c000
+0x1000A6F00   ldr      x8, [x8, #0x2a0]     ; __swiftEmptyArrayStorage@got
+0x1000A6F04   stur     x8, [x29, #-0x80]
+0x1000A6F08   adrp     x0, 951              ; 0x10045d000
+0x1000A6F0C   add      x0, x0, #0x480
+0x1000A6F10   adrp     x16, 886             ; 0x10041c000
+0x1000A6F14   ldr      x16, [x16, #0x338]   ; _$s8Dispatch0A13WorkItemFlagsVMa@got
+0x1000A6F18   mov      x17, #0x9d91
+0x1000A6F1C   pacia    x16, x17
+0x1000A6F20   mov      x1, x16
+0x1000A6F24   adrp     x16, 886             ; 0x10041c000
+0x1000A6F28   ldr      x16, [x16, #0x340]   ; _$s8Dispatch0A13WorkItemFlagsVs10SetAlgebraAAMc@got
+0x1000A6F2C   mov      x17, #0xc6eb
+0x1000A6F30   pacda    x16, x17
+0x1000A6F34   mov      x2, x16
+0x1000A6F38   bl       0x1000b8554
+0x1000A6F3C   mov      x19, x0
+0x1000A6F40   adrp     x20, 951             ; 0x10045d000
+0x1000A6F44   add      x20, x20, #0x590
+0x1000A6F48   adrp     x22, 735             ; 0x100385000
+0x1000A6F4C   add      x22, x22, #0x450
+0x1000A6F50   mov      x0, x20
+0x1000A6F54   mov      x1, x22
+0x1000A6F58   bl       0x100002fb4
+0x1000A6F5C   mov      x23, x0
+0x1000A6F60   adrp     x0, 951              ; 0x10045d000
+0x1000A6F64   add      x0, x0, #0x490
+0x1000A6F68   mov      x1, x20
+0x1000A6F6C   mov      x2, x22
+0x1000A6F70   bl       0x1000b8908
+0x1000A6F74   mov      x2, x0
+0x1000A6F78   sub      x0, x29, #0x80
+0x1000A6F7C   mov      x8, x24
+0x1000A6F80   mov      x1, x23
+0x1000A6F84   mov      x20, x21
+0x1000A6F88   mov      x3, x21
+0x1000A6F8C   mov      x4, x19
+0x1000A6F90   bl       _$ss10SetAlgebraPyxqd__ncSTRd__7ElementQyd__ACRtzlufCTj
+0x1000A6F94   mov      x0, #0x0
+0x1000A6F98   mov      x1, x26
+0x1000A6F9C   mov      x2, x24
+0x1000A6FA0   mov      x3, x27
+0x1000A6FA4   mov      x20, x28
+0x1000A6FA8   bl       _$sSo17OS_dispatch_queueC8DispatchE5async5group3qos5flags7executeySo0a1_b1_F0CSg_AC0D3QoSVAC0D13WorkItemFlagsVyyXBtF
+0x1000A6FAC   mov      x0, x27
+0x1000A6FB0   bl       __Block_release
+0x1000A6FB4   mov      x0, x28
+0x1000A6FB8   bl       _objc_release
+0x1000A6FBC   ldur     x9, [x29, #-0x90]
+0x1000A6FC0   ldr      x8, [x9, #0x8]!
+0x1000A6FC4   mov      x0, x24
+0x1000A6FC8   mov      x1, x21
+0x1000A6FCC   mov      x17, x9
+0x1000A6FD0   movk     x17, #0x4f8, lsl #48
+0x1000A6FD4   blraa    x8, x17
+0x1000A6FD8   ldr      x8, [x25, #0x8]!
+0x1000A6FDC   mov      x0, x26
+0x1000A6FE0   ldur     x1, [x29, #-0x98]
+0x1000A6FE4   mov      x17, x25
+0x1000A6FE8   movk     x17, #0x4f8, lsl #48
+0x1000A6FEC   blraa    x8, x17
+0x1000A6FF0   ldur     x19, [x29, #-0x88]
+0x1000A6FF4   mov      x8, x19
+0x1000A6FF8   ldr      x9, [x8, #0x10]!
+0x1000A6FFC   mov      x0, x19
+0x1000A7000   mov      x1, #0x0
+0x1000A7004   blraa    x9, x8
+0x1000A7008   mov      x0, x19
+0x1000A700C   bl       __Block_release
+0x1000A7010   sub      sp, x29, #0x50
+0x1000A7014   ldp      x29, x30, [sp, #0x50]
+0x1000A7018   ldp      x20, x19, [sp, #0x40]
+0x1000A701C   ldp      x22, x21, [sp, #0x30]
+0x1000A7020   ldp      x24, x23, [sp, #0x20]
+0x1000A7024   ldp      x26, x25, [sp, #0x10]
+0x1000A7028   ldp      x28, x27, [sp], #0x60
+0x1000A702C   retab
+0x1000A7030   brk      #0x1

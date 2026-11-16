@@ -1,0 +1,133 @@
+__XNewCIFilter
+0x1871B367C   pacibsp
+0x1871B3680   stp      x24, x23, [sp, #-0x40]!
+0x1871B3684   stp      x22, x21, [sp, #0x10]
+0x1871B3688   stp      x20, x19, [sp, #0x20]
+0x1871B368C   stp      x29, x30, [sp, #0x30]
+0x1871B3690   add      x29, sp, #0x30
+0x1871B3694   mov      x19, x1
+0x1871B3698   ldr      w8, [x0]
+0x1871B369C   tbz      w8, #0x1f, 0x1871b373c
+0x1871B36A0   mov      x20, x0
+0x1871B36A4   ldr      w8, [x0, #0x18]
+0x1871B36A8   cmp      w8, #0x1
+0x1871B36AC   b.ne     0x1871b373c
+0x1871B36B0   ldr      w8, [x20, #0x4]
+0x1871B36B4   cmp      w8, #0x38
+0x1871B36B8   b.ne     0x1871b373c
+0x1871B36BC   ldrb     w8, [x20, #0x27]
+0x1871B36C0   cmp      w8, #0x1
+0x1871B36C4   b.ne     0x1871b3768
+0x1871B36C8   ldr      w22, [x20, #0x28]
+0x1871B36CC   ldr      w8, [x20, #0x34]
+0x1871B36D0   cmp      w22, w8
+0x1871B36D4   b.ne     0x1871b3768
+0x1871B36D8   ldr      w0, [x20, #0xc]
+0x1871B36DC   ldur     x23, [x20, #0x1c]
+0x1871B36E0   bl       _CGXConnectionForPort
+0x1871B36E4   cbz      x0, 0x1871b3770
+0x1871B36E8   mov      x21, x0
+0x1871B36EC   str      wzr, [x19, #0x24]
+0x1871B36F0   bl       _CFStringGetTypeID
+0x1871B36F4   mov      x2, x0
+0x1871B36F8   mov      x0, x23
+0x1871B36FC   mov      x1, x22
+0x1871B3700   bl       _CGSPropertyListCreateWithSerializedBytesRequiringType
+0x1871B3704   cbz      x0, 0x1871b3814
+0x1871B3708   mov      x22, x0
+0x1871B370C   bl       _CFGetTypeID
+0x1871B3710   mov      x23, x0
+0x1871B3714   bl       _CFStringGetTypeID
+0x1871B3718   cmp      x23, x0
+0x1871B371C   b.ne     0x1871b380c
+0x1871B3720   adrp     x1, 424774           ; 0x1eecf9000
+0x1871B3724   add      x1, x1, #0xed8
+0x1871B3728   mov      x0, x22
+0x1871B372C   bl       _CFEqual
+0x1871B3730   cbz      w0, 0x1871b3778
+0x1871B3734   mov      w23, #0x1
+0x1871B3738   b        0x1871b3790
+0x1871B373C   mov      w8, #-0x130
+0x1871B3740   str      w8, [x19, #0x20]
+0x1871B3744   adrp     x8, 389155           ; 0x1e61d6000
+0x1871B3748   ldr      x8, [x8, #0xce8]
+0x1871B374C   ldr      x8, [x8]
+0x1871B3750   str      x8, [x19, #0x18]
+0x1871B3754   ldp      x29, x30, [sp, #0x30]
+0x1871B3758   ldp      x20, x19, [sp, #0x20]
+0x1871B375C   ldp      x22, x21, [sp, #0x10]
+0x1871B3760   ldp      x24, x23, [sp], #0x40
+0x1871B3764   retab
+0x1871B3768   mov      w8, #-0x12c
+0x1871B376C   b        0x1871b3740
+0x1871B3770   mov      w10, #0x3ea
+0x1871B3774   b        0x1871b3850
+0x1871B3778   adrp     x1, 424774           ; 0x1eecf9000
+0x1871B377C   add      x1, x1, #0xef8
+0x1871B3780   mov      x0, x22
+0x1871B3784   bl       _CFEqual
+0x1871B3788   cbz      w0, 0x1871b380c
+0x1871B378C   mov      w23, #0x2
+0x1871B3790   mov      x0, x22
+0x1871B3794   bl       _CFRelease
+0x1871B3798   mov      x1, #0xbb7f
+0x1871B379C   movk     x1, #0x3042, lsl #16
+0x1871B37A0   movk     x1, #0x40, lsl #32
+0x1871B37A4   movk     x1, #0x102, lsl #48
+0x1871B37A8   mov      w0, #0x30
+0x1871B37AC   bl       _malloc_type_malloc
+0x1871B37B0   adrp     x8, 406608           ; 0x1ea603000
+0x1871B37B4   ldr      x8, [x8, #0x550]     ; ___sessionControlRef
+0x1871B37B8   ldr      x10, [x8, #0x20]
+0x1871B37BC   ldr      x11, [x10, #0x90]
+0x1871B37C0   ldr      w9, [x11, #0x78]
+0x1871B37C4   add      w12, w9, #0x1
+0x1871B37C8   str      w12, [x11, #0x78]
+0x1871B37CC   cbnz     w9, 0x1871b37e4
+0x1871B37D0   ldr      x9, [x8, #0x20]
+0x1871B37D4   ldr      x11, [x9, #0x90]
+0x1871B37D8   ldr      w9, [x11, #0x78]
+0x1871B37DC   add      w12, w9, #0x1
+0x1871B37E0   str      w12, [x11, #0x78]
+0x1871B37E4   ldr      x11, [x8, #0x20]
+0x1871B37E8   cbz      x11, 0x1871b37f0
+0x1871B37EC   ldr      x11, [x11, #0x90]
+0x1871B37F0   add      x11, x11, #0x70
+0x1871B37F4   ldr      x11, [x11]
+0x1871B37F8   cbz      x11, 0x1871b381c
+0x1871B37FC   ldr      w12, [x11, #0x14]
+0x1871B3800   cmp      w12, w9
+0x1871B3804   b.eq     0x1871b37bc
+0x1871B3808   b        0x1871b37f4
+0x1871B380C   mov      x0, x22
+0x1871B3810   bl       _CFRelease
+0x1871B3814   mov      w10, #0x3ee
+0x1871B3818   b        0x1871b3850
+0x1871B381C   mov      w10, #0x0
+0x1871B3820   str      w9, [x0, #0x14]
+0x1871B3824   mov      w11, #0x1
+0x1871B3828   stp      w11, w23, [x0, #0x8]
+0x1871B382C   ldr      x8, [x8, #0x20]
+0x1871B3830   ldr      x11, [x8, #0x90]
+0x1871B3834   ldr      x11, [x11, #0x70]
+0x1871B3838   str      x11, [x0]
+0x1871B383C   ldr      x8, [x8, #0x90]
+0x1871B3840   str      x0, [x8, #0x70]
+0x1871B3844   ldr      w8, [x21, #0x50]
+0x1871B3848   str      w8, [x0, #0x10]
+0x1871B384C   str      w9, [x19, #0x24]
+0x1871B3850   str      w10, [x19, #0x20]
+0x1871B3854   ldur     x0, [x20, #0x1c]
+0x1871B3858   ldr      w1, [x20, #0x28]
+0x1871B385C   bl       _mig_deallocate
+0x1871B3860   stur     xzr, [x20, #0x1c]
+0x1871B3864   str      wzr, [x20, #0x28]
+0x1871B3868   ldr      w8, [x19, #0x20]
+0x1871B386C   adrp     x9, 389155           ; 0x1e61d6000
+0x1871B3870   ldr      x9, [x9, #0xce8]
+0x1871B3874   ldr      x9, [x9]
+0x1871B3878   str      x9, [x19, #0x18]
+0x1871B387C   cbnz     w8, 0x1871b3754
+0x1871B3880   mov      w8, #0x28
+0x1871B3884   str      w8, [x19, #0x4]
+0x1871B3888   b        0x1871b3754

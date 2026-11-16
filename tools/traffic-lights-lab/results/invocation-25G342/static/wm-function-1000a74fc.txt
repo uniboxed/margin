@@ -1,0 +1,7 @@
+LC_FUNCTION_STARTS interval 0x1000a74fc..0x1000a7514; stripped Swift body, semantic name unproven
+0x1000A74FC   adrp     x16, -1              ; 0x1000a6000
+0x1000A7500   add      x16, x16, #0xbc8
+0x1000A7504   mov      x17, #0x257
+0x1000A7508   pacia    x16, x17
+0x1000A750C   mov      x4, x16
+0x1000A7510   b        0x1000a90dc

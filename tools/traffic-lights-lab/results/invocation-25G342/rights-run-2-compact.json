@@ -1,0 +1,246 @@
+[
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "connection": 2424787,
+      "cornerMask": {},
+      "nativeCornerRadius": -1,
+      "pid": 40705,
+      "window": 80546,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "baseline"
+  },
+  {
+    "foreignRightsBaseline": {
+      "rawOutputs": [
+        0,
+        0,
+        65536
+      ],
+      "result": 0
+    }
+  },
+  {
+    "foreignSelfGrantWriter": 1001
+  },
+  {
+    "foreignRightsAfterSelfGrant": {
+      "rawOutputs": [
+        0,
+        0,
+        65536
+      ],
+      "result": 0
+    }
+  },
+  {
+    "grantee": 1333683,
+    "ownerGrantWriter": 0,
+    "window": 80546
+  },
+  {
+    "offerCompletion": {
+      "completeGrant": 0,
+      "record": [
+        80546,
+        1333683,
+        40705,
+        1
+      ]
+    }
+  },
+  {
+    "foreignRightsAfterOwnerGrant": {
+      "rawOutputs": [
+        131072,
+        0,
+        65536
+      ],
+      "result": 0
+    }
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "connection": 2424787,
+      "cornerMask": {},
+      "nativeCornerRadius": -1,
+      "pid": 40705,
+      "window": 80546,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "writer-granted-no-rendering-change"
+  },
+  {
+    "relinquishWriter": 0
+  },
+  {
+    "foreignRightsRestored": {
+      "rawOutputs": [
+        0,
+        0,
+        65536
+      ],
+      "result": 0
+    }
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "connection": 2424787,
+      "cornerMask": {},
+      "nativeCornerRadius": -1,
+      "pid": 40705,
+      "window": 80546,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "writer-relinquished"
+  },
+  {
+    "childRunning": false,
+    "cleanup": true,
+    "exit": 0
+  }
+]

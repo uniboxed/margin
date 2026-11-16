@@ -10,7 +10,12 @@ restoration, with no injected library or saved corner-preference writes. Chrome 
 matched test. This concerns corner radius; native external traffic-light hiding remains unestablished.
 
 **Current requirement:** actual native control suppression. The user rejects image covers; the cover
-below is historical evidence, not an accepted solution. The newest configuration/AX routing pass
+below is historical evidence, not an accepted solution. The newest invocation pass tests real owner
+delegation of a nonexclusive window right and WindowServer's restricted filter catalog. A foreign
+process cannot self-grant writer access; an explicit matching owner offer/recipient acceptance adds
+it and relinquishment restores it. Native pixels/controls stay unchanged; no new protected-app hide.
+The filter entry point accepts only its traced fixed types and rejects tested mask/crop filters.
+See `results/invocation-25G342/`. The earlier configuration/AX routing pass
 inventories direct configuration consumers and compares owner AX relationship overrides with foreign
 writes, native hit states and entire-window pixels. Metadata changes do not hide native controls;
 external writes returning success do not establish either mutation. No new protected-app native hide.
@@ -26,6 +31,20 @@ Chrome did not load that library. AX writes and foreign clipping did not change 
 This is a bounded Chromium backend, not general external Safari/Chrome/Edge support.
 
 ## Native-only button-region and retained-proxy probes
+
+### Delegated rights and compositor catalog
+
+Build `deeper.swift` as below; invoke with `--rights-grant --output /absolute/new/run` (dry), then
+add `--run`. It targets only its own visible child, compares rejected self-grant with explicit owner
+offer/recipient acceptance of BackingStoreWriter (0x20000), independently reads rights, relinquishes
+them and closes. No backing-store writes or exclusive rights transfer; no native hide is claimed.
+The rights mode pumps its own AppKit event queue for process-notification delivery.
+
+`compositor-catalog.m` is a separate no-window probe (see `results/invocation-25G342/README.md` for
+build/dry/run commands). It creates/releases two traced fixed filter types on its own connection and
+tests three rejected mask/crop names. `native-strings --skylight` reads selected loaded filter/right
+constants without invoking their APIs. `verify-invocation.py ARCHIVE_ROOT` checks archived catalog,
+both rights attempts, native state and original pixels offline. No new protected-app success.
 
 ### Button configuration and AX relationship routing
 

@@ -1,0 +1,46 @@
+_SLSNewCIFilterByName
+0x187036870   pacibsp
+0x187036874   sub      sp, sp, #0x50
+0x187036878   stp      x29, x30, [sp, #0x40]
+0x18703687C   add      x29, sp, #0x40
+0x187036880   adrp     x9, 389536           ; 0x1e61d6000
+0x187036884   ldr      x9, [x9, #0xab0]
+0x187036888   ldr      x9, [x9]
+0x18703688C   stur     x9, [x29, #-0x8]
+0x187036890   str      wzr, [x2]
+0x187036894   cbz      x1, 0x1870368f8
+0x187036898   mov      x8, x1
+0x18703689C   add      x9, sp, #0x8
+0x1870368A0   adrp     x16, 389536          ; 0x1e61d6000
+0x1870368A4   ldr      x16, [x16, #0xa90]
+0x1870368A8   mov      x17, x9
+0x1870368AC   movk     x17, #0x6ae1, lsl #48
+0x1870368B0   pacda    x16, x17
+0x1870368B4   str      x16, [sp, #0x8]
+0x1870368B8   adrp     x10, 416             ; 0x1871d6000
+0x1870368BC   ldr      d0, [x10, #0x5b0]
+0x1870368C0   str      d0, [sp, #0x10]
+0x1870368C4   add      x9, x9, #0x10
+0x1870368C8   adrp     x10, 390918          ; 0x1e673c000
+0x1870368CC   add      x10, x10, #0x338     ; ___block_descriptor_tmp.107
+0x1870368D0   adrp     x16, 0               ; 0x187036000
+0x1870368D4   add      x16, x16, #0x924     ; ___SLSNewCIFilterByName_block_invoke
+0x1870368D8   pacia    x16, x9
+0x1870368DC   stp      x16, x10, [sp, #0x18]
+0x1870368E0   str      w0, [sp, #0x30]
+0x1870368E4   str      x2, [sp, #0x28]
+0x1870368E8   add      x1, sp, #0x8
+0x1870368EC   mov      x0, x8
+0x1870368F0   bl       _CGSPropertyListPerformWithSerializedBytes
+0x1870368F4   b        0x1870368fc
+0x1870368F8   mov      w0, #0x3e9
+0x1870368FC   ldur     x8, [x29, #-0x8]
+0x187036900   adrp     x9, 389536           ; 0x1e61d6000
+0x187036904   ldr      x9, [x9, #0xab0]
+0x187036908   ldr      x9, [x9]
+0x18703690C   cmp      x9, x8
+0x187036910   b.ne     0x187036920
+0x187036914   ldp      x29, x30, [sp, #0x40]
+0x187036918   add      sp, sp, #0x50
+0x18703691C   retab
+0x187036920   bl       ___stack_chk_fail

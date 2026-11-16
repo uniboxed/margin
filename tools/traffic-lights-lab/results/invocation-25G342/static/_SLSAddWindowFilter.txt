@@ -1,0 +1,23 @@
+_SLSAddWindowFilter
+0x187036C78   pacibsp
+0x187036C7C   stp      x22, x21, [sp, #-0x30]!
+0x187036C80   stp      x20, x19, [sp, #0x10]
+0x187036C84   stp      x29, x30, [sp, #0x20]
+0x187036C88   add      x29, sp, #0x20
+0x187036C8C   mov      x19, x3
+0x187036C90   mov      x20, x2
+0x187036C94   mov      x21, x1
+0x187036C98   bl       _CGSGetConnectionPortById
+0x187036C9C   orr      w8, w19, #0x100
+0x187036CA0   tst      w19, #0x700
+0x187036CA4   csel     w3, w8, w19, eq
+0x187036CA8   mov      x1, x21
+0x187036CAC   mov      x2, x20
+0x187036CB0   ldp      x29, x30, [sp, #0x20]
+0x187036CB4   ldp      x20, x19, [sp, #0x10]
+0x187036CB8   ldp      x22, x21, [sp], #0x30
+0x187036CBC   autibsp
+0x187036CC0   eor      x16, x30, x30, lsl #1
+0x187036CC4   tbz      x16, #0x3e, 0x187036ccc
+0x187036CC8   brk      #0xc471
+0x187036CCC   b        __CGSSetWindowCIFilter

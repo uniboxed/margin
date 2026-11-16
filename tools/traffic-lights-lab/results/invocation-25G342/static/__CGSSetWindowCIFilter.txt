@@ -1,0 +1,41 @@
+__CGSSetWindowCIFilter
+0x187191824   pacibsp
+0x187191828   sub      sp, sp, #0x50
+0x18719182C   stp      x29, x30, [sp, #0x40]
+0x187191830   add      x29, sp, #0x40
+0x187191834   adrp     x8, 389189           ; 0x1e61d6000
+0x187191838   ldr      x8, [x8, #0xab0]
+0x18719183C   ldr      x8, [x8]
+0x187191840   stur     x8, [x29, #-0x8]
+0x187191844   adrp     x8, 389189           ; 0x1e61d6000
+0x187191848   ldr      x8, [x8, #0xce8]
+0x18719184C   ldr      x8, [x8]
+0x187191850   str      x8, [sp, #0x20]
+0x187191854   stp      w1, w2, [sp, #0x28]
+0x187191858   str      w3, [sp, #0x30]
+0x18719185C   adrp     x8, 69               ; 0x1871d6000
+0x187191860   ldr      d0, [x8, #0x7d0]
+0x187191864   str      d0, [sp, #0x8]
+0x187191868   mov      w8, #0x7610
+0x18719186C   stp      wzr, w8, [sp, #0x18]
+0x187191870   stp      w0, wzr, [sp, #0x10]
+0x187191874   add      x0, sp, #0x8
+0x187191878   bl       _voucher_mach_msg_set
+0x18719187C   add      x0, sp, #0x8
+0x187191880   mov      w1, #0x1
+0x187191884   mov      w2, #0x2c
+0x187191888   mov      w3, #0x0
+0x18719188C   mov      w4, #0x0
+0x187191890   mov      w5, #0x0
+0x187191894   mov      w6, #0x0
+0x187191898   bl       _mach_msg
+0x18719189C   ldur     x8, [x29, #-0x8]
+0x1871918A0   adrp     x9, 389189           ; 0x1e61d6000
+0x1871918A4   ldr      x9, [x9, #0xab0]
+0x1871918A8   ldr      x9, [x9]
+0x1871918AC   cmp      x9, x8
+0x1871918B0   b.ne     0x1871918c0
+0x1871918B4   ldp      x29, x30, [sp, #0x40]
+0x1871918B8   add      sp, sp, #0x50
+0x1871918BC   retab
+0x1871918C0   bl       ___stack_chk_fail

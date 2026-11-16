@@ -1,0 +1,31 @@
+{
+  "catalog_all_resources_released": "pass",
+  "owner_grant_acceptance_rights_readback_relinquishment": "pass",
+  "native_pixels_controls_owner_geometry_unchanged": "pass",
+  "native_button_hide_demonstrated": false,
+  "before": {
+    "rawOutputs": [
+      0,
+      0,
+      65536
+    ],
+    "result": 0
+  },
+  "after_owner_grant": {
+    "rawOutputs": [
+      131072,
+      0,
+      65536
+    ],
+    "result": 0
+  },
+  "restored": {
+    "rawOutputs": [
+      0,
+      0,
+      65536
+    ],
+    "result": 0
+  },
+  "limits": "owned child cooperation required; no backing-store writes or filter attachment tested; no protected-app success inferred"
+}

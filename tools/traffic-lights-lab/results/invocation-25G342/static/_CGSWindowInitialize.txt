@@ -1,0 +1,66 @@
+_CGSWindowInitialize
+0x186D0C40C   pacibsp
+0x186D0C410   stp      x20, x19, [sp, #-0x20]!
+0x186D0C414   stp      x29, x30, [sp, #0x10]
+0x186D0C418   add      x29, sp, #0x10
+0x186D0C41C   adrp     x19, 418485          ; 0x1ecfc1000
+0x186D0C420   ldrb     w8, [x19, #0xe18]
+0x186D0C424   adrp     x20, 407798          ; 0x1ea602000
+0x186D0C428   tbz      w8, #0x0, 0x186d0c4e4
+0x186D0C42C   ldrb     w8, [x20, #0x269]
+0x186D0C430   tbz      w8, #0x0, 0x186d0c440
+0x186D0C434   ldp      x29, x30, [sp, #0x10]
+0x186D0C438   ldp      x20, x19, [sp], #0x20
+0x186D0C43C   retab
+0x186D0C440   adrp     x0, 1321             ; 0x187235000
+0x186D0C444   add      x0, x0, #0x51d
+0x186D0C448   adrp     x1, 1321             ; 0x187235000
+0x186D0C44C   add      x1, x1, #0x52a
+0x186D0C450   bl       __os_feature_enabled_impl
+0x186D0C454   cbz      w0, 0x186d0c464
+0x186D0C458   mov      w8, #0x1
+0x186D0C45C   adrp     x9, 418486           ; 0x1ecfc2000
+0x186D0C460   strb     w8, [x9, #0x43b]
+0x186D0C464   fmov     d0, #-1.00000000
+0x186D0C468   fmov     d1, #-1.00000000
+0x186D0C46C   fmov     d2, #1.00000000
+0x186D0C470   fmov     d3, #1.00000000
+0x186D0C474   bl       _CGRegionCreateWithRect
+0x186D0C478   adrp     x8, 390222           ; 0x1e615a000
+0x186D0C47C   ldr      x8, [x8, #0x330]
+0x186D0C480   str      x0, [x8]
+0x186D0C484   bl       __ZN12_GLOBAL__N_120get_process_notifierEv
+0x186D0C488   adrp     x16, 2               ; 0x186d0e000
+0x186D0C48C   add      x16, x16, #0x1c4     ; __WindowRightsGrantOfferedNotificationHandler
+0x186D0C490   paciza   x16
+0x186D0C494   mov      x2, x16
+0x186D0C498   mov      w1, #0x32c
+0x186D0C49C   mov      x3, #0x0
+0x186D0C4A0   mov      w4, #0x1
+0x186D0C4A4   bl       __ZN12_GLOBAL__N_115ProcessNotifier12add_callbackEjPFv19CGSNotificationTypePvjS2_ES2_b
+0x186D0C4A8   bl       __ZN12_GLOBAL__N_120get_process_notifierEv
+0x186D0C4AC   adrp     x16, 2               ; 0x186d0e000
+0x186D0C4B0   add      x16, x16, #0x9a4     ; __WindowRightsGrantCompletedNotificationHandler
+0x186D0C4B4   paciza   x16
+0x186D0C4B8   mov      x2, x16
+0x186D0C4BC   mov      w1, #0x32d
+0x186D0C4C0   mov      x3, #0x0
+0x186D0C4C4   mov      w4, #0x1
+0x186D0C4C8   ldp      x29, x30, [sp, #0x10]
+0x186D0C4CC   ldp      x20, x19, [sp], #0x20
+0x186D0C4D0   autibsp
+0x186D0C4D4   eor      x16, x30, x30, lsl #1
+0x186D0C4D8   tbz      x16, #0x3e, 0x186d0c4e0
+0x186D0C4DC   brk      #0xc471
+0x186D0C4E0   b        __ZN12_GLOBAL__N_115ProcessNotifier12add_callbackEjPFv19CGSNotificationTypePvjS2_ES2_b
+0x186D0C4E4   adrp     x0, 1273             ; 0x187205000
+0x186D0C4E8   add      x0, x0, #0xa99
+0x186D0C4EC   adrp     x1, 1273             ; 0x187205000
+0x186D0C4F0   add      x1, x1, #0xaa4
+0x186D0C4F4   bl       _getsectbyname
+0x186D0C4F8   cbz      x0, 0x186d0c504
+0x186D0C4FC   mov      w8, #0x1
+0x186D0C500   strb     w8, [x20, #0x269]
+0x186D0C504   mov      w8, #0x1
+0x186D0C508   strb     w8, [x19, #0xe18]
+0x186D0C50C   b        0x186d0c42c

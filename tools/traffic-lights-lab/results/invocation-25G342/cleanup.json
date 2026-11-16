@@ -1,0 +1,18 @@
+{
+  "checkedAtUTC": "2026-11-16T21:49:10.847840+00:00",
+  "fixtures": [
+    {
+      "pid": 39208,
+      "window": 80524,
+      "pidAbsent": true,
+      "windowAbsent": true
+    },
+    {
+      "pid": 40705,
+      "window": 80546,
+      "pidAbsent": true,
+      "windowAbsent": true
+    }
+  ],
+  "windowCheck": "CGWindowListCopyWindowInfo optionAll filtered to 80524/80546 returned none"
+}

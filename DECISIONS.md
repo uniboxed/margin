@@ -5141,3 +5141,40 @@ or universal impossibility claim. Add tools/evidence/report in
 tools/traffic-lights-lab/results/routing-25G342/ and the report's final section. Native warnings-as-errors builds and independent original PNG
 checks pass; fresh unit 1031 pass; E2E attempted/bounded at 15 seconds after missing pinned WebKit 2388,
 no browser download/full-suite pass, product install or PR.
+
+### Trace actual window-right delegation and restricted compositor filters (2026-11-16)
+
+The user's further traffic-light research request focuses this pass on missing invocation authority.
+Trace the filter client/server, grant sender/server decoder, offered notification, matching completion
+and relinquishment. No new native-button hide for unchanged protected apps is demonstrated.
+
+SLSNewCIFilterByName on the checked SkyLight UUID accepts only its two traced fixed types:
+CIColorInvert and CIShapedWaterRipple allocate/release with zero results. CIColorMatrix,
+CIBlendWithAlphaMask and CICrop return 1006/zero ID. Exact loaded constants confirm names and fixed
+ripple inputPhase/inputPoint0/inputPoint1 parameters; this is not a general arbitrary CI graph/mask
+entry. No window/display filter is attached or rendered effect claimed. Attachment's client sends
+one-way 0x7610; server separately checks Presenter (4), so successful send is not rendering proof.
+
+New two-process fixture exercises only nonexclusive BackingStoreWriter (0x20000), never writes the
+backing store or transfers Owner/Presenter/EventReceiver. Parent self-grant returns 1001 and readback
+stays [0,0,65536]. Owner explicitly offers the right to its verified parent's connection with unique
+token/three-second timeout. Recipient validates exact window/connection/sender PID/offer serial and
+accepts; readback becomes [131072,0,65536]. Relinquishment returns zero and restores baseline. Native
+owner/connection/geometry/buttons/hit states and whole-window pixels stay unchanged. Run 1 stops on
+missing offer callback/no right gained; run 2 pumps its own AppKit event queue and completes. Retain
+both source/binary/log/capture versions; both child PIDs/window IDs absent. No protected-app claim.
+
+This demonstrates cooperative capability delegation without loading a library into the recipient,
+not an external right to change arbitrary native views. The reviewed grant server requires ownership
+plus the rights being offered. AX/read, writer, Presenter and native AppKit object access are separate.
+Remaining broker authorization/full native invocation is unproven, not ruled out. WindowManagerAgent
+entry tracing uses actual arm64e LC_FUNCTION_STARTS to avoid attributing unrelated stripped Swift code
+to a named Objective-C thunk; full handler semantics remain incomplete. No fabricated broker request,
+private entitlement, global privilege registration, injection or user-window/config change. Ghostty's
+documented app-owned button setting is a cited cooperation example, not installed/tested here.
+
+Tools/compact evidence/static traces/hashes in tools/traffic-lights-lab/results/invocation-25G342/;
+raw under test-results/traffic-lights-invocation-2026-11-16/. Native warnings-as-errors builds and
+independent saved-pixel/rights/protocol checks pass; fresh unit 1031 pass. Full E2E attempted/bounded
+at 15 seconds after missing pinned WebKit 2388 setup errors; no downloads/full pass, product install
+or PR. Continue native-only research without promoting capability/readback state to a hiding result.

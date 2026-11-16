@@ -1,0 +1,39 @@
+_SLSWindowRightsSetGrantOfferedBlockForToken
+0x1870B4D78   pacibsp
+0x1870B4D7C   stp      x22, x21, [sp, #-0x30]!
+0x1870B4D80   stp      x20, x19, [sp, #0x10]
+0x1870B4D84   stp      x29, x30, [sp, #0x20]
+0x1870B4D88   add      x29, sp, #0x20
+0x1870B4D8C   mov      x20, x1
+0x1870B4D90   mov      x19, x0
+0x1870B4D94   adrp     x8, 406865           ; 0x1ea605000
+0x1870B4D98   ldr      x8, [x8, #0x228]     ; __WindowRightsGetGrantOfferedCallbackRecord.pred
+0x1870B4D9C   cmn      x8, #0x1
+0x1870B4DA0   b.ne     0x1870b4df8
+0x1870B4DA4   adrp     x21, 406865          ; 0x1ea605000
+0x1870B4DA8   add      x21, x21, #0x218     ; __WindowRightsGetGrantOfferedCallbackRecord.record
+0x1870B4DAC   add      x0, x21, #0x8
+0x1870B4DB0   bl       __os_nospin_lock_lock
+0x1870B4DB4   ldr      x0, [x21]
+0x1870B4DB8   mov      x1, x19
+0x1870B4DBC   cbz      x20, 0x1870b4dcc
+0x1870B4DC0   mov      x2, x20
+0x1870B4DC4   bl       _CFDictionarySetValue
+0x1870B4DC8   b        0x1870b4dd0
+0x1870B4DCC   bl       _CFDictionaryRemoveValue
+0x1870B4DD0   adrp     x0, 406865           ; 0x1ea605000
+0x1870B4DD4   add      x0, x0, #0x220
+0x1870B4DD8   ldp      x29, x30, [sp, #0x20]
+0x1870B4DDC   ldp      x20, x19, [sp, #0x10]
+0x1870B4DE0   ldp      x22, x21, [sp], #0x30
+0x1870B4DE4   autibsp
+0x1870B4DE8   eor      x16, x30, x30, lsl #1
+0x1870B4DEC   tbz      x16, #0x3e, 0x1870b4df4
+0x1870B4DF0   brk      #0xc471
+0x1870B4DF4   b        __os_nospin_lock_unlock
+0x1870B4DF8   adrp     x0, 406865           ; 0x1ea605000
+0x1870B4DFC   add      x0, x0, #0x228       ; __WindowRightsGetGrantOfferedCallbackRecord.pred
+0x1870B4E00   adrp     x1, 425003           ; 0x1eecdf000
+0x1870B4E04   add      x1, x1, #0xe38       ; ___block_literal_global.25078
+0x1870B4E08   bl       _dispatch_once
+0x1870B4E0C   b        0x1870b4da4

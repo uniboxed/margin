@@ -1,0 +1,40 @@
+__ConnectionHoldsRightsOnWindow
+0x186EEDB60   pacibsp
+0x186EEDB64   stp      x24, x23, [sp, #-0x40]!
+0x186EEDB68   stp      x22, x21, [sp, #0x10]
+0x186EEDB6C   stp      x20, x19, [sp, #0x20]
+0x186EEDB70   stp      x29, x30, [sp, #0x30]
+0x186EEDB74   add      x29, sp, #0x30
+0x186EEDB78   and      w8, w1, #0x3ffff
+0x186EEDB7C   and      w8, w8, #0xffff0007
+0x186EEDB80   and      w9, w1, #0xfffffff8
+0x186EEDB84   and      w9, w9, #0xfffcffff
+0x186EEDB88   cmp      w8, #0x0
+0x186EEDB8C   ccmp     w9, #0x0, #0x0, ne
+0x186EEDB90   b.eq     0x186eedb9c
+0x186EEDB94   mov      w19, #0x0
+0x186EEDB98   b        0x186eedbe4
+0x186EEDB9C   mov      x19, x3
+0x186EEDBA0   mov      x20, x2
+0x186EEDBA4   mov      x21, x1
+0x186EEDBA8   mov      x22, x0
+0x186EEDBAC   mov      w23, #0x1
+0x186EEDBB0   tst      w23, w21
+0x186EEDBB4   b.eq     0x186eedbd4
+0x186EEDBB8   mov      x0, x22
+0x186EEDBBC   mov      x1, x23
+0x186EEDBC0   mov      x2, x20
+0x186EEDBC4   mov      w3, #0x0
+0x186EEDBC8   bl       __ConnectionHoldsSingleRightOnWindow
+0x186EEDBCC   cmp      w19, w0
+0x186EEDBD0   b.ne     0x186eedbe0
+0x186EEDBD4   lsl      w23, w23, #1
+0x186EEDBD8   cbnz     w23, 0x186eedbb0
+0x186EEDBDC   b        0x186eedbe4
+0x186EEDBE0   mov      x19, x0
+0x186EEDBE4   mov      x0, x19
+0x186EEDBE8   ldp      x29, x30, [sp, #0x30]
+0x186EEDBEC   ldp      x20, x19, [sp, #0x20]
+0x186EEDBF0   ldp      x22, x21, [sp, #0x10]
+0x186EEDBF4   ldp      x24, x23, [sp], #0x40
+0x186EEDBF8   retab

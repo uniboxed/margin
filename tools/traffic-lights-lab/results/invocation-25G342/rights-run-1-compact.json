@@ -1,0 +1,112 @@
+[
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "connection": 1886779,
+      "cornerMask": {},
+      "nativeCornerRadius": -1,
+      "pid": 39208,
+      "window": 80524,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "baseline"
+  },
+  {
+    "foreignRightsBaseline": {
+      "rawOutputs": [
+        0,
+        0,
+        65536
+      ],
+      "result": 0
+    }
+  },
+  {
+    "foreignSelfGrantWriter": 1001
+  },
+  {
+    "foreignRightsAfterSelfGrant": {
+      "rawOutputs": [
+        0,
+        0,
+        65536
+      ],
+      "result": 0
+    }
+  },
+  {
+    "grantee": 1533211,
+    "ownerGrantWriter": 0,
+    "window": 80524
+  },
+  {
+    "offerCompletion": {
+      "missing": true
+    }
+  },
+  {
+    "foreignRightsAfterOwnerGrant": {
+      "rawOutputs": [
+        0,
+        0,
+        65536
+      ],
+      "result": 0
+    }
+  },
+  {
+    "refused": "owner grant control not established"
+  },
+  {
+    "childRunning": false,
+    "cleanup": true,
+    "exit": 2
+  }
+]

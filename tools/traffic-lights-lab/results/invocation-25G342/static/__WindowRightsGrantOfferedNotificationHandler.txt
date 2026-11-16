@@ -1,0 +1,197 @@
+__WindowRightsGrantOfferedNotificationHandler
+0x186D0E1C4   pacibsp
+0x186D0E1C8   sub      sp, sp, #0x50
+0x186D0E1CC   stp      x22, x21, [sp, #0x20]
+0x186D0E1D0   stp      x20, x19, [sp, #0x30]
+0x186D0E1D4   stp      x29, x30, [sp, #0x40]
+0x186D0E1D8   add      x29, sp, #0x40
+0x186D0E1DC   adrp     x8, 390344           ; 0x1e61d6000
+0x186D0E1E0   ldr      x8, [x8, #0xab0]
+0x186D0E1E4   ldr      x8, [x8]
+0x186D0E1E8   str      x8, [sp, #0x18]
+0x186D0E1EC   cmp      w0, #0x32c
+0x186D0E1F0   b.ne     0x186d0e254
+0x186D0E1F4   mov      x20, x1
+0x186D0E1F8   cbz      x1, 0x186d0e210
+0x186D0E1FC   ldr      w8, [x20, #0x10]
+0x186D0E200   add      x8, x8, #0x17
+0x186D0E204   and      x8, x8, #0x1fffffffc
+0x186D0E208   cmp      x8, w2, uxtw
+0x186D0E20C   b.ls     0x186d0e2ac
+0x186D0E210   bl       _SLSLogBreak
+0x186D0E214   adrp     x8, 418483           ; 0x1ecfc1000
+0x186D0E218   ldr      x19, [x8, #0xbc8]    ; _default_log
+0x186D0E21C   mov      x0, x19
+0x186D0E220   mov      w1, #0x10
+0x186D0E224   bl       _os_log_type_enabled
+0x186D0E228   cbz      w0, 0x186d0e434
+0x186D0E22C   strh     wzr, [sp]
+0x186D0E230   adrp     x0, -16              ; 0x186cfe000
+0x186D0E234   add      x0, x0, #0x0
+0x186D0E238   adrp     x3, 1372             ; 0x18726a000
+0x186D0E23C   add      x3, x3, #0xb30
+0x186D0E240   mov      x4, sp
+0x186D0E244   mov      x1, x19
+0x186D0E248   mov      w2, #0x10
+0x186D0E24C   mov      w5, #0x2
+0x186D0E250   b        0x186d0e2a4
+0x186D0E254   mov      x21, x0
+0x186D0E258   bl       _SLSLogBreak
+0x186D0E25C   adrp     x8, 418483           ; 0x1ecfc1000
+0x186D0E260   ldr      x19, [x8, #0xbc8]    ; _default_log
+0x186D0E264   mov      x0, x19
+0x186D0E268   mov      w1, #0x10
+0x186D0E26C   bl       _os_log_type_enabled
+0x186D0E270   cbz      w0, 0x186d0e434
+0x186D0E274   adrp     x8, 1224             ; 0x1871d6000
+0x186D0E278   ldr      d0, [x8, #0x5d8]
+0x186D0E27C   str      s0, [sp]
+0x186D0E280   str      w21, [sp, #0x4]
+0x186D0E284   adrp     x0, -16              ; 0x186cfe000
+0x186D0E288   add      x0, x0, #0x0
+0x186D0E28C   adrp     x3, 1372             ; 0x18726a000
+0x186D0E290   add      x3, x3, #0xb10
+0x186D0E294   mov      x4, sp
+0x186D0E298   mov      x1, x19
+0x186D0E29C   mov      w2, #0x10
+0x186D0E2A0   mov      w5, #0x8
+0x186D0E2A4   bl       __os_log_error_impl
+0x186D0E2A8   b        0x186d0e434
+0x186D0E2AC   mov      x2, #0x2347
+0x186D0E2B0   movk     x2, #0x6baa, lsl #16
+0x186D0E2B4   movk     x2, #0x40, lsl #32
+0x186D0E2B8   movk     x2, #0x106, lsl #48
+0x186D0E2BC   mov      w0, #0x1
+0x186D0E2C0   mov      w1, #0x20
+0x186D0E2C4   bl       _malloc_type_calloc
+0x186D0E2C8   mov      x19, x0
+0x186D0E2CC   ldr      q0, [x20]
+0x186D0E2D0   str      q0, [x0]
+0x186D0E2D4   ldr      w21, [x20, #0x10]
+0x186D0E2D8   bl       _CFDictionaryGetTypeID
+0x186D0E2DC   mov      x2, x0
+0x186D0E2E0   add      x0, x20, #0x14
+0x186D0E2E4   mov      x1, x21
+0x186D0E2E8   bl       _CGSPropertyListCreateWithSerializedBytesRequiringType
+0x186D0E2EC   cbz      x0, 0x186d0e370
+0x186D0E2F0   mov      x20, x0
+0x186D0E2F4   adrp     x1, 425966           ; 0x1eecfc000
+0x186D0E2F8   add      x1, x1, #0xaf8
+0x186D0E2FC   bl       _CFDictionaryGetValue
+0x186D0E300   cbz      x0, 0x186d0e32c
+0x186D0E304   mov      x21, x0
+0x186D0E308   bl       _CFGetTypeID
+0x186D0E30C   mov      x22, x0
+0x186D0E310   bl       _CFDictionaryGetTypeID
+0x186D0E314   cmp      x22, x0
+0x186D0E318   b.ne     0x186d0e32c
+0x186D0E31C   mov      x0, #0x0
+0x186D0E320   mov      x1, x21
+0x186D0E324   bl       _CFDictionaryCreateCopy
+0x186D0E328   str      x0, [x19, #0x10]
+0x186D0E32C   adrp     x1, 425966           ; 0x1eecfc000
+0x186D0E330   add      x1, x1, #0xb18
+0x186D0E334   mov      x0, x20
+0x186D0E338   bl       _CFDictionaryGetValue
+0x186D0E33C   cbz      x0, 0x186d0e368
+0x186D0E340   mov      x21, x0
+0x186D0E344   bl       _CFGetTypeID
+0x186D0E348   mov      x22, x0
+0x186D0E34C   bl       _CFStringGetTypeID
+0x186D0E350   cmp      x22, x0
+0x186D0E354   b.ne     0x186d0e368
+0x186D0E358   mov      x0, #0x0
+0x186D0E35C   mov      x1, x21
+0x186D0E360   bl       _CFStringCreateCopy
+0x186D0E364   str      x0, [x19, #0x18]
+0x186D0E368   mov      x0, x20
+0x186D0E36C   bl       _CFRelease
+0x186D0E370   ldr      x20, [x19, #0x18]
+0x186D0E374   adrp     x8, 407799           ; 0x1ea605000
+0x186D0E378   ldr      x8, [x8, #0x228]     ; __WindowRightsGetGrantOfferedCallbackRecord.pred
+0x186D0E37C   cmn      x8, #0x1
+0x186D0E380   b.ne     0x186d0e4b8
+0x186D0E384   adrp     x21, 407799          ; 0x1ea605000
+0x186D0E388   add      x21, x21, #0x218     ; __WindowRightsGetGrantOfferedCallbackRecord.record
+0x186D0E38C   add      x0, x21, #0x8
+0x186D0E390   bl       __os_nospin_lock_lock
+0x186D0E394   ldr      x0, [x21]
+0x186D0E398   mov      x1, x20
+0x186D0E39C   bl       _CFDictionaryGetValue
+0x186D0E3A0   cbz      x0, 0x186d0e3dc
+0x186D0E3A4   bl       __Block_copy
+0x186D0E3A8   mov      x20, x0
+0x186D0E3AC   adrp     x0, 407799           ; 0x1ea605000
+0x186D0E3B0   add      x0, x0, #0x220
+0x186D0E3B4   bl       __os_nospin_lock_unlock
+0x186D0E3B8   cbz      x20, 0x186d0e3e8
+0x186D0E3BC   mov      x8, x20
+0x186D0E3C0   ldr      x9, [x8, #0x10]!
+0x186D0E3C4   mov      x0, x20
+0x186D0E3C8   mov      x1, x19
+0x186D0E3CC   blraa    x9, x8
+0x186D0E3D0   mov      x0, x20
+0x186D0E3D4   bl       __Block_release
+0x186D0E3D8   b        0x186d0e414
+0x186D0E3DC   adrp     x0, 407799           ; 0x1ea605000
+0x186D0E3E0   add      x0, x0, #0x220
+0x186D0E3E4   bl       __os_nospin_lock_unlock
+0x186D0E3E8   bl       _SLSLogBreak
+0x186D0E3EC   adrp     x8, 418483           ; 0x1ecfc1000
+0x186D0E3F0   ldr      x20, [x8, #0xbc8]    ; _default_log
+0x186D0E3F4   mov      x0, x20
+0x186D0E3F8   mov      w1, #0x10
+0x186D0E3FC   bl       _os_log_type_enabled
+0x186D0E400   cbnz     w0, 0x186d0e460
+0x186D0E404   ldp      w1, w0, [x19]
+0x186D0E408   ldr      w2, [x19, #0xc]
+0x186D0E40C   mov      w3, #0x1
+0x186D0E410   bl       _SLSCompleteWindowRightsGrant
+0x186D0E414   ldr      x0, [x19, #0x18]
+0x186D0E418   cbz      x0, 0x186d0e420
+0x186D0E41C   bl       _CFRelease
+0x186D0E420   ldr      x0, [x19, #0x10]
+0x186D0E424   cbz      x0, 0x186d0e42c
+0x186D0E428   bl       _CFRelease
+0x186D0E42C   mov      x0, x19
+0x186D0E430   bl       _free
+0x186D0E434   ldr      x8, [sp, #0x18]
+0x186D0E438   adrp     x9, 390344           ; 0x1e61d6000
+0x186D0E43C   ldr      x9, [x9, #0xab0]
+0x186D0E440   ldr      x9, [x9]
+0x186D0E444   cmp      x9, x8
+0x186D0E448   b.ne     0x186d0e4d0
+0x186D0E44C   ldp      x29, x30, [sp, #0x40]
+0x186D0E450   ldp      x20, x19, [sp, #0x30]
+0x186D0E454   ldp      x22, x21, [sp, #0x20]
+0x186D0E458   add      sp, sp, #0x50
+0x186D0E45C   retab
+0x186D0E460   ldr      x0, [x19, #0x18]
+0x186D0E464   cbnz     x0, 0x186d0e474
+0x186D0E468   adrp     x0, 1263             ; 0x1871fd000
+0x186D0E46C   add      x0, x0, #0x2b8
+0x186D0E470   b        0x186d0e480
+0x186D0E474   mov      w1, #0x100
+0x186D0E478   movk     w1, #0x800, lsl #16
+0x186D0E47C   bl       _CFStringGetCStringPtr
+0x186D0E480   adrp     x8, 1224             ; 0x1871d6000
+0x186D0E484   ldr      d0, [x8, #0x5f0]
+0x186D0E488   str      s0, [sp]
+0x186D0E48C   stur     x0, [sp, #0x4]
+0x186D0E490   adrp     x0, -16              ; 0x186cfe000
+0x186D0E494   add      x0, x0, #0x0
+0x186D0E498   adrp     x3, 1372             ; 0x18726a000
+0x186D0E49C   add      x3, x3, #0xb53
+0x186D0E4A0   mov      x4, sp
+0x186D0E4A4   mov      x1, x20
+0x186D0E4A8   mov      w2, #0x10
+0x186D0E4AC   mov      w5, #0xc
+0x186D0E4B0   bl       __os_log_error_impl
+0x186D0E4B4   b        0x186d0e404
+0x186D0E4B8   adrp     x0, 407799           ; 0x1ea605000
+0x186D0E4BC   add      x0, x0, #0x228       ; __WindowRightsGetGrantOfferedCallbackRecord.pred
+0x186D0E4C0   adrp     x1, 425937           ; 0x1eecdf000
+0x186D0E4C4   add      x1, x1, #0xe38       ; ___block_literal_global.25078
+0x186D0E4C8   bl       _dispatch_once
+0x186D0E4CC   b        0x186d0e384
+0x186D0E4D0   bl       ___stack_chk_fail

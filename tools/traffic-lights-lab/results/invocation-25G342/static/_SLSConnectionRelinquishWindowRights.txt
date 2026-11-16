@@ -1,0 +1,82 @@
+_SLSConnectionRelinquishWindowRights
+0x1870B4964   pacibsp
+0x1870B4968   sub      sp, sp, #0x50
+0x1870B496C   stp      x24, x23, [sp, #0x10]
+0x1870B4970   stp      x22, x21, [sp, #0x20]
+0x1870B4974   stp      x20, x19, [sp, #0x30]
+0x1870B4978   stp      x29, x30, [sp, #0x40]
+0x1870B497C   add      x29, sp, #0x40
+0x1870B4980   mov      x20, x2
+0x1870B4984   mov      x21, x1
+0x1870B4988   mov      x22, x0
+0x1870B498C   adrp     x8, 389410           ; 0x1e61d6000
+0x1870B4990   ldr      x8, [x8, #0xab0]
+0x1870B4994   ldr      x8, [x8]
+0x1870B4998   str      x8, [sp, #0x8]
+0x1870B499C   bl       _objc_autoreleasePoolPush
+0x1870B49A0   mov      x19, x0
+0x1870B49A4   mov      x0, x22
+0x1870B49A8   bl       _CGSGetConnectionPortById
+0x1870B49AC   tst      w20, #0x7
+0x1870B49B0   b.eq     0x1870b49d8
+0x1870B49B4   bl       _SLSLogBreak
+0x1870B49B8   adrp     x8, 417549           ; 0x1ecfc1000
+0x1870B49BC   ldr      x20, [x8, #0xbc8]    ; _default_log
+0x1870B49C0   mov      x0, x20
+0x1870B49C4   mov      w1, #0x10
+0x1870B49C8   bl       _os_log_type_enabled
+0x1870B49CC   cbnz     w0, 0x1870b4a78
+0x1870B49D0   mov      w20, #0x3e9
+0x1870B49D4   b        0x1870b4a3c
+0x1870B49D8   mov      x22, x0
+0x1870B49DC   bl       _SLSMainConnection
+0x1870B49E0   mov      x1, x21
+0x1870B49E4   mov      w2, #0x0
+0x1870B49E8   bl       _CGSWindowGetMappedImpl
+0x1870B49EC   cbz      x0, 0x1870b4a28
+0x1870B49F0   mov      x23, x0
+0x1870B49F4   bl       _CGSWindowSynchronizeBacking
+0x1870B49F8   ldr      x0, [x23, #0x40]
+0x1870B49FC   bl       _CGSBackingStoreLock
+0x1870B4A00   mov      x0, x22
+0x1870B4A04   mov      x1, x21
+0x1870B4A08   mov      x2, x20
+0x1870B4A0C   bl       __CGSWindowRightsRelinquish
+0x1870B4A10   mov      x20, x0
+0x1870B4A14   mov      x0, x23
+0x1870B4A18   bl       _window_update_rights_cache
+0x1870B4A1C   ldr      x0, [x23, #0x40]
+0x1870B4A20   bl       _CGSBackingStoreUnlock
+0x1870B4A24   b        0x1870b4a3c
+0x1870B4A28   mov      x0, x22
+0x1870B4A2C   mov      x1, x21
+0x1870B4A30   mov      x2, x20
+0x1870B4A34   bl       __CGSWindowRightsRelinquish
+0x1870B4A38   mov      x20, x0
+0x1870B4A3C   mov      x0, x19
+0x1870B4A40   bl       _objc_autoreleasePoolPop
+0x1870B4A44   ldr      x8, [sp, #0x8]
+0x1870B4A48   adrp     x9, 389410           ; 0x1e61d6000
+0x1870B4A4C   ldr      x9, [x9, #0xab0]
+0x1870B4A50   ldr      x9, [x9]
+0x1870B4A54   cmp      x9, x8
+0x1870B4A58   b.ne     0x1870b4aa4
+0x1870B4A5C   mov      x0, x20
+0x1870B4A60   ldp      x29, x30, [sp, #0x40]
+0x1870B4A64   ldp      x20, x19, [sp, #0x30]
+0x1870B4A68   ldp      x22, x21, [sp, #0x20]
+0x1870B4A6C   ldp      x24, x23, [sp, #0x10]
+0x1870B4A70   add      sp, sp, #0x50
+0x1870B4A74   retab
+0x1870B4A78   strh     wzr, [sp]
+0x1870B4A7C   adrp     x0, -950             ; 0x186cfe000
+0x1870B4A80   add      x0, x0, #0x0
+0x1870B4A84   adrp     x3, 425              ; 0x18725d000
+0x1870B4A88   add      x3, x3, #0xec9
+0x1870B4A8C   mov      x4, sp
+0x1870B4A90   mov      x1, x20
+0x1870B4A94   mov      w2, #0x10
+0x1870B4A98   mov      w5, #0x2
+0x1870B4A9C   bl       __os_log_error_impl
+0x1870B4AA0   b        0x1870b49d0
+0x1870B4AA4   bl       ___stack_chk_fail

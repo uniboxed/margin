@@ -1,0 +1,77 @@
+__XSetWindowCIFilter
+0x1871B31F0   pacibsp
+0x1871B31F4   stp      x24, x23, [sp, #-0x40]!
+0x1871B31F8   stp      x22, x21, [sp, #0x10]
+0x1871B31FC   stp      x20, x19, [sp, #0x20]
+0x1871B3200   stp      x29, x30, [sp, #0x30]
+0x1871B3204   add      x29, sp, #0x30
+0x1871B3208   mov      x19, x1
+0x1871B320C   ldr      w8, [x0]
+0x1871B3210   tbnz     w8, #0x1f, 0x1871b3274
+0x1871B3214   ldr      w8, [x0, #0x4]
+0x1871B3218   cmp      w8, #0x2c
+0x1871B321C   b.ne     0x1871b3274
+0x1871B3220   ldr      w8, [x0, #0xc]
+0x1871B3224   ldp      w21, w23, [x0, #0x20]
+0x1871B3228   ldr      w22, [x0, #0x28]
+0x1871B322C   mov      x0, x8
+0x1871B3230   bl       _CGXConnectionForPort
+0x1871B3234   mov      x20, x0
+0x1871B3238   mov      x0, x21
+0x1871B323C   bl       __ZL12window_by_idj
+0x1871B3240   cbz      x0, 0x1871b326c
+0x1871B3244   mov      x21, x0
+0x1871B3248   adrp     x3, 113              ; 0x187224000
+0x1871B324C   add      x3, x3, #0x13b
+0x1871B3250   mov      x0, x20
+0x1871B3254   mov      x1, x21
+0x1871B3258   mov      w2, #0x4
+0x1871B325C   mov      w4, #0x1
+0x1871B3260   mov      w5, #0x0
+0x1871B3264   bl       _WSCheckWindowRights
+0x1871B3268   cbz      w0, 0x1871b32a0
+0x1871B326C   str      wzr, [x19, #0x20]
+0x1871B3270   b        0x1871b328c
+0x1871B3274   mov      w8, #-0x130
+0x1871B3278   str      w8, [x19, #0x20]
+0x1871B327C   adrp     x8, 389155           ; 0x1e61d6000
+0x1871B3280   ldr      x8, [x8, #0xce8]
+0x1871B3284   ldr      x8, [x8]
+0x1871B3288   str      x8, [x19, #0x18]
+0x1871B328C   ldp      x29, x30, [sp, #0x30]
+0x1871B3290   ldp      x20, x19, [sp, #0x20]
+0x1871B3294   ldp      x22, x21, [sp, #0x10]
+0x1871B3298   ldp      x24, x23, [sp], #0x40
+0x1871B329C   retab
+0x1871B32A0   adrp     x8, 406608           ; 0x1ea603000
+0x1871B32A4   ldr      x8, [x8, #0x550]     ; ___sessionControlRef
+0x1871B32A8   cbz      x8, 0x1871b32b8
+0x1871B32AC   ldr      x8, [x8, #0x20]
+0x1871B32B0   cbz      x8, 0x1871b32b8
+0x1871B32B4   ldr      x8, [x8, #0x90]
+0x1871B32B8   add      x24, x8, #0x70
+0x1871B32BC   ldr      x24, [x24]
+0x1871B32C0   cbz      x24, 0x1871b326c
+0x1871B32C4   ldr      w8, [x24, #0x14]
+0x1871B32C8   cmp      w8, w23
+0x1871B32CC   b.ne     0x1871b32bc
+0x1871B32D0   cbz      w22, 0x1871b32fc
+0x1871B32D4   tbz      w22, #0x8, 0x1871b32e0
+0x1871B32D8   mov      x0, x21
+0x1871B32DC   bl       _CGXReleaseWindowCIFilters
+0x1871B32E0   ldr      x8, [x21, #0x870]
+0x1871B32E4   cbnz     x8, 0x1871b326c
+0x1871B32E8   ldr      w8, [x24, #0x8]
+0x1871B32EC   add      w8, w8, #0x1
+0x1871B32F0   str      w8, [x24, #0x8]
+0x1871B32F4   str      x24, [x21, #0x870]
+0x1871B32F8   b        0x1871b3310
+0x1871B32FC   ldr      x0, [x21, #0x870]
+0x1871B3300   cmp      x0, x24
+0x1871B3304   b.ne     0x1871b326c
+0x1871B3308   bl       _CGXReleaseCIFilter
+0x1871B330C   str      xzr, [x21, #0x870]
+0x1871B3310   mov      x0, x20
+0x1871B3314   mov      x1, x21
+0x1871B3318   bl       _updateWindow
+0x1871B331C   b        0x1871b326c
