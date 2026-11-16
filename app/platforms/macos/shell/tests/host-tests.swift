@@ -237,11 +237,28 @@ final class FakeHostWorld: HostSystem {
     init() { wins[Self.marginWindow] = Win(pid: 1, spaces: [Self.marginSpace]) }
 
     func now() -> Double { clock }
+    // Virtual time: each sleeper wakes at its own time, the clock moving to the earliest one's, so sleeps that overlap
+    // (Margin's quit gives every host back at once) take the longest one's time, not their sum. A sleeper goes on once
+    // its wake is the earliest for a few turns in a row (every other task has reached its own sleep, or finished).
+    private var sleepers: [Int: Double] = [:]
+    private var nextSleeper = 0
     func sleep(_ seconds: Double) async {
-        if current != Self.marginSpace { offMargin += seconds }
-        clock += seconds
-        advance()
-        for (pid, at) in uikitQuits where clock >= at { uikitQuits[pid] = nil; quitNow(pid) }
+        let me = nextSleeper
+        nextSleeper += 1
+        let wake = clock + max(0, seconds)
+        sleepers[me] = wake
+        var calm = 0
+        while calm < 3 {
+            await Task.yield()
+            calm = (sleepers.values.min() ?? wake) + 1e-12 >= wake ? calm + 1 : 0
+        }
+        sleepers[me] = nil
+        if wake > clock {
+            if current != Self.marginSpace { offMargin += wake - clock }
+            clock = wake
+            advance()
+            for (pid, at) in uikitQuits where clock >= at { uikitQuits[pid] = nil; quitNow(pid) }
+        }
         await Task.yield()
     }
 
@@ -249,14 +266,19 @@ final class FakeHostWorld: HostSystem {
     // ordered in (any Space, a private one too), they make themselves a background app (LaunchServices' 561, their
     // policy prohibited) and quit only after their own 5 s watchdog; with none, at once.
     var uikit: Set<String> = ["com.apple.FaceTime", "com.apple.mobilephone"]
-    var uikitQuits: [pid_t: Double] = [:]
-    func isUIKitApp(pid: pid_t) -> Bool { apps[pid].map { uikit.contains($0.bundle) } ?? false }
+    var uikitQuits: [pid_t: Double] = [:] // apps quitting, gone at that time on the clock
+    var quitsAfter: [String: Double] = [:] // apps whose quit takes this long, whatever their windows
+    // Apps that keep their windows across a quit (their own NSQuitAlwaysKeepsWindows, or the person's setting): never
+    // closed first. None: macOS's default, a quit discards an app's windows.
+    var keepsWindows: Set<String> = []
+    func keepsWindowsAtQuit(pid: pid_t) -> Bool { apps[pid].map { keepsWindows.contains($0.bundle) } ?? false }
     // Its close button pressed by Accessibility: only for a window Accessibility reads on the current Space (when
     // axCurrentOnly) and lists; the app saves its frame as it closes.
     func close(pid: pid_t, window: Int) async -> Bool {
         calls.append("close \(window)")
-        guard !fail.contains("ax"), !fail.contains("close"), let w = wins[window], w.pid == pid, !axCurrentOnly || onCurrent(window), axLists(window) || axSeen.contains(window) && onCurrent(window) else { return false }
-        if let bundle = apps[pid]?.bundle { saved[bundle] = w.frame ?? Self.defaultFrame; frameAtQuit[bundle] = w.frame ?? Self.defaultFrame }
+        guard !fail.contains("ax"), !fail.contains("close"), let w = wins[window], w.pid == pid, !axHides(pid), !axCurrentOnly || onCurrent(window), axLists(window) || axSeen.contains(window) && onCurrent(window) else { return false }
+        if apps[pid]?.refusesQuit == true { return true } // (pressed: it asks about its unsaved work, its window stays)
+        if let bundle = apps[pid]?.bundle { saved[bundle] = w.frame ?? Self.defaultFrame; frameAtQuit[bundle] = w.frame ?? Self.defaultFrame; fullScreenAtQuit[bundle] = w.fullScreen }
         closeWindow(window)
         return true
     }
@@ -330,6 +352,7 @@ final class FakeHostWorld: HostSystem {
             uikitQuits[pid] = clock + 5.0
             return true
         }
+        if let after = quitsAfter[a.bundle] { uikitQuits[pid] = clock + after; return true } // (an app slow to finish its quit)
         quitNow(pid)
         return true
     }
@@ -389,7 +412,7 @@ final class FakeHostWorld: HostSystem {
     func activate(pid: pid_t, window: Int) async -> Bool { calls.append("activate \(pid) \(window)"); activated.insert(pid); return apps[pid] != nil }
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool {
         calls.append("fullScreen \(on) \(window)")
-        guard axReads(window) else { return false }
+        guard axReads(window), !fail.contains("ax") else { return false }
         return applyFullScreen(pid: pid, window: window, on)
     }
     // Full screen as macOS does it, whoever asked (Accessibility, or a Safari copy's setWindowState).
@@ -440,8 +463,9 @@ final class FakeHostWorld: HostSystem {
         noteListing()
         return true
     }
+    var fullScreenUnread: Set<Int> = [] // windows whose AXFullScreen doesn't read (set, it's taken)
     func isFullScreen(pid: pid_t, window: Int) async -> Bool? {
-        guard axReads(window) else { return nil }
+        guard axReads(window), !fullScreenUnread.contains(window), !fail.contains("ax") else { return nil }
         return wins[window].flatMap { $0.pid == pid ? $0.fullScreen : nil }
     }
     var main: [pid_t: Int] = [:] // the app's main window; none set: its last window
@@ -1919,22 +1943,48 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
               && !w.calls.contains { $0.hasPrefix("activate") } && w.apps[p] == nil, "\(w.calls)")
     }
     do {
-        // An app that doesn't quit within 5 s: left running, and the log says what can be read of why.
+        // An app that doesn't quit within 5 s, its row closed: left running, and the log says what can be read of why.
         let (w, e, _) = world()
         _ = wired(e)
         _ = open(e, faceTime)
         let p = pid(w, "com.apple.FaceTime")
         w.apps[p]?.refusesQuit = true
         w.serverExtra = [ServerWindow(number: 9001, pid: p, layer: 8, bounds: CGRect(x: 600, y: 400, width: 300, height: 160))] // (an alert of its own)
-        let lines = said { hostRun { await e.quitAll() } }
-        check("window mode: an app that doesn't quit within 5 s: asked politely once, left running, the log says why it may be",
+        let lines = said { hostRun { await e.close(faceTime.id) } }
+        check("window mode: an app that doesn't quit within 6 s (its row closed): asked politely once, left running, the log says why it may be",
               w.calls.filter { $0 == "terminate \(p)" }.count == 1 && w.apps[p] != nil
               && lines.contains { $0.contains("didn't quit within 6 s (still no Dock icon; 1 other window of its own on screen (it may be asking something); Accessibility still answers for it)") },
               "\(lines.filter { $0.contains("quit") })")
     }
+    do {
+        // ...the same at Margin's quit: asked once, never waited for; its window on its Desktop (not a private Space that
+        // goes with Margin), at its own frame; the app in the marker as asked, so the next launch asks again.
+        let (w, e, marker) = world()
+        _ = wired(e)
+        _ = open(e, faceTime)
+        let p = pid(w, "com.apple.FaceTime"), n = window(w, "com.apple.FaceTime")
+        w.apps[p]?.refusesQuit = true
+        let t0 = w.clock
+        let lines = said { hostRun { await e.quitAll() } }
+        let took = w.clock - t0
+        let m = HostMarker.read(marker)
+        check("Margin quits, an app that doesn't quit: asked once, not waited for (\(Int(took * 1000)) ms), its window on its Desktop at its own frame",
+              took < 1 && w.calls.filter { $0 == "terminate \(p)" }.count == 1 && w.apps[p] != nil && w.spaces(window: n) == [FakeHostWorld.desktop] && w.wins[n]?.frame == original
+              && !lines.contains { $0.contains("didn't quit") } && lines.contains { $0.contains("still quitting on their own, not waited for: com.apple.FaceTime") },
+              "\(took) \(w.calls) \(lines.filter { $0.contains("quit") })")
+        check("Margin quits, an app that doesn't quit: the marker has it as asked, nothing else", m?.apps.map(\.pid) == [p] && m?.apps.first?.quitAsked == true && m?.windows.isEmpty == true && m?.marginSpace == nil,
+              "\(String(describing: m))")
+        // The next launch: that same launch still running is asked again (and still says no), the marker gone.
+        let next = HostEngine(system: w, marker: marker, pid: 2)
+        w.calls = []
+        let again = said { hostRun { await next.recover() } }
+        check("Margin quits, an app that doesn't quit: the next launch asks it again, says so, the marker gone",
+              w.calls.contains("terminate \(p)") && !FileManager.default.fileExists(atPath: marker.path) && again.contains { $0.contains("1 app asked to quit at Margin's last quit: 1 still running") }, "\(w.calls) \(again)")
+    }
 
-    // ---- an iPad app (FaceTime) Margin quits: its window closed first, so its own quit doesn't wait out its 5 s
-    // watchdog (2026-11-15: parked, given back to its Desktop, then asked to quit: 5 s, and its 561 read as a promotion) ----
+    // ---- an app Margin quits: its window closed first whenever that's harmless for its next launch (it doesn't keep
+    // its windows across a quit: macOS's default), so an iPad app's own quit doesn't wait out its 5 s watchdog
+    // (2026-11-15: parked, given back to its Desktop, then asked to quit: 5 s, and its 561 read as a promotion) ----
     for path in ["parked", "shown"] {
         let (w, e, _) = world()
         _ = wired(e)
@@ -1959,30 +2009,159 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         check("iPad app at quit (\(path)): never taken for a Dock app", !events.contains(.promoted(faceTime.id)), "\(events)")
     }
     do {
-        // Its close button not taking (a sheet, Accessibility refusing): quit with its window open, as before, and its
-        // 561 (a background app now, as it quits) not taken for a promotion; out after its own watchdog.
+        // Its close button not taking (a sheet, Accessibility refusing): asked to quit with its window open (on its
+        // Desktop), not waited for; its 561 (a background app now, as it quits) not taken for a promotion; out after its
+        // own watchdog, on its own.
         let (w, e, _) = world()
         _ = wired(e)
         var events: [HostEvent] = []
         e.onEvent = { events.append($0) }
         _ = open(e, faceTime)
-        let p = pid(w, "com.apple.FaceTime")
+        let p = pid(w, "com.apple.FaceTime"), n = window(w, "com.apple.FaceTime")
         w.fail = ["close"]
+        let t0 = w.clock
         let lines = said { hostRun { await e.quitAll() } }
-        check("iPad app at quit, its close refused: asked to quit with its window open, its type change not a promotion, out by its own watchdog (seen quitting)",
-              w.calls.contains("terminate \(p)") && w.apps[p] == nil && !events.contains(.promoted(faceTime.id))
+        let took = w.clock - t0
+        check("iPad app at quit, its close refused: asked to quit with its window open on its Desktop, not waited for (\(Int(took * 1000)) ms), its type change not a promotion",
+              took < 1 && w.calls.contains("terminate \(p)") && w.apps[p] != nil && w.spaces(window: n) == [FakeHostWorld.desktop] && !events.contains(.promoted(faceTime.id))
               && lines.contains { $0.contains("its type changed (LaunchServices 561), now a background app, as it quits: not a Dock app") } && !lines.contains { $0.contains("didn't quit") },
-              "\(events) \(lines.filter { $0.contains("FaceTime") })")
-        check("iPad app at quit, its close refused: its frame still its own", w.saved["com.apple.FaceTime"] == original && w.frameAtQuit["com.apple.FaceTime"] == original)
+              "\(took) \(events) \(lines.filter { $0.contains("FaceTime") })")
+        hostRun { await w.sleep(5.1) }
+        check("iPad app at quit, its close refused: out by its own watchdog after Margin's quit; its frame still its own", w.apps[p] == nil && w.saved["com.apple.FaceTime"] == original && w.frameAtQuit["com.apple.FaceTime"] == original)
     }
-    do {
-        // An AppKit app (Calculator) isn't closed first: closing its windows would change what it restores.
+    // How the order affects the app's own exit, measured on the stand-in (an iPad app's quit as its logs show it): its
+    // window closed first, out at once; kept (it keeps its windows across a quit: never closed first, taken home), out
+    // after its own 5 s watchdog. Margin's quit takes well under a second either way: it never waits for the exit.
+    var exits: [String: Double] = [:]
+    for keeps in [false, true] {
+        let (w, e, _) = world()
+        _ = wired(e)
+        _ = open(e, faceTime)
+        let p = pid(w, "com.apple.FaceTime"), n = window(w, "com.apple.FaceTime")
+        if keeps { w.keepsWindows = ["com.apple.FaceTime"] }
+        let t0 = w.clock
+        hostRun { await e.quitAll() }
+        let took = w.clock - t0
+        var out = w.apps[p] == nil ? 0.0 : -1
+        while w.apps[p] != nil, w.clock - t0 < 10 { hostRun { await w.sleep(0.01) } }
+        if out < 0 { out = w.clock - t0 }
+        exits[keeps ? "kept" : "closed first"] = out
+        check("close-first rule (\(keeps ? "keeps its windows: never closed, taken home" : "macOS's default: closed first")): Margin's quit \(Int(took * 1000)) ms, the app out \(Int(out * 1000)) ms after it",
+              took < 1 && (keeps ? !w.calls.contains("close \(n)") && at(w, "move \(n) \(FakeHostWorld.desktop)") < at(w, "terminate \(p)") && at(w, "move \(n) \(FakeHostWorld.desktop)") >= 0 && out >= 5
+                         : at(w, "close \(n)") >= 0 && at(w, "close \(n)") < at(w, "terminate \(p)") && out < 0.1), "\(w.calls)")
+    }
+    print("  (close-first rule, an iPad app's own exit after it's asked: closed first \(Int((exits["closed first"] ?? -1) * 1000)) ms, kept \(Int((exits["kept"] ?? -1) * 1000)) ms)")
+    for keeps in [false, true] {
+        // An AppKit app (Calculator) by the same rule: closed first unless it keeps its windows across a quit (then the
+        // window it would reopen is never closed: taken home, asked to quit with it open).
         let (w, e, _) = world()
         _ = wired(e)
         _ = open(e, calculator)
-        let p = pid(w, "com.apple.calculator")
+        let p = pid(w, "com.apple.calculator"), n = window(w, "com.apple.calculator")
+        if keeps { w.keepsWindows = ["com.apple.calculator"] }
         hostRun { await e.quitAll() }
-        check("an AppKit app at quit: asked to quit with its window open, never closed first", w.calls.contains("terminate \(p)") && !w.calls.contains { $0.hasPrefix("close ") } && w.apps[p] == nil, "\(w.calls)")
+        check("an AppKit app at quit (\(keeps ? "keeps its windows" : "macOS's default")): \(keeps ? "never closed first, taken home, asked to quit with it open" : "its window closed first, its frame its own, then asked to quit")",
+              w.calls.contains("terminate \(p)") && w.apps[p] == nil && w.saved["com.apple.calculator"] == CGRect(x: 400, y: 300, width: 230, height: 408)
+              && (keeps ? !w.calls.contains { $0.hasPrefix("close ") } && at(w, "move \(n) \(FakeHostWorld.desktop)") >= 0 : at(w, "close \(n)") >= 0 && at(w, "close \(n)") < at(w, "terminate \(p)")), "\(w.calls)")
+    }
+
+    // ---- Margin's quit: every host given back at once, no app's exit waited for ----
+    do {
+        // TextEdit and Notes full screen (one shown, one parked), FaceTime and Calculator in window mode, the person's
+        // Phone, a Safari window a copy made; the window server's bounds 300 ms late (each window-mode frame given back
+        // takes that), Notes slow to finish its quit (3 s), Calculator's 5 s: the quit is the slowest host's time.
+        let (w, e, marker) = world()
+        let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 0)
+        let copy = FakeSafariCopy(w) { safariPid }
+        copy.wire(e)
+        _ = wired(e)
+        let phonePid = w.start("com.apple.mobilephone", policy: .regular, windows: 1)
+        let phoneWindow = w.apps[phonePid]!.windows[0]
+        let phoneFrame = w.wins[phoneWindow]?.frame ?? FakeHostWorld.defaultFrame
+        for t in [faceTime, calculator, notes, textEdit, phone] { _ = open(e, t) }
+        _ = open(e, .safariWindow(nil))
+        _ = open(e, textEdit)
+        w.frameLag = 0.3
+        w.moveLag = 0.1 // (each move the bridge makes lands 100 ms late: every host's give-back takes a while)
+        w.quitsAfter = ["com.apple.Notes": 3, "com.apple.calculator": 5]
+        let started = Dictionary(uniqueKeysWithValues: ["com.apple.FaceTime", "com.apple.calculator", "com.apple.Notes", "com.apple.TextEdit"].map { ($0, pid(w, $0)) })
+        check("at once: (six hosts, TextEdit shown)", e.hosts.count == 6 && e.shown == textEdit.id, "\(e.hosts.keys)")
+        w.calls = []
+        let t0 = w.clock
+        let lines = said { hostRun { await e.quitAll() } }
+        let took = w.clock - t0
+        let each = lines.compactMap { line -> Int? in
+            guard line.contains("closed (Margin quits) in "), let r = line.range(of: "closed (Margin quits) in ") else { return nil }
+            return Int(line[r.upperBound...].prefix { $0.isNumber })
+        }
+        // (Interleaved: by the second app's ask to quit, at least three hosts' windows had steps of theirs done.)
+        let terminates = w.calls.indices.filter { w.calls[$0].hasPrefix("terminate") }
+        let second = terminates.count > 1 ? terminates[1] : 0
+        let touched = Set(w.calls[..<second].compactMap { c -> String? in
+            let parts = c.split(separator: " ")
+            guard ["move", "close", "fullScreen", "frame"].contains(String(parts[0])), parts.count >= 3 else { return nil }
+            return String(parts[0] == "move" ? parts[1] : parts[2])
+        })
+        print("  (Margin's quit with six hosts: \(Int(took * 1000)) ms; each host's give-back \(each) ms, \(each.reduce(0, +)) ms one after another)")
+        check("at once: the quit in \(Int(took * 1000)) ms, about the slowest host's (\(each.max() ?? -1) ms), not their sum (\(each.reduce(0, +)) ms)",
+              took < 0.5 && each.count == 6 && Double(each.reduce(0, +)) > took * 1000 * 1.5 && Double(each.max() ?? 0) >= took * 1000 - 30, "\(each) \(took)")
+        check("at once: the hosts' steps interleaved (\(touched.count) windows had steps done by the second app's ask to quit)", touched.count >= 3, "\(w.calls)")
+        check("at once: no app's exit waited for: Notes and Calculator still quitting as it ends, said; TextEdit and FaceTime out",
+              w.apps[started["com.apple.Notes"]!] != nil && w.apps[started["com.apple.calculator"]!] != nil && w.apps[started["com.apple.TextEdit"]!] == nil && w.apps[started["com.apple.FaceTime"]!] == nil
+              && lines.contains { $0.contains("still quitting on their own, not waited for: com.apple.Notes, com.apple.calculator") }, "\(lines.filter { $0.contains("quit:") })")
+        check("at once: every window where it belongs: Notes' and Calculator's on their Desktop (closed first: none open), Phone back at its frame running, Safari's closed by its copy, no private Space, nothing left",
+              w.apps[phonePid] != nil && w.spaces(window: phoneWindow) == [FakeHostWorld.desktop] && w.wins[phoneWindow]?.frame == phoneFrame && copy.closed.count == 1
+              && w.privates.isEmpty && clean(w) && w.inMargin.isEmpty && w.freezes == w.reveals, "\(w.calls)")
+        let m = HostMarker.read(marker)
+        check("at once: the marker has only the apps still quitting, as asked", Set(m?.apps.map(\.bundleId) ?? []) == ["com.apple.Notes", "com.apple.calculator"] && m?.apps.allSatisfy { $0.quitAsked == true } == true && m?.windows.isEmpty == true,
+              "\(String(describing: m))")
+        hostRun { await w.sleep(5) }
+        check("at once: the slow apps out on their own after", w.apps[started["com.apple.Notes"]!] == nil && w.apps[started["com.apple.calculator"]!] == nil)
+    }
+
+    // ---- the person's Phone given back at Margin's quit: each step condition-based and timed in the log ----
+    for what in ["window mode, parked", "window mode, its frame refused", "full screen, parked", "full screen, its state unread", "full screen, refused"] {
+        let (w, e, marker) = world()
+        _ = wired(e)
+        let full = what.hasPrefix("full screen")
+        if full { w.notFullScreen.remove("com.apple.mobilephone") } // (a Dock app's window can go full screen)
+        let p = w.start("com.apple.mobilephone", policy: .regular, windows: 1)
+        let n = w.apps[p]!.windows[0]
+        let original = w.wins[n]?.frame ?? FakeHostWorld.defaultFrame
+        _ = open(e, textEdit)
+        _ = open(e, phone)
+        let parked = what.hasSuffix("parked") || what.hasSuffix("unread")
+        if parked { _ = open(e, textEdit) } // (Phone parked behind it; else shown, its frame refused as it's given back)
+        check("person's Phone at quit (\(what)): \(parked ? "parked" : "shown"), \(full ? "full screen" : "in window mode")", (parked ? w.wins[n]?.priv != nil : e.shown == phone.id) && e.mode(of: phone.id) == (full ? .fullScreen : .window), "\(String(describing: e.mode(of: phone.id)))")
+        w.axCurrentOnly = true
+        if what.hasSuffix("its frame refused") { w.fail = ["frame"] }
+        if what.hasSuffix("its state unread") { w.fullScreenUnread = [n] }
+        if what.hasSuffix("refused") && full { w.fail = ["ax"] }
+        w.calls = []
+        let t0 = w.clock
+        let lines = said { hostRun { await e.quitAll() } }
+        let took = w.clock - t0
+        let line = lines.first { $0.contains("app:com.apple.mobilephone closed (Margin quits)") } ?? ""
+        let refused = what.hasSuffix("refused")
+        check("person's Phone at quit (\(what)): given back in \(Int(took * 1000)) ms, never quit, on its Desktop\(refused ? "" : " at its frame, out of full screen")",
+              took < (refused ? 0.7 : 0.3) && w.apps[p] != nil && !w.calls.contains("terminate \(p)") && w.spaces(window: n) == [FakeHostWorld.desktop] && w.privates.isEmpty
+              && (refused || (w.bounds(window: n) == original && w.wins[n]?.fullScreen == false)), "\(took) \(w.calls) \(lines.filter { $0.contains("mobilephone") })")
+        print("  (person's Phone at quit, \(what): given back in \(Int(took * 1000)) ms: \(line.components(separatedBy: " ms (").last.map { "(" + $0 } ?? line))")
+        check("person's Phone at quit (\(what)): its steps timed in the log", line.contains(full ? "out of full screen " : "frame ") && line.contains("home "), line)
+        let m = HostMarker.read(marker)
+        let left = m?.windows.first { $0.number == n }
+        let kept = what.hasSuffix("refused")
+        check("person's Phone at quit (\(what)): \(kept ? "what isn't done (\(full ? "its exit from full screen" : "its frame")) in the marker for the next launch (the person's, its frame)" : "nothing of it in the marker")",
+              kept ? left?.personApp == true && left?.frame == original && (full ? left?.member == true : left?.frameChanged == true) : left == nil, "\(String(describing: m))")
+        if kept {
+            // The next launch, Accessibility answering again: finished, the marker gone.
+            w.fail = []
+            w.current = FakeHostWorld.desktop // (Margin's window and Space went with it)
+            let next = HostEngine(system: w, marker: marker, pid: 2)
+            hostRun { await next.recover() }
+            check("person's Phone at quit (\(what)): the next launch finishes it: out of full screen, at its frame, on its Desktop, still running, the marker gone",
+                  w.wins[n]?.fullScreen == false && w.bounds(window: n) == original && w.spaces(window: n) == [FakeHostWorld.desktop] && w.apps[p] != nil && !FileManager.default.fileExists(atPath: marker.path), "\(w.calls.suffix(8))")
+        }
     }
 
     // ---- placing a window: as soon as it's there, or as soon as it holds the size it took ----

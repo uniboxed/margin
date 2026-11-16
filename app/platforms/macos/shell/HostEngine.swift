@@ -73,7 +73,7 @@
 // after a crash (`recover`), which brings each to the current Space, takes it out of full screen, gives a window-mode
 // window its frame and its Desktop back, puts the person's apps' windows back where they were, and quits only the apps
 // Margin started (never leaving an app saved as in full screen or at Margin's page area). Every operation runs one at
-// a time, in order.
+// a time, in order; Margin's quit gives its hosts back at once inside its own, and never waits for an app's exit.
 
 import AppKit
 
@@ -100,8 +100,14 @@ final class HostEngine {
         var placeSettle = 0.1 // ...or as soon as its bounds changed and then held this long (the size it took: its own limits)
         var parkWait = 0.6 // two tries of 300 ms, as the parker
         var exitWait = 7.0 // out of full screen (an app animates it)
-        var quitWait = 6.0 // (an iPad app with a window open quits after its own 5 s watchdog: seen out 6 ms after a 5 s wait)
-        var closeWait = 1.0 // an iPad app's window closed by its close button before its quit: pressed, then gone
+        // A close outside Margin's quit (its row closed, a failed open) waits this long for the app's exit (an iPad app
+        // with a window open quits after its own 5 s watchdog: seen out 6 ms after a 5 s wait); Margin's quit never waits
+        // for an app's exit (`quitAll`).
+        var quitWait = 6.0
+        var closeWait = 0.6 // a window closed by its close button before its app's quit: gone by then (seen: 70-290 ms)
+        var closePressWait = 0.3 // ...its press retried this long when the window was just brought to the current Space (listed late)
+        var frameAskWait = 0.3 // a frame given back: asked again this long while Accessibility doesn't take it (listed late)
+        var exitUnansweredWait = 0.5 // out of full screen: asked again this long while Accessibility neither takes nor reads it
         var every = 0.02
         var tolerance: CGFloat = 1
         var safariBundle = safariIdentifier
@@ -148,6 +154,8 @@ final class HostEngine {
         var originalSpace: UInt64? // the Space it was in (a Desktop)
         var away = false // Margin took it out of its Space: put back when it's given back
         var frameChanged = false // Margin set its frame (window mode) and hasn't put it back yet
+        var exitUnconfirmed = false // its last exit from full screen wasn't confirmed (Accessibility neither took nor read it)
+        var axRefused = false // Accessibility didn't take its frame as it was given back: its close button isn't pressed either
         var bundleId: String?
         var appLaunchedAt: Double?
         init(id: HostID, target: HostTarget, pid: pid_t, window: Int, launchedByMargin: Bool, madeByMargin: Bool, safariWindow: Int? = nil) {
@@ -186,6 +194,7 @@ final class HostEngine {
     private(set) var busy = false
     private(set) var quitting = false // Margin quits: nothing is shown or activated any more
     private var quitAsked: Set<pid_t> = [] // apps asked to quit during Margin's quit
+    private var leftWindows: [HostMarker.Window] = [] // windows Margin's quit couldn't finish giving back: the marker's, for the next launch
     private var ownSpaces: Set<UInt64> = [] // every full-screen Space a hosted window went into, until it's gone (Mission Control's check)
     var onEvent: ((HostEvent) -> Void)?
     // Wired by the shell to the extension's request for a new window (a profile's; nil the default one): the copy's
@@ -211,7 +220,7 @@ final class HostEngine {
     private var aboveSaid: Int?
     private var coverSaid: Int?
     private var loadingSaid: HostID?
-    private var frozenNow = false
+    private var freezeHolds = 0 // steps holding the freeze now (Margin's quit gives every host back at once)
     private var preparing = false // a window made ready out of sight (`prepare`): parked once it's placed, never shown
 
     private var tail: Task<Void, Never>?
@@ -324,27 +333,42 @@ final class HostEngine {
         await serial { await self.parkShownNow(why: why) }
     }
 
-    // Margin quits: the one shown given back first, then the parked ones, every app Margin started quit, the Safari
-    // windows it made closed, its Spaces given back.
+    // Margin quits: every host given back at once (each one's own steps in order: its frame and Space back, out of
+    // full screen, its window closed first or taken home, Safari's closed by its copy), every app Margin started asked
+    // to quit, the Safari windows it made closed, its Spaces given back. Margin never waits for an app's exit (Maps
+    // took 5 s, its own watchdog, 2026-11-16): once every window is where it belongs and each app is asked, the quit
+    // is done; the apps finish on their own. What isn't done stays in the marker for the next launch's recovery: a
+    // window not given back (`leftWindows`), an app asked to quit and still running then (asked again if it still runs).
     func quitAll() async {
         quitting = true
         await serial {
             let started = self.sys.now()
             self.quitAsked = []
+            self.leftWindows = []
             let order = (self.shown.map { [$0] } ?? []) + self.hosts.keys.filter { $0 != self.shown }.sorted { $0.raw < $1.raw }
-            for id in order { await self.closeNow(id, why: "Margin quits") }
+            await self.closeAtOnce(order)
             await self.closeLeftSafariWindows()
-            // (An app asked already by its window's close and still running isn't asked and waited for again: one polite
-            // quit each, 6 s at most each.)
-            for (pid, app) in self.launched where !self.quitAsked.contains(pid) { await self.quitApp(pid, bundle: app.bundleId) }
+            // (An app asked already by its window's close isn't asked again: one polite quit each, never waited for.)
+            for (pid, app) in self.launched.sorted(by: { $0.key < $1.key }) where !self.quitAsked.contains(pid) { self.askQuit(pid, bundle: app.bundleId) }
             // (A reservation on Margin's own Space is never made now; one left by an older build is given back.)
             if self.marginSpace > 0, let r = self.sys.reserved(space: self.marginSpace), !r.isZero { _ = self.sys.reserve(.zero, space: self.marginSpace) }
             await self.destroyLeftSpaces()
             self.checkOrphans("at quit")
             self.checkListed("at quit")
             self.saveMarker()
-            Diagnostics.note("host: quit: everything given back in \(self.ms(since: started)) ms")
+            let finishing = self.launched.values.filter { self.quitAsked.contains($0.pid) }.map(\.bundleId).sorted()
+            let left = self.leftWindows.count
+            Diagnostics.note("host: quit: everything given back in \(self.ms(since: started)) ms (\(order.count) host\(order.count == 1 ? "" : "s") at once"
+                             + (finishing.isEmpty ? "" : "; still quitting on their own, not waited for: \(finishing.joined(separator: ", "))")
+                             + (left == 0 ? "" : "; \(left) window\(left == 1 ? "" : "s") not given back: in the marker for the next launch") + ")")
         }
+    }
+
+    // Each host given back in a task of its own, all at once (their waits overlap: the quit takes the slowest one's
+    // time, not their sum), every one finished before this returns.
+    private func closeAtOnce(_ ids: [HostID]) async {
+        let tasks = ids.map { id in Task { await self.closeNow(id, why: "Margin quits", atQuit: true) } }
+        for task in tasks { await task.value }
     }
 
     // The shell's poll: a hosted app quit or promoted, its window gone, a left Space destroyed. Skipped while an
@@ -424,16 +448,18 @@ final class HostEngine {
         loading?(id)
     }
 
-    // One freeze at a time: a step that freezes inside another's (a give-up's close) doesn't freeze or reveal again.
+    // One freeze for every step holding it: a step that freezes inside another's (a give-up's close), or beside it (the
+    // hosts given back at once at Margin's quit), doesn't freeze again; the screen is revealed once the last lets go.
     private func holdFreeze() -> Bool {
-        guard !frozenNow else { return false }
-        frozenNow = sys.freeze()
-        return frozenNow
+        if freezeHolds > 0 { freezeHolds += 1; return true }
+        guard sys.freeze() else { return false }
+        freezeHolds = 1
+        return true
     }
     private func releaseFreeze(_ mine: Bool) {
-        guard mine else { return }
-        frozenNow = false
-        sys.reveal()
+        guard mine, freezeHolds > 0 else { return }
+        freezeHolds -= 1
+        if freezeHolds == 0 { sys.reveal() }
     }
 
     // The host whose window is `number` (a Safari window the extension made: closed by its copy).
@@ -769,8 +795,8 @@ final class HostEngine {
         if !unhid, !enhanced { Diagnostics.note("host: \(host.id): AXEnhancedUserInterface \(enhancedBefore == true ? "was on already" : "wasn't taken")") }
         let frozen = holdFreeze()
         defer { releaseFreeze(frozen) }
-        guard frozenNow, let desktop = home(host.originalSpace, display: host.originalSpace ?? marginSpace), desktop != marginSpace else {
-            Diagnostics.note("host: \(host.id): Accessibility didn't list its window in Margin's Space within \(ms(since: t0)) ms\(frozenNow ? "" : " (no freeze: its Desktop isn't made current)")")
+        guard freezeHolds > 0, let desktop = home(host.originalSpace, display: host.originalSpace ?? marginSpace), desktop != marginSpace else {
+            Diagnostics.note("host: \(host.id): Accessibility didn't list its window in Margin's Space within \(ms(since: t0)) ms\(freezeHolds > 0 ? "" : " (no freeze: its Desktop isn't made current)")")
             return nil
         }
         let t1 = sys.now()
@@ -911,7 +937,10 @@ final class HostEngine {
 
     // A window-mode host's frame given back as it was recorded, through Accessibility, which sees only the current
     // Space's windows: one that isn't on it (parked, or left elsewhere) is brought there first. Checked by the window
-    // server. True: it's at its recorded frame (or Margin never changed it).
+    // server, with no fixed wait: done once it's at its frame, or once it moved and held still elsewhere (the app's own
+    // limits: asking again gets the same); Accessibility not taking it is asked again only `frameAskWait` (a window just
+    // brought here is listed a moment late), then given up (kept in the marker). True: it's at its recorded frame (or
+    // Margin never changed it).
     @discardableResult private func restoreFrame(_ host: Host) async -> Bool {
         guard host.frameChanged else { return true }
         guard let original = host.original else { host.frameChanged = false; return true }
@@ -928,12 +957,14 @@ final class HostEngine {
                 if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv); host.privateSpace = nil }
             }
         }
-        var ok = false
-        for _ in 1...2 where !ok {
-            _ = await sys.setFrame(pid: host.pid, window: host.window, original, size: host.resizable)
-            ok = await wait(options.windowPlaceWait) { self.sys.bounds(window: host.window).map { HostLayout.near($0, original, within: self.options.tolerance) } ?? false }
+        let from = sys.bounds(window: host.window) ?? original
+        let took = await wait(options.frameAskWait, every: options.lookEvery) { await self.sys.setFrame(pid: host.pid, window: host.window, original, size: host.resizable) }
+        let got = took ? await settled(host, at: original, from: from) : from
+        let ok = took && HostLayout.near(got, original, within: options.tolerance)
+        host.axRefused = !took
+        if ok { host.frameChanged = false } else {
+            Diagnostics.warn("host: \(host.id): its frame wasn't given back (\(took ? "Accessibility took it, the window is at \(r(got))" : "Accessibility didn't take it")): kept in the marker")
         }
-        if ok { host.frameChanged = false } else { Diagnostics.warn("host: \(host.id): its frame wasn't given back (Accessibility didn't take it): kept in the marker") }
         saveMarker()
         return ok
     }
@@ -1561,11 +1592,32 @@ final class HostEngine {
             if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv); host.privateSpace = nil }
             saveMarker()
         }
-        let answered = await setFullScreen(host, false)
+        // Done once Accessibility reads it out; Safari's through its copy, once the copy says Safari did; an app's whose
+        // AXFullScreen doesn't read, once the window server has it off the page frame it had as a member and still
+        // (macOS put it back as a window). Accessibility neither taking nor reading it: asked again `exitUnansweredWait`,
+        // then given up (it won't leave by itself; no fixed wait for it).
+        let member = sys.bounds(window: host.window) // (its frame as a member, before it's asked)
+        let asked = sys.now()
+        var answered = await setFullScreen(host, false)
+        var moved: (CGRect, Double)?
+        var unanswered = false
         let out = await wait(options.exitWait) {
-            if let full = await self.sys.isFullScreen(pid: host.pid, window: host.window) { return !full }
-            return copy && answered // (Safari's in its private Space, unread there: its copy's word, given once Safari says)
-        }
+            let full = await self.sys.isFullScreen(pid: host.pid, window: host.window)
+            if full == false { return true }
+            if copy { return full == nil && answered } // (Safari's in its private Space, unread there: its copy's word, given once Safari says)
+            if !answered {
+                answered = await self.setFullScreen(host, false)
+                if !answered, self.sys.now() - asked >= self.options.exitUnansweredWait { unanswered = true; return true }
+                return false
+            }
+            if full == true { return false } // (asked, still leaving: an app animates it)
+            guard let b = self.sys.bounds(window: host.window), let m = member, !HostLayout.near(b, m, within: 0.5) else { moved = nil; return false }
+            if let (last, since) = moved, HostLayout.near(b, last, within: 0.5) { return self.sys.now() - since >= self.options.placeSettle }
+            moved = (b, self.sys.now())
+            return false
+        } && !unanswered
+        host.exitUnconfirmed = !out
+        if !out { Diagnostics.note("host: \(host.id): out of full screen not confirmed in \(ms(since: asked)) ms (\(unanswered ? "Accessibility neither took nor read it" : "still full screen"))") }
         if out {
             host.member = false
             host.placedPage = nil
@@ -1738,33 +1790,57 @@ final class HostEngine {
     // Given back: out of full screen (a member on the current Space by Accessibility, under the freeze: it's seen; a
     // Safari window parked first and out through its copy, unseen), a window-mode one its frame as it was, the windows
     // of the person's apps and window-mode ones back in their Space, then an app Margin started quit (after its frame
-    // is back, so it saves that one); an app the person opened is never quit.
-    private func closeNow(_ id: HostID, why: String) async {
+    // is back, so it saves that one; its window closed first when that's harmless: `closesFirst`); an app the person
+    // opened is never quit. `atQuit` (Margin quits, every host at once): the app is asked to quit and not waited for, so
+    // its window is never left in a private Space (Margin isn't there to take it out if the app doesn't quit) but on its
+    // Desktop; what isn't done is kept for the marker (`leftWindows`). Each step's time is in the log line.
+    private func closeNow(_ id: HostID, why: String, atQuit: Bool = false) async {
         guard let host = hosts[id] else { return }
         let started = sys.now()
+        var times: [String] = []
+        var t0 = started
+        func step(_ name: String) { times.append("\(name) \(ms(since: t0))"); t0 = sys.now() }
         let seen = (host.phase == .shown && host.mode == .window) || (host.member && !viaCopy(host))
         let frozen = seen ? holdFreeze() : false
         defer { releaseFreeze(frozen) }
         if host.mode == .window {
             await restoreFrame(host)
+            step("frame")
             if shown == id { shown = nil }
         } else if !viaCopy(host), host.member || host.phase == .shown || host.fullScreenSpace != nil {
             await backOut(host)
+            step("out of full screen")
         } else if viaCopy(host), host.fullScreenSpace != nil {
             await backOut(host) // (a Safari window Margin asked for, mid-way in its own Space; a member: toNormal below)
+            step("out of full screen")
         }
         if shown == id { shown = nil }
         let sharesApp = hosts.values.contains { $0.id != id && $0.pid == host.pid }
         let quits = host.launchedByMargin && !sharesApp
-        // An iPad app Margin quits: its window closed first, its frame back already (its quit waits 5 s for a window
-        // that's open: closeBeforeQuit). Closed, there's nothing to take home; not closed, it goes home as any.
-        let closed = quits && host.safariWindow == nil && sys.isUIKitApp(pid: host.pid) ? await closeBeforeQuit(host) : false
-        if !closed, host.mode == .window || host.personApp { await returnHome(host) }
-        // An app Margin quits whose window is still in Margin's Space (taken in to be read, its open failed): out of
-        // sight in a private Space until its quit is done, never standing on its own over Margin meanwhile (seen
-        // 2026-11-15: Dictionary's window over Margin while it quit). One that doesn't quit goes to the Desktop then.
-        if quits, !closed, host.safariWindow == nil, host.privateSpace == nil, sys.spaces(window: host.window)?.contains(marginSpace) == true {
-            if await parkMember(host, emitting: false) { Diagnostics.note("host: \(id): its window out of sight before its quit") }
+        let anApp: Bool = { if case .app = host.target { return true }; return false }()
+        // Its window closed first (its frame back already), when that's harmless (`closesFirst`). Closed, there's nothing
+        // to take home; not closed, it goes home as any.
+        let tries = quits && anApp && host.safariWindow == nil && closesFirst(host)
+        let closed = tries ? await closeBeforeQuit(host) : false
+        if tries { step(closed ? "closed" : "close tried") }
+        if !closed, host.mode == .window || host.personApp {
+            await returnHome(host)
+            step("home")
+        }
+        if quits, !closed, anApp, host.safariWindow == nil {
+            let inMargin = sys.spaces(window: host.window)?.contains(marginSpace) == true
+            if atQuit, inMargin || host.privateSpace != nil {
+                // Margin quits (not waiting for the app): on its Desktop before it's asked, out of Margin's Spaces; one that
+                // doesn't quit (unsaved work) is the person's there. (A private Space goes with Margin, and its window with it.)
+                host.away = true
+                await returnHome(host)
+                step("home")
+            } else if !atQuit, inMargin, host.privateSpace == nil {
+                // An app Margin quits whose window is still in Margin's Space (taken in to be read, its open failed): out of
+                // sight in a private Space until its quit is done, never standing on its own over Margin meanwhile (seen
+                // 2026-11-15: Dictionary's window over Margin while it quit). One that doesn't quit goes to the Desktop then.
+                if await parkMember(host, emitting: false) { Diagnostics.note("host: \(id): its window out of sight before its quit") }
+            }
         }
         if let ext = host.safariWindow {
             // A window a copy made for Margin: a normal window first (a member parked and out of full screen through its
@@ -1772,8 +1848,10 @@ final class HostEngine {
             // Safari is quit, if Margin started it: a window closed isn't one Safari restores). Seen 2026-11-15: asked to
             // close while still parked or full screen, it wasn't.
             await toNormal(host)
+            step("normal")
             let closed = await closeAskedSafariWindow(ext, profile: host.profile, pid: host.pid, number: host.window, why: why)
-            if !closed, !quits, host.privateSpace != nil, let desktop = sys.desktop(onDisplayOf: marginSpace) {
+            step(closed ? "closed by its copy" : "not closed by its copy")
+            if !closed, !quits || atQuit, host.privateSpace != nil, let desktop = sys.desktop(onDisplayOf: marginSpace) {
                 _ = sys.move(window: host.window, to: desktop) // not closed yet: on the Desktop meanwhile, closed later
                 Diagnostics.note("host: \(id): Safari's window wasn't closed by its extension: on the Desktop until its copy closes it")
             }
@@ -1784,14 +1862,31 @@ final class HostEngine {
             }
         }
         if quits {
-            await quitApp(host.pid, bundle: sys.app(pid: host.pid)?.bundleId ?? id.raw, parked: host)
+            let bundle = sys.app(pid: host.pid)?.bundleId ?? id.raw
+            if atQuit { askQuit(host.pid, bundle: bundle); step("asked to quit") } else { await quitApp(host.pid, bundle: bundle, parked: host); step("quit") }
         }
+        if atQuit, let left = unfinished(host) { leftWindows.append(left) }
         if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv) }
         hosts[id] = nil
         if !hosts.values.contains(where: { $0.pid == host.pid }) { sys.stopWatchingOpens(pid: host.pid) }
         saveMarker()
-        Diagnostics.note("host: \(id) closed (\(why)) in \(ms(since: started)) ms")
+        Diagnostics.note("host: \(id) closed (\(why)) in \(ms(since: started)) ms\(times.isEmpty ? "" : " (" + times.joined(separator: ", ") + ")")")
         emit(.closed(id))
+    }
+
+    // What Margin's quit couldn't finish for this host, for the marker (nil: done): its frame not given back, its exit
+    // from full screen not confirmed, or its window (still open) left in Margin's Space or a private Space. The next launch's recovery finishes it while that
+    // app (the person's, or one of Margin's that didn't quit) still runs.
+    private func unfinished(_ host: Host) -> HostMarker.Window? {
+        guard sys.bounds(window: host.window) != nil else { return nil } // (closed, or gone with its app)
+        let spaces = sys.spaces(window: host.window)
+        let stranded = host.privateSpace != nil || spaces?.contains(marginSpace) == true
+        let stillFull = host.exitUnconfirmed && !viaCopy(host)
+        guard (host.frameChanged && (host.mode == .window || host.personApp)) || ((stranded || stillFull) && host.safariWindow == nil) else { return nil }
+        var w = markerWindow(host)
+        w.privateSpace = nil // (destroyed as Margin quits)
+        if stillFull { w.member = true } // (the next launch takes it out of full screen on the current Space)
+        return w
     }
 
     // A Safari window Margin made, back to a normal window before its copy closes it: a member parked first (its exit
@@ -1808,37 +1903,57 @@ final class HostEngine {
         _ = await wait(options.exitWait) { await self.isFullScreen(host) == false }
     }
 
-    // An iPad or Mac Catalyst app's window closed before Margin quits that app (only one Margin started, never the
-    // person's): such an app's own quit hides its windows first, and for one started with no Dock icon that hide never
-    // comes while a window of its is ordered in, on any Space (its logs, 2026-11-15: FaceTime parked or given back to
-    // its Desktop, Maps parked: "App took too long to enter the background-only state", out after its own 5 s
-    // watchdog; FaceTime with no window ordered in: out in 0.5 s). Its frame is back first (closing saves it as it is).
-    // Accessibility presses its close button on the current Space (where it reads windows): a window elsewhere is
-    // brought there first, under the freeze. Gone by the window server's reading: true.
+    // Whether an app Margin started has its hosted window closed (its close button) before it's asked to quit: whenever
+    // that's harmless for its next launch, decided by what the app does, not by what kind of app it is: an app that
+    // doesn't keep its windows across a quit (macOS's default, "Close windows when quitting an application") discards
+    // that window at the quit anyway, so closing it first changes nothing it reopens; one that keeps them (the person's
+    // setting, or the app's own) would lose the window it reopens: never closed, taken home instead. Closing first is
+    // what makes an iPad (UIKit) app's quit fast: its quit hides its windows first and, started with no Dock icon, waits
+    // out its own 5 s watchdog while one is ordered in on any Space (FaceTime, 2026-11-15; Phone closed first: out in
+    // 0.75 s, 2026-11-15 21:25). Not for a window Accessibility didn't take a frame for (it wouldn't press its button).
+    private func closesFirst(_ host: Host) -> Bool {
+        !host.axRefused && !sys.keepsWindowsAtQuit(pid: host.pid)
+    }
+
+    // A window of an app Margin started (never the person's) closed before Margin quits that app, its frame back first
+    // (closing saves it as it is). Accessibility presses its close button on the current Space (where it reads windows):
+    // a window elsewhere is brought there first, under the freeze, and pressed again a moment (`closePressWait`: listed
+    // late); one already there is pressed once. Gone by the window server's reading within `closeWait`: true.
     private func closeBeforeQuit(_ host: Host) async -> Bool {
         let t0 = sys.now()
         let frozen = holdFreeze()
         defer { releaseFreeze(frozen) }
         guard let current = sys.currentSpace(onDisplayOf: host.originalSpace ?? marginSpace) else { return false }
+        var brought = false
         if sys.spaces(window: host.window)?.contains(current) != true {
             host.away = true
-            guard sys.move(window: host.window, to: current), await wait(options.parkWait, { self.sys.spaces(window: host.window)?.contains(current) == true }) else {
+            guard sys.move(window: host.window, to: current), await wait(options.parkWait, every: options.memberEvery, { self.sys.spaces(window: host.window)?.contains(current) == true }) else {
                 Diagnostics.note("host: \(host.id): its window didn't come to the current Space to be closed: quit with it open")
                 return false
             }
             if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv); host.privateSpace = nil }
+            brought = true
             saveMarker()
         }
-        // (Accessibility may list a window brought here a moment late: pressed again until it takes it.)
-        let pressed = await wait(options.closeWait, every: options.lookEvery) { await self.sys.close(pid: host.pid, window: host.window) }
-        guard pressed, await wait(options.closeWait, { self.sys.bounds(window: host.window) == nil }) else {
+        let pressed = await wait(brought ? options.closePressWait : 0, every: options.lookEvery) { await self.sys.close(pid: host.pid, window: host.window) }
+        guard pressed, await wait(options.closeWait, every: options.lookEvery, { self.sys.bounds(window: host.window) == nil }) else {
             Diagnostics.note("host: \(host.id): its window didn't close by its close button in \(ms(since: t0)) ms (\(pressed ? "pressed" : "not pressed")): quit with it open")
             return false
         }
         host.away = false
         saveMarker()
-        Diagnostics.note("host: \(host.id): its window closed before its quit in \(ms(since: t0)) ms (an iPad app's quit waits 5 s for a window that's open)")
+        Diagnostics.note("host: \(host.id): its window closed before its quit in \(ms(since: t0)) ms")
         return true
+    }
+
+    // Margin quits: an app Margin started asked to quit (politely, once), not waited for: it finishes on its own (an iPad
+    // app's own watchdog can take 5 s). Its window is where it belongs already. Still running as Margin's quit ends: in
+    // the marker (`quitAsked`), asked again by the next launch if that same launch still runs.
+    private func askQuit(_ pid: pid_t, bundle: String) {
+        guard sys.app(pid: pid) != nil else { launched[pid] = nil; saveMarker(); return }
+        quitAsked.insert(pid)
+        if !sys.terminate(pid: pid) { Diagnostics.warn("host: \(bundle) (pid \(pid)) wasn't asked to quit (the system refused the ask)") }
+        saveMarker()
     }
 
     // An app Margin started, quit (politely): once gone it's forgotten. One that doesn't quit (it may be asking about
@@ -2004,28 +2119,33 @@ final class HostEngine {
     private func saveMarker() {
         announceAbove()
         guard let markerURL else { return }
-        var m = HostMarker(pid: ownPid, marginSpace: hosts.isEmpty ? nil : marginSpace)
-        m.apps = launched.values.sorted { $0.pid < $1.pid }.map { HostMarker.App(pid: $0.pid, bundleId: $0.bundleId, launchedAt: $0.launchedAt) }
-        m.windows = hosts.values.sorted { $0.window < $1.window }.map {
-            var w = HostMarker.Window(number: $0.window, pid: $0.pid, ownSafariWindow: $0.madeByMargin, privateSpace: $0.privateSpace, fullScreenSpace: $0.fullScreenSpace,
-                                      safariWindow: $0.safariWindow, profile: $0.profile, appLaunchedAt: $0.safariWindow == nil ? nil : sys.app(pid: $0.pid)?.launchedAt)
-            if $0.mode == .window || $0.personApp {
-                w.mode = $0.mode
-                w.bundleId = $0.bundleId
-                w.personApp = $0.personApp
-                w.appLaunchedAt = $0.appLaunchedAt
-                w.frame = $0.original
-                w.frameChanged = $0.frameChanged
-                w.resizable = $0.resizable
-            }
-            if $0.mode == .window || $0.personApp || $0.member { w.originalSpace = $0.originalSpace }
-            if $0.member { w.member = true }
-            return w
+        var m = HostMarker(pid: ownPid, marginSpace: hosts.isEmpty && leftWindows.isEmpty ? nil : marginSpace)
+        m.apps = launched.values.sorted { $0.pid < $1.pid }.map {
+            HostMarker.App(pid: $0.pid, bundleId: $0.bundleId, launchedAt: $0.launchedAt, quitAsked: quitting && quitAsked.contains($0.pid) ? true : nil)
         }
+        m.windows = hosts.values.sorted { $0.window < $1.window }.map(markerWindow) + leftWindows
         m.leftSpaces = leftSpaces.sorted()
         m.leftSafariWindows = leftSafariWindows.isEmpty ? nil : leftSafariWindows
         if m.isEmpty { try? FileManager.default.removeItem(at: markerURL); return }
         if !m.write(markerURL) { Diagnostics.warn("host: the crash marker wasn't written") }
+    }
+
+    // A host as the marker has it: what giving its window back needs after a crash.
+    private func markerWindow(_ h: Host) -> HostMarker.Window {
+        var w = HostMarker.Window(number: h.window, pid: h.pid, ownSafariWindow: h.madeByMargin, privateSpace: h.privateSpace, fullScreenSpace: h.fullScreenSpace,
+                                  safariWindow: h.safariWindow, profile: h.profile, appLaunchedAt: h.safariWindow == nil ? nil : sys.app(pid: h.pid)?.launchedAt)
+        if h.mode == .window || h.personApp {
+            w.mode = h.mode
+            w.bundleId = h.bundleId
+            w.personApp = h.personApp
+            w.appLaunchedAt = h.appLaunchedAt
+            w.frame = h.original
+            w.frameChanged = h.frameChanged
+            w.resizable = h.resizable
+        }
+        if h.mode == .window || h.personApp || h.member { w.originalSpace = h.originalSpace }
+        if h.member { w.member = true }
+        return w
     }
 
     private func recoverNow() async {
@@ -2088,11 +2208,10 @@ final class HostEngine {
         for entry in m.leftSafariWindows ?? [] where !alivePids.contains(entry.pid) && sameSafari(entry.pid, entry.appLaunchedAt) && !leftSafariWindows.contains(entry) {
             leftSafariWindows.append(entry)
         }
-        var quit = 0
-        for a in alive {
-            _ = sys.terminate(pid: a.pid)
-            if await wait(options.quitWait, { self.sys.app(pid: a.pid) == nil }) { quit += 1 }
-        }
+        // Asked all at once, then their exits waited for together (one wait, not one per app).
+        for a in alive { _ = sys.terminate(pid: a.pid) }
+        _ = await wait(options.quitWait) { alive.allSatisfy { self.sys.app(pid: $0.pid) == nil } }
+        let quit = alive.filter { sys.app(pid: $0.pid) == nil }.count
         for w in m.windows { if let p = w.privateSpace { _ = sys.destroyPrivateSpace(p) } }
         // The hosted windows' own Spaces left, and Margin's old Space if nothing owns it any more.
         let ownerless = Set(sys.ownerlessFullScreenSpaces() ?? [])
@@ -2106,6 +2225,13 @@ final class HostEngine {
         try? FileManager.default.removeItem(at: markerURL)
         // Safari windows Margin asked for: closed by their copies now if linked, else kept in the marker for the poll.
         if !leftSafariWindows.isEmpty { await closeLeftSafariWindows() }
+        // (Only apps asked to quit at Margin's last quit, nothing else left: that quit was clean, they were still finishing.)
+        let asked = m.apps.filter { $0.quitAsked == true }
+        if asked.count == m.apps.count, m.windows.isEmpty, m.leftSpaces.isEmpty, (m.leftSafariWindows ?? []).isEmpty {
+            Diagnostics.note("host: \(asked.count) app\(asked.count == 1 ? "" : "s") asked to quit at Margin's last quit: \(alive.count) still running (asked again, \(quit) quit), in \(ms(since: started)) ms")
+            checkOrphans("after recovery")
+            return
+        }
         Diagnostics.note("host: a marker from a Margin that didn't quit cleanly: \(m.apps.count) app\(m.apps.count == 1 ? "" : "s") (\(alive.count) still running, \(quit) quit), "
                          + "\(m.windows.count) window\(m.windows.count == 1 ? "" : "s") (\(outOfFullScreen) out of full screen, \(givenBack) given back where they were), \(destroyed) Space\(destroyed == 1 ? "" : "s") destroyed, "
                          + "\(leftSafariWindows.count) Safari window\(leftSafariWindows.count == 1 ? "" : "s") Margin asked for still to close, in \(ms(since: started)) ms")

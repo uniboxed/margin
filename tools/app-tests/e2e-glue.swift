@@ -112,7 +112,7 @@ final class GlueHostWorld: HostSystem {
   func unhide(pid: pid_t) -> Bool { apps[pid] != nil }
   func enhancedUserInterface(pid: pid_t) async -> Bool? { false }
   func setEnhancedUserInterface(pid: pid_t, _ on: Bool) async -> Bool { false }
-  func isUIKitApp(pid: pid_t) -> Bool { false }
+  func keepsWindowsAtQuit(pid: pid_t) -> Bool { false }
   func safariSidebar(pid: pid_t) async -> HostSidebar { .closed }
   func pressSafariSidebar(pid: pid_t) async -> Bool { true }
   func safariAutoShowsToolbar() -> Bool? { true }

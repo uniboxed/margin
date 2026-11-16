@@ -19,11 +19,11 @@ protocol HostSystem: AnyObject {
     // Started with no Dock icon (only a fresh launch). True: asked; the engine waits for its pid.
     func launchDockless(bundleId: String, arguments: [String]) -> Bool
     func terminate(pid: pid_t) -> Bool // a polite quit (the app may ask about unsaved work), never a forced one
-    // An iPad or Mac Catalyst app (UIKit's, its bundle's Info.plist has UIDeviceFamily): its quit first hides its
-    // windows itself, which never finishes for one started with no Dock icon while a window of its is ordered in (in
-    // any Space): it waits out its own 5 s watchdog (FaceTime and Maps, 2026-11-15, their logs: "App took too long to
-    // enter the background-only state"); with no window open it quits at once.
-    func isUIKitApp(pid: pid_t) -> Bool
+    // Whether the app keeps its windows across a quit (reopens them at its next launch): its own
+    // NSQuitAlwaysKeepsWindows, else the person's (System Settings › Desktop & Dock › "Close windows when quitting an
+    // application" off). Off, macOS's default, a quit discards its windows anyway: closing one first changes nothing
+    // about its next launch.
+    func keepsWindowsAtQuit(pid: pid_t) -> Bool
     var onAppQuit: ((pid_t) -> Void)? { get set }
     // Whether it's hidden (nil: not running). An app started with no Dock icon is started hidden (LaunchServices' hide
     // option): a hidden app's windows aren't in Accessibility's list, and some apps make or expose their window only
@@ -381,9 +381,13 @@ final class RealHostSystem: HostSystem {
         return a.terminate()
     }
 
-    func isUIKitApp(pid: pid_t) -> Bool {
-        guard let url = NSRunningApplication(processIdentifier: pid)?.bundleURL, let info = Bundle(url: url)?.infoDictionary else { return false }
-        return info["UIDeviceFamily"] != nil
+    func keepsWindowsAtQuit(pid: pid_t) -> Bool {
+        guard let bundle = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier else { return false }
+        let key = "NSQuitAlwaysKeepsWindows"
+        // A sandboxed app's own preferences are in its container; CFPreferences reads its plain domain, then the global one.
+        let container = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Containers/\(bundle)/Data/Library/Preferences/\(bundle).plist")
+        if let d = NSDictionary(contentsOf: container), let v = d[key] as? NSNumber { return v.boolValue }
+        return (CFPreferencesCopyAppValue(key as CFString, bundle as CFString) as? NSNumber)?.boolValue ?? false
     }
 
     func close(pid: pid_t, window: Int) async -> Bool { await ax.close(pid: pid, window: window) }

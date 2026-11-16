@@ -107,6 +107,9 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
         var pid: Int32
         var bundleId: String
         var launchedAt: Double?
+        // Asked to quit as Margin quit and still running then (Margin doesn't wait for an app's exit): the next launch
+        // asks again only if that same launch still runs (it didn't quit: unsaved work), and says so.
+        var quitAsked: Bool? = nil
     }
     struct Window: Codable, Equatable, Sendable {
         var number: Int
