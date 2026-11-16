@@ -1,0 +1,184 @@
+[
+  {
+    "event": "corner-launch-configuration",
+    "override": false,
+    "preferenceWrites": false,
+    "uptime": 269104.92086683336
+  },
+  {
+    "event": "launched",
+    "pid": 17179,
+    "uptime": 269104.92333016667
+  },
+  {
+    "event": "window-geometry",
+    "position": "{182, 83}",
+    "size": "{656, 422}",
+    "uptime": 269105.50830258336
+  },
+  {
+    "button": "AXCloseButton",
+    "event": "button-geometry",
+    "numberResult": "0",
+    "position": "{190, 91}",
+    "size": "{16, 16}",
+    "uptime": 269105.51084420836,
+    "window": "77037"
+  },
+  {
+    "button": "AXMinimizeButton",
+    "event": "button-geometry",
+    "numberResult": "0",
+    "position": "{213, 91}",
+    "size": "{16, 16}",
+    "uptime": 269105.51245045837,
+    "window": "77037"
+  },
+  {
+    "button": "AXZoomButton",
+    "event": "button-geometry",
+    "numberResult": "0",
+    "position": "{236, 91}",
+    "size": "{16, 16}",
+    "uptime": 269105.51365175,
+    "window": "77037"
+  },
+  {
+    "bundle": "com.apple.TextEdit",
+    "event": "target",
+    "pid": 17180,
+    "uptime": 269105.51608483336,
+    "window": 77037
+  },
+  {
+    "event": "phase",
+    "label": "Standard launch control",
+    "uptime": 269106.65553470835,
+    "videoSeconds": 0.07113187504000962
+  },
+  {
+    "buttons": [
+      {
+        "enabled": true,
+        "name": "AXCloseButton"
+      },
+      {
+        "enabled": true,
+        "name": "AXMinimizeButton"
+      },
+      {
+        "enabled": true,
+        "name": "AXZoomButton"
+      }
+    ],
+    "event": "corner-snapshot",
+    "label": "startup",
+    "size": [
+      656,
+      422
+    ],
+    "uptime": 269106.6562230417,
+    "videoSeconds": 0.07182045833906159,
+    "windowed": true
+  },
+  {
+    "event": "resize",
+    "result": 0,
+    "uptime": 269108.2640576667,
+    "videoSeconds": 1.6796577916829847
+  },
+  {
+    "event": "phase",
+    "label": "Resized \u2014 same native launch configuration",
+    "uptime": 269108.99523525004,
+    "videoSeconds": 2.410833833331708
+  },
+  {
+    "buttons": [
+      {
+        "enabled": true,
+        "name": "AXCloseButton"
+      },
+      {
+        "enabled": true,
+        "name": "AXMinimizeButton"
+      },
+      {
+        "enabled": true,
+        "name": "AXZoomButton"
+      }
+    ],
+    "event": "corner-snapshot",
+    "label": "resized",
+    "size": [
+      736,
+      467
+    ],
+    "uptime": 269108.9968005417,
+    "videoSeconds": 2.412397708336357,
+    "windowed": true
+  },
+  {
+    "event": "size-restore",
+    "result": 0,
+    "uptime": 269110.50570575,
+    "videoSeconds": 3.921304375049658
+  },
+  {
+    "event": "phase",
+    "label": "Original size restored",
+    "uptime": 269111.2362456667,
+    "videoSeconds": 4.6518435417092405
+  },
+  {
+    "buttons": [
+      {
+        "enabled": true,
+        "name": "AXCloseButton"
+      },
+      {
+        "enabled": true,
+        "name": "AXMinimizeButton"
+      },
+      {
+        "enabled": true,
+        "name": "AXZoomButton"
+      }
+    ],
+    "event": "corner-snapshot",
+    "label": "size-restored",
+    "size": [
+      656,
+      422
+    ],
+    "uptime": 269111.2377630417,
+    "videoSeconds": 4.65336045838194,
+    "windowed": true
+  },
+  {
+    "completeFrames": 45,
+    "event": "recording-finished",
+    "uptime": 269112.96172295837,
+    "video": "textedit-raw.mp4",
+    "videoSeconds": 6.377320708357729
+  },
+  {
+    "event": "size-restore",
+    "result": 0,
+    "uptime": 269112.96390875004,
+    "videoSeconds": 6.3795067083556205
+  },
+  {
+    "event": "close-owned-window",
+    "result": 0,
+    "uptime": 269113.06627170835,
+    "videoSeconds": 6.481870666670147
+  },
+  {
+    "event": "cleanup",
+    "profileRemoved": true,
+    "targetGone": true,
+    "uptime": 269113.193131375,
+    "videoSeconds": 6.608731416694354
+  }
+]

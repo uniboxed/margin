@@ -1,0 +1,103 @@
+[
+  {
+    "arguments" : [
+      "--proxy-server=http:\/\/127.0.0.1:9",
+      "--proxy-bypass-list=<-loopback>",
+      "--disable-component-update",
+      "-NSConvolutionOverride1",
+      "0.01",
+      "-NSConvolutionOverride2",
+      "0.01",
+      "--user-data-dir=\/var\/folders\/fh\/lg3st_7n57z2g5jyfz9r0djh0000gq\/T\/margin-visual-3A67B203-E907-46CE-9472-A0CD7024760F\/profile",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
+      "--disable-sync",
+      "--disable-default-apps",
+      "--disable-extensions",
+      "--window-size=900,650",
+      "--new-window",
+      "file:\/\/\/var\/folders\/fh\/lg3st_7n57z2g5jyfz9r0djh0000gq\/T\/margin-visual-3A67B203-E907-46CE-9472-A0CD7024760F\/test.html"
+    ],
+    "event" : "corner-launch-configuration",
+    "override" : true,
+    "preferenceWrites" : false,
+    "uptime" : 269319.73907745833
+  },
+  {
+    "event" : "launched",
+    "pid" : 20127,
+    "uptime" : 269319.74199004169
+  },
+  {
+    "event" : "window-geometry",
+    "position" : "{22, 56}",
+    "size" : "{900, 650}",
+    "uptime" : 269320.63939941669
+  },
+  {
+    "button" : "AXCloseButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{34, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 269320.64154079166,
+    "window" : "77134"
+  },
+  {
+    "button" : "AXMinimizeButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{57, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 269320.643392,
+    "window" : "77134"
+  },
+  {
+    "button" : "AXZoomButton",
+    "event" : "button-geometry",
+    "numberResult" : "0",
+    "position" : "{80, 68.5}",
+    "size" : "{16, 16}",
+    "uptime" : 269320.64463279169,
+    "window" : "77134"
+  },
+  {
+    "bundle" : "com.google.Chrome",
+    "event" : "target",
+    "pid" : 20127,
+    "uptime" : 269320.64782595832,
+    "window" : 77134
+  },
+  {
+    "event" : "phase",
+    "label" : "Private launch override 0.01",
+    "uptime" : 269321.78708312503,
+    "videoSeconds" : 0.070480499998666346
+  },
+  {
+    "description" : "browser fixture page is not the visible tab",
+    "event" : "failure",
+    "uptime" : 269321.78760037501,
+    "videoSeconds" : 0.070997541712131351
+  },
+  {
+    "event" : "size-restore",
+    "result" : 0,
+    "uptime" : 269321.78840266669,
+    "videoSeconds" : 0.071799750032369047
+  },
+  {
+    "event" : "close-owned-window",
+    "result" : 0,
+    "uptime" : 269321.7980974167,
+    "videoSeconds" : 0.081495499995071441
+  },
+  {
+    "event" : "cleanup",
+    "profileRemoved" : true,
+    "targetGone" : true,
+    "uptime" : 269321.94309333334,
+    "videoSeconds" : 0.22649212501710281
+  }
+]

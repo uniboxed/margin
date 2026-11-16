@@ -1,0 +1,45 @@
+-[NSThemeFrame _convolutionOverride]:
+0x18568FD24   pacibsp
+0x18568FD28   stp      x29, x30, [sp, #-0x10]!
+0x18568FD2C   mov      x29, sp
+0x18568FD30   adrp     x8, 413455           ; 0x1ea59e000
+0x18568FD34   add      x8, x8, #0x988       ; _OBJC_IVAR_$_NSView._window
+0x18568FD38   ldrsw    x8, [x8]
+0x18568FD3C   ldr      x0, [x0, x8]
+0x18568FD40   bl       _objc_msgSend$_isUtilityWindow
+0x18568FD44   cbz      w0, 0x18568fd68
+0x18568FD48   adrp     x2, 413491           ; 0x1ea5c2000
+0x18568FD4C   add      x2, x2, #0x1a1
+0x18568FD50   ldarb    w8, [x2]
+0x18568FD54   cmp      w8, #0x1
+0x18568FD58   b.ne     0x18568fd94
+0x18568FD5C   adrp     x8, 413491           ; 0x1ea5c2000
+0x18568FD60   add      x8, x8, #0x1b0
+0x18568FD64   b        0x18568fd84
+0x18568FD68   adrp     x2, 413491           ; 0x1ea5c2000
+0x18568FD6C   add      x2, x2, #0x1a0       ; __MergedGlobals.78
+0x18568FD70   ldarb    w8, [x2]
+0x18568FD74   cmp      w8, #0x1
+0x18568FD78   b.ne     0x18568fda8
+0x18568FD7C   adrp     x8, 413491           ; 0x1ea5c2000
+0x18568FD80   add      x8, x8, #0x1a8
+0x18568FD84   ldar     x8, [x8]
+0x18568FD88   fmov     d0, x8
+0x18568FD8C   ldp      x29, x30, [sp], #0x10
+0x18568FD90   retab
+0x18568FD94   adrp     x0, 431025           ; 0x1eea40000
+0x18568FD98   add      x0, x0, #0xe28
+0x18568FD9C   movi.2d  v0, #0000000000000000
+0x18568FDA0   add      x1, x2, #0xf
+0x18568FDA4   b        0x18568fdb8
+0x18568FDA8   adrp     x0, 431025           ; 0x1eea40000
+0x18568FDAC   add      x0, x0, #0xe08
+0x18568FDB0   movi.2d  v0, #0000000000000000
+0x18568FDB4   add      x1, x2, #0x8
+0x18568FDB8   mov      x3, #0x0
+0x18568FDBC   ldp      x29, x30, [sp], #0x10
+0x18568FDC0   autibsp
+0x18568FDC4   eor      x16, x30, x30, lsl #1
+0x18568FDC8   tbz      x16, #0x3e, 0x18568fdd0
+0x18568FDCC   brk      #0xc471
+0x18568FDD0   b        __NSGetCGFloatAppConfig

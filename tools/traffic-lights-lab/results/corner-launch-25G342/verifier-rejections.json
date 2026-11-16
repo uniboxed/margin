@@ -1,0 +1,12 @@
+[
+  {
+    "case": "false-launch-configuration",
+    "rejected": true,
+    "exit": 1
+  },
+  {
+    "case": "substituted-rounded-frame",
+    "rejected": true,
+    "exit": 1
+  }
+]

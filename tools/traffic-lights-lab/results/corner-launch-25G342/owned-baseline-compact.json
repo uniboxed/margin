@@ -1,0 +1,181 @@
+[
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {},
+      "nativeCornerRadius": 16,
+      "pid": 11786,
+      "window": 76863,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "baseline"
+  },
+  {
+    "image": {
+      "height": 492,
+      "samples": 2583,
+      "transparentSamples": 1,
+      "width": 760
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        760,
+        492
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {},
+      "nativeCornerRadius": 16,
+      "pid": 11786,
+      "window": 76863,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "resized"
+  },
+  {
+    "image": {
+      "height": 452,
+      "samples": 2072,
+      "transparentSamples": 0,
+      "width": 680
+    },
+    "native": {
+      "bounds": [
+        180,
+        475,
+        680,
+        452
+      ],
+      "buttonRegion": {
+        "bounds": "{{9, 9}, {37, 14}}",
+        "boundsResult": 0,
+        "present": true
+      },
+      "buttons": [
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 0
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 1
+        },
+        {
+          "alpha": 1,
+          "enabled": true,
+          "hidden": false,
+          "hit": true,
+          "type": 2
+        }
+      ],
+      "cornerMask": {},
+      "nativeCornerRadius": 16,
+      "pid": 11786,
+      "window": 76863,
+      "windowed": true,
+      "windowRights": {
+        "rawOutputs": [
+          1,
+          196614,
+          65536
+        ],
+        "result": 0
+      }
+    },
+    "stage": "size-restored"
+  },
+  {
+    "childRunning": false,
+    "cleanup": true,
+    "exit": 0
+  }
+]

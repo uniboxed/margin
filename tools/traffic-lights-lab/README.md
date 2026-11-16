@@ -4,6 +4,11 @@ The request is to hide close, minimise and zoom/fullscreen buttons while keeping
 in ordinary windowed mode, using Accessibility and private macOS APIs. This spike is isolated from
 Margin.app. Read the findings and proposed architecture in [the research report](../../docs/TRAFFIC-LIGHTS-RESEARCH.md).
 
+**Working corner-radius route:** launch-only private `NSConvolutionOverride1/2=0.01` configuration
+is visually verified in protected installed TextEdit/Preview, including resize and ordinary-relaunch
+restoration, with no injected library or saved corner-preference writes. Chrome is unchanged in the
+matched test. This concerns corner radius; native external traffic-light hiding remains unestablished.
+
 **Current requirement:** actual native control suppression. The user rejects image covers; the cover
 below is historical evidence, not an accepted solution. The latest native-only pass finds button-region
 metadata changes without any button-pixel changes, and no extra foreign clipping authority from a
@@ -16,6 +21,41 @@ Chrome did not load that library. AX writes and foreign clipping did not change 
 This is a bounded Chromium backend, not general external Safari/Chrome/Edge support.
 
 ## Native-only button-region and retained-proxy probes
+
+### Private AppKit launch configuration
+
+```sh
+swiftc -parse-as-library -D CORNER_LAUNCH_LAB -warnings-as-errors tools/traffic-lights-lab/visual.swift tools/traffic-lights-lab/corner-launch.swift -o /tmp/margin-corner-launch
+/tmp/margin-corner-launch --case textedit --override-corners --output /absolute/new/run
+/tmp/margin-corner-launch --case textedit --override-corners --run --output /absolute/new/run
+```
+
+First invocation is dry. Cases: `textedit`, `preview`, `chrome`, `edge` (Edge unrun). Requires 25G342,
+AX/capture access, no existing target app and a new output directory. It records only the owned
+document/profile window through the private sampler, uses AX resize/size restoration, closes the app,
+removes temporary files and restores focus. The two private arguments are passed only at launch;
+no persistent corner keys are written. The target process must restart to change the cached value.
+The 45-second watchdog cleans up the owned app. Browser cases select the exact local fixture tab via
+bounded AX traversal and use a fresh profile/loopback proxy endpoint. This is not an image cover.
+
+Omit `--override-corners` for standard launch and again for normal-relaunch restoration. Archive each
+app's runs as `APP-baseline`, `APP-override`, `APP-normal-after`, plus owned fixture `owned-baseline`
+and `owned-override`. Build `deeper.swift`/`wire-clip.c` below and use `--corners --launch-observe`
+with/without `--override-corners` for those owned runs (stdout to corresponding CASE.jsonl). Then:
+
+```sh
+python3 tools/traffic-lights-lab/verify-corner-launch.py /absolute/archived/root
+swiftc tools/traffic-lights-lab/video-bands.swift -o /tmp/margin-corner-bands
+python3 tools/traffic-lights-lab/render-corner-launch.py /absolute/archived/root /tmp/margin-corner-bands
+```
+
+The verifier also expects the paired key reads and signature/hash records described in
+`results/corner-launch-25G342/README.md`; it does not run desktop operations. Media is local under
+`test-results/window-corners-launch-2026-11-16/`. Raw sampled timestamps/PNGs are preserved; presentation
+annotations stay outside the window. The renderer does not increase capture cadence. First Chrome
+override/tab-selection and prebuild invocation failures are retained separately. No Safari acceptance.
+
+### Earlier live setter probes
 
 Quick corner experiment: build `deeper.swift` with `wire-clip.c` as below, then run
 `/tmp/margin-native-probe --corners --output /absolute/new/run` (dry), followed by the same command

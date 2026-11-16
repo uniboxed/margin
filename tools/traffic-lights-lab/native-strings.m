@@ -40,7 +40,7 @@ int main(int argc, const char **argv) {
             for (uint64_t offset = 0; offset + 32 <= sectionSize; offset += 32) {
                 NSString *value = (__bridge NSString *)(const void *)(section + offset);
                 BOOL match = NO;
-                for (NSString *needle in @[@"Traffic", @"Stoplight", @"WindowCloseButtonFrame", @"WindowMiniaturizeButtonFrame", @"WindowZoomButtonFrame", @"StandardWindowButton", @"HideWindowButtons", @"TitlebarElements", @"AXMimicNativeView", @"OverridesAlwaysTakePrecedence"]) {
+                for (NSString *needle in @[@"Traffic", @"Stoplight", @"WindowCloseButtonFrame", @"WindowMiniaturizeButtonFrame", @"WindowZoomButtonFrame", @"StandardWindowButton", @"HideWindowButtons", @"TitlebarElements", @"AXMimicNativeView", @"OverridesAlwaysTakePrecedence", @"ConvolutionOverride"]) {
                     if ([value rangeOfString:needle options:NSCaseInsensitiveSearch].location != NSNotFound) match = YES;
                 }
                 if (!match) continue;

@@ -6,12 +6,13 @@ import Darwin
 import ObjectiveC.runtime
 
 @_silgen_name("margin_wire_clip") private func wireClip(_ connection: UInt32, _ window: UInt32, _ region: UnsafeMutableRawPointer) -> Int32
+@_silgen_name("_AXUIElementGetWindow") private func axWindowNumber(_ element: AXUIElement, _ number: UnsafeMutablePointer<UInt32>) -> AXError
 
 setbuf(stdout, nil)
 let args = CommandLine.arguments
 func emit(_ row: [String: Any]) { print(String(decoding: try! JSONSerialization.data(withJSONObject: row, options: .sortedKeys), as: UTF8.self)) }
 guard args.contains("--run") || args.contains("--child") else {
-    emit(["plan": "One visible owned child window. Default: AX bundle request and owner/foreign clipping (--wire selects direct message). --buttons tests button metadata; --proxy-clips adds matched clipping. --corners tests radii. --corner-mask compares direct owner/foreign mask requests; --storage-control uses nonuniform mask readback as its positive control, making no content-rendering claim. Saves actual pixels, restores and cleans up. No browser, user window or system setting changed."]); exit(0)
+    emit(["plan": "One visible owned child window. --launch-observe --corners observes startup/AX resize/restore only; --override-corners adds private NSConvolutionOverride1/2=0.01 only to child launch arguments. No preferences written. Other modes: --buttons, --proxy-clips, --corners, --corner-mask/--storage-control. Saves actual pixels and cleans up. No browser, user window or system setting changed."]); exit(0)
 }
 var buildSize = 0; sysctlbyname("kern.osversion", nil, &buildSize, nil, 0)
 var build = [CChar](repeating: 0, count: buildSize); sysctlbyname("kern.osversion", &build, &buildSize, nil, 0)
@@ -206,12 +207,14 @@ if args.contains("--child") {
         guard valid else { emit(["refused": "saved clip did not match settled full window"]); window.close(); exit(2) }
     }
     func snapshot() -> [String: Any] {
+        var liveBounds = bounds
+        if args.contains("--launch-observe") { _ = fn(sky, "SLSGetWindowBounds", Bounds.self)(cid, wid, &liveBounds) }
         let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].map { type -> [String: Any] in
             let b = window.standardWindowButton(type)!
             return ["type": type.rawValue, "hidden": b.isHiddenOrHasHiddenAncestor, "alpha": b.alphaValue, "enabled": b.isEnabled,
                     "hit": b.superview?.hitTest(NSPoint(x: b.frame.midX, y: b.frame.midY)) === b]
         }
-        return ["window": wid, "pid": getpid(), "bounds": [bounds.minX, bounds.minY, bounds.width, bounds.height],
+        return ["window": wid, "pid": getpid(), "bounds": [liveBounds.minX, liveBounds.minY, liveBounds.width, liveBounds.height],
                 "windowed": !window.styleMask.contains(.fullScreen), "buttons": buttons,
                 "buttonRegion": buttonMetadata(wid), "windowRights": windowRights(wid),
                 "nativeCornerRadius": args.contains("--corners") || args.contains("--corner-mask") ? nativeRadius() : -1,
@@ -280,7 +283,10 @@ try FileManager.default.createDirectory(at: directory, withIntermediateDirectori
 let former = NSWorkspace.shared.frontmostApplication?.processIdentifier
 let child = Process()
 child.executableURL = URL(fileURLWithPath: args[0]).standardizedFileURL
-child.arguments = ["--child", "--output", directory.path] + ["--wire", "--buttons", "--proxy-clips", "--corners", "--corner-mask", "--system-only"].filter { args.contains($0) }
+child.arguments = ["--child", "--output", directory.path] + ["--wire", "--buttons", "--proxy-clips", "--corners", "--corner-mask", "--system-only", "--launch-observe"].filter { args.contains($0) }
+if args.contains("--override-corners") {
+    child.arguments! += ["-NSConvolutionOverride1", "0.01", "-NSConvolutionOverride2", "0.01"]
+}
 try child.run()
 func finish(_ code: Int32) -> Never {
     if child.isRunning { child.terminate(); child.waitUntilExit() }
@@ -331,6 +337,23 @@ func observe(_ name: String) -> [String: Any] {
     return row
 }
 let baseline = observe("baseline")
+if args.contains("--launch-observe") {
+    var value: CFTypeRef?
+    let app = AXUIElementCreateApplication(child.processIdentifier)
+    guard AXUIElementCopyAttributeValue(app, "AXWindows" as CFString, &value) == .success,
+          let windows = value as? [AXUIElement], let target = windows.first(where: { window in
+              var number: UInt32 = 0; return axWindowNumber(window, &number) == .success && number == wid
+          }) else { emit(["refused": "exact AX fixture window not found"]); finish(2) }
+    for (name, size) in [("resized", CGSize(width: bounds.width + 80, height: bounds.height + 40)),
+                         ("size-restored", bounds.size)] {
+        var size = size
+        guard let axSize = AXValueCreate(.cgSize, &size), AXUIElementSetAttributeValue(target, "AXSize" as CFString, axSize) == .success else { emit(["refused": "AX resize failed"]); finish(2) }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let row = observe(name), actual = (row["native"] as! [String: Any])["bounds"] as! [Double]
+        guard abs(actual[2] - size.width) < 1, abs(actual[3] - size.height) < 1 else { emit(["refused": "resize readback mismatch"]); finish(2) }
+    }
+    _ = request("quit"); child.waitUntilExit(); finish(child.terminationStatus)
+}
 if args.contains("--corner-mask") {
     guard (initial["cornerMask"] as? [String: Any])?["present"] as? Bool == false else { emit(["refused": "fixture already has image mask"]); finish(2) }
     _ = request("mask-prepare"); let prepared = observe("owner-prepared-image-path")

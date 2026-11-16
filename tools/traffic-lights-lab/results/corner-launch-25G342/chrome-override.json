@@ -1,0 +1,210 @@
+[
+  {
+    "arguments": [
+      "--proxy-server=http://127.0.0.1:9",
+      "--proxy-bypass-list=<-loopback>",
+      "--disable-component-update",
+      "-NSConvolutionOverride1",
+      "0.01",
+      "-NSConvolutionOverride2",
+      "0.01",
+      "--user-data-dir=/var/folders/fh/lg3st_7n57z2g5jyfz9r0djh0000gq/T/margin-visual-80FC5A9A-6744-462F-B3D0-017C4791E074/profile",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
+      "--disable-sync",
+      "--disable-default-apps",
+      "--disable-extensions",
+      "--window-size=900,650",
+      "--new-window",
+      "file:///var/folders/fh/lg3st_7n57z2g5jyfz9r0djh0000gq/T/margin-visual-80FC5A9A-6744-462F-B3D0-017C4791E074/test.html"
+    ],
+    "event": "corner-launch-configuration",
+    "override": true,
+    "preferenceWrites": false,
+    "uptime": 269438.14740575
+  },
+  {
+    "event": "launched",
+    "pid": 21782,
+    "uptime": 269438.14963095833
+  },
+  {
+    "event": "window-geometry",
+    "position": "{22, 56}",
+    "size": "{900, 650}",
+    "uptime": 269438.9420104583
+  },
+  {
+    "button": "AXCloseButton",
+    "event": "button-geometry",
+    "numberResult": "0",
+    "position": "{34, 68.5}",
+    "size": "{16, 16}",
+    "uptime": 269438.943901375,
+    "window": "77181"
+  },
+  {
+    "button": "AXMinimizeButton",
+    "event": "button-geometry",
+    "numberResult": "0",
+    "position": "{57, 68.5}",
+    "size": "{16, 16}",
+    "uptime": 269438.945041,
+    "window": "77181"
+  },
+  {
+    "button": "AXZoomButton",
+    "event": "button-geometry",
+    "numberResult": "0",
+    "position": "{80, 68.5}",
+    "size": "{16, 16}",
+    "uptime": 269438.9461421667,
+    "window": "77181"
+  },
+  {
+    "bundle": "com.google.Chrome",
+    "event": "target",
+    "pid": 21782,
+    "uptime": 269438.94842933334,
+    "window": 77181
+  },
+  {
+    "event": "select-owned-fixture-tab",
+    "result": 0,
+    "role": "AXRadioButton",
+    "title": "Traffic-light visual test",
+    "uptime": 269440.02729058336
+  },
+  {
+    "event": "phase",
+    "label": "Private launch override 0.01",
+    "uptime": 269440.63464737503,
+    "videoSeconds": 0.07204191666096449
+  },
+  {
+    "buttons": [
+      {
+        "enabled": true,
+        "name": "AXCloseButton"
+      },
+      {
+        "enabled": true,
+        "name": "AXMinimizeButton"
+      },
+      {
+        "enabled": true,
+        "name": "AXZoomButton"
+      }
+    ],
+    "event": "corner-snapshot",
+    "label": "startup",
+    "size": [
+      900,
+      650
+    ],
+    "uptime": 269440.635391375,
+    "videoSeconds": 0.07278566667810082,
+    "windowed": true
+  },
+  {
+    "event": "resize",
+    "result": 0,
+    "uptime": 269442.16118270834,
+    "videoSeconds": 1.598579499986954
+  },
+  {
+    "event": "phase",
+    "label": "Resized \u2014 same native launch configuration",
+    "uptime": 269442.8999821667,
+    "videoSeconds": 2.3373769166646525
+  },
+  {
+    "buttons": [
+      {
+        "enabled": true,
+        "name": "AXCloseButton"
+      },
+      {
+        "enabled": true,
+        "name": "AXMinimizeButton"
+      },
+      {
+        "enabled": true,
+        "name": "AXZoomButton"
+      }
+    ],
+    "event": "corner-snapshot",
+    "label": "resized",
+    "size": [
+      980,
+      695
+    ],
+    "uptime": 269442.9008782917,
+    "videoSeconds": 2.3382726666750386,
+    "windowed": true
+  },
+  {
+    "event": "size-restore",
+    "result": 0,
+    "uptime": 269444.43665383337,
+    "videoSeconds": 3.8740526666515507
+  },
+  {
+    "event": "phase",
+    "label": "Original size restored",
+    "uptime": 269445.18637033337,
+    "videoSeconds": 4.623765291646123
+  },
+  {
+    "buttons": [
+      {
+        "enabled": true,
+        "name": "AXCloseButton"
+      },
+      {
+        "enabled": true,
+        "name": "AXMinimizeButton"
+      },
+      {
+        "enabled": true,
+        "name": "AXZoomButton"
+      }
+    ],
+    "event": "corner-snapshot",
+    "label": "size-restored",
+    "size": [
+      900,
+      650
+    ],
+    "uptime": 269445.18745,
+    "videoSeconds": 4.624844541656785,
+    "windowed": true
+  },
+  {
+    "completeFrames": 43,
+    "event": "recording-finished",
+    "uptime": 269446.95214191667,
+    "video": "chrome-raw.mp4",
+    "videoSeconds": 6.389537291659508
+  },
+  {
+    "event": "size-restore",
+    "result": 0,
+    "uptime": 269446.9534121667,
+    "videoSeconds": 6.390806958312169
+  },
+  {
+    "event": "close-owned-window",
+    "result": 0,
+    "uptime": 269446.96664550004,
+    "videoSeconds": 6.40404079167638
+  },
+  {
+    "event": "cleanup",
+    "profileRemoved": true,
+    "targetGone": true,
+    "uptime": 269447.11934925,
+    "videoSeconds": 6.556744541681837
+  }
+]

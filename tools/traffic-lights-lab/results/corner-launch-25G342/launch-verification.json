@@ -1,0 +1,447 @@
+{
+  "owned": {
+    "owned-baseline": {
+      "nativeRadius": 16,
+      "transparentPixelsPerCorner": [
+        63,
+        63,
+        63,
+        63
+      ]
+    },
+    "owned-override": {
+      "nativeRadius": 0.009999999776482582,
+      "transparentPixelsPerCorner": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "apps": {
+    "textedit": {
+      "effect": "square outer shape",
+      "cases": {
+        "baseline": {
+          "target": {
+            "bundle": "com.apple.TextEdit",
+            "event": "target",
+            "pid": 15419,
+            "uptime": 268984.73172733333,
+            "window": 76919
+          },
+          "frames": 45,
+          "videoDuration": 6.2,
+          "decodedVideoCornerRGB": [
+            0,
+            0,
+            0
+          ],
+          "phases": {
+            "startup": {
+              "verifiedFrames": 11,
+              "transparentPixelsPerCorner": [
+                63,
+                63,
+                63,
+                63
+              ]
+            },
+            "resized": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                63,
+                63,
+                63,
+                63
+              ]
+            },
+            "size-restored": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                63,
+                63,
+                63,
+                63
+              ]
+            }
+          }
+        },
+        "override": {
+          "target": {
+            "bundle": "com.apple.TextEdit",
+            "event": "target",
+            "pid": 15848,
+            "uptime": 269014.7582590417,
+            "window": 76939
+          },
+          "frames": 44,
+          "videoDuration": 6.054,
+          "decodedVideoCornerRGB": [
+            253,
+            253,
+            253
+          ],
+          "phases": {
+            "startup": {
+              "verifiedFrames": 11,
+              "transparentPixelsPerCorner": [
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "resized": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "size-restored": {
+              "verifiedFrames": 9,
+              "transparentPixelsPerCorner": [
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        "normal-after": {
+          "target": {
+            "bundle": "com.apple.TextEdit",
+            "event": "target",
+            "pid": 17180,
+            "uptime": 269105.51608483336,
+            "window": 77037
+          },
+          "frames": 45,
+          "videoDuration": 6.186,
+          "decodedVideoCornerRGB": [
+            0,
+            0,
+            0
+          ],
+          "phases": {
+            "startup": {
+              "verifiedFrames": 11,
+              "transparentPixelsPerCorner": [
+                63,
+                63,
+                63,
+                63
+              ]
+            },
+            "resized": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                63,
+                63,
+                63,
+                63
+              ]
+            },
+            "size-restored": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                63,
+                63,
+                63,
+                63
+              ]
+            }
+          }
+        }
+      }
+    },
+    "preview": {
+      "effect": "square outer shape",
+      "cases": {
+        "baseline": {
+          "target": {
+            "bundle": "com.apple.Preview",
+            "event": "target",
+            "pid": 16330,
+            "uptime": 269043.82100708334,
+            "window": 76979
+          },
+          "frames": 44,
+          "videoDuration": 6.141,
+          "decodedVideoCornerRGB": [
+            0,
+            0,
+            0
+          ],
+          "phases": {
+            "startup": {
+              "verifiedFrames": 11,
+              "transparentPixelsPerCorner": [
+                166,
+                166,
+                166,
+                166
+              ]
+            },
+            "resized": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                166,
+                166,
+                166,
+                166
+              ]
+            },
+            "size-restored": {
+              "verifiedFrames": 9,
+              "transparentPixelsPerCorner": [
+                166,
+                166,
+                166,
+                166
+              ]
+            }
+          }
+        },
+        "override": {
+          "target": {
+            "bundle": "com.apple.Preview",
+            "event": "target",
+            "pid": 16642,
+            "uptime": 269066.184192375,
+            "window": 77005
+          },
+          "frames": 44,
+          "videoDuration": 6.172,
+          "decodedVideoCornerRGB": [
+            253,
+            253,
+            253
+          ],
+          "phases": {
+            "startup": {
+              "verifiedFrames": 11,
+              "transparentPixelsPerCorner": [
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "resized": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                0,
+                0,
+                0,
+                0
+              ]
+            },
+            "size-restored": {
+              "verifiedFrames": 9,
+              "transparentPixelsPerCorner": [
+                0,
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        "normal-after": {
+          "target": {
+            "bundle": "com.apple.Preview",
+            "event": "target",
+            "pid": 18740,
+            "uptime": 269222.3107934167,
+            "window": 77085
+          },
+          "frames": 44,
+          "videoDuration": 6.135,
+          "decodedVideoCornerRGB": [
+            0,
+            0,
+            0
+          ],
+          "phases": {
+            "startup": {
+              "verifiedFrames": 11,
+              "transparentPixelsPerCorner": [
+                166,
+                166,
+                166,
+                166
+              ]
+            },
+            "resized": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                166,
+                166,
+                166,
+                166
+              ]
+            },
+            "size-restored": {
+              "verifiedFrames": 9,
+              "transparentPixelsPerCorner": [
+                166,
+                166,
+                166,
+                166
+              ]
+            }
+          }
+        }
+      }
+    },
+    "chrome": {
+      "effect": "no corner effect",
+      "cases": {
+        "baseline": {
+          "target": {
+            "bundle": "com.google.Chrome",
+            "event": "target",
+            "pid": 19302,
+            "uptime": 269261.5425932084,
+            "window": 77097
+          },
+          "frames": 43,
+          "videoDuration": 6.137,
+          "decodedVideoCornerRGB": [
+            0,
+            0,
+            0
+          ],
+          "phases": {
+            "startup": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                102,
+                102,
+                102,
+                102
+              ]
+            },
+            "resized": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                102,
+                102,
+                102,
+                102
+              ]
+            },
+            "size-restored": {
+              "verifiedFrames": 9,
+              "transparentPixelsPerCorner": [
+                102,
+                102,
+                102,
+                102
+              ]
+            }
+          }
+        },
+        "override": {
+          "target": {
+            "bundle": "com.google.Chrome",
+            "event": "target",
+            "pid": 21782,
+            "uptime": 269438.94842933334,
+            "window": 77181
+          },
+          "frames": 43,
+          "videoDuration": 6.131,
+          "decodedVideoCornerRGB": [
+            0,
+            0,
+            0
+          ],
+          "phases": {
+            "startup": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                102,
+                102,
+                102,
+                102
+              ]
+            },
+            "resized": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                102,
+                102,
+                102,
+                102
+              ]
+            },
+            "size-restored": {
+              "verifiedFrames": 9,
+              "transparentPixelsPerCorner": [
+                102,
+                102,
+                102,
+                102
+              ]
+            }
+          }
+        },
+        "normal-after": {
+          "target": {
+            "bundle": "com.google.Chrome",
+            "event": "target",
+            "pid": 22328,
+            "uptime": 269478.50206845836,
+            "window": 77215
+          },
+          "frames": 43,
+          "videoDuration": 6.11,
+          "decodedVideoCornerRGB": [
+            0,
+            0,
+            0
+          ],
+          "phases": {
+            "startup": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                102,
+                102,
+                102,
+                102
+              ]
+            },
+            "resized": {
+              "verifiedFrames": 10,
+              "transparentPixelsPerCorner": [
+                102,
+                102,
+                102,
+                102
+              ]
+            },
+            "size-restored": {
+              "verifiedFrames": 9,
+              "transparentPixelsPerCorner": [
+                102,
+                102,
+                102,
+                102
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "invalidChromeAttempt": "retained; not counted as a corner-effect result",
+  "preferencesUnchanged": true,
+  "targetSignaturesAndBinaryHashesUnchanged": true
+}

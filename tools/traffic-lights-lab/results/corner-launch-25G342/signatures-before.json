@@ -1,0 +1,23 @@
+[
+  {
+    "app": "TextEdit",
+    "path": "/System/Applications/TextEdit.app",
+    "binarySHA256": "df6d3eae82efe315758bf1db030c0e7d6eef3321b0acef60b31b95ce0428058f",
+    "signature": "Executable=/System/Applications/TextEdit.app/Contents/MacOS/TextEdit\nIdentifier=com.apple.TextEdit\nFormat=app bundle with Mach-O universal (x86_64 arm64e)\nCodeDirectory v=20400 size=1099 flags=0x0(none) hashes=24+7 location=embedded\nPlatform identifier=26\nSignature size=4567\nAuthority=macOS Software Signing\nAuthority=Apple Code Signing Certification Authority\nAuthority=Apple Root CA\nSigned Time=Oct 12, 2026 at 06:59:57\nInfo.plist entries=34\nTeamIdentifier=not set\nSealed Resources version=2 rules=2 files=0\nInternal requirements count=1 size=68\n",
+    "verifyExit": 0
+  },
+  {
+    "app": "Preview",
+    "path": "/System/Applications/Preview.app",
+    "binarySHA256": "6a9421d2f9ba529960f12dc95c9e0be6e644c76be91618f7b8fcb9ad1f414915",
+    "signature": "Executable=/System/Applications/Preview.app/Contents/MacOS/Preview\nIdentifier=com.apple.Preview\nFormat=app bundle with Mach-O universal (x86_64 arm64e)\nCodeDirectory v=20500 size=6642 flags=0x10000(runtime) hashes=197+7 location=embedded\nPlatform identifier=26\nSignature size=4567\nAuthority=macOS Software Signing\nAuthority=Apple Code Signing Certification Authority\nAuthority=Apple Root CA\nSigned Time=Oct 12, 2026 at 08:59:56\nInfo.plist entries=37\nTeamIdentifier=not set\nRuntime Version=26.7.2\nSealed Resources version=2 rules=3 files=0\nInternal requirements count=1 size=68\n",
+    "verifyExit": 0
+  },
+  {
+    "app": "Google Chrome",
+    "path": "/Applications/Google Chrome.app",
+    "binarySHA256": "23010a3aeff294b54c6e8dc9a88e61388ec4655e2c10216c8a4ae2c050bfcb1b",
+    "signature": "Executable=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\nIdentifier=com.google.Chrome\nFormat=app bundle with Mach-O universal (x86_64 arm64)\nCodeDirectory v=20500 size=765 flags=0x12a00(kill,restrict,library-validation,runtime) hashes=13+7 location=embedded\nSignature size=8991\nAuthority=Developer ID Application: Google LLC (EQHXZ8M8AV)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=Nov 11, 2026 at 00:24:42\nNotarization Ticket=stapled\nInfo.plist entries=44\nTeamIdentifier=EQHXZ8M8AV\nRuntime Version=27.0.0\nSealed Resources version=2 rules=13 files=63\nInternal requirements count=1 size=288\n",
+    "verifyExit": 0
+  }
+]

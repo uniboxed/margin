@@ -1,10 +1,16 @@
-# Hiding window traffic lights without fullscreen
+# Windowed app chrome: traffic lights and corner radius
 
 The target is the three close, minimise and zoom/fullscreen buttons, leaving the macOS menu bar,
 window title and other application chrome alone. Research is restricted to Accessibility and private
 macOS APIs for control. No product behavior is changed by this spike.
 
-**The requested external native hide remains unestablished for protected apps on 25G342. The user
+**Corner-radius update:** private AppKit **launch configuration works in installed TextEdit and
+Preview on 25G342**, without injection, re-signing, SIP changes or saved corner-preference writes.
+The effect survives resize and disappears on a normal relaunch. Chrome is unchanged in the matched
+test. This corrects the earlier practical limit drawn from live WindowServer setters; see the final
+section for recordings, exact scope and reproduction. Traffic-light hiding remains a separate problem.
+
+**External native traffic-light hiding remains unestablished for protected apps on 25G342. The user
 explicitly rejects image covers; the earlier cover experiment does not meet this requirement.**
 The latest native-only pass tests private button-region transactions and retained foreign-window
 proxies with matched owner controls, and traces Apple's titlebar service and WindowManagement bridge.
@@ -667,7 +673,8 @@ None was installed or executed. This pass does not relax the user's deployment c
 
 ### Result and reproducibility
 
-No compliant native external square-corner backend is established. The new evidence locates actual
+Those live setter paths did not establish a native external square-corner backend. The launch-setting
+follow-up below demonstrates a different working route. This evidence locates actual
 server access checks and distinguishes content rendering, image-mask storage and transport success.
 The earlier owner-only 0.01 result remains limited by titlebar paint artifacts and lack of general
 protected-app invocation. Real protected-app compatibility, resize persistence, shadow behavior,
@@ -680,3 +687,87 @@ foreign readback, windowed state, restoration and cleanup. Setup failures remain
 fixture processes/windows are removed. Fresh unit tests pass 1,031, Swift/C compile with warnings as
 errors, and E2E is attempted/bounded at 15 seconds after missing pinned WebKit 2388 setup failures.
 No browser download, full E2E pass, production install or PR.
+
+## Working corner configuration at launch (2026-11-16)
+
+The missing route was an AppKit configuration read, identified through
+[mac-window-corners](https://github.com/mansarip/mac-window-corners) and its
+[primary reverse-engineering notes](https://github.com/mansarip/mac-window-corners/blob/main/macos-tahoe-window-corner-radius.md).
+I had inspected the cached-radius method but missed following `_convolutionOverride` to this setting.
+The new tests independently verify that route on this host, including protected real applications.
+
+`-[NSThemeFrame _getCachedWindowCornerRadius]` calls `_convolutionOverride` before its normal radius
+table. `_convolutionOverride` reads `NSConvolutionOverride1` for ordinary windows and
+`NSConvolutionOverride2` for utility windows through `_NSGetCGFloatAppConfig`. Loaded AppKit constant
+inspection confirms those exact keys at the referenced addresses `0x1eea40e08` and `0x1eea40e28`.
+The values are cached per process; nonzero 0.01 produces an effectively square outer shape. Zero
+falls back to the default. This is an undocumented AppKit configuration mechanism; process launching
+and AX geometry control are setup/measurement, not a privileged WindowServer mutation.
+
+### Launch-scoped, without saved preference changes
+
+Pass both keys only to the new app process's argument domain. For a fresh TextEdit instance:
+
+```sh
+open -n -a TextEdit --args -NSConvolutionOverride1 0.01 -NSConvolutionOverride2 0.01
+```
+
+Quit/relaunch is required for an already running process. The lab refuses existing target sessions
+and uses only disposable documents/profiles. It does not alter global or per-app persistent values.
+A later ordinary launch omitting the arguments returns the original rounding. No injected library,
+code patch, re-signing, entitlement change, overlay or privacy-indicator manipulation is involved.
+An app can still override its own frame behavior; this is a capability to validate per application.
+Utility/panel support from key 2 is not independently accepted by the window-only tests below.
+
+### Measured real-app results
+
+| Host | Standard launch: transparent pixels per 40x40 corner | Launch override 0.01 | Normal relaunch | Resize |
+| --- | --- | --- | --- | --- |
+| Owned plain AppKit fixture | 63 each; native getter 16 | 0 each; native getter about 0.01 | Not separately run here | Preserved |
+| Installed TextEdit 1.20 | 63 each | **0 each; square outer shape** | 63 each | Preserved |
+| Installed Preview | 166 each | **0 each; square outer shape** | 166 each | Preserved |
+| Installed Google Chrome 157.0.8103.79 | 102 each | **102 each; no observed effect** | 102 each | Unchanged |
+
+These are original target-only WindowServer captures, not images drawn over the windows. TextEdit
+and Preview also render their titlebar corner backgrounds correctly in the inspected startup frames,
+unlike the earlier late per-window setter's dark corner artifacts. Native traffic-light colors remain
+present, AX controls remain enabled and every observed phase is windowed. AX resize changes width
+by 80 and height by 45 for real apps, then restores the original size. Owned-fixture resize adds 80x40.
+
+For each real app, record three separate processes: standard launch, override launch and ordinary
+relaunch. TextEdit contributes 134 sampled frames, Preview 132 and Chrome 129. An independent decoder
+checks all four corners and all three traffic-light colors in 92/90/87 stable-phase PNGs respectively,
+and separately decodes a corner pixel from each original MP4. The recordings use actual monotonic
+capture timestamps at roughly seven samples/second, not a frame-perfect performance claim. Presentation
+copies repeat frames at 30 fps and add labels/magnification outside the recorded window.
+
+An initial Chrome override attempt stops because the expected local test tab is not active; it is
+retained as invalid, with partial captures and exact source/binary. The corrected setup selects only
+the owned local fixture tab through AX before recording and then verifies its title. Fresh profiles
+and a loopback proxy endpoint constrain that browser experiment. A prebuild invocation failure is
+also retained and did not launch an app. Chrome's negative result does not establish whether its
+frame override or argument handling is responsible; the tested route is simply unsupported there.
+
+### Verification, limits and decision
+
+`verify-corner-launch.py` checks the original PNGs and sampled recordings, native fixture getter,
+windowed/button state, actual resize geometry, normal-relaunch restoration, matching timestamps and
+cleanup. Before/after reads show the two saved corner keys unchanged in global/TextEdit/Preview
+domains (current/any host). Target executable hashes match and all three app bundles pass deep/strict
+signature checks before/after; Preview and Chrome carry hardened-runtime flags. SIP remains enabled.
+Final readback finds all 12 test window IDs and all 18 known app/launcher PIDs gone, including the
+invalid Chrome attempt. Raw material and failed attempts are retained.
+
+**Updated decision:** the previous owner/entitlement checks remain valid for the live APIs examined,
+but they do not rule out startup configuration. A supported launcher can use these private arguments
+for explicitly verified AppKit apps. There is no general live modifier for existing windows here,
+no Chrome acceptance and no new traffic-light hiding capability. Safari/Edge and other apps, utility
+panels, other macOS builds/displays and broad app stability still need separate validation. Keep the
+research out of production until the intended host set and relaunch behavior are accepted.
+
+Combined local recording: `test-results/window-corners-launch-2026-11-16/comparison.mp4`; individual
+`textedit-comparison.mp4`, `preview-comparison.mp4`, `chrome-comparison.mp4` and all original MP4/PNGs
+are retained there. Committed evidence/hashes: `tools/traffic-lights-lab/results/corner-launch-25G342/`.
+Fresh unit tests pass 1,031. New/changed native probes and legacy visual/cover entry points compile
+with warnings as errors. Full E2E is attempted/bounded after missing pinned WebKit 2388 setup failures;
+no browser installation, full-suite pass, production app install or PR.

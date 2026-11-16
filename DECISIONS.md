@@ -5073,3 +5073,41 @@ disassembly addresses. All five fixtures are cleaned up. Native build/saved-pixe
 pass; fresh npm test 1031 pass. E2E attempted/bounded at 15 seconds, missing pinned WebKit 2388, no
 download/full-suite pass. Results: tools/traffic-lights-lab/results/corner-access-25G342/; raw evidence
 under test-results/window-corners-deeper-2026-11-16/. No product install or PR.
+
+### Working native corners via private launch configuration (2026-11-16)
+
+The user's further research request uncovers a materially different route: AppKit's
+NSConvolutionOverride1/2 launch defaults, discovered in mansarip/mac-window-corners and independently
+verified on 25G342. Follow _getCachedWindowCornerRadius -> _convolutionOverride -> float app config;
+loaded constants confirm both exact keys. The earlier trace missed that branch. Existing server
+permission checks remain accurate for live setters, but do not establish a general configuration limit.
+
+Pass 0.01 only in a fresh process's argument domain, with no saved preference write or injected
+library. Owned fixture reports native radius 16 -> about 0.01, all four corners 63 -> zero transparent
+pixels, with clean titlebar painting and persistence through AX resize. Installed TextEdit/Preview
+now show real square outer shapes: 63/166 -> zero transparent pixels per corner, native buttons
+retained, every phase windowed, resize preserved. Normal launches afterward restore 63/166. Preview's
+runtime flag and all target binary hashes/signature verification remain unchanged; SIP enabled.
+
+Chrome is unchanged at 102 pixels per corner in the matched accepted test. Its first override run
+stops because the local fixture tab is not active; retain it as invalid with partial captures. Correct
+by selecting only that exact local tab via bounded AX traversal before recording; constrain browser
+testing to fresh profiles and a loopback proxy endpoint. A prebuild invocation failure launches no
+app and is also retained. Do not infer Chrome's precise internal cause from the negative pixel result.
+
+Three successful real-app runs each (standard/override/normal-after) have 134 TextEdit, 132 Preview
+and 129 Chrome raw sampled frames. Independent verification checks 92/90/87 stable-phase PNGs,
+traffic-light colors, actual MP4 corners, geometry/timestamps and normal relaunch. Saved corner-key
+reads in global/TextEdit/Preview domains agree before/after; native code never writes persistent
+keys. All 12 test window IDs and 18 known app/launcher PIDs absent at final check. Actual raw footage,
+annotations, failed attempts and source/binary snapshots remain local; compact evidence/hashes in
+tools/traffic-lights-lab/results/corner-launch-25G342/. Combined recording under
+test-results/window-corners-launch-2026-11-16/comparison.mp4. Roughly seven capture samples/second;
+30 fps presentation repeats samples and claims no display smoothness/performance acceptance.
+
+This is a launch-scoped capability for verified AppKit hosts, not an existing-window live modifier
+or a traffic-light solution. Chrome unsupported here, Safari/Edge/utility panels unvalidated, other
+builds/displays/stability pending. No global configuration change, injection, target patch, entitlement
+change or product implementation. Fresh unit tests 1031 pass; new/changed and legacy visual/cover
+probes compile with warnings as errors; full E2E attempted/bounded after missing pinned WebKit setup,
+no download/full pass, app install or PR.

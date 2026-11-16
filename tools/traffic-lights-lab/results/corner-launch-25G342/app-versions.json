@@ -1,0 +1,20 @@
+[
+  {
+    "app": "TextEdit",
+    "bundle": "com.apple.TextEdit",
+    "version": "1.20",
+    "build": "415"
+  },
+  {
+    "app": "Preview",
+    "bundle": "com.apple.Preview",
+    "version": "11.0",
+    "build": "1113.5.3"
+  },
+  {
+    "app": "Google Chrome",
+    "bundle": "com.google.Chrome",
+    "version": "157.0.8103.79",
+    "build": "8103.79"
+  }
+]

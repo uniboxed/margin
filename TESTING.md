@@ -2187,3 +2187,15 @@ privilege registration is invoked. See `results/corner-access-25G342/` in the tr
 Protected-app support and composited shadow changes remain unestablished. Five fixtures cleaned up;
 unit 1031 pass, native warnings-as-errors compile and saved evidence checks pass; E2E blocked by
 missing pinned WebKit setup after a bounded attempt. Production unchanged.
+
+Private launch corner configuration (25G342): TextEdit and Preview now pass startup/AX-resize/size-
+restore with square outer corners and enabled/visible native buttons; ordinary relaunch restores
+rounding. Owned native getter confirms about 0.01 versus baseline 16. Chrome remains unchanged.
+`verify-corner-launch.py` independently checks stable original PNGs, actual raw MP4 corners, time/
+geometry metadata, normal relaunch, saved corner-key reads, executable/signature consistency and
+cleanup. Archive/evidence: `tools/traffic-lights-lab/results/corner-launch-25G342/`; raw and annotated
+recordings in `test-results/window-corners-launch-2026-11-16/`. First Chrome wrong-tab and prebuild
+failures remain rejected; no global key writes or injection. All 12 test windows/18 known PIDs gone.
+Needs manual/new host verification for Safari, Edge, utility panels and other OS/display states;
+requires relaunch, does not establish a live setter or traffic-light hiding. Unit 1031 pass; native
+build/evidence checks pass; full E2E blocked by missing pinned browser setup after bounded attempt.

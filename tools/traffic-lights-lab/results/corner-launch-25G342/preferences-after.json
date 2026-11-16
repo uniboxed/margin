@@ -1,0 +1,86 @@
+[
+  {
+    "domain" : "kCFPreferencesAnyApplication",
+    "host" : "kCFPreferencesAnyHost",
+    "key" : "NSConvolutionOverride1",
+    "present" : false,
+    "value" : "absent"
+  },
+  {
+    "domain" : "kCFPreferencesAnyApplication",
+    "host" : "kCFPreferencesAnyHost",
+    "key" : "NSConvolutionOverride2",
+    "present" : false,
+    "value" : "absent"
+  },
+  {
+    "domain" : "kCFPreferencesAnyApplication",
+    "host" : "kCFPreferencesCurrentHost",
+    "key" : "NSConvolutionOverride1",
+    "present" : false,
+    "value" : "absent"
+  },
+  {
+    "domain" : "kCFPreferencesAnyApplication",
+    "host" : "kCFPreferencesCurrentHost",
+    "key" : "NSConvolutionOverride2",
+    "present" : false,
+    "value" : "absent"
+  },
+  {
+    "domain" : "com.apple.TextEdit",
+    "host" : "kCFPreferencesAnyHost",
+    "key" : "NSConvolutionOverride1",
+    "present" : false,
+    "value" : "absent"
+  },
+  {
+    "domain" : "com.apple.TextEdit",
+    "host" : "kCFPreferencesAnyHost",
+    "key" : "NSConvolutionOverride2",
+    "present" : false,
+    "value" : "absent"
+  },
+  {
+    "domain" : "com.apple.TextEdit",
+    "host" : "kCFPreferencesCurrentHost",
+    "key" : "NSConvolutionOverride1",
+    "present" : false,
+    "value" : "absent"
+  },
+  {
+    "domain" : "com.apple.TextEdit",
+    "host" : "kCFPreferencesCurrentHost",
+    "key" : "NSConvolutionOverride2",
+    "present" : false,
+    "value" : "absent"
+  },
+  {
+    "domain" : "com.apple.Preview",
+    "host" : "kCFPreferencesAnyHost",
+    "key" : "NSConvolutionOverride1",
+    "present" : false,
+    "value" : "absent"
+  },
+  {
+    "domain" : "com.apple.Preview",
+    "host" : "kCFPreferencesAnyHost",
+    "key" : "NSConvolutionOverride2",
+    "present" : false,
+    "value" : "absent"
+  },
+  {
+    "domain" : "com.apple.Preview",
+    "host" : "kCFPreferencesCurrentHost",
+    "key" : "NSConvolutionOverride1",
+    "present" : false,
+    "value" : "absent"
+  },
+  {
+    "domain" : "com.apple.Preview",
+    "host" : "kCFPreferencesCurrentHost",
+    "key" : "NSConvolutionOverride2",
+    "present" : false,
+    "value" : "absent"
+  }
+]

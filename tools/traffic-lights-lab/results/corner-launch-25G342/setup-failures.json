@@ -1,0 +1,10 @@
+[
+  {
+    "case": "chrome-prebuild-refusal",
+    "classification": "executable not yet available while compiler was running; no app launched; exit 127; retained logs"
+  },
+  {
+    "case": "chrome-override-failed-tab",
+    "classification": "expected local tab not active; refused before corner snapshots; target/profile cleanup passed; corrected by bounded AX selection of exact owned tab"
+  }
+]

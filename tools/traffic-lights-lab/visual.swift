@@ -177,6 +177,7 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
     let name: String, directory: URL
     let hookLibrary: String?
     var externalCaption: String?
+    var cornerLaunchOverride: Bool?
     let capture: any VisualCapture
     var events: [[String: Any]] = []
     var native: NSWindow?, status: NSTextField?
@@ -247,19 +248,29 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
         log("private-hide", ["hidden": hidden])
     }
     func createExternal() async throws -> UInt32 {
-        let bundle = name == "launch" ? "com.google.chrome.for.testing" : name == "chrome" ? "com.google.Chrome" : name == "edge" ? "com.microsoft.edgemac" : "com.apple.TextEdit"
+        let documentApp = name == "textedit" || name == "preview"
+        let bundle = name == "preview" ? "com.apple.Preview" : name == "launch" ? "com.google.chrome.for.testing" : name == "chrome" ? "com.google.Chrome" : name == "edge" ? "com.microsoft.edgemac" : "com.apple.TextEdit"
         try check(!NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundle }, "target app already running; refusing to touch existing windows")
         let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("margin-visual-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: false)
         ownedDirectory = temporary
         let process = Process()
         let started = Date()
-        if name == "textedit" {
-            let file = temporary.appendingPathComponent("Traffic-light visual test.txt")
+        if documentApp {
+            let file = temporary.appendingPathComponent(name == "preview" ? "Corner-shape reference.png" : "Traffic-light visual test.txt")
             let description = externalCaption ?? "The recording shows baseline, AXHidden request, window resize and restoration."
-            try "TEXTEDIT — EXTERNAL CONTROL TEST\n\nOnly this temporary document is recorded.\n\nThe red, yellow and green buttons are the actual controls.\n\(description)\n\nNo plugin or code is running inside TextEdit.\n".write(to: file, atomically: true, encoding: .utf8)
+            if name == "preview" {
+                let context = CGContext(data: nil, width: 640, height: 420, bitsPerComponent: 8, bytesPerRow: 640*4,
+                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+                context.setFillColor(red: 0.1, green: 0.6, blue: 0.75, alpha: 1); context.fill(CGRect(x: 0, y: 0, width: 640, height: 420))
+                let destination = CGImageDestinationCreateWithURL(file as CFURL, "public.png" as CFString, 1, nil)!
+                CGImageDestinationAddImage(destination, context.makeImage()!, nil)
+                try check(CGImageDestinationFinalize(destination), "cannot create owned Preview fixture")
+            } else {
+                try "TEXTEDIT — EXTERNAL CONTROL TEST\n\nOnly this temporary document is recorded.\n\nThe red, yellow and green buttons are the actual controls.\n\(description)\n\nNo plugin or code is running inside TextEdit.\n".write(to: file, atomically: true, encoding: .utf8)
+            }
             process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-            process.arguments = ["-n", "-W", "-a", "/System/Applications/TextEdit.app", file.path, "--args", "-ApplePersistenceIgnoreState", "YES"]
+            process.arguments = ["-n", "-W", "-a", name == "preview" ? "/System/Applications/Preview.app" : "/System/Applications/TextEdit.app", file.path, "--args", "-ApplePersistenceIgnoreState", "YES"]
         } else {
             let app = name == "launch" ? "Chromium — launch-loaded private API" : name == "chrome" ? "Google Chrome" : "Microsoft Edge"
             process.executableURL = name == "launch"
@@ -281,6 +292,18 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
                 process.environment = environment
             }
         }
+        if cornerLaunchOverride == true {
+            let overrides = ["-NSConvolutionOverride1", "0.01", "-NSConvolutionOverride2", "0.01"]
+            if documentApp { process.arguments! += overrides } else { process.arguments! = overrides + process.arguments! }
+        }
+        if let override = cornerLaunchOverride {
+            if !documentApp {
+                // A fresh browser profile, a local page last, and a loopback proxy endpoint.
+                // Positional AppKit argument values must not cause external URL requests.
+                process.arguments!.insert(contentsOf: ["--proxy-server=http://127.0.0.1:9", "--proxy-bypass-list=<-loopback>", "--disable-component-update"], at: 0)
+            }
+            log("corner-launch-configuration", ["override": override, "preferenceWrites": false, "arguments": process.arguments ?? []])
+        }
         let errors = directory.appendingPathComponent(name + "-launch.stderr")
         FileManager.default.createFile(atPath: errors.path, contents: nil)
         process.standardOutput = FileHandle.nullDevice; process.standardError = try FileHandle(forWritingTo: errors)
@@ -288,13 +311,13 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
         log("launched", ["pid": process.processIdentifier])
         let deadline = ProcessInfo.processInfo.systemUptime + 12
         while ProcessInfo.processInfo.systemUptime < deadline {
-            let candidate = name == "textedit"
+            let candidate = documentApp
                 ? NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundle && ($0.launchDate ?? .distantPast) >= started.addingTimeInterval(-1) })
                 : NSRunningApplication(processIdentifier: process.processIdentifier)
             if let app = candidate {
                 if app.bundleIdentifier == nil { try await pause(0.05); continue }
                 try check(app.bundleIdentifier == bundle, "target bundle identity differs")
-                if name != "textedit" { try check(app.processIdentifier == process.processIdentifier, "browser redirected to another process") }
+                if !documentApp { try check(app.processIdentifier == process.processIdentifier, "browser redirected to another process") }
                 targetPID = app.processIdentifier
                 let application = AXUIElementCreateApplication(app.processIdentifier)
                 AXUIElementSetMessagingTimeout(application, 0.5)
@@ -430,7 +453,7 @@ final class Capture: NSObject, VisualCapture, SCRecordingOutputDelegate, SCStrea
     }
 }
 
-#if !COVER_LAB
+#if !COVER_LAB && !CORNER_LAUNCH_LAB
 @main struct Main {
     @MainActor static func main() async {
         setbuf(stdout, nil)

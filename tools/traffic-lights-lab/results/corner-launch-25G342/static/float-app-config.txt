@@ -1,0 +1,116 @@
+__NSGetCGFloatAppConfig:
+0x184A0E4EC   pacibsp
+0x184A0E4F0   sub      sp, sp, #0x80
+0x184A0E4F4   stp      d11, d10, [sp, #0x10]
+0x184A0E4F8   stp      d9, d8, [sp, #0x20]
+0x184A0E4FC   stp      x26, x25, [sp, #0x30]
+0x184A0E500   stp      x24, x23, [sp, #0x40]
+0x184A0E504   stp      x22, x21, [sp, #0x50]
+0x184A0E508   stp      x20, x19, [sp, #0x60]
+0x184A0E50C   stp      x29, x30, [sp, #0x70]
+0x184A0E510   add      x29, sp, #0x70
+0x184A0E514   mov      x24, x1
+0x184A0E518   ldarb    w8, [x2]
+0x184A0E51C   tbz      w8, #0x0, 0x184a0e52c
+0x184A0E520   ldar     x8, [x24]
+0x184A0E524   fmov     d9, x8
+0x184A0E528   b        0x184a0e690
+0x184A0E52C   mov      x22, x3
+0x184A0E530   mov      x23, x2
+0x184A0E534   mov.16b  v8, v0
+0x184A0E538   mov      x19, x0
+0x184A0E53C   bl       _objc_autoreleasePoolPush
+0x184A0E540   mov      x20, x0
+0x184A0E544   adrp     x8, 399178           ; 0x1e6158000
+0x184A0E548   ldr      x0, [x8, #0x840]
+0x184A0E54C   bl       _objc_msgSend$standardUserDefaults
+0x184A0E550   mov      x25, x0
+0x184A0E554   mov      x2, x19
+0x184A0E558   bl       "_objc_msgSend$objectForKey:"
+0x184A0E55C   mov      x21, x0
+0x184A0E560   cbz      x0, 0x184a0e5a0
+0x184A0E564   mov      x0, x25
+0x184A0E568   mov      x2, x19
+0x184A0E56C   bl       "_objc_msgSend$floatForKey:"
+0x184A0E570   fcvt     d9, s0
+0x184A0E574   adrp     x8, 399190           ; 0x1e6164000
+0x184A0E578   ldr      x8, [x8, #0xd80]
+0x184A0E57C   ldr      x2, [x8]
+0x184A0E580   mov      x0, x25
+0x184A0E584   bl       "_objc_msgSend$volatileDomainForName:"
+0x184A0E588   mov      x2, x19
+0x184A0E58C   bl       "_objc_msgSend$objectForKey:"
+0x184A0E590   cmp      x0, #0x0
+0x184A0E594   cset     w8, ne
+0x184A0E598   mov      w22, #0x2
+0x184A0E59C   b        0x184a0e5c0
+0x184A0E5A0   cbz      x22, 0x184a0e5b8
+0x184A0E5A4   blraaz   x22
+0x184A0E5A8   mov.16b  v9, v0
+0x184A0E5AC   mov      w8, #0x0
+0x184A0E5B0   mov      w22, #0x1
+0x184A0E5B4   b        0x184a0e5c0
+0x184A0E5B8   mov      w8, #0x0
+0x184A0E5BC   mov.16b  v9, v8
+0x184A0E5C0   fmov     x9, d9
+0x184A0E5C4   stlr     x9, [x24]
+0x184A0E5C8   mov      w9, #0x1
+0x184A0E5CC   stlrb    w9, [x23]
+0x184A0E5D0   fabd     d10, d9, d8
+0x184A0E5D4   adrp     x23, 4530            ; 0x185bc0000
+0x184A0E5D8   tbnz     w8, #0x0, 0x184a0e638
+0x184A0E5DC   ldr      d0, [x23, #0x748]
+0x184A0E5E0   fcmp     d10, d0
+0x184A0E5E4   b.lt     0x184a0e638
+0x184A0E5E8   adrp     x2, 434245           ; 0x1eea53000
+0x184A0E5EC   add      x2, x2, #0x428
+0x184A0E5F0   mov      x0, x19
+0x184A0E5F4   bl       "_objc_msgSend$isEqual:"
+0x184A0E5F8   tbnz     w0, #0x0, 0x184a0e63c
+0x184A0E5FC   adrp     x8, 427423           ; 0x1ecfad000
+0x184A0E600   add      x8, x8, #0x608       ; _sNSLogUnusualAppConfigComputedValue
+0x184A0E604   ldarb    w8, [x8]
+0x184A0E608   cmp      w8, #0x2
+0x184A0E60C   b.eq     0x184a0e650
+0x184A0E610   cbnz     w8, 0x184a0e63c
+0x184A0E614   adrp     x0, 434245           ; 0x1eea53000
+0x184A0E618   add      x0, x0, #0x428
+0x184A0E61C   adrp     x2, 427423           ; 0x1ecfad000
+0x184A0E620   add      x2, x2, #0x608       ; _sNSLogUnusualAppConfigComputedValue
+0x184A0E624   mov      w1, #0x0
+0x184A0E628   mov      x3, #0x0
+0x184A0E62C   bl       __NSGetBoolAppConfig
+0x184A0E630   tbnz     w0, #0x0, 0x184a0e63c
+0x184A0E634   b        0x184a0e650
+0x184A0E638   cbz      w8, 0x184a0e650
+0x184A0E63C   str      d9, [sp, #0x8]
+0x184A0E640   str      x19, [sp]
+0x184A0E644   adrp     x0, 434245           ; 0x1eea53000
+0x184A0E648   add      x0, x0, #0x4a8
+0x184A0E64C   bl       _NSLog
+0x184A0E650   cbnz     x21, 0x184a0e660
+0x184A0E654   ldr      d0, [x23, #0x748]
+0x184A0E658   fcmp     d10, d0
+0x184A0E65C   b.lt     0x184a0e674
+0x184A0E660   mov      x0, x19
+0x184A0E664   mov.16b  v0, v8
+0x184A0E668   mov.16b  v1, v9
+0x184A0E66C   mov      x1, x22
+0x184A0E670   bl       __NSNoteNonStandardBehaviorFloat
+0x184A0E674   ldr      d0, [x23, #0x748]
+0x184A0E678   fcmp     d10, d0
+0x184A0E67C   b.lt     0x184a0e688
+0x184A0E680   mov      x0, x19
+0x184A0E684   bl       __NSSendNonstandardAppConfigurationToAnalytics
+0x184A0E688   mov      x0, x20
+0x184A0E68C   bl       _objc_autoreleasePoolPop
+0x184A0E690   mov.16b  v0, v9
+0x184A0E694   ldp      x29, x30, [sp, #0x70]
+0x184A0E698   ldp      x20, x19, [sp, #0x60]
+0x184A0E69C   ldp      x22, x21, [sp, #0x50]
+0x184A0E6A0   ldp      x24, x23, [sp, #0x40]
+0x184A0E6A4   ldp      x26, x25, [sp, #0x30]
+0x184A0E6A8   ldp      d9, d8, [sp, #0x20]
+0x184A0E6AC   ldp      d11, d10, [sp, #0x10]
+0x184A0E6B0   add      sp, sp, #0x80
+0x184A0E6B4   retab
