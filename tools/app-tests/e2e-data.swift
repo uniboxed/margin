@@ -27,11 +27,10 @@ func dataScenario() async {
                           timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, request: 5, safariSettled: 2))
     var options = Shell.Options()
     options.harness = true
-    options.overlay.harness = true
     options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
     options.bundleIds = ["safari": fakeBundle]
     options.dataRoot = root
-    let shell = Shell(link: link, windows: ScriptedWindows(), apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
+    let shell = Shell(link: link, apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
     shell.start()
     guard await until(3, { link.port != nil }) else { return nil }
     let mark = fake.events.count
@@ -234,7 +233,6 @@ func carryScenario() async {
                         timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, request: 5, safariSettled: 2))
   var options = Shell.Options()
   options.harness = true
-  options.overlay.harness = true
   options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
   options.bundleIds = ["safari": fakeBundle]
   options.dataRoot = root
@@ -244,7 +242,7 @@ func carryScenario() async {
   options.safariWatch.retry = 0.3
   options.safariWatch.busyRetry = 0.2
   options.safariWatch.team = "TEAMX00000"
-  let shell = Shell(link: link, windows: ScriptedWindows(), apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
+  let shell = Shell(link: link, apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
   shell.start()
   func maps(_ id: String) -> Bool { if case .read(let l)? = shell.safariNames?.last { return l.contains { $0.margin == id } }; return false }
   guard await until(3, { link.port != nil }), await until(3, { maps(sA) }) else { return check("carry: linked, Safari's profiles read", false) }

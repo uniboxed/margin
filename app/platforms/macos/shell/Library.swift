@@ -1,5 +1,4 @@
-// Margin.app's library (docs/MARGIN-APP.md, phase 1; DECISIONS.md "Margin.app owns the spaces"): with
-// `MarginHosted` on, the person's spaces, pins, folders and Margin tabs ("items") are the app's, in one data set
+// Margin.app's library (docs/MARGIN-APP.md, phase 1; DECISIONS.md "Margin.app owns the spaces"): the person's spaces, pins, folders and Margin tabs ("items") are the app's, in one data set
 // of its own, not each profile's copy's:
 //
 //   data/app/set.json, data/app/items/<collection>.json   (DataStore.swift's format, flat: one set, no profiles)

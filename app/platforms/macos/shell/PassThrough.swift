@@ -1,7 +1,7 @@
-// Clicks, scrolling and selection reach the page under an overlay (Spike 1,
-// PLAN.md §6): a transparent window still takes the mouse wherever it is, so
-// the overlay ignores the mouse while the pointer is over the theme's page
-// slot, and takes it everywhere else. Where the pointer is comes from mouse
+// Clicks, scrolling and selection reach what's under Margin's window in its page area (MarginWindowController.swift:
+// a hosted window in window mode; first built for the overlay over a browser window, Spike 1, PLAN.md §6): a
+// transparent window still takes the mouse wherever it is, so Margin's window ignores the mouse while the pointer is
+// over the theme's page slot, and takes it everywhere else. Where the pointer is comes from mouse
 // monitors (a global one for when another app's window gets the events, a
 // local one for the overlay's own), which need no Accessibility.
 //
@@ -60,8 +60,7 @@ enum PassThrough {
 // still reached Safari). So the region that isn't the page's, known from the layout (everything but the
 // slot, less its rounded corners, plus what the theme draws over it, `hits`; all of it with `captureAll`
 // or no layout yet), is filled at alpha 0.01: under the overlay's web view (a transparent part of the theme
-// still takes the mouse), and in a catcher just below the overlay that never ignores the mouse and hands
-// what it gets to the overlay (Overlay.swift OverlayCatcher). Only the page slot lets the pointer through.
+// still takes the mouse). Only the page slot lets the pointer through.
 struct CatchRegion: Equatable {
     var all: Bool // the whole frame
     var hole: CGRect? // the slot, in the frame's coordinates (top left), cut out
@@ -117,22 +116,7 @@ struct PointerWant: Equatable {
     }
 }
 
-// What keeps the browser's own edge reveal from the pointer (seen 2026-11-05: in full-screen
-// Safari the pointer at the left edge also opened Safari's sidebar behind Margin's). The overlay
-// is one window whose `ignoresMouseEvents` follows the pointer after the fact, so the first moves
-// at the edge, coming from over the page, still reached Safari. A thin panel at the window's left
-// edge that never ignores the mouse takes them first. Always while its overlay is shown, docked
-// sidebar or not: a quick move from over the page can reach the edge in one step, before the
-// overlay takes the mouse back. Not while the overlay takes the whole window anyway (`captureAll`).
-enum EdgeGuard {
-    static let width: CGFloat = 4
 
-    // Its frame (top left) for an overlay at `frame` with this slot, or nil when none is needed.
-    static func frame(for frame: CGRect, slot: Slot?, width: CGFloat = width) -> CGRect? {
-        guard width > 0, slot?.captureAll != true else { return nil }
-        return CGRect(x: frame.minX, y: frame.minY, width: width, height: frame.height)
-    }
-}
 
 // The pointer, wherever it is (no Accessibility): every move and drag, and
 // each press (a press in the browser re-orders the overlays above it).
@@ -166,4 +150,26 @@ final class PointerWatch {
 
     static var location: CGPoint { ScreenGeometry.topLeftPoint(NSEvent.mouseLocation) }
     static var buttonsDown: Bool { NSEvent.pressedMouseButtons != 0 }
+}
+
+// The region that isn't the page's (PassThrough.swift CatchRegion), filled at alpha 0.01 so the window
+// server never passes the pointer through it; the rest left fully transparent. Top-left coordinates.
+final class CatchView: NSView {
+    var region = CatchRegion(all: true, hole: nil) { didSet { if region != oldValue { needsDisplay = true } } }
+    override var isFlipped: Bool { true }
+    override var isOpaque: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil } // (under the web view: never the one that takes an event)
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.clear.setFill()
+        bounds.fill(using: .copy)
+        let fill = NSColor(calibratedWhite: 0, alpha: 0.01)
+        fill.setFill()
+        let path = NSBezierPath(rect: bounds)
+        if !region.all, let hole = region.hole {
+            path.append(NSBezierPath(roundedRect: hole, xRadius: region.radius, yRadius: region.radius))
+            path.windingRule = .evenOdd
+        }
+        path.fill()
+        for r in region.hits { NSBezierPath(rect: r).fill() }
+    }
 }

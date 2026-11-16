@@ -89,7 +89,7 @@ final class OverlaySchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, stop task: any WKURLSchemeTask) {}
 }
 
-// What an overlay's page asks of the app (OverlayController answers).
+// What the page asks of the app (MarginWindowController answers).
 protocol OverlayPageOwner: AnyObject {
     // The reply to { op: 'hello' }: the window, the state, the theme (JSON).
     func pageHello() -> String

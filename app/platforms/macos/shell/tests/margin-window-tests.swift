@@ -76,7 +76,7 @@ func marginWindowTests() {
     let always = MarginMenu.build(target: target, fullScreenItem: false).items.flatMap { $0.submenu?.items ?? [] }
     check("hosted: always full screen: no Enter/Exit Full Screen item, no ⌃⌘F, Toggle Sidebar still there", !always.contains { $0.action == #selector(NSWindow.toggleFullScreen(_:)) }
           && !always.contains { $0.keyEquivalent == "f" && $0.keyEquivalentModifierMask == [.command, .control] } && always.contains { $0.representedObject as? String == MarginMenuAction.toggleSidebar.rawValue })
-    check("hosted: Margin's windows are always full screen by default (MarginHosted)", MarginWindows.Options().alwaysFullScreen && !MarginWindowController.Options().alwaysFullScreen)
+    check("hosted: Margin's windows are always full screen by default", MarginWindows.Options().alwaysFullScreen && !MarginWindowController.Options().alwaysFullScreen)
     // Its toggle ignored (Margin opened by a script, not active): asked again once per activation, never looping.
     var retry = FullScreenRetry()
     check("hosted: full screen: never asked again before its first ask", !retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: false))

@@ -1,20 +1,16 @@
 // Margin's keys as the app's own shortcuts (PLAN.md §6, tested in Phase 0):
 // Carbon's RegisterEventHotKey needs no Accessibility, and a key registered
-// so never reaches the browser. So they're registered only while a linked
-// browser is the active app and its front window has Margin's overlay, and
-// let go the moment it isn't (another app in front must get ⌃⌘← and ⌘T).
+// so never reaches the hosted app. So they're registered only while Margin or
+// an app it hosts is the active app (ShortcutSet.hostedActive), and let go the
+// moment it isn't (another app in front must get ⌃⌘← and ⌘T).
 //
-// The keys: next and previous tab and space (sent to the window's extension
-// copy as `navigate`), ⌘T, the palette (opened in the front window's overlay,
-// which then takes the typing: the app's own, with no round trip through the
-// browser), and the sidebar's show/hide key. A held tab or space key repeats
-// at the Mac's key repeat (a hot key fires only once per press; requested
-// 2026-11-05), each repeat marked as one: the copy takes repeats like presses,
-// only one switch at a time with Safari, the newest waiting (navigation.ts),
-// and a repeat never starts a switch to another profile's space (at most one
-// per press: ShellProfiles.swift spaceKey). Which combinations is the
-// copy's to say (its Settings shortcuts, and Safari's command keys: the
-// `keys` message, docs/PROTOCOL.md); until it does, the defaults below.
+// The keys: next and previous tab and space, ⌘T, the palette, the sidebar's
+// show/hide key and a new Margin window, each run by Margin's window's page as
+// its own (ShellHostedGlue.swift runHosted). A held tab or space key repeats at
+// the Mac's key repeat (a hot key fires only once per press; requested
+// 2026-11-05), each repeat marked as one. Which combinations is the first
+// linked copy's to say (its Settings shortcuts: the `keys` message,
+// docs/PROTOCOL.md); until it does, the defaults below.
 // Combinations are written as the extension's settings write them
 // ("Ctrl+Meta+ArrowDown": shared/shortcuts.ts).
 
@@ -107,30 +103,19 @@ enum ShortcutSet {
     // name keeps its default; one it names with nothing usable has none; the
     // palette is always ⌘T too; a combination two commands name goes to the
     // first in AppCommand's order (the copy's Settings refuse that anyway).
-    // `safari`: ⇧⌘L, Safari's own sidebar key, is Margin's sidebar key too there (Safari's sidebar kept closed under
-    // Margin: ShellSafariSidebar.swift), unless another command has it.
-    static let safariSidebarKey = "Shift+Meta+KeyL"
-    static func bindings(from keys: [String: [String]], safari: Bool = false) -> [Combo: AppCommand] {
+    static func bindings(from keys: [String: [String]]) -> [Combo: AppCommand] {
         var out: [Combo: AppCommand] = [:]
         for command in AppCommand.allCases {
             var texts = keys[command.rawValue] ?? [defaults[command]].compactMap { $0 }
             if command == .palette, !texts.contains("Meta+KeyT") { texts.append("Meta+KeyT") }
-            if command == .toggleSidebar, safari, !texts.contains(safariSidebarKey) { texts.append(safariSidebarKey) }
             for text in texts { if let combo = Combo.parse(text), out[combo] == nil { out[combo] = command } }
         }
         return out
     }
-
-    /// Whether Margin's keys are the app's now: a linked browser is the active
-    /// app and its front window has Margin's overlay showing.
-    static func active(frontPid: pid_t?, linkedPids: Set<pid_t>, frontWindowHasOverlay: Bool) -> Bool {
-        guard let frontPid else { return false }
-        return linkedPids.contains(frontPid) && frontWindowHasOverlay
-    }
 }
 
 extension ShortcutSet {
-    /// Margin hosting apps in its own window (MarginHosted: no overlay over any browser window): its keys are the app's
+    /// Margin hosting apps in its own window: its keys are the app's
     /// while Margin itself is the active app (one of its windows open), or while an app it hosts is (Safari's hosted
     /// window's included) with a Margin window on the current Space; let go otherwise, so other apps keep their keys.
     /// Carbon's hot keys reach Margin only: the hosted app never gets the same press too.
@@ -193,7 +178,7 @@ final class CarbonHotKeys: HotKeyRegistrar {
     }
 }
 
-// Margin's keys, held while they should be (ShortcutSet.active) and let go otherwise.
+// Margin's keys, held while they should be (ShortcutSet.hostedActive) and let go otherwise.
 final class AppShortcuts {
     // A command, and whether it's a held key's repeat (not a press).
     var onCommand: ((AppCommand, Bool) -> Void)?

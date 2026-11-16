@@ -1,5 +1,5 @@
 // Margin as the app, joined up, end to end (part of e2e.swift's run; app/platforms/macos/shell/HostedSession.swift,
-// ShellHostedGlue.swift): the real shell with MarginHosted, its library in a temporary folder, Margin's own window
+// ShellHostedGlue.swift): the real shell, its library in a temporary folder, Margin's own window
 // with the real page off every display (never key, the app never active), the real link to fake-extension.mts as
 // Safari's default profile's copy, and the real host engine on a stand-in window manager (GlueHostWorld: nothing is
 // launched, put in full screen or moved; no Space of the Mac's is touched).
@@ -12,7 +12,7 @@
 // its own layout (pageHosted, the sidebar docked, its width not dragged); a typed address (the page's `newTab`) is a web item: Safari
 // started with no Dock icon, a window asked of the copy (`newWindow`) after its link, shown by the engine, and the
 // item's tab asked of the copy (`hostShow`); the sidebar highlights the item shown; a second web item is a tab switch
-// only; the overlay path is off (no overlay, `drawn` or `setLayout` for the copy's windows); quitting gives it all back.
+// only; no `drawn` or `setLayout` for the copy's windows; quitting gives it all back.
 import AppKit
 import WebKit
 
@@ -168,11 +168,9 @@ func glueScenario() async {
   let world = GlueHostWorld()
   var options = Shell.Options()
   options.harness = true
-  options.overlay.harness = true
   options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
   options.dataRoot = root
   options.bundleIds = ["safari": fakeBundle]
-  options.hosted = true
   options.hostSystem = world
   // (No installed apps read: the Mac's folders and Spotlight left alone, the icons' cache a temporary one.)
   options.appCatalog.folders = []
@@ -185,11 +183,9 @@ func glueScenario() async {
   hostedOptions.linkWait = 5
   options.hostedOptions = hostedOptions
   let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.glue.\(ProcessInfo.processInfo.processIdentifier)"))
-  let windows = ScriptedWindows()
   let apps = ScriptedApps()
   let keys = FakeKeys()
-  let shell = Shell(link: link, windows: windows, apps: apps, hotKeys: keys, options: options)
-  windows.shell = shell
+  let shell = Shell(link: link, apps: apps, hotKeys: keys, options: options)
   shell.start()
   var stopped = false
   defer { if !stopped { shell.stop {} } }
@@ -421,9 +417,9 @@ func glueScenario() async {
   check("the corners follow the page area (window mode: Calculator)", c.corners.isShown && c.corners.frames.first?.origin == c.window.pageRect?.origin, "\(c.corners.frames)")
   check("window mode (Calculator, smaller than the page area): the window's own ground around it, not the frame's", c.pageGround == nil && c.window.backgroundColor == .windowBackgroundColor, "\(String(describing: c.pageGround))")
 
-  // ---- the overlay path off ----
+  // ---- nothing of the page box sent ----
   shell.track()
-  check("no overlay over the copy's windows, nothing drawn or laid out for them", shell.overlays.isEmpty && fake.first("drawn") == nil && fake.first("setLayout") == nil)
+  check("nothing drawn or laid out for the copy's windows", fake.first("drawn") == nil && fake.first("setLayout") == nil)
 
   // ---- quitting: the hosted apps given back while the link is up ----
   var done = false

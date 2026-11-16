@@ -190,12 +190,10 @@ func hostedScenario() async {
   defer { try? FileManager.default.removeItem(at: root) }
   var options = Shell.Options()
   options.harness = true
-  options.overlay.harness = true
   options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
   options.dataRoot = root
-  options.hosted = true
   let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.hosted.\(ProcessInfo.processInfo.processIdentifier)"))
-  let shell = Shell(link: link, windows: ScriptedWindows(), apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
+  let shell = Shell(link: link, apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
   let made = shell.makeMarginWindows()
   check("the shell's windows: made once, in a test never on a display", made === shell.makeMarginWindows() && made.options.harness)
   check("the shell's windows draw the library: nothing imported, a first space, Personal", made.source is LibraryWindowSource

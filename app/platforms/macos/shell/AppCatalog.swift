@@ -1,6 +1,6 @@
 // The Mac's installed apps, for Margin's palette (docs/MARGIN-APP.md phase 4, docs/PROTOCOL.md "Installed
 // apps"): the apps Margin could host in its page area, each with its bundle id, its name as Finder shows it,
-// its path, and a small icon. Only with `MarginHosted` on (Shell.Options.hosted, ShellApps.swift).
+// its path, and a small icon (ShellApps.swift).
 //
 // - Where: the usual folders (`AppCatalog.folders`), each with one level of plain subfolders, then what
 //   Spotlight lists as an application elsewhere (`spotlightKept`: not inside another bundle, the Trash, a

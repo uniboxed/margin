@@ -1,12 +1,11 @@
 // Checks of Margin.app's shell logic (app/platforms/macos/shell/), with no browser, no window
 // on screen and no link: the link's messages (LinkMessage.swift, version 2),
 // its WebSocket by hand (LinkSocket.swift), chunks (Chunks.swift), the app's
-// copy of a copy's state (StateMirror.swift), binding browser windows to the
-// window server's (WindowMatcher.swift, in window-tests.swift), the stacking check, pass-through
-// decisions (PassThrough.swift), layout reports into setLayout (Shell.swift
-// LayoutOutbox), shortcuts and their gating (Shortcuts.swift, against a
-// stand-in for Carbon), the coordinate flips, and the lasting data
-// (data-tests.swift: the merge's vectors, the files, the data messages).
+// copy of a copy's state (StateMirror.swift), pass-through decisions
+// (PassThrough.swift), layout reports (PageLayout), shortcuts and their gating
+// (Shortcuts.swift, against a stand-in for Carbon), the coordinate flips, and
+// the lasting data (data-tests.swift: the merge's vectors, the files, the data
+// messages); then each part's own suite (the host, Margin's window, the library, ...).
 // tools/app-tests/run.sh
 // builds and runs them (and the end-to-end check, e2e.swift).
 import AppKit
@@ -58,53 +57,29 @@ final class FakeRegistrar: HotKeyRegistrar {
     let started = Date()
     linkMessages()
     appMessages()
-    handoffMessages()
     handshake()
     frames()
     chunks()
     mirror()
     layouts()
-    windowBinding() // window-tests.swift
-    axBinding() // window-tests.swift: Accessibility's exact word
-    restoredParked() // window-tests.swift: parked windows Safari restored after a quit
-    viewportDelay() // window-tests.swift: the inspector's delay, for the log
-    showingPerDisplay() // window-tests.swift: the Space showing on each display
-    coverPlan() // window-tests.swift: the covers' decision
-    stackingExact() // window-tests.swift: in front of its window, asked exactly
-    placementCheck() // window-tests.swift: the placer's check
-    overlayPlanner() // window-tests.swift: the planner's rules
-    overlaySpace() // window-tests.swift: an overlay kept in its window's Space, a real session replayed
-    windowMap() // window-tests.swift: the window map and its trace
-    ownSpaceJudge() // window-tests.swift: what drops an own-Space suspicion
-    axEvents() // window-tests.swift: Safari's Accessibility events and the scan kept for startup
-    parkedWindowBinding() // window-tests.swift
-    stacking()
     frameRate()
     passThrough()
     shortcuts()
     geometry()
-    edgeAndPointer()
-    safariParts()
+    pointerWant()
     dataMerge()
     dataStore()
     dataSync()
     dataCarry() // data-tests.swift
-    libraryTests() // library-tests.swift: the app's own spaces (MarginHosted), its rules in JavaScriptCore
+    libraryTests() // library-tests.swift: the app's own spaces, its rules in JavaScriptCore
     profilesTests()
     safariProfilesTests() // safari-profiles-tests.swift
     oneMargin()
     cloudTabsTests() // cloud-tabs-tests.swift
     privateCallsTests() // private-calls-tests.swift
-    coverPresentationTests() // per-view occlusion lease, fake calls only
-    handoffTests() // handoff-tests.swift
-    liveHandoffTests() // live-handoff-tests.swift: fake-clock cover lifetime and ordering
-    parkingTests() // parking-tests.swift
-    slotTests() // slot-tests.swift
     hostTests() // host-tests.swift: the host engine against a stand-in window manager, and its calls' check
-    hostedTests() // hosted-tests.swift: the library, the host engine and the Safari copies joined (MarginHosted)
-    enterTests() // enter-tests.swift
-    marginWindowTests() // margin-window-tests.swift: Margin's own window (MarginHosted)
-    handoffUiTests() // handoff-ui-tests.swift
+    hostedTests() // hosted-tests.swift: the library, the host engine and the Safari copies joined 
+    marginWindowTests() // margin-window-tests.swift: Margin's own window 
     devHooksTests() // devhooks-tests.swift (DEV-HOOK: removed with the hook)
     themeTests() // theme-tests.swift
     appsTests() // apps-tests.swift: installed apps for the palette, fake bundles in a temporary folder
@@ -143,24 +118,6 @@ final class FakeRegistrar: HotKeyRegistrar {
     if case .push(_, let windowId, let msg)? = LinkMessage.decode(#"{"k":"push","epoch":"e","windowId":4,"msg":{"type":"switching","tabId":5}}"#) {
       check("push for a window", windowId == 4 && msg["type"] as? String == "switching")
     } else { check("push decodes", false) }
-    // Pushes an overlay made later still needs (Shell.swift HeldPushes): the last notice for a minute, the last loading set.
-    do {
-      var held = HeldPushes()
-      let t0 = Date(timeIntervalSince1970: 1000)
-      held.offer(windowId: 4, ["type": "switching", "tabId": 1], at: t0)
-      held.offer(windowId: 4, ["type": "notice", "kind": "not-responding", "tabId": 7], at: t0)
-      held.offer(windowId: 4, ["type": "loading", "tabIds": [7]], at: t0.addingTimeInterval(1))
-      held.offer(windowId: 4, ["type": "loading", "tabIds": [7, 8]], at: t0.addingTimeInterval(2))
-      held.offer(windowId: 5, ["type": "notice", "kind": "updated-while-open", "tabId": 9], at: t0)
-      let now = held.messages(for: 4, at: t0.addingTimeInterval(5))
-      check("held pushes: a window's last notice and loading set, oldest first; not a switch", now.count == 2 && now[0]["kind"] as? String == "not-responding" && same(now[1]["tabIds"], [7, 8]), "\(now)")
-      check("held pushes: a notice goes after a minute, loading stays", held.messages(for: 4, at: t0.addingTimeInterval(90)).map { $0["type"] as? String } == ["loading"])
-      check("held pushes: another window's are its own", held.messages(for: 5, at: t0).count == 1 && held.messages(for: 6, at: t0).isEmpty)
-      held.offer(windowId: nil, ["type": "notice", "kind": "tab-gone"], at: t0.addingTimeInterval(3))
-      check("held pushes: one for every window, given to each", held.messages(for: 6, at: t0.addingTimeInterval(4)).first?["kind"] as? String == "tab-gone")
-      held.forget(windowId: 4)
-      check("held pushes: a closed window's forgotten", held.messages(for: 4, at: t0.addingTimeInterval(4)).count == 1)
-    }
     let sha = String(repeating: "a", count: 64)
     if case .theme(let epoch, let c)? = LinkMessage.decode(#"{"k":"theme","epoch":"e","id":"arcadia","transfer":"\#(sha)","part":1,"parts":3,"size":10,"data":"YWJj"}"#) {
       check("a theme chunk", epoch == "e" && c.id == "arcadia" && c.part == 1 && c.parts == 3 && c.size == 10 && c.data == "YWJj")
@@ -202,78 +159,6 @@ final class FakeRegistrar: HotKeyRegistrar {
     let chunk = Chunk(id: "t", transfer: String(repeating: "0", count: 64), part: 0, parts: 1, size: 3, data: "YWJj")
     let theme = object(AppMessage.theme(epoch: "e", chunk: chunk).encode())
     check("a theme chunk from the app", theme?["k"] as? String == "theme" && theme?["id"] as? String == "t" && theme?["parts"] as? Int == 1 && theme?["data"] as? String == "YWJj")
-  }
-
-  // The profile handoff's words (docs/PROTOCOL.md "The handoff"): the app's parked, the copy's
-  // parkedActivity, the requests' payloads and what their answers read as.
-  static func handoffMessages() {
-    let parked = object(AppMessage.parked(epoch: "e", windowId: 7, on: true).encode())
-    check("parked: the window and whether it's parked, with the time", parked?["k"] as? String == "parked" && parked?["epoch"] as? String == "e"
-      && parked?["windowId"] as? Int == 7 && parked?["on"] as? Bool == true && (parked?["at"] as? Double ?? 0) > 1.7e12)
-    check("parked off", object(AppMessage.parked(epoch: "e", windowId: 7, on: false).encode())?["on"] as? Bool == false)
-
-    // parkedActivity, as the copy sends it (a push), back to what it said.
-    for activity in [ParkedActivity(windowId: 3, tabId: 44, why: .tab), ParkedActivity(windowId: 3, why: .focus), ParkedActivity(windowId: 0, tabId: 9, why: .raise)] {
-      let text = jsonString(["k": "push", "epoch": "e", "windowId": activity.windowId, "msg": activity.msg]) ?? ""
-      if case .parkedActivity(let epoch, let back)? = LinkMessage.decode(text) {
-        check("parkedActivity \(activity.why): round trip", epoch == "e" && back == activity, "\(back)")
-      } else { check("parkedActivity \(activity.why) decodes", false, text) }
-    }
-    check("parkedActivity: focus says no tab", ParkedActivity(windowId: 3, why: .focus).msg["tabId"] == nil)
-    if case .parkedActivity(_, let a)? = LinkMessage.decode(#"{"k":"push","epoch":"e","windowId":5,"msg":{"type":"parkedActivity","why":"focus"}}"#) {
-      check("parkedActivity: the push's window stands in for the msg's", a.windowId == 5)
-    } else { check("parkedActivity with the push's window decodes", false) }
-    check("parkedActivity: the push and the msg naming two windows: not one",
-          LinkMessage.decode(#"{"k":"push","epoch":"e","windowId":5,"msg":{"type":"parkedActivity","windowId":6,"why":"focus"}}"#) == nil)
-    check("parkedActivity: a why not known: not one",
-          LinkMessage.decode(#"{"k":"push","epoch":"e","msg":{"type":"parkedActivity","windowId":6,"why":"hover"}}"#) == nil)
-    check("parkedActivity: a tab's with no tab: not one",
-          LinkMessage.decode(#"{"k":"push","epoch":"e","msg":{"type":"parkedActivity","windowId":6,"why":"tab"}}"#) == nil)
-    check("parkedActivity: a raise with no tab: not one", ParkedActivity(["type": "parkedActivity", "windowId": 6, "why": "raise"]) == nil)
-    check("parkedActivity: no window at all: not one",
-          LinkMessage.decode(#"{"k":"push","epoch":"e","msg":{"type":"parkedActivity","why":"focus"}}"#) == nil)
-    if case .push(_, _, let msg)? = LinkMessage.decode(#"{"k":"push","epoch":"e","windowId":5,"msg":{"type":"notice","kind":"x"}}"#) {
-      check("other pushes stay pushes", msg["type"] as? String == "notice")
-    } else { check("a notice push decodes", false) }
-
-    // The requests' payloads, through a req.
-    let full = HandoffRequest.setWindowState(windowId: 4, state: .fullscreen, focused: true, notAfter: 1_800_000_000_123.4)
-    let req = object(AppMessage.req(id: 1, epoch: "e", windowId: full.windowId, type: full.type, payload: full.payload).encode())
-    let p = req?["payload"] as? JSONObject
-    check("setWindowState: full screen and focused, with notAfter in whole ms", req?["type"] as? String == "setWindowState" && req?["windowId"] as? Int == 4
-      && p?["windowId"] as? Int == 4 && p?["state"] as? String == "fullscreen" && p?["focused"] as? Bool == true && p?["notAfter"] as? Double == 1_800_000_000_123)
-    let normal = HandoffRequest.setWindowState(windowId: 4, state: .normal, notAfter: 1).payload
-    check("setWindowState: normal, not focused (no focused key)", normal["state"] as? String == "normal" && normal["focused"] == nil)
-    let probe = HandoffRequest.frameProbe(windowId: 4, width: 1512, height: 982).payload
-    check("frameProbe: the design's defaults", probe["frames"] as? Int == 6 && probe["nudgeMs"] as? Int == 80 && probe["timeoutMs"] as? Int == 400 && probe["width"] as? Double == 1512)
-    check("windowDrafts: the window", HandoffRequest.windowDrafts(windowId: 9).type == "windowDrafts" && HandoffRequest.windowDrafts(windowId: 9).payload["windowId"] as? Int == 9)
-    let focus = HandoffRequest.focusWindow(windowId: 4, fullscreen: true, notAfter: 5).payload
-    check("focusWindow: notAfter when given", focus["notAfter"] as? Double == 5 && focus["fullscreen"] as? Bool == true)
-    check("focusWindow and closeWindow: today's payloads with none", same(HandoffRequest.focusWindow(windowId: 4).payload, ["windowId": 4])
-      && same(HandoffRequest.closeWindow(windowId: 4).payload, ["windowId": 4]) && HandoffRequest.closeWindow(windowId: 4, notAfter: 9).payload["notAfter"] as? Double == 9)
-    check("openSpaceWindow: no window yet", HandoffRequest.openSpaceWindow(spaceId: "s").windowId == nil && HandoffRequest.openSpaceWindow(spaceId: "s").payload["fullscreen"] as? Bool == true)
-
-    // The answers.
-    check("answer: landed", WindowCallAnswer(["windowId": 4, "state": "fullscreen", "landedAt": 12.0]) == .landed(windowId: 4, state: "fullscreen", at: 12))
-    check("answer: timed out", WindowCallAnswer(["windowId": 4, "state": "fullscreen", "timedOut": true]) == .timedOut(windowId: 4, state: "fullscreen"))
-    check("answer: busy, no call made", WindowCallAnswer(["busy": true]) == .busy && !WindowCallAnswer(["busy": true]).called)
-    check("answer: refused late, by how much", WindowCallAnswer(["refused": "late", "pastMs": 210]) == .refused(why: "late", pastMs: 210) && !WindowCallAnswer(["refused": "late"]).called)
-    check("answer: focusWindow's ordinary one", WindowCallAnswer(["windowId": 4, "state": "fullscreen"]) == .done(state: "fullscreen") && WindowCallAnswer([:]) == .done(state: nil)
-      && WindowCallAnswer([:]).called)
-    let frames = FrameProbeAnswer(["tabId": 44, "frames": 6, "firstAt": 1.0, "lastAt": 75.0, "width": 1512, "height": 982, "hasFocus": true, "visible": true, "visibleAt": 2.0])
-    if case .frames(let f)? = frames {
-      check("frameProbe answer: the frames", f.tabId == 44 && f.frames == 6 && f.lastAt - f.firstAt == 74 && f.width == 1512 && f.hasFocus && f.visible && f.visibleAt == 2)
-    } else { check("frameProbe answer decodes", false) }
-    check("frameProbe answer: none", FrameProbeAnswer(["none": "no page"]) == FrameProbeAnswer.none(why: "no page"))
-    check("frameProbe answer: not one", FrameProbeAnswer(["frames": 6]) == nil)
-    check("windowDrafts answer", WindowDrafts(["drafts": [3], "unknown": []]) == WindowDrafts(drafts: [3], unknown: []) && WindowDrafts(["drafts": [], "unknown": []])?.mayClose == true
-      && WindowDrafts(["drafts": [], "unknown": [5]])?.mayClose == false && WindowDrafts(["drafts": [3]]) == nil)
-    let made = SpaceWindowAnswer(["windowId": 50, "state": "fullscreen", "tabId": 7, "bounds": ["left": 0, "top": 0, "width": 1512, "height": 982]])
-    check("openSpaceWindow answer: with its bounds", made?.windowId == 50 && made?.tabId == 7 && made?.bounds == CGRect(x: 0, y: 0, width: 1512, height: 982))
-    check("openSpaceWindow answer: an older copy's, no bounds", SpaceWindowAnswer(["windowId": 50, "state": "normal", "tabId": NSNull()])?.bounds == nil
-      && SpaceWindowAnswer(["windowId": 50, "bounds": ["left": 0, "top": 0, "width": 0, "height": 982]])?.bounds == nil && SpaceWindowAnswer(["state": "normal"]) == nil)
-    check("framed: the mode, round trip", OverlayFramed(OverlayFramed(mode: .fullscreen).body) == OverlayFramed(mode: .fullscreen)
-      && OverlayFramed(["mode": "windowed"])?.mode == .windowed && OverlayFramed(["mode": "odd"]) == nil && OverlayFramed([:]) == nil)
   }
 
   static func handshake() {
@@ -389,17 +274,6 @@ final class FakeRegistrar: HotKeyRegistrar {
     m.begin(LinkMessage.Hello(epoch: "e2", profile: "P1", browser: "safari", ext: nil, owner: true, instanceId: nil, origin: "o2", since: 6, pid: nil))
     check("a new connection: nothing kept", !m.hasState && m.keys.isEmpty && m.seq == 0 && m.windows.isEmpty && m.origin == "o2")
     check("the old epoch's snapshot: left", m.apply(.snapshot(epoch: "e1", seq: 1, state: ["a": 1], windows: [])) == .ignored)
-    // A windows message that changes only the pages' words of being shown (a tab switch: hidden, then
-    // shown): not pushed to the overlays, no burst of reads (Shell.forward).
-    let w1: [JSONObject] = [["windowId": 1, "activeTabId": 3, "focused": true, "visible": true, "visibleAt": 100], ["windowId": 2, "activeTabId": 9]]
-    var w2 = w1; w2[0]["visibleAt"] = 200
-    var w3 = w1; w3[0]["visible"] = false
-    var w4 = w1; w4[0]["activeTabId"] = 4
-    var w5 = w1; w5[1]["visible"] = true; w5[1]["visibleAt"] = 300
-    var w6 = w1; w6[0]["focused"] = false
-    check("windows: only the pages' words changed", Shell.onlyVisibilityChanged(w1, w2) && Shell.onlyVisibilityChanged(w1, w3) && Shell.onlyVisibilityChanged(w1, w5))
-    check("windows: another tab in front, a focus flag, a window more or less, the first list: more than that", !Shell.onlyVisibilityChanged(w1, w4) && !Shell.onlyVisibilityChanged(w1, w6)
-          && !Shell.onlyVisibilityChanged(w1, Array(w1.prefix(1))) && !Shell.onlyVisibilityChanged([], w1))
     // A copy's hello naming a browser process no connector named: trusted, logged once at link up.
     let chrome = { (pid: Int?) in LinkMessage.Hello(epoch: "c1", profile: "p-b", browser: "chrome", ext: nil, owner: true, instanceId: nil, origin: nil, since: nil, pid: pid) }
     check("link up: a process no connector named is logged, in margin-core's words",
@@ -416,73 +290,14 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("not a report: no insets", PageLayout(geometry: ["container": ["width": 1, "height": 1]]) == nil)
     check("not a report: no size", PageLayout(geometry: ["insets": ["left": 0, "top": 0, "right": 0, "bottom": 0], "container": ["width": 0, "height": 10]]) == nil)
     check("not a report: a number that's a boolean", PageLayout(geometry: ["insets": ["left": true, "top": 0, "right": 0, "bottom": 0], "container": ["width": 10, "height": 10]]) == nil)
-    var outbox = LayoutOutbox()
-    check("the first: number 1", outbox.offer(windowId: 7, l)?.seq == 1)
-    check("the same again: nothing", outbox.offer(windowId: 7, l) == nil)
-    var nudged = l
-    nudged.left = 260.4 // still 260.5 rounded
-    check("a change under half a point: nothing", outbox.offer(windowId: 7, nudged) == nil)
-    nudged.left = 300
-    check("a change: number 2", outbox.offer(windowId: 7, nudged)?.seq == 2)
-    check("another window counts on its own", outbox.offer(windowId: 8, l)?.seq == 1)
-    var resized = nudged
-    resized.width = 1200
-    check("a resize alone is a change", outbox.offer(windowId: 7, resized)?.seq == 3)
-    outbox.forget(windowId: 7)
-    check("forgotten: sent again, numbered on", outbox.offer(windowId: 7, resized)?.seq == 4)
-    outbox.reset()
-    check("a new link: from 1", outbox.offer(windowId: 7, resized)?.seq == 1)
-
-    // Whether the app draws over each window, as the copy is told (DrawnOutbox).
-    var d = DrawnOutbox()
-    check("drawn: bound and in full screen, on at once", d.offer(windowId: 1, now: 0, bound: true, wanted: true).send == true)
-    check("drawn: the same again: nothing", d.offer(windowId: 1, now: 0.1, bound: true, wanted: true).send == nil)
-    let fresh = d.offer(windowId: 2, now: 0, bound: false, wanted: true)
-    check("drawn: never bound: nothing yet, looked at again in 1.5 s", fresh.send == nil && fresh.due == 1.5, "\(fresh)")
-    check("drawn: never bound: still nothing at 1.4 s", d.offer(windowId: 2, now: 1.4, bound: false, wanted: true).send == nil)
-    check("drawn: never bound for 1.5 s: off", d.offer(windowId: 2, now: 1.5, bound: false, wanted: true).send == false)
-    check("drawn: off again: nothing", d.offer(windowId: 2, now: 2, bound: false, wanted: true).send == nil)
-    check("drawn: then bound: on", d.offer(windowId: 2, now: 3, bound: true, wanted: true).send == true)
-    check("drawn: its binding gone 40 ms (a blip): nothing", d.offer(windowId: 2, now: 3.5, bound: false, wanted: true).send == nil && d.offer(windowId: 2, now: 3.54, bound: true, wanted: true).send == nil)
-    check("drawn: unbound after being bound: nothing for 3 s", d.offer(windowId: 2, now: 4, bound: false, wanted: true).send == nil && d.offer(windowId: 2, now: 6.9, bound: false, wanted: true).send == nil)
-    check("drawn: unbound for 3 s: off", d.offer(windowId: 2, now: 7, bound: false, wanted: true).send == false)
-    check("drawn: a normal window: off after 1.5 s", d.offer(windowId: 3, now: 0, bound: true, wanted: false).send == nil && d.offer(windowId: 3, now: 1.5, bound: true, wanted: false).send == false)
-    check("drawn: leaving full screen: nothing during the animation, off after 1.5 s", d.offer(windowId: 1, now: 10, bound: true, wanted: false).send == nil
-          && d.offer(windowId: 1, now: 11, bound: true, wanted: false).send == nil && d.offer(windowId: 1, now: 11.5, bound: true, wanted: false).send == false)
-    check("drawn: back in full screen: on", d.offer(windowId: 1, now: 12, bound: true, wanted: true).send == true)
-    check("drawn: closed while on: off", d.closed(windowId: 1) == false && !d.windows.contains(1))
-    check("drawn: closed while off: nothing", d.closed(windowId: 3) == nil)
-    // A palette the app couldn't show over a window (Shell.paletteDropped): off at once, not after the grace.
-    check("drawn: set up, on", d.offer(windowId: 4, now: 20, bound: true, wanted: true).send == true)
-    check("drawn: its binding just gone: nothing yet", d.offer(windowId: 4, now: 20.5, bound: false, wanted: true).send == nil)
-    check("drawn: a palette for it couldn't be shown: off now", d.notShown(windowId: 4, now: 21))
-    check("drawn: and nothing more to say, nor again", d.offer(windowId: 4, now: 23.6, bound: false, wanted: true).send == nil && !d.notShown(windowId: 4, now: 24))
-    check("drawn: bound again: on", d.offer(windowId: 4, now: 25, bound: true, wanted: true).send == true)
-    // Not bound yet, its window one of the same-bounds windows off screen (another Space's): on, so its pages have
-    // their box as it slides in; once on screen unbound, off after the never-bound grace.
-    let pending = d.offer(windowId: 5, now: 30, bound: false, wanted: true, pending: true)
-    check("drawn: off screen, not told apart yet: on at once, and why", pending.send == true && pending.why.contains("not bound yet"), "\(pending)")
-    check("drawn: on screen still unbound: nothing for 1.5 s, then off", d.offer(windowId: 5, now: 31, bound: false, wanted: true).send == nil
-          && d.offer(windowId: 5, now: 32.5, bound: false, wanted: true).send == false)
-    check("drawn: pending and not in full screen: nothing on", d.offer(windowId: 6, now: 30, bound: false, wanted: false, pending: true).send == nil)
-  }
-
-  static func stacking() {
-    let browser = ServerWindow(number: 100, pid: 1, bounds: CGRect(x: 0, y: 0, width: 800, height: 600), order: 3)
-    let overlay = ServerWindow(number: 900, pid: 9, bounds: browser.bounds, order: 2)
-    check("just above", WindowMatcher.stackedAbove([overlay, browser], overlay: 900, browser: 100))
-    check("behind it: not", !WindowMatcher.stackedAbove([ServerWindow(number: 900, pid: 9, bounds: browser.bounds, order: 4), browser], overlay: 900, browser: 100))
-    let between = ServerWindow(number: 50, pid: 5, bounds: CGRect(x: 100, y: 100, width: 200, height: 200), order: 2)
-    let above = ServerWindow(number: 900, pid: 9, bounds: browser.bounds, order: 1)
-    check("another app's window between them: not", !WindowMatcher.stackedAbove([above, between, browser], overlay: 900, browser: 100))
-    let elsewhere = ServerWindow(number: 51, pid: 5, bounds: CGRect(x: 2000, y: 0, width: 200, height: 200), order: 2)
-    check("a window between them that doesn't cover the browser's: fine", WindowMatcher.stackedAbove([above, elsewhere, browser], overlay: 900, browser: 100))
-    let popover = ServerWindow(number: 52, pid: 1, layer: 101, bounds: CGRect(x: 10, y: 10, width: 200, height: 200), order: 2)
-    check("the browser's own popover between them: fine", WindowMatcher.stackedAbove([above, popover, browser], overlay: 900, browser: 100))
-    let catcher = ServerWindow(number: 901, pid: 9, bounds: browser.bounds, order: 2)
-    check("its own catcher between them: fine; another of the app's windows: not", WindowMatcher.stackedAbove([above, catcher, browser], overlay: 900, browser: 100, own: [901])
-          && !WindowMatcher.stackedAbove([above, catcher, browser], overlay: 900, browser: 100))
-    check("the overlay not on screen: not", !WindowMatcher.stackedAbove([ServerWindow(number: 900, pid: 9, bounds: browser.bounds, onScreen: false, order: 2), browser], overlay: 900, browser: 100))
+    // A layout's insets from the window's edges when it was measured in a part of the window (PageLayout.inWindow).
+    let win = CGRect(x: 0, y: 33, width: 1512, height: 949)
+    let measured = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 10, radii: [10, 10, 10, 10], width: 1000, height: 949, mode: "fullscreen")
+    let right = measured.inWindow(overlay: CGRect(x: 512, y: 33, width: 1000, height: 949), window: win)
+    check("insets from the window's edges: a part on the left adds its width to the left", right.left == 772 && right.right == 8 && right.top == 8 && right.width == 1512)
+    let bottom = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 10, radii: [10, 10, 10, 10], width: 1512, height: 600, mode: "fullscreen").inWindow(overlay: CGRect(x: 0, y: 33, width: 1512, height: 600), window: win)
+    check("at the bottom: its height added to the bottom", bottom.bottom == 357 && bottom.left == 260 && bottom.height == 949)
+    check("the whole window: as measured", measured.inWindow(overlay: win, window: win) == measured)
   }
 
   static func passThrough() {
@@ -535,42 +350,13 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("the copy's keys: a combination that isn't one: none for it", !fromCopy.values.contains(.prevSpace))
     check("the copy's keys: one combination, one command", ShortcutSet.bindings(from: ["next-tab": ["Meta+KeyT"]])[Combo.parse("Meta+KeyT")!] == .nextTab)
     check("keys Settings can record: punctuation and F keys", Combo.parse("Alt+Comma") != nil && Combo.parse("Ctrl+F5") != nil && Combo.parse("Meta+Backquote") != nil)
-    // ⇧⌘L, Safari's own sidebar key, Margin's sidebar's with Safari (ShellSafariSidebar.swift).
-    let shiftCmdL = Combo.parse(ShortcutSet.safariSidebarKey)!
-    check("Safari: ⇧⌘L shows and hides Margin's sidebar, its own key kept", ShortcutSet.bindings(from: [:], safari: true)[shiftCmdL] == .toggleSidebar
-          && ShortcutSet.bindings(from: [:], safari: true)[Combo.parse("Alt+KeyS")!] == .toggleSidebar)
-    check("not Safari: ⇧⌘L left alone", ShortcutSet.bindings(from: [:])[shiftCmdL] == nil)
-    check("Safari: ⇧⌘L given to another command in Settings stays that command's", ShortcutSet.bindings(from: ["palette": [ShortcutSet.safariSidebarKey]], safari: true)[shiftCmdL] == .palette)
-    // The edge stop (EdgeStop.swift): 5 pt past AppKit's 4 pt edge zone, only where nothing lies to the window's left.
-    let fsWin = CGRect(x: 0, y: 33, width: 1512, height: 949)
-    let laptop: [(frame: CGRect, topInset: CGFloat)] = [(CGRect(x: 0, y: 0, width: 1512, height: 982), 33)]
-    let fence = EdgeStop.fence(window: fsWin, displays: laptop)
-    check("edge stop: a full-screen window on its own display: 5 pt in", fence == EdgeStop.Fence(x: 5, top: 33, bottom: 982))
-    check("edge stop: a display to the window's left: none (the pointer crosses there)",
-          EdgeStop.fence(window: CGRect(x: 1512, y: 0, width: 1920, height: 1080), displays: laptop + [(CGRect(x: 1512, y: 0, width: 1920, height: 1080), 0)]) == nil)
-    check("edge stop: a display left of the laptop but not beside the window's height: still there",
-          EdgeStop.fence(window: fsWin, displays: laptop + [(CGRect(x: -1920, y: 2000, width: 1920, height: 1080), 0)]) != nil)
-    check("edge stop: the pointer left of it, beside the window: stopped there", EdgeStop.clamp(CGPoint(x: 0, y: 500), fence) == CGPoint(x: 5, y: 500)
-          && EdgeStop.clamp(CGPoint(x: 4.9, y: 40), fence) == CGPoint(x: 5, y: 40))
-    check("edge stop: at it or right of it, above or below the window, or no stop: where it is",
-          EdgeStop.clamp(CGPoint(x: 5, y: 500), fence) == nil && EdgeStop.clamp(CGPoint(x: 300, y: 500), fence) == nil
-          && EdgeStop.clamp(CGPoint(x: 0, y: 10), fence) == nil && EdgeStop.clamp(CGPoint(x: 0, y: 500), nil) == nil)
-    // Safari's sidebar told from its other parts on the left by its View menu item's title (ShellSafariSidebar.swift).
-    check("Safari's sidebar: the item's title flipped from its closed one: open", SafariSidebar.isOpen(title: "Hide Sidebar", closedTitle: "Show Sidebar")
-          && SafariSidebar.isOpen(title: "Seitenleiste ausblenden", closedTitle: "Seitenleiste einblenden"))
-    check("Safari's sidebar: the same title (the Web Inspector on the left), or none learned yet: not",
-          !SafariSidebar.isOpen(title: "Show Sidebar", closedTitle: "Show Sidebar") && !SafariSidebar.isOpen(title: "Hide Sidebar", closedTitle: nil) && !SafariSidebar.isOpen(title: nil, closedTitle: "Show Sidebar"))
-    check("gate: the linked browser in front with its overlay", ShortcutSet.active(frontPid: 10, linkedPids: [10], frontWindowHasOverlay: true))
-    check("gate: another app in front", !ShortcutSet.active(frontPid: 11, linkedPids: [10], frontWindowHasOverlay: true))
-    check("gate: the browser in front, its front window without an overlay", !ShortcutSet.active(frontPid: 10, linkedPids: [10], frontWindowHasOverlay: false))
-    // Hosting (MarginHosted): Margin itself, or an app it hosts with a Margin window on the current Space.
+    // Hosting: Margin itself, or an app it hosts with a Margin window on the current Space.
     check("hosted gate: Margin in front with a window", ShortcutSet.hostedActive(frontPid: 1, ownPid: 1, hostedPids: [], marginWindowOpen: true, marginOnCurrentSpace: false))
     check("hosted gate: a hosted app in front, Margin's window on the current Space", ShortcutSet.hostedActive(frontPid: 20, ownPid: 1, hostedPids: [20, 21], marginWindowOpen: true, marginOnCurrentSpace: true))
     check("hosted gate: a hosted app in front, Margin's window on another Space: let go", !ShortcutSet.hostedActive(frontPid: 20, ownPid: 1, hostedPids: [20], marginWindowOpen: true, marginOnCurrentSpace: false))
     check("hosted gate: an app Margin doesn't host: let go", !ShortcutSet.hostedActive(frontPid: 30, ownPid: 1, hostedPids: [20], marginWindowOpen: true, marginOnCurrentSpace: true))
     check("hosted gate: no Margin window open, or no app in front: let go", !ShortcutSet.hostedActive(frontPid: 1, ownPid: 1, hostedPids: [], marginWindowOpen: false, marginOnCurrentSpace: true)
           && !ShortcutSet.hostedActive(frontPid: nil, ownPid: 1, hostedPids: [20], marginWindowOpen: true, marginOnCurrentSpace: true))
-    check("gate: nothing in front", !ShortcutSet.active(frontPid: nil, linkedPids: [10], frontWindowHasOverlay: true))
     let fake = FakeRegistrar()
     let keys = AppShortcuts(registrar: fake)
     var ran: [AppCommand] = []
@@ -603,21 +389,6 @@ final class FakeRegistrar: HotKeyRegistrar {
     keys.set(active: false)
     check("let go after a rebind: none held", fake.held.isEmpty)
 
-    // The quit guard (Shell.quitBrowser): ⌘Q and ⌥⌘Q, Margin's only while the browser is in front with windows parked.
-    check("quit guard: on with the browser in front and a window parked; off otherwise",
-          Shell.guardsQuit(browserInFront: true, parked: 1, quitting: false) && !Shell.guardsQuit(browserInFront: true, parked: 0, quitting: false)
-          && !Shell.guardsQuit(browserInFront: false, parked: 2, quitting: false) && !Shell.guardsQuit(browserInFront: true, parked: 2, quitting: true))
-    check("quit guard: with Margin's layout in front and its prompt wanted, held with nothing parked too",
-          Shell.guardsQuit(browserInFront: true, parked: 0, quitting: false, asks: true) && !Shell.guardsQuit(browserInFront: false, parked: 0, quitting: false, asks: true))
-    // A click in Margin's UI moves the keyboard to Margin.app (a non-activating panel): ⌘R after a click in the sidebar
-    // beeped (seen 2026-11-08). The keyboard goes back as the press ends, unless a field of Margin's has it or asked
-    // for it; a key that reaches Margin.app meanwhile goes on to the linked browser in front.
-    check("a press in Margin's UI: the keyboard back to the browser, unless a field of Margin's has it or asked for it, or it isn't shown",
-          OverlayController.handsKeyboardBack(shown: true, hasKeyboard: false, wantsKeyboard: false)
-          && !OverlayController.handsKeyboardBack(shown: true, hasKeyboard: true, wantsKeyboard: true)
-          && !OverlayController.handsKeyboardBack(shown: true, hasKeyboard: false, wantsKeyboard: true)
-          && !OverlayController.handsKeyboardBack(shown: false, hasKeyboard: false, wantsKeyboard: false))
-    let linkedSafari: [Set<pid_t>] = [[501, 502], [700]]
     func reloadEvent(_ characters: String, _ modifiers: NSEvent.ModifierFlags, type: NSEvent.EventType = .keyDown) -> NSEvent {
         NSEvent.keyEvent(with: type, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: 0,
                         context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: 15)!
@@ -631,12 +402,6 @@ final class FakeRegistrar: HotKeyRegistrar {
           && !OverlayWebView.isBrowserReload(reloadEvent("r", [.command, .control]))
           && !OverlayWebView.isBrowserReload(reloadEvent("l", .command))
           && !OverlayWebView.isBrowserReload(reloadEvent("r", .command, type: .keyUp)))
-    check("a key that reached Margin.app: on to the linked browser in front, only with none of Margin's windows key",
-          Shell.relayTarget(marginWindowKey: false, front: 502, margin: 99, linked: linkedSafari) == 502
-          && Shell.relayTarget(marginWindowKey: true, front: 502, margin: 99, linked: linkedSafari) == nil
-          && Shell.relayTarget(marginWindowKey: false, front: 99, margin: 99, linked: linkedSafari) == nil
-          && Shell.relayTarget(marginWindowKey: false, front: 333, margin: 99, linked: linkedSafari) == nil
-          && Shell.relayTarget(marginWindowKey: false, front: nil, margin: 99, linked: linkedSafari) == nil)
     check("quit prompt: Return or Enter quits, Escape cancels, ⌘Q again quits, other keys nothing",
           QuitPrompt.choice(keyCode: 36, command: false) == .quit && QuitPrompt.choice(keyCode: 76, command: false) == .quit
           && QuitPrompt.choice(keyCode: 53, command: false) == .cancel && QuitPrompt.choice(keyCode: 12, command: true) == .quit
@@ -752,10 +517,6 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("and back", ScreenGeometry.appKitRect(CGRect(x: 10, y: 780, width: 300, height: 200), mainHeight: 1000) == CGRect(x: 10, y: 20, width: 300, height: 200))
     check("off screen stays off screen", ScreenGeometry.appKitRect(CGRect(x: -20000, y: -20000, width: 1280, height: 800), mainHeight: 982).minY == 982 + 20000 - 800)
     check("a pointer flipped", ScreenGeometry.topLeftPoint(CGPoint(x: 5, y: 990), mainHeight: 1000) == CGPoint(x: 5, y: 10))
-    check("the overlay's window: in every Space, hidden in Mission Control, out of the window cycle",
-          OverlayController.collectionBehavior == [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle])
-    check("own-Space overlay: only its own Space, hidden in Mission Control, beside full screen",
-          OverlayController.ownSpaceBehavior == [.transient, .fullScreenAuxiliary, .ignoresCycle])
     // A full-screen window fills its display's height; one going into full screen doesn't (Phase 2 step 8).
     let displays: [(frame: CGRect, topInset: CGFloat)] = [(CGRect(x: 0, y: 0, width: 1512, height: 982), 32), (CGRect(x: 1512, y: -200, width: 2560, height: 1440), 0)]
     check("full screen: the whole display", ScreenGeometry.fillsDisplay(CGRect(x: 0, y: 0, width: 1512, height: 982), displays: displays))
@@ -764,77 +525,6 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("not a window still on the desktop, going full screen", !ScreenGeometry.fillsDisplay(CGRect(x: 100, y: 120, width: 1200, height: 760), displays: displays))
     check("not a window across two displays", !ScreenGeometry.fillsDisplay(CGRect(x: 1000, y: 0, width: 1200, height: 982), displays: displays))
     check("not off every display", !ScreenGeometry.fillsDisplay(CGRect(x: -20000, y: -20000, width: 1280, height: 800), displays: displays))
-  }
-
-  // Safari's own parts of the window (Phase 2 step 8): the full-screen toolbar, a window of its own,
-  // from a real session's recorded list (scratchpad winrec/rec.log, 2026-11-05), and the docked Web Inspector.
-  static func safariParts() {
-    let pid: pid_t = 501
-    let main = ServerWindow(number: 14375, pid: pid, bounds: CGRect(x: 0, y: 33, width: 1512, height: 949), order: 165)
-    let overlay = ServerWindow(number: 14589, pid: 9, bounds: main.bounds, order: 9)
-    let parked = ServerWindow(number: 14553, pid: pid, bounds: CGRect(x: 0, y: -19, width: 1512, height: 52), order: 113)
-    let sliding = ServerWindow(number: 14553, pid: pid, bounds: CGRect(x: 0, y: 13, width: 1512, height: 52), order: 113)
-    let down = ServerWindow(number: 14553, pid: pid, bounds: CGRect(x: 0, y: 33, width: 1512, height: 52), order: 112)
-    check("the toolbar parked above the window's top: found", WindowMatcher.fullScreenToolbar([overlay, parked, main], browser: main)?.number == 14553)
-    check("sliding down, and down over the window's top: found", WindowMatcher.fullScreenToolbar([overlay, sliding, main], browser: main)?.number == 14553 && WindowMatcher.fullScreenToolbar([overlay, down, main], browser: main)?.number == 14553)
-    check("toolbar at the page's edge: identified but not an ordering anchor", WindowMatcher.orderingToolbar([overlay, parked, main], browser: main) == nil)
-    check("toolbar sliding over the page: still an ordering anchor", WindowMatcher.orderingToolbar([overlay, sliding, main], browser: main)?.number == parked.number)
-    let fraction = ServerWindow(number: parked.number, pid: pid, bounds: parked.bounds.offsetBy(dx: 0, dy: 0.25), order: parked.order)
-    check("any positive toolbar overlap requires ordering, without a rounding grace", WindowMatcher.orderingToolbar([fraction, main], browser: main)?.number == parked.number)
-    let unseen = ServerWindow(number: down.number, pid: pid, bounds: down.bounds, onScreen: false, order: down.order)
-    let transparent = ServerWindow(number: down.number, pid: pid, bounds: down.bounds, alpha: 0, order: down.order)
-    check("off-screen or transparent toolbar cannot anchor a visible layout", WindowMatcher.orderingToolbar([unseen, main], browser: main) == nil && WindowMatcher.orderingToolbar([transparent, main], browser: main) == nil)
-    let tall = ServerWindow(number: 3, pid: pid, bounds: CGRect(x: 0, y: -85, width: 1512, height: 118), order: 100)
-    check("taller with a tab bar and Favorites: found", WindowMatcher.fullScreenToolbar([tall, main], browser: main)?.number == 3)
-    let popover = ServerWindow(number: 4, pid: pid, bounds: CGRect(x: 600, y: 40, width: 300, height: 120), order: 50)
-    let otherApp = ServerWindow(number: 5, pid: 77, bounds: parked.bounds, order: 60)
-    let below = ServerWindow(number: 6, pid: pid, bounds: parked.bounds, order: 200)
-    let lower = ServerWindow(number: 7, pid: pid, bounds: CGRect(x: 0, y: 500, width: 1512, height: 52), order: 100)
-    check("not a popover, another app's window, one behind the window, nor one lower down", WindowMatcher.fullScreenToolbar([popover, otherApp, below, lower, main], browser: main) == nil)
-    check("no toolbar (windowed, or none drawn yet): none", WindowMatcher.fullScreenToolbar([overlay, main], browser: main) == nil)
-    let stale = ServerWindow(number: 9946, pid: pid, bounds: CGRect(x: 0, y: 0, width: 1512, height: 33), onScreen: false, order: 164)
-    let known: [Int: [UInt64]] = [main.number: [406], parked.number: [406], stale.number: []]
-    check("toolbar: the recorded off-screen other-profile bar cannot replace this Space's toolbar",
-          WindowMatcher.fullScreenToolbar([stale, parked, main], browser: main, spacesOf: { known[$0] })?.number == parked.number)
-    check("toolbar: known same-Space membership takes precedence over unknown geometry",
-          WindowMatcher.fullScreenToolbar([stale, parked, main], browser: main, spacesOf: { $0 == stale.number ? nil : known[$0] })?.number == parked.number)
-    check("toolbar: a known bar in another Space is not a toolbar for this window",
-          WindowMatcher.fullScreenToolbar([stale, main], browser: main, spacesOf: { $0 == main.number ? [406] : [407] }) == nil)
-    // Margin goes between the window and its toolbar: the toolbar slides over Margin as over the page.
-    let between = ServerWindow(number: 14589, pid: 9, bounds: main.bounds, order: 120)
-    check("the overlay above the toolbar (as recorded): put back", !WindowMatcher.stackedAbove([overlay, parked, main], overlay: 14589, browser: 14375, toolbar: 14553))
-    check("between the toolbar and the window: in place", WindowMatcher.stackedAbove([parked, between, main], overlay: 14589, browser: 14375, toolbar: 14553))
-    check("and with the toolbar down over the window", WindowMatcher.stackedAbove([down, between, main], overlay: 14589, browser: 14375, toolbar: 14553))
-    check("no toolbar: just above the window, as before", WindowMatcher.stackedAbove([overlay, main], overlay: 14589, browser: 14375, toolbar: nil))
-    // The docked Web Inspector: the overlay over the page's part only, setLayout's insets still from the window's edges.
-    let win = CGRect(x: 0, y: 33, width: 1512, height: 949)
-    check("no viewport said: the whole window", Shell.overlayFrame(window: win, viewport: nil) == win)
-    check("docked at the bottom: the part above it", Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 1512, height: 600)) == CGRect(x: 0, y: 33, width: 1512, height: 600))
-    check("docked on the right: the part left of it", Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 1000, height: 949)) == CGRect(x: 0, y: 33, width: 1000, height: 949))
-    check("docked on the left: the part right of it", Shell.overlayFrame(window: win, viewport: CGRect(x: 512, y: 0, width: 1000, height: 949)) == CGRect(x: 512, y: 33, width: 1000, height: 949))
-    check("a part too small to lay out in, or outside the window: the whole window", Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 150, height: 949)) == win && Shell.overlayFrame(window: win, viewport: CGRect(x: 4000, y: 0, width: 800, height: 900)) == win)
-    // Safari's own sidebar sliding in (a real session's log, 19:37:14.956-18.706) under Margin's docked one (260 pt).
-    let xs: [CGFloat] = [19, 213, 238, 239, 240, 177, 54, 2, 115, 222, 237, 240, 215, 84, 2]
-    check("Safari's sidebar at each logged step, guessed, under a docked 260 pt sidebar: the whole window",
-          xs.allSatisfy { Shell.overlayFrame(window: win, viewport: CGRect(x: $0, y: 0, width: 1512 - $0, height: 949), dockedLeft: 260) == win })
-    check("its last step, 1 pt short on the right: the whole window", Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 1511, height: 949), dockedLeft: 260) == win
-          && Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 1511, height: 949)) == win)
-    check("2 pt or less off the window's edge: the edge (no docked sidebar needed)", Shell.overlayFrame(window: win, viewport: CGRect(x: 2, y: 0, width: 1510, height: 949)) == win)
-    check("wider than the docked sidebar (a 500 pt inspector on the left): carved out", Shell.overlayFrame(window: win, viewport: CGRect(x: 500, y: 0, width: 1012, height: 949), dockedLeft: 260) == CGRect(x: 500, y: 33, width: 1012, height: 949))
-    check("one 1 pt wider than the docked sidebar: carved out", Shell.overlayFrame(window: win, viewport: CGRect(x: 261, y: 0, width: 1251, height: 949), dockedLeft: 260) == CGRect(x: 261, y: 33, width: 1251, height: 949))
-    check("Margin's sidebar not docked: Safari's carved out at once, as before", Shell.overlayFrame(window: win, viewport: CGRect(x: 240, y: 0, width: 1272, height: 949)) == CGRect(x: 240, y: 33, width: 1272, height: 949))
-    check("under the docked sidebar with an inspector at the bottom too: only the bottom carved", Shell.overlayFrame(window: win, viewport: CGRect(x: 240, y: 0, width: 1272, height: 600), dockedLeft: 260) == CGRect(x: 0, y: 33, width: 1512, height: 600))
-    let parsedVp = ExtWindow.parse([["windowId": 3, "viewport": ["x": 240, "y": 0, "width": 1272, "height": 949, "measured": true]], ["windowId": 4, "viewport": ["x": 240, "y": 0, "width": 1272, "height": 949]]], link: "safari:P")
-    check("a viewport's `measured` read, false when it isn't said", parsedVp.count == 2 && parsedVp[0].viewportMeasured && !parsedVp[1].viewportMeasured)
-    let measured = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 10, radii: [10, 10, 10, 10], width: 1000, height: 949, mode: "fullscreen")
-    let right = measured.inWindow(overlay: CGRect(x: 512, y: 33, width: 1000, height: 949), window: win)
-    check("insets from the window's edges: the inspector on the left adds its width to the left", right.left == 772 && right.right == 8 && right.top == 8 && right.width == 1512)
-    let bottom = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 10, radii: [10, 10, 10, 10], width: 1512, height: 600, mode: "fullscreen").inWindow(overlay: CGRect(x: 0, y: 33, width: 1512, height: 600), window: win)
-    check("at the bottom: its height added to the bottom", bottom.bottom == 357 && bottom.left == 260 && bottom.height == 949)
-    check("the whole window: as measured", measured.inWindow(overlay: win, window: win) == measured)
-    // Over the inspector the overlay isn't there at all: the pointer is Safari's.
-    let slot = PassThrough.slot(in: CGRect(x: 0, y: 33, width: 1512, height: 600), layout: PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 0, radii: [0, 0, 0, 0], width: 1512, height: 600, mode: "fullscreen"))
-    check("the slot ends above the inspector", slot.rect.maxY == 33 + 600 - 8)
   }
 
   // One Margin.app at a time (BundleWatch.swift, AppDelegate.swift): a new instance ends the others of its bundle.
@@ -881,15 +571,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("its own build in place: no quit", !watch.check("test") && quit == 0)
   }
 
-  static func edgeAndPointer() {
-    let frame = CGRect(x: 100, y: 50, width: 1280, height: 800)
-    let hidden = PassThrough.slot(in: frame, layout: PageLayout(geometry: ["insets": ["left": 0, "top": 0, "right": 0, "bottom": 0], "container": ["width": 1280, "height": 800]])!)
-    let docked = PassThrough.slot(in: frame, layout: PageLayout(geometry: ["insets": ["left": 260, "top": 8, "right": 8, "bottom": 8], "container": ["width": 1280, "height": 800]])!)
-    let edge = CGRect(x: 100, y: 50, width: EdgeGuard.width, height: 800)
-    check("the edge guard: the window's left edge, its height, the sidebar hidden", EdgeGuard.frame(for: frame, slot: hidden) == edge)
-    check("docked too (a quick move from the page reaches the edge in one step), and before a layout", EdgeGuard.frame(for: frame, slot: docked) == edge && EdgeGuard.frame(for: frame, slot: nil) == edge)
-    check("none while the overlay takes the whole window", EdgeGuard.frame(for: frame, slot: Slot(rect: hidden.rect, captureAll: true)) == nil)
-    check("none with no width", EdgeGuard.frame(for: frame, slot: hidden, width: 0) == nil)
+  static func pointerWant() {
     let size = CGSize(width: 1280, height: 800)
     let edges = PointerWant(["mode": "edges", "edges": ["left"], "zone": 24])
     check("pointer: the reveal zone only while hidden", edges.wants(CGPoint(x: 3, y: 400), in: size) && edges.wants(CGPoint(x: 24, y: 400), in: size) && !edges.wants(CGPoint(x: 25, y: 400), in: size) && !edges.wants(CGPoint(x: 1279, y: 400), in: size))

@@ -1,5 +1,5 @@
-// Margin as the app, joined up (docs/MARGIN-APP.md; DECISIONS.md "Margin as the app: the parts joined"), behind
-// `MarginHosted`: the library's items shown in Margin's window by the host engine.
+// Margin as the app, joined up (docs/MARGIN-APP.md; DECISIONS.md "Margin as the app: the parts joined"): the
+// library's items shown in Margin's window by the host engine.
 //
 // - The library (Library.swift) says what needs a browser or an app (its requests: activateTab, newTab, closeTab,
 //   setSpace, openPin, clearToday, restoreArchive); this is its delegate, and does each one, one at a time, in order.
@@ -521,7 +521,7 @@ final class HostedSession: LibraryDelegate {
 
     // ---- the default browser made ready at launch ----
 
-    // Decided by Tirth (2026-11-16): with MarginHosted on, the person's default browser (`DefaultBrowser`) is made ready
+    // Decided by Tirth (2026-11-16): the person's default browser (`DefaultBrowser`) is made ready
     // in the background at Margin's launch, so the first web item is a switch-in plus its page load: started with no
     // Dock icon if it isn't running (the person's running one used as it is, never restarted), its copy for the profile
     // web items will use linked (the front Margin window's space's profile, else the default one), Margin's window asked

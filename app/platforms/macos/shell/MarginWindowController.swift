@@ -1,7 +1,7 @@
 // Margin's own windows (MarginWindow.swift; docs/MARGIN-APP.md phase 2): each
 // one the overlay's page (OverlayPages: the same UI, its configuration and
 // bridge) in a MarginWindow, fed from a MarginWindowSource instead of a
-// browser's copy. Behind `MarginHosted` (Shell.forApp); off, none is made.
+// browser's copy.
 //
 // - The page's hello says `host: 'app-window'` (ui/host-app.ts appWindow): it
 //   draws the whole app, in the window's mode (windowed or full screen, pushed
@@ -18,8 +18,8 @@
 //   nothing hosted, its page area is the theme's launcher (ui/host-app.ts).
 // - Its `chrome`: where the theme draws the window's buttons (the traffic
 //   lights go there) and its drag regions.
-// - Always in full screen (decided by Tirth, 2026-11-15, `alwaysFullScreen`, on for every Margin window while
-//   `MarginHosted` is: windowed Margin waits until it's built properly, Stage Manager being his daily setup): opened
+// - Always in full screen (decided by Tirth, 2026-11-15, `alwaysFullScreen`, on for every Margin window:
+//   windowed Margin waits until it's built properly, Stage Manager being his daily setup): opened
 //   (by hand, again, ⌘N) it's shown only once it's in full screen (made see-through, ordered in and taken to full
 //   screen, then drawn: no windowed first frame); nothing of Margin's leaves full screen (no Enter/Exit Full Screen
 //   item, ⌃⌘F and the page's own ask refused while it's full screen); if macOS takes it out anyway (the green button,
@@ -27,7 +27,7 @@
 //   macOS ignores the toggle for a window of an app that isn't active (opened by a script, cooperative activation
 //   refusing it: seen 2026-11-16), so while it isn't in, it's asked again as soon as Margin is active, the window key or
 //   main, or first on screen: once per activation of Margin, logged (`FullScreenRetry`; no timer, no loop).
-// - Hosting (HostedSession.swift, behind `MarginHosted`): the window keeps its whole width in its own full-screen Space
+// - Hosting (HostedSession.swift): the window keeps its whole width in its own full-screen Space
 //   (never a tile, its size constraints never changed); its page draws its own layout with the sidebar docked and no
 //   launcher in the page area (`pageHosted`, ui/host-app.ts: the theme's frame around the page area, no field there
 //   to take the keys from the app above it), and the page area from that layout is the hosted window's placement.
@@ -63,7 +63,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         var frame: CGRect? // top left; nil: centred on the main display (a test's: off every display)
         var pointerEvery: TimeInterval = 1.0 / 30 // the pointer handed to a page that wants it
         var showWithin: TimeInterval = 1.5 // shown by then even if its page hasn't said it's drawn
-        var alwaysFullScreen = false // (MarginWindows sets it: on while MarginHosted is) shown only in full screen, never leaving it
+        var alwaysFullScreen = false // (MarginWindows sets it) shown only in full screen, never leaving it
         var fullScreenWithin: TimeInterval = 3 // shown at once by then even if full screen didn't come (never left invisible)
         // A test's stand-in for macOS's answer to a full-screen ask: false, ignored (as for an app that isn't active);
         // nil: in at once.
@@ -715,7 +715,7 @@ final class MarginWindows {
     struct Options {
         var harness = false
         var installsMenu = true
-        var alwaysFullScreen = true // (Tirth, 2026-11-15) every Margin window full screen, never leaving it, while MarginHosted is on
+        var alwaysFullScreen = true // (Tirth, 2026-11-15) every Margin window full screen, never leaving it
     }
 
     let pages: OverlayPages

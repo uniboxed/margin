@@ -31,8 +31,7 @@ protocol WindowSource {
     // Every window of these processes (on every Space), plus the on-screen windows above them
     // (all processes), in the window server's order. Overlays' own windows included.
     func windows(of pids: Set<pid_t>) -> [ServerWindow]
-    // The same, or nil when the window server gave no list at all (not the same as an empty one:
-    // the binder takes such a read as telling nothing, WindowMatcher.swift).
+    // The same, or nil when the window server gave no list at all (not the same as an empty one).
     func read(of pids: Set<pid_t>) -> [ServerWindow]?
     // The on-screen windows in front of `window`, front to back (CGWindowListCopyWindowInfo's
     // .optionOnScreenAboveWindow: exact, unlike the order of an every-window list). Nil: can't say.
@@ -127,17 +126,6 @@ protocol AppWatch: AnyObject {
     var onChange: ((String) -> Void)? { get set }
     func start()
     func stop()
-}
-
-enum SessionVisibility {
-    // The lock key is private; public console/login keys and workspace events
-    // are additional guards. Unknown session state never permits a high cover.
-    static func allowsCover(_ session: [String: Any]?) -> Bool {
-        guard let session, session[kCGSessionOnConsoleKey as String] as? Bool == true,
-              session[kCGSessionLoginDoneKey as String] as? Bool == true else { return false }
-        return session["CGSSessionScreenIsLocked"] as? Bool != true
-    }
-    static var allowsCover: Bool { allowsCover(CGSessionCopyCurrentDictionary() as? [String: Any]) }
 }
 
 final class WorkspaceLockEvents: NSObject {

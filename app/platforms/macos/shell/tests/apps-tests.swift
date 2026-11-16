@@ -138,32 +138,14 @@ func appsTests() {
     check("apps: stopped", !watcher.running)
 
     // ---- the shell ----
-    func shell(hosted: Bool) -> Shell {
-        var o = Shell.Options()
-        o.harness = true
-        o.hosted = hosted
-        o.appCatalog = options
-        return Shell(link: SocketLink(), windows: StubWindows(), apps: StubApps(), hotKeys: FakeRegistrar(), options: o)
-    }
-    let on = shell(hosted: true)
-    var asked: [String] = []
-    on.performApp("app.open", ["bundleId": "com.example.editor", "name": "Editor"] as JSONObject)
-    check("apps: app.open with no host yet: only logged", asked.isEmpty)
-    on.openApp = { asked.append($0) }
-    on.performApp("app.open", ["bundleId": "com.example.editor"] as JSONObject)
-    on.performApp("app.open", ["bundleId": "../evil"] as JSONObject)
-    on.performApp("app.open", nil)
-    on.performApp("app.close", ["bundleId": "com.example.editor"] as JSONObject)
-    check("apps: app.open hands the bundle id to the host; a bad one, or another ask, nothing", asked == ["com.example.editor"], "\(asked)")
+    var o = Shell.Options()
+    o.harness = true
+    o.appCatalog = options
+    let on = Shell(link: SocketLink(), apps: StubApps(), hotKeys: FakeRegistrar(), options: o)
     on.appsStart()
-    check("apps: hosting on: the catalog runs", on.appCatalog?.running == true)
+    check("apps: the catalog runs with the shell", on.appCatalog?.running == true)
     on.appsStop()
     check("apps: stopped with the shell", on.appCatalog == nil && on.appsJSON == nil)
-    let off = shell(hosted: false)
-    off.openApp = { asked.append($0) }
-    off.appsStart()
-    off.performApp("app.open", ["bundleId": "com.example.writer"] as JSONObject)
-    check("apps: hosting off: no catalog, and app.open does nothing", off.appCatalog == nil && asked == ["com.example.editor"])
 }
 
 private func appsWait(_ seconds: TimeInterval, _ done: () -> Bool) {

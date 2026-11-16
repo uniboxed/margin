@@ -1,14 +1,11 @@
-// The hosted parts joined in the shell (HostedSession.swift; docs/MARGIN-APP.md), behind `MarginHosted`
-// (Shell.Options.hosted). Off, nothing here runs.
+// The hosted parts joined in the shell (HostedSession.swift; docs/MARGIN-APP.md).
 //
 // - Margin's windows draw the library (LibraryWindowSource) once it opened; the read-only stand-in
 //   (DataSetWindowSource) only when it didn't (its rules didn't load), and for the settings either way.
 // - The library's requests go to the session, which drives the host engine and the Safari copies' tabs; the engine's
 //   Safari window requests are the copies' (`newWindow`, `setWindowState`, `closeWindow`, after their link); its events tell the session
 //   what went outside Margin; a palette pick (`openApp`) is the session's.
-// - The overlay path is off: with `hosted`, the shell's read of the window server does no binding, no overlay, no
-//   `drawn` and no layout for any browser window (`hostedTrack`), the slot and opening the browser are off (forApp);
-//   the copies stay linked as the tabs' drivers. It polls the host instead.
+// - The copies stay linked as the tabs' drivers; the shell's read (Shell.track) polls the host.
 // - The first run with nothing in the library (no profile's set to import): one space made, Personal, and shown in
 //   the UI's own space editor as the window's page is drawn, for the person to name (the minimal first-run step;
 //   the UI has no create-spaces flow of its own).
@@ -177,18 +174,6 @@ extension Shell {
     func installedAppName(_ bundleId: String) -> String? {
         guard let json = appsJSON, let list = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [JSONObject] else { return nil }
         return list.first { $0["bundleId"] as? String == bundleId }?["name"] as? String
-    }
-
-    // The shell's read while hosted: none of the overlay path (no binding, overlay, `drawn`, layout or slot for any
-    // browser window); the host's poll, while it hosts something or a copy is linked; Margin's keys.
-    func hostedTrack() {
-        updateHostedKeys()
-        host?.poll()
-        hosted?.sweepRestoredSafariWindows()
-        guard host?.hasHosts == true || host?.hasLeftSafariWindows == true || !links.isEmpty else { return }
-        pollTimer = Timer.scheduledTimer(withTimeInterval: options.restPoll, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.track() }
-        }
     }
 
     // ---- Margin's keys while hosting (Shortcuts.swift ShortcutSet.hostedActive) ----

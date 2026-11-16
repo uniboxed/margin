@@ -164,9 +164,6 @@ enum LinkMessage {
     case windows(epoch: String, seq: Int, list: [JSONObject])
     // Something for one window's UI (or every window's, with no windowId): a notice, a switch under way.
     case push(epoch: String, windowId: Int?, msg: JSONObject)
-    // A parked window used while it's out of sight (HANDOFF.md §6.1): a `push` of type parkedActivity,
-    // taken out here because it's for the app, never for an overlay.
-    case parkedActivity(epoch: String, ParkedActivity)
     case theme(epoch: String, chunk: Chunk)
     // The copy's shortcuts for the app's hot keys: { command: [combination] } (Shortcuts.swift).
     case keys(epoch: String, bindings: [String: [String]])
@@ -218,10 +215,6 @@ enum LinkMessage {
             return .windows(epoch: epoch, seq: seq, list: list)
         case "push":
             guard let epoch, let msg = m["msg"] as? JSONObject else { return nil }
-            if msg["type"] as? String == ParkedActivity.type {
-                guard let activity = ParkedActivity(msg, windowId: int(m["windowId"])) else { return nil }
-                return .parkedActivity(epoch: epoch, activity)
-            }
             return .push(epoch: epoch, windowId: int(m["windowId"]), msg: msg)
         case "theme":
             guard let epoch, let chunk = Chunk(m) else { return nil }
@@ -257,13 +250,10 @@ enum AppMessage {
     // An action from a window's UI, answered with `reply` (same id).
     case req(id: Int, epoch: String, windowId: Int?, type: String, payload: JSONObject)
     case resync(epoch: String)
-    // Where the theme put the page in a window. `seq` counts up per window, per epoch.
+    // The page box's two (the overlay over a browser window: removed 2026-11-16, hosted only). Margin.app no longer
+    // sends them; kept only for tools/webkit-host's link server until the extension's page box goes.
     case setLayout(epoch: String, windowId: Int, seq: Int, layout: PageLayout)
-    // Whether the app draws over a window (bound and wanted: Shell.swift DrawnOutbox). Only a change is sent.
     case drawn(epoch: String, windowId: Int, on: Bool)
-    // Whether a window is parked: out of sight in its own private Space, alive (HANDOFF.md §2.5). The copy
-    // keeps it per window, this epoch's only. Only a change is sent, like drawn.
-    case parked(epoch: String, windowId: Int, on: Bool)
     case theme(epoch: String, chunk: Chunk)
     // The lasting data (docs/DATA.md "Messages": data.need, data.snapshot, data.changes, data.ack).
     case data(kind: String, body: JSONObject)
@@ -284,8 +274,6 @@ enum AppMessage {
             return layout.object.merging(["k": "setLayout", "epoch": epoch, "windowId": windowId, "seq": seq, "at": at]) { $1 }
         case .drawn(let epoch, let windowId, let on):
             return ["k": "drawn", "epoch": epoch, "windowId": windowId, "on": on, "at": at]
-        case .parked(let epoch, let windowId, let on):
-            return ["k": "parked", "epoch": epoch, "windowId": windowId, "on": on, "at": at]
         case .theme(let epoch, let chunk):
             return chunk.fields.merging(["k": "theme", "epoch": epoch]) { $1 }
         case .data(let kind, let body):
@@ -304,77 +292,30 @@ enum AppMessage {
     }
 }
 
-// ---- The profile handoff's words (HANDOFF.md §1.9, §2.5, §3.3, §6.1; docs/PROTOCOL.md "The handoff") ----
+// ---- Requests to a copy about its windows, and their answers (docs/PROTOCOL.md) ----
 
-// A copy's word that one of its parked windows was used while out of sight: a tab made there that
-// Margin didn't open (`tab`), focus landing there that Margin didn't cause (`focus`: the person's
-// Window menu, ⌘`, a link from another app), or Margin's own UI asking for a tab that's only there
-// (`raise`: the copy doesn't raise it, the app hands off to that window). Sent as a `push` whose
-// msg is { type: 'parkedActivity', windowId, tabId?, why }.
-struct ParkedActivity: Equatable {
-    enum Why: String { case tab, focus, raise }
-    static let type = "parkedActivity"
-    let windowId: Int
-    let tabId: Int?
-    let why: Why
-
-    init(windowId: Int, tabId: Int? = nil, why: Why) {
-        (self.windowId, self.tabId, self.why) = (windowId, tabId, why)
-    }
-
-    // From the push's msg (the push's own windowId stands in when the msg has none, and must agree
-    // when both say). A tab's and a raise's need their tab. nil: not one.
-    init?(_ msg: JSONObject, windowId pushed: Int? = nil) {
-        guard msg["type"] as? String == Self.type, let windowId = int(msg["windowId"]) ?? pushed, windowId >= 0,
-              pushed == nil || pushed == windowId,
-              let why = (msg["why"] as? String).flatMap(Why.init(rawValue:)) else { return nil }
-        let tabId = int(msg["tabId"])
-        if why != .focus, tabId == nil { return nil }
-        self.init(windowId: windowId, tabId: tabId, why: why)
-    }
-
-    var msg: JSONObject {
-        var m: JSONObject = ["type": Self.type, "windowId": windowId, "why": why.rawValue]
-        if let tabId { m["tabId"] = tabId }
-        return m
-    }
-}
-
-// The handoff's requests to a copy, as a `req`'s type and payload. `notAfter` is milliseconds since
+// Window requests to a copy (first the profile handoff's: HANDOFF.md §1.9, §3.3), as a `req`'s type and payload. `notAfter` is milliseconds since
 // 1970 (the app and its copies read the same clock): a copy that gets the request after it makes no
 // windows call and answers { refused: 'late' }. Once a windows call is made it can't be taken back
 // (Safari carries it out when it gets to it), so only the request's arrival is checked.
 enum HandoffRequest {
     enum State: String { case fullscreen, normal }
 
-    // B to full screen and focused, or A to normal without taking focus (not focusWindow, which always focuses).
+    // A window to full screen and focused, or to normal without taking focus.
     case setWindowState(windowId: Int, state: State, focused: Bool = false, notAfter: Double)
-    // Six frames of the window's tab in front at the full-screen size, after a short nudge (R3, gate G2).
-    case frameProbe(windowId: Int, width: Double, height: Double, frames: Int = 6, nudgeMs: Int = 80, timeoutMs: Int = 400)
-    // The window's tabs with typed text not sent: asked before any close.
-    case windowDrafts(windowId: Int)
-    // Today's switch sends these two with no notAfter (none is checked then).
-    case focusWindow(windowId: Int, fullscreen: Bool = false, notAfter: Double? = nil)
     case closeWindow(windowId: Int, notAfter: Double? = nil)
-    case openSpaceWindow(spaceId: String, fullscreen: Bool = true)
 
     var type: String {
         switch self {
         case .setWindowState: "setWindowState"
-        case .frameProbe: "frameProbe"
-        case .windowDrafts: "windowDrafts"
-        case .focusWindow: "focusWindow"
         case .closeWindow: "closeWindow"
-        case .openSpaceWindow: "openSpaceWindow"
         }
     }
 
-    // The window it's about (the req's windowId, as today's switch sends it), nil for a window to make.
-    var windowId: Int? {
+    // The window it's about (the req's windowId).
+    var windowId: Int {
         switch self {
-        case .setWindowState(let id, _, _, _), .frameProbe(let id, _, _, _, _, _), .windowDrafts(let id),
-             .focusWindow(let id, _, _), .closeWindow(let id, _): id
-        case .openSpaceWindow: nil
+        case .setWindowState(let id, _, _, _), .closeWindow(let id, _): id
         }
     }
 
@@ -385,26 +326,15 @@ enum HandoffRequest {
             var p: JSONObject = ["windowId": id, "state": state.rawValue, "notAfter": ms(notAfter)]
             if focused { p["focused"] = true }
             return p
-        case .frameProbe(let id, let width, let height, let frames, let nudgeMs, let timeoutMs):
-            return ["windowId": id, "width": width, "height": height, "frames": frames, "nudgeMs": nudgeMs, "timeoutMs": timeoutMs]
-        case .windowDrafts(let id):
-            return ["windowId": id]
-        case .focusWindow(let id, let fullscreen, let notAfter):
-            var p: JSONObject = ["windowId": id]
-            if fullscreen { p["fullscreen"] = true }
-            if let notAfter { p["notAfter"] = ms(notAfter) }
-            return p
         case .closeWindow(let id, let notAfter):
             var p: JSONObject = ["windowId": id]
             if let notAfter { p["notAfter"] = ms(notAfter) }
             return p
-        case .openSpaceWindow(let spaceId, let fullscreen):
-            return ["spaceId": spaceId, "fullscreen": fullscreen]
         }
     }
 }
 
-// What a windows call answered (setWindowState, focusWindow, closeWindow: the reply's `result`).
+// What a windows call answered (setWindowState, closeWindow: the reply's `result`).
 // `busy` and `refused` mean the copy made no windows call: nothing changed, and a `busy` is evidence
 // that an earlier call for that window is stuck (behind a hung tab).
 enum WindowCallAnswer: Equatable {
@@ -434,53 +364,8 @@ enum WindowCallAnswer: Equatable {
     }
 }
 
-// What a frameProbe answered: the frames the window's tab in front drew, or none (no page there, or
-// it didn't answer within the probe's timeoutMs). Times are the page's Date.now(), in milliseconds.
-enum FrameProbeAnswer: Equatable {
-    struct Frames: Equatable {
-        let tabId: Int
-        let frames: Int
-        let firstAt: Double, lastAt: Double
-        let width: Double, height: Double // the page's window size at the last frame (outerWidth, outerHeight: points)
-        let hasFocus: Bool // document.hasFocus()
-        let visible: Bool // document.visibilityState is 'visible'
-        let visibleAt: Double? // the page's last visibilitychange to visible, if it heard one (gate G2 may use it)
-    }
-    case frames(Frames)
-    case none(why: String)
-
-    // nil: not an answer.
-    init?(_ result: JSONObject) {
-        if let why = result["none"] as? String { self = .none(why: why); return }
-        guard let tabId = int(result["tabId"]), let frames = int(result["frames"]), frames >= 0,
-              let firstAt = num(result["firstAt"]), let lastAt = num(result["lastAt"]),
-              let width = num(result["width"]), let height = num(result["height"]),
-              [firstAt, lastAt, width, height].allSatisfy(\.isFinite) else { return nil }
-        self = .frames(Frames(tabId: tabId, frames: frames, firstAt: firstAt, lastAt: lastAt, width: width, height: height,
-                              hasFocus: result["hasFocus"] as? Bool == true, visible: result["visible"] as? Bool == true,
-                              visibleAt: num(result["visibleAt"])))
-    }
-}
-
-// What windowDrafts answered: the window's tabs with typed text not sent, and those that didn't say in
-// time (400 ms). A window is closed only when both are empty.
-struct WindowDrafts: Equatable {
-    let drafts: [Int]
-    let unknown: [Int]
-    var mayClose: Bool { drafts.isEmpty && unknown.isEmpty }
-
-    init(drafts: [Int], unknown: [Int]) { (self.drafts, self.unknown) = (drafts, unknown) }
-
-    // nil: not an answer (a close then waits, as for a draft).
-    init?(_ result: JSONObject) {
-        guard let drafts = result["drafts"] as? [Any], let unknown = result["unknown"] as? [Any] else { return nil }
-        self.init(drafts: drafts.compactMap(int), unknown: unknown.compactMap(int))
-    }
-}
-
-// What openSpaceWindow answered: the new window, and its bounds as Safari gave them (points from the
-// top left of the main display, as the windows list has them), so the binder can bind it as made by
-// Margin before the copy's next windows list (HANDOFF.md §1.6). An older copy sends no bounds.
+// What newWindow answered: the new window, and its bounds as Safari gave them (points from the top left of
+// the main display, as the windows list has them). An older copy sends no bounds.
 struct SpaceWindowAnswer: Equatable {
     let windowId: Int
     let state: String
@@ -499,23 +384,6 @@ struct SpaceWindowAnswer: Equatable {
             bounds = nil
         }
     }
-}
-
-// The overlay page's `framed { mode }` (app/shared/host/overlay.ts): after the shell's `shown`, on its next
-// animation frame, the page says it has drawn, and in which mode (R4: B's overlay framed in full screen).
-struct OverlayFramed: Equatable {
-    enum Mode: String { case fullscreen, windowed }
-    static let op = "framed"
-    let mode: Mode
-
-    init(mode: Mode) { self.mode = mode }
-
-    init?(_ body: JSONObject) {
-        guard let mode = (body["mode"] as? String).flatMap(Mode.init(rawValue:)) else { return nil }
-        self.mode = mode
-    }
-
-    var body: JSONObject { ["mode": mode.rawValue] }
 }
 
 // Any JSON value as text (a string, a number or null too).

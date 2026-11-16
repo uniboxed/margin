@@ -1,5 +1,4 @@
-// Margin's own window in the shell (MarginWindow.swift, MarginWindowController.swift; docs/MARGIN-APP.md
-// phase 2), behind `MarginHosted` (Shell.forApp; off, nothing here runs and the app is as before).
+// Margin's own window in the shell (MarginWindow.swift, MarginWindowController.swift; docs/MARGIN-APP.md phase 2).
 //
 // The windows draw the library (LibraryWindowSource, HostedSession.swift, made in ShellHostedGlue.swift) once it
 // opened. DataSetWindowSource is the fallback when it didn't, and gives the settings either way: one browser
@@ -120,7 +119,7 @@ extension Shell {
         let withSpaces = data.profiles().filter { !data.values("spaces", of: $0).isEmpty }.sorted()
         let linked = Set(links.values.filter { $0.connection.isUp }.map { DataProfile(browser: $0.connection.hello.browser, profile: $0.connection.hello.profile) })
         if let p = withSpaces.first(where: linked.contains) { return p }
-        let last = options.enterBrowser()
+        let last = options.lastBrowser()
         return withSpaces.first { $0.browser == last } ?? withSpaces.first
     }
 
@@ -132,7 +131,7 @@ extension Shell {
         return links.keys.sorted().lazy.compactMap { self.links[$0]?.theme }.first
     }
 
-    // Margin's windows, made once (their page's configuration is the overlays').
+    // Margin's windows, made once.
     @discardableResult
     func makeMarginWindows(options windowOptions: MarginWindows.Options? = nil) -> MarginWindows {
         if let marginWindows { return marginWindows }
@@ -142,10 +141,10 @@ extension Shell {
         let windows = MarginWindows(pages: pages, source: source, options: o)
         windows.theme = { [weak self] in self?.hostedTheme() }
         windows.themes = { [weak self] in self?.themesListJSON ?? "[]" }
-        windows.browser = options.enterBrowser()
+        windows.browser = options.lastBrowser()
         marginWindows = windows
         joinHosted(windows)
-        Diagnostics.note("Margin's window: on (MarginHosted), its settings read from \(hostedProfile().map(\.key) ?? "no data set yet")")
+        Diagnostics.note("Margin's window: its settings read from \(hostedProfile().map(\.key) ?? "no data set yet")")
         return windows
     }
 

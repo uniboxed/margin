@@ -130,7 +130,6 @@ final class FakePrivateResolver: PrivateResolver, @unchecked Sendable {
 }
 
 // A shell's other parts, for the check only: no windows, no apps.
-struct StubWindows: WindowSource { func windows(of pids: Set<pid_t>) -> [ServerWindow] { [] } }
 final class StubApps: AppWatch {
     var frontPid: pid_t? { nil }
     func pids(of bundleId: String) -> Set<pid_t> { [] }
@@ -140,7 +139,6 @@ final class StubApps: AppWatch {
 }
 
 func privateCallsTests() {
-    liveCoverSpaceTests()
     check("private calls: run.sh sets MARGIN_APP_TESTS", PrivateCalls.inTests)
 
     // ---- the launch check ----
@@ -366,13 +364,13 @@ func privateCallsTests() {
 
     // ---- the shell ----
     do {
-        let shell = Shell(link: SocketLink(), windows: StubWindows(), apps: StubApps(), hotKeys: FakeRegistrar(), options: { var o = Shell.Options(); o.harness = true; return o }())
+        let shell = Shell(link: SocketLink(), apps: StubApps(), hotKeys: FakeRegistrar(), options: { var o = Shell.Options(); o.harness = true; return o }())
         shell.checkPrivateCalls()
         check("private calls: a shell with no resolver checks nothing: all off", shell.privateCalls == .off && shell.skyLight == nil)
         var options = Shell.Options()
         options.harness = true
         options.privateResolver = FakePrivateResolver()
-        let faked = Shell(link: SocketLink(), windows: StubWindows(), apps: StubApps(), hotKeys: FakeRegistrar(), options: options)
+        let faked = Shell(link: SocketLink(), apps: StubApps(), hotKeys: FakeRegistrar(), options: options)
         let echo = Diagnostics.echo
         Diagnostics.echo = { _ in }
         faked.checkPrivateCalls()

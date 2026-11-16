@@ -318,21 +318,19 @@ final class RealHostSystem: HostSystem {
     private let slots: SlotSpaces
     private let freezer: Freezer?
     private let sidebarMenu: () -> SidebarMenu?
-    private let closedSidebarTitle: (pid_t) -> String?
     private let ax = HostAX()
     private var listeners: [pid_t: UnsafeRawPointer] = [:]
     private var quitObserver: NSObjectProtocol?
     var onAppQuit: ((pid_t) -> Void)?
 
     init(calls: HostPrivate, sky: SkyLight, spaces: SkyLightSpaces, slots: SlotSpaces, freezer: Freezer?,
-         sidebarMenu: @escaping () -> SidebarMenu?, closedSidebarTitle: @escaping (pid_t) -> String?) {
+         sidebarMenu: @escaping () -> SidebarMenu?) {
         self.calls = calls
         self.sky = sky
         self.spacesRW = spaces
         self.slots = slots
         self.freezer = freezer
         self.sidebarMenu = sidebarMenu
-        self.closedSidebarTitle = closedSidebarTitle
         quitObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { [weak self] note in
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
             let pid = app.processIdentifier
@@ -420,16 +418,15 @@ final class RealHostSystem: HostSystem {
         return a.activate(from: NSRunningApplication.current, options: []) || raised
     }
 
-    // The View › Show Sidebar item's title (SafariAX, ShellSafariSidebar.swift): "Hide Sidebar" while it's open, or
-    // anything but the title the shell learned with it closed.
+    // The View › Show Sidebar item's title (SafariAX, ShellSafariSidebar.swift): "Hide Sidebar" while it's open,
+    // "Show Sidebar" while it's closed; in another language, unknown.
     func safariSidebar(pid: pid_t) async -> HostSidebar {
         guard let menu = sidebarMenu() else { return .unknown }
         let title: String? = await withCheckedContinuation { c in menu.title(pid: pid) { c.resume(returning: $0) } }
         guard let title, !title.isEmpty else { return .unknown }
         if title == "Hide Sidebar" { return .open }
         if title == "Show Sidebar" { return .closed }
-        guard let closed = closedSidebarTitle(pid) else { return .unknown }
-        return SafariSidebar.isOpen(title: title, closedTitle: closed) ? .open : .closed
+        return .unknown
     }
 
     func pressSafariSidebar(pid: pid_t) async -> Bool {

@@ -1,52 +1,6 @@
 # Testing Margin
 
-## Opening Margin (pending, 2026-11-15)
-
-On with the slot (`MarginNativeSlot`), or by itself with `defaults write com.unibox.margin MarginOpensBrowser -bool YES`; `-bool NO` keeps the set-up window with the slot on. Nothing here has been run with a real browser yet (`DECISIONS.md`, "Opening Margin").
-
-- [ ] `npm run log:app` at launch says `open: opening Margin brings its browser's window up inside it`.
-- [ ] Safari not running, Margin running in the background: open Margin (Spotlight, Finder or its Dock icon). Safari starts, its window goes into full screen and Margin is around it. The log: `open: safari (not running): opened`, then `open: safari:…#N (normal), asked for in full screen and in front`, then `answered`.
-- [ ] Neither running: open Margin. The same, with no set-up window on the way.
-- [ ] Safari running with a normal window on the Desktop, another app in front: open Margin. That window goes into full screen, in front, with Margin around it.
-- [ ] Safari already in full screen with Margin, another app in front: open Margin. macOS goes to that window's Space; nothing else changes.
-- [ ] Two Safari windows: the one used last is the one that comes up.
-- [ ] Safari running with no window: open Margin. Safari makes a window and it goes into full screen.
-- [ ] Margin's extension turned off in Safari: open Margin. After 15 s the log says `open: given up … no browser's copy of Margin linked` and the set-up window opens.
-- [ ] Open Margin holding Option: the set-up window, and no browser window touched.
-- [ ] The set-up window open: opening Margin again brings the set-up window forward (no browser window touched).
-- [ ] Chrome or Edge as the browser last linked, not running: opening Margin starts that one.
-
-## The slot (pending, 2026-11-15)
-
-Off by default: every check below starts with `defaults write com.unibox.margin MarginNativeSlot -bool YES`, then `npm run safari`. `defaults delete com.unibox.margin MarginNativeSlot` and a relaunch go back to the page box. Nothing here has been run in real Safari yet (`DECISIONS.md`, "The slot").
-
-- [ ] `npm run log:app` at launch says `slot ok` in the private-calls line and `slot: on`.
-- [ ] A full-screen Safari window with Margin's layout: the log says `slot: window N in Space S: L/T/R/B reserved` and `landed in N ms`. The page fills its place exactly, with no gap and nothing of the page under the sidebar.
-- [ ] Web Inspector on the page: no `--margin-box-*` styles and no box elements (the page box is off).
-- [ ] Hide and show the sidebar: the page follows each time (`slot: … → …`, `landed`), with no layout left behind.
-- [ ] Typing, scrolling, text selection, drag and drop, a context menu, a select menu, a page dialog: all as in plain Safari.
-- [ ] A video in full screen fills the display (`given back (its page took the screen)`), and the layout is back after (`reserved`, `landed`).
-- [ ] Leave full screen (⌃⌘F): the window is a normal window at its old size, with no reserved margins. Back into full screen: the slot again.
-- [ ] A second full-screen window, and swiping between the two: each keeps its own slot, and the layout is there as each slides in.
-- [ ] (Failed 2026-11-15 before the toolbar fix: `live cover stack blocked`, the switch backed out. Try again.) A profile switch (the handoff) with the slot on: the target window lands in its slot before the reveal, or the page is seen to resize once after it. Note which.
-- [ ] Quit Margin (`killall -TERM Margin`): the Safari window takes the whole display again at once. Start Margin again: the slot again.
-- [ ] Kill Margin (`kill -9`): the window stays in its slot. Start Margin: the log says `a marker from a Margin that didn't quit cleanly … given back`, then the slot is taken again.
-- [ ] Unplug or plug in a display with a slotted window showing: `given back (the displays changed)`, then the slot again at the new size.
-- [ ] Note what the gaps listed in `DECISIONS.md` look like: square page corners, a reflow when the slot is first taken, Safari's title strip on a top-edge hover.
-- [ ] Chrome and Edge in full screen: the same first three checks.
-
-## Live profile cover acceptance (pending, 2026-11-11)
-
-The launch default stays off. [Component results](tools/handoff-lab/results/26B131-2026-11-11-renderer-components.md)
-include actual owned renderer allocation/crash checks and the full local suite;
-they do not establish real OS delivery or physical composition. The
-[lab rules](tools/handoff-lab/README.md) require approval before anything runs on screen.
-
-- [ ] Run the new [MATCHED protocol](tools/handoff-lab/VALIDATION.md) on one display: 50 guarded Test A/Test B requests, same process/topology, complete resource samples, separate degraded freeze reveal and verified completion. Preserve prior failed runs.
-- [x] On 26B131 (2026-11-11), run the [actual 20-second watchdog and cancel/reuse checks](tools/handoff-lab/WATCHDOG-SESSION-VALIDATION.md): three passive corner appearances, independent alpha observation during the owned main-thread block, verified cleanup and no stale deadline affecting reuse.
-- [ ] Check real lock/unlock and system sleep/wake, including a profile still connecting:cover disposed, source restored or visible fallback, no stale queued/late-link transition, fresh deliberate switch after allowed wake.
-- [ ] With the available second monitor, connect/disconnect during early preparation and a moving handoff. Verify immediate cover disposal, bounded source recovery, no late close/repark, then fresh two-display conservative keep/no-freeze behavior. This fallback is not the single-display live-cover goal.
-- [ ] Observe/record physical transitions for flashes, sliding Safari/Desktop, theme animation and final sidebar alignment. Metadata alpha/readiness alone cannot pass this check. Other macOS builds retain separate acceptance.
+Margin is hosted only since 2026-11-16 (DECISIONS.md, "Hosted only: the overlay over Safari removed"): Margin.app's own window, Safari and other apps hosted in its page area. The app-side checks of the overlay drawn over the person's Safari windows (opening Margin into its browser, the slot, the profile handoff and its live cover, prepared layouts across full-screen Spaces, the startup splash and covers) went with it; older sections below that describe them are history.
 
 ## Automated (cloud / any machine with Node 22)
 
@@ -61,7 +15,7 @@ npm run test:e2e    # builds dist/, then the e2e suite: headless Chromium and We
 - the JS tests whose imports reach a changed file, followed through every relative import;
 - the tests that name a changed theme, page or fixture file;
 - every theme test when a theme or the UI runtime changed (two at a time: more made the drag tests flaky);
-- the Swift unit checks when `app/platforms/macos/shell`, `app/platforms/macos/startup` or `tools/app-tests` changed (compiled on every core; the randomized runs cut to 50 and 80);
+- the Swift unit checks when `app/platforms/macos/shell`, `app/platforms/macos/startup` or `tools/app-tests` changed (compiled on every core);
 - any e2e file that itself changed.
 
 At the end it lists what only the gate runs: the e2e suite, the WebKit host, the app's e2e checks. Options:
@@ -128,9 +82,9 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 - [ ] Open a window with Margin disabled: no splash. A normal window is left alone. Quitting Safari while a splash is up removes it; a startup failure releases the cover after at most six seconds.
 - [ ] Read `npm run log:app -- 5`: `Accessibility: window … is …` must name the currently linked profile, followed by `overlay page drawn … in … ms`, `overlay shown over …`, and `startup layout over window … ready after … ms` when a splash was used. A link reaching the app and an overlay drawing do not themselves prove that the overlay was shown.
 
-Automated coverage: `npm run test:app` checks historical copy IDs against the current Safari mapping, invalidation and relearning of an old window identity, ambiguous profile names, cover removal/timeout rules, and the native splash off screen in both appearances (`tools/app-tests/build/startup-{light,dark}.png`). These checks use stand-in browser windows; real Safari's extension launch delay and first-frame coverage still need the checks above.
+(Superseded 2026-11-16: the splash and the covers were removed with the overlay over Safari; `npm run test:app` still checks historical copy IDs against the current Safari mapping and ambiguous profile names.)
 
-`tools/app-tests/helper-test.sh` also tests the real helper and its splash child over a fake browser window off every display: resident memory before/during/after, idle CPU time, app startup, early and late handoff messages, pid isolation, timeout and browser quit. `helper-splash-test.sh` refuses any on-screen test frame. Fixture folders and browser IDs are unique per run. The app's end-to-end checks exercise its actual notification responder too. To compare an older helper in the same session, pass `MARGIN_HELPER_BASELINE=/absolute/path/to/the/old/helper`; it is run only against the fake browser. Logs and the launch-card snapshot stay in the fixture folder printed in failure output (`build/helper-splash-test-*/`).
+`tools/app-tests/helper-test.sh` tests the real helper against a fake browser and a fake Margin.app: it starts Margin as the browser opens, and at once when it's open already, and stays small. (Its splash child went with the overlay on 2026-11-16.)
 
 ## Prepared layouts across full-screen Spaces (2026-11-10)
 
@@ -143,7 +97,7 @@ Known open issue: the user confirmed detached/scaled Mission Control thumbnails 
 - [ ] Close one window, exit full screen, resize, move a full-screen window between displays, and use a page's video full-screen mode. Margin hides or follows as appropriate; there must be no leftover sidebar or invisible pointer catcher in the previous Space.
 - [ ] Leave the browsers open but idle, then quit them. The resident helper's idle behavior and the app's existing idle quit stay as before. No additional web views or screenshot cache are used for switching.
 
-Automated: `MARGIN_E2E_ONLY=window-ready tools/app-tests/run.sh e2e` (build with `npm run build` first), also included in `npm run test:app`. Real off-screen WKWebViews and Shell run against stand-in windows and a fake Space bridge. A ready background layout must be placed within one second of its ready callback; twenty Space visits reuse both native windows and their pages without another Space move. Missing batch reads retain the layout only with fresh independent window/owner/size and full-screen Space confirmation for all active overlay panels. Unknown membership, a closed/resized/reused window number, or a misplaced panel/catcher must still conceal. Real Space move refusals keep their five-second cooldown. These tests never move a real browser or call the real private bridge; they do not measure macOS's compositor or guarantee a cold window is drawn before WebKit is ready.
+(Superseded 2026-11-16, its automated check removed with the overlay:) `MARGIN_E2E_ONLY=window-ready tools/app-tests/run.sh e2e` was: Real off-screen WKWebViews and Shell run against stand-in windows and a fake Space bridge. A ready background layout must be placed within one second of its ready callback; twenty Space visits reuse both native windows and their pages without another Space move. Missing batch reads retain the layout only with fresh independent window/owner/size and full-screen Space confirmation for all active overlay panels. Unknown membership, a closed/resized/reused window number, or a misplaced panel/catcher must still conceal. Real Space move refusals keep their five-second cooldown. These tests never move a real browser or call the real private bridge; they do not measure macOS's compositor or guarantee a cold window is drawn before WebKit is ready.
 
 ## Chrome and Edge on the Mac (2026-11-09)
 
@@ -792,6 +746,8 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
 ## Margin 2: the profile handoff, live in Test A and Test B (2026-11-06)
+
+(Superseded 2026-11-16: the profile handoff, its live cover, the dev hook's switch kinds and `tools/handoff-lab/` were removed with the overlay over Safari; the lab and its results are in git history before that date. Kept as history.)
 
 The freeze-based switch between profiles, with the window you leave parked out of sight (`docs/HANDOFF.md`). Build Margin.app from `feat/profile-handoff`. **Only in Safari's Test A and Test B profiles**, never your own. Each switch holds the whole screen still for about a second.
 
@@ -1949,7 +1905,7 @@ The user observed a return gap with the transient fallback. The new candidate va
 - [ ] Repeat partial swipes, reversals, rapid Space changes, background browser Spaces, multiple browsers/profiles and displays. Check clicks, palette focus, browser resize/full-screen exit and page full-screen.
 - [ ] Launch diagnostics say `geometry ok`. A scaled CG rectangle logs `model stays ...: native geometry retained`; the trace's logical overlay frames remain full size, and return needs no hide/show or placement. A getter failure logs the hidden fallback. These logs establish the code path, not visual composition.
 
-Automated native playback uses real off-screen panels/WebViews, injected model bounds and a fake Space bridge. Twenty scaled reads retain the same frames/windows/WebView time origins; ordinary reads add no model IPC; changed or unavailable geometry is conservative. Run `WINDOW_RUNS=50 VISIBLE_RUNS=80 tools/app-tests/run.sh`. It does not drive Safari or prove compositor alignment. Capture failed with ScreenCaptureKit -3811; computer-control calls timed out, so visual confirmation remains required.
+(Superseded 2026-11-16, removed with the overlay.) Automated native playback used real off-screen panels/WebViews, injected model bounds and a fake Space bridge. Twenty scaled reads retain the same frames/windows/WebView time origins; ordinary reads add no model IPC; changed or unavailable geometry is conservative. Run `WINDOW_RUNS=50 VISIBLE_RUNS=80 tools/app-tests/run.sh`. It does not drive Safari or prove compositor alignment. Capture failed with ScreenCaptureKit -3811; computer-control calls timed out, so visual confirmation remains required.
 
 Installed candidate `595c83cc`, user visual result (2026-11-10): full layout is present before Safari finishes returning from Mission Control. Layout still disappears on entry and reappears during exit; the user accepts this for now. Continuous aligned preview visibility is **not** verified. Real product logs show 11 model-retention/return episodes without an order-out/show cycle or getter error; the native trace retains canonical dimensions. Keep the broader display/browser/reversal checklist open.
 
@@ -1958,16 +1914,18 @@ Installed candidate `595c83cc`, user visual result (2026-11-10): full layout is 
 - [ ] In full-screen Safari, click a tab in the sidebar and press ⌘R: the selected page reloads once. Repeat with a palette/search field, a rename field and Settings focused; the underlying selected browser tab reloads while Margin's field text/focus stay in place.
 - [ ] With two browser windows/profiles on different pages, reload from each one's focused layout: only its own selected page reloads. Hold ⌘R briefly: it must not build up repeated reload requests. Confirm ordinary page-focused ⌘R still uses the browser's behavior. Repeat in Chrome/Edge.
 
-Automated: `MARGIN_E2E_ONLY=keyboard tools/app-tests/run.sh e2e` exercises AppKit's key-equivalent entry point on the actual off-screen WKWebView with a focused field and the real native link to a fake extension. It verifies the scoped reload, same layout page/time origin, focus/draft retention, and repeat suppression. Modifier/key-up checks are in native unit tests. The fixture never activates a real browser or injects desktop key events.
+(Superseded 2026-11-16, removed with the overlay.) `MARGIN_E2E_ONLY=keyboard tools/app-tests/run.sh e2e` exercised AppKit's key-equivalent entry point on the actual off-screen WKWebView with a focused field and the real native link to a fake extension. It verifies the scoped reload, same layout page/time origin, focus/draft retention, and repeat suppression. Modifier/key-up checks are in native unit tests. The fixture never activates a real browser or injects desktop key events.
 
 ## Small snap after a Space swipe (2026-11-10)
 
 - [ ] Swipe from full-screen Safari to a different Space and back several times in both directions, including slow/partial swipes. As the slide settles, Margin stays aligned with the page without a final sideways bounce. Repeat after visiting each window, on another display and browser if available.
 - [ ] A real browser move/resize, display arrangement change, full-screen exit and page full-screen still update or hide Margin appropriately.
 
-The provided recording measured a two-pixel reversal on a Retina recording at roughly 3.125, 6.317 and 9.692 seconds; native trace frames show a corresponding logical one-point move and reversal. The off-screen `MARGIN_E2E_ONLY=window-ready tools/app-tests/run.sh e2e` regression replays the positional tail without hiding or moving the layout, verifies no model reads once settled, and checks that a genuine one-point model move remains followed. It supplements the real visual check rather than proving compositor behavior.
+The provided recording measured a two-pixel reversal on a Retina recording at roughly 3.125, 6.317 and 9.692 seconds; native trace frames show a corresponding logical one-point move and reversal. The off-screen `MARGIN_E2E_ONLY=window-ready` regression (removed with the overlay, 2026-11-16) replayed the positional tail without hiding or moving the layout, verifies no model reads once settled, and checks that a genuine one-point model move remains followed. It supplements the real visual check rather than proving compositor behavior.
 
 ### Issue #15: gated live profile cover
+
+(Superseded 2026-11-16: the profile handoff, its live cover, the dev hook's switch kinds and `tools/handoff-lab/` were removed with the overlay over Safari; the lab and its results are in git history before that date. Kept as history.)
 
 The implementation is opt-in (`MarginLiveProfileCover`, read at app launch), default off until acceptance. Private capability/setup failure logs a degraded freeze/slide fallback. No PR is authorized for this work.
 

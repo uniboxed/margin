@@ -1,8 +1,7 @@
 // The host (docs/MARGIN-APP.md phase 3): another app's window shown in Margin's page area. Its types, its
 // marker and its options; the engine is HostEngine.swift, the system it runs on HostSystem.swift.
 //
-// Off unless `MarginHosted` is set (Shell.Options.hosted, from forApp) and the host's private calls passed their
-// check (HostCalls.swift). Off, nothing of it runs, except a crashed run's marker being cleaned up at launch.
+// Off unless the host's private calls passed their check (HostCalls.swift). Off, nothing of it runs.
 
 import AppKit
 

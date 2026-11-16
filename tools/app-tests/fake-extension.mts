@@ -54,24 +54,14 @@
 //     { ev: 'dataChanges', id, changes };
 //   { do: 'dataChanges', id, changes } → data.changes from the copy;
 //   { do: 'dataHello', id, acked?, rev?, queue? } → data.hello again.
-// Spaces across profiles (e2e-profiles.swift): connect's `spaces` replaces the
-// fixture's spaces (and puts its tabs in the first), and `newWindow` (bounds)
-// makes it play its window requests as Safari would: openSpaceWindow adds a
-// full-screen window with those bounds (ids from 90) to its list, sends the
-// list and answers { windowId, state }; closeWindow takes the window out and
-// sends the list; focusWindow and setSpace answer ok (setSpace also makes
-// the space the window's). Each says { ev: 'req', … } first, as any req.
-// The handoff's requests (docs/HANDOFF.md §3.3), played the same way with
-// connect's `play` ({ enterMs, exitMs, listLagMs, normal }: how long Safari
-// takes to enter and leave full screen, how much later the copy's list says
-// so, and a normal window's bounds): setWindowState refuses past `notAfter`
-// and answers `busy` while another windows call for that window is under way,
-// else lands the state after its time, says { ev: 'landed', id, windowId,
-// state }, sends the list (`listLagMs` later) and answers { windowId, state,
-// landedAt }; windowDrafts answers connect's `drafts` ({ windowId: [tabId] },
-// none by default); frameProbe answers { none }. openSpaceWindow also says
-// { ev: 'made', id, windowId } and closeWindow { ev: 'closed', id, windowId },
-// so the host can play the window server's side.
+// Connect's `spaces` replaces the fixture's spaces (and puts its tabs in the first), and `newWindow` (bounds)
+// makes it play its window requests as Safari would (ids from 90): closeWindow takes the window out, sends the list
+// and says { ev: 'closed', id, windowId }; focusWindow and setSpace answer ok (setSpace also makes the space the
+// window's); setWindowState, with connect's `play` ({ enterMs, exitMs, listLagMs, normal }: how long Safari takes to
+// enter and leave full screen, how much later the copy's list says so, and a normal window's bounds), refuses past
+// `notAfter` and answers `busy` while another windows call for that window is under way, else lands the state after
+// its time, says { ev: 'landed', id, windowId, state }, sends the list (`listLagMs` later) and answers { windowId,
+// state, landedAt }. Each says { ev: 'req', … } first, as any req.
 // Margin.app hosting (e2e-glue.swift): with `newWindow`, newWindow adds a window with those bounds (normal, or
 // full screen if asked), sends the list, says { ev: 'made', id, windowId } and answers { windowId, state, bounds };
 // hostShow { windowId, itemId, url } answers { tabId, created } (the item's tab kept, ids from 700) and hostClose
@@ -106,7 +96,7 @@ type Sock = {
   id: string, ws: WebSocket, profile: string, epoch: string, seq: number, muted: boolean, welcomed: boolean, raw: Msg,
   windows: Win[], data: Msg | null, acked: number, rev: string | null, cache: DataSet | null,
   incoming: { transfer: string, parts: Map<number, Msg>, bytes: number } | null, newWindow: Bounds | null, nextWindow: number,
-  play: { enterMs?: number, exitMs?: number, listLagMs?: number, normal?: Bounds }, drafts: Record<string, number[]> | null,
+  play: { enterMs?: number, exitMs?: number, listLagMs?: number, normal?: Bounds },
   calling: Set<number>, send: (m: Msg) => void, hosted?: Map<string, number>, nextTab?: number,
 };
 // Node's WebSocket (undici's) takes the request's headers; the DOM's type doesn't say so.
@@ -233,7 +223,7 @@ function playWindow(s: Sock, m: Msg) {
   if (!s.newWindow) return null;
   const sendWindows = () => s.send({ k: 'windows', seq: ++s.seq, list: s.windows });
   const windowId = m.payload?.windowId;
-  // The handoff's one windows call per window, never late (background/handoff.ts windowCall).
+  // One windows call per window, never late (background/handoff.ts windowCall).
   const windowCall = ['setWindowState', 'focusWindow', 'closeWindow'].includes(m.type);
   if (windowCall && typeof m.payload?.notAfter === 'number' && Date.now() > m.payload.notAfter) return { refused: 'late', pastMs: Date.now() - m.payload.notAfter };
   if (windowCall && s.calling.has(windowId)) return { busy: true };
@@ -246,15 +236,6 @@ function playWindow(s: Sock, m: Msg) {
       say({ ev: 'made', id: s.id, windowId: id });
       sendWindows();
       return { windowId: id, state, bounds: b };
-    }
-    case 'openSpaceWindow': {
-      const id = s.nextWindow++;
-      const b = s.newWindow;
-      s.windows = [...s.windows, { windowId: id, left: b.left, top: b.top, width: b.width, height: b.height, state: 'fullscreen', focused: true, focusedAt: Date.now(), activeTabId: 13 }];
-      setSpace(s, id, m.payload?.spaceId);
-      say({ ev: 'made', id: s.id, windowId: id });
-      sendWindows();
-      return { windowId: id, state: 'fullscreen', bounds: b };
     }
     case 'closeWindow':
       s.windows = s.windows.filter((w) => w.windowId !== windowId);
@@ -278,10 +259,6 @@ function playWindow(s: Sock, m: Msg) {
         done({ windowId, state, landedAt: Date.now() });
       }, same ? 0 : (state === 'fullscreen' ? s.play.enterMs ?? 300 : s.play.exitMs ?? 100)));
     }
-    case 'windowDrafts':
-      return { drafts: s.drafts?.[windowId] ?? [], unknown: [] };
-    case 'frameProbe':
-      return { none: 'no page' };
     case 'focusWindow':
       s.windows = s.windows.map((x) => ({ ...x, focused: x.windowId === windowId, ...(x.windowId === windowId ? { focusedAt: Date.now() } : {}) }));
       sendWindows();
@@ -301,7 +278,7 @@ function setSpace(s: Sock, windowId: number | undefined, spaceId: unknown) {
   s.send({ k: 'delta', seq: ++s.seq, changes: { openTabs: { newValue: open } } });
 }
 
-function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, newTabPage = null, instanceId = null, play = {}, drafts = null, nextWindow = 90 }: Msg) {
+function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, newTabPage = null, instanceId = null, play = {}, nextWindow = 90 }: Msg) {
   const to = (old ? kept : link)!; // (connect: once linked)
   const ws = new (WebSocket as unknown as NodeWebSocket)(`ws://127.0.0.1:${to.port}/?t=${encodeURIComponent(token ?? to.token)}`, { headers: { Origin: origin } });
   const raw = data?.wiped ? {} : storedState();
@@ -318,7 +295,7 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
   }
   for (let i = 0; i < (data?.icons ?? 0); i++) (raw.favicons ??= {})[`https://icon${i}.test`] = { data: 'data:image/png;base64,' + 'A'.repeat(60_000), href: `https://icon${i}.test/favicon.ico`, at: 1 };
   // (Its `send`: just below.)
-  const s = ({ id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null, newWindow, nextWindow, play, drafts, calling: new Set() } satisfies Omit<Sock, 'send'>) as Sock;
+  const s = ({ id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null, newWindow, nextWindow, play, calling: new Set() } satisfies Omit<Sock, 'send'>) as Sock;
   sockets.set(id, s);
   s.send = (m: Msg) => ws.send(JSON.stringify({ epoch: s.epoch, ...m }));
   const snapshot = () => s.send({ k: 'snapshot', seq: ++s.seq, state: s.raw, windows: s.windows });
