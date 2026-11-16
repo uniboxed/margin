@@ -133,8 +133,10 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
    create-spaces step for anything new. The extension keeps only the live tab mapping.
 2. **Margin's window.** A real `NSWindow` (windowed and full screen) hosting
    the existing UI web view; the page area reported by the UI's own
-   `measure()`. Its own menu bar and keys (⌘T etc. are Margin's menu items,
-   no global hot keys).
+   `measure()`. Its own menu bar and keys (⌘T etc. are Margin's menu items;
+   while hosting, Margin's keys are its hot keys whenever Margin or an app it
+   hosts is in front, let go otherwise: DECISIONS.md "Hosting: Dictionary,
+   the loading bar, Margin's keys and the page card's corners").
 3. **The host.** A `HostedApp` engine in the app from the kit: start with no
    Dock icon, wait for the window, full screen under the freeze, reserve the
    page area, Margin's frame into its Space, switch, park the ones not shown,
