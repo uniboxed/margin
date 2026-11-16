@@ -1,0 +1,119 @@
+_SLSTransactionSetWindowButtonRegion:
+0x186DE03E8   pacibsp
+0x186DE03EC   sub      sp, sp, #0x90
+0x186DE03F0   stp      x24, x23, [sp, #0x50]
+0x186DE03F4   stp      x22, x21, [sp, #0x60]
+0x186DE03F8   stp      x20, x19, [sp, #0x70]
+0x186DE03FC   stp      x29, x30, [sp, #0x80]
+0x186DE0400   add      x29, sp, #0x80
+0x186DE0404   mov      x20, x2
+0x186DE0408   mov      x21, x1
+0x186DE040C   mov      x19, x0
+0x186DE0410   adrp     x8, 390134           ; 0x1e61d6000
+0x186DE0414   ldr      x8, [x8, #0xab0]
+0x186DE0418   ldr      x8, [x8]
+0x186DE041C   stur     x8, [x29, #-0x38]
+0x186DE0420   ldp      x8, x9, [x0, #0x28]
+0x186DE0424   add      x8, x8, #0x1
+0x186DE0428   cmp      x8, x9
+0x186DE042C   b.ls     0x186de043c
+0x186DE0430   add      x0, x19, #0x20
+0x186DE0434   mov      w1, #0x1
+0x186DE0438   bl       __SLSTransactionEncode_resize
+0x186DE043C   ldur     x8, [x19, #0x20]
+0x186DE0440   cbz      x8, 0x186de0464
+0x186DE0444   ldr      x9, [x19, #0x28]
+0x186DE0448   add      x10, x9, #0x1
+0x186DE044C   str      x10, [x19, #0x28]
+0x186DE0450   adds     x8, x9, x8
+0x186DE0454   b.eq     0x186de0470
+0x186DE0458   mov      w9, #0x4b
+0x186DE045C   strb     w9, [x8]
+0x186DE0460   b        0x186de0470
+0x186DE0464   ldr      x8, [x19, #0x28]
+0x186DE0468   add      x8, x8, #0x1
+0x186DE046C   str      x8, [x19, #0x28]
+0x186DE0470   mov      w1, w21
+0x186DE0474   add      x0, x19, #0x20
+0x186DE0478   bl       __SLSTransactionEncode_packed64
+0x186DE047C   str      xzr, [sp, #0x40]
+0x186DE0480   str      wzr, [sp, #0x3c]
+0x186DE0484   add      x1, sp, #0x40
+0x186DE0488   add      x2, sp, #0x3c
+0x186DE048C   mov      x0, x20
+0x186DE0490   bl       _CGSGetRegionData
+0x186DE0494   mov      x22, x0
+0x186DE0498   ldr      w8, [sp, #0x3c]
+0x186DE049C   cmp      w0, #0x0
+0x186DE04A0   csel     w1, w8, wzr, eq
+0x186DE04A4   add      x0, x19, #0x20
+0x186DE04A8   bl       __SLSTransactionEncode_packed64
+0x186DE04AC   cbz      w22, 0x186de04cc
+0x186DE04B0   cbz      x20, 0x186de051c
+0x186DE04B4   mov      x0, x20
+0x186DE04B8   bl       _CGRegionIsEmpty
+0x186DE04BC   mov      x22, x0
+0x186DE04C0   mov      x0, x20
+0x186DE04C4   bl       _CFRetain
+0x186DE04C8   b        0x186de0520
+0x186DE04CC   ldr      x23, [sp, #0x40]
+0x186DE04D0   ldr      w22, [sp, #0x3c]
+0x186DE04D4   ldp      x8, x9, [x19, #0x28]
+0x186DE04D8   add      x8, x8, x22
+0x186DE04DC   cmp      x8, x9
+0x186DE04E0   b.ls     0x186de04f0
+0x186DE04E4   add      x0, x19, #0x20
+0x186DE04E8   mov      x1, x22
+0x186DE04EC   bl       __SLSTransactionEncode_resize
+0x186DE04F0   ldur     x8, [x19, #0x20]
+0x186DE04F4   cbz      x8, 0x186de05ac
+0x186DE04F8   ldr      x9, [x19, #0x28]
+0x186DE04FC   add      x10, x9, x22
+0x186DE0500   str      x10, [x19, #0x28]
+0x186DE0504   adds     x0, x9, x8
+0x186DE0508   b.eq     0x186de04b0
+0x186DE050C   mov      x1, x23
+0x186DE0510   mov      x2, x22
+0x186DE0514   bl       _memcpy
+0x186DE0518   b        0x186de04b0
+0x186DE051C   mov      w22, #0x1
+0x186DE0520   add      x8, sp, #0x8
+0x186DE0524   adrp     x16, 390134          ; 0x1e61d6000
+0x186DE0528   ldr      x16, [x16, #0xa90]
+0x186DE052C   mov      x17, x8
+0x186DE0530   movk     x17, #0x6ae1, lsl #48
+0x186DE0534   pacda    x16, x17
+0x186DE0538   str      x16, [sp, #0x8]
+0x186DE053C   adrp     x9, 1014             ; 0x1871d6000
+0x186DE0540   ldr      d0, [x9, #0x5c0]
+0x186DE0544   str      d0, [sp, #0x10]
+0x186DE0548   add      x8, x8, #0x10
+0x186DE054C   adrp     x16, 0               ; 0x186de0000
+0x186DE0550   add      x16, x16, #0x5c0     ; ___SLSTransactionSetWindowButtonRegion_block_invoke
+0x186DE0554   pacia    x16, x8
+0x186DE0558   adrp     x8, 391506           ; 0x1e6732000
+0x186DE055C   add      x8, x8, #0x6a8       ; ___block_descriptor_45_e5_v8?0l
+0x186DE0560   stp      x16, x8, [sp, #0x18]
+0x186DE0564   str      w21, [sp, #0x30]
+0x186DE0568   strb     w22, [sp, #0x34]
+0x186DE056C   str      x20, [sp, #0x28]
+0x186DE0570   add      x1, sp, #0x8
+0x186DE0574   mov      x0, x19
+0x186DE0578   bl       __ZL27_SLSTransactionCommitActionP15_SLSTransactionU13block_pointerFvvE
+0x186DE057C   ldur     x8, [x29, #-0x38]
+0x186DE0580   adrp     x9, 390134           ; 0x1e61d6000
+0x186DE0584   ldr      x9, [x9, #0xab0]
+0x186DE0588   ldr      x9, [x9]
+0x186DE058C   cmp      x9, x8
+0x186DE0590   b.ne     0x186de05bc
+0x186DE0594   ldp      x29, x30, [sp, #0x80]
+0x186DE0598   ldp      x20, x19, [sp, #0x70]
+0x186DE059C   ldp      x22, x21, [sp, #0x60]
+0x186DE05A0   ldp      x24, x23, [sp, #0x50]
+0x186DE05A4   add      sp, sp, #0x90
+0x186DE05A8   retab
+0x186DE05AC   ldr      x8, [x19, #0x28]
+0x186DE05B0   add      x8, x8, x22
+0x186DE05B4   str      x8, [x19, #0x28]
+0x186DE05B8   b        0x186de04b0
+0x186DE05BC   bl       ___stack_chk_fail

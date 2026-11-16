@@ -1,0 +1,55 @@
+-[_WMWindow performUpdatesUsingBlock:]:
+0x27CD1F138   pacibsp
+0x27CD1F13C   stp      x22, x21, [sp, #-0x30]!
+0x27CD1F140   stp      x20, x19, [sp, #0x10]
+0x27CD1F144   stp      x29, x30, [sp, #0x20]
+0x27CD1F148   add      x29, sp, #0x20
+0x27CD1F14C   mov      x19, x0
+0x27CD1F150   ldrb     w20, [x0, #0x8]
+0x27CD1F154   mov      w8, #0x1
+0x27CD1F158   strb     w8, [x0, #0x8]
+0x27CD1F15C   mov      x8, x2
+0x27CD1F160   ldr      x9, [x8, #0x10]!
+0x27CD1F164   mov      x0, x2
+0x27CD1F168   mov      x1, x19
+0x27CD1F16C   blraa    x9, x8
+0x27CD1F170   strb     w20, [x19, #0x8]
+0x27CD1F174   tbnz     w20, #0x0, 0x27cd1f200
+0x27CD1F178   ldr      x20, [x19, #0x10]
+0x27CD1F17C   cbz      x20, 0x27cd1f1a4
+0x27CD1F180   str      xzr, [x19, #0x10]
+0x27CD1F184   add      x0, x19, #0x30
+0x27CD1F188   bl       "-[_WMWindowTilingState initWithTilingPosition:untiledFrame:normalizedSize:]"
+0x27CD1F18C   mov      x21, x0
+0x27CD1F190   mov      x2, x19
+0x27CD1F194   mov      x3, x20
+0x27CD1F198   bl       "_objc_msgSend$window:didUpdateWithChangedProperties:"
+0x27CD1F19C   mov      x0, x21
+0x27CD1F1A0   bl       "-[_WMWindowTilingState initWithTilingPosition:untiledFrame:normalizedSize:]"
+0x27CD1F1A4   ldr      x20, [x19, #0x18]
+0x27CD1F1A8   cbz      x20, 0x27cd1f200
+0x27CD1F1AC   str      xzr, [x19, #0x18]
+0x27CD1F1B0   add      x0, x19, #0x30
+0x27CD1F1B4   bl       "-[_WMWindowTilingState initWithTilingPosition:untiledFrame:normalizedSize:]"
+0x27CD1F1B8   mov      x21, x0
+0x27CD1F1BC   adrp     x8, -528788          ; 0x1fbb8b000
+0x27CD1F1C0   add      x1, x8, #0x82c
+0x27CD1F1C4   bl       "-[_WMWindowTilingState initWithTilingPosition:untiledFrame:normalizedSize:]"
+0x27CD1F1C8   tbz      w0, #0x0, 0x27cd1f1dc
+0x27CD1F1CC   mov      x0, x21
+0x27CD1F1D0   mov      x2, x19
+0x27CD1F1D4   mov      x3, x20
+0x27CD1F1D8   bl       "_objc_msgSend$window:didUpdateWithChangedServerProperties:"
+0x27CD1F1DC   mov      x0, x21
+0x27CD1F1E0   ldp      x29, x30, [sp, #0x20]
+0x27CD1F1E4   ldp      x20, x19, [sp, #0x10]
+0x27CD1F1E8   ldp      x22, x21, [sp], #0x30
+0x27CD1F1EC   autibsp
+0x27CD1F1F0   eor      x16, x30, x30, lsl #1
+0x27CD1F1F4   tbz      x16, #0x3e, 0x27cd1f1fc
+0x27CD1F1F8   brk      #0xc471
+0x27CD1F1FC   b        "-[_WMWindowTilingState initWithTilingPosition:untiledFrame:normalizedSize:]"
+0x27CD1F200   ldp      x29, x30, [sp, #0x20]
+0x27CD1F204   ldp      x20, x19, [sp, #0x10]
+0x27CD1F208   ldp      x22, x21, [sp], #0x30
+0x27CD1F20C   retab

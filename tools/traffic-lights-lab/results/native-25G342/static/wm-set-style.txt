@@ -1,0 +1,32 @@
+-[_WMWindow setStyleMask:]:
+0x27CD1DCFC   ldr      x8, [x0, #0x98]
+0x27CD1DD00   cmp      x8, x2
+0x27CD1DD04   b.eq     0x27cd1dd74
+0x27CD1DD08   pacibsp
+0x27CD1DD0C   sub      sp, sp, #0x40
+0x27CD1DD10   stp      x29, x30, [sp, #0x30]
+0x27CD1DD14   add      x29, sp, #0x30
+0x27CD1DD18   mov      x8, sp
+0x27CD1DD1C   adrp     x16, 76487           ; 0x28f7e4000
+0x27CD1DD20   ldr      x16, [x16, #0x828]
+0x27CD1DD24   mov      x17, x8
+0x27CD1DD28   movk     x17, #0x6ae1, lsl #48
+0x27CD1DD2C   pacda    x16, x17
+0x27CD1DD30   str      x16, [sp]
+0x27CD1DD34   adrp     x9, 15               ; 0x27cd2c000
+0x27CD1DD38   ldr      d0, [x9, #0x848]
+0x27CD1DD3C   str      d0, [sp, #0x8]
+0x27CD1DD40   add      x8, x8, #0x10
+0x27CD1DD44   adrp     x9, 138372           ; 0x29e9a1000
+0x27CD1DD48   add      x9, x9, #0x960       ; ___block_descriptor_48_e8_32s_e19_v16?0"_WMWindow"8l
+0x27CD1DD4C   adrp     x16, 0               ; 0x27cd1d000
+0x27CD1DD50   add      x16, x16, #0xd78     ; ___26-[_WMWindow setStyleMask:]_block_invoke
+0x27CD1DD54   pacia    x16, x8
+0x27CD1DD58   stp      x16, x9, [sp, #0x10]
+0x27CD1DD5C   stp      x0, x2, [sp, #0x20]
+0x27CD1DD60   mov      x2, sp
+0x27CD1DD64   bl       "_objc_msgSend$performUpdatesUsingBlock:"
+0x27CD1DD68   ldp      x29, x30, [sp, #0x30]
+0x27CD1DD6C   add      sp, sp, #0x40
+0x27CD1DD70   autibsp
+0x27CD1DD74   ret

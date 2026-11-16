@@ -1,0 +1,10 @@
+[
+  {
+    "key": "NSWindowShouldCacheStandardWindowButton",
+    "method": "-[NSWindow standardWindowButton:]:",
+    "reference": [
+      "0x184AA3E2C   adrp     x0, 434088           ; 0x1eea4b000",
+      "0x184AA3E30   add      x0, x0, #0xc8        "
+    ]
+  }
+]

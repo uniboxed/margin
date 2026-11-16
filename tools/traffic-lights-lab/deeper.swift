@@ -3,6 +3,7 @@ import AppKit
 import ApplicationServices
 import ImageIO
 import Darwin
+import ObjectiveC.runtime
 
 @_silgen_name("margin_wire_clip") private func wireClip(_ connection: UInt32, _ window: UInt32, _ region: UnsafeMutableRawPointer) -> Int32
 
@@ -10,7 +11,7 @@ setbuf(stdout, nil)
 let args = CommandLine.arguments
 func emit(_ row: [String: Any]) { print(String(decoding: try! JSONSerialization.data(withJSONObject: row, options: .sortedKeys), as: UTF8.self)) }
 guard args.contains("--run") || args.contains("--child") else {
-    emit(["plan": "One visible owned child window: private AX bundle-load request; owned and foreign clipping (transaction by default, --wire for exact-build raw global-clip message); saved native state/pixels; close child. No browser, user window or system setting changed."]); exit(0)
+    emit(["plan": "One visible owned child window. Default: AX bundle request and owner/foreign clipping (--wire selects direct message). --buttons instead tests private button-region metadata with owner/foreign empty/sentinel regions, native-hide pixel positive control, window rights/proxy readback, restoration and cleanup. Add --proxy-clips for matched owner/foreign local/global clips with a retained foreign proxy and verified restoration. No browser, user window or system setting changed."]); exit(0)
 }
 var buildSize = 0; sysctlbyname("kern.osversion", nil, &buildSize, nil, 0)
 var build = [CChar](repeating: 0, count: buildSize); sysctlbyname("kern.osversion", &build, &buildSize, nil, 0)
@@ -32,6 +33,38 @@ typealias Create = @convention(c) (UInt32) -> Unmanaged<CFTypeRef>?
 typealias GlobalClip = @convention(c) (CFTypeRef, UInt32, UnsafeMutableRawPointer) -> Void
 typealias Commit = @convention(c) (CFTypeRef, Int32) -> Void
 let cid = fn(sky, "SLSMainConnectionID", Main.self)()
+typealias LegacyButtons = @convention(c) (UInt32) -> UnsafeMutableRawPointer?
+typealias EmptyRegion = @convention(c) () -> UnsafeMutableRawPointer?
+typealias CopyRegion = @convention(c) (UnsafeMutableRawPointer) -> UnsafeMutableRawPointer?
+var keptProxies: [UInt32: AnyObject] = [:]
+func buttonMetadata(_ wid: UInt32) -> [String: Any] {
+    guard let region = fn(sky, "SLSGetButtonRegionLegacy", LegacyButtons.self)(wid) else { return ["present": false] }
+    typealias RegionBounds = @convention(c) (UnsafeMutableRawPointer, UnsafeMutablePointer<CGRect>) -> Int32
+    var rect = CGRect.zero
+    let result = fn(cg, "CGSGetRegionBounds", RegionBounds.self)(region, &rect)
+    return ["present": true, "boundsResult": result, "bounds": NSStringFromRect(rect)]
+}
+func windowRights(_ wid: UInt32) -> [String: Any] {
+    typealias Rights = @convention(c) (UInt32, UInt32, UnsafeMutablePointer<UInt32>, UnsafeMutablePointer<UInt32>, UnsafeMutablePointer<UInt32>) -> Int32
+    var a: UInt32 = 0, b: UInt32 = 0, c: UInt32 = 0
+    let result = fn(sky, "SLSConnectionGetHeldWindowRights", Rights.self)(cid, wid, &a, &b, &c)
+    return ["result": result, "rawOutputs": [a, b, c]]
+}
+func proxy(_ wid: UInt32) -> [String: Any] {
+    guard let cls = NSClassFromString("NSCGSWindow"), let method = class_getClassMethod(cls, NSSelectorFromString("windowWithWindowID:")) else { return ["available": false] }
+    let encoding = String(cString: method_getTypeEncoding(method)!)
+    guard encoding == "@20@0:8I16" else { return ["available": true, "encoding": encoding, "refusedABI": true] }
+    typealias Lookup = @convention(c) (AnyObject, Selector, UInt32) -> Unmanaged<AnyObject>?
+    let object = unsafeBitCast(method_getImplementation(method), to: Lookup.self)(cls as AnyObject, NSSelectorFromString("windowWithWindowID:"), wid)?.takeUnretainedValue()
+    if let object { keptProxies[wid] = object }
+    return ["available": true, "encoding": encoding, "created": object != nil]
+}
+func setButtons(_ wid: UInt32, region: UnsafeMutableRawPointer?) {
+    typealias Set = @convention(c) (CFTypeRef, UInt32, UnsafeMutableRawPointer?) -> Void
+    guard let transaction = fn(sky, "SLSTransactionCreate", Create.self)(cid)?.takeRetainedValue() else { exit(2) }
+    fn(sky, "SLSTransactionSetWindowButtonRegion", Set.self)(transaction, wid, region)
+    fn(sky, "SLSTransactionCommit", Commit.self)(transaction, 1)
+}
 func apply(_ wid: UInt32, _ rect: CGRect) {
     var rect = rect, region: UnsafeMutableRawPointer?
     guard fn(cg, "CGSNewRegionWithRect", NewRegion.self)(&rect, &region) == 0, let region,
@@ -65,6 +98,14 @@ if args.contains("--child") {
     window.contentView!.addSubview(label)
     window.makeKeyAndOrderFront(nil); NSApplication.shared.activate()
     let wid = UInt32(window.windowNumber)
+    var originalButtons: UnsafeMutableRawPointer?
+    typealias CopyClip = @convention(c) (UInt32, UInt32, UnsafeMutablePointer<UnsafeMutableRawPointer?>) -> Int32
+    typealias ClientClip = @convention(c) (UInt32, UInt32, UnsafeMutableRawPointer?) -> Int32
+    var originalClip: UnsafeMutableRawPointer?
+    if args.contains("--buttons") {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        if let value = fn(sky, "SLSGetButtonRegionLegacy", LegacyButtons.self)(wid) { originalButtons = fn(cg, "CGRegionCreateCopy", CopyRegion.self)(value) }
+    }
     typealias Bounds = @convention(c) (UInt32, UInt32, UnsafeMutablePointer<CGRect>) -> Int32
     var bounds = CGRect.zero
     let geometryDeadline = Date().addingTimeInterval(2)
@@ -78,13 +119,30 @@ if args.contains("--child") {
         saveJSON(["refused": "positive native geometry did not agree", "privateBounds": NSStringFromRect(bounds), "appKit": NSStringFromRect(window.frame)], directory.appendingPathComponent("ready.json"))
         window.close(); exit(2)
     }
+    if args.contains("--proxy-clips") {
+        typealias RegionBounds = @convention(c) (UnsafeMutableRawPointer, UnsafeMutablePointer<CGRect>) -> Int32
+        let deadline = Date().addingTimeInterval(2)
+        var valid = false
+        repeat {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            if let previous = originalClip { fn(cg, "CGRegionRelease", Release.self)(previous) }; originalClip = nil
+            if fn(sky, "SLSCopyWindowClipShape", CopyClip.self)(cid, wid, &originalClip) == 0, let clip = originalClip {
+                var rect = CGRect.zero
+                valid = fn(cg, "CGSGetRegionBounds", RegionBounds.self)(clip, &rect) == 0 && rect.width > 0 && rect.height > 0 &&
+                    abs(rect.width - bounds.width) < 1 && abs(rect.height - bounds.height) < 1
+            }
+        } while !valid && Date() < deadline
+        guard valid else { emit(["refused": "saved clip did not match settled full window"]); window.close(); exit(2) }
+    }
     func snapshot() -> [String: Any] {
         let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].map { type -> [String: Any] in
             let b = window.standardWindowButton(type)!
-            return ["type": type.rawValue, "hidden": b.isHiddenOrHasHiddenAncestor, "alpha": b.alphaValue, "enabled": b.isEnabled]
+            return ["type": type.rawValue, "hidden": b.isHiddenOrHasHiddenAncestor, "alpha": b.alphaValue, "enabled": b.isEnabled,
+                    "hit": b.superview?.hitTest(NSPoint(x: b.frame.midX, y: b.frame.midY)) === b]
         }
         return ["window": wid, "pid": getpid(), "bounds": [bounds.minX, bounds.minY, bounds.width, bounds.height],
                 "windowed": !window.styleMask.contains(.fullScreen), "buttons": buttons,
+                "buttonRegion": buttonMetadata(wid), "windowRights": windowRights(wid),
                 "bundles": (Bundle.allBundles + Bundle.allFrameworks).compactMap { $0.bundleIdentifier }.sorted()]
     }
     saveJSON(snapshot(), directory.appendingPathComponent("ready.json"))
@@ -94,6 +152,32 @@ if args.contains("--child") {
         let request = directory.appendingPathComponent("request.json")
         guard let data = try? Data(contentsOf: request), let command = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let name = command["name"] as? String else { continue }
         try? FileManager.default.removeItem(at: request)
+        if name == "buttons-empty", let empty = fn(cg, "CGRegionCreateEmptyRegion", EmptyRegion.self)() {
+            setButtons(wid, region: empty); fn(cg, "CGRegionRelease", Release.self)(empty)
+        }
+        if name == "buttons-sentinel" {
+            var rect = CGRect(x: 0, y: 0, width: 4, height: 4), region: UnsafeMutableRawPointer?
+            guard fn(cg, "CGSNewRegionWithRect", NewRegion.self)(&rect, &region) == 0, let region else { exit(2) }
+            setButtons(wid, region: region); fn(cg, "CGRegionRelease", Release.self)(region)
+        }
+        if name == "buttons-restore" { setButtons(wid, region: originalButtons) }
+        if name == "client-clip" {
+            var rect = CGRect(x: 0, y: 50, width: window.frame.width, height: window.frame.height - 50), region: UnsafeMutableRawPointer?
+            guard fn(cg, "CGSNewRegionWithRect", NewRegion.self)(&rect, &region) == 0, let region else { exit(2) }
+            emit(["ownerClientClip": fn(sky, "SLSSetWindowClipShape", ClientClip.self)(cid, wid, region)])
+            fn(cg, "CGRegionRelease", Release.self)(region)
+        }
+        if name == "client-restore" { emit(["ownerClientRestore": fn(sky, "SLSSetWindowClipShape", ClientClip.self)(cid, wid, originalClip)]) }
+        if name == "native-hide" || name == "native-restore" {
+            let selector = NSSelectorFromString("_setHidden:setNeedsDisplay:")
+            typealias Hide = @convention(c) (AnyObject, Selector, Bool, Bool) -> Void
+            for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                let button = window.standardWindowButton(kind)!
+                guard let method = class_getInstanceMethod(type(of: button), selector), String(cString: method_getTypeEncoding(method)!) == "v24@0:8B16B20" else { exit(2) }
+                unsafeBitCast(method_getImplementation(method), to: Hide.self)(button, selector, name == "native-hide", true)
+            }
+        }
+        if name == "proxy" { emit(["ownerProxy": proxy(wid)]) }
         if name == "owner-global" { apply(wid, bounds.insetBy(dx: 0, dy: bounds.height / 4)) }
         if name == "owner-local" { apply(wid, CGRect(x: 0, y: bounds.height / 4, width: bounds.width, height: bounds.height / 2)) }
         if name == "owner-full" { apply(wid, bounds) }
@@ -112,7 +196,7 @@ try FileManager.default.createDirectory(at: directory, withIntermediateDirectori
 let former = NSWorkspace.shared.frontmostApplication?.processIdentifier
 let child = Process()
 child.executableURL = URL(fileURLWithPath: args[0]).standardizedFileURL
-child.arguments = ["--child", "--output", directory.path] + (args.contains("--wire") ? ["--wire"] : [])
+child.arguments = ["--child", "--output", directory.path] + ["--wire", "--buttons", "--proxy-clips"].filter { args.contains($0) }
 try child.run()
 func finish(_ code: Int32) -> Never {
     if child.isRunning { child.terminate(); child.waitUntilExit() }
@@ -157,6 +241,44 @@ func observe(_ name: String) -> [String: Any] {
     return row
 }
 _ = observe("baseline")
+if args.contains("--buttons") {
+    emit(["foreignRights": windowRights(wid), "foreignProxy": proxy(wid)])
+    emit(["foreignRightsAfterRetainedProxy": windowRights(wid)])
+    _ = request("proxy")
+    for name in ["buttons-empty", "buttons-restore", "buttons-sentinel", "buttons-restore"] {
+        _ = request(name); _ = observe("owner-" + name + (name == "buttons-restore" ? "-\(UUID().uuidString)" : ""))
+    }
+    if let empty = fn(cg, "CGRegionCreateEmptyRegion", EmptyRegion.self)() {
+        setButtons(wid, region: empty); _ = observe("foreign-buttons-empty")
+        fn(cg, "CGRegionRelease", Release.self)(empty)
+    }
+    var rect = CGRect(x: 0, y: 0, width: 4, height: 4), sentinel: UnsafeMutableRawPointer?
+    guard fn(cg, "CGSNewRegionWithRect", NewRegion.self)(&rect, &sentinel) == 0, let sentinel else { finish(2) }
+    setButtons(wid, region: sentinel); _ = observe("foreign-buttons-sentinel")
+    fn(cg, "CGRegionRelease", Release.self)(sentinel)
+    _ = request("buttons-restore"); _ = observe("restored-buttons")
+    if args.contains("--proxy-clips") {
+        _ = request("client-clip"); _ = observe("owner-client-clip")
+        _ = request("client-restore"); let restored = observe("owner-client-restored")["image"] as! [String: Int]
+        guard restored["width"] == Int(bounds.width) && restored["height"] == Int(bounds.height) && restored["transparentSamples"] == 0 else { emit(["refused": "owner restore failed; no foreign clipping attempted"]); finish(2) }
+        typealias ClientClip = @convention(c) (UInt32, UInt32, UnsafeMutableRawPointer?) -> Int32
+        var local = CGRect(x: 0, y: 50, width: bounds.width, height: bounds.height - 50), region: UnsafeMutableRawPointer?
+        guard fn(cg, "CGSNewRegionWithRect", NewRegion.self)(&local, &region) == 0, let region else { finish(2) }
+        emit(["foreignClientClipAfterProxy": fn(sky, "SLSSetWindowClipShape", ClientClip.self)(cid, wid, region)])
+        _ = observe("foreign-client-clip-after-proxy")
+        fn(cg, "CGRegionRelease", Release.self)(region)
+        _ = request("client-restore"); _ = observe("foreign-client-restored")
+        _ = request("owner-region", rect: bounds.insetBy(dx: 0, dy: bounds.height / 4)); _ = observe("owner-global-control-after-proxy")
+        _ = request("owner-region", rect: CGRect(x: -10000, y: -10000, width: 20000, height: 20000)); _ = observe("owner-global-control-restored")
+        apply(wid, bounds.insetBy(dx: 0, dy: bounds.height / 4))
+        _ = observe("foreign-global-clip-after-proxy")
+        _ = request("owner-region", rect: CGRect(x: -10000, y: -10000, width: 20000, height: 20000))
+        _ = request("client-restore"); _ = observe("foreign-global-restored")
+    }
+    _ = request("native-hide"); _ = observe("native-hidden-control")
+    _ = request("native-restore"); _ = observe("native-restored-control")
+    _ = request("quit"); child.waitUntilExit(); finish(child.terminationStatus)
+}
 typealias LoadAX = @convention(c) (AXUIElement) -> Int32
 let application = AXUIElementCreateApplication(child.processIdentifier)
 AXUIElementSetMessagingTimeout(application, 0.5)

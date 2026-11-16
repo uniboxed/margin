@@ -1,0 +1,39 @@
+-[NSCGSWindow(NSCGSWindowPackageShapes) setButtonShape:]:
+0x185996800   pacibsp
+0x185996804   sub      sp, sp, #0x60
+0x185996808   stp      x22, x21, [sp, #0x30]
+0x18599680C   stp      x20, x19, [sp, #0x40]
+0x185996810   stp      x29, x30, [sp, #0x50]
+0x185996814   add      x29, sp, #0x50
+0x185996818   mov      x19, x2
+0x18599681C   mov      x20, x0
+0x185996820   adrp     x21, 423442          ; 0x1ecfa8000
+0x185996824   add      x21, x21, #0x108     ; __transactionLock
+0x185996828   mov      x0, x21
+0x18599682C   bl       _pthread_mutex_lock
+0x185996830   ldr      x0, [x20, #0xb0]
+0x185996834   bl       _CGRegionRelease
+0x185996838   mov      x0, x20
+0x18599683C   bl       _objc_msgSend$size
+0x185996840   stp      xzr, xzr, [sp, #0x8]
+0x185996844   mov      x8, #0x3ff0000000000000
+0x185996848   str      x8, [sp]
+0x18599684C   adrp     x8, 555              ; 0x185bc1000
+0x185996850   ldr      q0, [x8, #0xc70]
+0x185996854   stur     q0, [sp, #0x18]
+0x185996858   str      d1, [sp, #0x28]
+0x18599685C   mov      x1, sp
+0x185996860   mov      x0, x19
+0x185996864   mov      w2, #0x1
+0x185996868   bl       _CGRegionCreateByTransformingRegion
+0x18599686C   str      x0, [x20, #0xb0]
+0x185996870   mov      x0, x20
+0x185996874   mov      w1, #0x800
+0x185996878   bl       _NSCGSWindowMarkProperty_
+0x18599687C   mov      x0, x21
+0x185996880   bl       _pthread_mutex_unlock
+0x185996884   ldp      x29, x30, [sp, #0x50]
+0x185996888   ldp      x20, x19, [sp, #0x40]
+0x18599688C   ldp      x22, x21, [sp, #0x30]
+0x185996890   add      sp, sp, #0x60
+0x185996894   retab

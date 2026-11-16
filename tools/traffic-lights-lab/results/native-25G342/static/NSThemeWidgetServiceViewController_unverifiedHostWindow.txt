@@ -1,0 +1,81 @@
+-[NSThemeWidgetServiceViewController unverifiedHostWindow]:
+0x100003038   pacibsp
+0x10000303C   sub      sp, sp, #0x40
+0x100003040   stp      x20, x19, [sp, #0x20]
+0x100003044   stp      x29, x30, [sp, #0x30]
+0x100003048   add      x29, sp, #0x30
+0x10000304C   adrp     x8, 25               ; 0x10001c000
+0x100003050   ldr      x8, [x8, #0x238]     ; ___stack_chk_guard@got
+0x100003054   ldr      x8, [x8]
+0x100003058   str      x8, [sp, #0x18]
+0x10000305C   bl       _objc_msgSend$bridge
+0x100003060   mov      x29, x29
+0x100003064   bl       _objc_retainAutoreleasedReturnValue
+0x100003068   mov      x20, x0
+0x10000306C   adrp     x2, 25               ; 0x10001c000
+0x100003070   add      x2, x2, #0xbe0       ; @"HostWindow"
+0x100003074   bl       "_objc_msgSend$objectForKey:"
+0x100003078   mov      x29, x29
+0x10000307C   bl       _objc_retainAutoreleasedReturnValue
+0x100003080   mov      x19, x0
+0x100003084   mov      x0, x20
+0x100003088   bl       _objc_release
+0x10000308C   cbz      x19, 0x1000030bc
+0x100003090   adrp     x8, 25               ; 0x10001c000
+0x100003094   ldr      x0, [x8, #0x210]     ; _OBJC_CLASS_$_NSNumber@got
+0x100003098   bl       _objc_opt_class
+0x10000309C   mov      x1, x0
+0x1000030A0   mov      x0, x19
+0x1000030A4   bl       _objc_opt_isKindOfClass
+0x1000030A8   tbz      w0, #0x0, 0x1000030bc
+0x1000030AC   mov      x0, x19
+0x1000030B0   bl       _objc_msgSend$unsignedIntValue
+0x1000030B4   mov      x20, x0
+0x1000030B8   b        0x100003118
+0x1000030BC   bl       0x1000023a8
+0x1000030C0   mov      x29, x29
+0x1000030C4   bl       _objc_retainAutoreleasedReturnValue
+0x1000030C8   mov      x20, x0
+0x1000030CC   mov      w1, #0x10
+0x1000030D0   bl       _os_log_type_enabled
+0x1000030D4   cbz      w0, 0x10000310c
+0x1000030D8   adrp     x8, 17               ; 0x100014000
+0x1000030DC   ldr      d0, [x8, #0xdf0]
+0x1000030E0   str      s0, [sp]
+0x1000030E4   stur     x19, [sp, #0x4]
+0x1000030E8   adrp     x0, -3               ; 0x100000000
+0x1000030EC   add      x0, x0, #0x0         ; __mh_execute_header
+0x1000030F0   adrp     x3, 22               ; 0x100019000
+0x1000030F4   add      x3, x3, #0x50f
+0x1000030F8   mov      x4, sp
+0x1000030FC   mov      x1, x20
+0x100003100   mov      w2, #0x10
+0x100003104   mov      w5, #0xc
+0x100003108   bl       __os_log_impl
+0x10000310C   mov      x0, x20
+0x100003110   bl       _objc_release
+0x100003114   mov      w20, #0x0
+0x100003118   mov      x0, x19
+0x10000311C   bl       _objc_release
+0x100003120   ldr      x8, [sp, #0x18]
+0x100003124   adrp     x9, 25               ; 0x10001c000
+0x100003128   ldr      x9, [x9, #0x238]     ; ___stack_chk_guard@got
+0x10000312C   ldr      x9, [x9]
+0x100003130   cmp      x9, x8
+0x100003134   b.ne     0x10000314c
+0x100003138   mov      x0, x20
+0x10000313C   ldp      x29, x30, [sp, #0x30]
+0x100003140   ldp      x20, x19, [sp, #0x20]
+0x100003144   add      sp, sp, #0x40
+0x100003148   retab
+0x10000314C   bl       ___stack_chk_fail
+0x100003150   b        0x10000315c
+0x100003154   mov      x19, x20
+0x100003158   b        0x10000315c
+0x10000315C   mov      x20, x0
+0x100003160   mov      x0, x19
+0x100003164   bl       _objc_release
+0x100003168   b        0x100003170
+0x10000316C   mov      x20, x0
+0x100003170   mov      x0, x20
+0x100003174   bl       __Unwind_Resume

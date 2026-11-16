@@ -1,0 +1,11 @@
+{
+  "chromium": {
+    "path": "/Users/patelti4/Library/Caches/ms-playwright/chromium-1254/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "exists": false
+  },
+  "webkit": {
+    "path": "/Users/patelti4/Library/Caches/ms-playwright/webkit-2388/pw_run.sh",
+    "exists": false
+  },
+  "preinstalled": false
+}

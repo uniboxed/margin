@@ -1,0 +1,17 @@
+[
+  {
+    "case": "failed-owner-restoration",
+    "verifierExit": 1,
+    "rejected": true
+  },
+  {
+    "case": "false-native-state",
+    "verifierExit": 1,
+    "rejected": true
+  },
+  {
+    "case": "missing-rendering-positive-control",
+    "verifierExit": 1,
+    "rejected": true
+  }
+]

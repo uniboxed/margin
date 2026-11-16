@@ -1,0 +1,82 @@
+___64-[_WMWindow(ServerDrivenProperties) applyAgentPropertySnapshot:]_block_invoke:
+0x27CD1F924   pacibsp
+0x27CD1F928   stp      x20, x19, [sp, #-0x20]!
+0x27CD1F92C   stp      x29, x30, [sp, #0x10]
+0x27CD1F930   add      x29, sp, #0x10
+0x27CD1F934   mov      x19, x1
+0x27CD1F938   mov      x20, x0
+0x27CD1F93C   mov      x0, x1
+0x27CD1F940   bl       "-[_WMWindowTilingState initWithTilingPosition:untiledFrame:normalizedSize:]"
+0x27CD1F944   ldr      x0, [x20, #0x20]
+0x27CD1F948   bl       _objc_msgSend$validProperties
+0x27CD1F94C   tbnz     w0, #0x0, 0x27cd1f9a0
+0x27CD1F950   ldr      x0, [x20, #0x20]
+0x27CD1F954   bl       _objc_msgSend$validProperties
+0x27CD1F958   tbnz     w0, #0x1, 0x27cd1f9c0
+0x27CD1F95C   ldr      x0, [x20, #0x20]
+0x27CD1F960   bl       _objc_msgSend$validProperties
+0x27CD1F964   tbnz     w0, #0x3, 0x27cd1f9e0
+0x27CD1F968   ldr      x0, [x20, #0x20]
+0x27CD1F96C   bl       _objc_msgSend$validProperties
+0x27CD1F970   tbnz     w0, #0x4, 0x27cd1fa00
+0x27CD1F974   ldr      x0, [x20, #0x20]
+0x27CD1F978   bl       _objc_msgSend$validProperties
+0x27CD1F97C   tbnz     w0, #0x2, 0x27cd1fa20
+0x27CD1F980   mov      x0, x19
+0x27CD1F984   ldp      x29, x30, [sp, #0x10]
+0x27CD1F988   ldp      x20, x19, [sp], #0x20
+0x27CD1F98C   autibsp
+0x27CD1F990   eor      x16, x30, x30, lsl #1
+0x27CD1F994   tbz      x16, #0x3e, 0x27cd1f99c
+0x27CD1F998   brk      #0xc471
+0x27CD1F99C   b        "-[_WMWindowTilingState initWithTilingPosition:untiledFrame:normalizedSize:]"
+0x27CD1F9A0   ldr      x0, [x20, #0x20]
+0x27CD1F9A4   bl       _objc_msgSend$isInUserWindowSet
+0x27CD1F9A8   mov      x2, x0
+0x27CD1F9AC   mov      x0, x19
+0x27CD1F9B0   bl       "_objc_msgSend$setInUserWindowSet:"
+0x27CD1F9B4   ldr      x0, [x20, #0x20]
+0x27CD1F9B8   bl       _objc_msgSend$validProperties
+0x27CD1F9BC   tbz      w0, #0x1, 0x27cd1f95c
+0x27CD1F9C0   ldr      x0, [x20, #0x20]
+0x27CD1F9C4   bl       _objc_msgSend$isMostlyOccluded
+0x27CD1F9C8   mov      x2, x0
+0x27CD1F9CC   mov      x0, x19
+0x27CD1F9D0   bl       "_objc_msgSend$setMostlyOccluded:"
+0x27CD1F9D4   ldr      x0, [x20, #0x20]
+0x27CD1F9D8   bl       _objc_msgSend$validProperties
+0x27CD1F9DC   tbz      w0, #0x3, 0x27cd1f968
+0x27CD1F9E0   ldr      x0, [x20, #0x20]
+0x27CD1F9E4   bl       _objc_msgSend$isInAgentLiveResize
+0x27CD1F9E8   mov      x2, x0
+0x27CD1F9EC   mov      x0, x19
+0x27CD1F9F0   bl       "_objc_msgSend$setInAgentLiveResize:"
+0x27CD1F9F4   ldr      x0, [x20, #0x20]
+0x27CD1F9F8   bl       _objc_msgSend$validProperties
+0x27CD1F9FC   tbz      w0, #0x4, 0x27cd1f974
+0x27CD1FA00   ldr      x0, [x20, #0x20]
+0x27CD1FA04   bl       _objc_msgSend$disableSnapshotRestoration
+0x27CD1FA08   mov      x2, x0
+0x27CD1FA0C   mov      x0, x19
+0x27CD1FA10   bl       "_objc_msgSend$setDisableSnapshotRestoration:"
+0x27CD1FA14   ldr      x0, [x20, #0x20]
+0x27CD1FA18   bl       _objc_msgSend$validProperties
+0x27CD1FA1C   tbz      w0, #0x2, 0x27cd1f980
+0x27CD1FA20   ldr      x0, [x20, #0x20]
+0x27CD1FA24   bl       _objc_msgSend$tilingState
+0x27CD1FA28   mov      x29, x29
+0x27CD1FA2C   bl       "-[_WMWindowTilingState initWithTilingPosition:untiledFrame:normalizedSize:]"
+0x27CD1FA30   mov      x20, x0
+0x27CD1FA34   mov      x0, x19
+0x27CD1FA38   mov      x2, x20
+0x27CD1FA3C   bl       "_objc_msgSend$setTilingState:"
+0x27CD1FA40   mov      x0, x20
+0x27CD1FA44   bl       "-[_WMWindowTilingState initWithTilingPosition:untiledFrame:normalizedSize:]"
+0x27CD1FA48   mov      x0, x19
+0x27CD1FA4C   ldp      x29, x30, [sp, #0x10]
+0x27CD1FA50   ldp      x20, x19, [sp], #0x20
+0x27CD1FA54   autibsp
+0x27CD1FA58   eor      x16, x30, x30, lsl #1
+0x27CD1FA5C   tbz      x16, #0x3e, 0x27cd1fa64
+0x27CD1FA60   brk      #0xc471
+0x27CD1FA64   b        "-[_WMWindowTilingState initWithTilingPosition:untiledFrame:normalizedSize:]"

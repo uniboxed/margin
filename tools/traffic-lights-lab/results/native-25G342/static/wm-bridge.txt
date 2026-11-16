@@ -1,0 +1,2 @@
+-[NSWMWindowCoordinator performWindowManagementBridgeTransactionUsingBlock:]:
+0x185911BA4   b        "_objc_msgSend$performTransactionUsingBlock:"

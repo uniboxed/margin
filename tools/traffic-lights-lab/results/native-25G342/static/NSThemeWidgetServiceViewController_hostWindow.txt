@@ -1,0 +1,60 @@
+-[NSThemeWidgetServiceViewController hostWindow]:
+0x10000322C   pacibsp
+0x100003230   sub      sp, sp, #0x40
+0x100003234   stp      x22, x21, [sp, #0x10]
+0x100003238   stp      x20, x19, [sp, #0x20]
+0x10000323C   stp      x29, x30, [sp, #0x30]
+0x100003240   add      x29, sp, #0x30
+0x100003244   adrp     x8, 25               ; 0x10001c000
+0x100003248   ldr      x8, [x8, #0x238]     ; ___stack_chk_guard@got
+0x10000324C   ldr      x8, [x8]
+0x100003250   str      x8, [sp, #0x8]
+0x100003254   adrp     x8, 30               ; 0x100021000
+0x100003258   ldrsw    x21, [x8, #0x2ec]
+0x10000325C   ldr      w19, [x0, x21]
+0x100003260   cbnz     w19, 0x1000032e4
+0x100003264   mov      x20, x0
+0x100003268   bl       _objc_msgSend$unverifiedHostWindow
+0x10000326C   mov      x19, x0
+0x100003270   mov      x0, x20
+0x100003274   mov      x2, x19
+0x100003278   bl       "_objc_msgSend$hostAppOwnsWindow:"
+0x10000327C   tbz      w0, #0x0, 0x100003288
+0x100003280   str      w19, [x20, x21]
+0x100003284   b        0x1000032e4
+0x100003288   bl       0x1000023a8
+0x10000328C   mov      x29, x29
+0x100003290   bl       _objc_retainAutoreleasedReturnValue
+0x100003294   mov      x20, x0
+0x100003298   mov      w1, #0x10
+0x10000329C   bl       _os_log_type_enabled
+0x1000032A0   cbz      w0, 0x1000032d8
+0x1000032A4   adrp     x8, 17               ; 0x100014000
+0x1000032A8   ldr      d0, [x8, #0xdf8]
+0x1000032AC   str      s0, [sp]
+0x1000032B0   str      w19, [sp, #0x4]
+0x1000032B4   adrp     x0, -3               ; 0x100000000
+0x1000032B8   add      x0, x0, #0x0         ; __mh_execute_header
+0x1000032BC   adrp     x3, 22               ; 0x100019000
+0x1000032C0   add      x3, x3, #0x543
+0x1000032C4   mov      x4, sp
+0x1000032C8   mov      x1, x20
+0x1000032CC   mov      w2, #0x10
+0x1000032D0   mov      w5, #0x8
+0x1000032D4   bl       __os_log_impl
+0x1000032D8   mov      x0, x20
+0x1000032DC   bl       _objc_release
+0x1000032E0   mov      w19, #0x0
+0x1000032E4   ldr      x8, [sp, #0x8]
+0x1000032E8   adrp     x9, 25               ; 0x10001c000
+0x1000032EC   ldr      x9, [x9, #0x238]     ; ___stack_chk_guard@got
+0x1000032F0   ldr      x9, [x9]
+0x1000032F4   cmp      x9, x8
+0x1000032F8   b.ne     0x100003314
+0x1000032FC   mov      x0, x19
+0x100003300   ldp      x29, x30, [sp, #0x30]
+0x100003304   ldp      x20, x19, [sp, #0x20]
+0x100003308   ldp      x22, x21, [sp, #0x10]
+0x10000330C   add      sp, sp, #0x40
+0x100003310   retab
+0x100003314   bl       ___stack_chk_fail

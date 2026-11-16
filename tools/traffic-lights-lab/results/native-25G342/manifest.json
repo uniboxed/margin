@@ -1,0 +1,72 @@
+{
+  "scope": "Native-only controlled child runtime experiments plus read-only system-image analysis; no protected-app native hide established",
+  "date": "2026-11-16",
+  "build": "25G342",
+  "os": "26.7.3",
+  "uid": 503,
+  "architecture": "arm64",
+  "systemProtection": "SIP enabled; unchanged",
+  "imageUUIDs": {
+    "AppKit-arm64e": "CDEC092C-F409-3277-A8D6-1AFC9BE13C4D",
+    "WindowManagement-arm64e": "FCF06B75-CF92-3B3A-BCB9-A875C33F55D5",
+    "ThemeWidgetControlViewService-arm64e": "530607BD-089D-3DFB-96F5-EBB54D134124"
+  },
+  "service": {
+    "path": "/System/Library/Frameworks/AppKit.framework/Versions/C/XPCServices/ThemeWidgetControlViewService.xpc/Contents/MacOS/ThemeWidgetControlViewService",
+    "sha256": "d8dfbfd2a0fd74aee49053e9d956f9118366faee52f48d1a81d941b57018ba08"
+  },
+  "rawDirectory": "test-results/traffic-lights-native-2026-11-16",
+  "rawManifestSha256": "886a46e4edb8cd560a5b70006e4d28e60d68bb7b15fb34461051a6ec08d11650",
+  "sourceSha256": {
+    "tools/traffic-lights-lab/deeper.swift": "932c46ea56a0964d958e247f887da596ef8c6f181aa7e09437153159ccc3df68",
+    "tools/traffic-lights-lab/native-strings.m": "f059560bad7a16671888da796b7b0cb0926b0b3ff52213dc81a23951d27de0a8",
+    "tools/traffic-lights-lab/verify-native.py": "c3a2c7671e4d354a45dd33dfe2107b56059e47b318fd641c1d88218b10d9927c",
+    "tools/traffic-lights-lab/wire-clip.c": "6cd2c81a47e0065ebd7d49ef93cce9dc79ab8a735957172c82274c33f9304617"
+  },
+  "evidenceSha256": {
+    "README.md": "681055491405b8a05918ada967b230599f19f1111cdf61013dfb2534b6bb3798",
+    "browser-preflight.json": "2e5d782b48bb0d49216ffc7958cafb2d69c13e7affe2f347f95bf8c1af66358a",
+    "buttons-proxy-run-1-compact.json": "c8042f7f58ba1805c018d452bf6be9f211e49b3c123332dfa116cf816881ee25",
+    "buttons-proxy-run-2-compact.json": "b87191ab88cc399fb0394219a1964c7d2e01f3aca1e9c90c0840757c9a2ffc39",
+    "buttons-proxy-run-2-pixels.json": "5e13d0b3d54984e98ace5c9a2c50b60bcbd6c6069c88ecb84ba744c729c77e52",
+    "buttons-run-1-compact.json": "209199bb7922c91a1b719f2f6109af7cc361d800631c9956130e93054bdef150",
+    "buttons-run-1-pixels.json": "589bcaa6fcaa4bbf0764fe292480234eb13c5eb96313954cca5e8d3eb73d278f",
+    "constant-strings.jsonl": "43ac581f5de915392f88bfc23382bcfb6b36c5c229ecf4c0f4e816273f2fe3a1",
+    "final-readback.json": "fb81f26fb70eaa018eff711421c84a86277201ef003fc7e0bd1db13331a653af",
+    "launch-key-xrefs.json": "629bc83a4dcff27d2903d82324baa2dcc158896200f41fca42a9a9fda3f96fc1",
+    "protocols-final.jsonl": "637c905b2104d0f43bfec34e250b6fdf0d42b2dc001d9094a925f13f0ec891fa",
+    "static/NSCGSWindow_NSCGSWindowCreation_windowWithWindowID.txt": "a1893c42bee16cb8c67b9a56678b52a6af015df27a2e221ff57a08fbccc4f10c",
+    "static/NSCGSWindow_NSCGSWindowPackageShapes_setButtonShape.txt": "930293067e1f858abfb29be386f6ed528907622259b8af7b2e9d768f126359c3",
+    "static/NSCGSWindow_initWithWindowID.txt": "b7d0ce711d1bbf2ba16c4a46458e6a42184b9b75b846b558a638b1761448092d",
+    "static/NSThemeFrame__wantsLeftHandButtons.txt": "85ab13e869c8fc3f602b88065a4200c250a8578ea9736d673f0718054c4add6f",
+    "static/NSThemeWidgetServiceViewController_hostAppOwnsWindow.txt": "f7b248c5bdcbba3a94739b654999e15f8f617a7aeae9aa4eb201292892a7da98",
+    "static/NSThemeWidgetServiceViewController_hostWindow.txt": "72c1f78e7d7327aa9072a81d19635c7e22ff8f777efc497334a7baf18a6df7d9",
+    "static/NSThemeWidgetServiceViewController_unverifiedHostWindow.txt": "70519924479b229b2c9fd82fffbd12319bbc1b6ece0c4cb908b101eec32c0177",
+    "static/NSWindow_NSWindow_Theme__updateButtonsForModeChanged.txt": "ab3df5a3317a980575da2bb13613eb38c6e0e7b62db3e6aa85ce7dffcfdf6fbb",
+    "static/SLSGetButtonRegionLegacy.txt": "92723a930743083356f3adb1dc4008e658f1f09483c6c8025e8fe2522bb2e5c5",
+    "static/SLSTransactionSetWindowButtonRegion.txt": "4730d89e2525eee280fca94f603e0741230bcfd95af195bd890a8d797d6e52eb",
+    "static/button-cache-key.txt": "e9d6bb476aa698176088a230fdedcc2dbb977cf58273c06de69b9270e138d90f",
+    "static/wm-agent-apply.txt": "68a332f8a099a3cf9094654312b4fd9cb15cc9ba48bad0c240f1a6b9922806e6",
+    "static/wm-appkit-action.txt": "6f79bc56ed4d034a4168835af84b93e09a978d39ab5734ce52351ae089b6f12f",
+    "static/wm-appkit-delegate.txt": "7422e55734b3e2932e4c2b6bd95d596f1027426af156a7c987d0a1d265b7d694",
+    "static/wm-bridge.txt": "c579f00c7d608a44bf1e89771c582dfc710f27fad68413296afc58ee500ba661",
+    "static/wm-coordinator-send.txt": "0a449a60909a3745f91ca1c09f0bb343163a5d7095633a60ab5f7b02e2e94c0f",
+    "static/wm-coordinator-transaction.txt": "ea616207a88e3447acc18280d3f7f49291e9ef5a02732b4662966f5e71363fe6",
+    "static/wm-set-style-block.txt": "69fc677d12da96f93dcecb332ab972dad95e673e6ce6ac3159622bd911eb0b2d",
+    "static/wm-set-style.txt": "c70ca2b0695b8ddd19da6a57ad8454f36b432c3c3f3e4d1b1635e8276e41f870",
+    "static/wm-updates.txt": "d3467cb2ca5fa9b2921898f65fd0570ebdcb0c42bb998bb4c4c0ae6e5b125ce1",
+    "static/wm-xpc-transaction.txt": "f7edfeeeba0f5d7e71e28946cbaacf6f6a7187f51a9f16203e5d016e5dcd042d",
+    "verifier-rejections.json": "794518eac02259f3fe0e843425b6e289facbffce70a50f17d3c3278863e0da3b"
+  },
+  "validation": {
+    "unit": {
+      "pass": 1031,
+      "fail": 0
+    },
+    "e2e": "attempted, bounded at 15 seconds, missing pinned WebKit 2388; no full pass",
+    "build": "clang C/Objective-C and swiftc warnings as errors",
+    "acceptedSavedEvidenceChecks": 2,
+    "rejectionChecks": 3,
+    "cleanup": "all three fixture process/window IDs absent"
+  }
+}

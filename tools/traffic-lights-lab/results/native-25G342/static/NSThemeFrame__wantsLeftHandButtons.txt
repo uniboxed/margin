@@ -1,0 +1,40 @@
+-[NSThemeFrame _wantsLeftHandButtons]:
+0x184A1F73C   pacibsp
+0x184A1F740   stp      x20, x19, [sp, #-0x20]!
+0x184A1F744   stp      x29, x30, [sp, #0x10]
+0x184A1F748   add      x29, sp, #0x10
+0x184A1F74C   mov      x19, x0
+0x184A1F750   bl       _objc_msgSend$window
+0x184A1F754   bl       _objc_msgSend$_inFullScreen
+0x184A1F758   tbz      w0, #0x0, 0x184a1f764
+0x184A1F75C   mov      w0, #0x1
+0x184A1F760   b        0x184a1f798
+0x184A1F764   adrp     x8, 416639           ; 0x1ea59e000
+0x184A1F768   ldrsw    x20, [x8, #0x214]
+0x184A1F76C   ldr      w8, [x19, x20]
+0x184A1F770   cmp      w8, #0x1
+0x184A1F774   b.eq     0x184a1f784
+0x184A1F778   mov      x0, x19
+0x184A1F77C   bl       _objc_msgSend$_isSheet
+0x184A1F780   tbz      w0, #0x0, 0x184a1f7a4
+0x184A1F784   adrp     x8, 416639           ; 0x1ea59e000
+0x184A1F788   ldrsw    x8, [x8, #0x204]
+0x184A1F78C   add      x8, x19, x8
+0x184A1F790   ldrb     w8, [x8, #0x1]
+0x184A1F794   ubfx     w0, w8, #4, #1
+0x184A1F798   ldp      x29, x30, [sp, #0x10]
+0x184A1F79C   ldp      x20, x19, [sp], #0x20
+0x184A1F7A0   retab
+0x184A1F7A4   mov      x0, x19
+0x184A1F7A8   bl       _objc_msgSend$_isClosable
+0x184A1F7AC   tbnz     w0, #0x0, 0x184a1f75c
+0x184A1F7B0   mov      x0, x19
+0x184A1F7B4   bl       _objc_msgSend$_isResizable
+0x184A1F7B8   tbnz     w0, #0x0, 0x184a1f75c
+0x184A1F7BC   mov      x0, x19
+0x184A1F7C0   bl       _objc_msgSend$_isMiniaturizable
+0x184A1F7C4   tbnz     w0, #0x0, 0x184a1f75c
+0x184A1F7C8   ldr      w8, [x19, x20]
+0x184A1F7CC   cmp      w8, #0x2
+0x184A1F7D0   b.eq     0x184a1f75c
+0x184A1F7D4   b        0x184a1f784

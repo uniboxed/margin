@@ -2157,3 +2157,16 @@ The native buttons hide/restore; all three external apps retain visible buttons 
 Independent decoded-pixel, windowed-state, timestamp and cleanup checks pass. Raw material is retained.
 Earlier SCK recordings with sharing capsules are invalid baselines and are not acceptance evidence.
 Real Safari, repeated host/titlebar recreation, crash recovery and other OS/display states remain open.
+
+Native-only follow-up on 25G342 (2026-11-16): `verify-native.py RUN RUN.jsonl` independently decodes
+the saved original PNGs for `buttons-run-1` and `buttons-proxy-run-2`. Owner button-region empty/sentinel
+mutations change metadata but zero control-crop pixels; foreign mutations change neither. The native
+hide positive control changes 516 pixels and all three hidden/hit states, then restores. Retained
+foreign-proxy rights remain unchanged; owner local/global clips work and restore, while foreign clips
+leave pixels unchanged. The earlier failed clip restoration is retained as invalid and stopped before
+foreign clipping. See `tools/traffic-lights-lab/results/native-25G342/README.md` for exact scope/hashes.
+Apple titlebar-service ownership and WindowManagement direction findings are static, not runtime
+service acceptance. No new protected-app native hide or Safari result is claimed. The user rejects
+image covers, so visual-cover checks above are historical and cannot satisfy this feature's acceptance.
+Fresh unit tests: 1,031 pass. Full E2E attempted/bounded after missing pinned WebKit 2388 setup failures;
+Chromium 1254 and `/opt/pw-browsers` absent. No downloads. Native sources compile with warnings as errors.

@@ -4986,3 +4986,44 @@ recovery and Safari require further acceptance. New Swift/C compile with warning
 independent saved visual/state checks pass. Fresh npm test: 1031 pass. Full npm run test:e2e reattempted
 with a 15-second bound after missing pinned WebKit 2388 setup failures/pending teardown (Chromium
 1254 also absent). No download, full-suite pass, app install or PR. Report: docs/TRAFFIC-LIGHTS-RESEARCH.md.
+
+### Native-only traffic-light follow-up: regions, proxies and service boundaries (2026-11-16)
+
+The user explicitly rejects image covers and asks for further research. This supersedes the preceding
+cover-as-product-candidate suggestion for this request. Continue only the isolated native-control
+investigation; no product behavior or application/system security setting changes.
+
+Test private button-region transactions against an independently identified owned child, with native
+button state and original captured PNGs. Owner empty/sentinel requests actually change region metadata
+but leave all three native controls/hit tests and control pixels unchanged. Foreign requests leave
+the owner's original region intact. A private native-view hide positive control changes 516 pixels
+and makes all three buttons hidden/non-hit; restore returns zero changed pixels. All phases windowed.
+
+Retain a real foreign NSCGSWindow proxy, then repeat matched owner/foreign local/global clips. Raw
+held-right outputs remain [0,0,65536] before/after retention, versus owner [1,196614,65536]; individual
+field meanings are not claimed. Owner local capture crops 680x452 to 680x402 and restores; owner global
+clip makes 1008/2072 samples transparent and restores. Foreign local returns zero, but local/global
+pixels remain unchanged. Proxy existence does not demonstrate extra foreign clipping authority.
+
+Preserve the first combined attempt as invalid: its saved unsettled clip was empty and restoration
+made capture unavailable. Stop before foreign clipping. Correct by waiting for positive full-window
+clip bounds agreeing with settled AppKit geometry and verifying owner restoration before foreign
+attempts. Corrected combined run passes; both accepted saved-evidence verifications pass and children
+exit. This is not a new protected-app compatibility run.
+
+Read-only disassembly of Apple's ThemeWidgetControlViewService hostWindow path shows an explicit
+window-owner-PID versus host-audit-token-PID check. No service invocation or bypass attempt. Trace the
+real WindowManagement XPC path: local style model -> delegate -> updating-window action -> coordinator
+transaction -> server. Reviewed agent-property return path handles tiling/occlusion/resize-related
+state, with no button-hide operation. Runtime protocols corroborate those interfaces. Server-side
+authorization remains incompletely investigated; do not claim all private routes impossible. The
+discovered NSWindowShouldCacheStandardWindowButton key controls lookup/caching; no hide launch knob
+was established and no speculative app preference was written.
+
+Strict protected-app native hiding remains unestablished. Keep covers explicitly rejected for this
+requirement, and retain in-process/launch-loaded results only for their demonstrated hosts. Evidence:
+docs/TRAFFIC-LIGHTS-RESEARCH.md and tools/traffic-lights-lab/results/native-25G342/. Raw material/failure
+under test-results/traffic-lights-native-2026-11-16/. Fresh npm test: 1031 pass. Full npm run test:e2e
+attempted with a 15-second bound; missing pinned WebKit 2388 setup failures, Chromium 1254 and
+/opt/pw-browsers absent. No download/full-suite pass. Native Swift/Objective-C/C warnings-as-errors
+builds and saved native/pixel/restoration/cleanup verification pass. No app install or PR.

@@ -1,0 +1,233 @@
+-[NSWMWindowCoordinator performTransactionUsingBlock:]:
+0x18590E93C   pacibsp
+0x18590E940   sub      sp, sp, #0xd0
+0x18590E944   stp      d9, d8, [sp, #0x80]
+0x18590E948   stp      x24, x23, [sp, #0x90]
+0x18590E94C   stp      x22, x21, [sp, #0xa0]
+0x18590E950   stp      x20, x19, [sp, #0xb0]
+0x18590E954   stp      x29, x30, [sp, #0xc0]
+0x18590E958   add      x29, sp, #0xc0
+0x18590E95C   mov      x19, x2
+0x18590E960   mov      x20, x0
+0x18590E964   mov      x0, x2
+0x18590E968   bl       _objc_retain
+0x18590E96C   adrp     x8, 395351           ; 0x1e6165000
+0x18590E970   ldr      x0, [x8, #0xe38]
+0x18590E974   bl       _objc_msgSend$isMainThread
+0x18590E978   tbz      w0, #0x0, 0x18590e9d8
+0x18590E97C   mov      x0, x20
+0x18590E980   bl       "-[NSWMWindowCoordinator _createTransactionIfNeeded]"
+0x18590E984   ldr      x0, [x20, #0x8]
+0x18590E988   bl       _objc_msgSend$transaction
+0x18590E98C   mov      x29, x29
+0x18590E990   bl       _objc_retainAutoreleasedReturnValue
+0x18590E994   mov      x21, x0
+0x18590E998   ldr      x0, [x20, #0x8]
+0x18590E99C   bl       _objc_msgSend$fence
+0x18590E9A0   mov      x29, x29
+0x18590E9A4   bl       _objc_retainAutoreleasedReturnValue
+0x18590E9A8   mov      x22, x0
+0x18590E9AC   cbnz     x0, 0x18590eb30
+0x18590E9B0   adrp     x8, 423586           ; 0x1ecfb0000
+0x18590E9B4   add      x8, x8, #0x479
+0x18590E9B8   ldarb    w8, [x8]
+0x18590E9BC   cmp      w8, #0x2
+0x18590E9C0   b.eq     0x18590e9d0
+0x18590E9C4   cbz      w8, 0x18590ec40
+0x18590E9C8   ldrb     w8, [x20, #0x10]
+0x18590E9CC   tbz      w8, #0x0, 0x18590eaf8
+0x18590E9D0   mov      x22, #0x0
+0x18590E9D4   b        0x18590eb30
+0x18590E9D8   adrp     x8, 423586           ; 0x1ecfb0000
+0x18590E9DC   add      x8, x8, #0x478       ; __MergedGlobals
+0x18590E9E0   ldarb    w8, [x8]
+0x18590E9E4   cmp      w8, #0x2
+0x18590E9E8   b.eq     0x18590ec20
+0x18590E9EC   cbz      w8, 0x18590ebf4
+0x18590E9F0   add      x8, sp, #0x28
+0x18590E9F4   adrp     x16, 395464          ; 0x1e61d6000
+0x18590E9F8   ldr      x16, [x16, #0xa90]
+0x18590E9FC   mov      x17, x8
+0x18590EA00   movk     x17, #0x6ae1, lsl #48
+0x18590EA04   pacda    x16, x17
+0x18590EA08   str      x16, [sp, #0x28]
+0x18590EA0C   adrp     x9, 690              ; 0x185bc0000
+0x18590EA10   ldr      d8, [x9, #0x278]
+0x18590EA14   str      d8, [sp, #0x30]
+0x18590EA18   add      x21, x8, #0x10
+0x18590EA1C   adrp     x16, 0               ; 0x18590e000
+0x18590EA20   add      x16, x16, #0xcdc     ; ___54-[NSWMWindowCoordinator performTransactionUsingBlock:]_block_invoke
+0x18590EA24   pacia    x16, x21
+0x18590EA28   adrp     x8, 430251           ; 0x1ee9b9000
+0x18590EA2C   add      x8, x8, #0x398       ; ___block_descriptor_48_ea8_32s40bs_e5_v8?0l
+0x18590EA30   stp      x16, x8, [sp, #0x38]
+0x18590EA34   str      x20, [sp, #0x48]
+0x18590EA38   mov      x0, x19
+0x18590EA3C   bl       _objc_retain
+0x18590EA40   str      x19, [sp, #0x50]
+0x18590EA44   bl       _CFRunLoopGetMain
+0x18590EA48   mov      x20, x0
+0x18590EA4C   bl       _CFRunLoopGetCurrent
+0x18590EA50   cmp      x0, x20
+0x18590EA54   b.eq     0x18590eae4
+0x18590EA58   add      x8, sp, #0x58
+0x18590EA5C   adrp     x16, 395464          ; 0x1e61d6000
+0x18590EA60   ldr      x16, [x16, #0xa90]
+0x18590EA64   mov      x17, x8
+0x18590EA68   movk     x17, #0x6ae1, lsl #48
+0x18590EA6C   pacda    x16, x17
+0x18590EA70   str      x16, [sp, #0x58]
+0x18590EA74   str      d8, [sp, #0x60]
+0x18590EA78   add      x8, x8, #0x10
+0x18590EA7C   adrp     x9, 430252           ; 0x1ee9ba000
+0x18590EA80   add      x9, x9, #0xaf8       ; ___block_descriptor_40_ea8_32bs_e5_v8?0l
+0x18590EA84   adrp     x16, -3570           ; 0x184b1c000
+0x18590EA88   add      x16, x16, #0x60c     ; ____NSMainRunLoopPerformBlockSync_block_invoke
+0x18590EA8C   pacia    x16, x8
+0x18590EA90   stp      x16, x9, [sp, #0x68]
+0x18590EA94   add      x8, sp, #0x28
+0x18590EA98   str      x8, [sp, #0x78]
+0x18590EA9C   add      x1, sp, #0x58
+0x18590EAA0   mov      x0, #0x0
+0x18590EAA4   bl       _dispatch_block_create
+0x18590EAA8   mov      x21, x0
+0x18590EAAC   adrp     x8, 395339           ; 0x1e6159000
+0x18590EAB0   ldr      x8, [x8, #0x2b8]
+0x18590EAB4   ldr      x1, [x8]
+0x18590EAB8   mov      x0, x20
+0x18590EABC   mov      x2, x21
+0x18590EAC0   bl       _CFRunLoopPerformBlock
+0x18590EAC4   mov      x0, x20
+0x18590EAC8   bl       _CFRunLoopWakeUp
+0x18590EACC   mov      x0, x21
+0x18590EAD0   mov      x1, #-0x1
+0x18590EAD4   bl       _dispatch_block_wait
+0x18590EAD8   mov      x0, x21
+0x18590EADC   bl       _objc_release
+0x18590EAE0   b        0x18590eaf0
+0x18590EAE4   ldr      x8, [sp, #0x38]
+0x18590EAE8   add      x0, sp, #0x28
+0x18590EAEC   blraa    x8, x21
+0x18590EAF0   ldr      x0, [sp, #0x50]
+0x18590EAF4   b        0x18590ebcc
+0x18590EAF8   adrp     x8, 423573           ; 0x1ecfa3000
+0x18590EAFC   add      x0, x8, #0xce8       ; _OBJC_CLASS_$_NSCGSWindow
+0x18590EB00   mov      x22, #0x0
+0x18590EB04   bl       _objc_msgSend$entanglingFenceHandle
+0x18590EB08   mov      x29, x29
+0x18590EB0C   bl       _objc_retainAutoreleasedReturnValue
+0x18590EB10   mov      x23, x0
+0x18590EB14   bl       _objc_msgSend$copy
+0x18590EB18   mov      x22, x0
+0x18590EB1C   mov      x0, x23
+0x18590EB20   bl       _objc_release
+0x18590EB24   ldr      x0, [x20, #0x8]
+0x18590EB28   mov      x2, x22
+0x18590EB2C   bl       "_objc_msgSend$setFence:"
+0x18590EB30   cbz      x21, 0x18590ec30
+0x18590EB34   mov      x8, x19
+0x18590EB38   ldr      x9, [x8, #0x10]!
+0x18590EB3C   mov      x0, x19
+0x18590EB40   mov      x1, x21
+0x18590EB44   mov      x2, x22
+0x18590EB48   blraa    x9, x8
+0x18590EB4C   ldrb     w8, [x20, #0x11]
+0x18590EB50   tbnz     w8, #0x0, 0x18590ebc0
+0x18590EB54   ldr      x8, [x20, #0x8]
+0x18590EB58   cbz      x8, 0x18590ebc0
+0x18590EB5C   mov      w8, #0x1
+0x18590EB60   strb     w8, [x20, #0x11]
+0x18590EB64   adrp     x8, 423573           ; 0x1ecfa3000
+0x18590EB68   add      x0, x8, #0xce8       ; _OBJC_CLASS_$_NSCGSWindow
+0x18590EB6C   mov      x8, sp
+0x18590EB70   adrp     x16, 395464          ; 0x1e61d6000
+0x18590EB74   ldr      x16, [x16, #0xa90]
+0x18590EB78   mov      x17, x8
+0x18590EB7C   movk     x17, #0x6ae1, lsl #48
+0x18590EB80   pacda    x16, x17
+0x18590EB84   str      x16, [sp]
+0x18590EB88   adrp     x9, 690              ; 0x185bc0000
+0x18590EB8C   ldr      d0, [x9, #0x278]
+0x18590EB90   str      d0, [sp, #0x8]
+0x18590EB94   add      x8, x8, #0x10
+0x18590EB98   adrp     x16, 0               ; 0x18590e000
+0x18590EB9C   add      x16, x16, #0xce8     ; ___54-[NSWMWindowCoordinator performTransactionUsingBlock:]_block_invoke.8
+0x18590EBA0   pacia    x16, x8
+0x18590EBA4   adrp     x8, 430272           ; 0x1ee9ce000
+0x18590EBA8   add      x8, x8, #0x6e8       ; ___block_descriptor_40_ea8_32s_e26_v16?0^{_SLSTransaction=}8l
+0x18590EBAC   stp      x16, x8, [sp, #0x10]
+0x18590EBB0   str      x20, [sp, #0x20]
+0x18590EBB4   mov      x3, sp
+0x18590EBB8   mov      x2, #0x0
+0x18590EBBC   bl       "_objc_msgSend$addActionWithOrder:usingBlock:"
+0x18590EBC0   mov      x0, x22
+0x18590EBC4   bl       _objc_release
+0x18590EBC8   mov      x0, x21
+0x18590EBCC   bl       _objc_release
+0x18590EBD0   mov      x0, x19
+0x18590EBD4   bl       _objc_release
+0x18590EBD8   ldp      x29, x30, [sp, #0xc0]
+0x18590EBDC   ldp      x20, x19, [sp, #0xb0]
+0x18590EBE0   ldp      x22, x21, [sp, #0xa0]
+0x18590EBE4   ldp      x24, x23, [sp, #0x90]
+0x18590EBE8   ldp      d9, d8, [sp, #0x80]
+0x18590EBEC   add      sp, sp, #0xd0
+0x18590EBF0   retab
+0x18590EBF4   adrp     x0, 430425           ; 0x1eea67000
+0x18590EBF8   add      x0, x0, #0x948
+0x18590EBFC   adrp     x2, 423586           ; 0x1ecfb0000
+0x18590EC00   add      x2, x2, #0x478       ; __MergedGlobals
+0x18590EC04   adrp     x16, 3               ; 0x185911000
+0x18590EC08   add      x16, x16, #0xe2c     ; _NSWMBackgroundThreadCompatibilityDefaultValueFunction
+0x18590EC0C   paciza   x16
+0x18590EC10   mov      x3, x16
+0x18590EC14   mov      w1, #0x0
+0x18590EC18   bl       __NSGetBoolAppConfig
+0x18590EC1C   cbnz     w0, 0x18590e9f0
+0x18590EC20   adrp     x0, 866              ; 0x185c70000
+0x18590EC24   add      x0, x0, #0xe53
+0x18590EC28   bl       __os_crash
+0x18590EC2C   brk      #0x1
+0x18590EC30   adrp     x0, 866              ; 0x185c70000
+0x18590EC34   add      x0, x0, #0xe7a
+0x18590EC38   bl       __os_crash
+0x18590EC3C   brk      #0x1
+0x18590EC40   mov      x22, #0x0
+0x18590EC44   adrp     x0, 430425           ; 0x1eea67000
+0x18590EC48   add      x0, x0, #0x968
+0x18590EC4C   adrp     x2, 423586           ; 0x1ecfb0000
+0x18590EC50   add      x2, x2, #0x479
+0x18590EC54   adrp     x16, 3               ; 0x185911000
+0x18590EC58   add      x16, x16, #0xe50     ; _NSWMWindowCoordinatorFenceIPCDefaultValueFunction
+0x18590EC5C   paciza   x16
+0x18590EC60   mov      x3, x16
+0x18590EC64   mov      w1, #0x1
+0x18590EC68   bl       __NSGetBoolAppConfig
+0x18590EC6C   cbnz     w0, 0x18590e9c8
+0x18590EC70   b        0x18590e9d0
+0x18590EC74   mov      x20, x0
+0x18590EC78   mov      x0, x23
+0x18590EC7C   b        0x18590ecb8
+0x18590EC80   b        0x18590ecb0
+0x18590EC84   mov      x20, x0
+0x18590EC88   mov      x0, x21
+0x18590EC8C   bl       _objc_release
+0x18590EC90   b        0x18590eca8
+0x18590EC94   mov      x20, x0
+0x18590EC98   b        0x18590ecbc
+0x18590EC9C   b        0x18590ecc8
+0x18590ECA0   b        0x18590ecb0
+0x18590ECA4   mov      x20, x0
+0x18590ECA8   ldr      x0, [sp, #0x50]
+0x18590ECAC   b        0x18590ecc0
+0x18590ECB0   mov      x20, x0
+0x18590ECB4   mov      x0, x22
+0x18590ECB8   bl       _objc_release
+0x18590ECBC   mov      x0, x21
+0x18590ECC0   bl       _objc_release
+0x18590ECC4   b        0x18590eccc
+0x18590ECC8   mov      x20, x0
+0x18590ECCC   mov      x0, x19
+0x18590ECD0   bl       _objc_release
+0x18590ECD4   mov      x0, x20
+0x18590ECD8   bl       __Unwind_Resume

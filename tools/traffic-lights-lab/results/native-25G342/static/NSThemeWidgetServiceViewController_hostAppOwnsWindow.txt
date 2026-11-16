@@ -1,0 +1,71 @@
+-[NSThemeWidgetServiceViewController hostAppOwnsWindow:]:
+0x100003564   pacibsp
+0x100003568   sub      sp, sp, #0x70
+0x10000356C   stp      x22, x21, [sp, #0x40]
+0x100003570   stp      x20, x19, [sp, #0x50]
+0x100003574   stp      x29, x30, [sp, #0x60]
+0x100003578   add      x29, sp, #0x60
+0x10000357C   mov      x19, x2
+0x100003580   mov      x20, x0
+0x100003584   adrp     x8, 25               ; 0x10001c000
+0x100003588   ldr      x8, [x8, #0x238]     ; ___stack_chk_guard@got
+0x10000358C   ldr      x8, [x8]
+0x100003590   stur     x8, [x29, #-0x28]
+0x100003594   str      wzr, [sp, #0xc]
+0x100003598   bl       _CGSMainConnectionID
+0x10000359C   add      x2, sp, #0xc
+0x1000035A0   mov      x1, x19
+0x1000035A4   bl       _CGSGetWindowOwner
+0x1000035A8   str      wzr, [sp, #0x8]
+0x1000035AC   ldr      w0, [sp, #0xc]
+0x1000035B0   add      x1, sp, #0x8
+0x1000035B4   bl       _CGSConnectionGetPID
+0x1000035B8   cbz      w0, 0x10000362c
+0x1000035BC   mov      x21, x0
+0x1000035C0   bl       0x1000023a8
+0x1000035C4   mov      x29, x29
+0x1000035C8   bl       _objc_retainAutoreleasedReturnValue
+0x1000035CC   mov      x20, x0
+0x1000035D0   mov      w1, #0x10
+0x1000035D4   bl       _os_log_type_enabled
+0x1000035D8   cbz      w0, 0x10000361c
+0x1000035DC   adrp     x8, 17               ; 0x100014000
+0x1000035E0   ldr      d0, [x8, #0xe10]
+0x1000035E4   str      s0, [sp, #0x10]
+0x1000035E8   str      w19, [sp, #0x14]
+0x1000035EC   mov      w8, #0x400
+0x1000035F0   strh     w8, [sp, #0x18]
+0x1000035F4   stur     w21, [sp, #0x1a]
+0x1000035F8   adrp     x0, -3               ; 0x100000000
+0x1000035FC   add      x0, x0, #0x0         ; __mh_execute_header
+0x100003600   adrp     x3, 22               ; 0x100019000
+0x100003604   add      x3, x3, #0x56a
+0x100003608   add      x4, sp, #0x10
+0x10000360C   mov      x1, x20
+0x100003610   mov      w2, #0x10
+0x100003614   mov      w5, #0xe
+0x100003618   bl       __os_log_impl
+0x10000361C   mov      x0, x20
+0x100003620   bl       _objc_release
+0x100003624   mov      w0, #0x0
+0x100003628   b        0x10000364c
+0x10000362C   ldr      w19, [sp, #0x8]
+0x100003630   add      x8, sp, #0x10
+0x100003634   mov      x0, x20
+0x100003638   bl       _objc_msgSend$hostAppAuditToken
+0x10000363C   add      x0, sp, #0x10
+0x100003640   bl       _audit_token_to_pid
+0x100003644   cmp      w19, w0
+0x100003648   cset     w0, eq
+0x10000364C   ldur     x8, [x29, #-0x28]
+0x100003650   adrp     x9, 25               ; 0x10001c000
+0x100003654   ldr      x9, [x9, #0x238]     ; ___stack_chk_guard@got
+0x100003658   ldr      x9, [x9]
+0x10000365C   cmp      x9, x8
+0x100003660   b.ne     0x100003678
+0x100003664   ldp      x29, x30, [sp, #0x60]
+0x100003668   ldp      x20, x19, [sp, #0x50]
+0x10000366C   ldp      x22, x21, [sp, #0x40]
+0x100003670   add      sp, sp, #0x70
+0x100003674   retab
+0x100003678   bl       ___stack_chk_fail

@@ -1,0 +1,23 @@
+-[NSWindow(NSWindow_Theme) _updateButtonsForModeChanged]:
+0x184CA6E1C   pacibsp
+0x184CA6E20   stp      x20, x19, [sp, #-0x20]!
+0x184CA6E24   stp      x29, x30, [sp, #0x10]
+0x184CA6E28   add      x29, sp, #0x10
+0x184CA6E2C   mov      x19, x0
+0x184CA6E30   bl       _objc_msgSend$_borderView
+0x184CA6E34   adrp     x8, 487006           ; 0x1fbb04000
+0x184CA6E38   add      x1, x8, #0x91b
+0x184CA6E3C   bl       _objc_opt_respondsToSelector
+0x184CA6E40   tbz      w0, #0x0, 0x184ca6e68
+0x184CA6E44   mov      x0, x19
+0x184CA6E48   bl       _objc_msgSend$_borderView
+0x184CA6E4C   ldp      x29, x30, [sp, #0x10]
+0x184CA6E50   ldp      x20, x19, [sp], #0x20
+0x184CA6E54   autibsp
+0x184CA6E58   eor      x16, x30, x30, lsl #1
+0x184CA6E5C   tbz      x16, #0x3e, 0x184ca6e64
+0x184CA6E60   brk      #0xc471
+0x184CA6E64   b        _objc_msgSend$_updateButtonState
+0x184CA6E68   ldp      x29, x30, [sp, #0x10]
+0x184CA6E6C   ldp      x20, x19, [sp], #0x20
+0x184CA6E70   retab

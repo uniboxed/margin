@@ -1,0 +1,110 @@
+-[NSWMWindowCoordinator _sendCompletedTransactions]:
+0x18590E788   pacibsp
+0x18590E78C   sub      sp, sp, #0x120
+0x18590E790   stp      x26, x25, [sp, #0xd0]
+0x18590E794   stp      x24, x23, [sp, #0xe0]
+0x18590E798   stp      x22, x21, [sp, #0xf0]
+0x18590E79C   stp      x20, x19, [sp, #0x100]
+0x18590E7A0   stp      x29, x30, [sp, #0x110]
+0x18590E7A4   add      x29, sp, #0x110
+0x18590E7A8   mov      x20, x0
+0x18590E7AC   adrp     x8, 395464           ; 0x1e61d6000
+0x18590E7B0   ldr      x8, [x8, #0xab0]
+0x18590E7B4   ldr      x8, [x8]
+0x18590E7B8   stur     x8, [x29, #-0x48]
+0x18590E7BC   ldr      x0, [x0, #0x28]
+0x18590E7C0   bl       _dispatch_assert_queue$V2
+0x18590E7C4   ldr      x0, [x20, #0x18]
+0x18590E7C8   bl       _objc_msgSend$popCompletedTransactions
+0x18590E7CC   mov      x29, x29
+0x18590E7D0   bl       _objc_retainAutoreleasedReturnValue
+0x18590E7D4   mov      x19, x0
+0x18590E7D8   movi.2d  v0, #0000000000000000
+0x18590E7DC   stp      q0, q0, [sp]
+0x18590E7E0   stp      q0, q0, [sp, #0x20]
+0x18590E7E4   bl       _objc_retain
+0x18590E7E8   mov      x2, sp
+0x18590E7EC   add      x3, sp, #0x48
+0x18590E7F0   mov      x0, x19
+0x18590E7F4   mov      w4, #0x10
+0x18590E7F8   bl       "_objc_msgSend$countByEnumeratingWithState:objects:count:"
+0x18590E7FC   mov      x21, x0
+0x18590E800   cbz      x0, 0x18590e8a4
+0x18590E804   ldr      x8, [sp, #0x10]
+0x18590E808   ldr      x24, [x8]
+0x18590E80C   mov      x25, #0x0
+0x18590E810   ldr      x8, [sp, #0x10]
+0x18590E814   ldr      x8, [x8]
+0x18590E818   cmp      x8, x24
+0x18590E81C   b.eq     0x18590e828
+0x18590E820   mov      x0, x19
+0x18590E824   bl       _objc_enumerationMutation
+0x18590E828   ldr      x8, [sp, #0x8]
+0x18590E82C   ldr      x23, [x8, x25, lsl #3]
+0x18590E830   mov      x0, x23
+0x18590E834   bl       _objc_msgSend$snapshot
+0x18590E838   mov      x29, x29
+0x18590E83C   bl       _objc_retainAutoreleasedReturnValue
+0x18590E840   mov      x22, x0
+0x18590E844   cbz      x0, 0x18590e854
+0x18590E848   ldr      x0, [x20, #0x20]
+0x18590E84C   mov      x2, x22
+0x18590E850   bl       "_objc_msgSend$sendWindowTransaction:"
+0x18590E854   mov      x0, x23
+0x18590E858   bl       _objc_msgSend$fence
+0x18590E85C   mov      x29, x29
+0x18590E860   bl       _objc_retainAutoreleasedReturnValue
+0x18590E864   mov      x23, x0
+0x18590E868   bl       _objc_msgSend$invalidate
+0x18590E86C   mov      x0, x23
+0x18590E870   bl       _objc_release
+0x18590E874   mov      x0, x22
+0x18590E878   bl       _objc_release
+0x18590E87C   add      x25, x25, #0x1
+0x18590E880   cmp      x21, x25
+0x18590E884   b.ne     0x18590e810
+0x18590E888   mov      x2, sp
+0x18590E88C   add      x3, sp, #0x48
+0x18590E890   mov      x0, x19
+0x18590E894   mov      w4, #0x10
+0x18590E898   bl       "_objc_msgSend$countByEnumeratingWithState:objects:count:"
+0x18590E89C   mov      x21, x0
+0x18590E8A0   cbnz     x0, 0x18590e80c
+0x18590E8A4   mov      x0, x19
+0x18590E8A8   bl       _objc_release
+0x18590E8AC   mov      x0, x19
+0x18590E8B0   bl       _objc_release
+0x18590E8B4   ldur     x8, [x29, #-0x48]
+0x18590E8B8   adrp     x9, 395464           ; 0x1e61d6000
+0x18590E8BC   ldr      x9, [x9, #0xab0]
+0x18590E8C0   ldr      x9, [x9]
+0x18590E8C4   cmp      x9, x8
+0x18590E8C8   b.ne     0x18590e8e8
+0x18590E8CC   ldp      x29, x30, [sp, #0x110]
+0x18590E8D0   ldp      x20, x19, [sp, #0x100]
+0x18590E8D4   ldp      x22, x21, [sp, #0xf0]
+0x18590E8D8   ldp      x24, x23, [sp, #0xe0]
+0x18590E8DC   ldp      x26, x25, [sp, #0xd0]
+0x18590E8E0   add      sp, sp, #0x120
+0x18590E8E4   retab
+0x18590E8E8   bl       ___stack_chk_fail
+0x18590E8EC   b        0x18590e908
+0x18590E8F0   b        0x18590e908
+0x18590E8F4   b        0x18590e908
+0x18590E8F8   mov      x20, x0
+0x18590E8FC   mov      x0, x23
+0x18590E900   bl       _objc_release
+0x18590E904   b        0x18590e914
+0x18590E908   mov      x20, x0
+0x18590E90C   b        0x18590e91c
+0x18590E910   mov      x20, x0
+0x18590E914   mov      x0, x22
+0x18590E918   bl       _objc_release
+0x18590E91C   mov      x0, x19
+0x18590E920   bl       _objc_release
+0x18590E924   mov      x0, x19
+0x18590E928   bl       _objc_release
+0x18590E92C   b        0x18590e934
+0x18590E930   mov      x20, x0
+0x18590E934   mov      x0, x20
+0x18590E938   bl       __Unwind_Resume

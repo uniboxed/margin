@@ -1,0 +1,51 @@
++[NSCGSWindow(NSCGSWindowCreation) windowWithWindowID:]:
+0x184A1C42C   pacibsp
+0x184A1C430   stp      x22, x21, [sp, #-0x30]!
+0x184A1C434   stp      x20, x19, [sp, #0x10]
+0x184A1C438   stp      x29, x30, [sp, #0x20]
+0x184A1C43C   add      x29, sp, #0x20
+0x184A1C440   sub      w8, w2, #0x1
+0x184A1C444   cmn      w8, #0x3
+0x184A1C448   b.hi     0x184a1c4dc
+0x184A1C44C   mov      x19, x2
+0x184A1C450   adrp     x0, 427404           ; 0x1ecfa8000
+0x184A1C454   add      x0, x0, #0x108       ; __transactionLock
+0x184A1C458   bl       _pthread_mutex_lock
+0x184A1C45C   adrp     x21, 427407          ; 0x1ecfab000
+0x184A1C460   ldr      x0, [x21, #0x998]    ; _NSCGSWindowTable
+0x184A1C464   cbz      x0, 0x184a1c478
+0x184A1C468   mov      w2, w19
+0x184A1C46C   bl       "_objc_msgSend$objectForKey:"
+0x184A1C470   mov      x20, x0
+0x184A1C474   cbnz     x0, 0x184a1c4cc
+0x184A1C478   adrp     x8, 427399           ; 0x1ecfa3000
+0x184A1C47C   add      x0, x8, #0xce8       ; _OBJC_CLASS_$_NSCGSWindow
+0x184A1C480   bl       _objc_allocWithZone
+0x184A1C484   mov      x2, x19
+0x184A1C488   bl       "_objc_msgSend$initWithWindowID:"
+0x184A1C48C   bl       _objc_autorelease
+0x184A1C490   mov      x20, x0
+0x184A1C494   cbz      x0, 0x184a1c4cc
+0x184A1C498   ldr      x0, [x21, #0x998]
+0x184A1C49C   cbnz     x0, 0x184a1c4c0
+0x184A1C4A0   adrp     x8, 399177           ; 0x1e6165000
+0x184A1C4A4   ldr      x0, [x8, #0xb90]
+0x184A1C4A8   bl       _objc_allocWithZone
+0x184A1C4AC   mov      w2, #0x502
+0x184A1C4B0   mov      w3, #0x205
+0x184A1C4B4   mov      w4, #0x1
+0x184A1C4B8   bl       "_objc_msgSend$initWithKeyOptions:valueOptions:capacity:"
+0x184A1C4BC   str      x0, [x21, #0x998]
+0x184A1C4C0   mov      w3, w19
+0x184A1C4C4   mov      x2, x20
+0x184A1C4C8   bl       "_objc_msgSend$setObject:forKey:"
+0x184A1C4CC   adrp     x0, 427404           ; 0x1ecfa8000
+0x184A1C4D0   add      x0, x0, #0x108       ; __transactionLock
+0x184A1C4D4   bl       _pthread_mutex_unlock
+0x184A1C4D8   b        0x184a1c4e0
+0x184A1C4DC   mov      x20, #0x0
+0x184A1C4E0   mov      x0, x20
+0x184A1C4E4   ldp      x29, x30, [sp, #0x20]
+0x184A1C4E8   ldp      x20, x19, [sp, #0x10]
+0x184A1C4EC   ldp      x22, x21, [sp], #0x30
+0x184A1C4F0   retab

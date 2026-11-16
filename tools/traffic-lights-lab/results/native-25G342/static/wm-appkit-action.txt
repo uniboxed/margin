@@ -1,0 +1,31 @@
+___72-[NSWindow(NSWMWindowManagement) window:didUpdateWithChangedProperties:]_block_invoke:
+0x185750A44   pacibsp
+0x185750A48   stp      x22, x21, [sp, #-0x30]!
+0x185750A4C   stp      x20, x19, [sp, #0x10]
+0x185750A50   stp      x29, x30, [sp, #0x20]
+0x185750A54   add      x29, sp, #0x20
+0x185750A58   mov      x19, x1
+0x185750A5C   adrp     x8, 395885           ; 0x1e61bd000
+0x185750A60   ldr      x20, [x8, #0x50]
+0x185750A64   ldp      x21, x22, [x0, #0x20]
+0x185750A68   cbz      x2, 0x185750a80
+0x185750A6C   adrp     x8, 395784           ; 0x1e6158000
+0x185750A70   ldr      x0, [x8, #0x810]
+0x185750A74   bl       "_objc_msgSend$setWithObject:"
+0x185750A78   mov      x4, x0
+0x185750A7C   b        0x185750a84
+0x185750A80   mov      x4, #0x0
+0x185750A84   mov      x0, x20
+0x185750A88   mov      x2, x21
+0x185750A8C   mov      x3, x22
+0x185750A90   bl       "_objc_msgSend$actionForUpdatingWindow:updatedProperties:fences:"
+0x185750A94   mov      x2, x0
+0x185750A98   mov      x0, x19
+0x185750A9C   ldp      x29, x30, [sp, #0x20]
+0x185750AA0   ldp      x20, x19, [sp, #0x10]
+0x185750AA4   ldp      x22, x21, [sp], #0x30
+0x185750AA8   autibsp
+0x185750AAC   eor      x16, x30, x30, lsl #1
+0x185750AB0   tbz      x16, #0x3e, 0x185750ab8
+0x185750AB4   brk      #0xc471
+0x185750AB8   b        "_objc_msgSend$addAction:"

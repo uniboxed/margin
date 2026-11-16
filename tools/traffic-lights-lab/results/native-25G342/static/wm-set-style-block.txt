@@ -1,0 +1,6 @@
+___26-[_WMWindow setStyleMask:]_block_invoke:
+0x27CD1DD78   ldp      x9, x8, [x0, #0x20]
+0x27CD1DD7C   str      x8, [x9, #0x98]
+0x27CD1DD80   ldr      x0, [x0, #0x20]
+0x27CD1DD84   mov      w2, #0x2000000
+0x27CD1DD88   b        "_objc_msgSend$_markPropertiesDirty:"

@@ -4,17 +4,56 @@ The request is to hide close, minimise and zoom/fullscreen buttons while keeping
 in ordinary windowed mode, using Accessibility and private macOS APIs. This spike is isolated from
 Margin.app. Read the findings and proposed architecture in [the research report](../../docs/TRAFFIC-LIGHTS-RESEARCH.md).
 
-**Latest finding:** an external private WindowServer cover visually conceals the three controls in
-protected Chrome, Edge and TextEdit, with move/resize, app switching and restoration verified after
-settling. No target code loading is required. The native controls remain underneath; TextEdit's glass
-patch is visibly imperfect, and continuous dragging/flicker/click delivery remain unverified.
+**Current requirement:** actual native control suppression. The user rejects image covers; the cover
+below is historical evidence, not an accepted solution. The latest native-only pass finds button-region
+metadata changes without any button-pixel changes, and no extra foreign clipping authority from a
+retained window proxy. Static titlebar-service and WindowManagement paths provide no established
+remote hide operation. See `results/native-25G342/` and the report for the limits of these observations.
 
 Private AppKit hiding works in the owned window and in real Chrome for Testing through
 a temporary launch-loaded library, with verified pixels, resize and restoration. Installed protected
 Chrome did not load that library. AX writes and foreign clipping did not change the native controls.
 This is a bounded Chromium backend, not general external Safari/Chrome/Edge support.
 
+## Native-only button-region and retained-proxy probes
+
+```sh
+clang -c -Wall -Wextra -Werror tools/traffic-lights-lab/wire-clip.c -o /tmp/margin-wire-clip.o
+swiftc -warnings-as-errors tools/traffic-lights-lab/deeper.swift /tmp/margin-wire-clip.o -o /tmp/margin-native-probe
+/tmp/margin-native-probe --buttons --proxy-clips
+/tmp/margin-native-probe --buttons --proxy-clips --run --output /absolute/new/run > /absolute/new/run.jsonl
+python3 tools/traffic-lights-lab/verify-native.py /absolute/new/run /absolute/new/run.jsonl
+clang -fobjc-arc -Wall -Wextra -Werror -framework AppKit tools/traffic-lights-lab/native-strings.m -o /tmp/margin-native-strings
+/tmp/margin-native-strings
+/tmp/margin-native-strings --run
+/tmp/margin-native-strings --protocols
+```
+
+The first invocation of each executable is dry. The visible experiment requires 25G342, AX and capture
+access. Only its own disposable child window is targeted; PID ownership is independently checked.
+The child saves its original region and settled full-window local clip before changes. The parent
+changes private button regions from outside; the child applies the same requests from inside. A
+private native-view hide provides the separate rendering/hit-test positive control. `--proxy-clips`
+retains a foreign NSCGSWindow, compares raw held-right outputs before/after construction, then tests
+owner/foreign local and global clips with verified restoration. Omit it for the button-region test alone.
+The run has child/parent deadlines of 27/35 seconds, refuses existing output, and stops on failed setup
+or restoration. It changes no browser, app preference, entitlement or system setting.
+
+Accepted runs: `buttons-run-1` and `buttons-proxy-run-2`. `buttons-proxy-run-1` failed owner clip
+restoration because it saved an unsettled empty clip; it stopped before foreign clipping and remains
+invalid. The corrected run saves a positive clip agreeing with settled native dimensions first.
+The verifier decodes original PNGs and checks native state, owner metadata changes, foreign readback,
+matched clip effects, windowed state, restoration and cleanup. It does not run desktop operations.
+
+`native-strings.m` is read-only inspection of loaded AppKit constant strings and relevant Objective-C
+protocols. It opens no window, writes no preference and contacts no service. A discovered string or
+method name is not proof of a working visibility control. Static excerpts and their provenance are
+in `results/native-25G342/`; raw PNGs, logs, binaries and failures remain local under
+`test-results/traffic-lights-native-2026-11-16/`.
+
 ## External protected-app cover
+
+This experiment does not satisfy the current native-only requirement.
 
 ```sh
 swiftc -parse-as-library -D COVER_LAB -warnings-as-errors tools/traffic-lights-lab/visual.swift tools/traffic-lights-lab/cover.swift -o /tmp/margin-external-cover
@@ -37,8 +76,8 @@ settings. A 50-second emergency exit terminates known owned test PIDs and releas
 
 Screen crops are actual display composition, sampled about 1.4 fps with capture-request timestamps;
 acquisition occurs during the subprocess. They cannot prove frame-perfect tracking or no flicker.
-Color-managed adjacent-strip matching works better on Chrome's flat background than TextEdit's glass;
-use an opaque Margin theme surface for a product candidate. Actual click/hover delivery, AX-action
+Color-managed adjacent-strip matching works better on Chrome's flat background than TextEdit's glass.
+The user rejected this approach. Actual click/hover delivery, AX-action
 blocking, titlebar replacement, same-app sheets/windows, Spaces/Mission Control, other scales/builds
 and crash recovery remain unverified. Normal original app behavior is restored on withdrawal.
 

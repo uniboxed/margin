@@ -1,0 +1,25 @@
+_SLSGetButtonRegionLegacy:
+0x187169AC8   pacibsp
+0x187169ACC   sub      sp, sp, #0x20
+0x187169AD0   stp      x29, x30, [sp, #0x10]
+0x187169AD4   add      x29, sp, #0x10
+0x187169AD8   adrp     x8, 389229           ; 0x1e61d6000
+0x187169ADC   ldr      x8, [x8, #0xab0]
+0x187169AE0   ldr      x8, [x8]
+0x187169AE4   str      x8, [sp, #0x8]
+0x187169AE8   str      xzr, [sp]
+0x187169AEC   adrp     x1, 424853           ; 0x1eecfe000
+0x187169AF0   add      x1, x1, #0xcb8
+0x187169AF4   mov      x2, sp
+0x187169AF8   bl       _get_window_region
+0x187169AFC   ldr      x0, [sp]
+0x187169B00   ldr      x8, [sp, #0x8]
+0x187169B04   adrp     x9, 389229           ; 0x1e61d6000
+0x187169B08   ldr      x9, [x9, #0xab0]
+0x187169B0C   ldr      x9, [x9]
+0x187169B10   cmp      x9, x8
+0x187169B14   b.ne     0x187169b24
+0x187169B18   ldp      x29, x30, [sp, #0x10]
+0x187169B1C   add      sp, sp, #0x20
+0x187169B20   retab
+0x187169B24   bl       ___stack_chk_fail

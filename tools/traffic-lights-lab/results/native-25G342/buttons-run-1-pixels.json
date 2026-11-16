@@ -1,0 +1,45 @@
+{
+  "native_region_proxy_pixels_restoration_cleanup": "pass",
+  "foreign_rights_before": {
+    "rawOutputs": [
+      0,
+      0,
+      65536
+    ],
+    "result": 0
+  },
+  "foreign_rights_after_retention": null,
+  "observations": {
+    "baseline": {
+      "titlebar_pixels_changed_vs_baseline": 0
+    },
+    "owner-buttons-empty": {
+      "titlebar_pixels_changed_vs_baseline": 0
+    },
+    "owner-buttons-restore-38F6F981-400A-4A27-887B-1486E7D86576": {
+      "titlebar_pixels_changed_vs_baseline": 0
+    },
+    "owner-buttons-sentinel": {
+      "titlebar_pixels_changed_vs_baseline": 0
+    },
+    "owner-buttons-restore-C28F6D03-8C78-4AC8-979B-FBA064DD6722": {
+      "titlebar_pixels_changed_vs_baseline": 0
+    },
+    "foreign-buttons-empty": {
+      "titlebar_pixels_changed_vs_baseline": 0
+    },
+    "foreign-buttons-sentinel": {
+      "titlebar_pixels_changed_vs_baseline": 0
+    },
+    "restored-buttons": {
+      "titlebar_pixels_changed_vs_baseline": 0
+    },
+    "native-hidden-control": {
+      "titlebar_pixels_changed_vs_baseline": 516
+    },
+    "native-restored-control": {
+      "titlebar_pixels_changed_vs_baseline": 0
+    }
+  },
+  "interpretation": "button-region metadata can change without native visibility; proxy construction does not establish foreign hide/clip authority"
+}

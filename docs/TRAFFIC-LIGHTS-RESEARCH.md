@@ -4,11 +4,11 @@ The target is the three close, minimise and zoom/fullscreen buttons, leaving the
 window title and other application chrome alone. Research is restricted to Accessibility and private
 macOS APIs for control. No product behavior is changed by this spike.
 
-**An external private WindowServer surface now visually conceals the controls in protected installed
-Chrome, Edge and TextEdit, without loading code into those apps.** Sampled display pixels, pointer
-target queries, move/resize, app deactivation/reactivation and restoration pass on 25G342. This is a
-cover: the original buttons remain in each app and are still exposed through Accessibility. It is not
-native removal, seamless titlebar matching or a flicker-free production result. See the latest section.
+**The requested external native hide remains unestablished for protected apps on 25G342. The user
+explicitly rejects image covers; the earlier cover experiment does not meet this requirement.**
+The latest native-only pass tests private button-region transactions and retained foreign-window
+proxies with matched owner controls, and traces Apple's titlebar service and WindowManagement bridge.
+None establishes a remote native-button visibility operation. Detailed evidence is appended below.
 
 The private AppKit solution also works in a real third-party Chromium browser through a temporary
 launch-loaded library. Its three buttons disappear, stay hidden through resize and return, while the
@@ -22,7 +22,7 @@ The distinction matters for Margin: a successful call inside a helper's own wind
 that Margin can change Safari's NSButton objects. The recommended shipping decision is to keep native
 buttons for unsupported external apps, and use an actual in-process backend for owned, cooperating or
 explicitly tested launch-loadable hosts. The launch mechanism and limits are detailed below.
-Covering the button region remains a separate possible visual treatment, with different guarantees.
+Covering the button region is retained as historical research, not the proposed answer to this request.
 
 ## Environment and method
 
@@ -432,9 +432,10 @@ in [JankyBorders' declarations](https://github.com/FelixKratz/JankyBorders/blob/
 and [event handling](https://github.com/FelixKratz/JankyBorders/blob/main/src/events.c), then inspected
 in this host's disassembly. Their presence or prior use is not substituted for the current tests.
 
-### Architecture decision and remaining acceptance
+### Historical cover architecture and remaining acceptance
 
-For a visual product result, put the cover inside Margin's own opaque chrome, bind PID/process lifetime
+The following cover architecture is rejected for the user's current requirement. It would put the
+cover inside Margin's own opaque chrome, bind PID/process lifetime
 plus window number, and observe exact window geometry and application/focus state. Keep capability
 states distinct: native-hidden, visually-covered, withdrawn, unsupported. Native AX actions can still
 operate the underlying controls. Revoke on destruction/minimization, uncertain identity or geometry;
@@ -444,7 +445,7 @@ Mission Control, multi-display/scale changes, independent crash cleanup and othe
 The 50-second lab watchdog releases controller surfaces on exit and terminates known owned test PIDs;
 it is not a production crash-recovery acceptance test. Safari was not tested.
 
-This establishes an external visual solution in three protected apps. **Strict native removal in
+This establishes visual covering in three protected apps, not the requested solution. **Strict native removal in
 arbitrary protected apps remains unestablished.** The direct server test strengthens that negative
 finding without claiming a mathematical impossibility. No shipping Margin behavior changes.
 
@@ -452,3 +453,114 @@ Fresh unit tests pass 1,031. Full E2E is reattempted and bounded after missing p
 failures/pending teardown; pinned Chromium 1254 also remains absent. No download or full-suite pass.
 Swift/C compile with warnings as errors, all three saved PNG/raw-video/pointer/lifecycle verifiers pass,
 and the earlier native/AX/launch evidence remains separately scoped.
+
+## Native-only follow-up: regions, proxies and system services (2026-11-16)
+
+The acceptance criterion is native suppression of the three controls in ordinary windowed,
+protected third-party apps. Image replacement is explicitly rejected. This pass creates no covers,
+loads no code into another app, changes no app preferences and leaves production code unchanged.
+It uses the same 25G342 host with AX and capture permission, an ordinary caller, and an independently
+identified disposable child. The new runtime tests use that child to distinguish ownership and
+rendering effects; they are not new protected-browser compatibility tests.
+
+### A button region is not the drawing of the buttons
+
+Static inspection identifies `SLSTransactionSetWindowButtonRegion` as transaction operation 0x4b,
+and `SLSGetButtonRegionLegacy(windowID)` as a getter for client window-region metadata. The latter
+takes a window ID, not a connection-plus-window pair. The experiment changes that region from inside
+and outside the owner, reads the child's native buttons, and captures the child's actual window pixels.
+
+| Operation | Independent result |
+| --- | --- |
+| Baseline | Button region `{9,9,37,14}`; all three buttons visible and native hit targets |
+| Owner sets empty region | Region becomes absent; all three native buttons and titlebar pixels unchanged |
+| Owner sets sentinel region | Region becomes `{0,0,4,4}`; all three native buttons and titlebar pixels unchanged |
+| Foreign client sends either region | Child still reads its original region; no native or titlebar pixel change |
+| Private native-view hide in owner, positive control | All three hidden, all three native hit tests false; 516 changed pixels in the 110×35 control crop |
+| Restore | Native state and crop return to baseline, zero changed pixels |
+
+An independent decoder compares saved original PNGs with a maximum-channel threshold of 8. Both
+accepted runs produce zero changed control-crop pixels for the region operations and their restores.
+This establishes a real owner metadata mutation without rendering suppression, rather than mistaking
+a no-op or a successful call for hiding. It does not establish all uses or system effects of this region.
+Every observed phase stays windowed; exact child cleanup succeeds.
+
+### Retaining a foreign AppKit window proxy does not fix the tested clips
+
+`+[NSCGSWindow windowWithWindowID:]` exists with encoding `@20@0:8I16`. A foreign proxy is actually
+created and retained through the attempts. `SLSConnectionGetHeldWindowRights` returns raw outputs
+`[0,0,65536]` both before and after retention, versus the owner's `[1,196614,65536]`. These are raw
+undocumented fields; their individual meanings have not been established.
+
+The matched owner local clip changes the captured image from 680×452 to 680×402, and restoration
+returns it to 680×452. The foreign local clip returns zero but leaves the image and control pixels
+unchanged. The matched owner global clip makes 1008/2072 sampled positions transparent; restore
+returns zero. The foreign global clip after proxy retention leaves zero transparent samples and
+unchanged control pixels. Thus proxy construction is not evidence of remote NSView access or extra
+clipping authority. The previous exact-message foreign test remains a separate negative observation.
+
+The first combined proxy/clip attempt is **invalid**: the owner saved a clip before it had settled,
+and restoring that empty region made capture unavailable. The probe stopped before foreign clipping.
+That failure is preserved; it is not counted as a negative foreign result. The corrected setup copies
+the original clip only after positive bounds agree with AppKit, requires matching region dimensions,
+then verifies full restoration before attempting the foreign clips. Its completed run passes.
+
+### Apple's titlebar XPC service checks the host window's owner
+
+The installed `ThemeWidgetControlViewService.xpc` includes zoom-menu, window-sharing and theme-widget
+controllers. In arm64e disassembly, `-[NSThemeWidgetServiceViewController unverifiedHostWindow]`
+reads the `HostWindow` value. `hostWindow` calls `hostAppOwnsWindow:` before accepting it. That method
+gets the window's owner connection/PID, derives the host PID from its audit token, and compares the
+two PIDs. This is a concrete ownership check in the reviewed path.
+
+This is **static evidence**, not a runtime service experiment or proof about every service entry point.
+The service was not invoked, no sharing session was requested, and no privacy indicator was suppressed.
+Its remote-view appearance does not by itself establish an arbitrary external native-button setter.
+
+### The WindowManagement bridge and launch-key leads
+
+Runtime protocol inspection confirms `SLSWindowManagementBridgeDelegate`, `WMWindowDelegate`,
+`WMClientWindowManagerDelegate`, `WMXPCClientInterface` and `WMXPCServerInterface`. This is a real
+transaction/XPC path, not merely a misleading selector name. Static tracing shows:
+
+- `_WMWindow.setStyleMask:` updates a local field, marks property bit `0x2000000` dirty and invokes
+  its delegate through `performUpdatesUsingBlock:`.
+- AppKit's `NSWindow.window:didUpdateWithChangedProperties:` constructs an updating-window action
+  for `NSWMWindowCoordinator`. The coordinator snapshots transactions and sends them through
+  `WMClientWindowManager` to `handleXPCWindowTransaction:completionHandler:`.
+- The reviewed reverse `applyAgentPropertySnapshot:` path handles user-window-set membership,
+  occlusion, agent live resize, snapshot restoration and tiling state. It has no style-mask or button
+  visibility update. The runtime client/delegate protocol lists likewise expose no button-hide request.
+
+This supports an **outbound window-model update** interpretation for the reviewed style setter;
+it does not establish a remote rendering change in another app. No fabricated cross-app transaction
+was sent, and server-side authorization was not reverse engineered completely. This route remains
+unproven rather than a claimed universal impossibility or an accepted native backend.
+
+Read-only loaded-AppKit string inspection finds `NSWindowCloseButtonFrame`,
+`NSWindowMiniaturizeButtonFrame`, `NSWindowZoomButtonFrame` and
+`NSWindowShouldCacheStandardWindowButton`. A traced reference to the last key is in
+`-[NSWindow standardWindowButton:]`, where it controls caching/lookup, not view visibility. No current
+launch-default consumer that hides buttons was established for the frame strings. No app was launched
+with speculative defaults and no preference was changed. Reviewed `NSThemeFrame._updateButtons`
+code still creates/removes the owner's local button subviews from local window state.
+
+### Decision, evidence and validation
+
+The working native implementation remains the ABI-checked in-process individual-view hide. Its
+demonstrated deployment targets are owned/cooperating windows and the separately tested permissive
+Chrome for Testing launch. **It does not satisfy general protected-app support.** The new probes do
+not provide the missing supported host invocation or system-mediated rendering operation. Keep the
+requested feature unsupported for those targets until one is actually demonstrated; do not silently
+substitute covers. No claim that every possible private API has been ruled out is justified.
+
+Compact state, independent pixel checks, static excerpts and hashes are in
+[`results/native-25G342`](../tools/traffic-lights-lab/results/native-25G342/README.md).
+Raw PNGs, logs, source/binary snapshots and the failed attempt remain local under
+`test-results/traffic-lights-native-2026-11-16/`. Reproduction is in the lab README. Source builds with
+warnings as errors; both accepted saved-evidence verifications pass. Fresh `npm test` passes 1,031.
+The verifier also rejects the invalid restoration run, fabricated native state and a substituted
+baseline PNG in place of the native-hide positive control. Final readback finds no fixture windows
+or fixture processes remaining.
+`npm run test:e2e` is attempted with a 15-second bound and reports missing pinned WebKit 2388; pinned
+Chromium 1254 and `/opt/pw-browsers` are also absent. No browser download or full E2E pass is claimed.

@@ -1,0 +1,30 @@
+-[NSWindow(NSWMWindowManagement) window:didUpdateWithChangedProperties:]:
+0x1857509D0   pacibsp
+0x1857509D4   sub      sp, sp, #0x40
+0x1857509D8   stp      x29, x30, [sp, #0x30]
+0x1857509DC   add      x29, sp, #0x30
+0x1857509E0   adrp     x8, 424024           ; 0x1ecfa8000
+0x1857509E4   ldr      x0, [x8, #0xac8]     ; __sWindowCoordinator
+0x1857509E8   mov      x8, sp
+0x1857509EC   adrp     x16, 395910          ; 0x1e61d6000
+0x1857509F0   ldr      x16, [x16, #0xa90]
+0x1857509F4   mov      x17, x8
+0x1857509F8   movk     x17, #0x6ae1, lsl #48
+0x1857509FC   pacda    x16, x17
+0x185750A00   str      x16, [sp]
+0x185750A04   adrp     x9, 1136             ; 0x185bc0000
+0x185750A08   ldr      d0, [x9, #0x278]
+0x185750A0C   str      d0, [sp, #0x8]
+0x185750A10   add      x8, x8, #0x10
+0x185750A14   adrp     x9, 430720           ; 0x1ee9d0000
+0x185750A18   add      x9, x9, #0x7e8       ; ___block_descriptor_48_e8_32o_e47_v24?0"WMWindowTransaction"8"CAFenceHandle"16l
+0x185750A1C   adrp     x16, 0               ; 0x185750000
+0x185750A20   add      x16, x16, #0xa44     ; ___72-[NSWindow(NSWMWindowManagement) window:didUpdateWithChangedProperties:]_block_invoke
+0x185750A24   pacia    x16, x8
+0x185750A28   stp      x16, x9, [sp, #0x10]
+0x185750A2C   stp      x2, x3, [sp, #0x20]
+0x185750A30   mov      x2, sp
+0x185750A34   bl       "_objc_msgSend$performTransactionUsingBlock:"
+0x185750A38   ldp      x29, x30, [sp, #0x30]
+0x185750A3C   add      sp, sp, #0x40
+0x185750A40   retab

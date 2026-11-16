@@ -1,0 +1,68 @@
+-[NSWindow standardWindowButton:]:
+0x184AA3D80   pacibsp
+0x184AA3D84   stp      x24, x23, [sp, #-0x40]!
+0x184AA3D88   stp      x22, x21, [sp, #0x10]
+0x184AA3D8C   stp      x20, x19, [sp, #0x20]
+0x184AA3D90   stp      x29, x30, [sp, #0x30]
+0x184AA3D94   add      x29, sp, #0x30
+0x184AA3D98   mov      x20, x2
+0x184AA3D9C   mov      x21, x0
+0x184AA3DA0   adrp     x8, 399042           ; 0x1e6165000
+0x184AA3DA4   ldr      x0, [x8, #0xc48]
+0x184AA3DA8   bl       "_objc_msgSend$numberWithInteger:"
+0x184AA3DAC   mov      x19, x0
+0x184AA3DB0   adrp     x8, 427272           ; 0x1ecfab000
+0x184AA3DB4   add      x8, x8, #0xbfe       ; _sNSWindowShouldCacheStandardWindowButtonComputedValue
+0x184AA3DB8   ldarb    w8, [x8]
+0x184AA3DBC   cmp      w8, #0x2
+0x184AA3DC0   b.eq     0x184aa3e4c
+0x184AA3DC4   cbz      w8, 0x184aa3e2c
+0x184AA3DC8   adrp     x8, 416507           ; 0x1ea59e000
+0x184AA3DCC   ldrsw    x23, [x8, #0xa94]
+0x184AA3DD0   ldr      x0, [x21, x23]
+0x184AA3DD4   bl       _objc_msgSend$cachedStandardButtons
+0x184AA3DD8   mov      x22, x0
+0x184AA3DDC   cbnz     x0, 0x184aa3dfc
+0x184AA3DE0   adrp     x8, 399029           ; 0x1e6158000
+0x184AA3DE4   ldr      x0, [x8, #0x7a8]
+0x184AA3DE8   bl       _objc_msgSend$dictionary
+0x184AA3DEC   mov      x22, x0
+0x184AA3DF0   ldr      x0, [x21, x23]
+0x184AA3DF4   mov      x2, x22
+0x184AA3DF8   bl       "_objc_msgSend$setCachedStandardButtons:"
+0x184AA3DFC   mov      x0, x22
+0x184AA3E00   mov      x2, x19
+0x184AA3E04   bl       "_objc_msgSend$objectForKeyedSubscript:"
+0x184AA3E08   cbz      x0, 0x184aa3e50
+0x184AA3E0C   mov      x23, x0
+0x184AA3E10   bl       _objc_msgSend$window
+0x184AA3E14   cmp      x0, x21
+0x184AA3E18   b.ne     0x184aa3e50
+0x184AA3E1C   mov      x0, x23
+0x184AA3E20   bl       _objc_msgSend$isHidden
+0x184AA3E24   cbnz     w0, 0x184aa3e50
+0x184AA3E28   b        0x184aa3e64
+0x184AA3E2C   adrp     x0, 434088           ; 0x1eea4b000
+0x184AA3E30   add      x0, x0, #0xc8
+0x184AA3E34   adrp     x2, 427272           ; 0x1ecfab000
+0x184AA3E38   add      x2, x2, #0xbfe       ; _sNSWindowShouldCacheStandardWindowButtonComputedValue
+0x184AA3E3C   mov      w1, #0x1
+0x184AA3E40   mov      x3, #0x0
+0x184AA3E44   bl       __NSGetBoolAppConfig
+0x184AA3E48   cbnz     w0, 0x184aa3dc8
+0x184AA3E4C   mov      x22, #0x0
+0x184AA3E50   mov      x0, x21
+0x184AA3E54   mov      x2, x20
+0x184AA3E58   bl       "_objc_msgSend$_findStandardWindowButton:"
+0x184AA3E5C   mov      x23, x0
+0x184AA3E60   cbz      x0, 0x184aa3e74
+0x184AA3E64   mov      x0, x22
+0x184AA3E68   mov      x2, x23
+0x184AA3E6C   mov      x3, x19
+0x184AA3E70   bl       "_objc_msgSend$setObject:forKeyedSubscript:"
+0x184AA3E74   mov      x0, x23
+0x184AA3E78   ldp      x29, x30, [sp, #0x30]
+0x184AA3E7C   ldp      x20, x19, [sp, #0x20]
+0x184AA3E80   ldp      x22, x21, [sp, #0x10]
+0x184AA3E84   ldp      x24, x23, [sp], #0x40
+0x184AA3E88   retab
