@@ -81,6 +81,7 @@ nonisolated struct HostWindow: Equatable, Sendable {
     var canFullScreen = true // AXFullScreen settable (no: shown in window mode)
     var resizable = true // AXSize settable (no: a fixed-size window, only moved)
     var minimized = false
+    var role: String? = nil // its role and subrole, when found by its number (for the log)
 }
 
 // A Safari window a profile's copy made for Margin (its `newWindow` answer): the copy's id for it, and its bounds as

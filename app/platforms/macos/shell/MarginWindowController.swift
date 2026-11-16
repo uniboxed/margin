@@ -30,11 +30,12 @@
 //   the whole width when nothing is hosted.
 //   Window mode (a hosted app that can't go full screen, HostEngine.swift): the window stays its whole width
 //   (`untile`) and draws its own layout (`setWindowed`: no `pageOutside`; `pageHosted`: no launcher under the hosted
-//   window, whose search field would take the keys), its page area the hosted window's place;
+//   window, whose search field would take the keys; the sidebar docked as beside a tile), its page area the hosted
+//   window's place;
 //   the hosted window is above it in its Space, so whenever this window comes to the front (Margin activated, a click
 //   in the sidebar, shown) it's ordered right below that window again (`keepBelow`), except while a field of Margin's
 //   has the keys (the palette is drawn in this window: it's in front then); a press in the page area around the
-//   hosted window gives that app the keyboard (`onPagePress`).
+//   hosted window (never on it: the app has that press already) gives that app the keyboard (`onPagePress`).
 // - MarginWindows: every such window, the menu bar's actions (to the key one),
 //   and the source's changes passed to each.
 
@@ -222,9 +223,18 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             hostDisplay = nil
             Diagnostics.note("Margin's window \(id): hosting nothing: its whole width again")
         }
-        push(#"{"type":"pageOutside","on":\#(on && !hostingWindowed)}"#)
-        push(#"{"type":"pageHosted","on":\#(on && hostingWindowed)}"#)
+        pushHostedLayout()
         updatePage()
+    }
+
+    // What its page is told while hosting: the sidebar alone (`pageOutside`, a tile beside it), or its own layout under a
+    // window-mode app's window (`pageHosted`); both keep the sidebar docked. The one turning on is said first, so the
+    // page is never drawn between the two with neither (seen 2026-11-15: the sidebar hid in full screen, the page area
+    // became the whole window and the app was placed over the sidebar's place).
+    private func pushHostedLayout() {
+        let outside = #"{"type":"pageOutside","on":\#(hosting && !hostingWindowed)}"#
+        let hosted = #"{"type":"pageHosted","on":\#(hosting && hostingWindowed)}"# // (no launcher under the hosted window: its field would take the keys)
+        if hosting && hostingWindowed { push(hosted); push(outside) } else { push(outside); push(hosted) }
     }
 
     // Window mode on or off while hosting (or for the next setHosting): its page draws its own layout (no
@@ -234,8 +244,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         hostingWindowed = on
         guard hosting else { return }
         Diagnostics.note("Margin's window \(id): hosting \(on ? "a window above its own layout (window mode)" : "beside the sidebar's tile")")
-        push(#"{"type":"pageOutside","on":\#(!on)}"#)
-        push(#"{"type":"pageHosted","on":\#(on)}"#) // (no launcher under the hosted window: its field would take the keys)
+        pushHostedLayout()
         updatePage()
     }
 
@@ -343,7 +352,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // the keyboard. Only while this window is on screen in the current Space (the monitor hears every app's presses).
     func pressed(_ at: CGPoint) {
         if below != nil, hosting, !pageWantsKeyboard, window.isVisible, window.isOnActiveSpace, let page = window.pageRect, page.contains(at) {
-            owner?.onPagePress?(self)
+            owner?.onPagePress?(self, at)
         }
         guard pageWantsKeyboard, !contentFrame.contains(at) || PassThrough.pageGets(at, slot) else { return }
         push(#"{"type":"pressOutside"}"#)
@@ -570,7 +579,7 @@ final class MarginWindows {
     var onReady: ((MarginWindowController) -> Void)?
     var onLeavingFullScreen: ((MarginWindowController) -> Void)? // about to leave full screen while hosting
     var onLeftFullScreen: ((MarginWindowController) -> Void)? // left full screen while hosting
-    var onPagePress: ((MarginWindowController) -> Void)? // a press in its page area around a window-mode host's window
+    var onPagePress: ((MarginWindowController, CGPoint) -> Void)? // a press in its page area around a window-mode host's window
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)
     private(set) var controllers: [MarginWindowController] = []
     private var lastKey: MarginWindowController?

@@ -13,7 +13,10 @@ final class FakeHostWorld: HostSystem {
     // frame: a normal window's (none: 100,100 800×600). canFullScreen: AXFullScreen settable; resizable: AXSize settable;
     // minSize/maxSize: the app's own limits, kept when Accessibility sizes it.
     struct Win { var pid: pid_t; var fullScreen = false; var spaces: [UInt64]; var priv: UInt64?; var frame: CGRect? = nil
-                 var canFullScreen = true; var resizable = true; var minSize: CGSize? = nil; var maxSize: CGSize? = nil; var minimized = false }
+                 var canFullScreen = true; var resizable = true; var minSize: CGSize? = nil; var maxSize: CGSize? = nil; var minimized = false
+                 // axRole: Accessibility's role/subrole when it isn't a standard window's (the listing, which keeps standard
+                 // windows and ones that can go full screen, leaves it out; found by its number).
+                 var axRole: String? = nil }
     static let defaultFrame = CGRect(x: 100, y: 100, width: 800, height: 600)
 
     static let marginSpace: UInt64 = 100, marginTile: UInt64 = 101, desktop: UInt64 = 1, marginWindow = 1
@@ -36,6 +39,7 @@ final class FakeHostWorld: HostSystem {
     var fixedSize: [String: CGSize] = ["com.apple.calculator": CGSize(width: 230, height: 408)]
     var maxSize: [String: CGSize] = [:]
     var minSize: [String: CGSize] = [:]
+    var axRoles: [String: String] = [:] // an app's windows' Accessibility role/subrole when it isn't a standard window's
     // What each app last saved as its window's frame (AppKit writes it as the window moves or resizes, and at quit).
     var saved: [String: CGRect] = [:]
     var apps: [pid_t: App] = [:]
@@ -69,6 +73,23 @@ final class FakeHostWorld: HostSystem {
     var axSeen: Set<Int> = []
     func onCurrent(_ window: Int) -> Bool { wins[window].map { $0.priv == nil && $0.spaces.contains(current) } ?? false }
     func axReads(_ window: Int) -> Bool { !axCurrentOnly || onCurrent(window) || axSeen.contains(window) }
+    // Accessibility lists a window only this long after it's on the current Space (moved there, or its Space made
+    // current): the window server moves it first (seen 2026-11-15: Calculator brought into Margin's Space, not listed
+    // within a second). And windows it lists only while the Desktop is current (where a stand-alone test saw Calculator's).
+    var axDelay = 0.0
+    var arrivedAt: [Int: Double] = [:]
+    var currentSince = 0.0
+    var axDesktopOnly: Set<Int> = []
+    var lookups = 0 // Accessibility asked for a window by its number
+    func axLists(_ n: Int) -> Bool {
+        guard !axCurrentOnly || onCurrent(n) else { return false }
+        if axDesktopOnly.contains(n), current != Self.desktop { return false }
+        return axDelay == 0 || clock - max(arrivedAt[n] ?? 0, currentSince) >= axDelay
+    }
+    // The window server's bounds of a window Accessibility just set: its old frame this long after (none: at once).
+    var frameLag = 0.0
+    var lagging: [Int: (frame: CGRect, until: Double)] = [:]
+    var onSetFrame: (() async -> Void)? // (a test's: something that happens while a frame is being set)
 
     init() { wins[Self.marginWindow] = Win(pid: 1, spaces: [Self.marginSpace]) }
 
@@ -95,6 +116,7 @@ final class FakeHostWorld: HostSystem {
             if let size = fixedSize[bundle] { win.resizable = false; win.frame = CGRect(origin: CGPoint(x: 400, y: 300), size: size) }
             win.maxSize = maxSize[bundle]
             win.minSize = minSize[bundle]
+            win.axRole = axRoles[bundle]
             wins[n] = win
             list.append(n)
         }
@@ -132,11 +154,17 @@ final class FakeHostWorld: HostSystem {
     // ---- windows ----
     func windows(pid: pid_t) async -> [HostWindow]? {
         guard !fail.contains("ax"), let a = apps[pid] else { return nil }
-        let listed = a.windows.filter { !axCurrentOnly || onCurrent($0) }
+        let listed = a.windows.filter { axLists($0) && wins[$0].map { $0.axRole == nil || $0.canFullScreen } == true }
         axSeen.formUnion(listed)
         return listed.compactMap { n in
             wins[n].map { HostWindow(number: n, fullScreen: $0.fullScreen, canFullScreen: $0.canFullScreen, resizable: $0.resizable, minimized: $0.minimized) }
         }
+    }
+    func window(pid: pid_t, number: Int) async -> HostWindow? {
+        lookups += 1
+        guard !fail.contains("ax"), let a = apps[pid], a.windows.contains(number), axLists(number), let w = wins[number] else { return nil }
+        axSeen.insert(number)
+        return HostWindow(number: number, fullScreen: w.fullScreen, canFullScreen: w.canFullScreen, resizable: w.resizable, minimized: w.minimized, role: w.axRole ?? "AXWindow/AXStandardWindow")
     }
     func frame(pid: pid_t, window: Int) async -> CGRect? {
         guard !fail.contains("ax"), let w = wins[window], w.pid == pid, !axCurrentOnly || onCurrent(window), !w.fullScreen else { return nil }
@@ -147,15 +175,18 @@ final class FakeHostWorld: HostSystem {
     func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool {
         calls.append("frame \(window) \(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))×\(Int(frame.height))\(size ? "" : " (moved)")")
         guard !fail.contains("ax"), !fail.contains("frame"), var w = wins[window], w.pid == pid, !axCurrentOnly || onCurrent(window), !w.fullScreen else { return false }
+        guard axSeen.contains(window) || (w.axRole == nil && axLists(window)) else { return false } // (Accessibility has no element for it)
         var extent = (w.frame ?? Self.defaultFrame).size
         if size, w.resizable {
             extent = frame.size
             if let m = w.minSize { extent = CGSize(width: max(extent.width, m.width), height: max(extent.height, m.height)) }
             if let m = w.maxSize { extent = CGSize(width: min(extent.width, m.width), height: min(extent.height, m.height)) }
         }
+        if frameLag > 0 { lagging[window] = (w.frame ?? Self.defaultFrame, clock + frameLag) }
         w.frame = CGRect(origin: frame.origin, size: extent)
         wins[window] = w
         if let bundle = apps[pid]?.bundle { saved[bundle] = w.frame }
+        await onSetFrame?()
         return true
     }
     func activate(pid: pid_t, window: Int) async -> Bool { calls.append("activate \(pid) \(window)"); return apps[pid] != nil }
@@ -225,6 +256,7 @@ final class FakeHostWorld: HostSystem {
     func spaceOf(window: Int) -> UInt64? { tiles.first { $0.value.contains { tileWindow[$0] == window } }?.key }
     func bounds(window: Int) -> CGRect? {
         guard let w = wins[window] else { return nil }
+        if let lag = lagging[window], clock < lag.until { return lag.frame }
         guard w.priv == nil, let space = spaceOf(window: window), w.fullScreen || window == Self.marginWindow else { return w.frame ?? Self.defaultFrame }
         let sidebar = apps[w.pid]?.sidebarOpen == true
         let area = (sidebar ? .zero : (reservation[space] ?? .zero)).inset(Self.display)
@@ -245,7 +277,7 @@ final class FakeHostWorld: HostSystem {
     func spaceType(_ space: UInt64) -> Int? { tiles[space] != nil ? 4 : (space == Self.desktop ? 0 : nil) }
     func spaceExists(_ space: UInt64) -> Bool? { tiles[space] != nil || space == Self.desktop }
     func currentSpace(onDisplayOf space: UInt64) -> UInt64? { current }
-    func setCurrentSpace(_ space: UInt64) -> Bool { calls.append("current \(space)"); guard !fail.contains("setCurrent") else { return false }; current = space; return true }
+    func setCurrentSpace(_ space: UInt64) -> Bool { calls.append("current \(space)"); guard !fail.contains("setCurrent") else { return false }; current = space; currentSince = clock; return true }
     func desktop(onDisplayOf space: UInt64) -> UInt64? { Self.desktop }
     func ownerlessFullScreenSpaces() -> [UInt64]? { tiles.filter { $0.key != Self.marginSpace && $0.value.isEmpty && owner[$0.key] == nil }.map(\.key).sorted() }
 
@@ -284,7 +316,7 @@ final class FakeHostWorld: HostSystem {
         if privates.contains(space) {
             guard !fail.contains("park") else { return false }
             w.priv = space
-        } else { w.priv = nil; w.spaces = [space] }
+        } else { w.priv = nil; w.spaces = [space]; arrivedAt[window] = clock }
         wins[window] = w
         return true
     }
@@ -1125,6 +1157,138 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         let n = window(w, "com.apple.FaceTime")
         check("window mode: a window with its own maximum size: that size, centred in what's left", r == .shown(faceTime.id, placed: true) && w.bounds(window: n) == CGRect(x: 390, y: 158, width: 1000, height: 700),
               "\(String(describing: w.bounds(window: n)))")
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- a window Accessibility lists late, or not as a standard window, or only with its Desktop current (Calculator,
+    // 2026-11-15: started while Margin's Space was current, its window opened on the Desktop) ----
+    func said(_ body: () -> Void) -> [String] {
+        let echo = Diagnostics.echo
+        var lines: [String] = []
+        Diagnostics.echo = { lines.append($0) }
+        body()
+        Diagnostics.echo = echo
+        return lines
+    }
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        w.axCurrentOnly = true
+        w.axDelay = 1.5 // (listed 1.5 s after it's in Margin's Space: the old 1 s look gave up)
+        var r: HostResult?
+        let lines = said { r = open(e, calculator) }
+        let n = window(w, "com.apple.calculator")
+        let want = CGRect(x: 775, y: 304, width: 230, height: 408)
+        check("window mode: Accessibility lists the window 1.5 s after it's in Margin's Space: asked by its number until then, hosted, centred",
+              r == .shown(calculator.id, placed: true) && w.bounds(window: n) == want && w.spaces(window: n) == [FakeHostWorld.marginSpace] && w.lookups >= 20, "\(String(describing: r)) \(w.lookups) \(w.calls)")
+        check("window mode: found in Margin's Space, the Desktop never made current; the log says which path found it",
+              !w.calls.contains("current \(FakeHostWorld.desktop)") && lines.contains { $0.contains("Accessibility found its window in Margin's Space after") && $0.contains("AXWindow/AXStandardWindow") }, "\(lines.filter { $0.contains("Accessibility") })")
+        hostRun { await e.quitAll() }
+    }
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        w.axCurrentOnly = true
+        w.axRoles["com.apple.calculator"] = "AXWindow/AXDialog" // (no settable full screen: the listing leaves it out)
+        var r: HostResult?
+        let lines = said { r = open(e, calculator) }
+        let before = w.apps.values.first?.windows.first ?? -1
+        let n = window(w, "com.apple.calculator")
+        check("window mode: a window Accessibility lists with another subrole (AXDialog), never in the standard listing: found by its number, hosted",
+              n == before && r == .shown(calculator.id, placed: true) && w.spaces(window: n) == [FakeHostWorld.marginSpace] && e.mode(of: calculator.id) == .window
+              && lines.contains { $0.contains("by its number, AXWindow/AXDialog") }, "\(String(describing: r)) \(lines.filter { $0.contains("Accessibility") })")
+        hostRun { await e.quitAll() }
+    }
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        w.axCurrentOnly = true
+        let next = w.nextWindow
+        w.axDesktopOnly = [next] // (listed only while the Desktop is current, as the stand-alone test saw it)
+        var r: HostResult?
+        let lines = said { r = open(e, calculator) }
+        let n = window(w, "com.apple.calculator")
+        let desk = at(w, "current \(FakeHostWorld.desktop)"), back = last(w, "current \(FakeHostWorld.marginSpace)")
+        check("window mode: not listed in Margin's Space: read once with its Desktop current, then back in Margin's Space, hosted, centred",
+              n == next && r == .shown(calculator.id, placed: true) && w.spaces(window: n) == [FakeHostWorld.marginSpace] && w.current == FakeHostWorld.marginSpace
+              && desk >= 0 && back > desk && w.bounds(window: n) == CGRect(x: 775, y: 304, width: 230, height: 408), "\(String(describing: r)) \(w.calls)")
+        check("window mode: the Desktop made current only under the freeze (one, revealed after), the log says so",
+              w.freezes == 1 && w.reveals == 1 && lines.contains { $0.contains("with its Desktop current it found it") }, "\(lines.filter { $0.contains("Accessibility") })")
+        hostRun { await e.quitAll() }
+    }
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        w.axCurrentOnly = true
+        w.axDesktopOnly = [w.nextWindow]
+        w.fail = ["setCurrent"] // (and its Desktop can't be made current either)
+        let r = open(e, calculator)
+        check("window mode: not listed anywhere: not hosted, said so; Calculator quit, Margin's Space current, nothing left",
+              r == .failed(.window, "Accessibility doesn't list its window, even on the current Space or with its Desktop current") && w.running(bundleId: "com.apple.calculator").isEmpty
+              && w.current == FakeHostWorld.marginSpace && w.privates.isEmpty && clean(w) && e.hosts.isEmpty, "\(String(describing: r))")
+    }
+
+    // ---- the keyboard to the app only on a press around its window; giving a window back never activates its app ----
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        _ = open(e, calculator)
+        let p = pid(w, "com.apple.calculator"), n = window(w, "com.apple.calculator")
+        let on = CGPoint(x: 800, y: 400), around = CGPoint(x: 300, y: 100) // (Calculator at 775,304 230×408 in the page area)
+        w.calls = []
+        hostRun { await e.activateShown(at: on) }
+        check("window mode: a press on the hosted window itself: the app's already, not activated again", !w.calls.contains { $0.hasPrefix("activate") }, "\(w.calls)")
+        hostRun { await e.activateShown(at: around) }
+        check("window mode: a press in the page area around it: its app given the keyboard", w.calls == ["activate \(p) \(n)"], "\(w.calls)")
+        // A press while its window is given back (a switch parks it, then Margin quits): never activated.
+        w.calls = []
+        w.onSetFrame = { await e.activateShown(at: around) }
+        _ = open(e, textEdit)
+        check("window mode: parked by a switch (its frame given back): its app never activated, even with a press meanwhile",
+              w.wins[n]?.priv != nil && !w.calls.contains { $0.hasPrefix("activate") }, "\(w.calls)")
+        _ = hostRun { await e.show(calculator.id) }
+        w.calls = []
+        hostRun { await e.quitAll() }
+        hostRun { await e.activateShown(at: around) }
+        check("window mode: Margin quits: its frame given back and the app quit (a polite quit, once), never activated, nor after",
+              w.calls.contains(frameCall(n, CGRect(x: 400, y: 300, width: 230, height: 408), moved: true)) && w.calls.filter { $0 == "terminate \(p)" }.count == 1
+              && !w.calls.contains { $0.hasPrefix("activate") } && w.apps[p] == nil, "\(w.calls)")
+    }
+    do {
+        // An app that doesn't quit within 5 s: left running, and the log says what can be read of why.
+        let (w, e, _) = world()
+        _ = wired(e)
+        _ = open(e, faceTime)
+        let p = pid(w, "com.apple.FaceTime")
+        w.apps[p]?.refusesQuit = true
+        w.serverExtra = [ServerWindow(number: 9001, pid: p, layer: 8, bounds: CGRect(x: 600, y: 400, width: 300, height: 160))] // (an alert of its own)
+        let lines = said { hostRun { await e.quitAll() } }
+        check("window mode: an app that doesn't quit within 5 s: asked politely once, left running, the log says why it may be",
+              w.calls.filter { $0 == "terminate \(p)" }.count == 1 && w.apps[p] != nil
+              && lines.contains { $0.contains("didn't quit within 5 s (still no Dock icon; 1 other window of its own on screen (it may be asking something); Accessibility still answers for it)") },
+              "\(lines.filter { $0.contains("quit") })")
+    }
+
+    // ---- placing a window: as soon as it's there, or as soon as it holds the size it took ----
+    do {
+        let (w, e, _) = world()
+        _ = wired(e)
+        w.maxSize["com.apple.FaceTime"] = CGSize(width: 1000, height: 700)
+        _ = open(e, faceTime)
+        let n = window(w, "com.apple.FaceTime")
+        let page2 = CGRect(x: 320, y: 41, width: 1184, height: 933)
+        w.calls = []
+        let t0 = w.clock
+        let ok = hostRun { await e.pageRectChanged(windowed(page2)) }
+        let took = w.clock - t0
+        check("window mode: placed at its own maximum: done once its size held for 100 ms (not a fixed 1.5 s), centred",
+              ok == true && took < 0.3 && w.bounds(window: n) == CGRect(x: 412, y: 158, width: 1000, height: 700) && w.calls.count == 2, "\(took) s \(w.calls)")
+        w.frameLag = 0.3 // (the window server's bounds 300 ms behind Accessibility)
+        w.calls = []
+        let t1 = w.clock
+        let ok2 = hostRun { await e.pageRectChanged(windowed(page)) }
+        check("window mode: the window server's bounds late: waited for (no second set), done as soon as they're there",
+              ok2 == true && w.clock - t1 < 1.0 && w.bounds(window: n) == CGRect(x: 390, y: 158, width: 1000, height: 700) && w.calls.count == 2, "\(w.clock - t1) s \(w.calls)")
         hostRun { await e.quitAll() }
     }
 

@@ -61,6 +61,8 @@ export type UiState = {
   launcherPage?: boolean,
   /** Margin.app's own window hosting another app's window beside it: no page area here (ui/host-app.ts pageOutside). */
   pageOutside?: boolean,
+  /** The host keeps the sidebar docked (Margin.app's window hosting: a tile beside it, or an app's window above its page area). */
+  sidebarDocked?: boolean,
   pageLoading?: boolean,
   gesture?: { kind: 'pull' | 'swipe', state: 'pulling' | 'armed' | 'done' | 'leaving', progress?: number, direction?: number } | null,
   theme?: { id: string, name: string, settings: Record<string, any> } | null,
@@ -278,8 +280,10 @@ function fresh(input: ViewModelInput): ViewModel {
   const settings = input.settings ?? {};
   const pinnedOpen = !!state?.settings?.sidebarPinnedOpen;
   // Margin's own pages (the launcher) always show the sidebar beside it. With no page area of its own (Margin.app's
-  // window hosting another app's window beside it: `pageOutside`), the sidebar is all there is: always docked.
-  const sidebar = ui.pageOutside ? 'open' : ui.sidebar === 'open' || ui.sidebar === 'hidden' || ui.sidebar === 'peek' ? ui.sidebar : pinnedOpen || ui.launcherPage ? 'open' : 'hidden';
+  // window hosting another app's window beside it: `pageOutside`), the sidebar is all there is: always docked. An app's
+  // window above the page area (window mode, `sidebarDocked`): docked too, so the page area it's placed in never takes
+  // the sidebar's place (seen 2026-11-15: hidden in full screen, FaceTime covered where the sidebar is).
+  const sidebar = ui.pageOutside || ui.sidebarDocked ? 'open' : ui.sidebar === 'open' || ui.sidebar === 'hidden' || ui.sidebar === 'peek' ? ui.sidebar : pinnedOpen || ui.launcherPage ? 'open' : 'hidden';
   const windowId = ui.windowId ?? null;
   const win = {
     id: windowId,

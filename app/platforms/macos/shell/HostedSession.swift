@@ -48,7 +48,7 @@ protocol HostedEngine: AnyObject {
     func isHosted(_ id: HostID) -> Bool
     func mode(of id: HostID) -> HostMode? // how a host is shown (nil: not hosted)
     var windowedShown: Int? { get } // the window-mode host's window shown in Margin's Space (Margin's window kept below it)
-    func activateShown() async // that app in front (a press in Margin's page area around its window)
+    func activateShown(at point: CGPoint?) async // that app in front (a press in Margin's page area around its window; top-left)
     func fullScreenSpace(ofWindow number: Int) -> UInt64?
     func target(ofWindow number: Int) -> HostTarget?
     func launchedPid(bundleId: String) -> pid_t?
@@ -387,9 +387,10 @@ final class HostedSession: LibraryDelegate {
 
     // A press in a Margin window's page area while a window-mode host is shown there (around its window: on it, the app
     // has it already): that app given the keyboard (activated, its window raised), never a click.
-    func pagePressed(_ w: HostedWindow) {
+    // `point`: where (top-left coordinates): a press on the hosted window itself is the app's already.
+    func pagePressed(_ w: HostedWindow, at point: CGPoint? = nil) {
         guard w.id == hostingWindow, engine.windowedShown != nil else { return }
-        Task { await self.engine.activateShown() }
+        Task { await self.engine.activateShown(at: point) }
     }
 
     // Margin's window is the sidebar's tile only while the engine shows something in it: nothing shown, its whole

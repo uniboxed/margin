@@ -66,7 +66,9 @@ final class HostEngine {
         var narrowWait = 0.6 // Margin's window at the sidebar's tile width and steady, when it really narrows
         var narrowEvery = 0.05
         var destroyWait = 1.5
-        var placeWait = 1.5
+        var placeWait = 1.5 // a tile's reservation taking effect
+        var windowPlaceWait = 0.6 // a window-mode host's frame set by Accessibility: at most this long for the window server's bounds
+        var placeSettle = 0.1 // ...or as soon as its bounds changed and then held this long (the size it took: its own limits)
         var parkWait = 0.6 // two tries of 300 ms, as the parker
         var exitWait = 7.0 // out of full screen (an app animates it)
         var quitWait = 5.0
@@ -76,7 +78,9 @@ final class HostEngine {
         var appArguments = ["-NSMenuEnableMenuBarAgent", "NO"]
         var safariArguments = ["-NSMenuEnableMenuBarAgent", "NO", "-AutoShowToolbarInFullScreen", "YES"]
         var personWindowWait = 2.0 // an app the person opened: its window (it has one already, or none)
-        var lookWait = 1.0 // a window brought into Margin's Space to be read: Accessibility lists it
+        var lookWait = 2.0 // a window brought into Margin's Space to be read: Accessibility lists it (by its number)
+        var lookEvery = 0.05
+        var desktopLookWait = 1.0 // still unlisted: read once more with its Desktop made current (under the freeze)
         var serverAfter = 3.0 // an app Margin started whose window Accessibility doesn't list by then: the window server's
     }
 
@@ -143,6 +147,8 @@ final class HostEngine {
     private(set) var marginWindow = 0
     private(set) var marginSpace: UInt64 = 0
     private(set) var busy = false
+    private(set) var quitting = false // Margin quits: nothing is shown or activated any more
+    private var quitAsked: Set<pid_t> = [] // apps asked to quit during Margin's quit
     var onEvent: ((HostEvent) -> Void)?
     // Wired by the shell to the extension's request for a new window (a profile's; nil the default one): the copy's
     // answer (its id for the window, its bounds), nil if it wasn't made.
@@ -248,13 +254,17 @@ final class HostEngine {
     // Margin quits: the one shown out of full screen while it's still tiled, then every app Margin started quit, the
     // Safari windows it made closed, its Spaces given back.
     func quitAll() async {
+        quitting = true
         await serial {
             let started = self.sys.now()
+            self.quitAsked = []
             // (The one shown first, out of full screen while it's still tiled; then the parked ones.)
             let order = (self.shown.map { [$0] } ?? []) + self.hosts.keys.filter { $0 != self.shown }.sorted { $0.raw < $1.raw }
             for id in order { await self.closeNow(id, why: "Margin quits") }
             await self.closeLeftSafariWindows()
-            for (pid, app) in self.launched { await self.quitApp(pid, bundle: app.bundleId) }
+            // (An app asked already by its window's close and still running isn't asked and waited for again: one polite
+            // quit each, 5 s at most each.)
+            for (pid, app) in self.launched where !self.quitAsked.contains(pid) { await self.quitApp(pid, bundle: app.bundleId) }
             if self.marginSpace > 0, let r = self.sys.reserved(space: self.marginSpace), !r.isZero { _ = self.sys.reserve(.zero, space: self.marginSpace) }
             await self.destroyLeftSpaces()
             self.checkOrphans("at quit")
@@ -299,9 +309,13 @@ final class HostEngine {
     }
 
     // The window-mode host shown, its app in front and its window raised (a press in Margin's page area around it:
-    // the app keeps the keyboard). Nothing for a tiled one (it's beside Margin's window, never under it).
-    func activateShown() async {
-        guard let id = shown, let host = hosts[id], host.mode == .window else { return }
+    // the app keeps the keyboard). Nothing for a tiled one (it's beside Margin's window, never under it); nothing for a
+    // press on the hosted window itself (the app has that press already: activating it on every click of its own was
+    // one more activation of a no-Dock app for nothing); nothing while an operation runs (a switch, a close, Margin's
+    // quit: a window being given back is never activated) or once Margin is quitting.
+    func activateShown(at point: CGPoint? = nil) async {
+        guard !busy, !quitting, let id = shown, let host = hosts[id], host.mode == .window, host.phase == .shown else { return }
+        if let point, let b = sys.bounds(window: host.window), b.contains(point) { return }
         _ = await sys.activate(pid: host.pid, window: host.window)
     }
 
@@ -506,7 +520,7 @@ final class HostEngine {
 
     // Its frame and its Space recorded before anything moves it. The person's window already full screen in a Space of
     // its own: left alone (Margin doesn't move other people's full-screen windows). One Accessibility didn't list (on
-    // another Space): brought into Margin's Space (current), where it's read; still unread there: not hosted.
+    // another Space): brought into Margin's Space (current), where it's read (`look`); still unread: not hosted.
     private func take(_ host: Host) async -> (HostStep, String)? {
         let spaces = sys.spaces(window: host.window) ?? []
         if host.personApp, spaces.contains(where: { sys.spaceType($0) == ManagedSpace.fullScreenType && $0 != marginSpace }) {
@@ -521,12 +535,9 @@ final class HostEngine {
         guard sys.move(window: host.window, to: marginSpace), await wait(options.parkWait, { self.sys.spaces(window: host.window) == [self.marginSpace] }) else {
             return (.windowMode, "its window didn't come into Margin's Space to be read")
         }
-        var info: HostWindow?
-        _ = await wait(options.lookWait) {
-            info = (await self.sys.windows(pid: host.pid) ?? []).first { $0.number == host.window }
-            return info != nil
+        guard let info = await look(host) else {
+            return (.window, "Accessibility doesn't list its window, even on the current Space or with its Desktop current")
         }
-        guard let info else { return (.window, "Accessibility doesn't list its window, even on the current Space") }
         if info.minimized { return (.window, "its window is minimized: left as it is") }
         host.unseen = false
         host.mode = info.canFullScreen ? .fullScreen : .window
@@ -534,6 +545,45 @@ final class HostEngine {
         saveMarker()
         Diagnostics.note("host: \(host.id): its window read in Margin's Space: \(host.mode.rawValue)\(host.mode == .window ? (host.resizable ? ", resizable" : ", a fixed size") : "")")
         return nil
+    }
+
+    // A window the window server found (on another Space), now in Margin's Space, read by Accessibility. Accessibility
+    // lists a window only on the current Space and only once the window server has moved it there (seen 2026-11-15:
+    // Calculator, started while Margin's Space was current, opened on the Desktop; brought in, it wasn't listed within
+    // a second), so it's asked every 50 ms for up to 2 s for the element whose window number is the server's, whatever
+    // its role or subrole (Calculator's needn't be a standard window). Still nothing: once more with its Desktop made
+    // current (where a stand-alone test saw Calculator's window at once), under the freeze, then back into Margin's
+    // Space; Accessibility keeps the element it found. Nil: not read.
+    private func look(_ host: Host) async -> HostWindow? {
+        let t0 = sys.now()
+        var info: HostWindow?
+        func found() async -> Bool {
+            info = await sys.window(pid: host.pid, number: host.window)
+            return info != nil
+        }
+        if await wait(options.lookWait, every: options.lookEvery, found) {
+            Diagnostics.note("host: \(host.id): Accessibility found its window in Margin's Space after \(ms(since: t0)) ms (by its number\(info?.role.map { ", \($0)" } ?? ""))")
+            return info
+        }
+        guard frozenNow, let desktop = home(host.originalSpace, display: host.originalSpace ?? marginSpace), desktop != marginSpace else {
+            Diagnostics.note("host: \(host.id): Accessibility didn't list its window in Margin's Space within \(ms(since: t0)) ms\(frozenNow ? "" : " (no freeze: its Desktop isn't made current)")")
+            return nil
+        }
+        let t1 = sys.now()
+        if sys.move(window: host.window, to: desktop) { _ = await wait(options.parkWait) { self.sys.spaces(window: host.window)?.contains(desktop) == true } }
+        let wentThere = sys.setCurrentSpace(desktop)
+        if wentThere { _ = await wait(0.5) { self.sys.currentSpace(onDisplayOf: self.marginSpace) == desktop } }
+        var seen = false
+        if wentThere { seen = await wait(options.desktopLookWait, every: options.lookEvery, found) }
+        // (Back: Margin's Space current again, the window in it.)
+        if sys.currentSpace(onDisplayOf: marginSpace) != marginSpace {
+            _ = sys.setCurrentSpace(marginSpace)
+            _ = await wait(0.5) { self.sys.currentSpace(onDisplayOf: self.marginSpace) == self.marginSpace }
+        }
+        var back = sys.move(window: host.window, to: marginSpace)
+        if back { back = await wait(options.parkWait) { self.sys.spaces(window: host.window) == [self.marginSpace] } }
+        Diagnostics.note("host: \(host.id): Accessibility didn't list its window in Margin's Space within \(ms(since: t0)) ms; with its Desktop current \(seen ? "it found it (by its number\(info?.role.map { ", \($0)" } ?? ""))" : wentThere ? "it didn't either" : "(not made current)") in \(ms(since: t1)) ms\(back ? "" : "; its window didn't come back into Margin's Space")")
+        return seen && back ? info : nil
     }
 
     // ---- window mode ----
@@ -618,10 +668,7 @@ final class HostEngine {
         var got = now
         for attempt in 1...2 {
             _ = await sys.setFrame(pid: host.pid, window: host.window, want, size: host.resizable && attempt == 1)
-            _ = await wait(options.placeWait) {
-                got = self.sys.bounds(window: host.window) ?? got
-                return HostLayout.near(got, want, within: self.options.tolerance)
-            }
+            got = await settled(host, at: want, from: got)
             if HostLayout.near(got, want, within: options.tolerance) { return true }
             // Its own size limits (or a position it adjusted): the size it took, centred, set once more (position only).
             want = centred(got.size)
@@ -631,6 +678,22 @@ final class HostEngine {
         Diagnostics.note("host: place \(host.id) (window mode): wanted \(r(want)) in \(r(page)), it's at \(r(got))")
         emit(.failed(host.id, .place, "its window didn't take its place in the page area"))
         return false
+    }
+
+    // The window server's bounds of a window Accessibility was just asked to move or resize: as soon as they're `want`
+    // within 1 pt, or once they've changed from `from` and held still for `placeSettle` (the size it took: an app's own
+    // limits; seen 2026-11-15: FaceTime at its own maximum waited out a fixed 1.5 s before it was centred), at most
+    // `windowPlaceWait` (no change at all).
+    private func settled(_ host: Host, at want: CGRect, from: CGRect) async -> CGRect {
+        var got = from, last = from
+        var still = sys.now()
+        _ = await wait(options.windowPlaceWait) {
+            got = self.sys.bounds(window: host.window) ?? got
+            if HostLayout.near(got, want, within: self.options.tolerance) { return true }
+            if !HostLayout.near(got, last, within: 0.5) { last = got; still = self.sys.now() }
+            return !HostLayout.near(got, from, within: 0.5) && self.sys.now() - still >= self.options.placeSettle
+        }
+        return got
     }
 
     // A window-mode host's frame given back as it was recorded, through Accessibility, which sees only the current
@@ -655,7 +718,7 @@ final class HostEngine {
         var ok = false
         for _ in 1...2 where !ok {
             _ = await sys.setFrame(pid: host.pid, window: host.window, original, size: host.resizable)
-            ok = await wait(options.placeWait) { self.sys.bounds(window: host.window).map { HostLayout.near($0, original, within: self.options.tolerance) } ?? false }
+            ok = await wait(options.windowPlaceWait) { self.sys.bounds(window: host.window).map { HostLayout.near($0, original, within: self.options.tolerance) } ?? false }
         }
         if ok { host.frameChanged = false } else { Diagnostics.warn("host: \(host.id): its frame wasn't given back (Accessibility didn't take it): kept in the marker") }
         saveMarker()
@@ -1199,16 +1262,34 @@ final class HostEngine {
     // unsaved work) has its window put on the Desktop for the person.
     private func quitApp(_ pid: pid_t, bundle: String, parked: Host? = nil) async {
         guard sys.app(pid: pid) != nil else { launched[pid] = nil; saveMarker(); return }
+        quitAsked.insert(pid)
         _ = sys.terminate(pid: pid)
         if await wait(options.quitWait, { self.sys.app(pid: pid) == nil }) {
             launched[pid] = nil
             leftSafariWindows.removeAll { $0.pid == pid } // its windows went with it
         } else {
             if let parked, parked.privateSpace != nil, let desktop = sys.desktop(onDisplayOf: marginSpace) { _ = sys.move(window: parked.window, to: desktop) }
-            Diagnostics.warn("host: \(bundle) (pid \(pid)) didn't quit within \(Int(options.quitWait)) s: left running, its window on the Desktop")
+            Diagnostics.warn("host: \(bundle) (pid \(pid)) didn't quit within \(Int(options.quitWait)) s (\(await whyNotQuit(pid, hosted: parked))): left running, its window on the Desktop")
             emit(.failed(parked?.id ?? HostID(raw: "app:" + bundle), .quit, "didn't quit"))
         }
         saveMarker()
+    }
+
+    // Why an app asked to quit is still running, as far as can be read (numbers and kinds only): its type now (promoted
+    // to a Dock app, or still none), windows of its own on screen that aren't the hosted one (a sheet or an alert: it may
+    // be asking about unsaved work), and whether Accessibility still answers for it (no: it's busy or hung).
+    private func whyNotQuit(_ pid: pid_t, hosted: Host?) async -> String {
+        var parts: [String] = []
+        switch sys.policy(pid: pid) {
+        case .regular?: parts.append("a normal app with a Dock icon now\(hosted?.promoted == true ? " (promoted while hosted)" : "")")
+        case .accessory?: parts.append("still no Dock icon")
+        case .prohibited?: parts.append("a background app")
+        case nil: parts.append("its type doesn't read")
+        }
+        let others = (sys.serverWindows(pid: pid) ?? []).filter { $0.alpha > 0 && $0.number != hosted?.window && $0.onScreen }
+        parts.append(others.isEmpty ? "no other window of its own on screen" : "\(others.count) other window\(others.count == 1 ? "" : "s") of its own on screen (it may be asking something)")
+        parts.append(await sys.windows(pid: pid) == nil ? "Accessibility doesn't answer for it (busy, or quitting slowly)" : "Accessibility still answers for it")
+        return parts.joined(separator: "; ")
     }
 
     // ---- Safari windows Margin asked for ----
@@ -1423,14 +1504,14 @@ final class HostEngine {
         func there() -> Bool { sys.bounds(window: w.number).map { HostLayout.near($0, original, within: options.tolerance) } ?? false }
         if there() { return true }
         let resizable = w.resizable ?? true
-        if await sys.setFrame(pid: w.pid, window: w.number, original, size: resizable), await wait(options.placeWait, { there() }) { return true }
+        if await sys.setFrame(pid: w.pid, window: w.number, original, size: resizable), await wait(options.windowPlaceWait, { there() }) { return true }
         guard let current = sys.currentSpace(onDisplayOf: dest), current != dest, sys.spaceType(current) == ManagedSpace.desktopType, sys.move(window: w.number, to: current) else {
             Diagnostics.warn("host: recovery: a window-mode window's frame wasn't given back (Accessibility doesn't see it)")
             return false
         }
         _ = await wait(options.parkWait) { self.sys.spaces(window: w.number)?.contains(current) == true }
         _ = await sys.setFrame(pid: w.pid, window: w.number, original, size: resizable)
-        let ok = await wait(options.placeWait) { there() }
+        let ok = await wait(options.windowPlaceWait) { there() }
         _ = sys.move(window: w.number, to: dest)
         return ok
     }

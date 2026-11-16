@@ -60,7 +60,7 @@ final class NoHostEngine: HostedEngine {
     func isHosted(_ id: HostID) -> Bool { false }
     func mode(of id: HostID) -> HostMode? { nil }
     var windowedShown: Int? { nil }
-    func activateShown() async {}
+    func activateShown(at point: CGPoint?) async {}
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { nil }
     func target(ofWindow number: Int) -> HostTarget? { nil }
     func launchedPid(bundleId: String) -> pid_t? { nil }
@@ -85,7 +85,7 @@ final class LateHostEngine: HostedEngine {
     func isHosted(_ id: HostID) -> Bool { engine.isHosted(id) }
     func mode(of id: HostID) -> HostMode? { engine.mode(of: id) }
     var windowedShown: Int? { engine.windowedShown }
-    func activateShown() async { await engine.activateShown() }
+    func activateShown(at point: CGPoint?) async { await engine.activateShown(at: point) }
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { engine.fullScreenSpace(ofWindow: number) }
     func target(ofWindow number: Int) -> HostTarget? { engine.target(ofWindow: number) }
     func launchedPid(bundleId: String) -> pid_t? { resolve()?.launchedPid(bundleId: bundleId) }
@@ -152,7 +152,7 @@ extension Shell {
         }
         windows.onLeavingFullScreen = { [weak session] controller in session?.leavingFullScreen(controller) }
         windows.onLeftFullScreen = { [weak session] controller in session?.leftFullScreen(controller) }
-        windows.onPagePress = { [weak session] controller in session?.pagePressed(controller) }
+        windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
         windows.apps = { [weak self] in self?.appsJSON ?? "null" }
     }
 

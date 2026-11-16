@@ -205,7 +205,17 @@ test("the app host in Margin's own window: said by the hello's host, its mode th
   assert.equal(host.pageHosted, true);
   assert.equal(host.launcher, false, 'a hosted app\'s window above the page area (window mode): no launcher (its field would take the keys)');
   assert.equal(host.pageOutside, false, 'window mode: laid out with a page area of its own');
+  assert.equal(host.sidebarDocked, true, 'window mode: the sidebar kept docked, as beside a tile');
+  // The view model: docked whatever its setting (seen 2026-11-15: hidden in full screen, FaceTime was placed over it).
+  const state = host.getState() as PageState;
+  const closed = { ...state, settings: { ...state.settings, sidebarPinnedOpen: false } };
+  for (const sidebar of [undefined, 'hidden', 'peek'] as const) {
+    const vm = buildViewModel({ state: closed, ui: { windowId: W, mode: 'fullscreen', sidebarDocked: host.sidebarDocked, ...(sidebar ? { sidebar } : {}) }, platform: host.platform });
+    assert.equal(vm.window.sidebar, 'open', `window mode, ${sidebar ?? 'Keep open off'}: docked`);
+    assert.equal(vm.window.pageOutside, false, 'window mode: its own page area, not the sidebar alone');
+  }
   host.receive({ type: 'pageHosted', on: false });
+  assert.equal(host.sidebarDocked, false, 'that window gone: the sidebar follows its setting again');
   assert.equal(host.launcher, true, 'that window gone: the launcher again');
   assert.equal(createAppHost({ hello: hello({ pageHosted: true }), post: bridge().post }).pageHosted, false, 'only in Margin\'s own window');
   assert.equal(createAppHost({ hello: hello({ host: 'app-window', pageHosted: true }), post: bridge().post }).launcher, false, 'from the hello');
@@ -219,6 +229,7 @@ test("the app host: Margin's own window hosting another app's window beside it (
   assert.equal(over.pageOutside, false, 'only in Margin\'s own window');
   const host = createAppHost({ hello: hello({ host: 'app-window', pageOutside: true }), post: bridge().post });
   assert.equal(host.pageOutside, true, 'from the hello');
+  assert.equal(host.sidebarDocked, true, 'beside a tile: docked');
   const drawn: boolean[] = [];
   host.onState(() => drawn.push(host.pageOutside));
   host.receive({ type: 'pageOutside', on: false });

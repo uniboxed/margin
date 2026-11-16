@@ -69,6 +69,7 @@ final class GlueHostWorld: HostSystem {
     return true
   }
   func windows(pid: pid_t) async -> [HostWindow]? { apps[pid].map { $0.windows.compactMap { n in wins[n].map { HostWindow(number: n, fullScreen: $0.fullScreen, canFullScreen: $0.canFullScreen, resizable: $0.resizable) } } } }
+  func window(pid: pid_t, number: Int) async -> HostWindow? { await windows(pid: pid)?.first { $0.number == number } }
   func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool {
     calls.append("fullScreen \(on)")
     guard var w = wins[window], w.pid == pid, !on || w.canFullScreen else { return false }
@@ -225,7 +226,10 @@ func glueScenario() async {
   check("the first run, nothing imported: one space, Personal", library.spaces().count == 1 && library.spaces().first?.value["name"] as? String == "Personal")
   check("its page asked to open the UI's space editor for it", c.pushed.contains { $0.contains("edit-space") && $0.contains(first) })
   check("the space editor open in the page", await waitJS(c.webView, "return !!document.querySelector('[m-input=\"space-name\"]')"))
-  _ = await js(c.webView, "document.querySelector('[m-action=\"editor.cancel\"]')?.click(); return true")
+  // (Closed with Escape in its field, as a person would: in window mode the sidebar stays docked, so an editor left open
+  // keeps its field, and Margin's window, in front of the hosted app.)
+  _ = await js(c.webView, "document.querySelector('[m-input=\"space-name\"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true")
+  check("the space editor closed (Escape)", await waitJS(c.webView, "return !document.querySelector('[m-input=\"space-name\"]')"))
 
   // ---- an app picked in the palette: an item, Margin's window to full screen and the sidebar's tile, the app opened ----
   let emptyLauncher = await waitJS(c.webView, "return !!document.querySelector('.launcher')")
@@ -304,14 +308,20 @@ func glueScenario() async {
         && world.tiles[GlueHostWorld.marginSpace] == [GlueHostWorld.marginTile] && world.spaces(window: calcWindow) == [GlueHostWorld.marginSpace], "\(world.calls.dropFirst(since3))")
   check("Calculator: Margin's window its whole width again, drawing its own layout (no pageOutside), nothing reserved",
         c.hostingWindowed && abs(c.window.frame.width - display.width) <= 1 && c.layout?.outside == false && (world.reservation[GlueHostWorld.marginSpace] ?? .zero).isZero, "\(c.window.frame) \(String(describing: c.layout))")
+  // (Seen 2026-11-15: in full screen with Keep open off the sidebar hid, the page area became the whole window and
+  // FaceTime was placed over where the sidebar is. Docked as beside a tile, the page area is the docked layout's.)
+  let docked = await waitJS(c.webView, "return document.querySelector('.arcadia')?.dataset.sidebar === 'open'")
+  check("Calculator: the sidebar stays docked in window mode, the page area beside it (the docked layout's)", docked && (c.layout?.left ?? 0) > 100 && (c.window.pageRect?.minX ?? 0) > display.minX + 100,
+        "layout \(String(describing: c.layout)) page \(String(describing: c.window.pageRect))")
   let calcPage = c.window.pageRect ?? .zero
   let centred = CGRect(x: (calcPage.minX + (calcPage.width - 230) / 2).rounded(), y: (calcPage.minY + (calcPage.height - 408) / 2).rounded(), width: 230, height: 408)
   check("Calculator: centred in Margin's own page area (its layout's), only moved", calcPage.width > 400 && world.bounds(window: calcWindow) == centred && engine.windowPage == calcPage,
         "\(String(describing: world.bounds(window: calcWindow))) in \(calcPage)")
   let noLauncher = await waitJS(c.webView, "return !document.querySelector('.launcher')")
-  // (The first run's space editor, its field focused, went as hosting began: a field taken out of the page fires no
-  // focusout in WebKit, and the page says the keys are free anyway.)
-  check("Calculator: no launcher under its window (its field would take the keys), no field of Margin's has them", noLauncher && !c.pageWantsKeyboard)
+  // (The first run's space editor, its field focused, closed before hosting began: a field taken out of the page fires
+  // no focusout in WebKit, and the page says the keys are free anyway.)
+  let focused = await js(c.webView, "const a = document.activeElement; return a ? a.outerHTML.slice(0, 200) : 'none'") as? String ?? "?"
+  check("Calculator: no launcher under its window (its field would take the keys), no field of Margin's has them", noLauncher && !c.pageWantsKeyboard, focused)
   check("Calculator: Margin's window kept right below its window", c.below == calcWindow && c.belowOrders >= 1 && engine.windowedShown == calcWindow,
         "below \(String(describing: c.below)) orders \(c.belowOrders) shown \(String(describing: engine.windowedShown)) calc \(calcWindow) keys \(c.pageWantsKeyboard)")
 

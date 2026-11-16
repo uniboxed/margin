@@ -58,7 +58,8 @@
 //   page area itself: the theme's launcher, opaque (`launcher`), as Margin's new-tab page draws it over a browser.
 //   A hosted app's window above Margin's page area (window mode: an app that can't go full screen, Margin's window
 //   its whole width under it): the hello's `pageHosted` and `{ type: 'pageHosted', on }`: laid out as usual (its own
-//   layout, the sidebar as its setting says), but no launcher in the page area (its field would take the keys from
+//   layout), the sidebar docked as beside a tile (`sidebarDocked`: never hidden or peeking, so the page area the app's
+//   window is placed in is the docked layout's), and no launcher in the page area (its field would take the keys from
 //   the app above it).
 //
 // No browser API here: only the DOM and `post`.
@@ -163,7 +164,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   onMessage?: (msg: any) => void,
   onNotice?: (arg: { id?: string, action?: string }) => void,
   warn?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
   // (Its window can change: a profile switch hands the sidebar to the window it goes to, `rekey`.)
   let windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
@@ -284,6 +285,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get pageOutside() { return pageOutside; },
     /** The page area is a hosted app's window above Margin's (window mode): no launcher there. */
     get pageHosted() { return pageHosted; },
+    /** The sidebar kept docked while hosting (beside a tile, or under a window-mode app's window), whatever its setting. */
+    get sidebarDocked() { return pageOutside || pageHosted; },
     // The overlay stays on screen through a switch (ui/runtime.ts: the highlight waits for the state).
     staysOnScreen: true,
     // Not on screen as it first draws: its launcher takes the focus only when the app says (the `shown` push's `focus`).

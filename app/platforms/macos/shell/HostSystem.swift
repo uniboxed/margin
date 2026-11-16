@@ -24,6 +24,8 @@ protocol HostSystem: AnyObject {
     // ---- windows, through Accessibility: read, full screen set, a window-mode host's frame set ----
     // (Accessibility lists only the current Space's windows: the engine moves a window there before it sets its frame.)
     func windows(pid: pid_t) async -> [HostWindow]? // its standard windows and the ones that can go full screen; nil: not readable
+    // The window whose number is `number` (the window server's), whatever its role or subrole; nil: not listed (yet).
+    func window(pid: pid_t, number: Int) async -> HostWindow?
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool
     func isFullScreen(pid: pid_t, window: Int) async -> Bool?
     func mainWindow(pid: pid_t) async -> Int? // the app's main window (its View menu acts on that one)
@@ -100,6 +102,35 @@ nonisolated final class HostAX: @unchecked Sendable {
         guard fullScreen || (attr(w, kAXSubroleAttribute) as? String) == kAXStandardWindowSubrole else { return nil }
         return HostWindow(number: number, fullScreen: (attr(w, "AXFullScreen") as? Bool) == true, canFullScreen: fullScreen,
                           resizable: settable(w, kAXSizeAttribute), minimized: (attr(w, kAXMinimizedAttribute) as? Bool) == true)
+    }
+
+    // Any element of the app's whose window number is `number`: its windows, its main and focused ones, its children.
+    // Kept once found (read and set through it after, as a listed one).
+    private func find(_ pid: pid_t, _ number: Int) -> HostWindow? {
+        func loose(_ w: AXUIElement) -> HostWindow {
+            let role = [attr(w, kAXRoleAttribute) as? String, attr(w, kAXSubroleAttribute) as? String].compactMap { $0 }.joined(separator: "/")
+            return HostWindow(number: number, fullScreen: (attr(w, "AXFullScreen") as? Bool) == true, canFullScreen: settable(w, "AXFullScreen"),
+                              resizable: settable(w, kAXSizeAttribute), minimized: (attr(w, kAXMinimizedAttribute) as? Bool) == true, role: role.isEmpty ? nil : role)
+        }
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 1)
+        var candidates = (attr(app, kAXWindowsAttribute) as? [AXUIElement]) ?? []
+        for name in [kAXMainWindowAttribute, kAXFocusedWindowAttribute] {
+            if let v = attr(app, name), CFGetTypeID(v) == AXUIElementGetTypeID() { candidates.append(v as! AXUIElement) }
+        }
+        candidates += (attr(app, kAXChildrenAttribute) as? [AXUIElement]) ?? []
+        for w in candidates {
+            var n: CGWindowID = 0
+            guard hostWindowNumber(w, &n) == .success, Int(n) == number else { continue }
+            elements[number] = (pid, w)
+            return loose(w)
+        }
+        return nil
+    }
+
+    func window(pid: pid_t, number: Int) async -> HostWindow? {
+        guard !refuses, AXIsProcessTrusted() else { return nil }
+        return await withCheckedContinuation { c in queue.async { c.resume(returning: self.find(pid, number)) } }
     }
 
     private func read(_ pid: pid_t) -> [HostWindow]? {
@@ -283,6 +314,7 @@ final class RealHostSystem: HostSystem {
     }
 
     func windows(pid: pid_t) async -> [HostWindow]? { await ax.windows(pid: pid) }
+    func window(pid: pid_t, number: Int) async -> HostWindow? { await ax.window(pid: pid, number: number) }
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool { await ax.setFullScreen(pid: pid, window: window, on) }
     func isFullScreen(pid: pid_t, window: Int) async -> Bool? { await ax.isFullScreen(pid: pid, window: window) }
     func mainWindow(pid: pid_t) async -> Int? { await ax.mainWindow(pid: pid) }
