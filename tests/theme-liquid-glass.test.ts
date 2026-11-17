@@ -64,7 +64,11 @@ test('Liquid Glass: every material is inside @supports, after the plain look, on
   for (const v of used) assert.ok(VISUAL_EFFECTS.includes(v), v);
   // Who gets one: the panels that float and the capsules in the panel, by class, never a row or a tile as such.
   const rules = [...block.matchAll(/([^{}]+)\{([^{}]*-apple-visual-effect:\s*-apple-system-glass[^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]]);
-  assert.deepEqual(rules.map(([selector]) => selector), ['.glass, .panel.glass', '.capsule', '.tab.on, .new-tab.on, .tab.on:hover, .new-tab.on:hover']);
+  // … and the page loader's one capsule (a layer only while an item opens; the slot's own box while starting).
+  const OPENING = '.opening, .lg[m-starting][m-page-state="empty"] .page-loader::before';
+  assert.deepEqual(rules.map(([selector]) => selector), ['.glass, .panel.glass', '.capsule', '.tab.on, .new-tab.on, .tab.on:hover, .new-tab.on:hover', OPENING]);
+  assert.match(rules.find(([selector]) => selector === OPENING)![1], /overflow: hidden; background: none; box-shadow: none;/, 'the loader\'s capsule: clipped, no shadow of its own');
+  assert.ok(css.indexOf(`${OPENING} {`) > 0 && css.indexOf(`${OPENING} {`) < at, 'its plain look first');
   // Nothing past the box: no shadow, and clipped (a glass layer grows to cover whatever reaches past it).
   assert.match(block, /\.glass, \.panel\.glass, \.capsule, \.tab\.on, \.new-tab\.on \{ overflow: hidden; box-shadow: none; \}/);
   // With more contrast, or less transparency, the plain look.
@@ -79,6 +83,9 @@ test('Liquid Glass: the template has few glass elements (a layer each), and ever
   assert.equal(count(/class="[^"]*\bcapsule\b[^"]*"/g), 3);
   // What floats: the command bar, a menu, a notice, a prompt, the space editor.
   assert.equal(count(/class="[^"]*\bglass\b[^"]*"/g), 6);
+  // While an item opens: one capsule more, in the page loader's part and nowhere else.
+  assert.equal(count(/class="opening"/g), 1);
+  assert.match(t.html, /<template m-part="page-loader">\s*<div class="opening" role="status">/);
   for (const part of ['menu', 'space-editor', 'notice', 'prompt', 'launcher', 'settings']) assert.equal(count(new RegExp(`<template m-part="${part}">`, 'g')), 1, part);
   for (const slot of ['m-page', 'm-menu', 'm-editor', 'm-notice', 'm-prompt', 'm-launcher', 'm-settings', 'm-window-controls', 'm-drag-region']) assert.ok(t.html.includes(`<${slot}`), slot);
   for (const behavior of ['m-peek="left"', 'm-resize="sidebar"', 'm-swipe="spaces"', 'm-scroll="tabs"', 'm-scroll="palette"', 'm-drag="tab"', 'm-drag="pin"', 'm-drag="folder"', 'm-drop="tabs"', 'm-drop="pins"', 'm-drop="folder"', 'm-drop="space"', 'm-rename="space"', 'm-rename="folder"', 'm-input="palette"', 'm-input="launcher"', 'm-input="space-name"', 'm-input="space-emoji"']) assert.ok(t.html.includes(behavior), behavior);

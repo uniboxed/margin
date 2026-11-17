@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { inflateSync } from 'node:zlib';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, GLASS } from './package.ts';
+import { pageLoaderChecks } from './page-card.ts';
 import type { Harness, HarnessRt } from './harness.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
@@ -347,6 +348,51 @@ for (const [name, engine] of ENGINES) {
         assert.equal(await computed('.settings-form input.toggle', 'appearance'), 'none', 'the switch drawn by the theme');
         assert.ok((await ev(() => T.rtText('.setting-group'))).some((g) => /Liquid Glass/.test(g)), 'its own settings under its name');
         await ev(() => T.unmountRuntime());
+      });
+
+      // Liquid Glass's own page loader (Margin.app, while an item opens): the card as the ground, lit in the space's
+      // color, and on it one capsule with a small spinner and Margin's words. Plain here (a translucent fill, a
+      // hairline, a soft shadow); the system's glass where it's known (tools/glass-shots, tests/theme-liquid-glass).
+      await pageLoaderChecks(t, browser, {
+        id: 'liquid-glass', dir: GLASS, script,
+        label: '.opening-label', mark: '.opening-spin',
+        animations: ['lg-spin'],
+        skeleton: [['.space-name', ''], ['.today', '::before'], ['.chips', '::before']],
+        starting: ['lg-spin', 'lg-wait'],
+        look: async (_page, ev) => {
+          const read = () => ev(() => ({ card: T.rtLoader()!.background, lights: T.rtComputed('m-page-loader', 'background-image'), capsules: T.rtCount('m-page-loader .opening'), capsule: T.rtRect('.opening')!, spin: T.rtRect('.opening-spin')!, label: T.rtRect('.opening-label')!, slot: T.rtRect('m-page-loader')!,
+            fill: T.rtComputed('.opening', 'background-color'), shadow: T.rtComputed('.opening', 'box-shadow'), radius: T.rtComputed('.opening', 'border-top-left-radius'), effect: T.rtComputed('.opening', '-apple-visual-effect'),
+            size: T.rtComputed('.opening-label', 'font-size'), color: T.rtComputed('.opening', 'color'), ring: [T.rtComputed('.opening-spin', 'width'), T.rtComputed('.opening-spin', 'height')] }));
+          const a = await read();
+          assert.deepEqual(rgba(a.card), [246, 247, 249, 1], 'a solid ground under the lights');
+          assert.equal((a.lights ?? '').split('radial-gradient').length - 1, 3, 'three soft lights');
+          assert.equal(a.capsules, 1, 'one capsule (one glass layer, while an item opens only)');
+          assert.deepEqual([a.capsule.height, a.radius], [44, '22px'], 'a capsule');
+          assert.ok(Math.abs(a.capsule.x - a.slot.x) <= 1 && Math.abs(a.capsule.y - a.slot.y) <= 1, 'in the card\'s middle');
+          assert.ok(a.spin.left >= a.capsule.left && a.label.right <= a.capsule.right && a.spin.right <= a.label.left && a.spin.top >= a.capsule.top && a.spin.bottom <= a.capsule.bottom, 'the spinner and the words in it, side by side (nothing past its box)');
+          assert.deepEqual([...a.ring, a.size], ['16px', '16px', '13px'], 'a small spinner, 13 px words');
+          const fill = rgba(a.fill);
+          assert.ok(fill[3] > 0.4 && fill[3] < 0.9, `plain here: a translucent fill (${a.fill})`);
+          assert.match(a.shadow ?? '', /inset/, 'a hairline');
+          assert.equal(a.effect, '', 'no material in this engine');
+          assert.ok(rgba(a.color)[0] < 40, 'dark words on the light ground');
+          // The lights are the space's color: another space, other lights.
+          await ev(() => T.rtApply('switchSpace', 'work'));
+          assert.notEqual((await read()).lights, a.lights, 'another space, its lights');
+          await ev(() => T.rtApply('switchSpace', 'personal'));
+        },
+        looks: [
+          ['Dark Mode', { colorScheme: 'dark' }, async (_page, ev) => {
+            const d = await ev(() => ({ card: T.rtLoader()!.background, color: T.rtComputed('.opening', 'color'), fill: T.rtComputed('.opening', 'background-color') }));
+            assert.deepEqual(rgba(d.card), [20, 21, 24, 1], 'a dark ground');
+            assert.ok(rgba(d.color)[0] > 215 && rgba(d.fill)[3] < 0.3, `light words in a faint capsule (${d.color}, ${d.fill})`);
+          }],
+          ['more contrast', { contrast: 'more' }, async (_page, ev) => {
+            const c = await ev(() => ({ card: T.rtLoader()!.background, lights: T.rtComputed('m-page-loader', 'background-image'), fill: T.rtComputed('.opening', 'background-color'), color: T.rtComputed('.opening', 'color'), edge: T.rtComputed('.opening', 'box-shadow') }));
+            assert.deepEqual([rgba(c.card), c.lights, rgba(c.fill), rgba(c.color)], [[255, 255, 255, 1], 'none', [255, 255, 255, 1], [0, 0, 0, 1]], 'a flat white ground, a solid capsule, black words');
+            assert.match(c.edge ?? '', /inset/, 'a line around it');
+          }],
+        ],
       });
 
       await t.test('no request was made, no error thrown', () => {
