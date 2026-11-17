@@ -30,11 +30,15 @@ enum Expect: Equatable {
   case running(Target, Bool)          // still running, still Margin's (no termination seen by NSWorkspace)
   case said(Int, String)              // the copy's own log says it (its switch reached it)
   case givenBack([String])            // after Margin's quit: those that weren't running quit, the others with a normal window
+  // Its window closed (by itself, as the person's ⌘W would) and no other came: Margin closed its item (Tirth, 2026-11-17):
+  // the page card empty, nothing of it on screen in a user Space, no reopen asked of it after its close.
+  case itemClosed(Int)
   var text: String {
     switch self {
     case .desired(let d): return d.text
     case .running(let t, let on): return "\(t.text) \(on ? "still running (NSWorkspace too)" : "not running")"
     case .said(let n, let w): return "Chameleon \(n)'s log says \"\(w)\""
+    case .itemClosed(let n): return "Chameleon \(n)'s window closed and no other came: its item closed (Margin says its window closed; the page card empty; nothing of it on screen in a user Space; never reopened after)"
     case .givenBack(let ids): return "given back after Margin quit (\(ids.count) app(s)): those that weren't running before quit, those that were still running with a normal window and a Dock icon"
     }
   }
@@ -114,7 +118,7 @@ let core = Scenario(name: "core", title: "check10's steps: Margin's window in fr
 // ---- one scenario per behaviour class (docs/HOSTING-CORE.md's table): Chameleon 3 hosted with that switch, Chameleon 1
 // hosted plain first (the item a park shows instead) ----
 let hold = 30.0
-func behaviour(_ name: String, _ title: String, _ switches: [String: String], framed: Bool = false, auxiliary: Bool = false, prime: Bool = false, settles: (String, Double)? = nil, then: [Step] = []) -> Scenario {
+func behaviour(_ name: String, _ title: String, _ switches: [String: String], framed: Bool = false, auxiliary: Bool = false, prime: Bool = false, settles: (String, Double)? = nil, then: [Step] = [], closesItem: Bool = false) -> Scenario {
   let d = Desired(target: .copy(3), framed: framed, auxiliary: auxiliary, settles: settles)
   var steps: [Step] = [.setSwitches(3, switches)]
   if prime { steps.append(.prime(3)) }
@@ -125,8 +129,9 @@ func behaviour(_ name: String, _ title: String, _ switches: [String: String], fr
   if prime, let r = ChameleonSwitches.parse(switches).restore { steps.append(.expect(.said(3, " restored \(r.count) "))) }
   steps += [.expect(.desired(d))]
   steps += then
-  steps += [.hold(.desired(d), seconds: hold), .forget(.copy(3))]
-  return Scenario(name: name, title: title, copies: [3], steps: steps, estimate: 22 + hold + (prime ? 15 : 0) + then.reduce(0) { $0 + $1.estimate })
+  // (Its window closed for good: the item closed, and still so 10 s later; else the desired state held.)
+  steps += closesItem ? [.expect(.itemClosed(3)), .wait(10, "nothing reopened meanwhile"), .expect(.itemClosed(3)), .forget(.copy(3))] : [.hold(.desired(d), seconds: hold), .forget(.copy(3))]
+  return Scenario(name: name, title: title, copies: [3], steps: steps, estimate: 22 + (closesItem ? 14 : hold) + (prime ? 15 : 0) + then.reduce(0) { $0 + $1.estimate })
 }
 extension Step {
   var estimate: Double {
@@ -139,13 +144,16 @@ let behaviours: [Scenario] = [
   behaviour("restore-fullscreen", "restores its window in full screen, in a Space the Dock made as it launched (Maps)", ["restore": "1:fullscreen"], prime: true),
   behaviour("restore-both", "restores 3 windows, one in full screen (Safari's 15:19)", ["restore": "3:both"], prime: true),
   behaviour("restore-code", "makes 2 windows and asks both into full screen as it launches", ["restore": "2:fullscreen:code"]),
-  behaviour("windowless", "closes its own window 8 s after it's shown and runs on with none (Maps)", ["windowless": "close:8"], then: [.wait(10, "its window closed by itself")]),
+  // (Its window closed as the person's ⌘W would close it: its item closes, its window never reopened (Tirth, 2026-11-17).)
+  behaviour("windowless", "closes its own window 8 s after it's shown and runs on with none (Maps); its item closes", ["windowless": "close:8"], then: [.wait(10, "its window closed by itself")], closesItem: true),
   behaviour("autoTerminate-attempt", "parked, attempts termination after 5 s and runs on (UIKit's, Maps)", ["autoTerminate": "attempt:5"], then: parkAndBack),
   behaviour("autoTerminate-system", "AppKit's automatic termination on, parked (Margin launches it with -NSDisableAutomaticTermination YES)", ["autoTerminate": "system"], then: parkAndBack),
   behaviour("dialogMain", "its main window is an AXDialog (the Phone's)", ["dialogMain": "YES"]),
   behaviour("ordersOut-untilActive", "never orders its window in until it's activated (the Phone's)", ["ordersOut": "untilActive"]),
   behaviour("ordersOut-after", "orders its shown window out 3 s after it's first on screen", ["ordersOut": "after:3"]),
-  behaviour("replacesWindow-every", "closes and remakes its main window at the same frame every 4 s (Messages)", ["replacesWindow": "every:4"], settles: ("replaced ", 1.0)),
+  // (Each new window adopted as a window in the page area, the design's way for a replacement (fast, no full-screen
+  // change): AppKit keeps a window's top below the menu bar's band, so inside the page area, not at it.)
+  behaviour("replacesWindow-every", "closes and remakes its main window at the same frame every 4 s (Messages)", ["replacesWindow": "every:4"], framed: true, settles: ("replaced ", 1.0)),
   behaviour("replacesWindow-twin", "keeps a twin window at its main window's frame (Messages)", ["replacesWindow": "twin"]),
   behaviour("axBusy", "Accessibility busy (-25200) for 2.5 s as its window first shows (Mail)", ["axBusy": "2.5"]),
   behaviour("strip", "a full-width toolbar strip of its own while in full screen, left after an exit (Mail)", ["strip": "linger"]),

@@ -105,6 +105,21 @@ extension Runner {
     case .said(let n, let w):
       spin(3) { copySaid(n, w) > 0 }
       step("Chameleon \(n) says \"\(w)\"", copySaid(n, w) > 0, copyLines(n, w).last.map { String($0.suffix(200)) } ?? "never")
+    case .itemClosed(let n):
+      let id = copy(n).id
+      let f = front()
+      let page = word(f, "page") ?? "?"
+      let closedLine = said("host: app:\(id): its window closed").last
+      let pid = app(id)?.processIdentifier
+      let user = userSpaces()
+      let onUser = pid.map { p in windowsOf(p).filter { $0.layer == 0 && $0.on && $0.r.width >= 200 && $0.r.height >= 150 && !$0.spaces.filter(user.contains).isEmpty } } ?? []
+      // (A reopen asked of it after it closed its window: Margin's, which it mustn't do any more.)
+      func at(_ line: String?) -> Double? { line.flatMap { match($0, #"CHAMELEON (\d+\.\d+)"#) }.flatMap { Double($0[0]) } }
+      let closedAt = at(copyLines(n, "closing its own window").last)
+      let reopened = copyLines(n, "reopen asked").filter { l in closedAt.map { (at(l) ?? 0) > $0 } ?? false }
+      step("Chameleon \(n)'s item closed", closedLine != nil && page == "empty" && onUser.isEmpty && reopened.isEmpty,
+           "Margin said \(closedLine.map { "\"\(String($0.suffix(90)))\"" } ?? "nothing of its window closed"); the page card \(page); on screen in a user Space: \(onUser.map { "#\($0.n) \(rect($0.r))" }); reopens asked after its close: \(reopened.count); its app \(pid.map { "still running (pid \($0))" } ?? "not running")")
+      if !(closedLine != nil && page == "empty" && onUser.isEmpty && reopened.isEmpty) { copyTail(n) }
     case .givenBack(let ids):
       spin(20) { ids.allSatisfy { id in before.realApps.first { $0.bundle == id }?.wasRunning == true || app(id) == nil } }
       let user = userSpaces()

@@ -4,22 +4,33 @@ import AppKit
 
 let marginId = "com.unibox.margin"
 nonisolated(unsafe) var logStart = Date()
-func marginLog() -> [String] {
+func marginLog(from start: Date? = nil) -> [String] {
   let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-  return sh("/usr/bin/log", ["show", "--start", f.string(from: logStart.addingTimeInterval(-1)), "--style", "compact", "--predicate", "process == \"Margin\" AND subsystem == \"com.unibox.margin\""])
+  return sh("/usr/bin/log", ["show", "--start", f.string(from: (start ?? logStart).addingTimeInterval(-1)), "--style", "compact", "--predicate", "process == \"Margin\" AND subsystem == \"com.unibox.margin\""])
     .split(separator: "\n").filter { !$0.hasPrefix("Timestamp") }.map { String($0).replacingOccurrences(of: #"s-[0-9a-f]{8}-[0-9a-f-]{27}"#, with: "s-…", options: .regularExpression) }
 }
 func said(_ what: String) -> [String] { marginLog().filter { $0.contains(what) } }
-// One mark in Margin's log: what it said since (a step's own lines).
-struct LogMark { let count: Int; init() { count = marginLog().count }; func since(_ what: String) -> [String] { Array(marginLog().dropFirst(count)).filter { $0.contains(what) } } }
+// A line's own time (compact style: "2026-11-17 18:00:45.179 Df Margin[…]"); nil: not a log line.
+let stampFormat: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"; return f }()
+func stamp(_ line: String) -> Date? { line.count >= 23 ? stampFormat.date(from: String(line.prefix(23))) : nil }
+// One mark in Margin's log: what it said since (a step's own lines), by the lines' own times. (Was by a count of the
+// lines before it: 2026-11-17's Safari step read none of Margin's lines after its mark, "Margin said: []", though its
+// failure line was there; a count is undone by any read that comes back short.)
+struct LogMark {
+  let at: Date
+  init() { at = Date() }
+  func since(_ what: String) -> [String] {
+    marginLog(from: at).filter { line in line.contains(what) && (stamp(line).map { $0 >= at.addingTimeInterval(-0.05) } ?? false) }
+  }
+}
 
 func hook(_ info: [String: String]) { var i = info; i["pid"] = "\(getpid())"; DistributedNotificationCenter.default().postNotificationName(.init("com.unibox.margin.dev.host"), object: nil, userInfo: i, deliverImmediately: true) }
 // A hook that answers with one log line: that line (nil: none within 8 s).
 func ask(_ info: [String: String], answer: String, within: Double = 8) -> String? {
-  let before = said(answer).count
+  let mark = LogMark()
   hook(info)
   var line: String?
-  spin(within) { let now = said(answer); if now.count > before { line = now.last }; return line != nil }
+  spin(within) { line = mark.since(answer).last; return line != nil }
   return line
 }
 // Margin's two windows as its dev hook says them: `window`, the full-screen base that owns its Space; `panel`, its UI.

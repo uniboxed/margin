@@ -85,7 +85,10 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, NSToolbarDel
     func appKit(_ topLeft: CGRect) -> CGRect { chameleonFlip(topLeft, mainScreenHeight: screenFrame.height) }
 
     // ---- windows ----
-    @discardableResult func makeWindow(_ kind: Kind, index: Int, order: Bool = true, frame: CGRect? = nil) -> NSWindow {
+    // `exact`: the AppKit frame it gets before it's ordered in (a replacement or a twin at the old window's frame exactly;
+    // `frame` is a content rect, so the title bar and toolbar would land above it: 2026-11-17, the replacements came 40 pt
+    // off the old frame and were never taken for replacements).
+    @discardableResult func makeWindow(_ kind: Kind, index: Int, order: Bool = true, frame: CGRect? = nil, exact: NSRect? = nil) -> NSWindow {
         let screen = CGRect(origin: .zero, size: screenFrame.size)
         let topLeft = frame ?? switches.mainFrame(index: index, screen: screen)
         var style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
@@ -108,6 +111,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, NSToolbarDel
         windows.append(w)
         kinds[ObjectIdentifier(w)] = kind
         NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in self?.occlusion(w) }
+        if let exact { w.setFrame(exact, display: false) }
         clog("window made \(w.windowNumber) kind \(kind.rawValue) frame \(r(topLeft)) subrole \(w.accessibilitySubrole()?.rawValue ?? "-") fullScreenable \(!switches.noFullScreen) resizable \(style.contains(.resizable))")
         if order { show(w) }
         return w
@@ -206,13 +210,18 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, NSToolbarDel
     func primeQuit() {
         guard priming, !primeDone else { return }
         primeDone = true
+        // (Each window's state invalidated, so AppKit encodes it before the quit: launched with -ApplePersistenceIgnoreState
+        // YES, AppKit empties its store at its first flush and saves only windows invalidated after it; 2026-11-17, only
+        // the full-screen ones (invalidated by their transition) were restored, the normal ones never.)
+        for w in windows { w.invalidateRestorableState() }
+        NSApp.invalidateRestorableState()
         clog("priming done: \(windows.count) window(s), full screen \(windows.filter { $0.styleMask.contains(.fullScreen) }.map { "\($0.windowNumber)" }.joined(separator: ",")): quitting, its windows kept")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { NSApp.terminate(nil) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { NSApp.terminate(nil) }
     }
 
     // ---- the behaviours over time ----
     func twin(of m: NSWindow) {
-        let w = makeWindow(.twin, index: 0, order: false, frame: chameleonFlip(m.frame, mainScreenHeight: screenFrame.height))
+        let w = makeWindow(.twin, index: 0, order: false, frame: chameleonFlip(m.frame, mainScreenHeight: screenFrame.height), exact: m.frame)
         w.order(.below, relativeTo: m.windowNumber)
         clog("twin \(w.windowNumber) behind \(m.windowNumber) at \(r(m.frame))")
     }
@@ -221,7 +230,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, NSToolbarDel
         let frame = chameleonFlip(old.frame, mainScreenHeight: screenFrame.height)
         let wasFull = old.styleMask.contains(.fullScreen)
         kinds[ObjectIdentifier(old)] = .twin // (not the main one any more: its close isn't the last window's)
-        let new = makeWindow(.main, index: 0, order: true, frame: wasFull ? switches.mainFrame(index: 0, screen: CGRect(origin: .zero, size: screenFrame.size)) : frame)
+        let new = makeWindow(.main, index: 0, order: true, frame: wasFull ? switches.mainFrame(index: 0, screen: CGRect(origin: .zero, size: screenFrame.size)) : frame, exact: wasFull ? nil : old.frame)
         clog("replaced \(old.windowNumber) by \(new.windowNumber) (the old one \(wasFull ? "in full screen" : "at \(r(frame))"))")
         old.close()
     }
@@ -302,12 +311,18 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, NSToolbarDel
     }
     func applicationWillTerminate(_ n: Notification) { clog("terminating pid \(pid)") }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        // (Its own orderOut isn't a close: AppKit asks this when its last visible window is ordered out too (2026-11-17,
+        // ordersOut after:3 quit with it); an app that orders its window out keeps running, as the Phone does.)
+        if !orderedOutByMe.isEmpty, windows.contains(where: { orderedOutByMe.contains(ObjectIdentifier($0)) }) {
+            clog("last window ordered out by itself: still running")
+            return false
+        }
         let quits = switches.quitsAfterLastWindow && !priming
         clog("last window closed: \(quits ? "quitting" : "still running (windowless)")")
         return quits
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        clog("reopen asked (visible windows \(flag), main \(main.map { "\($0.windowNumber) visible \($0.isVisible)" } ?? "none"))")
+        clog("reopen asked (visible windows \(flag), main \(main.map { "\($0.windowNumber) visible \($0.isVisible)" } ?? "none"), hidden \(NSApp.isHidden), active \(NSApp.isActive))")
         if let m = main { if !m.isVisible { orderedOutByMe.remove(ObjectIdentifier(m)); show(m) } } else { makeWindow(.main, index: 0) }
         return false
     }
@@ -320,6 +335,8 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, NSToolbarDel
         }
     }
     func applicationDidResignActive(_ n: Notification) { clog("appDidResignActive") }
+    func applicationDidHide(_ n: Notification) { clog("appDidHide") }
+    func applicationDidUnhide(_ n: Notification) { clog("appDidUnhide (main \(main.map { "\($0.windowNumber) visible \($0.isVisible)" } ?? "none"))") }
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
 
     // ---- what each window hears ----
