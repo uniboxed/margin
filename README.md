@@ -30,7 +30,6 @@ page, and you can pick one, change one or write your own.
 - **A command palette** on ⌘T: open a page, search, jump to any tab or space, run any action.
 - **Sleeping tabs** that free their memory when they haven't been used for a while, and an **archive** of tabs closed
   for being idle, to bring back.
-- **iCloud Tabs** from your other devices, in Safari.
 - **Keyboard first**: next tab and space on ⌥⌘ + arrows in Safari and ⌃⌘ + arrows in Chrome and Edge, all changeable
   in Settings.
 

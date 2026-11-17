@@ -137,6 +137,8 @@ What the app does with each:
 
 ## Spaces across profiles
 
+**Since 2026-11-17 (hosted only, the cleanup: `DECISIONS.md`):** Margin.app owns the spaces (its library), and this file is only what the library's one import and the carry-over across signing changes read. `browser.json` keeps `order` (as last stored: the import reads it once, by the slots rule below) and `profiles` (`name`, `named`, `firstSeen`, `lastSeen`, `hidden`, `browserId`, `browserName`). Gone: `switching` (`closeWindows`), a profile's `emoji` and `color` (dropped from the file at its next save), moving a space in the one order, renaming or forgetting a profile from the UI, and what each overlay was sent (`across`). What follows about those is history.
+
 Margin 2, Phase 2 step 4 (`PLAN.md` §15). Each space belongs to one browser profile: the profile whose data set has it. Nothing in a set names its profile, so a space can't be in two, and a profile's copy needs nothing new to keep its own.
 
 What spans profiles is kept by the app, one file per browser, beside its profiles' sets (`app/platforms/macos/shell/BrowserProfiles.swift`):

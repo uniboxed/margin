@@ -68,7 +68,7 @@ pixel/
 | Menu, space editor, notice, prompt | dark `#1d1b33` boxes with the light pixel border; menu items with hover `#3b3870` and yellow text, danger red; the notice and prompt as the board's RPG text box, a blinking `▼` as an svg. All words are Margin's (below) |
 | Launcher (new-tab page) | a "title screen": the `>` field, pinned tiles with the dark pixel border, the recent archive as a list |
 | Settings | Margin's inputs styled: dark fields with the `#5f5aa8` border, toggles as pixel boxes with a check, the choice as a dark select, buttons as press buttons |
-| iCloud Tabs | a folder in the same style, device names as tags in Press Start 2P 8 px, `▼`/`▶` as svg (a guarded part), stale devices dimmed |
+| iCloud Tabs (removed 2026-11-17) | a folder in the same style, device names as tags in Press Start 2P 8 px, `▼`/`▶` as svg (a guarded part), stale devices dimmed |
 | Gestures | pixel arrow and reload badges over the page that fill with `--gesture` |
 | Drag and drop | yellow 3 px before/after lines, the ghost with the light pixel border, the resize handle a dotted line on hover |
 | Loading | a stepped bar marching along the page card's top border (`tab.loading`), seen with the sidebar hidden too |
