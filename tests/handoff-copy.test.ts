@@ -192,6 +192,26 @@ test('setWindowState: past notAfter, refused with nothing called; in time, Safar
   fake.landMs = 0;
 });
 
+test('setWindowState with land: false (a window Margin.app hosts): answered as Safari takes the ask, no wait for a state that never lands there, the window free for the next call at once', async () => {
+  fresh();
+  fake.windows.get(2)!.state = 'normal';
+  fake.landMs = 10_000; // (Safari never says fullscreen for a window the app moves out of its full-screen Space)
+  const started = Date.now();
+  const answer = await handlers.setWindowState({ windowId: 2, state: 'fullscreen', focused: true, notAfter: Date.now() + 1500, land: false });
+  assert.deepEqual(answer, { windowId: 2, state: 'fullscreen', asked: true });
+  assert.ok(Date.now() - started < 200, `answered at once (${Date.now() - started} ms), not after the 3 s (here 300 ms) a state takes to be given up on`);
+  assert.deepEqual(fake.windowUpdates, [{ id: 2, state: 'fullscreen', focused: true }], 'Safari asked once');
+  assert.equal(said.windowsNow, 1, 'the window list sent at once');
+  assert.ok(said.notes.some((n) => /^setWindowState window 2: fullscreen asked \(\d+ ms\)$/.test(n)), `the log: ${said.notes.join(' | ')}`);
+  // (The call before isn't pending any more: the next one for that window is taken, not busy. Before, it was busy for
+  // the whole wait: a placing begun within 3 s of the last one never got its exit asked.)
+  const next = await handlers.setWindowState({ windowId: 2, state: 'normal', notAfter: Date.now() + 1500, land: false });
+  assert.deepEqual(next, { windowId: 2, state: 'normal', asked: true });
+  assert.deepEqual(fake.windowUpdates.map((u) => u.state), ['fullscreen', 'normal']);
+  fake.landMs = 0;
+  fake.windows.get(2)!.state = 'normal';
+});
+
 test('setWindowState: a state that never lands answers timedOut after its 3 s (here shortened); a window gone fails', async () => {
   fresh();
   fake.landMs = 10_000;

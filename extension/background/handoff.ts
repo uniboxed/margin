@@ -55,13 +55,22 @@ export async function windowCall<T>(what: string, message: { windowId: number, n
 
 // setWindowState: the window to full screen or back to normal, focused only if asked. Then Safari's word on it every
 // TIMING.pollMs until the state lands (a full-screen change animates), TIMING.landMs at most, and the
-// window list sent at once so the app hears it without the list's 1 s wait.
-export async function setWindowState(message: { windowId: number, state: string, focused?: boolean, notAfter?: number }) {
+// window list sent at once so the app hears it without the list's 1 s wait. With `land: false` (Margin.app hosting
+// the window, since 2026-11-17): answered as soon as Safari took the ask (`asked`), with no wait for the state. The
+// app moves a window it hosts out of its new full-screen Space within ~0.2 s, so Safari never says `fullscreen` for it
+// (every such ask sat out its 3 s and answered timedOut, the window `busy` for a next call meanwhile), and what the
+// app goes by is the window server, never Safari's word on the state.
+export async function setWindowState(message: { windowId: number, state: string, focused?: boolean, notAfter?: number, land?: boolean }) {
   const { windowId, state, focused = false } = message;
   if (state !== 'fullscreen' && state !== 'normal') throw new Error('no such window state');
   return windowCall('setWindowState', message, async () => {
     const started = Date.now();
     await api.windows.update(windowId, { state, ...(focused ? { focused: true } : {}) });
+    if (message.land === false) {
+      void appLink.windowsNow?.();
+      appLink.note(`setWindowState window ${windowId}: ${state} asked (${Date.now() - started} ms)`);
+      return { windowId, state, asked: true };
+    }
     const landedAt = await stateLanded(windowId, state);
     void appLink.windowsNow?.();
     if (landedAt == null) {
