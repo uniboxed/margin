@@ -357,6 +357,7 @@ for (const [name, engine] of ENGINES) {
         id: 'liquid-glass', dir: GLASS, script,
         label: '.opening-label', mark: '.opening-spin',
         animations: ['lg-spin'],
+        icon: { size: 24 },
         skeleton: [['.space-name', ''], ['.today', '::before'], ['.chips', '::before']],
         starting: ['lg-spin', 'lg-wait'],
         look: async (_page, ev) => {

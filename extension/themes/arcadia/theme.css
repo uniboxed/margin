@@ -172,6 +172,9 @@
   mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
   animation: arcadia-spin 900ms linear infinite;
 }
+/* With the app's icon: the icon in the tile (32 pt: the 64 px icon at 2x), the ring around it. */
+.opening-mark.with-icon::after { width: 46px; height: 46px; }
+.opening-icon { grid-area: 1 / 1; width: 32px; height: 32px; object-fit: contain; }
 .opening-label { position: absolute; top: calc(100% + 14px); max-width: min(420px, 100% - 48px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--load-fg); font-size: 13px; }
 @media (prefers-color-scheme: dark) {
   .arcadia .page-loader { --load-bg: #1b1b1f; --load-tile: color-mix(in srgb, var(--space-color) 26%, #1b1b1f); --load-ring: color-mix(in srgb, var(--space-color) 72%, #fff); --load-fg: rgba(255, 255, 255, 0.55); }

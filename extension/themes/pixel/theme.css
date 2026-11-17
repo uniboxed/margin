@@ -306,6 +306,8 @@
 .opening-head { position: absolute; bottom: calc(100% + 24px); display: flex; align-items: center; gap: 12px; max-width: min(620px, 100% - 48px); white-space: nowrap; }
 .opening-glass { width: 18px; height: 22px; color: var(--ink); animation: px-glass 2.4s steps(1) infinite; }
 .opening-glass .sand { fill: var(--yellow); }
+/* The app's icon: 32 pt (the 64 px icon at 2x), scaled pixel for pixel, never smoothed. */
+.opening-icon { flex: none; display: block; width: 32px; height: 32px; object-fit: contain; image-rendering: pixelated; }
 @keyframes px-glass { 0%, 70% { transform: rotate(0deg); } 80% { transform: rotate(90deg); } 90%, 100% { transform: rotate(180deg); } }
 .opening-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 1.5; text-transform: uppercase; color: var(--ink); }
 .opening-caret { flex-shrink: 0; width: 8px; height: 14px; margin-left: -6px; background: var(--green); }

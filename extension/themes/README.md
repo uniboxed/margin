@@ -159,16 +159,32 @@ over it). It's one of Margin's guarded parts: only Margin's words show in it,
 `{{pageLoader.label}}` ("Opening Safari…") and `{{pageLoader.name}}` (the
 app's or the item's name); shapes and icons are yours.
 
+`{{pageLoader.icon}}` is the icon of what's opening: the app's own for an
+app, the hosted browser's (Safari's) for a web page, a 64 px PNG `data:`
+image (sharp up to 32 px on a 2x display), or null when Margin has none (an
+app that isn't installed, before the list of apps is read). It binds the way
+a row's icon does, and only in the loader: an `<img m-icon>` in the
+`page-loader` part or its `<m-page-loader>` slot, or a test (`m-if`,
+`m-class:`); anywhere else, as text or as another attribute's value, the
+sanitizer removes it. Wrap it in `<m-if test="pageLoader.icon">` so a loader
+with no icon draws as it did. (Why the browser's icon for a web page and not
+the page's own: it's the browser that's being opened and brought in behind
+the card, its icon is always there and sharp, and a site's icon is often a
+16 px one, blurred at a loader's size.)
+
 ```html
 <m-page class="page"></m-page>
 <m-page-loader class="page-loader"></m-page-loader>
 <template m-part="page-loader">
-  <div class="loading-card"><span class="spinner"></span><p>{{pageLoader.label}}</p></div>
+  <div class="loading-card">
+    <m-if test="pageLoader.icon"><img class="app-icon" alt="" m-icon="{{pageLoader.icon}}"></m-if>
+    <span class="spinner"></span><p>{{pageLoader.label}}</p>
+  </div>
 </template>
 ```
 
-A theme with no `page-loader` part gets Margin's default: a quiet spinner
-and the label, centred on an opaque card laid exactly over the page's place
+A theme with no `page-loader` part gets Margin's default: the opening app's
+icon (32 px, when there is one), a quiet spinner and the label, centred on an opaque card laid exactly over the page's place
 with its corner radii (`m-page-loader[m-default]`, drawn in `Canvas` and
 `CanvasText`: restyle it with a rule on `m-page-loader` if you only want
 your card's colour). Margin fades its default out over the hosted window as
@@ -261,7 +277,8 @@ host. Immutable: rows that didn't change are the same objects.
   `today` (the other tabs, newest first), `hasToday`, `hasPinned`,
   `newTab.active`.
 - Each tab or pin row: `id`, `title`, `url`, `host`, `icon` (or `letter` on
-  `color`), `active`, `behind`, `away`, `audible`, `asleep`, `loading`; pins also
+  `color`; an app item's, in Margin.app: the installed app's icon, its name's
+  letter when it has none), `active`, `behind`, `away`, `audible`, `asleep`, `loading`; pins also
   `open`, `tabId`, `folderId`, `nested`.
 - `away` (with `active`): the row is this window's chosen tab, shown live in another window of the profile (two
   windows on one space list the same tabs, and the tab follows the window in front: docs/BROWSER-WINDOWS.md §9). Keep it

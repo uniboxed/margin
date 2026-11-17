@@ -477,9 +477,10 @@ const withRuntime = Object.assign(T, {
   // Margin.app's own window: what's drawn around <m-page>'s rounded corners (ui/host-app.ts cornerFill), and each corner's inner radius.
   rtCornerFill() { return cornerFill(rt.target.querySelector('m-page')); },
   // Margin.app's own window: the page card's state as the app says it (ui/host-app.ts pageState), drawn again.
-  // `empty`: nothing hosted (the launcher); `loading`: an item opening (`name`); `shown`: a hosted window shows through.
-  rtPageState(state: 'empty' | 'loading' | 'shown', name: string | null = null) {
-    Object.assign(rt.host, { pageState: state, pageOpening: state === 'loading' ? name : null, pageHosted: state !== 'empty', sidebarDocked: state !== 'empty', launcher: state === 'empty' });
+  // `empty`: nothing hosted (the launcher); `loading`: an item opening (`name`; `bundleId`: the app whose icon the
+  // loader shows, looked up in the state's `apps`: rtApps); `shown`: a hosted window shows through.
+  rtPageState(state: 'empty' | 'loading' | 'shown', name: string | null = null, bundleId: string | null = null) {
+    Object.assign(rt.host, { pageState: state, pageOpening: state === 'loading' ? name : null, pageOpeningBundleId: state === 'loading' ? bundleId : null, pageHosted: state !== 'empty', sidebarDocked: state !== 'empty', launcher: state === 'empty' });
     rt.runtime!.render();
     const root = rt.runtime!.view.rootElement();
     const loader = root?.querySelector('m-page-loader');
@@ -499,6 +500,24 @@ const withRuntime = Object.assign(T, {
     return { before, drawn, after: starting() };
   },
   // The default loader's box and how it's drawn now (null: none in the tree).
+  // Margin.app's installed apps, as its hello gives them (ui/host-app.ts: the state's `apps`), drawn again.
+  rtApps(apps: { bundleId: string, name: string, icon: string | null }[] | null) {
+    rt.mock.state = { ...rt.mock.state, apps } as MockState['state'];
+    rt.host.setState(rt.mock.state);
+    rt.runtime!.render();
+    return true;
+  },
+  // The images in the page loader, once each is decoded: its address, its natural and drawn size, how it's scaled, and
+  // whether it or anything around it in the loader moves.
+  async rtLoaderIcons() {
+    const loader = rt.runtime!.view.rootElement()?.querySelector('m-page-loader');
+    const imgs = [...(loader?.querySelectorAll('img') ?? [])] as HTMLImageElement[];
+    await Promise.all(imgs.map((i) => i.decode().catch(() => undefined)));
+    return imgs.map((i) => {
+      const b = i.getBoundingClientRect(), cs = getComputedStyle(i);
+      return { src: i.getAttribute('src'), complete: i.complete, natural: [i.naturalWidth, i.naturalHeight], size: [b.width, b.height], rendering: cs.imageRendering, visible: cs.visibility === 'visible' && Number(cs.opacity) > 0 && b.width > 0, at: [b.left, b.top, b.right, b.bottom] };
+    });
+  },
   rtLoader() {
     const el = rt.runtime!.view.rootElement()?.querySelector('m-page-loader') as HTMLElement | null;
     if (!el) return null;

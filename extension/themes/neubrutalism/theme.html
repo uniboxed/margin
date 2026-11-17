@@ -207,11 +207,15 @@
   <m-notice class="notice-slot"></m-notice>
   <m-prompt class="prompt-slot"></m-prompt>
 
-  <!-- The page card's loader: Margin's words in the heavy type ("OPENING
-       SAFARI…") over a chunky bar, a striped block running along it. -->
+  <!-- The page card's loader: the opening app's icon in a bordered square
+       (Safari's for a web item) beside Margin's words in the heavy type
+       ("OPENING SAFARI…"), over a chunky bar, a striped block running along it. -->
   <template m-part="page-loader">
     <div class="opening" role="status">
-      <span class="opening-label">{{pageLoader.label}}</span>
+      <span class="opening-head">
+        <m-if test="pageLoader.icon"><span class="opening-tile" aria-hidden="true"><img class="opening-icon" alt="" m-icon="{{pageLoader.icon}}"></span></m-if>
+        <span class="opening-label">{{pageLoader.label}}</span>
+      </span>
       <span class="opening-bar" aria-hidden="true"></span>
       <span class="opening-run" aria-hidden="true"></span>
     </div>

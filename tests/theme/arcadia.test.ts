@@ -257,6 +257,7 @@ for (const [name, engine] of ENGINES) {
         id: 'arcadia', dir: ARCADIA, script,
         label: '.opening-label', mark: '.opening-mark',
         animations: ['arcadia-spin'],
+        icon: { size: 32 },
         skeleton: [['.space-title .title', ''], ['.space-title .emoji', ''], ['.tabs', '::after'], ['.spaces', '::before']],
         starting: ['arcadia-spin', 'arcadia-breathe'],
         look: async (_page, ev) => {
