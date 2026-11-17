@@ -568,7 +568,10 @@ final class FakeHostWorld: HostSystem {
     var autoOnScreen = false
     var minimized: Set<Int> = []
     var away = false
+    var onScreenRead: (() -> Void)? // (run as the list is read: a Space change under way meanwhile)
+    var serverSpaces: [Int: [UInt64]] = [:] // the Spaces read for windows only the on-screen list has
     func onScreenWindows() -> [ServerWindow]? {
+        onScreenRead?()
         if let onScreen { return onScreen }
         guard autoOnScreen else { return nil }
         if blank { return [] }
@@ -578,6 +581,7 @@ final class FakeHostWorld: HostSystem {
     func screenAway() -> Bool { away }
     func currentSpaces() -> [String]? { ["\(current)\(blank ? " (not listed)" : "")"] }
     func spaces(window: Int) -> [UInt64]? {
+        if wins[window] == nil, let s = serverSpaces[window] { return s }
         if let at = dropAt[window], clock >= at {
             dropAt[window] = nil
             landing[window] = nil
@@ -2023,53 +2027,110 @@ func hostTests() {
               && e.hosts[textEdit.id] != nil, "\(moves) \(lines.filter { $0.contains("not on screen") }.count)")
     }
 
-    // ---- another app's window in Margin's Space: let in front only when the person opened it ----
+    // ---- another window in Margin's Space: let in front only when it's the shown app's, there at rest, twice ----
     do {
         let (w, e, _) = world()
         var others: [Int?] = []
         e.others = { others.append($0) }
+        var reads: [HostEngine.FrontRead] = []
+        e.front = { reads.append($0) }
         // (What's on screen as the app opens: a window its app made beside its full-screen one, reaching over Margin's frame.)
         w.onScreen = []
         _ = open(e, textEdit)
         let a = window(w, "com.apple.TextEdit"), editPid = pid(w, "com.apple.TextEdit")
+        w.clock += e.options.lateWatch // (past the opening's late watch: a Space change below is the stand-in's alone, never undone by it)
+        let margin = ServerWindow(number: FakeHostWorld.marginWindow, pid: 1, layer: 1, bounds: FakeHostWorld.display)
+        let hostedNow = ServerWindow(number: a, pid: editPid, bounds: page)
+        func polls(_ n: Int) { for _ in 0..<n { w.clock += 0.25; e.poll() } }
+        func list(_ extra: [ServerWindow]) { w.onScreen = [margin] + extra + [hostedNow]; for x in extra { w.serverSpaces[x.number] = w.serverSpaces[x.number] ?? [FakeHostWorld.marginSpace] } }
         let toolbar = ServerWindow(number: 900, pid: editPid, bounds: CGRect(x: 276, y: -11, width: 1228, height: 90))
-        w.onScreen = [toolbar, ServerWindow(number: a, pid: editPid, bounds: page)]
-        e.poll()
+        list([toolbar])
+        polls(3)
         check("host: a window of a hosted app that came during its opening (first seen right after it): never let in front of Margin's window", others.isEmpty, "\(others)")
         let settings = ServerWindow(number: 901, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 600, height: 400)) // (over the sidebar)
-        w.onScreen = [settings, toolbar, ServerWindow(number: a, pid: editPid, bounds: page)]
-        e.poll()
-        check("host: a hosted app's window the person opened later (its Settings), reaching over Margin's sidebar: let in front", others == [901], "\(others)")
-        e.poll()
+        list([settings, toolbar])
+        polls(1)
+        check("host: the shown app's window the person opened (its Settings), seen at one poll: not let in front yet (a Space change's picture lasts one read)", others.isEmpty, "\(others)")
+        polls(1)
+        check("host: ...seen again at the next poll, 250 ms later, in Margin's Space alone by its own Space read: let in front", others == [901], "\(others)")
+        polls(1)
         check("host: … said once while it's there", others == [901])
+        // A Space change under way while it's there (the display's current Space another one by the read after the
+        // list): nothing said, kept; at rest again: still kept, never let go and taken again.
+        w.onScreenRead = { w.current = 777 }
+        polls(1)
+        w.onScreenRead = nil
+        w.current = FakeHostWorld.marginSpace
+        polls(1)
+        check("host: a Space change under way while it's let in front: nothing said, and at rest again still let in front (no flap)", others == [901], "\(others)")
         let inside = ServerWindow(number: 902, pid: editPid, bounds: CGRect(x: 500, y: 300, width: 500, height: 300))
-        w.onScreen = [inside, toolbar, ServerWindow(number: a, pid: editPid, bounds: page)]
-        e.poll()
+        list([inside, toolbar])
+        polls(1)
         check("host: gone: Margin's window in front again; a window wholly inside the page area needs nothing (it shows through the hole, its clicks its own)", others == [901, nil], "\(others)")
         let panel = ServerWindow(number: 903, pid: editPid, layer: 3, bounds: CGRect(x: 120, y: 200, width: 600, height: 400))
         let tiny = ServerWindow(number: 904, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 60, height: 40))
         let unseen = ServerWindow(number: 905, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 600, height: 400), alpha: 0)
         let own = ServerWindow(number: 906, pid: 1, bounds: CGRect(x: 120, y: 200, width: 600, height: 400))
-        w.onScreen = [panel, tiny, unseen, own, ServerWindow(number: a, pid: editPid, bounds: page)]
-        e.poll()
+        list([panel, tiny, unseen, own])
+        polls(3)
         check("host: never for a panel above normal windows (it's above Margin's already), a tiny or see-through window, or one of Margin's own", others == [901, nil], "\(others)")
+        // (2026-11-17, his log: his own Claude app's and Arc's full-screen windows, each in its own Space, in the
+        // on-screen list as he swiped, the display still saying Margin's Space.)
+        let swipedTo = ServerWindow(number: 12315, pid: 4321, bounds: FakeHostWorld.display)
+        w.serverSpaces[12315] = [555]
+        list([swipedTo])
+        polls(4)
+        check("host: a Space swipe: another app's full-screen window (not hosted, in its own Space by its Space read) in the on-screen list while the current Space reads Margin's: never let in front", others == [901, nil], "\(others)")
         let stranger = ServerWindow(number: 907, pid: 4321, bounds: CGRect(x: 60, y: 100, width: 700, height: 500))
-        w.onScreen = [stranger, ServerWindow(number: a, pid: editPid, bounds: page)]
-        e.poll()
-        check("host: another app's window in Margin's Space (a menu bar app's): let in front too", others == [901, nil, 907], "\(others)")
+        list([stranger])
+        polls(4)
+        check("host: an app Margin doesn't host, its window in Margin's Space by every read, poll after poll: never let in front (such an app can't put a normal window in another app's full-screen Space)", others == [901, nil], "\(others)")
+        let elsewhere = ServerWindow(number: 909, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 600, height: 400))
+        w.serverSpaces[909] = [FakeHostWorld.marginSpace, 555]
+        list([elsewhere])
+        polls(4)
+        check("host: the shown app's window in another Space too by its own Space read: never let in front", others == [901, nil], "\(others)")
+        let late = ServerWindow(number: 910, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 600, height: 400))
+        list([late])
+        w.onScreenRead = { w.current = 777 }
+        for _ in 0..<4 { polls(1); w.current = FakeHostWorld.marginSpace }
+        w.onScreenRead = nil
+        check("host: the shown app's window in Margin's Space, but the display's current Space another one right after each list read (a Space change): never let in front", others == [901, nil], "\(others)")
+        polls(2)
+        check("host: ...and at rest, at two polls: let in front", others == [901, nil, 910], "\(others)")
+        list([])
+        polls(1)
+        check("host: ...gone: in front again", others == [901, nil, 910, nil], "\(others)")
+        // The poll's front read: at rest only, what the list has of Margin's window and the one shown.
+        let atRest = reads.last
+        w.onScreen = [hostedNow, margin]
+        polls(1)
+        let wrong = reads.last, count = reads.count
+        w.onScreen = [margin, hostedNow]
+        w.onScreenRead = { w.current = 777 }
+        polls(1)
+        w.onScreenRead = nil
+        w.current = FakeHostWorld.marginSpace
+        w.onScreen = [hostedNow]
+        polls(1)
+        check("host: the poll's front read at rest: Margin's window's layer and whether it's above the one shown, by the on-screen order; none during a Space change or without Margin's window in the list",
+              atRest == HostEngine.FrontRead(hosted: a, marginLayer: 1, marginAbove: true) && wrong == HostEngine.FrontRead(hosted: a, marginLayer: 1, marginAbove: false) && reads.count == count,
+              "\(String(describing: atRest)) \(String(describing: wrong)) \(reads.count - count)")
         // A second app shown, the first parked: a window the parked one makes now isn't the person's doing.
         _ = open(e, notes)
         let b = window(w, "com.apple.Notes"), notesPid = pid(w, "com.apple.Notes")
-        w.onScreen = [ServerWindow(number: b, pid: notesPid, bounds: page)]
-        e.poll()
-        let late = ServerWindow(number: 908, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 600, height: 400))
-        w.onScreen = [late, ServerWindow(number: b, pid: notesPid, bounds: page)]
-        e.poll()
-        check("host: a window of a hosted app that isn't the one shown (parked: out of sight, the person can't have opened it): never let in front", others == [901, nil, 907, nil], "\(others)")
-        w.onScreen = [ServerWindow(number: b, pid: notesPid, bounds: page)]
+        let notesNow = ServerWindow(number: b, pid: notesPid, bounds: page)
+        w.onScreen = [margin, notesNow]
+        polls(1)
+        let parkedOne = ServerWindow(number: 908, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 600, height: 400))
+        w.serverSpaces[908] = [FakeHostWorld.marginSpace]
+        w.onScreen = [margin, parkedOne, notesNow]
+        polls(4)
+        check("host: a window of a hosted app that isn't the one shown (parked: out of sight, the person can't have opened it): never let in front", others == [901, nil, 910, nil], "\(others)")
+        w.onScreen = [margin, notesNow]
         w.current = FakeHostWorld.desktop
-        e.poll()
-        check("host: Margin's Space not the current one: nothing to let in front", others == [901, nil, 907, nil], "\(others)")
+        polls(2)
+        check("host: Margin's Space not the current one: nothing to let in front, nothing said", others == [901, nil, 910, nil], "\(others)")
     }
 
     // ---- Margin's window leaving full screen: the one shown parked at once, back when Margin's back ----

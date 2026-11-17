@@ -105,6 +105,7 @@ extension Shell {
         host.hostedWindow = { [weak session] number in session?.hosted(number) }
         host.cover = { [weak session] number in session?.cover(number) }
         host.others = { [weak session] number in session?.others(number) }
+        host.front = { [weak session] read in session?.front(read) }
         let before = host.onEvent
         host.onEvent = { [weak self, weak session] event in
             before?(event)

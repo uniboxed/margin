@@ -137,20 +137,28 @@ final class GlueHostWorld: HostSystem {
     guard w.fullScreen, w.priv == nil, let space = w.spaces.first, space != Self.marginSpace else { return w.frame ?? CGRect(x: 100, y: 100, width: 800, height: 600) }
     return (reservation[space] ?? .zero).inset(display)
   }
-  func spaces(window: Int) -> [UInt64]? { window == marginWindow ? [Self.marginSpace] : wins[window].map { $0.priv != nil ? [] : $0.spaces } }
+  func spaces(window: Int) -> [UInt64]? { window == marginWindow ? [Self.marginSpace] : wins[window].map { $0.priv != nil ? [] : $0.spaces } ?? extraSpaces[window] }
   func spaceType(_ space: UInt64) -> Int? { fullScreenSpaces.contains(space) ? ManagedSpace.fullScreenType : (space == Self.desktop ? 0 : nil) }
   func spaceExists(_ space: UInt64) -> Bool? { fullScreenSpaces.contains(space) || space == Self.desktop }
   func currentSpace(onDisplayOf space: UInt64) -> UInt64? { current }
   func setCurrentSpace(_ space: UInt64) -> Bool { current = space; if space == Self.marginSpace { blank = false }; return true }
   // The window server's on-screen list (`lists`: played; else none, and the engine's on-screen look doesn't apply):
   // Margin's window and the windows of the current Space; none while the display shows a Space that's gone (`blank`).
+  // `extraOnScreen`: windows only the list has (another app's, the hosted app's own extra one), right behind Margin's,
+  // their Spaces by `extraSpaces`; `hostedFirst`: Margin's window behind the others.
   var lists = false
   var blank = false
+  var extraOnScreen: [ServerWindow] = []
+  var extraSpaces: [Int: [UInt64]] = [:]
+  var hostedFirst = false
   func onScreenWindows() -> [ServerWindow]? {
     guard lists else { return nil }
     if blank { return [] }
     let here = wins.keys.sorted().filter { wins[$0]?.priv == nil && wins[$0]?.spaces.contains(current) == true }
-    return ([marginWindow] + here).compactMap { n in bounds(window: n).map { ServerWindow(number: n, pid: wins[n]?.pid ?? 1, layer: n == marginWindow ? 1 : 0, bounds: $0) } }
+    var list = ([marginWindow] + here).compactMap { n in bounds(window: n).map { ServerWindow(number: n, pid: wins[n]?.pid ?? 1, layer: n == marginWindow ? 1 : 0, bounds: $0) } }
+    list.insert(contentsOf: extraOnScreen, at: min(1, list.count))
+    if hostedFirst, list.count > 1 { list.append(list.removeFirst()) }
+    return list
   }
   func desktop(onDisplayOf space: UInt64) -> UInt64? { Self.desktop }
   func ownerlessFullScreenSpaces() -> [UInt64]? { [] }
@@ -748,28 +756,115 @@ func glueScenario() async {
         && stillFullScreen() && world.listsMarginOnly && c.hosted == editWindow && engine.shown == textEdit && c.hole == expected && session.shown[c.id] == item, "\(called("fullScreen", since: mark))")
 
   // ---- another app's window opened in Margin's Space (a hosted app's Settings): let in front, then in front again ----
-  let levelBefore = c.window.level
+  let levelBefore = c.window.level, frontBefore = c.frontOrders
   session.others(4242)
   let yielded = c.yieldingTo == 4242 && c.window.level == .normal && c.yieldOrders == 1
   session.others(nil)
-  check("another window in Margin's Space: Margin's window lets it in front (the normal level, ordered right below it), and is in front of what it hosts again once it's gone",
-        levelBefore == FrontMechanism.raised && yielded && c.yieldingTo == nil && c.window.level == FrontMechanism.raised && c.yieldOrders == 1, "yielded \(yielded) level \(c.window.level.rawValue)")
+  check("another window in Margin's Space: Margin's window lets it in front (the normal level, ordered right below it), and once it's gone is in front of what it hosts again: its raised level, and ordered right above the hosted window",
+        levelBefore == FrontMechanism.raised && yielded && c.yieldingTo == nil && c.window.level == FrontMechanism.raised && c.yieldOrders == 1 && c.frontOrders == frontBefore + 1,
+        "yielded \(yielded) level \(c.window.level.rawValue) orders \(c.frontOrders - frontBefore)")
 
-  // ---- a Mac whose window server doesn't hold the raised level: the ordering way (the overlay's), said once ----
-  let serverBefore = c.serverLevel
-  c.serverLevel = { _ in 0 }
-  c.keepFront()
-  let once = c.mechanism == .level // (asked once more before giving up)
-  c.keepFront()
+  // ---- the same through the engine's poll (the stand-in's on-screen list): a Space swipe's picture, the shown app's
+  // own extra window, and the poll's check that Margin's window is in front ----
+  final class Said { var lines: [String] = [] }
+  let heard = Said(), echoBefore = Diagnostics.echo
+  Diagnostics.echo = { heard.lines.append($0); echoBefore?($0) }
+  func pollTwice() async { engine.poll(); try? await Task.sleep(nanoseconds: 260_000_000); engine.poll() }
+  world.lists = true
+  world.extraOnScreen = [ServerWindow(number: 12315, pid: 4321, bounds: display)] // (his Claude app, full screen in its own Space)
+  world.extraSpaces[12315] = [555]
+  await pollTwice(); await pollTwice()
+  check("a Space swipe: another app's full-screen window (not hosted, in its own Space by its Space read) in the on-screen list while the current Space still reads Margin's: never let in front, Margin's level stays raised",
+        c.yieldingTo == nil && c.window.level == FrontMechanism.raised && c.mechanism == .level && c.yieldOrders == 1, "yielding \(String(describing: c.yieldingTo)) level \(c.window.level.rawValue)")
+  let shownPid = hostedPidNow()
+  world.extraOnScreen = [ServerWindow(number: 4343, pid: shownPid, bounds: CGRect(x: display.minX + 40, y: display.minY + 120, width: 700, height: 500))]
+  world.extraSpaces[4343] = [GlueHostWorld.marginSpace]
+  engine.poll()
+  let notYet = c.yieldingTo == nil
+  try? await Task.sleep(nanoseconds: 260_000_000)
+  engine.poll()
+  check("the hosted app's own extra window in Margin's Space (its Settings, over the sidebar): not at the first poll, let in front at the second (the normal level, ordered right below it)",
+        shownPid != 0 && notYet && c.yieldingTo == 4343 && c.window.level == .normal && c.yieldOrders == 2, "first \(notYet) yielding \(String(describing: c.yieldingTo)) level \(c.window.level.rawValue)")
+  let ordersYield = c.frontOrders
+  world.extraOnScreen = []
+  engine.poll()
+  check("…gone: Margin's raised level again, and ordered right above the hosted window", c.yieldingTo == nil && c.window.level == FrontMechanism.raised && c.frontOrders == ordersYield + 1 && c.mechanism == .level,
+        "yielding \(String(describing: c.yieldingTo)) level \(c.window.level.rawValue) orders \(c.frontOrders - ordersYield)")
+  let restoresBefore = c.frontRestores, ordersWrong = c.frontOrders
+  world.hostedFirst = true
+  engine.poll()
+  engine.poll()
+  world.hostedFirst = false
+  let wrongLines = heard.lines.filter { $0.contains("above it in the window server's order") }
+  check("the poll's check: the hosted window found above Margin's window in the on-screen order: put right at once (ordered above it again) at each read, said once",
+        c.frontRestores == restoresBefore + 2 && c.frontOrders == ordersWrong + 2 && wrongLines.count == 1 && c.mechanism == .level && c.window.level == FrontMechanism.raised,
+        "restores \(c.frontRestores - restoresBefore) lines \(wrongLines.count)")
+  world.lists = false
+
+  // ---- the raised level's read back (the poll's, at rest): never concluded right after Margin's own change or during a
+  // Space change; held reads forgotten; two misses at least 1 s apart: the ordering way (the overlay's), said once; and
+  // tried again from there until the window server holds it ----
+  final class Clock { var offset = 2.0 }
+  let clock = Clock()
+  c.now = { Diagnostics.now() + clock.offset } // (stays: monotonic for the rest of the run)
+  let held = c.hosted ?? 0
+  func read(_ layer: Int) { c.frontRead(HostEngine.FrontRead(hosted: held, marginLayer: layer, marginAbove: true)) }
+  let linesMark = heard.lines.count
+  session.others(4242); session.others(nil) // (Margin's own change: a yield over, as at 06:32:56.268 in his log)
+  clock.offset += 0.1
+  read(0)
+  let afterOwn = c.mechanism == .level
+  clock.offset += 2
+  c.spaceChanged() // (a Space change: his swipe)
+  clock.offset += 0.2
+  read(0)
+  let duringSwipe = c.mechanism == .level
+  clock.offset += 2
+  read(1)
+  clock.offset += 2
+  read(0) // (the first miss at rest: the level set again)
+  let firstMiss = c.mechanism == .level
+  clock.offset += 0.6
+  read(0) // (0.6 s later: not yet)
+  let tooSoon = c.mechanism == .level
+  clock.offset += 0.6
+  read(0) // (1.2 s after the first)
+  let fellBack = heard.lines[linesMark...].filter { $0.contains("isn't held by the window server") }
+  check("the raised level read as 0 right after Margin's own change (a yield's end) or during a Space change: no fallback; a miss at rest, then another 0.6 s later: not yet; at reads 1.2 s apart: kept in front by its order instead (the normal level, ordered above the hosted window), said once",
+        afterOwn && duringSwipe && firstMiss && tooSoon && c.mechanism == .order && c.window.level == .normal && fellBack.count == 1,
+        "after its own change \(afterOwn), during a swipe \(duringSwipe), first \(firstMiss), 0.6 s \(tooSoon), now \(c.mechanism) level \(c.window.level.rawValue), said \(fellBack.count)")
   let orders = c.frontOrders
-  check("the raised level not held by the window server (read back twice): kept in front by its order instead: at the normal level, ordered right above the hosted window",
-        once && c.mechanism == .order && c.window.level == .normal && c.frontOrders >= 1, "once \(once) \(c.mechanism) orders \(c.frontOrders)")
   apps.bringToFront(hostedPidNow())
   c.keepFront() // (an app activated: MarginWindows' observer)
   c.pressed(CGPoint(x: (expected?.midX ?? 0), y: (expected?.midY ?? 0)))
   let pressedAgain = await until(2) { c.frontOrders >= orders + 2 }
   check("the ordering way: ordered above the hosted window again when an app is activated and after a press (a click in the hosted app raises its window)", pressedAgain, "\(c.frontOrders) from \(orders)")
-  c.serverLevel = serverBefore
+  clock.offset += 5.5
+  read(0) // (5 s on: the raised level tried again)
+  let probed = c.levelProbes == 1 && c.window.level == FrontMechanism.raised && c.mechanism == .order
+  clock.offset += 0.6
+  read(0) // (not held: the order again)
+  let stillOrder = c.mechanism == .order && c.window.level == .normal
+  clock.offset += 5.5
+  read(0)
+  clock.offset += 0.6
+  read(1) // (held now)
+  let backLines = heard.lines[linesMark...].filter { $0.contains("held by the window server again") }
+  check("kept in front by its order, never for good: the raised level tried again every 5 s; not held, the order again; held, back to its raised level, said once",
+        probed && stillOrder && c.levelProbes == 2 && c.mechanism == .level && c.window.level == FrontMechanism.raised && c.levelBacks == 1 && backLines.count == 1,
+        "probed \(probed) still order \(stillOrder) probes \(c.levelProbes) now \(c.mechanism) level \(c.window.level.rawValue) said \(backLines.count)")
+  // Its window not on the current Space (the person on another Space): nothing changed at all.
+  c.onCurrentSpace = { false }
+  let levelAway = c.window.level, setsAway = c.levelSets, yieldsAway = c.yieldOrders, ordersAway = c.frontOrders
+  session.others(4242)
+  c.keepFront()
+  clock.offset += 2
+  read(0)
+  check("Margin's Space not the current one: a yield, an activation, a read: its level and order never changed", c.window.level == levelAway && c.levelSets == setsAway && c.yieldOrders == yieldsAway && c.frontOrders == ordersAway,
+        "level \(c.window.level.rawValue) sets \(c.levelSets - setsAway) yields \(c.yieldOrders - yieldsAway)")
+  c.onCurrentSpace = { true }
+  session.others(nil)
+  Diagnostics.echo = echoBefore
 
   // ---- which of the copy's windows Margin draws: only the one it hosts; the person's own told not (their ⌘T stays
   // Safari's way) ----

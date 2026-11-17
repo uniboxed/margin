@@ -129,6 +129,7 @@ protocol HostedWindow: AnyObject {
     func hostedMoved() // that window was placed again, or kept where it was: its bounds read again
     func cover(_ number: Int?) // a window of the engine's in its Space not shown yet (a new app's, read), nil: no more
     func yield(to number: Int?) // another app's window opened in its Space: let in front until it's gone (nil)
+    func frontRead(_ read: HostEngine.FrontRead) // the poll's read at rest of it and the hosted window: in front, kept so
     func push(_ json: String)
 }
 
@@ -522,6 +523,13 @@ final class HostedSession: LibraryDelegate {
     func others(_ number: Int?) {
         guard let w = window(hostingWindow ?? preparingWindow) else { return }
         w.yield(to: number)
+    }
+
+    // The engine's poll at rest: what the window server's on-screen list has of the hosting Margin window and the one
+    // shown (HostEngine `front`): that window checks it's in front of it.
+    func front(_ read: HostEngine.FrontRead) {
+        guard let id = hostingWindow, let w = window(id) else { return }
+        w.frontRead(read)
     }
 
     // A field of Margin's (the palette) let go of the keys with a host shown: that app has them again.

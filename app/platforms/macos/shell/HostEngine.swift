@@ -109,6 +109,9 @@ final class HostEngine {
         // the ask, and after a show, the poll undoes a switch to a Space that wasn't listed before the ask, and acts
         // on a shown window that isn't on screen at its first read.
         var lateWatch = 3.0
+        // A window of the hosted app shown in Margin's Space is let in front only once two polls at least this far apart
+        // have seen it there (`lookForOthers`: a Space change's picture lasts one read).
+        var otherConfirm = 0.2
         var memberWait = 0.6 // a window moved by the bridge (into Margin's Space, or parked): there by then
         var memberEvery = 0.005 // ...read this often (a switch is a move each way: well under 100 ms in all)
         var destroyWait = 1.5
@@ -256,16 +259,20 @@ final class HostEngine {
     // Told the window of a new app brought into Margin's Space only to be read, or made ready out of sight (not shown
     // yet: Margin's window is in front of it and opaque meanwhile, so it's never seen), nil once that's over.
     var cover: ((Int?) -> Void)?
-    // Told another app's normal window that's on screen in Margin's Space, reaches outside the page area and came while
-    // nothing was being opened (a hosted app's Settings or second document, dragged over the sidebar): Margin's window
+    // Told a normal window of the hosted app shown that's on screen in Margin's Space, reaches outside the page area and
+    // came while nothing was being opened (its Settings or second document, dragged over the sidebar): Margin's window
     // lets it in front until it's gone (nil). See `lookForOthers`.
     var others: ((Int?) -> Void)?
+    // Told, at each poll in steady state, what the on-screen list has of Margin's window and the one shown (`FrontRead`):
+    // Margin's window checks it's in front of it (MarginWindowController `frontRead`). See `lookFront`.
+    var front: ((FrontRead) -> Void)?
     private var hostedSaid: Int?
     private var otherSaid: Int?
-    // Other apps' windows seen on screen in Margin's Space (their numbers): true, one Margin lets in front; false, one
-    // that came during an operation from an app Margin hosts (its toolbar's window, what a Safari Margin started
-    // restores): never. And whether an operation ran since the last look.
+    // Other windows seen on screen in Margin's Space (their numbers): true, one Margin lets in front; false, one that
+    // came during an operation from an app Margin hosts (its toolbar's window, what a Safari Margin started restores):
+    // never. When each was first seen so, in the polls in a row since. And whether an operation ran since the last look.
     private var otherSeen: [Int: Bool] = [:]
+    private var otherSince: [Int: Double] = [:]
     private var ranSinceLook = true
     private var retired: [UInt64: Double] = [:] // private Spaces a window was moved out of, and when: destroyed later (`privateRetire`)
     // The last full-screen ask: when, and the full-screen Spaces listed before it (the poll's late watch, `lateWatch`).
@@ -454,6 +461,8 @@ final class HostEngine {
         }
         pollHeldSince = nil
         pollScreen = nil
+        pollCurrentBefore = nil
+        pollSteady = nil
         polls += 1
         polledAt = sys.now()
         // (An app a row's close asked to quit, still running `quitWait` later: it didn't quit, Margin's again.)
@@ -483,6 +492,7 @@ final class HostEngine {
         keepCurrentLate()
         lookOnScreen()
         lookForOthers()
+        lookFront()
         if !retired.isEmpty { Task { await serial { await self.destroyRetired() } } }
         if !leftSpaces.isEmpty, marginSpace > 0, sys.currentSpace(onDisplayOf: marginSpace) == marginSpace {
             Task { await serial { await self.destroyLeftSpaces() } }
@@ -509,13 +519,30 @@ final class HostEngine {
             + ", Margin's Space \(marginSpace), its display on \(sys.currentSpace(onDisplayOf: marginSpace).map { "\($0)" } ?? "unread")"
     }
 
-    // The window server's on-screen list, read once per poll (the look for others and the on-screen look share it).
+    // The window server's on-screen list, read once per poll (the look for others and the on-screen look share it),
+    // with the display's current Space read right before it (`steadyScreen`).
     private var pollScreen: [ServerWindow]??
+    private var pollCurrentBefore: UInt64?
+    private var pollSteady: Bool?
     private func screenList() -> [ServerWindow]? {
         if let read = pollScreen { return read }
+        pollCurrentBefore = marginSpace > 0 ? sys.currentSpace(onDisplayOf: marginSpace) : nil
         let list = sys.onScreenWindows()
         pollScreen = .some(list)
         return list
+    }
+
+    // The poll's on-screen list, only when it's a picture of Margin's Space at rest: that Space the current one of its
+    // display both right before the list was read and after it (once per poll). During a Space change (a swipe, Mission
+    // Control, ⌘-Tab to an app in another full-screen Space) the list already has windows of the Space being shown
+    // while the display still says Margin's (2026-11-17, his log: his own Claude app's and Arc's full-screen windows
+    // taken for windows in Margin's Space). Nil: not at rest, or no list.
+    private func steadyScreen() -> [ServerWindow]? {
+        guard marginWindow != 0, marginSpace > 0, let list = screenList() else { return nil }
+        if pollSteady == nil {
+            pollSteady = pollCurrentBefore == marginSpace && sys.currentSpace(onDisplayOf: marginSpace) == marginSpace
+        }
+        return pollSteady == true ? list : nil
     }
 
     // What the poll read of a host, said when it isn't what it should be (shown: in Margin's Space alone, Margin's window
@@ -586,35 +613,71 @@ final class HostEngine {
         Task { await serial { await self.backOnScreen(id) } }
     }
 
-    // Another app's normal window on screen in Margin's Space that the person opened (the poll; one window-server read):
+    // A window of the hosted app shown that the person opened in Margin's Space (the poll; one window-server read):
     // layer 0, visible, not a hosted window, on Margin's display and reaching outside the page area (one inside it shows
     // through the hole and takes its clicks as it is: a sheet, a small Settings window). Margin's window lets the front
-    // one in front until it's gone. Never one of an app Margin hosts that came during an operation (first seen at the
-    // first look after it: the window of a full-screen window's toolbar, the windows a Safari Margin started restores
-    // before they're swept), nor one of a hosted app that isn't the one shown (the person can't have opened it: its app
-    // is out of sight): those stay behind Margin's window, as everything of an opening does. No per-app rules.
+    // one in front until it's gone. Only when all of these hold (2026-11-17, his log: Margin let his own Claude app's and
+    // Arc's full-screen windows of other Spaces in front as he swiped, again and again):
+    // - the list is a picture of Margin's Space at rest (`steadyScreen`: Margin's Space current before and after it);
+    // - the window server's Space read for that window, in the same poll, is Margin's Space and nothing else;
+    // - it was seen so at two polls in a row at least `otherConfirm` apart;
+    // - its app is the one shown. Never a window of an app Margin doesn't host: such an app can't put a normal window in
+    //   another app's full-screen Space; what it shows there is a Space change's picture or a panel at a higher layer.
+    //   Never one of a hosted app that isn't the one shown (the person can't have opened it: its app is out of sight),
+    //   nor one first seen right after an operation (it came with it: the window of a full-screen window's toolbar, the
+    //   windows a Safari Margin started restores before they're swept): those stay behind Margin's window, as
+    //   everything of an opening does. No per-app rules.
+    // Margin's Space not current, or changing: nothing is said either way (Margin's window is left as it is until the
+    // next look at rest).
     private func lookForOthers() {
         guard others != nil else { return }
         let fresh = ranSinceLook
         ranSinceLook = false
-        guard marginWindow != 0, marginSpace > 0, hasHosts, sys.currentSpace(onDisplayOf: marginSpace) == marginSpace, let list = screenList() else {
+        guard marginWindow != 0, marginSpace > 0, hasHosts else {
             otherSeen = [:]
+            otherSince = [:]
             return say(other: nil)
         }
+        guard let list = steadyScreen() else {
+            otherSince = [:] // (seen again from the start at the next look at rest)
+            return
+        }
         let hosted = Set(hosts.values.map(\.window))
-        let hostedPids = Set(hosts.values.map(\.pid)).union(launched.keys)
         let shownPid = shown.flatMap { hosts[$0] }.flatMap { $0.phase == .shown ? $0.pid : nil }
         let page = placement.page.insetBy(dx: -1, dy: -1)
+        let now = sys.now()
         var front: Int?
-        var now: [Int: Bool] = [:]
+        var seen: [Int: Bool] = [:]
+        var since: [Int: Double] = [:]
         for w in list where w.layer == 0 && w.pid != ownPid && w.number != marginWindow && w.alpha > 0 && !hosted.contains(w.number) {
             guard w.bounds.width >= 80, w.bounds.height >= 80, w.bounds.intersects(placement.area), !page.contains(w.bounds) else { continue }
-            let lets = otherSeen[w.number] ?? (hostedPids.contains(w.pid) ? !fresh && w.pid == shownPid : true)
-            now[w.number] = lets
-            if lets, front == nil { front = w.number }
+            let lets = otherSeen[w.number] ?? (!fresh && w.pid == shownPid)
+            seen[w.number] = lets
+            guard lets, w.pid == shownPid, sys.spaces(window: w.number) == [marginSpace] else { continue }
+            let first = otherSince[w.number] ?? now
+            since[w.number] = first
+            if front == nil, now - first >= options.otherConfirm - 1e-9 { front = w.number }
         }
-        otherSeen = now
+        otherSeen = seen
+        otherSince = since
+        // (The one let in front still there, still in Margin's Space alone: kept until it's gone.)
+        if front == nil, let was = otherSaid, since[was] != nil { front = was }
         say(other: front)
+    }
+
+    // What Margin's window checks at each poll at rest (`front`): the poll's on-screen list (front to back) has both
+    // Margin's window and the one shown, Margin's Space current before and after it, nothing running, the screen not
+    // away. Margin's window's layer by the window server, and whether it's above the hosted window in that order.
+    struct FrontRead: Equatable {
+        var hosted: Int
+        var marginLayer: Int
+        var marginAbove: Bool
+    }
+    private func lookFront() {
+        guard let front, !busy, !quitting, let id = shown, let host = hosts[id], host.phase == .shown, !sys.screenAway(),
+              sys.isHidden(pid: ownPid) != true, sys.isHidden(pid: host.pid) != true, let list = steadyScreen(),
+              let m = list.firstIndex(where: { $0.number == marginWindow }), let h = list.firstIndex(where: { $0.number == host.window }) else { return }
+        front(FrontRead(hosted: host.window, marginLayer: list[m].layer, marginAbove: m < h))
     }
 
     private func say(other number: Int?) {
