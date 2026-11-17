@@ -5401,3 +5401,27 @@ Tirth: "Show some sort of good loader per each theme until the data is shown; sh
 **Not verified on the real screen:** the fade over a real hosted window as it's shown; the glass capsule under a real hand.
 
 **What the contract doesn't have** (not added): an icon for what's opening. `pageLoader` gives the label and the name only, so no loader shows the app's icon.
+
+## App icons in the sidebar and the loaders (2026-11-17)
+
+Tirth: "Show the icon in the tab for the apps please — currently you're just showing the first letter", and "the loaders show the app's name but not its icon".
+
+**Rows and tiles.** An app item (`target.kind: 'app'`, its address `app://<bundle id>`) takes its icon from the installed apps the app listed (the state's `apps`), by bundle id, matched as macOS does without case (`shared/apps.ts appIcon`, `appOfItem`; `shared/view.ts iconFor`). That one function feeds every place a row shows an icon: the sidebar's tabs, pins and folders, today's list, the tab in front, the launcher's tiles, the palette's open-tab rows. No icon (an app that isn't installed, one with none, the list not read yet): the letter, now of its name ("Pages": P), not of its bundle id (every Apple app was "C"). Web items are as they were. The icon is checked as every row icon (`checkIconUrl`: a base64 `data:` image only).
+
+**The loader.** `pageLoader.icon`: the opening app's icon; for a web item, the hosted browser's (Safari's). *Chosen over the page's own favicon*: it's the browser that's being opened and brought in behind the card, its icon is always there (no fetch, no site icon not learned yet), and sharp, where a site's is often 16 px and blurred at a loader's size. The app says only which app (`bundleId` in `{ type: 'pageState' }` while `loading`, `pageOpeningBundleId` in the hello): never icon bytes; the page looks it up. In the app: `setLoading`/`setShowing` take the bundle id with the label (HostedSession: the app's own; `com.apple.Safari` for a Safari window); MarginWindowController only carries it into the two messages. The sanitizer lets `{{pageLoader.icon}}` bind only as an `<img m-icon>` (or an `m-if`/`m-class:` test) inside the `page-loader` part or its `<m-page-loader>` slot; elsewhere, as text or as another attribute's value, it's removed. The four themes, each `<m-if test="pageLoader.icon">` (no icon: their loader as before):
+- *Arcadia:* the icon (32 px) in its 56 px space-coloured tile, the ring (46 px) turning around it.
+- *Neubrutalism:* the icon in a 48 px bordered square with a hard shadow, beside the heavy label, over the bar.
+- *Pixel:* the icon (32 px, `image-rendering: pixelated`) between the hourglass and the label.
+- *Liquid Glass:* the icon (24 px) in the capsule, between the spinner and the label.
+- Margin's default loader: the icon (32 px) over the spinner.
+
+**Sharpness and size.** Icons are 64 px now (was 32): the largest use is 32 pt, 1:1 at 2x; rows (16-20 pt) are scaled down. 128 px wasn't taken: no use needs it, and the list would be 2.0 MB. The apps JSON on this Mac (89 apps): 251 kB at 32 px, **714 kB at 64 px**. The cache's file names carry the size (`<id>@<stamp>@<pixels>.png`): a 32 px file isn't read, the icon is made again on the catalog's background queue, and the old file removed as the new one is written.
+
+**Safari wasn't in the list.** `/Applications/Safari.app` is a *hidden* link into the system's cryptex (macOS 13 and later): the folder walk skipped hidden items, and Spotlight lists Safari at `/System/Volumes/Preboot/…` only, which is left out. A hidden link to an app is listed now (a hidden app or folder still isn't), and a link's icon is drawn from the app it links to (no alias arrow). So Safari is also in the palette's app rows now.
+
+**Verified (off screen only).**
+- Each new check seen to fail first: the view model's, the host's and the sanitizer's against the old `extension/` (5 failing); each theme's icon check and the smallest-window check in both engines, and the default loader's (18); the Swift ones with the old behaviour put back by hand (64 px, the hidden link, the session's bundle ids, the two message fields: 6 unit and 4 end-to-end checks failed).
+- `tsc -p . && tsc -p tsconfig.tests.json` clean; `npm test` 916 (was 912); `npm run test:theme` 309 (was 301); `npm run test:security` 245 and 35; `tools/app-tests/run.sh all` 1262 unit and 217 end-to-end, no compiler warnings; `npm run test:e2e` 107.
+- Pictures at 1512 × 982 (2x, headless WebKit, real icons rendered by AppCatalog at 64 px): each theme's sidebar with app items, each loader opening an app and a web item, light and dark where the theme has both. Read: the icons sharp in the rows and in the loaders.
+
+**Not verified on the real screen:** the icons in Margin.app itself after a rescan (the cache made again at 64 px); Liquid Glass's capsule with the real glass material.
