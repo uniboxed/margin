@@ -1024,6 +1024,17 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             if !NSApp.isActive || !window.isKeyWindow {
                 NSApp.activate()
                 window.makeKey()
+                // (macOS 14 and later may not honour that while a hosted app is the active one: seen 2026-11-17, the
+                // palette drawn over the page with the hosted app still active after Space swipes, so typing went to
+                // the app. Not active a moment later: made the front app through Accessibility, which Margin has for
+                // hosting, then its window the key one again.)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+                    guard let self, self.pageWantsKeyboard, !NSApp.isActive else { return }
+                    let made = AXUIElementSetAttributeValue(AXUIElementCreateApplication(getpid()), kAXFrontmostAttribute as CFString, kCFBooleanTrue) == .success
+                    Diagnostics.note("Margin's window \(self.id): a field of Margin's wants the keys and Margin isn't the active app: made frontmost through Accessibility (\(made ? "asked" : "refused"))")
+                    self.window.makeKey()
+                    if self.window.firstResponder !== self.webView { self.window.makeFirstResponder(self.webView) }
+                }
             }
             if window.firstResponder !== webView { window.makeFirstResponder(webView) }
         case "pointerWant":
