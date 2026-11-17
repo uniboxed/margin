@@ -68,6 +68,11 @@ func hostedScenario() async {
   check("a regular, resizable window with a transparent title bar, its UI drawn under it",
         c.window.styleMask.contains(.titled) && c.window.styleMask.contains(.fullSizeContentView) && c.window.styleMask.contains(.resizable)
           && c.window.titlebarAppearsTransparent && !c.window.isOpaque && c.window.collectionBehavior.contains(.fullScreenPrimary))
+  check("Margin's UI in a borderless, non-activating panel over it, its child at its level, never key or main by itself, kept on deactivation",
+        c.panel.styleMask.contains(.nonactivatingPanel) && c.panel.styleMask.contains(.borderless) && c.panel.parent === c.window && c.panel.level == c.window.level
+          && c.panel.frame == c.window.frame && !c.panel.canBecomeKey && !c.panel.canBecomeMain && !c.panel.hidesOnDeactivate && c.webView.window === c.panel
+          && c.window.contentView?.subviews.isEmpty == true && c.window.backgroundColor == .clear,
+        "style \(c.panel.styleMask.rawValue) child \(c.panel.parent === c.window) level \(c.panel.level.rawValue)/\(c.window.level.rawValue) frame \(c.panel.frame) \(c.window.frame)")
   guard await until(15, { c.isReady }) else { return check("its page drawn", false) }
   let hello = await js(c.webView, "return marginApp.appWindow()") as? JSONObject ?? [:]
   check("the page knows it's in Margin's window, windowed", hello["appWindow"] as? Bool == true && hello["mode"] as? String == "windowed", "\(hello)")
@@ -84,8 +89,8 @@ func hostedScenario() async {
   check("the theme's window controls reported (the buttons go there)", await until(3, { c.controls != nil }) && (c.controls?.width ?? 0) > 0, "\(String(describing: c.controls))")
 
   // ---- nothing hosted: the page area is Margin's own, the theme's launcher, opaque ----
-  check("the window's background is opaque (no edge of it see-through), its corners still macOS's",
-        (c.window.backgroundColor.usingColorSpace(.sRGB)?.alphaComponent ?? 0) == 1 && !c.window.isOpaque)
+  check("its panel's background is opaque (no edge of it see-through)",
+        (c.panel.backgroundColor.usingColorSpace(.sRGB)?.alphaComponent ?? 0) == 1 && !c.window.isOpaque)
   let launcher = await js(c.webView, """
     const l = document.querySelector('.launcher'); if (!l) return null;
     const r = l.getBoundingClientRect(), bg = getComputedStyle(l).backgroundColor;
@@ -98,9 +103,16 @@ func hostedScenario() async {
         "\(String(describing: box)) page \(local)")
   check("… opaque: its background has no transparency", bg.hasPrefix("rgb(") || (bg.hasPrefix("rgba(") && !bg.hasSuffix(", 0)") && bg.contains(", 1)")), bg)
   c.pointerMoved(CGPoint(x: page.midX, y: page.midY), buttonsDown: false)
-  check("over the page area: the window takes the mouse (nothing is behind it)", !c.window.ignoresMouseEvents && c.slot == nil)
+  check("over the page area: the window takes the mouse (nothing is behind it)", !c.panel.ignoresMouseEvents && c.slot == nil)
   c.pointerMoved(CGPoint(x: content.minX + 60, y: page.midY), buttonsDown: false)
-  check("over the sidebar: the window takes it", !c.window.ignoresMouseEvents)
+  check("over the sidebar: the window takes it", !c.panel.ignoresMouseEvents)
+  if let controls = c.controls {
+    c.pointerMoved(CGPoint(x: content.minX + controls.midX, y: content.minY + controls.midY), buttonsDown: false)
+    let through = c.panel.ignoresMouseEvents && !c.window.ignoresMouseEvents
+    c.pointerMoved(CGPoint(x: content.minX + 60, y: page.midY), buttonsDown: false)
+    check("windowed, over the theme's window controls: the panel lets the pointer through to the window's own buttons (the base takes it there), and takes it again off them",
+          through && !c.panel.ignoresMouseEvents, "\(controls)")
+  }
 
   // ---- the menu: New Tab opens the palette ----
   guard let newTab = MarginMenu.item(.newTab, in: windows.menu), let action = newTab.action, let target = newTab.target as? MarginMenuTarget else { return check("New Tab in the menu", false) }
@@ -110,14 +122,17 @@ func hostedScenario() async {
   if let palette, await until(3, { c.hits.contains { $0.contains(CGPoint(x: palette.midX, y: palette.midY)) } || c.captureAll }) {
     let over = CGPoint(x: content.minX + palette.midX, y: content.minY + palette.midY)
     c.pointerMoved(over, buttonsDown: false)
-    check("over the palette drawn over the page area: the window takes the mouse", !page.contains(over) || !c.window.ignoresMouseEvents, "\(palette) \(c.hits)")
+    check("over the palette drawn over the page area: the window takes the mouse", !page.contains(over) || !c.panel.ignoresMouseEvents, "\(palette) \(c.hits)")
   } else { check("the palette's box reported over the page", false, "\(String(describing: palette)) \(c.hits)") }
   _ = target.perform(action, with: newTab)
   check("New Tab again: the palette closes", await waitJS(c.webView, "return marginApp.appWindow().palette === false"))
 
   // ---- a press on a pin: the source's request, for this window ----
   if let pin = rect(await js(c.webView, "const r = document.querySelector('[data-pin-id=\"p1\"]')?.getBoundingClientRect(); return r ? [r.x, r.y, r.width, r.height] : null")) {
-    press(c.window, at: CGPoint(x: pin.midX, y: pin.midY))
+    let activationsBefore = c.activations.count
+    press(c.panel, at: CGPoint(x: pin.midX, y: pin.midY))
+    check("a press in Margin's UI with nothing hosted (its launcher): Margin made the active app once it's over, as a press in its window always made it (a test's never really is)",
+          c.activations.count == activationsBefore + 1 && c.activations.last == "a press in its launcher, nothing hosted" && c.keysGivenBack == 0, "\(c.activations)")
     check("a press on a pin: openPin asked of the source, for window \(c.id)",
           await until(3, { source.asked.contains { $0.type == "openPin" && $0.payload["windowId"] as? Int == c.id } }), "\(source.asked.map(\.type))")
   } else { check("the pin's row", false) }

@@ -80,6 +80,8 @@ extension Shell {
             switch choice {
             case .cancel:
                 if !self.options.harness, NSApp.isActive, let hadKeys, hadKeys.isVisible { hadKeys.makeKey() }
+                // (Margin not the active app: the prompt had the keys without it, so they go back to the app shown.)
+                if !self.options.harness, !NSApp.isActive { self.keysBackToShown("the quit prompt cancelled") }
             case .always:
                 self.options.setAskBeforeQuit(false)
                 self.quitNow("always quit")

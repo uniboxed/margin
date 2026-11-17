@@ -56,7 +56,9 @@ extension Shell {
         let a = arg as? JSONObject ?? [:]
         switch name {
         case "theme.import":
-            userThemes.choose { url in
+            userThemes.choose { [weak self] url in
+                // (The picker needed Margin active; the app shown gets the activation back.)
+                self?.keysBackToShown("the theme picker closed")
                 guard let url else { return Diagnostics.note("themes: the picker closed with nothing chosen") }
                 if url.pathExtension.lowercased() != "margintheme", (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory != true {
                     reply(jsonString(["type": "themeFile", "error": "That isn’t a theme’s folder or a .margintheme file."] as JSONObject) ?? "{}")
@@ -107,5 +109,12 @@ extension Shell {
     func themesTellCopy(_ entry: Link) {
         let list = userThemes.store.list()
         Task { _ = try? await entry.connection.request(type: "userThemes", payload: ["list": list], windowId: nil) }
+    }
+
+    // Something of Margin's that needed it active is over (a picker, the quit prompt): the app shown in the window
+    // hosting gets the activation back (MarginWindowController `keysBack`; nothing if nothing's shown).
+    func keysBackToShown(_ why: String) {
+        guard let windows = marginWindows, let w = hosted?.hostingWindow.flatMap({ id in windows.controllers.first { $0.id == id } }) else { return }
+        w.keysBack(why)
     }
 }

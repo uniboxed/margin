@@ -10,6 +10,33 @@ func marginWindowTests() {
         PageLayout(left: l, top: t, right: r, bottom: b, radius: radius, radii: [radius, radius, radius, radius], width: w, height: h, mode: "windowed")
     }
 
+    // ---- Margin's UI in a non-activating panel (2026-11-17): key only when allowed, never main; the editing keys ----
+    do {
+        let panel = MarginPanel(frame: CGRect(x: -20000, y: -20000, width: 800, height: 600), harness: true)
+        let off = !panel.canBecomeKey && !panel.canBecomeMain
+        panel.allowKey = true
+        check("hosted: Margin's panel is non-activating and borderless, kept when Margin isn't active, key only when allowed (a field of Margin's), never main",
+              panel.styleMask.contains(.nonactivatingPanel) && panel.styleMask.contains(.borderless) && !panel.hidesOnDeactivate && !panel.isFloatingPanel
+                && off && panel.canBecomeKey && !panel.canBecomeMain && panel.collectionBehavior == MarginPanel.behavior && !panel.collectionBehavior.contains(.canJoinAllSpaces))
+        func ev(_ c: String, _ mods: NSEvent.ModifierFlags) -> NSEvent {
+            NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0, windowNumber: 0, context: nil, characters: c, charactersIgnoringModifiers: c, isARepeat: false, keyCode: 0)!
+        }
+        check("hosted: the editing keys Margin's web view sends itself while it has the keys and Margin isn't active: ⌘A ⌘C ⌘V ⌘X ⌘Z ⇧⌘Z, nothing else",
+              OverlayWebView.editAction(ev("a", .command)) == #selector(NSText.selectAll(_:)) && OverlayWebView.editAction(ev("c", .command)) == #selector(NSText.copy(_:))
+                && OverlayWebView.editAction(ev("v", .command)) == #selector(NSText.paste(_:)) && OverlayWebView.editAction(ev("x", .command)) == #selector(NSText.cut(_:))
+                && OverlayWebView.editAction(ev("z", .command)) == Selector(("undo:")) && OverlayWebView.editAction(ev("z", [.command, .shift])) == Selector(("redo:"))
+                && OverlayWebView.editAction(ev("a", [.command, .option])) == nil && OverlayWebView.editAction(ev("t", .command)) == nil && OverlayWebView.editAction(ev("a", [])) == nil)
+    }
+
+    // ---- a key that reached Margin while the keyboard is the app shown's: sent on to it (MarginWindows.relayTarget) ----
+    do {
+        let r = MarginWindows.relayTarget
+        check("hosted: a key that reached Margin with the app shown in front goes on to it when no window of Margin's takes keys (none key, its full-screen window, its panel with no field), never when a field of Margin's has them, another window of Margin's is key (the quit prompt, a picker), Margin is the front app, or the app in front isn't the one shown",
+              r(.none, false, 501, 99, 501) == 501 && r(.base, false, 501, 99, 501) == 501 && r(.panel, false, 501, 99, 501) == 501
+                && r(.panel, true, 501, 99, 501) == nil && r(.base, true, 501, 99, 501) == nil && r(.other, false, 501, 99, 501) == nil
+                && r(.none, false, 99, 99, 501) == nil && r(.none, false, 777, 99, 501) == nil && r(.none, false, 501, 99, nil) == nil && r(.none, false, nil, 99, 501) == nil)
+    }
+
     // ---- the page area ----
     let main: CGFloat = 1117
     // A 1200 × 800 window, its AppKit frame's bottom-left at (100, 117): its top left at (100, 200).

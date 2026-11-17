@@ -205,6 +205,45 @@ func windowAlpha(_ window: NSWindow, at points: [CGPoint]) -> [Int]? {
   }
 }
 
+// The window server's order of two of this process's windows (front to back, its on-screen list: off every display
+// they're still listed): whether `upper` is above `lower`, and the layer it gives each. Nil: one isn't listed.
+func serverAbove(_ upper: Int, _ lower: Int) -> (above: Bool, layers: [Int])? {
+  guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return nil }
+  let numbers = list.map { ($0[kCGWindowNumber as String] as? NSNumber)?.intValue ?? 0 }
+  guard let u = numbers.firstIndex(of: upper), let l = numbers.firstIndex(of: lower) else { return nil }
+  let layer = { (i: Int) in (list[i][kCGWindowLayer as String] as? NSNumber)?.intValue ?? -1 }
+  return (u < l, [layer(u), layer(l)])
+}
+
+// A real key press (an NSEvent to the window: never through the window server, so it reaches nothing of the person's).
+func key(_ window: NSWindow, _ characters: String, code: UInt16) {
+  for type in [NSEvent.EventType.keyDown, .keyUp] {
+    if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code) {
+      window.sendEvent(e)
+    }
+  }
+}
+
+// A point of the sidebar where a press does nothing (no row, button, field, handle or drag region under it), in the
+// content (top left); as the dev hook's `say: spot` finds one for check10.
+@MainActor
+func emptySidebarSpot(_ web: WKWebView) async -> CGPoint? {
+  let found = await js(web, """
+    const page = document.querySelector('m-page')?.getBoundingClientRect();
+    if (!page || page.left < 40) return null;
+    const busy = 'a, button, input, textarea, select, [contenteditable], [m-action], [m-input], [m-drag], [m-resize], [m-drag-region], [m-rename], [m-editor], [m-menu], [m-notice], [m-prompt], [m-window-controls], [draggable="true"], [role="button"], [tabindex]';
+    for (const x of [page.left / 2, page.left * 0.3, page.left * 0.7]) {
+      for (let y = innerHeight - 90; y > 90; y -= 12) {
+        const el = document.elementFromPoint(x, y);
+        if (el && !el.closest(busy) && !el.closest('m-page')) return [x, y];
+      }
+    }
+    return null;
+    """) as? [Double]
+  return found.map { CGPoint(x: $0[0], y: $0[1]) }
+}
+
 @MainActor
 func glueScenario() async {
   func check(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") { e2eCheck("glue: \(label)", ok, detail()) }
@@ -277,7 +316,7 @@ func glueScenario() async {
   var cardAtLaunch: [String: String] = [:]
   world.onLaunch = { bundle in
     loadingAtLaunch[bundle] = c.loadingLabel; loadingTabsAtLaunch[bundle] = c.loadingTabs
-    cardAtLaunch[bundle] = "\(c.pageState.rawValue) hole \(c.hole == nil ? "none" : "open") ground \(c.ground.isShown ? "cut" : "whole") clear \(c.window.backgroundColor == .clear)"
+    cardAtLaunch[bundle] = "\(c.pageState.rawValue) hole \(c.hole == nil ? "none" : "open") ground \(c.ground.isShown ? "cut" : "whole") clear \(c.panel.backgroundColor == .clear)"
   }
   // (Safari's window its copy makes, in the stand-in window manager too.)
   let ask = engine.requestSafariWindow
@@ -309,10 +348,15 @@ func glueScenario() async {
         && c.window.locksFullScreen && (c.pageHello().contains(#""mode":"fullscreen""#)))
   let emptyRoot = await waitJS(c.webView, "return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'empty' && !document.querySelector('.arcadia').hasAttribute('m-starting')")
   check("nothing hosted: the page card `empty` (the theme's root says so, its data drawn: not starting), no hole, the window's own ground, the pointer Margin's everywhere",
-        c.pageState == .empty && emptyRoot && c.hole == nil && c.slot == nil && !c.ground.isShown && c.window.backgroundColor == .windowBackgroundColor && c.pageHello().contains(#""pageState":"empty""#))
+        c.pageState == .empty && emptyRoot && c.hole == nil && c.slot == nil && !c.ground.isShown && c.panel.backgroundColor == .windowBackgroundColor && c.pageHello().contains(#""pageState":"empty""#))
   check("in front of what it hosts from the start: its level raised one above normal (below floating), as the window server has it",
         c.mechanism == .level && c.window.level == FrontMechanism.raised && MarginWindowController.serverLayer(c.window.windowNumber) == FrontMechanism.raised.rawValue,
         "level \(c.window.level.rawValue) server \(String(describing: MarginWindowController.serverLayer(c.window.windowNumber)))")
+  let stack = serverAbove(c.panel.windowNumber, c.window.windowNumber)
+  check("Margin's UI in its panel: a non-activating panel, the full-screen window's child, at its level as the window server has it, right above it; the full-screen window clear and ignoring the mouse",
+        c.panel.styleMask.contains(.nonactivatingPanel) && c.panel.parent === c.window && c.panel.level == FrontMechanism.raised && MarginWindowController.serverLayer(c.panel.windowNumber) == FrontMechanism.raised.rawValue
+          && stack?.above == true && c.panel.frame == c.window.frame && c.window.ignoresMouseEvents && c.window.backgroundColor == .clear && c.webView.window === c.panel && c.activations.isEmpty,
+        "child \(c.panel.parent === c.window) level \(c.panel.level.rawValue) server \(String(describing: MarginWindowController.serverLayer(c.panel.windowNumber))) order \(String(describing: stack)) activations \(c.activations)")
   c.toggleFullScreen()
   check("asked to leave full screen (⌃⌘F, the page's own ask): refused, still full screen", c.isFullScreen && c.refusedExits == 1)
   check("its menu has no Enter/Exit Full Screen item", !made.menu.items.flatMap { $0.submenu?.items ?? [] }.contains { $0.action == #selector(NSWindow.toggleFullScreen(_:)) })
@@ -364,7 +408,7 @@ func glueScenario() async {
   func inContent(_ r: CGRect) -> CGRect { r.offsetBy(dx: -display.minX, dy: -display.minY) }
   let ground = PageFill.color(frameCSS)
   check("shown: the hole is the hosted window's bounds, the page area: Margin's window clear there, its ground drawn around it with the page card's rounded corners, in the theme's frame colour",
-        radius > 0 && c.hole == page && c.window.backgroundColor == .clear && c.ground.isShown && c.ground.hole == inContent(page) && c.ground.radii == (c.layout?.radii.map { CGFloat($0) } ?? [])
+        radius > 0 && c.hole == page && c.panel.backgroundColor == .clear && c.ground.isShown && c.ground.hole == inContent(page) && c.ground.radii == (c.layout?.radii.map { CGFloat($0) } ?? [])
         && frameCSS.hasPrefix("color(srgb ") && c.layout?.fills == Array(repeating: frameCSS, count: 4) && ground != nil && c.pageGround == ground && c.ground.color == ground,
         "hole \(String(describing: c.hole)) ground \(String(describing: c.ground.hole)) \(c.ground.radii) fills \(String(describing: c.layout?.fills))")
   check("the hosted window placed in Margin's own full-screen frame (the area its own Space lays it out in), never the display less its inset",
@@ -378,8 +422,8 @@ func glueScenario() async {
                     CGPoint(x: local.midX, y: local.maxY - 3), CGPoint(x: local.minX + radius - r2 + 3, y: local.minY + radius - r2 + 3), CGPoint(x: local.maxX - radius + r2 - 3, y: local.maxY - radius + r2 - 3)]
   let solidPoints = [CGPoint(x: 60, y: local.midY), CGPoint(x: local.minX - 4, y: local.midY), CGPoint(x: local.midX, y: local.minY - 4), CGPoint(x: local.maxX + 4, y: local.midY),
                      CGPoint(x: local.midX, y: local.maxY + 4), CGPoint(x: local.minX + 1, y: local.minY + 1), CGPoint(x: local.maxX - 1, y: local.maxY - 1)]
-  _ = await until(3) { windowAlpha(c.window, at: holePoints)?.allSatisfy { $0 == 0 } == true }
-  let holeAlpha = windowAlpha(c.window, at: holePoints), solidAlpha = windowAlpha(c.window, at: solidPoints)
+  _ = await until(3) { windowAlpha(c.panel, at: holePoints)?.allSatisfy { $0 == 0 } == true }
+  let holeAlpha = windowAlpha(c.panel, at: holePoints), solidAlpha = windowAlpha(c.panel, at: solidPoints)
   check("shown, as the window server pictures Margin's window: see-through (alpha 0) across the page area, up to its edges and inside its corners' curves",
         holeAlpha?.allSatisfy { $0 == 0 } == true, "\(String(describing: holeAlpha))")
   check("shown, as the window server pictures it: painted (alpha 255) on the sidebar, on the theme's frame at each side of the page area and outside the curve of its rounded corners",
@@ -388,27 +432,27 @@ func glueScenario() async {
   let middle = CGPoint(x: page.midX, y: page.midY)
   check("the pointer's slot is the hole (its radius the card's); the catch fill everywhere but there", c.slot?.rect == page && c.slot?.radius == radius && c.slot?.captureAll == false, "\(String(describing: c.slot))")
   c.pointerMoved(middle, buttonsDown: false)
-  let overApp = c.window.ignoresMouseEvents
+  let overApp = c.panel.ignoresMouseEvents
   c.pointerMoved(CGPoint(x: page.minX - 120, y: page.midY), buttonsDown: false)
-  let overSidebar = c.window.ignoresMouseEvents
+  let overSidebar = c.panel.ignoresMouseEvents
   c.pointerMoved(CGPoint(x: page.minX - 4, y: page.midY), buttonsDown: false)
-  let overFrame = c.window.ignoresMouseEvents
+  let overFrame = c.panel.ignoresMouseEvents
   c.pointerMoved(CGPoint(x: page.minX + 0.5, y: page.minY + 0.5), buttonsDown: false)
-  let overCorner = c.window.ignoresMouseEvents
+  let overCorner = c.panel.ignoresMouseEvents
   c.pointerMoved(CGPoint(x: page.maxX - 1, y: page.midY), buttonsDown: false)
-  let atRight = c.window.ignoresMouseEvents
+  let atRight = c.panel.ignoresMouseEvents
   c.pointerMoved(CGPoint(x: page.midX, y: page.minY + 1), buttonsDown: false)
-  let atEdge = atRight && c.window.ignoresMouseEvents
+  let atEdge = atRight && c.panel.ignoresMouseEvents
   check("the pointer: over the page area it goes through to the app (to its very edge); over the sidebar, the frame's strip and outside a rounded corner's curve it's Margin's",
         overApp && !overSidebar && !overFrame && !overCorner && atEdge, "app \(overApp) sidebar \(overSidebar) frame \(overFrame) corner \(overCorner) edge \(atEdge)")
   c.pointerMoved(middle, buttonsDown: false)
   c.pointerMoved(CGPoint(x: page.minX - 120, y: page.midY), buttonsDown: true)
-  let dragFromApp = c.window.ignoresMouseEvents
+  let dragFromApp = c.panel.ignoresMouseEvents
   c.pointerMoved(CGPoint(x: page.minX - 120, y: page.midY), buttonsDown: false)
   c.pointerMoved(middle, buttonsDown: true)
-  let dragFromMargin = c.window.ignoresMouseEvents
+  let dragFromMargin = c.panel.ignoresMouseEvents
   c.pointerMoved(middle, buttonsDown: false)
-  check("the pointer: a drag begun in the app stays the app's over Margin's sidebar; one begun on Margin stays Margin's over the app", dragFromApp && !dragFromMargin && c.window.ignoresMouseEvents)
+  check("the pointer: a drag begun in the app stays the app's over Margin's sidebar; one begun on Margin stays Margin's over the app", dragFromApp && !dragFromMargin && c.panel.ignoresMouseEvents)
   // (Its title: the app's name as the catalog read it, else its bundle id.)
   let title = library.items().first { $0.id == item }?.value["title"] as? String ?? "?"
   let lit = await waitJS(c.webView, "return document.querySelector('.tab.active')?.getAttribute('aria-label') === \(jsonString(title) ?? "''")")
@@ -464,20 +508,20 @@ func glueScenario() async {
   c.setShowing("Slow one")
   let inGrace = c.pageState == .shown && c.hole == page
   c.graceOver()
-  let late = c.pageState == .loading && c.hole == nil && c.window.backgroundColor == ground && !c.ground.isShown && c.slot == nil && c.pushed.last == #"{"type":"pageState","state":"loading","label":"Slow one"}"#
+  let late = c.pageState == .loading && c.hole == nil && c.panel.backgroundColor == ground && !c.ground.isShown && c.slot == nil && c.pushed.last == #"{"type":"pageState","state":"loading","label":"Slow one"}"#
   let lateDrawn = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader:not([m-default])'); return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'loading' && l?.textContent.trim() === 'Opening Slow one…' && getComputedStyle(l).opacity === '1' && getComputedStyle(l).pointerEvents === 'auto'")
-  _ = await until(3) { windowAlpha(c.window, at: holePoints)?.allSatisfy { $0 == 255 } == true }
-  let cardAlpha = windowAlpha(c.window, at: holePoints)
+  _ = await until(3) { windowAlpha(c.panel, at: holePoints)?.allSatisfy { $0 == 255 } == true }
+  let cardAlpha = windowAlpha(c.panel, at: holePoints)
   c.pointerMoved(middle, buttonsDown: false)
-  let loadingPointer = c.window.ignoresMouseEvents
+  let loadingPointer = c.panel.ignoresMouseEvents
   check("a show not in place within the grace: what's drawn stays for it, then the page card `loading`: the hole closed at once (the window's own ground whole), the pointer Margin's, the loader drawn with the item's name",
         inGrace && late && lateDrawn && !loadingPointer, "grace \(inGrace) late \(late) drawn \(lateDrawn) pointer through \(loadingPointer)")
   check("loading, as the window server pictures Margin's window: the page card opaque (alpha 255 across the page area): whatever opens behind it isn't seen", cardAlpha?.allSatisfy { $0 == 255 } == true, "\(String(describing: cardAlpha))")
   c.setShowing(nil)
   let fadeMs = await js(c.webView, "const l = document.querySelector('.arcadia > m-page-loader'); return Math.round(parseFloat(getComputedStyle(l).transitionDuration) * 1000)") as? Int ?? -1
-  _ = await until(3) { windowAlpha(c.window, at: holePoints)?.allSatisfy { $0 == 0 } == true }
+  _ = await until(3) { windowAlpha(c.panel, at: holePoints)?.allSatisfy { $0 == 0 } == true }
   check("… and shown again once it is: the hole open again (see-through in the window's picture once the loader has faded, \(fadeMs) ms, at most 150)", c.pageState == .shown && c.hole == page
-        && fadeMs > 0 && fadeMs <= 150 && windowAlpha(c.window, at: holePoints)?.allSatisfy { $0 == 0 } == true, "\(fadeMs) \(String(describing: windowAlpha(c.window, at: holePoints)))")
+        && fadeMs > 0 && fadeMs <= 150 && windowAlpha(c.panel, at: holePoints)?.allSatisfy { $0 == 0 } == true, "\(fadeMs) \(String(describing: windowAlpha(c.panel, at: holePoints)))")
   _ = library.perform("activateTab", ["windowId": c.id, "tabId": web])
   guard await until(5, { engine.shown == HostTarget.safariWindow("s-default").id }) else { return check("back to Safari", false) }
   await session.idle()
@@ -518,19 +562,47 @@ func glueScenario() async {
   check("Calculator: no launcher under its window (its field would take the keys), no field of Margin's has them", noLauncher && !c.pageWantsKeyboard, focused)
   check("Calculator: Margin's window told its window, in front of it; the hole its own bounds (smaller than the page area, square), the theme's frame colour around it",
         c.hosted == calcWindow && engine.shownWindow == calcWindow && c.pageState == .shown && c.hole == centred && c.ground.hole == inContent(centred) && c.ground.radii == [0, 0, 0, 0]
-        && c.pageGround == ground && c.ground.color == ground && c.window.backgroundColor == .clear,
+        && c.pageGround == ground && c.ground.color == ground && c.panel.backgroundColor == .clear,
         "hosted \(String(describing: c.hosted)) hole \(String(describing: c.hole)) want \(centred) ground \(String(describing: c.ground.color))")
   // (Nothing of the theme's over the page area any more: its loader, fading out as `shown` came, is reported until it's gone.)
   _ = await until(3) { !c.captureAll && c.hits.isEmpty }
   c.pointerMoved(CGPoint(x: centred.midX, y: centred.midY), buttonsDown: false)
-  let overCalc = c.window.ignoresMouseEvents
+  let overCalc = c.panel.ignoresMouseEvents
   c.pointerMoved(CGPoint(x: calcPage.minX + 20, y: calcPage.minY + 20), buttonsDown: false)
-  let aroundCalc = c.window.ignoresMouseEvents
+  let aroundCalc = c.panel.ignoresMouseEvents
   let activations = world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count
   c.pressed(CGPoint(x: calcPage.minX + 20, y: calcPage.minY + 20))
   let pressGives = await until(3) { world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == activations + 1 }
   check("Calculator: the pointer through to it on its window; in the page area around it Margin's, and a press there gives Calculator the keyboard", overCalc && !aroundCalc && pressGives,
         "over \(overCalc) around \(aroundCalc) press \(pressGives) hits \(c.hits.count) all \(c.captureAll) hole \(String(describing: c.hole))")
+  // ---- a press in Margin's sidebar (an empty spot) with Calculator shown: Margin never made active, the panel not key,
+  // the keys back to Calculator once the press is over (Tirth's recording, 2026-11-17: the hosted app's inactive look
+  // at every use of the sidebar) ----
+  // (Which app a hosted window is: the engine's stand-in's. Margin the front app or not: the stand-in says not, as on
+  // check10's screen, where the hosted pane was the front app throughout.)
+  c.hostedPid = { number in engine.hosts.values.first { $0.window == number }?.pid }
+  c.appActive = { false }
+  let shownCalcPid = engine.hosts.values.first { $0.window == calcWindow }?.pid ?? -1
+  // AppKit says Margin is active, its window key (as on check10's screen after its launch and after any press in the
+  // panel, with the hosted app still the front app): the panel still can't be key, nor have the keys.
+  NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
+  c.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: c.window))
+  check("AppKit says Margin is active and its window key, the hosted app still the front app, no field of Margin's: the panel can't be key (only a field of Margin's makes it so) and doesn't have the keys",
+        !c.panel.allowKey && !c.panel.canBecomeKey && !c.hasKeys && !c.pageWantsKeyboard, "allow \(c.panel.allowKey) has \(c.hasKeys)")
+  if let spot = await emptySidebarSpot(c.webView) {
+    let handsBefore = c.handBacks.count
+    let pressesBefore = c.panel.presses, marginBefore = c.activations.count, asksBefore = c.keyAsks, backBefore = c.keysGivenBack
+    let calcBefore = world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count
+    c.pointerMoved(CGPoint(x: display.minX + spot.x, y: display.minY + spot.y), buttonsDown: false)
+    let takes = !c.panel.ignoresMouseEvents
+    press(c.panel, at: spot)
+    let back = await until(3) { world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == calcBefore + 1 }
+    check("a press on an empty spot of the sidebar with Calculator shown: Margin's panel took it (a non-activating panel), Margin not made active, the panel not asked to be key, the keys back to Calculator once it's over",
+          takes && c.panel.presses == pressesBefore + 1 && c.panel.styleMask.contains(.nonactivatingPanel) && c.activations.count == marginBefore && c.keyAsks == asksBefore && !c.panel.canBecomeKey
+            && back && c.keysGivenBack == backBefore + 1 && !c.pageWantsKeyboard && !c.panel.allowKey && !c.hasKeys
+            && c.handBacks.count == handsBefore + 1 && c.handBacks.last == shownCalcPid,
+          "hand-backs \(c.handBacks.suffix(2)) (Calculator \(shownCalcPid)) allow \(c.panel.allowKey) takes \(takes) presses \(c.panel.presses - pressesBefore) Margin active \(c.activations.suffix(2)) key asks \(c.keyAsks - asksBefore) can be key \(c.panel.canBecomeKey) back \(back) \(world.calls.suffix(2))")
+  } else { check("an empty spot of the sidebar", false) }
   // (The engine asks Margin's window's page to measure at every look while it waits for a layout at its whole width:
   // a size the window took isn't measured until a frame is drawn, which can be seconds late. The page measures at once.)
   let measuresBefore = await js(c.webView, "return marginApp.stats().measures") as? Int ?? -1
@@ -575,37 +647,63 @@ func glueScenario() async {
   apps.bringToFront(calcPid)
   shell.track()
   let ordersBefore = c.yieldOrders
+  let paletteAsks = c.keyAsks, paletteMargin = c.activations.count
+  // (Nothing its first responder, as a panel that never had the keys: the field's keys must make the web view it.)
+  c.panel.makeFirstResponder(nil)
   keys.press("Meta+KeyT")
   let paletteOpen = await waitJS(c.webView, "const i = document.querySelector('[m-input=\"palette\"]'); return !!i && document.activeElement === i")
   _ = await until(3) { c.pageWantsKeyboard && (c.captureAll || !c.hits.isEmpty) }
   // (Where the theme draws its palette, in the window: its field's box.)
   let fieldBox = await js(c.webView, "const r = document.querySelector('[m-input=\"palette\"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]") as? [Double] ?? [0, 0]
   let fieldAt = CGPoint(x: display.minX + fieldBox[0], y: display.minY + fieldBox[1])
+  check("⌘T with a hosted app in front: its field has the keys through the panel, Margin never made active: the panel can be key and was asked to be (non-activating: the app stays the active one), the web view its first responder",
+        c.pageWantsKeyboard && c.hasKeys && c.panel.allowKey && c.panel.canBecomeKey && c.keyAsks == paletteAsks + 1 && c.panel.firstResponder === c.webView && c.activations.count == paletteMargin,
+        "keys \(c.pageWantsKeyboard) has \(c.hasKeys) allow \(c.panel.allowKey) asks \(c.keyAsks - paletteAsks) responder \(String(describing: c.panel.firstResponder)) Margin active \(c.activations.suffix(2))")
+  // Typing: real key events to the panel (never through the window server), into the palette's field.
+  for (ch, code) in [("a", UInt16(0)), ("b", UInt16(11)), ("c", UInt16(8))] { key(c.panel, ch, code: code) }
+  let typed = await waitJS(c.webView, "const i = document.querySelector('[m-input=\"palette\"]'); return !!i && i.value === 'abc'")
+  let typedValue = await js(c.webView, "return document.querySelector('[m-input=\"palette\"]')?.value ?? null")
+  check("⌘T: what's typed reaches the palette's field (key events to the panel, its web view the first responder)", typed, "\(String(describing: typedValue))")
+  // ⌘A then a letter (Margin not the active app: the hosted app's menu bar, so Margin's web view sends the editing keys itself).
+  if let selectAll = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: c.panel.windowNumber,
+                                      context: nil, characters: "a", charactersIgnoringModifiers: "a", isARepeat: false, keyCode: 0) {
+    let took = c.webView.performKeyEquivalent(with: selectAll)
+    key(c.panel, "z", code: 6)
+    let replaced = await waitJS(c.webView, "return document.querySelector('[m-input=\"palette\"]')?.value === 'z'")
+    let value = await js(c.webView, "return document.querySelector('[m-input=\"palette\"]')?.value ?? null")
+    check("⌘T: ⌘A in the field with Margin not the active app selects what's typed (then typing replaces it)", took && replaced, "took \(took) \(String(describing: value))")
+  }
   check("⌘T with a hosted app in front: the palette open in Margin's window, its field focused, over the page area; Margin's window still in front of the hosted one (its level raised, never ordered below it)",
         paletteOpen && c.pageWantsKeyboard && calcPage.contains(fieldAt) && c.window.level == FrontMechanism.raised && c.yieldOrders == ordersBefore && c.hosted == calcWindow && c.pageState == .shown,
         "open \(paletteOpen) keys \(c.pageWantsKeyboard) field \(fieldAt) page \(calcPage)")
   // (Off every display WebKit can keep an older frame of a layer that just appeared: the page is asked for a new one
   // until the window server's picture has it. On the real screen it's check10's step c1.)
-  for _ in 0..<30 where windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) != [255] {
+  for _ in 0..<30 where windowAlpha(c.panel, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) != [255] {
     _ = await js(c.webView, "const el = document.querySelector('[m-input=\"palette\"]'); el.style.outlineOffset = el.style.outlineOffset ? '' : '0px'; void el.offsetWidth; await new Promise((done) => requestAnimationFrame(() => done(true))); return true")
-    _ = await until(0.1) { windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) == [255] }
+    _ = await until(0.1) { windowAlpha(c.panel, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) == [255] }
   }
   check("⌘T: as the window server pictures Margin's window, the palette's pixels are painted over the page area (alpha 255 at its field)",
-        windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) == [255], "\(String(describing: windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])])))")
+        windowAlpha(c.panel, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) == [255], "\(String(describing: windowAlpha(c.panel, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])])))")
   // (As soon as the page has said where its palette is: its report of what it draws over the page area follows the draw.)
-  _ = await until(3) { c.pointerMoved(fieldAt, buttonsDown: false); return !c.window.ignoresMouseEvents }
-  let overPalette = c.window.ignoresMouseEvents
+  _ = await until(3) { c.pointerMoved(fieldAt, buttonsDown: false); return !c.panel.ignoresMouseEvents }
+  let overPalette = c.panel.ignoresMouseEvents
   check("⌘T: the pointer over the palette is Margin's (not passed to the app under it)", !overPalette, "hits \(c.hits.count) all \(c.captureAll)")
   // (Counted from here: the palette closed just before this step gave the app the keys back in a task of its own.)
   let activationsBefore = world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count
-  _ = await js(c.webView, "document.querySelector('[m-input=\"palette\"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true")
+  let letsBefore = c.keyLets, callsBefore = world.calls.count, handsEscape = c.handBacks.count
+  key(c.panel, "\u{1b}", code: 53) // (Escape, a real key event to the panel)
   let paletteClosed = await waitJS(c.webView, "return !document.querySelector('[m-input=\"palette\"]')")
   let keysBack = await until(3) { !c.pageWantsKeyboard && world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == activationsBefore + 1 }
   _ = await until(3) { !c.captureAll && c.hits.isEmpty }
   c.pointerMoved(CGPoint(x: centred.midX, y: centred.midY), buttonsDown: false)
+  check("⌘T then Escape: the panel lets go of the keys (it can't be key any more), Margin never made active, and all the hosted app is asked is to be the active app (which it is): nothing that would deactivate it",
+        paletteClosed && c.keyLets == letsBefore + 1 && !c.hasKeys && !c.panel.allowKey && !c.panel.canBecomeKey && c.activations.count == paletteMargin
+          && c.handBacks.count == handsEscape + 1 && c.handBacks.last == calcPid
+          && world.calls.dropFirst(callsBefore).allSatisfy { $0 == "activate \(GlueHostWorld.calculator)" },
+        "hand-backs \(c.handBacks.suffix(2)) lets \(c.keyLets - letsBefore) has \(c.hasKeys) allow \(c.panel.allowKey) Margin active \(c.activations.suffix(2)) asked of the app \(Array(world.calls.dropFirst(callsBefore)))")
   check("⌘T then Escape: the palette gone, the hosted app activated again (it has the keys), the pointer through to it again",
-        paletteClosed && keysBack && c.window.ignoresMouseEvents && world.calls.last == "activate \(GlueHostWorld.calculator)",
-        "closed \(paletteClosed) back \(keysBack) (\(world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count) activations, \(activationsBefore) before) keys \(c.pageWantsKeyboard) ignoring \(c.window.ignoresMouseEvents) \(world.calls.suffix(3))")
+        paletteClosed && keysBack && c.panel.ignoresMouseEvents && world.calls.last == "activate \(GlueHostWorld.calculator)",
+        "closed \(paletteClosed) back \(keysBack) (\(world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count) activations, \(activationsBefore) before) keys \(c.pageWantsKeyboard) ignoring \(c.panel.ignoresMouseEvents) \(world.calls.suffix(3))")
   apps.bringToFront(1)
   shell.track()
   check("keys: let go again once another app is in front", !shell.shortcuts.isActive)
@@ -656,7 +754,7 @@ func glueScenario() async {
   c.remeasure() // (a test's window gets no frames: the page's place as it is now)
   let live = await until(5, { c.window.pageRect?.minX == calcPage.minX + 24 })
   check("resize (window mode): while dragged, Margin's own page area follows live and Calculator stays in sight through the hole where it is: the page card still shown, nothing lifted, ordered or told to the page",
-        live && c.pageState == .shown && c.hole == centred && c.ground.hole == inContent(centred) && c.window.backgroundColor == .clear && c.levelSets == levelSets && c.frontOrders == frontOrders
+        live && c.pageState == .shown && c.hole == centred && c.ground.hole == inContent(centred) && c.panel.backgroundColor == .clear && c.levelSets == levelSets && c.frontOrders == frontOrders
         && cardStates().count == statesMark && c.window.level == FrontMechanism.raised,
         "live \(live) page \(String(describing: c.window.pageRect)) \(c.pageState.rawValue) hole \(String(describing: c.hole)) want \(centred) states \(cardStates().dropFirst(statesMark)) level sets \(c.levelSets - levelSets) orders \(c.frontOrders - frontOrders)")
   check("resize (window mode): … and Calculator isn't moved, the engine's page area held", world.bounds(window: calcWindow) == centred && engine.pageRect == calcPage && called("frame", since: mark).isEmpty
@@ -707,9 +805,9 @@ func glueScenario() async {
         && c.ground.color == ground && c.ground.radii == [0, CGFloat(c.layout?.radii[1] ?? 0), CGFloat(c.layout?.radii[2] ?? 0), 0] && cardStates().count == statesMark,
         "page \(String(describing: c.window.pageRect)) hole \(String(describing: c.ground.hole)) radii \(c.ground.radii) ground \(String(describing: c.ground.color))")
   c.pointerMoved(CGPoint(x: wider.minX - 10, y: wider.midY), buttonsDown: false)
-  let gapPointer = c.window.ignoresMouseEvents
+  let gapPointer = c.panel.ignoresMouseEvents
   c.pointerMoved(CGPoint(x: wider.midX, y: wider.midY), buttonsDown: false)
-  check("resize (full screen): the pointer in the gap is Margin's, over the member the app's", !gapPointer && c.window.ignoresMouseEvents)
+  check("resize (full screen): the pointer in the gap is Margin's, over the member the app's", !gapPointer && c.panel.ignoresMouseEvents)
   // (What seeing through rests on: nothing the page draws covers the middle of its page slot. Every element whose box
   // holds that point, whether or not it takes the pointer, has no background of its own. The theme's loader card, drawn
   // for the placing just before, has faded out by now.)
@@ -764,9 +862,11 @@ func glueScenario() async {
   let levelBefore = c.window.level, frontBefore = c.frontOrders
   session.others(4242)
   let yielded = c.yieldingTo == 4242 && c.window.level == .normal && c.yieldOrders == 1
+  let panelYielded = c.panel.level == .normal // (its panel with it: the other window in front of Margin's UI too)
   session.others(nil)
   check("another window in Margin's Space: Margin's window lets it in front (the normal level, ordered right below it), and once it's gone is in front of what it hosts again: its raised level, and ordered right above the hosted window",
-        levelBefore == FrontMechanism.raised && yielded && c.yieldingTo == nil && c.window.level == FrontMechanism.raised && c.yieldOrders == 1 && c.frontOrders == frontBefore + 1,
+        levelBefore == FrontMechanism.raised && yielded && c.yieldingTo == nil && c.window.level == FrontMechanism.raised && c.yieldOrders == 1 && c.frontOrders == frontBefore + 1
+          && panelYielded && c.panel.level == FrontMechanism.raised,
         "yielded \(yielded) level \(c.window.level.rawValue) orders \(c.frontOrders - frontBefore)")
 
   // ---- the same through the engine's poll (the stand-in's on-screen list): a Space swipe's picture, the shown app's
@@ -924,7 +1024,7 @@ func glueScenario() async {
   check("quit: ⌘Q again with the prompt up: Quit, asked of the app once; still asking next time (not Always quit)", quit.asked == 1 && shell.quitsAsked == 1 && shell.quitPrompt == nil && quit.asks)
   guard await until(10, { done }) else { return check("quit", false) }
   check("quit: ⌘Q is the front app's again while Margin quits", !shell.shortcuts.guardsQuit && !keys.held.values.contains(Combo.parse("Meta+KeyQ")!))
-  check("quit: nothing hosted: the page card empty, no hole, the window's own ground again", c.pageState == .empty && c.hole == nil && !c.ground.isShown && c.pageGround == nil && c.window.backgroundColor == .windowBackgroundColor)
+  check("quit: nothing hosted: the page card empty, no hole, the window's own ground again", c.pageState == .empty && c.hole == nil && !c.ground.isShown && c.pageGround == nil && c.panel.backgroundColor == .windowBackgroundColor)
   check("quit: Calculator back at its own frame before it was quit", world.frameAtQuit[GlueHostWorld.calculator] == GlueHostWorld.calculatorFrame, "\(world.frameAtQuit)")
   check("quit: the apps Margin started quit, nothing left in Margin's Space, Mission Control Margin's Space only", world.apps.isEmpty && world.inMargin.isEmpty && world.listsMarginOnly
         && (world.reservation[GlueHostWorld.marginSpace] ?? .zero).isZero, "\(world.apps.values.map(\.bundle)) \(world.fullScreenSpaces)")

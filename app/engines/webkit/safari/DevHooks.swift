@@ -19,12 +19,16 @@
 //   itself at the next launch (`last`: an app's bundle id, `web`, or `none`); `host { say: picture }`: how
 //   much of the page area is painted in the window server's picture of Margin's own window (its own process's window:
 //   no permission; alpha only, no pixel leaves the app), and with `watch: <seconds>` the same every 50 ms for that
-//   long, summed up by page state in one line at the end.
+//   long, summed up by page state in one line at the end. For Margin's UI that never makes the hosted app inactive
+//   (2026-11-17): `host { say: field }`: whether a field of Margin's page has the focus and how many characters it
+//   holds (its length only, never its text); `host { say: spot }`: a point of the front window's sidebar where a
+//   press does nothing (no row, button, field, handle or drag region under it), in the window server's coordinates.
 // - Each notification is one log line, honoured or refused: the kind, ids and the sender's pid (as it says it). The
 //   address itself is never logged.
 
 import AppKit
 import CoreFoundation
+import WebKit
 
 // DEV-HOOK: what the hook needs from the shell (Shell, below; the tests' fake).
 protocol DevHookWorld: AnyObject {
@@ -37,6 +41,7 @@ protocol DevHookWorld: AnyObject {
     func devSidebar(width: Int) -> String? // the front window's sidebar that wide, as a drag that ends there; nil if begun
     func devFront() -> String // how the front window is in front, its page card and its hole, in one line
     func devPicture(watch seconds: Double?, done: @escaping (String) -> Void) // the page area in Margin's own window's picture
+    func devPage(_ what: String, done: @escaping (String) -> Void) // `field` or `spot` of the front window's page, in one line
 }
 
 // DEV-HOOK: the hook itself.
@@ -103,6 +108,10 @@ final class DevHooks {
                 return say("dev hook: host sidebar \(width) \(asked)")
             }
             if fields["say"] == "front" { return say("dev hook: front: \(world.devFront()) \(asked)") }
+            if let what = fields["say"], what == "field" || what == "spot" {
+                world.devPage(what) { [weak self] line in self?.say("dev hook: \(what): \(line) \(asked)") }
+                return say("dev hook: host say \(what) \(asked)")
+            }
             if fields["say"] == "picture" {
                 let seconds = fields["watch"].flatMap { Double($0) }.map { min(20, max(0.2, $0)) }
                 world.devPicture(watch: seconds) { [weak self] line in self?.say("dev hook: picture: \(line) \(asked)") }
@@ -202,6 +211,34 @@ extension Shell: DevHookWorld {
         return w.devFront + (host.map { "; engine: \($0.readShown())" } ?? "") + ", last \(last)"
     }
 
+    // The page's own answer (one script): its focused field's length only; a sidebar point no control is under.
+    func devPage(_ what: String, done: @escaping (String) -> Void) {
+        guard let w = marginWindows?.front else { return done("no Margin window") }
+        let script = what == "field" ? """
+            const a = document.activeElement, field = !!a && (a.matches('input, textarea') || a.isContentEditable);
+            return 'focused ' + field + ', length ' + (field ? String((a.value ?? a.textContent ?? '').length) : '-1') + ', palette ' + (!!document.querySelector('[m-input="palette"]'));
+            """ : """
+            const page = document.querySelector('m-page')?.getBoundingClientRect();
+            if (!page || page.left < 40) return 'none';
+            const busy = 'a, button, input, textarea, select, [contenteditable], [m-action], [m-input], [m-drag], [m-resize], [m-drag-region], [m-rename], [m-editor], [m-menu], [m-notice], [m-prompt], [m-window-controls], [draggable="true"], [role="button"], [tabindex]';
+            for (const x of [page.left / 2, page.left * 0.3, page.left * 0.7]) {
+              for (let y = innerHeight - 90; y > 90; y -= 12) {
+                const el = document.elementFromPoint(x, y);
+                if (el && !el.closest(busy) && !el.closest('m-page')) return Math.round(x) + ',' + Math.round(y);
+              }
+            }
+            return 'none';
+            """
+        w.webView.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { result in
+            guard case .success(let value) = result, let text = value as? String else { return done("no answer from the page") }
+            guard what == "spot" else { return done(text) }
+            let parts = text.split(separator: ",").compactMap { Double($0) }
+            guard parts.count == 2 else { return done("none") }
+            let content = w.contentFrame
+            done("at \(Int(content.minX + parts[0])),\(Int(content.minY + parts[1]))")
+        }
+    }
+
     func devPicture(watch seconds: Double?, done: @escaping (String) -> Void) {
         guard let w = marginWindows?.front else { return done("no Margin window") }
         guard let seconds else { return done(w.devPicture()?.text ?? "no picture of the window") }
@@ -243,12 +280,12 @@ extension MarginWindowController {
         return nil
     }
 
-    // The window server's picture of this window (its own process's: no permission needed), as alpha only: how many of
+    // The window server's picture of Margin's UI (its panel: its own process's window, no permission needed), as alpha only: how many of
     // 81 points across the page area are painted (alpha over 128), the least and most alpha there, and the sidebar's.
     func devPicture() -> (painted: Int, text: String)? {
         typealias Create = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
         guard let page = window.pageRect, let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage"),
-              let image = unsafeBitCast(symbol, to: Create.self)(.null, 8, UInt32(window.windowNumber), 1 | 16)?.takeRetainedValue(), image.width > 0, image.height > 0,
+              let image = unsafeBitCast(symbol, to: Create.self)(.null, 8, UInt32(panel.windowNumber), 1 | 16)?.takeRetainedValue(), image.width > 0, image.height > 0,
               let ctx = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue), let data = ctx.data else { return nil }
         ctx.clear(CGRect(x: 0, y: 0, width: image.width, height: image.height))
@@ -270,10 +307,14 @@ extension MarginWindowController {
         return (painted, "page \(pageState.rawValue), page area painted \(painted) of 81 (alpha \(least) to \(most)), sidebar alpha \(side), picture \(image.width)x\(image.height)")
     }
 
-    // How it's in front, the page card and the hole (numbers only).
+    // How it's in front, the page card and the hole (numbers only). `window`: the base (the full-screen one, its Space
+    // Margin's); `panel`: Margin's UI over it, the window that takes Margin's presses and, for a field, the keys.
+    // `active`: Margin the front app (the workspace's word); `appkit active`: AppKit's, true too after a press in the
+    // non-activating panel.
     var devFront: String {
         func r(_ c: CGRect?) -> String { c.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "none" }
         return "mechanism \(mechanism.rawValue), level \(window.level.rawValue) (server \(serverLevel(window.windowNumber).map(String.init) ?? "?")), window \(window.windowNumber), page \(pageState.rawValue), hole \(r(hole)), "
-            + "page area \(r(window.pageRect)), hosted \(hosted.map(String.init) ?? "none"), ignoring \(window.ignoresMouseEvents), keys \(pageWantsKeyboard), full screen \(isFullScreen), presses \(window.presses)"
+            + "page area \(r(window.pageRect)), hosted \(hosted.map(String.init) ?? "none"), ignoring \(panel.ignoresMouseEvents), keys \(pageWantsKeyboard), full screen \(isFullScreen), presses \(panel.presses), "
+            + "panel \(panel.windowNumber) (level \(panel.level.rawValue), server \(serverLevel(panel.windowNumber).map(String.init) ?? "?"), key \(panel.isKeyWindow), child \(panel.parent === window)), active \(MarginWindowController.isFrontApp()), appkit active \(NSApp.isActive), allow key \(panel.allowKey), hand-backs \(handBacks.count), activations \(activations.count), keys back \(keysGivenBack)"
     }
 }
