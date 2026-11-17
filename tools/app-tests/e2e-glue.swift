@@ -497,6 +497,8 @@ func glueScenario() async {
         c.hosted == calcWindow && engine.shownWindow == calcWindow && c.pageState == .shown && c.hole == centred && c.ground.hole == inContent(centred) && c.ground.radii == [0, 0, 0, 0]
         && c.pageGround == ground && c.ground.color == ground && c.window.backgroundColor == .clear,
         "hosted \(String(describing: c.hosted)) hole \(String(describing: c.hole)) want \(centred) ground \(String(describing: c.ground.color))")
+  // (Nothing of the theme's over the page area any more: its loader, fading out as `shown` came, is reported until it's gone.)
+  _ = await until(3) { !c.captureAll && c.hits.isEmpty }
   c.pointerMoved(CGPoint(x: centred.midX, y: centred.midY), buttonsDown: false)
   let overCalc = c.window.ignoresMouseEvents
   c.pointerMoved(CGPoint(x: calcPage.minX + 20, y: calcPage.minY + 20), buttonsDown: false)
@@ -505,7 +507,7 @@ func glueScenario() async {
   c.pressed(CGPoint(x: calcPage.minX + 20, y: calcPage.minY + 20))
   let pressGives = await until(3) { world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == activations + 1 }
   check("Calculator: the pointer through to it on its window; in the page area around it Margin's, and a press there gives Calculator the keyboard", overCalc && !aroundCalc && pressGives,
-        "over \(overCalc) around \(aroundCalc) press \(pressGives)")
+        "over \(overCalc) around \(aroundCalc) press \(pressGives) hits \(c.hits.count) all \(c.captureAll) hole \(String(describing: c.hole))")
   // (The engine asks Margin's window's page to measure at every look while it waits for a layout at its whole width:
   // a size the window took isn't measured until a frame is drawn, which can be seconds late. The page measures at once.)
   let measuresBefore = await js(c.webView, "return marginApp.stats().measures") as? Int ?? -1
@@ -549,7 +551,6 @@ func glueScenario() async {
   // the page area, Margin's window in front; the pointer there Margin's; Escape: the app has the keys again ----
   apps.bringToFront(calcPid)
   shell.track()
-  let activationsBefore = world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count
   let ordersBefore = c.yieldOrders
   keys.press("Meta+KeyT")
   let paletteOpen = await waitJS(c.webView, "const i = document.querySelector('[m-input=\"palette\"]'); return !!i && document.activeElement === i")
@@ -566,13 +567,16 @@ func glueScenario() async {
   c.pointerMoved(fieldAt, buttonsDown: false)
   let overPalette = c.window.ignoresMouseEvents
   check("⌘T: the pointer over the palette is Margin's (not passed to the app under it)", !overPalette, "hits \(c.hits.count) all \(c.captureAll)")
+  // (Counted from here: the palette closed just before this step gave the app the keys back in a task of its own.)
+  let activationsBefore = world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count
   _ = await js(c.webView, "document.querySelector('[m-input=\"palette\"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true")
   let paletteClosed = await waitJS(c.webView, "return !document.querySelector('[m-input=\"palette\"]')")
   let keysBack = await until(3) { !c.pageWantsKeyboard && world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == activationsBefore + 1 }
   _ = await until(3) { !c.captureAll && c.hits.isEmpty }
   c.pointerMoved(CGPoint(x: centred.midX, y: centred.midY), buttonsDown: false)
   check("⌘T then Escape: the palette gone, the hosted app activated again (it has the keys), the pointer through to it again",
-        paletteClosed && keysBack && c.window.ignoresMouseEvents && world.calls.last == "activate \(GlueHostWorld.calculator)", "closed \(paletteClosed) back \(keysBack) \(world.calls.suffix(3))")
+        paletteClosed && keysBack && c.window.ignoresMouseEvents && world.calls.last == "activate \(GlueHostWorld.calculator)",
+        "closed \(paletteClosed) back \(keysBack) (\(world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count) activations, \(activationsBefore) before) keys \(c.pageWantsKeyboard) ignoring \(c.window.ignoresMouseEvents) \(world.calls.suffix(3))")
   apps.bringToFront(1)
   shell.track()
   check("keys: let go again once another app is in front", !shell.shortcuts.isActive)
@@ -584,6 +588,7 @@ func glueScenario() async {
   check("out of full screen by macOS: back into it at once, Calculator hosted again at the page area", c.isFullScreen && c.backIntoFullScreen == 1 && world.bounds(window: calcWindow) == centred
         && session.done.contains { $0.contains("back in full screen") }, "\(session.done.suffix(5))")
 
+  _ = await until(3) { c.pageState == .shown && c.hole == centred } // (its page's layout at the window's whole width again, measured)
   check("back in full screen: in front of Calculator again (its level raised), the page card shown, the hole at its window", c.window.level == FrontMechanism.raised && c.pageState == .shown && c.hole == centred,
         "level \(c.window.level.rawValue) \(c.pageState.rawValue) hole \(String(describing: c.hole))")
 
