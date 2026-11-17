@@ -73,10 +73,19 @@ protocol HostedEngine: AnyObject {
     var preparesOutOfSight: Bool { get } // a window can be made ready with nothing seen (the early full screen reads)
     func start(bundleId: String) async -> HostApp?
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult
+    // A window an app opens only to wake a Safari profile's copy, parked out of sight as it appears (HostEngine
+    // `hideWoken`): from the menu's press, no more new ones once Margin asks that profile for its own window, released
+    // once it's closed.
+    func hideWoken(bundleId: String)
+    func stopHidingWoken(bundleId: String)
+    func releaseWoken(bundleId: String)
 }
 
 extension HostedEngine {
-    // (A stand-in that doesn't play them: nothing started or prepared.)
+    // (A stand-in that doesn't play them: nothing started or prepared, nothing hidden.)
+    func hideWoken(bundleId: String) {}
+    func stopHidingWoken(bundleId: String) {}
+    func releaseWoken(bundleId: String) {}
     var preparesOutOfSight: Bool { false }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
@@ -190,6 +199,7 @@ final class HostedSession: LibraryDelegate {
         var prepareWindowWait = 30.0 // a Margin window in full screen with its page area measured, at launch
         var refitRetryAfter = 1.5 // a placing again that left the window out of full screen: shown again once, this long after
         var resumesLast = true // (Tirth, 2026-11-17) at launch, the item the window showed last is shown again, behind the loader
+        var wokenGrace = 5.0 // a window opened to wake a profile, still open this long after its copy linked with no request under way: closed
     }
 
     // Where an item's page is: its host, and for a web item its profile.
@@ -685,14 +695,23 @@ final class HostedSession: LibraryDelegate {
         guard engine.preparesOutOfSight else { return skip("the early full screen isn't available, so it can't be made ready out of sight") }
         guard await engine.start(bundleId: browser.bundleId) != nil else { return skip("\(browser.bundleId) couldn't be started with no Dock icon") }
         let p = resolve(spaceProfile)
-        guard await safariLinked(p) else { return skip("its extension didn't link") }
+        // (A profile with no window is woken through Safari's menu only for a preparation that can still happen: nothing
+        // shown, nothing on its way, nothing asked for. 2026-11-17 14:05: woken 0.9 s after Maps was shown, the
+        // preparation then given up and the woken window left open over Maps.)
+        let wanted = { self.engine.shown == nil && self.resuming == nil && self.requested.isEmpty }
+        guard await safariLinked(p, wakeIf: wanted) else {
+            await closeWoken(p, why: " (its preparation given up)")
+            return skip(wanted() ? "its extension didn't link" : "something is shown in Margin's window (its profile not woken for it)")
+        }
         let target = HostTarget.safariWindow(p)
         // 3. its window made ready out of sight, one at a time with the person's requests.
         enqueue {
-            guard !self.engine.isHosted(target.id) else { return self.note("browser not prepared: its window is hosted already") }
-            guard self.engine.shown == nil else { return skip("something is shown in Margin's window") }
+            // (Given up below, a window opened to wake its profile is closed: it was only for this.)
+            @MainActor func skip(_ why: String) async { await self.closeWoken(p, why: " (its preparation given up)"); self.note("browser not prepared: \(why)") }
+            guard !self.engine.isHosted(target.id) else { return await skip("its window is hosted already") }
+            guard self.engine.shown == nil else { return await skip("something is shown in Margin's window") }
             guard let mw = self.window(w.id), let placement = mw.idlePlacement, let marginSpace = self.engine.fullScreenSpace(ofWindow: mw.number) else {
-                return skip("Margin's window isn't in full screen with its page area")
+                return await skip("Margin's window isn't in full screen with its page area")
             }
             let wasActive = self.marginActive()
             self.preparingWindow = mw.id
@@ -706,7 +725,7 @@ final class HostedSession: LibraryDelegate {
             case .shown:
                 self.note("browser prepared in \(Int(((self.now() - started) * 1000).rounded())) ms (its window \(Int(((self.now() - t0) * 1000).rounded())) ms), parked out of sight")
             case .failed(let step, let why):
-                skip("\(step.rawValue): \(why)")
+                await skip("\(step.rawValue): \(why)")
             }
         }
     }
@@ -721,6 +740,12 @@ final class HostedSession: LibraryDelegate {
     // started (Margin's own are made after); once per link; closed by their copy. A Safari the person opened is never
     // touched. Called from the shell's poll.
     func sweepRestoredSafariWindows() {
+        // (A window opened to wake a profile, still open `wokenGrace` after its copy linked with nothing asked of it: what
+        // it was for went another way. Closed, whoever started Safari.)
+        for (p, at) in wokenLinkedAt.sorted(by: { $0.key < $1.key }) where now() - at >= options.wokenGrace && !requesting.contains(p) {
+            wokenLinkedAt[p] = nil
+            Task { [weak self] in await self?.closeWoken(p, why: " (left open: closed later)") }
+        }
         guard options.closesRestoredSafariWindows else { return }
         guard options.safariBundles.contains(where: { engine.launchedPid(bundleId: $0) != nil }) else { swept = [:]; return }
         for p in links.safariProfiles() where !requesting.contains(p) {
@@ -740,7 +765,8 @@ final class HostedSession: LibraryDelegate {
     private var requesting: Set<String> = [] // profiles a window is being asked of right now
     private var made_: Set<Int> = [] // every Safari window Margin has made (the copies' ids): never swept
 
-    func safariLinked(_ profile: String?) async -> Bool {
+    // `wakeIf`: asked right before each press of Safari's menu; false: not woken (nothing is opened for nothing).
+    func safariLinked(_ profile: String?, wakeIf wanted: (() -> Bool)? = nil) async -> Bool {
         let p = resolve(profile)
         if links.safariProfiles().contains(p) { return true }
         // Safari is open but this profile has no window, so its copy isn't running (seen 2026-11-15: a space of a
@@ -755,9 +781,18 @@ final class HostedSession: LibraryDelegate {
         // Asked through the menu twice at most (seen 2026-11-15: a press while Safari was still starting did nothing).
         var linked = false
         for attempt in 1...2 where !linked {
+            if let wanted, !wanted() {
+                note("a Safari profile with no window: not woken (what it was for isn't wanted any more)")
+                return false
+            }
+            // (The window it opens is parked out of sight as soon as it's listed: it opens in the current Space, Margin's,
+            // and would show through the page area over what's shown.)
+            engine.hideWoken(bundleId: safariIdentifier)
             if links.openProfileWindow(p) {
                 note("a Safari profile with no window: one opened from Safari's menu so its copy links (try \(attempt))")
-                wokenByMenu[p] = []
+                if wokenByMenu[p] == nil { wokenByMenu[p] = [] }
+            } else if wokenByMenu.isEmpty {
+                engine.releaseWoken(bundleId: safariIdentifier) // (nothing pressed: nothing to hide)
             }
             linked = await wait(attempt == 1 ? options.linkWait / 2 : options.linkWait) { self.links.safariProfiles().contains(p) }
         }
@@ -765,10 +800,32 @@ final class HostedSession: LibraryDelegate {
         if wokenByMenu[p] != nil {
             _ = await wait(1.5) { !self.links.windowIds(of: p).isEmpty }
             wokenByMenu[p] = links.windowIds(of: p)
+            wokenLinkedAt[p] = now()
         }
         return true
     }
-    private var wokenByMenu: [String: [Int]] = [:] // a profile woken through Safari's menu: the windows it had then
+    private(set) var wokenByMenu: [String: [Int]] = [:] // a profile woken through Safari's menu: the windows it had then
+    private var wokenLinkedAt: [String: Double] = [:] // ...and when its copy linked
+
+    // The windows opened only to wake a profile, closed by its copy (Margin opened them; they hold no page of the
+    // person's), whatever happened to what they were for: Margin's window made for it (`except`), the preparation given
+    // up, or left open past `wokenGrace` (the poll). One not closed is tried again by the poll. All closed: the private
+    // Space they were parked in released.
+    func closeWoken(_ p: String, except made: Int? = nil, why: String = "") async {
+        guard let ids = wokenByMenu.removeValue(forKey: p) else { return }
+        wokenLinkedAt[p] = nil
+        var left: [Int] = []
+        for id in ids where id != made && !made_.contains(id) {
+            let (_, error) = await links.request(profile: p, "closeWindow", ["windowId": id])
+            if error != nil, links.windowIds(of: p).contains(id) { left.append(id) }
+            note("the window opened to wake the profile closed\(why): \(error ?? "ok")")
+        }
+        if !left.isEmpty, wokenByMenu[p] == nil {
+            wokenByMenu[p] = left
+            wokenLinkedAt[p] = now()
+        }
+        if wokenByMenu.isEmpty { engine.releaseWoken(bundleId: safariIdentifier) }
+    }
 
     func requestSafariWindow(_ profile: String?) async -> HostSafariWindow? {
         let p = resolve(profile)
@@ -778,6 +835,7 @@ final class HostedSession: LibraryDelegate {
         // Safari: a Safari Margin started is hidden, and asked for an unfocused window there it answers its id but never
         // orders it in, so the window server never lists it (the real Mac, 2026-11-16). The engine unhides it first and
         // keeps Margin's Space current while it's made; Margin is activated again after.)
+        if wokenByMenu[p] != nil { engine.stopHidingWoken(bundleId: safariIdentifier) } // (the window asked for now is Margin's own: never parked so)
         let payload: JSONObject = preparingProfile == p ? ["fullscreen": false, "url": "about:blank"] : ["fullscreen": false]
         let (result, error) = await links.request(profile: p, "newWindow", payload)
         guard let made = result.flatMap({ SpaceWindowAnswer($0) }) else {
@@ -788,12 +846,7 @@ final class HostedSession: LibraryDelegate {
         made_.insert(made.windowId)
         note("Safari window \(made.windowId) made for hosting")
         // The window opened only to wake the profile's copy: closed again (Margin opened it; it has no page of the person's).
-        if let woken = wokenByMenu.removeValue(forKey: p) {
-            for id in woken where id != made.windowId {
-                let (_, error) = await links.request(profile: p, "closeWindow", ["windowId": id])
-                note("the window opened to wake the profile closed: \(error ?? "ok")")
-            }
-        }
+        await closeWoken(p, except: made.windowId)
         return HostSafariWindow(id: made.windowId, bounds: made.bounds)
     }
 

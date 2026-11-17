@@ -91,6 +91,9 @@ final class LateHostEngine: HostedEngine {
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult {
         await engine.prepare(target, in: placement, marginWindow: marginWindow, marginSpace: marginSpace)
     }
+    func hideWoken(bundleId: String) { resolve()?.hideWoken(bundleId: bundleId) }
+    func stopHidingWoken(bundleId: String) { resolve()?.stopHidingWoken(bundleId: bundleId) }
+    func releaseWoken(bundleId: String) { resolve()?.releaseWoken(bundleId: bundleId) }
 }
 
 extension Shell {
@@ -230,7 +233,12 @@ extension Shell {
             if apps.frontPid != own { bindings = bindings.filter { $0.value != .toggleSidebar } }
             shortcuts.rebind(bindings)
         }
-        if active != shortcuts.isActive { Diagnostics.note("Margin's keys \(active ? "held: Margin or an app it hosts is in front" : "let go: another app is in front")") }
+        // (Which app took the front is said by its bundle id: 2026-11-17's log let go and held the keys again and again
+        // and couldn't say which app came between.)
+        if active != shortcuts.isActive {
+            let front = active ? "" : apps.frontPid.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier }.map { " (\($0))" } ?? ""
+            Diagnostics.note("Margin's keys \(active ? "held: Margin or an app it hosts is in front" : "let go: another app is in front\(front)")")
+        }
         shortcuts.set(active: active)
         let guards = ShortcutSet.guardsQuit(asks: options.asksBeforeQuit(), quitting: hostQuitting || quitsAsked > 0, frontPid: apps.frontPid, ownPid: own, hostedPids: hostedPids,
                                             marginWindowOpen: !windows.isEmpty, marginOnCurrentSpace: here)

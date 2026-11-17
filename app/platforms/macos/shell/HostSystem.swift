@@ -15,6 +15,10 @@ protocol HostSystem: AnyObject {
     // ---- apps ----
     func running(bundleId: String) -> [HostApp]
     func app(pid: pid_t) -> HostApp? // nil: not running
+    // Whether the process itself still runs (kill(pid, 0)), whatever NSWorkspace says of the app. A UIKit (Catalyst) app
+    // attempting termination with no window in any user Space (2026-11-17, Maps: `isAttemptingTermination` twice, still
+    // running) was heard as quit while its process went on: "quit" is only ever this saying no.
+    func processRuns(pid: pid_t) -> Bool
     func policy(pid: pid_t) -> HostPolicy?
     // Started with no Dock icon (only a fresh launch). True: asked; the engine waits for its pid.
     func launchDockless(bundleId: String, arguments: [String]) -> Bool
@@ -69,6 +73,9 @@ protocol HostSystem: AnyObject {
     // Every app's windows on screen now (the current Spaces'), front to back; nil: no list. One read, for the poll's
     // look for another app's window in Margin's Space (HostEngine `lookForOthers`).
     func onScreenWindows() -> [ServerWindow]?
+    // One window's own word (CGWindowListCopyWindowInfo .optionIncludingWindow): whether it's on screen, and its alpha.
+    // Nil: gone or unread. The poll's second read before it acts on a window missing from the on-screen list.
+    func windowOnScreen(_ number: Int) -> (onScreen: Bool, alpha: Double)?
     // The screen locked, the display asleep, or the session not the one on the console: the on-screen list says nothing
     // of where Margin's windows should be then.
     func screenAway() -> Bool
@@ -119,6 +126,9 @@ extension HostSystem {
     func fullScreenSpaceOwners() -> [UInt64: pid_t]? { nil }
     // (A stand-in that doesn't play it: no list, so no other window is ever let in front.)
     func onScreenWindows() -> [ServerWindow]? { nil }
+    // (A stand-in that doesn't play them: the app's word is the process's; no window's own read.)
+    func processRuns(pid: pid_t) -> Bool { app(pid: pid) != nil }
+    func windowOnScreen(_ number: Int) -> (onScreen: Bool, alpha: Double)? { nil }
     func screenAway() -> Bool { false }
     func currentSpaces() -> [String]? { nil }
 }
@@ -395,6 +405,8 @@ final class RealHostSystem: HostSystem {
     }
 
     func app(pid: pid_t) -> HostApp? { NSRunningApplication(processIdentifier: pid).flatMap(Self.hostApp) }
+    // (EPERM: it runs, as another user's; ESRCH: gone.)
+    func processRuns(pid: pid_t) -> Bool { pid > 0 && (kill(pid, 0) == 0 || errno == EPERM) }
 
     func policy(pid: pid_t) -> HostPolicy? {
         guard let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return nil }
@@ -493,6 +505,11 @@ final class RealHostSystem: HostSystem {
 
     func serverWindows(pid: pid_t) -> [ServerWindow]? { CGWindowSource().read(of: [pid])?.filter { $0.pid == pid } }
     func onScreenWindows() -> [ServerWindow]? { CGWindowSource().onScreen() }
+    func windowOnScreen(_ number: Int) -> (onScreen: Bool, alpha: Double)? {
+        guard number > 0, let list = CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(number)) as? [[String: Any]],
+              let w = list.first(where: { ($0[kCGWindowNumber as String] as? NSNumber)?.intValue == number }) else { return nil }
+        return ((w[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false, (w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1)
+    }
     func screenAway() -> Bool {
         if CGDisplayIsAsleep(CGMainDisplayID()) != 0 { return true }
         guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }

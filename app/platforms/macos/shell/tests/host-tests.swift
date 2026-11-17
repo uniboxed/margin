@@ -198,6 +198,42 @@ final class FakeHostWorld: HostSystem {
         return true
     }
     var onSetFrame: (() async -> Void)? // (a test's: something that happens while a frame is being set)
+    // Apps that refuse every Accessibility set (full screen, frames: kAXErrorCannotComplete) for this long after their
+    // launch (an app still launching: Mail, 2026-11-17), and those of them that take the first refused full-screen ask
+    // anyway, `lateTake` later (Mail went full screen after Margin had given up on it).
+    var axBusyFor: [String: Double] = [:]
+    var axBusyUntil: [pid_t: Double] = [:]
+    var takesLate: Set<String> = []
+    var lateTake = 0.3
+    var lateAsks: [Int: Double] = [:]
+    var tookLate = 0
+    func axBusy(_ pid: pid_t) -> Bool { axBusyUntil[pid].map { clock + 1e-9 < $0 } ?? false }
+    // Apps whose window in full screen has its toolbar as a window of its own (a strip across the display's top, in the
+    // Space that was current as it went in); `stripLingers`: it stays after the window's first exit, gone at the next ask
+    // out (Mail's 69769, 2026-11-17).
+    var stripOnFullScreen: Set<String> = []
+    var stripLingers: Set<String> = []
+    var strips: [Int: Int] = [:] // the window → its strip
+    var lingered: Set<Int> = []
+    static let stripFrame = CGRect(x: 0, y: 33, width: 1512, height: 88)
+    func makeStrip(for window: Int) {
+        guard let w = wins[window], strips[window] == nil, let bundle = apps[w.pid]?.bundle, stripOnFullScreen.contains(bundle) else { return }
+        let n = nextWindow
+        nextWindow += 1
+        var strip = Win(pid: w.pid, spaces: [current], frame: Self.stripFrame)
+        strip.canFullScreen = false
+        strip.axRole = "AXWindow/AXUnknown"
+        wins[n] = strip
+        apps[w.pid]?.windows.append(n)
+        strips[window] = n
+    }
+    func dropStrip(of window: Int, asked: Bool) {
+        guard let n = strips[window] else { return }
+        if let pid = wins[window]?.pid, let bundle = apps[pid]?.bundle, stripLingers.contains(bundle), !lingered.contains(window), !asked { lingered.insert(window); return }
+        strips[window] = nil
+        wins[n] = nil
+        for pid in apps.keys { apps[pid]?.windows.removeAll { $0 == n } }
+    }
 
     // Full screen as the real Mac paces it (`staged`; measured 2026-11-16, /tmp/margin-toolbar-test/fsopen/early2.swift,
     // and Margin's own logs of 2026-11-17, check10e/f); off, the window is in its new Space at once (macOS's jump with
@@ -317,6 +353,7 @@ final class FakeHostWorld: HostSystem {
             clock = wake
             advance()
             for (pid, at) in uikitQuits where clock >= at { uikitQuits[pid] = nil; quitNow(pid) }
+            for (n, at) in lateAsks where clock + 1e-9 >= at { lateAsks[n] = nil; if let pid = wins[n]?.pid { applyFullScreen(pid: pid, window: n, true) } }
         }
         await Task.yield()
     }
@@ -343,8 +380,14 @@ final class FakeHostWorld: HostSystem {
     }
 
     // ---- apps ----
-    func running(bundleId: String) -> [HostApp] { apps.values.filter { $0.bundle == bundleId }.sorted { $0.pid < $1.pid }.map { HostApp(pid: $0.pid, bundleId: $0.bundle, launchedAt: $0.launchedAt) } }
-    func app(pid: pid_t) -> HostApp? { apps[pid].map { HostApp(pid: $0.pid, bundleId: $0.bundle, launchedAt: $0.launchedAt) } }
+    // Apps NSWorkspace says have quit while their process goes on (a UIKit app attempting termination with no window in
+    // any user Space: Maps, 2026-11-17, `isAttemptingTermination` and still running): not in `running` or `app(pid:)`,
+    // their process still there (`processRuns`). `attemptTermination` posts the termination notice too.
+    var lsGone: Set<pid_t> = []
+    func attemptTermination(_ pid: pid_t) { lsGone.insert(pid); onAppQuit?(pid) }
+    func processRuns(pid: pid_t) -> Bool { apps[pid] != nil }
+    func running(bundleId: String) -> [HostApp] { apps.values.filter { $0.bundle == bundleId && !lsGone.contains($0.pid) }.sorted { $0.pid < $1.pid }.map { HostApp(pid: $0.pid, bundleId: $0.bundle, launchedAt: $0.launchedAt) } }
+    func app(pid: pid_t) -> HostApp? { lsGone.contains(pid) ? nil : apps[pid].map { HostApp(pid: $0.pid, bundleId: $0.bundle, launchedAt: $0.launchedAt) } }
     func policy(pid: pid_t) -> HostPolicy? { apps[pid]?.policy }
     @discardableResult func start(_ bundle: String, policy: HostPolicy, windows: Int) -> pid_t {
         let pid = nextPid
@@ -395,6 +438,7 @@ final class FakeHostWorld: HostSystem {
             focused[pid] = real
         }
         if launchesHidden.contains(bundleId) || windowOnlyUnhidden.contains(bundleId) { hidden.insert(pid) }
+        if let busy = axBusyFor[bundleId] { axBusyUntil[pid] = clock + busy }
         if restoredFullScreen.contains(bundleId) {
             for n in apps[pid]?.windows ?? [] {
                 let space = nextId, tile = nextId + 1
@@ -471,6 +515,7 @@ final class FakeHostWorld: HostSystem {
     // one, the app's own limits kept, a fixed-size window only moved; the app saves the frame it took.
     func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool {
         calls.append("frame \(window) \(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))×\(Int(frame.height))\(size ? "" : " (moved)")")
+        if axBusy(pid) { frameErrors[window] = -25200; return false } // (kAXErrorCannotComplete: its app still launching)
         guard !fail.contains("ax"), !fail.contains("frame"), var w = wins[window], w.pid == pid, !axCurrentOnly || onCurrent(window), !w.fullScreen else { return false }
         guard axSeen.contains(window) || (w.axRole == nil && axLists(window)) else { return false } // (Accessibility has no element for it)
         if axStale.contains(window) { frameErrors[window] = -25202; return false } // (kAXErrorInvalidUIElement)
@@ -499,11 +544,18 @@ final class FakeHostWorld: HostSystem {
     }
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool {
         calls.append("fullScreen \(on) \(window)")
+        if axBusy(pid) {
+            if on, let bundle = apps[pid]?.bundle, takesLate.contains(bundle), lateAsks[window] == nil, tookLate == 0 { lateAsks[window] = clock + lateTake; tookLate += 1 }
+            return false
+        }
         guard axReads(window), !fail.contains("ax") else { return false }
         return applyFullScreen(pid: pid, window: window, on)
     }
     // Full screen as macOS does it, whoever asked (Accessibility, or a Safari copy's setWindowState).
     @discardableResult func applyFullScreen(pid: pid_t, window: Int, _ on: Bool) -> Bool {
+        guard wins[window]?.pid == pid else { return false }
+        if on, wins[window]?.canFullScreen == true, wins[window]?.fullScreen == false, !fail.contains("fullScreen") { makeStrip(for: window) }
+        if !on { dropStrip(of: window, asked: wins[window]?.fullScreen == false) }
         guard var w = wins[window], w.pid == pid else { return false }
         if on, !w.canFullScreen { return false } // (AXFullScreen isn't settable)
         if on {
@@ -632,13 +684,25 @@ final class FakeHostWorld: HostSystem {
     var away = false
     var onScreenRead: (() -> Void)? // (run as the list is read: a Space change under way meanwhile)
     var serverSpaces: [Int: [UInt64]] = [:] // the Spaces read for windows only the on-screen list has
+    // `listDrops`: the on-screen list leaves a window out this many next reads though it's on screen (its own read says
+    // so: `windowOnScreen`). `ownReads`: how many times a window's own read was asked.
+    var listDrops: [Int: Int] = [:]
+    var ownReads = 0
+    func shows(_ n: Int) -> Bool { !blank && (wins[n].map { $0.priv == nil && $0.spaces.contains(current) && !hidden.contains($0.pid) && !minimized.contains(n) } ?? false) }
     func onScreenWindows() -> [ServerWindow]? {
         onScreenRead?()
         if let onScreen { return onScreen }
         guard autoOnScreen else { return nil }
         if blank { return [] }
-        return wins.keys.sorted().filter { n in wins[n].map { $0.priv == nil && $0.spaces.contains(current) && !hidden.contains($0.pid) && !minimized.contains(n) } ?? false }
+        let dropped = Set(listDrops.filter { $0.value > 0 }.keys)
+        for n in dropped { listDrops[n]? -= 1 }
+        return wins.keys.sorted().filter { n in shows(n) && !dropped.contains(n) }
             .compactMap { n in bounds(window: n).map { ServerWindow(number: n, pid: wins[n]?.pid ?? 0, layer: n == Self.marginWindow ? 1 : 0, bounds: $0) } }
+    }
+    func windowOnScreen(_ number: Int) -> (onScreen: Bool, alpha: Double)? {
+        ownReads += 1
+        guard autoOnScreen, wins[number] != nil else { return nil }
+        return (shows(number), 1)
     }
     func screenAway() -> Bool { away }
     func currentSpaces() -> [String]? { ["\(current)\(blank ? " (not listed)" : "")"] }
@@ -936,7 +1000,7 @@ func hostTests() {
         let p = pid(w, "com.apple.TextEdit"), n = window(w, "com.apple.TextEdit")
         let own = w.reserves.first?.space ?? 0
         check("host: an app opened and shown, fitted to the page area", r == .shown(textEdit.id, placed: true), "\(String(describing: r))")
-        check("host: started with no Dock icon, never showing its own title strip", w.apps[p]?.policy == .accessory && w.lastArguments == ["-NSMenuEnableMenuBarAgent", "NO"], "\(w.lastArguments)")
+        check("host: started with no Dock icon, never showing its own title strip, never ended by automatic termination", w.apps[p]?.policy == .accessory && w.lastArguments == ["-NSMenuEnableMenuBarAgent", "NO", "-NSDisableAutomaticTermination", "YES"], "\(w.lastArguments)")
         check("host: its own full-screen Space reserved at the page area's four edges (Margin's never)", w.reserves.map(\.edges) == [edges] && own != FakeHostWorld.marginSpace
               && w.reservation[FakeHostWorld.marginSpace] == nil, "\(w.reserves)")
         check("host: its window a member of Margin's Space, still full screen, at the page area", w.spaces(window: n) == [FakeHostWorld.marginSpace] && w.wins[n]?.fullScreen == true
@@ -1407,7 +1471,7 @@ func hostTests() {
         let r = open(e, safari)
         let started = pid(w, "com.apple.Safari")
         check("host: Safari not running: started with no Dock icon and its full-screen toolbar hidden, a member at the page area", r == .shown(safari.id, placed: true)
-              && w.lastArguments == ["-NSMenuEnableMenuBarAgent", "NO", "-AutoShowToolbarInFullScreen", "YES"] && w.apps[started]?.policy == .accessory && clean(w), "\(String(describing: r))")
+              && w.lastArguments == ["-NSMenuEnableMenuBarAgent", "NO", "-AutoShowToolbarInFullScreen", "YES", "-NSDisableAutomaticTermination", "YES"] && w.apps[started]?.policy == .accessory && clean(w), "\(String(describing: r))")
         hostRun { await e.quitAll() }
         check("host: Safari Margin started: quit at quit", w.apps[started] == nil && clean(w))
     }
@@ -2078,16 +2142,25 @@ func hostTests() {
         w.minimized = []
         e.poll(); settle()
         check("on screen: back: said once", lines.filter { $0.contains("as it should be again") }.count >= 1)
-        // Right after a show, the hosted window alone missing: acted on at the first read; never more than 3 times in 30 s.
-        _ = hostRun { await e.pageRectChanged(placed(CGRect(x: 316, y: 41, width: 1188, height: 933))) }
+        // Right after a show, the hosted window alone missing (in Margin's Space, the current one, Margin's window on
+        // screen): at the second read, never the first; no Space made current, nothing moved by the look; placed again,
+        // 3 times at most in 30 s, then left as it is (said once).
+        let moved = placed(CGRect(x: 316, y: 41, width: 1188, height: 933))
+        func barrier() { _ = hostRun { await e.pageRectChanged(moved) } } // (the page area as it is: nothing placed, the poll's work waited for)
+        barrier()
         w.minimized = [a]
-        let again = w.calls.count
-        for _ in 0..<6 { e.poll(); settle() }
-        let moves = w.calls[again...].filter { $0 == "current \(FakeHostWorld.marginSpace)" }.count
+        let again = w.calls.count, saidBefore = lines.count
+        e.poll(); barrier()
+        let notFirst = !w.calls[again...].contains { $0.hasPrefix("fullScreen") || $0.hasPrefix("current") || $0.hasPrefix("move") }
+        for _ in 0..<14 { e.poll(); barrier() }
+        let placings = w.calls[again...].filter { $0 == "fullScreen true \(a)" }.count
+        let after = lines[saidBefore...]
         Diagnostics.echo = echo
-        check("on screen: right after a show, the hosted window alone missing: acted on at the first read, 3 times at most in 30 s, then left as it is (said once), still hosted",
-              moves >= 1 && lines.filter { $0.contains("shown, not on screen") && $0.contains("Margin's Space made current again") }.count <= 5 && lines.filter { $0.contains("left as it is") }.count == 1
-              && e.hosts[textEdit.id] != nil, "\(moves) \(lines.filter { $0.contains("not on screen") }.count)")
+        check("on screen: right after a show, the hosted window alone missing in Margin's Space (the current one): not at the first read; no Space made current, nothing moved by the look; placed again 1 to 3 times in 30 s, then left as it is (said once), still hosted",
+              notFirst && placings >= 1 && placings <= 3 && !after.contains { $0.contains("Margin's Space made current again") || $0.contains("moved into it again") }
+              && after.filter { $0.contains("no Space made current, nothing moved") }.count == placings && after.filter { $0.contains("left as it is") }.count == 1
+              && e.hosts[textEdit.id] != nil, "\(notFirst) \(placings) \(after.filter { $0.contains("not on screen") })")
+        w.minimized = []
     }
 
     // ---- another window in Margin's Space: let in front only when it's the shown app's, there at rest, twice ----
@@ -2278,6 +2351,7 @@ func hostTests() {
 
     windowModeTests(world: world)
     refusedFullScreenTests(world: world)
+    session1405Tests(world: world)
 
     // ---- one at a time ----
     do {
@@ -3515,5 +3589,262 @@ func refusedFullScreenTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
               && said(lines, "Accessibility refused its frame (error -25202): its element found again by its number, the frame taken") == 1, "\(String(describing: back)) \(w.calls.suffix(8))")
         hostRun { await e.quitAll() }
         check("stale element: quit: its frame given back as it was", w.frameAtQuit["com.apple.FaceTime"] == FakeHostWorld.defaultFrame)
+    }
+}
+
+// His session of 2026-11-17 14:04-14:08 (session-2026-11-17-1405.log), each case as the stand-in plays it: an app that
+// attempts termination and goes on running (Maps), a window-mode window the on-screen list misses or its app has ordered
+// out (Phone), an app refusing Accessibility while it launches and taking its full-screen ask late with a toolbar strip
+// of its own (Mail), a window that couldn't be fitted over the sidebar, a window opened only to wake a profile (Safari).
+func session1405Tests(world: () -> (FakeHostWorld, HostEngine, URL)) {
+    let page = CGRect(x: 276, y: 41, width: 1228, height: 933)
+    let textEdit = HostTarget.app("com.apple.TextEdit"), notes = HostTarget.app("com.apple.Notes")
+    let calculator = HostTarget.app("com.apple.calculator"), faceTime = HostTarget.app("com.apple.FaceTime")
+    func placed() -> HostPlacement { HostPlacement(page: page, area: FakeHostWorld.display) }
+    func open(_ e: HostEngine, _ t: HostTarget) -> HostResult? {
+        hostRun { await e.open(app: t, in: placed(), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+    }
+    func clean(_ w: FakeHostWorld) -> Bool { w.listsMarginOnly && w.ownerlessFullScreenSpaces() == [] && w.dropped == 0 && w.destroyedWithWindows == 0 && !w.frozen }
+    func window(_ w: FakeHostWorld, _ bundle: String) -> Int { w.running(bundleId: bundle).first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0 }
+    func pid(_ w: FakeHostWorld, _ bundle: String) -> pid_t { w.running(bundleId: bundle).first?.pid ?? 0 }
+    final class Lines { var all: [String] = [] }
+    func listen() -> (Lines, () -> Void) {
+        let l = Lines(), echo = Diagnostics.echo
+        Diagnostics.echo = { l.all.append($0) }
+        return (l, { Diagnostics.echo = echo })
+    }
+    func said(_ l: Lines, _ what: String) -> Int { l.all.filter { $0.contains(what) }.count }
+    func member(_ w: FakeHostWorld, _ n: Int) -> Bool {
+        w.spaces(window: n) == [FakeHostWorld.marginSpace] && w.wins[n]?.member == true && w.wins[n]?.fullScreen == true && w.bounds(window: n) == page
+    }
+    func barrier(_ e: HostEngine) { _ = hostRun { await e.pageRectChanged(placed()) } } // (the page area as it is: the poll's work waited for)
+
+    // ---- B: an app that attempts termination while parked and goes on running: never quit, still Margin's ----
+    do {
+        let (w, e, _) = world()
+        var events: [HostEvent] = []
+        e.onEvent = { events.append($0) }
+        let (lines, done) = listen()
+        _ = open(e, textEdit)
+        let p = pid(w, "com.apple.TextEdit")
+        _ = open(e, notes) // (TextEdit parked: no window of its in any user Space)
+        w.attemptTermination(p)
+        e.poll(); e.poll()
+        check("terminating: an app Margin started, parked, said to have quit while its process runs: not quit, still hosted and parked, still Margin's, said once",
+              !events.contains(.quitByUser(textEdit.id)) && e.hosts[textEdit.id]?.phase == .parked && e.launchedPid(bundleId: "com.apple.TextEdit") == p && e.hosts[textEdit.id]?.launchedByMargin == true
+              && said(lines, "its app was said to have quit, its process \(p) still runs: kept, still Margin's") == 1, "\(events) \(lines.all.filter { $0.contains("quit") })")
+        w.lsGone = []
+        let back = hostRun { await e.show(textEdit.id) }
+        check("terminating: shown again: a switch to Margin's own app, never \"an app the person opened\"",
+              back == .shown(textEdit.id, placed: true) && e.launchedPid(bundleId: "com.apple.TextEdit") == p && said(lines, "an app the person opened") == 0 && w.calls.filter { $0 == "launch com.apple.TextEdit" }.count == 1,
+              "\(String(describing: back)) \(lines.all.suffix(3))")
+        hostRun { await e.quitAll() }
+        done()
+        check("terminating: Margin's quit asks it to quit, as Margin's", w.running(bundleId: "com.apple.TextEdit").isEmpty && clean(w))
+    }
+    do {
+        // Really quit (its process gone): forgotten, and its next open starts it again as Margin's.
+        let (w, e, _) = world()
+        var events: [HostEvent] = []
+        e.onEvent = { events.append($0) }
+        let (lines, done) = listen()
+        _ = open(e, textEdit)
+        _ = open(e, notes)
+        w.quitNow(pid(w, "com.apple.TextEdit"))
+        let r = open(e, textEdit)
+        done()
+        check("terminating: really quit: forgotten at once, its next open starts it again with no Dock icon, as Margin's",
+              events.contains(.quitByUser(textEdit.id)) && r == .shown(textEdit.id, placed: true) && w.calls.filter { $0 == "launch com.apple.TextEdit" }.count == 2
+              && e.launchedPid(bundleId: "com.apple.TextEdit") != nil && said(lines, "an app the person opened") == 0, "\(String(describing: r))")
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- C: a window-mode window the on-screen list leaves out (its own read: on screen): nothing done ----
+    do {
+        let (w, e, _) = world()
+        w.autoOnScreen = true
+        let (lines, done) = listen()
+        _ = open(e, calculator)
+        let n = window(w, "com.apple.calculator")
+        let mark = w.calls.count
+        w.listDrops[n] = 3 // (the poll's read, the read again, and once more)
+        for _ in 0..<5 { e.poll(); barrier(e) }
+        done()
+        check("window off the list: a window-mode window the on-screen list leaves out though it's on screen by its own read: no Space made current, nothing moved, nothing said",
+              !w.calls[mark...].contains { $0.hasPrefix("current") || $0.hasPrefix("move") } && said(lines, "not on screen") == 0 && w.ownReads > 0, "\(w.calls[mark...]) \(lines.all.filter { $0.contains("screen") })")
+        hostRun { await e.quitAll() }
+    }
+    // ---- C: a window-mode window really off screen in Margin's Space, the current one (its app ordered it out) ----
+    do {
+        let (w, e, _) = world()
+        w.autoOnScreen = true
+        let (lines, done) = listen()
+        _ = open(e, faceTime)
+        let n = window(w, "com.apple.FaceTime"), p = pid(w, "com.apple.FaceTime")
+        w.minimized = [n] // (ordered out by its app: in Margin's Space, on no screen)
+        let mark = w.calls.count
+        e.poll(); barrier(e)
+        let first = w.calls[mark...].filter { $0.hasPrefix("activate") || $0.hasPrefix("current") || $0.hasPrefix("move") }.isEmpty
+        for _ in 0..<8 { e.poll(); barrier(e) }
+        check("window ordered out: a window-mode window off screen in Margin's Space (the current one), Margin's window on screen: not at the first read; no Space made current, nothing moved, ever; its window raised once for the show; said once",
+              first && !w.calls[mark...].contains { $0.hasPrefix("current") || $0.hasPrefix("move") } && w.calls[mark...].filter { $0 == "activate \(p) \(n)" }.count == 1
+              && said(lines, "no Space made current, nothing moved; its window raised once") == 1 && said(lines, "Margin's Space made current again") == 0 && said(lines, "left as it is until it's shown again") == 1,
+              "\(first) \(w.calls[mark...]) \(lines.all.filter { $0.contains("screen") })")
+        // Shown again (away and back): the look may act once more for that show.
+        w.minimized = []
+        _ = open(e, notes)
+        _ = hostRun { await e.show(faceTime.id) }
+        w.minimized = [n]
+        let again = w.calls.count
+        for _ in 0..<6 { e.poll(); barrier(e) }
+        done()
+        check("window ordered out: shown again, still ordered out: raised once more for that show, never a Space made current",
+              w.calls[again...].filter { $0 == "activate \(p) \(n)" }.count == 1 && !w.calls[again...].contains { $0.hasPrefix("current") }, "\(w.calls[again...])")
+        w.minimized = []
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- D: an app refusing Accessibility while it launches (kAXErrorCannotComplete for its first second) ----
+    do {
+        let (w, e, _) = world()
+        w.staged = true
+        w.launchInCurrent = true
+        w.axBusyFor = ["com.apple.TextEdit": 1.0]
+        let (lines, done) = listen()
+        let r = open(e, textEdit)
+        done()
+        let n = window(w, "com.apple.TextEdit")
+        check("launching: an app refusing Accessibility for its first second: its full screen asked again until it's taken, full screen at the page area, not window mode, said once",
+              r == .shown(textEdit.id, placed: true) && e.mode(of: textEdit.id) == .fullScreen && member(w, n) && said(lines, "Accessibility didn't take its full screen at first") == 1
+              && said(lines, "taken at try") == 1 && said(lines, "window mode") == 0 && clean(w), "\(String(describing: r)) \(lines.all.filter { $0.contains("TextEdit") && ($0.contains("full screen") || $0.contains("window mode")) })")
+        hostRun { await e.quitAll() }
+    }
+    do {
+        // ...and taking its first, refused ask late, with a toolbar strip of its own (Mail, 14:06:04): seen, followed.
+        let (w, e, _) = world()
+        w.staged = true
+        w.launchInCurrent = true
+        w.axBusyFor = ["com.apple.TextEdit": 1.0]
+        w.takesLate = ["com.apple.TextEdit"]
+        w.stripOnFullScreen = ["com.apple.TextEdit"]
+        let (lines, done) = listen()
+        let r = open(e, textEdit)
+        done()
+        let n = window(w, "com.apple.TextEdit")
+        check("launching: its first ask refused and taken late: seen (its new Space listed), followed: full screen at the page area, never backed out to window mode",
+              r == .shown(textEdit.id, placed: true) && e.mode(of: textEdit.id) == .fullScreen && member(w, n) && w.tookLate == 1
+              && said(lines, "it went into full screen all the same") == 1 && said(lines, "window mode") == 0 && said(lines, "backed out") == 0 && clean(w),
+              "\(String(describing: r)) \(lines.all.filter { $0.contains("TextEdit") && ($0.contains("full screen") || $0.contains("window mode")) })")
+        hostRun { await e.quitAll() }
+    }
+    do {
+        // A window-mode window's frame refused while its app launches: asked again, placed.
+        let (w, e, _) = world()
+        w.axBusyFor = ["com.apple.FaceTime": 1.0]
+        let (lines, done) = listen()
+        let r = open(e, faceTime)
+        done()
+        let n = window(w, "com.apple.FaceTime")
+        check("launching: a window-mode window's frame refused (error -25200) while its app launches: asked again until taken, placed at the page area",
+              r == .shown(faceTime.id, placed: true) && w.bounds(window: n) == page && said(lines, "error -25200: its app busy): asked again") == 1, "\(String(describing: r)) \(lines.all.filter { $0.contains("frame") })")
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- D: a full-screen attempt backed out leaves its toolbar strip: asked out again, never left ----
+    do {
+        let (w, e, _) = world()
+        w.noLayout = ["com.apple.TextEdit"] // (its Space doesn't lay it out: the placing fails, backed out to window mode)
+        w.stripOnFullScreen = ["com.apple.TextEdit"]
+        w.stripLingers = ["com.apple.TextEdit"]
+        let (lines, done) = listen()
+        let r = open(e, textEdit)
+        done()
+        let n = window(w, "com.apple.TextEdit")
+        check("strip: a full-screen attempt backed out whose toolbar strip stayed: asked out of full screen once more, the strip gone, then window mode at the page area",
+              r == .shown(textEdit.id, placed: true) && e.mode(of: textEdit.id) == .window && w.bounds(window: n) == page && w.strips[n] == nil && !w.wins.values.contains { $0.frame == FakeHostWorld.stripFrame }
+              && said(lines, "toolbar strip") == 1 && said(lines, "asked out of full screen once more, gone") == 1 && clean(w), "\(String(describing: r)) \(w.strips) \(lines.all.filter { $0.contains("strip") })")
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- D: the yield never lets a toolbar strip, nor a window over Margin's sidebar, in front ----
+    do {
+        let (w, e, _) = world()
+        var others: [Int?] = []
+        e.others = { others.append($0) }
+        w.onScreen = []
+        _ = open(e, textEdit)
+        let a = window(w, "com.apple.TextEdit"), editPid = pid(w, "com.apple.TextEdit")
+        w.clock += e.options.lateWatch
+        let margin = ServerWindow(number: FakeHostWorld.marginWindow, pid: 1, layer: 1, bounds: FakeHostWorld.display)
+        let hostedNow = ServerWindow(number: a, pid: editPid, bounds: page)
+        func polls(_ n: Int) { for _ in 0..<n { w.clock += 0.25; e.poll() } }
+        func list(_ extra: [ServerWindow]) { w.onScreen = [margin] + extra + [hostedNow]; for x in extra { w.serverSpaces[x.number] = [FakeHostWorld.marginSpace] } }
+        list([])
+        polls(2) // (a look at rest first: what comes after is the person's doing)
+        let strip = ServerWindow(number: 901, pid: editPid, bounds: FakeHostWorld.stripFrame)
+        list([strip])
+        polls(4)
+        let stripLet = others.contains(901)
+        let over = ServerWindow(number: 902, pid: editPid, bounds: CGRect(x: 0, y: 33, width: 1000, height: 900))
+        list([over])
+        polls(4)
+        let overLet = others.contains(902)
+        let settings = ServerWindow(number: 903, pid: editPid, bounds: CGRect(x: 200, y: 200, width: 600, height: 400)) // (reaching a little over the sidebar)
+        list([settings])
+        polls(4)
+        check("yield: never a full-screen window's toolbar strip, nor a window covering Margin's sidebar; a Settings window reaching a little over it still let in front",
+              !stripLet && !overLet && others.contains(903), "\(others)")
+        w.onScreen = nil
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- D: a window-mode window that can't be fitted, over Margin's sidebar: never shown so ----
+    do {
+        let (w, e, _) = world()
+        let p = w.start("com.apple.FaceTime", policy: .regular, windows: 1) // (the person's, its window the display's whole size)
+        let n = w.apps[p]?.windows.first ?? 0
+        w.wins[n]?.frame = FakeHostWorld.display
+        w.fail = ["frame"]
+        let (lines, done) = listen()
+        let r = open(e, faceTime)
+        check("unfitted: a window-mode window whose frame can't be set, at the display's size over Margin's sidebar: not shown (kept out of sight, still hosted), said",
+              { if case .failed(.place, _)? = r { return true }; return false }() && e.shown == nil && e.isHosted(faceTime.id) && w.wins[n]?.priv != nil && w.spaces(window: n) == []
+              && said(lines, "over Margin's sidebar): kept out of sight, tried again at its next show") >= 1, "\(String(describing: r)) \(String(describing: w.wins[n]))")
+        w.fail = []
+        let back = hostRun { await e.show(faceTime.id) }
+        done()
+        check("unfitted: its next show tries again: placed at the page area", back == .shown(faceTime.id, placed: true) && w.bounds(window: n) == page && e.shown == faceTime.id, "\(String(describing: back))")
+        hostRun { await e.quitAll() }
+        check("unfitted: quit: the person's window given back at its own frame, on its Desktop", w.wins[n]?.frame == FakeHostWorld.display && w.spaces(window: n) == [FakeHostWorld.desktop], "\(String(describing: w.wins[n]))")
+    }
+
+    // ---- A: a window opened only to wake a profile, parked out of sight as it comes ----
+    do {
+        let (w, e, _) = world()
+        let (lines, done) = listen()
+        _ = open(e, calculator) // (something shown: the page area a hole over it)
+        let sp = w.start("com.apple.Safari", policy: .accessory, windows: 1)
+        let theirs = w.apps[sp]?.windows.first ?? 0
+        e.hideWoken(bundleId: "com.apple.Safari")
+        func newWindow() -> Int {
+            let n = w.nextWindow
+            w.nextWindow += 1
+            w.wins[n] = FakeHostWorld.Win(pid: sp, spaces: [w.current])
+            w.apps[sp]?.windows.append(n)
+            return n
+        }
+        let woken = newWindow()
+        e.poll()
+        let parked = w.wins[woken]?.priv != nil
+        let later = newWindow() // (one more after it: the person's, never touched)
+        e.poll()
+        check("woken: the window an app opens only to wake a profile, in Margin's Space: parked out of sight at the next look, said; nothing else of the app's touched (its window before, one after)",
+              parked && w.wins[later]?.priv == nil && w.wins[theirs]?.priv == nil && said(lines, "it opened only to wake a profile parked out of sight") == 1, "\(parked) \(String(describing: w.wins[woken])) \(String(describing: w.wins[later])) \(String(describing: w.wins[theirs])) \(lines.all.filter { $0.contains("wake") })")
+        w.closeWindow(woken)
+        let spaces = w.privates.count
+        e.releaseWoken(bundleId: "com.apple.Safari")
+        done()
+        check("woken: closed and released: its private Space destroyed", w.privates.count == spaces - 1, "\(w.privates)")
+        hostRun { await e.quitAll() }
     }
 }

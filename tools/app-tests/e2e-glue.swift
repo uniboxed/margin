@@ -882,13 +882,15 @@ func glueScenario() async {
   check("a Space swipe: another app's full-screen window (not hosted, in its own Space by its Space read) in the on-screen list while the current Space still reads Margin's: never let in front, Margin's level stays raised",
         c.yieldingTo == nil && c.window.level == FrontMechanism.raised && c.mechanism == .level && c.yieldOrders == 1, "yielding \(String(describing: c.yieldingTo)) level \(c.window.level.rawValue)")
   let shownPid = hostedPidNow()
-  world.extraOnScreen = [ServerWindow(number: 4343, pid: shownPid, bounds: CGRect(x: display.minX + 40, y: display.minY + 120, width: 700, height: 500))]
+  // (Reaching over the sidebar's edge, not covering it: a window over a quarter of the sidebar or more is never let in
+  // front, 2026-11-17 14:06, host-tests' "yield" check.)
+  world.extraOnScreen = [ServerWindow(number: 4343, pid: shownPid, bounds: CGRect(x: display.minX + 200, y: display.minY + 120, width: 700, height: 500))]
   world.extraSpaces[4343] = [GlueHostWorld.marginSpace]
   engine.poll()
   let notYet = c.yieldingTo == nil
   try? await Task.sleep(nanoseconds: 260_000_000)
   engine.poll()
-  check("the hosted app's own extra window in Margin's Space (its Settings, over the sidebar): not at the first poll, let in front at the second (the normal level, ordered right below it)",
+  check("the hosted app's own extra window in Margin's Space (its Settings, reaching over the sidebar's edge): not at the first poll, let in front at the second (the normal level, ordered right below it)",
         shownPid != 0 && notYet && c.yieldingTo == 4343 && c.window.level == .normal && c.yieldOrders == 2, "first \(notYet) yielding \(String(describing: c.yieldingTo)) level \(c.window.level.rawValue)")
   let ordersYield = c.frontOrders
   world.extraOnScreen = []
