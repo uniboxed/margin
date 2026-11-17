@@ -10,6 +10,10 @@ final class FakeDevWorld: DevHookWorld {
     var hosted: [String] = []
     func devHost(app: String?, url: String?) -> String? { hosted.append(app ?? "url"); return "not in the fake" }
     func devForgetTestItems(also apps: [String]) -> String? { hosted.append("forget \(apps.joined(separator: ","))"); return nil }
+    func devKey(_ name: String) -> String? { hosted.append("key \(name)"); return nil }
+    func devSidebar(width: Int) -> String? { hosted.append("sidebar \(width)"); return nil }
+    func devFront() -> String { "mechanism level, page shown" }
+    func devPicture(watch seconds: Double?, done: @escaping (String) -> Void) { done(seconds.map { "watched \($0) s" } ?? "page shown, page area painted 0 of 81") }
 }
 
 func devHooksTests() {
@@ -31,6 +35,15 @@ func devHooksTests() {
         check("dev hook: host, on: asked of the shell, the address never in the line", line.contains("refused: not in the fake") && !line.contains("example") && world.hosted == ["url"], line)
         let forget = hooks.heard(.host, ["forget": "test", "apps": "com.example.a,bad/id"])
         check("dev hook: host forget: only bundle ids handed on", forget.contains("host forget test items") && world.hosted.last == "forget com.example.a", "\(world.hosted)")
+        check("dev hook: host key: the palette's key and a press outside only", hooks.heard(.host, ["key": "palette"]).contains("host key palette") && hooks.heard(.host, ["key": "close"]).contains("host key close")
+              && hooks.heard(.host, ["key": "quit"]).contains("refused: no such key") && world.hosted.suffix(2) == ["key palette", "key close"], "\(world.hosted)")
+        check("dev hook: host sidebar: a width in points, within reason", hooks.heard(.host, ["sidebar": "300"]).contains("host sidebar 300") && hooks.heard(.host, ["sidebar": "9000"]).contains("refused: not a width")
+              && hooks.heard(.host, ["sidebar": "wide"]).contains("refused: not a width") && world.hosted.last == "sidebar 300", "\(world.hosted)")
+        check("dev hook: host say front: one line of how the window is in front", hooks.heard(.host, ["say": "front"]).contains("dev hook: front: mechanism level, page shown"))
+        _ = hooks.heard(.host, ["say": "picture"])
+        _ = hooks.heard(.host, ["say": "picture", "watch": "900"])
+        check("dev hook: host say picture: the page area in Margin's own window's picture, once or watched (20 s at most)",
+              hooks.lines.contains { $0.contains("dev hook: picture: page shown, page area painted 0 of 81") } && hooks.lines.contains { $0.contains("dev hook: picture: watched 20.0 s") }, "\(hooks.lines.suffix(4))")
     }
     do {
         let (_, hooks) = setup()
