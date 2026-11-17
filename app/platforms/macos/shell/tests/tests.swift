@@ -87,6 +87,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     appsTests() // apps-tests.swift: installed apps for the palette, fake bundles in a temporary folder
     relayTests() // relay-tests.swift: Chrome's and Edge's relay, the real helper
     behaviourWorldTests() // behaviour-world.swift: Chameleon's switches and their stand-ins (tools/screen-tests)
+    hostReconcilerTests() // host-reconciler-tests.swift: the hosting core's reconciler, a table row per case
     print(failures == 0 ? "all \(passed) checks passed" : "\(failures) of \(passed + failures) checks failed", String(format: "(%.2f s)", Date().timeIntervalSince(started)))
     exit(failures == 0 ? 0 : 1)
   }
