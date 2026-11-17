@@ -47,6 +47,11 @@ protocol HostSystem: AnyObject {
     func frame(pid: pid_t, window: Int) async -> CGRect? // its position and size (top-left coordinates); nil: unread
     // Its position, and its size too when `size` (a resizable window). True: Accessibility took both.
     func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool
+    // Accessibility's error for that window's last frame set that it refused (nil: none, or not known).
+    func frameError(window: Int) -> Int32?
+    // The window's kept Accessibility element dropped and found again by its number (an element kept once found can go
+    // stale once its window has left the current Space: every set through it refused after). True: found again.
+    func refreshWindow(pid: pid_t, window: Int) async -> Bool
     // Its app in front and the window raised and made its main one (AXRaise, AXMain): never a click. True: asked.
     func activate(pid: pid_t, window: Int) async -> Bool
     // Closed as its close button would (AXPress on its AXCloseButton, an action, never a click). True: asked.
@@ -108,6 +113,8 @@ protocol HostSystem: AnyObject {
 extension HostSystem {
     // (A stand-in that doesn't play it: none.)
     func focusedWindow(pid: pid_t) async -> Int? { nil }
+    func frameError(window: Int) -> Int32? { nil }
+    func refreshWindow(pid: pid_t, window: Int) async -> Bool { false }
     // (A stand-in that doesn't play it: unread, so the engine's early full screen isn't tried.)
     func fullScreenSpaceOwners() -> [UInt64: pid_t]? { nil }
     // (A stand-in that doesn't play it: no list, so no other window is ever let in front.)
@@ -256,19 +263,40 @@ nonisolated final class HostAX: @unchecked Sendable {
     }
 
     // Position, then size, then position again (an app can move a window it's resizing to keep it on its display).
-    func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool {
-        guard !refuses, AXIsProcessTrusted(), frame.width.isFinite, frame.height.isFinite, frame.minX.isFinite, frame.minY.isFinite else { return false }
+    // Accessibility's error for the first set it refused (`.success`: all taken; `.cannotComplete`: not tried here).
+    func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> AXError {
+        guard !refuses, AXIsProcessTrusted(), frame.width.isFinite, frame.height.isFinite, frame.minX.isFinite, frame.minY.isFinite else { return .cannotComplete }
         return await withCheckedContinuation { c in
             queue.async {
-                guard let e = self.element(pid, window) else { return c.resume(returning: false) }
+                guard let e = self.element(pid, window) else { return c.resume(returning: .invalidUIElement) }
                 var origin = frame.origin, extent = frame.size
-                guard let p = AXValueCreate(.cgPoint, &origin), let s = AXValueCreate(.cgSize, &extent) else { return c.resume(returning: false) }
-                var ok = AXUIElementSetAttributeValue(e, kAXPositionAttribute as CFString, p) == .success
-                if size {
-                    ok = AXUIElementSetAttributeValue(e, kAXSizeAttribute as CFString, s) == .success && ok
-                    ok = AXUIElementSetAttributeValue(e, kAXPositionAttribute as CFString, p) == .success && ok
+                guard let p = AXValueCreate(.cgPoint, &origin), let s = AXValueCreate(.cgSize, &extent) else { return c.resume(returning: .failure) }
+                var first = AXError.success
+                func set(_ name: String, _ v: AXValue) {
+                    let r = AXUIElementSetAttributeValue(e, name as CFString, v)
+                    if r != .success, first == .success { first = r }
                 }
-                c.resume(returning: ok)
+                set(kAXPositionAttribute, p)
+                if size {
+                    set(kAXSizeAttribute, s)
+                    set(kAXPositionAttribute, p)
+                }
+                c.resume(returning: first)
+            }
+        }
+    }
+
+    // The window found again by its number (its windows, its main and focused ones, its children: as a first look), the
+    // element found kept in place of the old one. Not found (not listed now): the old one kept as it was.
+    func refresh(pid: pid_t, window: Int) async -> Bool {
+        guard !refuses, AXIsProcessTrusted() else { return false }
+        return await withCheckedContinuation { c in
+            queue.async {
+                let old = self.elements[window]
+                self.elements[window] = nil
+                let found = self.find(pid, window) != nil
+                if !found { self.elements[window] = old }
+                c.resume(returning: found)
             }
         }
     }
@@ -422,7 +450,14 @@ final class RealHostSystem: HostSystem {
     func mainWindow(pid: pid_t) async -> Int? { await ax.mainWindow(pid: pid) }
     func focusedWindow(pid: pid_t) async -> Int? { await ax.focusedWindow(pid: pid) }
     func frame(pid: pid_t, window: Int) async -> CGRect? { await ax.frame(pid: pid, window: window) }
-    func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool { await ax.setFrame(pid: pid, window: window, frame, size: size) }
+    private var frameErrors: [Int: Int32] = [:]
+    func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool {
+        let r = await ax.setFrame(pid: pid, window: window, frame, size: size)
+        if r == .success { frameErrors[window] = nil } else { frameErrors[window] = r.rawValue }
+        return r == .success
+    }
+    func frameError(window: Int) -> Int32? { frameErrors[window] }
+    func refreshWindow(pid: pid_t, window: Int) async -> Bool { await ax.refresh(pid: pid, window: window) }
 
     func activate(pid: pid_t, window: Int) async -> Bool {
         guard !PrivateCalls.inTests, let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return false }

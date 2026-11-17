@@ -20,7 +20,9 @@
 //               can't open in Margin's full-screen Space, so Safari's opens on a Desktop). An app the person opened
 //               whose window Accessibility can't see (on another Space): found by the window server, its frame and
 //               Space recorded, then brought into Margin's Space to be read. Its frame and Space are recorded before
-//               anything moves it. The person's window already full screen in a Space of its own: left alone.
+//               anything moves it. The person's window already full screen in a Space of its own: left alone. One of an
+//               app Margin started that came up in full screen in a Space of its own (restored so): placed from there
+//               (steps 5-7), never brought into Margin's Space to be read.
 //   3. full screen  AXFullScreen on (Safari's window: its copy's `setWindowState fullscreen`, Accessibility can't see
 //               it); done once the window is in a full-screen Space of its own, as the window server reads it. Under
 //               the freeze from the ask until macOS's jump to that Space is undone (the display set back to Margin's
@@ -29,6 +31,11 @@
 //               (~40 ms), the window moved into Margin's Space and that Space destroyed once macOS has brought the
 //               window into it and switched to it (~600 ms; never before: moved on its page frame alone, the window
 //               ended in no Space): steps 5-7 done then. Any doubt: this slow path, from the same ask.
+//               An app's ask with nothing to show for it 1.5 s on (no new full-screen Space of its app, its AXFullScreen
+//               not on) was refused: asked once more on its Desktop with its app in front, then failed (window mode,
+//               tried again at its next show). Asked from where it is (an accessory app's window opens in Margin's
+//               Space, and goes full screen from there); first onto its Desktop when it's in another app's full-screen
+//               Space, and out of full screen first when it reads full screen with no Space of its own.
 //   4. sidebar  (Safari, a window Margin made or a Safari Margin started) its own sidebar hidden by its View menu,
 //               only while the hosted window is surely Safari's main one; Accessibility reads it only on the current
 //               Space, so its own Space is made current a moment for it, under the freeze.
@@ -52,7 +59,8 @@
 // loading animation. A parked one is placed again only when it's next shown and its frame isn't the page area's.
 // (No way to resize a full-screen member without leaving full screen is known: DECISIONS.md.)
 //
-// Window mode (a window whose AXFullScreen isn't settable, or whose full screen or placing failed: backed out first):
+// Window mode (a window whose AXFullScreen isn't settable, or whose full screen or placing failed: backed out first,
+// its full screen tried again at its next show, once):
 // its normal window brought into Margin's full-screen Space as a window (the bridge, options 7) and placed in the page
 // area by Accessibility (resizable: the page area, within its own minimum and maximum, what's left centred; fixed:
 // centred), checked by the window server; shown under Margin's window the same way. Parked: its frame given back first
@@ -92,7 +100,10 @@ final class HostEngine {
         var launchWait = 10.0 // the app's process after it's asked to start
         var windowWait = 12.0 // its first window (Safari restoring windows can take a while)
         var fullScreenWait = 6.0
-        var fullScreenAskAgain = 4.0 // AXFullScreen asked once more if no Space came by then (as the kit did)
+        var fullScreenAskAgain = 4.0 // a Safari copy's full screen asked once more if no Space came by then (as the kit did)
+        // An app's full-screen ask with nothing to show for it this long after (no new full-screen Space of its app, its
+        // AXFullScreen not on): refused. Asked again once the proper way (on its Desktop, its app in front), then failed.
+        var fullScreenRefusal = 1.5
         // The early path (under the freeze, as the slow one): its new Space listed and reserved at once, so macOS lays the
         // window out at the page area itself; moved in only once macOS has brought the window into that Space (~525 ms
         // after the ask on the real Mac) and switched to it (undone at once; `earlySwitchWait` after the window came
@@ -194,6 +205,10 @@ final class HostEngine {
         var frameChanged = false // Margin set its frame (window mode) and hasn't put it back yet
         var exitUnconfirmed = false // its last exit from full screen wasn't confirmed (Accessibility neither took nor read it)
         var axRefused = false // Accessibility didn't take its frame as it was given back: its close button isn't pressed either
+        // In window mode only because its full screen failed (it can go full screen): tried again the next time it's
+        // shown from parked, once (`fullScreenFailures` counts the failures).
+        var retryFullScreen = false
+        var fullScreenFailures = 0
         var bundleId: String?
         var appLaunchedAt: Double?
         init(id: HostID, target: HostTarget, pid: pid_t, window: Int, launchedByMargin: Bool, madeByMargin: Bool, safariWindow: Int? = nil) {
@@ -1064,14 +1079,39 @@ final class HostEngine {
             await chooseAgain(host)
         }
         let spaces = sys.spaces(window: host.window) ?? []
-        if host.personApp, spaces.contains(where: { sys.spaceType($0) == ManagedSpace.fullScreenType && $0 != marginSpace }) {
+        let owners = sys.fullScreenSpaceOwners()
+        let fullScreenSpaces = spaces.filter { sys.spaceType($0) == ManagedSpace.fullScreenType && $0 != marginSpace }
+        // (Its app's own: owned by its app, or by none.)
+        let ownFull = fullScreenSpaces.first { s in owners.map { [host.pid, 0].contains($0[s] ?? host.pid) } ?? true }
+        if host.personApp, !fullScreenSpaces.isEmpty {
             return (.fullScreen, "its window is already in full screen in a Space of its own (the person's): left alone")
         }
-        host.original = sys.bounds(window: host.window)
+        // (A full-screen window's bounds are its Space's, not a frame it can be given back: Maps', 2026-11-17, was asked
+        // for the display's whole area at every park and kept "not given back" at its own frame. Window mode records the
+        // frame it has once it's a window, before it sets one.)
+        var fullElsewhere = false
+        if ownFull == nil, !host.unseen, spaces.contains(where: { sys.spaceType($0) == ManagedSpace.fullScreenType }) {
+            fullElsewhere = await sys.isFullScreen(pid: host.pid, window: host.window) == true
+        }
+        host.original = ownFull == nil && !fullElsewhere ? sys.bounds(window: host.window) : nil
         host.originalSpace = spaces.first { sys.spaceType($0) != ManagedSpace.fullScreenType }
         host.taken = true
         host.away = true // (from here on, it's put back where it was when it's given back)
         saveMarker()
+        // Already in full screen in a Space of its own (an app Margin started that restored its window so: Maps,
+        // 2026-11-17, its own log `windowIsFullScreen=1 appIsHidden=1`, the Dock adding its Space before Margin found the
+        // window): that is where a full-screen ask would have brought it, so it's placed from there (its Space reserved,
+        // the window moved in, that Space destroyed), never brought into Margin's Space to be read first. Brought in, it
+        // read full screen with no Space of its own: nothing was asked, nothing came, 6 s, then window mode.
+        if host.unseen, case .app = host.target, let own = ownFull {
+            host.unseen = false
+            host.mode = .fullScreen
+            host.fullScreenSpace = own
+            ownSpaces.insert(own)
+            saveMarker()
+            Diagnostics.note("host: \(host.id): its window came up in full screen in a Space of its own (\(own), its app restored it so): placed from there, never moved into Margin's Space to be read")
+            return nil
+        }
         guard host.unseen else { return nil }
         // Covered by Margin's window while it's in Margin's Space to be read (its app unhidden above).
         say(cover: host.window)
@@ -1235,8 +1275,9 @@ final class HostEngine {
         host.frameChanged = true
         saveMarker()
         var got = now
+        var refresh = true
         for attempt in 1...2 {
-            _ = await sys.setFrame(pid: host.pid, window: host.window, want, size: host.resizable && attempt == 1)
+            _ = await setFrame(host, want, size: host.resizable && attempt == 1, refresh: &refresh)
             got = await settled(host, at: want, from: got)
             if HostLayout.near(got, want, within: options.tolerance) { return true }
             // Its own size limits (or a position it adjusted): the size it took, centred, set once more (position only).
@@ -1288,7 +1329,8 @@ final class HostEngine {
             }
         }
         let from = sys.bounds(window: host.window) ?? original
-        let took = await wait(options.frameAskWait, every: options.lookEvery) { await self.sys.setFrame(pid: host.pid, window: host.window, original, size: host.resizable) }
+        var refresh = true
+        let took = await wait(options.frameAskWait, every: options.lookEvery) { await self.setFrame(host, original, size: host.resizable, refresh: &refresh) }
         let got = took ? await settled(host, at: original, from: from) : from
         let ok = took && HostLayout.near(got, original, within: options.tolerance)
         host.axRefused = !took
@@ -1296,6 +1338,22 @@ final class HostEngine {
             Diagnostics.warn("host: \(host.id): its frame wasn't given back (\(took ? "Accessibility took it, the window is at \(r(got))" : "Accessibility didn't take it")): kept in the marker")
         }
         saveMarker()
+        return ok
+    }
+
+    // A window-mode host's frame set through Accessibility. Refused: Accessibility's error said and, once per placing or
+    // give-back (`refresh`), its kept element dropped and found again by its number, then the frame set once more. (The
+    // Phone, 2026-11-17: placed once, then from its first park on every set refused and the window never moved, while
+    // the window server moved it between Spaces as asked: the element kept since it was found, gone stale.)
+    private func setFrame(_ host: Host, _ frame: CGRect, size: Bool, refresh: inout Bool) async -> Bool {
+        if await sys.setFrame(pid: host.pid, window: host.window, frame, size: size) { return true }
+        guard refresh else { return false }
+        refresh = false
+        let code = sys.frameError(window: host.window)
+        let found = await sys.refreshWindow(pid: host.pid, window: host.window)
+        let ok = found ? await sys.setFrame(pid: host.pid, window: host.window, frame, size: size) : false
+        let again = ok ? "taken" : "refused again (error \(sys.frameError(window: host.window).map { "\($0)" } ?? "unknown"))"
+        Diagnostics.note("host: \(host.id): Accessibility refused its frame (error \(code.map { "\($0)" } ?? "unknown")): its element \(found ? "found again by its number, the frame \(again)" : "not found again")")
         return ok
     }
 
@@ -1360,6 +1418,14 @@ final class HostEngine {
                 return fail(host.id, failed, why)
             }
             return await giveUp(host, isNew: isNew, failed, why, previous: nil)
+        }
+        if host.mode == .window, host.retryFullScreen, !isNew, !retrying, !preparing {
+            // (Window mode only after its full screen failed: full screen tried again as it's shown, behind the loader.)
+            host.retryFullScreen = false
+            host.mode = .fullScreen
+            saveMarker()
+            Diagnostics.note("host: \(host.id): in window mode since its full screen failed (it can go full screen): full screen tried again as it's shown")
+            return await placeFullScreen(host, isNew: false, retrying: false)
         }
         if host.mode == .window { return await bringInWindow(host, isNew: isNew, retrying: retrying) }
         if host.member, let placed = host.placedPage, HostLayout.near(placed, placement.page, within: options.tolerance) {
@@ -1602,7 +1668,10 @@ final class HostEngine {
     private func fallBack(_ host: Host, isNew: Bool, retrying: Bool, _ step: HostStep, _ reason: String, previous: Host?) async -> HostResult {
         // (Being prepared out of sight: never shown as a window instead.)
         guard case .app = host.target, !preparing else { return await giveUp(host, isNew: isNew, step, reason, previous: previous) }
-        Diagnostics.note("host: \(host.id): \(step.rawValue) failed (\(reason)): backed out, shown in window mode")
+        // (It can go full screen: tried again at its next show, once; window mode for the rest of the session after that.)
+        host.fullScreenFailures += 1
+        host.retryFullScreen = host.fullScreenFailures == 1
+        Diagnostics.note("host: \(host.id): \(step.rawValue) failed (\(reason)): backed out, shown in window mode (it can go full screen: \(host.retryFullScreen ? "tried again the next time it's shown" : "failed again, window mode from now on"))")
         let frozen = holdFreeze()
         await backOut(host)
         releaseFreeze(frozen)
@@ -1702,18 +1771,45 @@ final class HostEngine {
             ask = a
             Task { a.answer = await self.setFullScreen(host, true) }
         }
+        // Already in full screen in a Space of its own by the window server (a window that came up so: `take`): nothing
+        // to ask, and Accessibility may not read it there (that Space isn't current): the window server's word is enough.
+        // In a full-screen Space that isn't its app's (another app's: it opened while that one was current), or one it
+        // isn't full screen in: onto its display's Desktop first, where macOS takes the ask.
+        var had: UInt64?
+        if !frozen { frozen = holdFreeze() }
+        if !copy, let s = ownSpace() {
+            let its = sys.fullScreenSpaceOwners().map { [host.pid, 0].contains($0[s] ?? host.pid) } ?? true
+            if its, await sys.isFullScreen(pid: host.pid, window: host.window) != false {
+                had = s
+            } else if let desk = sys.desktop(onDisplayOf: marginSpace), sys.move(window: host.window, to: desk) {
+                let there = await wait(options.parkWait, every: options.memberEvery) { self.sys.spaces(window: host.window) == [desk] }
+                host.away = true
+                saveMarker()
+                Diagnostics.note("host: \(host.id): its window was in a full-screen Space \(its ? "it isn't full screen in" : "of another app's") (\(s)): moved onto its Desktop first\(there ? "" : " (not seen there)"), then asked")
+            }
+        }
         // The full-screen Spaces listed before the ask: the early path watches for a new one (nil: not tried, as when
         // its window already has a Space of its own, or the list doesn't read).
         var before: Set<UInt64>?
         if options.earlyFullScreen, ownSpace() == nil, let owners = sys.fullScreenSpaceOwners() { before = Set(owners.keys) }
         let listed = before ?? Set(sys.listedFullScreenSpaces() ?? [])
-        if !frozen { frozen = holdFreeze() }
+        var axBefore: Bool? // its AXFullScreen right before the last ask (true after false: macOS took the ask)
         if copy {
             if ownSpace() == nil { askCopy() }
-        } else if await sys.isFullScreen(pid: host.pid, window: host.window) != true {
-            guard await sys.setFullScreen(pid: host.pid, window: host.window, true) else { return .failed("AXFullScreen couldn't be set") }
+        } else if had != nil {
+            before = nil // (its Space is the slow path's to read)
         } else {
-            before = nil // (already full screen: its Space is the slow path's to read)
+            axBefore = await sys.isFullScreen(pid: host.pid, window: host.window)
+            if axBefore == true {
+                // Full screen by Accessibility with no full-screen Space of its own (a full-screen window moved into another
+                // Space): an ask changes nothing and no Space of its own would ever come (2026-11-17: Maps, 6 s, then
+                // window mode). Out of full screen where it is first (on the current Space, where Accessibility acts),
+                // then asked as a window.
+                Diagnostics.note("host: \(host.id): its window reads full screen with no full-screen Space of its own (in \(sys.spaces(window: host.window).map { "\($0)" } ?? "?")): out of full screen first, then asked")
+                guard await leaveMember(host) else { return .failed("it read full screen with no full-screen Space of its own and didn't leave it") }
+                axBefore = await sys.isFullScreen(pid: host.pid, window: host.window)
+            }
+            guard await sys.setFullScreen(pid: host.pid, window: host.window, true) else { return .failed("AXFullScreen couldn't be set") }
         }
         var asked = sys.now()
         host.askedFullScreenAt = asked
@@ -1731,40 +1827,74 @@ final class HostEngine {
                 await backOut(host)
                 if copy {
                     askCopy()
-                } else if await sys.isFullScreen(pid: host.pid, window: host.window) != true {
-                    guard await sys.setFullScreen(pid: host.pid, window: host.window, true) else { return .failed("AXFullScreen couldn't be set again") }
+                } else {
+                    axBefore = await sys.isFullScreen(pid: host.pid, window: host.window)
+                    if axBefore != true {
+                        guard await sys.setFullScreen(pid: host.pid, window: host.window, true) else { return .failed("AXFullScreen couldn't be set again") }
+                    }
                 }
                 asked = sys.now()
                 host.askedFullScreenAt = asked
                 lateAsk = (asked, listed)
             }
         }
+        // An ask macOS took shows within ~40 ms (its new Space listed, owned by its app; or its AXFullScreen on, from
+        // off): an app's window with neither `fullScreenRefusal` after the ask was refused, and waiting on can't change
+        // that (2026-11-17: 6 s for Maps). Asked once more the proper way (`askAgainProperly`: on its Desktop, its app in
+        // front); refused again as soon: failed now. Taken, it has up to `fullScreenWait` to come into its Space.
+        func progressed() async -> Bool {
+            if let owners = sys.fullScreenSpaceOwners() {
+                if owners.contains(where: { !listed.contains($0.key) && $0.key != marginSpace && $0.value == host.pid }) { return true }
+            } else if !Set(sys.listedFullScreenSpaces() ?? []).subtracting(listed).subtracting([marginSpace]).isEmpty {
+                return true
+            }
+            guard axBefore == false else { return false }
+            return await sys.isFullScreen(pid: host.pid, window: host.window) == true
+        }
         var askedAgain = false
+        var progress = false, retried = false, refused = false
+        var desk: UInt64? // (the Desktop its window was on for the ask again)
         var space: UInt64?
         let came = await wait(options.fullScreenWait) {
             space = ownSpace()
             if let s = space {
                 self.undoJump(to: s)
-                return copy ? true : await self.sys.isFullScreen(pid: host.pid, window: host.window) == true
+                if copy { return true }
+                let full = await self.sys.isFullScreen(pid: host.pid, window: host.window)
+                return full == true || (full == nil && had != nil)
             }
-            if copy, ask?.answer == false {
-                // The copy didn't ask Safari (not linked, busy): once more at once, then no more waiting.
-                if askedAgain { return true }
-                askedAgain = true
-                askCopy()
+            if copy {
+                if ask?.answer == false {
+                    // The copy didn't ask Safari (not linked, busy): once more at once, then no more waiting.
+                    if askedAgain { return true }
+                    askedAgain = true
+                    askCopy()
+                    return false
+                }
+                if !askedAgain, self.sys.now() - asked >= self.options.fullScreenAskAgain {
+                    askedAgain = true
+                    if !self.preparing, !self.quitting { _ = await self.sys.activate(pid: host.pid, window: host.window) }
+                    if ask?.answer != nil { askCopy() }
+                }
                 return false
             }
-            if !askedAgain, self.sys.now() - asked >= self.options.fullScreenAskAgain {
-                askedAgain = true
-                // (macOS ignores a full-screen ask for a window of an app that isn't active, and one made while the
-                // window is still changing: its app in front first, unless it's being made ready out of sight.)
-                if !self.preparing, !self.quitting { _ = await self.sys.activate(pid: host.pid, window: host.window) }
-                if copy { if ask?.answer != nil { askCopy() } } else { _ = await self.sys.setFullScreen(pid: host.pid, window: host.window, true) }
+            if !progress { progress = await progressed() }
+            if !progress, self.sys.now() - asked >= self.options.fullScreenRefusal {
+                if retried { refused = true; return true }
+                retried = true
+                (desk, axBefore) = await self.askAgainProperly(host)
+                asked = self.sys.now()
+                host.askedFullScreenAt = asked
+                self.lateAsk = (asked, listed)
             }
             return false
         }
-        guard came, let space else {
+        // (Its Desktop made current by its app's activation for the ask again, and still current: Margin's again, whether
+        // the window was moved there for it or was there already, as one unparked onto it to be tried again.)
+        if let d = desk, sys.currentSpace(onDisplayOf: marginSpace) == d, sys.setCurrentSpace(marginSpace) { jumps += 1 }
+        guard came, !refused, let space else {
             if copy, ask?.answer == false { return .failed("its copy didn't ask Safari for full screen (setWindowState)") }
+            if refused { return .failed("refused: no full-screen Space of its own within \(String(format: "%.1f", options.fullScreenRefusal)) s of the ask, nor of the ask again from its Desktop with its app in front") }
             return .failed("no full-screen Space of its own within \(Int(options.fullScreenWait)) s")
         }
         host.fullScreenSpace = space
@@ -1772,6 +1902,33 @@ final class HostEngine {
         saveMarker()
         undoJump(to: space)
         return .own
+    }
+
+    // A full-screen ask macOS refused (neither a full-screen Space of its own nor its AXFullScreen came), asked once
+    // more the way a person's would be: its window on its display's Desktop if it's in a full-screen Space (Margin's,
+    // or another's), its app in front (not while it's made ready out of sight, nor as Margin quits), then the ask.
+    // Under a freeze taken anew (the freezer reveals 1.7 s after it was taken: till now it held Margin's loader, all
+    // there is to see). (The Desktop it's on for the ask, moved there or there already; its AXFullScreen read before the
+    // ask.)
+    private func askAgainProperly(_ host: Host) async -> (UInt64?, Bool?) {
+        if freezeHolds > 0 { sys.reveal(); _ = sys.freeze() }
+        let t0 = sys.now()
+        var moved: UInt64?
+        let spaces = sys.spaces(window: host.window) ?? []
+        let from = spaces == [marginSpace] ? "Margin's Space" : "a full-screen Space"
+        if spaces.contains(where: { sys.spaceType($0) == ManagedSpace.fullScreenType }), let desk = sys.desktop(onDisplayOf: marginSpace), sys.move(window: host.window, to: desk),
+           await wait(options.parkWait, every: options.memberEvery, { self.sys.spaces(window: host.window) == [desk] }) {
+            moved = desk
+            host.away = true
+            saveMarker()
+        }
+        var activated = false
+        if !preparing, !quitting { activated = await sys.activate(pid: host.pid, window: host.window) }
+        let axNow = await sys.isFullScreen(pid: host.pid, window: host.window)
+        let taken = await sys.setFullScreen(pid: host.pid, window: host.window, true)
+        Diagnostics.note("host: \(host.id): its full screen refused (no full-screen Space of its own within \(String(format: "%.1f", options.fullScreenRefusal)) s of the ask): \(moved != nil ? "moved out of \(from) onto its Desktop first, " : "")\(activated ? "its app in front, " : "")asked again\(taken ? "" : " (Accessibility didn't take it)") in \(ms(since: t0)) ms")
+        let on = moved ?? sys.spaces(window: host.window)?.first { sys.spaceType($0) == ManagedSpace.desktopType }
+        return (on, axNow)
     }
 
     private enum Early { case placed(String), slow(String), again(String) }
@@ -2278,6 +2435,10 @@ final class HostEngine {
         let own = host.fullScreenSpace
         let copy = viaCopy(host)
         if host.member {
+            _ = await leaveMember(host)
+        } else if !copy, let own, sys.spaces(window: host.window)?.contains(own) == true, await isFullScreen(host) == nil {
+            // (In its own full-screen Space, not the current one, never read there by Accessibility: a window that came up
+            // full screen. Out of it on the current Space, where Accessibility acts, as a member would be.)
             _ = await leaveMember(host)
         } else if await isFullScreen(host) == true || (copy && own != nil) {
             _ = await setFullScreen(host, false)
