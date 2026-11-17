@@ -111,11 +111,28 @@ export const THEME_SCHEMA = Object.freeze({
     // The images the package bundles (png, jpg, gif, webp, avif, svg),
     // which its template and stylesheet may name.
     images: { type: 'array', maxItems: 64, items: { type: 'string', check: 'bundledImage' }, dropBadItems: true, uniqueItems: true },
+    // The theme draws with macOS's own materials (`-apple-visual-effect` in its CSS: Liquid Glass). Margin.app
+    // then turns WebKit's system appearance on for its page while the theme is drawn (wantsSystemMaterials).
+    systemMaterials: { type: 'boolean' },
     // The theme's settings, as CSS variables (`--m-<name>`) and view model
     // values (`settings.<name>`).
     settings: { type: 'object', maxProperties: 32, propertyNames: { pattern: '^[a-z][A-Za-z0-9]{0,31}$' }, additionalProperties: SETTING, dropBadItems: true },
   },
 });
+
+/**
+ * Whether a theme asks for the system's materials (theme.json `systemMaterials`: true), read from its manifest's
+ * text before the theme is checked and loaded: Margin.app must turn WebKit's system appearance on (or off again)
+ * before the theme's style sheet is made, which is when the browser keeps or drops `-apple-visual-effect`
+ * (app/shared/host/overlay.ts mount). Only ever a look: the answer changes no check.
+ */
+export function wantsSystemMaterials(text: unknown): boolean {
+  if (typeof text !== 'string' || text.length > LIMITS.manifestBytes) return false;
+  try {
+    const raw = JSON.parse(text);
+    return !!raw && typeof raw === 'object' && !Array.isArray(raw) && raw.systemMaterials === true;
+  } catch { return false; }
+}
 
 // A node of the schema (THEME_SCHEMA): the JSON Schema words walk() knows, and Margin's own (`check`, `dropBadItems`).
 type SchemaNode = {

@@ -1,12 +1,12 @@
-// The runtime's behaviors (extension/ui/behaviors/) with Neubrutalism and
-// Pixel (the built-in themes that share the sidebar's classes) in real engines, Playwright's WebKit and Chromium, headless, on a blank page
+// The runtime's behaviors (extension/ui/behaviors/) with Neubrutalism,
+// Pixel and Liquid Glass (the built-in themes that share the sidebar's classes) in real engines, Playwright's WebKit and Chromium, headless, on a blank page
 // whose every network request is refused; real pointer, wheel and keyboard
 // input through Playwright. The host is the mock (ui/host.ts): each test
 // checks the messages it received. `npm run test:theme`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-import { harnessScript, themeForPage, themesInScope, NEO, PIXEL } from './package.ts';
+import { harnessScript, themeForPage, themesInScope, NEO, PIXEL, GLASS } from './package.ts';
 import type { Harness } from './harness.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
@@ -19,6 +19,7 @@ const script = harnessScript();
 const THEMES = [
   ['neubrutalism', NEO, { root: '.nb', docked: 291, def: 256, min: 200, max: 400, dragged: 306 }],
   ['pixel', PIXEL, { root: '.pixel', docked: 286, def: 252, min: 200, max: 360, dragged: 304 }],
+  ['liquid-glass', GLASS, { root: '.lg', docked: 281, def: 264, min: 200, max: 420, dragged: 314 }],
 ] as const;
 const SCROLL = /^(sidebarScroll|setSidebarScroll)$/;
 

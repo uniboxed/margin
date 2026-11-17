@@ -5,10 +5,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   sanitizeTemplate, sanitizeCss, sanitizeDeclarations, checkCssValue, checkIconUrl,
-  tokenizeCss, parseInterpolation, isBundledPath, LIMITS,
+  tokenizeCss, parseInterpolation, isBundledPath, LIMITS, VISUAL_EFFECTS,
 } from '../extension/ui/sanitize.ts';
 import { ACTIONS, checkAction, contextFromState, createDispatcher, isAction } from '../extension/ui/actions.ts';
-import { checkManifest } from '../extension/ui/theme-schema.ts';
+import { checkManifest, wantsSystemMaterials } from '../extension/ui/theme-schema.ts';
 import { sanitizeTheme } from '../extension/ui/theme-loader.ts';
 import { HTML_PAYLOADS, CSS_PAYLOADS, ACTION_PAYLOADS, wrap } from './theme/payloads.ts';
 import { auditTree } from './theme/audit.ts';
@@ -233,6 +233,46 @@ test('style attributes go through the same CSS rules', () => {
   assert.equal(sanitizeDeclarations('color: red; background: url(https://evil.test/x)').css, 'color:red;');
   assert.equal(sanitizeDeclarations('width: expression(alert(1)); color: blue').css, 'color:blue;');
   assert.equal(sanitizeDeclarations('a{color:red}').css, '');
+});
+
+test('-apple-visual-effect: the system\'s materials by name, one keyword from the list and nothing else', () => {
+  assert.deepEqual([...VISUAL_EFFECTS], ['none', '-apple-system-glass-material', '-apple-system-glass-material-subdued', '-apple-system-blur-material',
+    '-apple-system-blur-material-thin', '-apple-system-blur-material-ultra-thin', '-apple-system-blur-material-thick', '-apple-system-blur-material-chrome',
+    '-apple-system-vibrancy-label', '-apple-system-vibrancy-fill'], 'the list is exactly these');
+  for (const value of VISUAL_EFFECTS) {
+    const r = sanitizeCss(`.a{-apple-visual-effect:${value}}`);
+    assert.deepEqual([r.css, r.removed], [`.a{-apple-visual-effect:${value};}`, []], value);
+  }
+  // The pattern a theme writes: the plain look, then the material where the browser has it.
+  const pattern = '.panel{background:rgba(255,255,255,.6)}@supports (-apple-visual-effect: -apple-system-glass-material){.panel{background:none;-apple-visual-effect:-apple-system-glass-material}}';
+  const kept = sanitizeCss(pattern);
+  assert.deepEqual(kept.removed, []);
+  assert.equal(kept.css, '.panel{background:rgba(255,255,255,.6);}@supports (-apple-visual-effect: -apple-system-glass-material){.panel{background:none;-apple-visual-effect:-apple-system-glass-material;}}');
+  // Any case, `!important`, and a style attribute: the same rule.
+  assert.equal(sanitizeCss('.a{-Apple-Visual-Effect: -APPLE-SYSTEM-BLUR-MATERIAL-THICK !important}').removed.length, 0);
+  assert.equal(sanitizeDeclarations('-apple-visual-effect: -apple-system-vibrancy-fill; color: red').css, '-apple-visual-effect:-apple-system-vibrancy-fill;color:red;');
+  // Refused: a material not on the list, a variable (it could hold one), two values, a wide keyword, a string, nothing,
+  // a name split by a comment.
+  for (const bad of ['-apple-system-glass-material-clear', '-apple-system-hosted-material', 'var(--material)', '-apple-system-glass-material -apple-system-blur-material',
+    'inherit', '"-apple-system-glass-material"', '', '-apple-system-glass-material/**/-subdued', '-apple-system-glass-material !important !important', 'env(material)']) {
+    const r = sanitizeCss(`.a{color:red;-apple-visual-effect:${bad}}`);
+    assert.equal(r.css, '.a{color:red;}', bad);
+    assert.deepEqual(r.removed.map((x) => [x.kind, x.reason]), [['css-declaration', 'not one of the materials Margin knows']], bad);
+  }
+  assert.equal(sanitizeDeclarations('-apple-visual-effect: -apple-system-glass-material-clear; color: red').css, 'color:red;');
+});
+
+test('theme.json: systemMaterials is a plain yes or no, read before the theme loads', () => {
+  const base = { format: 2, id: 'x', name: 'X', version: '1.0.0' };
+  const yes = checkManifest(JSON.stringify({ ...base, systemMaterials: true }));
+  assert.deepEqual([yes.errors, yes.removed, yes.manifest.systemMaterials], [[], [], true]);
+  assert.equal(checkManifest(JSON.stringify(base)).manifest.systemMaterials, undefined, 'absent: not asked for');
+  assert.match(checkManifest(JSON.stringify({ ...base, systemMaterials: 'yes' })).errors.join(), /bad systemMaterials/);
+  assert.equal(wantsSystemMaterials(JSON.stringify({ ...base, systemMaterials: true })), true);
+  for (const no of [JSON.stringify(base), JSON.stringify({ ...base, systemMaterials: false }), JSON.stringify({ ...base, systemMaterials: 'true' }), JSON.stringify({ ...base, systemMaterials: 1 }),
+    JSON.stringify([{ systemMaterials: true }]), JSON.stringify({ layout: { systemMaterials: true } }), 'not json', '', null, undefined, 7, `{"systemMaterials":true,"pad":"${'x'.repeat(LIMITS.manifestBytes)}"}`]) {
+    assert.equal(wantsSystemMaterials(no), false, String(no).slice(0, 60));
+  }
 });
 
 test('values Margin binds into CSS variables: colors and lengths, never URLs, strings or escapes', () => {

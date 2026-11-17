@@ -131,6 +131,12 @@ final class OverlayBridge: NSObject, WKScriptMessageHandlerWithReply {
                     replyHandler(nil, "no answer from Margin: \(error)")
                 }
             }
+        case "appearance":
+            // A theme that uses the system's materials (theme.json `systemMaterials`: Liquid Glass) asks for WebKit's
+            // system appearance before its style sheet is made; every other theme turns it off again. The answer: on.
+            let said = OverlaySystemAppearance.set(body["system"] as? Bool == true, for: webView)
+            OverlaySystemAppearance.note(said)
+            replyHandler(said.hasPrefix("on"), nil)
         default:
             owner.pageSaid(op, body)
             replyHandler(nil, nil)
@@ -271,4 +277,49 @@ enum OverlayFrameRate {
       for (const type of ['transitionstart', 'animationstart']) document.addEventListener(type, () => sample(type.replace('start', '')), true);
     })();
     """#
+}
+
+// The system's own materials in a theme (Liquid Glass: `-apple-visual-effect` in its CSS, theme.json
+// `systemMaterials`). WebKit only knows that property in a web view with "system appearance" on, a private switch
+// (docs/PRIVATE-APIS.md): `-[WKWebView _setUseSystemAppearance:]`, per view and live. It's on only while the theme
+// drawn asks for it, since it changes more than the property: links take AppKit's colours, and in Dark Mode
+// `color-scheme: light` is no longer honoured (a light-only theme's own controls, scroll bars and `light-dark()` would
+// turn dark: Neubrutalism's; DECISIONS.md "Liquid Glass"). The page asks before it makes a theme's style sheet
+// (app/shared/host/overlay.ts mount, `appearance`). Each step is checked, and anything missing leaves the switch
+// off: the theme then draws its plain fills (`@supports (-apple-visual-effect: …)` is false).
+// `defaults write com.unibox.margin MarginSystemAppearance -bool NO` keeps it off for every theme.
+enum OverlaySystemAppearance {
+    static let setter = "_setUseSystemAppearance:"
+    static let getter = "_useSystemAppearance"
+    nonisolated static var allowed: Bool { UserDefaults.standard.object(forKey: "MarginSystemAppearance") as? Bool ?? true }
+
+    /// Turns a web view's system appearance on or off. What happened, for the log: "on", "off", or "off: why".
+    @MainActor static func set(_ on: Bool, for webView: WKWebView, allowed: Bool = allowed) -> String {
+        let cls: AnyClass = WKWebView.self
+        let set = NSSelectorFromString(setter)
+        let get = NSSelectorFromString(getter)
+        // (A BOOL is `B` on Apple silicon, `c` on Intel.)
+        guard webView.responds(to: set), webView.responds(to: get),
+              let setMethod = class_getInstanceMethod(cls, set), let getMethod = class_getInstanceMethod(cls, get),
+              let setTypes = method_getTypeEncoding(setMethod).map({ String(cString: $0) }),
+              let getTypes = method_getTypeEncoding(getMethod).map({ String(cString: $0) }),
+              ["v20@0:8B16", "v20@0:8c16"].contains(setTypes), ["B16@0:8", "c16@0:8"].contains(getTypes) else {
+            return "off: WebKit has no system appearance switch here"
+        }
+        typealias Set = @convention(c) (AnyObject, Selector, Bool) -> Void
+        typealias Get = @convention(c) (AnyObject, Selector) -> Bool
+        let read = { unsafeBitCast(method_getImplementation(getMethod), to: Get.self)(webView, get) }
+        let want = on && allowed
+        if read() != want { unsafeBitCast(method_getImplementation(setMethod), to: Set.self)(webView, set, want) }
+        guard read() == want else { return "off: WebKit's system appearance didn't turn \(want ? "on" : "off")" }
+        return want ? "on" : on ? "off: MarginSystemAppearance is NO" : "off"
+    }
+
+    // Logged when it changes, not for every theme drawn.
+    @MainActor private static var said = "off"
+    @MainActor static func note(_ now: String) {
+        guard now != said else { return }
+        said = now
+        Diagnostics.note("overlay system appearance (a theme's system materials): \(now)")
+    }
 }

@@ -151,7 +151,7 @@ test('theme.json: lists and maps are capped', () => {
 test('the schema is plain data (JSON) with every top-level field described', () => {
   const copy = JSON.parse(JSON.stringify(THEME_SCHEMA));
   assert.deepEqual(copy, THEME_SCHEMA);
-  assert.deepEqual(Object.keys(THEME_SCHEMA.properties).sort(), ['author', 'description', 'fonts', 'format', 'id', 'images', 'layout', 'licence', 'modes', 'name', 'settings', 'version']);
+  assert.deepEqual(Object.keys(THEME_SCHEMA.properties).sort(), ['author', 'description', 'fonts', 'format', 'id', 'images', 'layout', 'licence', 'modes', 'name', 'settings', 'systemMaterials', 'version']);
   assert.deepEqual(THEME_SCHEMA.required, ['id', 'name', 'version']);
 });
 

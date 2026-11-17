@@ -998,6 +998,23 @@ function writesText(prop: string, items: Cv[]): string | null {
   return null;
 }
 
+// `-apple-visual-effect`: macOS's own materials behind an element (Liquid Glass, the blur materials, vibrancy),
+// WebKit's property for web views with the system's appearance on (Margin.app turns it on for a theme whose
+// theme.json says `systemMaterials`; everywhere else the browser drops the declaration, so a theme writes its plain
+// look first and this inside `@supports (-apple-visual-effect: …)`). One keyword from this list and nothing else:
+// no var(), no second value, so a material Margin doesn't know never reaches the window server.
+export const VISUAL_EFFECTS = Object.freeze(['none', '-apple-system-glass-material', '-apple-system-glass-material-subdued',
+  '-apple-system-blur-material', '-apple-system-blur-material-thin', '-apple-system-blur-material-ultra-thin',
+  '-apple-system-blur-material-thick', '-apple-system-blur-material-chrome', '-apple-system-vibrancy-label', '-apple-system-vibrancy-fill']);
+function visualEffect(items: Cv[]): string | null {
+  const parts = items.filter((cv) => !isWsCv(cv));
+  // (`!important` after it is the declaration's, not a value.)
+  const important = parts.length === 3 && parts[1].t === 'delim' && parts[1].v === '!' && parts[2].t === 'ident' && String(parts[2].v).toLowerCase() === 'important';
+  const one = parts.length === 1 || important ? parts[0] : null;
+  if (!one || one.t !== 'ident' || one.fn !== undefined || !VISUAL_EFFECTS.includes(String(one.v).toLowerCase())) return 'not one of the materials Margin knows';
+  return null;
+}
+
 // A string that looks like an address, anywhere in a style sheet: refused, so
 // nothing can hand one to a function that loads it.
 const URLISH = /:\/\/|^\s*\/\/|^\s*(javascript|vbscript|data):/i;
@@ -1140,7 +1157,7 @@ class CssBuilder {
     const prop = name.v.startsWith('--') ? name.v : name.v.toLowerCase();
     if (BLOCKED_PROPERTIES.has(prop)) { this.drop('css-declaration', prop, 'not allowed', name); return ''; }
     const value = items.slice(b + 1);
-    const reason = this.value(value) ?? (TEXT_PROPERTIES.has(prop) ? writesText(prop, value) : null);
+    const reason = this.value(value) ?? (TEXT_PROPERTIES.has(prop) ? writesText(prop, value) : prop === '-apple-visual-effect' ? visualEffect(value) : null);
     if (reason) { this.drop('css-declaration', `${prop}: ${this.text(value).trim().slice(0, 80)}`, reason, name); return ''; }
     if (++this.declarations > LIMITS.cssDeclarations) { this.errors.push(`css: more than ${LIMITS.cssDeclarations} declarations`); return ''; }
     const text = this.text(value).trim();
