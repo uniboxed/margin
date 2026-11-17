@@ -45,6 +45,9 @@ final class FakeHostedWindow: HostedWindow {
     var covering: Int?
     var covers: [Int?] = []
     func cover(_ number: Int?) { guard number != covering else { return }; covering = number; covers.append(number) }
+    var lifts: [String] = [] // each setLifted, in order: "on through", "on", "off"
+    var lifted: Bool { (lifts.last ?? "off") != "off" }
+    func setLifted(_ on: Bool, through: Bool) { lifts.append(on ? (through ? "on through" : "on") : "off") }
     // (As the real one: the page area from its own layout, while hosting in full screen.)
     var hostedPlacement: HostPlacement? {
         guard hosting, isFullScreen, let page = MarginWindowGeometry.pageRect(layout: layout, content: FakeHostWorld.display) else { return nil }
@@ -603,6 +606,158 @@ func hostedTests() {
     window.isFullScreen = true
 
     hostedShellTests(script: script)
+    sidebarResizeTests(script: script)
+}
+
+// The sidebar's edge dragged while hosting (HostedSession.sidebarResizing): the real engine on the stand-in window
+// manager, a stand-in Margin window whose layout the test moves as the page would while its handle is dragged. The
+// page area's changes are held for the whole drag, Margin's window in front meanwhile; let go, the one shown is placed
+// once at the page area the drag ended on, from that placement alone (nothing reserved twice, nothing on Margin's own
+// Space); a parked one keeps what it had until it's next shown, and is placed once then.
+func sidebarResizeTests(script: URL) {
+    let root = tempFolder("hosted-resize")
+    defer { try? FileManager.default.removeItem(at: root) }
+    guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("resize: the library opens", false) }
+    let w = FakeHostWorld()
+    let engine = HostEngine(system: w, marker: nil, pid: 1)
+    let session = HostedSession(library: library, engine: engine, links: FakeHostedLinks())
+    session.sleep = { _ in await Task.yield() }
+    let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
+    session.window = { id in id == nil || id == 1 ? window : nil }
+    engine.onEvent = { session.hostEvent($0) }
+    engine.loading = { session.loading($0) }
+    engine.keepAbove = { session.keepBelow($0) }
+    library.delegate = session
+    func run(_ body: @escaping () async -> Void = {}) { hostRun { await body(); await session.idle() } }
+    _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
+    func windowOf(_ bundle: String) -> Int { w.running(bundleId: bundle).first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0 }
+    func item(_ bundle: String) -> String { library.items().first { $0.value["url"] as? String == "app://" + bundle }?.id ?? "" }
+    func count(_ prefix: String, since: Int = 0) -> Int { w.calls.dropFirst(since).filter { $0.hasPrefix(prefix) }.count }
+    // The page area for a sidebar edge at `left`, as Margin's layout gives it (Arcadia's: 8 pt from the other edges).
+    func page(_ left: CGFloat) -> CGRect { CGRect(x: left, y: 41, width: 1512 - 8 - left, height: 933) }
+    func drag(to lefts: [Double]) { for left in lefts { window.layout.left = left; session.pageRectChanged(window); run() } }
+
+    // Two full-screen apps: Notes shown, TextEdit parked, both placed for the page area beside a 260 pt sidebar.
+    run { session.openApp("com.apple.TextEdit", windowId: 1) }
+    run { session.openApp("com.apple.Notes", windowId: 1) }
+    let edit = windowOf("com.apple.TextEdit"), notes = windowOf("com.apple.Notes")
+    let editId = HostTarget.app("com.apple.TextEdit").id, notesId = HostTarget.app("com.apple.Notes").id
+    guard engine.shown == notesId, engine.hosts[editId]?.phase == .parked, w.bounds(window: notes) == page(260) else {
+        return check("resize: two full-screen apps hosted, one shown and one parked", false, "\(session.done.suffix(6))")
+    }
+
+    // ---- a drag: nothing placed while it lasts ----
+    var mark = w.calls.count
+    var reserves = w.reserves.count
+    session.sidebarResizing(window, true)
+    drag(to: [270, 285, 300, 322, 340])
+    check("resize: while the edge is dragged the page area's changes are held: nothing leaves or enters full screen, nothing is moved or reserved, the engine's page area as it was",
+          count("fullScreen", since: mark) == 0 && count("move", since: mark) == 0 && w.reserves.count == reserves && engine.pageRect == page(260) && w.bounds(window: notes) == page(260)
+          && session.resizing == 1 && !session.done.contains { $0.hasPrefix("page area changed") }, "\(w.calls.dropFirst(mark))")
+    check("resize: Margin's window in front of the hosted one for the drag, that window seen through its page area", window.lifts == ["on through"], "\(window.lifts)")
+
+    // ---- let go: placed once, at the page area the drag ended on ----
+    session.sidebarResizing(window, false)
+    check("resize: let go over a full-screen member: the ground alone while it's placed again (it leaves Margin's Space for it)", window.lifts == ["on through", "on"], "\(window.lifts)")
+    run()
+    let sent = w.reserves.dropFirst(reserves)
+    check("resize: let go: the shown window placed once (one exit from full screen, one entry), at the new page area, still a member of Margin's Space",
+          count("fullScreen false \(notes)", since: mark) == 1 && count("fullScreen true \(notes)", since: mark) == 1 && w.bounds(window: notes) == page(340)
+          && w.spaces(window: notes) == [FakeHostWorld.marginSpace] && w.wins[notes]?.fullScreen == true && engine.shown == notesId && engine.pageRect == page(340)
+          && session.done.filter { $0.hasPrefix("page area changed") }.count == 1, "\(w.calls.dropFirst(mark)) \(String(describing: w.bounds(window: notes)))")
+    check("resize: its reservation is the new page area's alone (260 → 340: never the two added up), on its own Space, none on Margin's; Mission Control Margin's Space only",
+          !sent.isEmpty && sent.allSatisfy { $0.edges == SlotEdges(left: 340, right: 8, top: 8, bottom: 8) && $0.space != FakeHostWorld.marginSpace }
+          && (w.reservation[FakeHostWorld.marginSpace] ?? .zero).isZero && w.listsMarginOnly, "\(sent.map { "\($0.space): \($0.edges.text)" })")
+    check("resize: then Margin's window right below the hosted window again", window.lifts == ["on through", "on", "off"] && window.below == notes && session.resizing == nil, "\(window.lifts)")
+    check("resize: the parked one untouched: still full screen, out of sight, placed for the page area it had", count("fullScreen false \(edit)", since: mark) == 0 && count("fullScreen true \(edit)", since: mark) == 0
+          && w.wins[edit]?.fullScreen == true && w.spaces(window: edit) == [] && engine.hosts[editId]?.placedPage == page(260), "\(String(describing: engine.hosts[editId]?.placedPage))")
+
+    // ---- the parked one, shown next: placed once then, with the loading bar, never shown at its old place ----
+    mark = w.calls.count
+    reserves = w.reserves.count
+    let loadings = window.loadings.count
+    var seenAtOldPlace = false
+    let before = engine.keepAbove
+    engine.keepAbove = { number in if number == edit, w.bounds(window: edit) != page(340) { seenAtOldPlace = true }; before?(number) }
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": item("com.apple.TextEdit")]) }
+    engine.keepAbove = before
+    check("resize: the parked one shown next: placed for the new page area as it's shown (one exit, one entry), the loading bar meanwhile, never in Margin's Space at its old place",
+          engine.shown == editId && count("fullScreen false \(edit)", since: mark) == 1 && count("fullScreen true \(edit)", since: mark) == 1 && w.bounds(window: edit) == page(340)
+          && !seenAtOldPlace && Array(window.loadings.dropFirst(loadings)).count == 2 && window.loadings.last == .some(nil)
+          && w.reserves.dropFirst(reserves).allSatisfy { $0.edges == SlotEdges(left: 340, right: 8, top: 8, bottom: 8) }, "\(w.calls.dropFirst(mark)) \(window.loadings.dropFirst(loadings))")
+    mark = w.calls.count
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": item("com.apple.Notes")]) }
+    check("resize: back to the one placed by the drag: a switch, nothing placed again", engine.shown == notesId && count("fullScreen", since: mark) == 0 && w.bounds(window: notes) == page(340), "\(w.calls.dropFirst(mark))")
+
+    // ---- a change asked just before the drag, its turn come during it: held too; a drag back to where it began: nothing placed ----
+    mark = w.calls.count
+    window.lifts = []
+    window.layout.left = 300
+    session.pageRectChanged(window) // (queued, not yet run)
+    session.sidebarResizing(window, true)
+    run()
+    drag(to: [280, 310, 340])
+    check("resize: a change queued before the drag began isn't placed during it", count("fullScreen", since: mark) == 0 && engine.pageRect == page(340), "\(w.calls.dropFirst(mark))")
+    session.sidebarResizing(window, false)
+    run()
+    check("resize: let go where it began: nothing leaves full screen, Margin's window below again", count("fullScreen", since: mark) == 0 && w.bounds(window: notes) == page(340) && window.lifts.last == "off" && !window.lifted, "\(w.calls.dropFirst(mark)) \(window.lifts)")
+
+    // ---- a window-mode app (one that can't go full screen): moved once when the drag is over, seen through until then ----
+    run { session.openApp("com.apple.FaceTime", windowId: 1) }
+    let ft = windowOf("com.apple.FaceTime"), ftId = HostTarget.app("com.apple.FaceTime").id
+    check("resize: FaceTime in window mode at the page area", engine.shown == ftId && engine.mode(of: ftId) == .window && w.bounds(window: ft) == page(340), "\(session.done.suffix(4))")
+    mark = w.calls.count
+    window.lifts = []
+    session.sidebarResizing(window, true)
+    drag(to: [330, 300, 280, 250])
+    check("resize (window mode): held while dragged: its frame not set once", count("frame \(ft)", since: mark) == 0 && w.bounds(window: ft) == page(340) && window.lifts == ["on through"], "\(w.calls.dropFirst(mark))")
+    session.sidebarResizing(window, false)
+    check("resize (window mode): let go: still seen through while Accessibility moves it (no blank page area)", window.lifts == ["on through"], "\(window.lifts)")
+    run()
+    check("resize (window mode): placed once by Accessibility at the new page area, never parked or put in full screen for it; Margin's window below it again",
+          count("frame \(ft)", since: mark) == 1 && w.bounds(window: ft) == page(250) && count("move \(ft)", since: mark) == 0 && count("fullScreen", since: mark) == 0
+          && window.lifts == ["on through", "off"] && window.below == ft, "\(w.calls.dropFirst(mark)) \(window.lifts)")
+    check("resize: both parked full-screen members still as they were (placed again only when shown)", engine.hosts[notesId]?.placedPage == page(340) && engine.hosts[editId]?.placedPage == page(340)
+          && w.wins[notes]?.fullScreen == true && w.wins[edit]?.fullScreen == true)
+
+    // ---- Margin's window taken out of full screen mid-drag: the drag is over for hosting, nothing left lifted ----
+    window.lifts = []
+    session.sidebarResizing(window, true)
+    session.leavingFullScreen(window)
+    window.isFullScreen = false
+    session.leftFullScreen(window)
+    run()
+    check("resize: Margin's window out of full screen mid-drag: not lifted any more", window.lifts.last == "off" && !window.lifted, "\(window.lifts)")
+    window.isFullScreen = true
+    session.sidebarResizing(window, false)
+    run()
+    check("resize: … and the drag over: nothing held", session.resizing == nil && !window.lifted)
+
+    // ---- an app that comes to be shown mid-drag (picked just before the drag): Margin's window in front of it too, placed once when the drag ends ----
+    window.layout.left = 250
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": item("com.apple.Notes")]) } // (placed for the page area as it is: 250)
+    window.lifts = []
+    mark = w.calls.count
+    session.sidebarResizing(window, true)
+    drag(to: [270, 290])
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": item("com.apple.FaceTime")]) }
+    let lifts = window.lifts
+    drag(to: [300, 310])
+    check("resize: an app shown mid-drag: Margin's window in front of it as well, its frame held from then on", engine.shown == ftId && lifts.last == "on through" && w.bounds(window: ft) == page(290)
+          && count("frame \(ft)", since: mark) <= 1, "\(lifts) \(w.calls.dropFirst(mark))")
+    session.sidebarResizing(window, false)
+    run()
+    check("resize: … placed once more when the drag ends, at the page area it ended on; nothing left lifted", w.bounds(window: ft) == page(310) && window.lifts.last == "off" && session.resizing == nil,
+          "\(String(describing: w.bounds(window: ft))) \(window.lifts)")
+
+    // ---- nothing shown: a drag is the page's alone ----
+    run { await engine.quitAll() }
+    run()
+    window.lifts = []
+    session.sidebarResizing(window, true)
+    session.sidebarResizing(window, false)
+    run()
+    check("resize: nothing hosted: never lifted, nothing placed, nothing held after", !window.lifts.contains { $0 != "off" } && session.resizing == nil, "\(window.lifts)")
 }
 
 // The page area while hosting: Margin's own layout at its whole width (the theme's frame around it).

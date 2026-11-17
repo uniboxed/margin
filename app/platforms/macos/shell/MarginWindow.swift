@@ -268,6 +268,77 @@ enum MarginMenu {
     }
 }
 
+// The page area's ground while Margin's window is in front of the hosted window (the sidebar's edge dragged:
+// MarginWindowController.setLifted). The window's own background is clear then, so the hosted window below shows
+// through the theme's see-through page slot; this view, under the web view, fills the ground's colour everywhere but
+// that window's bounds (`hole`, top left in the content; nil: everywhere), so the rest of the page area (the gap a
+// narrower sidebar leaves) is the ground, never the Space's backdrop. One shape layer, drawn when it changes (the
+// hosted window stays where it is through a drag); hidden, with nothing drawn, at every other time.
+final class PageGroundView: NSView {
+    private(set) var color: NSColor?
+    private(set) var hole: CGRect?
+    private let shape = CAShapeLayer()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.backgroundColor = .clear
+        shape.fillRule = .evenOdd
+        shape.actions = ["path": NSNull(), "fillColor": NSNull(), "bounds": NSNull(), "position": NSNull()]
+        layer?.addSublayer(shape)
+        isHidden = true
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override var isOpaque: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil } // (under the web view: never the one that takes an event)
+
+    var isShown: Bool { !isHidden }
+
+    func show(color: NSColor, hole: CGRect?) {
+        guard isHidden || color != self.color || hole != self.hole else { return }
+        self.color = color
+        self.hole = hole
+        isHidden = false
+        draw()
+    }
+
+    func clear() {
+        guard !isHidden else { return }
+        isHidden = true
+        color = nil
+        hole = nil
+        shape.path = nil
+    }
+
+    override func layout() {
+        super.layout()
+        if !isHidden { draw() }
+    }
+
+    // The whole view filled, less the hole (even-odd): the hole from the top left, the layer's own y from the bottom.
+    private func draw() {
+        shape.frame = bounds
+        let path = CGMutablePath()
+        path.addRect(bounds)
+        if let hole = hole?.intersection(bounds), !hole.isNull, hole.width > 0, hole.height > 0 {
+            path.addRect(CGRect(x: hole.minX, y: bounds.height - hole.maxY, width: hole.width, height: hole.height))
+        }
+        shape.path = path
+        // (Resolved for the window's appearance: a dynamic colour's cgColor is the current appearance's.)
+        var resolved = color?.cgColor
+        (window?.effectiveAppearance ?? effectiveAppearance).performAsCurrentDrawingAppearance { resolved = color?.cgColor }
+        shape.fillColor = resolved
+    }
+
+    // Whether a point of the content (top left) is the ground's (the tests read it).
+    func fills(_ p: CGPoint) -> Bool {
+        guard !isHidden, bounds.contains(p) else { return false }
+        return !(hole?.contains(p) ?? false)
+    }
+}
+
 // The page card's rounded corners over a hosted window (HostedSession.swift: the hosted window is above Margin's, its
 // corners square, so it covered the card's rounded corners and whatever the theme draws around them). One small panel
 // per rounded corner, the corner's square only (the page's inner radius: `<m-page>`'s content box, ui/render.ts

@@ -126,6 +126,16 @@ extension ShortcutSet {
     }
 }
 
+extension ShortcutSet {
+    /// Whether ⌘Q and ⌥⌘Q are Margin's first (AppShortcuts' quit guard): Margin asks before it quits (`asks`: its stored
+    /// setting, off after "Always quit"), it isn't quitting already, and Margin or an app it hosts is in front
+    /// (`hostedActive`: a hosted app only with a Margin window on the current Space). Never otherwise: ⌘Q in an app
+    /// Margin doesn't host, or with asking off, is that app's as it always was.
+    static func guardsQuit(asks: Bool, quitting: Bool, frontPid: pid_t?, ownPid: pid_t, hostedPids: Set<pid_t>, marginWindowOpen: Bool, marginOnCurrentSpace: Bool) -> Bool {
+        asks && !quitting && hostedActive(frontPid: frontPid, ownPid: ownPid, hostedPids: hostedPids, marginWindowOpen: marginWindowOpen, marginOnCurrentSpace: marginOnCurrentSpace)
+    }
+}
+
 // Registering and letting go of a hot key (Carbon's, or a test's stand-in).
 protocol HotKeyRegistrar: AnyObject {
     // False if it can't be had (another app has it).
@@ -243,13 +253,14 @@ final class AppShortcuts {
     }
 
     // ---- the quit guard ----
-    // ⌘Q and ⌥⌘Q (Quit and Keep Windows), taken while a linked browser is in front with windows Margin has parked
-    // (Shell.updateKeys): Margin's first, so it closes those windows before the browser saves its windows for its
-    // next launch, then hands the same keys on (Shell.quitBrowser; seen 2026-11-07: parked windows came back as
-    // small windows on the Desktop after Safari quit). Never held otherwise: ⌘Q is the browser's as it always was.
+    // ⌘Q and ⌥⌘Q (a browser's Quit and Keep Windows), taken while Margin or an app it hosts is in front and Margin asks
+    // before it quits (ShortcutSet.guardsQuit, held by Shell.updateHostedKeys): Margin's first, so the key in a hosted
+    // app never quits that app alone and leaves Margin with a dead item; Margin's own prompt comes up instead
+    // (ShellQuit.swift, QuitPrompt.swift), and its Quit gives every hosted app back. Held apart from Margin's own keys,
+    // by their own rule. Never held otherwise: ⌘Q is the front app's as it always was.
     static let quitCombos: [(combo: Combo, keepWindows: Bool)] = [(Combo.parse("Meta+KeyQ")!, false), (Combo.parse("Alt+Meta+KeyQ")!, true)]
     static let quitIdBase: UInt32 = 900
-    var onQuit: ((Bool) -> Void)? // keep windows (⌥⌘Q) or not
+    var onQuit: ((Bool) -> Void)? // which of the two (⌥⌘Q: true)
     private(set) var guardsQuit = false
 
     func setQuitGuard(active: Bool) {
@@ -258,7 +269,7 @@ final class AppShortcuts {
         for (i, entry) in Self.quitCombos.enumerated() {
             let id = Self.quitIdBase + UInt32(i)
             if !active { registrar.unregister(id: id); continue }
-            if !registrar.register(entry.combo, id: id) { Diagnostics.warn("\(entry.combo) is another app's: Margin can't close parked windows before the browser quits by it") }
+            if !registrar.register(entry.combo, id: id) { Diagnostics.warn("\(entry.combo) is another app's: Margin can't ask before it quits by it") }
         }
     }
 

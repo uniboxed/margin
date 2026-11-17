@@ -113,7 +113,8 @@ extension Shell {
 
     // The source Margin's windows draw, and the session that hosts what they show: the library's, made once.
     func makeHostedSource() -> MarginWindowSource {
-        let profiles = DataSetWindowSource(data: data, pick: { [weak self] in self?.hostedProfile() })
+        // (A theme's settings changed in Margin's window, its sidebar's width, last across launches: the app's defaults.)
+        let profiles = DataSetWindowSource(data: data, pick: { [weak self] in self?.hostedProfile() }, keeper: options.harness ? nil : .appDefaults)
         guard let library else {
             Diagnostics.note("Margin's window: no library (its rules didn't load): a profile's spaces, read only")
             return profiles
@@ -167,6 +168,7 @@ extension Shell {
         windows.onLeftFullScreen = { [weak session] controller in session?.leftFullScreen(controller) }
         windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
         windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
+        windows.onSidebarResizing = { [weak session] controller, on in session?.sidebarResizing(controller, on) }
         windows.apps = { [weak self] in self?.appsJSON ?? "null" }
     }
 
@@ -179,8 +181,8 @@ extension Shell {
     // ---- Margin's keys while hosting (Shortcuts.swift ShortcutSet.hostedActive) ----
 
     // Held while Margin or an app it hosts is in front (with a Margin window on the current Space), let go otherwise;
-    // the combinations the first linked copy's Settings say, else the defaults. Never the quit guard (no browser of the
-    // person's is in front of Margin's windows).
+    // the combinations the first linked copy's Settings say, else the defaults. The quit guard (⌘Q, ⌥⌘Q) by the same
+    // rule, while Margin asks before it quits (ShellQuit.swift).
     func updateHostedKeys() {
         let own = ProcessInfo.processInfo.processIdentifier
         let windows = marginWindows?.controllers ?? []
@@ -196,7 +198,12 @@ extension Shell {
         }
         if active != shortcuts.isActive { Diagnostics.note("Margin's keys \(active ? "held: Margin or an app it hosts is in front" : "let go: another app is in front")") }
         shortcuts.set(active: active)
-        shortcuts.setQuitGuard(active: false)
+        let guards = ShortcutSet.guardsQuit(asks: options.asksBeforeQuit(), quitting: hostQuitting || quitsAsked > 0, frontPid: apps.frontPid, ownPid: own, hostedPids: hostedPids,
+                                            marginWindowOpen: !windows.isEmpty, marginOnCurrentSpace: here)
+        if guards != shortcuts.guardsQuit { Diagnostics.note("⌘Q \(guards ? "is Margin's first: it asks before it quits" : "let go: the front app's own")") }
+        shortcuts.setQuitGuard(active: guards)
+        // (Its prompt up and neither Margin nor an app it hosts in front any more: never left up.)
+        if !active, quitPrompt != nil { quitPrompt?.choose(.cancel) }
     }
 
     // A key of Margin's while hosting: to the Margin window hosting (else the front one), whose page does it as its own

@@ -4,10 +4,36 @@
 // opened. DataSetWindowSource is the fallback when it didn't, and gives the settings either way: one browser
 // profile's lasting data set (DataSync.swift, read only), turned into the
 // State shape pages draw as the extension's stateFromDataSet would (extension/shared/data-set.ts), every Margin
-// tab a kept tab (nothing is open in Margin's window yet). Choosing a space (per window), a setting and a theme's
-// setting changed (the sidebar kept open, its width) are kept here, in memory; nothing is written anywhere.
+// tab a kept tab (nothing is open in Margin's window yet). Choosing a space (per window) and a setting changed (the
+// sidebar kept open) are kept here, in memory; a theme's setting changed (the sidebar's width, dragged) is also kept
+// across launches, in the app's defaults (`ThemeSettingsKeeper`: until the app's own store has settings); nothing else
+// is written anywhere.
 
 import AppKit
+
+// Where the theme settings changed in Margin's window last: read once as the source is made, written at each change.
+// The app's: its defaults (`MarginWindowThemeSettings`: { theme id: { setting: a number, a string or a switch } }); a
+// test's or the harness's: none (in memory only).
+struct ThemeSettingsKeeper {
+    var read: () -> [String: JSONObject]
+    var write: ([String: JSONObject]) -> Void
+
+    static let key = "MarginWindowThemeSettings"
+    static let appDefaults = ThemeSettingsKeeper(
+        read: { clean(UserDefaults.standard.dictionary(forKey: key) ?? [:]) },
+        write: { UserDefaults.standard.set(clean($0), forKey: key) })
+
+    // Only what a theme's settings are (numbers, strings up to 200 characters, switches), for at most 50 themes of 50 settings each.
+    static func clean(_ raw: [String: Any]) -> [String: JSONObject] {
+        var out: [String: JSONObject] = [:]
+        for (theme, values) in raw.sorted(by: { $0.key < $1.key }).prefix(50) {
+            guard theme.count <= 60, let values = values as? [String: Any] else { continue }
+            let kept = values.filter { $0.key.count <= 60 && ($0.value is NSNumber || ($0.value as? String).map { $0.count <= 200 } == true) }
+            if !kept.isEmpty { out[theme] = Dictionary(uniqueKeysWithValues: kept.sorted { $0.key < $1.key }.prefix(50).map { ($0.key, $0.value) }) }
+        }
+        return out
+    }
+}
 
 final class DataSetWindowSource: MarginWindowSource {
     let data: DataSync
@@ -22,9 +48,13 @@ final class DataSetWindowSource: MarginWindowSource {
     // Requests this can't do yet, by type (the log says the first of each).
     private(set) var unhandled: [String: Int] = [:]
 
-    init(data: DataSync, pick: @escaping () -> DataProfile?) {
+    private let keeper: ThemeSettingsKeeper?
+
+    init(data: DataSync, pick: @escaping () -> DataProfile?, keeper: ThemeSettingsKeeper? = nil) {
         self.data = data
         self.pick = pick
+        self.keeper = keeper
+        themeSettings = keeper?.read() ?? [:]
         // (After the shell's own: a set changed on disk is drawn again.)
         let before = data.onChange
         data.onChange = { [weak self] p, collections in
@@ -59,6 +89,7 @@ final class DataSetWindowSource: MarginWindowSource {
         }
         if type == "updateThemeSettings", let theme = payload["themeId"] as? String, let patch = payload["patch"] as? JSONObject, !patch.isEmpty {
             themeSettings[theme, default: [:]].merge(patch) { _, new in new }
+            keeper?.write(themeSettings)
             onChange?()
             return nil
         }

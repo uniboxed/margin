@@ -406,19 +406,70 @@ final class FakeRegistrar: HotKeyRegistrar {
           QuitPrompt.choice(keyCode: 36, command: false) == .quit && QuitPrompt.choice(keyCode: 76, command: false) == .quit
           && QuitPrompt.choice(keyCode: 53, command: false) == .cancel && QuitPrompt.choice(keyCode: 12, command: true) == .quit
           && QuitPrompt.choice(keyCode: 12, command: false) == nil && QuitPrompt.choice(keyCode: 0, command: false) == nil)
+    // When ⌘Q is Margin's first: it asks before quitting, isn't quitting, and Margin or an app it hosts is in front.
+    func guards(asks: Bool = true, quitting: Bool = false, front: pid_t? = 20, hosted: Set<pid_t> = [20, 21], open: Bool = true, here: Bool = true) -> Bool {
+        ShortcutSet.guardsQuit(asks: asks, quitting: quitting, frontPid: front, ownPid: 1, hostedPids: hosted, marginWindowOpen: open, marginOnCurrentSpace: here)
+    }
+    check("quit guard: held with an app Margin hosts in front (Margin's window on the current Space), and with Margin itself in front", guards() && guards(front: 1, hosted: []) && guards(front: 1, here: false))
+    check("quit guard: an app Margin doesn't host in front: never held (⌘Q is that app's)", !guards(front: 30) && !guards(front: nil))
+    check("quit guard: a hosted app's process in front on another Space (the person's own window of it): never held", !guards(here: false))
+    check("quit guard: no Margin window open: never held", !guards(open: false) && !guards(front: 1, open: false))
+    check("quit guard: asking off (after Always quit): never held, ⌘Q is the front app's", !guards(asks: false) && !guards(asks: false, front: 1))
+    check("quit guard: Margin already quitting: let go", !guards(quitting: true))
+    // What the prompt says: numbers and Margin's own words.
+    check("quit prompt: what quitting closes, in numbers: tabs and apps", QuitSummary(tabs: 3, apps: 2, kept: 0).note
+          == "Margin will close 3 open tabs and quit 2 apps it opened. Your tabs stay in their spaces, but unsaved work may be lost.", QuitSummary(tabs: 3, apps: 2, kept: 0).note)
+    check("quit prompt: one of each, singular", QuitSummary(tabs: 1, apps: 1, kept: 0).note == "Margin will close 1 open tab and quit 1 app it opened. Your tabs stay in their spaces, but unsaved work may be lost."
+          && QuitSummary(tabs: 1, apps: 0, kept: 0).note == "Margin will close 1 open tab. It stays in its space, but unsaved work may be lost."
+          && QuitSummary(tabs: 0, apps: 1, kept: 0).note == "Margin will quit 1 app it opened. Unsaved work may be lost.")
+    check("quit prompt: tabs only, apps only", QuitSummary(tabs: 4, apps: 0, kept: 0).note == "Margin will close 4 open tabs. They stay in their spaces, but unsaved work may be lost."
+          && QuitSummary(tabs: 0, apps: 3, kept: 0).note == "Margin will quit 3 apps it opened. Unsaved work may be lost.")
+    check("quit prompt: apps the person opened themselves stay open, said so", QuitSummary(tabs: 0, apps: 1, kept: 1).note == "Margin will quit 1 app it opened. Unsaved work may be lost. 1 app you opened yourself stays open."
+          && QuitSummary(tabs: 0, apps: 0, kept: 2).note == "Nothing Margin opened is running. 2 apps you opened yourself stay open.")
+    check("quit prompt: nothing hosted", QuitSummary().note == "Nothing Margin opened is running.")
+    do {
+        let prompt = QuitPrompt(note: QuitSummary(tabs: 3, apps: 2, kept: 1).note, harness: true)
+        let view = prompt.view
+        check("quit prompt: it asks about Margin, with what it closes below; three buttons", view?.title.stringValue == "Are you sure you want to quit Margin?"
+              && view?.note.stringValue == QuitSummary(tabs: 3, apps: 2, kept: 1).note && view?.buttons.map(\.title) == ["Always quit", "Cancel", "Quit"])
+        let short = QuitPrompt(note: "Nothing Margin opened is running.", harness: true)
+        check("quit prompt: as tall as its note's lines need (a long one wraps, nothing cut off)", prompt.frame.height > short.frame.height && short.frame.height == 236
+              && (view?.note.frame.height ?? 0) >= 30 && prompt.frame.width == QuitPrompt.width, "\(prompt.frame.size) \(short.frame.size) note \(String(describing: view?.note.frame))")
+        check("quit prompt: above a hosted window and the page card's corner panels, in a full-screen Space, joining the current Space, never in the window cycle",
+              prompt.level == .modalPanel && prompt.level.rawValue > HostCorners.level.rawValue && prompt.level.rawValue > NSWindow.Level.normal.rawValue
+              && prompt.collectionBehavior.contains(.fullScreenAuxiliary) && prompt.collectionBehavior.contains(.moveToActiveSpace) && prompt.collectionBehavior.contains(.ignoresCycle)
+              && !prompt.collectionBehavior.contains(.fullScreenPrimary) && prompt.styleMask.contains(.nonactivatingPanel) && prompt.canBecomeKey && !prompt.canBecomeMain)
+        // (Margin's full-screen window: the display, top left 0,33.)
+        let over = QuitPrompt.frame(over: CGRect(x: 0, y: 33, width: 1512, height: 949), size: CGSize(width: 460, height: 236))
+        check("quit prompt: centred on Margin's window, a little above the middle", over == CGRect(x: 526, y: 350, width: 460, height: 236), "\(over)")
+        // Light and dark: nothing forces an appearance; its colours are the appearance's it's drawn in.
+        func white(_ c: NSColor, dark: Bool) -> CGFloat { QuitPromptStyle.resolved(c, dark: dark).usingColorSpace(.deviceGray)?.whiteComponent ?? -1 }
+        check("quit prompt: follows light and dark: a light card with dark text in light, a dark card with light text in dark; no appearance forced",
+              prompt.appearance == nil && view?.appearance == nil && white(QuitPromptStyle.card, dark: false) > 0.9 && white(QuitPromptStyle.card, dark: true) < 0.2
+              && white(view?.title.textColor ?? .clear, dark: false) < 0.3 && white(view?.title.textColor ?? .clear, dark: true) > 0.7
+              && white(view?.note.textColor ?? .clear, dark: false) < 0.5 && white(view?.note.textColor ?? .clear, dark: true) > 0.5,
+              "card \(white(QuitPromptStyle.card, dark: false)) / \(white(QuitPromptStyle.card, dark: true)), title \(white(view?.title.textColor ?? .clear, dark: false)) / \(white(view?.title.textColor ?? .clear, dark: true))")
+        var chose: [QuitChoice] = []
+        prompt.onChoice = { chose.append($0) }
+        prompt.show(over: CGRect(x: 0, y: 33, width: 1512, height: 949))
+        check("quit prompt: a test's is up without being ordered in or taking the keys", prompt.isUp && !prompt.isVisible && !prompt.isKeyWindow)
+        view?.buttons.first { $0.title == "Cancel" }?.press()
+        view?.buttons.first { $0.title == "Quit" }?.press()
+        check("quit prompt: one choice, once; then it's down", chose == [.cancel] && !prompt.isUp, "\(chose)")
+    }
     var quits: [Bool] = []
     keys.onQuit = { quits.append($0) }
     keys.setQuitGuard(active: true)
     let q = fake.held.first { $0.value == Combo.parse("Meta+KeyQ") }?.key, oq = fake.held.first { $0.value == Combo.parse("Alt+Meta+KeyQ") }?.key
     check("quit guard: ⌘Q and ⌥⌘Q held, apart from Margin's keys (none held now)", q != nil && oq != nil && fake.held.count == 2 && !keys.isActive)
     if let q, let oq { fake.onHit?(q); fake.onHit?(oq) }
-    check("quit guard: each press says which (⌥⌘Q keeps the windows)", quits == [false, true], "\(quits)")
+    check("quit guard: each press says which of the two it was", quits == [false, true], "\(quits)")
     keys.set(active: true)
     keys.set(active: false)
     check("quit guard: Margin's keys coming and going leave it held", fake.held.count == 2 && keys.guardsQuit)
     keys.setQuitGuard(active: false)
     if let q { fake.onHit?(q) }
-    check("quit guard: let go, ⌘Q is the browser's again", fake.held.isEmpty && quits.count == 2)
+    check("quit guard: let go, ⌘Q is the front app's again", fake.held.isEmpty && quits.count == 2)
 
     // A held key repeats at the Mac's repeat (a test clock), until let go.
     var waits: [(TimeInterval, () -> Void)] = []

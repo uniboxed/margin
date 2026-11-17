@@ -1,20 +1,53 @@
-// Margin's own prompt on ⌘Q in a browser window Margin draws around (asked 2026-11-07, after Arc's: "Are you sure
-// you want to quit? … Always quit, Cancel, Quit"). Shown centred on the front window, over Margin's layout; the
-// browser stays the active app (a panel that takes the keys without activating Margin, as the overlay's palette).
+// Margin's own prompt on ⌘Q (asked 2026-11-07, after Arc's: "Are you sure you want to quit? … Always quit, Cancel,
+// Quit"; for Margin as the app since 2026-11-17: ShellQuit.swift says when it comes up and what each choice does).
+// Shown centred on Margin's window, above whatever is hosted there: a panel above normal and floating windows (a
+// hosted full-screen member, a window-mode app's window, the page card's corner panels), joining the Space that's
+// current (Margin's full-screen one) without changing it, never in the window cycle. It
+// takes the keys without activating Margin, so a hosted app in front stays the active app.
 //
-// Return (or ⌘Q again) quits, Escape cancels, "Always quit" quits and stops asking (Shell.quitBrowser then closes
-// Margin's parked windows and hands the keys on to the browser). Clicking anywhere else cancels: it's never left up.
-// Only numbers and Margin's own words: no title, no address.
+// Return (or ⌘Q again) quits, Escape cancels, "Always quit" quits and stops asking. Clicking anywhere else cancels
+// (it loses the keys; and, should it never have got them, any press outside it is heard by its own monitors, which
+// need no permission): it's never left up. Its look follows the Mac's light or dark appearance (nothing forced:
+// QuitPromptStyle).
+// Only numbers and Margin's own words: no title, no address, no app's name (QuitSummary).
+//
+// In the tests (`harness`) it's never ordered in and never takes the keys (a panel like this would take them from the
+// person's own front app): only its state and its buttons are there.
 
 import AppKit
 
 enum QuitChoice: Equatable { case quit, always, cancel }
 
+// The prompt's colours, each for light and dark, resolved by the appearance it's drawn in.
+enum QuitPromptStyle {
+    static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
+        NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light }
+    }
+    static let card = dynamic(light: NSColor(calibratedWhite: 0.98, alpha: 0.98), dark: NSColor(calibratedWhite: 0.11, alpha: 0.97))
+    static let border = dynamic(light: NSColor(calibratedWhite: 0, alpha: 0.14), dark: NSColor(calibratedWhite: 1, alpha: 0.10))
+    static let plainButton = dynamic(light: NSColor(calibratedWhite: 0, alpha: 0.07), dark: NSColor(calibratedWhite: 1, alpha: 0.10))
+    static let badgeStroke = dynamic(light: NSColor(calibratedWhite: 0, alpha: 0.20), dark: NSColor(calibratedWhite: 1, alpha: 0.14))
+    static let destructiveButton = NSColor(calibratedRed: 0.82, green: 0.18, blue: 0.16, alpha: 1)
+
+    // A colour as it's drawn in light or dark (the tests read it).
+    static func resolved(_ color: NSColor, dark: Bool) -> NSColor {
+        var out = color
+        NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
+            out = color.usingColorSpace(.deviceRGB) ?? color
+        }
+        return out
+    }
+}
+
 final class QuitPrompt: NSPanel {
     var onChoice: ((QuitChoice) -> Void)?
     private var chosen = false
+    private let harness: Bool
+    private(set) var isUp = false
 
-    static let size = NSSize(width: 460, height: 236)
+    static let width: CGFloat = 460
+    static let level = NSWindow.Level.modalPanel
+    static let behavior: NSWindow.CollectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .ignoresCycle]
 
     /// What a key does while it's up (nil: nothing). Return quits, Escape cancels, ⌘Q quits.
     static func choice(keyCode: UInt16, command: Bool) -> QuitChoice? {
@@ -26,35 +59,76 @@ final class QuitPrompt: NSPanel {
         }
     }
 
-    init(browser: String) {
-        super.init(contentRect: NSRect(origin: .zero, size: Self.size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    init(note: String, harness: Bool = false) {
+        self.harness = harness
+        let view = QuitPromptView(note: note)
+        super.init(contentRect: NSRect(origin: harness ? CGPoint(x: -30000, y: -30000) : .zero, size: view.frame.size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         isOpaque = false
         backgroundColor = .clear
         hasShadow = true
-        level = .modalPanel
+        level = Self.level
         animationBehavior = .none
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
-        collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .ignoresCycle]
-        contentView = QuitPromptView(browser: browser) { [weak self] choice in self?.choose(choice) }
+        collectionBehavior = Self.behavior
+        isExcludedFromWindowsMenu = true
+        view.pick = { [weak self] choice in self?.choose(choice) }
+        contentView = view
     }
+
+    var view: QuitPromptView? { contentView as? QuitPromptView }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
+    /// Where it goes over a window (`window`: top-left origin, the window server's bounds): centred, a little above the middle.
+    static func frame(over window: CGRect, size: CGSize) -> CGRect {
+        CGRect(x: (window.midX - size.width / 2).rounded(), y: (window.midY - size.height / 2 - 40).rounded(), width: size.width, height: size.height)
+    }
+
     /// Shown centred on a window (`window`: top-left origin, the window server's bounds), with the keys.
     func show(over window: CGRect) {
-        let frame = ScreenGeometry.appKitRect(CGRect(x: window.midX - Self.size.width / 2, y: window.midY - Self.size.height / 2 - 40,
-                                                     width: Self.size.width, height: Self.size.height))
-        setFrame(frame, display: true)
+        isUp = true
+        guard !harness else { return } // (a test's: never on screen, never with the keys)
+        setFrame(ScreenGeometry.appKitRect(Self.frame(over: window, size: frame.size)), display: true)
         makeKeyAndOrderFront(nil)
+        watchPresses()
     }
 
     func choose(_ choice: QuitChoice) {
         guard !chosen else { return }
         chosen = true
-        orderOut(nil)
+        takeDown()
         onChoice?(choice)
+    }
+
+    /// Taken down with no choice (Margin quits some other way).
+    func dismiss() {
+        chosen = true
+        takeDown()
+    }
+
+    private func takeDown() {
+        isUp = false
+        for monitor in monitors { NSEvent.removeMonitor(monitor) }
+        monitors = []
+        if !harness { orderOut(nil) }
+    }
+
+    // A press anywhere but on the prompt while it's up: cancelled (another app's window: the global monitor; one of
+    // Margin's own: the local one). Losing the keys does the same; this holds when it never had them.
+    private var monitors: [Any] = []
+    private func watchPresses() {
+        let presses: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: presses, handler: { [weak self] _ in MainActor.assumeIsolated { self?.choose(.cancel) } }) {
+            monitors.append(global)
+        }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: presses, handler: { [weak self] event in
+            if let self, event.window !== self { self.choose(.cancel) }
+            return event
+        }) {
+            monitors.append(local)
+        }
     }
 
     override func keyDown(with event: NSEvent) {
@@ -68,57 +142,82 @@ final class QuitPrompt: NSPanel {
 
     override func cancelOperation(_ sender: Any?) { choose(.cancel) }
 
-    // Clicked away (the browser's window, another app): cancelled, never left up.
+    // Clicked away (the hosted app's window, Margin's own, another app): cancelled, never left up.
     override func resignKey() {
         super.resignKey()
         if !chosen { choose(.cancel) }
     }
 }
 
-// The prompt's look: a dark rounded card, Margin's icon, the question, and three buttons (as Arc's).
+// The prompt's look: a rounded card (light or dark, as the Mac is), Margin's icon, the question, what quitting closes,
+// and three buttons (as Arc's). Its height follows the note's lines.
 final class QuitPromptView: NSView {
-    private let pick: (QuitChoice) -> Void
+    var pick: (QuitChoice) -> Void = { _ in }
     private(set) var buttons: [PromptButton] = []
+    let title: NSTextField
+    let note: NSTextField
 
-    init(browser: String, pick: @escaping (QuitChoice) -> Void) {
-        self.pick = pick
-        super.init(frame: NSRect(origin: .zero, size: QuitPrompt.size))
-        wantsLayer = true
-        layer?.cornerRadius = 18
-        layer?.masksToBounds = true
-        layer?.backgroundColor = NSColor(calibratedWhite: 0.11, alpha: 0.97).cgColor
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.10).cgColor
-        appearance = NSAppearance(named: .darkAqua)
+    static let question = "Are you sure you want to quit Margin?"
 
-        let icon = NSImageView(image: NSApp.applicationIconImage ?? NSImage())
-        icon.frame = NSRect(x: 28, y: QuitPrompt.size.height - 28 - 48, width: 48, height: 48)
+    init(note text: String) {
+        let width = QuitPrompt.width, inset: CGFloat = 28
+        title = NSTextField(labelWithString: Self.question)
+        note = NSTextField(wrappingLabelWithString: text)
+        note.font = .systemFont(ofSize: 13)
+        note.textColor = .secondaryLabelColor
+        note.isSelectable = false
+        note.maximumNumberOfLines = 4
+        note.preferredMaxLayoutWidth = width - inset * 2
+        let noteHeight = max(18, ceil(note.sizeThatFits(NSSize(width: width - inset * 2, height: 200)).height))
+        // From the bottom: the buttons, the note, the question, the icon.
+        let buttonY: CGFloat = 24, buttonHeight: CGFloat = 36
+        let noteY = buttonY + buttonHeight + 26
+        let titleY = noteY + noteHeight + 6
+        let iconY = titleY + 28 + 22
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: iconY + 48 + inset))
+
+        let icon = NSImageView(image: NSApplication.shared.applicationIconImage ?? NSImage())
+        icon.frame = NSRect(x: inset, y: iconY, width: 48, height: 48)
         addSubview(icon)
 
-        let title = NSTextField(labelWithString: "Are you sure you want to quit \(browser)?")
         title.font = .systemFont(ofSize: 20, weight: .semibold)
-        title.textColor = .white
-        title.frame = NSRect(x: 28, y: 110, width: QuitPrompt.size.width - 56, height: 28)
+        title.textColor = .labelColor
+        title.frame = NSRect(x: inset, y: titleY, width: width - inset * 2, height: 28)
         addSubview(title)
 
-        let note = NSTextField(labelWithString: "You may lose unsaved work in your tabs.")
-        note.font = .systemFont(ofSize: 13)
-        note.textColor = NSColor(calibratedWhite: 1, alpha: 0.72)
-        note.frame = NSRect(x: 28, y: 86, width: QuitPrompt.size.width - 56, height: 18)
+        note.frame = NSRect(x: inset, y: noteY, width: width - inset * 2, height: noteHeight)
         addSubview(note)
 
-        let always = PromptButton(title: "Always quit", badge: nil, style: .plain) { pick(.always) }
-        let cancel = PromptButton(title: "Cancel", badge: "esc", style: .plain) { pick(.cancel) }
-        let quit = PromptButton(title: "Quit", badge: "↩", style: .destructive) { pick(.quit) }
-        let y: CGFloat = 24, h: CGFloat = 36
-        always.frame = NSRect(x: 28, y: y, width: always.fittingWidth, height: h)
-        quit.frame = NSRect(x: QuitPrompt.size.width - 28 - quit.fittingWidth, y: y, width: quit.fittingWidth, height: h)
-        cancel.frame = NSRect(x: quit.frame.minX - 10 - cancel.fittingWidth, y: y, width: cancel.fittingWidth, height: h)
+        let always = PromptButton(title: "Always quit", badge: nil, style: .plain) { [weak self] in self?.pick(.always) }
+        let cancel = PromptButton(title: "Cancel", badge: "esc", style: .plain) { [weak self] in self?.pick(.cancel) }
+        let quit = PromptButton(title: "Quit", badge: "↩", style: .destructive) { [weak self] in self?.pick(.quit) }
+        always.frame = NSRect(x: inset, y: buttonY, width: always.fittingWidth, height: buttonHeight)
+        quit.frame = NSRect(x: width - inset - quit.fittingWidth, y: buttonY, width: quit.fittingWidth, height: buttonHeight)
+        cancel.frame = NSRect(x: quit.frame.minX - 10 - cancel.fittingWidth, y: buttonY, width: cancel.fittingWidth, height: buttonHeight)
         for b in [always, cancel, quit] { addSubview(b) }
         buttons = [always, cancel, quit]
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override var isOpaque: Bool { false }
+
+    // The card, in the colours of the appearance it's drawn in (the Mac's: nothing sets one here).
+    override func draw(_ dirtyRect: NSRect) {
+        let card = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 18, yRadius: 18)
+        QuitPromptStyle.card.setFill()
+        card.fill()
+        QuitPromptStyle.border.setStroke()
+        card.lineWidth = 1
+        card.stroke()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+        for b in buttons { b.needsDisplay = true }
+        window?.invalidateShadow()
+    }
 }
 
 // One of the prompt's buttons: a rounded pill, its title and a key badge, pressed on mouse up inside.
@@ -144,8 +243,12 @@ final class PromptButton: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    private var titleAttrs: [NSAttributedString.Key: Any] { [.font: NSFont.systemFont(ofSize: 14, weight: .medium), .foregroundColor: NSColor.white] }
-    private var badgeAttrs: [NSAttributedString.Key: Any] { [.font: NSFont.systemFont(ofSize: 10, weight: .semibold), .foregroundColor: NSColor(calibratedWhite: 1, alpha: 0.75)] }
+    // (On the red button: white in light and dark. On a plain one: the label's own colour.)
+    private var textColor: NSColor { style == .destructive ? .white : .labelColor }
+    private var titleAttrs: [NSAttributedString.Key: Any] { [.font: NSFont.systemFont(ofSize: 14, weight: .medium), .foregroundColor: textColor] }
+    private var badgeAttrs: [NSAttributedString.Key: Any] {
+        [.font: NSFont.systemFont(ofSize: 10, weight: .semibold), .foregroundColor: style == .destructive ? NSColor(calibratedWhite: 1, alpha: 0.85) : NSColor.secondaryLabelColor]
+    }
 
     var fittingWidth: CGFloat {
         let t = (title as NSString).size(withAttributes: titleAttrs).width
@@ -154,8 +257,8 @@ final class PromptButton: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let base: NSColor = style == .destructive ? NSColor(calibratedRed: 0.82, green: 0.18, blue: 0.16, alpha: 1) : NSColor(calibratedWhite: 1, alpha: 0.10)
-        let fill = pressed ? base.blended(withFraction: 0.2, of: .black) ?? base : hovered ? base.blended(withFraction: 0.12, of: .white) ?? base : base
+        let base: NSColor = style == .destructive ? QuitPromptStyle.destructiveButton : QuitPromptStyle.plainButton
+        let fill = pressed ? base.blended(withFraction: 0.2, of: .black) ?? base : hovered ? base.blended(withFraction: 0.12, of: style == .destructive ? .white : .labelColor) ?? base : base
         fill.setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 9, yRadius: 9).fill()
         let t = (title as NSString).size(withAttributes: titleAttrs)
@@ -165,7 +268,7 @@ final class PromptButton: NSView {
         if let badge {
             let b = (badge as NSString).size(withAttributes: badgeAttrs)
             let pill = NSRect(x: x, y: (bounds.height - 18) / 2, width: b.width + 12, height: 18)
-            NSColor(calibratedWhite: 1, alpha: 0.12).setStroke()
+            (style == .destructive ? NSColor(calibratedWhite: 1, alpha: 0.30) : QuitPromptStyle.badgeStroke).setStroke()
             let path = NSBezierPath(roundedRect: pill, xRadius: 5, yRadius: 5)
             path.lineWidth = 1
             path.stroke()

@@ -163,6 +163,43 @@ func marginWindowTests() {
     sync.onChange?(DataProfile(browser: "safari", profile: "P"), ["spaces"])
     check("hosted source: the shell still hears the data set's changes (the source's comes after)", shellHeard == 1)
 
+    // ---- a theme's settings changed in Margin's window (the sidebar's width, dragged) last across launches ----
+    do {
+        var stored: [String: JSONObject] = ["arcadia": ["sidebarWidth": 300]]
+        var writes = 0
+        let keeper = ThemeSettingsKeeper(read: { stored }, write: { stored = $0; writes += 1 })
+        func source() -> DataSetWindowSource { DataSetWindowSource(data: DataSync(store: DataStore(root: tempFolder("window-theme-settings"))), pick: { nil }, keeper: keeper) }
+        func width(_ s: DataSetWindowSource, _ theme: String) -> Any? { (((s.snapshot()["settings"] as? JSONObject)?["themes"] as? JSONObject)?[theme] as? JSONObject)?["sidebarWidth"] }
+        let first = source()
+        check("theme settings: what was kept is the theme's setting from the start", int(width(first, "arcadia")) == 300 && writes == 0)
+        first.perform("updateThemeSettings", ["themeId": "arcadia", "patch": ["sidebarWidth": 342], "windowId": 1])
+        first.perform("updateThemeSettings", ["themeId": "pixel", "patch": ["sidebarWidth": "280px"], "windowId": 1])
+        check("theme settings: a width dragged is written as it's saved, each theme its own", writes == 2 && int(stored["arcadia"]?["sidebarWidth"]) == 342 && stored["pixel"]?["sidebarWidth"] as? String == "280px", "\(stored)")
+        let next = source()
+        check("theme settings: the next launch draws the width that was dragged", int(width(next, "arcadia")) == 342 && width(next, "pixel") as? String == "280px")
+        let plain = DataSetWindowSource(data: DataSync(store: DataStore(root: tempFolder("window-theme-settings-none"))), pick: { nil })
+        plain.perform("updateThemeSettings", ["themeId": "arcadia", "patch": ["sidebarWidth": 500], "windowId": 1])
+        check("theme settings: no keeper (a test's, the harness's): in memory only, nothing written", writes == 2 && int(width(plain, "arcadia")) == 500)
+        let cleaned = ThemeSettingsKeeper.clean(["arcadia": ["sidebarWidth": 300, "name": "x", "on": true, "list": [1, 2], "nested": ["a": 1], "long": String(repeating: "x", count: 201)], "bad": "not settings", "empty": [String: Any]()])
+        check("theme settings: only numbers, short strings and switches are kept, per theme", Set(cleaned.keys) == ["arcadia"] && Set(cleaned["arcadia"]?.keys.map { $0 } ?? []) == ["sidebarWidth", "name", "on"], "\(cleaned)")
+    }
+
+    // ---- the page area's ground while Margin's window is in front of the hosted one (PageGroundView) ----
+    do {
+        let ground = PageGroundView(frame: NSRect(x: 0, y: 0, width: 1512, height: 949))
+        check("ground: hidden, nothing drawn, until Margin's window is lifted over a hosted window", !ground.isShown && ground.isHidden && !ground.fills(CGPoint(x: 700, y: 400)) && ground.hitTest(NSPoint(x: 10, y: 10)) == nil)
+        // The hosted window where it was when the drag began (the page area beside a 260 pt sidebar), top left in the content.
+        let hosted = CGRect(x: 260, y: 8, width: 1244, height: 933)
+        ground.show(color: .gray, hole: hosted)
+        check("ground: the hosted window's bounds cut out (it shows through there), the ground everywhere else of the content",
+              ground.isShown && !ground.fills(CGPoint(x: 700, y: 400)) && !ground.fills(CGPoint(x: 261, y: 9)) && ground.fills(CGPoint(x: 250, y: 400)) && ground.fills(CGPoint(x: 700, y: 4))
+              && ground.fills(CGPoint(x: 1508, y: 400)) && ground.fills(CGPoint(x: 700, y: 945)) && ground.hole == hosted && ground.color == .gray)
+        ground.show(color: .gray, hole: nil)
+        check("ground: no window to see through (it left to be placed again): the ground everywhere", ground.fills(CGPoint(x: 700, y: 400)) && ground.hole == nil)
+        ground.clear()
+        check("ground: cleared: hidden again, nothing kept", !ground.isShown && ground.color == nil && ground.hole == nil && !ground.fills(CGPoint(x: 250, y: 400)))
+    }
+
     // ---- the page card's corners over a hosted window (HostCorners) ----
     do {
         let page = CGRect(x: 276, y: 41, width: 1228, height: 933)

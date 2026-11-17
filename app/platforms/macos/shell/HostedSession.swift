@@ -32,6 +32,13 @@
 //   window) as open tabs of the Margin window they're in (numbered for the UI, which takes only numbers for open
 //   tabs: `item(ofTab:)` gives the item back), the one shown in front, so the sidebar highlights it.
 //
+// - The sidebar's edge dragged while a host is shown (`sidebarResizing`, from the page's word that a change of the
+//   width began and that it's over): the page area's changes are held for the whole drag (a full-screen member can
+//   only be placed again out of full screen and in, 1–1.5 s: never one per pointer move), Margin's window in front of
+//   the hosted one meanwhile (`setLifted`: its own layout live, the hosted window seen through the page area where it
+//   still is), and the hosted window placed once when it's over, at the page area the drag ended on. Parked ones are
+//   placed for the new page area when they're next shown (the engine's own rule).
+//
 // One Margin window hosts at a time (the engine has one page area); the others draw the library as kept items.
 
 import AppKit
@@ -107,6 +114,10 @@ protocol HostedWindow: AnyObject {
     // front, and each one's row (host-app.ts `loading`, as a browser copy's `loading` push draws it over a browser).
     func setLoadingTabs(_ numbers: [Int])
     func keepBelow(_ number: Int?) // kept right below that window (another app's), nil: no more
+    // In front of the hosted window while the sidebar's edge is dragged and until that window is placed again, the
+    // hosted window seen through the page area where it still is (`through`), the page area's ground elsewhere; off:
+    // right below it again.
+    func setLifted(_ on: Bool, through: Bool)
     func cover(_ number: Int?) // ordered right above that window (a new app's, read before it's shown), nil: no more
     func push(_ json: String)
 }
@@ -398,6 +409,7 @@ final class HostedSession: LibraryDelegate {
         if engine.shown != nil { Task { await self.engine.parkShown(why: "Margin's window left full screen") } }
         if let item = requested[w.id] ?? shown[w.id] { resume[w.id] = item }
         hostingWindow = nil
+        w.setLifted(false, through: false)
         w.keepBelow(nil)
         w.cover(nil)
         w.setLoading(nil)
@@ -473,6 +485,9 @@ final class HostedSession: LibraryDelegate {
     func keepBelow(_ number: Int?) {
         guard let id = hostingWindow, let w = window(id) else { return }
         w.keepBelow(number)
+        // (Shown while the sidebar's edge is being dragged, its opening or its switch just done: Margin's window in
+        // front of it too, until the drag's one placing.)
+        if number != nil, resizing == id { w.setLifted(true, through: true) }
     }
 
     // A press in a Margin window's page area while a host is shown there (around its window: on it, the app has it
@@ -713,15 +728,52 @@ final class HostedSession: LibraryDelegate {
     // ---- the page area moved (the sidebar's width, another theme, another display) ----
 
     // Taken once per run of changes (a theme's layout reports come in bursts): the newest placement, when its turn comes.
+    // Held while the sidebar's edge is dragged (`resizing`): one placing when the drag is over.
     private var placing = false
     func pageRectChanged(_ window: HostedWindow) {
-        guard window.id == hostingWindow, engine.shown != nil, !placing else { return }
+        guard window.id == hostingWindow, engine.shown != nil, resizing != window.id, !placing else { return }
         placing = true
         enqueue {
             self.placing = false
-            guard window.id == self.hostingWindow, self.engine.shown != nil, let placement = window.hostedPlacement else { return }
-            let placed = await self.engine.pageRectChanged(placement)
-            self.note("page area changed: \(Int(placement.page.width))×\(Int(placement.page.height))\(placed ? "" : " (not fitted)")")
+            // (Asked before a drag began, its turn come during it: the drag's end places.)
+            guard self.resizing != window.id else { return }
+            await self.placeAgain(window)
+        }
+    }
+
+    private func placeAgain(_ window: HostedWindow) async {
+        guard window.id == hostingWindow, engine.shown != nil, let placement = window.hostedPlacement else { return }
+        let placed = await engine.pageRectChanged(placement)
+        note("page area changed: \(Int(placement.page.width))×\(Int(placement.page.height))\(placed ? "" : " (not fitted)")")
+    }
+
+    // The Margin window whose sidebar's edge is being dragged (its page area's changes held while it hosts).
+    private(set) var resizing: Int?
+
+    // A change of a Margin window's sidebar's width began (a drag of its edge: the page says so at the first change of
+    // the width), or is over (its last layout reported first: ui/behaviors/resize.ts). Begun: the page area's changes
+    // are held from now on, and with a host shown in it Margin's window is in front of the hosted one, which shows
+    // through the page area where it still is (one that comes to be shown mid-drag, its opening just done: the same,
+    // `keepBelow`). Over: the hosted window placed once, at the page area as it is now (a window by Accessibility, seen
+    // through until it's there; a full-screen member out of full screen and in, the ground alone and the theme's loading
+    // bar meanwhile), then Margin's window right below it again. Nothing shown: nothing to place.
+    func sidebarResizing(_ window: HostedWindow, _ on: Bool) {
+        if on {
+            guard resizing == nil else { return }
+            resizing = window.id
+            guard window.id == hostingWindow, engine.shown != nil else { return }
+            window.setLifted(true, through: true)
+            note("the sidebar's edge dragged in Margin's window \(window.id): the page area's changes held until it's let go")
+            return
+        }
+        guard resizing == window.id else { return }
+        resizing = nil
+        guard window.id == hostingWindow, let id = engine.shown else { return window.setLifted(false, through: false) }
+        // (A full-screen member leaves Margin's Space to be placed again: nothing of it to see through meanwhile.)
+        if engine.mode(of: id) != .window { window.setLifted(true, through: false) }
+        enqueue {
+            await self.placeAgain(window)
+            window.setLifted(false, through: false)
         }
     }
 

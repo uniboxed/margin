@@ -43,7 +43,8 @@
 // the target moved into Margin's Space (out of its private Space), then the one shown before moved into a private Space
 // (`SLSSpaceCreate(cid, 1, nil)`, as parking does: still full screen, ready), the target activated; target: well under
 // 100 ms. Web items of one Safari profile stay a tab switch (the session's, the engine isn't asked).
-// The page area changing (`pageRectChanged`: a theme, the display): a member's frame can't follow a reservation any more
+// The page area changing (`pageRectChanged`: a theme, the display, the sidebar's edge dragged: the session asks once,
+// when the drag is over, HostedSession.sidebarResizing): a member's frame can't follow a reservation any more
 // (its own Space is gone), so the one shown is placed again: out of full screen (on the current Space, where
 // Accessibility acts; Safari's through its copy, parked first so its exit isn't seen), then steps 3 and 5-8, with the
 // loading animation. A parked one is placed again only when it's next shown and its frame isn't the page area's.
