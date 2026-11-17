@@ -4,8 +4,8 @@
 #         app/engines/webkit/safari/tests/): tests.swift and data-tests.swift, the shell's logic on its own (no
 #         window, no link), the lasting data's merge (tests/fixtures/data-merge/), its files (in a temporary folder)
 #         and its messages; a browser's profiles (profiles-tests.swift: the order, the names' file); Safari's profile
-#         names and iCloud Tabs read from stand-ins for Safari's files (safari-profiles-tests.swift,
-#         cloud-tabs-tests.swift); macOS's private calls' launch check and wrappers against a fake resolver
+#         names read from stand-ins for Safari's files (safari-profiles-tests.swift); macOS's private calls' launch
+#         check and wrappers against a fake resolver
 #         (private-calls-tests.swift); the dev-only test hook against a fake world (devhooks-tests.swift); the user
 #         themes' store and what the picker chose, read (theme-tests.swift, in a temporary folder); the app's own
 #         spaces (library-tests.swift: its rules from dist/app/library.js in JavaScriptCore, its files and the import

@@ -32,8 +32,8 @@
 // hold the hello up to `holdFor` (a Safari read may yet map the id), or name
 // the set to carry over at once.
 //
-// The read API for the rest of the app (the overlay's UI, step 4): profiles(),
-// set(of:), values(_:of:), marginTabs(of:), and onChange.
+// The read API for the rest of the app: profiles(), set(of:), values(_:of:),
+// and onChange.
 
 import Foundation
 
@@ -109,14 +109,6 @@ final class DataSync {
 
     // A collection's live values: { id: value }.
     func values(_ collection: String, of p: DataProfile) -> [String: Any] { set(of: p)?.liveValues(collection) ?? [:] }
-
-    // The profile's Margin tabs, open or not, newest first (highest `order`).
-    func marginTabs(of p: DataProfile, space: String? = nil) -> [(id: String, value: JSONObject)] {
-        values("tabs", of: p).compactMap { id, v -> (id: String, value: JSONObject)? in
-            guard let v = v as? JSONObject, space == nil || v["spaceId"] as? String == space else { return nil }
-            return (id, v)
-        }.sorted { (num($0.value["order"]) ?? 0, $1.id) > (num($1.value["order"]) ?? 0, $0.id) }
-    }
 
     func isLinked(_ p: DataProfile) -> Bool { linked[p]?.peer?.isUp == true }
 

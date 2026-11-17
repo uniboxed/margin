@@ -1,34 +1,25 @@
-// Spaces across a browser's profiles (PLAN.md §15, docs/DATA.md "Spaces across
-// profiles"): which profile each space is in, the one order of every
-// profile's spaces the person controls, and each profile's name, emoji and
-// color. One file per browser, beside its profiles' data sets:
+// A browser's profiles as Margin.app knows them (docs/DATA.md): each profile's name, when its copy was first and last
+// linked, the browser's own id for it, and the order every profile's spaces were last in. One file per browser,
+// beside its profiles' data sets:
 //
 //   data/<browser>/browser.json
-//     { format, browser, order: [[profile, space]], profiles: { id: info }, switching: { closeWindows }, savedAt }
+//     { format, browser, order: [[profile, space]], profiles: { id: info }, savedAt }
 //
-// `switching`: how a switch between profiles treats the window it leaves
-// (docs/HANDOFF.md §5): "Close windows to save memory" (`closeWindows`, off
-// by default: the window stays open, parked out of sight). One value for the
-// whole browser, so every profile's Settings show the same.
+// Margin is the app now (hosted only, 2026-11-16): the spaces the person sees and orders are the library's
+// (Library.swift). What is left here is what hosting and the data still use:
 //
-// A space is in the profile whose data set has it: nothing in a set names
-// its profile. `order` is kept as the person left it and read against the
-// sets each time (resolve()): a space no set has any more is left out; each
-// profile's spaces fill the places its spaces had, in that profile's own
-// order (its spaces' `order`), so a move made in one profile while the app
-// wasn't there still shows; a new space goes right after the one before it
-// in its profile's order (the first of its profile: before that profile's
-// first); a profile not in the order yet comes last. A move here
-// (move()) gives back the profile's own order when it changed, for the app
-// to write into its set, so the profile's copy shows the same order alone.
-//
-// Profile names: with Full Disk Access, Safari's own (SafariProfiles.swift,
-// `useBrowserNames`), kept in step with Safari, which win over a typed one;
-// Edit Profile then keeps the emoji and color only (Margin never writes to
-// Safari). Without it, the person names each profile once; until then
-// "Default" for Safari's default profile (`s-default`) and "Profile N" for
-// the others, in the order Margin first saw them. A profile deleted in Safari
-// keeps the name Safari last gave it, as if typed.
+// - `order` (`stored`), read once by the library's import (Library.importOnce) through resolve(), the slots rule: a
+//   space no set has any more is left out; each profile's spaces fill the places its spaces had, in that profile's
+//   own order (its spaces' `order`); a new space goes right after the one before it in its profile's order (the
+//   first of its profile: before that profile's first); a profile not in the order yet comes last. Kept up to date
+//   against the sets (refresh()); nothing moves a space in it any more (the cross-profile order, its moves, Edit
+//   Profile and "Close windows to save memory" went with the overlay: 2026-11-17).
+// - Profile names: with Full Disk Access, Safari's own (SafariProfiles.swift, `useBrowserNames`), kept in step with
+//   Safari, which win over a typed one (Margin never writes to Safari): a profile's window is asked of Safari by that
+//   name (ShellProfiles.swift openProfileWindow). Without it, a name typed in an earlier version's Edit Profile, else
+//   "Default" for Safari's default profile (`s-default`) and "Profile N" for the others, in the order Margin first
+//   saw them. A profile deleted in Safari keeps the name Safari last gave it, as if typed.
+// - A profile under a new id after a signing change: its set carried over (carrySource, carry).
 
 import Foundation
 
@@ -41,9 +32,7 @@ nonisolated struct SpaceKey: Hashable, Comparable, CustomStringConvertible {
 
 struct ProfileInfo: Equatable {
     var name = ""
-    var emoji = ""
-    var color = ""
-    var named = false // the person named it
+    var named = false // the person named it (an earlier version's Edit Profile), or Safari did before it deleted the profile
     var firstSeen: Double = 0
     var lastSeen: Double = 0 // linked last (or now, while it is)
     var hidden = false // forgotten by the person: left out until its copy links again
@@ -51,15 +40,13 @@ struct ProfileInfo: Equatable {
     var browserName = "" // the name the browser last gave it
 
     var json: JSONObject {
-        var o: JSONObject = ["name": name, "emoji": emoji, "color": color, "named": named, "firstSeen": firstSeen, "lastSeen": lastSeen, "hidden": hidden]
+        var o: JSONObject = ["name": name, "named": named, "firstSeen": firstSeen, "lastSeen": lastSeen, "hidden": hidden]
         if !browserId.isEmpty { o["browserId"] = browserId; o["browserName"] = browserName }
         return o
     }
     init() {}
     init(json o: JSONObject) {
         name = o["name"] as? String ?? ""
-        emoji = o["emoji"] as? String ?? ""
-        color = o["color"] as? String ?? ""
         named = o["named"] as? Bool ?? false
         firstSeen = num(o["firstSeen"]) ?? 0
         lastSeen = num(o["lastSeen"]) ?? 0
@@ -72,32 +59,16 @@ struct ProfileInfo: Equatable {
 final class BrowserProfiles {
     static let format = 1
     static let defaultProfile = "s-default"
-    // A profile's mark until it's given a color: one of these, by when Margin first saw it.
-    static let colors = ["#6c5ce7", "#00b894", "#e17055", "#0984e3", "#fdcb6e", "#e84393", "#636e72", "#00cec9"]
-    // Not linked for this long: the profile's menu says when it was last seen.
-    static let staleMs: Double = 30 * 86_400_000
 
     let browser: String
     let url: URL?
     var now: () -> Double = { (Date().timeIntervalSince1970 * 1000).rounded() }
-    private(set) var stored: [SpaceKey] = [] // as the person left it
-    private(set) var order: [SpaceKey] = [] // resolved against the sets (refresh)
+    private(set) var stored: [SpaceKey] = [] // every profile's spaces in the order last resolved against the sets (refresh)
     private(set) var info: [String: ProfileInfo] = [:]
     private(set) var saves = 0
-    // "Close windows to save memory" (docs/HANDOFF.md §5): the window a switch leaves is closed, not parked.
-    private(set) var closeWindows = false
-    // The browser's own names now (with the permission; not saved as such): profile → name and SF Symbol.
+    // The browser's own names now (with the permission; not saved as such): profile → name.
     private(set) var browserNames: [String: BrowserName] = [:]
-    struct BrowserName: Equatable { var name: String; var symbol: String }
-
-    // Window identity uses only the copies Safari currently maps. browserNames also
-    // names historical copies after a signing change, for data carry-over and the
-    // profile picker; feeding those aliases to Accessibility makes a title ambiguous.
-    var windowNames: [String: String] {
-        Dictionary((browserList ?? []).compactMap { p in
-            p.margin.map { ($0, p.name) }
-        }, uniquingKeysWith: { a, _ in a })
-    }
+    struct BrowserName: Equatable { var name: String }
 
     // `root`: the data folder (DataStore.root); nil keeps it in memory (the unit tests).
     init(browser: String, root: URL?) {
@@ -117,8 +88,6 @@ final class BrowserProfiles {
         for (id, value) in o["profiles"] as? JSONObject ?? [:] {
             if let value = value as? JSONObject { info[id] = ProfileInfo(json: value) }
         }
-        closeWindows = (o["switching"] as? JSONObject)?["closeWindows"] as? Bool ?? false
-        order = stored
     }
 
     func save() {
@@ -128,20 +97,9 @@ final class BrowserProfiles {
             "format": Self.format, "browser": browser, "savedAt": now(),
             "order": stored.map { [$0.profile, $0.space] },
             "profiles": info.mapValues(\.json),
-            "switching": ["closeWindows": closeWindows],
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else { return }
         do { try DataStore.writeAtomically(data, to: url) } catch { Diagnostics.warn("\(browser): browser.json not saved: \(error)") }
-    }
-
-    // ---- switching ----
-
-    // "Close windows to save memory" turned on or off. True if it changed (saved then).
-    @discardableResult func setCloseWindows(_ on: Bool) -> Bool {
-        guard on != closeWindows else { return false }
-        closeWindows = on
-        save()
-        return true
     }
 
     // ---- profiles ----
@@ -164,33 +122,12 @@ final class BrowserProfiles {
         return i?.named == true && !(i?.name.isEmpty ?? true) ? i!.name : defaultName(profile)
     }
 
-    func color(_ profile: String) -> String {
-        if let c = info[profile]?.color, !c.isEmpty { return c }
-        return Self.colors[(profiles.firstIndex(of: profile) ?? 0) % Self.colors.count]
-    }
-
-    // Named by the person (an empty name: back to the default). While the
-    // browser's name is shown, the name is the browser's: only the emoji and color change.
-    @discardableResult func rename(_ profile: String, name: String, emoji: String, color: String?) -> Bool {
-        guard var i = info[profile] else { return false }
-        if browserNames[profile] == nil {
-            let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
-            i.name = trimmed
-            i.named = !trimmed.isEmpty
-        }
-        i.emoji = String(emoji.prefix(8))
-        if let color, color.range(of: "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$", options: .regularExpression) != nil { i.color = color }
-        info[profile] = i
-        save()
-        return true
-    }
-
-    // Forgotten: its spaces leave the list (its data stays) until its copy links again.
+    // Forgotten (its set was carried to the profile's new id: carry): its spaces leave the order at the next
+    // refresh (its data stays) until its copy links again.
     @discardableResult func forget(_ profile: String) -> Bool {
         guard var i = info[profile], !i.hidden else { return false }
         i.hidden = true
         info[profile] = i
-        order.removeAll { $0.profile == profile }
         save()
         return true
     }
@@ -248,12 +185,12 @@ final class BrowserProfiles {
         var changed = false
         let byId = Dictionary(list.map { ($0.serverId, $0) }, uniquingKeysWith: { a, _ in a })
         for p in list where !p.name.isEmpty {
-            if let margin = p.margin, names[margin] == nil { names[margin] = BrowserName(name: p.name, symbol: p.symbol) }
+            if let margin = p.margin, names[margin] == nil { names[margin] = BrowserName(name: p.name) }
         }
         for id in info.keys.sorted() {
             guard var i = info[id] else { continue }
             let known = i.browserId.isEmpty ? nil : byId[i.browserId]
-            if names[id] == nil, let known, !known.name.isEmpty { names[id] = BrowserName(name: known.name, symbol: known.symbol) }
+            if names[id] == nil, let known, !known.name.isEmpty { names[id] = BrowserName(name: known.name) }
             if let mapped = list.first(where: { $0.margin == id }) ?? known {
                 guard i.browserId != mapped.serverId || i.browserName != mapped.name else { continue }
                 i.browserId = mapped.serverId
@@ -306,27 +243,22 @@ final class BrowserProfiles {
 
     private static func browserOwn(_ id: String) -> Bool { id.hasPrefix("s-") && id != defaultProfile }
 
-    // `old`'s place taken by `new`: its name, emoji, color (the one it was
-    // shown with), when it was first seen and its places in the order; `old`
-    // forgotten (its data set was put away). Its copy linking again later
-    // (a switch back) brings it back, and the set is carried back the same way.
+    // `old`'s place taken by `new`: its name, when it was first seen and its
+    // places in the order; `old` forgotten (its data set was put away). Its copy
+    // linking again later (a switch back) brings it back, and the set is carried
+    // back the same way.
     func carry(from old: String, to new: String) {
         guard old != new, let o = info[old] else { return }
         var n = info[new] ?? ProfileInfo()
         n.name = o.name
         n.named = o.named
-        n.emoji = o.emoji
-        n.color = o.color.isEmpty ? color(old) : o.color
         n.firstSeen = n.firstSeen == 0 ? o.firstSeen : min(n.firstSeen, o.firstSeen)
         n.lastSeen = max(n.lastSeen, o.lastSeen)
         n.hidden = false
         if n.browserId.isEmpty { (n.browserId, n.browserName) = (o.browserId, o.browserName) }
         info[new] = n
         var seen = Set<SpaceKey>()
-        let moved = { (list: [SpaceKey]) in list.filter { $0.profile != new }.map { $0.profile == old ? SpaceKey(profile: new, space: $0.space) : $0 }.filter { seen.insert($0).inserted } }
-        stored = moved(stored)
-        seen = []
-        order = moved(order)
+        stored = stored.filter { $0.profile != new }.map { $0.profile == old ? SpaceKey(profile: new, space: $0.space) : $0 }.filter { seen.insert($0).inserted }
         _ = associate()
         save()
         forget(old)
@@ -359,7 +291,6 @@ final class BrowserProfiles {
         let visible = spaces.filter { info[$0.key]?.hidden != true }
         let resolved = Self.resolve(stored: stored, spaces: visible, profiles: profiles)
         if resolved != stored { stored = resolved; changed = true }
-        order = resolved
         if changed { save() }
         return changed
     }
@@ -395,81 +326,6 @@ final class BrowserProfiles {
             let places = out.indices.filter { out[$0].profile == p }
             for (i, at) in places.enumerated() { out[at] = SpaceKey(profile: p, space: own[i]) }
         }
-        return out
-    }
-
-    // A space moved one place along (dir -1 or 1) in the whole order. The
-    // profile's own order afterwards, if it changed (the app writes it into
-    // the set), else nil. False if it can't move.
-    func move(_ key: SpaceKey, by dir: Int) -> (moved: Bool, ownOrder: [String]?) {
-        guard let at = order.firstIndex(of: key) else { return (false, nil) }
-        let to = at + (dir < 0 ? -1 : 1)
-        guard order.indices.contains(to) else { return (false, nil) }
-        let before = order.filter { $0.profile == key.profile }.map(\.space)
-        order.swapAt(at, to)
-        stored = order
-        save()
-        let after = order.filter { $0.profile == key.profile }.map(\.space)
-        return (true, after == before ? nil : after)
-    }
-
-    // The space before or after in the whole order, wrapping around; nil with one space.
-    func neighbour(of key: SpaceKey, _ dir: Int) -> SpaceKey? {
-        guard order.count > 1, let at = order.firstIndex(of: key) else { return nil }
-        return order[(at + (dir < 0 ? -1 : 1) + order.count) % order.count]
-    }
-
-    // What a space key does in a window of `profile` showing `here` (the chained
-    // aim, a moment after a key: ShellProfiles.swift spaceKey). nil: nothing
-    // across profiles (only one has spaces): the copy's own `navigate`. `.own`:
-    // a space of the window's own profile, from one of its own. `.across`: the
-    // cross-profile switch (another profile's space, or on from an aim that's
-    // already another profile's). `.held`: a held key's repeat that would go to
-    // another profile, or on from one: nothing, so a held ⌃⌘→ starts at most one
-    // switch of profile (and its full-screen windows) per press.
-    enum SpaceStep: Equatable { case own(SpaceKey), across(SpaceKey), held }
-    func spaceStep(from here: SpaceKey, profile: String, dir: Int, isRepeat: Bool) -> SpaceStep? {
-        guard Set(order.map(\.profile)).count > 1, let next = neighbour(of: here, dir) else { return nil }
-        if here.profile == profile, next.profile == profile { return .own(next) }
-        return isRepeat ? .held : .across(next)
-    }
-
-    var profilesShown: [String] { profiles.filter { p in order.contains { $0.profile == p } } }
-
-    // What an overlay of `profile`'s window draws besides its own state
-    // (ui/host-app.ts `across`): every shown profile, and every space in the
-    // one order. `spaces`: each profile's spaces' values (name, emoji,
-    // color); `counts`: profile → space → its tabs; `linked`; `switching`:
-    // the cross-profile switch under way, if any.
-    // `symbol`: a symbol's picture (ProfileSymbols.dataURL), for a profile with the browser's name.
-    // `switchSettings`: whether "Close windows to save memory" means anything now (the handoff on, with
-    // parking): false, it isn't sent, and Settings doesn't show it.
-    func across(for profile: String, spaces: [String: [String: JSONObject]], counts: [String: [String: Int]], linked: Set<String>, switching: JSONObject? = nil,
-                switchSettings: Bool = true, symbol: (String) -> String? = { _ in nil }) -> JSONObject {
-        let t = now()
-        let shown = profilesShown.isEmpty ? [profile] : profilesShown
-        let list: [JSONObject] = (shown + (shown.contains(profile) ? [] : [profile])).map { p in
-            let i = info[p] ?? ProfileInfo()
-            var o: JSONObject = [
-                "id": p, "name": name(p), "emoji": i.emoji, "color": color(p), "named": i.named,
-                "here": p == profile, "linked": linked.contains(p),
-                "lastSeen": i.lastSeen, "stale": !linked.contains(p) && i.lastSeen > 0 && t - i.lastSeen > Self.staleMs,
-                "spaces": order.filter { $0.profile == p }.count,
-            ]
-            if let b = browserNames[p] {
-                o["nameFrom"] = browser // the browser's name: Edit Profile shows it and leaves it
-                if let picture = symbol(b.symbol) { o["symbol"] = picture }
-            }
-            return o
-        }
-        let entries: [JSONObject] = order.map { k in
-            let v = spaces[k.profile]?[k.space] ?? [:]
-            return ["profile": k.profile, "id": k.space, "name": v["name"] as? String ?? "", "emoji": v["emoji"] as? String ?? "",
-                    "color": v["color"] as? String ?? "", "tabCount": counts[k.profile]?[k.space] ?? 0]
-        }
-        var out: JSONObject = ["v": 1, "profile": profile, "profiles": list, "spaces": entries]
-        if switchSettings { out["switchSettings"] = ["closeWindows": closeWindows] }
-        if let switching { out["switching"] = switching }
         return out
     }
 }

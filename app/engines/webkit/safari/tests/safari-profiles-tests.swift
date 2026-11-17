@@ -194,9 +194,18 @@ func safariProfilesTests() {
     // ---- the names used ----
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-names-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
+    // A name typed in an earlier version's Edit Profile (nothing types one now): as its browser.json has it.
+    func typeName(_ profile: String, _ name: String, in root: URL) {
+        let file = root.appendingPathComponent("safari/browser.json")
+        guard var o = (try? JSONSerialization.jsonObject(with: Data(contentsOf: file))) as? JSONObject, var list = o["profiles"] as? JSONObject else { return }
+        list[profile] = (list[profile] as? JSONObject ?? [:]).merging(["name": name, "named": true]) { $1 }
+        o["profiles"] = list
+        try? JSONSerialization.data(withJSONObject: o).write(to: file)
+    }
+    BrowserProfiles(browser: "safari", root: root).refresh(spaces: ["s-default": ["a"], personal: ["b"], "s-9": ["c"]], linked: ["s-default", personal])
+    typeName(personal, "Typed", in: root)
     let bp = BrowserProfiles(browser: "safari", root: root)
-    bp.refresh(spaces: ["s-default": ["a"], personal: ["b"], "s-9": ["c"]], linked: ["s-default", personal])
-    bp.rename(personal, name: "Typed", emoji: "🏠", color: "#00b894")
+    check("names: a typed one read from the file", bp.name(personal) == "Typed")
     let safariList = [
         SafariProfile(serverId: "DefaultProfile", uuid: "DefaultProfile", name: "Work", symbol: "person.fill", margin: "s-default"),
         SafariProfile(serverId: FakeSafari.personalServer, uuid: "A9", name: "Personal", symbol: "person.lanyardcard.fill", margin: personal),
@@ -206,14 +215,8 @@ func safariProfilesTests() {
     check("names: Safari's win over a typed one", bp.name("s-default") == "Work" && bp.name(personal) == "Personal", bp.name(personal))
     check("names: a profile Safari doesn't name keeps Margin's", bp.name("s-9") == "Profile 3", bp.name("s-9"))
     check("names: the same again: nothing changed", !bp.useBrowserNames(safariList))
-    bp.rename(personal, name: "Something else", emoji: "🎒", color: "#e17055")
-    check("names: Edit Profile keeps Safari's name, the emoji and color change", bp.name(personal) == "Personal" && bp.info[personal]?.emoji == "🎒" && bp.color(personal) == "#e17055")
     check("names: the typed name is kept for later", bp.info[personal]?.name == "Typed")
-    let across = bp.across(for: "s-default", spaces: [:], counts: [:], linked: ["s-default"], symbol: { $0.isEmpty ? nil : "data:image/png;base64,AAAA" })
-    let entry = (across["profiles"] as? [JSONObject])?.first { $0["id"] as? String == personal }
-    check("names: across says the name is Safari's, with its symbol", entry?["nameFrom"] as? String == "safari" && entry?["symbol"] as? String == "data:image/png;base64,AAAA" && entry?["name"] as? String == "Personal")
-    let other = (across["profiles"] as? [JSONObject])?.first { $0["id"] as? String == "s-9" }
-    check("names: and nothing for Margin's own", other?["nameFrom"] == nil && other?["symbol"] == nil)
+    check("names: Safari's own, for the profiles it names only", bp.browserNames[personal]?.name == "Personal" && bp.browserNames["s-9"] == nil)
     bp.refresh(spaces: ["s-default": ["a"], personal: ["b"], "s-9": ["c"], test: ["d"]], linked: ["s-default", personal, test])
     check("names: a profile seen after the read gets Safari's name at once", bp.name(test) == "Test" && bp.info[test]?.browserId == FakeSafari.testServer)
     let reloaded = BrowserProfiles(browser: "safari", root: root)
@@ -240,7 +243,6 @@ func safariProfilesTests() {
     let oldId = "s-5068e0e4-81aa-4ec4-a74a-bb4da5a64a41", newId = personal
     let cp = BrowserProfiles(browser: "safari", root: nil)
     cp.refresh(spaces: ["s-default": ["w"], oldId: ["a1", "a2"]], linked: ["s-default", oldId])
-    cp.rename(oldId, name: "", emoji: "🏠", color: "#00b894")
     let readBefore = [SafariProfile(serverId: "DefaultProfile", uuid: "DefaultProfile", name: "Work", symbol: "", margin: "s-default"),
                   SafariProfile(serverId: FakeSafari.personalServer, uuid: "A9", name: "Personal", symbol: "", margin: oldId)]
     let hasOld = { (id: String) in id == oldId }
@@ -253,29 +255,21 @@ func safariProfilesTests() {
     check("carry source: the read doesn't map the new one: none yet", cp.carrySource(for: newId, hasSet: hasOld, linked: [newId]) == nil)
     let readAfter = readBefore.map { var p = $0; if p.margin == oldId { p.margin = newId }; return p }
     cp.useBrowserNames(readAfter)
-    check("startup: historical copies keep their names for carry-over, but only the current copy names a window",
-          cp.browserNames[oldId]?.name == "Personal" && cp.windowNames[oldId] == nil && cp.windowNames[newId] == "Personal")
+    check("startup: historical copies keep their names for carry-over", cp.browserNames[oldId]?.name == "Personal" && cp.browserNames[newId]?.name == "Personal")
     let src = cp.carrySource(for: newId, hasSet: hasOld, linked: [newId, "s-default"])
     check("carry source: the read maps Safari's profile to the new id: the old id's set", src?.old == oldId && src?.browserId == FakeSafari.personalServer, "\(String(describing: src))")
     check("carry source: no hold once the read maps it", !cp.mightCarry(newId, hasSet: hasOld, linked: [newId]))
     check("carry source: not if the old one is linked again", cp.carrySource(for: newId, hasSet: hasOld, linked: [newId, oldId]) == nil)
     check("carry source: not with no set", cp.carrySource(for: newId, hasSet: { _ in false }, linked: [newId]) == nil)
-    let colorBefore = cp.color(oldId)
     cp.refresh(spaces: ["s-default": ["w"], oldId: ["a1", "a2"], newId: ["n1"]], linked: ["s-default", newId])
-    let orderBefore = cp.order.filter { $0.profile != newId }.map { $0.profile == oldId ? SpaceKey(profile: newId, space: $0.space) : $0 }
+    let orderBefore = cp.stored.filter { $0.profile != newId }.map { $0.profile == oldId ? SpaceKey(profile: newId, space: $0.space) : $0 }
+    let firstSeen = cp.info[oldId]?.firstSeen
     cp.carry(from: oldId, to: newId)
     cp.refresh(spaces: ["s-default": ["w"], newId: ["a1", "a2"]], linked: ["s-default", newId])
-    check("carry: the old profile's emoji and color go with it", cp.info[newId]?.emoji == "🏠" && cp.color(newId) == colorBefore && cp.name(newId) == "Personal")
+    check("carry: the old profile's name and first sight go with it", cp.name(newId) == "Personal" && cp.info[newId]?.firstSeen == firstSeen)
     check("carry: the old one forgotten, its places in the order the new one's", cp.info[oldId]?.hidden == true
-          && cp.order == orderBefore && orderBefore.count == 3, "\(cp.order)")
-    check("carry: one Personal in across", ((cp.across(for: "s-default", spaces: [:], counts: [:], linked: ["s-default", newId])["profiles"] as? [JSONObject]) ?? []).filter { $0["name"] as? String == "Personal" }.count == 1)
+          && cp.stored == orderBefore && orderBefore.count == 3, "\(cp.stored)")
+    check("carry: one Personal shown", cp.profiles.filter { cp.info[$0]?.hidden != true && cp.name($0) == "Personal" } == [newId])
     cp.dropBrowserNames()
-    check("startup: without Safari's mapping, historical names never identify a window", cp.windowNames.isEmpty)
     check("carry source: no read (no permission): none", cp.carrySource(for: newId, hasSet: { $0 == oldId }, linked: [newId]) == nil && !cp.mightCarry(oldId, hasSet: { $0 == newId }, linked: [oldId]))
-
-    // ---- the symbol's picture ----
-    let picture = ProfileSymbols.dataURL("person.fill")
-    check("symbol: a PNG data URL", picture?.hasPrefix("data:image/png;base64,") == true && (picture?.count ?? 0) > 60, "\(picture?.prefix(40) ?? "none")")
-    check("symbol: made once", ProfileSymbols.dataURL("person.fill") == picture)
-    check("symbol: not a symbol: none", ProfileSymbols.dataURL("no.such.symbol.margin") == nil && ProfileSymbols.dataURL("") == nil)
 }

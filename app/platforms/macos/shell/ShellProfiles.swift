@@ -1,4 +1,4 @@
-// The shell's side of a browser's profiles (BrowserProfiles.swift): each profile's name and mark, Safari's own names
+// The shell's side of a browser's profiles (BrowserProfiles.swift): each profile's name, Safari's own names
 // for its profiles kept in step (SafariProfiles.swift), a profile's set carried over when Safari gives it a new id,
 // and a profile's window asked of Safari when the host needs one and its copy isn't running.
 
@@ -92,9 +92,8 @@ extension Shell {
 
 
     // Each profile's spaces in its own order (its set's, or its copy's state while linked).
-    private func ownSpaces(_ browser: String) -> (ids: [String: [String]], values: [String: [String: JSONObject]]) {
+    private func ownSpaces(_ browser: String) -> [String: [String]] {
         var ids: [String: [String]] = [:]
-        var values: [String: [String: JSONObject]] = [:]
         var profiles = Set(data.profiles(browser: browser).map(\.profile))
         for entry in links.values where entry.connection.hello.browser == browser { profiles.insert(entry.connection.hello.profile) }
         for p in profiles {
@@ -110,13 +109,12 @@ extension Shell {
                 for (id, v) in data.values("spaces", of: DataProfile(browser: browser, profile: p)) { if let v = v as? JSONObject { list[id] = v } }
             }
             guard !list.isEmpty else { continue }
-            values[p] = list
             ids[p] = list.keys.sorted { (num(list[$0]?["order"]) ?? 0, $0) < (num(list[$1]?["order"]) ?? 0, $1) }
         }
-        return (ids, values)
+        return ids
     }
 
-    // Each browser's profiles and the one order of their spaces brought up to date (data/<browser>/browser.json: the
+    // Each browser's profiles and the order of their spaces brought up to date (data/<browser>/browser.json: the
     // library's import reads it, a profile's set is carried over by it), on the next turn.
     func profilesSoon() {
         guard !profilesQueued else { return }
@@ -124,7 +122,7 @@ extension Shell {
         DispatchQueue.main.async { MainActor.assumeIsolated {
             self.profilesQueued = false
             for browser in Set(self.links.values.map(\.connection.hello.browser)) {
-                self.profilesOf(browser).refresh(spaces: self.ownSpaces(browser).ids, linked: self.linkedProfiles(browser))
+                self.profilesOf(browser).refresh(spaces: self.ownSpaces(browser), linked: self.linkedProfiles(browser))
             }
         } }
     }

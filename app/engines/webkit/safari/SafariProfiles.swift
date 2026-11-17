@@ -1,7 +1,7 @@
 // Safari's own profile names (Phase 2 step 9, chosen 2026-11-05: "option A"),
 // read from Safari's files with Full Disk Access, read only, and kept in step
 // with Safari while Margin.app runs. Without the permission nothing here is
-// read and Margin keeps the names typed in its Edit Profile (BrowserProfiles.swift).
+// read and Margin keeps its own names for the profiles (BrowserProfiles.swift).
 //
 // Where Safari keeps them (Safari 27.2, learned from a read-only probe in
 // Margin.app and Safari's own code, DECISIONS.md "Margin 2, Phase 2 step 9"):
@@ -41,7 +41,6 @@
 // waiting. Only profiles' names, symbols and ids are read; never a tab, an
 // address or another extension's settings. The log says names and ids only.
 
-import AppKit
 import Foundation
 import Security
 import SQLite3
@@ -340,39 +339,5 @@ final class SafariProfileWatcher: SafariFileWatcher<SafariProfiles.Outcome> {
         if name == "SafariTabs.db" || name == "SafariTabs.db-wal" || name == "Extensions.plist" { return true }
         let parent = ((path as NSString).deletingLastPathComponent as NSString).lastPathComponent
         return parent == "Profiles" || name == "Profiles" || name == "WebExtensions"
-    }
-}
-
-// A profile's SF Symbol as a small white picture for a theme's profile mark
-// (an `m-icon`: a data: URL, ui/sanitize.ts checkIconUrl), made once per symbol.
-enum ProfileSymbols {
-    private static var made: [String: String] = [:]
-
-    static func dataURL(_ name: String, points: CGFloat = 12, scale: CGFloat = 2) -> String? {
-        guard !name.isEmpty else { return nil }
-        if let known = made[name] { return known.isEmpty ? nil : known }
-        let url = render(name, points: points, scale: scale) ?? ""
-        made[name] = url
-        return url.isEmpty ? nil : url
-    }
-
-    private static func render(_ name: String, points: CGFloat, scale: CGFloat) -> String? {
-        let config = NSImage.SymbolConfiguration(pointSize: points * 0.8, weight: .semibold).applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
-        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return nil }
-        let side = Int(points * scale)
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8, samplesPerPixel: 4,
-                                         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
-        rep.size = NSSize(width: points, height: points)
-        NSGraphicsContext.saveGraphicsState()
-        defer { NSGraphicsContext.restoreGraphicsState() }
-        guard let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
-        NSGraphicsContext.current = context
-        let size = symbol.size
-        let fit = min(points / max(size.width, 1), points / max(size.height, 1), 1)
-        let w = size.width * fit, h = size.height * fit
-        symbol.draw(in: NSRect(x: (points - w) / 2, y: (points - h) / 2, width: w, height: h))
-        context.flushGraphics()
-        guard let png = rep.representation(using: .png, properties: [:]) else { return nil }
-        return "data:image/png;base64," + png.base64EncodedString()
     }
 }

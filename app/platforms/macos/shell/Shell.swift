@@ -28,9 +28,6 @@ final class Shell: ExtensionLinkDelegate {
         // Safari's data folder, for its profiles' names (SafariProfiles.swift); nil: not read (the harness, the tests).
         var safariData: URL?
         var safariWatch = SafariProfileWatcher.Options()
-        // Safari's data folder, for iCloud Tabs (CloudTabs.swift); nil: not read (the harness, unless a test gives a stand-in).
-        var cloudTabsData: URL?
-        var cloudWatch = CloudTabsWatcher.Options()
         // macOS's private calls (PrivateCalls.swift): the system's only in forApp(); nil (every test, the harness):
         // none, and the host stays off.
         var privateResolver: PrivateResolver?
@@ -88,12 +85,6 @@ final class Shell: ExtensionLinkDelegate {
     var safariNames: SafariProfileWatcher? // Safari's profile names (ShellProfiles.swift startSafariNames)
     var profilesQueued = false
 
-    // ---- iCloud Tabs (ShellCloudTabs.swift) ----
-    var cloudWatcher: CloudTabsWatcher? // while a Safari copy shows them
-    var cloudJSON: String? // what was read last
-    var opened: [URL] = [] // a test's: what was asked to open
-    var copied: [String] = [] // a test's: what was asked to be copied
-
     // ---- installed apps (ShellApps.swift) ----
     var appCatalog: AppCatalogWatcher?
     var appsJSON: String? // the list last read, as Margin's windows get it
@@ -138,7 +129,6 @@ final class Shell: ExtensionLinkDelegate {
     static func forApp() -> Shell {
         var options = Options()
         options.safariData = SafariProfiles.safariFolder
-        options.cloudTabsData = SafariProfiles.safariFolder
         options.privateResolver = RealPrivateResolver()
         options.privateCallsDefaults = .standard
         Diagnostics.note("Margin's own window, the library, installed apps in the palette, the host engine")
@@ -194,8 +184,6 @@ final class Shell: ExtensionLinkDelegate {
         safariNames?.stop()
         devHooks?.stop() // DEV-HOOK
         devHooks = nil // DEV-HOOK
-        cloudWatcher?.stop()
-        cloudWatcher = nil
         appsStop()
         marginWindows?.closeAll()
         link.stop(why: "Margin.app quit", then: then)
@@ -222,7 +210,6 @@ final class Shell: ExtensionLinkDelegate {
         apps.start()
         if connection.hello.browser == "safari" { safariCopyLinked() }
         profilesSoon()
-        cloudTabsCheck()
         soon()
     }
 
@@ -233,9 +220,8 @@ final class Shell: ExtensionLinkDelegate {
             switch entry.mirror.apply(message) {
             case .applied:
                 entry.resyncTimer?.invalidate()
-                if case .snapshot = message { profilesSoon(); cloudTabsCheck(); themesTellCopy(entry) }
+                if case .snapshot = message { profilesSoon(); themesTellCopy(entry) }
                 if case .delta(_, _, let changes, _) = message, changes["spaces"] != nil { profilesSoon() }
-                if case .delta(_, _, let changes, _) = message, changes["settings"] != nil { cloudTabsCheck() }
                 tellDrawn(entry)
                 soon()
             case .gap(let expected, let got):
@@ -283,20 +269,7 @@ final class Shell: ExtensionLinkDelegate {
         links[connection.key] = nil
         data.linkDown(connection)
         profilesSoon()
-        cloudTabsCheck()
         soon()
-    }
-
-    // A profile's Margin tabs that aren't open: all of them for a profile not
-    // linked, else those no open tab of its copy's state carries (openTabs.tabs[*].mid).
-    func notOpenTabs(_ p: DataProfile, space: String? = nil) -> [(id: String, value: JSONObject)] {
-        let open: Set<String>
-        if let entry = links[p.key], entry.mirror.hasState, let records = (entry.mirror.value("openTabs") as? JSONObject)?["tabs"] as? JSONObject {
-            open = Set(records.values.compactMap { ($0 as? JSONObject)?["mid"] as? String })
-        } else {
-            open = []
-        }
-        return data.marginTabs(of: p, space: space).filter { !open.contains($0.id) }
     }
 
     private func resync(_ entry: Link) {
