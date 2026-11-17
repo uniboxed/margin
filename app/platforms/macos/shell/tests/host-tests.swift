@@ -61,6 +61,9 @@ final class FakeHostWorld: HostSystem {
     var lastArguments: [String] = []
     var listeners: [pid_t: (Int32) -> Void] = [:]
     var onAppQuit: ((pid_t) -> Void)?
+    // The behaviour classes' stand-ins (behaviour-world.swift): told of each dockless launch, and of each step of the clock.
+    var onLaunch: ((pid_t) -> Void)?
+    var onClock: (() -> Void)?
     // The bridge's move lands this long after it's asked (the window's Spaces read the old ones until then).
     var moveLag = 0.01
     var noMoveIn: Set<Int> = [] // windows the bridge doesn't move into Margin's Space
@@ -354,6 +357,7 @@ final class FakeHostWorld: HostSystem {
             advance()
             for (pid, at) in uikitQuits where clock >= at { uikitQuits[pid] = nil; quitNow(pid) }
             for (n, at) in lateAsks where clock + 1e-9 >= at { lateAsks[n] = nil; if let pid = wins[n]?.pid { applyFullScreen(pid: pid, window: n, true) } }
+            onClock?()
         }
         await Task.yield()
     }
@@ -458,6 +462,7 @@ final class FakeHostWorld: HostSystem {
             for n in apps[pid]?.windows ?? [] where wins[n]?.spaces == [Self.desktop] { wins[n]?.spaces = [current] }
         }
         if restoredOnUnhide.contains(bundleId) { madeOnUnhide.formUnion(apps[pid]?.windows ?? []) }
+        onLaunch?(pid)
         return true
     }
     var frameAtQuit: [String: CGRect] = [:] // each app's window's frame as it was asked to quit
