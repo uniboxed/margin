@@ -192,11 +192,57 @@ func hostedScenario() async {
   options.harness = true
   options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
   options.dataRoot = root
+  // (Margin's quit and whether it asks first, kept here: never the app's defaults.)
+  final class Quit { var asks = true; var asked = 0 }
+  let quit = Quit()
+  options.asksBeforeQuit = { quit.asks }
+  options.setAskBeforeQuit = { quit.asks = $0 }
+  options.quit = { quit.asked += 1 }
   let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.hosted.\(ProcessInfo.processInfo.processIdentifier)"))
-  let shell = Shell(link: link, apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
+  let frontApps = ScriptedApps(), hotKeys = FakeKeys()
+  let shell = Shell(link: link, apps: frontApps, hotKeys: hotKeys, options: options)
   let made = shell.makeMarginWindows()
   check("the shell's windows: made once, in a test never on a display", made === shell.makeMarginWindows() && made.options.harness)
   check("the shell's windows draw the library: nothing imported, a first space, Personal", made.source is LibraryWindowSource
         && ((made.source.snapshot()["spaces"] as? [JSONObject])?.first?["name"] as? String) == "Personal")
+
+  // ---- ⌘Q with Margin itself in front (nothing hosted): its prompt; Always quit quits and stops asking ----
+  let command = Combo.parse("Meta+KeyQ")!
+  shell.track()
+  check("quit: no Margin window open: ⌘Q isn't held", !shell.shortcuts.guardsQuit && !hotKeys.held.values.contains(command))
+  let own = made.open()
+  frontApps.bringToFront(1) // (another app in front)
+  shell.track()
+  check("quit: another app in front: ⌘Q is that app's", !shell.shortcuts.guardsQuit && !hotKeys.held.values.contains(command))
+  frontApps.bringToFront(ProcessInfo.processInfo.processIdentifier)
+  shell.track()
+  check("quit: Margin in front with a window: ⌘Q is Margin's first", shell.shortcuts.guardsQuit && hotKeys.held.values.contains(command))
+  hotKeys.press("Meta+KeyQ")
+  check("quit: ⌘Q with Margin in front: its prompt, nothing asked of the app yet; nothing hosted, said so", shell.quitPrompt?.isUp == true && quit.asked == 0
+        && shell.quitPrompt?.view?.note.stringValue == "Nothing Margin opened is running.", shell.quitPrompt?.view?.note.stringValue ?? "none")
+  check("quit: the prompt is never ordered in or given the keys in a test", shell.quitPrompt?.isVisible == false && shell.quitPrompt?.isKeyWindow == false)
+  shell.quitPrompt?.view?.buttons.first { $0.title == "Always quit" }?.press()
+  check("quit: Always quit: Margin's quit asked once, and it stops asking (its stored setting off)", quit.asked == 1 && !quit.asks && shell.quitPrompt == nil && shell.quitsAsked == 1)
+  shell.track()
+  check("quit: … ⌘Q let go for the quit", !shell.shortcuts.guardsQuit && !hotKeys.held.values.contains(command))
+  own.close()
   shell.stop {}
+  // The next launch, asking off: ⌘Q is never held, with Margin in front too (its menu's Quit, as any app's).
+  do {
+    var again = options
+    again.dataRoot = root.appendingPathComponent("again")
+    let apps2 = ScriptedApps(), keys2 = FakeKeys()
+    let shell2 = Shell(link: SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.hosted2.\(ProcessInfo.processInfo.processIdentifier)")), apps: apps2, hotKeys: keys2, options: again)
+    let windows2 = shell2.makeMarginWindows()
+    let w2 = windows2.open()
+    apps2.bringToFront(ProcessInfo.processInfo.processIdentifier)
+    shell2.track()
+    check("quit: asking off (after Always quit): ⌘Q isn't Margin's hot key even with Margin in front, its other keys held as before",
+          !shell2.shortcuts.guardsQuit && !keys2.held.values.contains(command) && shell2.shortcuts.isActive && keys2.held.values.contains(Combo.parse("Meta+KeyT")!))
+    quit.asks = true
+    shell2.track()
+    check("quit: asking on again (the stored setting): held again at the next read", shell2.shortcuts.guardsQuit && keys2.held.values.contains(command))
+    w2.close()
+    shell2.stop {}
+  }
 }

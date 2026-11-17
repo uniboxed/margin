@@ -51,6 +51,12 @@ final class Shell: ExtensionLinkDelegate {
         var hostSystem: HostSystem?
         var hostOptions: HostEngine.Options?
         var hostedOptions: HostedSession.Options?
+        // Whether ⌘Q asks first (Margin's own prompt: ShellQuit.swift) and its "Always quit" (MarginAskBeforeQuit in
+        // the app's defaults, forApp; a test keeps its own), and Margin's quit itself (the app's terminate, which
+        // comes back to stop(); a test's: its own).
+        var asksBeforeQuit: () -> Bool = { true }
+        var setAskBeforeQuit: (Bool) -> Void = { _ in }
+        var quit: () -> Void = {}
     }
 
     final class Link {
@@ -112,6 +118,8 @@ final class Shell: ExtensionLinkDelegate {
     var hosted: HostedSession?
     var browserPrepared = false // (the default browser made ready once per launch: prepareBrowserOnce)
     var hostedKeysRun: [String] = [] // Margin's keys run while hosting, newest last (the tests read it)
+    var quitPrompt: QuitPrompt? // Margin's quit prompt, while it's up (ShellQuit.swift)
+    var quitsAsked = 0 // Margin's quit asked of the app (Options.quit) by the prompt's Quit or Always quit (the tests read it)
     var devHooks: DevHooks? // DEV-HOOK: the dev-only test hook (DevHooks.swift), only with Options.devHooksOn
     // ---- user themes (ShellThemes.swift) ----
     lazy var userThemes = UserThemes(harness: options.harness)
@@ -132,6 +140,7 @@ final class Shell: ExtensionLinkDelegate {
         }
         apps.onChange = { [weak self] _ in self?.soon() }
         shortcuts.onCommand = { [weak self] command, isRepeat in self?.run(command, isRepeat: isRepeat) }
+        shortcuts.onQuit = { [weak self] _ in self?.quitKey() }
     }
 
     // The app's own: the window server and NSWorkspace, Carbon's hot keys.
@@ -147,6 +156,9 @@ final class Shell: ExtensionLinkDelegate {
             if UserDefaults.standard.string(forKey: "MarginLastBrowser") != browser { UserDefaults.standard.set(browser, forKey: "MarginLastBrowser") }
         }
         options.devHooksOn = { DevHooks.appDefault() } // DEV-HOOK
+        options.asksBeforeQuit = { UserDefaults.standard.object(forKey: Shell.askBeforeQuitKey) as? Bool ?? true }
+        options.setAskBeforeQuit = { UserDefaults.standard.set($0, forKey: Shell.askBeforeQuitKey) }
+        options.quit = { NSApp.terminate(nil) }
         options.safariAX = true
         SafariAX.askOnce()
         Diagnostics.note(SafariAX.trusted ? "Accessibility: on" : "Accessibility: not granted")
@@ -190,6 +202,8 @@ final class Shell: ExtensionLinkDelegate {
         stopped = true
         pollTimer?.invalidate()
         shortcuts.set(active: false)
+        shortcuts.setQuitGuard(active: false)
+        dismissQuitPrompt()
         apps.stop()
         safariNames?.stop()
         devHooks?.stop() // DEV-HOOK

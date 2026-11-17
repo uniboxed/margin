@@ -182,6 +182,12 @@ func glueScenario() async {
   var hostedOptions = HostedSession.Options()
   hostedOptions.linkWait = 5
   options.hostedOptions = hostedOptions
+  // (Margin's quit, as the app's terminate would come back to the shell's stop; asking, kept here.)
+  final class Quit { var asks = true; var asked = 0; var stopped = false; var run: () -> Void = {} }
+  let quit = Quit()
+  options.asksBeforeQuit = { quit.asks }
+  options.setAskBeforeQuit = { quit.asks = $0 }
+  options.quit = { quit.asked += 1; quit.run() }
   let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.glue.\(ProcessInfo.processInfo.processIdentifier)"))
   let apps = ScriptedApps()
   let keys = FakeKeys()
@@ -377,12 +383,12 @@ func glueScenario() async {
   // ---- Margin's keys while hosting: held while Margin or a hosted app is in front, the next/previous item of the space ----
   apps.bringToFront(1) // (an app Margin doesn't host)
   shell.track()
-  check("keys: another app in front: Margin's keys let go", !shell.shortcuts.isActive && keys.held.isEmpty)
+  check("keys: another app in front: Margin's keys let go, ⌘Q that app's own", !shell.shortcuts.isActive && !shell.shortcuts.guardsQuit && keys.held.isEmpty)
   let calcPid = world.apps.values.first { $0.bundle == GlueHostWorld.calculator }?.pid ?? 0
   apps.bringToFront(calcPid)
   shell.track()
-  check("keys: a hosted app in front (Calculator): Margin's keys held, the defaults (⌥⌘↑/↓, ⌘T…) but the sidebar's (docked while hosting), never the quit guard", shell.shortcuts.isActive && keys.held.values.contains(Combo.parse("Alt+Meta+ArrowDown")!)
-        && !shell.shortcuts.guardsQuit && !keys.held.values.contains(Combo.parse("Alt+KeyS")!), "\(keys.held.values)")
+  check("keys: a hosted app in front (Calculator): Margin's keys held, the defaults (⌥⌘↑/↓, ⌘T…) but the sidebar's (docked while hosting), and ⌘Q and ⌥⌘Q (Margin asks before it quits)", shell.shortcuts.isActive && keys.held.values.contains(Combo.parse("Alt+Meta+ArrowDown")!)
+        && shell.shortcuts.guardsQuit && keys.held.values.contains(Combo.parse("Meta+KeyQ")!) && keys.held.values.contains(Combo.parse("Alt+Meta+KeyQ")!) && !keys.held.values.contains(Combo.parse("Alt+KeyS")!), "\(keys.held.values)")
   let calcItem = session.shown[c.id] ?? ""
   keys.press("Alt+Meta+ArrowUp")
   let movedOn = await until(5, { (session.shown[c.id] ?? calcItem) != calcItem })
@@ -426,11 +432,44 @@ func glueScenario() async {
         "\(fake.all("drawn").map { "\(int($0["windowId"]) ?? -1)=\($0["on"] ?? "?")" })")
   check("nothing laid out for the copy's windows", fake.first("setLayout") == nil)
 
-  // ---- quitting: the hosted apps given back while the link is up ----
+  // ---- ⌘Q with an app Margin hosts in front: Margin's own prompt ----
+  // (The app shown now, in front: one Margin hosts.)
+  let hostedPid = engine.shown.flatMap { engine.hosts[$0]?.pid } ?? 0
+  apps.bringToFront(hostedPid)
+  shell.track()
+  let running = Set(world.apps.keys), shownNow = engine.shown, itemNow = session.shown[c.id], members = world.inMargin
+  let untouched = { quit.asked == 0 && Set(world.apps.keys) == running && engine.shown == shownNow && session.shown[c.id] == itemNow && world.inMargin == members && members.count == 1
+    && !world.calls.contains { $0.hasPrefix("terminate") } }
+  check("quit: a hosted app in front: ⌘Q and ⌥⌘Q are Margin's first", hostedPid != 0 && shell.shortcuts.guardsQuit && keys.held.values.contains(Combo.parse("Meta+KeyQ")!) && keys.held.values.contains(Combo.parse("Alt+Meta+KeyQ")!))
+  keys.press("Meta+KeyQ")
+  let said = shell.quitPrompt?.view?.note.stringValue ?? ""
+  check("quit: ⌘Q with a hosted app in front: Margin's prompt, nothing quit, nothing given back yet", shell.quitPrompt?.isUp == true && untouched(), "\(world.calls.suffix(3))")
+  check("quit: the prompt asks about Margin and says what quitting closes, in numbers and Margin's own words (no title, no address, no app's name)",
+        shell.quitPrompt?.view?.title.stringValue == "Are you sure you want to quit Margin?"
+        && said == "Margin will close 2 open tabs and quit 2 apps it opened. Your tabs stay in their spaces, but unsaved work may be lost." && !said.contains("example") && !said.contains("TextEdit") && !said.contains("Calculator"), said)
+  if let escape = QuitPrompt.choice(keyCode: 53, command: false) { shell.quitPrompt?.choose(escape) }
+  shell.track()
+  check("quit: Cancel (Escape): the prompt gone, everything as it was, ⌘Q still Margin's first", shell.quitPrompt == nil && untouched() && shell.shortcuts.guardsQuit && quit.asks)
+  keys.press("Alt+Meta+KeyQ")
+  check("quit: ⌥⌘Q the same: the prompt", shell.quitPrompt?.isUp == true && untouched())
+  apps.bringToFront(1) // (an app Margin doesn't host)
+  shell.track()
+  check("quit: the prompt up and another app comes to the front: taken down (never left up), nothing quit", shell.quitPrompt == nil && untouched())
+  keys.press("Meta+KeyQ")
+  check("quit: an app Margin doesn't host in front: ⌘Q isn't Margin's (not held, no prompt)", !shell.shortcuts.guardsQuit && !keys.held.values.contains(Combo.parse("Meta+KeyQ")!) && shell.quitPrompt == nil && untouched())
+  apps.bringToFront(hostedPid)
+  shell.track()
+  keys.press("Meta+KeyQ")
+  check("quit: the hosted app in front again: the prompt again", shell.quitPrompt?.isUp == true && untouched())
+
+  // ---- Quit (⌘Q again): Margin quits as it always does: the hosted apps given back while the link is up ----
   var done = false
   stopped = true
-  shell.stop { done = true }
+  quit.run = { shell.stop { done = true } }
+  keys.press("Meta+KeyQ")
+  check("quit: ⌘Q again with the prompt up: Quit, asked of the app once; still asking next time (not Always quit)", quit.asked == 1 && shell.quitsAsked == 1 && shell.quitPrompt == nil && quit.asks)
   guard await until(10, { done }) else { return check("quit", false) }
+  check("quit: ⌘Q is the front app's again while Margin quits", !shell.shortcuts.guardsQuit && !keys.held.values.contains(Combo.parse("Meta+KeyQ")!))
   check("quit: nothing hosted: the corners gone, the window's own ground again", !c.corners.isShown && c.corners.panels.allSatisfy { !$0.isVisible } && c.pageGround == nil)
   check("quit: Calculator back at its own frame before it was quit", world.frameAtQuit[GlueHostWorld.calculator] == GlueHostWorld.calculatorFrame, "\(world.frameAtQuit)")
   check("quit: the apps Margin started quit, nothing left in Margin's Space, Mission Control Margin's Space only", world.apps.isEmpty && world.inMargin.isEmpty && world.listsMarginOnly
