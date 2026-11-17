@@ -209,6 +209,7 @@ func glueScenario() async {
   options.appCatalog.icons = AppIconCache(folder: root.appendingPathComponent("icons"))
   var host = HostEngine.Options()
   host.every = 0.01
+  host.privateRetire = 0
   options.hostOptions = host
   var hostedOptions = HostedSession.Options()
   hostedOptions.linkWait = 5

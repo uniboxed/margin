@@ -66,6 +66,9 @@
 // emptied Space destroyed, an app Margin started for that open quit again, the one shown before shown again. A
 // Safari window Margin asked for is closed by its copy at every failure after the ask; one whose close isn't
 // confirmed is kept in the marker (`leftSafariWindows`) and closed later (the poll, quit, the next launch).
+// A hosted window is never left in no Space: a Space it was just moved out of isn't destroyed in the same breath (a
+// private one later, its own full-screen one once the move has held), it's in place only once it has stayed in
+// Margin's Space after that destroy, and the poll puts the one shown back at the first read that finds it in none.
 // Mission Control: after every operation, a hosted window's own full-screen Space still listed is said (`listed`):
 // outside a first open or a re-placing, it lists Margin's Space only.
 //
@@ -115,6 +118,19 @@ final class HostEngine {
         // times within `returnsWithin`; past that it's parked with nothing shown (something keeps taking it out).
         var returnsMax = 3
         var returnsWithin = 30.0
+        // A Space a hosted window was just moved out of is never destroyed in the same breath (2026-11-17, the real
+        // Mac: destroyed as the move was asked, the window was left in no Space at all, at its frame and unseen, about a
+        // second after it was shown). A private Space is destroyed `privateRetire` after the window left it (the poll,
+        // Margin's quit; 0: at once, the tests' stand-in for the old way). A window's own full-screen Space (Mission
+        // Control lists it, so it can't wait as long) once the move has shown for `destroyAfterMove` (out of Margin's
+        // Space again before that: moved in again); the window is in place once it has then stayed in Margin's Space
+        // alone for `memberSettle`, put back if it's found in none (each at most `memberReadds` times). What it costs:
+        // 0.2 s on the early path (the two together), 0.15 s on the slow one, per first open and per placing; nothing
+        // on a switch.
+        var privateRetire = 1.0
+        var destroyAfterMove = 0.05
+        var memberSettle = 0.15
+        var memberReadds = 3
         var every = 0.02
         var tolerance: CGFloat = 1
         var safariBundle = safariIdentifier
@@ -241,6 +257,7 @@ final class HostEngine {
     // restores): never. And whether an operation ran since the last look.
     private var otherSeen: [Int: Bool] = [:]
     private var ranSinceLook = true
+    private var retired: [UInt64: Double] = [:] // private Spaces a window was moved out of, and when: destroyed later (`privateRetire`)
     private var coverSaid: Int?
     private var loadingSaid: HostID?
     private var freezeHolds = 0 // steps holding the freeze now (Margin's quit gives every host back at once)
@@ -385,6 +402,7 @@ final class HostEngine {
             // (A reservation on Margin's own Space is never made now; one left by an older build is given back.)
             if self.marginSpace > 0, let r = self.sys.reserved(space: self.marginSpace), !r.isZero { _ = self.sys.reserve(.zero, space: self.marginSpace) }
             await self.destroyLeftSpaces()
+            await self.destroyRetired(all: true)
             self.checkOrphans("at quit")
             self.checkListed("at quit")
             self.saveMarker()
@@ -421,13 +439,17 @@ final class HostEngine {
             let spaces = sys.spaces(window: host.window)
             let strayed = host.phase == .shown ? (!marginHere || (spaces.map { $0 != [marginSpace] } ?? false)) : host.phase == .parked && !(spaces ?? []).isEmpty
             host.strays = strayed ? host.strays + 1 : 0
-            if host.strays >= 2 {
+            // (The one shown in no Space at all is never a read that missed mid-transition: nothing puts a window there
+            // but a Space destroyed under it. Brought back at the first read.)
+            let nowhere = host.phase == .shown && marginHere && spaces == []
+            if host.strays >= 2 || nowhere {
                 host.strays = 0
                 let id = host.id
                 Task { await serial { await self.strayed(id, marginHere: marginHere) } }
             }
         }
         lookForOthers()
+        if !retired.isEmpty { Task { await serial { await self.destroyRetired() } } }
         if !leftSpaces.isEmpty, marginSpace > 0, sys.currentSpace(onDisplayOf: marginSpace) == marginSpace {
             Task { await serial { await self.destroyLeftSpaces() } }
         }
@@ -488,6 +510,50 @@ final class HostEngine {
         guard !busy, !quitting, let id = shown, let host = hosts[id], host.phase == .shown else { return }
         if let point, let b = sys.bounds(window: host.window), b.contains(point) { return }
         _ = await sys.activate(pid: host.pid, window: host.window)
+    }
+
+    // A private Space a window was just moved out of: destroyed later, never in the same breath as the move.
+    private func retirePrivate(_ space: UInt64) {
+        guard options.privateRetire > 0 else { _ = sys.destroyPrivateSpace(space); return }
+        retired[space] = sys.now()
+    }
+
+    // The retired private Spaces old enough, destroyed (the poll); `all`: every one, the youngest's settle waited out
+    // first (Margin's quit: 0.3 s at most, so a window just given back to its Desktop isn't taken with its Space).
+    private func destroyRetired(all: Bool = false) async {
+        if all, let youngest = retired.values.max() {
+            let left = min(options.privateRetire, 0.3) - (sys.now() - youngest)
+            if left > 0 { await sys.sleep(left) }
+        }
+        for (space, at) in retired where all || sys.now() - at >= options.privateRetire {
+            _ = sys.destroyPrivateSpace(space)
+            retired[space] = nil
+        }
+    }
+
+    // A window just moved into Margin's Space, the Space it came from destroyed: in place only once it has stayed in
+    // Margin's Space alone, where it should be, for `memberSettle` (the read right after the destroy said so on the real
+    // Mac and the window was in no Space a moment later). Found in no Space meanwhile: put back into Margin's Space
+    // (`memberReadds` times at most), the clock started again. (in place, how many times it was put back)
+    private func settleMember(_ host: Host, at ok: () -> Bool = { true }, each: () -> Void = {}) async -> (Bool, Int) {
+        var since: Double?
+        var readds = 0
+        let settled = await wait(options.memberWait + options.memberSettle * Double(options.memberReadds + 1), every: options.memberEvery) {
+            each()
+            let spaces = self.sys.spaces(window: host.window)
+            if spaces == [], readds < self.options.memberReadds {
+                readds += 1
+                since = nil
+                _ = self.sys.move(window: host.window, to: self.marginSpace)
+                return false
+            }
+            guard spaces == [self.marginSpace], ok() else { since = nil; return false }
+            let from = since ?? self.sys.now()
+            since = from
+            return self.sys.now() - from >= self.options.memberSettle
+        }
+        if readds > 0 { Diagnostics.note("host: \(host.id): its window was in no Space after its move into Margin's (\(readds) time\(readds == 1 ? "" : "s")): put back\(settled ? ", there now" : ", still not there")") }
+        return (settled, readds)
     }
 
     // ---- what the hosting reads ----
@@ -934,7 +1000,7 @@ final class HostEngine {
             }
         }
         if let priv = host.privateSpace {
-            _ = sys.destroyPrivateSpace(priv)
+            retirePrivate(priv)
             host.privateSpace = nil
         }
         step("into Margin's Space", t0)
@@ -1029,7 +1095,7 @@ final class HostEngine {
             host.away = true
             if sys.move(window: host.window, to: current) {
                 _ = await wait(options.parkWait) { self.sys.spaces(window: host.window)?.contains(current) == true }
-                if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv); host.privateSpace = nil }
+                if let priv = host.privateSpace { retirePrivate(priv); host.privateSpace = nil }
             }
         }
         let from = sys.bounds(window: host.window) ?? original
@@ -1060,7 +1126,7 @@ final class HostEngine {
                 Diagnostics.warn("host: \(host.id): its window didn't go back to its Space")
             }
         }
-        if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv); host.privateSpace = nil }
+        if let priv = host.privateSpace { retirePrivate(priv); host.privateSpace = nil }
         host.away = false
         // (The person's window macOS took out of full screen: its frame as it was, if it's not and Accessibility sees it.)
         if host.personApp, host.mode == .fullScreen, let o = host.original, let b = sys.bounds(window: host.window), !HostLayout.near(b, o, within: options.tolerance) {
@@ -1075,7 +1141,7 @@ final class HostEngine {
         await restoreFrame(host)
         guard let priv = sys.createPrivateSpace() else { return false }
         guard sys.move(window: host.window, to: priv), await wait(options.parkWait, { self.sys.spaces(window: host.window) == [] }) else {
-            _ = sys.destroyPrivateSpace(priv)
+            retirePrivate(priv)
             // (Still shown in Margin's Space: in the page area again.)
             if sys.spaces(window: host.window) == [marginSpace] { await placeWindow(host) }
             return false
@@ -1146,7 +1212,7 @@ final class HostEngine {
             step("park \(previous.id)", t0)
         }
         if let priv = host.privateSpace {
-            _ = sys.destroyPrivateSpace(priv)
+            retirePrivate(priv)
             host.privateSpace = nil
         }
         host.phase = .shown
@@ -1280,6 +1346,12 @@ final class HostEngine {
                     leftSpaces.insert(own)
                     emit(.failed(host.id, .destroy, "its own Space \(own) didn't go: tried again later"))
                 }
+                // (In Margin's Space for good only once it has stayed there after that destroy: put back if it's in none.)
+                t0 = sys.now()
+                guard await settleMember(host).0 else {
+                    return await giveUp(host, isNew: isNew, .member, "its window didn't stay in Margin's Space once its own Space was destroyed", previous: previous)
+                }
+                step("settled", t0)
             }
         }
         host.member = true
@@ -1325,7 +1397,7 @@ final class HostEngine {
             }
         }
         if let priv = host.privateSpace {
-            _ = sys.destroyPrivateSpace(priv)
+            retirePrivate(priv)
             host.privateSpace = nil
         }
         host.phase = .shown
@@ -1576,14 +1648,41 @@ final class HostEngine {
         // the page area, its Space no longer listed, still full screen.
         keepCurrent()
         guard sys.move(window: host.window, to: marginSpace) else { return .slow("the bridge didn't take its move into Margin's Space") }
-        let destroyed = sys.currentSpace(onDisplayOf: marginSpace) != own && sys.destroyFullScreenSpace(own)
-        mark(destroyed ? "moved in, its Space destroyed" : "moved in")
-        var inPlace = false, gone = false
-        _ = await wait(options.memberWait, every: options.earlyEvery) {
+        // Its own Space destroyed only once the move shows and has held `destroyAfterMove` (asked in the same instant,
+        // the destroy took the window with it: in no Space at all, seen on the real Mac 2026-11-17, check10); then in
+        // place only once it has stayed in Margin's Space for `memberSettle`, put back if it's found in none.
+        // Seen there and out of it again before the destroy (macOS finishing its own full-screen change puts the window
+        // back in its Space), or in none: moved in again, `memberReadds` times at most.
+        var landed: Double?
+        var seen = false
+        var again = 0
+        let moved = await wait(options.memberWait, every: options.earlyEvery) {
             keepCurrent()
-            inPlace = self.sys.spaces(window: host.window) == [self.marginSpace] && there()
-            gone = self.sys.spaceExists(own) == false
-            return inPlace && gone
+            let spaces = self.sys.spaces(window: host.window)
+            if spaces == [self.marginSpace] {
+                landed = landed ?? self.sys.now()
+                seen = true
+            } else {
+                landed = nil
+                if seen || spaces == [], again < self.options.memberReadds {
+                    again += 1
+                    seen = false
+                    _ = self.sys.move(window: host.window, to: self.marginSpace)
+                }
+            }
+            return landed.map { self.sys.now() - $0 >= self.options.destroyAfterMove } ?? false
+        }
+        mark((moved ? "moved in" : "its move into Margin's Space not seen") + (again > 0 ? " (moved in again \(again)×)" : ""))
+        let destroyed = moved && sys.currentSpace(onDisplayOf: marginSpace) != own && sys.destroyFullScreenSpace(own)
+        if destroyed { mark("its Space destroyed") }
+        var inPlace = false, gone = false
+        if moved {
+            // (Its Space gone from the list first, the destroy really done; then the membership, read after it.)
+            if destroyed { gone = await wait(options.memberWait, every: options.earlyEvery) { keepCurrent(); return self.sys.spaceExists(own) == false } }
+            let (settled, readds) = await settleMember(host, at: there, each: keepCurrent)
+            inPlace = settled
+            if readds > 0 { mark("put back into Margin's Space \(readds)×") }
+            if !gone { gone = sys.spaceExists(own) == false }
         }
         var full = false
         if inPlace { full = await isFullScreen(host) == true }
@@ -1651,10 +1750,10 @@ final class HostEngine {
     @discardableResult private func parkMember(_ host: Host, emitting: Bool = true) async -> Bool {
         guard let priv = sys.createPrivateSpace() else { return false }
         guard sys.move(window: host.window, to: priv), await wait(options.parkWait, every: options.memberEvery, { self.sys.spaces(window: host.window) == [] }) else {
-            _ = sys.destroyPrivateSpace(priv)
+            retirePrivate(priv)
             return false
         }
-        if let old = host.privateSpace, old != priv { _ = sys.destroyPrivateSpace(old) }
+        if let old = host.privateSpace, old != priv { retirePrivate(old) }
         host.privateSpace = priv
         host.away = true
         host.phase = .parked
@@ -1668,7 +1767,7 @@ final class HostEngine {
     private func unpark(_ host: Host) async -> Bool {
         guard let priv = host.privateSpace, let desktop = sys.desktop(onDisplayOf: marginSpace), sys.move(window: host.window, to: desktop),
               await wait(options.parkWait, { self.sys.spaces(window: host.window)?.contains(desktop) == true }) else { return false }
-        _ = sys.destroyPrivateSpace(priv)
+        retirePrivate(priv)
         host.privateSpace = nil
         saveMarker()
         return true
@@ -1695,7 +1794,7 @@ final class HostEngine {
                 Diagnostics.note("host: \(host.id): its window didn't come to the current Space to leave full screen")
                 return false
             }
-            if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv); host.privateSpace = nil }
+            if let priv = host.privateSpace { retirePrivate(priv); host.privateSpace = nil }
             saveMarker()
         }
         // Done once Accessibility reads it out; otherwise by the window server alone: its window off the frame it had
@@ -1817,7 +1916,11 @@ final class HostEngine {
             let spaces = sys.spaces(window: host.window)
             let seen = "its window in \(spaces.map { $0.isEmpty ? "no user Space" : $0.map { "\($0) (type \(sys.spaceType($0).map(String.init) ?? "?"))" }.joined(separator: ", ") } ?? "Spaces that don't read"), Margin's Space \(marginSpace), Margin's window \(marginHere ? "in it" : "out of it")"
                 + ", its bounds \(sys.bounds(window: host.window).map(r) ?? "unread")" + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? "")
-            guard marginHere, spaces != [marginSpace] else {
+            // (Read again now, after whatever ran since the poll's read: both where they should be, nothing to do. An
+            // operation in between put it right, or the poll's one read of it in no Space was the bridge's move landing.)
+            let marginNow = marginWindow == 0 || sys.spaces(window: marginWindow).map { $0.contains(marginSpace) } ?? true
+            if marginNow, spaces == [marginSpace] { return }
+            guard marginHere, marginNow else {
                 Diagnostics.note("host: \(id): shown, found where it mustn't be (\(seen))")
                 return await parkShownNow(why: "its window left Margin's Space, or Margin's window did")
             }
@@ -1862,12 +1965,22 @@ final class HostEngine {
         if sys.currentSpace(onDisplayOf: marginSpace) != marginSpace, own.contains(where: { sys.currentSpace(onDisplayOf: marginSpace) == $0 }) { _ = sys.setCurrentSpace(marginSpace) }
         guard sys.move(window: host.window, to: marginSpace),
               await wait(options.memberWait, every: options.memberEvery, { self.sys.spaces(window: host.window) == [self.marginSpace] }) else {
-            return await parkShownNow(why: "its window left Margin's Space and didn't come back into it")
+            // In no Space at all and the bridge doesn't put it back: out of full screen and placed again (what the early
+            // path's own fallback did on the real Mac, 2026-11-17), behind the loader. Else parked, nothing shown.
+            guard spaces.isEmpty, host.mode != .window else { return await parkShownNow(why: "its window left Margin's Space and didn't come back into it") }
+            Diagnostics.note("host: \(host.id): in no Space and not put back by a move: out of full screen and placed again")
+            let frozen = holdFreeze()
+            await backOut(host)
+            releaseFreeze(frozen)
+            host.phase = .preparing
+            if case .failed = await placeFullScreen(host, isNew: false, retrying: false), shown != host.id { emit(.unshown(host.id)) }
+            return
         }
         for space in own where sys.spaceExists(space) == true {
             ownSpaces.insert(space)
             if await !destroyOwn(space) { leftSpaces.insert(space) }
         }
+        if !own.isEmpty { _ = await settleMember(host) }
         saveMarker()
         let bounds = sys.bounds(window: host.window)
         let inPlace = host.mode == .window || (host.placedPage.flatMap { p in bounds.map { HostLayout.near($0, p, within: options.tolerance) } } ?? false)
@@ -2035,7 +2148,7 @@ final class HostEngine {
             }
         }
         if atQuit, let left = unfinished(host) { leftWindows.append(left) }
-        if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv) }
+        if let priv = host.privateSpace { retirePrivate(priv) }
         hosts[id] = nil
         if !hosts.values.contains(where: { $0.pid == host.pid }) { sys.stopWatchingOpens(pid: host.pid) }
         saveMarker()
@@ -2100,7 +2213,7 @@ final class HostEngine {
                 Diagnostics.note("host: \(host.id): its window didn't come to the current Space to be closed: quit with it open")
                 return false
             }
-            if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv); host.privateSpace = nil }
+            if let priv = host.privateSpace { retirePrivate(priv); host.privateSpace = nil }
             brought = true
             saveMarker()
         }
@@ -2272,7 +2385,7 @@ final class HostEngine {
         guard !gone.isEmpty || wasLaunched else { return }
         for host in gone {
             if busy { continue } // the operation running decides (it quit it, or its waits fail)
-            if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv) }
+            if let priv = host.privateSpace { retirePrivate(priv) }
             if let own = host.fullScreenSpace, sys.spaceExists(own) == true { leftSpaces.insert(own) }
             hosts[host.id] = nil
             if shown == host.id { shown = nil }
@@ -2285,7 +2398,7 @@ final class HostEngine {
     }
 
     private func windowGone(_ host: Host) {
-        if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv) }
+        if let priv = host.privateSpace { retirePrivate(priv) }
         if let own = host.fullScreenSpace, sys.spaceExists(own) == true { leftSpaces.insert(own) }
         hosts[host.id] = nil
         if shown == host.id { shown = nil }

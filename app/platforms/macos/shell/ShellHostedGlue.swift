@@ -106,9 +106,23 @@ extension Shell {
         host.cover = { [weak session] number in session?.cover(number) }
         host.others = { [weak session] number in session?.others(number) }
         let before = host.onEvent
-        host.onEvent = { [weak session] event in
+        host.onEvent = { [weak self, weak session] event in
             before?(event)
             session?.hostEvent(event)
+            // A host just shown: the engine's poll every 0.1 s for the next second and a half, beside the shell's own
+            // (a window that ends up in no Space after its move is put back at the first read: 2026-11-17, check10).
+            if case .shown = event { self?.pollAfterShow() }
+        }
+    }
+
+    func pollAfterShow() {
+        showPolls += 1
+        let mine = showPolls
+        for i in 1...15 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1 * Double(i)) { [weak self] in
+                guard let self, !self.stopped, self.showPolls == mine else { return } // (a newer show's own run takes over)
+                self.host?.poll()
+            }
         }
     }
 

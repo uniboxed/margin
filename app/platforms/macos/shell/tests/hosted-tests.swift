@@ -175,6 +175,7 @@ func preparedBrowserTests(_ library: Library) {
         let w = FakeHostWorld()
         w.staged = true
         let engine = HostEngine(system: w, marker: nil, pid: 1)
+        engine.options.privateRetire = 0
         let links = FakeHostedLinks()
         let session = HostedSession(library: library, engine: engine, links: links)
         session.sleep = { _ in await Task.yield() }
@@ -356,6 +357,7 @@ func hostedTests() {
 
     let w = FakeHostWorld()
     let engine = HostEngine(system: w, marker: nil, pid: 1)
+    engine.options.privateRetire = 0
     let links = FakeHostedLinks()
     let session = HostedSession(library: library, engine: engine, links: links)
     session.sleep = { _ in await Task.yield() }
@@ -627,6 +629,7 @@ func hostedFrontTests(script: URL) {
     guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("front: the library opens", false) }
     let w = FakeHostWorld()
     let engine = HostEngine(system: w, marker: nil, pid: 1)
+    engine.options.privateRetire = 0
     let links = FakeHostedLinks()
     let session = HostedSession(library: library, engine: engine, links: links)
     session.sleep = { _ in await Task.yield() }
@@ -738,6 +741,7 @@ func sidebarResizeTests(script: URL) {
     guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("resize: the library opens", false) }
     let w = FakeHostWorld()
     let engine = HostEngine(system: w, marker: nil, pid: 1)
+    engine.options.privateRetire = 0
     let session = HostedSession(library: library, engine: engine, links: FakeHostedLinks())
     session.sleep = { _ in await Task.yield() }
     let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
