@@ -2229,3 +2229,10 @@ His recording: every use of Margin's sidebar put the hosted Messages in its inac
 7. **Nothing hosted.** With the launcher (no item shown), a click in it makes Margin the active app (its menu bar), typing in its field works as before.
 8. **Still in front, still whole.** Every step of "Margin's window in front of what it hosts" above (the frame and rounded corners over the page, the pointer through the page area, the loader, the sidebar's drag, a hosted app's own Settings window in front, Mission Control showing Margin's Space with its UI, swiping Spaces) holds as before. In Mission Control, Margin's Space's thumbnail shows its UI, and the sidebar is never left on another Space or a Desktop after a swipe. If the log ever says `its panel wasn't its child any more`, `wasn't on screen` or `wasn't in Margin's Space`, copy the line and the five before it. If it says `didn't become key for a field of Margin's … as a last resort`, note what you'd just done (the hosted app then goes inactive, as before this change).
 9. **Cost.** With a page shown and nothing moving, Margin's CPU in Activity Monitor as before (0.0-0.3 %); its memory within a few MB of before.
+
+### After check10's run with the panel (2026-11-17)
+
+The panel kept the keys from Margin's launch on, so a key after a click in the sidebar, or after the palette's Escape, went to Margin instead of the app shown (DECISIONS.md, "Margin's UI in a panel: the keys after check10's run"). By hand, besides the steps above:
+
+10. **Right after launch.** Open Margin with an item shown by itself (the last item), click nothing, type: the letters go to the app shown. The same after Margin's Dock icon, then a click in the page.
+11. **A key right after a click.** Click an empty spot of the sidebar and type at once, fast (within a tenth of a second): every letter reaches the app shown, none is lost or beeps. If the log says `a key reached Margin while the keyboard is the app shown's … sent on to it`, note how fast you typed: those letters went on to the app (none should be missing in it).
