@@ -63,6 +63,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     mirror()
     layouts()
     frameRate()
+    systemAppearance()
     passThrough()
     shortcuts()
     geometry()
@@ -592,4 +593,25 @@ final class FakeRegistrar: HotKeyRegistrar {
         check("frame rate: on macOS 26 and later, WebKit has the feature and it turns off", said.hasPrefix("the display's rate"), said)
     }
     check("frame rate: the probe posts its numbers as an overlay log", OverlayFrameRate.probe.contains("op: 'log'") && OverlayFrameRate.probe.contains("frame probe"))
+}
+
+// A theme's system materials (Liquid Glass): WebKit's system appearance turned on for one web view and off again,
+// kept off by the defaults key, and each outcome said. The switch is WebKit's own (private): if a macOS drops it,
+// `set` says so, nothing changes, and the theme draws its plain fills, which this lets through.
+@MainActor func systemAppearance() {
+    let view = WKWebView(frame: .zero)
+    let on = OverlaySystemAppearance.set(true, for: view)
+    check("system appearance: on, or a reason it stays off", on == "on" || on.hasPrefix("off: "), on)
+    if ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 {
+        check("system appearance: on macOS 26 and later, WebKit has the switch and it turns on", on == "on", on)
+        let read = view.value(forKey: "_useSystemAppearance") as? Bool
+        check("system appearance: the web view reads it back", read == true, "\(String(describing: read))")
+        let other = WKWebView(frame: .zero)
+        check("system appearance: one web view's, not every web view's", other.value(forKey: "_useSystemAppearance") as? Bool == false)
+    }
+    let off = OverlaySystemAppearance.set(false, for: view)
+    check("system appearance: off again for a theme that doesn't ask", off == "off" || off.hasPrefix("off: WebKit has no"), off)
+    let kept = OverlaySystemAppearance.set(true, for: view, allowed: false)
+    check("system appearance: MarginSystemAppearance NO keeps it off", kept.hasPrefix("off: "), kept)
+    if on == "on" { check("system appearance: and says the defaults key did", kept == "off: MarginSystemAppearance is NO", kept) }
 }
