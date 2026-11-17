@@ -152,6 +152,16 @@ for (const [engineName, engine] of ENGINES) {
           at = await shot();
           assert.deepEqual(inside.filter((p) => px(at, p)[3] !== 0), [], `${id}: shown again: nothing painted in the page's place`);
 
+          // ---- loading again (a placing again, the next first open): opaque again at once, no fade in ----
+          await ev(() => T.rtPageState('loading', 'Safari'));
+          const back = (await ev(() => T.rtLoader()))!;
+          assert.deepEqual([back.opacity, back.visibility, back.pointer], [1, 'visible', 'auto'], `${id}: loading again: the loader back at once`);
+          await page.waitForTimeout(60);
+          at = await shot();
+          assert.deepEqual(inside.filter((p) => px(at, p)[3] < 250), [], `${id}: loading again: the page card opaque again`);
+          await ev(() => T.rtPageState('shown'));
+          await page.waitForTimeout(260);
+
           // ---- empty: the launcher, opaque ----
           const empty = await ev(() => T.rtPageState('empty'));
           assert.equal(empty.attr, 'empty');
