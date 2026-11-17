@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { inflateSync } from 'node:zlib';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, PIXEL } from './package.ts';
+import { pageLoaderChecks, rgba } from './page-card.ts';
 import type { Harness, HarnessRt } from './harness.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
@@ -369,6 +370,55 @@ for (const [name, engine] of ENGINES) {
         const alpha = /^rgba\(/.test(e.background!) ? Number(e.background!.split(',').at(-1)!.replace(')', '')) : 1;
         assert.ok(/^rgba?\(/.test(e.background!) && alpha === 1, `opaque: ${e.background}`);
         await page.evaluate(() => T.unmountRuntime());
+      });
+
+      // Pixel's own page loader (Margin.app, while an item opens): the night ground, a meter of eight cells that
+      // fills in steps in the space's color, over it an hourglass (an icon: the words there are Margin's, guarded),
+      // Margin's words in the pixel type and a blinking block cursor.
+      await pageLoaderChecks(t, browser, {
+        id: 'pixel', dir: PIXEL, script,
+        label: '.opening-label', mark: '.opening-frame',
+        animations: ['px-blink', 'px-fill', 'px-glass'],
+        skeleton: [['.space-name', ''], ['.today', '::before']],
+        starting: ['px-fill', 'px-wait'],
+        look: async (page, ev) => {
+          const read = () => ev(() => ({ card: T.rtLoader()!.background, fill: T.rtRect('.opening-fill')!, frame: T.rtRect('.opening-frame')!, head: T.rtRect('.opening-head')!, slot: T.rtRect('m-page-loader')!,
+            color: T.rtComputed('.opening-fill', 'background-color'), timing: T.rtComputed('.opening-fill', 'animation-timing-function'), border: T.rtComputed('.opening-frame', 'box-shadow'), radius: T.rtComputed('.opening-frame', 'border-top-left-radius'),
+            font: T.rtComputed('.opening-label', 'font-family'), upper: T.rtComputed('.opening-label', 'text-transform'), caret: T.rtComputed('.opening-caret', 'animation-name'), glass: T.rtCount('m-page-loader svg.opening-glass path') }));
+          const a = await read();
+          assert.deepEqual(rgba(a.card), [29, 27, 51, 1], 'the night ground');
+          assert.match(a.font ?? '', /Press Start 2P/, 'Margin\'s words in the pixel type');
+          assert.equal(a.upper, 'uppercase');
+          assert.equal(await ev(() => document.fonts.check('12px "Press Start 2P"')), true, 'its bundled font');
+          assert.equal(a.glass, 2, 'an hourglass, drawn (an svg: no words of the theme\'s in a guarded part)');
+          assert.equal(a.caret, 'px-blink', 'a blinking block cursor (the theme\'s setting is on)');
+          assert.match(a.timing ?? '', /^steps\(/, 'the meter fills in steps');
+          assert.deepEqual([a.frame.width, a.frame.height, a.radius], [246, 28, '0px'], 'the meter\'s frame: eight cells, square');
+          assert.equal((a.border ?? '').split('rgb').length - 1, 4, 'a notched pixel border (four hard shadows)');
+          assert.doesNotMatch((a.border ?? '').replace(/rgba?\([^)]*\)/g, ''), /[1-9]\d*px \d+px [1-9]/, 'none blurred');
+          assert.ok(Math.abs(a.frame.x - a.slot.x) <= 1 && Math.abs(a.frame.y - a.slot.y) <= 1, 'in the card\'s middle');
+          assert.ok(a.head.bottom <= a.frame.top - 8 && Math.abs(a.head.x - a.frame.x) <= 1, 'the hourglass, the words and the cursor over it');
+          assert.deepEqual(rgba(a.color), [255, 210, 63, 1], 'filled in the space\'s color');
+          // Cell by cell: the fill's width is always a whole number of cells (30 px each), from its left end.
+          const widths = new Set<number>();
+          for (let i = 0; i < 12; i++) {
+            const b = await read();
+            assert.ok(Math.abs(b.fill.left - b.frame.left) <= 0.5, 'the fill starts at the frame\'s left end');
+            widths.add(Math.round(b.fill.width));
+            await page.waitForTimeout(110);
+          }
+          assert.deepEqual([...widths].filter((w) => w % 30 !== 0 || w > 240), [], `whole cells only (${[...widths]})`);
+          assert.ok(widths.size >= 4, `… and filling (${[...widths]})`);
+          // "Blinking cursor" off: its cursor stands still, the meter still fills.
+          await ev(() => T.rtSettings({ themes: { pixel: { blink: false } } }));
+          assert.deepEqual(await ev(() => [T.rtComputed('.opening-caret', 'animation-name'), T.rtComputed('.opening-fill', 'animation-name')]), ['none', 'px-fill']);
+          await ev(() => T.rtSettings({ themes: { pixel: { blink: true } } }));
+        },
+        looks: [
+          ['a light system mode: the same look', { colorScheme: 'light' }, async (_page, ev) => {
+            assert.deepEqual(rgba((await ev(() => T.rtLoader()))!.background), [29, 27, 51, 1]);
+          }],
+        ],
       });
 
       await t.test('no request was made, no error thrown', () => {
