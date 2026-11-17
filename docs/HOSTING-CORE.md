@@ -171,11 +171,23 @@ read as the suite reads it). DECISIONS.md, "The hosting core, stage 3", has the 
 - **The menu as built** (budget per show, or per 30 s for what's not tied to a show): `launch` 1, `reopen` 2, `unhide` 2,
   `adopt` 20, `putBack` 3, `parkAgain` 3, a leftover's `closeLeftover`/`parkLeftover` 2, `parkStrip` 3, `frameWindow`
   2 a show (a window-mode window not where it was framed), `bringForward` one try a rung (`activate`, `reopen`), then
-  `fallback`. One log line each: `host: <app>: <observed> → <correction>
-  (<budget left>)`.
+  `fallback`; `closeItem` once its window has been gone `goneGrace` (1 s) with no other main window; `placeAgain` 1 per
+  30 s. One log line each: `host: <app>: <observed> → <correction> (<budget left>)`.
 - **Off screen in Margin's Space:** `bringForward` is for a window-mode window only; never a Space made current or a
   window moved for it (his 14:05 session: each was a jump), so no "re-add" rung. A full-screen member off screen in
   place is still placed again (`backOnScreen`). Fallback: parked, nothing shown, the item kept, the show said failed.
+  *Why it was off screen* (the run of 17:32, macOS's own log): every app Margin starts is started hidden
+  (LaunchServices' hide option, `hideAfter=1`); its window, ordered in while it was hidden, comes on screen only once its
+  app is the front app (the Phone's came on screen the moment its own reopen made it the front process). A full-screen
+  app gets there by its full-screen entry; a window-mode one never did, because `NSRunningApplication.activate(from:)`
+  is refused while Margin isn't the active app (macOS 14's cooperative activation), and since Margin's UI is a panel it
+  never is. On 11-15, when window mode worked, Margin was active. Now every "its app in front" (`front`: each show,
+  each switch, the `activate` rung, a press around the window) sets Accessibility's `AXFrontmost` on the app first (the
+  app activates itself, as at a Dock-icon click), then raises the window; the rung's line says whether the app is the
+  front app after.
+- **Its app in front after the switch:** a show or a switch is said (and emitted) once its window is in place and the
+  one before is out; its app's activation and raise come after and aren't counted (Messages' 79 ms of 142 was its
+  app's late answer to the raise).
 - **Out of Margin's Space while shown** (`putBack`) is still the poll's `strayed`/`bringBack` (not moved into the
   reconciler yet: timing-sensitive, the last day's fixes; listed for later).
 - **Leftovers** are also the windows there as the first show of an app Margin started ended (`launchWindows`, the
@@ -186,9 +198,21 @@ read as the suite reads it). DECISIONS.md, "The hosting core, stage 3", has the 
 - **Strips** are parked, not taken out of full screen; a full-screen member's own toolbar window (inside its frame, at
   its top) is the app's and left alone.
 - **Replaced:** adopted as a window-mode window (fast, no full-screen change), its full screen tried again at its next
-  show from parked. Its window gone while shown (an app Margin started): a Dock-icon click (`kAEReopenApplication` sent
-  straight to its process, never through LaunchServices, which would give it a Dock icon), the window it makes adopted;
-  gone while parked: reopened at its next show, behind the loader.
+  show from parked. A replacement is a window at the hosted one's frame (in it in no Space, or Accessibility's main
+  window), or, off its frame, a newer window on screen that's Accessibility's main window while the hosted one is off
+  screen in Margin's Space (closed by its app; the window server lists a closed window a while).
+- **Its window closed while shown** (the person's ⌘W or close button, or its app's own close): another main window of
+  its app's within `goneGrace` (1 s) is adopted, else its item closes (`closeItem`: the row's page goes, its app left
+  running), as before stage 3. Never a window reopened for it (Tirth, 2026-11-17). `reopen` (a Dock-icon click,
+  `kAEReopenApplication` straight to its process, never through LaunchServices, which would give it a Dock icon) stays
+  only for an item shown whose app runs with no window (Maps windowless at its show; a window gone while parked, at
+  its next show, behind the loader). Its answer is logged: delivered and answered, not answered in time, refused
+  (-1743), not delivered.
+- **A member off the page area** (its app re-laid it out: restore-code's second window going full screen made the first
+  the display's size) for two reads after the show's late watch: placed again (`placeAgain`, out of full screen and
+  asked again), once per 30 s.
+- **A leftover parked that its app takes back out** into a user Space (a full-screen ask of its own landing after the
+  park) is parked again; a strip counts as a member's own toolbar only in the member's own Space.
 - **In front of Margin's window:** never a leftover, a strip or a transient (the model's kinds), nor anything over the
   sidebar by more than 8 pt (was: a quarter of it).
 - **Window mode parked keeps the page area's frame**; it's given back only with the window (close, quit, a crash's
