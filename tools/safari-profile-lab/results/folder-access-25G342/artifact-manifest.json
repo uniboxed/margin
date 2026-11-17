@@ -1,0 +1,162 @@
+{
+  "test-results/safari-profiles-2026-11-17/corrected-runner-dry.jsonl": {
+    "bytes": 257,
+    "sha256": "39230e8ef345de3a4f77bc0aee5b7cf09705a5289d0edd6c01cb3fd7f18c0d63"
+  },
+  "test-results/safari-profiles-2026-11-17/e2e.log": {
+    "bytes": 46874,
+    "sha256": "7dc637053d57965886767c0d21264a4d7e4100b90817c0ed5e962f047829b095"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-1/build-folder-probe.py": {
+    "bytes": 3630,
+    "sha256": "83e132e05ebb4d51a13b7361f81eb2350d5e8ef06e47105c0042b786e6cac001"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-1/build.log": {
+    "bytes": 122,
+    "sha256": "cf8eee1217ecd37b10c3fd938ccbae7e726d178a81222826808fe2d5d9edad84"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-1/entitlements.plist": {
+    "bytes": 377,
+    "sha256": "ca8927abc597916cf68d0936cac09b57090c0e9c144d3e0bb250fd9161674252"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-1/folder-access.m": {
+    "bytes": 10565,
+    "sha256": "4762893f27f6d2fca1e2b6dca6a7405cbb589764878d15fd23b78e85a7d7a315"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-1/outside-control.txt": {
+    "bytes": 52,
+    "sha256": "5f7f47165a32956cf30ecf6de898cdcf3e90594fdea8ea933f87b7c57a69653a"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-1/signed-entitlements.plist": {
+    "bytes": 223,
+    "sha256": "bbe893412d2a7f1121077b88eeb27608b6f0ac1cd092d1b7d5f44318d042612a"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/app-snapshot/Contents/Info.plist": {
+    "bytes": 814,
+    "sha256": "46620524305f9a40dc7b73069bddc8245b114bd89461d9f39528ce1884c4e4e5"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/app-snapshot/Contents/MacOS/folder-access": {
+    "bytes": 94944,
+    "sha256": "6def1560c3db4fc96bcb3a39ec2310b6207248005e9a470cfebd4b24f0e329bc"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/app-snapshot/Contents/_CodeSignature/CodeResources": {
+    "bytes": 2200,
+    "sha256": "6686de10a28a2fe11b36cbb86dcbacc827cfc4ea116b4dabf1845e5aee629e9b"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/build-folder-probe.py": {
+    "bytes": 3639,
+    "sha256": "fc035fc8ede280f079e0380d892ce2d9df4e228490668c144c20e937cdc5e766"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/build.json": {
+    "bytes": 684,
+    "sha256": "5f93aa0bcbe146915d7c453f4e50258c76881441fb5154c4d1fccbf727d7ec3c"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/build.log": {
+    "bytes": 122,
+    "sha256": "7a4856478b6cab190898623fe266a4b7c58ce760c63376893fac419d0adfe1e6"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/dry-plan.jsonl": {
+    "bytes": 354,
+    "sha256": "2d32f4ce3ed08d921e41c3ea9abf30a29e920d1318ad1ef84849a30f639b26df"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/entitlements.plist": {
+    "bytes": 377,
+    "sha256": "ca8927abc597916cf68d0936cac09b57090c0e9c144d3e0bb250fd9161674252"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/folder-access.m": {
+    "bytes": 10565,
+    "sha256": "4762893f27f6d2fca1e2b6dca6a7405cbb589764878d15fd23b78e85a7d7a315"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/grant-launch.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/grant.jsonl": {
+    "bytes": 1607,
+    "sha256": "d71e043b5ca964e986e257f52343264c4688d906aaa833845acbba6587ac42d3"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/grant.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/independent-verification.json": {
+    "bytes": 402,
+    "sha256": "f606022db4168add1b216f5959986a72914f0360d0e93f0e629150daaeb2e1cd"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/launch-start.json": {
+    "bytes": 124,
+    "sha256": "a770486c597b784a89496a410e97ed20e3dfe2b415010f04073ec4a52af85974"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/outside-control.txt": {
+    "bytes": 52,
+    "sha256": "5f7f47165a32956cf30ecf6de898cdcf3e90594fdea8ea933f87b7c57a69653a"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/result.json": {
+    "bytes": 588,
+    "sha256": "d11dd1946895d8a2e1c13c9e5bf3aa866b8954a9794042a230a12999d37d8cd6"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/resume-launch.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/resume.jsonl": {
+    "bytes": 1446,
+    "sha256": "4fcde03d291109d11912ca35ef586d89872feabdc31f57b839bb9cdeeb6401e1"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/resume.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/run-folder-probe.py": {
+    "bytes": 3399,
+    "sha256": "66fa3c1e053e63af390c671a4327fd45ae134b5667646de4187e88abd42b48bc"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/run-result.json": {
+    "bytes": 458,
+    "sha256": "c9ba8d9ab2e260bdf24cc9a592e8c37759372235cde1457192bfb29913efa72b"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/signed-entitlements.plist": {
+    "bytes": 361,
+    "sha256": "6ba3329c55554895ac72e588648235aa6cb426ea4d678efc104b2a8e3bbe618c"
+  },
+  "test-results/safari-profiles-2026-11-17/folder-2/user-observation.json": {
+    "bytes": 196,
+    "sha256": "2b5cab6705c63ce8c0f8589050fa51e71c7111d4cd315c1793d8d8936d4eac23"
+  },
+  "test-results/safari-profiles-2026-11-17/repository-tests.json": {
+    "bytes": 182,
+    "sha256": "0a2eb3b16844b7619c7053dcc6f40b977fc6237fe91ddab5162da7e0672aed38"
+  },
+  "test-results/safari-profiles-2026-11-17/runner-regression.log": {
+    "bytes": 98,
+    "sha256": "d0bbd3fb4fcf80c9cbf5ce59bf4ce44bb927e9e40a6269d0b33dc8c4a94c4755"
+  },
+  "test-results/safari-profiles-2026-11-17/unit.log": {
+    "bytes": 126458,
+    "sha256": "6be7556217a0d9166058d6f138a1487b7d1b96bb56c39d1b5f432151d24823d3"
+  },
+  "tools/safari-profile-lab/build-folder-probe.py": {
+    "bytes": 3639,
+    "sha256": "fc035fc8ede280f079e0380d892ce2d9df4e228490668c144c20e937cdc5e766"
+  },
+  "tools/safari-profile-lab/folder-access.m": {
+    "bytes": 10565,
+    "sha256": "4762893f27f6d2fca1e2b6dca6a7405cbb589764878d15fd23b78e85a7d7a315"
+  },
+  "tools/safari-profile-lab/run-folder-probe.py": {
+    "bytes": 3610,
+    "sha256": "6b003b7f97db97bd7dda1b065f1a7e85649c1f78f0c2fd88920d2807070eea56"
+  },
+  "tools/safari-profile-lab/test-folder-runner.py": {
+    "bytes": 1311,
+    "sha256": "8dcbe1991beb5d8e16a68514463faabaa8a4f5d9d4b05be07e1d9d4fae6b3acf"
+  },
+  "tools/safari-profile-lab/folder-access.md": {
+    "bytes": 8282,
+    "sha256": "7723eca10d111e5cbc5c2f8c4bafed8e40204fa194b2368d7773ecb6c224599f"
+  },
+  "/tmp/margin-safari-profile-research/core-disassembly.txt": {
+    "bytes": 19259250,
+    "sha256": "c187bfc516a0ba82ff5ce219e6576b6278c60ed3c096c04986a392e17ba42617"
+  }
+}

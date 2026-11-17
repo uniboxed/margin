@@ -1,0 +1,57 @@
+{
+  "date": "2026-11-17",
+  "macOS": "26.7.3",
+  "build": "25G342",
+  "Safari": "27.2",
+  "SafariBundleVersion": "21625.2.8.18.4",
+  "bundleIdentifier": "com.unibox.margin.profile-folder-probe.r6f19d7bba8c849e8908feacfc07450d3",
+  "entitlements": {
+    "com.apple.security.app-sandbox": true,
+    "com.apple.security.files.user-selected.read-write": true,
+    "com.apple.security.files.bookmarks.app-scope": true
+  },
+  "userObservation": {
+    "source": "User reply in this chat",
+    "question": "Did you approve only the folder picker, or another permission request too?",
+    "answer": "Only the folder picker",
+    "date": "2026-11-17"
+  },
+  "verification": {
+    "bothNativePIDsExited": true,
+    "bothBaselinesDenied": true,
+    "bothGrantedPhasesPass": true,
+    "outsideAndSiblingRemainDenied": true,
+    "bothSentinelsWrittenReadSyncedRemoved": true,
+    "outsideHashUnchanged": true,
+    "sameSourceAndSignedBinaryVerified": true,
+    "bookmarkRestoredInNewProcessWithoutPicker": true,
+    "realSafariProfileCreated": false,
+    "databaseBytesReadOrWrittenByProbe": false
+  },
+  "permissionModel": "Separate new App Sandbox app via LaunchServices; no FDA/AX/Automation requests. Existing user session, not independent fresh-user TCC measurement.",
+  "rawRoot": "test-results/safari-profiles-2026-11-17",
+  "testedNativeBinarySHA256": "6def1560c3db4fc96bcb3a39ec2310b6207248005e9a470cfebd4b24f0e329bc",
+  "testedNativeSourceSHA256": "4762893f27f6d2fca1e2b6dca6a7405cbb589764878d15fd23b78e85a7d7a315",
+  "runnerDefect": "Original run flag/positional argparse destination collision executed the authorized run instead of intended runner dry plan. User-operated picker; two phases passed. Original runner retained; fixed default dry path passes no-subprocess/no-output regression, no UI replay.",
+  "buildAttempt1": "Compiled and signed but entitlement parse failed on codesign abstract output; fixed with --xml, no UI launched in that attempt.",
+  "repositoryTests": [
+    {
+      "name": "unit",
+      "exit": 0,
+      "bounded": false,
+      "limitSeconds": 120
+    },
+    {
+      "name": "e2e",
+      "exit": -15,
+      "bounded": true,
+      "limitSeconds": 15
+    }
+  ],
+  "e2eLimitation": "Missing pinned WebKit 2388; bounded at 15s, no full-suite pass/no download.",
+  "remaining": [
+    "Real Safari profile creation/provisioning and Safari acceptance",
+    "Fresh user, shipping identity and other OS builds",
+    "App upgrades, revoked/stale bookmark recovery"
+  ]
+}

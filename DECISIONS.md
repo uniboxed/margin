@@ -5223,3 +5223,52 @@ as-errors build, read-only inspection and final fixture/independent verifier pas
 unit tests 1,031 pass. Full E2E attempted/bounded at 15 seconds after missing pinned
 WebKit 2388, no browser download/full pass, app install or PR. Further work requires
 an actual authorized creation endpoint plus fresh-user and Safari acceptance.
+
+### Verify one-time Safari directory access and bookmark persistence (2026-11-17)
+
+The user explicitly requests testing the narrower-directory-grant candidate.
+Keep product code unchanged on chore/safari-profile-research. A new, separately
+ad-hoc-signed App Sandbox app has only sandbox, user-selected read/write and
+app-scoped-bookmark entitlements. LaunchServices launches each process with
+parent PID 1 and its own sandbox home. No FDA, Automation or AX request, private
+entitlement, inherited exception, injection, Safari launch or WebBookmarks load.
+This is an existing-user session test, not independent fresh-user TCC validation.
+
+Before the picker: opening real Safari's container data directory and
+SafariTabs.db read-only/read-write gets EPERM. User selects exactly
+~/Library/Containers/com.apple.Safari/Data/Library/Safari and later confirms only
+that picker appeared. Target directory/database opens then succeed. Never read
+or write database bytes. Exclusively create one UUID-named owned sentinel, write,
+fsync/read back, check inode and unlink successfully. An owned outside file and
+the sibling Preferences directory remain denied. Save app-scoped bookmark in
+the helper's own container. The second process begins denied again, resolves the
+non-stale bookmark with security scope/withoutUI/withoutMounting and succeeds at
+the same target checks and a second cleaned sentinel, without another picker.
+Both native PIDs exit and the outside control hash remains unchanged. A one-time
+folder grant is now a verified access route on this host, not a completed real
+Safari profile creation solution. No live profile metadata or browser data changes.
+
+Retain first build failure: codesign's abstract entitlement display is not plist;
+diagnose via local manual, use --xml and build a new identity. Also retain the
+original runner defect: positional run and optional --run shared an argparse
+destination, so the intended runner dry invocation launched the already-authorized
+test. Native dry plan had passed; user selected the folder and both phases passed.
+Fix destinations to run_directory/execute, use explicit execution guards and
+add a regression prohibiting subprocesses/output files on the default path.
+Corrected dry run/regression pass, with no UI replay or native binary change.
+
+Report and compact sanitized evidence: tools/safari-profile-lab/folder-access.md
+and results/folder-access-25G342/. Raw source, original runner, signed-app snapshot,
+failure, entitlements and launch logs remain ignored under
+test-results/safari-profiles-2026-11-17/. The owned app/bookmark remain local audit
+artifacts; no resident process or bookmark content in committed evidence. Native
+build uses warnings as errors; full profile provisioning/recognition, real shipping
+identity, fresh-user/other OS builds, updates and stale/revoked bookmarks remain
+pending. No product installation or PR.
+
+Fresh validation for this follow-up: native warnings-as-errors build and signed
+entitlement verification, independent two-phase log/source/binary/cleanup checks,
+corrected no-subprocess dry-run regression and 1,031 repository unit tests pass.
+Full E2E attempted and bounded at 15 seconds after missing pinned WebKit 2388;
+no download or full-suite pass. Updated report retains initial zero-grant creation
+limits while recording the now-successful narrower access route.

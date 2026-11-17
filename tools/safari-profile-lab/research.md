@@ -1,5 +1,10 @@
 # Fully automatic Safari profile creation without the three permissions
 
+**Follow-up, 2026-11-17:** the narrower folder grant is now tested successfully
+for real Safari storage access, including bookmark resolution in a new process
+without a second picker. This changes the access finding, not the still-pending
+end-to-end creation finding. See [folder-access.md](folder-access.md).
+
 ## Finding
 
 No permission-free, fully automatic creation of a usable Safari profile has been
@@ -146,13 +151,12 @@ Three distinct directions remain:
    metadata/implementation and any genuine creation broker further. A candidate
    must expose a real operation, accept an ordinary client, and pass an end-to-end
    fresh-user test. No such candidate is established yet.
-2. **Allow one-time narrower file access:** a user-selected directory with a
-   security-scoped bookmark is a research candidate rather than FDA. Whether
-   that grant reaches Safari's protected container on the target OS, and whether
-   native creation fully provisions it, remain untested. It requires a user
-   grant and must not be presented as zero-setup automation. Do not assume a
-   picker bypasses data-vault/TCC restrictions or that a selected directory is
-   sufficient for safe live synchronization.
+2. **Allow one-time narrower file access (tested 2026-11-17):** a selected
+   Safari data directory and saved security-scoped bookmark provide access in
+   the follow-up's sandboxed helper, without FDA/Automation/AX requests. Complete
+   native profile provisioning and safe live synchronization remain untested.
+   It requires a user grant and must not be presented as zero-setup automation;
+   the measured result is not a general bypass of data-vault/TCC restrictions.
 3. **Relax the workflow:** let Safari create the profile once in its own UI,
    then discover it through the existing extension messaging path. This avoids
    the three permissions for the creation step, but fails the fully automatic

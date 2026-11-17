@@ -1,0 +1,50 @@
+[
+  {
+    "function": "-[NSFileManager(SafariNSFileManagerExtras) safari_profilesDirectoryURL]",
+    "instruction": "0x1AF77F4B4   tbz      x16, #0x3e, 0x1af77f4bc "
+  },
+  {
+    "function": "___71-[NSFileManager(SafariNSFileManagerExtras) safari_profilesDirectoryURL]_block_invoke",
+    "instruction": "0x1AF77F4E8   bl       _objc_msgSend$safari_containerSettingsDirectory "
+  },
+  {
+    "function": "___71-[NSFileManager(SafariNSFileManagerExtras) safari_profilesDirectoryURL]_block_invoke",
+    "instruction": "0x1AF77F500   bl       \"_objc_msgSend$URLByAppendingPathComponent:\" "
+  },
+  {
+    "function": "___71-[NSFileManager(SafariNSFileManagerExtras) safari_profilesDirectoryURL]_block_invoke",
+    "instruction": "0x1AF77F534   tbz      x16, #0x3e, 0x1af77f53c "
+  },
+  {
+    "function": "-[NSFileManager(SafariNSFileManagerExtras) safari_profileDirectoryURLWithID:createIfNeeded:]",
+    "instruction": "0x1AF77F584   bl       _objc_msgSend$safari_profilesDirectoryURL "
+  },
+  {
+    "function": "-[NSFileManager(SafariNSFileManagerExtras) safari_profileDirectoryURLWithID:createIfNeeded:]",
+    "instruction": "0x1AF77F598   bl       \"_objc_msgSend$URLByAppendingPathComponent:\" "
+  },
+  {
+    "function": "-[NSFileManager(SafariNSFileManagerExtras) safari_profileDirectoryURLWithID:createIfNeeded:]",
+    "instruction": "0x1AF77F5B0   cbz      w22, 0x1af77f5cc     "
+  },
+  {
+    "function": "-[NSFileManager(SafariNSFileManagerExtras) safari_profileDirectoryURLWithID:createIfNeeded:]",
+    "instruction": "0x1AF77F5BC   bl       \"_objc_msgSend$safari_ensureDirectoryExists:\" "
+  },
+  {
+    "function": "-[NSFileManager(SafariNSFileManagerExtras) safari_profileDirectoryURLWithID:createIfNeeded:]",
+    "instruction": "0x1AF77F5D0   bl       _objc_msgSend$path   "
+  },
+  {
+    "function": "-[NSFileManager(SafariNSFileManagerExtras) safari_profileDirectoryURLWithID:createIfNeeded:]",
+    "instruction": "0x1AF77F5E8   bl       \"_objc_msgSend$fileExistsAtPath:\" "
+  },
+  {
+    "function": "-[NSFileManager(SafariNSFileManagerExtras) safari_profileDirectoryURLWithID:createIfNeeded:]",
+    "instruction": "0x1AF77F5F8   tbz      w21, #0x0, 0x1af77f608 "
+  },
+  {
+    "function": "-[NSFileManager(SafariNSFileManagerExtras) safari_profileDirectoryURLWithID:createIfNeeded:]",
+    "instruction": "0x1AF77F638   tbz      x16, #0x3e, 0x1af77f640 "
+  }
+]

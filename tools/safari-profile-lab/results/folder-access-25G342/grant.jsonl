@@ -1,0 +1,9 @@
+{"bundleIdentifier": "com.unibox.margin.profile-folder-probe.r6f19d7bba8c849e8908feacfc07450d3", "mode": "--grant", "parentPID": 1, "pid": 83371, "sandboxHome": "$USER_HOME/Library/Containers/com.unibox.margin.profile-folder-probe.r6f19d7bba8c849e8908feacfc07450d3/Data", "stage": "identity", "target": "$USER_HOME/Library/Containers/com.apple.Safari/Data/Library/Safari", "testModel": "separate ad-hoc-signed App Sandbox app; no fresh-user TCC claim"}
+{"access": {"databaseReadOpen": {"errno": 1, "opened": 0}, "databaseReadWriteOpen": {"errno": 1, "opened": 0}, "directory": {"errno": 1, "opened": 0}, "outsideControl": {"errno": 1, "opened": 0}, "siblingDirectory": {"errno": 1, "opened": 0}}, "stage": "before-grant"}
+{"expectedFolder": "$USER_HOME/Library/Containers/com.apple.Safari/Data/Library/Safari", "stage": "picker-waiting", "timeoutSeconds": 600}
+{"exactTarget": true, "stage": "picker-selected", "started": true}
+{"access": {"databaseReadOpen": {"errno": 0, "opened": 1}, "databaseReadWriteOpen": {"errno": 0, "opened": 1}, "directory": {"errno": 0, "opened": 1}, "outsideControl": {"errno": 1, "opened": 0}, "siblingDirectory": {"errno": 1, "opened": 0}}, "stage": "after-picker"}
+{"created": 1, "errno": 0, "name": ".margin-profile-folder-probe-488BF6DA-7F2E-429E-B34D-4B97F4A6F210", "phase": "after-picker", "stage": "sentinel-create"}
+{"phase": "after-picker", "readback": true, "removedOwnedInode": true, "stage": "sentinel-result", "synced": true, "wrote": true}
+{"errorCode": 0, "errorDomain": "", "saved": true, "stage": "bookmark-save"}
+{"complete": true, "outcome": "folder-grant-verified-ready-for-relaunch", "realSafariProfileCreated": false, "status": 0}

@@ -9,6 +9,12 @@ Detailed conclusions and remaining work: [research.md](research.md).
 Checked host: macOS 26.7.3 (25G342), arm64, Safari 27.2 (21625.2.8.18.4).
 These are host facts, not the environment version assumed by older project prose.
 
+**2026-11-17 follow-up:** the one-time directory grant now passes a real sandboxed
+app test, including a second process restoring the bookmark without UI. Database
+open checks and owned sentinel writes pass; outside controls remain denied.
+No profile was created. See [folder-access.md](folder-access.md) for evidence,
+reproduction, the retained launcher defect and the remaining creation checks.
+
 ## Reproduce the isolated experiment
 
 The helper refuses other builds and anything except an owned fixture created by

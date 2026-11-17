@@ -14,8 +14,18 @@
 - [ ] If a viable candidate is established, verify in Safari under a fresh user:
   persistence/relaunch, actual data isolation, extensions and existing-profile/iCloud
   integrity. No Safari launch or live profile write occurred in this pass.
-- [ ] Optional separate experiment: determine whether a user-selected directory
-  grant can reach the protected store. This is unverified and requires user setup.
+- [x] Separate experiment (2026-11-17): a user-selected directory grant reaches
+  real Safari storage in a distinct sandboxed app. Native baseline EPERM becomes
+  successful O_RDONLY/O_RDWR database opens and owned sentinel write/read/removal;
+  the next process starts denied, restores access from a non-stale bookmark without
+  UI, repeats the sentinel test, and exits. Outside control and sibling Preferences
+  remain denied throughout. User confirms only the folder picker was approved.
+- [ ] Complete profile creation through that grant, fresh-user/other-build testing,
+  shipping signing identity, app upgrades and stale/revoked bookmark recovery.
+  No real profile or Safari database contents were created/modified/read.
+
+See [folder-access follow-up](tools/safari-profile-lab/folder-access.md) for the
+retained build-format failure, runner dry-flag defect/fix and regression check.
 
 This is native API/fixture validation, not a fresh-user TCC test or Safari acceptance.
 See [report](tools/safari-profile-lab/research.md) and
