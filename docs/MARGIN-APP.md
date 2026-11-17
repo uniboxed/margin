@@ -159,6 +159,11 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
    (for now), the cross-profile order and UI, the overlay's and the handoff's words between the copies and the app,
    the unused private-call checks; and Margin no longer quits itself once the person has opened it.
 
+   *In front 2026-11-17 (DECISIONS.md "Margin's window in front of what it hosts"):* Margin's window is in front of
+   what it hosts, the page area a hole in it while a hosted window is shown, the page card opaque with a loader
+   while one opens; the corner panels, the lift and "kept below the hosted window" are gone. On-screen check:
+   `/tmp/margin-toolbar-test/hosted/check10.swift`.
+
 Chrome and Edge: the same host (Chrome keeps its window buttons visible: hide
 its toolbar via its own setting, as decided on 2026-11-14), after Safari.
 Windows: unchanged for now (its own shell).
