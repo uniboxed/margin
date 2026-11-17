@@ -113,6 +113,11 @@ extension Shell {
             // own full-screen change can still finish after the show: a window that ends up in no Space, or off the
             // screen, is brought back at the first read: 2026-11-17, check10).
             if case .shown = event { self?.pollAfterShow() }
+            // Any event of the engine's: the shell's own read, which then goes on every `restPoll` while something is
+            // hosted. (Found on the real screen, 2026-11-17: with only apps hosted and no browser's copy linked nothing
+            // had started the reads, so the poll that brings a strayed window back, lets another window in front and
+            // keeps Margin's keys never ran.)
+            self?.soon()
         }
     }
 

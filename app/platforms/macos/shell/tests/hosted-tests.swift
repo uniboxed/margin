@@ -1081,4 +1081,14 @@ func hostedShellTests(script: URL) {
     check("hosted shell: a palette pick goes to the session", shell.openApp != nil)
     shell.track()
     check("hosted shell: a read polls the host, nothing to come back for with nothing hosted or linked", shell.pollTimer == nil)
+    // An app hosted with no browser's copy linked: the engine's own events start the shell's reads, which then go on
+    // while it's hosted (the real screen, 2026-11-17: nothing had started them, the poll never ran).
+    if let engine = shell.host {
+        hostRun { _ = await engine.open(app: .app("com.apple.TextEdit"), in: HostPlacement(page: CGRect(x: 260, y: 8, width: 1000, height: 700), area: FakeHostWorld.display), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        hostRun { await w.sleep(0.05) }
+        let before = engine.polls
+        check("hosted shell: an app hosted and no copy linked: the shell's reads started by the engine's events, armed again while it's hosted", engine.hasHosts && shell.pollTimer != nil, "hosts \(engine.hasHosts) timer \(shell.pollTimer != nil)")
+        shell.track()
+        check("hosted shell: and each read polls the host", engine.polls > before && shell.pollTimer != nil, "\(before) → \(engine.polls)")
+    }
 }
