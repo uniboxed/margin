@@ -113,7 +113,8 @@ extension Shell {
 
     // The source Margin's windows draw, and the session that hosts what they show: the library's, made once.
     func makeHostedSource() -> MarginWindowSource {
-        let profiles = DataSetWindowSource(data: data, pick: { [weak self] in self?.hostedProfile() })
+        // (A theme's settings changed in Margin's window, its sidebar's width, last across launches: the app's defaults.)
+        let profiles = DataSetWindowSource(data: data, pick: { [weak self] in self?.hostedProfile() }, keeper: options.harness ? nil : .appDefaults)
         guard let library else {
             Diagnostics.note("Margin's window: no library (its rules didn't load): a profile's spaces, read only")
             return profiles

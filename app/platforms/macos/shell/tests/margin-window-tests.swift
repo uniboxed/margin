@@ -163,6 +163,27 @@ func marginWindowTests() {
     sync.onChange?(DataProfile(browser: "safari", profile: "P"), ["spaces"])
     check("hosted source: the shell still hears the data set's changes (the source's comes after)", shellHeard == 1)
 
+    // ---- a theme's settings changed in Margin's window (the sidebar's width, dragged) last across launches ----
+    do {
+        var stored: [String: JSONObject] = ["arcadia": ["sidebarWidth": 300]]
+        var writes = 0
+        let keeper = ThemeSettingsKeeper(read: { stored }, write: { stored = $0; writes += 1 })
+        func source() -> DataSetWindowSource { DataSetWindowSource(data: DataSync(store: DataStore(root: tempFolder("window-theme-settings"))), pick: { nil }, keeper: keeper) }
+        func width(_ s: DataSetWindowSource, _ theme: String) -> Any? { (((s.snapshot()["settings"] as? JSONObject)?["themes"] as? JSONObject)?[theme] as? JSONObject)?["sidebarWidth"] }
+        let first = source()
+        check("theme settings: what was kept is the theme's setting from the start", int(width(first, "arcadia")) == 300 && writes == 0)
+        first.perform("updateThemeSettings", ["themeId": "arcadia", "patch": ["sidebarWidth": 342], "windowId": 1])
+        first.perform("updateThemeSettings", ["themeId": "pixel", "patch": ["sidebarWidth": "280px"], "windowId": 1])
+        check("theme settings: a width dragged is written as it's saved, each theme its own", writes == 2 && int(stored["arcadia"]?["sidebarWidth"]) == 342 && stored["pixel"]?["sidebarWidth"] as? String == "280px", "\(stored)")
+        let next = source()
+        check("theme settings: the next launch draws the width that was dragged", int(width(next, "arcadia")) == 342 && width(next, "pixel") as? String == "280px")
+        let plain = DataSetWindowSource(data: DataSync(store: DataStore(root: tempFolder("window-theme-settings-none"))), pick: { nil })
+        plain.perform("updateThemeSettings", ["themeId": "arcadia", "patch": ["sidebarWidth": 500], "windowId": 1])
+        check("theme settings: no keeper (a test's, the harness's): in memory only, nothing written", writes == 2 && int(width(plain, "arcadia")) == 500)
+        let cleaned = ThemeSettingsKeeper.clean(["arcadia": ["sidebarWidth": 300, "name": "x", "on": true, "list": [1, 2], "nested": ["a": 1], "long": String(repeating: "x", count: 201)], "bad": "not settings", "empty": [String: Any]()])
+        check("theme settings: only numbers, short strings and switches are kept, per theme", Set(cleaned.keys) == ["arcadia"] && Set(cleaned["arcadia"]?.keys.map { $0 } ?? []) == ["sidebarWidth", "name", "on"], "\(cleaned)")
+    }
+
     // ---- the page area's ground while Margin's window is in front of the hosted one (PageGroundView) ----
     do {
         let ground = PageGroundView(frame: NSRect(x: 0, y: 0, width: 1512, height: 949))
