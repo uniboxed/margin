@@ -1,48 +1,111 @@
-/* Arcadia, Margin's default theme, as a theme package: Arc's look, ported
-   from themes/arcadia (sidebar.css, palette.css, newtab.css, chrome.js) so
-   nothing looks different. A gray frame around the page card (the card is
-   Margin's <m-page>: its box is where the page goes), the sidebar of space
-   chips, pins and tabs at the left, docked (Keep open), hidden (the frame
-   alone, or nothing) or out over the page (peek); a dark command bar;
-   macOS-style menus. Sizes measured from Arc (DECISIONS.md). */
+/* Arcadia, Margin's default theme, as a theme package: a sidebar window in
+   the space's colour. The whole window is one tinted ground (the frame
+   around the page card and the sidebar on it), the page a rounded card
+   (Margin's <m-page>: its box is where the page goes), and in the sidebar,
+   top to bottom: the toggle and back, forward, reload; the address pill; the
+   space's name; pins and folders; the line with Clear; "+ New Tab" and
+   today's tabs; the spaces at the bottom. Docked (Keep open), hidden (the
+   frame alone, or nothing) or out over the page (peek). A floating command
+   bar; small rounded menus. Light and dark, no blur anywhere: translucent
+   fills over the ground. */
 
 .arcadia {
-  /* One sidebar and frame color (Arc-like neutral gray), the same in Light
-     and Dark Mode; not tinted by the space or taken from the page. */
-  --frame: #9c9da1;
+  --space-color: #6c5ce7;
+  /* The ground: the space's colour, soft, over a near-white (near-black in
+     Dark Mode). One colour, so the frame (the page card's spread shadow) and
+     the corners Margin.app draws over a hosted window are the sidebar's. */
+  --frame: color-mix(in srgb, var(--space-color) 30%, #f1f0f3);
   /* The sidebar's width: the sidebarWidth setting (px), 160–500, step 10. */
   --width: calc(var(--m-sidebar-width, 260) * 1px);
-  --space-color: #6c5ce7;
-  /* Arc's sidebar: warm near-black text, muted space name and icons, a
-     faint dark hover and an opaque light pill for the tab shown. */
-  --fg: #1c1702;
-  --muted: rgba(0, 0, 0, 0.48);
+  --pad: 10px;
+  /* Dark on the light ground. The fills are the ground with white in it,
+     more or less (what a translucent white over it comes to, as one colour:
+     a row's × stands on the same): a faint one under the pointer, a
+     near-white pill for the tab shown. */
+  --fg: #1c1b20;
+  --muted: rgba(0, 0, 0, 0.5);
+  --ink: #000;
   --icon: rgba(0, 0, 0, 0.6);
-  --hover: rgba(0, 0, 0, 0.045);
-  --press: rgba(0, 0, 0, 0.08);
-  --active: #ebebeb;
+  --hover: color-mix(in srgb, #fff 30%, var(--frame));
+  --press: rgba(0, 0, 0, 0.07);
+  --field: color-mix(in srgb, #fff 40%, var(--frame));
+  --field-hover: color-mix(in srgb, #fff 55%, var(--frame));
+  --input: rgba(255, 255, 255, 0.65);
+  --active: color-mix(in srgb, #fff 92%, var(--frame));
+  --active-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  --behind: color-mix(in srgb, #fff 50%, var(--frame));
   --border: rgba(0, 0, 0, 0.1);
-  --drop: #0a84ff;
+  --cover: color-mix(in srgb, var(--frame) 55%, #fff);
+  /* The floating panels (menus, the command bar): plain and opaque. */
+  --panel: #f6f6f7;
+  --panel-fg: #1c1c1e;
+  --panel-muted: rgba(0, 0, 0, 0.5);
+  --panel-line: rgba(0, 0, 0, 0.1);
+  --panel-hover: rgba(0, 0, 0, 0.05);
+  --panel-edge: rgba(0, 0, 0, 0.16);
+  /* Where a colour isn't the space's: the system's accent. */
+  --accent: #0a84ff;
+  --on-accent: #fff;
+  --drop: var(--accent);
+  --danger: #d70015;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
   /* Where the page card is: inside the frame (8 px), right of the sidebar
      when it's docked. */
   --card-left: var(--width);
   --card-inset: 8px;
-  --card-radius: 6.25px;
+  --card-radius: 10px;
 
   position: relative;
   width: 100%;
   height: 100%;
   overflow: hidden;
   color: var(--fg);
-  font: 14px/1.25 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font: 13px/1.25 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color-scheme: light dark;
+  cursor: default;
   user-select: none;
   -webkit-user-select: none;
 }
+@supports (color: AccentColor) {
+  .arcadia { --accent: AccentColor; }
+}
+@media (prefers-color-scheme: dark) {
+  .arcadia {
+    --frame: color-mix(in srgb, var(--space-color) 30%, #1c1c20);
+    --fg: #f4f3f7;
+    --muted: rgba(255, 255, 255, 0.55);
+    --ink: #fff;
+    --icon: rgba(255, 255, 255, 0.65);
+    --hover: color-mix(in srgb, #fff 7%, var(--frame));
+    --press: rgba(255, 255, 255, 0.12);
+    --field: color-mix(in srgb, #fff 9%, var(--frame));
+    --field-hover: color-mix(in srgb, #fff 13%, var(--frame));
+    --input: rgba(0, 0, 0, 0.22);
+    --active: color-mix(in srgb, #fff 18%, var(--frame));
+    --active-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    --behind: color-mix(in srgb, #fff 10%, var(--frame));
+    --border: rgba(255, 255, 255, 0.12);
+    --cover: color-mix(in srgb, var(--frame) 80%, #000);
+    --panel: #2a2a2e;
+    --panel-fg: #f2f1f4;
+    --panel-muted: rgba(255, 255, 255, 0.55);
+    --panel-line: rgba(255, 255, 255, 0.1);
+    --panel-hover: rgba(255, 255, 255, 0.07);
+    --panel-edge: rgba(255, 255, 255, 0.14);
+    --danger: #ff453a;
+  }
+}
+@media (prefers-contrast: more) {
+  .arcadia { --muted: rgba(0, 0, 0, 0.74); --border: rgba(0, 0, 0, 0.42); --hover: color-mix(in srgb, #fff 55%, var(--frame)); --active: #fff; --active-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); --panel-muted: rgba(0, 0, 0, 0.72); --panel-edge: rgba(0, 0, 0, 0.5); }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  .arcadia { --muted: rgba(255, 255, 255, 0.8); --border: rgba(255, 255, 255, 0.45); --hover: color-mix(in srgb, #fff 14%, var(--frame)); --active: color-mix(in srgb, #fff 26%, var(--frame)); --active-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7); --panel-muted: rgba(255, 255, 255, 0.78); --panel-edge: rgba(255, 255, 255, 0.5); }
+}
 .arcadia *, .arcadia *::before, .arcadia *::after { box-sizing: border-box; }
 .arcadia img { -webkit-user-drag: none; }
-.arcadia input { -webkit-user-select: text; user-select: text; }
-.arcadia button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
-.arcadia a { color: inherit; text-decoration: none; }
+.arcadia :is(input, textarea) { -webkit-user-select: text; user-select: text; cursor: auto; }
+.arcadia button { font: inherit; color: inherit; background: none; border: 0; cursor: default; }
+.arcadia a { color: inherit; text-decoration: none; cursor: default; }
 .arcadia ul { list-style: none; margin: 0; padding: 0; }
 .arcadia .spacer { flex: 1; }
 
@@ -51,7 +114,7 @@
 .arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]) { --card-left: 8px; }
 .arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]) { --card-left: 0px; --card-inset: 0px; --card-radius: 0px; }
 /* The new-tab page: the sidebar always beside the launcher. */
-.arcadia.newtab { --card-left: var(--width); --card-inset: 8px; --card-radius: 6.25px; }
+.arcadia.newtab { --card-left: var(--width); --card-inset: 8px; --card-radius: 10px; }
 
 /* ---- The frame and the page card ------------------------------------------- */
 
@@ -67,17 +130,13 @@
 }
 .page { box-shadow: 0 0 0 100vmax var(--frame); }
 .arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .page { box-shadow: none; }
-/* The card's soft shadow, above the sidebar so it also falls on its edge. */
-.card-edge { pointer-events: none; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.24), 0 0 3px rgba(0, 0, 0, 0.06); }
+/* The card's hairline and very soft shadow, above the sidebar so it also falls on its edge. */
+.card-edge { pointer-events: none; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08); }
 .arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .card-edge { box-shadow: none; }
-/* Out of Keep open, and back, the card's edge travels with the sidebar. */
-.card-edge { transition: left 200ms ease; }
-.arcadia.m-resizing .card-edge { transition: none; }
-@media (prefers-reduced-motion: reduce) { .card-edge { transition: none; } }
 
-/* Page-load indicator (Arc): a small dark pill centered over the page, in
-   the frame's 8 px top strip (at the top of the page with no frame). Fades
-   and widens in, pulses gently while loading, fades out. */
+/* Page-load indicator: a small pill centered over the page, in the frame's
+   8 px top strip (at the top of the page with no frame). Fades and widens
+   in, pulses gently while loading, fades out. */
 .loader {
   position: absolute;
   top: -6px;
@@ -88,44 +147,39 @@
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 250ms ease, transform 250ms ease, visibility 0s linear 250ms;
+  transition: opacity 200ms var(--ease), transform 200ms var(--ease), visibility 0s linear 200ms;
 }
 .arcadia:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .loader { top: 2px; }
-.arcadia.loading .loader { opacity: 1; visibility: visible; transform: translateX(-50%) scaleX(1); transition: opacity 250ms ease, transform 250ms ease; }
-.loader-bar { width: 100%; height: 100%; border-radius: 2px; background: rgba(28, 28, 30, 0.88); box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.3); }
-.arcadia.loading .loader-bar { animation: arcadia-pulse 1.2s ease-in-out 250ms infinite; }
-@keyframes arcadia-pulse { 50% { opacity: 0.55; } }
-/* A tab loading, in its row (the tab in front also has the pill): its icon
-   pulses, no hover needed. */
-.margin-sidebar :is(.tab, .pin).busy .avatar { animation: arcadia-pulse 1.2s ease-in-out infinite; }
-/* Margin's trackpad gestures on the page: a round badge over the page card. */
-/* The gestures' badge (pull to refresh, swipe back and forward): --g is how far the fingers have gone, eased every
-   frame by Margin.app (--gesture-live), so the badge follows them; it grows in from the edge, its ring fills, and once
-   letting go would do it, it takes the space's color with a small pop. Done: a pull's arrow spins as the page
-   reloads, a swipe's badge slides on the way it went; let go too soon: it slides back out. Per frame only transform
-   and opacity change. */
-.gesture { --gesture: 0; --g: var(--gesture-live, var(--gesture)); position: absolute; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: rgba(28, 28, 30, 0.86); color: #fff; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.28), 0 4px 14px rgba(0, 0, 0, 0.28); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); pointer-events: none; opacity: min(1, calc(var(--g) * 2.5)); will-change: transform, opacity; transition: background-color 180ms ease, box-shadow 180ms ease; }
+.arcadia.loading .loader { opacity: 1; visibility: visible; transform: translateX(-50%) scaleX(1); transition: opacity 200ms var(--ease), transform 200ms var(--ease); }
+.loader-bar { width: 100%; height: 100%; border-radius: 2px; background: var(--ink); opacity: 0.6; }
+.arcadia.loading .loader-bar { animation: arcadia-pulse 1.2s ease-in-out 200ms infinite; }
+@keyframes arcadia-pulse { 50% { opacity: 0.3; } }
+@keyframes arcadia-spin { to { transform: rotate(360deg); } }
+/* Margin's trackpad gestures on the page (pull to refresh, swipe back and
+   forward): a round badge over the page card. --g is how far the fingers
+   have gone, eased every frame by Margin.app (--gesture-live), so the badge
+   follows them; it grows in from the edge, its ring fills, and once letting
+   go would do it, it takes the space's color. Done: a pull's arrow spins as
+   the page reloads, a swipe's badge slides on the way it went; let go too
+   soon: it slides back out. Per frame only transform and opacity change. */
+.gesture { --gesture: 0; --g: var(--gesture-live, var(--gesture)); position: absolute; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: #242427; color: #fff; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.28), 0 4px 14px rgba(0, 0, 0, 0.28); pointer-events: none; opacity: min(1, calc(var(--g) * 2.5)); will-change: transform, opacity; transition: background-color 180ms var(--ease); }
 .gesture::before { content: ''; position: absolute; inset: 2px; border-radius: 50%; background: conic-gradient(rgba(255, 255, 255, 0.92) calc(var(--g) * 360deg), rgba(255, 255, 255, 0.14) 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); }
 .gesture .line-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .gesture.pull { top: 14px; left: 50%; transform: translate(-50%, calc((var(--g) - 1) * 40px)) scale(calc(0.6 + var(--g) * 0.4)); }
 .gesture.pull .line-icon { transform: rotate(calc(var(--g) * 300deg)); }
-.gesture.swipe.back { --dir: -1; left: 14px; top: 50%; transform: translate(calc((var(--g) - 1) * 44px), -50%) scale(calc(0.6 + var(--g) * 0.4)); }
-.gesture.swipe.forward { --dir: 1; right: 14px; top: 50%; transform: translate(calc((1 - var(--g)) * 44px), -50%) scale(calc(0.6 + var(--g) * 0.4)); }
+.gesture.swipe.back { left: 14px; top: 50%; transform: translate(calc((var(--g) - 1) * 44px), -50%) scale(calc(0.6 + var(--g) * 0.4)); }
+.gesture.swipe.forward { right: 14px; top: 50%; transform: translate(calc((1 - var(--g)) * 44px), -50%) scale(calc(0.6 + var(--g) * 0.4)); }
 .gesture.swipe.forward .line-icon { scale: -1 1; }
-.gesture.armed { background: var(--space-color, rgba(28, 28, 30, 0.86)); box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.4), 0 6px 18px rgba(0, 0, 0, 0.32); animation: arcadia-gesture-pop 260ms cubic-bezier(0.3, 1.6, 0.5, 1); }
+.gesture.armed { background: var(--space-color, #242427); }
 .gesture.armed::before { background: rgba(255, 255, 255, 0.92); }
-.gesture.swipe.armed .line-icon { animation: arcadia-gesture-nudge 260ms cubic-bezier(0.3, 1.6, 0.5, 1); }
-.gesture.done { animation: none; opacity: 0; transition: opacity 260ms ease 180ms, translate 360ms cubic-bezier(0.2, 0.8, 0.2, 1); }
-.gesture.pull.done .line-icon { animation: arcadia-gesture-spin 520ms linear infinite; }
+.gesture.done { opacity: 0; transition: opacity 200ms var(--ease) 160ms, translate 300ms var(--ease); }
+.gesture.pull.done .line-icon { animation: arcadia-spin 520ms linear infinite; }
 .gesture.swipe.back.done { translate: 28px 0; }
 .gesture.swipe.forward.done { translate: -28px 0; }
-.gesture.leaving { animation: none; transition: opacity 160ms ease; }
-@keyframes arcadia-gesture-pop { 0% { scale: 1; } 45% { scale: 1.16; } 100% { scale: 1; } }
-@keyframes arcadia-gesture-nudge { 0% { translate: 0 0; } 45% { translate: calc(var(--dir, -1) * 3px) 0; } 100% { translate: 0 0; } }
-@keyframes arcadia-gesture-spin { from { rotate: 0deg; } to { rotate: 360deg; } }
+.gesture.leaving { transition: opacity 160ms var(--ease); }
 @media (prefers-reduced-motion: reduce) {
   .gesture, .gesture .line-icon { animation: none !important; transition: none; translate: none; }
-  .margin-sidebar :is(.tab, .pin).busy .avatar { animation: none; opacity: 0.6; }
+  .margin-sidebar .spinner { animation: none; }
   .loader { transition: opacity 150ms linear, visibility 0s linear 150ms; }
   .arcadia.loading .loader { transition: opacity 150ms linear; }
   .arcadia.loading .loader-bar { animation: none; }
@@ -142,7 +196,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 0 8px;
+  padding: 0 var(--pad);
   background: var(--frame);
   color: var(--fg);
   -webkit-font-smoothing: antialiased;
@@ -153,16 +207,16 @@
   top: 8px;
   left: 8px;
   height: calc(100% - 16px);
-  border-radius: 6.25px; /* the page card's */
-  box-shadow: 0 0 0 1px var(--border), 0 12px 40px rgba(0, 0, 0, 0.22);
+  border-radius: 10px; /* the page card's */
+  box-shadow: 0 0 0 0.5px var(--panel-edge), 0 12px 40px rgba(0, 0, 0, 0.22);
   transform: translateX(calc(-100% - 16px));
   visibility: hidden;
-  transition: transform 160ms ease, visibility 0s linear 160ms;
+  transition: transform 180ms var(--ease), visibility 0s linear 180ms;
 }
 .arcadia[data-sidebar="peek"]:not(.newtab) .margin-sidebar {
   transform: none;
   visibility: visible;
-  transition: transform 160ms ease;
+  transition: transform 180ms var(--ease);
 }
 .arcadia.m-resizing .margin-sidebar, .arcadia.m-resizing .margin-sidebar * { transition: none !important; }
 @media (prefers-reduced-motion: reduce) { .margin-sidebar { transition: none !important; } }
@@ -171,67 +225,93 @@
 .peek-zone { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: var(--m-reveal-zone, 10px); }
 .arcadia[data-sidebar="hidden"]:not(.newtab) .peek-zone { display: block; }
 
-/* Arc's icons, one flat gray: drawn black and faded as a whole, so
+/* The icons, one flat tone: drawn in the ink and faded as a whole, so
    overlapping strokes don't come out darker. */
 .margin-sidebar .line-icon { display: block; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .margin-sidebar .fill-icon { display: block; fill: currentColor; }
-.margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) { color: #000; }
+.margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) { color: var(--ink); }
 .margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) :is(.line-icon, .fill-icon) { opacity: 0.6; }
 
-/* The top: the sidebar toggle (Keep open / Auto-hide) where Arc has it. */
-.margin-sidebar .top { flex: none; display: flex; align-items: flex-start; height: 43px; padding-top: 8.75px; }
+/* The top: a slim row. The window's buttons' room (windowed), the sidebar
+   toggle (Keep open / Auto-hide), and back, forward, reload at the right.
+   It wraps and shows one line, so in a narrow sidebar the last buttons
+   give way instead of squeezing. */
+.margin-sidebar .top { flex: none; display: flex; flex-wrap: wrap; align-items: center; column-gap: 2px; height: 28px; margin: 8px 0 6px; overflow: hidden; }
 .margin-sidebar :is(.keep-open, .bar-button) {
   flex: none;
   display: grid;
   place-items: center;
-  width: 30px;
+  width: 28px;
   height: 28px;
   border-radius: 7px;
 }
-.margin-sidebar .keep-open { margin-left: 6px; }
+.margin-sidebar .top .spacer { align-self: stretch; height: 28px; }
 .margin-sidebar .toggle-icon { width: 18.5px; height: 14.5px; }
+.margin-sidebar .nav-icon { width: 16px; height: 16px; }
 .margin-sidebar :is(.keep-open, .bar-button):hover { background: var(--hover); }
-.margin-sidebar :is(.keep-open, .bar-button):active { background: var(--press); }
+.margin-sidebar :is(.keep-open, .bar-button):active { background: var(--field-hover); }
+.margin-sidebar :is(.keep-open, .bar-button, .address, .clear):focus-visible { outline: 2px solid var(--drop); outline-offset: -2px; }
 .arcadia.newtab .keep-open { display: none; }
-/* Windowed (Margin covers the browser's toolbar): the window's buttons and
-   an address button that opens the command bar. Not in a page or full screen. */
-.window-controls, .margin-sidebar .address { display: none; }
-.arcadia[data-mode="windowed"] .window-controls { display: block; flex: none; width: 60px; height: 14px; margin: 7px 4px 0 6px; }
-.arcadia[data-mode="windowed"] .margin-sidebar .address { display: grid; }
-.margin-sidebar .search-icon { width: 15px; height: 15px; }
+/* Windowed: the window's buttons go at the row's start. Not in full screen. */
+.window-controls { display: none; }
+.arcadia[data-mode="windowed"] .window-controls { display: block; flex: none; width: 54px; height: 14px; margin: 0 8px 0 2px; }
 
-/* The space's name (Arc): its emoji and name, muted. */
+/* The address pill: the site of the tab in front, on a translucent lighter
+   fill; a click opens the command bar. */
+.margin-sidebar .address {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 36px;
+  margin-bottom: 6px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--field);
+  font-weight: 500;
+  text-align: left;
+}
+.margin-sidebar .address:hover { background: var(--field-hover); }
+.margin-sidebar .address .host { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: 0.8; }
+.margin-sidebar .address .hint { color: var(--muted); font-weight: 400; opacity: 1; }
+
+/* The space's name: its emoji and name, small and muted. */
 .margin-sidebar .space-title {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 36px;
-  margin-bottom: 5px;
-  padding-left: 10.5px;
+  gap: 8px;
+  height: 30px;
+  margin-bottom: 2px;
+  padding-left: 10px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
-.margin-sidebar .space-title .emoji { flex: none; position: relative; top: -1px; width: 17px; margin: 0 -0.5px; font-size: 17px; line-height: 17px; text-align: center; color: initial; }
+.margin-sidebar .space-title .emoji { flex: none; width: 16px; font-size: 14px; line-height: 16px; text-align: center; color: initial; }
 
 /* The space's part (name, editor, list), which a sideways swipe drags
    (Margin's m-swipe). */
 .margin-sidebar .space-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .margin-sidebar.m-swiping { overflow: clip; }
 .margin-sidebar.m-swiping .space-pane { will-change: transform; transform: translateX(var(--m-swipe-offset, 0px)); }
-.margin-sidebar.m-settling .space-pane { transform: translateX(var(--m-swipe-offset, 0px)); transition: transform 220ms cubic-bezier(0.25, 1, 0.5, 1); }
+.margin-sidebar.m-settling .space-pane { transform: translateX(var(--m-swipe-offset, 0px)); transition: transform 200ms var(--ease); }
 @media (prefers-reduced-motion: reduce) { .margin-sidebar.m-settling .space-pane { transition: none; } }
 
 /* One list for the pinned area and the tabs; it scrolls under the top and
-   the bottom bar, never the page; no bounce. */
-.margin-sidebar .tabs-section { flex: 1; min-height: 0; margin: 0 -8px; padding: 0 8px 8px; overflow-y: auto; overscroll-behavior: none; }
-.margin-sidebar :is(.pins, .tabs) { display: flex; flex-direction: column; gap: 5px; }
+   the bottom bar, never the page. The one place that rubber-bands. */
+.margin-sidebar .tabs-section { flex: 1; min-height: 0; margin: 0 calc(-1 * var(--pad)); padding: 0 var(--pad) 8px; overflow-y: auto; overscroll-behavior: contain; }
+.margin-sidebar :is(.pins, .tabs) { display: flex; flex-direction: column; gap: 4px; }
 .margin-sidebar .pins { position: relative; }
 .margin-sidebar .pins:not(.has) { display: none; }
 .margin-sidebar .divider { height: 1px; margin: 10px 10px; background: var(--border); }
+/* The line above today's tabs; "Clear" shows on it under the pointer. */
+.margin-sidebar .today-split { position: relative; flex: none; display: flex; align-items: center; height: 21px; padding: 0 10px; }
+.margin-sidebar .today-split .rule { flex: 1; height: 1px; background: var(--border); }
+.margin-sidebar .clear { position: absolute; top: 2px; right: 6px; height: 17px; padding: 0 4px 0 8px; border-radius: 4px; background: var(--frame); color: var(--muted); font-size: 11px; font-weight: 600; opacity: 0; transition: opacity 150ms var(--ease); }
+.margin-sidebar .today-split:hover .clear, .margin-sidebar .clear:focus-visible { opacity: 1; }
+.margin-sidebar .clear:hover { color: var(--fg); }
 
-/* Rows (Arc): 36 high, 5 apart, radius 12; favicon 16, 10 before the title. */
+/* Rows: 36 high, 4 apart, radius 10; icon 16, 10 before the 13 px title. */
 .margin-sidebar :is(.tab, .pin, .new-tab-row, .folder) {
   position: relative;
   flex: none;
@@ -239,39 +319,36 @@
   align-items: center;
   gap: 10px;
   height: 36px;
-  padding: 0 6px 0 10px;
-  border-radius: 12px;
-  cursor: default;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--row, none);
+  font-weight: 500;
   outline: none;
 }
-.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder):hover { background: var(--hover); }
+.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder):hover { --row: var(--hover); }
 .margin-sidebar :is(.tab, .pin, .new-tab-row, .folder):focus-visible { box-shadow: inset 0 0 0 2px var(--drop); }
-/* A press (Arc, Margin's m-pressed): the row shrinks a little while the
-   button is down, and springs back as it comes up. */
-.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder) { transition: transform 300ms cubic-bezier(0.3, 1.5, 0.5, 1); }
-.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder).m-pressed { transform: scale(0.97); transition: transform 100ms cubic-bezier(0.2, 0, 0.3, 1); }
+/* A press (Margin's m-pressed): the row shrinks a little while the button
+   is down, and eases back as it comes up. */
+.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder) { transition: transform 180ms var(--ease); }
+.margin-sidebar :is(.tab, .pin, .new-tab-row, .folder).m-pressed { transform: scale(0.98); transition: transform 100ms var(--ease); }
 @media (prefers-reduced-motion: reduce) {
   .margin-sidebar :is(.tab, .pin, .new-tab-row, .folder).m-pressed { transform: none; }
 }
-.margin-sidebar :is(.tab, .pin, .new-tab-row).active {
-  background: linear-gradient(#efefef, rgba(239, 239, 239, 0) 2px), var(--active);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
+/* The tab shown: a clearly lighter pill (near-white, a soft shadow under it). */
+.margin-sidebar :is(.tab, .pin, .new-tab-row).active { --row: var(--active); box-shadow: var(--active-shadow); }
 /* While a new tab is being chosen (⌘T, "+ New Tab"): the tab whose page is
    still on screen under the palette, softly; "+ New Tab" fully. */
-.margin-sidebar :is(.tab, .pin, .new-tab-row).behind { background: rgba(255, 255, 255, 0.4); }
+.margin-sidebar :is(.tab, .pin, .new-tab-row).behind { --row: var(--behind); box-shadow: none; }
 /* Chosen here, live in another window (docs/BROWSER-WINDOWS.md §9): still highlighted, faded. */
 .margin-sidebar :is(.tab, .pin).away { opacity: 0.55; }
 
-/* A folder: its icon, then its name in semibold; its pins indented beneath. */
-.margin-sidebar .folder { padding-left: 8px; font-weight: 600; }
-.margin-sidebar .folder-toggle { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 6px; border-radius: 10px; }
-.margin-sidebar .folder-icon { flex: none; position: relative; top: 1px; width: 22.5px; height: 16.5px; overflow: visible; }
-/* Arc's colors: a golden back panel, an off-white front, a dark brown outline. */
-.margin-sidebar .folder-icon .folder-back { fill: #d0a004; stroke: #5f4904; stroke-width: 1.2; stroke-linejoin: round; }
-.margin-sidebar .folder-icon .folder-front { fill: #f2ecd9; stroke: #5f4904; stroke-width: 1.2; stroke-linejoin: round; }
+/* A folder: its glyph (a line drawing in the row's colour), then its name;
+   its pins indented beneath. */
+.margin-sidebar .folder-toggle { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 10px; }
+.margin-sidebar .folder-icon { flex: none; width: 16px; height: 16px; overflow: visible; fill: none; stroke: var(--ink); stroke-opacity: 0.62; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.margin-sidebar .folder-icon .folder-front { fill: var(--ink); fill-opacity: 0.14; }
 .margin-sidebar .pin.nested { margin-left: 16px; }
-/* A name edited in place (Margin's m-rename): Arc's field look. */
+/* A name edited in place (Margin's m-rename): a field. */
 .margin-sidebar .m-renaming {
   flex: 1;
   min-width: 0;
@@ -280,13 +357,14 @@
   margin-right: 2px;
   padding: 0 6px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.75);
+  background: var(--input);
   color: var(--fg);
   outline: 2px solid var(--drop);
   text-overflow: clip;
+  cursor: auto;
 }
 
-/* "+ New Tab", the first row of the tab list (Arc). */
+/* "+ New Tab", the first row of the tab list, muted. */
 .margin-sidebar .new-tab-row { color: var(--muted); }
 .margin-sidebar .new-tab-row.active { color: var(--fg); }
 .margin-sidebar .new-tab-row .plus { flex: none; display: grid; place-items: center; width: 16px; height: 16px; }
@@ -302,28 +380,37 @@
   font-size: 10px;
   font-weight: 600;
 }
+/* A tab loading: a small spinner in its icon's place (the tab in front also
+   has the pill), no hover needed. */
+.margin-sidebar .spinner { flex: none; width: 14px; height: 14px; margin: 1px; border: 1.75px solid var(--border); border-top-color: var(--fg); border-radius: 50%; animation: arcadia-spin 800ms linear infinite; }
+.margin-sidebar :is(.tab, .pin).busy .avatar { display: none; }
 /* A tab asleep (it gave its memory back): its icon faded. One playing sound:
    a small speaker. */
-.margin-sidebar :is(.tab, .pin).asleep .avatar { opacity: 0.45; filter: grayscale(1); }
+.margin-sidebar :is(.tab, .pin).asleep .avatar { opacity: 0.45; }
 /* A tab that isn't open (its window closed, Safari didn't restore it, or it
    was put to sleep): still in its space, drawn as any tab (2026-11-08); a click opens it. */
 .margin-sidebar .audible-icon { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
 .margin-sidebar .audible-icon .speaker { fill: currentColor; stroke: none; }
-.margin-sidebar :is(.tab, .pin):hover .audible-icon { display: none; }
-/* × on a row: shown on hover (Arc). */
+.margin-sidebar :is(.tab, .pin):hover .audible-icon { visibility: hidden; }
+/* × on a row: shown on hover, at the right, over the title's end (on the
+   row's own colour, fading in from the left), so showing it lays nothing out. */
 .margin-sidebar .icon {
-  flex: none;
+  position: absolute;
+  top: 6px;
+  right: 6px;
   display: grid;
   place-items: center;
   width: 24px;
   height: 24px;
   padding: 0;
-  border-radius: 7px;
+  border-radius: 6px;
+  background: var(--row);
+  box-shadow: -6px 0 6px var(--row);
   visibility: hidden;
 }
-.margin-sidebar .icon .close-icon { width: 11px; height: 11px; stroke-width: 1.75; }
+.margin-sidebar .icon .close-icon { width: 10px; height: 10px; stroke-width: 1.75; }
 .margin-sidebar :is(.tab, .pin):hover .icon { visibility: visible; }
-.margin-sidebar .icon:hover { background: var(--press); }
+.margin-sidebar .icon:hover { background-image: linear-gradient(var(--press), var(--press)); }
 
 /* iCloud Tabs (Margin's <m-cloud-tabs>): the tabs open on the person's other
    devices, above "+ New Tab". It reads as one of Arc's folders (the same
@@ -409,19 +496,19 @@
   .margin-sidebar .cloud-chevron { transition: none; }
 }
 
-/* Drag and drop (Arc, Margin's m-drag and m-drop): a copy of the row
-   follows the pointer (the row stays), and glides into its new place once
-   dropped. Where it goes: a line in the space's color, a ring at its start,
-   between the rows (2 px, an 8 px ring 8 px in from the row's edge, out to
-   the sidebar's edge); a folder it goes into; the tabs while a pin dropped
+/* Drag and drop (Margin's m-drag and m-drop): a copy of the row follows the
+   pointer (the row stays), and glides into its new place once dropped.
+   Where it goes: a line in the space's color, a ring at its start, between
+   the rows (2 px, an 8 px ring 8 px in from the row's edge, out to the
+   sidebar's edge); a folder it goes into; the tabs while a pin dropped
    there unpins. An empty pinned area shows where a tab can go. */
 .m-drag-ghost.tab, .m-drag-ghost.pin, .m-drag-ghost.folder {
-  opacity: 0.9;
+  opacity: 0.92;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.12);
   transition: none;
   will-change: transform;
 }
-.m-drag-ghost:not(.active) { background: rgba(255, 255, 255, 0.6); }
+.m-drag-ghost:not(.active) { background: var(--field-hover); }
 .m-drag-ghost .icon { visibility: hidden; }
 .margin-sidebar .m-landing { visibility: hidden; }
 .arcadia.m-dragging .margin-sidebar :is(.tab, .pin, .folder, .new-tab-row):hover:not(.active) { background: none; }
@@ -430,63 +517,60 @@
   position: absolute;
   z-index: 1;
   left: 8px;
-  right: -8px;
+  right: calc(-1 * var(--pad));
   height: 8px;
   background:
     radial-gradient(circle at 4px 50%, transparent 2px, var(--space-color) 2.4px, var(--space-color) 3.6px, transparent 4px) no-repeat 0 0 / 8px 8px,
     linear-gradient(var(--space-color), var(--space-color)) no-repeat 7.5px 50% / calc(100% - 7.5px) 2px;
   pointer-events: none;
 }
-.margin-sidebar .m-drop-before::before { top: -6.5px; }
+.margin-sidebar .m-drop-before::before { top: -6px; }
 .margin-sidebar .pins > .m-drop-before:first-child::before { top: -2px; } /* the list's top edge would clip it */
-.margin-sidebar .m-drop-after::after { bottom: -6.5px; }
-.margin-sidebar .pins.m-drop-end::after { bottom: -6.5px; }
-.margin-sidebar .folder.m-drop-into { background: rgba(10, 132, 255, 0.16); box-shadow: inset 0 0 0 2px rgba(10, 132, 255, 0.6); }
-.margin-sidebar .tabs.m-drop-into { border-radius: 12px; box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.45); }
+.margin-sidebar .m-drop-after::after { bottom: -6px; }
+.margin-sidebar .pins.m-drop-end::after { bottom: -6px; }
+.margin-sidebar .folder.m-drop-into { background: var(--field-hover); box-shadow: inset 0 0 0 2px var(--drop); }
+.margin-sidebar .tabs.m-drop-into { border-radius: 10px; box-shadow: 0 0 0 2px var(--drop); }
 .margin-sidebar .chip.m-drop-into { outline: 2px dashed var(--chip-color); }
 .margin-sidebar .drop-hint { display: none; }
 .arcadia.m-drag-tab .margin-sidebar .pins:not(.has) {
   display: block;
   height: 36px;
-  border: 1.5px dashed rgba(0, 0, 0, 0.25);
-  border-radius: 12px;
+  border: 1.5px dashed var(--muted);
+  border-radius: 10px;
 }
 .arcadia.m-drag-tab .margin-sidebar .pins:not(.has) .drop-hint { display: block; line-height: 33px; text-align: center; color: var(--muted); font-size: 13px; }
 
-/* The bottom bar (Arc): archive at the left, the spaces in the middle (the
-   current one in color, the others faded to gray), "+" at the right. */
+/* The bottom bar: archive at the left, the spaces in the middle (the
+   current one strong, the others faded), "+" at the right. */
 .margin-sidebar .bar {
   flex: none;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   column-gap: 4px;
   align-items: center;
-  height: 51px; /* 50 under the 1px line */
-  margin: 0 -8px;
-  padding: 0 9px;
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  height: 44px;
+  margin: 0 calc(-1 * var(--pad));
+  padding: 0 var(--pad);
 }
 .margin-sidebar .bar .archive { justify-self: start; }
 .margin-sidebar .bar .add { justify-self: end; }
-.margin-sidebar .bar .archive-icon { width: 14px; height: 16.5px; }
-.margin-sidebar .bar .plus-icon { width: 14px; height: 14px; stroke-width: 1.75; }
-.margin-sidebar .spaces { display: flex; align-items: center; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-/* An emoji's ink sits at the start of its advance: nudged to look centered. */
+.margin-sidebar .bar .archive-icon { width: 16px; height: 16px; }
+.margin-sidebar .bar .plus-icon { width: 13px; height: 13px; stroke-width: 1.6; }
+.margin-sidebar .spaces { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; overscroll-behavior: none; scrollbar-width: none; }
 .margin-sidebar .chip {
   flex: none;
   position: relative;
-  top: -1px;
-  width: 30px;
-  height: 28px;
-  padding: 0 0 0 4px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   border-radius: 7px;
-  font-size: 15px;
-  line-height: 28px;
-  filter: grayscale(1);
-  opacity: 0.55;
+  font-size: 13px;
+  line-height: 26px;
+  text-align: center;
+  opacity: 0.42;
 }
-.margin-sidebar .chip:hover { opacity: 0.85; background: var(--hover); }
-.margin-sidebar .chip.active { filter: none; opacity: 1; }
+.margin-sidebar .chip:hover { opacity: 0.8; background: var(--hover); }
+.margin-sidebar .chip.active { opacity: 1; }
 /* Another browser profile's space: its profile's mark at the corner; a divider between profiles. */
 .margin-sidebar .chip .profile-mark {
   position: absolute;
@@ -512,11 +596,10 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin: 0 2px 8px;
-  padding: 8px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.2);
-  font-size: 13px;
+  margin: 0 0 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--field);
 }
 .margin-sidebar .editor .row { display: flex; gap: 6px; align-items: center; }
 .margin-sidebar .editor input {
@@ -525,7 +608,7 @@
   padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--input);
   color: var(--fg);
   font: inherit;
   outline: none;
@@ -542,12 +625,12 @@
 .margin-sidebar .editor .actions button { height: 26px; padding: 0 10px; border-radius: 7px; color: var(--muted); }
 .margin-sidebar .editor .actions button:hover { background: var(--hover); color: var(--fg); }
 .margin-sidebar .editor .actions .primary { background: var(--space-color); color: #fff; }
-.margin-sidebar .editor .actions .delete, .margin-sidebar .editor .actions .delete:hover { color: #d63031; }
-.margin-sidebar .editor .delete:disabled { opacity: 0.4; cursor: default; }
+.margin-sidebar .editor .actions .delete, .margin-sidebar .editor .actions .delete:hover { color: var(--danger); }
+.margin-sidebar .editor .delete:disabled { opacity: 0.4; }
 
-/* Resize handle (Arc): on hover or while dragging, a soft light pill runs
-   the height of the page card, just inside the sidebar's edge, 2 px from
-   the page. The hit area (12 px) straddles the edge. */
+/* Resize handle: on hover or while dragging, a soft light pill runs the
+   height of the page card, just inside the sidebar's edge, 2 px from the
+   page. The hit area (12 px) straddles the edge. */
 .resizer {
   position: absolute;
   top: 0;
@@ -561,45 +644,45 @@
 .resizer::after {
   content: "";
   position: absolute;
-  top: 8px;
-  bottom: 8px;
+  top: 16px;
+  bottom: 16px;
   right: 6px;
   width: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--ink);
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity 150ms var(--ease);
 }
-.resizer:hover::after, .resizer.m-resizing::after { opacity: 1; }
+.resizer:hover::after, .resizer.m-resizing::after { opacity: 0.22; }
 .arcadia.m-resizing { cursor: col-resize; }
 .arcadia:is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .resizer { display: none; }
 
 /* ---- Right-click menus (Margin's <m-menu>, the "menu" part) ----------------- */
 
+/* A small rounded panel; the row under the pointer (or the arrow keys) is
+   filled with the accent. */
 .tab-menu {
-  min-width: 180px;
+  min-width: 190px;
   max-width: calc(100vw - 8px);
   /* Many folders, many items: it scrolls, its last ones stay reachable. */
   max-height: calc(100vh - 8px);
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
   padding: 5px;
-  border-radius: 8px;
-  background: rgba(246, 246, 246, 0.97);
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.18), 0 8px 24px rgba(0, 0, 0, 0.22);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-  color: #1c1c1e;
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 0 0 0.5px var(--panel-edge), 0 10px 30px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.08);
+  color: var(--panel-fg);
   -webkit-font-smoothing: antialiased;
 }
 .menu-slot:focus { outline: none; }
 .tab-menu .menu-item {
   display: block;
   width: 100%;
-  height: 24px;
+  height: 26px;
   padding: 0 10px;
-  border-radius: 5px;
+  border-radius: 6px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -607,10 +690,9 @@
   font-size: 13px;
   font-weight: 400;
   outline: none;
-  cursor: default;
 }
-.tab-menu .menu-item:focus { background: #0a84ff; color: #fff; }
-.menu-separator { height: 1px; margin: 5px 10px; background: rgba(0, 0, 0, 0.12); }
+.tab-menu .menu-item:focus { background: var(--accent); color: var(--on-accent); }
+.menu-separator { height: 1px; margin: 5px 10px; background: var(--panel-line); }
 
 /* ---- Notices and prompts (Margin's <m-notice> and <m-prompt>) --------------- */
 
@@ -621,23 +703,22 @@
   display: flex; align-items: center; gap: 8px; max-width: min(420px, calc(100% - 24px));
   /* As wide as its words, up to the cap (it's placed in a box of no size, so min-content went a word per line). */
   width: max-content;
-  padding: 8px 8px 8px 12px; border-radius: 10px;
-  background: rgba(28, 28, 30, 0.92); color: #fff; font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25); pointer-events: auto;
+  padding: 8px 8px 8px 14px; border-radius: 12px;
+  background: #242427; color: #fff; font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.16), 0 8px 28px rgba(0, 0, 0, 0.28); pointer-events: auto;
 }
 .notice .text { flex: 1; }
 .notice button { height: 26px; padding: 0 10px; border-radius: 7px; color: #fff; background: rgba(255, 255, 255, 0.12); white-space: nowrap; }
 .notice button:hover { background: rgba(255, 255, 255, 0.2); }
-.notice button.primary { background: #6c5ce7; }
-.notice button.primary:hover { background: #7d6ff0; }
+.notice button.primary, .prompt button.primary { background: var(--accent); color: var(--on-accent); }
 
 /* A prompt: the notice's dark card, centered, a question and its buttons. */
 .prompt-layer { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; background: rgba(0, 0, 0, 0.12); }
 .prompt {
   width: min(380px, calc(100% - 32px));
   display: flex; flex-direction: column; gap: 8px;
-  padding: 16px; border-radius: 12px;
-  background: rgba(28, 28, 30, 0.94); color: #fff; font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  padding: 16px; border-radius: 14px;
+  background: #242427; color: #fff; font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.2), 0 18px 50px rgba(0, 0, 0, 0.4);
   -webkit-font-smoothing: antialiased;
 }
@@ -646,46 +727,38 @@
 .prompt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .prompt button { height: 28px; padding: 0 12px; border-radius: 7px; color: #fff; background: rgba(255, 255, 255, 0.12); white-space: nowrap; }
 .prompt button:hover { background: rgba(255, 255, 255, 0.2); }
-.prompt button.primary { background: #6c5ce7; }
 .prompt button.danger { background: #d63031; }
 
-/* ---- The command bar (Arc) ------------------------------------------------- */
+/* ---- The command bar ------------------------------------------------------- */
 
-/* A dark, translucent panel centered on the window, a third of the way
-   down; one-line rows with the space name and an arrow button; the
-   selected row takes the current space's color. Measured from Arc: 765
-   wide, five rows tall, the top 306 below the window's top in a 949-high
-   window. English and laid out as Arc's, right-to-left too. */
+/* A floating panel centered on the window, a third of the way down: a large
+   field, then one-line rows (icon, title, a muted detail, where it is, an
+   arrow); the selected row takes the current space's color. Light or dark
+   as the system is, opaque (no blur). Laid out left-to-right in any
+   language. */
 .palette-layer { position: absolute; inset: 0; z-index: 5; }
-/* Catches clicks outside; Arc doesn't dim the page. */
-.palette-layer .backdrop { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; background: transparent; cursor: default; }
+/* Catches clicks outside; the page isn't dimmed. */
+.palette-layer .backdrop { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; background: transparent; }
 .palette {
-  --fg: #f2f1f4;
-  --muted: rgba(242, 241, 244, 0.55);
-  --row-hover: rgba(255, 255, 255, 0.06);
-  --border: rgba(255, 255, 255, 0.1);
   --rows: 5;
 
   position: absolute;
-  top: 32.25%;
+  top: 30%;
   left: 50%;
   transform: translateX(-50%);
-  width: min(765px, calc(100% - 32px));
-  /* Five rows, as Arc (border, search, list padding, rows and the gaps
-     between them); more scroll, the selection followed. */
-  max-height: calc(2px + 63px + 6px + var(--rows) * 46px + (var(--rows) - 1) * 4px + 10.4px);
+  width: min(680px, calc(100% - 32px));
+  /* Five rows (the field, list padding, rows and the gaps between them);
+     more scroll, the selection followed. */
+  max-height: calc(61px + 8px + var(--rows) * 44px + (var(--rows) - 1) * 2px + 8px);
   direction: ltr;
   display: flex;
   flex-direction: column;
-  background: rgba(36, 32, 36, 0.86);
-  backdrop-filter: blur(28px) saturate(1.5);
-  -webkit-backdrop-filter: blur(28px) saturate(1.5);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(0, 0, 0, 0.4);
+  background: var(--panel);
+  color: var(--panel-fg);
+  border-radius: 16px;
+  box-shadow: 0 0 0 0.5px var(--panel-edge), 0 30px 80px rgba(0, 0, 0, 0.34), 0 6px 18px rgba(0, 0, 0, 0.12);
   overflow: hidden;
-  font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font: 14px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
@@ -694,27 +767,19 @@
 @media (max-height: 418px) { .palette { --rows: 4; } }
 @media (max-height: 357px) { .palette { --rows: 3; } }
 
-/* 62 high above a divider inset from the sides; the magnifier centered on
-   the row icons' column, the text where the titles start. */
+/* 60 high above a hairline; the magnifier centered on the row icons'
+   column, the text where the titles start. */
 .palette .search {
   position: relative;
   flex: none;
   display: flex;
   align-items: center;
-  gap: 11.5px;
-  height: 63px;
-  padding: 0 0 2.5px 22.5px; /* content a little above center, as Arc */
+  gap: 12px;
+  height: 61px;
+  padding: 0 18px 1px 21px;
+  border-bottom: 1px solid var(--panel-line);
 }
-.palette .search::after {
-  content: "";
-  position: absolute;
-  left: 10.7px;
-  right: 10.7px;
-  bottom: 0;
-  height: 1px;
-  background: var(--border);
-}
-.palette .search-icon { flex: none; width: 16px; height: 16px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
+.palette .search-icon { flex: none; width: 18px; height: 18px; fill: none; stroke: var(--panel-muted); stroke-width: 2; stroke-linecap: round; }
 .palette .query {
   flex: 1;
   min-width: 0;
@@ -722,47 +787,49 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--fg);
+  color: var(--panel-fg);
   font: inherit;
-  font-size: 18.5px;
+  font-size: 20px;
   outline: none;
 }
-.palette .query::placeholder { color: var(--muted); }
+.palette .query::placeholder { color: var(--panel-muted); }
 .palette .results {
   margin: 0;
-  padding: 6px 8.5px 10.4px;
+  padding: 8px;
   overflow-y: auto;
   overscroll-behavior: none;
   scrollbar-width: none;
-  scroll-padding: 6px 0 10.4px; /* the selection scrolled into view keeps the padding */
+  scroll-padding: 8px 0; /* the selection scrolled into view keeps the padding */
 }
 .palette .result {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 46px;
-  padding: 0 13px 0 10px;
-  border-radius: 6px;
-  cursor: default;
+  gap: 10px;
+  height: 44px;
+  padding: 0 10px 0 11px;
+  border-radius: 10px;
 }
-.palette .result + .result { margin-top: 4px; }
+.palette .result + .result { margin-top: 2px; }
 /* The heading of a run of rows from one place (iCloud Tabs: "On Nora's iPhone"). */
-.palette .result-section { padding: 12px 10px 5px; color: var(--muted); font-size: 12px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.palette .result:hover { background: var(--row-hover); }
-.palette .result[aria-selected="true"] { background: color-mix(in srgb, var(--space-color) 82%, #000); }
-.palette .result.empty { color: var(--muted); justify-content: center; }
-/* Each icon fills a 24 px slot: favicons 14 px in it (on a white tile when
-   selected, as Arc), letters on a 16 px tile, emoji at 15 px. */
+.palette .result-section { padding: 12px 10px 5px; color: var(--panel-muted); font-size: 12px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.palette .result:hover { background: var(--panel-hover); }
+.palette .result[aria-selected="true"] { background: color-mix(in srgb, var(--space-color) 84%, #000); color: #fff; }
+.palette .result.empty { color: var(--panel-muted); justify-content: center; }
+/* Each icon fills a 24 px slot: favicons 16 px in it (on a white tile when
+   selected), letters on a 16 px tile, emoji at 15 px. */
 .palette .avatar { width: 24px; height: 24px; }
-.palette img.avatar { box-sizing: content-box; width: 14px; height: 14px; padding: 5px; }
+.palette img.avatar { box-sizing: content-box; width: 16px; height: 16px; padding: 4px; border-radius: 6px; }
 .palette [aria-selected="true"] img.avatar { background: #fff; }
 .palette .avatar.letter { width: 16px; height: 16px; margin: 0 4px; }
 .palette .avatar.emoji { display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
 /* An installed app's icon (Margin.app): its own shape, no tile behind it. */
 .palette img.avatar.app, .palette [aria-selected="true"] img.avatar.app { width: 22px; height: 22px; padding: 1px; border-radius: 0; background: none; }
-.palette .title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 500; }
-.palette .badge { flex: none; margin-right: 0.5px; color: var(--muted); font-weight: 500; }
-.palette [aria-selected="true"] .badge { color: rgba(255, 255, 255, 0.92); }
+/* The title keeps its room; the detail after it gives way first. */
+.palette .title { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 500; }
+.palette .detail { flex: 0 100 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--panel-muted); font-size: 13px; }
+.palette .spacer { flex: 1 0 0; }
+.palette .badge { flex: none; color: var(--panel-muted); font-size: 12px; font-weight: 500; }
+.palette [aria-selected="true"] :is(.badge, .detail) { color: rgba(255, 255, 255, 0.8); }
 .palette .go-button {
   flex: none;
   display: inline-flex;
@@ -770,17 +837,16 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: var(--panel-hover);
 }
-.palette .arrow-icon { width: 18px; height: 18px; fill: none; stroke: var(--fg); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-.palette [aria-selected="true"] .go-button { background: #f2f0e8; }
-.palette [aria-selected="true"] .arrow-icon { stroke: #1c1c1e; }
+.palette .arrow-icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.palette [aria-selected="true"] .go-button { background: rgba(255, 255, 255, 0.22); }
 
 /* ---- Switching to another profile (Margin's <m-switch-cover>) -------------- */
 
 /* Over the page card while Margin.app gets the other profile's window ready:
-   the frame's gray, lighter, and where it goes, centred. Under the sidebar
+   the ground, lighter, and where it goes, centred. Under the sidebar
    (earlier in the template), so one out over the page stays in front; the
    launcher steps aside. No fade: it comes and goes with the switch. */
 .switch-cover-slot {
@@ -793,10 +859,10 @@
   overflow: hidden;
 }
 .arcadia.switching .launcher-slot { visibility: hidden; }
-.switch-cover { position: absolute; inset: 0; display: grid; place-items: center; background: #c9cacd; pointer-events: auto; }
+.switch-cover { position: absolute; inset: 0; display: grid; place-items: center; background: var(--cover); pointer-events: auto; }
 .switch-cover-card { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 80%; color: var(--fg); text-align: center; -webkit-font-smoothing: antialiased; }
 .switch-cover-mark { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; background: var(--profile, var(--space-color)); color: #fff; font-size: 18px; font-weight: 700; }
-.switch-cover-mark.emoji { background: rgba(255, 255, 255, 0.6); font-size: 24px; }
+.switch-cover-mark.emoji { background: var(--field-hover); font-size: 24px; }
 .switch-cover-text { font-size: 15px; font-weight: 600; }
 .switch-cover-progress { display: flex; gap: 5px; padding: 4px; }
 .switch-cover-progress i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: arcadia-cover-progress .9s ease-in-out infinite alternate; }
@@ -812,24 +878,22 @@
    as tiles, recently archived tabs, and Settings. Light or dark, as the
    system is. */
 .launcher-slot {
-  --bg: #f6f5fa;
+  --bg: #f7f7f9;
   --fg: #1d1b26;
   --muted: #6e6a7c;
   --card: #ffffff;
   --border: rgba(0, 0, 0, 0.08);
-  --accent: #6c5ce7;
   overflow: hidden;
   font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   color: var(--fg);
-  user-select: text;
-  -webkit-user-select: text;
 }
 @media (prefers-color-scheme: dark) {
-  .launcher-slot { --bg: #18171d; --fg: #ecebf2; --muted: #9a97a8; --card: #24232b; --border: rgba(255, 255, 255, 0.08); }
+  .launcher-slot { --bg: #1b1b1f; --fg: #ecebf2; --muted: #9a97a8; --card: #28282d; --border: rgba(255, 255, 255, 0.09); }
 }
 .launcher {
   height: 100%;
   overflow-y: auto;
+  overscroll-behavior: none;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -843,7 +907,7 @@
   height: 52px;
   padding: 0 20px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--card);
   color: var(--fg);
   font: inherit;
@@ -851,21 +915,20 @@
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
   outline: none;
 }
-.launcher .launcher-query:focus { border-color: var(--accent); }
-.launcher h2 { margin: 0 0 10px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-.launcher .pin-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; }
+.launcher .launcher-query:focus { border-color: var(--space-color); }
+.launcher h2 { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.launcher .pin-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
 .launcher .tile {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
   padding: 16px 8px 12px;
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--card);
   border: 1px solid var(--border);
-  cursor: pointer;
 }
-.launcher .tile:hover { border-color: var(--accent); }
+.launcher .tile:hover { border-color: var(--space-color); }
 .launcher .tile .avatar { width: 32px; height: 32px; border-radius: 8px; }
 .launcher .tile .avatar.letter { font-size: 16px; }
 .launcher .tile .title { width: 100%; text-align: center; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -875,7 +938,6 @@
   gap: 10px;
   padding: 8px 10px;
   border-radius: 10px;
-  cursor: pointer;
 }
 .launcher .archive-row:hover { background: var(--card); }
 .launcher .archive-row .title { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -886,22 +948,22 @@
 .launcher .settings-summary { display: list-item; list-style: disclosure-closed inside; }
 .launcher .settings-summary button { padding: 0; font-size: 13px; color: var(--muted); }
 .launcher .settings.open .settings-summary { list-style-type: disclosure-open; }
-/* The Settings form (Margin's `settings` part): newtab.css's #settings. */
+/* The Settings form (Margin's `settings` part). */
 .settings-form label.setting { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; }
 .settings-form label.setting.stacked { flex-direction: column; align-items: stretch; gap: 6px; }
 .settings-form label.setting.disabled { opacity: 0.55; }
 .settings-form :is(select, input, textarea) { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
 .settings-form input.number { width: 6em; flex: none; }
-.settings-form input.color { flex: none; width: 44px; height: 26px; padding: 2px; border-radius: 6px; cursor: pointer; }
-.settings-form input.toggle { flex: none; width: auto; padding: 0; margin: 0; accent-color: var(--accent); }
-.settings-form input.shortcut { width: 9em; flex: none; cursor: pointer; }
+.settings-form input.color { flex: none; width: 44px; height: 26px; padding: 2px; border-radius: 6px; cursor: default; }
+.settings-form input.toggle { flex: none; width: auto; padding: 0; margin: 0; accent-color: var(--accent); cursor: default; }
+.settings-form input.shortcut { width: 9em; flex: none; cursor: default; }
 .settings-form input.shortcut.recording { border-color: var(--accent); }
-.settings-form textarea { resize: vertical; -webkit-user-select: text; user-select: text; }
+.settings-form textarea { resize: vertical; }
 .settings-form .help { margin: 6px 0 0; font-size: 12px; }
-.settings-form .help.error { color: #d70015; }
+.settings-form .help.error { color: var(--danger); }
 .settings-form .setting-group { margin-top: 18px; }
 .settings-form .actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.settings-form .actions button { flex: none; white-space: nowrap; font: inherit; color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 8px; padding: 3px 10px; cursor: pointer; }
+.settings-form .actions button { flex: none; white-space: nowrap; font: inherit; color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 8px; padding: 3px 10px; }
 .settings-form .actions .help { margin: 0; }
 
 @media print { .page, .card-edge { box-shadow: none !important; } }

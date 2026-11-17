@@ -179,7 +179,8 @@ test('cornerFill: what the theme draws around the page\'s rounded corners, from 
   // the space's colour as a spread: ink at the bottom right only.
   const nb = { borderTopWidth: '3px', borderLeftWidth: '3px', borderRightWidth: '3px', borderBottomWidth: '3px', borderTopStyle: 'solid', borderTopColor: 'rgb(17, 17, 17)', ...radius('18px'), boxShadow: 'rgb(17, 17, 17) 6px 6px 0px 0px, rgb(255, 222, 0) 0px 0px 0px 1512px' };
   assert.deepEqual(cornerFill(el(nb) as any, { getStyle, getBox }), { fills: ['rgb(255, 222, 0)', 'rgb(255, 222, 0)', 'rgb(17, 17, 17)', 'rgb(255, 222, 0)'], edge: { width: 3, color: 'rgb(17, 17, 17)' } });
-  // Arcadia: its frame, a spread shadow; its soft card shadow (blurred) left out; no border.
+  // Arcadia: its frame, a spread shadow in the space's tint (a mixed colour, as computed); its soft card shadow (blurred) left out; no border.
+  assert.deepEqual(cornerFill(el({ ...radius('10px'), boxShadow: 'color(srgb 0.801961 0.768627 0.939216) 0px 0px 0px 1512px' }) as any, { getStyle, getBox }), { fills: Array(4).fill('color(srgb 0.801961 0.768627 0.939216)'), edge: null });
   assert.deepEqual(cornerFill(el({ ...radius('6.25px'), boxShadow: 'rgb(156, 157, 161) 0px 0px 0px 1512px' }) as any, { getStyle, getBox }), { fills: Array(4).fill('rgb(156, 157, 161)'), edge: null });
   // Offset ink edges cover a rounded corner's point where they're painted (up: the top ones; right: the right ones), a
   // blurred and an inset one never, the ground as a spread elsewhere.
