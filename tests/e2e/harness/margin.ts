@@ -68,12 +68,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // How much longer waits for what does come are given (CI sets it: .github/workflows/ci.yml).
 const SLOW = Math.max(1, Number(process.env.MARGIN_E2E_SLOW) || 1);
 
-export async function startMargin({ seed = null, fullscreen = true, running = true, cloudTabs = null, across = null, name = 'e2e' }: {
+export async function startMargin({ seed = null, fullscreen = true, running = true, name = 'e2e' }: {
   seed?: any,           // what the app's data set holds (seed.ts seedSet's input), or a data set;
                         // or a function of the site's `url(host, path)` returning one (pins of the test site)
   fullscreen?: boolean, // the first window in full screen (default) — Margin's overlays draw only there
   running?: boolean,    // Margin.app running at the start (default true)
-  cloudTabs?: any, across?: any,
   name?: string,        // for the screenshots' folder
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'margin-e2e-'));
@@ -90,7 +89,6 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
     webkit: wk,
     overlayUrl: overlayServer.url,
     dataSet: seed ? seedSet(seed) : null,
-    cloudTabs, across,
     makeFullscreen: (id) => worker?.evaluate((wid) => chrome.windows.update(wid, { state: 'fullscreen' }).then(() => {}), id),
   });
   if (!running) shell.setRunning(false);

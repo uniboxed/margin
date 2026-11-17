@@ -29,18 +29,7 @@
 //   own same-page navigation; drawn as each tab's `loading` (the view model);
 // - why the last request failed (`takeFailure`), for the notice of a switch
 //   that didn't happen;
-// - iCloud Tabs (Safari's windows only): the app's own data, never the
-//   copy's, in the hello (`cloudTabs`) and as `{ type: 'cloudTabs' }` when it
-//   changes (app/engines/webkit/safari/ShellCloudTabs.swift), checked (shared/cloud-tabs.ts
-//   cloudOf) and kept as the state's `cloudTabs`; the folder's Full Disk
-//   Access button and its Copy Link are the app's (`cloud.access`, `copyText`);
-// - the switch between profiles (docs/HANDOFF.md §5, §7): "Close windows to
-//   save memory" in Settings, for Safari with more than one profile, from
-//   `across.switchSettings` (`switchSettings`, a feature), saved by the app
-//   (`switch.closeWindows`); the "switching" cover drawn (`switch.coverShown`,
-//   app/shared/host/overlay.ts); a button of the switch's notice
-//   (`switch.notice`: its id is `switch:<kind>`);
-// - installed apps (Margin.app with hosting on, `MarginHosted`): the app's list, in the hello (`apps`) and as
+// - installed apps: the app's list, in the hello (`apps`) and as
 //   `{ type: 'apps' }` when it changes (app/platforms/macos/shell/ShellApps.swift), checked (shared/apps.ts appsOf)
 //   and kept as the state's `apps` (the palette finds them: shared/search.ts); one picked is the app's to open
 //   in the page area (`app.open`, its bundle id only);
@@ -66,8 +55,6 @@
 import type { Geometry, Host } from './host.ts';
 import { fromStorage } from '../shared/stored.ts';
 import { isLauncherPage } from '../shared/view.ts';
-import { acrossOf, foreignSpace } from '../shared/across.ts';
-import { cloudOf } from '../shared/cloud-tabs.ts';
 import { appsOf, isBundleId } from '../shared/apps.ts';
 import { capabilities } from '../shared/capabilities.ts';
 
@@ -240,8 +227,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   onNotice?: (arg: { id?: string, action?: string }) => void,
   warn?: (...args: any[]) => void,
 }): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
-  // (Its window can change: a profile switch hands the sidebar to the window it goes to, `rekey`.)
-  let windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
+  const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
   let state: any = null;
   let windows = Array.isArray(hello?.windows) ? hello.windows : [];
@@ -252,11 +238,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let pageOutside = appWindow && hello?.pageOutside === true;
   // A hosted app's window above the page area (window mode): nothing of Margin's drawn there.
   let pageHosted = appWindow && hello?.pageHosted === true;
-  // Every profile's spaces in the one order, and the profiles (app/platforms/macos/shell/ShellProfiles.swift): `state.across`.
-  let across = acrossOf(hello?.across);
-  // iCloud Tabs, as the app read them (Safari only; null: none).
-  let cloud = cloudOf(hello?.cloudTabs);
-  // Installed apps, as the app read them (null: hosting off, or none read yet).
+  // Installed apps, as the app read them (null: none read yet).
   let apps = appsOf(hello?.apps);
   let layout: Geometry | null = null;
   let destroyed = false;
@@ -268,24 +250,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     browser: String(hello?.platform?.browser ?? hello?.browser ?? 'safari'),
     // The app's OS as its hello says it (Margin.app: mac; Margin for Windows: win), the Mac's when it says none.
     os: hello?.platform?.os === 'win' ? 'win' : 'mac', app: true,
-    features: { sleepTabs: capabilities?.sleepTabs ?? false, blockGestures: !!capabilities?.blockGestures, marginFullscreen: false, newTabHint: !!capabilities?.newTabHint, search: capabilities?.search, cloudTabs: false, switchSettings: (null as { closeWindows: boolean } | null) },
+    features: { sleepTabs: capabilities?.sleepTabs ?? false, blockGestures: !!capabilities?.blockGestures, marginFullscreen: false, newTabHint: !!capabilities?.newTabHint, search: capabilities?.search },
   };
-  // "Show iCloud Tabs" in Settings: Safari's windows (Chrome and Edge: Phase 5, sessions.getDevices()).
-  platform.features.cloudTabs = platform.browser === 'safari';
-  // "Close windows to save memory": Safari's windows, with more than one profile, once the app says the value.
-  const followSwitchSettings = () => {
-    const ss = platform.browser === 'safari' && across && across.profiles.length > 1 ? across.switchSettings : null;
-    const next = ss ? { closeWindows: ss.closeWindows } : null;
-    if (JSON.stringify(next) !== JSON.stringify(platform.features.switchSettings ?? null)) platform.features = { ...platform.features, switchSettings: next };
-  };
-  followSwitchSettings();
-  // DEV-HOOK: Margin.app's development switches, as it says them (`across.dev`): its quit prompt's "ask before quitting".
-  function followDev(raw: any) {
-    const ask = raw?.dev?.askBeforeQuit;
-    const next = typeof ask === 'boolean' ? ask : undefined;
-    if (((platform.features as any)).devAskBeforeQuit !== next) platform.features = ({ ...platform.features, devAskBeforeQuit: next } as any);
-  }
-  followDev(hello?.across);
   // Themes: Margin.app imports them (its file picker), and keeps the index (`themes`: docs/PROTOCOL.md "User themes").
    (platform.features as any).importThemes = true;
    (platform.features as any).userThemes = Array.isArray(hello?.themes) ? hello.themes : [];
@@ -295,8 +261,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
 
   const rebuild = () => {
     const next = raw ? fromStorage(raw) : null;
-    let built = next?.spaces?.length ? (across ? { ...next, across } : next) : null;
-    if (built && cloud) built = { ...built, cloudTabs: cloud };
+    let built = next?.spaces?.length ? next : null;
     if (built && apps) built = { ...built, apps };
     if (built && loading.size && built.tabs) {
       const tabs = { ...built.tabs };
@@ -318,16 +283,6 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
 
   async function send(type: string, payload: Record<string, any> = {}): Promise<any> {
     if (destroyed) return undefined;
-    // Another profile's space: the app's to do (its switch, or that profile's copy).
-    const foreign = typeof payload.spaceId === 'string' ? foreignSpace(state?.across, payload.spaceId) : null;
-    if (foreign) {
-      if (type === 'setSpace') return post('perform', { name: 'profile.switch', arg: { profile: foreign.profile, space: foreign.id } }).then(() => ({ shown: null }), () => undefined);
-      if (type === 'renameSpace' || type === 'deleteSpace') {
-        const { windowId: _w, ...rest } = payload;
-        return post('perform', { name: 'profile.space', arg: { profile: foreign.profile, type, payload: { ...rest, spaceId: foreign.id } } }).catch(() => undefined);
-      }
-      return undefined; // nothing else is done to another profile's space from here
-    }
     // An archived tab restored from the launcher takes the new-tab page's place (as there).
     const page = type === 'restoreArchive' ? frontPage() : null;
     if (page && payload.replaceTabId == null) payload = { ...payload, replaceTabId: page.id };
@@ -417,14 +372,6 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
         case 'window.fullscreen':
           void post('perform', { name, arg: arg ?? null }).catch(() => {});
           return true;
-        // Across profiles (app/platforms/macos/shell/ShellProfiles.swift performAcross).
-        case 'profile.switch':
-        case 'profile.rename':
-        case 'profile.forget':
-        case 'profile.space':
-        case 'space.move':
-          void post('perform', { name, arg: arg ?? null }).catch(() => {});
-          return true;
         // Themes (app/platforms/macos/shell/ShellThemes.swift): the file picker; a checked theme kept; one removed.
         case 'theme.import':
           void post('perform', { name, arg: null }).catch(() => {});
@@ -433,35 +380,14 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (!arg?.value || typeof arg.value !== 'object') return false;
           void post('perform', { name, arg: { value: arg.value } }).catch(() => {});
           return true;
-        // iCloud Tabs (app/engines/webkit/safari/ShellCloudTabs.swift): System Settings at Full Disk Access, an address copied.
-        case 'cloud.access':
-          void post('perform', { name, arg: null }).catch(() => {});
-          return true;
-        case 'copyText':
-          if (typeof arg?.text !== 'string') return false;
-          void post('perform', { name, arg: { text: arg.text } }).catch(() => {});
-          return true;
         // An installed app picked in the palette (app/platforms/macos/shell/ShellApps.swift): opened in the page area.
         case 'app.open':
           if (!isBundleId(arg?.bundleId)) return false;
           void post('perform', { name, arg: { bundleId: arg.bundleId } }).catch(() => {});
           return true;
         case 'notice':
-          // The switch's notice (the view model's `switch:<kind>`): the app's to do.
-          if (typeof arg?.id === 'string' && arg.id.startsWith('switch:')) {
-            void post('perform', { name: 'switch.notice', arg: { kind: arg.id.slice(7), action: String(arg.action ?? '') } }).catch(() => {});
-            return true;
-          }
           // The runtime closed it; the overlay's notices tell the copy what was chosen.
           onNotice(arg ?? {});
-          return true;
-        // The switch between profiles (app/platforms/macos/shell/ShellProfiles.swift performAcross).
-        case 'switch.closeWindows':
-          if (typeof arg?.on !== 'boolean') return false;
-          void post('perform', { name, arg: { on: arg.on } }).catch(() => {});
-          return true;
-        case 'switch.coverShown':
-          void post('perform', { name, arg: null }).catch(() => {});
           return true;
         case 'prompt': {
           // The runtime closes it. Settings' Remove asked first (ui/settings-form.ts removePrompt): removed only on Remove.
@@ -485,16 +411,6 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
         case 'changes':
           if (!raw) return;
           raw = applyChanges(raw, msg.changes, msg.favicons);
-          rebuild();
-          return emit();
-        case 'across':
-          across = acrossOf(msg.across);
-          followDev(msg.across);
-          followSwitchSettings();
-          rebuild();
-          return emit();
-        case 'cloudTabs':
-          cloud = cloudOf(msg.cloudTabs);
           rebuild();
           return emit();
         case 'apps':
@@ -528,26 +444,6 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (own) mode = modeOf(own);
           if (mode !== before || pageKey() !== page) emit();
           return;
-        }
-        case 'rekey': {
-          // Handed to another window and profile by a switch (app/platforms/macos/shell Shell.handOverOverlay): that window's hello,
-          // taken in place, so the page drawn already draws the new window's state without loading again.
-          const next = msg.hello;
-          if (!next || typeof next !== 'object' || !Number.isInteger(next.windowId)) return;
-          windowId = next.windowId;
-          raw = next.state && typeof next.state === 'object' ? next.state : null;
-          windows = Array.isArray(next.windows) ? next.windows : [];
-          mode = next.mode === 'windowed' ? 'windowed' : 'fullscreen';
-          across = acrossOf(next.across);
-          followDev(next.across);
-          cloud = cloudOf(next.cloudTabs);
-          if ('apps' in next) apps = appsOf(next.apps); // the Mac's, not the window's: kept unless said
-          if (Array.isArray(next.themes)) (platform.features as any).userThemes = next.themes;
-          followSwitchSettings();
-          loading = new Set<any>();
-          failure = null;
-          rebuild();
-          return emit();
         }
         case 'push':
           // The window's tabs loading (background/page-loads.ts): each one's row and the tab in front.

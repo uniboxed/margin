@@ -15,9 +15,6 @@
 // tells it about the window's pages (ui/app-feedback.ts): Margin's notices,
 // in the theme's guarded notice part, their buttons going back to the copy;
 // the trackpad gestures' feedback; which tabs are loading (through the host).
-// While a switch to another profile runs (docs/HANDOFF.md §7): that the
-// "switching" cover is drawn (`switch.coverShown`, ui/switch-cover.ts), and,
-// after each `shown`, that the page has drawn and in which mode (`framed`).
 //
 // In Margin's own window (the hello's `host` 'app-window': app/platforms/macos/shell/MarginWindowController.swift)
 // the same page draws the whole app: its mode is the window's (windowed or full screen), it says where the theme
@@ -33,7 +30,6 @@ import { chromeRects, cornerFill, createAppHost, hitRects } from '../../../exten
 import { createAppNotices, createGestureFeedback } from '../../../extension/ui/app-feedback.ts';
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../../extension/shared/switching.ts';
 import { cycleSpace, cycleTab } from '../../../extension/shared/view.ts';
-import { answerFramed, createCoverWatch } from '../../../extension/ui/switch-cover.ts';
 import { pickBridge } from '../../../extension/ui/overlay-bridge.ts';
 
 // WebKit's handler on the Mac, WebView2's on Windows (ui/overlay-bridge.ts).
@@ -251,16 +247,6 @@ function reportWant() {
 }
 // The widest reveal zone (shared/view.ts revealZone: 24 px in full screen); peek checks the exact one.
 const REVEAL_ZONE_MAX = 24;
-// The "switching" cover drawn, with no swipe sliding: the app may freeze the screen on it.
-const coverWatch = createCoverWatch({
-  requestFrame: (fn) => requestAnimationFrame(fn),
-  cover: () => {
-    const c = runtime?.vm?.switchCover;
-    return c && (document.querySelector('m-switch-cover')?.childElementCount ?? 0) > 0 ? c.id : null;
-  },
-  settling: () => !!runtime?.view.rootElement()?.querySelector('.m-swiping, .m-settling'),
-  say: () => { host?.perform('switch.coverShown'); },
-});
 // What takes the pointer, measured again once a theme's animation ends (the sidebar sliding out over the page:
 // measured at the slide's start, it was still off screen, and the pointer went through it to the page, a real
 // session's recording 2026-11-07 2:11), and a moment after any change (an animation that ends unheard).
@@ -273,12 +259,12 @@ let spaceTold = '';
 function reportSpace() {
   const vm = runtime?.vm;
   if (!vm?.space) return;
-  const told = JSON.stringify([host?.windowId ?? null, vm.space.id ?? null, !!vm.space.foreign]);
+  const told = JSON.stringify([host?.windowId ?? null, vm.space.id ?? null]);
   if (told === spaceTold) return;
   spaceTold = told;
-  void post('shownSpace', { windowId: host?.windowId ?? null, space: vm.space.id ?? null, foreign: !!vm.space.foreign }).catch(() => {});
+  void post('shownSpace', { windowId: host?.windowId ?? null, space: vm.space.id ?? null }).catch(() => {});
 }
-const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); coverWatch.check(); });
+const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); });
 addEventListener('resize', () => { measureNow(); hitsSoon(); });
 
 // Margin's own window hosting another app's window (host-app.ts sidebarDocked: pageHosted, or the older pageOutside):
@@ -630,8 +616,6 @@ function onMessage(msg: any) {
       // page first draws. (`focus`: the launcher's field instead, for a host that asks for that.)
       if (msg.palette === true) openPaletteTimed({ newTab: !!host?.appWindow || !host?.launcher }, 'a new window');
       else if (msg.focus === true) runtime?.focusLauncher();
-      // Drawn, and in which mode, on the next frame (R4).
-      answerFramed({ requestFrame: (fn) => requestAnimationFrame(fn), mode: () => host?.mode ?? 'fullscreen', post: (op, body) => post(op, body).catch(() => {}) });
       return;
     case 'push':
       switch (msg.msg?.type) {
@@ -709,16 +693,6 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     timed('taking the app\'s word', cause, () => {
       const before = !!host?.getState();
       host?.receive(msg);
-      // Handed to another window by a switch (host-app.ts `rekey`): what its copy pushed before, and its theme if
-      // that profile's isn't the one drawn (settings are shared across profiles, so usually it is).
-      if (msg?.type === 'rekey' && msg.hello && host) {
-        for (const held of Array.isArray(msg.hello.held) ? msg.hello.held : []) host.receive({ type: 'push', msg: held });
-        const theme = msg.hello.theme ?? null;
-        if (theme && JSON.stringify(theme) !== JSON.stringify(pendingTheme)) {
-          pendingTheme = theme;
-          if (host.getState() && !preview.pkg) mounting = mounting.then(() => mount(theme));
-        }
-      }
       // A notice about one tab's page goes once another tab is in front.
       if (msg?.type === 'windows' || msg?.type === 'state' || msg?.type === 'changes') notices.front(host?.frontTabId ?? null);
       // The window's mode, or the sidebar alone in Margin's own window: measured again after this drawing (a theme
@@ -737,7 +711,7 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   },
   // The counts above (the app's tests read them).
   stats: () => JSON.parse(JSON.stringify(stats)),
-  // The window this page draws for (a switch's hand-over changes it: host-app.ts `rekey`). The app's tests read it.
+  // The window this page draws for. The app's tests read it.
   windowId: () => host?.windowId ?? null,
   // Drawn in Margin's own window, in which mode, and whether its palette is open (the app's tests read them).
   appWindow: () => ({ appWindow: !!host?.appWindow, mode: host?.mode ?? null, palette: !!runtime?.paletteOpen }),

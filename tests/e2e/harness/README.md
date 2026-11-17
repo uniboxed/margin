@@ -41,13 +41,11 @@ await m.close();
 - `m.shell.drawn(windowId, false)`: the app says it doesn't draw over a window.
 - `m.shell.hold(true)`, then `false`: the overlays lag behind (their messages held, then given in order).
 - `m.shell.drop()`, `kill()`, `bye()`, `restart()`: the link going. `drop()` keeps the app listening (the copy's kept link comes back at once); `kill()` leaves nothing listening; `restart({ welcome })` is a new app, then `m.relay.dispatch('appUp', …)`.
-- `m.shell.setCloudTabs(…)`, `setAcross(…)`: the app's own data for its overlays.
 - `m.shell.requests`, `performs`, `layoutsSent`, `drawnSent`, `overlayLogs`, `received`: what happened, for checks.
 - `m.leaks`: requests to any host that isn't `.test` or `127.0.0.1`. Search engines are answered locally.
 - `m.close()` fails the file (its `after` hook) if `m.leaks`, `m.shell.blocked` or `m.shell.pageErrors` has anything. `m.problems()` lists them sooner.
 - `m.pixels(png, points)`: the colours of a screenshot's points. `settled(ui)` (`ui.ts`) waits for the overlay's transitions, before a picture.
 - `m.worker`, `m.bg(fn)`: the background. They follow it when it stops and starts again.
-- `cloudTabsOf(m.url)` (`seed.ts`): iCloud Tabs of made-up devices, with this site's pages.
 
 ## Rules
 

@@ -131,7 +131,7 @@
 .folder { display: flex; flex-direction: column; }
 .folder-head { flex-shrink: 0; width: 100%; justify-content: flex-start; gap: 8px; height: 30px; padding: 0 6px; }
 .arrow { width: 6px; height: 10.5px; color: var(--space); }
-.folder.open > .folder-head .arrow, .cloud.open .cloud-head .arrow, .cloud-device.open .arrow { transform: rotate(90deg); }
+.folder.open > .folder-head .arrow { transform: rotate(90deg); }
 .folder-name { flex: 1; min-width: 0; text-align: left; font-family: 'Press Start 2P', monospace; font-size: 10px; line-height: 1.4; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .folder-count { flex-shrink: 0; color: var(--muted); }
 
@@ -174,32 +174,6 @@
 .tab:hover .x { display: flex; }
 .tab:hover .eq, .tab:hover .pin-mark { display: none; }
 
-/* iCloud Tabs (Margin's <m-cloud-tabs>): a folder like the others, but live:
-   a pixel cloud in blue, nothing dragged in or out. Each device a tag in
-   Press Start 2P, with when it was last used; its tabs two lines, the title
-   over the site. A device not used for a week fades. */
-.cloud { flex-shrink: 0; display: flex; flex-direction: column; gap: 2px; }
-.cloud-head { width: 100%; justify-content: flex-start; gap: 8px; height: 30px; padding: 0 6px; }
-.cloud-head .arrow { color: var(--blue); }
-.cloud-ico { width: 18px; height: 12px; color: var(--ink); }
-.cloud-ico .fill { fill: var(--blue); }
-.cloud-name { flex: 1; min-width: 0; text-align: left; font-family: 'Press Start 2P', monospace; font-size: 10px; line-height: 1.4; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cloud-body { display: flex; flex-direction: column; gap: 2px; padding-left: 8px; }
-.cloud-note { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 2px 6px 6px; font-size: 14px; line-height: 1.3; color: var(--muted); }
-.cloud-device { width: 100%; flex-wrap: wrap; justify-content: flex-start; gap: 4px 8px; min-height: 28px; padding: 5px 6px; }
-.cloud-device .arrow { color: var(--muted); width: 4.5px; height: 7.9px; }
-.device-tag { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: calc(100% - 16px); height: 18px; padding: 0 6px; background: var(--deep); color: var(--blue); box-shadow: inset 0 0 0 2px var(--field); font-family: 'Press Start 2P', monospace; font-size: 8px; text-transform: uppercase; }
-.device-tag .pix { width: 10px; height: 10px; }
-.device-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; }
-.device-when { flex: 1 0 100%; min-width: 0; padding-left: 12px; box-sizing: border-box; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; color: var(--muted); }
-.cloud-tab { flex-shrink: 0; width: 100%; height: 38px; justify-content: flex-start; gap: 8px; padding: 0 6px 0 14px; }
-.cloud-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
-.cloud-text .title { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; line-height: 1.1; }
-.cloud-host { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'Press Start 2P', monospace; font-size: 7px; line-height: 1.3; color: var(--muted); text-transform: uppercase; }
-.pinned-mark { flex-shrink: 0; display: grid; place-items: center; width: 16px; height: 16px; color: var(--yellow); }
-.pinned-mark .pix { width: 7.5px; height: 10.5px; }
-:is(.cloud-device, .cloud-tab).stale { opacity: .45; }
-
 /* The divider, TODAY, CLEAR, new tab, today */
 .today-zone { flex-shrink: 0; display: flex; flex-direction: column; gap: 2px; }
 .divider { display: flex; align-items: center; gap: 8px; min-height: 24px; padding-top: 6px; margin-bottom: 10px; border-top: 3px dotted var(--field); }
@@ -225,21 +199,12 @@
 .add { width: 36px; height: 36px; }
 .add .pix { width: 9px; height: 9px; }
 /* Centred while they fit; many of them keep their size and scroll sideways
-   inside the bar (room kept for the lit edge and the profile marks). */
+   inside the bar (room kept for the lit edge). */
 .chips { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: safe center; gap: 10px; padding: 8px 8px 4px; margin: -5px -2px -1px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
 .chip { --chip: var(--space); position: relative; flex: 0 0 34px; height: 34px; font-family: 'Press Start 2P', monospace; font-size: 11px; background: var(--chip); color: var(--deep); opacity: .55; }
 .chip:hover { opacity: .8; }
 .chip.on { opacity: 1; box-shadow: 0 -3px 0 var(--yellow), 0 3px 0 var(--yellow), -3px 0 0 var(--yellow), 3px 0 0 var(--yellow); }
-/* Another browser profile's space (Margin.app): its profile's mark on the
-   corner, dimmer, a dashed edge; a divider between profiles; a chip being
-   switched to blinks. */
-.chip.foreign { opacity: .4; outline: 2px dashed var(--muted); outline-offset: 1px; }
-.chip .profile-tag { position: absolute; top: -7px; right: -7px; min-width: 14px; height: 14px; padding: 0 2px; box-sizing: border-box; display: grid; place-items: center; background: var(--profile, var(--ink)); color: var(--deep); box-shadow: var(--pxs); font: 7px/1 'Press Start 2P', monospace; }
-.chip .profile-tag .profile-symbol { display: block; width: 9px; height: 9px; filter: brightness(0); }
-@keyframes px-switch { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .3; } }
-.chip.switching { animation: px-switch .4s steps(1) infinite; }
-.profile-gap { flex: none; width: 3px; height: 24px; background: var(--field); }
 
 /* The page: the browser's page goes in its box. Its pixel border and the
    ground around it are its shadows, outside the box. */
@@ -343,8 +308,6 @@
 .editor-emoji:focus, .editor-name:focus { box-shadow: inset 0 0 0 2px var(--yellow); }
 .editor-emoji { width: 48px; text-align: center; }
 .editor-name { flex: 1; min-width: 0; }
-.editor-name:disabled { opacity: .6; }
-.editor-note { font-size: 14px; line-height: 1.3; color: var(--muted); }
 .swatches { display: flex; gap: 8px; flex-wrap: wrap; padding: 3px; }
 .swatch { --swatch: var(--ink); width: 22px; height: 22px; background: var(--swatch); box-shadow: var(--pxs); }
 .swatch.on { box-shadow: 0 -3px 0 var(--yellow), 0 3px 0 var(--yellow), -3px 0 0 var(--yellow), 3px 0 0 var(--yellow); }
@@ -394,21 +357,6 @@
 /* Margin's new-tab page: a title screen in the page card, and Settings. */
 .launcher-slot { position: absolute; top: var(--gutter); right: var(--gutter); bottom: var(--gutter); left: var(--page-left); overflow: hidden; z-index: 2; }
 
-/* The target world's cached rows stay beside this passive switching card. */
-.switch-cover-slot { position: absolute; top: var(--gutter); right: var(--gutter); bottom: var(--gutter); left: var(--page-left); overflow: hidden; z-index: 2; }
-.pixel.switching .launcher-slot { visibility: hidden; }
-.switch-cover { position: absolute; inset: 0; display: grid; place-items: center; background: var(--ground); pointer-events: auto; }
-.switch-cover-card { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 80%; color: var(--ink); text-align: center; }
-.switch-cover-mark { width: 36px; height: 36px; display: grid; place-items: center; background: var(--profile, var(--space)); color: var(--deep); box-shadow: var(--pxs); font-size: 24px; }
-.switch-cover-mark.emoji { background: var(--side); color: var(--ink); }
-.switch-cover-text { font-family: 'Press Start 2P', ui-monospace, monospace; font-size: 11px; line-height: 1.8; }
-.switch-cover-progress { display: flex; gap: 6px; padding: 4px; color: var(--yellow); }
-.switch-cover-progress i { width: 6px; height: 6px; background: currentColor; animation: pixel-cover-progress .9s steps(2, end) infinite alternate; }
-.switch-cover-progress i:nth-child(2) { animation-delay: .15s; }
-.switch-cover-progress i:nth-child(3) { animation-delay: .3s; }
-@keyframes pixel-cover-progress { from { opacity: .25; } to { opacity: .85; } }
-@media (prefers-reduced-motion: reduce) { .switch-cover-progress i { animation: none; opacity: .6; } }
-.switch-cover-space { color: var(--muted); }
 .launcher { height: 100%; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 30px; padding: 12vh 32px 48px; background-color: var(--ground); background-image: radial-gradient(var(--dots) 1px, transparent 1px); background-size: 16px 16px; scrollbar-width: thin; scrollbar-color: var(--field) transparent; }
 .launcher > * { width: min(640px, 100%); flex: none; }
 .title-screen { display: flex; flex-direction: column; align-items: center; gap: 14px; }
@@ -458,7 +406,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .pixel.blink :is(.caret, .row.on .cursor .now, .palette-row.on .cursor .now, .more) { animation: none; }
-  .tab.busy .fav, .eq i, .load-bar.on, .reload.loading .pix, .chip.switching { animation: none; }
+  .tab.busy .fav, .eq i, .load-bar.on, .reload.loading .pix { animation: none; }
   .column.m-settling .swipes, .gesture, .load-bar { transition: none; }
   .gesture, .gesture .pix { animation: none !important; translate: none; }
 }

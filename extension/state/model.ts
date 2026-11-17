@@ -26,12 +26,6 @@ const LEGACY_SHORTCUTS = Object.freeze({
 const DEFAULT_SETTINGS = Object.freeze({
   sidebarPinnedOpen: false,
   frameWhenHidden: true, // the sidebar hidden: Margin's frame around the page, the page inside it at its sides
-  // iCloud Tabs (Margin.app with Safari: shared/cloud-tabs.ts): shown in the
-  // sidebar's live folder and the palette; the folder open, and the devices
-  // whose tabs are hidden in it (Safari's device ids).
-  showCloudTabs: true,
-  cloudTabsOpen: true,
-  cloudTabsClosed: Object.freeze([]),
   archiveAfterHours: 12,
   // Tabs not used for this many hours are put to sleep to free their memory
   // (background/sleep.ts; 0: never), except on these sites (hostnames, each
@@ -95,7 +89,6 @@ function defaultState(): State {
     settings: {
       ...DEFAULT_SETTINGS,
       neverSleepSites: [],
-      cloudTabsClosed: [],
       shortcuts: { ...DEFAULT_SETTINGS.shortcuts },
       themes: Object.fromEntries(Object.entries(DEFAULT_SETTINGS.themes).map(([id, own]) => [id, { ...own }])),
     },

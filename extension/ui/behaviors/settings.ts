@@ -82,8 +82,6 @@ export function installSettings(rt: Rt) {
     // The active theme's own settings (fields Margin made from its theme.json) save only updateThemeSettings for it.
     const request = f?.fromTheme ? saveThemeField(f, value, rt.themeInfo ?? null) : saveField(f, value, rt.state?.settings);
     if (!request) { sync(); return false; } // back to what's saved
-    // Margin.app's own setting: the app saves it, and its next `across` says so.
-    if ('perform' in request) return rt.host.perform?.(request.perform, request.arg) !== false;
     void rt.host.send(request.type, request.payload);
     return true;
   }

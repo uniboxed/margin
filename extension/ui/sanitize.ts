@@ -308,7 +308,7 @@ const HTML_ELEMENTS = new Set([
 // Margin's own elements: control flow and slots.
 const MARGIN_ELEMENTS = new Set([
   'm-for', 'm-if', 'm-else', 'm-page', 'm-window-controls', 'm-drag-region', 'm-palette', 'm-notice', 'm-menu', 'm-editor',
-  'm-launcher', 'm-prompt', 'm-settings', 'm-cloud-tabs', 'm-switch-cover',
+  'm-launcher', 'm-prompt', 'm-settings',
 ]);
 // Dropped with everything inside them. (Raw-text elements never get this far.)
 const DROP = new Set([
@@ -386,24 +386,21 @@ const INPUT_ELEMENT = (value: string) => (value === 'setting-list' ? 'textarea' 
 // Named parts a theme supplies (`<template m-part>`), which the runtime puts
 // in its slots: `menu` in <m-menu>, `space-editor` in <m-editor>, `palette`
 // in <m-palette>, `notice` in <m-notice>, `launcher` in <m-launcher>,
-// `prompt` in <m-prompt>, `cloud-tabs` (iCloud Tabs' live folder) in <m-cloud-tabs>,
-// `switch-cover` (the "switching" cover over the page) in <m-switch-cover>.
-const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette', 'launcher', 'prompt', 'settings', 'cloud-tabs', 'switch-cover']);
+// `prompt` in <m-prompt>, `settings` in <m-settings>.
+const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette', 'launcher', 'prompt', 'settings']);
 
 // Margin's own words (PLAN.md §4: "a theme can still draw misleading text"):
 // the parts that show Margin's menus, notices, prompts and confirmations
 // (a delete that asks again, "install Margin.app"), and the slots they go
-// in, whose content is the part when the theme has none; and iCloud Tabs'
-// folder, whose one button asks for a permission; and the "switching"
-// cover, which says where Margin is taking the person. Inside them every
+// in, whose content is the part when the theme has none. Inside them every
 // visible text is one of Margin's labels, bound from the view model: a text
 // the theme wrote there is removed and reported, and so is a static value of
 // an attribute that shows or speaks text. Icons (svg shapes), images and
 // decoration stay. ui/render.ts applies the same rule again as it compiles.
-export const GUARDED_PARTS = Object.freeze(['menu', 'menu-item', 'notice', 'space-editor', 'prompt', 'settings', 'cloud-tabs', 'switch-cover']);
+export const GUARDED_PARTS = Object.freeze(['menu', 'menu-item', 'notice', 'space-editor', 'prompt', 'settings']);
 // The elements a part is put in.
-const SLOT_ELEMENTS = new Set(['m-palette', 'm-notice', 'm-menu', 'm-editor', 'm-launcher', 'm-prompt', 'm-settings', 'm-cloud-tabs', 'm-switch-cover']);
-export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm-prompt', 'm-settings', 'm-cloud-tabs', 'm-switch-cover']);
+const SLOT_ELEMENTS = new Set(['m-palette', 'm-notice', 'm-menu', 'm-editor', 'm-launcher', 'm-prompt', 'm-settings']);
+export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm-prompt', 'm-settings']);
 // Attributes whose value is shown (a tooltip, a placeholder, an image's
 // stand-in) or spoken (a screen reader's label).
 export const TEXT_ATTRS = Object.freeze(['title', 'alt', 'placeholder', 'aria-label', 'aria-description', 'aria-roledescription',

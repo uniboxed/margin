@@ -325,90 +325,6 @@
 .margin-sidebar :is(.tab, .pin):hover .icon { visibility: visible; }
 .margin-sidebar .icon:hover { background: var(--press); }
 
-/* iCloud Tabs (Margin's <m-cloud-tabs>): the tabs open on the person's other
-   devices, above "+ New Tab". It reads as one of Arc's folders (the same
-   row, its icon in the folder's place) but plainly live: a sky-blue cloud
-   instead of the golden folder, a count and a turning chevron, nothing to
-   drag in or out. Under it each device is a quiet heading (its icon, name
-   and when it was last used); its tabs are two lines, the title over the
-   site, so they never pass for this window's own. A device not used for a
-   week is dimmed. */
-.margin-sidebar .cloud { display: flex; flex-direction: column; gap: 2px; }
-.margin-sidebar .cloud-head { padding-right: 10px; }
-.margin-sidebar .cloud-icon { flex: none; position: relative; top: 1px; width: 22.5px; height: 16.5px; overflow: visible; }
-.margin-sidebar .cloud-icon .cloud-back { fill: #cde5ff; stroke: #1d5a96; stroke-width: 1.2; stroke-linejoin: round; }
-.margin-sidebar .cloud-icon .cloud-shine { fill: none; stroke: #fff; stroke-width: 1.4; stroke-linecap: round; }
-.margin-sidebar .cloud-count { flex: none; color: var(--muted); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.margin-sidebar .cloud-chevron { flex: none; width: 10px; height: 10px; fill: none; stroke: var(--icon); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: transform 160ms ease; }
-.margin-sidebar .cloud-head.open .cloud-chevron { transform: rotate(90deg); }
-.margin-sidebar .cloud-note {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 7px;
-  margin: 2px 4px 4px 16px;
-  padding: 9px 11px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.45);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.35;
-  user-select: text;
-  -webkit-user-select: text;
-}
-.margin-sidebar .cloud-fix { padding: 4px 10px; border-radius: 7px; background: rgba(0, 0, 0, 0.07); color: var(--fg); font-size: 12px; font-weight: 600; }
-.margin-sidebar .cloud-fix:hover { background: rgba(0, 0, 0, 0.11); }
-.margin-sidebar .cloud-fix:focus-visible { outline: 2px solid var(--drop); outline-offset: 1px; }
-.margin-sidebar .cloud-device {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  height: 26px;
-  margin: 5px 0 0 16px;
-  padding: 0 8px 0 7px;
-  border-radius: 8px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: default;
-  outline: none;
-}
-.margin-sidebar .cloud-device:hover { background: var(--hover); }
-.margin-sidebar .cloud-device:focus-visible { box-shadow: inset 0 0 0 2px var(--drop); }
-.margin-sidebar .device-icon { flex: none; display: grid; place-items: center; width: 16px; height: 16px; }
-.margin-sidebar .device-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
-/* The name keeps its room; "updated …" gives way first. */
-.margin-sidebar .device-name { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.margin-sidebar .device-when { flex: 1 100 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: right; font-size: 11px; font-weight: 400; opacity: 0.85; }
-.margin-sidebar .cloud-device:not(.open) .device-icon { opacity: 0.7; }
-.margin-sidebar .cloud-tab {
-  position: relative;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 38px;
-  margin-left: 16px;
-  padding: 0 8px 0 10px;
-  border-radius: 12px;
-  cursor: default;
-  outline: none;
-}
-.margin-sidebar .cloud-tab:hover { background: var(--hover); }
-.margin-sidebar .cloud-tab:active { background: var(--press); }
-.margin-sidebar .cloud-tab:focus-visible { box-shadow: inset 0 0 0 2px var(--drop); }
-.margin-sidebar .cloud-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.margin-sidebar .cloud-text .title { flex: none; font-size: 13px; line-height: 16px; }
-.margin-sidebar .cloud-host { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: 11px; line-height: 13px; }
-.margin-sidebar .pinned-mark { flex: none; display: grid; place-items: center; width: 14px; height: 14px; color: var(--icon); }
-.margin-sidebar .pinned-mark svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: round; }
-.margin-sidebar :is(.cloud-device, .cloud-tab).stale { opacity: 0.5; }
-.margin-sidebar .cloud-divider { margin-top: 8px; }
-@media (prefers-reduced-motion: reduce) {
-  .margin-sidebar .cloud-chevron { transition: none; }
-}
-
 /* Drag and drop (Arc, Margin's m-drag and m-drop): a copy of the row
    follows the pointer (the row stays), and glides into its new place once
    dropped. Where it goes: a line in the space's color, a ring at its start,
@@ -487,24 +403,6 @@
 }
 .margin-sidebar .chip:hover { opacity: 0.85; background: var(--hover); }
 .margin-sidebar .chip.active { filter: none; opacity: 1; }
-/* Another browser profile's space: its profile's mark at the corner; a divider between profiles. */
-.margin-sidebar .chip .profile-mark {
-  position: absolute;
-  right: 1px;
-  bottom: 2px;
-  min-width: 11px;
-  height: 11px;
-  padding: 0 2px;
-  border-radius: 6px;
-  background: var(--profile-color, #636e72);
-  color: #fff;
-  font: 700 7.5px/11px -apple-system, system-ui, sans-serif;
-  text-align: center;
-  filter: none;
-}
-.margin-sidebar .chip.switching { opacity: 0.85; animation: margin-chip-switching 0.9s ease-in-out infinite alternate; }
-@keyframes margin-chip-switching { to { opacity: 0.4; } }
-.margin-sidebar .profile-divider { flex: none; width: 1px; height: 16px; margin: 0 2px; background: currentColor; opacity: 0.2; }
 
 /* The space editor (Margin's <m-editor>, the "space-editor" part), under the space's name. */
 .margin-sidebar .editor {
@@ -533,9 +431,6 @@
 .margin-sidebar .editor input:focus { border-color: var(--space-color); }
 .margin-sidebar .editor .emoji { width: 40px; flex: none; text-align: center; font-size: 15px; }
 .margin-sidebar .editor .name { flex: 1; }
-.margin-sidebar .editor .name:disabled { opacity: 0.7; }
-.margin-sidebar .editor .note { color: var(--muted); font-size: 11px; line-height: 1.35; }
-.margin-sidebar .chip .profile-mark .profile-symbol { display: block; width: 8px; height: 8px; margin: 1.5px auto 0; }
 .margin-sidebar .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .margin-sidebar .swatch { width: 20px; height: 20px; padding: 0; border-radius: 50%; background: var(--chip-color); }
 .margin-sidebar .swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--frame), 0 0 0 4px var(--chip-color); }
@@ -776,35 +671,6 @@
 .palette .arrow-icon { width: 18px; height: 18px; fill: none; stroke: var(--fg); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .palette [aria-selected="true"] .go-button { background: #f2f0e8; }
 .palette [aria-selected="true"] .arrow-icon { stroke: #1c1c1e; }
-
-/* ---- Switching to another profile (Margin's <m-switch-cover>) -------------- */
-
-/* Over the page card while Margin.app gets the other profile's window ready:
-   the frame's gray, lighter, and where it goes, centred. Under the sidebar
-   (earlier in the template), so one out over the page stays in front; the
-   launcher steps aside. No fade: it comes and goes with the switch. */
-.switch-cover-slot {
-  position: absolute;
-  top: var(--card-inset);
-  right: var(--card-inset);
-  bottom: var(--card-inset);
-  left: var(--card-left);
-  border-radius: var(--card-radius);
-  overflow: hidden;
-}
-.arcadia.switching .launcher-slot { visibility: hidden; }
-.switch-cover { position: absolute; inset: 0; display: grid; place-items: center; background: #c9cacd; pointer-events: auto; }
-.switch-cover-card { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 80%; color: var(--fg); text-align: center; -webkit-font-smoothing: antialiased; }
-.switch-cover-mark { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; background: var(--profile, var(--space-color)); color: #fff; font-size: 18px; font-weight: 700; }
-.switch-cover-mark.emoji { background: rgba(255, 255, 255, 0.6); font-size: 24px; }
-.switch-cover-text { font-size: 15px; font-weight: 600; }
-.switch-cover-progress { display: flex; gap: 5px; padding: 4px; }
-.switch-cover-progress i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: arcadia-cover-progress .9s ease-in-out infinite alternate; }
-.switch-cover-progress i:nth-child(2) { animation-delay: .15s; }
-.switch-cover-progress i:nth-child(3) { animation-delay: .3s; }
-@keyframes arcadia-cover-progress { from { opacity: .25; } to { opacity: .85; } }
-@media (prefers-reduced-motion: reduce) { .switch-cover-progress i { animation: none; opacity: .6; } }
-.switch-cover-space { font-size: 13px; color: var(--muted); }
 
 /* ---- The new-tab launcher (Margin's <m-launcher>, the "launcher" part) ------- */
 

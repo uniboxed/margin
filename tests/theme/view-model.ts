@@ -8,8 +8,6 @@
 // what didn't change is shared. Runs in Node and in pages.
 import { buildViewModel } from '../../extension/ui/view-model.ts';
 import type { UiState, ViewModel, ViewModelInput } from '../../extension/ui/view-model.ts';
-import type { CloudTabs } from '../../extension/shared/cloud-tabs.ts';
-import type { Across } from '../../extension/shared/across.ts';
 import type { Owner } from '../../extension/shared/owner.ts';
 import type { ArchiveEntry, Favicon, Folder, Pin, Settings, Space, TabRecord } from '../../types/margin';
 
@@ -21,8 +19,7 @@ export type MockTab = TabRecord & { audible?: boolean, loading?: boolean };
 
 /**
  * Margin's stored state as a page reads it (shared/stored.ts fromStorage), as these fixtures have it: the settings
- * only the ones they set (the view model reads each with its default), and iCloud Tabs and the other profiles
- * as the theme harness adds them.
+ * only the ones they set (the view model reads each with its default).
  */
 export type MockStored = {
   spaces: Space[], activeSpaceByWindow: Record<number, string>, tabSpace: Record<number, string>,
@@ -30,7 +27,6 @@ export type MockStored = {
   settings: Partial<Settings>, favicons: Record<string, Favicon>,
   openTabsBy: { origin: string, since: number, synced: boolean } | null,
   faviconsMark?: string, owner?: Owner | null,
-  cloudTabs?: CloudTabs | null, across?: Across | null,
 };
 type Rgb = [number, number, number];
 

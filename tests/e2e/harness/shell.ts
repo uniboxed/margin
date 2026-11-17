@@ -53,12 +53,10 @@ const HELD_TYPES = new Set(['notice', 'loading']);
 const half = (v: unknown) => Math.round(Number(v) * 2) / 2;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs = null, across = null, makeFullscreen = null, verbose = !!process.env.MARGIN_E2E_VERBOSE }: {
+export async function startShell({ webkit, overlayUrl, dataSet = null, makeFullscreen = null, verbose = !!process.env.MARGIN_E2E_VERBOSE }: {
   webkit: Browser,                   // a Playwright WebKit browser
   overlayUrl: string,                // dist/app/overlay.html, served with the app's policy
   dataSet?: Said | null,             // the app's data set for this profile (a seed), or null
-  cloudTabs?: unknown,               // the app's iCloud Tabs ({ status, devices }) or null
-  across?: unknown,                  // spaces across profiles, or null
   makeFullscreen?: ((windowId: number) => Promise<void>) | null, // what macOS does for a new window of a full-screen app
   verbose?: boolean,
 }) {
@@ -103,8 +101,6 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
   let reconnectTimer: Timer | null = null;
   let tickTimer: Timer | null = null;
   let seed = dataSet;
-  let cloud = cloudTabs;
-  let acrossNow = across;
   let reqId = 0;
   const waiting: Map<number, (reply: Said) => void> = new Map();
   const overlays: Map<number, Overlay> = new Map();
@@ -381,7 +377,7 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
           windowId: o.windowId, profile: hello.profile, browser: hello.browser,
           mode: win?.state === 'fullscreen' ? 'fullscreen' : 'windowed',
           platform: { browser: hello.browser, os: 'mac', app: true },
-          state: raw, windows, across: acrossNow, cloudTabs: hello.browser === 'safari' ? cloud : null,
+          state: raw, windows,
           held: heldFor(o.windowId), theme: themeJSON ? JSON.parse(themeJSON) : null,
         });
       }
@@ -526,14 +522,6 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
     seed(set: Said, { now = false } = {}) {
       seed = set;
       if (now && hello) send({ k: 'data.snapshot', epoch, profile: hello.profile, format: set.format ?? 1, set, transfer: `seed-${Date.now()}`, part: 0, parts: 1 });
-    },
-    setCloudTabs(value: unknown) {
-      cloud = value;
-      for (const o of overlays.values()) o.push({ type: 'cloudTabs', cloudTabs: value });
-    },
-    setAcross(value: unknown) {
-      acrossNow = value;
-      for (const o of overlays.values()) o.push({ type: 'across', across: value });
     },
     /** The app killed: every socket dropped, no close frame; it stays "running" unless `gone`. */
     drop({ gone = false } = {}) { if (gone) running = false; app!.drop(); },
