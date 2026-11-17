@@ -41,7 +41,9 @@ func hostReconcilerTests() {
         ("running with no window (Maps 15:19, the person's): reopened", { var s = HostSituation(); s.launchedByMargin = false; return s }(), shown, [.reopen]),
         ("running with no window, hidden: unhidden, then reopened", { var s = HostSituation(); s.hidden = true; return s }(), shown, [.unhide, .reopen]),
         ("no window, reopened twice: the fallback", { var s = HostSituation(); s.tries = ["reopen": 2]; return s }(), shown, [.fallback("no window to host")]),
-        ("its window gone, its app running (windowless close:8): reopened", member { $0.windowGone = true }, shown, [.reopen]),
+        ("shown, its window gone a moment ago (windowless close:8, the person's ⌘W): another main window waited for, nothing reopened", member { $0.windowGone = true; $0.goneFor = 0.5 }, shown, [.wait("its window went: another main window of its app's waited for")]),
+        ("shown, its window gone, none came within the grace: its item closed, never reopened (Tirth, 2026-11-17)", member { $0.windowGone = true; $0.goneFor = 1.2 }, shown, [.closeItem]),
+        ("shown in window mode, its window gone past the grace: its item closed too", windowed { $0.windowGone = true; $0.goneFor = 3 }, shown, [.closeItem]),
         ("its window gone, a new one of its app's main (reopened, or its own): adopted", member { $0.windowGone = true; $0.replacement = 72046 }, shown, [.adopt(72046)]),
         // ---- replaced by its app (Messages 15:20; replacesWindow every:4) ----
         ("replaced: the new window at its frame is its app's main one: adopted, before anything else (then looked at again)", member { $0.replacement = 72210; $0.leftovers = [leftover(72197, .margin)] }, shown, [.adopt(72210)]),
@@ -63,6 +65,9 @@ func hostReconcilerTests() {
         ("shown, Margin's Space not current (a swipe): nothing about where it is", member { $0.place = .desktop; $0.marginCurrent = false }, shown, []),
         ("window mode, on screen, not where it was framed (an adoption's frame not taken): framed again", windowed { $0.atPage = false }, shown, [.frameWindow]),
         ("…framed twice already: left as it is", windowed { $0.atPage = false; $0.tries = ["window mode": 2] }, shown, []),
+        ("a member off the page area one read: nothing yet", member { $0.offPageReads = 1 }, shown, []),
+        ("a member off the page area two reads (restore-code: re-laid out to the display's size): placed again", member { $0.offPageReads = 2 }, shown, [.placeAgain]),
+        ("…placed again once in 30 s already: left as it is", member { $0.offPageReads = 4; $0.tries = ["place again": 1] }, shown, []),
         ("window mode, off screen one read: nothing yet (one read can miss mid-transition)", windowed { $0.onScreen = false; $0.offScreenReads = 1 }, shown, []),
         ("window mode, off screen two reads (the Phone, Calculator, noFullScreen): brought forward, activated", windowed { $0.onScreen = false; $0.offScreenReads = 2 }, shown, [.bringForward(.activate)]),
         ("…activated already: a Dock-icon click", windowed { $0.onScreen = false; $0.offScreenReads = 4; $0.tries = ["bring forward (activate)": 1] }, shown, [.bringForward(.reopen)]),
@@ -93,7 +98,7 @@ func hostReconcilerTests() {
         check("reconciler: \(name)", got == want, "got \(got.map(\.text)) want \(want.map(\.text))")
     }
     // The budgets: every correction has one, and a correction the engine logs says its name.
-    check("reconciler: every correction has a budget of at least one try", [HostCorrection.launch, .reopen, .unhide, .putBack, .bringForward(.activate), .adopt(1), .closeLeftover(1), .parkLeftover(1), .parkStrip(1), .parkAgain]
+    check("reconciler: every correction has a budget of at least one try", [HostCorrection.launch, .reopen, .unhide, .putBack, .bringForward(.activate), .adopt(1), .closeLeftover(1), .parkLeftover(1), .parkStrip(1), .parkAgain, .closeItem, .placeAgain]
           .allSatisfy { HostReconciler.budget(of: $0) >= 1 })
     check("reconciler: a leftover's close and park share one budget (a close that fails is a park)", HostCorrection.closeLeftover(5).key == HostCorrection.parkLeftover(5).key)
     // The log line's observed part: numbers and kinds only.

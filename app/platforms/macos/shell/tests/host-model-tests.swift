@@ -91,6 +91,16 @@ func windowKindsTests() {
         Row(name: "Messages' twin Accessibility calls its main window (both in Margin's Space): the twin is main",
             windows: [std(71192, page, .margin, onScreen: true), { var t = std(71300, page, .margin, onScreen: true); t.axMain = true; return t }()],
             app: .init(launchedByMargin: true, hosted: [71192]), want: [71192: .transient, 71300: .main]),
+        // replacesWindow every:4, 2026-11-17 17:49: the new window 40 pt off the old one's frame, the old one (closed by
+        // its app) still listed by the window server in Margin's Space, off screen.
+        Row(name: "replaced off its frame: the hosted one off screen in Margin's Space, a newer one on screen Accessibility's main window: the newer one main",
+            windows: [std(73491, CGRect(x: 350, y: 73, width: 1154, height: 869), .margin, onScreen: false, full: true),
+                      { var t = std(73494, CGRect(x: 350, y: 33, width: 1154, height: 869), .margin, onScreen: true, full: true); t.axMain = true; return t }()],
+            app: .init(launchedByMargin: true, hosted: [73491]), want: [73491: .transient, 73494: .main], why: [73494: "replaces 73491"]),
+        Row(name: "...the hosted one on screen (an extra window the person opened is Accessibility's main one): still main, the extra auxiliary",
+            windows: [std(73491, CGRect(x: 350, y: 73, width: 1154, height: 869), .margin, onScreen: true, full: true),
+                      { var t = std(73494, CGRect(x: 216, y: 250, width: 900, height: 560), .margin, onScreen: true, full: true); t.axMain = true; return t }()],
+            app: .init(launchedByMargin: true, hosted: [73491]), want: [73491: .main, 73494: .auxiliary]),
         Row(name: "Messages' hosted window in no Space with no other window: still main (where it is is the reconciler's business)",
             windows: [W(number: 71192, bounds: page, onScreen: false, place: .nowhere, everPlaced: true)],
             app: .init(launchedByMargin: true, hosted: [71192]), want: [71192: .main]),

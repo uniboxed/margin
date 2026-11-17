@@ -34,7 +34,8 @@
 //      launched, a twin), in an app Margin started, not hosted (stage 3: Chameleon's restored windows came after the one
 //      Margin chose, at higher numbers)                                                             leftover
 //  10. the mains: each hosted candidate its app didn't replace (a hosted window is replaced when it's in no Space and
-//      another window is in one at its frame, or when another at its frame is Accessibility's main window and it isn't);
+//      another window is in one at its frame, or when another at its frame is Accessibility's main window and it isn't,
+//      or when it's off screen in Margin's Space and a newer one anywhere on screen is Accessibility's main window);
 //      none: the best of the candidates by, in order: in a Space (or on screen), Accessibility's main window, on
 //      screen, main before, focused, not minimized, a standard window, the bigger, the newer.
 //  11. the other candidates: at a main window's frame (within 4 pt) a twin (transient), else auxiliary.
@@ -201,7 +202,12 @@ nonisolated enum WindowKinds {
         // 10. The mains.
         func replacement(of h: Window) -> Window? {
             candidates.first { c in
-                !app.hosted.contains(c.number) && near(c.bounds, h.bounds) && placedNow(c) && (h.place == .nowhere || (c.axMain && !h.axMain))
+                guard !app.hosted.contains(c.number), placedNow(c) else { return false }
+                if near(c.bounds, h.bounds) { return h.place == .nowhere || (c.axMain && !h.axMain) }
+                // (Elsewhere: the hosted one off screen in Margin's Space (closed by its app, which the window server
+                // still lists for a while), a newer one on screen its app's main window by Accessibility. 2026-11-17,
+                // replacesWindow-every: the new one 40 pt off the old frame, never adopted, the old one read as off screen.)
+                return h.place == .margin && h.onScreen == false && c.onScreen == true && c.axMain && !h.axMain && c.number > h.number
             }
         }
         var mains: [Int: String] = [:]

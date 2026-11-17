@@ -10,7 +10,9 @@
 //
 // The menu (each idempotent: asked again, it does nothing more than once):
 //   launch             not running                                   started with no Dock icon (an app Margin hosts)
-//   reopen             running with no window Margin can host        a Dock-icon click (kAEReopenApplication), then waited
+//   reopen             running with no window Margin can host        a Dock-icon click (kAEReopenApplication), then waited:
+//                      only as an item is shown (its app runs with no window: Maps windowless at its show), never
+//                      because the window shown went (Tirth, 2026-11-17: closing it closes the item)
 //   unhide             hidden (no window listed while it is)         NSRunningApplication.unhide, never activated
 //   wait               nothing to do yet (a window still coming, macOS's own transition still running)
 //   placeFromOwnSpace  its main window in a full-screen Space of its own: reserved, moved in, that Space destroyed
@@ -19,9 +21,14 @@
 //   frameWindow        one that can't: window mode, framed into the page area (a fixed size centred, the page card around it)
 //   putBack            shown, its window out of Margin's Space (another Space, none): back in, after macOS's transition
 //   bringForward       shown in window mode, in Margin's Space (current) and off screen: its app forward, then looked at
-//                      again, a rung at a time: activate (unhide, activate, raise), reopen (a Dock-icon click). Never a
+//                      again, a rung at a time: activate (unhide, AXFrontmost, raise), reopen (a Dock-icon click). Never a
 //                      Space made current or a window moved for it (2026-11-17 14:05: each was a jump). A member off
 //                      screen in place is placed again (HostEngine.backOnScreen), as before.
+//   closeItem          shown, its window closed (by the person: ⌘W, its close button; or by its app) and no other main
+//                      window came within `goneGrace`: its item closed (the row's page goes, its app left running), as
+//                      before stage 3; never a window reopened for it (Tirth, 2026-11-17)
+//   placeAgain         shown, a member not at the page area for two reads (its app moved it: a second window of its
+//                      going full screen re-laid it out): placed again (out of full screen, asked again), once per 30 s
 //   adopt              the app replaced its window (a new main-kind window at its frame, the old one gone or in no
 //                      Space), or made a new one after its own went: the new one hosted; the app is never fought
 //   closeLeftover      a leftover Margin may close (its app discards windows at quit, Accessibility reads it): its own
@@ -46,7 +53,7 @@ nonisolated enum HostDesired: Equatable, Sendable {
 
 // The rungs of `bringForward`, in order.
 nonisolated enum HostForward: String, Equatable, Sendable, CaseIterable {
-    case activate // unhide, activate, raise
+    case activate // unhide, AXFrontmost (its app activates itself), raise
     case reopen // a Dock-icon click (kAEReopenApplication)
 }
 
@@ -66,6 +73,8 @@ nonisolated enum HostCorrection: Equatable, Sendable {
     case parkLeftover(Int)
     case parkStrip(Int)
     case parkAgain
+    case closeItem
+    case placeAgain
     case fallback(String)
 
     // Its name in the log and its budget's key.
@@ -86,6 +95,8 @@ nonisolated enum HostCorrection: Equatable, Sendable {
         case .parkLeftover: return "park leftover"
         case .parkStrip: return "park strip"
         case .parkAgain: return "park again"
+        case .closeItem: return "close its item"
+        case .placeAgain: return "place again"
         case .fallback: return "fallback"
         }
     }
@@ -140,11 +151,13 @@ nonisolated struct HostSituation: Equatable, Sendable {
     var member = false
     var window: Int? = nil // the window Margin hosts (nil: none chosen yet)
     var windowGone = false // its bounds didn't read twice in a row: closed
+    var goneFor: Double? = nil // ...this long ago (the grace for a replacement main window)
     var place = WindowPlace.unread // where it is (the model's)
     var onScreen: Bool? = nil
     var offScreenReads = 0 // polls in a row it was in Margin's Space, the current one, and off the on-screen list (its own read too)
     var strayReads = 0 // polls in a row a parked one was found in a user Space (one read can miss mid-transition)
     var atPage: Bool? = nil // a window-mode window where `frameWindow` puts it (the page area, or its own size centred in it)
+    var offPageReads = 0 // polls in a row a shown member's bounds weren't the page area (its app moved it)
     var fullScreen: Bool? = nil // Accessibility's AXFullScreen
     var canFullScreen: Bool? = nil // AXFullScreen settable
     var ownFullScreenSpace: UInt64? = nil // a full-screen Space of its app's it's in (not Margin's)
@@ -187,7 +200,7 @@ nonisolated enum HostReconciler {
     // Each correction's budget per show (tries); `bringForward`'s rungs once each, then the fallback.
     static let budget: [String: Int] = [
         "launch": 1, "reopen": 2, "unhide": 2, "adopt": 20, "window mode": 2, "put back": 3, "park again": 3,
-        "leftover": 2, "strip": 3, "bring forward": 1,
+        "leftover": 2, "strip": 3, "bring forward": 1, "close its item": 1, "place again": 1,
     ]
     static func budget(of c: HostCorrection) -> Int {
         switch c {
@@ -200,6 +213,11 @@ nonisolated enum HostReconciler {
     }
     // Reads in a row a shown window has to be off screen before it's brought forward (one read can miss mid-transition).
     static let offScreenAfter = 2
+    // How long a shown window that went is given for its app to show another main window (replacesWindow, Messages'
+    // twin: adopted) before its item is closed.
+    static let goneGrace = 1.0
+    // Reads in a row a shown member has to be off the page area before it's placed again.
+    static let offPageAfter = 2
 
     // The corrections that bring `s` to `d`, most urgent first (the engine applies the first, then looks again).
     // Empty: settled. A correction whose budget is used up is skipped; the first open's path ends in `fallback`.
@@ -229,6 +247,14 @@ nonisolated enum HostReconciler {
             add(.launch)
             return out.isEmpty ? [.fallback("it doesn't start")] : out
         }
+        // Its window closed while shown (the person's ⌘W, its close button, or its app's own close): another main window
+        // of its app's within the grace adopted (replacesWindow, Messages' twin), else its item closed. Never reopened
+        // for it (Tirth, 2026-11-17).
+        if s.windowGone, s.phase == .shown {
+            if let r = s.replacement { add(.adopt(r)); if !out.isEmpty { return out } }
+            if (s.goneFor ?? 0) < goneGrace { return [.wait("its window went: another main window of its app's waited for")] }
+            return [.closeItem]
+        }
         if s.window == nil || s.windowGone {
             if let r = s.replacement { add(.adopt(r)); if !out.isEmpty { return out } }
             if s.hidden == true { add(.unhide) }
@@ -257,6 +283,9 @@ nonisolated enum HostReconciler {
                 } else if s.place == .margin, s.mode == .window, s.atPage == false {
                     // (A window-mode window not where it was framed: an adoption's frame not taken, its app moved it.)
                     add(.frameWindow)
+                } else if s.place == .margin, s.member, s.offPageReads >= offPageAfter {
+                    // (A member not at the page area: its app re-laid it out, restore-code's second full screen.)
+                    add(.placeAgain)
                 }
             }
         }

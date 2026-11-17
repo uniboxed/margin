@@ -837,7 +837,19 @@ final class HostedSession: LibraryDelegate {
         // keeps Margin's Space current while it's made; Margin is activated again after.)
         if wokenByMenu[p] != nil { engine.stopHidingWoken(bundleId: safariIdentifier) } // (the window asked for now is Margin's own: never parked so)
         let payload: JSONObject = preparingProfile == p ? ["fullscreen": false, "url": "about:blank"] : ["fullscreen": false]
-        let (result, error) = await links.request(profile: p, "newWindow", payload)
+        var (result, error) = await links.request(profile: p, "newWindow", payload)
+        // (A copy that isn't the one in charge answers `stale`, and a copy just starting can drop its link: Safari keeps an
+        // older copy of Margin running beside a newer one (an update, a second build; 2026-11-17 real-apps: "a newer copy
+        // of Margin is running", its links down a moment later, the open failed; three minutes later the same ask was
+        // made). Asked again, at most twice, once the profile's link is back or another copy's link replaced it.)
+        for attempt in 1...2 {
+            guard result.flatMap({ SpaceWindowAnswer($0) }) == nil, let e = error, Self.askAgain(e) else { break }
+            let epoch = links.linkEpoch(of: p)
+            note("Safari window for a profile: not made (\(e)): asked again once its copy's link is back or another copy's (try \(attempt + 1))")
+            _ = await wait(options.linkWait / 2) { let now = self.links.linkEpoch(of: p); return now != nil && now != epoch }
+            if links.linkEpoch(of: p) == nil { break }
+            (result, error) = await links.request(profile: p, "newWindow", payload)
+        }
         guard let made = result.flatMap({ SpaceWindowAnswer($0) }) else {
             note("Safari window for a profile: not made (\(error ?? "no answer"))")
             return nil
@@ -848,6 +860,12 @@ final class HostedSession: LibraryDelegate {
         // The window opened only to wake the profile's copy: closed again (Margin opened it; it has no page of the person's).
         await closeWoken(p, except: made.windowId)
         return HostSafariWindow(id: made.windowId, bounds: made.bounds)
+    }
+
+    // A window ask answered so by a copy not in charge, or by a link that went: worth asking again once a link is back.
+    nonisolated static func askAgain(_ error: String) -> Bool {
+        let e = error.lowercased()
+        return e.contains("newer copy") || e.contains("not linked") || e.contains("down")
     }
 
     // A window a profile's copy made for Margin, closed by that copy (by the copy's id). True: the copy asked Safari.

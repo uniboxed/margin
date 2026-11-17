@@ -80,6 +80,9 @@ final class FakeHostedLinks: HostedLinks {
     var onCloseWindow: ((Int) -> Void)?
     var onHostShow: (() -> Void)? // (as the copy is asked for an item's tab)
     var refuse: Set<String> = []
+    // A copy not in charge (Safari running an older copy of Margin beside a newer one): this many newWindow asks answered
+    // `stale`, the newer copy's link replacing it as it answers (a new epoch).
+    var staleNewWindows = 0
     func safariProfiles() -> [String] { profiles }
     var menuOpens: [String] = [] // profiles woken through Safari's menu
     var wakes: Set<String> = [] // profiles that link when woken
@@ -102,6 +105,11 @@ final class FakeHostedLinks: HostedLinks {
         if refuse.contains(type) { return (nil, "refused") }
         switch type {
         case "newWindow":
+            if staleNewWindows > 0 {
+                staleNewWindows -= 1
+                epochs[profile] = "e\(asked.count + 1)"
+                return (nil, "a newer copy of Margin is running")
+            }
             onNewWindow?(nextWindow, payload)
             nextWindow += 1
             return (["windowId": nextWindow - 1, "state": "normal"], nil)
@@ -632,6 +640,16 @@ func hostedTests() {
         check("hosted: a profile with no window is woken once through Safari's menu", woken.menuOpens == ["s-quiet"], "\(woken.menuOpens)")
         check("hosted: then linked, its window made, the waking window closed", linked && made != nil && woken.asked.map(\.type) == ["newWindow", "closeWindow"]
               && int(woken.asked.last?.payload["windowId"]) == 77, "\(woken.asked.map(\.type))")
+        // (2026-11-17 real-apps: a copy not in charge answered "a newer copy of Margin is running" and the open failed.)
+        let stale = FakeHostedLinks()
+        stale.profiles = ["s-default"]
+        stale.staleNewWindows = 1
+        let s4 = HostedSession(library: library, engine: engine, links: stale)
+        s4.sleep = { _ in await Task.yield() }
+        var madeAgain: HostSafariWindow?
+        hostRun { madeAgain = await s4.requestSafariWindow("s-default") }
+        check("hosted: a window asked of a copy not in charge (stale): asked again once another copy's link replaced it, made",
+              madeAgain != nil && stale.asked.filter { $0.type == "newWindow" }.count == 2, "\(stale.asked.map(\.type))")
         let none = FakeHostedLinks()
         let s3 = HostedSession(library: library, engine: engine, links: none)
         s3.sleep = { _ in await Task.yield() }

@@ -96,11 +96,30 @@ final class FakeHostWorld: HostSystem {
     // a window that can't go full screen, not in full screen, in a full-screen Space that isn't its own (Margin's) stays
     // off screen there, its app activated and its window raised all the same. On: played so (`hiddenInFullScreen`);
     // `reopenShows`: until its app gets a Dock-icon click (one hypothesis of why: not ordered in), then shown.
+    // `frontShows` (what the real Mac's logs showed, 2026-11-17 17:58: an app started hidden, its window ordered in while
+    // it was hidden; the Phone's came on screen the moment its own reopen made it the front process, SetFrontProcess):
+    // until its app is made the front app by Accessibility's AXFrontmost (`frontmost`); NSRunningApplication's activation
+    // (`activate`) doesn't, Margin never being the active app (its UI a panel), so macOS's cooperative activation refuses it.
     var windowedHiddenInFullScreen = false
     var reopenShows = false
+    var frontShows = false
     var reopenedApps: Set<pid_t> = []
+    var frontedApps: Set<pid_t> = []
+    var front: pid_t?
+    func frontmost(pid: pid_t) async -> Bool {
+        calls.append("frontmost \(pid)")
+        guard apps[pid] != nil else { return false }
+        frontedApps.insert(pid)
+        front = pid
+        if !unhideRefused { hidden.remove(pid) } // (activated, an app is unhidden: one that refuses stays hidden)
+        return true
+    }
+    func frontApp() -> pid_t? { front }
+    // How long an app takes to answer the raise (Accessibility's, at each activation: Messages 79 ms, 2026-11-17).
+    var activateLag = 0.0
     func hiddenInFullScreen(_ n: Int) -> Bool {
-        guard windowedHiddenInFullScreen, let w = wins[n], !w.canFullScreen, !w.fullScreen, w.priv == nil, !(reopenShows && reopenedApps.contains(w.pid)) else { return false }
+        guard windowedHiddenInFullScreen, let w = wins[n], !w.canFullScreen, !w.fullScreen, w.priv == nil, !(reopenShows && reopenedApps.contains(w.pid)),
+              !(frontShows && frontedApps.contains(w.pid)) else { return false }
         return w.spaces.contains { tiles[$0] != nil && owner[$0] != w.pid }
     }
     // A Dock-icon click (kAEReopenApplication): played by the behaviours' stand-ins (BehaviourWorld.reopen); none: not sent.
@@ -563,6 +582,7 @@ final class FakeHostWorld: HostSystem {
     }
     func activate(pid: pid_t, window: Int) async -> Bool {
         calls.append("activate \(pid) \(window)")
+        if activateLag > 0 { await sleep(activateLag) }
         activated.insert(pid)
         if activateShowsDesktop, let w = wins[window], w.pid == pid, w.priv == nil, w.spaces == [Self.desktop], current != Self.desktop {
             current = Self.desktop
@@ -1446,7 +1466,12 @@ func hostTests() {
         e.poll()
         check("host: its window's bounds unread once: kept (a read can miss mid-transition)", e.hosts[notes.id] != nil && !events.contains(.windowClosed(notes.id)))
         e.poll()
-        check("host: its window closed: said, forgotten", events.contains(.windowClosed(notes.id)) && e.hosts.isEmpty)
+        let kept = e.hosts[notes.id] != nil && !events.contains(.windowClosed(notes.id))
+        w.clock += HostReconciler.goneGrace + 0.1
+        e.poll()
+        _ = hostRun { await e.activateShown(at: nil); return true } // (what the poll queued, run to its end)
+        check("host: its window closed: kept for the grace (another main window of its app's would be adopted), then its item closed: said, forgotten; nothing reopened",
+              kept && events.contains(.windowClosed(notes.id)) && e.hosts.isEmpty && !w.calls.contains { $0.hasPrefix("reopen") }, "\(kept) \(events)")
     }
 
     // ---- the crash marker, read at the next launch: a member shown and one parked ----
@@ -2751,7 +2776,7 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         check("window mode: a press on the hosted window itself: the app's already, not activated again", !w.calls.contains { $0.hasPrefix("activate") }, "\(w.calls)")
         let te = { pid(w, "com.apple.TextEdit") }
         hostRun { await e.activateShown(at: around) }
-        check("window mode: a press in the page area around it: its app given the keyboard", w.calls == ["activate \(p) \(n)"], "\(w.calls)")
+        check("window mode: a press in the page area around it: its app given the keyboard (made the front app, its window raised)", w.calls == ["frontmost \(p)", "activate \(p) \(n)"], "\(w.calls)")
         // A press while its window is given back (a switch parks it, then Margin quits): never activated.
         w.calls = []
         w.onSetFrame = { await e.activateShown(at: around) }

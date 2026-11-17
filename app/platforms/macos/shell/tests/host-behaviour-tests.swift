@@ -164,17 +164,36 @@ func hostBehaviourTests() {
         check("behaviour restore-normal, its app discarding windows at quit: shown, its restored window out of sight: \(d.why)", shown(result) && d.ok, "\(others)")
         finish(r)
     }
-    // ---- windowless: its own window closed 8 s after it's shown, the app runs on with none: reopened, the new one adopted ----
+    // ---- windowless: its own window closed 8 s after it's shown, the app runs on with none: no other main window within
+    // the grace, so its item closed (Tirth, 2026-11-17: a window closed, as by the person's ⌘W, closes its item; never a
+    // window reopened for it) ----
     do {
         let (r, result) = scenario(["windowless": "close:8"])
         let done = listen(r)
+        let pid = r.w.running(bundleId: chameleon).first?.pid ?? 0
+        r.w.calls = []
         run(r, 9)
-        let d = desired(r, chameleon)
-        let h = held(r, chameleon, 5)
+        let id = HostTarget.app(chameleon).id
         done()
-        check("behaviour windowless: its window closed by its app, its app still running: reopened (a Dock-icon click), the window it made adopted, at the page area: \(d.why)",
-              shown(result) && d.ok && said(r, "→ reopen") >= 1 && said(r, "adopted in place of") == 1 && !r.events.contains(.windowClosed(HostTarget.app(chameleon).id)), "\(r.lines.filter { $0.contains("→") || $0.contains("adopted") })")
-        check("behaviour windowless: held 5 s: \(h.why)", h.ok)
+        check("behaviour windowless: its window closed by its app, no other came within the grace: its item closed (the engine's windowClosed), nothing reopened, its app left running, nothing of it shown",
+              shown(result) && r.events.contains(.windowClosed(id)) && !r.e.isHosted(id) && r.e.shown == nil && !r.w.calls.contains("reopen \(pid)") && r.w.processRuns(pid: pid)
+              && said(r, "→ close its item") == 1 && said(r, "→ reopen") == 0,
+              "\(r.events) \(r.lines.filter { $0.contains("→") || $0.contains("gone") })")
+        finish(r)
+    }
+    // ---- the person's ⌘W on a full-screen member (Chameleon 1 plain): its item closed after the grace, not before ----
+    do {
+        let (r, _) = scenario(["windowless": "YES"]) // (an app that runs on with no window: its last one closed doesn't quit it)
+        let done = listen(r)
+        let id = HostTarget.app(chameleon).id
+        let n = r.e.hosts[id]?.window ?? 0
+        r.w.closeWindow(n)
+        run(r, 0.75)
+        let during = r.e.isHosted(id) && !r.events.contains(.windowClosed(id))
+        run(r, 1.5)
+        done()
+        check("host: a window the person closes (⌘W) in a full-screen member: its item kept for the grace (a replacement would be adopted), then closed, nothing reopened",
+              during && r.events.contains(.windowClosed(id)) && !r.e.isHosted(id) && said(r, "→ reopen") == 0, "\(during) \(r.events) \(r.lines.filter { $0.contains("→") })")
         finish(r)
     }
     // ---- autoTerminate: parked 15 s, it attempts termination (or AppKit's is on): still hosted, still Margin's, a switch back ----
@@ -251,18 +270,32 @@ func hostBehaviourTests() {
         check("behaviour strip linger: held 5 s: \(h.why)", h.ok)
         finish(r)
     }
-    // ---- noFullScreen, fixedSize: window mode, its window off screen in Margin's Space until its app is reopened (one
-    // hypothesis of the real Mac's): brought forward a rung at a time, on screen; never: the predictable fallback ----
+    // ---- noFullScreen, fixedSize: window mode, its window off screen in Margin's Space until its app is the front app (the
+    // real Mac's, 2026-11-17: the Phone's came on screen when it made itself the front process; Margin's activation is
+    // refused since Margin is never the active app): made the front app at its show by AXFrontmost, on screen at once ----
     for (raw, name, framed) in [(["noFullScreen": "YES"], "noFullScreen", false), (["noFullScreen": "YES", "fixedSize": "400x300"], "fixedSize", true)] {
-        let (r, result) = scenario(raw) { $0.windowedHiddenInFullScreen = true; $0.reopenShows = true }
+        let (r, result) = scenario(raw) { $0.windowedHiddenInFullScreen = true; $0.frontShows = true }
         let done = listen(r)
         run(r, 3)
         let d = desired(r, chameleon, framed: framed)
         let h = held(r, chameleon, 5, framed: framed)
         done()
-        check("behaviour \(name): window mode, off screen in Margin's Space: brought forward (activated, then a Dock-icon click), on screen inside the page area: \(d.why)",
-              shown(result) && r.e.mode(of: HostTarget.app(chameleon).id) == .window && d.ok && said(r, "→ bring forward (reopen)") == 1, "\(r.lines.filter { $0.contains("→") || $0.contains("screen") })")
+        let pid = r.w.running(bundleId: chameleon).first?.pid ?? 0
+        check("behaviour \(name): window mode, its app made the front app (AXFrontmost) as it's shown: on screen inside the page area, no rung of bring forward needed: \(d.why)",
+              shown(result) && r.e.mode(of: HostTarget.app(chameleon).id) == .window && d.ok && said(r, "→ bring forward") == 0 && r.w.calls.contains("frontmost \(pid)"),
+              "\(r.lines.filter { $0.contains("→") || $0.contains("screen") })")
         check("behaviour \(name): held 5 s: \(h.why)", h.ok)
+        finish(r)
+    }
+    // (An app that comes forward only on its own reopen, as the Phone's UIKit did: the activate rung, then the reopen rung.)
+    for (raw, name, framed) in [(["noFullScreen": "YES"], "noFullScreen", false)] {
+        let (r, result) = scenario(raw) { $0.windowedHiddenInFullScreen = true; $0.reopenShows = true }
+        let done = listen(r)
+        run(r, 3)
+        let d = desired(r, chameleon, framed: framed)
+        done()
+        check("behaviour \(name), shown only after its own reopen: brought forward (activated, then a Dock-icon click), on screen inside the page area: \(d.why)",
+              shown(result) && d.ok && said(r, "→ bring forward (reopen)") == 1, "\(r.lines.filter { $0.contains("→") || $0.contains("screen") })")
         finish(r)
     }
     do {
@@ -276,6 +309,60 @@ func hostBehaviourTests() {
               shown(result) && r.e.shown == nil && r.e.isHosted(id) && r.w.wins[n]?.priv != nil && r.events.contains(.unshown(id)) && r.events.contains { if case .failed(id, .windowMode, _) = $0 { return true }; return false }
               && r.lines.filter({ $0.contains("→ fallback") }).count == 1 && r.lines.filter({ $0.contains("→ bring forward") }).count == 2,
               "\(r.events) \(r.lines.filter { $0.contains("→") })")
+        finish(r)
+    }
+    // ---- a switch's time: its app in front after it (2026-11-17 real-apps, Messages: front 79 of 142 ms) ----
+    do {
+        let (r, _) = scenario([:])
+        let done = listen(r)
+        r.w.activateLag = 0.08
+        let t0 = r.w.clock
+        let back = show(r, plain)
+        let took = r.w.clock - t0
+        done()
+        let line = r.lines.last { $0.contains("host: app:\(plain) switched in") }
+        let ms = line.flatMap { l in l.range(of: #"switched in (\d+) ms"#, options: .regularExpression).map { Int(l[$0].split(separator: " ")[2]) ?? 9999 } } ?? 9999
+        check("host: a switch is said done once its window is in and the one before out; its app in front after, not counted (\(ms) ms said, \(Int(took * 1000)) ms with its app's slow raise)",
+              shown(back) && ms < 50 && took >= 0.08 && (line?.contains("its app in front") ?? false), "\(String(describing: line))")
+        finish(r)
+    }
+    // ---- restore-code (2026-11-17 real screen): its second window asked into full screen by its app lands in a Space of its
+    // own after Margin parked it, with a toolbar strip there, and the hosted member re-laid out to the display's size:
+    // the leftover parked again (its Space destroyed), the strip parked, the member placed again at the page area ----
+    do {
+        let (r, result) = scenario(["restore": "2:normal"])
+        let done = listen(r)
+        let id = HostTarget.app(chameleon).id
+        let pid = r.w.running(bundleId: chameleon).first?.pid ?? 0
+        let hosted = r.e.hosts[id]?.window ?? 0
+        let other = (r.w.apps[pid]?.windows ?? []).first { $0 != hosted && r.w.wins[$0]?.priv != nil } ?? 0
+        let parkedFirst = other != 0
+        run(r, 3.5) // (past the engine's late watch of the show)
+        // Its app takes the parked leftover into full screen: a Space of its own, owned by it, listed.
+        let space = r.w.nextId, tile = r.w.nextId + 1
+        r.w.nextId += 2
+        r.w.tiles[space] = [tile]
+        r.w.owner[space] = pid
+        r.w.tileWindow[tile] = other
+        r.w.wins[other]?.priv = nil
+        r.w.wins[other]?.fullScreen = true
+        r.w.wins[other]?.spaces = [space]
+        r.w.wins[other]?.frame = FakeHostWorld.display
+        let strip = r.w.nextWindow
+        r.w.nextWindow += 1
+        r.w.wins[strip] = FakeHostWorld.Win(pid: pid, spaces: [space], frame: CGRect(x: 0, y: 33, width: 1512, height: 52))
+        r.w.apps[pid]?.windows.append(strip)
+        r.w.noteListing()
+        // ...and the member it hosts re-laid out to the display's size.
+        r.w.wins[hosted]?.frame = FakeHostWorld.display
+        r.w.wins[hosted]?.memberFrame = FakeHostWorld.display
+        run(r, 4)
+        done()
+        let d = desired(r, chameleon)
+        check("behaviour restore-code: a parked leftover its app took into full screen afterwards: parked again, its Space destroyed (Mission Control Margin's only)",
+              parkedFirst && r.w.wins[other]?.priv != nil && r.w.tiles[space] == nil && said(r, "→ park leftover \(other)") >= 1, "\(other) \(String(describing: r.w.wins[other])) \(r.w.tiles.keys.sorted()) \(r.lines.filter { $0.contains("→") })")
+        check("behaviour restore-code: the toolbar strip in that Space parked too (not taken for the member's own)", r.w.wins[strip].map { $0.priv != nil || $0.spaces.isEmpty } ?? true, "\(String(describing: r.w.wins[strip]))")
+        check("behaviour restore-code: the member re-laid out to the display's size placed again at the page area: \(d.why)", shown(result) && said(r, "→ place again") == 1 && d.ok, "\(r.lines.filter { $0.contains("→") || $0.contains("placed again") })")
         finish(r)
     }
     // ---- extraWindow: another window opened on demand (the menu): the person's, kept beside, never over the sidebar in front ----
