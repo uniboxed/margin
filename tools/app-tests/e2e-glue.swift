@@ -343,8 +343,8 @@ func glueScenario() async {
   check("the page card `loading` as the app launched (the engine's slow step: at once, with its name), nothing of Margin's window see-through then; `shown` once its window was in place",
         cardAtLaunch["com.apple.TextEdit"] == "loading hole none ground whole clear false" && states == ["loading com.apple.TextEdit", "shown"]
         && c.pushed.contains(#"{"type":"pageState","state":"loading","label":"com.apple.TextEdit"}"#) && c.pushed.contains(#"{"type":"pageState","state":"shown","label":null}"#) && c.pageState == .shown, "\(cardAtLaunch) \(states)")
-  let rootShown = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader[m-default]'); return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'shown' && !!l && l.textContent === 'Opening com.apple.TextEdit…' && getComputedStyle(l).pointerEvents === 'none'")
-  check("the theme's root says shown; Margin's default loader (no part of the theme's) was drawn for the launch with Margin's words, and lets go as it's shown", rootShown)
+  let rootShown = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader'); return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'shown' && !!l && !l.hasAttribute('m-default') && document.querySelectorAll('m-page-loader').length === 1 && l.textContent.trim() === '' && getComputedStyle(l).pointerEvents === 'none'")
+  check("the theme's root says shown; the theme's own loader (Arcadia's slot, no default of Margin's beside it) has its part taken out and lets go as it's shown", rootShown)
   // (The page card's rounded corners: Arcadia's 10 pt radius, its frame around them, which is the space's colour mixed
   // into a near-white: read from the page, as it computes it. The theme draws them itself, over the app.)
   let frameCSS = (await js(c.webView, "return getComputedStyle(document.querySelector('m-page')).boxShadow.split(') ')[0] + ')'") as? String) ?? ""
@@ -452,7 +452,7 @@ func glueScenario() async {
   let inGrace = c.pageState == .shown && c.hole == page
   c.graceOver()
   let late = c.pageState == .loading && c.hole == nil && c.window.backgroundColor == ground && !c.ground.isShown && c.slot == nil && c.pushed.last == #"{"type":"pageState","state":"loading","label":"Slow one"}"#
-  let lateDrawn = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader[m-default]'); return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'loading' && l?.textContent === 'Opening Slow one…' && getComputedStyle(l).opacity === '1' && getComputedStyle(l).pointerEvents === 'auto'")
+  let lateDrawn = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader:not([m-default])'); return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'loading' && l?.textContent.trim() === 'Opening Slow one…' && getComputedStyle(l).opacity === '1' && getComputedStyle(l).pointerEvents === 'auto'")
   _ = await until(3) { windowAlpha(c.window, at: holePoints)?.allSatisfy { $0 == 255 } == true }
   let cardAlpha = windowAlpha(c.window, at: holePoints)
   c.pointerMoved(middle, buttonsDown: false)
@@ -461,7 +461,7 @@ func glueScenario() async {
         inGrace && late && lateDrawn && !loadingPointer, "grace \(inGrace) late \(late) drawn \(lateDrawn) pointer through \(loadingPointer)")
   check("loading, as the window server pictures Margin's window: the page card opaque (alpha 255 across the page area): whatever opens behind it isn't seen", cardAlpha?.allSatisfy { $0 == 255 } == true, "\(String(describing: cardAlpha))")
   c.setShowing(nil)
-  let fadeMs = await js(c.webView, "const l = document.querySelector('.arcadia > m-page-loader[m-default]'); return Math.round(parseFloat(getComputedStyle(l).transitionDuration) * 1000)") as? Int ?? -1
+  let fadeMs = await js(c.webView, "const l = document.querySelector('.arcadia > m-page-loader'); return Math.round(parseFloat(getComputedStyle(l).transitionDuration) * 1000)") as? Int ?? -1
   _ = await until(3) { windowAlpha(c.window, at: holePoints)?.allSatisfy { $0 == 0 } == true }
   check("… and shown again once it is: the hole open again (see-through in the window's picture once the loader has faded, \(fadeMs) ms, at most 150)", c.pageState == .shown && c.hole == page
         && fadeMs > 0 && fadeMs <= 150 && windowAlpha(c.window, at: holePoints)?.allSatisfy { $0 == 0 } == true, "\(fadeMs) \(String(describing: windowAlpha(c.window, at: holePoints)))")
@@ -571,7 +571,12 @@ func glueScenario() async {
   check("⌘T with a hosted app in front: the palette open in Margin's window, its field focused, over the page area; Margin's window still in front of the hosted one (its level raised, never ordered below it)",
         paletteOpen && c.pageWantsKeyboard && calcPage.contains(fieldAt) && c.window.level == FrontMechanism.raised && c.yieldOrders == ordersBefore && c.hosted == calcWindow && c.pageState == .shown,
         "open \(paletteOpen) keys \(c.pageWantsKeyboard) field \(fieldAt) page \(calcPage)")
-  _ = await until(3) { windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) == [255] }
+  // (Off every display WebKit can keep an older frame of a layer that just appeared: the page is asked for a new one
+  // until the window server's picture has it. On the real screen it's check10's step c1.)
+  for _ in 0..<30 where windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) != [255] {
+    _ = await js(c.webView, "const el = document.querySelector('[m-input=\"palette\"]'); el.style.outlineOffset = el.style.outlineOffset ? '' : '0px'; void el.offsetWidth; await new Promise((done) => requestAnimationFrame(() => done(true))); return true")
+    _ = await until(0.1) { windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) == [255] }
+  }
   check("⌘T: as the window server pictures Margin's window, the palette's pixels are painted over the page area (alpha 255 at its field)",
         windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) == [255], "\(String(describing: windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])])))")
   // (As soon as the page has said where its palette is: its report of what it draws over the page area follows the draw.)
@@ -693,10 +698,10 @@ func glueScenario() async {
   c.pointerMoved(CGPoint(x: wider.midX, y: wider.midY), buttonsDown: false)
   check("resize (full screen): the pointer in the gap is Margin's, over the member the app's", !gapPointer && c.window.ignoresMouseEvents)
   // (What seeing through rests on: nothing the page draws covers the middle of its page slot. Every element whose box
-  // holds that point, whether or not it takes the pointer, has no background of its own. Margin's default loader, drawn
+  // holds that point, whether or not it takes the pointer, has no background of its own. The theme's loader card, drawn
   // for the placing just before, has faded out by now.)
-  let loaderGone = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader[m-default]'); return !l || (getComputedStyle(l).visibility === 'hidden' && +getComputedStyle(l).opacity === 0)")
-  check("resize: Margin's default loader, drawn for the placing before, has faded out and is hidden", loaderGone)
+  let loaderGone = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader'); return !l || (getComputedStyle(l).visibility === 'hidden' && +getComputedStyle(l).opacity === 0)")
+  check("resize: the theme's loader card, drawn for the placing before, has faded out and is hidden", loaderGone)
   let slotClear = await js(c.webView, """
     const r = document.querySelector('m-page').getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2;
     const paints = [...document.querySelectorAll('*')].filter((el) => {
