@@ -66,8 +66,8 @@
   user-select: none;
   -webkit-user-select: none;
 }
-@supports (color: AccentColor) and (color: AccentColorText) {
-  .arcadia { --accent: AccentColor; --on-accent: AccentColorText; }
+@supports (color: AccentColor) {
+  .arcadia { --accent: AccentColor; }
 }
 @media (prefers-color-scheme: dark) {
   .arcadia {
