@@ -6,7 +6,7 @@ import { buildTemplate, View } from '../../extension/ui/render.ts';
 import { loadTheme, loadBuiltinTheme, sanitizeTheme } from '../../extension/ui/theme-loader.ts';
 import { createRuntime } from '../../extension/ui/runtime.ts';
 import { createMockHost } from '../../extension/ui/host.ts';
-import { cornerFill } from '../../extension/ui/host-app.ts';
+import { cornerFill, sidebarFixed } from '../../extension/ui/host-app.ts';
 import { createDispatcher, contextFromState } from '../../extension/ui/actions.ts';
 import { MockState } from './view-model.ts';
 import { auditDom } from './audit.ts';
@@ -326,7 +326,7 @@ const T = {
 
 // `host`, `mock`, `target` and `warnings` are set by mountRuntime and `theme` by loadBuiltin or loadPackage,
 // before any step that reads them (null until then); `runtime` is null again once unmounted.
-const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null! };
+const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[], resizing: [boolean, number | null][] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null!, resizing: [] };
 
 // (Named, the same object as T, for its type: Harness below.)
 const withRuntime = Object.assign(T, {
@@ -344,7 +344,7 @@ const withRuntime = Object.assign(T, {
 
   // `replies`: what the host answers a request of each type with (values);
   // `settings`: the stored settings changed first.
-  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false, appWindow = false }: {
+  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null, staysOnScreen = false, appWindow = false, hosted = false }: {
     width?: number, height?: number, container?: 'shadow' | 'document', closed?: boolean,
     platform?: { browser: string, os: string, marginFullscreen?: boolean }, replies?: Record<string, unknown>,
     settings?: Record<string, unknown> | null, mode?: 'fullscreen' | 'windowed' | 'inpage', inNewTab?: boolean,
@@ -352,12 +352,20 @@ const withRuntime = Object.assign(T, {
     staysOnScreen?: boolean,
     // Margin.app's own window with nothing hosted beside it (ui/host-app.ts): its page area is the launcher.
     appWindow?: boolean,
+    // Margin.app's own window hosting another app's window above its page area (`pageHosted`): the sidebar docked, no
+    // launcher, the theme's root marked as the app's page marks it (app/shared/host/overlay.ts followOutside).
+    hosted?: boolean,
   } = {}) {
     (T as typeof T & { unmountRuntime(): void }).unmountRuntime(); // (added with these steps)
     const mock = new MockState();
     if (settings) mock.state = { ...mock.state, settings: { ...mock.state.settings, ...settings } };
     const answers = { createSpace: () => ({ spaceId: 'studio' }), ...Object.fromEntries(Object.entries(replies).map(([k, v]) => [k, () => v])) };
-    const host = Object.assign(createMockHost({ state: mock.state, windowId: 1, platform, mode, inNewTab, focusLauncherAtMount, replies: answers }), { staysOnScreen }, appWindow ? { appWindow: true, launcher: true, inNewTab: false } : {});
+    const host = Object.assign(createMockHost({ state: mock.state, windowId: 1, platform, mode, inNewTab, focusLauncherAtMount, replies: answers }), { staysOnScreen }, hosted ? { appWindow: true, pageHosted: true, pageOutside: false, sidebarDocked: true, launcher: false, inNewTab: false }
+      : appWindow ? { appWindow: true, launcher: true, inNewTab: false } : {});
+    // (Each word of a width change to the host, with the page's left inset it had last been told by then.)
+    const perform = host.perform;
+    host.perform = (name: string, arg?: any) => { if (name === 'sidebar.resizing') rt.resizing.push([arg?.on === true, host.layouts.at(-1)?.insets.left ?? null]); return perform(name, arg); };
+    rt.resizing = [];
     let target: Target;
     let el: HTMLElement | null = null;
     if (container === 'document') {
@@ -373,6 +381,7 @@ const withRuntime = Object.assign(T, {
     // (A theme that loaded: the tests check that first.)
     const runtime = createRuntime({ host, theme: rt.theme as LoadedTheme, container: target, onWarn: (m) => rt.warnings!.push(m) });
     Object.assign(rt, { runtime, host, mock, el, target });
+    if (hosted) runtime.view.rootElement()?.toggleAttribute('m-sidebar-fixed', sidebarFixed(host as { pageOutside?: boolean }));
     w.__rt = rt;
     return true;
   },
@@ -511,6 +520,9 @@ const withRuntime = Object.assign(T, {
   rtStyle(selector: string, prop: string) { const el = rt.target.querySelector<HTMLElement>(selector); return el ? el.style.getPropertyValue(prop) : null; },
   rtSentClear() { rt.host.sent.length = 0; rt.host.layouts.length = 0; },
   rtLayoutsAll() { return rt.host.layouts.map((l) => l.insets.left); },
+  // The host told a change of the sidebar's width began (true) or is over (false), each with the last left inset reported by then.
+  rtResizing() { return rt.resizing.slice(); },
+  rtDisplay(selector: string) { const el = rt.target.querySelector(selector); return el ? getComputedStyle(el).display : null; },
   rtState() { return rt.mock.state; },
   // A trackpad's sideways scroll over an element: `count` wheel events of
   // `dx` px, 16 ms apart (Playwright's own wheel is a mouse's).

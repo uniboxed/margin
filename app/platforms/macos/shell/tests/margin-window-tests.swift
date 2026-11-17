@@ -163,6 +163,22 @@ func marginWindowTests() {
     sync.onChange?(DataProfile(browser: "safari", profile: "P"), ["spaces"])
     check("hosted source: the shell still hears the data set's changes (the source's comes after)", shellHeard == 1)
 
+    // ---- the page area's ground while Margin's window is in front of the hosted one (PageGroundView) ----
+    do {
+        let ground = PageGroundView(frame: NSRect(x: 0, y: 0, width: 1512, height: 949))
+        check("ground: hidden, nothing drawn, until Margin's window is lifted over a hosted window", !ground.isShown && ground.isHidden && !ground.fills(CGPoint(x: 700, y: 400)) && ground.hitTest(NSPoint(x: 10, y: 10)) == nil)
+        // The hosted window where it was when the drag began (the page area beside a 260 pt sidebar), top left in the content.
+        let hosted = CGRect(x: 260, y: 8, width: 1244, height: 933)
+        ground.show(color: .gray, hole: hosted)
+        check("ground: the hosted window's bounds cut out (it shows through there), the ground everywhere else of the content",
+              ground.isShown && !ground.fills(CGPoint(x: 700, y: 400)) && !ground.fills(CGPoint(x: 261, y: 9)) && ground.fills(CGPoint(x: 250, y: 400)) && ground.fills(CGPoint(x: 700, y: 4))
+              && ground.fills(CGPoint(x: 1508, y: 400)) && ground.fills(CGPoint(x: 700, y: 945)) && ground.hole == hosted && ground.color == .gray)
+        ground.show(color: .gray, hole: nil)
+        check("ground: no window to see through (it left to be placed again): the ground everywhere", ground.fills(CGPoint(x: 700, y: 400)) && ground.hole == nil)
+        ground.clear()
+        check("ground: cleared: hidden again, nothing kept", !ground.isShown && ground.color == nil && ground.hole == nil && !ground.fills(CGPoint(x: 250, y: 400)))
+    }
+
     // ---- the page card's corners over a hosted window (HostCorners) ----
     do {
         let page = CGRect(x: 276, y: 41, width: 1228, height: 933)

@@ -226,6 +226,39 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
         await wait((x) => T.rtLayoutsAll().at(-1) === x, th.docked);
       });
 
+      // Margin.app's own window hosting another app's window above its page area (ui/host-app.ts pageHosted): the
+      // sidebar is docked there, and its width is dragged as anywhere. The app holds the hosted window's placing
+      // from the first change of the width until it's told the change is over, which comes after the last layout.
+      await t.test('resize while Margin.app hosts a window above the page area: the handle shown and dragged, live layouts, the host told when it begins and when it\'s over', async () => {
+        await mount({ hosted: true });
+        await wait(() => T.rtLayoutsAll().length > 0);
+        assert.equal((await vm()).sidebar, 'open', 'docked while hosting');
+        assert.equal(await ev((r) => T.rtAttr(r, 'm-sidebar-fixed'), th.root), null, 'not marked fixed');
+        assert.notEqual(await ev(() => T.rtDisplay('.resizer')), 'none', 'the handle is drawn');
+        const handle = await rect('.resizer');
+        assert.ok(handle && handle.width > 0 && handle.height > 0, 'the handle has a box');
+        await page.mouse.move(handle.x, handle.y);
+        await page.mouse.down();
+        assert.deepEqual(await ev(() => T.rtResizing()), [], 'a press alone: nothing told');
+        await page.mouse.move(handle.x + 20, handle.y, { steps: 2 });
+        await eventually(async () => assert.deepEqual((await ev(() => T.rtResizing())).map(([on]) => on), [true], 'told once as the width first changes'));
+        await page.mouse.move(handle.x + 50, handle.y, { steps: 3 });
+        await wait((x) => T.rtLayoutsAll().at(-1) === x, th.docked + 50);
+        const live = await ev(() => T.rtLayoutsAll());
+        assert.ok(live.filter((l) => l > th.docked && l < th.docked + 50).length >= 1, `layouts while dragging: ${live.join(', ')}`);
+        assert.deepEqual((await ev(() => T.rtResizing())).map(([on]) => on), [true], 'still one word while dragging');
+        await page.mouse.up();
+        assert.deepEqual(await lastSent('updateThemeSettings'), ['updateThemeSettings', { themeId, patch: { sidebarWidth: `${th.dragged}px` } }]);
+        assert.deepEqual((await ev(() => T.rtResizing())).at(-1), [false, th.dragged + gap], 'over: told after the page\'s place at the saved width was reported');
+        assert.equal((await ev(() => T.rtResizing())).length, 2, 'begun once, over once');
+        // Double-click: the default, as one change, its layout reported before the host hears it's over.
+        const h2 = await rect('.resizer');
+        await page.mouse.dblclick(h2.x, h2.y);
+        assert.deepEqual((await lastSent('updateThemeSettings'))![1].patch, { sidebarWidth: `${th.def}px` });
+        assert.deepEqual((await ev(() => T.rtResizing())).slice(2).map(([on]) => on), [true, false], 'the reset: begun and over');
+        assert.deepEqual((await ev(() => T.rtResizing())).at(-1), [false, th.docked], 'the default\'s layout reported first');
+      });
+
       await t.test('menus: a right-click opens the theme\'s menu part; items run checked actions, two-value ones too', async () => {
         await mount();
         const ids = await today();

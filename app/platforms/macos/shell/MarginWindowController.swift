@@ -40,6 +40,11 @@
 //   copy's push draws it over a browser); no spinner of Margin's own. A new app's window brought into Margin's Space only
 //   to be read is covered by this window meanwhile (`cover`). The page card's rounded corners are drawn over the hosted
 //   window by small panels of their own (`corners`, HostCorners: MarginWindow.swift).
+// - The sidebar's edge dragged while hosting (`setLifted`, from the page's `sidebar.resizing` through the session):
+//   this window comes in front of the hosted window for the drag, see-through where that window still is (so it stays
+//   in sight, clipped by the page card as the sidebar moves over it) and the page area's ground everywhere else of the
+//   page area (`ground`: no gap, nothing of the app over the sidebar); the hosted window is placed once when the drag
+//   is over, and this window goes right below it again. Its own size and constraints never change for it.
 // - MarginWindows: every such window, the menu bar's actions (to the key one),
 //   and the source's changes passed to each.
 
@@ -119,6 +124,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // theme's frame), not the window's: any sliver the hosted window leaves (its own rounded corners, a point short) is
     // the frame, never a dark gap. Nil: the window's own background.
     private(set) var pageGround: NSColor?
+    // In front of the hosted window while the sidebar's edge is dragged (setLifted), and until that window is placed
+    // again: the page area's ground drawn here (`ground`), less the hosted window's bounds while it's seen through.
+    private(set) var lifted = false
+    private(set) var liftOrders = 0 // how many times it was ordered above the hosted window for it (the tests read it)
+    let ground = PageGroundView(frame: .zero)
+    private var pageResizing = false // its page said a change of the sidebar's width began, and not yet that it's over
     // Always full screen: its first entry (the window see-through until it's in), and the times it went back in.
     private var enteringFirst = false
     private(set) var backIntoFullScreen = 0
@@ -147,6 +158,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         fill.frame = content.bounds
         fill.autoresizingMask = [.width, .height]
         content.addSubview(fill)
+        ground.frame = content.bounds
+        ground.autoresizingMask = [.width, .height]
+        content.addSubview(ground)
         webView.frame = content.bounds
         webView.autoresizingMask = [.width, .height]
         content.addSubview(webView)
@@ -218,6 +232,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // Its page let go of (the window closing, or closed by close()).
     func teardown() {
         guard !isClosed else { return }
+        sidebarResizing(false)
         isClosed = true
         corners.hide()
         pages.bridge.unregister(webView)
@@ -243,8 +258,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // The page area again (the layout, the window's frame or what's over the page changed).
     func updatePage() {
         let content = contentFrame
-        let region = CatchRegion.of(frame: content, slot: slot)
-        fill.region = region
+        applyCatch()
         defer { placeCorners() }
         guard let layout else { return window.setPageRect(nil, radius: 0) }
         if hosting { return window.setPageRect(hostedPlacement?.page, radius: CGFloat(layout.radius)) }
@@ -269,6 +283,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             covering = nil
             loadingLabel = nil
             hostDisplay = nil
+            if lifted { lifted = false; ground.clear(); applyGround(); applyCatch() }
             Diagnostics.note("Margin's window \(id): hosting nothing: its launcher in the page area again")
         }
         push(#"{"type":"pageHosted","on":\#(on)}"#)
@@ -308,14 +323,61 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard number != below else { return }
         below = number
         Diagnostics.note("Margin's window \(id): \(number.map { "kept below the hosted window \($0)" } ?? "no hosted window above it")")
+        // Lifted, the edge still dragged (seeing through to the one shown before): over this one too, seen through at
+        // its own bounds. Lifted with the ground alone (the drag over, its one placing under way): this is the window
+        // placed for the page area as it is now, left in front; Margin's window goes below it as the lift ends.
+        if lifted, ground.hole != nil, let number, !isClosed {
+            window.order(.above, relativeTo: number)
+            liftOrders += 1
+            ground.show(color: ground.color ?? .windowBackgroundColor, hole: hostedBounds(number).map { $0.offsetBy(dx: -contentFrame.minX, dy: -contentFrame.minY) })
+            applyCatch()
+        }
         orderBelowHosted()
         placeCorners()
+    }
+
+    // The sidebar's edge dragged while a hosted window is shown above the page area (HostedSession.sidebarResizing).
+    // On: this window in front of the hosted one, which can't follow the page area as it moves (a full-screen member is
+    // placed again only out of full screen and in; a window by Accessibility, late): what's seen is Margin's own layout,
+    // live, with the hosted window showing through the page area where it still is (`through`: its bounds cut out of
+    // the ground; the theme's page card clips it, rounded corners and all) and the page area's ground everywhere else
+    // (never the Space's backdrop in a gap, never the app's pixels over the sidebar). Made see-through before it's
+    // ordered in front, so no frame of it covers the hosted window. `through` false (the hosted window is leaving to be
+    // placed again): the ground alone. Off: right below the hosted window again, opaque, the corners placed.
+    func setLifted(_ on: Bool, through: Bool) {
+        guard on, hosting, let below, !isClosed else {
+            guard lifted else { return }
+            lifted = false
+            Diagnostics.note("Margin's window \(id): below the hosted window again")
+            orderBelowHosted()
+            ground.clear()
+            applyGround()
+            applyCatch()
+            placeCorners()
+            return
+        }
+        let content = contentFrame
+        let hole = through ? hostedBounds(below).map { $0.offsetBy(dx: -content.minX, dy: -content.minY) } : nil
+        ground.show(color: pageGround ?? .windowBackgroundColor, hole: hole)
+        applyCatch()
+        guard !lifted else { return }
+        lifted = true
+        corners.hide()
+        applyGround()
+        // (Drawn see-through before it's in front: no frame of an opaque page area over the hosted window.)
+        if !options.harness { window.displayIfNeeded(); CATransaction.flush() }
+        window.order(.above, relativeTo: below)
+        liftOrders += 1
+        Diagnostics.note("Margin's window \(id): in front of the hosted window while the sidebar's edge is dragged\(hole == nil ? "" : " (seen through its page area)")")
     }
 
     // The page card's rounded corners over the hosted window (it's above this one, its corners square): drawn by
     // HostCorners only while a hosted window is shown in this window's page area and this window is on the current
     // Space, at the page area's corners, with the page's inner radius and the colour the theme draws around them.
     func placeCorners() {
+        // (Not while the sidebar's edge is dragged: this window is in front of the hosted one, its own card's corners
+        // drawn by the theme; the ground stays as it was.)
+        if lifted { return corners.hide() }
         // (Not while a field of Margin's has the keys: this window is in front of the hosted one then, the palette over it.)
         guard hosting, let below, !pageWantsKeyboard, !isClosed, let page = window.pageRect, let layout else {
             setPageGround(nil)
@@ -340,12 +402,26 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private func setPageGround(_ color: NSColor?) {
         guard color != pageGround else { return }
         pageGround = color
-        window.backgroundColor = color ?? .windowBackgroundColor
+        applyGround()
     }
 
-    // Ordered right below the hosted window, unless a field of Margin's has the keys (the palette is drawn here).
+    // The window's own background: the page area's ground, or clear while it's lifted (the ground is `ground`'s then,
+    // with the hosted window showing through it).
+    private func applyGround() {
+        window.backgroundColor = lifted ? .clear : pageGround ?? .windowBackgroundColor
+    }
+
+    // The fill that keeps the pointer Margin's (PassThrough.swift CatchView: the whole window at alpha 0.01, nothing
+    // being behind it), less the hosted window's bounds while that window is seen through (nothing drawn over it, not
+    // even that: its pixels as they are).
+    private func applyCatch() {
+        if lifted, let hole = ground.hole { fill.region = CatchRegion(all: false, hole: hole) } else { fill.region = CatchRegion.of(frame: contentFrame, slot: slot) }
+    }
+
+    // Ordered right below the hosted window, unless a field of Margin's has the keys (the palette is drawn here) or the
+    // sidebar's edge is being dragged (in front of it until that's over).
     func orderBelowHosted() {
-        guard let below, hosting, !pageWantsKeyboard, !isClosed else { return }
+        guard let below, hosting, !pageWantsKeyboard, !lifted, !isClosed else { return }
         window.order(.below, relativeTo: below)
         belowOrders += 1
     }
@@ -421,7 +497,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // Window mode: a press in the page area (around the hosted window; on it, the app has it already) gives that app
     // the keyboard. Only while this window is on screen in the current Space (the monitor hears every app's presses).
     func pressed(_ at: CGPoint) {
-        if below != nil, hosting, !pageWantsKeyboard, window.isVisible, window.isOnActiveSpace, let page = window.pageRect, page.contains(at) {
+        if below != nil, hosting, !pageWantsKeyboard, !lifted, window.isVisible, window.isOnActiveSpace, let page = window.pageRect, page.contains(at) {
             owner?.onPagePress?(self, at)
         }
         guard pageWantsKeyboard, !contentFrame.contains(at) || PassThrough.pageGets(at, slot) else { return }
@@ -603,6 +679,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     func pageHello() -> String {
         asked = true
+        sidebarResizing(false) // (a page loaded again mid-drag never says it's over)
         guard let owner else { return "null" }
         let head: JSONObject = [
             "windowId": id, "profile": "", "browser": owner.browser, "mode": mode, "host": "app-window",
@@ -678,6 +755,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         case "perform":
             let name = body["name"] as? String ?? ""
             if name == "window.fullscreen" { return toggleFullScreen() }
+            // The sidebar's width being dragged, or let go (ui/behaviors/resize.ts): the session's (it holds the hosted
+            // window's placing until it's over).
+            if name == "sidebar.resizing" { return sidebarResizing((body["arg"] as? JSONObject)?["on"] as? Bool == true) }
             guard !name.isEmpty else { return }
             ask(name, body["arg"] as? JSONObject ?? [:])
         case "log":
@@ -686,6 +766,14 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         default:
             break // (framed, shownSpace, switch covers: a browser overlay's)
         }
+    }
+
+    // Its page's word that a change of the sidebar's width began or is over, passed on once each way. A page that
+    // goes (closed, its process ended, loaded again) mid-drag: over.
+    private func sidebarResizing(_ on: Bool) {
+        guard on != pageResizing else { return }
+        pageResizing = on
+        owner?.onSidebarResizing?(self, on)
     }
 
     static func rect(_ r: [Any]) -> CGRect? {
@@ -706,6 +794,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         Diagnostics.warn("Margin's window \(id): its page stopped: loading it again")
         isReady = false
         asked = false
+        sidebarResizing(false)
         pages.ready { [weak self] in self?.webView.load(URLRequest(url: OverlaySchemeHandler.page)) }
     }
 }
@@ -732,6 +821,7 @@ final class MarginWindows {
     var onLeftFullScreen: ((MarginWindowController) -> Void)? // left full screen while hosting
     var onEnteredFullScreen: ((MarginWindowController) -> Void)? // in full screen (again)
     var onPagePress: ((MarginWindowController, CGPoint) -> Void)? // a press in its page area around a window-mode host's window
+    var onSidebarResizing: ((MarginWindowController, Bool) -> Void)? // a change of its sidebar's width began (a drag), or is over
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)
     private(set) var controllers: [MarginWindowController] = []
     private var lastKey: MarginWindowController?

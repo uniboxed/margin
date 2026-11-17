@@ -9,10 +9,15 @@
 // member of Margin's Space at the page area its own Space reserved), given the page area from Margin's own layout,
 // with the loading animation meanwhile; Margin's window is always full screen (shown so, never leaving it: asked, it
 // refuses; taken out by macOS, it goes back and the app shown comes back with it), its whole width, its page drawing
-// its own layout (pageHosted, the sidebar docked, its width not dragged); a typed address (the page's `newTab`) is a web item: Safari
+// its own layout (pageHosted, the sidebar docked); a typed address (the page's `newTab`) is a web item: Safari
 // started with no Dock icon, a window asked of the copy (`newWindow`) after its link, shown by the engine, and the
 // item's tab asked of the copy (`hostShow`); the sidebar highlights the item shown; a second web item is a tab switch
-// only; `drawn` true for the hosted Safari window only, false for the person's own; no `setLayout`; quitting gives it all back.
+// only; the sidebar's edge dragged in the page (its real handle, pointer events): Margin's window in front of the
+// hosted one for the drag, nothing placed until it's let go, then the hosted window once at the new page area (a
+// window-mode app moved, a full-screen member out and in), Margin still full screen at its whole width, a parked
+// member placed when it's next shown; `drawn` true for the hosted Safari window only, false for the person's own; no
+// `setLayout`; ⌘Q with a hosted app in front is Margin's prompt (Cancel keeps everything, another app in front takes
+// it down, ⌘Q again quits), and quitting gives it all back.
 import AppKit
 import WebKit
 
@@ -266,8 +271,8 @@ func glueScenario() async {
         loadingAtLaunch["com.apple.TextEdit"] == .some("com.apple.TextEdit") && loadingTabsAtLaunch["com.apple.TextEdit"] == [session.number(ofItem: item)]
         && barSeen && c.loadingLabel == nil && c.loadingTabs.isEmpty && c.pushed.contains { $0.contains(#""type":"loading""#) }, "\(loadingAtLaunch) \(loadingTabsAtLaunch) \(barSeen)")
   check("Margin's window its whole width (never a tile)", abs(c.window.frame.width - display.width) <= 1, "\(c.window.frame)")
-  let dockedFixed = await waitJS(c.webView, "const r = document.querySelector('.arcadia'); return r?.dataset.sidebar === 'open' && !document.querySelector('.launcher') && r.hasAttribute('m-sidebar-fixed') && getComputedStyle(document.querySelector('[m-resize]')).display === 'none'")
-  check("its page draws its own layout, the sidebar docked (pageHosted), no launcher, its width not dragged", dockedFixed)
+  let dockedFixed = await waitJS(c.webView, "const r = document.querySelector('.arcadia'); const h = document.querySelector('[m-resize]')?.getBoundingClientRect(); return r?.dataset.sidebar === 'open' && !document.querySelector('.launcher') && !r.hasAttribute('m-sidebar-fixed') && getComputedStyle(document.querySelector('[m-resize]')).display !== 'none' && h.width > 0 && h.height > 0")
+  check("its page draws its own layout, the sidebar docked (pageHosted), no launcher, its edge's handle there to drag", dockedFixed)
   check("the placement from a layout measured in full screen at its whole width (no fallback to an older one)", c.layout?.outside == false && c.layout?.mode == "fullscreen"
         && !session.done.contains { $0.contains("no full-screen layout") }, "\(String(describing: c.layout)) \(session.done.filter { $0.contains("layout") })")
   let expected = c.layout.flatMap { MarginWindowGeometry.pageRect(layout: $0, content: display) }
@@ -422,6 +427,123 @@ func glueScenario() async {
 
   check("the corners follow the page area (window mode: Calculator)", c.corners.isShown && c.corners.frames.first?.origin == c.window.pageRect?.origin, "\(c.corners.frames)")
   check("window mode (Calculator, smaller than the page area): the window's own ground around it, not the frame's", c.pageGround == nil && c.window.backgroundColor == .windowBackgroundColor, "\(String(describing: c.pageGround))")
+
+  // ---- the sidebar's edge dragged: the page's own handle, pointer events as WebKit hands a person's drag ----
+  // (Each event at the handle, `dx` from where the press landed; the handle moves with the width, the pointer doesn't.)
+  func handle(_ type: String, dx: Double = 0) async {
+    _ = await js(c.webView, """
+      const h = document.querySelector('[m-resize]'); const r = h.getBoundingClientRect();
+      if ('\(type)' === 'pointerdown' || '\(type)' === 'dblclick') window.__resizeAt = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      const at = window.__resizeAt;
+      const init = { bubbles: true, cancelable: true, composed: true, button: 0, buttons: \(type == "pointerup" || type == "dblclick" ? 0 : 1), clientX: at.x + \(dx), clientY: at.y };
+      h.dispatchEvent('\(type)' === 'dblclick' ? new MouseEvent('dblclick', init) : new PointerEvent('\(type)', { ...init, pointerId: 7, isPrimary: true }));
+      return true
+    """)
+  }
+  func called(_ prefix: String, since: Int) -> [String] { world.calls.dropFirst(since).filter { $0.hasPrefix(prefix) } }
+  func inContent(_ r: CGRect) -> CGRect { r.offsetBy(dx: -display.minX, dy: -display.minY) }
+  let asksBefore = c.fullScreenAsks, backBefore = c.backIntoFullScreen
+  let stillFullScreen = { c.isFullScreen && c.fullScreenAsks == asksBefore && c.backIntoFullScreen == backBefore && abs(c.window.frame.width - display.width) <= 1 && c.window.frame.height == display.height }
+  let marginUnreserved = { (world.reservation[GlueHostWorld.marginSpace] ?? .zero).isZero }
+
+  // A window-mode app shown (Calculator, centred): held while dragged, moved once when it's let go.
+  var mark = world.calls.count
+  let liftsBefore = c.liftOrders
+  let placings = { session.done.filter { $0.hasPrefix("page area changed") }.count }
+  var placed = placings()
+  await handle("pointerdown")
+  check("resize: a press on the handle alone: nothing lifted, nothing held", !c.lifted && session.resizing == nil)
+  await handle("pointermove", dx: 12)
+  await handle("pointermove", dx: 24)
+  guard await until(5, { c.lifted && session.resizing == c.id }) else { return check("resize: the drag reaches the app (the page's sidebar.resizing)", false, "\(c.asks.suffix(4)) \(session.done.suffix(3))") }
+  c.remeasure() // (a test's window gets no frames: the page's place as it is now)
+  let live = await until(5, { c.window.pageRect?.minX == calcPage.minX + 24 })
+  check("resize (window mode): while dragged, Margin's own page area follows live, its window in front of Calculator's and see-through where that window is, the page card's corner panels put away",
+        live && c.liftOrders == liftsBefore + 1 && c.window.backgroundColor == .clear && c.ground.isShown && c.ground.hole == inContent(centred) && !c.corners.isShown,
+        "page \(String(describing: c.window.pageRect)) hole \(String(describing: c.ground.hole)) orders \(c.liftOrders)")
+  check("resize (window mode): … and Calculator isn't moved, the engine's page area held", world.bounds(window: calcWindow) == centred && engine.pageRect == calcPage && called("frame", since: mark).isEmpty
+        && placings() == placed, "\(called("frame", since: mark)) \(session.done.suffix(3))")
+  await handle("pointermove", dx: 40)
+  await handle("pointerup", dx: 40)
+  guard await until(5, { !c.lifted && session.resizing == nil }) else { return check("resize (window mode): let go", false, "\(session.done.suffix(4))") }
+  await session.idle()
+  let wider = c.window.pageRect ?? .zero
+  let centredWider = CGRect(x: (wider.minX + (wider.width - 230) / 2).rounded(), y: (wider.minY + (wider.height - 408) / 2).rounded(), width: 230, height: 408)
+  check("resize (window mode): let go: the page area 40 pt narrower from its left, Calculator moved once to its middle, the engine told once",
+        wider.minX == calcPage.minX + 40 && wider.maxX == calcPage.maxX && world.bounds(window: calcWindow) == centredWider && engine.pageRect == wider && called("frame", since: mark).count == 1
+        && called("fullScreen", since: mark).isEmpty && placings() == placed + 1, "\(wider) \(String(describing: world.bounds(window: calcWindow))) \(called("frame", since: mark)) \(session.done.suffix(3))")
+  check("resize (window mode): Margin's window right below Calculator's again, opaque, its corners at the new page area; still full screen at its whole width, nothing reserved on its Space",
+        c.below == calcWindow && !c.ground.isShown && c.window.backgroundColor != .clear && c.corners.isShown && c.corners.frames.first?.origin == wider.origin && stillFullScreen() && marginUnreserved(),
+        "\(c.corners.frames) \(c.window.frame)")
+  let savedWidth = await js(c.webView, "return getComputedStyle(document.querySelector('.arcadia')).getPropertyValue('--m-sidebar-width').trim()") as? String ?? ""
+  check("resize: the width saved as the theme's own setting (asked of the source), drawn from it", c.asks.contains("updateThemeSettings") && !savedWidth.isEmpty, "\(savedWidth)")
+
+  // A full-screen member parked through that drag (TextEdit, placed for the page area before it): placed when it's next shown.
+  mark = world.calls.count
+  _ = library.perform("activateTab", ["windowId": c.id, "tabId": item])
+  guard await until(10, { engine.shown == textEdit }) else { return check("resize: back to the app", false, "\(session.done.suffix(4))") }
+  await session.idle()
+  check("resize: a member parked through the drag, shown next: placed for the new page area as it's shown (out of full screen and in, once), its Space's reservation the new page area's alone",
+        world.bounds(window: editWindow) == wider && called("fullScreen", since: mark) == ["fullScreen false", "fullScreen true"] && world.inMargin == [editWindow] && world.listsMarginOnly
+        && called("reserve", since: mark).allSatisfy { $0 == "reserve " + (HostLayout.plan(HostPlacement(page: wider, area: display))?.text ?? "?") } && !called("reserve", since: mark).isEmpty && marginUnreserved(),
+        "\(String(describing: world.bounds(window: editWindow))) \(called("fullScreen", since: mark)) \(called("reserve", since: mark))")
+
+  // That full-screen member shown: seen through while dragged, placed once when it's let go (the sidebar narrower now).
+  mark = world.calls.count
+  placed = placings()
+  let loadingPushes = { c.pushed.filter { $0.contains(#""type":"loading""#) && !$0.contains(#""tabIds":[]"#) }.count }
+  let pushesBefore = c.pushes
+  await handle("pointerdown")
+  await handle("pointermove", dx: -10)
+  await handle("pointermove", dx: -25)
+  guard await until(5, { c.lifted && session.resizing == c.id }) else { return check("resize (full screen): the drag reaches the app", false, "\(session.done.suffix(3))") }
+  c.remeasure()
+  let live2 = await until(5, { c.window.pageRect?.minX == wider.minX - 25 })
+  check("resize (full screen): while dragged, Margin's window in front of the member, see-through at its bounds, the ground in the gap the narrower sidebar leaves",
+        live2 && c.window.backgroundColor == .clear && c.ground.hole == inContent(wider) && c.ground.fills(CGPoint(x: inContent(wider).minX - 10, y: inContent(wider).midY)) && !c.ground.fills(CGPoint(x: inContent(wider).midX, y: inContent(wider).midY))
+        && c.ground.color == grey && !c.corners.isShown, "page \(String(describing: c.window.pageRect)) hole \(String(describing: c.ground.hole)) ground \(String(describing: c.ground.color))")
+  // (What seeing through rests on: nothing the page draws covers the middle of its page slot. Every element whose box
+  // holds that point, whether or not it takes the pointer, has no background of its own.)
+  let slotClear = await js(c.webView, """
+    const r = document.querySelector('m-page').getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const paints = [...document.querySelectorAll('*')].filter((el) => {
+      const b = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+      if (!(b.left <= x && x <= b.right && b.top <= y && y <= b.bottom) || cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) return false;
+      return !/^(rgba\\(0, 0, 0, 0\\)|transparent)$/.test(cs.backgroundColor) || cs.backgroundImage !== 'none';
+    });
+    return paints.map((el) => el.localName + '.' + el.className).join(' | ')
+  """) as? String
+  check("resize: the page draws nothing over the middle of its page slot while hosting (the hosted window shows through there)", slotClear == "", slotClear ?? "not read")
+  check("resize (full screen): … and nothing leaves full screen, nothing is reserved or moved: the member where it was", called("fullScreen", since: mark).isEmpty && called("reserve", since: mark).isEmpty
+        && world.bounds(window: editWindow) == wider && engine.pageRect == wider && world.inMargin == [editWindow] && placings() == placed, "\(world.calls.dropFirst(mark))")
+  await handle("pointermove", dx: -30)
+  await handle("pointerup", dx: -30)
+  // (Let go over a full-screen member: the ground alone while it's out of Margin's Space, then below it again.)
+  guard await until(10, { !c.lifted && session.resizing == nil && engine.shown == textEdit }) else { return check("resize (full screen): let go", false, "\(session.done.suffix(4))") }
+  await session.idle()
+  let narrower = c.window.pageRect ?? .zero
+  check("resize (full screen): let go: one exit from full screen and one entry, the member at the new page area in Margin's Space, still full screen; Mission Control Margin's Space only",
+        narrower.minX == wider.minX - 30 && narrower.maxX == wider.maxX && world.bounds(window: editWindow) == narrower && engine.pageRect == narrower
+        && called("fullScreen", since: mark) == ["fullScreen false", "fullScreen true"] && world.inMargin == [editWindow] && world.wins[editWindow]?.fullScreen == true && world.listsMarginOnly
+        && placings() == placed + 1, "\(narrower) \(String(describing: world.bounds(window: editWindow))) \(called("fullScreen", since: mark))")
+  check("resize (full screen): its own Space reserved for the new page area alone (never added to the last), nothing on Margin's Space",
+        !called("reserve", since: mark).isEmpty && called("reserve", since: mark).allSatisfy { $0 == "reserve " + (HostLayout.plan(HostPlacement(page: narrower, area: display))?.text ?? "?") } && marginUnreserved(),
+        "\(called("reserve", since: mark))")
+  check("resize (full screen): Margin never left full screen and kept its whole width; right below the member again, opaque, the frame's grey its ground, the corners at the new page area in the theme's colours",
+        stillFullScreen() && c.below == editWindow && !c.ground.isShown && c.pageGround == grey && c.window.backgroundColor == grey && c.corners.isShown && c.corners.frames.first?.origin == narrower.origin
+        && c.layout?.fills == Array(repeating: "rgb(156, 157, 161)", count: 4), "\(c.corners.frames) fills \(String(describing: c.layout?.fills)) ground \(String(describing: c.pageGround))")
+  check("resize (full screen): the theme's loading bar for its item while it's placed again", c.pushed.suffix(max(1, c.pushes - pushesBefore)).contains { $0.contains(#""type":"loading""#) && !$0.contains(#""tabIds":[]"#) } && c.loadingTabs.isEmpty,
+        "\(loadingPushes())")
+
+  // Double-click on the handle: the theme's default width, as one change.
+  mark = world.calls.count
+  await handle("dblclick")
+  guard await until(10, { c.window.pageRect == expected && engine.pageRect == expected && !c.lifted && session.resizing == nil }) else {
+    return check("resize: a double-click on the handle: the default width", false, "\(String(describing: c.window.pageRect)) want \(String(describing: expected)) \(session.done.suffix(4))")
+  }
+  await session.idle()
+  check("resize: a double-click on the handle: the default width again, the member placed once for it", world.bounds(window: editWindow) == expected && called("fullScreen", since: mark) == ["fullScreen false", "fullScreen true"]
+        && stillFullScreen() && world.listsMarginOnly && c.below == editWindow, "\(called("fullScreen", since: mark))")
 
   // ---- which of the copy's windows Margin draws: only the one it hosts; the person's own told not (their ⌘T stays
   // Safari's way); nothing of the page box ----

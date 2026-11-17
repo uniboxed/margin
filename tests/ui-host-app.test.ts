@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyChanges, chromeRects, cornerFill, createAppHost, hitRects, modeOf, splitShadows } from '../extension/ui/host-app.ts';
+import { applyChanges, chromeRects, cornerFill, createAppHost, hitRects, modeOf, sidebarFixed, splitShadows } from '../extension/ui/host-app.ts';
 import { toStorage } from '../extension/shared/stored.ts';
 import { buildViewModel } from '../extension/ui/view-model.ts';
 import { APP_FILES, buildApp } from '../scripts/build.ts';
@@ -194,21 +194,24 @@ test('cornerFill: what the theme draws around the page\'s rounded corners, from 
   assert.deepEqual(splitShadows('rgb(1, 2, 3) 0px 0px 0px 4px, color(srgb 1 0 0 / 0.5) 1px 1px 0px 0px'), ['rgb(1, 2, 3) 0px 0px 0px 4px', 'color(srgb 1 0 0 / 0.5) 1px 1px 0px 0px']);
 });
 
-test('the sidebar\'s width isn\'t dragged while Margin\'s window hosts another app\'s window (a new page area is a slow placing again)', async () => {
+test('the sidebar\'s width: fixed only beside a tile; under a hosted window it\'s dragged, the host told when a change begins and ends', async () => {
   const { installResize } = await import('../extension/ui/behaviors/resize.ts');
   const listeners: Record<string, (e: any) => void> = {};
   const handle = { classList: { add() {}, remove() {} }, setPointerCapture() {}, releasePointerCapture() {} };
   const saved: any[] = [];
+  // What happened, in order: the host's performs, each layout flushed, each save.
+  const log: string[] = [];
   let pageOutside = false;
-  let fixed = false; // the theme's root marked by the host while hosting (overlay.ts followOutside)
+  let fixed = false; // the theme's root marked by the host (overlay.ts followOutside, host-app.ts sidebarFixed)
+  let width = 260;
   const rt: any = {
-    view: { behaviorAt: () => ({ el: handle }), rootElement: () => ({ classList: { add() {}, remove() {} }, hasAttribute: (n: string) => fixed && n === 'm-sidebar-fixed' }), scheduleLayout() {} },
+    view: { behaviorAt: () => ({ el: handle }), rootElement: () => ({ classList: { add() {}, remove() {} }, hasAttribute: (n: string) => fixed && n === 'm-sidebar-fixed' }), scheduleLayout() {}, flushLayout() { log.push('layout') } },
     theme: { id: 'arcadia', manifest: { settings: { sidebarWidth: { type: 'number', default: 260, min: 160, max: 500 } }, layout: {} } },
-    get vm() { return { window: { pageOutside }, settings: { sidebarWidth: 260 } }; },
+    get vm() { return { window: { pageOutside }, settings: { sidebarWidth: width } }; },
     container: {}, warn() {}, scale: () => 1,
     listen: (_el: unknown, type: string, fn: (e: any) => void) => { listeners[type] = fn; },
-    setThemeSettings: (v: any) => saved.push(v),
-    host: { send: async () => undefined },
+    setThemeSettings: (v: any, o?: { live?: boolean }) => { saved.push(v); if (!o?.live) { width = v.sidebarWidth; log.push(`save ${v.sidebarWidth}`); } },
+    host: { send: async () => undefined, perform: (name: string, arg: any) => { log.push(`${name} ${arg.on}`); return true; } },
   };
   installResize(rt);
   const ev = (x: number) => ({ button: 0, pointerId: 1, clientX: x, target: handle, preventDefault() {}, stopPropagation() {} });
@@ -216,17 +219,68 @@ test('the sidebar\'s width isn\'t dragged while Margin\'s window hosts another a
   listeners.pointerdown(ev(260));
   listeners.pointermove(ev(300));
   listeners.dblclick(ev(260));
-  assert.deepEqual(saved, [], 'hosting: no drag, no reset');
+  assert.deepEqual([saved, log], [[], []], 'beside a tile: no drag, no reset, nothing told');
   pageOutside = false;
-  listeners.pointerdown(ev(260));
-  listeners.pointermove(ev(300));
-  assert.deepEqual(saved.at(-1), { sidebarWidth: 300 }, 'nothing hosted: dragged as before');
-  listeners.pointerup?.(ev(300));
-  saved.length = 0;
   fixed = true;
   listeners.pointerdown(ev(260));
   listeners.pointermove(ev(320));
-  assert.deepEqual(saved, [], 'hosting above its page area (m-sidebar-fixed): no drag');
+  assert.deepEqual([saved, log], [[], []], 'the root marked m-sidebar-fixed: no drag');
+  fixed = false;
+  // Which hosts mark it: a tile only; a hosted window above the page area doesn't.
+  const tile = createAppHost({ hello: hello({ host: 'app-window', pageOutside: true }), post: bridge().post });
+  const above = createAppHost({ hello: hello({ host: 'app-window', pageHosted: true }), post: bridge().post });
+  assert.deepEqual([sidebarFixed(tile), sidebarFixed(above), above.sidebarDocked, sidebarFixed(null)], [true, false, true, false], 'fixed beside a tile; under a hosted window docked, not fixed');
+  // A drag: told once as the width first changes, and once when it's over, after the last layout was flushed.
+  listeners.pointerdown(ev(260));
+  assert.deepEqual(log, [], 'a press alone: nothing told');
+  listeners.pointermove(ev(260));
+  assert.deepEqual(log, [], 'no change of the width yet: nothing told');
+  listeners.pointermove(ev(300));
+  listeners.pointermove(ev(310));
+  assert.deepEqual(saved.at(-1), { sidebarWidth: 310 }, 'dragged, live');
+  assert.deepEqual(log, ['sidebar.resizing true'], 'told once, at the first change');
+  listeners.pointerup(ev(310));
+  assert.deepEqual(log, ['sidebar.resizing true', 'save 310', 'layout', 'sidebar.resizing false'], 'let go: saved, the last layout reported, then told it\'s over');
+  listeners.pointerup(ev(310));
+  assert.equal(log.length, 4, 'over once');
+  // A press let go without a move: saved as before, nothing told.
+  log.length = 0;
+  listeners.pointerdown(ev(310));
+  listeners.pointerup(ev(310));
+  assert.deepEqual(log, ['save 310'], 'no change: nothing told');
+  // Double-click: the default, as one change (begun and over).
+  log.length = 0;
+  listeners.dblclick(ev(310));
+  assert.deepEqual(log, ['sidebar.resizing true', 'save 260', 'layout', 'sidebar.resizing false'], 'the reset: one change');
+  log.length = 0;
+  listeners.dblclick(ev(260));
+  assert.deepEqual(log, ['save 260'], 'at the default already: nothing told');
+});
+
+test('the app host: the sidebar\'s width being dragged goes to the app (its own window only); a layout that leaves the corners out keeps them', () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', pageHosted: true }), post: b.post });
+  assert.equal(host.perform('sidebar.resizing', { on: true }), true);
+  assert.deepEqual(b.posts.at(-1), { op: 'perform', name: 'sidebar.resizing', arg: { on: true } });
+  assert.equal(host.perform('sidebar.resizing', { on: false }), true);
+  assert.deepEqual(b.posts.at(-1), { op: 'perform', name: 'sidebar.resizing', arg: { on: false } });
+  assert.equal(host.perform('sidebar.resizing', {}), false, 'not a word about on or off: refused');
+  const over = bridge();
+  assert.equal(createAppHost({ hello: hello(), post: over.post }).perform('sidebar.resizing', { on: true }), false, 'over a browser window: not the app\'s');
+  assert.deepEqual(over.posts, []);
+  // The page's own measure says what the theme draws around the corners; the runtime's frame (a width being dragged)
+  // measures the box only: the corners stay as last said, so the app's corner panels keep their colour.
+  const g = (left: number) => ({ insets: { left, top: 8, right: 8, bottom: 8 }, radius: 6, radii: [6, 6, 6, 6], container: { width: 1512, height: 949 }, windowId: W });
+  const fills = Array(4).fill('rgb(156, 157, 161)');
+  host.reportLayout({ ...g(260), fills, edge: { width: 2, color: 'rgb(0, 0, 0)' } } as any);
+  host.reportLayout(g(300) as any);
+  const last = () => b.posts.filter((p) => p.op === 'layout').at(-1)?.geometry;
+  assert.deepEqual([last().insets.left, last().fills, last().edge], [300, fills, { width: 2, color: 'rgb(0, 0, 0)' }], 'dragged: the corners as last said');
+  const layouts = b.posts.filter((p) => p.op === 'layout').length;
+  host.reportLayout({ ...g(300), fills, edge: { width: 2, color: 'rgb(0, 0, 0)' } } as any);
+  assert.equal(b.posts.filter((p) => p.op === 'layout').length, layouts, 'the page\'s measure of the same place: not posted twice');
+  host.reportLayout({ ...g(300), fills: null, edge: null } as any);
+  assert.deepEqual([last().fills, last().edge], [null, null], 'said as none (a theme that draws nothing there): none');
 });
 
 test('the app host: other messages are the page\'s; nothing after destroy', () => {

@@ -11,16 +11,24 @@
 // the default. The handle has the class `m-resizing` while dragged, and so
 // does the theme's root. The sidebar grows toward the page: rightward for a
 // theme whose sidebar reveals from the left (theme.json `layout.reveal`),
-// leftward from the right. Not while Margin.app's window hosts another app's
-// window (the host marks the theme's root `m-sidebar-fixed`, which hides the
-// handle too: a new page area places the hosted window again, a slow step).
+// leftward from the right.
+//
+// The host hears when a width change begins and when it's over
+// (`perform('sidebar.resizing', { on })`, once each per drag or reset: the
+// first change of the width, and the end, after the page's last place was
+// measured and reported). Margin.app's window hosting another app's window
+// above its page area holds that window's placing until then (a full-screen
+// one is placed again only once: app/platforms/macos/shell/HostedSession.swift
+// sidebarResizing); other hosts ignore it. Not while Margin's window is a tile
+// beside a hosted one (the host marks the theme's root `m-sidebar-fixed`,
+// which hides the handle too: ui/host-app.ts sidebarFixed).
 import type { Rt } from '../runtime.ts';
 
 const SETTING = 'sidebarWidth';
 
 export function installResize(rt: Rt) {
   const { view, theme } = rt;
-  let drag: { el: Element, pointerId: number, startX: number, start: number, width: number, k: number } | null = null;
+  let drag: { el: Element, pointerId: number, startX: number, start: number, width: number, k: number, told: boolean } | null = null;
   let warned = false;
 
   const spec = () => theme.manifest?.settings?.[SETTING] ?? null;
@@ -51,6 +59,12 @@ export function installResize(rt: Rt) {
     rt.setThemeSettings({ [SETTING]: value(w) });
     void rt.host.send('updateThemeSettings', { themeId: theme.id, patch: { [SETTING]: value(w) } });
   };
+  // The host told a change of the width began, or is over: over only after the page's place at the last width was
+  // measured and reported (now, not at the next frame), so what the host does then is done once, for that place.
+  const tell = (on: boolean) => {
+    if (!on) view.flushLayout?.();
+    rt.host.perform?.('sidebar.resizing', { on });
+  };
 
   rt.listen(rt.container, 'pointerdown', (e: PointerEvent) => {
     if (e.button !== 0 || drag) return;
@@ -61,7 +75,7 @@ export function installResize(rt: Rt) {
     try { hit.el.setPointerCapture(e.pointerId); } catch {}
     const start = current();
     // The pointer moves in the page's pixels, the width is Margin's (rt.scale).
-    drag = { el: hit.el, pointerId: e.pointerId, startX: e.clientX, start, width: start, k: rt.scale?.() || 1 };
+    drag = { el: hit.el, pointerId: e.pointerId, startX: e.clientX, start, width: start, k: rt.scale?.() || 1, told: false };
     hit.el.classList.add('m-resizing');
     view.rootElement()?.classList.add('m-resizing');
   }, true);
@@ -70,25 +84,32 @@ export function installResize(rt: Rt) {
     const width = clamp(drag.start + (e.clientX - drag.startX) * drag.k * sign());
     if (width === drag.width) return;
     drag.width = width;
+    if (!drag.told) { drag.told = true; tell(true); }
     rt.setThemeSettings({ [SETTING]: value(width) }, { live: true });
     view.scheduleLayout();
   });
   const end = (e: PointerEvent) => {
     if (!drag || (e?.pointerId != null && e.pointerId !== drag.pointerId)) return;
-    const { el, width } = drag;
+    const { el, width, told } = drag;
     drag = null;
     el.classList.remove('m-resizing');
     view.rootElement()?.classList.remove('m-resizing');
     try { el.releasePointerCapture(e.pointerId); } catch {}
     save(snap(width));
     view.scheduleLayout();
+    if (told) tell(false);
   };
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) rt.listen(rt.container, type, end);
   rt.listen(rt.container, 'dblclick', (e: MouseEvent) => {
     if (!view.behaviorAt(e.target, 'm-resize', 'sidebar') || !usable()) return;
     e.stopPropagation();
-    save(snap(bounds().def));
+    const def = snap(bounds().def);
+    // (One change, begun and over at once: nothing to tell when the width is the default's already.)
+    const changes = def !== current();
+    if (changes) tell(true);
+    save(def);
     view.scheduleLayout();
+    if (changes) tell(false);
   });
 
   return {

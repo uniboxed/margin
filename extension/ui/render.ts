@@ -66,8 +66,8 @@ template{display:none!important}
 // host sets it while the pointer is there; what the theme draws over the
 // page still takes it), and Margin out of the way (Chrome outside full
 // screen, a copy that stood back) shows only its notices and prompts, and
-// the sidebar's width can't be dragged (Margin.app's own window hosting
-// beside it: its handle goes).
+// the sidebar's width can't be dragged (Margin.app's own window as a tile
+// beside a hosted one: its handle goes; ui/host-app.ts sidebarFixed).
 //
 // Margin's slots, and what each shows: a theme's part (`<template m-part>`),
 // else what the theme put inside the slot, while `test` holds.
@@ -882,9 +882,23 @@ export class View {
     const win = this.doc.defaultView!; // (the view's document is shown: it has a window)
     this.frame = win.requestAnimationFrame(() => {
       this.frame = 0;
-      const layout = this.measure();
-      if (layout && !sameLayout(layout, this.layout)) { this.layout = layout; this.options.onLayout?.(layout); }
+      this.reportLayout();
     });
+  }
+
+  /**
+   * The page's place measured and reported now, not at the next frame (a
+   * drag of the sidebar's width just ended: the host hears the last place
+   * before it's told the drag is over, behaviors/resize.ts).
+   */
+  flushLayout() {
+    if (this.frame) { this.doc.defaultView?.cancelAnimationFrame(this.frame); this.frame = 0; }
+    this.reportLayout();
+  }
+
+  private reportLayout() {
+    const layout = this.measure();
+    if (layout && !sameLayout(layout, this.layout)) { this.layout = layout; this.options.onLayout?.(layout); }
   }
 
   /**

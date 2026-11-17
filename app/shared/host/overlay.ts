@@ -29,7 +29,7 @@ import { createGestureMotion } from '../../../extension/ui/gesture-motion.ts';
 import { loadTheme, encodeStoredTheme } from '../../../extension/ui/theme-loader.ts';
 import { readThemeFile } from '../../../extension/ui/theme-import.ts';
 import { createPreviewBar } from '../../../extension/ui/theme-preview.ts';
-import { chromeRects, cornerFill, createAppHost, hitRects } from '../../../extension/ui/host-app.ts';
+import { chromeRects, cornerFill, createAppHost, hitRects, sidebarFixed } from '../../../extension/ui/host-app.ts';
 import { createAppNotices, createGestureFeedback } from '../../../extension/ui/app-feedback.ts';
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../../extension/shared/switching.ts';
 import { cycleSpace, cycleTab } from '../../../extension/shared/view.ts';
@@ -230,7 +230,8 @@ function measureNow() {
   const key = JSON.stringify([g.insets, g.radius, g.radii, g.container, host.mode, !!host.pageOutside, corner]);
   if (key === lastLayout) return;
   lastLayout = key;
-  host.reportLayout({ ...g, windowId: host.windowId, mode: host.mode, ...(corner ? { fills: corner.fills, edge: corner.edge } : {}) });
+  // (Said as none when the theme draws nothing there: a report that leaves them out keeps the last ones, host-app.ts.)
+  host.reportLayout({ ...g, windowId: host.windowId, mode: host.mode, ...(host.appWindow ? { fills: corner?.fills ?? null, edge: corner?.edge ?? null } : {}) });
 }
 // Which pointer positions the app hands in (runtime.pointer: only peek uses
 // them): none while the sidebar is docked (nothing to bring out), those in
@@ -281,12 +282,12 @@ function reportSpace() {
 const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); coverWatch.check(); });
 addEventListener('resize', () => { measureNow(); hitsSoon(); });
 
-// Margin's own window hosting another app's window (host-app.ts sidebarDocked: pageHosted, or the older pageOutside):
-// the sidebar's width isn't dragged (each new page area places the hosted window again, out of full screen and in), so
-// the theme's handle goes (render.ts `m-sidebar-fixed`).
+// Margin's own window as a tile beside a hosted one (host-app.ts sidebarFixed: the older pageOutside): the sidebar's
+// width isn't dragged, so the theme's handle goes (render.ts `m-sidebar-fixed`). Under a hosted window above its page
+// area (pageHosted) it's dragged as anywhere: the app places the hosted window once, when the drag is over.
 function followOutside() {
   const root = runtime?.view.rootElement();
-  if (root) root.toggleAttribute('m-sidebar-fixed', !!(host as { sidebarDocked?: boolean } | null)?.sidebarDocked);
+  if (root) root.toggleAttribute('m-sidebar-fixed', sidebarFixed(host));
 }
 
 // ---- the theme --------------------------------------------------------------------------

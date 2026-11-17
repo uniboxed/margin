@@ -56,11 +56,13 @@
 //   measured that way (`pageOutside`), and a layout of another mode is reported even when its insets didn't change
 //   (the app waits for the full-screen one). With nothing hosted in it (no `pageOutside`), Margin's window draws its
 //   page area itself: the theme's launcher, opaque (`launcher`), as Margin's new-tab page draws it over a browser.
-//   A hosted app's window above Margin's page area (window mode: an app that can't go full screen, Margin's window
-//   its whole width under it): the hello's `pageHosted` and `{ type: 'pageHosted', on }`: laid out as usual (its own
+//   A hosted app's window above Margin's page area (Margin's window its whole width under it, the only way since
+//   2026-11-16): the hello's `pageHosted` and `{ type: 'pageHosted', on }`: laid out as usual (its own
 //   layout), the sidebar docked as beside a tile (`sidebarDocked`: never hidden or peeking, so the page area the app's
 //   window is placed in is the docked layout's), and no launcher in the page area (its field would take the keys from
-//   the app above it).
+//   the app above it). The sidebar's width is dragged there as anywhere (only a tile's is fixed: `sidebarFixed`):
+//   the app hears when a change of it begins and ends (`perform('sidebar.resizing', { on })`, behaviors/resize.ts)
+//   and places the hosted window once, when it's over.
 //
 // No browser API here: only the DOM and `post`.
 import type { Geometry, Host } from './host.ts';
@@ -90,6 +92,13 @@ export function applyChanges(raw: Record<string, any>, changes: Record<string, {
   }
   return next;
 }
+
+/**
+ * Whether the sidebar's width is fixed (the theme's root marked `m-sidebar-fixed`, its handle hidden: ui/render.ts):
+ * only while Margin's window is a tile beside a hosted one (`pageOutside`: a tile can't change size). Under a hosted
+ * window above its page area (`pageHosted`) it's dragged as anywhere.
+ */
+export const sidebarFixed = (host: { pageOutside?: boolean } | null | undefined) => !!host?.pageOutside;
 
 /** The mode a window's UI is drawn in, from its state (windows.get). */
 export const modeOf = (w: any) => (w?.state === 'fullscreen' ? 'fullscreen' : 'windowed');
@@ -395,7 +404,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
       // Twice for one change (the runtime's own frame, and the page's measure after it): once. Its mode and whether it
       // was measured with the sidebar alone count too (seen 2026-11-15: the window's full-screen layout, at the size
       // the windowed one was already measured at, never reached the app).
-      const next = { ...geometry, mode: geometry.mode ?? mode, pageOutside };
+      // What the theme draws around the page's corners (`fills`, `edge`: the page's own measure adds them,
+      // app/shared/host/overlay.ts measureNow) stays as last said when a report doesn't say it (the runtime's own
+      // frame measures the box only: a width being dragged reports from there, and the corners drawn over a hosted
+      // window would lose their colour until the next measure).
+      const kept = appWindow && geometry.fills === undefined && layout?.fills ? { fills: layout.fills, edge: layout.edge } : {};
+      const next = { ...geometry, ...kept, mode: geometry.mode ?? mode, pageOutside };
       const key = (g: any) => JSON.stringify([g.insets, g.radius, g.radii ?? null, g.container, g.mode ?? null, !!g.pageOutside, g.fills ?? null, g.edge ?? null]);
       if (layout && key(layout) === key(next)) return;
       layout = next;
@@ -462,6 +476,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           return true;
         case 'switch.coverShown':
           void post('perform', { name, arg: null }).catch(() => {});
+          return true;
+        // The sidebar's width being dragged, or let go (behaviors/resize.ts): Margin's own window holds a hosted
+        // window's placing until it's over (app/platforms/macos/shell/HostedSession.swift sidebarResizing).
+        case 'sidebar.resizing':
+          if (!appWindow || typeof arg?.on !== 'boolean') return false;
+          void post('perform', { name, arg: { on: arg.on } }).catch(() => {});
           return true;
         case 'prompt': {
           // The runtime closes it. Settings' Remove asked first (ui/settings-form.ts removePrompt): removed only on Remove.
