@@ -564,7 +564,8 @@ func glueScenario() async {
   _ = await until(3) { windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) == [255] }
   check("⌘T: as the window server pictures Margin's window, the palette's pixels are painted over the page area (alpha 255 at its field)",
         windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) == [255], "\(String(describing: windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])])))")
-  c.pointerMoved(fieldAt, buttonsDown: false)
+  // (As soon as the page has said where its palette is: its report of what it draws over the page area follows the draw.)
+  _ = await until(3) { c.pointerMoved(fieldAt, buttonsDown: false); return !c.window.ignoresMouseEvents }
   let overPalette = c.window.ignoresMouseEvents
   check("⌘T: the pointer over the palette is Margin's (not passed to the app under it)", !overPalette, "hits \(c.hits.count) all \(c.captureAll)")
   // (Counted from here: the palette closed just before this step gave the app the keys back in a task of its own.)
