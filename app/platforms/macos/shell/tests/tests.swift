@@ -414,7 +414,8 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("quit guard: an app Margin doesn't host in front: never held (⌘Q is that app's)", !guards(front: 30) && !guards(front: nil))
     check("quit guard: a hosted app's process in front on another Space (the person's own window of it): never held", !guards(here: false))
     check("quit guard: no Margin window open: never held", !guards(open: false) && !guards(front: 1, open: false))
-    check("quit guard: asking off (after Always quit): never held, ⌘Q is the front app's", !guards(asks: false) && !guards(asks: false, front: 1))
+    check("quit guard: asking off (after Always quit): still held with a hosted app in front (it quits Margin, never the hosted app alone), let go with Margin itself in front (its own Quit) and for an app Margin doesn't host",
+          guards(asks: false) && !guards(asks: false, front: 1) && !guards(asks: false, front: 30) && !guards(asks: false, here: false))
     check("quit guard: Margin already quitting: let go", !guards(quitting: true))
     // What the prompt says: numbers and Margin's own words.
     check("quit prompt: what quitting closes, in numbers: tabs and apps", QuitSummary(tabs: 3, apps: 2, kept: 0).note

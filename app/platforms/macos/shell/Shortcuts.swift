@@ -127,12 +127,15 @@ extension ShortcutSet {
 }
 
 extension ShortcutSet {
-    /// Whether ⌘Q and ⌥⌘Q are Margin's first (AppShortcuts' quit guard): Margin asks before it quits (`asks`: its stored
-    /// setting, off after "Always quit"), it isn't quitting already, and Margin or an app it hosts is in front
-    /// (`hostedActive`: a hosted app only with a Margin window on the current Space). Never otherwise: ⌘Q in an app
-    /// Margin doesn't host, or with asking off, is that app's as it always was.
+    /// Whether ⌘Q and ⌥⌘Q are Margin's first (AppShortcuts' quit guard): it isn't quitting already, Margin or an app it
+    /// hosts is in front (`hostedActive`: a hosted app only with a Margin window on the current Space), and either
+    /// Margin asks before it quits (`asks`: its stored setting, off after "Always quit") or it's a hosted app in front.
+    /// With asking off the key in a hosted app is still Margin's: it quits Margin without asking (Shell.quitKey),
+    /// never the hosted app alone, which would leave its item dead in Margin; with Margin itself in front it's then
+    /// Margin's own Quit menu item. Never held for an app Margin doesn't host: ⌘Q there is that app's.
     static func guardsQuit(asks: Bool, quitting: Bool, frontPid: pid_t?, ownPid: pid_t, hostedPids: Set<pid_t>, marginWindowOpen: Bool, marginOnCurrentSpace: Bool) -> Bool {
-        asks && !quitting && hostedActive(frontPid: frontPid, ownPid: ownPid, hostedPids: hostedPids, marginWindowOpen: marginWindowOpen, marginOnCurrentSpace: marginOnCurrentSpace)
+        !quitting && (asks || frontPid != ownPid)
+            && hostedActive(frontPid: frontPid, ownPid: ownPid, hostedPids: hostedPids, marginWindowOpen: marginWindowOpen, marginOnCurrentSpace: marginOnCurrentSpace)
     }
 }
 

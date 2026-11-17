@@ -503,7 +503,7 @@ func glueScenario() async {
   let live2 = await until(5, { c.window.pageRect?.minX == wider.minX - 25 })
   check("resize (full screen): while dragged, Margin's window in front of the member, see-through at its bounds, the ground in the gap the narrower sidebar leaves",
         live2 && c.window.backgroundColor == .clear && c.ground.hole == inContent(wider) && c.ground.fills(CGPoint(x: inContent(wider).minX - 10, y: inContent(wider).midY)) && !c.ground.fills(CGPoint(x: inContent(wider).midX, y: inContent(wider).midY))
-        && c.ground.color == grey && !c.corners.isShown, "page \(String(describing: c.window.pageRect)) hole \(String(describing: c.ground.hole)) ground \(String(describing: c.ground.color))")
+        && c.ground.color == ground && !c.corners.isShown, "page \(String(describing: c.window.pageRect)) hole \(String(describing: c.ground.hole)) ground \(String(describing: c.ground.color))")
   // (What seeing through rests on: nothing the page draws covers the middle of its page slot. Every element whose box
   // holds that point, whether or not it takes the pointer, has no background of its own.)
   let slotClear = await js(c.webView, """
@@ -531,9 +531,9 @@ func glueScenario() async {
   check("resize (full screen): its own Space reserved for the new page area alone (never added to the last), nothing on Margin's Space",
         !called("reserve", since: mark).isEmpty && called("reserve", since: mark).allSatisfy { $0 == "reserve " + (HostLayout.plan(HostPlacement(page: narrower, area: display))?.text ?? "?") } && marginUnreserved(),
         "\(called("reserve", since: mark))")
-  check("resize (full screen): Margin never left full screen and kept its whole width; right below the member again, opaque, the frame's grey its ground, the corners at the new page area in the theme's colours",
-        stillFullScreen() && c.below == editWindow && !c.ground.isShown && c.pageGround == grey && c.window.backgroundColor == grey && c.corners.isShown && c.corners.frames.first?.origin == narrower.origin
-        && c.layout?.fills == Array(repeating: "rgb(156, 157, 161)", count: 4), "\(c.corners.frames) fills \(String(describing: c.layout?.fills)) ground \(String(describing: c.pageGround))")
+  check("resize (full screen): Margin never left full screen and kept its whole width; right below the member again, opaque, the frame's colour its ground, the corners at the new page area in the theme's colours",
+        stillFullScreen() && c.below == editWindow && !c.ground.isShown && c.pageGround == ground && c.window.backgroundColor == ground && c.corners.isShown && c.corners.frames.first?.origin == narrower.origin
+        && c.layout?.fills == Array(repeating: frameCSS, count: 4), "\(c.corners.frames) fills \(String(describing: c.layout?.fills)) ground \(String(describing: c.pageGround))")
   check("resize (full screen): the theme's loading bar for its item while it's placed again", c.pushed.suffix(max(1, c.pushes - pushesBefore)).contains { $0.contains(#""type":"loading""#) && !$0.contains(#""tabIds":[]"#) } && c.loadingTabs.isEmpty,
         "\(loadingPushes())")
 
@@ -582,6 +582,13 @@ func glueScenario() async {
   keys.press("Meta+KeyQ")
   check("quit: an app Margin doesn't host in front: ⌘Q isn't Margin's (not held, no prompt)", !shell.shortcuts.guardsQuit && !keys.held.values.contains(Combo.parse("Meta+KeyQ")!) && shell.quitPrompt == nil && untouched())
   apps.bringToFront(hostedPid)
+  shell.track()
+  // (Asking off, as after "Always quit": the key in a hosted app is still Margin's, so it never quits the hosted app alone.)
+  quit.asks = false
+  shell.track()
+  check("quit: asking off with a hosted app in front: ⌘Q still Margin's first (it would quit Margin without asking, never the hosted app alone)",
+        shell.shortcuts.guardsQuit && keys.held.values.contains(Combo.parse("Meta+KeyQ")!) && untouched())
+  quit.asks = true
   shell.track()
   keys.press("Meta+KeyQ")
   check("quit: the hosted app in front again: the prompt again", shell.quitPrompt?.isUp == true && untouched())
