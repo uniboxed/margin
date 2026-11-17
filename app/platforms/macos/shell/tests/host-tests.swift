@@ -165,6 +165,38 @@ final class FakeHostWorld: HostSystem {
     // The window server's bounds of a window Accessibility just set: its old frame this long after (none: at once).
     var frameLag = 0.0
     var lagging: [Int: (frame: CGRect, until: Double)] = [:]
+    // Apps whose window comes up already in full screen, in a Space of its own (owned by the app), the app hidden: they
+    // restored it so (Maps, 2026-11-17: `windowIsFullScreen=1 appIsHidden=1`, the Dock adding its Space as it launched).
+    var restoredFullScreen: Set<String> = []
+    var restoredSpaces: Set<UInt64> = []
+    // ...or in full screen as a member of the current Space (Margin's): full screen by Accessibility, no Space of its own.
+    var restoredAsMember: Set<String> = []
+    // A dockless launch's windows open in the current Space (an accessory app's do on the real Mac: Margin's).
+    var launchInCurrent = false
+    // Apps whose full screen macOS refuses while their window is in a full-screen Space (Margin's) and takes on a
+    // Desktop: the ask is taken by Accessibility, and nothing comes of it.
+    var desktopOnlyFullScreen: Set<String> = []
+    var refusedAsks = 0
+    // macOS refuses every full-screen ask for a window that isn't on the current Space (the Dock's "not the current
+    // space", 2026-11-17), and an app activated whose window is on a Desktop that isn't current makes that Desktop current.
+    var currentOnlyFullScreen = false
+    var activateShowsDesktop = false
+    // Apps whose full-screen window isn't laid out by its Space's reservation (it keeps the display's whole area).
+    var noLayout: Set<String> = []
+    // Accessibility elements kept by the engine's side gone stale: every frame set through one refused
+    // (kAXErrorInvalidUIElement) until the window is found again by its number while it's listed. `staleOnLeave`: an
+    // app's window's element goes stale as the window leaves for a private Space (the Phone's, 2026-11-17).
+    var axStale: Set<Int> = []
+    var staleOnLeave: Set<String> = []
+    var frameErrors: [Int: Int32] = [:]
+    func frameError(window: Int) -> Int32? { frameErrors[window] }
+    func refreshWindow(pid: pid_t, window: Int) async -> Bool {
+        calls.append("refresh \(window)")
+        guard !fail.contains("ax"), apps[pid]?.windows.contains(window) == true, axLists(window), !axHides(pid) else { return false }
+        axStale.remove(window)
+        axSeen.insert(window)
+        return true
+    }
     var onSetFrame: (() async -> Void)? // (a test's: something that happens while a frame is being set)
 
     // Full screen as the real Mac paces it (`staged`; measured 2026-11-16, /tmp/margin-toolbar-test/fsopen/early2.swift,
@@ -363,6 +395,24 @@ final class FakeHostWorld: HostSystem {
             focused[pid] = real
         }
         if launchesHidden.contains(bundleId) || windowOnlyUnhidden.contains(bundleId) { hidden.insert(pid) }
+        if restoredFullScreen.contains(bundleId) {
+            for n in apps[pid]?.windows ?? [] {
+                let space = nextId, tile = nextId + 1
+                nextId += 2
+                tiles[space] = [tile]
+                owner[space] = pid
+                tileWindow[tile] = n
+                restoredSpaces.insert(space)
+                wins[n]?.fullScreen = true
+                wins[n]?.spaces = [space]
+            }
+            hidden.insert(pid)
+            noteListing()
+        } else if restoredAsMember.contains(bundleId) {
+            for n in apps[pid]?.windows ?? [] { wins[n]?.fullScreen = true; wins[n]?.member = true; wins[n]?.memberFrame = Self.display; wins[n]?.spaces = [current] }
+        } else if launchInCurrent {
+            for n in apps[pid]?.windows ?? [] where wins[n]?.spaces == [Self.desktop] { wins[n]?.spaces = [current] }
+        }
         if restoredOnUnhide.contains(bundleId) { madeOnUnhide.formUnion(apps[pid]?.windows ?? []) }
         return true
     }
@@ -423,6 +473,8 @@ final class FakeHostWorld: HostSystem {
         calls.append("frame \(window) \(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))×\(Int(frame.height))\(size ? "" : " (moved)")")
         guard !fail.contains("ax"), !fail.contains("frame"), var w = wins[window], w.pid == pid, !axCurrentOnly || onCurrent(window), !w.fullScreen else { return false }
         guard axSeen.contains(window) || (w.axRole == nil && axLists(window)) else { return false } // (Accessibility has no element for it)
+        if axStale.contains(window) { frameErrors[window] = -25202; return false } // (kAXErrorInvalidUIElement)
+        frameErrors[window] = nil
         var extent = (w.frame ?? Self.defaultFrame).size
         if size, w.resizable {
             extent = frame.size
@@ -436,7 +488,15 @@ final class FakeHostWorld: HostSystem {
         await onSetFrame?()
         return true
     }
-    func activate(pid: pid_t, window: Int) async -> Bool { calls.append("activate \(pid) \(window)"); activated.insert(pid); return apps[pid] != nil }
+    func activate(pid: pid_t, window: Int) async -> Bool {
+        calls.append("activate \(pid) \(window)")
+        activated.insert(pid)
+        if activateShowsDesktop, let w = wins[window], w.pid == pid, w.priv == nil, w.spaces == [Self.desktop], current != Self.desktop {
+            current = Self.desktop
+            currentSince = clock
+        }
+        return apps[pid] != nil
+    }
     func setFullScreen(pid: pid_t, window: Int, _ on: Bool) async -> Bool {
         calls.append("fullScreen \(on) \(window)")
         guard axReads(window), !fail.contains("ax") else { return false }
@@ -448,6 +508,8 @@ final class FakeHostWorld: HostSystem {
         if on, !w.canFullScreen { return false } // (AXFullScreen isn't settable)
         if on {
             guard !w.fullScreen, !fail.contains("fullScreen") else { return true }
+            if let a = apps[pid], desktopOnlyFullScreen.contains(a.bundle), w.priv == nil, w.spaces.contains(where: { tiles[$0] != nil }) { refusedAsks += 1; return true }
+            if currentOnlyFullScreen, w.priv != nil || !w.spaces.contains(current) { refusedAsks += 1; return true }
             let space = nextId, tile = nextId + 1
             nextId += 2
             if staged {
@@ -538,7 +600,7 @@ final class FakeHostWorld: HostSystem {
         if w.member, let f = w.memberFrame { return f }
         if let p = pending[window] { return p.framed ? (reservation[p.space] ?? .zero).inset(Self.display) : (w.frame ?? Self.defaultFrame) }
         guard w.fullScreen, w.priv == nil, let space = w.spaces.first, tiles[space] != nil else { return w.frame ?? Self.defaultFrame }
-        let sidebar = apps[w.pid]?.sidebarOpen == true
+        let sidebar = apps[w.pid]?.sidebarOpen == true || apps[w.pid].map { noLayout.contains($0.bundle) } == true
         return (sidebar ? .zero : (reservation[space] ?? .zero)).inset(Self.display)
     }
     // As the real Mac (2026-11-17, check10): a Space destroyed in the same breath as a window's move out of it takes the
@@ -670,6 +732,7 @@ final class FakeHostWorld: HostSystem {
         if privates.contains(space) {
             guard !fail.contains("park"), !unparkable.contains(window) else { return false }
             w.priv = space
+            if apps[w.pid].map({ staleOnLeave.contains($0.bundle) }) == true { axStale.insert(window) }
         } else {
             // A full-screen window brought into another full-screen Space: a member there, at the frame it had.
             if w.fullScreen, !w.member, tiles[space] != nil {
@@ -2214,6 +2277,7 @@ func hostTests() {
     }
 
     windowModeTests(world: world)
+    refusedFullScreenTests(world: world)
 
     // ---- one at a time ----
     do {
@@ -3192,4 +3256,264 @@ func hostCallsTests() {
           && !wrappers.destroyFullScreenSpace(5) && !wrappers.setCurrent(5, display: "Main")
           && !wrappers.launchDockless(URL(fileURLWithPath: "/Applications/TextEdit.app"), arguments: [], done: { _ in }) && wrappers.listen(pid: 1, heard: { _ in }) == nil)
     check("host calls: the real resolver finds nothing in a test", HostCalls.evaluate(RealPrivateResolver(), base: base).host == false)
+}
+
+// A full-screen ask that can't work where the window is (2026-11-17, Maps on the real Mac: its window restored in full
+// screen in a Space of its own, brought into Margin's Space to be read, read full screen with no Space of its own:
+// nothing asked, 6 s, then window mode for the session), a refusal seen at once and asked again the proper way, a
+// fallback tried again at the next show, and a window-mode window's Accessibility element gone stale.
+func refusedFullScreenTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
+    let page = CGRect(x: 276, y: 41, width: 1228, height: 933)
+    let maps = HostTarget.app("com.apple.Maps"), textEdit = HostTarget.app("com.apple.TextEdit"), notes = HostTarget.app("com.apple.Notes")
+    let faceTime = HostTarget.app("com.apple.FaceTime"), calculator = HostTarget.app("com.apple.calculator")
+    func placed() -> HostPlacement { HostPlacement(page: page, area: FakeHostWorld.display) }
+    func open(_ e: HostEngine, _ t: HostTarget) -> HostResult? {
+        hostRun { await e.open(app: t, in: placed(), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+    }
+    func clean(_ w: FakeHostWorld) -> Bool { w.listsMarginOnly && w.ownerlessFullScreenSpaces() == [] && w.dropped == 0 && w.destroyedWithWindows == 0 && !w.frozen }
+    func window(_ w: FakeHostWorld, _ bundle: String) -> Int { w.running(bundleId: bundle).first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0 }
+    func at(_ w: FakeHostWorld, _ call: String) -> Int { w.calls.firstIndex(of: call) ?? -1 }
+    final class Lines { var all: [String] = [] }
+    func listen() -> (Lines, () -> Void) {
+        let l = Lines(), echo = Diagnostics.echo
+        Diagnostics.echo = { l.all.append($0) }
+        return (l, { Diagnostics.echo = echo })
+    }
+    func said(_ l: Lines, _ what: String) -> Int { l.all.filter { $0.contains(what) }.count }
+    func member(_ w: FakeHostWorld, _ n: Int) -> Bool {
+        w.spaces(window: n) == [FakeHostWorld.marginSpace] && w.wins[n]?.member == true && w.wins[n]?.fullScreen == true && w.bounds(window: n) == page
+    }
+
+    // ---- its window restored in full screen in a Space of its own (its app hidden): placed from there ----
+    do {
+        let (w, e, _) = world()
+        w.installed.insert("com.apple.Maps")
+        w.restoredFullScreen = ["com.apple.Maps"]
+        w.axCurrentOnly = true // (its Space isn't current: Accessibility lists nothing of it, as on the real Mac)
+        w.staged = true
+        var loading: [HostID?] = []
+        e.loading = { loading.append($0) }
+        let (lines, done) = listen()
+        let t0 = w.clock
+        let r = open(e, maps)
+        let took = w.clock - t0
+        done()
+        let n = window(w, "com.apple.Maps"), own = w.restoredSpaces.first ?? 0
+        check("restored full screen: Maps' window, restored by its app in full screen in a Space of its own, ends full screen at the page area, a member of Margin's Space (not window mode)",
+              r == .shown(maps.id, placed: true) && e.mode(of: maps.id) == .fullScreen && member(w, n), "\(String(describing: r)) \(String(describing: e.mode(of: maps.id))) \(String(describing: w.wins[n]))")
+        check("restored full screen: shown in \(Int(took * 1000)) ms on the stand-in's clock (it was 6 s of waiting, then window mode)", took < 2, "\(took)")
+        check("restored full screen: its own Space reserved before the window was moved into Margin's Space; never moved in to be read first; that Space destroyed",
+              at(w, "reserve 276/8/8/8") >= 0 && at(w, "reserve 276/8/8/8") < at(w, "move \(n) \(FakeHostWorld.marginSpace)")
+              && w.calls.filter { $0 == "move \(n) \(FakeHostWorld.marginSpace)" }.count == 1 && w.reserves.first?.space == own && w.tiles[own] == nil && clean(w), "\(w.calls)")
+        check("restored full screen: nothing asked of it (it was in full screen already), never a frame set by Accessibility",
+              !w.calls.contains { $0.hasPrefix("fullScreen true \(n)") || $0.hasPrefix("frame \(n)") }, "\(w.calls)")
+        check("restored full screen: the loading card for it from the start to the end", loading == [maps.id, nil], "\(loading)")
+        check("restored full screen: the log says once that it came up so and was placed from there; no window mode",
+              said(lines, "came up in full screen in a Space of its own") == 1 && said(lines, "shown in window mode") == 0 && said(lines, "backed out") == 0, "\(lines.all.filter { $0.contains("Maps") })")
+        hostRun { await e.quitAll() }
+        check("restored full screen: quit: out of full screen first, nothing left", w.fullScreenAtQuit["com.apple.Maps"] == false && clean(w))
+    }
+
+    // ---- ...whose Space doesn't lay it out: window mode, its frame the window's own (not its full-screen bounds) ----
+    do {
+        let (w, e, _) = world()
+        w.installed.insert("com.apple.Maps")
+        w.restoredFullScreen = ["com.apple.Maps"]
+        w.noLayout = ["com.apple.Maps"]
+        w.axCurrentOnly = true
+        let (lines, done) = listen()
+        let r = open(e, maps)
+        let n = window(w, "com.apple.Maps")
+        check("restored full screen, not laid out by its Space: backed out (out of full screen on the current Space) and shown in window mode, its Space gone",
+              r == .shown(maps.id, placed: true) && e.mode(of: maps.id) == .window && w.wins[n]?.fullScreen == false && w.bounds(window: n) == page && w.restoredSpaces.allSatisfy { w.tiles[$0] == nil } && clean(w),
+              "\(String(describing: r)) \(String(describing: w.wins[n])) \(w.tiles)")
+        _ = open(e, notes)
+        done()
+        check("restored full screen, then window mode: parked, its frame given back is the window's own (\(w.saved["com.apple.Maps"].map { "\($0)" } ?? "none")), never its full-screen bounds; no \"wasn't given back\"",
+              w.saved["com.apple.Maps"] == FakeHostWorld.defaultFrame && said(lines, "wasn't given back") == 0 && !w.calls.contains("frame \(n) 0,33 1512×949"), "\(w.calls.filter { $0.hasPrefix("frame \(n)") })")
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- full screen by Accessibility with no Space of its own (in Margin's Space): out of it first, then asked ----
+    do {
+        let (w, e, _) = world()
+        w.installed.insert("com.apple.Maps")
+        w.restoredAsMember = ["com.apple.Maps"]
+        w.staged = true
+        let (lines, done) = listen()
+        let t0 = w.clock
+        let r = open(e, maps)
+        let took = w.clock - t0
+        done()
+        let n = window(w, "com.apple.Maps")
+        let out = at(w, "fullScreen false \(n)"), ask = at(w, "fullScreen true \(n)")
+        check("full screen with no Space of its own: taken out of full screen where it is, then asked: full screen at the page area by the early path in \(Int(took * 1000)) ms (it was 6 s, then window mode)",
+              r == .shown(maps.id, placed: true) && e.mode(of: maps.id) == .fullScreen && member(w, n) && out >= 0 && out < ask && took < 2
+              && said(lines, "reads full screen with no full-screen Space of its own") == 1 && said(lines, "full screen by the early path") == 1 && said(lines, "window mode") == 0 && clean(w),
+              "\(String(describing: r)) \(took) \(w.calls)")
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- refused in Margin's Space, taken on the Desktop: asked again the proper way at 1.5 s, full screen ----
+    do {
+        let (w, e, _) = world()
+        w.launchInCurrent = true // (its window opens in Margin's Space, the current one)
+        w.desktopOnlyFullScreen = ["com.apple.TextEdit"]
+        w.staged = true
+        var loading: [HostID?] = []
+        e.loading = { loading.append($0) }
+        let (lines, done) = listen()
+        let t0 = w.clock
+        let r = open(e, textEdit)
+        let took = w.clock - t0
+        done()
+        let n = window(w, "com.apple.TextEdit"), p = w.running(bundleId: "com.apple.TextEdit").first?.pid ?? 0
+        check("refused: an app whose full screen macOS refuses in Margin's Space ends full screen at the page area all the same (not window mode)",
+              r == .shown(textEdit.id, placed: true) && e.mode(of: textEdit.id) == .fullScreen && member(w, n) && w.refusedAsks == 1, "\(String(describing: r)) \(w.refusedAsks) \(String(describing: w.wins[n]))")
+        let again = w.calls.firstIndex(of: "move \(n) \(FakeHostWorld.desktop)") ?? -1, asks = w.calls.indices.filter { w.calls[$0] == "fullScreen true \(n)" }
+        check("refused: asked again once, the proper way: moved onto its Desktop, its app in front, then asked",
+              asks.count == 2 && again >= 0 && again < asks[1] && (w.calls[again..<asks[1]].contains("activate \(p) \(n)")), "\(w.calls)")
+        check("refused: shown in \(Int(took * 1000)) ms on the stand-in's clock (the refusal seen at 1.5 s; it was 6 s, then window mode)", took < 3.5, "\(took)")
+        check("refused: the loading card for it from start to end, a freeze taken anew for the ask again, Margin's Space current at the end, nothing left",
+              loading == [textEdit.id, nil] && w.freezes == 2 && w.reveals == 2 && w.current == FakeHostWorld.marginSpace && clean(w), "\(loading) \(w.freezes) \(w.reveals) \(w.current)")
+        check("refused: the log says it was moved out of Margin's Space first, once; no window mode",
+              said(lines, "its full screen refused") == 1 && said(lines, "moved out of Margin's Space onto its Desktop first") == 1 && said(lines, "window mode") == 0, "\(lines.all.filter { $0.contains("refused") })")
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- its window opened in another app's full-screen Space (the current one then): onto its Desktop before the ask ----
+    do {
+        let (w, e, _) = world()
+        let theirs: UInt64 = 900
+        w.tiles[theirs] = [901]
+        w.owner[theirs] = 77 // (the person's own full-screen app)
+        w.theirSpaces = [theirs]
+        w.current = theirs
+        w.launchInCurrent = true
+        w.desktopOnlyFullScreen = ["com.apple.TextEdit"] // (refused while it's in any full-screen Space)
+        w.staged = true
+        let (lines, done) = listen()
+        let t0 = w.clock
+        let r = open(e, textEdit)
+        let took = w.clock - t0
+        done()
+        let n = window(w, "com.apple.TextEdit")
+        check("another app's Space: its window, opened in the person's full-screen Space, moved onto its Desktop before the ask: full screen at the page area at the first ask, in \(Int(took * 1000)) ms",
+              r == .shown(textEdit.id, placed: true) && member(w, n) && w.refusedAsks == 0 && w.calls.filter { $0 == "fullScreen true \(n)" }.count == 1 && took < 2
+              && at(w, "move \(n) \(FakeHostWorld.desktop)") < at(w, "fullScreen true \(n)") && said(lines, "of another app's (900): moved onto its Desktop first") == 1
+              && w.tiles[theirs] != nil, "\(String(describing: r)) \(took) \(w.calls)")
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- refused everywhere: window mode after 3 s, not 6; tried again at the next show, once ----
+    do {
+        let (w, e, _) = world()
+        w.fail = ["fullScreen"] // (its AXFullScreen is settable, but no full-screen Space ever comes)
+        let (lines, done) = listen()
+        let t0 = w.clock
+        let r = open(e, textEdit)
+        let took = w.clock - t0
+        let n = window(w, "com.apple.TextEdit")
+        check("refused everywhere: window mode after \(Int(took * 1000)) ms on the stand-in's clock (each ask refused within 1.5 s; it was 6 s)",
+              r == .shown(textEdit.id, placed: true) && e.mode(of: textEdit.id) == .window && took < 3.6 && w.calls.filter { $0 == "fullScreen true \(n)" }.count == 2, "\(took) \(w.calls)")
+        check("refused everywhere: the fallback said as one of an app that can go full screen, to be tried again",
+              said(lines, "backed out, shown in window mode (it can go full screen: tried again the next time it's shown)") == 1 && said(lines, "nor of the ask again from its Desktop") == 1, "\(lines.all.filter { $0.contains("window mode") })")
+        w.fail = []
+        _ = open(e, notes)
+        var loading: [HostID?] = []
+        e.loading = { loading.append($0) }
+        let back = hostRun { await e.show(textEdit.id) }
+        check("refused everywhere: shown again, full screen tried again behind the loader, and taken: a member at the page area",
+              back == .shown(textEdit.id, placed: true) && e.mode(of: textEdit.id) == .fullScreen && member(w, n) && loading == [textEdit.id, nil]
+              && said(lines, "full screen tried again as it's shown") == 1 && clean(w), "\(String(describing: back)) \(loading) \(String(describing: w.wins[n]))")
+        hostRun { await e.quitAll() }
+        done()
+    }
+    do {
+        let (w, e, _) = world()
+        w.fail = ["fullScreen"]
+        let (lines, done) = listen()
+        _ = open(e, textEdit)
+        _ = open(e, notes)
+        let back = hostRun { await e.show(textEdit.id) }
+        _ = open(e, notes)
+        let calls = w.calls.count
+        let third = hostRun { await e.show(textEdit.id) }
+        done()
+        check("refused again at its next show: window mode, said so; not tried a third time",
+              back == .shown(textEdit.id, placed: true) && third == .shown(textEdit.id, placed: true) && e.mode(of: textEdit.id) == .window
+              && lines.all.filter({ $0.contains("TextEdit") && $0.contains("failed again, window mode from now on") }).count == 1 && !w.calls[calls...].contains { $0.hasPrefix("fullScreen true") }, "\(lines.all.filter { $0.contains("window mode") })")
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- tried again at its next show: unparked onto its Desktop, refused there (not the current Space), its app in front
+    // (macOS shows that Desktop): taken; Margin's Space current again ----
+    do {
+        let (w, e, _) = world()
+        w.fail = ["fullScreen"]
+        _ = open(e, textEdit)
+        _ = open(e, notes)
+        w.fail = []
+        w.currentOnlyFullScreen = true
+        w.activateShowsDesktop = true
+        w.staged = true
+        let refusedBefore = w.refusedAsks
+        let (lines, done) = listen()
+        let t0 = w.clock
+        let back = hostRun { await e.show(textEdit.id) }
+        let took = w.clock - t0
+        done()
+        let n = window(w, "com.apple.TextEdit")
+        check("tried again from its Desktop: refused there at first, asked again with its app in front (its Desktop made current), taken: full screen at the page area in \(Int(took * 1000)) ms, Margin's Space current at the end",
+              back == .shown(textEdit.id, placed: true) && e.mode(of: textEdit.id) == .fullScreen && member(w, n) && w.refusedAsks == refusedBefore + 1
+              && w.current == FakeHostWorld.marginSpace && took < 3.5 && said(lines, "its app in front, asked again") == 1 && clean(w),
+              "\(String(describing: back)) \(took) \(w.current) \(w.refusedAsks) \(lines.all.filter { $0.contains("TextEdit") })")
+        hostRun { await e.quitAll() }
+    }
+    // ---- ...refused there again: window mode, and Margin's Space current again (never left on its Desktop) ----
+    do {
+        let (w, e, _) = world()
+        w.fail = ["fullScreen"]
+        _ = open(e, textEdit)
+        _ = open(e, notes)
+        w.activateShowsDesktop = true
+        let back = hostRun { await e.show(textEdit.id) }
+        check("tried again from its Desktop, refused again: window mode in the page area, Margin's Space current (its app's activation had made its Desktop current)",
+              back == .shown(textEdit.id, placed: true) && e.mode(of: textEdit.id) == .window && w.current == FakeHostWorld.marginSpace
+              && w.spaces(window: window(w, "com.apple.TextEdit")) == [FakeHostWorld.marginSpace], "\(String(describing: back)) \(w.current)")
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- a true window-mode app: unchanged (never asked into full screen, nothing tried again) ----
+    do {
+        let (w, e, _) = world()
+        let (lines, done) = listen()
+        let r = open(e, calculator)
+        _ = open(e, notes)
+        let back = hostRun { await e.show(calculator.id) }
+        done()
+        let n = window(w, "com.apple.calculator")
+        check("window mode app (Calculator): window mode, never asked into full screen, nothing tried again at its next show",
+              r == .shown(calculator.id, placed: true) && back == .shown(calculator.id, placed: true) && e.mode(of: calculator.id) == .window
+              && !w.calls.contains { $0.hasPrefix("fullScreen true \(n)") } && said(lines, "tried again") == 0 && said(lines, "refused") == 0, "\(w.calls)")
+        hostRun { await e.quitAll() }
+    }
+
+    // ---- a window-mode window's Accessibility element gone stale after a park: found again, placed ----
+    do {
+        let (w, e, _) = world()
+        w.staleOnLeave = ["com.apple.FaceTime"]
+        let (lines, done) = listen()
+        _ = open(e, faceTime)
+        _ = open(e, notes)
+        let n = window(w, "com.apple.FaceTime")
+        check("stale element: FaceTime's element gone stale once its window left for a private Space", w.axStale.contains(n))
+        let back = hostRun { await e.show(faceTime.id) }
+        done()
+        check("stale element: shown again, placed at the page area: its element found again by its number after the refused set, the error code said",
+              back == .shown(faceTime.id, placed: true) && w.bounds(window: n) == page && w.calls.contains("refresh \(n)")
+              && said(lines, "Accessibility refused its frame (error -25202): its element found again by its number, the frame taken") == 1, "\(String(describing: back)) \(w.calls.suffix(8))")
+        hostRun { await e.quitAll() }
+        check("stale element: quit: its frame given back as it was", w.frameAtQuit["com.apple.FaceTime"] == FakeHostWorld.defaultFrame)
+    }
 }
