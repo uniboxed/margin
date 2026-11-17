@@ -52,30 +52,37 @@ extension Runner {
     }
   }
 
-  // Hosts through the dev hook, waits for Margin's word (shown, window mode, or a failure).
+  // The host ids Margin logs a target's lines under: `app:<bundle>`; a browser hosted as its own window, Safari's
+  // `safari:<profile>` (real-apps, 2026-11-17: Safari's lines were `safari:p646`, never `app:com.apple.Safari`).
+  func hostIds(_ t: Target) -> [String] { t.id == "com.apple.Safari" ? ["app:\(t.id)", "safari:"] : ["app:\(t.id)"] }
+  func lines(_ mark: LogMark, _ ids: [String], _ what: String) -> [String] { ids.flatMap { id in mark.since("host: \(id)").filter { $0.contains(what) } } }
+  // Hosts through the dev hook, waits for Margin's word that it's shown (full screen or window mode). A failure line
+  // ends the wait only when no shown line follows within 3 s (a fallback says it's shown right after its failure line:
+  // "full screen failed … backed out, shown in window mode", 2026-11-17).
   func host(_ t: Target) {
     gate("hosting \(t.text)")
     let mark = LogMark()
-    let hid = "app:\(t.id)"
+    let ids = hostIds(t)
     hook(["app": t.id])
-    var shown: String?, failed: String?
+    var shown: String?, failed: String?, failedAt: Date?
     spin(30) {
-      shown = mark.since("host: \(hid) shown in").first
-      failed = mark.since("host: \(hid)").first { $0.contains("failed") || $0.contains("couldn't") }
-      return shown != nil || failed != nil
+      shown = lines(mark, ids, " shown in").first
+      if failed == nil, let f = lines(mark, ids, "").first(where: { $0.contains("failed") || $0.contains("couldn't") }) { failed = f; failedAt = Date() }
+      return shown != nil || (failedAt.map { Date().timeIntervalSince($0) > 3 } ?? false)
     }
     spin(1.0)
-    step("host \(t.text): Margin says it's shown", shown != nil, shown.map { String($0.suffix(160)) } ?? "no shown line in 30 s; Margin said: \(mark.since("host: \(hid)").suffix(4).map { String($0.suffix(150)) })")
+    shown = shown ?? lines(mark, ids, " shown in").first
+    step("host \(t.text): Margin says it's shown", shown != nil, shown.map { String($0.suffix(160)) } ?? "no shown line in 30 s; Margin said: \(lines(mark, ids, "").suffix(4).map { String($0.suffix(150)) })")
     if let failed { log("  Margin said: \(failed.suffix(200))") }
   }
-  // A switch to an item already prepared: Margin's "switched in N ms".
+  // A switch to an item already prepared: Margin's "switched in N ms" (a window-mode one's too).
   func show(_ t: Target, maxMs: Int?) {
     gate("showing \(t.text)")
     let mark = LogMark()
-    let hid = "app:\(t.id)"
+    let ids = hostIds(t)
     hook(["app": t.id])
     var line: String?
-    spin(10) { line = mark.since("host: \(hid) switched in").first ?? mark.since("host: \(hid) shown in").first; return line != nil }
+    spin(10) { line = lines(mark, ids, " switched in").first ?? lines(mark, ids, " shown in").first; return line != nil }
     spin(0.5)
     let ms = match(line, #"(?:switched|shown) in (\d+) ms"#).flatMap { Int($0[0]) }
     let switched = line?.contains("switched in") == true
@@ -90,6 +97,7 @@ extension Runner {
       let s = evaluate(d, page: page)
       step("desired: \(d.text)", s.ok, s.why)
       if !s.ok, let a = app(d.target.id) { log("   DIAG \(diag(a.processIdentifier, marginWindow?.n))") }
+      if !s.ok, case .copy(let n) = d.target { copyTail(n) }
     case .running(let t, let on):
       let a = app(t.id)
       let alive = a.map { kill($0.processIdentifier, 0) == 0 } ?? false
@@ -127,7 +135,8 @@ extension Runner {
     let preexisting = Set(before.realApps.first { $0.bundle == d.target.id }?.windows.map(\.n) ?? [])
     var auxiliary: Set<Int> = []
     if d.auxiliary {
-      if case .copy(let n) = d.target { auxiliary = Set(copyWindows(n, "auxiliary window")) }
+      // (A copy's auxiliary window, and an extra window it opened on demand: the person's, kept beside the main one.)
+      if case .copy(let n) = d.target { auxiliary = Set(copyWindows(n, "auxiliary window") + copyLines(n, "extra window ").compactMap { match($0, #"extra window (\d+) opened"#).flatMap { Int($0[0]) } }) }
       else { auxiliary = Set(mainKind.filter { $0.r.width * $0.r.height < 0.3 * page.width * page.height }.map(\.n)) }
     }
     let mains = mainKind.filter { w in !auxiliary.contains(w.n) && w.on && w.spaces == [marginSpace] && (d.framed ? page.insetBy(dx: -2, dy: -2).contains(w.r) : near(w.r, page)) }
@@ -161,6 +170,10 @@ extension Runner {
     var nextGate = Date()
     while Date().timeIntervalSince(start) < seconds {
       if Date() >= nextGate { gate("holding \(d.target.text)"); nextGate = Date().addingTimeInterval(10) }
+      // (The moment right after the app's own change that the design leaves to it: a read within `settles` of the
+      // copy's last such line isn't counted, its state neither.)
+      if let (what, within) = d.settles, case .copy(let n) = d.target, let at = copyLines(n, what).last.flatMap({ match($0, #"CHAMELEON (\d+\.\d+)"#) }).flatMap({ Double($0[0]) }),
+         Date().timeIntervalSince1970 - at < within { spin(0.5); continue }
       let s = evaluate(d, page: page)
       reads += 1
       if s.ok { good += 1 } else if firstMiss == nil { firstMiss = String(format: "at %.1f s: ", Date().timeIntervalSince(start)) + s.why }
@@ -175,5 +188,10 @@ extension Runner {
     step("holds \(Int(seconds)) s: \(d.text)", good == reads && changes == 0 && pageAfter == pageState,
          "\(good) of \(reads) reads in it, \(changes) change(s) of state; the page card \(pageState) → \(pageAfter)\(firstMiss.map { "; first miss \($0)" } ?? "")")
     if good != reads, let a = app(d.target.id) { log("   DIAG \(diag(a.processIdentifier, marginWindow?.n))") }
+    if good != reads, case .copy(let n) = d.target { copyTail(n) }
+  }
+  // A copy's own log's last lines, after a miss: what it did (its windows' events), for the triage.
+  func copyTail(_ n: Int) {
+    for line in copyLog(n).split(separator: "\n").suffix(14) { log("   CHAMELEON \(n): \(line.suffix(200))") }
   }
 }

@@ -17,6 +17,10 @@ struct Desired: Equatable {
   var target: Target
   var framed = false
   var auxiliary = false
+  // A read within this long of the copy's last line saying it (its own change: a window replaced) isn't counted: the
+  // design leaves the moment between an app's change and its adoption to the app ("never fight the app").
+  var settles: (String, Double)? = nil
+  static func == (a: Desired, b: Desired) -> Bool { a.target == b.target && a.framed == b.framed && a.auxiliary == b.auxiliary && a.settles?.0 == b.settles?.0 && a.settles?.1 == b.settles?.1 }
   var text: String {
     "\(target.text): one main window \(framed ? "inside" : "at") the page area, on screen, in Margin's Space only, under Margin's panel; no leftover in any user Space; no strip; the sidebar never covered\(auxiliary ? "; its auxiliary window allowed if not over the sidebar" : "")"
   }
@@ -110,13 +114,16 @@ let core = Scenario(name: "core", title: "check10's steps: Margin's window in fr
 // ---- one scenario per behaviour class (docs/HOSTING-CORE.md's table): Chameleon 3 hosted with that switch, Chameleon 1
 // hosted plain first (the item a park shows instead) ----
 let hold = 30.0
-func behaviour(_ name: String, _ title: String, _ switches: [String: String], framed: Bool = false, auxiliary: Bool = false, prime: Bool = false, then: [Step] = []) -> Scenario {
-  let d = Desired(target: .copy(3), framed: framed, auxiliary: auxiliary)
+func behaviour(_ name: String, _ title: String, _ switches: [String: String], framed: Bool = false, auxiliary: Bool = false, prime: Bool = false, settles: (String, Double)? = nil, then: [Step] = []) -> Scenario {
+  let d = Desired(target: .copy(3), framed: framed, auxiliary: auxiliary, settles: settles)
   var steps: [Step] = [.setSwitches(3, switches)]
   if prime { steps.append(.prime(3)) }
   // (It read its switches: its launch line names them, as Switches.swift writes them.)
   let on = ChameleonSwitches.parse(switches).on.joined(separator: " ")
-  steps += [.host(.copy(3)), .expect(.said(3, "options pid")), .expect(.said(3, " on \(on)")), .expect(.desired(d))]
+  steps += [.host(.copy(3)), .expect(.said(3, "options pid")), .expect(.said(3, " on \(on)"))]
+  // (Primed: AppKit restored exactly the windows the switch made, nothing an earlier scenario left.)
+  if prime, let r = ChameleonSwitches.parse(switches).restore { steps.append(.expect(.said(3, " restored \(r.count) "))) }
+  steps += [.expect(.desired(d))]
   steps += then
   steps += [.hold(.desired(d), seconds: hold), .forget(.copy(3))]
   return Scenario(name: name, title: title, copies: [3], steps: steps, estimate: 22 + hold + (prime ? 15 : 0) + then.reduce(0) { $0 + $1.estimate })
@@ -138,7 +145,7 @@ let behaviours: [Scenario] = [
   behaviour("dialogMain", "its main window is an AXDialog (the Phone's)", ["dialogMain": "YES"]),
   behaviour("ordersOut-untilActive", "never orders its window in until it's activated (the Phone's)", ["ordersOut": "untilActive"]),
   behaviour("ordersOut-after", "orders its shown window out 3 s after it's first on screen", ["ordersOut": "after:3"]),
-  behaviour("replacesWindow-every", "closes and remakes its main window at the same frame every 4 s (Messages)", ["replacesWindow": "every:4"]),
+  behaviour("replacesWindow-every", "closes and remakes its main window at the same frame every 4 s (Messages)", ["replacesWindow": "every:4"], settles: ("replaced ", 1.0)),
   behaviour("replacesWindow-twin", "keeps a twin window at its main window's frame (Messages)", ["replacesWindow": "twin"]),
   behaviour("axBusy", "Accessibility busy (-25200) for 2.5 s as its window first shows (Mail)", ["axBusy": "2.5"]),
   behaviour("strip", "a full-width toolbar strip of its own while in full screen, left after an exit (Mail)", ["strip": "linger"]),
@@ -146,7 +153,8 @@ let behaviours: [Scenario] = [
   behaviour("auxiliary-sidebar", "a window of its own over Margin's sidebar 3 s after launch (Mail)", ["auxiliary": "sidebar,at:3"], auxiliary: true),
   behaviour("noFullScreen", "can't go full screen (Calculator, Phone)", ["noFullScreen": "YES"]),
   behaviour("fixedSize", "a fixed-size window that can't go full screen (Calculator)", ["fixedSize": "400x300", "noFullScreen": "YES"], framed: true),
-  behaviour("extraWindow", "opens another window on demand, like Safari's profile wake", ["extraWindow": "menu"], then: [.trigger(3), .wait(3, "its extra window made")]),
+  // (The extra window is the person's, asked of the app: kept beside the main one, never over the sidebar in front.)
+  behaviour("extraWindow", "opens another window on demand, like Safari's profile wake", ["extraWindow": "menu"], auxiliary: true, then: [.trigger(3), .wait(3, "its extra window made")]),
 ]
 // The part every behaviour part starts with: Margin open, Chameleon 1 hosted plain (what a park shows instead).
 let behaviourSetup = Scenario(name: "setup", title: "Margin open, Chameleon 1 hosted plain", copies: [1], steps: [.setSwitches(1, [:]), .openMargin, .host(.copy(1)), .expect(.desired(Desired(target: .copy(1))))], estimate: 45)

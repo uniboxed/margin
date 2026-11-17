@@ -456,13 +456,16 @@ final class Runner {
     let extra = (copyWindows(n, "extra strip window") + copyWindows(n, "auxiliary window")).suffix(2)
     guard extra.count == 2 else { return step(n2, false, "its extra windows weren't made (its log: \(extra))") }
     _ = front()
-    var reads = 0, panelAbove = 0, bothOn = 0
+    // (Each read: every one of the two on screen below Margin's panel. One never on screen at all (parked by Margin, or
+    // drawn nowhere) can't be in front of it: said, not a failure; the 2026-11-17 baseline counted that as one.)
+    var reads = 0, anyOn = 0, below = 0, bothOn = 0
     let end = Date().addingTimeInterval(3.5)
     while Date() < end {
       let list = onScreen()
       if let pi = panelN.flatMap({ p in list.firstIndex { $0.n == p } }) {
         let idx = extra.compactMap { x in list.firstIndex { $0.n == x } }
-        if idx.count == 2 { bothOn += 1; if idx.allSatisfy({ pi < $0 }) { panelAbove += 1 } }
+        if !idx.isEmpty { anyOn += 1; if idx.allSatisfy({ pi < $0 }) { below += 1 } }
+        if idx.count == 2 { bothOn += 1 }
       }
       reads += 1
       RunLoop.current.run(until: Date().addingTimeInterval(0.1))
@@ -470,8 +473,8 @@ final class Runner {
     spin(4) { copySaid(n, "strip window") > 0 && copySaid(n, "closed (after") > 0 }
     spin(1.0)
     let letIn = extra.map { x in mark.since("another window (\(x)) in its Space: let in front of it").count }
-    let ok2 = bothOn > 0 && panelAbove == bothOn && letIn.allSatisfy { $0 == 0 }
-    step(n2, ok2, "the strip and the window over the sidebar \(Array(extra)): both on screen at \(bothOn) of \(reads) reads, Margin's panel \(panelN.map(String.init) ?? "?") above both at \(panelAbove) of them; Margin let them in front \(letIn) time(s)")
+    let ok2 = below == anyOn && letIn.allSatisfy { $0 == 0 }
+    step(n2, ok2, "the strip and the window over the sidebar \(Array(extra)): on screen at \(anyOn) of \(reads) reads (both at \(bothOn)\(anyOn == 0 ? ": never on screen, nothing to cover" : "")), Margin's panel \(panelN.map(String.init) ?? "?") above every one on screen at \(below) of them; Margin let them in front \(letIn) time(s)")
     if !ok2 { log("   DIAG \(diag(pane2.processIdentifier, marginWindow.n))") }
     gate("the first copy again")
     hook(["app": copy(1).id])

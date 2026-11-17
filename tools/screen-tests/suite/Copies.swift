@@ -9,6 +9,8 @@ struct Copy {
   var name: String { "Margin Chameleon \(n)" }
   var installed: String { home("Applications/\(name).app") }
   var logPath: String { "\(logFolder)/\(id).log" }
+  // (Where AppKit kept saved state before macOS 15; now it's in a daemon container under a name of its own, not
+  // findable by the app's id: a priming run ignores what's there instead, `-ApplePersistenceIgnoreState YES`.)
   var savedState: String { home("Library/Saved Application State/\(id).savedState") }
 }
 let copyCount = 3
@@ -45,10 +47,13 @@ func copySaid(_ n: Int, _ what: String) -> Int { copyLog(n).components(separated
 func copyLines(_ n: Int, _ what: String) -> [String] { copyLog(n).split(separator: "\n").map(String.init).filter { $0.contains(what) } }
 // The window numbers a copy says it made of a kind (`auxiliary window 123 pid … frame …`, `extra strip window 124 …`).
 func copyWindows(_ n: Int, _ what: String) -> [Int] { copyLines(n, what).filter { $0.contains(" frame ") }.compactMap { match($0, what + #" (\d+)"#).flatMap { Int($0[0]) } } }
+// Quit, and gone: its process too (kill(pid, 0)), not only NSWorkspace's word, so the next launch Margin makes is never
+// handed the dying instance (behaviours-2, 2026-11-17: Margin hosted the last scenario's quitting copy and failed).
 func quitCopy(_ n: Int) {
   guard let p = app(copy(n).id) else { return }
-  p.terminate(); spin(6) { p.isTerminated }
-  if !p.isTerminated { p.forceTerminate(); spin(2) }
+  let pid = p.processIdentifier
+  p.terminate(); spin(6) { p.isTerminated && kill(pid, 0) != 0 }
+  if kill(pid, 0) == 0 { p.forceTerminate(); spin(3) { kill(pid, 0) != 0 } }
 }
 // `restore` by the system: a priming run of the copy on its own (its windows as its switch says, those in full screen
 // asked in, then a quit that keeps them: NSQuitAlwaysKeepsWindows in its own defaults), so AppKit restores them at the
@@ -59,12 +64,14 @@ func prime(_ n: Int) -> String {
   sh("/usr/bin/defaults", ["write", c.id, ChameleonSwitches.primeKey, "-bool", "YES"])
   sh("/usr/bin/defaults", ["write", c.id, "NSQuitAlwaysKeepsWindows", "-bool", "YES"])
   let before = copySaid(n, "priming done")
-  sh("/usr/bin/open", ["-g", c.installed])
+  // (What an earlier scenario left saved is ignored: the priming run makes exactly its switch's windows. Seen
+  // 2026-11-17: without it each restore scenario restored the last one's windows too, 2, 3, 6.)
+  sh("/usr/bin/open", ["-g", c.installed, "--args", "-ApplePersistenceIgnoreState", "YES"])
   let done = spin(30) { copySaid(n, "priming done") > before && app(c.id) == nil }
   if let p = app(c.id) { p.terminate(); spin(6) { p.isTerminated } }
   sh("/usr/bin/defaults", ["delete", c.id, ChameleonSwitches.primeKey])
-  let kept = FileManager.default.fileExists(atPath: c.savedState)
-  return "primed \(done ? "and quit" : "NOT done in 30 s"), its saved state \(kept ? "kept" : "MISSING")"
+  // (Its saved state can't be looked for by path any more: the launch Margin makes says what it restored, `restored N`.)
+  return "primed \(done ? "and quit, its windows kept" : "NOT done in 30 s")"
 }
 func triggerExtraWindow(_ n: Int) {
   DistributedNotificationCenter.default().postNotificationName(.init(ChameleonSwitches.extraWindowNotification), object: copy(n).id, userInfo: ["bundle": copy(n).id], deliverImmediately: true)
