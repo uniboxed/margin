@@ -630,7 +630,8 @@ final class HostEngine {
             // (The one shown in no Space at all is never a read that missed mid-transition: nothing puts a window there
             // but a Space destroyed under it. Brought back at the first read.)
             let nowhere = host.phase == .shown && marginHere && spaces == []
-            if host.strays >= 2 || nowhere {
+            // (A parked one found in a user Space: the reconciler's `parkAgain`, at the second read in a row.)
+            if host.phase == .shown, host.strays >= 2 || nowhere {
                 host.strays = 0
                 let id = host.id
                 Task { await serial { await self.strayed(id, marginHere: marginHere) } }
@@ -739,7 +740,7 @@ final class HostEngine {
     // `strayed`'s, a member off screen `backOnScreen`'s).
     private func steady(_ c: HostCorrection) -> Bool {
         switch c {
-        case .adopt, .reopen, .unhide, .bringForward, .closeLeftover, .parkLeftover, .parkStrip, .fallback: return true
+        case .adopt, .reopen, .unhide, .bringForward, .closeLeftover, .parkLeftover, .parkStrip, .parkAgain, .fallback: return true
         default: return false
         }
     }
@@ -2998,8 +2999,7 @@ final class HostEngine {
     // (seen 2026-11-17, 0.4-0.7 s after the first show of a Safari window made ready at launch: "parked, nothing shown",
     // the launcher again, a second click needed), something else moved the hosted window (its app finishing its own
     // full-screen change late, macOS on its first activation): brought back into Margin's Space as it is and kept shown
-    // (`bringBack`), what the poll saw said in the log. A parked one in a user Space (macOS put it on a Desktop, its app
-    // took it to full screen) parked again.
+    // (`bringBack`), what the poll saw said in the log. (A parked one in a user Space: the reconciler's `parkAgain`.)
     private func strayed(_ id: HostID, marginHere: Bool) async {
         guard let host = hosts[id] else { return }
         if host.phase == .shown, shown == id {
@@ -3022,24 +3022,6 @@ final class HostEngine {
             }
             Diagnostics.note("host: \(id): shown, found out of Margin's Space (\(seen)): brought back")
             await bringBack(host, from: spaces ?? [])
-        } else if host.phase == .parked, let spaces = sys.spaces(window: host.window), !spaces.isEmpty {
-            Diagnostics.note("host: \(id): parked, found in a user Space: parked again")
-            let own = spaces.filter { $0 != marginSpace && sys.spaceType($0) == ManagedSpace.fullScreenType }
-            if !host.member, !own.isEmpty {
-                let frozen = holdFreeze()
-                await backOut(host)
-                releaseFreeze(frozen)
-            }
-            if let priv = host.privateSpace, sys.move(window: host.window, to: priv) {
-                _ = await wait(options.parkWait) { self.sys.spaces(window: host.window) == [] }
-            } else {
-                host.privateSpace = nil
-                _ = await parkMember(host, emitting: false)
-            }
-            for space in own where sys.spaceExists(space) == true && ownSpaces.contains(space) {
-                if await !destroyOwn(space) { leftSpaces.insert(space) }
-            }
-            saveMarker()
         }
     }
 
