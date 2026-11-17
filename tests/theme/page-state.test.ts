@@ -5,16 +5,19 @@
 // no background: its alpha is what the hosted window would show through):
 // - `shown`: nothing painted in the page's place (alpha 0 across it, up to each edge and inside each rounded corner),
 //   the theme's frame and the corners outside the curve painted (over the app), the rest of the window painted;
-// - `loading`: the page card opaque, Margin's default loader over the page's place with its words, taking the pointer;
-//   back to `shown` it fades out in at most 150 ms (at once with reduced motion) and the place is see-through again;
+// - `loading`: the page card opaque, the theme's own loader in it with Margin's words, taking the pointer; back to
+//   `shown` it's gone in at most 150 ms and the place is see-through again (each theme's own look, its motion and its
+//   start-up skeleton: its own test file, through page-card.ts);
 // - `empty`: the launcher, opaque;
+// - a theme with no `page-loader` part gets Margin's default loader: over the page's place exactly, with its words,
+//   fading out in at most 150 ms (at once with reduced motion);
 // - a theme's own `page-loader` part in its `<m-page-loader>` is drawn instead of the default.
 // `npm run test:theme`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { inflateSync } from 'node:zlib';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, ARCADIA, NEO, PIXEL, GLASS, themesInScope } from './package.ts';
+import { decodePng, cardPoints, px, W, H } from './page-card.ts';
 import type { Harness } from './harness.ts';
 
 declare const T: Harness;
@@ -23,45 +26,20 @@ const ENGINES = [['webkit', webkit], ['chromium', chromium]] as const;
 const THEMES = themesInScope([['arcadia', ARCADIA], ['neubrutalism', NEO], ['pixel', PIXEL], ['liquid-glass', GLASS]] as const);
 const script = harnessScript();
 
-// A screenshot's pixels (Playwright's PNGs: 8-bit RGB or RGBA, not interlaced), as [r, g, b, a].
-function decodePng(buf: Buffer) {
-  let at = 8, width = 0, height = 0, type = 0;
-  const idat: Buffer[] = [];
-  while (at < buf.length) {
-    const len = buf.readUInt32BE(at);
-    const kind = buf.toString('latin1', at + 4, at + 8);
-    const data = buf.subarray(at + 8, at + 8 + len);
-    if (kind === 'IHDR') { width = data.readUInt32BE(0); height = data.readUInt32BE(4); type = data[9]; } else if (kind === 'IDAT') idat.push(data);
-    at += 12 + len;
-  }
-  const bpp = type === 6 ? 4 : 3;
-  const raw = inflateSync(Buffer.concat(idat));
-  const stride = width * bpp;
-  const out = Buffer.alloc(stride * height);
-  for (let y = 0; y < height; y++) {
-    const filter = raw[y * (stride + 1)];
-    const line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
-    for (let x = 0; x < stride; x++) {
-      const a = x >= bpp ? out[y * stride + x - bpp] : 0;
-      const b = y > 0 ? out[(y - 1) * stride + x] : 0;
-      const c = x >= bpp && y > 0 ? out[(y - 1) * stride + x - bpp] : 0;
-      const p = a + b - c;
-      const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
-      const pred = [0, a, b, (a + b) >> 1, pa <= pb && pa <= pc ? a : pb <= pc ? b : c][filter];
-      out[y * stride + x] = (line[x] + pred) & 255;
-    }
-  }
-  return (x: number, y: number) => { const i = y * stride + x * bpp; return [out[i], out[i + 1], out[i + 2], bpp === 4 ? out[i + 3] : 255]; };
-}
-
-const W = 1440, H = 900;
+// A built-in theme without its own loader: its `page-loader` part and its `<m-page-loader>` taken out (Margin's default then).
+const withoutLoader = (dir: string) => {
+  const pkg = themeForPage(dir);
+  const html = pkg.html.replace(/<template m-part="page-loader">[\s\S]*?<\/template>/, '').replace(/<m-page-loader[^>]*><\/m-page-loader>/, '');
+  assert.ok(html.length < pkg.html.length && !html.includes('m-page-loader') && !html.includes('m-part="page-loader"'), 'the part and its slot taken out');
+  return { ...pkg, html };
+};
 
 for (const [engineName, engine] of ENGINES) {
   test(`the page card's state in Margin's own window, in ${engineName}`, async (t) => {
     const browser = await engine.launch({ headless: true });
     try {
       for (const [id, dir] of THEMES) {
-        await t.test(`${id}: shown is a hole with the frame and corners drawn around it; loading is opaque with Margin's loader; empty is the launcher`, async () => {
+        await t.test(`${id}: shown is a hole with the frame and corners drawn around it; loading is opaque with the theme's loader; empty is the launcher`, async () => {
           const context = await browser.newContext({ viewport: { width: W, height: H } });
           const page = await context.newPage();
           await context.route('**/*', (route) => route.abort());
@@ -80,26 +58,12 @@ for (const [engineName, engine] of ENGINES) {
           const box = { left: l.left, top: l.top, right: W - l.right, bottom: H - l.bottom };
           const shot = async () => decodePng(await page.screenshot({ omitBackground: true }));
           // Points of the page's place: a grid across it, just inside each edge, and just inside each rounded corner's curve.
-          const inside: [number, number][] = [];
-          for (let i = 1; i < 8; i++) for (let j = 1; j < 8; j++) inside.push([box.left + ((box.right - box.left) * i) / 8, box.top + ((box.bottom - box.top) * j) / 8]);
-          for (const f of [0.2, 0.5, 0.8]) {
-            const x = box.left + (box.right - box.left) * f, y = box.top + (box.bottom - box.top) * f;
-            inside.push([x, box.top + 1.5], [x, box.bottom - 2.5], [box.left + 1.5, y], [box.right - 2.5, y]);
-          }
-          const corners = [[box.left, box.top, 1, 1], [box.right, box.top, -1, 1], [box.right, box.bottom, -1, -1], [box.left, box.bottom, 1, -1]];
-          // A point on a corner's diagonal, its centre `d` from the curve's centre (r, r in from the corner), outward.
-          const onDiagonal = (i: number, d: number): [number, number] => {
-            const [x, y, dx, dy] = corners[i];
-            const off = (radii[i] ?? 0) - d / Math.SQRT2;
-            return [x + dx * off, y + dy * off];
-          };
-          for (let i = 0; i < 4; i++) if ((radii[i] ?? 0) >= 3) inside.push(onDiagonal(i, radii[i] - 2));
-          const px = (at: ReturnType<typeof decodePng>, [x, y]: [number, number]) => at(Math.floor(x), Math.floor(y));
+          const { inside, onDiagonal } = cardPoints(box, radii);
 
           // ---- shown: the hole ----
           const first = await ev(() => T.rtPageState('shown'));
           assert.equal(first.attr, 'shown', `${id}: the root says shown`);
-          assert.equal(first.loader, null, `${id}: no loader in the tree until one is needed`);
+          assert.deepEqual(first.loader, { own: true, text: '' }, `${id}: the theme's own slot for its loader, empty (no default loader of Margin's)`);
           let at = await shot();
           const painted = inside.filter((p) => px(at, p)[3] !== 0);
           assert.deepEqual(painted, [], `${id}: shown: nothing painted in the page's place (alpha 0 at ${inside.length} points)`);
@@ -128,9 +92,9 @@ for (const [engineName, engine] of ENGINES) {
           const paints = await ev(() => T.rtAt(900, 450));
           assert.ok(paints != null, `${id}: the page's place read`);
 
-          // ---- loading: the card opaque, Margin's default loader ----
+          // ---- loading: the card opaque, the theme's own loader ----
           const loading = await ev(() => T.rtPageState('loading', 'Safari'));
-          assert.deepEqual([loading.attr, loading.loader], ['loading', { own: false, text: 'Opening Safari…' }], `${id}: loading: the root says so, Margin's default loader with its words`);
+          assert.deepEqual([loading.attr, loading.loader?.own, loading.loader?.text.trim()], ['loading', true, 'Opening Safari…'], `${id}: loading: the root says so, the theme's own loader with Margin's words`);
           const lo = (await ev(() => T.rtLoader()))!;
           assert.ok(Math.abs(lo.left - box.left) <= 0.5 && Math.abs(lo.top - box.top) <= 0.5 && Math.abs(lo.width - (box.right - box.left)) <= 0.5 && Math.abs(lo.height - (box.bottom - box.top)) <= 0.5,
             `${id}: loading: the loader over the page's place exactly (${JSON.stringify(lo)} vs ${JSON.stringify(box)})`);
@@ -140,12 +104,12 @@ for (const [engineName, engine] of ENGINES) {
           assert.deepEqual(open, [], `${id}: loading: the page card opaque everywhere (whatever opens behind it isn't seen)`);
           assert.equal(await ev(() => document.elementsFromPoint(900, 450).length > 0), true);
           const renamed = await ev(() => T.rtPageState('loading', 'Notes'));
-          assert.equal(renamed.loader?.text, 'Opening Notes…', `${id}: another item opening: its name`);
+          assert.equal(renamed.loader?.text.trim(), 'Opening Notes…', `${id}: another item opening: its name`);
 
           // ---- back to shown: faded out within 150 ms, the hole again ----
           await ev(() => T.rtPageState('shown'));
           const fading = (await ev(() => T.rtLoader()))!;
-          assert.ok(fading.pointer === 'none' && parseFloat(fading.transition) <= 0.15 && parseFloat(fading.transition) > 0, `${id}: shown again: the loader lets the pointer through at once and fades in at most 150 ms (${fading.transition})`);
+          assert.ok(fading.pointer === 'none' && parseFloat(fading.transition) <= 0.15 && parseFloat(fading.transition) > 0, `${id}: shown again: the card lets the pointer through at once and fades in at most 150 ms (${fading.transition})`);
           await page.waitForTimeout(260);
           const gone = (await ev(() => T.rtLoader()))!;
           assert.deepEqual([gone.opacity, gone.visibility], [0, 'hidden'], `${id}: … and it's gone`);
@@ -173,14 +137,61 @@ for (const [engineName, engine] of ENGINES) {
         });
       }
 
-      await t.test('reduced motion: the loader goes at once, and its spinner stands still', async () => {
+      await t.test("a theme with no page-loader part: Margin's default loader, over the page's place exactly with its words, fading out in at most 150 ms", async () => {
+        const context = await browser.newContext({ viewport: { width: W, height: H } });
+        const page = await context.newPage();
+        await context.route('**/*', (route) => route.abort());
+        await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"></body></html>');
+        await page.addScriptTag({ content: script });
+        const ev = <R, const A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
+        const loaded = await ev(([p, i]) => T.loadBuiltin(p, i, []), [withoutLoader(ARCADIA), 'arcadia'] as const);
+        assert.equal(loaded.ok, true);
+        await ev(() => T.mountRuntime({ width: 1440, height: 900, container: 'document', platform: { browser: 'safari', os: 'mac' }, hosted: true }));
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+        await ev(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+        await page.waitForTimeout(350);
+        await page.mouse.move(40, 450);
+        const l = (await ev(() => T.rtLayouts())).at(-1)!;
+        const radii = (await ev(() => T.rtRadii())) ?? [];
+        const box = { left: l.left, top: l.top, right: W - l.right, bottom: H - l.bottom };
+        const { inside } = cardPoints(box, radii);
+        const shot = async () => decodePng(await page.screenshot({ omitBackground: true }));
+        const first = await ev(() => T.rtPageState('shown'));
+        assert.deepEqual([first.attr, first.loader], ['shown', null], 'shown: no loader in the tree until one is needed');
+        const loading = await ev(() => T.rtPageState('loading', 'Safari'));
+        assert.deepEqual([loading.attr, loading.loader], ['loading', { own: false, text: 'Opening Safari…' }], "loading: Margin's default loader with its words");
+        const lo = (await ev(() => T.rtLoader()))!;
+        assert.ok(Math.abs(lo.left - box.left) <= 0.5 && Math.abs(lo.top - box.top) <= 0.5 && Math.abs(lo.width - (box.right - box.left)) <= 0.5 && Math.abs(lo.height - (box.bottom - box.top)) <= 0.5,
+          `loading: the loader over the page's place exactly (${JSON.stringify(lo)} vs ${JSON.stringify(box)})`);
+        assert.deepEqual([lo.opacity, lo.visibility, lo.pointer, parseFloat(lo.radius)], [1, 'visible', 'auto', radii[0] ?? 0], "loading: drawn at once, taking the pointer, the card's corners");
+        let at = await shot();
+        assert.deepEqual(inside.filter((p) => px(at, p)[3] < 250), [], 'loading: the page card opaque everywhere');
+        assert.equal((await ev(() => T.rtPageState('loading', 'Notes'))).loader?.text, 'Opening Notes…', 'another item opening: its name');
+        await ev(() => T.rtPageState('shown'));
+        const fading = (await ev(() => T.rtLoader()))!;
+        assert.ok(fading.pointer === 'none' && parseFloat(fading.transition) <= 0.15 && parseFloat(fading.transition) > 0, `shown again: the loader lets the pointer through at once and fades in at most 150 ms (${fading.transition})`);
+        await page.waitForTimeout(260);
+        const gone = (await ev(() => T.rtLoader()))!;
+        assert.deepEqual([gone.opacity, gone.visibility], [0, 'hidden'], "… and it's gone");
+        at = await shot();
+        assert.deepEqual(inside.filter((p) => px(at, p)[3] !== 0), [], "shown again: nothing painted in the page's place");
+        await ev(() => T.rtPageState('loading', 'Safari'));
+        const back = (await ev(() => T.rtLoader()))!;
+        assert.deepEqual([back.opacity, back.visibility, back.pointer], [1, 'visible', 'auto'], 'loading again: the loader back at once');
+        await page.waitForTimeout(60);
+        at = await shot();
+        assert.deepEqual(inside.filter((p) => px(at, p)[3] < 250), [], 'loading again: the page card opaque again');
+        await context.close();
+      });
+
+      await t.test("reduced motion: Margin's default loader goes at once, and its spinner stands still", async () => {
         const context = await browser.newContext({ viewport: { width: W, height: H }, reducedMotion: 'reduce' });
         const page = await context.newPage();
         await context.route('**/*', (route) => route.abort());
         await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"></body></html>');
         await page.addScriptTag({ content: script });
         const ev = <R, const A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
-        await ev(([p, i]) => T.loadBuiltin(p, i, []), [themeForPage(ARCADIA), 'arcadia'] as const);
+        await ev(([p, i]) => T.loadBuiltin(p, i, []), [withoutLoader(ARCADIA), 'arcadia'] as const);
         await ev(() => T.mountRuntime({ width: 1440, height: 900, container: 'document', platform: { browser: 'safari', os: 'mac' }, hosted: true }));
         await ev(() => T.rtPageState('loading', 'Safari'));
         const spin = await ev(() => getComputedStyle((window as any).__rt.runtime.view.rootElement().querySelector('[m-loader-spin]')).animationName);
@@ -199,8 +210,11 @@ for (const [engineName, engine] of ENGINES) {
         await page.addScriptTag({ content: script });
         const ev = <R, const A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
         const pkg = themeForPage(NEO);
-        pkg.html = pkg.html.replace('<m-page class="page"></m-page>', '<m-page class="page"></m-page><m-page-loader class="own-loader"></m-page-loader>'
-          + '<template m-part="page-loader"><div class="own-card"><span class="own-dot"></span><b class="own-words">{{pageLoader.label}}</b><i>Not the theme\'s to say</i></div></template>');
+        // (Neubrutalism's own part, with words of the theme's own written into it.)
+        const own = '<template m-part="page-loader"><div class="own-card"><span class="own-dot"></span><b class="own-words">{{pageLoader.label}}</b><i>Not the theme\'s to say</i></div></template>';
+        const html = pkg.html.replace(/<template m-part="page-loader">[\s\S]*?<\/template>/, own);
+        assert.ok(html.includes(own) && html.split('<m-page-loader').length === 2, 'one slot, the part swapped');
+        pkg.html = html;
         const loaded = await ev(([p]) => T.loadBuiltin(p, 'neubrutalism', []), [pkg] as const);
         assert.equal(loaded.ok, true);
         await ev(() => T.mountRuntime({ width: 1440, height: 900, container: 'document', platform: { browser: 'safari', os: 'mac' }, hosted: true }));
