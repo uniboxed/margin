@@ -117,11 +117,12 @@ protocol HostedWindow: AnyObject {
     var layoutMode: String? { get } // the mode of the page's last layout
     // While hosting: its own layout, the sidebar docked, no launcher in the page area (the hosted window shows there).
     func setHosting(_ on: Bool)
-    // An app opening or placed again in the page area (its name), nil: none: the page card `loading` at once.
-    func setLoading(_ label: String?)
+    // An app opening or placed again in the page area (its name), nil: none: the page card `loading` at once. `app`:
+    // the bundle id whose icon the loader shows (the app's; the browser's for a web item), the page's to look up.
+    func setLoading(_ label: String?, app: String?)
     // An item being shown and not ready yet (its name), nil: it is: `loading` only if that takes longer than a grace;
-    // `slow`: known to take a while (the last item, at launch): `loading` at once.
-    func setShowing(_ label: String?, slow: Bool)
+    // `slow`: known to take a while (the last item, at launch): `loading` at once. `app` as setLoading's.
+    func setShowing(_ label: String?, app: String?, slow: Bool)
     // The items loading, by the UI's numbers for them: the theme's loading bar on the page card's edge for the one in
     // front, and each one's row (host-app.ts `loading`, as a browser copy's `loading` push draws it over a browser).
     func setLoadingTabs(_ numbers: [Int])
@@ -133,7 +134,15 @@ protocol HostedWindow: AnyObject {
 }
 
 extension HostedWindow {
-    func setShowing(_ label: String?) { setShowing(label, slow: false) }
+    func setShowing(_ label: String?) { setShowing(label, app: nil, slow: false) }
+    func setShowing(_ label: String?, slow: Bool) { setShowing(label, app: nil, slow: slow) }
+    func setShowing(_ label: String?, app: String?) { setShowing(label, app: app, slow: false) }
+    func setLoading(_ label: String?) { setLoading(label, app: nil) }
+}
+
+// The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
+extension HostID {
+    var iconApp: String { raw.hasPrefix("app:") ? String(raw.dropFirst("app:".count)) : safariIdentifier }
 }
 
 extension MarginWindowController: HostedWindow {
@@ -334,7 +343,7 @@ final class HostedSession: LibraryDelegate {
             labels[HostTarget.app(bundle).id] = appName(bundle) ?? (name.isEmpty ? nil : name) ?? bundle
             showing[HostTarget.app(bundle).id] = item
             defer { showing[HostTarget.app(bundle).id] = nil; refreshLoading() }
-            if engine.shown != HostTarget.app(bundle).id || hostingWindow != w.id { w.setShowing(labels[HostTarget.app(bundle).id]) }
+            if engine.shown != HostTarget.app(bundle).id || hostingWindow != w.id { w.setShowing(labels[HostTarget.app(bundle).id], app: bundle) }
             defer { w.setShowing(nil) }
             guard await host(.app(bundle), in: w) else { return }
             open[item] = OpenItem(host: HostTarget.app(bundle).id, profile: nil)
@@ -355,7 +364,7 @@ final class HostedSession: LibraryDelegate {
             let there = safariWindows[p] != nil && engine.isHosted(id)
             if comes {
                 let title = (library.items().first { $0.id == item }?.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-                w.setShowing(title ?? "Safari")
+                w.setShowing(title ?? "Safari", app: safariIdentifier)
                 if !there { guard await host(.safariWindow(p), in: w) else { return } }
             }
             guard let windowId = safariWindows[p] else { return note("\(item): no Safari window of its profile") }
@@ -468,7 +477,7 @@ final class HostedSession: LibraryDelegate {
         appLoading = id
         defer { refreshLoading() }
         guard let wid = hostingWindow, let w = window(wid) else { return }
-        w.setLoading(id.map { labels[$0] ?? $0.description })
+        w.setLoading(id.map { labels[$0] ?? $0.description }, app: id?.iconApp)
     }
 
     // A Safari profile's copy's `loading` push (background/page-loads.ts: its tabs loading in one of its windows): kept
@@ -579,7 +588,7 @@ final class HostedSession: LibraryDelegate {
         hostingWindow = w.id
         requested[w.id] = item
         w.setHosting(true)
-        w.setShowing(name, slow: true)
+        if case .app(let bundle, _) = target { w.setShowing(name, app: bundle, slow: true) } else { w.setShowing(name, app: safariIdentifier, slow: true) }
         note("Margin's window \(w.id): the item it showed last (\(item)) shown again, behind the loader from its first frame")
         onChange?()
         enqueue {
@@ -862,7 +871,7 @@ final class HostedSession: LibraryDelegate {
         let kept = !placed && engine.shown == id
         note("page area changed: \(Int(placement.page.width))×\(Int(placement.page.height))\(placed ? "" : kept ? " (not fitted: shown at the frame it had)" : " (not fitted)")")
         guard !placed, engine.shown == nil, engine.isHosted(id) else { return }
-        window.setShowing(labels[id] ?? id.description)
+        window.setShowing(labels[id] ?? id.description, app: id.iconApp)
         defer { window.setShowing(nil); settleHosting() }
         await sleep(options.refitRetryAfter)
         guard hostingWindow == window.id, engine.shown == nil, engine.isHosted(id), requested[window.id] == nil else { return }
