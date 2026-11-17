@@ -678,8 +678,10 @@ final class HostEngine {
         s.marginCurrent = marginWindow == 0 || (sys.spaces(window: marginWindow)?.contains(marginSpace) != false && sys.currentSpace(onDisplayOf: marginSpace) == marginSpace)
         s.offScreenReads = host.offScreenReads
         s.strayReads = host.strays
+        if host.mode == .window, host.phase == .shown { s.atPage = atPageArea(host) }
         let now = sys.now()
-        s.tries = host.tries.mapValues { $0.filter { now - $0 < options.budgetWithin }.count }
+        // (Tries within `budgetWithin`; a window-mode window's framing, per show: never again and again for one that can't be.)
+        s.tries = host.tries.reduce(into: [:]) { out, e in out[e.key] = e.key == HostCorrection.frameWindow.key ? e.value.count : e.value.filter { now - $0 < options.budgetWithin }.count }
         guard let app = observer.model.apps[host.pid] else { return s }
         let mine = app.windows[host.window]
         s.place = mine?.place ?? .unread
@@ -745,7 +747,7 @@ final class HostEngine {
     // `strayed`'s, a member off screen `backOnScreen`'s).
     private func steady(_ c: HostCorrection) -> Bool {
         switch c {
-        case .adopt, .reopen, .unhide, .bringForward, .closeLeftover, .parkLeftover, .parkStrip, .parkAgain, .fallback: return true
+        case .adopt, .reopen, .unhide, .bringForward, .closeLeftover, .parkLeftover, .parkStrip, .parkAgain, .frameWindow, .fallback: return true
         default: return false
         }
     }
@@ -756,6 +758,8 @@ final class HostEngine {
         guard let list = steadyScreen(), sys.spaces(window: host.window) == [marginSpace], !sys.screenAway(), sys.isHidden(pid: ownPid) != true else { host.offScreenReads = 0; return }
         if list.contains(where: { $0.number == host.window }) { host.offScreenReads = 0; return }
         if let own = sys.windowOnScreen(host.window), own.onScreen, own.alpha > 0 { host.offScreenReads = 0; return }
+        // (Minimized, by Accessibility: the person's doing, left as it is.)
+        if observer.model.apps[host.pid]?.windows[host.window]?.ax?.minimized == true { host.offScreenReads = 0; return }
         host.offScreenReads += 1
     }
 
@@ -780,6 +784,8 @@ final class HostEngine {
             await adopt(host, n)
         case .bringForward(let rung):
             await bringForward(host, rung)
+        case .frameWindow:
+            if host.mode == .window, host.phase == .shown { _ = await placeWindow(host) }
         case .fallback(let why):
             await fallBackNow(host, why)
         default:

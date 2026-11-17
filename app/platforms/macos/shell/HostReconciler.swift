@@ -144,6 +144,7 @@ nonisolated struct HostSituation: Equatable, Sendable {
     var onScreen: Bool? = nil
     var offScreenReads = 0 // polls in a row it was in Margin's Space, the current one, and off the on-screen list (its own read too)
     var strayReads = 0 // polls in a row a parked one was found in a user Space (one read can miss mid-transition)
+    var atPage: Bool? = nil // a window-mode window where `frameWindow` puts it (the page area, or its own size centred in it)
     var fullScreen: Bool? = nil // Accessibility's AXFullScreen
     var canFullScreen: Bool? = nil // AXFullScreen settable
     var ownFullScreenSpace: UInt64? = nil // a full-screen Space of its app's it's in (not Margin's)
@@ -185,7 +186,7 @@ nonisolated struct HostSituation: Equatable, Sendable {
 nonisolated enum HostReconciler {
     // Each correction's budget per show (tries); `bringForward`'s rungs once each, then the fallback.
     static let budget: [String: Int] = [
-        "launch": 1, "reopen": 2, "unhide": 2, "adopt": 20, "put back": 3, "park again": 3,
+        "launch": 1, "reopen": 2, "unhide": 2, "adopt": 20, "window mode": 2, "put back": 3, "park again": 3,
         "leftover": 2, "strip": 3, "bring forward": 1,
     ]
     static func budget(of c: HostCorrection) -> Int {
@@ -212,8 +213,9 @@ nonisolated enum HostReconciler {
             // (Its window gone while it's parked: its next show reopens it, behind the loader, never now: a window its app
             // opens would come up in the current Space, over what's shown.)
             guard s.running, s.window != nil, !s.windowGone else { return [] }
-            // Replaced by its app meanwhile: the new one adopted (and parked with it).
-            if let r = s.replacement { add(.adopt(r)); if !out.isEmpty { return out } }
+            // Replaced by its app meanwhile (one Margin started): the new one adopted (and parked with it). The person's
+            // app's new window while it's parked is theirs (they may be using the app outside Margin): never taken.
+            if let r = s.replacement, s.launchedByMargin { add(.adopt(r)); if !out.isEmpty { return out } }
             // Nothing of it on any user Space: its window, its leftovers, its strips.
             if s.place.placed, s.place != .parked, s.strayReads >= 2, !s.busy { add(.parkAgain) }
             for l in s.leftovers where l.inUserSpace { add(.parkLeftover(l.number)) }
@@ -252,6 +254,9 @@ nonisolated enum HostReconciler {
                     let rung = HostForward.allCases.first { s.tried(.bringForward($0)) < 1 }
                     if let rung { out.append(.bringForward(rung)) } else { out.append(.fallback("its window stays off screen in Margin's Space")) }
                     return out
+                } else if s.place == .margin, s.mode == .window, s.atPage == false {
+                    // (A window-mode window not where it was framed: an adoption's frame not taken, its app moved it.)
+                    add(.frameWindow)
                 }
             }
         }

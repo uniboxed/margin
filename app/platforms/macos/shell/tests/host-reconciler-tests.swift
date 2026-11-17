@@ -46,6 +46,7 @@ func hostReconcilerTests() {
         // ---- replaced by its app (Messages 15:20; replacesWindow every:4) ----
         ("replaced: the new window at its frame is its app's main one: adopted, before anything else (then looked at again)", member { $0.replacement = 72210; $0.leftovers = [leftover(72197, .margin)] }, shown, [.adopt(72210)]),
         ("parked and replaced: adopted there too (and parked with it)", member { $0.phase = .parked; $0.place = .parked; $0.replacement = 72210 }, .parked, [.adopt(72210)]),
+        ("the person's app parked, a new window of it at its frame: theirs, never taken", member { $0.phase = .parked; $0.place = .parked; $0.replacement = 72210; $0.launchedByMargin = false }, .parked, []),
         ("parked, its window gone: nothing now (its next show reopens it, behind the loader)", member { $0.phase = .parked; $0.place = .parked; $0.windowGone = true }, .parked, []),
         // ---- the first placement, from where it is ----
         ("first open, restored in full screen in a Space of its own (Maps 07:52): placed from there", firstOpen { $0.ownFullScreenSpace = 8054; $0.fullScreen = nil; $0.place = .fullScreen }, shown, [.placeFromOwnSpace(8054)]),
@@ -60,6 +61,8 @@ func hostReconcilerTests() {
         ("shown, on a Desktop: put back", member { $0.place = .desktop }, shown, [.putBack]),
         ("shown, out of Margin's Space three times in 30 s: no more put back", member { $0.place = .nowhere; $0.tries = ["put back": 3] }, shown, []),
         ("shown, Margin's Space not current (a swipe): nothing about where it is", member { $0.place = .desktop; $0.marginCurrent = false }, shown, []),
+        ("window mode, on screen, not where it was framed (an adoption's frame not taken): framed again", windowed { $0.atPage = false }, shown, [.frameWindow]),
+        ("…framed twice already: left as it is", windowed { $0.atPage = false; $0.tries = ["window mode": 2] }, shown, []),
         ("window mode, off screen one read: nothing yet (one read can miss mid-transition)", windowed { $0.onScreen = false; $0.offScreenReads = 1 }, shown, []),
         ("window mode, off screen two reads (the Phone, Calculator, noFullScreen): brought forward, activated", windowed { $0.onScreen = false; $0.offScreenReads = 2 }, shown, [.bringForward(.activate)]),
         ("…activated already: a Dock-icon click", windowed { $0.onScreen = false; $0.offScreenReads = 4; $0.tries = ["bring forward (activate)": 1] }, shown, [.bringForward(.reopen)]),
