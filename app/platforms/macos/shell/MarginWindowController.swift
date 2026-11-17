@@ -167,6 +167,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private(set) var fullScreenRetries = 0
     private(set) var fullScreenWaits = 0 // looks at which macOS wouldn't have taken it: not asked (the tests read it)
     private(set) var fullScreenForwards = 0 // times Margin and its window were brought forward meanwhile
+    private(set) var forwardWays: [FullScreenRetry.Forward] = [] // ...and how, each time
     private var retry = FullScreenRetry()
     private var retryTimer: Timer?
     private var lastAskAt: Date?
@@ -692,10 +693,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     }
 
     // Always full screen and not in: asked now if macOS would take it, at every event that can make it so and at a look
-    // of its own (`lookAgain`), until it's in. Not yet takeable: Margin and its window brought forward (macOS then shows
-    // the Space the window is on; a second apart, three times at most: after that it only waits, never taking the keys
-    // again and again from the app the person went on in), said once per state, nothing asked. Never before its first
-    // ask, nor while it's on its way in.
+    // of its own (`lookAgain`), until it's in. Not yet takeable: Margin and its window brought forward (`bringForward`:
+    // macOS then shows the Space the window is on; 0.8 s apart, three times at most, each said: after that it only
+    // waits, never taking the keys again and again from the app the person went on in), nothing asked. Never before
+    // its first ask, nor while it's on its way in.
     func tryFullScreen(_ why: String) {
         guard options.alwaysFullScreen, firstAsked, !isFullScreen, !isClosed else { return }
         let entering = window.styleMask.contains(.fullScreen) || willEnterAt.map { Date().timeIntervalSince($0) < 2 } == true
@@ -722,16 +723,34 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
                 waitingSaid = state
                 Diagnostics.note("Margin's window \(id): full screen not asked yet (macOS takes it only with Margin active and its window on the current Space: \(state)): waiting (\(why))")
             }
-            if retry.shouldForward(sinceLast: lastForwardAt.map { Date().timeIntervalSince($0) } ?? .infinity) {
+            if let way = retry.forward(sinceLast: lastForwardAt.map { Date().timeIntervalSince($0) } ?? .infinity) {
                 lastForwardAt = Date()
                 fullScreenForwards += 1
-                if !options.harness {
-                    NSApp.activate()
-                    window.makeKeyAndOrderFront(nil)
-                }
+                forwardWays.append(way)
+                Diagnostics.note("Margin's window \(id): Margin was opened and isn't in front (\(state)): brought forward \(way.rawValue) (\(retry.forwards) of \(FullScreenRetry.forwardsMax))")
+                if !options.harness { bringForward(way) }
             }
         }
         lookAgain()
+    }
+
+    // Margin, just opened by the person, brought in front. Its own activation first (macOS 14 and later may not honour
+    // it for an app that isn't active: seen 2026-11-17, Margin opened by `open` from another app's full-screen Space
+    // stayed inactive through three of them, and came forward at once when `open` named it again); then asked of
+    // LaunchServices, as `open` does (a reopen of the running Margin: its window in front); then both.
+    private func bringForward(_ way: FullScreenRetry.Forward) {
+        if way != .launchServices {
+            NSApp.activate()
+            NSRunningApplication.current.activate(options: [.activateAllWindows])
+            window.makeKeyAndOrderFront(nil)
+        }
+        if way != .activation {
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, error in
+                if let error { Diagnostics.note("Margin: LaunchServices didn't bring Margin forward (\(error.localizedDescription))") }
+            }
+        }
     }
 
     // Still not in: looked at again after the back-off's next delay (one look pending at a time; none once it's in or closed).
@@ -1105,8 +1124,10 @@ final class MarginWindows {
 struct FullScreenRetry {
     static let delays: [TimeInterval] = [0.3, 0.6, 1.2, 2.4, 5]
     static let minGap: TimeInterval = 0.25
-    static let forwardGap: TimeInterval = 1
+    static let forwardGap: TimeInterval = 0.8
     static let forwardsMax = 3
+    // How Margin is brought forward, in turn: its own activation, a reopen asked of LaunchServices, both.
+    enum Forward: String { case activation = "by its own activation", launchServices = "through LaunchServices", both = "by its own activation and through LaunchServices" }
     private(set) var looks = 0
     private(set) var forwards = 0
 
@@ -1122,12 +1143,12 @@ struct FullScreenRetry {
     }
 
     // While macOS wouldn't take it: whether Margin and its window are brought forward now (macOS then shows the Space
-    // the window is on). A second apart and three times at most until it has been in: Margin opened and left for
+    // the window is on), and how. 0.8 s apart and three times at most until it has been in: Margin opened and left for
     // another app's full-screen Space never takes that app's keys look after look.
-    mutating func shouldForward(sinceLast: TimeInterval) -> Bool {
-        guard forwards < Self.forwardsMax, sinceLast >= Self.forwardGap else { return false }
+    mutating func forward(sinceLast: TimeInterval) -> Forward? {
+        guard forwards < Self.forwardsMax, sinceLast >= Self.forwardGap else { return nil }
         forwards += 1
-        return true
+        return forwards == 1 ? .activation : forwards == 2 ? .launchServices : .both
     }
 
     // macOS would take it now, after a wait: the looks from the shortest delay again.
