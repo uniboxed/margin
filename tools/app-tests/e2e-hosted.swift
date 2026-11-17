@@ -185,6 +185,45 @@ func hostedScenario() async {
   check("closed: one window left", await until(3, { windows.controllers.count == 1 }), "\(windows.controllers.count)")
   check("nothing warned: the page drew the source's state as it is, and nothing asked for a display", warned.isEmpty, "\(warned.prefix(5))")
 
+  // ---- a theme with the system's materials (Liquid Glass): the page asks before it makes the theme's sheet, the web
+  // view's system appearance goes on, and the sheet keeps `-apple-visual-effect`; a theme that doesn't ask turns it
+  // off again and the same sheet draws its plain look (OverlayWebView.swift OverlaySystemAppearance) ----
+  let glassDir = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!).deletingLastPathComponent().appendingPathComponent("webkit/themes/liquid-glass")
+  if let manifest = try? String(contentsOf: glassDir.appendingPathComponent("theme.json"), encoding: .utf8),
+     let html = try? String(contentsOf: glassDir.appendingPathComponent("theme.html"), encoding: .utf8),
+     let css = try? String(contentsOf: glassDir.appendingPathComponent("theme.css"), encoding: .utf8) {
+    func draw(_ id: String, _ manifest: String) async {
+      let message: JSONObject = ["type": "theme", "theme": ["id": id, "manifest": manifest, "html": html, "css": css, "files": [String: String]()] as JSONObject]
+      _ = try? await c.webView.callAsyncJavaScript("marginApp.receive(m)", arguments: ["m": jsonString(message) ?? ""], in: nil, contentWorld: .page)
+    }
+    let system = { c.webView.value(forKey: "_useSystemAppearance") as? Bool }
+    // [the page knows the property, the panel's material, whether it still has a shadow of its own, the theme's id]
+    let look = """
+      const p = document.querySelector('.lg .panel'); if (!p) return null;
+      const cs = getComputedStyle(p);
+      return [CSS.supports('-apple-visual-effect', '-apple-system-glass-material'), cs.getPropertyValue('-apple-visual-effect'), cs.boxShadow !== 'none'];
+      """
+    check("no theme has asked yet: the web view's system appearance off (Arcadia draws as it always has)", system() == false)
+    await draw("liquid-glass", manifest)
+    check("Liquid Glass drawn in Margin's window", await waitJS(c.webView, "return !!document.querySelector('.lg .panel')"))
+    if ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 {
+      check("a theme that asks for the system's materials: its web view's system appearance on", system() == true)
+      let glass = await js(c.webView, look) as? [Any] ?? []
+      check("… before its sheet was made: the panel is the system's glass, with no shadow of its own",
+            glass.count == 3 && glass[0] as? Bool == true && glass[1] as? String == "-apple-system-glass-material" && glass[2] as? Bool == false, "\(glass)")
+    }
+    // The same theme without the word in its manifest (another id): off, and its plain look.
+    let plain = manifest.replacingOccurrences(of: "\"systemMaterials\": true,", with: "").replacingOccurrences(of: "\"id\": \"liquid-glass\"", with: "\"id\": \"plain-glass\"")
+    await draw("plain-glass", plain)
+    let off = await until(5, { system() == false })
+    check("a theme that doesn't ask: off again", plain != manifest && off)
+    check("… and the same sheet draws its plain look: no material, the panel's own hairline and shadow",
+          await waitJS(c.webView, "const p = document.querySelector('.lg .panel'); if (!p) return false; const cs = getComputedStyle(p); return !CSS.supports('-apple-visual-effect', 'none') && cs.getPropertyValue('-apple-visual-effect') === '' && cs.boxShadow !== 'none';"))
+    check("nothing warned drawing either", warned.isEmpty, "\(warned.prefix(5))")
+  } else {
+    check("Liquid Glass's package beside the app's page (dist/webkit/themes/liquid-glass)", false, glassDir.path)
+  }
+
   // ---- the shell's source: the library (the stand-in only when its rules don't load) ----
   let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-hosted-\(UUID().uuidString)")
   defer { try? FileManager.default.removeItem(at: root) }

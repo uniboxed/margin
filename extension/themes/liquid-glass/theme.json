@@ -1,0 +1,14 @@
+{
+  "format": 2,
+  "id": "liquid-glass",
+  "name": "Liquid Glass",
+  "version": "0.1.0",
+  "author": "Margin",
+  "description": "macOS's Liquid Glass: the sidebar as one floating glass panel, glass capsules and a glass command bar over a soft ground in the space's color. The system's real glass in Margin.app on macOS 26 and later, translucent fills everywhere else.",
+  "modes": ["fullscreen", "windowed", "inpage"],
+  "systemMaterials": true,
+  "settings": {
+    "sidebarWidth": { "type": "length", "default": "264px", "min": 200, "max": 420, "step": 2, "label": "Sidebar width" }
+  },
+  "layout": { "reveal": "left", "sidebarMin": 200, "sidebarMax": 420, "sidebarDefault": 264 }
+}

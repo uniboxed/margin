@@ -21,7 +21,7 @@ final class ThemeStore {
     static let maxThemes = 50
     // The built-ins' ids (extension/themes/packages.ts), and an earlier name of one that saved settings still mean it
     // by (Neubrutalism's until 2026-11-10: state/model.ts OLD_NAMES): an imported theme takes neither.
-    static let builtins: Set<String> = ["arcadia", "neubrutalism", "pixel", "neo-brutalism"]
+    static let builtins: Set<String> = ["arcadia", "neubrutalism", "pixel", "liquid-glass", "neo-brutalism"]
     // ui/theme-schema.ts: a theme's id.
     static func idOK(_ id: String) -> Bool {
         guard (1...41).contains(id.count), let first = id.unicodeScalars.first, Self.lowerDigit(first) else { return false }

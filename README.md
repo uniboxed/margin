@@ -41,6 +41,7 @@ page, and you can pick one, change one or write your own.
 | **Arcadia** (the default) | a gray frame around the page as a rounded card, space chips, pins and tabs, a dark command bar; inspired by Arc |
 | **Neubrutalism** | a dotted ground in the space's color, bordered cards with hard offset shadows |
 | **Pixel** | an 8-bit game: the PICO-8 palette on a dotted night ground, notched pixel borders, pixel type |
+| **Liquid Glass** | macOS's own glass: a floating glass sidebar, glass capsules and a glass command bar over a soft ground in the space's color (the system's real glass in Margin.app on macOS 26 and later, translucent fills elsewhere) |
 
 A theme is HTML and CSS only, no JavaScript. Margin renders it from its own data, runs its buttons as checked
 actions, and gives it behaviors like drag and drop, resizing and menus through attributes. Imported themes are
