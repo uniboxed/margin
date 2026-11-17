@@ -49,11 +49,16 @@ final class BehaviourWorld {
     private var auxiliary: [pid_t: (window: Int?, closeAt: Double?)] = [:]
     private var strip: [pid_t: (window: Int?, closeAt: Double?)] = [:]
     private var extraDone: Set<pid_t> = []
+    // The windows the switches made beside the main one that the person may keep (an auxiliary, an extra window), and when
+    // each app last replaced its main window (the suite's tolerance for the moment between a replacement and its adoption).
+    private(set) var kept: Set<Int> = []
+    private(set) var replacedAt: [pid_t: Double] = [:]
 
     init(_ world: FakeHostWorld) {
         self.world = world
         world.onLaunch = { [weak self] pid in self?.launched(pid) }
         world.onClock = { [weak self] in self?.tick() }
+        world.onReopen = { [weak self] pid in self?.reopen(pid: pid) }
     }
 
     func add(_ bundle: String, _ s: ChameleonSwitches) {
@@ -105,7 +110,11 @@ final class BehaviourWorld {
         launchedAt[pid] = world.clock
         arguments[pid] = world.lastArguments
         let spaces = a.windows.first.flatMap { world.wins[$0]?.spaces } ?? [FakeHostWorld.desktop]
+        // (Its first window its main one, as Accessibility says it: what it makes beside it later isn't.)
+        if world.main[pid] == nil, let first = a.windows.first { world.main[pid] = first }
         if let r = s.restore {
+            // (Restored by AppKit: its windows kept at quit, NSQuitAlwaysKeepsWindows, as the suite's priming sets it.)
+            if r.via == .system { world.keepsWindows.insert(a.bundle) }
             var list = a.windows
             while list.count < r.count { list.append(addWindow(pid, frame: FakeHostWorld.defaultFrame.offsetBy(dx: CGFloat(30 * list.count), dy: CGFloat(30 * list.count)), spaces: spaces)) }
             for (i, n) in list.prefix(r.count).enumerated() where r.fullScreen[i] { restoreInFullScreen(n, pid: pid) }
@@ -117,6 +126,7 @@ final class BehaviourWorld {
         }
         if s.ordersOut == .untilActive, let m = mainWindow(pid) {
             world.wins[m]?.spaces = []
+            world.orderedOut.insert(m)
             orderedOut[pid] = (m, activations(pid))
             note(pid, "main window \(m) not ordered in until activated")
         }
@@ -128,7 +138,10 @@ final class BehaviourWorld {
     @discardableResult func reopen(pid: pid_t) -> Int? {
         guard world.apps[pid] != nil else { return nil }
         if let m = mainWindow(pid), world.wins[m] != nil {
-            if world.wins[m]?.spaces.isEmpty == true, world.wins[m]?.priv == nil { world.wins[m]?.spaces = [world.current]; orderedOut[pid] = nil }
+            if world.orderedOut.remove(m) != nil || world.wins[m]?.spaces.isEmpty == true, world.wins[m]?.priv == nil {
+                if world.wins[m]?.spaces.isEmpty == true { world.wins[m]?.spaces = [world.current] }
+                orderedOut[pid] = nil
+            }
             note(pid, "reopen: \(m) ordered in")
             return m
         }
@@ -138,10 +151,18 @@ final class BehaviourWorld {
         note(pid, "reopen: new window \(n)")
         return n
     }
+    // Ordered in again (its app's activation): in the current Space if it's in none, where it is otherwise (a window the
+    // bridge moved while it was ordered out keeps that Space).
+    private func orderIn(_ n: Int) {
+        world.orderedOut.remove(n)
+        if world.wins[n]?.spaces.isEmpty == true, world.wins[n]?.priv == nil { world.wins[n]?.spaces = [world.current] }
+    }
     // Another main-kind window (the menu item or the suite's notification).
     @discardableResult func openExtra(bundle: String) -> Int? {
         guard let pid = world.running(bundleId: bundle).first?.pid else { return nil }
-        let n = addWindow(pid, frame: FakeHostWorld.defaultFrame.offsetBy(dx: 60, dy: 60), spaces: [world.current])
+        // (Where Chameleon's opened on the real Mac, 2026-11-17: 900×560, 60 pt over Margin's sidebar.)
+        let n = addWindow(pid, frame: CGRect(x: 216, y: 250, width: 900, height: 560), spaces: [world.current])
+        kept.insert(n)
         note(pid, "extra window \(n)")
         return n
     }
@@ -170,22 +191,24 @@ final class BehaviourWorld {
             // ordersOut
             switch s.ordersOut {
             case .untilActive?:
-                if let o = orderedOut[pid], activations(pid) > o.activations { world.wins[o.window]?.spaces = [world.current]; orderedOut[pid] = nil; note(pid, "activated: \(o.window) ordered in") }
+                if let o = orderedOut[pid], activations(pid) > o.activations { orderIn(o.window); orderedOut[pid] = nil; note(pid, "activated: \(o.window) ordered in") }
             case .after(let after)?:
                 if let t = shownFor, t >= after, !orderedOutOnce.contains(pid), let m = mainWindow(pid) {
                     orderedOutOnce.insert(pid)
                     world.wins[m]?.spaces = []
+                    world.orderedOut.insert(m)
                     orderedOut[pid] = (m, activations(pid))
                     note(pid, "ordered out \(m)")
                 } else if let o = orderedOut[pid], activations(pid) > o.activations {
-                    world.wins[o.window]?.spaces = [world.current]; orderedOut[pid] = nil; note(pid, "activated: \(o.window) ordered in")
+                    orderIn(o.window); orderedOut[pid] = nil; note(pid, "activated: \(o.window) ordered in")
                 }
             case .every(let every)?:
-                if let back = hopBack[pid], now + 1e-9 >= back.at { world.wins[back.window]?.spaces = back.spaces; hopBack[pid] = nil; note(pid, "ordered in \(back.window)") }
+                if let back = hopBack[pid], now + 1e-9 >= back.at { world.wins[back.window]?.spaces = back.spaces; world.orderedOut.remove(back.window); hopBack[pid] = nil; note(pid, "ordered in \(back.window)") }
                 if let first = firstShown[pid], hopBack[pid] == nil, now - (lastHop[pid] ?? first) + 1e-9 >= every, let m = mainWindow(pid), let w = world.wins[m], !w.spaces.isEmpty {
                     lastHop[pid] = now
                     hopBack[pid] = (m, w.spaces, now + 0.5)
                     world.wins[m]?.spaces = []
+                    world.orderedOut.insert(m)
                     note(pid, "ordered out \(m) (every \(every) s)")
                 }
             case nil: break
@@ -197,6 +220,7 @@ final class BehaviourWorld {
                 let new = addWindow(pid, frame: frame, spaces: [world.current])
                 world.main[pid] = new
                 world.closeWindow(old)
+                replacedAt[pid] = now
                 note(pid, "replaced \(old) by \(new)")
             }
             // strip at:<s>,for:<s>
@@ -228,6 +252,7 @@ final class BehaviourWorld {
                     x.resizable = false
                     world.wins[n] = x
                     world.apps[pid]?.windows.append(n)
+                    kept.insert(n)
                     auxiliary[pid] = (n, a.lasts.map { now + $0 })
                     note(pid, "auxiliary \(n) at \(Int(f.minX)),\(Int(f.minY)) \(Int(f.width))×\(Int(f.height))")
                 } else if let ax = auxiliary[pid], let n = ax.window, let at = ax.closeAt, now + 1e-9 >= at {

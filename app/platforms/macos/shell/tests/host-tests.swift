@@ -89,6 +89,29 @@ final class FakeHostWorld: HostSystem {
     var axCurrentOnly = false
     var axSeen: Set<Int> = []
     func onCurrent(_ window: Int) -> Bool { wins[window].map { $0.priv == nil && $0.spaces.contains(current) } ?? false }
+    // Windows ordered out (never ordered in, or ordered out by their app): in whatever Space the bridge put them, off
+    // screen, and not in Accessibility's lists (they have only windows ordered in). The behaviours' stand-ins set them.
+    var orderedOut: Set<Int> = []
+    // The real Mac's window mode, 2026-11-17 (the real-screen suite's noFullScreen and fixedSize, the Phone, Calculator):
+    // a window that can't go full screen, not in full screen, in a full-screen Space that isn't its own (Margin's) stays
+    // off screen there, its app activated and its window raised all the same. On: played so (`hiddenInFullScreen`);
+    // `reopenShows`: until its app gets a Dock-icon click (one hypothesis of why: not ordered in), then shown.
+    var windowedHiddenInFullScreen = false
+    var reopenShows = false
+    var reopenedApps: Set<pid_t> = []
+    func hiddenInFullScreen(_ n: Int) -> Bool {
+        guard windowedHiddenInFullScreen, let w = wins[n], !w.canFullScreen, !w.fullScreen, w.priv == nil, !(reopenShows && reopenedApps.contains(w.pid)) else { return false }
+        return w.spaces.contains { tiles[$0] != nil && owner[$0] != w.pid }
+    }
+    // A Dock-icon click (kAEReopenApplication): played by the behaviours' stand-ins (BehaviourWorld.reopen); none: not sent.
+    var onReopen: ((pid_t) -> Int?)?
+    func reopen(pid: pid_t) -> Bool {
+        calls.append("reopen \(pid)")
+        guard apps[pid] != nil, let onReopen else { return false }
+        reopenedApps.insert(pid)
+        _ = onReopen(pid)
+        return true
+    }
     func axReads(_ window: Int) -> Bool { !axCurrentOnly || onCurrent(window) || axSeen.contains(window) }
     // Accessibility lists a window only this long after it's on the current Space (moved there, or its Space made
     // current): the window server moves it first (seen 2026-11-15: Calculator brought into Margin's Space, not listed
@@ -99,7 +122,7 @@ final class FakeHostWorld: HostSystem {
     var axDesktopOnly: Set<Int> = []
     var lookups = 0 // Accessibility asked for a window by its number
     func axLists(_ n: Int) -> Bool {
-        guard !axCurrentOnly || onCurrent(n) else { return false }
+        guard !orderedOut.contains(n), !axCurrentOnly || onCurrent(n) else { return false }
         if axDesktopOnly.contains(n), current != Self.desktop { return false }
         return axDelay == 0 || clock - max(arrivedAt[n] ?? 0, currentSince) >= axDelay
     }
@@ -644,7 +667,7 @@ final class FakeHostWorld: HostSystem {
         guard !fail.contains("server") else { return nil }
         let own = wins.keys.sorted().compactMap { n -> ServerWindow? in
             guard let w = wins[n], w.pid == pid, serverMade(n), let b = bounds(window: n) else { return nil }
-            return ServerWindow(number: n, pid: pid, bounds: b, onScreen: onCurrent(n))
+            return ServerWindow(number: n, pid: pid, bounds: b, onScreen: onCurrent(n) && !orderedOut.contains(n) && !hiddenInFullScreen(n))
         }
         return own + serverExtra.filter { $0.pid == pid }
     }
@@ -693,7 +716,7 @@ final class FakeHostWorld: HostSystem {
     // so: `windowOnScreen`). `ownReads`: how many times a window's own read was asked.
     var listDrops: [Int: Int] = [:]
     var ownReads = 0
-    func shows(_ n: Int) -> Bool { !blank && (wins[n].map { $0.priv == nil && $0.spaces.contains(current) && !hidden.contains($0.pid) && !minimized.contains(n) } ?? false) }
+    func shows(_ n: Int) -> Bool { !blank && !orderedOut.contains(n) && !hiddenInFullScreen(n) && (wins[n].map { $0.priv == nil && $0.spaces.contains(current) && !hidden.contains($0.pid) && !minimized.contains(n) } ?? false) }
     func onScreenWindows() -> [ServerWindow]? {
         onScreenRead?()
         if let onScreen { return onScreen }
@@ -2188,7 +2211,7 @@ func hostTests() {
         list([toolbar])
         polls(3)
         check("host: a window of a hosted app that came during its opening (first seen right after it): never let in front of Margin's window", others.isEmpty, "\(others)")
-        let settings = ServerWindow(number: 901, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 600, height: 400)) // (over the sidebar)
+        let settings = ServerWindow(number: 901, pid: editPid, bounds: CGRect(x: 300, y: 20, width: 600, height: 400)) // (reaching above the page area, never over the sidebar: one over it is never let in front)
         list([settings, toolbar])
         polls(1)
         check("host: the shown app's window the person opened (its Settings), seen at one poll: not let in front yet (a Space change's picture lasts one read)", others.isEmpty, "\(others)")
@@ -2208,10 +2231,10 @@ func hostTests() {
         list([inside, toolbar])
         polls(1)
         check("host: gone: Margin's window in front again; a window wholly inside the page area needs nothing (it shows through the hole, its clicks its own)", others == [901, nil], "\(others)")
-        let panel = ServerWindow(number: 903, pid: editPid, layer: 3, bounds: CGRect(x: 120, y: 200, width: 600, height: 400))
-        let tiny = ServerWindow(number: 904, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 60, height: 40))
-        let unseen = ServerWindow(number: 905, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 600, height: 400), alpha: 0)
-        let own = ServerWindow(number: 906, pid: 1, bounds: CGRect(x: 120, y: 200, width: 600, height: 400))
+        let panel = ServerWindow(number: 903, pid: editPid, layer: 3, bounds: CGRect(x: 300, y: 20, width: 600, height: 400))
+        let tiny = ServerWindow(number: 904, pid: editPid, bounds: CGRect(x: 300, y: 20, width: 60, height: 40))
+        let unseen = ServerWindow(number: 905, pid: editPid, bounds: CGRect(x: 300, y: 20, width: 600, height: 400), alpha: 0)
+        let own = ServerWindow(number: 906, pid: 1, bounds: CGRect(x: 300, y: 20, width: 600, height: 400))
         list([panel, tiny, unseen, own])
         polls(3)
         check("host: never for a panel above normal windows (it's above Margin's already), a tiny or see-through window, or one of Margin's own", others == [901, nil], "\(others)")
@@ -2226,12 +2249,12 @@ func hostTests() {
         list([stranger])
         polls(4)
         check("host: an app Margin doesn't host, its window in Margin's Space by every read, poll after poll: never let in front (such an app can't put a normal window in another app's full-screen Space)", others == [901, nil], "\(others)")
-        let elsewhere = ServerWindow(number: 909, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 600, height: 400))
+        let elsewhere = ServerWindow(number: 909, pid: editPid, bounds: CGRect(x: 300, y: 20, width: 600, height: 400))
         w.serverSpaces[909] = [FakeHostWorld.marginSpace, 555]
         list([elsewhere])
         polls(4)
         check("host: the shown app's window in another Space too by its own Space read: never let in front", others == [901, nil], "\(others)")
-        let late = ServerWindow(number: 910, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 600, height: 400))
+        let late = ServerWindow(number: 910, pid: editPid, bounds: CGRect(x: 300, y: 20, width: 600, height: 400))
         list([late])
         w.onScreenRead = { w.current = 777 }
         for _ in 0..<4 { polls(1); w.current = FakeHostWorld.marginSpace }
@@ -2263,7 +2286,7 @@ func hostTests() {
         let notesNow = ServerWindow(number: b, pid: notesPid, bounds: page)
         w.onScreen = [margin, notesNow]
         polls(1)
-        let parkedOne = ServerWindow(number: 908, pid: editPid, bounds: CGRect(x: 120, y: 200, width: 600, height: 400))
+        let parkedOne = ServerWindow(number: 908, pid: editPid, bounds: CGRect(x: 300, y: 20, width: 600, height: 400))
         w.serverSpaces[908] = [FakeHostWorld.marginSpace]
         w.onScreen = [margin, parkedOne, notesNow]
         polls(4)
@@ -2431,9 +2454,9 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         let t = open(e, textEdit)
         let tw = window(w, "com.apple.TextEdit")
         check("window mode → full screen: TextEdit a member of Margin's Space, fitted", t == .shown(textEdit.id, placed: true) && w.inMargin == [tw] && w.wins[tw]?.member == true && w.bounds(window: tw) == page, "\(String(describing: t))")
-        check("window mode → full screen: FaceTime's frame given back on the current Space, then parked in a private Space (no full-screen exit)",
-              w.wins[n]?.frame == original && w.wins[n]?.priv != nil && at(w, frameCall(n, original)) >= 0 && at(w, frameCall(n, original)) < last(w, "move \(n) ") && !w.calls.contains("fullScreen false \(n)"), "\(w.calls)")
-        check("window mode → full screen: Margin's window kept below TextEdit now; FaceTime saved its own frame", h.above.last == .some(tw) && e.shownWindow == tw && w.saved["com.apple.FaceTime"] == original, "\(h.above)")
+        check("window mode → full screen: FaceTime parked in a private Space as it is, at the page area's frame (its frame is given back only with it: no frame set, no full-screen exit)",
+              w.wins[n]?.frame == page2 && w.wins[n]?.priv != nil && !w.calls.contains { $0.hasPrefix("frame \(n) ") } && !w.calls.contains("fullScreen false \(n)"), "\(w.calls)")
+        check("window mode → full screen: Margin's window kept below TextEdit now", h.above.last == .some(tw) && e.shownWindow == tw, "\(h.above)")
         w.calls = []
         let back = hostRun { await e.show(faceTime.id) }
         check("full screen → window mode: FaceTime back in Margin's Space at the page area, TextEdit parked still full screen", back == .shown(faceTime.id, placed: true) && w.spaces(window: n) == [FakeHostWorld.marginSpace]
@@ -2537,7 +2560,7 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         w.fail = ["setCurrent"] // (and its Desktop can't be made current either)
         let r = open(e, calculator)
         check("window mode: not listed anywhere: not hosted, said so; Calculator quit, Margin's Space current, nothing left",
-              r == .failed(.window, "Accessibility doesn't list its window, even on the current Space or with its Desktop current") && w.running(bundleId: "com.apple.calculator").isEmpty
+              r == .failed(.window, "Accessibility doesn't list its window, even on the current Space or with its Desktop current, nor once its app was brought forward") && w.running(bundleId: "com.apple.calculator").isEmpty
               && w.current == FakeHostWorld.marginSpace && w.privates.isEmpty && clean(w) && e.hosts.isEmpty, "\(String(describing: r))")
     }
 
@@ -2969,7 +2992,7 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
     do {
         // TextEdit and Notes full screen (one shown, one parked), FaceTime and Calculator in window mode, the person's
         // Phone, a Safari window a copy made; the window server's bounds 300 ms late (each window-mode frame given back
-        // takes that), Notes slow to finish its quit (3 s), Calculator's 5 s: the quit is the slowest host's time.
+        // takes that: parked at the page area's frame, each is given back at the quit), Notes slow to finish its quit (3 s), Calculator's 5 s: the quit is the slowest host's time.
         let (w, e, marker) = world()
         let safariPid = w.start("com.apple.Safari", policy: .regular, windows: 0)
         let copy = FakeSafariCopy(w) { safariPid }
@@ -3004,7 +3027,7 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         })
         print("  (Margin's quit with six hosts: \(Int(took * 1000)) ms; each host's give-back \(each) ms, \(each.reduce(0, +)) ms one after another)")
         check("at once: the quit in \(Int(took * 1000)) ms, about the slowest host's (\(each.max() ?? -1) ms), not their sum (\(each.reduce(0, +)) ms)",
-              took < 0.5 && each.count == 6 && Double(each.reduce(0, +)) > took * 1000 * 1.5 && Double(each.max() ?? 0) >= took * 1000 - 30, "\(each) \(took)")
+              took < 0.6 && each.count == 6 && Double(each.reduce(0, +)) > took * 1000 * 1.5 && Double(each.max() ?? 0) >= took * 1000 - 30, "\(each) \(took)")
         check("at once: the hosts' steps interleaved (\(touched.count) windows had steps done by the second app's ask to quit)", touched.count >= 3, "\(w.calls)")
         check("at once: no app's exit waited for: Notes and Calculator still quitting as it ends, said; TextEdit and FaceTime out",
               w.apps[started["com.apple.Notes"]!] != nil && w.apps[started["com.apple.calculator"]!] != nil && w.apps[started["com.apple.TextEdit"]!] == nil && w.apps[started["com.apple.FaceTime"]!] == nil
@@ -3132,7 +3155,7 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         w.axCurrentOnly = false
         _ = open(e, notes)
         w.axCurrentOnly = true
-        check("person's app parked: its frame already given back, in a private Space", w.wins[n]?.priv != nil && w.wins[n]?.frame == original)
+        check("person's app parked: in a private Space as it is, at the page area's frame (given back only with it)", w.wins[n]?.priv != nil && w.wins[n]?.frame == page)
         hostRun { await e.quitAll() }
         check("person's app parked, Margin quits: back on its Desktop at its frame, still running; the app Margin started quit",
               w.spaces(window: n) == [FakeHostWorld.desktop] && w.wins[n]?.frame == original && w.apps[p] != nil && !w.calls.contains("terminate \(p)") && w.running(bundleId: "com.apple.Notes").isEmpty && w.privates.isEmpty && clean(w))
@@ -3175,7 +3198,7 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         let n = window(w, "com.apple.FaceTime")
         w.axCurrentOnly = true
         hostRun { await e.parkShown(why: "Margin's window left full screen") }
-        check("window mode: Margin's window leaving full screen: the window's frame given back, then parked, nothing shown", w.wins[n]?.priv != nil && w.wins[n]?.frame == original && e.shown == nil && h.above.last == .some(nil))
+        check("window mode: Margin's window leaving full screen: parked as it is (at the page area's frame), nothing shown", w.wins[n]?.priv != nil && w.wins[n]?.frame == page && e.shown == nil && h.above.last == .some(nil))
         let again = open(e, faceTime)
         check("window mode: shown again: back at the page area", again == .shown(faceTime.id, placed: true) && w.bounds(window: n) == page && h.above.last == .some(n))
         hostRun { await e.quitAll() }
@@ -3235,7 +3258,7 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         let f = window(w, "com.apple.FaceTime"), fp = pid(w, "com.apple.FaceTime")
         w.axCurrentOnly = true
         _ = open(e, phone)
-        check("crash: (Phone shown at the page area, FaceTime parked at its own frame)", w.bounds(window: n) == page && w.wins[f]?.priv != nil && w.wins[f]?.frame == original)
+        check("crash: (Phone shown at the page area, FaceTime parked at the page area's frame, its own in the marker)", w.bounds(window: n) == page && w.wins[f]?.priv != nil && w.wins[f]?.frame == page)
         w.onAppQuit = nil
         w.tiles[FakeHostWorld.marginSpace] = nil
         w.wins[n]?.spaces = []
@@ -3407,10 +3430,10 @@ func refusedFullScreenTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
               r == .shown(maps.id, placed: true) && e.mode(of: maps.id) == .window && w.wins[n]?.fullScreen == false && w.bounds(window: n) == page && w.restoredSpaces.allSatisfy { w.tiles[$0] == nil } && clean(w),
               "\(String(describing: r)) \(String(describing: w.wins[n])) \(w.tiles)")
         _ = open(e, notes)
-        done()
-        check("restored full screen, then window mode: parked, its frame given back is the window's own (\(w.saved["com.apple.Maps"].map { "\($0)" } ?? "none")), never its full-screen bounds; no \"wasn't given back\"",
-              w.saved["com.apple.Maps"] == FakeHostWorld.defaultFrame && said(lines, "wasn't given back") == 0 && !w.calls.contains("frame \(n) 0,33 1512×949"), "\(w.calls.filter { $0.hasPrefix("frame \(n)") })")
         hostRun { await e.quitAll() }
+        done()
+        check("restored full screen, then window mode: parked, then given back at Margin's quit: its frame given back is the window's own (\(w.frameAtQuit["com.apple.Maps"].map { "\($0)" } ?? "none")), never its full-screen bounds; no \"wasn't given back\"",
+              w.frameAtQuit["com.apple.Maps"] == FakeHostWorld.defaultFrame && said(lines, "wasn't given back") == 0 && !w.calls.contains("frame \(n) 0,33 1512×949"), "\(w.calls.filter { $0.hasPrefix("frame \(n)") })")
     }
 
     // ---- full screen by Accessibility with no Space of its own (in Margin's Space): out of it first, then asked ----
@@ -3587,10 +3610,16 @@ func refusedFullScreenTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         _ = open(e, notes)
         let n = window(w, "com.apple.FaceTime")
         check("stale element: FaceTime's element gone stale once its window left for a private Space", w.axStale.contains(n))
+        let mark = w.calls.count
         let back = hostRun { await e.show(faceTime.id) }
+        check("stale element: shown again (a switch): at the page area's frame already, no frame set", back == .shown(faceTime.id, placed: true) && w.bounds(window: n) == page
+              && !w.calls[mark...].contains { $0.hasPrefix("frame \(n) ") }, "\(w.calls[mark...])")
+        // (The next frame it's given: the page area moved.)
+        let page2 = CGRect(x: 320, y: 41, width: 1184, height: 933)
+        let moved = hostRun { await e.pageRectChanged(HostPlacement(page: page2, area: FakeHostWorld.display)) }
         done()
-        check("stale element: shown again, placed at the page area: its element found again by its number after the refused set, the error code said",
-              back == .shown(faceTime.id, placed: true) && w.bounds(window: n) == page && w.calls.contains("refresh \(n)")
+        check("stale element: placed at a new page area: its element found again by its number after the refused set, the error code said",
+              moved == true && w.bounds(window: n) == page2 && w.calls.contains("refresh \(n)")
               && said(lines, "Accessibility refused its frame (error -25202): its element found again by its number, the frame taken") == 1, "\(String(describing: back)) \(w.calls.suffix(8))")
         hostRun { await e.quitAll() }
         check("stale element: quit: its frame given back as it was", w.frameAtQuit["com.apple.FaceTime"] == FakeHostWorld.defaultFrame)
@@ -3691,19 +3720,24 @@ func session1405Tests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         e.poll(); barrier(e)
         let first = w.calls[mark...].filter { $0.hasPrefix("activate") || $0.hasPrefix("current") || $0.hasPrefix("move") }.isEmpty
         for _ in 0..<8 { e.poll(); barrier(e) }
-        check("window ordered out: a window-mode window off screen in Margin's Space (the current one), Margin's window on screen: not at the first read; no Space made current, nothing moved, ever; its window raised once for the show; said once",
-              first && !w.calls[mark...].contains { $0.hasPrefix("current") || $0.hasPrefix("move") } && w.calls[mark...].filter { $0 == "activate \(p) \(n)" }.count == 1
-              && said(lines, "no Space made current, nothing moved; its window raised once") == 1 && said(lines, "Margin's Space made current again") == 0 && said(lines, "left as it is until it's shown again") == 1,
-              "\(first) \(w.calls[mark...]) \(lines.all.filter { $0.contains("screen") })")
-        // Shown again (away and back): the look may act once more for that show.
+        // (The reconciler's bringForward, a rung at a time: activated once, a Dock-icon click once, then the fallback: parked
+        // with nothing shown, its item kept. Never a Space made current, never moved but into its private Space.)
+        let moves = w.calls[mark...].filter { $0.hasPrefix("move") }
+        check("window ordered out: a window-mode window off screen in Margin's Space (the current one), Margin's window on screen: not at the first read; no Space made current ever; brought forward once a rung (activated, a reopen), then parked with nothing shown; said once each",
+              first && !w.calls[mark...].contains { $0.hasPrefix("current") } && w.calls[mark...].filter { $0 == "activate \(p) \(n)" }.count == 1 && w.calls[mark...].filter { $0 == "reopen \(p)" }.count == 1
+              && moves.count == 1 && w.wins[n]?.priv != nil && e.shown == nil && e.isHosted(faceTime.id)
+              && said(lines, "→ bring forward (activate)") == 1 && said(lines, "→ bring forward (reopen)") == 1 && said(lines, "→ fallback (its window stays off screen in Margin's Space)") == 1
+              && said(lines, "Margin's Space made current again") == 0,
+              "\(first) \(w.calls[mark...]) \(lines.all.filter { $0.contains("screen") || $0.contains("→") })")
+        // Shown again (away and back), still ordered out: the same rungs again for that show, its budget anew.
         w.minimized = []
         _ = open(e, notes)
         _ = hostRun { await e.show(faceTime.id) }
         w.minimized = [n]
         let again = w.calls.count
-        for _ in 0..<6 { e.poll(); barrier(e) }
+        for _ in 0..<8 { e.poll(); barrier(e) }
         done()
-        check("window ordered out: shown again, still ordered out: raised once more for that show, never a Space made current",
+        check("window ordered out: shown again, still ordered out: activated once more for that show, never a Space made current",
               w.calls[again...].filter { $0 == "activate \(p) \(n)" }.count == 1 && !w.calls[again...].contains { $0.hasPrefix("current") }, "\(w.calls[again...])")
         w.minimized = []
         hostRun { await e.quitAll() }
@@ -3794,11 +3828,15 @@ func session1405Tests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         list([over])
         polls(4)
         let overLet = others.contains(902)
-        let settings = ServerWindow(number: 903, pid: editPid, bounds: CGRect(x: 200, y: 200, width: 600, height: 400)) // (reaching a little over the sidebar)
+        let little = ServerWindow(number: 903, pid: editPid, bounds: CGRect(x: 200, y: 200, width: 600, height: 400)) // (reaching a little over the sidebar)
+        list([little])
+        polls(4)
+        let littleLet = others.contains(903)
+        let settings = ServerWindow(number: 904, pid: editPid, bounds: CGRect(x: 300, y: 20, width: 600, height: 400)) // (above the page area, beside the sidebar)
         list([settings])
         polls(4)
-        check("yield: never a full-screen window's toolbar strip, nor a window covering Margin's sidebar; a Settings window reaching a little over it still let in front",
-              !stripLet && !overLet && others.contains(903), "\(others)")
+        check("yield: never a full-screen window's toolbar strip, nor a window over Margin's sidebar, even a little (docs/HOSTING-CORE.md: an auxiliary window in front only if it doesn't cover it); a Settings window beside it still let in front",
+              !stripLet && !overLet && !littleLet && others.contains(904), "\(others)")
         w.onScreen = nil
         hostRun { await e.quitAll() }
     }

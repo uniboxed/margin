@@ -1,7 +1,8 @@
 // The hosting core's window kinds (docs/HOSTING-CORE.md, principle 2): every window of an app Margin hosts gets one
 // kind from generic rules on its layer, size, position, Accessibility's role and subrole, and its history. Never a
 // bundle id. Pure: one function of what's observed (HostModel.swift), tested on its own (tests/host-model-tests.swift,
-// a row per case the real sessions showed). Stage 2: the kinds are only logged; nothing acts on them yet.
+// a row per case the real sessions showed). Stage 3: the reconciler acts on them (HostReconciler.swift): leftovers and
+// strips parked (or closed), a replacement adopted, nothing but auxiliaries and dialogs let in front of Margin's window.
 //
 // The kinds:
 //   main       the window that is the app (shown at the page area, or parked): one per host
@@ -29,6 +30,9 @@
 //   8. a candidate made before the window Margin hosts (a lower window number: the window server numbers windows in
 //      the order they're made), in an app Margin started, not hosted: restored                     leftover
 //   9. a candidate that can't go full screen while another can (a settings window)                  auxiliary
+//  8b. a candidate there as the first show of the window Margin hosts ended (`launchWindows`: restored, or made as its app
+//      launched, a twin), in an app Margin started, not hosted (stage 3: Chameleon's restored windows came after the one
+//      Margin chose, at higher numbers)                                                             leftover
 //  10. the mains: each hosted candidate its app didn't replace (a hosted window is replaced when it's in no Space and
 //      another window is in one at its frame, or when another at its frame is Accessibility's main window and it isn't);
 //      none: the best of the candidates by, in order: in a Space (or on screen), Accessibility's main window, on
@@ -94,6 +98,9 @@ nonisolated enum WindowKinds {
         var hosted: Set<Int> = []
         var woken: Set<Int> = []
         var previousMains: Set<Int> = []
+        // Its windows as the first show of the window Margin hosts ended (an app Margin started): restored by it, or made as
+        // it launched (stage 3: Chameleon's restored windows came after the one Margin chose, at higher numbers).
+        var launchWindows: Set<Int> = []
     }
 
     struct Verdict: Equatable, Sendable {
@@ -179,6 +186,15 @@ nonisolated enum WindowKinds {
             candidates = candidates.filter { w in
                 guard w.canFullScreen == false, !app.hosted.contains(w.number) else { return true }
                 out[w.number] = Verdict(kind: .auxiliary, why: "can't go full screen while \(canFull) of its app's windows can (a settings or utility window)")
+                return false
+            }
+        }
+        // 8b. Made as its app launched (there as the first show of the window Margin hosts ended), in an app Margin started,
+        // not hosted: restored, or a launch window of its own (a twin): a leftover.
+        if app.launchedByMargin, !app.hosted.isEmpty {
+            candidates = candidates.filter { w in
+                guard !app.hosted.contains(w.number), app.launchWindows.contains(w.number) else { return true }
+                out[w.number] = Verdict(kind: .leftover, why: "there as its app launched, before Margin showed the window it hosts, in an app Margin started: restored, in \(w.place.text)")
                 return false
             }
         }

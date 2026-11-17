@@ -35,6 +35,10 @@ protocol HostSystem: AnyObject {
     func isHidden(pid: pid_t) -> Bool?
     // Unhidden (NSRunningApplication.unhide: never activated). True: asked.
     func unhide(pid: pid_t) -> Bool
+    // A Dock-icon click on a running app (kAEReopenApplication, an Apple event straight to its process, never through
+    // LaunchServices: an open there promotes an app Margin started with no Dock icon to a Dock app, 2026-11-15): the app
+    // orders its main window in, or makes a new one (Maps running with no window, 2026-11-17 15:19). True: sent.
+    func reopen(pid: pid_t) -> Bool
 
     // ---- windows, through Accessibility: read, full screen set, a window-mode host's frame set ----
     // (Accessibility lists only the current Space's windows: the engine moves a window there before it sets its frame.)
@@ -118,6 +122,8 @@ protocol HostSystem: AnyObject {
 }
 
 extension HostSystem {
+    // (A stand-in that doesn't play it: not sent.)
+    func reopen(pid: pid_t) -> Bool { false }
     // (A stand-in that doesn't play it: none.)
     func focusedWindow(pid: pid_t) async -> Int? { nil }
     func frameError(window: Int) -> Int32? { nil }
@@ -450,6 +456,22 @@ final class RealHostSystem: HostSystem {
     func unhide(pid: pid_t) -> Bool {
         guard !PrivateCalls.inTests, let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return false }
         return a.unhide()
+    }
+
+    // (No reply asked, never interacting; the error said once when it isn't sent: an Apple event refused by the system.)
+    private var reopenRefusalSaid = false
+    func reopen(pid: pid_t) -> Bool {
+        guard !PrivateCalls.inTests, let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return false }
+        let event = NSAppleEventDescriptor(eventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEReopenApplication),
+                                           targetDescriptor: NSAppleEventDescriptor(processIdentifier: pid), returnID: AEReturnID(kAutoGenerateReturnID),
+                                           transactionID: AETransactionID(kAnyTransactionID))
+        guard let desc = event.aeDesc else { return false }
+        let err = AESendMessage(desc, nil, AESendMode(kAENoReply | kAENeverInteract), kAEDefaultTimeout)
+        if err != noErr, !reopenRefusalSaid {
+            reopenRefusalSaid = true
+            Diagnostics.note("host: a reopen (kAEReopenApplication) to pid \(pid) wasn't sent: error \(err)")
+        }
+        return err == noErr
     }
 
     func enhancedUserInterface(pid: pid_t) async -> Bool? { await ax.enhancedUserInterface(pid: pid) }

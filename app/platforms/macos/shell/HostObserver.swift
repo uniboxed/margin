@@ -46,6 +46,7 @@ final class HostObserver {
         var hosted: [Int: String] = [:] // its windows Margin hosts → their host's log name
         var parked: [Int: UInt64] = [:] // its windows in a private Space Margin made → that Space
         var woken: Set<Int> = [] // windows it opened only so Margin could wake it
+        var launchWindows: Set<Int> = [] // its windows when the first show of a window of it ended (an app Margin started)
     }
 
     // What it costs (the tests and the dev hook say it).
@@ -122,6 +123,7 @@ final class HostObserver {
             app.launchedByMargin = t.launchedByMargin
             app.hosted = t.hosted
             app.woken = t.woken
+            app.launchWindows = t.launchWindows
             app.running = sys.processRuns(pid: t.pid)
             app.policy = sys.policy(pid: t.pid)
             app.hidden = sys.isHidden(pid: t.pid)

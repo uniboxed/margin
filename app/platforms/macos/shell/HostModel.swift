@@ -94,6 +94,7 @@ nonisolated struct HostModelApp: Equatable, Sendable {
     var hidden: Bool? = nil
     var hosted: [Int: String] = [:] // the windows Margin hosts → their host (HostID's log name)
     var woken: Set<Int> = [] // windows Margin opened only to wake it
+    var launchWindows: Set<Int> = [] // its windows as the first show of a window of it ended (an app Margin started)
     var since: Double // when the observer started following it
     var axMain: Int? = nil
     var axFocused: Int? = nil
@@ -112,7 +113,7 @@ nonisolated struct HostModelApp: Equatable, Sendable {
 
     // Every window's kind again (WindowKinds.classify), the last mains kept for a tie. The change in its lastChanged.
     mutating func classify(in placement: HostPlacement, at now: Double) {
-        let app = WindowKinds.App(launchedByMargin: launchedByMargin, hosted: Set(hosted.keys), woken: woken, previousMains: Set(mains))
+        let app = WindowKinds.App(launchedByMargin: launchedByMargin, hosted: Set(hosted.keys), woken: woken, previousMains: Set(mains), launchWindows: launchWindows)
         let verdicts = WindowKinds.classify(windows.values.map(\.classified), app: app, in: placement)
         for (n, v) in verdicts {
             guard var w = windows[n] else { continue }
