@@ -6,9 +6,9 @@
 // and an unsigned build's, Safari closed (no write-ahead log: nothing made
 // beside the database), a busy database, no permission, no Safari, a
 // database that isn't Safari's, a rename and a new profile picked up by the
-// watcher, and the names used: Safari's over a typed one, Edit Profile
-// keeping the name, the typed names back without the permission, a profile
-// deleted in Safari, and the symbol's picture.
+// watcher, and the names used: Safari's over a typed one (an earlier
+// version's Edit Profile), the typed names back without the permission, a
+// profile deleted in Safari, and a profile's set carried to its new id.
 import AppKit
 import Foundation
 import SQLite3

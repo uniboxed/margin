@@ -98,7 +98,7 @@ nonisolated struct HostSafariWindow: Equatable, Sendable {
 // area's size). Read from its View menu's item (SafariAX).
 nonisolated enum HostSidebar: Equatable, Sendable { case open, closed, unknown }
 
-// The crash marker (hosted.json, beside parked.json): the apps this Margin started and the windows it hosts, with
+// The crash marker (hosted.json): the apps this Margin started and the windows it hosts, with
 // the Spaces it made or was leaving. Numbers, bundle ids and launch times only.
 nonisolated struct HostMarker: Codable, Equatable, Sendable {
     static let fileName = "hosted.json"
