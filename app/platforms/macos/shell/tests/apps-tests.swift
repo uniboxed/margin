@@ -56,6 +56,18 @@ func appsTests() {
     check("apps: the folder's bundles and its plain subfolders', one level, never inside a bundle or hidden",
           Set(found) == ["Agent.app", "Broken.app", "Editor.app", "Margin.app", "NoPlist.app", "Writer.app", "Zed Notes.app"], "\(found)")
     check("apps: a folder that isn't there: none", AppCatalog.bundles(in: tmp.appendingPathComponent("nope")).isEmpty)
+    // (Safari since macOS 13: /Applications/Safari.app is a hidden link to the app in the system's cryptex.)
+    let linked = tmp.appendingPathComponent("Linked", isDirectory: true)
+    let cryptex = tmp.appendingPathComponent("Cryptex", isDirectory: true)
+    makeApp(cryptex, "Browser", plain("com.example.browser"))
+    makeApp(linked, "Flagged", plain("com.example.flagged")) // a hidden app (the flag, not a dot): stays out
+    makeApp(linked.appendingPathComponent("Flagged Folder", isDirectory: true), "Inside", plain("com.example.inside"))
+    try? fm.createSymbolicLink(atPath: linked.appendingPathComponent("Browser.app").path, withDestinationPath: cryptex.appendingPathComponent("Browser.app").path)
+    let flagged = ["Browser.app", "Flagged.app", "Flagged Folder"].allSatisfy { lchflags(linked.appendingPathComponent($0).path, UInt32(UF_HIDDEN)) == 0 }
+    let inLinked = AppCatalog.bundles(in: linked).map(\.lastPathComponent)
+    check("apps: a hidden link to an app is listed (Safari's), a hidden app or folder isn't", flagged && inLinked == ["Browser.app"], "\(flagged) \(inLinked)")
+    check("apps: the hidden link read as the app it links to", AppCatalog.read(linked.appendingPathComponent("Browser.app"))?.bundleId == "com.example.browser")
+
     let editor = AppCatalog.read(apps.appendingPathComponent("Editor.app"))
     check("apps: one read: its bundle id, Finder's name, its path, its Info.plist's time", editor?.bundleId == "com.example.editor" && editor?.name == "Editor"
           && editor?.path.hasSuffix("/Applications/Editor.app") == true && (editor?.stamp ?? 0) > 1_700_000_000, "\(String(describing: editor))")
@@ -105,6 +117,16 @@ func appsTests() {
     _ = cache.dataURL(for: app)
     let files = Set((try? fm.contentsOfDirectory(atPath: cacheFolder.path)) ?? [])
     check("apps: a new version: made again, its older icon removed, another app's kept", renders.count == 3 && files == ["com.example.editor@200@32.png", "com.example.editor-pro@5@32.png"], "\(files)")
+    // The size raised (32 px to 64, 2026-11-17): every icon made again at the new size, its older file removed.
+    check("apps: icons are 64 px (sharp at 32 pt on a 2x display: a loader's icon)", AppCatalog.iconPixels == 64 && AppIconCache(folder: cacheFolder).pixels == 64)
+    let bigger = AppIconCache(folder: cacheFolder, pixels: 64, render: { _, pixels in
+        renders.lock.lock(); renders.count += 1; renders.lock.unlock()
+        return Data([0x89, 0x50, 0x4e, 0x47, UInt8(pixels)])
+    })
+    let resized = bigger.dataURL(for: app)
+    let afterResize = Set((try? fm.contentsOfDirectory(atPath: cacheFolder.path)) ?? [])
+    check("apps: another size: the kept icon not used, made at the new size, the old size's file removed", resized == "data:image/png;base64,iVBOR0A=" && renders.count == 4
+          && afterResize == ["com.example.editor@200@64.png", "com.example.editor-pro@5@32.png"] && bigger.dataURL(for: app) == resized && renders.count == 4, "\(resized ?? "nil") \(afterResize)")
     let none = AppIconCache(folder: cacheFolder, pixels: 32, render: { _, _ in nil })
     check("apps: no icon can be made: none", none.dataURL(for: InstalledApp(bundleId: "com.example.none", name: "None", path: "", stamp: 1)) == nil)
     let huge = AppIconCache(folder: cacheFolder, pixels: 32, render: { _, _ in Data(count: AppIconCache.maxBytes + 1) })
