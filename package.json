@@ -36,6 +36,7 @@
     "theme:pack": "node scripts/pack-theme.ts",
     "typecheck": "tsc -p . && tsc -p tsconfig.tests.json",
     "test:webkit": "node scripts/build.ts && tools/webkit-host/run.sh all",
+    "test:screen": "tools/screen-tests/run.sh",
     "safari": "sh scripts/safari.sh",
     "log:app": "scripts/margin-log.sh"
   },
