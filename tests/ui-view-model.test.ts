@@ -311,3 +311,62 @@ test('dedicated Settings shows its controls without start-page sections in every
   assert.equal(vm.launcher?.settingsOpen, true);
   assert.ok(vm.settingsForm?.fields.length);
 });
+
+// Margin.app's app items (app/shared/library/library.ts: `target: { kind: 'app', bundleId }`, address app://<bundle id>):
+// each row's icon the installed app's, from the app's list (the state's `apps`, ui/host-app.ts), by bundle id.
+test('app items: the installed app\'s icon wherever a row or tile shows one; no icon: its name\'s letter; web items as before', () => {
+  const notes = icon([250, 200, 40]).data, calc = icon([60, 60, 60]).data, safari = icon([20, 120, 240]).data;
+  const state = smallState();
+  const app = (bundleId: string, name: string) => ({ url: `app://${bundleId}`, title: name, target: { kind: 'app', bundleId, name } });
+  Object.assign(state.tabs, {
+    31: { ...state.tabs[14], id: 31, index: 6, ...app('com.apple.Notes', 'Notes'), favIconUrl: '' },
+    32: { ...state.tabs[14], id: 32, index: 7, ...app('com.example.Gone', 'Gone App'), favIconUrl: '' },
+    33: { ...state.tabs[14], id: 33, index: 8, ...app('com.apple.Maps', 'Maps'), favIconUrl: '' },
+    // (No target: the address alone says it's an app item; a bundle id's case as macOS takes it.)
+    34: { ...state.tabs[14], id: 34, index: 9, url: 'app://com.apple.notes', title: 'Notes again', favIconUrl: '' },
+  });
+  Object.assign(state.tabSpace, { 31: 'home', 32: 'home', 33: 'home', 34: 'home' });
+  state.pins = [...state.pins, { id: 'pcalc', spaceId: 'home', pos: 3, ...app('com.apple.calculator', 'Calculator') } as any];
+  const withApps = { ...state, apps: [
+    { bundleId: 'com.apple.Notes', name: 'Notes', icon: notes },
+    { bundleId: 'com.apple.calculator', name: 'Calculator', icon: calc },
+    { bundleId: 'com.apple.Maps', name: 'Maps', icon: null },
+    { bundleId: 'com.apple.Safari', name: 'Safari', icon: safari },
+  ] };
+  const vm = build(withApps);
+  const row = (id: number) => vm.space.today.find((t) => t.id === id)!;
+  assert.deepEqual([row(31).icon, row(34).icon], [notes, notes], 'an app tab: the installed app\'s icon (by its target, or its address alone)');
+  const pin = vm.space.pins.find((p) => p.id === 'pcalc')!;
+  assert.equal(pin.icon, calc, 'an app pin: its app\'s icon');
+  assert.deepEqual([row(32).icon, row(32).letter], [null, 'G'], 'an app not installed: its name\'s letter (not its bundle id\'s "C")');
+  assert.deepEqual([row(33).icon, row(33).letter], [null, 'M'], 'an installed app with no icon: the letter');
+  assert.equal(row(12).icon, state.favicons['https://mail.example'].data, 'a web item: its site\'s icon, as before');
+  assert.equal(row(14).icon, null, 'a web item with none: as before');
+  const before = build(state).space.today;
+  assert.deepEqual([31, 32, 33, 34].map((id) => before.find((t) => t.id === id)).map((t) => [t?.icon, t?.letter]), [[null, 'N'], [null, 'G'], [null, 'M'], [null, 'N']], 'no apps listed (before the first scan): letters');
+  // The tab in front, the launcher's tiles, the palette's open-tab rows.
+  const front = build({ ...withApps, tabs: { ...withApps.tabs, 13: { ...withApps.tabs[13], active: false }, 31: { ...(withApps.tabs as Record<number, any>)[31], active: true } } });
+  assert.equal(front.tab?.icon, notes, 'the tab in front');
+  assert.equal(buildViewModel({ state: withApps, ui: { windowId: W, inNewTab: true }, platform: PLATFORM }).launcher!.pins.find((p) => p.id === 'pcalc')!.icon, calc, 'the launcher\'s tile');
+  const palette = build(withApps, { palette: { open: true, query: 'notes', selected: 0 } });
+  const open = palette.palette.rows.filter((r) => r.title === 'Notes' && !r.isApp);
+  assert.ok(open.length >= 1 && open.every((r) => r.icon === notes), `the palette's open-tab row (${JSON.stringify(palette.palette.rows.map((r) => [r.kind, r.title, !!r.icon]))})`);
+  // A bad icon in the list never reaches a theme.
+  const bad = build({ ...withApps, apps: [{ bundleId: 'com.apple.Notes', name: 'Notes', icon: 'https://evil.example/x.png' }] });
+  assert.equal(bad.space.today.find((t) => t.id === 31)!.icon, null, 'only data: images, as every row icon');
+});
+
+test('the page card\'s loader: the opening item\'s icon (the app\'s, Safari\'s for a web item) from the installed apps, by the bundle id the app names', () => {
+  const notes = icon([250, 200, 40]).data, safari = icon([20, 120, 240]).data;
+  const state = { ...smallState(), apps: [{ bundleId: 'com.apple.Notes', name: 'Notes', icon: notes }, { bundleId: 'com.apple.Safari', name: 'Safari', icon: safari }, { bundleId: 'com.apple.Maps', name: 'Maps', icon: null }] };
+  const loader = (pageOpening: UiState['pageOpening'], s: ViewModelInput['state'] = state) => build(s, { pageOpening }).pageLoader;
+  assert.deepEqual(loader({ name: 'Notes', bundleId: 'com.apple.Notes' }), { name: 'Notes', label: 'Opening Notes…', icon: notes }, 'an app: its icon');
+  assert.deepEqual(loader({ name: 'Example', bundleId: 'com.apple.Safari' }), { name: 'Example', label: 'Opening Example…', icon: safari }, 'a web item: Safari\'s');
+  assert.equal(loader({ name: 'Maps', bundleId: 'com.apple.Maps' })?.icon, null, 'an app with no icon: none');
+  assert.equal(loader({ name: 'Gone', bundleId: 'com.example.Gone' })?.icon, null, 'an app not installed: none');
+  assert.equal(loader({ name: 'Notes', bundleId: '../x' })?.icon, null, 'not a bundle id: none');
+  assert.equal(loader({ name: 'Notes' })?.icon, null, 'no bundle id said: none');
+  assert.equal(loader({ name: 'Notes', bundleId: 'com.apple.Notes' }, smallState())?.icon, null, 'no apps listed: none');
+  assert.equal(loader(null), null, 'not loading: no loader');
+  assert.equal(loader({ name: 'Notes', bundleId: 'com.apple.Notes' }, { ...state, apps: [{ bundleId: 'com.apple.Notes', name: 'Notes', icon: 'data:text/html;base64,PHA+' }] })?.icon, null, 'never anything but a data: image');
+});

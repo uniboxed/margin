@@ -1,6 +1,8 @@
 // Pure view derivation shared by the content script and the new-tab page.
 // No browser APIs: also importable from node for tests.
 import type { Pin, State } from '../../types/margin';
+import { appIcon, appOfItem } from './apps.ts';
+import type { InstalledApp } from './apps.ts';
 
 // A pin's or folder's order (state/model.ts): saved, or its place in the list.
 const posOf = (item: { pos?: number } | null | undefined, i: number): number => (Number.isFinite(item?.pos) ? item!.pos! : i);
@@ -267,9 +269,13 @@ function pickIconHref(links: { rel: string; href: string; sizes?: string; type?:
   return best ? best.l.href : `${origin}/favicon.ico`;
 }
 
-// What to show for a tab/pin/archive entry: the browser's icon if it gave
+// What to show for a tab/pin/archive entry: an app item's (Margin.app: its
+// address app://<bundle id>) the installed app's icon, as the app listed it
+// (the state's `apps`: shared/apps.ts); else the browser's icon if it gave
 // one (Chrome does), else the icon Margin fetched for that site.
-function iconFor(state: State, item: { url?: string, favIconUrl?: string } | null | undefined) {
+function iconFor(state: State, item: { url?: string, favIconUrl?: string, target?: unknown } | null | undefined) {
+  const app = appOfItem(item);
+  if (app) return appIcon((state as { apps?: InstalledApp[] | null } | null)?.apps, app) ?? '';
   if (/^(https?|data):/.test(item?.favIconUrl ?? '')) return item!.favIconUrl!; // (an icon matched: it's there)
   const origin = originOf(item?.url);
   return (origin && state?.favicons?.[origin]?.data) || '';

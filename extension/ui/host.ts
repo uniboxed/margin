@@ -78,6 +78,8 @@ export type Host = {
    */
   readonly pageState?: 'empty' | 'loading' | 'shown',
   readonly pageOpening?: string | null,
+  /** The app whose icon the loader shows (its bundle id: the app's, or the browser's for a web item), as the app says it. */
+  readonly pageOpeningBundleId?: string | null,
   readonly focusLauncherAtMount?: boolean,
   perform?(name: string, arg?: any): boolean,
   // Margin.app's imported themes (ui/host-app.ts), for Settings' Remove prompt.

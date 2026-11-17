@@ -56,6 +56,7 @@ export type CleanNode = ParsedText | CleanElement;
 type Ctx = {
   files: string[], assetUrl: (path: string) => string, removed: Removed[], errors: string[], stats: { pages: number, nodes: number },
   parts: Set<string>, slots: Set<string>, ns: string, forDepth: number, inTemplate: boolean, inIf: boolean, guard: string | null, part?: string,
+  inLoader?: boolean, // inside the `page-loader` part or the <m-page-loader> slot
 };
 // The files a style sheet may point to, and how their addresses are written.
 type CssOptions = { files?: string[], assetUrl?: (path: string) => string };
@@ -97,6 +98,13 @@ export function isDataUrl(value: unknown, { fonts = false } = {}) {
 // form Margin stores icons in. Checked when the value arrives, not when the
 // theme loads, since the value isn't the theme's.
 export const checkIconUrl = (value: unknown): value is string => typeof value === 'string' && /^data:image\//.test(value) && /;base64,/.test(value) && isDataUrl(value);
+
+// The opening item's icon (`pageLoader.icon`: Margin.app's loader, the installed app's icon) binds where an icon
+// does, and only in the loader: an <img>'s `m-icon` (checked as a row's icon, checkIconUrl), or tested (`m-if`,
+// `m-class:`), in the `page-loader` part or the <m-page-loader> slot. Never as text or another attribute's value.
+const LOADER_ICON = /(?:^|[^A-Za-z0-9_.])pageLoader\.icon(?![A-Za-z0-9_])/;
+const bindsLoaderIcon = (value: string) => LOADER_ICON.test(value.replace(/\s+/g, ''));
+const LOADER_ICON_WHY = 'pageLoader.icon binds only as <img m-icon> (or an m-if or m-class test) in the page-loader part';
 
 // ---------------------------------------------------------------------------
 // Bindings: `{{dotted.path}}`, dotted paths only, never expressions.
@@ -512,6 +520,7 @@ function cleanNode(node: ParsedNode, ctx: Ctx): CleanNode | CleanNode[] | null {
       if (g.removed) return g.text ? { type: 'text', value: g.text } : null;
     }
     if (bad) report(ctx.removed, 'binding', `{{${bad}}}`, 'not a dotted path: left as plain text');
+    if (bindsLoaderIcon(node.value)) { report(ctx.removed, 'text', JSON.stringify(node.value.trim().slice(0, 60)), LOADER_ICON_WHY); return null; }
     return { type: 'text', value: node.value };
   }
   const { lname, at } = node;
@@ -536,6 +545,7 @@ function cleanNode(node: ParsedNode, ctx: Ctx): CleanNode | CleanNode[] | null {
     if (GUARDED_PART_SET.has(part)) sub.guard = `"${part}" part`;
   }
   if (GUARDED_SLOT_SET.has(lname)) sub.guard ??= `<${lname}>`;
+  if (sub.part === 'page-loader' || lname === 'm-page-loader') sub.inLoader = true;
   if (SLOT_ELEMENTS.has(lname)) ctx.slots?.add(`${ctx.part ?? ''}>${lname}`);
   if (lname === 'm-for') {
     sub.forDepth = ctx.forDepth + 1;
@@ -601,6 +611,10 @@ function cleanAttrs(node: ParsedElement, element: string, ns: string, ctx: Ctx):
     if (lower === 'xmlns' || lower.startsWith('xmlns:')) continue;
     if (value.length > LIMITS.attrValue) { drop(rawName, 'value too long'); continue; }
     if (/[\u0000-\u0008\u000b\u000e-\u001f\u007f]/.test(value)) { drop(rawName, 'control characters'); continue; }
+    if (bindsLoaderIcon(value) && !(ctx.inLoader && ((lower === 'm-icon' && element === 'img' && ns === HTML) || lower.startsWith('m-class:') || (element === 'm-if' && lower === 'test')))) {
+      drop(rawName, LOADER_ICON_WHY);
+      continue;
+    }
     if ((element === 'm-for' && (lower === 'each' || lower === 'as' || lower === 'key')) || (element === 'm-if' && lower === 'test')) {
       const kept = controlAttr(lower, value);
       if (kept === null) drop(rawName, lower === 'as' || lower === 'key' ? 'not a name' : 'not a dotted path'); else out.push([lower, kept]);
