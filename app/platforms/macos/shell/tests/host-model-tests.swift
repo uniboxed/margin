@@ -1,13 +1,42 @@
 // The hosting core's stage 2 (docs/HOSTING-CORE.md): the window kinds (WindowKinds.swift), a row per case the real
 // sessions showed (2026-11-17 07:52, 14:05, 15:19: Safari's restored windows, Maps restored in full screen, the Phone's
 // dialog-subrole window, Messages' twin, Mail's strip and settings window, sheets, menus and tooltips), the model's log
-// lines (HostModel.swift). Part of tests.swift's run.
+// lines (HostModel.swift), and the observer (HostObserver.swift) on the stand-in window manager (host-tests.swift
+// FakeHostWorld, unchanged: Accessibility's side is this file's FakeObservation). Part of tests.swift's run.
 import AppKit
 import Foundation
+
+// Accessibility for the observer, played from the stand-in's windows: their role and subrole (`axRole`, a standard
+// window's when none), full screen, minimized; the app's main and focused windows only as a test sets them (`main`,
+// `focused`); only the current Space's windows when the stand-in says so (`axCurrentOnly`). Never touches what the
+// engine's Accessibility reads (no `axSeen`). `post` plays a notification.
+final class FakeObservation: HostObservation {
+    let world: FakeHostWorld
+    var watched: [pid_t: (HostAXNote, Int?) -> Void] = [:]
+    var unwatched: [pid_t] = []
+    var reads: [(pid: pid_t, windows: [Int])] = []
+    init(_ world: FakeHostWorld) { self.world = world }
+    func watch(pid: pid_t, _ heard: @escaping (HostAXNote, Int?) -> Void) -> Bool { watched[pid] = heard; return true }
+    func unwatch(pid: pid_t) { watched[pid] = nil; unwatched.append(pid) }
+    func read(pid: pid_t, windows: [Int]) async -> HostAXRead? {
+        reads.append((pid, windows))
+        guard world.apps[pid] != nil else { return nil }
+        var out = HostAXRead(main: world.main[pid], focused: world.focused[pid])
+        for n in windows {
+            guard let w = world.wins[n], w.pid == pid, !world.axCurrentOnly || world.onCurrent(n) else { continue }
+            let parts = (w.axRole ?? "AXWindow/AXStandardWindow").split(separator: "/").map(String.init)
+            out.windows[n] = HostAXWindow(role: parts.first, subrole: parts.count > 1 ? parts[1] : nil, fullScreen: w.fullScreen, canFullScreen: w.canFullScreen,
+                                          resizable: w.resizable, minimized: w.minimized)
+        }
+        return out
+    }
+    func post(_ pid: pid_t, _ note: HostAXNote, _ window: Int?) { watched[pid]?(note, window) }
+}
 
 func hostModelTests() {
     windowKindsTests()
     hostModelLineTests()
+    hostObserverTests()
 }
 
 // ---- the kinds: one row per real case ----
@@ -170,4 +199,247 @@ func hostModelLineTests() {
     app.windows[71300] = nil
     check("model: its main gone: said", app.change(from: before, mainsBefore: mains) == "main 71300 → none; 71300 gone (was main)", app.change(from: before, mainsBefore: mains) ?? "nil")
     check("model: the dev hook's summary", app.summary == "com.apple.MobileSMS main none", app.summary)
+}
+
+// ---- the observer on the stand-in ----
+
+func hostObserverTests() {
+    let page = CGRect(x: 276, y: 41, width: 1228, height: 933)
+    let placement = HostPlacement(page: page, area: FakeHostWorld.display)
+    let margin = FakeHostWorld.marginSpace
+    final class Lines { var all: [String] = [] }
+    func rig() -> (FakeHostWorld, FakeObservation, HostObserver, Lines) {
+        let w = FakeHostWorld()
+        let ax = FakeObservation(w)
+        let o = HostObserver(system: w, source: ax)
+        let lines = Lines()
+        o.say = { lines.all.append($0) }
+        o.schedule = { _, _ in } // (each test flushes Accessibility's reads itself)
+        return (w, ax, o, lines)
+    }
+    func window(_ w: FakeHostWorld, _ pid: pid_t, _ frame: CGRect, in spaces: [UInt64], role: String? = nil) -> Int {
+        let n = w.nextWindow
+        w.nextWindow += 1
+        var win = FakeHostWorld.Win(pid: pid, spaces: spaces, frame: frame)
+        win.axRole = role
+        w.wins[n] = win
+        w.apps[pid]?.windows.append(n)
+        return n
+    }
+
+    // ---- Accessibility's notifications → the model ----
+    do {
+        let (w, ax, o, lines) = rig()
+        w.autoOnScreen = true
+        let pid = w.start("com.apple.MobileSMS", policy: .accessory, windows: 1)
+        let main = w.apps[pid]!.windows[0]
+        w.wins[main]?.spaces = [margin]
+        w.wins[main]?.frame = page
+        let tracked = [HostObserver.Tracked(pid: pid, bundleId: "com.apple.MobileSMS", launchedByMargin: true, hosted: [main: "app:com.apple.MobileSMS"])]
+        o.update(tracked, onScreen: w.onScreenWindows(), seen: [:], placement: placement, marginSpace: margin)
+        hostRun { await o.flush(pid) }
+        let app = o.model.apps[pid]
+        check("observer: followed once hosted: watched by Accessibility, its window main in Margin's Space, on screen, read by Accessibility",
+              ax.watched[pid] != nil && app?.windows[main]?.kind == .main && app?.windows[main]?.place == .margin && app?.windows[main]?.onScreen == true
+              && app?.windows[main]?.ax?.subrole == "AXStandardWindow", "\(String(describing: app))")
+        check("observer: one line for it, numbers and kinds only", lines.all.count == 1 && lines.all[0].hasPrefix("host: model: com.apple.MobileSMS (pid \(pid)): main none → \(main)"), "\(lines.all)")
+        // A Settings window and a sheet, each heard as created: read by Accessibility, followed at once.
+        let settings = window(w, pid, CGRect(x: 600, y: 200, width: 700, height: 500), in: [margin])
+        w.wins[settings]?.canFullScreen = false
+        let sheet = window(w, pid, CGRect(x: 600, y: 41, width: 500, height: 300), in: [margin], role: "AXSheet")
+        ax.post(pid, .created, settings)
+        ax.post(pid, .created, sheet)
+        hostRun { await o.flush(pid) }
+        let kinds = o.model.apps[pid]?.windows.mapValues(\.kind) ?? [:]
+        check("observer: windows heard as created: followed before the next poll, a Settings window auxiliary, a sheet dialog",
+              kinds == [main: .main, settings: .auxiliary, sheet: .dialog] && ax.reads.last?.windows == [settings, sheet], "\(kinds) \(ax.reads.map(\.windows))")
+        check("observer: their arrival said in one line (one read)", lines.all.count == 2 && lines.all[1].contains("\(settings) auxiliary (can't go full screen") && lines.all[1].contains("\(sheet) dialog (a sheet)"), "\(lines.all)")
+        // Its main window changed by Accessibility (to the Settings window): the hosted one stays main.
+        w.main[pid] = settings
+        ax.post(pid, .main, settings)
+        hostRun { await o.flush(pid) }
+        check("observer: Accessibility's main window changed to another window: read, the hosted one still main", o.model.apps[pid]?.axMain == settings && o.model.apps[pid]?.mains == [main] && lines.all.count == 2, "\(lines.all)")
+        // The sheet closed: gone at the second poll that doesn't read it (one can miss mid-transition).
+        w.closeWindow(sheet)
+        ax.post(pid, .destroyed, sheet)
+        o.update(tracked, onScreen: w.onScreenWindows(), seen: [:], placement: placement, marginSpace: margin)
+        let afterOne = o.model.apps[pid]?.windows[sheet] != nil
+        o.update(tracked, onScreen: w.onScreenWindows(), seen: [:], placement: placement, marginSpace: margin)
+        check("observer: a window closed: gone at the second poll that doesn't read it, said once", afterOne && o.model.apps[pid]?.windows[sheet] == nil
+              && lines.all.filter { $0.contains("\(sheet) gone (was dialog)") }.count == 1, "\(lines.all)")
+        check("observer: the notifications counted, Accessibility read once per flush", o.cost.notes == 4 && o.cost.axReads == 3, "\(o.cost)")
+        // Given back: unwatched, dropped, said.
+        o.update([], onScreen: nil, seen: [:], placement: placement, marginSpace: margin)
+        check("observer: given back: Accessibility's watch stopped, the app dropped, said once", ax.unwatched == [pid] && o.model.apps.isEmpty
+              && lines.all.last == "host: model: com.apple.MobileSMS (pid \(pid)): given back, no longer followed", "\(lines.all)")
+    }
+
+    // ---- a window replaced, and a window leaving every Space (Messages, 15:20) ----
+    do {
+        let (w, _, o, lines) = rig()
+        w.autoOnScreen = true
+        let pid = w.start("com.apple.MobileSMS", policy: .accessory, windows: 1)
+        let hosted = w.apps[pid]!.windows[0]
+        w.wins[hosted]?.spaces = [margin]
+        w.wins[hosted]?.frame = page
+        let tracked = [HostObserver.Tracked(pid: pid, bundleId: "com.apple.MobileSMS", launchedByMargin: true, hosted: [hosted: "app:com.apple.MobileSMS"])]
+        func poll() { o.update(tracked, onScreen: w.onScreenWindows(), seen: [:], placement: placement, marginSpace: margin) }
+        poll()
+        let first = lines.all.count
+        poll()
+        poll()
+        check("observer: nothing changes: nothing said", lines.all.count == first, "\(lines.all)")
+        // Out of every Space (no twin): still main, its place and on-screen state said.
+        w.wins[hosted]?.spaces = []
+        poll()
+        check("observer: its window out of every Space: still main, said once (in no Space, off screen)", o.model.apps[pid]?.mains == [hosted] && lines.all.count == first + 1
+              && lines.all.last?.hasSuffix("\(hosted) in [\(margin)] (Margin's Space) → in no Space, on screen → off screen") == true, "\(lines.all)")
+        poll()
+        check("observer: ...and not again while it stays there", lines.all.count == first + 1)
+        w.wins[hosted]?.spaces = [margin]
+        poll()
+        check("observer: back in Margin's Space: said", lines.all.count == first + 2 && lines.all.last?.hasSuffix("\(hosted) in no Space → in [\(margin)] (Margin's Space), off screen → on screen") == true, "\(lines.all)")
+        // Replaced: out of every Space again, a new window of its app at its frame in Margin's Space.
+        w.wins[hosted]?.spaces = []
+        let twin = window(w, pid, page, in: [margin])
+        poll()
+        check("observer: replaced by its app (a new window at its frame in Margin's Space, its own in none): the new one main, the old one transient",
+              o.model.apps[pid]?.windows[twin]?.kind == .main && o.model.apps[pid]?.windows[hosted]?.kind == .transient
+              && lines.all.last?.hasPrefix("host: model: com.apple.MobileSMS (pid \(pid)): main \(hosted) → \(twin); \(hosted) main → transient (replaced by its app") == true, "\(lines.all)")
+        // The old one back in Margin's Space: the hosted one main again, the new one its twin.
+        w.wins[hosted]?.spaces = [margin]
+        poll()
+        check("observer: the hosted one back at the same frame: main again, the other its twin (transient)",
+              o.model.apps[pid]?.windows[hosted]?.kind == .main && o.model.apps[pid]?.windows[twin]?.kind == .transient
+              && o.model.apps[pid]?.windows[twin]?.why.contains("a twin of the main window \(hosted)") == true, "\(String(describing: o.model.apps[pid]?.windows[twin]))")
+        // The hosted one closed for good: the twin main (its only window).
+        w.closeWindow(hosted)
+        poll()
+        poll()
+        check("observer: the hosted one gone: its twin main", o.model.apps[pid]?.mains == [twin] && o.model.apps[pid]?.windows[hosted] == nil, "\(String(describing: o.model.apps[pid]))")
+    }
+
+    // ---- a restored full-screen window that came up before the app was hosted (Safari, 15:19) ----
+    do {
+        let (w, _, o, lines) = rig()
+        let pid = w.start("com.apple.Safari", policy: .accessory, windows: 3)
+        let restored = w.apps[pid]!.windows
+        // Two restored into full-screen Spaces of their own, one on the Desktop.
+        for n in restored.prefix(2) {
+            let space = w.nextId
+            w.nextId += 2
+            w.tiles[space] = [space + 1]
+            w.owner[space] = pid
+            w.wins[n]?.fullScreen = true
+            w.wins[n]?.spaces = [space]
+        }
+        // The window Margin asked for, made after them, parked.
+        let mine = window(w, pid, page, in: [])
+        let priv = w.createPrivateSpace()!
+        w.wins[mine]?.priv = priv
+        let tracked = [HostObserver.Tracked(pid: pid, bundleId: "com.apple.Safari", launchedByMargin: true, hosted: [mine: "safari:p646"], parked: [mine: priv])]
+        // Without the engine's list from its open: the restored windows (off screen) aren't known.
+        let o2 = HostObserver(system: w, source: nil)
+        o2.say = { _ in }
+        o2.update(tracked, onScreen: [], seen: [:], placement: placement, marginSpace: margin)
+        // With it (the list the engine read as it told Safari's new window apart): every one.
+        o.update(tracked, onScreen: [], seen: [pid: w.serverWindows(pid: pid) ?? []], placement: placement, marginSpace: margin)
+        let kinds = o.model.apps[pid]?.windows.mapValues(\.kind) ?? [:]
+        let places = o.model.apps[pid]?.windows.mapValues(\.place) ?? [:]
+        check("observer: Safari's windows restored before it was hosted (two in full-screen Spaces of their own, one on the Desktop): known from the engine's own list, leftovers; Margin's window main, parked",
+              kinds == [restored[0]: .leftover, restored[1]: .leftover, restored[2]: .leftover, mine: .main]
+              && places == [restored[0]: .fullScreen, restored[1]: .fullScreen, restored[2]: .desktop, mine: .parked], "\(kinds) \(places)")
+        check("observer: ...said in one line, each with its Spaces", lines.all.count == 1 && lines.all[0].contains("\(restored[0]) leftover (made before the window Margin hosts (\(mine))") && lines.all[0].contains("\(mine) main (the window Margin hosts), parked"), "\(lines.all)")
+        check("observer: ...the observer reads no list of its own (with none from the engine, the off-screen ones aren't known)", o2.model.apps[pid]?.windows.keys.sorted() == [mine], "\(String(describing: o2.model.apps[pid]?.windows.keys.sorted()))")
+    }
+
+    // ---- through the engine: an app opened, polled, closed; Maps restored in full screen ----
+    do {
+        let w = FakeHostWorld()
+        w.autoOnScreen = true
+        let ax = FakeObservation(w)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("margin-host-model-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let e = HostEngine(system: w, marker: folder.appendingPathComponent(HostMarker.fileName), pid: 1, observation: ax)
+        e.options.privateRetire = 0
+        e.observer.schedule = { _, _ in }
+        var lines: [String] = []
+        let echo = Diagnostics.echo
+        Diagnostics.echo = { lines.append($0) }
+        var listReads = 0
+        w.onScreenRead = { listReads += 1 }
+        let textEdit = HostTarget.app("com.apple.TextEdit")
+        let r = hostRun { await e.open(app: textEdit, in: placement, marginWindow: FakeHostWorld.marginWindow, marginSpace: margin) }
+        let pid = w.running(bundleId: "com.apple.TextEdit").first?.pid ?? 0
+        let n = e.hosts[textEdit.id]?.window ?? 0
+        let watchedAfterOpen = ax.watched[pid] != nil && e.observer.model.apps[pid] != nil
+        listReads = 0
+        e.poll()
+        let polledReads = listReads
+        e.poll()
+        check("engine: an app opened: followed from the end of its open (watched by Accessibility), its window main in Margin's Space after the poll",
+              r == .shown(textEdit.id, placed: true) && watchedAfterOpen && e.observer.model.apps[pid]?.windows[n]?.kind == .main && e.observer.model.apps[pid]?.windows[n]?.place == .margin,
+              "\(String(describing: r)) \(String(describing: e.observer.model.apps[pid]))")
+        check("engine: the poll's on-screen list read once a poll, the observer reading none of its own", polledReads == 1 && e.observer.cost.updates == 2, "\(polledReads) \(e.observer.cost)")
+        check("engine: the model said in the log (host: model: …), numbers and kinds only", lines.contains { $0.hasPrefix("host: model: com.apple.TextEdit (pid \(pid)): main none → \(n)") }, "\(lines.filter { $0.contains("model") })")
+        let front = e.readShown()
+        check("engine: the dev hook's line says the model (its apps, its cost a poll, the shown app's main)", front.contains("; model: 1 app, ") && front.contains("µs a poll") && front.contains("; com.apple.TextEdit main \(n) in [\(margin)] (Margin's Space) on screen"), front)
+        hostRun { await e.close(textEdit.id) }
+        e.poll()
+        check("engine: its row closed (its app quit): no longer followed, Accessibility's watch stopped", e.observer.model.apps[pid] == nil && ax.unwatched.contains(pid) && lines.contains { $0.contains("given back, no longer followed") }, "\(ax.unwatched)")
+        Diagnostics.echo = echo
+    }
+    do {
+        let w = FakeHostWorld()
+        w.installed.insert("com.apple.Maps")
+        w.restoredFullScreen = ["com.apple.Maps"]
+        w.axCurrentOnly = true
+        w.staged = true
+        let e = HostEngine(system: w, marker: nil, pid: 1, observation: FakeObservation(w))
+        e.options.privateRetire = 0
+        e.observer.schedule = { _, _ in }
+        let echo = Diagnostics.echo
+        var lines: [String] = []
+        Diagnostics.echo = { lines.append($0) }
+        let maps = HostTarget.app("com.apple.Maps")
+        let r = hostRun { await e.open(app: maps, in: placement, marginWindow: FakeHostWorld.marginWindow, marginSpace: margin) }
+        e.poll()
+        Diagnostics.echo = echo
+        let pid = w.running(bundleId: "com.apple.Maps").first?.pid ?? 0
+        let n = e.hosts[maps.id]?.window ?? 0
+        check("engine: Maps restored in full screen in a Space of its own: placed as before, and its window main in the model, in Margin's Space",
+              r == .shown(maps.id, placed: true) && e.observer.model.apps[pid]?.mains == [n] && e.observer.model.apps[pid]?.windows[n]?.place == .margin, "\(String(describing: e.observer.model.apps[pid])) \(lines.filter { $0.contains("model") })")
+    }
+
+    // ---- the cost on the stand-in: five apps, each a main window, a Settings window, a strip and a menu ----
+    do {
+        let (w, _, o, _) = rig()
+        w.autoOnScreen = true
+        var tracked: [HostObserver.Tracked] = []
+        var menus: [ServerWindow] = []
+        for i in 0..<5 {
+            let pid = w.start("test.app\(i)", policy: .accessory, windows: 1)
+            let main = w.apps[pid]!.windows[0]
+            var parked: [Int: UInt64] = [:]
+            if i == 0 { w.wins[main]?.spaces = [margin] } else { let p = w.createPrivateSpace()!; w.wins[main]?.priv = p; parked[main] = p }
+            w.wins[main]?.frame = page
+            _ = window(w, pid, CGRect(x: 600, y: 200, width: 700, height: 500), in: [margin])
+            _ = window(w, pid, FakeHostWorld.stripFrame, in: [margin])
+            let menu = w.nextWindow
+            w.nextWindow += 1
+            menus.append(ServerWindow(number: menu, pid: pid, layer: 101, bounds: CGRect(x: 300, y: 60, width: 220, height: 400)))
+            tracked.append(HostObserver.Tracked(pid: pid, bundleId: "test.app\(i)", launchedByMargin: true, hosted: [main: "app:test.app\(i)"], parked: parked))
+        }
+        let list = (w.onScreenWindows() ?? []) + menus
+        o.update(tracked, onScreen: list, seen: [:], placement: placement, marginSpace: margin)
+        let base = o.cost
+        let polls = 400
+        for _ in 0..<polls { o.update(tracked, onScreen: list, seen: [:], placement: placement, marginSpace: margin) }
+        let c = o.cost
+        let perPoll = (c.seconds - base.seconds) / Double(polls) * 1e6
+        let reads = Double(c.boundsReads - base.boundsReads + c.spacesReads - base.spacesReads) / Double(polls)
+        check(String(format: "observer: cost on the stand-in: %.0f µs a poll for 5 apps (20 windows: the menus followed by the list alone), %.0f window reads a poll (bounds and Spaces of 15), no list of its own", perPoll, reads),
+              reads == 30 && c.typeReads == base.typeReads && perPoll < 2000, "\(c)")
+        print(String(format: "  observer cost: %.1f µs a poll (5 apps, 20 windows; %d polls)", perPoll, polls))
+    }
 }

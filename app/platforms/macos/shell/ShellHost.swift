@@ -23,7 +23,7 @@ extension Shell {
         }
         let system = RealHostSystem(calls: HostPrivate(resolver: resolver, availability: calls), sky: sky, spaces: spaces, slots: SkyLightSlots(sky: sky),
                                     freezer: freezer, sidebarMenu: { [weak self] in self?.sidebarMenu })
-        let engine = HostEngine(system: system, marker: hostMarkerURL)
+        let engine = HostEngine(system: system, marker: hostMarkerURL, observation: RealHostObservation())
         engine.options.safariBundle = UserDefaults.standard.string(forKey: "MarginHostedSafari") ?? safariIdentifier
         if hasMarker { Task { await engine.recover() } }
         engine.onEvent = { event in Diagnostics.note("host: event \(event)") }

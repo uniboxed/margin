@@ -328,11 +328,20 @@ final class HostEngine {
     private var jumps = 0
     private var leftTried = -Double.infinity // the last try at closing leftSafariWindows
 
-    init(system: HostSystem, marker: URL?, options: Options = Options(), pid: Int32 = ProcessInfo.processInfo.processIdentifier) {
+    // The hosting core's observed model (HostObserver.swift, docs/HOSTING-CORE.md stage 2): fed at each poll and at the
+    // end of each operation, logged; nothing here reads it to decide anything. `observation`: Accessibility's
+    // notifications and reads for it (nil: the window server's alone).
+    let observer: HostObserver
+    // The lists of an app's windows on every Space this engine read since the last poll (its own reads, kept for the
+    // observer: it reads no list of its own).
+    private var serverSeen: [pid_t: [ServerWindow]] = [:]
+
+    init(system: HostSystem, marker: URL?, options: Options = Options(), pid: Int32 = ProcessInfo.processInfo.processIdentifier, observation: HostObservation? = nil) {
         sys = system
         markerURL = marker
         self.options = options
         ownPid = pid
+        observer = HostObserver(system: system, source: observation)
         sys.onAppQuit = { [weak self] pid in self?.appQuit(pid) }
     }
 
@@ -498,7 +507,7 @@ final class HostEngine {
     var wakeHideFor = 10.0
     func hideWoken(bundleId: String) {
         guard let app = sys.running(bundleId: bundleId).first else { return }
-        let known = Set((sys.serverWindows(pid: app.pid) ?? []).map(\.number))
+        let known = Set((serverList(pid: app.pid) ?? []).map(\.number))
         var w = woken[bundleId].flatMap { $0.pid == app.pid ? $0 : nil } ?? Woken(pid: app.pid, known: [], until: 0, space: nil)
         w.known.formUnion(known)
         w.until = sys.now() + wakeHideFor
@@ -522,7 +531,7 @@ final class HostEngine {
             guard var w = woken[bundle] else { continue }
             if sys.now() > w.until { w.budget = 0 }
             guard w.budget > 0, sys.processRuns(pid: w.pid) else { woken[bundle] = w; continue }
-            for win in sys.serverWindows(pid: w.pid) ?? [] where w.budget > 0 && !w.known.contains(win.number) && win.layer == 0 && win.bounds.width >= 100 && win.bounds.height >= 100 && !isHosted(window: win.number) {
+            for win in serverList(pid: w.pid) ?? [] where w.budget > 0 && !w.known.contains(win.number) && win.layer == 0 && win.bounds.width >= 100 && win.bounds.height >= 100 && !isHosted(window: win.number) {
                 guard !(sys.spaces(window: win.number) ?? []).isEmpty else { continue } // (not ordered in yet: looked at again)
                 w.known.insert(win.number)
                 if w.space == nil { w.space = sys.createPrivateSpace() }
@@ -591,6 +600,51 @@ final class HostEngine {
             leftTried = sys.now()
             Task { await serial { await self.closeLeftSafariWindows() } }
         }
+        observe()
+    }
+
+    // ---- the observed model (logging only) ----
+
+    // The window server's list of one app's windows on every Space, as the engine reads it, kept for the observer.
+    private func serverList(pid: pid_t) -> [ServerWindow]? {
+        let list = sys.serverWindows(pid: pid)
+        if let list { serverSeen[pid] = list }
+        return list
+    }
+
+    // What the observer follows: every app Margin hosts a window of or started, its hosted windows, the ones parked in a
+    // private Space Margin made, the ones it opened only to wake it.
+    func observed() -> [HostObserver.Tracked] {
+        var out: [pid_t: HostObserver.Tracked] = [:]
+        func bundle(of host: Host) -> String {
+            if let b = host.bundleId { return b }
+            if case .app(let b) = host.target { return b }
+            return options.safariBundle
+        }
+        for host in hosts.values.sorted(by: { $0.id.raw < $1.id.raw }) {
+            var t = out[host.pid] ?? HostObserver.Tracked(pid: host.pid, bundleId: launched[host.pid]?.bundleId ?? bundle(of: host), launchedByMargin: launched[host.pid] != nil || host.launchedByMargin)
+            t.hosted[host.window] = host.id.description
+            if host.phase == .parked, let priv = host.privateSpace { t.parked[host.window] = priv }
+            out[host.pid] = t
+        }
+        for (pid, app) in launched where out[pid] == nil {
+            out[pid] = HostObserver.Tracked(pid: pid, bundleId: app.bundleId, launchedByMargin: true)
+        }
+        for w in woken.values {
+            guard var t = out[w.pid] else { continue }
+            t.woken.formUnion(w.parked)
+            if let space = w.space { for n in w.parked { t.parked[n] = space } }
+            out[w.pid] = t
+        }
+        return out.keys.sorted().compactMap { out[$0] }
+    }
+
+    // The poll's reads given to the observer: its on-screen list if it read one, the engine's lists since the last.
+    private func observe() {
+        var screen: [ServerWindow]?
+        if case .some(.some(let list)) = pollScreen { screen = list }
+        observer.update(observed(), onScreen: screen, seen: serverSeen, placement: placement, marginSpace: marginSpace)
+        serverSeen = [:]
     }
 
     // What the engine reads of the one shown, right now, in one line of numbers (the dev hook's `front` line carries it:
@@ -601,11 +655,14 @@ final class HostEngine {
     func readShown() -> String {
         func on(_ n: Int, _ list: [ServerWindow]?) -> String { list.map { l in l.contains { $0.number == n } ? "on screen" : "off screen" } ?? "the on-screen list unread" }
         let polled = "polls \(polls)" + (polls > 0 ? " (the last \(ms(since: polledAt)) ms ago\(busy ? ", an operation running" : ""))" : "")
-        guard let id = shown, let host = hosts[id] else { return "\(polled), nothing shown" }
+        // (The observed model: how many apps and windows, its cost a poll, and the shown app's main and other kinds.)
+        let model = "; model: \(observer.summary)"
+        guard let id = shown, let host = hosts[id] else { return "\(polled), nothing shown\(model)" }
         let list = sys.onScreenWindows()
         return "\(polled), \(id) window \(host.window) in \(sys.spaces(window: host.window).map { "\($0)" } ?? "unread") and \(on(host.window, list))"
             + ", Margin's window \(marginWindow) in \(sys.spaces(window: marginWindow).map { "\($0)" } ?? "unread") and \(on(marginWindow, list))"
             + ", Margin's Space \(marginSpace), its display on \(sys.currentSpace(onDisplayOf: marginSpace).map { "\($0)" } ?? "unread")"
+            + model + (observer.summary(of: host.pid).map { "; \($0)" } ?? "")
     }
 
     // The window server's on-screen list, read once per poll (the look for others and the on-screen look share it),
@@ -900,6 +957,7 @@ final class HostEngine {
             self.ranSinceLook = true
             let value = await body()
             self.parkWoken() // (a window opened to wake a profile during it: out of sight before anything else is seen)
+            self.observer.sync(self.observed()) // (an app hosted or given back: followed, or not, from now)
             self.busy = false
             return value
         }
@@ -996,9 +1054,9 @@ final class HostEngine {
             if preparing, sys.isHidden(pid: app.pid) == true {
                 let t = sys.now()
                 if sys.unhide(pid: app.pid) {
-                    var last = Set((sys.serverWindows(pid: app.pid) ?? []).map(\.number)), since = sys.now()
+                    var last = Set((serverList(pid: app.pid) ?? []).map(\.number)), since = sys.now()
                     _ = await wait(options.unhideSettleWait, every: options.memberEvery) {
-                        let now = Set((self.sys.serverWindows(pid: app.pid) ?? []).map(\.number))
+                        let now = Set((self.serverList(pid: app.pid) ?? []).map(\.number))
                         if now != last { last = now; since = self.sys.now() }
                         return self.sys.isHidden(pid: app.pid) != true && self.sys.now() - since >= self.options.unhideSettle
                     }
@@ -1009,7 +1067,7 @@ final class HostEngine {
             }
             // Every window Safari has now, on every Space (the window server's), and the ones Accessibility lists: read
             // before the ask, so the window it makes is the one that wasn't there.
-            let before = Set((sys.serverWindows(pid: app.pid) ?? []).map(\.number)).union((await sys.windows(pid: app.pid) ?? []).map(\.number))
+            let before = Set((serverList(pid: app.pid) ?? []).map(\.number)).union((await sys.windows(pid: app.pid) ?? []).map(\.number))
             // Out of sight: Margin's Space kept current while Safari makes its window (asked focused, Safari comes to the
             // front and macOS may switch to the Space its new window opens in, the Desktop): undone at once.
             let keepSpace = preparing && sys.currentSpace(onDisplayOf: marginSpace) == marginSpace
@@ -1102,7 +1160,7 @@ final class HostEngine {
     // The window a copy made, by the window server (every Space): a layer-0 window of Safari's pid, at least 200×200,
     // that wasn't there before the ask and isn't hosted; of several, the one at the copy's bounds. (window, how many new)
     private func newSafariWindow(pid: pid_t, before: Set<Int>, near: CGRect?) -> (Int?, Int) {
-        let fresh = (sys.serverWindows(pid: pid) ?? []).filter {
+        let fresh = (serverList(pid: pid) ?? []).filter {
             $0.pid == pid && $0.layer == 0 && $0.bounds.width >= 200 && $0.bounds.height >= 200 && !before.contains($0.number) && !isHosted(window: $0.number)
         }
         if let near {
@@ -1118,7 +1176,7 @@ final class HostEngine {
     private func chooseWindow(pid: pid_t, listed: [HostWindow], serverAllowed: Bool, for host: Host? = nil) async -> (number: Int, rule: HostWindowChoice.Rule)? {
         let minimized = Set(listed.filter(\.minimized).map(\.number))
         let taken = Set(hosts.values.filter { $0 !== host }.map(\.window)) // (hosted by another)
-        let candidates = HostWindowChoice.candidates(sys.serverWindows(pid: pid) ?? [], pid: pid) { taken.contains($0) || minimized.contains($0) }
+        let candidates = HostWindowChoice.candidates(serverList(pid: pid) ?? [], pid: pid) { taken.contains($0) || minimized.contains($0) }
         let main = await sys.mainWindow(pid: pid)
         let focused = main == nil ? await sys.focusedWindow(pid: pid) : nil
         let standard = listed.filter { !$0.minimized }.map(\.number)
@@ -1812,7 +1870,7 @@ final class HostEngine {
             }
         }
         func strips() -> [ServerWindow] {
-            (sys.serverWindows(pid: host.pid) ?? []).filter { w in
+            (serverList(pid: host.pid) ?? []).filter { w in
                 w.number != host.window && !host.windowsBeforeAsk.contains(w.number) && !isHosted(window: w.number) && w.layer == 0 && isStrip(w.bounds)
                     && !(sys.spaces(window: w.number) ?? []).isEmpty
             }
@@ -1974,7 +2032,7 @@ final class HostEngine {
                 guard await leaveMember(host) else { return .failed("it read full screen with no full-screen Space of its own and didn't leave it") }
                 axBefore = await sys.isFullScreen(pid: host.pid, window: host.window)
             }
-            host.windowsBeforeAsk = Set((sys.serverWindows(pid: host.pid) ?? []).map(\.number))
+            host.windowsBeforeAsk = Set((serverList(pid: host.pid) ?? []).map(\.number))
             guard await askFullScreenSettling(host, listed: listed, axBefore: axBefore) else { return .failed("AXFullScreen couldn't be set (refused for \(String(format: "%.1f", options.axSettleWait)) s)") }
         }
         var asked = sys.now()
@@ -2594,7 +2652,7 @@ final class HostEngine {
             offActedFor = shownAt
             offTries.append(sys.now())
             if host.mode == .window {
-                let others = (sys.serverWindows(pid: host.pid) ?? []).filter { $0.number != host.window && $0.layer == 0 && $0.onScreen && $0.alpha > 0 && $0.bounds.width >= 100 && $0.bounds.height >= 100 }
+                let others = (serverList(pid: host.pid) ?? []).filter { $0.number != host.window && $0.layer == 0 && $0.onScreen && $0.alpha > 0 && $0.bounds.width >= 100 && $0.bounds.height >= 100 }
                 Diagnostics.note("host: \(id): shown in window mode, not on screen though it's in Margin's Space, the current one (\(seen)): no Space made current, nothing moved; its window raised once"
                                  + (others.isEmpty ? "" : "; its app has \(others.count) other window\(others.count == 1 ? "" : "s") on screen (\(others.prefix(4).map { "\($0.number) at \(r($0.bounds))" }.joined(separator: ", ")))"))
                 _ = await sys.activate(pid: host.pid, window: host.window)
@@ -2961,7 +3019,7 @@ final class HostEngine {
         case .prohibited?: parts.append("a background app")
         case nil: parts.append("its type doesn't read")
         }
-        let others = (sys.serverWindows(pid: pid) ?? []).filter { $0.alpha > 0 && $0.number != hosted?.window && $0.onScreen }
+        let others = (serverList(pid: pid) ?? []).filter { $0.alpha > 0 && $0.number != hosted?.window && $0.onScreen }
         parts.append(others.isEmpty ? "no other window of its own on screen" : "\(others.count) other window\(others.count == 1 ? "" : "s") of its own on screen (it may be asking something)")
         parts.append(await sys.windows(pid: pid) == nil ? "Accessibility doesn't answer for it (busy, or quitting slowly)" : "Accessibility still answers for it")
         return parts.joined(separator: "; ")
