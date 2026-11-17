@@ -840,7 +840,7 @@ final class LibraryWindowSource: MarginWindowSource {
     let profileSource: DataSetWindowSource
     var onChange: (() -> Void)?
     // Requests the UI makes that need nothing here (its scroll, the copy's own waking).
-    static let quiet: Set<String> = ["sidebarScroll", "setSidebarScroll", "wakeSleeping", "windowState", "cancelNewTab", "paletteDropped", "noticeAction"]
+    static let quiet: Set<String> = ["sidebarScroll", "setSidebarScroll", "wakeSleeping", "windowState", "cancelNewTab", "noticeAction"]
 
     init(library: Library, session: HostedSession, profileSource: DataSetWindowSource) {
         self.library = library

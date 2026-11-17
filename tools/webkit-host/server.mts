@@ -22,12 +22,6 @@ const stamp = () => `[${String(Date.now() - t0).padStart(6)}]`;
 
 const TALL = '<div style="height: 5000px">tall</div>';
 const FIXTURES: Record<string, string> = {
-  // A page whose main thread stalls `stall` ms (default 1200), `after` ms
-  // (default 30) after it handles being hidden, as Instagram's did in Safari
-  // on 2026-11-04 (heavyflip); it takes 100 ms to handle being shown. Dark, so
-  // a frame of Safari's empty view isn't told from it by colour: the scenario
-  // counts layers (probeShow).
-  'heavy-visible': `<style>html, body { background: rgb(18, 18, 18); color: #eee; margin: 0 }</style><script>window.__vis = []; const q = new URLSearchParams(location.search); const stall = Number(q.get('stall') ?? 1200); const after = Number(q.get('after') ?? 30); const spin = (ms) => { const end = performance.now() + ms; while (performance.now() < end); }; document.addEventListener('visibilitychange', () => { __vis.push([document.visibilityState, Date.now()]); if (!document.hidden) return spin(100); if (after > 0) setTimeout(() => spin(stall), after); else spin(stall); });</script><h1 id=h style="height: 2000px">Heavy</h1>`,
   // A page that takes ArrowDown whatever the modifiers, at every level, before
   // anything else of its own (as Outlook's message list and Instagram's reels
   // do): Margin's listener, on the window from document_start, still comes

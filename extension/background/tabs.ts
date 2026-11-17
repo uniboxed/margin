@@ -163,13 +163,7 @@ export async function focusTab(tabId: number, { source = 'other', raise = true, 
     const tab = answered?.tab ?? null;
     const windowId = tab?.windowId ?? cached()?.tabs[tabId]?.windowId ?? null;
     line.window(windowId);
-    // A tab in a window Margin.app has parked (out of sight, docs/HANDOFF.md
-    // §2.5): raising it would focus it and show nothing. The tab is in front
-    // there now, and the app is asked to hand off to that window instead. Not
-    // linked (the app can't be told), it's raised as before.
-    if (raise && parkedRaise(windowId, tabId)) {
-      line.step('its window is parked: the app asked to show it');
-    } else if (raise) {
+    if (raise) {
       // The window to the front: waited for only while the page's deadline
       // allows (Safari's windows calls can wait behind a stalled tab too); it's
       // carried out either way.
@@ -227,14 +221,6 @@ function alignOrder(tabId: number, windowId: number) {
   })().catch(() => {}).finally(() => { if (orderRepairs.get(windowId) === repair) orderRepairs.delete(windowId); });
 }
 
-// A tab Margin's UI asked for in a window the app has parked: the app told (parkedActivity `raise`),
-// true once it is; false when the window isn't parked or the app can't be told.
-function parkedRaise(windowId: number | null, tabId: number) {
-  return windowId != null && appLink.parked?.(windowId) === true && appLink.parkedActivity(windowId, 'raise', tabId);
-}
-// Whether a tab's window is one the app has parked (out of sight): a tab found for a row is one in a
-// window that isn't, when there's a choice.
-export const inParkedWindow = (tab: { windowId?: number } | null | undefined) => tab?.windowId != null && appLink.parked?.(tab.windowId) === true;
 // The window comes forward only if it isn't already (see focusTab).
 async function focusWindow(windowId: number | null, line: { step(what: string): void } | null = null) {
   if (!api.windows || windowId == null) return;
@@ -285,8 +271,8 @@ export async function resolveTab(tabId: number, hint: { url?: string, index?: nu
     // The same page open twice: the one with the row's title, if that tells them apart.
     if (candidates.length > 1 && hint.title && candidates.some((t) => t.title === hint.title)) candidates = candidates.filter((t) => t.title === hint.title);
     if (!candidates.length) return null;
-    // The asking page's window first, then a window that isn't parked (docs/HANDOFF.md §2.5), then the nearest place.
-    const distance = (t: { windowId?: number, index?: number }) => (t.windowId === preferWindow ? 0 : 2e6) + (inParkedWindow(t) ? 1e6 : 0) + Math.abs((t.index ?? 0) - (hint.index ?? 0));
+    // The asking page's window first, then the nearest place.
+    const distance = (t: { windowId?: number, index?: number }) => (t.windowId === preferWindow ? 0 : 2e6) + Math.abs((t.index ?? 0) - (hint.index ?? 0));
     return candidates.reduce((best, t) => (distance(t) < distance(best) ? t : best));
   };
   // Margin's own tabs first, once they're this copy's (matched to the open

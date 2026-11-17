@@ -42,7 +42,7 @@ test('linking at start: hello, snapshot, theme, keys, the data set, and the over
   // drawn on before the first layout, and the layout is where the theme put the page.
   const windowId = shell.frontWindowId();
   await m.until(async () => (await m.stored('appLink')).appLink?.drawn?.[windowId] === true, { what: 'the copy\'s word that the app draws over the window' });
-  const layout = await m.until(() => shell.layoutsSent.findLast((l) => l.windowId === windowId), { what: 'a setLayout' });
+  const layout = await m.until(() => shell.layoutsSent.findLast((l) => l.windowId === windowId), { what: 'the page\'s layout' });
   const s = (await slot(ui))!;
   assert.deepEqual(layout.insets, { left: s.left, top: s.top, right: s.right, bottom: s.bottom });
   assert.deepEqual(layout.container, { width: 1440, height: 900 });

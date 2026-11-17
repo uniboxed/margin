@@ -459,19 +459,3 @@ test('fast space presses: one space switch with Safari at a time, the newest wai
   assert.equal(shown.tabSpace[front()], want, 'its tab in front');
   assert.ok(fake.updates.length < 6, `Safari asked ${fake.updates.length} times`);
 });
-
-test('a page\'s word that it\'s shown carries what said it: a web page\'s content script, Margin\'s new-tab page, or unknown', async () => {
-  const heard: unknown[][] = [];
-  const was = appLink.visibility;
-  appLink.visibility = (...args) => { heard.push(args); };
-  try {
-    const tab = { tab: { id: 3, windowId: 1 } } as BrowserMessageSender; // what the handler reads of it
-    await handlers.visibility({ visible: false, at: 5, from: 'page' }, tab);
-    await handlers.visibility({ visible: true, at: 6, from: 'newtab' }, tab);
-    await handlers.visibility({ visible: true, at: 7 }, tab);
-    await handlers.visibility({ visible: true, at: 8, from: 'https://a.test/' }, tab);
-  } finally {
-    appLink.visibility = was;
-  }
-  assert.deepEqual(heard, [[1, 3, false, 5, 'content script'], [1, 3, true, 6, 'new-tab page'], [1, 3, true, 7, 'unknown'], [1, 3, true, 8, 'unknown']]);
-});

@@ -14,13 +14,6 @@ export function keepScroll(tabId: number | undefined, url: string, y: number) {
   return mutate((s) => M.noteScroll(s, tabId as number, { y, url }), { within: () => SCROLL_WRITE_MS }); // (whole: checked)
 }
 
-// Several at once (a window's tabs, asked before its close): one change.
-export function keepScrolls(list: { tabId: number, url: string, y: number }[]) {
-  const good = list.filter((x) => Number.isInteger(x.tabId) && typeof x.url === 'string' && Number.isFinite(x.y));
-  if (!good.length) return Promise.resolve(null);
-  return mutate((s) => good.reduce((st, x) => M.noteScroll(st, x.tabId, { y: x.y, url: x.url }), s), { within: () => SCROLL_WRITE_MS });
-}
-
 // A reopened Margin tab's page taking its scroll: the place (null: none), then it's gone.
 export async function takeScroll(tabId: number | undefined, url: string): Promise<number | null> {
   if (!Number.isInteger(tabId) || typeof url !== 'string') return null;

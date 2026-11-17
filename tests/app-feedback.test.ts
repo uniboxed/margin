@@ -506,48 +506,6 @@ test('loads: the page being left told at once, taken back when it stays; a slow 
   assert.equal(said.length, before, 'not drawn by the app: nothing');
 });
 
-// ---- where the page's area sits in its window ------------------------------------------
-
-test('viewport: the page\'s word goes to the link with `measured` only when a pointer event said where the area starts; junk is null', async () => {
-  const { appLink } = await import('../extension/background/app-link.ts');
-  const heard: unknown[][] = [];
-  const was = appLink.viewport;
-  appLink.viewport = (windowId, tabId, rect) => heard.push([windowId, tabId, rect]);
-  try {
-    await ask('viewport', { viewport: { x: 240, y: 0, width: 1272, height: 949, measured: true } });
-    await ask('viewport', { viewport: { x: 240, y: 0, width: 1272, height: 949 } });
-    await ask('viewport', { viewport: { x: 240, y: 0, width: 1272, height: 949, measured: 'yes' } });
-    await ask('viewport', { viewport: { x: -5, y: 0, width: 1272, height: 949, measured: true } });
-    assert.deepEqual(heard, [
-      [1, 1, { x: 240, y: 0, width: 1272, height: 949, measured: true }],
-      [1, 1, { x: 240, y: 0, width: 1272, height: 949 }],
-      [1, 1, { x: 240, y: 0, width: 1272, height: 949 }],
-      [1, 1, null],
-    ]);
-  } finally {
-    appLink.viewport = was;
-  }
-});
-
-test('viewport: when the page was resized and said so, and when the copy heard it, go with it (Margin.app logs the delay)', async () => {
-  const { appLink } = await import('../extension/background/app-link.ts');
-  const heard: [unknown, NonNullable<Parameters<typeof appLink.viewport>[3]>][] = [];
-  const was = appLink.viewport;
-  appLink.viewport = (windowId, tabId, rect, times) => heard.push([rect, times!]);
-  try {
-    const before = Date.now();
-    await ask('viewport', { viewport: { x: 0, y: 0, width: 1512, height: 485 }, resizedAt: before - 30, at: before - 10 });
-    await ask('viewport', { viewport: { x: 0, y: 0, width: 1512, height: 485 }, resizedAt: 'soon', at: -1 });
-    assert.deepEqual(heard[0][0], { x: 0, y: 0, width: 1512, height: 485 }, 'the rect as before');
-    assert.equal(heard[0][1].resized, before - 30);
-    assert.equal(heard[0][1].said, before - 10);
-    assert.ok(heard[0][1].heard >= before, 'when the copy heard it');
-    assert.deepEqual(Object.keys(heard[1][1]), ['heard'], 'junk times left out');
-  } finally {
-    appLink.viewport = was;
-  }
-});
-
 test('the overlay\'s own notice: a theme it couldn\'t draw; the copy can\'t push it, and its buttons stay in the overlay', () => {
   const ran: [string, string][] = [];
   const shown: AppNotice[] = [];

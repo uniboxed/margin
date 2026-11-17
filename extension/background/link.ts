@@ -135,25 +135,17 @@ export const APP_REQUESTS = new Set([
   'setSidebarScroll', 'wakeSleeping', 'windowState', 'openHere', 'cancelNewTab',
   // A button of one of Margin's notices the overlay put up (background/notices.ts).
   'noticeAction',
-  // Margin.app's switch to another profile's space (app/platforms/macos/shell/ProfileSwitch.swift) and its order across profiles.
-  'openSpaceWindow', 'closeWindow', 'focusWindow', 'orderSpaces',
-  // A palette the app couldn't show over a window (no overlay shown there): ⌘T's hand-off undone.
-  'paletteDropped',
-  // DEV-HOOK: the app's dev hook's tab-move probe (app/engines/webkit/safari/DevHooks.swift `probe`; Test A only).
-  'devTabMoveProbe',
-  // The profile handoff (docs/HANDOFF.md §3.3): a window's state without taking focus, the frames of
-  // its tab in front, and its drafts before a close.
-  'setWindowState', 'frameProbe', 'windowDrafts',
+  // Margin.app's host (app/platforms/macos/shell/HostedSession.swift): a window it made closed, a window's state
+  // without taking focus.
+  'closeWindow', 'setWindowState',
   // Margin.app's index of the person's imported themes (app/platforms/macos/shell/ShellThemes.swift).
   'userThemes',
   // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed.
   'hostShow', 'hostClose',
 ]);
 // The requests that call windows.update or windows.remove for one window: each carries `notAfter`
-// from the handoff, and only one runs per window at a time (docs/HANDOFF.md §1.9).
-export const WINDOW_CALLS = new Set(['setWindowState', 'focusWindow', 'closeWindow']);
-// What a parked window's `parkedActivity` says happened there (docs/PROTOCOL.md "The handoff").
-export const PARKED_WHY = new Set(['tab', 'focus', 'raise']);
+// from the app, and only one runs per window at a time (background/handoff.ts).
+export const WINDOW_CALLS = new Set(['setWindowState', 'closeWindow']);
 
 // A windows call that mustn't run, and its answer: past its `notAfter` (milliseconds since 1970, the
 // app's clock and this copy's being the same), `{ refused: 'late', pastMs }`; another windows call for
@@ -230,8 +222,6 @@ export function createLink({
   data = null,
   theme = async () => null,
   commandKeys = () => ({}),
-  // Whether a window is one the app had parked before Safari quit (background/parked-restore.ts): told on its entry.
-  wasParked = (_windowId: number) => false,
   log = (...args) => console.info('[margin] link:', ...args),
   sha256 = webSha256,
   // A monotonic clock (ms) for how long the app's been quiet and whether a check ran late.
@@ -249,7 +239,6 @@ export function createLink({
   data?: { pendingQueue: (since: number) => Promise<any[]>, snapshot: () => Promise<any>, adopt: (set: any, options?: { changes?: any[], omitted?: any[] }) => Promise<unknown>, take: (changes: any[]) => Promise<unknown>, onChanges: (cb: (changes: any[]) => void) => unknown } | null,
   theme?: () => Promise<any>,
   commandKeys?: () => Record<string, string>,
-  wasParked?: (windowId: number) => boolean,
   log?: (...args: any[]) => void,
   sha256?: (bytes: Uint8Array) => Promise<string>,
   now?: () => number,
@@ -417,7 +406,6 @@ export function createLink({
     clearTimeout(goneTimer);
     goneTimer = null;
     setPageState('off');
-    forgetParked('off');
   }
   // Why there's no link, for the new-tab page: 'no-link' (Margin.app is
   // running but sent none), 'sockets-off' (the socket guard turned the link
@@ -812,12 +800,10 @@ export function createLink({
     launches = 0;
     noLinks = 0;
     lastWindows = '';
-    lastList = null;
     lastKeys = '';
     lastTheme = '';
     clearTimeout(goneTimer);
     goneTimer = null;
-    forgetParked('a new link');
     void Promise.resolve(session()?.set({ [SESSION_KEY]: { port: at, token, key, ...(browserPid ? { pid: browserPid } : {}) } })).catch(() => {});
     setLast('linked', `on port ${at}`);
     const { origin, since } = copy();
@@ -931,8 +917,6 @@ export function createLink({
         return void request(message);
       case 'drawn':
         return drawn(message);
-      case 'parked':
-        return parkedSaid(message);
       case 'resync':
         if (message.epoch === epoch) void snapshot();
         return;
@@ -988,27 +972,6 @@ export function createLink({
     for (const cb of [...drawnListeners]) cb(m.windowId, m.on);
   }
   const drawnListeners = new Set<any>();
-  // Which of this copy's windows the app has parked (docs/HANDOFF.md §2.5): out of sight in a private
-  // Space of their own, alive and normal. Kept per window as the app says it, this epoch's only: a
-  // new link, the link going off and the window closing forget it (a new link says it again). Not
-  // stored: no page reads it. windowId → when the app parked it.
-  const parked: Map<number, number> = new Map();
-  function parkedSaid(m: Said) {
-    if (m.epoch !== epoch || !Number.isInteger(m.windowId) || typeof m.on !== 'boolean') return;
-    if (parked.has(m.windowId) === m.on) return;
-    if (m.on) parked.set(m.windowId, Number.isFinite(m.at) ? m.at : Date.now());
-    else parked.delete(m.windowId);
-    note(`the app ${m.on ? 'parked' : 'no longer parks'} window ${m.windowId}`);
-    for (const cb of [...parkedListeners]) cb(m.windowId, m.on);
-  }
-  function forgetParked(why: string) {
-    if (!parked.size) return;
-    note(`parked windows forgotten (${why}): ${[...parked.keys()].join(', ')}`);
-    const ids = [...parked.keys()];
-    parked.clear();
-    for (const id of ids) for (const cb of [...parkedListeners]) cb(id, false, true); // (forgotten: not the app's word)
-  }
-  const parkedListeners = new Set<any>();
   // A window gone: what the app said of it goes too.
   function forgetWindows(ids: string[]) {
     const drawnNow = { ...pageState.drawn };
@@ -1031,7 +994,6 @@ export function createLink({
       if (!raw || epoch !== at) return;
       sentIcons = iconsOf(raw.favicons);
       lastWindows = JSON.stringify(windows);
-      lastList = windows;
       send({ k: 'snapshot', epoch, seq: ++seq, state: raw, windows });
       noteFlags(windows);
     })();
@@ -1082,69 +1044,21 @@ export function createLink({
       ...(createdAt.has(w.id) ? { createdAt: createdAt.get(w.id) } : {}),
     }));
   }
-  // What only this copy knows, on a window's entry: its tab in front's word (the inspector, whether
-  // it's shown, are a tab's: docs/PROTOCOL.md `viewport`, `visible`), and the last blur it heard.
+  // What only this copy knows, on a window's entry: the last blur it heard.
   function known(entry: { windowId: number, [field: string]: any }) {
-    const { viewport: _vp, visible: _v, visibleAt: _va, blurredAt: _b, ...rest } = entry;
-    const vp = viewports.get(rest.windowId);
-    const seen = rest.activeTabId != null ? visibility.get(rest.activeTabId) : null;
-    return {
-      ...rest,
-      ...(vp && vp.tabId === rest.activeTabId ? { viewport: vp.rect, ...(vp.times ? { viewportTimes: vp.times } : {}) } : {}),
-      ...(seen && seen.windowId === rest.windowId ? { visible: seen.visible, visibleAt: seen.at } : {}),
-      ...(blurredAt != null ? { blurredAt } : {}),
-      ...(wasParked(rest.windowId) ? { wasParked: true } : {}),
-      ...(rest.activeTabId != null && fullscreens.get(rest.windowId) === rest.activeTabId ? { pageFullscreen: true } : {}),
-    };
+    return { ...entry, ...(blurredAt != null ? { blurredAt } : {}) };
   }
-  // Where each window's tab in front says its page area sits in the window, when that's less than
-  // all of it (content/core.ts viewportNow: the docked Web Inspector): windowId → { tabId, rect }.
-  // (`times`: when the page was resized, said it, and this copy heard it, for Margin.app's log.)
-  const viewports: Map<number, { tabId: number, rect: { x: number, y: number, width: number, height: number, measured?: boolean }, times?: { resized?: number, said?: number, heard: number } }> = new Map();
-  // Windows whose tab in front is in full screen (a page's own, or Safari's video full screen: content/core.ts): windowId → tabId.
-  const fullscreens = new Map();
-  // When this copy heard each of its windows focused and created (Date.now(), the app's clock too): the
-  // app tells same-bounds windows apart by them (app/platforms/macos/shell/WindowMatcher.swift). Not kept past the background.
+  // When this copy heard each of its windows focused and created (Date.now(), the app's clock too): the app
+  // knows the windows a copy restored from the ones made since by `createdAt` (HostedSession.swift). Not kept
+  // past the background.
   const focusedAt: Map<number, number> = new Map();
   const createdAt: Map<number, number> = new Map();
   // When this copy last heard windows.onFocusChanged with WINDOW_ID_NONE (none of its windows
   // focused: Safari left the front, or another profile's window took it). Null: not heard.
   let blurredAt: number | null = null;
-  // Whether each tab's page says it's shown (content/core.ts, newtab.ts: document.visibilityState),
-  // and when it last said so: tabId → { windowId, visible, at }. A window's is its tab in front's,
-  // and only that tab's. Missing is unknown (never hidden): a page Margin's script can't run in, one
-  // not loaded yet, one whose window just showed another tab (cleared, the new tab asked again).
-  // Margin.app tells same-bounds full-screen windows of different profiles apart by it
-  // (app/platforms/macos/shell/WindowMatcher.swift, the visible rule). Not kept past the background.
-  // (`source`, `heard`: what said it and when the background heard it, for the log.)
-  const visibility: Map<number, { windowId: number, visible: boolean, at: number, source?: string, heard?: number }> = new Map();
-  // Each page in front asked to say again whether it's shown (the background starting, a tab shown).
-  const askVisibility = (tabId: number) => { void Promise.resolve(api.tabs.sendMessage?.(tabId, { type: 'reportVisibility' })).catch(() => {}); };
-  // Each window shown or hidden, as its tab in front says (a tab behind isn't the window's word): one
-  // line in Margin.app's log per change, with when the page saw it, what said it and how late the
-  // background heard it (ids and times only). Whether a full-screen window on a Space that isn't
-  // showing says hidden, and how fast, is read from these. Looked at VISIBLE_NOTE_MS after a word,
-  // so the tab left behind as another is shown (it says hidden first) isn't taken for the window.
-  const VISIBLE_NOTE_MS = 150;
-  const visibleSaid: Map<number, boolean> = new Map();
-  const visibleNoting: Map<number, any> = new Map();
-  /** @param tabId the tab that spoke (the window's, if its tab in front isn't known) */
-  function noteVisibility(windowId: number, tabId: number) {
-    if (visibleNoting.has(windowId)) return;
-    visibleNoting.set(windowId, setTimeout(() => {
-      visibleNoting.delete(windowId);
-      const front = lastList?.find((w) => w.windowId === windowId)?.activeTabId ?? tabId;
-      const word = visibility.get(front);
-      if (!word || word.windowId !== windowId || visibleSaid.get(windowId) === word.visible) return;
-      visibleSaid.set(windowId, word.visible);
-      note(`window ${windowId} ${word.visible ? 'shown' : 'hidden'} at ${clock(word.at)} (${word.source ?? 'unknown'}, tab ${front}, heard ${Math.max(0, (word.heard ?? word.at) - word.at)} ms later)`);
-    }, VISIBLE_NOTE_MS));
-  }
-  // The focus flags and visibility of each windows report, in Margin.app's log when they change
-  // (ids and times only), so the log says what Safari's flags were when the app bound a window.
-  // A line when the flags change (the times in it aren't a change: each focus and each window's shown
-  // or hidden has its own line), at most one each FLAGS_NOTE_MS: a change within it is said once it's
-  // over, as it is then (a run of tab switches changes the shown word twice a switch).
+  // The focus flags of each windows report, in Margin.app's log when they change (ids and times only).
+  // A line when the flags change (the times in it aren't a change: each focus has its own line), at
+  // most one each FLAGS_NOTE_MS: a change within it is said once it's over, as it is then.
   const FLAGS_NOTE_MS = 1000;
   let lastFlags = '';
   let flagsAt = -Infinity;
@@ -1155,7 +1069,7 @@ export function createLink({
     if (flagsTimer) return;
     const flags = (times: boolean) => {
       const at = (t: number) => (times ? ` ${clock(t)}` : '');
-      const line = flagsList.map((w) => `${w.windowId}${w.focused ? ' focused' : ''}${w.focusedAt ? ` (focus heard${at(w.focusedAt)})` : ''}${'visible' in w ? ` ${w.visible ? 'shown' : 'hidden'}${at(w.visibleAt)}` : ''}`).join('; ');
+      const line = flagsList.map((w) => `${w.windowId}${w.focused ? ' focused' : ''}${w.focusedAt ? ` (focus heard${at(w.focusedAt)})` : ''}`).join('; ');
       return `${line}${blurredAt != null ? `; blur heard${at(blurredAt)}` : ''}`;
     };
     if (flags(false) === lastFlags) return;
@@ -1176,24 +1090,11 @@ export function createLink({
     const json = JSON.stringify(list);
     if (json === lastWindows) return;
     lastWindows = json;
-    lastList = list;
     send({ k: 'windows', epoch, seq: ++seq, list });
     noteFlags(list);
   }
   // The last list sent, for a change only this copy knows (a page's area: the docked inspector),
   // sent at once without asking Safari again; windowsNow follows with Safari's own.
-  let lastList: any[] | null = null;
-  function windowsFromKnown() {
-    if (!ws || snapshotting || !lastList) return false;
-    const list = lastList.map(known);
-    const json = JSON.stringify(list);
-    if (json === lastWindows) return true;
-    lastWindows = json;
-    lastList = list;
-    send({ k: 'windows', epoch, seq: ++seq, list });
-    noteFlags(list);
-    return true;
-  }
   async function sendTheme() {
     if (!ws) return;
     const at = epoch;
@@ -1363,9 +1264,6 @@ export function createLink({
     ensurePort();
     const [kept, last] = await Promise.all([keptLink(), Promise.resolve(session()?.get(LAST_KEY)).then((g) => g?.[LAST_KEY], () => null)]);
     note(`background started (kept link: ${kept ? 'yes' : 'no'}, page state before: ${before}, last stop: ${lastStop(last)})`);
-    // The pages in front say again whether they're shown (what they said before this background
-    // started is gone with the one before).
-    void Promise.resolve(api.tabs.query({ active: true })).then((tabs) => { for (const t of tabs ?? []) if (Number.isInteger(t?.id)) askVisibility(t.id); }, () => {});
     pingTimer = setInterval(() => { ping(); watch(); }, T.ping);
     ping();
     await link();
@@ -1381,8 +1279,6 @@ export function createLink({
     gone();
     clearInterval(pingTimer);
     clearTimeout(askTimer);
-    for (const timer of visibleNoting.values()) clearTimeout(timer);
-    visibleNoting.clear();
     clearTimeout(flagsTimer);
     flagsTimer = null;
     try { port?.disconnect(); } catch {}
@@ -1451,17 +1347,6 @@ export function createLink({
     push(windowId: number | null | undefined, msg: Record<string, any>) {
       return !!ws && send({ k: 'push', epoch, windowId: windowId ?? null, msg });
     },
-    // One of this copy's parked windows used while out of sight (docs/HANDOFF.md §6.1): told to the
-    // app, which hands off to it. `why`: 'tab' (a tab Margin didn't open made there), 'focus' (focus
-    // landed there, not Margin's doing) or 'raise' (Margin's UI asked for a tab that's only there);
-    // 'tab' and 'raise' name their tab. Ids only in the log.
-    parkedActivity(windowId: number, why: 'tab' | 'focus' | 'raise', tabId: number | null = null) {
-      if (!Number.isInteger(windowId) || windowId < 0 || !PARKED_WHY.has(why)) return false;
-      if (why !== 'focus' && !Number.isInteger(tabId)) return false;
-      if (!ws) return false;
-      note(`parkedActivity window ${windowId}${Number.isInteger(tabId) ? ` (tab ${tabId})` : ''}: ${why}`);
-      return send({ k: 'push', epoch, windowId, msg: { type: 'parkedActivity', windowId, ...(Number.isInteger(tabId) ? { tabId } : {}), why } });
-    },
     // Windows opened, closed, focused, moved, a tab shown: looked at now.
     windowsChanged: () => void windowsNow(),
     // windows.onFocusChanged and onCreated, with their time. WINDOW_ID_NONE (none of this copy's
@@ -1477,83 +1362,19 @@ export function createLink({
       if (Number.isInteger(windowId) && windowId >= 0) createdAt.set(windowId, at);
       void windowsNow();
     },
-    // A page in front saying where its area sits in its window (handlers.ts viewport; null: all of it).
-    viewport(windowId: number, tabId: number, rect: { x: number, y: number, width: number, height: number, measured?: boolean } | null, times: { resized?: number, said?: number, heard: number } | null = null) {
-      if (!Number.isInteger(windowId) || !Number.isInteger(tabId)) return;
-      const had = JSON.stringify(viewports.get(windowId) ?? null);
-      if (rect) viewports.set(windowId, { tabId, rect, ...(times ? { times } : {}) });
-      else if (viewports.get(windowId)?.tabId === tabId || rect === null) viewports.delete(windowId);
-      if (JSON.stringify(viewports.get(windowId) ?? null) === had) return;
-      windowsFromKnown();
-      void windowsNow();
-    },
-    // A page in front gone into full screen or back (handlers.ts pageFullscreen): its window's `pageFullscreen` while it's
-    // that window's tab in front; Margin.app's layout leaves that window meanwhile (app/platforms/macos/shell/Shell.swift).
-    pageFullscreen(windowId: number, tabId: number, on: boolean) {
-      if (!Number.isInteger(windowId) || !Number.isInteger(tabId) || typeof on !== 'boolean') return;
-      const had = fullscreens.get(windowId);
-      if (on) fullscreens.set(windowId, tabId);
-      else if (had === tabId) fullscreens.delete(windowId);
-      if (fullscreens.get(windowId) === had) return;
-      windowsFromKnown();
-      void windowsNow();
-    },
-    // A page saying whether it's shown (handlers.ts visibility), at `at` (its Date.now()): its
-    // window's `visible` and `visibleAt` while it's that window's tab in front. `source`: what said
-    // it ('content script', 'new-tab page' or 'unknown'), for the log.
-    visibility(windowId: number, tabId: number, visible: boolean, at: number, source: string = 'unknown') {
-      if (!Number.isInteger(windowId) || !Number.isInteger(tabId) || typeof visible !== 'boolean' || !Number.isFinite(at)) return;
-      const had = visibility.get(tabId);
-      if (had && had.windowId === windowId && had.at > at) return; // an older word than the one kept
-      // The same word again (the page's visibilitychange, then its answer to reportVisibility): it has
-      // said so since the first; nothing new to send.
-      if (had && had.windowId === windowId && had.visible === visible) return;
-      visibility.set(tabId, { windowId, visible, at: Math.min(at, Date.now()), source, heard: Date.now() });
-      noteVisibility(windowId, tabId);
-      if (!windowsFromKnown()) void windowsNow();
-    },
-    // A tab shown in its window (tabs.onActivated): what its window's tabs said is forgotten (the
-    // window's is the new tab's now, and it's asked again).
-    tabActivated(tabId: number, windowId: number) {
-      for (const [id, v] of visibility) if (v.windowId === windowId || id === tabId) visibility.delete(id);
-      // The window's tab in front is this one now, before Safari's list says so: the tab left behind
-      // saying it's hidden isn't taken for the window (nor sent as its word).
-      if (lastList && Number.isInteger(tabId)) lastList = lastList.map((w) => (w.windowId === windowId ? { ...w, activeTabId: tabId } : w));
-      if (Number.isInteger(tabId)) askVisibility(tabId);
-      void windowsNow();
-    },
-    // A tab's page replaced (a navigation committed, webNavigation's `timeStamp`), the tab gone,
-    // replaced or moved to another window: what it said is forgotten (a new page says again).
-    /** @param before only a word said before this */
-    tabGone(tabId: number, before: number = Infinity) {
-      const had = visibility.get(tabId);
-      if (!had || had.at > before) return;
-      visibility.delete(tabId);
-      void windowsNow();
-    },
+    // A tab shown in its window (tabs.onActivated): the window list looked at now.
+    tabActivated: () => void windowsNow(),
     // A switch's timeline (background/switch-log.ts) and other lines for Margin.app's log.
     note: (...args: any[]) => note(...args),
     windowClosed(windowId: number) {
       focusedAt.delete(windowId);
       createdAt.delete(windowId);
-      viewports.delete(windowId);
-      fullscreens.delete(windowId);
-      for (const [id, v] of visibility) if (v.windowId === windowId) visibility.delete(id);
-      visibleSaid.delete(windowId);
-      clearTimeout(visibleNoting.get(windowId));
-      visibleNoting.delete(windowId);
       forgetWindows([String(windowId)]);
-      parked.delete(windowId);
       void windowsNow();
     },
-    // The window list looked at and sent now if it changed (a handoff's windows call landed: the app
-    // and its overlays hear the new state without WINDOWS_MS's wait).
+    // The window list looked at and sent now if it changed (a windows call for the app landed: it
+    // hears the new state without WINDOWS_MS's wait).
     windowsNow: () => windowsNow(),
-    // Whether the app said it parked the window (this epoch).
-    parked: (windowId: number | null | undefined) => windowId != null && parked.has(windowId),
-    parkedWindows: () => [...parked.keys()],
-    /** `forgot`: forgotten as a link went or came, not the app's word. */
-    onParked(cb: (windowId: number, on: boolean, forgot?: boolean) => void) { parkedListeners.add(cb); return () => parkedListeners.delete(cb); },
     linked: () => !!ws,
     // 'linked', 'reconnecting' or 'off', as pages see it.
     pageState: () => pageState.state,

@@ -11,12 +11,12 @@
 // - one overlay per full-screen window, sized to it, with the page hello
 //   Shell.hello(for:) makes; `drawn` on before it shows, off 1.5 s after a
 //   window leaves full screen (or was never in it), at once when it closes;
-// - the bridge ops: hello, send (a `req` for that window), layout (`setLayout`
-//   for a layout measured at the window's size, rounded to half a point, only
-//   a change), hits, focus, pointerWant, perform, ready and log, kept for checks;
-// - forwarding: state, changes, windows (not a list that differs only in
-//   `visible`), push (a palette held until its overlay is shown, else dropped
-//   with `drawn` off and `paletteDropped`; notices and loading held for an
+// - the bridge ops: hello, send (a `req` for that window), layout (kept for
+//   checks as `layoutsSent`: a layout measured at the window's size, rounded to
+//   half a point, only a change; nothing goes to the copy for it), hits, focus,
+//   pointerWant, perform, ready and log, kept for checks;
+// - forwarding: state, changes, windows, push (a palette held until its overlay
+//   is shown, else dropped with `drawn` off; notices and loading held for an
 //   overlay made later), link (reconnecting, then linked);
 // - the app's keys (`key('palette')`, `navigate('next-tab')`), ticks every
 //   5 s, drops, a kill, a goodbye, a restart (new port, token and key, then `appUp`);
@@ -30,7 +30,7 @@ import { startFakeApp } from '../../fake-app.ts';
 
 type FakeApp = Awaited<ReturnType<typeof startFakeApp>>;
 // A window as the copy lists it (background/link.ts windowList and known): what the shell reads of it.
-type LinkWindow = { windowId: number, state: string, focused: boolean, width: number, height: number, visible?: boolean, visibleAt?: number, [field: string]: unknown };
+type LinkWindow = { windowId: number, state: string, focused: boolean, width: number, height: number, [field: string]: unknown };
 type Size = { width: number, height: number };
 // One overlay page over a window, and what it said over the bridge.
 type Overlay = {
@@ -76,7 +76,7 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, makeFulls
   const received: Said[] = [];
   const requests: { id: number, type: string, payload: Said, windowId: number | null, at: number, reply: Said | null }[] = []; // the app's reqs, with their replies
   const performs: { windowId: number, name: unknown, arg: unknown, at: number }[] = []; // what overlays asked the app (`perform`)
-  const layoutsSent: Said[] = []; // setLayout messages
+  const layoutsSent: Said[] = []; // each layout the page reported, as the app takes it
   const drawnSent: Said[] = []; // drawn messages
   const dataChanges: Said[] = []; // the copy's data.changes
   const overlayLogs: { windowId: number, level: unknown, text: string }[] = [];
@@ -105,7 +105,7 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, makeFulls
   const waiting: Map<number, (reply: Said) => void> = new Map();
   const overlays: Map<number, Overlay> = new Map();
   const drawnOn: Map<number, boolean> = new Map(); // windowId → the last `drawn` sent
-  const outbox: Map<number, { seq: number, key: string }> = new Map(); // windowId → { seq, key } of setLayout
+  const outbox: Map<number, { seq: number, key: string }> = new Map(); // windowId → { seq, key } of its last layout
   const unwanted: Map<number, Timer> = new Map(); // windowId → timer to say drawn false
   const held: Map<number, Map<string, { msg: Said, at: number }>> = new Map(); // windowId (-1 every window) → type → msg
   const heldPalette: Map<number, { msg: Said, until: number, newTab: boolean }> = new Map(); // windowId → { msg, until, newTab }
@@ -176,9 +176,8 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, makeFulls
           for (const o of overlays.values()) o.push(msg);
           return;
         }
-        const before = windows;
         windows = Array.isArray(m.list) ? m.list : [];
-        if (!onlyVisibility(before, windows)) for (const o of overlays.values()) o.push({ type: 'windows', list: windows });
+        for (const o of overlays.values()) o.push({ type: 'windows', list: windows });
         return void sync();
       }
       case 'theme': {
@@ -223,9 +222,6 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, makeFulls
     }
   }
 
-  const strip = (list: LinkWindow[]) => list.map((w) => { const { visible, visibleAt, ...rest } = w; return rest; });
-  const onlyVisibility = (a: LinkWindow[], b: LinkWindow[]) => a.length === b.length && b.length > 0 && JSON.stringify(strip(a)) === JSON.stringify(strip(b));
-
   function pushed(windowId: number | null, msg: Said) {
     if (!msg || typeof msg !== 'object') return;
     if (HELD_TYPES.has(msg.type)) {
@@ -233,7 +229,6 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, makeFulls
       if (!held.has(k)) held.set(k, new Map());
       held.get(k)!.set(msg.type, { msg, at: Date.now() });
     }
-    if (msg.type === 'keyHeard') return void say('keyHeard', msg.command, msg.from);
     if (msg.type === 'palette' && windowId != null) {
       const o = overlays.get(windowId);
       if (o?.ready) return o.push({ type: 'push', msg });
@@ -245,7 +240,6 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, makeFulls
         heldPalette.delete(windowId);
         say('palette for window', windowId, 'dropped');
         if (!overlays.get(windowId)?.ready) sendDrawn(windowId, false);
-        if (h.newTab) void request('paletteDropped', { windowId, newTab: true }, windowId).catch(() => {});
       }, PALETTE_HOLD_MS + 50);
       return;
     }
@@ -432,9 +426,8 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, makeFulls
     if (last?.key === key) return;
     const next = (last?.seq ?? 0) + 1;
     outbox.set(o.windowId, { seq: next, key });
-    const msg = { k: 'setLayout', epoch, windowId: o.windowId, seq: next, insets, radius: g.radius ?? 0, radii: g.radii ?? null, container: { width: o.size.width, height: o.size.height }, mode: g.mode === 'windowed' ? 'windowed' : 'fullscreen', at: Date.now() };
+    const msg = { epoch, windowId: o.windowId, seq: next, insets, radius: g.radius ?? 0, radii: g.radii ?? null, container: { width: o.size.width, height: o.size.height }, mode: g.mode === 'windowed' ? 'windowed' : 'fullscreen', at: Date.now() };
     layoutsSent.push(msg);
-    send(msg);
     notify();
   }
 

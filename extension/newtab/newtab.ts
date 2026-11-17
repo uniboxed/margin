@@ -21,7 +21,6 @@ import { linksApp } from '../shared/capabilities.ts';
 import { resolveInput } from '../shared/search.ts';
 import * as shortcuts from '../shared/shortcuts.ts';
 import { APP_LINK_KEY, appDraws, undrawn } from '../shared/app-link.ts';
-import { probeFrames, watchVisible } from '../shared/frame-probe.ts';
 import type { MessageType, Request, Result } from '../../types/margin';
 
 const api = globalThis.browser ?? globalThis.chrome;
@@ -88,23 +87,9 @@ addEventListener('focus', checkLink);
 let settingsNow = (await api.storage.local.get('settings')).settings ?? null;
 api.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.settings) settingsNow = changes.settings.newValue ?? null; });
 shortcuts.installNavigation({ send, getSettings: () => settingsNow });
-// Whether this page is shown, as web pages say it (content/core.ts tellVisibility): at each change,
-// at the start and when the background asks.
-const tellVisibility = () => { if (linksApp()) void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now(), from: 'newtab' }); };
-document.addEventListener('visibilitychange', tellVisibility);
-addEventListener('pageshow', (event) => event.persisted && tellVisibility());
-tellVisibility();
-// When it last turned visible, for Margin.app's frame probe, which this page answers as web pages do.
-const visibleAt = watchVisible();
 // The background switching from this tab (next/previous tab): never covered here.
 api.runtime.onMessage.addListener((message, _, sendResponse) => {
   if (message?.type === 'switching' && message.from === self?.id) sendResponse(false);
-  if (message?.type === 'reportVisibility') tellVisibility();
-  // Margin.app's profile handoff asking whether this page draws frames at the full-screen size.
-  if (message?.type === 'frameProbe') {
-    void probeFrames(message, { visibleAt }).then((answer) => sendResponse(answer), () => sendResponse(null));
-    return true;
-  }
   // ⌘T or the palette's key with this page in front, not the app's: its address field.
   if (message?.type === 'command' && message.tabId === self?.id && mode !== 'app') address()?.focus();
 });

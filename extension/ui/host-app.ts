@@ -399,7 +399,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           return false; // history goes to the copy (goBack, goForward, reload); the window's other buttons are Phase 4's
       }
     },
-    /** What the app passes on (app/platforms/macos/shell/Shell.swift forward, run, pointer). */
+    /** What the app passes on (app/platforms/macos/shell/MarginWindowController.swift push). */
     receive(msg: any) {
       if (destroyed || !msg || typeof msg !== 'object') return;
       switch (msg.type) {

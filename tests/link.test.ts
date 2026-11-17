@@ -15,8 +15,8 @@ import type { Said } from '../extension/background/link.ts';
 type FakeApp = Awaited<ReturnType<typeof startFakeApp>>;
 
 globalThis.chrome = fakeBrowser({ runtime: { getURL: (p) => `safari-web-extension://test/${p}`, getManifest: () => ({ version: '2.0.0' }) } });
-const { createLink, keyBindings, themePieces, SESSION_KEY, LINK_META, STATE_KEYS, APP_REQUESTS, WINDOW_CALLS, PARKED_WHY, windowCallRefusal } = await import('../extension/background/link.ts');
-const { APP_LINK_KEY, appDraws, drawsWindow, unpinchedSize } = await import('../extension/shared/app-link.ts');
+const { createLink, keyBindings, themePieces, SESSION_KEY, LINK_META, STATE_KEYS, APP_REQUESTS, WINDOW_CALLS, windowCallRefusal } = await import('../extension/background/link.ts');
+const { APP_LINK_KEY, appDraws, drawsWindow } = await import('../extension/shared/app-link.ts');
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(test: () => unknown, ms = 2000) {
@@ -463,26 +463,6 @@ test('link: ticks, requests as the window\'s, deltas, windows, resync', async ()
     const from2 = app.received.length;
     link.windowClosed(8);
     assert.equal((await app.next('windows', { from: from2, test: (m) => m.list.length === 1 }))!.list[0].focusedAt, 1_800_000_000_200);
-    // The Web Inspector docked: the tab in front says where its area sits, the window's entry carries it.
-    const from3 = app.received.length;
-    link.viewport(7, 13, { x: 0, y: 0, width: 1440, height: 500 });
-    assert.deepEqual((await app.next('windows', { from: from3, test: (m) => !!m.list[0].viewport }))!.list[0].viewport, { x: 0, y: 0, width: 1440, height: 500 });
-    // One whose start a pointer event measured: `measured` passed on (the app carves out a measured left part).
-    const from3b = app.received.length;
-    link.viewport(7, 13, { x: 220, y: 0, width: 1220, height: 800, measured: true });
-    assert.deepEqual((await app.next('windows', { from: from3b, test: (m) => m.list[0].viewport?.x === 220 }))!.list[0].viewport, { x: 220, y: 0, width: 1220, height: 800, measured: true });
-    const from4 = app.received.length;
-    link.viewport(7, 99, { x: 0, y: 0, width: 1000, height: 800 }); // a tab behind (its inspector isn't shown): not the window's
-    link.viewport(7, 13, null); // closed
-    assert.ok(!('viewport' in (await app.next('windows', { from: from4, test: (m) => !m.list[0].viewport }))!.list[0]), 'only the tab in front\'s, and gone when it closes');
-    // The tab in front gone into full screen (a video's): the window's entry says so; a tab behind doesn't; back: gone.
-    const from5 = app.received.length;
-    link.pageFullscreen(7, 99, true);
-    link.pageFullscreen(7, 13, true);
-    assert.equal((await app.next('windows', { from: from5, test: (m) => m.list[0].pageFullscreen === true }))!.list[0].pageFullscreen, true);
-    const from6 = app.received.length;
-    link.pageFullscreen(7, 13, false);
-    assert.ok(!('pageFullscreen' in (await app.next('windows', { from: from6, test: (m) => !m.list[0].pageFullscreen }))!.list[0]), 'out of it: gone');
     // A gap on the app's side: the whole state again.
     const before = app.received.length;
     app.send({ k: 'resync', epoch: hello.epoch });
@@ -573,102 +553,31 @@ test('link: a background started again keeps what the one before said of the win
   }
 });
 
-test('link: which page is shown — each window\'s `visible` from its tab in front only, forgotten as another tab is shown; the copy\'s blur; focus and flags in Margin.app\'s log', async () => {
-  const T0 = Date.now() - 60_000; // the page's clock, before now
+test('link: the copy\'s blur on each window\'s entry; focus and flags in Margin.app\'s log; none of the overlay\'s fields', async () => {
+  const T0 = Date.now() - 60_000; // before now
   const app = await startFakeApp();
   const api = browser({ app, local: STATE });
-  const asked: [number, string][] = [];
-  api.tabs.sendMessage = async (tabId, message) => { asked.push([tabId, message.type]); };
   // (A link that stays up: on a busy machine FAST's 400 ms `dead` drops it, and what follows comes in a new link's snapshot.)
   const { link } = makeLink(api, { timing: { ...FAST, dead: 10_000 } });
   try {
     await link.start({ route: async () => ({ ok: true, result: null }) });
     await app.next('hello');
     await app.next('data.hello');
-    assert.ok(await until(() => asked.some(([id, type]) => id === 13 && type === 'reportVisibility')), 'the page in front asked to say again at the start');
     const logged = () => api.ports.flatMap((p) => p.posted).filter((m) => m.type === 'log').map((m) => m.line);
-    // A tab behind in window 7 says it's shown (it isn't the window's word), then the tab in front.
-    let from = app.received.length;
-    link.visibility(7, 99, true, T0 + 0);
-    await wait(120);
-    assert.ok(app.received.slice(from).filter((m) => m.k === 'windows').every((m) => !('visible' in m.list[0])), 'a tab behind: not the window\'s');
-    link.visibility(7, 13, false, T0 + 100);
-    await wait(200); // (the log's line is written 150 ms after a word: below)
-    let win = (await app.next('windows', { from, test: (m) => 'visible' in m.list[0] }))!;
-    assert.equal(win.list[0].visible, false);
-    assert.equal(win.list[0].visibleAt, T0 + 100);
-    from = app.received.length;
-    link.visibility(7, 13, true, T0 + 200);
-    win = (await app.next('windows', { from, test: (m) => m.list[0].visible === true }))!;
-    assert.equal(win.list[0].visibleAt, T0 + 200, 'its time is when the page said it');
-    from = app.received.length;
-    link.visibility(7, 13, false, T0 + 150); // an older word than the one kept: left
-    await wait(120);
-    assert.ok(app.received.slice(from).filter((m) => m.k === 'windows').every((m) => m.list[0].visible === true));
-    // Another tab shown in window 7: the window's word is forgotten until that tab says, and it's asked.
-    asked.length = 0;
-    api.tabs.query = async () => [{ id: 14, windowId: 7, active: true }];
-    from = app.received.length;
-    link.tabActivated(14, 7);
-    link.visibility(7, 13, false, T0 + 250); // the tab left behind says hidden before Safari's list has the new tab in front
-    win = (await app.next('windows', { from, test: (m) => m.list[0].activeTabId === 14 }))!;
-    assert.ok(!('visible' in win.list[0]) && !('visibleAt' in win.list[0]), 'unknown, not hidden');
-    await wait(50);
-    assert.ok(!app.received.slice(from).some((m) => m.k === 'windows' && m.list[0].visible === false), 'the tab left behind\'s hidden never sent as the window\'s');
-    assert.deepEqual(asked, [[14, 'reportVisibility']]);
-    link.visibility(7, 13, true, T0 + 300); // the tab left behind: not the window's
-    link.visibility(7, 14, true, T0 + 400);
-    win = (await app.next('windows', { from, test: (m) => m.list[0].visible === true }))!;
-    assert.equal(win.list[0].visibleAt, T0 + 400);
-    // (The flags' line at most once a second, as they are once it's over.)
-    assert.ok(await until(() => logged().some((l) => /^windows report at [\d:.]+: 7 focused shown [\d:.]+$/.test(l)), 1500), 'a report\'s shown page in the log');
-    // Its page replaced (a navigation committed after it spoke): forgotten; one committed before: kept.
-    from = app.received.length;
-    link.tabGone(14, T0 + 399);
-    await wait(120);
-    assert.ok(app.received.slice(from).filter((m) => m.k === 'windows').every((m) => m.list[0].visible === true), 'a commit before its word: kept');
-    link.tabGone(14, T0 + 500);
-    win = (await app.next('windows', { from, test: (m) => !('visible' in m.list[0]) }))!;
-    assert.ok(!('visibleAt' in win.list[0]));
     // WINDOW_ID_NONE: the copy's blur, on each of its windows; both focus events in the log.
-    from = app.received.length;
+    const from = app.received.length;
     link.windowFocused(-1, T0 + 600);
-    win = (await app.next('windows', { from, test: (m) => m.list[0].blurredAt != null }))!;
+    let win = (await app.next('windows', { from, test: (m) => m.list[0].blurredAt != null }))!;
     assert.equal(win.list[0].blurredAt, T0 + 600);
     link.windowFocused(7, T0 + 700);
     win = (await app.next('windows', { from, test: (m) => m.list[0].focusedAt === T0 + 700 }))!;
     assert.equal(win.list[0].blurredAt, T0 + 600, 'kept: the last blur heard');
+    for (const field of ['viewport', 'viewportTimes', 'visible', 'visibleAt', 'pageFullscreen', 'wasParked']) assert.ok(!(field in win.list[0]), `${field}: no longer sent`);
     assert.ok(await until(() => logged().some((l) => /^focus heard: none \(WINDOW_ID_NONE\) at \d\d:\d\d:\d\d\.\d{3}$/.test(l)) && logged().some((l) => /^focus heard: window 7 at /.test(l))), `${logged()}`);
     assert.ok(await until(() => logged().some((l) => /^windows report at [\d:.]+: 7 focused \(focus heard [\d:.]+\); blur heard [\d:.]+$/.test(l)), 1500), `${logged().filter((l) => l.startsWith('windows report'))}`);
     const reports = logged().filter((l) => l.startsWith('windows report')).map((l) => Number(/at (\d\d):(\d\d):(\d\d)\.(\d{3})/.exec(l)?.slice(1).reduce((a, x, i) => a + Number(x) * [3600e3, 60e3, 1e3, 1][i], 0)));
     assert.ok(reports.every((t, i) => i === 0 || t - reports[i - 1] >= 990), `the flags' line at most once a second: ${logged().filter((l) => l.startsWith('windows report'))}`);
     assert.ok(!logged().some((l) => /https?:|example/.test(l)), 'ids and times only');
-    // Each change of a window's word one line: shown or hidden, when the page saw it, what said it, how late it was heard.
-    const seen = () => logged().filter((l) => l.startsWith('window 7 '));
-    assert.ok(/^window 7 hidden at \d\d:\d\d:\d\d\.\d{3} \(unknown, tab 13, heard \d+ ms later\)$/.test(seen()[0] ?? ''), `${seen()}`);
-    // (Shown again by tab 13 and then by 14, the tab shown next: one line, a change; which tab depends on when it was looked at.)
-    assert.ok(/^window 7 shown at [\d:.]+ \(unknown, tab 1[34], heard \d+ ms later\)$/.test(seen()[1] ?? ''), `${seen()}`);
-    assert.equal(seen().length, 2, `the same word again, a tab behind, another tab of the window saying shown: no line (${seen()})`);
-    assert.ok(Number(/heard (\d+) ms/.exec(seen()[0])?.[1]) >= 60_000 - 100, 'how late: from the page\'s time (a minute back) to now');
-    link.visibility(7, 14, false, Date.now(), 'content script');
-    assert.ok(await until(() => seen().length === 3));
-    assert.match(seen()[2], /^window 7 hidden at [\d:.]+ \(content script, tab 14, heard \d+ ms later\)$/);
-    // The same word again (the page's answer to reportVisibility after its visibilitychange): nothing sent,
-    // its first time kept; a change is sent with its own time.
-    win = (await app.next('windows', { from, test: (m) => m.list[0].visible === false }))!;
-    const hiddenAt = win.list[0].visibleAt;
-    from = app.received.length;
-    link.visibility(7, 14, false, Date.now(), 'content script');
-    await wait(120);
-    assert.ok(!app.received.slice(from).some((m) => m.k === 'windows'), 'the same word again: nothing sent');
-    const shownAt = Date.now();
-    link.visibility(7, 14, true, shownAt, 'content script');
-    win = (await app.next('windows', { from, test: (m) => m.list[0].visible === true }))!;
-    assert.equal(win.list[0].visibleAt, shownAt);
-    assert.ok(hiddenAt < shownAt);
-    // A closed window's words go with it.
-    link.visibility(8, 20, true, T0 + 800);
-    link.windowClosed(8);
   } finally {
     link.stop();
     await app.close();
@@ -1074,12 +983,11 @@ test('link: a copy that doesn\'t own the state never links', async () => {
   }
 });
 
-test('link: the handoff\'s words — its requests taken, others refused, the windows calls\' refusals, parkedActivity pushed', async () => {
-  for (const type of ['setWindowState', 'frameProbe', 'windowDrafts', 'focusWindow', 'closeWindow', 'openSpaceWindow']) assert.ok(APP_REQUESTS.has(type), type);
-  for (const type of ['parked', 'parkedActivity', 'setWindowStates', 'windowsUpdate', 'framed']) assert.ok(!APP_REQUESTS.has(type), type);
-  assert.deepEqual([...WINDOW_CALLS].sort(), ['closeWindow', 'focusWindow', 'setWindowState']);
+test('link: the app\'s windows calls — its requests taken, the removed ones refused, the windows calls\' refusals', async () => {
+  for (const type of ['setWindowState', 'closeWindow', 'newWindow', 'hostShow', 'hostClose']) assert.ok(APP_REQUESTS.has(type), type);
+  for (const type of ['parked', 'parkedActivity', 'frameProbe', 'windowDrafts', 'focusWindow', 'openSpaceWindow', 'orderSpaces', 'paletteDropped', 'devTabMoveProbe', 'framed']) assert.ok(!APP_REQUESTS.has(type), type);
+  assert.deepEqual([...WINDOW_CALLS].sort(), ['closeWindow', 'setWindowState']);
   for (const type of WINDOW_CALLS) assert.ok(APP_REQUESTS.has(type), type);
-  assert.deepEqual([...PARKED_WHY].sort(), ['focus', 'raise', 'tab']);
 
   const none = new Set();
   assert.deepEqual(windowCallRefusal({ windowId: 3, notAfter: 1000 }, none, 1210), { refused: 'late', pastMs: 210 }, 'past notAfter');
@@ -1094,7 +1002,6 @@ test('link: the handoff\'s words — its requests taken, others refused, the win
   const routed: Said[] = [];
   const { link } = makeLink(api);
   try {
-    assert.equal(link.parkedActivity(3, 'focus'), false, 'not linked: nothing');
     await link.start({ route: async (m) => { routed.push(m); return { ok: true, result: m.type === 'setWindowState' ? { windowId: m.windowId, state: m.state, landedAt: 5 } : null }; } });
     const hello = (await app.next('hello'))!;
     await app.next('data.hello');
@@ -1102,39 +1009,14 @@ test('link: the handoff\'s words — its requests taken, others refused, the win
     app.send({ k: 'req', id: 1, epoch: hello.epoch, windowId: 7, type: 'setWindowState', payload: { windowId: 7, state: 'normal', notAfter: 99 } });
     assert.deepEqual((await app.next('reply', { from, test: (m) => m.id === 1 }))!.result, { windowId: 7, state: 'normal', landedAt: 5 });
     assert.deepEqual(routed[0], { windowId: 7, state: 'normal', notAfter: 99, type: 'setWindowState' }, 'the payload as sent');
-    app.send({ k: 'req', id: 2, epoch: hello.epoch, windowId: 7, type: 'frameProbe', payload: { windowId: 7, width: 1280, height: 800, frames: 6, nudgeMs: 80, timeoutMs: 400 } });
+    app.send({ k: 'req', id: 2, epoch: hello.epoch, windowId: 7, type: 'frameProbe', payload: { windowId: 7, width: 1280, height: 800 } });
     app.send({ k: 'req', id: 3, epoch: hello.epoch, windowId: 7, type: 'windowDrafts', payload: { windowId: 7 } });
-    app.send({ k: 'req', id: 4, epoch: hello.epoch, windowId: 7, type: 'parkedActivity', payload: { windowId: 7 } });
-    assert.equal((await app.next('reply', { from, test: (m) => m.id === 2 }))!.ok, true);
-    assert.equal((await app.next('reply', { from, test: (m) => m.id === 3 }))!.ok, true);
-    assert.match((await app.next('reply', { from, test: (m) => m.id === 4 }))!.error, /not a request/, 'a word of the copy\'s isn\'t a request');
-    assert.deepEqual(routed.map((m) => m.type), ['setWindowState', 'frameProbe', 'windowDrafts']);
-
-    assert.equal(link.parkedActivity(3, 'tab', 44), true);
-    assert.equal(link.parkedActivity(3, 'focus'), true);
-    assert.equal(link.parkedActivity(3, 'raise'), false, 'a raise names its tab');
-    assert.equal(link.parkedActivity(3, 'tab'), false, 'so does a tab\'s');
-    assert.equal(link.parkedActivity(3, ('hover' as any), 1), false, 'a why not known');
-    assert.equal(link.parkedActivity(-1, 'focus'), false, 'no window');
-    const tab = (await app.next('push', { from, test: (m) => m.msg?.type === 'parkedActivity' && m.msg.why === 'tab' }))!;
-    assert.deepEqual(tab, { k: 'push', epoch: hello.epoch, windowId: 3, msg: { type: 'parkedActivity', windowId: 3, tabId: 44, why: 'tab' } });
-    const focus = (await app.next('push', { from, test: (m) => m.msg?.type === 'parkedActivity' && m.msg.why === 'focus' }))!;
-    assert.deepEqual(focus.msg, { type: 'parkedActivity', windowId: 3, why: 'focus' }, 'no tab');
-    await wait(50);
-    assert.equal(app.received.slice(from).filter((m) => m.msg?.type === 'parkedActivity').length, 2, 'the refused ones sent nothing');
+    assert.match((await app.next('reply', { from, test: (m) => m.id === 2 }))!.error, /not a request/, 'the handoff\'s probe: gone');
+    assert.match((await app.next('reply', { from, test: (m) => m.id === 3 }))!.error, /not a request/, 'its drafts too');
+    assert.deepEqual(routed.map((m) => m.type), ['setWindowState']);
   } finally {
     link.stop();
     await app.close();
   }
 });
 
-
-// A pinch magnifies the page; its area stays the window's (shared/app-link.ts unpinchedSize). WebKit's own numbers,
-// measured 2026-11-07 in a 1512 × 949 web view: pinched 3×, innerWidth 504, innerHeight 316, visualViewport
-// 504 × 316.328125 at scale 3 (what made Margin draw its sidebar in a corner).
-test('a pinch: the page\'s area as before it, not a third of it', () => {
-  assert.deepEqual(unpinchedSize({ innerWidth: 1512, innerHeight: 949, visualViewport: { width: 1512, height: 949, scale: 1 } }), { width: 1512, height: 949 }, 'unpinched: as it is');
-  const pinched = unpinchedSize({ innerWidth: 504, innerHeight: 316, visualViewport: { width: 504, height: 316.328125, scale: 3 } });
-  assert.ok(Math.abs(pinched.width - 1512) < 0.5 && Math.abs(pinched.height - 949) < 0.5, JSON.stringify(pinched));
-  assert.deepEqual(unpinchedSize({ innerWidth: 800, innerHeight: 600 }), { width: 800, height: 600 }, 'no visual viewport: as it is');
-});

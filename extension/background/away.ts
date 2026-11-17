@@ -12,9 +12,9 @@ import type { State } from '../../types/margin';
 import * as M from '../state/model.ts';
 import * as V from '../shared/view.ts';
 import { api, cached, load, mutate, now } from './store.ts';
-import { focusTab, markMarginOpening } from './tabs.ts';
+import { focusTab } from './tabs.ts';
 import { appLink } from './app-link.ts';
-import { handoffMoving, isParked } from './handoff.ts';
+import { handoffMoving } from './handoff.ts';
 import { AWAY_PATH, isAwayPage } from '../shared/away.ts';
 
 // Times (tests shorten them: setAwayTiming).
@@ -53,11 +53,11 @@ export function isStandIn(tabId: number, windowId: number | null | undefined, ta
   return windowId != null && making.has(windowId) && !cached()?.tabs?.[tabId];
 }
 
-// Whether tabs follow into (and out of) a window: not one the app has parked (out of sight), not one it draws
-// nothing over (a plain Safari window, no sidebar), not while its handoff moves it.
-export const follows = (windowId: number | null | undefined) => windowId != null && !isParked(windowId) && appLink.drawn?.(windowId) !== false && !handoffMoving(windowId);
+// Whether tabs follow into (and out of) a window: not one the app draws nothing over (a plain Safari window, no
+// sidebar), not while a windows call of the app's moves it.
+export const follows = (windowId: number | null | undefined) => windowId != null && appLink.drawn?.(windowId) !== false && !handoffMoving(windowId);
 // Whether a tab may leave its window for another: not a plain Safari window (the person sees its tab bar there), not
-// while the handoff moves it. A parked one may: its tab is in the list of a window in front.
+// while a windows call of the app's moves it.
 const leaves = (windowId: number | null | undefined) => windowId != null && appLink.drawn?.(windowId) !== false && !handoffMoving(windowId);
 /** tab id → its move under way */
 const inFlight: Map<number, { to: number, done: Promise<any> }> = new Map();
@@ -103,8 +103,6 @@ async function standIn(windowId: number, index: number | undefined, { front = tr
     standIns.delete(windowId);
   }
   making.add(windowId);
-  // (A tab made in a parked window is Margin's, not a link from another app: handoff.ts tabCreated.)
-  if (isParked(windowId)) markMarginOpening();
   try {
     const tab = await api.tabs.create({ windowId, url: standInUrl(), active: front, ...(Number.isInteger(index) ? { index } : {}) });
     if (tab?.id != null) standIns.set(windowId, tab.id);
@@ -145,7 +143,7 @@ async function move(tab: { id: number, windowId: number, active?: boolean, index
       // (Safari would bring a neighbour forward there, or close the window with its last tab gone).
       const had = pictures.get(tab.id);
       const fresh = had && had.windowId === from && Date.now() - had.at < TIMING.freshMs;
-      const picturing = fresh || isParked(from) ? Promise.resolve(null) : capture(from, TIMING.captureMs);
+      const picturing = fresh ? Promise.resolve(null) : capture(from, TIMING.captureMs);
       const standing = standIn(from, Number.isInteger(tab.index) ? (tab.index as number) + 1 : undefined, { front: false });
       const marking = mutate((s) => M.setAway(s, from, tab.id));
       madeAway = true;

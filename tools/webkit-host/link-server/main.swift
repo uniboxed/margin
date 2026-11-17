@@ -66,8 +66,8 @@ final class Harness: ExtensionLinkDelegate {
     case .delta(_, let seq, let changes, _):
       say(["ev": "delta", "seq": seq, "keys": Array(changes.keys).sorted()])
     case .windows(_, let seq, let list):
-      // Each window's tab in front and its page's word (ids and booleans: the visibility scenario reads them).
-      let each: [[String: Any]] = list.map { w in ["windowId": w["windowId"] ?? NSNull(), "activeTabId": w["activeTabId"] ?? NSNull(), "visible": w["visible"] ?? "unknown"] }
+      // Each window's tab in front (ids only).
+      let each: [[String: Any]] = list.map { w in ["windowId": w["windowId"] ?? NSNull(), "activeTabId": w["activeTabId"] ?? NSNull()] }
       say(["ev": "windows", "seq": seq, "count": list.count, "list": each])
     case .theme(let epoch, let chunk):
       switch assembler.add(chunk) {

@@ -1,6 +1,8 @@
-// The page in each of Margin.app's overlays (app/platforms/macos/shell/Overlay.swift): the
+// The page Margin.app draws its UI with (on the Mac, Margin's own window:
+// app/platforms/macos/shell/MarginWindowController.swift; the overlay over a
+// browser's window was removed 2026-11-16, and is still the Windows shell's): the
 // UI runtime (extension/ui/runtime.ts) drawing the theme around the page
-// slot over one browser window, with the app's host
+// slot, with the app's host
 // (extension/ui/host-app.ts). Built into dist/app/overlay.js (scripts/
 // build.js), served at margin-app://app/ with a policy that allows no
 // network (app/platforms/macos/shell/OverlayWebView.swift).
@@ -62,7 +64,7 @@ const gestures = createGestureFeedback({
 const copySwitches = backgroundSwitches();
 
 // ---- next/previous tab by the app's keys: highlighted here at once ---------------------------------------------
-// The app hands this page ⌘⌥↓/↑ (whatever Settings has) instead of the copy (app/platforms/macos/shell/Shell.swift run): the target
+// The app hands this page ⌘⌥↓/↑ (whatever Settings has) instead of the copy (app/platforms/macos/shell/ShellHostedGlue.swift runHosted): the target
 // is worked out here with the copy's rule (shared/view.ts cycleTab: the order the sidebar shows, wrapping), each
 // press going on from the one before for a moment (NAV_CHAIN_MS), else from the tab in front; highlighted now, then
 // asked of the copy with its switch id, which takes it as that press's (background/navigation.ts navigate `given`).
@@ -232,7 +234,7 @@ function measureNow() {
 // them): none while the sidebar is docked (nothing to bring out), those in
 // the reveal zone of the theme's peek edges while it's hidden, all of them
 // while it's out over the page (to put it away once the pointer leaves).
-// Told to the app when it changes (app/platforms/macos/shell/Shell.swift pointerMoved).
+// Told to the app when it changes (app/platforms/macos/shell/MarginWindowController.swift pointerMoved).
 let lastWant = '';
 function reportWant() {
   const vm = runtime?.vm;
@@ -639,9 +641,6 @@ function onMessage(msg: any) {
         // Safari's own New Tab made a tab the copy closed again (background/handlers.ts
         // newTabHandOff), or Margin's new-tab page came up: the palette, here.
         case 'palette': openPaletteTimed({ newTab: msg.msg.newTab === true }, 'the copy'); return;
-        // A key the app holds, heard by the copy anyway (its command, or a page): noted. (The shell
-        // says whether its hot key was on then, and why not: Shell.swift keyHeard.)
-        case 'keyHeard': log('note', `${msg.msg.command} reached the extension (${msg.msg.from})`); return;
         default: return;
       }
     default:
@@ -731,7 +730,7 @@ let pendingTheme: any = null;
 // (Still clickable and hovered: a link back in a moment is the usual case; the dim and the note come only after
 // 1.5 s, overlay.html. A press meanwhile that needs the copy is lost, as one in a dropped link always was.)
 // Dimmed with a note (not the theme's: Margin's own, over everything) while
-// the app waits for the copy to come back (app/platforms/macos/shell/Shell.swift).
+// the app waits for the copy to come back (an overlay over a browser's window: never Margin's own).
 let reconnectNote: HTMLElement | null = null;
 function setReconnecting(on: boolean) {
   document.documentElement.toggleAttribute('data-reconnecting', on);
@@ -771,7 +770,7 @@ async function start() {
   host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args) });
   host.onState(() => followPage());
   // What the copy pushed for this window before this page was there (a
-  // notice, the tabs loading: app/platforms/macos/shell/Shell.swift HeldPushes), as if it came now.
+  // notice, the tabs loading: an app that holds them says so in its hello's `held`), as if it came now.
   for (const msg of Array.isArray(hello.held) ? hello.held : []) host.receive({ type: 'push', msg });
   pendingTheme = hello.theme ?? null;
   // Margin's own window with no package from the app (no copy has said its theme): Arcadia, as its own.
