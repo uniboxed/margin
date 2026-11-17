@@ -141,7 +141,17 @@ final class GlueHostWorld: HostSystem {
   func spaceType(_ space: UInt64) -> Int? { fullScreenSpaces.contains(space) ? ManagedSpace.fullScreenType : (space == Self.desktop ? 0 : nil) }
   func spaceExists(_ space: UInt64) -> Bool? { fullScreenSpaces.contains(space) || space == Self.desktop }
   func currentSpace(onDisplayOf space: UInt64) -> UInt64? { current }
-  func setCurrentSpace(_ space: UInt64) -> Bool { current = space; return true }
+  func setCurrentSpace(_ space: UInt64) -> Bool { current = space; if space == Self.marginSpace { blank = false }; return true }
+  // The window server's on-screen list (`lists`: played; else none, and the engine's on-screen look doesn't apply):
+  // Margin's window and the windows of the current Space; none while the display shows a Space that's gone (`blank`).
+  var lists = false
+  var blank = false
+  func onScreenWindows() -> [ServerWindow]? {
+    guard lists else { return nil }
+    if blank { return [] }
+    let here = wins.keys.sorted().filter { wins[$0]?.priv == nil && wins[$0]?.spaces.contains(current) == true }
+    return ([marginWindow] + here).compactMap { n in bounds(window: n).map { ServerWindow(number: n, pid: wins[n]?.pid ?? 1, layer: n == marginWindow ? 1 : 0, bounds: $0) } }
+  }
   func desktop(onDisplayOf space: UInt64) -> UInt64? { Self.desktop }
   func ownerlessFullScreenSpaces() -> [UInt64]? { [] }
   func listedFullScreenSpaces() -> [UInt64]? { fullScreenSpaces.sorted() }
@@ -879,11 +889,22 @@ func glueResumeScenario() async {
   await session.idle()
   check("its window in no Space at all right after it's shown: put back into Margin's Space by the polls that follow a show, still the one shown",
         putBack && engine.shown == notes && c.hosted == win && c.pageState == .shown, "back \(putBack) \(String(describing: world.wins[win]?.spaces)) \(c.pageState.rawValue)")
+  // Nothing of Margin's Space on screen though every Space read is right (the real Mac, 2026-11-17: macOS finished its
+  // own full-screen change into a Space that was gone): the shell's poll looks at the on-screen list too.
+  world.lists = true
+  shell.track()
+  world.blank = true
+  let onAgain = await until(3) { shell.track(); return !world.blank }
+  await session.idle()
+  check("neither Margin's window nor the hosted one on screen though the Spaces read as they should: the shell's poll makes Margin's Space current again, still the one shown, never the launcher",
+        onAgain && engine.shown == notes && c.hosted == win && c.pageState == .shown && world.inMargin == [win], "back \(onAgain) \(c.pageState.rawValue)")
+  world.lists = false
   check("its app opened only once Margin's window was in full screen with its page area, still behind the loader", atLaunch == "true loading true", "\(String(describing: atLaunch))")
   check("then shown: the page card loading → shown with never the launcher (never `empty`, hosting never turned off), the hole at the app's window, its item the one shown",
         c.pageStates == ["loading Notes", "shown"] && !c.pushed.contains(#"{"type":"pageHosted","on":false}"#) && c.hole == world.bounds(window: win) && c.hole == c.window.pageRect
         && session.shown[c.id] == item && session.resuming == nil && world.inMargin == [win], "\(c.pageStates) hole \(String(describing: c.hole))")
   let lit = await waitJS(c.webView, "return document.querySelector('.tab.active')?.getAttribute('aria-label') === 'Notes' && document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'shown' && !document.querySelector('.launcher')")
   check("the sidebar highlights it, the theme's root says shown, no launcher", lit)
-  check("the dev hook's front line says what the window would show by itself at the next launch: the app's bundle id only", shell.devFront().hasSuffix(", last app:com.apple.Notes"), String(shell.devFront().suffix(60)))
+  check("the dev hook's front line says what the engine reads of the one shown (its Spaces, on screen or not, the polls so far) and what the window would show by itself at the next launch: the app's bundle id only",
+        shell.devFront().hasSuffix(", last app:com.apple.Notes") && shell.devFront().contains("; engine: polls ") && shell.devFront().contains("app:com.apple.Notes window \(win) in [\(GlueHostWorld.marginSpace)]"), String(shell.devFront().suffix(260)))
 }

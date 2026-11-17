@@ -190,15 +190,16 @@ extension Shell: DevHookWorld {
         return w.devResize(to: width)
     }
 
-    // (`last`: what the window would show by itself at Margin's next launch, HostedSession.resumeLast: an app's bundle
-    // id, `web` for a page, never its address or title; `none`: the launcher.)
+    // (`engine`: what the host engine reads of the one shown at this moment, HostEngine.readShown: Spaces, on screen or
+    // not, how many polls have read. `last`: what the window would show by itself at Margin's next launch,
+    // HostedSession.resumeLast: an app's bundle id, `web` for a page, never its address or title; `none`: the launcher.)
     func devFront() -> String {
         guard let w = marginWindows?.front else { return "no Margin window" }
         var last = "none"
         if let item = hosted?.lastItem(ofWindow: w.id) {
             if case .app(let bundle, _) = item.target { last = "app:\(bundle)" } else { last = "web" }
         }
-        return w.devFront + ", last \(last)"
+        return w.devFront + (host.map { "; engine: \($0.readShown())" } ?? "") + ", last \(last)"
     }
 
     func devPicture(watch seconds: Double?, done: @escaping (String) -> Void) {

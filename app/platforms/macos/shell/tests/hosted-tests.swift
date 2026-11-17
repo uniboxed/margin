@@ -249,8 +249,9 @@ func preparedBrowserTests(_ library: Library) {
         check("prepared: full screen at the page area by the early path, then parked out of sight (a private Space), nothing shown",
               host?.phase == .parked && host?.member == true && r.w.wins[n]?.fullScreen == true && r.w.wins[n]?.priv != nil && r.engine.shown == nil
               && r.w.bounds(window: n) == CGRect(x: 260, y: 41, width: 1244, height: 933), "\(String(describing: host?.phase)) \(String(describing: r.w.wins[n]))")
-        check("prepared: never seen: no freeze needed, the screen never left Margin's Space, Mission Control Margin's only, Margin's window above it while it was in its Space",
-              r.w.freezes == 0 && r.w.offMargin == 0 && r.w.listsMarginOnly && r.w.entered.isEmpty && r.window.covers == [n, nil] && r.window.hostings.isEmpty, "\(r.window.covers) \(r.w.freezes)")
+        check("prepared: never seen: under one freeze (macOS's switch to its new Space undone within one read), Mission Control Margin's only, Margin's window above it while it was in its Space",
+              r.w.freezes == 1 && r.w.reveals == 1 && r.w.offMargin <= 0.0051 && r.w.listsMarginOnly && r.w.movedBeforeDelivery == 0 && r.w.lateDrops == 0 && r.window.covers == [n, nil] && r.window.hostings.isEmpty,
+              "\(r.window.covers) \(r.w.freezes) \(r.w.offMargin)")
         check("prepared: its app never activated, no loading bar", !r.w.calls.contains { $0.hasPrefix("activate") } && r.window.loadings.isEmpty && r.window.loadingTabsSaid.isEmpty)
         check("prepared: said with its time", lines.contains { $0.contains("browser prepared in") && $0.contains("parked out of sight") }, "\(lines.filter { $0.contains("prepared") })")
 

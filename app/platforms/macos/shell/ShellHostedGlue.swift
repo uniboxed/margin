@@ -109,8 +109,9 @@ extension Shell {
         host.onEvent = { [weak self, weak session] event in
             before?(event)
             session?.hostEvent(event)
-            // A host just shown: the engine's poll every 0.1 s for the next second and a half, beside the shell's own
-            // (a window that ends up in no Space after its move is put back at the first read: 2026-11-17, check10).
+            // A host just shown: the engine's poll every 0.1 s for the next two seconds, beside the shell's own (macOS's
+            // own full-screen change can still finish after the show: a window that ends up in no Space, or off the
+            // screen, is brought back at the first read: 2026-11-17, check10).
             if case .shown = event { self?.pollAfterShow() }
         }
     }
@@ -118,7 +119,7 @@ extension Shell {
     func pollAfterShow() {
         showPolls += 1
         let mine = showPolls
-        for i in 1...15 {
+        for i in 1...20 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1 * Double(i)) { [weak self] in
                 guard let self, !self.stopped, self.showPolls == mine else { return } // (a newer show's own run takes over)
                 self.host?.poll()
