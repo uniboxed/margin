@@ -75,6 +75,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     profilesTests()
     safariProfilesTests() // safari-profiles-tests.swift
     oneMargin()
+    idleQuit()
     privateCallsTests() // private-calls-tests.swift
     hostTests() // host-tests.swift: the host engine against a stand-in window manager, and its calls' check
     hostedTests() // hosted-tests.swift: the library, the host engine and the Safari copies joined 
@@ -478,6 +479,33 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("and back", ScreenGeometry.appKitRect(CGRect(x: 10, y: 780, width: 300, height: 200), mainHeight: 1000) == CGRect(x: 10, y: 20, width: 300, height: 200))
     check("off screen stays off screen", ScreenGeometry.appKitRect(CGRect(x: -20000, y: -20000, width: 1280, height: 800), mainHeight: 982).minY == 982 + 20000 - 800)
     check("a pointer flipped", ScreenGeometry.topLeftPoint(CGPoint(x: 5, y: 990), mainHeight: 1000) == CGPoint(x: 5, y: 10))
+  }
+
+  // When Margin.app quits by itself (IdleQuit.swift, AppDelegate.swift's 30 s check): never once the person opened
+  // it or while anything is hosted; started in the background and never opened, after 60 s with nothing to do.
+  static func idleQuit() {
+    let idle = IdleQuit.State(startedInBackground: true, shown: false, hosting: false, linked: false, browserOpen: false)
+    let t0 = Date(timeIntervalSince1970: 1_000_000)
+    check("idle quit: started in the background, never opened, nothing hosted, no copy, no browser: idle", IdleQuit.idle(idle))
+    var s = idle; s.startedInBackground = false
+    check("idle quit: opened by the person: never", !IdleQuit.idle(s) && IdleQuit.check(s, since: t0, now: t0 + 3600) == (nil, false))
+    s = idle; s.shown = true
+    check("idle quit: a window of Margin's shown since (even closed again): never", !IdleQuit.idle(s) && !IdleQuit.check(s, since: t0, now: t0 + 86_400).quit)
+    s = idle; s.hosting = true
+    check("idle quit: something hosted: never", !IdleQuit.idle(s) && !IdleQuit.check(s, since: t0, now: t0 + 86_400).quit)
+    s = idle; s.linked = true
+    check("idle quit: a copy linked: not idle", !IdleQuit.idle(s))
+    s = idle; s.browserOpen = true
+    check("idle quit: a browser open: not idle", !IdleQuit.idle(s))
+    let first = IdleQuit.check(idle, since: nil, now: t0)
+    check("idle quit: first seen idle: counted from now, no quit yet", first.since == t0 && !first.quit)
+    check("idle quit: 30 s idle: not yet", IdleQuit.check(idle, since: t0, now: t0 + 30) == (t0, false))
+    check("idle quit: 60 s idle: quits", IdleQuit.check(idle, since: t0, now: t0 + 60) == (t0, true) && IdleQuit.after == 60)
+    // A browser opened in between: the count starts again.
+    let broken = IdleQuit.check(s, since: t0, now: t0 + 45)
+    let again = IdleQuit.check(idle, since: broken.since, now: t0 + 75)
+    check("idle quit: a break (a browser opened for a moment) starts the minute again", broken.since == nil && again.since == t0 + 75 && !again.quit
+          && IdleQuit.check(idle, since: again.since, now: t0 + 135).quit)
   }
 
   // One Margin.app at a time (BundleWatch.swift, AppDelegate.swift): a new instance ends the others of its bundle.
