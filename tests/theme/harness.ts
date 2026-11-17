@@ -349,16 +349,17 @@ const withRuntime = Object.assign(T, {
     staysOnScreen?: boolean,
     // Margin.app's own window with nothing hosted beside it (ui/host-app.ts): its page area is the launcher.
     appWindow?: boolean,
-    // Margin.app's own window hosting another app's window above its page area (`pageHosted`): the sidebar docked, no
-    // launcher, the theme's root marked as the app's page marks it (app/shared/host/overlay.ts followOutside).
+    // Margin.app's own window hosting another app's window in its page area (`pageHosted`): the sidebar docked, no
+    // launcher, the theme's root marked as the app's page marks it (app/shared/host/overlay.ts followOutside), the
+    // page card `shown` (ui/host-app.ts pageState: `rtPageState` changes it).
     hosted?: boolean,
   } = {}) {
     (T as typeof T & { unmountRuntime(): void }).unmountRuntime(); // (added with these steps)
     const mock = new MockState();
     if (settings) mock.state = { ...mock.state, settings: { ...mock.state.settings, ...settings } };
     const answers = { createSpace: () => ({ spaceId: 'studio' }), ...Object.fromEntries(Object.entries(replies).map(([k, v]) => [k, () => v])) };
-    const host = Object.assign(createMockHost({ state: mock.state, windowId: 1, platform, mode, inNewTab, focusLauncherAtMount, replies: answers }), { staysOnScreen }, hosted ? { appWindow: true, pageHosted: true, pageOutside: false, sidebarDocked: true, launcher: false, inNewTab: false }
-      : appWindow ? { appWindow: true, launcher: true, inNewTab: false } : {});
+    const host = Object.assign(createMockHost({ state: mock.state, windowId: 1, platform, mode, inNewTab, focusLauncherAtMount, replies: answers }), { staysOnScreen }, hosted ? { appWindow: true, pageHosted: true, pageOutside: false, sidebarDocked: true, launcher: false, inNewTab: false, pageState: 'shown' as const, pageOpening: null }
+      : appWindow ? { appWindow: true, launcher: true, inNewTab: false, pageState: 'empty' as const, pageOpening: null } : {});
     // (Each word of a width change to the host, with the page's left inset it had last been told by then.)
     const perform = host.perform;
     host.perform = (name: string, arg?: any) => { if (name === 'sidebar.resizing') rt.resizing.push([arg?.on === true, host.layouts.at(-1)?.insets.left ?? null]); return perform(name, arg); };
@@ -456,6 +457,40 @@ const withRuntime = Object.assign(T, {
   rtLayouts() { return rt.host.layouts.map((l) => ({ ...l.insets, radius: l.radius, width: l.container.width, height: l.container.height, windowId: l.windowId, mode: l.mode })); },
   // Margin.app's own window: what's drawn around <m-page>'s rounded corners (ui/host-app.ts cornerFill), and each corner's inner radius.
   rtCornerFill() { return cornerFill(rt.target.querySelector('m-page')); },
+  // Margin.app's own window: the page card's state as the app says it (ui/host-app.ts pageState), drawn again.
+  // `empty`: nothing hosted (the launcher); `loading`: an item opening (`name`); `shown`: a hosted window shows through.
+  rtPageState(state: 'empty' | 'loading' | 'shown', name: string | null = null) {
+    Object.assign(rt.host, { pageState: state, pageOpening: state === 'loading' ? name : null, pageHosted: state !== 'empty', sidebarDocked: state !== 'empty', launcher: state === 'empty' });
+    rt.runtime!.render();
+    const root = rt.runtime!.view.rootElement();
+    const loader = root?.querySelector('m-page-loader');
+    return { attr: root?.getAttribute('m-page-state') ?? null, starting: root?.hasAttribute('m-starting') ?? null, loader: loader ? { own: !loader.hasAttribute('m-default'), text: loader.textContent ?? '' } : null };
+  },
+  // A runtime mounted in the whole window with no state yet (a hello without one), then the state: whether the root
+  // says `m-starting` before the data, in the frame it's drawn, and a frame after.
+  async rtStartLate() {
+    (T as typeof T & { unmountRuntime(): void }).unmountRuntime();
+    const mock = new MockState();
+    const host = Object.assign(createMockHost({ state: null as any, windowId: 1, platform: { browser: 'safari', os: 'mac' }, mode: 'fullscreen' }), { appWindow: true, launcher: true, inNewTab: false, pageState: 'empty' as const, pageOpening: null });
+    document.documentElement.style.cssText = 'margin:0;height:100%';
+    document.body.style.cssText = 'margin:0;height:100%';
+    const runtime = createRuntime({ host, theme: rt.theme as LoadedTheme, container: document });
+    Object.assign(rt, { runtime, host, mock, el: null, target: document });
+    const on = () => runtime.view.rootElement()?.hasAttribute('m-starting') ?? false;
+    const before = on();
+    host.setState(mock.state);
+    const drawn = on();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise((r) => setTimeout(r, 150));
+    return { before, drawn, after: on() };
+  },
+  // The default loader's box and how it's drawn now (null: none in the tree).
+  rtLoader() {
+    const el = rt.runtime!.view.rootElement()?.querySelector('m-page-loader') as HTMLElement | null;
+    if (!el) return null;
+    const b = el.getBoundingClientRect(), cs = getComputedStyle(el);
+    return { left: b.left, top: b.top, width: b.width, height: b.height, opacity: Number(cs.opacity), visibility: cs.visibility, pointer: cs.pointerEvents, background: cs.backgroundColor, radius: cs.borderTopLeftRadius, transition: cs.transitionDuration, own: !el.hasAttribute('m-default'), text: el.textContent ?? '' };
+  },
   rtRadii() { return rt.host.layouts.at(-1)?.radii ?? null; },
   rtRefused() { return rt.runtime!.refused.map((r) => [r.name, r.reason]); },
   rtPerformed() { return rt.host.performed.map((p) => p.name); },

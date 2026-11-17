@@ -30,9 +30,8 @@ export type Geometry = {
   container: { width: number, height: number },
   windowId?: number | null,
   mode?: string,
-  /** Margin's own window: what the theme draws around the page's rounded corners (host-app.ts cornerFill). */
+  /** Margin's own window: the colour the theme draws around each of the page's rounded corners (host-app.ts cornerFill). */
   fills?: (string | null)[] | null,
-  edge?: { width: number, color: string } | null,
 };
 
 /**
@@ -71,6 +70,14 @@ export type Host = {
   readonly inNewTab?: boolean,
   readonly settingsAsked?: boolean,
   readonly launcher?: boolean,
+  /**
+   * Margin.app's own window (ui/host-app.ts): the page card's state, on the theme's root as `m-page-state`.
+   * `shown`: a hosted window shows through the page's place; `loading`: an item is being opened there
+   * (`pageOpening`: its name), the card opaque with the loader; `empty`: nothing to show, the launcher.
+   * Undefined in every other host (the page is the browser's own).
+   */
+  readonly pageState?: 'empty' | 'loading' | 'shown',
+  readonly pageOpening?: string | null,
   readonly focusLauncherAtMount?: boolean,
   perform?(name: string, arg?: any): boolean,
   // Margin.app's imported themes (ui/host-app.ts), for Settings' Remove prompt.

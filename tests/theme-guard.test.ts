@@ -36,9 +36,21 @@ const find = (tree: Walked | null, pred: (n: CleanElement) => boolean) => {
 };
 const reasons = (r: { removed: Removed[] }) => r.removed.map((x) => `${x.kind} ${x.name}: ${x.reason}`);
 
-test('guarded parts: menus, notices, prompts, the space editor and Settings', () => {
-  assert.deepEqual([...GUARDED_PARTS].sort(), ['menu', 'menu-item', 'notice', 'prompt', 'settings', 'space-editor']);
+test('guarded parts: menus, notices, prompts, the space editor, Settings and the page card\'s loader', () => {
+  assert.deepEqual([...GUARDED_PARTS].sort(), ['menu', 'menu-item', 'notice', 'page-loader', 'prompt', 'settings', 'space-editor']);
   assert.ok(TEXT_ATTRS.includes('title') && TEXT_ATTRS.includes('aria-label') && TEXT_ATTRS.includes('alt') && TEXT_ATTRS.includes('placeholder'));
+});
+
+test('the page card\'s loader: the `page-loader` part and its `<m-page-loader>` slot are a theme\'s to give; only Margin\'s bound words show in it', () => {
+  const r = sanitizeTemplate(root(`
+    <m-page-loader></m-page-loader>
+    <template m-part="page-loader">
+      <div class="loader" title="Your session expired"><span class="spin"></span><p class="what">{{pageLoader.label}}</p><p>Sign in again to continue</p></div>
+    </template>`));
+  const html = JSON.stringify(r.tree);
+  assert.ok(html.includes('m-page-loader') && html.includes('page-loader') && html.includes('{{pageLoader.label}}'), 'the slot, the part and Margin\'s label kept');
+  assert.ok(!html.includes('Sign in again') && !html.includes('Your session expired'), 'what the theme wrote there is gone');
+  assert.ok(reasons(r).some((x) => x.includes('Sign in again')) || r.removed.length >= 2, `reported: ${reasons(r).join(' | ')}`);
 });
 
 test('guardText keeps the bindings and the space between them, nothing the theme wrote', () => {

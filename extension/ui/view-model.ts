@@ -55,9 +55,11 @@ export type UiState = {
   justShown?: boolean,
   inNewTab?: boolean,
   launcherPage?: boolean,
+  /** Margin.app's own window: an item is being opened in the page area (its name, as the app says it): the page card's loader. */
+  pageOpening?: { name: string } | null,
   /** Margin.app's own window hosting another app's window beside it: no page area here (ui/host-app.ts pageOutside). */
   pageOutside?: boolean,
-  /** The host keeps the sidebar docked (Margin.app's window hosting: a tile beside it, or an app's window above its page area). */
+  /** The host keeps the sidebar docked (Margin.app's window hosting: a tile beside it, or an app's window in its page area). */
   sidebarDocked?: boolean,
   pageLoading?: boolean,
   gesture?: { kind: 'pull' | 'swipe', state: 'pulling' | 'armed' | 'done' | 'leaving', progress?: number, direction?: number } | null,
@@ -143,6 +145,8 @@ export type ViewModel = {
   prompt: PromptView | null,
   gesture: GestureView | null,
   launcher: LauncherView | null,
+  /** The page card's loader (the `page-loader` part), while an item opens in the page area: Margin's words for it. */
+  pageLoader: { name: string, label: string } | null,
   settingsForm: SettingsFormView | null,
   settings: Record<string, string | number | boolean>,
   platform: { browser: string, os: string },
@@ -268,13 +272,16 @@ function fresh(input: ViewModelInput): ViewModel {
   const notice = ui.notice ? noticeView(ui.notice) : null;
   const prompt = ui.prompt ? { ...noticeView(ui.prompt), title: String(ui.prompt.title ?? '') } : null;
   const gesture = ui.gesture ? gestureView(ui.gesture) : null;
+  // (Margin's own words: the name is the app's or the item's, as Margin.app says it.)
+  const loadingName = ui.pageOpening ? String(ui.pageOpening.name ?? '').slice(0, 120) : '';
+  const pageLoader = ui.pageOpening ? { name: loadingName, label: loadingName ? `Opening ${loadingName}…` : 'Opening…' } : null;
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, label: '', pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, gesture, launcher: null, settingsForm: null, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, gesture, launcher: null, pageLoader, settingsForm: null, settings, platform,
     };
   }
 
@@ -478,6 +485,7 @@ function fresh(input: ViewModelInput): ViewModel {
     prompt,
     gesture,
     launcher,
+    pageLoader,
     settingsForm,
     settings,
     platform,

@@ -308,7 +308,7 @@ const HTML_ELEMENTS = new Set([
 // Margin's own elements: control flow and slots.
 const MARGIN_ELEMENTS = new Set([
   'm-for', 'm-if', 'm-else', 'm-page', 'm-window-controls', 'm-drag-region', 'm-palette', 'm-notice', 'm-menu', 'm-editor',
-  'm-launcher', 'm-prompt', 'm-settings',
+  'm-launcher', 'm-prompt', 'm-settings', 'm-page-loader',
 ]);
 // Dropped with everything inside them. (Raw-text elements never get this far.)
 const DROP = new Set([
@@ -386,8 +386,9 @@ const INPUT_ELEMENT = (value: string) => (value === 'setting-list' ? 'textarea' 
 // Named parts a theme supplies (`<template m-part>`), which the runtime puts
 // in its slots: `menu` in <m-menu>, `space-editor` in <m-editor>, `palette`
 // in <m-palette>, `notice` in <m-notice>, `launcher` in <m-launcher>,
-// `prompt` in <m-prompt>, `settings` in <m-settings>.
-const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette', 'launcher', 'prompt', 'settings']);
+// `prompt` in <m-prompt>, `settings` in <m-settings>, `page-loader` in
+// <m-page-loader> (the page card while an item opens: Margin.app's window).
+const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette', 'launcher', 'prompt', 'settings', 'page-loader']);
 
 // Margin's own words (PLAN.md §4: "a theme can still draw misleading text"):
 // the parts that show Margin's menus, notices, prompts and confirmations
@@ -397,10 +398,10 @@ const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 
 // the theme wrote there is removed and reported, and so is a static value of
 // an attribute that shows or speaks text. Icons (svg shapes), images and
 // decoration stay. ui/render.ts applies the same rule again as it compiles.
-export const GUARDED_PARTS = Object.freeze(['menu', 'menu-item', 'notice', 'space-editor', 'prompt', 'settings']);
+export const GUARDED_PARTS = Object.freeze(['menu', 'menu-item', 'notice', 'space-editor', 'prompt', 'settings', 'page-loader']);
 // The elements a part is put in.
-const SLOT_ELEMENTS = new Set(['m-palette', 'm-notice', 'm-menu', 'm-editor', 'm-launcher', 'm-prompt', 'm-settings']);
-export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm-prompt', 'm-settings']);
+const SLOT_ELEMENTS = new Set(['m-palette', 'm-notice', 'm-menu', 'm-editor', 'm-launcher', 'm-prompt', 'm-settings', 'm-page-loader']);
+export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm-prompt', 'm-settings', 'm-page-loader']);
 // Attributes whose value is shown (a tooltip, a placeholder, an image's
 // stand-in) or spoken (a screen reader's label).
 export const TEXT_ATTRS = Object.freeze(['title', 'alt', 'placeholder', 'aria-label', 'aria-description', 'aria-roledescription',
