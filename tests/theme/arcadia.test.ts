@@ -12,6 +12,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, ARCADIA } from './package.ts';
+import { pageLoaderChecks, rgba, near } from './page-card.ts';
 import type { Harness, HarnessRt } from './harness.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
@@ -248,6 +249,46 @@ for (const [name, engine] of ENGINES) {
         const alpha = /^rgba\(/.test(e.background!) ? Number(e.background!.split(',').at(-1)!.replace(')', '')) : 1;
         assert.ok(/^rgba?\(/.test(e.background!) && alpha === 1, `opaque: ${e.background}`);
         await page.evaluate(() => T.unmountRuntime());
+      });
+
+      // Arcadia's own page loader (Margin.app, while an item opens): a calm white card (near-black in Dark Mode), in
+      // its middle a soft tile in the space's colour with a thin ring turning in it, Margin's words under it, muted.
+      await pageLoaderChecks(t, browser, {
+        id: 'arcadia', dir: ARCADIA, script,
+        label: '.opening-label', mark: '.opening-mark',
+        animations: ['arcadia-spin'],
+        skeleton: [['.space-title .title', ''], ['.space-title .emoji', ''], ['.tabs', '::after'], ['.spaces', '::before']],
+        starting: ['arcadia-spin', 'arcadia-breathe'],
+        look: async (_page, ev) => {
+          const read = () => ev(() => ({ card: T.rtLoader()!.background, tile: T.rtComputed('.opening-mark', 'background-color'), mark: T.rtRect('.opening-mark')!, label: T.rtRect('.opening-label')!, slot: T.rtRect('m-page-loader')!,
+            size: T.rtComputed('.opening-label', 'font-size'), color: T.rtComputed('.opening-label', 'color'), radius: T.rtComputed('.opening-mark', 'border-top-left-radius'), ring: T.rtPseudo('.opening-mark', '::after') }));
+          const personal = await read();
+          assert.deepEqual(rgba(personal.card), [255, 255, 255, 1], 'a white card');
+          assert.deepEqual([personal.mark.width, personal.mark.height, personal.radius], [56, 56, '16px'], 'a soft rounded tile');
+          assert.ok(Math.abs(personal.mark.x - personal.slot.x) <= 1 && Math.abs(personal.mark.y - personal.slot.y) <= 1, 'in the card\'s middle');
+          assert.ok(personal.label.top >= personal.mark.bottom + 8 && Math.abs(personal.label.x - personal.mark.x) <= 1, 'the label under it');
+          assert.equal(personal.size, '13px');
+          assert.ok(rgba(personal.color)[3] <= 0.6, `muted (${personal.color})`);
+          assert.deepEqual([personal.ring?.animation, personal.ring?.width], ['arcadia-spin', 24], 'a thin ring turning in the tile');
+          // The tile is the space's colour, soft: #ffd23f at 24 % in white; another space, another tile.
+          assert.ok(near(rgba(personal.tile), [255, 244, 209], 4), `the tile in the space's colour (${personal.tile})`);
+          await ev(() => T.rtApply('switchSpace', 'work'));
+          const work = await read();
+          assert.ok(near(rgba(work.tile), [224, 237, 255], 4), `… and in another space's (${work.tile})`);
+          await ev(() => T.rtApply('switchSpace', 'personal'));
+        },
+        looks: [
+          ['Dark Mode', { colorScheme: 'dark' }, async (_page, ev) => {
+            const d = await ev(() => ({ card: T.rtLoader()!.background, color: T.rtComputed('.opening-label', 'color'), tile: T.rtComputed('.opening-mark', 'background-color') }));
+            assert.deepEqual(rgba(d.card), [27, 27, 31, 1], 'a near-black card');
+            assert.ok(rgba(d.color)[0] > 200 && rgba(d.tile)[0] < 120, `light words, a dark tile (${d.color}, ${d.tile})`);
+          }],
+          ['more contrast', { contrast: 'more' }, async (_page, ev) => {
+            const c = await ev(() => ({ card: T.rtLoader()!.background, color: T.rtComputed('.opening-label', 'color'), edge: T.rtComputed('.opening-mark', 'box-shadow') }));
+            assert.deepEqual([rgba(c.card), rgba(c.color)], [[255, 255, 255, 1], [0, 0, 0, 1]], 'black on white');
+            assert.match(c.edge ?? '', /inset/, 'the tile outlined');
+          }],
+        ],
       });
 
       await t.test('no request was made, no error thrown', () => {
