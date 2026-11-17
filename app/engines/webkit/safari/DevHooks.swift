@@ -15,7 +15,8 @@
 //   `host { key: palette }`: Margin's palette key, as its hot key runs it; `host { key: close }`: what a press outside a
 //   field of Margin's does (the palette goes); `host { sidebar: <points> }`: the front window's sidebar that wide, as a
 //   drag of its edge that ends there (begun, the theme's width set, over); `host { say: front }`: one line with how
-//   the front window is kept in front, the page card's state and its hole (numbers only); `host { say: picture }`: how
+//   the front window is kept in front, the page card's state and its hole (numbers only), and what it would show by
+//   itself at the next launch (`last`: an app's bundle id, `web`, or `none`); `host { say: picture }`: how
 //   much of the page area is painted in the window server's picture of Margin's own window (its own process's window:
 //   no permission; alpha only, no pixel leaves the app), and with `watch: <seconds>` the same every 50 ms for that
 //   long, summed up by page state in one line at the end.
@@ -189,7 +190,16 @@ extension Shell: DevHookWorld {
         return w.devResize(to: width)
     }
 
-    func devFront() -> String { marginWindows?.front?.devFront ?? "no Margin window" }
+    // (`last`: what the window would show by itself at Margin's next launch, HostedSession.resumeLast: an app's bundle
+    // id, `web` for a page, never its address or title; `none`: the launcher.)
+    func devFront() -> String {
+        guard let w = marginWindows?.front else { return "no Margin window" }
+        var last = "none"
+        if let item = hosted?.lastItem(ofWindow: w.id) {
+            if case .app(let bundle, _) = item.target { last = "app:\(bundle)" } else { last = "web" }
+        }
+        return w.devFront + ", last \(last)"
+    }
 
     func devPicture(watch seconds: Double?, done: @escaping (String) -> Void) {
         guard let w = marginWindows?.front else { return done("no Margin window") }

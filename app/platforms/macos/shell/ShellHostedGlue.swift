@@ -139,6 +139,11 @@ extension Shell {
         let engine = LateHostEngine { [weak self] in self?.host }
         let session = HostedSession(library: library, engine: engine, links: ShellHostedLinks(shell: self), options: options.hostedOptions ?? HostedSession.Options())
         if let name = UserDefaults.standard.string(forKey: "MarginHostedSafari"), !options.harness { session.options.safariBundles.insert(name) }
+        // (`defaults write com.unibox.margin MarginResumeLast -bool NO`: the launcher at every launch, the last item never shown by itself.)
+        if !options.harness, !HostedSession.resumesLast(setting: UserDefaults.standard.object(forKey: HostedSession.resumeKey)) {
+            session.options.resumesLast = false
+            Diagnostics.note("hosted: the last item isn't shown at launch (\(HostedSession.resumeKey) is NO)")
+        }
         session.appName = { [weak self] id in self?.installedAppName(id) }
         library.delegate = session
         hosted = session
@@ -189,6 +194,7 @@ extension Shell {
         windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
         windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
         windows.onFieldClosed = { [weak session] controller in session?.fieldClosed(controller) }
+        windows.onOpen = { [weak session] controller in session?.resumeLast(controller) }
         windows.onSidebarResizing = { [weak session] controller, on in session?.sidebarResizing(controller, on) }
         windows.apps = { [weak self] in self?.appsJSON ?? "null" }
     }

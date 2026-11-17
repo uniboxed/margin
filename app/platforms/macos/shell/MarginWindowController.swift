@@ -127,6 +127,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // isn't ready yet: its name. Either: the page card is `loading` (the second only after `loaderGrace`).
     private(set) var loadingLabel: String?
     private(set) var showingLabel: String?
+    private var showingSlow = false // the session's show is known to take a while (the last item at launch): the loader at once
     // The page card's state as the page was told (`m-page-state` on the theme's root), and the loader's name.
     enum PageState: String { case empty, loading, shown }
     private(set) var pageState = PageState.empty
@@ -311,6 +312,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             hostedFrame = nil
             loadingLabel = nil
             showingLabel = nil
+            showingSlow = false
             hostDisplay = nil
             Diagnostics.note("Margin's window \(id): hosting nothing: its launcher in the page area again")
         }
@@ -331,10 +333,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // An item being shown by the session and not ready yet (its name; nil: it is, or it failed): not known to be slow
     // (a switch between prepared windows is tens of ms), so what's drawn stays for `loaderGrace` and the loader comes
-    // only if it isn't ready by then.
-    func setShowing(_ label: String?) {
+    // only if it isn't ready by then. `slow`: known to take a while (the item the window showed last, at launch,
+    // before its window is even in full screen): the loader at once, from the page's first frame (its hello has it).
+    func setShowing(_ label: String?, slow: Bool) {
         guard label != showingLabel else { return }
         showingLabel = label
+        showingSlow = label != nil && slow
         if label == nil { readHosted() }
         settlePage()
     }
@@ -446,7 +450,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         let target: PageState = !hosting ? .empty : ready ? .shown : .loading
         graceTimer?.invalidate()
         graceTimer = nil
-        if target == .loading, pageState != .loading, loadingLabel == nil, options.loaderGrace > 0 {
+        if target == .loading, pageState != .loading, loadingLabel == nil, !showingSlow, options.loaderGrace > 0 {
             graceTimer = Timer.scheduledTimer(withTimeInterval: options.loaderGrace, repeats: false) { [weak self] _ in
                 MainActor.assumeIsolated { self?.graceOver() }
             }
@@ -977,6 +981,7 @@ final class MarginWindows {
     var onEnteredFullScreen: ((MarginWindowController) -> Void)? // in full screen (again)
     var onPagePress: ((MarginWindowController, CGPoint) -> Void)? // a press in its page area around a window-mode host's window
     var onFieldClosed: ((MarginWindowController) -> Void)? // a field of Margin's let go of the keys with a hosted window shown
+    var onOpen: ((MarginWindowController) -> Void)? // a window made, before its page loads (the session: the item it showed last)
     var onSidebarResizing: ((MarginWindowController, Bool) -> Void)? // a change of its sidebar's width began (a drag), or is over
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)
     private(set) var controllers: [MarginWindowController] = []
@@ -1049,6 +1054,7 @@ final class MarginWindows {
         controllers.append(controller)
         if !options.harness { pointer.start() }
         Diagnostics.note("Margin's window \(controller.id) opened (\(controllers.count) open)")
+        onOpen?(controller)
         controller.load()
         return controller
     }

@@ -36,7 +36,8 @@ final class FakeHostedWindow: HostedWindow {
     func setHosted(_ number: Int?) { guard number != hosted else { return }; hosted = number; hosteds.append(number) }
     var showing: String?
     var showings: [String?] = [] // each setShowing, in order
-    func setShowing(_ label: String?) { guard label != showing else { return }; showing = label; showings.append(label) }
+    var slowShowings: [String] = [] // those said to take a while (the last item at launch: the loader at once)
+    func setShowing(_ label: String?, slow: Bool) { guard label != showing else { return }; showing = label; showings.append(label); if slow, let label { slowShowings.append(label) } }
     var moves = 0 // hostedMoved: the hosted window's bounds read again
     func hostedMoved() { moves += 1 }
     var yields: [Int?] = [] // each yield(to:), in order
@@ -616,6 +617,170 @@ func hostedTests() {
     hostedShellTests(script: script)
     sidebarResizeTests(script: script)
     hostedFrontTests(script: script)
+    hostedResumeTests(script: script)
+}
+
+// At launch, the item the window showed last (HostedSession.resumeLast): the library, with an item selected in the
+// window's space, a new session and engine as after a relaunch, and a stand-in Margin window not yet in full screen.
+// Hosting and the loader are said as the window is made (before its page's hello); the show itself waits for the
+// window; nothing selected, or a second window: the launcher as before; a show that fails: the launcher.
+func hostedResumeTests(script: URL) {
+    let root = tempFolder("hosted-resume")
+    defer { try? FileManager.default.removeItem(at: root) }
+    guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("resume: the library opens", false) }
+    func launch(fails: Set<String> = [], links: FakeHostedLinks = FakeHostedLinks()) -> (FakeHostWorld, HostEngine, HostedSession, FakeHostedWindow, (@escaping () async -> Void) -> Void) {
+        let w = FakeHostWorld()
+        w.fail = fails
+        let engine = HostEngine(system: w, marker: nil, pid: 1)
+        engine.options.privateRetire = 0
+        let session = HostedSession(library: library, engine: engine, links: links)
+        session.sleep = { _ in await Task.yield() }
+        session.appName = { $0 == "com.apple.Notes" ? "Notes" : nil }
+        let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
+        session.window = { id in id == nil || id == 1 ? window : nil }
+        // (A Safari Margin starts: its copy's newWindow makes a window on the Desktop, its setWindowState acts on it.)
+        engine.requestSafariWindow = { await session.requestSafariWindow($0) }
+        engine.closeSafariWindow = { await session.closeSafariWindow($0, $1) }
+        engine.safariFullScreen = { await session.safariFullScreen($0, $1, $2) }
+        engine.safariLinked = { await session.safariLinked($0) }
+        var copyWindows: [Int: Int] = [:]
+        links.onNewWindow = { id, _ in
+            guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }
+            let n = w.nextWindow
+            w.nextWindow += 1
+            w.wins[n] = FakeHostWorld.Win(pid: pid, spaces: [FakeHostWorld.desktop])
+            w.apps[pid]?.windows.append(n)
+            copyWindows[id] = n
+        }
+        links.onSetWindowState = { id, on in
+            guard let n = copyWindows[id], let pid = w.wins[n]?.pid else { return }
+            w.applyFullScreen(pid: pid, window: n, on)
+        }
+        links.onCloseWindow = { id in if let n = copyWindows.removeValue(forKey: id) { w.closeWindow(n) } }
+        engine.onEvent = { session.hostEvent($0) }
+        engine.loading = { session.loading($0) }
+        engine.hostedWindow = { session.hosted($0) }
+        library.delegate = session
+        return (w, engine, session, window, { body in hostRun { await body(); await session.idle() } })
+    }
+    _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
+
+    // ---- nothing selected in the window's space: the launcher, as before ----
+    do {
+        let (w, engine, session, window, run) = launch()
+        session.resumeLast(window)
+        run {}
+        check("resume: nothing selected in the window's space: nothing hosted, the launcher", !window.hosting && window.showings.isEmpty && engine.shown == nil && w.calls.isEmpty && session.resuming == nil)
+        // (An app used in it, as a first run of Margin: selected from now on.)
+        run { session.openApp("com.apple.Notes", windowId: 1) }
+        check("resume: an app picked and shown: the item selected in its space", engine.shown == HostTarget.app("com.apple.Notes").id
+              && library.items().contains { $0.value["url"] as? String == "app://com.apple.Notes" && $0.value["selected"] as? Bool == true }, "\(library.items().map { $0.value })")
+        run { await engine.quitAll() }
+    }
+    let item = library.items().first { $0.value["url"] as? String == "app://com.apple.Notes" }?.id ?? ""
+    check("resume: MarginResumeLast: on unless it's set to NO", HostedSession.resumesLast(setting: nil) && HostedSession.resumesLast(setting: true) && !HostedSession.resumesLast(setting: false) && HostedSession.resumesLast(setting: "x"))
+
+    // ---- Margin opened again: that item, behind the loader from the window's making ----
+    do {
+        let (w, engine, session, window, run) = launch()
+        window.isFullScreen = false // (just made: not in full screen yet, its page not loaded)
+        session.resumeLast(window)
+        check("resume: as the window is made (before its page loads): hosting, the loader with the item's name at once (known to be slow: no grace), its row in front; nothing launched until the window is up",
+              window.hosting && window.showings == ["Notes"] && window.slowShowings == ["Notes"] && session.requested[1] == item && session.resuming == 1 && session.hostingWindow == 1
+              && !w.calls.contains { $0.hasPrefix("launch") } && (session.live(library.snapshot())["openTabs"] as? JSONObject).flatMap { ($0["tabs"] as? JSONObject)?.values.first as? JSONObject }?["active"] as? Bool == true,
+              "\(window.showings) \(window.slowShowings) \(String(describing: session.requested[1]))")
+        // (Something that settles hosting meanwhile, an engine event: the loader stays.)
+        session.hostEvent(.parked(HostID(raw: "app:none")))
+        hostRun { await Task.yield(); return true }
+        check("resume: hosting kept while its item is on its way (nothing shown yet isn't the launcher)", window.hosting && window.showing == "Notes")
+        window.isFullScreen = true
+        run {}
+        let notes = w.running(bundleId: "com.apple.Notes").first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0
+        check("resume: once Margin's window is in full screen with its page area: the item's app opened and shown at the page area, its item the one shown; the loader cleared; no launcher in between",
+              engine.shown == HostTarget.app("com.apple.Notes").id && w.bounds(window: notes) == window.hostedPlacement?.page && session.shown[1] == item && session.requested[1] == nil
+              && window.showing == nil && window.hosted == notes && window.hostings == [true] && session.resuming == nil, "\(session.done.suffix(4)) \(window.hostings)")
+        // A second window later in the run (⌘N): not its business.
+        let second = FakeHostedWindow(id: 2, number: 77)
+        session.resumeLast(second)
+        check("resume: only the first window of a run: a second one opens on the launcher", !second.hosting && second.showings.isEmpty && session.hostingWindow == 1)
+        run { await engine.quitAll() }
+    }
+
+    // ---- Margin's window not in full screen in time: the launcher for now, the item once the window is ----
+    do {
+        let (w, engine, session, window, run) = launch()
+        session.options.prepareWindowWait = 0.2
+        window.isFullScreen = false
+        session.resumeLast(window)
+        run {}
+        let waited = !window.hosting && window.hostings == [true, false] && engine.shown == nil && session.requested[1] == nil && session.resuming == nil && !w.calls.contains { $0.hasPrefix("launch") }
+        window.isFullScreen = true
+        session.enteredFullScreen(window)
+        run {}
+        check("resume: Margin's window not in full screen in time: the launcher for now, nothing launched; its item shown once the window is in full screen",
+              waited && engine.shown == HostTarget.app("com.apple.Notes").id && session.shown[1] == item && window.hosting, "waited \(waited) \(window.hostings) \(session.done.suffix(4))")
+        run { await engine.quitAll() }
+    }
+
+    // ---- its app can't be opened: the launcher, the item kept ----
+    do {
+        let (w, engine, session, window, run) = launch(fails: ["launch"])
+        session.resumeLast(window)
+        run {}
+        check("resume: the item's show fails (its app doesn't start): the launcher again, nothing left pending, the item still in the library",
+              !window.hosting && window.hostings == [true, false] && window.showing == nil && engine.shown == nil && session.requested[1] == nil && session.resuming == nil
+              && library.items().contains { $0.id == item }, "\(window.hostings) \(session.done.suffix(3)) \(w.calls.suffix(3))")
+    }
+
+    // ---- turned off: the launcher ----
+    do {
+        let (_, _, session, window, run) = launch()
+        session.options.resumesLast = false
+        session.resumeLast(window)
+        run {}
+        check("resume: off: nothing at launch", !window.hosting && window.showings.isEmpty)
+    }
+
+    // ---- something else picked while Margin's window is still on its way: that, at once; the last item never opened ----
+    do {
+        let (w, engine, session, window, run) = launch()
+        window.isFullScreen = false
+        var sleeps = 0 // (the session's waits, counted: the 30 s for Margin's window is 600 of them)
+        session.sleep = { _ in sleeps += 1; await Task.yield() }
+        session.resumeLast(window)
+        run { session.openApp("com.apple.TextEdit", windowId: 1) }
+        check("resume: another item picked while Margin's window isn't up yet: the wait for the last one ends at once (not sat out: \(sleeps) looks, of 600), the picked one shown, the last one's app never started",
+              engine.shown == HostTarget.app("com.apple.TextEdit").id && session.done.contains { $0.contains("\(item): not shown") && $0.contains("asked for since") } && sleeps < 100
+              && w.running(bundleId: "com.apple.Notes").isEmpty && session.resuming == nil && window.hosting, "\(sleeps) \(session.done.suffix(5))")
+        run { await engine.quitAll() }
+    }
+
+    // ---- a web item last: the loader with its title while its browser starts (nothing made ready yet), then its window and tab ----
+    do {
+        let links = FakeHostedLinks()
+        links.profiles = ["s-default"] // (its copy links as Safari starts)
+        let (_, engine, _, _, run) = launch(links: links)
+        run { _ = library.perform("newTab", ["windowId": 1, "url": "https://last.example/", "title": "Last page"]) }
+        run { await engine.quitAll() }
+    }
+    do {
+        let page = library.items().first { $0.value["url"] as? String == "https://last.example/" }
+        let links = FakeHostedLinks()
+        links.profiles = ["s-default"]
+        let (w, engine, session, window, run) = launch(links: links)
+        window.isFullScreen = false
+        session.resumeLast(window)
+        let atOnce = window.hosting && window.slowShowings == ["Last page"] && session.requested[1] == page?.id && w.calls.isEmpty && links.asked.isEmpty
+        window.isFullScreen = true
+        run {}
+        let safari = HostTarget.safariWindow("s-default").id
+        let shows = links.asked.filter { $0.type == "hostShow" }
+        check("resume: a web item last: the loader with its title as the window is made, nothing started yet; then its browser started (no window was made ready: the loader stays for all of it), its window shown with the item's tab, no launcher in between",
+              page?.value["selected"] as? Bool == true && atOnce && w.calls.contains("launch com.apple.Safari") && engine.shown == safari && session.shown[1] == page?.id
+              && shows.count == 1 && shows.first?.payload["itemId"] as? String == page?.id && window.showing == nil && window.hostings == [true] && session.resuming == nil,
+              "at once \(atOnce) \(window.slowShowings) \(session.done.suffix(4)) \(window.hostings)")
+        run { await engine.quitAll() }
+    }
 }
 
 // Margin's window in front of what it hosts, the session's side (DECISIONS.md, 2026-11-17): what Margin's window is

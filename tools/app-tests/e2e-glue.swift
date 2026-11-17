@@ -813,3 +813,76 @@ func glueScenario() async {
   check("quit: the apps Margin started quit, nothing left in Margin's Space, Mission Control Margin's Space only", world.apps.isEmpty && world.inMargin.isEmpty && world.listsMarginOnly
         && (world.reservation[GlueHostWorld.marginSpace] ?? .zero).isZero, "\(world.apps.values.map(\.bundle)) \(world.fullScreenSpaces)")
 }
+
+// Margin opened again with an item selected in its window's space (HostedSession.resumeLast; asked 2026-11-17: "open
+// Margin and that's it, show a loader until the data is shown"): the real shell, library, page and window, the engine
+// on the stand-in window manager. The item is shown again by itself: the page's hello already says hosting and
+// `loading` with its name, so the first frame is the loader, never the launcher; its app is opened once Margin's
+// window is in full screen with its page area; then `shown`.
+@MainActor
+func glueResumeScenario() async {
+  func check(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") { e2eCheck("glue: at launch: \(label)", ok, detail()) }
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-resume-\(UUID().uuidString)")
+  defer { try? FileManager.default.removeItem(at: root) }
+  let world = GlueHostWorld()
+  var options = Shell.Options()
+  options.harness = true
+  options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
+  options.dataRoot = root
+  options.bundleIds = ["safari": fakeBundle]
+  options.hostSystem = world
+  options.appCatalog.folders = []
+  options.appCatalog.spotlight = false
+  options.appCatalog.icons = AppIconCache(folder: root.appendingPathComponent("icons"))
+  var host = HostEngine.Options()
+  host.every = 0.01
+  host.privateRetire = 0
+  options.hostOptions = host
+  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.resume.\(ProcessInfo.processInfo.processIdentifier)"))
+  let shell = Shell(link: link, apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
+  shell.start()
+  defer { shell.stop {} }
+  let made = shell.makeMarginWindows()
+  guard let library = shell.library, let session = shell.hosted, let engine = shell.host else { return check("the library, the session and the engine", false) }
+  // (What an earlier run left: an app item of the first space, the one selected there.)
+  let space = library.spaces().first?.id ?? ""
+  let added = library.perform("addItem", ["spaceId": space, "target": ItemTarget.app(bundleId: "com.apple.Notes", name: "Notes").json, "front": true])
+  let item = (added.result as? JSONObject)?["tabId"] as? String ?? ""
+  _ = library.perform("activateTab", ["windowId": 1, "tabId": item])
+  await session.idle()
+  check("an item selected in the window's space, nothing shown (no Margin window yet)", !item.isEmpty && engine.shown == nil
+        && library.items().contains { $0.id == item && $0.value["selected"] as? Bool == true }, "\(library.items().map { $0.value })")
+
+  var atLaunch: String?
+  world.onLaunch = { bundle in if bundle == "com.apple.Notes" { atLaunch = "\(made.controllers.first?.isFullScreen == true) \(made.controllers.first?.pageState.rawValue ?? "?") \(made.controllers.first?.hostedPlacement != nil)" } }
+  let c = made.open()
+  defer { made.closeAll() }
+  world.marginWindow = c.window.windowNumber
+  c.hostedBounds = { world.bounds(window: $0) }
+  world.display = c.contentFrame
+  let hello = c.pageHello()
+  check("as the window is made, before its page has loaded: hosting, the page card loading with the item's name, its hello saying so (the first frame is the loader, not the launcher)",
+        c.hosting && c.pageState == .loading && c.loaderLabel == "Notes" && c.pageStates == ["loading Notes"] && hello.contains(#""pageHosted":true"#) && hello.contains(#""pageState":"loading""#)
+        && hello.contains(#""pageOpening":"Notes""#) && session.resuming == c.id, "\(c.pageStates) \(c.pageState.rawValue)")
+  guard await until(15, { c.isReady }) else { return check("Margin's window's page drawn", false) }
+  let first = await js(c.webView, "const r = document.querySelector('.arcadia'); const l = r?.querySelector('m-page-loader'); return [r?.getAttribute('m-page-state'), !!document.querySelector('.launcher'), l?.textContent ?? '', r?.dataset.sidebar].join('|')") as? String ?? "?"
+  check("its page as it's first drawn: the theme's root loading (or already shown), no launcher, the loader with Margin's words, the sidebar docked",
+        (first.hasPrefix("loading|false|Opening Notes…") || first.hasPrefix("shown|false|")) && first.hasSuffix("|open"), first)
+  let notes = HostTarget.app("com.apple.Notes").id
+  guard await until(10, { engine.shown == notes && c.pageState == .shown }) else { return check("the item shown again", false, "\(session.done.suffix(5)) \(c.pageStates)") }
+  let win = world.apps.values.first { $0.bundle == "com.apple.Notes" }?.windows.first ?? 0
+  // The window dropped from every Space right after it's shown (the real Mac, 2026-11-17, check10): the engine's polls
+  // that follow a show (every 0.1 s for 1.5 s; nothing else polls here) put it back at their first read.
+  world.wins[win]?.spaces = []
+  let putBack = await until(1.2) { world.inMargin == [win] }
+  await session.idle()
+  check("its window in no Space at all right after it's shown: put back into Margin's Space by the polls that follow a show, still the one shown",
+        putBack && engine.shown == notes && c.hosted == win && c.pageState == .shown, "back \(putBack) \(String(describing: world.wins[win]?.spaces)) \(c.pageState.rawValue)")
+  check("its app opened only once Margin's window was in full screen with its page area, still behind the loader", atLaunch == "true loading true", "\(String(describing: atLaunch))")
+  check("then shown: the page card loading → shown with never the launcher (never `empty`, hosting never turned off), the hole at the app's window, its item the one shown",
+        c.pageStates == ["loading Notes", "shown"] && !c.pushed.contains(#"{"type":"pageHosted","on":false}"#) && c.hole == world.bounds(window: win) && c.hole == c.window.pageRect
+        && session.shown[c.id] == item && session.resuming == nil && world.inMargin == [win], "\(c.pageStates) hole \(String(describing: c.hole))")
+  let lit = await waitJS(c.webView, "return document.querySelector('.tab.active')?.getAttribute('aria-label') === 'Notes' && document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'shown' && !document.querySelector('.launcher')")
+  check("the sidebar highlights it, the theme's root says shown, no launcher", lit)
+  check("the dev hook's front line says what the window would show by itself at the next launch: the app's bundle id only", shell.devFront().hasSuffix(", last app:com.apple.Notes"), String(shell.devFront().suffix(60)))
+}
