@@ -84,8 +84,10 @@ final class FakeHostedLinks: HostedLinks {
     var menuOpens: [String] = [] // profiles woken through Safari's menu
     var wakes: Set<String> = [] // profiles that link when woken
     var windowsOf: [String: [Int]] = [:]
+    var onMenuOpen: ((String) -> Void)? // (the window Safari's menu opens, in the stand-in world)
     func openProfileWindow(_ profile: String) -> Bool {
         menuOpens.append(profile)
+        onMenuOpen?(profile)
         if wakes.contains(profile) { profiles.append(profile); windowsOf[profile, default: []].append(77) }
         return true
     }
@@ -342,6 +344,73 @@ func preparedBrowserTests(_ library: Library) {
         let lines = prepare(r)
         check("prepared: something shown in Margin's window: not prepared, it stays shown", r.engine.shown == HostTarget.app("com.apple.TextEdit").id && r.engine.hosts[safari] == nil
               && lines.contains { $0.contains("browser not prepared") }, "\(lines.filter { $0.contains("prepared") })")
+        hostRun { await r.engine.quitAll() }
+    }
+    // ---- a profile with no window, woken through Safari's menu for the preparation (2026-11-17 14:05) ----
+    func wakeRig() -> (Rig, () -> Int?) {
+        let r = rig()
+        r.links.profiles = [] // (its copy isn't running: the profile has no window)
+        r.links.wakes = ["s-default"]
+        r.session.options.linkWait = 0.2
+        final class Woken { var n: Int? }
+        let woken = Woken()
+        // (The window the menu opens: in the current Space, Margin's, at the normal level, as an accessory Safari's do.)
+        r.links.onMenuOpen = { _ in
+            guard let pid = r.w.running(bundleId: "com.apple.Safari").first?.pid else { return }
+            let n = r.w.nextWindow
+            r.w.nextWindow += 1
+            r.w.wins[n] = FakeHostWorld.Win(pid: pid, spaces: [r.w.current])
+            r.w.apps[pid]?.windows.append(n)
+            woken.n = n
+        }
+        let closes = r.links.onCloseWindow
+        r.links.onCloseWindow = { id in if id == 77, let n = woken.n { r.w.closeWindow(n) } else { closes?(id) } }
+        return (r, { woken.n })
+    }
+    do {
+        // Something shown before the wake: the profile isn't woken at all (nothing opened for a preparation that won't be).
+        let (r, _) = wakeRig()
+        hostRun { _ = await r.engine.open(app: .app("com.apple.calculator"), in: r.window.idlePlacement!, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        let lines = prepare(r)
+        check("wake: something shown before a profile with no window would be woken: never woken through Safari's menu, nothing opened, not prepared, said",
+              r.links.menuOpens.isEmpty && r.engine.hosts[safari] == nil && lines.contains { $0.contains("browser not prepared") && $0.contains("not woken") },
+              "\(r.links.menuOpens) \(lines.filter { $0.contains("prepared") || $0.contains("woken") })")
+        hostRun { await r.engine.quitAll() }
+    }
+    do {
+        // Woken with nothing shown, then an app shown before the preparation's turn (its preparation given up): the window
+        // the menu opened parked out of sight as it came, and closed by its copy.
+        let (r, wokenWindow) = wakeRig()
+        let calc = HostTarget.app("com.apple.calculator")
+        let place = r.window.idlePlacement!
+        let pick = r.links.onMenuOpen
+        r.links.onMenuOpen = { p in
+            pick?(p)
+            Task { _ = await r.engine.open(app: calc, in: place, marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        }
+        let lines = prepare(r)
+        hostRun { for _ in 0..<20 { await Task.yield() } }
+        let n = wokenWindow() ?? -1
+        check("wake: the profile woken (nothing shown then), an app shown before the preparation's turn: not prepared, the woken window closed by its copy",
+              r.links.menuOpens == ["s-default"] && r.engine.shown == calc.id && r.engine.hosts[safari] == nil
+              && r.links.asked.contains { $0.type == "closeWindow" && int($0.payload["windowId"]) == 77 } && r.w.wins[n] == nil
+              && lines.contains { $0.contains("the window opened to wake the profile closed (its preparation given up): ok") },
+              "\(r.links.asked.map(\.type)) \(String(describing: r.w.wins[n])) \(lines.filter { $0.contains("wake") || $0.contains("prepared") })")
+        check("wake: the woken window parked out of sight as it came (it opened in Margin's Space, over what's shown), said once",
+              lines.filter { $0.contains("it opened only to wake a profile parked out of sight") }.count == 1, "\(lines.filter { $0.contains("wake") })")
+        hostRun { await r.engine.quitAll() }
+        check("wake: quit: nothing of it left", r.w.privates.isEmpty && r.w.listsMarginOnly, "\(r.w.privates)")
+    }
+    do {
+        // Woken, and Margin's own window made for it: the woken window closed as before; never parked once Margin asked
+        // for its own window (that one is Margin's, prepared as before).
+        let (r, wokenWindow) = wakeRig()
+        let lines = prepare(r)
+        let n = wokenWindow() ?? -1, mine = r.copy()[90] ?? 0
+        check("wake: woken and prepared: the woken window closed by its copy, Margin's own window prepared (never taken for a woken one)",
+              r.engine.hosts[safari]?.phase == .parked && r.engine.hosts[safari]?.window == mine && r.w.wins[n] == nil
+              && lines.contains { $0.contains("the window opened to wake the profile closed: ok") } && lines.contains { $0.contains("browser prepared in") },
+              "\(String(describing: r.engine.hosts[safari]?.window)) \(mine) \(lines.filter { $0.contains("wake") || $0.contains("prepared") })")
         hostRun { await r.engine.quitAll() }
     }
 }
