@@ -5,8 +5,10 @@ renders it from a view model, runs its buttons as checked actions, and
 gives it behaviors (drag and drop, resizing, menus…) through attributes.
 The built-in themes are packages like any other: `arcadia/` (Margin's
 default, today's look), `neubrutalism/` (uses every binding, behavior
-and part) and `pixel/` (an 8-bit game, dark only; every part, with pixel
-svg icons where Margin's words are guarded). Read them next to this guide. The plan behind it is `PLAN.md`
+and part), `pixel/` (an 8-bit game, dark only; every part, with pixel
+svg icons where Margin's words are guarded) and `liquid-glass/` (macOS's
+own glass where Margin.app has it, plain fills elsewhere: "The system's
+materials" below). Read them next to this guide. The plan behind it is `PLAN.md`
 §3 and §4.
 
 ## The files
@@ -29,7 +31,8 @@ my-theme/
   "fonts": [{ "family": "Space Grotesk", "file": "fonts/space-grotesk.woff2", "weight": "300 700" }],
   "images": ["images/grain.png"],
   "settings": { "sidebarWidth": { "type": "number", "default": 260, "min": 160, "max": 500, "step": 10, "label": "Sidebar width" } },
-  "layout": { "reveal": "left", "sidebarMin": 160, "sidebarMax": 500, "sidebarDefault": 260 }
+  "layout": { "reveal": "left", "sidebarMin": 160, "sidebarMax": 500, "sidebarDefault": 260 },
+  "systemMaterials": false
 }
 ```
 
@@ -43,6 +46,8 @@ my-theme/
   `sidebarWidth` is the one `m-resize` drags.
 - `layout` is what Margin needs before rendering: the edge a hidden sidebar
   comes from and its widths.
+- `systemMaterials` (true or absent): the theme draws with macOS's own
+  materials ("The system's materials" below).
 
 ## Making and importing a theme
 
@@ -417,6 +422,56 @@ anyway). For a bar that grows, scale it from one end (`transform: scaleY(…)` w
 Pixel's playing bars do); for something that slides, `translate` it. Keep a `prefers-reduced-motion: reduce` rule
 that stops what loops.
 
+## The system's materials (Liquid Glass)
+
+In Margin.app on macOS 26 and later a theme can put macOS's own materials
+behind an element: the real Liquid Glass, drawn by the system (it bends and
+blurs what's under it, and follows Reduce Transparency and the light and
+dark modes by itself). No `backdrop-filter`: Margin's themes don't fake
+glass. Liquid Glass (`liquid-glass/`) is the example.
+
+1. Say so in `theme.json`: `"systemMaterials": true`. Margin.app then turns
+   WebKit's system appearance on for its page while your theme is drawn.
+   That also changes two things in your theme: unstyled links take macOS's
+   link colours, and in Dark Mode `color-scheme: light` is no longer
+   honoured (use `light dark`, or `dark`).
+2. Write the plain look first, then the material inside `@supports`. Every
+   other browser (Chrome, Edge, Margin's pages in Safari, an older macOS)
+   drops the property and reads only the plain look, so it must stand on
+   its own:
+
+```css
+.panel { background: rgba(255, 255, 255, .6); box-shadow: 0 2px 7px rgba(0, 0, 0, .1); border-radius: 24px; }
+@supports (-apple-visual-effect: -apple-system-glass-material) {
+  .panel { background: none; box-shadow: none; overflow: hidden; -apple-visual-effect: -apple-system-glass-material; }
+}
+```
+
+The values, and nothing else (no `var()`, one keyword): `none`,
+`-apple-system-glass-material`, `-apple-system-glass-material-subdued`
+(for glass inside glass), `-apple-system-blur-material` and its `-thin`,
+`-ultra-thin`, `-thick` and `-chrome`, `-apple-system-vibrancy-label`,
+`-apple-system-vibrancy-fill`.
+
+What the glass needs (each seen off screen in a real web view,
+`tools/glass-shots/`):
+
+- **Nothing reaching past the element's box.** An outer `box-shadow`, an
+  `outline` outside it or a child hanging out makes the glass grow to cover
+  it all. So: `box-shadow: none` (the glass casts its own), `overflow:
+  hidden`, focus rings inside (`outline-offset: -3px`). An inset shadow and
+  a `background` over the glass (a tint) are fine.
+- **One corner radius.** The first corner's is used for all four; `50%`
+  gives a capsule, not an ellipse. `clip-path` is ignored.
+- **A clipping ancestor** (`overflow: hidden`, a scrolling list) cuts the
+  glass to what shows, as a smaller rounded shape.
+- `transform`, `opacity`, a size that changes and elements that come and go
+  all work; children are drawn over the glass; `visibility: hidden` hides it.
+- **Few of them.** Each is a layer with a live picture of what's behind it:
+  a panel, a few capsules, what floats. Never one per row.
+- The glass is light or dark with the system, not with what's under it: give
+  it a ground of the same mode.
+
 ## Security rules
 
 A theme sees every tab's title and address, so it must not be able to run
@@ -430,7 +485,8 @@ same rules again.
   `input` only with `m-input`; buttons are never `submit`.
 - CSS: no `@import`; `url()` only to bundled files or `data:` images and
   fonts; no `attr()`, no escapes outside strings, no string that looks like
-  an address; functions from an allowlist.
+  an address; functions from an allowlist; `-apple-visual-effect` only with
+  one of the materials listed above.
 - **A stylesheet writes no text**: `content` and `quotes` take only `""`
   (an empty box to decorate), no `var()` in them, counters and list markers
   only as numbers or symbols (no letters), no strings in `list-style`,
