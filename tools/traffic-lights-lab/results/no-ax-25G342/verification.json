@@ -1,0 +1,110 @@
+{
+  "runs": {
+    "4": {
+      "decodedOriginalFrames": 269,
+      "exposedFrames": [],
+      "durationSeconds": 5.331667,
+      "averageFrameRate": "807/16",
+      "medianCompleteFrameGapSeconds": 0.01666666701203212,
+      "maxCompleteFrameGapSeconds": 0.050000041956081986,
+      "nativeMoveResizeCallbacks": 124,
+      "stillChecks": {
+        "baseline": false,
+        "covered": true,
+        "moved": false,
+        "tracked-covered": true,
+        "tracked-moved": true,
+        "tracked-resized": true
+      },
+      "flickerFreeProven": false,
+      "generalVisibilityDetectionProven": false
+    },
+    "5": {
+      "decodedOriginalFrames": 235,
+      "exposedFrames": [
+        16,
+        28,
+        113
+      ],
+      "durationSeconds": 5.205,
+      "averageFrameRate": "7050/157",
+      "medianCompleteFrameGapSeconds": 0.016666707990225405,
+      "maxCompleteFrameGapSeconds": 0.05000008299248293,
+      "nativeMoveResizeCallbacks": 124,
+      "stillChecks": {
+        "baseline": false,
+        "covered": true,
+        "moved": false,
+        "tracked-covered": true,
+        "tracked-moved": true,
+        "tracked-resized": true
+      },
+      "flickerFreeProven": false,
+      "generalVisibilityDetectionProven": false
+    }
+  },
+  "cleanup": [
+    {
+      "run": 1,
+      "pid": 9237,
+      "exited": true
+    },
+    {
+      "run": 1,
+      "pid": 9240,
+      "exited": true
+    },
+    {
+      "run": 2,
+      "pid": 9780,
+      "exited": true
+    },
+    {
+      "run": 2,
+      "pid": 9781,
+      "exited": true
+    },
+    {
+      "run": 3,
+      "pid": 14413,
+      "exited": true
+    },
+    {
+      "run": 3,
+      "pid": 14414,
+      "exited": true
+    },
+    {
+      "run": 4,
+      "pid": 16250,
+      "exited": true
+    },
+    {
+      "run": 4,
+      "pid": 16251,
+      "exited": true
+    },
+    {
+      "run": 5,
+      "pid": 22286,
+      "exited": true
+    },
+    {
+      "run": 5,
+      "pid": 22287,
+      "exited": true
+    },
+    {
+      "run": 6,
+      "pid": 24933,
+      "exited": true
+    },
+    {
+      "run": 6,
+      "pid": 24934,
+      "exited": true
+    }
+  ],
+  "allTwelveNativePIDsExited": true,
+  "scope": "Owned separate-process standard AppKit fixture; calibrated layout; no real browser or fullscreen acceptance"
+}

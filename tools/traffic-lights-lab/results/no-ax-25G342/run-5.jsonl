@@ -1,0 +1,24 @@
+{"AXTrusted": 0, "bundleIdentifier": "com.unibox.margin.no-ax-cover.r6d6d1da3b2664561979eb17fa3f6f13f", "connection": 639283, "parentPID": 1, "pid": 22286, "role": "controller", "stage": "identity"}
+{"event": 804, "result": 0, "stage": "register-notification"}
+{"event": 806, "result": 0, "stage": "register-notification"}
+{"event": 807, "result": 0, "stage": "register-notification"}
+{"event": 808, "result": 0, "stage": "register-notification"}
+{"event": 815, "result": 0, "stage": "register-notification"}
+{"event": 816, "result": 0, "stage": "register-notification"}
+{"event": 723, "result": 0, "stage": "register-notification"}
+{"AXTrusted": 0, "bundleIdentifier": "com.unibox.margin.no-ax-cover.r6d6d1da3b2664561979eb17fa3f6f13f", "connection": 2308091, "parentPID": 22286, "pid": 22287, "role": "child", "stage": "identity"}
+{"result": 0, "stage": "request-window-notifications"}
+{"AXTrusted": 0, "AXWindowsResult": -25211, "childPID": 22287, "stage": "permission-negative-control", "targetWindow": 90321}
+{"bounds": {"height": 432, "width": 620, "x": 260, "y": 445}, "calibratedLocalRect": {"height": 18, "width": 64, "x": 7, "y": 7}, "placement": "local AppKit template only", "region": {"present": false}, "stage": "foreign-metadata"}
+{"region": {"present": false}, "retainedProxy": 1, "stage": "foreign-metadata-after-proxy"}
+{"follows": true, "joinResult": 0, "memberAfter": {"height": 18, "width": 64, "x": 410, "y": 377}, "memberBefore": {"height": 18, "width": 64, "x": 370, "y": 357}, "stage": "owned-group-control"}
+{"cover": {"height": 18, "width": 64, "x": 267, "y": 452}, "coverWindow": 90326, "foreignJoinResult": 1001, "stage": "cover-shown", "target": {"height": 432, "width": 620, "x": 260, "y": 445}, "targetWindow": 90321}
+{"cover": {"height": 18, "width": 64, "x": 267, "y": 452}, "dx": 130, "dy": -45, "followsWithoutControllerMoves": false, "joinResult": 1001, "stage": "foreign-group-move", "target": {"height": 432, "width": 620, "x": 390, "y": 400}}
+{"cover": {"height": 18, "width": 64, "x": 397, "y": 407}, "stage": "tracked-move", "target": {"height": 432, "width": 620, "x": 390, "y": 400}}
+{"cover": {"height": 18, "width": 64, "x": 397, "y": 407}, "stage": "tracked-resize", "target": {"height": 472, "width": 700, "x": 390, "y": 400}}
+{"region": {"present": false}, "stage": "metadata-before-hide"}
+{"region": {"present": false}, "stage": "metadata-while-hidden"}
+{"region": {"present": false}, "stage": "metadata-while-shown"}
+{"bounds": {"height": 472, "width": 700, "x": 260, "y": 405}, "region": {"present": false}, "stage": "metadata-after-resize"}
+{"count": 151, "stage": "notifications"}
+{"childExited": 1, "complete": true, "nativeButtonsRemoved": false, "reason": "bounded no-AX observations complete; no universal visibility or flicker-free claim", "status": 0}

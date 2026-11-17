@@ -1,0 +1,166 @@
+{
+  "date": "2026-11-17",
+  "macOS": "26.7.3",
+  "build": "25G342",
+  "architecture": "arm64",
+  "SkyLightUUID": "D422F0A4-1C28-35B7-A6F5-9EB7BBE0801E",
+  "scope": "Separate-process disposable standard AppKit fixture, known-layout calibration; no real browser acceptance",
+  "withoutAXPermissionConfirmed": true,
+  "AXNegativeControl": -25211,
+  "privateBoundsAndNotificationsConfirmed": true,
+  "eventDrivenCalibratedCoverConfirmed": true,
+  "universalVisibilityDetectionConfirmed": false,
+  "flickerFreeConfirmed": false,
+  "nativeHidingConfirmed": false,
+  "legacyAndTransactionCrossProcessGroupingObserved": false,
+  "videos": {
+    "4": {
+      "decodedOriginalFrames": 269,
+      "exposedFrames": [],
+      "durationSeconds": 5.331667,
+      "averageFrameRate": "807/16",
+      "medianCompleteFrameGapSeconds": 0.01666666701203212,
+      "maxCompleteFrameGapSeconds": 0.050000041956081986,
+      "nativeMoveResizeCallbacks": 124,
+      "stillChecks": {
+        "baseline": false,
+        "covered": true,
+        "moved": false,
+        "tracked-covered": true,
+        "tracked-moved": true,
+        "tracked-resized": true
+      },
+      "flickerFreeProven": false,
+      "generalVisibilityDetectionProven": false
+    },
+    "5": {
+      "decodedOriginalFrames": 235,
+      "exposedFrames": [
+        16,
+        28,
+        113
+      ],
+      "durationSeconds": 5.205,
+      "averageFrameRate": "7050/157",
+      "medianCompleteFrameGapSeconds": 0.016666707990225405,
+      "maxCompleteFrameGapSeconds": 0.05000008299248293,
+      "nativeMoveResizeCallbacks": 124,
+      "stillChecks": {
+        "baseline": false,
+        "covered": true,
+        "moved": false,
+        "tracked-covered": true,
+        "tracked-moved": true,
+        "tracked-resized": true
+      },
+      "flickerFreeProven": false,
+      "generalVisibilityDetectionProven": false
+    }
+  },
+  "cleanup": {
+    "allTwelveNativePIDsExited": true
+  },
+  "measurementPermission": "Independent host has existing Screen Recording; no AX or target movement by measurer, no capture input in controller backend",
+  "attempts": [
+    {
+      "run": 1,
+      "sourceSHA256": "bb47b7e7c3f4b54002007e8c516754d26b908fe02fe5ddffdf830466c2006349",
+      "binarySHA256": "50fc787eb3c92c01be45bae4bded0c3b6378240f1f7cb1676d5e749b68ffa09f",
+      "completion": {
+        "childExited": 1,
+        "complete": true,
+        "nativeButtonsRemoved": false,
+        "reason": "private bounds unavailable",
+        "status": 2
+      },
+      "measurementAccepted": false,
+      "note": "unordered calibration setup failure"
+    },
+    {
+      "run": 2,
+      "sourceSHA256": "06f4bdf0fef88bd0799ea2bd72c35d903e46e5979c9dce8db5c9ad6c8f74c01e",
+      "binarySHA256": "d0e19786e7d49f3215f3e6334d0d714ffbdad4db7624ac40a468779275bae0c3",
+      "completion": {
+        "childExited": 1,
+        "complete": true,
+        "nativeButtonsRemoved": false,
+        "reason": "bounded no-AX observations complete; no universal visibility or flicker-free claim",
+        "status": 0
+      },
+      "measurementAccepted": true,
+      "note": "legacy groups and metadata; no event tracker"
+    },
+    {
+      "run": 3,
+      "sourceSHA256": "8c41f0727970b7ee4e54d675a7aca014f5392d42a7cd5b43b0466d893d651a18",
+      "binarySHA256": "55de2193cab81d96f13566cb869dd4aabe15374f5112227cfcbb013e86dcf7da",
+      "completion": {
+        "childExited": 1,
+        "complete": true,
+        "nativeButtonsRemoved": false,
+        "reason": "bounded no-AX observations complete; no universal visibility or flicker-free claim",
+        "status": 0
+      },
+      "measurementAccepted": false,
+      "note": "occluded fixture; invalid visual/timing measurement and original grading bug retained"
+    },
+    {
+      "run": 4,
+      "sourceSHA256": "3f4033fc57f7170203da41e4b3f2018e6b64a22a2ad2f08131cb8b802985a9fa",
+      "binarySHA256": "ce80984b18dd6018e793f47d523137f39a25745afc37519db5958fc50fdeb0fb",
+      "completion": {
+        "childExited": 1,
+        "complete": true,
+        "nativeButtonsRemoved": false,
+        "reason": "bounded no-AX observations complete; no universal visibility or flicker-free claim",
+        "status": 0
+      },
+      "measurementAccepted": true,
+      "note": "valid slow tracking, original-only decoder correction"
+    },
+    {
+      "run": 5,
+      "sourceSHA256": "2abe4a812c1d15c4e6d0092d7f8501511f753c0c7fd836c7bbe8fb591bd41f58",
+      "binarySHA256": "51ee79f894445f5a43699c1bda7d7a5699e4546a2c7fbe36136d20b588e03ebf",
+      "completion": {
+        "childExited": 1,
+        "complete": true,
+        "nativeButtonsRemoved": false,
+        "reason": "bounded no-AX observations complete; no universal visibility or flicker-free claim",
+        "status": 0
+      },
+      "measurementAccepted": true,
+      "note": "valid fast tracking; three real button exposures"
+    },
+    {
+      "run": 6,
+      "sourceSHA256": "d3658a0618fe7c865c15d887c10b00839dada5ca5c0daee948d7c77573d804d5",
+      "binarySHA256": "eb13d89b35297c77e91fe1f860ac22297b42ead464b8b364537dc0560f914916",
+      "completion": {
+        "childExited": 1,
+        "complete": true,
+        "nativeButtonsRemoved": false,
+        "reason": "bounded no-AX observations complete; no universal visibility or flicker-free claim",
+        "status": 0
+      },
+      "measurementAccepted": true,
+      "note": "transaction group control; no foreign following"
+    }
+  ],
+  "repositoryTests": [
+    {
+      "name": "unit",
+      "exit": 0,
+      "bounded": false,
+      "limitSeconds": 120
+    },
+    {
+      "name": "e2e",
+      "exit": -15,
+      "bounded": true,
+      "limitSeconds": 15
+    }
+  ],
+  "e2eLimitation": "Missing pinned WebKit 2388, 15s bound; no download/full-suite pass",
+  "rawRoot": "test-results/traffic-lights-no-ax-2026-11-17"
+}

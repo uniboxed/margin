@@ -1,0 +1,14 @@
+{"AXTrusted": 0, "bundleIdentifier": "com.unibox.margin.no-ax-cover.r2a74732c94fb4856a441230a0a1ad1a5", "connection": 1640283, "parentPID": 1, "pid": 9237, "role": "controller", "stage": "identity"}
+{"event": 804, "result": 0, "stage": "register-notification"}
+{"event": 806, "result": 0, "stage": "register-notification"}
+{"event": 807, "result": 0, "stage": "register-notification"}
+{"event": 808, "result": 0, "stage": "register-notification"}
+{"event": 815, "result": 0, "stage": "register-notification"}
+{"event": 816, "result": 0, "stage": "register-notification"}
+{"event": 723, "result": 0, "stage": "register-notification"}
+{"AXTrusted": 0, "bundleIdentifier": "com.unibox.margin.no-ax-cover.r2a74732c94fb4856a441230a0a1ad1a5", "connection": 2136159, "parentPID": 9237, "pid": 9240, "role": "child", "stage": "identity"}
+{"result": 0, "stage": "request-window-notifications"}
+{"AXTrusted": 0, "AXWindowsResult": -25211, "childPID": 9240, "stage": "permission-negative-control", "targetWindow": 90057}
+{"bounds": {"height": 432, "width": 620, "x": 260, "y": 445}, "calibratedLocalRect": {"height": 18, "width": 64, "x": 7, "y": 7}, "placement": "local AppKit template only", "region": {"present": false}, "stage": "foreign-metadata"}
+{"region": {"present": false}, "retainedProxy": 1, "stage": "foreign-metadata-after-proxy"}
+{"childExited": 1, "complete": true, "nativeButtonsRemoved": false, "reason": "private bounds unavailable", "status": 2}

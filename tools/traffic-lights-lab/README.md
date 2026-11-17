@@ -1,5 +1,41 @@
 # Window traffic-light research lab
 
+## Tracking without Accessibility (2026-11-17)
+
+AX-denied new app identities verify private bounds/notifications and a calibrated
+opaque cover. Fast motion exposes native buttons in 3/235 original frames; no
+universal visibility or flicker-free claim. See
+[report](../../docs/NO-AX-COVER-RESEARCH.md) and [evidence](results/no-ax-25G342/summary.json).
+
+```sh
+swiftc -parse-as-library -warnings-as-errors tools/traffic-lights-lab/no-ax-screen-recorder.swift -o /tmp/margin-no-ax-screen-recorder
+/tmp/margin-no-ax-screen-recorder
+python3 tools/traffic-lights-lab/run-no-ax-cover.py --output test-results/traffic-lights-no-ax-local/run-1
+python3 tools/traffic-lights-lab/run-no-ax-cover.py --output test-results/traffic-lights-no-ax-local/run-1 --track-events --build
+# Inspect dry.jsonl/source/signature and build.json, then open the disposable test once:
+python3 tools/traffic-lights-lab/run-no-ax-cover.py --output test-results/traffic-lights-no-ax-local/run-1 --run
+```
+
+Use a **new** output/identity for each UI attempt. `--transaction-groups` at build
+time selects the separate compositor-group hypothesis instead of `--track-events`;
+the two modes cannot be combined. Omit both for legacy grouping/metadata only.
+The controller refuses an AX-trusted identity or successful AX negative control.
+The optional independent recorder requires existing Screen Recording access and
+requests none; measurement permission is not used by the covering backend.
+
+Offline verification for the retained six-attempt archive:
+
+```sh
+swiftc -O -warnings-as-errors tools/traffic-lights-lab/analyze-no-ax-video.swift -o /tmp/margin-analyze-no-ax-video
+python3 tools/traffic-lights-lab/verify-no-ax-cover.py test-results/traffic-lights-no-ax-2026-11-17 --analyzer /tmp/margin-analyze-no-ax-video
+```
+
+Analyze each original motion video first with `analyze-no-ax-video VIDEO WIDTH HEIGHT
+SCALE TRUTH_JSON`, redirecting JSONL to `run-N/video-analysis.jsonl`. The committed
+report gives dimensions/cadence and distinguishes failed setup/capture attempts.
+
+## Earlier native-removal research
+
 The request is to hide close, minimise and zoom/fullscreen buttons while keeping third-party apps
 in ordinary windowed mode, using Accessibility and private macOS APIs. This spike is isolated from
 Margin.app. Read the findings and proposed architecture in [the research report](../../docs/TRAFFIC-LIGHTS-RESEARCH.md).

@@ -1,5 +1,26 @@
 # Testing Margin
 
+## Cover tracking with Accessibility denied (2026-11-17)
+
+- [x] New standalone controller/child identities: AXTrusted=false and foreign
+  AXWindows query returns -25211. Private bounds reads and actual target-specific
+  WindowServer move/resize callbacks work. No AX control/observer backend.
+- [x] Calibrated standard-AppKit layout: real composited cover, move and resize
+  still checks pass; native buttons remain unhidden. Twelve test PIDs exit.
+- [x] Slow video: 0 exposed / 269 original frames. Fast video: **3 exposed / 235**;
+  inspect extracted originals. This implementation fails a universal flicker-free
+  requirement. Complete-frame gaps reach 50 ms, so sampling is not every refresh.
+- [x] Legacy and transaction group controls move same-owner windows; neither
+  produces cross-process following. Foreign button-region getter is nil; owner's
+  region stays unchanged across real hide/show. No universal visibility sensor.
+- [ ] Real protected browsers, automatic button geometry/visibility, fullscreen
+  hover/transitions, activation/occlusion, multiple displays/scales/OS builds,
+  click/hover handling and independent crash/lifecycle acceptance.
+
+See [no-AX report](docs/NO-AX-COVER-RESEARCH.md) for permission separation,
+retained calibration/occlusion/decoder failures and capture limits. Raw footage is
+under `test-results/traffic-lights-no-ax-2026-11-17/`. Product behavior unchanged.
+
 ## Safari profile creation without three permissions (2026-11-16)
 
 - [x] Confined native WebBookmarks probe on macOS 26.7.3/25G342, Safari 27.2:

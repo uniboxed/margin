@@ -1,0 +1,938 @@
+{
+  "test-results/traffic-lights-no-ax-2026-11-17/analyze-no-ax-video.swift": {
+    "bytes": 3710,
+    "sha256": "2084db3e1c85d8cfbd037c324ee34401dcfd0d9b204f2821ec87fed095d24471"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/analyzer-build.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/analyzer-checked-build.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/build.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/e2e.log": {
+    "bytes": 46898,
+    "sha256": "ccb4b7fc98198982c816df7ff31d2b3c2f252a38b88394f0bb3ff5e2eefc1a92"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/measurement-analyzer": {
+    "bytes": 81144,
+    "sha256": "030a9d74f0defd3325603ee70c819fc7e240795fdc91cb2278575a51cc006ebd"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/recorder-build.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/repository-tests.json": {
+    "bytes": 182,
+    "sha256": "0a2eb3b16844b7619c7053dcc6f40b977fc6237fe91ddab5162da7e0672aed38"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/app-snapshot/Contents/Info.plist": {
+    "bytes": 598,
+    "sha256": "b252557b0809098947c4825eb7c963a89ae08d704afc22c779865e6c7ccf6742"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/app-snapshot/Contents/MacOS/no-ax-cover": {
+    "bytes": 94512,
+    "sha256": "50fc787eb3c92c01be45bae4bded0c3b6378240f1f7cb1676d5e749b68ffa09f"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/app-snapshot/Contents/_CodeSignature/CodeResources": {
+    "bytes": 2200,
+    "sha256": "6686de10a28a2fe11b36cbb86dcbacc827cfc4ea116b4dabf1845e5aee629e9b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/baseline.png": {
+    "bytes": 155721,
+    "sha256": "22a5697266e6f3d61bf48a892f4c313cc7a45eea56a081b7c2abbf7deb6ddf5d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/build.json": {
+    "bytes": 474,
+    "sha256": "939f757fc1fe12eb626bf9ca750a27915060f93105eaf686744ff91a85403ee9"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/build.log": {
+    "bytes": 105,
+    "sha256": "4bd474bb84a636098f98347c6a6e44191674975be3527ccec6ee258f9f18bf8a"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/captures.json": {
+    "bytes": 214,
+    "sha256": "d72b75e380c7b75841f4a8a0cb9147e3c5ad14f905b1b8295323571ce9a20cd7"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/dry.jsonl": {
+    "bytes": 312,
+    "sha256": "ee7e2f33a20bd6ea0416c5d6382a6775177790aaf738efab7dcce704390236f0"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/launch-output.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/launch.json": {
+    "bytes": 549,
+    "sha256": "0f428ea1a03687b7730c95c616f0d846e0254261c26f71b6731aef6e9562728e"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/native/.owned-fixture": {
+    "bytes": 20,
+    "sha256": "ec96b0a21bb1c6ec335b3bb67b8481bf55f49f43cbbb5f73ca17e6255f866f5f"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/native/capture-done.json": {
+    "bytes": 33,
+    "sha256": "10ca0ef0ef59127dcc09041988e223ba78ee01729fd1846d011cb28d88304f9b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/native/capture-request.json": {
+    "bytes": 70,
+    "sha256": "8cd60dae57bb127c9c2bcca134b939df627d418b8233aa919cbae8dc24654b44"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/native/native.jsonl": {
+    "bytes": 1343,
+    "sha256": "769b5f41c490710b8816d750f01943f06b197512918cb34c0d67356e20aadbba"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/native/native.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/native/ready.json": {
+    "bytes": 48,
+    "sha256": "c02034144d9acba59aca14e4f0975fa8b9e3922fb2d395d9b9405987081357e5"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/native/truth-baseline.json": {
+    "bytes": 567,
+    "sha256": "209081fbc33d32dbabc8fa422148e301261ca9aceffb472eb0b804877738f8d3"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/no-ax-cover.m": {
+    "bytes": 18799,
+    "sha256": "bb47b7e7c3f4b54002007e8c516754d26b908fe02fe5ddffdf830466c2006349"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/result.json": {
+    "bytes": 330,
+    "sha256": "42688273cd6eb12ff7470350681493e135fa29efd731548ce744eea808067a11"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/run-no-ax-cover.py": {
+    "bytes": 6129,
+    "sha256": "3fda195ed3021835e968e5ea3074a98a553a813097f162f35ffa3b3e768c0fc4"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-1/signed-entitlements-extract.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/app-snapshot/Contents/Info.plist": {
+    "bytes": 598,
+    "sha256": "e2fb511af8c23aec8637aa98b428f9bf3ada4e0a81bfd9b5131100229a4a11c8"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/app-snapshot/Contents/MacOS/no-ax-cover": {
+    "bytes": 94512,
+    "sha256": "d0e19786e7d49f3215f3e6334d0d714ffbdad4db7624ac40a468779275bae0c3"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/app-snapshot/Contents/_CodeSignature/CodeResources": {
+    "bytes": 2200,
+    "sha256": "6686de10a28a2fe11b36cbb86dcbacc827cfc4ea116b4dabf1845e5aee629e9b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/baseline.png": {
+    "bytes": 155721,
+    "sha256": "22a5697266e6f3d61bf48a892f4c313cc7a45eea56a081b7c2abbf7deb6ddf5d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/build.json": {
+    "bytes": 474,
+    "sha256": "f9b2bb274005738a94a7b23a0d2ad9a8e03d1d8a8de13ec78e400b1dfb7eda99"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/build.log": {
+    "bytes": 105,
+    "sha256": "19d29718eb7bd3c583701ff68f5916467673bcf8f0a879d5a4dfa3b607879e7b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/captures.json": {
+    "bytes": 632,
+    "sha256": "0e4fc102418a5b07467eb6848284501ed86cf3d839fd8db9dbd8f4dda26605e1"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/covered.png": {
+    "bytes": 161731,
+    "sha256": "f1d9828b2356ed4154b41fe8d7912da53e12fea58238ef25b06d736989772a68"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/dry.jsonl": {
+    "bytes": 312,
+    "sha256": "ee7e2f33a20bd6ea0416c5d6382a6775177790aaf738efab7dcce704390236f0"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/launch-output.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/launch.json": {
+    "bytes": 549,
+    "sha256": "e34a66e39cf52e1c5b5da81cbe654b5031fb085a59f4acf4ac8f15627053d5f7"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/moved.png": {
+    "bytes": 165842,
+    "sha256": "5ce516b92ba57860bbbcd0693bfdd8bafcd873fdfae664b8f9b4801115cf1454"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/.owned-fixture": {
+    "bytes": 20,
+    "sha256": "ec96b0a21bb1c6ec335b3bb67b8481bf55f49f43cbbb5f73ca17e6255f866f5f"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/ack.json": {
+    "bytes": 12,
+    "sha256": "fa7c093f6dfeef2826f161e31049644b90eeba4ac233457020f78fda9fba5438"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/capture-done.json": {
+    "bytes": 30,
+    "sha256": "c55dd48d6db9e56362c0134936a9a5d63d4ff24f5cd536ab1c70d63d06d46e75"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/capture-request.json": {
+    "bytes": 67,
+    "sha256": "6486b0baa3f49d28744a3e73aa2e11febcafa7aa3764521a33853b726587cc7b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/command.json": {
+    "bytes": 29,
+    "sha256": "42e0dea9d2e063e6ee79e15c9995a192992d8e2efd312c4c1de33941ebf60c79"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/native.jsonl": {
+    "bytes": 2299,
+    "sha256": "e73fdb7a646e8f507d6cf24a288314ba832c9f0bb1cd8378a1508aaa6855fe12"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/native.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/notifications.json": {
+    "bytes": 405,
+    "sha256": "2e12e3a2b7c01f55597147e8f581aabbdc978f4aa5f37116b6b299d0bccc5bb1"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/ready.json": {
+    "bytes": 48,
+    "sha256": "7c51259d41f81feb910b5414de1727fddac43e8279d7b6eaddb6528c37ec98f6"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/truth-baseline.json": {
+    "bytes": 567,
+    "sha256": "d17b45fd01512a2c63366955591aa0d3a015242969ba31c83a6e22b8e7c50966"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/truth-hidden.json": {
+    "bytes": 562,
+    "sha256": "026e62248720144d953ec7752c1fafb094fb3585e4f078b05aebba9fdc804820"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/truth-move.json": {
+    "bytes": 563,
+    "sha256": "6b716ca076ca6d9e6166ea82a40abe1e53769980b8909ca8061aaeef9f4069d0"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/truth-resize.json": {
+    "bytes": 565,
+    "sha256": "c75e836dd65209b3bc4dd73f1aa24ba4f8beec11f02f8fb22185a536e3335cca"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/native/truth-shown.json": {
+    "bytes": 564,
+    "sha256": "4d5c0b0318d907730e60bf393441e1cc7467239b54c7d9261bbb6aedd43e2379"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/no-ax-cover.m": {
+    "bytes": 19026,
+    "sha256": "06f4bdf0fef88bd0799ea2bd72c35d903e46e5979c9dce8db5c9ad6c8f74c01e"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/result.json": {
+    "bytes": 414,
+    "sha256": "e8fa540b3f5e2f2b177db2ba84db91ddccc49a59f84848588d3ece4e7c3f3e51"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/run-no-ax-cover.py": {
+    "bytes": 6129,
+    "sha256": "3fda195ed3021835e968e5ea3074a98a553a813097f162f35ffa3b3e768c0fc4"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-2/signed-entitlements-extract.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/app-snapshot/Contents/Info.plist": {
+    "bytes": 598,
+    "sha256": "6bedcbbd7322e09848edce12dbe5e33245fa5356b2a18e31e5f47e3c30c19fcb"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/app-snapshot/Contents/MacOS/no-ax-cover": {
+    "bytes": 111440,
+    "sha256": "55de2193cab81d96f13566cb869dd4aabe15374f5112227cfcbb013e86dcf7da"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/app-snapshot/Contents/_CodeSignature/CodeResources": {
+    "bytes": 2200,
+    "sha256": "6686de10a28a2fe11b36cbb86dcbacc827cfc4ea116b4dabf1845e5aee629e9b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/baseline.png": {
+    "bytes": 155721,
+    "sha256": "22a5697266e6f3d61bf48a892f4c313cc7a45eea56a081b7c2abbf7deb6ddf5d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/build.json": {
+    "bytes": 585,
+    "sha256": "ad2ed8e9ee8f7fb7d59f3aa05330d192ecae02bd0e9631b03e27db0bb72c115c"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/build.log": {
+    "bytes": 105,
+    "sha256": "7c8891040a0cf9306ef5c96319e42f85d2c1688160a0db2ed794ad143a649b68"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/captures.json": {
+    "bytes": 1495,
+    "sha256": "18daf1f2945aa4413b25d2f8a9810c5db4e9ee8acbbbc059dadb3582e9bbf7b0"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/covered.png": {
+    "bytes": 38336,
+    "sha256": "fe7ce3c659555eaeec53b9d1c70ef04fc4074f163b403a03eb66babf989a55e1"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/dry.jsonl": {
+    "bytes": 312,
+    "sha256": "ee7e2f33a20bd6ea0416c5d6382a6775177790aaf738efab7dcce704390236f0"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/launch-output.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/launch.json": {
+    "bytes": 567,
+    "sha256": "00b324f38f17b99484b415573f266b508b65f63264bcdec89da3f4686354de7d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/measurement-recorder": {
+    "bytes": 174448,
+    "sha256": "e550de9841579c532e4e77a87ba8fc76025f0ecf8b369ed49a9fcdeb5732bb1c"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/motion-first.png": {
+    "bytes": 4367,
+    "sha256": "e291e88633dbdf6f246bea5e9c38964662950766a914bfe149336f92c7ca521c"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/motion-recorder.log": {
+    "bytes": 57,
+    "sha256": "d488e2150113b25e5effa7e1ba422b5e9d11ae55e6d62a79f82d4f3ba2a4113b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/motion.mp4": {
+    "bytes": 1186,
+    "sha256": "9405893b3cf93f958b57a911fc650d2765dc60e01c29126a4c16999ff486cbed"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/motion.mp4.json": {
+    "bytes": 210,
+    "sha256": "a27ea1d3cece003d028b7e79a4b14c2e619e38da9b3e5b3150dd7d40b89711e5"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/moved.png": {
+    "bytes": 38336,
+    "sha256": "fe7ce3c659555eaeec53b9d1c70ef04fc4074f163b403a03eb66babf989a55e1"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/.owned-fixture": {
+    "bytes": 20,
+    "sha256": "ec96b0a21bb1c6ec335b3bb67b8481bf55f49f43cbbb5f73ca17e6255f866f5f"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/ack.json": {
+    "bytes": 13,
+    "sha256": "66e75632ddd99dac7f5cd8a1f6679eeb26f337eed17e330e794ce87f43490458"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/capture-done.json": {
+    "bytes": 92,
+    "sha256": "ee9a9e026f389a1292e2af296f9703e3bcc614b41af9a1129fe0b0a876d48cf7"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/capture-request.json": {
+    "bytes": 76,
+    "sha256": "30ec481cdb6326147df12b34b89b7b680ac032a86c88db5779d63f65638311e0"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/command.json": {
+    "bytes": 30,
+    "sha256": "c919ec0c5d936c7cb0dbad39d6d08243b2d3aa02d4117c929cecf88184015bdf"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/native.jsonl": {
+    "bytes": 23333,
+    "sha256": "77f80208a31a250602f62a1ad91a359ab4c45f81a3fd9b647096cb0821ebcf55"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/native.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/notifications.json": {
+    "bytes": 11162,
+    "sha256": "6d1b2a96fabfb1e90d0e67a0425a4936ebfaba54d619ea9c03f4693bddbdcd7d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/ready.json": {
+    "bytes": 49,
+    "sha256": "1f02123abc3a07f966cd8c99c93b025a9d45e04cb1bcfb6ef3a3a2b52589c6fa"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/truth-activate.json": {
+    "bytes": 567,
+    "sha256": "7d9fc33934024ad721e2ce8684730a202d086e694008414d6e736ccccb719811"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/truth-baseline.json": {
+    "bytes": 567,
+    "sha256": "40d9523588cc5ccbe5217f541fcf6dea0de66536d1a256afaae6618d1029048d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/truth-hidden.json": {
+    "bytes": 562,
+    "sha256": "1ae06aaa74a18050a6b152572faad835b6495e19700c36b63c208b5f9c765b4d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/truth-move.json": {
+    "bytes": 563,
+    "sha256": "f7588ef76d2ca57b101a7ceaf161fe9ba18e137baed6831e1dbe7f152ac1da8c"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/truth-reset.json": {
+    "bytes": 564,
+    "sha256": "e5453703106fae543ebaa5a27f355383fa3873dd415b4eabe331abbccf1551a4"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/truth-resize.json": {
+    "bytes": 565,
+    "sha256": "ed694614edaa916b697595482c81979c35ca357d1f854d7bc88d06597df334a8"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/truth-shown.json": {
+    "bytes": 564,
+    "sha256": "ecfd0a83a69e8a803251d503a6f4b88c9cc2d7e2f8a4601fdf4f899afea0ca30"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/native/truth-sweep.json": {
+    "bytes": 564,
+    "sha256": "bd37382bdf6a8f63af6bdabe284b5292e12fb1e6c4acc6a86381ac920e0e0625"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/no-ax-cover.m": {
+    "bytes": 22035,
+    "sha256": "8c41f0727970b7ee4e54d675a7aca014f5392d42a7cd5b43b0466d893d651a18"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/no-ax-screen-recorder.swift": {
+    "bytes": 6325,
+    "sha256": "77a20d2ef1b6c4637054dabe85888b71f50a326e9f1256d48bc0f3f9f3e3b439"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/recorder-preflight.json": {
+    "bytes": 32,
+    "sha256": "051766640742d5a0cbf3176f1fc4950f9b50f59e323d80be83d62a7460a6df8d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/result.json": {
+    "bytes": 481,
+    "sha256": "ab36bcf9fadb77e2ce89601eaf9d4610bbabe096eb1ad90d94f6d87340b721bf"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/run-no-ax-cover.py": {
+    "bytes": 7663,
+    "sha256": "0184e29ceb137971066d34ce75d853bb75d5a9ac8d0dfebd8ba52198b5d92c92"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/signed-entitlements-extract.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/tracked-covered.png": {
+    "bytes": 38336,
+    "sha256": "fe7ce3c659555eaeec53b9d1c70ef04fc4074f163b403a03eb66babf989a55e1"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/tracked-moved.png": {
+    "bytes": 38336,
+    "sha256": "fe7ce3c659555eaeec53b9d1c70ef04fc4074f163b403a03eb66babf989a55e1"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-3/tracked-resized.png": {
+    "bytes": 38336,
+    "sha256": "fe7ce3c659555eaeec53b9d1c70ef04fc4074f163b403a03eb66babf989a55e1"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/app-snapshot/Contents/Info.plist": {
+    "bytes": 598,
+    "sha256": "c63f5b81d09a599b4db03ce076e0767e8ea0d9125b38a4227d00217a12d98d69"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/app-snapshot/Contents/MacOS/no-ax-cover": {
+    "bytes": 111440,
+    "sha256": "ce80984b18dd6018e793f47d523137f39a25745afc37519db5958fc50fdeb0fb"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/app-snapshot/Contents/_CodeSignature/CodeResources": {
+    "bytes": 2200,
+    "sha256": "6686de10a28a2fe11b36cbb86dcbacc827cfc4ea116b4dabf1845e5aee629e9b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/baseline.png": {
+    "bytes": 155721,
+    "sha256": "22a5697266e6f3d61bf48a892f4c313cc7a45eea56a081b7c2abbf7deb6ddf5d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/build.json": {
+    "bytes": 585,
+    "sha256": "6f2acfbd23fbb7e383a90232b6b5c5cb9c34d98c8b54e3b1bd700a7d4d113e9b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/build.log": {
+    "bytes": 105,
+    "sha256": "b86486e22202677be91850eabc7399139256e2eba511b9824ac09bf269307e9a"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/captures.json": {
+    "bytes": 1498,
+    "sha256": "6775f9c8a42a9923cd62367a1dd0559164db9d37c1293256b726491fc89921dc"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/covered.png": {
+    "bytes": 161735,
+    "sha256": "12b167c994185ae384dc487bcd3f734a52d9cf82b04f12dc485a014170aa41d2"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/dry.jsonl": {
+    "bytes": 312,
+    "sha256": "ee7e2f33a20bd6ea0416c5d6382a6775177790aaf738efab7dcce704390236f0"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/launch-output.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/launch.json": {
+    "bytes": 567,
+    "sha256": "d031ddc5c5e250e43a1ca399794238651a22cd8fdea0b051078383b112cc998c"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/measurement-recorder": {
+    "bytes": 174448,
+    "sha256": "e550de9841579c532e4e77a87ba8fc76025f0ecf8b369ed49a9fcdeb5732bb1c"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/motion-recorder.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/motion.mp4": {
+    "bytes": 383100,
+    "sha256": "0be0bc64ffd2c167b4148fb575932a8241a2c4cec828458d792767940521425a"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/motion.mp4.json": {
+    "bytes": 5193,
+    "sha256": "08b78850d6cdbca49e1ce0298a2d395ec2507fcbad8fa697ff787e8071d1b63e"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/moved.png": {
+    "bytes": 165842,
+    "sha256": "5ce516b92ba57860bbbcd0693bfdd8bafcd873fdfae664b8f9b4801115cf1454"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/.owned-fixture": {
+    "bytes": 20,
+    "sha256": "ec96b0a21bb1c6ec335b3bb67b8481bf55f49f43cbbb5f73ca17e6255f866f5f"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/ack.json": {
+    "bytes": 13,
+    "sha256": "1e013bf26b54af0c5c8f73bdec4d7e7406b10b8eb30d12fac2ad75ae19a14110"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/capture-done.json": {
+    "bytes": 36,
+    "sha256": "d40233de47162ee92023536f32c96e17faef277c08b3f02ed6a66357a3087246"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/capture-request.json": {
+    "bytes": 76,
+    "sha256": "30ec481cdb6326147df12b34b89b7b680ac032a86c88db5779d63f65638311e0"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/command.json": {
+    "bytes": 30,
+    "sha256": "431e63914ebb793217af14d8197d709ab49503e7a2c5b97f10e337a105226535"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/native.jsonl": {
+    "bytes": 23326,
+    "sha256": "11b575d150d98b6860f5dfa0e7c28659282f0c0846b360e5484d8f90d59c3f88"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/native.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/notifications.json": {
+    "bytes": 11039,
+    "sha256": "ee1cdd5ac7296078bf0d2af4cf186305f00a18215688fe62292ffd9252d36c60"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/ready.json": {
+    "bytes": 49,
+    "sha256": "3edd0f263d9c353186b495274f3a92a7952beede94237dd794c96ac956b11dce"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/truth-baseline.json": {
+    "bytes": 567,
+    "sha256": "c92833813fcd52b3011e4c5162b83d74c96568a9c148d93939079298734d7d88"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/truth-hidden.json": {
+    "bytes": 562,
+    "sha256": "85efe20e4fdb4d2be3fb8e9b67e02e730eda834023879e39136b6986c6af002a"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/truth-move.json": {
+    "bytes": 563,
+    "sha256": "94b346a394a410d4d0997de7f5527bf357b93dbb2f53702afa9f96d5b9ff8c55"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/truth-reset.json": {
+    "bytes": 564,
+    "sha256": "2a1659a6cd5a293ea3dd9896e599723261549d6fe1af320775a4d67337ce5590"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/truth-resize.json": {
+    "bytes": 565,
+    "sha256": "3d758e4f2009e8211e8f56438da0b6f568744e942d5961a9b7a5bfaf0faf8101"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/truth-shown.json": {
+    "bytes": 564,
+    "sha256": "f4ba088bceb4509737373e0b1561d535e8fa77940ae6d77e041f4dbb60886b14"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/native/truth-sweep.json": {
+    "bytes": 564,
+    "sha256": "523d5e5777376b64c383c3262af6c6c929fda05d1b16b309838763f0f1d172ed"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/no-ax-cover.m": {
+    "bytes": 22009,
+    "sha256": "3f4033fc57f7170203da41e4b3f2018e6b64a22a2ad2f08131cb8b802985a9fa"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/no-ax-screen-recorder.swift": {
+    "bytes": 6325,
+    "sha256": "77a20d2ef1b6c4637054dabe85888b71f50a326e9f1256d48bc0f3f9f3e3b439"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/recorder-preflight.json": {
+    "bytes": 32,
+    "sha256": "051766640742d5a0cbf3176f1fc4950f9b50f59e323d80be83d62a7460a6df8d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/result.json": {
+    "bytes": 534,
+    "sha256": "23b75055849d83d884f438c79156e87e432f02db78da60799c74d5233868b12c"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/run-no-ax-cover.py": {
+    "bytes": 8229,
+    "sha256": "dce4ffdf3c10f445d55acfc2996de4533b0299af6c339244cfafc49e2c2260a6"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/signed-entitlements-extract.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/tracked-covered.png": {
+    "bytes": 161735,
+    "sha256": "12b167c994185ae384dc487bcd3f734a52d9cf82b04f12dc485a014170aa41d2"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/tracked-moved.png": {
+    "bytes": 167671,
+    "sha256": "2748e80c7c33b6a2e6b39204e1c864e047fba85860c0c2efdd95e2ee774f10af"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/tracked-resized.png": {
+    "bytes": 133048,
+    "sha256": "dbfc2441ec17f23e18a85a92d8ebd3794206e6b4a8e679e967e1fb6b6c32de2b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/video-analysis-with-duplicated-decode.jsonl": {
+    "bytes": 41569,
+    "sha256": "cdee196ab7a6d06fdc20ad38f25d499cd13e8c5c5344efb39333dcd558f224f6"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-4/video-analysis.jsonl": {
+    "bytes": 34935,
+    "sha256": "6df741cef057987d339649d5e36724b38fa9d34065b6914f034dd8b27f108ef6"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/app-snapshot/Contents/Info.plist": {
+    "bytes": 598,
+    "sha256": "4ade0536a22a98e4e5f13737f774923e71e1696bf7b314c68b8825068bf6cafb"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/app-snapshot/Contents/MacOS/no-ax-cover": {
+    "bytes": 111472,
+    "sha256": "51ee79f894445f5a43699c1bda7d7a5699e4546a2c7fbe36136d20b588e03ebf"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/app-snapshot/Contents/_CodeSignature/CodeResources": {
+    "bytes": 2200,
+    "sha256": "6686de10a28a2fe11b36cbb86dcbacc827cfc4ea116b4dabf1845e5aee629e9b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/baseline.png": {
+    "bytes": 155721,
+    "sha256": "22a5697266e6f3d61bf48a892f4c313cc7a45eea56a081b7c2abbf7deb6ddf5d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/build.json": {
+    "bytes": 585,
+    "sha256": "df8f725eccdcf2a29999af0c5817dcf5c016411df10f332084bde1bfb288bb1d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/build.log": {
+    "bytes": 105,
+    "sha256": "6d4ab97f33847cb080505820d9d640b779a002a590a338631a8aa9a674047f09"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/captures.json": {
+    "bytes": 1500,
+    "sha256": "d405107f73481871f58a343f79abdc75714c190a999309f09da27fc2d4fa9936"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/covered.png": {
+    "bytes": 161735,
+    "sha256": "12b167c994185ae384dc487bcd3f734a52d9cf82b04f12dc485a014170aa41d2"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/dry.jsonl": {
+    "bytes": 414,
+    "sha256": "22db234db70739e7fe61f0d460767ad63e1433057583dac71e21cc576f097d69"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/exposed-01.png": {
+    "bytes": 47966,
+    "sha256": "6c35aa1b3c4eba21c33dc7818eed601b248c389311e39aba7ce9c7d83fc1c918"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/exposed-02.png": {
+    "bytes": 46504,
+    "sha256": "bc7b83b86d48b9ad58c1a2ef213415f1daeeb48d3afc5a57b438defd056a2c84"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/exposed-03.png": {
+    "bytes": 48678,
+    "sha256": "3ac9124072a50d13a178254f8ef6bd38733b78ca9fc98469e4804f7bac3c754d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/launch-output.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/launch.json": {
+    "bytes": 567,
+    "sha256": "99634ea9754b47afe85c0156e074a1eb805c3b51a62f22473175d53e72f39d1c"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/measurement-recorder": {
+    "bytes": 174448,
+    "sha256": "e550de9841579c532e4e77a87ba8fc76025f0ecf8b369ed49a9fcdeb5732bb1c"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/motion-recorder.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/motion.mp4": {
+    "bytes": 475433,
+    "sha256": "046d0a1f706391360f8d7b9356078ba3f280d49b9f843bc367ddda2174a9ffbb"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/motion.mp4.json": {
+    "bytes": 4570,
+    "sha256": "8efcd379e028f105df8f85734f47c2db27d5cae7aa3df64352137e384ef4dcf4"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/moved.png": {
+    "bytes": 165842,
+    "sha256": "5ce516b92ba57860bbbcd0693bfdd8bafcd873fdfae664b8f9b4801115cf1454"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/.owned-fixture": {
+    "bytes": 20,
+    "sha256": "ec96b0a21bb1c6ec335b3bb67b8481bf55f49f43cbbb5f73ca17e6255f866f5f"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/ack.json": {
+    "bytes": 13,
+    "sha256": "1e013bf26b54af0c5c8f73bdec4d7e7406b10b8eb30d12fac2ad75ae19a14110"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/capture-done.json": {
+    "bytes": 36,
+    "sha256": "d40233de47162ee92023536f32c96e17faef277c08b3f02ed6a66357a3087246"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/capture-request.json": {
+    "bytes": 76,
+    "sha256": "30ec481cdb6326147df12b34b89b7b680ac032a86c88db5779d63f65638311e0"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/command.json": {
+    "bytes": 30,
+    "sha256": "431e63914ebb793217af14d8197d709ab49503e7a2c5b97f10e337a105226535"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/native.jsonl": {
+    "bytes": 23319,
+    "sha256": "b7c1275380afdcf79a782ae2780cec8cf66c105d586d3487c3410758b57ae509"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/native.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/notifications.json": {
+    "bytes": 11099,
+    "sha256": "66404e36cdc91408f085d7e16e295a37760f0bd02e5a7af59d6cf16e8d0b5df9"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/ready.json": {
+    "bytes": 49,
+    "sha256": "7e2e905c1b8ccc835d1493e49080cc823d9f401fe8a629e76d842012839cc9e9"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/truth-baseline.json": {
+    "bytes": 567,
+    "sha256": "343d8fc1e5cbdc0d0edbd410a509f2d4d5ff3812d355effff2dfc90502a71e9a"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/truth-hidden.json": {
+    "bytes": 562,
+    "sha256": "de73a333be141aaacee3f7a8880d00795f12b1444aa42c89d91241f297d326d8"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/truth-move.json": {
+    "bytes": 563,
+    "sha256": "ac53b0ac8d5013e612233577da56be063a6b46ad319de4a836303a0c457b1684"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/truth-reset.json": {
+    "bytes": 564,
+    "sha256": "b57af8ab0c16a4ed796641f51b28896730dd3b597756898ae34df8f706605d51"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/truth-resize.json": {
+    "bytes": 565,
+    "sha256": "3444e8da51190ab87fc2a7bdd0abd0cc592761e5c57ee35b66422bf882c86427"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/truth-shown.json": {
+    "bytes": 564,
+    "sha256": "47502484ec7d34095bd49f6f6682f29a19ed35942dda5c3034ccf7b1319a33cc"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/native/truth-sweep.json": {
+    "bytes": 564,
+    "sha256": "0c65ad98672204909906346198e0608fa584bbe7dd6f076fa6fd4409d3c802dc"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/no-ax-cover.m": {
+    "bytes": 22115,
+    "sha256": "2abe4a812c1d15c4e6d0092d7f8501511f753c0c7fd836c7bbe8fb591bd41f58"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/no-ax-screen-recorder.swift": {
+    "bytes": 6325,
+    "sha256": "77a20d2ef1b6c4637054dabe85888b71f50a326e9f1256d48bc0f3f9f3e3b439"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/recorder-preflight.json": {
+    "bytes": 32,
+    "sha256": "051766640742d5a0cbf3176f1fc4950f9b50f59e323d80be83d62a7460a6df8d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/result.json": {
+    "bytes": 534,
+    "sha256": "23b75055849d83d884f438c79156e87e432f02db78da60799c74d5233868b12c"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/run-no-ax-cover.py": {
+    "bytes": 8229,
+    "sha256": "dce4ffdf3c10f445d55acfc2996de4533b0299af6c339244cfafc49e2c2260a6"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/signed-entitlements-extract.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/tracked-covered.png": {
+    "bytes": 161735,
+    "sha256": "12b167c994185ae384dc487bcd3f734a52d9cf82b04f12dc485a014170aa41d2"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/tracked-moved.png": {
+    "bytes": 167671,
+    "sha256": "2748e80c7c33b6a2e6b39204e1c864e047fba85860c0c2efdd95e2ee774f10af"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/tracked-resized.png": {
+    "bytes": 133048,
+    "sha256": "dbfc2441ec17f23e18a85a92d8ebd3794206e6b4a8e679e967e1fb6b6c32de2b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-5/video-analysis.jsonl": {
+    "bytes": 30504,
+    "sha256": "0f37aa1dada2525d47755032be6883fd17b51dab46b3d7615bb108f28f013ff7"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/app-snapshot/Contents/Info.plist": {
+    "bytes": 598,
+    "sha256": "18ff344913f9aea75c33d4b40d222857bbdb8bef8889098247e8d6749bdf7885"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/app-snapshot/Contents/MacOS/no-ax-cover": {
+    "bytes": 111504,
+    "sha256": "eb13d89b35297c77e91fe1f860ac22297b42ead464b8b364537dc0560f914916"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/app-snapshot/Contents/_CodeSignature/CodeResources": {
+    "bytes": 2200,
+    "sha256": "6686de10a28a2fe11b36cbb86dcbacc827cfc4ea116b4dabf1845e5aee629e9b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/baseline.png": {
+    "bytes": 155721,
+    "sha256": "22a5697266e6f3d61bf48a892f4c313cc7a45eea56a081b7c2abbf7deb6ddf5d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/build.json": {
+    "bytes": 615,
+    "sha256": "e68929e2274aff7b9c7d2f479a21fa71239e70e77db3102726c35c3d769fdcbd"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/build.log": {
+    "bytes": 105,
+    "sha256": "eae09d2a098a7aab3ed646256f28b8081a242170557cf95d568cfa1f1074f03a"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/captures.json": {
+    "bytes": 632,
+    "sha256": "719ef2439600d1aa0f43f58062c20836116c3710ecea5e933d934ce6204d402c"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/covered.png": {
+    "bytes": 161735,
+    "sha256": "12b167c994185ae384dc487bcd3f734a52d9cf82b04f12dc485a014170aa41d2"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/dry.jsonl": {
+    "bytes": 414,
+    "sha256": "22db234db70739e7fe61f0d460767ad63e1433057583dac71e21cc576f097d69"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/launch-output.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/launch.json": {
+    "bytes": 573,
+    "sha256": "5fec76684a02511722bbc5515750834faed20daafd0633a1aa0a472dcfdade2a"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/measurement-recorder": {
+    "bytes": 174448,
+    "sha256": "e550de9841579c532e4e77a87ba8fc76025f0ecf8b369ed49a9fcdeb5732bb1c"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/moved.png": {
+    "bytes": 165842,
+    "sha256": "5ce516b92ba57860bbbcd0693bfdd8bafcd873fdfae664b8f9b4801115cf1454"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/.owned-fixture": {
+    "bytes": 20,
+    "sha256": "ec96b0a21bb1c6ec335b3bb67b8481bf55f49f43cbbb5f73ca17e6255f866f5f"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/ack.json": {
+    "bytes": 12,
+    "sha256": "fa7c093f6dfeef2826f161e31049644b90eeba4ac233457020f78fda9fba5438"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/capture-done.json": {
+    "bytes": 30,
+    "sha256": "c55dd48d6db9e56362c0134936a9a5d63d4ff24f5cd536ab1c70d63d06d46e75"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/capture-request.json": {
+    "bytes": 67,
+    "sha256": "6486b0baa3f49d28744a3e73aa2e11febcafa7aa3764521a33853b726587cc7b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/command.json": {
+    "bytes": 29,
+    "sha256": "42e0dea9d2e063e6ee79e15c9995a192992d8e2efd312c4c1de33941ebf60c79"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/native.jsonl": {
+    "bytes": 2489,
+    "sha256": "83e052e3815d9c43e95053a4963eebe27fac1823679cdcc2eb93775f4f20c01b"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/native.stderr": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/notifications.json": {
+    "bytes": 592,
+    "sha256": "06a52e15428da71dd4c089183a0ec3c54ac869be51315f4646b95ed5601d16eb"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/ready.json": {
+    "bytes": 49,
+    "sha256": "34393eb51219e28068b81db47dfc7f68d5413617ed661ff268e4a67500ab65f9"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/truth-baseline.json": {
+    "bytes": 567,
+    "sha256": "33b32457cf087894051c85e2d24ec412a918c9c60d899312a2c7112d442525d3"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/truth-hidden.json": {
+    "bytes": 562,
+    "sha256": "2377c254bf149a7ab7601efbe4f727f5f8fec409729b9cd6b0da1162b0a0dca8"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/truth-move.json": {
+    "bytes": 563,
+    "sha256": "19b9776931aa16b26c63446dacf376ff36e3a6c5d5d2635d02b57963545f74a5"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/truth-resize.json": {
+    "bytes": 565,
+    "sha256": "e906ea48849f869156a7eafee93b448f4246662894d35acbdef6d4d3bae148e8"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/native/truth-shown.json": {
+    "bytes": 564,
+    "sha256": "7cea81f7bac2162abbe24d40dcb859348c6a1dc0ac222fc1255f1dbe2d794d0d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/no-ax-cover.m": {
+    "bytes": 23900,
+    "sha256": "d3658a0618fe7c865c15d887c10b00839dada5ca5c0daee948d7c77573d804d5"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/no-ax-screen-recorder.swift": {
+    "bytes": 6325,
+    "sha256": "77a20d2ef1b6c4637054dabe85888b71f50a326e9f1256d48bc0f3f9f3e3b439"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/recorder-preflight.json": {
+    "bytes": 32,
+    "sha256": "051766640742d5a0cbf3176f1fc4950f9b50f59e323d80be83d62a7460a6df8d"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/result.json": {
+    "bytes": 445,
+    "sha256": "118e9cc5544a074af93676496ef399b139fdfff460be43d27e4a998c5937dffe"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/run-no-ax-cover.py": {
+    "bytes": 8615,
+    "sha256": "5fa0a7cec4089634c118d5a20888ff5dad543fbdfd6dc9ae711445490ec4fcdd"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/run-6/signed-entitlements-extract.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/unit.log": {
+    "bytes": 126486,
+    "sha256": "a64f69fd7c0ed913d97e9ccac1858128bef17e3b92fce64b8bd3bc8c7eb8cf52"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/verification.json": {
+    "bytes": 2267,
+    "sha256": "e154f4cca147e8f2693edd8033a9252f3018b9ed229a44421ee5d5b6a71df7b7"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/verification.log": {
+    "bytes": 2267,
+    "sha256": "e154f4cca147e8f2693edd8033a9252f3018b9ed229a44421ee5d5b6a71df7b7"
+  },
+  "test-results/traffic-lights-no-ax-2026-11-17/verify-no-ax-cover.py": {
+    "bytes": 5499,
+    "sha256": "b876ccd103ad7812396187cf62edfd544dd33220ab4b9e4a83dcd37038859bff"
+  },
+  "tools/traffic-lights-lab/no-ax-cover.m": {
+    "bytes": 23900,
+    "sha256": "d3658a0618fe7c865c15d887c10b00839dada5ca5c0daee948d7c77573d804d5"
+  },
+  "tools/traffic-lights-lab/run-no-ax-cover.py": {
+    "bytes": 8615,
+    "sha256": "5fa0a7cec4089634c118d5a20888ff5dad543fbdfd6dc9ae711445490ec4fcdd"
+  },
+  "tools/traffic-lights-lab/no-ax-screen-recorder.swift": {
+    "bytes": 6325,
+    "sha256": "77a20d2ef1b6c4637054dabe85888b71f50a326e9f1256d48bc0f3f9f3e3b439"
+  },
+  "tools/traffic-lights-lab/analyze-no-ax-video.swift": {
+    "bytes": 3710,
+    "sha256": "2084db3e1c85d8cfbd037c324ee34401dcfd0d9b204f2821ec87fed095d24471"
+  },
+  "tools/traffic-lights-lab/verify-no-ax-cover.py": {
+    "bytes": 5499,
+    "sha256": "b876ccd103ad7812396187cf62edfd544dd33220ab4b9e4a83dcd37038859bff"
+  },
+  "docs/NO-AX-COVER-RESEARCH.md": {
+    "bytes": 8577,
+    "sha256": "45a4f360b76d17f9b0184b6b4e33f2ce80d3020eee9c752f28f6f9cc05cd5755"
+  },
+  "/tmp/margin-traffic-lights-research/realtime-skylight-disassembly.txt": {
+    "bytes": 61642731,
+    "sha256": "c9c6da9b3f0a004d6adf360bb910d82f7f1e9df46d2ca2cebe7265caa7d7dbe0"
+  }
+}

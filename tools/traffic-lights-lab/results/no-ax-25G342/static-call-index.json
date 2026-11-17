@@ -1,0 +1,70 @@
+[
+  {
+    "function": "_SLSTransactionAddWindowToWindowMovementGroup",
+    "instruction": "0x186DE1220   bl       __SLSTransactionEncode_resize "
+  },
+  {
+    "function": "_SLSTransactionAddWindowToWindowMovementGroup",
+    "instruction": "0x186DE1228   cbz      x8, 0x186de124c      "
+  },
+  {
+    "function": "_SLSTransactionAddWindowToWindowMovementGroup",
+    "instruction": "0x186DE1244   strb     w9, [x8]             "
+  },
+  {
+    "function": "_SLSTransactionAddWindowToWindowMovementGroup",
+    "instruction": "0x186DE1260   bl       __SLSTransactionEncode_packed64 "
+  },
+  {
+    "function": "_SLSTransactionAddWindowToWindowMovementGroup",
+    "instruction": "0x186DE126C   bl       __SLSTransactionEncode_packed64 "
+  },
+  {
+    "function": "_get_window_region",
+    "instruction": "0x187169A2C   bl       _CGSWindowGetMappedImpl "
+  },
+  {
+    "function": "_get_window_region",
+    "instruction": "0x187169A30   cbz      x0, 0x187169a44      "
+  },
+  {
+    "function": "_get_window_region",
+    "instruction": "0x187169A3C   bl       _CFDictionaryGetValue "
+  },
+  {
+    "function": "_SLSGetButtonRegionLegacy",
+    "instruction": "0x187169AF8   bl       _get_window_region   "
+  },
+  {
+    "function": "_SLSAddWindowToWindowMovementGroup",
+    "instruction": "0x18716A010   cbz      w0, 0x18716a0ec      "
+  },
+  {
+    "function": "_SLSAddWindowToWindowMovementGroup",
+    "instruction": "0x18716A02C   bl       _CGSWindowGetMappedImpl "
+  },
+  {
+    "function": "_SLSAddWindowToWindowMovementGroup",
+    "instruction": "0x18716A040   bl       _CGSWindowGetMappedImpl "
+  },
+  {
+    "function": "_SLSAddWindowToWindowMovementGroup",
+    "instruction": "0x18716A048   cbz      x24, 0x18716a0b0     "
+  },
+  {
+    "function": "_SLSAddWindowToWindowMovementGroup",
+    "instruction": "0x18716A04C   cbz      x0, 0x18716a0b0      "
+  },
+  {
+    "function": "_SLSAddWindowToWindowMovementGroup",
+    "instruction": "0x18716A054   strb     w8, [x0, #0xdb]      "
+  },
+  {
+    "function": "_SLSAddWindowToWindowMovementGroup",
+    "instruction": "0x18716A088   bl       _voucher_mach_msg_set "
+  },
+  {
+    "function": "_SLSAddWindowToWindowMovementGroup",
+    "instruction": "0x18716A0A8   bl       _mach_msg            "
+  }
+]

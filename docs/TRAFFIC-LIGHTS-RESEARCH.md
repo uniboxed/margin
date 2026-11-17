@@ -4,6 +4,12 @@ The target is the three close, minimise and zoom/fullscreen buttons, leaving the
 window title and other application chrome alone. Research is restricted to Accessibility and private
 macOS APIs for control. No product behavior is changed by this spike.
 
+**2026-11-17, updated user direction:** adaptive visual covers are now authorized for
+testing without Accessibility. A separate-process test verifies private move/resize
+events and calibrated covering with AX denied. Fast motion exposes a button in 3/235
+recorded frames; flicker-free behavior and automatic visibility remain unproven.
+See [the new no-AX report](NO-AX-COVER-RESEARCH.md). Native removal remains separate.
+
 **Latest traffic-light pass:** native external hiding remains unestablished. An actual WindowServer
 rights handoff now demonstrates cooperative delegation without library loading: a foreign process
 cannot grant itself writer access, but can receive and relinquish an explicit owner's grant. This
@@ -17,8 +23,8 @@ The effect survives resize and disappears on a normal relaunch. Chrome is unchan
 test. This corrects the earlier practical limit drawn from live WindowServer setters; see the final
 section for recordings, exact scope and reproduction. Traffic-light hiding remains a separate problem.
 
-**External native traffic-light hiding remains unestablished for protected apps on 25G342. The user
-explicitly rejects image covers; the earlier cover experiment does not meet this requirement.**
+**External native traffic-light hiding remains unestablished for protected apps on 25G342. The
+earlier cover experiment does not meet the original strict native-removal requirement.**
 An earlier native-only pass tests private button-region transactions and retained foreign-window
 proxies with matched owner controls, and traces Apple's titlebar service and WindowManagement bridge.
 None establishes a remote native-button visibility operation. Detailed evidence is appended below.
@@ -447,7 +453,9 @@ in this host's disassembly. Their presence or prior use is not substituted for t
 
 ### Historical cover architecture and remaining acceptance
 
-The following cover architecture is rejected for the user's current requirement. It would put the
+The following architecture was rejected for the original strict native-removal requirement.
+The user's 2026-11-17 direction reopens cover research; that does not retroactively
+validate this earlier prototype. It would put the
 cover inside Margin's own opaque chrome, bind PID/process lifetime
 plus window number, and observe exact window geometry and application/focus state. Keep capability
 states distinct: native-hidden, visually-covered, withdrawn, unsupported. Native AX actions can still

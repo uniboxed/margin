@@ -5272,3 +5272,56 @@ corrected no-subprocess dry-run regression and 1,031 repository unit tests pass.
 Full E2E attempted and bounded at 15 seconds after missing pinned WebKit 2388;
 no download or full-suite pass. Updated report retains initial zero-grant creation
 limits while recording the now-successful narrower access route.
+
+### Test private WindowServer cover tracking without Accessibility (2026-11-17)
+
+The user now authorizes testing an adaptive visual cover, reversing the earlier
+strict native-only research direction, and specifically requests testing without
+Accessibility. Research only, on chore/no-ax-button-cover; no shipping app change.
+
+Each attempt uses a separate new ad-hoc-signed app identity through LaunchServices.
+Both controller and separate child report AXTrusted=false; the controller's single
+foreign AXWindows negative control returns -25211. No permission grant/reset, AX
+control/observer backend, private entitlement, injection, Automation, FDA or real
+browser/user-window mutation. Bootstrap supplies child PID/window ID only; private
+owner queries verify them. Child native rectangles/hidden state are independent
+truth files, never read by controller. Local AppKit calibration supplies the known
+layout, not general foreign geometry discovery. Covering uses private WindowServer
+surfaces/bounds/order/movement and actual private 806/807 callbacks for the exact
+target. The separate recorder uses existing Screen Recording access for measurement
+only and supplies no geometry/visibility to the backend.
+
+Owned legacy and transaction movement-group controls follow +40,+20. Legacy foreign
+join returns 1001; the normal transaction variant also has no foreign following
+effect on actual readback. Not a universal compositor-binding absence proof.
+Event-driven tracking does follow known-layout move/resize checkpoints. Actual
+composited PNGs pass independent disc-coverage checks. Slow sweep: 0 exposure frames
+among 269 originals; fast repeated direction changes: 3 among 235, indices 16/28/113.
+Visually inspect all three originals and retain clips. Requested 60fps is not actual
+guaranteed cadence: recordings 5.332/5.205s, median complete gaps about 16.67ms,
+maximum 50ms. Native buttons stay unhidden. This is not a flicker-free acceptance.
+
+Legacy button region is nil externally, even with retained NSCGSWindow proxy.
+Owner region {9,9,37,14} remains unchanged when all three native controls are actually
+hidden/shown, and covers only the first two measured controls. Neither metadata nor
+fullscreen state alone establishes actual button visibility. Unknown layouts and
+visibility remain unsupported, not guessed. All six tests stay windowed.
+
+Retain run 1's unordered calibration-window geometry failure. Run 2 diagnoses it
+and confirms legacy results/callbacks. Run 3's added activation leaves the backdrop
+above the target: reject gray scenes and one-frame video; remove that activation
+and strengthen capture/runner grading. Run 4 valid slow capture initially gets 320
+duplicated offline decode frames: cross-check MP4 frame count, add fps_mode passthrough,
+retain initial output, reanalyze 269 originals without a UI replay. Run 5 fast stress
+demonstrates slips. Run 6 tests transactional grouping with its own positive control,
+still no foreign following. Six source/binary/runner versions remain local. Independent
+verification confirms original pixels/counts, native state and all twelve PID exits.
+
+Tools and compact evidence: tools/traffic-lights-lab/results/no-ax-25G342/. Detailed
+report: docs/NO-AX-COVER-RESEARCH.md. Raw under
+test-results/traffic-lights-no-ax-2026-11-17/. Native controller/recorder/analyzer
+warnings-as-errors builds and independent checks pass. Repository unit 1,031 pass;
+full E2E attempted/bounded at 15s after missing pinned WebKit 2388, no download/full
+pass. Automatic visibility/geometry, protected browsers, fullscreen/occlusion,
+displays/scale/other OS builds and production lifecycle remain unvalidated. No PR,
+product install, universal hiding claim or universal-impossibility claim.
