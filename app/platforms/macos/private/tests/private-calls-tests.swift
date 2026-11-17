@@ -2,7 +2,7 @@
 // a fake resolver whose "functions" are this file's own (no real private
 // function is ever called here, and nothing freezes the screen): the launch
 // check's availability for each missing framework, function, class and
-// selector and each changed type encoding, the enumerator behind gate G5,
+// selector and each changed type encoding,
 // the macOS build kept in a test's own defaults, the launch line, the
 // wrappers refusing under MARGIN_APP_TESTS (which run.sh sets), a nil Copy
 // result read as unknown, and the real resolver finding nothing in a test.
@@ -28,7 +28,6 @@ let fakeReleaseTransition: SkyLight.ReleaseTransition = { cid, handle in fakeSky
 let fakeGetModelBounds: SkyLight.GetWindowBounds = { cid, window, out in
     fakeSkyCalls.append("model \(cid) \(window)"); out.pointee = fakeModelAnswer; return fakeModelResult
 }
-let fakeGetActiveSpace: SkyLight.GetActiveSpace = { cid in fakeSkyCalls.append("active \(cid)"); return 7 }
 let fakeCopySpaces: SkyLight.CopySpacesForWindows = { cid, mask, windows in
     fakeSkyCalls.append("spaces \(cid) \(mask) \(CFArrayGetCount(windows))")
     switch fakeCopyAnswer {
@@ -43,12 +42,6 @@ let fakeCopyDisplays: SkyLight.CopyManagedDisplaySpaces = { cid in
 }
 let fakeSpaceCreate: SkyLight.SpaceCreate = { cid, kind, _ in fakeSkyCalls.append("create \(cid) \(kind)"); return 2431 }
 let fakeSpaceDestroy: SkyLight.SpaceDestroy = { cid, space in fakeSkyCalls.append("destroy \(cid) \(space)") }
-let fakeCoverLevel: SkyLight.SpaceSetAbsoluteLevel = { cid, space, level in fakeSkyCalls.append("level \(cid) \(space) \(level)") }
-let fakeCoverReadLevel: SkyLight.SpaceGetAbsoluteLevel = { cid, space in fakeSkyCalls.append("read level \(cid) \(space)"); return 400 }
-let fakeCoverShow: SkyLight.ShowHideSpaces = { cid, spaces in fakeSkyCalls.append("show cover \(cid) \(CFArrayGetCount(spaces))") }
-let fakeCoverHide: SkyLight.ShowHideSpaces = { cid, spaces in fakeSkyCalls.append("hide cover \(cid) \(CFArrayGetCount(spaces))") }
-let fakeCoverAdd: SkyLight.SpaceAddOwnedWindow = { cid, space, windows, options in fakeSkyCalls.append("add cover \(cid) \(space) \(CFArrayGetCount(windows)) \(options)") }
-let fakeCoverAlpha: SkyLight.SetWindowAlpha = { cid, window, alpha in fakeSkyCalls.append("cover alpha \(cid) \(window) \(alpha)"); return 0 }
 // The slot's: the last reservation set is what the values read back (0 the set one, 1 nil, 2 no layout manager, 3 an edge not a number).
 nonisolated(unsafe) var fakeReserved: [String: Any] = ["Left": 0, "Right": 0, "Top": 0, "Bottom": 0]
 nonisolated(unsafe) var fakeValuesAnswer: Int = 0
@@ -71,11 +64,6 @@ let fakeInitAddRemove: SkyLight.InitAddRemove = { raw, _, space, windows, option
     fakeSkyCalls.append("init add \(space) \(windows.count) \(options)")
     return Unmanaged.passRetained(NSObject())
 }
-let fakeInitRemove: SkyLight.InitRemove = { raw, _, windows, spaces in
-    Unmanaged<AnyObject>.fromOpaque(raw).release()
-    fakeSkyCalls.append("init remove \(windows.count) \(spaces.count)")
-    return Unmanaged.passRetained(NSObject())
-}
 let fakePerform: SkyLight.Perform = { _, sel in fakeSkyCalls.append("perform \(NSStringFromSelector(sel))") }
 
 // Everything macOS 27.2 has, unless a test takes something away.
@@ -83,7 +71,7 @@ final class FakePrivateResolver: PrivateResolver, @unchecked Sendable {
     var version = "27.2"
     var build: String? = "26B123"
     var frameworks = Set(PrivateFramework.allCases)
-    var functions = Set(PrivateCalls.functions + [PrivateCalls.enumeratorCandidate])
+    var functions = Set(PrivateCalls.functions)
     var classes = Set(PrivateCalls.classes)
     var selectors = Set(PrivateCalls.selectors.map(\.label))
     var encodings = Dictionary(uniqueKeysWithValues: PrivateCalls.selectors.map { ($0.label, $0.encoding) })
@@ -98,20 +86,13 @@ final class FakePrivateResolver: PrivateResolver, @unchecked Sendable {
         case "SLSInvokeTransition": return p(fakeInvokeTransition)
         case "SLSReleaseTransition": return p(fakeReleaseTransition)
         case "SLSGetWindowBounds": return p(fakeGetModelBounds)
-        case "SLSGetActiveSpace": return p(fakeGetActiveSpace)
         case "SLSCopySpacesForWindows": return p(fakeCopySpaces)
         case "SLSCopyManagedDisplaySpaces": return p(fakeCopyDisplays)
         case "SLSSpaceCreate": return p(fakeSpaceCreate)
         case "SLSSpaceDestroy": return p(fakeSpaceDestroy)
-        case "SLSSpaceSetAbsoluteLevel": return p(fakeCoverLevel)
-        case "SLSSpaceGetAbsoluteLevel": return p(fakeCoverReadLevel)
-        case "SLSSetWindowAlpha": return p(fakeCoverAlpha)
-        case "SLSShowSpaces": return p(fakeCoverShow)
-        case "SLSHideSpaces": return p(fakeCoverHide)
-        case "SLSSpaceAddWindowsAndRemoveFromSpaces": return p(fakeCoverAdd)
         case "SLSSpaceSetEdgeReservation": return p(fakeReserveEdges)
         case "SLSSpaceCopyValues": return p(fakeSpaceValues)
-        default: return p(fakeMainConnection) // the enumerator's candidate: looked up, never called
+        default: return nil
         }
     }
     // A stand-in class, so alloc is NSObject's own.
@@ -121,11 +102,7 @@ final class FakePrivateResolver: PrivateResolver, @unchecked Sendable {
     func implementation(_ className: String, _ selector: String) -> UnsafeRawPointer? {
         guard responds(className, selector) else { return nil }
         func p<T>(_ f: T) -> UnsafeRawPointer { unsafeBitCast(f, to: UnsafeRawPointer.self) }
-        switch selector {
-        case PrivateCalls.initAddRemove: return p(fakeInitAddRemove)
-        case PrivateCalls.initRemove: return p(fakeInitRemove)
-        default: return p(fakePerform)
-        }
+        return selector == PrivateCalls.initAddRemove ? p(fakeInitAddRemove) : p(fakePerform)
     }
 }
 
@@ -145,16 +122,12 @@ func privateCallsTests() {
     let all = PrivateCalls.evaluate(FakePrivateResolver())
     check("private calls: all there: freeze, spaces and park on, nothing missing or changed",
           all.freeze && all.spaces && all.park && all.missing.isEmpty && all.mismatched.isEmpty && all.reasons.isEmpty, "\(all)")
-    check("private calls: the counts (18 functions, 2 classes, 4 selectors)",
-          all.functionsFound == 18 && all.functionsTotal == 18 && all.classesFound == 2 && all.classesTotal == 2 && all.selectorsFound == 4 && all.selectorsTotal == 4, "\(all)")
-    check("private calls: the enumerator stays off until gate G5, its candidate found", !all.enumerator && all.candidateFound)
-    check("private calls: the enumerator once G5 passed", PrivateCalls.evaluate(FakePrivateResolver(), enumeratorPassed: true).enumerator)
-    do {
-        let r = FakePrivateResolver()
-        r.functions.remove(PrivateCalls.enumeratorCandidate)
-        let a = PrivateCalls.evaluate(r, enumeratorPassed: true)
-        check("private calls: no enumerator candidate: the enumerator off, nothing else", !a.enumerator && !a.candidateFound && a.freeze && a.park && a.missing.isEmpty, "\(a)")
-    }
+    check("private calls: the counts (11 functions, 1 class, 2 selectors)",
+          all.functionsFound == 11 && all.functionsTotal == 11 && all.classesFound == 1 && all.classesTotal == 1 && all.selectorsFound == 2 && all.selectorsTotal == 2, "\(all)")
+    check("private calls: nothing checked that nothing calls (the live cover's, the active Space, the bridge's remove, the enumerator's candidate)",
+          Set(PrivateCalls.functions).isDisjoint(with: ["SLSGetActiveSpace", "SLSSpaceSetAbsoluteLevel", "SLSSpaceGetAbsoluteLevel", "SLSShowSpaces", "SLSHideSpaces",
+                                                         "SLSSpaceAddWindowsAndRemoveFromSpaces", "SLSSetWindowAlpha", "SLSCopyWindowsWithOptionsAndTags"])
+          && PrivateCalls.classes == [PrivateCalls.addRemoveClass])
 
     func without(function name: String) -> PrivateCalls.Availability {
         let r = FakePrivateResolver()
@@ -167,32 +140,32 @@ func privateCallsTests() {
         let a = without(function: name)
         check("private calls: no \(name): the freeze off, the reads and parking on", !a.freeze && a.spaces && a.park && a.missing == [name] && a.reasons["freeze"] == "\(name) missing", "\(a)")
     }
-    for name in ["SLSGetActiveSpace", "SLSCopySpacesForWindows", "SLSCopyManagedDisplaySpaces"] {
+    for name in ["SLSCopySpacesForWindows", "SLSCopyManagedDisplaySpaces"] {
         let a = without(function: name)
         check("private calls: no \(name): the reads and parking off, the freeze on", a.freeze && !a.spaces && !a.park && a.missing == [name] && a.reasons["park"] == "the Space reads are off", "\(a)")
     }
     for name in ["SLSSpaceCreate", "SLSSpaceDestroy"] {
         let a = without(function: name)
-        check("private calls: no \(name): parking and live cover off", a.freeze && a.spaces && !a.park && !a.liveCover && a.missing == [name] && a.functionsFound == 17, "\(a)")
+        check("private calls: no \(name): parking off", a.freeze && a.spaces && !a.park && a.missing == [name] && a.functionsFound == 10, "\(a)")
     }
     for name in PrivateCalls.classes {
         let r = FakePrivateResolver()
         r.classes.remove(name)
         let a = PrivateCalls.evaluate(r)
-        check("private calls: no class \(name): parking off, its selectors not counted", a.freeze && a.spaces && !a.park && a.missing == [name] && a.classesFound == 1 && a.selectorsFound == 2 && a.mismatched.isEmpty, "\(a)")
+        check("private calls: no class \(name): parking off, its selectors not counted", a.freeze && a.spaces && !a.park && a.missing == [name] && a.classesFound == 0 && a.selectorsFound == 0 && a.mismatched.isEmpty, "\(a)")
     }
     for s in PrivateCalls.selectors {
         let r = FakePrivateResolver()
         r.selectors.remove(s.label)
         let a = PrivateCalls.evaluate(r)
-        check("private calls: \(s.label) not answered: parking off", a.freeze && a.spaces && !a.park && a.missing == [s.label] && a.selectorsFound == 3, "\(a)")
+        check("private calls: \(s.label) not answered: parking off", a.freeze && a.spaces && !a.park && a.missing == [s.label] && a.selectorsFound == 1, "\(a)")
     }
     for s in PrivateCalls.selectors {
         let r = FakePrivateResolver()
         r.encodings[s.label] = "@40@0:8Q16@24I32I36"
         let a = PrivateCalls.evaluate(r)
         check("private calls: \(s.label)'s encoding changed: parking off, the selector counted as there",
-              a.freeze && a.spaces && !a.park && a.missing.isEmpty && a.mismatched == [s.label] && a.selectorsFound == 4 && (a.reasons["park"] ?? "").contains("encoding changed"), "\(a)")
+              a.freeze && a.spaces && !a.park && a.missing.isEmpty && a.mismatched == [s.label] && a.selectorsFound == 2 && (a.reasons["park"] ?? "").contains("encoding changed"), "\(a)")
         r.encodings[s.label] = nil
         let b = PrivateCalls.evaluate(r)
         check("private calls: \(s.label) with no encoding at all: parking off, mismatched", !b.park && b.mismatched == [s.label], "\(b)")
@@ -201,7 +174,7 @@ func privateCallsTests() {
         let r = FakePrivateResolver()
         r.frameworks.remove(.skyLight)
         let a = PrivateCalls.evaluate(r)
-        check("private calls: SkyLight doesn't open: everything off, only the framework named", !a.freeze && !a.spaces && !a.park && !a.enumerator && a.missing == ["SkyLight.framework"] && a.functionsFound == 0, "\(a)")
+        check("private calls: SkyLight doesn't open: everything off, only the framework named", !a.freeze && !a.spaces && !a.park && a.missing == ["SkyLight.framework"] && a.functionsFound == 0, "\(a)")
         let w = FakePrivateResolver()
         w.frameworks.remove(.windowManagement)
         let b = PrivateCalls.evaluate(w)
@@ -210,11 +183,11 @@ func privateCallsTests() {
     do {
         let r = FakePrivateResolver()
         r.functions.subtract(["SLSNewTransition", "SLSSpaceCreate"])
-        r.classes.remove(PrivateCalls.removeClass)
+        r.selectors.remove(PrivateCalls.selectors[1].label)
         r.encodings[PrivateCalls.selectors[0].label] = "x"
         let a = PrivateCalls.evaluate(r)
         check("private calls: several at once: each named once, each part off with its own reasons",
-              !a.freeze && a.spaces && !a.park && Set(a.missing) == ["SLSNewTransition", "SLSSpaceCreate", PrivateCalls.removeClass] && a.mismatched == [PrivateCalls.selectors[0].label]
+              !a.freeze && a.spaces && !a.park && Set(a.missing) == ["SLSNewTransition", "SLSSpaceCreate", PrivateCalls.selectors[1].label] && a.mismatched == [PrivateCalls.selectors[0].label]
               && (a.reasons["park"] ?? "").hasSuffix("and 1 more"), "\(a)")
     }
 
@@ -240,12 +213,12 @@ func privateCallsTests() {
         let line = said.last ?? ""
         check("private calls: the launch line",
               line.hasPrefix("private calls on macOS 27.2 (26B123): freeze ok, spaces ok, park off: -initWithSpaceID:windows:options: encoding changed (@40@0:8, expected @36@0:8Q16@24I32)")
-              && line.contains("(18/18 functions, 2/2 classes, 4/4 selectors, 1 encoding changed); live cover ok; slot ok; enumerator off (candidate found, gate G5) in "), line)
+              && line.contains("(11/11 functions, 1/1 classes, 2/2 selectors, 1 encoding changed); slot ok in "), line)
         said = []
         Diagnostics.echo = { said.append($0) }
         _ = PrivateCalls.check(resolver: FakePrivateResolver(), defaults: nil)
         Diagnostics.echo = echo
-        check("private calls: check with no defaults: the launch line only, all ok", said.count == 1 && said[0].contains("freeze ok, spaces ok, park ok, geometry ok (18/18 functions, 2/2 classes, 4/4 selectors, encodings ok); live cover ok; slot ok;"), "\(said)")
+        check("private calls: check with no defaults: the launch line only, all ok", said.count == 1 && said[0].contains("freeze ok, spaces ok, park ok, geometry ok (11/11 functions, 1/1 classes, 2/2 selectors, encodings ok); slot ok in "), "\(said)")
     } else { check("private calls: a test's defaults", false) }
 
     do {
@@ -256,7 +229,7 @@ func privateCallsTests() {
     check("slot: all there: on, with no reason", all.slot && all.reasons["slot"] == nil, "\(all)")
     for name in ["SLSSpaceSetEdgeReservation", "SLSSpaceCopyValues"] {
         let a = without(function: name)
-        check("slot: no \(name): the slot off, everything else on", !a.slot && a.freeze && a.spaces && a.park && a.geometry && a.liveCover && a.missing == [name] && a.reasons["slot"] == "\(name) missing", "\(a)")
+        check("slot: no \(name): the slot off, everything else on", !a.slot && a.freeze && a.spaces && a.park && a.geometry && a.missing == [name] && a.reasons["slot"] == "\(name) missing", "\(a)")
     }
     do {
         let a = without(function: "SLSCopySpacesForWindows")
@@ -272,9 +245,9 @@ func privateCallsTests() {
         fakeSkyCalls = []
         let sky = SkyLight(resolver: FakePrivateResolver(), availability: all)
         check("private calls: the wrappers refuse under MARGIN_APP_TESTS", sky.refuses)
-        let refused = sky.freeze() == nil && sky.reveal(9) == nil && sky.release(9) == nil && sky.activeSpace() == nil
+        let refused = sky.freeze() == nil && sky.reveal(9) == nil && sky.release(9) == nil
             && sky.modelBounds(of: 3) == nil && sky.spaces(forWindows: [3]) == nil && sky.managedDisplaySpaces() == nil && sky.createSpace() == nil
-            && !sky.destroySpace(2431) && !sky.bridgeAdd(windows: [3], toSpace: 2431) && !sky.bridgeRemove(windows: [3], fromSpaces: [2431])
+            && !sky.destroySpace(2431) && !sky.bridgeAdd(windows: [3], toSpace: 2431)
             && !sky.reserveEdges(of: 7, left: 248, right: 8, top: 8, bottom: 8) && sky.reservedEdges(of: 7) == nil
         check("private calls: refused: every wrapper answers nothing, and no function is called", refused && fakeSkyCalls.isEmpty, "\(fakeSkyCalls)")
     }
@@ -297,7 +270,6 @@ func privateCallsTests() {
         check("private calls: freeze: spec version 0, type 1; the handle", frozen?.result == 0 && frozen?.handle == 9 && fakeSkyCalls == ["cid", "new 42 v0 t1 o0 w0"], "\(fakeSkyCalls)")
         fakeSkyCalls = []
         check("private calls: reveal with no animation, release", sky.reveal(9) == 0 && sky.release(9) == 0 && fakeSkyCalls == ["cid", "invoke 42 9 0.0", "cid", "release 42 9"], "\(fakeSkyCalls)")
-        check("private calls: the active Space", sky.activeSpace() == 7)
         check("private calls: a window's Spaces, mask 7", sky.spaces(forWindows: [3, 4]) == [3, 5] && fakeSkyCalls.last == "spaces 42 7 2", "\(fakeSkyCalls)")
         check("private calls: the displays' Spaces", sky.managedDisplaySpaces()?.first?["Display Identifier"] as? String == "Main")
         fakeCopyAnswer = 1
@@ -327,8 +299,6 @@ func privateCallsTests() {
         check("slot: an edge that isn't a number reads as unknown", sky.reservedEdges(of: 7) == nil)
         fakeValuesAnswer = 0
         check("slot: zeros give the whole Space back", sky.reserveEdges(of: 7, left: 0, right: 0, top: 0, bottom: 0) && sky.reservedEdges(of: 7)?.left == 0)
-        fakeSkyCalls = []
-        check("private calls: the bridge: remove, then perform", sky.bridgeRemove(windows: [3], fromSpaces: [2431, 1]) && fakeSkyCalls == ["init remove 1 2", "perform performWithWMBridgeDelegate"], "\(fakeSkyCalls)")
     }
     do {
         // Only what the check passed is filled in: a changed encoding never reaches its initializer.
@@ -338,11 +308,11 @@ func privateCallsTests() {
         let a = PrivateCalls.evaluate(r)
         let sky = SkyLight(resolver: r, availability: a, refusing: false)
         check("private calls: parking off: no bridge call and no private Space, the freeze still there",
-              !sky.bridgeAdd(windows: [3], toSpace: 1) && !sky.bridgeRemove(windows: [3], fromSpaces: [1]) && sky.createSpace() == nil && !sky.destroySpace(1)
+              !sky.bridgeAdd(windows: [3], toSpace: 1) && sky.createSpace() == nil && !sky.destroySpace(1)
               && !fakeSkyCalls.contains { $0.hasPrefix("init") || $0.hasPrefix("create") || $0.hasPrefix("destroy") } && sky.freeze() != nil, "\(fakeSkyCalls)")
         let none = SkyLight(resolver: FakePrivateResolver(), availability: .off, refusing: false)
         fakeSkyCalls = []
-        check("private calls: nothing passed: nothing called", none.freeze() == nil && none.activeSpace() == nil && fakeSkyCalls.isEmpty, "\(fakeSkyCalls)")
+        check("private calls: nothing passed: nothing called", none.freeze() == nil && none.spaces(forWindows: [3]) == nil && fakeSkyCalls.isEmpty, "\(fakeSkyCalls)")
         do {
             let r = FakePrivateResolver()
             r.functions.remove("SLSSpaceCopyValues")

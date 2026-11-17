@@ -141,10 +141,6 @@ final class FakeRegistrar: HotKeyRegistrar {
     let req = object(AppMessage.req(id: 3, epoch: "e", windowId: nil, type: "activateTab", payload: ["tabId": 9]).encode())
     check("req", req?["k"] as? String == "req" && req?["id"] as? Int == 3 && req?["epoch"] as? String == "e" && req?["windowId"] is NSNull
       && req?["type"] as? String == "activateTab" && (req?["payload"] as? JSONObject)?["tabId"] as? Int == 9 && (req?["at"] as? Double ?? 0) > 1.7e12)
-    let layout = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 6.25, radii: [6.25, 6.25, 6.25, 6.25], width: 1280, height: 800, mode: "fullscreen")
-    let set = object(AppMessage.setLayout(epoch: "e", windowId: 7, seq: 2, layout: layout).encode())
-    check("setLayout: the window, its number, the insets, radius and size", set?["k"] as? String == "setLayout" && set?["windowId"] as? Int == 7 && set?["seq"] as? Int == 2
-      && same(set?["insets"], ["left": 260, "top": 8, "right": 8, "bottom": 8]) && set?["radius"] as? Double == 6.25 && same(set?["container"], ["width": 1280, "height": 800]) && set?["mode"] as? String == "fullscreen")
     let drawn = object(AppMessage.drawn(epoch: "e", windowId: 7, on: false).encode())
     check("drawn: the window and whether it's drawn", drawn?["k"] as? String == "drawn" && drawn?["epoch"] as? String == "e" && drawn?["windowId"] as? Int == 7 && drawn?["on"] as? Bool == false)
     check("resync", object(AppMessage.resync(epoch: "e").encode())?["epoch"] as? String == "e")
@@ -285,18 +281,9 @@ final class FakeRegistrar: HotKeyRegistrar {
     let g: JSONObject = ["insets": ["left": 260.3, "top": 8, "right": 8, "bottom": 8.26], "radius": 6.25, "radii": [6.25, 6.25, 6.25, 6.25], "container": ["width": 1280, "height": 800], "mode": "fullscreen", "outer": [:]]
     guard let l = PageLayout(geometry: g) else { return check("a layout report", false) }
     check("a layout report", l.left == 260.3 && l.bottom == 8.26 && l.width == 1280 && l.radius == 6.25 && l.mode == "fullscreen")
-    check("rounded to half a point", l.rounded.left == 260.5 && l.rounded.bottom == 8.5 && l.rounded.top == 8)
     check("not a report: no insets", PageLayout(geometry: ["container": ["width": 1, "height": 1]]) == nil)
     check("not a report: no size", PageLayout(geometry: ["insets": ["left": 0, "top": 0, "right": 0, "bottom": 0], "container": ["width": 0, "height": 10]]) == nil)
     check("not a report: a number that's a boolean", PageLayout(geometry: ["insets": ["left": true, "top": 0, "right": 0, "bottom": 0], "container": ["width": 10, "height": 10]]) == nil)
-    // A layout's insets from the window's edges when it was measured in a part of the window (PageLayout.inWindow).
-    let win = CGRect(x: 0, y: 33, width: 1512, height: 949)
-    let measured = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 10, radii: [10, 10, 10, 10], width: 1000, height: 949, mode: "fullscreen")
-    let right = measured.inWindow(overlay: CGRect(x: 512, y: 33, width: 1000, height: 949), window: win)
-    check("insets from the window's edges: a part on the left adds its width to the left", right.left == 772 && right.right == 8 && right.top == 8 && right.width == 1512)
-    let bottom = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 10, radii: [10, 10, 10, 10], width: 1512, height: 600, mode: "fullscreen").inWindow(overlay: CGRect(x: 0, y: 33, width: 1512, height: 600), window: win)
-    check("at the bottom: its height added to the bottom", bottom.bottom == 357 && bottom.left == 260 && bottom.height == 949)
-    check("the whole window: as measured", measured.inWindow(overlay: win, window: win) == measured)
   }
 
   static func passThrough() {
@@ -491,14 +478,6 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("and back", ScreenGeometry.appKitRect(CGRect(x: 10, y: 780, width: 300, height: 200), mainHeight: 1000) == CGRect(x: 10, y: 20, width: 300, height: 200))
     check("off screen stays off screen", ScreenGeometry.appKitRect(CGRect(x: -20000, y: -20000, width: 1280, height: 800), mainHeight: 982).minY == 982 + 20000 - 800)
     check("a pointer flipped", ScreenGeometry.topLeftPoint(CGPoint(x: 5, y: 990), mainHeight: 1000) == CGPoint(x: 5, y: 10))
-    // A full-screen window fills its display's height; one going into full screen doesn't (Phase 2 step 8).
-    let displays: [(frame: CGRect, topInset: CGFloat)] = [(CGRect(x: 0, y: 0, width: 1512, height: 982), 32), (CGRect(x: 1512, y: -200, width: 2560, height: 1440), 0)]
-    check("full screen: the whole display", ScreenGeometry.fillsDisplay(CGRect(x: 0, y: 0, width: 1512, height: 982), displays: displays))
-    check("full screen below the camera housing", ScreenGeometry.fillsDisplay(CGRect(x: 0, y: 32, width: 1512, height: 950), displays: displays))
-    check("one side of a Split View, on the second display", ScreenGeometry.fillsDisplay(CGRect(x: 1512, y: -200, width: 1280, height: 1440), displays: displays))
-    check("not a window still on the desktop, going full screen", !ScreenGeometry.fillsDisplay(CGRect(x: 100, y: 120, width: 1200, height: 760), displays: displays))
-    check("not a window across two displays", !ScreenGeometry.fillsDisplay(CGRect(x: 1000, y: 0, width: 1200, height: 982), displays: displays))
-    check("not off every display", !ScreenGeometry.fillsDisplay(CGRect(x: -20000, y: -20000, width: 1280, height: 800), displays: displays))
   }
 
   // One Margin.app at a time (BundleWatch.swift, AppDelegate.swift): a new instance ends the others of its bundle.

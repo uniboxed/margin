@@ -607,7 +607,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         let head: JSONObject = [
             "windowId": id, "profile": "", "browser": owner.browser, "mode": mode, "host": "app-window",
             "platform": ["browser": owner.browser, "os": "mac", "app": true],
-            "state": owner.source.snapshot(), "across": NSNull(), "cloudTabs": NSNull(), "held": [Any](),
+            "state": owner.source.snapshot(),
         ]
         var json = String((jsonString(head) ?? "{}").dropLast())
         json += #","windows":"# + windowsJSON
@@ -684,7 +684,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             let text = "Margin's window \(id): \(body["text"] as? String ?? "")"
             if ["error", "warn"].contains(body["level"] as? String ?? "") { Diagnostics.warn(text) } else { Diagnostics.note(text) }
         default:
-            break // (framed, shownSpace, switch covers: a browser overlay's)
+            break
         }
     }
 

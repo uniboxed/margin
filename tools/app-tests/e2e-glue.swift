@@ -12,7 +12,7 @@
 // its own layout (pageHosted, the sidebar docked, its width not dragged); a typed address (the page's `newTab`) is a web item: Safari
 // started with no Dock icon, a window asked of the copy (`newWindow`) after its link, shown by the engine, and the
 // item's tab asked of the copy (`hostShow`); the sidebar highlights the item shown; a second web item is a tab switch
-// only; `drawn` true for the hosted Safari window only, false for the person's own; no `setLayout`; quitting gives it all back.
+// only; `drawn` true for the hosted Safari window only, false for the person's own; quitting gives it all back.
 import AppKit
 import WebKit
 
@@ -418,13 +418,12 @@ func glueScenario() async {
   check("window mode (Calculator, smaller than the page area): the window's own ground around it, not the frame's", c.pageGround == nil && c.window.backgroundColor == .windowBackgroundColor, "\(String(describing: c.pageGround))")
 
   // ---- which of the copy's windows Margin draws: only the one it hosts; the person's own told not (their ⌘T stays
-  // Safari's way); nothing of the page box ----
+  // Safari's way) ----
   shell.track()
   let told = { (id: Int) in fake.all("drawn") { int($0["windowId"]) == id }.last.flatMap { $0["on"] as? Bool } }
   check("drawn: the person's own Safari window told not drawn, the hosted one drawn, each once",
         told(1) == false && told(madeId ?? -1) == true && fake.all("drawn") { int($0["windowId"]) == 1 }.count == 1,
         "\(fake.all("drawn").map { "\(int($0["windowId"]) ?? -1)=\($0["on"] ?? "?")" })")
-  check("nothing laid out for the copy's windows", fake.first("setLayout") == nil)
 
   // ---- quitting: the hosted apps given back while the link is up ----
   var done = false

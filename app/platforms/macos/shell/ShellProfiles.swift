@@ -150,7 +150,7 @@ extension Shell {
 
     func windows(of profile: String) -> [(id: Int, state: String)] {
         guard let entry = links[profile] else { return [] }
-        return ExtWindow.parse(entry.mirror.windows, link: profile).map { ($0.key.windowId, $0.state) }
+        return ExtWindow.parse(entry.mirror.windows).map { ($0.id, $0.state) }
     }
 
     private func profileName(_ link: String) -> String {

@@ -320,7 +320,7 @@ final class OffScreenWindow: NSWindow {
     } else if type == "wantLink", appLink.onDemand {
       log("native: wantLink: the app isn't running, started (launching)")
       appLink.onDemand = false
-      appLink.start(layout: appLink.onDemandLayout)
+      appLink.start()
       launching = true
     } else if type != "ping" {
       log("native: \(type)\(appLink.running ? "" : " (no app)")")
@@ -493,22 +493,15 @@ var retiredViews: [WKWebView] = []
   var heard: [String] = []
   var mark = 0
   var onDemand = false
-  var onDemandLayout: [Double]?
   // `appLoseAnswers`: this many wantLinks passed on to the app but never answered, as Safari 27.2
   // answers only one of several sent at once (DECISIONS.md "Every profile's copy links again").
   var loseAnswers = 0
   var lost: [(Any?, (any Error)?) -> Void] = []
   var running: Bool { process?.isRunning == true }
-  // `layout`: the page slot's insets the app reports (left, top, right, bottom; link-server/).
-  func start(layout: [Double]? = nil) {
+  func start() {
     guard let path = ProcessInfo.processInfo.environment["MARGIN_LINK_SERVER"] else { return log("appStart: no MARGIN_LINK_SERVER") }
     let p = Process()
     p.executableURL = URL(fileURLWithPath: path)
-    if let layout, layout.count == 4 {
-      var env = ProcessInfo.processInfo.environment
-      env["MARGIN_LINK_LAYOUT"] = layout.map { String($0) }.joined(separator: ",")
-      p.environment = env
-    }
     let inPipe = Pipe(), outPipe = Pipe()
     p.standardInput = inPipe
     p.standardOutput = outPipe
@@ -800,13 +793,11 @@ Task { @MainActor in
       if let wv = host.window.active?.webView { await wheelOn(wv, step) }
     case "pinch": // { op: 'pinch', deltas, x?, y? }: real magnify events handed to the shown tab's web view
       if let wv = host.window.active?.webView { await pinchOn(wv, step) }
-    case "appStart": // { op: 'appStart', layout?: [left, top, right, bottom] }
-      appLink.start(layout: (step["layout"] as? [NSNumber])?.map { $0.doubleValue }); try? await Task.sleep(nanoseconds: 300_000_000)
-    case "appOnDemand": // { op: 'appOnDemand', layout? }: the handler starts the app at the next wantLink
-      appLink.onDemand = true; appLink.onDemandLayout = (step["layout"] as? [NSNumber])?.map { $0.doubleValue }; log("appOnDemand")
-    case "appLayout": // { op: 'appLayout', layout: [left, top, right, bottom] }: the app's overlay measured the slot again
-      appLink.tell(["layout": (step["layout"] as? [NSNumber])?.map { $0.doubleValue } ?? []]); log("appLayout \(step["layout"] ?? "")")
-    case "appDrawn": // { op: 'appDrawn', on }: the app says whether it draws over the copy's first window (`drawn`)
+    case "appStart": // { op: 'appStart' }
+      appLink.start(); try? await Task.sleep(nanoseconds: 300_000_000)
+    case "appOnDemand": // { op: 'appOnDemand' }: the handler starts the app at the next wantLink
+      appLink.onDemand = true; log("appOnDemand")
+    case "appDrawn": // { op: 'appDrawn', on }: the app says whether it draws the copy's first window (`drawn`)
       let on = step["on"] as? Bool ?? true
       appLink.tell(["drawn": on]); log("appDrawn \(on)")
     case "appQuit": appLink.tell(["bye": true]); log("appQuit")

@@ -94,7 +94,6 @@ final class Shell: ExtensionLinkDelegate {
     // ---- private calls (PrivateCalls.swift) ----
     var privateCalls = PrivateCalls.Availability.off // what the launch check found
     var skyLight: SkyLight? // the functions it passed, behind their wrappers; nil until checked
-    var spaceReads: SpaceReads? // the Space reads (SpaceReads.swift), made from what the check passed
     var freezer: Freezer? // the freeze (RealFreezer, from what the launch check passed): the host's first full screen
     // The host (HostEngine.swift, ShellHost.swift): made at launch once its calls passed.
     var host: HostEngine?
@@ -157,7 +156,6 @@ final class Shell: ExtensionLinkDelegate {
         if privateCalls.freeze { freezer = RealFreezer(skyLight: sky) }
         guard privateCalls.spaces else { return }
         let spaces = SkyLightSpaces(sky: sky, availability: privateCalls)
-        spaceReads = spaces
         startHost(resolver: resolver, sky: sky, spaces: spaces)
     }
 

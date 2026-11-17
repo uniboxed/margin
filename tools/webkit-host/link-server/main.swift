@@ -2,17 +2,15 @@
 // LinkMessage.swift, Chunks.swift), on its own, for the WebKit host's `app*` steps: the
 // host passes what the extension's native messaging does to it (wantLink) on stdin, and
 // puts what this dispatches into the extension (SFSafariApplication.dispatchMessage in the
-// app) into the copy's native port. No overlays, no window tracking: it plays the app's
+// app) into the copy's native port. No windows, nothing hosted: it plays the app's
 // part of the link and says on stdout, one JSON object a line, what it heard:
 //   { dispatch: name, info }  for the host to deliver into the extension's port
 //   { ev: ... }               what happened (logged by the host)
-// As the copy links, it sends a setLayout for the copy's first window (300/40/20/24, or
-// MARGIN_LINK_LAYOUT="left,top,right,bottom"), and once the theme's pieces add up, a request
-// (`updateSettings`, the sidebar's shortcut to ⌥J) whose effect a page can see. Stdin:
-// { wantLink: nonce } | { bye: true } | { refuse: Bool } (dispatches refused or passed on: the host's `appRefuse`) | { layout: [left, top, right, bottom] } (a new
-// setLayout for the linked copy's first window: the host's `appLayout` step) | { req: { type, payload } }
-// (a request from the app's UI for that window, its reply said: the host's `appReq` step) | { drawn: Bool }
-// (whether the app draws over that window: the host's `appDrawn` step).
+// Once the linked copy's theme's pieces add up, it sends a request (`updateSettings`, the sidebar's shortcut to ⌥J)
+// whose effect a page can see. Stdin:
+// { wantLink: nonce } | { bye: true } | { refuse: Bool } (dispatches refused or passed on: the host's `appRefuse`) |
+// { req: { type, payload } } (a request from the app for the copy's first window, its reply said: the host's `appReq`
+// step) | { drawn: Bool } (whether the app draws that window: the host's `appDrawn` step).
 // Built by run.sh with the app's flags; never shows anything.
 import AppKit
 import Foundation
@@ -38,30 +36,12 @@ final class StdoutDispatch: ExtensionDispatch {
 }
 let dispatcher = StdoutDispatch()
 
-// The insets the app's overlay would measure for the page slot (left, top, right, bottom).
-var insets: [Double] = {
-  let parts = (ProcessInfo.processInfo.environment["MARGIN_LINK_LAYOUT"] ?? "").split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
-  return parts.count == 4 ? parts : [300, 40, 20, 24]
-}()
-
 final class Harness: ExtensionLinkDelegate {
   let link: SocketLink
   var assembler = ChunkAssembler()
-  var laidOut = Set<String>()
   var asked = Set<String>()
-  var firstWindow: [String: Int] = [:]
-  var size: [String: (Double, Double)] = [:]
-  var seq: [String: Int] = [:]
+  var firstWindow: [String: Int] = [:] // each copy's (epoch's) first window, as its first snapshot listed it
   var current: LinkConnection?
-
-  func layout(_ c: LinkConnection, _ epoch: String) {
-    guard let id = firstWindow[epoch], let (width, height) = size[epoch] else { return }
-    let n = (seq[epoch] ?? 0) + 1
-    seq[epoch] = n
-    let layout = PageLayout(left: insets[0], top: insets[1], right: insets[2], bottom: insets[3], radius: 10, radii: [10, 10, 10, 10], width: width, height: height, mode: "fullscreen")
-    c.send(.setLayout(epoch: epoch, windowId: id, seq: n, layout: layout))
-    say(["ev": "setLayout sent", "windowId": id, "insets": insets, "seq": n])
-  }
 
   init() {
     link = SocketLink(dispatch: dispatcher, safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.link.\(getpid())"))
@@ -81,12 +61,8 @@ final class Harness: ExtensionLinkDelegate {
     case .snapshot(let epoch, let seq, let state, let windows):
       let spaces = (state["spaces"] as? [Any])?.count ?? -1
       say(["ev": "snapshot", "seq": seq, "keys": Array(state.keys).sorted(), "spaces": spaces, "windows": windows])
-      guard !laidOut.contains(epoch), let w = windows.first, let id = int(w["windowId"]) else { return }
-      laidOut.insert(epoch)
+      guard firstWindow[epoch] == nil, let w = windows.first, let id = int(w["windowId"]) else { return }
       firstWindow[epoch] = id
-      let width = num(w["width"]) ?? 1200, height = num(w["height"]) ?? 800
-      size[epoch] = (width > 0 ? width : 1200, height > 0 ? height : 800)
-      layout(c, epoch)
     case .delta(_, let seq, let changes, _):
       say(["ev": "delta", "seq": seq, "keys": Array(changes.keys).sorted()])
     case .windows(_, let seq, let list):
@@ -159,10 +135,6 @@ FileHandle.standardInput.readabilityHandler = { handle in
             c.send(.drawn(epoch: c.epoch, windowId: id, on: on))
             say(["ev": "drawn sent", "windowId": id, "on": on])
           } else { say(["ev": "drawn kept: no copy linked"]) }
-        }
-        if let given = object["layout"] as? [Double], given.count == 4 {
-          insets = given
-          if let c = harness.current { harness.layout(c, c.epoch) } else { say(["ev": "layout kept: no copy linked"]) }
         }
       }
     }

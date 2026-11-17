@@ -17,8 +17,6 @@
 //     true), sends the state (tests/ui/fixtures.ts smallState, Keep open on)
 //     with `windows`, then the theme (`theme`: a built-in theme's id, sent in
 //     pieces of `chunkBytes`, default 512 KB) → { ev: 'sent', id, what };
-//     `newTabPage`: that tab of the fixture's is Margin's new-tab page (the
-//     overlay over a window with it in front draws the launcher);
 //   { do: 'delta', id, changes, favicons?, skip? } → a delta numbered next
 //     (`skip`: one number missed, as a lost message would);
 //   { do: 'windows', id, list } → a window list numbered next;
@@ -56,8 +54,7 @@
 //   { do: 'dataHello', id, acked?, rev?, queue? } → data.hello again.
 // Connect's `spaces` replaces the fixture's spaces (and puts its tabs in the first), and `newWindow` (bounds)
 // makes it play its window requests as Safari would (ids from 90): closeWindow takes the window out, sends the list
-// and says { ev: 'closed', id, windowId }; focusWindow and setSpace answer ok (setSpace also makes the space the
-// window's); setWindowState, with connect's `play` ({ enterMs, exitMs, listLagMs, normal }: how long Safari takes to
+// and says { ev: 'closed', id, windowId }; setWindowState, with connect's `play` ({ enterMs, exitMs, listLagMs, normal }: how long Safari takes to
 // enter and leave full screen, how much later the copy's list says so, and a normal window's bounds), refuses past
 // `notAfter` and answers `busy` while another windows call for that window is under way, else lands the state after
 // its time, says { ev: 'landed', id, windowId, state }, sends the list (`listLagMs` later) and answers { windowId,
@@ -68,8 +65,7 @@
 // { itemId } { closed }, each said as { ev: 'hostShow' | 'hostClose', id, payload } after its req.
 // What the app sends: tick → { ev: 'tick' } and tock (unless muted); req →
 // { ev: 'req', msg } and its reply ({ ok: true, result: { type, windowId,
-// payload } }); setLayout → { ev: 'setLayout', msg }; drawn →
-// { ev: 'drawn', id, windowId, on, msg }; resync →
+// payload } }); drawn → { ev: 'drawn', id, windowId, on, msg }; resync →
 // { ev: 'resync' } and the state again; bye → { ev: 'bye', why }; anything
 // else → { ev: 'message', msg }. Every message from the app is checked to be
 // under 1 MB ({ ev: 'tooBig' } if not).
@@ -224,7 +220,7 @@ function playWindow(s: Sock, m: Msg) {
   const sendWindows = () => s.send({ k: 'windows', seq: ++s.seq, list: s.windows });
   const windowId = m.payload?.windowId;
   // One windows call per window, never late (background/handoff.ts windowCall).
-  const windowCall = ['setWindowState', 'focusWindow', 'closeWindow'].includes(m.type);
+  const windowCall = ['setWindowState', 'closeWindow'].includes(m.type);
   if (windowCall && typeof m.payload?.notAfter === 'number' && Date.now() > m.payload.notAfter) return { refused: 'late', pastMs: Date.now() - m.payload.notAfter };
   if (windowCall && s.calling.has(windowId)) return { busy: true };
   switch (m.type) {
@@ -259,26 +255,11 @@ function playWindow(s: Sock, m: Msg) {
         done({ windowId, state, landedAt: Date.now() });
       }, same ? 0 : (state === 'fullscreen' ? s.play.enterMs ?? 300 : s.play.exitMs ?? 100)));
     }
-    case 'focusWindow':
-      s.windows = s.windows.map((x) => ({ ...x, focused: x.windowId === windowId, ...(x.windowId === windowId ? { focusedAt: Date.now() } : {}) }));
-      sendWindows();
-      return { windowId, state: s.windows.find((x) => x.windowId === windowId)?.state ?? 'fullscreen' };
-    case 'setSpace':
-      setSpace(s, m.payload?.windowId, m.payload?.spaceId);
-      return { shown: null };
     default:
       return null;
   }
 }
-function setSpace(s: Sock, windowId: number | undefined, spaceId: unknown) {
-  if (windowId == null || typeof spaceId !== 'string') return;
-  const open = structuredClone(s.raw.openTabs);
-  open.activeSpaceByWindow = { ...open.activeSpaceByWindow, [windowId]: spaceId };
-  s.raw.openTabs = open;
-  s.send({ k: 'delta', seq: ++s.seq, changes: { openTabs: { newValue: open } } });
-}
-
-function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, newTabPage = null, instanceId = null, play = {}, nextWindow = 90 }: Msg) {
+function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, instanceId = null, play = {}, nextWindow = 90 }: Msg) {
   const to = (old ? kept : link)!; // (connect: once linked)
   const ws = new (WebSocket as unknown as NodeWebSocket)(`ws://127.0.0.1:${to.port}/?t=${encodeURIComponent(token ?? to.token)}`, { headers: { Origin: origin } });
   const raw = data?.wiped ? {} : storedState();
@@ -288,10 +269,6 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
     open.tabSpace = Object.fromEntries(Object.keys(open.tabSpace ?? {}).map((t: string) => [t, spaces[0].id]));
     open.activeSpaceByWindow = Object.fromEntries(Object.keys(open.activeSpaceByWindow ?? {}).map((w) => [w, spaces[0].id]));
     raw.openTabs = open;
-  }
-  if (newTabPage != null && raw.openTabs?.tabs?.[newTabPage]) {
-    raw.openTabs = structuredClone(raw.openTabs);
-    Object.assign(raw.openTabs.tabs[newTabPage], { url: `${ORIGIN}/newtab/newtab.html`, title: 'New Tab' });
   }
   for (let i = 0; i < (data?.icons ?? 0); i++) (raw.favicons ??= {})[`https://icon${i}.test`] = { data: 'data:image/png;base64,' + 'A'.repeat(60_000), href: `https://icon${i}.test/favicon.ico`, at: 1 };
   // (Its `send`: just below.)
@@ -334,8 +311,6 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
         if (played instanceof Promise) return void played.then(reply);
         return reply(played);
       }
-      case 'setLayout':
-        return say({ ev: 'setLayout', id, msg: m });
       case 'drawn':
         return say({ ev: 'drawn', id, windowId: m.windowId, on: m.on, msg: m });
       case 'resync':

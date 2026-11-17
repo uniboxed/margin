@@ -6,10 +6,10 @@
 //
 // Grown from feat/native-panel's version 1: hello names the copy's browser
 // and profile (each Safari profile runs its own copy, each with its own
-// link), the panel's `cover` lease is gone, and the app sends `setLayout`
-// (where the theme put the page, per window) and can send a `theme` in
-// chunks. Nothing the app sends is over 1 MB (Chrome closes a native port on
-// a bigger message from the app, PLAN.md §14): encode() refuses it.
+// link), the panel's `cover` lease is gone, and the app can send a `theme` in
+// chunks and says which of a copy's windows it draws (`drawn`: the Safari
+// window it hosts). Nothing the app sends is over 1 MB (Chrome closes a native
+// port on a bigger message from the app, PLAN.md §14): encode() refuses it.
 
 import CoreGraphics
 import Foundation
@@ -26,20 +26,20 @@ enum LinkProtocol {
     static let maxThemeBytes = 8 * 1024 * 1024
 }
 
-// Where the theme put the page in one browser window (ui/host.ts Geometry):
-// `<m-page>`'s content box as insets from the window's edges, in points (CSS
-// pixels at zoom 1 in the overlay, which is exactly over the window).
 // A page card's border, as its page computes it (host-app.ts cornerFill): its width and its CSS colour.
 struct PageEdge: Equatable {
     var width: Double
     var color: String
 }
 
+// Where the theme put the page in Margin's window (ui/host.ts Geometry): `<m-page>`'s content box as insets from the
+// window's edges, in points (CSS pixels at zoom 1 in the window's page). The hosted window goes there
+// (MarginWindowController.swift).
 struct PageLayout: Equatable {
     var left: Double, top: Double, right: Double, bottom: Double
     var radius: Double
     var radii: [Double] // top-left, top-right, bottom-right, bottom-left
-    var width: Double, height: Double // the overlay's (the window's) size it was measured at
+    var width: Double, height: Double // the window's size it was measured at
     var mode: String
     // Measured with no page area of its own (Margin's own window hosting beside it: the sidebar alone, `pageOutside`).
     var outside = false
@@ -68,28 +68,6 @@ struct PageLayout: Equatable {
 
     init(left: Double, top: Double, right: Double, bottom: Double, radius: Double, radii: [Double], width: Double, height: Double, mode: String) {
         (self.left, self.top, self.right, self.bottom, self.radius, self.radii, self.width, self.height, self.mode) = (left, top, right, bottom, radius, radii, width, height, mode)
-    }
-
-    // Measured in an overlay at `overlay` over a window at `window` (both top left): the insets from
-    // the window's edges, as setLayout carries them. The overlay is the window, unless Safari takes
-    // part of it (the docked Web Inspector: Shell.overlayFrame).
-    func inWindow(overlay: CGRect, window: CGRect) -> PageLayout {
-        guard overlay != window else { return self }
-        return PageLayout(left: left + Double(overlay.minX - window.minX), top: top + Double(overlay.minY - window.minY),
-                          right: right + Double(window.maxX - overlay.maxX), bottom: bottom + Double(window.maxY - overlay.maxY),
-                          radius: radius, radii: radii, width: Double(window.width), height: Double(window.height), mode: mode)
-    }
-
-    // To half a point: what the page box can show (and what's compared before sending again).
-    var rounded: PageLayout {
-        let half = { (v: Double) in (v * 2).rounded() / 2 }
-        return PageLayout(left: half(left), top: half(top), right: half(right), bottom: half(bottom), radius: half(radius),
-                          radii: radii.map(half), width: half(width), height: half(height), mode: mode)
-    }
-
-    var object: JSONObject {
-        ["insets": ["left": left, "top": top, "right": right, "bottom": bottom], "radius": radius, "radii": radii,
-         "container": ["width": width, "height": height], "mode": mode]
     }
 }
 
@@ -162,7 +140,8 @@ enum LinkMessage {
     case snapshot(epoch: String, seq: Int, state: JSONObject, windows: [JSONObject])
     case delta(epoch: String, seq: Int, changes: [String: Change], favicons: Favicons?)
     case windows(epoch: String, seq: Int, list: [JSONObject])
-    // Something for one window's UI (or every window's, with no windowId): a notice, a switch under way.
+    // Something for one window's UI (or every window's, with no windowId). The app reads `loading` only (the tabs
+    // loading in the Safari window it hosts: Shell.linkReceived).
     case push(epoch: String, windowId: Int?, msg: JSONObject)
     case theme(epoch: String, chunk: Chunk)
     // The copy's shortcuts for the app's hot keys: { command: [combination] } (Shortcuts.swift).
@@ -247,12 +226,10 @@ enum AppMessage {
     // First, on a socket the app accepted: the app's proof that it's the app.
     case welcome(key: String)
     case tick
-    // An action from a window's UI, answered with `reply` (same id).
+    // A request to the copy (a window's, or the copy's with no windowId), answered with `reply` (same id).
     case req(id: Int, epoch: String, windowId: Int?, type: String, payload: JSONObject)
     case resync(epoch: String)
-    // The page box's two (the overlay over a browser window: removed 2026-11-16, hosted only). Margin.app no longer
-    // sends them; kept only for tools/webkit-host's link server until the extension's page box goes.
-    case setLayout(epoch: String, windowId: Int, seq: Int, layout: PageLayout)
+    // Whether Margin draws that window of the copy's: true only for the Safari window it hosts (Shell.tellDrawn).
     case drawn(epoch: String, windowId: Int, on: Bool)
     case theme(epoch: String, chunk: Chunk)
     // The lasting data (docs/DATA.md "Messages": data.need, data.snapshot, data.changes, data.ack).
@@ -270,8 +247,6 @@ enum AppMessage {
             return ["k": "req", "id": id, "epoch": epoch, "at": at, "windowId": windowId ?? NSNull(), "type": type, "payload": payload]
         case .resync(let epoch):
             return ["k": "resync", "epoch": epoch]
-        case .setLayout(let epoch, let windowId, let seq, let layout):
-            return layout.object.merging(["k": "setLayout", "epoch": epoch, "windowId": windowId, "seq": seq, "at": at]) { $1 }
         case .drawn(let epoch, let windowId, let on):
             return ["k": "drawn", "epoch": epoch, "windowId": windowId, "on": on, "at": at]
         case .theme(let epoch, let chunk):
@@ -294,41 +269,28 @@ enum AppMessage {
 
 // ---- Requests to a copy about its windows, and their answers (docs/PROTOCOL.md) ----
 
-// Window requests to a copy (first the profile handoff's: HANDOFF.md §1.9, §3.3), as a `req`'s type and payload. `notAfter` is milliseconds since
-// 1970 (the app and its copies read the same clock): a copy that gets the request after it makes no
-// windows call and answers { refused: 'late' }. Once a windows call is made it can't be taken back
-// (Safari carries it out when it gets to it), so only the request's arrival is checked.
+// A window request to a copy with a deadline (the hosted Safari window into full screen or out of it:
+// HostedSession.safariFullScreen), as a `req`'s type and payload. `notAfter` is milliseconds since 1970 (the app and
+// its copies read the same clock): a copy that gets the request after it makes no windows call and answers
+// { refused: 'late' }. Once a windows call is made it can't be taken back (Safari carries it out when it gets to
+// it), so only the request's arrival is checked.
 enum HandoffRequest {
     enum State: String { case fullscreen, normal }
 
     // A window to full screen and focused, or to normal without taking focus.
     case setWindowState(windowId: Int, state: State, focused: Bool = false, notAfter: Double)
-    case closeWindow(windowId: Int, notAfter: Double? = nil)
 
     var type: String {
         switch self {
         case .setWindowState: "setWindowState"
-        case .closeWindow: "closeWindow"
-        }
-    }
-
-    // The window it's about (the req's windowId).
-    var windowId: Int {
-        switch self {
-        case .setWindowState(let id, _, _, _), .closeWindow(let id, _): id
         }
     }
 
     var payload: JSONObject {
-        let ms = { (t: Double) in t.rounded() }
         switch self {
         case .setWindowState(let id, let state, let focused, let notAfter):
-            var p: JSONObject = ["windowId": id, "state": state.rawValue, "notAfter": ms(notAfter)]
+            var p: JSONObject = ["windowId": id, "state": state.rawValue, "notAfter": notAfter.rounded()]
             if focused { p["focused"] = true }
-            return p
-        case .closeWindow(let id, let notAfter):
-            var p: JSONObject = ["windowId": id]
-            if let notAfter { p["notAfter"] = ms(notAfter) }
             return p
         }
     }
@@ -342,7 +304,7 @@ enum WindowCallAnswer: Equatable {
     case timedOut(windowId: Int, state: String) // setWindowState: asked, not in that state within 3 s
     case busy // another windows call for that window was still pending
     case refused(why: String, pastMs: Double?) // `late`: it came past its notAfter (by pastMs)
-    case done(state: String?) // focusWindow's { windowId, state }, closeWindow's nothing
+    case done(state: String?) // closeWindow's answer (nothing)
 
     init(_ result: JSONObject) {
         if result["busy"] as? Bool == true { self = .busy; return }
@@ -368,15 +330,11 @@ enum WindowCallAnswer: Equatable {
 // the main display, as the windows list has them). An older copy sends no bounds.
 struct SpaceWindowAnswer: Equatable {
     let windowId: Int
-    let state: String
-    let tabId: Int?
     let bounds: CGRect?
 
     init?(_ result: JSONObject) {
         guard let windowId = int(result["windowId"]) else { return nil }
         self.windowId = windowId
-        state = result["state"] as? String ?? "normal"
-        tabId = int(result["tabId"])
         if let b = result["bounds"] as? JSONObject, let l = num(b["left"]), let t = num(b["top"]), let w = num(b["width"]), let h = num(b["height"]),
            [l, t, w, h].allSatisfy(\.isFinite), w > 0, h > 0 {
             bounds = CGRect(x: l, y: t, width: w, height: h)
