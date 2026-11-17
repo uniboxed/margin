@@ -628,7 +628,7 @@ export const handlers = {
   },
   // Margin.app's host (HostedSession.safariFullScreen): a window to full screen or normal, its focus
   // left alone unless asked; answered once Safari says it's there (background/handoff.ts).
-  async setWindowState(message: { windowId: number, state: 'fullscreen' | 'normal', focused?: boolean, notAfter?: number }) {
+  async setWindowState(message: { windowId: number, state: 'fullscreen' | 'normal', focused?: boolean, notAfter?: number, land?: boolean }) {
     return setWindowState(message);
   },
   // A page's scroll as it's hidden or left (content/core.ts), kept on its tab's record for its

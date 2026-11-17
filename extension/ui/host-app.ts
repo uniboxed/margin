@@ -45,13 +45,17 @@
 //   measured that way (`pageOutside`), and a layout of another mode is reported even when its insets didn't change
 //   (the app waits for the full-screen one). With nothing hosted in it (no `pageOutside`), Margin's window draws its
 //   page area itself: the theme's launcher, opaque (`launcher`), as Margin's new-tab page draws it over a browser.
-//   A hosted app's window above Margin's page area (Margin's window its whole width under it, the only way since
-//   2026-11-16): the hello's `pageHosted` and `{ type: 'pageHosted', on }`: laid out as usual (its own
-//   layout), the sidebar docked as beside a tile (`sidebarDocked`: never hidden or peeking, so the page area the app's
-//   window is placed in is the docked layout's), and no launcher in the page area (its field would take the keys from
-//   the app above it). The sidebar's width is dragged there as anywhere (only a tile's is fixed: `sidebarFixed`):
+//   A hosted app's window in Margin's page area (Margin's window its whole width, in front of it since 2026-11-17:
+//   the hosted window shows through the page's place): the hello's `pageHosted` and `{ type: 'pageHosted', on }`:
+//   laid out as usual (its own layout), the sidebar docked as beside a tile (`sidebarDocked`: never hidden or
+//   peeking, so the page area the app's window is placed in is the docked layout's), and no launcher in the page
+//   area. The sidebar's width is dragged there as anywhere (only a tile's is fixed: `sidebarFixed`):
 //   the app hears when a change of it begins and ends (`perform('sidebar.resizing', { on })`, behaviors/resize.ts)
-//   and places the hosted window once, when it's over.
+//   and places the hosted window once, when it's over. The page card's state comes with it: the hello's `pageState`
+//   and `pageOpening`, and `{ type: 'pageState', state, label }` (`pageState`: `shown`, the hosted window is in place
+//   and the page's place draws nothing; `loading`, an item is being opened or placed again, `label` its name: the
+//   card opaque with the loader; `empty`, nothing to show). The runtime puts it on the theme's root
+//   (`m-page-state`, ui/runtime.ts).
 //
 // No browser API here: only the DOM and `post`.
 import type { Geometry, Host } from './host.ts';
@@ -83,7 +87,7 @@ export function applyChanges(raw: Record<string, any>, changes: Record<string, {
 /**
  * Whether the sidebar's width is fixed (the theme's root marked `m-sidebar-fixed`, its handle hidden: ui/render.ts):
  * only while Margin's window is a tile beside a hosted one (`pageOutside`: a tile can't change size). Under a hosted
- * window above its page area (`pageHosted`) it's dragged as anywhere.
+ * window in its page area (`pageHosted`) it's dragged as anywhere.
  */
 export const sidebarFixed = (host: { pageOutside?: boolean } | null | undefined) => !!host?.pageOutside;
 
@@ -148,11 +152,10 @@ export function splitShadows(value: string): string[] {
 }
 
 /**
- * What the theme draws around `<m-page>`'s rounded corners, for Margin's own window, where a hosted app's window sits
- * above the page area with square corners and Margin draws the card's corners over it
- * (app/platforms/macos/shell/MarginWindow.swift HostCorners): `fills`, each corner's colour outside the card (top left,
- * clockwise), and `edge`, the card's border (width and colour) when it has one: the band between the page area's rounded
- * corner (the border's inner edge) and the card's outer edge, which share a centre. A corner's fill is the colour at the
+ * What the theme draws around `<m-page>`'s rounded corners, for Margin's own window: the ground Margin.app puts under
+ * the page area (around a hosted window, in any gap it leaves, under the loader) is the colour most corners have
+ * (app/platforms/macos/shell/MarginWindowController.swift `pageGround`). `fills`, each corner's colour outside the card
+ * (top left, clockwise), and `edge`, the card's border (width and colour) when it has one. A corner's fill is the colour at the
  * page area's corner point (outside the card's own rounded edge; inside it, its border or what's behind it): of the
  * card's sharp box shadows (no blur, not inset) the first that covers it, as they're painted (a frame drawn as a spread: Arcadia's, Pixel's; Neubrutalism's offset ink shadow at its bottom right), else
  * the nearest background an ancestor draws. A blurred shadow is left out (Arcadia's soft card shadow: a few levels
@@ -245,8 +248,13 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   const appWindow = hello?.host === 'app-window';
   // Margin's window hosting another app's window beside it: no page area of its own (only in Margin's own window).
   let pageOutside = appWindow && hello?.pageOutside === true;
-  // A hosted app's window above the page area (window mode): nothing of Margin's drawn there.
+  // A hosted app's window in the page area: no launcher there.
   let pageHosted = appWindow && hello?.pageHosted === true;
+  // The page card's state (Margin's own window only), and the name of what's opening while it's `loading`.
+  const pageStateOf = (v: unknown) => (v === 'shown' || v === 'loading' ? v : 'empty');
+  const nameOf = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 120) : null);
+  let pageState: 'empty' | 'loading' | 'shown' = pageStateOf(hello?.pageState);
+  let pageOpening: string | null = pageState === 'loading' ? nameOf(hello?.pageOpening) : null;
   // Installed apps, as the app read them (null: none read yet).
   let apps = appsOf(hello?.apps);
   let layout: Geometry | null = null;
@@ -322,8 +330,11 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get appWindow() { return appWindow; },
     /** The page area is another window's, beside Margin's (Margin's own window hosting): the sidebar alone here. */
     get pageOutside() { return pageOutside; },
-    /** The page area is a hosted app's window above Margin's (window mode): no launcher there. */
+    /** The page area is a hosted app's window, under Margin's: no launcher there. */
     get pageHosted() { return pageHosted; },
+    /** The page card's state (Margin's own window; undefined over a browser: its page is always there). */
+    get pageState() { return appWindow ? pageState : undefined; },
+    get pageOpening() { return pageOpening; },
     /** The sidebar kept docked while hosting (beside a tile, or under a window-mode app's window), whatever its setting. */
     get sidebarDocked() { return pageOutside || pageHosted; },
     // The overlay stays on screen through a switch (ui/runtime.ts: the highlight waits for the state).
@@ -359,13 +370,13 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
       // Twice for one change (the runtime's own frame, and the page's measure after it): once. Its mode and whether it
       // was measured with the sidebar alone count too (seen 2026-11-15: the window's full-screen layout, at the size
       // the windowed one was already measured at, never reached the app).
-      // What the theme draws around the page's corners (`fills`, `edge`: the page's own measure adds them,
+      // What the theme draws around the page's corners (`fills`: the page's own measure adds them,
       // app/shared/host/overlay.ts measureNow) stays as last said when a report doesn't say it (the runtime's own
-      // frame measures the box only: a width being dragged reports from there, and the corners drawn over a hosted
-      // window would lose their colour until the next measure).
-      const kept = appWindow && geometry.fills === undefined && layout?.fills ? { fills: layout.fills, edge: layout.edge } : {};
+      // frame measures the box only: a width being dragged reports from there, and the ground under the page area
+      // would lose its colour until the next measure).
+      const kept = appWindow && geometry.fills === undefined && layout?.fills ? { fills: layout.fills } : {};
       const next = { ...geometry, ...kept, mode: geometry.mode ?? mode, pageOutside };
-      const key = (g: any) => JSON.stringify([g.insets, g.radius, g.radii ?? null, g.container, g.mode ?? null, !!g.pageOutside, g.fills ?? null, g.edge ?? null]);
+      const key = (g: any) => JSON.stringify([g.insets, g.radius, g.radii ?? null, g.container, g.mode ?? null, !!g.pageOutside, g.fills ?? null]);
       if (layout && key(layout) === key(next)) return;
       layout = next;
       void post('layout', { geometry: next }).catch(() => {});
@@ -447,6 +458,15 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           const next = appWindow && msg.on === true;
           if (next === pageHosted) return;
           pageHosted = next;
+          return emit();
+        }
+        case 'pageState': {
+          if (!appWindow) return;
+          const next = pageStateOf(msg.state);
+          const name = next === 'loading' ? nameOf(msg.label) : null;
+          if (next === pageState && name === pageOpening) return;
+          pageState = next;
+          pageOpening = name;
           return emit();
         }
         case 'themes':

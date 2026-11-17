@@ -117,13 +117,14 @@ Margin's slots:
 | `<m-notice>` | the `notice` part | `notice` |
 | `<m-prompt>` | the `prompt` part | `prompt` |
 | `<m-launcher>` | the `launcher` part (Margin's new-tab page) | `launcher` |
+| `<m-page-loader>` | the `page-loader` part (Margin.app: the page card while an item opens) | `pageLoader` (the page card is `loading`) |
 | `<m-settings>` | the `settings` part (put it in your launcher) | `settingsForm` (Settings open) |
 | `<m-window-controls>`, `<m-drag-region>` | the window's buttons and where a drag moves it (windowed mode) | always |
 
 Parts are `<template m-part="name">` anywhere in the template: `menu`,
 `menu-item`, `space-editor`, `palette`, `palette-row`, `notice`, `prompt`,
-`launcher`, `settings`, `window-controls`. What a theme puts inside a slot
-is used when it has no part for it.
+`launcher`, `settings`, `window-controls`, `page-loader`. What a theme puts
+inside a slot is used when it has no part for it.
 
 **Never paint under `<m-page>`.** The browser's page shows through it: in a
 page, Margin's UI lies over the page, and in Margin.app the page slot is a
@@ -131,8 +132,59 @@ hole in Margin's window. Draw a ground around the page as the page card's
 spread `box-shadow` (Arcadia's frame), or mask it out (Neubrutalism's dots).
 Margin lets the pointer through to the page over the slot, past your root's
 own background; what you draw over the page (a sidebar out over it, a
-dialog) still takes it. One of Margin's slots is the exception, and paints
-over the page's place on purpose: `<m-launcher>` (Margin's new-tab page).
+dialog) still takes it. Two of Margin's slots are the exception, and paint
+over the page's place on purpose: `<m-launcher>` (Margin's new-tab page) and
+`<m-page-loader>` (below).
+
+**The page card's state (Margin.app).** In Margin.app, Margin's window is
+*in front of* the app or browser window it hosts: that window sits under it,
+in the page's place, and everything you draw around and over the page (your
+frame, the card's rounded corners, the palette, a menu) is drawn over that
+app. The runtime tells you what the page's place holds with an attribute on
+your root element, `m-page-state`:
+
+| `m-page-state` | The page's place | What to draw there |
+|---|---|---|
+| `shown` | a hosted window is in place and ready, seen through the hole | **nothing**: no background, shadow or pseudo-element inside `<m-page>`'s content box; your frame and the corners outside the card's curve are yours, over the app. The pointer goes through to the app there. |
+| `loading` | an item is being opened, made ready or fitted again | an opaque card with a loader: whatever happens to the app behind it isn't seen. The pointer is Margin's. |
+| `empty` | nothing to show | your launcher, as before. |
+
+```css
+.root[m-page-state="loading"] .page { box-shadow: 0 0 0 1px var(--line), var(--frame); }
+```
+
+The loader is the `page-loader` part, shown in `<m-page-loader>` while the
+state is `loading` (place the slot yourself: a sibling of `<m-page>` laid
+over it). It's one of Margin's guarded parts: only Margin's words show in it,
+`{{pageLoader.label}}` ("Opening Safari…") and `{{pageLoader.name}}` (the
+app's or the item's name); shapes and icons are yours.
+
+```html
+<m-page class="page"></m-page>
+<m-page-loader class="page-loader"></m-page-loader>
+<template m-part="page-loader">
+  <div class="loading-card"><span class="spinner"></span><p>{{pageLoader.label}}</p></div>
+</template>
+```
+
+A theme with no `page-loader` part gets Margin's default: a quiet spinner
+and the label, centred on an opaque card laid exactly over the page's place
+with its corner radii (`m-page-loader[m-default]`, drawn in `Canvas` and
+`CanvasText`: restyle it with a rule on `m-page-loader` if you only want
+your card's colour). Margin fades its default out over the hosted window as
+the state turns `shown` (120 ms; at once with `prefers-reduced-motion`); a
+part of your own is taken out as the state changes, so a fade of yours
+belongs on the card around it (`[m-page-state]` transitions), at most 150 ms.
+A switch between two items that are already open never passes through
+`loading` (it only comes if the item isn't in place within about 120 ms).
+Outside Margin.app (the Windows shell, a page's own Margin) the root has no
+`m-page-state`: the browser's page is always there.
+
+`m-starting` is on your root from its first frame until the frame after
+the state's data was first drawn: draw a skeleton there if you like
+(`.root[m-starting] .tabs { … }`). It's never set when the data is there at
+the first draw, which is the usual case in Margin.app (its window is shown
+only once its page is drawn).
 
 **Settings.** The `settings` part lays out `settingsForm.fields` (Margin's
 words only: it's guarded like a menu). Each field has one of `isNumber`,

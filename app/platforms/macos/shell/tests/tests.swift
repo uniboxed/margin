@@ -424,8 +424,8 @@ final class FakeRegistrar: HotKeyRegistrar {
         let short = QuitPrompt(note: "Nothing Margin opened is running.", harness: true)
         check("quit prompt: as tall as its note's lines need (a long one wraps, nothing cut off)", prompt.frame.height > short.frame.height && short.frame.height == 236
               && (view?.note.frame.height ?? 0) >= 30 && prompt.frame.width == QuitPrompt.width, "\(prompt.frame.size) \(short.frame.size) note \(String(describing: view?.note.frame))")
-        check("quit prompt: above a hosted window and the page card's corner panels, in a full-screen Space, joining the current Space, never in the window cycle",
-              prompt.level == .modalPanel && prompt.level.rawValue > HostCorners.level.rawValue && prompt.level.rawValue > NSWindow.Level.normal.rawValue
+        check("quit prompt: above a hosted window and Margin's own window in front of it (its raised level), in a full-screen Space, joining the current Space, never in the window cycle",
+              prompt.level == .modalPanel && prompt.level.rawValue > FrontMechanism.raised.rawValue && prompt.level.rawValue > NSWindow.Level.normal.rawValue
               && prompt.collectionBehavior.contains(.fullScreenAuxiliary) && prompt.collectionBehavior.contains(.moveToActiveSpace) && prompt.collectionBehavior.contains(.ignoresCycle)
               && !prompt.collectionBehavior.contains(.fullScreenPrimary) && prompt.styleMask.contains(.nonactivatingPanel) && prompt.canBecomeKey && !prompt.canBecomeMain)
         // (Margin's full-screen window: the display, top left 0,33.)

@@ -150,9 +150,39 @@ test("the app host: Margin's own window's layout carries the colour around the p
   host.reportLayout({ ...g, fills: grey });
   host.reportLayout({ ...g, fills: [...grey] });
   host.reportLayout({ ...g, fills: ink }); // (another theme, its page area where it was)
-  host.reportLayout({ ...g, fills: ink, edge: { width: 3, color: 'rgb(17, 17, 17)' } });
-  host.reportLayout({ ...g, radii: [15, 15, 15, 15], fills: ink, edge: { width: 3, color: 'rgb(17, 17, 17)' } });
-  assert.deepEqual(b.posts.filter((p) => p.op === 'layout').map((p) => [p.geometry.fills[0], p.geometry.edge?.width ?? 0, p.geometry.radii[0]]), [['rgb(156, 157, 161)', 0, 6], ['rgb(17, 17, 17)', 0, 6], ['rgb(17, 17, 17)', 3, 6], ['rgb(17, 17, 17)', 3, 15]]);
+  host.reportLayout({ ...g, radii: [15, 15, 15, 15], fills: ink });
+  // (A report from the runtime's own frame, the box only: the colours as last said.)
+  host.reportLayout({ ...g, radii: [15, 15, 15, 15], insets: { ...g.insets, left: 300 } });
+  assert.deepEqual(b.posts.filter((p) => p.op === 'layout').map((p) => [p.geometry.fills[0], p.geometry.radii[0], p.geometry.insets.left, 'edge' in p.geometry]),
+    [['rgb(156, 157, 161)', 6, 260, false], ['rgb(17, 17, 17)', 6, 260, false], ['rgb(17, 17, 17)', 15, 260, false], ['rgb(17, 17, 17)', 15, 300, false]]);
+});
+
+test("the app host in Margin's own window: the page card's state from the app (hello and `pageState`), the name of what's opening only while loading; none over a browser", () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });
+  let emits = 0;
+  host.onState(() => { emits++; });
+  assert.deepEqual([host.pageState, host.pageOpening, host.launcher], ['empty', null, true], 'nothing hosted: empty, the launcher');
+  host.receive({ type: 'pageHosted', on: true });
+  host.receive({ type: 'pageState', state: 'loading', label: 'Safari' });
+  assert.deepEqual([host.pageState, host.pageOpening, host.launcher], ['loading', 'Safari', false]);
+  const vm = buildViewModel({ state: host.getState() as any, ui: { windowId: W, mode: host.mode, pageOpening: { name: host.pageOpening ?? '' } }, platform: host.platform });
+  assert.deepEqual(vm.pageLoader, { name: 'Safari', label: 'Opening Safari…' }, "Margin's own words around the name");
+  assert.equal(buildViewModel({ state: host.getState() as any, ui: { windowId: W, mode: host.mode, pageOpening: { name: '' } }, platform: host.platform }).pageLoader?.label, 'Opening…');
+  assert.equal(buildViewModel({ state: host.getState() as any, ui: { windowId: W, mode: host.mode }, platform: host.platform }).pageLoader, null);
+  const before = emits;
+  host.receive({ type: 'pageState', state: 'loading', label: 'Safari' });
+  assert.equal(emits, before, 'said again as it is: nothing drawn again');
+  host.receive({ type: 'pageState', state: 'shown', label: 'Safari' });
+  assert.deepEqual([host.pageState, host.pageOpening], ['shown', null], 'shown: no name kept');
+  host.receive({ type: 'pageState', state: 'nonsense' });
+  assert.equal(host.pageState, 'empty', 'anything else: empty');
+  assert.equal(emits, before + 2);
+  const started = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen', pageHosted: true, pageState: 'loading', pageOpening: 'Notes' }), post: b.post });
+  assert.deepEqual([started.pageState, started.pageOpening], ['loading', 'Notes'], 'a page loaded again mid-open: its hello has it');
+  const over = createAppHost({ hello: hello(), post: b.post });
+  over.receive({ type: 'pageState', state: 'shown' });
+  assert.equal(over.pageState, undefined, 'over a browser (the Windows shell): no page state');
 });
 
 test("the app host in Margin's own window: the app's `loading` for its items draws each one's row and the bar of the one in front", () => {
@@ -268,18 +298,18 @@ test('the app host: the sidebar\'s width being dragged goes to the app (its own 
   assert.equal(createAppHost({ hello: hello(), post: over.post }).perform('sidebar.resizing', { on: true }), false, 'over a browser window: not the app\'s');
   assert.deepEqual(over.posts, []);
   // The page's own measure says what the theme draws around the corners; the runtime's frame (a width being dragged)
-  // measures the box only: the corners stay as last said, so the app's corner panels keep their colour.
+  // measures the box only: the colours stay as last said, so the ground the app puts under the page area keeps its colour.
   const g = (left: number) => ({ insets: { left, top: 8, right: 8, bottom: 8 }, radius: 6, radii: [6, 6, 6, 6], container: { width: 1512, height: 949 }, windowId: W });
   const fills = Array(4).fill('rgb(156, 157, 161)');
-  host.reportLayout({ ...g(260), fills, edge: { width: 2, color: 'rgb(0, 0, 0)' } } as any);
+  host.reportLayout({ ...g(260), fills } as any);
   host.reportLayout(g(300) as any);
   const last = () => b.posts.filter((p) => p.op === 'layout').at(-1)?.geometry;
-  assert.deepEqual([last().insets.left, last().fills, last().edge], [300, fills, { width: 2, color: 'rgb(0, 0, 0)' }], 'dragged: the corners as last said');
+  assert.deepEqual([last().insets.left, last().fills], [300, fills], 'dragged: the colours as last said');
   const layouts = b.posts.filter((p) => p.op === 'layout').length;
-  host.reportLayout({ ...g(300), fills, edge: { width: 2, color: 'rgb(0, 0, 0)' } } as any);
+  host.reportLayout({ ...g(300), fills } as any);
   assert.equal(b.posts.filter((p) => p.op === 'layout').length, layouts, 'the page\'s measure of the same place: not posted twice');
-  host.reportLayout({ ...g(300), fills: null, edge: null } as any);
-  assert.deepEqual([last().fills, last().edge], [null, null], 'said as none (a theme that draws nothing there): none');
+  host.reportLayout({ ...g(300), fills: null } as any);
+  assert.equal(last().fills, null, 'said as none (a theme that draws nothing there): none');
 });
 
 test('the app host: other messages are the page\'s; nothing after destroy', () => {

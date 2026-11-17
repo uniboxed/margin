@@ -61,6 +61,14 @@ protocol HostSystem: AnyObject {
     // current Space's windows, so a window that opened on another one (Safari's, asked for while Margin's full-screen
     // Space is current) is found here. Nil: no list.
     func serverWindows(pid: pid_t) -> [ServerWindow]?
+    // Every app's windows on screen now (the current Spaces'), front to back; nil: no list. One read, for the poll's
+    // look for another app's window in Margin's Space (HostEngine `lookForOthers`).
+    func onScreenWindows() -> [ServerWindow]?
+    // The screen locked, the display asleep, or the session not the one on the console: the on-screen list says nothing
+    // of where Margin's windows should be then.
+    func screenAway() -> Bool
+    // Each display's current Space as the window server lists it (for the log), nil: unread.
+    func currentSpaces() -> [String]?
     func bounds(window: Int) -> CGRect? // model bounds, top-left coordinates; nil: gone or unknown
     func spaces(window: Int) -> [UInt64]? // its user Spaces (a private Space isn't one); nil: unknown
     func spaceType(_ space: UInt64) -> Int?
@@ -102,6 +110,10 @@ extension HostSystem {
     func focusedWindow(pid: pid_t) async -> Int? { nil }
     // (A stand-in that doesn't play it: unread, so the engine's early full screen isn't tried.)
     func fullScreenSpaceOwners() -> [UInt64: pid_t]? { nil }
+    // (A stand-in that doesn't play it: no list, so no other window is ever let in front.)
+    func onScreenWindows() -> [ServerWindow]? { nil }
+    func screenAway() -> Bool { false }
+    func currentSpaces() -> [String]? { nil }
 }
 
 // ---- the real one ----
@@ -445,6 +457,16 @@ final class RealHostSystem: HostSystem {
     }
 
     func serverWindows(pid: pid_t) -> [ServerWindow]? { CGWindowSource().read(of: [pid])?.filter { $0.pid == pid } }
+    func onScreenWindows() -> [ServerWindow]? { CGWindowSource().onScreen() }
+    func screenAway() -> Bool {
+        if CGDisplayIsAsleep(CGMainDisplayID()) != 0 { return true }
+        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+        if session["CGSSessionScreenIsLocked"] as? Bool == true { return true }
+        return session[kCGSessionOnConsoleKey as String] as? Bool == false
+    }
+    func currentSpaces() -> [String]? {
+        spacesRW.displays()?.map { d in "\(d.current.map { "\($0)" } ?? "none")\(d.current.map { c in d.spaces.contains { $0.id == c } } == false ? " (not listed)" : "")" }
+    }
     func bounds(window: Int) -> CGRect? { sky.modelBounds(of: window) }
     func spaces(window: Int) -> [UInt64]? { spacesRW.spaces(of: window) }
     func spaceType(_ space: UInt64) -> Int? { calls.spaceType(space) }

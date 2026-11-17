@@ -168,6 +168,9 @@ extension Shell {
         if let marginWindows { return marginWindows }
         var o = windowOptions ?? MarginWindows.Options()
         o.harness = o.harness || options.harness
+        // (How Margin's window is kept in front of what it hosts: `defaults write com.unibox.margin MarginFront order`
+        // for the ordering way; unset or anything else: its level, the ordering way if the window server doesn't hold it.)
+        if !o.harness, windowOptions == nil, UserDefaults.standard.string(forKey: FrontMechanism.key) == FrontMechanism.order.rawValue { o.front = .order }
         let source = makeHostedSource()
         let windows = MarginWindows(pages: pages, source: source, options: o)
         windows.theme = { [weak self] in self?.hostedTheme() }

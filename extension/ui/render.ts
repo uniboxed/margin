@@ -21,7 +21,8 @@
 //   <template m-part>       a named part, shown in its slot (<m-menu>: `menu`,
 //                           <m-editor>: `space-editor`, <m-palette>: `palette`,
 //                           <m-notice>: `notice`, <m-launcher>: `launcher`,
-//                           <m-prompt>: `prompt`, <m-settings>: `settings`)
+//                           <m-prompt>: `prompt`, <m-settings>: `settings`,
+//                           <m-page-loader>: `page-loader`)
 //                           while the view model says so;
 //                           in Margin's menus, notices and prompts only bound
 //                           text shows (ui/sanitize.ts GUARDED_PARTS)
@@ -36,9 +37,15 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // never takes clicks: the browser's page is there.
 const BASE_CSS = `
 m-page{display:block;box-sizing:border-box;background:none!important;pointer-events:none!important}
-m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings{display:block}
+m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-page-loader{display:block}
 m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
-m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty{display:none}
+m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-page-loader:empty{display:none}
+m-page-loader[m-default]{position:fixed;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;background:Canvas;color:CanvasText;font:13px/1.3 system-ui,sans-serif;text-align:center;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s linear,visibility 0s linear .12s}
+[m-page-state="loading"]>m-page-loader[m-default]{opacity:1;visibility:visible;pointer-events:auto;transition:none}
+m-page-loader[m-default]>[m-loader-spin]{display:block;width:18px;height:18px;box-sizing:border-box;border-radius:50%;border:2px solid color-mix(in srgb,currentColor 18%,transparent);border-top-color:color-mix(in srgb,currentColor 70%,transparent);animation:m-loader-spin .9s linear infinite}
+m-page-loader[m-default]>[m-loader-label]{display:block;max-width:min(80%,420px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.7}
+@keyframes m-loader-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){m-page-loader[m-default]{transition:none}m-page-loader[m-default]>[m-loader-spin]{animation:none}}
 template{display:none!important}
 [m-passthrough]{pointer-events:none!important}
 :where([m-passthrough])>:where(:not(m-page)){pointer-events:auto}
@@ -49,8 +56,15 @@ template{display:none!important}
 [contenteditable].m-renaming{cursor:text;user-select:text;-webkit-user-select:text}
 `;
 
-// `m-passthrough`, `m-away` and `m-sidebar-fixed` are the host's, on the theme's root (a theme
-// can't write m- attributes of its own): the pointer over the page's slot
+// `m-passthrough`, `m-away`, `m-sidebar-fixed`, `m-page-state` and `m-starting` are the host's and the
+// runtime's, on the theme's root (a theme can't write m- attributes of its own; its CSS can select
+// them). `m-page-state` (Margin.app's own window: ui/runtime.ts followPage): `shown`, a hosted window
+// shows through the page's place, which draws nothing; `loading`, an item is being opened: the page
+// card opaque, with the theme's `page-loader` part in its `<m-page-loader>`, or Margin's own loader
+// (`m-page-loader[m-default]`, above: a quiet spinner and Margin's words, laid over the page's place by
+// the runtime; it fades out over the hosted window as `shown` comes); `empty`, nothing to show: the
+// launcher. `m-starting`: from the first frame until the state's data is drawn (a theme's skeleton).
+// The others: the pointer over the page's slot
 // goes to the page under it, past the root's own background (the in-page
 // host sets it while the pointer is there; what the theme draws over the
 // page still takes it), and Margin out of the way (Chrome outside full
@@ -66,6 +80,7 @@ const SLOTS: Record<string, { part: string, test: string[] }> = {
   'm-palette': { part: 'palette', test: ['palette', 'open'] },
   'm-notice': { part: 'notice', test: ['notice'] },
   'm-launcher': { part: 'launcher', test: ['launcher'] },
+  'm-page-loader': { part: 'page-loader', test: ['pageLoader'] },
   'm-prompt': { part: 'prompt', test: ['prompt'] },
   'm-settings': { part: 'settings', test: ['settingsForm'] },
 };

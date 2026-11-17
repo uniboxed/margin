@@ -29,11 +29,19 @@ final class FakeHostedWindow: HostedWindow {
         guard on != hosting else { return }
         hosting = on
         hostings.append(on)
-        if !on { below = nil; loading = nil }
+        if !on { hosted = nil; loading = nil; showing = nil }
     }
-    var below: Int?
-    var belows: [Int?] = [] // each keepBelow, in order
-    func keepBelow(_ number: Int?) { guard number != below else { return }; below = number; belows.append(number) }
+    var hosted: Int?
+    var hosteds: [Int?] = [] // each setHosted, in order
+    func setHosted(_ number: Int?) { guard number != hosted else { return }; hosted = number; hosteds.append(number) }
+    var showing: String?
+    var showings: [String?] = [] // each setShowing, in order
+    var slowShowings: [String] = [] // those said to take a while (the last item at launch: the loader at once)
+    func setShowing(_ label: String?, slow: Bool) { guard label != showing else { return }; showing = label; showings.append(label); if slow, let label { slowShowings.append(label) } }
+    var moves = 0 // hostedMoved: the hosted window's bounds read again
+    func hostedMoved() { moves += 1 }
+    var yields: [Int?] = [] // each yield(to:), in order
+    func yield(to number: Int?) { yields.append(number) }
     var loading: String?
     var loadings: [String?] = [] // each setLoading, in order
     func setLoading(_ label: String?) { guard label != loading else { return }; loading = label; loadings.append(label) }
@@ -45,9 +53,6 @@ final class FakeHostedWindow: HostedWindow {
     var covering: Int?
     var covers: [Int?] = []
     func cover(_ number: Int?) { guard number != covering else { return }; covering = number; covers.append(number) }
-    var lifts: [String] = [] // each setLifted, in order: "on through", "on", "off"
-    var lifted: Bool { (lifts.last ?? "off") != "off" }
-    func setLifted(_ on: Bool, through: Bool) { lifts.append(on ? (through ? "on through" : "on") : "off") }
     // (As the real one: the page area from its own layout, while hosting in full screen.)
     var hostedPlacement: HostPlacement? {
         guard hosting, isFullScreen, let page = MarginWindowGeometry.pageRect(layout: layout, content: FakeHostWorld.display) else { return nil }
@@ -69,6 +74,7 @@ final class FakeHostedLinks: HostedLinks {
     var onNewWindow: ((Int, JSONObject) -> Void)? // the copy's id for the window it makes, and what it was asked
     var onSetWindowState: ((Int, Bool) -> Void)? // the copy's id, full screen or not
     var onCloseWindow: ((Int) -> Void)?
+    var onHostShow: (() -> Void)? // (as the copy is asked for an item's tab)
     var refuse: Set<String> = []
     func safariProfiles() -> [String] { profiles }
     var menuOpens: [String] = [] // profiles woken through Safari's menu
@@ -101,6 +107,7 @@ final class FakeHostedLinks: HostedLinks {
             if let id = int(payload["windowId"]) { onCloseWindow?(id) }
             return ([:], nil)
         case "hostShow":
+            onHostShow?()
             nextTab += 1
             return (["tabId": nextTab - 1, "created": true], nil)
         default:
@@ -122,7 +129,7 @@ final class StubLaunchEngine: HostedEngine {
     var hasHosts: Bool { false }
     func isHosted(_ id: HostID) -> Bool { false }
     func mode(of id: HostID) -> HostMode? { nil }
-    var shownAbove: Int? { nil }
+    var shownWindow: Int? { nil }
     func activateShown(at point: CGPoint?) async {}
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { nil }
     func target(ofWindow number: Int) -> HostTarget? { nil }
@@ -169,6 +176,7 @@ func preparedBrowserTests(_ library: Library) {
         let w = FakeHostWorld()
         w.staged = true
         let engine = HostEngine(system: w, marker: nil, pid: 1)
+        engine.options.privateRetire = 0
         let links = FakeHostedLinks()
         let session = HostedSession(library: library, engine: engine, links: links)
         session.sleep = { _ in await Task.yield() }
@@ -180,7 +188,7 @@ func preparedBrowserTests(_ library: Library) {
         engine.safariLinked = { await session.safariLinked($0) }
         engine.onEvent = { session.hostEvent($0) }
         engine.loading = { session.loading($0) }
-        engine.keepAbove = { session.keepBelow($0) }
+        engine.hostedWindow = { session.hosted($0) }
         engine.cover = { session.cover($0) }
         final class Box { var windows: [Int: Int] = [:] }
         let box = Box()
@@ -241,8 +249,9 @@ func preparedBrowserTests(_ library: Library) {
         check("prepared: full screen at the page area by the early path, then parked out of sight (a private Space), nothing shown",
               host?.phase == .parked && host?.member == true && r.w.wins[n]?.fullScreen == true && r.w.wins[n]?.priv != nil && r.engine.shown == nil
               && r.w.bounds(window: n) == CGRect(x: 260, y: 41, width: 1244, height: 933), "\(String(describing: host?.phase)) \(String(describing: r.w.wins[n]))")
-        check("prepared: never seen: no freeze needed, the screen never left Margin's Space, Mission Control Margin's only, Margin's window above it while it was in its Space",
-              r.w.freezes == 0 && r.w.offMargin == 0 && r.w.listsMarginOnly && r.w.entered.isEmpty && r.window.covers == [n, nil] && r.window.hostings.isEmpty, "\(r.window.covers) \(r.w.freezes)")
+        check("prepared: never seen: under one freeze (macOS's switch to its new Space undone within one read), Mission Control Margin's only, Margin's window above it while it was in its Space",
+              r.w.freezes == 1 && r.w.reveals == 1 && r.w.offMargin <= 0.0051 && r.w.listsMarginOnly && r.w.movedBeforeDelivery == 0 && r.w.lateDrops == 0 && r.window.covers == [n, nil] && r.window.hostings.isEmpty,
+              "\(r.window.covers) \(r.w.freezes) \(r.w.offMargin)")
         check("prepared: its app never activated, no loading bar", !r.w.calls.contains { $0.hasPrefix("activate") } && r.window.loadings.isEmpty && r.window.loadingTabsSaid.isEmpty)
         check("prepared: said with its time", lines.contains { $0.contains("browser prepared in") && $0.contains("parked out of sight") }, "\(lines.filter { $0.contains("prepared") })")
 
@@ -350,6 +359,7 @@ func hostedTests() {
 
     let w = FakeHostWorld()
     let engine = HostEngine(system: w, marker: nil, pid: 1)
+    engine.options.privateRetire = 0
     let links = FakeHostedLinks()
     let session = HostedSession(library: library, engine: engine, links: links)
     session.sleep = { _ in await Task.yield() }
@@ -362,7 +372,7 @@ func hostedTests() {
     engine.safariLinked = { await session.safariLinked($0) }
     engine.onEvent = { session.hostEvent($0) }
     engine.loading = { session.loading($0) }
-    engine.keepAbove = { session.keepBelow($0) }
+    engine.hostedWindow = { session.hosted($0) }
     library.delegate = session
     var changes = 0
     session.onChange = { changes += 1 }
@@ -401,7 +411,7 @@ func hostedTests() {
     check("hosted: the engine was given the page area from Margin's own layout, and its window is there, a member of Margin's Space", engine.pageRect == page && w.bounds(window: editWindow) == page
           && w.wins[editWindow]?.member == true && w.listsMarginOnly, "\(engine.pageRect) \(String(describing: w.bounds(window: editWindow)))")
     check("hosted: the loading animation named the app while it opened, then went", window.loadings == ["TextEdit", nil], "\(window.loadings)")
-    check("hosted: Margin's window kept below the app's window", window.below == editWindow, "\(window.belows)")
+    check("hosted: Margin's window told the app's window (it's in front of it)", window.hosted == editWindow, "\(window.hosteds)")
     check("hosted: it's the window's item shown, open", session.shown[1] == editItem && session.open[editItem]?.host == HostTarget.app("com.apple.TextEdit").id && changes > 0)
     let editNumber = session.number(ofItem: editItem)
     check("hosted: the theme's loading bar for the app's item while it opened (the page's `loading`), none once it's shown", window.loadingTabsSaid == [[editNumber], []], "\(window.loadingTabsSaid)")
@@ -474,7 +484,7 @@ func hostedTests() {
     run { _ = library.perform("activateTab", ["windowId": 1, "tabId": editItem]) }
     check("hosted: the app's item again: shown by the engine at once (no loading), Safari's window parked as it is (its copy not asked)",
           engine.shown == HostTarget.app("com.apple.TextEdit").id && engine.hosts[safari]?.phase == .parked && w.wins[safariWindow]?.fullScreen == true
-          && links.types().filter { $0 == "setWindowState" }.count == setStates && window.loadings.count == loadingsBefore && window.below == editWindow, "\(window.loadings)")
+          && links.types().filter { $0 == "setWindowState" }.count == setStates && window.loadings.count == loadingsBefore && window.hosted == editWindow, "\(window.loadings)")
 
     // ---- Safari and Chrome picked as apps ----
     let before = library.items().count
@@ -534,7 +544,7 @@ func hostedTests() {
     run {}
     check("hosted: Margin's window back in full screen: the item it showed hosted again, in its Space, at once",
           window.hosting && engine.shown == editId && w.spaces(window: editNow) == [FakeHostWorld.marginSpace] && session.shown[1] == editItemNow && session.resume.isEmpty
-          && window.below == editNow && w.listsMarginOnly, "\(session.done.suffix(4))")
+          && window.hosted == editNow && w.listsMarginOnly, "\(session.done.suffix(4))")
     // ---- a profile with no window: woken through Safari's menu, its waking window closed after Margin's is made ----
     do {
         let woken = FakeHostedLinks()
@@ -564,7 +574,7 @@ func hostedTests() {
         let ftWindow = w.apps[ftPid]?.windows.first ?? 0
         check("hosted window mode: FaceTime picked: shown in window mode, its window at Margin's own page area", engine.shown == ftId && engine.mode(of: ftId) == .window
               && w.bounds(window: ftWindow) == window.hostedPlacement?.page && session.shown[1] == ftItem, "\(session.done.suffix(4))")
-        check("hosted window mode: Margin's window kept right below FaceTime's window; TextEdit parked", window.below == ftWindow && engine.hosts[editId]?.phase == .parked, "\(window.belows)")
+        check("hosted window mode: Margin's window told FaceTime's window; TextEdit parked", window.hosted == ftWindow && engine.hosts[editId]?.phase == .parked, "\(window.hosteds)")
         session.pagePressed(window)
         hostRun { for _ in 0..<5 { await Task.yield() } }
         check("hosted window mode: a press in the page area around it: FaceTime given the keyboard (activated, raised)", w.calls.contains("activate \(ftPid) \(ftWindow)"), "\(w.calls.suffix(3))")
@@ -572,9 +582,9 @@ func hostedTests() {
         // to the full-screen app, and back: both instant
         let editNowItem = library.items().first { $0.value["url"] as? String == "app://com.apple.TextEdit" }?.id ?? ""
         run { _ = library.perform("activateTab", ["windowId": 1, "tabId": editNowItem]) }
-        check("hosted window mode → full screen: TextEdit back in Margin's Space, Margin's window kept below it", engine.shown == editId && window.below == editNow && engine.hosts[ftId]?.phase == .parked, "\(window.belows) \(session.done.suffix(4))")
+        check("hosted window mode → full screen: TextEdit back in Margin's Space, Margin's window told its window", engine.shown == editId && window.hosted == editNow && engine.hosts[ftId]?.phase == .parked, "\(window.hosteds) \(session.done.suffix(4))")
         run { _ = library.perform("activateTab", ["windowId": 1, "tabId": ftItem]) }
-        check("hosted full screen → window mode: FaceTime shown again, Margin's window kept below it", engine.shown == ftId && window.below == ftWindow
+        check("hosted full screen → window mode: FaceTime shown again, Margin's window told its window", engine.shown == ftId && window.hosted == ftWindow
               && w.bounds(window: ftWindow) == window.hostedPlacement?.page && w.inMargin == [ftWindow], "\(session.done.suffix(4))")
 
         // the page area moves (another theme): placed again by Accessibility, not parked
@@ -607,12 +617,289 @@ func hostedTests() {
 
     hostedShellTests(script: script)
     sidebarResizeTests(script: script)
+    hostedFrontTests(script: script)
+    hostedResumeTests(script: script)
+}
+
+// At launch, the item the window showed last (HostedSession.resumeLast): the library, with an item selected in the
+// window's space, a new session and engine as after a relaunch, and a stand-in Margin window not yet in full screen.
+// Hosting and the loader are said as the window is made (before its page's hello); the show itself waits for the
+// window; nothing selected, or a second window: the launcher as before; a show that fails: the launcher.
+func hostedResumeTests(script: URL) {
+    let root = tempFolder("hosted-resume")
+    defer { try? FileManager.default.removeItem(at: root) }
+    guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("resume: the library opens", false) }
+    func launch(fails: Set<String> = [], links: FakeHostedLinks = FakeHostedLinks()) -> (FakeHostWorld, HostEngine, HostedSession, FakeHostedWindow, (@escaping () async -> Void) -> Void) {
+        let w = FakeHostWorld()
+        w.fail = fails
+        let engine = HostEngine(system: w, marker: nil, pid: 1)
+        engine.options.privateRetire = 0
+        let session = HostedSession(library: library, engine: engine, links: links)
+        session.sleep = { _ in await Task.yield() }
+        session.appName = { $0 == "com.apple.Notes" ? "Notes" : nil }
+        let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
+        session.window = { id in id == nil || id == 1 ? window : nil }
+        // (A Safari Margin starts: its copy's newWindow makes a window on the Desktop, its setWindowState acts on it.)
+        engine.requestSafariWindow = { await session.requestSafariWindow($0) }
+        engine.closeSafariWindow = { await session.closeSafariWindow($0, $1) }
+        engine.safariFullScreen = { await session.safariFullScreen($0, $1, $2) }
+        engine.safariLinked = { await session.safariLinked($0) }
+        var copyWindows: [Int: Int] = [:]
+        links.onNewWindow = { id, _ in
+            guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }
+            let n = w.nextWindow
+            w.nextWindow += 1
+            w.wins[n] = FakeHostWorld.Win(pid: pid, spaces: [FakeHostWorld.desktop])
+            w.apps[pid]?.windows.append(n)
+            copyWindows[id] = n
+        }
+        links.onSetWindowState = { id, on in
+            guard let n = copyWindows[id], let pid = w.wins[n]?.pid else { return }
+            w.applyFullScreen(pid: pid, window: n, on)
+        }
+        links.onCloseWindow = { id in if let n = copyWindows.removeValue(forKey: id) { w.closeWindow(n) } }
+        engine.onEvent = { session.hostEvent($0) }
+        engine.loading = { session.loading($0) }
+        engine.hostedWindow = { session.hosted($0) }
+        library.delegate = session
+        return (w, engine, session, window, { body in hostRun { await body(); await session.idle() } })
+    }
+    _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
+
+    // ---- nothing selected in the window's space: the launcher, as before ----
+    do {
+        let (w, engine, session, window, run) = launch()
+        session.resumeLast(window)
+        run {}
+        check("resume: nothing selected in the window's space: nothing hosted, the launcher", !window.hosting && window.showings.isEmpty && engine.shown == nil && w.calls.isEmpty && session.resuming == nil)
+        // (An app used in it, as a first run of Margin: selected from now on.)
+        run { session.openApp("com.apple.Notes", windowId: 1) }
+        check("resume: an app picked and shown: the item selected in its space", engine.shown == HostTarget.app("com.apple.Notes").id
+              && library.items().contains { $0.value["url"] as? String == "app://com.apple.Notes" && $0.value["selected"] as? Bool == true }, "\(library.items().map { $0.value })")
+        run { await engine.quitAll() }
+    }
+    let item = library.items().first { $0.value["url"] as? String == "app://com.apple.Notes" }?.id ?? ""
+    check("resume: MarginResumeLast: on unless it's set to NO", HostedSession.resumesLast(setting: nil) && HostedSession.resumesLast(setting: true) && !HostedSession.resumesLast(setting: false) && HostedSession.resumesLast(setting: "x"))
+
+    // ---- Margin opened again: that item, behind the loader from the window's making ----
+    do {
+        let (w, engine, session, window, run) = launch()
+        window.isFullScreen = false // (just made: not in full screen yet, its page not loaded)
+        session.resumeLast(window)
+        check("resume: as the window is made (before its page loads): hosting, the loader with the item's name at once (known to be slow: no grace), its row in front; nothing launched until the window is up",
+              window.hosting && window.showings == ["Notes"] && window.slowShowings == ["Notes"] && session.requested[1] == item && session.resuming == 1 && session.hostingWindow == 1
+              && !w.calls.contains { $0.hasPrefix("launch") } && (session.live(library.snapshot())["openTabs"] as? JSONObject).flatMap { ($0["tabs"] as? JSONObject)?.values.first as? JSONObject }?["active"] as? Bool == true,
+              "\(window.showings) \(window.slowShowings) \(String(describing: session.requested[1]))")
+        // (Something that settles hosting meanwhile, an engine event: the loader stays.)
+        session.hostEvent(.parked(HostID(raw: "app:none")))
+        hostRun { await Task.yield(); return true }
+        check("resume: hosting kept while its item is on its way (nothing shown yet isn't the launcher)", window.hosting && window.showing == "Notes")
+        window.isFullScreen = true
+        run {}
+        let notes = w.running(bundleId: "com.apple.Notes").first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0
+        check("resume: once Margin's window is in full screen with its page area: the item's app opened and shown at the page area, its item the one shown; the loader cleared; no launcher in between",
+              engine.shown == HostTarget.app("com.apple.Notes").id && w.bounds(window: notes) == window.hostedPlacement?.page && session.shown[1] == item && session.requested[1] == nil
+              && window.showing == nil && window.hosted == notes && window.hostings == [true] && session.resuming == nil, "\(session.done.suffix(4)) \(window.hostings)")
+        // A second window later in the run (⌘N): not its business.
+        let second = FakeHostedWindow(id: 2, number: 77)
+        session.resumeLast(second)
+        check("resume: only the first window of a run: a second one opens on the launcher", !second.hosting && second.showings.isEmpty && session.hostingWindow == 1)
+        run { await engine.quitAll() }
+    }
+
+    // ---- Margin's window not in full screen in time: the launcher for now, the item once the window is ----
+    do {
+        let (w, engine, session, window, run) = launch()
+        session.options.prepareWindowWait = 0.2
+        window.isFullScreen = false
+        session.resumeLast(window)
+        run {}
+        let waited = !window.hosting && window.hostings == [true, false] && engine.shown == nil && session.requested[1] == nil && session.resuming == nil && !w.calls.contains { $0.hasPrefix("launch") }
+        window.isFullScreen = true
+        session.enteredFullScreen(window)
+        run {}
+        check("resume: Margin's window not in full screen in time: the launcher for now, nothing launched; its item shown once the window is in full screen",
+              waited && engine.shown == HostTarget.app("com.apple.Notes").id && session.shown[1] == item && window.hosting, "waited \(waited) \(window.hostings) \(session.done.suffix(4))")
+        run { await engine.quitAll() }
+    }
+
+    // ---- its app can't be opened: the launcher, the item kept ----
+    do {
+        let (w, engine, session, window, run) = launch(fails: ["launch"])
+        session.resumeLast(window)
+        run {}
+        check("resume: the item's show fails (its app doesn't start): the launcher again, nothing left pending, the item still in the library",
+              !window.hosting && window.hostings == [true, false] && window.showing == nil && engine.shown == nil && session.requested[1] == nil && session.resuming == nil
+              && library.items().contains { $0.id == item }, "\(window.hostings) \(session.done.suffix(3)) \(w.calls.suffix(3))")
+    }
+
+    // ---- turned off: the launcher ----
+    do {
+        let (_, _, session, window, run) = launch()
+        session.options.resumesLast = false
+        session.resumeLast(window)
+        run {}
+        check("resume: off: nothing at launch", !window.hosting && window.showings.isEmpty)
+    }
+
+    // ---- something else picked while Margin's window is still on its way: that, at once; the last item never opened ----
+    do {
+        let (w, engine, session, window, run) = launch()
+        window.isFullScreen = false
+        var sleeps = 0 // (the session's waits, counted: the 30 s for Margin's window is 600 of them)
+        session.sleep = { _ in sleeps += 1; await Task.yield() }
+        session.resumeLast(window)
+        run { session.openApp("com.apple.TextEdit", windowId: 1) }
+        check("resume: another item picked while Margin's window isn't up yet: the wait for the last one ends at once (not sat out: \(sleeps) looks, of 600), the picked one shown, the last one's app never started",
+              engine.shown == HostTarget.app("com.apple.TextEdit").id && session.done.contains { $0.contains("\(item): not shown") && $0.contains("asked for since") } && sleeps < 100
+              && w.running(bundleId: "com.apple.Notes").isEmpty && session.resuming == nil && window.hosting, "\(sleeps) \(session.done.suffix(5))")
+        run { await engine.quitAll() }
+    }
+
+    // ---- a web item last: the loader with its title while its browser starts (nothing made ready yet), then its window and tab ----
+    do {
+        let links = FakeHostedLinks()
+        links.profiles = ["s-default"] // (its copy links as Safari starts)
+        let (_, engine, _, _, run) = launch(links: links)
+        run { _ = library.perform("newTab", ["windowId": 1, "url": "https://last.example/", "title": "Last page"]) }
+        run { await engine.quitAll() }
+    }
+    do {
+        let page = library.items().first { $0.value["url"] as? String == "https://last.example/" }
+        let links = FakeHostedLinks()
+        links.profiles = ["s-default"]
+        let (w, engine, session, window, run) = launch(links: links)
+        window.isFullScreen = false
+        session.resumeLast(window)
+        let atOnce = window.hosting && window.slowShowings == ["Last page"] && session.requested[1] == page?.id && w.calls.isEmpty && links.asked.isEmpty
+        window.isFullScreen = true
+        run {}
+        let safari = HostTarget.safariWindow("s-default").id
+        let shows = links.asked.filter { $0.type == "hostShow" }
+        check("resume: a web item last: the loader with its title as the window is made, nothing started yet; then its browser started (no window was made ready: the loader stays for all of it), its window shown with the item's tab, no launcher in between",
+              page?.value["selected"] as? Bool == true && atOnce && w.calls.contains("launch com.apple.Safari") && engine.shown == safari && session.shown[1] == page?.id
+              && shows.count == 1 && shows.first?.payload["itemId"] as? String == page?.id && window.showing == nil && window.hostings == [true] && session.resuming == nil,
+              "at once \(atOnce) \(window.slowShowings) \(session.done.suffix(4)) \(window.hostings)")
+        run { await engine.quitAll() }
+    }
+}
+
+// Margin's window in front of what it hosts, the session's side (DECISIONS.md, 2026-11-17): what Margin's window is
+// told as an item is shown (not ready until its tab is in front too; a tab switch in the window shown says nothing);
+// a placing again that fails never drops the item (shown again once after a pause, behind the loader; failing that
+// too, the launcher with the item kept and its window still hosted, out of sight); a field of Margin's letting go of
+// the keys gives them back to the app shown; another app's window in Margin's Space told to Margin's window.
+func hostedFrontTests(script: URL) {
+    let root = tempFolder("hosted-front")
+    defer { try? FileManager.default.removeItem(at: root) }
+    guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("front: the library opens", false) }
+    let w = FakeHostWorld()
+    let engine = HostEngine(system: w, marker: nil, pid: 1)
+    engine.options.privateRetire = 0
+    let links = FakeHostedLinks()
+    let session = HostedSession(library: library, engine: engine, links: links)
+    session.sleep = { _ in await Task.yield() }
+    let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
+    session.window = { id in id == nil || id == 1 ? window : nil }
+    engine.requestSafariWindow = { await session.requestSafariWindow($0) }
+    engine.closeSafariWindow = { await session.closeSafariWindow($0, $1) }
+    engine.safariFullScreen = { await session.safariFullScreen($0, $1, $2) }
+    engine.safariLinked = { await session.safariLinked($0) }
+    engine.onEvent = { session.hostEvent($0) }
+    engine.loading = { session.loading($0) }
+    engine.hostedWindow = { session.hosted($0) }
+    engine.others = { session.others($0) }
+    library.delegate = session
+    links.profiles = ["s-default"]
+    var copyWindows: [Int: Int] = [:]
+    var ignoredEntries = 0 // asks into full screen its copy answers and Safari doesn't do (mid-change)
+    links.onNewWindow = { id, _ in
+        guard let pid = w.running(bundleId: "com.apple.Safari").first?.pid else { return }
+        let n = w.nextWindow
+        w.nextWindow += 1
+        w.wins[n] = FakeHostWorld.Win(pid: pid, spaces: [FakeHostWorld.desktop])
+        w.apps[pid]?.windows.append(n)
+        copyWindows[id] = n
+    }
+    links.onSetWindowState = { id, on in
+        guard let n = copyWindows[id], let pid = w.wins[n]?.pid else { return }
+        if on, ignoredEntries > 0 { ignoredEntries -= 1; return }
+        w.applyFullScreen(pid: pid, window: n, on)
+    }
+    links.onCloseWindow = { id in if let n = copyWindows.removeValue(forKey: id) { w.closeWindow(n) } }
+    func run(_ body: @escaping () async -> Void = {}) { hostRun { await body(); await session.idle() } }
+    func page(_ left: CGFloat) -> CGRect { CGRect(x: left, y: 41, width: 1512 - 8 - left, height: 933) }
+    _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
+
+    // ---- a web item: not ready until its tab is in front in its window too ----
+    run { _ = library.perform("newTab", ["windowId": 1, "url": "https://example.com/", "title": "Example"]) }
+    let safari = HostTarget.safariWindow("s-default").id
+    let item = library.items().first { $0.value["url"] as? String == "https://example.com/" }?.id ?? ""
+    let mine = copyWindows.values.first ?? 0
+    guard engine.shown == safari, !item.isEmpty, w.bounds(window: mine) == page(260) else { return check("front: a web item shown in its Safari window", false, "\(session.done.suffix(6))") }
+    check("front: a web item's first show: Margin's window told it's being shown, with its title, until its tab is in front too; then nothing pending", window.showings == ["Example", nil] && window.hosted == mine
+          && window.loading == nil, "\(window.showings)")
+    let showings = window.showings.count
+    run { _ = library.perform("newTab", ["windowId": 1, "url": "https://second.example/", "title": "Second"]) }
+    check("front: a second web item of the profile (a tab switch in the window shown: Safari's own, in sight): nothing said to Margin's window, no loader", window.showings.count == showings && engine.shown == safari)
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": item]) }
+
+    // ---- from an app back to the web item: its tab in front while its window is still parked, then the window in ----
+    run { session.openApp("com.apple.TextEdit", windowId: 1) }
+    var parkedAtTab: Bool?
+    links.onHostShow = { parkedAtTab = w.wins[mine]?.priv != nil && w.spaces(window: mine) == [] }
+    let showingsMark = window.showings.count
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": item]) }
+    links.onHostShow = nil
+    check("front: a web item whose Safari window is there already (parked): its tab asked of the copy while the window is still out of sight, then the window comes in (the right page from the first frame); told as being shown meanwhile",
+          parkedAtTab == true && engine.shown == safari && w.inMargin == [mine] && Array(window.showings.dropFirst(showingsMark)) == ["Example", nil] && session.shown[1] == item,
+          "parked at its tab \(String(describing: parkedAtTab)) \(window.showings.dropFirst(showingsMark))")
+
+    // ---- a field of Margin's lets go of the keys: the app shown has them again; another window in Margin's Space ----
+    let safariPid = w.wins[mine]?.pid ?? 0
+    let activations = w.calls.filter { $0 == "activate \(safariPid) \(mine)" }.count
+    session.fieldClosed(window)
+    run()
+    _ = hostRun { await Task.yield(); return true }
+    check("front: a field of Margin's (the palette) closed with a host shown: that app activated again", w.calls.filter { $0 == "activate \(safariPid) \(mine)" }.count == activations + 1, "\(w.calls.suffix(3))")
+    session.others(777)
+    session.others(nil)
+    check("front: another app's window in Margin's Space: Margin's window told to let it in front, and when it's gone", window.yields == [.some(777), nil], "\(window.yields)")
+
+    // ---- a placing whose entry into full screen isn't done (twice): the item kept, shown again after a pause ----
+    var closes = links.types().filter { $0 == "closeWindow" || $0 == "hostClose" }.count
+    var mark = window.showings.count
+    ignoredEntries = 2 // (its ask, and the one asked once more)
+    window.layout.left = 320
+    session.pageRectChanged(window)
+    run()
+    check("front: a placing that left Safari's window out of full screen (two asks not done): never closed or dropped: shown again once after a pause, at the new page area, its item still the one shown",
+          engine.shown == safari && w.bounds(window: mine) == page(320) && w.wins[mine]?.fullScreen == true && w.inMargin == [mine] && session.shown[1] == item && session.open[item] != nil
+          && links.types().filter { $0 == "closeWindow" || $0 == "hostClose" }.count == closes && window.hosting && window.hosted == mine
+          && session.done.contains { $0.contains("(not fitted)") } && session.done.contains { $0.contains("shown again after its placing failed") }, "\(session.done.suffix(5))")
+    check("front: … the loader's name kept up between the two tries (Margin's window told it's still being shown), cleared once it is", Array(window.showings.dropFirst(mark)) == ["Safari", nil], "\(window.showings.dropFirst(mark))")
+
+    // ---- neither try works: the launcher, the item kept and its window still hosted (out of sight); a click shows it ----
+    closes = links.types().filter { $0 == "closeWindow" || $0 == "hostClose" }.count
+    mark = window.showings.count
+    ignoredEntries = 99
+    window.layout.left = 300
+    session.pageRectChanged(window)
+    run()
+    check("front: a placing that fails, and again after the pause: nothing shown (the launcher), but nothing torn down: the item kept open, its Safari window still hosted and never asked to close",
+          engine.shown == nil && !window.hosting && window.hosted == nil && session.open[item] != nil && library.items().contains { $0.id == item } && engine.isHosted(safari)
+          && w.wins[mine] != nil && links.types().filter { $0 == "closeWindow" || $0 == "hostClose" }.count == closes && window.showing == nil
+          && session.done.contains { $0.contains("hosted still, out of sight") }, "\(session.done.suffix(5))")
+    ignoredEntries = 0
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": item]) }
+    check("front: … and its row clicked once Safari can: shown again, in full screen at the page area", engine.shown == safari && w.bounds(window: mine) == page(300) && w.wins[mine]?.fullScreen == true && w.inMargin == [mine]
+          && session.shown[1] == item && window.hosting, "\(session.done.suffix(4))")
 }
 
 // The sidebar's edge dragged while hosting (HostedSession.sidebarResizing): the real engine on the stand-in window
 // manager, a stand-in Margin window whose layout the test moves as the page would while its handle is dragged. The
-// page area's changes are held for the whole drag, Margin's window in front meanwhile; let go, the one shown is placed
-// once at the page area the drag ended on, from that placement alone (nothing reserved twice, nothing on Margin's own
+// page area's changes are held for the whole drag (Margin's window is in front: the sidebar slides over the hosted
+// window as it is); let go, the one shown is placed once, behind the loader, at the page area the drag ended on, from that placement alone (nothing reserved twice, nothing on Margin's own
 // Space); a parked one keeps what it had until it's next shown, and is placed once then.
 func sidebarResizeTests(script: URL) {
     let root = tempFolder("hosted-resize")
@@ -620,13 +907,14 @@ func sidebarResizeTests(script: URL) {
     guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("resize: the library opens", false) }
     let w = FakeHostWorld()
     let engine = HostEngine(system: w, marker: nil, pid: 1)
+    engine.options.privateRetire = 0
     let session = HostedSession(library: library, engine: engine, links: FakeHostedLinks())
     session.sleep = { _ in await Task.yield() }
     let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
     session.window = { id in id == nil || id == 1 ? window : nil }
     engine.onEvent = { session.hostEvent($0) }
     engine.loading = { session.loading($0) }
-    engine.keepAbove = { session.keepBelow($0) }
+    engine.hostedWindow = { session.hosted($0) }
     library.delegate = session
     func run(_ body: @escaping () async -> Void = {}) { hostRun { await body(); await session.idle() } }
     _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
@@ -654,12 +942,15 @@ func sidebarResizeTests(script: URL) {
     check("resize: while the edge is dragged the page area's changes are held: nothing leaves or enters full screen, nothing is moved or reserved, the engine's page area as it was",
           count("fullScreen", since: mark) == 0 && count("move", since: mark) == 0 && w.reserves.count == reserves && engine.pageRect == page(260) && w.bounds(window: notes) == page(260)
           && session.resizing == 1 && !session.done.contains { $0.hasPrefix("page area changed") }, "\(w.calls.dropFirst(mark))")
-    check("resize: Margin's window in front of the hosted one for the drag, that window seen through its page area", window.lifts == ["on through"], "\(window.lifts)")
+    check("resize: the hosted window stays the one shown through the drag (nothing lifted or told again: Margin's window is in front of it anyway)",
+          window.hosted == notes && window.loading == nil && window.showing == nil, "\(window.hosteds)")
 
     // ---- let go: placed once, at the page area the drag ended on ----
+    let loadingsAtDrag = window.loadings.count
     session.sidebarResizing(window, false)
-    check("resize: let go over a full-screen member: the ground alone while it's placed again (it leaves Margin's Space for it)", window.lifts == ["on through", "on"], "\(window.lifts)")
     run()
+    check("resize: let go over a full-screen member: placed behind the loader (loading said once, then over), its bounds read again after",
+          Array(window.loadings.dropFirst(loadingsAtDrag)).count == 2 && window.loadings.last == .some(nil) && window.moves >= 1, "\(window.loadings.dropFirst(loadingsAtDrag)) \(window.moves)")
     let sent = w.reserves.dropFirst(reserves)
     check("resize: let go: the shown window placed once (one exit from full screen, one entry), at the new page area, still a member of Margin's Space",
           count("fullScreen false \(notes)", since: mark) == 1 && count("fullScreen true \(notes)", since: mark) == 1 && w.bounds(window: notes) == page(340)
@@ -668,7 +959,7 @@ func sidebarResizeTests(script: URL) {
     check("resize: its reservation is the new page area's alone (260 → 340: never the two added up), on its own Space, none on Margin's; Mission Control Margin's Space only",
           !sent.isEmpty && sent.allSatisfy { $0.edges == SlotEdges(left: 340, right: 8, top: 8, bottom: 8) && $0.space != FakeHostWorld.marginSpace }
           && (w.reservation[FakeHostWorld.marginSpace] ?? .zero).isZero && w.listsMarginOnly, "\(sent.map { "\($0.space): \($0.edges.text)" })")
-    check("resize: then Margin's window right below the hosted window again", window.lifts == ["on through", "on", "off"] && window.below == notes && session.resizing == nil, "\(window.lifts)")
+    check("resize: then the hosted window shown again in Margin's window, nothing held", window.hosted == notes && session.resizing == nil, "\(window.hosteds)")
     check("resize: the parked one untouched: still full screen, out of sight, placed for the page area it had", count("fullScreen false \(edit)", since: mark) == 0 && count("fullScreen true \(edit)", since: mark) == 0
           && w.wins[edit]?.fullScreen == true && w.spaces(window: edit) == [] && engine.hosts[editId]?.placedPage == page(260), "\(String(describing: engine.hosts[editId]?.placedPage))")
 
@@ -677,10 +968,10 @@ func sidebarResizeTests(script: URL) {
     reserves = w.reserves.count
     let loadings = window.loadings.count
     var seenAtOldPlace = false
-    let before = engine.keepAbove
-    engine.keepAbove = { number in if number == edit, w.bounds(window: edit) != page(340) { seenAtOldPlace = true }; before?(number) }
+    let before = engine.hostedWindow
+    engine.hostedWindow = { number in if number == edit, w.bounds(window: edit) != page(340) { seenAtOldPlace = true }; before?(number) }
     run { _ = library.perform("activateTab", ["windowId": 1, "tabId": item("com.apple.TextEdit")]) }
-    engine.keepAbove = before
+    engine.hostedWindow = before
     check("resize: the parked one shown next: placed for the new page area as it's shown (one exit, one entry), the loading bar meanwhile, never in Margin's Space at its old place",
           engine.shown == editId && count("fullScreen false \(edit)", since: mark) == 1 && count("fullScreen true \(edit)", since: mark) == 1 && w.bounds(window: edit) == page(340)
           && !seenAtOldPlace && Array(window.loadings.dropFirst(loadings)).count == 2 && window.loadings.last == .some(nil)
@@ -691,7 +982,6 @@ func sidebarResizeTests(script: URL) {
 
     // ---- a change asked just before the drag, its turn come during it: held too; a drag back to where it began: nothing placed ----
     mark = w.calls.count
-    window.lifts = []
     window.layout.left = 300
     session.pageRectChanged(window) // (queued, not yet run)
     session.sidebarResizing(window, true)
@@ -700,64 +990,60 @@ func sidebarResizeTests(script: URL) {
     check("resize: a change queued before the drag began isn't placed during it", count("fullScreen", since: mark) == 0 && engine.pageRect == page(340), "\(w.calls.dropFirst(mark))")
     session.sidebarResizing(window, false)
     run()
-    check("resize: let go where it began: nothing leaves full screen, Margin's window below again", count("fullScreen", since: mark) == 0 && w.bounds(window: notes) == page(340) && window.lifts.last == "off" && !window.lifted, "\(w.calls.dropFirst(mark)) \(window.lifts)")
+    check("resize: let go where it began: nothing leaves full screen", count("fullScreen", since: mark) == 0 && w.bounds(window: notes) == page(340) && window.hosted == notes, "\(w.calls.dropFirst(mark))")
 
-    // ---- a window-mode app (one that can't go full screen): moved once when the drag is over, seen through until then ----
+    // ---- a window-mode app (one that can't go full screen): moved once when the drag is over ----
     run { session.openApp("com.apple.FaceTime", windowId: 1) }
     let ft = windowOf("com.apple.FaceTime"), ftId = HostTarget.app("com.apple.FaceTime").id
     check("resize: FaceTime in window mode at the page area", engine.shown == ftId && engine.mode(of: ftId) == .window && w.bounds(window: ft) == page(340), "\(session.done.suffix(4))")
     mark = w.calls.count
-    window.lifts = []
     session.sidebarResizing(window, true)
     drag(to: [330, 300, 280, 250])
-    check("resize (window mode): held while dragged: its frame not set once", count("frame \(ft)", since: mark) == 0 && w.bounds(window: ft) == page(340) && window.lifts == ["on through"], "\(w.calls.dropFirst(mark))")
+    check("resize (window mode): held while dragged: its frame not set once", count("frame \(ft)", since: mark) == 0 && w.bounds(window: ft) == page(340), "\(w.calls.dropFirst(mark))")
+    let movesBefore = window.moves, loadingsBefore = window.loadings.count
     session.sidebarResizing(window, false)
-    check("resize (window mode): let go: still seen through while Accessibility moves it (no blank page area)", window.lifts == ["on through"], "\(window.lifts)")
     run()
-    check("resize (window mode): placed once by Accessibility at the new page area, never parked or put in full screen for it; Margin's window below it again",
+    check("resize (window mode): placed once by Accessibility at the new page area, never parked or put in full screen for it, no loader (it stays in sight); its bounds read again",
           count("frame \(ft)", since: mark) == 1 && w.bounds(window: ft) == page(250) && count("move \(ft)", since: mark) == 0 && count("fullScreen", since: mark) == 0
-          && window.lifts == ["on through", "off"] && window.below == ft, "\(w.calls.dropFirst(mark)) \(window.lifts)")
+          && window.hosted == ft && window.loadings.count == loadingsBefore && window.moves == movesBefore + 1, "\(w.calls.dropFirst(mark)) \(window.loadings.dropFirst(loadingsBefore))")
     check("resize: both parked full-screen members still as they were (placed again only when shown)", engine.hosts[notesId]?.placedPage == page(340) && engine.hosts[editId]?.placedPage == page(340)
           && w.wins[notes]?.fullScreen == true && w.wins[edit]?.fullScreen == true)
 
-    // ---- Margin's window taken out of full screen mid-drag: the drag is over for hosting, nothing left lifted ----
-    window.lifts = []
+    // ---- Margin's window taken out of full screen mid-drag: the drag is over for hosting, nothing shown or held ----
     session.sidebarResizing(window, true)
     session.leavingFullScreen(window)
     window.isFullScreen = false
     session.leftFullScreen(window)
     run()
-    check("resize: Margin's window out of full screen mid-drag: not lifted any more", window.lifts.last == "off" && !window.lifted, "\(window.lifts)")
+    check("resize: Margin's window out of full screen mid-drag: nothing shown in it, not hosting", window.hosted == nil && !window.hosting, "\(window.hosteds)")
     window.isFullScreen = true
     session.sidebarResizing(window, false)
     run()
-    check("resize: … and the drag over: nothing held", session.resizing == nil && !window.lifted)
+    check("resize: … and the drag over: nothing held", session.resizing == nil)
 
-    // ---- an app that comes to be shown mid-drag (picked just before the drag): Margin's window in front of it too, placed once when the drag ends ----
+    // ---- an app that comes to be shown mid-drag (picked just before the drag): placed once when the drag ends ----
     window.layout.left = 250
     run { _ = library.perform("activateTab", ["windowId": 1, "tabId": item("com.apple.Notes")]) } // (placed for the page area as it is: 250)
-    window.lifts = []
     mark = w.calls.count
     session.sidebarResizing(window, true)
     drag(to: [270, 290])
     run { _ = library.perform("activateTab", ["windowId": 1, "tabId": item("com.apple.FaceTime")]) }
-    let lifts = window.lifts
     drag(to: [300, 310])
-    check("resize: an app shown mid-drag: Margin's window in front of it as well, its frame held from then on", engine.shown == ftId && lifts.last == "on through" && w.bounds(window: ft) == page(290)
-          && count("frame \(ft)", since: mark) <= 1, "\(lifts) \(w.calls.dropFirst(mark))")
+    check("resize: an app shown mid-drag: Margin's window told its window, its frame held from then on", engine.shown == ftId && window.hosted == ft && w.bounds(window: ft) == page(290)
+          && count("frame \(ft)", since: mark) <= 1, "\(window.hosteds) \(w.calls.dropFirst(mark))")
     session.sidebarResizing(window, false)
     run()
-    check("resize: … placed once more when the drag ends, at the page area it ended on; nothing left lifted", w.bounds(window: ft) == page(310) && window.lifts.last == "off" && session.resizing == nil,
-          "\(String(describing: w.bounds(window: ft))) \(window.lifts)")
+    check("resize: … placed once more when the drag ends, at the page area it ended on", w.bounds(window: ft) == page(310) && session.resizing == nil,
+          "\(String(describing: w.bounds(window: ft)))")
 
     // ---- nothing shown: a drag is the page's alone ----
     run { await engine.quitAll() }
     run()
-    window.lifts = []
+    let callsBefore = w.calls.count
     session.sidebarResizing(window, true)
     session.sidebarResizing(window, false)
     run()
-    check("resize: nothing hosted: never lifted, nothing placed, nothing held after", !window.lifts.contains { $0 != "off" } && session.resizing == nil, "\(window.lifts)")
+    check("resize: nothing hosted: nothing placed, nothing held after", w.calls.count == callsBefore && session.resizing == nil, "\(w.calls.dropFirst(callsBefore))")
 }
 
 // The page area while hosting: Margin's own layout at its whole width (the theme's frame around it).
@@ -791,8 +1077,18 @@ func hostedShellTests(script: URL) {
     check("hosted shell: the first run with nothing to import: one space made, for the person to name in the editor",
           shell.library?.spaces().count == 1 && shell.hosted?.firstSpace == shell.library?.spaces().first?.id)
     check("hosted shell: the engine's Safari windows are the copies'", shell.host?.requestSafariWindow != nil && shell.host?.closeSafariWindow != nil && shell.host?.safariFullScreen != nil && shell.host?.safariLinked != nil && shell.host?.loading != nil)
-    check("hosted shell: Margin's window kept below the hosted window", shell.host?.keepAbove != nil)
+    check("hosted shell: Margin's window told the hosted window, and another app's window in its Space", shell.host?.hostedWindow != nil && shell.host?.others != nil)
     check("hosted shell: a palette pick goes to the session", shell.openApp != nil)
     shell.track()
     check("hosted shell: a read polls the host, nothing to come back for with nothing hosted or linked", shell.pollTimer == nil)
+    // An app hosted with no browser's copy linked: the engine's own events start the shell's reads, which then go on
+    // while it's hosted (the real screen, 2026-11-17: nothing had started them, the poll never ran).
+    if let engine = shell.host {
+        hostRun { _ = await engine.open(app: .app("com.apple.TextEdit"), in: HostPlacement(page: CGRect(x: 260, y: 8, width: 1000, height: 700), area: FakeHostWorld.display), marginWindow: FakeHostWorld.marginWindow, marginSpace: FakeHostWorld.marginSpace) }
+        hostRun { await w.sleep(0.05) }
+        let before = engine.polls
+        check("hosted shell: an app hosted and no copy linked: the shell's reads started by the engine's events, armed again while it's hosted", engine.hasHosts && shell.pollTimer != nil, "hosts \(engine.hasHosts) timer \(shell.pollTimer != nil)")
+        shell.track()
+        check("hosted shell: and each read polls the host", engine.polls > before && shell.pollTimer != nil, "\(before) → \(engine.polls)")
+    }
 }

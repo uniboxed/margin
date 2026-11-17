@@ -26,12 +26,6 @@ enum LinkProtocol {
     static let maxThemeBytes = 8 * 1024 * 1024
 }
 
-// A page card's border, as its page computes it (host-app.ts cornerFill): its width and its CSS colour.
-struct PageEdge: Equatable {
-    var width: Double
-    var color: String
-}
-
 // Where the theme put the page in Margin's window (ui/host.ts Geometry): `<m-page>`'s content box as insets from the
 // window's edges, in points (CSS pixels at zoom 1 in the window's page). The hosted window goes there
 // (MarginWindowController.swift).
@@ -43,11 +37,10 @@ struct PageLayout: Equatable {
     var mode: String
     // Measured with no page area of its own (Margin's own window hosting beside it: the sidebar alone, `pageOutside`).
     var outside = false
-    // What the theme draws around the page area's rounded corners (Margin's own window only: host-app.ts cornerFill), for
-    // the corners drawn over a hosted window (HostCorners): each corner's colour outside the card (CSS colours, top left
-    // clockwise; empty: not said) and its border, if it has one.
+    // What the theme draws around the page area's rounded corners (Margin's own window only: host-app.ts cornerFill):
+    // each corner's colour outside the card (CSS colours, top left clockwise; empty: not said). The ground under the
+    // page area is the colour most of them have (MarginWindowController `pageGround`).
     var fills: [String] = []
-    var edge: PageEdge?
 
     // From the page's report ({ insets, radius, radii, container, mode, pageOutside }); nil if it isn't one.
     init?(geometry g: JSONObject) {
@@ -63,7 +56,6 @@ struct PageLayout: Equatable {
         outside = g["pageOutside"] as? Bool == true
         let said = (g["fills"] as? [Any])?.prefix(4).map { ($0 as? String).flatMap { $0.count <= 80 ? $0 : nil } ?? "" } ?? []
         fills = said.count == 4 ? said : []
-        if let e = g["edge"] as? JSONObject, let w = num(e["width"]), w.isFinite, w > 0, w < 200, let c = e["color"] as? String, c.count <= 80 { edge = PageEdge(width: w, color: c) }
     }
 
     init(left: Double, top: Double, right: Double, bottom: Double, radius: Double, radii: [Double], width: Double, height: Double, mode: String) {
@@ -277,7 +269,8 @@ enum AppMessage {
 enum HandoffRequest {
     enum State: String { case fullscreen, normal }
 
-    // A window to full screen and focused, or to normal without taking focus.
+    // A window to full screen and focused, or to normal without taking focus. Answered as soon as Safari took the ask
+    // (`land: false`): what the window did is read from the window server (HostEngine), never from Safari's word.
     case setWindowState(windowId: Int, state: State, focused: Bool = false, notAfter: Double)
 
     var type: String {
@@ -289,7 +282,7 @@ enum HandoffRequest {
     var payload: JSONObject {
         switch self {
         case .setWindowState(let id, let state, let focused, let notAfter):
-            var p: JSONObject = ["windowId": id, "state": state.rawValue, "notAfter": notAfter.rounded()]
+            var p: JSONObject = ["windowId": id, "state": state.rawValue, "notAfter": notAfter.rounded(), "land": false]
             if focused { p["focused"] = true }
             return p
         }
@@ -300,6 +293,7 @@ enum HandoffRequest {
 // `busy` and `refused` mean the copy made no windows call: nothing changed, and a `busy` is evidence
 // that an earlier call for that window is stuck (behind a hung tab).
 enum WindowCallAnswer: Equatable {
+    case asked(windowId: Int, state: String) // setWindowState with `land: false`: Safari took the ask (no word on the state)
     case landed(windowId: Int, state: String, at: Double) // setWindowState: Safari says the window is in that state (landedAt)
     case timedOut(windowId: Int, state: String) // setWindowState: asked, not in that state within 3 s
     case busy // another windows call for that window was still pending
@@ -311,6 +305,7 @@ enum WindowCallAnswer: Equatable {
         if let why = result["refused"] as? String { self = .refused(why: why, pastMs: num(result["pastMs"])); return }
         let state = result["state"] as? String
         if let id = int(result["windowId"]), let state {
+            if result["asked"] as? Bool == true { self = .asked(windowId: id, state: state); return }
             if result["timedOut"] as? Bool == true { self = .timedOut(windowId: id, state: state); return }
             if let at = num(result["landedAt"]) { self = .landed(windowId: id, state: state, at: at); return }
         }
@@ -321,7 +316,7 @@ enum WindowCallAnswer: Equatable {
     var called: Bool {
         switch self {
         case .busy, .refused: false
-        case .landed, .timedOut, .done: true
+        case .asked, .landed, .timedOut, .done: true
         }
     }
 }

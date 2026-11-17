@@ -4,7 +4,8 @@
 // tests against a stand-in (shell/tests/host-tests.swift).
 //
 // Margin's window keeps its whole width (its own full-screen Space, nothing reserved at its edges, never a tile): the
-// theme draws its frame around the page area, and the hosted window sits above Margin's window, inside the page area.
+// theme draws its frame around the page area, and the hosted window sits under Margin's window, in the page area, seen
+// through it there (Margin's window in front of what it hosts, 2026-11-17: MarginWindowController `keepFront`).
 //
 // The first open of an app whose window can go full screen (`open`): the slow path, once per app, with Margin's loading
 // animation in the page area (`loading`), each step timed in the log:
@@ -24,9 +25,10 @@
 //               it); done once the window is in a full-screen Space of its own, as the window server reads it. Under
 //               the freeze from the ask until macOS's jump to that Space is undone (the display set back to Margin's
 //               Space): the only moment macOS would visibly change Spaces; the loading animation shows otherwise.
-//               First tried early, with no freeze (`early`): the new Space reserved as soon as it's listed (~40 ms),
-//               the window moved into Margin's Space and that Space destroyed once it has the page frame (~110 ms),
-//               before macOS's Space switch (~600 ms): steps 5-7 done then. Any doubt: this slow path, from the same ask.
+//               First tried early (`early`), under the same freeze: the new Space reserved as soon as it's listed
+//               (~40 ms), the window moved into Margin's Space and that Space destroyed once macOS has brought the
+//               window into it and switched to it (~600 ms; never before: moved on its page frame alone, the window
+//               ended in no Space): steps 5-7 done then. Any doubt: this slow path, from the same ask.
 //   4. sidebar  (Safari, a window Margin made or a Safari Margin started) its own sidebar hidden by its View menu,
 //               only while the hosted window is surely Safari's main one; Accessibility reads it only on the current
 //               Space, so its own Space is made current a moment for it, under the freeze.
@@ -37,8 +39,8 @@
 //               current first: it stays full screen there, at its frame, with no title bar or toolbar.
 //   7. destroy  its own Space, emptied of its window (its tile stays behind), destroyed by the window manager's bridge,
 //               never while it's showing: Mission Control lists Margin's Space only again.
-//   8. front    its app activated (the front app, the keys) and Margin's window kept right below its window
-//               (`keepAbove`): the current Space and the windows stay as they are (proven: mc10).
+//   8. front    its app activated (the front app, the keys); Margin's window stays in front of its window
+//               (`hostedWindow`): the current Space and the windows stay as they are (proven: mc10).
 // Switching to a host already opened (`show`, `open` again): the fast path, no full-screen exit or entry, no freeze:
 // the target moved into Margin's Space (out of its private Space), then the one shown before moved into a private Space
 // (`SLSSpaceCreate(cid, 1, nil)`, as parking does: still full screen, ready), the target activated; target: well under
@@ -53,7 +55,7 @@
 // Window mode (a window whose AXFullScreen isn't settable, or whose full screen or placing failed: backed out first):
 // its normal window brought into Margin's full-screen Space as a window (the bridge, options 7) and placed in the page
 // area by Accessibility (resizable: the page area, within its own minimum and maximum, what's left centred; fixed:
-// centred), checked by the window server; kept above Margin's window the same way. Parked: its frame given back first
+// centred), checked by the window server; shown under Margin's window the same way. Parked: its frame given back first
 // (while it's on the current Space, where Accessibility sees it), then into a private Space; shown again: back into
 // Margin's Space and placed again. Given back (closed, quit, a failure): its frame as it was, its Space as it was, and
 // only then is an app Margin started quit, so it saves the frame it had.
@@ -65,6 +67,12 @@
 // emptied Space destroyed, an app Margin started for that open quit again, the one shown before shown again. A
 // Safari window Margin asked for is closed by its copy at every failure after the ask; one whose close isn't
 // confirmed is kept in the marker (`leftSafariWindows`) and closed later (the poll, quit, the next launch).
+// A hosted window is never left in no Space. It's moved into Margin's Space only once macOS's own full-screen change
+// has brought it into its own Space and switched to it (2026-11-17, the real Mac: moved earlier, macOS finished its
+// change afterwards and the window ended in no Space, the display on a Space that was gone). A Space it was just moved
+// out of isn't destroyed in the same breath (a private one later, its own full-screen one once the move has held); it's
+// in place only once it has stayed in Margin's Space after that destroy; the poll puts the one shown back at the first
+// read that finds it in none, undoes a late switch by macOS, and looks at the window server's on-screen list too.
 // Mission Control: after every operation, a hosted window's own full-screen Space still listed is said (`listed`):
 // outside a first open or a re-placing, it lists Margin's Space only.
 //
@@ -85,15 +93,22 @@ final class HostEngine {
         var windowWait = 12.0 // its first window (Safari restoring windows can take a while)
         var fullScreenWait = 6.0
         var fullScreenAskAgain = 4.0 // AXFullScreen asked once more if no Space came by then (as the kit did)
-        // The early path (no freeze): its new Space listed, reserved, the window at the page area, moved in and the Space
-        // destroyed. Its new Space listed at most `earlyWait` from the ask, the window at the page area at most
-        // `earlyFrameWait` from that Space's reservation (measured: the Space at ~40 ms, the page frame at ~110 ms, in
-        // place at ~130 ms; the window may be reported in its own Space before it has the frame: not a failure), read
-        // `earlyEvery`; else the slow path, under the freeze.
+        // The early path (under the freeze, as the slow one): its new Space listed and reserved at once, so macOS lays the
+        // window out at the page area itself; moved in only once macOS has brought the window into that Space (~525 ms
+        // after the ask on the real Mac) and switched to it (undone at once; `earlySwitchWait` after the window came
+        // with no switch seen: moved then); then that Space destroyed. Its new Space listed at most `earlyWait` from the
+        // ask, the window at the page area at most `earlyFrameWait` and in its Space at most `earlyMemberWait` from that
+        // Space's reservation, read `earlyEvery`; else the slow path.
         var earlyFullScreen = true
         var earlyWait = 1.5
         var earlyFrameWait = 1.0
+        var earlyMemberWait = 1.5
+        var earlySwitchWait = 0.25
         var earlyEvery = 0.005
+        // After a full-screen ask, macOS's own change can still finish once the engine is done: for `lateWatch` after
+        // the ask, and after a show, the poll undoes a switch to a Space that wasn't listed before the ask, and acts
+        // on a shown window that isn't on screen at its first read.
+        var lateWatch = 3.0
         var memberWait = 0.6 // a window moved by the bridge (into Margin's Space, or parked): there by then
         var memberEvery = 0.005 // ...read this often (a switch is a move each way: well under 100 ms in all)
         var destroyWait = 1.5
@@ -110,6 +125,22 @@ final class HostEngine {
         var closePressWait = 0.3 // ...its press retried this long when the window was just brought to the current Space (listed late)
         var frameAskWait = 0.3 // a frame given back: asked again this long while Accessibility doesn't take it (listed late)
         var exitUnansweredWait = 0.5 // out of full screen: asked again this long while Accessibility neither takes nor reads it
+        // A shown window found outside Margin's Space with Margin's window still in it is brought back at most this many
+        // times within `returnsWithin`; past that it's parked with nothing shown (something keeps taking it out).
+        var returnsMax = 3
+        var returnsWithin = 30.0
+        // A Space a hosted window was just moved out of is never destroyed in the same breath (2026-11-17, the real
+        // Mac: destroyed as the move was asked, the window was left in no Space at all, at its frame and unseen, about a
+        // second after it was shown). A private Space is destroyed `privateRetire` after the window left it (the poll,
+        // Margin's quit; 0: at once, the tests' stand-in for the old way). A window's own full-screen Space (Mission
+        // Control lists it, so it can't wait as long) once the move has shown for `destroyAfterMove` (out of Margin's
+        // Space again before that: moved in again); the window is in place once it has then stayed in Margin's Space
+        // alone for `memberSettle`, put back if it's found in none (each at most `memberReadds` times). What it costs:
+        // 0.2 s per first open and per placing (the two together; 0.15 s on the slow path); nothing on a switch.
+        var privateRetire = 1.0
+        var destroyAfterMove = 0.05
+        var memberSettle = 0.15
+        var memberReadds = 3
         var every = 0.02
         var tolerance: CGFloat = 1
         var safariBundle = safariIdentifier
@@ -148,6 +179,8 @@ final class HostEngine {
         var outsideOpens = 0
         var unread = 0 // polls in a row its window's bounds didn't read
         var strays = 0 // polls in a row it was found where it mustn't be (shown: outside Margin's Space; parked: in a user Space)
+        var returns: [Double] = [] // when it was last brought back into Margin's Space after straying (`returnsMax`)
+        var askedFullScreenAt: Double? // when it was last asked into full screen (for the log of a stray)
         var mode = HostMode.fullScreen
         var resizable = true
         var unseen = false // Accessibility didn't list its window (on another Space): read once it's in Margin's Space
@@ -185,7 +218,7 @@ final class HostEngine {
     private let markerURL: URL?
     private let ownPid: Int32
     private(set) var hosts: [HostID: Host] = [:]
-    private(set) var shown: HostID? { didSet { announceAbove() } }
+    private(set) var shown: HostID? { didSet { if shown != nil, shown != oldValue { shownAt = sys.now() }; announceHosted() } }
     private(set) var launched: [pid_t: HostApp] = [:] // apps Margin started, while they run
     private(set) var leftSpaces: Set<UInt64> = [] // hosted windows' own full-screen Spaces a destroy hasn't taken yet
     private(set) var leftSafariWindows: [HostMarker.SafariWindow] = [] // Safari windows Margin asked for, their close not confirmed
@@ -214,16 +247,39 @@ final class HostEngine {
     // Wired by the shell: waits until that profile's extension copy is linked (true), before Safari's windows are read
     // and a window asked for, so windows a Safari just started restores meanwhile are never taken for Margin's own.
     var safariLinked: ((String?) async -> Bool)?
-    // Told the window of the host now shown in Margin's Space (nil: none is): Margin's window is kept right below it
-    // (whenever Margin's window comes to the front, it's ordered below that window again).
-    var keepAbove: ((Int?) -> Void)?
+    // Told the window of the host now shown in Margin's Space (nil: none is): Margin's window is in front of it, its
+    // page area a hole over it (MarginWindowController `setHosted`).
+    var hostedWindow: ((Int?) -> Void)?
     // Told when a slow step starts for a host (its first open, its placing again: Margin's page area shows a loading
     // animation for it) and when it's over (nil).
     var loading: ((HostID?) -> Void)?
-    // Told the window of a new app brought into Margin's Space only to be read (not placed or shown yet: Margin's window
-    // is ordered above it meanwhile, so it's never seen standing on its own over Margin), nil once that's over.
+    // Told the window of a new app brought into Margin's Space only to be read, or made ready out of sight (not shown
+    // yet: Margin's window is in front of it and opaque meanwhile, so it's never seen), nil once that's over.
     var cover: ((Int?) -> Void)?
-    private var aboveSaid: Int?
+    // Told another app's normal window that's on screen in Margin's Space, reaches outside the page area and came while
+    // nothing was being opened (a hosted app's Settings or second document, dragged over the sidebar): Margin's window
+    // lets it in front until it's gone (nil). See `lookForOthers`.
+    var others: ((Int?) -> Void)?
+    private var hostedSaid: Int?
+    private var otherSaid: Int?
+    // Other apps' windows seen on screen in Margin's Space (their numbers): true, one Margin lets in front; false, one
+    // that came during an operation from an app Margin hosts (its toolbar's window, what a Safari Margin started
+    // restores): never. And whether an operation ran since the last look.
+    private var otherSeen: [Int: Bool] = [:]
+    private var ranSinceLook = true
+    private var retired: [UInt64: Double] = [:] // private Spaces a window was moved out of, and when: destroyed later (`privateRetire`)
+    // The last full-screen ask: when, and the full-screen Spaces listed before it (the poll's late watch, `lateWatch`).
+    private var lateAsk: (at: Double, before: Set<UInt64>)?
+    private var shownAt = 0.0 // when the one shown was last shown or placed
+    // The poll's look at the window server's on-screen list: reads in a row something of Margin's Space wasn't on
+    // screen, when it was last acted on, and whether giving up was said.
+    private var offReads = 0
+    private var offTries: [Double] = []
+    private var offSaid = false
+    // What the poll last read of each host, said when it changes (the log of a stray names what was read before it).
+    private struct PollRead: Equatable { var phase: Phase; var spaces: [UInt64]?; var marginHere: Bool; var onScreen: String }
+    private var pollSaid: [HostID: PollRead] = [:]
+    private var pollHeldSince: Double?
     private var coverSaid: Int?
     private var loadingSaid: HostID?
     private var freezeHolds = 0 // steps holding the freeze now (Margin's quit gives every host back at once)
@@ -250,7 +306,7 @@ final class HostEngine {
 
     // ---- the API ----
 
-    // Opens `target` (shows it again if it's hosted already) above Margin's window, at `placement`.
+    // Opens `target` (shows it again if it's hosted already) under Margin's window, at `placement`.
     func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult {
         await serial {
             self.placement = placement
@@ -368,6 +424,7 @@ final class HostEngine {
             // (A reservation on Margin's own Space is never made now; one left by an older build is given back.)
             if self.marginSpace > 0, let r = self.sys.reserved(space: self.marginSpace), !r.isZero { _ = self.sys.reserve(.zero, space: self.marginSpace) }
             await self.destroyLeftSpaces()
+            await self.destroyRetired(all: true)
             self.checkOrphans("at quit")
             self.checkListed("at quit")
             self.saveMarker()
@@ -387,9 +444,18 @@ final class HostEngine {
     }
 
     // The shell's poll: a hosted app quit or promoted, its window gone, a left Space destroyed. Skipped while an
-    // operation runs (it reads the same things).
+    // operation runs (it reads the same things); held off that way for over a second, it's said once.
     func poll() {
-        guard !busy else { return }
+        if busy {
+            if let since = pollHeldSince {
+                if since >= 0, sys.now() - since > 1 { Diagnostics.note("host: poll held off by an operation for over \(ms(since: since)) ms"); pollHeldSince = -1 }
+            } else { pollHeldSince = sys.now() }
+            return
+        }
+        pollHeldSince = nil
+        pollScreen = nil
+        polls += 1
+        polledAt = sys.now()
         // (An app a row's close asked to quit, still running `quitWait` later: it didn't quit, Margin's again.)
         for pid in overdue() { if let back = takeBack(pid) { Task { await self.sayNotQuit(back) } } }
         // (Margin's window out of its Space, macOS took it out of full screen: the one shown is a stray too.)
@@ -402,14 +468,22 @@ final class HostEngine {
             // Where it mustn't be, twice in a row (one read can miss mid-transition): the one shown outside Margin's
             // Space (Margin's window left full screen), a parked one in a user Space.
             let spaces = sys.spaces(window: host.window)
+            sayRead(host, spaces: spaces, marginHere: marginHere)
             let strayed = host.phase == .shown ? (!marginHere || (spaces.map { $0 != [marginSpace] } ?? false)) : host.phase == .parked && !(spaces ?? []).isEmpty
             host.strays = strayed ? host.strays + 1 : 0
-            if host.strays >= 2 {
+            // (The one shown in no Space at all is never a read that missed mid-transition: nothing puts a window there
+            // but a Space destroyed under it. Brought back at the first read.)
+            let nowhere = host.phase == .shown && marginHere && spaces == []
+            if host.strays >= 2 || nowhere {
                 host.strays = 0
                 let id = host.id
-                Task { await serial { await self.strayed(id) } }
+                Task { await serial { await self.strayed(id, marginHere: marginHere) } }
             }
         }
+        keepCurrentLate()
+        lookOnScreen()
+        lookForOthers()
+        if !retired.isEmpty { Task { await serial { await self.destroyRetired() } } }
         if !leftSpaces.isEmpty, marginSpace > 0, sys.currentSpace(onDisplayOf: marginSpace) == marginSpace {
             Task { await serial { await self.destroyLeftSpaces() } }
         }
@@ -418,6 +492,135 @@ final class HostEngine {
             leftTried = sys.now()
             Task { await serial { await self.closeLeftSafariWindows() } }
         }
+    }
+
+    // What the engine reads of the one shown, right now, in one line of numbers (the dev hook's `front` line carries it:
+    // a check's own process reads the same things of the window server at the same moment, and on 2026-11-17 the two
+    // differed), with how many polls have read and how long ago the last did.
+    private(set) var polls = 0
+    private var polledAt = 0.0
+    func readShown() -> String {
+        func on(_ n: Int, _ list: [ServerWindow]?) -> String { list.map { l in l.contains { $0.number == n } ? "on screen" : "off screen" } ?? "the on-screen list unread" }
+        let polled = "polls \(polls)" + (polls > 0 ? " (the last \(ms(since: polledAt)) ms ago\(busy ? ", an operation running" : ""))" : "")
+        guard let id = shown, let host = hosts[id] else { return "\(polled), nothing shown" }
+        let list = sys.onScreenWindows()
+        return "\(polled), \(id) window \(host.window) in \(sys.spaces(window: host.window).map { "\($0)" } ?? "unread") and \(on(host.window, list))"
+            + ", Margin's window \(marginWindow) in \(sys.spaces(window: marginWindow).map { "\($0)" } ?? "unread") and \(on(marginWindow, list))"
+            + ", Margin's Space \(marginSpace), its display on \(sys.currentSpace(onDisplayOf: marginSpace).map { "\($0)" } ?? "unread")"
+    }
+
+    // The window server's on-screen list, read once per poll (the look for others and the on-screen look share it).
+    private var pollScreen: [ServerWindow]??
+    private func screenList() -> [ServerWindow]? {
+        if let read = pollScreen { return read }
+        let list = sys.onScreenWindows()
+        pollScreen = .some(list)
+        return list
+    }
+
+    // What the poll read of a host, said when it isn't what it should be (shown: in Margin's Space alone, Margin's window
+    // in it, both on screen; parked: in no user Space) and when that changes: the log of a stray then has what was read
+    // before it, and a read that differs from another process's shows (2026-11-17: the window server gave a check's
+    // process no Space for the shown window while nothing here was logged). Nothing is said while all is as it should be.
+    private func sayRead(_ host: Host, spaces: [UInt64]?, marginHere: Bool) {
+        var screen = ""
+        if host.phase == .shown, shown == host.id, let look = screenLook(screenList()) {
+            screen = "Margin's window \(look.margin ? "on" : "off") screen, its window \(look.host ? "on" : "off") screen"
+            if look.margin, look.host { screen = "" }
+        }
+        let fine = host.phase == .preparing || (host.phase == .shown ? spaces == [marginSpace] && marginHere && screen.isEmpty : spaces == [])
+        let read = PollRead(phase: host.phase, spaces: spaces, marginHere: marginHere, onScreen: screen)
+        guard pollSaid[host.id] != read else { return }
+        let was = pollSaid[host.id]
+        pollSaid[host.id] = fine ? nil : read
+        if pollSaid.count > hosts.count { pollSaid = pollSaid.filter { hosts[$0.key] != nil } }
+        guard !fine else {
+            if was != nil { Diagnostics.note("host: poll: \(host.id): as it should be again (\(host.phase), its window \(host.window) in \(spaces.map { "\($0)" } ?? "Spaces that don't read"))") }
+            return
+        }
+        Diagnostics.note("host: poll: \(host.id): \(host.phase), its window \(host.window) in \(spaces.map { "\($0)" } ?? "Spaces that don't read"), Margin's Space \(marginSpace)\(marginHere ? "" : ", Margin's window out of it")"
+                         + (screen.isEmpty ? "" : ", \(screen)") + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? ""))
+    }
+
+    // macOS finishing its own full-screen change after the engine is done with it (2026-11-17): for `lateWatch` after a
+    // full-screen ask, a Space made current on Margin's display that wasn't listed before the ask is undone at the
+    // poll's read (said). A Space the person had (listed before, or any Desktop) is never touched.
+    private func keepCurrentLate() {
+        guard let ask = lateAsk else { return }
+        guard sys.now() - ask.at < options.lateWatch else { lateAsk = nil; return }
+        guard marginSpace > 0, !quitting, let now = sys.currentSpace(onDisplayOf: marginSpace), now != marginSpace, !ask.before.contains(now),
+              sys.spaceType(now) != ManagedSpace.desktopType else { return }
+        let done = sys.setCurrentSpace(marginSpace)
+        Diagnostics.note("host: macOS made Space \(now) current \(ms(since: ask.at)) ms after a full-screen ask, once the engine was done: Margin's Space \(done ? "made current again" : "couldn't be made current again")")
+    }
+
+    // What the window server's on-screen list has of Margin's own window and of the one shown, when it should have
+    // both: something shown, Margin's window in its Space, that Space the current one of its display by the window
+    // server's list of displays (or the current one a Space that isn't listed at all: never the person's doing), the
+    // screen not locked or asleep, neither app hidden. Nil: it doesn't apply (the person is on another Space), or no list.
+    private func screenLook(_ list: [ServerWindow]?) -> (margin: Bool, host: Bool)? {
+        guard let id = shown, let host = hosts[id], host.phase == .shown, marginWindow != 0, marginSpace > 0, !quitting,
+              sys.spaces(window: marginWindow)?.contains(marginSpace) != false,
+              let current = sys.currentSpace(onDisplayOf: marginSpace), current == marginSpace || sys.spaceExists(current) == false,
+              !sys.screenAway(), sys.isHidden(pid: ownPid) != true, sys.isHidden(pid: host.pid) != true, let list else { return nil }
+        return (list.contains { $0.number == marginWindow }, list.contains { $0.number == host.window })
+    }
+
+    // The Spaces reads can all look right while nothing of Margin's Space is on screen (2026-11-17, the real Mac, after
+    // macOS finished a full-screen change into a Space that was gone: the shown window in Margin's Space by Margin's
+    // read, in none by another process's, and neither it nor Margin's own window in the on-screen list). So the poll
+    // looks there too. The hosted window missing with Margin's own on screen, within `lateWatch` of its show: acted on
+    // at the first read. Anything else missing (Margin's own window; the hosted one later): at the second read in a
+    // row (a transition can miss one). Later than `lateWatch`, with Margin's window on screen, a missing hosted window
+    // is its app's own doing (minimized): said by the poll's read, left alone.
+    private func lookOnScreen() {
+        guard let id = shown, let look = screenLook(screenList()), !(look.margin && look.host) else {
+            offReads = 0
+            if shown == nil || screenLook(screenList()) != nil { offSaid = false }
+            return
+        }
+        offReads += 1
+        let fresh = sys.now() - shownAt < options.lateWatch
+        guard look.margin ? fresh : offReads >= 2 else { return }
+        offReads = 0
+        Task { await serial { await self.backOnScreen(id) } }
+    }
+
+    // Another app's normal window on screen in Margin's Space that the person opened (the poll; one window-server read):
+    // layer 0, visible, not a hosted window, on Margin's display and reaching outside the page area (one inside it shows
+    // through the hole and takes its clicks as it is: a sheet, a small Settings window). Margin's window lets the front
+    // one in front until it's gone. Never one of an app Margin hosts that came during an operation (first seen at the
+    // first look after it: the window of a full-screen window's toolbar, the windows a Safari Margin started restores
+    // before they're swept), nor one of a hosted app that isn't the one shown (the person can't have opened it: its app
+    // is out of sight): those stay behind Margin's window, as everything of an opening does. No per-app rules.
+    private func lookForOthers() {
+        guard others != nil else { return }
+        let fresh = ranSinceLook
+        ranSinceLook = false
+        guard marginWindow != 0, marginSpace > 0, hasHosts, sys.currentSpace(onDisplayOf: marginSpace) == marginSpace, let list = screenList() else {
+            otherSeen = [:]
+            return say(other: nil)
+        }
+        let hosted = Set(hosts.values.map(\.window))
+        let hostedPids = Set(hosts.values.map(\.pid)).union(launched.keys)
+        let shownPid = shown.flatMap { hosts[$0] }.flatMap { $0.phase == .shown ? $0.pid : nil }
+        let page = placement.page.insetBy(dx: -1, dy: -1)
+        var front: Int?
+        var now: [Int: Bool] = [:]
+        for w in list where w.layer == 0 && w.pid != ownPid && w.number != marginWindow && w.alpha > 0 && !hosted.contains(w.number) {
+            guard w.bounds.width >= 80, w.bounds.height >= 80, w.bounds.intersects(placement.area), !page.contains(w.bounds) else { continue }
+            let lets = otherSeen[w.number] ?? (hostedPids.contains(w.pid) ? !fresh && w.pid == shownPid : true)
+            now[w.number] = lets
+            if lets, front == nil { front = w.number }
+        }
+        otherSeen = now
+        say(other: front)
+    }
+
+    private func say(other number: Int?) {
+        guard number != otherSaid else { return }
+        otherSaid = number
+        others?(number)
     }
 
     // At launch, before anything is hosted: a crashed Margin's windows given back, its apps quit, its Spaces given back.
@@ -435,6 +638,50 @@ final class HostEngine {
         _ = await sys.activate(pid: host.pid, window: host.window)
     }
 
+    // A private Space a window was just moved out of: destroyed later, never in the same breath as the move.
+    private func retirePrivate(_ space: UInt64) {
+        guard options.privateRetire > 0 else { _ = sys.destroyPrivateSpace(space); return }
+        retired[space] = sys.now()
+    }
+
+    // The retired private Spaces old enough, destroyed (the poll); `all`: every one, the youngest's settle waited out
+    // first (Margin's quit: 0.3 s at most, so a window just given back to its Desktop isn't taken with its Space).
+    private func destroyRetired(all: Bool = false) async {
+        if all, let youngest = retired.values.max() {
+            let left = min(options.privateRetire, 0.3) - (sys.now() - youngest)
+            if left > 0 { await sys.sleep(left) }
+        }
+        for (space, at) in retired where all || sys.now() - at >= options.privateRetire {
+            _ = sys.destroyPrivateSpace(space)
+            retired[space] = nil
+        }
+    }
+
+    // A window just moved into Margin's Space, the Space it came from destroyed: in place only once it has stayed in
+    // Margin's Space alone, where it should be, for `memberSettle` (the read right after the destroy said so on the real
+    // Mac and the window was in no Space a moment later). Found in no Space meanwhile: put back into Margin's Space
+    // (`memberReadds` times at most), the clock started again. (in place, how many times it was put back)
+    private func settleMember(_ host: Host, at ok: () -> Bool = { true }, each: () -> Void = {}) async -> (Bool, Int) {
+        var since: Double?
+        var readds = 0
+        let settled = await wait(options.memberWait + options.memberSettle * Double(options.memberReadds + 1), every: options.memberEvery) {
+            each()
+            let spaces = self.sys.spaces(window: host.window)
+            if spaces == [], readds < self.options.memberReadds {
+                readds += 1
+                since = nil
+                _ = self.sys.move(window: host.window, to: self.marginSpace)
+                return false
+            }
+            guard spaces == [self.marginSpace], ok() else { since = nil; return false }
+            let from = since ?? self.sys.now()
+            since = from
+            return self.sys.now() - from >= self.options.memberSettle
+        }
+        if readds > 0 { Diagnostics.note("host: \(host.id): its window was in no Space after its move into Margin's (\(readds) time\(readds == 1 ? "" : "s")): put back\(settled ? ", there now" : ", still not there")") }
+        return (settled, readds)
+    }
+
     // ---- what the hosting reads ----
 
     // Whether `id` is hosted now (opened, shown or parked).
@@ -443,14 +690,14 @@ final class HostEngine {
     // How `id` is shown (nil: not hosted).
     func mode(of id: HostID) -> HostMode? { hosts[id]?.mode }
 
-    // The window of the host shown in Margin's Space, nil if none (Margin's window is kept below it).
-    var shownAbove: Int? { shown.flatMap { hosts[$0] }.flatMap { $0.phase == .shown ? $0.window : nil } }
+    // The window of the host shown in Margin's Space, nil if none (Margin's window is in front of it).
+    var shownWindow: Int? { shown.flatMap { hosts[$0] }.flatMap { $0.phase == .shown ? $0.window : nil } }
 
-    private func announceAbove() {
-        let now = shownAbove
-        guard now != aboveSaid else { return }
-        aboveSaid = now
-        keepAbove?(now)
+    private func announceHosted() {
+        let now = shownWindow
+        guard now != hostedSaid else { return }
+        hostedSaid = now
+        hostedWindow?(now)
     }
 
     private func say(cover number: Int?) {
@@ -494,6 +741,7 @@ final class HostEngine {
         let task = Task { () -> T in
             _ = await previous?.value
             self.busy = true
+            self.ranSinceLook = true
             let value = await body()
             self.busy = false
             return value
@@ -854,7 +1102,7 @@ final class HostEngine {
 
     // A window-mode host shown: the one shown before out of Margin's Space first (a member parked, still full screen;
     // a window its frame given back, then parked), then its window into Margin's Space (out of its private Space, or off
-    // its Desktop) and placed in the page area, kept above Margin's window, its app in front. Under the freeze.
+    // its Desktop) and placed in the page area, under Margin's window, its app in front. Under the freeze.
     private func bringInWindow(_ host: Host, isNew: Bool, retrying: Bool) async -> HostResult {
         let started = sys.now()
         var times: [String] = []
@@ -878,12 +1126,12 @@ final class HostEngine {
             }
         }
         if let priv = host.privateSpace {
-            _ = sys.destroyPrivateSpace(priv)
+            retirePrivate(priv)
             host.privateSpace = nil
         }
         step("into Margin's Space", t0)
         host.phase = .shown
-        shown = host.id // (Margin's window kept below it from now: keepAbove)
+        shown = host.id // (Margin's window in front of it from now: hostedWindow)
         saveMarker()
         t0 = sys.now()
         let placed = await placeWindow(host)
@@ -973,7 +1221,7 @@ final class HostEngine {
             host.away = true
             if sys.move(window: host.window, to: current) {
                 _ = await wait(options.parkWait) { self.sys.spaces(window: host.window)?.contains(current) == true }
-                if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv); host.privateSpace = nil }
+                if let priv = host.privateSpace { retirePrivate(priv); host.privateSpace = nil }
             }
         }
         let from = sys.bounds(window: host.window) ?? original
@@ -1004,7 +1252,7 @@ final class HostEngine {
                 Diagnostics.warn("host: \(host.id): its window didn't go back to its Space")
             }
         }
-        if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv); host.privateSpace = nil }
+        if let priv = host.privateSpace { retirePrivate(priv); host.privateSpace = nil }
         host.away = false
         // (The person's window macOS took out of full screen: its frame as it was, if it's not and Accessibility sees it.)
         if host.personApp, host.mode == .fullScreen, let o = host.original, let b = sys.bounds(window: host.window), !HostLayout.near(b, o, within: options.tolerance) {
@@ -1019,7 +1267,7 @@ final class HostEngine {
         await restoreFrame(host)
         guard let priv = sys.createPrivateSpace() else { return false }
         guard sys.move(window: host.window, to: priv), await wait(options.parkWait, { self.sys.spaces(window: host.window) == [] }) else {
-            _ = sys.destroyPrivateSpace(priv)
+            retirePrivate(priv)
             // (Still shown in Margin's Space: in the page area again.)
             if sys.spaces(window: host.window) == [marginSpace] { await placeWindow(host) }
             return false
@@ -1090,11 +1338,11 @@ final class HostEngine {
             step("park \(previous.id)", t0)
         }
         if let priv = host.privateSpace {
-            _ = sys.destroyPrivateSpace(priv)
+            retirePrivate(priv)
             host.privateSpace = nil
         }
         host.phase = .shown
-        shown = host.id // (Margin's window kept below it from now: keepAbove)
+        shown = host.id // (Margin's window in front of it from now: hostedWindow)
         saveMarker()
         t0 = sys.now()
         if await front(host) { step("front", t0) }
@@ -1143,7 +1391,8 @@ final class HostEngine {
             }
             guard await leaveMember(host) else {
                 releaseFreeze(frozen)
-                return await giveUp(host, isNew: false, .exitFullScreen, "it didn't leave full screen to be placed again", previous: previous)
+                // (Still the full-screen member it was: never torn down for a placing that didn't start.)
+                return await keepAsPlaced(host, "it didn't leave full screen to be placed again")
             }
             if shown == host.id { shown = nil }
             host.phase = .preparing
@@ -1159,10 +1408,10 @@ final class HostEngine {
             }
             step("unpark", t0)
         }
-        // 3. full screen. The early path first, with no freeze: its new Space reserved to the page area as soon as it's
-        // listed, its window moved into Margin's Space and that Space destroyed once the window has the page frame, all
-        // before macOS's Space switch (Margin's Space kept current meanwhile). Else the slow path: in a Space of its own,
-        // macOS's jump there undone, under the freeze (held on from a seen exit above), then steps 5-7.
+        // 3. full screen, under the freeze (held on from a seen exit above). The early path first: its new Space reserved
+        // to the page area as soon as it's listed, its window moved into Margin's Space and that Space destroyed once
+        // macOS has brought the window into it and switched to it (undone: Margin's Space kept current). Else the slow
+        // path: in a Space of its own, macOS's jump there undone, then steps 5-7.
         t0 = sys.now()
         jumps = 0
         let entry = await enterFullScreen(host, frozen: &frozen)
@@ -1173,10 +1422,10 @@ final class HostEngine {
             return await fallBack(host, isNew: isNew, retrying: retrying, .fullScreen, reason, previous: previous)
         case .own:
             early = false
-            step("full screen\(jumps > 0 ? " (\(jumps) jump\(jumps == 1 ? "" : "s") undone\(frozen ? " under the freeze" : ", no freeze"))" : "")", t0)
+            step("full screen\(jumps > 0 ? " (\(jumps) jump\(jumps == 1 ? "" : "s") undone\(frozen ? " under the freeze" : ", the freeze not taken"))" : "")", t0)
         case .member(let how):
             early = true
-            step("full screen, at the page area and in Margin's Space early (\(how)\(frozen ? "; under the freeze of its exit" : "; no freeze"))", t0)
+            step("full screen, at the page area and in Margin's Space early (\(how)\(frozen ? "; under the freeze" : "; the freeze not taken"))", t0)
         }
 
         // 4. Safari's own sidebar hidden, in a window Margin may touch (early: read in Margin's Space, the current one).
@@ -1223,6 +1472,12 @@ final class HostEngine {
                     leftSpaces.insert(own)
                     emit(.failed(host.id, .destroy, "its own Space \(own) didn't go: tried again later"))
                 }
+                // (In Margin's Space for good only once it has stayed there after that destroy: put back if it's in none.)
+                t0 = sys.now()
+                guard await settleMember(host).0 else {
+                    return await giveUp(host, isNew: isNew, .member, "its window didn't stay in Margin's Space once its own Space was destroyed", previous: previous)
+                }
+                step("settled", t0)
             }
         }
         host.member = true
@@ -1230,7 +1485,7 @@ final class HostEngine {
         if prepared {
             // 8. made ready out of sight: parked at once, its app not activated.
             t0 = sys.now()
-            cover?(host.window) // (ordered above it again now it's in Margin's Space)
+            cover?(host.window) // (Margin's window in front of it now it's in Margin's Space: the ordering way orders it there)
             guard await parkMember(host) else {
                 return await giveUp(host, isNew: isNew, .park, "prepared, but its window couldn't leave Margin's Space", previous: nil)
             }
@@ -1240,7 +1495,7 @@ final class HostEngine {
             return .shown(host.id, placed: true)
         }
         host.phase = .shown
-        shown = host.id // (Margin's window kept below it from now: keepAbove)
+        shown = host.id // (Margin's window in front of it from now: hostedWindow)
         saveMarker()
 
         // 8. its app in front.
@@ -1250,6 +1505,32 @@ final class HostEngine {
         Diagnostics.note("host: \(host.id) \(again ? "placed again" : "shown") in \(total) ms (\(times.joined(separator: ", ")))")
         emit(.shown(host.id, ms: total))
         return .shown(host.id, placed: true)
+    }
+
+    // A member whose placing again didn't start (its exit from full screen wasn't confirmed by the window server): kept
+    // hosted as it is, at the frame it had. Back into Margin's Space (Safari's was parked for its exit), shown, its app
+    // in front, `placedPage` unchanged: Margin's window draws its hole at the window's own bounds (the theme's frame
+    // colour in any gap, the sidebar over what it covers), and the next show or change of the page area tries again.
+    // The item is never closed for it (2026-11-17: a failed second placing lost the Safari window).
+    private func keepAsPlaced(_ host: Host, _ reason: String) async -> HostResult {
+        emit(.failed(host.id, .exitFullScreen, reason))
+        Diagnostics.note("host: \(host.id): \(reason): kept as it was (\(host.placedPage.map(r) ?? "its frame"); the page area is \(r(placement.page)))")
+        if sys.spaces(window: host.window) != [marginSpace] {
+            guard sys.move(window: host.window, to: marginSpace),
+                  await wait(options.memberWait, every: options.memberEvery, { self.sys.spaces(window: host.window) == [self.marginSpace] }) else {
+                await park(host)
+                return .failed(.unpark, "its window didn't come back into Margin's Space after \(reason)")
+            }
+        }
+        if let priv = host.privateSpace {
+            retirePrivate(priv)
+            host.privateSpace = nil
+        }
+        host.phase = .shown
+        shown = host.id
+        saveMarker()
+        _ = await front(host)
+        return .shown(host.id, placed: false)
     }
 
     // Full screen failed, or its window didn't take the page area's size that way: an app's window backed out of
@@ -1338,8 +1619,11 @@ final class HostEngine {
     private enum Entry { case own, member(String), failed(String) }
 
     // Full screen asked (Accessibility's AXFullScreen; a Safari window Margin's copy made: its copy's setWindowState),
-    // the early path tried first with no freeze; failing it, the slow path under the freeze (`frozen`: taken here if
-    // it isn't held yet, released by the caller).
+    // the early path tried first; failing it, the slow path. Both under the freeze, from the ask on (`frozen`: taken
+    // here if it isn't held yet, released by the caller as this returns, whatever it returns; the freezer's own
+    // watchdog reveals 1.7 s after it was taken, whatever happens): macOS switches to the window's new Space on its
+    // way, which showed as a flash of that Space on a first open (2026-11-17: `1 Space change undone … no freeze`).
+    // What's frozen is Margin's window with its loader.
     private func enterFullScreen(_ host: Host, frozen: inout Bool) async -> Entry {
         func ownSpace() -> UInt64? {
             guard let list = sys.spaces(window: host.window) else { return nil }
@@ -1359,6 +1643,8 @@ final class HostEngine {
         // its window already has a Space of its own, or the list doesn't read).
         var before: Set<UInt64>?
         if options.earlyFullScreen, ownSpace() == nil, let owners = sys.fullScreenSpaceOwners() { before = Set(owners.keys) }
+        let listed = before ?? Set(sys.listedFullScreenSpaces() ?? [])
+        if !frozen { frozen = holdFreeze() }
         if copy {
             if ownSpace() == nil { askCopy() }
         } else if await sys.isFullScreen(pid: host.pid, window: host.window) != true {
@@ -1367,17 +1653,18 @@ final class HostEngine {
             before = nil // (already full screen: its Space is the slow path's to read)
         }
         var asked = sys.now()
+        host.askedFullScreenAt = asked
+        lateAsk = (asked, listed)
         if let before {
             let t = sys.now()
             switch await early(host, before: before, refused: { copy && ask?.answer == false }) {
             case .placed(let how):
-                Diagnostics.note("host: \(host.id): full screen by the early path in \(ms(since: t)) ms (\(how)), no freeze")
+                Diagnostics.note("host: \(host.id): full screen by the early path in \(ms(since: t)) ms (\(how)), \(frozen ? "under the freeze" : "the freeze not taken")")
                 return .member(how)
             case .slow(let why):
-                Diagnostics.note("host: \(host.id): the early full screen fell back after \(ms(since: t)) ms (\(why)): the slow path, under the freeze")
+                Diagnostics.note("host: \(host.id): the early full screen fell back after \(ms(since: t)) ms (\(why)): the slow path")
             case .again(let why):
-                Diagnostics.note("host: \(host.id): the early full screen fell back after \(ms(since: t)) ms (\(why)): backed out and asked again, the slow path, under the freeze")
-                if !frozen { frozen = holdFreeze() }
+                Diagnostics.note("host: \(host.id): the early full screen fell back after \(ms(since: t)) ms (\(why)): backed out and asked again, the slow path")
                 await backOut(host)
                 if copy {
                     askCopy()
@@ -1385,9 +1672,10 @@ final class HostEngine {
                     guard await sys.setFullScreen(pid: host.pid, window: host.window, true) else { return .failed("AXFullScreen couldn't be set again") }
                 }
                 asked = sys.now()
+                host.askedFullScreenAt = asked
+                lateAsk = (asked, listed)
             }
         }
-        if !frozen { frozen = holdFreeze() }
         var askedAgain = false
         var space: UInt64?
         let came = await wait(options.fullScreenWait) {
@@ -1405,6 +1693,9 @@ final class HostEngine {
             }
             if !askedAgain, self.sys.now() - asked >= self.options.fullScreenAskAgain {
                 askedAgain = true
+                // (macOS ignores a full-screen ask for a window of an app that isn't active, and one made while the
+                // window is still changing: its app in front first, unless it's being made ready out of sight.)
+                if !self.preparing, !self.quitting { _ = await self.sys.activate(pid: host.pid, window: host.window) }
                 if copy { if ask?.answer != nil { askCopy() } } else { _ = await self.sys.setFullScreen(pid: host.pid, window: host.window, true) }
             }
             return false
@@ -1422,16 +1713,19 @@ final class HostEngine {
 
     private enum Early { case placed(String), slow(String), again(String) }
 
-    // The early full screen (measured on the real Mac 2026-11-16, /tmp/margin-toolbar-test/fsopen/early2.swift, a test
-    // app with a stand-in Margin's Space current): a window asked into full screen has its new Space listed, owned by
-    // its app, at ~40 ms, well before the window server says the window is in it (~600 ms, with macOS's Space switch).
-    // That Space's edges reserved at once give the window the page frame at ~110 ms though it isn't a member yet; moved
-    // into Margin's Space then and its own Space destroyed, it's in place at ~130 ms, still full screen, and with Margin's
-    // Space kept current the screen never left it: no slide to hide, so no freeze. Never destroyed before the window has
-    // the page frame (destroyed earlier, the window keeps the display's whole size). The window reported in its own Space
-    // before it has the page frame is normal (macOS adds it to that Space as it lays it out, seen on the real Mac
-    // 2026-11-16: every first open fell back on that rule): waited past, Margin's Space kept current all along (macOS's
-    // switch to the new Space undone at once), until the page frame or `earlyFrameWait`. `.slow`: nothing undone, the ask
+    // The early full screen. Measured on the real Mac (2026-11-16, /tmp/margin-toolbar-test/fsopen/early2.swift): a
+    // window asked into full screen has its new Space listed, owned by its app, at ~40 ms; that Space's edges reserved
+    // at once make macOS lay the window out at the page area itself (at ~35 ms in some runs, only after the window is in
+    // its Space, ~585 ms, in others). The window server says the window is in its Space at ~525 ms, and macOS switches
+    // to that Space at ~600 ms.
+    // The window is moved into Margin's Space only after both (2026-11-17, check10e/f on the real Mac: every placing
+    // that moved it as soon as it had the page frame, at ~90 ms, ended with the window in no Space and neither window
+    // on screen about a second later, 4 of 4; every one that moved it after "in its Space" held, 10 of 10: macOS
+    // finishes its own change afterwards whatever the bridge did meanwhile, into a Space that's gone by then). So:
+    // 1. its new Space listed, reserved at once (preparation only); 2. the window at the page area AND in its own Space
+    // by the window server AND macOS's switch to that Space seen and undone (or `earlySwitchWait` with none): macOS's
+    // change is over; 3. moved in, held, its Space destroyed, settled (`settleMember`). Margin's Space is kept current
+    // all along, under the freeze the caller holds (macOS's switch would be seen). `.slow`: nothing undone, the ask
     // still running (the slow path takes it from there, its Space as the one found); `.again`: the window isn't where it
     // should be after the move and destroy (backed out and asked again by the caller).
     private func early(_ host: Host, before: Set<UInt64>, refused: () -> Bool) async -> Early {
@@ -1440,23 +1734,29 @@ final class HostEngine {
         let page = placement.page
         var space: UInt64?
         var reservedAt = t0
-        var memberSeen = false
+        var memberAt: Double? // when the window server first had the window in its own Space: macOS's change brought it there
+        var switched = false // macOS made a Space current that wasn't listed before the ask (undone): the last step of its change
+        var sized = false
         var times: [String] = []
         func mark(_ what: String) { times.append("\(what) \(ms(since: t0))") }
         func said() -> String { times.joined(separator: ", ") + (jumps > 0 ? "; \(jumps) Space change\(jumps == 1 ? "" : "s") undone" : "") }
         func there() -> Bool { sys.bounds(window: host.window).map { HostLayout.near($0, page, within: options.tolerance) } ?? false }
         func inOwn(_ s: UInt64) -> Bool { sys.spaces(window: host.window)?.contains(s) == true }
         // Margin's Space kept current: a Space made current that wasn't listed before the ask (macOS's switch to the new
-        // one) is undone at once; a Space the person had is left alone.
+        // one) is undone at once. A Space the person went to meanwhile (a full-screen one listed before, any Desktop) is
+        // left alone, and is the one gone back to when macOS's switch takes them from it.
+        var home = marginSpace
         func keepCurrent() {
-            guard let now = sys.currentSpace(onDisplayOf: marginSpace), now != marginSpace, !before.contains(now) else { return }
-            if sys.setCurrentSpace(marginSpace) { jumps += 1 }
+            guard let now = sys.currentSpace(onDisplayOf: marginSpace) else { return }
+            if now == marginSpace || before.contains(now) || sys.spaceType(now) == ManagedSpace.desktopType { home = now; return }
+            if !switched { switched = true; mark("macOS's switch undone") }
+            if sys.setCurrentSpace(home) { jumps += 1 }
         }
         // 1. its new Space listed (owned by its app, or holding its window), its edges reserved to the page area at once;
-        // 2. its window at the page area (that Space lays it out; the window may be reported in it before or after).
+        // 2. its window at the page area, in its own Space, and macOS's switch to that Space seen (or waited for).
         while true {
             if refused() { return .slow("its copy didn't ask Safari for full screen") }
-            if let s = space, !memberSeen, inOwn(s) { memberSeen = true; mark("in its Space") }
+            if let s = space, memberAt == nil, inOwn(s) { memberAt = sys.now(); mark("in its Space") }
             if space == nil, let owners = sys.fullScreenSpaceOwners() {
                 let new = owners.keys.filter { s in !before.contains(s) && s != marginSpace && (owners[s] == host.pid || inOwn(s)) }.sorted()
                 if new.count > 1 { return .slow("\(new.count) new full-screen Spaces of its app: which is its window's isn't known") }
@@ -1466,37 +1766,70 @@ final class HostEngine {
                     host.fullScreenSpace = s
                     ownSpaces.insert(s)
                     saveMarker()
-                    if inOwn(s) { memberSeen = true; mark("in its Space") }
+                    if inOwn(s) { memberAt = sys.now(); mark("in its Space") }
                     _ = sys.reserve(edges, space: s)
                     reservedAt = sys.now()
                     mark("reserved \(edges.text)")
                 }
             }
             keepCurrent()
-            if space != nil, there() { break }
+            let here = space != nil && there()
+            if here, !sized { sized = true; mark("page-sized") }
+            // (Never moved before macOS has brought it into its own Space: page-sized earlier is preparation only.)
+            if here, let at = memberAt, switched || sys.now() - at >= options.earlySwitchWait { break }
             if space == nil, sys.now() - t0 >= options.earlyWait {
                 return .slow("no new full-screen Space listed within \(ms(since: t0)) ms")
             }
-            if space != nil, sys.now() - reservedAt >= options.earlyFrameWait {
+            if space != nil, memberAt == nil, sys.now() - reservedAt >= options.earlyMemberWait {
+                return .slow("macOS didn't bring its window into its own Space within \(ms(since: reservedAt)) ms of the reservation (\(said()))")
+            }
+            if space != nil, !here, sys.now() - reservedAt >= options.earlyFrameWait {
                 let b = sys.bounds(window: host.window).map(r) ?? "?"
                 return .slow("its window didn't take the page area \(r(page)) within \(ms(since: reservedAt)) ms of the reservation, at \(b) (\(said()))")
             }
             await sys.sleep(options.earlyEvery)
         }
         guard let own = space else { return .slow("no Space") }
-        mark("page-sized")
+        if !switched { mark("no switch by macOS") }
         // 3. into Margin's Space, then its own Space destroyed (Margin's current), then checked: in Margin's Space only, at
         // the page area, its Space no longer listed, still full screen.
         keepCurrent()
         guard sys.move(window: host.window, to: marginSpace) else { return .slow("the bridge didn't take its move into Margin's Space") }
-        let destroyed = sys.currentSpace(onDisplayOf: marginSpace) != own && sys.destroyFullScreenSpace(own)
-        mark(destroyed ? "moved in, its Space destroyed" : "moved in")
-        var inPlace = false, gone = false
-        _ = await wait(options.memberWait, every: options.earlyEvery) {
+        // Its own Space destroyed only once the move shows and has held `destroyAfterMove` (asked in the same instant,
+        // the destroy took the window with it: in no Space at all, seen on the real Mac 2026-11-17, check10); then in
+        // place only once it has stayed in Margin's Space for `memberSettle`, put back if it's found in none.
+        // Seen there and out of it again before the destroy (macOS finishing its own full-screen change puts the window
+        // back in its Space), or in none: moved in again, `memberReadds` times at most.
+        var landed: Double?
+        var seen = false
+        var again = 0
+        let moved = await wait(options.memberWait, every: options.earlyEvery) {
             keepCurrent()
-            inPlace = self.sys.spaces(window: host.window) == [self.marginSpace] && there()
-            gone = self.sys.spaceExists(own) == false
-            return inPlace && gone
+            let spaces = self.sys.spaces(window: host.window)
+            if spaces == [self.marginSpace] {
+                landed = landed ?? self.sys.now()
+                seen = true
+            } else {
+                landed = nil
+                if seen || spaces == [], again < self.options.memberReadds {
+                    again += 1
+                    seen = false
+                    _ = self.sys.move(window: host.window, to: self.marginSpace)
+                }
+            }
+            return landed.map { self.sys.now() - $0 >= self.options.destroyAfterMove } ?? false
+        }
+        mark((moved ? "moved in" : "its move into Margin's Space not seen") + (again > 0 ? " (moved in again \(again)×)" : ""))
+        let destroyed = moved && sys.currentSpace(onDisplayOf: marginSpace) != own && sys.destroyFullScreenSpace(own)
+        if destroyed { mark("its Space destroyed") }
+        var inPlace = false, gone = false
+        if moved {
+            // (Its Space gone from the list first, the destroy really done; then the membership, read after it.)
+            if destroyed { gone = await wait(options.memberWait, every: options.earlyEvery) { keepCurrent(); return self.sys.spaceExists(own) == false } }
+            let (settled, readds) = await settleMember(host, at: there, each: keepCurrent)
+            inPlace = settled
+            if readds > 0 { mark("put back into Margin's Space \(readds)×") }
+            if !gone { gone = sys.spaceExists(own) == false }
         }
         var full = false
         if inPlace { full = await isFullScreen(host) == true }
@@ -1564,10 +1897,10 @@ final class HostEngine {
     @discardableResult private func parkMember(_ host: Host, emitting: Bool = true) async -> Bool {
         guard let priv = sys.createPrivateSpace() else { return false }
         guard sys.move(window: host.window, to: priv), await wait(options.parkWait, every: options.memberEvery, { self.sys.spaces(window: host.window) == [] }) else {
-            _ = sys.destroyPrivateSpace(priv)
+            retirePrivate(priv)
             return false
         }
-        if let old = host.privateSpace, old != priv { _ = sys.destroyPrivateSpace(old) }
+        if let old = host.privateSpace, old != priv { retirePrivate(old) }
         host.privateSpace = priv
         host.away = true
         host.phase = .parked
@@ -1581,7 +1914,7 @@ final class HostEngine {
     private func unpark(_ host: Host) async -> Bool {
         guard let priv = host.privateSpace, let desktop = sys.desktop(onDisplayOf: marginSpace), sys.move(window: host.window, to: desktop),
               await wait(options.parkWait, { self.sys.spaces(window: host.window)?.contains(desktop) == true }) else { return false }
-        _ = sys.destroyPrivateSpace(priv)
+        retirePrivate(priv)
         host.privateSpace = nil
         saveMarker()
         return true
@@ -1598,7 +1931,7 @@ final class HostEngine {
     // A member out of full screen. Accessibility acts only on the current Space's windows (proven: AXFullScreen false on
     // a member in the current Space leaves no Space behind), so an app's window is brought there first; Safari's leaves
     // through its copy wherever it is. After: a normal window where it was (the current Space, or its private Space).
-    // True: out.
+    // True: out, as the window server (or Accessibility) shows it, never on the copy's word.
     private func leaveMember(_ host: Host) async -> Bool {
         let copy = viaCopy(host)
         if !copy, let current = currentSpace(for: host), sys.spaces(window: host.window)?.contains(current) != true {
@@ -1608,13 +1941,15 @@ final class HostEngine {
                 Diagnostics.note("host: \(host.id): its window didn't come to the current Space to leave full screen")
                 return false
             }
-            if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv); host.privateSpace = nil }
+            if let priv = host.privateSpace { retirePrivate(priv); host.privateSpace = nil }
             saveMarker()
         }
-        // Done once Accessibility reads it out; Safari's through its copy, once the copy says Safari did; an app's whose
-        // AXFullScreen doesn't read, once the window server has it off the page frame it had as a member and still
-        // (macOS put it back as a window). Accessibility neither taking nor reading it: asked again `exitUnansweredWait`,
-        // then given up (it won't leave by itself; no fixed wait for it).
+        // Done once Accessibility reads it out; otherwise by the window server alone: its window off the frame it had
+        // as a member and still (macOS put it back as a window). Safari's too: its copy's answer says only that Safari
+        // was asked (seen 2026-11-17: the copy said "normal" 64 ms after the ask, Safari was asked into full screen again
+        // 50 ms later, mid-exit, and never made a full-screen Space; the window was lost). Not taken (Accessibility
+        // neither taking nor reading it; the copy busy or not linked): asked again `exitUnansweredWait`, then given up
+        // (it won't leave by itself; no fixed wait for it).
         let member = sys.bounds(window: host.window) // (its frame as a member, before it's asked)
         let asked = sys.now()
         var answered = await setFullScreen(host, false)
@@ -1623,20 +1958,19 @@ final class HostEngine {
         let out = await wait(options.exitWait) {
             let full = await self.sys.isFullScreen(pid: host.pid, window: host.window)
             if full == false { return true }
-            if copy { return full == nil && answered } // (Safari's in its private Space, unread there: its copy's word, given once Safari says)
             if !answered {
                 answered = await self.setFullScreen(host, false)
                 if !answered, self.sys.now() - asked >= self.options.exitUnansweredWait { unanswered = true; return true }
                 return false
             }
-            if full == true { return false } // (asked, still leaving: an app animates it)
+            if full == true, !copy { return false } // (asked, still leaving: an app animates it)
             guard let b = self.sys.bounds(window: host.window), let m = member, !HostLayout.near(b, m, within: 0.5) else { moved = nil; return false }
             if let (last, since) = moved, HostLayout.near(b, last, within: 0.5) { return self.sys.now() - since >= self.options.placeSettle }
             moved = (b, self.sys.now())
             return false
         } && !unanswered
         host.exitUnconfirmed = !out
-        if !out { Diagnostics.note("host: \(host.id): out of full screen not confirmed in \(ms(since: asked)) ms (\(unanswered ? "Accessibility neither took nor read it" : "still full screen"))") }
+        if !out { Diagnostics.note("host: \(host.id): out of full screen not confirmed in \(ms(since: asked)) ms (\(unanswered ? (copy ? "its copy didn't ask Safari" : "Accessibility neither took nor read it") : "still at the frame it had as a member: \(sys.bounds(window: host.window).map(r) ?? "unread")"))") }
         if out {
             host.member = false
             host.placedPage = nil
@@ -1716,13 +2050,35 @@ final class HostEngine {
         checkListed("after \(id) was parked")
     }
 
-    // The poll found a host where it mustn't be: the one shown outside Margin's Space (or Margin's window out of it)
-    // parked with nothing in its place; a parked one in a user Space (macOS put it on a Desktop, its app took it to
-    // full screen) parked again.
-    private func strayed(_ id: HostID) async {
+    // The poll found a host where it mustn't be. The one shown, outside Margin's Space: with Margin's window out of its
+    // Space too (macOS took it out of full screen), parked with nothing in its place. With Margin's window still there
+    // (seen 2026-11-17, 0.4-0.7 s after the first show of a Safari window made ready at launch: "parked, nothing shown",
+    // the launcher again, a second click needed), something else moved the hosted window (its app finishing its own
+    // full-screen change late, macOS on its first activation): brought back into Margin's Space as it is and kept shown
+    // (`bringBack`), what the poll saw said in the log. A parked one in a user Space (macOS put it on a Desktop, its app
+    // took it to full screen) parked again.
+    private func strayed(_ id: HostID, marginHere: Bool) async {
         guard let host = hosts[id] else { return }
         if host.phase == .shown, shown == id {
-            await parkShownNow(why: "its window left Margin's Space, or Margin's window did")
+            let spaces = sys.spaces(window: host.window)
+            let seen = "its window in \(spaces.map { $0.isEmpty ? "no user Space" : $0.map { "\($0) (type \(sys.spaceType($0).map(String.init) ?? "?"))" }.joined(separator: ", ") } ?? "Spaces that don't read"), Margin's Space \(marginSpace), Margin's window \(marginHere ? "in it" : "out of it")"
+                + ", its bounds \(sys.bounds(window: host.window).map(r) ?? "unread")" + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? "")
+            // (Read again now, after whatever ran since the poll's read: both where they should be, nothing to do. An
+            // operation in between put it right, or the poll's one read of it in no Space was the bridge's move landing.)
+            let marginNow = marginWindow == 0 || sys.spaces(window: marginWindow).map { $0.contains(marginSpace) } ?? true
+            if marginNow, spaces == [marginSpace] { return }
+            guard marginHere, marginNow else {
+                Diagnostics.note("host: \(id): shown, found where it mustn't be (\(seen))")
+                return await parkShownNow(why: "its window left Margin's Space, or Margin's window did")
+            }
+            host.returns = host.returns.filter { sys.now() - $0 < options.returnsWithin } + [sys.now()]
+            guard host.returns.count <= options.returnsMax else {
+                Diagnostics.note("host: \(id): shown, out of Margin's Space again (\(seen)), \(host.returns.count) times in \(Int(options.returnsWithin)) s: parked")
+                host.returns = []
+                return await parkShownNow(why: "its window keeps leaving Margin's Space")
+            }
+            Diagnostics.note("host: \(id): shown, found out of Margin's Space (\(seen)): brought back")
+            await bringBack(host, from: spaces ?? [])
         } else if host.phase == .parked, let spaces = sys.spaces(window: host.window), !spaces.isEmpty {
             Diagnostics.note("host: \(id): parked, found in a user Space: parked again")
             let own = spaces.filter { $0 != marginSpace && sys.spaceType($0) == ManagedSpace.fullScreenType }
@@ -1742,6 +2098,89 @@ final class HostEngine {
             }
             saveMarker()
         }
+    }
+
+    // The one shown, found outside Margin's Space while Margin's window is in it: moved back in (the bridge, as a
+    // switch does), a full-screen Space of its own it was found in destroyed (never one of the person's: only one its
+    // app owns or the engine made), and kept shown, with no unshown and no launcher in between. No longer at the frame
+    // it was placed at (it left full screen on its own): placed again behind the loader, as a moved page area does.
+    // Not back in Margin's Space: parked with nothing shown, as before.
+    private func bringBack(_ host: Host, from spaces: [UInt64]) async {
+        let t0 = sys.now()
+        let owners = sys.fullScreenSpaceOwners() ?? [:]
+        let own = spaces.filter { $0 != marginSpace && sys.spaceType($0) == ManagedSpace.fullScreenType && (ownSpaces.contains($0) || owners[$0] == host.pid) }
+        if sys.currentSpace(onDisplayOf: marginSpace) != marginSpace, own.contains(where: { sys.currentSpace(onDisplayOf: marginSpace) == $0 }) { _ = sys.setCurrentSpace(marginSpace) }
+        guard sys.move(window: host.window, to: marginSpace),
+              await wait(options.memberWait, every: options.memberEvery, { self.sys.spaces(window: host.window) == [self.marginSpace] }) else {
+            // In no Space at all and the bridge doesn't put it back: out of full screen and placed again (what the early
+            // path's own fallback did on the real Mac, 2026-11-17), behind the loader. Else parked, nothing shown.
+            guard spaces.isEmpty, host.mode != .window else { return await parkShownNow(why: "its window left Margin's Space and didn't come back into it") }
+            Diagnostics.note("host: \(host.id): in no Space and not put back by a move: out of full screen and placed again")
+            let frozen = holdFreeze()
+            await backOut(host)
+            releaseFreeze(frozen)
+            host.phase = .preparing
+            if case .failed = await placeFullScreen(host, isNew: false, retrying: false), shown != host.id { emit(.unshown(host.id)) }
+            return
+        }
+        for space in own where sys.spaceExists(space) == true {
+            ownSpaces.insert(space)
+            if await !destroyOwn(space) { leftSpaces.insert(space) }
+        }
+        if !own.isEmpty { _ = await settleMember(host) }
+        saveMarker()
+        let bounds = sys.bounds(window: host.window)
+        let inPlace = host.mode == .window || (host.placedPage.flatMap { p in bounds.map { HostLayout.near($0, p, within: options.tolerance) } } ?? false)
+        Diagnostics.note("host: \(host.id) back in Margin's Space in \(ms(since: t0)) ms, still shown\(inPlace ? "" : " (its bounds \(bounds.map(r) ?? "unread"), not the frame it was placed at: placed again)")")
+        // (Margin's window told again: the hole follows its bounds as they are now.)
+        hostedSaid = nil
+        announceHosted()
+        if !inPlace, host.mode != .window {
+            // (No longer the full-screen member it was: placed as a window that isn't in full screen yet.)
+            host.member = false
+            host.placedPage = nil
+            if shown == host.id { shown = nil }
+            host.phase = .preparing
+            if case .failed = await placeFullScreen(host, isNew: false, retrying: false), shown != host.id { emit(.unshown(host.id)) }
+        }
+        checkListed("after \(host.id) was brought back")
+    }
+
+    // The poll's on-screen look found the one shown, or Margin's own window, missing from the window server's on-screen
+    // list though Margin's Space reads as the current one (`lookOnScreen`). Read again now; still missing: what the
+    // window server says is logged (each display's current Space, both windows' Spaces), Margin's Space is made current
+    // again and the hosted window moved into it again. Not on screen by that: out of full screen and placed again
+    // behind the loader (what brought it back on the real Mac, 2026-11-17). `returnsMax` times in `returnsWithin` at
+    // most, then left as it is, said once.
+    private func backOnScreen(_ id: HostID) async {
+        guard let host = hosts[id], host.phase == .shown, shown == id, let look = screenLook(sys.onScreenWindows()), !(look.margin && look.host) else { return }
+        let seen = "Margin's window \(look.margin ? "on" : "off") screen, its window \(host.window) \(look.host ? "on" : "off") screen and in \(sys.spaces(window: host.window).map { "\($0)" } ?? "Spaces that don't read")"
+            + ", Margin's Space \(marginSpace), its window in \(sys.spaces(window: marginWindow).map { "\($0)" } ?? "Spaces that don't read")"
+            + ", the displays' current Spaces \(sys.currentSpaces().map { $0.joined(separator: ", ") } ?? "unread")"
+            + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? "")
+        offTries = offTries.filter { sys.now() - $0 < options.returnsWithin }
+        guard offTries.count < options.returnsMax else {
+            if !offSaid { offSaid = true; Diagnostics.warn("host: \(id): shown, not on screen (\(seen)), \(offTries.count) times in \(Int(options.returnsWithin)) s: left as it is") }
+            return
+        }
+        offTries.append(sys.now())
+        let t0 = sys.now()
+        Diagnostics.note("host: \(id): shown, not on screen (\(seen)): Margin's Space made current again\(look.host ? "" : ", its window moved into it again")")
+        _ = sys.setCurrentSpace(marginSpace)
+        if !look.host { _ = sys.move(window: host.window, to: marginSpace) }
+        let back = await wait(options.memberWait, every: options.memberEvery) { self.screenLook(self.sys.onScreenWindows()).map { $0.margin && $0.host } ?? true }
+        if back {
+            Diagnostics.note("host: \(id) on screen again in \(ms(since: t0)) ms, still shown")
+            hostedSaid = nil
+            return announceHosted()
+        }
+        guard host.mode != .window else { return Diagnostics.note("host: \(id): still not on screen after that") }
+        Diagnostics.note("host: \(id): still not on screen after that: out of full screen and placed again")
+        let frozen = holdFreeze()
+        await backOut(host)
+        releaseFreeze(frozen)
+        host.phase = .preparing
+        if case .failed = await placeFullScreen(host, isNew: false, retrying: false), shown != host.id { emit(.unshown(host.id)) }
     }
 
     // The one shown before, out of Margin's Space: a member parked as it is (still full screen); a window its frame
@@ -1893,7 +2332,7 @@ final class HostEngine {
             }
         }
         if atQuit, let left = unfinished(host) { leftWindows.append(left) }
-        if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv) }
+        if let priv = host.privateSpace { retirePrivate(priv) }
         hosts[id] = nil
         if !hosts.values.contains(where: { $0.pid == host.pid }) { sys.stopWatchingOpens(pid: host.pid) }
         saveMarker()
@@ -1958,7 +2397,7 @@ final class HostEngine {
                 Diagnostics.note("host: \(host.id): its window didn't come to the current Space to be closed: quit with it open")
                 return false
             }
-            if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv); host.privateSpace = nil }
+            if let priv = host.privateSpace { retirePrivate(priv); host.privateSpace = nil }
             brought = true
             saveMarker()
         }
@@ -2130,7 +2569,7 @@ final class HostEngine {
         guard !gone.isEmpty || wasLaunched else { return }
         for host in gone {
             if busy { continue } // the operation running decides (it quit it, or its waits fail)
-            if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv) }
+            if let priv = host.privateSpace { retirePrivate(priv) }
             if let own = host.fullScreenSpace, sys.spaceExists(own) == true { leftSpaces.insert(own) }
             hosts[host.id] = nil
             if shown == host.id { shown = nil }
@@ -2143,7 +2582,7 @@ final class HostEngine {
     }
 
     private func windowGone(_ host: Host) {
-        if let priv = host.privateSpace { _ = sys.destroyPrivateSpace(priv) }
+        if let priv = host.privateSpace { retirePrivate(priv) }
         if let own = host.fullScreenSpace, sys.spaceExists(own) == true { leftSpaces.insert(own) }
         hosts[host.id] = nil
         if shown == host.id { shown = nil }
@@ -2201,7 +2640,7 @@ final class HostEngine {
     // ---- the crash marker ----
 
     private func saveMarker() {
-        announceAbove()
+        announceHosted()
         guard let markerURL else { return }
         var m = HostMarker(pid: ownPid, marginSpace: hosts.isEmpty && leftWindows.isEmpty ? nil : marginSpace)
         m.apps = launched.values.sorted { $0.pid < $1.pid }.map {

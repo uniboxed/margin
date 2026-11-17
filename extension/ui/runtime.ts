@@ -233,6 +233,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     mode: host.mode ?? 'inpage',
     inNewTab: !!host.inNewTab,
     launcherPage: !!host.launcher,
+    // Margin.app's own window, an item opening in the page area: the page card's loader, with its name.
+    pageOpening: host.pageState === 'loading' ? { name: host.pageOpening ?? '' } : null,
     // Margin.app's own window hosting another app's window beside it: no page area here (ui/host-app.ts).
     pageOutside: !!(host as { pageOutside?: boolean }).pageOutside,
     // The sidebar kept docked by the host (Margin.app hosting: beside a tile, or under an app's window in window mode).
@@ -247,7 +249,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     sheets: [theme.sheet, theme.settingsSheet].filter(Boolean),
     onAction: (name, arg, info) => { themeClick(name, arg, info); },
     onInput: (name, value) => { for (const b of list) b.onInput?.(name, value); },
-    onLayout: (geometry) => host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }),
+    onLayout: (geometry) => { placeLoader(); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
     onWarn: (message) => warn(message),
   });
 
@@ -280,10 +282,79 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       drawn = vm;
       view.update(vm);
     }
+    followPage();
     if (vm.ready) firstRender = false;
     for (const b of list) b.afterRender?.(vm, prev);
     expireLater();
     return vm;
+  }
+
+  // ---- the theme's root: the page card's state, and the start ------------------------------
+  //
+  // `m-page-state` (Margin.app's own window only: host.pageState): `shown`, `loading` or `empty`, for the theme's CSS.
+  // While it's `loading` the page card is opaque with a loader: the theme's own (`<template m-part="page-loader">` in
+  // its `<m-page-loader>`, drawn by the view), or, when the theme has none, Margin's default, made here: one element
+  // on the root, laid over the page's place as the view measures it (a quiet spinner and Margin's words; its look is
+  // ui/render.ts BASE_CSS, which a theme's CSS can restyle as `m-page-loader`). It stays in the tree while the state is
+  // `shown` for its fade-out, see-through and never taking the pointer.
+  // `m-starting`: from the root's first frame until a frame after the state's data was first drawn (a theme's
+  // skeleton); never set when the data is there at the first draw.
+  let defaultLoader: HTMLElement | null = null;
+  let started = false;
+  let startingOn = false;
+  function followPage() {
+    const root = (view.rootElement() as HTMLElement | null);
+    if (!root) return;
+    if (!started) {
+      if (vm?.ready) {
+        started = true;
+        if (startingOn) {
+          const done = () => { if (!destroyed) root.removeAttribute('m-starting'); };
+          const timer = setTimeout(done, 100); // (no frames while the page is off screen)
+          win.requestAnimationFrame?.(() => { clearTimeout(timer); done(); });
+        }
+      } else if (!startingOn) {
+        startingOn = true;
+        root.setAttribute('m-starting', '');
+      }
+    }
+    const state = host.pageState;
+    if (!state) return;
+    if (root.getAttribute('m-page-state') !== state) root.setAttribute('m-page-state', state);
+    const own = view.parts.has('page-loader') && !!root.querySelector('m-page-loader:not([m-default])');
+    if (own) { defaultLoader?.remove(); defaultLoader = null; return; }
+    if (!defaultLoader) {
+      if (state !== 'loading') return; // (made the first time it's needed)
+      defaultLoader = doc.createElement('m-page-loader');
+      defaultLoader.setAttribute('m-default', '');
+      defaultLoader.setAttribute('role', 'status');
+      const spin = doc.createElement('span');
+      spin.setAttribute('m-loader-spin', '');
+      spin.setAttribute('aria-hidden', 'true');
+      const label = doc.createElement('span');
+      label.setAttribute('m-loader-label', '');
+      defaultLoader.append(spin, label);
+    }
+    if (defaultLoader.parentNode !== root) root.appendChild(defaultLoader);
+    if (state === 'loading') {
+      const label = (defaultLoader.lastChild as HTMLElement);
+      const text = vm?.pageLoader?.label ?? '';
+      if (label.textContent !== text) label.textContent = text;
+    }
+    placeLoader();
+  }
+  // Margin's default loader over the page's place: `<m-page>`'s content box and its corners, as the view measures them.
+  function placeLoader() {
+    if (!defaultLoader?.isConnected) return;
+    const g = view.measure();
+    if (!g) return;
+    const s = defaultLoader.style;
+    const set = (name: string, value: string) => { if (s.getPropertyValue(name) !== value) s.setProperty(name, value); };
+    set('left', `${g.insets.left}px`);
+    set('top', `${g.insets.top}px`);
+    set('width', `${Math.max(0, g.container.width - g.insets.left - g.insets.right)}px`);
+    set('height', `${Math.max(0, g.container.height - g.insets.top - g.insets.bottom)}px`);
+    set('border-radius', g.radii.map((r) => `${r}px`).join(' '));
   }
 
   function setUi(patch: Partial<UiState> & Record<string, any>) {

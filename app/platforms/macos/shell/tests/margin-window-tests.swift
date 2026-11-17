@@ -77,18 +77,24 @@ func marginWindowTests() {
     check("hosted: always full screen: no Enter/Exit Full Screen item, no ⌃⌘F, Toggle Sidebar still there", !always.contains { $0.action == #selector(NSWindow.toggleFullScreen(_:)) }
           && !always.contains { $0.keyEquivalent == "f" && $0.keyEquivalentModifierMask == [.command, .control] } && always.contains { $0.representedObject as? String == MarginMenuAction.toggleSidebar.rawValue })
     check("hosted: Margin's windows are always full screen by default", MarginWindows.Options().alwaysFullScreen && !MarginWindowController.Options().alwaysFullScreen)
-    // Its toggle ignored (Margin opened by a script, not active): asked again once per activation, never looping.
+    // Always full screen and not in: asked only when macOS would take it (Margin active, its window on the current
+    // Space), looked at again with a back-off until it's in.
     var retry = FullScreenRetry()
-    check("hosted: full screen: never asked again before its first ask", !retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: false))
-    check("hosted: full screen: not in after its first ask: asked again once", retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: true))
-    check("hosted: full screen: its window key or main again in the same activation: not asked again (no loop)", !retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: true))
-    retry.activated()
-    check("hosted: full screen: on its way in, or closed, when Margin activates: not asked, the activation's ask kept",
-          !retry.shouldAsk(inFullScreen: false, entering: true, closed: false, firstAsked: true) && !retry.shouldAsk(inFullScreen: false, entering: false, closed: true, firstAsked: true))
-    check("hosted: full screen: Margin active again, still not in: asked once more, then not", retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: true)
-          && !retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: true))
-    retry.activated()
-    check("hosted: full screen: already in when Margin activates: not asked", !retry.shouldAsk(inFullScreen: true, entering: false, closed: false, firstAsked: true))
+    func ask(_ r: FullScreenRetry, inFullScreen: Bool = false, entering: Bool = false, closed: Bool = false, firstAsked: Bool = true, ready: Bool = true, since: TimeInterval = .infinity) -> Bool {
+        r.shouldAsk(inFullScreen: inFullScreen, entering: entering, closed: closed, firstAsked: firstAsked, ready: ready, sinceLastAsk: since)
+    }
+    check("hosted: full screen: never asked before its first ask, while it's in, on its way in, or once closed", !ask(retry, firstAsked: false) && !ask(retry, inFullScreen: true) && !ask(retry, entering: true) && !ask(retry, closed: true))
+    check("hosted: full screen: not asked while macOS wouldn't take it (Margin not active, or its window not on the current Space yet: opened from another app's full-screen Space)", !ask(retry, ready: false))
+    check("hosted: full screen: asked once it would, and not twice within a quarter of a second", ask(retry) && !ask(retry, since: 0.1) && ask(retry, since: 0.3))
+    let looks = (0..<7).map { _ in retry.nextLook() }
+    check("hosted: full screen: looked at again after 0.3 s, doubling, then every 5 s, for as long as it isn't in (no end: Margin is always full screen)", looks == [0.3, 0.6, 1.2, 2.4, 5, 5, 5], "\(looks)")
+    retry.takeable()
+    check("hosted: full screen: macOS would take it after a wait: its looks from the shortest delay again (an ask still refused is made again soon)", retry.nextLook() == 0.3 && retry.nextLook() == 0.6)
+    let forwards = [Double.infinity, 0.4, 0.9, 1.5, 60, 60].map { retry.forward(sinceLast: $0) }
+    check("hosted: full screen: while macOS wouldn't take it, Margin brought forward 0.8 s apart, three times at most (never taking another app's keys look after look): by its own activation, then through LaunchServices (as `open` does), then both",
+          forwards == [.activation, nil, .launchServices, .both, nil, nil], "\(forwards)")
+    retry.entered()
+    check("hosted: full screen: in: the back-off and the forwards from the start again the next time", retry.nextLook() == 0.3 && retry.forward(sinceLast: .infinity) == .activation)
     check("hosted: the standard app menu: About, Hide, Hide Others, Show All, Quit ⌘Q",
           [#selector(NSApplication.orderFrontStandardAboutPanel(_:)), #selector(NSApplication.hide(_:)), #selector(NSApplication.hideOtherApplications(_:)),
            #selector(NSApplication.unhideAllApplications(_:)), #selector(NSApplication.terminate(_:))].allSatisfy { sel in bar.items[0].submenu?.items.contains { $0.action == sel } == true }
@@ -184,140 +190,53 @@ func marginWindowTests() {
         check("theme settings: only numbers, short strings and switches are kept, per theme", Set(cleaned.keys) == ["arcadia"] && Set(cleaned["arcadia"]?.keys.map { $0 } ?? []) == ["sidebarWidth", "name", "on"], "\(cleaned)")
     }
 
-    // ---- the page area's ground while Margin's window is in front of the hosted one (PageGroundView) ----
+    // ---- the window's ground with the page area cut out of it (WindowGroundView): Margin's window in front of what it hosts ----
     do {
-        let ground = PageGroundView(frame: NSRect(x: 0, y: 0, width: 1512, height: 949))
-        check("ground: hidden, nothing drawn, until Margin's window is lifted over a hosted window", !ground.isShown && ground.isHidden && !ground.fills(CGPoint(x: 700, y: 400)) && ground.hitTest(NSPoint(x: 10, y: 10)) == nil)
-        // The hosted window where it was when the drag began (the page area beside a 260 pt sidebar), top left in the content.
+        let ground = WindowGroundView(frame: NSRect(x: 0, y: 0, width: 1512, height: 949))
+        check("ground: hidden, nothing drawn, while nothing shows through (the window's own background fills it)", !ground.isShown && ground.isHidden && !ground.fills(CGPoint(x: 700, y: 400)) && ground.hitTest(NSPoint(x: 10, y: 10)) == nil)
+        // The hosted window at the page area beside a 260 pt sidebar, top left in the content; the card's corners 10 pt.
         let hosted = CGRect(x: 260, y: 8, width: 1244, height: 933)
-        ground.show(color: .gray, hole: hosted)
+        ground.show(color: .gray, hole: hosted, radii: [10, 10, 10, 10])
         check("ground: the hosted window's bounds cut out (it shows through there), the ground everywhere else of the content",
-              ground.isShown && !ground.fills(CGPoint(x: 700, y: 400)) && !ground.fills(CGPoint(x: 261, y: 9)) && ground.fills(CGPoint(x: 250, y: 400)) && ground.fills(CGPoint(x: 700, y: 4))
+              ground.isShown && !ground.fills(CGPoint(x: 700, y: 400)) && !ground.fills(CGPoint(x: 261, y: 400)) && ground.fills(CGPoint(x: 250, y: 400)) && ground.fills(CGPoint(x: 700, y: 4))
               && ground.fills(CGPoint(x: 1508, y: 400)) && ground.fills(CGPoint(x: 700, y: 945)) && ground.hole == hosted && ground.color == .gray)
-        ground.show(color: .gray, hole: nil)
-        check("ground: no window to see through (it left to be placed again): the ground everywhere", ground.fills(CGPoint(x: 700, y: 400)) && ground.hole == nil)
+        check("ground: the hole's corners rounded as the page card's: outside the curve is the ground's, inside it the hosted window's",
+              ground.fills(CGPoint(x: 261, y: 9)) && ground.fills(CGPoint(x: 1503, y: 9)) && ground.fills(CGPoint(x: 1503, y: 940)) && ground.fills(CGPoint(x: 261, y: 940))
+              && !ground.fills(CGPoint(x: 264, y: 12)) && !ground.fills(CGPoint(x: 1500, y: 937)))
+        let draws = ground.draws
+        ground.show(color: .gray, hole: hosted, radii: [10, 10, 10, 10])
+        check("ground: shown as it is already: not drawn again", ground.draws == draws)
+        // A hosted window kept at a frame it had (the sidebar narrower now): square where it doesn't meet the card's corners.
+        ground.show(color: .gray, hole: hosted, radii: [0, 10, 10, 0])
+        check("ground: a corner of the hole that isn't the page card's is square", !ground.fills(CGPoint(x: 261, y: 9)) && !ground.fills(CGPoint(x: 261, y: 940)) && ground.fills(CGPoint(x: 1503, y: 9)) && ground.draws == draws + 1)
+        // What it draws (its layer rendered): clear in the hole, the colour around it and outside the corner's curve.
+        ground.show(color: NSColor(srgbRed: 156 / 255, green: 157 / 255, blue: 161 / 255, alpha: 1), hole: hosted, radii: [10, 10, 10, 10])
+        if let layer = ground.layer, let ctx = CGContext(data: nil, width: 1512, height: 949, bitsPerComponent: 8, bytesPerRow: 1512 * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+            layer.render(in: ctx)
+            let data = Array(UnsafeBufferPointer(start: ctx.data!.assumingMemoryBound(to: UInt8.self), count: 1512 * 949 * 4))
+            // (x, y from the top left, as the content; memory's first row is the top.)
+            func pixel(_ x: Int, _ y: Int) -> [Int] { let i = (y * 1512 + x) * 4; return [Int(data[i]), Int(data[i + 1]), Int(data[i + 2]), Int(data[i + 3])] }
+            let grey = [156, 157, 161, 255]
+            func near(_ a: [Int], _ b: [Int]) -> Bool { zip(a, b).allSatisfy { abs($0 - $1) <= 2 } }
+            check("ground drawn: nothing in the hole (alpha 0 at its middle, just inside each edge and inside each corner's curve)",
+                  [pixel(880, 470), pixel(262, 470), pixel(1502, 470), pixel(880, 10), pixel(880, 939), pixel(265, 13), pixel(1499, 936)].allSatisfy { $0[3] == 0 }, "\(pixel(880, 470)) \(pixel(265, 13))")
+            check("ground drawn: its colour around the hole and outside each corner's curve (the page card's rounded corners are never see-through)",
+                  [pixel(100, 470), pixel(880, 3), pixel(1508, 470), pixel(880, 945), pixel(260, 8), pixel(1503, 8), pixel(1503, 940), pixel(260, 940)].allSatisfy { near($0, grey) }, "\(pixel(260, 8)) \(pixel(1503, 940))")
+        } else { check("ground drawn: its layer renders", false) }
         ground.clear()
         check("ground: cleared: hidden again, nothing kept", !ground.isShown && ground.color == nil && ground.hole == nil && !ground.fills(CGPoint(x: 250, y: 400)))
     }
 
-    // ---- the page card's corners over a hosted window (HostCorners) ----
+    // ---- the ground's colour from what the page says it draws around the card's corners (PageFill) ----
     do {
-        let page = CGRect(x: 276, y: 41, width: 1228, height: 933)
-        let squares = HostCorners.squares(page: page, radii: [6.25, 6.25, 6.25, 6.25])
-        check("corners: one 7 pt square per corner, at the page area's corners (top left, clockwise)", squares.map(\.rect) == [
-            CGRect(x: 276, y: 41, width: 7, height: 7), CGRect(x: 1497, y: 41, width: 7, height: 7),
-            CGRect(x: 1497, y: 967, width: 7, height: 7), CGRect(x: 276, y: 967, width: 7, height: 7)] && squares.map(\.corner) == [0, 1, 2, 3] && squares.allSatisfy { $0.radius == 6.25 }, "\(squares)")
-        check("corners: none for a square corner, a radius kept within half the page", HostCorners.squares(page: page, radii: [0, 15, 0, 0]).map(\.corner) == [1]
-              && HostCorners.squares(page: CGRect(x: 0, y: 0, width: 20, height: 20), radii: [50, 50, 50, 50]).allSatisfy { $0.rect.width == 10 })
-        // The mask: the corner's own point filled, the point just inside the curve not, for each corner (AppKit's y up).
-        for corner in 0..<4 {
-            let path = HostCorners.path(size: 7, radius: 6.25, corner: corner)
-            let outer = CGPoint(x: corner == 0 || corner == 3 ? 0.3 : 6.7, y: corner == 0 || corner == 1 ? 6.7 : 0.3)
-            let inner = CGPoint(x: corner == 0 || corner == 3 ? 6.5 : 0.5, y: corner == 0 || corner == 1 ? 0.5 : 6.5)
-            check("corners: corner \(corner)'s mask fills the page's corner and leaves the curve's inside clear", path.contains(outer, using: .evenOdd) && !path.contains(inner, using: .evenOdd))
-        }
-        // A border's band: between the page area's curve and the card's outer edge; outside that, the card's fill.
-        let band = HostCorners.band(size: 15, radius: 15, corner: 0, width: 3), out = HostCorners.path(size: 15, radius: 15, corner: 0, out: 3)
-        let r = 15.0 / 2.0.squareRoot() // (a point on the diagonal `d` from the curve's centre: 15 - d/√2 in from the corner)
-        func diagonal(_ d: Double) -> CGPoint { CGPoint(x: 15 - d / 2.0.squareRoot(), y: d / 2.0.squareRoot()) }
-        check("corners: a border's band and the fill beyond it, the inside clear", band.contains(diagonal(16.5), using: .evenOdd) && !band.contains(diagonal(14), using: .evenOdd) && !band.contains(diagonal(19), using: .evenOdd)
-              && out.contains(diagonal(19.5), using: .evenOdd) && !out.contains(diagonal(16.5), using: .evenOdd) && r > 0)
-        let ink = HostCorners.color("rgb(17, 17, 17)"), frame = HostCorners.color("rgba(156, 157, 161, 0.5)"), srgb = HostCorners.color("color(srgb 1 0.5 0 / 1)")
-        check("corners: the page's computed colours read (rgb, rgba, color(srgb))", abs((ink?.redComponent ?? 0) - 17.0 / 255) < 0.001 && frame?.alphaComponent == 0.5 && srgb?.greenComponent == 0.5)
-        check("corners: a see-through or unknown colour isn't one", HostCorners.color("rgba(0, 0, 0, 0)") == nil && HostCorners.color("transparent") == nil && HostCorners.color("hsl(1 2 3)") == nil)
-        let corners = HostCorners(harness: true)
-        corners.show(page: CGRect(x: -20000, y: -20000, width: 800, height: 600), radii: [6.25, 6.25, 6.25, 6.25], fills: [.gray, .gray, .gray, .gray], edge: nil)
-        let drawn = corners.draws
-        corners.show(page: CGRect(x: -20000, y: -20000, width: 800, height: 600), radii: [6.25, 6.25, 6.25, 6.25], fills: [.gray, .gray, .gray, .gray], edge: nil)
-        check("corners: shown off every display, four panels above normal windows that never take the mouse; the same again draws nothing",
-              corners.isShown && corners.frames.count == 4 && corners.draws == drawn && corners.panels.allSatisfy { $0.level == .floating && $0.ignoresMouseEvents && $0.collectionBehavior == HostCorners.behavior })
-        corners.show(page: CGRect(x: -20000, y: -20000, width: 900, height: 600), radii: [6.25, 6.25, 6.25, 6.25], fills: [.gray, .gray, .gray, .gray], edge: nil)
-        check("corners: a new page area: drawn again, there", corners.draws == drawn + 1 && corners.frames[1].maxX == -20000 + 900)
-        corners.hide()
-        check("corners: hidden: none ordered in", !corners.isShown && corners.frames.isEmpty && corners.panels.allSatisfy { !$0.isVisible })
-    }
-
-    // ---- the corners where the real screen showed them wrong (2026-11-15: TestPane hosted in Arcadia, the page area
-    // 250,41 1254×933 in a 1512×982 display): each panel's screen frame, its radius, and what it draws, pixel by pixel ----
-    do {
-        let page = CGRect(x: 250, y: 41, width: 1254, height: 933)
-        let frames = HostCorners.panelFrames(page: page, radii: [6.25, 6.25, 6.25, 6.25], mainHeight: 982)
-        // (AppKit's frames are bottom left: the top corners near y = 982 - 41 - 7, the bottom ones near 982 - 974.)
-        check("corners on screen: the four panels' AppKit frames at the page area's own corners (top ones at the top, bottom ones at the bottom)", frames.map(\.frame) == [
-            CGRect(x: 250, y: 934, width: 7, height: 7), CGRect(x: 1497, y: 934, width: 7, height: 7),
-            CGRect(x: 1497, y: 8, width: 7, height: 7), CGRect(x: 250, y: 8, width: 7, height: 7)] && frames.map(\.corner) == [0, 1, 2, 3], "\(frames.map(\.frame))")
-        check("corners on screen: back in the window server's coordinates, each touches its page corner exactly; each at the card's radius (6.25 pt, points not pixels)",
-              frames.map { ScreenGeometry.appKitRect($0.frame, mainHeight: 982) }.enumerated().allSatisfy { i, r in
-                  (i == 0 || i == 3 ? r.minX == page.minX : r.maxX == page.maxX) && (i == 0 || i == 1 ? r.minY == page.minY : r.maxY == page.maxY) } && frames.allSatisfy { $0.radius == 6.25 })
-        check("corners on screen: the colours Arcadia's page reports for its frame read as its grey, all four",
-              ["rgb(156, 157, 161)", "rgb(156, 157, 161)", "rgb(156, 157, 161)", "rgb(156, 157, 161)"].compactMap(HostCorners.color).allSatisfy { abs($0.redComponent * 255 - 156) < 0.5 && abs($0.greenComponent * 255 - 157) < 0.5 && abs($0.blueComponent * 255 - 161) < 0.5 })
-
-        // What each panel draws (its layers rendered, at 4×): the corner's own point the fill, the curve's inside clear, the
-        // border's band its colour; the layers' coordinates as the screen's (nothing flipped on the way up).
-        func rendered(_ panel: NSPanel, scale: CGFloat = 4) -> (pixel: (CGFloat, CGFloat) -> [Int], flipped: Bool)? {
-            guard let layer = panel.contentView?.layer else { return nil }
-            let side = Int((panel.frame.width * scale).rounded())
-            guard let ctx = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-            ctx.scaleBy(x: scale, y: scale)
-            layer.render(in: ctx)
-            var flipped = false
-            for l in sequence(first: layer as CALayer?, next: { $0?.superlayer }) { if l?.isGeometryFlipped == true { flipped.toggle() } }
-            let data = Array(UnsafeBufferPointer(start: ctx.data!.assumingMemoryBound(to: UInt8.self), count: side * side * 4)) // (copied: the context's goes with it)
-            // (x, y in points, AppKit's y up; memory's first row is the top.)
-            return ({ x, y in
-                let px = min(side - 1, Int(x * scale)), py = min(side - 1, Int(y * scale))
-                let i = (side - 1 - py) * side * 4 + px * 4
-                return [Int(data[i]), Int(data[i + 1]), Int(data[i + 2]), Int(data[i + 3])]
-            }, flipped)
-        }
-        let grey = HostCorners.color("rgb(156, 157, 161)")!
-        let arcadia = HostCorners(harness: true)
-        let off = CGRect(x: -20000, y: -20000, width: page.width, height: page.height)
-        arcadia.show(page: off, radii: [6.25, 6.25, 6.25, 6.25], fills: [grey, grey, grey, grey], edge: nil)
-        let want = HostCorners.panelFrames(page: off, radii: [6.25, 6.25, 6.25, 6.25])
-        check("corners shown: each panel's frame is the computed one", arcadia.panels.prefix(4).map(\.frame) == want.map(\.frame), "\(arcadia.panels.map(\.frame))")
-        for (i, panel) in arcadia.panels.prefix(4).enumerated() {
-            guard let r = rendered(panel) else { check("corners drawn: corner \(i) renders", false); continue }
-            // The page's corner point (outside the curve) and a point inside it, in the panel's own points (y up).
-            let left = i == 0 || i == 3, top = i == 0 || i == 1
-            let cornerPoint = (left ? 0.2 : 6.8, top ? 6.8 : 0.2), inside = (left ? 6.0 : 1.0, top ? 1.0 : 6.0)
-            let c = r.pixel(cornerPoint.0, cornerPoint.1), clear = r.pixel(inside.0, inside.1)
-            check("corners drawn: \(["top left", "top right", "bottom right", "bottom left"][i]): the frame's grey at the page's corner, clear inside the curve, nothing flipped",
-                  abs(c[0] - 156) <= 2 && abs(c[1] - 157) <= 2 && abs(c[2] - 161) <= 2 && c[3] == 255 && clear[3] == 0 && !r.flipped, "\(c) \(clear)")
-        }
-        arcadia.hide()
-        // Neubrutalism: a 3 pt ink border round a 12 pt card, its offset ink shadow at the bottom right, the gutter elsewhere.
-        let ink = HostCorners.color("rgb(17, 17, 17)")!, gutter = HostCorners.color("rgb(240, 236, 228)")!
-        let nb = HostCorners(harness: true)
-        nb.show(page: off, radii: [9, 9, 9, 9], fills: [gutter, gutter, ink, gutter], edge: HostCorners.Edge(width: 3, color: ink))
-        for (i, panel) in nb.panels.prefix(4).enumerated() {
-            guard let r = rendered(panel) else { check("corners drawn (Neubrutalism): corner \(i) renders", false); continue }
-            let left = i == 0 || i == 3, top = i == 0 || i == 1
-            // (Along the diagonal from the curve's centre, 9 in from the corner: d < 9 the page, 9-12 the border, beyond the fill.)
-            func at(_ d: CGFloat) -> [Int] {
-                let o = d / 2.0.squareRoot()
-                return r.pixel(left ? 9 - o : panel.frame.width - 9 + o, top ? panel.frame.height - 9 + o : 9 - o)
-            }
-            let fill = i == 2 ? [17, 17, 17] : [240, 236, 228]
-            let page = at(7), band = at(10.5), beyond = at(12.6)
-            check("corners drawn (Neubrutalism): \(["top left", "top right", "bottom right", "bottom left"][i]): clear inside, the ink border in its band, \(i == 2 ? "the ink shadow" : "the gutter") beyond",
-                  page[3] == 0 && band[0] <= 20 && band[3] == 255 && zip(beyond.prefix(3), fill).allSatisfy { abs($0 - $1) <= 3 } && beyond[3] == 255, "\(page) \(band) \(beyond)")
-        }
-        nb.hide()
-        // A square corner (Pixel): nothing drawn.
-        let pixel = HostCorners(harness: true)
-        pixel.show(page: off, radii: [0, 0, 0, 0], fills: [grey, grey, grey, grey], edge: nil)
-        check("corners: square corners (Pixel): no panel", !pixel.isShown && pixel.panels.allSatisfy { !$0.isVisible })
-        // A panel no longer shown (ordered in while another Space was current, gone with it): ordered in again though nothing changed.
-        let again = HostCorners(harness: true)
-        again.show(page: off, radii: [6.25, 6.25, 6.25, 6.25], fills: [grey, grey, grey, grey], edge: nil)
-        again.panels[0].orderOut(nil)
-        let draws = again.draws
-        again.show(page: off, radii: [6.25, 6.25, 6.25, 6.25], fills: [grey, grey, grey, grey], edge: nil)
-        check("corners: one gone from the screen is ordered in again (not drawn again)", again.panels[0].isVisible && again.reorders == 1 && again.draws == draws)
-        again.hide()
-        check("corners: the colour most corners have (Neubrutalism's ink shadow at one corner aside), none for none",
-              HostCorners.common([gutter, gutter, ink, gutter]) == gutter && HostCorners.common([ink, grey]) == ink && HostCorners.common([]) == nil)
+        let grey = PageFill.color("rgb(156, 157, 161)"), gutter = PageFill.color("rgb(240, 236, 228)"), ink = PageFill.color("rgb(17, 17, 17)")
+        check("page fill: a computed colour read (rgb, rgba, color(srgb …)); none for a see-through one or anything else",
+              grey == NSColor(srgbRed: 156 / 255, green: 157 / 255, blue: 161 / 255, alpha: 1) && PageFill.color("rgba(0, 0, 0, 0.5)")?.alphaComponent == 0.5
+              && PageFill.color("color(srgb 0.801961 0.768627 0.939216)") != nil && PageFill.color("rgba(0, 0, 0, 0)") == nil && PageFill.color("red") == nil && PageFill.color("") == nil)
+        check("page fill: the colour most corners have (Neubrutalism's ink shadow at one corner aside), none for none",
+              PageFill.common([gutter, gutter, ink, gutter].compactMap { $0 }) == gutter && PageFill.common([ink, grey].compactMap { $0 }) == ink && PageFill.common([]) == nil)
+        check("front: the raised level is one above normal and below floating (a hosted app's panels, menus and tooltips still come above Margin's window)",
+              FrontMechanism.raised.rawValue == NSWindow.Level.normal.rawValue + 1 && FrontMechanism.raised.rawValue < NSWindow.Level.floating.rawValue)
     }
 }

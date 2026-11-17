@@ -1,11 +1,14 @@
 // Margin's own window (docs/MARGIN-APP.md, phase 2): a regular app window,
 // windowed or full screen (its own Space), with Margin's UI drawn edge to edge
-// under a transparent title bar. It's opaque, its corners rounded as macOS
-// draws a window's: a hosted window is never behind it but above it, a member
-// of its full-screen Space in its page area (HostedSession.swift), so nothing
-// shows through and nothing passes through; with nothing hosted, its page area
-// is the theme's launcher (ui/host-app.ts). It's always full screen
-// (`locksFullScreen`: AppKit's toggle refused once it's in).
+// under a transparent title bar. Its corners are rounded as macOS draws a
+// window's. It's in front of what it hosts (a hosted window is a member of its
+// full-screen Space, under it, in its page area: HostedSession.swift): filled
+// everywhere but, while a hosted window is shown, that window's bounds (the
+// hole: MarginWindowController `updateHole`, WindowGroundView below), where
+// the pointer goes through to the app; with nothing hosted, its page area is
+// the theme's launcher (ui/host-app.ts) and nothing shows or passes through.
+// It's always full screen (`locksFullScreen`: AppKit's toggle refused once
+// it's in).
 //
 // - MarginWindow: the NSWindow. `pageRect` is the page area in the window
 //   server's coordinates (top left, points), published with `onPageRectChange`
@@ -36,8 +39,10 @@ final class MarginWindow: NSWindow {
     var onPageRectChange: ((CGRect?) -> Void)?
     // Where a press moves the window (the theme's <m-drag-region>s), top left in the content.
     var dragRegions: [CGRect] = []
-    // Presses that moved or zoomed the window (the tests read it).
+    // Presses that moved or zoomed the window (the tests read it), and every press the window got (a press over the
+    // hole never comes here: it's the hosted app's).
     private(set) var drags = 0
+    private(set) var presses = 0
     // Always full screen (MarginWindowController.Options.alwaysFullScreen): AppKit's toggle (the green button, a menu
     // item anywhere) refused while it's in full screen; into it always taken.
     var locksFullScreen = false
@@ -49,8 +54,9 @@ final class MarginWindow: NSWindow {
         titlebarAppearsTransparent = true
         titleVisibility = .hidden
         title = "Margin"
-        // (Not opaque to AppKit, so its corners stay rounded; filled, so no edge of it is ever see-through. Seen
-        // 2026-11-15: a clear background showed the Desktop through its page area and edges at the first open.)
+        // (Not opaque to AppKit, so its corners stay rounded and the hole can show what's under it; filled, so no edge
+        // of it is ever see-through: seen 2026-11-15, a clear background showed the Desktop through its page area and
+        // edges at the first open. Clear only while a hosted window shows through, the ground drawn around it.)
         isOpaque = false
         backgroundColor = .windowBackgroundColor
         hasShadow = true
@@ -102,6 +108,7 @@ final class MarginWindow: NSWindow {
     }
 
     override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown { presses += 1 }
         if event.type == .leftMouseDown, !dragRegions.isEmpty {
             let p = event.locationInWindow
             let topLeft = CGPoint(x: p.x, y: frame.height - p.y)
@@ -268,15 +275,18 @@ enum MarginMenu {
     }
 }
 
-// The page area's ground while Margin's window is in front of the hosted window (the sidebar's edge dragged:
-// MarginWindowController.setLifted). The window's own background is clear then, so the hosted window below shows
-// through the theme's see-through page slot; this view, under the web view, fills the ground's colour everywhere but
-// that window's bounds (`hole`, top left in the content; nil: everywhere), so the rest of the page area (the gap a
-// narrower sidebar leaves) is the ground, never the Space's backdrop. One shape layer, drawn when it changes (the
-// hosted window stays where it is through a drag); hidden, with nothing drawn, at every other time.
-final class PageGroundView: NSView {
+// The window's ground, with the page area cut out of it (MarginWindowController: Margin's window is in front of what it
+// hosts, DECISIONS.md "Margin's window in front of what it hosts"). While a hosted window is shown, the window's own
+// background is clear and this view, under the web view, fills the ground everywhere but that window's bounds (`hole`,
+// top left in the content, rounded where it meets the page card's corners): the hosted window shows through the theme's
+// see-through page slot, the theme draws its frame and the card's corners over it, and whatever the theme leaves
+// see-through outside the hole is the ground, never the Space's backdrop. One shape layer, drawn when it changes;
+// hidden, with nothing drawn, while nothing shows through (the window's own background fills it then).
+final class WindowGroundView: NSView {
     private(set) var color: NSColor?
     private(set) var hole: CGRect?
+    private(set) var radii: [CGFloat] = []
+    private(set) var draws = 0 // how many times it was drawn (the tests read it)
     private let shape = CAShapeLayer()
 
     override init(frame: NSRect) {
@@ -296,10 +306,12 @@ final class PageGroundView: NSView {
 
     var isShown: Bool { !isHidden }
 
-    func show(color: NSColor, hole: CGRect?) {
-        guard isHidden || color != self.color || hole != self.hole else { return }
+    // `radii`: the hole's corners (top-left, top-right, bottom-right, bottom-left), none where it's square.
+    func show(color: NSColor, hole: CGRect, radii: [CGFloat]) {
+        guard isHidden || color != self.color || hole != self.hole || radii != self.radii else { return }
         self.color = color
         self.hole = hole
+        self.radii = radii
         isHidden = false
         draw()
     }
@@ -309,6 +321,7 @@ final class PageGroundView: NSView {
         isHidden = true
         color = nil
         hole = nil
+        radii = []
         shape.path = nil
     }
 
@@ -317,186 +330,52 @@ final class PageGroundView: NSView {
         if !isHidden { draw() }
     }
 
+    // The hole's outline from the top left (y down), each corner its own radius.
+    static func outline(_ rect: CGRect, radii: [CGFloat]) -> CGPath {
+        let limit = min(rect.width, rect.height) / 2
+        let r = (0..<4).map { i in min(max(0, i < radii.count ? radii[i] : 0), limit) }
+        let p = CGMutablePath()
+        p.move(to: CGPoint(x: rect.minX + r[0], y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX - r[1], y: rect.minY))
+        if r[1] > 0 { p.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.minY), tangent2End: CGPoint(x: rect.maxX, y: rect.minY + r[1]), radius: r[1]) }
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r[2]))
+        if r[2] > 0 { p.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.maxY), tangent2End: CGPoint(x: rect.maxX - r[2], y: rect.maxY), radius: r[2]) }
+        p.addLine(to: CGPoint(x: rect.minX + r[3], y: rect.maxY))
+        if r[3] > 0 { p.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.maxY), tangent2End: CGPoint(x: rect.minX, y: rect.maxY - r[3]), radius: r[3]) }
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + r[0]))
+        if r[0] > 0 { p.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.minY), tangent2End: CGPoint(x: rect.minX + r[0], y: rect.minY), radius: r[0]) }
+        p.closeSubpath()
+        return p
+    }
+
     // The whole view filled, less the hole (even-odd): the hole from the top left, the layer's own y from the bottom.
     private func draw() {
         shape.frame = bounds
         let path = CGMutablePath()
         path.addRect(bounds)
         if let hole = hole?.intersection(bounds), !hole.isNull, hole.width > 0, hole.height > 0 {
-            path.addRect(CGRect(x: hole.minX, y: bounds.height - hole.maxY, width: hole.width, height: hole.height))
+            var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: bounds.height)
+            if let outline = Self.outline(hole, radii: hole == self.hole ? radii : []).copy(using: &flip) { path.addPath(outline) }
         }
         shape.path = path
         // (Resolved for the window's appearance: a dynamic colour's cgColor is the current appearance's.)
         var resolved = color?.cgColor
         (window?.effectiveAppearance ?? effectiveAppearance).performAsCurrentDrawingAppearance { resolved = color?.cgColor }
         shape.fillColor = resolved
+        draws += 1
     }
 
     // Whether a point of the content (top left) is the ground's (the tests read it).
     func fills(_ p: CGPoint) -> Bool {
         guard !isHidden, bounds.contains(p) else { return false }
-        return !(hole?.contains(p) ?? false)
+        guard let hole else { return true }
+        return !Self.outline(hole, radii: radii).contains(p)
     }
 }
 
-// The page card's rounded corners over a hosted window (HostedSession.swift: the hosted window is above Margin's, its
-// corners square, so it covered the card's rounded corners and whatever the theme draws around them). One small panel
-// per rounded corner, the corner's square only (the page's inner radius: `<m-page>`'s content box, ui/render.ts
-// measure), drawing what the theme draws there outside the rounded curve: the card's border in the band between the
-// page area's curve and the card's outer edge (same centre), and that corner's colour outside the card beyond it
-// (host-app.ts cornerFill: the theme's frame, or a sharp shadow painted there), see-through inside the curve, so the
-// hosted window shows. Borderless, transparent, non-activating, never taking the mouse (everything passes through),
-// above normal windows so it stays above the hosted window when its app is active, below menus, the menu bar and the
-// Dock; joined to Margin's Space only (ordered in only while that Space is current: MarginWindowController.placeCorners),
-// hidden in Mission Control and never in the window cycle. Drawn once per change of the page area, its radii or its
-// colours (shape layers: nothing redraws per frame). Checked against each built-in theme's own pixels in
-// tests/theme/corners.test.ts.
-final class HostCorners {
-    struct Edge: Equatable {
-        var width: CGFloat
-        var color: NSColor
-    }
-    static let level = NSWindow.Level.floating
-    static let behavior: NSWindow.CollectionBehavior = [.transient, .fullScreenAuxiliary, .ignoresCycle]
-    static let fallback = NSColor.windowBackgroundColor
-    let harness: Bool
-    private(set) var panels: [NSPanel] = []
-    private(set) var placed: (page: CGRect, radii: [CGFloat], fills: [NSColor], edge: Edge?)?
-    private(set) var isShown = false
-    private(set) var draws = 0 // how many times the corners were drawn (the tests read it)
-
-    init(harness: Bool) { self.harness = harness }
-
-    // The corners' squares (top left, points), the corner each is (0 top left, clockwise), and its radius, for a page
-    // area and its radii (top-left, top-right, bottom-right, bottom-left). A radius under 1: none there.
-    static func squares(page: CGRect, radii: [CGFloat]) -> [(rect: CGRect, corner: Int, radius: CGFloat)] {
-        let r = radii.count == 4 ? radii : [CGFloat](repeating: radii.first ?? 0, count: 4)
-        let limit = min(page.width, page.height) / 2
-        var out: [(CGRect, Int, CGFloat)] = []
-        for corner in 0..<4 {
-            let radius = min(max(0, r[corner]), limit)
-            let side = radius.rounded(.up)
-            guard radius >= 1 else { continue }
-            let x = corner == 0 || corner == 3 ? page.minX : page.maxX - side
-            let y = corner == 0 || corner == 1 ? page.minY : page.maxY - side
-            out.append((CGRect(x: x, y: y, width: side, height: side), corner, radius))
-        }
-        return out
-    }
-
-    // Each corner panel's frame in AppKit's coordinates (bottom left, y up: what NSWindow.setFrame takes), from the
-    // squares above (top left), with its corner and radius.
-    static func panelFrames(page: CGRect, radii: [CGFloat], mainHeight: CGFloat = ScreenGeometry.mainHeight) -> [(frame: CGRect, corner: Int, radius: CGFloat)] {
-        squares(page: page, radii: radii).map { (ScreenGeometry.appKitRect($0.rect, mainHeight: mainHeight), $0.corner, $0.radius) }
-    }
-
-    // A circle of `r` round the curve's centre (`radius` in from the page's corner) in a corner's square (AppKit's
-    // bottom-left coordinates, y up).
-    private static func circle(size: CGFloat, radius: CGFloat, corner: Int, r: CGFloat) -> CGRect {
-        let cx: CGFloat = corner == 0 || corner == 3 ? radius : size - radius
-        let cy: CGFloat = corner == 0 || corner == 1 ? size - radius : radius
-        return CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)
-    }
-
-    // A corner's mask outside the card (filled even-odd, clipped to its square): the square less the card's outer curve
-    // (the page area's curve grown by the border, `out`).
-    static func path(size: CGFloat, radius: CGFloat, corner: Int, out: CGFloat = 0) -> CGPath {
-        let p = CGMutablePath()
-        p.addRect(CGRect(x: 0, y: 0, width: size, height: size))
-        p.addEllipse(in: circle(size: size, radius: radius, corner: corner, r: radius + out))
-        return p
-    }
-
-    // The border's band in a corner's square (filled even-odd): between the page area's curve and the card's outer one.
-    static func band(size: CGFloat, radius: CGFloat, corner: Int, width: CGFloat) -> CGPath {
-        let p = CGMutablePath()
-        p.addEllipse(in: circle(size: size, radius: radius, corner: corner, r: radius + width))
-        p.addEllipse(in: circle(size: size, radius: radius, corner: corner, r: radius))
-        return p
-    }
-
-    // Shown as these say already.
-    func shows(page: CGRect, radii: [CGFloat], fills: [NSColor], edge: Edge?) -> Bool {
-        guard isShown, let placed else { return false }
-        return placed.page == page && placed.radii == radii && placed.fills == fills && placed.edge == edge
-    }
-
-    private(set) var reorders = 0 // panels ordered in again (not shown, or in another Space) though nothing changed (the tests read it)
-
-    func show(page: CGRect, radii: [CGFloat], fills: [NSColor], edge: Edge?) {
-        if shows(page: page, radii: radii, fills: fills, edge: edge) {
-            // (Nothing to draw again, but each still shown, in the current Space: one ordered in while another Space was
-            // current, during a first open's jump, joined that Space and went with it; it joins this one again.)
-            for panel in panels.prefix(Self.squares(page: page, radii: radii).count) where !panel.isVisible || !panel.isOnActiveSpace {
-                if harness, NSScreen.screens.contains(where: { $0.frame.intersects(panel.frame) }) { continue }
-                panel.orderOut(nil)
-                panel.orderFrontRegardless()
-                reorders += 1
-            }
-            return
-        }
-        let squares = Self.panelFrames(page: page, radii: radii)
-        placed = (page, radii, fills, edge)
-        while panels.count < squares.count { panels.append(Self.panel()) }
-        for (i, panel) in panels.enumerated() {
-            guard i < squares.count else { panel.orderOut(nil); continue }
-            let (frame, corner, radius) = squares[i]
-            let rect = CGRect(origin: .zero, size: frame.size)
-            panel.setFrame(frame, display: false)
-            guard let root = panel.contentView?.layer, let layers = root.sublayers as? [CAShapeLayer], layers.count == 2 else { continue }
-            let fill = corner < fills.count ? fills[corner] : Self.fallback
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            for layer in layers { layer.frame = CGRect(origin: .zero, size: frame.size) }
-            layers[0].fillColor = fill.cgColor
-            layers[0].path = Self.path(size: rect.width, radius: radius, corner: corner, out: edge?.width ?? 0)
-            layers[1].fillColor = edge?.color.cgColor
-            layers[1].path = edge.map { Self.band(size: rect.width, radius: radius, corner: corner, width: $0.width) }
-            CATransaction.commit()
-            // (A test's never on a display: ordered in only off every display.)
-            if !harness || !NSScreen.screens.contains(where: { $0.frame.intersects(frame) }) { panel.orderFrontRegardless() }
-        }
-        draws += 1
-        isShown = !squares.isEmpty
-    }
-
-    func hide() {
-        guard isShown || placed != nil else { return }
-        for panel in panels { panel.orderOut(nil) }
-        isShown = false
-        placed = nil
-    }
-
-    // The frames shown now (top left), in corner order (the tests read them).
-    var frames: [CGRect] { isShown ? panels.prefix(Self.squares(page: placed?.page ?? .zero, radii: placed?.radii ?? []).count).map { ScreenGeometry.appKitRect($0.frame) } : [] }
-
-    private static func panel() -> NSPanel {
-        let p = NSPanel(contentRect: NSRect(x: -30000, y: -30000, width: 1, height: 1), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        p.isOpaque = false
-        p.backgroundColor = .clear
-        p.hasShadow = false
-        p.ignoresMouseEvents = true
-        p.hidesOnDeactivate = false
-        p.isReleasedWhenClosed = false
-        p.becomesKeyOnlyIfNeeded = true
-        p.level = level
-        p.collectionBehavior = behavior
-        p.animationBehavior = .none
-        p.isExcludedFromWindowsMenu = true
-        let v = NSView(frame: .zero)
-        v.layer = CALayer() // (its own layer, hosting the two below)
-        v.wantsLayer = true
-        v.layer?.backgroundColor = .clear
-        for _ in 0..<2 { // outside the card; its border's band
-            let layer = CAShapeLayer()
-            layer.fillRule = .evenOdd
-            layer.masksToBounds = true
-            v.layer?.addSublayer(layer)
-        }
-        p.contentView = v
-        return p
-    }
-
+// The colours the page says it draws around the page card's corners (host-app.ts cornerFill, reported with the layout
+// as `fills`): the ground under the page area is the colour most of them have (the theme's frame).
+enum PageFill {
     // The colour most of the corners have (the theme's frame; a sharp shadow at one corner aside), the first on a tie.
     static func common(_ colors: [NSColor]) -> NSColor? {
         let counts = colors.map { c in colors.filter { $0 == c }.count }
@@ -529,4 +408,15 @@ final class HostCorners {
         guard rgba.allSatisfy({ $0.isFinite }), rgba[3] > 0 else { return nil }
         return NSColor(srgbRed: min(1, max(0, rgba[0])), green: min(1, max(0, rgba[1])), blue: min(1, max(0, rgba[2])), alpha: min(1, max(0, rgba[3])))
     }
+}
+
+// Margin's window in front of what it hosts (decided 2026-11-17): how it's kept there. `level`: a window level one
+// above normal (below floating: a hosted app's panels, pop-up menus and tooltips still come above it), which the window
+// server holds whatever app is active or clicked. `order`: at the normal level, ordered right above the hosted window
+// and ordered there again whenever something could have raised that window (an app activated, a press); the way the
+// overlay over a browser's window was kept (v0.1.0), for a Mac whose full-screen window doesn't hold a raised level.
+enum FrontMechanism: String {
+    case level, order
+    static let key = "MarginFront" // (UserDefaults: `level` or `order`; unset: level, order if the server doesn't hold it)
+    static let raised = NSWindow.Level(rawValue: NSWindow.Level.normal.rawValue + 1)
 }

@@ -139,6 +139,7 @@ final class Runner: NSObject, NSApplicationDelegate {
     Task { @MainActor in
       if env["MARGIN_E2E_ONLY"] == "glue" {
         await glueScenario()
+        await glueResumeScenario()
         print(failures == 0 ? "all \(passed) hosting checks passed" : "\(failures) hosting checks failed")
         exit(failures == 0 ? 0 : 1)
       }
@@ -151,6 +152,7 @@ final class Runner: NSObject, NSApplicationDelegate {
       await carryScenario() // e2e-data.swift
       await hostedScenario() // e2e-hosted.swift
       await glueScenario() // e2e-glue.swift
+      await glueResumeScenario()
       print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
       exit(failures == 0 ? 0 : 1)
     }

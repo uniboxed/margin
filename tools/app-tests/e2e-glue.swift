@@ -5,19 +5,25 @@
 // launched, put in full screen or moved; no Space of the Mac's is touched).
 //
 // What it follows: the first run (nothing to import) makes a space and opens the UI's space editor; an app picked
-// in the palette (the page's `app.open`) is an item of the space, and the engine opens it above Margin's page area (a
-// member of Margin's Space at the page area its own Space reserved), given the page area from Margin's own layout,
-// with the loading animation meanwhile; Margin's window is always full screen (shown so, never leaving it: asked, it
-// refuses; taken out by macOS, it goes back and the app shown comes back with it), its whole width, its page drawing
-// its own layout (pageHosted, the sidebar docked); a typed address (the page's `newTab`) is a web item: Safari
-// started with no Dock icon, a window asked of the copy (`newWindow`) after its link, shown by the engine, and the
-// item's tab asked of the copy (`hostShow`); the sidebar highlights the item shown; a second web item is a tab switch
-// only; the sidebar's edge dragged in the page (its real handle, pointer events): Margin's window in front of the
-// hosted one for the drag, nothing placed until it's let go, then the hosted window once at the new page area (a
-// window-mode app moved, a full-screen member out and in), Margin still full screen at its whole width, a parked
-// member placed when it's next shown; `drawn` true for the hosted Safari window only, false for the person's own;
-// ⌘Q with a hosted app in front is Margin's prompt (Cancel keeps everything, another app in front takes
-// it down, ⌘Q again quits), and quitting gives it all back.
+// in the palette (the page's `app.open`) is an item of the space, and the engine opens it in Margin's page area (a
+// member of Margin's Space at the page area its own Space reserved), given the page area from Margin's own layout;
+// Margin's window is always full screen (shown so, never leaving it: asked, it refuses; taken out by macOS, it goes
+// back and the app shown comes back with it), its whole width, its page drawing its own layout (pageHosted, the
+// sidebar docked), and IN FRONT of what it hosts (its level raised, held by the window server): the page card
+// `loading` (opaque, the theme's root says so, Margin's default loader) while the app launches, then `shown`: the
+// page area a hole (the window's own picture see-through there, the ground and the theme's frame around it), the
+// pointer through it to the app but for the frame, the rounded corners and what the theme draws over it; a typed
+// address (the page's `newTab`) is a web item: Safari started with no Dock icon, a window asked of the copy
+// (`newWindow`) after its link, shown by the engine, and the item's tab asked of the copy (`hostShow`); the sidebar
+// highlights the item shown; a switch between two prepared items never shows the loader; a second web item is a tab
+// switch only; ⌘T with a hosted app in front draws the palette over the page area (Margin's window is in front), the
+// pointer there Margin's, and Escape gives the app the keys again; the sidebar's edge dragged in the page (its real
+// handle, pointer events): the sidebar over the hosted window live, nothing placed until it's let go, then the hosted
+// window once at the new page area behind the loader (a window-mode app moved, a full-screen member out and in),
+// twice in a row, Margin still full screen at its whole width, a parked member placed when it's next shown; another
+// app's window let in front and the ordering way of staying in front; `drawn` true for the hosted Safari window only,
+// false for the person's own; ⌘Q with a hosted app in front is Margin's prompt (Cancel keeps everything, another app
+// in front takes it down, ⌘Q again quits), and quitting gives it all back.
 import AppKit
 import WebKit
 
@@ -135,7 +141,17 @@ final class GlueHostWorld: HostSystem {
   func spaceType(_ space: UInt64) -> Int? { fullScreenSpaces.contains(space) ? ManagedSpace.fullScreenType : (space == Self.desktop ? 0 : nil) }
   func spaceExists(_ space: UInt64) -> Bool? { fullScreenSpaces.contains(space) || space == Self.desktop }
   func currentSpace(onDisplayOf space: UInt64) -> UInt64? { current }
-  func setCurrentSpace(_ space: UInt64) -> Bool { current = space; return true }
+  func setCurrentSpace(_ space: UInt64) -> Bool { current = space; if space == Self.marginSpace { blank = false }; return true }
+  // The window server's on-screen list (`lists`: played; else none, and the engine's on-screen look doesn't apply):
+  // Margin's window and the windows of the current Space; none while the display shows a Space that's gone (`blank`).
+  var lists = false
+  var blank = false
+  func onScreenWindows() -> [ServerWindow]? {
+    guard lists else { return nil }
+    if blank { return [] }
+    let here = wins.keys.sorted().filter { wins[$0]?.priv == nil && wins[$0]?.spaces.contains(current) == true }
+    return ([marginWindow] + here).compactMap { n in bounds(window: n).map { ServerWindow(number: n, pid: wins[n]?.pid ?? 1, layer: n == marginWindow ? 1 : 0, bounds: $0) } }
+  }
   func desktop(onDisplayOf space: UInt64) -> UInt64? { Self.desktop }
   func ownerlessFullScreenSpaces() -> [UInt64]? { [] }
   func listedFullScreenSpaces() -> [UInt64]? { fullScreenSpaces.sorted() }
@@ -161,6 +177,26 @@ final class GlueHostWorld: HostSystem {
   var inMargin: [Int] { wins.keys.filter { wins[$0]?.priv == nil && wins[$0]?.spaces == [Self.marginSpace] }.sorted() }
 }
 
+// The window server's own picture of one of this process's windows (CGWindowListCreateImage of that window alone, as
+// tools/glass-shots: no Screen Recording, and it pictures a window off every display), as alpha at points of the
+// window (top left, points). What the hosted window would show through is where it's 0. Nil: no picture.
+@MainActor
+func windowAlpha(_ window: NSWindow, at points: [CGPoint]) -> [Int]? {
+  typealias Create = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+  guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage"),
+        let image = unsafeBitCast(symbol, to: Create.self)(.null, 8, UInt32(window.windowNumber), 1 | 16)?.takeRetainedValue(), image.width > 0, image.height > 0,
+        let ctx = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue), let data = ctx.data else { return nil }
+  ctx.clear(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+  ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+  let bytes = data.assumingMemoryBound(to: UInt8.self)
+  let sx = CGFloat(image.width) / window.frame.width, sy = CGFloat(image.height) / window.frame.height
+  return points.map { p in
+    let x = min(image.width - 1, max(0, Int(p.x * sx))), y = min(image.height - 1, max(0, Int(p.y * sy)))
+    return Int(bytes[(y * image.width + x) * 4 + 3]) // (memory's first row is the top)
+  }
+}
+
 @MainActor
 func glueScenario() async {
   func check(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") { e2eCheck("glue: \(label)", ok, detail()) }
@@ -183,6 +219,7 @@ func glueScenario() async {
   options.appCatalog.icons = AppIconCache(folder: root.appendingPathComponent("icons"))
   var host = HostEngine.Options()
   host.every = 0.01
+  host.privateRetire = 0
   options.hostOptions = host
   var hostedOptions = HostedSession.Options()
   hostedOptions.linkWait = 5
@@ -219,9 +256,21 @@ func glueScenario() async {
   defer { made.closeAll() }
   world.marginWindow = c.window.windowNumber
   c.hostedBounds = { world.bounds(window: $0) } // (the hosted window's bounds: the stand-in window manager's)
+  // (Off every display WebKit takes the page for hidden and stops drawing after its first frame: not this view, so the
+  // window server's picture of the window has what the page draws now, and the loader's fade runs. As tools/glass-shots.)
+  do {
+    typealias SetBool = @convention(c) (AnyObject, Selector, Bool) -> Void
+    let sel = NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")
+    if c.webView.responds(to: sel), let imp = class_getMethodImplementation(type(of: c.webView), sel) { unsafeBitCast(imp, to: SetBool.self)(c.webView, sel, false) }
+  }
   var loadingAtLaunch: [String: String?] = [:]
   var loadingTabsAtLaunch: [String: [Int]] = [:]
-  world.onLaunch = { bundle in loadingAtLaunch[bundle] = c.loadingLabel; loadingTabsAtLaunch[bundle] = c.loadingTabs }
+  // (And the page card as the app is launched: `loading`, nothing of Margin's window see-through.)
+  var cardAtLaunch: [String: String] = [:]
+  world.onLaunch = { bundle in
+    loadingAtLaunch[bundle] = c.loadingLabel; loadingTabsAtLaunch[bundle] = c.loadingTabs
+    cardAtLaunch[bundle] = "\(c.pageState.rawValue) hole \(c.hole == nil ? "none" : "open") ground \(c.ground.isShown ? "cut" : "whole") clear \(c.window.backgroundColor == .clear)"
+  }
   // (Safari's window its copy makes, in the stand-in window manager too.)
   let ask = engine.requestSafariWindow
   engine.requestSafariWindow = { profile in
@@ -250,6 +299,12 @@ func glueScenario() async {
   let emptyLauncher = await waitJS(c.webView, "return !!document.querySelector('.launcher')")
   check("in full screen from the start, nothing hosted: its page area the theme's launcher, never a see-through hole", c.isFullScreen && c.window.pageRect != nil && emptyLauncher
         && c.window.locksFullScreen && (c.pageHello().contains(#""mode":"fullscreen""#)))
+  let emptyRoot = await waitJS(c.webView, "return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'empty' && !document.querySelector('.arcadia').hasAttribute('m-starting')")
+  check("nothing hosted: the page card `empty` (the theme's root says so, its data drawn: not starting), no hole, the window's own ground, the pointer Margin's everywhere",
+        c.pageState == .empty && emptyRoot && c.hole == nil && c.slot == nil && !c.ground.isShown && c.window.backgroundColor == .windowBackgroundColor && c.pageHello().contains(#""pageState":"empty""#))
+  check("in front of what it hosts from the start: its level raised one above normal (below floating), as the window server has it",
+        c.mechanism == .level && c.window.level == FrontMechanism.raised && MarginWindowController.serverLayer(c.window.windowNumber) == FrontMechanism.raised.rawValue,
+        "level \(c.window.level.rawValue) server \(String(describing: MarginWindowController.serverLayer(c.window.windowNumber)))")
   c.toggleFullScreen()
   check("asked to leave full screen (⌃⌘F, the page's own ask): refused, still full screen", c.isFullScreen && c.refusedExits == 1)
   check("its menu has no Enter/Exit Full Screen item", !made.menu.items.flatMap { $0.submenu?.items ?? [] }.contains { $0.action == #selector(NSWindow.toggleFullScreen(_:)) })
@@ -281,24 +336,68 @@ func glueScenario() async {
   let editWindow = world.apps.values.first { $0.bundle == "com.apple.TextEdit" }?.windows.first ?? 0
   check("the app's window there, a member of Margin's Space, still full screen; Mission Control Margin's Space only", world.bounds(window: editWindow) == expected && world.inMargin == [editWindow]
         && world.wins[editWindow]?.fullScreen == true && world.listsMarginOnly && world.calls.last == "activate com.apple.TextEdit", "\(String(describing: world.bounds(window: editWindow))) \(world.calls.suffix(3))")
-  check("Margin's window kept right below it", c.below == editWindow)
-  // (The page card's rounded corners over the hosted window: Arcadia's 10 pt radius, its frame around them, which is
-  // the space's colour mixed into a near-white: read from the page, as it computes it.)
+  check("Margin's window told the app's window, and in front of it: its level still raised, never ordered below anything", c.hosted == editWindow && c.window.level == FrontMechanism.raised
+        && c.mechanism == .level && c.yieldOrders == 0, "hosted \(String(describing: c.hosted)) level \(c.window.level.rawValue)")
+  // ---- the page card: loading while the app launched, shown now: the page area a hole ----
+  let states = c.pageStates
+  check("the page card `loading` as the app launched (the engine's slow step: at once, with its name), nothing of Margin's window see-through then; `shown` once its window was in place",
+        cardAtLaunch["com.apple.TextEdit"] == "loading hole none ground whole clear false" && states == ["loading com.apple.TextEdit", "shown"]
+        && c.pushed.contains(#"{"type":"pageState","state":"loading","label":"com.apple.TextEdit"}"#) && c.pushed.contains(#"{"type":"pageState","state":"shown","label":null}"#) && c.pageState == .shown, "\(cardAtLaunch) \(states)")
+  let rootShown = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader[m-default]'); return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'shown' && !!l && l.textContent === 'Opening com.apple.TextEdit…' && getComputedStyle(l).pointerEvents === 'none'")
+  check("the theme's root says shown; Margin's default loader (no part of the theme's) was drawn for the launch with Margin's words, and lets go as it's shown", rootShown)
+  // (The page card's rounded corners: Arcadia's 10 pt radius, its frame around them, which is the space's colour mixed
+  // into a near-white: read from the page, as it computes it. The theme draws them itself, over the app.)
   let frameCSS = (await js(c.webView, "return getComputedStyle(document.querySelector('m-page')).boxShadow.split(') ')[0] + ')'") as? String) ?? ""
-  let radius = CGFloat(c.layout?.radii.first ?? 0), side = radius.rounded(.up)
+  let radius = CGFloat(c.layout?.radii.first ?? 0)
   let page = expected ?? .zero
-  let wantCorners = [CGRect(x: page.minX, y: page.minY, width: side, height: side), CGRect(x: page.maxX - side, y: page.minY, width: side, height: side),
-                     CGRect(x: page.maxX - side, y: page.maxY - side, width: side, height: side), CGRect(x: page.minX, y: page.maxY - side, width: side, height: side)]
-  check("the page card's corners drawn over the hosted window: one small panel each, at the page area's corners, the theme's frame colour, above normal windows, never taking the mouse",
-        radius > 0 && c.corners.isShown && c.corners.frames == wantCorners && frameCSS.hasPrefix("color(srgb ") && c.layout?.fills == Array(repeating: frameCSS, count: 4) && c.layout?.edge == nil
-        && c.corners.panels.prefix(4).allSatisfy { $0.level == .floating && $0.ignoresMouseEvents && !$0.isOpaque && !$0.canBecomeKey && $0.collectionBehavior.contains(.transient) && !$0.collectionBehavior.contains(.canJoinAllSpaces) },
-        "\(c.corners.frames) want \(wantCorners) fills \(String(describing: c.layout?.fills))")
+  func inContent(_ r: CGRect) -> CGRect { r.offsetBy(dx: -display.minX, dy: -display.minY) }
+  let ground = PageFill.color(frameCSS)
+  check("shown: the hole is the hosted window's bounds, the page area: Margin's window clear there, its ground drawn around it with the page card's rounded corners, in the theme's frame colour",
+        radius > 0 && c.hole == page && c.window.backgroundColor == .clear && c.ground.isShown && c.ground.hole == inContent(page) && c.ground.radii == (c.layout?.radii.map { CGFloat($0) } ?? [])
+        && frameCSS.hasPrefix("color(srgb ") && c.layout?.fills == Array(repeating: frameCSS, count: 4) && ground != nil && c.pageGround == ground && c.ground.color == ground,
+        "hole \(String(describing: c.hole)) ground \(String(describing: c.ground.hole)) \(c.ground.radii) fills \(String(describing: c.layout?.fills))")
   check("the hosted window placed in Margin's own full-screen frame (the area its own Space lays it out in), never the display less its inset",
         c.hostedPlacement?.area == c.contentFrame, "\(String(describing: c.hostedPlacement))")
-  let ground = HostCorners.color(frameCSS)
-  check("under a hosted window covering the page area, the page area's ground is the frame's colour (any sliver it leaves is the frame, never dark)",
-        ground != nil && c.pageGround == ground && c.window.backgroundColor == ground, "\(String(describing: c.pageGround)) \(frameCSS)")
-  check("nothing passes through Margin's window while hosting", c.slot == nil && !c.window.ignoresMouseEvents)
+  // The window server's own picture of Margin's window (the real compositing: the page, the ground, the window's
+  // background): see-through across the page area and inside the corners' curves, painted everywhere else.
+  let local = inContent(page)
+  let r2 = radius / 2.0.squareRoot()
+  // (Its left edge 16 pt in: the sidebar's resize handle reaches a few points over the page area, and takes the pointer there.)
+  let holePoints = [CGPoint(x: local.midX, y: local.midY), CGPoint(x: local.minX + 16, y: local.midY), CGPoint(x: local.maxX - 3, y: local.midY), CGPoint(x: local.midX, y: local.minY + 3),
+                    CGPoint(x: local.midX, y: local.maxY - 3), CGPoint(x: local.minX + radius - r2 + 3, y: local.minY + radius - r2 + 3), CGPoint(x: local.maxX - radius + r2 - 3, y: local.maxY - radius + r2 - 3)]
+  let solidPoints = [CGPoint(x: 60, y: local.midY), CGPoint(x: local.minX - 4, y: local.midY), CGPoint(x: local.midX, y: local.minY - 4), CGPoint(x: local.maxX + 4, y: local.midY),
+                     CGPoint(x: local.midX, y: local.maxY + 4), CGPoint(x: local.minX + 1, y: local.minY + 1), CGPoint(x: local.maxX - 1, y: local.maxY - 1)]
+  _ = await until(3) { windowAlpha(c.window, at: holePoints)?.allSatisfy { $0 == 0 } == true }
+  let holeAlpha = windowAlpha(c.window, at: holePoints), solidAlpha = windowAlpha(c.window, at: solidPoints)
+  check("shown, as the window server pictures Margin's window: see-through (alpha 0) across the page area, up to its edges and inside its corners' curves",
+        holeAlpha?.allSatisfy { $0 == 0 } == true, "\(String(describing: holeAlpha))")
+  check("shown, as the window server pictures it: painted (alpha 255) on the sidebar, on the theme's frame at each side of the page area and outside the curve of its rounded corners",
+        solidAlpha?.allSatisfy { $0 == 255 } == true, "\(String(describing: solidAlpha))")
+  // The pointer: through the hole to the app, Margin's on its sidebar, its frame and the card's rounded corners; a drag keeps who had it.
+  let middle = CGPoint(x: page.midX, y: page.midY)
+  check("the pointer's slot is the hole (its radius the card's); the catch fill everywhere but there", c.slot?.rect == page && c.slot?.radius == radius && c.slot?.captureAll == false, "\(String(describing: c.slot))")
+  c.pointerMoved(middle, buttonsDown: false)
+  let overApp = c.window.ignoresMouseEvents
+  c.pointerMoved(CGPoint(x: page.minX - 120, y: page.midY), buttonsDown: false)
+  let overSidebar = c.window.ignoresMouseEvents
+  c.pointerMoved(CGPoint(x: page.minX - 4, y: page.midY), buttonsDown: false)
+  let overFrame = c.window.ignoresMouseEvents
+  c.pointerMoved(CGPoint(x: page.minX + 0.5, y: page.minY + 0.5), buttonsDown: false)
+  let overCorner = c.window.ignoresMouseEvents
+  c.pointerMoved(CGPoint(x: page.maxX - 1, y: page.midY), buttonsDown: false)
+  let atRight = c.window.ignoresMouseEvents
+  c.pointerMoved(CGPoint(x: page.midX, y: page.minY + 1), buttonsDown: false)
+  let atEdge = atRight && c.window.ignoresMouseEvents
+  check("the pointer: over the page area it goes through to the app (to its very edge); over the sidebar, the frame's strip and outside a rounded corner's curve it's Margin's",
+        overApp && !overSidebar && !overFrame && !overCorner && atEdge, "app \(overApp) sidebar \(overSidebar) frame \(overFrame) corner \(overCorner) edge \(atEdge)")
+  c.pointerMoved(middle, buttonsDown: false)
+  c.pointerMoved(CGPoint(x: page.minX - 120, y: page.midY), buttonsDown: true)
+  let dragFromApp = c.window.ignoresMouseEvents
+  c.pointerMoved(CGPoint(x: page.minX - 120, y: page.midY), buttonsDown: false)
+  c.pointerMoved(middle, buttonsDown: true)
+  let dragFromMargin = c.window.ignoresMouseEvents
+  c.pointerMoved(middle, buttonsDown: false)
+  check("the pointer: a drag begun in the app stays the app's over Margin's sidebar; one begun on Margin stays Margin's over the app", dragFromApp && !dragFromMargin && c.window.ignoresMouseEvents)
   // (Its title: the app's name as the catalog read it, else its bundle id.)
   let title = library.items().first { $0.id == item }?.value["title"] as? String ?? "?"
   let lit = await waitJS(c.webView, "return document.querySelector('.tab.active')?.getAttribute('aria-label') === \(jsonString(title) ?? "''")")
@@ -332,13 +431,40 @@ func glueScenario() async {
   check("the engine shows Safari's window in the page area, a member; the app parked, still full screen", engine.shown == HostTarget.safariWindow("s-default").id && engine.hosts[textEdit]?.phase == .parked
         && engine.pageRect == expected && world.inMargin == [safariWin] && world.bounds(window: safariWin) == expected && world.wins[editWindow]?.fullScreen == true && world.listsMarginOnly)
 
-  // ---- back to the app: an instant switch ----
+  // ---- back to the app: an instant switch, straight from shown to shown ----
+  let statesBefore = c.pageStates.count
+  var holeClosed = false
+  let hostedBefore = engine.hostedWindow
+  engine.hostedWindow = { number in hostedBefore?(number); if c.hole == nil || c.pageState != .shown { holeClosed = true } }
   let backAt = Date()
   _ = library.perform("activateTab", ["windowId": c.id, "tabId": item])
   guard await until(5, { engine.shown == textEdit }) else { return check("back to the app", false, "\(session.done.suffix(4))") }
   await session.idle()
-  check("back to the app: no full-screen exit or entry, no loading animation, Safari's window parked as it is", Date().timeIntervalSince(backAt) < 2 && world.inMargin == [editWindow]
+  let switchMs = Int((Date().timeIntervalSince(backAt) * 1000).rounded())
+  engine.hostedWindow = hostedBefore
+  check("back to the app: no full-screen exit or entry, Safari's window parked as it is", world.inMargin == [editWindow]
         && !world.calls.suffix(4).contains { $0.hasPrefix("fullScreen") } && c.loadingLabel == nil && c.loadingTabs.isEmpty && world.wins[safariWin]?.fullScreen == true, "\(world.calls.suffix(6))")
+  check("back to the app (a prepared, parked window): shown → shown with no loader (nothing said to the page, the hole never closed), in \(switchMs) ms on the stand-in (under the loader's 120 ms grace)",
+        switchMs < 120 && c.pageStates.count == statesBefore && !holeClosed && c.pageState == .shown && c.hosted == editWindow && c.hole == page,
+        "\(switchMs) ms, states \(c.pageStates.dropFirst(statesBefore)) closed \(holeClosed)")
+  // (A show that isn't in place within the grace: the loader, with the item's name, then shown again.)
+  c.setShowing("Slow one")
+  let inGrace = c.pageState == .shown && c.hole == page
+  c.graceOver()
+  let late = c.pageState == .loading && c.hole == nil && c.window.backgroundColor == ground && !c.ground.isShown && c.slot == nil && c.pushed.last == #"{"type":"pageState","state":"loading","label":"Slow one"}"#
+  let lateDrawn = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader[m-default]'); return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'loading' && l?.textContent === 'Opening Slow one…' && getComputedStyle(l).opacity === '1' && getComputedStyle(l).pointerEvents === 'auto'")
+  _ = await until(3) { windowAlpha(c.window, at: holePoints)?.allSatisfy { $0 == 255 } == true }
+  let cardAlpha = windowAlpha(c.window, at: holePoints)
+  c.pointerMoved(middle, buttonsDown: false)
+  let loadingPointer = c.window.ignoresMouseEvents
+  check("a show not in place within the grace: what's drawn stays for it, then the page card `loading`: the hole closed at once (the window's own ground whole), the pointer Margin's, the loader drawn with the item's name",
+        inGrace && late && lateDrawn && !loadingPointer, "grace \(inGrace) late \(late) drawn \(lateDrawn) pointer through \(loadingPointer)")
+  check("loading, as the window server pictures Margin's window: the page card opaque (alpha 255 across the page area): whatever opens behind it isn't seen", cardAlpha?.allSatisfy { $0 == 255 } == true, "\(String(describing: cardAlpha))")
+  c.setShowing(nil)
+  let fadeMs = await js(c.webView, "const l = document.querySelector('.arcadia > m-page-loader[m-default]'); return Math.round(parseFloat(getComputedStyle(l).transitionDuration) * 1000)") as? Int ?? -1
+  _ = await until(3) { windowAlpha(c.window, at: holePoints)?.allSatisfy { $0 == 0 } == true }
+  check("… and shown again once it is: the hole open again (see-through in the window's picture once the loader has faded, \(fadeMs) ms, at most 150)", c.pageState == .shown && c.hole == page
+        && fadeMs > 0 && fadeMs <= 150 && windowAlpha(c.window, at: holePoints)?.allSatisfy { $0 == 0 } == true, "\(fadeMs) \(String(describing: windowAlpha(c.window, at: holePoints)))")
   _ = library.perform("activateTab", ["windowId": c.id, "tabId": web])
   guard await until(5, { engine.shown == HostTarget.safariWindow("s-default").id }) else { return check("back to Safari", false) }
   await session.idle()
@@ -377,8 +503,21 @@ func glueScenario() async {
   // no focusout in WebKit, and the page says the keys are free anyway.)
   let focused = await js(c.webView, "const a = document.activeElement; return a ? a.outerHTML.slice(0, 200) : 'none'") as? String ?? "?"
   check("Calculator: no launcher under its window (its field would take the keys), no field of Margin's has them", noLauncher && !c.pageWantsKeyboard, focused)
-  check("Calculator: Margin's window kept right below its window", c.below == calcWindow && c.belowOrders >= 1 && engine.shownAbove == calcWindow,
-        "below \(String(describing: c.below)) orders \(c.belowOrders) shown \(String(describing: engine.shownAbove)) calc \(calcWindow) keys \(c.pageWantsKeyboard)")
+  check("Calculator: Margin's window told its window, in front of it; the hole its own bounds (smaller than the page area, square), the theme's frame colour around it",
+        c.hosted == calcWindow && engine.shownWindow == calcWindow && c.pageState == .shown && c.hole == centred && c.ground.hole == inContent(centred) && c.ground.radii == [0, 0, 0, 0]
+        && c.pageGround == ground && c.ground.color == ground && c.window.backgroundColor == .clear,
+        "hosted \(String(describing: c.hosted)) hole \(String(describing: c.hole)) want \(centred) ground \(String(describing: c.ground.color))")
+  // (Nothing of the theme's over the page area any more: its loader, fading out as `shown` came, is reported until it's gone.)
+  _ = await until(3) { !c.captureAll && c.hits.isEmpty }
+  c.pointerMoved(CGPoint(x: centred.midX, y: centred.midY), buttonsDown: false)
+  let overCalc = c.window.ignoresMouseEvents
+  c.pointerMoved(CGPoint(x: calcPage.minX + 20, y: calcPage.minY + 20), buttonsDown: false)
+  let aroundCalc = c.window.ignoresMouseEvents
+  let activations = world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count
+  c.pressed(CGPoint(x: calcPage.minX + 20, y: calcPage.minY + 20))
+  let pressGives = await until(3) { world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == activations + 1 }
+  check("Calculator: the pointer through to it on its window; in the page area around it Margin's, and a press there gives Calculator the keyboard", overCalc && !aroundCalc && pressGives,
+        "over \(overCalc) around \(aroundCalc) press \(pressGives) hits \(c.hits.count) all \(c.captureAll) hole \(String(describing: c.hole))")
   // (The engine asks Margin's window's page to measure at every look while it waits for a layout at its whole width:
   // a size the window took isn't measured until a frame is drawn, which can be seconds late. The page measures at once.)
   let measuresBefore = await js(c.webView, "return marginApp.stats().measures") as? Int ?? -1
@@ -387,6 +526,7 @@ func glueScenario() async {
   check("Calculator: Margin's window's page measures when asked (no frame needed)", measuresBefore >= 0 && measuredAgain && c.layout?.outside == false && abs((c.layout?.width ?? 0) - display.width) <= 1,
         "\(measuresBefore) \(String(describing: c.layout))")
 
+  func hostedPidNow() -> pid_t { engine.shown.flatMap { engine.hosts[$0]?.pid } ?? 0 }
   // ---- Margin's keys while hosting: held while Margin or a hosted app is in front, the next/previous item of the space ----
   apps.bringToFront(1) // (an app Margin doesn't host)
   shell.track()
@@ -415,20 +555,53 @@ func glueScenario() async {
   check("keys: ⌘T: the palette, in Margin's window", c.pushed.suffix(max(1, c.pushes - pushes)).contains(#"{"type":"command","name":"palette"}"#))
   keys.press("Meta+KeyT") // (and closed again)
   _ = await waitJS(c.webView, "return !document.querySelector('[m-input=\"palette\"]:focus')")
+  _ = await until(3) { !c.pageWantsKeyboard }
+
+  // ---- ⌘T with the hosted app in front (bug of 2026-11-17: the palette opened behind the hosted window): drawn over
+  // the page area, Margin's window in front; the pointer there Margin's; Escape: the app has the keys again ----
+  apps.bringToFront(calcPid)
+  shell.track()
+  let ordersBefore = c.yieldOrders
+  keys.press("Meta+KeyT")
+  let paletteOpen = await waitJS(c.webView, "const i = document.querySelector('[m-input=\"palette\"]'); return !!i && document.activeElement === i")
+  _ = await until(3) { c.pageWantsKeyboard && (c.captureAll || !c.hits.isEmpty) }
+  // (Where the theme draws its palette, in the window: its field's box.)
+  let fieldBox = await js(c.webView, "const r = document.querySelector('[m-input=\"palette\"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]") as? [Double] ?? [0, 0]
+  let fieldAt = CGPoint(x: display.minX + fieldBox[0], y: display.minY + fieldBox[1])
+  check("⌘T with a hosted app in front: the palette open in Margin's window, its field focused, over the page area; Margin's window still in front of the hosted one (its level raised, never ordered below it)",
+        paletteOpen && c.pageWantsKeyboard && calcPage.contains(fieldAt) && c.window.level == FrontMechanism.raised && c.yieldOrders == ordersBefore && c.hosted == calcWindow && c.pageState == .shown,
+        "open \(paletteOpen) keys \(c.pageWantsKeyboard) field \(fieldAt) page \(calcPage)")
+  _ = await until(3) { windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) == [255] }
+  check("⌘T: as the window server pictures Margin's window, the palette's pixels are painted over the page area (alpha 255 at its field)",
+        windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])]) == [255], "\(String(describing: windowAlpha(c.window, at: [CGPoint(x: fieldBox[0], y: fieldBox[1])])))")
+  // (As soon as the page has said where its palette is: its report of what it draws over the page area follows the draw.)
+  _ = await until(3) { c.pointerMoved(fieldAt, buttonsDown: false); return !c.window.ignoresMouseEvents }
+  let overPalette = c.window.ignoresMouseEvents
+  check("⌘T: the pointer over the palette is Margin's (not passed to the app under it)", !overPalette, "hits \(c.hits.count) all \(c.captureAll)")
+  // (Counted from here: the palette closed just before this step gave the app the keys back in a task of its own.)
+  let activationsBefore = world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count
+  _ = await js(c.webView, "document.querySelector('[m-input=\"palette\"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true")
+  let paletteClosed = await waitJS(c.webView, "return !document.querySelector('[m-input=\"palette\"]')")
+  let keysBack = await until(3) { !c.pageWantsKeyboard && world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == activationsBefore + 1 }
+  _ = await until(3) { !c.captureAll && c.hits.isEmpty }
+  c.pointerMoved(CGPoint(x: centred.midX, y: centred.midY), buttonsDown: false)
+  check("⌘T then Escape: the palette gone, the hosted app activated again (it has the keys), the pointer through to it again",
+        paletteClosed && keysBack && c.window.ignoresMouseEvents && world.calls.last == "activate \(GlueHostWorld.calculator)",
+        "closed \(paletteClosed) back \(keysBack) (\(world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count) activations, \(activationsBefore) before) keys \(c.pageWantsKeyboard) ignoring \(c.window.ignoresMouseEvents) \(world.calls.suffix(3))")
   apps.bringToFront(1)
   shell.track()
   check("keys: let go again once another app is in front", !shell.shortcuts.isActive)
-  if c.below != calcWindow { c.orderBelowHosted() }
 
   // ---- macOS takes Margin's window out of full screen anyway: straight back in, the app shown back with it ----
   c.fullScreenChanged(false)
-  guard await until(5, { engine.shown == calculator && c.hosting && c.below == calcWindow }) else { return check("back into full screen with Calculator", false, "\(session.done.suffix(5))") }
+  guard await until(5, { engine.shown == calculator && c.hosting && c.hosted == calcWindow }) else { return check("back into full screen with Calculator", false, "\(session.done.suffix(5))") }
   await session.idle()
   check("out of full screen by macOS: back into it at once, Calculator hosted again at the page area", c.isFullScreen && c.backIntoFullScreen == 1 && world.bounds(window: calcWindow) == centred
         && session.done.contains { $0.contains("back in full screen") }, "\(session.done.suffix(5))")
 
-  check("the corners follow the page area (window mode: Calculator)", c.corners.isShown && c.corners.frames.first?.origin == c.window.pageRect?.origin, "\(c.corners.frames)")
-  check("window mode (Calculator, smaller than the page area): the window's own ground around it, not the frame's", c.pageGround == nil && c.window.backgroundColor == .windowBackgroundColor, "\(String(describing: c.pageGround))")
+  _ = await until(3) { c.pageState == .shown && c.hole == centred } // (its page's layout at the window's whole width again, measured)
+  check("back in full screen: in front of Calculator again (its level raised), the page card shown, the hole at its window", c.window.level == FrontMechanism.raised && c.pageState == .shown && c.hole == centred,
+        "level \(c.window.level.rawValue) \(c.pageState.rawValue) hole \(String(describing: c.hole))")
 
   // ---- the sidebar's edge dragged: the page's own handle, pointer events as WebKit hands a person's drag ----
   // (Each event at the handle, `dx` from where the press landed; the handle moves with the width, the pointer doesn't.)
@@ -443,45 +616,51 @@ func glueScenario() async {
     """)
   }
   func called(_ prefix: String, since: Int) -> [String] { world.calls.dropFirst(since).filter { $0.hasPrefix(prefix) } }
-  func inContent(_ r: CGRect) -> CGRect { r.offsetBy(dx: -display.minX, dy: -display.minY) }
   let asksBefore = c.fullScreenAsks, backBefore = c.backIntoFullScreen
   let stillFullScreen = { c.isFullScreen && c.fullScreenAsks == asksBefore && c.backIntoFullScreen == backBefore && abs(c.window.frame.width - display.width) <= 1 && c.window.frame.height == display.height }
   let marginUnreserved = { (world.reservation[GlueHostWorld.marginSpace] ?? .zero).isZero }
 
   // A window-mode app shown (Calculator, centred): held while dragged, moved once when it's let go.
+  // (The page's docked layout can reach the app after Calculator was hosted again: that placing, of the same place, first.)
+  try? await Task.sleep(nanoseconds: 300_000_000)
+  await session.idle()
   var mark = world.calls.count
-  let liftsBefore = c.liftOrders
   let placings = { session.done.filter { $0.hasPrefix("page area changed") }.count }
+  let cardStates = { c.pageStates }
   var placed = placings()
+  var statesMark = cardStates().count
+  let levelSets = c.levelSets, frontOrders = c.frontOrders
   await handle("pointerdown")
-  check("resize: a press on the handle alone: nothing lifted, nothing held", !c.lifted && session.resizing == nil)
+  check("resize: a press on the handle alone: nothing held", session.resizing == nil)
   await handle("pointermove", dx: 12)
   await handle("pointermove", dx: 24)
-  guard await until(5, { c.lifted && session.resizing == c.id }) else { return check("resize: the drag reaches the app (the page's sidebar.resizing)", false, "\(c.asks.suffix(4)) \(session.done.suffix(3))") }
+  guard await until(5, { session.resizing == c.id }) else { return check("resize: the drag reaches the app (the page's sidebar.resizing)", false, "\(c.asks.suffix(4)) \(session.done.suffix(3))") }
   c.remeasure() // (a test's window gets no frames: the page's place as it is now)
   let live = await until(5, { c.window.pageRect?.minX == calcPage.minX + 24 })
-  check("resize (window mode): while dragged, Margin's own page area follows live, its window in front of Calculator's and see-through where that window is, the page card's corner panels put away",
-        live && c.liftOrders == liftsBefore + 1 && c.window.backgroundColor == .clear && c.ground.isShown && c.ground.hole == inContent(centred) && !c.corners.isShown,
-        "page \(String(describing: c.window.pageRect)) hole \(String(describing: c.ground.hole)) orders \(c.liftOrders)")
+  check("resize (window mode): while dragged, Margin's own page area follows live and Calculator stays in sight through the hole where it is: the page card still shown, nothing lifted, ordered or told to the page",
+        live && c.pageState == .shown && c.hole == centred && c.ground.hole == inContent(centred) && c.window.backgroundColor == .clear && c.levelSets == levelSets && c.frontOrders == frontOrders
+        && cardStates().count == statesMark && c.window.level == FrontMechanism.raised,
+        "live \(live) page \(String(describing: c.window.pageRect)) \(c.pageState.rawValue) hole \(String(describing: c.hole)) want \(centred) states \(cardStates().dropFirst(statesMark)) level sets \(c.levelSets - levelSets) orders \(c.frontOrders - frontOrders)")
   check("resize (window mode): … and Calculator isn't moved, the engine's page area held", world.bounds(window: calcWindow) == centred && engine.pageRect == calcPage && called("frame", since: mark).isEmpty
-        && placings() == placed, "\(called("frame", since: mark)) \(session.done.suffix(3))")
+        && placings() == placed, "\(called("frame", since: mark)) bounds \(String(describing: world.bounds(window: calcWindow))) want \(centred) engine \(engine.pageRect) want \(calcPage) placings \(placings() - placed) \(session.done.suffix(5))")
   await handle("pointermove", dx: 40)
   await handle("pointerup", dx: 40)
-  guard await until(5, { !c.lifted && session.resizing == nil }) else { return check("resize (window mode): let go", false, "\(session.done.suffix(4))") }
+  guard await until(5, { session.resizing == nil && placings() == placed + 1 }) else { return check("resize (window mode): let go", false, "\(session.done.suffix(4))") }
   await session.idle()
   let wider = c.window.pageRect ?? .zero
   let centredWider = CGRect(x: (wider.minX + (wider.width - 230) / 2).rounded(), y: (wider.minY + (wider.height - 408) / 2).rounded(), width: 230, height: 408)
   check("resize (window mode): let go: the page area 40 pt narrower from its left, Calculator moved once to its middle, the engine told once",
         wider.minX == calcPage.minX + 40 && wider.maxX == calcPage.maxX && world.bounds(window: calcWindow) == centredWider && engine.pageRect == wider && called("frame", since: mark).count == 1
         && called("fullScreen", since: mark).isEmpty && placings() == placed + 1, "\(wider) \(String(describing: world.bounds(window: calcWindow))) \(called("frame", since: mark)) \(session.done.suffix(3))")
-  check("resize (window mode): Margin's window right below Calculator's again, opaque, its corners at the new page area; still full screen at its whole width, nothing reserved on its Space",
-        c.below == calcWindow && !c.ground.isShown && c.window.backgroundColor != .clear && c.corners.isShown && c.corners.frames.first?.origin == wider.origin && stillFullScreen() && marginUnreserved(),
-        "\(c.corners.frames) \(c.window.frame)")
+  check("resize (window mode): the hole at Calculator's new bounds (read again once it was moved), the page card shown throughout (it never left Margin's Space: no loader); still full screen at its whole width, nothing reserved on its Space",
+        c.hosted == calcWindow && c.hole == centredWider && c.ground.hole == inContent(centredWider) && c.pageState == .shown && cardStates().count == statesMark && stillFullScreen() && marginUnreserved(),
+        "hole \(String(describing: c.hole)) states \(cardStates().dropFirst(statesMark)) \(c.window.frame)")
   let savedWidth = await js(c.webView, "return getComputedStyle(document.querySelector('.arcadia')).getPropertyValue('--m-sidebar-width').trim()") as? String ?? ""
   check("resize: the width saved as the theme's own setting (asked of the source), drawn from it", c.asks.contains("updateThemeSettings") && !savedWidth.isEmpty, "\(savedWidth)")
 
   // A full-screen member parked through that drag (TextEdit, placed for the page area before it): placed when it's next shown.
   mark = world.calls.count
+  statesMark = cardStates().count
   _ = library.perform("activateTab", ["windowId": c.id, "tabId": item])
   guard await until(10, { engine.shown == textEdit }) else { return check("resize: back to the app", false, "\(session.done.suffix(4))") }
   await session.idle()
@@ -489,23 +668,35 @@ func glueScenario() async {
         world.bounds(window: editWindow) == wider && called("fullScreen", since: mark) == ["fullScreen false", "fullScreen true"] && world.inMargin == [editWindow] && world.listsMarginOnly
         && called("reserve", since: mark).allSatisfy { $0 == "reserve " + (HostLayout.plan(HostPlacement(page: wider, area: display))?.text ?? "?") } && !called("reserve", since: mark).isEmpty && marginUnreserved(),
         "\(String(describing: world.bounds(window: editWindow))) \(called("fullScreen", since: mark)) \(called("reserve", since: mark))")
+  check("resize: … behind the loader (the page card loading with its name, then shown), the hole at the new page area",
+        Array(cardStates().dropFirst(statesMark)).contains { $0.hasPrefix("loading") } && cardStates().last == "shown" && c.hole == wider && c.pageGround == ground,
+        "\(cardStates().dropFirst(statesMark)) hole \(String(describing: c.hole))")
 
-  // That full-screen member shown: seen through while dragged, placed once when it's let go (the sidebar narrower now).
+  // That full-screen member shown: the sidebar over it while dragged, placed once when it's let go (the sidebar narrower now).
   mark = world.calls.count
   placed = placings()
+  statesMark = cardStates().count
   let loadingPushes = { c.pushed.filter { $0.contains(#""type":"loading""#) && !$0.contains(#""tabIds":[]"#) }.count }
   let pushesBefore = c.pushes
   await handle("pointerdown")
   await handle("pointermove", dx: -10)
   await handle("pointermove", dx: -25)
-  guard await until(5, { c.lifted && session.resizing == c.id }) else { return check("resize (full screen): the drag reaches the app", false, "\(session.done.suffix(3))") }
+  guard await until(5, { session.resizing == c.id }) else { return check("resize (full screen): the drag reaches the app", false, "\(session.done.suffix(3))") }
   c.remeasure()
   let live2 = await until(5, { c.window.pageRect?.minX == wider.minX - 25 })
-  check("resize (full screen): while dragged, Margin's window in front of the member, see-through at its bounds, the ground in the gap the narrower sidebar leaves",
-        live2 && c.window.backgroundColor == .clear && c.ground.hole == inContent(wider) && c.ground.fills(CGPoint(x: inContent(wider).minX - 10, y: inContent(wider).midY)) && !c.ground.fills(CGPoint(x: inContent(wider).midX, y: inContent(wider).midY))
-        && c.ground.color == ground && !c.corners.isShown, "page \(String(describing: c.window.pageRect)) hole \(String(describing: c.ground.hole)) ground \(String(describing: c.ground.color))")
+  check("resize (full screen): while dragged, the member stays in sight where it is: the hole its bounds (the page area as it was), the ground in the frame's colour in the gap the narrower sidebar leaves, the page card still shown",
+        live2 && c.pageState == .shown && c.hole == wider && c.ground.hole == inContent(wider) && c.ground.fills(CGPoint(x: inContent(wider).minX - 10, y: inContent(wider).midY)) && !c.ground.fills(CGPoint(x: inContent(wider).midX, y: inContent(wider).midY))
+        && c.ground.color == ground && c.ground.radii == [0, CGFloat(c.layout?.radii[1] ?? 0), CGFloat(c.layout?.radii[2] ?? 0), 0] && cardStates().count == statesMark,
+        "page \(String(describing: c.window.pageRect)) hole \(String(describing: c.ground.hole)) radii \(c.ground.radii) ground \(String(describing: c.ground.color))")
+  c.pointerMoved(CGPoint(x: wider.minX - 10, y: wider.midY), buttonsDown: false)
+  let gapPointer = c.window.ignoresMouseEvents
+  c.pointerMoved(CGPoint(x: wider.midX, y: wider.midY), buttonsDown: false)
+  check("resize (full screen): the pointer in the gap is Margin's, over the member the app's", !gapPointer && c.window.ignoresMouseEvents)
   // (What seeing through rests on: nothing the page draws covers the middle of its page slot. Every element whose box
-  // holds that point, whether or not it takes the pointer, has no background of its own.)
+  // holds that point, whether or not it takes the pointer, has no background of its own. Margin's default loader, drawn
+  // for the placing just before, has faded out by now.)
+  let loaderGone = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader[m-default]'); return !l || (getComputedStyle(l).visibility === 'hidden' && +getComputedStyle(l).opacity === 0)")
+  check("resize: Margin's default loader, drawn for the placing before, has faded out and is hidden", loaderGone)
   let slotClear = await js(c.webView, """
     const r = document.querySelector('m-page').getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2;
     const paints = [...document.querySelectorAll('*')].filter((el) => {
@@ -515,13 +706,12 @@ func glueScenario() async {
     });
     return paints.map((el) => el.localName + '.' + el.className).join(' | ')
   """) as? String
-  check("resize: the page draws nothing over the middle of its page slot while hosting (the hosted window shows through there)", slotClear == "", slotClear ?? "not read")
+  check("resize: the page draws nothing over the middle of its page slot while shown (the hosted window shows through there)", slotClear == "", slotClear ?? "not read")
   check("resize (full screen): … and nothing leaves full screen, nothing is reserved or moved: the member where it was", called("fullScreen", since: mark).isEmpty && called("reserve", since: mark).isEmpty
         && world.bounds(window: editWindow) == wider && engine.pageRect == wider && world.inMargin == [editWindow] && placings() == placed, "\(world.calls.dropFirst(mark))")
   await handle("pointermove", dx: -30)
   await handle("pointerup", dx: -30)
-  // (Let go over a full-screen member: the ground alone while it's out of Margin's Space, then below it again.)
-  guard await until(10, { !c.lifted && session.resizing == nil && engine.shown == textEdit }) else { return check("resize (full screen): let go", false, "\(session.done.suffix(4))") }
+  guard await until(10, { session.resizing == nil && placings() == placed + 1 && engine.shown == textEdit }) else { return check("resize (full screen): let go", false, "\(session.done.suffix(4))") }
   await session.idle()
   let narrower = c.window.pageRect ?? .zero
   check("resize (full screen): let go: one exit from full screen and one entry, the member at the new page area in Margin's Space, still full screen; Mission Control Margin's Space only",
@@ -531,21 +721,50 @@ func glueScenario() async {
   check("resize (full screen): its own Space reserved for the new page area alone (never added to the last), nothing on Margin's Space",
         !called("reserve", since: mark).isEmpty && called("reserve", since: mark).allSatisfy { $0 == "reserve " + (HostLayout.plan(HostPlacement(page: narrower, area: display))?.text ?? "?") } && marginUnreserved(),
         "\(called("reserve", since: mark))")
-  check("resize (full screen): Margin never left full screen and kept its whole width; right below the member again, opaque, the frame's colour its ground, the corners at the new page area in the theme's colours",
-        stillFullScreen() && c.below == editWindow && !c.ground.isShown && c.pageGround == ground && c.window.backgroundColor == ground && c.corners.isShown && c.corners.frames.first?.origin == narrower.origin
-        && c.layout?.fills == Array(repeating: frameCSS, count: 4), "\(c.corners.frames) fills \(String(describing: c.layout?.fills)) ground \(String(describing: c.pageGround))")
+  let refit = Array(cardStates().dropFirst(statesMark))
+  check("resize (full screen): the one placing behind the loader: the page card loading once (with the app's name), then shown once; the hole at the new page area, rounded, the frame's colour its ground",
+        refit == ["loading com.apple.TextEdit", "shown"]
+        && c.hole == narrower && c.ground.hole == inContent(narrower) && c.ground.radii == (c.layout?.radii.map { CGFloat($0) } ?? []) && c.pageGround == ground, "\(refit) hole \(String(describing: c.hole))")
+  check("resize (full screen): Margin never left full screen and kept its whole width, still in front (its level raised), the theme's colours as reported",
+        stillFullScreen() && c.hosted == editWindow && c.window.level == FrontMechanism.raised && c.layout?.fills == Array(repeating: frameCSS, count: 4), "fills \(String(describing: c.layout?.fills))")
   check("resize (full screen): the theme's loading bar for its item while it's placed again", c.pushed.suffix(max(1, c.pushes - pushesBefore)).contains { $0.contains(#""type":"loading""#) && !$0.contains(#""tabIds":[]"#) } && c.loadingTabs.isEmpty,
         "\(loadingPushes())")
 
-  // Double-click on the handle: the theme's default width, as one change.
+  // Double-click on the handle: the theme's default width, as one change: a second placing right after the first
+  // (2026-11-17: the second one lost the window), the member still hosted.
   mark = world.calls.count
   await handle("dblclick")
-  guard await until(10, { c.window.pageRect == expected && engine.pageRect == expected && !c.lifted && session.resizing == nil }) else {
+  guard await until(10, { c.window.pageRect == expected && engine.pageRect == expected && session.resizing == nil && c.pageState == .shown }) else {
     return check("resize: a double-click on the handle: the default width", false, "\(String(describing: c.window.pageRect)) want \(String(describing: expected)) \(session.done.suffix(4))")
   }
   await session.idle()
-  check("resize: a double-click on the handle: the default width again, the member placed once for it", world.bounds(window: editWindow) == expected && called("fullScreen", since: mark) == ["fullScreen false", "fullScreen true"]
-        && stillFullScreen() && world.listsMarginOnly && c.below == editWindow, "\(called("fullScreen", since: mark))")
+  check("resize: a double-click on the handle: the default width again, the member placed once for it, a second placing in a row: still hosted and shown, the hole at the page area",
+        world.bounds(window: editWindow) == expected && called("fullScreen", since: mark) == ["fullScreen false", "fullScreen true"]
+        && stillFullScreen() && world.listsMarginOnly && c.hosted == editWindow && engine.shown == textEdit && c.hole == expected && session.shown[c.id] == item, "\(called("fullScreen", since: mark))")
+
+  // ---- another app's window opened in Margin's Space (a hosted app's Settings): let in front, then in front again ----
+  let levelBefore = c.window.level
+  session.others(4242)
+  let yielded = c.yieldingTo == 4242 && c.window.level == .normal && c.yieldOrders == 1
+  session.others(nil)
+  check("another window in Margin's Space: Margin's window lets it in front (the normal level, ordered right below it), and is in front of what it hosts again once it's gone",
+        levelBefore == FrontMechanism.raised && yielded && c.yieldingTo == nil && c.window.level == FrontMechanism.raised && c.yieldOrders == 1, "yielded \(yielded) level \(c.window.level.rawValue)")
+
+  // ---- a Mac whose window server doesn't hold the raised level: the ordering way (the overlay's), said once ----
+  let serverBefore = c.serverLevel
+  c.serverLevel = { _ in 0 }
+  c.keepFront()
+  let once = c.mechanism == .level // (asked once more before giving up)
+  c.keepFront()
+  let orders = c.frontOrders
+  check("the raised level not held by the window server (read back twice): kept in front by its order instead: at the normal level, ordered right above the hosted window",
+        once && c.mechanism == .order && c.window.level == .normal && c.frontOrders >= 1, "once \(once) \(c.mechanism) orders \(c.frontOrders)")
+  apps.bringToFront(hostedPidNow())
+  c.keepFront() // (an app activated: MarginWindows' observer)
+  c.pressed(CGPoint(x: (expected?.midX ?? 0), y: (expected?.midY ?? 0)))
+  let pressedAgain = await until(2) { c.frontOrders >= orders + 2 }
+  check("the ordering way: ordered above the hosted window again when an app is activated and after a press (a click in the hosted app raises its window)", pressedAgain, "\(c.frontOrders) from \(orders)")
+  c.serverLevel = serverBefore
 
   // ---- which of the copy's windows Margin draws: only the one it hosts; the person's own told not (their ⌘T stays
   // Safari's way) ----
@@ -600,8 +819,92 @@ func glueScenario() async {
   check("quit: ⌘Q again with the prompt up: Quit, asked of the app once; still asking next time (not Always quit)", quit.asked == 1 && shell.quitsAsked == 1 && shell.quitPrompt == nil && quit.asks)
   guard await until(10, { done }) else { return check("quit", false) }
   check("quit: ⌘Q is the front app's again while Margin quits", !shell.shortcuts.guardsQuit && !keys.held.values.contains(Combo.parse("Meta+KeyQ")!))
-  check("quit: nothing hosted: the corners gone, the window's own ground again", !c.corners.isShown && c.corners.panels.allSatisfy { !$0.isVisible } && c.pageGround == nil)
+  check("quit: nothing hosted: the page card empty, no hole, the window's own ground again", c.pageState == .empty && c.hole == nil && !c.ground.isShown && c.pageGround == nil && c.window.backgroundColor == .windowBackgroundColor)
   check("quit: Calculator back at its own frame before it was quit", world.frameAtQuit[GlueHostWorld.calculator] == GlueHostWorld.calculatorFrame, "\(world.frameAtQuit)")
   check("quit: the apps Margin started quit, nothing left in Margin's Space, Mission Control Margin's Space only", world.apps.isEmpty && world.inMargin.isEmpty && world.listsMarginOnly
         && (world.reservation[GlueHostWorld.marginSpace] ?? .zero).isZero, "\(world.apps.values.map(\.bundle)) \(world.fullScreenSpaces)")
+}
+
+// Margin opened again with an item selected in its window's space (HostedSession.resumeLast; asked 2026-11-17: "open
+// Margin and that's it, show a loader until the data is shown"): the real shell, library, page and window, the engine
+// on the stand-in window manager. The item is shown again by itself: the page's hello already says hosting and
+// `loading` with its name, so the first frame is the loader, never the launcher; its app is opened once Margin's
+// window is in full screen with its page area; then `shown`.
+@MainActor
+func glueResumeScenario() async {
+  func check(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") { e2eCheck("glue: at launch: \(label)", ok, detail()) }
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-resume-\(UUID().uuidString)")
+  defer { try? FileManager.default.removeItem(at: root) }
+  let world = GlueHostWorld()
+  var options = Shell.Options()
+  options.harness = true
+  options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
+  options.dataRoot = root
+  options.bundleIds = ["safari": fakeBundle]
+  options.hostSystem = world
+  options.appCatalog.folders = []
+  options.appCatalog.spotlight = false
+  options.appCatalog.icons = AppIconCache(folder: root.appendingPathComponent("icons"))
+  var host = HostEngine.Options()
+  host.every = 0.01
+  host.privateRetire = 0
+  options.hostOptions = host
+  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("com.unibox.margin.test.resume.\(ProcessInfo.processInfo.processIdentifier)"))
+  let shell = Shell(link: link, apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
+  shell.start()
+  defer { shell.stop {} }
+  let made = shell.makeMarginWindows()
+  guard let library = shell.library, let session = shell.hosted, let engine = shell.host else { return check("the library, the session and the engine", false) }
+  // (What an earlier run left: an app item of the first space, the one selected there.)
+  let space = library.spaces().first?.id ?? ""
+  let added = library.perform("addItem", ["spaceId": space, "target": ItemTarget.app(bundleId: "com.apple.Notes", name: "Notes").json, "front": true])
+  let item = (added.result as? JSONObject)?["tabId"] as? String ?? ""
+  _ = library.perform("activateTab", ["windowId": 1, "tabId": item])
+  await session.idle()
+  check("an item selected in the window's space, nothing shown (no Margin window yet)", !item.isEmpty && engine.shown == nil
+        && library.items().contains { $0.id == item && $0.value["selected"] as? Bool == true }, "\(library.items().map { $0.value })")
+
+  var atLaunch: String?
+  world.onLaunch = { bundle in if bundle == "com.apple.Notes" { atLaunch = "\(made.controllers.first?.isFullScreen == true) \(made.controllers.first?.pageState.rawValue ?? "?") \(made.controllers.first?.hostedPlacement != nil)" } }
+  let c = made.open()
+  defer { made.closeAll() }
+  world.marginWindow = c.window.windowNumber
+  c.hostedBounds = { world.bounds(window: $0) }
+  world.display = c.contentFrame
+  let hello = c.pageHello()
+  check("as the window is made, before its page has loaded: hosting, the page card loading with the item's name, its hello saying so (the first frame is the loader, not the launcher)",
+        c.hosting && c.pageState == .loading && c.loaderLabel == "Notes" && c.pageStates == ["loading Notes"] && hello.contains(#""pageHosted":true"#) && hello.contains(#""pageState":"loading""#)
+        && hello.contains(#""pageOpening":"Notes""#) && session.resuming == c.id, "\(c.pageStates) \(c.pageState.rawValue)")
+  guard await until(15, { c.isReady }) else { return check("Margin's window's page drawn", false) }
+  let first = await js(c.webView, "const r = document.querySelector('.arcadia'); const l = r?.querySelector('m-page-loader'); return [r?.getAttribute('m-page-state'), !!document.querySelector('.launcher'), l?.textContent ?? '', r?.dataset.sidebar].join('|')") as? String ?? "?"
+  check("its page as it's first drawn: the theme's root loading (or already shown), no launcher, the loader with Margin's words, the sidebar docked",
+        (first.hasPrefix("loading|false|Opening Notes…") || first.hasPrefix("shown|false|")) && first.hasSuffix("|open"), first)
+  let notes = HostTarget.app("com.apple.Notes").id
+  guard await until(10, { engine.shown == notes && c.pageState == .shown }) else { return check("the item shown again", false, "\(session.done.suffix(5)) \(c.pageStates)") }
+  let win = world.apps.values.first { $0.bundle == "com.apple.Notes" }?.windows.first ?? 0
+  // The window dropped from every Space right after it's shown (the real Mac, 2026-11-17, check10): the engine's polls
+  // that follow a show (every 0.1 s for 1.5 s; nothing else polls here) put it back at their first read.
+  world.wins[win]?.spaces = []
+  let putBack = await until(1.2) { world.inMargin == [win] }
+  await session.idle()
+  check("its window in no Space at all right after it's shown: put back into Margin's Space by the polls that follow a show, still the one shown",
+        putBack && engine.shown == notes && c.hosted == win && c.pageState == .shown, "back \(putBack) \(String(describing: world.wins[win]?.spaces)) \(c.pageState.rawValue)")
+  // Nothing of Margin's Space on screen though every Space read is right (the real Mac, 2026-11-17: macOS finished its
+  // own full-screen change into a Space that was gone): the shell's poll looks at the on-screen list too.
+  world.lists = true
+  shell.track()
+  world.blank = true
+  let onAgain = await until(3) { shell.track(); return !world.blank }
+  await session.idle()
+  check("neither Margin's window nor the hosted one on screen though the Spaces read as they should: the shell's poll makes Margin's Space current again, still the one shown, never the launcher",
+        onAgain && engine.shown == notes && c.hosted == win && c.pageState == .shown && world.inMargin == [win], "back \(onAgain) \(c.pageState.rawValue)")
+  world.lists = false
+  check("its app opened only once Margin's window was in full screen with its page area, still behind the loader", atLaunch == "true loading true", "\(String(describing: atLaunch))")
+  check("then shown: the page card loading → shown with never the launcher (never `empty`, hosting never turned off), the hole at the app's window, its item the one shown",
+        c.pageStates == ["loading Notes", "shown"] && !c.pushed.contains(#"{"type":"pageHosted","on":false}"#) && c.hole == world.bounds(window: win) && c.hole == c.window.pageRect
+        && session.shown[c.id] == item && session.resuming == nil && world.inMargin == [win], "\(c.pageStates) hole \(String(describing: c.hole))")
+  let lit = await waitJS(c.webView, "return document.querySelector('.tab.active')?.getAttribute('aria-label') === 'Notes' && document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'shown' && !document.querySelector('.launcher')")
+  check("the sidebar highlights it, the theme's root says shown, no launcher", lit)
+  check("the dev hook's front line says what the engine reads of the one shown (its Spaces, on screen or not, the polls so far) and what the window would show by itself at the next launch: the app's bundle id only",
+        shell.devFront().hasSuffix(", last app:com.apple.Notes") && shell.devFront().contains("; engine: polls ") && shell.devFront().contains("app:com.apple.Notes window \(win) in [\(GlueHostWorld.marginSpace)]"), String(shell.devFront().suffix(260)))
 }

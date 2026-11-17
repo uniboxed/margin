@@ -83,8 +83,9 @@ final class Shell: ExtensionLinkDelegate {
     // Safari's menus through Accessibility (a profile's new window, the sidebar item).
     let safariAX = SafariAX()
     var pollTimer: Timer?
+    var showPolls = 0 // each host shown: its own run of quick polls (ShellHostedGlue.swift pollAfterShow)
     private var trackSoon = false
-    private var stopped = false
+    private(set) var stopped = false
 
     // ---- profiles (ShellProfiles.swift) ----
     var browserProfiles: [String: BrowserProfiles] = [:]

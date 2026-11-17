@@ -15,13 +15,17 @@
 // - Margin's window while hosting: always full screen (Tirth, 2026-11-15: MarginWindowController's
 //   `alwaysFullScreen`; a window found windowed is asked once more, as a safety check), its whole width, its page
 //   drawing its own layout with the sidebar docked (`setHosting`), the engine given the page area from that layout
-//   (its placement); the hosted window above it in its Space, Margin's window kept right below it (`keepBelow`, from
-//   the engine's `keepAbove`); a press in its page area around that window gives the app the keyboard (`pagePressed`).
-//   While the engine opens an app for the first time or places it again, its page area shows the loading animation
-//   (`setLoading`, from the engine's `loading`). Nothing shown any more (closed, quit, parked): the theme's launcher
-//   in its page area again. Taken out of full screen anyway (the green button, Mission Control): the one shown is
-//   parked at once (`leavingFullScreen`), the window goes back into full screen by itself, and the item shown is
-//   hosted again then (`enteredFullScreen`).
+//   (its placement). Margin's window is in front of what it hosts (decided 2026-11-17: MarginWindowController
+//   `keepFront`); the hosted window shows through its page area, a hole while the page card is `shown` (`setHosted`,
+//   from the engine's `hostedWindow`). While the engine opens an app for the first time or places it again
+//   (`setLoading`, from the engine's `loading`), and while an item's show isn't ready yet (`setShowing`: only after a
+//   grace, a switch between prepared windows shows no loader), the page card is opaque with the theme's loader. A press
+//   in the page area around a smaller window gives the app the keyboard (`pagePressed`); a field of Margin's letting go
+//   of the keys gives them back to the app shown (`fieldClosed`); another window opened in Margin's Space is let in
+//   front (`others`). Nothing shown any more (closed, quit, parked): the theme's launcher in its page area again. Taken
+//   out of full screen anyway (the green button, Mission Control): the one shown is parked at once
+//   (`leavingFullScreen`), the window goes back into full screen by itself, and the item shown is hosted again then
+//   (`enteredFullScreen`).
 // - A show asked for is the window's item in front at once (`requested`: the sidebar's switch lands as it's asked,
 //   while an app can take seconds to come in), and a show overtaken by a newer one for the same window before it
 //   started is skipped (fast clicks don't queue a full switch each).
@@ -33,11 +37,15 @@
 //   tabs: `item(ofTab:)` gives the item back), the one shown in front, so the sidebar highlights it.
 //
 // - The sidebar's edge dragged while a host is shown (`sidebarResizing`, from the page's word that a change of the
-//   width began and that it's over): the page area's changes are held for the whole drag (a full-screen member can
-//   only be placed again out of full screen and in, 1–1.5 s: never one per pointer move), Margin's window in front of
-//   the hosted one meanwhile (`setLifted`: its own layout live, the hosted window seen through the page area where it
-//   still is), and the hosted window placed once when it's over, at the page area the drag ended on. Parked ones are
-//   placed for the new page area when they're next shown (the engine's own rule).
+//   width began and that it's over): the sidebar slides over the hosted window live (Margin's window is in front), the
+//   page area's changes are held for the whole drag (a full-screen member can only be placed again out of full screen
+//   and in, 1–1.5 s: never one per pointer move), and the hosted window is placed once when it's over, behind the
+//   loader, at the page area the drag ended on. Parked ones are placed for the new page area when they're next shown
+//   (the engine's own rule).
+// - A placing again that fails never drops the item (`placeAgain`): a window that didn't leave full screen stays shown
+//   at the frame it had (the engine's), the theme's frame colour in any gap; one that left and didn't come back in is
+//   shown again once after a pause, behind the loader, and failing that stays hosted out of sight, its item kept (a
+//   click shows it).
 //
 // One Margin window hosts at a time (the engine has one page area); the others draw the library as kept items.
 
@@ -55,7 +63,7 @@ protocol HostedEngine: AnyObject {
     var hasHosts: Bool { get }
     func isHosted(_ id: HostID) -> Bool
     func mode(of id: HostID) -> HostMode? // how a host is shown (nil: not hosted)
-    var shownAbove: Int? { get } // the window of the host shown in Margin's Space (Margin's window kept below it)
+    var shownWindow: Int? { get } // the window of the host shown in Margin's Space (Margin's window in front of it)
     func activateShown(at point: CGPoint?) async // that app in front (a press in Margin's page area around its window; top-left)
     func fullScreenSpace(ofWindow number: Int) -> UInt64?
     func target(ofWindow number: Int) -> HostTarget?
@@ -107,19 +115,25 @@ protocol HostedWindow: AnyObject {
     func toFullScreen()
     var fullScreenState: String { get } // for the log
     var layoutMode: String? { get } // the mode of the page's last layout
-    // While hosting: its own layout, the sidebar docked, no launcher in the page area (the hosted window is above it).
+    // While hosting: its own layout, the sidebar docked, no launcher in the page area (the hosted window shows there).
     func setHosting(_ on: Bool)
-    func setLoading(_ label: String?) // an app opening or placed again in the page area (its name, for the log), nil: none
+    // An app opening or placed again in the page area (its name), nil: none: the page card `loading` at once.
+    func setLoading(_ label: String?)
+    // An item being shown and not ready yet (its name), nil: it is: `loading` only if that takes longer than a grace;
+    // `slow`: known to take a while (the last item, at launch): `loading` at once.
+    func setShowing(_ label: String?, slow: Bool)
     // The items loading, by the UI's numbers for them: the theme's loading bar on the page card's edge for the one in
     // front, and each one's row (host-app.ts `loading`, as a browser copy's `loading` push draws it over a browser).
     func setLoadingTabs(_ numbers: [Int])
-    func keepBelow(_ number: Int?) // kept right below that window (another app's), nil: no more
-    // In front of the hosted window while the sidebar's edge is dragged and until that window is placed again, the
-    // hosted window seen through the page area where it still is (`through`), the page area's ground elsewhere; off:
-    // right below it again.
-    func setLifted(_ on: Bool, through: Bool)
-    func cover(_ number: Int?) // ordered right above that window (a new app's, read before it's shown), nil: no more
+    func setHosted(_ number: Int?) // the hosted window shown in its page area (this window in front of it), nil: none
+    func hostedMoved() // that window was placed again, or kept where it was: its bounds read again
+    func cover(_ number: Int?) // a window of the engine's in its Space not shown yet (a new app's, read), nil: no more
+    func yield(to number: Int?) // another app's window opened in its Space: let in front until it's gone (nil)
     func push(_ json: String)
+}
+
+extension HostedWindow {
+    func setShowing(_ label: String?) { setShowing(label, slow: false) }
 }
 
 extension MarginWindowController: HostedWindow {
@@ -164,6 +178,8 @@ final class HostedSession: LibraryDelegate {
         var closesRestoredSafariWindows = true // (Tirth, 2026-11-15) a Safari Margin started: its restored windows closed
         var preparesBrowser = true // (Tirth, 2026-11-16) the default browser's window made ready out of sight at launch
         var prepareWindowWait = 30.0 // a Margin window in full screen with its page area measured, at launch
+        var refitRetryAfter = 1.5 // a placing again that left the window out of full screen: shown again once, this long after
+        var resumesLast = true // (Tirth, 2026-11-17) at launch, the item the window showed last is shown again, behind the loader
     }
 
     // Where an item's page is: its host, and for a web item its profile.
@@ -318,6 +334,8 @@ final class HostedSession: LibraryDelegate {
             labels[HostTarget.app(bundle).id] = appName(bundle) ?? (name.isEmpty ? nil : name) ?? bundle
             showing[HostTarget.app(bundle).id] = item
             defer { showing[HostTarget.app(bundle).id] = nil; refreshLoading() }
+            if engine.shown != HostTarget.app(bundle).id || hostingWindow != w.id { w.setShowing(labels[HostTarget.app(bundle).id]) }
+            defer { w.setShowing(nil) }
             guard await host(.app(bundle), in: w) else { return }
             open[item] = OpenItem(host: HostTarget.app(bundle).id, profile: nil)
         case .web(let browser, let profile):
@@ -327,14 +345,25 @@ final class HostedSession: LibraryDelegate {
             labels[id] = "Safari"
             showing[id] = item
             defer { showing[id] = nil; refreshLoading() }
-            if engine.shown != id || hostingWindow != w.id {
-                guard await host(.safariWindow(p), in: w) else { return }
+            // Its window not the one shown: Margin's window told the item is being shown until it is. A window that's
+            // there already (parked) gets its tab in front first, while it's out of sight (the copy's hostShow only
+            // touches tabs), then comes in: the right page from the first frame, no other tab's flashed. A window not
+            // made yet: the engine's first open (behind the loader), then its tab. A tab switch in the window shown
+            // is Safari's own, in sight: nothing said.
+            defer { w.setShowing(nil) }
+            let comes = engine.shown != id || hostingWindow != w.id
+            let there = safariWindows[p] != nil && engine.isHosted(id)
+            if comes {
+                let title = (library.items().first { $0.id == item }?.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                w.setShowing(title ?? "Safari")
+                if !there { guard await host(.safariWindow(p), in: w) else { return } }
             }
             guard let windowId = safariWindows[p] else { return note("\(item): no Safari window of its profile") }
             let (result, error) = await links.request(profile: p, "hostShow", ["windowId": windowId, "itemId": item, "url": address.isEmpty ? "about:blank" : address])
             guard let result else { return note("\(item): its tab wasn't shown (\(error ?? "no answer"))") }
             open[item] = OpenItem(host: id, profile: p)
             if let tab = int(result["tabId"]) { safariTabs[item] = tab }
+            if comes, there { guard await host(.safariWindow(p), in: w) else { return } }
             note("\(item): shown in Safari window \(windowId)")
         }
         shown[w.id] = item
@@ -360,7 +389,7 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
-    // Margin's window ready to host above its page area: in full screen (it always is; asked once more if it isn't, a
+    // Margin's window ready to host in its page area: in full screen (it always is; asked once more if it isn't, a
     // safety check), its page drawing its own layout for hosting, its page area measured. Nil: it couldn't be.
     private func prepare(_ w: HostedWindow, for target: HostTarget) async -> (HostPlacement, UInt64)? {
         if let other = hostingWindow, other != w.id, let was = window(other) {
@@ -368,7 +397,8 @@ final class HostedSession: LibraryDelegate {
             await engine.parkShown(why: "another Margin window hosts")
             shown[other] = nil
             hostingWindow = nil
-            was.keepBelow(nil)
+            was.setHosted(nil)
+            was.setShowing(nil)
             was.setHosting(false)
         }
         if !w.isFullScreen {
@@ -409,10 +439,10 @@ final class HostedSession: LibraryDelegate {
         if engine.shown != nil { Task { await self.engine.parkShown(why: "Margin's window left full screen") } }
         if let item = requested[w.id] ?? shown[w.id] { resume[w.id] = item }
         hostingWindow = nil
-        w.setLifted(false, through: false)
-        w.keepBelow(nil)
+        w.setHosted(nil)
         w.cover(nil)
         w.setLoading(nil)
+        w.setShowing(nil)
         w.setHosting(false)
         shown[w.id] = nil
         refreshLoading()
@@ -433,7 +463,7 @@ final class HostedSession: LibraryDelegate {
     }
 
     // The engine's slow step for a host started (its first open, its placing again: nil when it's over): the hosting
-    // window's page area shows the loading animation with the app's name.
+    // window's page card is opaque, with the theme's loader and the app's name.
     func loading(_ id: HostID?) {
         appLoading = id
         defer { refreshLoading() }
@@ -474,39 +504,116 @@ final class HostedSession: LibraryDelegate {
         w.setLoadingTabs(numbers)
     }
 
-    // A new app's window taken into Margin's Space to be read (HostEngine `cover`): the hosting Margin window ordered
-    // right above it meanwhile.
+    // A window of the engine's in Margin's Space that isn't shown yet (HostEngine `cover`: a new app's, read; a
+    // browser's made ready out of sight): told to the Margin window it's under.
     func cover(_ number: Int?) {
         guard let id = hostingWindow ?? preparingWindow, let w = window(id) else { return }
         w.cover(number)
     }
 
-    // The engine's host shown (its window), or none: the hosting Margin window kept right below it.
-    func keepBelow(_ number: Int?) {
+    // The engine's host shown (its window), or none: the hosting Margin window is in front of it, its page area the hole.
+    func hosted(_ number: Int?) {
         guard let id = hostingWindow, let w = window(id) else { return }
-        w.keepBelow(number)
-        // (Shown while the sidebar's edge is being dragged, its opening or its switch just done: Margin's window in
-        // front of it too, until the drag's one placing.)
-        if number != nil, resizing == id { w.setLifted(true, through: true) }
+        w.setHosted(number)
+    }
+
+    // Another app's normal window on screen in Margin's Space that came while nothing was being opened (HostEngine
+    // `others`: a hosted app's Settings, a second document), or none any more: the Margin window there lets it in front.
+    func others(_ number: Int?) {
+        guard let w = window(hostingWindow ?? preparingWindow) else { return }
+        w.yield(to: number)
+    }
+
+    // A field of Margin's (the palette) let go of the keys with a host shown: that app has them again.
+    func fieldClosed(_ w: HostedWindow) {
+        guard w.id == hostingWindow, engine.shownWindow != nil else { return }
+        Task { await self.engine.activateShown(at: nil) }
     }
 
     // A press in a Margin window's page area while a host is shown there (around its window: on it, the app has it
     // already): that app given the keyboard (activated, its window raised), never a click.
     // `point`: where (top-left coordinates): a press on the hosted window itself is the app's already.
     func pagePressed(_ w: HostedWindow, at point: CGPoint? = nil) {
-        guard w.id == hostingWindow, engine.shownAbove != nil else { return }
+        guard w.id == hostingWindow, engine.shownWindow != nil else { return }
         Task { await self.engine.activateShown(at: point) }
     }
 
+    // ---- at launch: the item the window showed last ----
+
+    // Asked by Tirth (2026-11-17): "open Margin and that's it, show a loader until the data is shown". As a browser
+    // reopens its last tab: the first Margin window opened in a run shows the item selected in its space when Margin
+    // last quit (the library's `selected`, the newest if several), and nothing else of the page area first: called as
+    // the window is made, before its page loads, so its page's hello already says hosting and `loading` with the item's
+    // name (no launcher for a frame) and the sidebar has its row lit. The show itself waits for the window to be in full
+    // screen with its page area measured, then runs as any pick: an app's first open, or a web item (its browser made
+    // ready at launch if that got there first, else started now: the loader stays the 4-5 s a cold Safari takes).
+    // No selected item, or one that can't be hosted: the launcher, as before. A show that fails: the launcher.
+    // `defaults write com.unibox.margin MarginResumeLast -bool NO`: never (the launcher at every launch; the on-screen
+    // checks set it, so nothing of the person's is opened by them).
+    private(set) var resuming: Int? // the Margin window whose last item is being shown at launch (it keeps hosting meanwhile)
+    private var resumed = false
+    static let resumeKey = "MarginResumeLast"
+    static func resumesLast(setting: Any?) -> Bool { setting as? Bool != false }
+
+    // The item a Margin window showed last: the one selected in its space (the newest used if several), if it can be
+    // hosted; its target and the name its loader says.
+    func lastItem(ofWindow id: Int) -> (item: String, target: ItemTarget, name: String)? {
+        let space = library.space(ofWindow: id) ?? library.spaces().first?.id
+        let last = library.items(space: space).filter { $0.value["selected"] as? Bool == true }
+            .max { (num($0.value["lastUsed"]) ?? 0, $1.id) < (num($1.value["lastUsed"]) ?? 0, $0.id) }
+        guard let last, let target = library.target(ofItem: last.id) else { return nil }
+        switch target {
+        case .app(let bundle, let n):
+            return (last.id, target, appName(bundle) ?? (n.isEmpty ? bundle : n))
+        case .web(let browser, _):
+            guard browser == "safari" else { return nil }
+            return (last.id, target, (last.value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Safari")
+        }
+    }
+
+    func resumeLast(_ w: HostedWindow) {
+        guard options.resumesLast, !resumed, hostingWindow == nil, engine.shown == nil else { return }
+        resumed = true
+        guard let (item, target, name) = lastItem(ofWindow: w.id) else { return }
+        resuming = w.id
+        hostingWindow = w.id
+        requested[w.id] = item
+        w.setHosting(true)
+        w.setShowing(name, slow: true)
+        note("Margin's window \(w.id): the item it showed last (\(item)) shown again, behind the loader from its first frame")
+        onChange?()
+        enqueue {
+            defer {
+                self.resuming = nil
+                w.setShowing(nil)
+                // (Something else asked for meanwhile: its own show decides; else nothing shown is the launcher.)
+                if self.requested[w.id] == nil || self.requested[w.id] == item { self.requested[w.id] = nil; self.settleHosting() }
+            }
+            // (Something else asked for meanwhile ends the wait: its own show is next in line, not held up by this one.)
+            let ready = await self.wait(self.options.prepareWindowWait) { (w.isFullScreen && w.hostedPlacement != nil) || self.requested[w.id] != item }
+            if self.overtaken(item, windowId: w.id) { return }
+            guard self.requested[w.id] == item else { return }
+            guard ready else {
+                // (Margin's window not up in time: the launcher for now, and the item hosted once the window is in full
+                // screen, as after macOS took it out: `enteredFullScreen`.)
+                if !w.isFullScreen { self.resume[w.id] = item }
+                return self.note("\(item): not shown at launch: Margin's window \(w.id) wasn't in full screen with its page area within \(Int(self.options.prepareWindowWait)) s\(w.isFullScreen ? "" : ": shown once it is")")
+            }
+            await self.show(item, url: nil, target: target, windowId: w.id)
+        }
+    }
+
     // Margin's window hosts only while the engine shows something in it: nothing shown, its launcher in the page area
-    // again (after each of the session's steps, and the engine's events, once the engine is done).
+    // again (after each of the session's steps, and the engine's events, once the engine is done). Not while its last
+    // item is still on its way at launch (`resuming`).
     private func settleHosting() {
-        guard engine.shown == nil, let id = hostingWindow else { return }
+        guard engine.shown == nil, let id = hostingWindow, resuming != id else { return }
         hostingWindow = nil
         shown[id] = nil
-        window(id)?.keepBelow(nil)
+        window(id)?.setHosted(nil)
         window(id)?.cover(nil)
         window(id)?.setLoading(nil)
+        window(id)?.setShowing(nil)
         window(id)?.setHosting(false)
         refreshLoading()
         onChange?()
@@ -690,7 +797,8 @@ final class HostedSession: LibraryDelegate {
     }
 
     // A window a profile's copy made for Margin, into full screen (focused) or out of it, by that copy
-    // (`setWindowState`): Accessibility can't while the window is on a Space that isn't current. True: Safari was asked.
+    // (`setWindowState`): Accessibility can't while the window is on a Space that isn't current. True: Safari was asked
+    // (answered at once: what the window did is the engine's to read from the window server).
     func safariFullScreen(_ profile: String?, _ windowId: Int, _ on: Bool) async -> Bool {
         let p = resolve(profile)
         let request = HandoffRequest.setWindowState(windowId: windowId, state: on ? .fullscreen : .normal, focused: on, notAfter: (Date().timeIntervalSince1970 + 2) * 1000)
@@ -741,10 +849,29 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
+    // The hosted window placed for the page area as it is now. Never at the cost of the item (bug of 2026-11-17: a
+    // second placing failed and the window was lost): the engine keeps a window that didn't leave full screen shown at
+    // the frame it had (`placed` false, still shown: the hole follows its bounds, the theme's frame colour in any gap,
+    // placed again when it's next shown); one that left full screen and didn't come back in at the new size is hosted
+    // still, out of sight: shown again once, `refitRetryAfter` later (Safari may be mid-transition), behind the loader;
+    // failing that too, the launcher, its item kept in the sidebar (a click shows it again).
     private func placeAgain(_ window: HostedWindow) async {
-        guard window.id == hostingWindow, engine.shown != nil, let placement = window.hostedPlacement else { return }
+        guard window.id == hostingWindow, let id = engine.shown, let placement = window.hostedPlacement else { return }
         let placed = await engine.pageRectChanged(placement)
-        note("page area changed: \(Int(placement.page.width))×\(Int(placement.page.height))\(placed ? "" : " (not fitted)")")
+        window.hostedMoved()
+        let kept = !placed && engine.shown == id
+        note("page area changed: \(Int(placement.page.width))×\(Int(placement.page.height))\(placed ? "" : kept ? " (not fitted: shown at the frame it had)" : " (not fitted)")")
+        guard !placed, engine.shown == nil, engine.isHosted(id) else { return }
+        window.setShowing(labels[id] ?? id.description)
+        defer { window.setShowing(nil); settleHosting() }
+        await sleep(options.refitRetryAfter)
+        guard hostingWindow == window.id, engine.shown == nil, engine.isHosted(id), requested[window.id] == nil else { return }
+        let result = await engine.show(id)
+        if case .failed(let step, let why) = result {
+            note("\(id): not shown again after its placing failed (\(step.rawValue): \(why)): hosted still, out of sight; its item is kept")
+        } else {
+            note("\(id): shown again after its placing failed")
+        }
     }
 
     // The Margin window whose sidebar's edge is being dragged (its page area's changes held while it hosts).
@@ -752,29 +879,21 @@ final class HostedSession: LibraryDelegate {
 
     // A change of a Margin window's sidebar's width began (a drag of its edge: the page says so at the first change of
     // the width), or is over (its last layout reported first: ui/behaviors/resize.ts). Begun: the page area's changes
-    // are held from now on, and with a host shown in it Margin's window is in front of the hosted one, which shows
-    // through the page area where it still is (one that comes to be shown mid-drag, its opening just done: the same,
-    // `keepBelow`). Over: the hosted window placed once, at the page area as it is now (a window by Accessibility, seen
-    // through until it's there; a full-screen member out of full screen and in, the ground alone and the theme's loading
-    // bar meanwhile), then Margin's window right below it again. Nothing shown: nothing to place.
+    // are held from now on; the sidebar slides over the hosted window as it is (Margin's window is in front of it).
+    // Over: the hosted window placed once, at the page area as it is now (a window by Accessibility; a full-screen
+    // member out of full screen and in, behind the loader). Nothing shown: nothing to place.
     func sidebarResizing(_ window: HostedWindow, _ on: Bool) {
         if on {
             guard resizing == nil else { return }
             resizing = window.id
             guard window.id == hostingWindow, engine.shown != nil else { return }
-            window.setLifted(true, through: true)
             note("the sidebar's edge dragged in Margin's window \(window.id): the page area's changes held until it's let go")
             return
         }
         guard resizing == window.id else { return }
         resizing = nil
-        guard window.id == hostingWindow, let id = engine.shown else { return window.setLifted(false, through: false) }
-        // (A full-screen member leaves Margin's Space to be placed again: nothing of it to see through meanwhile.)
-        if engine.mode(of: id) != .window { window.setLifted(true, through: false) }
-        enqueue {
-            await self.placeAgain(window)
-            window.setLifted(false, through: false)
-        }
+        guard window.id == hostingWindow, engine.shown != nil else { return }
+        enqueue { await self.placeAgain(window) }
     }
 
     // ---- the palette ----

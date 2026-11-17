@@ -224,13 +224,13 @@ function measureNow() {
   if (!g || !host) return;
   // (The mode too: Margin's own window learns it went full screen after its new size was measured, and the app
   // takes a layout as the window's only with the window's mode in it: MarginWindowController.)
-  // (Margin's own window: the colour around the page's rounded corners too, drawn over a hosted app's window.)
-  const corner = host.appWindow ? cornerFill(runtime?.view.pageEl) : null;
-  const key = JSON.stringify([g.insets, g.radius, g.radii, g.container, host.mode, !!host.pageOutside, corner]);
+  // (Margin's own window: the colour around the page's rounded corners too, the ground the app puts under the page area.)
+  const fills = host.appWindow ? cornerFill(runtime?.view.pageEl)?.fills ?? null : null;
+  const key = JSON.stringify([g.insets, g.radius, g.radii, g.container, host.mode, !!host.pageOutside, fills]);
   if (key === lastLayout) return;
   lastLayout = key;
   // (Said as none when the theme draws nothing there: a report that leaves them out keeps the last ones, host-app.ts.)
-  host.reportLayout({ ...g, windowId: host.windowId, mode: host.mode, ...(host.appWindow ? { fills: corner?.fills ?? null, edge: corner?.edge ?? null } : {}) });
+  host.reportLayout({ ...g, windowId: host.windowId, mode: host.mode, ...(host.appWindow ? { fills } : {}) });
 }
 // Which pointer positions the app hands in (runtime.pointer: only peek uses
 // them): none while the sidebar is docked (nothing to bring out), those in
@@ -718,7 +718,7 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
       if (msg?.type === 'windows' || msg?.type === 'state' || msg?.type === 'changes') notices.front(host?.frontTabId ?? null);
       // The window's mode, or the sidebar alone in Margin's own window: measured again after this drawing (a theme
       // whose drawing doesn't change with it changes nothing the watcher sees, and the app waits for that layout).
-      if (msg?.type === 'windows' || msg?.type === 'pageOutside' || msg?.type === 'pageHosted') { followOutside(); queueMicrotask(measureNow); }
+      if (msg?.type === 'windows' || msg?.type === 'pageOutside' || msg?.type === 'pageHosted' || msg?.type === 'pageState') { followOutside(); queueMicrotask(measureNow); }
       // The app asks for a measure now: the window took a size its page hasn't drawn yet (no frame since, so no resize
       // event; seen 2026-11-15 after a hosted tile left: 4.8 s), and the web view's size is what a measure reads.
       if (msg?.type === 'measure') measureNow();

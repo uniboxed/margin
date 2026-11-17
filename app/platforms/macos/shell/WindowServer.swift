@@ -31,8 +31,13 @@ struct ServerWindow: Equatable {
 struct CGWindowSource {
     // Every window of these processes (on every Space), plus the on-screen windows of any process, in the window
     // server's order; nil when the window server gave no list at all (not the same as an empty one).
-    func read(of pids: Set<pid_t>) -> [ServerWindow]? {
-        guard let list = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return nil }
+    func read(of pids: Set<pid_t>) -> [ServerWindow]? { list([.optionAll, .excludeDesktopElements], of: pids) }
+
+    // Only the windows on screen now (the current Spaces'), of every process, front to back.
+    func onScreen() -> [ServerWindow]? { list([.optionOnScreenOnly, .excludeDesktopElements], of: []) }
+
+    private func list(_ options: CGWindowListOption, of pids: Set<pid_t>) -> [ServerWindow]? {
+        guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return nil }
         var out: [ServerWindow] = []
         out.reserveCapacity(64)
         for (i, w) in list.enumerated() {
