@@ -42,6 +42,8 @@ final class FakeHostedWindow: HostedWindow {
     func hostedMoved() { moves += 1 }
     var yields: [Int?] = [] // each yield(to:), in order
     func yield(to number: Int?) { yields.append(number) }
+    var frontReads: [HostEngine.FrontRead] = [] // each frontRead, in order
+    func frontRead(_ read: HostEngine.FrontRead) { frontReads.append(read) }
     var loading: String?
     var loadings: [String?] = [] // each setLoading, in order
     func setLoading(_ label: String?) { guard label != loading else { return }; loading = label; loadings.append(label) }
@@ -865,6 +867,9 @@ func hostedFrontTests(script: URL) {
     session.others(777)
     session.others(nil)
     check("front: another app's window in Margin's Space: Margin's window told to let it in front, and when it's gone", window.yields == [.some(777), nil], "\(window.yields)")
+    let read = HostEngine.FrontRead(hosted: mine, marginLayer: 1, marginAbove: false)
+    session.front(read)
+    check("front: the poll's read at rest of Margin's window and the one shown: passed to the Margin window hosting", window.frontReads == [read], "\(window.frontReads)")
 
     // ---- a placing whose entry into full screen isn't done (twice): the item kept, shown again after a pause ----
     var closes = links.types().filter { $0 == "closeWindow" || $0 == "hostClose" }.count

@@ -146,16 +146,28 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // and under the loader; nil: the window's own background (nothing hosted, a theme that says no colour).
     private(set) var pageGround: NSColor?
     let ground = WindowGroundView(frame: .zero)
-    // In front of what it hosts (keepFront): how, another app's window it lets in front, and what was done (the tests
-    // read the counts). The window server's word on a window's level; a test's stand-in answers its own.
+    // In front of what it hosts (keepFront, frontRead): how, another app's window it lets in front, and what was done
+    // (the tests read the counts). The window server's word on a window's level (the dev hook's line); a test's stand-in
+    // answers its own. Whether its window is on the current Space, and the clock (a test's stand-ins for both).
     private(set) var mechanism: FrontMechanism
     private(set) var yieldingTo: Int?
     private(set) var levelSets = 0
     private(set) var frontOrders = 0
     private(set) var yieldOrders = 0
-    private var levelMisses = 0
-    private var levelSaid = false
+    private(set) var frontRestores = 0 // the poll found the hosted window above it: put right at once
+    private(set) var levelProbes = 0 // kept in front by its order, the raised level tried again
+    private(set) var levelBacks = 0 // ...and held: back to the raised level
     var serverLevel: (Int) -> Int? = { MarginWindowController.serverLayer($0) }
+    lazy var onCurrentSpace: () -> Bool = { [weak self] in self.map { $0.options.harness || $0.window.isOnActiveSpace } ?? false }
+    var now: () -> Double = { Diagnostics.now() }
+    private var changedAt = -Double.infinity // when it last changed its own level or order
+    private var spaceChangedAt = -Double.infinity // when the current Space last changed
+    private var missAt: Double? // the first read at rest, since the last one that held, of the raised level not held
+    private var probing = false // kept in front by its order, the raised level set again: the next read at rest says
+    private var probedAt = -Double.infinity
+    private var reorder = false // a yield just ended: ordered above the hosted window again, beside its level
+    private var levelSaid = false
+    private var wrongSaid = false
     private var pageResizing = false // its page said a change of the sidebar's width began, and not yet that it's over
     // Always full screen: its first entry (the window see-through until it's in), and the times it went back in.
     private var enteringFirst = false
@@ -384,6 +396,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func yield(to number: Int?) {
         guard number != yieldingTo else { return }
         yieldingTo = number
+        if number == nil { reorder = true }
         Diagnostics.note("Margin's window \(id): \(number.map { "another window (\($0)) in its Space: let in front of it" } ?? "no other window in its Space: in front again")")
         keepFront()
     }
@@ -392,43 +405,113 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // The one place Margin's window is put in front of what it hosts (FrontMechanism: MarginWindow.swift), called
     // whenever that could have changed: its full screen, what it hosts, an app activated, its window key or main, a
-    // press (the `order` mechanism only). In full screen and not yielding: raised a level (`level`), or ordered right
-    // above the hosted window (`order`). The window server's own word on the level is read back: a full-screen window
-    // that doesn't hold it (twice) goes on with `order`, said once.
+    // press (the `order` mechanism only), a yield over. In full screen and not yielding: raised a level (`level`), or
+    // ordered right above the hosted window (`order`); a yield over, both: the raised level and ordered above the hosted
+    // window again. Nothing at all while its window isn't on the current Space (the person is on another Space: a
+    // change made then is one the window server may not show, and a read then says nothing). What the window server
+    // holds is never read here, right after a change: the poll's read at rest says (`frontRead`).
     func keepFront() {
-        guard !isClosed else { return }
+        guard !isClosed, onCurrentSpace() else { return }
         let up = isFullScreen && yieldingTo == nil
-        if mechanism == .level {
-            let level: NSWindow.Level = up ? FrontMechanism.raised : .normal
-            if window.level != level {
-                window.level = level
-                levelSets += 1
-            }
-            if up, let server = serverLevel(window.windowNumber) {
-                if server == FrontMechanism.raised.rawValue {
-                    levelMisses = 0
-                    if !levelSaid { levelSaid = true; Diagnostics.note("Margin's window \(id): in front by its level (\(server), held by the window server)") }
-                } else {
-                    levelMisses += 1
-                    if levelMisses < 2 {
-                        window.level = .normal
-                        window.level = level
-                        levelSets += 1
-                    } else {
-                        mechanism = .order
-                        window.level = .normal
-                        Diagnostics.warn("Margin's window \(id): its raised level isn't held by the window server (it says \(server)): kept in front by its order instead")
-                    }
-                }
-            }
+        let level: NSWindow.Level = up && (mechanism == .level || probing) ? FrontMechanism.raised : .normal
+        if window.level != level {
+            window.level = level
+            levelSets += 1
+            changedAt = now()
         }
-        if mechanism == .order, up, let target = hosted ?? covering {
+        if up, mechanism == .order || reorder, let target = hosted ?? covering {
             window.order(.above, relativeTo: target)
             frontOrders += 1
+            changedAt = now()
         }
+        if up { reorder = false }
         if let other = yieldingTo {
             window.order(.below, relativeTo: other)
             yieldOrders += 1
+            changedAt = now()
+        }
+    }
+
+    // What the engine's poll read at rest (HostEngine `lookFront`: its on-screen list, Margin's Space current before and
+    // after it): this window's layer by the window server and whether it's above the hosted window in that order. The
+    // check that would have caught the whole of 2026-11-17's session (his log 06:32:56-06:36: the hosted Safari above
+    // Margin's window at every activation, the card's corners gone, the palette drawn behind it):
+    // - the hosted window above this one: put right at once (its level set again if that's the way, ordered above it),
+    //   said once until all is well again;
+    // - the level's way: the raised level not held by the window server on two reads at rest at least `missApart`
+    //   apart (none held between) goes on by its order, said once. A read is at rest only if it's `settle` after this
+    //   window last changed its own level or order and after the current Space last changed, with nothing let in front
+    //   and its window on the current Space: a read right after a change, during a yield or a Space change says nothing
+    //   (06:32:56.269: the read right after a yield's end, during his swipe, was taken as macOS refusing the level);
+    // - the order's way, fallen back to (not asked for: `MarginFront`): the raised level tried again every `probeEvery`;
+    //   held at the next read at rest, back to it (said once).
+    static let settle = 0.5, missApart = 1.0, probeEvery = 5.0
+    func frontRead(_ read: HostEngine.FrontRead) {
+        guard !isClosed, isFullScreen, yieldingTo == nil, hosted == read.hosted, onCurrentSpace() else { return }
+        let t = now()
+        let atRest = t - changedAt >= Self.settle - 1e-9 && t - spaceChangedAt >= Self.settle - 1e-9
+        if !read.marginAbove {
+            if !wrongSaid {
+                wrongSaid = true
+                Diagnostics.warn("Margin's window \(id): the hosted window \(read.hosted) above it in the window server's order (its layer \(read.marginLayer), kept in front by its \(mechanism.rawValue)): in front of it again")
+            }
+            frontRestores += 1
+            if window.level == FrontMechanism.raised { window.level = .normal; window.level = FrontMechanism.raised; levelSets += 1 }
+            window.order(.above, relativeTo: read.hosted)
+            frontOrders += 1
+            changedAt = t
+        } else if atRest {
+            wrongSaid = false
+        }
+        guard atRest else { return }
+        let held = read.marginLayer == FrontMechanism.raised.rawValue
+        switch mechanism {
+        case .level:
+            if held {
+                missAt = nil
+                if !levelSaid { levelSaid = true; Diagnostics.note("Margin's window \(id): in front by its level (\(read.marginLayer), held by the window server)") }
+            } else if let first = missAt, t - first >= Self.missApart - 1e-9 {
+                missAt = nil
+                mechanism = .order
+                window.level = .normal
+                levelSets += 1
+                window.order(.above, relativeTo: read.hosted)
+                frontOrders += 1
+                changedAt = t
+                probedAt = t
+                Diagnostics.warn("Margin's window \(id): its raised level isn't held by the window server (it says \(read.marginLayer) at reads \(Int((t - first) * 1000)) ms apart, at rest): kept in front by its order instead, the level tried again every \(Int(Self.probeEvery)) s")
+            } else {
+                if missAt == nil { missAt = t }
+                // (Set again, as it may have been lost: the next read at rest says.)
+                window.level = .normal
+                window.level = FrontMechanism.raised
+                levelSets += 1
+                changedAt = t
+            }
+        case .order:
+            guard options.front != .order else { return } // (asked for: kept)
+            if probing {
+                probing = false
+                probedAt = t
+                if held {
+                    mechanism = .level
+                    levelBacks += 1
+                    levelSaid = true
+                    Diagnostics.note("Margin's window \(id): its raised level held by the window server again (\(read.marginLayer)): in front by its level again")
+                } else {
+                    window.level = .normal
+                    levelSets += 1
+                    window.order(.above, relativeTo: read.hosted)
+                    frontOrders += 1
+                    changedAt = t
+                }
+            } else if t - probedAt >= Self.probeEvery - 1e-9 {
+                probing = true
+                levelProbes += 1
+                window.level = FrontMechanism.raised
+                levelSets += 1
+                changedAt = t
+            }
         }
     }
 
@@ -766,7 +849,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // Margin became active (MarginWindows), or the current Space changed: macOS may take it now.
     func appBecameActive() { tryFullScreen("Margin active") }
-    func spaceChanged() { tryFullScreen("the Space changed") }
+    func spaceChanged() {
+        spaceChangedAt = now()
+        tryFullScreen("the Space changed")
+    }
 
     // The window's full screen asked (⌃⌘F, the page's own ask): refused while it's in full screen and always is.
     func toggleFullScreen() {
@@ -1025,13 +1111,16 @@ final class MarginWindows {
             MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront(); c.appBecameActive() } }
         }
         // Another Space current, or another app in front (a hosted app activated: its window may have come over
-        // Margin's at the same level): in front of it again.
+        // Margin's at the same level): in front of it again (a window not on the current Space: nothing, `keepFront`).
         let workspace = NSWorkspace.shared.notificationCenter
-        frontObservers = [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification].map { name in
-            workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront(); c.spaceChanged() } }
-            }
-        }
+        frontObservers = [
+            workspace.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.spaceChanged(); c.keepFront() } }
+            },
+            workspace.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront(); c.tryFullScreen("an app activated") } }
+            },
+        ]
     }
 
     private var activeObserver: NSObjectProtocol?
