@@ -134,16 +134,8 @@ export function installSwipe(rt: Rt) {
     s.el.style.setProperty('--m-swipe-progress', dir ? '1' : '0');
     s.target = dir ? s.neighbours[dir] ?? null : null;
     // Asked for as it settles, not once the slide is in (reported 2026-11-07: "it takes a while for me to see that space
-    // is switching"): another profile's space is switched to at once (the app's cover comes now; the copy beside it
-    // stays until the switch's view of it is drawn here, ui/view-model.ts foreignSpace, or 1.5 s). One of this
-    // profile's: its tab asked of the copy now, Safari bringing it while the slide comes in; drawn here as before, in
-    // the frame the slide ends (the space left kept shown till then, holdSpace), so nothing jumps.
-    if (s.target && String(s.target).startsWith('x:')) {
-      s.dispatched = true;
-      rt.dispatch('space.switch', s.target, 'behavior');
-      rt.later(() => { if (swiping === s) finish(); }, SETTLE_MS + 1500);
-      return;
-    }
+    // is switching"): its tab asked of the copy now, Safari bringing it while the slide comes in; drawn here as before,
+    // in the frame the slide ends (the space left kept shown till then, holdSpace), so nothing jumps.
     if (s.target && typeof rt.vm?.space?.id === 'string') {
       rt.holdSpace(rt.vm.space.id, SETTLE_MS + 100);
       void Promise.resolve(rt.send('setSpace', { windowId: rt.windowId(), spaceId: s.target })).catch(() => {});

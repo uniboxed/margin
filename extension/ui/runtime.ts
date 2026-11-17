@@ -50,9 +50,7 @@ const NEW_TAB_HOLD_MS = 1500;
 const SHOWS_ANOTHER_TAB = new Set(['activateTab', 'newTab', 'openPin', 'restoreArchive', 'search', 'openLauncher']);
 const SWITCH_REQUESTS = new Set(['activateTab', 'openPin', 'setSpace']);
 // Rows a ⌃-click opens the menu on rather than runs (the Mac's right-click).
-const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle', 'cloud.open']);
-// While iCloud Tabs are drawn, the model is made again this often ("updated 5 min ago").
-const CLOUD_TICK_MS = 60_000;
+const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle']);
 
 // The UI's own state (always with a palette: closed, or as it's open).
 type Ui = UiState & { palette: NonNullable<UiState['palette']> } & Record<string, any>;
@@ -285,10 +283,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (vm.ready) firstRender = false;
     for (const b of list) b.afterRender?.(vm, prev);
     expireLater();
-    if (vm.cloudTabs?.hasDevices && !cloudTick) cloudTick = setTimeout(() => { cloudTick = null; render(); }, CLOUD_TICK_MS);
     return vm;
   }
-  let cloudTick: Timer | null = null;
 
   function setUi(patch: Partial<UiState> & Record<string, any>) {
     ui = { ...ui, ...patch };
@@ -343,8 +339,6 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   function switchSpace(spaceId: string, payload: Record<string, any>) {
     const state = host.getState();
     if (!state) return null;
-    // Another profile's space: Margin.app's switch (its window opens, this one closes): nothing shown here meanwhile.
-    if (String(spaceId).startsWith('x:')) return host.send('setSpace', payload);
     const own = ownTab() ?? frontTab();
     const shownSpace = vm?.space?.id;
     if (!pending.space && state.tabSpace?.[own] === spaceId && ui.switchingTo == null && shownSpace === spaceId) return host.send('setSpace', payload);
@@ -420,8 +414,6 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'local': return local(request.name, request.arg, info);
       case 'host': {
         if (host.perform?.(request.name, request.arg)) return true;
-        // An address copied where the host has no pasteboard of its own (pages: the clipboard).
-        if (request.name === 'copyText' && win.navigator?.clipboard) { void win.navigator.clipboard.writeText(request.arg.text).catch(() => {}); return true; }
         if (request.fallback) { void host.send(request.fallback.type, request.fallback.payload); return true; }
         return refuse(name, arg, `${request.name}: this host can't`);
       }
@@ -464,10 +456,6 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'folder.toggle':
         lastToggle = { folderId: arg, wasOpen: !payload.open, at: Date.now() };
         break;
-      case 'cloud.toggle': case 'cloud.toggleDevice':
-        // iCloud Tabs' folder or a device opened or closed: shown at once, not when storage comes back.
-        pending.settings = { patch: { ...(pending.settings?.patch ?? {}), ...payload.patch }, until: Date.now() + PENDING_MS };
-        break;
       default: break;
     }
     const request = send(type, payload);
@@ -505,7 +493,6 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         onPalette?.('close');
         return true;
       case 'space.edit': return behaviors.editor.open(arg);
-      case 'profile.edit': return behaviors.editor.openProfile(arg);
       case 'space.rename': return behaviors.rename.start('space', arg);
       case 'folder.rename': return behaviors.rename.start('folder', arg);
       case 'menu.open': {
@@ -627,16 +614,16 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     },
     cancel(id: ReturnType<typeof setTimeout> | null | undefined) { clearTimeout(id); timers.delete(id); },
     get destroyed() { return destroyed; },
-    /** The model with space `id` shown in this window (one of vm.spaces: this profile's, or another profile's from
-     *  the app's data for it), for a swipe drawing it beside the current one; null if it isn't one. */
+    /** The model with space `id` shown in this window (one of vm.spaces), for a swipe drawing it beside the current
+     *  one; null if it isn't one. */
     spaceView(id: string) {
       const entry = vm?.spaces?.find((s) => s.id === id);
       if (!entry) return null;
       let state = viewState(host.getState());
       if (!state) return null;
       const w = fullUi().windowId;
-      if (!entry.foreign) state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w as number]: id } };
-      const out = buildViewModel({ state, ui: { ...fullUi(), showSpace: entry.foreign ? id : null, palette: {}, editing: null, notice: null, prompt: null, gesture: null }, platform: host.platform, settings });
+      state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w as number]: id } };
+      const out = buildViewModel({ state, ui: { ...fullUi(), palette: {}, editing: null, notice: null, prompt: null, gesture: null }, platform: host.platform, settings });
       return out.space?.id === id ? out : null;
     },
   } satisfies Omit<Rt, 'behaviors'> as Rt;
@@ -738,7 +725,6 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       destroyed = true;
       switching.end();
       clearTimeout(expiryTimer);
-      clearTimeout(cloudTick);
       clearTimeout(newTabTimer);
       for (const id of timers) clearTimeout(id);
       for (const fn of offs.splice(0)) fn();

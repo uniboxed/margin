@@ -1,4 +1,4 @@
-import { makeKeptBehind, openKept } from './kept.ts';
+import { openKept } from './kept.ts';
 // What pages ask the background for: runtime messages { type, ...payload },
 // answered { ok, result } or { ok: false, error } (background.ts routes
 // them). types/margin.d.ts derives the protocol's types from this object.
@@ -8,10 +8,10 @@ import * as M from '../state/model.ts';
 import * as V from '../shared/view.ts';
 import * as S from '../shared/search.ts';
 import { api, load, mutate, newId, now, thisCopy } from './store.ts';
-import { focusTab, inParkedWindow, reloadCutOff, handingOff, instanceId, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, resolveTab } from './tabs.ts';
-import { sleepIdle, wakeAll, windowDrafts } from './sleep.ts';
-import { probeWindow, setWindowState, windowCall } from './handoff.ts';
-import { noteReopened, ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.ts';
+import { focusTab, reloadCutOff, handingOff, instanceId, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, resolveTab } from './tabs.ts';
+import { sleepIdle, wakeAll } from './sleep.ts';
+import { setWindowState, windowCall } from './handoff.ts';
+import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.ts';
 import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.ts';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.ts';
 import { THEMES } from '../themes/index.ts';
@@ -21,7 +21,6 @@ import { getScroll, setScroll } from './scroll.ts';
 import { keepScroll, takeScroll } from './scroll-record.ts';
 import { closeTabs, noteClosing } from './closing.ts';
 import * as away from './away.ts';
-import { isAwayPage } from '../shared/away.ts';
 import { appLink } from './app-link.ts';
 import { createHostedTabs, type HostedTabsApi } from './hosted.ts';
 import { noticeAnswered } from './notices.ts';
@@ -76,99 +75,6 @@ async function updatePackageThemeSettings(themeId: string, patch: object) {
 // not linked): the new-tab page stays (linked, the app's palette opens over
 // it; not linked, it says the app isn't running: newtab/newtab.ts).
 const handOffs = new Map(); // tab id → Promise<boolean>, once per tab
-let devProbing = false; // DEV-HOOK: devTabMoveProbe running
-// Windows where Margin.app couldn't show the palette ⌘T was handed off to (no overlay shown there:
-// its window not bound yet, or its binding just gone, before the app said it draws nothing there):
-// window id → when the app said so. ⌘T there keeps Safari's new tab for PALETTE_DROPPED_MS.
-const paletteDroppedAt = new Map();
-const PALETTE_DROPPED_MS = 10_000;
-const paletteDroppedRecently = (windowId: number) => Date.now() - (paletteDroppedAt.get(windowId) ?? -Infinity) < PALETTE_DROPPED_MS;
-// The app saying it draws over the window again (its `drawn`, background.ts): ⌘T goes to its palette
-// again, unless that came within a second of the drop (a binding that holds while its overlay can't
-// show yet says drawn at once: it mustn't start the hand-off and its drop over again).
-export function drawnChanged(windowId: number, on: boolean) {
-  if (on && Date.now() - (paletteDroppedAt.get(windowId) ?? Infinity) >= 1000) paletteDroppedAt.delete(windowId);
-}
-
-// The zoom each site was last seen at, so its pages know it before they've
-// asked (content/core.ts); Safari
-// and Chrome keep a site's zoom across its pages. Storage `pageZoom`:
-// origin → [zoom, when], only sites zoomed away from the browser's default
-// zoom (Chrome's setting; 100% where unknown), which is kept once as '*';
-// the ZOOM_CAP most recently changed. Written only when it changes (every
-// write redraws Margin's pages); one at a time.
-const ZOOM_CAP = 150;
-let zoomWrites = Promise.resolve();
-// Pages ask for their zoom as they start, on every resize and every time
-// they're shown, and it seldom changes: what's stored and each tab's default
-// zoom are kept here between asks, so an unchanged zoom costs only the
-// browser's answer. Forgotten when the browser says a zoom changed
-// (zoomChanged), when `pageZoom` is written (zoomStored), and after
-// ZOOM_KEEP_MS (on a clock that only runs forward): copies of Margin don't
-// hear each other's writes. Only to tell that nothing changed: a write reads
-// storage first.
-const ZOOM_KEEP_MS = 60000;
-const zoomClock = () => performance.now();
-let storedZoom: { pageZoom: any; at: number; } | null = null; // { pageZoom, at }
-let zoomReads = 0; // a read that started before a write is not kept
-const tabZoomBase = new Map(); // tab id → { base, at }
-async function zoomBase(tabId: number) {
-  const known = tabZoomBase.get(tabId);
-  if (known && zoomClock() - known.at < ZOOM_KEEP_MS) return known.base;
-  const settings = await api.tabs.getZoomSettings?.(tabId).catch(() => null);
-  // (Finite: settings and its factor are there.)
-  const base = Number.isFinite(settings?.defaultZoomFactor) && settings!.defaultZoomFactor! > 0 ? settings!.defaultZoomFactor! : 1;
-  if (tabZoomBase.size > 2 * ZOOM_CAP) tabZoomBase.clear();
-  tabZoomBase.set(tabId, { base, at: zoomClock() });
-  return base;
-}
-async function readStoredZoom() {
-  if (storedZoom && zoomClock() - storedZoom.at < ZOOM_KEEP_MS) return storedZoom.pageZoom;
-  const reads = zoomReads;
-  const { pageZoom = {} } = await api.storage.local.get('pageZoom');
-  if (reads === zoomReads) storedZoom = { pageZoom, at: zoomClock() };
-  return pageZoom;
-}
-// background.ts: tabs.onZoomChange (a tab's zoom changed, or the browser's
-// default, which every tab's answer gives) and storage.onChanged with
-// `pageZoom` (written here, or cleared).
-export const zoomChanged = () => tabZoomBase.clear();
-export function zoomStored() {
-  zoomReads++;
-  storedZoom = null;
-}
-function rememberZoom(tab: BrowserTab, url: string | undefined, zoom: number) {
-  let origin;
-  try {
-    origin = new URL(url as string).origin; // (none: it throws, and that's caught)
-  } catch {
-    return;
-  }
-  if (!Number.isFinite(zoom) || zoom <= 0 || origin === 'null') return;
-  zoomWrites = zoomWrites.then(async () => {
-    const base = await zoomBase(tab.id);
-    // (`stored`: origin → [zoom, when], '*' the browser's default.)
-    const unchanged = (stored: Record<string, [number, number] | undefined>) => ((stored[origin] ?? stored['*'])?.[0] ?? 1) === zoom && (stored['*']?.[0] ?? 1) === base;
-    if (unchanged(await readStoredZoom())) return;
-    // A write is built from what's stored now, not what's kept: another
-    // copy's writes reach storage, never this copy's events, and would be lost.
-    zoomStored();
-    const pageZoom = await readStoredZoom();
-    if (unchanged(pageZoom)) return;
-    const next = { ...pageZoom };
-    if (base === 1) delete next['*'];
-    else next['*'] = [base, Date.now()];
-    if (zoom === base) delete next[origin];
-    else next[origin] = [zoom, Date.now()];
-    const sites = Object.keys(next).filter((key) => key !== '*');
-    if (sites.length > ZOOM_CAP) {
-      sites.sort((a, b) => next[a][1] - next[b][1]);
-      for (const old of sites.slice(0, sites.length - ZOOM_CAP)) delete next[old];
-    }
-    zoomStored(); // whatever its storage event does, the next ask reads it again
-    await api.storage.local.set({ pageZoom: next });
-  }).catch(() => {});
-}
 // The tab the user was on: the window's active one (Chrome reports the new
 // tab before activating it), else the one most recently left. Not by
 // lastActive alone: a switch gives both its tabs the same one.
@@ -197,7 +103,6 @@ async function handOff(tab: BrowserTab) {
   // Linked, but the app draws nothing over this window (`drawn`: not in full screen, or not found
   // among the window server's yet): no palette to hand off to there either.
   if (!appLink.drawsWindow(tab.windowId)) return log('kept', 'Margin.app draws nothing over this window: no palette there'), false;
-  if (paletteDroppedRecently(tab.windowId)) return log('kept', 'Margin.app couldn\'t show its palette over this window a moment ago'), false;
   handingOff.add(tab.id);
   // The app's palette opens over the page the user was on, in the window's
   // overlay.
@@ -226,36 +131,6 @@ async function handOff(tab: BrowserTab) {
   noteClosing([tab.id], 'done');
   await api.tabs.remove(tab.id).catch(() => {});
   return true;
-}
-
-// A space's window made by Margin.app's switch: the tabs that were open with
-// its front tab open behind it, one at a time, in their old order, each as
-// its Margin tab (fresh: no Back history). One gone meanwhile is left.
-const SPACE_WINDOW_REST_MS = 1200;
-const SPACE_WINDOW_STEP_MS = 150;
-async function openKeptBehind(windowId: number, spaceId: string, keptIds: string[]) {
-  for (const keptId of keptIds) {
-    const s = await load();
-    const kept = s.keptTabs?.[keptId];
-    if (!kept || kept.spaceId !== spaceId) continue;
-    const win = await api.windows.get(windowId).catch(() => null);
-    if (!win) return; // the window closed meanwhile
-    markMarginOpening();
-    noteReopened(kept.url);
-    // Linked before it's shared, so a click on its row meanwhile (restoreKept) gets this tab, linked.
-    const tab = await makeKeptBehind(keptId, async () => {
-      const made = await api.tabs.create({ windowId, url: kept.url, active: false }).catch(() => null);
-      if (!made) return null;
-      await mutate((st) => {
-        let next = M.upsertTab(st, made, now());
-        if (next.keptTabs?.[keptId]) next = M.linkKept(next, made.id, keptId, now());
-        return M.moveTab(next, made.id, spaceId);
-      });
-      return made;
-    });
-    if (!tab) continue;
-    await new Promise<any>((resolve) => setTimeout(resolve, SPACE_WINDOW_STEP_MS));
-  }
 }
 
 // ⌘T as Margin's own shortcut (Safari's manifest `new-tab`, with Safari's
@@ -405,46 +280,6 @@ export const handlers = {
       const tab = await openTab({ windowId, url: entry.url, spaceId });
       await mutate((st) => M.setActiveSpace(M.removeArchived(st, archiveId), tab.windowId, spaceId));
     }
-  },
-  // Page zoom (the browser's own, like ⌘+): for where the page's area sits in
-  // its window (in the page's zoomed pixels); remembered per site.
-  // Where the page in front's area sits in its window, when Safari takes part of it (the docked Web
-  // Inspector: content/core.ts viewportNow), for Margin.app's overlay (background/link.ts viewport).
-  // `measured`: the page found where its area starts from a pointer event (else it's a guess).
-  // `resizedAt`, `at`: when the page was resized and when it said so (its Date.now()), passed on with when this
-  // copy heard it, so Margin.app's log says where the time went (2026-11-07: the layout late beside the inspector).
-  async viewport({ viewport = null, resizedAt, at }: { viewport?: { x: number, y: number, width: number, height: number, measured?: boolean } | null, resizedAt?: number, at?: number } = {}, sender: BrowserMessageSender) {
-    const tab = sender?.tab;
-    if (!tab || tab.active === false || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId)) return;
-    const ok = (v: number) => Number.isFinite(v) && v >= 0 && v < 100_000;
-    const rect = viewport && ok(viewport.x) && ok(viewport.y) && ok(viewport.width) && ok(viewport.height) && viewport.width > 0 && viewport.height > 0
-      ? { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, ...(viewport.measured === true ? { measured: true } : {}) } : null;
-    const time = (v: number | undefined) => Number.isFinite(v) && (v as number) > 0;
-    const times = { ...(time(resizedAt) ? { resized: resizedAt } : {}), ...(time(at) ? { said: at } : {}), heard: Date.now() };
-    appLink.viewport(tab.windowId, tab.id, rect, times);
-  },
-  // A page gone into full screen or back (content/core.ts: its own, or Safari's video full screen), for Margin.app to
-  // take its layout off that window meanwhile (background/link.ts pageFullscreen).
-  async pageFullscreen({ on }: { on?: boolean } = {}, sender: BrowserMessageSender) {
-    const tab = sender?.tab;
-    if (!tab || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId) || typeof on !== 'boolean') return;
-    appLink.pageFullscreen(tab.windowId, tab.id, on);
-  },
-  // A page saying whether it's shown (content/core.ts and the new-tab page: document.visibilityState,
-  // at a change, at its start and when asked), for Margin.app to tell same-bounds windows of different
-  // profiles apart (background/link.ts visibility).
-  // `from`: which said it ('page': a web page's content script, 'newtab': Margin's new-tab page), for the log.
-  async visibility({ visible, at, from }: { visible?: boolean, at?: number, from?: string } = {}, sender: BrowserMessageSender) {
-    const tab = sender?.tab;
-    if (!tab || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId) || typeof visible !== 'boolean') return;
-    const source = from === 'page' ? 'content script' : from === 'newtab' ? 'new-tab page' : from === 'away' ? 'stand-in page' : 'unknown';
-    appLink.visibility(tab.windowId, tab.id, visible, Number.isFinite(at) ? (at as number) : Date.now(), source);
-  },
-  async getZoom(_: object, sender: BrowserMessageSender) {
-    if (!sender.tab) return null;
-    const zoom = await api.tabs.getZoom(sender.tab.id);
-    rememberZoom(sender.tab, sender.url ?? sender.tab.url, zoom);
-    return zoom;
   },
   // Search with the browser's engine: in `tabId`, else in a new tab (from a
   // page: behind it until the results have loaded, tabs.ts openBehind).
@@ -669,9 +504,8 @@ export const handlers = {
     // would switch the window to that space.
     const key = M.normalizeUrl(pin.url);
     const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId);
-    // The window asking first, then one that isn't parked (out of sight: docs/HANDOFF.md §2.5); a tab
-    // only in a parked window is shown by the app's handoff to it (focusTab).
-    const existing = matches.find((t) => t.windowId === windowId) ?? matches.find((t) => !inParkedWindow(t)) ?? matches[0];
+    // The window asking first.
+    const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
     if (existing) {
       // In another window of the profile: it comes here (docs/BROWSER-WINDOWS.md §9).
       await away.showTab(existing.id, windowId ?? sender?.tab?.windowId, { source: 'openPin', deadline });
@@ -749,120 +583,6 @@ export const handlers = {
     try { return await opening; } finally { if (launcherOpening.get(key) === opening) launcherOpening.delete(key); }
   },
 
-  // DEV-HOOK: a one-shot probe for tabs following the window in front (docs/BROWSER-WINDOWS.md), asked only by the
-  // app's dev hook, which asks only Safari's Test A (DevHooks.swift checks the name). One test tab and one
-  // full-screen window made, the tab moved there and back; after each move, whether its page survived (a
-  // marker in its memory, its scroll, a typed field) and how long the move took; one picture of it timed
-  // and dropped. Then exactly what it made closed. Its answer: numbers and booleans only.
-  /** @param message the page to open, the app's (a plain https origin) */
-  async devTabMoveProbe({ url }: { url?: string } = {}, sender: BrowserMessageSender) {
-    if (!sender?.app) throw new Error('the app only');
-    if (!/^https:\/\/[a-z0-9.-]+\/$/.test(String(url ?? ''))) throw new Error('a plain https origin only');
-    if (devProbing) throw new Error('a probe is already running');
-    devProbing = true;
-    const made = { tabId: (null as number | null), windowId: (null as number | null), homeId: (null as number | null), homeFront: (null as number | null) };
-    const out: Record<string, any> = { ok: false };
-    const wait = (ms: number) => new Promise<any>((r) => setTimeout(r, ms));
-    try {
-      const home = (await api.windows.getAll()).find((w) => w.focused) ?? (await api.windows.getAll())[0];
-      if (!home) throw new Error('no window');
-      made.homeId = home.id;
-      made.homeFront = (await api.tabs.query({ active: true, windowId: home.id }))[0]?.id ?? null;
-      const tab = await api.tabs.create({ windowId: home.id, url: String(url), active: false });
-      made.tabId = tab.id;
-      for (let i = 0; i < 50 && (await api.tabs.get(tab.id)).status !== 'complete'; i++) await wait(200);
-      const token = String(Math.random()).slice(2, 12);
-      const [marked] = await api.scripting.executeScript({ target: { tabId: tab.id }, args: [token], func: (t) => {
-         (window as any).__marginProbe = t;
-        const field = document.createElement('input');
-        field.id = '__margin_probe';
-        field.value = `typed ${t}`;
-        document.body.append(field);
-        document.body.style.minHeight = '5000px';
-        scrollTo(0, 1234);
-        return true;
-      } });
-      out.marked = marked?.result === true;
-      const check = async () => (await api.scripting.executeScript({ target: { tabId: tab.id }, args: [token], func: (t) => ({
-        marker: (window as any).__marginProbe === t,
-        field: (document.getElementById('__margin_probe') as HTMLInputElement | null)?.value === `typed ${t}`,
-        scroll: Math.round(scrollY),
-      }) }))[0]?.result ?? null;
-      // Short (the app's log line is cut at 600 characters): marker, field (1/0) and scroll.
-      // As a number: 3 marker and field kept (2 marker only, 1 field only), times 100000, plus the scroll; -1 none.
-      const kept = async () => { const c = await check(); return c ? ((c.marker ? 2 : 0) + (c.field ? 1 : 0)) * 100000 + Math.min(99999, c.scroll) : -1; };
-      out.before = await kept();
-      const second = await api.windows.create({ focused: true, state: 'fullscreen' });
-      made.windowId = second.id;
-      await wait(2000); // its full-screen Space up
-      let t0 = performance.now();
-      await api.tabs.move(tab.id, { windowId: second.id, index: -1 });
-      out.moveMs = Math.round(performance.now() - t0);
-      await api.tabs.update(tab.id, { active: true });
-      await wait(1000);
-      out.movedThere = (await api.tabs.get(tab.id)).windowId === second.id;
-      out.afterMove = await kept();
-      t0 = performance.now();
-      const picture = await api.tabs.captureVisibleTab(second.id, { format: 'jpeg', quality: 60 }).catch(() => null);
-      out.captureMs = Math.round(performance.now() - t0);
-      out.captureKB = picture ? Math.round(picture.length / 1024) : 0;
-      // The window behind (home, in its own Space now): can its tab in front be pictured from here?
-      t0 = performance.now();
-      const behind = await api.tabs.captureVisibleTab(home.id, { format: 'jpeg', quality: 60 }).catch(() => null);
-      out.captureBehindMs = Math.round(performance.now() - t0);
-      out.captureBehindKB = behind ? Math.round(behind.length / 1024) : 0;
-      t0 = performance.now();
-      await api.tabs.move(tab.id, { windowId: home.id, index: -1 });
-      out.backMs = Math.round(performance.now() - t0);
-      await wait(1000);
-      out.movedBack = (await api.tabs.get(tab.id)).windowId === home.id;
-      out.afterBack = await kept();
-      // Margin's own follow (background/away.ts), with home behind: the tab in front there, then chosen in the
-      // window in front (second), then home to the front again. Whether making and showing tabs in a window behind
-      // leaves the focus where it was (no slide to its Space), and whether the tab follows home back.
-      const focused = async (id: number) => (await api.windows.get(id).catch(() => null))?.focused === true;
-      await api.tabs.update(tab.id, { active: true });
-      await wait(500);
-      out.shownBehindKeptFocus = (await focused(second.id)) && !(await focused(home.id));
-      t0 = performance.now();
-      await away.bringTab(await api.tabs.get(tab.id), second.id, { source: 'probe', raise: false });
-      out.bringMs = Math.round(performance.now() - t0);
-      await wait(800);
-      out.bringKeptFocus = (await focused(second.id)) && !(await focused(home.id));
-      const standInIn = async (id: number) => (await api.tabs.query({ windowId: id })).find((t) => isAwayPage(t.url) || isAwayPage(t.pendingUrl)) ?? null;
-      const homeStandIn = await standInIn(home.id);
-      out.standInInFront = homeStandIn?.active === true;
-      const live = await api.tabs.get(tab.id);
-      out.broughtThere = live.windowId === second.id && live.active === true;
-      out.awayRecorded = (await load()).awayByWindow?.[home.id] === tab.id;
-      out.afterBring = await kept();
-      t0 = performance.now();
-      await api.windows.update(home.id, { focused: true });
-      for (let i = 0; i < 30 && (await api.tabs.get(tab.id)).windowId !== home.id; i++) await wait(100);
-      out.followMs = Math.round(performance.now() - t0);
-      await wait(800);
-      out.followedBack = (await api.tabs.get(tab.id)).windowId === home.id;
-      out.focusHeard = away.awayInternals.focusSeen.windowId === home.id;
-      out.focusOutcome = away.awayInternals.focusSeen.outcome;
-      out.homeFocused = await focused(home.id);
-      out.homeStandInGone = !(await standInIn(home.id));
-      out.secondStandIn = !!(await standInIn(second.id));
-      out.afterFollow = await kept();
-      out.ok = true;
-    } catch (err) {
-      out.error = String((err as any)?.name ?? 'Error');
-    } finally {
-      if (made.tabId != null) await api.tabs.remove(made.tabId).catch(() => {});
-      if (made.windowId != null) await api.windows.remove(made.windowId).catch(() => {});
-      // A stand-in the follow left in home (only the probe's tab was shown away there; nothing else touched).
-      if (made.homeId != null) for (const t of await api.tabs.query({ windowId: made.homeId }).catch(() => [])) if (isAwayPage(t.url) || isAwayPage(t.pendingUrl)) await api.tabs.remove(t.id).catch(() => {});
-      // Home's tab in front as it was.
-      if (made.homeFront != null) await api.tabs.update(made.homeFront, { active: true }).catch(() => {});
-      out.cleaned = true;
-      devProbing = false;
-    }
-    return { summary: JSON.stringify(out) };
-  },
   // A real new window of this profile (⌘N through Margin.app, the palette's "New window": docs/BROWSER-WINDOWS.md §5),
   // a Margin window of its own. With `fromWindowId`: in full screen if that window is (or as `fullscreen`
   // says), on the space it shows, set, not guessed, with its first tab in it too. Without one, the window
@@ -898,46 +618,7 @@ export const handlers = {
       ? { left: win.left, top: win.top, width: win.width, height: win.height } : null;
     return { windowId: win.id, state: win.state ?? 'normal', ...(bounds ? { bounds } : {}) };
   },
-  // Margin.app switching to a space of this profile from another profile's
-  // window (app/platforms/macos/shell/ProfileSwitch.swift, PLAN.md §15): this copy makes a
-  // window showing the space, in full screen. In front: the space's tab used
-  // last (it isn't open: the window the switch closed kept it); the others
-  // that were open with it in that window open behind once it's up. Answers
-  // the window's id and state (a browser that comes back with a normal
-  // window is asked again by the app).
-  async openSpaceWindow({ spaceId, fullscreen = true }: { spaceId: string, fullscreen?: boolean }) {
-    const s = await load();
-    if (!s.spaces.some((sp) => sp.id === spaceId)) throw new Error('no such space');
-    const { front, rest } = M.spaceWindowTabs(s, spaceId);
-    markMarginOpening();
-    if (front) noteReopened(front.url);
-    const props = { focused: true, ...(front ? { url: front.url } : {}) };
-    let win;
-    try {
-      win = await api.windows.create({ ...props, ...(fullscreen ? { state: 'fullscreen' } : {}) });
-    } catch {
-      win = await api.windows.create(props); // a browser that won't make it full screen at once
-    }
-    const tab = win.tabs?.[0] ?? (await api.tabs.query({ windowId: win.id }).catch(() => []))[0] ?? null;
-    await mutate((st) => {
-      let next = M.setActiveSpace(st, win.id, spaceId);
-      if (tab) {
-        next = M.upsertTab(next, tab, now());
-        if (front && next.keptTabs?.[front.id]) next = M.linkKept(next, tab.id, front.id, now());
-        next = M.moveTab(next, tab.id, spaceId);
-      }
-      return next;
-    });
-    if (rest.length) setTimeout(() => void openKeptBehind(win.id, spaceId, rest.map((k) => k.id)), SPACE_WINDOW_REST_MS);
-    // Its bounds as Safari gave them, and the window list sent now: the app binds the window as made
-    // by Margin from them before the list's next look (docs/HANDOFF.md §1.6). One full-screen request
-    // only: macOS puts a window made while Safari has one in full screen there itself.
-    void appLink.windowsNow?.();
-    const bounds = [win.left, win.top, win.width, win.height].every(Number.isFinite) && win.width! > 0 && win.height! > 0 // (finite: there)
-      ? { left: win.left, top: win.top, width: win.width, height: win.height } : null;
-    return { windowId: win.id, state: win.state ?? 'normal', tabId: tab?.id ?? null, ...(bounds ? { bounds } : {}) };
-  },
-  // The app's switch closing this profile's window (its tabs are kept, not open: a window closing).
+  // Margin.app closing a window of this profile it hosts or made (its tabs are kept, not open: a window closing).
   // Never past `notAfter`, and not while another windows call for it is pending (handoff.ts).
   async closeWindow(message: { windowId: number, notAfter?: number }) {
     return windowCall('closeWindow', message, async () => {
@@ -945,31 +626,10 @@ export const handlers = {
       return null;
     });
   },
-  // The app's switch bringing a window of this profile to the front (macOS
-  // slides to its Space), in full screen if asked. As closeWindow: never past `notAfter`, one at a time.
-  async focusWindow(message: { windowId: number, fullscreen?: boolean, notAfter?: number }) {
-    const { windowId, fullscreen = false } = message;
-    return windowCall('focusWindow', message, async () => {
-      const w = await api.windows.update(windowId, { focused: true, ...(fullscreen ? { state: 'fullscreen' } : {}) })
-        .catch(() => api.windows.update(windowId, { focused: true }));
-      return { windowId, state: w?.state ?? null };
-    });
-  },
-  // Margin.app's profile handoff (docs/HANDOFF.md §3.3): a window to full screen or normal, its focus
+  // Margin.app's host (HostedSession.safariFullScreen): a window to full screen or normal, its focus
   // left alone unless asked; answered once Safari says it's there (background/handoff.ts).
   async setWindowState(message: { windowId: number, state: 'fullscreen' | 'normal', focused?: boolean, notAfter?: number }) {
     return setWindowState(message);
-  },
-  // The handoff's look at the window's tab in front (R3): it nudges and counts its frames at the
-  // full-screen size (shared/frame-probe.ts); `{ none }` when no page answers in `timeoutMs`.
-  async frameProbe({ windowId, width, height, frames = 6, nudgeMs = 80, timeoutMs = 400 }: { windowId: number, width: number, height: number, frames?: number, nudgeMs?: number, timeoutMs?: number }) {
-    if (!Number.isInteger(windowId)) throw new Error('no window');
-    return probeWindow(windowId, { width, height, frames, nudgeMs, timeoutMs });
-  },
-  // The window's tabs with typed text not sent, before the app closes it (background/sleep.ts).
-  async windowDrafts({ windowId }: { windowId: number }) {
-    if (!Number.isInteger(windowId)) throw new Error('no window');
-    return windowDrafts(windowId);
   },
   // A page's scroll as it's hidden or left (content/core.ts), kept on its tab's record for its
   // Margin tab (background/scroll-record.ts, docs/DATA.md "The scroll record").
@@ -981,22 +641,10 @@ export const handlers = {
   async takeScroll({ url }: { url: string }, sender: BrowserMessageSender) {
     return takeScroll(sender?.tab?.id, url);
   },
-  // The order of this profile's spaces as the app's order across profiles has them.
-  async orderSpaces({ spaceIds }: { spaceIds: string[] }) {
-    if (!Array.isArray(spaceIds)) return;
-    await mutate((s) => M.orderSpaces(s, spaceIds));
-  },
   // ⌘T: Margin's new-tab page asks (newTabHandOff below), unless the
   // background already handed the tab off as it was created.
   // An address chosen on Margin's new-tab page, drawn by Margin.app's
   // overlay (its launcher): opened in that tab, as the page's own does.
-  // A key Margin.app holds while it draws the UI, heard by a page anyway
-  // (⌘T: left to the app; a tab or space key: done here, as the page asked
-  // with `navigate`): the app is told, for its log (why its keys were off).
-  async appKeyHeard({ command }: { command?: string }, sender: BrowserMessageSender) {
-    console.info(`[margin] ${command} heard in a page while Margin.app draws the UI`);
-    appLink.push(sender?.tab?.windowId ?? null, { type: 'keyHeard', command: String(command), from: 'page' });
-  },
   // A button of one of Margin's notices, chosen in Margin.app's overlay
   // (background/notices.ts, shared/notices.ts): done here, and the notice
   // isn't said again for that page. Whether it was a notice's button.
@@ -1039,20 +687,8 @@ export const handlers = {
     // draws its launcher there and opens the palette over it. Not linked, or
     // in a window the app draws nothing over, the page shows its notice and
     // address field (newtab/newtab.ts).
-    if (appLink.linked() && appLink.drawsWindow(sender.tab.windowId) && !paletteDroppedRecently(sender.tab.windowId)) return { app: true, openPalette: appLink.push(sender.tab.windowId, { type: 'palette', newTab: false }) };
+    if (appLink.linked() && appLink.drawsWindow(sender.tab.windowId)) return { app: true, openPalette: appLink.push(sender.tab.windowId, { type: 'palette', newTab: false }) };
     return { app: false };
-  },
-  // Margin.app couldn't show the palette pushed for a window (no overlay shown there within its hold):
-  // for ⌘T's hand-off (`newTab`: Safari's new tab already closed), Margin's new-tab page opens there
-  // instead, so the key still opens something; and ⌘T there keeps Safari's new tab for a while.
-  async paletteDropped({ windowId, newTab }: { windowId?: number, newTab?: boolean }, sender: BrowserMessageSender) {
-    if (!sender?.app) return false; // the app's word only
-    const id = Number.isInteger(windowId) ? (windowId as number) : sender?.tab?.windowId;
-    if (!Number.isInteger(id)) return false;
-    paletteDroppedAt.set(id, Date.now());
-    appLink.note(`the app couldn't show the palette over window ${id}${newTab ? ': Margin\'s new-tab page opened there' : ''}`);
-    if (newTab) await newTabKey({ windowId: id });
-    return true;
   },
   // ⌘T reaching a page while Margin.app isn't linked, or in a window it draws nothing over
   // (content/core.ts): Margin's new-tab page.

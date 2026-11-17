@@ -18,7 +18,7 @@ import { menuItems } from './menu-items.ts';
 import type { MenuTarget } from './menu-items.ts';
 
 // What a row's action says it is (for rows with no m-drag).
-const ROW_OF_ACTION: Record<string, MenuTarget['kind']> = { 'tab.activate': 'tab', 'pin.open': 'pin', 'folder.toggle': 'folder', 'space.switch': 'space', 'space.edit': 'space', 'cloud.open': 'cloud' };
+const ROW_OF_ACTION: Record<string, MenuTarget['kind']> = { 'tab.activate': 'tab', 'pin.open': 'pin', 'folder.toggle': 'folder', 'space.switch': 'space', 'space.edit': 'space' };
 
 export function installMenus(rt: Rt) {
   const { view, container, doc } = rt;

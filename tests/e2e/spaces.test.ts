@@ -9,7 +9,6 @@ import assert from 'node:assert/strict';
 import { startMargin, type Margin } from './harness/margin.ts';
 import { SPACES } from './harness/seed.ts';
 import { sidebar, chip, tabRow, menuItem } from './harness/ui.ts';
-import { foreignKey } from '../../extension/shared/across.ts';
 import type { Page } from 'playwright';
 import type { Space } from '../../types/margin.d.ts';
 
@@ -139,29 +138,4 @@ test('each window has its own space', async (t) => {
   await m.shoot(t, 'second-window', { windowId: second });
   await m.bg((id) => chrome.windows.remove(id), second);
   await m.until(() => !m.shell.overlays.has(second), { what: 'its overlay closed' });
-});
-
-test('another profile\'s chip asks the app to switch', async (t) => {
-  const here = m.shell.hello!.profile;
-  m.shell.setAcross({
-    profile: here,
-    profiles: [
-      { id: here, name: 'Personal', emoji: '🙂', color: '#7c9cff', linked: true, spaces: 3 },
-      { id: 'p-work0000000000000000', name: 'Studio', emoji: '🎨', color: '#e86f68', linked: false, spaces: 1 },
-    ],
-    spaces: [
-      ...SPACES.map((s) => ({ profile: here, id: s.id, name: s.name, emoji: s.emoji, color: s.color, tabCount: 1 })),
-      { profile: 'p-work0000000000000000', id: 'sp-clients', name: 'Clients', emoji: '📐', color: '#e86f68', tabCount: 4 },
-    ],
-    switching: null,
-  });
-  const chipId = foreignKey('p-work0000000000000000', 'sp-clients');
-  await m.until(async () => (await view()).chips.some((c) => c.id === chipId), { what: 'the other profile\'s chip' });
-  await m.shoot(t, 'across');
-  const before = m.shell.performs.length;
-  await ui.click(chip(chipId));
-  const asked = await m.until(() => m.shell.performs.slice(before).find((p) => p.name === 'profile.switch'), { what: 'profile.switch asked of the app' });
-  assert.deepEqual(asked.arg, { profile: 'p-work0000000000000000', space: 'sp-clients' });
-  assert.ok(!m.shell.requests.some((r) => r.type === 'setSpace' && r.payload.spaceId === chipId), 'nothing went to this copy for it');
-  m.shell.setAcross(null);
 });

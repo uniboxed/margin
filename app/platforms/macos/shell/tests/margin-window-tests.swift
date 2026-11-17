@@ -104,7 +104,7 @@ func marginWindowTests() {
     target.enabled = { $0 == .newWindow }
     check("hosted: an item is enabled as the windows say (no window: only New Window)",
           MarginMenu.item(.newWindow, in: bar).map(target.validateMenuItem) == true && MarginMenu.item(.newTab, in: bar).map(target.validateMenuItem) == false)
-    check("hosted: New Tab opens the palette (the same word as ⌘T over a browser)", MarginMenuAction.newTab.effect == .page(#"{"type":"command","name":"palette"}"#))
+    check("hosted: New Tab opens the palette (the same word as ⌘T)", MarginMenuAction.newTab.effect == .page(#"{"type":"command","name":"palette"}"#))
     check("hosted: Toggle Sidebar is the UI's", MarginMenuAction.toggleSidebar.effect == .page(#"{"type":"command","name":"toggle-sidebar"}"#))
     check("hosted: Close Tab is the source's (it knows the tab in front)", MarginMenuAction.closeTab.effect == .source("closeTab"))
     check("hosted: New Window makes a window", MarginMenuAction.newWindow.effect == .newWindow)

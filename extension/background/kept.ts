@@ -21,31 +21,21 @@ async function reopenKept(keptId: string, { windowId = null, deadline, sidebarTo
 }
 
 
-// One creation per saved tab at a time, whoever asks (a key, a click, the palette, a space's
-// tabs reopened behind its new window): a second ask while Safari makes it shares that tab, so a
-// saved tab never comes back as two browser tabs. By its id alone: two asks with different
-// windows (or one with none: the focused window) are still the same saved tab.
-const reopening = new Map<string, { tab: Promise<BrowserTab | null>, behind: boolean }>();
+// One creation per saved tab at a time, whoever asks (a key, a click, the palette): a second ask
+// while Safari makes it shares that tab, so a saved tab never comes back as two browser tabs. By
+// its id alone: two asks with different windows (or one with none: the focused window) are still
+// the same saved tab.
+const reopening = new Map<string, Promise<BrowserTab | null>>();
 export async function restoreKept(keptId: string, options: Parameters<typeof reopenKept>[1] = {}) {
   const pending = reopening.get(keptId);
   if (pending) {
-    const tab = await pending.tab;
+    const tab = await pending;
     if (!tab) throw new Error('That tab is no longer there');
-    // Made behind its window (openKeptBehind): this ask wants it shown.
-    if (pending.behind) await api.tabs.update(tab.id, { active: true }).catch(() => {});
     return tab;
   }
   const opening = reopenKept(keptId, options);
-  reopening.set(keptId, { tab: opening, behind: false });
-  try { return await opening; } finally { if (reopening.get(keptId)?.tab === opening) reopening.delete(keptId); }
-}
-/** A saved tab made by `make` behind its window (handlers.ts openKeptBehind), shared as restoreKept's are.
- *  Null, not made: it's being made already (that maker links it). */
-export async function makeKeptBehind(keptId: string, make: () => Promise<BrowserTab | null>): Promise<BrowserTab | null> {
-  if (reopening.has(keptId)) return null;
-  const opening = make();
-  reopening.set(keptId, { tab: opening, behind: true });
-  try { return await opening; } finally { if (reopening.get(keptId)?.tab === opening) reopening.delete(keptId); }
+  reopening.set(keptId, opening);
+  try { return await opening; } finally { if (reopening.get(keptId) === opening) reopening.delete(keptId); }
 }
 export async function openKept(keptId: string, options: Parameters<typeof reopenKept>[1] = {}) {
   const tab = await restoreKept(keptId, options);

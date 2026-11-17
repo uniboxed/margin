@@ -8,14 +8,10 @@
 // space just made (`space.new`), which is shown once the editor closes, as
 // Arc shows a new space. The name field is focused with its text selected;
 // Enter saves, Escape cancels. Delete asks first ("Really delete?"), and the
-// last space can't be deleted. With several profiles (Margin.app), the same
-// part edits a profile's name, emoji and color (`profile.edit`: the editor's
-// `isProfile`), saved by the app (host.perform 'profile.rename'); a name
-// that's Safari's (`nameLocked`) is shown, not changed: the app keeps it.
+// last space can't be deleted.
 import type { Rt } from '../runtime.ts';
 import type { ViewModel } from '../view-model.ts';
 import { SPACE_COLORS } from './menu-items.ts';
-import type { Across } from '../../shared/across.ts';
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
@@ -33,15 +29,6 @@ export function installEditor(rt: Rt) {
     rt.behaviors.menus?.close();
     focusName = true;
     rt.setUi({ editor: { spaceId, name: space.name ?? '', emoji: space.emoji ?? '', color: space.color ?? '', confirmDelete: false, fresh } });
-    return true;
-  }
-  function openProfile(profileId: string) {
-    const p = (rt.state?.across as Across | undefined)?.profiles?.find((x) => x.id === profileId);
-    if (!p) return false;
-    rt.behaviors.menus?.close();
-    focusName = true;
-    const name = p.nameFrom === 'safari' || p.named ? p.name : '';
-    rt.setUi({ editor: { profileId, name, emoji: p.emoji ?? '', color: p.color ?? '', confirmDelete: false, fresh: false } });
     return true;
   }
   // `deleted`: it's gone (no showing it).
@@ -63,7 +50,6 @@ export function installEditor(rt: Rt) {
 
   const api = {
     open,
-    openProfile,
     /** Open it once the space is there (a new space can reach us after its reply). */
     openWhenThere(spaceId: string, { fresh = false } = {}) {
       if (spaceOf(spaceId)) return open(spaceId, { fresh });
@@ -76,16 +62,12 @@ export function installEditor(rt: Rt) {
       const name = view.input('space-name')?.value ?? e.name;
       const emoji = view.input('space-emoji')?.value ?? e.emoji;
       close();
-      if (e.profileId) {
-        rt.host.perform?.('profile.rename', { profile: e.profileId, name: String(name).slice(0, 40), emoji: [...String(emoji)].slice(0, 8).join(''), color: HEX.test(e.color) ? e.color : null });
-        return true;
-      }
       return rt.dispatch('space.update', { space: e.spaceId, name: String(name).slice(0, 40), emoji: [...String(emoji)].slice(0, 8).join(''), color: HEX.test(e.color) ? e.color : null }, 'behavior');
     },
     cancel: () => close(),
     remove() {
       const e = rt.ui.editor;
-      if (!e || e.profileId || (rt.state?.spaces?.length ?? 0) < 2) return false;
+      if (!e || (rt.state?.spaces?.length ?? 0) < 2) return false;
       if (!e.confirmDelete) { rt.setUi({ editor: { ...e, confirmDelete: true } }); return true; }
       close({ deleted: true });
       return rt.dispatch('space.delete', e.spaceId, 'behavior');
@@ -113,11 +95,10 @@ export function installEditor(rt: Rt) {
       const name = view.input('space-name');
       const emoji = view.input('space-emoji');
       if (focusName) {
-        // Opened: the fields show the space as it is, the name selected (Safari's name: the emoji).
+        // Opened: the fields show the space as it is, the name selected.
         if (name) name.value = vm.editor.name;
         if (emoji) emoji.value = vm.editor.emoji;
-        const first = vm.editor.nameLocked ? emoji : name;
-        if (first) { focusName = false; first.focus({ preventScroll: true }); first.select(); }
+        if (name) { focusName = false; name.focus({ preventScroll: true }); name.select(); }
       }
     },
     busy: () => rt.ui.editor != null,

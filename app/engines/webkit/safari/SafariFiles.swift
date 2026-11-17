@@ -1,8 +1,8 @@
 // What Margin.app reads of Safari's own files with Full Disk Access, and how:
-// Safari's profile names (SafariProfiles.swift) and iCloud Tabs
-// (CloudTabs.swift). Both are SQLite databases in Safari's container that
-// Safari keeps open in WAL mode, so both are read the same way and watched
-// the same way:
+// Safari's profile names (SafariProfiles.swift), nothing else (iCloud Tabs'
+// read of CloudTabs.db was removed 2026-11-17). SafariTabs.db is an SQLite
+// database in Safari's container that Safari keeps open in WAL mode, so it is
+// read and watched this way:
 //
 // - **Access:** a read attempt (`open()` on the file: EPERM/EACCES is no
 //   permission), nothing more; no private calls.
@@ -25,8 +25,7 @@ import SQLite3
 nonisolated enum SafariFiles {
     enum Access: Equatable, Sendable { case granted, denied, noSafari }
 
-    // System Settings at Full Disk Access (its public URL): the set-up window's
-    // step and the iCloud Tabs folder's row both open it.
+    // System Settings at Full Disk Access (its public URL): the set-up window's step opens it.
     static let fullDiskAccessURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
 
     // Can Margin.app read `file` in Safari's folder: a read attempt, nothing more.

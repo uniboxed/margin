@@ -62,12 +62,12 @@ test('the active theme\'s own settings, from its theme.json: Margin\'s inputs, i
 });
 
 test('the theme\'s own settings come after Margin\'s, right before the keyboard shortcuts: Margin\'s rows never sit under "Settings of …"', () => {
-  const ids = settingsFields({}, { importThemes: true, userThemes: LIST, cloudTabs: true }, { theme: THEME }).map((x) => x.id);
+  const ids = settingsFields({}, { importThemes: true, userThemes: LIST }, { theme: THEME }).map((x) => x.id);
   const heading = ids.indexOf('themeSettings');
   const shortcuts = ids.indexOf('shortcuts');
   assert.ok(heading > 0 && shortcuts > heading, 'the heading before the shortcuts');
   assert.ok(ids.slice(heading + 1, shortcuts).every((id) => id.startsWith('themeSetting:')), 'only the theme\'s rows between the two headings');
-  for (const id of ['theme', 'themeImport', 'removeTheme:mine', 'engine', 'archiveAfterHours', 'frameWhenHidden', 'showCloudTabs']) assert.ok(ids.indexOf(id) < heading, `${id} before the theme's own`);
+  for (const id of ['theme', 'themeImport', 'removeTheme:mine', 'engine', 'archiveAfterHours', 'frameWhenHidden']) assert.ok(ids.indexOf(id) < heading, `${id} before the theme's own`);
   assert.equal(ids[ids.indexOf('themeImport') - 1], 'theme', 'Import Theme… right under the theme choice');
 });
 

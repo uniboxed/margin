@@ -60,7 +60,6 @@ What each file covers:
 | `sleep` | sleeping tabs: idle pages closed and kept, busy ones awake |
 | `scroll` | scrolling, sticky parts, gestures |
 | `loading` | a streamed page, leaving, a reload, a page that stays |
-| `cloud-tabs` | iCloud Tabs in the sidebar and the palette |
 | `themes` | each built-in theme chosen in Settings and drawn with real content |
 | `chrome-build` | the Chrome build on its own |
 | `site` | the test site itself |
@@ -955,7 +954,7 @@ Before: after an update or a quick quit and restart of Margin.app, often only th
 - [ ] Quit Margin.app from its menu and open it again, once with each profile's window in front and once with another app in front. Every profile links within about 4 s each time.
 - [ ] Lines like `wantLink: no answer from the extension handler within 3000 ms …` are fine (Safari lost that answer; the copy asks again). Send me any `the link's try has been under way N s …` or `unlinked with no try under way or to come …` line, with the time.
 
-## Margin 2: iCloud Tabs (2026-11-05)
+## Margin 2: iCloud Tabs (2026-11-05) — removed 2026-11-17 (to be rebuilt later); these checks no longer apply
 
 `npm run safari` from `feat/icloud-tabs` (Margin.app changes; the Xcode project is made again because shell files were added). Margin.app has Full Disk Access. Have Safari open on at least one other device signed in to the same Apple Account (an iPhone with a few tabs is enough), and keep `npm run log:app -- --stream` open.
 

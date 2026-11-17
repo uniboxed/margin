@@ -1,6 +1,6 @@
 // The freeze the host's first full screen of an app may run under (HostSystem.swift freeze/reveal; first written for
-// the profile handoff, docs/HANDOFF.md §1.3, §1.4, §4.3): the screen held still by SLSNewTransition while windows
-// change Spaces behind it, then revealed with SLSInvokeTransition.
+// the profile handoff, which went with the overlay on 2026-11-16): the screen held still by SLSNewTransition while
+// windows change Spaces behind it, then revealed with SLSInvokeTransition.
 //
 // - macOS lets go of a freeze by itself at about 2 s. Margin reveals first: the
 //   freezer's own watchdog, a DispatchSourceTimer on a private serial queue,
@@ -16,22 +16,16 @@
 
 import Foundation
 
-// Why a freeze was revealed (HANDOFF.md §4.3 "reveal-at-once paths").
+// Why a freeze was revealed.
 nonisolated enum RevealWhy: String, Sendable {
-    case ready // R3, R4 and R5 held, or their timeouts passed
+    case ready // the host's step under it is done (HostSystem.reveal)
     case watchdog // the freezer's own timer
-    case aborted // the active Space moved to one the switch didn't expect (§1.2)
-    case failed // a step failed: recovery goes on unfrozen (§4.4)
-    case closed // B closed, or its copy gone (§1.8)
-    case cancelled // the switch was given up
-    case safariQuit
-    case sleep // the Mac is going to sleep (§6.8)
-    case quit // Margin.app quitting (Shell.stop), or the freezer going away
+    case quit // the freezer going away
 }
 
 nonisolated enum FreezeResult: Equatable, Sendable {
     case frozen(handle: Int32)
-    case failed(Int32) // SLSNewTransition's nonzero answer: this switch runs without a freeze
+    case failed(Int32) // SLSNewTransition's nonzero answer: the step runs without a freeze
     case unavailable(String) // nothing called: refused in tests, the calls off, or a freeze already live
 }
 
@@ -71,10 +65,8 @@ extension Freezer {
 }
 
 nonisolated struct FreezerOptions: Sendable {
-    // Before macOS's own release at about 2 s; the labs used 1.7-1.85 s. Gate G16 may change it.
+    // Before macOS's own release at about 2 s; the labs used 1.7-1.85 s.
     var watchdog: TimeInterval = 1.7
-    // The close handoff's second freeze (§4.5) is short: its caller passes this.
-    var closeWatchdog: TimeInterval = 1.0
 }
 
 // ---- the real one ----

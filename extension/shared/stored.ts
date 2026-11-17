@@ -89,7 +89,7 @@ export const onlyMark = (changes: Record<string, unknown>) => Object.keys(change
 // seen in a read or a change event are read too. Never the old names of the
 // open tabs (read in full when `openTabs` isn't there), lostTabs (only the
 // background's), or the envelope an old development build kept.
-const PAGE_KEYS = Object.freeze([OPEN_TABS, 'spaces', 'pins', 'folders', 'archive', 'settings', 'owner', 'showing', 'pageZoom', FAVICONS_MARK]);
+const PAGE_KEYS = Object.freeze([OPEN_TABS, 'spaces', 'pins', 'folders', 'archive', 'settings', 'owner', 'showing', FAVICONS_MARK]);
 // The active theme's package (`uiTheme`, background/theme-package.ts) is
 // Margin.app's (the link reads it): never read by a page (Margin 2 Phase 2
 // step 7; before, its first read of everything took it, some 100 KB to 3 MB).

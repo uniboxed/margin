@@ -155,6 +155,9 @@ Margin.app (a regular app: its Dock icon, its menu bar, Mission Control shows "M
    Margin.app's side (`refactor/hosted-only-app`): the `MarginHosted` option is gone and hosting is the only mode;
    the overlays and everything that placed them, the handoff, parking, covers, the slot, the edge stop and the
    startup splash removed. The extension's page box goes in its own change.
+   *Cleanup 2026-11-17 (DECISIONS.md "Hosted only: the cleanup"):* what the removals left unused is gone: iCloud Tabs
+   (for now), the cross-profile order and UI, the overlay's and the handoff's words between the copies and the app,
+   the unused private-call checks; and Margin no longer quits itself once the person has opened it.
 
 Chrome and Edge: the same host (Chrome keeps its window buttons visible: hide
 its toolbar via its own setting, as decided on 2026-11-14), after Safari.

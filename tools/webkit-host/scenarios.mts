@@ -72,8 +72,8 @@ const NOTHING_DRAWN = `[...document.querySelectorAll('*')].every((el) => !el.loc
 const nothingDrawn = (tab: string, label = `${tab}: no element of Margin's in the page, no frame`) => checkPage(tab, label, NOTHING_DRAWN, 3000);
 // Linked to Margin.app's real end of the link (the link server, started by appStart).
 const linked = (tab: string) => check(tab, `${tab}: linked to Margin.app`, `Margin.content?.appDraws?.() === true`, 9000);
-// Margin.app running, its page slot `left`/8/8/8 (Keep open: 260; the frame alone: 8).
-const appWith = (left = 260) => ({ op: 'appStart', layout: [left, 8, 8, 8] });
+// Margin.app running (its real end of the link: the link server).
+const appWith = () => ({ op: 'appStart' });
 const shown = (tab: string) => checkPage(tab, `${tab} is the tab shown`, `!document.hidden`);
 // Nothing Margin did reached the page's own error listeners (a ResizeObserver
 // loop error from a paint barrier, say: host.swift's page log).
@@ -85,7 +85,7 @@ const bare = (tab: string) => checkPage(tab, `${tab}: the page as it is`, `getCo
 const rect = (id: string) => `(() => { const r = document.getElementById('${id}').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; })()`;
 const near = (a: string | number, b: string | number, by = 2) => `Math.abs((${a}) - (${b})) <= ${by}`;
 // Margin.app linked, and a page.
-const startLinked = (name: string, url: string): Step[] => [appWith(260), { op: 'open', name, url, active: true }, wait(800), { op: 'install' }, linked(name), bare(name)];
+const startLinked = (name: string, url: string): Step[] => [appWith(), { op: 'open', name, url, active: true }, wait(800), { op: 'install' }, linked(name), bare(name)];
 const tick = 'await new Promise((resolve) => setTimeout(resolve, 80));';
 // A real key, no modifiers unless given (arrows: 125 down, 126 up, chars as AppKit's).
 const key = (tab: string, keyCode: number, chars: number, mods: string[] = []) => ({ op: 'key', in: tab, keyCode, chars: String.fromCharCode(chars), mods });
@@ -147,7 +147,7 @@ export const SCENARIOS: Record<string, Step[]> = {
   // is one line in Margin.app's log, its steps in order up to the delta out;
   // a key's switch tells the overlay it's switching, then that it's done.
   'plain-switch': [
-    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' },
+    appWith(), { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' },
     wait(800), { op: 'install' }, linked('A'), ready('B'), ready('C'),
     { op: 'page', in: 'B', js: "window.__seen = []; document.addEventListener('visibilitychange', () => __seen.push(document.visibilityState)); return 'counting'" },
     { op: 'page', in: 'A', js: "window.__seen = []; document.addEventListener('visibilitychange', () => __seen.push(document.visibilityState)); return 'counting'" },
@@ -173,7 +173,7 @@ export const SCENARIOS: Record<string, Step[]> = {
   // the newest of them (B) is sent after it: D and C never come into view.
   // The overlay hears each press's 'switching' at once and a word for each.
   'fast-keys': [
-    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' },
+    appWith(), { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' },
     { op: 'open', name: 'D', url: '/p/D' }, { op: 'open', name: 'E', url: '/p/E' },
     wait(800), { op: 'install' }, linked('A'), ready('B'), ready('C'), ready('D'), ready('E'),
     ...['B', 'C', 'D', 'E'].map((tab) => ({ op: 'page', in: tab, js: "window.__seen = []; document.addEventListener('visibilitychange', () => __seen.push(document.visibilityState)); return 'counting'" })),
@@ -289,23 +289,6 @@ export const SCENARIOS: Record<string, Step[]> = {
     checkPage('A', 'A: and the next one works', `visualViewport.scale > 1.1`, 1500),
     { op: 'pinch', deltas: Array(30).fill(-0.03) }, wait(400),
   ],
-  // Safari's own pinch on a page Margin.app draws around (gestures not Margin's): WebKit divides innerWidth and
-  // innerHeight by the pinch's scale (a 3× pinch reads a third), which read as Safari taking most of the window:
-  // Margin.app was told the page's area was a third of it (a real session's log 2026-11-07, Margin drew
-  // its sidebar in a corner). The area before the pinch is used (shared/app-link.ts unpinchedSize).
-  'pinch-native': [
-    { op: 'windowFrame', on: true }, // (outerWidth and outerHeight the window's, as in Safari)
-    ...startLinked('A', '/p/T'), wait(300),
-    { op: 'eval', in: 'A', js: 'const { settings } = await browser.storage.local.get("settings"); await browser.storage.local.set({ settings: { ...settings, blockGestures: false } }); return "gestures Safari\'s"' },
-    wait(400),
-    { op: 'pinch', deltas: Array(40).fill(0.06), x: 700, y: 400 }, wait(500),
-    checkPage('A', 'Safari pinched it (not Margin)', 'visualViewport.scale > 1.5', 1500),
-    { op: 'eval', in: 'A', js: 'return JSON.stringify({ iw: innerWidth, ih: innerHeight, ow: outerWidth, oh: outerHeight, s: visualViewport.scale, vw: visualViewport.width, z: Margin.content.viewportNow() })' },
-    check('A', 'pinched: the page\'s area as told to the app is still the whole window (none)', `Margin.content.viewportNow() === null`, 1500),
-    { op: 'pinch', deltas: Array(60).fill(-0.06), x: 700, y: 400 }, wait(500),
-    checkPage('A', 'pinched back', 'visualViewport.scale === 1', 1500), bare('A'),
-    { op: 'windowFrame', on: false },
-  ],
   // Two copies of Margin loaded at once in one controller (as Safari would
   // load a new one while the old one still runs): they share one script world
   // in pages, so a page runs one copy, here the first's. Once the newer copy
@@ -391,9 +374,9 @@ export const SCENARIOS: Record<string, Step[]> = {
   'bg-page': [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, ready('A'),
     wait(12000),
-    check('A', 'A: the background still answers 12 s after install (20 requests)', `const zooms = await Promise.all(Array.from({ length: 20 }, () => Margin.content.send('getZoom', {}, false))); return zooms.every((z) => Number(z) > 0)`, 4000),
+    check('A', 'A: the background still answers 12 s after install (20 requests)', `const said = await Promise.all(Array.from({ length: 20 }, () => Margin.content.send('windowState', {}, false))); return said.every((a) => a && typeof a.fullscreen === 'boolean')`, 4000),
     wait(10000),
-    check('A', 'A: and 22 s after', `const zooms = await Promise.all(Array.from({ length: 20 }, () => Margin.content.send('getZoom', {}, false))); return zooms.every((z) => Number(z) > 0)`, 4000),
+    check('A', 'A: and 22 s after', `const said = await Promise.all(Array.from({ length: 20 }, () => Margin.content.send('windowState', {}, false))); return said.every((a) => a && typeof a.fullscreen === 'boolean')`, 4000),
   ],
   // The real extension linked to Margin.app's real end of the link (link-server: app/platforms/macos/shell's
   // ExtensionLink, LinkSocket, LinkMessage, Chunks), through the host's native messaging:
@@ -410,7 +393,7 @@ export const SCENARIOS: Record<string, Step[]> = {
     check('A', 'A: the app\'s request (updateSettings) ran in the background', `const { settings } = await browser.storage.local.get('settings'); return settings?.sidebarShortcut === 'Alt+KeyJ'`, 5000),
     check('A', 'A: pages are told it\'s linked', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.state === 'linked'`, 3000),
     // ⌘T reaching the page while the app draws (its hot key would have taken it in Safari):
-    // nothing visible, no tab made, the app told (the link server logs the push `keyHeard`).
+    // nothing visible, no tab made.
     { op: 'key', in: 'A', keyCode: 17, chars: 't', mods: ['command'] },
     wait(400),
     check('A', 'A: ⌘T in the page while linked: no new tab', `const { openTabs } = await browser.storage.local.get('openTabs'); return Object.keys(openTabs?.tabs ?? {}).length === 1`, 2000),
@@ -448,7 +431,7 @@ export const SCENARIOS: Record<string, Step[]> = {
 const answers = (tab: string) => check(tab, `${tab}: its Margin answers (storage and the background)`, "const later = (ms) => new Promise((r) => setTimeout(() => r(false), ms)); return (await Promise.race([browser.storage.local.get('owner').then(() => true), later(1000)])) && (await Promise.race([Margin.content.send('sidebarScroll').then(() => true), later(1500)]))", 3000);
 Object.assign(SCENARIOS, {
   reloaded: [
-    appWith(260),
+    appWith(),
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/FC' }, { op: 'open', name: 'D', url: '/p/D', asleep: true },
     wait(800), { op: 'install', sameId: true }, linked('A'), wait(800),
     reload('A'), reload('B'), reload('C'), wait(1500), bare('A'), bare('B'), bare('C'),
@@ -634,7 +617,7 @@ Object.assign(SCENARIOS, {
   // page loaded then has nothing of Margin's either. The app back: linked
   // again as a page starts.
   'link-drop': [
-    appWith(260), { op: 'open', name: 'A', url: '/p/T', active: true }, wait(800), { op: 'install' },
+    appWith(), { op: 'open', name: 'A', url: '/p/T', active: true }, wait(800), { op: 'install' },
     linked('A'), bare('A'), nothingDrawn('A', 'A: linked: still nothing of Margin\'s in the page'),
     { op: 'open', name: 'B', url: '/p/B', active: true }, bare('B'), nothingDrawn('B'),
     checkPage('B', 'B (loaded while linked): none of Margin\'s page scripts (nothing registered)', `!window[Symbol.for('margin.page')]`),
@@ -645,7 +628,7 @@ Object.assign(SCENARIOS, {
     check('A', 'A (behind): off too', `Margin.content.appDraws() === false`, 2000),
     wait(1000), { op: 'open', name: 'C', url: '/p/C', active: true }, ready('C'), bare('C'), nothingDrawn('C', 'C (loaded once off): nothing of Margin\'s, no frame'),
     checkPage('C', 'C: none of Margin\'s page scripts', `!window[Symbol.for('margin.page')] && !document.documentElement.hasAttribute('data-margin-at')`),
-    appWith(260), reload('C'),
+    appWith(), reload('C'),
     linked('C'), bare('C'),
   ],
   // Margin's new-tab page, not linked: a short notice that Margin.app isn't
@@ -667,7 +650,7 @@ Object.assign(SCENARIOS, {
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, ready('A'),
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: true },
     checkPage('N', 'N: the start button', `!document.getElementById('start').hidden`, 5000),
-    { op: 'appOnDemand', layout: [260, 8, 8, 8] },
+    { op: 'appOnDemand' },
     { op: 'page', in: 'N', js: `document.getElementById('start').click(); return document.getElementById('status').textContent` },
     checkPage('N', 'N: linked: loaded again, the app draws it (the page shows nothing of its own)', `document.getElementById('notice')?.hidden === true && (await browser.storage.local.get('appLink')).appLink?.state === 'linked'`, 12000),
     check('A', 'A (behind): linked', `Margin.content.appDraws() === true`, 3000),
@@ -679,7 +662,7 @@ Object.assign(SCENARIOS, {
   // makes no socket for the rest of the Safari session. The new-tab page says Margin turned its link
   // off and when, with Try again and no Start; Try again links at once, and the page is the app's.
   'link-guard': [
-    appWith(260),
+    appWith(),
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install', sameId: true }, linked('A'),
     { op: 'eval', in: 'A', js: `await browser.storage.local.set({ appLinkOpening: { at: Date.now() } }); return 'left'` },
     { op: 'uninstall', keepWorld: true }, wait(100), { op: 'install', sameId: true },
@@ -698,7 +681,7 @@ Object.assign(SCENARIOS, {
   // running); asked again 5 s later, and linked once the app's dispatches go
   // through: the page is the app's from then on.
   'newtab-no-link': [
-    appWith(260), { op: 'appRefuse' },
+    appWith(), { op: 'appRefuse' },
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, ready('A'),
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: true },
     checkPage('N', 'N: Margin.app isn\'t answering, no start button, the address field', `!document.getElementById('notice').hidden && document.getElementById('title').textContent === 'Margin.app isn’t answering' && document.getElementById('start').hidden && !!document.getElementById('address')`, 8000),
@@ -708,34 +691,6 @@ Object.assign(SCENARIOS, {
     checkPage('N', 'N: asked again 5 s later and linked: loaded again, drawn by the app', `document.getElementById('notice')?.hidden === true && (await browser.storage.local.get('appLink')).appLink?.state === 'linked'`, 9000),
     check('A', 'pages: linked, no why left', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.state === 'linked' && appLink.why === undefined`, 2000),
     linked('A'), bare('A'),
-  ],
-
-  // Which page is shown (Margin 2: Safari reliability). Each window's report carries its tab in front's
-  // word (background/link.ts visibility), and the copy's line in Margin.app's log says it: a page says
-  // it's shown as it starts; another tab shown in the window, the window's word is forgotten and the new
-  // tab asked, and it says so; the new-tab page says too. (The host's tabs behind are hidden, the one in
-  // front shown: WebKit's own visibilityState. Whether a full-screen window on another Space is hidden is
-  // Safari's to say: TESTING.md.)
-  'visibility': [
-    appWith(260),
-    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), shown('A'),
-    { op: 'appHeard', label: 'A, in front, says it\'s shown: its window\'s report carries it', has: ['"ev":"extension log"', 'windows report at'], re: 'shown [0-9:.]+"', timeout: 8000 },
-    { op: 'appHeard', label: 'and the copy\'s line says the window is shown, when, what said it and how late', has: ['"ev":"extension log"'], re: 'window [0-9]+ shown at [0-9:.]+ \\(content script, tab [0-9]+, heard [0-9]+ ms later\\)"', timeout: 8000 },
-    { op: 'appMark' },
-    { op: 'open', name: 'B', url: '/p/B', active: true }, shown('B'),
-    checkPage('A', 'A is hidden now', `document.hidden`),
-    // (The window reports themselves, as the app's end heard them: the copy's flags line in the log comes at most once a second.)
-    { op: 'appHeard', label: 'B shown in the window: the window\'s word forgotten (not taken as hidden)', has: ['"ev":"windows"', '"visible":"unknown"'] },
-    { op: 'appHeard', label: 'and B, asked, says it\'s shown', has: ['"ev":"windows"', '"visible":true'] },
-    { op: 'appHeard', label: 'never the hidden tab A\'s word as the window\'s', has: ['"ev":"windows"', '"visible":false'], none: true },
-    { op: 'appHeard', label: 'nor in the copy\'s flags line', has: ['"ev":"extension log"', 'windows report at', 'hidden'], none: true },
-    { op: 'appHeard', label: 'nor in the copy\'s line: A, left behind, saying hidden isn\'t the window hidden', has: ['"ev":"extension log"', ' hidden at '], none: true },
-    { op: 'appMark' },
-    // (The start page: a fresh new tab would hand off to the tab before it.)
-    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: true }, shown('N'),
-    { op: 'appHeard', label: 'N shown: the window\'s word forgotten', has: ['"ev":"windows"', '"visible":"unknown"'] },
-    { op: 'appHeard', label: 'and the new-tab page says it\'s shown, as web pages do', has: ['"ev":"windows"', '"visible":true'], timeout: 8000 },
-    checkPage('N', 'the new-tab page is still the tab in front', `!document.hidden && location.hash === '#launcher'`),
   ],
 
   // ---- Margin 2 Phase 2 step 7: what pages said in their own UI, said by Margin.app's overlay ----
@@ -748,7 +703,7 @@ Object.assign(SCENARIOS, {
   // window's overlay "not-responding" (the kind only, once it has linked
   // again); the overlay's Reload, as noticeAction, loads the page again.
   'notice-cutoff': [
-    appWith(260),
+    appWith(),
     { op: 'open', name: 'A', url: '/p/FA', active: true }, { op: 'open', name: 'B', url: '/p/B' },
     wait(800), { op: 'install', sameId: true }, linked('A'), wait(800),
     reload('A'), reload('B'), wait(1500), bare('A'),
@@ -772,7 +727,7 @@ Object.assign(SCENARIOS, {
   // page says it was opened from nothing; "Don't show again" from the app
   // turns the note off.
   'notice-newtab': [
-    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'),
+    appWith(), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'),
     { op: 'appMark' },
     { op: 'open', name: 'H1', url: '/p/home', active: true, selectedFirst: true }, ready('H1'), wait(500),
     { op: 'open', name: 'H2', url: '/p/home', active: true, selectedFirst: true }, ready('H2'),
@@ -788,7 +743,7 @@ Object.assign(SCENARIOS, {
   // it has loaded; a site's own same-page navigation (the Navigation API)
   // that takes a while.
   'loading': [
-    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), wait(600),
+    appWith(), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), wait(600),
     { op: 'appMark' },
     { op: 'page', in: 'A', js: `dispatchEvent(new Event('beforeunload')); return 'about to leave'` },
     { op: 'appHeard', label: 'A about to be left (its beforeunload): loading, told by the page itself', has: ['"type":"loading"'], re: '"tabIds":.[0-9]', timeout: 2000 },
@@ -807,7 +762,7 @@ Object.assign(SCENARIOS, {
   // Margin's pull to refresh in a page (synthetic wheel events at the top):
   // its feedback told to the window's overlay as it goes, then the reload.
   'gesture-pull': [
-    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), wait(300),
+    appWith(), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), wait(300),
     { op: 'appMark' },
     { op: 'page', in: 'A', js: `window.__before = true; for (let i = 0; i < 24; i++) { document.dispatchEvent(new WheelEvent('wheel', { deltaY: -12, deltaMode: 0, bubbles: true, cancelable: true })); await new Promise((r) => setTimeout(r, 16)); } return 'pulled'` },
     { op: 'appHeard', label: 'a pull at the top of A: its window told how far it went', has: ['"type":"gesture"', '"kind":"pull"', '"state":"pulling"'] },
@@ -815,46 +770,12 @@ Object.assign(SCENARIOS, {
     { op: 'appHeard', label: 'let go: done', has: ['"type":"gesture"', '"kind":"pull"', '"state":"trigger"'] },
     checkPage('A', 'A: reloaded by the pull', '!window.__before', 4000),
   ],
-  // Margin.app's frame probe during a profile handoff (docs/HANDOFF.md §3.2, R3), asked from the
-  // app's end (`appReq frameProbe`, as the handoff asks the target window's copy): the page in front
-  // nudges with one 1×1 fixed element under <html> (its alpha changing frame to frame) and answers
-  // the frames it drew at the window's size; nothing in the page moves in any frame (every element's
-  // place, the scroll and the page's size the same), and the nudge is gone after. Then the drafts
-  // before a close (`windowDrafts`): a tab with text typed is named, nothing unknown.
-  'frame-probe': [
-    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'F', url: '/p/FB' },
-    wait(800), { op: 'install' }, linked('A'), ready('F'),
-    { op: 'show', name: 'F' }, wait(150),
-    { op: 'page', in: 'F', js: `document.querySelector('textarea').focus(); return 'focused'` },
-    key('F', 0, 0x61), key('F', 11, 0x62),
-    checkPage('F', 'F: a draft typed', `document.querySelector('textarea').value === 'ab'`),
-    { op: 'show', name: 'A' }, bare('A'), wait(300),
-    { op: 'page', in: 'A', js: `const p = window.__probe = { added: [], removed: 0, styles: 0, frames: [] };
-      const place = () => JSON.stringify([...document.querySelectorAll('body *')].slice(0, 30).map((e) => { const r = e.getBoundingClientRect(); return [e.localName, r.x, r.y, r.width, r.height]; }).concat([[document.documentElement.scrollWidth, document.documentElement.scrollHeight, scrollX, scrollY]]));
-      p.before = place();
-      p.children = document.documentElement.children.length;
-      new MutationObserver((records) => { for (const r of records) { if (r.type === 'attributes') { p.styles++; continue; } for (const n of r.addedNodes) if (n.nodeType === 1) { const cs = getComputedStyle(n); const b = n.getBoundingClientRect(); p.added.push({ name: n.localName, underHtml: n.parentNode === document.documentElement, position: cs.position, w: b.width, h: b.height, x: b.x, y: b.y, events: cs.pointerEvents, bg: cs.backgroundColor }); } for (const n of r.removedNodes) if (n.nodeType === 1) p.removed++; } }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
-      const loop = () => { p.frames.push(place()); if (p.frames.length < 300) requestAnimationFrame(loop); };
-      requestAnimationFrame(loop);
-      return 'watching'` },
-    { op: 'appMark' },
-    { op: 'appReq', type: 'frameProbe', in: 'A', js: `return JSON.stringify({ width: outerWidth, height: outerHeight, frames: 6, nudgeMs: 80, timeoutMs: 1500 })` },
-    { op: 'appHeard', label: 'the probe answered from the page in front: 6 frames at the window\'s size, shown', has: ['"ev":"reply"', '"type":"frameProbe"', '"ok":true', '"frames":6', '"visible":true', '"firstAt":', '"lastAt":'], timeout: 4000 },
-    { op: 'appHeard', label: 'and not "no page"', has: ['"type":"frameProbe"', '"none":'], none: true, timeout: 200 },
-    checkPage('A', 'the nudge: one element, under <html>, fixed at the top left, 1×1, no hit target, nearly clear; its colour changed frame to frame; gone after', `const p = window.__probe; const a = p.added[0]; return p.added.length === 1 && a.underHtml && a.position === 'fixed' && a.x === 0 && a.y === 0 && a.w === 1 && a.h === 1 && a.events === 'none' && /rgba\\(128, 128, 128, 0\\.0[12]\\)/.test(a.bg) && p.styles >= 3 && p.removed === 1`, 3000),
-    checkPage('A', 'nothing in the page moved in any frame of the probe (every element\'s place, the scroll, the page\'s size)', `const p = window.__probe; return p.frames.length > 10 && p.frames.every((f) => f === p.before) && document.documentElement.children.length === p.children`, 3000),
-    nothingDrawn('A'),
-    { op: 'appMark' },
-    { op: 'appReq', type: 'windowDrafts', payload: {} },
-    { op: 'appHeard', label: 'the drafts before a close: the tab with text typed named, none unknown', has: ['"ev":"reply"', '"type":"windowDrafts"', '"ok":true', '"unknown":[]', '"drafts":['], timeout: 3000 },
-    { op: 'appHeard', label: 'and not an empty list of drafts', has: ['"type":"windowDrafts"', '"drafts":[]'], none: true, timeout: 200 },
-  ],
   // A page's first read of storage with a big theme package stored (a user
   // theme can be 3 MB): pages no longer read it (Margin.app's link does).
   // Logs the read's time and size as a page did it before (all of storage)
   // and now (its keys), the median of 7 each.
   'first-read': [
-    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), wait(500),
+    appWith(), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), wait(500),
     { op: 'eval', in: 'A', js: `const keys = ${JSON.stringify(firstReadKeys())}; const time = async (k) => { const t = performance.now(); const r = await browser.storage.local.get(k); return [performance.now() - t, JSON.stringify(r).length]; }; const measure = async () => { const runs = { all: [], first: [] }; for (let i = 0; i < 7; i++) { runs.all.push(await time(null)); runs.first.push(await time(keys)); } const med = (l) => l.map((x) => x[0]).sort((a, b) => a - b)[3].toFixed(1); return 'get(null) ' + med(runs.all) + ' ms, ' + runs.all[0][1] + ' bytes; the first read now ' + med(runs.first) + ' ms, ' + runs.first[0][1] + ' bytes'; }; const stored = JSON.stringify((await browser.storage.local.get('uiTheme')).uiTheme ?? null).length; const builtIn = await measure(); await browser.storage.local.set({ uiTheme: { id: 'big', version: '1', pkg: { id: 'big', manifest: '{}', html: '', css: '', files: { 'fonts/a.woff2': 'A'.repeat(3000000) } } } }); const big = await measure(); return 'the built-in theme stored (' + stored + ' bytes): ' + builtIn + ' | a 3 MB theme stored: ' + big` },
     reload('A'), ready('A'),
     check('A', 'A: its first read took no theme package (a 3 MB one stored)', `!('uiTheme' in Margin.content.getState().state)`),
@@ -865,7 +786,7 @@ Object.assign(SCENARIOS, {
   // that window opens Margin's new-tab page, which stays, and says Margin.app hasn't placed the window
   // (its address field, no Start).
   'undrawn': [
-    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), bare('A'),
+    appWith(), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), bare('A'),
     { op: 'appDrawn', on: false },
     check('A', 'A: the copy keeps the app\'s word that it draws nothing over the window', `const { appLink } = await browser.storage.local.get('appLink'); return !!appLink?.drawn && Object.values(appLink.drawn).includes(false)`, 2000),
     bare('A'),

@@ -1,5 +1,7 @@
 # The full-screen handoff with parking: design
 
+**Removed (2026-11-16 in Margin.app, 2026-11-17 in the extension and the UI): Margin is hosted only (`docs/MARGIN-APP.md`), and nothing here is built any more: the handoff, parking, the covers, the frame probe, the drafts check, "Close windows to save memory" and the switching cover's part. Kept for the record.**
+
 Draft 2, 2026-11-06 (revised after two critics' reviews: Appendix A). Nothing here is built. It replaces today's close-based cross-profile switch (`app/platforms/macos/shell/ProfileSwitch.swift`) with a freeze-based handoff, and keeps the old profile's window alive ("parked") instead of closing it.
 
 **Margin windows (2026-11-09):** this design had one chain of windows (one home window per profile, one shown window). `docs/BROWSER-WINDOWS.md` replaces that with a window per profile for **each** Margin window, and it overrides what this document says about home windows, the shown window, §6.2, §13.8 and §13.11 (answers 8 and 11). Where the two differ, WINDOWS.md holds.

@@ -27,39 +27,10 @@ struct ServerWindow: Equatable {
     }
 }
 
-protocol WindowSource {
-    // Every window of these processes (on every Space), plus the on-screen windows above them
-    // (all processes), in the window server's order. Overlays' own windows included.
-    func windows(of pids: Set<pid_t>) -> [ServerWindow]
-    // The same, or nil when the window server gave no list at all (not the same as an empty one).
-    func read(of pids: Set<pid_t>) -> [ServerWindow]?
-    // The on-screen windows in front of `window`, front to back (CGWindowListCopyWindowInfo's
-    // .optionOnScreenAboveWindow: exact, unlike the order of an every-window list). Nil: can't say.
-    func above(_ window: Int) -> [ServerWindow]?
-}
-
-extension WindowSource {
-    func above(_ window: Int) -> [ServerWindow]? { nil }
-}
-
-extension WindowSource {
-    func read(of pids: Set<pid_t>) -> [ServerWindow]? { windows(of: pids) }
-}
-
-struct CGWindowSource: WindowSource {
-    func windows(of pids: Set<pid_t>) -> [ServerWindow] { read(of: pids) ?? [] }
-
-    func above(_ window: Int) -> [ServerWindow]? {
-        guard let n = CGWindowID(exactly: window),
-              let list = CGWindowListCopyWindowInfo([.optionOnScreenAboveWindow, .excludeDesktopElements], n) as? [[String: Any]] else { return nil }
-        return list.enumerated().compactMap { i, w in
-            guard let pid = (w[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value, let number = (w[kCGWindowNumber as String] as? NSNumber)?.intValue,
-                  let raw = w[kCGWindowBounds as String], let bounds = CGRect(dictionaryRepresentation: raw as! CFDictionary) else { return nil }
-            return ServerWindow(number: number, pid: pid, layer: (w[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0, bounds: bounds,
-                                onScreen: true, alpha: (w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1, order: i)
-        }
-    }
-
+// The window server's list, read whole (HostSystem.swift serverWindows).
+struct CGWindowSource {
+    // Every window of these processes (on every Space), plus the on-screen windows of any process, in the window
+    // server's order; nil when the window server gave no list at all (not the same as an empty one).
     func read(of pids: Set<pid_t>) -> [ServerWindow]? {
         guard let list = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return nil }
         var out: [ServerWindow] = []
@@ -69,7 +40,6 @@ struct CGWindowSource: WindowSource {
                   let number = (w[kCGWindowNumber as String] as? NSNumber)?.intValue,
                   let raw = w[kCGWindowBounds as String], let bounds = CGRect(dictionaryRepresentation: raw as! CFDictionary) else { continue }
             let onScreen = (w[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false
-            // Other processes' windows only where they could be between an overlay and its browser window.
             guard pids.contains(pid) || onScreen else { continue }
             out.append(ServerWindow(number: number, pid: pid, layer: (w[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0, bounds: bounds,
                                     onScreen: onScreen, alpha: (w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1, order: i))
@@ -87,38 +57,15 @@ enum ScreenGeometry {
         CGRect(x: r.minX, y: mainHeight - r.maxY, width: r.width, height: r.height)
     }
 
-    // The displays' frames from the top left (the window server's coordinates).
-    static var displayFrames: [(frame: CGRect, topInset: CGFloat)] {
-        let main = mainHeight
-        return NSScreen.screens.map { (appKitRect($0.frame, mainHeight: main), $0.safeAreaInsets.top) }
-    }
-
-    // Whether a window's bounds (top left) fill one display's height, as a full-screen window's do
-    // once it's in its Space (alone, or one side of a Split View): inside the display, its bottom at
-    // the display's, its top at the display's or a little below (a notched display's camera housing,
-    // the menu bar kept in full screen: `topRoom`, or the display's own top inset if that's more).
-    // A window going into or out of full screen doesn't, mostly, while macOS animates it (found
-    // 2026-11-05: the overlay was seen on the desktop; a profile switch's new window is made there
-    // before it goes full screen).
-    static let topRoom: CGFloat = 60
-    static func fillsDisplay(_ bounds: CGRect, displays: [(frame: CGRect, topInset: CGFloat)] = displayFrames) -> Bool {
-        displays.contains { d in
-            bounds.minX >= d.frame.minX - 1 && bounds.maxX <= d.frame.maxX + 1 && abs(bounds.maxY - d.frame.maxY) <= 1
-                && bounds.minY >= d.frame.minY - 1 && bounds.minY <= d.frame.minY + max(d.topInset, topRoom) + 1
-        }
-    }
-
     // AppKit's point (NSEvent.mouseLocation) from the top left.
     static func topLeftPoint(_ p: CGPoint, mainHeight: CGFloat = mainHeight) -> CGPoint {
         CGPoint(x: p.x, y: mainHeight - p.y)
     }
 }
 
-// Which apps are running and in front (NSWorkspace; tests script it).
-// `onChange`'s words the shell acts on beyond a read: "Space changed", "app activated", "app quit",
-// and the system's moves the profile handoff weighs (docs/HANDOFF.md §6.8): "will sleep" (the screen
-// revealed at once), "woke", "displays changed" and "the Dock restarted" (a launch of com.apple.dock:
-// the Dock or WindowManager starting again), each a system cause for 3 s.
+// Which apps are running and in front (NSWorkspace; tests script it). `onChange` says why something may have
+// changed ("Space changed", "app activated", "app quit", "woke", "displays changed", …): each is one more read for
+// the shell (Shell.soon).
 protocol AppWatch: AnyObject {
     var frontPid: pid_t? { get }
     func pids(of bundleId: String) -> Set<pid_t>

@@ -3,24 +3,14 @@
 // its queue), the active theme's package, Safari's command keys. One per
 // background; background.ts starts it once the copy knows it owns the state.
 import { createLink } from './link.ts';
-import { createParkedRestore } from './parked-restore.ts';
-import { adoptAppSet, api, cached, isOwner, onDataChanges, pendingQueue, takeDataChanges, thisCopy } from './store.ts';
+import { adoptAppSet, api, isOwner, onDataChanges, pendingQueue, takeDataChanges, thisCopy } from './store.ts';
 import { activeThemeId, STORED_THEME, themePackage } from './theme-package.ts';
 import { dataSetFromStorage } from '../shared/data-set.ts';
 import { commandKeys } from '../shared/shortcuts.ts';
 
-// Windows the app had parked, known again after a Safari relaunch restores them (background/parked-restore.ts).
-export const parkedRestore = createParkedRestore({
-  api,
-  state: () => cached(),
-  liveWindows: async () => ((await Promise.resolve(api.windows?.getAll?.()).catch(() => null)) ?? []).map((w) => w.id).filter(Number.isInteger),
-  onFound: () => { void appLink.windowsNow?.(); },
-});
-
 export const appLink = createLink({
   api,
   isOwner,
-  wasParked: (windowId) => parkedRestore.wasParked(windowId),
   copy: thisCopy,
   instanceId: globalThis.crypto?.randomUUID?.() ?? null,
   commandKeys,
@@ -39,7 +29,3 @@ export const appLink = createLink({
     return got[STORED_THEME]?.id === id && got[STORED_THEME]?.pkg ? got[STORED_THEME].pkg : themePackage(id);
   },
 });
-
-appLink.onParked((windowId, on, forgot) => parkedRestore.parked(windowId, on, forgot));
-api.windows?.onRemoved?.addListener?.((windowId) => parkedRestore.gone(windowId));
-parkedRestore.start();

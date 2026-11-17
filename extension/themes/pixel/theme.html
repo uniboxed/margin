@@ -1,4 +1,4 @@
-<div class="pixel" m-attr:data-mode="{{window.mode}}" m-attr:data-sidebar="{{window.sidebar}}" m-class:framed="{{window.frameWhenHidden}}" m-class:newtab="{{launcher}}" m-class:blink="{{settings.blink}}" m-class:switching="{{switchCover}}" m-style:--space="{{space.color}}">
+<div class="pixel" m-attr:data-mode="{{window.mode}}" m-attr:data-sidebar="{{window.sidebar}}" m-class:framed="{{window.frameWhenHidden}}" m-class:newtab="{{launcher}}" m-class:blink="{{settings.blink}}" m-style:--space="{{space.color}}">
 
   <!-- Pixel: the "Sidebar · Pixel / 8-bit" board (Pixel.dc.html). The
        PICO-8 palette on a dotted night ground, notched pixel borders (four
@@ -96,9 +96,6 @@
           </m-for>
         </div>
 
-        <!-- iCloud Tabs (Margin.app with Safari): a live folder above the new-tab row, outside every drop zone. -->
-        <m-cloud-tabs class="cloud-slot"></m-cloud-tabs>
-
         <div class="today-zone" m-drop="tabs">
           <div class="divider">
             <span class="today-label">TODAY</span>
@@ -142,8 +139,7 @@
         </button>
         <div class="chips" role="group" aria-label="Spaces">
           <m-for each="spaces" as="s">
-            <m-if test="s.profileStart"><span class="profile-gap" aria-hidden="true"></span></m-if>
-            <button class="btn press chip" aria-label="Switch to {{s.label}} space" title="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-class:on="{{s.active}}" m-class:foreign="{{s.foreign}}" m-class:switching="{{s.switching}}" m-style:--chip="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space">{{s.number}}<m-if test="s.profileMark"><span class="profile-tag" m-style:--profile="{{s.profile.color}}" aria-hidden="true"><m-if test="s.profile.symbol"><img class="profile-symbol" alt="" m-icon="{{s.profile.symbol}}"><m-else>{{s.profile.initial}}</m-else></m-if></span></m-if></button>
+            <button class="btn press chip" aria-label="Switch to {{s.label}} space" title="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-class:on="{{s.active}}" m-style:--chip="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space">{{s.number}}</button>
           </m-for>
         </div>
         <button class="btn hl press tool add" aria-label="New folder or space" m-action="menu.open" m-arg="add">
@@ -227,79 +223,10 @@
   </m-if>
 
   <m-launcher class="launcher-slot"></m-launcher>
-  <m-switch-cover class="switch-cover-slot"></m-switch-cover>
   <m-menu class="menu-slot"></m-menu>
   <m-editor class="editor-slot"></m-editor>
   <m-notice class="notice-slot"></m-notice>
   <m-prompt class="prompt-slot"></m-prompt>
-
-  <template m-part="switch-cover">
-    <div class="switch-cover" role="status" m-attr:aria-label="{{switchCover.label}}">
-      <div class="switch-cover-card">
-        <m-if test="switchCover.profile.emoji">
-          <span class="switch-cover-mark emoji" aria-hidden="true">{{switchCover.profile.emoji}}</span>
-          <m-else><span class="switch-cover-mark" aria-hidden="true" m-style:--profile="{{switchCover.profile.color}}">{{switchCover.profile.initial}}</span></m-else>
-        </m-if>
-        <span class="switch-cover-text">{{switchCover.text}}</span>
-        <span class="switch-cover-progress" aria-hidden="true"><i></i><i></i><i></i></span>
-        <m-if test="switchCover.hasSpace"><span class="switch-cover-space">{{switchCover.space.emoji}} {{switchCover.space.name}}</span></m-if>
-      </div>
-    </div>
-  </template>
-
-  <!-- iCloud Tabs: the tabs open on the person's other devices, a folder that's
-       plainly live: a pixel cloud, nothing to drag in or out; each device a
-       tag in Press Start 2P with when it was last used, its tabs under it.
-       Every word is Margin's (a guarded part): the arrows are svgs. -->
-  <template m-part="cloud-tabs">
-    <div class="cloud" role="group" m-attr:aria-label="{{cloudTabs.labels.title}}" m-class:open="{{cloudTabs.open}}">
-      <button class="btn row cloud-head" title="{{cloudTabs.labels.toggle}}" m-attr:aria-expanded="{{cloudTabs.open}}" m-action="cloud.toggle">
-        <svg class="pix arrow" viewBox="0 0 4 7" aria-hidden="true"><path d="M0 0h1v7H0zM1 1h1v5H1zM2 2h1v3H2zM3 3h1v1H3z"></path></svg>
-        <svg class="pix cloud-ico" viewBox="0 0 12 8" aria-hidden="true"><path d="M4 1h3v1H4zM3 2h1v1H3zM7 2h1v1H7zM8 3h2v1H8zM1 4h2v1H1zM2 3h1v1H2zM10 4h1v1h-1zM0 5h1v2H0zM11 5h1v2h-1zM1 7h10v1H1z"></path><path class="fill" d="M4 2h3v1H4zM3 3h5v1H3zM3 4h7v1H3zM1 5h10v2H1z"></path></svg>
-        <span class="cloud-name">{{cloudTabs.labels.title}}</span>
-        <m-if test="cloudTabs.hasCount"><span class="folder-count">{{cloudTabs.count}}</span></m-if>
-      </button>
-      <m-if test="cloudTabs.open">
-        <div class="cloud-body">
-          <m-if test="cloudTabs.hasMessage">
-            <div class="cloud-note" role="status">
-              <span class="text">{{cloudTabs.message}}</span>
-              <m-if test="cloudTabs.canFix"><button class="btn press small cloud-fix" m-action="cloud.access">{{cloudTabs.labels.fix}}</button></m-if>
-            </div>
-          </m-if>
-          <m-for each="cloudTabs.devices" as="d">
-            <button class="btn row cloud-device" data-device-id="{{d.id}}" title="{{d.describe}}" m-class:open="{{d.open}}" m-class:stale="{{d.stale}}" m-attr:aria-expanded="{{d.open}}" m-attr:aria-label="{{d.describe}}" m-action="cloud.toggleDevice" m-arg="{{d.id}}">
-              <svg class="pix arrow" viewBox="0 0 4 7" aria-hidden="true"><path d="M0 0h1v7H0zM1 1h1v5H1zM2 2h1v3H2zM3 3h1v1H3z"></path></svg>
-              <span class="device-tag">
-                <m-if test="d.isPhone"><svg class="pix" viewBox="0 0 7 9" aria-hidden="true"><path d="M1 0h5v1H1zM0 1h1v7H0zM6 1h1v7H6zM1 8h5v1H1zM3 6h1v1H3z"></path></svg></m-if>
-                <m-if test="d.isPad"><svg class="pix" viewBox="0 0 9 9" aria-hidden="true"><path d="M1 0h7v1H1zM0 1h1v7H0zM8 1h1v7H8zM1 8h7v1H1zM4 6h1v1H4z"></path></svg></m-if>
-                <m-if test="d.isMac"><svg class="pix" viewBox="0 0 11 9" aria-hidden="true"><path d="M2 0h7v1H2zM1 1h1v5H1zM9 1h1v5H9zM2 6h7v1H2zM0 8h11v1H0z"></path></svg></m-if>
-                <m-if test="d.isVision"><svg class="pix" viewBox="0 0 11 7" aria-hidden="true"><path d="M2 0h7v1H2zM1 1h1v1H1zM9 1h1v1H9zM0 2h1v3H0zM10 2h1v3h-1zM1 5h3v1H1zM7 5h3v1H7zM4 4h3v1H4z"></path></svg></m-if>
-                <m-if test="d.isOther"><svg class="pix" viewBox="0 0 9 9" aria-hidden="true"><path d="M3 0h3v1H3zM1 1h2v1H1zM6 1h2v1H6zM0 3h1v3H0zM8 3h1v3H8zM1 7h2v1H1zM6 7h2v1H6zM3 8h3v1H3zM4 1h1v7H4zM1 4h7v1H1z"></path></svg></m-if>
-                <span class="device-name">{{d.name}}</span>
-              </span>
-              <span class="device-when">{{d.updated}}</span>
-            </button>
-            <m-for each="d.shown" as="t">
-              <button class="btn row cloud-tab" data-cloud-tab-id="{{t.id}}" title="{{t.url}}" m-class:stale="{{d.stale}}" m-attr:aria-label="{{t.label}}" m-action="cloud.open" m-arg="{{t.id}}">
-                <m-if test="t.icon">
-                  <img class="fav" alt="" m-icon="{{t.icon}}">
-                  <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
-                </m-if>
-                <span class="cloud-text">
-                  <span class="title">{{t.title}}</span>
-                  <span class="cloud-host">{{t.host}}</span>
-                </span>
-                <m-if test="t.pinned">
-                  <span class="pinned-mark" title="{{cloudTabs.labels.pinned}}"><svg class="pix" viewBox="0 0 5 7" aria-hidden="true"><path d="M1 0h3v1H1zM1 1h1v3H1zM3 1h1v3H3zM0 3h5v1H0zM2 4h1v3H2z"></path></svg></span>
-                </m-if>
-              </button>
-            </m-for>
-          </m-for>
-        </div>
-      </m-if>
-    </div>
-  </template>
 
   <!-- Margin's notices: the board's RPG text box, a blinking ▼ in its corner. -->
   <template m-part="notice">
@@ -434,9 +361,8 @@
         <div class="editor-title">{{editor.labels.title}}</div>
         <div class="editor-row">
           <input class="editor-emoji" m-input="space-emoji" maxlength="8" m-attr:aria-label="{{editor.labels.emoji}}" autocomplete="off" spellcheck="false">
-          <input class="editor-name" m-input="space-name" maxlength="40" m-attr:placeholder="{{editor.labels.name}}" m-attr:aria-label="{{editor.labels.name}}" m-attr:disabled="{{editor.nameLocked}}" autocomplete="off" spellcheck="false">
+          <input class="editor-name" m-input="space-name" maxlength="40" m-attr:placeholder="{{editor.labels.name}}" m-attr:aria-label="{{editor.labels.name}}" autocomplete="off" spellcheck="false">
         </div>
-        <m-if test="editor.nameLocked"><div class="editor-note">{{editor.labels.note}}</div></m-if>
         <div class="swatches" role="radiogroup" m-attr:aria-label="{{editor.labels.colors}}">
           <m-for each="editor.colors" as="c">
             <button class="btn swatch" role="radio" m-attr:aria-checked="{{c.selected}}" m-class:on="{{c.selected}}" m-style:--swatch="{{c.color}}" m-action="editor.color" m-arg="{{c.id}}"></button>

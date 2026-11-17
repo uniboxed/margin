@@ -1,6 +1,8 @@
-// The page in each of Margin.app's overlays (app/platforms/macos/shell/Overlay.swift): the
+// The page Margin.app draws its UI with (on the Mac, Margin's own window:
+// app/platforms/macos/shell/MarginWindowController.swift; the overlay over a
+// browser's window was removed 2026-11-16, and is still the Windows shell's): the
 // UI runtime (extension/ui/runtime.ts) drawing the theme around the page
-// slot over one browser window, with the app's host
+// slot, with the app's host
 // (extension/ui/host-app.ts). Built into dist/app/overlay.js (scripts/
 // build.js), served at margin-app://app/ with a policy that allows no
 // network (app/platforms/macos/shell/OverlayWebView.swift).
@@ -15,9 +17,6 @@
 // tells it about the window's pages (ui/app-feedback.ts): Margin's notices,
 // in the theme's guarded notice part, their buttons going back to the copy;
 // the trackpad gestures' feedback; which tabs are loading (through the host).
-// While a switch to another profile runs (docs/HANDOFF.md §7): that the
-// "switching" cover is drawn (`switch.coverShown`, ui/switch-cover.ts), and,
-// after each `shown`, that the page has drawn and in which mode (`framed`).
 //
 // In Margin's own window (the hello's `host` 'app-window': app/platforms/macos/shell/MarginWindowController.swift)
 // the same page draws the whole app: its mode is the window's (windowed or full screen), it says where the theme
@@ -33,7 +32,6 @@ import { chromeRects, cornerFill, createAppHost, hitRects, sidebarFixed } from '
 import { createAppNotices, createGestureFeedback } from '../../../extension/ui/app-feedback.ts';
 import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../../extension/shared/switching.ts';
 import { cycleSpace, cycleTab } from '../../../extension/shared/view.ts';
-import { answerFramed, createCoverWatch } from '../../../extension/ui/switch-cover.ts';
 import { pickBridge } from '../../../extension/ui/overlay-bridge.ts';
 
 // WebKit's handler on the Mac, WebView2's on Windows (ui/overlay-bridge.ts).
@@ -66,7 +64,7 @@ const gestures = createGestureFeedback({
 const copySwitches = backgroundSwitches();
 
 // ---- next/previous tab by the app's keys: highlighted here at once ---------------------------------------------
-// The app hands this page ⌘⌥↓/↑ (whatever Settings has) instead of the copy (app/platforms/macos/shell/Shell.swift run): the target
+// The app hands this page ⌘⌥↓/↑ (whatever Settings has) instead of the copy (app/platforms/macos/shell/ShellHostedGlue.swift runHosted): the target
 // is worked out here with the copy's rule (shared/view.ts cycleTab: the order the sidebar shows, wrapping), each
 // press going on from the one before for a moment (NAV_CHAIN_MS), else from the tab in front; highlighted now, then
 // asked of the copy with its switch id, which takes it as that press's (background/navigation.ts navigate `given`).
@@ -237,7 +235,7 @@ function measureNow() {
 // them): none while the sidebar is docked (nothing to bring out), those in
 // the reveal zone of the theme's peek edges while it's hidden, all of them
 // while it's out over the page (to put it away once the pointer leaves).
-// Told to the app when it changes (app/platforms/macos/shell/Shell.swift pointerMoved).
+// Told to the app when it changes (app/platforms/macos/shell/MarginWindowController.swift pointerMoved).
 let lastWant = '';
 function reportWant() {
   const vm = runtime?.vm;
@@ -252,16 +250,6 @@ function reportWant() {
 }
 // The widest reveal zone (shared/view.ts revealZone: 24 px in full screen); peek checks the exact one.
 const REVEAL_ZONE_MAX = 24;
-// The "switching" cover drawn, with no swipe sliding: the app may freeze the screen on it.
-const coverWatch = createCoverWatch({
-  requestFrame: (fn) => requestAnimationFrame(fn),
-  cover: () => {
-    const c = runtime?.vm?.switchCover;
-    return c && (document.querySelector('m-switch-cover')?.childElementCount ?? 0) > 0 ? c.id : null;
-  },
-  settling: () => !!runtime?.view.rootElement()?.querySelector('.m-swiping, .m-settling'),
-  say: () => { host?.perform('switch.coverShown'); },
-});
 // What takes the pointer, measured again once a theme's animation ends (the sidebar sliding out over the page:
 // measured at the slide's start, it was still off screen, and the pointer went through it to the page, a real
 // session's recording 2026-11-07 2:11), and a moment after any change (an animation that ends unheard).
@@ -274,12 +262,12 @@ let spaceTold = '';
 function reportSpace() {
   const vm = runtime?.vm;
   if (!vm?.space) return;
-  const told = JSON.stringify([host?.windowId ?? null, vm.space.id ?? null, !!vm.space.foreign]);
+  const told = JSON.stringify([host?.windowId ?? null, vm.space.id ?? null]);
   if (told === spaceTold) return;
   spaceTold = told;
-  void post('shownSpace', { windowId: host?.windowId ?? null, space: vm.space.id ?? null, foreign: !!vm.space.foreign }).catch(() => {});
+  void post('shownSpace', { windowId: host?.windowId ?? null, space: vm.space.id ?? null }).catch(() => {});
 }
-const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); coverWatch.check(); });
+const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); });
 addEventListener('resize', () => { measureNow(); hitsSoon(); });
 
 // Margin's own window as a tile beside a hosted one (host-app.ts sidebarFixed: the older pageOutside): the sidebar's
@@ -631,8 +619,6 @@ function onMessage(msg: any) {
       // page first draws. (`focus`: the launcher's field instead, for a host that asks for that.)
       if (msg.palette === true) openPaletteTimed({ newTab: !!host?.appWindow || !host?.launcher }, 'a new window');
       else if (msg.focus === true) runtime?.focusLauncher();
-      // Drawn, and in which mode, on the next frame (R4).
-      answerFramed({ requestFrame: (fn) => requestAnimationFrame(fn), mode: () => host?.mode ?? 'fullscreen', post: (op, body) => post(op, body).catch(() => {}) });
       return;
     case 'push':
       switch (msg.msg?.type) {
@@ -656,9 +642,6 @@ function onMessage(msg: any) {
         // Safari's own New Tab made a tab the copy closed again (background/handlers.ts
         // newTabHandOff), or Margin's new-tab page came up: the palette, here.
         case 'palette': openPaletteTimed({ newTab: msg.msg.newTab === true }, 'the copy'); return;
-        // A key the app holds, heard by the copy anyway (its command, or a page): noted. (The shell
-        // says whether its hot key was on then, and why not: Shell.swift keyHeard.)
-        case 'keyHeard': log('note', `${msg.msg.command} reached the extension (${msg.msg.from})`); return;
         default: return;
       }
     default:
@@ -710,16 +693,6 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     timed('taking the app\'s word', cause, () => {
       const before = !!host?.getState();
       host?.receive(msg);
-      // Handed to another window by a switch (host-app.ts `rekey`): what its copy pushed before, and its theme if
-      // that profile's isn't the one drawn (settings are shared across profiles, so usually it is).
-      if (msg?.type === 'rekey' && msg.hello && host) {
-        for (const held of Array.isArray(msg.hello.held) ? msg.hello.held : []) host.receive({ type: 'push', msg: held });
-        const theme = msg.hello.theme ?? null;
-        if (theme && JSON.stringify(theme) !== JSON.stringify(pendingTheme)) {
-          pendingTheme = theme;
-          if (host.getState() && !preview.pkg) mounting = mounting.then(() => mount(theme));
-        }
-      }
       // A notice about one tab's page goes once another tab is in front.
       if (msg?.type === 'windows' || msg?.type === 'state' || msg?.type === 'changes') notices.front(host?.frontTabId ?? null);
       // The window's mode, or the sidebar alone in Margin's own window: measured again after this drawing (a theme
@@ -738,7 +711,7 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   },
   // The counts above (the app's tests read them).
   stats: () => JSON.parse(JSON.stringify(stats)),
-  // The window this page draws for (a switch's hand-over changes it: host-app.ts `rekey`). The app's tests read it.
+  // The window this page draws for. The app's tests read it.
   windowId: () => host?.windowId ?? null,
   // Drawn in Margin's own window, in which mode, and whether its palette is open (the app's tests read them).
   appWindow: () => ({ appWindow: !!host?.appWindow, mode: host?.mode ?? null, palette: !!runtime?.paletteOpen }),
@@ -758,7 +731,7 @@ let pendingTheme: any = null;
 // (Still clickable and hovered: a link back in a moment is the usual case; the dim and the note come only after
 // 1.5 s, overlay.html. A press meanwhile that needs the copy is lost, as one in a dropped link always was.)
 // Dimmed with a note (not the theme's: Margin's own, over everything) while
-// the app waits for the copy to come back (app/platforms/macos/shell/Shell.swift).
+// the app waits for the copy to come back (an overlay over a browser's window: never Margin's own).
 let reconnectNote: HTMLElement | null = null;
 function setReconnecting(on: boolean) {
   document.documentElement.toggleAttribute('data-reconnecting', on);
@@ -798,7 +771,7 @@ async function start() {
   host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args) });
   host.onState(() => followPage());
   // What the copy pushed for this window before this page was there (a
-  // notice, the tabs loading: app/platforms/macos/shell/Shell.swift HeldPushes), as if it came now.
+  // notice, the tabs loading: an app that holds them says so in its hello's `held`), as if it came now.
   for (const msg of Array.isArray(hello.held) ? hello.held : []) host.receive({ type: 'push', msg });
   pendingTheme = hello.theme ?? null;
   // Margin's own window with no package from the app (no copy has said its theme): Arcadia, as its own.

@@ -11,9 +11,6 @@ import { createDispatcher, contextFromState } from '../../extension/ui/actions.t
 import { MockState } from './view-model.ts';
 import { auditDom } from './audit.ts';
 import { HTML_PAYLOADS, CSS_PAYLOADS, CSS_TARGET, EVIL_VM, wrap } from './payloads.ts';
-import { cloudOf } from '../../extension/shared/cloud-tabs.ts';
-import { acrossOf } from '../../extension/shared/across.ts';
-import { cloudFixture } from '../fixtures/cloud-tabs.ts';
 import type { LoadedTheme, ThemePackage } from '../../extension/ui/theme-loader.ts';
 import type { Layout } from '../../extension/ui/render.ts';
 import type { CleanNode } from '../../extension/ui/sanitize.ts';
@@ -410,27 +407,6 @@ const withRuntime = Object.assign(T, {
     rt.host.setState(rt.mock.state);
   },
   rtSent() { return rt.host.sent.map((s): [string, any] => [s.type, s.payload]); }, // (a request's type and payload, as the host has it)
-  // iCloud Tabs as Margin.app's host keeps them (shared/cloud-tabs.ts cloudOf):
-  // the fixture's (tests/fixtures/cloud-tabs.ts), or `raw`; with every DOM
-  // mutation the change made. `edit(raw)` changes the fixture first.
-  rtCloud(raw: unknown = null, edit: string | null = null) {
-    const data = raw ?? cloudFixture(Date.now());
-    if (edit) new Function('raw', edit)(data);
-    const root = rt.target.nodeType === 9 ? (rt.target as Document).body : rt.target;
-    const mo = new MutationObserver(() => {});
-    mo.observe(root, { subtree: true, childList: true, attributes: true, characterData: true });
-    rt.mock.state = { ...rt.mock.state, cloudTabs: cloudOf(data) };
-    rt.host.setState(rt.mock.state);
-    const records = mo.takeRecords();
-    mo.disconnect();
-    return { records: records.length, added: records.reduce((n, r) => n + r.addedNodes.length, 0), text: records.filter((r) => r.type === 'characterData').length };
-  },
-  // Spaces across profiles as Margin.app's host keeps them (shared/across.ts acrossOf), or none.
-  rtAcross(raw: unknown) {
-    rt.mock.state = { ...rt.mock.state, across: raw ? acrossOf(raw) : null };
-    rt.host.setState(rt.mock.state);
-    return !!rt.mock.state.across;
-  },
   // What's drawn at a point of the window: the element's classes, and its ancestors'.
   rtHitClasses(x: number, y: number) {
     let el = rt.target.elementFromPoint(x, y);

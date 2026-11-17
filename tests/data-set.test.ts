@@ -234,5 +234,4 @@ test('a wiped extension cache recovers the highlighted saved tab from app data, 
   const set = dataSetFrom(s, { now: 502 });
   const refilled = stateFromDataSet(M.defaultState(), set);
   assert.equal(refilled.keptTabs[chosen.mid!].wasActive, true);
-  assert.equal(M.spaceWindowTabs(refilled, s.tabSpace[chosen.id] ?? 'work').front?.id, chosen.mid);
 });

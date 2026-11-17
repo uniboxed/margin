@@ -4,7 +4,6 @@
 // settings: types/margin.d.ts); missing parts get Margin's defaults.
 import { normalizeState } from '../../../extension/state/model.ts';
 import { dataSetFrom } from '../../../extension/shared/data-set.ts';
-import { cloudFixture } from '../../fixtures/cloud-tabs.ts';
 
 /** @param input a state-like seed, or a data set already ({ format, items }) */
 export function seedSet(input: any, { now = Date.now() } = {}) {
@@ -25,19 +24,3 @@ export const SPACES = [
   { id: 'sp-work', name: 'Work', emoji: '💼', color: '#f2a65a' },
   { id: 'sp-trips', name: 'Trips', emoji: '🧭', color: '#5bc0a8' },
 ];
-
-// iCloud Tabs as the app sends them (tests/fixtures/cloud-tabs.ts: made-up
-// devices), with this test site's pages for their tabs.
-export function cloudTabsOf(url: (host: string, path?: string) => string, now = Date.now()) {
-  const cloud = cloudFixture(now);
-  const pages: Record<string, [title: string, url: string]> = {
-    'T-PHONE-1': ['Harbor — Quiet places by the sea', url('harbor.test', '/')],
-    'T-PHONE-2': ['The Quiet City | The Dispatch', url('dispatch.test', '/2026/11/the-quiet-city')],
-    'T-PHONE-3': ['Canvas Tote — Common Goods', url('shop.test', '/p/canvas-tote')],
-    'T-AIR-1': ['Q3 2026 Field Report · Almanac', url('slow.test', '/report')],
-    'T-AIR-2': ['Installation · Lattice docs', url('docs.test', '/guide/installation')],
-    'T-PAD-1': ['The sound of low tide · Radio Field', url('radio.test', '/')],
-  };
-  for (const d of cloud.devices) for (const t of d.tabs) if (pages[t.id]) [t.title, t.url] = pages[t.id];
-  return cloud;
-}

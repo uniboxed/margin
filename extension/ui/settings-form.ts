@@ -52,10 +52,6 @@ export function currentShortcuts(settings: any) {
   };
 }
 
-// "Close windows to save memory" (docs/HANDOFF.md §5): Margin.app's, for the
-// whole browser, so every profile's Settings show the same value.
-export const CLOSE_WINDOWS_LABEL = 'Close windows to save memory: when you switch to another profile, the window you leave closes. Switching takes a little longer and its pages reload when you come back. Off: the window stays open, out of sight, with your place, text and video kept.';
-
 /** Which engine searches use (always the browser's: shared/search.ts). */
 function engineText(settings: any, features: any) {
   const learned = settings?.safariSearch;
@@ -80,9 +76,8 @@ function field(f: Partial<SettingsField> & { id: string, kind: SettingsField['ki
 /**
  * The form's fields for the stored settings, the browser's features
  * (`features`: shared/capabilities.ts's sleepTabs ('close', 'discard' or false), blockGestures,
- * marginFullscreen, newTabHint, search; cloudTabs, Margin.app's Safari windows; importThemes and
- * userThemes, Margin.app's imported themes; switchSettings, Margin.app's Safari windows with more than
- * one profile: the switch's settings, `{ closeWindows }`) and the form's own state (`ui`: the
+ * marginFullscreen, newTabHint, search; importThemes and userThemes, Margin.app's imported themes)
+ * and the form's own state (`ui`: the
  * shortcut being recorded, the statuses, the active theme: its id, name and theme.json settings).
  * */
 export function settingsFields(settings: any, features: any = {}, ui: { recording?: string | null, status?: Record<string, { text: string, error?: boolean } | undefined>, theme?: { id: string, name: string, settings: Record<string, any> } | null } = {}): SettingsField[] {
@@ -117,14 +112,6 @@ export function settingsFields(settings: any, features: any = {}, ui: { recordin
     list.push(field({ id: 'fullscreenOnly', kind: 'toggle', label: 'Use Margin only in full screen (in a window, it offers full screen instead)', checked: s.fullscreenOnly !== false }));
   }
   list.push(field({ id: 'frameWhenHidden', kind: 'toggle', label: 'With the sidebar hidden, keep the frame around pages', checked: s.frameWhenHidden !== false }));
-  // iCloud Tabs (Margin.app with Safari): the sidebar's live folder and the palette's section.
-  if (f.cloudTabs) list.push(field({ id: 'showCloudTabs', kind: 'toggle', label: 'Show iCloud Tabs: the tabs open on your other devices, in the sidebar and the command palette', checked: s.showCloudTabs !== false }));
-  // Switching between profiles (Margin.app): the app's setting, not this copy's (saveField).
-  if (f.switchSettings) list.push(field({ id: 'closeWindows', kind: 'toggle', label: CLOSE_WINDOWS_LABEL, checked: f.switchSettings.closeWindows === true }));
-  // DEV-HOOK: Margin.app's quit prompt back on after "Always quit" (development only; Margin.app's own setting).
-  if (typeof ((f as any)).devAskBeforeQuit === 'boolean') {
-    list.push(field({ id: 'devAskBeforeQuit', kind: 'toggle', label: 'Ask before quitting Safari (development only)', checked: ((f as any)).devAskBeforeQuit === true }));
-  }
   if (f.newTabHint) list.push(field({ id: 'newTabHint', kind: 'toggle', label: 'Tell me when a new tab seems to open Safari’s homepage instead of Margin (Safari Settings › General › “New tabs open with” should be Margin)', checked: s.newTabHint !== false }));
   // The active theme's own settings: after Margin's, under their own heading, so they don't read as Margin's.
   list.push(...themeOwnFields(s, ui.theme ?? null));
@@ -230,11 +217,9 @@ export function removePrompt(fieldId: string, list: any[]) {
 /**
  * What a change of a field asks the background for: `updateSettings`'s
  * patch, or null (not a field, a bad value, nothing to save). `value`: what
- * the input holds (text; a toggle's checked state as a boolean). A setting
- * that's Margin.app's (`closeWindows`) asks the host instead: `{ perform,
- * arg }`, its `perform` (ui/host-app.ts), which the app saves.
+ * the input holds (text; a toggle's checked state as a boolean).
  * */
-export function saveField(f: SettingsField | null | undefined, value: any, settings: any): { type: 'updateSettings', payload: { patch: Record<string, any> } } | { perform: 'switch.closeWindows' | 'switch.askBeforeQuit', arg: { on: boolean } } | null {
+export function saveField(f: SettingsField | null | undefined, value: any, settings: any): { type: 'updateSettings', payload: { patch: Record<string, any> } } | null {
   if (!f || f.disabled) return null;
   const patch = (p: Record<string, any>) => ({ type: ('updateSettings' as 'updateSettings'), payload: { patch: p } });
   switch (f.kind) {
@@ -246,8 +231,6 @@ export function saveField(f: SettingsField | null | undefined, value: any, setti
     }
     case 'toggle':
       if (typeof value !== 'boolean') return null;
-      if (f.id === 'closeWindows') return { perform: 'switch.closeWindows', arg: { on: value } };
-      if (f.id === 'devAskBeforeQuit') return { perform: 'switch.askBeforeQuit', arg: { on: value } }; // DEV-HOOK
       return patch({ [f.id]: value });
     case 'choice': return f.options.some((o) => o.id === value) && value !== f.value ? patch({ [f.id]: value }) : null;
     case 'list': return f.id === 'neverSleepSites' ? patch({ neverSleepSites: siteList(String(value ?? '')) }) : null;

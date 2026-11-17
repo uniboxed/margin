@@ -113,13 +113,11 @@ Margin's slots:
 | `<m-prompt>` | the `prompt` part | `prompt` |
 | `<m-launcher>` | the `launcher` part (Margin's new-tab page) | `launcher` |
 | `<m-settings>` | the `settings` part (put it in your launcher) | `settingsForm` (Settings open) |
-| `<m-cloud-tabs>` | the `cloud-tabs` part: iCloud Tabs, a live folder (put it above your new-tab row, outside any `m-drop`) | `cloudTabs` (Margin.app with Safari, "Show iCloud Tabs" on) |
-| `<m-switch-cover>` | the `switch-cover` part, over the page's place (Margin's own centred card if you have none) | `switchCover` (Margin.app, switching to another profile) |
 | `<m-window-controls>`, `<m-drag-region>` | the window's buttons and where a drag moves it (windowed mode) | always |
 
 Parts are `<template m-part="name">` anywhere in the template: `menu`,
 `menu-item`, `space-editor`, `palette`, `palette-row`, `notice`, `prompt`,
-`launcher`, `settings`, `cloud-tabs`, `switch-cover`, `window-controls`. What a theme puts inside a slot
+`launcher`, `settings`, `window-controls`. What a theme puts inside a slot
 is used when it has no part for it.
 
 **Never paint under `<m-page>`.** The browser's page shows through it: in a
@@ -128,32 +126,8 @@ hole in Margin's window. Draw a ground around the page as the page card's
 spread `box-shadow` (Arcadia's frame), or mask it out (Neubrutalism's dots).
 Margin lets the pointer through to the page over the slot, past your root's
 own background; what you draw over the page (a sidebar out over it, a
-dialog) still takes it. Two of Margin's slots are the exceptions, and paint
-over the page's place on purpose: `<m-launcher>` (Margin's new-tab page)
-and `<m-switch-cover>`.
-
-**The switching cover.** While Margin.app switches to another profile, the
-window being left shows `<m-switch-cover>` over its page for a moment, then
-Margin hands the screen to the other profile's window. Put the slot where
-the page's place is, above the launcher and under a sidebar out over the
-page (so a swipe in the sidebar keeps going). Draw it solid: it hides the
-page while the screen may be still. No fade (it comes and goes with the
-switch). It's guarded: its words are Margin's (`{{switchCover.text}}`,
-"Switching to Work…", and the space, `{{switchCover.space.name}}`). With
-no part and nothing in the slot, Margin draws its own centred card, in
-`--m-cover-ground`, `--m-cover-text` and `--m-cover-card` if your root sets
-them.
-
-```html
-<m-switch-cover class="cover-slot"></m-switch-cover>
-<template m-part="switch-cover">
-  <div class="cover" role="status" m-attr:aria-label="{{switchCover.label}}">
-    <span class="mark" m-style:--profile="{{switchCover.profile.color}}">{{switchCover.profile.emoji}}</span>
-    <span>{{switchCover.text}}</span>
-    <m-if test="switchCover.hasSpace"><span>{{switchCover.space.emoji}} {{switchCover.space.name}}</span></m-if>
-  </div>
-</template>
-```
+dialog) still takes it. One of Margin's slots is the exception, and paints
+over the page's place on purpose: `<m-launcher>` (Margin's new-tab page).
 
 **Settings.** The `settings` part lays out `settingsForm.fields` (Margin's
 words only: it's guarded like a menu). Each field has one of `isNumber`,
@@ -196,38 +170,6 @@ Draw `status` under a choice and a button (`hasStatus`). The theme
 choice's status says why Margin fell back to Arcadia; a button's says
 what it did.
 
-**iCloud Tabs.** The tabs open in Safari on the person's other devices
-(Margin.app reads them; Chrome and Edge get none yet). The `cloud-tabs`
-part draws the whole folder from `cloudTabs`, so it stands on its own: put
-`<m-cloud-tabs>` where it belongs in your layout (Arcadia and Neubrutalism:
-above the new-tab row), and Margin may later show the same part elsewhere
-(a button beside the sidebar's toggle, say). Make it read as a folder that's
-plainly live, not one of the person's: it's read only, so never put `m-drag`
-or `m-drop` in it or the slot inside a drop zone. A sketch:
-
-```html
-<template m-part="cloud-tabs">
-  <div class="cloud" m-attr:aria-label="{{cloudTabs.labels.title}}">
-    <button m-attr:aria-expanded="{{cloudTabs.open}}" m-action="cloud.toggle">{{cloudTabs.labels.title}} {{cloudTabs.count}}</button>
-    <m-if test="cloudTabs.open">
-      <m-if test="cloudTabs.hasMessage">
-        <p>{{cloudTabs.message}}</p>
-        <m-if test="cloudTabs.canFix"><button m-action="cloud.access">{{cloudTabs.labels.fix}}</button></m-if>
-      </m-if>
-      <m-for each="cloudTabs.devices" as="d">
-        <button m-class:stale="{{d.stale}}" m-attr:aria-expanded="{{d.open}}" m-attr:aria-label="{{d.describe}}" m-action="cloud.toggleDevice" m-arg="{{d.id}}">{{d.name}} {{d.updated}}</button>
-        <m-for each="d.shown" as="t">
-          <a m-attr:aria-label="{{t.label}}" title="{{t.url}}" m-action="cloud.open" m-arg="{{t.id}}">{{t.title}} {{t.host}}</a>
-        </m-for>
-      </m-for>
-    </m-if>
-  </div>
-</template>
-```
-
-It's a guarded part (below): every word in it is Margin's, since its one
-button asks for a permission.
-
 Modes: style `[data-mode="fullscreen|windowed|inpage"]` by binding
 `m-attr:data-mode="{{window.mode}}"` on your root.
 
@@ -269,16 +211,7 @@ host. Immutable: rows that didn't change are the same objects.
   as an open tab's. It's never `active`, `audible`, `asleep` or `loading`.
 - `space.tabCount` counts the space's tabs open in this window and its tabs
   that aren't open.
-- `spaces[]` (chips: `active` and `number` too; `label`, the name, or "Name · Profile"
-  with several profiles), `profiles[]`, `profile` and `multiProfile`: with
-  Margin.app and spaces in several browser profiles, `spaces[]` is every
-  profile's spaces in one order; a chip's `profile` (`id`, `name`, `emoji`,
-  `color`, `initial`, `here`), `foreign` (another profile's: a click switches
-  to that profile's window, never `active`), `profileMark` (show its
-  profile's mark), `profileStart` (the first of a run of one profile after
-  another's: a divider) and `switching` (Margin.app is switching to it). With
-  one profile `profile` is null and the rest false, `profiles` empty. The
-  `editor` part also edits a profile (`editor.isProfile`: no delete).
+- `spaces[]` (chips: `active` and `number` too; `label`, the name).
 - `tab` (the one in front), `archive[]`
   (`ago` too), `palette` (`open`, `query`, `rows[]`: `title`, `subtitle`,
   `badge`, `spaceColor` (the badge's space's color, `''` for Archived,
@@ -315,31 +248,10 @@ host. Immutable: rows that didn't change are the same objects.
   the progress; keep the per-frame part to `transform`, `opacity` and the
   like, which don't lay anything out.
 - `palette.rows[]` also have `section` and `sectionStart`: rows from one
-  place come as a run with a heading ("On iPhone": iCloud Tabs,
-  after Margin's own rows). Draw `{{r.section}}` before a row whose
-  `sectionStart` is true, inside the rows' `<m-for>`; Margin's own rows
-  have `''` and false.
-- `cloudTabs` (null unless Margin.app draws a Safari window with "Show
-  iCloud Tabs" on): `open` (the folder expanded), one of `ready`, `empty`
-  (no other device has tabs), `noAccess` (no Full Disk Access; `canFix`:
-  its button runs `cloud.access`), `noData` (iCloud Tabs off or not
-  synced), `failed`; `message` and `hasMessage` (Margin's words for the
-  state), `count` and `hasCount` (tabs on all devices), `labels` (`title`,
-  `toggle`, `fix`, `pinned`), and `devices[]`: `id`, `name` (told apart
-  from another with the same name), `label` ("On …"), `updated` ("updated
-  5 min ago", to the day when that's all Safari keeps), `describe` (both),
-  one of `isPhone`, `isPad`, `isMac`, `isVision`, `isOther` (its icon),
-  `open`, `stale` (not used for a week: dim it), `count`, `tabs` and
-  `shown` (its tabs while it's open). Each tab: `id`, `title`, `url`,
-  `host`, `icon` (Margin's stored icon for the site, else `letter` on
-  `color`), `pinned` (pinned on that device), `label` (for screen
-  readers).
-- `switchCover` (null unless Margin.app is switching this window's view to
-  another profile, and only before the switch hands over): `text`
-  ("Switching to Work…"), `label` (with the space, for screen readers),
-  `profile` (`name`, `emoji`, `color`, `initial`, `symbol`: a `data:`
-  picture or null), `space` (`name`, `emoji`), `hasSpace`, and `id` (the
-  target, Margin's own).
+  place come as a run with a heading, after Margin's own rows. Draw
+  `{{r.section}}` before a row whose `sectionStart` is true, inside the
+  rows' `<m-for>`; Margin's own rows have `''` and false (no rows have a
+  section today: iCloud Tabs, which had, were removed 2026-11-17).
 
 ## Actions
 
@@ -360,11 +272,6 @@ else is ignored and logged.
   first), `editor.color` (a swatch).
 - Notices and prompts: `notice.run`, `prompt.run` (one of their buttons),
   `notice.close`, `prompt.close`.
-- iCloud Tabs: `cloud.toggle` (the folder), `cloud.toggleDevice` (a
-  device), `cloud.open` (a tab: opened in this window and space, as an
-  address typed in), `cloud.copy` (its address), `cloud.access` (System
-  Settings at Full Disk Access). A right-click on a tab's row (its
-  `cloud.open`) opens its menu: Open, Copy Link.
 - The rest: `sidebar.toggle`, `nav.back`, `nav.forward`, `nav.reload`,
   `archive.open`, `archive.restore` (an archived entry), `settings.open`
   (opens or closes the launcher's Settings; on a web page, Margin's start
@@ -437,9 +344,9 @@ same rules again.
   `text-overflow`, `hyphenate-character` or `text-emphasis`. Its rules can
   reach Margin's own parts, so this is how they keep only Margin's words.
 - **Margin's own words**: inside the `menu`, `menu-item`, `notice`,
-  `prompt`, `space-editor`, `settings`, `cloud-tabs` and `switch-cover`
-  parts, and the `<m-menu>`, `<m-notice>`, `<m-editor>`, `<m-prompt>`,
-  `<m-settings>`, `<m-cloud-tabs>` and `<m-switch-cover>` slots, every
+  `prompt`, `space-editor` and `settings`
+  parts, and the `<m-menu>`, `<m-notice>`, `<m-editor>`, `<m-prompt>`
+  and `<m-settings>` slots, every
   visible text must come from
   Margin's bound labels (`{{i.label}}`, `{{notice.text}}`,
   `{{editor.labels.save}}`…). Text the theme writes there is removed and

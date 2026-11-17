@@ -75,7 +75,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     profilesTests()
     safariProfilesTests() // safari-profiles-tests.swift
     oneMargin()
-    cloudTabsTests() // cloud-tabs-tests.swift
+    idleQuit()
     privateCallsTests() // private-calls-tests.swift
     hostTests() // host-tests.swift: the host engine against a stand-in window manager, and its calls' check
     hostedTests() // hosted-tests.swift: the library, the host engine and the Safari copies joined 
@@ -142,10 +142,6 @@ final class FakeRegistrar: HotKeyRegistrar {
     let req = object(AppMessage.req(id: 3, epoch: "e", windowId: nil, type: "activateTab", payload: ["tabId": 9]).encode())
     check("req", req?["k"] as? String == "req" && req?["id"] as? Int == 3 && req?["epoch"] as? String == "e" && req?["windowId"] is NSNull
       && req?["type"] as? String == "activateTab" && (req?["payload"] as? JSONObject)?["tabId"] as? Int == 9 && (req?["at"] as? Double ?? 0) > 1.7e12)
-    let layout = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 6.25, radii: [6.25, 6.25, 6.25, 6.25], width: 1280, height: 800, mode: "fullscreen")
-    let set = object(AppMessage.setLayout(epoch: "e", windowId: 7, seq: 2, layout: layout).encode())
-    check("setLayout: the window, its number, the insets, radius and size", set?["k"] as? String == "setLayout" && set?["windowId"] as? Int == 7 && set?["seq"] as? Int == 2
-      && same(set?["insets"], ["left": 260, "top": 8, "right": 8, "bottom": 8]) && set?["radius"] as? Double == 6.25 && same(set?["container"], ["width": 1280, "height": 800]) && set?["mode"] as? String == "fullscreen")
     let drawn = object(AppMessage.drawn(epoch: "e", windowId: 7, on: false).encode())
     check("drawn: the window and whether it's drawn", drawn?["k"] as? String == "drawn" && drawn?["epoch"] as? String == "e" && drawn?["windowId"] as? Int == 7 && drawn?["on"] as? Bool == false)
     check("resync", object(AppMessage.resync(epoch: "e").encode())?["epoch"] as? String == "e")
@@ -286,18 +282,9 @@ final class FakeRegistrar: HotKeyRegistrar {
     let g: JSONObject = ["insets": ["left": 260.3, "top": 8, "right": 8, "bottom": 8.26], "radius": 6.25, "radii": [6.25, 6.25, 6.25, 6.25], "container": ["width": 1280, "height": 800], "mode": "fullscreen", "outer": [:]]
     guard let l = PageLayout(geometry: g) else { return check("a layout report", false) }
     check("a layout report", l.left == 260.3 && l.bottom == 8.26 && l.width == 1280 && l.radius == 6.25 && l.mode == "fullscreen")
-    check("rounded to half a point", l.rounded.left == 260.5 && l.rounded.bottom == 8.5 && l.rounded.top == 8)
     check("not a report: no insets", PageLayout(geometry: ["container": ["width": 1, "height": 1]]) == nil)
     check("not a report: no size", PageLayout(geometry: ["insets": ["left": 0, "top": 0, "right": 0, "bottom": 0], "container": ["width": 0, "height": 10]]) == nil)
     check("not a report: a number that's a boolean", PageLayout(geometry: ["insets": ["left": true, "top": 0, "right": 0, "bottom": 0], "container": ["width": 10, "height": 10]]) == nil)
-    // A layout's insets from the window's edges when it was measured in a part of the window (PageLayout.inWindow).
-    let win = CGRect(x: 0, y: 33, width: 1512, height: 949)
-    let measured = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 10, radii: [10, 10, 10, 10], width: 1000, height: 949, mode: "fullscreen")
-    let right = measured.inWindow(overlay: CGRect(x: 512, y: 33, width: 1000, height: 949), window: win)
-    check("insets from the window's edges: a part on the left adds its width to the left", right.left == 772 && right.right == 8 && right.top == 8 && right.width == 1512)
-    let bottom = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 10, radii: [10, 10, 10, 10], width: 1512, height: 600, mode: "fullscreen").inWindow(overlay: CGRect(x: 0, y: 33, width: 1512, height: 600), window: win)
-    check("at the bottom: its height added to the bottom", bottom.bottom == 357 && bottom.left == 260 && bottom.height == 949)
-    check("the whole window: as measured", measured.inWindow(overlay: win, window: win) == measured)
   }
 
   static func passThrough() {
@@ -516,45 +503,20 @@ final class FakeRegistrar: HotKeyRegistrar {
     keys.rebind(ShortcutSet.bindings)
     check("new keys while let go: none held", fake.held.isEmpty && !keys.isActive)
 
-    // A held ⌃⌘→ with several profiles: it repeats, but goes through the window's own
-    // profile's spaces only, so a press starts one switch of profile at most (Margin 2:
-    // Safari reliability). The shell's spaceKey with its chained aim, against the real key repeat.
-    let order = BrowserProfiles(browser: "safari", root: nil)
-    order.refresh(spaces: ["s-a": ["a1", "a2"], "s-b": ["b1"], "s-c": ["c1"]], linked: ["s-a", "s-b", "s-c"])
-    func holdNextSpace(from start: SpaceKey, ticks: Int) -> (repeats: Int, across: [SpaceKey], aim: SpaceKey) {
-      waits = []
-      mods = true
-      var aim = start
-      var across: [SpaceKey] = []
-      var repeated = 0
-      let reg = FakeRegistrar()
-      let shortcuts = AppShortcuts(registrar: reg, keyRepeat: rep)
-      shortcuts.onCommand = { command, isRepeat in
-        guard command == .nextSpace else { return }
-        if isRepeat { repeated += 1 }
-        switch order.spaceStep(from: aim, profile: "s-a", dir: 1, isRepeat: isRepeat) {
-        case .own(let next)?: aim = next
-        case .across(let next)?: aim = next; across.append(next)
-        case .held?, nil: break
-        }
-      }
-      shortcuts.set(active: true)
-      let right = reg.held.first { $0.value == Combo.parse("Alt+Meta+ArrowRight") }!.key
-      reg.onHit?(right)
-      for _ in 0..<ticks { runNext() }
-      reg.onRelease?(right)
-      shortcuts.set(active: false)
-      return (repeated, across, aim)
-    }
-    let a1 = SpaceKey(profile: "s-a", space: "a1"), a2 = SpaceKey(profile: "s-a", space: "a2"), b1 = SpaceKey(profile: "s-b", space: "b1")
-    let fromA1 = holdNextSpace(from: a1, ticks: 8)
-    check("held next space, several profiles: it repeats", fromA1.repeats == 8)
-    check("held next space from the profile's first: on to its own second, never into another profile", fromA1.across.isEmpty && fromA1.aim == a2, "\(fromA1)")
-    let fromA2 = holdNextSpace(from: a2, ticks: 8)
-    check("held next space from the profile's last: one switch of profile, at the press, none from the repeats", fromA2.across == [b1], "\(fromA2)")
-    check("space step: a press goes across; a repeat doesn't", order.spaceStep(from: a2, profile: "s-a", dir: 1, isRepeat: false) == .across(b1) && order.spaceStep(from: a2, profile: "s-a", dir: 1, isRepeat: true) == .held)
-    check("space step: on from another profile's aim (a switch under way): across, to that profile's next", order.spaceStep(from: b1, profile: "s-a", dir: 1, isRepeat: false) == .across(SpaceKey(profile: "s-c", space: "c1")))
-    check("space step: one profile with spaces: the copy's own navigate", BrowserProfiles(browser: "safari", root: nil).spaceStep(from: a1, profile: "s-a", dir: 1, isRepeat: false) == nil)
+    // A held ⌃⌘→ repeats too (Margin's window takes each as the next space: overlay.ts).
+    waits = []
+    mods = true
+    let reg = FakeRegistrar()
+    let spaceKeys = AppShortcuts(registrar: reg, keyRepeat: rep)
+    var spaceRepeats = 0
+    spaceKeys.onCommand = { command, isRepeat in if command == .nextSpace, isRepeat { spaceRepeats += 1 } }
+    spaceKeys.set(active: true)
+    let right = reg.held.first { $0.value == Combo.parse("Alt+Meta+ArrowRight") }!.key
+    reg.onHit?(right)
+    for _ in 0..<8 { runNext() }
+    reg.onRelease?(right)
+    spaceKeys.set(active: false)
+    check("held next space: it repeats", spaceRepeats == 8)
     // Carbon itself, with a key no one uses (held for a moment, never pressed).
     let carbon = CarbonHotKeys()
     let odd = Combo.parse("Ctrl+Alt+Shift+Meta+F19")!
@@ -569,14 +531,33 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("and back", ScreenGeometry.appKitRect(CGRect(x: 10, y: 780, width: 300, height: 200), mainHeight: 1000) == CGRect(x: 10, y: 20, width: 300, height: 200))
     check("off screen stays off screen", ScreenGeometry.appKitRect(CGRect(x: -20000, y: -20000, width: 1280, height: 800), mainHeight: 982).minY == 982 + 20000 - 800)
     check("a pointer flipped", ScreenGeometry.topLeftPoint(CGPoint(x: 5, y: 990), mainHeight: 1000) == CGPoint(x: 5, y: 10))
-    // A full-screen window fills its display's height; one going into full screen doesn't (Phase 2 step 8).
-    let displays: [(frame: CGRect, topInset: CGFloat)] = [(CGRect(x: 0, y: 0, width: 1512, height: 982), 32), (CGRect(x: 1512, y: -200, width: 2560, height: 1440), 0)]
-    check("full screen: the whole display", ScreenGeometry.fillsDisplay(CGRect(x: 0, y: 0, width: 1512, height: 982), displays: displays))
-    check("full screen below the camera housing", ScreenGeometry.fillsDisplay(CGRect(x: 0, y: 32, width: 1512, height: 950), displays: displays))
-    check("one side of a Split View, on the second display", ScreenGeometry.fillsDisplay(CGRect(x: 1512, y: -200, width: 1280, height: 1440), displays: displays))
-    check("not a window still on the desktop, going full screen", !ScreenGeometry.fillsDisplay(CGRect(x: 100, y: 120, width: 1200, height: 760), displays: displays))
-    check("not a window across two displays", !ScreenGeometry.fillsDisplay(CGRect(x: 1000, y: 0, width: 1200, height: 982), displays: displays))
-    check("not off every display", !ScreenGeometry.fillsDisplay(CGRect(x: -20000, y: -20000, width: 1280, height: 800), displays: displays))
+  }
+
+  // When Margin.app quits by itself (IdleQuit.swift, AppDelegate.swift's 30 s check): never once the person opened
+  // it or while anything is hosted; started in the background and never opened, after 60 s with nothing to do.
+  static func idleQuit() {
+    let idle = IdleQuit.State(startedInBackground: true, shown: false, hosting: false, linked: false, browserOpen: false)
+    let t0 = Date(timeIntervalSince1970: 1_000_000)
+    check("idle quit: started in the background, never opened, nothing hosted, no copy, no browser: idle", IdleQuit.idle(idle))
+    var s = idle; s.startedInBackground = false
+    check("idle quit: opened by the person: never", !IdleQuit.idle(s) && IdleQuit.check(s, since: t0, now: t0 + 3600) == (nil, false))
+    s = idle; s.shown = true
+    check("idle quit: a window of Margin's shown since (even closed again): never", !IdleQuit.idle(s) && !IdleQuit.check(s, since: t0, now: t0 + 86_400).quit)
+    s = idle; s.hosting = true
+    check("idle quit: something hosted: never", !IdleQuit.idle(s) && !IdleQuit.check(s, since: t0, now: t0 + 86_400).quit)
+    s = idle; s.linked = true
+    check("idle quit: a copy linked: not idle", !IdleQuit.idle(s))
+    s = idle; s.browserOpen = true
+    check("idle quit: a browser open: not idle", !IdleQuit.idle(s))
+    let first = IdleQuit.check(idle, since: nil, now: t0)
+    check("idle quit: first seen idle: counted from now, no quit yet", first.since == t0 && !first.quit)
+    check("idle quit: 30 s idle: not yet", IdleQuit.check(idle, since: t0, now: t0 + 30) == (t0, false))
+    check("idle quit: 60 s idle: quits", IdleQuit.check(idle, since: t0, now: t0 + 60) == (t0, true) && IdleQuit.after == 60)
+    // A browser opened in between: the count starts again.
+    let broken = IdleQuit.check(s, since: t0, now: t0 + 45)
+    let again = IdleQuit.check(idle, since: broken.since, now: t0 + 75)
+    check("idle quit: a break (a browser opened for a moment) starts the minute again", broken.since == nil && again.since == t0 + 75 && !again.quit
+          && IdleQuit.check(idle, since: again.since, now: t0 + 135).quit)
   }
 
   // One Margin.app at a time (BundleWatch.swift, AppDelegate.swift): a new instance ends the others of its bundle.

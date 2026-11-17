@@ -173,7 +173,7 @@ enum MarginWindowEffect: Equatable {
 extension MarginMenuAction {
     var effect: MarginWindowEffect {
         switch self {
-        case .newTab: return .page(#"{"type":"command","name":"palette"}"#) // the palette, as ⌘T over a browser opens it
+        case .newTab: return .page(#"{"type":"command","name":"palette"}"#) // the palette, as ⌘T opens it
         case .toggleSidebar: return .page(#"{"type":"command","name":"toggle-sidebar"}"#)
         case .closeTab: return .source("closeTab")
         case .newWindow: return .newWindow

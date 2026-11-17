@@ -50,11 +50,9 @@ test('the app host: the state from the hello, in the pages\' shape, drawable', (
   const { features, ...platform } = host.platform;
   assert.deepEqual(platform, { browser: 'safari', os: 'mac', app: true });
   // What Settings offers: the build's profile (Safari's in dist/app), as the new-tab page gave it.
-  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'cloudTabs', 'importThemes', 'marginFullscreen', 'newTabHint', 'search', 'sleepTabs', 'switchSettings', 'userThemes']);
+  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'importThemes', 'marginFullscreen', 'newTabHint', 'search', 'sleepTabs', 'userThemes']);
   assert.equal(features.importThemes, true, 'Margin.app imports themes');
   assert.deepEqual(features.userThemes, [], 'none imported in this hello');
-  assert.equal(features.cloudTabs, true, 'Safari: Settings offer "Show iCloud Tabs"');
-  assert.equal(features.switchSettings, null, 'one profile: no "Close windows to save memory" (tests/handoff-ui.test.ts)');
   assert.equal(state.tabs[13].title, 'Docs');
   assert.equal(state.activeSpaceByWindow[W], 'home');
   assert.deepEqual(state.openTabsBy, { origin: 'safari-web-extension://margin', since: 1, synced: true });
@@ -461,26 +459,3 @@ test('the app host and themes: the index from the hello and `themes`; Import, a 
   host.destroy();
 });
 
-// A profile switch hands the sidebar the person is looking at to the window the switch goes to (app/platforms/macos/shell
-// Shell.handOverOverlay): the same page, given that window's hello in place (`rekey`), so nothing reloads.
-test('the app host: handed to another window and profile (rekey): its window, state, mode and windows from the new hello', () => {
-  const b = bridge();
-  const host = createAppHost({ hello: hello(), post: b.post });
-  let emitted = 0;
-  host.onState(() => emitted++);
-  const other = smallState();
-  other.spaces = other.spaces.map((s) => (s.id === 'home' ? { ...s, name: 'Elsewhere' } : s));
-  host.receive({ type: 'rekey', hello: hello({ windowId: 77, profile: 'P2', mode: 'fullscreen', state: stored({ ...other, activeSpaceByWindow: { 77: 'home' } }),
-    windows: [{ windowId: 77, state: 'fullscreen', focused: true }], across: null }) });
-  assert.equal(host.windowId, 77, 'its window now');
-  assert.equal(host.mode, 'fullscreen');
-  assert.equal(emitted, 1, 'drawn again once');
-  const vm = buildViewModel({ state: host.getState(), ui: { windowId: host.windowId, mode: host.mode }, platform: host.platform });
-  assert.equal(vm.space.name, 'Elsewhere', 'the new window\'s space and its profile\'s state');
-  // A windows list naming the new window sets its mode; one naming only the old window doesn't.
-  host.receive({ type: 'windows', list: [{ windowId: W, state: 'normal' }, { windowId: 77, state: 'fullscreen' }] });
-  assert.equal(host.mode, 'fullscreen');
-  // A rekey without a hello changes nothing.
-  host.receive({ type: 'rekey' });
-  assert.equal(host.windowId, 77);
-});

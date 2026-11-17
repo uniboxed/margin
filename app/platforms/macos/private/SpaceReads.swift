@@ -1,26 +1,21 @@
-// What macOS says about Spaces, for the host (HostSystem.swift; first written for the profile handoff,
-// docs/HANDOFF.md §3.2, §6.7, §4.3): the active Space, each window's Spaces, every display's Spaces
-// (the full-screen ones, the Desktops, and how many displays are managed), and
-// the window server's own read of one window.
+// What macOS says about Spaces, for the host (HostSystem.swift): each window's Spaces and every display's Spaces
+// (the full-screen ones, the Desktops, the one showing), and the private Spaces and bridge the host parks and moves
+// hosted windows with.
 //
-// - The Spaces come from SkyLight's private reads (PrivateCalls.swift, rows 5-7
-//   of docs/PRIVATE-APIS.md), behind SkyLight's wrappers. Each read is optional: nil
-//   is "unknown" (a call refused, a nil Copy result, a shape that isn't the one
-//   macOS 27.2 gives), never a guess. An empty list of a window's Spaces is a
-//   real answer: the window is in no user Space (parked, or gone).
+// - The Spaces come from SkyLight's private reads (PrivateCalls.swift; docs/PRIVATE-APIS.md), behind SkyLight's
+//   wrappers. Each read is optional: nil is "unknown" (a call refused, a nil Copy result, a shape that isn't the one
+//   macOS 27.2 gives), never a guess. An empty list of a window's Spaces is a real answer: the window is in no user
+//   Space (parked, or gone).
 // - A window's Spaces are read one window at a time: SLSCopySpacesForWindows
 //   answers the union of the windows it's given.
 // - Mask 7 (every kind, as every lab read them) doesn't list a private Space:
 //   that's how a parked window reads as "in no user Space".
 // - Space types: 0 a Desktop (a user Space), 4 a full-screen Space.
-// - The window read is CGWindowListCopyWindowInfo(.optionIncludingWindow, n):
-//   public, no permission, nil when the window isn't listed.
 // - SkyLightSpaces refuses under MARGIN_APP_TESTS (every read nil, every
 //   bridge call false), as SkyLight's own wrappers do.
 // - Nothing here logs a title or an address: there are only numbers.
 
-import AppKit
-import CoreGraphics
+import Foundation
 
 nonisolated struct ManagedSpace: Equatable, Sendable {
     static let desktopType = 0
@@ -37,79 +32,10 @@ nonisolated struct DisplaySpaces: Equatable, Sendable {
 
     var desktops: [UInt64] { spaces.filter { $0.type == ManagedSpace.desktopType }.map(\.id) }
     var fullScreen: [UInt64] { spaces.filter { $0.type == ManagedSpace.fullScreenType }.map(\.id) }
-    // Where a window returns to on this display (§2.1 returnToDesktop): the Desktop showing, or,
-    // while a full-screen Space shows, the first Desktop (the one Mission Control lists first).
-    var desktop: UInt64? {
-        if let current, desktops.contains(current) { return current }
-        return desktops.first
-    }
-}
-
-protocol SpaceReads: AnyObject {
-    // SLSGetActiveSpace: the active display's current Space.
-    func activeSpace() -> UInt64?
-    // One window's Spaces, mask 7. []: in no user Space. nil: unknown.
-    func spaces(of window: Int) -> [UInt64]?
-    // Every managed display's Spaces. One entry per display (mirrored displays are one).
-    func displays() -> [DisplaySpaces]?
-    // The window server's read of one window; nil when it isn't listed (gone, or never was).
-    func window(_ number: Int) -> ServerWindow?
-    // The "Display Identifier" of the display holding this rect's centre (top-left coordinates).
-    func display(at bounds: CGRect) -> String?
-}
-
-extension SpaceReads {
-    // Every full-screen Space, on every display (R1's "a type-4 Space").
-    func fullScreenSpaces() -> Set<UInt64>? {
-        displays().map { Set($0.flatMap(\.fullScreen)) }
-    }
-
-    /// The Space showing on the display holding a window (by its bounds' centre): each display has its own when
-    /// "Displays have separate Spaces" is on. One display (or that setting off), or a window or display that doesn't
-    /// read: the active Space, as before.
-    func showing(onDisplayOf window: Int) -> UInt64? {
-        if let displays = displays(), displays.count > 1, let bounds = self.window(window)?.bounds, let id = display(at: bounds),
-           let d = displays.first(where: { $0.display.caseInsensitiveCompare(id) == .orderedSame }), let current = d.current {
-            return current
-        }
-        return activeSpace()
-    }
-
-    /// Every display's Space showing (one display: the active Space).
-    func showingAll() -> [UInt64] {
-        if let displays = displays(), displays.count > 1 { return displays.compactMap(\.current).sorted() }
-        return activeSpace().map { [$0] } ?? []
-    }
-
-    // How many displays macOS manages Spaces for (§6.7: more than one, no freeze for that switch).
-    // Not NSScreen.screens.count: mirrored displays count once, and "Displays have separate
-    // Spaces" off gives one entry for all of them.
-    func managedDisplayCount() -> Int? { displays()?.count }
-
-    // The Desktop a window goes back to: its display's (from its bounds), else the only display's,
-    // else the display showing the active Space, else the first display's. Nil when the displays
-    // don't read or none has a Desktop.
-    func desktop(for window: Int) -> UInt64? {
-        guard let displays = displays(), !displays.isEmpty else { return nil }
-        if displays.count == 1 { return displays[0].desktop }
-        if let bounds = self.window(window)?.bounds, let id = display(at: bounds),
-           let d = displays.first(where: { $0.display.caseInsensitiveCompare(id) == .orderedSame }), let desktop = d.desktop { return desktop }
-        if let active = activeSpace(), let d = displays.first(where: { $0.current == active || $0.spaces.contains { $0.id == active } }), let desktop = d.desktop { return desktop }
-        return displays.lazy.compactMap(\.desktop).first
-    }
-
-    // Parked, as §4.3 verifies it: in no user Space and off screen. A window the window server
-    // doesn't list reads as off screen, as the labs read it (whether a parked window is listed is
-    // gate G6's). Nil when the Spaces don't read.
-    func readsParked(_ number: Int) -> Bool? {
-        guard let spaces = spaces(of: number) else { return nil }
-        return spaces.isEmpty && window(number)?.onScreen != true
-    }
 
     // SLSCopyManagedDisplaySpaces' answer, as macOS 27.2 gives it. Any entry that isn't a display
-    // with an identifier and a list of Spaces makes the whole read unknown: the display count
-    // decides whether a switch freezes, so a half-read list isn't trusted.
-    static func parseDisplays(_ raw: [[String: Any]]) -> [DisplaySpaces]? {
+    // with an identifier and a list of Spaces makes the whole read unknown: a half-read list isn't trusted.
+    static func parse(_ raw: [[String: Any]]) -> [DisplaySpaces]? {
         var out: [DisplaySpaces] = []
         for entry in raw {
             guard let id = entry["Display Identifier"] as? String, let list = entry["Spaces"] as? [[String: Any]] else { return nil }
@@ -123,36 +49,12 @@ extension SpaceReads {
         }
         return out
     }
-
-    // One window from CGWindowListCopyWindowInfo's list, as CGWindowSource reads them.
-    static func parseWindow(_ list: [[String: Any]], number: Int) -> ServerWindow? {
-        for w in list {
-            guard (w[kCGWindowNumber as String] as? NSNumber)?.intValue == number,
-                  let pid = (w[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
-                  let raw = w[kCGWindowBounds as String] as? NSDictionary, let bounds = CGRect(dictionaryRepresentation: raw as CFDictionary) else { continue }
-            return ServerWindow(number: number, pid: pid, layer: (w[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0, bounds: bounds,
-                                onScreen: (w[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false,
-                                alpha: (w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1)
-        }
-        return nil
-    }
 }
-
-// The private Spaces and the bridge (rows 8-12), as the parker uses them. True or an id means
-// the call was made; whether it landed is the parker's to verify (§4.3).
-protocol SpaceBridge: AnyObject {
-    var canPark: Bool { get } // the launch check passed parking, and nothing refuses
-    func createSpace() -> UInt64? // SLSSpaceCreate(cid, 1, nil); nil when it answered 0
-    func destroySpace(_ space: UInt64) -> Bool // SLSSpaceDestroy
-    func add(_ window: Int, to space: UInt64) -> Bool // the add/remove op, options 7: into `space`, out of every other
-    func remove(_ window: Int, from space: UInt64) -> Bool // out of `space` (a show or return, out of the private Space)
-}
-
-// ---- the real one ----
 
 // SkyLight's reads and bridge, behind its wrappers (which already fill in only what the launch
-// check passed). Made only by Shell.checkPrivateCalls, from the real resolver.
-final class SkyLightSpaces: SpaceReads, SpaceBridge {
+// check passed). Made only by Shell.checkPrivateCalls, from the real resolver. True or an id means
+// the call was made; whether it landed is the host's to verify.
+final class SkyLightSpaces {
     private let sky: SkyLight
     private let availability: PrivateCalls.Availability
     let refuses: Bool
@@ -165,46 +67,26 @@ final class SkyLightSpaces: SpaceReads, SpaceBridge {
         refuses = refusing
     }
 
-    var canPark: Bool { !refuses && availability.park }
+    var canPark: Bool { !refuses && availability.park } // the launch check passed parking, and nothing refuses
 
-    func activeSpace() -> UInt64? { refuses ? nil : sky.activeSpace() }
-
+    // One window's Spaces, mask 7. []: in no user Space. nil: unknown.
     func spaces(of window: Int) -> [UInt64]? {
         guard !refuses, let n = UInt32(exactly: window), n > 0 else { return nil }
         return sky.spaces(forWindows: [n], mask: 7)
     }
 
+    // Every managed display's Spaces. One entry per display (mirrored displays are one).
     func displays() -> [DisplaySpaces]? {
         guard !refuses, let raw = sky.managedDisplaySpaces() else { return nil }
-        return Self.parseDisplays(raw)
+        return DisplaySpaces.parse(raw)
     }
 
-    // Public, and no private call: still refused in tests, so a test never reads the real screen.
-    func window(_ number: Int) -> ServerWindow? {
-        guard !refuses, let n = CGWindowID(exactly: number), n > 0,
-              let list = CGWindowListCopyWindowInfo([.optionIncludingWindow], n) as? [[String: Any]] else { return nil }
-        return Self.parseWindow(list, number: number)
-    }
+    func createSpace() -> UInt64? { canPark ? sky.createSpace() : nil } // SLSSpaceCreate(cid, 1, nil); nil when it answered 0
+    func destroySpace(_ space: UInt64) -> Bool { canPark && sky.destroySpace(space) } // SLSSpaceDestroy
 
-    func display(at bounds: CGRect) -> String? {
-        guard !refuses, !bounds.isNull else { return nil }
-        var id: CGDirectDisplayID = 0
-        var count: UInt32 = 0
-        guard CGGetDisplaysWithPoint(CGPoint(x: bounds.midX, y: bounds.midY), 1, &id, &count) == .success, count > 0,
-              let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() else { return nil }
-        return CFUUIDCreateString(nil, uuid) as String?
-    }
-
-    func createSpace() -> UInt64? { canPark ? sky.createSpace() : nil }
-    func destroySpace(_ space: UInt64) -> Bool { canPark && sky.destroySpace(space) }
-
+    // The add/remove op, options 7: into `space`, out of every other.
     func add(_ window: Int, to space: UInt64) -> Bool {
         guard canPark, let n = UInt32(exactly: window), n > 0 else { return false }
         return sky.bridgeAdd(windows: [n], toSpace: space, options: 7)
-    }
-
-    func remove(_ window: Int, from space: UInt64) -> Bool {
-        guard canPark, let n = UInt32(exactly: window), n > 0 else { return false }
-        return sky.bridgeRemove(windows: [n], fromSpaces: [space])
     }
 }

@@ -8,9 +8,8 @@
 // over the page's box (checked on screen, pixel by pixel); caps the palette
 // and drives it from the keyboard; draws every part with Margin's words only;
 // and blinks only while its setting is on and motion is allowed.
-// `npm run test:theme`. (Its iCloud Tabs, loading, gestures,
-// notices and behaviors run in cloud.test.ts, feedback.test.ts and
-// behaviors.test.ts with the other themes.)
+// `npm run test:theme`. (Its loading, gestures, notices and behaviors run in
+// feedback.test.ts and behaviors.test.ts with the other themes.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { inflateSync } from 'node:zlib';

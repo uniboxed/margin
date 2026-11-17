@@ -257,7 +257,7 @@ final class SocketLink {
     }
 
     private func listen() {
-        // No Nagle: the small frames (req, setLayout, tick) go at once.
+        // No Nagle: the small frames (req, drawn, tick) go at once.
         let tcp = NWProtocolTCP.Options()
         tcp.noDelay = true
         let parameters = NWParameters(tls: nil, tcp: tcp)

@@ -2,8 +2,6 @@
 import type { State } from '../../types/margin';
 import * as P from './capabilities.ts';
 import * as V from './view.ts';
-import { foreignKey, isMultiProfile, profileOf } from './across.ts';
-import { cloudShown, deviceNames, onDevice } from './cloud-tabs.ts';
 import type { InstalledApp } from './apps.ts';
 
 
@@ -149,7 +147,7 @@ function matchScore(query: string, item: PaletteItem) {
 
 const isWebUrl = (url: string | null | undefined) => /^https?:/i.test(url ?? '');
 
-// One thing the palette can offer: a tab, a pin, an archived tab, an action, an iCloud tab, an installed app. `boost` lifts it in
+// One thing the palette can offer: a tab, a pin, an archived tab, an action, an installed app. `boost` lifts it in
 // the ranking, `recency` breaks ties (its last use); `action`, what choosing it asks for.
 export type PaletteItem = {
   id: string, kind: string, title: string, subtitle: string, url?: string, favIconUrl?: string, badge?: string,
@@ -165,7 +163,7 @@ function paletteItems(state: State, ctx: { windowId: number | null; tabId: numbe
   const view = V;
   const spaceId = view.activeSpaceId(state, ctx.windowId);
   const spaceOf = (id: string | undefined) => state.spaces.find((s) => s.id === id);
-  // (Each with its boost: the ranking adds it. iCloud tabs, which have none, are ranked apart: cloudMatches.)
+  // (Each with its boost: the ranking adds it.)
   const items: (PaletteItem & { boost: number })[] = [];
 
   for (const t of Object.values(state.tabs ?? {})) {
@@ -257,64 +255,10 @@ function paletteItems(state: State, ctx: { windowId: number | null; tabId: numbe
     if (s.id === spaceId) continue;
     action(`space:${s.id}`, `Switch to space ${s.name}`, { type: 'setSpace', windowId: ctx.windowId, spaceId: s.id }, { emoji: s.emoji });
   }
-  // Other profiles' spaces (Margin.app): the switch to that profile's window.
-  const across = (state as any).across;
-  if (isMultiProfile(across)) {
-    for (const s of across.spaces) {
-      if (s.profile === across.profile) continue;
-      const key = foreignKey(s.profile, s.id);
-      action(`space:${key}`, `Switch to space ${s.name} (${profileOf(across, s.profile)?.name ?? 'another profile'})`, { type: 'setSpace', windowId: ctx.windowId, spaceId: key }, { emoji: s.emoji });
-    }
-  }
   return items;
 }
 
 const KIND_ORDER: Record<string, number> = { tab: 0, action: 1, pin: 2, archive: 3 };
-
-// iCloud Tabs (Margin.app with Safari: shared/cloud-tabs.ts) matching what's
-// typed: their own section after Margin's own rows (open tabs, pins, actions,
-// the archive) and before "Search for …", one run per device ("On Nora's
-// iPhone"), the device with the best match first (as good a match: the one
-// used most recently). Never before typing, and
-// not a page that's open here already (its tab is the row for it). Chosen,
-// one opens as an address typed there would: in a new tab of this window,
-// in its space (or in Margin's new-tab page, in place).
-const CLOUD_MAX = 8;
-const CLOUD_PER_DEVICE = 5;
-function cloudMatches(state: State, q: string, ctx: { windowId: number | null; tabId: number | null; inNewTab: boolean; canToggleSidebar: boolean; canFullscreen: boolean; }) {
-  const cloud = cloudShown(state);
-  if (!q || cloud?.status !== 'ready') return [];
-  const open = new Set(Object.values(state.tabs ?? {}).map((t) => V.normalizeUrl(t.url)));
-  const names = deviceNames(cloud.devices);
-  const groups: { best: number, hits: { item: PaletteItem, score: number }[] }[] = [];
-  for (const d of cloud.devices) {
-    const section = onDevice(names.get(d.id) ?? d.name);
-    const hits = d.tabs
-      .filter((t) => !open.has(V.normalizeUrl(t.url)))
-      .map((t) => {
-        const item = {
-          id: `cloud:${t.id}`,
-          kind: 'cloud',
-          title: V.isLauncherPage(t.url) && /#settings$/i.test(t.url) ? 'Settings' : t.title || t.url,
-          subtitle: t.url,
-          url: t.url,
-          favIconUrl: V.iconFor(state, { url: t.url }),
-          badge: 'iCloud',
-          section,
-          action: ctx.inNewTab ? { local: 'navigate', url: t.url } : { type: 'newTab', windowId: ctx.windowId, url: t.url },
-        };
-        return { item, score: matchScore(q, item) };
-      })
-      .filter((r) => r.score > -Infinity)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, CLOUD_PER_DEVICE);
-    if (hits.length) groups.push({ best: hits[0].score, hits });
-  }
-  // About as good a match: the device used most recently first (the app's order).
-  groups.sort((a, b) => Math.round(b.best) - Math.round(a.best));
-  const out = groups.flatMap((g) => g.hits.map((h) => h.item)).slice(0, CLOUD_MAX);
-  return out.map((item, i) => ({ ...item, sectionStart: i === 0 || out[i - 1].section !== item.section }));
-}
 
 // Installed apps (Margin.app with hosting on: shared/apps.ts, the state's
 // `apps`) matching what's typed, ranked among Margin's own rows. Never before
@@ -379,7 +323,7 @@ function rankPalette(state: State, query: string, ctx: { windowId: number | null
       .sort((a, b) => b.score - a.score || (b.item.recency ?? 0) - (a.item.recency ?? 0))
       .map((r) => r.item);
   }
-  ranked = [...ranked.slice(0, limit), ...cloudMatches(state, q, ctx)];
+  ranked = ranked.slice(0, limit);
   if (/^margin:\/\/settings\/?$/i.test(q)) return items.filter((i) => i.id === 'action:settings');
   const target = resolveInput(q);
   if (target) {

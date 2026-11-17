@@ -15,8 +15,8 @@
 // only; the sidebar's edge dragged in the page (its real handle, pointer events): Margin's window in front of the
 // hosted one for the drag, nothing placed until it's let go, then the hosted window once at the new page area (a
 // window-mode app moved, a full-screen member out and in), Margin still full screen at its whole width, a parked
-// member placed when it's next shown; `drawn` true for the hosted Safari window only, false for the person's own; no
-// `setLayout`; ⌘Q with a hosted app in front is Margin's prompt (Cancel keeps everything, another app in front takes
+// member placed when it's next shown; `drawn` true for the hosted Safari window only, false for the person's own;
+// ⌘Q with a hosted app in front is Margin's prompt (Cancel keeps everything, another app in front takes
 // it down, ⌘Q again quits), and quitting gives it all back.
 import AppKit
 import WebKit
@@ -548,13 +548,12 @@ func glueScenario() async {
         && stillFullScreen() && world.listsMarginOnly && c.below == editWindow, "\(called("fullScreen", since: mark))")
 
   // ---- which of the copy's windows Margin draws: only the one it hosts; the person's own told not (their ⌘T stays
-  // Safari's way); nothing of the page box ----
+  // Safari's way) ----
   shell.track()
   let told = { (id: Int) in fake.all("drawn") { int($0["windowId"]) == id }.last.flatMap { $0["on"] as? Bool } }
   check("drawn: the person's own Safari window told not drawn, the hosted one drawn, each once",
         told(1) == false && told(madeId ?? -1) == true && fake.all("drawn") { int($0["windowId"]) == 1 }.count == 1,
         "\(fake.all("drawn").map { "\(int($0["windowId"]) ?? -1)=\($0["on"] ?? "?")" })")
-  check("nothing laid out for the copy's windows", fake.first("setLayout") == nil)
 
   // ---- ⌘Q with an app Margin hosts in front: Margin's own prompt ----
   // (The app shown now, in front: one Margin hosts.)

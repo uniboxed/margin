@@ -128,9 +128,6 @@ test('the app host: the apps from the hello and as they change, the state\'s app
   host.receive({ type: 'apps', apps: [APPS[0]] });
   assert.equal(drawn.length, 1);
   assert.deepEqual(drawn[0].apps!.map((a) => a.bundleId), ['com.apple.mail']);
-  // A switch's hand-over to another window keeps the Mac's list unless its hello says one.
-  host.receive({ type: 'rekey', hello: { ...hello, windowId: W + 1 } });
-  assert.deepEqual(host.getState()!.apps.map((a: InstalledApp) => a.bundleId), ['com.apple.mail']);
   host.receive({ type: 'apps', apps: null });
   assert.equal(host.getState()!.apps, undefined, 'hosting turned off: gone');
   assert.equal(host.perform('app.open', { bundleId: 'com.apple.mail', name: 'Mail' }), true);

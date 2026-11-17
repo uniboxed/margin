@@ -71,7 +71,7 @@ func dataScenario() async {
         && collections.allSatisfy { fm.fileExists(atPath: dir1.appendingPathComponent("items/\($0).json").path) },
         "\((try? fm.contentsOfDirectory(atPath: dir1.appendingPathComponent("items").path)) ?? [])")
   check("the read API: P1's spaces and site icons", named(shell, p1, "work") == "Deep Work" && shell.data.values("siteIcons", of: p1).count == 28 && shell.data.profiles().map(\.key) == ["safari:P1"])
-  let tabs = shell.data.marginTabs(of: p1).count
+  let tabs = shell.data.values("tabs", of: p1).count
   check("its Margin tabs: the copy's open tabs", tabs == 7, "\(tabs)")
 
   let rev1 = fake.first("dataAck") { $0["id"] as? String == "A" }?["rev"] as? String ?? ""
@@ -79,7 +79,6 @@ func dataScenario() async {
 
   // ---- relinking with nothing changed: no snapshot ----
   check("the link closed", await close("A", shell, "safari:P1"))
-  check("a profile not linked: all its Margin tabs not open", shell.notOpenTabs(p1).count == tabs && shell.notOpenTabs(p1, space: "work").count == 1)
   mark = fake.events.count
   connect("A1", "P1", ["acked": t0, "rev": rev1, "queue": []])
   check("relink with the set's rev and nothing queued: no data.snapshot, only data.ack with the same rev", await until(5, { fake.first("dataAck", since: mark) != nil })
@@ -285,7 +284,7 @@ func carryScenario() async {
         && !shell.data.profiles(browser: "safari").map(\.profile).contains(sA)
         && ((try? FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("safari/.archived").path)) ?? []).count == 1)
   check("carry: one Personal, the old id forgotten", await until(2, { profiles.info[sA]?.hidden == true }) && profiles.name(sB) == "Personal"
-        && profiles.profilesShown.filter { profiles.name($0) == "Personal" } == [sB], "\(profiles.profilesShown)")
+        && profiles.profiles.filter { profiles.info[$0]?.hidden != true && profiles.name($0) == "Personal" } == [sB], "\(profiles.profiles)")
   check("carry: said in the log", said.dropFirst(saidBefore).contains { $0.contains("\(sA) → \(sB) (Safari profile \(FakeSafari.personalServer)): data carried over") }
         && said.dropFirst(saidBefore).contains { $0.contains("data.hello held up to") })
   check("carry: the new copy's link gone", await close("B", "safari:\(sB)"))

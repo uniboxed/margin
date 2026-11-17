@@ -26,7 +26,7 @@ final class ShellHostedLinks: HostedLinks {
     func windowIds(of profile: String) -> [Int] { shell?.windows(of: "safari:\(profile)").map(\.id) ?? [] }
     func restoredWindowIds(of profile: String) -> [Int]? {
         guard let entry = shell?.links["safari:\(profile)"], entry.connection.isUp, entry.mirror.hasState else { return nil }
-        return ExtWindow.parse(entry.mirror.windows, link: "safari:\(profile)").filter { $0.createdAt == nil }.map(\.key.windowId)
+        return ExtWindow.parse(entry.mirror.windows).filter { $0.createdAt == nil }.map(\.id)
     }
     func linkEpoch(of profile: String) -> String? {
         guard let entry = shell?.links["safari:\(profile)"], entry.connection.isUp else { return nil }

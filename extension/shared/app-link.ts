@@ -32,23 +32,3 @@ export const undrawn = (link: any, windowId: number | null | undefined) => windo
  * background hears there are left to the app only then.
  * */
 export const drawsWindow = (link: any, windowId: number | null | undefined) => appDraws(link) && !undrawn(link, windowId);
-
-const finite = (v: unknown): number => (Number.isFinite(v) ? v as number : 0);
-
-/**
- * The page's area in CSS pixels as it is before any pinch (a pinch magnifies the page; it doesn't change its area).
- * WebKit gives innerWidth and innerHeight divided by the pinch's scale (measured 2026-11-07: a 1512 × 949 page
- * pinched 3× reads 504 × 316, visualViewport 504 × 316.33 at scale 3), which read as Safari taking most of the
- * window: Margin drew its sidebar into a corner, and the page lost its box. Unpinched, innerWidth and innerHeight
- * as they are. Pinched, scaled back, from the larger of the inner and visual viewport sizes (the inner size is
- * rounded down to whole pixels; the visual one leaves out a classic scrollbar).
- * */
-export function unpinchedSize({ innerWidth, innerHeight, visualViewport = null }: { innerWidth: number, innerHeight: number, visualViewport?: { width: number, height: number, scale: number } | null }): { width: number, height: number } {
-  const s = visualViewport?.scale;
-  if (!(Number.isFinite(s) && (s as number) > 1.001)) return { width: innerWidth, height: innerHeight };
-  const k = (s as number);
-  return {
-    width: Math.max(innerWidth, finite(visualViewport?.width)) * k,
-    height: Math.max(innerHeight, finite(visualViewport?.height)) * k,
-  };
-}
