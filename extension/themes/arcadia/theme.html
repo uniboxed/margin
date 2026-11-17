@@ -6,6 +6,11 @@
        so the card itself stays clear. -->
   <m-page class="page"></m-page>
 
+  <!-- The page card while an item opens (Margin.app says so on the root:
+       m-page-state="loading"): opaque, exactly over the page's place, with
+       the "page-loader" part in it. Empty, and drawing nothing, otherwise. -->
+  <m-page-loader class="page-loader"></m-page-loader>
+
   <!-- The hover zone at the left edge that brings a hidden sidebar out (m-peek). -->
   <div class="peek-zone" m-peek="left" aria-hidden="true"></div>
 
@@ -284,6 +289,15 @@
           </m-for>
         </div>
       </div>
+    </div>
+  </template>
+
+  <!-- The page card's loader: a soft tile in the space's colour with a thin
+       ring turning in it, and Margin's words under it ("Opening Safari…"). -->
+  <template m-part="page-loader">
+    <div class="opening" role="status">
+      <span class="opening-mark" aria-hidden="true"></span>
+      <span class="opening-label">{{pageLoader.label}}</span>
     </div>
   </template>
 

@@ -325,6 +325,25 @@ const T = {
 // before any step that reads them (null until then); `runtime` is null again once unmounted.
 const rt: { runtime: Runtime | null, host: MockHost, mock: MockState, el: HTMLElement | null, target: Target, theme: ThemeResult, warnings?: string[], resizing: [boolean, number | null][] } = { runtime: null, host: null!, mock: null!, el: null, target: null!, theme: null!, resizing: [] };
 
+const starting = () => rt.runtime!.view.rootElement()?.hasAttribute('m-starting') ?? false;
+function startEmpty(pageState: 'empty' | 'loading' | 'shown', name: string | null) {
+  (T as typeof T & { unmountRuntime(): void }).unmountRuntime();
+  const mock = new MockState();
+  const hosted = pageState !== 'empty';
+  const host = Object.assign(createMockHost({ state: null as any, windowId: 1, platform: { browser: 'safari', os: 'mac' }, mode: 'fullscreen' }),
+    { appWindow: true, launcher: !hosted, pageHosted: hosted, sidebarDocked: hosted, inNewTab: false, pageState, pageOpening: pageState === 'loading' ? name : null });
+  document.documentElement.style.cssText = 'margin:0;height:100%';
+  document.body.style.cssText = 'margin:0;height:100%';
+  const runtime = createRuntime({ host, theme: rt.theme as LoadedTheme, container: document });
+  Object.assign(rt, { runtime, host, mock, el: null, target: document });
+  w.__rt = rt;
+  return starting();
+}
+function arrive() {
+  rt.host.setState(rt.mock.state);
+  return starting();
+}
+
 // (Named, the same object as T, for its type: Harness below.)
 const withRuntime = Object.assign(T, {
   // Neubrutalism (or another built-in theme, with its font families) as a
@@ -466,23 +485,18 @@ const withRuntime = Object.assign(T, {
     const loader = root?.querySelector('m-page-loader');
     return { attr: root?.getAttribute('m-page-state') ?? null, starting: root?.hasAttribute('m-starting') ?? null, loader: loader ? { own: !loader.hasAttribute('m-default'), text: loader.textContent ?? '' } : null };
   },
-  // A runtime mounted in the whole window with no state yet (a hello without one), then the state: whether the root
-  // says `m-starting` before the data, in the frame it's drawn, and a frame after.
+  // A runtime mounted in the whole window with no state yet (a hello without one): the root says `m-starting`, and
+  // the theme draws its skeleton. `pageState`: the page card's then (`empty`: nothing hosted yet). `rtArrive` gives
+  // it its state. Both answer whether the root says `m-starting`.
+  rtStartEmpty(pageState: 'empty' | 'loading' | 'shown' = 'empty', name: string | null = null) { return startEmpty(pageState, name); },
+  rtArrive() { return arrive(); },
+  // … then the state: whether the root says `m-starting` before the data, in the frame it's drawn, and a frame after.
   async rtStartLate() {
-    (T as typeof T & { unmountRuntime(): void }).unmountRuntime();
-    const mock = new MockState();
-    const host = Object.assign(createMockHost({ state: null as any, windowId: 1, platform: { browser: 'safari', os: 'mac' }, mode: 'fullscreen' }), { appWindow: true, launcher: true, inNewTab: false, pageState: 'empty' as const, pageOpening: null });
-    document.documentElement.style.cssText = 'margin:0;height:100%';
-    document.body.style.cssText = 'margin:0;height:100%';
-    const runtime = createRuntime({ host, theme: rt.theme as LoadedTheme, container: document });
-    Object.assign(rt, { runtime, host, mock, el: null, target: document });
-    const on = () => runtime.view.rootElement()?.hasAttribute('m-starting') ?? false;
-    const before = on();
-    host.setState(mock.state);
-    const drawn = on();
+    const before = startEmpty('empty', null);
+    const drawn = arrive();
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     await new Promise((r) => setTimeout(r, 150));
-    return { before, drawn, after: on() };
+    return { before, drawn, after: starting() };
   },
   // The default loader's box and how it's drawn now (null: none in the tree).
   rtLoader() {
@@ -492,6 +506,30 @@ const withRuntime = Object.assign(T, {
     return { left: b.left, top: b.top, width: b.width, height: b.height, opacity: Number(cs.opacity), visibility: cs.visibility, pointer: cs.pointerEvents, background: cs.backgroundColor, radius: cs.borderTopLeftRadius, transition: cs.transitionDuration, own: !el.hasAttribute('m-default'), text: el.textContent ?? '' };
   },
   rtRadii() { return rt.host.layouts.at(-1)?.radii ?? null; },
+  // The animations and transitions under way in the document: each one's name (a transition's: its property), whether
+  // its element is the page loader's slot or in it (`pseudo`: one of the element's own boxes), what it changes, and
+  // whether it's running.
+  rtAnimations() {
+    const meta = new Set(['offset', 'easing', 'composite', 'computedOffset']);
+    return document.getAnimations().map((a) => {
+      const effect = a.effect as KeyframeEffect | null;
+      const css = a as Animation & { animationName?: string, transitionProperty?: string };
+      return {
+        name: css.animationName ?? `transition:${css.transitionProperty ?? ''}`,
+        loader: !!effect?.target?.closest('m-page-loader'),
+        pseudo: effect?.pseudoElement ?? null,
+        props: [...new Set((effect?.getKeyframes() ?? []).flatMap((k) => Object.keys(k)))].filter((k) => !meta.has(k)).sort(),
+        running: a.playState === 'running',
+      };
+    });
+  },
+  // One of an element's own boxes (`::before`, `::after`): whether it's drawn (its `content`), its size and its animation.
+  rtPseudo(selector: string, pseudo: string) {
+    const el = rt.target.querySelector(selector);
+    if (!el) return null;
+    const cs = getComputedStyle(el, pseudo);
+    return { content: cs.content, width: parseFloat(cs.width) || 0, height: parseFloat(cs.height) || 0, animation: cs.animationName, background: cs.backgroundColor };
+  },
   rtRefused() { return rt.runtime!.refused.map((r) => [r.name, r.reason]); },
   rtPerformed() { return rt.host.performed.map((p) => p.name); },
   rtUi() { const { palette, sidebar, editing, menu, editor, switchingTo } = rt.runtime!.ui; return { palette, sidebar, editing, menu, editor, switchingTo }; },

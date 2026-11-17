@@ -254,6 +254,74 @@
    itself goes inside the hairline. Its spread shadow is the ground. --------- */
 .page { flex: 1; min-width: 0; position: relative; z-index: 0; border: var(--edge) solid var(--page-edge); border-radius: var(--page-radius); box-shadow: 0 0 0 100vmax var(--ground); }
 
+/* The page card while an item opens (Margin.app: the root's m-page-state):
+   opaque, exactly over the page's place inside the card's hairline, whatever
+   the app behind it is doing. The card is the ground, lit in the space's
+   color, and on it one capsule (glass, where the system has it: the block at
+   the end) with a small spinner and Margin's words. It stays there,
+   see-through, in every other state, to fade out over the window that's
+   shown: the part in it goes at once, the card in 120 ms. Starting
+   (m-starting, before the first data): the same card, the capsule round
+   with the spinner alone. */
+.lg .page-loader {
+  position: absolute;
+  top: calc(var(--frame) + var(--edge));
+  right: calc(var(--frame) + var(--edge));
+  bottom: calc(var(--frame) + var(--edge));
+  left: calc(var(--page-left) + var(--edge));
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: max(0px, var(--page-radius) - var(--edge));
+  background:
+    radial-gradient(46% 40% at 50% 47%, color-mix(in srgb, var(--glow-a) 58%, transparent) 0, transparent 72%),
+    radial-gradient(52% 50% at 16% 12%, color-mix(in srgb, var(--glow-b) 44%, transparent) 0, transparent 70%),
+    radial-gradient(60% 52% at 88% 92%, color-mix(in srgb, var(--glow-c) 46%, transparent) 0, transparent 72%),
+    light-dark(#f6f7f9, #141518);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .12s linear, visibility 0s linear .12s;
+}
+.lg:is([m-page-state="loading"], [m-starting][m-page-state="empty"]) .page-loader { opacity: 1; visibility: visible; pointer-events: auto; transition: none; }
+/* The capsule, plain: a translucent fill, a hairline, a soft shadow (the slot's own box while starting: it has no part then). */
+.opening, .lg[m-starting][m-page-state="empty"] .page-loader::before {
+  content: "";
+  grid-area: 1 / 1;
+  box-sizing: border-box;
+  min-width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  background: light-dark(rgba(255, 255, 255, .66), rgba(255, 255, 255, .11));
+  box-shadow: inset 0 0 0 .5px light-dark(rgba(255, 255, 255, .8), rgba(255, 255, 255, .16)), 0 0 0 .5px light-dark(rgba(0, 0, 0, .08), rgba(0, 0, 0, .5)), 0 6px 22px light-dark(rgba(0, 0, 0, .1), rgba(0, 0, 0, .34));
+}
+.opening { display: flex; align-items: center; gap: 10px; max-width: min(480px, 70%); padding: 0 20px 0 15px; color: var(--label); font-size: 13px; font-weight: 500; }
+.opening-spin, .lg[m-starting][m-page-state="empty"] .page-loader::after {
+  content: "";
+  grid-area: 1 / 1;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: conic-gradient(transparent 10%, var(--label));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  opacity: .78;
+  animation: lg-spin .9s linear infinite;
+}
+.opening-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* Starting (m-starting: the theme's first frame, before its data): the
+   panel with nothing in it yet. The space's name as a bar, three rows under
+   New Tab fading down the list, the chip in front; the rows breathe, softly.
+   Drawn on what's already there (no glass), and gone with the attribute. */
+.lg[m-starting] .space-name { flex: none; width: 104px; height: 12px; margin: 5px 0; border-radius: 6px; background: var(--control); }
+.lg[m-starting] .count { visibility: hidden; }
+.lg[m-starting] .today::before { content: ""; height: 32px; margin-bottom: 66px; border-radius: var(--inner); background: var(--control); box-shadow: 0 33px 0 var(--hover), 0 66px 0 light-dark(rgba(0, 0, 0, .028), rgba(255, 255, 255, .04)); animation: lg-wait 1.2s ease-in-out infinite alternate; }
+.lg[m-starting] .chips::before { content: ""; flex: none; width: 30px; height: 30px; border-radius: 15px; background: var(--control); }
+@keyframes lg-wait { to { opacity: .45; } }
+
 /* The page in front loading: a light running along the gutter above the page. */
 .load-bar { position: absolute; top: calc(var(--frame) / 2 - 1.5px); left: calc(var(--page-left) + var(--page-radius)); right: calc(var(--frame) + var(--page-radius)); height: 3px; z-index: 2; pointer-events: none; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--accent) 18%, transparent); opacity: 0; visibility: hidden; transition: opacity .2s, visibility 0s linear .2s; }
 .load-bar::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 34%; border-radius: inherit; background: var(--accent); transform: translateX(-110%); }
@@ -485,6 +553,10 @@
     --capsule-edge: inset 0 0 0 1px light-dark(rgba(0, 0, 0, .34), rgba(255, 255, 255, .4));
     --lit-edge: inset 0 0 0 1px light-dark(rgba(0, 0, 0, .5), rgba(255, 255, 255, .6));
   }
+  /* The page card's loader: a flat ground, a solid capsule with a line around it, the spinner's arc solid. */
+  .lg .page-loader { background: light-dark(#fff, #000); }
+  .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before { background: light-dark(#fff, #000); box-shadow: inset 0 0 0 1.5px var(--label); }
+  .opening-spin, .lg[m-starting][m-page-state="empty"] .page-loader::after { background: conic-gradient(transparent 25%, var(--label) 0); opacity: 1; }
 }
 /* Less transparency: solid fills (and, at the end, no glass). */
 @media (prefers-reduced-transparency: reduce) {
@@ -495,6 +567,7 @@
     --lit-fill: light-dark(#fff, #48484f);
     --scrim: light-dark(rgba(0, 0, 0, .2), rgba(0, 0, 0, .45));
   }
+  .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before { background: light-dark(#fff, #34343a); }
 }
 @media (prefers-reduced-motion: reduce) {
   .lg *, .lg *::before, .lg *::after, .menu, .sidebar { transition: none !important; }
@@ -502,6 +575,8 @@
   .reload.loading .ico, .tab.busy .fav, .gesture .ico { animation: none !important; }
   /* The loading light stays, still: a full bar. */
   .load-bar.on::before { animation: none; width: 100%; transform: none; opacity: .7; }
+  /* The page card's spinner stands still (an arc in its capsule), and the skeleton doesn't breathe. */
+  .opening-spin, .lg[m-starting][m-page-state="empty"] .page-loader::after, .lg[m-starting] .today::before { animation: none; }
 }
 
 /* ---- The system's glass ----------------------------------------------------
@@ -524,6 +599,8 @@
     .capsule { background: none; -apple-visual-effect: -apple-system-glass-material-subdued; }
     /* The tab in front: the subdued glass, lit a little. */
     .tab.on, .new-tab.on, .tab.on:hover, .new-tab.on:hover { background: light-dark(rgba(255, 255, 255, .42), rgba(255, 255, 255, .07)); -apple-visual-effect: -apple-system-glass-material-subdued; }
+    /* The page card's capsule, while an item opens: glass on the card's lit ground (one more layer, only then). */
+    .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before { overflow: hidden; background: none; box-shadow: none; -apple-visual-effect: -apple-system-glass-material; }
     /* The copy of a row under the pointer while it's dragged: plain (it moves every frame). */
     .m-drag-ghost, .tab.on.m-drag-ghost { background: var(--pop-fill); box-shadow: var(--pop-edge), 0 8px 24px light-dark(rgba(0, 0, 0, .2), rgba(0, 0, 0, .5)); -apple-visual-effect: none; }
     /* The scrim under a glass panel: lighter, the glass does the separating. */
@@ -535,5 +612,6 @@
     .panel.glass { background: var(--panel-fill); box-shadow: var(--panel-edge), var(--panel-shadow); }
     .capsule { background: var(--capsule-fill); box-shadow: var(--capsule-edge); -apple-visual-effect: none; }
     .tab.on, .new-tab.on, .tab.on:hover, .new-tab.on:hover { background: var(--lit-fill); box-shadow: var(--lit-edge); -apple-visual-effect: none; }
+    .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before { background: light-dark(#fff, #34343a); box-shadow: inset 0 0 0 .5px var(--separator), 0 6px 22px light-dark(rgba(0, 0, 0, .1), rgba(0, 0, 0, .34)); -apple-visual-effect: none; }
   }
 }

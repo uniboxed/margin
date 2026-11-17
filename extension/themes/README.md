@@ -186,6 +186,23 @@ the state's data was first drawn: draw a skeleton there if you like
 the first draw, which is the usual case in Margin.app (its window is shown
 only once its page is drawn).
 
+The built-in themes each have a loader of their own, in their own language:
+Arcadia a soft tile in the space's colour with a thin ring turning in it,
+Neubrutalism Margin's words in its heavy type over a chunky bar with a
+striped block running along it, Pixel an hourglass and a meter that fills
+cell by cell (`steps()`), Liquid Glass one glass capsule on a card lit in
+the space's colour. How they're built, to copy: the `<m-page-loader>` itself
+is the opaque card (the page's place exactly, the card's inner radius),
+see-through with `pointer-events: none` outside `loading` so that it fades
+over the window that's shown (120 ms; the part in it goes at once); only
+`transform` and `opacity` move, nothing while it isn't drawn, nothing at all
+with `prefers-reduced-motion` (a still mark stays); sizes follow the card
+(`100% - …`), so a long name is cut with an ellipsis in the smallest window.
+Under `m-starting` with nothing hosted yet (`[m-starting][m-page-state="empty"]`)
+the same card is drawn without words by the slot's own `::before` and
+`::after`, and the sidebar draws a few placeholder rows on what's already
+there (backgrounds and pseudo-elements, one soft `opacity` pulse).
+
 **Settings.** The `settings` part lays out `settingsForm.fields` (Margin's
 words only: it's guarded like a menu). Each field has one of `isNumber`,
 `isToggle`, `isChoice`, `isList`, `isShortcut`, `isColor`, `isButton`,

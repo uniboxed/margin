@@ -146,6 +146,11 @@
 
   <m-page class="page"></m-page>
 
+  <!-- The page card while an item opens (Margin.app: m-page-state="loading"
+       on the root): opaque, inside the card's hairline, with the
+       "page-loader" part in it. Empty, and drawing nothing, otherwise. -->
+  <m-page-loader class="page-loader"></m-page-loader>
+
   <!-- The page loading (the tab in front: its load, the page being left, a
        site's own navigation): a light running along the gutter above the
        page, seen with the sidebar hidden too. -->
@@ -168,6 +173,16 @@
   </div>
 
   <m-launcher class="launcher-slot"></m-launcher>
+
+  <!-- The page card's loader: one glass capsule on the card's ground, a small
+       spinner and Margin's words in it ("Opening Safari…"). The one glass
+       layer this adds is there only while an item opens. -->
+  <template m-part="page-loader">
+    <div class="opening" role="status">
+      <span class="opening-spin" aria-hidden="true"></span>
+      <span class="opening-label">{{pageLoader.label}}</span>
+    </div>
+  </template>
 
   <!-- The command bar: a large glass panel in the middle of the window. -->
   <m-if test="palette.open">

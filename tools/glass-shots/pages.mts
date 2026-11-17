@@ -33,16 +33,21 @@ const MOCK = (dark: boolean) => {
 const MOUNT = `T.mountRuntime({ container: 'document', platform: { browser: 'safari', os: 'mac' }, mode: 'fullscreen' });`;
 const later = 'await new Promise((r) => setTimeout(r, 300));';
 // Each state: how the runtime gets there.
-const STATES: Record<string, { start: string, then?: string, page?: boolean }> = {
+// (`space: false`: the state is drawn before the theme's data, so no space is switched to: one look per mode.)
+const STATES: Record<string, { start: string, then?: string, page?: boolean, space?: boolean }> = {
   sidebar: { start: MOUNT },
   palette: { start: MOUNT, then: `T.rtDispatch('palette.open'); ${later} const q = document.querySelector('[m-input="palette"]'); q.value = 'li'; q.dispatchEvent(new Event('input', { bubbles: true }));` },
   menu: { start: MOUNT, then: `${later} T.rtBox('.today .tab', 1); const r = T.rtRect('.today .tab', 1); for (const type of ['mousedown', 'contextmenu']) document.elementFromPoint(r.x, r.y).dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 2, clientX: r.x, clientY: r.y }));` },
   editor: { start: MOUNT, then: `T.rtDispatch('space.edit', T.rtVmFull().space);` },
   notice: { start: MOUNT, then: `T.rtSetUi({ notice: { id: 'n', text: 'That tab is no longer open.', actions: [{ id: 'ok', label: 'OK', primary: true }] } });` },
   launcher: { start: `T.mountRuntime({ container: 'document', platform: { browser: 'safari', os: 'mac' }, mode: 'fullscreen', appWindow: true });`, page: false },
+  // Margin.app's own window while an item opens: the page card opaque over the hosted window, the theme's loader in it.
+  loading: { start: `T.mountRuntime({ container: 'document', platform: { browser: 'safari', os: 'mac' }, mode: 'fullscreen', hosted: true });`, then: `T.rtPageState('loading', 'Safari');` },
+  // … and before its first data (the root's m-starting): the theme's skeleton, the loader's card with no words.
+  starting: { start: `T.rtStartEmpty('empty');`, page: false, space: false },
 };
 
-for (const [state, { start, then = '', page = true }] of Object.entries(STATES)) {
+for (const [state, { start, then = '', page = true, space: spaces = true }] of Object.entries(STATES)) {
   for (const space of ['personal', 'work', 'studio']) {
     for (const mode of ['light', 'dark']) {
       writeFileSync(join(out, `${state}-${space}-${mode}.html`), `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0">${page ? MOCK(mode === 'dark') : ''}<script>${script}</script><script>
@@ -50,7 +55,7 @@ for (const [state, { start, then = '', page = true }] of Object.entries(STATES))
   const loaded = await T.loadBuiltin(${pkg}, ${JSON.stringify(id)}, []);
   if (!loaded.ok) throw new Error('the theme did not load');
   ${start}
-  ${space === 'personal' ? '' : `T.rtApply('switchSpace', ${JSON.stringify(space)});`}
+  ${space === 'personal' || !spaces ? '' : `T.rtApply('switchSpace', ${JSON.stringify(space)});`}
   ${then}
   window.shown = true;
 })().catch((e) => { window.failed = String(e && e.stack || e); });

@@ -1,7 +1,8 @@
 #!/bin/bash
 # Pictures of a theme with macOS's real materials (Liquid Glass), with nothing on screen.
 #   tools/glass-shots/run.sh [out dir] [theme id]      (default: <tmp>/margin-glass-shots, liquid-glass)
-# For each state (sidebar, palette, menu, editor, notice, launcher), in light and dark, in two spaces: the window
+# For each state (sidebar, palette, menu, editor, notice, launcher, loading: the page card while an item opens, and
+# starting: the theme before its first data), in light and dark, in two spaces: the window
 # server's picture of an off-screen window (shot.swift), <out>/glass-<state>-<space>-<mode>.png at 1512 × 982 (2× where
 # the Mac has a Retina display), and the material layers' boxes, checked: none past the window's sides, none larger
 # than the largest panel the theme draws. Needs macOS 26 or later (older: the plain look, said so). Never part of
@@ -17,7 +18,7 @@ PAGES="$(mktemp -d)"
 trap 'rm -rf "$PAGES"' EXIT
 "$NODE" pages.mts "$PAGES" "$THEME" >/dev/null
 status=0
-for state in sidebar palette menu editor notice launcher; do
+for state in sidebar palette menu editor notice launcher loading starting; do
   for look in work-light studio-dark personal-light; do
     name="$state-$look"
     log="$(build/shot "$PAGES/$name.html" --size 1512x982 --"${look##*-}" --best --layers --capture "$OUT/glass-$name.png")"

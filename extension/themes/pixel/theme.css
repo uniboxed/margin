@@ -257,6 +257,69 @@
 /* A name edited in place (Margin's m-rename). */
 .m-renaming { outline: 2px solid var(--yellow); outline-offset: 2px; background: var(--deep); color: var(--ink); min-width: 2ch; text-transform: none; text-overflow: clip; }
 
+/* The page card while an item opens (Margin.app: the root's m-page-state):
+   opaque, exactly over the page's place inside the pixel border, whatever
+   the app behind it is doing. A meter of eight cells that fills in steps in
+   the space's color; over it an hourglass, Margin's words in the pixel type
+   and a block cursor. It stays there, see-through, in every other state, and
+   goes in two steps over the window that's shown (the part in it at once).
+   Starting (m-starting, before the first data): the same card and meter, no
+   words. The meter is two boxes over a dark slot in the card's own
+   background: the fill, scaled from its left end in steps, and over it the
+   frame, whose bars part the cells. */
+.pixel .page-loader {
+  position: absolute;
+  top: var(--gutter);
+  right: var(--gutter);
+  bottom: var(--gutter);
+  left: var(--page-left);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: linear-gradient(var(--side), var(--side)) center / 246px 28px no-repeat, radial-gradient(var(--dots) 1px, transparent 1px) 0 0 / 16px 16px var(--ground);
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .12s steps(2), visibility 0s linear .12s;
+}
+.pixel:is([m-page-state="loading"], [m-starting][m-page-state="empty"]) .page-loader { opacity: 1; visibility: visible; pointer-events: auto; transition: none; }
+.opening { position: relative; justify-self: stretch; display: grid; place-items: center; }
+/* The fill, and the frame over it (the slot's own two boxes while starting: it has no part then). */
+.opening-fill, .pixel[m-starting][m-page-state="empty"] .page-loader::before { content: ""; grid-area: 1 / 1; width: 240px; height: 28px; margin-right: 6px; background: var(--space); transform-origin: left; transform: scaleX(0); animation: px-fill 1.8s steps(9, jump-none) infinite; }
+.opening-frame, .pixel[m-starting][m-page-state="empty"] .page-loader::after {
+  content: "";
+  grid-area: 1 / 1;
+  position: relative; /* (over the fill, which its transform lifts) */
+  width: 246px;
+  height: 28px;
+  background:
+    linear-gradient(var(--deep), var(--deep)) 0 0 / 100% 6px no-repeat,
+    linear-gradient(var(--deep), var(--deep)) 0 100% / 100% 6px no-repeat,
+    repeating-linear-gradient(90deg, var(--deep) 0 6px, transparent 6px 30px);
+  box-shadow: var(--pxb);
+}
+@keyframes px-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.opening-head { position: absolute; bottom: calc(100% + 24px); display: flex; align-items: center; gap: 12px; max-width: min(620px, 100% - 48px); white-space: nowrap; }
+.opening-glass { width: 18px; height: 22px; color: var(--ink); animation: px-glass 2.4s steps(1) infinite; }
+.opening-glass .sand { fill: var(--yellow); }
+@keyframes px-glass { 0%, 70% { transform: rotate(0deg); } 80% { transform: rotate(90deg); } 90%, 100% { transform: rotate(180deg); } }
+.opening-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 1.5; text-transform: uppercase; color: var(--ink); }
+.opening-caret { flex-shrink: 0; width: 8px; height: 14px; margin-left: -6px; background: var(--green); }
+.pixel.blink .opening-caret { animation: px-blink 1s steps(1) infinite; }
+
+/* Starting (m-starting: the theme's first frame, before its data): the
+   sidebar with nothing in it yet. The space's name as a block, three blank
+   rows under "New tab" that blink in two steps, no counts and no STAGE CLEAR.
+   Drawn on what's already there, and gone with the attribute. */
+.pixel[m-starting] .space-name { flex: none; width: 96px; height: 14px; background: var(--field); }
+.pixel[m-starting] :is(.world, .count, .stage-clear) { display: none; }
+.pixel[m-starting] .today::before { content: ""; height: 32px; margin-bottom: 68px; background: var(--hover); box-shadow: 0 34px 0 var(--hover), 0 68px 0 var(--hover); animation: px-wait 1s steps(2, jump-none) infinite alternate; }
+@keyframes px-wait { to { opacity: .45; } }
+
 /* The page loading: a stepped bar marching along the card's top border. */
 .load-bar { position: absolute; top: calc(var(--gutter) - 3px); left: var(--page-left); right: var(--gutter); height: 3px; z-index: 4; pointer-events: none; background: repeating-linear-gradient(90deg, var(--yellow) 0 12px, var(--red) 12px 24px) 0 0 / 24px 100%; opacity: 0; visibility: hidden; transition: opacity .2s steps(2), visibility 0s linear .2s; }
 .load-bar.on { opacity: 1; visibility: visible; transition: opacity .2s steps(2); animation: px-march .4s steps(4) infinite; }
@@ -409,4 +472,8 @@
   .tab.busy .fav, .eq i, .load-bar.on, .reload.loading .pix { animation: none; }
   .column.m-settling .swipes, .gesture, .load-bar { transition: none; }
   .gesture, .gesture .pix { animation: none !important; translate: none; }
+  /* The page card's meter stands half full, its hourglass and cursor still, the skeleton doesn't blink, the card goes at once. */
+  .opening-fill, .pixel[m-starting][m-page-state="empty"] .page-loader::before { animation: none; transform: scaleX(.5); }
+  .opening-glass, .pixel.blink .opening-caret, .pixel[m-starting] .today::before { animation: none; }
+  .pixel .page-loader { transition: none; }
 }

@@ -206,6 +206,54 @@
    The page itself goes inside the border. */
 .page { flex: 1; min-width: 0; position: relative; z-index: 0; border: var(--edge) solid var(--ink); border-radius: var(--radius); box-shadow: 6px 6px 0 var(--ink), 0 0 0 100vmax var(--space); transition: box-shadow .3s; }
 
+/* The page card while an item opens (Margin.app: the root's m-page-state):
+   opaque, exactly over the page's place inside the card's border, whatever
+   the app behind it is doing. Margin's words in the heavy type over a chunky
+   bar in the space's color (thick border, hard shadow), a striped block
+   running along it. It stays there, see-through, in every other state, to
+   fade out over the window that's shown: the part in it goes at once, the
+   card in 120 ms. Starting (m-starting, before the first data): the same
+   card and bar, no words. */
+.nb .page-loader {
+  position: absolute;
+  top: calc(var(--frame) + var(--edge));
+  right: calc(var(--frame) + var(--edge));
+  bottom: calc(var(--frame) + var(--edge));
+  left: calc(var(--page-left) + var(--edge));
+  z-index: 2;
+  --bar: min(380px, 100% - 56px); /* (the bar's width: narrower in a small window; the block runs a share of it) */
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: max(0px, var(--radius) - var(--edge));
+  background: radial-gradient(rgba(17, 17, 17, .1) 1.2px, transparent 1.2px) 0 0 / 18px 18px var(--cream);
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .12s linear, visibility 0s linear .12s;
+}
+.nb:is([m-page-state="loading"], [m-starting][m-page-state="empty"]) .page-loader { opacity: 1; visibility: visible; pointer-events: auto; transition: none; }
+.opening { position: relative; justify-self: stretch; display: grid; place-items: center; }
+/* The bar, and the block that runs along it (the slot's own two boxes while starting: it has no part then). */
+.opening-bar, .nb[m-starting][m-page-state="empty"] .page-loader::before { content: ""; grid-area: 1 / 1; box-sizing: border-box; width: var(--bar); height: 48px; border: 3px solid var(--ink); border-radius: 12px; background: var(--space); box-shadow: 6px 6px 0 var(--ink); }
+.opening-run, .nb[m-starting][m-page-state="empty"] .page-loader::after { content: ""; grid-area: 1 / 1; box-sizing: border-box; width: calc((var(--bar) - 18px) * .2873); height: 30px; border: 3px solid var(--ink); border-radius: 6px; background: repeating-linear-gradient(-45deg, var(--ink) 0 5px, var(--paper) 5px 10px); transform: translateX(-124%); animation: nb-run .7s cubic-bezier(.7, 0, .3, 1) infinite alternate; }
+@keyframes nb-run { from { transform: translateX(-124%); } to { transform: translateX(124%); } }
+.opening-label { position: absolute; bottom: calc(100% + 22px); max-width: min(560px, 100% - 56px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: 'Archivo Black', sans-serif; font-size: clamp(20px, 2.4vw, 30px); line-height: 1.15; letter-spacing: -.5px; text-transform: uppercase; color: var(--ink); }
+
+/* Starting (m-starting: the theme's first frame, before its data): the
+   sidebar's shapes with nothing in them. The space's name as an ink bar, an
+   empty folder card, three rows under NEW TAB, two blank chips; the rows
+   blink, softly. Drawn on what's already there, and gone with the attribute. */
+.nb[m-starting] .space-name { flex: none; width: 58%; height: 24px; border-radius: 6px; background: var(--ink); }
+.nb[m-starting] .space-head .pill { visibility: hidden; }
+.nb[m-starting] .folders::before { content: ""; height: 36px; box-sizing: border-box; border: 2.5px solid var(--ink); border-radius: 12px; background: var(--paper); box-shadow: 3px 3px 0 var(--ink); }
+.nb[m-starting] .today::before { content: ""; height: 34px; margin-bottom: 72px; border-radius: 8px; background: rgba(17, 17, 17, .16); box-shadow: 0 36px 0 rgba(17, 17, 17, .11), 0 72px 0 rgba(17, 17, 17, .06); animation: nb-wait .9s ease-in-out infinite alternate; }
+.nb[m-starting] .chips::before, .nb[m-starting] .chips::after { content: ""; flex: 1 0 34px; height: 44px; box-sizing: border-box; border: 2.5px solid var(--ink); border-radius: 10px; background: var(--paper); box-shadow: 3px 3px 0 var(--ink); }
+@keyframes nb-wait { to { opacity: .5; } }
+
 /* A hidden sidebar: the page takes the room; hovering the left edge (Margin's
    m-peek) shows the sidebar as a floating card over the page. */
 .peek-zone { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: var(--m-reveal-zone, 10px); z-index: 6; }
@@ -344,6 +392,10 @@
   .nb, .page, .btn, .chev, .column.m-settling .swipes { transition: none; }
   .loading .ico { animation: none; }
   .tab.busy .fav, .load-bar.on { animation: none; }
+  /* The page card's block stands in the middle of its bar, the skeleton doesn't blink, the card goes at once. */
+  .opening-run, .nb[m-starting][m-page-state="empty"] .page-loader::after { animation: none; transform: none; }
+  .nb[m-starting] .today::before { animation: none; }
+  .nb .page-loader { transition: none; }
   .gesture { transition: none; translate: none; }
   .gesture .ico { animation: none !important; }
 }
