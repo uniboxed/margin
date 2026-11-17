@@ -13,6 +13,7 @@ final class FakeDevWorld: DevHookWorld {
     func devKey(_ name: String) -> String? { hosted.append("key \(name)"); return nil }
     func devSidebar(width: Int) -> String? { hosted.append("sidebar \(width)"); return nil }
     func devFront() -> String { "mechanism level, page shown" }
+    func devPage(_ what: String, done: @escaping (String) -> Void) { done(what == "field" ? "focused true, length 3, palette true" : "at 120,600") }
     func devPicture(watch seconds: Double?, done: @escaping (String) -> Void) { done(seconds.map { "watched \($0) s" } ?? "page shown, page area painted 0 of 81") }
 }
 
@@ -44,6 +45,10 @@ func devHooksTests() {
         _ = hooks.heard(.host, ["say": "picture", "watch": "900"])
         check("dev hook: host say picture: the page area in Margin's own window's picture, once or watched (20 s at most)",
               hooks.lines.contains { $0.contains("dev hook: picture: page shown, page area painted 0 of 81") } && hooks.lines.contains { $0.contains("dev hook: picture: watched 20.0 s") }, "\(hooks.lines.suffix(4))")
+        _ = hooks.heard(.host, ["say": "field"])
+        _ = hooks.heard(.host, ["say": "spot"])
+        check("dev hook: host say field and spot: the focused field's length only, an empty point of the sidebar",
+              hooks.lines.contains { $0.contains("dev hook: field: focused true, length 3") } && hooks.lines.contains { $0.contains("dev hook: spot: at 120,600") }, "\(hooks.lines.suffix(4))")
     }
     do {
         let (_, hooks) = setup()

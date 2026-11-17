@@ -1,29 +1,30 @@
 // Margin's own window (docs/MARGIN-APP.md, phase 2): a regular app window,
-// windowed or full screen (its own Space), with Margin's UI drawn edge to edge
-// under a transparent title bar. Its corners are rounded as macOS draws a
-// window's. It's in front of what it hosts (a hosted window is a member of its
-// full-screen Space, under it, in its page area: HostedSession.swift): filled
-// everywhere but, while a hosted window is shown, that window's bounds (the
-// hole: MarginWindowController `updateHole`, WindowGroundView below), where
-// the pointer goes through to the app; with nothing hosted, its page area is
-// the theme's launcher (ui/host-app.ts) and nothing shows or passes through.
-// It's always full screen (`locksFullScreen`: AppKit's toggle refused once
-// it's in).
+// windowed or full screen (its own Space). It's always full screen
+// (`locksFullScreen`: AppKit's toggle refused once it's in). Since 2026-11-17
+// ("Margin's UI never makes the hosted app inactive") it's only the base: it
+// owns Margin's full-screen Space (Spaces, Mission Control and the hosting rest
+// on it), is kept in front of what it hosts (its level, or its order), draws
+// nothing (its background clear) and, in full screen, ignores the mouse. Margin's
+// UI is drawn in its child, MarginPanel below: a non-activating panel laid
+// exactly over it, so a press in Margin's UI never makes Margin the active app
+// and the hosted app keeps its active look (as Spotlight's panel does).
 //
 // - MarginWindow: the NSWindow. `pageRect` is the page area in the window
 //   server's coordinates (top left, points), published with `onPageRectChange`
 //   by its controller (MarginWindowController.swift) from the UI's own layout
-//   report (`<m-page>`, ui/render.ts measure()) and the window's frame. A press
-//   in a theme's drag region (`<m-drag-region>`) moves the window, a double
-//   press zooms it; its buttons go where the theme draws `<m-window-controls>`.
+//   report (`<m-page>`, ui/render.ts measure()) and the window's frame.
+// - MarginPanel: what's drawn and what takes the mouse and, when a field of Margin's wants them, the keys: the web
+//   view, the ground with the hole (WindowGroundView), the catch fill (PassThrough.swift). A press in a theme's
+//   drag region (`<m-drag-region>`) moves the window, a double press zooms it; the window's buttons go where the
+//   theme draws `<m-window-controls>` (the panel lets the pointer through to them while windowed).
 // - MarginWindowGeometry: the arithmetic, on its own (tests/margin-window-tests.swift).
 // - MarginMenu: Margin's menu bar in this mode (its menu items, no global hot keys).
 //
-// In the tests (`harness`) the window is never on a display: AppKit makes a
+// In the tests (`harness`) neither window is ever on a display: AppKit makes a
 // titled window asked for off every display on the main one (seen 2026-11-15),
-// so it's put back where it was asked for at once; it's ordered in only while
-// its frame is off every display (as the overlays' tests' panels are), a frame
-// that touches one is refused, AppKit never moves it onto one, nothing is made
+// so it's put back where it was asked for at once; they're ordered in only while
+// their frame is off every display (as the overlays' tests' panels were), a frame
+// that touches one is refused, AppKit never moves them onto one, nothing is made
 // key.
 
 import AppKit
@@ -37,12 +38,6 @@ final class MarginWindow: NSWindow {
     private(set) var pageRect: CGRect?
     private(set) var pageRadius: CGFloat = 0
     var onPageRectChange: ((CGRect?) -> Void)?
-    // Where a press moves the window (the theme's <m-drag-region>s), top left in the content.
-    var dragRegions: [CGRect] = []
-    // Presses that moved or zoomed the window (the tests read it), and every press the window got (a press over the
-    // hole never comes here: it's the hosted app's).
-    private(set) var drags = 0
-    private(set) var presses = 0
     // Always full screen (MarginWindowController.Options.alwaysFullScreen): AppKit's toggle (the green button, a menu
     // item anywhere) refused while it's in full screen; into it always taken.
     var locksFullScreen = false
@@ -54,12 +49,10 @@ final class MarginWindow: NSWindow {
         titlebarAppearsTransparent = true
         titleVisibility = .hidden
         title = "Margin"
-        // (Not opaque to AppKit, so its corners stay rounded and the hole can show what's under it; filled, so no edge
-        // of it is ever see-through: seen 2026-11-15, a clear background showed the Desktop through its page area and
-        // edges at the first open. Clear only while a hosted window shows through, the ground drawn around it.)
+        // (Clear: it draws nothing; its panel draws Margin's UI, filled everywhere but the hole. Not opaque to AppKit.)
         isOpaque = false
-        backgroundColor = .windowBackgroundColor
-        hasShadow = true
+        backgroundColor = .clear
+        hasShadow = false
         isReleasedWhenClosed = false
         isMovableByWindowBackground = false
         tabbingMode = .disallowed // ⌘T is Margin's (a new tab in its UI), never AppKit's window tabs
@@ -106,6 +99,68 @@ final class MarginWindow: NSWindow {
         }
         super.setFrame(frameRect, display: flag)
     }
+}
+
+// Margin's UI over its full-screen window (DECISIONS.md "Margin's UI in a panel that never makes Margin active",
+// 2026-11-17): a borderless, non-activating, see-through panel exactly over MarginWindow, its child window (so it's in
+// Margin's Space and moves with it), at that window's level. A press in it doesn't make Margin the active app: the
+// hosted app stays active and keeps its active look. Key only while `allowKey` (a field of Margin's wants the keys,
+// or Margin is the active app anyway): a non-activating panel can be key while another app is active (Spotlight's
+// way). Never main.
+final class MarginPanel: NSPanel {
+    static let behavior: NSWindow.CollectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
+    var harness = false
+    var allowKey = false
+    weak var base: MarginWindow?
+    // Where a press moves the window (the theme's <m-drag-region>s), top left in the content.
+    var dragRegions: [CGRect] = []
+    // Presses that moved or zoomed the window (the tests read it), and every press Margin's UI got (a press over the
+    // hole never comes here: it's the hosted app's).
+    private(set) var drags = 0
+    private(set) var presses = 0
+    private(set) var refusedOrders = 0
+    // A press in it ended (the main button let go).
+    var pressEnded: (() -> Void)?
+
+    init(frame topLeft: CGRect, harness: Bool) {
+        self.harness = harness
+        super.init(contentRect: ScreenGeometry.appKitRect(topLeft), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        isOpaque = false
+        backgroundColor = .windowBackgroundColor
+        hasShadow = false
+        hidesOnDeactivate = false
+        isFloatingPanel = false
+        becomesKeyOnlyIfNeeded = true
+        isReleasedWhenClosed = false
+        isExcludedFromWindowsMenu = true
+        animationBehavior = .none
+        collectionBehavior = Self.behavior
+        acceptsMouseMovedEvents = true
+        ignoresMouseEvents = false
+        if harness { setFrame(ScreenGeometry.appKitRect(topLeft), display: false) }
+    }
+
+    override var canBecomeKey: Bool { allowKey }
+    override var canBecomeMain: Bool { false }
+
+    var onADisplay: Bool { NSScreen.screens.contains { $0.frame.intersects(frame) } }
+
+    override func order(_ place: NSWindow.OrderingMode, relativeTo otherWin: Int) {
+        guard harness, place != .out, onADisplay else { return super.order(place, relativeTo: otherWin) }
+        refusedOrders += 1
+        Diagnostics.warn("harness: not ordering Margin's panel in on a display (\(frame))")
+    }
+
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        harness ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
+
+    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        if harness, NSScreen.screens.contains(where: { $0.frame.intersects(frameRect) }) {
+            return Diagnostics.warn("harness: not putting Margin's panel on a display (\(frameRect))")
+        }
+        super.setFrame(frameRect, display: flag)
+    }
 
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown { presses += 1 }
@@ -114,12 +169,13 @@ final class MarginWindow: NSWindow {
             let topLeft = CGPoint(x: p.x, y: frame.height - p.y)
             if MarginWindowGeometry.inDragRegion(topLeft, dragRegions) {
                 drags += 1
-                // (A test's window never moves: zoomed or dragged, it would land on a display.)
-                if !harness { if event.clickCount == 2 { zoom(nil) } else { performDrag(with: event) } }
+                // (The window moved is the base; the panel, its child, moves with it. A test's window never moves.)
+                if !harness, let base { if event.clickCount == 2 { base.zoom(nil) } else { base.performDrag(with: event) } }
                 return
             }
         }
         super.sendEvent(event)
+        if event.type == .leftMouseUp { pressEnded?() }
     }
 }
 

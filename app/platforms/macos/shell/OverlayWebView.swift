@@ -33,8 +33,30 @@ final class OverlayWebView: WKWebView {
             && event.charactersIgnoringModifiers?.lowercased() == "r"
     }
 
+    // A field of Margin's has the keys while Margin isn't the active app (its panel key without it: MarginWindowController
+    // `takeKeys`): the menu bar is the hosted app's then, so the editing keys (⌘A, ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z) are sent
+    // from here as Margin's own Edit menu sends them (to the first responder: this web view, then its window's undo).
+    var takesEditKeys: () -> Bool = { false }
+
+    static func editAction(_ event: NSEvent) -> Selector? {
+        guard event.type == .keyDown else { return nil }
+        let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        switch (event.charactersIgnoringModifiers?.lowercased(), mods) {
+        case ("a", .command): return #selector(NSText.selectAll(_:))
+        case ("c", .command): return #selector(NSText.copy(_:))
+        case ("v", .command): return #selector(NSText.paste(_:))
+        case ("x", .command): return #selector(NSText.cut(_:))
+        case ("z", .command): return Selector(("undo:"))
+        case ("z", [.command, .shift]): return Selector(("redo:"))
+        default: return nil
+        }
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if Self.isBrowserReload(event), reloadBrowserTab?(event.isARepeat) == true { return true }
+        // (Up its own window's responder chain, from its first responder: never another window's, the key one being Margin's
+        // panel only by the window server's word.)
+        if let action = Self.editAction(event), takesEditKeys(), (window?.firstResponder ?? self).tryToPerform(action, with: self) { return true }
         return super.performKeyEquivalent(with: event)
     }
 
