@@ -95,8 +95,11 @@ for (const id of ORDER) {
     const s = await m.until(() => { const l = m.shell.layoutsSent.findLast((x) => x.windowId === windowId); return l && Date.now() - l.at < 60_000 && l.insets; }, { what: 'the theme\'s layout' });
     const drawn = (await slot(ui))!;
     for (const k of ['left', 'top', 'right', 'bottom'] as const) assert.ok(s[k] >= drawn[k] && s[k] - drawn[k] <= 4, `the layout inside the slot ${name} draws (${k}: ${s[k]} in ${drawn[k]})`);
-    const words = await text();
-    for (const w of ['Inbox — Post', 'Daily', 'Overview · Metrics', 'Canvas Tote', 'Getting started']) assert.ok(words.includes(w.toLowerCase()), `${name} draws "${w}"`);
+    // (Every row's words, once the theme has drawn them all: a theme switch draws in more than one frame.)
+    const want = ['Inbox — Post', 'Daily', 'Overview · Metrics', 'Canvas Tote', 'Getting started'];
+    let words = '';
+    await m.until(async () => { words = await text(); return want.every((w) => words.includes(w.toLowerCase())); }, { what: `${name}'s rows drawn`, timeout: 5000 }).catch(() => {});
+    for (const w of want) assert.ok(words.includes(w.toLowerCase()), `${name} draws "${w}"`);
     await shot('sidebar');
 
     // ---- the palette with results ----------------------------------------------------------------
