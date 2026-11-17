@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { inflateSync } from 'node:zlib';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, NEO } from './package.ts';
+import { pageLoaderChecks, rgba } from './page-card.ts';
 import type { Harness, HarnessRt } from './harness.ts';
 
 // What the harness puts on the page's window (harness.ts), as the page functions below read it.
@@ -339,6 +340,53 @@ for (const [name, engine] of ENGINES) {
         const alpha = /^rgba\(/.test(e.background!) ? Number(e.background!.split(',').at(-1)!.replace(')', '')) : 1;
         assert.ok(/^rgba?\(/.test(e.background!) && alpha === 1, `opaque: ${e.background}`);
         await page.evaluate(() => T.unmountRuntime());
+      });
+
+      // Neubrutalism's own page loader (Margin.app, while an item opens): a cream card, Margin's words in the heavy
+      // type over a chunky bar in the space's color (a thick ink border, a hard offset shadow), a striped block
+      // running along it.
+      await pageLoaderChecks(t, browser, {
+        id: 'neubrutalism', dir: NEO, script,
+        label: '.opening-label', mark: '.opening-run',
+        animations: ['nb-run'],
+        skeleton: [['.space-name', ''], ['.folders', '::before'], ['.today', '::before'], ['.chips', '::before'], ['.chips', '::after']],
+        starting: ['nb-run', 'nb-wait'],
+        look: async (page, ev) => {
+          const read = () => ev(() => ({ card: T.rtLoader()!.background, bar: T.rtRect('.opening-bar')!, run: T.rtRect('.opening-run')!, label: T.rtRect('.opening-label')!, slot: T.rtRect('m-page-loader')!,
+            fill: T.rtComputed('.opening-bar', 'background-color'), border: [T.rtComputed('.opening-bar', 'border-top-width'), T.rtComputed('.opening-bar', 'border-top-style'), T.rtComputed('.opening-bar', 'border-top-color')],
+            shadow: T.rtComputed('.opening-bar', 'box-shadow'), stripes: T.rtComputed('.opening-run', 'background-image'),
+            font: T.rtComputed('.opening-label', 'font-family'), size: parseFloat(T.rtComputed('.opening-label', 'font-size') ?? '0'), upper: T.rtComputed('.opening-label', 'text-transform'), ink: T.rtComputed('.opening-label', 'color') }));
+          const a = await read();
+          assert.deepEqual(rgba(a.card), [255, 253, 247, 1], 'a cream card');
+          assert.deepEqual([a.border[0], a.border[1], rgba(a.border[2])], ['3px', 'solid', [17, 17, 17, 1]], 'a thick ink border');
+          assert.match(a.shadow ?? '', /6px 6px 0px/, 'a hard offset shadow (no blur)');
+          assert.deepEqual(rgba(a.fill), [255, 210, 63, 1], 'the bar in the space\'s color');
+          assert.match(a.stripes ?? '', /repeating-linear-gradient/, 'a striped block');
+          assert.ok(Math.abs(a.bar.x - a.slot.x) <= 1 && Math.abs(a.bar.y - a.slot.y) <= 1, 'the bar in the card\'s middle');
+          assert.ok(a.label.bottom <= a.bar.top - 8 && Math.abs(a.label.x - a.bar.x) <= 1, 'the words over it');
+          assert.match(a.font ?? '', /Archivo Black/);
+          assert.deepEqual([a.upper, rgba(a.ink)], ['uppercase', [17, 17, 17, 1]], 'heavy, upper case, ink');
+          assert.ok(a.size >= 28, `large (${a.size}px)`);
+          assert.equal(await ev(() => document.fonts.check('30px "Archivo Black"')), true, 'its bundled font');
+          // The block runs along the bar, always inside its border.
+          const seen = new Set<number>();
+          for (let i = 0; i < 8; i++) {
+            const b = await read();
+            assert.ok(b.run.left >= b.bar.left + 3 && b.run.right <= b.bar.right - 3 && b.run.top >= b.bar.top + 3 && b.run.bottom <= b.bar.bottom - 3, `the block inside the bar (${JSON.stringify([b.run, b.bar])})`);
+            seen.add(Math.round(b.run.left));
+            await page.waitForTimeout(90);
+          }
+          assert.ok(seen.size >= 3, `… and moving (${[...seen]})`);
+          await ev(() => T.rtApply('switchSpace', 'work'));
+          assert.deepEqual(rgba((await read()).fill), [127, 179, 255, 1], 'another space, its color');
+          await ev(() => T.rtApply('switchSpace', 'personal'));
+        },
+        looks: [
+          ['Dark Mode: the same look', { colorScheme: 'dark' }, async (_page, ev) => {
+            assert.deepEqual(rgba((await ev(() => T.rtLoader()))!.background), [255, 253, 247, 1]);
+            assert.deepEqual(rgba(await ev(() => T.rtComputed('.opening-label', 'color'))), [17, 17, 17, 1]);
+          }],
+        ],
       });
 
       await t.test('no request was made, no error thrown', () => {
