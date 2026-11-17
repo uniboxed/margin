@@ -609,6 +609,10 @@ final class HostEngine {
                         // up in the current Space, over what's shown.)
                         host.gone = true
                         Diagnostics.note("host: \(host.id): its window \(host.window) gone while parked, its app running → reopen at its next show")
+                    } else if situation(host).replacement != nil {
+                        // (Its app made another already, the model's main window now: adopted by the reconciler, no click.)
+                        host.gone = true
+                        Diagnostics.note("host: \(host.id): shown, window \(host.window) gone, another of its app's its main window now → adopt")
                     } else if sys.reopen(pid: host.pid) {
                         host.gone = true
                         host.tries["reopen", default: []].append(sys.now())
@@ -691,7 +695,8 @@ final class HostEngine {
         let sameApp = hosts.values.filter { $0.pid == host.pid }
         let speaker = sameApp.first { $0.phase == .shown && shown == $0.id } ?? sameApp.min { $0.id.raw < $1.id.raw }
         guard speaker === host else { return s }
-        let keeps = sys.keepsWindowsAtQuit(pid: host.pid)
+        var keepsRead: Bool?
+        func keeps() -> Bool { if let k = keepsRead { return k }; let k = sys.keepsWindowsAtQuit(pid: host.pid); keepsRead = k; return k } // (read only for a leftover)
         for w in app.windows.values.sorted(by: { $0.number < $1.number }) where !parked.contains(w.number) && !others.contains(w.number) && w.number != host.window {
             switch w.kind {
             case .leftover:
@@ -701,7 +706,7 @@ final class HostEngine {
                 // Margin hosts (restored), its app discarding windows at quit, read by Accessibility on the current Space.
                 // Any other is parked: a twin, a launch window, one that may be the app's real main window.)
                 s.leftovers.append(HostOther(number: w.number, place: w.place, onScreen: w.onScreen,
-                                             closable: !keeps && w.number < host.window && w.place == .margin && s.marginCurrent && w.ax != nil))
+                                             closable: w.number < host.window && w.place == .margin && s.marginCurrent && w.ax != nil && !keeps()))
             case .strip:
                 // (Its full-screen toolbar, inside its window's frame at its top, is the app's own: left as it is.)
                 guard !(host.member && frame.insetBy(dx: -2, dy: -2).contains(w.bounds)) else { continue }
