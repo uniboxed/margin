@@ -2125,3 +2125,29 @@ so this update does not claim a new real switch or physical power-toggle run.
 
 1. **Dictionary, not running** (as step 1 above): hosted full screen at the page area. The log says `its window N chosen as …` (Accessibility's main window, or the one in a Space) and, if it was started hidden, maybe `chosen again before it's moved`; never a 3 s wait then `didn't list its window`.
 2. **The corners, Arcadia, TestPane shown.** Zoomed screenshot of each of the four corners: rounded at the card's own radius (compare with the launcher's corners with nothing hosted), the frame's grey outside, no dark arc or line anywhere along the page area's edges; TestPane's window flush with the page area (the log's `place` line and the window's bounds the same rect). Switch to another Desktop and back, then ⌘-Tab away and back: the corners still there. Neubrutalism: the ink border and bottom-right shadow round the corners; Pixel: square, nothing drawn. Calculator (window mode): the page area around it the window's own colour, not the frame's grey.
+
+## Hosted: the quit prompt and the sidebar's edge (2026-11-17)
+
+On the real screen, with the kit's TestPane (a full-screen member), Calculator (window mode) and one web item open in Margin. None of this could be seen off screen: what the eye sees, and the window server's timing. Stop at the first thing that's wrong; after each step Mission Control lists Margin's Space only and Margin is still full screen.
+
+**The quit prompt.** Before: `defaults read com.unibox.margin MarginAskBeforeQuit` (not set, or 1).
+
+1. **⌘Q with a hosted app in front** (click in TestPane first, then in a Safari page): Margin's prompt in the middle of Margin's window, above the app (and above the page card's corners), the app still the active one (its menu bar title unchanged). It reads "Are you sure you want to quit Margin?" and a line with numbers only (`Margin will close N open tabs and quit N apps it opened…`), no title, address or app's name. The log: `⌘Q with Margin or an app it hosts in front: Margin's quit prompt (…)`.
+2. **Cancel.** Escape: the prompt goes, nothing closed, typing goes to the app again at once. Again, then click in the app, in Margin's sidebar, and on another display or Desktop: gone each time, never left up. Again, then ⌘-Tab to Finder: gone.
+3. **Light and dark.** System Settings › Appearance, each way: a light card with dark text, a dark card with light text; the red Quit button in both. Switch while it's up: it follows.
+4. **⌘Q with Margin itself in front** (click the sidebar first): the same prompt. Margin's menu › Quit Margin (clicked) and the Dock's Quit: no prompt, Margin quits (as before).
+5. **Quit.** ⌘Q, then Return (and once more with ⌘Q twice): Margin quits as before (`Margin's quit … gave every host back`), TestPane and Calculator quit, their saved frames unchanged (`defaults read test.margin.pane | grep "NSWindow Frame"`), nothing left in Mission Control or the Dock.
+6. **An app Margin doesn't host** (Finder, TextEdit opened from the Dock): ⌘Q quits that app as ever, no prompt. The person's own Safari window on a Desktop (Safari opened the normal way, with a hosted window of Margin's in it too): ⌘Q there is Safari's.
+7. **Always quit.** ⌘Q, click Always quit: Margin quits; `defaults read com.unibox.margin MarginAskBeforeQuit` is 0. Open Margin, host a web item, ⌘Q in it: no prompt, the key is Safari's (Safari quits alone, as before this change: said in DECISIONS.md, to be decided). Back on: `defaults delete com.unibox.margin MarginAskBeforeQuit`, then ⌘Q asks again within a second (no relaunch).
+
+**The sidebar's edge.** In Arcadia, then Neubrutalism and Pixel. The handle is the last few points of the sidebar's right edge (the part over the page area is the hosted app's).
+
+1. **A full-screen member shown (TestPane), wider.** Drag the edge right, slowly: the sidebar follows the pointer, TestPane stays in sight and is covered by the sidebar as it grows (clipped by the page card, its corners round), never drawn over the sidebar. No flash as the drag begins (the moment Margin's window comes in front). Let go: the page area in the frame's colour with the theme's loading bar, then TestPane at the new page area in about 1–1.5 s, once (`the sidebar's edge dragged…`, one `placed again`, one `page area changed`), the corners at the new page area.
+2. **Narrower.** Drag left: the gap between the sidebar and TestPane is the frame's colour (never black, never the Desktop); let go: one placing, as above.
+3. **Safari's window shown.** The same two drags over a web page. Let go: Safari's window leaves and comes back once at the new size, its page not reloaded.
+4. **Window mode (Calculator, FaceTime).** The same: in sight while dragged, moved (FaceTime: resized) once when let go, with no blank page area in between; its saved frame unchanged after Margin quits.
+5. **A parked one.** After a drag with TestPane shown, click the web item's row: it's placed for the new page area as it comes in (the loading bar, once, about as long as step 1), never seen at its old size; back to TestPane: an instant switch.
+6. **Double-click on the handle:** the theme's default width, one placing. A press on the handle with no move: nothing happens.
+7. **Still full screen.** Through all of it Margin never leaves full screen (no `out of full screen by macOS`), its window its whole width, `host: place … reserving` the new page area's edges alone each time (never growing), nothing reserved on Margin's own Space.
+8. **Kept.** Quit Margin and open it again: the sidebar as wide as it was left (`defaults read com.unibox.margin MarginWindowThemeSettings`).
+9. **Fast and odd drags.** A fast flick; a drag past the theme's minimum and maximum; ⌘-Tab away mid-drag; a drag while an app is still opening (its loading bar): the sidebar never sticks, Margin's window always ends right below the hosted one (the app takes clicks again), one placing at most per drag.
