@@ -154,5 +154,49 @@ hosts a fixed list of his apps while he's away, after recording each app's saved
 4. Delete the special cases the reconciler made redundant (woken-window parking, the restored-window sweep,
    the various "found out of Margin's Space" paths), one at a time, the suite green after each.
 
+## Stage 3 as built (2026-11-17), and where it differs from the above
+
+`HostReconciler.swift` (pure, `tests/host-reconciler-tests.swift`: a table row per baseline case) and HostEngine applying
+it (`tests/host-behaviour-tests.swift`: every behaviour class hosted end to end in the stand-in world, the desired state
+read as the suite reads it). DECISIONS.md, "The hosting core, stage 3", has the why of each point.
+
+- **Desired:** `shown(placement)` (the one shown), `parked` (every other host), `givenBack` (Margin's quit, a row's
+  close): the last isn't reconciled, it's `HostEngine.closeNow`'s own sequence of give-back steps, as before.
+- **Not one loop for everything.** A first open and a show still run the engine's steps (`openNew`, `bringIn`), but their
+  decisions are the reconciler's: `launch`, `reopen` and `unhide` while there's no window (an app the person opened
+  running with none is reopened, never refused), `bringForward` when its window isn't listed until its app is, then the
+  placement from where the window is (`HostReconciler.firstPlacement`: `placeFromOwnSpace`, `outThenAsk`,
+  `askFullScreen`, `frameWindow`), done by the primitives (early path under the freeze, edge reservation, bridged moves).
+  The poll reconciles every host in steady state and applies one correction at a time in the engine's queue.
+- **The menu as built** (budget per show, or per 30 s for what's not tied to a show): `launch` 1, `reopen` 2, `unhide` 2,
+  `adopt` 20, `putBack` 3, `parkAgain` 3, a leftover's `closeLeftover`/`parkLeftover` 2, `parkStrip` 3, `frameWindow`
+  2 a show (a window-mode window not where it was framed), `bringForward` one try a rung (`activate`, `reopen`), then
+  `fallback`. One log line each: `host: <app>: <observed> → <correction>
+  (<budget left>)`.
+- **Off screen in Margin's Space:** `bringForward` is for a window-mode window only; never a Space made current or a
+  window moved for it (his 14:05 session: each was a jump), so no "re-add" rung. A full-screen member off screen in
+  place is still placed again (`backOnScreen`). Fallback: parked, nothing shown, the item kept, the show said failed.
+- **Out of Margin's Space while shown** (`putBack`) is still the poll's `strayed`/`bringBack` (not moved into the
+  reconciler yet: timing-sensitive, the last day's fixes; listed for later).
+- **Leftovers** are also the windows there as the first show of an app Margin started ended (`launchWindows`, the
+  kinds' rule 8b: Chameleon's restored windows had higher numbers than the one Margin chose). Closed by their own close
+  button only when surely harmless: made before the hosted window, its app discards windows at quit, Accessibility reads
+  it in Margin's Space; any other is parked (one private Space per app, its emptied full-screen Space destroyed) and
+  moved to its Desktop before its app is asked to quit. No `spare` kind was needed (transient stays nothing to do).
+- **Strips** are parked, not taken out of full screen; a full-screen member's own toolbar window (inside its frame, at
+  its top) is the app's and left alone.
+- **Replaced:** adopted as a window-mode window (fast, no full-screen change), its full screen tried again at its next
+  show from parked. Its window gone while shown (an app Margin started): a Dock-icon click (`kAEReopenApplication` sent
+  straight to its process, never through LaunchServices, which would give it a Dock icon), the window it makes adopted;
+  gone while parked: reopened at its next show, behind the loader.
+- **In front of Margin's window:** never a leftover, a strip or a transient (the model's kinds), nor anything over the
+  sidebar by more than 8 pt (was: a quarter of it).
+- **Window mode parked keeps the page area's frame**; it's given back only with the window (close, quit, a crash's
+  recovery from the marker): a switch to or from it is a move each way, no frame set, no freeze.
+- **Stage 4 so far:** the parked-in-a-user-Space path (now `parkAgain`) and the window-mode branch of the poll's
+  "not on screen" look (now `bringForward`). Left for later: `putBack` (above), the woken-window parking (Safari's woken
+  window may belong to an app Margin doesn't follow yet), the restored-window sweep (still the close half for Safari's
+  restored windows: its copy closes them).
+
 Not in scope here: live resize during a sidebar drag (separate research), the privileged route question
 (the bridged operations; awaiting Tirth), the sidebar click's brief key flicker.
