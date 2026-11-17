@@ -61,6 +61,9 @@ protocol HostSystem: AnyObject {
     // current Space's windows, so a window that opened on another one (Safari's, asked for while Margin's full-screen
     // Space is current) is found here. Nil: no list.
     func serverWindows(pid: pid_t) -> [ServerWindow]?
+    // Every app's windows on screen now (the current Spaces'), front to back; nil: no list. One read, for the poll's
+    // look for another app's window in Margin's Space (HostEngine `lookForOthers`).
+    func onScreenWindows() -> [ServerWindow]?
     func bounds(window: Int) -> CGRect? // model bounds, top-left coordinates; nil: gone or unknown
     func spaces(window: Int) -> [UInt64]? // its user Spaces (a private Space isn't one); nil: unknown
     func spaceType(_ space: UInt64) -> Int?
@@ -102,6 +105,8 @@ extension HostSystem {
     func focusedWindow(pid: pid_t) async -> Int? { nil }
     // (A stand-in that doesn't play it: unread, so the engine's early full screen isn't tried.)
     func fullScreenSpaceOwners() -> [UInt64: pid_t]? { nil }
+    // (A stand-in that doesn't play it: no list, so no other window is ever let in front.)
+    func onScreenWindows() -> [ServerWindow]? { nil }
 }
 
 // ---- the real one ----
@@ -445,6 +450,7 @@ final class RealHostSystem: HostSystem {
     }
 
     func serverWindows(pid: pid_t) -> [ServerWindow]? { CGWindowSource().read(of: [pid])?.filter { $0.pid == pid } }
+    func onScreenWindows() -> [ServerWindow]? { CGWindowSource().onScreen() }
     func bounds(window: Int) -> CGRect? { sky.modelBounds(of: window) }
     func spaces(window: Int) -> [UInt64]? { spacesRW.spaces(of: window) }
     func spaceType(_ space: UInt64) -> Int? { calls.spaceType(space) }

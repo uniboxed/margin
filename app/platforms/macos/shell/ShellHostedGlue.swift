@@ -56,7 +56,7 @@ final class NoHostEngine: HostedEngine {
     var hasHosts: Bool { false }
     func isHosted(_ id: HostID) -> Bool { false }
     func mode(of id: HostID) -> HostMode? { nil }
-    var shownAbove: Int? { nil }
+    var shownWindow: Int? { nil }
     func activateShown(at point: CGPoint?) async {}
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { nil }
     func target(ofWindow number: Int) -> HostTarget? { nil }
@@ -81,7 +81,7 @@ final class LateHostEngine: HostedEngine {
     var hasHosts: Bool { engine.hasHosts }
     func isHosted(_ id: HostID) -> Bool { engine.isHosted(id) }
     func mode(of id: HostID) -> HostMode? { engine.mode(of: id) }
-    var shownAbove: Int? { engine.shownAbove }
+    var shownWindow: Int? { engine.shownWindow }
     func activateShown(at point: CGPoint?) async { await engine.activateShown(at: point) }
     func fullScreenSpace(ofWindow number: Int) -> UInt64? { engine.fullScreenSpace(ofWindow: number) }
     func target(ofWindow number: Int) -> HostTarget? { engine.target(ofWindow: number) }
@@ -102,8 +102,9 @@ extension Shell {
         host.safariFullScreen = { [weak session] profile, id, on in await session?.safariFullScreen(profile, id, on) ?? false }
         host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
         host.loading = { [weak session] id in session?.loading(id) }
-        host.keepAbove = { [weak session] number in session?.keepBelow(number) }
+        host.hostedWindow = { [weak session] number in session?.hosted(number) }
         host.cover = { [weak session] number in session?.cover(number) }
+        host.others = { [weak session] number in session?.others(number) }
         let before = host.onEvent
         host.onEvent = { [weak session] event in
             before?(event)
@@ -146,6 +147,11 @@ extension Shell {
     func prepareBrowserOnce() {
         guard let session = hosted, host != nil, !browserPrepared else { return }
         browserPrepared = true
+        // (`defaults write com.unibox.margin MarginPrepareBrowser -bool NO`: no browser started or asked for a window at
+        // launch; the first web item opens it then. The on-screen checks that use only their own test apps set it.)
+        if !options.harness, UserDefaults.standard.object(forKey: "MarginPrepareBrowser") as? Bool == false {
+            return Diagnostics.note("hosted: browser not prepared at launch (MarginPrepareBrowser is NO)")
+        }
         let setting = UserDefaults.standard.string(forKey: DefaultBrowser.key)
         Task { await session.prepareBrowser(setting: setting) }
     }
@@ -168,6 +174,7 @@ extension Shell {
         windows.onLeftFullScreen = { [weak session] controller in session?.leftFullScreen(controller) }
         windows.onEnteredFullScreen = { [weak session] controller in session?.enteredFullScreen(controller) }
         windows.onPagePress = { [weak session] controller, at in session?.pagePressed(controller, at: at) }
+        windows.onFieldClosed = { [weak session] controller in session?.fieldClosed(controller) }
         windows.onSidebarResizing = { [weak session] controller, on in session?.sidebarResizing(controller, on) }
         windows.apps = { [weak self] in self?.appsJSON ?? "null" }
     }

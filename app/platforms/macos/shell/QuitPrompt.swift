@@ -1,7 +1,7 @@
 // Margin's own prompt on ⌘Q (asked 2026-11-07, after Arc's: "Are you sure you want to quit? … Always quit, Cancel,
 // Quit"; for Margin as the app since 2026-11-17: ShellQuit.swift says when it comes up and what each choice does).
 // Shown centred on Margin's window, above whatever is hosted there: a panel above normal and floating windows (a
-// hosted full-screen member, a window-mode app's window, the page card's corner panels), joining the Space that's
+// hosted full-screen member, a window-mode app's window, Margin's own window in front of them), joining the Space that's
 // current (Margin's full-screen one) without changing it, never in the window cycle. It
 // takes the keys without activating Margin, so a hosted app in front stays the active app.
 //
