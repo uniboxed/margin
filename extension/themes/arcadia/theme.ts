@@ -1,5 +1,6 @@
-// Arcadia, Margin's first theme: Arc's look (a gray frame around the page
-// card, a sidebar of space chips, pins and tabs, a dark command palette).
+// Arcadia, Margin's first theme: a sidebar window in the space's colour (the
+// page a rounded card in a tinted frame, an address pill, pins, folders and
+// tabs, a floating command bar).
 // The theme itself is the package in this folder (theme.json, theme.html,
 // theme.css: Margin 2, drawn by ui/runtime.ts). This file describes what the
 // background needs before anything draws it: its settings, and its sidebar's

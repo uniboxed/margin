@@ -47,7 +47,12 @@ function decodePng(buf: Buffer) {
   }
   return (x: number, y: number) => { const i = y * stride + x * bpp; return [out[i], out[i + 1], out[i + 2]]; };
 }
-const rgb = (css: string | null) => (/^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(css ?? '') ?? []).slice(1, 4).map(Number);
+// (A computed colour: "rgb(r, g, b)", or "color(srgb r g b)" for a mixed one: Arcadia's ground is the space's colour mixed into a near-white.)
+const rgb = (css: string | null) => {
+  const mixed = /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/.exec(css ?? '');
+  if (mixed) return mixed.slice(1, 4).map((v) => Math.round(Number(v) * 255));
+  return (/^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(css ?? '') ?? []).slice(1, 4).map(Number);
+};
 const near = (a: number[], b: number[], within = 3) => a.length === 3 && b.length === 3 && a.every((v, i) => Math.abs(v - b[i]) <= within);
 
 for (const [engineName, engine] of ENGINES) {

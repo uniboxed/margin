@@ -4,7 +4,7 @@ A theme is HTML and CSS, no JavaScript. Margin's runtime (`extension/ui/`)
 renders it from a view model, runs its buttons as checked actions, and
 gives it behaviors (drag and drop, resizing, menus…) through attributes.
 The built-in themes are packages like any other: `arcadia/` (Margin's
-default, today's look), `neubrutalism/` (uses every binding, behavior
+default: the window in the space's colour), `neubrutalism/` (uses every binding, behavior
 and part) and `pixel/` (an 8-bit game, dark only; every part, with pixel
 svg icons where Margin's words are guarded). Read them next to this guide. The plan behind it is `PLAN.md`
 §3 and §4.
@@ -255,7 +255,7 @@ host. Immutable: rows that didn't change are the same objects.
   page is loading, its page is being left (a link, ⌘R: before the next page
   arrives), or the site is running a navigation of its own. Draw it where it
   shows without a hover, the sidebar hidden too: Arcadia has a pill in the
-  frame's top strip and pulses a loading row's icon; Neubrutalism spins the
+  frame's top strip and a small spinner in a loading row's icon's place; Neubrutalism spins the
   reload button, marches a stripe along the gutter above the page and blinks
   a loading row's icon box.
 - Tab rows also have `open` and `notOpen`. Margin's sidebar is the real list

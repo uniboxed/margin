@@ -90,7 +90,7 @@ test('Arcadia\'s page card: its corner radius, shadow and frame, in plain CSS', 
   const radius = pkg.match(/\n  --card-radius: ([^;]+);/)![1];
   const shadow = decl(pkg, '.card-edge { pointer-events: none;', 'box-shadow');
   const frame = pkg.match(/\n  --frame: ([^;]+);/)![1];
-  assert.equal(radius, '6.25px');
+  assert.equal(radius, '10px');
   assert.ok(shadow && frame);
   // Plain CSS only: nothing for the browser to load (no images, no url()).
   assert.doesNotMatch(pkg, /border-image|url\(/);

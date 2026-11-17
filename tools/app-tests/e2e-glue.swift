@@ -271,20 +271,22 @@ func glueScenario() async {
   check("the app's window there, a member of Margin's Space, still full screen; Mission Control Margin's Space only", world.bounds(window: editWindow) == expected && world.inMargin == [editWindow]
         && world.wins[editWindow]?.fullScreen == true && world.listsMarginOnly && world.calls.last == "activate com.apple.TextEdit", "\(String(describing: world.bounds(window: editWindow))) \(world.calls.suffix(3))")
   check("Margin's window kept right below it", c.below == editWindow)
-  // (The page card's rounded corners over the hosted window: Arcadia's 6.25 pt radius, its frame's grey around them.)
+  // (The page card's rounded corners over the hosted window: Arcadia's 10 pt radius, its frame around them, which is
+  // the space's colour mixed into a near-white: read from the page, as it computes it.)
+  let frameCSS = (await js(c.webView, "return getComputedStyle(document.querySelector('m-page')).boxShadow.split(') ')[0] + ')'") as? String) ?? ""
   let radius = CGFloat(c.layout?.radii.first ?? 0), side = radius.rounded(.up)
   let page = expected ?? .zero
   let wantCorners = [CGRect(x: page.minX, y: page.minY, width: side, height: side), CGRect(x: page.maxX - side, y: page.minY, width: side, height: side),
                      CGRect(x: page.maxX - side, y: page.maxY - side, width: side, height: side), CGRect(x: page.minX, y: page.maxY - side, width: side, height: side)]
   check("the page card's corners drawn over the hosted window: one small panel each, at the page area's corners, the theme's frame colour, above normal windows, never taking the mouse",
-        radius > 0 && c.corners.isShown && c.corners.frames == wantCorners && c.layout?.fills == Array(repeating: "rgb(156, 157, 161)", count: 4) && c.layout?.edge == nil
+        radius > 0 && c.corners.isShown && c.corners.frames == wantCorners && frameCSS.hasPrefix("color(srgb ") && c.layout?.fills == Array(repeating: frameCSS, count: 4) && c.layout?.edge == nil
         && c.corners.panels.prefix(4).allSatisfy { $0.level == .floating && $0.ignoresMouseEvents && !$0.isOpaque && !$0.canBecomeKey && $0.collectionBehavior.contains(.transient) && !$0.collectionBehavior.contains(.canJoinAllSpaces) },
         "\(c.corners.frames) want \(wantCorners) fills \(String(describing: c.layout?.fills))")
   check("the hosted window placed in Margin's own full-screen frame (the area its own Space lays it out in), never the display less its inset",
         c.hostedPlacement?.area == c.contentFrame, "\(String(describing: c.hostedPlacement))")
-  let grey = HostCorners.color("rgb(156, 157, 161)")
-  check("under a hosted window covering the page area, the page area's ground is the frame's grey (any sliver it leaves is the frame, never dark)",
-        c.pageGround == grey && c.window.backgroundColor == grey, "\(String(describing: c.pageGround))")
+  let ground = HostCorners.color(frameCSS)
+  check("under a hosted window covering the page area, the page area's ground is the frame's colour (any sliver it leaves is the frame, never dark)",
+        ground != nil && c.pageGround == ground && c.window.backgroundColor == ground, "\(String(describing: c.pageGround)) \(frameCSS)")
   check("nothing passes through Margin's window while hosting", c.slot == nil && !c.window.ignoresMouseEvents)
   // (Its title: the app's name as the catalog read it, else its bundle id.)
   let title = library.items().first { $0.id == item }?.value["title"] as? String ?? "?"
