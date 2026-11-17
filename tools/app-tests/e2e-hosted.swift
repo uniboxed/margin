@@ -146,27 +146,50 @@ func hostedScenario() async {
   c.toggleFullScreen()
   check("windowed again", await waitJS(c.webView, "return marginApp.appWindow().mode === 'windowed'") && c.mode == "windowed")
 
-  // ---- always full screen, its toggle ignored (Margin not active, opened by a script): asked again as it activates ----
+  // ---- always full screen, opened while macOS wouldn't take the toggle (Margin not active; its window not on the
+  // current Space yet: opened from another app's full-screen Space, 2026-11-17): asked only once it would, and until it's in ----
   do {
-    var macOSEnters = false // (macOS's answer to the toggle: ignored until Margin is "active")
+    var ready = false, macOSEnters = true // (whether macOS would take the toggle now; its answer when asked)
     // (Its own source: a source tells one set of windows of its changes.)
     let always = MarginWindows(pages: pages, source: FakeWindowSource(source.state), options: .init(harness: true, alwaysFullScreen: true))
     defer { always.closeAll() }
     var o = MarginWindowController.Options()
     o.harnessEnters = { macOSEnters }
+    o.harnessReady = { ready }
     let w = always.open(o)
-    check("always full screen, the toggle ignored: asked once, not in", w.fullScreenAsks == 1 && !w.isFullScreen && w.fullScreenRetries == 0)
+    check("always full screen, its window not on the current Space yet: nothing asked (macOS would refuse it), waiting", w.fullScreenAsks == 0 && !w.isFullScreen && w.fullScreenWaits >= 1, "\(w.fullScreenAsks) \(w.fullScreenWaits)")
     w.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: w.window))
     w.windowDidBecomeMain(Notification(name: NSWindow.didBecomeMainNotification, object: w.window))
-    check("its window key, then main (still ignored): asked again once, not twice in one activation", w.fullScreenAsks == 2 && w.fullScreenRetries == 1 && !w.isFullScreen)
+    NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
+    check("its window key and main, Margin active, still not on the current Space: still nothing asked; Margin brought forward once for it, not at every event",
+          w.fullScreenAsks == 0 && !w.isFullScreen && w.fullScreenForwards == 1, "\(w.fullScreenAsks) \(w.fullScreenForwards)")
+    ready = true
+    NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+    let spaceIn = await until(1, { w.isFullScreen })
+    check("the Space changes and its window is on the current one: asked at once, in full screen", spaceIn && w.fullScreenAsks == 1, "\(w.fullScreenAsks)")
+    NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
+    w.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: w.window))
+    _ = await until(0.8, { false })
+    check("in full screen: no event and no look asks again", w.fullScreenAsks == 1 && w.isFullScreen)
+
+    // No event at all tells it: its own look finds out.
+    ready = false
+    let quiet = always.open(o)
+    let asksAtOpen = quiet.fullScreenAsks
+    ready = true
+    let lookedIn = await until(3, { quiet.isFullScreen })
+    check("no event as its window comes onto the current Space: its own look (0.3 s, then doubling) asks, in full screen", asksAtOpen == 0 && lookedIn && quiet.fullScreenAsks == 1,
+          "\(asksAtOpen) \(quiet.fullScreenAsks)")
+
+    // macOS refuses it though everything looks right: asked again with the back-off, not in a loop, until it's in.
+    macOSEnters = false
+    let stubborn = always.open(o)
+    _ = await until(1.6, { false })
+    let refused = stubborn.fullScreenAsks
+    check("macOS refuses the toggle: asked again and again with a back-off (after 1.6 s: the first ask and the looks at 0.3 and 0.9 s, not a loop), still not in", !stubborn.isFullScreen && (2...4).contains(refused), "\(refused)")
     macOSEnters = true
-    w.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: w.window))
-    check("key again in the same activation: still not asked (no loop)", w.fullScreenAsks == 2 && !w.isFullScreen)
-    NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
-    check("Margin active: asked again, in full screen", await until(3, { w.isFullScreen }) && w.fullScreenAsks == 3 && w.fullScreenRetries == 2, "\(w.fullScreenAsks) \(w.fullScreenRetries)")
-    NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
-    w.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: w.window))
-    check("in full screen: activations and key never ask again", w.fullScreenAsks == 3 && w.fullScreenRetries == 2 && w.isFullScreen)
+    let tookIt = await until(4, { stubborn.isFullScreen })
+    check("… and in as soon as macOS takes it (never given up while its window is open)", tookIt, "\(stubborn.fullScreenAsks)")
   }
 
   // ---- the source changed: drawn ----

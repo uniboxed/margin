@@ -23,9 +23,13 @@
 //   screen, then drawn: no windowed first frame); nothing of Margin's leaves full screen (no Enter/Exit Full Screen
 //   item, ⌃⌘F and the page's own ask refused while it's full screen); if macOS takes it out anyway (the green button,
 //   Mission Control), it goes straight back in, and the session hosts what it showed again (`onEnteredFullScreen`).
-//   macOS ignores the toggle for a window of an app that isn't active (opened by a script, cooperative activation
-//   refusing it: seen 2026-11-16), so while it isn't in, it's asked again as soon as Margin is active, the window key or
-//   main, or first on screen: once per activation of Margin, logged (`FullScreenRetry`; no timer, no loop).
+//   macOS takes the toggle only for a window of the active app that's on the current Space (opened by a script,
+//   cooperative activation refusing it: seen 2026-11-16; opened while another app's full-screen Space was current, its
+//   window on a Desktop macOS hadn't switched to yet: 2026-11-17, check10b/c: asked three times too early, refused,
+//   then never again). So it's asked only once that holds (`tryFullScreen`): at each event that can make it so (Margin
+//   active, its window key, main or on screen, the Space changed) and at a look of its own with a back-off (0.3 s
+//   doubling to every 5 s: `FullScreenRetry`), until it's in, for as long as the window is open; meanwhile Margin and
+//   its window are brought forward, so macOS shows the Space the window is on.
 // - Hosting (HostedSession.swift; DECISIONS.md "Margin's window in front of what it hosts", 2026-11-17): the window
 //   keeps its whole width in its own full-screen Space (never a tile, its size constraints never changed); its page
 //   draws its own layout with the sidebar docked and no launcher in the page area (`pageHosted`, ui/host-app.ts), and
@@ -70,10 +74,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         var pointerEvery: TimeInterval = 1.0 / 30 // the pointer handed to a page that wants it
         var showWithin: TimeInterval = 1.5 // shown by then even if its page hasn't said it's drawn
         var alwaysFullScreen = false // (MarginWindows sets it) shown only in full screen, never leaving it
-        var fullScreenWithin: TimeInterval = 3 // shown at once by then even if full screen didn't come (never left invisible)
-        // A test's stand-in for macOS's answer to a full-screen ask: false, ignored (as for an app that isn't active);
-        // nil: in at once.
+        var fullScreenWithin: TimeInterval = 10 // shown as it is by then if full screen still hasn't come (never left invisible); still asked
+        // A test's stand-in for macOS's answer to a full-screen ask: false, ignored; nil: in at once. And for whether
+        // macOS would take one now (Margin active, its window on the current Space); nil: yes.
         var harnessEnters: (() -> Bool)?
+        var harnessReady: (() -> Bool)?
         // An item not known to be slow keeps what's drawn this long before the loader shows (a switch between prepared
         // windows is tens of ms: no loader flash).
         var loaderGrace: TimeInterval = 0.12
@@ -159,9 +164,14 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // the first ask was made (shown), whether it's been on screen, and when AppKit last said it's on its way in.
     private(set) var fullScreenAsks = 0
     private(set) var fullScreenRetries = 0
+    private(set) var fullScreenWaits = 0 // looks at which macOS wouldn't have taken it: not asked (the tests read it)
+    private(set) var fullScreenForwards = 0 // times Margin and its window were brought forward meanwhile
     private var retry = FullScreenRetry()
+    private var retryTimer: Timer?
+    private var lastAskAt: Date?
+    private var lastForwardAt: Date?
+    private var waitingSaid: String?
     private var firstAsked = false
-    private var orderedIn = false
     private var willEnterAt: Date?
 
     init(id: Int, pages: OverlayPages, options: Options = Options()) {
@@ -209,7 +219,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     func load() {
         if options.harness { window.orderBack(nil) }
         // (A test's window: full screen is its state only, at once, or as its stand-in answers.)
-        if options.harness, options.alwaysFullScreen { firstAsked = true; enterFullScreen() }
+        if options.harness, options.alwaysFullScreen { firstAsked = true; tryFullScreen("its first ask") }
         pages.ready { [weak self] in self?.webView.load(URLRequest(url: OverlaySchemeHandler.page)) }
         guard !options.harness else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + options.showWithin) { [weak self] in self?.show() }
@@ -217,8 +227,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     func show() {
         guard !options.harness, !isClosed else { return }
-        // Always full screen: shown only once it's there. See-through, ordered in, taken to full screen; drawn when it
-        // has entered (windowDidEnterFullScreen), or after `fullScreenWithin` whatever happened (said).
+        // Always full screen: shown only once it's there. See-through, ordered in, taken to full screen as soon as macOS
+        // would take it (`tryFullScreen`); drawn when it has entered (windowDidEnterFullScreen). Still not in after
+        // `fullScreenWithin`: shown as it is (said), and still asked until it's in.
         if options.alwaysFullScreen, !isFullScreen {
             guard !enteringFirst else { return }
             enteringFirst = true
@@ -226,17 +237,17 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             window.alphaValue = 0
             window.makeKeyAndOrderFront(nil)
             NSApp.activate()
-            // (Its first ask; asked again only after it: its key and first-on-screen moments here come before it.)
+            // (Its first ask; its key and first-on-screen moments here come before it.)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
                 guard let self else { return }
                 self.firstAsked = true
-                self.enterFullScreen()
+                self.tryFullScreen("its first ask")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + options.fullScreenWithin) { [weak self] in
-                guard let self, !self.isClosed, self.window.alphaValue == 0 else { return }
-                Diagnostics.warn("Margin's window \(self.id): not in full screen within \(Int(self.options.fullScreenWithin)) s (\(self.fullScreenState)): shown as it is (asked again once Margin is active)")
+                guard let self, !self.isClosed, !self.isFullScreen, self.window.alphaValue == 0 else { return }
+                Diagnostics.warn("Margin's window \(self.id): not in full screen within \(Int(self.options.fullScreenWithin)) s (\(self.fullScreenState)): shown as it is, and asked until it's in")
                 self.window.alphaValue = 1
-                self.enteringFirst = false
+                self.isShown = true
             }
             return
         }
@@ -255,6 +266,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         guard !isClosed else { return }
         sidebarResizing(false)
         graceTimer?.invalidate()
+        retryTimer?.invalidate()
         isClosed = true
         pages.bridge.unregister(webView)
         webView.navigationDelegate = nil
@@ -628,6 +640,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         placeButtons()
         keepFront()
         if on {
+            retryTimer?.invalidate()
+            retryTimer = nil
+            retry.entered()
+            waitingSaid = nil
             if enteringFirst {
                 enteringFirst = false
                 window.alphaValue = 1
@@ -642,9 +658,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             if options.harness { return fullScreenChanged(true) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 guard let self, !self.isFullScreen, !self.isClosed else { return }
-                NSApp.activate()
-                self.window.makeKeyAndOrderFront(nil)
-                self.enterFullScreen()
+                self.firstAsked = true
+                self.tryFullScreen("out of full screen by macOS")
             }
         }
     }
@@ -664,30 +679,71 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         return true
     }
 
-    // Always full screen and not in (the toggle ignored: Margin wasn't active): asked again as Margin becomes active,
-    // its window key or main, or first on screen; once per activation (FullScreenRetry), never before its first ask.
-    func askFullScreenAgain(_ why: String) {
-        guard options.alwaysFullScreen else { return }
-        // (macOS ignores it while Margin isn't active: its activation asks then. A test's app never activates.)
-        guard options.harness || NSApp.isActive else { return }
-        let entering = window.styleMask.contains(.fullScreen) || willEnterAt.map { Date().timeIntervalSince($0) < 2 } == true
-        guard retry.shouldAsk(inFullScreen: isFullScreen, entering: entering, closed: isClosed, firstAsked: firstAsked) else { return }
-        fullScreenRetries += 1
-        Diagnostics.note("Margin's window \(id): not in full screen (\(fullScreenState)): asked again (\(why))")
-        // (Its window key and on the current Space first, as the toggle needs, then the toggle a moment later.)
-        if !options.harness, !window.isKeyWindow || !window.isOnActiveSpace {
-            window.makeKeyAndOrderFront(nil)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.enterFullScreen() }
-            return
-        }
-        enterFullScreen()
+    // Whether macOS would take the toggle now: Margin the active app, its window on screen in the current Space. (Opened
+    // while another app's full-screen Space is current, the window is on a Desktop macOS hasn't switched to yet: asked
+    // then, it's refused, `windowDidFailToEnterFullScreen`.) A test's window: its stand-in's answer.
+    var canAskFullScreen: Bool {
+        if options.harness { return options.harnessReady?() ?? true }
+        return NSApp.isActive && window.isVisible && window.isOnActiveSpace
     }
 
-    // Margin became active (MarginWindows): a new activation, so one more ask if it isn't in full screen.
-    func appBecameActive() {
-        retry.activated()
-        askFullScreenAgain("Margin active")
+    // Always full screen and not in: asked now if macOS would take it, at every event that can make it so and at a look
+    // of its own (`lookAgain`), until it's in. Not yet takeable: Margin and its window brought forward (macOS then shows
+    // the Space the window is on; a second apart, three times at most: after that it only waits, never taking the keys
+    // again and again from the app the person went on in), said once per state, nothing asked. Never before its first
+    // ask, nor while it's on its way in.
+    func tryFullScreen(_ why: String) {
+        guard options.alwaysFullScreen, firstAsked, !isFullScreen, !isClosed else { return }
+        let entering = window.styleMask.contains(.fullScreen) || willEnterAt.map { Date().timeIntervalSince($0) < 2 } == true
+        let ready = canAskFullScreen
+        let since = lastAskAt.map { Date().timeIntervalSince($0) } ?? .infinity
+        if retry.shouldAsk(inFullScreen: isFullScreen, entering: entering, closed: isClosed, firstAsked: firstAsked, ready: ready, sinceLastAsk: since) {
+            // (Takeable after a wait: its looks from the shortest delay again, so an ask macOS still refuses is made again soon.)
+            if waitingSaid != nil {
+                retry.takeable()
+                retryTimer?.invalidate()
+                retryTimer = nil
+            }
+            waitingSaid = nil
+            if fullScreenAsks > 0 {
+                fullScreenRetries += 1
+                Diagnostics.note("Margin's window \(id): not in full screen (\(fullScreenState)): asked again (\(why))")
+            }
+            lastAskAt = Date()
+            enterFullScreen()
+        } else if !entering, !ready {
+            fullScreenWaits += 1
+            let state = fullScreenState
+            if state != waitingSaid {
+                waitingSaid = state
+                Diagnostics.note("Margin's window \(id): full screen not asked yet (macOS takes it only with Margin active and its window on the current Space: \(state)): waiting (\(why))")
+            }
+            if retry.shouldForward(sinceLast: lastForwardAt.map { Date().timeIntervalSince($0) } ?? .infinity) {
+                lastForwardAt = Date()
+                fullScreenForwards += 1
+                if !options.harness {
+                    NSApp.activate()
+                    window.makeKeyAndOrderFront(nil)
+                }
+            }
+        }
+        lookAgain()
     }
+
+    // Still not in: looked at again after the back-off's next delay (one look pending at a time; none once it's in or closed).
+    private func lookAgain() {
+        guard options.alwaysFullScreen, !isFullScreen, !isClosed, retryTimer == nil else { return }
+        retryTimer = Timer.scheduledTimer(withTimeInterval: retry.nextLook(), repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.retryTimer = nil
+                self?.tryFullScreen("still not in")
+            }
+        }
+    }
+
+    // Margin became active (MarginWindows), or the current Space changed: macOS may take it now.
+    func appBecameActive() { tryFullScreen("Margin active") }
+    func spaceChanged() { tryFullScreen("the Space changed") }
 
     // The window's full screen asked (⌃⌘F, the page's own ask): refused while it's in full screen and always is.
     func toggleFullScreen() {
@@ -715,26 +771,24 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     func windowDidResize(_ notification: Notification) { updatePage(); placeButtons() }
     func windowDidChangeOcclusionState(_ notification: Notification) {
-        if !orderedIn, firstAsked, window.occlusionState.contains(.visible) {
-            orderedIn = true
-            askFullScreenAgain("first on screen")
-        }
+        if window.occlusionState.contains(.visible) { tryFullScreen("its window on screen") }
     }
     func windowDidMove(_ notification: Notification) { updatePage() }
     func windowWillEnterFullScreen(_ notification: Notification) { willEnterAt = Date() }
     func windowDidEnterFullScreen(_ notification: Notification) { willEnterAt = nil; fullScreenChanged(true) }
     func windowDidFailToEnterFullScreen(_ window: NSWindow) {
         willEnterAt = nil
-        Diagnostics.warn("Margin's window \(id): macOS didn't take it to full screen (\(fullScreenState))")
+        Diagnostics.warn("Margin's window \(id): macOS didn't take it to full screen (\(fullScreenState)): asked again")
+        lookAgain()
     }
     // About to leave full screen while hosting: the one shown parked first, while it's still in this window's Space.
     func windowWillExitFullScreen(_ notification: Notification) { if hosting { owner?.onLeavingFullScreen?(self) } }
     func windowDidExitFullScreen(_ notification: Notification) { willEnterAt = nil; fullScreenChanged(false) }
     func windowDidBecomeKey(_ notification: Notification) {
         owner?.becameKey(self); keepFront(); placeButtons()
-        askFullScreenAgain("its window key")
+        tryFullScreen("its window key")
     }
-    func windowDidBecomeMain(_ notification: Notification) { keepFront(); askFullScreenAgain("its window main") }
+    func windowDidBecomeMain(_ notification: Notification) { keepFront(); tryFullScreen("its window main") }
     func windowDidResignKey(_ notification: Notification) { placeButtons() }
     func windowWillClose(_ notification: Notification) { owner?.closed(self) }
 
@@ -951,7 +1005,7 @@ final class MarginWindows {
         let workspace = NSWorkspace.shared.notificationCenter
         frontObservers = [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification].map { name in
             workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront() } }
+                MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront(); c.spaceChanged() } }
             }
         }
     }
@@ -1037,20 +1091,41 @@ final class MarginWindows {
     }
 }
 
-// Always full screen (MarginWindowController): whether a window that isn't in full screen is asked again now. Never
-// before its first ask, nor while it's in or on its way in, nor once closed; otherwise once per activation of Margin
-// (macOS ignored the last ask if Margin wasn't active: the next activation is the next chance), so nothing loops.
+// Always full screen (MarginWindowController `tryFullScreen`): when a window that isn't in full screen is asked. Never
+// before its first ask, nor while it's in or on its way in, nor once closed; only when macOS would take it (`ready`:
+// Margin active, its window on the current Space), and not twice within `minGap`. And when it's looked at again if
+// nothing else happens: 0.3 s, doubling, then every 5 s, for as long as it isn't in (hosted-only Margin is always full
+// screen); from the start again once macOS would take it, and once it has been in.
 struct FullScreenRetry {
-    private(set) var activation = 0
-    private var askedIn = -1
+    static let delays: [TimeInterval] = [0.3, 0.6, 1.2, 2.4, 5]
+    static let minGap: TimeInterval = 0.25
+    static let forwardGap: TimeInterval = 1
+    static let forwardsMax = 3
+    private(set) var looks = 0
+    private(set) var forwards = 0
 
-    // Margin became active: one more ask allowed.
-    mutating func activated() { activation += 1 }
+    func shouldAsk(inFullScreen: Bool, entering: Bool, closed: Bool, firstAsked: Bool, ready: Bool, sinceLastAsk: TimeInterval) -> Bool {
+        !inFullScreen && !entering && !closed && firstAsked && ready && sinceLastAsk >= Self.minGap
+    }
 
-    // True: ask now (counted for this activation).
-    mutating func shouldAsk(inFullScreen: Bool, entering: Bool, closed: Bool, firstAsked: Bool) -> Bool {
-        guard !inFullScreen, !entering, !closed, firstAsked, askedIn != activation else { return false }
-        askedIn = activation
+    // The next look's delay.
+    mutating func nextLook() -> TimeInterval {
+        let delay = Self.delays[min(looks, Self.delays.count - 1)]
+        looks += 1
+        return delay
+    }
+
+    // While macOS wouldn't take it: whether Margin and its window are brought forward now (macOS then shows the Space
+    // the window is on). A second apart and three times at most until it has been in: Margin opened and left for
+    // another app's full-screen Space never takes that app's keys look after look.
+    mutating func shouldForward(sinceLast: TimeInterval) -> Bool {
+        guard forwards < Self.forwardsMax, sinceLast >= Self.forwardGap else { return false }
+        forwards += 1
         return true
     }
+
+    // macOS would take it now, after a wait: the looks from the shortest delay again.
+    mutating func takeable() { looks = 0 }
+
+    mutating func entered() { looks = 0; forwards = 0 }
 }

@@ -77,18 +77,24 @@ func marginWindowTests() {
     check("hosted: always full screen: no Enter/Exit Full Screen item, no ⌃⌘F, Toggle Sidebar still there", !always.contains { $0.action == #selector(NSWindow.toggleFullScreen(_:)) }
           && !always.contains { $0.keyEquivalent == "f" && $0.keyEquivalentModifierMask == [.command, .control] } && always.contains { $0.representedObject as? String == MarginMenuAction.toggleSidebar.rawValue })
     check("hosted: Margin's windows are always full screen by default", MarginWindows.Options().alwaysFullScreen && !MarginWindowController.Options().alwaysFullScreen)
-    // Its toggle ignored (Margin opened by a script, not active): asked again once per activation, never looping.
+    // Always full screen and not in: asked only when macOS would take it (Margin active, its window on the current
+    // Space), looked at again with a back-off until it's in.
     var retry = FullScreenRetry()
-    check("hosted: full screen: never asked again before its first ask", !retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: false))
-    check("hosted: full screen: not in after its first ask: asked again once", retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: true))
-    check("hosted: full screen: its window key or main again in the same activation: not asked again (no loop)", !retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: true))
-    retry.activated()
-    check("hosted: full screen: on its way in, or closed, when Margin activates: not asked, the activation's ask kept",
-          !retry.shouldAsk(inFullScreen: false, entering: true, closed: false, firstAsked: true) && !retry.shouldAsk(inFullScreen: false, entering: false, closed: true, firstAsked: true))
-    check("hosted: full screen: Margin active again, still not in: asked once more, then not", retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: true)
-          && !retry.shouldAsk(inFullScreen: false, entering: false, closed: false, firstAsked: true))
-    retry.activated()
-    check("hosted: full screen: already in when Margin activates: not asked", !retry.shouldAsk(inFullScreen: true, entering: false, closed: false, firstAsked: true))
+    func ask(_ r: FullScreenRetry, inFullScreen: Bool = false, entering: Bool = false, closed: Bool = false, firstAsked: Bool = true, ready: Bool = true, since: TimeInterval = .infinity) -> Bool {
+        r.shouldAsk(inFullScreen: inFullScreen, entering: entering, closed: closed, firstAsked: firstAsked, ready: ready, sinceLastAsk: since)
+    }
+    check("hosted: full screen: never asked before its first ask, while it's in, on its way in, or once closed", !ask(retry, firstAsked: false) && !ask(retry, inFullScreen: true) && !ask(retry, entering: true) && !ask(retry, closed: true))
+    check("hosted: full screen: not asked while macOS wouldn't take it (Margin not active, or its window not on the current Space yet: opened from another app's full-screen Space)", !ask(retry, ready: false))
+    check("hosted: full screen: asked once it would, and not twice within a quarter of a second", ask(retry) && !ask(retry, since: 0.1) && ask(retry, since: 0.3))
+    let looks = (0..<7).map { _ in retry.nextLook() }
+    check("hosted: full screen: looked at again after 0.3 s, doubling, then every 5 s, for as long as it isn't in (no end: Margin is always full screen)", looks == [0.3, 0.6, 1.2, 2.4, 5, 5, 5], "\(looks)")
+    retry.takeable()
+    check("hosted: full screen: macOS would take it after a wait: its looks from the shortest delay again (an ask still refused is made again soon)", retry.nextLook() == 0.3 && retry.nextLook() == 0.6)
+    let forwards = [Double.infinity, 0.4, 1, 1.5, 60, 60].map { retry.shouldForward(sinceLast: $0) }
+    check("hosted: full screen: while macOS wouldn't take it, Margin and its window brought forward a second apart, three times at most (never taking another app's keys look after look)",
+          forwards == [true, false, true, true, false, false], "\(forwards)")
+    retry.entered()
+    check("hosted: full screen: in: the back-off and the forwards from the start again the next time", retry.nextLook() == 0.3 && retry.shouldForward(sinceLast: .infinity))
     check("hosted: the standard app menu: About, Hide, Hide Others, Show All, Quit ⌘Q",
           [#selector(NSApplication.orderFrontStandardAboutPanel(_:)), #selector(NSApplication.hide(_:)), #selector(NSApplication.hideOtherApplications(_:)),
            #selector(NSApplication.unhideAllApplications(_:)), #selector(NSApplication.terminate(_:))].allSatisfy { sel in bar.items[0].submenu?.items.contains { $0.action == sel } == true }
