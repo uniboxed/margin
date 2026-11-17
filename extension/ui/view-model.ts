@@ -22,6 +22,8 @@ import { NEW_TAB } from '../shared/switching.ts';
 import { hostOf } from '../shared/dom.ts';
 import { rankPalette } from '../shared/search.ts';
 import { checkIconUrl } from './sanitize.ts';
+import { appIcon, appOfItem, isBundleId } from '../shared/apps.ts';
+import type { InstalledApp } from '../shared/apps.ts';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.ts';
 import type { MenuTarget } from './behaviors/menu-items.ts';
 import { settingsFields } from './settings-form.ts';
@@ -55,8 +57,11 @@ export type UiState = {
   justShown?: boolean,
   inNewTab?: boolean,
   launcherPage?: boolean,
-  /** Margin.app's own window: an item is being opened in the page area (its name, as the app says it): the page card's loader. */
-  pageOpening?: { name: string } | null,
+  /**
+   * Margin.app's own window: an item is being opened in the page area (its name, as the app says it): the page card's
+   * loader; `bundleId`: the app whose icon it shows (the app's own, the browser's for a web item), from the state's `apps`.
+   * */
+  pageOpening?: { name: string, bundleId?: string | null } | null,
   /** Margin.app's own window hosting another app's window beside it: no page area here (ui/host-app.ts pageOutside). */
   pageOutside?: boolean,
   /** The host keeps the sidebar docked (Margin.app's window hosting: a tile beside it, or an app's window in its page area). */
@@ -146,7 +151,7 @@ export type ViewModel = {
   gesture: GestureView | null,
   launcher: LauncherView | null,
   /** The page card's loader (the `page-loader` part), while an item opens in the page area: Margin's words for it. */
-  pageLoader: { name: string, label: string } | null,
+  pageLoader: { name: string, label: string, icon: string | null } | null,
   settingsForm: SettingsFormView | null,
   settings: Record<string, string | number | boolean>,
   platform: { browser: string, os: string },
@@ -183,12 +188,13 @@ export function abbreviate(name: string) {
   return letters.join('').toUpperCase();
 }
 
-function face(state: State, item: { url?: string, title?: string, favIconUrl?: string }, title: string): Face {
+function face(state: State, item: { url?: string, title?: string, favIconUrl?: string, target?: unknown }, title: string): Face {
   const url = item.url ?? '';
   // Margin's own pages (the new-tab page, the start page) have the extension's id for a host: never shown.
   const host = /^[a-z-]*-extension:/i.test(url) ? '' : hostOf(url);
+  // (An app item: the installed app's icon, V.iconFor; with none, its name's letter, not its bundle id's.)
   const icon = V.iconFor(state, item);
-  const { letter, color } = V.letterAvatar(host || title || '?');
+  const { letter, color } = V.letterAvatar((appOfItem(item) ? '' : host) || title || '?');
   return { title, url, host, icon: checkIconUrl(icon) ? icon : null, letter, color };
 }
 
@@ -274,7 +280,10 @@ function fresh(input: ViewModelInput): ViewModel {
   const gesture = ui.gesture ? gestureView(ui.gesture) : null;
   // (Margin's own words: the name is the app's or the item's, as Margin.app says it.)
   const loadingName = ui.pageOpening ? String(ui.pageOpening.name ?? '').slice(0, 120) : '';
-  const pageLoader = ui.pageOpening ? { name: loadingName, label: loadingName ? `Opening ${loadingName}…` : 'Opening…' } : null;
+  // Its icon: the installed app's, by the bundle id the app named (never bytes of the app's message), checked as a row's.
+  const loadingApp = ui.pageOpening && isBundleId(ui.pageOpening.bundleId) ? ui.pageOpening.bundleId : null;
+  const loadingIcon = loadingApp ? appIcon((state as { apps?: InstalledApp[] | null } | null)?.apps, loadingApp) : null;
+  const pageLoader = ui.pageOpening ? { name: loadingName, label: loadingName ? `Opening ${loadingName}…` : 'Opening…', icon: checkIconUrl(loadingIcon) ? loadingIcon : null } : null;
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
@@ -378,7 +387,7 @@ function fresh(input: ViewModelInput): ViewModel {
     const items = rankPalette(state, paletteUi.query ?? '', paletteContext(ui, input.platform));
     const at = items.length ? Math.min(Math.max(0, paletteUi.selected ?? 0), items.length - 1) : -1;
     rows = items.map((item, i) => {
-      const { letter, color } = V.letterAvatar(hostOf(item.url) || item.title || '?');
+      const { letter, color } = V.letterAvatar((appOfItem(item) ? '' : hostOf(item.url)) || item.title || '?');
       const icon = item.favIconUrl;
       return {
         id: item.id,

@@ -19,6 +19,7 @@ import type { LoadedTheme } from './theme-loader.ts';
 import type { UiState, ViewModel } from './view-model.ts';
 import type { State } from '../../types/margin';
 import { View } from './render.ts';
+import { checkIconUrl } from './sanitize.ts';
 import { buildViewModel, paletteItems } from './view-model.ts';
 import { BEHAVIOR_ONLY, checkAction, contextFromState, requestFor } from './actions.ts';
 import { resolveSettings } from './theme-loader.ts';
@@ -234,7 +235,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     inNewTab: !!host.inNewTab,
     launcherPage: !!host.launcher,
     // Margin.app's own window, an item opening in the page area: the page card's loader, with its name.
-    pageOpening: host.pageState === 'loading' ? { name: host.pageOpening ?? '' } : null,
+    pageOpening: host.pageState === 'loading' ? { name: host.pageOpening ?? '', bundleId: host.pageOpeningBundleId ?? null } : null,
     // Margin.app's own window hosting another app's window beside it: no page area here (ui/host-app.ts).
     pageOutside: !!(host as { pageOutside?: boolean }).pageOutside,
     // The sidebar kept docked by the host (Margin.app hosting: beside a tile, or under an app's window in window mode).
@@ -328,18 +329,27 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       defaultLoader = doc.createElement('m-page-loader');
       defaultLoader.setAttribute('m-default', '');
       defaultLoader.setAttribute('role', 'status');
+      // (The opening app's icon, the browser's for a web item: shown only with one, render.ts.)
+      const icon = doc.createElement('img');
+      icon.setAttribute('m-loader-icon', '');
+      icon.setAttribute('alt', '');
+      icon.setAttribute('aria-hidden', 'true');
       const spin = doc.createElement('span');
       spin.setAttribute('m-loader-spin', '');
       spin.setAttribute('aria-hidden', 'true');
       const label = doc.createElement('span');
       label.setAttribute('m-loader-label', '');
-      defaultLoader.append(spin, label);
+      defaultLoader.append(icon, spin, label);
     }
     if (defaultLoader.parentNode !== root) root.appendChild(defaultLoader);
     if (state === 'loading') {
       const label = (defaultLoader.lastChild as HTMLElement);
       const text = vm?.pageLoader?.label ?? '';
       if (label.textContent !== text) label.textContent = text;
+      const icon = (defaultLoader.firstChild as HTMLElement);
+      // (The view model's icon is checked already, checkIconUrl: checked again, as a theme's m-icon is.)
+      const src = checkIconUrl(vm?.pageLoader?.icon) ? vm!.pageLoader!.icon! : null;
+      if (icon.getAttribute('src') !== src) { if (src) icon.setAttribute('src', src); else icon.removeAttribute('src'); }
     }
     placeLoader();
   }

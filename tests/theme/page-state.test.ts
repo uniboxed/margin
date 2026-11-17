@@ -17,7 +17,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { harnessScript, themeForPage, ARCADIA, NEO, PIXEL, GLASS, themesInScope } from './package.ts';
-import { decodePng, cardPoints, px, W, H } from './page-card.ts';
+import { decodePng, cardPoints, px, W, H, APPS, ICONS } from './page-card.ts';
 import type { Harness } from './harness.ts';
 
 declare const T: Harness;
@@ -167,6 +167,14 @@ for (const [engineName, engine] of ENGINES) {
         let at = await shot();
         assert.deepEqual(inside.filter((p) => px(at, p)[3] < 250), [], 'loading: the page card opaque everywhere');
         assert.equal((await ev(() => T.rtPageState('loading', 'Notes'))).loader?.text, 'Opening Notes…', 'another item opening: its name');
+        await ev((apps) => T.rtApps(apps), APPS);
+        await ev(() => T.rtPageState('loading', 'Notes', 'com.apple.Notes'));
+        const icons = (await ev(() => T.rtLoaderIcons())).filter((i) => i.visible);
+        assert.deepEqual(icons.map((i) => [i.src === ICONS.notes, i.complete, i.natural, i.size]), [[true, true, [64, 64], [32, 32]]], "the opening app's icon over the spinner, 32 px");
+        await ev(() => T.rtPageState('loading', 'Example', 'com.apple.Safari'));
+        assert.deepEqual((await ev(() => T.rtLoaderIcons())).filter((i) => i.visible).map((i) => i.src === ICONS.safari), [true], "a web item: Safari's icon");
+        await ev(() => T.rtPageState('loading', 'Something', 'com.example.Gone'));
+        assert.deepEqual((await ev(() => T.rtLoaderIcons())).filter((i) => i.visible), [], 'an app not installed: no icon, the spinner and the words');
         await ev(() => T.rtPageState('shown'));
         const fading = (await ev(() => T.rtLoader()))!;
         assert.ok(fading.pointer === 'none' && parseFloat(fading.transition) <= 0.15 && parseFloat(fading.transition) > 0, `shown again: the loader lets the pointer through at once and fades in at most 150 ms (${fading.transition})`);

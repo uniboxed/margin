@@ -235,12 +235,14 @@
 
   <!-- Margin's notices: the board's RPG text box, a blinking ▼ in its corner. -->
   <!-- The page card's loader (Margin's words: guarded, so the game says it
-       with an icon): an hourglass, "OPENING SAFARI…" and a block cursor over
+       with an icon): an hourglass, the opening app's icon (Safari's for a web
+       item, drawn pixel for pixel), "OPENING SAFARI…" and a block cursor over
        a meter that fills cell by cell. -->
   <template m-part="page-loader">
     <div class="opening" role="status">
       <div class="opening-head">
         <svg class="pix opening-glass" viewBox="0 0 9 11" aria-hidden="true"><path d="M0 0h9v1H0zM0 10h9v1H0zM1 1h1v2H1zM7 1h1v2H7zM2 3h1v1H2zM6 3h1v1H6zM3 4h1v1H3zM5 4h1v1H5zM4 5h1v1H4zM3 6h1v1H3zM5 6h1v1H5zM2 7h1v1H2zM6 7h1v1H6zM1 8h1v2H1zM7 8h1v2H7z"></path><path class="sand" d="M2 2h5v1H2zM3 3h3v1H3zM4 4h1v1H4zM4 7h1v2H4zM2 9h5v1H2z"></path></svg>
+        <m-if test="pageLoader.icon"><img class="opening-icon" alt="" aria-hidden="true" m-icon="{{pageLoader.icon}}"></m-if>
         <span class="pf opening-label">{{pageLoader.label}}</span>
         <span class="opening-caret" aria-hidden="true"></span>
       </div>

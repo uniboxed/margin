@@ -52,9 +52,10 @@
 //   area. The sidebar's width is dragged there as anywhere (only a tile's is fixed: `sidebarFixed`):
 //   the app hears when a change of it begins and ends (`perform('sidebar.resizing', { on })`, behaviors/resize.ts)
 //   and places the hosted window once, when it's over. The page card's state comes with it: the hello's `pageState`
-//   and `pageOpening`, and `{ type: 'pageState', state, label }` (`pageState`: `shown`, the hosted window is in place
-//   and the page's place draws nothing; `loading`, an item is being opened or placed again, `label` its name: the
-//   card opaque with the loader; `empty`, nothing to show). The runtime puts it on the theme's root
+//   and `pageOpening`, and `{ type: 'pageState', state, label, bundleId }` (`pageState`: `shown`, the hosted window is
+//   in place and the page's place draws nothing; `loading`, an item is being opened or placed again, `label` its name:
+//   the card opaque with the loader, `bundleId` (the hello's `pageOpeningBundleId`) the app whose icon it shows, looked
+//   up in `apps`; `empty`, nothing to show). The runtime puts it on the theme's root
 //   (`m-page-state`, ui/runtime.ts).
 //
 // No browser API here: only the DOM and `post`.
@@ -255,6 +256,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   const nameOf = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 120) : null);
   let pageState: 'empty' | 'loading' | 'shown' = pageStateOf(hello?.pageState);
   let pageOpening: string | null = pageState === 'loading' ? nameOf(hello?.pageOpening) : null;
+  let pageOpeningBundleId: string | null = pageState === 'loading' && isBundleId(hello?.pageOpeningBundleId) ? hello.pageOpeningBundleId : null;
   // Installed apps, as the app read them (null: none read yet).
   let apps = appsOf(hello?.apps);
   let layout: Geometry | null = null;
@@ -335,6 +337,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     /** The page card's state (Margin's own window; undefined over a browser: its page is always there). */
     get pageState() { return appWindow ? pageState : undefined; },
     get pageOpening() { return pageOpening; },
+    get pageOpeningBundleId() { return pageOpeningBundleId; },
     /** The sidebar kept docked while hosting (beside a tile, or under a window-mode app's window), whatever its setting. */
     get sidebarDocked() { return pageOutside || pageHosted; },
     // The overlay stays on screen through a switch (ui/runtime.ts: the highlight waits for the state).
@@ -464,9 +467,11 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (!appWindow) return;
           const next = pageStateOf(msg.state);
           const name = next === 'loading' ? nameOf(msg.label) : null;
-          if (next === pageState && name === pageOpening) return;
+          const bundleId = next === 'loading' && isBundleId(msg.bundleId) ? msg.bundleId : null;
+          if (next === pageState && name === pageOpening && bundleId === pageOpeningBundleId) return;
           pageState = next;
           pageOpening = name;
+          pageOpeningBundleId = bundleId;
           return emit();
         }
         case 'themes':

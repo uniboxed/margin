@@ -350,7 +350,10 @@ func glueScenario() async {
   let states = c.pageStates
   check("the page card `loading` as the app launched (the engine's slow step: at once, with its name), nothing of Margin's window see-through then; `shown` once its window was in place",
         cardAtLaunch["com.apple.TextEdit"] == "loading hole none ground whole clear false" && states == ["loading com.apple.TextEdit", "shown"]
-        && c.pushed.contains(#"{"type":"pageState","state":"loading","label":"com.apple.TextEdit"}"#) && c.pushed.contains(#"{"type":"pageState","state":"shown","label":null}"#) && c.pageState == .shown, "\(cardAtLaunch) \(states)")
+        && c.pushed.contains(#"{"type":"pageState","state":"loading","label":"com.apple.TextEdit","bundleId":"com.apple.TextEdit"}"#) && c.pushed.contains(#"{"type":"pageState","state":"shown","label":null}"#) && c.pageState == .shown, "\(cardAtLaunch) \(states)")
+  check("an app item's loader: the pageState message names the app's bundle id (the page shows its icon), and only while loading",
+        c.pushed.filter { $0.contains(#""type":"pageState""#) && $0.contains(#""state":"loading""#) }.allSatisfy { $0.contains(#""bundleId":"com.apple.TextEdit""#) }
+        && c.pushed.filter { $0.contains(#""type":"pageState""#) && !$0.contains(#""state":"loading""#) }.allSatisfy { !$0.contains("bundleId") }, "\(c.pushed.filter { $0.contains("pageState") })")
   let rootShown = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader'); return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'shown' && !!l && !l.hasAttribute('m-default') && document.querySelectorAll('m-page-loader').length === 1 && l.textContent.trim() === '' && getComputedStyle(l).pointerEvents === 'none'")
   check("the theme's root says shown; the theme's own loader (Arcadia's slot, no default of Margin's beside it) has its part taken out and lets go as it's shown", rootShown)
   // (The page card's rounded corners: Arcadia's 10 pt radius, its frame around them, which is the space's colour mixed
@@ -438,6 +441,8 @@ func glueScenario() async {
   let safariWin = engine.hosts[HostTarget.safariWindow("s-default").id]?.window ?? 0
   check("the engine shows Safari's window in the page area, a member; the app parked, still full screen", engine.shown == HostTarget.safariWindow("s-default").id && engine.hosts[textEdit]?.phase == .parked
         && engine.pageRect == expected && world.inMargin == [safariWin] && world.bounds(window: safariWin) == expected && world.wins[editWindow]?.fullScreen == true && world.listsMarginOnly)
+  check("a web item's loader: the pageState message names Safari's bundle id (the browser it opens in: its icon)",
+        c.pushed.contains(#"{"type":"pageState","state":"loading","label":"Safari","bundleId":"com.apple.Safari"}"#), "\(c.pushed.filter { $0.contains("pageState") }.suffix(4))")
 
   // ---- back to the app: an instant switch, straight from shown to shown ----
   let statesBefore = c.pageStates.count
@@ -974,7 +979,7 @@ func glueResumeScenario() async {
   let hello = c.pageHello()
   check("as the window is made, before its page has loaded: hosting, the page card loading with the item's name, its hello saying so (the first frame is the loader, not the launcher)",
         c.hosting && c.pageState == .loading && c.loaderLabel == "Notes" && c.pageStates == ["loading Notes"] && hello.contains(#""pageHosted":true"#) && hello.contains(#""pageState":"loading""#)
-        && hello.contains(#""pageOpening":"Notes""#) && session.resuming == c.id, "\(c.pageStates) \(c.pageState.rawValue)")
+        && hello.contains(#""pageOpening":"Notes""#) && hello.contains(#""pageOpeningBundleId":"com.apple.Notes""#) && session.resuming == c.id, "\(c.pageStates) \(c.pageState.rawValue) \(hello.contains("pageOpeningBundleId"))")
   guard await until(15, { c.isReady }) else { return check("Margin's window's page drawn", false) }
   let first = await js(c.webView, "const r = document.querySelector('.arcadia'); const l = r?.querySelector('m-page-loader'); return [r?.getAttribute('m-page-state'), !!document.querySelector('.launcher'), l?.textContent ?? '', r?.dataset.sidebar].join('|')") as? String ?? "?"
   check("its page as it's first drawn: the theme's root loading (or already shown), no launcher, the loader with Margin's words, the sidebar docked",

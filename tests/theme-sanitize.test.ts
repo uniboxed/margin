@@ -118,6 +118,37 @@ test('bindings may only target allowed attributes', () => {
   }
 });
 
+// Margin.app's loader: the opening app's icon (ui/view-model.ts pageLoader.icon, checked with checkIconUrl as a
+// row's icon) binds as an icon does, and only in the loader.
+test('pageLoader.icon: an <img m-icon> (or an m-if or m-class test) in the page-loader part or its slot; anywhere else, or as text or another value, removed', () => {
+  const part = (inner: string) => wrap(`<m-page-loader></m-page-loader><template m-part="page-loader"><div class="opening">${inner}<span>{{pageLoader.label}}</span></div></template>`);
+  const ok = sanitizeTemplate(part('<m-if test="pageLoader.icon"><span m-class:with-icon="{{pageLoader.icon}}"><img alt="" m-icon="{{ pageLoader.icon }}"></span></m-if><m-if test="!pageLoader.icon"><i></i></m-if>'));
+  assert.deepEqual(ok.removed, [], 'in the part: an img\'s m-icon, an m-if, an m-class');
+  assert.equal(JSON.stringify(ok.tree).match(/pageLoader\.icon/g)?.length, 4);
+  assert.deepEqual(sanitizeTemplate(wrap('<m-page-loader><img alt="" m-icon="{{pageLoader.icon}}"></m-page-loader>')).removed, [], 'in the slot (its fallback)');
+  const bad = [
+    wrap('<img alt="" m-icon="{{pageLoader.icon}}">'), // (outside the loader)
+    wrap('<m-if test="pageLoader.icon"><i></i></m-if>'),
+    wrap('<template m-part="palette-row"><img alt="" m-icon="{{pageLoader.icon}}"></template>'),
+    part('<div m-icon="{{pageLoader.icon}}"></div>'), // (not an img)
+    part('<span title="{{pageLoader.icon}}"></span>'), part('<span data-icon="{{pageLoader.icon}}"></span>'),
+    part('<span m-attr:aria-label="{{pageLoader.icon}}"></span>'), part('<span m-style:--icon="{{pageLoader.icon}}"></span>'),
+    part('<img alt="" src="{{pageLoader.icon}}">'), part('<img alt="" m-attr:src="{{pageLoader.icon}}">'),
+    part('<m-for each="pageLoader.icon" as="x"><i></i></m-for>'),
+    part('<svg viewBox="0 0 1 1"><image href="{{pageLoader.icon}}"></image></svg>'),
+  ];
+  for (const html of bad) {
+    const r = sanitizeTemplate(html);
+    assert.ok(r.removed.length > 0, html);
+    assert.doesNotMatch(JSON.stringify(r.tree), /pageLoader\.icon/, html);
+  }
+  const text = sanitizeTemplate(part('<b>{{pageLoader.icon}}</b>'));
+  assert.ok(text.removed.some((x) => x.kind === 'text' && /pageLoader\.icon/.test(x.reason)), 'as text: removed');
+  assert.doesNotMatch(JSON.stringify(text.tree), /pageLoader\.icon/);
+  // (Its value is the view model's, checked as every icon: a data: image only, never an address.)
+  for (const v of ['https://evil.test/i.png', 'javascript:alert(1)', 'data:text/html;base64,PGI+', 'data:image/svg+xml,<svg/>']) assert.equal(checkIconUrl(v), false, v);
+});
+
 test('bindings are dotted paths only: no expressions, no prototype walks', () => {
   assert.deepEqual(parseInterpolation('{{a.b}} tabs').parts, [{ path: ['a', 'b'] }, ' tabs']);
   assert.deepEqual(parseInterpolation('{{ list.0.name }}').parts, [{ path: ['list', '0', 'name'] }]);

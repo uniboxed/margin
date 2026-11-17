@@ -12,7 +12,7 @@
 //   there, a handful of soft pulses at most; all gone a frame after the data is drawn. Never over a hosted window
 //   that's shown, never outside Margin.app.
 import assert from 'node:assert/strict';
-import { inflateSync } from 'node:zlib';
+import { crc32, deflateSync, inflateSync } from 'node:zlib';
 import type { TestContext } from 'node:test';
 import type { Browser, BrowserContextOptions, Page } from 'playwright';
 import { themeForPage } from './package.ts';
@@ -51,6 +51,39 @@ export function decodePng(buf: Buffer) {
   return (x: number, y: number) => { const i = y * stride + x * bpp; return [out[i], out[i + 1], out[i + 2], bpp === 4 ? out[i + 3] : 255]; };
 }
 export type Pixels = ReturnType<typeof decodePng>;
+
+/** A PNG (8-bit RGBA) of `size` × `size` pixels, `color(x, y)` each, as Margin.app's icons are sent: a data URL. */
+export function iconPng(size: number, color: (x: number, y: number) => [number, number, number, number]) {
+  const chunk = (kind: string, data: Buffer) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(data.length, 0);
+    head.write(kind, 4, 'latin1');
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), data])) >>> 0, 0);
+    return Buffer.concat([head, data, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0);
+  ihdr.writeUInt32BE(size, 4);
+  ihdr.set([8, 6, 0, 0, 0], 8);
+  const raw = Buffer.alloc((size * 4 + 1) * size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) raw.set(color(x, y), y * (size * 4 + 1) + 1 + x * 4);
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+  return `data:image/png;base64,${png.toString('base64')}`;
+}
+// Two apps' icons, 64 px as AppCatalog makes them: a rounded square in a colour (Notes' yellow, Safari's blue), a
+// checkerboard inside it (what a blurred scaling would smear).
+const appIcon = (r: number, g: number, b: number) => iconPng(64, (x, y) => {
+  const inside = Math.hypot(Math.max(0, Math.abs(x - 31.5) - 18), Math.max(0, Math.abs(y - 31.5) - 18)) <= 12;
+  if (!inside) return [0, 0, 0, 0];
+  return (x >> 2) % 2 === (y >> 2) % 2 ? [r, g, b, 255] : [255, 255, 255, 255];
+});
+export const ICONS = { notes: appIcon(250, 200, 40), safari: appIcon(20, 120, 240) };
+export const APPS = [
+  { bundleId: 'com.apple.Notes', name: 'Notes', icon: ICONS.notes },
+  { bundleId: 'com.apple.Safari', name: 'Safari', icon: ICONS.safari },
+  { bundleId: 'com.example.NoIcon', name: 'No Icon', icon: null },
+];
 export const px = (at: Pixels, [x, y]: [number, number]) => at(Math.floor(x), Math.floor(y));
 
 export const W = 1440, H = 900;
@@ -105,6 +138,8 @@ export type LoaderLook = {
   skeleton: [selector: string, pseudo: '' | '::before' | '::after'][],
   /** The animations allowed while starting, by name: the card's mark and the skeleton's pulse. */
   starting: string[],
+  /** The opening app's icon in the loader: its size (CSS px: the 64 px icon sharp at 2x up to 32), its scaling. */
+  icon: { size: number, rendering?: string },
   /** The theme's own look, checked while its loader is drawn (`loading`, "Opening Safari…"). */
   look?: (page: Page, ev: Ev) => Promise<void>,
   /** The same in other system looks (dark, more contrast): each in a context of its own. */
@@ -244,7 +279,10 @@ export async function pageLoaderChecks(t: TestContext, browser: Browser, o: Load
     // The smallest window Margin.app has (640 × 420), a long name: everything of the loader inside the card, the words cut short.
     const small = await open(browser, o, { viewport: { width: 640, height: 420 } });
     await small.hosted();
-    await small.ev(() => T.rtPageState('loading', 'A Very Long Application Name That Goes On And On And Then Some More'));
+    // (With the app's icon beside the words: it fits too.)
+    await small.ev((apps) => T.rtApps(apps), APPS);
+    await small.ev(() => T.rtPageState('loading', 'A Very Long Application Name That Goes On And On And Then Some More', 'com.apple.Notes'));
+    assert.equal((await small.ev(() => T.rtLoaderIcons())).length, 1, 'the smallest window: the icon drawn');
     const fit = await small.ev((sel) => {
       const slot = (window as any).__rt.runtime.view.rootElement().querySelector('m-page-loader') as HTMLElement;
       const box = slot.getBoundingClientRect();
@@ -253,8 +291,42 @@ export async function pageLoaderChecks(t: TestContext, browser: Browser, o: Load
       return { width: box.width, past, cut: label.scrollWidth > label.clientWidth, ellipsis: getComputedStyle(label).textOverflow };
     }, o.label);
     assert.ok(fit.width < 400, `a small card (${fit.width} px wide)`);
-    assert.deepEqual([fit.past, fit.cut, fit.ellipsis], [[], true, 'ellipsis'], 'the smallest window: nothing of the loader within 8 px of the card\'s sides, a long name cut with an ellipsis');
+    assert.deepEqual([fit.past, fit.cut, fit.ellipsis], [[], true, 'ellipsis'], 'the smallest window: nothing of the loader (its icon too) within 8 px of the card\'s sides, a long name cut with an ellipsis');
     await small.context.close();
+  });
+
+  await t.test('the page card\'s icon: the opening app\'s (Safari\'s for a web item), loaded, at the theme\'s size; none without one; nothing left moving once shown', async () => {
+    const { context, page, ev, hosted, place, errors } = await open(browser, o);
+    await hosted();
+    const { box } = await place();
+    await ev((apps) => T.rtApps(apps), APPS);
+    const iconOf = async (name: string, bundleId: string | null) => {
+      await ev(([n, b]) => T.rtPageState('loading', n, b), [name, bundleId] as const);
+      return ev(() => T.rtLoaderIcons());
+    };
+    const app = await iconOf('Notes', 'com.apple.Notes');
+    assert.equal(app.length, 1, `an app opening: one icon in the loader (${JSON.stringify(app.map((i) => i.src?.slice(0, 30)))})`);
+    const [notes] = app;
+    assert.equal(notes.src, ICONS.notes, 'the installed app\'s icon, by its bundle id');
+    assert.deepEqual([notes.complete, notes.natural, notes.visible], [true, [64, 64], true], 'loaded (64 px), drawn');
+    assert.deepEqual(notes.size, [o.icon.size, o.icon.size], `at the theme's size (${o.icon.size} px: the 64 px icon at 2x, never enlarged past it)`);
+    assert.ok(o.icon.size <= 32, 'never drawn bigger than the icon is sharp at 2x');
+    if (o.icon.rendering) assert.equal(notes.rendering, o.icon.rendering, `scaled as the theme says (${o.icon.rendering})`);
+    assert.ok(notes.at[0] >= box.left && notes.at[1] >= box.top && notes.at[2] <= box.right && notes.at[3] <= box.bottom, 'inside the card');
+    assert.equal((await ev(() => T.rtLoader()))!.text.trim(), 'Opening Notes…', 'Margin\'s words beside it, as before');
+    const web = await iconOf('Example', 'com.apple.Safari');
+    assert.deepEqual(web.map((i) => [i.src === ICONS.safari, i.complete, i.size]), [[true, true, [o.icon.size, o.icon.size]]], 'a web item opening: Safari\'s icon (the browser it opens in)');
+    for (const [what, id] of [['an app with no icon', 'com.example.NoIcon'], ['an app not installed', 'com.example.Gone'], ['no app named', null]] as const) {
+      assert.deepEqual(await iconOf('Something', id), [], `${what}: no icon, the theme's loader as before`);
+    }
+    assert.equal(await ev((s) => T.rtShown(s), o.mark), true, '… its mark still drawn');
+    await iconOf('Notes', 'com.apple.Notes');
+    await ev(() => T.rtPageState('shown'));
+    assert.deepEqual(await ev(() => T.rtLoaderIcons()), [], 'shown: the icon taken out with the part');
+    await page.waitForTimeout(260);
+    assert.deepEqual((await ev(() => T.rtAnimations())).filter((a) => a.loader), [], 'shown: nothing of the loader\'s moving');
+    assert.deepEqual(errors, []);
+    await context.close();
   });
 
   await t.test('the page card with reduced motion: nothing moves, the mark still there, the card goes at once', async () => {

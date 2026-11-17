@@ -167,7 +167,7 @@ test("the app host in Margin's own window: the page card's state from the app (h
   host.receive({ type: 'pageState', state: 'loading', label: 'Safari' });
   assert.deepEqual([host.pageState, host.pageOpening, host.launcher], ['loading', 'Safari', false]);
   const vm = buildViewModel({ state: host.getState() as any, ui: { windowId: W, mode: host.mode, pageOpening: { name: host.pageOpening ?? '' } }, platform: host.platform });
-  assert.deepEqual(vm.pageLoader, { name: 'Safari', label: 'Opening Safari…' }, "Margin's own words around the name");
+  assert.deepEqual(vm.pageLoader, { name: 'Safari', label: 'Opening Safari…', icon: null }, "Margin's own words around the name (no apps listed: no icon)");
   assert.equal(buildViewModel({ state: host.getState() as any, ui: { windowId: W, mode: host.mode, pageOpening: { name: '' } }, platform: host.platform }).pageLoader?.label, 'Opening…');
   assert.equal(buildViewModel({ state: host.getState() as any, ui: { windowId: W, mode: host.mode }, platform: host.platform }).pageLoader, null);
   const before = emits;
@@ -182,6 +182,8 @@ test("the app host in Margin's own window: the page card's state from the app (h
   assert.deepEqual([started.pageState, started.pageOpening], ['loading', 'Notes'], 'a page loaded again mid-open: its hello has it');
   const over = createAppHost({ hello: hello(), post: b.post });
   over.receive({ type: 'pageState', state: 'shown' });
+  over.receive({ type: 'pageState', state: 'loading', label: 'Notes', bundleId: 'com.apple.Notes' });
+  assert.equal(over.pageOpeningBundleId, null, '… nor an app to show the icon of');
   assert.equal(over.pageState, undefined, 'over a browser (the Windows shell): no page state');
 });
 
@@ -489,3 +491,32 @@ test('the app host and themes: the index from the hello and `themes`; Import, a 
   host.destroy();
 });
 
+
+test("the app host in Margin's own window: the opening item's app (its bundle id, for the loader's icon) from the hello and `pageState`, only while loading; the icon looked up in the apps the app listed", () => {
+  const b = bridge();
+  const notes = 'data:image/png;base64,iVBORw0KGgo=';
+  const apps = [{ bundleId: 'com.apple.Notes', name: 'Notes', icon: notes }, { bundleId: 'com.apple.Safari', name: 'Safari', icon: null }];
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen', apps }), post: b.post });
+  let emits = 0;
+  host.onState(() => { emits++; });
+  assert.equal(host.pageOpeningBundleId, null, 'nothing opening: none');
+  host.receive({ type: 'pageHosted', on: true });
+  host.receive({ type: 'pageState', state: 'loading', label: 'Notes', bundleId: 'com.apple.Notes' });
+  assert.deepEqual([host.pageOpening, host.pageOpeningBundleId], ['Notes', 'com.apple.Notes']);
+  const ui = () => ({ windowId: W, mode: host.mode, pageOpening: host.pageState === 'loading' ? { name: host.pageOpening ?? '', bundleId: host.pageOpeningBundleId } : null });
+  assert.equal(buildViewModel({ state: host.getState() as any, ui: ui(), platform: host.platform }).pageLoader?.icon, notes, "the view model's loader: the app's icon from the list the hello had");
+  const said = emits;
+  host.receive({ type: 'pageState', state: 'loading', label: 'Notes', bundleId: 'com.apple.Notes' });
+  assert.equal(emits, said, 'said again as it is: nothing drawn again');
+  host.receive({ type: 'pageState', state: 'loading', label: 'Notes', bundleId: 'com.apple.Safari' });
+  assert.deepEqual([host.pageOpeningBundleId, emits], ['com.apple.Safari', said + 1], 'another app, the same name: drawn again');
+  host.receive({ type: 'pageState', state: 'loading', label: 'Notes', bundleId: '../../etc' });
+  assert.equal(host.pageOpeningBundleId, null, 'not a bundle id: none');
+  host.receive({ type: 'pageState', state: 'loading', label: 'Notes', bundleId: 'com.apple.Notes' });
+  host.receive({ type: 'pageState', state: 'shown', label: null, bundleId: 'com.apple.Notes' });
+  assert.deepEqual([host.pageState, host.pageOpeningBundleId], ['shown', null], 'shown: none kept');
+  const started = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen', pageHosted: true, pageState: 'loading', pageOpening: 'Notes', pageOpeningBundleId: 'com.apple.Notes' }), post: b.post });
+  assert.equal(started.pageOpeningBundleId, 'com.apple.Notes', 'a page loaded again mid-open: its hello has it');
+  const idle = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen', pageState: 'shown', pageOpeningBundleId: 'com.apple.Notes' }), post: b.post });
+  assert.equal(idle.pageOpeningBundleId, null, '… only while loading');
+});

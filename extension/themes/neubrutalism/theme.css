@@ -241,7 +241,11 @@
 .opening-bar, .nb[m-starting][m-page-state="empty"] .page-loader::before { content: ""; grid-area: 1 / 1; box-sizing: border-box; width: var(--bar); height: 48px; border: 3px solid var(--ink); border-radius: 12px; background: var(--space); box-shadow: 6px 6px 0 var(--ink); }
 .opening-run, .nb[m-starting][m-page-state="empty"] .page-loader::after { content: ""; grid-area: 1 / 1; box-sizing: border-box; width: calc((var(--bar) - 18px) * .2873); height: 30px; border: 3px solid var(--ink); border-radius: 6px; background: repeating-linear-gradient(-45deg, var(--ink) 0 5px, var(--paper) 5px 10px); transform: translateX(-124%); animation: nb-run .7s cubic-bezier(.7, 0, .3, 1) infinite alternate; }
 @keyframes nb-run { from { transform: translateX(-124%); } to { transform: translateX(124%); } }
-.opening-label { position: absolute; bottom: calc(100% + 22px); max-width: min(560px, 100% - 56px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: 'Archivo Black', sans-serif; font-size: clamp(20px, 2.4vw, 30px); line-height: 1.15; letter-spacing: -.5px; text-transform: uppercase; color: var(--ink); }
+/* Above the bar: the app's icon in a bordered square (32 pt: the 64 px icon at 2x), Margin's words beside it. */
+.opening-head { position: absolute; bottom: calc(100% + 22px); display: flex; align-items: center; gap: 16px; max-width: min(620px, 100% - 56px); }
+.opening-tile { flex: none; display: grid; place-items: center; box-sizing: border-box; width: 48px; height: 48px; border: 3px solid var(--ink); border-radius: 12px; background: var(--paper); box-shadow: 4px 4px 0 var(--ink); }
+.opening-icon { display: block; width: 32px; height: 32px; object-fit: contain; }
+.opening-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: 'Archivo Black', sans-serif; font-size: clamp(20px, 2.4vw, 30px); line-height: 1.15; letter-spacing: -.5px; text-transform: uppercase; color: var(--ink); }
 
 /* Starting (m-starting: the theme's first frame, before its data): the
    sidebar's shapes with nothing in them. The space's name as an ink bar, an

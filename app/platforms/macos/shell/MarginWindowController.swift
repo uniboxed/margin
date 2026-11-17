@@ -127,11 +127,16 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // isn't ready yet: its name. Either: the page card is `loading` (the second only after `loaderGrace`).
     private(set) var loadingLabel: String?
     private(set) var showingLabel: String?
+    // The app whose icon the loader shows with each (a bundle id: the app's, or the browser's for a web item): the page
+    // looks the icon up in its list of installed apps (`bundleId` in `pageState`, the hello's `pageOpeningBundleId`).
+    private(set) var loadingApp: String?
+    private(set) var showingApp: String?
     private var showingSlow = false // the session's show is known to take a while (the last item at launch): the loader at once
     // The page card's state as the page was told (`m-page-state` on the theme's root), and the loader's name.
     enum PageState: String { case empty, loading, shown }
     private(set) var pageState = PageState.empty
     private(set) var loaderLabel: String?
+    private(set) var loaderApp: String?
     private var graceTimer: Timer?
     private(set) var pageStates: [String] = [] // each state the page was told, in order, the last 200 (the tests read it)
     // Where the hosted window shows through (the window server's coordinates, top left): the hole. Nil: nothing does.
@@ -325,6 +330,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             hostedFrame = nil
             loadingLabel = nil
             showingLabel = nil
+            loadingApp = nil
+            showingApp = nil
             showingSlow = false
             hostDisplay = nil
             Diagnostics.note("Margin's window \(id): hosting nothing: its launcher in the page area again")
@@ -336,9 +343,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // A host's first open, or its placing again (the app's name; nil: over): the page card opaque with the loader at
     // once (`loading`), and the theme's loading bar for the item it's opened for (setLoadingTabs).
-    func setLoading(_ label: String?) {
-        guard label != loadingLabel else { return }
+    func setLoading(_ label: String?, app: String?) {
+        guard label != loadingLabel || (label != nil && app != loadingApp) else { return }
         loadingLabel = label
+        loadingApp = label == nil ? nil : app
         Diagnostics.note("Margin's window \(id): \(label == nil ? "loading done" : "loading an app in the page area")")
         if label == nil { readHosted() }
         settlePage()
@@ -348,9 +356,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // (a switch between prepared windows is tens of ms), so what's drawn stays for `loaderGrace` and the loader comes
     // only if it isn't ready by then. `slow`: known to take a while (the item the window showed last, at launch,
     // before its window is even in full screen): the loader at once, from the page's first frame (its hello has it).
-    func setShowing(_ label: String?, slow: Bool) {
-        guard label != showingLabel else { return }
+    func setShowing(_ label: String?, app: String?, slow: Bool) {
+        guard label != showingLabel || (label != nil && app != showingApp) else { return }
         showingLabel = label
+        showingApp = label == nil ? nil : app
         showingSlow = label != nil && slow
         if label == nil { readHosted() }
         settlePage()
@@ -555,9 +564,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     private func applyPage(_ state: PageState) {
         let label = state == .loading ? loadingLabel ?? showingLabel : nil
-        let changed = state != pageState || label != loaderLabel
+        let app = state == .loading ? loadingLabel != nil ? loadingApp : showingApp : nil
+        let changed = state != pageState || label != loaderLabel || app != loaderApp
         pageState = state
         loaderLabel = label
+        loaderApp = app
         // (The hole closed, or opened, before the page hears: leaving `shown`, the ground covers the page area at once;
         // into it, the theme's loader is still drawn over the hole until the page fades it.)
         updateHole()
@@ -571,7 +582,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     }
 
     var pageStateJSON: String {
-        #"{"type":"pageState","state":"\#(pageState.rawValue)","label":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null") + "}"
+        #"{"type":"pageState","state":"\#(pageState.rawValue)","label":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
+            + (loaderApp.flatMap { jsonString($0) }.map { #","bundleId":"# + $0 } ?? "") + "}"
     }
 
     // The hosted window's bounds read from the window server (kept: a layout report, a pointer move never reads them).
@@ -956,6 +968,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         json += #","apps":"# + owner.apps()
         json += #","pageHosted":"# + (hosting ? "true" : "false")
         json += #","pageState":""# + pageState.rawValue + #"","pageOpening":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
+        json += #","pageOpeningBundleId":"# + (loaderApp.flatMap { jsonString($0) } ?? "null")
         let theme = owner.theme()
         themeSent = theme
         json += #","theme":"# + (theme ?? "null") + "}"

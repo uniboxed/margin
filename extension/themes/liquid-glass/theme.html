@@ -175,11 +175,13 @@
   <m-launcher class="launcher-slot"></m-launcher>
 
   <!-- The page card's loader: one glass capsule on the card's ground, a small
-       spinner and Margin's words in it ("Opening Safari…"). The one glass
-       layer this adds is there only while an item opens. -->
+       spinner, the opening app's icon (Safari's for a web item) and Margin's
+       words in it ("Opening Safari…"). The one glass layer this adds is there
+       only while an item opens. -->
   <template m-part="page-loader">
     <div class="opening" role="status">
       <span class="opening-spin" aria-hidden="true"></span>
+      <m-if test="pageLoader.icon"><img class="opening-icon" alt="" aria-hidden="true" m-icon="{{pageLoader.icon}}"></m-if>
       <span class="opening-label">{{pageLoader.label}}</span>
     </div>
   </template>

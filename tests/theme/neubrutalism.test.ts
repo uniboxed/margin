@@ -349,6 +349,7 @@ for (const [name, engine] of ENGINES) {
         id: 'neubrutalism', dir: NEO, script,
         label: '.opening-label', mark: '.opening-run',
         animations: ['nb-run'],
+        icon: { size: 32 },
         skeleton: [['.space-name', ''], ['.folders', '::before'], ['.today', '::before'], ['.chips', '::before'], ['.chips', '::after']],
         starting: ['nb-run', 'nb-wait'],
         look: async (page, ev) => {

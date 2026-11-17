@@ -7,8 +7,11 @@
 //   hidden folder, another volume or a Library). One entry per bundle id: the first found.
 // - Which: `AppCatalog.hostable`, the one rule (an app with a window to show: no agents, no background apps,
 //   not Margin, not an installer, not the system's own parts).
-// - Icons: 32 px PNGs, made once per app version (its Info.plist's time) and kept in Application Support/
-//   Margin/cache/app-icons; read back from there, and kept in memory between scans.
+// - Icons: 64 px PNGs (the largest use, 32 pt: a loader's icon, at 2x; a row's 16-20 pt is downscaled), made
+//   once per app version (its Info.plist's time) and size, and kept in Application Support/Margin/cache/
+//   app-icons (`<id>@<stamp>@<pixels>.png`: an icon of another size is made again, the old file removed); read
+//   back from there, and kept in memory between scans. About 8 kB of JSON per app (88 apps: 706 kB; 248 kB at
+//   32 px; 2 MB at 128 px, which no use needs).
 // - When: at start, then 2 s after a change in the folders (FSEvents) or in Spotlight's list. Every scan and
 //   every icon runs on a background queue; the main thread only hears the result, as JSON.
 //
@@ -27,7 +30,7 @@ nonisolated struct InstalledApp: Equatable, Sendable {
 }
 
 nonisolated enum AppCatalog {
-    static let iconPixels = 32
+    static let iconPixels = 64
 
     /// Where apps are looked for, in order (the first one's copy of an app wins).
     static func folders(home: URL) -> [URL] {
@@ -109,14 +112,21 @@ nonisolated enum AppCatalog {
     }
 
     /// The `.app` bundles in a folder and in its plain subfolders, one level down ("/Applications/Microsoft
-    /// Office/…"), sorted; never inside a bundle, never a hidden item.
+    /// Office/…"), sorted; never inside a bundle, never a hidden item but a link to an app (Safari since macOS 13:
+    /// /Applications/Safari.app, a hidden link into the system's cryptex, which Finder shows and Spotlight lists
+    /// at its /System/Volumes path only).
     static func bundles(in folder: URL, fm: FileManager = .default) -> [URL] {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey]
-        guard let items = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { return [] }
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isHiddenKey]
+        guard let items = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: []) else { return [] }
         var out: [URL] = []
-        for item in items.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            if item.pathExtension.lowercased() == "app" { out.append(item); continue }
-            guard let v = try? item.resourceValues(forKeys: Set(keys)), v.isDirectory == true, v.isPackage != true, v.isSymbolicLink != true,
+        for item in items.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where !item.lastPathComponent.hasPrefix(".") {
+            let v = try? item.resourceValues(forKeys: Set(keys))
+            if item.pathExtension.lowercased() == "app" {
+                if v?.isHidden == true && v?.isSymbolicLink != true { continue }
+                out.append(item)
+                continue
+            }
+            guard let v, v.isHidden != true, v.isDirectory == true, v.isPackage != true, v.isSymbolicLink != true,
                   let inner = try? fm.contentsOfDirectory(at: item, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { continue }
             out += inner.filter { $0.pathExtension.lowercased() == "app" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         }
@@ -156,9 +166,10 @@ nonisolated enum AppCatalog {
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// An app's icon as Finder draws it, `pixels` square, as a PNG.
+    /// An app's icon as Finder draws it, `pixels` square, as a PNG. A link's (Safari's) is its app's, without the
+    /// alias arrow Finder draws on the link itself.
     static func renderIcon(path: String, pixels: Int) -> Data? {
-        let image = NSWorkspace.shared.icon(forFile: path)
+        let image = NSWorkspace.shared.icon(forFile: URL(fileURLWithPath: path).resolvingSymlinksInPath().path)
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels, bitsPerSample: 8, samplesPerPixel: 4,
                                          hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
               let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }

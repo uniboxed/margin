@@ -37,7 +37,8 @@ final class FakeHostedWindow: HostedWindow {
     var showing: String?
     var showings: [String?] = [] // each setShowing, in order
     var slowShowings: [String] = [] // those said to take a while (the last item at launch: the loader at once)
-    func setShowing(_ label: String?, slow: Bool) { guard label != showing else { return }; showing = label; showings.append(label); if slow, let label { slowShowings.append(label) } }
+    var showingApps: [String?] = [] // the app each setShowing named for the loader's icon, in order
+    func setShowing(_ label: String?, app: String?, slow: Bool) { guard label != showing else { return }; showing = label; showings.append(label); showingApps.append(app); if slow, let label { slowShowings.append(label) } }
     var moves = 0 // hostedMoved: the hosted window's bounds read again
     func hostedMoved() { moves += 1 }
     var yields: [Int?] = [] // each yield(to:), in order
@@ -46,7 +47,8 @@ final class FakeHostedWindow: HostedWindow {
     func frontRead(_ read: HostEngine.FrontRead) { frontReads.append(read) }
     var loading: String?
     var loadings: [String?] = [] // each setLoading, in order
-    func setLoading(_ label: String?) { guard label != loading else { return }; loading = label; loadings.append(label) }
+    var loadingApps: [String?] = [] // the app each setLoading named for the loader's icon, in order
+    func setLoading(_ label: String?, app: String?) { guard label != loading else { return }; loading = label; loadings.append(label); loadingApps.append(app) }
     var remeasures = 0
     func remeasure() { remeasures += 1 }
     var loadingTabs: [Int] = []
@@ -413,6 +415,7 @@ func hostedTests() {
     check("hosted: the engine was given the page area from Margin's own layout, and its window is there, a member of Margin's Space", engine.pageRect == page && w.bounds(window: editWindow) == page
           && w.wins[editWindow]?.member == true && w.listsMarginOnly, "\(engine.pageRect) \(String(describing: w.bounds(window: editWindow)))")
     check("hosted: the loading animation named the app while it opened, then went", window.loadings == ["TextEdit", nil], "\(window.loadings)")
+    check("hosted: … with the app's bundle id for its icon (the page looks it up)", window.loadingApps == ["com.apple.TextEdit", nil], "\(window.loadingApps)")
     check("hosted: Margin's window told the app's window (it's in front of it)", window.hosted == editWindow, "\(window.hosteds)")
     check("hosted: it's the window's item shown, open", session.shown[1] == editItem && session.open[editItem]?.host == HostTarget.app("com.apple.TextEdit").id && changes > 0)
     let editNumber = session.number(ofItem: editItem)
@@ -440,6 +443,7 @@ func hostedTests() {
     check("hosted: hostShow names the hosted window, the item and its address", int(show["windowId"]) == 90 && show["itemId"] as? String == aItem && show["url"] as? String == "https://a.example/", "\(show)")
     check("hosted: the app shown before is parked (still full screen), Safari's window alone in Margin's Space", engine.hosts[HostTarget.app("com.apple.TextEdit").id]?.phase == .parked
           && w.wins[editWindow]?.fullScreen == true && w.inMargin == [safariWindow] && window.loadings.suffix(2) == ["Safari", nil], "\(w.inMargin) \(window.loadings)")
+    check("hosted: a web item's loader: Safari's icon (the browser it opens in)", window.loadingApps.suffix(2) == ["com.apple.Safari", nil], "\(window.loadingApps)")
     let aNumber = session.number(ofItem: aItem)
     check("hosted: Safari's first open: the web item's loading bar meanwhile, none after", window.loadingTabsSaid.suffix(2) == [[aNumber], []] && session.safariTabs[aItem] == 500, "\(window.loadingTabsSaid) \(session.safariTabs)")
     session.copyLoading(profile: "s-default", windowId: 90, tabIds: [500])
@@ -692,6 +696,7 @@ func hostedResumeTests(script: URL) {
               window.hosting && window.showings == ["Notes"] && window.slowShowings == ["Notes"] && session.requested[1] == item && session.resuming == 1 && session.hostingWindow == 1
               && !w.calls.contains { $0.hasPrefix("launch") } && (session.live(library.snapshot())["openTabs"] as? JSONObject).flatMap { ($0["tabs"] as? JSONObject)?.values.first as? JSONObject }?["active"] as? Bool == true,
               "\(window.showings) \(window.slowShowings) \(String(describing: session.requested[1]))")
+        check("resume: … with the app's bundle id for the loader's icon", window.showingApps == ["com.apple.Notes"], "\(window.showingApps)")
         // (Something that settles hosting meanwhile, an engine event: the loader stays.)
         session.hostEvent(.parked(HostID(raw: "app:none")))
         hostRun { await Task.yield(); return true }
@@ -841,6 +846,7 @@ func hostedFrontTests(script: URL) {
     guard engine.shown == safari, !item.isEmpty, w.bounds(window: mine) == page(260) else { return check("front: a web item shown in its Safari window", false, "\(session.done.suffix(6))") }
     check("front: a web item's first show: Margin's window told it's being shown, with its title, until its tab is in front too; then nothing pending", window.showings == ["Example", nil] && window.hosted == mine
           && window.loading == nil, "\(window.showings)")
+    check("front: … the loader's icon Safari's", window.showingApps.suffix(2) == ["com.apple.Safari", nil], "\(window.showingApps)")
     let showings = window.showings.count
     run { _ = library.perform("newTab", ["windowId": 1, "url": "https://second.example/", "title": "Second"]) }
     check("front: a second web item of the profile (a tab switch in the window shown: Safari's own, in sight): nothing said to Margin's window, no loader", window.showings.count == showings && engine.shown == safari)

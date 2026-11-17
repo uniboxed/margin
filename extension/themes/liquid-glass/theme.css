@@ -310,6 +310,7 @@
   opacity: .78;
   animation: lg-spin .9s linear infinite;
 }
+.opening-icon { flex: none; display: block; width: 24px; height: 24px; margin: 0 -2px 0 -1px; object-fit: contain; }
 .opening-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
 /* Starting (m-starting: the theme's first frame, before its data): the

@@ -292,11 +292,12 @@
     </div>
   </template>
 
-  <!-- The page card's loader: a soft tile in the space's colour with a thin
-       ring turning in it, and Margin's words under it ("Opening Safari…"). -->
+  <!-- The page card's loader: a soft tile in the space's colour with the
+       opening app's icon in it (Safari's for a web item) and a thin ring
+       turning around it, and Margin's words under it ("Opening Safari…"). -->
   <template m-part="page-loader">
     <div class="opening" role="status">
-      <span class="opening-mark" aria-hidden="true"></span>
+      <span class="opening-mark" aria-hidden="true" m-class:with-icon="{{pageLoader.icon}}"><m-if test="pageLoader.icon"><img class="opening-icon" alt="" m-icon="{{pageLoader.icon}}"></m-if></span>
       <span class="opening-label">{{pageLoader.label}}</span>
     </div>
   </template>

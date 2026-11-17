@@ -379,6 +379,7 @@ for (const [name, engine] of ENGINES) {
         id: 'pixel', dir: PIXEL, script,
         label: '.opening-label', mark: '.opening-frame',
         animations: ['px-blink', 'px-fill', 'px-glass'],
+        icon: { size: 32, rendering: 'pixelated' },
         skeleton: [['.space-name', ''], ['.today', '::before']],
         starting: ['px-fill', 'px-wait'],
         look: async (page, ev) => {
