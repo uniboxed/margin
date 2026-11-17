@@ -104,9 +104,8 @@ final class MarginWindow: NSWindow {
 // Margin's UI over its full-screen window (DECISIONS.md "Margin's UI in a panel that never makes Margin active",
 // 2026-11-17): a borderless, non-activating, see-through panel exactly over MarginWindow, its child window (so it's in
 // Margin's Space and moves with it), at that window's level. A press in it doesn't make Margin the active app: the
-// hosted app stays active and keeps its active look. Key only while `allowKey` (a field of Margin's wants the keys,
-// or Margin is the active app anyway): a non-activating panel can be key while another app is active (Spotlight's
-// way). Never main.
+// hosted app stays active and keeps its active look. Key only while `allowKey` (a field of Margin's wants the keys:
+// nothing else): a non-activating panel can be key while another app is active (Spotlight's way). Never main.
 final class MarginPanel: NSPanel {
     static let behavior: NSWindow.CollectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
     var harness = false

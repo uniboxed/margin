@@ -180,12 +180,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // The keys (takeKeys, keysBack): whether Margin is the active app (a test's stand-in answers its own), each time
     // Margin was made the active app from here and why (the tests read it), each time the panel asked to be key and
     // let go (a test's panel is never made key), and each time the keys were given back to the hosted app.
-    var appActive: () -> Bool = { NSApp.isActive }
+    var appActive: () -> Bool = { MarginWindowController.isFrontApp() } // (Margin the front app: the workspace's word)
     private(set) var activations: [String] = []
     private(set) var keyAsks = 0
     private(set) var keyLets = 0
     private(set) var keysGivenBack = 0
-    private(set) var hasKeys = false // the panel has the keys (asked to be key for a field of Margin's, or Margin active)
+    private(set) var hasKeys = false // the panel has the keys (asked to be key for a field of Margin's: nothing else)
     private(set) var panelAttached = 0 // times the panel was made this window's child (once, unless macOS lost it)
     private(set) var lastResorts = 0 // the panel not key a moment after it asked: Margin made frontmost instead
     private var changedAt = -Double.infinity // when it last changed its own level or order
@@ -311,6 +311,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         window.makeKeyAndOrderFront(nil)
         attachPanel("shown")
         activate("shown (opened by hand, or again)")
+        shownKeys()
         keepFront()
         placeButtons()
     }
@@ -672,6 +673,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         // (The hole closed, or opened, before the page hears: leaving `shown`, the ground covers the page area at once;
         // into it, the theme's loader is still drawn over the hole until the page fades it.)
         updateHole()
+        // (Shown with no field of Margin's wanting them: the panel never keeps the keys over the app shown.)
+        if state == .shown, !pageWantsKeyboard, hasKeys || panel.allowKey || (!options.harness && panel.isKeyWindow) { letGoKeys() }
         if changed {
             Diagnostics.note("Margin's window \(id): page \(state.rawValue)\(hole.map { " (the hole \(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))×\(Int($0.height)))" } ?? "")")
             pageStates.append(state.rawValue + (label.map { " " + $0 } ?? ""))
@@ -828,22 +831,27 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // ---- the keys (Margin's UI never makes the hosted app inactive) ----
 
     // A field of Margin's wants the keys (the page's `focus`): the panel key, the web view its first responder, Margin
-    // not made active (a non-activating panel can be key while another app is: the hosted app keeps its active look).
-    // The web view is made first responder before anything else: a panel made key with no first responder keeps the
-    // keys itself (the old overlay's palette, opened by the app's key: its field focused, the typing lost).
+    // not made the front app (a non-activating panel can be key while another app is: the hosted app keeps its active
+    // look). The panel can be key ONLY then (`allowKey`): never because Margin was activated (check10's run of
+    // 2026-11-17: after a press in the panel AppKit says Margin is active, `NSApp.isActive`, while the hosted app is
+    // still the front app, and the panel kept the keys from then on). The web view is made first responder first: a
+    // panel made key with no first responder keeps the keys itself (the old overlay's palette: its field focused, the
+    // typing lost). Not shown yet (its first entry into full screen): made key once it is (`shownKeys`), never asked of
+    // a panel off screen (the 13:05:34 last resort of that run).
     private func takeKeys() {
         panel.allowKey = true
         if panel.firstResponder !== webView { panel.makeFirstResponder(webView) }
+        guard options.harness || (isShown && panel.isVisible) else { return }
         guard !hasKeys || !panel.isKeyWindow else { return }
         hasKeys = true
         keyAsks += 1
-        Diagnostics.note("Margin's window \(id): a field of Margin's has the keys (its panel key\(appActive() ? "" : ", the app in front still the active one"))")
+        Diagnostics.note("Margin's window \(id): a field of Margin's has the keys (its panel key\(appActive() ? "" : ", the app in front still the front app"))")
         guard !options.harness else { return } // (a test's panel is never made key: it would take the person's keys)
         panel.makeKey()
         // (The last resort, said: the panel still not key a moment later, so typing would go to the app under it.
         // Margin made the front app through Accessibility, which deactivates that app: never expected.)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            guard let self, !self.isClosed, self.pageWantsKeyboard, !self.panel.isKeyWindow else { return }
+            guard let self, !self.isClosed, self.isShown, self.panel.isVisible, self.pageWantsKeyboard, !self.panel.isKeyWindow else { return }
             self.lastResorts += 1
             let made = AXUIElementSetAttributeValue(AXUIElementCreateApplication(getpid()), kAXFrontmostAttribute as CFString, kCFBooleanTrue) == .success
             Diagnostics.warn("Margin's window \(self.id): its panel didn't become key for a field of Margin's (\(self.fullScreenState)): Margin made frontmost through Accessibility as a last resort (\(made ? "asked" : "refused"))")
@@ -852,24 +860,40 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         }
     }
 
-    // The field let go (or Margin isn't active any more): the panel keeps the keys only while Margin is the active app.
+    // Shown (its first entry, a show by hand): a field that asked for the keys before has them now.
+    private func shownKeys() { if pageWantsKeyboard { takeKeys() } }
+
+    // No field of Margin's has the keys: the panel can't be key, and isn't (it resigns if it is, whatever made it).
     private func letGoKeys() {
-        let keep = appActive()
-        panel.allowKey = keep
-        guard hasKeys, !keep else { return }
+        panel.allowKey = false
+        if hasKeys { keyLets += 1 }
         hasKeys = false
-        keyLets += 1
         if !options.harness, panel.isKeyWindow { panel.resignKey() }
     }
 
-    // The keys to the hosted app shown (its app activated, which it already is: this moves the keyboard back to its
-    // window, never deactivating it): a field of Margin's let go, a press in Margin's UI ended. The session's
-    // `fieldClosed`. Said the first time and every 200th.
+    // The keys to the hosted app shown, as the old overlay's `handBack` (7d7f62aa): the panel let go of them (unless a
+    // field of Margin's has them), then that app activated by Margin, which yields to it first (`yieldActivation`,
+    // `activate(from:)`: it is the front app already; this moves the keyboard back to its window and never deactivates
+    // it), then the session's `fieldClosed` (the engine raises its window too). A field of Margin's let go, a press
+    // in Margin's UI ended, an item shown, a menu item of Margin's ran, its picker or the quit prompt closed. Said the
+    // first time and every 200th; each hand-back's app kept for the tests (`handBacks`).
+    var hostedPid: (Int) -> pid_t? = { MarginWindowController.ownerPid($0) }
+    var handBack: (pid_t) -> Void = { pid in
+        guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else { return }
+        NSApp.yieldActivation(to: app)
+        app.activate(from: NSRunningApplication.current, options: [])
+    }
+    private(set) var handBacks: [pid_t] = []
     func keysBack(_ why: String) {
         guard let hosted, pageState == .shown else { return }
+        if !pageWantsKeyboard { letGoKeys() }
         keysGivenBack += 1
         if keysGivenBack == 1 || keysGivenBack % 200 == 0 { Diagnostics.note("Margin's window \(id): the keys back to the app shown: \(why) (\(keysGivenBack) so far)") }
-        if !options.harness, let pid = Self.ownerPid(hosted), let app = NSRunningApplication(processIdentifier: pid) { NSApp.yieldActivation(to: app) }
+        if let pid = hostedPid(hosted) {
+            handBacks.append(pid)
+            if handBacks.count > 50 { handBacks.removeFirst(handBacks.count - 50) }
+            if !options.harness { handBack(pid) }
+        }
         owner?.onFieldClosed?(self)
     }
 
@@ -878,12 +902,18 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         return (list.first?[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value
     }
 
+    // Whether Margin is the front app (the menu bar's, by the workspace), never AppKit's `isActive`: a press in a
+    // non-activating panel makes AppKit say active while the hosted app is still the front one (check10, 2026-11-17).
+    nonisolated static func isFrontApp() -> Bool {
+        NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+    }
+
     // A press in Margin's UI ended (the panel's): looked at `pressSettle` later, once the page has had the chance to say
-    // a field took the focus. Not if a field of Margin's has or wants the keys, or Margin is the active app (its keys
-    // are its own then). A hosted app shown: the keys back to it (a press in a non-activating panel moved the keyboard
-    // to Margin without making it active: a key after a click in the sidebar would reach Margin with no window to
-    // take it, seen 2026-11-08). Nothing hosted, nothing opening (its launcher): Margin is made active, as a press in
-    // its own window always made it (there's no app whose look it could take away).
+    // a field took the focus. Not if a field of Margin's has or wants the keys, or Margin is the front app (its keys
+    // are its own then). A hosted app shown: the keys back to it (a press in a non-activating panel moves the keyboard
+    // to Margin without making it the front app: a key after a click in the sidebar went to Margin, check10 k1,
+    // 2026-11-17, and 2026-11-08 before). Nothing hosted, nothing opening (its launcher): Margin is made the front app,
+    // as a press in its own window always made it (there's no app whose look it could take away).
     static let pressSettle: TimeInterval = 0.08
     func pressEnded() {
         guard !options.harness else { return afterPress() } // (a test's clock: at once)
@@ -896,21 +926,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         if !hosting, loadingLabel == nil, showingLabel == nil, pageState == .empty { activate("a press in its launcher, nothing hosted") }
     }
 
-    // Margin became the active app (its Dock icon, ⌘-Tab, a picker of its own) or stopped being it: while it is, its
-    // panel has the keys (its page's own keys, as Margin's window always had them); once it isn't, only for a field.
-    func marginActiveChanged(_ active: Bool) {
-        if active {
-            panel.allowKey = true
-            guard isShown, !isClosed, panel.parent === window, window.isKeyWindow || NSApp.keyWindow == nil || panel.isKeyWindow else { return }
-            hasKeys = true
-            if panel.firstResponder !== webView { panel.makeFirstResponder(webView) }
-            if !options.harness, !panel.isKeyWindow { panel.makeKey() }
-        } else if !pageWantsKeyboard {
-            letGoKeys()
-        }
-    }
-
-    // Margin's own menu item run while it's the active app (clicked from its Dock icon, ⌘-Tab): the app shown gets
+    // Margin's own menu item run while it's the front app (clicked from its Dock icon, ⌘-Tab): the app shown gets
     // the activation back (a field the item opened takes the keys from the panel without it).
     func menuItemRan() {
         guard appActive(), hosted != nil, pageState == .shown else { return }
@@ -950,7 +966,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
                 Diagnostics.note("Margin's window \(id) shown, in full screen")
                 isShown = true
             }
-            if appActive() { marginActiveChanged(true) } // (its launcher's keys: Margin is the active app at its first entry)
+            shownKeys()
             owner?.onEnteredFullScreen?(self)
         } else if options.alwaysFullScreen, !isClosed {
             // macOS took it out anyway (the green button, Mission Control): straight back in.
@@ -1107,11 +1123,9 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // About to leave full screen while hosting: the one shown parked first, while it's still in this window's Space.
     func windowWillExitFullScreen(_ notification: Notification) { if hosting { owner?.onLeavingFullScreen?(self) } }
     func windowDidExitFullScreen(_ notification: Notification) { willEnterAt = nil; fullScreenChanged(false); attachPanel("out of full screen") }
-    // (The base made key, Margin active: its panel takes the keys, its web view being the one that has a use for them.)
     func windowDidBecomeKey(_ notification: Notification) {
         owner?.becameKey(self); keepFront(); placeButtons()
         tryFullScreen("its window key")
-        if appActive() { marginActiveChanged(true) }
     }
     func windowDidBecomeMain(_ notification: Notification) { keepFront(); tryFullScreen("its window main") }
     func windowDidResignKey(_ notification: Notification) { placeButtons() }
@@ -1320,15 +1334,12 @@ final class MarginWindows {
         menuTarget.handle = { [weak self] action in self?.perform(action) }
         menuTarget.enabled = { [weak self] action in action == .newWindow || self?.front != nil }
         pointer.onMove = { [weak self] at in for c in self?.controllers ?? [] { c.pointerMoved(at) } }
+        if !options.harness { startKeyRelay() }
         pointer.onPress = { [weak self] at in for c in self?.controllers ?? [] { c.pressed(at) } }
         // Margin activated (its Dock icon, ⌘-Tab): each window in front of what it hosts (the `order` mechanism orders
         // it there again), and one still not in full screen, its toggle ignored while Margin wasn't active, asked again.
         activeObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront(); c.appBecameActive(); c.marginActiveChanged(true) } }
-        }
-        // ...and not active any more: each panel keeps the keys only for a field of Margin's.
-        resignObserver = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.marginActiveChanged(false) } }
+            MainActor.assumeIsolated { for c in self?.controllers ?? [] { c.keepFront(); c.appBecameActive() } }
         }
         // Another Space current, or another app in front (a hosted app activated: its window may have come over
         // Margin's at the same level): in front of it again (a window not on the current Space: nothing, `keepFront`).
@@ -1344,15 +1355,52 @@ final class MarginWindows {
     }
 
     private var activeObserver: NSObjectProtocol?
-    private var resignObserver: NSObjectProtocol?
     private var frontObservers: [NSObjectProtocol] = []
     deinit {
+        if let keyRelay { NSEvent.removeMonitor(keyRelay) }
         if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
-        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
         for o in frontObservers { NSWorkspace.shared.notificationCenter.removeObserver(o) }
     }
 
     var anyVisible: Bool { controllers.contains { $0.window.isVisible } }
+
+    // ---- a key that reached Margin while the keyboard is the hosted app's ----
+
+    // The old shell's key relay (7d7f62aa, 2026-11-08), for Margin's panel: a press in a non-activating panel moves the
+    // keyboard to Margin without making it the front app, and the keys go back as the press ends (`afterPress`). A
+    // key that comes before that, or in any case Margin should never have, goes on to the app shown (its press and its
+    // release, as it would have had them there) and the keys are handed back with it; said the first time and every
+    // 100th (which key never). Margin's only when one of its windows really takes keys then: a field of Margin's in the
+    // panel, the quit prompt, a picker, or Margin the front app.
+    enum KeyWindow: Equatable { case none, base, panel, other }
+    static func relayTarget(keyWindow: KeyWindow, fieldWantsKeys: Bool, front: pid_t?, margin: pid_t, shown: pid_t?) -> pid_t? {
+        guard let front, front != margin, let shown, shown == front else { return nil }
+        return keyWindow == .other || fieldWantsKeys ? nil : shown
+    }
+    private var keyRelay: Any?
+    private(set) var keysRelayed = 0
+    private func startKeyRelay() {
+        guard keyRelay == nil else { return }
+        keyRelay = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+            guard let self else { return event }
+            let shownWindow = self.controllers.first { $0.hosted != nil && $0.pageState == .shown && $0.window.isOnActiveSpace }
+            let key = NSApp.keyWindow
+            let kind: KeyWindow = key == nil ? .none : self.controllers.contains { $0.panel === key } ? .panel : self.controllers.contains { $0.window === key } ? .base : .other
+            let wants = self.controllers.contains { $0.pageWantsKeyboard }
+            guard let c = shownWindow, let pid = Self.relayTarget(keyWindow: kind, fieldWantsKeys: wants, front: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                                                                  margin: ProcessInfo.processInfo.processIdentifier, shown: c.hosted.flatMap { c.hostedPid($0) }),
+                  let cg = event.cgEvent?.copy() else { return event }
+            cg.postToPid(pid)
+            if event.type == .keyDown {
+                self.keysRelayed += 1
+                if self.keysRelayed == 1 || self.keysRelayed % 100 == 0 {
+                    Diagnostics.warn("a key reached Margin while the keyboard is the app shown's (Margin's key window: \(kind)): sent on to it, the keys handed back (\(self.keysRelayed) so far)")
+                }
+                c.keysBack("a key reached Margin")
+            }
+            return nil
+        }
+    }
 
     // The key one, else the one key last, else the newest.
     var front: MarginWindowController? {

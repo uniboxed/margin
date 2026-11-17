@@ -28,6 +28,15 @@ func marginWindowTests() {
                 && OverlayWebView.editAction(ev("a", [.command, .option])) == nil && OverlayWebView.editAction(ev("t", .command)) == nil && OverlayWebView.editAction(ev("a", [])) == nil)
     }
 
+    // ---- a key that reached Margin while the keyboard is the app shown's: sent on to it (MarginWindows.relayTarget) ----
+    do {
+        let r = MarginWindows.relayTarget
+        check("hosted: a key that reached Margin with the app shown in front goes on to it when no window of Margin's takes keys (none key, its full-screen window, its panel with no field), never when a field of Margin's has them, another window of Margin's is key (the quit prompt, a picker), Margin is the front app, or the app in front isn't the one shown",
+              r(.none, false, 501, 99, 501) == 501 && r(.base, false, 501, 99, 501) == 501 && r(.panel, false, 501, 99, 501) == 501
+                && r(.panel, true, 501, 99, 501) == nil && r(.base, true, 501, 99, 501) == nil && r(.other, false, 501, 99, 501) == nil
+                && r(.none, false, 99, 99, 501) == nil && r(.none, false, 777, 99, 501) == nil && r(.none, false, 501, 99, nil) == nil && r(.none, false, nil, 99, 501) == nil)
+    }
+
     // ---- the page area ----
     let main: CGFloat = 1117
     // A 1200 × 800 window, its AppKit frame's bottom-left at (100, 117): its top left at (100, 200).

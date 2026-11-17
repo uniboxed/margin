@@ -309,10 +309,12 @@ extension MarginWindowController {
 
     // How it's in front, the page card and the hole (numbers only). `window`: the base (the full-screen one, its Space
     // Margin's); `panel`: Margin's UI over it, the window that takes Margin's presses and, for a field, the keys.
+    // `active`: Margin the front app (the workspace's word); `appkit active`: AppKit's, true too after a press in the
+    // non-activating panel.
     var devFront: String {
         func r(_ c: CGRect?) -> String { c.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "none" }
         return "mechanism \(mechanism.rawValue), level \(window.level.rawValue) (server \(serverLevel(window.windowNumber).map(String.init) ?? "?")), window \(window.windowNumber), page \(pageState.rawValue), hole \(r(hole)), "
             + "page area \(r(window.pageRect)), hosted \(hosted.map(String.init) ?? "none"), ignoring \(panel.ignoresMouseEvents), keys \(pageWantsKeyboard), full screen \(isFullScreen), presses \(panel.presses), "
-            + "panel \(panel.windowNumber) (level \(panel.level.rawValue), server \(serverLevel(panel.windowNumber).map(String.init) ?? "?"), key \(panel.isKeyWindow), child \(panel.parent === window)), active \(NSApp.isActive), activations \(activations.count), keys back \(keysGivenBack)"
+            + "panel \(panel.windowNumber) (level \(panel.level.rawValue), server \(serverLevel(panel.windowNumber).map(String.init) ?? "?"), key \(panel.isKeyWindow), child \(panel.parent === window)), active \(MarginWindowController.isFrontApp()), appkit active \(NSApp.isActive), allow key \(panel.allowKey), hand-backs \(handBacks.count), activations \(activations.count), keys back \(keysGivenBack)"
     }
 }

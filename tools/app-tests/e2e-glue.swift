@@ -578,7 +578,19 @@ func glueScenario() async {
   // ---- a press in Margin's sidebar (an empty spot) with Calculator shown: Margin never made active, the panel not key,
   // the keys back to Calculator once the press is over (Tirth's recording, 2026-11-17: the hosted app's inactive look
   // at every use of the sidebar) ----
+  // (Which app a hosted window is: the engine's stand-in's. Margin the front app or not: the stand-in says not, as on
+  // check10's screen, where the hosted pane was the front app throughout.)
+  c.hostedPid = { number in engine.hosts.values.first { $0.window == number }?.pid }
+  c.appActive = { false }
+  let shownCalcPid = engine.hosts.values.first { $0.window == calcWindow }?.pid ?? -1
+  // AppKit says Margin is active, its window key (as on check10's screen after its launch and after any press in the
+  // panel, with the hosted app still the front app): the panel still can't be key, nor have the keys.
+  NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
+  c.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: c.window))
+  check("AppKit says Margin is active and its window key, the hosted app still the front app, no field of Margin's: the panel can't be key (only a field of Margin's makes it so) and doesn't have the keys",
+        !c.panel.allowKey && !c.panel.canBecomeKey && !c.hasKeys && !c.pageWantsKeyboard, "allow \(c.panel.allowKey) has \(c.hasKeys)")
   if let spot = await emptySidebarSpot(c.webView) {
+    let handsBefore = c.handBacks.count
     let pressesBefore = c.panel.presses, marginBefore = c.activations.count, asksBefore = c.keyAsks, backBefore = c.keysGivenBack
     let calcBefore = world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count
     c.pointerMoved(CGPoint(x: display.minX + spot.x, y: display.minY + spot.y), buttonsDown: false)
@@ -587,8 +599,9 @@ func glueScenario() async {
     let back = await until(3) { world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == calcBefore + 1 }
     check("a press on an empty spot of the sidebar with Calculator shown: Margin's panel took it (a non-activating panel), Margin not made active, the panel not asked to be key, the keys back to Calculator once it's over",
           takes && c.panel.presses == pressesBefore + 1 && c.panel.styleMask.contains(.nonactivatingPanel) && c.activations.count == marginBefore && c.keyAsks == asksBefore && !c.panel.canBecomeKey
-            && back && c.keysGivenBack == backBefore + 1 && !c.pageWantsKeyboard,
-          "takes \(takes) presses \(c.panel.presses - pressesBefore) Margin active \(c.activations.suffix(2)) key asks \(c.keyAsks - asksBefore) can be key \(c.panel.canBecomeKey) back \(back) \(world.calls.suffix(2))")
+            && back && c.keysGivenBack == backBefore + 1 && !c.pageWantsKeyboard && !c.panel.allowKey && !c.hasKeys
+            && c.handBacks.count == handsBefore + 1 && c.handBacks.last == shownCalcPid,
+          "hand-backs \(c.handBacks.suffix(2)) (Calculator \(shownCalcPid)) allow \(c.panel.allowKey) takes \(takes) presses \(c.panel.presses - pressesBefore) Margin active \(c.activations.suffix(2)) key asks \(c.keyAsks - asksBefore) can be key \(c.panel.canBecomeKey) back \(back) \(world.calls.suffix(2))")
   } else { check("an empty spot of the sidebar", false) }
   // (The engine asks Margin's window's page to measure at every look while it waits for a layout at its whole width:
   // a size the window took isn't measured until a frame is drawn, which can be seconds late. The page measures at once.)
@@ -677,7 +690,7 @@ func glueScenario() async {
   check("⌘T: the pointer over the palette is Margin's (not passed to the app under it)", !overPalette, "hits \(c.hits.count) all \(c.captureAll)")
   // (Counted from here: the palette closed just before this step gave the app the keys back in a task of its own.)
   let activationsBefore = world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count
-  let letsBefore = c.keyLets, callsBefore = world.calls.count
+  let letsBefore = c.keyLets, callsBefore = world.calls.count, handsEscape = c.handBacks.count
   key(c.panel, "\u{1b}", code: 53) // (Escape, a real key event to the panel)
   let paletteClosed = await waitJS(c.webView, "return !document.querySelector('[m-input=\"palette\"]')")
   let keysBack = await until(3) { !c.pageWantsKeyboard && world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count == activationsBefore + 1 }
@@ -685,8 +698,9 @@ func glueScenario() async {
   c.pointerMoved(CGPoint(x: centred.midX, y: centred.midY), buttonsDown: false)
   check("⌘T then Escape: the panel lets go of the keys (it can't be key any more), Margin never made active, and all the hosted app is asked is to be the active app (which it is): nothing that would deactivate it",
         paletteClosed && c.keyLets == letsBefore + 1 && !c.hasKeys && !c.panel.allowKey && !c.panel.canBecomeKey && c.activations.count == paletteMargin
+          && c.handBacks.count == handsEscape + 1 && c.handBacks.last == calcPid
           && world.calls.dropFirst(callsBefore).allSatisfy { $0 == "activate \(GlueHostWorld.calculator)" },
-        "lets \(c.keyLets - letsBefore) has \(c.hasKeys) allow \(c.panel.allowKey) Margin active \(c.activations.suffix(2)) asked of the app \(Array(world.calls.dropFirst(callsBefore)))")
+        "hand-backs \(c.handBacks.suffix(2)) lets \(c.keyLets - letsBefore) has \(c.hasKeys) allow \(c.panel.allowKey) Margin active \(c.activations.suffix(2)) asked of the app \(Array(world.calls.dropFirst(callsBefore)))")
   check("⌘T then Escape: the palette gone, the hosted app activated again (it has the keys), the pointer through to it again",
         paletteClosed && keysBack && c.panel.ignoresMouseEvents && world.calls.last == "activate \(GlueHostWorld.calculator)",
         "closed \(paletteClosed) back \(keysBack) (\(world.calls.filter { $0 == "activate \(GlueHostWorld.calculator)" }.count) activations, \(activationsBefore) before) keys \(c.pageWantsKeyboard) ignoring \(c.panel.ignoresMouseEvents) \(world.calls.suffix(3))")
