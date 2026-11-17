@@ -7,3 +7,5 @@ tools/fit-check/data/
 target/
 # Local notes, never shared.
 research_notes/
+# The real-screen suite's builds (Chameleon copies, the suite binary, its run state).
+tools/screen-tests/build/
