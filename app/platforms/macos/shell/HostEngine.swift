@@ -903,6 +903,10 @@ final class HostEngine {
         // (Live resize: a tile's window, shown or parked, off the page area its rect was set for: a tile change laid it
         // out again. Not during a drag: the one shown follows it, the others wait for its end.)
         if host.tile != nil {
+            // (Parked: never counted. Its tile laid out again by a tile change Margin didn't make is left as it is
+            // until it's shown (sized then, out of sight): sizing a parked tile makes its app draw a window in Margin's
+            // Space, whose close lays the first two tiles out again: a loop, seen as blinking (Weather, 2026-11-18).)
+            if host.phase == .parked { host.offPageReads = 0; return }
             guard !liveOn, let placed = host.placedPage, HostLayout.near(placed, placement.page, within: options.tolerance), let b = sys.bounds(window: host.window),
                   host.phase == .parked ? sys.spaces(window: host.window) == [] : sys.spaces(window: host.window) == [marginSpace] else { host.offPageReads = 0; return }
             host.offPageReads = HostLayout.near(b, placement.page, within: options.tolerance) ? 0 : host.offPageReads + 1
@@ -2246,8 +2250,10 @@ final class HostEngine {
         if host.mode == .window { return await bringInWindow(host, isNew: isNew, retrying: retrying) }
         // (Live resize: a tile placed for another page area sized first, out of sight (a switch never shows the old size:
         // the target ahead of any other tile's sizing); one whose rect doesn't take is placed again the old way.)
-        if host.member, host.tile != nil, !(host.placedPage.map { HostLayout.near($0, placement.page, within: options.tolerance) } ?? false) {
-            if await sizeTile(host) { Diagnostics.note("host: \(host.id): its tile sized to the page area before it's shown") }
+        if host.member, host.tile != nil {
+            // (Its rect read, not only the page area it was sized for: a parked tile laid out again meanwhile is left so.)
+            let stale = !tileAtPage(host)
+            if await sizeTile(host), stale { Diagnostics.note("host: \(host.id): its tile sized to the page area before it's shown") }
         }
         if host.member, let placed = host.placedPage, HostLayout.near(placed, placement.page, within: options.tolerance) {
             return await switchIn(host)
@@ -3379,11 +3385,11 @@ final class HostEngine {
     @discardableResult private func reapplyTiles(first: Host? = nil, each: () -> Void = {}) async -> Bool {
         guard let mine = marginTile, let home = tileHome, let rect = tileRect() else { return false }
         let page = placement.page
-        _ = sys.setTileRect(mine, home)
+        setTileRectIfNeeded(mine, home)
         let lead = first ?? shown.flatMap { hosts[$0] }.flatMap { $0.tile != nil ? $0 : nil }
         var order = hosts.values.filter { $0.tile != nil && $0 !== lead }.sorted { $0.id.raw < $1.id.raw }
         if let lead { order.insert(lead, at: 0) }
-        for h in order { if let t = h.tile { _ = sys.setTileRect(t, rect) } }
+        for h in order where h === lead || !parkedAtPage(h) { if let t = h.tile { setTileRectIfNeeded(t, rect) } }
         let area = placement.area
         let ok = await wait(options.tileWait, every: options.tileEvery) {
             each()
@@ -3391,11 +3397,30 @@ final class HostEngine {
             let leadThere = lead.map { h in self.sys.bounds(window: h.window).map { HostLayout.near($0, page, within: self.options.tolerance) } ?? false } ?? true
             return marginBack && leadThere
         }
-        for h in order {
+        for h in order where h === lead || !parkedAtPage(h) {
             if h === lead, ok { h.placedPage = page; h.offPageReads = 0 } else if h !== lead { h.placedPage = sys.bounds(window: h.window).map { HostLayout.near($0, page, within: options.tolerance) } == true ? page : nil }
         }
         tileCount = sys.tiles(of: marginSpace)?.count ?? tileCount
         return ok
+    }
+
+    // A tile's rect sent only when it isn't that already (a rect sent again makes its app lay its window out again).
+    private func setTileRectIfNeeded(_ tile: UInt64, _ rect: CGRect) {
+        if sys.tileRect(tile).map({ HostLayout.near($0, rect, within: 0.5) }) == true { return }
+        _ = sys.setTileRect(tile, rect)
+    }
+
+    // A parked host's tile sized for the page area as it is now (whatever a tile change Margin didn't make did to it
+    // since: left so until it's shown).
+    private func parkedAtPage(_ h: Host) -> Bool {
+        h.phase == .parked && h.placedPage.map { HostLayout.near($0, placement.page, within: options.tolerance) } == true
+    }
+
+    // Its tile's rect the page area's, and its window there.
+    private func tileAtPage(_ host: Host) -> Bool {
+        guard let tile = host.tile, let rect = tileRect() else { return false }
+        return sys.tileRect(tile).map { HostLayout.near($0, rect, within: 0.5) } == true
+            && sys.bounds(window: host.window).map { HostLayout.near($0, placement.page, within: options.tolerance) } == true
     }
 
     // One hosted tile set to the page area's rect, its window seen there (`tileWait`), shown or parked. True: there.
@@ -3475,10 +3500,10 @@ final class HostEngine {
     // window and the one shown out as a split's thirds; the poll set them back 120 ms later); checked by the next look.
     func marginNarrowed() {
         guard tilesOK, tilesFor == marginSpace, !quitting, let mine = marginTile, let home = tileHome else { return }
-        _ = sys.setTileRect(mine, home)
+        setTileRectIfNeeded(mine, home)
         if let rect = tileRect() {
             let order = hosts.values.filter { $0.tile != nil }.sorted { ($0.id == shown ? 0 : 1, $0.id.raw) < ($1.id == shown ? 0 : 1, $1.id.raw) }
-            for h in order { if let t = h.tile { _ = sys.setTileRect(t, rect) } }
+            for h in order where !parkedAtPage(h) { if let t = h.tile { setTileRectIfNeeded(t, rect) } }
         }
         Diagnostics.note("host: Margin's window laid out as a split's part by a tile change: every rect sent again at once")
         if !busy { lookAtTiles(force: true) }
