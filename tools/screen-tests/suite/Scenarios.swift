@@ -82,6 +82,7 @@ enum Step: Equatable {
   case tileMin(Target, expect: CGSize?)           // tile-min
   case minDrag(Target, dx: Int, steps: Int, endsAt: Int?, parked: [Target]) // min-drag
   case overflow(Target, seconds: Double)          // overflow
+  case sidebarWidth(Int)                         // the sidebar that wide first (dev hook `sidebar`): a known start
 
   var text: String {
     switch self {
@@ -118,6 +119,7 @@ enum Step: Equatable {
     case .memory(let label): return "memory (\(label)): Margin's, WindowServer's and the copies' resident memory, said"
     case .tileMin(let t, let e): return "tile-min: \(t.text)'s tile in Margin's Space says the minimum its app gave it (the window server's SizeConstraints, read only)\(e.map { ": about \(Int($0.width))x\(Int($0.height))" } ?? "")"
     case .minDrag(let t, let dx, let st, let ends, let parked): return "min-drag: the sidebar's edge dragged \(dx > 0 ? "+" : "")\(dx) pt over \(st) display frames (dev hook `drag`), \(t.text) shown\(parked.isEmpty ? "" : ", \(parked.map(\.text).joined(separator: ", ")) parked"), every window's bounds and Spaces read every ms: never out of Margin's Space, never narrower than its minimum, the page area \(ends.map { "\($0)" } ?? "as dragged (its minimum the floor)") wide at the end\(parked.isEmpty ? "" : "; the parked ones at the page area or at their minimum width, right edge aligned, never in a user Space")"
+    case .sidebarWidth(let w): return "the sidebar \(w) wide first (dev hook `sidebar`, as a drag that ends there): the page area \(1504 - w) wide"
     case .overflow(let t, let s): return "overflow: \(t.text), wider by its own minimum than the page area, held \(Int(s)) s in Margin's Space at its minimum width, its right edge the page area's"
     }
   }
@@ -232,7 +234,8 @@ let liveResizeCrash = Scenario(name: "live-resize-crash", title: "Margin killed 
 
 // ---- a window's own minimum size (MinSize.swift; docs/HOSTING-CORE.md "A window's minimum size"): Chameleon 3 can't
 // be narrower than 1100 (its `minSize`), Chameleon 1 has no minimum. Arcadia's sidebar: 160-500 wide, 260 by default
-// (the page area 1244 wide on the 1512 display; 1004 at the sidebar's widest). Slow and fast drags past its minimum
+// in steps of 10, set to 260 first (the page area 1244 wide on the 1512 display; 1004 at the sidebar's widest). A drag
+// past the minimum stops at it (the sidebar 404, the page area 1100) and lets go at the step under it (400: 1104). Slow and fast drags past its minimum
 // (the edge stops there), fast drags above it, Chameleon 3 parked while the page area goes narrower than it (sized at
 // its minimum width, right edge aligned, never in a user Space), shown so (its overflow under Margin's sidebar) and
 // dragged wider again ----
@@ -240,24 +243,24 @@ let minWide = CGSize(width: 1100, height: 500)
 let liveResizeMin = Scenario(name: "live-resize-min", title: "drags of the sidebar's edge past a hosted window's own minimum: the edge stops there, the window never leaves Margin's Space, a parked one wider than the page area sized at its minimum",
                              copies: [1, 3], steps: [
   .setSwitches(1, [:]), .setSwitches(3, ["minSize": "1100x500"]),
-  .openMargin, .host(.copy(1)), .host(.copy(3)), .expect(.desired(Desired(target: .copy(3)))), .tileMin(.copy(3), expect: minWide),
-  .minDrag(.copy(3), dx: 240, steps: 240, endsAt: 1100, parked: [.copy(1)]),   // slow, past its minimum: stops at 1100
-  .minDrag(.copy(3), dx: -144, steps: 60, endsAt: 1244, parked: [.copy(1)]),
-  .minDrag(.copy(3), dx: 240, steps: 12, endsAt: 1100, parked: [.copy(1)]),    // fast (0.1 s), past it
-  .minDrag(.copy(3), dx: -60, steps: 6, endsAt: 1160, parked: []), .minDrag(.copy(3), dx: 50, steps: 4, endsAt: 1110, parked: []), .minDrag(.copy(3), dx: -50, steps: 4, endsAt: 1160, parked: []), // fast, above it
-  .minDrag(.copy(3), dx: 300, steps: 3, endsAt: 1100, parked: []),             // a flick far past it
-  .minDrag(.copy(3), dx: -144, steps: 30, endsAt: 1244, parked: [.copy(1)]),
+  .openMargin, .host(.copy(1)), .sidebarWidth(260), .host(.copy(3)), .expect(.desired(Desired(target: .copy(3)))), .tileMin(.copy(3), expect: minWide),
+  .minDrag(.copy(3), dx: 240, steps: 240, endsAt: nil, parked: [.copy(1)]),   // slow, past its minimum: stops at 1100, lets go at 1104 (the step)
+  .minDrag(.copy(3), dx: -144, steps: 60, endsAt: nil, parked: [.copy(1)]),
+  .minDrag(.copy(3), dx: 240, steps: 12, endsAt: nil, parked: [.copy(1)]),    // fast (0.1 s), past it
+  .minDrag(.copy(3), dx: -60, steps: 6, endsAt: nil, parked: []), .minDrag(.copy(3), dx: 50, steps: 4, endsAt: nil, parked: []), .minDrag(.copy(3), dx: -50, steps: 4, endsAt: nil, parked: []), // fast, above it
+  .minDrag(.copy(3), dx: 300, steps: 3, endsAt: nil, parked: []),             // a flick far past it
+  .minDrag(.copy(3), dx: -144, steps: 30, endsAt: nil, parked: [.copy(1)]),
   .show(.copy(1), maxMs: nil),
-  .minDrag(.copy(1), dx: 240, steps: 30, endsAt: 1004, parked: [.copy(3)]),    // Chameleon 3 parked: the page area under its minimum
+  .minDrag(.copy(1), dx: 240, steps: 30, endsAt: nil, parked: [.copy(3)]),    // Chameleon 3 parked: the page area under its minimum
   .show(.copy(3), maxMs: 99), .overflow(.copy(3), seconds: 5),
-  .minDrag(.copy(3), dx: -240, steps: 60, endsAt: 1244, parked: [.copy(1)]),   // wider again from under its minimum
+  .minDrag(.copy(3), dx: -240, steps: 60, endsAt: nil, parked: [.copy(1)]),   // wider again from under its minimum
   .listedOnly("after the drags past a minimum"),
   .marginQuitTiles([1, 3]),
 ], estimate: 150)
 // The person's Weather (opt-in, `--real-apps`): its own minimum (about 1048 wide, 2026-11-14) is the real case.
 func realMinScenario(_ a: RealApp) -> Scenario {
   Scenario(name: "real-apps-min", title: "\(a.name), the person's own, dragged past its own minimum through Margin's dev hook only: no click or key ever posted into it", copies: [], steps: [
-    .openMargin, .host(.app(a.bundle)), .tileMin(.app(a.bundle), expect: nil),
+    .openMargin, .host(.app(a.bundle)), .sidebarWidth(260), .tileMin(.app(a.bundle), expect: nil),
     .minDrag(.app(a.bundle), dx: 240, steps: 240, endsAt: nil, parked: []), .minDrag(.app(a.bundle), dx: -240, steps: 60, endsAt: nil, parked: []),
     .minDrag(.app(a.bundle), dx: 240, steps: 12, endsAt: nil, parked: []), .minDrag(.app(a.bundle), dx: -240, steps: 12, endsAt: nil, parked: []),
     .minDrag(.app(a.bundle), dx: 300, steps: 3, endsAt: nil, parked: []), .minDrag(.app(a.bundle), dx: -300, steps: 30, endsAt: nil, parked: []),

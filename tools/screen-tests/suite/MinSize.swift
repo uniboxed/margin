@@ -21,17 +21,34 @@ func tileMin(_ tile: UInt64) -> CGSize? { sizeOf((tileValues(tile)["SizeConstrai
 func tileRectNow(_ tile: UInt64) -> CGRect? { rectOf(tileValues(tile)["TileRect"]) }
 func sizeText(_ s: CGSize?) -> String { s.map { "\(Int($0.width))x\(Int($0.height))" } ?? "none" }
 
+nonisolated(unsafe) var knownTiles: [String: (tile: UInt64, window: Int)] = [:]
+nonisolated(unsafe) var knownMins: [String: CGSize] = [:]
+nonisolated(unsafe) var lastTileNote: [String: String] = [:]
+
 extension Runner {
   // The hosted window of a target (its largest), its tile in Margin's Space and the minimum the tile says.
   // (The window in a tile of Margin's Space first: an app can make another window of its tile's size beside it, seen
-  // 2026-11-18 09:39, Chameleon's 1099×966 as its tile went narrower than its minimum; else its largest.)
+  // 2026-11-18 09:39, Chameleon's 1099×966 as its tile went narrower than its minimum; else its largest.) A tile and a
+  // minimum once found are remembered for the target: a parked window's tile doesn't name it (`TileWindowID`, seen
+  // 2026-11-18 10:32 after a park: "min none"), and its app's minimum doesn't change.
   func tiled(_ t: Target) -> (n: Int, r: CGRect, tile: UInt64?, min: CGSize?)? {
     guard let a = app(t.id) else { return nil }
-    let tiles = tilesOf(marginSpace).map { ($0, (tileValues($0)["TileWindowID"] as? NSNumber)?.intValue ?? 0) }
-    let mine = windowsOf(a.processIdentifier).filter { w in w.layer == 0 && tiles.contains { $0.1 == w.n } }
-    if let w = mine.first, let tile = tiles.first(where: { $0.1 == w.n })?.0 { return (w.n, w.r, tile, tileMin(tile)) }
+    let list = tilesOf(marginSpace)
+    let tiles = list.map { ($0, (tileValues($0)["TileWindowID"] as? NSNumber)?.intValue ?? 0) }
+    let wins = windowsOf(a.processIdentifier).filter { $0.layer == 0 }
+    if let w = wins.first(where: { w in tiles.contains { $0.1 == w.n } }), let tile = tiles.first(where: { $0.1 == w.n })?.0 {
+      knownTiles[t.id] = (tile, w.n)
+      if let m = tileMin(tile) { knownMins[t.id] = m }
+      return (w.n, w.r, tile, knownMins[t.id])
+    }
+    if let k = knownTiles[t.id], list.contains(k.tile), let w = wins.first(where: { $0.n == k.window }) {
+      let says = tiles.first { $0.0 == k.tile }?.1 ?? 0
+      let note = "tile \(k.tile) of \(t.text)'s window #\(k.window) names window \(says) now, says min \(sizeText(tileMin(k.tile)))"
+      if lastTileNote[t.id] != note { lastTileNote[t.id] = note; log("  (\(note); its minimum as read before: \(sizeText(knownMins[t.id])))") }
+      return (w.n, w.r, k.tile, knownMins[t.id])
+    }
     guard let w = placedWindow(a.processIdentifier, minWidth: 200, minHeight: 200) else { return nil }
-    return (w.n, w.r, nil, nil)
+    return (w.n, w.r, nil, knownMins[t.id])
   }
 
   // What the window server says of a hosted window's tile: its minimum and maximum (its app's), its rect; and what
@@ -134,14 +151,21 @@ extension Runner {
     if !copyNotes.isEmpty { log("  its own log: " + copyNotes.prefix(12).map { String($0.suffix(90)) }.joined(separator: " | ")) }
     if !out.isEmpty || !refits.isEmpty { log("  Margin: " + (out + refits).prefix(6).map { String($0.suffix(170)) }.joined(separator: " | ")) }
     // (The page area the drag ends on: as asked, or as dragged with the shown one's minimum its floor when it was wider.)
-    let want: CGFloat? = endsAt.map(CGFloat.init) ?? minimum.map { m in max(pageBefore.width - CGFloat(dx), min(pageBefore.width, m.width)) }
-    let pageOK = pageAfter.map { p in want.map { abs(p.width - $0) <= 2 } ?? true } ?? false
+    // (Where the drag stops and lets go, by the theme's own rules (Verdicts.swift `letGo`: Arcadia's page area's left
+    // inset is its sidebar's width; the edge stops at the floor, lets go at the step under it). Past the floor, the
+    // window was at its minimum exactly while the edge stood there.)
+    let side = Double(pageBefore.minX)
+    let g = letGo(arcadia, start: side, dx: Double(dx), page: Double(pageBefore.width), floor: minimum.map { Double($0.width) })
+    let want: CGFloat = endsAt.map(CGFloat.init) ?? pageBefore.width - CGFloat(g.end - side)
+    let floored = minimum.map { m in pageBefore.width >= m.width - 1 && pageBefore.width - CGFloat(dx) < m.width } ?? false
+    let touched = !floored || abs(narrowest - minimum!.width) <= 1
+    let pageOK = pageAfter.map { abs($0.width - want) <= 2 } ?? false
     var fillsOK = false
     if let f = final, let p = pageAfter {
       if let m = minimum, m.width > p.width + 1 { fillsOK = abs(f.maxX - p.maxX) <= 2 && abs(f.width - m.width) <= 2 } else { fillsOK = near(f, p, 1) }
     }
-    step("\(name): never out of Margin's Space, never narrower than its minimum, nothing placed again or behind the loader, the edge stopped where its minimum is\(want.map { " (the page area \(Int($0)) wide at the end)" } ?? ""), each change followed",
-         ejectedAt == nil && out.isEmpty && refits.isEmpty && (minimum.map { narrowest >= $0.width - 1 } ?? true) && pageOK && fillsOK && liveLine != nil && late * 10 <= max(sent, 1),
+    step("\(name): never out of Margin's Space, never narrower than its minimum, nothing placed again or behind the loader, \(floored ? "the edge stopped at its minimum (the window exactly that wide), let go at the step under it" : "as dragged") (the page area \(Int(want)) wide at the end), each change followed",
+         ejectedAt == nil && out.isEmpty && refits.isEmpty && (minimum.map { narrowest >= $0.width - 1 } ?? true) && touched && pageOK && fillsOK && liveLine != nil && late * 10 <= max(sent, 1),
          "\(story); its window at the end \(rect(final)); Margin: \(liveLine.map { String($0.suffix(200)) } ?? "no live-resize line")")
     guard !others.isEmpty, let p = pageAfter else { return }
     // (Each parked one: never in a user Space; at the page area or at its minimum width, its right edge the page area's.)
