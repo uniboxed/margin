@@ -69,6 +69,20 @@ nonisolated enum AppCatalog {
         return true
     }
 
+    /// Margin's own app (this build's id exactly, never one of its parts): listed in the palette, never hosted. Picked,
+    /// it plays a surprise in Safari (HostedSession.openApp) instead of Margin opening inside itself.
+    static let ownApp = "com.unibox.margin"
+    static func isOwnApp(_ bundleId: String) -> Bool { bundleId.lowercased() == ownApp }
+
+    /// Whether an app is offered in the palette: a hostable one, or Margin itself (see `ownApp`).
+    static func listed(bundleId: String?, name: String, info: [String: Any]) -> Bool {
+        if let id = bundleId, isOwnApp(id) {
+            if let type = info["CFBundlePackageType"] as? String, type != "APPL" { return false }
+            return true
+        }
+        return hostable(bundleId: bundleId, name: name, info: info)
+    }
+
     /// A bundle id as macOS allows it (letters, digits, '-', '.'; '_' too, which older apps use): the page's rule.
     static func isBundleId(_ id: String) -> Bool {
         guard (1...255).contains(id.utf8.count), let first = id.unicodeScalars.first, first.isASCII, CharacterSet.alphanumerics.contains(first) else { return false }
@@ -94,7 +108,7 @@ nonisolated enum AppCatalog {
         guard let data = try? Data(contentsOf: plist), data.count <= 4 << 20,
               let info = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any] else { return nil }
         let name = displayName(app, info: info, fm: fm)
-        guard let id = info["CFBundleIdentifier"] as? String, hostable(bundleId: id, name: name, info: info) else { return nil }
+        guard let id = info["CFBundleIdentifier"] as? String, listed(bundleId: id, name: name, info: info) else { return nil }
         let modified = (try? fm.attributesOfItem(atPath: plist.path))?[.modificationDate] as? Date
         return InstalledApp(bundleId: id, name: name, path: app.path, stamp: Int(modified?.timeIntervalSince1970 ?? 0))
     }
