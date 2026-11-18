@@ -199,6 +199,26 @@ func liveResizeTests() {
               narrowed && marginWhole(w) && w.bounds(window: n) == page(276) && w.tiles[FakeHostWorld.marginSpace]?.count == 2, "\(w.calls.suffix(6))")
     }
 
+    // ---- a switch that lays the first two tiles out again (the second's window coming back): Margin's window says it's
+    // narrowed (MarginWindowController `onNarrowed`), every rect sent again at once, even mid-operation ----
+    do {
+        let (w, e, _) = world()
+        _ = open(e, textEdit) // (the layout's second tile)
+        _ = open(e, notes)
+        let edit = window(w, "com.apple.TextEdit")
+        w.rejoinRelays = true
+        var narrowedSeen = false, fixedInTheSwitch = false
+        e.hostedWindow = { n in
+            guard n == edit else { return }
+            narrowedSeen = !marginWhole(w) || w.bounds(window: edit) != page(276)
+            e.marginNarrowed() // (as Margin's window says it, from its own resize)
+            fixedInTheSwitch = marginWhole(w) && w.bounds(window: edit) == page(276)
+        }
+        _ = show(e, textEdit)
+        check("live resize: a switch that lays the first two tiles out again (seen: the window shown at a split's width): every rect sent again at once, mid-switch, nothing waits for a poll",
+              narrowedSeen && fixedInTheSwitch && marginWhole(w) && w.bounds(window: edit) == page(276), "narrowed \(narrowedSeen) fixed \(fixedInTheSwitch) \(w.calls.suffix(6))")
+    }
+
     // ---- Margin killed: at the next launch its marker's windows out of full screen, the tiles left destroyed, its old Space with them ----
     do {
         let (w, e, marker) = world()

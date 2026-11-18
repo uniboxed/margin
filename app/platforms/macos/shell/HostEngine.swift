@@ -3425,9 +3425,18 @@ final class HostEngine {
     // Margin's window laid out as a split's half while it hosts (a tile change in its Space Margin didn't make: an app
     // quit or crashed, its window closed by the person): its tiles looked at now rather than at the next poll. Margin's
     // own operations set every rect again themselves.
+    // Every rect is sent again at once, whatever runs (the same rects the running operation sets: harmless), so the split
+    // is seen for as short a moment as the window manager takes (the real Mac, 2026-11-17 23:31:42: a switch laid Margin's
+    // window and the one shown out as a split's thirds; the poll set them back 120 ms later); checked by the next look.
     func marginNarrowed() {
-        guard tilesOK, !busy, !quitting else { return }
-        lookAtTiles(force: true)
+        guard tilesOK, tilesFor == marginSpace, !quitting, let mine = marginTile, let home = tileHome else { return }
+        _ = sys.setTileRect(mine, home)
+        if let rect = tileRect() {
+            let order = hosts.values.filter { $0.tile != nil }.sorted { ($0.id == shown ? 0 : 1, $0.id.raw) < ($1.id == shown ? 0 : 1, $1.id.raw) }
+            for h in order { if let t = h.tile { _ = sys.setTileRect(t, rect) } }
+        }
+        Diagnostics.note("host: Margin's window laid out as a split's part by a tile change: every rect sent again at once")
+        if !busy { lookAtTiles(force: true) }
     }
 
     // ---- the sidebar's edge dragged: the one shown follows live ----

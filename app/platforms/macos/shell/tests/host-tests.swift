@@ -893,6 +893,13 @@ final class FakeHostWorld: HostSystem {
             if moveLag > 0 { landing[window] = (before, clock + moveLag) }
             return true
         }
+        if w.tiled, rejoinRelays, w.priv != nil, !privates.contains(space), let t = tileOf(window), tiles[space]?.firstIndex(of: t) == 1 {
+            w.priv = nil
+            w.spaces = [space]
+            wins[window] = w
+            relayFirstTwo(space)
+            return true
+        }
         if privates.contains(space) {
             guard !fail.contains("park"), !unparkable.contains(window) else { return false }
             w.priv = space
@@ -944,6 +951,9 @@ final class FakeHostWorld: HostSystem {
     // A tiled window out of full screen leaves its tile in that Space, empty, until its app quits (the real Mac,
     // 2026-11-17 23:32: Margin's Space outlived Margin's quit with such a tile in it). Off: the tile goes with it.
     var exitLeavesTile = true
+    // A tiled window that's its layout's second coming back into that Space (a switch) lays the first two out again (the
+    // real Mac, 2026-11-17 23:31:42: Chameleon 1, the second tile of Margin's Space, at a third's width as it was shown).
+    var rejoinRelays = false
     var emptyTiles: [UInt64: pid_t] = [:]
     static let tileDisplay = CGRect(x: 0, y: 0, width: 1512, height: 982), band: CGFloat = 33
     func tileOf(_ window: Int) -> UInt64? { tileWindow.first { e in e.value == window && tiles.values.contains { $0.contains(e.key) } }?.key }
