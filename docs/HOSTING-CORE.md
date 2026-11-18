@@ -271,5 +271,116 @@ normal windows). A hold that starts while a correction of Margin's is under way 
   waits for Margin's own verdict (90 s bound) and reports its parts (first copy, the profile's link and presses, its
   window, shown); a show of Safari whose first open failed is reported as a first open.
 
-Not in scope here: live resize during a sidebar drag (separate research), the privileged route question
-(the bridged operations; awaiting Tirth), the sidebar click's brief key flicker.
+Not in scope here: the sidebar click's brief key flicker. (Live resize and the privileged route: the next section.)
+
+## Live resize: tiles in Margin's Space (design, 2026-11-17)
+
+Asked by Tirth on 2026-11-17, after the kit's second round (`/tmp/margin-toolbar-test/live-resize/opt4/FINDINGS.md`):
+the shown app follows a drag of the sidebar's edge live, every frame, "properly without causing any issues or errors
+and without reducing efficiency or performance", on the privileged route (the window manager's bridged operations,
+which Margin already uses for every move and destroy). Until now a hosted full-screen window was a plain member of
+Margin's Space with its own Space destroyed: nothing could resize it, so a drag re-fitted it once at its end (out of
+full screen and in, about 0.9 s, behind the loader) and a parked one was re-fitted only when next shown.
+
+**The one rule:** a hosted window's size is its tile's rect, and that rect is the hosting core's desired page area.
+Every page area change (a drag's end, a theme, the display, anything) goes the same way: Margin's page area is the
+desired state, the reconciler converges every host's tile to it, the one shown first. A drag is the only thing that
+moves faster than the reconciler: the one shown follows it frame by frame, and the drag's end is an ordinary change.
+
+### What the kit proved (own test panes, Stage Manager on, macOS 27.2.1)
+
+- A full-screen window lives in a **tile** of its full-screen Space. Bridged `SpaceSetValues(M, {"Max Tile Config":
+  {Width: N, Height: 1}})` raises Margin's Space's tile limit (2 by default; a move past it isn't taken); bridged
+  `SpaceTileMoveToSpaceAtIndex(tile, M, index)` moves a window's own tile (with its window, still full screen) into
+  Margin's Space; its emptied own Space is destroyed as before: Mission Control lists Margin's Space only.
+- Bridged `SpaceSetValues(tile, {"TileRect": {X, Y, Width, Height}})` sizes the window: it follows in 10-26 ms, shown
+  or parked in a private Space. Tiles may overlap (every hosted tile at the page area). The rect is in the display's
+  points from its top left, the menu bar's band included (a full-screen window sits that band below its tile's top):
+  Margin's own tile is the display's whole, a hosted one is Margin's less the page's distances from the full-screen
+  area's edges (`HostLayout.tile`: 248,41 1256×933 in 0,33 1512×949 → tile 248,8 1256×966).
+- A 120 Hz drag (240 steps): median 3.8-6.1 ms from the write to the window at its new size, p95 7.3-8.4 ms; CPU as
+  the reservation route's. With `SetValues(M, {LiveResizing: true})` before and `{LiveResizing: false}` after (never
+  the key removed: that never ends it) the app gets one live-resize start and end, not one per frame: its CPU 899 →
+  707 ms over the drag.
+- A switch to a parked one: 24-36 ms, its first frame already at its tile's size.
+- **The quirk:** any tile added to or taken out of Margin's Space, or any reservation on it, lays the first two
+  entries of its layout out again as a split's halves (Margin's own tile and the first hosted one), whatever their
+  rects were.
+- Direct (unbridged) `SLSSpaceSetValues` is ignored for another process's tiles.
+- A hosted app killed leaves a placeholder tile (its id kept, a window number of its own); bridged destroy takes it.
+  Margin killed leaves its Space with no owner and the hosted tiles: the first two fall into a visible split; a new
+  Margin Space can raise its limit, take the tiles (their ids kept, 360 ms for three) and set their rects; the old one
+  is then empty and destroyed.
+
+### The design, step by step (HostEngine.swift "live resize: tiles in Margin's Space")
+
+- **Check, once per Margin Space** (`tilesReady`, at the first open or preparing there): the tiles part of the private
+  calls passed its launch check (HostCalls.swift: `SLSSpaceCopyTileSpaces`, `SLSSpaceCopyValues`, both bridged classes
+  and their four selectors at their recorded encodings); Margin's own tile found (the tile whose window is Margin's);
+  its rect the display's while it's alone; Margin's Space's tile limit raised to what the next tile needs and read
+  back. Any of it fails: the fallback (below) for the run, said once.
+- **Host** (a first open): as before up to its own full-screen Space at the page area (the early path's reservation of
+  its own Space still sizes it there; never one on Margin's). Then, instead of the window alone as a member: the limit
+  raised to the tiles there plus one, its tile moved to the end of Margin's layout, landed (Margin's Space lists it and
+  the window server has the window in Margin's Space), every rect set again (`reapplyTiles`: Margin's own the display's,
+  this one's the page area's, then the others'), its window seen at the page area and Margin's window at its whole
+  width; its own Space destroyed as before (never in the same breath as the move), settled. All of it under the freeze
+  (the early path's, or one of its own on the slow path): Margin's own window is a split's half for that moment.
+  Margin's window never takes a page area from that moment (`hostedPlacement` is nil while it's narrower than its
+  screen).
+- **Show and park:** as before (the bridged member moves: into Margin's Space, into a private Space); the tile stays in
+  Margin's Space either way, so a parked window keeps following its tile's rect.
+- **Drag:** the session asks the engine (`dragging(true)`): if the one shown is a tile (or a window-mode window), it
+  follows; Margin's Space is told (`LiveResizing` true). Each page layout of the drag (the page's own, once a frame) goes
+  to the engine (`follow`): at most one write a display frame, one in flight (the newest page area kept, older ones
+  dropped), each waited for until the window is there (at most 50 ms); the hole in Margin's window is the page area
+  meanwhile (`followsPage`). Nothing else is sized during a drag, and Margin's desired page area doesn't change. Over:
+  `LiveResizing` false, then the drag's last page area is an ordinary change.
+- **Background:** a change of the page area (`pageRectChanged`) sets the one shown's rect and waits for it (no loader,
+  no full-screen change), then the reconciler's `sizeTile` for every other tile not at the page area, one at a time,
+  each its own turn in the engine's queue (about 25 ms each), asked at once after the previous one rather than at the
+  next poll. A show asked meanwhile goes between them and sizes its own tile first, out of sight: a switch never shows
+  the old size. A tile found off the page area twice at rest (a tile change laid it out again) is sized the same way.
+  Budget: 3 per 30 s; the one shown then is placed again the old way (`placeAgain`), a parked one at its next show.
+- **Tile changes:** after every one (a host in, a host given back, an app gone, a window closed), every rect set again.
+  Margin's own changes do it under the freeze. Changes nobody asked for (an app quit or crashed, its window closed by
+  the person) are found at the next poll (`lookAtTiles`: another count of tiles, a host's tile left behind, Margin's own
+  rect not the display's): every rect set again then (a placeholder destroyed first, under the freeze). Margin's window
+  is a split's half until that poll (at most 0.25 s): **seen** (nothing can freeze ahead of a change Margin didn't make).
+- **App quit or crash:** its host goes as before; its tile, if it stayed (a crash's placeholder), is destroyed at the
+  next look, then every rect set again.
+- **Margin quit:** each host given back as before (out of full screen on the current Space: its tile leaves Margin's
+  Space with it), under the freeze; no rects set again while quitting (Margin's window goes).
+- **Margin crash and recovery:** the marker (hosted.json) records Margin's Space, Margin's own tile, each host's tile
+  and the tiles of hosts that went but weren't destroyed yet. At the next launch the recovery gives everything back as
+  it always has (each window out of full screen on the current Space: a window in Margin's old Space is taken out of
+  full screen there, or brought to the current Space first; window-mode frames given back; apps Margin started quit),
+  then destroys the recorded tiles still in Margin's old Space (never one a window of the marker's is still in), and
+  the old Space with them once nothing is left in it. The new Margin doesn't take the tiles over: what was hosted is
+  hosted again by its next show, as after any crash.
+- **Margin's window in another Space** (it left full screen and came back): its hosts' tiles moved into the new Space
+  (the kit's recovery move, ids kept), every rect set again, the old Space destroyed once empty (`adoptTiles`).
+- **Mission Control and swipes:** only Margin's Space is listed (the hosts' own Spaces destroyed as before); a swipe
+  or ⌃← lands on Margin's Space as one Space with its tiles in it.
+
+### The fallback
+
+No tiles part (a symbol or class missing, an encoding changed), the launch-time check failing (Margin's own tile not
+found or not the display's, its tile limit not taking), or a tile step that doesn't take during a host (its tile not
+moved: the window goes in alone, as a member; its rect not taken: backed out and asked again, as a member): the tiles
+are off for the run, said once, and everything is today's re-fit-on-release path, unchanged (a drag held until it's
+over, one placing out of full screen and in behind the loader; parked members re-fitted at their next show). Hosts
+already in tiles keep working as tiles.
+
+**Window mode** stays as it is (its frame set by Accessibility in the page area, kept while parked), and follows a
+drag by Accessibility: one `setFrame` in flight at a time, the newest page area kept. Cheap for Margin (one
+Accessibility call a frame on its own queue); the app does what a person's drag of its window's edge would make it do.
+Parked window-mode windows are re-placed when shown, as before (Accessibility can't reach them in a private Space).
+
+### Not proven (before it's called working in real use)
+
+The kit's own panes only: real apps (Safari, Mail, a Catalyst app) in a tile; Margin's real window and its panel over
+tiles; a switch's timing with Margin's panel in front; the recovery's out-of-full-screen from an ownerless Margin
+Space; real Mission Control and swipes; Stage Manager off; two displays (the tile rect's origin on a second display:
+taken as display-local, verified at each sizing by the window's bounds). The real-screen suite's `live-resize` part
+(tools/screen-tests) checks the first five on Chameleon and, with `--real-apps`, the person's own apps.
