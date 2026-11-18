@@ -603,7 +603,8 @@ final class HostEngine {
         for host in hosts.values {
             if sys.app(pid: host.pid) == nil, !sys.processRuns(pid: host.pid) { appQuit(host.pid); continue }
             if host.launchedByMargin, !host.promoted, sys.policy(pid: host.pid) == .regular { promote(host, why: "its policy reads regular") }
-            if sys.bounds(window: host.window) == nil { host.unread += 1 } else { host.unread = 0; host.gone = false }
+            // (Closed and still listed by the window server, in no Space or off screen: gone at once, as two reads that missed.)
+            if closedByItsApp(host) { host.unread = max(2, host.unread + 1) } else if sys.bounds(window: host.window) == nil { host.unread += 1 } else { host.unread = 0; host.gone = false }
             if host.unread >= 2 { // twice in a row: one read can miss mid-transition
                 // (Shown, its app still running: the reconciler adopts another main window of its app's that comes within
                 // the grace, else closes its item (Tirth, 2026-11-17: a window the person closes closes its item, never
@@ -3063,6 +3064,19 @@ final class HostEngine {
         checkListed("after \(id) was parked")
     }
 
+    // A hosted window its app closed (the person's ⌘W, its close button, its app's own close) that the window server still
+    // lists: Accessibility said its element was destroyed, and it's in no Space or off screen (an NSWindow its app keeps
+    // after its close stays listed at its last frame, off screen: Chameleon's windowless close, 2026-11-17 19:04, was
+    // taken for a stray, brought back, placed again, refused, and reopened: a window the person closed came back). A
+    // window on screen isn't taken for closed whatever was said (one Accessibility lists again is taken off by the
+    // observer).
+    private func closedByItsApp(_ host: Host) -> Bool {
+        guard observer.model.apps[host.pid]?.closed.contains(host.window) == true else { return false }
+        if (sys.spaces(window: host.window) ?? []).isEmpty { return true }
+        // (Or off screen by its own read: a closed window-mode window stays listed in Margin's Space, off screen.)
+        return sys.windowOnScreen(host.window).map { !$0.onScreen } ?? false
+    }
+
     // The poll found a host where it mustn't be. The one shown, outside Margin's Space: with Margin's window out of its
     // Space too (macOS took it out of full screen), parked with nothing in its place. With Margin's window still there
     // (seen 2026-11-17, 0.4-0.7 s after the first show of a Safari window made ready at launch: "parked, nothing shown",
@@ -3070,7 +3084,9 @@ final class HostEngine {
     // full-screen change late, macOS on its first activation): brought back into Margin's Space as it is and kept shown
     // (`bringBack`), what the poll saw said in the log. (A parked one in a user Space: the reconciler's `parkAgain`.)
     private func strayed(_ id: HostID, marginHere: Bool) async {
-        guard let host = hosts[id] else { return }
+        // (Closed meanwhile, its close told after the poll's read: the poll's gone path and the reconciler's grace, never
+        // brought back: a closed window put back in Margin's Space was placed again, refused, and reopened, 19:04.)
+        guard let host = hosts[id], !closedByItsApp(host) else { return }
         if host.phase == .shown, shown == id {
             let spaces = sys.spaces(window: host.window)
             let seen = "its window in \(spaces.map { $0.isEmpty ? "no user Space" : $0.map { "\($0) (type \(sys.spaceType($0).map(String.init) ?? "?"))" }.joined(separator: ", ") } ?? "Spaces that don't read"), Margin's Space \(marginSpace), Margin's window \(marginHere ? "in it" : "out of it")"

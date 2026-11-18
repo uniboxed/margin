@@ -15,7 +15,10 @@ final class FakeObservation: HostObservation {
     var watched: [pid_t: (HostAXNote, Int?) -> Void] = [:]
     var unwatched: [pid_t] = []
     var reads: [(pid: pid_t, windows: [Int])] = []
-    init(_ world: FakeHostWorld) { self.world = world }
+    init(_ world: FakeHostWorld) {
+        self.world = world
+        world.onDestroyed = { [weak self] pid, n in self?.post(pid, .destroyed, n) }
+    }
     func watch(pid: pid_t, _ heard: @escaping (HostAXNote, Int?) -> Void) -> Bool { watched[pid] = heard; return true }
     func unwatch(pid: pid_t) { watched[pid] = nil; unwatched.append(pid) }
     func read(pid: pid_t, windows: [Int]) async -> HostAXRead? {
@@ -23,7 +26,7 @@ final class FakeObservation: HostObservation {
         guard world.apps[pid] != nil else { return nil }
         var out = HostAXRead(main: world.main[pid], focused: world.focused[pid])
         for n in windows {
-            guard let w = world.wins[n], w.pid == pid, !world.axCurrentOnly || world.onCurrent(n) else { continue }
+            guard let w = world.wins[n], w.pid == pid, !world.closedWins.contains(n), !world.axCurrentOnly || world.onCurrent(n) else { continue }
             let parts = (w.axRole ?? "AXWindow/AXStandardWindow").split(separator: "/").map(String.init)
             out.windows[n] = HostAXWindow(role: parts.first, subrole: parts.count > 1 ? parts[1] : nil, fullScreen: w.fullScreen, canFullScreen: w.canFullScreen,
                                           resizable: w.resizable, minimized: w.minimized)
@@ -127,6 +130,10 @@ func windowKindsTests() {
         Row(name: "an inspector (AXFloatingWindow): auxiliary",
             windows: [std(5, page, .margin), W(number: 12, bounds: CGRect(x: 1100, y: 100, width: 300, height: 500), place: .margin, everPlaced: true, role: "AXWindow", subrole: "AXFloatingWindow")],
             app: .init(launchedByMargin: true, hosted: [5]), want: [5: .main, 12: .auxiliary]),
+        // Chameleon's windowless close and replacesWindow, 2026-11-17 19:04: a closed window its app keeps, still listed.
+        Row(name: "a window its app closed (Accessibility: destroyed), still listed off screen in Margin's Space, the new one on screen: transient, the new one main",
+            windows: [std(5, page, .margin, onScreen: false), std(9, page, .margin, onScreen: true)],
+            app: .init(launchedByMargin: true, hosted: [5], closed: [5]), want: [5: .transient, 9: .main], why: [5: "closed"]),
         // Safari, 14:05: the window opened only to wake a profile.
         Row(name: "Safari's window opened only to wake a profile: leftover (even made after the hosted one)",
             windows: [std(69700, page, .margin), std(69750, desk, .parked)],
@@ -269,14 +276,15 @@ func hostObserverTests() {
         ax.post(pid, .main, settings)
         hostRun { await o.flush(pid) }
         check("observer: Accessibility's main window changed to another window: read, the hosted one still main", o.model.apps[pid]?.axMain == settings && o.model.apps[pid]?.mains == [main] && lines.all.count == 2, "\(lines.all)")
-        // The sheet closed: gone at the second poll that doesn't read it (one can miss mid-transition).
+        // The sheet closed (its element destroyed, told by Accessibility as it closes): said closed at once, never a main
+        // window again; gone from the model at the second poll that doesn't read it (one can miss mid-transition).
         w.closeWindow(sheet)
-        ax.post(pid, .destroyed, sheet)
+        let closedNow = o.model.apps[pid]?.closed == [sheet] && lines.all.filter { $0.contains("\(sheet) closed (Accessibility: destroyed)") }.count == 1
         o.update(tracked, onScreen: w.onScreenWindows(), seen: [:], placement: placement, marginSpace: margin)
-        let afterOne = o.model.apps[pid]?.windows[sheet] != nil
+        let afterOne = o.model.apps[pid]?.windows[sheet]?.kind == .transient
         o.update(tracked, onScreen: w.onScreenWindows(), seen: [:], placement: placement, marginSpace: margin)
-        check("observer: a window closed: gone at the second poll that doesn't read it, said once", afterOne && o.model.apps[pid]?.windows[sheet] == nil
-              && lines.all.filter { $0.contains("\(sheet) gone (was dialog)") }.count == 1, "\(lines.all)")
+        check("observer: a window closed: said closed as Accessibility tells it, transient while it's still read, gone at the second poll that doesn't read it",
+              closedNow && afterOne && o.model.apps[pid]?.windows[sheet] == nil && o.model.apps[pid]?.closed.isEmpty == true, "\(lines.all)")
         check("observer: the notifications counted, Accessibility read once per flush", o.cost.notes == 4 && o.cost.axReads == 3, "\(o.cost)")
         // Given back: unwatched, dropped, said.
         o.update([], onScreen: nil, seen: [:], placement: placement, marginSpace: margin)

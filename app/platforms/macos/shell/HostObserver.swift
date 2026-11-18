@@ -181,6 +181,7 @@ final class HostObserver {
                 app.windows[n] = w
             }
             if let tried = axTried[t.pid] { axTried[t.pid] = tried.filter { app.windows[$0.key] != nil } }
+            app.closed = app.closed.filter { app.windows[$0] != nil }
             app.classify(in: placement, at: now)
             model.apps[t.pid] = app
             if let line = app.change(from: before, mainsBefore: mainsBefore) { say("host: model: \(app.name): \(line)") }
@@ -207,10 +208,16 @@ final class HostObserver {
         if let number, number > 0 {
             switch note {
             case .created:
+                model.apps[pid]?.closed.remove(number)
                 if model.apps[pid]?.windows[number] == nil { created[pid, default: []].insert(number) }
                 windows.insert(number)
             case .moved, .resized, .miniaturized, .deminiaturized, .focused, .main: windows.insert(number)
-            case .destroyed: break
+            case .destroyed:
+                // (Closed. The window server may list it a while yet: an NSWindow its app keeps after its close.)
+                if model.apps[pid]?.closed.insert(number).inserted == true, model.apps[pid]?.windows[number] != nil {
+                    say("host: model: \(model.apps[pid]?.name ?? "\(pid)"): \(number) closed (Accessibility: destroyed)")
+                }
+                return
             }
         }
         requestAX(pid, windows)
@@ -251,6 +258,7 @@ final class HostObserver {
                 created[pid]?.remove(n)
             }
             app.windows[n]?.ax = ax
+            app.closed.remove(n) // (listed: not closed)
         }
         for n in app.windows.keys {
             app.windows[n]?.axMain = read.main == n
@@ -406,11 +414,13 @@ nonisolated final class HostAXWatch: @unchecked Sendable {
 
     func read(pid: pid_t, windows: [Int]) async -> HostAXRead? {
         guard !refuses, AXIsProcessTrusted() else { return nil }
-        return await withCheckedContinuation { c in queue.async { c.resume(returning: self.readNow(pid, windows)) } }
+        let entry = entries[pid]
+        return await withCheckedContinuation { c in queue.async { c.resume(returning: self.readNow(pid, windows, entry)) } }
     }
 
-    // (queue)
-    private func readNow(_ pid: pid_t, _ wanted: [Int]) -> HostAXRead {
+    // (queue) Each window it lists that was asked for is followed from now too (its destroyed notification: its close),
+    // if it wasn't: one on another Space as the watch started isn't.
+    private func readNow(_ pid: pid_t, _ wanted: [Int], _ entry: Entry?) -> HostAXRead {
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.5)
         var out = HostAXRead()
@@ -424,7 +434,11 @@ nonisolated final class HostAXWatch: @unchecked Sendable {
                          minimized: attr(e, kAXMinimizedAttribute) as? Bool)
         }
         let list = (attr(app, kAXWindowsAttribute) as? [AXUIElement]) ?? []
-        for e in list { if let n = number(e), want.contains(n) { out.windows[n] = describe(e) } }
+        for e in list {
+            guard let n = number(e), want.contains(n) else { continue }
+            out.windows[n] = describe(e)
+            if let entry, let observer = entry.observer { follow(e, entry, observer) }
+        }
         // (A sheet is a child of its window, not one of the app's windows.)
         if out.windows.count < want.count {
             for e in list {

@@ -137,7 +137,7 @@ final class FakeHostWorld: HostSystem {
         _ = onReopen(pid)
         return true
     }
-    func axReads(_ window: Int) -> Bool { !axCurrentOnly || onCurrent(window) || axSeen.contains(window) }
+    func axReads(_ window: Int) -> Bool { !closedWins.contains(window) && (!axCurrentOnly || onCurrent(window) || axSeen.contains(window)) }
     // Accessibility lists a window only this long after it's on the current Space (moved there, or its Space made
     // current): the window server moves it first (seen 2026-11-15: Calculator brought into Margin's Space, not listed
     // within a second). And windows it lists only while the Desktop is current (where a stand-alone test saw Calculator's).
@@ -927,14 +927,34 @@ final class FakeHostWorld: HostSystem {
     }
 
     // A window closed by its app (a Safari copy's closeWindow): its own full-screen Space goes with it.
+    // Apps that keep a window after its close (an NSWindow not released when closed: every Chameleon's, many real apps'):
+    // the window server lists it a while yet, off screen, a full-screen one at its normal frame in no Space, a window-mode
+    // one where it was; Accessibility no longer has it, its element destroyed (told: `onDestroyed`). The real Mac,
+    // 2026-11-17 19:04 (Chameleon's windowless close: "74324 in [9158] → in no Space", its bounds 260,220 900×560).
+    var keepsClosed: Set<String> = []
+    var closedWins: Set<Int> = []
+    var onDestroyed: ((pid_t, Int) -> Void)?
     func closeWindow(_ n: Int) {
-        guard let w = wins.removeValue(forKey: n) else { return }
+        guard var w = wins[n] else { return }
         for (space, list) in tiles where list.contains(where: { tileWindow[$0] == n }) {
             tiles[space] = list.filter { tileWindow[$0] != n }
             if owner[space] == w.pid, tiles[space]?.isEmpty == true { tiles[space] = nil; owner[space] = nil }
         }
         apps[w.pid]?.windows.removeAll { $0 == n }
+        if let bundle = apps[w.pid]?.bundle, keepsClosed.contains(bundle) {
+            if w.fullScreen || w.member { w.spaces = [] }
+            w.priv = nil
+            w.fullScreen = false
+            w.member = false
+            w.memberFrame = nil
+            wins[n] = w
+            closedWins.insert(n)
+            orderedOut.insert(n)
+        } else {
+            wins[n] = nil
+        }
         noteListing()
+        onDestroyed?(w.pid, n)
     }
 }
 

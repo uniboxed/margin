@@ -64,6 +64,7 @@ final class BehaviourWorld {
     func add(_ bundle: String, _ s: ChameleonSwitches) {
         switches[bundle] = s
         world.installed.insert(bundle)
+        world.keepsClosed.insert(bundle) // (its windows aren't released when closed: listed a while after, as on the real Mac)
         if s.noFullScreen { world.notFullScreen.insert(bundle) }
         if let size = s.fixedSize { world.fixedSize[bundle] = size }
         if s.dialogMain { world.axRoles[bundle] = "AXWindow/AXDialog" }
@@ -442,8 +443,8 @@ func behaviourWorldTests() {
         let second = b.mainWindow(pid) ?? 0
         run(w, b, 4.0)
         let third = b.mainWindow(pid) ?? 0
-        check("behaviour replacesWindow every:4: a new main window every 4 s at the old one's frame, the old one gone",
-              second != first && third != second && w.wins[first] == nil && w.wins[second] == nil && w.apps[pid]?.windows == [third] && w.wins[third]?.frame == FakeHostWorld.defaultFrame && w.wins[third]?.spaces == [w.current], "\(first) \(second) \(third) \(b.said)")
+        check("behaviour replacesWindow every:4: a new main window every 4 s at the old one's frame, the old one closed (still listed by the window server, off screen, not by Accessibility)",
+              second != first && third != second && w.closedWins.isSuperset(of: [first, second]) && !w.shows(first) && !w.shows(second) && w.apps[pid]?.windows == [third] && w.wins[third]?.frame == FakeHostWorld.defaultFrame && w.wins[third]?.spaces == [w.current], "\(first) \(second) \(third) \(b.said)")
     }
     do {
         let (w, _) = make(["replacesWindow": "twin"])
@@ -498,7 +499,7 @@ func behaviourWorldTests() {
         let pid = launch(w)
         let first = w.apps[pid]?.windows.first ?? 0
         _ = hostRun { await w.sleep(1.5) }
-        check("behaviour world: FakeHostWorld's sleeps move its behaviours on (a window replaced during an engine's wait)", b.mainWindow(pid) != first && w.wins[first] == nil)
+        check("behaviour world: FakeHostWorld's sleeps move its behaviours on (a window replaced during an engine's wait)", b.mainWindow(pid) != first && w.closedWins.contains(first))
     }
 }
 

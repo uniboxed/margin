@@ -17,6 +17,7 @@
 // The rules, in order (the first that applies):
 //   1. above layer 0                                              transient
 //   2. Accessibility's role a menu, a help tag or a popover       transient
+//  2b. closed (its Accessibility element destroyed), still listed by the window server          transient
 //   3. the page area's width at least, at most 150 pt tall        strip
 //   4. under 100 pt on a side                                     transient
 //   5. opened by Margin only to wake its app                      leftover
@@ -102,6 +103,8 @@ nonisolated enum WindowKinds {
         // Its windows as the first show of the window Margin hosts ended (an app Margin started): restored by it, or made as
         // it launched (stage 3: Chameleon's restored windows came after the one Margin chose, at higher numbers).
         var launchWindows: Set<Int> = []
+        // Its windows Accessibility said were destroyed (closed) that the window server still lists.
+        var closed: Set<Int> = []
     }
 
     struct Verdict: Equatable, Sendable {
@@ -142,6 +145,7 @@ nonisolated enum WindowKinds {
         for w in windows.sorted(by: { $0.number < $1.number }) {
             if w.layer != 0 { out[w.number] = Verdict(kind: .transient, why: "layer \(w.layer)"); continue }
             if let role = w.role, transientRoles.contains(role) { out[w.number] = Verdict(kind: .transient, why: "role \(role)"); continue }
+            if app.closed.contains(w.number) { out[w.number] = Verdict(kind: .transient, why: "closed (Accessibility: destroyed), still listed by the window server"); continue }
             if isStrip(w.bounds, in: placement) { out[w.number] = Verdict(kind: .strip, why: "\(size(w.bounds)): the page area's width, at most \(Int(stripMaxHeight)) pt tall"); continue }
             if w.bounds.width < tinySide || w.bounds.height < tinySide { out[w.number] = Verdict(kind: .transient, why: "\(size(w.bounds)): under \(Int(tinySide)) pt on a side"); continue }
             if app.woken.contains(w.number) { out[w.number] = Verdict(kind: .leftover, why: "opened by Margin only to wake its app"); continue }
