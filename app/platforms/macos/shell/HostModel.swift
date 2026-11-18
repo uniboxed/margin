@@ -56,7 +56,7 @@ nonisolated struct HostModelWindow: Equatable, Sendable {
     var classified: WindowKinds.Window {
         WindowKinds.Window(number: number, layer: layer, bounds: bounds, alpha: alpha, onScreen: onScreen, place: place, everPlaced: everPlaced,
                            role: ax?.role, subrole: ax?.subrole, fullScreen: ax?.fullScreen, canFullScreen: ax?.canFullScreen,
-                           minimized: ax?.minimized, axMain: axMain, axFocused: axFocused)
+                           minimized: ax?.minimized, axMain: axMain, axFocused: axFocused, firstSeen: firstSeen)
     }
 
     // Where it is, from its Spaces (mask 7), the private Space Margin parked it in, Margin's Space and each Space's type.
@@ -100,6 +100,7 @@ nonisolated struct HostModelApp: Equatable, Sendable {
     // Accessibility lists again (created again, read) is taken off.
     var closed: Set<Int> = []
     var launchWindows: Set<Int> = [] // its windows as the first show of a window of it ended (an app Margin started)
+    var resized: WindowKinds.Resized? = nil // Margin's last sizing of one of its windows (a helper answers it)
     var since: Double // when the observer started following it
     var axMain: Int? = nil
     var axFocused: Int? = nil
@@ -118,7 +119,9 @@ nonisolated struct HostModelApp: Equatable, Sendable {
 
     // Every window's kind again (WindowKinds.classify), the last mains kept for a tie. The change in its lastChanged.
     mutating func classify(in placement: HostPlacement, at now: Double) {
-        let app = WindowKinds.App(launchedByMargin: launchedByMargin, hosted: Set(hosted.keys), woken: woken, previousMains: Set(mains), launchWindows: launchWindows, closed: closed)
+        let helpers = Set(windows.values.filter { $0.kind == .helper }.map(\.number))
+        let app = WindowKinds.App(launchedByMargin: launchedByMargin, hosted: Set(hosted.keys), woken: woken, previousMains: Set(mains), previousHelpers: helpers,
+                                  launchWindows: launchWindows, closed: closed, resized: resized)
         let verdicts = WindowKinds.classify(windows.values.map(\.classified), app: app, in: placement)
         for (n, v) in verdicts {
             guard var w = windows[n] else { continue }

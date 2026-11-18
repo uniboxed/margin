@@ -186,6 +186,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "margin-ffi"
+version = "0.1.1"
+dependencies = [
+ "margin-core",
+]
+
+[[package]]
 name = "margin-windows"
 version = "0.1.1"
 dependencies = [

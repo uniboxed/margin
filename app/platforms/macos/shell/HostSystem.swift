@@ -28,6 +28,8 @@ protocol HostSystem: AnyObject {
     // application" off). Off, macOS's default, a quit discards its windows anyway: closing one first changes nothing
     // about its next launch.
     func keepsWindowsAtQuit(pid: pid_t) -> Bool
+    // Its app's version ("short (build)"; nil: unread): the hosting core's routes remember a step down per version.
+    func appVersion(pid: pid_t) -> String?
     var onAppQuit: ((pid_t) -> Void)? { get set }
     // Whether it's hidden (nil: not running). An app started with no Dock icon is started hidden (LaunchServices' hide
     // option): a hidden app's windows aren't in Accessibility's list, and some apps make or expose their window only
@@ -152,6 +154,7 @@ protocol HostSystem: AnyObject {
 }
 
 extension HostSystem {
+    func appVersion(pid: pid_t) -> String? { nil }
     // (A stand-in that doesn't play it: not sent.)
     func reopen(pid: pid_t) -> Bool { false }
     // (A stand-in that doesn't play it: not taken, front app unread.)
@@ -493,6 +496,10 @@ final class RealHostSystem: HostSystem {
         return a.terminate()
     }
 
+    func appVersion(pid: pid_t) -> String? {
+        guard let url = NSRunningApplication(processIdentifier: pid)?.bundleURL, let info = Bundle(url: url)?.infoDictionary else { return nil }
+        return "\(info["CFBundleShortVersionString"] as? String ?? "?") (\(info["CFBundleVersion"] as? String ?? "?"))"
+    }
     func keepsWindowsAtQuit(pid: pid_t) -> Bool {
         guard let bundle = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier else { return false }
         let key = "NSQuitAlwaysKeepsWindows"

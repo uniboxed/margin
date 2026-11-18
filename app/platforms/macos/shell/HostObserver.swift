@@ -77,7 +77,11 @@ final class HostObserver {
     private var created: [pid_t: Set<Int>] = [:] // windows a notification named, not in the model yet
     private var spaceTypes: [UInt64: Int] = [:]
 
-    init(system: HostSystem, source: HostObservation?) {
+    // The engine's hosting core, told what comes and goes (its causes).
+    let core: HostCore
+
+    init(system: HostSystem, source: HostObservation?, core: HostCore = HostCore()) {
+        self.core = core
         sys = system
         self.source = source
     }
@@ -183,6 +187,7 @@ final class HostObserver {
             if let tried = axTried[t.pid] { axTried[t.pid] = tried.filter { app.windows[$0.key] != nil } }
             app.closed = app.closed.filter { app.windows[$0] != nil }
             app.classify(in: placement, at: now)
+            noteOpened(app, at: now)
             model.apps[t.pid] = app
             if let line = app.change(from: before, mainsBefore: mainsBefore) { say("host: model: \(app.name): \(line)") }
             if !askAX.isEmpty { requestAX(t.pid, askAX) }
@@ -213,7 +218,12 @@ final class HostObserver {
                 windows.insert(number)
             case .moved, .resized, .miniaturized, .deminiaturized, .focused, .main: windows.insert(number)
             case .destroyed:
-                // (Closed. The window server may list it a while yet: an NSWindow its app keeps after its close.)
+                // (Closed. The window server may list it a while yet: an NSWindow its app keeps after its close.) Told
+                // to the hosting core's causes at once, with its kind: macOS lays the tiles out again 15-30 ms after.
+                // (One never read yet, gone within a poll (a helper lives 0.2 s): its app's all the same, its kind unknown.)
+                if let app = model.apps[pid] {
+                    core.note(now: sys.now(), .closed, host: hostName(app), window: number, kind: app.windows[number]?.kind ?? .transient)
+                }
                 if model.apps[pid]?.closed.insert(number).inserted == true, model.apps[pid]?.windows[number] != nil {
                     say("host: model: \(model.apps[pid]?.name ?? "\(pid)"): \(number) closed (Accessibility: destroyed)")
                 }
@@ -265,8 +275,32 @@ final class HostObserver {
             app.windows[n]?.axFocused = read.focused == n
         }
         app.classify(in: placement, at: now)
+        noteOpened(app, at: now)
         model.apps[pid] = app
         if let line = app.change(from: before, mainsBefore: mainsBefore) { say("host: model: \(app.name): \(line)") }
+    }
+
+    // ---- the hosting core's causes (host/causes.rs) ----
+
+    // Margin sized one of `pid`'s windows (a tile's rect, a frame): a new window at one of these rects right after is its
+    // app's answer (a helper), never one of its own.
+    func sized(pid: pid_t, rects: [CGRect]) {
+        model.apps[pid]?.resized = WindowKinds.Resized(at: sys.now(), rects: rects)
+    }
+
+    // A window's host as the causes count it: the app's hosted one (a helper isn't hosted: its app's host).
+    private func hostName(_ app: HostModelApp) -> String { app.hosted.values.sorted().first ?? "app:\(app.bundleId)" }
+
+    // Each window seen for the first time, told with its first kind.
+    private var opened: [pid_t: Set<Int>] = [:]
+    private func noteOpened(_ app: HostModelApp, at now: Double) {
+        var seen = opened[app.pid] ?? []
+        seen.formIntersection(app.windows.keys)
+        for (n, w) in app.windows where !seen.contains(n) {
+            seen.insert(n)
+            core.note(now: now, .opened, host: hostName(app), window: n, kind: w.kind)
+        }
+        opened[app.pid] = seen
     }
 
     // ---- what it says ----

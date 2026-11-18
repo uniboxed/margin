@@ -359,6 +359,7 @@ final class FakeHostWorld: HostSystem {
     var membersEarly: Set<Int> = [] // windows macOS brought into their own Space before its switch (`stageMember`)
     var moveLosesFrame = 0 // the next N moves of a pending window into Margin's Space leave it at the display's whole size
     func advance() {
+        advanceHelpers()
         for n in pending.keys.sorted() {
             guard var p = pending[n], var w = wins[n] else { pending[n] = nil; continue }
             let since = clock - p.asked + 1e-9
@@ -962,6 +963,35 @@ final class FakeHostWorld: HostSystem {
     var relayPending = false
     var onReveal: (() -> Void)?
     var emptyTiles: [UInt64: pid_t] = [:]
+    // An app that answers each sizing of its tile with a window of its own at the tile's rect, `helperAfter` later, closed
+    // `helperLife` after that; the close lays the first two of the Space out again, Margin's window told it narrowed
+    // (`onRelaid`: MarginWindowController's windowDidResize). Weather on the real Mac, 2026-11-18 13:30: 54 rounds in 18 s.
+    var answersResize: Set<String> = []
+    var helperAfter = 0.15, helperLife = 0.2
+    var helpers: [(open: Double, close: Double, pid: pid_t, space: UInt64, rect: CGRect, number: Int?)] = []
+    var helpersMade = 0
+    var onRelaid: (() -> Void)?
+    func advanceHelpers() {
+        for i in helpers.indices {
+            if helpers[i].number == nil, clock + 1e-9 >= helpers[i].open {
+                let n = nextWindow
+                nextWindow += 1
+                wins[n] = Win(pid: helpers[i].pid, spaces: [helpers[i].space], frame: helpers[i].rect)
+                apps[helpers[i].pid]?.windows.append(n)
+                helpers[i].number = n
+                helpersMade += 1
+            }
+            if let n = helpers[i].number, clock + 1e-9 >= helpers[i].close {
+                wins[n] = nil
+                apps[helpers[i].pid]?.windows.removeAll { $0 == n }
+                onDestroyed?(helpers[i].pid, n)
+                relayFirstTwo(helpers[i].space)
+                onRelaid?()
+                helpers[i].open = .infinity
+            }
+        }
+        helpers.removeAll { $0.open == .infinity }
+    }
     static let tileDisplay = CGRect(x: 0, y: 0, width: 1512, height: 982), band: CGFloat = 33
     func tileOf(_ window: Int) -> UInt64? { tileWindow.first { e in e.value == window && tiles.values.contains { $0.contains(e.key) } }?.key }
     func tileBounds(_ t: UInt64) -> CGRect {
@@ -1002,6 +1032,10 @@ final class FakeHostWorld: HostSystem {
         calls.append("tileRect \(tile) \(Int(rect.minX)),\(Int(rect.minY)) \(Int(rect.width))×\(Int(rect.height))")
         guard tilesOn else { return false }
         if !rectsIgnored { tileRects[tile] = rect }
+        if let n = tileWindow[tile], let pid = wins[n]?.pid, let bundle = apps[pid]?.bundle, answersResize.contains(bundle),
+           let space = tiles.first(where: { $0.value.contains(tile) })?.key {
+            helpers.append((clock + helperAfter, clock + helperAfter + helperLife, pid, space, rect, nil))
+        }
         if !rectsIgnored, ejectsBelowMinimum, let n = tileWindow[tile], let pid = wins[n]?.pid, let bundle = apps[pid]?.bundle, let m = minSize[bundle],
            rect.width < m.width - 0.5, let space = tiles.first(where: { $0.value.contains(tile) })?.key, owner[space] != pid {
             belowMinimum += 1

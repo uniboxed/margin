@@ -217,6 +217,8 @@ final class HostEngine {
         // sidebar's edge the one shown follows at most once a display frame (`liveFrame`), one change in flight, each
         // waited for at most `liveWait` (its window at the page area).
         var tiles = true
+        // The hosting core's loop guard (guard.rs): on. Off only for a test that shows a loop it stops.
+        var loopGuard = true
         var tileMoveWait = 1.0
         var tileWait = 0.3
         var tileLimitWait = 0.5
@@ -279,6 +281,9 @@ final class HostEngine {
         // Live resize: its window's own tile, moved into Margin's Space (its window sized by the tile's rect, shown or
         // parked; `placedPage` the page area that rect was set for and seen taken). Nil: a plain member, or window mode.
         var tile: UInt64?
+        // Its route held below tiles (the hosting core's routes: its app kept fighting its tile, now or in an earlier
+        // run of this version of it): a plain member from its next placing, never a tile again this run.
+        var noTiles = false
         // Its window's own minimum (its tile's `SizeConstraints`' `Min`, read as its tile comes into Margin's Space or its
         // own full-screen Space is listed, again at each drag's start and each sizing): its tile never sized below it
         // (`frame`: the page area, or that minimum with its right edge the page area's). Nil: none known.
@@ -400,6 +405,15 @@ final class HostEngine {
     // of its own, given back to its Desktop as its app is given back.
     private var parkedOthers: [pid_t: (space: UInt64, windows: Set<Int>)] = [:]
     private var reconcileQueued = false
+    // A person's operation (open, show, close, a page area's change, a park, the quit) runs: the tile changes it makes
+    // are Margin's plan, not reactions the loop guard counts (the hosting core's guard.rs).
+    private var planned = false
+    // The routes held per app (the hosting core's routes.rs), saved beside the marker: routes.json.
+    private var routesURL: URL? { markerURL?.deletingLastPathComponent().appendingPathComponent("routes.json") }
+    // A host moved to a safer route (the loop guard stopped it, its full screen failed): for the sidebar's note.
+    var onRoute: ((HostID, String) -> Void)?
+    // Its own hosting core: its loop guard, its causes, its routes (never shared with another engine).
+    private let core: HostCore
 
     // Live resize: hosted windows' tiles in Margin's Space (docs/HOSTING-CORE.md "Live resize: tiles in Margin's Space").
     // Checked once per Margin Space (`tilesReady`); off for the run once a tile step didn't take (`tilesOff`, said once):
@@ -429,8 +443,11 @@ final class HostEngine {
         markerURL = marker
         self.options = options
         ownPid = pid
-        observer = HostObserver(system: system, source: observation)
+        let core = HostCore()
+        self.core = core
+        observer = HostObserver(system: system, source: observation, core: core)
         sys.onAppQuit = { [weak self] pid in self?.appQuit(pid) }
+        if let routesURL { core.loadRoutes(from: routesURL) }
     }
 
     var hasHosts: Bool { !hosts.isEmpty || !launched.isEmpty }
@@ -444,7 +461,7 @@ final class HostEngine {
 
     // Opens `target` (shows it again if it's hosted already) under Margin's window, at `placement`.
     func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult {
-        await serial {
+        await serial(planned: true) {
             self.placement = placement
             self.marginWindow = marginWindow
             self.marginSpace = marginSpace
@@ -458,7 +475,7 @@ final class HostEngine {
     // first open starts it (it counts as Margin's: quit at Margin's quit, its restored windows swept); running already
     // (the person's): used as it is, never started again. Nil: it couldn't be started.
     func start(bundleId: String) async -> HostApp? {
-        await serial {
+        await serial(planned: true) {
             _ = await self.awaitExits(of: bundleId)
             if let running = self.sys.running(bundleId: bundleId).first { return running }
             let arguments = bundleId == self.options.safariBundle ? self.options.safariArguments : self.options.appArguments
@@ -481,7 +498,7 @@ final class HostEngine {
     // early full screen (no Space switch to hide) and nothing shown in Margin's Space (it would come in over that);
     // else not prepared, said (its first use opens it as before). `.shown` here: prepared (parked).
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult {
-        await serial {
+        await serial(planned: true) {
             let id = target.id
             if self.hosts[id] != nil { return .shown(id, placed: true) }
             guard self.shown == nil else { return .failed(.park, "something is shown in Margin's Space: not prepared out of sight") }
@@ -501,7 +518,7 @@ final class HostEngine {
     }
 
     func show(_ id: HostID) async -> HostResult {
-        await serial {
+        await serial(planned: true) {
             guard let host = self.hosts[id] else { return .failed(.window, "not hosted") }
             let r: HostResult = self.shown == id ? .shown(id, placed: await self.place(host)) : await self.bringIn(host, isNew: false)
             self.checkListed("after \(id)'s show")
@@ -513,7 +530,7 @@ final class HostEngine {
     // that's harmless, else home), its app (Margin's) asked to quit once and forgotten at once; the queue is released
     // without waiting for that exit (Maps holds its quit 5 s, its own watchdog), which is heard in the background.
     func close(_ id: HostID) async {
-        await serial {
+        await serial(planned: true) {
             await self.closeNow(id, why: "closed", exit: .watched)
             self.checkListed("after \(id)'s close")
         }
@@ -522,7 +539,7 @@ final class HostEngine {
     // The placement moved (another theme, the display): the one shown placed again (window mode: by Accessibility; full
     // screen: out of it and in again, its own Space reserved for the new page area); parked ones when they're shown.
     func pageRectChanged(_ placement: HostPlacement) async -> Bool {
-        await serial {
+        await serial(planned: true) {
             self.placement = placement
             // (Live resize: the parked ones' tiles then, one at a time, by the reconciler: `sizeTile`.)
             defer { self.sizeTilesSoon() }
@@ -536,7 +553,7 @@ final class HostEngine {
     // The one shown parked at once, nothing in its place (Margin's window leaving full screen: the hosted window must
     // never be left on a Desktop or in a full-screen Space of its own). Shown again by the next open or show.
     func parkShown(why: String) async {
-        await serial { await self.parkShownNow(why: why) }
+        await serial(planned: true) { await self.parkShownNow(why: why) }
     }
 
     // Margin quits: every host given back at once (each one's own steps in order: its frame and Space back, out of
@@ -859,6 +876,7 @@ final class HostEngine {
                 // (Read again in its turn: an operation in between may have settled it.)
                 let now = self.situation(host)
                 guard HostReconciler.step(now, self.desired(host)).first(where: self.steady) == c else { return }
+                guard self.guarded(host, c.key) else { return }
                 await self.apply(c, host, now)
             } }
             return
@@ -880,6 +898,7 @@ final class HostEngine {
                 guard let host = self.hosts[id] else { return self.sizeTilesSoon() }
                 let now = self.situation(host)
                 guard HostReconciler.step(now, self.desired(host)).first(where: self.steady) == .sizeTile else { return self.sizeTilesSoon() }
+                guard self.guarded(host, HostCorrection.sizeTile.key) else { return self.sizeTilesSoon() }
                 await self.apply(.sizeTile, host, now)
             } }
             return
@@ -1510,13 +1529,17 @@ final class HostEngine {
 
     // ---- one at a time ----
 
-    private func serial<T: Sendable>(_ body: @escaping () async -> T) async -> T {
+    private func serial<T: Sendable>(planned: Bool = false, _ body: @escaping () async -> T) async -> T {
         let previous = tail
         let task = Task { () -> T in
             _ = await previous?.value
             self.busy = true
             self.ranSinceLook = true
+            // (A person's operation: what it changes is Margin's plan; the guard's counts start again.)
+            if planned { self.core.person(now: self.sys.now()) }
+            self.planned = planned
             let value = await body()
+            self.planned = false
             self.parkWoken() // (a window opened to wake a profile during it: out of sight before anything else is seen)
             self.observer.sync(self.observed()) // (an app hosted or given back: followed, or not, from now)
             self.busy = false
@@ -1748,6 +1771,7 @@ final class HostEngine {
     private func opened(_ host: Host, started: Double, times: [String]) async -> HostResult {
         let id = host.id, pid = host.pid
         hosts[id] = host
+        applyHeldRoute(host)
         saveMarker()
         if !sys.watchOpens(pid: pid, { [weak self] code in self?.heard(code, pid: pid) }) {
             Diagnostics.note("host: \(id): LaunchServices' notifications aren't heard: an open from outside isn't noticed")
@@ -2262,7 +2286,10 @@ final class HostEngine {
         if host.mode == .window { return await bringInWindow(host, isNew: isNew, retrying: retrying) }
         // (Live resize: a tile placed for another page area sized first, out of sight (a switch never shows the old size:
         // the target ahead of any other tile's sizing); one whose rect doesn't take is placed again the old way.)
-        if host.member, host.tile != nil {
+        if host.member, host.tile != nil, host.noTiles {
+            // (Held below tiles since it was parked: out of its tile, placed again as a plain member, behind the loader.)
+            host.placedPage = nil
+        } else if host.member, host.tile != nil {
             // (Its rect read, not only the page area it was sized for: a parked tile laid out again meanwhile is left so.)
             let stale = !tileAtPage(host)
             if await sizeTile(host), stale { Diagnostics.note("host: \(host.id): its tile sized to the page area before it's shown") }
@@ -2450,7 +2477,7 @@ final class HostEngine {
             // freeze (Margin's own window is laid out as a split's half while the tile comes in), its rect the page area.
             t0 = sys.now()
             var tiled = false
-            if let own = host.fullScreenSpace, await tilesReady() {
+            if let own = host.fullScreenSpace, await tilesReady(for: host) {
                 if sys.currentSpace(onDisplayOf: marginSpace) != marginSpace {
                     _ = sys.setCurrentSpace(marginSpace)
                     _ = await wait(0.5) { self.sys.currentSpace(onDisplayOf: self.marginSpace) == self.marginSpace }
@@ -2610,7 +2637,7 @@ final class HostEngine {
     // (a spare, a twin, a replaced window).
     private func keptBehind(_ w: ServerWindow) -> Bool {
         guard let k = observer.model.apps[w.pid]?.windows[w.number]?.kind else { return false }
-        return k == .leftover || k == .strip || k == .transient
+        return k.keptBehind
     }
 
     // Whether a window at `b` reaches over Margin's sidebar at all (more than `sidebarSliver` each way): never let in
@@ -2929,7 +2956,7 @@ final class HostEngine {
     private func early(_ host: Host, before: Set<UInt64>, refused: () -> Bool) async -> Early {
         guard var edges = HostLayout.plan(fitted(host)) else { return .slow("no plan for the page area (\(placement.text))") }
         // (Live resize: its tile moved into Margin's Space in place of the window alone, below.)
-        let tiling = await tilesReady()
+        let tiling = await tilesReady(for: host)
         let t0 = sys.now()
         var page = frame(host)
         var space: UInt64?
@@ -3279,6 +3306,12 @@ final class HostEngine {
     // Whether hosted windows go into tiles of Margin's Space now. Checked once per Margin Space (at the first open or
     // preparing there): the tiles part on, Margin's own tile found (its window's), its rect the display's while it's
     // alone, and a bridged write that takes: Margin's Space's tile limit raised to what the next tile needs, read back.
+    // ...for this host: never one held below tiles (`noTiles`).
+    private func tilesReady(for host: Host) async -> Bool {
+        if host.noTiles { return false }
+        return await tilesReady()
+    }
+
     private func tilesReady() async -> Bool {
         guard options.tiles, sys.tilesAvailable, tilesOff == nil, marginSpace > 0 else { return false }
         if tilesFor == marginSpace { return tilesOK }
@@ -3466,7 +3499,8 @@ final class HostEngine {
         let lead = first ?? shown.flatMap { hosts[$0] }.flatMap { $0.tile != nil ? $0 : nil }
         var order = hosts.values.filter { $0.tile != nil && $0 !== lead }.sorted { $0.id.raw < $1.id.raw }
         if let lead { order.insert(lead, at: 0) }
-        for h in order where h === lead || !parkedAtPage(h) { if let t = h.tile, let rect = tileRect(for: h) { setTileRectIfNeeded(t, rect) } }
+        // (A host held below tiles, on its way out of its tile: its rect never sent again.)
+        for h in order where (h === lead || !parkedAtPage(h)) && !h.noTiles { if let t = h.tile, let rect = tileRect(for: h) { sendTileRect(h, t, rect) } }
         let area = placement.area
         let leadFrame = lead.map { frame($0) }
         let ok = await wait(options.tileWait, every: options.tileEvery) {
@@ -3480,6 +3514,18 @@ final class HostEngine {
         }
         tileCount = sys.tiles(of: marginSpace)?.count ?? tileCount
         return ok
+    }
+
+    // A hosted tile's rect sent (only if it isn't that already), Margin's sizing told to the observer (a window its app
+    // makes at that size right after is its answer: a helper, never one of its own) and to the causes.
+    private func sendTileRect(_ h: Host, _ tile: UInt64, _ rect: CGRect) {
+        if sys.tileRect(tile).map({ HostLayout.near($0, rect, within: 0.5) }) == true { return }
+        sized(h, [rect, frame(h)])
+        _ = sys.setTileRect(tile, rect)
+    }
+    private func sized(_ h: Host, _ rects: [CGRect]) {
+        observer.sized(pid: h.pid, rects: rects)
+        core.noteSized(now: sys.now(), host: h.id.raw)
     }
 
     // A tile's rect sent only when it isn't that already (a rect sent again makes its app lay its window out again).
@@ -3511,6 +3557,7 @@ final class HostEngine {
         func there() -> Bool { sys.bounds(window: host.window).map { HostLayout.near($0, want, within: options.tolerance) } ?? false }
         if there(), sys.tileRect(tile).map({ HostLayout.near($0, rect, within: 0.5) }) == true { host.placedPage = page; host.offPageReads = 0; return true }
         let t0 = sys.now()
+        sized(host, [rect, want])
         guard sys.setTileRect(tile, rect) else { return false }
         let ok = await wait(options.tileWait, every: options.tileEvery) { there() }
         if ok {
@@ -3564,6 +3611,8 @@ final class HostEngine {
         guard force || left || homeOff || list.count != tileCount else { return }
         let why = left ? "a tile of a host that went is still there" : homeOff ? "Margin's own tile isn't the display's" : list.count != tileCount ? "\(tileCount) tiles → \(list.count)" : "Margin's window laid out as a split's half"
         tileCount = list.count
+        // (The poll's own find: a reaction, guarded like marginNarrowed's; from marginNarrowed: counted there.)
+        if !force, homeOff, !left, !planned, !relayoutGuarded(core.explainRelayout(now: sys.now())) { return }
         Task { await serial {
             guard self.tilesOK, !self.quitting else { return }
             Diagnostics.note("host: Margin's Space's tiles changed (\(why)): every rect set again")
@@ -3580,15 +3629,140 @@ final class HostEngine {
     // Every rect is sent again at once, whatever runs (the same rects the running operation sets: harmless), so the split
     // is seen for as short a moment as the window manager takes (the real Mac, 2026-11-17 23:31:42: a switch laid Margin's
     // window and the one shown out as a split's thirds; the poll set them back 120 ms later); checked by the next look.
+    //
+    // A tile change of Margin's own operation is its plan (`planned`): every rect sent again, nothing counted. Any other is a
+    // reaction: its cause worked out first (the hosting core's causes: a window that came or went just before, and whose),
+    // and counted against that host by the loop guard. Margin's own tile is always put back (no app answers it); the
+    // hosted rects are sent only while the guard lets them. Stopped (the same re-layout three times within 5 s: Weather,
+    // 2026-11-18 13:30, answered each of its tile's resizes with a window whose close laid the tiles out again, 54 rounds
+    // in 18 s): that host moved to a safer route; with no cause seen, the tiles off for the run.
     func marginNarrowed() {
         guard tilesOK, tilesFor == marginSpace, !quitting, let mine = marginTile, let home = tileHome else { return }
         setTileRectIfNeeded(mine, home)
-        if tileRect() != nil {
-            let order = hosts.values.filter { $0.tile != nil }.sorted { ($0.id == shown ? 0 : 1, $0.id.raw) < ($1.id == shown ? 0 : 1, $1.id.raw) }
-            for h in order where !parkedAtPage(h) { if let t = h.tile, let rect = tileRect(for: h) { setTileRectIfNeeded(t, rect) } }
+        let now = sys.now()
+        if !planned {
+            let cause = core.explainRelayout(now: now)
+            guard relayoutGuarded(cause) else { return }
+            Diagnostics.note("host: Margin's window laid out as a split's part by a tile change (\(cause.text)): every rect sent again at once")
+        } else {
+            Diagnostics.note("host: Margin's window laid out as a split's part by its own tile change: every rect sent again at once")
         }
-        Diagnostics.note("host: Margin's window laid out as a split's part by a tile change: every rect sent again at once")
+        sendHostedRects()
         if !busy { lookAtTiles(force: true) }
+    }
+
+    // Every hosted tile's rect at once (the one shown first), each only if it isn't that already.
+    private func sendHostedRects() {
+        guard tileRect() != nil else { return }
+        let order = hosts.values.filter { $0.tile != nil }.sorted { ($0.id == shown ? 0 : 1, $0.id.raw) < ($1.id == shown ? 0 : 1, $1.id.raw) }
+        for h in order where !parkedAtPage(h) && !h.noTiles { if let t = h.tile, let rect = tileRect(for: h) { sendTileRect(h, t, rect) } }
+    }
+
+    // ---- the loop guard (the hosting core's guard.rs) and the routes (routes.rs) ----
+
+    // A reaction about to be applied for `host` (`key`: what it is): true, go. Stopped: the host moved to a safer route
+    // (said), false. Held (too many reactions across every host this second): false, nothing more this time.
+    private func guarded(_ host: Host, _ key: String) -> Bool {
+        guard !planned, options.loopGuard else { return true }
+        switch core.react(now: sys.now(), host: host.id.raw, key: key) {
+        case .go: return true
+        case .hold(let until):
+            Diagnostics.note("host: \(host.id): \(key) held: too many reactions this second across every host (\(Int(max(0, until - sys.now()) * 1000)) ms more)")
+            return false
+        case .stop(_, let k, let count):
+            stepDown(host, why: "\(k) \(count) times within \(Int(core.constant("guardWithin") ?? 5)) s")
+            return false
+        }
+    }
+
+    // The same for a re-layout of Margin's Space's tiles: counted against the host whose window caused it, else
+    // Margin's own window (no cause seen).
+    private func relayoutGuarded(_ cause: HostCause) -> Bool {
+        if cause.person || !options.loopGuard { return true }
+        let blamed = hosts.values.first { $0.id.raw == cause.host }
+        switch core.react(now: sys.now(), host: blamed?.id.raw ?? "margin", key: "tiles laid out again") {
+        case .go: return true
+        case .hold: return false
+        case .stop(_, _, let count):
+            let why = "Margin's Space's tiles laid out again \(count) times within \(Int(core.constant("guardWithin") ?? 5)) s (\(cause.text))"
+            if let blamed {
+                stepDown(blamed, why: why)
+            } else {
+                // (No host to blame: every tiled host a plain member from its next placing, the tiles off for the run.)
+                turnOffTiles(why)
+                for h in hosts.values where h.tile != nil { h.noTiles = true; h.placedPage = nil }
+                if let id = shown, let h = hosts[id], h.phase == .shown { Task { await self.serial(planned: true) { _ = await self.placeFullScreen(h, isNew: false, retrying: false) } } }
+            }
+            return false
+        }
+    }
+
+    // The routes this host could take now (tiles only where they work here; full screen only for a window that can).
+    private func availableRoutes(_ host: Host) -> [HostRoute] {
+        var out: [HostRoute] = []
+        if options.tiles, sys.tilesAvailable, tilesOff == nil { out.append(.tiles) }
+        if case .app = host.target, observer.model.apps[host.pid]?.windows[host.window]?.ax?.canFullScreen == false { return out.filter { $0 == .window } + [.window] }
+        out.append(.members)
+        if case .app = host.target { out.append(.window) } // (Safari's window is Margin's own: always full screen)
+        return out
+    }
+
+    private func routeOf(_ host: Host) -> HostRoute { host.mode == .window ? .window : host.tile != nil ? .tiles : .members }
+
+    // Its app's identity for the routes: bundle id and version (a new version tries the better route again).
+    private func identity(_ host: Host) -> (bundle: String, version: String) {
+        (host.bundleId ?? host.id.raw, sys.appVersion(pid: host.pid) ?? "?")
+    }
+
+    // The route a host opens on, the routes held (an app that fought its tile in an earlier run of this version: a
+    // member from the start).
+    private func applyHeldRoute(_ host: Host) {
+        let (bundle, version) = identity(host)
+        let (route, why) = core.route(bundle: bundle, version: version, available: availableRoutes(host))
+        guard let route, route != .tiles, why != nil else { return }
+        host.noTiles = true
+        Diagnostics.note("host: \(host.id): held at \(route.text) for this version of its app (\(why ?? "")): no tile for it")
+    }
+
+    // The loop guard stopped `host`: moved one rung down (tiles → members → window mode), remembered for this version of
+    // its app (tried again after an update), said in the log and in the sidebar (`onRoute`).
+    private func stepDown(_ host: Host, why: String) {
+        let from = routeOf(host)
+        let (bundle, version) = identity(host)
+        let next = core.stepDown(now: sys.now(), bundle: bundle, version: version, from: from, available: availableRoutes(host), why: why)
+        core.cleared(host: host.id.raw)
+        if let routesURL { core.saveRoutes(to: routesURL) }
+        guard let next else {
+            Diagnostics.warn("host: \(host.id): \(why), on \(from.text), nothing safer below: left as it is")
+            return
+        }
+        Diagnostics.warn("host: \(host.id): \(why): moved from \(from.text) to \(next.text) for this version of its app (\(version)), tried again after an update")
+        onRoute?(host.id, next.text)
+        // (Margin's own operation from here: what it changes is its plan, not a reaction.)
+        Task { await serial(planned: true) { await self.move(host, to: next) } }
+    }
+
+    private func move(_ host: Host, to route: HostRoute) async {
+        guard hosts[host.id] === host else { return }
+        switch route {
+        case .tiles: return
+        case .members:
+            host.noTiles = true
+            guard host.tile != nil else { return }
+            host.placedPage = nil
+            // (Shown: out of its tile and in again as a plain member now, behind the loader. Parked: at its next show.)
+            if shown == host.id, host.phase == .shown { _ = await placeFullScreen(host, isNew: false, retrying: false) }
+        case .window:
+            host.retryFullScreen = false
+            host.fullScreenFailures = max(host.fullScreenFailures, 2)
+            if shown == host.id, host.phase == .shown {
+                _ = await fallBack(host, isNew: false, retrying: true, .place, "the loop guard moved it to window mode", previous: nil)
+            } else {
+                host.mode = .window
+                host.placedPage = nil
+            }
+        }
+        saveMarker()
     }
 
     // ---- the sidebar's edge dragged: the one shown follows live ----
@@ -3648,6 +3822,7 @@ final class HostEngine {
             // in the page already; this holds for a minimum learnt mid-drag too.)
             let page = host.tile != nil ? frame(host, p) : p.page
             if let tile = host.tile, let rect = tileRect(for: host, p) {
+                observer.sized(pid: host.pid, rects: [rect, page]) // (no cause noted a frame: a drag is the person's)
                 guard sys.setTileRect(tile, rect) else { break }
             } else if host.mode == .window {
                 let want = host.resizable ? page : centredIn(page, sys.bounds(window: host.window)?.size ?? page.size)
@@ -3770,6 +3945,7 @@ final class HostEngine {
                 host.returns = []
                 return await parkShownNow(why: "its window keeps leaving Margin's Space")
             }
+            guard guarded(host, "put back") else { return }
             Diagnostics.note("host: \(id): shown, found out of Margin's Space (\(seen)): brought back")
             await bringBack(host, from: spaces ?? [])
         }

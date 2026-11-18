@@ -104,6 +104,15 @@ pub enum Request {
     SaveRoutes,
     /// The earliest time the core has something to do on its own (none: wake it with the next event).
     NextWake,
+    /// The windows of `pid` Margin could host, front first (choice.rs `candidates`).
+    Candidates {
+        server: Vec<ServerWin>,
+        pid: u32,
+        #[serde(default)]
+        excluded: Vec<i64>,
+    },
+    /// Every correction's budget by its key family, and the reconciler's and the kinds' constants: read once.
+    Constants,
 }
 
 /// The hosting core's state across calls.
@@ -185,6 +194,52 @@ impl HostCore {
             }
             Request::SaveRoutes => json!({ "routes": self.routes }),
             Request::NextWake => json!({ "at": self.guard.next_wake() }),
+            Request::Candidates { server, pid, excluded } => {
+                let list: Vec<ServerWindow> = server.iter().map(ServerWindow::from).collect();
+                let excluded: BTreeSet<i64> = excluded.into_iter().collect();
+                let numbers: Vec<i64> =
+                    choice::candidates(&list, pid, |n| excluded.contains(&n)).iter().map(|w| w.number).collect();
+                json!({ "candidates": numbers })
+            }
+            Request::Constants => {
+                use reconciler::{Correction as C, Forward};
+                let budgets: BTreeMap<String, u32> = [
+                    C::Launch,
+                    C::Reopen,
+                    C::Unhide,
+                    C::Adopt { window: 0 },
+                    C::FrameWindow,
+                    C::PutBack,
+                    C::ParkAgain,
+                    C::ParkLeftover { window: 0 },
+                    C::ParkStrip { window: 0 },
+                    C::BringForward { rung: Forward::Activate },
+                    C::CloseItem,
+                    C::PlaceAgain,
+                    C::SizeTile,
+                ]
+                .iter()
+                .map(|c| {
+                    let family = match c {
+                        C::ParkLeftover { .. } => "leftover".to_string(),
+                        C::ParkStrip { .. } => "strip".to_string(),
+                        C::BringForward { .. } => "bring forward".to_string(),
+                        other => other.name(),
+                    };
+                    (family, c.budget())
+                })
+                .collect();
+                json!({
+                    "budgets": budgets,
+                    "offScreenAfter": reconciler::OFF_SCREEN_AFTER,
+                    "goneGrace": reconciler::GONE_GRACE,
+                    "offPageAfter": reconciler::OFF_PAGE_AFTER,
+                    "tinySide": kinds::TINY_SIDE,
+                    "stripMaxHeight": kinds::STRIP_MAX_HEIGHT,
+                    "guardLimit": super::guard::LIMIT,
+                    "guardWithin": super::guard::WITHIN,
+                })
+            }
         }
     }
 }
@@ -273,6 +328,23 @@ mod tests {
         );
         assert_eq!(got["choice"]["number"], 13);
         assert_eq!(got["choice"]["rule"], "onScreen");
+    }
+
+    #[test]
+    fn constants_and_candidates() {
+        let mut core = HostCore::new();
+        let c = call(&mut core, json!({ "type": "constants" }));
+        assert_eq!(c["budgets"]["size its tile"], 3);
+        assert_eq!(c["budgets"]["leftover"], 2);
+        assert_eq!(c["budgets"]["bring forward"], 1);
+        assert_eq!(c["budgets"]["window mode"], 2);
+        assert_eq!(c["goneGrace"], 1.0);
+        let w = |n: i64, pid: u32, width: f64| json!({ "number": n, "pid": pid, "bounds": { "x": 0, "y": 0, "width": width, "height": 500 }, "order": n });
+        let got = call(
+            &mut core,
+            json!({ "type": "candidates", "server": [w(3, 7, 800.0), w(1, 7, 800.0), w(2, 8, 800.0), w(4, 7, 50.0)], "pid": 7, "excluded": [3] }),
+        );
+        assert_eq!(got["candidates"], json!([1]));
     }
 
     #[test]
