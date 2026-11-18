@@ -286,6 +286,7 @@ final class HostEngine {
         // The narrowest its window was seen holding in its tile (a rect it followed): with no minimum said by its tile, the
         // one it's taken to have once it leaves a narrower one (the first rect it didn't take).
         var narrowestHeld: CGFloat?
+        var minUnreadSaid = false
         init(id: HostID, target: HostTarget, pid: pid_t, window: Int, launchedByMargin: Bool, madeByMargin: Bool, safariWindow: Int? = nil) {
             self.id = id
             self.target = target
@@ -3385,7 +3386,12 @@ final class HostEngine {
     // change said once, and told to Margin's window while it's the one shown (the sidebar's edge stops there). One read
     // of the tile's values: never per frame of a drag. True: it changed.
     @discardableResult private func learnMinimum(_ host: Host, tile: UInt64? = nil) -> Bool {
-        guard host.mode != .window, let t = tile ?? host.tile, let read = sys.tileMinSize(t) else { return false }
+        guard host.mode != .window, let t = tile ?? host.tile else { return false }
+        // (A tile that says none now, its minimum read before: kept (an app's minimum doesn't go), said once.)
+        guard let read = sys.tileMinSize(t) else {
+            if host.minSize != nil, !host.minUnreadSaid { host.minUnreadSaid = true; Diagnostics.note("host: \(host.id): its tile \(t) says no minimum now (\(host.phase == .parked ? "parked" : "shown")): its minimum as read before kept") }
+            return false
+        }
         let m = CGSize(width: read.width.rounded(.up), height: read.height.rounded(.up))
         guard m != host.minSize else { return false }
         host.minSize = m

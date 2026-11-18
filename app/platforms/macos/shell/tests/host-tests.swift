@@ -985,8 +985,10 @@ final class FakeHostWorld: HostSystem {
     // A tile's `SizeConstraints`' minimum: its window's app's own (`minSize`), as AppKit gives it (the real Mac, 2026-11-18:
     // Chameleon's contentMinSize 1100×500 read back exactly, Weather's 1048×640). `minUnread`: none said.
     var minUnread = false
+    var minUnreadParked = false // ...none while its window is parked (a private Space)
     func tileMinSize(_ tile: UInt64) -> CGSize? {
         guard tilesOn, !minUnread, let n = tileWindow[tile], let pid = wins[n]?.pid, let bundle = apps[pid]?.bundle else { return nil }
+        if minUnreadParked, wins[n]?.priv != nil { return nil }
         return minSize[bundle]
     }
     func maxTiles(of space: UInt64) -> Int? { tilesOn && tiles[space] != nil ? maxTileConfig[space] ?? 2 : nil }

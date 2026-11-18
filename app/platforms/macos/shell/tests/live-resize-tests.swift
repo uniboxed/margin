@@ -386,7 +386,9 @@ func liveResizeTests() {
               placedEnd == true && w.ejections == 0 && w.bounds(window: n) == page1100 && count(w, "fullScreen", since: m) == 0 && clean(w) && marginWhole(w), "\(w.calls.dropFirst(m).suffix(6))")
         check("min size: …the parked one with no minimum at the page area itself", w.bounds(window: edit) == page(500) && w.spaces(window: edit) == [])
 
-        // Parked while the page area goes under its minimum: sized at its minimum, never out of sight's place.
+        // Parked while the page area goes under its minimum: sized at its minimum, never out of sight's place (its tile
+        // saying no minimum while it's parked: the one read before kept).
+        w.minUnreadParked = true
         _ = show(e, textEdit)
         check("min size: another shown: none told", said.last == .some(nil) && e.shownMinimumWidth == nil, "\(said)")
         _ = hostRun { await e.pageRectChanged(placed(276)) }

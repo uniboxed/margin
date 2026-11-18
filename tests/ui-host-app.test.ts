@@ -348,6 +348,19 @@ test('the sidebar\'s edge stops where the page area would be narrower than the h
   listeners.pointermove(ev(500));
   assert.equal(live.at(-1), 500, 'no floor: the theme\'s max only');
   listeners.pointerup(ev(500));
+  // Arcadia's own step (10): the edge stops at the floor exactly while dragged, and lets go at the step under it, never
+  // past it (the real screen, 2026-11-18 10:31: live 404, the page area 1100; let go 400, 1104).
+  rt.theme.manifest.settings.sidebarWidth.step = 10;
+  host.pageMinWidth = 1100;
+  host.layout = { ...host.layout, insets: { ...host.layout.insets, left: 240 } };
+  width = 240;
+  live.length = 0;
+  listeners.pointerdown(ev(240));
+  for (let x = 250; x <= 500; x += 10) listeners.pointermove(ev(x));
+  assert.equal(Math.max(...live), 404, 'stopped at the floor exactly');
+  listeners.pointerup(ev(500));
+  assert.equal(saves.at(-1), 400, 'let go at the step under the floor, not 410');
+  rt.theme.manifest.settings.sidebarWidth.step = undefined;
   // The reset to the default (260) widens the page: free; a default past the floor stops at it.
   host.pageMinWidth = 1300;
   host.layout = { ...host.layout, insets: { ...host.layout.insets, left: 160 } };
