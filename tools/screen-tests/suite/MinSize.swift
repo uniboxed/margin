@@ -160,12 +160,20 @@ extension Runner {
     let floored = minimum.map { m in pageBefore.width >= m.width - 1 && pageBefore.width - CGFloat(dx) < m.width } ?? false
     let touched = !floored || abs(narrowest - minimum!.width) <= 1
     let pageOK = pageAfter.map { abs($0.width - want) <= 2 } ?? false
+    // (Each change followed within 50 ms (Margin's own count), 9 in 10: Chameleon's resize takes 10-20 ms. A person's app
+    // takes what it takes: Weather 49-56 ms a resize on the real Mac, 2026-11-18 (before the fix and after), so for it
+    // the window is only required to follow (it was seen at more than one width on the way) and to end where it
+    // belongs; Margin's numbers are said either way.)
+    var strict = false
+    if case .copy = t { strict = true }
+    let widths = Set(changes.filter { $0.what.hasPrefix("bounds") }.map(\.what)).count
+    let followedEnough = strict ? late * 10 <= max(sent, 1) : (widths >= 2 || abs(dx) < 4)
     var fillsOK = false
     if let f = final, let p = pageAfter {
       if let m = minimum, m.width > p.width + 1 { fillsOK = abs(f.maxX - p.maxX) <= 2 && abs(f.width - m.width) <= 2 } else { fillsOK = near(f, p, 1) }
     }
-    step("\(name): never out of Margin's Space, never narrower than its minimum, nothing placed again or behind the loader, \(floored ? "the edge stopped at its minimum (the window exactly that wide), let go at the step under it" : "as dragged") (the page area \(Int(want)) wide at the end), each change followed",
-         ejectedAt == nil && out.isEmpty && refits.isEmpty && (minimum.map { narrowest >= $0.width - 1 } ?? true) && touched && pageOK && fillsOK && liveLine != nil && late * 10 <= max(sent, 1),
+    step("\(name): never out of Margin's Space, never narrower than its minimum, nothing placed again or behind the loader, \(floored ? "the edge stopped at its minimum (the window exactly that wide), let go at the step under it" : "as dragged") (the page area \(Int(want)) wide at the end), \(strict ? "each change followed" : "followed (its own pace)")",
+         ejectedAt == nil && out.isEmpty && refits.isEmpty && (minimum.map { narrowest >= $0.width - 1 } ?? true) && touched && pageOK && fillsOK && liveLine != nil && followedEnough,
          "\(story); its window at the end \(rect(final)); Margin: \(liveLine.map { String($0.suffix(200)) } ?? "no live-resize line")")
     guard !others.isEmpty, let p = pageAfter else { return }
     // (Each parked one: never in a user Space; at the page area or at its minimum width, its right edge the page area's.)
