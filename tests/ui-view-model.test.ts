@@ -62,7 +62,7 @@ test('rows: icons from the stored favicons, a letter and color without one, slee
   assert.equal(row(14).letter, 'N');
   assert.match(row(14).color, /^hsl\(\d+ 55% 48%\)$/);
   assert.equal(row(15).title, 'https://shop.example/', 'no title: its address (as Arcadia)');
-  assert.deepEqual(Object.keys(row(12)).sort(), ['active', 'asleep', 'audible', 'away', 'behind', 'color', 'host', 'icon', 'id', 'kind', 'letter', 'loading', 'notOpen', 'open', 'pinned', 'title', 'url']);
+  assert.deepEqual(Object.keys(row(12)).sort(), ['active', 'asleep', 'audible', 'away', 'behind', 'color', 'host', 'icon', 'id', 'isApp', 'kind', 'letter', 'loading', 'notOpen', 'open', 'pinned', 'title', 'url']);
   assert.deepEqual([pin('pa').open, pin('pa').tabId, pin('pa').asleep, pin('pa').nested], [true, 11, true, true], 'a pin open in a sleeping tab');
   assert.deepEqual([pin('pb').open, pin('pb').tabId, pin('pb').active], [false, null, false], 'a pin not open');
   assert.deepEqual([pin('pc').active, pin('pc').folderId], [true, 'f2']);
@@ -349,8 +349,12 @@ test('app items: the installed app\'s icon wherever a row or tile shows one; no 
   assert.equal(front.tab?.icon, notes, 'the tab in front');
   assert.equal(buildViewModel({ state: withApps, ui: { windowId: W, inNewTab: true }, platform: PLATFORM }).launcher!.pins.find((p) => p.id === 'pcalc')!.icon, calc, 'the launcher\'s tile');
   const palette = build(withApps, { palette: { open: true, query: 'notes', selected: 0 } });
-  const open = palette.palette.rows.filter((r) => r.title === 'Notes' && !r.isApp);
+  const open = palette.palette.rows.filter((r) => r.title === 'Notes' && r.kind !== 'app');
   assert.ok(open.length >= 1 && open.every((r) => r.icon === notes), `the palette's open-tab row (${JSON.stringify(palette.palette.rows.map((r) => [r.kind, r.title, !!r.icon]))})`);
+  assert.ok(open.every((r) => r.isApp), 'an app item\'s palette row: drawn as an app\'s icon too');
+  // Drawn as an app's icon (bigger, its own shape: the themes' `.app`) only where the app's own icon is shown.
+  assert.deepEqual([31, 32, 33, 34, 12].map((id) => row(id).isApp), [true, false, false, true, false], 'apps with their icon; not installed, no icon, a web item: not');
+  assert.equal(pin.isApp, true, 'an app pin');
   // A bad icon in the list never reaches a theme.
   const bad = build({ ...withApps, apps: [{ bundleId: 'com.apple.Notes', name: 'Notes', icon: 'https://evil.example/x.png' }] });
   assert.equal(bad.space.today.find((t) => t.id === 31)!.icon, null, 'only data: images, as every row icon');

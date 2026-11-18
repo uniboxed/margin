@@ -640,6 +640,138 @@ const withRuntime = Object.assign(T, {
   rtText(selector: string) { return [...rt.target.querySelectorAll(selector)].map((e) => e.textContent!.trim()); },
   rtTodayIds(n = 3) { return rt.runtime!.vm!.space.today.slice(0, n).map((t) => t.id); },
   rtDispatch(name: string, arg?: unknown) { return rt.runtime!.dispatch(name, arg); },
+  // --- Rows by what they are (every theme: their classes differ), for the pending intents and the rows' motion ----
+  // A tab's or a pin's row: the element whose click activates or opens it (tab.activate, pin.open) with this id.
+  rtRow(id: number | string) { return rowEl(id); },
+  rtRowActive(id: number | string) { const el = rowEl(id); return el ? el.classList.contains('active') || el.classList.contains('on') : null; },
+  // Where to click a row (scrolled to the middle of its list first), and its close button (shown under the pointer).
+  rtRowBox(id: number | string) {
+    const el = rowEl(id);
+    if (!el) return null;
+    el.scrollIntoView({ block: 'center' });
+    const r = el.getBoundingClientRect();
+    const close = el.querySelector('[aria-label^="Close"], .close');
+    const c = close?.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, top: r.top, height: r.height, close: c && c.width ? { x: c.left + c.width / 2, y: c.top + c.height / 2 } : { x: r.right - 14, y: r.top + r.height / 2 } };
+  },
+  // Each row's top, by id, in the order drawn (today's tabs).
+  rtTodayTops() { return rt.runtime!.vm!.space.today.map((t) => [t.id, rowEl(t.id)?.getBoundingClientRect().top ?? null] as const); },
+  // Today's rows' transform this instant (a slide under way: not 'none').
+  rtTodayTransforms(from = 0, count = 10) { return rt.runtime!.vm!.space.today.slice(from, from + count).map((t) => { const el = rowEl(t.id); return el ? getComputedStyle(el).transform : null; }); },
+  // The host answering the switch, open and close requests `ms` later, with the state of what they did (as
+  // Margin.app does: the state, then the answer); `fail`: those requests' types answered undefined, nothing done.
+  // Every request's time is kept (`rtSlowSent`).
+  rtSlowHost(ms: number, { fail = [] as string[] } = {}) {
+    const host = rt.host;
+    const sent: [string, any, number][] = [];
+    (T as any).__slowSent = sent;
+    host.send = (type: string, payload: any = {}) => {
+      host.sent.push({ type, payload });
+      sent.push([type, payload, performance.now()]);
+      return new Promise((resolve) => setTimeout(() => {
+        if (fail.includes(type)) return resolve(undefined);
+        const m = rt.mock;
+        if (type === 'activateTab') { m.activate(payload.tabId); host.setState(m.state); return resolve({ shown: payload.tabId }); }
+        if (type === 'closeTab') { m.tabs((tabs) => { delete tabs[payload.tabId]; return tabs; }); m.build(); host.setState(m.state); return resolve(null); }
+        if (type === 'openPin') {
+          const pin = m.state.pins.find((p) => p.id === payload.pinId)!;
+          const id = m.nextId++;
+          const tabs = { ...m.state.tabs };
+          for (const t of Object.values(tabs)) if (t.active) tabs[t.id] = { ...t, active: false };
+          tabs[id] = { id, windowId: 1, index: 9999, title: pin.title, url: pin.url, favIconUrl: '', active: true, lastActive: 99999 };
+          m.state = { ...m.state, tabs, tabSpace: { ...m.state.tabSpace, [id]: pin.spaceId } };
+          m.build();
+          host.setState(m.state);
+          return resolve({ shown: id });
+        }
+        resolve(true);
+      }, ms));
+    };
+    return true;
+  },
+  // From the next `event` (pointerdown, click) on the theme: how many frames, and ms, until row `id` is drawn `want`
+  // (active, gone); every frame's answer is kept too, up to `ms` (a flicker shows as a change back). `rtWatched` waits.
+  rtWatch(event: string, id: number | string, want: 'active' | 'gone', ms = 1500) {
+    const test = () => { const el = rowEl(id); return want === 'gone' ? el == null : !!el && (el.classList.contains('active') || el.classList.contains('on')); };
+    let t0 = 0;
+    const seen: boolean[] = [];
+    (T as any).__watched = new Promise((done) => {
+      let frames = 0;
+      let at: { frames: number, ms: number } | null = null;
+      const tick = () => {
+        if (t0) {
+          frames++;
+          const ok = test();
+          seen.push(ok);
+          if (ok && !at) at = { frames, ms: performance.now() - t0 };
+          if (performance.now() - t0 > ms) return done({ ...(at ?? { frames: -1, ms: -1 }), seen });
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    rt.target.addEventListener(event, () => { t0 = performance.now(); }, { capture: true, once: true });
+    return true;
+  },
+  rtWatched() { return (T as any).__watched as Promise<{ frames: number, ms: number, seen: boolean[] }>; },
+  // How long one action takes to run and draw (its click's work, the rows' slide set up included), in ms.
+  rtTimed(name: string, arg?: unknown) { const t = performance.now(); rt.runtime!.dispatch(name, arg); return performance.now() - t; },
+  // The frames drawn over the next `ms`: each one's time since the last.
+  rtFrameGaps(ms: number) {
+    return new Promise<number[]>((done) => {
+      const gaps: number[] = [];
+      const start = performance.now();
+      let last = start;
+      const tick = (t: number) => { gaps.push(t - last); last = t; if (t - start > ms) done(gaps.slice(1)); else requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    });
+  },
+  rtSlowSent() { return ((T as any).__slowSent as [string, any, number][]).map(([type, payload, at]) => ({ type, payload, at })); },
+  // A pin's tab closed (the pin stays, not open), in the stored state: the pin's id.
+  rtUnopenPin(nth = 1) {
+    const m = rt.mock;
+    const pin = m.state.pins.filter((p) => p.spaceId === 'personal')[nth];
+    const tab = Object.values(m.state.tabs).find((t) => t.url === pin.url)!;
+    m.tabs((tabs) => { delete tabs[tab.id]; return tabs; });
+    m.build();
+    rt.host.setState(m.state);
+    return pin.id;
+  },
+  // Some rows made installed apps' items (Margin.app): today's 2nd and 4th tabs and the first folder's 2nd pin, with
+  // an icon drawn as macOS draws app icons (its glyph 52 of 64 px, transparent room around it). Their ids, and a
+  // site's row beside them.
+  rtAppRows() {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 64;
+    const g = canvas.getContext('2d')!;
+    g.fillStyle = '#2f7cf6';
+    g.beginPath(); g.roundRect(6, 5, 52, 52, 12); g.fill();
+    const icon = canvas.toDataURL('image/png');
+    const apps = ['Notes', 'Music', 'Maps'].map((n) => ({ bundleId: `com.example.${n}`, name: n, icon }));
+    const m = rt.mock;
+    const today = rt.runtime!.vm!.space.today.map((t) => t.id as number);
+    const tabs = { ...m.state.tabs };
+    tabs[today[1]] = { ...tabs[today[1]], url: 'app://com.example.Notes', title: 'Notes' };
+    tabs[today[3]] = { ...tabs[today[3]], url: 'app://com.example.Music', title: 'Music' };
+    const pin = m.state.pins.filter((p) => p.folderId === 'personal-f0')[1];
+    const pinTab = Object.values(tabs).find((t) => t.url === pin.url)!;
+    tabs[pinTab.id] = { ...pinTab, url: 'app://com.example.Maps', title: 'Maps' };
+    const pins = m.state.pins.map((p) => (p === pin ? { ...p, url: 'app://com.example.Maps', title: 'Maps' } : p));
+    m.state = { ...m.state, tabs, pins, apps } as typeof m.state;
+    m.build();
+    rt.host.setState(m.state);
+    return { apps: [today[1], today[3]], site: today[2], pin: pin.id };
+  },
+  // A row's icon, its title's left edge and the row's height.
+  rtRowParts(id: number | string) {
+    const el = rowEl(id);
+    if (!el) return null;
+    const icon = el.querySelector('img, .letter');
+    const title = [...el.querySelectorAll('span, div')].find((e) => e.childElementCount === 0 && /\S/.test(e.textContent ?? '') && !e.classList.contains('letter'));
+    const r = (x: Element | null | undefined) => { const b = x?.getBoundingClientRect(); return b ? { left: b.left, top: b.top, width: b.width, height: b.height } : null; };
+    // (The icon's drawn size: its computed width, inside any padding a theme gives it.)
+    return { row: r(el), icon: r(icon), size: icon ? parseFloat(getComputedStyle(icon).width) : null, app: !!icon?.classList.contains('app'), title: r(title) };
+  },
   // Where to click an element (the shadow root is closed: clicks go by
   // position), scrolled into view in its list first.
   rtBox(selector: string, nth = 0) {
@@ -652,6 +784,16 @@ const withRuntime = Object.assign(T, {
 });
 
 function hostElement(width: number, height: number) { return host(width, height); }
+
+// The row whose click activates the tab or opens the pin `id` (its <a>, or the element with the action).
+function rowEl(id: number | string): HTMLElement | null {
+  const view = rt.runtime!.view;
+  for (const el of rt.target.querySelectorAll<HTMLElement>('[m-drag], a, button')) {
+    const a = view.actionOf(el);
+    if (a && (a.name === 'tab.activate' || a.name === 'pin.open') && a.arg === id && el.closest('.launcher, .tile') == null) return el;
+  }
+  return null;
+}
 
 // The CSS payloads' target, built with DOM APIs.
 function target() {
