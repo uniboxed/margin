@@ -90,6 +90,7 @@ if part.realApps, let m = marginBefore {
   spin(3)
 }
 recordBefore(part: part.name, built: builtMargin, realApps: part.realApps ? installedRealApps() : [])
+startFullScreen = fullScreenSpaces() // (live resize: Mission Control's full-screen Spaces before the run)
 if part.realApps, let m = marginBefore { before.marginPath = m.bundleURL?.path; saveState() }
 log("before: Margin \(before.marginPath == nil ? "not running" : "running"); Mission Control \(before.mcCount) Spaces; Space \(before.home); defaults " + marginKeys.map { "\($0) '\(before.marginDefaults[$0]?.prefix(20) ?? "")'" }.joined(separator: " "))
 for r in before.realApps { log("before: \(describe(r))") }

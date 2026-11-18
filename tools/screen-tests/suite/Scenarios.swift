@@ -69,6 +69,15 @@ enum Step: Equatable {
   case hold(Expect, seconds: Double)
   case forget(Target)
   case quitMargin
+  // live resize (docs/HOSTING-CORE.md "Live resize: tiles in Margin's Space")
+  case liveDrag(Int, dx: Int, steps: Int, parked: [Int]) // drag-live; background-sized
+  case liveDragApp(Target, dx: Int, steps: Int, parked: [Target]) // ...with any app
+  case switchSized(Int)                           // switch-after-resize
+  case listedOnly(String)                         // mission-control
+  case killCopy(Int, shown: Int)                  // hosted-app-crash
+  case marginQuitTiles([Int])                     // margin-quit with tiles
+  case killMargin([Int])                          // margin-crash recovery
+  case memory(String)                             // Margin's, WindowServer's and the copies' resident memory, said
 
   var text: String {
     switch self {
@@ -95,6 +104,14 @@ enum Step: Equatable {
     case .hold(let e, let s): return "for \(Int(s)) s (a read every 0.5 s), stays: \(e.text); the same windows and page state all along (predictable)"
     case .forget(let t): return "remove \(t.text)'s item from Margin's library (dev hook `forget`), quit it if it still runs"
     case .quitMargin: return "quit Margin"
+    case .liveDrag(let n, let dx, let st, let parked): return "drag-live: the sidebar's edge dragged \(dx > 0 ? "+" : "")\(dx) pt over \(st) display frames (dev hook `drag`: the page's own handle, no event posted to the system), Chameleon \(n)'s window's model bounds read every ms: it follows each step; background-sized: Chameleon \(parked.map(String.init).joined(separator: ", ")) at the new page area within 1 s of the release; CPU of Margin, WindowServer and the copies said"
+    case .liveDragApp(let t, let dx, let st, let parked): return "drag-live: the sidebar's edge dragged \(dx > 0 ? "+" : "")\(dx) pt over \(st) display frames (Margin's dev hook only), \(t.text) shown: it follows each step; background-sized: \(parked.map(\.text).joined(separator: ", ")) at the new page area within 1 s"
+    case .switchSized(let n): return "switch-after-resize: show Chameleon \(n) (parked, sized in the background): its first frame on screen at the new page area, 99 ms or less"
+    case .listedOnly(let why): return "mission-control (\(why)): only Margin's Space listed beside the run's first Spaces"
+    case .killCopy(let n, let shown): return "hosted-app-crash: Chameleon \(n) killed (SIGKILL, the suite's own test app): its tile gone from Margin's Space, Margin's window whole, Chameleon \(shown) at the page area"
+    case .marginQuitTiles(let ns): return "margin-quit with tiles: quit Margin; Chameleon \(ns.map(String.init).joined(separator: ", ")) given back and quit, nothing listed but the run's first Spaces"
+    case .killMargin(let ns): return "margin-crash recovery: Margin killed (SIGKILL) with Chameleon \(ns.map(String.init).joined(separator: ", ")) in tiles of its Space, opened again: its recovery gives them back (quit), its old Space and the tiles destroyed"
+    case .memory(let label): return "memory (\(label)): Margin's, WindowServer's and the copies' resident memory, said"
     }
   }
 }
@@ -174,10 +191,33 @@ func realAppsScenario(_ apps: [RealApp]) -> Scenario {
   var steps: [Step] = [.openMargin]
   for a in apps { steps += [.host(.app(a.bundle)), .hold(.desired(Desired(target: .app(a.bundle), framed: a.framedOnly)), seconds: hold)] }
   for a in apps { steps.append(.show(.app(a.bundle), maxMs: 99)) }
+  // (Live resize: a drag of Margin's own sidebar with the last one shown, the others parked: only Margin's page is
+  // touched, through its dev hook; nothing is posted to the system or to the apps.)
+  if let last = apps.last { steps += [.liveDragApp(.app(last.bundle), dx: 80, steps: 60, parked: apps.dropLast().map { .app($0.bundle) }), .liveDragApp(.app(last.bundle), dx: -80, steps: 60, parked: apps.dropLast().map { .app($0.bundle) }), .listedOnly("the person's apps hosted")] }
   steps += [.quitMargin, .expect(.givenBack(apps.map(\.bundle)))]
   return Scenario(name: "real-apps", title: "the person's own apps hosted through Margin's dev hook only: no click or key ever posted into them", copies: [], steps: steps,
                   estimate: 40 + Double(apps.count) * (12 + hold) + Double(apps.count) * 4 + 30)
 }
+
+// ---- live resize (docs/HOSTING-CORE.md "Live resize: tiles in Margin's Space"): three copies hosted, drags followed
+// live, the parked ones sized after, switches after, a hosted app killed, Margin's quit; then, from a launch of its own,
+// Margin killed with tiles in its Space and opened again ----
+let liveResize = Scenario(name: "live-resize", title: "a sidebar drag followed live, the parked ones sized after it, a switch after it, Mission Control, a hosted app killed, Margin's quit with tiles in its Space",
+                          copies: [1, 2, 3], steps: [
+  .setSwitches(1, [:]), .setSwitches(2, [:]), .setSwitches(3, [:]),
+  .openMargin, .host(.copy(1)), .host(.copy(2)), .host(.copy(3)), .expect(.desired(Desired(target: .copy(3)))), .listedOnly("three hosted"), .memory("three hosted, at rest"),
+  .show(.copy(1), maxMs: 99), .show(.copy(2), maxMs: 99), .show(.copy(3), maxMs: 99),
+  .liveDrag(3, dx: 120, steps: 120, parked: [1, 2]), .switchSized(1), .expect(.desired(Desired(target: .copy(1)))),
+  .liveDrag(1, dx: -120, steps: 120, parked: [2, 3]), .switchSized(2), .expect(.desired(Desired(target: .copy(2)))),
+  .liveDrag(2, dx: 60, steps: 30, parked: [1, 3]), .liveDrag(2, dx: -60, steps: 30, parked: [1, 3]), .memory("after the drags"),
+  .show(.copy(1), maxMs: 99), .show(.copy(3), maxMs: 99), .show(.copy(2), maxMs: 99),
+  .killCopy(3, shown: 2), .listedOnly("after a hosted app was killed"), .expect(.desired(Desired(target: .copy(2)))),
+  .marginQuitTiles([1, 2]),
+], estimate: 200)
+let liveResizeCrash = Scenario(name: "live-resize-crash", title: "Margin killed with tiles in its Space, opened again: everything given back by its recovery", copies: [1, 2], steps: [
+  .setSwitches(1, [:]), .setSwitches(2, [:]),
+  .openMargin, .host(.copy(1)), .host(.copy(2)), .liveDrag(2, dx: 60, steps: 60, parked: [1]), .killMargin([1, 2]), .listedOnly("after the recovery"),
+], estimate: 110)
 
 // The parts: core; the behaviour scenarios in parts of about 6 minutes each (each from its own Margin launch);
 // the real apps' (opt-in).
@@ -191,6 +231,8 @@ func parts(realApps withReal: Bool) -> [Part] {
     chunk.append(s); budget += s.estimate
   }
   if !chunk.isEmpty { out.append(Part(name: "behaviours-\(out.count)", scenarios: [behaviourSetup] + chunk, realApps: false)) }
+  out.append(Part(name: "live-resize", scenarios: [liveResize], realApps: false))
+  out.append(Part(name: "live-resize-crash", scenarios: [liveResizeCrash], realApps: false))
   if withReal { out.append(Part(name: "real-apps", scenarios: [realAppsScenario(installedRealApps())], realApps: true)) }
   return out
 }

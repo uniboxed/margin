@@ -49,6 +49,14 @@ extension Runner {
     case .quitMargin:
       gate("quitting Margin")
       if let m { m.terminate(); spin(25) { m.isTerminated }; log("  Margin quit: \(m.isTerminated)") }
+    case .liveDrag(let n, let dx, let st, let parked): liveDrag(n, dx: dx, steps: st, parked: parked)
+    case .liveDragApp(let t, let dx, let st, let parked): liveDrag(t, dx: dx, steps: st, parked: parked)
+    case .switchSized(let n): switchSized(n)
+    case .listedOnly(let why): listedOnly("mission-control (\(why))")
+    case .killCopy(let n, let shown): killCopy(n, shown: shown)
+    case .marginQuitTiles(let ns): marginQuitTiles(ns)
+    case .killMargin(let ns): killMargin(ns)
+    case .memory(let label): memoryLine(label)
     }
   }
 
