@@ -1,0 +1,185 @@
+//! The loop guard (docs/ARCHITECTURE-PLAN.md, "Reconciler"): generic, so a quirk nobody has seen yet still ends.
+//! Margin corrects what it sees; an app or macOS can answer the correction with a change that asks for the same
+//! correction again (2026-11-18 13:30: Weather answered each tile resize with a window whose close re-laid the tiles
+//! out, 54 rounds in 18 s; 2026-11-17: parked tiles sized, a window drawn, the tiles laid out again, ~3 a second).
+//!
+//! Only reactions count: a correction Margin makes because something changed that nobody asked for. What the person
+//! does (a drag, a switch, a theme) is never a loop and clears the counts, so three drags in five seconds are three
+//! resizes, not a loop. The same reaction for the same host `LIMIT` times within `WITHIN` seconds: the last one isn't
+//! applied, the host is stopped (its caller moves it to a safer route and says so), and it stays stopped until its
+//! route changes or the person acts on it. Above all of it, `PER_SECOND` reactions a second across every host stops
+//! every reaction for a second: whatever runs away, Margin doesn't run with it.
+
+use std::collections::{BTreeMap, VecDeque};
+
+use serde::{Deserialize, Serialize};
+
+/// The same reaction this many times within `WITHIN`: the last isn't applied.
+pub const LIMIT: usize = 3;
+pub const WITHIN: f64 = 5.0;
+/// Reactions a second across every host before all of them wait a second.
+pub const PER_SECOND: usize = 12;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "verdict", rename_all = "camelCase")]
+pub enum Verdict {
+    Go,
+    /// Not applied: `host` reacted `key` `count` times within `within` s. Its caller moves it to a safer route.
+    Stop {
+        host: String,
+        key: String,
+        count: usize,
+        within: f64,
+    },
+    /// Not applied: too many reactions across every host; wait until `until`.
+    Hold {
+        until: f64,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Stopped {
+    pub key: String,
+    pub at: f64,
+    pub count: usize,
+}
+
+#[derive(Debug, Default)]
+pub struct LoopGuard {
+    counts: BTreeMap<(String, String), VecDeque<f64>>,
+    all: VecDeque<f64>,
+    held_until: Option<f64>,
+    stopped: BTreeMap<String, Stopped>,
+}
+
+impl LoopGuard {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A reaction about to be applied for `host` (an app's host name, or "margin" for Margin's own window): go, or
+    /// stop (this host), or hold (everything).
+    pub fn react(&mut self, now: f64, host: &str, key: &str) -> Verdict {
+        if let Some(s) = self.stopped.get(host) {
+            return Verdict::Stop { host: host.into(), key: s.key.clone(), count: s.count, within: WITHIN };
+        }
+        if let Some(until) = self.held_until {
+            if now < until {
+                return Verdict::Hold { until };
+            }
+            self.held_until = None;
+        }
+        while self.all.front().is_some_and(|t| now - t >= 1.0) {
+            self.all.pop_front();
+        }
+        if self.all.len() >= PER_SECOND {
+            let until = now + 1.0;
+            self.held_until = Some(until);
+            return Verdict::Hold { until };
+        }
+        let times = self.counts.entry((host.into(), key.into())).or_default();
+        while times.front().is_some_and(|t| now - t > WITHIN) {
+            times.pop_front();
+        }
+        if times.len() + 1 >= LIMIT {
+            let count = times.len() + 1;
+            times.clear();
+            self.stopped.insert(host.into(), Stopped { key: key.into(), at: now, count });
+            return Verdict::Stop { host: host.into(), key: key.into(), count, within: WITHIN };
+        }
+        times.push_back(now);
+        self.all.push_back(now);
+        Verdict::Go
+    }
+
+    /// The person acted (on `host`, or on everything: a drag, a theme, a display change): nothing they caused is a
+    /// loop, so the counts start again. A stopped host stays stopped until its route changes (`cleared`).
+    pub fn person(&mut self, host: Option<&str>) {
+        match host {
+            Some(h) => self.counts.retain(|(owner, _), _| owner != h),
+            None => self.counts.clear(),
+        }
+    }
+
+    /// `host`'s route changed (moved to a safer one), it was closed, or it starts again: its stop and counts go.
+    pub fn cleared(&mut self, host: &str) {
+        self.stopped.remove(host);
+        self.counts.retain(|(owner, _), _| owner != host);
+    }
+
+    pub fn stopped(&self, host: &str) -> Option<&Stopped> {
+        self.stopped.get(host)
+    }
+
+    /// The earliest time a count lapses (none: nothing to wake for): the guard itself never needs a timer, but a
+    /// caller that sleeps until the next event can use it.
+    pub fn next_wake(&self) -> Option<f64> {
+        let mut out: Option<f64> = self.held_until;
+        for t in self.counts.values().filter_map(|v| v.front()) {
+            let at = t + WITHIN;
+            out = Some(out.map_or(at, |o| o.min(at)));
+        }
+        out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_third_round_within_five_seconds_stops_that_host() {
+        let mut g = LoopGuard::new();
+        // Weather's rounds came every ~0.33 s.
+        assert_eq!(g.react(0.0, "app:com.apple.weather", "size its tile"), Verdict::Go);
+        assert_eq!(g.react(0.33, "app:com.apple.weather", "size its tile"), Verdict::Go);
+        let v = g.react(0.66, "app:com.apple.weather", "size its tile");
+        assert!(matches!(v, Verdict::Stop { count: 3, .. }), "{v:?}");
+        // Stopped: any reaction for it is refused until its route changes.
+        assert!(matches!(g.react(10.0, "app:com.apple.weather", "put back"), Verdict::Stop { .. }));
+        // Others aren't.
+        assert_eq!(g.react(0.7, "app:com.apple.Maps", "size its tile"), Verdict::Go);
+        g.cleared("app:com.apple.weather");
+        assert_eq!(g.react(11.0, "app:com.apple.weather", "size its tile"), Verdict::Go);
+    }
+
+    #[test]
+    fn spread_out_reactions_are_not_a_loop() {
+        let mut g = LoopGuard::new();
+        // Messages strayed every ~6 s: put back each time.
+        for i in 0..10 {
+            assert_eq!(g.react(i as f64 * 6.0, "app:com.apple.MobileSMS", "put back"), Verdict::Go, "round {i}");
+        }
+        // Different reactions for one host don't add up.
+        assert_eq!(g.react(100.0, "h", "a"), Verdict::Go);
+        assert_eq!(g.react(100.1, "h", "b"), Verdict::Go);
+        assert_eq!(g.react(100.2, "h", "a"), Verdict::Go);
+        assert_eq!(g.react(100.3, "h", "b"), Verdict::Go);
+    }
+
+    #[test]
+    fn what_the_person_does_starts_the_count_again() {
+        let mut g = LoopGuard::new();
+        assert_eq!(g.react(0.0, "h", "size its tile"), Verdict::Go);
+        assert_eq!(g.react(1.0, "h", "size its tile"), Verdict::Go);
+        g.person(None); // a drag's end
+        assert_eq!(g.react(2.0, "h", "size its tile"), Verdict::Go);
+        assert_eq!(g.react(2.5, "h", "size its tile"), Verdict::Go);
+        g.person(Some("h"));
+        assert_eq!(g.react(3.0, "h", "size its tile"), Verdict::Go);
+        assert_eq!(g.stopped("h"), None);
+    }
+
+    #[test]
+    fn too_many_across_every_host_holds_them_all_for_a_second() {
+        let mut g = LoopGuard::new();
+        for i in 0..PER_SECOND {
+            assert_eq!(g.react(0.01 * i as f64, &format!("h{i}"), "k"), Verdict::Go);
+        }
+        let v = g.react(0.5, "other", "k");
+        assert_eq!(v, Verdict::Hold { until: 1.5 });
+        assert_eq!(g.react(1.0, "other", "k"), Verdict::Hold { until: 1.5 });
+        assert_eq!(g.react(1.6, "other", "k"), Verdict::Go);
+        assert!(g.next_wake().is_some());
+    }
+}

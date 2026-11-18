@@ -1,0 +1,286 @@
+//! The hosting core as a host app's shell calls it (Margin.app's Swift today; any shell that isn't Rust): one
+//! object, one call that takes a request and returns its answer, both JSON. Sans IO: the caller passes its clock
+//! (`now`, seconds, monotonic) and every fact; the core never reads the OS, a file or the time. The layout's hot path
+//! (every frame of a drag) has its own typed calls in the FFI crate, with no JSON.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+use super::causes::{Cause, Causes, Change, Event};
+use super::choice::{self, ChoiceRule};
+use super::guard::{LoopGuard, Verdict};
+use super::kinds::{self, AppFacts, Window};
+use super::layout::Placement;
+use super::reconciler::{self, Desired, Situation};
+use super::routes::{Route, Routes};
+use crate::geometry::Rect;
+use crate::system::ServerWindow;
+
+/// A window server window as the caller sends it (system.rs `ServerWindow`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerWin {
+    pub number: i64,
+    pub pid: u32,
+    #[serde(default)]
+    pub layer: i32,
+    pub bounds: Rect,
+    #[serde(default = "yes")]
+    pub on_screen: bool,
+    #[serde(default = "one")]
+    pub alpha: f64,
+    #[serde(default)]
+    pub order: usize,
+}
+
+fn yes() -> bool {
+    true
+}
+fn one() -> f64 {
+    1.0
+}
+
+impl From<&ServerWin> for ServerWindow {
+    fn from(w: &ServerWin) -> Self {
+        ServerWindow {
+            number: w.number,
+            pid: w.pid,
+            layer: w.layer,
+            bounds: w.bounds,
+            on_screen: w.on_screen,
+            alpha: w.alpha,
+            order: w.order,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum Request {
+    /// Every window's kind (kinds.rs).
+    #[serde(rename_all = "camelCase")]
+    Classify { windows: Vec<Window>, app: AppFacts, placement: Placement },
+    /// The corrections for one host (reconciler.rs).
+    Step { situation: Situation, desired: Desired },
+    /// Which window to host (choice.rs): from `server` (all of the app's, front to back), the pid, and the excluded.
+    #[serde(rename_all = "camelCase")]
+    Choose {
+        server: Vec<ServerWin>,
+        pid: u32,
+        #[serde(default)]
+        excluded: Vec<i64>,
+        #[serde(default)]
+        in_space: Vec<i64>,
+        main: Option<i64>,
+        focused: Option<i64>,
+        #[serde(default)]
+        standard: Vec<i64>,
+        server_allowed: bool,
+    },
+    /// A reaction about to be applied (guard.rs).
+    React { now: f64, host: String, key: String },
+    /// The person acted (on a host, or on everything).
+    Person {
+        now: f64,
+        #[serde(default)]
+        host: Option<String>,
+    },
+    /// A host's route changed, it closed, or it starts again: its stop and counts go.
+    Cleared { host: String },
+    /// Something seen, for the causes.
+    Note { now: f64, event: Event },
+    /// Why something changed.
+    Explain { now: f64, change: Change },
+    /// The best route for an app (routes.rs).
+    Route { bundle: String, version: String, available: Vec<Route> },
+    /// An app failed on `from`: held lower.
+    #[serde(rename_all = "camelCase")]
+    StepDown { now: f64, bundle: String, version: String, from: Route, available: Vec<Route>, why: String },
+    /// The routes as saved (read at launch).
+    LoadRoutes { routes: Routes },
+    /// The routes to save.
+    SaveRoutes,
+    /// The earliest time the core has something to do on its own (none: wake it with the next event).
+    NextWake,
+}
+
+/// The hosting core's state across calls.
+#[derive(Debug, Default)]
+pub struct HostCore {
+    pub guard: LoopGuard,
+    pub causes: Causes,
+    pub routes: Routes,
+}
+
+impl HostCore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// One request (JSON) → its answer (JSON). Never panics on bad input: `{"error": …}`.
+    pub fn call(&mut self, request: &str) -> String {
+        match serde_json::from_str::<Request>(request) {
+            Ok(r) => self.handle(r).to_string(),
+            Err(e) => json!({ "error": format!("bad request: {e}") }).to_string(),
+        }
+    }
+
+    pub fn handle(&mut self, r: Request) -> Value {
+        match r {
+            Request::Classify { windows, app, placement } => {
+                let verdicts = kinds::classify(&windows, &app, &placement);
+                json!({ "verdicts": verdicts })
+            }
+            Request::Step { situation, desired } => {
+                json!({ "corrections": reconciler::step(&situation, desired) })
+            }
+            Request::Choose { server, pid, excluded, in_space, main, focused, standard, server_allowed } => {
+                let list: Vec<ServerWindow> = server.iter().map(ServerWindow::from).collect();
+                let excluded: BTreeSet<i64> = excluded.into_iter().collect();
+                let candidates = choice::candidates(&list, pid, |n| excluded.contains(&n));
+                let in_space: BTreeSet<i64> = in_space.into_iter().collect();
+                let got: Option<(i64, ChoiceRule)> =
+                    choice::choose(&candidates, &in_space, main, focused, &standard, server_allowed);
+                let numbers: Vec<i64> = candidates.iter().map(|w| w.number).collect();
+                json!({
+                    "candidates": numbers,
+                    "choice": got.map(|(n, rule)| json!({ "number": n, "rule": rule, "text": rule.text() })),
+                })
+            }
+            Request::React { now, host, key } => {
+                let v: Verdict = self.guard.react(now, &host, &key);
+                serde_json::to_value(v).unwrap_or(Value::Null)
+            }
+            Request::Person { now, host } => {
+                self.guard.person(host.as_deref());
+                self.causes.note(now, Event::Person);
+                json!({})
+            }
+            Request::Cleared { host } => {
+                self.guard.cleared(&host);
+                json!({})
+            }
+            Request::Note { now, event } => {
+                self.causes.note(now, event);
+                json!({})
+            }
+            Request::Explain { now, change } => {
+                let c: Cause = self.causes.explain(now, change);
+                serde_json::to_value(c).unwrap_or(Value::Null)
+            }
+            Request::Route { bundle, version, available } => {
+                let route = self.routes.route(&bundle, &version, &available);
+                let held = self.routes.held_at(&bundle, &version);
+                json!({ "route": route, "held": held })
+            }
+            Request::StepDown { now, bundle, version, from, available, why } => {
+                let next = self.routes.step_down(&bundle, &version, from, &available, &why, now);
+                json!({ "route": next })
+            }
+            Request::LoadRoutes { routes } => {
+                self.routes = routes;
+                json!({})
+            }
+            Request::SaveRoutes => json!({ "routes": self.routes }),
+            Request::NextWake => json!({ "at": self.guard.next_wake() }),
+        }
+    }
+}
+
+/// Verdicts by number with string keys, as JSON objects have them (a helper for callers that want them typed).
+pub type Verdicts = BTreeMap<i64, kinds::Verdict>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn call(core: &mut HostCore, v: Value) -> Value {
+        serde_json::from_str(&core.call(&v.to_string())).unwrap()
+    }
+
+    #[test]
+    fn classify_and_step_round_trip() {
+        let mut core = HostCore::new();
+        let got = call(
+            &mut core,
+            json!({
+                "type": "classify",
+                "windows": [
+                    { "number": 5, "bounds": { "x": 260, "y": 41, "width": 1244, "height": 933 }, "place": "margin", "onScreen": true },
+                    { "number": 6, "bounds": { "x": 0, "y": 0, "width": 80, "height": 20 }, "layer": 3 }
+                ],
+                "app": { "launchedByMargin": true, "hosted": [5] },
+                "placement": { "page": { "x": 260, "y": 41, "width": 1244, "height": 933 }, "area": { "x": 0, "y": 33, "width": 1512, "height": 949 } }
+            }),
+        );
+        assert_eq!(got["verdicts"]["5"]["kind"], "main");
+        assert_eq!(got["verdicts"]["6"]["kind"], "transient");
+        let got = call(
+            &mut core,
+            json!({ "type": "step", "desired": "shown", "situation": { "phase": "shown", "member": true, "window": 5, "place": "nowhere" } }),
+        );
+        assert_eq!(got["corrections"], json!([{ "type": "putBack" }]));
+    }
+
+    #[test]
+    fn the_guard_and_the_causes_through_calls() {
+        let mut core = HostCore::new();
+        let h = "app:com.apple.weather";
+        for (i, want) in ["go", "go", "stop"].iter().enumerate() {
+            let v = call(
+                &mut core,
+                json!({ "type": "react", "now": i as f64 * 0.3, "host": h, "key": "tiles laid out again" }),
+            );
+            assert_eq!(v["verdict"], *want, "{v}");
+        }
+        call(
+            &mut core,
+            json!({ "type": "note", "now": 5.0, "event": { "type": "closed", "host": h, "window": 9, "kind": "helper" } }),
+        );
+        let c = call(&mut core, json!({ "type": "explain", "now": 5.02, "change": "tilesRelaidOut" }));
+        assert_eq!(c["host"], h);
+        assert_eq!(c["kind"], "helper");
+    }
+
+    #[test]
+    fn routes_through_calls() {
+        let mut core = HostCore::new();
+        let all = json!(["tiles", "members", "window"]);
+        let r = call(&mut core, json!({ "type": "route", "bundle": "b", "version": "1", "available": all }));
+        assert_eq!(r["route"], "tiles");
+        let r = call(
+            &mut core,
+            json!({ "type": "stepDown", "now": 1.0, "bundle": "b", "version": "1", "from": "tiles", "available": all, "why": "loop" }),
+        );
+        assert_eq!(r["route"], "members");
+        let saved = call(&mut core, json!({ "type": "saveRoutes" }));
+        let mut fresh = HostCore::new();
+        call(&mut fresh, json!({ "type": "loadRoutes", "routes": saved["routes"] }));
+        let r = call(&mut fresh, json!({ "type": "route", "bundle": "b", "version": "1", "available": all }));
+        assert_eq!(r["route"], "members");
+        assert_eq!(r["held"]["why"], "loop");
+    }
+
+    #[test]
+    fn choose_through_a_call() {
+        let mut core = HostCore::new();
+        let w = |n: i64, on: bool, order: usize| json!({ "number": n, "pid": 7, "bounds": { "x": 0, "y": 0, "width": 1292, "height": 888 }, "onScreen": on, "order": order });
+        let got = call(
+            &mut core,
+            json!({ "type": "choose", "server": [w(10, false, 0), w(13, true, 1)], "pid": 7, "main": 10, "focused": null, "serverAllowed": true }),
+        );
+        assert_eq!(got["choice"]["number"], 13);
+        assert_eq!(got["choice"]["rule"], "onScreen");
+    }
+
+    #[test]
+    fn bad_input_is_an_error_never_a_panic() {
+        let mut core = HostCore::new();
+        for bad in ["", "{", "null", r#"{"type":"nope"}"#, r#"{"type":"step"}"#, r#"{"type":"react","now":"x"}"#] {
+            let v: Value = serde_json::from_str(&core.call(bad)).unwrap();
+            assert!(v["error"].is_string(), "{bad}: {v}");
+        }
+    }
+}
