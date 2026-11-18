@@ -173,9 +173,11 @@ read as the suite reads it). DECISIONS.md, "The hosting core, stage 3", has the 
   2 a show (a window-mode window not where it was framed), `bringForward` one try a rung (`activate`, `reopen`), then
   `fallback`; `closeItem` once its window has been gone `goneGrace` (1 s) with no other main window; `placeAgain` 1 per
   30 s. One log line each: `host: <app>: <observed> → <correction> (<budget left>)`.
-- **Off screen in Margin's Space:** `bringForward` is for a window-mode window only; never a Space made current or a
+- **Off screen in Margin's Space:** `bringForward` is for a window-mode window, and for a member once its show's late
+  watch is over (its app ordered it out: ordersOut after, in Margin's Space off screen for good, 19:08); within the late
+  watch the member's `backOnScreen` tries the same rungs before it places the window again; never a Space made current or a
   window moved for it (his 14:05 session: each was a jump), so no "re-add" rung. A full-screen member off screen in
-  place is still placed again (`backOnScreen`). Fallback: parked, nothing shown, the item kept, the show said failed.
+  place within the late watch is still placed again (`backOnScreen`) if the rungs don't bring it. Fallback: parked, nothing shown, the item kept, the show said failed.
   *Why it was off screen* (the run of 17:32, macOS's own log): every app Margin starts is started hidden
   (LaunchServices' hide option, `hideAfter=1`); its window, ordered in while it was hidden, comes on screen only once its
   app is the front app (the Phone's came on screen the moment its own reopen made it the front process). A full-screen
@@ -195,12 +197,21 @@ read as the suite reads it). DECISIONS.md, "The hosting core, stage 3", has the 
   button only when surely harmless: made before the hosted window, its app discards windows at quit, Accessibility reads
   it in Margin's Space; any other is parked (one private Space per app, its emptied full-screen Space destroyed) and
   moved to its Desktop before its app is asked to quit. No `spare` kind was needed (transient stays nothing to do).
-- **Strips** are parked, not taken out of full screen; a full-screen member's own toolbar window (inside its frame, at
-  its top) is the app's and left alone.
+- **Strips** are parked, not taken out of full screen. A hosted full-screen window's own toolbar window is the app's
+  and is never parked, moved or reordered: a strip of its app's in exactly the same user Spaces as the hosted window,
+  at its width and at its top edge (inside it: Chameleon's 1154×52; or resting just above it: Safari's with its
+  toolbar hidden, its bottom at the page's top), and once seen so, wherever it is while it's where its window is (the
+  window server moves the two together: parking Safari's 74772 took its window 74770 out of Margin's Space each time,
+  19:17). Only strips of its other windows (another Space, not at its frame: Mail's 1512×88) are parked.
 - **Replaced:** adopted as a window-mode window (fast, no full-screen change), its full screen tried again at its next
   show from parked. A replacement is a window at the hosted one's frame (in it in no Space, or Accessibility's main
   window), or, off its frame, a newer window on screen that's Accessibility's main window while the hosted one is off
   screen in Margin's Space (closed by its app; the window server lists a closed window a while).
+- **A closed window** is known by Accessibility's destroyed notification (the observer follows every window it reads),
+  not only by its bounds: an NSWindow its app keeps after its close stays listed by the window server at its last
+  frame, in no Space or off screen (Chameleon's windowless close, 19:04, was taken for a stray, brought back, placed
+  again, refused, and reopened). Destroyed and in no Space or off screen: gone at once (the model's kind `transient`),
+  never brought back; listed again by Accessibility (created, read): not closed.
 - **Its window closed while shown** (the person's ⌘W or close button, or its app's own close): another main window of
   its app's within `goneGrace` (1 s) is adopted, else its item closes (`closeItem`: the row's page goes, its app left
   running), as before stage 3. Never a window reopened for it (Tirth, 2026-11-17). `reopen` (a Dock-icon click,
@@ -221,6 +232,15 @@ read as the suite reads it). DECISIONS.md, "The hosting core, stage 3", has the 
   "not on screen" look (now `bringForward`). Left for later: `putBack` (above), the woken-window parking (Safari's woken
   window may belong to an app Margin doesn't follow yet), the restored-window sweep (still the close half for Safari's
   restored windows: its copy closes them).
+
+**The suite after the run of 18:57** (DECISIONS.md, "the real-screen run of 18:57"): Space numbers change with every
+part (Margin's Space is a new one each launch), so "in [9202]" was Margin's own Space, not another; the leftovers line
+now says "(Margin's)". Window mode of a resizable window that can't go full screen is *inside* the page area, not at
+it: AppKit keeps such a window to the screen's visible frame (the menu bar's and the Dock's bands out: 1154×869 for a
+1154×933 page area) and Margin centres it, as the real window-mode apps are checked. The restore scenarios prime with
+a plain launch whose Restorer restores nothing (with `-ApplePersistenceIgnoreState YES` AppKit saved only the windows
+that went full screen); AppKit does restore for a copy Margin launches with no Dock icon (the baseline restored both
+normal windows). A hold that starts while a correction of Margin's is under way (the page card loading) may end shown.
 
 Not in scope here: live resize during a sidebar drag (separate research), the privileged route question
 (the bridged operations; awaiting Tirth), the sidebar click's brief key flicker.
