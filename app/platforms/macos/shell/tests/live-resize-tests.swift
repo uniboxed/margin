@@ -69,9 +69,29 @@ func liveResizeTests() {
         let move = w.calls.dropFirst(mark).firstIndex { $0.hasPrefix("moveTile") } ?? -1
         check("live resize: a second app: Margin's Space's tile limit raised to 3 before its tile's move",
               r2 == .shown(notes.id, placed: true) && raise >= 0 && move > raise && w.maxTileConfig[FakeHostWorld.marginSpace] == 3, "\(w.calls.dropFirst(mark))")
-        check("live resize: …every rect set again after it: Margin's window whole, the parked one (laid out again as the layout's second) back at the page area, the new one there too",
-              marginWhole(w) && w.bounds(window: edit) == page(276) && w.bounds(window: n) == page(276) && w.spaces(window: edit) == [] && w.tiles[FakeHostWorld.marginSpace]?.count == 3 && clean(w),
-              "\(String(describing: w.bounds(window: edit))) \(String(describing: w.bounds(window: n)))")
+        let editTile = w.tileOf(edit) ?? 0
+        check("live resize: …Margin's window whole and the new one at the page area; the parked one (laid out again as the layout's second) left so, its rect not sent again (a parked tile sized makes its app draw a window whose close lays the first two out again: the blinking loop)",
+              marginWhole(w) && w.bounds(window: n) == page(276) && w.bounds(window: edit) != page(276) && w.spaces(window: edit) == [] && w.tiles[FakeHostWorld.marginSpace]?.count == 3
+              && count(w, "tileRect \(editTile) ", since: move) == 0 && clean(w),
+              "\(String(describing: w.bounds(window: edit))) \(String(describing: w.bounds(window: n))) \(w.calls.dropFirst(mark))")
+        // (A tile change Margin didn't make while it's parked, Margin's window laid out as a split's half: its rect still
+        // not sent; Margin's own and the one shown set back.)
+        let mRelay = w.calls.count
+        w.relayFirstTwo(FakeHostWorld.marginSpace)
+        e.marginNarrowed()
+        _ = hostRun { await e.pageRectChanged(placed(276)) }
+        check("live resize: a re-layout Margin didn't make, the parked one second: Margin's window and the one shown set back, the parked one's rect never sent (no loop)",
+              marginWhole(w) && w.bounds(window: n) == page(276) && count(w, "tileRect \(editTile) ", since: mRelay) == 0, "\(w.calls.dropFirst(mRelay))")
+        // (Shown: sized first, out of sight: its first frame at the page area.)
+        var firstFrame: CGRect?
+        e.hostedWindow = { if $0 == edit { firstFrame = w.bounds(window: edit) } }
+        let mShow = w.calls.count
+        let rEdit = show(e, textEdit)
+        check("live resize: …a switch to it: its tile sized before it's shown (never the split's size), no full-screen change",
+              rEdit == .shown(textEdit.id, placed: true) && firstFrame == page(276) && count(w, "fullScreen", since: mShow) == 0 && count(w, "tileRect \(editTile) ", since: mShow) >= 1,
+              "\(w.calls.dropFirst(mShow)) \(String(describing: firstFrame))")
+        e.hostedWindow = nil
+        _ = show(e, notes)
 
         // ---- a change of the page area (a drag's end, a theme): the one shown sized by its tile's rect at once, no
         // full-screen change, no loader; the parked one after it, by the reconciler, out of sight ----
@@ -141,8 +161,8 @@ func liveResizeTests() {
         _ = hostRun { await e.close(notes.id); return true }
         check("live resize: a row closed: its window given back out of full screen (its tile gone from Margin's Space), Margin's window whole again and the other at the page area, under the freeze",
               w.wins[n] == nil || w.wins[n]?.fullScreen == false) // (its app quit)
-        check("live resize: …Margin's Space: its own tile and the parked one's; every rect as it should be",
-              w.tiles[FakeHostWorld.marginSpace] == [FakeHostWorld.marginTile, w.tileOf(edit) ?? 0] && marginWhole(w) && w.bounds(window: edit) == page(370) && w.freezes > freezes && !w.frozen && clean(w),
+        check("live resize: …Margin's Space: its own tile and the parked one's; Margin's window whole; the parked one, laid out again, left so until it's shown",
+              w.tiles[FakeHostWorld.marginSpace] == [FakeHostWorld.marginTile, w.tileOf(edit) ?? 0] && marginWhole(w) && w.freezes > freezes && !w.frozen && clean(w),
               "\(String(describing: w.tiles[FakeHostWorld.marginSpace])) \(w.calls.dropFirst(m6))")
 
         // ---- Margin quits: everything given back, nothing of it left in Margin's Space (a window out of full screen leaves
