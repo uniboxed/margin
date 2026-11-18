@@ -245,7 +245,15 @@ func liveResizeTests() {
     // ---- the window shown closed by its app (windowless): its tile keeps a placeholder window of its app's at the tile's
     // rect, never adopted; the item closes, the placeholder tile destroyed ----
     do {
-        let (w, e, _) = world()
+        // (As on the real Mac: Accessibility's notifications followed (the model's kinds), the closed NSWindow kept listed
+        // by the window server, the placeholder its app's only window then: main-looking.)
+        made += 1
+        let w = FakeHostWorld()
+        w.tilesOn = true
+        w.keepsClosed = ["com.apple.Notes"]
+        let e = HostEngine(system: w, marker: nil, pid: 1, observation: FakeObservation(w))
+        e.options.privateRetire = 0
+        e.options.earlyFullScreen = false
         _ = open(e, textEdit)
         _ = open(e, notes)
         let n = window(w, "com.apple.Notes"), tile = w.tileOf(n)
