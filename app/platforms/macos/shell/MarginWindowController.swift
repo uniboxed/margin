@@ -413,6 +413,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         } else {
             hosted = nil
             hostedFrame = nil
+            setPageMinimum(nil)
             loadingLabel = nil
             showingLabel = nil
             loadingApp = nil
@@ -478,6 +479,16 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // The hosted window follows a drag of the sidebar's edge live (the engine's tiles): the hole is the page area as it
     // is meanwhile (its window a frame behind at most), its bounds read again once it's over.
     private var followingPage = false
+    // The hosted window's own minimum width (nil: none): its page stops the sidebar's edge where the page area would be
+    // narrower (ui/behaviors/resize.ts, host-app.ts `pageMinWidth`). Said once each change, and in each hello.
+    private(set) var pageMinimum: CGFloat?
+    func setPageMinimum(_ width: CGFloat?) {
+        let w = width.map { $0.rounded(.up) }
+        guard w != pageMinimum else { return }
+        pageMinimum = w
+        push(#"{"type":"pageMin","width":"# + (w.map { String(Int($0)) } ?? "null") + "}")
+    }
+
     func followsPage(_ on: Bool) {
         guard on != followingPage else { return }
         followingPage = on
@@ -1213,6 +1224,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         json += #","themes":"# + owner.themes()
         json += #","apps":"# + owner.apps()
         json += #","pageHosted":"# + (hosting ? "true" : "false")
+        json += #","pageMinWidth":"# + (pageMinimum.map { String(Int($0)) } ?? "null")
         json += #","pageState":""# + pageState.rawValue + #"","pageOpening":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
         json += #","pageOpeningBundleId":"# + (loaderApp.flatMap { jsonString($0) } ?? "null")
         let theme = owner.theme()

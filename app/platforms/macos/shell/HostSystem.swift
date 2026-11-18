@@ -138,6 +138,9 @@ protocol HostSystem: AnyObject {
     func tiles(of space: UInt64) -> [UInt64]? // a Space's tiles in its layout's order; nil: unread
     func tileRect(_ tile: UInt64) -> CGRect? // nil: unread, or not a tile
     func tileWindow(_ tile: UInt64) -> Int? // the window in it (`TileWindowID`); nil: none or unread
+    // The smallest its window can be, as its app gave its full-screen tile (`SizeConstraints`' `Min`: AppKit's
+    // minimum full-screen content size, what Split View's divider stops at); nil: none said, or unread.
+    func tileMinSize(_ tile: UInt64) -> CGSize?
     func maxTiles(of space: UInt64) -> Int? // its layout's limit (`Max Tile Config`'s width: 2 for a new full-screen Space)
     func setMaxTiles(_ space: UInt64, _ count: Int) -> Bool
     func setTileRect(_ tile: UInt64, _ rect: CGRect) -> Bool
@@ -172,6 +175,7 @@ extension HostSystem {
     func tiles(of space: UInt64) -> [UInt64]? { nil }
     func tileRect(_ tile: UInt64) -> CGRect? { nil }
     func tileWindow(_ tile: UInt64) -> Int? { nil }
+    func tileMinSize(_ tile: UInt64) -> CGSize? { nil }
     func maxTiles(of space: UInt64) -> Int? { nil }
     func setMaxTiles(_ space: UInt64, _ count: Int) -> Bool { false }
     func setTileRect(_ tile: UInt64, _ rect: CGRect) -> Bool { false }
@@ -707,6 +711,11 @@ final class RealHostSystem: HostSystem {
         return CGRect(x: x, y: y, width: w, height: h)
     }
     func tileWindow(_ tile: UInt64) -> Int? { (calls.values(of: tile)?["TileWindowID"] as? NSNumber)?.intValue }
+    func tileMinSize(_ tile: UInt64) -> CGSize? {
+        guard let m = (calls.values(of: tile)?["SizeConstraints"] as? [String: Any])?["Min"] as? [String: Any],
+              let w = (m["Width"] as? NSNumber)?.doubleValue, let h = (m["Height"] as? NSNumber)?.doubleValue, w.isFinite, h.isFinite, w >= 1, h >= 1 else { return nil }
+        return CGSize(width: w, height: h)
+    }
     func maxTiles(of space: UInt64) -> Int? {
         let manager = calls.values(of: space)?["TileLayoutManager"] as? [String: Any]
         return ((manager?["Max Tile Config"] as? [String: Any])?["Width"] as? NSNumber)?.intValue

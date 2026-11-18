@@ -380,6 +380,47 @@ drag by Accessibility: one `setFrame` in flight at a time, the newest page area 
 Accessibility call a frame on its own queue); the app does what a person's drag of its window's edge would make it do.
 Parked window-mode windows are re-placed when shown, as before (Accessibility can't reach them in a private Space).
 
+### A window's minimum size (2026-11-18)
+
+**The bug (Tirth's real use, 09:08):** a fast drag of the sidebar's edge with Weather shown sent Weather's window out of
+Margin's Space into a full-screen Space of its own, three times; each time Margin brought it back by leaving and
+entering full screen again (2-3 s, the loader).
+
+**The cause, measured on the real screen (the suite's `min-drag` steps, every window's bounds and Spaces read every
+millisecond, the build before the fix):** a hosted tile was sent a rect narrower than its window's own minimum.
+- The minimum is readable before it's hit, from the same tile values Margin reads its rects from: `SizeConstraints`'
+  `Min` (AppKit's, what Split View's divider stops at). Chameleon with `contentMinSize` 1100×500: its tile said
+  1100×500 exactly; Weather's said 1048×640.
+- Weather: its tile first sent 1046 wide (a slow drag, 240 frames), its window was out of Margin's Space 24 ms later, in
+  a new full-screen Space of its own. Speed isn't the cause: it's the width (the real use's fast drags reached it in
+  fewer frames).
+- Chameleon (AppKit, no Catalyst): its window followed its tile below its minimum (to 1024), but AppKit drew a second
+  window of its own at its minimum width and the tile's height (1099×966, right-aligned) in Margin's Space, on screen,
+  which Margin let in front of its own window; at the next drag's start (the tile still below its minimum) it left full
+  screen (Margin then placed it again, 824 ms behind the loader). 2 of 2 slow drags, and a 600-frame one.
+- Fast drags above the minimum (130 pt in 8 frames, 140 pt in 3, back and forth, 6 drags): followed, nothing left.
+
+**The rule:** Margin never sends a tile a rect smaller than its window's minimum.
+- **Read:** the minimum from its tile (`HostSystem.tileMinSize`) as its tile comes into Margin's Space, as its own
+  full-screen Space is listed on a first open (its reservation is made for no less), at each drag's start and at each
+  sizing; never per frame. No minimum said and it leaves a tile anyway: the narrowest width it was seen holding is taken
+  for its minimum.
+- **Where it goes** (`HostLayout.fit`): the page area; narrower than its minimum, that minimum with its right edge and
+  top the page area's: what's wider lies under Margin's sidebar (Margin's window is in front of it; a translucent theme
+  shows it through).
+- **The one shown:** the sidebar's edge stops where the page area would be narrower than its minimum, in the UI's own
+  drag (ui/behaviors/resize.ts: the widest the sidebar gets is its width at the press plus what the page area had above
+  the floor then; a reset to the default too), so the edge and the app always agree, fast or slow. The engine tells
+  Margin's window the shown one's minimum width (`onMinimum` → `setPageMinimum` → `{ type: 'pageMin', width }` and the
+  hello's `pageMinWidth`, host-app.ts `pageMinWidth`). The engine's own sizing holds the rule too (a minimum learnt
+  mid-drag, the dev hook's `sidebar`, a theme or a display): one comparison a frame, nothing read.
+- **Parked ones** with a minimum wider than the page area: sized at their minimum, right edge aligned, out of sight;
+  shown so (their first frame at it, the overflow under the sidebar); dragged wider again, at the page area.
+- **One that leaves its tile anyway** (into a full-screen Space of its own): its tile there moved back into Margin's
+  Space and sized (`tileBack`: the first open's tile move, its minimum read from that tile first), that Space
+  destroyed, under the freeze: still shown, no full-screen exit or entry, no loader. During a drag it isn't followed
+  again until the drag is over (never twice in one drag); the drag's end places it once.
+
 ### Not proven (before it's called working in real use)
 
 The kit's own panes only: real apps (Safari, Mail, a Catalyst app) in a tile; Margin's real window and its panel over

@@ -344,6 +344,108 @@ func liveResizeTests() {
         check("live resize: Margin's own tile not found at the check: the tiles off for the run, the app a plain member", e.tilesOff != nil && e.hosts[textEdit.id]?.tile == nil && e.hosts[textEdit.id]?.member == true && clean(w))
     }
 
+    // ---- a window's own minimum (docs/HOSTING-CORE.md "A window's minimum size"): the real Mac, 2026-11-18, Weather's
+    // window left Margin's Space for a full-screen Space of its own 24 ms after its tile was sent narrower than its
+    // minimum (1046 < 1048, its tile's SizeConstraints); the stand-in plays that (`ejectsBelowMinimum`) ----
+    do {
+        let page1100 = CGRect(x: 404, y: 41, width: 1100, height: 933) // (Notes at its minimum, its right edge the page area's)
+        check("min size: HostLayout.fit: the page area when it's big enough; else the minimum, its right edge and top the page area's; never past the area",
+              HostLayout.fit(page(276), min: CGSize(width: 1100, height: 500), in: FakeHostWorld.display) == page(276)
+              && HostLayout.fit(page(500), min: CGSize(width: 1100, height: 500), in: FakeHostWorld.display) == page1100
+              && HostLayout.fit(page(500), min: nil, in: FakeHostWorld.display) == page(500)
+              && HostLayout.fit(page(500), min: CGSize(width: 1600, height: 500), in: FakeHostWorld.display) == CGRect(x: 0, y: 41, width: 1512, height: 933)
+              && HostLayout.fit(page(276), min: CGSize(width: 900, height: 1000), in: FakeHostWorld.display) == CGRect(x: 276, y: 41, width: 1228, height: 941))
+        let (w, e, _) = world()
+        w.minSize["com.apple.Notes"] = CGSize(width: 1100, height: 500)
+        var said: [CGFloat?] = []
+        e.onMinimum = { said.append($0) }
+        _ = open(e, textEdit)
+        let (l, restore) = listen()
+        _ = open(e, notes)
+        restore()
+        let n = window(w, "com.apple.Notes"), edit = window(w, "com.apple.TextEdit")
+        let tile = w.tileOf(n) ?? 0
+        check("min size: its window's minimum read from its tile as it comes into Margin's Space (said once), told to Margin's window while it's shown",
+              e.hosts[notes.id]?.minSize == CGSize(width: 1100, height: 500) && e.shownMinimumWidth == 1100 && said.last == .some(1100)
+              && l.all.filter { $0.contains("its window's own minimum 1100×500") }.count == 1, "\(String(describing: e.hosts[notes.id]?.minSize)) \(said)")
+
+        // A drag past it, slow then fast: never a rect narrower than its minimum, never out of Margin's Space.
+        let m = w.calls.count
+        _ = e.dragging(true)
+        for left in stride(from: 276.0, through: 500.0, by: 4) { e.follow(placed(CGFloat(left))); _ = hostRun { await w.sleep(0.009); return true } }
+        for left in [300.0, 480, 320, 500] { e.follow(placed(CGFloat(left))); _ = hostRun { await w.sleep(0.002); return true } }
+        _ = hostRun { await w.sleep(0.05); return true }
+        let narrowest = w.calls.dropFirst(m).filter { $0.hasPrefix("tileRect \(tile) ") }.compactMap { c in c.split(separator: " ").last?.split(separator: "×").first.flatMap { Int($0) } }.min() ?? 0
+        check("min size: a drag past its minimum (slow, then fast): every rect sent at least its minimum wide, its window never out of Margin's Space, at its minimum with its right edge the page area's",
+              w.belowMinimum == 0 && w.ejections == 0 && narrowest == 1100 && w.spaces(window: n) == [FakeHostWorld.marginSpace] && w.bounds(window: n) == page1100,
+              "narrowest \(narrowest), below \(w.belowMinimum), ejections \(w.ejections), at \(String(describing: w.bounds(window: n)))")
+        _ = e.dragging(false)
+        let placedEnd = hostRun { await e.pageRectChanged(placed(500)) }
+        settle(e, 500)
+        check("min size: the drag's end under its minimum (a page area narrower than it): kept at its minimum, right edge aligned, no full-screen change, never out of Margin's Space",
+              placedEnd == true && w.ejections == 0 && w.bounds(window: n) == page1100 && count(w, "fullScreen", since: m) == 0 && clean(w) && marginWhole(w), "\(w.calls.dropFirst(m).suffix(6))")
+        check("min size: …the parked one with no minimum at the page area itself", w.bounds(window: edit) == page(500) && w.spaces(window: edit) == [])
+
+        // Parked while the page area goes under its minimum: sized at its minimum, never out of sight's place.
+        _ = show(e, textEdit)
+        check("min size: another shown: none told", said.last == .some(nil) && e.shownMinimumWidth == nil, "\(said)")
+        _ = hostRun { await e.pageRectChanged(placed(276)) }
+        settle(e, 276)
+        let m2 = w.calls.count
+        _ = hostRun { await e.pageRectChanged(placed(500)) }
+        settle(e, 500)
+        check("min size: parked as the page area goes narrower than its minimum: sized at its minimum, its right edge the page area's, still in no user Space, never out of its tile",
+              w.ejections == 0 && w.bounds(window: n) == page1100 && w.spaces(window: n) == [] && w.belowMinimum == 0 && count(w, "tileRect \(tile) ", since: m2) == 1, "\(w.calls.dropFirst(m2))")
+        var first: CGRect?
+        e.hostedWindow = { if $0 == n { first = w.bounds(window: n) } }
+        let m3 = w.calls.count
+        let r = show(e, notes)
+        e.hostedWindow = nil
+        check("min size: …shown so: its first frame at its minimum (what's wider than the page area under Margin's sidebar), no full-screen change, its minimum told again",
+              r == .shown(notes.id, placed: true) && first == page1100 && count(w, "fullScreen", since: m3) == 0 && w.ejections == 0 && said.last == .some(1100), "\(String(describing: first)) \(said)")
+        // Wider again: at the page area.
+        _ = e.dragging(true)
+        for left in stride(from: 500.0, through: 276.0, by: -8) { e.follow(placed(CGFloat(left))); _ = hostRun { await w.sleep(0.009); return true } }
+        _ = e.dragging(false)
+        _ = hostRun { await e.pageRectChanged(placed(276)) }
+        check("min size: …dragged wider from under its minimum: at the page area again", w.bounds(window: n) == page(276) && w.ejections == 0 && clean(w))
+    }
+    do {
+        // No minimum readable from its tile: it leaves the first tile narrower than its minimum, once. Brought back into
+        // its tile in Margin's Space at once (no full-screen exit or entry, no loader), not followed again for the rest of
+        // that drag, the narrowest it held taken for its minimum: never again, the drag's end included.
+        let (w, e, _) = world()
+        w.minSize["com.apple.Notes"] = CGSize(width: 1100, height: 500)
+        w.minUnread = true
+        _ = open(e, textEdit)
+        _ = open(e, notes)
+        let n = window(w, "com.apple.Notes")
+        var loading: [HostID?] = []
+        e.loading = { loading.append($0) }
+        let m = w.calls.count
+        _ = e.dragging(true)
+        for left in stride(from: 276.0, through: 500.0, by: 6) {
+            e.follow(placed(CGFloat(left)))
+            _ = hostRun { await w.sleep(0.009); return true }
+            if w.ejections > 0, e.hosts[notes.id]?.phase == .shown { w.clock += 0.25; e.poll(); _ = hostRun { await w.sleep(0.01); return true } }
+        }
+        let duringDrag = w.ejections
+        _ = e.dragging(false)
+        _ = hostRun { await e.pageRectChanged(placed(500)) }
+        settle(e, 500)
+        w.clock += 0.25
+        e.poll()
+        settle(e, 500)
+        let learnt = e.hosts[notes.id]?.minSize?.width ?? 0
+        check("min size, none readable: it left its tile once in the drag, brought back into a tile of Margin's Space with no full-screen exit or entry and no loader, still shown; not followed again in that drag",
+              duringDrag == 1 && w.ejections == 1 && count(w, "fullScreen", since: m) == 0 && loading.allSatisfy { $0 == nil } && e.shown == notes.id && w.tileOf(n) != nil
+              && w.spaces(window: n) == [FakeHostWorld.marginSpace] && w.listsMarginOnly && w.ownerlessFullScreenSpaces() == [],
+              "ejections \(duringDrag)/\(w.ejections) fullScreen \(count(w, "fullScreen", since: m)) loading \(loading) \(w.calls.dropFirst(m).filter { !$0.hasPrefix("tileRect") }.suffix(12))")
+        check("min size, none readable: …the narrowest it held taken for its minimum (above the rect it left), the drag's end at it, never left again",
+              learnt >= 1100 && learnt < 1228 && w.bounds(window: n).map { abs($0.maxX - page(500).maxX) < 1 && $0.width == learnt } == true && clean(w) && marginWhole(w),
+              "learnt \(learnt), at \(String(describing: w.bounds(window: n)))")
+    }
+
     // ---- a window-mode app: followed live by Accessibility, one frame in flight ----
     do {
         let (w, e, _) = world()

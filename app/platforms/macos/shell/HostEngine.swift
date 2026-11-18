@@ -279,6 +279,13 @@ final class HostEngine {
         // Live resize: its window's own tile, moved into Margin's Space (its window sized by the tile's rect, shown or
         // parked; `placedPage` the page area that rect was set for and seen taken). Nil: a plain member, or window mode.
         var tile: UInt64?
+        // Its window's own minimum (its tile's `SizeConstraints`' `Min`, read as its tile comes into Margin's Space or its
+        // own full-screen Space is listed, again at each drag's start and each sizing): its tile never sized below it
+        // (`frame`: the page area, or that minimum with its right edge the page area's). Nil: none known.
+        var minSize: CGSize?
+        // The narrowest its window was seen holding in its tile (a rect it followed): with no minimum said by its tile, the
+        // one it's taken to have once it leaves a narrower one (the first rect it didn't take).
+        var narrowestHeld: CGFloat?
         init(id: HostID, target: HostTarget, pid: pid_t, window: Int, launchedByMargin: Bool, madeByMargin: Bool, safariWindow: Int? = nil) {
             self.id = id
             self.target = target
@@ -410,6 +417,9 @@ final class HostEngine {
     private var livePump: Task<Void, Never>?
     private var liveStats = LiveStats()
     private var liveLast = 0.0 // the drag's last page area: a drag never said over is over after `liveForget`
+    // The one shown left its tile during this drag (found out of Margin's Space and brought back): not followed again
+    // until the drag is over, so it can't happen twice in one drag; the drag's end places it once.
+    private var liveHeld = false
     var liveForget = 10.0
     struct LiveStats { var asked = 0, sent = 0, followed: [Double] = [], late = 0, held = 0, since = 0.0 }
 
@@ -909,7 +919,7 @@ final class HostEngine {
             if host.phase == .parked { host.offPageReads = 0; return }
             guard !liveOn, let placed = host.placedPage, HostLayout.near(placed, placement.page, within: options.tolerance), let b = sys.bounds(window: host.window),
                   host.phase == .parked ? sys.spaces(window: host.window) == [] : sys.spaces(window: host.window) == [marginSpace] else { host.offPageReads = 0; return }
-            host.offPageReads = HostLayout.near(b, placement.page, within: options.tolerance) ? 0 : host.offPageReads + 1
+            host.offPageReads = HostLayout.near(b, frame(host), within: options.tolerance) ? 0 : host.offPageReads + 1
             return
         }
         guard sys.now() - shownAt > options.lateWatch, sys.spaces(window: host.window) == [marginSpace],
@@ -1456,6 +1466,7 @@ final class HostEngine {
     var shownWindow: Int? { shown.flatMap { hosts[$0] }.flatMap { $0.phase == .shown ? $0.window : nil } }
 
     private func announceHosted() {
+        sayMinimum()
         let now = shownWindow
         guard now != hostedSaid else { return }
         hostedSaid = now
@@ -2301,7 +2312,7 @@ final class HostEngine {
         }
         if settling {
             t0 = sys.now()
-            let page = placement.page, area = placement.area
+            let page = frame(host), area = placement.area
             var relaid = false
             _ = await wait(options.tileSettleWatch, every: options.tileEvery) {
                 let marginOff = self.sys.bounds(window: self.marginWindow).map { $0.width < area.width - 1 } ?? false
@@ -2915,11 +2926,11 @@ final class HostEngine {
     // still running (the slow path takes it from there, its Space as the one found); `.again`: the window isn't where it
     // should be after the move and destroy (backed out and asked again by the caller).
     private func early(_ host: Host, before: Set<UInt64>, refused: () -> Bool) async -> Early {
-        guard let edges = HostLayout.plan(placement) else { return .slow("no plan for the page area (\(placement.text))") }
+        guard var edges = HostLayout.plan(fitted(host)) else { return .slow("no plan for the page area (\(placement.text))") }
         // (Live resize: its tile moved into Margin's Space in place of the window alone, below.)
         let tiling = await tilesReady()
         let t0 = sys.now()
-        let page = placement.page
+        var page = frame(host)
         var space: UInt64?
         var reservedAt = t0
         var memberAt: Double? // when the window server first had the window in its own Space: macOS's change brought it there
@@ -2955,6 +2966,8 @@ final class HostEngine {
                     ownSpaces.insert(s)
                     saveMarker()
                     if inOwn(s) { memberAt = sys.now(); mark("in its Space") }
+                    // (Its window's own minimum, from its new Space's tile: reserved for no less, never a size it can't take.)
+                    if let t = ownTile(host, in: s), learnMinimum(host, tile: t), let e = HostLayout.plan(fitted(host)) { edges = e; page = frame(host); mark("its minimum \(Int(host.minSize?.width ?? 0)) wide") }
                     _ = sys.reserve(edges, space: s)
                     reservedAt = sys.now()
                     mark("reserved \(edges.text)")
@@ -3069,11 +3082,13 @@ final class HostEngine {
     // area), so the page area is the same rect there.
     private func reserve(_ host: Host) async -> Bool {
         guard let own = host.fullScreenSpace else { return false }
-        guard let edges = HostLayout.plan(placement) else {
+        // (Its window's own minimum, from its own Space's tile: reserved for no less.)
+        if let t = ownTile(host, in: own) { learnMinimum(host, tile: t) }
+        guard let edges = HostLayout.plan(fitted(host)) else {
             Diagnostics.note("host: place \(host.id): no plan (\(placement.text))")
             return false
         }
-        let page = placement.page
+        let page = frame(host)
         func there() -> Bool { sys.bounds(window: host.window).map { HostLayout.near($0, page, within: options.tolerance) } ?? false }
         for attempt in 1...2 {
             // (At the page area with its Space reserved for it: a window at the page area's frame as a window, mid-way into
@@ -3220,7 +3235,7 @@ final class HostEngine {
     @discardableResult private func place(_ host: Host) async -> Bool {
         guard host.phase == .shown else { return false }
         if host.mode == .window { return await placeWindow(host) }
-        if let placed = host.placedPage, HostLayout.near(placed, placement.page, within: options.tolerance), host.tile == nil || sys.bounds(window: host.window).map({ HostLayout.near($0, placement.page, within: options.tolerance) }) == true { return true }
+        if let placed = host.placedPage, HostLayout.near(placed, placement.page, within: options.tolerance), host.tile == nil || sys.bounds(window: host.window).map({ HostLayout.near($0, frame(host), within: options.tolerance) }) == true { return true }
         // (Live resize: its tile's rect, no full-screen change; failing that, placed again the old way. Its window gone (closed,
         // its item about to close): nothing placed.)
         if host.tile != nil, sys.bounds(window: host.window) == nil || host.gone { return false }
@@ -3343,6 +3358,61 @@ final class HostEngine {
     // The tile rect that puts a full-screen window at the page area (nil: none, or the tiles aren't checked).
     private func tileRect(_ p: HostPlacement? = nil) -> CGRect? { tileHome.flatMap { HostLayout.tile(p ?? placement, home: $0) } }
 
+    // ---- a window's own minimum (docs/HOSTING-CORE.md "A window's minimum size") ----
+
+    // Where a full-screen host's window goes for a page area (`p`, else Margin's): the page area, or (its own minimum
+    // wider or taller) that minimum, its right edge and top the page area's (HostLayout.fit). A window-mode one: the
+    // page area (Accessibility keeps its own limits, centred).
+    private func frame(_ host: Host, _ p: HostPlacement? = nil) -> CGRect {
+        let pl = p ?? placement
+        return host.mode == .window ? pl.page : HostLayout.fit(pl.page, min: host.minSize, in: pl.area)
+    }
+    private func fitted(_ host: Host, _ p: HostPlacement? = nil) -> HostPlacement {
+        var pl = p ?? placement
+        pl.page = frame(host, pl)
+        return pl
+    }
+    // Its tile's rect for a page area: never narrower than its window's minimum.
+    private func tileRect(for host: Host, _ p: HostPlacement? = nil) -> CGRect? { tileHome.flatMap { HostLayout.tile(fitted(host, p), home: $0) } }
+
+    // Its window's tile in a full-screen Space of its own (by its window; the only one there).
+    private func ownTile(_ host: Host, in space: UInt64) -> UInt64? {
+        guard let list = sys.tiles(of: space) else { return nil }
+        return list.first { sys.tileWindow($0) == host.window } ?? (list.count == 1 ? list.first : nil)
+    }
+
+    // Its window's minimum read from a tile (its own in Margin's Space, or the one of its own full-screen Space): a
+    // change said once, and told to Margin's window while it's the one shown (the sidebar's edge stops there). One read
+    // of the tile's values: never per frame of a drag. True: it changed.
+    @discardableResult private func learnMinimum(_ host: Host, tile: UInt64? = nil) -> Bool {
+        guard host.mode != .window, let t = tile ?? host.tile, let read = sys.tileMinSize(t) else { return false }
+        let m = CGSize(width: read.width.rounded(.up), height: read.height.rounded(.up))
+        guard m != host.minSize else { return false }
+        host.minSize = m
+        Diagnostics.note("host: \(host.id): its window's own minimum \(Int(m.width))×\(Int(m.height)) (its tile's): never sized smaller, the sidebar's edge stops there while it's shown")
+        if shown == host.id { sayMinimum() }
+        return true
+    }
+
+    private func held(_ host: Host, _ width: CGFloat) { host.narrowestHeld = min(host.narrowestHeld ?? width, width) }
+
+    // No minimum said by its tile, and it left one (`tileBack`): the narrowest it held is taken for its minimum (it took
+    // that, and not the rect that made it leave): said once, told like a read one.
+    private func learnMinimumFromLeaving(_ host: Host) {
+        guard host.mode != .window, host.minSize == nil, let w = host.narrowestHeld else { return }
+        host.minSize = CGSize(width: w.rounded(.up), height: 0)
+        Diagnostics.note("host: \(host.id): its tile says no minimum and it left one narrower than \(Int(w)): \(Int(w)) taken for its minimum width (never sized narrower)")
+        if shown == host.id { sayMinimum() }
+    }
+
+    // The one shown's own minimum width, told to Margin's window (nil: none, or nothing shown) whenever the one shown
+    // or its minimum changes (the window says it to its page only when it's another: MarginWindowController
+    // `setPageMinimum`; a host moved to another Margin window is told there too): its sidebar's edge stops where the
+    // page area would be narrower (ui/behaviors/resize.ts), like Split View's divider.
+    var onMinimum: ((CGFloat?) -> Void)?
+    private func sayMinimum() { onMinimum?(shownMinimumWidth) }
+    var shownMinimumWidth: CGFloat? { shown.flatMap { hosts[$0] }.flatMap { $0.phase == .shown && $0.mode != .window ? $0.minSize?.width : nil } }
+
     // Its window's own tile (in its own full-screen Space `own`) into Margin's Space at the end of its layout (its window
     // with it, still full screen), the tile limit raised first, then every rect set again, its own to the page area.
     // Under the freeze the caller holds: Margin's own window is laid out as a split's half for that moment. `.placed`:
@@ -3370,9 +3440,10 @@ final class HostEngine {
         tilesSettled = false
         tileCount = sys.tiles(of: marginSpace)?.count ?? list.count + 1
         saveMarker()
+        learnMinimum(host)
         let sized = await reapplyTiles(first: host, each: each)
         guard landed, sized else {
-            return .notSized("its tile \(tile) \(landed ? "came in" : "came in without its window") and its window is at \(sys.bounds(window: host.window).map(r) ?? "?"), not the page area \(r(placement.page))")
+            return .notSized("its tile \(tile) \(landed ? "came in" : "came in without its window") and its window is at \(sys.bounds(window: host.window).map(r) ?? "?"), not \(r(frame(host)))")
         }
         Diagnostics.note("host: \(host.id): its tile \(tile) moved into Margin's Space and sized to the page area in \(ms(since: t0)) ms (\(tileCount) tiles there)")
         return .placed
@@ -3383,22 +3454,23 @@ final class HostEngine {
     // shown) at their places; the others' are set, and seen taken by the reconciler (`sizeTile`) when they aren't.
     // True: the ones waited for are there.
     @discardableResult private func reapplyTiles(first: Host? = nil, each: () -> Void = {}) async -> Bool {
-        guard let mine = marginTile, let home = tileHome, let rect = tileRect() else { return false }
+        guard let mine = marginTile, let home = tileHome, tileRect() != nil else { return false }
         let page = placement.page
         setTileRectIfNeeded(mine, home)
         let lead = first ?? shown.flatMap { hosts[$0] }.flatMap { $0.tile != nil ? $0 : nil }
         var order = hosts.values.filter { $0.tile != nil && $0 !== lead }.sorted { $0.id.raw < $1.id.raw }
         if let lead { order.insert(lead, at: 0) }
-        for h in order where h === lead || !parkedAtPage(h) { if let t = h.tile { setTileRectIfNeeded(t, rect) } }
+        for h in order where h === lead || !parkedAtPage(h) { if let t = h.tile, let rect = tileRect(for: h) { setTileRectIfNeeded(t, rect) } }
         let area = placement.area
+        let leadFrame = lead.map { frame($0) }
         let ok = await wait(options.tileWait, every: options.tileEvery) {
             each()
             let marginBack = self.sys.bounds(window: self.marginWindow).map { $0.width >= area.width - 1 } ?? true
-            let leadThere = lead.map { h in self.sys.bounds(window: h.window).map { HostLayout.near($0, page, within: self.options.tolerance) } ?? false } ?? true
+            let leadThere = lead.map { h in self.sys.bounds(window: h.window).map { HostLayout.near($0, leadFrame ?? page, within: self.options.tolerance) } ?? false } ?? true
             return marginBack && leadThere
         }
         for h in order where h === lead || !parkedAtPage(h) {
-            if h === lead, ok { h.placedPage = page; h.offPageReads = 0 } else if h !== lead { h.placedPage = sys.bounds(window: h.window).map { HostLayout.near($0, page, within: options.tolerance) } == true ? page : nil }
+            if h === lead, ok { h.placedPage = page; h.offPageReads = 0; held(h, frame(h).width) } else if h !== lead { h.placedPage = sys.bounds(window: h.window).map { HostLayout.near($0, frame(h), within: options.tolerance) } == true ? page : nil }
         }
         tileCount = sys.tiles(of: marginSpace)?.count ?? tileCount
         return ok
@@ -3418,16 +3490,19 @@ final class HostEngine {
 
     // Its tile's rect the page area's, and its window there.
     private func tileAtPage(_ host: Host) -> Bool {
-        guard let tile = host.tile, let rect = tileRect() else { return false }
+        guard let tile = host.tile, let rect = tileRect(for: host) else { return false }
+        let want = frame(host)
         return sys.tileRect(tile).map { HostLayout.near($0, rect, within: 0.5) } == true
-            && sys.bounds(window: host.window).map { HostLayout.near($0, placement.page, within: options.tolerance) } == true
+            && sys.bounds(window: host.window).map { HostLayout.near($0, want, within: options.tolerance) } == true
     }
 
     // One hosted tile set to the page area's rect, its window seen there (`tileWait`), shown or parked. True: there.
     @discardableResult private func sizeTile(_ host: Host) async -> Bool {
-        guard let tile = host.tile, let rect = tileRect() else { return false }
-        let page = placement.page
-        func there() -> Bool { sys.bounds(window: host.window).map { HostLayout.near($0, page, within: options.tolerance) } ?? false }
+        guard let tile = host.tile else { return false }
+        learnMinimum(host)
+        guard let rect = tileRect(for: host) else { return false }
+        let page = placement.page, want = frame(host)
+        func there() -> Bool { sys.bounds(window: host.window).map { HostLayout.near($0, want, within: options.tolerance) } ?? false }
         if there(), sys.tileRect(tile).map({ HostLayout.near($0, rect, within: 0.5) }) == true { host.placedPage = page; host.offPageReads = 0; return true }
         let t0 = sys.now()
         guard sys.setTileRect(tile, rect) else { return false }
@@ -3435,6 +3510,7 @@ final class HostEngine {
         if ok {
             host.placedPage = page
             host.offPageReads = 0
+            held(host, want.width)
         } else {
             Diagnostics.note("host: \(host.id): its tile \(tile) set to \(r(rect)), its window still at \(sys.bounds(window: host.window).map(r) ?? "?") after \(ms(since: t0)) ms")
         }
@@ -3501,9 +3577,9 @@ final class HostEngine {
     func marginNarrowed() {
         guard tilesOK, tilesFor == marginSpace, !quitting, let mine = marginTile, let home = tileHome else { return }
         setTileRectIfNeeded(mine, home)
-        if let rect = tileRect() {
+        if tileRect() != nil {
             let order = hosts.values.filter { $0.tile != nil }.sorted { ($0.id == shown ? 0 : 1, $0.id.raw) < ($1.id == shown ? 0 : 1, $1.id.raw) }
-            for h in order where !parkedAtPage(h) { if let t = h.tile { setTileRectIfNeeded(t, rect) } }
+            for h in order where !parkedAtPage(h) { if let t = h.tile, let rect = tileRect(for: h) { setTileRectIfNeeded(t, rect) } }
         }
         Diagnostics.note("host: Margin's window laid out as a split's part by a tile change: every rect sent again at once")
         if !busy { lookAtTiles(force: true) }
@@ -3519,13 +3595,16 @@ final class HostEngine {
         if on {
             guard !liveOn, !quitting, let id = shown, let host = hosts[id], host.phase == .shown, host.tile != nil || host.mode == .window else { return false }
             liveOn = true
+            liveHeld = false
             liveLast = sys.now()
             liveStats = LiveStats(since: sys.now())
-            if host.tile != nil { _ = sys.setLiveResizing(marginSpace, true) }
+            // (Its minimum read once more as the drag begins (one read, none per frame): the page's edge stops there.)
+            if host.tile != nil { learnMinimum(host); _ = sys.setLiveResizing(marginSpace, true) }
             return true
         }
         guard liveOn else { return false }
         liveOn = false
+        liveHeld = false
         livePending = nil
         if tilesOK { _ = sys.setLiveResizing(marginSpace, false) }
         let s = liveStats
@@ -3552,15 +3631,17 @@ final class HostEngine {
         defer { livePump = nil }
         while liveOn, let p = livePending {
             let t0 = sys.now()
-            // (An operation running: held a frame, the newest kept.)
-            guard !busy, !quitting, let id = shown, let host = hosts[id], host.phase == .shown else {
+            // (An operation running, or the one shown left its tile in this drag: held a frame, the newest kept.)
+            guard !busy, !quitting, !liveHeld, let id = shown, let host = hosts[id], host.phase == .shown else {
                 liveStats.held += 1
                 await sys.sleep(options.liveFrame)
                 continue
             }
             livePending = nil
-            let page = p.page
-            if let tile = host.tile, let rect = tileRect(p) {
+            // (Never narrower than its window's own minimum: a comparison, nothing read. The sidebar's edge stops there
+            // in the page already; this holds for a minimum learnt mid-drag too.)
+            let page = host.tile != nil ? frame(host, p) : p.page
+            if let tile = host.tile, let rect = tileRect(for: host, p) {
                 guard sys.setTileRect(tile, rect) else { break }
             } else if host.mode == .window {
                 let want = host.resizable ? page : centredIn(page, sys.bounds(window: host.window)?.size ?? page.size)
@@ -3571,12 +3652,42 @@ final class HostEngine {
             let followed = await wait(options.liveWait, every: options.tileEvery) {
                 self.sys.bounds(window: host.window).map { HostLayout.near($0, page, within: self.options.tolerance) || (host.mode == .window && !host.resizable) } ?? false
             }
-            if followed { liveStats.followed.append(sys.now() - t0) } else { liveStats.late += 1 }
+            if followed { liveStats.followed.append(sys.now() - t0); if host.tile != nil { held(host, page.width) } } else { liveStats.late += 1 }
             // (A window-mode window's hole is its bounds: Margin's window reads them again now it's moved.)
             if host.mode == .window { hostedWindow?(host.window) }
             let left = options.liveFrame - (sys.now() - t0)
             if left > 0 { await sys.sleep(left) }
         }
+    }
+
+    // Live resize: the one shown left its tile for a full-screen Space of its own (its app's answer to a tile it
+    // couldn't take: Weather on the real Mac, 2026-11-18 09:08, its tile sent narrower than its minimum): its tile there
+    // moved back into Margin's Space and sized (never below its minimum, read from that tile first), that Space
+    // destroyed, under the freeze: still shown, no full-screen exit or entry, no loader (was: the window moved in alone,
+    // then placed again out of full screen and in, 2-3 s behind the loader, each time). False: not that case, or its
+    // tile didn't come back (the old way from there).
+    private func tileBack(_ host: Host, from own: [UInt64], since t0: Double) async -> Bool {
+        guard tilesOK, tilesFor == marginSpace, !quitting, host.mode != .window, host.tile != nil, own.count == 1, let space = own.first,
+              let tile = ownTile(host, in: space) else { return false }
+        if !learnMinimum(host, tile: tile), host.minSize == nil { learnMinimumFromLeaving(host) }
+        // (Its old tile, if it's still in Margin's Space with a placeholder: destroyed with the next look.)
+        if let old = host.tile, old != tile, sys.tiles(of: marginSpace)?.contains(old) == true { goneTiles.insert(old) }
+        let frozen = holdFreeze()
+        defer { releaseFreeze(frozen) }
+        ownSpaces.insert(space)
+        guard case .placed = await tileIn(host, from: space) else {
+            Diagnostics.note("host: \(host.id): its tile in its own Space \(space) didn't come back into Margin's Space: brought back the old way")
+            return false
+        }
+        if await !destroyOwn(space) { leftSpaces.insert(space) }
+        _ = await settleMember(host)
+        await dropGoneTiles()
+        await reapplyTiles(first: host)
+        saveMarker()
+        hostedSaid = nil
+        announceHosted()
+        Diagnostics.note("host: \(host.id) back in its tile in Margin's Space in \(ms(since: t0)) ms, still shown, at \(sys.bounds(window: host.window).map(r) ?? "?") (no full-screen exit or entry)")
+        return true
     }
 
     // ---- parking ----
@@ -3635,6 +3746,8 @@ final class HostEngine {
         guard let host = hosts[id], !closedByItsApp(host) else { return }
         if host.phase == .shown, shown == id {
             let spaces = sys.spaces(window: host.window)
+            // (Mid-drag: not followed again until it's over, whatever comes of it; never twice in one drag.)
+            if liveOn, spaces != [marginSpace] { liveHeld = true }
             let seen = "its window in \(spaces.map { $0.isEmpty ? "no user Space" : $0.map { "\($0) (type \(sys.spaceType($0).map(String.init) ?? "?"))" }.joined(separator: ", ") } ?? "Spaces that don't read"), Margin's Space \(marginSpace), Margin's window \(marginHere ? "in it" : "out of it")"
                 + ", its bounds \(sys.bounds(window: host.window).map(r) ?? "unread")" + (host.askedFullScreenAt.map { ", \(ms(since: $0)) ms after it was last asked into full screen" } ?? "")
             // (Read again now, after whatever ran since the poll's read: both where they should be, nothing to do. An
@@ -3666,6 +3779,7 @@ final class HostEngine {
         let owners = sys.fullScreenSpaceOwners() ?? [:]
         let own = spaces.filter { $0 != marginSpace && sys.spaceType($0) == ManagedSpace.fullScreenType && (ownSpaces.contains($0) || owners[$0] == host.pid) }
         if sys.currentSpace(onDisplayOf: marginSpace) != marginSpace, own.contains(where: { sys.currentSpace(onDisplayOf: marginSpace) == $0 }) { _ = sys.setCurrentSpace(marginSpace) }
+        if await tileBack(host, from: own, since: t0) { return }
         guard sys.move(window: host.window, to: marginSpace),
               await wait(options.memberWait, every: options.memberEvery, { self.sys.spaces(window: host.window) == [self.marginSpace] }) else {
             // In no Space at all and the bridge doesn't put it back: out of full screen and placed again (what the early

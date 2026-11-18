@@ -51,7 +51,9 @@
 //   peeking, so the page area the app's window is placed in is the docked layout's), and no launcher in the page
 //   area. The sidebar's width is dragged there as anywhere (only a tile's is fixed: `sidebarFixed`):
 //   the app hears when a change of it begins and ends (`perform('sidebar.resizing', { on })`, behaviors/resize.ts)
-//   and places the hosted window once, when it's over. The page card's state comes with it: the hello's `pageState`
+//   and places the hosted window once, when it's over. The hosted window's own minimum width (the hello's
+//   `pageMinWidth`, `{ type: 'pageMin', width }`; null: none) is where a drag's edge stops: the page area never
+//   narrower than the window can be (`pageMinWidth`, behaviors/resize.ts), as Split View's divider stops. The page card's state comes with it: the hello's `pageState`
 //   and `pageOpening`, and `{ type: 'pageState', state, label, bundleId }` (`pageState`: `shown`, the hosted window is
 //   in place and the page's place draws nothing; `loading`, an item is being opened or placed again, `label` its name:
 //   the card opaque with the loader, `bundleId` (the hello's `pageOpeningBundleId`) the app whose icon it shows, looked
@@ -239,7 +241,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   onMessage?: (msg: any) => void,
   onNotice?: (arg: { id?: string, action?: string }) => void,
   warn?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly pageMinWidth: number, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
   let state: any = null;
@@ -251,6 +253,9 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let pageOutside = appWindow && hello?.pageOutside === true;
   // A hosted app's window in the page area: no launcher there.
   let pageHosted = appWindow && hello?.pageHosted === true;
+  // The hosted window's own minimum width (Margin's points; 0: none): a drag of the sidebar's edge stops there.
+  const minOf = (v: unknown) => (appWindow && typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.ceil(v) : 0);
+  let pageMinWidth = minOf(hello?.pageMinWidth);
   // The page card's state (Margin's own window only), and the name of what's opening while it's `loading`.
   const pageStateOf = (v: unknown) => (v === 'shown' || v === 'loading' ? v : 'empty');
   const nameOf = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 120) : null);
@@ -334,6 +339,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get pageOutside() { return pageOutside; },
     /** The page area is a hosted app's window, under Margin's: no launcher there. */
     get pageHosted() { return pageHosted; },
+    /** The hosted window's own minimum width (0: none): the page area is never dragged narrower (behaviors/resize.ts). */
+    get pageMinWidth() { return pageMinWidth; },
     /** The page card's state (Margin's own window; undefined over a browser: its page is always there). */
     get pageState() { return appWindow ? pageState : undefined; },
     get pageOpening() { return pageOpening; },
@@ -463,6 +470,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           pageHosted = next;
           return emit();
         }
+        case 'pageMin':
+          // (Read by the drag itself, at each move: nothing to draw.)
+          pageMinWidth = minOf(msg.width);
+          return;
         case 'pageState': {
           if (!appWindow) return;
           const next = pageStateOf(msg.state);
