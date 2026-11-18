@@ -931,10 +931,14 @@ final class HostEngine {
             host.offPageReads = 0
             if host.phase == .shown, host.member {
                 host.placedPage = nil
-                // (A tile whose rect didn't take: placed again out of full screen and in, the old way.)
-                let tile = host.tile
-                if tile != nil { host.tile = nil }
-                if await !place(host), host.tile == nil { host.tile = tile }
+                // (A tile whose rect didn't take: placed again out of full screen and in, the old way; its tile leaves
+                // Margin's Space with its full screen, a new one comes in with the next.)
+                if host.tile != nil {
+                    Diagnostics.note("host: \(host.id): its tile's rect didn't take: placed again out of full screen and in")
+                    _ = await placeFullScreen(host, isNew: false, retrying: false)
+                } else {
+                    _ = await place(host)
+                }
             }
         case .sizeTile:
             if await sizeTile(host), host.phase == .shown, shown == host.id { hostedSaid = nil; announceHosted() }
