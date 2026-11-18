@@ -315,6 +315,73 @@ test('link: what isn\'t the app — a wrong key, a link of another nonce, no app
   l3.stop();
 });
 
+test('link: Safari refusing the native message (another copy of Margin\'s extension handler in use): asked again at the short busy wait, and linked as soon as the other one is idle', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app });
+  const at: number[] = [];
+  let busy = true;
+  const sendNative = api.runtime.sendNativeMessage;
+  api.runtime.sendNativeMessage = async (id, message) => {
+    if (message.type === 'wantLink') at.push(Date.now());
+    if (busy && message.type === 'wantLink') throw new Error('Invalid call to runtime.sendNativeMessage(). Other version in use: <id<PKPlugIn>: 0x1; core = <[u 2C4884BB] [com.unibox.margin.Extension(0.1.1)]>');
+    return sendNative(id, message);
+  };
+  // (The usual waits doubling from 150 ms, as on Safari from 5 s: the busy wait is the short one, 30 ms.)
+  const { link } = makeLink(api, { timing: { ...FAST, ask: [150, 1200], busyAsk: 30, busyAsks: 5 } });
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    assert.ok(await until(() => at.length >= 4, 1000), `asked 4 times (${at.length})`);
+    const gaps = at.slice(1, 4).map((t, i) => t - at[i]);
+    assert.ok(gaps.every((g) => g < 120), `asked again at the busy wait, not doubling: ${gaps}`);
+    busy = false;
+    assert.ok(await until(() => link.linked(), 500), 'linked at the next busy ask once the other handler is idle');
+  } finally {
+    link.stop();
+    await app.close();
+  }
+  // Busy past its count: as any other time (doubling).
+  const api2 = browser({ app: null, appOpen: () => true });
+  const at2: number[] = [];
+  api2.runtime.sendNativeMessage = async (_, message) => {
+    if (message.type === 'wantLink') at2.push(Date.now());
+    throw new Error('Other version in use');
+  };
+  const { link: l2 } = makeLink(api2, { timing: { ...FAST, ask: [150, 1200], busyAsk: 30, busyAsks: 2 } });
+  try {
+    await l2.start({ route: async () => ({ ok: true }) });
+    assert.ok(await until(() => at2.length >= 5, 3000), `asked 5 times (${at2.length})`);
+    const gaps = at2.slice(1, 5).map((t, i) => t - at2[i]);
+    assert.ok(gaps[0] < 120 && gaps[1] < 120 && gaps[2] >= 150 && gaps[3] >= 290, `twice at the busy wait, then doubling: ${gaps}`);
+  } finally {
+    l2.stop();
+  }
+});
+
+test('link: a copy no longer in charge (a newer copy of Margin claimed its profile\'s state) when its link drops: never reconnected or asked again, its link stopped', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app });
+  let owner = true;
+  const { link } = makeLink(api, { owner: () => owner });
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    assert.ok(await app.next('hello'), 'linked as the copy in charge');
+    const hellos = () => app.received.filter((m) => m.k === 'hello').length;
+    const asked = () => api.native.filter((m) => m.type === 'wantLink').length;
+    const [h0, a0] = [hellos(), asked()];
+    // (Another build's copy claimed the state; the app closes this copy's socket, as it does a hello with owner false.)
+    owner = false;
+    app.drop();
+    await wait(600);
+    assert.equal(hellos(), h0, 'no hello again (each would be closed by the app, and opened again at once)');
+    assert.equal(asked(), a0, 'no wantLink again');
+    assert.equal(app.open, 0, 'no socket open');
+    assert.equal(link.linked(), false);
+  } finally {
+    link.stop();
+    await app.close();
+  }
+});
+
 test('link: Margin.app running but sending no link (one an update left): asked again at the short wait three times, then less and less often; pages told it isn\'t answering', async () => {
   const api = browser({ app: null, appOpen: () => true });
   const at: number[] = [];

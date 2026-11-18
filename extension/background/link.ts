@@ -92,6 +92,14 @@ export const LAUNCH_ASKS = 20; // …this many times (10 s), then as any other t
 // (app/platforms/macos/shell/BundleWatch.swift), and the handler starts the new one at the next ask.
 export const NO_LINK_ASK_MS = 5000;
 export const NO_LINK_ASKS = 3;
+// Safari refusing the native message itself because another copy of Margin's extension handler (the same
+// identifier, another build of Margin) is in use: "Invalid call to runtime.sendNativeMessage(). Other version in
+// use" (2026-11-17 real-apps: an installed Margin beside the build under test; a profile's copy refused at 5 s,
+// 10 s and 20 s as it doubled, linked 10 s after the other handler went idle, or never). Asked again this often,
+// this many times in a row (the other handler goes idle ~5 s after its last use), then as any other time.
+export const BUSY_ASK_MS = 1000;
+export const BUSY_ASKS = 20;
+export const handlerBusy = (error: unknown) => /other version in use/i.test(String(error ?? ''));
 // The extension handler's answer to wantLink, waited for this long at most. Safari 27.2 answers
 // only one of several native messages its profiles' copies send at once (2026-11-06: five copies
 // starting together, one answered, the other four promises never settled), so the link is taken
@@ -242,12 +250,12 @@ export function createLink({
   log?: (...args: any[]) => void,
   sha256?: (bytes: Uint8Array) => Promise<string>,
   now?: () => number,
-  timing?: Partial<{ ping: number, dead: number, check: number, linkWait: number, openWait: number, keptWait: number, reconnect: number[], ask: number[], gone: number, windows: number, layoutWrite: number, launchAsk: number, launchAsks: number, noLinkAsk: number, noLinkAsks: number, offFor: number, replyWait: number, stuck: number }>,
+  timing?: Partial<{ ping: number, dead: number, check: number, linkWait: number, openWait: number, keptWait: number, reconnect: number[], ask: number[], gone: number, windows: number, layoutWrite: number, launchAsk: number, launchAsks: number, noLinkAsk: number, noLinkAsks: number, busyAsk: number, busyAsks: number, offFor: number, replyWait: number, stuck: number }>,
 }) {
   const T = {
     ping: PING_MS, dead: DEAD_MS, check: CHECK_MS, linkWait: LINK_WAIT_MS, openWait: OPEN_WAIT_MS, keptWait: KEPT_WAIT_MS,
     reconnect: RECONNECT_MS, ask: ASK_MS, gone: GONE_MS, windows: WINDOWS_MS, layoutWrite: LAYOUT_WRITE_MS, launchAsk: LAUNCH_ASK_MS, launchAsks: LAUNCH_ASKS,
-    noLinkAsk: NO_LINK_ASK_MS, noLinkAsks: NO_LINK_ASKS, offFor: OFF_MS, replyWait: REPLY_WAIT_MS, stuck: STUCK_MS, ...timing,
+    noLinkAsk: NO_LINK_ASK_MS, noLinkAsks: NO_LINK_ASKS, busyAsk: BUSY_ASK_MS, busyAsks: BUSY_ASKS, offFor: OFF_MS, replyWait: REPLY_WAIT_MS, stuck: STUCK_MS, ...timing,
   };
   // What the link does, in the background's console and, through the lasting
   // native port, in Margin.app's own log (the extension handler writes it to
@@ -573,6 +581,7 @@ export function createLink({
   // hasn't given yet (none kept from an answer before) waits for the answer to say hello with it.
   async function ask() {
     if (!on) return false;
+    if (standDown()) return false;
     if (noSocketHere()) return failed();
     if (socketGuard && await noSockets()) return failed({ socketsOff: true });
     appUp = false;
@@ -609,6 +618,12 @@ export function createLink({
       }
       const reply = 'reply' in answer ? answer.reply : null;
       if ('error' in answer) note('wantLink: the extension handler didn\'t answer:', answer.error);
+      if ('error' in answer && handlerBusy(answer.error)) {
+        taken();
+        if (!on) return false;
+        if (busies === 0) note(`wantLink: Safari refused it (another copy of Margin's extension handler in use): asked again every ${T.busyAsk} ms, ${T.busyAsks} times at most`);
+        return failed({ busy: true });
+      }
       await heardFrom(reply);
       if (reply?.appOpen !== true || !on) {
         taken();
@@ -646,16 +661,20 @@ export function createLink({
   // says it's up). Pages hear it's off once it's clear.
   let launches = 0;
   let noLinks = 0;
+  let busies = 0;
   // `lost`: the handler's answer never came (and no link): asked again like `noLink`, a little
   // apart from the other copies that asked with it, and pages told nothing new.
-  function failed({ appGone = false, launching = false, noLink = false, socketsOff = false, lost = false } = {}) {
+  // `busy`: Safari refused the native message (another copy's handler in use): asked again soon (BUSY_ASK_MS).
+  function failed({ appGone = false, launching = false, noLink = false, socketsOff = false, lost = false, busy = false } = {}) {
     if (appGone || socketsOff) gone();
     else if (pageState.state !== 'off' && !goneTimer) dropping();
     if (socketsOff) setWhy('sockets-off', { offAt: guard?.at ?? Date.now(), offUntil: guard?.until ?? undefined });
     else if (noLink || appGone || launching) setWhy(noLink ? 'no-link' : undefined);
     if (!noLink && !lost) noLinks = 0;
+    if (!busy) busies = 0;
     // Starting: every LAUNCH_ASK_MS for a while (its appUp may come first).
     if (launching && launches++ < T.launchAsks) askMs = T.launchAsk;
+    else if (busy && busies++ < T.busyAsks) askMs = T.busyAsk;
     // Running, no link: NO_LINK_ASK_MS a few times (it may be quitting for a new build), then as below.
     else if ((noLink || lost) && noLinks++ < T.noLinkAsks) askMs = lost ? Math.round(T.noLinkAsk * (1 + Math.random() / 2)) : T.noLinkAsk;
     else askMs = Math.min(Math.max(askMs * 2, T.ask[0]), T.ask[1]);
@@ -791,6 +810,12 @@ export function createLink({
 
   // ---- linked ------------------------------------------------------------------
   function linked(socket: WebSocket, { port: at, token, key }: KeptLink) {
+    // (A copy no longer in charge says no hello: the app would close it, and it would open again at once.)
+    if (!isOwner()) {
+      closeSocket(socket, 'not the copy in charge');
+      standDown();
+      return;
+    }
     ws = socket;
     epoch = random();
     seq = 0;
@@ -799,6 +824,7 @@ export function createLink({
     askMs = 0;
     launches = 0;
     noLinks = 0;
+    busies = 0;
     lastWindows = '';
     lastKeys = '';
     lastTheme = '';
@@ -877,8 +903,19 @@ export function createLink({
       if (on) failed();
       return;
     }
+    if (standDown()) return;
     dropping();
     void reconnect();
+  }
+  // A copy that isn't the one in charge of its profile's state any more (a newer copy of Margin claimed it: an update,
+  // or another build of Margin's beside this one): its link stops for good, as the link's check does while it's linked.
+  // Never asked again or reconnected: the app closes a hello from a copy not in charge (1008), and each close was
+  // followed by a reconnect (2026-11-17 real-apps: one profile's copy opened a socket every ~470 ms for 40 s).
+  function standDown() {
+    if (!on || isOwner()) return false;
+    note('not the copy in charge of this profile\'s state any more (a newer copy of Margin runs): the link stops');
+    stop('a newer copy of Margin is running');
+    return true;
   }
   async function reconnect() {
     if (busy && !stuck()) return busy;
@@ -1302,6 +1339,7 @@ export function createLink({
       askMs = 0;
       launches = 0;
       noLinks = 0;
+      busies = 0;
       void link({ kept: false });
       return true;
     },
@@ -1322,6 +1360,7 @@ export function createLink({
       askMs = 0;
       launches = 0;
       noLinks = 0;
+      busies = 0;
       void link({ kept: false });
       return true;
     },
