@@ -1,6 +1,6 @@
 # Margin's next architecture (plan, awaiting approval)
 
-Status: draft for Tirth's approval, 2026-11-18. New features are paused until this is done.
+Status: approved 2026-11-18, in progress on `refactor/host-core` (progress at the end). New features are paused until this is done.
 
 ## What we're fixing
 
@@ -124,3 +124,12 @@ would need it written again.
 - The private tile and member calls stay private. Each is checked at launch and has its fallback route.
 - Classifying windows by behaviour can misjudge a new kind of app. A wrong class shows up in the soak and the loop
   guard, not as a loop on someone's screen.
+
+## Progress
+
+- 2026-11-18: phases 1-2 done. margin-core's `host` module (layout, kinds with the helper kind, choice, reconciler,
+  loop guard, causes, routes, one JSON call), margin-ffi linked into Margin.app, the Swift engine deciding through it;
+  the loop guard wired into the reconciler, the re-layouts and the strays; routes.json per app version. Installed.
+  Real screen: no regression in live-resize (30/31, the miss a known first-switch quirk), no loop with Weather. See
+  DECISIONS.md "The hosting core in Rust, the loop guard".
+- Next: the layout's first two tiles Margin's own (research), the event-driven scheduler, then the operations.

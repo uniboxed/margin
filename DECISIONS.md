@@ -5892,3 +5892,44 @@ Space"; the calls: `docs/PRIVATE-APIS.md` rows 22-23, 36-39 and the `tiles` part
 - **Still unproven:** an app whose tile says no minimum (the narrowest-held fallback), `tileBack` on the real Mac (no
   window left its tile with the fix), a first open while the page area is already narrower than its minimum, a
   translucent theme over the overflow.
+
+## The hosting core in Rust, the loop guard (2026-11-18)
+
+Tirth paused new features after a re-layout loop with Weather (13:30: 54 rounds in 18 s, seen as a line, a black page
+and an empty one) and approved docs/ARCHITECTURE-PLAN.md: the hosting brain in margin-core (Rust), shared by every OS,
+each OS keeping only its window calls. Work is on `refactor/host-core`, one step at a time, Margin usable after each.
+
+- **What moved (phase 1-2):** the window kinds, the window choice, the reconciler's step, the layout (plan, tile, fit,
+  home) and the strip test are margin-core's `host` module (app/shared/core/src/host), tested there, a row per case
+  the Swift tests had (ported). margin-ffi (app/shared/ffi) puts them behind a C interface: one JSON call for the
+  decisions, typed calls with no JSON for the layout (a drag asks every frame). Margin.app's Swift imports it as
+  `MarginCore`; the module map's `link` line links it, so the Xcode project needs only two search paths
+  (scripts/safari.sh; tools/app-tests/run.sh builds it for this Mac). The Swift types stay as the engine's values;
+  their rules are gone from Swift. Each HostEngine has its own core (its guard, causes, routes), so two engines never
+  share a count (the first test run did: hosts stopped by another test's rounds).
+- **A new window kind, helper:** a window its app makes at the size Margin just set, within 0.6 s of the resize, while
+  the hosted window is still in a Space (with it gone, a new window is its replacement). Weather's 1264×966 window was
+  one. Never shown, adopted, parked, let in front or reacted to.
+- **The loop guard:** only reactions count (a correction Margin makes because something changed that nobody asked
+  for); a person's operation (open, show, close, a page area's change, a park) is Margin's plan and starts the counts
+  again. The same reaction for the same host three times within 5 s: not applied, the host moved one rung down (tiles →
+  members → window mode), remembered for that version of its app in routes.json beside the marker (tried again after
+  an update). Twelve reactions a second across every host: all held a second. A re-layout of Margin's Space's tiles is
+  counted against the host whose window came or went just before (the causes: AX's destroyed note, at once, even for
+  a window never read), else Margin's own (stopped: the tiles off for the run, every tiled host a member).
+- **Seen in the stand-in (loop-guard-tests.swift):** with the guard off, TextEdit playing Weather loops for good (8+
+  rounds in 6 s); with it, two of its tile's rects sent in answer, the third stopped, it alone moved to members, still
+  shown at the page area, the other app still a tile, the next run a member from its first open; six page area changes
+  in a second are six resizes, nothing stopped. 1614 of 1614 Swift checks; 291 Rust tests.
+- **Weather loops only as the layout's second tile.** A re-layout wipes the first two tiles (Margin's own and the
+  first hosted one); the stand-in's loop ended by itself with Weather third. Weather was the first app opened that day.
+- **On the real screen (17:54-17:58):** `real-apps-loop` (new: Weather opened first, Maps beside it, a drag, switches,
+  40 s watched): no re-layout Margin didn't make, Weather at the page area; the loop didn't come, so the guard wasn't
+  exercised on the real Mac. Its two drag-follow misses are Weather's own 50 ms a resize, as at 10:57. `live-resize`
+  (Chameleon): 30 of 31, drags median and background sizing as before; the miss is the first switch to the layout's
+  second tile: re-laid out 54-63 ms after the ask, past the 30 ms frozen watch (shortened from 70 ms, unmeasured, at
+  01:41), set back 11 ms later by `onNarrowed`. Not new.
+- **Size:** Margin.app's binary 12.2 MB (was 10.3): the core 1.9 MB for both kinds of Mac, after turning dead-code
+  stripping on (the converter's project has it off: 18.1 MB without).
+- **Next:** two invisible windows of Margin's own as the layout's first two tiles, so a re-layout never touches Margin's
+  window or a hosted one (no loop, no flash, no freeze); then the scheduler on events (the 4 Hz poll), the operations.
