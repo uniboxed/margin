@@ -423,6 +423,34 @@ millisecond, the build before the fix):** a hosted tile was sent a rect narrower
   destroyed, under the freeze: still shown, no full-screen exit or entry, no loader. During a drag it isn't followed
   again until the drag is over (never twice in one drag); the drag's end places it once.
 
+### Anchors (2026-11-18)
+
+macOS lays the first two tiles of a Space out again, as a split's halves, whenever a tile comes into it or leaves it
+(and when the layout's second comes back from a private Space). Those two were Margin's own window and the first hosted
+one, so every such change made Margin's window narrower for a moment (the line, the black page) and wiped the first
+hosted one's rect; setting them back asked that app to lay out again, and an app that answers a resize with a window of
+its own (Weather, 2026-11-18 13:30: a 1264×966 window for 0.2 s after each resize) closed that window, which laid the
+tiles out again: 54 rounds in 18 s. The loop guard (docs/ARCHITECTURE-PLAN.md) stops any such loop at its third round;
+the anchors keep it from starting.
+
+- **What they are:** two tiles made through the bridge with no window (`SLSBridgedSpaceCreateTileOperation`,
+  synchronous, `initWithSpaceID:values:` with no values), moved to the front of Margin's Space within it
+  (`SLSBridgedSpaceTileMoveToSpaceAtIndexOperation` to index 0 and 1). They draw nothing. Margin's own tile is third,
+  the hosted ones after.
+- **The kit (opt5 a1, a2):** made in 5 ms each; moved to the front within the Space; a tile added, one destroyed, a
+  hosted window parked and back: only the anchors' rects changed, the stage window and the hosted ones never. No window
+  appeared at their rects.
+- **In the engine (HostEngine "the anchors"):** made once the tiles are checked for Margin's Space (`tilesReady`),
+  under the freeze (Margin's window is laid out once as they're made), its tile limit raised for them; recreated when
+  Margin's window comes into a new Space (`adoptTiles`, the old ones destroyed first or the old Space keeps tiles and
+  isn't destroyed); destroyed at Margin's quit before its window goes; in the crash marker (`anchors`), destroyed by the
+  next launch's recovery. Not made (the call missing, its encoding changed, nothing made): said once, the tiles as
+  before (Margin's window and the first hosted one set back after each change, the loop guard over it).
+- **On the real screen (18:11-18:20):** "anchors ok" at launch; made 34 ms into the first open; live-resize 31 of 31
+  (the first switch to the layout's second tile, the one miss before, at the page area every frame); live-resize-crash
+  10 of 10 (the killed Margin's anchors destroyed with its old Space); real-apps-loop with Weather and Maps: no
+  re-layout Margin didn't make, Weather at the page area.
+
 ### Not proven (before it's called working in real use)
 
 The kit's own panes only: real apps (Safari, Mail, a Catalyst app) in a tile; Margin's real window and its panel over

@@ -5931,5 +5931,10 @@ each OS keeping only its window calls. Work is on `refactor/host-core`, one step
   01:41), set back 11 ms later by `onNarrowed`. Not new.
 - **Size:** Margin.app's binary 12.2 MB (was 10.3): the core 1.9 MB for both kinds of Mac, after turning dead-code
   stripping on (the converter's project has it off: 18.1 MB without).
-- **Next:** two invisible windows of Margin's own as the layout's first two tiles, so a re-layout never touches Margin's
-  window or a hosted one (no loop, no flash, no freeze); then the scheduler on events (the 4 Hz poll), the operations.
+- **The anchors (18:05-18:20):** two empty tiles of Margin's own at its Space's front instead of windows (no full-screen
+  entries: the bridge makes a windowless tile in 5 ms). The kit showed only they are laid out again by a tile change;
+  the engine makes them under the freeze, keeps them in the marker, destroys them at quit (docs/HOSTING-CORE.md
+  "Anchors"). Real screen: live-resize 31 of 31 (the first-switch miss gone), live-resize-crash 10 of 10, real-apps-loop
+  all but the drag-follow checks, which held Weather to Chameleon's 25 ms (now a person's app is held to its own pace,
+  as the min-drag part does). 1622 of 1622 Swift checks.
+- **Next:** the scheduler on events (the 4 Hz poll), then the operations.
