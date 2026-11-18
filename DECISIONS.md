@@ -5803,3 +5803,28 @@ Space"; the calls: `docs/PRIVATE-APIS.md` rows 22-23, 36-39 and the `tiles` part
   killed app's placeholder: not its concern (no tiles).
 - **Not proven:** Safari in a tile; real Mission Control and swipes beyond core's ⌃←/⌃→ steps; two displays; Stage
   Manager off.
+- **Safari launched at 23:28:43 (2026-11-17) and restored Tirth's two full-screen windows:** neither the builds nor the
+  suite nor the extension's registration: `webpushd` (`Launching com.apple.Safari in response to push`, a site's web
+  push for one of his Safari profiles' data stores) started it in the background, and his margin-helper then started
+  his Margin. Nothing a test can or may switch off (his Safari's settings). The suite now never launches Safari: the
+  real-apps part hosts Safari only when it already runs (his session, its windows left as they are; Margin asks its own
+  extension for a new window there), else skips it and says why; the Chameleon parts never touch it.
+- **Safari in a tile, not proven:** its real-apps host failed twice (01:35, 01:37) before any tile step: the item's
+  profile (Personal) had no window, so Margin pressed Safari's File › New Window for it, and the build under test has no
+  Full Disk Access, so the profile's name isn't known (`File › New Window has no item for safari:s-f236459b…`); 4 presses,
+  given up. Not the tiles and not only the two builds: a run against a build with Full Disk Access (the installed one,
+  once it has the tiles) or with that profile's window already open is needed. Not done.
+- **ordersOut-after:** its app orders its shown window out 3 s after it's first on screen; the reconciler's
+  bring-forward took two rungs (activate, 548 ms still off screen; then its reopen, on screen 54 ms after): the
+  suite's single desired read 1 s after the show landed inside that correction. The 30 s hold passed 54 of 54 reads. A
+  generic skip of the activate rung when the app is already in front was tried and broke the window-mode ladders the
+  real Mac needs (the Phone): left as it is. The suite now reads a desired state caught mid-correction again once
+  Margin's correction is over (5 s at most), said in the step.
+- **The run of 02:03-02:19 (2026-11-18, the fixes above):** behaviours-1 36/36 (windowless: its tile's placeholder never
+  adopted, the item closed), behaviours-3 34/34 (replacesWindow-every: no placeholder left on screen),
+  live-resize-crash 10/10 (Margin killed, opened again: everything given back, its old Space and every tile destroyed),
+  real-apps 33/35 (Maps, Messages, Mail, WhatsApp, Notes in tiles; Phone, Calculator in window mode; drags with
+  Calculator shown followed by Accessibility, every parked tile at the new page area 124-489 ms after; Maps' first
+  switch after the tiles changed 76 ms, 41 of it the frozen watch; the two misses were the suite's first read of a hold
+  getting no page area from Margin's dev hook, then not read again), live-resize 29/31 (the two misses: Chameleon 2's
+  30-frame drags at p95 25.9 and 26.4 ms against the 25 ms bound, its own redraw).
