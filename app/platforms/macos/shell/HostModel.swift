@@ -117,12 +117,24 @@ nonisolated struct HostModelApp: Equatable, Sendable {
     var mains: [Int] { windows.values.filter { $0.kind == .main }.map(\.number).sorted() }
     var name: String { "\(bundleId) (pid \(pid))" }
 
+    // What the last classification read: the same windows and facts again ask nothing of the hosting core (a poll at
+    // rest reads them unchanged).
+    var classifiedFrom: ClassifyInput? = nil
+    struct ClassifyInput: Equatable, Sendable {
+        var windows: [WindowKinds.Window]
+        var app: WindowKinds.App
+        var placement: HostPlacement
+    }
+
     // Every window's kind again (WindowKinds.classify), the last mains kept for a tie. The change in its lastChanged.
     mutating func classify(in placement: HostPlacement, at now: Double) {
         let helpers = Set(windows.values.filter { $0.kind == .helper }.map(\.number))
         let app = WindowKinds.App(launchedByMargin: launchedByMargin, hosted: Set(hosted.keys), woken: woken, previousMains: Set(mains), previousHelpers: helpers,
                                   launchWindows: launchWindows, closed: closed, resized: resized)
-        let verdicts = WindowKinds.classify(windows.values.map(\.classified), app: app, in: placement)
+        let input = ClassifyInput(windows: windows.values.map(\.classified).sorted { $0.number < $1.number }, app: app, placement: placement)
+        if input == classifiedFrom { return }
+        classifiedFrom = input
+        let verdicts = WindowKinds.classify(input.windows, app: app, in: placement)
         for (n, v) in verdicts {
             guard var w = windows[n] else { continue }
             if w.kind != v.kind { w.lastChanged = now }

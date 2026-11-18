@@ -179,3 +179,14 @@ nonisolated extension HostCore {
         try? data.write(to: url, options: .atomic)
     }
 }
+
+// ---- when the engine looks again (host/schedule.rs) ----
+
+nonisolated extension HostCore {
+    // Seconds until the next look (nil: none until an event).
+    func nextPoll(hosting: Bool, links: Bool, pending: Bool, activeFor: Double?) -> Double? {
+        var facts: [String: Any] = ["hosting": hosting, "links": links, "pending": pending]
+        if let activeFor { facts["activeFor"] = activeFor }
+        return (call(["type": "nextPoll", "facts": facts])["after"] as? NSNumber)?.doubleValue
+    }
+}

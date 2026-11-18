@@ -85,6 +85,9 @@ enum Step: Equatable {
   case sidebarWidth(Int)                         // the sidebar that wide first (dev hook `sidebar`): a known start
   // the loop guard (the hosting core's guard.rs: docs/ARCHITECTURE-PLAN.md)
   case settled(Target, seconds: Double)           // settled: no re-layout loop
+  // the budgets (docs/ARCHITECTURE-PLAN.md "Scheduler and budgets")
+  case idleCost(String, seconds: Double)          // idle-cost: Margin's CPU, wakeups and footprint with nothing happening
+  case animations(String)                         // what Margin's page keeps redrawing for (dev hook `say animations`), said
 
   var text: String {
     switch self {
@@ -123,6 +126,8 @@ enum Step: Equatable {
     case .minDrag(let t, let dx, let st, let ends, let parked): return "min-drag: the sidebar's edge dragged \(dx > 0 ? "+" : "")\(dx) pt over \(st) display frames (dev hook `drag`), \(t.text) shown\(parked.isEmpty ? "" : ", \(parked.map(\.text).joined(separator: ", ")) parked"), every window's bounds and Spaces read every ms: never out of Margin's Space, never narrower than its minimum, the page area \(ends.map { "\($0)" } ?? "as dragged (its minimum the floor)") wide at the end\(parked.isEmpty ? "" : "; the parked ones at the page area or at their minimum width, right edge aligned, never in a user Space")"
     case .sidebarWidth(let w): return "the sidebar \(w) wide first (dev hook `sidebar`, as a drag that ends there): the page area \(1504 - w) wide"
     case .overflow(let t, let s): return "overflow: \(t.text), wider by its own minimum than the page area, held \(Int(s)) s in Margin's Space at its minimum width, its right edge the page area's"
+    case .animations(let label): return "animations (\(label)): Margin's page's running animations and its own frame requests in a second (dev hook), said"
+    case .idleCost(let label, let s): return "idle-cost (\(label)): nothing done for \(Int(s)) s: Margin's CPU time, its idle wakeups a second and its memory footprint (the kernel's own counts), said; the budget: under 0.5% CPU"
     case .settled(let t, let s): return "settled: \(t.text) shown and left alone \(Int(s)) s: Margin's Space's tiles laid out again by a change Margin didn't make at most 3 times (the loop guard's limit; 2026-11-18 13:30: 54 times in 18 s), \(t.text) at the page area in Margin's Space at the end"
     }
   }
@@ -287,6 +292,27 @@ func realLoopScenario(_ first: RealApp, _ second: RealApp) -> Scenario {
 }
 let maps = RealApp(name: "Maps", bundle: "com.apple.Maps", framedOnly: false)
 
+// What Margin costs when nothing happens (the plan's budget: under 0.5% CPU idle, under ~150 MB): with nothing hosted,
+// then three copies hosted and left alone.
+let idleCost = Scenario(name: "idle-cost", title: "Margin left alone, with nothing hosted and with three hosted: its CPU, wakeups and memory", copies: [1, 2, 3], steps: [
+  .setSwitches(1, [:]), .setSwitches(2, [:]), .setSwitches(3, [:]),
+  .openMargin, .wait(8, "Margin settled after its launch"), .idleCost("nothing hosted", seconds: 30),
+  .host(.copy(1)), .host(.copy(2)), .host(.copy(3)), .expect(.desired(Desired(target: .copy(3)))), .wait(5, "the show's extra polls over"),
+  .idleCost("three hosted, one shown", seconds: 60),
+  .marginQuitTiles([1, 2, 3]),
+], estimate: 150)
+
+// What Margin's page keeps redrawing for at rest (the idle cost's web-view part), with nothing hosted and one hosted.
+let pageFrames = Scenario(name: "page-frames", title: "Margin's page at rest: its running animations and frame requests", copies: [1], steps: [
+  .setSwitches(1, [:]), .openMargin, .wait(8, "settled"), .animations("nothing hosted"), .host(.copy(1)), .wait(5, "settled"), .animations("one hosted"), .marginQuitTiles([1]),
+], estimate: 60)
+
+// Margin held idle with three hosted for a profile taken from outside (`sample`), nothing checked.
+let idleProfile = Scenario(name: "idle-profile", title: "Margin idle with three hosted, 90 s, for a profile", copies: [1, 2, 3], steps: [
+  .setSwitches(1, [:]), .setSwitches(2, [:]), .setSwitches(3, [:]),
+  .openMargin, .wait(20, "nothing hosted, for a profile"), .host(.copy(1)), .host(.copy(2)), .host(.copy(3)), .wait(70, "three hosted, for a profile"), .marginQuitTiles([1, 2, 3]),
+], estimate: 150)
+
 // The parts: core; the behaviour scenarios in parts of about 6 minutes each (each from its own Margin launch);
 // the real apps' (opt-in).
 func parts(realApps withReal: Bool) -> [Part] {
@@ -302,6 +328,9 @@ func parts(realApps withReal: Bool) -> [Part] {
   out.append(Part(name: "live-resize", scenarios: [liveResize], realApps: false))
   out.append(Part(name: "live-resize-crash", scenarios: [liveResizeCrash], realApps: false))
   out.append(Part(name: "live-resize-min", scenarios: [liveResizeMin], realApps: false))
+  out.append(Part(name: "idle-cost", scenarios: [idleCost], realApps: false))
+  out.append(Part(name: "idle-profile", scenarios: [idleProfile], realApps: false))
+  out.append(Part(name: "page-frames", scenarios: [pageFrames], realApps: false))
   if withReal { out.append(Part(name: "real-apps", scenarios: [realAppsScenario(installedRealApps())], realApps: true)) }
   if withReal, isInstalled(weather.bundle) { out.append(Part(name: "real-apps-min", scenarios: [realMinScenario(weather)], realApps: true, apps: [weather])) }
   if withReal, isInstalled(weather.bundle), isInstalled(maps.bundle) { out.append(Part(name: "real-apps-loop", scenarios: [realLoopScenario(weather, maps)], realApps: true, apps: [weather, maps])) }

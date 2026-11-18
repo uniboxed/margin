@@ -116,6 +116,8 @@ extension Shell {
         host.others = { [weak session] number in session?.others(number) }
         host.front = { [weak session] read in session?.front(read) }
         let before = host.onEvent
+        // (A notification of a hosted app's: the shell's read now, then fast for a while: the hosting core's schedule.)
+        host.onWake = { [weak self] in self?.soon() }
         host.onEvent = { [weak self, weak session] event in
             before?(event)
             session?.hostEvent(event)
@@ -131,16 +133,9 @@ extension Shell {
         }
     }
 
-    func pollAfterShow() {
-        showPolls += 1
-        let mine = showPolls
-        for i in 1...20 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1 * Double(i)) { [weak self] in
-                guard let self, !self.stopped, self.showPolls == mine else { return } // (a newer show's own run takes over)
-                self.host?.poll()
-            }
-        }
-    }
+    // (The 20 polls at 0.1 s after each show are the schedule's now: a show is activity, its looks come every 0.1 s for
+    // 2 s through the shell's own read, one run of them however many shows.)
+    func pollAfterShow() { soon() }
 
     // The source Margin's windows draw, and the session that hosts what they show: the library's, made once.
     func makeHostedSource() -> MarginWindowSource {

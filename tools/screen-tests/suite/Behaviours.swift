@@ -61,6 +61,11 @@ extension Runner {
     case .minDrag(let t, let dx, let st, let ends, let parked): minDrag(t, dx: dx, steps: st, endsAt: ends, parked: parked)
     case .overflow(let t, let s): overflowHeld(t, seconds: s)
     case .settled(let t, let s): settledHeld(t, seconds: s)
+    case .idleCost(let label, let s): idleCostStep(label, seconds: s)
+    case .animations(let label):
+      gate("asking the page")
+      let line = ask(["say": "animations"], answer: "dev hook: animations:", within: 10)
+      log("  ANIMATIONS \(label): \(line.map { String($0.suffix(1400)) } ?? "no answer")")
     case .sidebarWidth(let w):
       gate("the sidebar's width")
       hook(["sidebar": "\(w)"])

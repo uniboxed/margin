@@ -24,7 +24,37 @@ func usage(_ pids: [pid_t]) -> [pid_t: (cpu: Double, rss: Int)] {
   return out
 }
 
+// A process's own counts by the kernel (proc_pid_rusage): CPU time (ns), idle wakeups (the ones that woke a sleeping
+// core: a timer's cost), interrupt wakeups, its memory footprint (bytes).
+func rusage(_ pid: pid_t) -> (cpuNs: Double, idle: UInt64, interrupt: UInt64, footprint: UInt64)? {
+  var ru = rusage_info_v4()
+  let ok = withUnsafeMutablePointer(to: &ru) { p in p.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) } }
+  guard ok == 0 else { return nil }
+  var tb = mach_timebase_info_data_t(); _ = mach_timebase_info(&tb)
+  return (Double(ru.ri_user_time + ru.ri_system_time) * Double(tb.numer) / Double(tb.denom), ru.ri_pkg_idle_wkups, ru.ri_interrupt_wkups, ru.ri_phys_footprint)
+}
+
 extension Runner {
+  // idle-cost: nothing done for `seconds` (no hook, no event of the suite's); Margin's CPU, wakeups and footprint
+  // over it, said. The budget (docs/ARCHITECTURE-PLAN.md): under 0.5% CPU.
+  func idleCostStep(_ label: String, seconds: Double) {
+    guard let m = personsMargin() ?? allMargins().first else { return skip("idle-cost (\(label))", "Margin isn't running") }
+    let pid = m.processIdentifier
+    gate("idle cost")
+    guard let a = rusage(pid) else { return skip("idle-cost (\(label))", "its counts didn't read") }
+    let t0 = Date()
+    while Date().timeIntervalSince(t0) < seconds { gate("idle cost"); spin(1) }
+    guard let b = rusage(pid) else { return skip("idle-cost (\(label))", "its counts didn't read") }
+    let span = Date().timeIntervalSince(t0)
+    let cpu = (b.cpuNs - a.cpuNs) / 1e6
+    let pct = cpu / (span * 1000) * 100
+    let wakes = Double(b.idle - a.idle) / span, irq = Double(b.interrupt - a.interrupt) / span
+    let mb = Double(b.footprint) / 1_048_576
+    log("  IDLE \(label): \(String(format: "%.0f", cpu)) ms CPU in \(String(format: "%.0f", span)) s (\(String(format: "%.2f", pct))%), \(String(format: "%.1f", wakes)) idle wakeups/s, \(String(format: "%.1f", irq)) interrupt wakeups/s, footprint \(String(format: "%.0f", mb)) MB")
+    step("idle-cost (\(label)): Margin under 0.5% CPU with nothing happening for \(Int(seconds)) s", pct < 0.5,
+         "\(String(format: "%.0f", cpu)) ms CPU (\(String(format: "%.2f", pct))%), \(String(format: "%.1f", wakes)) idle wakeups/s, footprint \(String(format: "%.0f", mb)) MB")
+  }
+
   // The processes a measure reads: Margin, WindowServer, and the copies running.
   func measured() -> [(String, pid_t)] {
     var list: [(String, pid_t)] = []

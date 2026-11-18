@@ -9,6 +9,7 @@
 //! - `guard`: the loop guard: the same reaction three times within 5 s stops that host.
 //! - `causes`: why something changed, before Margin reacts to it.
 //! - `routes`: tiles, members, window mode, and the way down for an app that keeps fighting its route.
+//! - `schedule`: when the engine looks again (events first, the poll as fast as the moment needs).
 //! - `api`: the whole of it behind one JSON call, for shells that aren't Rust.
 
 pub mod api;
@@ -19,3 +20,4 @@ pub mod kinds;
 pub mod layout;
 pub mod reconciler;
 pub mod routes;
+pub mod schedule;

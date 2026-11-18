@@ -206,9 +206,13 @@ final class HostObserver {
     // ---- Accessibility ----
 
     // A notification of a followed app's: what it names read (coalesced); a new window followed from the next poll.
+    // Told of every notification it hears (the engine's activity: its next look comes at once, then fast for a while).
+    var onHeard: (() -> Void)?
+
     func heard(pid: pid_t, _ note: HostAXNote, _ number: Int?) {
         guard model.apps[pid] != nil else { return }
         cost.notes += 1
+        onHeard?()
         var windows: Set<Int> = []
         if let number, number > 0 {
             switch note {

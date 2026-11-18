@@ -30,6 +30,9 @@ protocol HostSystem: AnyObject {
     func keepsWindowsAtQuit(pid: pid_t) -> Bool
     // Its app's version ("short (build)"; nil: unread): the hosting core's routes remember a step down per version.
     func appVersion(pid: pid_t) -> String?
+    // One poll's reads (synchronous, nothing moved in between): the Space list read once for all of them. Outside one,
+    // every read is fresh (an operation reads before and after its own moves).
+    func batch(_ body: () -> Void)
     var onAppQuit: ((pid_t) -> Void)? { get set }
     // Whether it's hidden (nil: not running). An app started with no Dock icon is started hidden (LaunchServices' hide
     // option): a hidden app's windows aren't in Accessibility's list, and some apps make or expose their window only
@@ -158,6 +161,7 @@ protocol HostSystem: AnyObject {
 }
 
 extension HostSystem {
+    func batch(_ body: () -> Void) { body() }
     func appVersion(pid: pid_t) -> String? { nil }
     // (A stand-in that doesn't play it: not sent.)
     func reopen(pid: pid_t) -> Bool { false }
@@ -502,6 +506,24 @@ final class RealHostSystem: HostSystem {
         return a.terminate()
     }
 
+    private var batching = false
+    private var displaysMemo: [DisplaySpaces]??
+    func batch(_ body: () -> Void) {
+        if batching { return body() }
+        batching = true
+        displaysMemo = nil
+        defer { batching = false; displaysMemo = nil }
+        body()
+    }
+    // The managed Spaces, parsed (SLSCopyManagedDisplaySpaces): once per poll inside `batch`, else each time.
+    private func readDisplays() -> [DisplaySpaces]? {
+        guard batching else { return spacesRW.displays() }
+        if let memo = displaysMemo { return memo }
+        let read = spacesRW.displays()
+        displaysMemo = .some(read)
+        return read
+    }
+
     func appVersion(pid: pid_t) -> String? {
         guard let url = NSRunningApplication(processIdentifier: pid)?.bundleURL, let info = Bundle(url: url)?.infoDictionary else { return nil }
         return "\(info["CFBundleShortVersionString"] as? String ?? "?") (\(info["CFBundleVersion"] as? String ?? "?"))"
@@ -632,18 +654,18 @@ final class RealHostSystem: HostSystem {
         return session[kCGSessionOnConsoleKey as String] as? Bool == false
     }
     func currentSpaces() -> [String]? {
-        spacesRW.displays()?.map { d in "\(d.current.map { "\($0)" } ?? "none")\(d.current.map { c in d.spaces.contains { $0.id == c } } == false ? " (not listed)" : "")" }
+        readDisplays()?.map { d in "\(d.current.map { "\($0)" } ?? "none")\(d.current.map { c in d.spaces.contains { $0.id == c } } == false ? " (not listed)" : "")" }
     }
     func bounds(window: Int) -> CGRect? { sky.modelBounds(of: window) }
     func spaces(window: Int) -> [UInt64]? { spacesRW.spaces(of: window) }
     func spaceType(_ space: UInt64) -> Int? { calls.spaceType(space) }
 
     private func display(of space: UInt64) -> DisplaySpaces? {
-        spacesRW.displays()?.first { $0.spaces.contains { $0.id == space } }
+        readDisplays()?.first { $0.spaces.contains { $0.id == space } }
     }
 
     func spaceExists(_ space: UInt64) -> Bool? {
-        guard let displays = spacesRW.displays() else { return nil }
+        guard let displays = readDisplays() else { return nil }
         return displays.contains { $0.spaces.contains { $0.id == space } }
     }
 
@@ -670,7 +692,7 @@ final class RealHostSystem: HostSystem {
         return out
     }
 
-    func listedFullScreenSpaces() -> [UInt64]? { spacesRW.displays()?.flatMap(\.fullScreen) }
+    func listedFullScreenSpaces() -> [UInt64]? { readDisplays()?.flatMap(\.fullScreen) }
 
     func fullScreenSpaceOwners() -> [UInt64: pid_t]? {
         guard let raw = sky.managedDisplaySpaces() else { return nil }

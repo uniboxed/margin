@@ -113,6 +113,8 @@ pub enum Request {
     },
     /// Every correction's budget by its key family, and the reconciler's and the kinds' constants: read once.
     Constants,
+    /// Seconds until the engine looks again (schedule.rs).
+    NextPoll { facts: super::schedule::PollFacts },
 }
 
 /// The hosting core's state across calls.
@@ -201,6 +203,7 @@ impl HostCore {
                     choice::candidates(&list, pid, |n| excluded.contains(&n)).iter().map(|w| w.number).collect();
                 json!({ "candidates": numbers })
             }
+            Request::NextPoll { facts } => json!({ "after": super::schedule::next_poll(&facts) }),
             Request::Constants => {
                 use reconciler::{Correction as C, Forward};
                 let budgets: BTreeMap<String, u32> = [
@@ -345,6 +348,15 @@ mod tests {
             json!({ "type": "candidates", "server": [w(3, 7, 800.0), w(1, 7, 800.0), w(2, 8, 800.0), w(4, 7, 50.0)], "pid": 7, "excluded": [3] }),
         );
         assert_eq!(got["candidates"], json!([1]));
+    }
+
+    #[test]
+    fn next_poll_through_a_call() {
+        let mut core = HostCore::new();
+        let r = call(&mut core, json!({ "type": "nextPoll", "facts": { "hosting": true, "activeFor": 0.3 } }));
+        assert_eq!(r["after"], 0.1);
+        let r = call(&mut core, json!({ "type": "nextPoll", "facts": {} }));
+        assert!(r["after"].is_null());
     }
 
     #[test]

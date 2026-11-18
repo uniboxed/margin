@@ -43,10 +43,19 @@ class ViewController: NSViewController {
         model.start()
     }
 
+    // Its checks poll only while the window is on screen (2 s each: an
+    // extension-state request and a file open). Margin ran them all the
+    // time before, hidden too: part of its idle cost (2026-11-18).
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        model.pause()
+    }
+
     // Once: it appears again after the app is hidden and shown, where the
     // user may have moved or resized it.
     override func viewDidAppear() {
         super.viewDidAppear()
+        model.resume()
         guard !placed, let window = view.window else { return }
         placed = true
         window.title = "Set up Margin"
@@ -112,14 +121,24 @@ final class SetupModel: ObservableObject {
 
     func start() {
         refreshExtensionState()
-        // On the main run loop and queue, both.
-        poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshExtensionState() }
-        }
         DistributedNotificationCenter.default().addObserver(forName: setupNotification, object: nil, queue: .main) { [weak self] note in
             let json = note.object as? String
             MainActor.assumeIsolated { self?.receive(json) }
         }
+    }
+
+    // The window shown: checked now and every 2 s (on the main run loop and
+    // queue, both); hidden: not checked.
+    func resume() {
+        guard poll == nil else { return }
+        refreshExtensionState()
+        poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshExtensionState() }
+        }
+    }
+    func pause() {
+        poll?.invalidate()
+        poll = nil
     }
 
     // Margin on or off, and when Safari last opened: both can set Safari's

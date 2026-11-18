@@ -450,6 +450,7 @@ final class HostEngine {
         let core = HostCore()
         self.core = core
         observer = HostObserver(system: system, source: observation, core: core)
+        observer.onHeard = { [weak self] in self?.activity(); self?.onWake?() }
         sys.onAppQuit = { [weak self] pid in self?.appQuit(pid) }
         if let routesURL { core.loadRoutes(from: routesURL) }
     }
@@ -679,7 +680,10 @@ final class HostEngine {
 
     // The shell's poll: a hosted app quit or promoted, its window gone, a left Space destroyed. Skipped while an
     // operation runs (it reads the same things); held off that way for over a second, it's said once.
-    func poll() {
+    // (One poll's reads in one batch: the Space list read once for all of them.)
+    func poll() { sys.batch { pollNow() } }
+
+    private func pollNow() {
         if busy {
             if let since = pollHeldSince {
                 if since >= 0, sys.now() - since > 1 { Diagnostics.note("host: poll held off by an operation for over \(ms(since: since)) ms"); pollHeldSince = -1 }
@@ -1545,6 +1549,7 @@ final class HostEngine {
             self.planned = planned
             let value = await body()
             self.planned = false
+            self.activity()
             self.parkWoken() // (a window opened to wake a profile during it: out of sight before anything else is seen)
             self.observer.sync(self.observed()) // (an app hosted or given back: followed, or not, from now)
             self.busy = false
@@ -4814,7 +4819,28 @@ final class HostEngine {
 
     private func isHosted(window: Int) -> Bool { hosts.values.contains { $0.window == window } }
 
-    private func emit(_ event: HostEvent) { onEvent?(event) }
+    private func emit(_ event: HostEvent) { activity(); onEvent?(event) }
+
+    // ---- when it looks again (the hosting core's schedule.rs) ----
+
+    // The last activity: an event, an operation's end, a correction, a notification heard (its next looks come fast for
+    // a while: macOS's own changes land late).
+    private(set) var lastActivity: Double?
+    // Its next look wanted at once (a notification heard): the shell's read, now.
+    var onWake: (() -> Void)?
+    private func activity() { lastActivity = sys.now() }
+    // Something not settled: a read to confirm, an exit or a retry due, a drag, an operation running or queued, the late
+    // watch after a show. The poll comes every 0.25 s until it is.
+    var pollPending: Bool {
+        if busy || liveOn || reconcileQueued || preparing || quitting { return true }
+        if !exiting.isEmpty || !woken.isEmpty || !leftSafariWindows.isEmpty || !leftSpaces.isEmpty || !goneTiles.isEmpty || !retired.isEmpty { return true }
+        if shown != nil, sys.now() - shownAt < options.lateWatch { return true }
+        return hosts.values.contains { $0.unread > 0 || $0.strays > 0 || $0.offScreenReads > 0 || $0.offPageReads > 0 || $0.gone || $0.phase == .preparing }
+    }
+    // Seconds until its next look (nil: none until an event), with `links` (a browser copy linked: the shell's keys).
+    func nextPoll(links: Bool) -> Double? {
+        core.nextPoll(hosting: hasHosts || hasLeftSafariWindows, links: links, pending: pollPending, activeFor: lastActivity.map { sys.now() - $0 })
+    }
 
     private func fail(_ id: HostID, _ step: HostStep, _ reason: String) -> HostResult {
         Diagnostics.note("host: \(id): \(step.rawValue) failed: \(reason)")
