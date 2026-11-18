@@ -54,6 +54,11 @@ export type UiState = {
   recording?: string | null,
   settingsStatus?: Record<string, { text: string, error?: boolean } | undefined>,
   switchingTo?: number | string | null,
+  /**
+   * What's in front ahead of the state (ui/intents.ts): a row's tab after a close (`tab`, drawn as a switch's), a pin
+   * with no tab being opened (`pin`). A switch under way (`switchingTo`) comes first.
+   * */
+  front?: { tab: number | string | null, pin: string | null } | null,
   justShown?: boolean,
   inNewTab?: boolean,
   launcherPage?: boolean,
@@ -304,7 +309,8 @@ function fresh(input: ViewModelInput): ViewModel {
   const currentTabId = ui.tabId ?? null;
   const view = V.sidebar(state, windowId, currentTabId, {
     newTabPending: !!(paletteUi.open && paletteUi.newTab) || !!ui.newTabPending,
-    switchingTo: ui.switchingTo ?? null,
+    switchingTo: ui.switchingTo ?? ui.front?.tab ?? null,
+    pinning: ui.switchingTo == null ? ui.front?.pin ?? null : null,
     justShown: !!ui.justShown,
     opening: ui.switchingTo === NEW_TAB ? ui.opening ?? null : null,
   });

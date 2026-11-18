@@ -651,6 +651,38 @@ class ForBinding {
 }
 
 // ---------------------------------------------------------------------------
+// The sidebar's rows (View.rowElements): the first element of every row of a list of the view model's tab, pin and
+// folder rows (ui/view-model.ts TabRow, PinRow, FolderRow: not the palette's rows, the menus', the chips), in the
+// blocks drawn now, nested lists too (a folder's pins).
+
+const ROW_KINDS = new Set(['tab', 'pin', 'folder']);
+const isRow = (item: unknown) => !!item && typeof item === 'object' && ROW_KINDS.has((item as { kind?: string }).kind as string)
+  && ('pinned' in item || 'isFolder' in item);
+function firstElement(block: Block): Element | null {
+  for (let n: ChildNode | null = block.first; n; n = n.nextSibling) {
+    if (n.nodeType === 1) return n as Element;
+    if (n === block.last) break;
+  }
+  return null;
+}
+function collectRows(block: Block, out: Element[]) {
+  for (const part of block.parts) {
+    if (part instanceof ForBinding) {
+      const rows = part.rows.length && isRow(part.rows[0].item);
+      for (const row of part.rows) {
+        if (rows) { const el = firstElement(row); if (el) out.push(el); }
+        collectRows(row, out);
+      }
+    } else if (part instanceof IfBinding) {
+      const shown = part.state === null ? null : part.blocks[part.state ? 0 : 1];
+      if (shown) collectRows(shown, out);
+    } else if (part instanceof SlotBinding) {
+      if (part.shown && part.block) collectRows(part.block, out);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The view.
 
 type Edges = { left: number, top: number, right: number, bottom: number };
@@ -823,6 +855,12 @@ export class View {
   subjectOf(el: Element) {
     const scope = this.behaviorEls.get(el)?.scope ?? this.actions.get(el)?.scope ?? this.scopes.get(el);
     return scope?.parent ? scope.value : null;
+  }
+  /** The sidebar's rows drawn now (tabs, pins, folders: their first elements), in order (ui/row-motion.ts). */
+  rowElements(): Element[] {
+    const out: Element[] = [];
+    if (this.block) collectRows(this.block, out);
+    return out;
   }
   /** The connected elements with behavior `name` (`value`), in document order. */
   marked(name: string, value?: string): (HTMLElement | SVGElement)[] {

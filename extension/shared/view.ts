@@ -47,7 +47,8 @@ function activeSpaceId(state: State, windowId: number | null | undefined) {
 // top of the list, highlighted, at once (Arc), titled with what was asked for
 // (`title`, `url`); the tab in front plain, "+ New Tab" not lit (seen
 // 2026-11-08: it only lit partly until the page had loaded).
-function sidebar(state: State, windowId: number | null, currentTabId: number | null = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null }: { newTabPending?: boolean, switchingTo?: number | string | null, justShown?: boolean, opening?: { title?: string, url?: string, from?: number | null } | null } = {}) {
+// `pinning`: a pin with no tab being opened (ui/intents.ts), highlighted at once and whole, as a switch's tab is.
+function sidebar(state: State, windowId: number | null, currentTabId: number | null = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null, pinning = null }: { newTabPending?: boolean, switchingTo?: number | string | null, justShown?: boolean, opening?: { title?: string, url?: string, from?: number | null } | null, pinning?: string | null } = {}) {
   if (typeof switchingTo === 'string') switchingTo = liveTabId(state, switchingTo) ?? switchingTo;
   const has = (id: string) => id != null && state.spaces.some((s) => s.id === id);
   const own = currentTabId != null ? state.tabs?.[currentTabId] : null;
@@ -70,14 +71,15 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
       return active === t.active && !isAway ? t : { ...t, active, ...(isAway ? { away: true } : {}) };
     });
   const target = goingKept ? switchingTo : switchingTo != null && shown.some((t) => t.id === switchingTo && !t.active) ? switchingTo : null;
+  const pinFirst = target == null && pinning != null && state.pins?.some((p) => p.id === pinning && p.spaceId === spaceId) ? pinning : null;
   const front = shown.find((t) => t.active);
-  const openingRow = opening && target == null && (front == null || front.id === opening.from)
+  const openingRow = opening && target == null && pinFirst == null && (front == null || front.id === opening.from)
     ? { id: OPENING_ID, windowId, title: String(opening.title ?? ''), url: String(opening.url ?? ''), favIconUrl: '', active: true, opening: true, status: 'loading', order: Infinity, index: Infinity, lastActive: Date.now() }
     : null;
   const shownNewTab = openingRow ? undefined : shown.find((t) => t.active && isPlaceholderPage(t.url));
   const windowTabs = shown
     .map((t) => {
-      if (openingRow) return t.active ? { ...t, active: false } : t;
+      if (openingRow || pinFirst != null) return t.active ? { ...t, active: false } : t;
       // Switching: the highlight moves at once and whole (Arc), the tab still
       // on screen plain; the new page's sidebar then looks the same.
       if (target != null) return t.id === target ? { ...t, active: true } : t.active ? { ...t, active: false } : t;
@@ -104,7 +106,7 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
       ...p,
       folderId: p.folderId && folderIds.has(p.folderId) ? p.folderId : null, // its folder gone: loose
       pos: posOf(p, i),
-      tabId: tab?.id ?? null, active: !!tab?.active || !!(goingKept && normalizeUrl(goingKept.url) === key), behind: !!tab?.behind, away: !!tab?.away, favIconUrl: tab?.favIconUrl ?? '',
+      tabId: tab?.id ?? null, active: pinFirst != null ? p.id === pinFirst : !!tab?.active || !!(goingKept && normalizeUrl(goingKept.url) === key), behind: !!tab?.behind, away: !!tab?.away, favIconUrl: tab?.favIconUrl ?? '',
     });
   });
   const byPos = (a: { pos: number }, b: { pos: number }) => a.pos - b.pos;
@@ -130,7 +132,7 @@ function sidebar(state: State, windowId: number | null, currentTabId: number | n
     pins,
     pinned,
     // The new-tab page being shown is this row: softly while switching away.
-    newTab: { active: targetIsNewTab || (target == null && !openingRow && (newTabPending || !!shownNewTab)), behind: false }, // behind: never now (kept for the row's class)
+    newTab: { active: targetIsNewTab || (target == null && pinFirst == null && !openingRow && (newTabPending || !!shownNewTab)), behind: false }, // behind: never now (kept for the row's class)
     // Reversed here, not sorted that way above: a pin binds to the oldest tab
     // with its URL (unless another is shown or being switched to). Open and
     // not open, in their places (pins bind to open tabs only).

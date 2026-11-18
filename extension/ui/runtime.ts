@@ -37,6 +37,9 @@ import { installScroll } from './behaviors/scroll.ts';
 import { installSwipe } from './behaviors/swipe.ts';
 import { installPress } from './behaviors/press.ts';
 import { installSettings } from './behaviors/settings.ts';
+import { createIntents } from './intents.ts';
+import type { Front } from './intents.ts';
+import { createRowMotion } from './row-motion.ts';
 
 const CLOSED_PALETTE = Object.freeze({ open: false, query: '', selected: 0, newTab: false });
 // What's shown ahead of the state lasts this long at most (sidebar.js SHOWN_SPACE_MS).
@@ -142,10 +145,14 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     // of the copy as it settled (behaviors/swipe.js holdSpace). The space asked for (`space`) comes after it.
      hold: null as { spaceId: string, until: number } | null,
   };
+  // A row closed, a pin opened: drawn at the click, until the state agrees (ui/intents.ts). What's in front ahead of
+  // the state (`front`) is the UI state's, as the last viewState worked it out.
+  const intents = createIntents({ onChange: () => { if (!destroyed) render(); } });
+  let front: Front | null = null;
   // Re-drawn when the soonest of them runs out.
   let expiryTimer: Timer | null = null;
   function expireLater() {
-    const ends = [pending.settings?.until, ...[...pending.folders.values()].map((p) => p.until), ...[...pending.spaces.values()].map((p) => p.until),
+    const ends = [intents.nextDeadline() ?? undefined, pending.settings?.until, ...[...pending.folders.values()].map((p) => p.until), ...[...pending.spaces.values()].map((p) => p.until),
       pending.space ? pending.space.since + PENDING_MS + 50 : undefined, pending.hold ? pending.hold.until + 1 : undefined, pending.themeSettings && !pending.themeSettings.live ? pending.themeSettings.until : undefined].filter((t) => t != null);
     clearTimeout(expiryTimer);
     if (!ends.length) return;
@@ -199,7 +206,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       if (over) p.space = null;
       else state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w as number]: p.space.spaceId } };
     }
-    return state;
+    const predicted = intents.apply(raw, state);
+    front = predicted.front;
+    return predicted.state;
   }
 
   // ---- the switch highlight (shared/switching.ts) ---------------------------------
@@ -216,7 +225,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   const stays = !!((host as any).staysOnScreen);
   const switching = createSwitching({
     // A new tab's row (`opening`) lasts as long as the switch to it (NEW_TAB).
-    onChange: (id) => { if (destroyed) return; onSwitching?.(id); setUi({ switchingTo: id, ...(id !== NEW_TAB && ui.opening ? { opening: null } : {}) }); },
+    // (A switch asked for: a pin opened before it is no longer drawn in front, ui/intents.ts.)
+    onChange: (id) => { if (destroyed) return; if (id != null) intents.dropOpens(); onSwitching?.(id); setUi({ switchingTo: id, ...(id !== NEW_TAB && ui.opening ? { opening: null } : {}) }); },
     onSlow: (slow) => { if (!destroyed) onSwitchSlow?.(slow); },
     failed: (result) => result === undefined,
     onFailed: () => { if (!destroyed) onSwitchFailed?.(); },
@@ -244,6 +254,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     // The active theme, for Settings' "Settings of …" (ui/settings-form.ts): its id, name and theme.json settings.
     theme: themeInfo,
     justShown: (firstRender || Date.now() - lastShownAt < JUST_SHOWN_MS) && switchAskedAt <= lastShownAt,
+    front,
   });
 
   const view = new View(container, theme.template, {
@@ -253,6 +264,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     onLayout: (geometry) => { placeLoader(); host.reportLayout({ ...geometry, windowId: windowId(), mode: host.mode ?? 'inpage' }); },
     onWarn: (message) => warn(message),
   });
+  // Rows that come or go slide the others to their places (ui/row-motion.ts); not while a row is being dragged.
+  const motion = createRowMotion(view, win, { skip: () => !!behaviors.drag?.active?.() });
 
   // The theme's settings: what's saved, with a width being dragged (resize).
   function themeSettings(state: (Partial<State> & Record<string, any>) | null) {
@@ -278,10 +291,12 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const state = viewState(raw);
     const prev = vm;
     vm = buildViewModel({ state, ui: fullUi(), platform: host.platform, settings }, vm);
-    // Nothing changed (the same model): nothing to draw.
+    // Nothing changed (the same model): nothing to draw. Rows that came or went: the others slide to their places.
     if (vm !== drawn) {
+      const moving = motion.before(drawn, vm);
       drawn = vm;
       view.update(vm);
+      if (moving) motion.after();
     }
     followPage();
     if (vm.ready) firstRender = false;
@@ -400,6 +415,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       // a chain on screen, goes on to it (shared/switching.ts toFront).
       if (target === frontTab()) switching.toFront(target, request);
       else if (target !== ui.switchingTo) switching.start(target, request);
+    } else if (type === 'openPin' && state) {
+      // A pin with no tab yet: the switch has nothing to highlight, so the pin is drawn in front (ui/intents.ts).
+      const pin = state.pins?.find((p: { id: string }) => p.id === payload.pinId);
+      if (pin) {
+        switching.end();
+        intents.open(pin, payload.windowId ?? windowId(), request);
+      }
     }
     return request;
   }
@@ -464,7 +486,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (origin === 'theme' && BEHAVIOR_ONLY.has(name)) return refuse(name, arg, `${name}: only Margin's behaviors and menus run it`);
     const state = host.getState();
     const now = fullUi();
-    const items = ui.palette.open ? paletteItems(state, now, host.platform) : [];
+    // (The palette's rows as drawn: from the state as the UI shows it, a row closed a moment ago not among them.)
+    const items = ui.palette.open ? paletteItems(viewState(state), now, host.platform) : [];
     const menu = ui.menu && vm ? menuItems((ui.menu as any), { state: viewState(state), space: vm.space }) : [];
     const colors = vm?.editor ? vm.editor.colors.map((c) => c.id) : [];
     const noticeIds = vm?.notice?.actions.map((a) => a.id) ?? [];
@@ -539,7 +562,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         break;
       default: break;
     }
+    // Rows closed: gone at once (ui/intents.ts), the row in front next worked out from what's drawn before.
+    const closing = name === 'tab.close' ? [arg] : name === 'today.clear' ? (vm?.space.today ?? []).map((t) => t.id) : [];
+    const before = closing.length ? viewState(host.getState()) : null;
     const request = send(type, payload);
+    for (const id of closing) intents.close(id, before, windowId(), request);
     if (name === 'tab.move') return request;
     render();
     return true;
@@ -625,7 +652,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const text = String(query ?? '').trim();
     if (!text) return false;
     const state = host.getState();
-    const items = paletteItems(state, { ...fullUi(), palette: { open: true, query: text, selected: 0 } }, host.platform);
+    const items = paletteItems(viewState(state), { ...fullUi(), palette: { open: true, query: text, selected: 0 } }, host.platform);
     const row = items.find((i) => i.kind === 'go');
     if (!row) return false;
     const request = requestFor('palette.run', row.id, { state, ui: { windowId: windowId(), sidebar: vm?.window.sidebar ?? null }, platform: host.platform, row });
@@ -805,6 +832,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       for (const b of list) b.destroy?.();
       destroyed = true;
       switching.end();
+      intents.clear();
+      motion.destroy();
       clearTimeout(expiryTimer);
       clearTimeout(newTabTimer);
       for (const id of timers) clearTimeout(id);
