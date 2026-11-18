@@ -148,6 +148,10 @@
 .tab.away { opacity: .55; }
 .tab .title { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fav { flex-shrink: 0; width: 18px; height: 18px; box-sizing: border-box; box-shadow: var(--pxs); background: var(--deep); object-fit: cover; image-rendering: pixelated; }
+/* An installed app's icon in a row (Margin.app, the view model's isApp): macOS draws app icons with transparent room
+   inside their image, so the app's glyph would look smaller than a site's icon at the same size. Drawn bigger, in
+   its own shape (no notched frame, drawn smooth), the negative margin keeping the row's height and the title where they were. */
+img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; background: none; object-fit: contain; image-rendering: auto; }
 .letter { --fav: #5f574f; display: flex; align-items: center; justify-content: center; background: var(--fav); color: #fff; font-family: 'Press Start 2P', monospace; font-size: 8px; line-height: 1; text-transform: uppercase; overflow: hidden; }
 .emoji { display: flex; align-items: center; justify-content: center; font-size: 13px; line-height: 1; }
 /* Asleep: the title at 55 % and a small "z". */
@@ -399,7 +403,7 @@
 .palette-row.on { background: var(--hover); }
 .palette-row .fav { margin: 0 2px; }
 /* An installed app's icon (Margin.app): its own shape, no notched frame, drawn smooth. */
-.palette-row .fav.app { box-shadow: none; background: none; object-fit: contain; image-rendering: auto; }
+.palette-row img.fav.app { width: 22px; height: 22px; margin: -2px 0; box-shadow: none; background: none; object-fit: contain; image-rendering: auto; }
 .fav.glyph { display: grid; place-items: center; color: var(--yellow); }
 .fav.glyph .pix { width: 13.5px; height: 13.5px; }
 /* The heading of a run of rows from one place (iCloud Tabs: "On Nora's iPhone"). */
@@ -439,6 +443,7 @@
 .tile:hover { background: var(--hover); color: var(--yellow); }
 .tile:active { transform: translate(0, 2px); }
 .tile .fav { width: 24px; height: 24px; }
+.tile img.fav.app { width: 30px; height: 30px; margin: -3px; }
 .tile .letter { font-size: 10px; }
 .tile .title { min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 15px; }
 .archive-list { display: flex; flex-direction: column; gap: 2px; }

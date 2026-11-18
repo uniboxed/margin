@@ -437,6 +437,10 @@
 .margin-sidebar .new-tab-row .plus-icon { width: 12px; height: 12px; stroke-width: 1.75; }
 .margin-sidebar .title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .arcadia .avatar { flex: none; width: 16px; height: 16px; border-radius: 4px; object-fit: contain; }
+/* An installed app's icon in a row (Margin.app, the view model's isApp): macOS draws app icons with transparent room
+   inside their image, so the app's glyph would look smaller than a site's icon at the same size. Drawn bigger, in
+   its own shape (no tile or frame), the negative margin keeping the row's height and the title where they were. */
+.arcadia img.avatar.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; }
 .arcadia .avatar.letter {
   display: inline-flex;
   align-items: center;
@@ -784,7 +788,7 @@
 .palette .avatar.letter { width: 16px; height: 16px; margin: 0 4px; }
 .palette .avatar.emoji { display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
 /* An installed app's icon (Margin.app): its own shape, no tile behind it. */
-.palette img.avatar.app, .palette [aria-selected="true"] img.avatar.app { width: 22px; height: 22px; padding: 1px; border-radius: 0; background: none; }
+.palette img.avatar.app, .palette [aria-selected="true"] img.avatar.app { width: 22px; height: 22px; margin: 0; padding: 1px; border-radius: 0; background: none; }
 /* The title keeps its room; the detail after it gives way first. */
 .palette .title { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 500; }
 .palette .detail { flex: 0 100 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--panel-muted); font-size: 13px; }
@@ -862,6 +866,7 @@
 }
 .launcher .tile:hover { border-color: var(--space-color); }
 .launcher .tile .avatar { width: 32px; height: 32px; border-radius: 8px; }
+.launcher .tile img.avatar.app { width: 40px; height: 40px; margin: -4px; border-radius: 0; }
 .launcher .tile .avatar.letter { font-size: 16px; }
 .launcher .tile .title { width: 100%; text-align: center; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .launcher .archive-row {

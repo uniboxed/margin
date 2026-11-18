@@ -54,6 +54,11 @@ export type UiState = {
   recording?: string | null,
   settingsStatus?: Record<string, { text: string, error?: boolean } | undefined>,
   switchingTo?: number | string | null,
+  /**
+   * What's in front ahead of the state (ui/intents.ts): a row's tab after a close (`tab`, drawn as a switch's), a pin
+   * with no tab being opened (`pin`). A switch under way (`switchingTo`) comes first.
+   * */
+  front?: { tab: number | string | null, pin: string | null } | null,
   justShown?: boolean,
   inNewTab?: boolean,
   launcherPage?: boolean,
@@ -78,7 +83,12 @@ export type ViewModelInput = {
   platform?: { browser?: string, os?: string, marginFullscreen?: boolean, features?: Record<string, any> },
   settings?: Record<string, string | number | boolean>,
 };
-export type Face = { title: string, url: string, host: string, icon: string | null, letter: string, color: string };
+/**
+ * A row's face. `isApp`: an installed app's own icon is shown (an app item with its app's icon): macOS app icons carry
+ * transparent room inside their image, so a theme draws them bigger than a site's icon in the same place (`.app`),
+ * in their own shape, with no tile or frame.
+ * */
+export type Face = { title: string, url: string, host: string, icon: string | null, letter: string, color: string, isApp: boolean };
 export type TabRow = Face & {
   kind: 'tab', id: number | string, active: boolean, behind: boolean, away: boolean,
   audible: boolean, asleep: boolean, loading: boolean, pinned: false,
@@ -194,8 +204,10 @@ function face(state: State, item: { url?: string, title?: string, favIconUrl?: s
   const host = /^[a-z-]*-extension:/i.test(url) ? '' : hostOf(url);
   // (An app item: the installed app's icon, V.iconFor; with none, its name's letter, not its bundle id's.)
   const icon = V.iconFor(state, item);
-  const { letter, color } = V.letterAvatar((appOfItem(item) ? '' : host) || title || '?');
-  return { title, url, host, icon: checkIconUrl(icon) ? icon : null, letter, color };
+  const app = appOfItem(item);
+  const { letter, color } = V.letterAvatar((app ? '' : host) || title || '?');
+  const shown = checkIconUrl(icon) ? icon : null;
+  return { title, url, host, icon: shown, letter, color, isApp: !!app && shown != null };
 }
 
 const isLoading = (t: { status?: string, loading?: boolean } | null | undefined) => t?.status === 'loading' || t?.loading === true;
@@ -297,7 +309,8 @@ function fresh(input: ViewModelInput): ViewModel {
   const currentTabId = ui.tabId ?? null;
   const view = V.sidebar(state, windowId, currentTabId, {
     newTabPending: !!(paletteUi.open && paletteUi.newTab) || !!ui.newTabPending,
-    switchingTo: ui.switchingTo ?? null,
+    switchingTo: ui.switchingTo ?? ui.front?.tab ?? null,
+    pinning: ui.switchingTo == null ? ui.front?.pin ?? null : null,
     justShown: !!ui.justShown,
     opening: ui.switchingTo === NEW_TAB ? ui.opening ?? null : null,
   });
@@ -401,7 +414,8 @@ function fresh(input: ViewModelInput): ViewModel {
         // The typed text as a search, or as an address to open (a theme may draw its own icon).
         isSearch: item.kind === 'go' && item.search === true,
         isOpen: item.kind === 'go' && item.search === false,
-        isApp: item.kind === 'app',
+        // (An app picked from the installed ones, or an item of the space that's an app.)
+        isApp: item.kind === 'app' || !!appOfItem(item),
         icon: checkIconUrl(icon) ? icon : null,
         letter,
         color,

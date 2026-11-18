@@ -357,6 +357,7 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of themesInS
       await t.test('drag and drop: a tab to another place, onto a space\'s chip, into a folder', async () => {
         await mount({ replies: { moveTab: true } });
         await ev(() => T.rtApply('toggleFolder', 'personal-f0')); // Reading closed: fewer rows
+        await page.waitForTimeout(300); // (the rows below it slide up first: ui/row-motion.ts)
         await ev(() => T.rtSentClear());
         const ids = await today();
         await shown('.today .tab', 4); // the first rows in view, above the spaces bar

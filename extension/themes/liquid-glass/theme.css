@@ -223,6 +223,10 @@
 .tab:is(:hover, :focus-within) .close { display: flex; }
 .tab:is(:hover, :focus-within) .audible { display: none; }
 .fav { width: 16px; height: 16px; flex-shrink: 0; box-sizing: border-box; border-radius: 4.5px; object-fit: cover; }
+/* An installed app's icon in a row (Margin.app, the view model's isApp): macOS draws app icons with transparent room
+   inside their image, so the app's glyph would look smaller than a site's icon at the same size. Drawn bigger, in
+   its own shape (no tile or frame), the negative margin keeping the row's height and the title where they were. */
+img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-fit: contain; }
 .letter { display: flex; align-items: center; justify-content: center; --fav: #8e8e93; background: var(--fav); color: #fff; font-size: 9.5px; font-weight: 700; line-height: 1; }
 
 .divider { flex: none; display: flex; align-items: center; gap: 8px; min-height: 20px; padding: 0 8px; }
@@ -448,7 +452,7 @@
 .palette-row .title { flex: 0 1 auto; min-width: 0; }
 .subtitle { flex: 0 1 auto; min-width: 0; font-size: 12.5px; color: var(--secondary); }
 /* An installed app's icon (Margin.app): its own shape, no corner of ours. */
-.palette-row .fav.app { border-radius: 0; object-fit: contain; }
+.palette-row img.fav.app { width: 22px; height: 22px; margin: -2px; border-radius: 0; object-fit: contain; }
 /* Search and Open: an icon of our own where a site's would be. */
 .fav.glyph { display: flex; align-items: center; justify-content: center; color: var(--secondary); }
 .fav.glyph .ico { width: 17px; height: 17px; }
@@ -504,6 +508,7 @@
 .tile:hover { background: light-dark(rgba(255, 255, 255, .92), rgba(255, 255, 255, .11)); }
 .tile:active { transform: scale(.97); }
 .tile .fav { width: 28px; height: 28px; border-radius: 7px; }
+.tile img.fav.app { width: 34px; height: 34px; margin: -3px; border-radius: 0; }
 .tile .letter { font-size: 14px; }
 .tile .title, .archive-row .title { min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .tile .title { font-size: 12px; color: var(--secondary); }
