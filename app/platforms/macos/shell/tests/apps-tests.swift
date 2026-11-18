@@ -25,6 +25,9 @@ func appsTests() {
           && !AppCatalog.hostable(bundleId: "a.b", name: "A", info: ["LSUIElement": "1"]) && !AppCatalog.hostable(bundleId: "a.b", name: "A", info: ["LSBackgroundOnly": "YES"])
           && AppCatalog.hostable(bundleId: "a.b", name: "A", info: ["LSUIElement": false]) && AppCatalog.hostable(bundleId: "a.b", name: "A", info: ["LSUIElement": "0"]))
     check("apps: not an application bundle: not", !AppCatalog.hostable(bundleId: "a.b", name: "A", info: ["CFBundlePackageType": "BNDL"]) && AppCatalog.hostable(bundleId: "a.b", name: "A", info: [:]))
+    check("apps: Margin's own app listed (a surprise when picked), never its parts or old builds, never hostable",
+          AppCatalog.listed(bundleId: "com.unibox.margin", name: "Margin", info: [:]) && !AppCatalog.listed(bundleId: "com.unibox.margin.helper", name: "margin-helper", info: [:])
+          && !AppCatalog.listed(bundleId: "io.tirth.margin", name: "Margin", info: [:]) && !AppCatalog.listed(bundleId: "com.unibox.margin", name: "Margin", info: ["CFBundlePackageType": "BNDL"]))
     check("apps: Margin itself (any build, any part) is never offered", !AppCatalog.hostable(bundleId: "com.unibox.margin", name: "Margin", info: [:])
           && !AppCatalog.hostable(bundleId: "com.unibox.margin.helper", name: "margin-helper", info: [:]) && !AppCatalog.hostable(bundleId: "io.tirth.margin", name: "Margin", info: [:])
           && AppCatalog.hostable(bundleId: "com.unibox.marginalia", name: "Marginalia", info: [:]))
@@ -76,7 +79,7 @@ func appsTests() {
     let home = tmp.appendingPathComponent("home").path
     let listed = AppCatalog.scan(folders: [apps, more], home: home)
     check("apps: the scan: the hostable ones, one per bundle id (the first folder's), sorted by name",
-          listed.map(\.name) == ["Atlas", "Editor", "Writer", "Zed Notes"] && listed.first { $0.bundleId == "com.example.editor" }?.path.contains("/Applications/") == true, "\(listed.map(\.name))")
+          listed.map(\.name) == ["Atlas", "Editor", "Margin", "Writer", "Zed Notes"] && listed.first { $0.bundleId == "com.example.editor" }?.path.contains("/Applications/") == true, "\(listed.map(\.name))")
 
     // ---- Spotlight's paths ----
     check("apps: Spotlight: an app elsewhere is kept", AppCatalog.spotlightKept("/Users/x/Tools/Thing.app", home: "/Users/x") && AppCatalog.spotlightKept("/Developer/Thing.app", home: "/Users/x"))
@@ -89,12 +92,12 @@ func appsTests() {
           && !AppCatalog.spotlightKept("/Users/x/Tools/thing.txt", home: "/Users/x"))
     let extra = more.appendingPathComponent("Atlas.app").path
     let withExtra = AppCatalog.scan(folders: [apps], extra: [extra, apps.appendingPathComponent("Editor.app").path], home: home)
-    check("apps: Spotlight's apps after the folders', a path already read not twice", withExtra.map(\.name) == ["Atlas", "Editor", "Writer", "Zed Notes"], "\(withExtra.map(\.name))")
+    check("apps: Spotlight's apps after the folders', a path already read not twice", withExtra.map(\.name) == ["Atlas", "Editor", "Margin", "Writer", "Zed Notes"], "\(withExtra.map(\.name))")
 
     // ---- the overlays' JSON ----
     let json = AppCatalog.json(listed, icons: ["com.example.editor": "data:image/png;base64,AAAA"])
     let parsed = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [[String: Any]]
-    check("apps: the JSON: [{ bundleId, name, icon }], icon null when none", parsed?.count == 4 && parsed?[1]["bundleId"] as? String == "com.example.editor"
+    check("apps: the JSON: [{ bundleId, name, icon }], icon null when none", parsed?.count == 5 && parsed?[1]["bundleId"] as? String == "com.example.editor"
           && parsed?[1]["icon"] as? String == "data:image/png;base64,AAAA" && parsed?[0]["icon"] is NSNull && Set(parsed?[0].keys.map { $0 } ?? []) == ["bundleId", "name", "icon"]
           && !json.contains("/Applications"), json)
 

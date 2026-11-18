@@ -680,6 +680,11 @@ func hostedTests() {
     check("hosted: Safari picked: a new web item in Safari (not Safari hosted as an app)", library.items().count == before + 1
           && library.items().contains { $0.value["url"] as? String == "about:blank" } && engine.shown == safari)
 
+    let beforeOwn = library.items().count
+    run { session.openApp("com.unibox.margin", windowId: 1) }
+    check("hosted: Margin picked in its own palette: never hosted, a new web item with the surprise instead", library.items().count == beforeOwn + 1
+          && library.items().contains { $0.value["url"] as? String == HostedSession.ownAppSurprise } && !engine.isHosted(HostTarget.app("com.unibox.margin").id))
+
     // ---- the page area moved (another theme): the one shown placed again, with the loading animation ----
     window.layout.left = 300
     let moved = window.hostedPlacement

@@ -1047,6 +1047,11 @@ final class HostedSession: LibraryDelegate {
     func openApp(_ bundleId: String, windowId: Int?) {
         if Self.isChromium(bundleId) { return note("\(bundleId): Chrome and Edge aren't hosted yet") }
         guard let w = window(windowId) else { return note("\(bundleId): no Margin window") }
+        if AppCatalog.isOwnApp(bundleId) {
+            // Margin picked inside Margin: never hosted in itself. A surprise instead, as a new web item.
+            library.perform("newTab", ["windowId": w.id, "url": Self.ownAppSurprise, "title": "Margin"])
+            return note("Margin picked in its own palette: the surprise")
+        }
         if options.safariBundles.contains(bundleId) {
             // Safari itself: a new web item, in the space's Safari profile.
             library.perform("newTab", ["windowId": w.id, "url": "about:blank", "title": "New Tab"])
@@ -1068,6 +1073,9 @@ final class HostedSession: LibraryDelegate {
         onChange?()
         enqueue { await self.show(item, url: nil, target: target, windowId: w.id) }
     }
+
+    // The official upload, played in Safari: nothing bundled.
+    static let ownAppSurprise = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
     static func isChromium(_ bundleId: String) -> Bool {
         bundleId.hasPrefix("com.google.Chrome") || bundleId.hasPrefix("com.microsoft.edgemac")
