@@ -127,7 +127,7 @@ if (changed.some((f) => /^(extension|app\/shared\/host)\/|^scripts\/build\.ts$|^
   for (const n of ['build.test.ts', 'manifest.test.ts']) { const t = join(ROOT, 'tests', n); if (existsSync(t)) pick(t, 'the build\'s inputs changed'); }
 }
 // (The app's Swift: app/platforms/macos/, each engine's app side (app/engines/), the connector, and the Swift tests.)
-const swift = all || changed.some((f) => /^(app\/platforms\/macos|app\/engines|app\/shared\/connector|tools\/app-tests)\//.test(f));
+const swift = all || changed.some((f) => /^(app\/platforms\/macos|app\/engines|app\/shared\/connector|tools\/app-tests|tools\/screen-tests\/apps)\//.test(f));
 // (The Rust workspace: any crate's source or the workspace's own files.)
 const rust = all || changed.some((f) => /\.rs$|(^|\/)Cargo\.(toml|lock)$|^rustfmt\.toml$/.test(f));
 const e2eFiles = all ? [] : E2E.filter((t) => abs.includes(t));

@@ -40,6 +40,8 @@ while read -r folder; do
 done < ../../app/platforms/macos/swift-sources.txt
 # The stand-in for Safari's folder, for the unit checks and the end-to-end ones.
 FAKE_SAFARI=../../app/engines/webkit/safari/tests/fake-safari.swift
+# Chameleon's switches (tools/screen-tests/apps/Chameleon): the unit checks' stand-in world plays them (behaviour-world.swift).
+CHAMELEON_SWITCHES=../screen-tests/apps/Chameleon/Switches.swift
 FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault)
 # Compiled on every core (batch mode): about 4x faster than one job.
 JOBS=(-j"$(sysctl -n hw.ncpu 2>/dev/null || echo 4)")
@@ -90,7 +92,7 @@ if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   if [ ! -f "$LIBRARY_JS" ] || [ -n "$(find ../../app/shared/library ../../extension -name '*.ts' -newer "$LIBRARY_JS" 2>/dev/null | head -1)" ]; then
     "$NODE" ../../scripts/build.ts >/dev/null || exit 1
   fi
-  build tests "${UNIT_TESTS[@]}" "${SHELL_SOURCES[@]}"
+  build tests "${UNIT_TESTS[@]}" "$CHAMELEON_SWITCHES" "${SHELL_SOURCES[@]}"
   MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" MARGIN_CONNECTOR_BIN="$CONNECTOR" MARGIN_LIBRARY_JS="$LIBRARY_JS" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then

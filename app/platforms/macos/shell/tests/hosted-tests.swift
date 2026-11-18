@@ -80,6 +80,10 @@ final class FakeHostedLinks: HostedLinks {
     var onCloseWindow: ((Int) -> Void)?
     var onHostShow: (() -> Void)? // (as the copy is asked for an item's tab)
     var refuse: Set<String> = []
+    // A copy not in charge (Safari running an older copy of Margin beside a newer one): this many newWindow asks answered
+    // `stale`, the newer copy's link replacing it as it answers (a new epoch).
+    var staleNewWindows = 0
+    var staleReplaces = true // (false: the stale copy's link isn't replaced as it answers; the test replaces it later)
     func safariProfiles() -> [String] { profiles }
     var menuOpens: [String] = [] // profiles woken through Safari's menu
     var wakes: Set<String> = [] // profiles that link when woken
@@ -102,6 +106,11 @@ final class FakeHostedLinks: HostedLinks {
         if refuse.contains(type) { return (nil, "refused") }
         switch type {
         case "newWindow":
+            if staleNewWindows > 0 {
+                staleNewWindows -= 1
+                if staleReplaces { epochs[profile] = "e\(asked.count + 1)" }
+                return (nil, "a newer copy of Margin is running")
+            }
             onNewWindow?(nextWindow, payload)
             nextWindow += 1
             return (["windowId": nextWindow - 1, "state": "normal"], nil)
@@ -126,6 +135,13 @@ final class FakeHostedLinks: HostedLinks {
 // An engine that only says which app Margin started (the restored-window sweep's one question).
 final class StubLaunchEngine: HostedEngine {
     var safariPid: pid_t?
+    // (A wake's evidence, as the engine gives it: the windows each press of Safari's menu opens, and whether Safari runs.)
+    var windowsPerPress = 0
+    var presses = 0
+    var runs: Bool?
+    func hideWoken(bundleId: String) { presses += 1 }
+    func wokenWindows(bundleId: String) -> Int { presses * windowsPerPress }
+    func appRuns(bundleId: String) -> Bool? { runs }
     func open(app target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.margin, "stub") }
     func show(_ id: HostID) async -> HostResult { .failed(.margin, "stub") }
     func close(_ id: HostID) async {}
@@ -351,7 +367,7 @@ func preparedBrowserTests(_ library: Library) {
         let r = rig()
         r.links.profiles = [] // (its copy isn't running: the profile has no window)
         r.links.wakes = ["s-default"]
-        r.session.options.linkWait = 0.2
+        r.session.options.firstCopiesPace = 0 // (no copy of Safari's own to wait for here)
         final class Woken { var n: Int? }
         let woken = Woken()
         // (The window the menu opens: in the current Space, Margin's, at the normal level, as an accessory Safari's do.)
@@ -412,6 +428,101 @@ func preparedBrowserTests(_ library: Library) {
               && lines.contains { $0.contains("the window opened to wake the profile closed: ok") } && lines.contains { $0.contains("browser prepared in") },
               "\(String(describing: r.engine.hosts[safari]?.window)) \(mine) \(lines.filter { $0.contains("wake") || $0.contains("prepared") })")
         hostRun { await r.engine.quitAll() }
+    }
+}
+
+// ---- a profile's copy waited for, waking it through Safari's menu: evidence decides, time only paces (2026-11-17 20:44:
+// Safari's first open took 36 s and failed: a press, a fixed 10 s, a second press, 20 s more, given up) ----
+func safariWakeTests(_ library: Library) {
+    // A session on a clock of its own: each look advances it by `every`; `at` runs things at a time.
+    func rig(linked: [String] = ["s-default"], windowsPerPress: Int = 1, runs: Bool? = true) -> (HostedSession, FakeHostedLinks, StubLaunchEngine, () -> Double, (Double, @escaping () -> Void) -> Void) {
+        let stub = StubLaunchEngine()
+        stub.windowsPerPress = windowsPerPress
+        stub.runs = runs
+        let links = FakeHostedLinks()
+        links.profiles = linked
+        let s = HostedSession(library: library, engine: stub, links: links)
+        final class Clock { var t = 100.0; var due: [(Double, () -> Void)] = [] }
+        let clock = Clock()
+        s.now = { clock.t }
+        s.sleep = { d in
+            clock.t += d
+            for (i, job) in clock.due.enumerated().reversed() where job.0 <= clock.t { clock.due.remove(at: i); job.1() }
+            await Task.yield()
+        }
+        return (s, links, stub, { clock.t - 100 }, { t, f in clock.due.append((100 + t, f)) })
+    }
+    do {
+        // Its window opened at the press; its copy links 35 s later (Safari refusing its native messages while another
+        // build's handler is in use): waited for, never pressed again, taken the moment it links.
+        let (s, links, _, elapsed, at) = rig()
+        at(35) { links.profiles.append("s-p") }
+        var ok = false
+        hostRun { ok = await s.safariLinked("s-p") }
+        check("wake: a press that opened a window: never pressed again; its copy's link waited for (35 s) and taken as it came",
+              ok && links.menuOpens == ["s-p"] && s.done.contains { $0.contains("linked in 35.0 s") }, "\(ok) \(links.menuOpens) \(elapsed()) \(s.done.suffix(2))")
+        check("wake: the wait said while it lasts", s.done.filter { $0.contains("not linked yet after") }.count >= 6, "\(s.done.suffix(4))")
+    }
+    do {
+        // No window comes of a press (a Safari still starting does nothing at one): pressed again, paced, at most
+        // `wakePresses` times, then given up, said why.
+        let (s, links, _, elapsed, _) = rig(windowsPerPress: 0)
+        var ok = true
+        hostRun { ok = await s.safariLinked("s-gone") }
+        check("wake: presses that open nothing: pressed again, paced, \(s.options.wakePresses) times, then given up on that evidence",
+              !ok && links.menuOpens.count == s.options.wakePresses && links.asked.isEmpty && s.done.contains { $0.contains("opened no window") }, "\(links.menuOpens) \(elapsed()) \(s.done.suffix(2))")
+        // ...and a window that comes of the second press: no third.
+        let (s2, links2, stub2, _, at2) = rig(windowsPerPress: 0)
+        at2(2.5) { stub2.windowsPerPress = 1 }
+        at2(12) { links2.profiles.append("s-late") }
+        var ok2 = false
+        hostRun { ok2 = await s2.safariLinked("s-late") }
+        check("wake: a window from the second press: no third, linked", ok2 && links2.menuOpens.count == 2, "\(links2.menuOpens)")
+    }
+    do {
+        // What it was for no longer wanted (another item picked): no longer waited for, at once.
+        let (s, links, _, elapsed, _) = rig()
+        var ok = true
+        hostRun { ok = await s.safariLinked("s-p", wakeIf: { elapsed() < 3 }) }
+        check("wake: not wanted any more (another pick): no longer waited for at once, said", !ok && links.menuOpens == ["s-p"] && elapsed() >= 3 && elapsed() < 3.2
+              && s.done.contains { $0.contains("no longer waited for") }, "\(elapsed()) \(s.done.suffix(2))")
+    }
+    do {
+        // Safari quit while waited for: given up at once.
+        let (s, _, stub, elapsed, at) = rig()
+        at(2) { stub.runs = false }
+        var ok = true
+        hostRun { ok = await s.safariLinked("s-p") }
+        check("wake: Safari quit while its copy was waited for: given up at once, said", !ok && elapsed() >= 2 && elapsed() < 2.2 && s.done.contains { $0.contains("Safari quit") }, "\(elapsed()) \(s.done.suffix(2))")
+    }
+    do {
+        // A Safari just started, no copy linked yet: its own copies first; this profile's among them (a window it
+        // restored): never pressed. Another's first: pressed then, at once.
+        let (s, links, _, elapsed, at) = rig(linked: [])
+        at(4) { links.profiles.append("s-p") }
+        var ok = false
+        hostRun { ok = await s.safariLinked("s-p") }
+        check("wake: a Safari just started: its own copies first, this profile's among them: never pressed", ok && links.menuOpens.isEmpty && elapsed() < 4.2, "\(links.menuOpens) \(elapsed())")
+        let (s2, links2, _, elapsed2, at2) = rig(linked: [])
+        at2(4) { links2.profiles.append("s-default") }
+        at2(9) { links2.profiles.append("s-p") }
+        var ok2 = false
+        hostRun { ok2 = await s2.safariLinked("s-p") }
+        check("wake: a Safari just started, another profile's copy first: pressed as it linked (4 s), linked at 9 s", ok2 && links2.menuOpens == ["s-p"] && s2.done.contains { $0.contains("linked in 9.0 s") }
+              && s2.done.contains { $0.contains("press 1") }, "\(links2.menuOpens) \(elapsed2()) \(s2.done)")
+    }
+    do {
+        // A window asked of a copy not in charge (stale) whose link isn't replaced: asked again once it is, however long
+        // (no fixed wait gives up on it), and not at all once it's no longer wanted.
+        let (s, links, _, elapsed, at) = rig(linked: ["s-default"])
+        links.staleNewWindows = 1
+        links.staleReplaces = false
+        links.epochs["s-default"] = "e0"
+        var made: HostSafariWindow?
+        at(25) { links.epochs["s-default"] = "e9" }
+        hostRun { made = await s.requestSafariWindow("s-default") }
+        check("wake: a stale copy's answer: asked again once its link was replaced (25 s), made", made != nil && links.asked.filter { $0.type == "newWindow" }.count == 2 && elapsed() >= 25,
+              "\(links.asked.map(\.type)) \(elapsed())")
     }
 }
 
@@ -626,20 +737,25 @@ func hostedTests() {
         woken.wakes = ["s-quiet"]
         let s2 = HostedSession(library: library, engine: engine, links: woken)
         s2.sleep = { _ in await Task.yield() }
+        s2.options.firstCopiesPace = 0
         var linked = false
         var made: HostSafariWindow?
         hostRun { linked = await s2.safariLinked("s-quiet"); made = await s2.requestSafariWindow("s-quiet") }
         check("hosted: a profile with no window is woken once through Safari's menu", woken.menuOpens == ["s-quiet"], "\(woken.menuOpens)")
         check("hosted: then linked, its window made, the waking window closed", linked && made != nil && woken.asked.map(\.type) == ["newWindow", "closeWindow"]
               && int(woken.asked.last?.payload["windowId"]) == 77, "\(woken.asked.map(\.type))")
-        let none = FakeHostedLinks()
-        let s3 = HostedSession(library: library, engine: engine, links: none)
-        s3.sleep = { _ in await Task.yield() }
-        s3.options.linkWait = 0.05
-        var never = true
-        hostRun { never = await s3.safariLinked("s-gone") }
-        check("hosted: a profile that never links: asked through the menu twice, then given up", !never && none.menuOpens == ["s-gone", "s-gone"] && none.asked.isEmpty, "\(none.menuOpens)")
+        // (2026-11-17 real-apps: a copy not in charge answered "a newer copy of Margin is running" and the open failed.)
+        let stale = FakeHostedLinks()
+        stale.profiles = ["s-default"]
+        stale.staleNewWindows = 1
+        let s4 = HostedSession(library: library, engine: engine, links: stale)
+        s4.sleep = { _ in await Task.yield() }
+        var madeAgain: HostSafariWindow?
+        hostRun { madeAgain = await s4.requestSafariWindow("s-default") }
+        check("hosted: a window asked of a copy not in charge (stale): asked again once another copy's link replaced it, made",
+              madeAgain != nil && stale.asked.filter { $0.type == "newWindow" }.count == 2, "\(stale.asked.map(\.type))")
     }
+    safariWakeTests(library)
     // ---- an app that can't go full screen (window mode): above Margin's own layout, kept below its window ----
     do {
         let ftId = HostTarget.app("com.apple.FaceTime").id, editId = HostTarget.app("com.apple.TextEdit").id

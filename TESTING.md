@@ -72,6 +72,10 @@ What the suite can't see (covered by `npm run test:app` and `npm run test:webkit
 - WebKit's own extension engine, Safari reloading Margin, tab ids changing on a relaunch;
 - the app's data files and the real Swift link.
 
+## The real-screen suite (2026-11-17)
+
+`npm run test:screen` (tools/screen-tests/README.md): Margin hosting the behaviour test app, Chameleon, on the real window server, one scenario per behaviour class of docs/HOSTING-CORE.md plus check10's steps; opt-in, the person's own apps (`-- --real-apps`). Required before every install; never in CI. It refuses to start unless the Mac has been idle 180 s and isn't locked, prints its whole plan first, stops at the first sign of the person and puts everything back (Margin's defaults, the test apps removed, the starting Space). `-- --dry-run` prints the plan and touches nothing. Each part runs under a hard 10-minute limit; all the Chameleon parts take about half an hour. Many behaviour scenarios fail against today's engine: that's the baseline the reconciler turns green. Rule: a real-screen bug isn't fixed until its behaviour class exists in Chameleon, the stand-in world (`app/platforms/macos/shell/tests/behaviour-world.swift`) and the suite, and the suite fails without the fix.
+
 ## Safari startup (2026-11-10)
 
 - [ ] With Safari closed, Activity Monitor shows only the resident `margin-helper`. Open Safari: a second `margin-helper --splash …` briefly shows a small “Getting things ready for you” card before Margin.app's full-window cover/layout. The child goes when the app draws. Switching to another app after the card appears or quitting Safari dismisses it; a failed startup dismisses it within six seconds. No Dock icon or keyboard-focus change.

@@ -79,12 +79,16 @@ final class FakeRegistrar: HotKeyRegistrar {
     idleQuit()
     privateCallsTests() // private-calls-tests.swift
     hostTests() // host-tests.swift: the host engine against a stand-in window manager, and its calls' check
+    hostModelTests() // host-model-tests.swift: the hosting core's window kinds, its observed model and its observer
     hostedTests() // hosted-tests.swift: the library, the host engine and the Safari copies joined 
     marginWindowTests() // margin-window-tests.swift: Margin's own window 
     devHooksTests() // devhooks-tests.swift (DEV-HOOK: removed with the hook)
     themeTests() // theme-tests.swift
     appsTests() // apps-tests.swift: installed apps for the palette, fake bundles in a temporary folder
     relayTests() // relay-tests.swift: Chrome's and Edge's relay, the real helper
+    behaviourWorldTests() // behaviour-world.swift: Chameleon's switches and their stand-ins (tools/screen-tests)
+    hostReconcilerTests() // host-reconciler-tests.swift: the hosting core's reconciler, a table row per case
+    hostBehaviourTests() // host-behaviour-tests.swift: every behaviour class hosted by the engine, the desired state reached
     print(failures == 0 ? "all \(passed) checks passed" : "\(failures) of \(passed + failures) checks failed", String(format: "(%.2f s)", Date().timeIntervalSince(started)))
     exit(failures == 0 ? 0 : 1)
   }

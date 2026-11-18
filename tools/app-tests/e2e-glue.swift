@@ -268,9 +268,6 @@ func glueScenario() async {
   host.every = 0.01
   host.privateRetire = 0
   options.hostOptions = host
-  var hostedOptions = HostedSession.Options()
-  hostedOptions.linkWait = 5
-  options.hostedOptions = hostedOptions
   // (Margin's quit, as the app's terminate would come back to the shell's stop; asking, kept here.)
   final class Quit { var asks = true; var asked = 0; var stopped = false; var run: () -> Void = {} }
   let quit = Quit()
@@ -882,15 +879,16 @@ func glueScenario() async {
   check("a Space swipe: another app's full-screen window (not hosted, in its own Space by its Space read) in the on-screen list while the current Space still reads Margin's: never let in front, Margin's level stays raised",
         c.yieldingTo == nil && c.window.level == FrontMechanism.raised && c.mechanism == .level && c.yieldOrders == 1, "yielding \(String(describing: c.yieldingTo)) level \(c.window.level.rawValue)")
   let shownPid = hostedPidNow()
-  // (Reaching over the sidebar's edge, not covering it: a window over a quarter of the sidebar or more is never let in
-  // front, 2026-11-17 14:06, host-tests' "yield" check.)
-  world.extraOnScreen = [ServerWindow(number: 4343, pid: shownPid, bounds: CGRect(x: display.minX + 200, y: display.minY + 120, width: 700, height: 500))]
+  // (Beside the sidebar, reaching above the page area: a window over the sidebar at all is never let in front, the
+  // hosting core's stage 3, host-tests' "yield" check.)
+  let pageNow = engine.pageRect
+  world.extraOnScreen = [ServerWindow(number: 4343, pid: shownPid, bounds: CGRect(x: pageNow.minX + 40, y: display.minY, width: 700, height: 500))]
   world.extraSpaces[4343] = [GlueHostWorld.marginSpace]
   engine.poll()
   let notYet = c.yieldingTo == nil
   try? await Task.sleep(nanoseconds: 260_000_000)
   engine.poll()
-  check("the hosted app's own extra window in Margin's Space (its Settings, reaching over the sidebar's edge): not at the first poll, let in front at the second (the normal level, ordered right below it)",
+  check("the hosted app's own extra window in Margin's Space (its Settings, reaching above the page area beside the sidebar): not at the first poll, let in front at the second (the normal level, ordered right below it)",
         shownPid != 0 && notYet && c.yieldingTo == 4343 && c.window.level == .normal && c.yieldOrders == 2, "first \(notYet) yielding \(String(describing: c.yieldingTo)) level \(c.window.level.rawValue)")
   let ordersYield = c.frontOrders
   world.extraOnScreen = []

@@ -35,6 +35,10 @@ protocol HostSystem: AnyObject {
     func isHidden(pid: pid_t) -> Bool?
     // Unhidden (NSRunningApplication.unhide: never activated). True: asked.
     func unhide(pid: pid_t) -> Bool
+    // A Dock-icon click on a running app (kAEReopenApplication, an Apple event straight to its process, never through
+    // LaunchServices: an open there promotes an app Margin started with no Dock icon to a Dock app, 2026-11-15): the app
+    // orders its main window in, or makes a new one (Maps running with no window, 2026-11-17 15:19). True: sent.
+    func reopen(pid: pid_t) -> Bool
 
     // ---- windows, through Accessibility: read, full screen set, a window-mode host's frame set ----
     // (Accessibility lists only the current Space's windows: the engine moves a window there before it sets its frame.)
@@ -57,7 +61,16 @@ protocol HostSystem: AnyObject {
     // stale once its window has left the current Space: every set through it refused after). True: found again.
     func refreshWindow(pid: pid_t, window: Int) async -> Bool
     // Its app in front and the window raised and made its main one (AXRaise, AXMain): never a click. True: asked.
+    // (NSRunningApplication.activate(from: Margin): macOS 14's cooperative activation takes it only while Margin is the
+    // active app, which it never is since its UI is a panel (2026-11-17): `frontmost` is what brings the app forward.)
     func activate(pid: pid_t, window: Int) async -> Bool
+    // The app made the front app by Accessibility (AXFrontmost on its application element: the app activates itself,
+    // as an app does at a Dock-icon click, so Margin needn't be active). An app started hidden (LaunchServices' hide
+    // option) is unhidden by it; its windows ordered in while it was hidden come on screen only so (2026-11-17, the
+    // Phone: off screen in Margin's Space until its own reopen made it the front process). True: Accessibility took it.
+    func frontmost(pid: pid_t) async -> Bool
+    // The front app's pid now (NSWorkspace's), for the log; nil: unread.
+    func frontApp() -> pid_t?
     // Closed as its close button would (AXPress on its AXCloseButton, an action, never a click). True: asked.
     func close(pid: pid_t, window: Int) async -> Bool
     // AXEnhancedUserInterface on the app's element (what assistive apps set; some apps expose their windows to
@@ -118,6 +131,11 @@ protocol HostSystem: AnyObject {
 }
 
 extension HostSystem {
+    // (A stand-in that doesn't play it: not sent.)
+    func reopen(pid: pid_t) -> Bool { false }
+    // (A stand-in that doesn't play it: not taken, front app unread.)
+    func frontmost(pid: pid_t) async -> Bool { false }
+    func frontApp() -> pid_t? { nil }
     // (A stand-in that doesn't play it: none.)
     func focusedWindow(pid: pid_t) async -> Int? { nil }
     func frameError(window: Int) -> Int32? { nil }
@@ -311,6 +329,17 @@ nonisolated final class HostAX: @unchecked Sendable {
         }
     }
 
+    // The app made the front app: AXFrontmost on its application element (an attribute, never a click).
+    func frontmost(pid: pid_t) async -> Bool {
+        guard !refuses, AXIsProcessTrusted() else { return false }
+        return await withCheckedContinuation { c in
+            queue.async {
+                let app = AXUIElementCreateApplication(pid)
+                c.resume(returning: AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue) == .success)
+            }
+        }
+    }
+
     // The window raised and made its app's main one (actions and attributes, never a click).
     func raise(pid: pid_t, window: Int) async -> Bool {
         guard !refuses, AXIsProcessTrusted() else { return false }
@@ -452,6 +481,41 @@ final class RealHostSystem: HostSystem {
         return a.unhide()
     }
 
+    // Sent off the main thread, its answer waited for (at most `reopenAnswerWait`), never interacting, and what came of
+    // it said in the log: answered (the app took it: its handler ran), sent and not answered in time, refused by the
+    // system (errAEEventNotPermitted -1743: Automation would need its entitlement and the person's consent), or not
+    // delivered (its process gone). Seen 2026-11-17 on the real screen without the apple-events entitlement: Chameleon
+    // logged each reopen at once, the Phone's UIKit logged `aevt/rapp` and came forward (a reopen is one of the events
+    // a hardened app sends without Automation's consent). True: sent to a running app (the answer is the log's).
+    nonisolated static let reopenAnswerWait = 1.0
+    private let reopenQueue = DispatchQueue(label: "margin.host.reopen", qos: .userInitiated)
+    func reopen(pid: pid_t) -> Bool {
+        guard !PrivateCalls.inTests, let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return false }
+        let bundle = a.bundleIdentifier ?? "pid \(pid)"
+        reopenQueue.async { Self.sendReopen(pid: pid, bundle: bundle) }
+        return true
+    }
+    nonisolated private static func sendReopen(pid: pid_t, bundle: String) {
+        let event = NSAppleEventDescriptor(eventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEReopenApplication),
+                                           targetDescriptor: NSAppleEventDescriptor(processIdentifier: pid), returnID: AEReturnID(kAutoGenerateReturnID),
+                                           transactionID: AETransactionID(kAnyTransactionID))
+        guard let desc = event.aeDesc else { return }
+        var reply = AEDesc()
+        let t0 = ProcessInfo.processInfo.systemUptime
+        let err = AESendMessage(desc, &reply, AESendMode(kAEWaitReply | kAENeverInteract), Int(reopenAnswerWait * 60))
+        AEDisposeDesc(&reply)
+        let ms = Int(((ProcessInfo.processInfo.systemUptime - t0) * 1000).rounded())
+        let said: String
+        switch Int(err) {
+        case Int(noErr): said = "delivered: answered in \(ms) ms"
+        case Int(errAETimeout): said = "sent, not answered within \(ms) ms (the app's handler hadn't run)"
+        case -1743: said = "REFUSED by the system (error -1743: Automation's entitlement and the person's consent would be needed)"
+        case Int(procNotFound), Int(connectionInvalid): said = "not delivered (error \(err): its process is gone)"
+        default: said = "error \(err) after \(ms) ms"
+        }
+        DispatchQueue.main.async { MainActor.assumeIsolated { Diagnostics.note("host: a reopen (kAEReopenApplication) to \(bundle) (pid \(pid)): \(said)") } }
+    }
+
     func enhancedUserInterface(pid: pid_t) async -> Bool? { await ax.enhancedUserInterface(pid: pid) }
     func setEnhancedUserInterface(pid: pid_t, _ on: Bool) async -> Bool { await ax.setEnhancedUserInterface(pid: pid, on) }
 
@@ -476,6 +540,11 @@ final class RealHostSystem: HostSystem {
         let raised = await ax.raise(pid: pid, window: window)
         return a.activate(from: NSRunningApplication.current, options: []) || raised
     }
+    func frontmost(pid: pid_t) async -> Bool {
+        guard !PrivateCalls.inTests, NSRunningApplication(processIdentifier: pid).map({ !$0.isTerminated }) == true else { return false }
+        return await ax.frontmost(pid: pid)
+    }
+    func frontApp() -> pid_t? { NSWorkspace.shared.frontmostApplication?.processIdentifier }
 
     // The View › Show Sidebar item's title (SafariAX, ShellSafariSidebar.swift): "Hide Sidebar" while it's open,
     // "Show Sidebar" while it's closed; in another language, unknown.
