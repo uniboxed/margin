@@ -268,9 +268,6 @@ func glueScenario() async {
   host.every = 0.01
   host.privateRetire = 0
   options.hostOptions = host
-  var hostedOptions = HostedSession.Options()
-  hostedOptions.linkWait = 5
-  options.hostedOptions = hostedOptions
   // (Margin's quit, as the app's terminate would come back to the shell's stop; asking, kept here.)
   final class Quit { var asks = true; var asked = 0; var stopped = false; var run: () -> Void = {} }
   let quit = Quit()

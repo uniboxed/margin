@@ -535,7 +535,7 @@ final class HostEngine {
     // it), in a user Space, not hosted and not there at the press, goes into a private Space of its own (the poll, and
     // the end of every operation). Never more windows than presses: a window the person opens in that app after it is
     // theirs. `stopHidingWoken`: one last look, then no more new ones (a window Margin asks of it next is its own).
-    private struct Woken { var pid: pid_t; var known: Set<Int>; var until: Double; var space: UInt64?; var parked: [Int] = []; var budget = 0 }
+    private struct Woken { var pid: pid_t; var known: Set<Int>; var until: Double; var space: UInt64?; var parked: [Int] = []; var budget = 0; var seen = 0 }
     private var woken: [String: Woken] = [:]
     var wakeHideFor = 10.0
     func hideWoken(bundleId: String) {
@@ -558,6 +558,14 @@ final class HostEngine {
     }
     // Windows parked so, still open (their close not confirmed yet).
     func wokenParked(bundleId: String) -> [Int] { woken[bundleId]?.parked.filter { sys.bounds(window: $0) != nil } ?? [] }
+    // The windows the presses opened so far, looked for now (out of sight at once: HostedSession.safariLinked asks while
+    // an open waits for the link, when the poll is held off by that open; the woken window sat in Margin's Space, over
+    // the page area, for the 15 s the link took, 2026-11-17 20:47).
+    func wokenWindows(bundleId: String) -> Int {
+        parkWoken()
+        return woken[bundleId]?.seen ?? 0
+    }
+    func appRuns(bundleId: String) -> Bool? { !sys.running(bundleId: bundleId).isEmpty }
     private func parkWoken() {
         guard !woken.isEmpty, !quitting else { return }
         for bundle in woken.keys.sorted() {
@@ -567,6 +575,7 @@ final class HostEngine {
             for win in serverList(pid: w.pid) ?? [] where w.budget > 0 && !w.known.contains(win.number) && win.layer == 0 && win.bounds.width >= 100 && win.bounds.height >= 100 && !isHosted(window: win.number) {
                 guard !(sys.spaces(window: win.number) ?? []).isEmpty else { continue } // (not ordered in yet: looked at again)
                 w.known.insert(win.number)
+                w.seen += 1
                 if w.space == nil { w.space = sys.createPrivateSpace() }
                 guard let space = w.space, sys.move(window: win.number, to: space) else {
                     Diagnostics.warn("host: \(bundle): the window \(win.number) it opened only to wake a profile couldn't be parked out of sight")

@@ -3970,4 +3970,24 @@ func session1405Tests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         check("woken: closed and released: its private Space destroyed", w.privates.count == spaces - 1, "\(w.privates)")
         hostRun { await e.quitAll() }
     }
+    do {
+        // Looked for by the session while it waits for the profile's link (an open under way holds the poll off: the woken
+        // window sat in Margin's Space over the page area for the 15 s the link took, 2026-11-17 20:47): parked at that
+        // look, and counted (the press's evidence that it took). Nothing counted before the window is there.
+        let (w, e, _) = world()
+        let sp = w.start("com.apple.Safari", policy: .accessory, windows: 1)
+        e.hideWoken(bundleId: "com.apple.Safari")
+        let none = e.wokenWindows(bundleId: "com.apple.Safari")
+        let n = w.nextWindow
+        w.nextWindow += 1
+        w.wins[n] = FakeHostWorld.Win(pid: sp, spaces: [w.current])
+        w.apps[sp]?.windows.append(n)
+        let one = e.wokenWindows(bundleId: "com.apple.Safari") // (no poll: as during an open)
+        check("woken: looked for between polls (an open under way): the window parked out of sight at once and counted; none before it came",
+              none == 0 && one == 1 && w.wins[n]?.priv != nil && e.appRuns(bundleId: "com.apple.Safari") == true && e.appRuns(bundleId: "com.apple.Notes") == false,
+              "\(none) \(one) \(String(describing: w.wins[n]))")
+        w.closeWindow(n)
+        e.releaseWoken(bundleId: "com.apple.Safari")
+        hostRun { await e.quitAll() }
+    }
 }

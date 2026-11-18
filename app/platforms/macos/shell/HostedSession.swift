@@ -79,6 +79,10 @@ protocol HostedEngine: AnyObject {
     func hideWoken(bundleId: String)
     func stopHidingWoken(bundleId: String)
     func releaseWoken(bundleId: String)
+    // The windows the presses have opened so far (each parked out of sight as it's listed, looked for now): the press's
+    // evidence that it took. And whether the app runs at all (nil: not known, a stand-in).
+    func wokenWindows(bundleId: String) -> Int
+    func appRuns(bundleId: String) -> Bool?
 }
 
 extension HostedEngine {
@@ -86,6 +90,8 @@ extension HostedEngine {
     func hideWoken(bundleId: String) {}
     func stopHidingWoken(bundleId: String) {}
     func releaseWoken(bundleId: String) {}
+    func wokenWindows(bundleId: String) -> Int { 0 }
+    func appRuns(bundleId: String) -> Bool? { nil }
     var preparesOutOfSight: Bool { false }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
@@ -189,7 +195,10 @@ protocol HostedLinks: AnyObject {
 
 final class HostedSession: LibraryDelegate {
     struct Options {
-        var linkWait = 20.0 // a Safari copy's link (a Safari Margin just started takes ~12 s: docs/MARGIN-APP.md)
+        var firstCopiesPace = 10.0 // a Safari with no copy linked yet: its own copies' turn before its menu is pressed for a profile
+        var pressPace = 2.0 // Safari's menu pressed again after this (times the presses so far) while no window came of one
+        var wakePresses = 4 // ...this many presses at most, each opening nothing: given up
+        var linkSayEvery = 5.0 // a profile's copy still not linked: said this often
         var fullScreenWait = 6.0 // Margin's window into full screen
         var pageWait = 3.0 // its page area measured (its layout in full screen, hosting)
         var every = 0.05
@@ -765,38 +774,67 @@ final class HostedSession: LibraryDelegate {
     private var requesting: Set<String> = [] // profiles a window is being asked of right now
     private var made_: Set<Int> = [] // every Safari window Margin has made (the copies' ids): never swept
 
-    // `wakeIf`: asked right before each press of Safari's menu; false: not woken (nothing is opened for nothing).
+    // A profile's copy linked, waking it through Safari's menu if it has no window. Evidence decides, time only paces
+    // (Tirth, 2026-11-17: "time only paces retries and drives feedback"): its link taken the moment it comes (never a
+    // fixed wait first); Safari's menu pressed once Safari's own copies have had their turn (a copy of a window it
+    // restored links by itself) and pressed again only while no window came of a press (a Safari still starting does
+    // nothing at one), never once one did; given up only on evidence: what it was for isn't wanted any more (`wakeIf`,
+    // else the show waiting on it overtaken by another pick), Safari quit, or every press opened nothing. While a window
+    // came and the copy hasn't linked (2026-11-17: another build of Margin's extension handler in use made Safari refuse
+    // its native messages for 15–35 s), it's waited for, said every `linkSayEvery`.
+    // `wakeIf`: asked right before each press and at each look; false: not woken, or no longer waited for.
     func safariLinked(_ profile: String?, wakeIf wanted: (() -> Bool)? = nil) async -> Bool {
         let p = resolve(profile)
         if links.safariProfiles().contains(p) { return true }
-        // Safari is open but this profile has no window, so its copy isn't running (seen 2026-11-15: a space of a
-        // profile with no window never linked): one window of it from Safari's menu; Margin closes it again once its
-        // own window is made (requestSafariWindow).
-        // A Safari just started (by Margin, with no Dock icon) has no menus and no copies for a while (~12 s to the first
-        // link, docs/MARGIN-APP.md): its own copies first (the profile may be among them), the menu only after.
-        if links.safariProfiles().isEmpty {
-            _ = await wait(options.linkWait) { !self.links.safariProfiles().isEmpty }
-            if links.safariProfiles().contains(p) { return true }
-        }
-        // Asked through the menu twice at most (seen 2026-11-15: a press while Safari was still starting did nothing).
-        var linked = false
-        for attempt in 1...2 where !linked {
-            if let wanted, !wanted() {
-                note("a Safari profile with no window: not woken (what it was for isn't wanted any more)")
+        let wanted = wanted ?? { self.linkWanted(p) }
+        let started = now()
+        let ranAtStart = engine.appRuns(bundleId: safariIdentifier) == true
+        let seenBefore = engine.wokenWindows(bundleId: safariIdentifier)
+        var presses = 0, pressedAt = started, saidAt = started
+        // (Its own copies first: a Safari just started has no menus and no copies for a while, ~4–12 s to the first link,
+        // and the profile may be among the windows it restores. Pressed once one has linked and it isn't this profile's,
+        // or after `firstCopiesPace` with none.)
+        if links.safariProfiles().isEmpty { note("a Safari profile not linked yet: Safari's own copies waited for first (a window it restores links by itself)") }
+        while !links.safariProfiles().contains(p) {
+            guard wanted() else {
+                note(presses == 0 ? "a Safari profile with no window: not woken (what it was for isn't wanted any more)"
+                                  : "a Safari profile woken: its copy no longer waited for (what it was for isn't wanted any more), \(secs(since: started)) s")
                 return false
             }
-            // (The window it opens is parked out of sight as soon as it's listed: it opens in the current Space, Margin's,
-            // and would show through the page area over what's shown.)
-            engine.hideWoken(bundleId: safariIdentifier)
-            if links.openProfileWindow(p) {
-                note("a Safari profile with no window: one opened from Safari's menu so its copy links (try \(attempt))")
-                if wokenByMenu[p] == nil { wokenByMenu[p] = [] }
-            } else if wokenByMenu.isEmpty {
-                engine.releaseWoken(bundleId: safariIdentifier) // (nothing pressed: nothing to hide)
+            if ranAtStart, engine.appRuns(bundleId: safariIdentifier) == false {
+                note("Safari quit while its profile's copy was waited for (\(secs(since: started)) s)")
+                return false
             }
-            linked = await wait(attempt == 1 ? options.linkWait / 2 : options.linkWait) { self.links.safariProfiles().contains(p) }
+            let t = now()
+            let opened = engine.wokenWindows(bundleId: safariIdentifier) - seenBefore // (also parks them out of sight now)
+            let press: Bool
+            if presses == 0 { press = !links.safariProfiles().isEmpty || t - started >= options.firstCopiesPace }
+            else { press = opened == 0 && t - pressedAt >= options.pressPace * Double(presses) }
+            if press {
+                guard presses < options.wakePresses else {
+                    note("a Safari profile with no window: \(presses) presses of Safari's menu opened no window (\(secs(since: started)) s): given up")
+                    return false
+                }
+                presses += 1
+                pressedAt = t
+                // (The window it opens is parked out of sight as soon as it's listed: it opens in the current Space, Margin's,
+                // and would show through the page area over what's shown.)
+                engine.hideWoken(bundleId: safariIdentifier)
+                if links.openProfileWindow(p) {
+                    note("a Safari profile with no window: one opened from Safari's menu so its copy links (press \(presses)\(presses > 1 ? ": no window came of the one before" : ""))")
+                    if wokenByMenu[p] == nil { wokenByMenu[p] = [] }
+                } else {
+                    note("a Safari profile with no window: Safari's menu couldn't be pressed (press \(presses))")
+                    if wokenByMenu.isEmpty { engine.releaseWoken(bundleId: safariIdentifier) } // (nothing pressed: nothing to hide)
+                }
+            }
+            if t - saidAt >= options.linkSayEvery {
+                saidAt = t
+                note("a Safari profile's copy not linked yet after \(secs(since: started)) s (\(presses == 0 ? "Safari's own copies first" : opened > 0 ? "its window opened: its copy waited for" : "no window of the press yet")); linked: \(links.safariProfiles().count) profile(s)")
+            }
+            await sleep(options.every)
         }
-        guard linked else { return false }
+        note("a Safari profile linked in \(secs(since: started)) s\(presses == 0 ? "" : " (\(presses) press\(presses == 1 ? "" : "es") of Safari's menu)")")
         if wokenByMenu[p] != nil {
             _ = await wait(1.5) { !self.links.windowIds(of: p).isEmpty }
             wokenByMenu[p] = links.windowIds(of: p)
@@ -804,6 +842,14 @@ final class HostedSession: LibraryDelegate {
         }
         return true
     }
+    // Whether a show waiting on profile `p`'s link is still wanted: no other item asked for in a Margin window since
+    // (the person's next pick, or the next item the suite hosts, overtakes it). Nothing being shown for it: wanted.
+    private func linkWanted(_ p: String) -> Bool {
+        if preparingProfile == p { return requested.isEmpty } // (the launch's preparation: until the person asks for something)
+        guard let item = showing[HostTarget.safariWindow(p).id] else { return true }
+        return requested.values.allSatisfy { $0 == item }
+    }
+    private func secs(since t: Double) -> String { String(format: "%.1f", now() - t) }
     private(set) var wokenByMenu: [String: [Int]] = [:] // a profile woken through Safari's menu: the windows it had then
     private var wokenLinkedAt: [String: Double] = [:] // ...and when its copy linked
 
@@ -837,17 +883,28 @@ final class HostedSession: LibraryDelegate {
         // keeps Margin's Space current while it's made; Margin is activated again after.)
         if wokenByMenu[p] != nil { engine.stopHidingWoken(bundleId: safariIdentifier) } // (the window asked for now is Margin's own: never parked so)
         let payload: JSONObject = preparingProfile == p ? ["fullscreen": false, "url": "about:blank"] : ["fullscreen": false]
+        var askedEpoch = links.linkEpoch(of: p) // (the link the ask went on: one replaced while it was answered counts as back)
         var (result, error) = await links.request(profile: p, "newWindow", payload)
         // (A copy that isn't the one in charge answers `stale`, and a copy just starting can drop its link: Safari keeps an
         // older copy of Margin running beside a newer one (an update, a second build; 2026-11-17 real-apps: "a newer copy
         // of Margin is running", its links down a moment later, the open failed; three minutes later the same ask was
-        // made). Asked again, at most twice, once the profile's link is back or another copy's link replaced it.)
+        // made). Asked again, at most twice, once the profile's link is back or another copy's link replaced it: waited
+        // for as long as what it's for is wanted (evidence, not a time: `linkWanted`), said every `linkSayEvery`.)
         for attempt in 1...2 {
             guard result.flatMap({ SpaceWindowAnswer($0) }) == nil, let e = error, Self.askAgain(e) else { break }
-            let epoch = links.linkEpoch(of: p)
+            let epoch = askedEpoch
             note("Safari window for a profile: not made (\(e)): asked again once its copy's link is back or another copy's (try \(attempt + 1))")
-            _ = await wait(options.linkWait / 2) { let now = self.links.linkEpoch(of: p); return now != nil && now != epoch }
-            if links.linkEpoch(of: p) == nil { break }
+            let t0 = now()
+            var saidAt = t0
+            while true {
+                let now = links.linkEpoch(of: p)
+                if now != nil && now != epoch { break }
+                guard linkWanted(p) else { break }
+                if self.now() - saidAt >= options.linkSayEvery { saidAt = self.now(); note("Safari window for a profile: its copy's link not back yet after \(secs(since: t0)) s") }
+                await sleep(options.every)
+            }
+            guard let back = links.linkEpoch(of: p), back != epoch else { break }
+            askedEpoch = back
             (result, error) = await links.request(profile: p, "newWindow", payload)
         }
         guard let made = result.flatMap({ SpaceWindowAnswer($0) }) else {

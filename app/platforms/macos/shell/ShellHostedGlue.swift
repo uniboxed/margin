@@ -94,6 +94,8 @@ final class LateHostEngine: HostedEngine {
     func hideWoken(bundleId: String) { resolve()?.hideWoken(bundleId: bundleId) }
     func stopHidingWoken(bundleId: String) { resolve()?.stopHidingWoken(bundleId: bundleId) }
     func releaseWoken(bundleId: String) { resolve()?.releaseWoken(bundleId: bundleId) }
+    func wokenWindows(bundleId: String) -> Int { resolve()?.wokenWindows(bundleId: bundleId) ?? 0 }
+    func appRuns(bundleId: String) -> Bool? { resolve()?.appRuns(bundleId: bundleId) }
 }
 
 extension Shell {
