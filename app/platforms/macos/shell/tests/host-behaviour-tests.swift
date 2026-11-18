@@ -89,7 +89,9 @@ func hostBehaviourTests() {
         if mains.count != 1 { problems.append("\(mains.count) main windows at the page area (\(windows.map { "\($0) \(Int(b($0).minX)),\(Int(b($0).minY)) \(Int(b($0).width))×\(Int(b($0).height)) \(w.shows($0) ? "on" : "off") \(w.wins[$0].map { $0.priv != nil ? "parked" : "\($0.spaces)" } ?? "?")" }))") }
         let leftovers = mainKind.filter { $0 != mains.first && !r.b.kept.contains($0) && inUser($0) }
         if !leftovers.isEmpty { problems.append("leftovers in user Spaces \(leftovers)") }
-        let strips = windows.filter { isStrip($0) && w.shows($0) }
+        // (A full-screen window's own toolbar resting above its frame, behind Margin's panel, out of the page area: the
+        // suite's strip is the display's width, which Safari's 1154-wide one isn't; the stand-in's page is wider.)
+        let strips = windows.filter { isStrip($0) && w.shows($0) && w.toolbarHost($0) == nil }
         if !strips.isEmpty { problems.append("strips on screen \(strips)") }
         if let f = r.letInFront {
             let side = CGRect(x: FakeHostWorld.display.minX, y: FakeHostWorld.display.minY, width: page.minX - FakeHostWorld.display.minX, height: FakeHostWorld.display.height)
@@ -268,6 +270,31 @@ func hostBehaviourTests() {
         let h = held(r, chameleon, 5)
         check("behaviour strip linger: its full-width strip out of sight (parked), its window at the page area: \(d.why)", shown(result) && d.ok && said(r, "→ park strip") >= 1, "\(r.lines.filter { $0.contains("strip") })")
         check("behaviour strip linger: held 5 s: \(h.why)", h.ok)
+        finish(r)
+    }
+    // ---- a full-screen window's own toolbar window resting above its frame (Safari, the real-apps run of 2026-11-17 19:17:
+    // its toolbar window 74772 at the page's width above 74770, in the same Space, moved by the window server with it;
+    // parked as a strip, it took the hosted window out of Margin's Space each time, brought back, parked again, until
+    // the show was given up): the app's own, never parked, moved or reordered; the window held through a switch ----
+    do {
+        let (r, result) = scenario([:]) { $0.toolbarAbove = [chameleon] }
+        let done = listen(r)
+        let id = HostTarget.app(chameleon).id
+        let hosted = r.e.hosts[id]?.window ?? 0
+        let toolbar = r.w.toolbarOf[hosted] ?? 0
+        let h1 = held(r, chameleon, 5)
+        let away = show(r, plain)
+        run(r, 1)
+        let parkedTogether = r.w.wins[hosted]?.priv != nil && r.w.spaces(window: toolbar) == []
+        let back = show(r, chameleon)
+        let h2 = held(r, chameleon, 5)
+        done()
+        let moved = r.w.calls.filter { $0.hasPrefix("move \(toolbar) ") }
+        check("behaviour toolbar above its frame: its own toolbar window (same Space, at its top edge) left alone: never parked, moved or reordered by Margin, the window at the page area held 5 s: \(h1.why)",
+              shown(result) && toolbar != 0 && h1.ok && said(r, "→ park strip") == 0 && moved.isEmpty && r.w.spaces(window: toolbar) == [margin],
+              "toolbar \(toolbar) \(String(describing: r.w.bounds(window: toolbar))) moves \(moved) \(r.lines.filter { $0.contains("→") || $0.contains("out of Margin's Space") })")
+        check("behaviour toolbar above its frame: through a switch away and back (parked with its window, in again with it), held 5 s: \(h2.why)",
+              shown(away) && shown(back) && parkedTogether && h2.ok && said(r, "→ park strip") == 0 && said(r, "out of Margin's Space") == 0, "\(r.lines.filter { $0.contains("→") || $0.contains("out of Margin's Space") })")
         finish(r)
     }
     // ---- noFullScreen, fixedSize: window mode, its window off screen in Margin's Space until its app is the front app (the

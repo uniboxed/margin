@@ -253,6 +253,8 @@ final class HostEngine {
         var offPageReads = 0 // polls in a row a shown member wasn't at the page area
         var gone = false
         var goneAt: Double?
+        // Its full-screen window's own toolbar windows (`ownToolbar`): left as they are while they're where it is.
+        var toolbars: Set<Int> = []
         init(id: HostID, target: HostTarget, pid: pid_t, window: Int, launchedByMargin: Bool, madeByMargin: Bool, safariWindow: Int? = nil) {
             self.id = id
             self.target = target
@@ -700,7 +702,6 @@ final class HostEngine {
             s.replacement = m
         }
         let parked = parkedOthers[host.pid]?.windows ?? []
-        let frame = mine?.bounds ?? .zero
         // (Only one host of an app speaks for its leftovers and strips: the one shown, else the first.)
         let sameApp = hosts.values.filter { $0.pid == host.pid }
         let speaker = sameApp.first { $0.phase == .shown && shown == $0.id } ?? sameApp.min { $0.id.raw < $1.id.raw }
@@ -722,14 +723,30 @@ final class HostEngine {
                 s.leftovers.append(HostOther(number: w.number, place: w.place, onScreen: w.onScreen,
                                              closable: w.number < host.window && w.place == .margin && s.marginCurrent && w.ax != nil && !keeps()))
             case .strip:
-                // (Its full-screen toolbar, inside its window's frame at its top, is the app's own: left as it is.)
-                // (In the same Space as its window only: one in another Space is a strip of another window's.)
-                guard !(host.member && w.place == mine?.place && frame.insetBy(dx: -2, dy: -2).contains(w.bounds)) else { continue }
+                // (Its full-screen window's own toolbar is the app's: never parked, moved or reordered.)
+                guard !ownToolbar(w, of: host, mine: mine) else { continue }
                 s.strips.append(HostOther(number: w.number, place: w.place, onScreen: w.onScreen))
             default: break
             }
         }
         return s
+    }
+
+    // A strip of a hosted full-screen window's app that is that window's own toolbar: in exactly the same user Spaces as
+    // it, and at its top edge (its width, from its frame's top inward: Chameleon's 1154×52 inside it; or resting just
+    // above it: Safari's toolbar window with its toolbar hidden in full screen, its bottom at the page's top, y −11),
+    // or once seen so, wherever it is as long as it's where its window is (the window server moves the two together).
+    // Never parked, moved or reordered (the real-apps run of 2026-11-17 19:17: Safari's 74772, parked as a strip, took
+    // its window 74770 out of Margin's Space each time, until its show was given up; the person's Safari on 2026-11-07:
+    // its full-screen toolbar window moved broke the full-screen window, a blank Space). A strip of another window of
+    // its app's (left by a backed-out full screen, in another Space, not at its frame: Mail's 1512×88) is parked.
+    private func ownToolbar(_ w: HostModelWindow, of host: Host, mine: HostModelWindow?) -> Bool {
+        guard host.mode == .fullScreen, let mine, let spaces = mine.spaces, !spaces.isEmpty, w.spaces == spaces else { return false }
+        if host.toolbars.contains(w.number) { return true }
+        let f = mine.bounds, b = w.bounds, e: CGFloat = 2
+        guard f.width > 0, abs(b.minX - f.minX) <= e, abs(b.width - f.width) <= e, b.minY <= f.minY + e, b.maxY >= f.minY - e else { return false }
+        host.toolbars.insert(w.number)
+        return true
     }
 
     // The poll's: each host's situation reconciled with what it should be, one correction applied at a time (in the

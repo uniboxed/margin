@@ -39,7 +39,12 @@ final class FakeHostWorld: HostSystem {
     // What each app last saved as its window's frame (AppKit writes it as the window moves or resizes, and at quit).
     var saved: [String: CGRect] = [:]
     var apps: [pid_t: App] = [:]
-    var wins: [Int: Win] = [:]
+    // (A full-screen window's own toolbar window goes where its window goes: `toolbarAbove`.)
+    var wins: [Int: Win] = [:] {
+        didSet {
+            for (h, t) in toolbarOf { if let w = wins[h], wins[t] != nil { wins[t]?.spaces = w.spaces; wins[t]?.priv = w.priv } }
+        }
+    }
     var tiles: [UInt64: [UInt64]] = [FakeHostWorld.marginSpace: [FakeHostWorld.marginTile]] // full-screen Spaces (what Mission Control lists) and their tiles
     var owner: [UInt64: pid_t] = [:] // a full-screen Space's app (none: Margin's, or emptied)
     var tileWindow: [UInt64: Int] = [FakeHostWorld.marginTile: FakeHostWorld.marginWindow]
@@ -88,7 +93,7 @@ final class FakeHostWorld: HostSystem {
     // (HostAX keeps them); its position and size only on the current Space (the kit's finding, 2026-11-15).
     var axCurrentOnly = false
     var axSeen: Set<Int> = []
-    func onCurrent(_ window: Int) -> Bool { wins[window].map { $0.priv == nil && $0.spaces.contains(current) } ?? false }
+    func onCurrent(_ window: Int) -> Bool { if let h = toolbarHost(window) { return onCurrent(h) }; return wins[window].map { $0.priv == nil && $0.spaces.contains(current) } ?? false }
     // Windows ordered out (never ordered in, or ordered out by their app): in whatever Space the bridge put them, off
     // screen, and not in Accessibility's lists (they have only windows ordered in). The behaviours' stand-ins set them.
     var orderedOut: Set<Int> = []
@@ -118,6 +123,7 @@ final class FakeHostWorld: HostSystem {
     // How long an app takes to answer the raise (Accessibility's, at each activation: Messages 79 ms, 2026-11-17).
     var activateLag = 0.0
     func hiddenInFullScreen(_ n: Int) -> Bool {
+        if let h = toolbarHost(n) { return hiddenInFullScreen(h) }
         guard windowedHiddenInFullScreen, let w = wins[n], !w.canFullScreen, !w.fullScreen, w.priv == nil, !(reopenShows && reopenedApps.contains(w.pid)),
               !(frontShows && frontedApps.contains(w.pid)) else { return false }
         return w.spaces.contains { tiles[$0] != nil && owner[$0] != w.pid }
@@ -271,6 +277,30 @@ final class FakeHostWorld: HostSystem {
         wins[n] = strip
         apps[w.pid]?.windows.append(n)
         strips[window] = n
+    }
+    // Apps whose full-screen window has its toolbar as a window of its own resting just above its frame (Safari with its
+    // toolbar hidden in full screen, the real Mac 2026-11-17 19:17: 74772 over 74770, docs/MARGIN-APP.md "Safari's toolbar
+    // band"): the frame's width, `toolbarHeight` tall, its bottom at the frame's top, in the window's Space; the window
+    // server moves the two together (a move of either takes both: Margin's park of 74772 took 74770 out of Margin's Space).
+    var toolbarAbove: Set<String> = []
+    var toolbarOf: [Int: Int] = [:] // the window → its toolbar
+    func toolbarHost(_ n: Int) -> Int? { toolbarOf.first { $0.value == n }?.key }
+    static let toolbarHeight: CGFloat = 52
+    func makeToolbar(for window: Int) {
+        guard let w = wins[window], toolbarOf[window] == nil, let bundle = apps[w.pid]?.bundle, toolbarAbove.contains(bundle) else { return }
+        let n = nextWindow
+        nextWindow += 1
+        var t = Win(pid: w.pid, spaces: w.spaces, priv: w.priv)
+        t.canFullScreen = false
+        t.axRole = "AXWindow/AXUnknown"
+        toolbarOf[window] = n
+        wins[n] = t
+        apps[w.pid]?.windows.append(n)
+    }
+    func dropToolbar(of window: Int) {
+        guard let n = toolbarOf.removeValue(forKey: window) else { return }
+        wins[n] = nil
+        for pid in apps.keys { apps[pid]?.windows.removeAll { $0 == n } }
     }
     func dropStrip(of window: Int, asked: Bool) {
         guard let n = strips[window] else { return }
@@ -604,6 +634,8 @@ final class FakeHostWorld: HostSystem {
         guard wins[window]?.pid == pid else { return false }
         if on, wins[window]?.canFullScreen == true, wins[window]?.fullScreen == false, !fail.contains("fullScreen") { makeStrip(for: window) }
         if !on { dropStrip(of: window, asked: wins[window]?.fullScreen == false) }
+        if on, wins[window]?.canFullScreen == true, !fail.contains("fullScreen") { makeToolbar(for: window) }
+        if !on, wins[window]?.fullScreen == true { dropToolbar(of: window) }
         guard var w = wins[window], w.pid == pid else { return false }
         if on, !w.canFullScreen { return false } // (AXFullScreen isn't settable)
         if on {
@@ -662,7 +694,7 @@ final class FakeHostWorld: HostSystem {
     var focused: [pid_t: Int] = [:] // its focused window; none set: none
     var axAppUnread = false // the app's main and focused windows don't read
     func mainWindow(pid: pid_t) async -> Int? {
-        guard !axAppUnread, !axHides(pid), let n = main[pid] ?? apps[pid]?.windows.last else { return nil }
+        guard !axAppUnread, !axHides(pid), let n = main[pid] ?? apps[pid]?.windows.last(where: { toolbarHost($0) == nil }) else { return nil }
         return !axCurrentOnly || onCurrent(n) ? n : nil
     }
     func focusedWindow(pid: pid_t) async -> Int? {
@@ -695,6 +727,7 @@ final class FakeHostWorld: HostSystem {
     // doesn't take it); a member: the frame it had as it came in; Margin's window: the whole area.
     func bounds(window: Int) -> CGRect? {
         guard let w = wins[window] else { return nil }
+        if let h = toolbarHost(window) { return bounds(window: h).map { CGRect(x: $0.minX, y: $0.minY - Self.toolbarHeight, width: $0.width, height: Self.toolbarHeight) } }
         if let lag = lagging[window], clock < lag.until { return lag.frame }
         if window == Self.marginWindow { return Self.display }
         if w.member, let f = w.memberFrame { return f }
@@ -736,7 +769,7 @@ final class FakeHostWorld: HostSystem {
     // so: `windowOnScreen`). `ownReads`: how many times a window's own read was asked.
     var listDrops: [Int: Int] = [:]
     var ownReads = 0
-    func shows(_ n: Int) -> Bool { !blank && !orderedOut.contains(n) && !hiddenInFullScreen(n) && (wins[n].map { $0.priv == nil && $0.spaces.contains(current) && !hidden.contains($0.pid) && !minimized.contains(n) } ?? false) }
+    func shows(_ n: Int) -> Bool { if let h = toolbarHost(n) { return shows(h) }; return !blank && !orderedOut.contains(n) && !hiddenInFullScreen(n) && (wins[n].map { $0.priv == nil && $0.spaces.contains(current) && !hidden.contains($0.pid) && !minimized.contains(n) } ?? false) }
     func onScreenWindows() -> [ServerWindow]? {
         onScreenRead?()
         if let onScreen { return onScreen }
@@ -755,6 +788,7 @@ final class FakeHostWorld: HostSystem {
     func screenAway() -> Bool { away }
     func currentSpaces() -> [String]? { ["\(current)\(blank ? " (not listed)" : "")"] }
     func spaces(window: Int) -> [UInt64]? {
+        if let h = toolbarHost(window) { return spaces(window: h) }
         if wins[window] == nil, let s = serverSpaces[window] { return s }
         if let at = dropAt[window], clock >= at {
             dropAt[window] = nil
@@ -819,6 +853,7 @@ final class FakeHostWorld: HostSystem {
     func createPrivateSpace() -> UInt64? { let s = nextId; nextId += 1; privates.insert(s); return s }
     func move(window: Int, to space: UInt64) -> Bool {
         calls.append("move \(window) \(space)")
+        if let h = toolbarHost(window) { return move(window: h, to: space) }
         guard var w = wins[window], !(fail.contains("moveIn") && space == Self.marginSpace), !(noMoveIn.contains(window) && space == Self.marginSpace) else { return false }
         let before = spaces(window: window) ?? []
         if let from = pending[window]?.space ?? w.priv ?? w.spaces.first(where: { $0 != space && tiles[$0] != nil }) { movedOut[window] = (from, clock) }
