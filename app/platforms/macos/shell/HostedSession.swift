@@ -92,6 +92,9 @@ protocol HostedEngine: AnyObject {
     // change a display frame. False: it doesn't (the page area's changes held until the drag is over, as before).
     func dragging(_ on: Bool) -> Bool
     func follow(_ placement: HostPlacement)
+    // The one shown fills the page area as it follows (a tile): the hole is the page area meanwhile. Not (a window-mode
+    // window, which can be smaller, centred): the hole its bounds, read again as it moves.
+    var shownFillsPage: Bool { get }
 }
 
 extension HostedEngine {
@@ -103,6 +106,7 @@ extension HostedEngine {
     func appRuns(bundleId: String) -> Bool? { nil }
     func dragging(_ on: Bool) -> Bool { false }
     func follow(_ placement: HostPlacement) {}
+    var shownFillsPage: Bool { false }
     var preparesOutOfSight: Bool { false }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
@@ -998,7 +1002,9 @@ final class HostedSession: LibraryDelegate {
     private var placing = false
     func pageRectChanged(_ window: HostedWindow) {
         // (A drag the one shown follows live: each page area of it to the engine at once; Margin's own once it's over.)
-        if following, resizing == window.id, window.id == hostingWindow, let p = window.hostedPlacement { return engine.follow(p) }
+        if following, resizing == window.id, window.id == hostingWindow, let p = window.hostedPlacement {
+            return engine.follow(p) // (a window-mode window's hole read again as it moves: the engine says so)
+        }
         guard window.id == hostingWindow, engine.shown != nil, resizing != window.id, !placing else { return }
         placing = true
         enqueue {
@@ -1050,7 +1056,7 @@ final class HostedSession: LibraryDelegate {
             resizing = window.id
             guard window.id == hostingWindow, engine.shown != nil else { return }
             following = engine.dragging(true)
-            window.followsPage(following)
+            window.followsPage(following && engine.shownFillsPage)
             note("the sidebar's edge dragged in Margin's window \(window.id): \(following ? "the hosted window follows it live" : "the page area's changes held until it's let go")")
             return
         }

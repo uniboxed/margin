@@ -750,20 +750,27 @@ func glueScenario() async {
   guard await until(5, { session.resizing == c.id }) else { return check("resize: the drag reaches the app (the page's sidebar.resizing)", false, "\(c.asks.suffix(4)) \(session.done.suffix(3))") }
   c.remeasure() // (a test's window gets no frames: the page's place as it is now)
   let live = await until(5, { c.window.pageRect?.minX == calcPage.minX + 24 })
-  check("resize (window mode): while dragged, Margin's own page area follows live and Calculator stays in sight through the hole where it is: the page card still shown, nothing lifted, ordered or told to the page",
-        live && c.pageState == .shown && c.hole == centred && c.ground.hole == inContent(centred) && c.panel.backgroundColor == .clear && c.levelSets == levelSets && c.frontOrders == frontOrders
+  // (Live resize: a window-mode window follows the drag by Accessibility, centred in the page area as it is; the hole
+  // its bounds, read again as it moves, never the whole page area around a smaller window.)
+  let page24 = c.window.pageRect ?? .zero
+  let centred24 = CGRect(x: (page24.minX + (page24.width - 230) / 2).rounded(), y: (page24.minY + (page24.height - 408) / 2).rounded(), width: 230, height: 408)
+  let followed = await until(5, { world.bounds(window: calcWindow) == centred24 })
+  c.remeasure()
+  _ = await until(3, { c.hole == centred24 })
+  check("resize (window mode): while dragged, Margin's own page area follows live and Calculator follows it, centred, in sight through the hole at its bounds: the page card still shown, nothing lifted, ordered or told to the page",
+        live && followed && c.pageState == .shown && c.hole == centred24 && c.ground.hole == inContent(centred24) && c.panel.backgroundColor == .clear && c.levelSets == levelSets && c.frontOrders == frontOrders
         && cardStates().count == statesMark && c.window.level == FrontMechanism.raised,
-        "live \(live) page \(String(describing: c.window.pageRect)) \(c.pageState.rawValue) hole \(String(describing: c.hole)) want \(centred) states \(cardStates().dropFirst(statesMark)) level sets \(c.levelSets - levelSets) orders \(c.frontOrders - frontOrders)")
-  check("resize (window mode): … and Calculator isn't moved, the engine's page area held", world.bounds(window: calcWindow) == centred && engine.pageRect == calcPage && called("frame", since: mark).isEmpty
-        && placings() == placed, "\(called("frame", since: mark)) bounds \(String(describing: world.bounds(window: calcWindow))) want \(centred) engine \(engine.pageRect) want \(calcPage) placings \(placings() - placed) \(session.done.suffix(5))")
+        "live \(live) followed \(followed) page \(String(describing: c.window.pageRect)) \(c.pageState.rawValue) hole \(String(describing: c.hole)) want \(centred24) states \(cardStates().dropFirst(statesMark)) level sets \(c.levelSets - levelSets) orders \(c.frontOrders - frontOrders)")
+  check("resize (window mode): … by Accessibility only (no full-screen change), the engine's page area held until it's let go", !called("frame", since: mark).isEmpty && called("fullScreen", since: mark).isEmpty && engine.pageRect == calcPage
+        && placings() == placed, "\(called("frame", since: mark)) bounds \(String(describing: world.bounds(window: calcWindow))) engine \(engine.pageRect) want \(calcPage) placings \(placings() - placed) \(session.done.suffix(5))")
   await handle("pointermove", dx: 40)
   await handle("pointerup", dx: 40)
   guard await until(5, { session.resizing == nil && placings() == placed + 1 }) else { return check("resize (window mode): let go", false, "\(session.done.suffix(4))") }
   await session.idle()
   let wider = c.window.pageRect ?? .zero
   let centredWider = CGRect(x: (wider.minX + (wider.width - 230) / 2).rounded(), y: (wider.minY + (wider.height - 408) / 2).rounded(), width: 230, height: 408)
-  check("resize (window mode): let go: the page area 40 pt narrower from its left, Calculator moved once to its middle, the engine told once",
-        wider.minX == calcPage.minX + 40 && wider.maxX == calcPage.maxX && world.bounds(window: calcWindow) == centredWider && engine.pageRect == wider && called("frame", since: mark).count == 1
+  check("resize (window mode): let go: the page area 40 pt narrower from its left, Calculator at its middle, the engine told once",
+        wider.minX == calcPage.minX + 40 && wider.maxX == calcPage.maxX && world.bounds(window: calcWindow) == centredWider && engine.pageRect == wider && called("frame", since: mark).count >= 1
         && called("fullScreen", since: mark).isEmpty && placings() == placed + 1, "\(wider) \(String(describing: world.bounds(window: calcWindow))) \(called("frame", since: mark)) \(session.done.suffix(3))")
   check("resize (window mode): the hole at Calculator's new bounds (read again once it was moved), the page card shown throughout (it never left Margin's Space: no loader); still full screen at its whole width, nothing reserved on its Space",
         c.hosted == calcWindow && c.hole == centredWider && c.ground.hole == inContent(centredWider) && c.pageState == .shown && cardStates().count == statesMark && stillFullScreen() && marginUnreserved(),

@@ -3493,6 +3493,9 @@ final class HostEngine {
         return true
     }
 
+    // The one shown is a tile: it fills the page area as it follows a drag (a window-mode one may be smaller, centred).
+    var shownFillsPage: Bool { shown.flatMap { hosts[$0] }?.tile != nil }
+
     // The page area during a drag (each of the page's layouts): the one shown follows, at most one change a display frame
     // and one in flight; the newest wins. Not Margin's desired page area yet: that's the drag's end (`pageRectChanged`).
     func follow(_ p: HostPlacement) {
@@ -3527,6 +3530,8 @@ final class HostEngine {
                 self.sys.bounds(window: host.window).map { HostLayout.near($0, page, within: self.options.tolerance) || (host.mode == .window && !host.resizable) } ?? false
             }
             if followed { liveStats.followed.append(sys.now() - t0) } else { liveStats.late += 1 }
+            // (A window-mode window's hole is its bounds: Margin's window reads them again now it's moved.)
+            if host.mode == .window { hostedWindow?(host.window) }
             let left = options.liveFrame - (sys.now() - t0)
             if left > 0 { await sys.sleep(left) }
         }

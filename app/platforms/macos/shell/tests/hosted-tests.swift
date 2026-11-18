@@ -1255,8 +1255,8 @@ func sidebarResizeTests(script: URL) {
     session.sidebarResizing(window, true)
     drag(to: [330, 300, 280, 250])
     let liveFrames = count("frame \(ft)", since: mark)
-    check("resize (window mode): it follows the drag live by Accessibility: its frame set as the page area moves (at most once a change), at the drag's last page area, the hole the page area meanwhile",
-          liveFrames >= 1 && liveFrames <= 4 && w.bounds(window: ft) == page(250) && session.following && window.followingPage, "\(w.calls.dropFirst(mark))")
+    check("resize (window mode): it follows the drag live by Accessibility: its frame set as the page area moves (at most once a change), at the drag's last page area, the hole its bounds (read again as it moves), never the page area around it",
+          liveFrames >= 1 && liveFrames <= 4 && w.bounds(window: ft) == page(250) && session.following && !window.followingPage, "\(w.calls.dropFirst(mark))")
     let movesBefore = window.moves, loadingsBefore = window.loadings.count
     session.sidebarResizing(window, false)
     run()

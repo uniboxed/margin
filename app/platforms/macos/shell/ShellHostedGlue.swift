@@ -98,6 +98,7 @@ final class LateHostEngine: HostedEngine {
     func appRuns(bundleId: String) -> Bool? { resolve()?.appRuns(bundleId: bundleId) }
     func dragging(_ on: Bool) -> Bool { resolve()?.dragging(on) ?? false }
     func follow(_ placement: HostPlacement) { resolve()?.follow(placement) }
+    var shownFillsPage: Bool { resolve()?.shownFillsPage ?? false }
 }
 
 extension Shell {
