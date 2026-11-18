@@ -106,7 +106,7 @@ enum Step: Equatable {
     case .quitMargin: return "quit Margin"
     case .liveDrag(let n, let dx, let st, let parked): return "drag-live: the sidebar's edge dragged \(dx > 0 ? "+" : "")\(dx) pt over \(st) display frames (dev hook `drag`: the page's own handle, no event posted to the system), Chameleon \(n)'s window's model bounds read every ms: it follows each step; background-sized: Chameleon \(parked.map(String.init).joined(separator: ", ")) at the new page area within 1 s of the release; CPU of Margin, WindowServer and the copies said"
     case .liveDragApp(let t, let dx, let st, let parked): return "drag-live: the sidebar's edge dragged \(dx > 0 ? "+" : "")\(dx) pt over \(st) display frames (Margin's dev hook only), \(t.text) shown: it follows each step; background-sized: \(parked.map(\.text).joined(separator: ", ")) at the new page area within 1 s"
-    case .switchSized(let n): return "switch-after-resize: show Chameleon \(n) (parked, sized in the background): its first frame on screen at the new page area, 99 ms or less"
+    case .switchSized(let n): return "switch: show Chameleon \(n) (parked; after a resize: sized in the background): its first frame on screen and every frame for 300 ms at the page area, Margin's window whole, 99 ms or less"
     case .listedOnly(let why): return "mission-control (\(why)): only Margin's Space listed beside the run's first Spaces"
     case .killCopy(let n, let shown): return "hosted-app-crash: Chameleon \(n) killed (SIGKILL, the suite's own test app): its tile gone from Margin's Space, Margin's window whole, Chameleon \(shown) at the page area"
     case .marginQuitTiles(let ns): return "margin-quit with tiles: quit Margin; Chameleon \(ns.map(String.init).joined(separator: ", ")) given back and quit, nothing listed but the run's first Spaces"
@@ -206,11 +206,11 @@ let liveResize = Scenario(name: "live-resize", title: "a sidebar drag followed l
                           copies: [1, 2, 3], steps: [
   .setSwitches(1, [:]), .setSwitches(2, [:]), .setSwitches(3, [:]),
   .openMargin, .host(.copy(1)), .host(.copy(2)), .host(.copy(3)), .expect(.desired(Desired(target: .copy(3)))), .listedOnly("three hosted"), .memory("three hosted, at rest"),
-  .show(.copy(1), maxMs: 99), .show(.copy(2), maxMs: 99), .show(.copy(3), maxMs: 99),
+  .switchSized(1), .switchSized(2), .switchSized(3), .switchSized(1), .switchSized(3),
   .liveDrag(3, dx: 120, steps: 120, parked: [1, 2]), .switchSized(1), .expect(.desired(Desired(target: .copy(1)))),
   .liveDrag(1, dx: -120, steps: 120, parked: [2, 3]), .switchSized(2), .expect(.desired(Desired(target: .copy(2)))),
   .liveDrag(2, dx: 60, steps: 30, parked: [1, 3]), .liveDrag(2, dx: -60, steps: 30, parked: [1, 3]), .memory("after the drags"),
-  .show(.copy(1), maxMs: 99), .show(.copy(3), maxMs: 99), .show(.copy(2), maxMs: 99),
+  .switchSized(1), .switchSized(3), .switchSized(2),
   .killCopy(3, shown: 2), .listedOnly("after a hosted app was killed"), .expect(.desired(Desired(target: .copy(2)))),
   .marginQuitTiles([1, 2]),
 ], estimate: 200)

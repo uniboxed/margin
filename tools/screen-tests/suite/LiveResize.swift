@@ -112,28 +112,39 @@ extension Runner {
     }
   }
 
-  // A switch to copy n (parked, sized in the background): its first frame on screen at the page area, in 99 ms or less.
+  // A switch to copy n (parked, sized in the background): its first frame on screen at the page area, in 99 ms or less,
+  // and every frame of it for 300 ms after at the page area, Margin's window its screen's whole width all along (a tile
+  // change lays the first two tiles of Margin's Space out again as a split's thirds or halves: seen 2026-11-17 23:31:42,
+  // Chameleon 1 at 489 wide for 120 ms after its switch).
   func switchSized(_ n: Int) {
     guard let pane = copyApp(n), let w = placedWindow(pane.processIdentifier, minWidth: 200, minHeight: 200), let page = rectIn(front(), "page area") else {
       return skip("switch-after-resize (Chameleon \(n))", "not hosted, or no page area")
     }
-    gate("the switch after a resize")
+    gate("the switch")
     let mark = LogMark()
+    let whole = marginWindow.r.width
     let t0 = Date()
     hook(["app": copy(n).id])
     var first: (t: Double, r: CGRect)?
-    while Date().timeIntervalSince(t0) < 3, first == nil {
-      if let on = (CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(w.n)) as? [[String: Any]])?.first, (on[kCGWindowIsOnscreen as String] as? Bool) == true, let r = bounds(w.n) {
-        first = (Date().timeIntervalSince(t0) * 1000, r)
+    var wrong: [(Double, CGRect)] = []
+    var narrow: [(Double, CGRect)] = []
+    while Date().timeIntervalSince(t0) < 3 {
+      let now = Date().timeIntervalSince(t0) * 1000
+      let on = ((CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(w.n)) as? [[String: Any]])?.first?[kCGWindowIsOnscreen as String] as? Bool) == true
+      if on, let r = bounds(w.n) {
+        if first == nil { first = (now, r) }
+        if !near(r, page, 1), wrong.last.map({ !near($0.1, r, 0.5) }) ?? true { wrong.append((now, r)) }
       }
+      if let b = bounds(marginWindow.n), b.width < whole - 2, narrow.last.map({ !near($0.1, b, 0.5) }) ?? true { narrow.append((now, b)) }
+      if let f = first, now - f.t > 300 { break }
       usleep(500)
     }
     spin(1.0)
     let line = mark.since(" switched in").last { $0.contains("app:\(copy(n).id)") }
     let ms = match(line, #"switched in (\d+) ms"#).flatMap { Int($0[0]) }
-    step("switch-after-resize (Chameleon \(n)): its first frame on screen already at the new page area, a switch in 99 ms or less, nothing placed again",
-         first.map { near($0.r, page, 1) } == true && (ms ?? 9999) <= 99 && mark.since("placed again in").isEmpty,
-         "first on screen \(first.map { "\(Int($0.t)) ms after the ask, at \(rect($0.r))" } ?? "never in 3 s"); the page area \(rect(page)); Margin: \(line.map { String($0.suffix(140)) } ?? "no switch line")")
+    step("switch (Chameleon \(n)): its first frame on screen at the page area and every frame for 300 ms after, Margin's window whole all along, a switch in 99 ms or less, nothing placed again",
+         first.map { near($0.r, page, 1) } == true && wrong.isEmpty && narrow.isEmpty && (ms ?? 9999) <= 99 && mark.since("placed again in").isEmpty,
+         "first on screen \(first.map { "\(Int($0.t)) ms after the ask, at \(rect($0.r))" } ?? "never in 3 s"); the page area \(rect(page)); at another size \(wrong.map { "\(Int($0.0)) ms: \(rect($0.1))" }); Margin's window narrower \(narrow.map { "\(Int($0.0)) ms: \(rect($0.1))" }); Margin: \(line.map { String($0.suffix(140)) } ?? "no switch line")")
   }
 
   // Copy n killed (SIGKILL) while hosted (parked): its placeholder tile gone from Margin's Space within 2 s, Margin's
