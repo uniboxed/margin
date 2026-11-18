@@ -30,7 +30,7 @@ func recordBefore(part: String, built: String, realApps apps: [RealApp]) {
   var b = Before()
   b.part = part
   b.builtMargin = built
-  b.marginPath = app(marginId)?.bundleURL?.path
+  b.marginPath = personsMargin()?.bundleURL?.path
   for k in marginKeys { b.marginDefaults[k] = defaultsRead(marginId, k) }
   if let v = CFPreferencesCopyAppValue(themeKey as CFString, marginId as CFString) { b.themeSettings = try? PropertyListSerialization.data(fromPropertyList: v, format: .binary, options: 0) }
   b.home = active(cid)
@@ -77,7 +77,7 @@ func restore(_ why: String) {
     sh("/usr/bin/open", ["-g", before.builtMargin, "--args", "--background"])
     if spin(10, { app(marginId) != nil }) { spin(4); forgetTestItems() }
   }
-  if let m = app(marginId) { m.terminate(); spin(20) { m.isTerminated }; log("  Margin quit: \(m.isTerminated)") }
+  if !allMargins().isEmpty { quitAllMargins(); log("  Margin quit: \(allMargins().isEmpty) (every instance)") }
   spin(3)
   for c in copies { if let p = app(c.id), axFullScreen(p.processIdentifier) == true { _ = setAXFullScreen(p.processIdentifier, false); spin(4) { axFullScreen(p.processIdentifier) != true } } }
   releaseModifiers()

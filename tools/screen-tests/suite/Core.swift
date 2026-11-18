@@ -26,14 +26,17 @@ final class Runner {
     let startedOn = currentSpaceInfo()
     startedInFullScreenOfAnother = startedOn.type == 4 && startedOn.pid != nil
     log("started on Space \(startedOn.id): \(startedInFullScreenOfAnother ? "ANOTHER APP'S FULL-SCREEN SPACE (pid \(startedOn.pid ?? 0))" : startedOn.type == 4 ? "a full-screen Space with no app" : "a Desktop")")
-    if let old = app(marginId) { old.terminate(); spin(15) { old.isTerminated } }
+    let runningBefore = Set(allMargins().map(\.processIdentifier))
+    if !runningBefore.isEmpty { quitAllMargins() }
     sh("/usr/bin/defaults", ["write", marginId, "MarginDevHooks", "-bool", "YES"])
     sh("/usr/bin/defaults", ["write", marginId, "MarginPrepareBrowser", "-bool", "NO"]) // (no browser started or asked for a window)
     sh("/usr/bin/defaults", ["write", marginId, "MarginResumeLast", "-bool", "NO"]) // (the launcher: the person's last item is never opened)
     if let wantFront { sh("/usr/bin/defaults", ["write", marginId, "MarginFront", wantFront]) } else { sh("/usr/bin/defaults", ["delete", marginId, "MarginFront"]) }
     gate("opening Margin")
     sh("/usr/bin/open", [built])
-    guard spin(10, { app(marginId) != nil }), let m = app(marginId) else { restore("Margin didn't start"); exit(5) }
+    // (The one just opened: the build's, not one that ran before.)
+    func opened() -> NSRunningApplication? { allMargins().filter { !runningBefore.contains($0.processIdentifier) && $0.bundleURL?.standardizedFileURL.path == URL(fileURLWithPath: built).standardizedFileURL.path }.max { ($0.launchDate ?? .distantPast) < ($1.launchDate ?? .distantPast) } }
+    guard spin(10, { opened() != nil }), let m = opened() else { restore("Margin didn't start"); exit(5) }
     self.m = m
     let cameFront = bringMarginFront(m, built)
     log("Margin in front: \(cameFront); it said it brought itself forward \(said("brought forward").count) time(s)")

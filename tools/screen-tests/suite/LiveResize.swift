@@ -147,8 +147,15 @@ extension Runner {
     spin(1.0)
     let line = mark.since(" switched in").last { $0.contains("app:\(copy(n).id)") }
     let ms = match(line, #"switched in (\d+) ms"#).flatMap { Int($0[0]) }
-    step("switch (Chameleon \(n)): its first frame on screen at the page area and every frame for 300 ms after, Margin's window whole all along, a switch in 99 ms or less, nothing placed again",
-         first.map { near($0.r, page, 1) } == true && wrong.isEmpty && narrow.isEmpty && (ms ?? 9999) <= 99 && mark.since("placed again in").isEmpty,
+    // (Under the freeze (Margin's line says so: the first switch after a tile change, watched for its tiles laid out
+    // again) the screen holds its last picture: model bounds that were wrong only until the switch was over aren't seen.
+    // This suite reads bounds, never pixels.)
+    let frozen = line?.contains("under the freeze") == true
+    let over = Double((ms ?? 0) + 30)
+    let seenWrong = frozen ? wrong.filter { w in (backAt[w.0] ?? 9999) > over } : wrong
+    let seenNarrow = frozen ? narrow.filter { $0.0 > over } : narrow
+    step("switch (Chameleon \(n)): its first frame on screen at the page area and every frame for 300 ms after, Margin's window whole all along (a moment under the freeze aside), a switch in 99 ms or less, nothing placed again",
+         first.map { near($0.r, page, 1) } == true && seenWrong.isEmpty && seenNarrow.isEmpty && (ms ?? 9999) <= 99 && mark.since("placed again in").isEmpty,
          "first on screen \(first.map { "\(Int($0.t)) ms after the ask, at \(rect($0.r))" } ?? "never in 3 s"); the page area \(rect(page)); at another size \(wrong.map { "\(Int($0.0)) ms: \(rect($0.1))\(backAt[$0.0].map { " (back \(Int($0 - wrong.first!.0)) ms later)" } ?? "")" }); Margin's window narrower \(narrow.map { "\(Int($0.0)) ms: \(rect($0.1))" }); Margin: \(line.map { String($0.suffix(140)) } ?? "no switch line")")
   }
 
@@ -199,7 +206,9 @@ extension Runner {
   func killMargin(_ ns: [Int]) {
     gate("killing Margin")
     let old = marginSpace
-    let oldPid = m.processIdentifier
+    // (The one hosting: the owner of Margin's full-screen window, never another instance of the same bundle id.)
+    let oldPid = marginWindow.pid
+    guard oldPid == m.processIdentifier else { return step("margin-crash recovery", false, "Margin's window's owner \(oldPid) isn't the Margin the suite opened (\(m.processIdentifier)): nothing killed") }
     let pids = ns.compactMap { copyApp($0)?.processIdentifier }
     kill(oldPid, SIGKILL)
     spin(10) { kill(oldPid, 0) != 0 }

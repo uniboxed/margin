@@ -3,6 +3,12 @@
 import AppKit
 
 let marginId = "com.unibox.margin"
+// Every running Margin (the person's installed one, a build Safari's extension started for a link, the one under test:
+// all one bundle id, 2026-11-18: `app(marginId)` took the wrong one, and a step meant for the one hosting went to another).
+func allMargins() -> [NSRunningApplication] { NSRunningApplication.runningApplications(withBundleIdentifier: marginId).filter { !$0.isTerminated } }
+func quitAllMargins() { for a in allMargins() { a.terminate() }; spin(20) { allMargins().isEmpty } }
+// The person's own Margin among them (~/Applications), else the first.
+func personsMargin() -> NSRunningApplication? { let all = allMargins(); return all.first { $0.bundleURL?.path == home("Applications/Margin.app") } ?? all.first }
 nonisolated(unsafe) var logStart = Date()
 func marginLog(from start: Date? = nil) -> [String] {
   let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm:ss"
