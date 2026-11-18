@@ -221,6 +221,7 @@ final class HostEngine {
         var tileWait = 0.3
         var tileLimitWait = 0.5
         var tileEvery = 0.002
+        var tileSettleWatch = 0.05 // the first switch after a tile change watched this long for the tiles laid out again
         var liveFrame = 1.0 / 120
         var liveWait = 0.05
     }
@@ -401,6 +402,7 @@ final class HostEngine {
     private(set) var marginTile: UInt64? // Margin's own tile in its Space
     private var tileHome: CGRect? // ...its rect: the display's whole tile, from its top left
     private var tileCount = 0 // the tiles Margin's Space had at the last look (another count: every rect set again)
+    private var tilesSettled = true // no tile came into or left Margin's Space since the last switch (its first one is watched)
     private var goneTiles: Set<UInt64> = [] // hosted tiles whose host went (its app quit or crashed, its window closed): destroyed if they stay
     // The sidebar's edge dragged (`dragging`): the one shown follows (`follow`), one change in flight (`livePump`).
     private(set) var liveOn = false
@@ -2248,11 +2250,18 @@ final class HostEngine {
         var times: [String] = []
         func step(_ name: String, _ t0: Double) { times.append("\(name) \(ms(since: t0))") }
         let previous = shown.flatMap { $0 == host.id ? nil : hosts[$0] } // (a window-mode one leaves as it is, at the page area's frame: no freeze)
+        // (Live resize: the first switch after a tile came into or left Margin's Space can lay the first two tiles out again
+        // as its window comes in or the one before leaves (the real Mac, 2026-11-17 23:52:23: the second tile's window at a
+        // quarter's width for 21 ms, Margin's own window with it): that switch under the freeze, watched `tileSettleWatch`
+        // after its moves, every rect set again if it was, then revealed.)
+        let settling = (host.tile != nil || previous?.tile != nil) && !tilesSettled && tilesOK
+        let frozen = settling ? holdFreeze() : false
         var t0 = sys.now()
         if sys.spaces(window: host.window) != [marginSpace] {
             guard sys.move(window: host.window, to: marginSpace),
                   await wait(options.memberWait, every: options.memberEvery, { self.sys.spaces(window: host.window) == [self.marginSpace] }) else {
                 if let priv = host.privateSpace, sys.spaces(window: host.window) != [] { _ = sys.move(window: host.window, to: priv) } // (back out of sight)
+                releaseFreeze(frozen)
                 return fail(host.id, .unpark, "its window didn't come into Margin's Space")
             }
         }
@@ -2264,9 +2273,25 @@ final class HostEngine {
                 if let priv = host.privateSpace, sys.move(window: host.window, to: priv) {
                     _ = await wait(options.parkWait, every: options.memberEvery) { self.sys.spaces(window: host.window) == [] }
                 } else { host.privateSpace = nil; _ = await parkMember(host, emitting: false) }
+                releaseFreeze(frozen)
                 return fail(host.id, .park, "the one shown before (\(previous.id)) couldn't leave Margin's Space")
             }
             step("park \(previous.id)", t0)
+        }
+        if settling {
+            t0 = sys.now()
+            let page = placement.page, area = placement.area
+            var relaid = false
+            _ = await wait(options.tileSettleWatch, every: options.tileEvery) {
+                let marginOff = self.sys.bounds(window: self.marginWindow).map { $0.width < area.width - 1 } ?? false
+                let hostOff = host.tile != nil && (self.sys.bounds(window: host.window).map { !HostLayout.near($0, page, within: self.options.tolerance) } ?? false)
+                if marginOff || hostOff { relaid = true; return true }
+                return false
+            }
+            if relaid { await reapplyTiles(first: host.tile != nil ? host : nil) }
+            tilesSettled = true
+            releaseFreeze(frozen)
+            step(relaid ? "its tiles laid out again: every rect set again, under the freeze" : "the tiles watched, under the freeze", t0)
         }
         if let priv = host.privateSpace {
             retirePrivate(priv)
@@ -3319,6 +3344,7 @@ final class HostEngine {
         }
         host.tile = tile
         host.member = true
+        tilesSettled = false
         tileCount = sys.tiles(of: marginSpace)?.count ?? list.count + 1
         saveMarker()
         let sized = await reapplyTiles(first: host, each: each)
@@ -3378,6 +3404,7 @@ final class HostEngine {
     private func tileLeft(_ host: Host) async {
         guard let tile = host.tile else { return }
         host.tile = nil
+        tilesSettled = false
         // (Still in Margin's Space with no window of the host's: a tile its window left; gone with the next look.)
         if sys.tiles(of: marginSpace)?.contains(tile) == true { goneTiles.insert(tile) }
         guard !quitting, tilesOK else { return }
@@ -3396,6 +3423,7 @@ final class HostEngine {
         let dead = goneTiles.filter { list.contains($0) && !live.contains($0) }
         goneTiles.subtract(goneTiles.filter { !list.contains($0) })
         guard !dead.isEmpty else { return }
+        tilesSettled = false
         for t in dead.sorted() { _ = sys.destroyTile(t) }
         let gone = await wait(options.destroyWait, every: options.tileEvery) { !(self.sys.tiles(of: self.marginSpace) ?? []).contains(where: { dead.contains($0) }) }
         if gone { goneTiles.subtract(dead) }

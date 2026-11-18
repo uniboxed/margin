@@ -206,6 +206,8 @@ func liveResizeTests() {
         _ = open(e, textEdit) // (the layout's second tile)
         _ = open(e, notes)
         let edit = window(w, "com.apple.TextEdit")
+        _ = show(e, textEdit) // (the first switch after the tiles came in: watched under the freeze, see below)
+        _ = show(e, notes)
         w.rejoinRelays = true
         var narrowedSeen = false, fixedInTheSwitch = false
         e.hostedWindow = { n in
@@ -217,6 +219,26 @@ func liveResizeTests() {
         _ = show(e, textEdit)
         check("live resize: a switch that lays the first two tiles out again (seen: the window shown at a split's width): every rect sent again at once, mid-switch, nothing waits for a poll",
               narrowedSeen && fixedInTheSwitch && marginWhole(w) && w.bounds(window: edit) == page(276), "narrowed \(narrowedSeen) fixed \(fixedInTheSwitch) \(w.calls.suffix(6))")
+    }
+
+    // ---- the first switch after a tile change, which lays the first two tiles out again as the second's window comes
+    // back (the real Mac, 23:52:23): under the freeze, every rect set again before it's revealed; later switches unfrozen ----
+    do {
+        let (w, e, _) = world()
+        _ = open(e, textEdit)
+        _ = open(e, notes)
+        let edit = window(w, "com.apple.TextEdit")
+        w.rejoinRelaysOnce = true
+        var atReveal: [Bool] = []
+        w.onReveal = { atReveal.append(marginWhole(w) && w.bounds(window: edit) == page(276)) }
+        let freezes = w.freezes
+        let r1 = show(e, textEdit)
+        let firstFrozen = w.freezes == freezes + 1 && atReveal.last == true && !w.frozen
+        _ = show(e, notes)
+        let f2 = w.freezes
+        _ = show(e, textEdit)
+        check("live resize: the first switch after a tile change laid out again under the freeze, every rect set again before the reveal (never seen); later switches not frozen",
+              r1 == .shown(textEdit.id, placed: true) && firstFrozen && w.freezes == f2 && marginWhole(w) && w.bounds(window: edit) == page(276), "\(String(describing: r1)) first frozen \(firstFrozen) freezes \(w.freezes - freezes) at reveal \(atReveal) margin \(marginWhole(w)) edit \(String(describing: w.bounds(window: edit)))")
     }
 
     // ---- Margin killed: at the next launch its marker's windows out of full screen, the tiles left destroyed, its old Space with them ----

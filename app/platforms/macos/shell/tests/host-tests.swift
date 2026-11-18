@@ -893,11 +893,12 @@ final class FakeHostWorld: HostSystem {
             if moveLag > 0 { landing[window] = (before, clock + moveLag) }
             return true
         }
-        if w.tiled, rejoinRelays, w.priv != nil, !privates.contains(space), let t = tileOf(window), tiles[space]?.firstIndex(of: t) == 1 {
+        if w.tiled, rejoinRelays || (rejoinRelaysOnce && relayPending), w.priv != nil, !privates.contains(space), let t = tileOf(window), tiles[space]?.firstIndex(of: t) == 1 {
             w.priv = nil
             w.spaces = [space]
             wins[window] = w
             relayFirstTwo(space)
+            relayPending = false // (its own laying out again doesn't arm the next)
             return true
         }
         if privates.contains(space) {
@@ -924,7 +925,7 @@ final class FakeHostWorld: HostSystem {
 
     // ---- the freeze, outside opens ----
     func freeze() -> Bool { freezes += 1; frozen = true; return true }
-    func reveal() { reveals += 1; frozen = false }
+    func reveal() { onReveal?(); reveals += 1; frozen = false }
     func watchOpens(pid: pid_t, _ heard: @escaping (Int32) -> Void) -> Bool { listeners[pid] = heard; return true }
     func stopWatchingOpens(pid: pid_t) { listeners[pid] = nil }
     func openFromOutside(_ pid: pid_t) {
@@ -954,6 +955,9 @@ final class FakeHostWorld: HostSystem {
     // A tiled window that's its layout's second coming back into that Space (a switch) lays the first two out again (the
     // real Mac, 2026-11-17 23:31:42: Chameleon 1, the second tile of Margin's Space, at a third's width as it was shown).
     var rejoinRelays = false
+    var rejoinRelaysOnce = false // ...only the first time after a tile came into or left that Space (the real Mac, 23:52)
+    var relayPending = false
+    var onReveal: (() -> Void)?
     var emptyTiles: [UInt64: pid_t] = [:]
     static let tileDisplay = CGRect(x: 0, y: 0, width: 1512, height: 982), band: CGFloat = 33
     func tileOf(_ window: Int) -> UInt64? { tileWindow.first { e in e.value == window && tiles.values.contains { $0.contains(e.key) } }?.key }
@@ -964,6 +968,7 @@ final class FakeHostWorld: HostSystem {
     func relayFirstTwo(_ space: UInt64) {
         guard tilesOn, let list = tiles[space], !list.isEmpty else { return }
         relaid += 1
+        relayPending = true
         let full = Self.tileDisplay
         if list.count == 1 { tileRects[list[0]] = full; return }
         let half = ((full.width - 12) / 2).rounded(.down)
