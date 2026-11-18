@@ -156,8 +156,9 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
     // Live resize: Margin's own tile in `marginSpace`, and hosted tiles whose host went, not destroyed yet.
     var marginTile: UInt64? = nil
     var goneTiles: [UInt64]? = nil
+    var anchors: [UInt64]? = nil // Margin's own empty tiles at its Space's front (a killed Margin leaves them there)
 
-    var isEmpty: Bool { apps.isEmpty && windows.isEmpty && leftSpaces.isEmpty && (leftSafariWindows ?? []).isEmpty && marginSpace == nil && (goneTiles ?? []).isEmpty }
+    var isEmpty: Bool { apps.isEmpty && windows.isEmpty && leftSpaces.isEmpty && (leftSafariWindows ?? []).isEmpty && marginSpace == nil && (goneTiles ?? []).isEmpty && (anchors ?? []).isEmpty }
 
     static func read(_ url: URL) -> HostMarker? {
         guard let data = try? Data(contentsOf: url) else { return nil }

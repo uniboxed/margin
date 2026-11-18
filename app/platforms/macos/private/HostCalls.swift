@@ -45,6 +45,14 @@ enum HostCalls {
     nonisolated static let tileMoveClass = "SLSBridgedSpaceTileMoveToSpaceAtIndexOperation"
     nonisolated static let initTileMove = "initWithTileID:parentID:index:"
     nonisolated static let tileClasses = [setValuesClass, tileMoveClass]
+    // The anchors (docs/HOSTING-CORE.md "Anchors"): empty tiles made in Margin's Space (no window), its layout's first
+    // two, so a tile change lays only them out again. Synchronous: its perform answers the new tile.
+    nonisolated static let createTileClass = "SLSBridgedSpaceCreateTileOperation"
+    // Read on macOS 27.2.1 with method_getTypeEncoding (2026-11-18).
+    nonisolated static let anchorSelectors = [
+        PrivateCalls.Selector(className: createTileClass, name: initSetValues, encoding: "@32@0:8Q16@24"), // (UInt64 space, NSDictionary values)
+        PrivateCalls.Selector(className: createTileClass, name: PrivateCalls.perform, encoding: "@16@0:8"), // (the result)
+    ]
     // Read on macOS 27.2.1 (26B131) with method_getTypeEncoding (both asynchronous operations, as the destroy).
     nonisolated static let tileSelectors = [
         PrivateCalls.Selector(className: setValuesClass, name: initSetValues, encoding: "@32@0:8Q16@24"), // (UInt64 space, NSDictionary values)
@@ -66,6 +74,7 @@ enum HostCalls {
         var host = false // launch, Spaces' types, the current Space, destroy: everything the engine needs of its own
         var opens = false // the outside-open notifications
         var tiles = false // live resize: a hosted window's tile in Margin's Space, sized by its rect
+        var anchors = false // the layout's first two tiles Margin's own, empty
         var missing: [String] = []
         var mismatched: [String] = []
         var reasons: [String: String] = [:] // "host", "outside opens", "tiles"
@@ -77,7 +86,7 @@ enum HostCalls {
             func part(_ name: String, _ on: Bool) -> String { on ? "\(name) ok" : "\(name) off: \(reasons[name] ?? "not checked")" }
             let encodings = mismatched.isEmpty ? "encodings ok" : "\(mismatched.count) encoding\(mismatched.count == 1 ? "" : "s") changed"
             return "private calls (host) on \(build ?? "build unknown"): \(part("host", host)) (\(functionsFound)/\(functionsTotal) functions and keys, "
-                + "\(selectorsFound)/\(selectorsTotal) selectors, \(encodings)); \(part("outside opens", opens)); \(part("tiles", tiles))"
+                + "\(selectorsFound)/\(selectorsTotal) selectors, \(encodings)); \(part("outside opens", opens)); \(part("tiles", tiles)); \(part("anchors", anchors))"
         }
     }
 
@@ -145,6 +154,16 @@ enum HostCalls {
         if !sky { tileProblems.append("SkyLight.framework didn't open") }
         a.tiles = a.host && tileProblems.isEmpty
         a.reasons["tiles"] = a.host ? why(tileProblems) : "the host is off"
+        // The anchors: the create-tile class and its selectors at their encodings. Off: the tiles as before.
+        var anchorProblems: [String] = []
+        if sky, resolver.objcClass(createTileClass) == nil { anchorProblems.append("\(createTileClass) missing") }
+        for s in anchorSelectors where sky && resolver.objcClass(s.className) != nil {
+            guard resolver.responds(s.className, s.name) else { anchorProblems.append("\(s.label) missing"); continue }
+            let got = resolver.typeEncoding(s.className, s.name)
+            if got != s.encoding { anchorProblems.append("\(s.label) encoding changed (\(got ?? "none"), expected \(s.encoding))") }
+        }
+        a.anchors = a.tiles && anchorProblems.isEmpty
+        a.reasons["anchors"] = a.tiles ? why(anchorProblems) : "the tiles are off"
         return a
     }
 
@@ -180,6 +199,8 @@ nonisolated struct HostPrivate: @unchecked Sendable {
     typealias SpaceCopyValues = @convention(c) (UInt32, UInt64) -> Unmanaged<CFDictionary>?
     typealias InitSetValues = @convention(c) (UnsafeMutableRawPointer, ObjectiveC.Selector, UInt64, NSDictionary) -> Unmanaged<AnyObject>?
     typealias InitTileMove = @convention(c) (UnsafeMutableRawPointer, ObjectiveC.Selector, UInt64, UInt64, UInt64) -> Unmanaged<AnyObject>?
+    // A synchronous operation's perform: its answer (+0, kept with the operation).
+    typealias PerformAnswering = @convention(c) (AnyObject, ObjectiveC.Selector) -> Unmanaged<AnyObject>?
 
     let refuses: Bool
     private var mainConnectionID: MainConnectionID?
@@ -201,12 +222,17 @@ nonisolated struct HostPrivate: @unchecked Sendable {
     private var tileMoveClass: AnyClass?
     private var initTileMove: InitTileMove?
     private var performTileMove: SkyLight.Perform?
+    private var createTileClass: AnyClass?
+    private var initCreateTile: InitSetValues?
+    private var performCreateTile: PerformAnswering?
     let hasTiles: Bool
+    let hasAnchors: Bool
     private let kept = KeptOperations()
 
     init(resolver: PrivateResolver, availability: HostCalls.Availability, refusing: Bool = PrivateCalls.inTests) {
         refuses = refusing
         hasTiles = availability.host && availability.tiles
+        hasAnchors = hasTiles && availability.anchors
         guard availability.host else { return }
         func fn<T>(_ name: String, _ framework: PrivateFramework, _: T.Type) -> T? { resolver.function(name, in: framework).map { unsafeBitCast($0, to: T.self) } }
         mainConnectionID = fn("SLSMainConnectionID", .skyLight, MainConnectionID.self)
@@ -230,6 +256,11 @@ nonisolated struct HostPrivate: @unchecked Sendable {
             tileMoveClass = resolver.objcClass(HostCalls.tileMoveClass)
             initTileMove = resolver.implementation(HostCalls.tileMoveClass, HostCalls.initTileMove).map { unsafeBitCast($0, to: InitTileMove.self) }
             performTileMove = resolver.implementation(HostCalls.tileMoveClass, PrivateCalls.perform).map { unsafeBitCast($0, to: SkyLight.Perform.self) }
+        }
+        if availability.tiles, availability.anchors {
+            createTileClass = resolver.objcClass(HostCalls.createTileClass)
+            initCreateTile = resolver.implementation(HostCalls.createTileClass, HostCalls.initSetValues).map { unsafeBitCast($0, to: InitSetValues.self) }
+            performCreateTile = resolver.implementation(HostCalls.createTileClass, PrivateCalls.perform).map { unsafeBitCast($0, to: PerformAnswering.self) }
         }
         if availability.opens {
             schedule = fn("_LSScheduleNotificationOnQueueWithBlock", .launchServices, ScheduleNotification.self)
@@ -299,6 +330,20 @@ nonisolated struct HostPrivate: @unchecked Sendable {
         performTileMove(op, NSSelectorFromString(PrivateCalls.perform))
         kept.keep(op)
         return true
+    }
+
+    // An empty tile (no window) made in `space` (its layout's end), through the bridge. Its id: the operation's answer
+    // when it names one (nil: the caller finds the new tile in the Space's list).
+    func createTile(in space: UInt64) -> (sent: Bool, tile: UInt64?) {
+        guard space > 0, !refuses, let initCreateTile, let performCreateTile, let raw = alloc(createTileClass) else { return (false, nil) }
+        guard let op = initCreateTile(raw, NSSelectorFromString(HostCalls.initSetValues), space, [:] as NSDictionary)?.takeRetainedValue() else { return (false, nil) }
+        kept.keep(op)
+        guard let answer = performCreateTile(op, NSSelectorFromString(PrivateCalls.perform))?.takeUnretainedValue() as? NSObject else { return (true, nil) }
+        kept.keep(answer)
+        for key in ["spaceID", "spaceIDValue", "value"] where answer.responds(to: NSSelectorFromString(key)) {
+            if let n = answer.value(forKey: key) as? NSNumber, n.uint64Value > 0 { return (true, n.uint64Value) }
+        }
+        return (true, nil)
     }
 
     private func alloc(_ cls: AnyClass?) -> UnsafeMutableRawPointer? {

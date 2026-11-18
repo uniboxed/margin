@@ -117,4 +117,45 @@ func loopGuardTests() {
               e.hosts[notes.id]?.tile != nil && e.hosts[notes.id]?.noTiles == false && w.bounds(window: window(w, "com.apple.Notes")) == page(280),
               "\(String(describing: e.hosts[notes.id]?.tile)) \(String(describing: w.bounds(window: window(w, "com.apple.Notes"))))")
     }
+
+    // ---- the anchors: Margin's own two empty tiles at its Space's front; a re-layout lays only them out ----
+    do {
+        let (w, e) = world("anchors")
+        w.anchorsOn = true
+        w.answersResize = ["com.apple.TextEdit"]
+        let marker = folder.appendingPathComponent("anchors/\(HostMarker.fileName)")
+        _ = open(e, weather)
+        let list = w.tiles[FakeHostWorld.marginSpace] ?? []
+        let anchors = e.anchorTiles
+        check("anchors: the first open makes Margin's two empty tiles, its Space's layout's first two (no window), Margin's own tile third, the hosted one after",
+              anchors.count == 2 && Array(list.prefix(2)) == anchors && list.count == 4 && list[2] == FakeHostWorld.marginTile && anchors.allSatisfy { w.tileWindow[$0] == nil }
+              && marginWhole(w), "\(list) anchors \(anchors) margin \(String(describing: w.bounds(window: FakeHostWorld.marginWindow)))")
+        check("anchors: …in the crash marker (a killed Margin's next launch destroys them)", HostMarker.read(marker)?.anchors == anchors, "\(String(describing: HostMarker.read(marker)?.anchors))")
+        _ = open(e, notes)
+        _ = hostRun { await e.show(weather.id) }
+        let n = window(w, "com.apple.TextEdit")
+        let calls = w.calls.count, relaid = w.relaid
+        _ = hostRun { await e.pageRectChanged(placed(340)) }
+        run(w, e, 6)
+        let answers = w.calls.dropFirst(calls).filter { $0.hasPrefix("tileRect ") && !$0.hasPrefix("tileRect \(FakeHostWorld.marginTile) ") }
+        check("anchors: Weather's case (its every sizing answered by a window whose close lays the tiles out): only the anchors laid out again, Weather's tile never wiped, none of its rects sent in answer (only the drag's own), still a tile, no loop",
+              answers.count <= 2 && e.hosts[weather.id]?.tile != nil && e.hosts[weather.id]?.noTiles == false && w.bounds(window: n) == page(340) && marginWhole(w) && w.relaid > relaid,
+              "\(answers) relaid \(w.relaid - relaid) noTiles \(String(describing: e.hosts[weather.id]?.noTiles)) at \(String(describing: w.bounds(window: n)))")
+        // A re-layout Margin didn't make (an app's tile taken out, a window closed): Margin's window and the hosted ones untouched.
+        let rects = w.tileRects
+        w.relayFirstTwo(FakeHostWorld.marginSpace)
+        let touched = (w.tiles[FakeHostWorld.marginSpace] ?? []).filter { w.tileRects[$0] != rects[$0] }
+        check("anchors: a re-layout touches only the anchors", Set(touched).isSubset(of: Set(anchors)) && marginWhole(w), "\(touched)")
+        _ = hostRun { await e.quitAll(); return true }
+        check("anchors: Margin's quit destroys them (Margin's Space left with none of its tiles)",
+              e.anchorTiles.isEmpty && !(w.tiles[FakeHostWorld.marginSpace] ?? []).contains(where: { anchors.contains($0) }), "\(String(describing: w.tiles[FakeHostWorld.marginSpace]))")
+    }
+    do {
+        let (w, e) = world("anchors-off")
+        w.anchorsOn = true
+        w.createRefused = true
+        _ = open(e, notes)
+        check("anchors: none made (the bridge took the call, made nothing): the tiles as before, Margin's own first",
+              e.anchorTiles.isEmpty && w.tiles[FakeHostWorld.marginSpace]?.first == FakeHostWorld.marginTile && e.hosts[notes.id]?.tile != nil, "\(String(describing: w.tiles[FakeHostWorld.marginSpace]))")
+    }
 }

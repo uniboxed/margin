@@ -219,6 +219,9 @@ final class HostEngine {
         var tiles = true
         // The hosting core's loop guard (guard.rs): on. Off only for a test that shows a loop it stops.
         var loopGuard = true
+        // The anchors (docs/HOSTING-CORE.md "Anchors"): Margin's own two empty tiles at its Space's front, where macOS lays
+        // a tile change out again. Off: Margin's window and the first hosted one take those re-layouts (the old way).
+        var anchors = true
         var tileMoveWait = 1.0
         var tileWait = 0.3
         var tileLimitWait = 0.5
@@ -426,6 +429,7 @@ final class HostEngine {
     private var tileCount = 0 // the tiles Margin's Space had at the last look (another count: every rect set again)
     private var tilesSettled = true // no tile came into or left Margin's Space since the last switch (its first one is watched)
     private var goneTiles: Set<UInt64> = [] // hosted tiles whose host went (its app quit or crashed, its window closed): destroyed if they stay
+    private(set) var anchorTiles: [UInt64] = [] // Margin's own empty tiles, its Space's layout's first two (none: not made)
     // The sidebar's edge dragged (`dragging`): the one shown follows (`follow`), one change in flight (`livePump`).
     private(set) var liveOn = false
     private var livePending: HostPlacement?
@@ -574,9 +578,10 @@ final class HostEngine {
             // (Live resize: a window out of full screen leaves its tile in Margin's Space, empty, until its app quits (the
             // real Mac, 2026-11-17 23:32): destroyed now, under the freeze, or Margin's Space outlives Margin's window, listed
             // with nothing in it.)
-            if !self.goneTiles.isEmpty {
+            if !self.goneTiles.isEmpty || !self.anchorTiles.isEmpty {
                 let frozen = self.holdFreeze()
                 await self.dropGoneTiles()
+                await self.dropAnchors()
                 self.releaseFreeze(frozen)
             }
             await self.closeLeftSafariWindows()
@@ -3334,6 +3339,7 @@ final class HostEngine {
         guard await raiseTileLimit(to: list.count + 1) else { return turnOffTiles("Margin's Space's tile limit didn't take (\(sys.maxTiles(of: marginSpace).map(String.init) ?? "unread"))") }
         tilesOK = true
         Diagnostics.note("host: live resize: hosted windows go into tiles of Margin's Space \(marginSpace) (its own tile \(mine), \(r(home)); tile limit \(sys.maxTiles(of: marginSpace).map(String.init) ?? "?")), checked in \(ms(since: t0)) ms")
+        await placeAnchors()
         return true
     }
 
@@ -3364,12 +3370,83 @@ final class HostEngine {
             }
             moved += 1
         }
+        // (The anchors in the old Space: destroyed, or it keeps its tiles and isn't destroyed; new ones at the new one's front.)
+        await dropAnchors(in: old)
+        await placeAnchors()
         await reapplyTiles()
         if sys.spaceExists(old) == true, sys.tiles(of: old)?.isEmpty != false, sys.fullScreenSpaceOwners()?[old] ?? 0 == 0 {
             if await destroyOwn(old) { Diagnostics.note("host: Margin's old Space \(old) destroyed (its hosted tiles moved out)") }
         }
         saveMarker()
         Diagnostics.note("host: live resize: \(moved) of \(moving.count) hosted tile\(moving.count == 1 ? "" : "s") moved from Margin's old Space \(old) into \(marginSpace) in \(ms(since: t0)) ms")
+    }
+
+    // ---- the anchors (docs/HOSTING-CORE.md "Anchors") ----
+
+    // Margin's own two empty tiles (no window: they draw nothing) made at its Space's layout's front, so a tile change
+    // macOS lays out again (a tile added or taken out: the first two of the layout, as a split's halves) lays only them
+    // out, never Margin's window or a hosted one: no flash, no re-layout to undo, nothing for an app to answer (the
+    // loop Weather made, 2026-11-18 13:30, as the layout's second tile). The kit (2026-11-18, opt5 a2): made in 5 ms,
+    // moved to the front within the Space; a tile added, one destroyed, a window parked and back: only the anchors'
+    // rects changed. Under the freeze: Margin's own window is laid out once as they're made. Not made: as before.
+    @discardableResult private func placeAnchors() async -> Bool {
+        guard options.anchors, sys.anchorsAvailable, tilesOK, marginSpace > 0 else { return false }
+        let space = marginSpace
+        var list = sys.tiles(of: space) ?? []
+        if anchorTiles.count == 2, Array(list.prefix(2)) == anchorTiles { return true }
+        let t0 = sys.now()
+        guard await raiseTileLimit(to: list.count + 3) else { return saidNoAnchors("Margin's Space's tile limit didn't take") }
+        let frozen = holdFreeze()
+        defer { releaseFreeze(frozen) }
+        var made = anchorTiles.filter { list.contains($0) }
+        while made.count < 2 {
+            let before = Set(list)
+            guard let said = sys.createTile(in: space) else { break }
+            var new: UInt64?
+            _ = await wait(options.tileMoveWait, every: options.tileEvery) {
+                let now = self.sys.tiles(of: space) ?? []
+                new = said > 0 && now.contains(said) ? said : Set(now).subtracting(before).subtracting(made).first
+                return new != nil
+            }
+            guard let t = new else { break }
+            made.append(t)
+            list = sys.tiles(of: space) ?? list
+        }
+        guard made.count == 2 else {
+            for t in made { _ = sys.destroyTile(t) }
+            anchorTiles = []
+            return saidNoAnchors("\(made.count) of 2 empty tiles made")
+        }
+        for (i, t) in made.enumerated() { _ = sys.moveTile(t, to: space, index: i) }
+        let front = await wait(options.tileMoveWait, every: options.tileEvery) { Array((self.sys.tiles(of: space) ?? []).prefix(2)) == made }
+        guard front else {
+            for t in made { _ = sys.destroyTile(t) }
+            anchorTiles = []
+            return saidNoAnchors("the empty tiles didn't go to the front (\(sys.tiles(of: space).map { "\($0)" } ?? "?"))")
+        }
+        anchorTiles = made
+        tilesSettled = false
+        saveMarker()
+        await reapplyTiles()
+        tileCount = sys.tiles(of: space)?.count ?? tileCount
+        Diagnostics.note("host: anchors: Margin's own empty tiles \(made.map(String.init).joined(separator: ", ")) at its Space's front in \(ms(since: t0)) ms: tile changes lay only them out again")
+        return true
+    }
+    private var anchorsSaid = false
+    private func saidNoAnchors(_ why: String) -> Bool {
+        if !anchorsSaid { anchorsSaid = true; Diagnostics.note("host: anchors not made (\(why)): tile changes lay Margin's window and the first hosted one out again, set back as before") }
+        return false
+    }
+
+    // The anchors destroyed (Margin quits, its window moved to another Space): their Space empty of Margin's tiles.
+    private func dropAnchors(in space: UInt64? = nil) async {
+        guard !anchorTiles.isEmpty else { return }
+        let from = space ?? marginSpace
+        let dead = anchorTiles
+        for t in dead { _ = sys.destroyTile(t) }
+        _ = await wait(options.destroyWait, every: options.tileEvery) { !(self.sys.tiles(of: from) ?? []).contains(where: { dead.contains($0) }) }
+        anchorTiles = []
+        saveMarker()
     }
 
     // Off for the run, said once: every later open is a member's (today's way), a page area's change re-fits on release.
@@ -4563,7 +4640,7 @@ final class HostEngine {
     private func saveMarker() {
         announceHosted()
         guard let markerURL else { return }
-        var m = HostMarker(pid: ownPid, marginSpace: hosts.isEmpty && leftWindows.isEmpty && goneTiles.isEmpty ? nil : marginSpace)
+        var m = HostMarker(pid: ownPid, marginSpace: hosts.isEmpty && leftWindows.isEmpty && goneTiles.isEmpty && anchorTiles.isEmpty ? nil : marginSpace)
         m.apps = launched.values.sorted { $0.pid < $1.pid }.map {
             HostMarker.App(pid: $0.pid, bundleId: $0.bundleId, launchedAt: $0.launchedAt, quitAsked: quitting && quitAsked.contains($0.pid) ? true : nil)
         } + exiting.values.sorted { $0.app.pid < $1.app.pid }.map { HostMarker.App(pid: $0.app.pid, bundleId: $0.app.bundleId, launchedAt: $0.app.launchedAt, quitAsked: true) }
@@ -4572,6 +4649,8 @@ final class HostEngine {
         m.leftSafariWindows = leftSafariWindows.isEmpty ? nil : leftSafariWindows
         // (Live resize: Margin's own tile, and tiles of hosts that went still to destroy: the next launch's after a crash.)
         if !hosts.isEmpty || !goneTiles.isEmpty { m.marginTile = marginTile; m.goneTiles = goneTiles.isEmpty ? nil : goneTiles.sorted() }
+        // (The anchors: a killed Margin's stay in its Space and keep it listed; its next launch destroys them.)
+        if !anchorTiles.isEmpty { m.anchors = anchorTiles; m.marginTile = marginTile }
         if m.isEmpty { try? FileManager.default.removeItem(at: markerURL); return }
         if !m.write(markerURL) { Diagnostics.warn("host: the crash marker wasn't written") }
     }
@@ -4665,7 +4744,7 @@ final class HostEngine {
         // see), so that Space is empty and goes below. Margin's own tile went with its process.
         // (Margin's own tile too: a killed Margin's stays in its old Space with no window, which keeps that Space from being
         // empty and ownerless: the real Mac, 2026-11-18 01:15, its old Space left listed.)
-        let tileIds = Set(m.windows.compactMap(\.tile) + (m.goneTiles ?? []) + [m.marginTile].compactMap { $0 })
+        let tileIds = Set(m.windows.compactMap(\.tile) + (m.goneTiles ?? []) + (m.anchors ?? []) + [m.marginTile].compactMap { $0 })
         var tilesDestroyed = 0
         if let old = m.marginSpace, !tileIds.isEmpty, sys.spaceExists(old) == true {
             let stillIn = Set(m.windows.filter { sys.bounds(window: $0.number) != nil && sys.spaces(window: $0.number)?.contains(old) == true }.map(\.number))

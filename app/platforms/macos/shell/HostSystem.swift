@@ -150,6 +150,10 @@ protocol HostSystem: AnyObject {
     // lays the first two of its layout out again (a split's halves): their rects are set again after (the engine).
     func moveTile(_ tile: UInt64, to space: UInt64, index: Int) -> Bool
     func destroyTile(_ tile: UInt64) -> Bool // a tile left with no live window (its app gone: a placeholder) destroyed
+    // The anchors (docs/HOSTING-CORE.md "Anchors"): an empty tile made in `space`, at its layout's end (nil: not made, or
+    // its id not said: the caller reads the Space's tiles).
+    var anchorsAvailable: Bool { get }
+    func createTile(in space: UInt64) -> UInt64?
     func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool // a drag under way in that Space's layout (its windows' live resize)
 }
 
@@ -184,6 +188,8 @@ extension HostSystem {
     func setTileRect(_ tile: UInt64, _ rect: CGRect) -> Bool { false }
     func moveTile(_ tile: UInt64, to space: UInt64, index: Int) -> Bool { false }
     func destroyTile(_ tile: UInt64) -> Bool { false }
+    var anchorsAvailable: Bool { false }
+    func createTile(in space: UInt64) -> UInt64? { nil }
     func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool { false }
 }
 
@@ -736,6 +742,11 @@ final class RealHostSystem: HostSystem {
     }
     func moveTile(_ tile: UInt64, to space: UInt64, index: Int) -> Bool { calls.moveTile(tile, to: space, index: index) }
     func destroyTile(_ tile: UInt64) -> Bool { calls.hasTiles && calls.destroyFullScreenSpace(tile) }
+    var anchorsAvailable: Bool { calls.hasAnchors }
+    func createTile(in space: UInt64) -> UInt64? {
+        let (sent, tile) = calls.createTile(in: space)
+        return sent ? (tile ?? 0) : nil // (0: sent, its id not said)
+    }
     // (Set false at the end, never removed: a key taken away doesn't end the live resize, the kit's lead 4.)
     func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool { calls.setValues(space, ["LiveResizing": on]) }
 }
