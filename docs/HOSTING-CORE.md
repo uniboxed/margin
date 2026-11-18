@@ -242,5 +242,34 @@ a plain launch whose Restorer restores nothing (with `-ApplePersistenceIgnoreSta
 that went full screen); AppKit does restore for a copy Margin launches with no Dock icon (the baseline restored both
 normal windows). A hold that starts while a correction of Margin's is under way (the page card loading) may end shown.
 
+**After the run of 20:20** (DECISIONS.md, "the real-screen run of 20:20"):
+
+- **A Safari profile's link is waited for on evidence, not times** (Tirth: "time only paces retries and drives feedback;
+  evidence decides"). `HostedSession.safariLinked`: the link is taken the moment it comes; Safari's own copies have their
+  turn first (a copy of a window it restored links by itself); Safari's menu is pressed for the item's profile once one
+  copy has linked and it isn't that profile's (or after `firstCopiesPace` with none), and pressed again only while no
+  window came of a press (the engine's `wokenWindows`, which also parks a woken window out of sight at once: the poll is
+  held off during an open, and the woken window sat in Margin's Space for the 15 s the link took). Given up only on
+  evidence: what it was for isn't wanted any more (`linkWanted`: the show waiting on it overtaken by another pick; the
+  launch's preparation by any request), Safari quit, or `wakePresses` presses opened nothing. A stale copy's window ask
+  is asked again once the profile's link is replaced, however long that takes, while wanted. The wait is said every
+  `linkSayEvery`. The profile woken on 2026-11-17 was the item's own (`safari:p646` is Personal's copy): Margin never woke
+  one it didn't need.
+- **Two Margin builds' extensions in one Safari** (the person's installed Margin beside the build under test): Safari runs
+  one build's extension handler at a time and refuses the other's native messages meanwhile (`Other version in use`,
+  PlugInKit code 16), and the two builds' copies in a profile share its storage, so one of them is "not in charge". The
+  extension now asks again every second while refused (`BUSY_ASK_MS`, 20 times, then as any other time), and a copy no
+  longer in charge stops its link (it reconnected every ~470 ms, each hello closed by the app). The suite says when
+  another build is registered (`pluginkit -mDAvvv`) and counts Safari's refusals in the step: the definitive Safari
+  check is a run against the installed build.
+- **The suite's verdicts** (`tools/screen-tests/suite/Verdicts.swift`, checked by `--self-check` against the run's lines):
+  a Chameleon window its app closed (its own log's `closed N`) isn't a leftover (the window server lists it off screen in
+  Margin's Space for good: replacesWindow-every's "leftover" was each window its app replaced, Margin having adopted the
+  new one in ~180 ms); a single desired-state read taken while Margin's page card is loading (a correction under way,
+  under its freeze) waits for it (restore-code's "over the sidebar" was AppKit's full-screen transition window, in the
+  member's new full-screen Space, during Margin's placing again under the freeze; never on the glass); Safari's host
+  waits for Margin's own verdict (90 s bound) and reports its parts (first copy, the profile's link and presses, its
+  window, shown); a show of Safari whose first open failed is reported as a first open.
+
 Not in scope here: live resize during a sidebar drag (separate research), the privileged route question
 (the bridged operations; awaiting Tirth), the sidebar click's brief key flicker.
