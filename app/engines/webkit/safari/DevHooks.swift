@@ -14,7 +14,10 @@
 // - For the check of Margin's window in front of what it hosts (2026-11-17, /tmp/margin-toolbar-test/hosted/check10):
 //   `host { key: palette }`: Margin's palette key, as its hot key runs it; `host { key: close }`: what a press outside a
 //   field of Margin's does (the palette goes); `host { sidebar: <points> }`: the front window's sidebar that wide, as a
-//   drag of its edge that ends there (begun, the theme's width set, over); `host { say: front }`: one line with how
+//   drag of its edge that ends there (begun, the theme's width set, over); `host { drag: "<dx>,<frames>" }`: a real
+//   drag of the front window's sidebar edge by its page's own handle (pointer events dispatched in the page as WebKit
+//   hands a person's drag: down, one move a display frame for `frames` frames to `dx` points, up; no event is posted
+//   to the system), one line once it's let go (`dragged N frames in M ms`); `host { say: front }`: one line with how
 //   the front window is kept in front, the page card's state and its hole (numbers only), and what it would show by
 //   itself at the next launch (`last`: an app's bundle id, `web`, or `none`); `host { say: picture }`: how
 //   much of the page area is painted in the window server's picture of Margin's own window (its own process's window:
@@ -39,6 +42,7 @@ protocol DevHookWorld: AnyObject {
     // Margin's palette key (`palette`) or a press outside its field (`close`), in the window hosting; nil if done.
     func devKey(_ name: String) -> String?
     func devSidebar(width: Int) -> String? // the front window's sidebar that wide, as a drag that ends there; nil if begun
+    func devDrag(dx: Int, frames: Int, done: @escaping (String) -> Void) -> String? // a drag of its handle in the page; nil if begun
     func devFront() -> String // how the front window is in front, its page card and its hole, in one line
     func devPicture(watch seconds: Double?, done: @escaping (String) -> Void) // the page area in Margin's own window's picture
     func devPage(_ what: String, done: @escaping (String) -> Void) // `field` or `spot` of the front window's page, in one line
@@ -106,6 +110,12 @@ final class DevHooks {
                 guard let width = Int(wide), (160...640).contains(width) else { return refuse("not a width") }
                 if let why = world.devSidebar(width: width) { return refuse(why) }
                 return say("dev hook: host sidebar \(width) \(asked)")
+            }
+            if let drag = fields["drag"] {
+                let parts = drag.split(separator: ",").compactMap { Int($0) }
+                guard parts.count == 2, (-400...400).contains(parts[0]), (1...600).contains(parts[1]) else { return refuse("not a drag (dx,frames)") }
+                if let why = world.devDrag(dx: parts[0], frames: parts[1], done: { [weak self] line in self?.say("dev hook: drag: \(line) \(asked)") }) { return refuse(why) }
+                return say("dev hook: host drag \(parts[0]),\(parts[1]) \(asked)")
             }
             if fields["say"] == "front" { return say("dev hook: front: \(world.devFront()) \(asked)") }
             if let what = fields["say"], what == "field" || what == "spot" {
@@ -199,6 +209,12 @@ extension Shell: DevHookWorld {
         return w.devResize(to: width)
     }
 
+    func devDrag(dx: Int, frames: Int, done: @escaping (String) -> Void) -> String? {
+        guard let w = marginWindows?.front else { return "no Margin window" }
+        w.devDrag(dx: dx, frames: frames, done: done)
+        return nil
+    }
+
     // (`engine`: what the host engine reads of the one shown at this moment, HostEngine.readShown: Spaces, on screen or
     // not, how many polls have read. `last`: what the window would show by itself at Margin's next launch,
     // HostedSession.resumeLast: an app's bundle id, `web` for a page, never its address or title; `none`: the launcher.)
@@ -278,6 +294,31 @@ extension MarginWindowController {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { finish() }
         return nil
+    }
+
+    // A drag of its sidebar's edge by the page's own handle: pointer events dispatched in the page as WebKit hands a
+    // person's drag (ui/behaviors/resize.ts hears them as one), one move a display frame (requestAnimationFrame), so
+    // the page reports its layout each frame as it would for a person. Nothing is posted to the system.
+    func devDrag(dx: Int, frames: Int, done: @escaping (String) -> Void) {
+        let script = """
+            const h = document.querySelector('[m-resize]');
+            if (!h) return 'no handle';
+            const r = h.getBoundingClientRect(), x0 = r.left + r.width / 2, y = r.top + r.height / 2;
+            const ev = (t, x, b) => h.dispatchEvent(new PointerEvent(t, { bubbles: true, cancelable: true, composed: true, button: 0, buttons: b, clientX: x, clientY: y, pointerId: 7, isPrimary: true }));
+            const t0 = performance.now();
+            ev('pointerdown', x0, 1);
+            await new Promise((done) => {
+              let i = 0;
+              const step = () => { i += 1; ev('pointermove', x0 + dx * i / frames, 1); if (i < frames) requestAnimationFrame(step); else done(); };
+              requestAnimationFrame(step);
+            });
+            ev('pointerup', x0 + dx, 0);
+            return 'dragged ' + frames + ' frames in ' + Math.round(performance.now() - t0) + ' ms';
+            """
+        webView.callAsyncJavaScript(script, arguments: ["dx": dx, "frames": frames], in: nil, in: .page) { result in
+            guard case .success(let value) = result, let text = value as? String else { return done("no answer from the page") }
+            done(text)
+        }
     }
 
     // The window server's picture of Margin's UI (its panel: its own process's window, no permission needed), as alpha only: how many of
