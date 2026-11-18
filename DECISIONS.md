@@ -5784,6 +5784,22 @@ Space"; the calls: `docs/PRIVATE-APIS.md` rows 22-23, 36-39 and the `tiles` part
   drag and 3 s after: Margin 320-390 ms, WindowServer 770-830 ms, the app shown 650-680 ms (the app's and the window
   server's are the cost of a live resize; the baseline wasn't measured on the same scenario, the screen wasn't free
   again); resident memory at rest with three hosted: Margin 118-133 MB, WindowServer 147-163 MB (no baseline taken).
-- **Not proven:** real apps and Safari in tiles (the `real-apps` part wasn't run with tiles); the behaviour parts
-  (`behaviours-1…4`) with tiles; real Mission Control and swipes beyond core's ⌃←/⌃→ steps; two displays; Stage Manager
-  off. Core (check10's steps, its sidebar drags now followed live) passed 33 of 33 with tiles.
+- **The run of 01:13-01:41 (2026-11-18, the build rebased on b5ba6e92):** live-resize 31/31; core 33/33 (an earlier
+  run); behaviours-4 19/19; behaviours-1 34/36, -2 32/33, -3 32/34; real-apps 29/39; live-resize-crash 8/10. Found and
+  fixed after it, **not run on the screen again**: *a tile whose window its app closed keeps a placeholder window of its
+  app's at the tile's rect, on screen in Margin's Space* (windowless: taken for a replacement and adopted; replacesWindow:
+  a leftover on screen): never a replacement now, and the tile destroyed at once when its host's window goes or is
+  replaced; *a killed Margin's own tile stays in its old Space* and kept that Space listed after the recovery (left on the
+  Mac, destroyed by hand with the kit's cleanup, 01:45): the recovery destroys it too. Open: *ordersOut-after* (its window
+  ordered out stays off screen with tiles; not looked into); *Safari didn't host* in real-apps (no shown line in 90 s:
+  the two builds' extensions again, not looked into); real Maps' first switch after a tile change took 109 ms (the
+  frozen watch, 70 ms: shortened to 30 ms after, unmeasured); the suite's drag and background checks assume the shown
+  window fills the page (they fail for Calculator, a fixed-size window, whose parked neighbours were at the new page area).
+  Real apps in tiles held 30 s each: Maps, Messages, Mail, WhatsApp, Notes; Phone and Calculator in window mode.
+- **The baseline (6081525c with only the dev hook's drag), the same live-resize part:** at rest Margin 134 MB and
+  WindowServer 187 MB (new: 118-133, 147-163); over a 1 s drag and 3 s after: Margin 370-520 ms, WindowServer 960-1360 ms,
+  the app shown ~160 ms (new: 320-390, 770-830, 650-680: the app redraws live, the release's re-fit is gone); its
+  switches after a drag showed the old size (2 of 6), its parked ones weren't sized (or 540 ms later, at a show); a
+  killed app's placeholder: not its concern (no tiles).
+- **Not proven:** Safari in a tile; real Mission Control and swipes beyond core's ⌃←/⌃→ steps; two displays; Stage
+  Manager off.
