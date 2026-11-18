@@ -60,6 +60,7 @@ extension Runner {
     case .tileMin(let t, let e): tileMinStep(t, expect: e)
     case .minDrag(let t, let dx, let st, let ends, let parked): minDrag(t, dx: dx, steps: st, endsAt: ends, parked: parked)
     case .overflow(let t, let s): overflowHeld(t, seconds: s)
+    case .settled(let t, let s): settledHeld(t, seconds: s)
     case .sidebarWidth(let w):
       gate("the sidebar's width")
       hook(["sidebar": "\(w)"])

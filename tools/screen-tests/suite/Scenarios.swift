@@ -83,6 +83,8 @@ enum Step: Equatable {
   case minDrag(Target, dx: Int, steps: Int, endsAt: Int?, parked: [Target]) // min-drag
   case overflow(Target, seconds: Double)          // overflow
   case sidebarWidth(Int)                         // the sidebar that wide first (dev hook `sidebar`): a known start
+  // the loop guard (the hosting core's guard.rs: docs/ARCHITECTURE-PLAN.md)
+  case settled(Target, seconds: Double)           // settled: no re-layout loop
 
   var text: String {
     switch self {
@@ -121,6 +123,7 @@ enum Step: Equatable {
     case .minDrag(let t, let dx, let st, let ends, let parked): return "min-drag: the sidebar's edge dragged \(dx > 0 ? "+" : "")\(dx) pt over \(st) display frames (dev hook `drag`), \(t.text) shown\(parked.isEmpty ? "" : ", \(parked.map(\.text).joined(separator: ", ")) parked"), every window's bounds and Spaces read every ms: never out of Margin's Space, never narrower than its minimum, the page area \(ends.map { "\($0)" } ?? "as dragged (its minimum the floor)") wide at the end\(parked.isEmpty ? "" : "; the parked ones at the page area or at their minimum width, right edge aligned, never in a user Space")"
     case .sidebarWidth(let w): return "the sidebar \(w) wide first (dev hook `sidebar`, as a drag that ends there): the page area \(1504 - w) wide"
     case .overflow(let t, let s): return "overflow: \(t.text), wider by its own minimum than the page area, held \(Int(s)) s in Margin's Space at its minimum width, its right edge the page area's"
+    case .settled(let t, let s): return "settled: \(t.text) shown and left alone \(Int(s)) s: Margin's Space's tiles laid out again by a change Margin didn't make at most 3 times (the loop guard's limit; 2026-11-18 13:30: 54 times in 18 s), \(t.text) at the page area in Margin's Space at the end"
     }
   }
 }
@@ -269,6 +272,20 @@ func realMinScenario(_ a: RealApp) -> Scenario {
   ], estimate: 120)
 }
 let weather = RealApp(name: "Weather", bundle: "com.apple.weather", framedOnly: false)
+// Weather's loop (2026-11-18 13:30): opened first, its tile the layout's second (the one a re-layout wipes), Maps beside
+// it, a drag, switches; then left alone and watched. The person's own apps, through Margin's dev hook only.
+func realLoopScenario(_ first: RealApp, _ second: RealApp) -> Scenario {
+  let a = Target.app(first.bundle), b = Target.app(second.bundle)
+  return Scenario(name: "real-apps-loop", title: "\(first.name) opened first (its tile the layout's second), \(second.name) beside it, a drag and switches, then left alone: no re-layout loop (the loop guard), no click or key ever posted into them", copies: [], steps: [
+    .openMargin, .host(a), .sidebarWidth(260), .host(b), .show(a, maxMs: nil),
+    .liveDragApp(a, dx: 80, steps: 30, parked: [b]), .settled(a, seconds: 15),
+    .show(b, maxMs: nil), .show(a, maxMs: nil), .settled(a, seconds: 15),
+    .liveDragApp(a, dx: -80, steps: 30, parked: [b]), .settled(a, seconds: 10),
+    .listedOnly("after \(first.name)'s loop watch"),
+    .quitMargin, .expect(.givenBack([first.bundle, second.bundle])),
+  ], estimate: 160)
+}
+let maps = RealApp(name: "Maps", bundle: "com.apple.Maps", framedOnly: false)
 
 // The parts: core; the behaviour scenarios in parts of about 6 minutes each (each from its own Margin launch);
 // the real apps' (opt-in).
@@ -287,5 +304,6 @@ func parts(realApps withReal: Bool) -> [Part] {
   out.append(Part(name: "live-resize-min", scenarios: [liveResizeMin], realApps: false))
   if withReal { out.append(Part(name: "real-apps", scenarios: [realAppsScenario(installedRealApps())], realApps: true)) }
   if withReal, isInstalled(weather.bundle) { out.append(Part(name: "real-apps-min", scenarios: [realMinScenario(weather)], realApps: true, apps: [weather])) }
+  if withReal, isInstalled(weather.bundle), isInstalled(maps.bundle) { out.append(Part(name: "real-apps-loop", scenarios: [realLoopScenario(weather, maps)], realApps: true, apps: [weather, maps])) }
   return out
 }
