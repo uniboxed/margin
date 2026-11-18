@@ -347,16 +347,19 @@ moves faster than the reconciler: the one shown follows it frame by frame, and t
   the person) are found at the next poll (`lookAtTiles`: another count of tiles, a host's tile left behind, Margin's own
   rect not the display's): every rect set again then (a placeholder destroyed first, under the freeze). Margin's window
   is a split's half until that poll (at most 0.25 s): **seen** (nothing can freeze ahead of a change Margin didn't make).
-- **App quit or crash:** its host goes as before; its tile, if it stayed (a crash's placeholder), is destroyed at the
-  next look, then every rect set again.
+- **App quit or crash, a window closed or replaced:** its host goes (or adopts the new window) as before; its tile stays
+  behind with a placeholder window of its own (a killed app's; and, on the real Mac 2026-11-18, a window its app closed:
+  a window of its app's at the tile's rect, on screen in Margin's Space), never taken for a replacement, destroyed at
+  once, then every rect set again. A window out of full screen leaves its tile empty until its app quits: Margin's quit
+  destroys those before its window goes.
 - **Margin quit:** each host given back as before (out of full screen on the current Space: its tile leaves Margin's
   Space with it), under the freeze; no rects set again while quitting (Margin's window goes).
 - **Margin crash and recovery:** the marker (hosted.json) records Margin's Space, Margin's own tile, each host's tile
   and the tiles of hosts that went but weren't destroyed yet. At the next launch the recovery gives everything back as
   it always has (each window out of full screen on the current Space: a window in Margin's old Space is taken out of
   full screen there, or brought to the current Space first; window-mode frames given back; apps Margin started quit),
-  then destroys the recorded tiles still in Margin's old Space (never one a window of the marker's is still in), and
-  the old Space with them once nothing is left in it. The new Margin doesn't take the tiles over: what was hosted is
+  then destroys the recorded tiles still in Margin's old Space, Margin's own dead one too (never one a window of the
+  marker's is still in), and the old Space with them once nothing is left in it. The new Margin doesn't take the tiles over: what was hosted is
   hosted again by its next show, as after any crash.
 - **Margin's window in another Space** (it left full screen and came back): its hosts' tiles moved into the new Space
   (the kit's recovery move, ids kept), every rect set again, the old Space destroyed once empty (`adoptTiles`).
