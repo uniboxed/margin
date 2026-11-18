@@ -5861,10 +5861,34 @@ Space"; the calls: `docs/PRIVATE-APIS.md` rows 22-23, 36-39 and the `tiles` part
   8 of its new checks fail without the fix), hosted-tests.swift (the minimum reaches Margin's window), ui-host-app.test.ts
   (the drag's floor, slow, fast, mid-drag, a reset; both new tests fail without the UI change); the suite's
   `live-resize-min` part (Chameleon's `minSize` switch) and `real-apps-min` (Weather, opt-in).
-- **Not proven on the real screen:** the fixed build was not run on the screen. The screen runs were stopped after the
-  Weather baseline run because Weather's saved window state couldn't be put back: the suite recorded no state keys for
-  it (its filter knew AppKit's `NSWindow Frame` keys, not Mac Catalyst's), and the run left `windowSystemFrame`
-  260,237 1048×640 and `windowGeometry`'s `windowFrame` [[808,400],[1048,640]] (its minimum size, after Margin's old
-  recovery took it out of full screen); what they were before isn't known. The suite now records keys with a window
-  frame or geometry in their names. Also unproven: an app whose tile says no minimum (the narrowest-held fallback),
-  a first open while the page area is already narrower than its minimum, a translucent theme over the overflow.
+- **Weather's saved window state:** the baseline run (09:43) left `windowSystemFrame` 260,237 1048×640 and
+  `windowGeometry`'s `windowFrame` [[808,400],[1048,640]] (its minimum, after Margin's old recovery took it out of full
+  screen); the suite then recorded no Mac Catalyst keys, so what they were before isn't known. Tirth: leave them as they
+  are. The suite now records keys with a window frame or geometry in their names (both later Weather runs put them
+  back, read the same after).
+- **On the real screen with the fix (2026-11-18):**
+  - The first run (10:31, the coordinator's) found the window never out of Margin's Space and never under its minimum,
+    but the page area ended 1104 wide, not 1100: Arcadia's `sidebarWidth` has a step of 10. While dragged the edge
+    stopped exactly at the floor (the sidebar 404, the window 1100 wide: the suite's narrowest bounds); let go, it
+    snaps to the step under the floor (400: 1104), never past it. The suite's ends were wrong (and assumed the sidebar
+    at 260; it was 240): it now works out where a drag stops and lets go by the theme's rules (Verdicts.swift `letGo`,
+    self-checked), sets the sidebar to 260 first, and checks the window was exactly its minimum while the edge stood at
+    the floor. Its "min none" for the parked Chameleon 3 was the suite's: a parked window's tile names no window
+    (`TileWindowID` 0) and says a 0×0 minimum; Margin kept the one it read before (the parked window was 1100 wide at
+    404, right-aligned) and now says so once ("its tile … says no minimum now (parked): … kept"). Space 11108 was
+    Margin's.
+  - `live-resize-min` (10:51): 27 of 27. Drags past the minimum (240 frames, 12, 3): the window exactly 1100 wide at the
+    floor, let go at 1104; 111 of 111 changes followed (median 3.4 ms, p95 16.2 ms) in the slow one; above it and wider
+    again followed too; Chameleon 3 parked under its minimum at 404,41 1100×933, shown so 5 s (0 reads off), dragged
+    wider; never out of Margin's Space; nothing placed again.
+  - `real-apps-min` with Weather (10:57): 13 of 13 (10:54: 8 of 13, all its misses the suite's 50-ms follow count). Its
+    tile said 1048×640; every drag, 240 frames to 3, stopped with the window exactly 1048 wide (the sidebar 456: the
+    step above it would cross the floor, so it lets go there), never out of Margin's Space, never placed again, no
+    loader. Weather resizes at its own pace, 50 ms a change (median 50.2, p95 56.2 ms in the slow drag; 22 of 36 within
+    50 ms): its drags follow, about 50-100 ms behind the edge. The suite holds a person's app to following and ending
+    where it belongs, Chameleon to 9 in 10 within 50 ms.
+  - Safari was started at 10:41:43 by `webpushd` (a push for one of Tirth's profiles), between runs; it restored two
+    full-screen windows (Spaces 11124, 11127). No test launched it or touched it.
+- **Still unproven:** an app whose tile says no minimum (the narrowest-held fallback), `tileBack` on the real Mac (no
+  window left its tile with the fix), a first open while the page area is already narrower than its minimum, a
+  translucent theme over the overflow.

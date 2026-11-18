@@ -410,7 +410,9 @@ millisecond, the build before the fix):** a hosted tile was sent a rect narrower
   shows it through).
 - **The one shown:** the sidebar's edge stops where the page area would be narrower than its minimum, in the UI's own
   drag (ui/behaviors/resize.ts: the widest the sidebar gets is its width at the press plus what the page area had above
-  the floor then; a reset to the default too), so the edge and the app always agree, fast or slow. The engine tells
+  the floor then; a reset to the default too), so the edge and the app always agree, fast or slow. Let go, the width
+  snaps to the theme's step (Arcadia's 10) without crossing the floor: on the real Mac the edge stood with the window
+  exactly 1100 wide (Chameleon) and 1048 (Weather), and let go at 1104 and 1048. The engine tells
   Margin's window the shown one's minimum width (`onMinimum` → `setPageMinimum` → `{ type: 'pageMin', width }` and the
   hello's `pageMinWidth`, host-app.ts `pageMinWidth`). The engine's own sizing holds the rule too (a minimum learnt
   mid-drag, the dev hook's `sidebar`, a theme or a display): one comparison a frame, nothing read.
