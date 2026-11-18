@@ -11,6 +11,7 @@
 #   --part       one part only (core, behaviours-1…, real-apps)
 #   --margin     the built Margin.app (default: xcode/build/Build/Products/Release/Margin.app, scripts/safari.sh's)
 #   --restore    puts the Mac back from the state file of a part that was killed (nothing else)
+#   --self-check the verdict rules that need no screen (suite/Verdicts.swift), against lines of real runs (nothing else)
 # Logs: build/logs/<time>-<part>.log, a summary of every part at the end. Exit 0: every part passed.
 set -u
 cd "$(dirname "$0")"
@@ -19,7 +20,7 @@ HERE="$PWD"
 ROOT="$(cd ../.. && pwd)"
 BUILD="${MARGIN_SCREEN_BUILD:-$HERE/build}"
 MARGIN="$ROOT/xcode/build/Build/Products/Release/Margin.app"
-DRY=0 RESTORE=0 ONLY=""
+DRY=0 RESTORE=0 SELF=0 ONLY=""
 PASS=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -29,7 +30,8 @@ while [ $# -gt 0 ]; do
     --real-apps) PASS+=(--real-apps); shift ;;
     --dry-run) DRY=1; shift ;;
     --restore) RESTORE=1; shift ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    --self-check) SELF=1; shift ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "unknown option $1 (run.sh --help)" >&2; exit 64 ;;
   esac
 done
@@ -41,6 +43,7 @@ if [ ! -x "$SUITE_BIN" ] || [ -n "$(find suite apps/Chameleon/Switches.swift -na
 fi
 SUITE=("$SUITE_BIN" --build "$BUILD" --apps "$BUILD/apps" --margin "$MARGIN" ${PASS[@]+"${PASS[@]}"})
 if [ "$RESTORE" = 1 ]; then exec "${SUITE[@]}" --restore; fi
+if [ "$SELF" = 1 ]; then exec "${SUITE[@]}" --self-check; fi
 # What it will do, first.
 "${SUITE[@]}" --dry-run ${ONLY:+--part "$ONLY"}
 [ "$DRY" = 1 ] && exit 0

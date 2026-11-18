@@ -12,6 +12,7 @@ npm run test:screen -- --part behaviours-2    # one part
 npm run test:screen -- --real-apps            # adds the part with the person's own apps (opt-in)
 npm run test:screen -- --margin /path/Margin.app   # default: xcode/build/Build/Products/Release/Margin.app (npm run safari's build)
 npm run test:screen -- --restore              # put the Mac back after a part that was killed (from build/state.json)
+npm run test:screen -- --self-check           # the verdict rules that need no screen (suite/Verdicts.swift). Touches nothing.
 ```
 
 `run.sh` builds the Chameleon copies and the suite, prints the whole plan, then runs each part with a hard 10-minute

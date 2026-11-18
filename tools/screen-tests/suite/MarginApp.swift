@@ -19,9 +19,9 @@ func stamp(_ line: String) -> Date? { line.count >= 23 ? stampFormat.date(from: 
 struct LogMark {
   let at: Date
   init() { at = Date() }
-  func since(_ what: String) -> [String] {
-    marginLog(from: at).filter { line in line.contains(what) && (stamp(line).map { $0 >= at.addingTimeInterval(-0.05) } ?? false) }
-  }
+  func since(_ what: String) -> [String] { lines().filter { $0.contains(what) } }
+  // Every line of Margin's since the mark (one read of its log: a step that looks for several things reads it once).
+  func lines() -> [String] { marginLog(from: at).filter { line in stamp(line).map { $0 >= at.addingTimeInterval(-0.05) } ?? false } }
 }
 
 func hook(_ info: [String: String]) { var i = info; i["pid"] = "\(getpid())"; DistributedNotificationCenter.default().postNotificationName(.init("com.unibox.margin.dev.host"), object: nil, userInfo: i, deliverImmediately: true) }

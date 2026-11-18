@@ -55,47 +55,94 @@ extension Runner {
   // The host ids Margin logs a target's lines under: `app:<bundle>`; a browser hosted as its own window, Safari's
   // `safari:<profile>` (real-apps, 2026-11-17: Safari's lines were `safari:p646`, never `app:com.apple.Safari`).
   func hostIds(_ t: Target) -> [String] { t.id == "com.apple.Safari" ? ["app:\(t.id)", "safari:"] : ["app:\(t.id)"] }
-  func lines(_ mark: LogMark, _ ids: [String], _ what: String) -> [String] { ids.flatMap { id in mark.since("host: \(id)").filter { $0.contains(what) } } }
+  func lines(_ mark: LogMark, _ ids: [String], _ what: String) -> [String] { mine(mark.lines(), ids).filter { $0.contains(what) } }
+  func mine(_ all: [String], _ ids: [String]) -> [String] { all.filter { l in ids.contains { l.contains("host: \($0)") } } }
+  // How long Margin's word is waited for: a first open of Safari is a cold launch, its copies' links and a profile's
+  // wake (4–35 s on 2026-11-17, the link slowed by another Margin build's extension handler): Margin's own verdict
+  // (shown, or failed) is waited for, and this is only a bound for a Margin that says nothing.
+  func within(_ t: Target) -> Double { t.id == "com.apple.Safari" ? 90 : 30 } // (90: the real-apps part stays under its 10-minute limit with both Safari steps at their bound)
   // Hosts through the dev hook, waits for Margin's word that it's shown (full screen or window mode). A failure line
   // ends the wait only when no shown line follows within 3 s (a fallback says it's shown right after its failure line:
-  // "full screen failed … backed out, shown in window mode", 2026-11-17).
+  // "full screen failed … backed out, shown in window mode", 2026-11-17). Margin's log read once a look.
   func host(_ t: Target) {
     gate("hosting \(t.text)")
     let mark = LogMark()
     let ids = hostIds(t)
+    let safari = t.id == "com.apple.Safari"
+    if safari { environment() }
     hook(["app": t.id])
-    var shown: String?, failed: String?, failedAt: Date?
-    spin(30) {
-      shown = lines(mark, ids, " shown in").first
-      if failed == nil, let f = lines(mark, ids, "").first(where: { $0.contains("failed") || $0.contains("couldn't") }) { failed = f; failedAt = Date() }
+    var shown: String?, failed: String?, failedAt: Date?, seen: [String] = []
+    let bound = within(t)
+    spin(bound) {
+      seen = mark.lines()
+      let said = mine(seen, ids)
+      shown = said.first { $0.contains(" shown in") }
+      if failed == nil, let f = said.first(where: { $0.contains("failed") || $0.contains("couldn't") }) { failed = f; failedAt = Date() }
       return shown != nil || (failedAt.map { Date().timeIntervalSince($0) > 3 } ?? false)
     }
     spin(1.0)
-    shown = shown ?? lines(mark, ids, " shown in").first
-    step("host \(t.text): Margin says it's shown", shown != nil, shown.map { String($0.suffix(160)) } ?? "no shown line in 30 s; Margin said: \(lines(mark, ids, "").suffix(4).map { String($0.suffix(150)) })")
+    seen = mark.lines()
+    shown = shown ?? mine(seen, ids).first { $0.contains(" shown in") }
+    // (Margin's other words about it too: a Safari's are its link's and the session's, `hosted:`, not only `host:`.)
+    let about = seen.filter { l in mine([l], ids).count == 1 || (safari && (l.contains("hosted: ") || l.contains("] hello: safari:") || l.contains("link down (safari:"))) }
+    let story = safari ? safariStory(seen, from: mark.at) : nil
+    step("host \(t.text): Margin says it's shown", shown != nil,
+         (shown.map { String($0.suffix(160)) } ?? "no shown line in \(Int(bound)) s; Margin said: \(about.suffix(5).map { String($0.suffix(150)) })") + (story.map { "; \($0.text)" } ?? ""))
     if let failed { log("  Margin said: \(failed.suffix(200))") }
+    if safari { refusals(since: mark.at) }
   }
-  // A switch to an item already prepared: Margin's "switched in N ms" (a window-mode one's too).
+  // A switch to an item already prepared: Margin's "switched in N ms" (a window-mode one's too). One whose first open
+  // failed is a first open now (Safari's, 2026-11-17 20:47: 21 s), waited for as long as a host, and said so.
   func show(_ t: Target, maxMs: Int?) {
     gate("showing \(t.text)")
     let mark = LogMark()
     let ids = hostIds(t)
+    let safari = t.id == "com.apple.Safari"
     hook(["app": t.id])
-    var line: String?
-    spin(10) { line = lines(mark, ids, " switched in").first ?? lines(mark, ids, " shown in").first; return line != nil }
+    var line: String?, opening = false
+    let bound = safari ? within(t) : 10
+    spin(bound) {
+      let said = mine(mark.lines(), ids)
+      line = said.first { $0.contains(" switched in") } ?? said.first { $0.contains(" shown in") }
+      if !opening, said.contains(where: { $0.contains(" opened (pid") }) { opening = true }
+      return line != nil || (said.contains { $0.contains("failed") } && line == nil && !opening)
+    }
     spin(0.5)
     let ms = match(line, #"(?:switched|shown) in (\d+) ms"#).flatMap { Int($0[0]) }
     let switched = line?.contains("switched in") == true
-    if let maxMs { step("show \(t.text) again: a switch in \(maxMs) ms or less", switched && (ms ?? 9999) <= maxMs, line.map { String($0.suffix(160)) } ?? "no switch line in 10 s") }
-    else { log("  \(line.map { String($0.suffix(160)) } ?? "no switch line in 10 s")") }
+    let what = line.map { String($0.suffix(160)) + (switched ? "" : opening ? " (a first open: its first one had failed)" : "") } ?? "no switch line in \(Int(bound)) s"
+    if let maxMs { step("show \(t.text) again: a switch in \(maxMs) ms or less", switched && (ms ?? 9999) <= maxMs, what) }
+    else { log("  \(what)") }
+    if safari, !switched { refusals(since: mark.at) }
+  }
+  // The test environment, said before a Safari step: other Margin builds whose extension Safari also has (the person's
+  // installed Margin beside the build under test). The definitive Safari check is a run against the installed build.
+  func environment() {
+    let others = otherBuilds(sh("/usr/bin/pluginkit", ["-mDAvvv", "-i", "com.unibox.margin.Extension"], timeout: 15), built: built)
+    guard !others.isEmpty else { return log("  environment: only the build under test has Margin's extension registered") }
+    log("  ENVIRONMENT: another Margin build's extension is registered with Safari too (\(others.joined(separator: ", "))): Safari runs one build's extension handler at a time and refuses the other's native messages meanwhile (\"Other version in use\"), so a profile's copy may link late; the definitive Safari check is against the installed build")
+  }
+  // Safari's own log: native messages it refused since `at` (another build's handler in use).
+  func refusals(since at: Date) {
+    let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    let out = sh("/usr/bin/log", ["show", "--start", f.string(from: at.addingTimeInterval(-1)), "--style", "compact", "--predicate", "process == \"Safari\" AND eventMessage CONTAINS[c] \"sendNativeMessage(). Other version in use\""], timeout: 30)
+    let n = out.split(separator: "\n").filter { $0.contains("Other version in use") }.count
+    if n > 0 { log("  Safari refused Margin's native messages \(n) time(s) in this step (\"Other version in use\": another Margin build's extension handler): the environment, not Margin") }
   }
 
   func expect(_ e: Expect) {
     switch e {
     case .desired(let d):
-      guard let (page, _) = pageNow() else { return step("desired: \(d.target.text)", false, "no page area from Margin") }
+      guard var (page, f) = pageNow() else { return step("desired: \(d.target.text)", false, "no page area from Margin") }
+      // (Margin still correcting, its page card loading: not a verdict yet; read again once it's done, 10 s at most.)
+      var waited = 0.0
+      while correcting(word(f, "page")), waited < 10 {
+        spin(0.5); waited += 0.5
+        guard let again = pageNow() else { break }
+        (page, f) = again
+      }
       let s = evaluate(d, page: page)
-      step("desired: \(d.text)", s.ok, s.why)
+      step("desired: \(d.text)", s.ok, s.why + (waited > 0 ? " (read after Margin's correction under way, \(waited) s)" : ""))
       if !s.ok, let a = app(d.target.id) { log("   DIAG \(diag(a.processIdentifier, marginWindow?.n))") }
       if !s.ok, case .copy(let n) = d.target { copyTail(n) }
     case .running(let t, let on):
@@ -146,7 +193,10 @@ extension Runner {
     let list = onScreen()
     let all = windowsOf(pid)
     let user = userSpaces()
-    let mainKind = all.filter { $0.layer == 0 && $0.r.width >= 200 && $0.r.height >= 200 && !isStrip($0.r) }
+    // (A window its app closed and the window server still lists, off screen: gone, as Margin's model takes it by
+    // Accessibility's destroyed. A copy says which it closed.)
+    let closed: Set<Int> = { if case .copy(let n) = d.target { return closedWindows(copyLog(n).split(separator: "\n").map(String.init)) }; return [] }()
+    let mainKind = all.filter { $0.layer == 0 && $0.r.width >= 200 && $0.r.height >= 200 && !isStrip($0.r) && !($0.on == false && closed.contains($0.n)) }
     let preexisting = Set(before.realApps.first { $0.bundle == d.target.id }?.windows.map(\.n) ?? [])
     var auxiliary: Set<Int> = []
     if d.auxiliary {

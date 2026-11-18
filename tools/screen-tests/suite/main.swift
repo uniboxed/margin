@@ -3,6 +3,7 @@
 //   screen-suite --part <name> --margin <Margin.app> --apps <the Chameleon copies' folder> [--real-apps] [--front level|order]
 //   screen-suite --dry-run [--real-apps] [--part <name>]   each part's scenarios and steps, touching nothing
 //   screen-suite --list-parts [--real-apps]                the parts' names, one a line
+//   screen-suite --self-check                              the verdict rules that need no screen (Verdicts.swift)
 //   screen-suite --restore                                 puts the Mac back from the state file of a part that was killed
 // It runs only if the Mac has been idle for 180 s and isn't locked (the suite's own posts of the part before left out),
 // checks for 60 s of idle before each step, and at the first sign of the person it stops and puts everything back.
@@ -22,6 +23,8 @@ let builtMargin = value("--margin") ?? ""
 let allParts = parts(realApps: withReal)
 
 if args.contains("--list-parts") { for p in allParts { print(p.name) }; exit(0) }
+// The verdict rules that need no screen (Verdicts.swift), against lines of real runs: nothing touched.
+if args.contains("--self-check") { exit(selfCheck() ? 0 : 1) }
 
 // ---- the plan: exactly what a part does (printed first by every run, and alone by --dry-run) ----
 func plan(_ p: Part) {
