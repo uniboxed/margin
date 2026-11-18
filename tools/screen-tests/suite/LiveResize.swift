@@ -60,32 +60,32 @@ extension Runner {
     let list = measured()
     let u0 = usage(list.map(\.1))
     let t0 = Date()
-    hook(["drag": "\(dx),\(steps)"])
-    var samples: [(t: Double, r: CGRect)] = []
-    var doneLine: String?
-    let bound = Double(steps) / 30 + 5
-    while Date().timeIntervalSince(t0) < bound {
-      if let r = bounds(w.n) { if samples.last?.r != r { samples.append((Date().timeIntervalSince(t0), r)) } }
-      usleep(1000)
-      if samples.count % 50 == 0, doneLine == nil { doneLine = mark.since("dev hook: drag: dragged").last }
-      if doneLine == nil, Date().timeIntervalSince(t0) > Double(steps) / 60 + 0.5 { doneLine = mark.since("dev hook: drag: dragged").last }
-      if doneLine != nil { break }
-    }
-    let released = Date()
-    // (After the release: the one shown checked at the drag's last page area, the parked ones sized one at a time.)
-    var parkedAt: [String: Double] = [:]
-    var pageAfter: CGRect?
+    _ = mark
     let windows = parked.compactMap { k in app(k.id).flatMap { placedWindow($0.processIdentifier, minWidth: 200, minHeight: 200) }.map { (k.text, $0.n) } }
-    let sizedBound = 3.0
-    while Date().timeIntervalSince(released) < sizedBound {
-      if pageAfter == nil || Int(Date().timeIntervalSince(released) * 1000) % 200 < 2 { pageAfter = rectIn(front(), "page area") ?? pageAfter }
-      if let r = bounds(w.n), samples.last?.r != r { samples.append((Date().timeIntervalSince(t0), r)) }
-      if let p = pageAfter {
-        for (k, num) in windows where parkedAt[k] == nil { if let b = bounds(num), near(b, p, 1) { parkedAt[k] = Date().timeIntervalSince(released) * 1000 } }
-        if parkedAt.count == windows.count, let b = bounds(w.n), near(b, p, 1) { break }
+    hook(["drag": "\(dx),\(steps)"])
+    // (Read every millisecond, nothing else meanwhile (a read of Margin's log takes up to a second): the shown window's
+    // model bounds until they've held still 400 ms past the drag's own length, the parked ones' with them; then until
+    // each parked one has the shown one's last bounds, 3 s at most.)
+    var samples: [(t: Double, r: CGRect)] = []
+    var parkedSeen: [String: CGRect] = [:]
+    var parkedAt: [String: Double] = [:]
+    let dragLength = Double(steps) / 120
+    var settledAt: Double?
+    while true {
+      let now = Date().timeIntervalSince(t0)
+      if let r = bounds(w.n), samples.last?.r != r { samples.append((now, r)) }
+      let last = samples.last
+      if settledAt == nil, now > dragLength + 0.4, let last, now - last.t >= 0.4 { settledAt = last.t }
+      if let target = last?.r {
+        for (k, num) in windows where parkedAt[k] == nil {
+          if let b = bounds(num) { parkedSeen[k] = b; if settledAt != nil || now > dragLength, near(b, target, 1), !near(b, samples.first?.r ?? .zero, 1) { parkedAt[k] = now } }
+        }
       }
-      usleep(2000)
+      if let s = settledAt, parkedAt.count == windows.count || now - s > 3 { break }
+      if now > dragLength + 8 { break }
+      usleep(1000)
     }
+    let pageAfter = rectIn(front(), "page area")
     spin(0.6)
     let u1 = usage(list.map(\.1))
     let all = mark.lines()
@@ -102,10 +102,13 @@ extension Runner {
            && final != nil && pageAfter != nil && near(final!, pageAfter!, 1) && !near(pageAfter!, pageBefore, 1),
          "Margin: \(liveLine.map { String($0.suffix(220)) } ?? "no live-resize line"); the suite: \(samples.count) bounds seen, \(distinct) widths of its left edge, page area \(rect(pageBefore)) → \(rect(pageAfter)), the window \(rect(final)); placed again or loading \(refits)×; CPU over the drag and 3 s after: \(cpu)")
     if !windows.isEmpty {
-      let slowest = parkedAt.values.max() ?? 9999
+      // (From the shown window's last change, the drag's end as the window server has it.)
+      let release = settledAt ?? samples.last?.t ?? 0
+      let after = parkedAt.mapValues { ($0 - release) * 1000 }
+      let slowest = after.values.max() ?? 9999
       step("background-sized: every parked window (\(parked.map(\.text).joined(separator: ", "))) at the new page area within 1 s of the release, out of sight",
            parkedAt.count == windows.count && slowest <= 1000 && windows.allSatisfy { spacesOf($0.1).isEmpty },
-           windows.map { k, num in "\(k) #\(num) \(parkedAt[k].map { "at it after \(Int($0)) ms" } ?? "NOT at it (\(rect(bounds(num))))"), Spaces \(spacesOf(num))" }.joined(separator: "; "))
+           windows.map { k, num in "\(k) #\(num) \(after[k].map { "at it \(Int($0)) ms after the shown one's last change" } ?? "NOT at it (\(rect(parkedSeen[k])))"), Spaces \(spacesOf(num))" }.joined(separator: "; "))
     }
   }
 
