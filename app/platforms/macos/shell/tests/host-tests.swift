@@ -562,6 +562,12 @@ final class FakeHostWorld: HostSystem {
         if let n = a.windows.first, let w = wins[n] { saved[a.bundle] = w.frame ?? Self.defaultFrame } // (its frame at quit)
         for n in a.windows { wins[n] = nil }
         for (space, p) in owner where p == pid { tiles[space] = nil; owner[space] = nil }
+        // (Its empty tiles left in another app's Space go with it.)
+        for (t, p) in emptyTiles where p == pid {
+            emptyTiles[t] = nil
+            for (space, list) in tiles where list.contains(t) { tiles[space] = list.filter { $0 != t }; relayFirstTwo(space) }
+            tileWindow[t] = nil
+        }
         noteListing()
         onAppQuit?(pid)
     }
@@ -678,6 +684,10 @@ final class FakeHostWorld: HostSystem {
                 if w.priv != nil, exitUnparks { w.priv = nil; w.spaces = [Self.desktop] }
             } else {
                 for (space, list) in tiles where list.contains(where: { tileWindow[$0] == window }) {
+                    if w.tiled, exitLeavesTile, owner[space] != pid {
+                        for t in list where tileWindow[t] == window { emptyTiles[t] = pid } // (left behind, empty)
+                        continue
+                    }
                     tiles[space] = list.filter { tileWindow[$0] != window }
                     if owner[space] == pid, tiles[space]?.isEmpty == true { tiles[space] = nil; owner[space] = nil } // macOS closes its own Space
                     else { relayFirstTwo(space) } // (a tile taken out: the first two laid out again)
@@ -931,6 +941,10 @@ final class FakeHostWorld: HostSystem {
     var liveResizing: [UInt64: Bool] = [:]
     var relaid = 0 // layouts laid out again by a tile change
     var placeholders: Set<UInt64> = [] // tiles left with no window by an app that was killed
+    // A tiled window out of full screen leaves its tile in that Space, empty, until its app quits (the real Mac,
+    // 2026-11-17 23:32: Margin's Space outlived Margin's quit with such a tile in it). Off: the tile goes with it.
+    var exitLeavesTile = true
+    var emptyTiles: [UInt64: pid_t] = [:]
     static let tileDisplay = CGRect(x: 0, y: 0, width: 1512, height: 982), band: CGFloat = 33
     func tileOf(_ window: Int) -> UInt64? { tileWindow.first { e in e.value == window && tiles.values.contains { $0.contains(e.key) } }?.key }
     func tileBounds(_ t: UInt64) -> CGRect {
@@ -991,7 +1005,8 @@ final class FakeHostWorld: HostSystem {
         calls.append("destroyTile \(tile)")
         guard tilesOn else { return false }
         for (space, list) in tiles where list.contains(tile) { tiles[space] = list.filter { $0 != tile }; relayFirstTwo(space) }
-        if let n = tileWindow[tile], wins[n] != nil { destroyedWithWindows += 1 }
+        if let n = tileWindow[tile], wins[n] != nil, emptyTiles[tile] == nil { destroyedWithWindows += 1 }
+        emptyTiles[tile] = nil
         tileWindow[tile] = nil
         tileRects[tile] = nil
         placeholders.remove(tile)

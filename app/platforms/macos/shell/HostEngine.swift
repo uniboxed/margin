@@ -541,6 +541,14 @@ final class HostEngine {
             self.leftWindows = []
             let order = (self.shown.map { [$0] } ?? []) + self.hosts.keys.filter { $0 != self.shown }.sorted { $0.raw < $1.raw }
             await self.closeAtOnce(order)
+            // (Live resize: a window out of full screen leaves its tile in Margin's Space, empty, until its app quits (the
+            // real Mac, 2026-11-17 23:32): destroyed now, under the freeze, or Margin's Space outlives Margin's window, listed
+            // with nothing in it.)
+            if !self.goneTiles.isEmpty {
+                let frozen = self.holdFreeze()
+                await self.dropGoneTiles()
+                self.releaseFreeze(frozen)
+            }
             await self.closeLeftSafariWindows()
             // (An app a row's close asked to quit and still running `quitWait` later didn't quit: Margin's again, asked
             // again below; one still finishing isn't asked twice, kept in the marker as asked.)

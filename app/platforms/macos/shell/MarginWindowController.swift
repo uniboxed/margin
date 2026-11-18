@@ -1242,7 +1242,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             guard let geometry = body["geometry"] as? JSONObject, let layout = PageLayout(geometry: geometry) else { return }
             if hosting {
                 let said = "\(layout.mode) \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)) in \(Int(layout.width))×\(Int(layout.height))"
-                if said != hostingLayoutSaid {
+                // (Not each frame of a drag of the sidebar's edge: its last layout, once it's let go.)
+                if said != hostingLayoutSaid, !pageResizing {
                     hostingLayoutSaid = said
                     Diagnostics.note("Margin's window \(id): hosting, its page measured \(said) (window \(Int(window.frame.width))×\(Int(window.frame.height)), full screen \(window.styleMask.contains(.fullScreen)))")
                 }

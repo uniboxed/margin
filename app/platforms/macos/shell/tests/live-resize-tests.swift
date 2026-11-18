@@ -145,11 +145,15 @@ func liveResizeTests() {
               w.tiles[FakeHostWorld.marginSpace] == [FakeHostWorld.marginTile, w.tileOf(edit) ?? 0] && marginWhole(w) && w.bounds(window: edit) == page(370) && w.freezes > freezes && !w.frozen && clean(w),
               "\(String(describing: w.tiles[FakeHostWorld.marginSpace])) \(w.calls.dropFirst(m6))")
 
-        // ---- Margin quits: everything given back, nothing of it left in Margin's Space ----
+        // ---- Margin quits: everything given back, nothing of it left in Margin's Space (a window out of full screen leaves
+        // its tile there, empty, until its app quits: TextEdit slow to quit here, as Chameleon on the real Mac) ----
+        w.quitsAfter["com.apple.TextEdit"] = 3
         _ = hostRun { await e.quitAll(); return true }
-        check("live resize: Margin's quit: its hosts given back (their tiles out of Margin's Space), their apps asked to quit, nothing listed but Margin's Space",
-              w.tiles[FakeHostWorld.marginSpace] == [FakeHostWorld.marginTile] && w.running(bundleId: "com.apple.TextEdit").isEmpty && clean(w) && !FileManager.default.fileExists(atPath: marker.path),
+        check("live resize: Margin's quit: its hosts given back out of full screen, the empty tiles they left destroyed before Margin's window goes (Margin's Space never outlives it), their apps asked to quit",
+              w.tiles[FakeHostWorld.marginSpace] == [FakeHostWorld.marginTile] && w.wins[edit]?.fullScreen != true && clean(w),
               "\(String(describing: w.tiles[FakeHostWorld.marginSpace])) \(w.calls.suffix(8))")
+        _ = hostRun { await w.sleep(3.5); return true }
+        check("live resize: …its app quit after, the marker gone", w.running(bundleId: "com.apple.TextEdit").isEmpty && !FileManager.default.fileExists(atPath: marker.path))
     }
 
     // ---- the early path (the real Mac's pacing, `staged`): its tile moved once macOS has brought the window into its own Space ----
