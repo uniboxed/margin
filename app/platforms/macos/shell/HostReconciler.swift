@@ -20,7 +20,8 @@
 //   askFullScreen      a normal window that can go full screen: asked where macOS takes it (the early path, else the slow one)
 //   frameWindow        one that can't: window mode, framed into the page area (a fixed size centred, the page card around it)
 //   putBack            shown, its window out of Margin's Space (another Space, none): back in, after macOS's transition
-//   bringForward       shown in window mode, in Margin's Space (current) and off screen: its app forward, then looked at
+//   bringForward       shown, in Margin's Space (current) and off screen (window mode; a member once its show's late watch is
+//                      over: its app ordered it out): its app forward, then looked at
 //                      again, a rung at a time: activate (unhide, AXFrontmost, raise), reopen (a Dock-icon click). Never a
 //                      Space made current or a window moved for it (2026-11-17 14:05: each was a jump). A member off
 //                      screen in place is placed again (HostEngine.backOnScreen), as before.

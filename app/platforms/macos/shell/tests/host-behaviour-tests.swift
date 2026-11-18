@@ -235,11 +235,15 @@ func hostBehaviourTests() {
     // ---- ordersOut after:3: its shown window ordered out 3 s after it's on screen: back in sight, the same window ----
     do {
         let (r, result) = scenario(["ordersOut": "after:3"])
+        let done = listen(r)
         run(r, 5)
         let d = desired(r, chameleon)
         let h = held(r, chameleon, 5)
-        check("behaviour ordersOut after:3: ordered out by its app while shown: on screen again, still hosted: \(d.why)", shown(result) && d.ok, "\(r.lines.suffix(6))")
-        check("behaviour ordersOut after:3: held 5 s: \(h.why)", h.ok)
+        done()
+        let story = r.lines.filter { $0.contains("→") || $0.contains("after activate") || $0.contains("after reopen") || $0.contains("placed again") } + r.b.said.filter { $0.contains("ordered") }
+        check("behaviour ordersOut after:3: ordered out by its app while shown (in Margin's Space, off screen; its app the front app): brought forward, its app's reopen ordering it in again, on screen, still hosted: \(d.why)",
+              shown(result) && d.ok && said(r, "on screen 0 ms after reopen") == 1 && said(r, "full screen by the early path") == 2, "\(story)")
+        check("behaviour ordersOut after:3: held 5 s: \(h.why)", h.ok, "\(story)")
         finish(r)
     }
     // ---- replacesWindow every:4: a new main window every 4 s, the old one closed: adopted each time, never fought ----

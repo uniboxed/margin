@@ -15,8 +15,10 @@
 //   autoTerminate  attempt:<s>: <s> with no window in a user Space, it attempts termination (NSWorkspace says it quit,
 //                  its process runs on: FakeHostWorld.attemptTermination); quit:<s>: really quits; system: quits 2 s
 //                  after it has none, unless launched with `-NSDisableAutomaticTermination YES`;
-//   ordersOut      untilActive: its window in no Space until the app is activated; after:<s>: out of every Space <s>
-//                  after first on screen, back in the current Space at its next activation; every:<s>: out for 0.5 s
+//   ordersOut      untilActive: its window in no Space until the app is activated; after:<s>: ordered out <s> after
+//                  first on screen, kept in its Space off screen (the real Mac, 2026-11-17 19:08: "#74439 … onscreen false
+//                  spaces [9202]", Margin's), back at a reopen, or at an activation if its app wasn't the front app
+//                  already (AppKit's didBecomeActive: an app already active gets none); every:<s>: out for 0.5 s
 //                  every <s>;
 //   replacesWindow every:<s>: a new window (a new number) at the old one's frame in the current Space, the old one
 //                  closed, every <s> after first on screen (the new one is the app's main window); twin: a second
@@ -196,11 +198,10 @@ final class BehaviourWorld {
             case .after(let after)?:
                 if let t = shownFor, t >= after, !orderedOutOnce.contains(pid), let m = mainWindow(pid) {
                     orderedOutOnce.insert(pid)
-                    world.wins[m]?.spaces = []
                     world.orderedOut.insert(m)
-                    orderedOut[pid] = (m, activations(pid))
-                    note(pid, "ordered out \(m)")
-                } else if let o = orderedOut[pid], activations(pid) > o.activations {
+                    orderedOut[pid] = (m, world.front == pid ? Int.max : activations(pid))
+                    note(pid, "ordered out \(m)\(world.front == pid ? " (its app the front app: no activation brings it back)" : "")")
+                } else if let o = orderedOut[pid], o.activations != Int.max, activations(pid) > o.activations {
                     orderIn(o.window); orderedOut[pid] = nil; note(pid, "activated: \(o.window) ordered in")
                 }
             case .every(let every)?:
@@ -421,10 +422,21 @@ func behaviourWorldTests() {
         run(w, b, 2.9)
         let shown = w.shows(n)
         run(w, b, 0.2)
-        let out = w.wins[n]?.spaces == []
+        let out = !w.shows(n) && w.wins[n]?.spaces == [w.current]
         _ = hostRun { await w.activate(pid: pid, window: n) }
         run(w, b, 0.1)
-        check("behaviour ordersOut after:3: on screen, ordered out of every Space 3 s after, back at its next activation", shown && out && w.shows(n))
+        check("behaviour ordersOut after:3: on screen, ordered out 3 s after (off screen, still in its Space), back at its next activation (its app not the front app)", shown && out && w.shows(n))
+        // (Its app the front app as it ordered it out: an activation brings nothing; a reopen (a Dock-icon click) does.)
+        let (w2, b2) = make(["ordersOut": "after:3"])
+        let pid2 = launch(w2)
+        let n2 = w2.apps[pid2]?.windows.first ?? 0
+        _ = hostRun { await w2.frontmost(pid: pid2) }
+        run(w2, b2, 3.1)
+        _ = hostRun { await w2.activate(pid: pid2, window: n2) }
+        run(w2, b2, 0.1)
+        let stillOut = !w2.shows(n2)
+        _ = w2.reopen(pid: pid2)
+        check("behaviour ordersOut after:3, its app the front app: an activation doesn't bring it back, a reopen does", stillOut && w2.shows(n2))
     }
     do {
         let (w, b) = make(["ordersOut": "every:2"])

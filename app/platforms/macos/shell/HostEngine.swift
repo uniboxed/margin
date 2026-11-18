@@ -757,7 +757,10 @@ final class HostEngine {
         guard !quitting, !reconcileQueued, marginSpace > 0 else { return }
         for id in hosts.keys.sorted(by: { $0.raw < $1.raw }) {
             guard let host = hosts[id], host.phase != .preparing else { continue }
-            if host.mode == .window, host.phase == .shown, shown == id { noteOffScreen(host) } else { host.offScreenReads = 0 }
+            // (A member too once the show's late watch is over: right after a show, a member off screen is placed again,
+            // `backOnScreen`; later, its app ordered it out (ordersOut after, 2026-11-17 19:08: in Margin's Space, off
+            // screen, for good): brought forward like a window-mode one, its app's own reopen the rung that brings it.)
+            if host.phase == .shown, shown == id, host.mode == .window || sys.now() - shownAt >= options.lateWatch { noteOffScreen(host) } else { host.offScreenReads = 0 }
             if host.member, host.phase == .shown, shown == id { noteOffPage(host) } else { host.offPageReads = 0 }
             let s = situation(host)
             let d = desired(host)
@@ -784,8 +787,9 @@ final class HostEngine {
         }
     }
 
-    // A window-mode window shown in Margin's Space, the current one at rest, missing from the on-screen list and off
-    // screen by its own read: counted (the reconciler brings it forward at the second read in a row).
+    // A window shown in Margin's Space (window mode, or a member after the show's late watch), the current one at rest,
+    // missing from the on-screen list and off screen by its own read: counted (the reconciler brings it forward at the
+    // second read in a row).
     private func noteOffScreen(_ host: Host) {
         guard let list = steadyScreen(), sys.spaces(window: host.window) == [marginSpace], !sys.screenAway(), sys.isHidden(pid: ownPid) != true else { host.offScreenReads = 0; return }
         if list.contains(where: { $0.number == host.window }) { host.offScreenReads = 0; return }
@@ -3190,7 +3194,15 @@ final class HostEngine {
             }
             offActedFor = shownAt
             offTries.append(sys.now())
-            Diagnostics.note("host: \(id): shown, not on screen though it's in Margin's Space, the current one (\(seen)): no Space made current, nothing moved; out of full screen and placed again")
+            // (Its app's own first, the reconciler's rungs not tried yet this show: an app that ordered its window out
+            // orders it in again at its activation or its reopen (ordersOut after: placing it again only took it out of
+            // full screen and back, again and again). Then placed again: macOS's own change that left it undrawn.)
+            Diagnostics.note("host: \(id): shown, not on screen though it's in Margin's Space, the current one (\(seen)): no Space made current, nothing moved; its app brought forward first, out of full screen and placed again if that doesn't bring it")
+            for rung in HostForward.allCases where (host.tries[HostCorrection.bringForward(rung).key] ?? []).filter({ sys.now() - $0 < options.budgetWithin }).isEmpty {
+                host.tries[HostCorrection.bringForward(rung).key, default: []].append(sys.now())
+                await bringForward(host, rung)
+                if sys.windowOnScreen(host.window).map({ $0.onScreen && $0.alpha > 0 }) == true { hostedSaid = nil; return announceHosted() }
+            }
             let frozen = holdFreeze()
             await backOut(host)
             releaseFreeze(frozen)
