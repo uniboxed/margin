@@ -24,7 +24,7 @@ func stamp(_ line: String) -> Date? { line.count >= 23 ? stampFormat.date(from: 
 // failure line was there; a count is undone by any read that comes back short.)
 struct LogMark {
   let at: Date
-  init() { at = Date() }
+  init(at: Date = Date()) { self.at = at }
   func since(_ what: String) -> [String] { lines().filter { $0.contains(what) } }
   // Every line of Margin's since the mark (one read of its log: a step that looks for several things reads it once).
   func lines() -> [String] { marginLog(from: at).filter { line in stamp(line).map { $0 >= at.addingTimeInterval(-0.05) } ?? false } }

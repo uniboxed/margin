@@ -149,8 +149,24 @@ extension Runner {
         guard let again = pageNow() else { break }
         (page, f) = again
       }
-      let s = evaluate(d, page: page)
-      step("desired: \(d.text)", s.ok, s.why + (waited > 0 ? " (read after Margin's correction under way, \(waited) s)" : ""))
+      var s = evaluate(d, page: page)
+      // (Its app's own change caught mid-correction (ordersOut-after: its window ordered out 3 s after it was first on
+      // screen, read at that moment, the reconciler's bring-forward already under way, 2026-11-18 01:24): read again once
+      // Margin's correction for it is over, 5 s at most, said. Never when Margin says no correction.)
+      var corrected: String?
+      if !s.ok {
+        let mark = LogMark(at: Date().addingTimeInterval(-3))
+        let ids = hostIds(d.target)
+        let until = Date().addingTimeInterval(5)
+        while Date() < until, !s.ok {
+          guard let c = mine(mark.lines(), ids).last(where: { $0.contains(" → ") && !$0.contains("→ wait") }) else { break }
+          corrected = String(c.suffix(140))
+          spin(0.5)
+          if let again = pageNow() { (page, f) = again }
+          s = evaluate(d, page: page)
+        }
+      }
+      step("desired: \(d.text)", s.ok, s.why + (waited > 0 ? " (read after Margin's correction under way, \(waited) s)" : "") + (corrected.map { " (read again after Margin's correction: \($0))" } ?? ""))
       if !s.ok, let a = app(d.target.id) { log("   DIAG \(diag(a.processIdentifier, marginWindow?.n))") }
       if !s.ok, case .copy(let n) = d.target { copyTail(n) }
     case .running(let t, let on):

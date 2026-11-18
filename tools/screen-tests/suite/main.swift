@@ -38,7 +38,7 @@ func plan(_ p: Part) {
   }
   if p.realApps {
     let inst = installedRealApps()
-    print("  THE PERSON'S OWN APPS: \(inst.map { "\($0.name) (\($0.bundle))" }.joined(separator: ", "))\(realApps.count > inst.count ? "; skipped, not installed: \(realApps.filter { !isInstalled($0.bundle) }.map(\.name).joined(separator: ", "))" : "")")
+    print("  THE PERSON'S OWN APPS: \(inst.map { "\($0.name) (\($0.bundle))" }.joined(separator: ", "))\(realApps.count > inst.count ? "; skipped (not installed, or Safari not running: a test never launches it, it would restore the person's windows): \(realApps.filter { r in !inst.contains { $0.bundle == r.bundle } }.map(\.name).joined(separator: ", "))" : "")")
     print("    recorded first: running or not, pid, windows (numbers, bounds, Spaces), saved-state defaults keys (window frames, full screen, restoration: read with `defaults export`), Margin's library items for each")
     print("    touched ONLY through Margin's dev hook (host, show); no click or key is posted in this part at all; none of their windows or tabs closed by the suite")
     print("    after: apps that weren't running quit politely (never forced); apps that were left running; every changed saved-state key written back, read again, differences reported; Margin's items removed only for apps that had none before")

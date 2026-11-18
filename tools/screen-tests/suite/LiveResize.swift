@@ -61,7 +61,22 @@ extension Runner {
     let u0 = usage(list.map(\.1))
     let t0 = Date()
     _ = mark
-    let windows = parked.compactMap { k in app(k.id).flatMap { placedWindow($0.processIdentifier, minWidth: 200, minHeight: 200) }.map { (k.text, $0.n) } }
+    // (The parked ones that fill the page area: full-screen tiles, sized in the background. A window-mode one parked keeps
+    // its frame and is placed as it's next shown (Accessibility can't reach it out of sight): not counted here, said.)
+    let parkedAll = parked.compactMap { k in app(k.id).flatMap { placedWindow($0.processIdentifier, minWidth: 200, minHeight: 200) }.map { (k.text, $0.n, $0.r) } }
+    let windows = parkedAll.filter { near($0.2, pageBefore, 1) }.map { ($0.0, $0.1) }
+    let windowed = parkedAll.filter { !near($0.2, pageBefore, 1) }.map(\.0)
+    if !windowed.isEmpty { log("  parked in window mode (placed when shown, not sized in the background): \(windowed.joined(separator: ", "))") }
+    // (The page area the drag ends on: its left edge moved by dx, its right edge where it was.)
+    let pageExpected = CGRect(x: pageBefore.minX + CGFloat(dx), y: pageBefore.minY, width: pageBefore.width - CGFloat(dx), height: pageBefore.height)
+    // (Where a window belongs in a page area: at it, or (window mode) inside it, centred within a point or two when it's
+    // smaller: a fixed size, or a resizable one at its own limits.)
+    func placedIn(_ b: CGRect, _ p: CGRect) -> Bool {
+      if near(b, p, 1) { return true }
+      guard p.insetBy(dx: -1, dy: -1).contains(b) else { return false }
+      return abs(b.midX - p.midX) <= 2 || abs(b.minX - p.minX) <= 1
+    }
+    let fills = near(w.r, pageBefore, 1)
     hook(["drag": "\(dx),\(steps)"])
     // (Read every millisecond, nothing else meanwhile (a read of Margin's log takes up to a second): the shown window's
     // model bounds until they've held still 400 ms past the drag's own length, the parked ones' with them; then until
@@ -76,10 +91,10 @@ extension Runner {
       if let r = bounds(w.n), samples.last?.r != r { samples.append((now, r)) }
       let last = samples.last
       if settledAt == nil, now > dragLength + 0.4, let last, now - last.t >= 0.4 { settledAt = last.t }
-      if let target = last?.r {
-        for (k, num) in windows where parkedAt[k] == nil {
-          if let b = bounds(num) { parkedSeen[k] = b; if settledAt != nil || now > dragLength, near(b, target, 1), !near(b, samples.first?.r ?? .zero, 1) { parkedAt[k] = now } }
-        }
+      // (Each parked one where it belongs in the page area the drag ends on: a full-screen one at it, a window-mode one
+      // inside it, centred when it's a fixed size; never compared with the one shown, which may be smaller.)
+      for (k, num) in windows where parkedAt[k] == nil {
+        if let b = bounds(num) { parkedSeen[k] = b; if settledAt != nil || now > dragLength, placedIn(b, pageExpected), !placedIn(b, pageBefore) || near(pageExpected, pageBefore, 1) { parkedAt[k] = now } }
       }
       if let s = settledAt, parkedAt.count == windows.count || now - s > 3 { break }
       if now > dragLength + 8 { break }
@@ -102,7 +117,7 @@ extension Runner {
     let cpu = list.map { name, pid in "\(name) \(Int((u1[pid]?.cpu ?? 0) - (u0[pid]?.cpu ?? 0))) ms" }.joined(separator: ", ")
     step("drag-live (\(t.text), \(dx > 0 ? "+" : "")\(dx) pt over \(steps) frames): the shown window follows each step (Margin's word: each change followed, 95% within 25 ms), never placed again or behind the loader, at the drag's last page area",
          liveLine != nil && sent >= steps / 3 && (followed.flatMap { Int($0[0]) } ?? 0) >= sent * 9 / 10 && p95 <= 25 && distinct >= steps / 3 && refits == 0
-           && final != nil && pageAfter != nil && near(final!, pageAfter!, 1) && !near(pageAfter!, pageBefore, 1),
+           && final != nil && pageAfter != nil && (fills ? near(final!, pageAfter!, 1) : placedIn(final!, pageAfter!)) && !near(pageAfter!, pageBefore, 1),
          "Margin: \(liveLine.map { String($0.suffix(220)) } ?? "no live-resize line"); the suite: \(samples.count) bounds seen, \(distinct) widths of its left edge, page area \(rect(pageBefore)) → \(rect(pageAfter)), the window \(rect(final)); placed again or loading \(refits)×; CPU over the drag and 3 s after: \(cpu)")
     if !windows.isEmpty {
       // (From the shown window's last change, the drag's end as the window server has it.)

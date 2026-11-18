@@ -25,7 +25,10 @@ let realApps: [RealApp] = [
   RealApp(name: "Calculator", bundle: "com.apple.calculator", framedOnly: true),
 ]
 func isInstalled(_ bundle: String) -> Bool { NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) != nil }
-func installedRealApps() -> [RealApp] { realApps.filter { isInstalled($0.bundle) } }
+// Safari only while it already runs (the person's session, its own windows left as they are: Margin asks its own
+// extension for a new window there). Not running, a launch of it restores the person's windows (and a full-screen one
+// into a Space of its own: 2026-11-17 23:28, a web push launched it so): never by a test (Tirth, 2026-11-18).
+func installedRealApps() -> [RealApp] { realApps.filter { isInstalled($0.bundle) && ($0.bundle != "com.apple.Safari" || app($0.bundle) != nil) } }
 
 struct RealAppRecord: Codable {
   let name: String
