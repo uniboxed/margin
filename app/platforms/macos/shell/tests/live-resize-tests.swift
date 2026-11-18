@@ -191,6 +191,7 @@ func liveResizeTests() {
         _ = open(e, textEdit)
         _ = open(e, notes)
         let edit = window(w, "com.apple.TextEdit"), n = window(w, "com.apple.Notes")
+        w.closeLeavesPlaceholder = false // (its tile taken out with it: the layout laid out again)
         w.closeWindow(edit)
         let narrowed = !marginWhole(w)
         e.marginNarrowed()
@@ -239,6 +240,23 @@ func liveResizeTests() {
         _ = show(e, textEdit)
         check("live resize: the first switch after a tile change laid out again under the freeze, every rect set again before the reveal (never seen); later switches not frozen",
               r1 == .shown(textEdit.id, placed: true) && firstFrozen && w.freezes == f2 && marginWhole(w) && w.bounds(window: edit) == page(276), "\(String(describing: r1)) first frozen \(firstFrozen) freezes \(w.freezes - freezes) at reveal \(atReveal) margin \(marginWhole(w)) edit \(String(describing: w.bounds(window: edit)))")
+    }
+
+    // ---- the window shown closed by its app (windowless): its tile keeps a placeholder window of its app's at the tile's
+    // rect, never adopted; the item closes, the placeholder tile destroyed ----
+    do {
+        let (w, e, _) = world()
+        _ = open(e, textEdit)
+        _ = open(e, notes)
+        let n = window(w, "com.apple.Notes"), tile = w.tileOf(n)
+        var events: [HostEvent] = []
+        e.onEvent = { events.append($0) }
+        w.closeWindow(n)
+        let placeholder = tile.flatMap { w.tileWindow[$0] }
+        for _ in 0..<12 { w.clock += 0.25; e.poll(); _ = hostRun { await e.pageRectChanged(placed(276)) } }
+        check("live resize: the window shown closed by its app: its tile's placeholder window never adopted, its item closed, the placeholder tile destroyed, Margin's window whole",
+              placeholder != nil && placeholder != n && events.contains(.windowClosed(notes.id)) && e.hosts[notes.id] == nil && tile.map { t in !(w.tiles[FakeHostWorld.marginSpace] ?? []).contains(t) } == true
+              && marginWhole(w) && clean(w), "\(events) \(String(describing: w.tiles[FakeHostWorld.marginSpace])) \(w.calls.suffix(6))")
     }
 
     // ---- Margin killed: at the next launch its marker's windows out of full screen, the tiles left destroyed, its old Space with them ----

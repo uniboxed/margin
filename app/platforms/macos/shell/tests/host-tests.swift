@@ -835,7 +835,9 @@ final class FakeHostWorld: HostSystem {
     func desktop(onDisplayOf space: UInt64) -> UInt64? { Self.desktop }
     // (No owner and no window in it: an emptied Space, or Margin's after its window went.)
     func ownerlessFullScreenSpaces() -> [UInt64]? {
-        tiles.keys.filter { space in owner[space] == nil && !theirSpaces.contains(space) && !wins.values.contains { $0.priv == nil && $0.spaces.contains(space) } }.sorted()
+        // (A placeholder tile in it, an app's or a killed Margin's, keeps it from reading as ownerless: the real read counts tiles.)
+        tiles.keys.filter { space in owner[space] == nil && !theirSpaces.contains(space) && !wins.values.contains { $0.priv == nil && $0.spaces.contains(space) }
+            && !(tiles[space] ?? []).contains(where: { placeholders.contains($0) }) }.sorted()
     }
     func listedFullScreenSpaces() -> [UInt64]? { tiles.keys.sorted() }
     func destroyFullScreenSpace(_ space: UInt64) -> Bool {
@@ -952,6 +954,7 @@ final class FakeHostWorld: HostSystem {
     // A tiled window out of full screen leaves its tile in that Space, empty, until its app quits (the real Mac,
     // 2026-11-17 23:32: Margin's Space outlived Margin's quit with such a tile in it). Off: the tile goes with it.
     var exitLeavesTile = true
+    var closeLeavesPlaceholder = true // a tiled window its app closed leaves a placeholder window in its tile (off: the tile goes)
     // A tiled window that's its layout's second coming back into that Space (a switch) lays the first two out again (the
     // real Mac, 2026-11-17 23:31:42: Chameleon 1, the second tile of Margin's Space, at a third's width as it was shown).
     var rejoinRelays = false
@@ -1020,6 +1023,7 @@ final class FakeHostWorld: HostSystem {
         calls.append("destroyTile \(tile)")
         guard tilesOn else { return false }
         for (space, list) in tiles where list.contains(tile) { tiles[space] = list.filter { $0 != tile }; relayFirstTwo(space) }
+        if let n = tileWindow[tile], placeholders.contains(tile), let w = wins[n] { wins[n] = nil; apps[w.pid]?.windows.removeAll { $0 == n } }
         if let n = tileWindow[tile], wins[n] != nil, emptyTiles[tile] == nil { destroyedWithWindows += 1 }
         emptyTiles[tile] = nil
         tileWindow[tile] = nil
@@ -1048,11 +1052,13 @@ final class FakeHostWorld: HostSystem {
         noteListing()
         onAppQuit?(pid)
     }
-    // Margin killed: its own tile out of its Space, which stays with no owner and the hosted tiles: the first two laid
-    // out as a split, seen.
+    // Margin killed: its Space stays with no owner, the hosted tiles and its own tile, empty (the real Mac, 2026-11-18
+    // 01:15: a placeholder kept that Space from going until it was destroyed); the hosted ones laid out as a split, seen.
     func marginKilled() {
-        for (space, list) in tiles where list.contains(Self.marginTile) { tiles[space] = list.filter { $0 != Self.marginTile }; relayFirstTwo(space) }
-        tileWindow[Self.marginTile] = nil
+        for (space, list) in tiles where list.contains(Self.marginTile) { relayFirstTwo(space); _ = space }
+        tileWindow[Self.marginTile] = nextWindow
+        nextWindow += 1
+        placeholders.insert(Self.marginTile)
         wins[Self.marginWindow] = nil
         owner[Self.marginSpace] = nil
     }
@@ -1086,6 +1092,17 @@ final class FakeHostWorld: HostSystem {
     func closeWindow(_ n: Int) {
         guard var w = wins[n] else { return }
         for (space, list) in tiles where list.contains(where: { tileWindow[$0] == n }) {
+            // (A tiled window its app closed, in another app's Space: its tile stays with a placeholder window of its own,
+            // its app's, at the tile's rect: the real Mac, 2026-11-18 01:19.)
+            if w.tiled, closeLeavesPlaceholder, owner[space] != w.pid, let t = list.first(where: { tileWindow[$0] == n }) {
+                let ph = nextWindow
+                nextWindow += 1
+                tileWindow[t] = ph
+                placeholders.insert(t)
+                wins[ph] = Win(pid: w.pid, spaces: [space], frame: tileRects[t] ?? Self.tileDisplay)
+                apps[w.pid]?.windows.append(ph)
+                continue
+            }
             tiles[space] = list.filter { tileWindow[$0] != n }
             if owner[space] == w.pid, tiles[space]?.isEmpty == true { tiles[space] = nil; owner[space] = nil } else { relayFirstTwo(space) }
         }

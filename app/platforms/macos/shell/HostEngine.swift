@@ -221,7 +221,7 @@ final class HostEngine {
         var tileWait = 0.3
         var tileLimitWait = 0.5
         var tileEvery = 0.002
-        var tileSettleWatch = 0.05 // the first switch after a tile change watched this long for the tiles laid out again
+        var tileSettleWatch = 0.03 // the first switch after a tile change watched this long for the tiles laid out again
         var liveFrame = 1.0 / 120
         var liveWait = 0.05
     }
@@ -769,7 +769,11 @@ final class HostEngine {
         s.place = mine?.place ?? .unread
         s.onScreen = mine?.onScreen
         // (Replaced: the model's main window is another, the hosted one replaced or gone. Never a window another host has.)
-        let others = Set(hosts.values.filter { $0 !== host }.map(\.window))
+        var others = Set(hosts.values.filter { $0 !== host }.map(\.window))
+        // (Live resize: a tile whose window closed keeps a placeholder window of its own, its app's, at the tile's rect
+        // (the real Mac, 2026-11-18 01:19: Chameleon's windowless close, its placeholder 83816 at 260,8 1244×966 taken
+        // for a replacement and adopted): never a replacement; the tile goes with its host.)
+        for h in hosts.values { if let t = h.tile, let w = sys.tileWindow(t), w != h.window { others.insert(w) } }
         if mine?.kind != .main || host.gone, let m = app.mains.first(where: { $0 != host.window && !others.contains($0) }), let w = app.windows[m], w.place.placed || w.onScreen == true {
             s.replacement = m
         }
@@ -1049,6 +1053,17 @@ final class HostEngine {
     private func adopt(_ host: Host, _ n: Int) async {
         let old = host.window
         let t0 = sys.now()
+        // (Live resize: its tile, left with a placeholder window of its app's at the tile's rect, on screen in Margin's
+        // Space (the real Mac, 2026-11-18 01:25: replacesWindow's), destroyed with it, under the freeze; every rect again.)
+        if let t = host.tile {
+            host.tile = nil
+            goneTiles.insert(t)
+            tilesSettled = false
+            let frozen = holdFreeze()
+            await dropGoneTiles()
+            await reapplyTiles()
+            releaseFreeze(frozen)
+        }
         let info = await sys.window(pid: host.pid, number: n)
         if host.phase == .shown, host.member { host.fullScreenFailures = 0 } // (not a failure: its app's own doing)
         host.window = n
@@ -3200,7 +3215,9 @@ final class HostEngine {
         guard host.phase == .shown else { return false }
         if host.mode == .window { return await placeWindow(host) }
         if let placed = host.placedPage, HostLayout.near(placed, placement.page, within: options.tolerance), host.tile == nil || sys.bounds(window: host.window).map({ HostLayout.near($0, placement.page, within: options.tolerance) }) == true { return true }
-        // (Live resize: its tile's rect, no full-screen change; failing that, placed again the old way.)
+        // (Live resize: its tile's rect, no full-screen change; failing that, placed again the old way. Its window gone (closed,
+        // its item about to close): nothing placed.)
+        if host.tile != nil, sys.bounds(window: host.window) == nil || host.gone { return false }
         if host.tile != nil {
             let t0 = sys.now()
             if await sizeTile(host) {
@@ -4164,7 +4181,7 @@ final class HostEngine {
     }
 
     private func windowGone(_ host: Host) {
-        if let tile = host.tile { goneTiles.insert(tile) }
+        if let tile = host.tile { goneTiles.insert(tile); host.tile = nil; lookAtTiles(force: true) } // (its placeholder: destroyed now)
         if let priv = host.privateSpace { retirePrivate(priv) }
         if let own = host.fullScreenSpace, sys.spaceExists(own) == true { leftSpaces.insert(own) }
         hosts[host.id] = nil
@@ -4325,7 +4342,9 @@ final class HostEngine {
         // Live resize: hosted tiles left in Margin's old Space destroyed (a placeholder of an app that went with Margin, a
         // tile its window left), never one a window of the marker's is still in (its exit not confirmed: the person's to
         // see), so that Space is empty and goes below. Margin's own tile went with its process.
-        let tileIds = Set(m.windows.compactMap(\.tile) + (m.goneTiles ?? []))
+        // (Margin's own tile too: a killed Margin's stays in its old Space with no window, which keeps that Space from being
+        // empty and ownerless: the real Mac, 2026-11-18 01:15, its old Space left listed.)
+        let tileIds = Set(m.windows.compactMap(\.tile) + (m.goneTiles ?? []) + [m.marginTile].compactMap { $0 })
         var tilesDestroyed = 0
         if let old = m.marginSpace, !tileIds.isEmpty, sys.spaceExists(old) == true {
             let stillIn = Set(m.windows.filter { sys.bounds(window: $0.number) != nil && sys.spaces(window: $0.number)?.contains(old) == true }.map(\.number))
