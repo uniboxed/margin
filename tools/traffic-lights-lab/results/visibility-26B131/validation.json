@@ -1,0 +1,25 @@
+{
+  "nativeWarningsAsErrorsBuild": true,
+  "nativeDryRun": true,
+  "evidenceVerifier": true,
+  "pythonAST": true,
+  "captureOrPermissionRequestSymbolsInSource": false,
+  "dynamicSymbols": [
+    "SLSFindWindowAndOwner",
+    "SLSGetOnScreenWindowList",
+    "SLSGetWindowBounds",
+    "SLSMainConnectionID",
+    "SLSOrderWindow",
+    "_AXUIElementGetWindow"
+  ],
+  "unitTests": {
+    "pass": 1031,
+    "fail": 0
+  },
+  "e2e": {
+    "exit": 124,
+    "deadlineSeconds": 60,
+    "browserDownload": false
+  },
+  "e2eBlocker": "missing pinned WebKit 2388 executable; bounded full command, no downloads"
+}

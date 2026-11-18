@@ -1,0 +1,11 @@
+{
+  "exit": 2,
+  "completion": {
+    "childExited": 1,
+    "complete": true,
+    "reason": "owned occluder is not the top pointer surface",
+    "screenCaptureUsed": false,
+    "status": 2
+  },
+  "screenCaptureUsed": false
+}

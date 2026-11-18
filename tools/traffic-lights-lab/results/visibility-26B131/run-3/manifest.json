@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/private/tmp/margin-ax-button-visibility-debug",
+    "--run",
+    "/private/tmp/margin-button-visibility-85ef5534a9174cff9488b62477ab1f95"
+  ],
+  "sourceSHA256": "fde73d3e292ddd932b30fb42e77a53dc121ce576b0e6035a4e43c0a31c433e0d",
+  "binarySHA256": "6a5b5d815f90a54d7dbcea7afc07a0dd34a46d27405212bc5224083609edee85",
+  "screenCaptureUsed": false
+}

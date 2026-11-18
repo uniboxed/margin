@@ -1,0 +1,11 @@
+{
+  "command": [
+    "/private/tmp/margin-ax-button-visibility-browser",
+    "--browser",
+    "chrome",
+    "/private/tmp/margin-button-visibility-b1f05c98952049d7a16c5cb533eb1675"
+  ],
+  "sourceSHA256": "518d074ea211a316536c87a0cc8ad14a241be097dedb9d2bf618a9d3719334c2",
+  "binarySHA256": "23eb8d352101d2e77dfb0380c69be0925b3b903dd5c22d3d2401948fb3edbdc0",
+  "screenCaptureUsed": false
+}

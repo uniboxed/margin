@@ -1,0 +1,11 @@
+{
+  "exit": 0,
+  "completion": {
+    "childExited": 1,
+    "complete": true,
+    "reason": "owned browser AX metadata complete; no pixel visibility claim",
+    "screenCaptureUsed": false,
+    "status": 0
+  },
+  "screenCaptureUsed": false
+}

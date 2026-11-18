@@ -5325,3 +5325,40 @@ full E2E attempted/bounded at 15s after missing pinned WebKit 2388, no download/
 pass. Automatic visibility/geometry, protected browsers, fullscreen/occlusion,
 displays/scale/other OS builds and production lifecycle remain unvalidated. No PR,
 product install, universal hiding claim or universal-impossibility claim.
+
+## 2026-11-18 — AX-assisted button visibility research (m2)
+
+User now allows Accessibility for detection, retaining metadata-only/no Screen
+Recording. Research exception only; product permission policy is unchanged.
+Actual host now 27.2.1/26B131. Runtime/private ABI rechecked, old 25G342 binaries
+not reused. Separate fixture/controller compare native hidden/alpha/reveal and
+disabled state with app-specific AX hit-tests. References survive hiding; child
+membership misses alpha/reveal zero; AXHidden/Visible/VisibleChildren unsupported.
+Hit-tests correlate with tested settled native states and retain disabled buttons.
+Zoom/fullscreen references alias. Native pre/post fields remain unchanged.
+
+Owned floating cover's bounds, above-target window list order and pointer surface
+verified independently; underlying app AX hits persist. Normal-level attempts
+stop at first failed ordering check; diagnostic attempt confirms panel behind
+target. Both failed source/binary/log versions retained; not occlusion acceptance.
+One fixture fullscreen round trip produces AX frames outside both active display
+rectangles (compared with subsequent same-session display metadata); no pixel
+visibility conclusion from local native hit-testing.
+
+Installed Chrome 158.0.8127.37 and Edge 157.0.4341.60 each tested once with an absent
+browser guard, fresh temporary profile, about:blank, AX fullscreen/restoration and
+graceful exit. Both expose button hits in fullscreen despite no direct child
+membership. No rendered browser-visibility proof. Profiles removed after exact
+profile-argument process checks. No Safari, injection or capture. Offline evidence
+verifier passes all native-state/hash/alias checks and twelve recorded PID exits.
+
+Recommend app-scoped AX hits plus geometry as a conservative optional detector,
+with explicit unknown states and app validation. No per-hide/fade events observed,
+so lifecycle events need bounded polling; transition latency/CPU remain unmeasured.
+No native removal, all-app visibility or flicker-free tracking claim. Report:
+docs/BUTTON-VISIBILITY-RESEARCH.md; sources/compact evidence in traffic-lights lab;
+raw test-results/button-visibility-2026-11-18. No Margin.app change. Native checked
+builds and unit tests 1,031 pass. Full E2E attempted/bounded at 60s after missing
+pinned WebKit 2388; no browser download/full E2E pass. Other current-build browser
+toolbar settings, hover, Safari, custom controls and product lifecycle need manual
+or further dedicated acceptance.

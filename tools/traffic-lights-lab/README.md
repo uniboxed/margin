@@ -1,5 +1,15 @@
 # Window traffic-light research lab
 
+## Detection with Accessibility (2026-11-18)
+
+The user now permits AX, retaining metadata-only/no-capture testing. App-specific
+AX hit-tests correlate with separate native hidden/alpha/reveal truth and survive
+a verified owned floating cover. Fresh Chrome/Edge expose hits in windowed and
+fullscreen states; this is not browser pixel-visibility acceptance. Child lists
+and relationship existence alone are insufficient. Native removal and tracking
+flicker remain separate. See [report](../../docs/BUTTON-VISIBILITY-RESEARCH.md) and
+[reproduction/evidence](results/visibility-26B131/README.md).
+
 ## Tracking without Accessibility (2026-11-17)
 
 AX-denied new app identities verify private bounds/notifications and a calibrated
@@ -45,8 +55,8 @@ is visually verified in protected installed TextEdit/Preview, including resize a
 restoration, with no injected library or saved corner-preference writes. Chrome is unchanged in the
 matched test. This concerns corner radius; native external traffic-light hiding remains unestablished.
 
-**Current requirement:** actual native control suppression. The user rejects image covers; the cover
-below is historical evidence, not an accepted solution. The newest invocation pass tests real owner
+**Earlier native-removal requirement:** actual native control suppression. The user then rejected
+image covers; those tests must be assessed against that requirement. The invocation pass tests real owner
 delegation of a nonexclusive window right and WindowServer's restricted filter catalog. A foreign
 process cannot self-grant writer access; an explicit matching owner offer/recipient acceptance adds
 it and relinquishment restores it. Native pixels/controls stay unchanged; no new protected-app hide.

@@ -1,0 +1,11 @@
+{
+  "exit": 0,
+  "completion": {
+    "childExited": 1,
+    "complete": true,
+    "reason": "metadata comparison complete; no pixels captured or universal visibility claim",
+    "screenCaptureUsed": false,
+    "status": 0
+  },
+  "screenCaptureUsed": false
+}

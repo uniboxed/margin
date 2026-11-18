@@ -1,5 +1,33 @@
 # Testing Margin
 
+## Button detection with Accessibility (2026-11-18)
+
+The user permits AX; no Screen Recording or pixel capture in this pass. Actual
+host 27.2.1/26B131, not the earlier 25G342. No product change.
+
+- [x] Native warnings-as-errors builds and no-window dry runs before UI.
+- [x] Separate controller/fixture: native hidden/alpha/reveal/disabled/ancestor
+  state compared with AX hit-tests; native pre/post metadata unchanged.
+- [x] One owned fullscreen round trip: AX frames leave all display rectangles,
+  then restore. Display metadata is from subsequent run-4 in the same session.
+- [x] Owned floating cover above exact button union, independently verified by
+  private bounds, window list and pointer-surface metadata; app AX hits persist.
+- [x] Both earlier normal-level cover setup failures retained and excluded.
+- [x] Installed Chrome 158.0.8127.37 / Edge 157.0.4341.60 with fresh profiles,
+  windowed/fullscreen/restored AX snapshots, graceful exit, profiles removed.
+- [x] Offline verifier checks hashes, state correlation, aliases, failed-setup
+  exclusion and all twelve native/browser/controller PID exits.
+- [x] Unit tests: 1,031 passed. Full E2E attempted/bounded at 60 seconds, blocked
+  by missing pinned WebKit 2388; no downloads or full-pass claim.
+- [ ] Manual rendered visibility for target browsers, toolbar settings and
+  fullscreen hover; Safari, custom controls, sheets/occlusion, minimized/Spaces,
+  display changes, permission loss, polling latency/CPU and cover flicker.
+
+No per-hide/fade AX callbacks observed despite successful observer registration;
+event-only detection is not established. See
+[report](docs/BUTTON-VISIBILITY-RESEARCH.md) and
+[evidence/reproduction](tools/traffic-lights-lab/results/visibility-26B131/README.md).
+
 ## Cover tracking with Accessibility denied (2026-11-17)
 
 - [x] New standalone controller/child identities: AXTrusted=false and foreign

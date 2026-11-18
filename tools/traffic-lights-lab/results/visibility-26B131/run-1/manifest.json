@@ -1,0 +1,11 @@
+{
+  "command": [
+    "/private/tmp/margin-ax-button-visibility",
+    "--run",
+    "/private/tmp/margin-button-visibility-0922ca3d2d9d4e61a66f186649d4cc2c",
+    "--fullscreen"
+  ],
+  "sourceSHA256": "621a163cee8b748c8c7d79f8eced7a4500a73ce299e10f593ad0d533160e4c73",
+  "binarySHA256": "1d89bdee7b524710dd557c654e68d91d3d3af9851c6e5b21b3ffb0377f554fa5",
+  "screenCaptureUsed": false
+}

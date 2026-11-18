@@ -1,0 +1,494 @@
+{
+  "build": "26B131",
+  "screenCaptureUsed": false,
+  "fixture": {
+    "run-1": {
+      "status": "passed native-state correlation",
+      "phases": [
+        {
+          "phase": "shown",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 12.960624997504056
+        },
+        {
+          "phase": "disabled",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 4.326791662606411
+        },
+        {
+          "phase": "hidden",
+          "hitMatches": [
+            false,
+            false,
+            false
+          ],
+          "inDirectChildren": [
+            false,
+            false,
+            false
+          ],
+          "queryMs": 5.028958337788936
+        },
+        {
+          "phase": "only-close",
+          "hitMatches": [
+            true,
+            false,
+            false
+          ],
+          "inDirectChildren": [
+            true,
+            false,
+            false
+          ],
+          "queryMs": 5.274458329949994
+        },
+        {
+          "phase": "alpha-zero",
+          "hitMatches": [
+            false,
+            false,
+            false
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 3.236791664676275
+        },
+        {
+          "phase": "reveal-zero",
+          "hitMatches": [
+            false,
+            false,
+            false
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 5.8264583349227905
+        },
+        {
+          "phase": "reveal-half",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 5.000708333682269
+        },
+        {
+          "phase": "ancestor-hidden",
+          "hitMatches": [
+            false,
+            false,
+            false
+          ],
+          "inDirectChildren": [
+            false,
+            false,
+            false
+          ],
+          "queryMs": 4.057041667692829
+        },
+        {
+          "phase": "restored",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 5.1701249976758845
+        },
+        {
+          "phase": "fullscreen",
+          "hitMatches": [
+            false,
+            false,
+            false
+          ],
+          "inDirectChildren": [
+            false,
+            false,
+            false
+          ],
+          "queryMs": 3.2096666618599556
+        },
+        {
+          "phase": "post-fullscreen",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 4.5227916634758
+        }
+      ],
+      "notifications": [
+        "AXWindowResized",
+        "AXWindowResized",
+        "AXMoved",
+        "AXUIElementDestroyed"
+      ],
+      "sourceSHA256": "621a163cee8b748c8c7d79f8eced7a4500a73ce299e10f593ad0d533160e4c73"
+    },
+    "run-2": {
+      "status": "stopped at failed occluder setup",
+      "sourceSHA256": "ac0267c2a8db3e1407dae5aa3e2a27ae719a66d03e24f2f2b31f4e2d027bece7"
+    },
+    "run-3": {
+      "status": "stopped at failed occluder setup",
+      "sourceSHA256": "fde73d3e292ddd932b30fb42e77a53dc121ce576b0e6035a4e43c0a31c433e0d"
+    },
+    "run-4": {
+      "status": "passed native-state correlation",
+      "phases": [
+        {
+          "phase": "shown",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 15.053750001243316
+        },
+        {
+          "phase": "disabled",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 8.923708330257796
+        },
+        {
+          "phase": "hidden",
+          "hitMatches": [
+            false,
+            false,
+            false
+          ],
+          "inDirectChildren": [
+            false,
+            false,
+            false
+          ],
+          "queryMs": 11.991999999736436
+        },
+        {
+          "phase": "only-close",
+          "hitMatches": [
+            true,
+            false,
+            false
+          ],
+          "inDirectChildren": [
+            true,
+            false,
+            false
+          ],
+          "queryMs": 5.957458335615229
+        },
+        {
+          "phase": "alpha-zero",
+          "hitMatches": [
+            false,
+            false,
+            false
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 5.756874998041894
+        },
+        {
+          "phase": "reveal-zero",
+          "hitMatches": [
+            false,
+            false,
+            false
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 9.692208332126029
+        },
+        {
+          "phase": "reveal-half",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 11.185208335518837
+        },
+        {
+          "phase": "ancestor-hidden",
+          "hitMatches": [
+            false,
+            false,
+            false
+          ],
+          "inDirectChildren": [
+            false,
+            false,
+            false
+          ],
+          "queryMs": 5.669958329235669
+        },
+        {
+          "phase": "restored",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ],
+          "queryMs": 6.929166665941011
+        }
+      ],
+      "notifications": [
+        "AXUIElementDestroyed"
+      ],
+      "sourceSHA256": "d5f1715c36d22ec1827cb9c1113e8d22820d11fd09ca01179f24611b5aecaf96"
+    }
+  },
+  "browsers": {
+    "chrome-1": {
+      "version": "158.0.8127.37",
+      "states": [
+        {
+          "phase": "windowed",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "phase": "fullscreen",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            false,
+            false,
+            false
+          ]
+        },
+        {
+          "phase": "post-fullscreen",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ]
+        }
+      ],
+      "scope": "AX metadata only; rendered visibility not independently verified"
+    },
+    "edge-1": {
+      "version": "157.0.4341.60",
+      "states": [
+        {
+          "phase": "windowed",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "phase": "fullscreen",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            false,
+            false,
+            false
+          ]
+        },
+        {
+          "phase": "post-fullscreen",
+          "hitMatches": [
+            true,
+            true,
+            true
+          ],
+          "inDirectChildren": [
+            true,
+            true,
+            true
+          ]
+        }
+      ],
+      "scope": "AX metadata only; rendered visibility not independently verified"
+    }
+  },
+  "cleanup": [
+    {
+      "case": "run-1",
+      "pid": 32584,
+      "exited": true
+    },
+    {
+      "case": "run-1",
+      "pid": 32586,
+      "exited": true
+    },
+    {
+      "case": "run-2",
+      "pid": 37710,
+      "exited": true
+    },
+    {
+      "case": "run-2",
+      "pid": 37711,
+      "exited": true
+    },
+    {
+      "case": "run-3",
+      "pid": 38125,
+      "exited": true
+    },
+    {
+      "case": "run-3",
+      "pid": 38126,
+      "exited": true
+    },
+    {
+      "case": "run-4",
+      "pid": 38236,
+      "exited": true
+    },
+    {
+      "case": "run-4",
+      "pid": 38237,
+      "exited": true
+    },
+    {
+      "case": "chrome-1",
+      "pid": 40593,
+      "exited": true
+    },
+    {
+      "case": "chrome-1",
+      "pid": 40594,
+      "exited": true
+    },
+    {
+      "case": "edge-1",
+      "pid": 42880,
+      "exited": true
+    },
+    {
+      "case": "edge-1",
+      "pid": 42881,
+      "exited": true
+    }
+  ],
+  "fullscreenGeometry": {
+    "rectanglesOutsideAllDisplays": true,
+    "displayBounds": [
+      [
+        0,
+        0,
+        2560,
+        1440
+      ],
+      [
+        265,
+        -1080,
+        1920,
+        1080
+      ]
+    ],
+    "provenance": "run-1 AX rectangles compared with subsequent run-4 display metadata"
+  },
+  "limits": [
+    "not a universal rendered-visibility oracle",
+    "no fullscreen-hover or transition latency acceptance",
+    "no flicker-free tracking claim",
+    "no Safari or custom-control acceptance",
+    "no product changes"
+  ]
+}
