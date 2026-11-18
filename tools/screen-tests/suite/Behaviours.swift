@@ -57,6 +57,9 @@ extension Runner {
     case .marginQuitTiles(let ns): marginQuitTiles(ns)
     case .killMargin(let ns): killMargin(ns)
     case .memory(let label): memoryLine(label)
+    case .tileMin(let t, let e): tileMinStep(t, expect: e)
+    case .minDrag(let t, let dx, let st, let ends, let parked): minDrag(t, dx: dx, steps: st, endsAt: ends, parked: parked)
+    case .overflow(let t, let s): overflowHeld(t, seconds: s)
     }
   }
 

@@ -40,10 +40,13 @@ struct RealAppRecord: Codable {
   let prefs: Data? // the saved-state keys as a binary plist (nil: unreadable)
   let libraryItems: Int
 }
-// The saved window state among an app's defaults: keys with a window frame, full screen or restoration in their names.
+// The saved window state among an app's defaults: keys with a window frame, full screen or restoration in their names;
+// a Mac Catalyst app's own (`windowSystemFrame`, `windowGeometry`: Weather's, 2026-11-18 09:43, changed by a run that
+// didn't record them).
 func isStateKey(_ k: String) -> Bool {
   let l = k.lowercased()
   return k.contains("NSWindow Frame") || l.contains("fullscreen") || l.contains("full screen") || l.contains("restor") || k == "NSQuitAlwaysKeepsWindows" || k.contains("NSSplitView Subview Frames")
+    || (l.contains("window") && (l.contains("frame") || l.contains("geometry")))
 }
 // Its defaults through `defaults export` (cfprefsd: an app's container too), cut off after 15 s.
 func exportPrefs(_ bundle: String) -> [String: Any]? {

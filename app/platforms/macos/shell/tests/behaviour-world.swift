@@ -69,6 +69,7 @@ final class BehaviourWorld {
         world.keepsClosed.insert(bundle) // (its windows aren't released when closed: listed a while after, as on the real Mac)
         if s.noFullScreen { world.notFullScreen.insert(bundle) }
         if let size = s.fixedSize { world.fixedSize[bundle] = size }
+        if let size = s.minSize { world.minSize[bundle] = size } // (its tile says it; a tile narrower than it is left)
         if s.dialogMain { world.axRoles[bundle] = "AXWindow/AXDialog" }
         if let busy = s.axBusy { world.axBusyFor[bundle] = busy }
         if case .onFullScreen(let linger)? = s.strip { world.stripOnFullScreen.insert(bundle); if linger { world.stripLingers.insert(bundle) } }
@@ -518,8 +519,8 @@ func behaviourWorldTests() {
 func switchesParsingTests() {
     let all = ChameleonSwitches.parse(["restore": "3:both:code", "windowless": "close:8", "autoTerminate": "attempt:5", "dialogMain": "YES", "ordersOut": "after:3",
                                       "replacesWindow": "every:4,twin", "axBusy": "2.5", "strip": "linger", "auxiliary": "300x200+40+60,at:2,for:9,borderless",
-                                      "noFullScreen": "1", "fixedSize": "320x480", "extraWindow": "menu"])
-    check("chameleon switches: every switch parsed", all.errors.isEmpty && all.on.count == 12, "\(all.errors) \(all.on)")
+                                      "noFullScreen": "1", "fixedSize": "320x480", "minSize": "1100x500", "extraWindow": "menu"])
+    check("chameleon switches: every switch parsed", all.errors.isEmpty && all.on.count == 13 && all.minSize == CGSize(width: 1100, height: 500), "\(all.errors) \(all.on)")
     check("chameleon switches: their canonical text read back is the same switches", ChameleonSwitches.parse(Dictionary(uniqueKeysWithValues: all.on.map { t -> (String, String) in let p = t.split(separator: "=", maxSplits: 1); return (String(p[0]), String(p[1])) })) == all)
     check("chameleon switches: restore's windows in full screen", all.restore?.fullScreen == [true, false, false] && ChameleonSwitches.parse(["restore": "2:fullscreen"]).restore == .init(count: 2, mode: .fullscreen, via: .system)
           && ChameleonSwitches.parse(["restore": "normal"]).restore?.count == 1)
@@ -529,7 +530,7 @@ func switchesParsingTests() {
     check("chameleon switches: values that don't parse are off and named", bad.restore == nil && bad.axBusy == nil && bad.ordersOut == nil && bad.strip == nil && bad.fixedSize == nil && bad.autoTerminate == nil && bad.errors.count == 6, "\(bad.errors)")
     check("chameleon switches: read from defaults' types (a bool, a number, a string)", ChameleonSwitches.read { k in ["ChameleonDialogMain": NSNumber(value: true), "ChameleonAxBusy": NSNumber(value: 2.5), "ChameleonOrdersOut": "untilActive"][k] }
           == ChameleonSwitches.parse(["dialogMain": "YES", "axBusy": "2.5", "ordersOut": "untilActive"]))
-    check("chameleon switches: keys", ChameleonSwitches.key("axBusy") == "ChameleonAxBusy" && ChameleonSwitches.names.count == 12)
+    check("chameleon switches: keys", ChameleonSwitches.key("axBusy") == "ChameleonAxBusy" && ChameleonSwitches.names.count == 13)
     let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
     check("chameleon geometry: the strip across the screen's top under the menu bar, 88 tall", ChameleonSwitches.stripFrame(screen: screen, menuBar: 33) == CGRect(x: 0, y: 33, width: 1512, height: 88))
     check("chameleon geometry: the sidebar auxiliary over the screen's left part, the settings one centred", ChameleonSwitches.auxiliaryFrame(.sidebar, screen: screen, menuBar: 33) == CGRect(x: 0, y: 33, width: 1000, height: 800)
