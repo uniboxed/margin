@@ -102,6 +102,10 @@ func axFullScreen(_ pid: pid_t) -> Bool? {
   var v: CFTypeRef?
   return AXUIElementCopyAttributeValue(w, "AXFullScreen" as CFString, &v) == .success ? (v as? Bool) : nil
 }
+// Its app made the front app by Accessibility (the app activates itself, as at a Dock-icon click).
+func setAXFrontmost(_ pid: pid_t) -> Bool {
+  AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), kAXFrontmostAttribute as CFString, kCFBooleanTrue) == .success
+}
 func setAXFullScreen(_ pid: pid_t, _ on: Bool) -> Bool {
   guard let w = axWindow(pid) else { return false }
   return AXUIElementSetAttributeValue(w, "AXFullScreen" as CFString, on ? kCFBooleanTrue : kCFBooleanFalse) == .success

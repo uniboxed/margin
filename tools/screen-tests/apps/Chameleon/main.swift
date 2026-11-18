@@ -51,9 +51,14 @@ final class Grid: NSView {
 }
 
 // AppKit's state restoration (`restore` by the system): each saved window made again by its identifier; AppKit puts
-// back its frame and its full screen itself.
+// back its frame and its full screen itself. A priming run restores none (what an earlier scenario saved is dropped:
+// its windows aren't made, so they aren't saved again at its quit; only the priming's own are).
 final class Restorer: NSObject, NSWindowRestoration {
     static func restoreWindow(withIdentifier identifier: NSUserInterfaceItemIdentifier, state: NSCoder, completionHandler: @escaping (NSWindow?, Error?) -> Void) {
+        if priming {
+            clog("priming: an earlier run's window \(identifier.rawValue) not restored (dropped)")
+            return completionHandler(nil, NSError(domain: "Chameleon", code: 1, userInfo: [NSLocalizedDescriptionKey: "a priming run restores nothing"]))
+        }
         let kind: Kind = identifier.rawValue.hasPrefix("twin") ? .twin : .main
         let w = app.makeWindow(kind, index: app.windows.count, order: false)
         clog("restored window \(w.windowNumber) identifier \(identifier.rawValue)")
@@ -210,9 +215,10 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, NSToolbarDel
     func primeQuit() {
         guard priming, !primeDone else { return }
         primeDone = true
-        // (Each window's state invalidated, so AppKit encodes it before the quit: launched with -ApplePersistenceIgnoreState
-        // YES, AppKit empties its store at its first flush and saves only windows invalidated after it; 2026-11-17, only
-        // the full-screen ones (invalidated by their transition) were restored, the normal ones never.)
+        // (Each window's state invalidated, so AppKit encodes it before the quit. The priming run is a plain launch:
+        // with -ApplePersistenceIgnoreState YES, AppKit saved only the windows that went full screen, never a normal
+        // one, even invalidated (2026-11-17 17:38 and 19:00: restore-normal restored 0; the baseline's plain priming
+        // launch, 16:04, restored both normal windows, in a launch Margin made with no Dock icon).)
         for w in windows { w.invalidateRestorableState() }
         NSApp.invalidateRestorableState()
         clog("priming done: \(windows.count) window(s), full screen \(windows.filter { $0.styleMask.contains(.fullScreen) }.map { "\($0.windowNumber)" }.joined(separator: ",")): quitting, its windows kept")

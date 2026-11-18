@@ -159,7 +159,9 @@ let behaviours: [Scenario] = [
   behaviour("strip", "a full-width toolbar strip of its own while in full screen, left after an exit (Mail)", ["strip": "linger"]),
   behaviour("auxiliary-settings", "a settings window beside its main one (Mail)", ["auxiliary": "settings"], auxiliary: true),
   behaviour("auxiliary-sidebar", "a window of its own over Margin's sidebar 3 s after launch (Mail)", ["auxiliary": "sidebar,at:3"], auxiliary: true),
-  behaviour("noFullScreen", "can't go full screen (Calculator, Phone)", ["noFullScreen": "YES"]),
+  // (Inside the page area, as the real window-mode apps are: AppKit keeps a resizable window to the screen's visible
+  // frame, the menu bar's and the Dock's bands out (1154×869 asked 1154×933, 2026-11-17 19:15), and Margin centres it.)
+  behaviour("noFullScreen", "can't go full screen (Calculator, Phone)", ["noFullScreen": "YES"], framed: true),
   behaviour("fixedSize", "a fixed-size window that can't go full screen (Calculator)", ["fixedSize": "400x300", "noFullScreen": "YES"], framed: true),
   // (The extra window is the person's, asked of the app: kept beside the main one, never over the sidebar in front.)
   behaviour("extraWindow", "opens another window on demand, like Safari's profile wake", ["extraWindow": "menu"], auxiliary: true, then: [.trigger(3), .wait(3, "its extra window made")]),

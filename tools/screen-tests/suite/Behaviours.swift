@@ -162,7 +162,9 @@ extension Runner {
     if let main, let pi = panelIndex, let wi = list.firstIndex(where: { $0.n == main.n }), wi < pi { problems.append("its window #\(main.n) in front of Margin's panel") }
     if panelIndex == nil { problems.append("Margin's panel not on screen") }
     let leftovers = mainKind.filter { w in w.n != main?.n && !preexisting.contains(w.n) && !auxiliary.contains(w.n) && !w.spaces.filter(user.contains).isEmpty }
-    if !leftovers.isEmpty { problems.append("leftover(s) in user Spaces: \(leftovers.map { "#\($0.n) \(rect($0.r)) \($0.on ? "on screen " : "")in \($0.spaces)" })") }
+    // (Which Space, said: Margin's Space has a new number every part, and "in [9202]" read as another Space, 2026-11-17.)
+    func spacesText(_ sp: [UInt64]) -> String { "\(sp)\(sp == [marginSpace] ? " (Margin's)" : "")" }
+    if !leftovers.isEmpty { problems.append("leftover(s) in user Spaces: \(leftovers.map { "#\($0.n) \(rect($0.r)) \($0.on ? "on screen " : "off screen ")in \(spacesText($0.spaces))" })") }
     let strips = all.filter { $0.on && $0.alpha > 0 && $0.layer == 0 && isStrip($0.r) }
     if !strips.isEmpty { problems.append("strip(s) on screen: \(strips.map { "#\($0.n) \(rect($0.r))" })") }
     let sidebar = CGRect(x: marginWindow.r.minX, y: page.minY, width: max(0, page.minX - marginWindow.r.minX), height: page.height)
@@ -200,8 +202,12 @@ extension Runner {
     let end = pageNow()
     if let e = end { page = e.0; f = e.1 }
     let pageAfter = word(f, "page") ?? "?"
-    step("holds \(Int(seconds)) s: \(d.text)", good == reads && changes == 0 && pageAfter == pageState,
-         "\(good) of \(reads) reads in it, \(changes) change(s) of state; the page card \(pageState) → \(pageAfter)\(firstMiss.map { "; first miss \($0)" } ?? "")")
+    // (The page card as it was, or settled: "loading" at the start is a correction of Margin's already under way as the
+    // hold began, restore-code's placing again after its app re-laid its window out, 2026-11-17 19:03: every read in
+    // the desired state, the card loading → shown. Shown → anything else is a change.)
+    let pageOk = pageAfter == pageState || (pageState == "loading" && pageAfter == "shown")
+    step("holds \(Int(seconds)) s: \(d.text)", good == reads && changes == 0 && pageOk,
+         "\(good) of \(reads) reads in it, \(changes) change(s) of state; the page card \(pageState) → \(pageAfter)\(pageAfter != pageState && pageOk ? " (settled: a correction under way as the hold began)" : "")\(firstMiss.map { "; first miss \($0)" } ?? "")")
     if good != reads, let a = app(d.target.id) { log("   DIAG \(diag(a.processIdentifier, marginWindow?.n))") }
     if good != reads, case .copy(let n) = d.target { copyTail(n) }
   }

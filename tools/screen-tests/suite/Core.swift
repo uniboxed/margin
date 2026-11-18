@@ -278,8 +278,21 @@ final class Runner {
     }
     ownPid = own.processIdentifier
     let opened = placedWindow(own.processIdentifier)!
+    // (Opened with Margin's full-screen Space current, its window goes to its Desktop, and Accessibility lists only the
+    // current Space's windows: 2026-11-17 18:59, "asked false", its window in [1]. Its app made the front app by
+    // Accessibility's AXFrontmost (NSRunningApplication's activation is refused: this suite isn't the active app),
+    // which shows its Desktop; else that Desktop made current. Then asked.)
     var askedFull = spin(3) { setAXFullScreen(own.processIdentifier, true) }
-    if !askedFull { own.activate(); spin(2); askedFull = spin(3) { setAXFullScreen(own.processIdentifier, true) } }
+    if !askedFull {
+      _ = setAXFrontmost(own.processIdentifier)
+      spin(3) { axWindow(own.processIdentifier) != nil }
+      askedFull = spin(3) { setAXFullScreen(own.processIdentifier, true) }
+    }
+    if !askedFull, let sp = placedWindow(own.processIdentifier)?.spaces.first, let disp = before.display {
+      setCurrent(cid, disp as CFString, sp)
+      spin(3) { axWindow(own.processIdentifier) != nil }
+      askedFull = spin(3) { setAXFullScreen(own.processIdentifier, true) }
+    }
     var ownSpace: UInt64 = 0
     let inFull = askedFull && spin(8) {
       guard let w = placedWindow(own.processIdentifier), let sp = w.spaces.first, w.spaces.count == 1, sp != marginSpace,

@@ -10,7 +10,7 @@ struct Copy {
   var installed: String { home("Applications/\(name).app") }
   var logPath: String { "\(logFolder)/\(id).log" }
   // (Where AppKit kept saved state before macOS 15; now it's in a daemon container under a name of its own, not
-  // findable by the app's id: a priming run ignores what's there instead, `-ApplePersistenceIgnoreState YES`.)
+  // findable by the app's id: a priming run drops what's there instead, Chameleon's Restorer restoring nothing.)
   var savedState: String { home("Library/Saved Application State/\(id).savedState") }
 }
 let copyCount = 3
@@ -64,9 +64,10 @@ func prime(_ n: Int) -> String {
   sh("/usr/bin/defaults", ["write", c.id, ChameleonSwitches.primeKey, "-bool", "YES"])
   sh("/usr/bin/defaults", ["write", c.id, "NSQuitAlwaysKeepsWindows", "-bool", "YES"])
   let before = copySaid(n, "priming done")
-  // (What an earlier scenario left saved is ignored: the priming run makes exactly its switch's windows. Seen
-  // 2026-11-17: without it each restore scenario restored the last one's windows too, 2, 3, 6.)
-  sh("/usr/bin/open", ["-g", c.installed, "--args", "-ApplePersistenceIgnoreState", "YES"])
+  // (What an earlier scenario left saved is dropped: the priming run restores none of it and makes exactly its switch's
+  // windows. Seen 2026-11-17: without that each restore scenario restored the last one's windows too, 2, 3, 6; with
+  // -ApplePersistenceIgnoreState YES instead, AppKit saved only the windows that went full screen, never a normal one.)
+  sh("/usr/bin/open", ["-g", c.installed])
   let done = spin(30) { copySaid(n, "priming done") > before && app(c.id) == nil }
   if let p = app(c.id) { p.terminate(); spin(6) { p.isTerminated } }
   sh("/usr/bin/defaults", ["delete", c.id, ChameleonSwitches.primeKey])
