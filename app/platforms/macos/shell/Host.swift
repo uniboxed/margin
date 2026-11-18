@@ -132,6 +132,10 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
         // A full-screen window moved into Margin's Space as a member (its own Space destroyed): still full screen,
         // shown there or parked in `privateSpace`; given back by leaving full screen on the current Space.
         var member: Bool? = nil
+        // Live resize: its own tile, in Margin's Space (`marginSpace`): a member there, sized by the tile's rect. After a
+        // crash Margin's Space has no owner and its first two tiles fall into a visible split: each window is taken out of
+        // full screen (its tile goes with it), the tiles left destroyed, then that Space.
+        var tile: UInt64? = nil
     }
     // A Safari window Margin asked a copy for and whose close wasn't confirmed: closed by that copy later (the poll,
     // the next launch's recovery). `number`: the window server's, when it was found.
@@ -148,8 +152,11 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
     var windows: [Window] = []
     var leftSpaces: [UInt64] = [] // emptied full-screen Spaces a destroy didn't take yet
     var leftSafariWindows: [SafariWindow]? = nil // (optional: a marker from before them reads)
+    // Live resize: Margin's own tile in `marginSpace`, and hosted tiles whose host went, not destroyed yet.
+    var marginTile: UInt64? = nil
+    var goneTiles: [UInt64]? = nil
 
-    var isEmpty: Bool { apps.isEmpty && windows.isEmpty && leftSpaces.isEmpty && (leftSafariWindows ?? []).isEmpty && marginSpace == nil }
+    var isEmpty: Bool { apps.isEmpty && windows.isEmpty && leftSpaces.isEmpty && (leftSafariWindows ?? []).isEmpty && marginSpace == nil && (goneTiles ?? []).isEmpty }
 
     static func read(_ url: URL) -> HostMarker? {
         guard let data = try? Data(contentsOf: url) else { return nil }
@@ -170,10 +177,12 @@ nonisolated struct HostMarker: Codable, Equatable, Sendable {
 // Where a hosted window goes, as Margin's window works it out (top-left coordinates, as the window server's bounds):
 // `page`, the page area (from Margin's own layout, its window its whole width: the theme's frame drawn around it);
 // `area`, the display's full-screen area (its frame below the camera housing), which a full-screen window's own Space
-// lays its window out in.
+// lays its window out in. `display`: that display's whole frame (zero: not known), which a hosted window's tile in
+// Margin's Space is laid out in (its rect from the display's top left, the menu bar's band included: `HostLayout.tile`).
 nonisolated struct HostPlacement: Equatable, Sendable {
     var page: CGRect
     var area: CGRect
+    var display: CGRect = .zero
     static let zero = HostPlacement(page: .zero, area: .zero)
     var text: String {
         func r(_ c: CGRect) -> String { "\(Int(c.minX)),\(Int(c.minY)) \(Int(c.width))×\(Int(c.height))" }
@@ -191,6 +200,20 @@ nonisolated enum HostLayout {
         let edges = SlotEdges(left: p.page.minX - p.area.minX, right: p.area.maxX - p.page.maxX, top: p.page.minY - p.area.minY, bottom: p.area.maxY - p.page.maxY).whole
         guard edges.usable, p.page.width >= 1, p.page.height >= 1, p.area.width >= 1, p.area.height >= 1 else { return nil }
         return edges
+    }
+
+    // A hosted window's tile rect in Margin's Space that puts its full-screen window at the page area: `home`, Margin's own
+    // tile (the display's, from its top left: the menu bar's band included, which a full-screen window sits below), less
+    // the page's distances from the area's edges (the plan's, whole points). Measured in the kit (2026-11-17): home
+    // 0,0 1512×982, page 248,41 1256×933 in 0,33 1512×949 → tile 248,8 1256×966, the window at 248,41 1256×933.
+    static func tile(_ p: HostPlacement, home: CGRect) -> CGRect? {
+        guard let edges = plan(p), home.width >= p.area.width - 1, home.height >= p.area.height - 1 else { return nil }
+        let r = edges.inset(home)
+        return r.width >= 1 && r.height >= 1 ? r : nil
+    }
+    // Margin's own tile: the display's whole frame, from its top left (nil: the display isn't known).
+    static func home(_ p: HostPlacement) -> CGRect? {
+        p.display.width >= 1 && p.display.height >= 1 ? CGRect(origin: .zero, size: p.display.size) : nil
     }
 
     static func near(_ a: CGRect, _ b: CGRect, within: CGFloat = 1) -> Bool {

@@ -9,7 +9,13 @@
 //   (`SLSBridgedSpaceDestroyOperation -initWithSpaceID:`, then `-performWithWMBridgeDelegate`). The window's move into
 //   Margin's Space is the parker's bridge (PrivateCalls' park part), its edges the slot's reservation (the slot part).
 //   (The tile calls of the first build, `SLSSpaceCopyTileSpaces`, `SLSSpaceTileMoveToSpaceAtIndex` and
-//   `SLSSpaceSetInterTileSpacing`, went with the tiles on 2026-11-15: nothing checks or calls them now.)
+//   `SLSSpaceSetInterTileSpacing`, went with the tiles on 2026-11-15; the tiles came back on 2026-11-17, below.)
+// - The tiles (live resize, docs/HOSTING-CORE.md "Live resize: tiles in Margin's Space"; a part of its own): a hosted
+//   window's own tile moved into Margin's Space (`SLSBridgedSpaceTileMoveToSpaceAtIndexOperation`), Margin's Space's
+//   tile limit and each tile's rect set (`SLSBridgedSpaceSetValuesOperation`: `Max Tile Config`, `TileRect`,
+//   `LiveResizing`), and a Space's tiles read (`SLSSpaceCopyTileSpaces`; their values with the slot's
+//   `SLSSpaceCopyValues`). Bridged only: the direct `SLSSpaceSetValues` is ignored for another process's tiles (the kit,
+//   2026-11-17). Off: the host runs as before (a page-area change re-fits the one shown on release).
 //
 // The same rules as PrivateCalls.swift: everything looked up at launch (`HostCalls.check`, one log line), anything
 // missing or an encoding changed turns the host off for the run (Margin then never hosts; the setting says so in
@@ -32,6 +38,20 @@ enum HostCalls {
 
     nonisolated static let destroyClass = "SLSBridgedSpaceDestroyOperation"
     nonisolated static let initDestroy = "initWithSpaceID:"
+    // The tiles (their own part): a Space's tiles read, the two bridged operations.
+    nonisolated static let tileFunctions = ["SLSSpaceCopyTileSpaces", "SLSSpaceCopyValues"]
+    nonisolated static let setValuesClass = "SLSBridgedSpaceSetValuesOperation"
+    nonisolated static let initSetValues = "initWithSpaceID:values:"
+    nonisolated static let tileMoveClass = "SLSBridgedSpaceTileMoveToSpaceAtIndexOperation"
+    nonisolated static let initTileMove = "initWithTileID:parentID:index:"
+    nonisolated static let tileClasses = [setValuesClass, tileMoveClass]
+    // Read on macOS 27.2.1 (26B131) with method_getTypeEncoding (both asynchronous operations, as the destroy).
+    nonisolated static let tileSelectors = [
+        PrivateCalls.Selector(className: setValuesClass, name: initSetValues, encoding: "@32@0:8Q16@24"), // (UInt64 space, NSDictionary values)
+        PrivateCalls.Selector(className: setValuesClass, name: PrivateCalls.perform, encoding: "v16@0:8"),
+        PrivateCalls.Selector(className: tileMoveClass, name: initTileMove, encoding: "@40@0:8Q16Q24Q32"), // (UInt64 tile, UInt64 parent, UInt64 index)
+        PrivateCalls.Selector(className: tileMoveClass, name: PrivateCalls.perform, encoding: "v16@0:8"),
+    ]
     // Read on macOS 27.2.1 (26B131) with method_getTypeEncoding.
     nonisolated static let selectors = [
         PrivateCalls.Selector(className: destroyClass, name: initDestroy, encoding: "@24@0:8Q16"), // (UInt64 space)
@@ -45,9 +65,10 @@ enum HostCalls {
     nonisolated struct Availability: Equatable, Sendable {
         var host = false // launch, Spaces' types, the current Space, destroy: everything the engine needs of its own
         var opens = false // the outside-open notifications
+        var tiles = false // live resize: a hosted window's tile in Margin's Space, sized by its rect
         var missing: [String] = []
         var mismatched: [String] = []
-        var reasons: [String: String] = [:] // "host", "outside opens"
+        var reasons: [String: String] = [:] // "host", "outside opens", "tiles"
         var functionsFound = 0, functionsTotal = 0
         var selectorsFound = 0, selectorsTotal = 0
         static let off = Availability()
@@ -56,7 +77,7 @@ enum HostCalls {
             func part(_ name: String, _ on: Bool) -> String { on ? "\(name) ok" : "\(name) off: \(reasons[name] ?? "not checked")" }
             let encodings = mismatched.isEmpty ? "encodings ok" : "\(mismatched.count) encoding\(mismatched.count == 1 ? "" : "s") changed"
             return "private calls (host) on \(build ?? "build unknown"): \(part("host", host)) (\(functionsFound)/\(functionsTotal) functions and keys, "
-                + "\(selectorsFound)/\(selectorsTotal) selectors, \(encodings)); \(part("outside opens", opens))"
+                + "\(selectorsFound)/\(selectorsTotal) selectors, \(encodings)); \(part("outside opens", opens)); \(part("tiles", tiles))"
         }
     }
 
@@ -110,6 +131,20 @@ enum HostCalls {
         a.reasons["host"] = why(problems)
         a.opens = a.host && noteProblems.isEmpty
         a.reasons["outside opens"] = a.host ? why(noteProblems) : "the host is off"
+        // The tiles: their functions, both classes, their selectors at their encodings. Off: the host as before.
+        var tileProblems: [String] = []
+        for name in tileFunctions where sky {
+            if resolver.function(name, in: .skyLight) == nil { tileProblems.append("\(name) missing") }
+        }
+        for cls in tileClasses where sky && resolver.objcClass(cls) == nil { tileProblems.append("\(cls) missing") }
+        for s in tileSelectors where sky && resolver.objcClass(s.className) != nil {
+            guard resolver.responds(s.className, s.name) else { tileProblems.append("\(s.label) missing"); continue }
+            let got = resolver.typeEncoding(s.className, s.name)
+            if got != s.encoding { tileProblems.append("\(s.label) encoding changed (\(got ?? "none"), expected \(s.encoding))") }
+        }
+        if !sky { tileProblems.append("SkyLight.framework didn't open") }
+        a.tiles = a.host && tileProblems.isEmpty
+        a.reasons["tiles"] = a.host ? why(tileProblems) : "the host is off"
         return a
     }
 
@@ -139,6 +174,12 @@ nonisolated struct HostPrivate: @unchecked Sendable {
     // (id, codes added: count and list, codes removed: count and list, the app's ASN, nil).
     typealias ModifyNotification = @convention(c) (UnsafeRawPointer?, UInt32, UnsafePointer<Int32>?, UInt32, UnsafePointer<Int32>?, CFTypeRef?, CFTypeRef?) -> Int32
     typealias ASNCreateWithPid = @convention(c) (CFAllocator?, pid_t) -> Unmanaged<AnyObject>?
+    // The tiles: a Space's tiles and values read; the bridged set-values and tile-move operations (alloc'd object in,
+    // +1 out, as the destroy's).
+    typealias CopyTileSpaces = @convention(c) (UInt32, UInt64) -> Unmanaged<CFArray>?
+    typealias SpaceCopyValues = @convention(c) (UInt32, UInt64) -> Unmanaged<CFDictionary>?
+    typealias InitSetValues = @convention(c) (UnsafeMutableRawPointer, ObjectiveC.Selector, UInt64, NSDictionary) -> Unmanaged<AnyObject>?
+    typealias InitTileMove = @convention(c) (UnsafeMutableRawPointer, ObjectiveC.Selector, UInt64, UInt64, UInt64) -> Unmanaged<AnyObject>?
 
     let refuses: Bool
     private var mainConnectionID: MainConnectionID?
@@ -152,10 +193,20 @@ nonisolated struct HostPrivate: @unchecked Sendable {
     private var schedule: ScheduleNotification?
     private var modify: ModifyNotification?
     private var asnCreate: ASNCreateWithPid?
+    private var copyTileSpaces: CopyTileSpaces?
+    private var spaceCopyValues: SpaceCopyValues?
+    private var setValuesClass: AnyClass?
+    private var initSetValues: InitSetValues?
+    private var performSetValues: SkyLight.Perform?
+    private var tileMoveClass: AnyClass?
+    private var initTileMove: InitTileMove?
+    private var performTileMove: SkyLight.Perform?
+    let hasTiles: Bool
     private let kept = KeptOperations()
 
     init(resolver: PrivateResolver, availability: HostCalls.Availability, refusing: Bool = PrivateCalls.inTests) {
         refuses = refusing
+        hasTiles = availability.host && availability.tiles
         guard availability.host else { return }
         func fn<T>(_ name: String, _ framework: PrivateFramework, _: T.Type) -> T? { resolver.function(name, in: framework).map { unsafeBitCast($0, to: T.self) } }
         mainConnectionID = fn("SLSMainConnectionID", .skyLight, MainConnectionID.self)
@@ -169,6 +220,16 @@ nonisolated struct HostPrivate: @unchecked Sendable {
             for key in HostCalls.launchKeys {
                 if let p = resolver.function(key, in: .launchServices) { keys[key] = p.assumingMemoryBound(to: CFString.self).pointee as String }
             }
+        }
+        if availability.tiles {
+            copyTileSpaces = fn("SLSSpaceCopyTileSpaces", .skyLight, CopyTileSpaces.self)
+            spaceCopyValues = fn("SLSSpaceCopyValues", .skyLight, SpaceCopyValues.self)
+            setValuesClass = resolver.objcClass(HostCalls.setValuesClass)
+            initSetValues = resolver.implementation(HostCalls.setValuesClass, HostCalls.initSetValues).map { unsafeBitCast($0, to: InitSetValues.self) }
+            performSetValues = resolver.implementation(HostCalls.setValuesClass, PrivateCalls.perform).map { unsafeBitCast($0, to: SkyLight.Perform.self) }
+            tileMoveClass = resolver.objcClass(HostCalls.tileMoveClass)
+            initTileMove = resolver.implementation(HostCalls.tileMoveClass, HostCalls.initTileMove).map { unsafeBitCast($0, to: InitTileMove.self) }
+            performTileMove = resolver.implementation(HostCalls.tileMoveClass, PrivateCalls.perform).map { unsafeBitCast($0, to: SkyLight.Perform.self) }
         }
         if availability.opens {
             schedule = fn("_LSScheduleNotificationOnQueueWithBlock", .launchServices, ScheduleNotification.self)
@@ -204,6 +265,45 @@ nonisolated struct HostPrivate: @unchecked Sendable {
         performDestroy(op, NSSelectorFromString(PrivateCalls.perform))
         kept.keep(op)
         return true
+    }
+
+    // ---- the tiles (live resize) ----
+
+    // A Space's tiles, in its layout's order (a full-screen Space's: its windows' tiles, the first its owner's). Nil: unread.
+    func tiles(of space: UInt64) -> [UInt64]? {
+        guard space > 0, let cid = connection(), let copyTileSpaces,
+              let list = copyTileSpaces(cid, space)?.takeRetainedValue() as? [NSNumber] else { return nil }
+        return list.map(\.uint64Value)
+    }
+
+    // A Space's (or a tile's) values: `TileRect`, `TileWindowID`, `TileLayoutManager` → `Max Tile Config`, ... Nil: unread.
+    func values(of space: UInt64) -> [String: Any]? {
+        guard space > 0, let cid = connection(), let spaceCopyValues else { return nil }
+        return spaceCopyValues(cid, space)?.takeRetainedValue() as? [String: Any]
+    }
+
+    // The window manager's own set of a Space's (or a tile's) values, through the bridge (a direct SLSSpaceSetValues is
+    // ignored for another process's tiles). Sent; whether it took is the caller's to read (the values, the window's bounds).
+    func setValues(_ space: UInt64, _ values: [String: Any]) -> Bool {
+        guard space > 0, !refuses, let initSetValues, let performSetValues, let raw = alloc(setValuesClass) else { return false }
+        guard let op = initSetValues(raw, NSSelectorFromString(HostCalls.initSetValues), space, values as NSDictionary)?.takeRetainedValue() else { return false }
+        performSetValues(op, NSSelectorFromString(PrivateCalls.perform))
+        kept.keep(op)
+        return true
+    }
+
+    // A tile (with its window) into another Space's layout at `index`, through the bridge (its id kept). Sent.
+    func moveTile(_ tile: UInt64, to parent: UInt64, index: Int) -> Bool {
+        guard tile > 0, parent > 0, index >= 0, !refuses, let initTileMove, let performTileMove, let raw = alloc(tileMoveClass) else { return false }
+        guard let op = initTileMove(raw, NSSelectorFromString(HostCalls.initTileMove), tile, parent, UInt64(index))?.takeRetainedValue() else { return false }
+        performTileMove(op, NSSelectorFromString(PrivateCalls.perform))
+        kept.keep(op)
+        return true
+    }
+
+    private func alloc(_ cls: AnyClass?) -> UnsafeMutableRawPointer? {
+        guard let cls = cls as? NSObject.Type, let made = cls.perform(NSSelectorFromString("alloc")) else { return nil }
+        return made.toOpaque()
     }
 
     // The app at `url` started with no Dock icon, not activated, hidden, not in Recents, with `arguments`. Only a

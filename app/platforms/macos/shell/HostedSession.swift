@@ -37,11 +37,15 @@
 //   tabs: `item(ofTab:)` gives the item back), the one shown in front, so the sidebar highlights it.
 //
 // - The sidebar's edge dragged while a host is shown (`sidebarResizing`, from the page's word that a change of the
-//   width began and that it's over): the sidebar slides over the hosted window live (Margin's window is in front), the
-//   page area's changes are held for the whole drag (a full-screen member can only be placed again out of full screen
-//   and in, 1–1.5 s: never one per pointer move), and the hosted window is placed once when it's over, behind the
-//   loader, at the page area the drag ended on. Parked ones are placed for the new page area when they're next shown
-//   (the engine's own rule).
+//   width began and that it's over): with live resize (the engine's tiles, docs/HOSTING-CORE.md "Live resize: tiles in
+//   Margin's Space"; or a window-mode window, by Accessibility) the hosted window follows each page area of the drag
+//   (`follow`: at most one change a display frame, one in flight), the hole the page area as it is meanwhile
+//   (`followsPage`), and once it's over the page area it ended on is Margin's (`placeAgain`: the one shown checked at
+//   it, the parked ones' tiles sized one at a time after, by the engine's reconciler). Without (no tiles: a plain
+//   member): the sidebar slides over the hosted window (Margin's window is in front), the page area's changes are held
+//   for the whole drag (such a member can only be placed again out of full screen and in, 1–1.5 s: never one per
+//   pointer move), and the hosted window is placed once when it's over, behind the loader. Parked members are placed
+//   for the new page area when they're next shown (the engine's own rule).
 // - A placing again that fails never drops the item (`placeAgain`): a window that didn't leave full screen stays shown
 //   at the frame it had (the engine's), the theme's frame colour in any gap; one that left and didn't come back in is
 //   shown again once after a pause, behind the loader, and failing that stays hosted out of sight, its item kept (a
@@ -83,6 +87,11 @@ protocol HostedEngine: AnyObject {
     // evidence that it took. And whether the app runs at all (nil: not known, a stand-in).
     func wokenWindows(bundleId: String) -> Int
     func appRuns(bundleId: String) -> Bool?
+    // A drag of the sidebar's edge began (true) or is over (false): true back, the one shown follows it live (HostEngine
+    // `dragging`: its tile's rect, a window-mode window's frame); then each page area of the drag (`follow`), at most one
+    // change a display frame. False: it doesn't (the page area's changes held until the drag is over, as before).
+    func dragging(_ on: Bool) -> Bool
+    func follow(_ placement: HostPlacement)
 }
 
 extension HostedEngine {
@@ -92,6 +101,8 @@ extension HostedEngine {
     func releaseWoken(bundleId: String) {}
     func wokenWindows(bundleId: String) -> Int { 0 }
     func appRuns(bundleId: String) -> Bool? { nil }
+    func dragging(_ on: Bool) -> Bool { false }
+    func follow(_ placement: HostPlacement) {}
     var preparesOutOfSight: Bool { false }
     func start(bundleId: String) async -> HostApp? { nil }
     func prepare(_ target: HostTarget, in placement: HostPlacement, marginWindow: Int, marginSpace: UInt64) async -> HostResult { .failed(.launch, "no engine to prepare it") }
@@ -143,6 +154,7 @@ protocol HostedWindow: AnyObject {
     func setLoadingTabs(_ numbers: [Int])
     func setHosted(_ number: Int?) // the hosted window shown in its page area (this window in front of it), nil: none
     func hostedMoved() // that window was placed again, or kept where it was: its bounds read again
+    func followsPage(_ on: Bool) // the hosted window follows a drag live: the hole is the page area as it is meanwhile
     func cover(_ number: Int?) // a window of the engine's in its Space not shown yet (a new app's, read), nil: no more
     func yield(to number: Int?) // another app's window opened in its Space: let in front until it's gone (nil)
     func frontRead(_ read: HostEngine.FrontRead) // the poll's read at rest of it and the hosted window: in front, kept so
@@ -154,6 +166,7 @@ extension HostedWindow {
     func setShowing(_ label: String?, slow: Bool) { setShowing(label, app: nil, slow: slow) }
     func setShowing(_ label: String?, app: String?) { setShowing(label, app: app, slow: false) }
     func setLoading(_ label: String?) { setLoading(label, app: nil) }
+    func followsPage(_ on: Bool) {}
 }
 
 // The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
@@ -984,6 +997,8 @@ final class HostedSession: LibraryDelegate {
     // Held while the sidebar's edge is dragged (`resizing`): one placing when the drag is over.
     private var placing = false
     func pageRectChanged(_ window: HostedWindow) {
+        // (A drag the one shown follows live: each page area of it to the engine at once; Margin's own once it's over.)
+        if following, resizing == window.id, window.id == hostingWindow, let p = window.hostedPlacement { return engine.follow(p) }
         guard window.id == hostingWindow, engine.shown != nil, resizing != window.id, !placing else { return }
         placing = true
         enqueue {
@@ -1019,8 +1034,10 @@ final class HostedSession: LibraryDelegate {
         }
     }
 
-    // The Margin window whose sidebar's edge is being dragged (its page area's changes held while it hosts).
+    // The Margin window whose sidebar's edge is being dragged (its page area's changes held while it hosts, or followed
+    // live: `following`).
     private(set) var resizing: Int?
+    private(set) var following = false
 
     // A change of a Margin window's sidebar's width began (a drag of its edge: the page says so at the first change of
     // the width), or is over (its last layout reported first: ui/behaviors/resize.ts). Begun: the page area's changes
@@ -1032,11 +1049,18 @@ final class HostedSession: LibraryDelegate {
             guard resizing == nil else { return }
             resizing = window.id
             guard window.id == hostingWindow, engine.shown != nil else { return }
-            note("the sidebar's edge dragged in Margin's window \(window.id): the page area's changes held until it's let go")
+            following = engine.dragging(true)
+            window.followsPage(following)
+            note("the sidebar's edge dragged in Margin's window \(window.id): \(following ? "the hosted window follows it live" : "the page area's changes held until it's let go")")
             return
         }
         guard resizing == window.id else { return }
         resizing = nil
+        if following {
+            following = false
+            _ = engine.dragging(false)
+            window.followsPage(false)
+        }
         guard window.id == hostingWindow, engine.shown != nil else { return }
         enqueue { await self.placeAgain(window) }
     }
