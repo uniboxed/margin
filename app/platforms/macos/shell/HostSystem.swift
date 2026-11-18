@@ -479,12 +479,12 @@ final class RealHostSystem: HostSystem {
         NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).compactMap(Self.hostApp)
     }
 
-    func app(pid: pid_t) -> HostApp? { NSRunningApplication(processIdentifier: pid).flatMap(Self.hostApp) }
+    func app(pid: pid_t) -> HostApp? { runningApp(pid).flatMap(Self.hostApp) }
     // (EPERM: it runs, as another user's; ESRCH: gone.)
     func processRuns(pid: pid_t) -> Bool { pid > 0 && (kill(pid, 0) == 0 || errno == EPERM) }
 
     func policy(pid: pid_t) -> HostPolicy? {
-        guard let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return nil }
+        guard let a = runningApp(pid) else { return nil }
         switch a.activationPolicy {
         case .regular: return .regular
         case .accessory: return .accessory
@@ -508,12 +508,22 @@ final class RealHostSystem: HostSystem {
 
     private var batching = false
     private var displaysMemo: [DisplaySpaces]??
+    // (One poll's: a running app read once (each a LaunchServices request), the session's state once.)
+    private var appMemo: [pid_t: NSRunningApplication?] = [:]
+    private var awayMemo: Bool?
     func batch(_ body: () -> Void) {
         if batching { return body() }
         batching = true
         displaysMemo = nil
-        defer { batching = false; displaysMemo = nil }
+        defer { batching = false; displaysMemo = nil; appMemo = [:]; awayMemo = nil }
         body()
+    }
+    private func runningApp(_ pid: pid_t) -> NSRunningApplication? {
+        guard batching else { return NSRunningApplication(processIdentifier: pid).flatMap { $0.isTerminated ? nil : $0 } }
+        if let memo = appMemo[pid] { return memo }
+        let a = NSRunningApplication(processIdentifier: pid).flatMap { $0.isTerminated ? nil : $0 }
+        appMemo[pid] = .some(a)
+        return a
     }
     // The managed Spaces, parsed (SLSCopyManagedDisplaySpaces): once per poll inside `batch`, else each time.
     private func readDisplays() -> [DisplaySpaces]? {
@@ -540,7 +550,7 @@ final class RealHostSystem: HostSystem {
     func close(pid: pid_t, window: Int) async -> Bool { await ax.close(pid: pid, window: window) }
 
     func isHidden(pid: pid_t) -> Bool? {
-        guard let a = NSRunningApplication(processIdentifier: pid), !a.isTerminated else { return nil }
+        guard let a = runningApp(pid) else { return nil }
         return a.isHidden
     }
 
@@ -648,6 +658,12 @@ final class RealHostSystem: HostSystem {
         return ((w[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false, (w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1)
     }
     func screenAway() -> Bool {
+        if batching, let memo = awayMemo { return memo }
+        let away = readScreenAway()
+        if batching { awayMemo = away }
+        return away
+    }
+    private func readScreenAway() -> Bool {
         if CGDisplayIsAsleep(CGMainDisplayID()) != 0 { return true }
         guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
         if session["CGSSessionScreenIsLocked"] as? Bool == true { return true }

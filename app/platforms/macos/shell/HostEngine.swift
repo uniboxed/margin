@@ -704,7 +704,8 @@ final class HostEngine {
         // (Margin's window out of its Space, macOS took it out of full screen: the one shown is a stray too.)
         let marginHere = marginWindow == 0 || sys.spaces(window: marginWindow).map { $0.contains(marginSpace) } ?? true
         for host in hosts.values {
-            if sys.app(pid: host.pid) == nil, !sys.processRuns(pid: host.pid) { appQuit(host.pid); continue }
+            // (The process gone: its app quit. kill(pid, 0) alone: a running-app lookup is a LaunchServices request a poll.)
+            if !sys.processRuns(pid: host.pid) { appQuit(host.pid); continue }
             if host.launchedByMargin, !host.promoted, sys.policy(pid: host.pid) == .regular { promote(host, why: "its policy reads regular") }
             // (Closed and still listed by the window server, in no Space or off screen: gone at once, as two reads that missed.)
             if closedByItsApp(host) { host.unread = max(2, host.unread + 1) } else if sys.bounds(window: host.window) == nil { host.unread += 1 } else { host.unread = 0; host.gone = false }
