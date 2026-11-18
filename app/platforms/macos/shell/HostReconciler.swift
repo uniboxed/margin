@@ -30,6 +30,12 @@
 //                      before stage 3; never a window reopened for it (Tirth, 2026-11-17)
 //   placeAgain         shown, a member not at the page area for two reads (its app moved it: a second window of its
 //                      going full screen re-laid it out): placed again (out of full screen, asked again), once per 30 s
+//   sizeTile           live resize (docs/HOSTING-CORE.md): a hosted window's tile in Margin's Space not at the page area
+//                      (Margin's page area changed: a drag's end, a theme, the display; or found off it twice: a tile
+//                      change laid it out again): its rect set to the page area's, its window seen there, the one shown
+//                      first, the parked ones one at a time after it (each its own turn in the queue: a show asked
+//                      meanwhile goes between them, and sizes its own first); its budget spent, the one shown is placed
+//                      again the old way (`placeAgain`), a parked one at its next show
 //   adopt              the app replaced its window (a new main-kind window at its frame, the old one gone or in no
 //                      Space), or made a new one after its own went: the new one hosted; the app is never fought
 //   closeLeftover      a leftover Margin may close (its app discards windows at quit, Accessibility reads it): its own
@@ -76,6 +82,7 @@ nonisolated enum HostCorrection: Equatable, Sendable {
     case parkAgain
     case closeItem
     case placeAgain
+    case sizeTile
     case fallback(String)
 
     // Its name in the log and its budget's key.
@@ -98,6 +105,7 @@ nonisolated enum HostCorrection: Equatable, Sendable {
         case .parkAgain: return "park again"
         case .closeItem: return "close its item"
         case .placeAgain: return "place again"
+        case .sizeTile: return "size its tile"
         case .fallback: return "fallback"
         }
     }
@@ -159,6 +167,12 @@ nonisolated struct HostSituation: Equatable, Sendable {
     var strayReads = 0 // polls in a row a parked one was found in a user Space (one read can miss mid-transition)
     var atPage: Bool? = nil // a window-mode window where `frameWindow` puts it (the page area, or its own size centred in it)
     var offPageReads = 0 // polls in a row a shown member's bounds weren't the page area (its app moved it)
+    // Live resize: its window's own tile is in Margin's Space (sized by its rect), and that rect isn't the page area's
+    // (placed for another page area, or its window found off it twice). `dragging`: a drag of the sidebar's edge under way
+    // (the one shown follows it live: nothing sized until it's over).
+    var tile = false
+    var tileStale = false
+    var dragging = false
     var fullScreen: Bool? = nil // Accessibility's AXFullScreen
     var canFullScreen: Bool? = nil // AXFullScreen settable
     var ownFullScreenSpace: UInt64? = nil // a full-screen Space of its app's it's in (not Margin's)
@@ -188,6 +202,7 @@ nonisolated struct HostSituation: Equatable, Sendable {
             parts.append("no window")
         }
         if let r = replacement { parts.append("its app's main window now \(r)") }
+        if tile, tileStale { parts.append("its tile not at the page area") }
         let left = leftovers.filter(\.inUserSpace)
         if !left.isEmpty { parts.append("leftover\(left.count == 1 ? "" : "s") \(left.map { "\($0.number) (\($0.place.text)\($0.onScreen == true ? ", on screen" : ""))" }.joined(separator: ", "))") }
         let st = strips.filter { $0.inUserSpace || $0.onScreen == true }
@@ -201,7 +216,7 @@ nonisolated enum HostReconciler {
     // Each correction's budget per show (tries); `bringForward`'s rungs once each, then the fallback.
     static let budget: [String: Int] = [
         "launch": 1, "reopen": 2, "unhide": 2, "adopt": 20, "window mode": 2, "put back": 3, "park again": 3,
-        "leftover": 2, "strip": 3, "bring forward": 1, "close its item": 1, "place again": 1,
+        "leftover": 2, "strip": 3, "bring forward": 1, "close its item": 1, "place again": 1, "size its tile": 3,
     ]
     static func budget(of c: HostCorrection) -> Int {
         switch c {
@@ -237,6 +252,8 @@ nonisolated enum HostReconciler {
             if let r = s.replacement, s.launchedByMargin { add(.adopt(r)); if !out.isEmpty { return out } }
             // Nothing of it on any user Space: its window, its leftovers, its strips.
             if s.place.placed, s.place != .parked, s.strayReads >= 2, !s.busy { add(.parkAgain) }
+            // Live resize: its tile at the page area before it can be shown (after the one shown's, one at a time).
+            if s.tile, s.tileStale, !s.busy, !s.dragging { add(.sizeTile) }
             for l in s.leftovers where l.inUserSpace { add(.parkLeftover(l.number)) }
             for st in s.strips where st.inUserSpace { add(.parkStrip(st.number)) }
             return out
@@ -284,7 +301,11 @@ nonisolated enum HostReconciler {
                 } else if s.place == .margin, s.mode == .window, s.atPage == false {
                     // (A window-mode window not where it was framed: an adoption's frame not taken, its app moved it.)
                     add(.frameWindow)
-                } else if s.place == .margin, s.member, s.offPageReads >= offPageAfter {
+                } else if s.place == .margin, s.tile, s.tileStale, !s.dragging {
+                    // (Live resize: its tile's rect to the page area's; not taken three times: placed again the old way.)
+                    add(.sizeTile)
+                    if out.isEmpty { add(.placeAgain) }
+                } else if s.place == .margin, s.member, !s.tile, s.offPageReads >= offPageAfter {
                     // (A member not at the page area: its app re-laid it out, restore-code's second full screen.)
                     add(.placeAgain)
                 }

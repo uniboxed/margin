@@ -391,6 +391,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         let content = contentFrame
         defer { updateHole() }
         guard let layout else { return window.setPageRect(nil, radius: 0) }
+        // (Laid out as a split's half for a moment by a tile change in its Space: the page area left as it was.)
+        if hosting, narrowed { return }
         if hosting { return window.setPageRect(hostedPlacement?.page, radius: CGFloat(layout.radius)) }
         // (A layout from before a resize changes nothing: the page's next one, at the new size, does.)
         guard MarginWindowGeometry.measuredAt(layout, content.size) else { return }
@@ -470,6 +472,16 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // bounds read again, the hole and the pointer's slot with them.
     func hostedMoved() {
         readHosted()
+        updateHole()
+    }
+
+    // The hosted window follows a drag of the sidebar's edge live (the engine's tiles): the hole is the page area as it
+    // is meanwhile (its window a frame behind at most), its bounds read again once it's over.
+    private var followingPage = false
+    func followsPage(_ on: Bool) {
+        guard on != followingPage else { return }
+        followingPage = on
+        if !on { readHosted() }
         updateHole()
     }
 
@@ -705,7 +717,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         var next: CGRect?
         if pageState == .shown, let page = window.pageRect {
             // (Between two windows in a switch, the grace running: the hole as it was. The new one is under it already.)
-            let bounds = hosted != nil ? hostedFrame ?? page : graceTimer != nil ? hole : nil
+            let bounds = hosted != nil ? (followingPage ? page : hostedFrame ?? page) : graceTimer != nil ? hole : nil
             if let r = bounds?.intersection(page), !r.isNull, r.width >= 1, r.height >= 1 { next = r }
         }
         let said = (0..<4).map { i in i < (layout?.fills.count ?? 0) ? PageFill.color(layout?.fills[i] ?? "") : nil }
@@ -744,10 +756,19 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // The area is this window's own frame: a full-screen window, laid out exactly where the hosted window's own Space
     // lays out its full-screen window (seen 2026-11-15: the display's frame less its top safe-area inset said 0,32
     // 1512×950, both windows were at 0,33 1512×949, so the hosted window landed a point below the page area).
+    // `display`: the screen's whole frame (a hosted window's tile in Margin's Space is laid out in it). Nil also while
+    // this window isn't its screen's width: a tile added to or taken out of its Space lays it out as a split's half for a
+    // moment (under the freeze; the engine sets its rect back at once), never a page area to place anything at.
     var hostedPlacement: HostPlacement? {
-        guard hosting, isFullScreen, let layout, layout.mode == "fullscreen", hostDisplay != nil,
+        guard hosting, isFullScreen, let layout, layout.mode == "fullscreen", hostDisplay != nil, !narrowed,
               let page = MarginWindowGeometry.pageRect(layout: layout, content: contentFrame) else { return nil }
-        return HostPlacement(page: page, area: contentFrame)
+        let display = window.screen.map { ScreenGeometry.appKitRect($0.frame) } ?? .zero
+        return HostPlacement(page: page, area: contentFrame, display: display)
+    }
+    // In full screen and narrower than its screen (laid out as a split's half by a tile change in its Space).
+    private var narrowed: Bool {
+        guard isFullScreen, let screen = window.screen else { return false }
+        return contentFrame.width < screen.frame.width - 2
     }
 
     // The page area as its page draws it now, not hosting (its launcher's layout), in full screen at its size: where a
@@ -1108,7 +1129,14 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         "active \(NSApp.isActive), key \(window.isKeyWindow), on the current Space \(window.isOnActiveSpace), visible \(window.isVisible), full screen \(isFullScreen)"
     }
 
-    func windowDidResize(_ notification: Notification) { if panel.frame != window.frame { panel.setFrame(window.frame, display: true) }; updatePage(); placeButtons() }
+    func windowDidResize(_ notification: Notification) {
+        if panel.frame != window.frame { panel.setFrame(window.frame, display: true) }
+        updatePage()
+        placeButtons()
+        // (Laid out as a split's half by a tile change in its Space that Margin didn't make: an app quit or crashed, its
+        // window closed. The engine sets every rect again at once: HostEngine `marginNarrowed`.)
+        if hosting, narrowed { owner?.onNarrowed?(self) }
+    }
     func windowDidChangeOcclusionState(_ notification: Notification) {
         if window.occlusionState.contains(.visible) { tryFullScreen("its window on screen") }
     }
@@ -1214,7 +1242,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             guard let geometry = body["geometry"] as? JSONObject, let layout = PageLayout(geometry: geometry) else { return }
             if hosting {
                 let said = "\(layout.mode) \(Int(layout.left))/\(Int(layout.top))/\(Int(layout.right))/\(Int(layout.bottom)) in \(Int(layout.width))×\(Int(layout.height))"
-                if said != hostingLayoutSaid {
+                // (Not each frame of a drag of the sidebar's edge: its last layout, once it's let go.)
+                if said != hostingLayoutSaid, !pageResizing {
                     hostingLayoutSaid = said
                     Diagnostics.note("Margin's window \(id): hosting, its page measured \(said) (window \(Int(window.frame.width))×\(Int(window.frame.height)), full screen \(window.styleMask.contains(.fullScreen)))")
                 }
@@ -1318,6 +1347,7 @@ final class MarginWindows {
     var onFieldClosed: ((MarginWindowController) -> Void)?
     var onOpen: ((MarginWindowController) -> Void)? // a window made, before its page loads (the session: the item it showed last)
     var onSidebarResizing: ((MarginWindowController, Bool) -> Void)? // a change of its sidebar's width began (a drag), or is over
+    var onNarrowed: ((MarginWindowController) -> Void)? // in full screen while hosting and narrower than its screen (a tile change in its Space)
     var browser = "safari" // the engine hosted pages are in (Settings offers its features)
     private(set) var controllers: [MarginWindowController] = []
     private var lastKey: MarginWindowController?

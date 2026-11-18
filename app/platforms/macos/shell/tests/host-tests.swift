@@ -20,7 +20,10 @@ final class FakeHostWorld: HostSystem {
                  // axRole: Accessibility's role/subrole when it isn't a standard window's (the listing, which keeps standard
                  // windows and ones that can go full screen, leaves it out; found by its number).
                  var axRole: String? = nil
-                 var member = false; var memberFrame: CGRect? = nil }
+                 var member = false; var memberFrame: CGRect? = nil
+                 // tiled: its own tile moved into another full-screen Space (Margin's), its bounds its tile's rect less the
+                 // display's top band, wherever the window is (shown, or parked in a private Space).
+                 var tiled = false }
     static let defaultFrame = CGRect(x: 100, y: 100, width: 800, height: 600)
 
     static let marginSpace: UInt64 = 100, marginTile: UInt64 = 101, desktop: UInt64 = 1, marginWindow = 1
@@ -559,6 +562,12 @@ final class FakeHostWorld: HostSystem {
         if let n = a.windows.first, let w = wins[n] { saved[a.bundle] = w.frame ?? Self.defaultFrame } // (its frame at quit)
         for n in a.windows { wins[n] = nil }
         for (space, p) in owner where p == pid { tiles[space] = nil; owner[space] = nil }
+        // (Its empty tiles left in another app's Space go with it.)
+        for (t, p) in emptyTiles where p == pid {
+            emptyTiles[t] = nil
+            for (space, list) in tiles where list.contains(t) { tiles[space] = list.filter { $0 != t }; relayFirstTwo(space) }
+            tileWindow[t] = nil
+        }
         noteListing()
         onAppQuit?(pid)
     }
@@ -675,9 +684,16 @@ final class FakeHostWorld: HostSystem {
                 if w.priv != nil, exitUnparks { w.priv = nil; w.spaces = [Self.desktop] }
             } else {
                 for (space, list) in tiles where list.contains(where: { tileWindow[$0] == window }) {
+                    if w.tiled, exitLeavesTile, owner[space] != pid {
+                        for t in list where tileWindow[t] == window { emptyTiles[t] = pid } // (left behind, empty)
+                        continue
+                    }
                     tiles[space] = list.filter { tileWindow[$0] != window }
                     if owner[space] == pid, tiles[space]?.isEmpty == true { tiles[space] = nil; owner[space] = nil } // macOS closes its own Space
+                    else { relayFirstTwo(space) } // (a tile taken out: the first two laid out again)
                 }
+                for (t, n) in tileWindow where n == window { tileWindow[t] = nil; tileRects[t] = nil }
+                w.tiled = false
                 if w.priv == nil || exitUnparks { w.priv = nil; w.spaces = [Self.desktop] }
             }
         }
@@ -729,7 +745,8 @@ final class FakeHostWorld: HostSystem {
         guard let w = wins[window] else { return nil }
         if let h = toolbarHost(window) { return bounds(window: h).map { CGRect(x: $0.minX, y: $0.minY - Self.toolbarHeight, width: $0.width, height: Self.toolbarHeight) } }
         if let lag = lagging[window], clock < lag.until { return lag.frame }
-        if window == Self.marginWindow { return Self.display }
+        if window == Self.marginWindow { return tilesOn ? tileBounds(Self.marginTile) : Self.display }
+        if w.tiled, w.fullScreen, let t = tileOf(window) { return tileBounds(t) }
         if w.member, let f = w.memberFrame { return f }
         if let p = pending[window] { return p.framed ? (reservation[p.space] ?? .zero).inset(Self.display) : (w.frame ?? Self.defaultFrame) }
         guard w.fullScreen, w.priv == nil, let space = w.spaces.first, tiles[space] != nil else { return w.frame ?? Self.defaultFrame }
@@ -818,7 +835,9 @@ final class FakeHostWorld: HostSystem {
     func desktop(onDisplayOf space: UInt64) -> UInt64? { Self.desktop }
     // (No owner and no window in it: an emptied Space, or Margin's after its window went.)
     func ownerlessFullScreenSpaces() -> [UInt64]? {
-        tiles.keys.filter { space in owner[space] == nil && !theirSpaces.contains(space) && !wins.values.contains { $0.priv == nil && $0.spaces.contains(space) } }.sorted()
+        // (A placeholder tile in it, an app's or a killed Margin's, keeps it from reading as ownerless: the real read counts tiles.)
+        tiles.keys.filter { space in owner[space] == nil && !theirSpaces.contains(space) && !wins.values.contains { $0.priv == nil && $0.spaces.contains(space) }
+            && !(tiles[space] ?? []).contains(where: { placeholders.contains($0) }) }.sorted()
     }
     func listedFullScreenSpaces() -> [UInt64]? { tiles.keys.sorted() }
     func destroyFullScreenSpace(_ space: UInt64) -> Bool {
@@ -876,13 +895,22 @@ final class FakeHostWorld: HostSystem {
             if moveLag > 0 { landing[window] = (before, clock + moveLag) }
             return true
         }
+        if w.tiled, rejoinRelays || (rejoinRelaysOnce && relayPending), w.priv != nil, !privates.contains(space), let t = tileOf(window), tiles[space]?.firstIndex(of: t) == 1 {
+            w.priv = nil
+            w.spaces = [space]
+            wins[window] = w
+            relayFirstTwo(space)
+            relayPending = false // (its own laying out again doesn't arm the next)
+            return true
+        }
         if privates.contains(space) {
             guard !fail.contains("park"), !unparkable.contains(window) else { return false }
             w.priv = space
             if apps[w.pid].map({ staleOnLeave.contains($0.bundle) }) == true { axStale.insert(window) }
         } else {
-            // A full-screen window brought into another full-screen Space: a member there, at the frame it had.
-            if w.fullScreen, !w.member, tiles[space] != nil {
+            // A full-screen window brought into another full-screen Space: a member there, at the frame it had (a tiled one
+            // is back with its tile, which never left).
+            if w.fullScreen, !w.member, !w.tiled, tiles[space] != nil {
                 w.memberFrame = moveLosesFrame > 0 ? Self.display : bounds(window: window)
                 if moveLosesFrame > 0 { moveLosesFrame -= 1 }
                 w.member = true
@@ -899,13 +927,140 @@ final class FakeHostWorld: HostSystem {
 
     // ---- the freeze, outside opens ----
     func freeze() -> Bool { freezes += 1; frozen = true; return true }
-    func reveal() { reveals += 1; frozen = false }
+    func reveal() { onReveal?(); reveals += 1; frozen = false }
     func watchOpens(pid: pid_t, _ heard: @escaping (Int32) -> Void) -> Bool { listeners[pid] = heard; return true }
     func stopWatchingOpens(pid: pid_t) { listeners[pid] = nil }
     func openFromOutside(_ pid: pid_t) {
         listeners[pid]?(HostCalls.openRequestCode)
         apps[pid]?.policy = .regular
         listeners[pid]?(HostCalls.promotedCode)
+    }
+
+    // ---- the tiles (live resize), as the kit measured them (2026-11-17, /tmp/margin-toolbar-test/live-resize/opt4) ----
+    // A full-screen Space's tiles in its layout's order (`tiles`, above), each with its window (`tileWindow`) and its rect
+    // (`tileRects`: the display's points from its top left, the menu bar's band in; none set: the display's whole). A
+    // full-screen window is that band below its tile's top. A Space takes `Max Tile Config` tiles (2 for a new one: a
+    // tile moved in past it isn't taken); a tile moved in or taken out lays the first two of its layout out again (a
+    // split's halves: their rects wiped); rects may overlap. Off (`tilesOn` false): every older check runs as before.
+    var tilesOn = false
+    var tileRects: [UInt64: CGRect] = [:]
+    var maxTileConfig: [UInt64: Int] = [:]
+    var limitIgnored = false // the Space's tile limit never takes (the launch check fails)
+    var rectsIgnored = false // a tile's rect never takes (its window stays where its layout put it)
+    var moveRefused = false // the bridge's tile move is sent and nothing moves
+    var liveResizing: [UInt64: Bool] = [:]
+    var relaid = 0 // layouts laid out again by a tile change
+    var placeholders: Set<UInt64> = [] // tiles left with no window by an app that was killed
+    // A tiled window out of full screen leaves its tile in that Space, empty, until its app quits (the real Mac,
+    // 2026-11-17 23:32: Margin's Space outlived Margin's quit with such a tile in it). Off: the tile goes with it.
+    var exitLeavesTile = true
+    var closeLeavesPlaceholder = true // a tiled window its app closed leaves a placeholder window in its tile (off: the tile goes)
+    // A tiled window that's its layout's second coming back into that Space (a switch) lays the first two out again (the
+    // real Mac, 2026-11-17 23:31:42: Chameleon 1, the second tile of Margin's Space, at a third's width as it was shown).
+    var rejoinRelays = false
+    var rejoinRelaysOnce = false // ...only the first time after a tile came into or left that Space (the real Mac, 23:52)
+    var relayPending = false
+    var onReveal: (() -> Void)?
+    var emptyTiles: [UInt64: pid_t] = [:]
+    static let tileDisplay = CGRect(x: 0, y: 0, width: 1512, height: 982), band: CGFloat = 33
+    func tileOf(_ window: Int) -> UInt64? { tileWindow.first { e in e.value == window && tiles.values.contains { $0.contains(e.key) } }?.key }
+    func tileBounds(_ t: UInt64) -> CGRect {
+        let r = tileRects[t] ?? Self.tileDisplay
+        return CGRect(x: r.minX, y: r.minY + Self.band, width: r.width, height: r.height - Self.band)
+    }
+    func relayFirstTwo(_ space: UInt64) {
+        guard tilesOn, let list = tiles[space], !list.isEmpty else { return }
+        relaid += 1
+        relayPending = true
+        let full = Self.tileDisplay
+        if list.count == 1 { tileRects[list[0]] = full; return }
+        let half = ((full.width - 12) / 2).rounded(.down)
+        tileRects[list[0]] = CGRect(x: 0, y: 0, width: half, height: full.height)
+        tileRects[list[1]] = CGRect(x: full.width - half, y: 0, width: half, height: full.height)
+    }
+    var tilesAvailable: Bool { tilesOn }
+    func tiles(of space: UInt64) -> [UInt64]? { tilesOn ? tiles[space] : nil }
+    func tileRect(_ tile: UInt64) -> CGRect? { tilesOn && tiles.values.contains { $0.contains(tile) } ? tileRects[tile] ?? Self.tileDisplay : nil }
+    func tileWindow(_ tile: UInt64) -> Int? { tilesOn ? tileWindow[tile] : nil }
+    func maxTiles(of space: UInt64) -> Int? { tilesOn && tiles[space] != nil ? maxTileConfig[space] ?? 2 : nil }
+    func setMaxTiles(_ space: UInt64, _ count: Int) -> Bool {
+        calls.append("maxTiles \(space) \(count)")
+        guard tilesOn else { return false }
+        if !limitIgnored { maxTileConfig[space] = count }
+        return true
+    }
+    func setTileRect(_ tile: UInt64, _ rect: CGRect) -> Bool {
+        calls.append("tileRect \(tile) \(Int(rect.minX)),\(Int(rect.minY)) \(Int(rect.width))×\(Int(rect.height))")
+        guard tilesOn else { return false }
+        if !rectsIgnored { tileRects[tile] = rect }
+        return true
+    }
+    func moveTile(_ tile: UInt64, to space: UInt64, index: Int) -> Bool {
+        calls.append("moveTile \(tile) \(space) \(index)")
+        guard tilesOn else { return false }
+        guard !moveRefused, let from = tiles.first(where: { $0.value.contains(tile) })?.key, from != space, var list = tiles[space], list.count + 1 <= maxTileConfig[space] ?? 2 else { return true }
+        tiles[from] = tiles[from]?.filter { $0 != tile }
+        list.insert(tile, at: min(index, list.count))
+        tiles[space] = list
+        if let n = tileWindow[tile], var w = wins[n] {
+            let before = spaces(window: n) ?? []
+            if pending[n] != nil { pending[n]?.movedOut = true }
+            movedOut[n] = (from, clock)
+            w.tiled = true
+            w.member = false
+            w.memberFrame = nil
+            w.priv = nil
+            w.spaces = [space]
+            arrivedAt[n] = clock
+            wins[n] = w
+            if moveLag > 0 { landing[n] = (before, clock + moveLag) }
+        }
+        relayFirstTwo(space)
+        noteListing()
+        return true
+    }
+    func destroyTile(_ tile: UInt64) -> Bool {
+        calls.append("destroyTile \(tile)")
+        guard tilesOn else { return false }
+        for (space, list) in tiles where list.contains(tile) { tiles[space] = list.filter { $0 != tile }; relayFirstTwo(space) }
+        if let n = tileWindow[tile], placeholders.contains(tile), let w = wins[n] { wins[n] = nil; apps[w.pid]?.windows.removeAll { $0 == n } }
+        if let n = tileWindow[tile], wins[n] != nil, emptyTiles[tile] == nil { destroyedWithWindows += 1 }
+        emptyTiles[tile] = nil
+        tileWindow[tile] = nil
+        tileRects[tile] = nil
+        placeholders.remove(tile)
+        return true
+    }
+    func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool {
+        calls.append("liveResizing \(space) \(on)")
+        guard tilesOn else { return false }
+        liveResizing[space] = on
+        return true
+    }
+    // An app killed (SIGKILL): its windows go, its tiles in another app's Space stay as placeholders (a window number of
+    // their own, none of the app's), its own Spaces go.
+    func killApp(_ pid: pid_t) {
+        guard let a = apps.removeValue(forKey: pid) else { return }
+        let itsSpaces = Set(owner.filter { $0.value == pid }.map(\.key))
+        for n in a.windows {
+            for (t, w) in tileWindow where w == n {
+                if tiles.contains(where: { !itsSpaces.contains($0.key) && $0.value.contains(t) }) { tileWindow[t] = nextWindow; nextWindow += 1; placeholders.insert(t) } else { tileWindow[t] = nil }
+            }
+            wins[n] = nil
+        }
+        for (space, p) in owner where p == pid { tiles[space] = nil; owner[space] = nil }
+        noteListing()
+        onAppQuit?(pid)
+    }
+    // Margin killed: its Space stays with no owner, the hosted tiles and its own tile, empty (the real Mac, 2026-11-18
+    // 01:15: a placeholder kept that Space from going until it was destroyed); the hosted ones laid out as a split, seen.
+    func marginKilled() {
+        for (space, list) in tiles where list.contains(Self.marginTile) { relayFirstTwo(space); _ = space }
+        tileWindow[Self.marginTile] = nextWindow
+        nextWindow += 1
+        placeholders.insert(Self.marginTile)
+        wins[Self.marginWindow] = nil
+        owner[Self.marginSpace] = nil
     }
 
     // The hosted windows in Margin's Space now (its members and window-mode windows).
@@ -937,9 +1092,21 @@ final class FakeHostWorld: HostSystem {
     func closeWindow(_ n: Int) {
         guard var w = wins[n] else { return }
         for (space, list) in tiles where list.contains(where: { tileWindow[$0] == n }) {
+            // (A tiled window its app closed, in another app's Space: its tile stays with a placeholder window of its own,
+            // its app's, at the tile's rect: the real Mac, 2026-11-18 01:19.)
+            if w.tiled, closeLeavesPlaceholder, owner[space] != w.pid, let t = list.first(where: { tileWindow[$0] == n }) {
+                let ph = nextWindow
+                nextWindow += 1
+                tileWindow[t] = ph
+                placeholders.insert(t)
+                wins[ph] = Win(pid: w.pid, spaces: [space], frame: tileRects[t] ?? Self.tileDisplay)
+                apps[w.pid]?.windows.append(ph)
+                continue
+            }
             tiles[space] = list.filter { tileWindow[$0] != n }
-            if owner[space] == w.pid, tiles[space]?.isEmpty == true { tiles[space] = nil; owner[space] = nil }
+            if owner[space] == w.pid, tiles[space]?.isEmpty == true { tiles[space] = nil; owner[space] = nil } else { relayFirstTwo(space) }
         }
+        w.tiled = false
         apps[w.pid]?.windows.removeAll { $0 == n }
         if let bundle = apps[w.pid]?.bundle, keepsClosed.contains(bundle) {
             if w.fullScreen || w.member { w.spaces = [] }
@@ -1031,16 +1198,17 @@ final class HostFakeResolver: PrivateResolver, @unchecked Sendable {
     var version = "27.2.1"
     var build: String? = "26B131"
     var frameworks = Set(PrivateFramework.allCases)
-    var functions = Set(HostCalls.skyFunctions + HostCalls.launchFunctions + HostCalls.launchKeys + HostCalls.noteFunctions)
-    var encodings = Dictionary(uniqueKeysWithValues: HostCalls.selectors.map { ($0.label, $0.encoding) })
+    var functions = Set(HostCalls.skyFunctions + HostCalls.launchFunctions + HostCalls.launchKeys + HostCalls.noteFunctions + HostCalls.tileFunctions)
+    var encodings = Dictionary(uniqueKeysWithValues: (HostCalls.selectors + HostCalls.tileSelectors).map { ($0.label, $0.encoding) })
     var hasClass = true
+    var tileClasses = Set(HostCalls.tileClasses)
     func open(_ framework: PrivateFramework) -> Bool { frameworks.contains(framework) }
     func function(_ name: String, in framework: PrivateFramework) -> UnsafeRawPointer? {
         guard frameworks.contains(framework), functions.contains(name) else { return nil }
         return UnsafeRawPointer(bitPattern: 0x1000) // never called
     }
-    func objcClass(_ name: String) -> AnyClass? { hasClass && name == HostCalls.destroyClass ? NSObject.self : nil }
-    func responds(_ className: String, _ selector: String) -> Bool { hasClass && encodings["\(className) -\(selector)"] != nil }
+    func objcClass(_ name: String) -> AnyClass? { (hasClass && name == HostCalls.destroyClass) || tileClasses.contains(name) ? NSObject.self : nil }
+    func responds(_ className: String, _ selector: String) -> Bool { (className == HostCalls.destroyClass ? hasClass : tileClasses.contains(className)) && encodings["\(className) -\(selector)"] != nil }
     func typeEncoding(_ className: String, _ selector: String) -> String? { encodings["\(className) -\(selector)"] }
     func implementation(_ className: String, _ selector: String) -> UnsafeRawPointer? { nil }
 }
@@ -3396,7 +3564,32 @@ func hostCallsTests() {
     let all = HostCalls.evaluate(HostFakeResolver(), base: base)
     check("host calls: all there: the host and outside opens on", all.host && all.opens && all.missing.isEmpty && all.mismatched.isEmpty, "\(all)")
     check("host calls: the counts", all.functionsFound == 12 && all.functionsTotal == 12 && all.selectorsFound == 2 && all.selectorsTotal == 2, "\(all)")
-    check("host calls: the launch line", all.line(build: "26B131").hasPrefix("private calls (host) on 26B131: host ok (12/12 functions and keys, 2/2 selectors, encodings ok); outside opens ok"), all.line(build: "26B131"))
+    check("host calls: the launch line", all.line(build: "26B131") == "private calls (host) on 26B131: host ok (12/12 functions and keys, 2/2 selectors, encodings ok); outside opens ok; tiles ok", all.line(build: "26B131"))
+    check("host calls: the tiles on (live resize)", all.tiles && all.reasons["tiles"] == nil, "\(all)")
+    // The tiles are a part of their own: anything of theirs missing or changed turns them off, never the host.
+    for name in HostCalls.tileFunctions {
+        let r = HostFakeResolver()
+        r.functions.remove(name)
+        let a = HostCalls.evaluate(r, base: base)
+        check("host calls: no \(name): the host on, the tiles off", a.host && !a.tiles && a.reasons["tiles"] == "\(name) missing", "\(a)")
+    }
+    for cls in HostCalls.tileClasses {
+        let r = HostFakeResolver()
+        r.tileClasses.remove(cls)
+        let a = HostCalls.evaluate(r, base: base)
+        check("host calls: no \(cls): the host on, the tiles off", a.host && !a.tiles && (a.reasons["tiles"] ?? "").contains("\(cls) missing"), "\(a)")
+    }
+    for sel in HostCalls.tileSelectors {
+        let r = HostFakeResolver()
+        r.encodings[sel.label] = "@24@0:8Q16"
+        let a = HostCalls.evaluate(r, base: base)
+        check("host calls: \(sel.label)'s encoding changed: the host on, the tiles off", a.host && !a.tiles && (a.reasons["tiles"] ?? "").contains("encoding changed"), "\(a)")
+    }
+    do {
+        let r = HostFakeResolver()
+        r.functions.remove(HostCalls.skyFunctions[1])
+        check("host calls: the host off: the tiles off with it", !HostCalls.evaluate(r, base: base).tiles && HostCalls.evaluate(r, base: base).reasons["tiles"] == "the host is off")
+    }
     for name in HostCalls.skyFunctions + HostCalls.launchFunctions + HostCalls.launchKeys {
         let r = HostFakeResolver()
         r.functions.remove(name)
@@ -3436,7 +3629,8 @@ func hostCallsTests() {
     let wrappers = HostPrivate(resolver: HostFakeResolver(), availability: all)
     check("host calls: the wrappers refuse under MARGIN_APP_TESTS", wrappers.refuses && wrappers.spaceType(5) == nil
           && !wrappers.destroyFullScreenSpace(5) && !wrappers.setCurrent(5, display: "Main")
-          && !wrappers.launchDockless(URL(fileURLWithPath: "/Applications/TextEdit.app"), arguments: [], done: { _ in }) && wrappers.listen(pid: 1, heard: { _ in }) == nil)
+          && !wrappers.launchDockless(URL(fileURLWithPath: "/Applications/TextEdit.app"), arguments: [], done: { _ in }) && wrappers.listen(pid: 1, heard: { _ in }) == nil
+          && wrappers.tiles(of: 5) == nil && wrappers.values(of: 5) == nil && !wrappers.setValues(5, ["TileRect": [:]]) && !wrappers.moveTile(6, to: 5, index: 1))
     check("host calls: the real resolver finds nothing in a test", HostCalls.evaluate(RealPrivateResolver(), base: base).host == false)
 }
 

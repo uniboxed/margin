@@ -96,6 +96,9 @@ final class LateHostEngine: HostedEngine {
     func releaseWoken(bundleId: String) { resolve()?.releaseWoken(bundleId: bundleId) }
     func wokenWindows(bundleId: String) -> Int { resolve()?.wokenWindows(bundleId: bundleId) ?? 0 }
     func appRuns(bundleId: String) -> Bool? { resolve()?.appRuns(bundleId: bundleId) }
+    func dragging(_ on: Bool) -> Bool { resolve()?.dragging(on) ?? false }
+    func follow(_ placement: HostPlacement) { resolve()?.follow(placement) }
+    var shownFillsPage: Bool { resolve()?.shownFillsPage ?? false }
 }
 
 extension Shell {
@@ -208,6 +211,7 @@ extension Shell {
         windows.onFieldClosed = { [weak session] controller in session?.fieldClosed(controller) }
         windows.onOpen = { [weak session] controller in session?.resumeLast(controller) }
         windows.onSidebarResizing = { [weak session] controller, on in session?.sidebarResizing(controller, on) }
+        windows.onNarrowed = { [weak self] _ in self?.host?.marginNarrowed() }
         windows.apps = { [weak self] in self?.appsJSON ?? "null" }
     }
 

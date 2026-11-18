@@ -76,6 +76,15 @@ The stand-in world plays the same switches off screen: `app/platforms/macos/shel
   the page area (inside it for a fixed size), on screen, in Margin's Space only, under Margin's panel; no other
   window of the app in any user Space (leftovers); no strip on screen; nothing of the app over the sidebar in front
   of Margin's panel; the same state all along (no flicker, no Space jump).
+- `live-resize` and `live-resize-crash` (docs/HOSTING-CORE.md "Live resize: tiles in Margin's Space"): Chameleon 1-3
+  hosted; Mission Control lists Margin's Space only; drags of the sidebar's edge through Margin's dev hook `drag` (the
+  page's own handle, pointer events dispatched in the page, one move a display frame: nothing posted to the system),
+  the shown window's model bounds read every millisecond (it follows each step; Margin's own line says how closely),
+  every parked window at the new page area within 1 s of the release; a switch after it (its first frame on screen at
+  the new size, 99 ms or less); switch times, the drag's CPU (Margin, WindowServer, the copies) and resident memory
+  said for comparison with another build; a parked copy killed (SIGKILL: its placeholder tile destroyed, Margin's window
+  whole again); Margin's quit with tiles in its Space (everything given back); then, from a launch of its own, Margin
+  killed (SIGKILL) with two copies in tiles and opened again (its recovery gives them back, its old Space destroyed).
 - `real-apps` (opt-in, `--real-apps`): Maps, Phone, Messages, Mail, WhatsApp, Safari, Notes, Calculator (the list at the
   top of `suite/RealApps.swift`; skipped if not installed). Recorded first (running, pid, windows, saved-state defaults
   keys, Margin's library items); each hosted through the dev hook only and its desired state held 30 s; a switch to

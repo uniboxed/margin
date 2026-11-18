@@ -41,6 +41,8 @@ final class FakeHostedWindow: HostedWindow {
     func setShowing(_ label: String?, app: String?, slow: Bool) { guard label != showing else { return }; showing = label; showings.append(label); showingApps.append(app); if slow, let label { slowShowings.append(label) } }
     var moves = 0 // hostedMoved: the hosted window's bounds read again
     func hostedMoved() { moves += 1 }
+    var followingPage = false // followsPage: the hosted window follows a drag live
+    func followsPage(_ on: Bool) { followingPage = on }
     var yields: [Int?] = [] // each yield(to:), in order
     func yield(to number: Int?) { yields.append(number) }
     var frontReads: [HostEngine.FrontRead] = [] // each frontRead, in order
@@ -813,6 +815,7 @@ func hostedTests() {
 
     hostedShellTests(script: script)
     sidebarResizeTests(script: script)
+    liveSidebarResizeTests(script: script)
     hostedFrontTests(script: script)
     hostedResumeTests(script: script)
 }
@@ -1102,6 +1105,56 @@ func hostedFrontTests(script: URL) {
 // page area's changes are held for the whole drag (Margin's window is in front: the sidebar slides over the hosted
 // window as it is); let go, the one shown is placed once, behind the loader, at the page area the drag ended on, from that placement alone (nothing reserved twice, nothing on Margin's own
 // Space); a parked one keeps what it had until it's next shown, and is placed once then.
+// Live resize (docs/HOSTING-CORE.md "Live resize: tiles in Margin's Space"): the same drag with the stand-in world's
+// tiles on: the one shown follows each page area of the drag (nothing held, no loader), the parked one sized once it's
+// over, nothing out of or into full screen.
+func liveSidebarResizeTests(script: URL) {
+    let root = tempFolder("hosted-live-resize")
+    defer { try? FileManager.default.removeItem(at: root) }
+    guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("live resize (session): the library opens", false) }
+    let w = FakeHostWorld()
+    w.tilesOn = true
+    let engine = HostEngine(system: w, marker: nil, pid: 1)
+    engine.options.privateRetire = 0
+    let session = HostedSession(library: library, engine: engine, links: FakeHostedLinks())
+    session.sleep = { _ in await Task.yield() }
+    let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
+    session.window = { id in id == nil || id == 1 ? window : nil }
+    engine.onEvent = { session.hostEvent($0) }
+    engine.loading = { session.loading($0) }
+    engine.hostedWindow = { session.hosted($0) }
+    library.delegate = session
+    func run(_ body: @escaping () async -> Void = {}) { hostRun { await body(); await session.idle() } }
+    _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
+    func windowOf(_ bundle: String) -> Int { w.running(bundleId: bundle).first.flatMap { w.apps[$0.pid]?.windows.first } ?? 0 }
+    func count(_ prefix: String, since: Int = 0) -> Int { w.calls.dropFirst(since).filter { $0.hasPrefix(prefix) }.count }
+    func page(_ left: CGFloat) -> CGRect { CGRect(x: left, y: 41, width: 1512 - 8 - left, height: 933) }
+    run { session.openApp("com.apple.TextEdit", windowId: 1) }
+    run { session.openApp("com.apple.Notes", windowId: 1) }
+    let edit = windowOf("com.apple.TextEdit"), notes = windowOf("com.apple.Notes")
+    guard engine.shown == HostTarget.app("com.apple.Notes").id, w.tileOf(notes) != nil, w.tileOf(edit) != nil, w.bounds(window: notes) == page(260) else {
+        return check("live resize (session): two apps hosted in tiles of Margin's Space", false, "\(session.done.suffix(6)) \(w.calls.suffix(10))")
+    }
+    let mark = w.calls.count, loadings = window.loadings.count
+    session.sidebarResizing(window, true)
+    var followed = true
+    for left in [270.0, 285, 300, 322, 340] {
+        window.layout.left = left
+        session.pageRectChanged(window)
+        run { await w.sleep(0.01) }
+        if w.bounds(window: notes) != page(CGFloat(left)) { followed = false }
+    }
+    check("live resize (session): the one shown follows each page area of the drag (its tile's rect), the hole the page area meanwhile, nothing held",
+          followed && session.following && window.followingPage && session.resizing == 1 && count("fullScreen", since: mark) == 0 && count("tileRect \(w.tileOf(edit) ?? 0)", since: mark) == 0,
+          "\(w.calls.dropFirst(mark))")
+    session.sidebarResizing(window, false)
+    run()
+    for _ in 0..<4 { _ = hostRun { await engine.pageRectChanged(HostPlacement(page: page(340), area: FakeHostWorld.display)) } }
+    check("live resize (session): let go: Margin's page area the drag's last, the parked one sized out of sight after it, no loader, nothing in or out of full screen, the hole the window's again",
+          engine.pageRect == page(340) && w.bounds(window: notes) == page(340) && w.bounds(window: edit) == page(340) && w.spaces(window: edit) == [] && window.loadings.count == loadings
+          && count("fullScreen", since: mark) == 0 && !session.following && !window.followingPage && window.hosted == notes && w.listsMarginOnly, "\(w.calls.dropFirst(mark)) \(window.loadings.dropFirst(loadings))")
+}
+
 func sidebarResizeTests(script: URL) {
     let root = tempFolder("hosted-resize")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -1193,20 +1246,23 @@ func sidebarResizeTests(script: URL) {
     run()
     check("resize: let go where it began: nothing leaves full screen", count("fullScreen", since: mark) == 0 && w.bounds(window: notes) == page(340) && window.hosted == notes, "\(w.calls.dropFirst(mark))")
 
-    // ---- a window-mode app (one that can't go full screen): moved once when the drag is over ----
+    // ---- a window-mode app (one that can't go full screen): it follows the drag live, by Accessibility (one frame set in
+    // flight at a time, the newest page area wins), and is checked once at the page area the drag ended on ----
     run { session.openApp("com.apple.FaceTime", windowId: 1) }
     let ft = windowOf("com.apple.FaceTime"), ftId = HostTarget.app("com.apple.FaceTime").id
     check("resize: FaceTime in window mode at the page area", engine.shown == ftId && engine.mode(of: ftId) == .window && w.bounds(window: ft) == page(340), "\(session.done.suffix(4))")
     mark = w.calls.count
     session.sidebarResizing(window, true)
     drag(to: [330, 300, 280, 250])
-    check("resize (window mode): held while dragged: its frame not set once", count("frame \(ft)", since: mark) == 0 && w.bounds(window: ft) == page(340), "\(w.calls.dropFirst(mark))")
+    let liveFrames = count("frame \(ft)", since: mark)
+    check("resize (window mode): it follows the drag live by Accessibility: its frame set as the page area moves (at most once a change), at the drag's last page area, the hole its bounds (read again as it moves), never the page area around it",
+          liveFrames >= 1 && liveFrames <= 4 && w.bounds(window: ft) == page(250) && session.following && !window.followingPage, "\(w.calls.dropFirst(mark))")
     let movesBefore = window.moves, loadingsBefore = window.loadings.count
     session.sidebarResizing(window, false)
     run()
-    check("resize (window mode): placed once by Accessibility at the new page area, never parked or put in full screen for it, no loader (it stays in sight); its bounds read again",
-          count("frame \(ft)", since: mark) == 1 && w.bounds(window: ft) == page(250) && count("move \(ft)", since: mark) == 0 && count("fullScreen", since: mark) == 0
-          && window.hosted == ft && window.loadings.count == loadingsBefore && window.moves == movesBefore + 1, "\(w.calls.dropFirst(mark)) \(window.loadings.dropFirst(loadingsBefore))")
+    check("resize (window mode): let go: checked at the new page area (already there: nothing set again), never parked or put in full screen for it, no loader (it stays in sight); its bounds read again",
+          count("frame \(ft)", since: mark) == liveFrames && w.bounds(window: ft) == page(250) && count("move \(ft)", since: mark) == 0 && count("fullScreen", since: mark) == 0
+          && window.hosted == ft && window.loadings.count == loadingsBefore && window.moves == movesBefore + 1 && !session.following && !window.followingPage, "\(w.calls.dropFirst(mark)) \(window.loadings.dropFirst(loadingsBefore))")
     check("resize: both parked full-screen members still as they were (placed again only when shown)", engine.hosts[notesId]?.placedPage == page(340) && engine.hosts[editId]?.placedPage == page(340)
           && w.wins[notes]?.fullScreen == true && w.wins[edit]?.fullScreen == true)
 

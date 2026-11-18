@@ -128,6 +128,24 @@ protocol HostSystem: AnyObject {
     // ---- outside opens: LaunchServices' codes for one app ----
     func watchOpens(pid: pid_t, _ heard: @escaping (Int32) -> Void) -> Bool
     func stopWatchingOpens(pid: pid_t)
+
+    // ---- the tiles (live resize: docs/HOSTING-CORE.md "Live resize: tiles in Margin's Space") ----
+    // A full-screen window lives in a tile of its full-screen Space; a hosted window's own tile moved into Margin's Space
+    // is sized by its rect (`TileRect`, in its display's points from the display's top left, the menu bar's band
+    // included: a full-screen window sits that band below its tile's top), its window following in 10-26 ms, shown or
+    // parked. Every write is through the window manager's bridge (sent: whether it took is the caller's to read).
+    var tilesAvailable: Bool { get } // the tiles part passed its launch check (HostCalls.swift)
+    func tiles(of space: UInt64) -> [UInt64]? // a Space's tiles in its layout's order; nil: unread
+    func tileRect(_ tile: UInt64) -> CGRect? // nil: unread, or not a tile
+    func tileWindow(_ tile: UInt64) -> Int? // the window in it (`TileWindowID`); nil: none or unread
+    func maxTiles(of space: UInt64) -> Int? // its layout's limit (`Max Tile Config`'s width: 2 for a new full-screen Space)
+    func setMaxTiles(_ space: UInt64, _ count: Int) -> Bool
+    func setTileRect(_ tile: UInt64, _ rect: CGRect) -> Bool
+    // A tile, with its window, into `space`'s layout at `index` (its id kept). Any tile added to or removed from a Space
+    // lays the first two of its layout out again (a split's halves): their rects are set again after (the engine).
+    func moveTile(_ tile: UInt64, to space: UInt64, index: Int) -> Bool
+    func destroyTile(_ tile: UInt64) -> Bool // a tile left with no live window (its app gone: a placeholder) destroyed
+    func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool // a drag under way in that Space's layout (its windows' live resize)
 }
 
 extension HostSystem {
@@ -149,6 +167,17 @@ extension HostSystem {
     func windowOnScreen(_ number: Int) -> (onScreen: Bool, alpha: Double)? { nil }
     func screenAway() -> Bool { false }
     func currentSpaces() -> [String]? { nil }
+    // (A stand-in that doesn't play the tiles: none, the host as before.)
+    var tilesAvailable: Bool { false }
+    func tiles(of space: UInt64) -> [UInt64]? { nil }
+    func tileRect(_ tile: UInt64) -> CGRect? { nil }
+    func tileWindow(_ tile: UInt64) -> Int? { nil }
+    func maxTiles(of space: UInt64) -> Int? { nil }
+    func setMaxTiles(_ space: UInt64, _ count: Int) -> Bool { false }
+    func setTileRect(_ tile: UInt64, _ rect: CGRect) -> Bool { false }
+    func moveTile(_ tile: UInt64, to space: UInt64, index: Int) -> Bool { false }
+    func destroyTile(_ tile: UInt64) -> Bool { false }
+    func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool { false }
 }
 
 // ---- the real one ----
@@ -667,4 +696,30 @@ final class RealHostSystem: HostSystem {
         guard let token = listeners.removeValue(forKey: pid) else { return }
         calls.stopListening(token, pid: pid)
     }
+
+    // ---- the tiles ----
+    var tilesAvailable: Bool { calls.hasTiles }
+    func tiles(of space: UInt64) -> [UInt64]? { calls.tiles(of: space) }
+    func tileRect(_ tile: UInt64) -> CGRect? {
+        guard let r = calls.values(of: tile)?["TileRect"] as? [String: Any] else { return nil }
+        func v(_ k: String) -> CGFloat? { (r[k] as? NSNumber).map { CGFloat($0.doubleValue) } }
+        guard let x = v("X"), let y = v("Y"), let w = v("Width"), let h = v("Height"), [x, y, w, h].allSatisfy(\.isFinite) else { return nil }
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
+    func tileWindow(_ tile: UInt64) -> Int? { (calls.values(of: tile)?["TileWindowID"] as? NSNumber)?.intValue }
+    func maxTiles(of space: UInt64) -> Int? {
+        let manager = calls.values(of: space)?["TileLayoutManager"] as? [String: Any]
+        return ((manager?["Max Tile Config"] as? [String: Any])?["Width"] as? NSNumber)?.intValue
+    }
+    func setMaxTiles(_ space: UInt64, _ count: Int) -> Bool {
+        count > 0 && calls.setValues(space, ["Max Tile Config": ["Width": count, "Height": 1]])
+    }
+    func setTileRect(_ tile: UInt64, _ rect: CGRect) -> Bool {
+        guard [rect.minX, rect.minY, rect.width, rect.height].allSatisfy(\.isFinite), rect.width >= 1, rect.height >= 1 else { return false }
+        return calls.setValues(tile, ["TileRect": ["X": Double(rect.minX), "Y": Double(rect.minY), "Width": Double(rect.width), "Height": Double(rect.height)]])
+    }
+    func moveTile(_ tile: UInt64, to space: UInt64, index: Int) -> Bool { calls.moveTile(tile, to: space, index: index) }
+    func destroyTile(_ tile: UInt64) -> Bool { calls.hasTiles && calls.destroyFullScreenSpace(tile) }
+    // (Set false at the end, never removed: a key taken away doesn't end the live resize, the kit's lead 4.)
+    func setLiveResizing(_ space: UInt64, _ on: Bool) -> Bool { calls.setValues(space, ["LiveResizing": on]) }
 }

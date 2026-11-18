@@ -49,6 +49,14 @@ extension Runner {
     case .quitMargin:
       gate("quitting Margin")
       if let m { m.terminate(); spin(25) { m.isTerminated }; log("  Margin quit: \(m.isTerminated)") }
+    case .liveDrag(let n, let dx, let st, let parked): liveDrag(n, dx: dx, steps: st, parked: parked)
+    case .liveDragApp(let t, let dx, let st, let parked): liveDrag(t, dx: dx, steps: st, parked: parked)
+    case .switchSized(let n): switchSized(n)
+    case .listedOnly(let why): listedOnly("mission-control (\(why))")
+    case .killCopy(let n, let shown): killCopy(n, shown: shown)
+    case .marginQuitTiles(let ns): marginQuitTiles(ns)
+    case .killMargin(let ns): killMargin(ns)
+    case .memory(let label): memoryLine(label)
     }
   }
 
@@ -141,8 +149,24 @@ extension Runner {
         guard let again = pageNow() else { break }
         (page, f) = again
       }
-      let s = evaluate(d, page: page)
-      step("desired: \(d.text)", s.ok, s.why + (waited > 0 ? " (read after Margin's correction under way, \(waited) s)" : ""))
+      var s = evaluate(d, page: page)
+      // (Its app's own change caught mid-correction (ordersOut-after: its window ordered out 3 s after it was first on
+      // screen, read at that moment, the reconciler's bring-forward already under way, 2026-11-18 01:24): read again once
+      // Margin's correction for it is over, 5 s at most, said. Never when Margin says no correction.)
+      var corrected: String?
+      if !s.ok {
+        let mark = LogMark(at: Date().addingTimeInterval(-3))
+        let ids = hostIds(d.target)
+        let until = Date().addingTimeInterval(5)
+        while Date() < until, !s.ok {
+          guard let c = mine(mark.lines(), ids).last(where: { $0.contains(" → ") && !$0.contains("→ wait") }) else { break }
+          corrected = String(c.suffix(140))
+          spin(0.5)
+          if let again = pageNow() { (page, f) = again }
+          s = evaluate(d, page: page)
+        }
+      }
+      step("desired: \(d.text)", s.ok, s.why + (waited > 0 ? " (read after Margin's correction under way, \(waited) s)" : "") + (corrected.map { " (read again after Margin's correction: \($0))" } ?? ""))
       if !s.ok, let a = app(d.target.id) { log("   DIAG \(diag(a.processIdentifier, marginWindow?.n))") }
       if !s.ok, case .copy(let n) = d.target { copyTail(n) }
     case .running(let t, let on):
@@ -215,7 +239,14 @@ extension Runner {
     // (Which Space, said: Margin's Space has a new number every part, and "in [9202]" read as another Space, 2026-11-17.)
     func spacesText(_ sp: [UInt64]) -> String { "\(sp)\(sp == [marginSpace] ? " (Margin's)" : "")" }
     if !leftovers.isEmpty { problems.append("leftover(s) in user Spaces: \(leftovers.map { "#\($0.n) \(rect($0.r)) \($0.on ? "on screen " : "off screen ")in \(spacesText($0.spaces))" })") }
-    let strips = all.filter { $0.on && $0.alpha > 0 && $0.layer == 0 && isStrip($0.r) }
+    // (The main window's own full-screen toolbar window is the app's, not a strip: at its width, at its top edge (inside it,
+    // Chameleon's 52 pt band; or resting just above it), in its Spaces. Seen as a strip once the page area was wider than
+    // 0.8 of the display: 1244 pt beside a 260 pt sidebar, the run of 23:31.)
+    func ownToolbar(_ w: AnyWin) -> Bool {
+      guard let main, w.spaces == main.spaces else { return false }
+      return abs(w.r.minX - main.r.minX) <= 2 && abs(w.r.width - main.r.width) <= 2 && w.r.minY <= main.r.minY + 2 && w.r.maxY >= main.r.minY - 2
+    }
+    let strips = all.filter { $0.on && $0.alpha > 0 && $0.layer == 0 && isStrip($0.r) && !ownToolbar($0) }
     if !strips.isEmpty { problems.append("strip(s) on screen: \(strips.map { "#\($0.n) \(rect($0.r))" })") }
     let sidebar = CGRect(x: marginWindow.r.minX, y: page.minY, width: max(0, page.minX - marginWindow.r.minX), height: page.height)
     if let pi = panelIndex {

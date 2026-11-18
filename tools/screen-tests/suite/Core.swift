@@ -26,14 +26,17 @@ final class Runner {
     let startedOn = currentSpaceInfo()
     startedInFullScreenOfAnother = startedOn.type == 4 && startedOn.pid != nil
     log("started on Space \(startedOn.id): \(startedInFullScreenOfAnother ? "ANOTHER APP'S FULL-SCREEN SPACE (pid \(startedOn.pid ?? 0))" : startedOn.type == 4 ? "a full-screen Space with no app" : "a Desktop")")
-    if let old = app(marginId) { old.terminate(); spin(15) { old.isTerminated } }
+    let runningBefore = Set(allMargins().map(\.processIdentifier))
+    if !runningBefore.isEmpty { quitAllMargins() }
     sh("/usr/bin/defaults", ["write", marginId, "MarginDevHooks", "-bool", "YES"])
     sh("/usr/bin/defaults", ["write", marginId, "MarginPrepareBrowser", "-bool", "NO"]) // (no browser started or asked for a window)
     sh("/usr/bin/defaults", ["write", marginId, "MarginResumeLast", "-bool", "NO"]) // (the launcher: the person's last item is never opened)
     if let wantFront { sh("/usr/bin/defaults", ["write", marginId, "MarginFront", wantFront]) } else { sh("/usr/bin/defaults", ["delete", marginId, "MarginFront"]) }
     gate("opening Margin")
     sh("/usr/bin/open", [built])
-    guard spin(10, { app(marginId) != nil }), let m = app(marginId) else { restore("Margin didn't start"); exit(5) }
+    // (The one just opened: the build's, not one that ran before.)
+    func opened() -> NSRunningApplication? { allMargins().filter { !runningBefore.contains($0.processIdentifier) && $0.bundleURL?.standardizedFileURL.path == URL(fileURLWithPath: built).standardizedFileURL.path }.max { ($0.launchDate ?? .distantPast) < ($1.launchDate ?? .distantPast) } }
+    guard spin(10, { opened() != nil }), let m = opened() else { restore("Margin didn't start"); exit(5) }
     self.m = m
     let cameFront = bringMarginFront(m, built)
     log("Margin in front: \(cameFront); it said it brought itself forward \(said("brought forward").count) time(s)")
@@ -218,18 +221,21 @@ final class Runner {
       let width = widthBefore + off
       gate("the sidebar's drag \(i + 1)")
       let placedBefore = said("placed again in ").count, failedBefore = said("event failed").count
+      // (Live resize: a tile's window followed the drag and was checked at its end: "live resize:" and no placing again.)
+      let liveBefore = said("host: live resize: ").count, changedBefore = said("page area changed").count
       hook(["sidebar": "\(width)"])
-      spin(15) { said("placed again in ").count > placedBefore && !said("page area changed").isEmpty && word(front(), "page") == "shown" }
+      spin(15) { (said("placed again in ").count > placedBefore || (said("host: live resize: ").count > liveBefore && said("page area changed").count > changedBefore)) && word(front(), "page") == "shown" }
       spin(1.0) // (2026-11-17: the window was in no Space about a second after "page shown")
       let f = front()
       let area = rectIn(f, "page area"), nowHole = rectIn(f, "hole"), w = big(pane.processIdentifier), placed = placedWindow(pane.processIdentifier)
       let o = above(m.processIdentifier, pane.processIdentifier)
       let inSpace = placed != nil && placed!.on && placed!.spaces == [marginSpace]
       let last = i == offsets.count - 1
-      step("e\(i + 1) the sidebar's edge moved (\(last ? "back to its width" : "placing \(i + 1) of \(offsets.count - 1) in a row")): one placing, the hosted window at the new page area, a second later still on screen and in Margin's Space only, under Margin's window, Margin still full screen",
-           said("placed again in ").count == placedBefore + 1 && area != nil && area != lastArea && w != nil && abs(w!.r.minX - area!.minX) <= 1 && abs(w!.r.width - area!.width) <= 1 && nowHole == area && inSpace
+      let live = said("host: live resize: ").count > liveBefore && said("placed again in ").count == placedBefore
+      step("e\(i + 1) the sidebar's edge moved (\(last ? "back to its width" : "placing \(i + 1) of \(offsets.count - 1) in a row")): one placing (live resize: followed by its tile, never placed again), the hosted window at the new page area, a second later still on screen and in Margin's Space only, under Margin's window, Margin still full screen",
+           (said("placed again in ").count == placedBefore + 1 || live) && area != nil && area != lastArea && w != nil && abs(w!.r.minX - area!.minX) <= 1 && abs(w!.r.width - area!.width) <= 1 && nowHole == area && inSpace
              && o?.ok == true && word(f, "full screen") == "true" && word(f, "page") == "shown" && !pane.isTerminated && said("event failed").count == failedBefore,
-           "placings \(said("placed again in ").count - placedBefore); page area \(rect(lastArea)) → \(rect(area)); the pane's window \(placed.map { "#\($0.n) \(rect($0.r)) onscreen \($0.on) spaces \($0.spaces)" } ?? "none") (Margin's Space \(marginSpace)); hole \(rect(nowHole)); \(o?.text ?? "not both on screen"); full screen \(word(f, "full screen") ?? "?"); failures said \(said("event failed").count - failedBefore)")
+"placings \(said("placed again in ").count - placedBefore)\(live ? " (followed live: \(said("host: live resize: ").last.map { String($0.suffix(120)) } ?? ""))" : ""); page area \(rect(lastArea)) → \(rect(area)); the pane's window \(placed.map { "#\($0.n) \(rect($0.r)) onscreen \($0.on) spaces \($0.spaces)" } ?? "none") (Margin's Space \(marginSpace)); hole \(rect(nowHole)); \(o?.text ?? "not both on screen"); full screen \(word(f, "full screen") ?? "?"); failures said \(said("event failed").count - failedBefore)")
       if !inSpace { log("   DIAG \(diag(pane.processIdentifier, marginWindow.n))") }
       if let area { lastArea = area }
     }

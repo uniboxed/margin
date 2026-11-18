@@ -5743,3 +5743,88 @@ Asked by Tirth: apps' icons looked too small in the sidebar, and a click on a ro
 - **Rows sliding (`ui/row-motion.ts`).** When rows come or go in the same space, FLIP over every sidebar row (`View.rowElements`: the rows of the view model's tab, pin and folder lists, nested too): boxes read before and after the drawing (two layouts, all reads before any write), each moved row animated from where it was with a one-keyframe transform, a new row with its opacity, 200 ms, `cubic-bezier(0.2, 0, 0, 1)`, through the Web Animations API (compositor, nothing left in the styles; no `getAnimations`, see "Safari getAnimations crash"). Not on the first drawing, a space switch, a pure reorder (a drop), during a drag, or with reduced motion. A row drawn again in a removed row's place (a Margin tab opened gets a new id) isn't faded in. Margin's motion, the same in every theme. A close over 50 rows (the click's work and the slide's set-up): median 3.0 ms in WebKit and Chromium, was 2.0–2.7 ms without the slide; the longest frame while sliding 17–19 ms.
 - **Tests.** `tests/ui-intents.test.ts` (predicted, confirmed, corrected, timed out, a second click, rows that slide, `isApp`); `tests/theme/intents.test.ts` (every theme, both engines, the host's answer 400 ms late: a tab's row and a pin with no tab active on the next frame and steady, a close gone on the next frame with the rows after it sliding and the next one in its place, failures back to the state, the newest click wins, reduced motion, a space switch, the frame budget); `tests/theme/row-icons.test.ts` (an app's icon 1.15–1.45× a site's, the row's height, the title and the icon's centre unchanged). Without the fix: 5 of the 8 intents checks fail in each engine (the pin and close ones at 411 ms) and every icon check.
 - **Not verified:** the real app's own round trip (not measured on the screen: this work was limited to headless browsers); app icons on the real screen. Not done: a close's slide-out of the row itself (it disappears at once, as asked); ⌘W's close (Margin.app's, with no row named) isn't predicted.
+
+## Live resize: tiles in Margin's Space (2026-11-17)
+
+Asked by Tirth (the direction approved, the privileged route relied on: the window manager's bridged operations, as
+every move and destroy already is): the shown app follows a drag of the sidebar's edge live, the parked ones at the new
+size before they can be shown, "properly without causing any issues or errors and without reducing efficiency or
+performance". The design, the fallback and what isn't proven: `docs/HOSTING-CORE.md` "Live resize: tiles in Margin's
+Space"; the calls: `docs/PRIVATE-APIS.md` rows 22-23, 36-39 and the `tiles` part.
+
+- **A hosted window's own tile goes into Margin's Space** (bridged `SpaceTileMoveToSpaceAtIndex`, Margin's Space's
+  `Max Tile Config` raised first) instead of the window alone as a member; its own Space destroyed as before. Its size
+  is its tile's `TileRect` (bridged `SpaceSetValues`), the page area's: one desired page area in the hosting core, the
+  reconciler's new correction `sizeTile` converging every tile to it (the one shown first, each parked one its own turn
+  in the queue, asked at once after the last rather than at the next poll; a switch sizes its target first). A drag is
+  followed frame by frame (`HostEngine.dragging`/`follow`: one write a display frame at most, one in flight,
+  `LiveResizing` on Margin's Space for its length); its end is an ordinary change of the page area. Window mode follows
+  a drag by Accessibility (one `setFrame` in flight): cheap for Margin.
+- **Why tiles and not the reservation:** a member's own Space is gone, nothing resizes it; the kit (2026-11-17,
+  `/tmp/margin-toolbar-test/live-resize/opt4`) found the tile route works shown or parked, with the reservation route's
+  CPU, and Mission Control still lists Margin's Space only.
+- **A tile added or taken out lays the first two of the layout out again** (Margin's own window and the first hosted
+  one as a split's parts): every rect is set again after each of Margin's own changes, under the freeze; Margin's window
+  says when it's narrowed (`MarginWindowController.onNarrowed`, the changes Margin didn't make: an app quit or crashed,
+  a window closed) and every rect is sent again at once, even mid-operation; the poll looks at the tiles too
+  (`lookAtTiles`). Margin's window never takes a page area while it's narrower than its screen.
+- **Seen on the real screen, fixed (the runs of 23:31-00:06):** *Margin's quit left its Space listed* (a window out of
+  full screen leaves its tile there, empty, until its app quits: Chameleon 1 was still quitting): those tiles are
+  destroyed before Margin's window goes. *The first switch after a tile change laid the first two tiles out again*
+  (Chameleon 1, the layout's second, at 489 then 359 wide for 120 ms, then 21 ms after `onNarrowed`): that one switch now
+  runs under the freeze, watched 50 ms, every rect set again before the reveal (the window server's model bounds are
+  still wrong for ~10 ms under it; the screen holds its last picture). *An app killed* leaves a placeholder tile:
+  destroyed within 88-126 ms, Margin's window whole again.
+- **Measured (Chameleon, the new build; the baseline 6081525c from its own 20:20 run):** a switch median 20 ms (p90 29,
+  the frozen first one ~45) against the baseline's 22 (max 25); a drag of 120 frames followed every change Margin sent
+  (83-98 sent, the rest coalesced while one was in flight), median 3.5-7 ms, p95 14.5-17.4 ms from the write to the
+  window there (a 30-frame drag of Chameleon 2: median 11-16, p95 19-24: the app's own redraw, 10-15 ms a resize by its
+  log); the parked windows at the new page area 18-58 ms after the drag's end (the baseline: none until shown, then
+  placed again behind the loader, ~0.9 s; the shown one placed again at the drag's end the same way); CPU over a 1 s
+  drag and 3 s after: Margin 320-390 ms, WindowServer 770-830 ms, the app shown 650-680 ms (the app's and the window
+  server's are the cost of a live resize; the baseline wasn't measured on the same scenario, the screen wasn't free
+  again); resident memory at rest with three hosted: Margin 118-133 MB, WindowServer 147-163 MB (no baseline taken).
+- **The run of 01:13-01:41 (2026-11-18, the build rebased on b5ba6e92):** live-resize 31/31; core 33/33 (an earlier
+  run); behaviours-4 19/19; behaviours-1 34/36, -2 32/33, -3 32/34; real-apps 29/39; live-resize-crash 8/10. Found and
+  fixed after it, **not run on the screen again**: *a tile whose window its app closed keeps a placeholder window of its
+  app's at the tile's rect, on screen in Margin's Space* (windowless: taken for a replacement and adopted; replacesWindow:
+  a leftover on screen): never a replacement now, and the tile destroyed at once when its host's window goes or is
+  replaced; *a killed Margin's own tile stays in its old Space* and kept that Space listed after the recovery (left on the
+  Mac, destroyed by hand with the kit's cleanup, 01:45): the recovery destroys it too. Open: *ordersOut-after* (its window
+  ordered out stays off screen with tiles; not looked into); *Safari didn't host* in real-apps (no shown line in 90 s:
+  the two builds' extensions again, not looked into); real Maps' first switch after a tile change took 109 ms (the
+  frozen watch, 70 ms: shortened to 30 ms after, unmeasured); the suite's drag and background checks assume the shown
+  window fills the page (they fail for Calculator, a fixed-size window, whose parked neighbours were at the new page area).
+  Real apps in tiles held 30 s each: Maps, Messages, Mail, WhatsApp, Notes; Phone and Calculator in window mode.
+- **The baseline (6081525c with only the dev hook's drag), the same live-resize part:** at rest Margin 134 MB and
+  WindowServer 187 MB (new: 118-133, 147-163); over a 1 s drag and 3 s after: Margin 370-520 ms, WindowServer 960-1360 ms,
+  the app shown ~160 ms (new: 320-390, 770-830, 650-680: the app redraws live, the release's re-fit is gone); its
+  switches after a drag showed the old size (2 of 6), its parked ones weren't sized (or 540 ms later, at a show); a
+  killed app's placeholder: not its concern (no tiles).
+- **Not proven:** Safari in a tile; real Mission Control and swipes beyond core's ⌃←/⌃→ steps; two displays; Stage
+  Manager off.
+- **Safari launched at 23:28:43 (2026-11-17) and restored Tirth's two full-screen windows:** neither the builds nor the
+  suite nor the extension's registration: `webpushd` (`Launching com.apple.Safari in response to push`, a site's web
+  push for one of his Safari profiles' data stores) started it in the background, and his margin-helper then started
+  his Margin. Nothing a test can or may switch off (his Safari's settings). The suite now never launches Safari: the
+  real-apps part hosts Safari only when it already runs (his session, its windows left as they are; Margin asks its own
+  extension for a new window there), else skips it and says why; the Chameleon parts never touch it.
+- **Safari in a tile, not proven:** its real-apps host failed twice (01:35, 01:37) before any tile step: the item's
+  profile (Personal) had no window, so Margin pressed Safari's File › New Window for it, and the build under test has no
+  Full Disk Access, so the profile's name isn't known (`File › New Window has no item for safari:s-f236459b…`); 4 presses,
+  given up. Not the tiles and not only the two builds: a run against a build with Full Disk Access (the installed one,
+  once it has the tiles) or with that profile's window already open is needed. Not done.
+- **ordersOut-after:** its app orders its shown window out 3 s after it's first on screen; the reconciler's
+  bring-forward took two rungs (activate, 548 ms still off screen; then its reopen, on screen 54 ms after): the
+  suite's single desired read 1 s after the show landed inside that correction. The 30 s hold passed 54 of 54 reads. A
+  generic skip of the activate rung when the app is already in front was tried and broke the window-mode ladders the
+  real Mac needs (the Phone): left as it is. The suite now reads a desired state caught mid-correction again once
+  Margin's correction is over (5 s at most), said in the step.
+- **The run of 02:03-02:19 (2026-11-18, the fixes above):** behaviours-1 36/36 (windowless: its tile's placeholder never
+  adopted, the item closed), behaviours-3 34/34 (replacesWindow-every: no placeholder left on screen),
+  live-resize-crash 10/10 (Margin killed, opened again: everything given back, its old Space and every tile destroyed),
+  real-apps 33/35 (Maps, Messages, Mail, WhatsApp, Notes in tiles; Phone, Calculator in window mode; drags with
+  Calculator shown followed by Accessibility, every parked tile at the new page area 124-489 ms after; Maps' first
+  switch after the tiles changed 76 ms, 41 of it the frozen watch; the two misses were the suite's first read of a hold
+  getting no page area from Margin's dev hook, then not read again), live-resize 29/31 (the two misses: Chameleon 2's
+  30-frame drags at p95 25.9 and 26.4 ms against the 25 ms bound, its own redraw).

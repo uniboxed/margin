@@ -88,6 +88,17 @@ func hostReconcilerTests() {
         ("parked, found on a Desktop two reads in a row: parked again", member { $0.phase = .parked; $0.place = .desktop; $0.strayReads = 2 }, .parked, [.parkAgain]),
         ("parked, its leftovers and strips in user Spaces: parked too", member { $0.phase = .parked; $0.place = .parked; $0.leftovers = [leftover(5, .margin)]; $0.strips = [leftover(6, .fullScreen)] }, .parked, [.parkLeftover(5), .parkStrip(6)]),
         ("parked, its process gone: nothing (the engine's quit handling)", member { $0.phase = .parked; $0.running = false; $0.place = .desktop; $0.strayReads = 3 }, .parked, []),
+        // ---- live resize: tiles in Margin's Space (docs/HOSTING-CORE.md) ----
+        ("a tile shown at the page area: nothing", member { $0.tile = true }, shown, []),
+        ("a tile shown placed for another page area (a drag's end, a theme): its rect set", member { $0.tile = true; $0.tileStale = true }, shown, [.sizeTile]),
+        ("a tile shown, its rect not taken three times: placed again the old way", member { $0.tile = true; $0.tileStale = true; $0.tries = ["size its tile": 3] }, shown, [.placeAgain]),
+        ("a tile shown, mid-drag: nothing (it follows the drag; sized at its end)", member { $0.tile = true; $0.tileStale = true; $0.dragging = true }, shown, []),
+        ("a member that isn't a tile off the page area: placed again as before, never sized", member { $0.offPageReads = 2 }, shown, [.placeAgain]),
+        ("a tile off the page area isn't placed again: sized", member { $0.tile = true; $0.tileStale = true; $0.offPageReads = 2 }, shown, [.sizeTile]),
+        ("a tile parked placed for another page area: sized out of sight", member { $0.phase = .parked; $0.place = .parked; $0.tile = true; $0.tileStale = true }, .parked, [.sizeTile]),
+        ("a tile parked, mid-drag: nothing yet", member { $0.phase = .parked; $0.place = .parked; $0.tile = true; $0.tileStale = true; $0.dragging = true }, .parked, []),
+        ("a tile parked, its budget spent: nothing (its next show sizes it, or places it again)", member { $0.phase = .parked; $0.place = .parked; $0.tile = true; $0.tileStale = true; $0.tries = ["size its tile": 3] }, .parked, []),
+        ("a tile parked found on a Desktop: parked again first, then sized", member { $0.phase = .parked; $0.place = .desktop; $0.strayReads = 2; $0.tile = true; $0.tileStale = true }, .parked, [.parkAgain, .sizeTile]),
         // ---- given back ----
         ("given back: the engine's own steps", member { $0.leftovers = [leftover(5, .margin)] }, .givenBack, []),
     ]
@@ -98,7 +109,7 @@ func hostReconcilerTests() {
         check("reconciler: \(name)", got == want, "got \(got.map(\.text)) want \(want.map(\.text))")
     }
     // The budgets: every correction has one, and a correction the engine logs says its name.
-    check("reconciler: every correction has a budget of at least one try", [HostCorrection.launch, .reopen, .unhide, .putBack, .bringForward(.activate), .adopt(1), .closeLeftover(1), .parkLeftover(1), .parkStrip(1), .parkAgain, .closeItem, .placeAgain]
+    check("reconciler: every correction has a budget of at least one try", [HostCorrection.launch, .reopen, .unhide, .putBack, .bringForward(.activate), .adopt(1), .closeLeftover(1), .parkLeftover(1), .parkStrip(1), .parkAgain, .closeItem, .placeAgain, .sizeTile]
           .allSatisfy { HostReconciler.budget(of: $0) >= 1 })
     check("reconciler: a leftover's close and park share one budget (a close that fails is a park)", HostCorrection.closeLeftover(5).key == HostCorrection.parkLeftover(5).key)
     // The log line's observed part: numbers and kinds only.

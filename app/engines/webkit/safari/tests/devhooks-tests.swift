@@ -12,6 +12,7 @@ final class FakeDevWorld: DevHookWorld {
     func devForgetTestItems(also apps: [String]) -> String? { hosted.append("forget \(apps.joined(separator: ","))"); return nil }
     func devKey(_ name: String) -> String? { hosted.append("key \(name)"); return nil }
     func devSidebar(width: Int) -> String? { hosted.append("sidebar \(width)"); return nil }
+    func devDrag(dx: Int, frames: Int, done: @escaping (String) -> Void) -> String? { hosted.append("drag \(dx),\(frames)"); done("dragged \(frames) frames in 0 ms"); return nil }
     func devFront() -> String { "mechanism level, page shown" }
     func devPage(_ what: String, done: @escaping (String) -> Void) { done(what == "field" ? "focused true, length 3, palette true" : "at 120,600") }
     func devPicture(watch seconds: Double?, done: @escaping (String) -> Void) { done(seconds.map { "watched \($0) s" } ?? "page shown, page area painted 0 of 81") }
@@ -40,6 +41,9 @@ func devHooksTests() {
               && hooks.heard(.host, ["key": "quit"]).contains("refused: no such key") && world.hosted.suffix(2) == ["key palette", "key close"], "\(world.hosted)")
         check("dev hook: host sidebar: a width in points, within reason", hooks.heard(.host, ["sidebar": "300"]).contains("host sidebar 300") && hooks.heard(.host, ["sidebar": "9000"]).contains("refused: not a width")
               && hooks.heard(.host, ["sidebar": "wide"]).contains("refused: not a width") && world.hosted.last == "sidebar 300", "\(world.hosted)")
+        check("dev hook: host drag: a drag of the sidebar's handle in the page (dx, frames), within reason, its line once it's let go",
+              hooks.heard(.host, ["drag": "120,90"]).contains("host drag 120,90") && world.hosted.last == "drag 120,90" && hooks.lines.contains { $0.contains("dev hook: drag: dragged 90 frames") }
+              && hooks.heard(.host, ["drag": "9000,90"]).contains("refused: not a drag") && hooks.heard(.host, ["drag": "120"]).contains("refused: not a drag") && hooks.heard(.host, ["drag": "-120,0"]).contains("refused: not a drag"), "\(world.hosted)")
         check("dev hook: host say front: one line of how the window is in front", hooks.heard(.host, ["say": "front"]).contains("dev hook: front: mechanism level, page shown"))
         _ = hooks.heard(.host, ["say": "picture"])
         _ = hooks.heard(.host, ["say": "picture", "watch": "900"])
