@@ -81,6 +81,10 @@ export type Host = {
   /** The app whose icon the loader shows (its bundle id: the app's, or the browser's for a web item), as the app says it. */
   readonly pageOpeningBundleId?: string | null,
   readonly focusLauncherAtMount?: boolean,
+  /** The last layout reported (the page's place), where the host keeps it. */
+  readonly layout?: Geometry | null,
+  /** Margin.app's own window: the hosted window's own minimum width (0 or undefined: none), the page area's floor in a drag. */
+  readonly pageMinWidth?: number,
   perform?(name: string, arg?: any): boolean,
   // Margin.app's imported themes (ui/host-app.ts), for Settings' Remove prompt.
   readonly userThemes?: any[],

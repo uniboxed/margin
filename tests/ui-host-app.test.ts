@@ -288,6 +288,101 @@ test('the sidebar\'s width: fixed only beside a tile; under a hosted window it\'
   assert.deepEqual(log, ['save 260'], 'at the default already: nothing told');
 });
 
+test('the sidebar\'s edge stops where the page area would be narrower than the hosted window\'s own minimum (Split View\'s divider), slow or fast, a reset too', async () => {
+  const { installResize } = await import('../extension/ui/behaviors/resize.ts');
+  const listeners: Record<string, (e: any) => void> = {};
+  const handle = { classList: { add() {}, remove() {} }, setPointerCapture() {}, releasePointerCapture() {} };
+  const live: number[] = [];
+  const saves: number[] = [];
+  let width = 260;
+  // The page area 1244 wide beside a 260 sidebar (1512 wide, the page 8 from the right): the app's own window's layout.
+  const host: any = { pageMinWidth: 1100, layout: { insets: { left: 260, top: 8, right: 8, bottom: 8 }, container: { width: 1512, height: 949 } }, send: async () => undefined, perform: () => true };
+  const rt: any = {
+    view: { behaviorAt: () => ({ el: handle }), rootElement: () => ({ classList: { add() {}, remove() {} }, hasAttribute: () => false }), scheduleLayout() {}, flushLayout() {} },
+    theme: { id: 'arcadia', manifest: { settings: { sidebarWidth: { type: 'number', default: 260, min: 160, max: 500 } }, layout: {} } },
+    get vm() { return { window: { pageOutside: false }, settings: { sidebarWidth: width } }; },
+    container: {}, warn() {}, scale: () => 1,
+    listen: (_el: unknown, type: string, fn: (e: any) => void) => { listeners[type] = fn; },
+    setThemeSettings: (v: any, o?: { live?: boolean }) => { if (o?.live) live.push(v.sidebarWidth); else { width = v.sidebarWidth; saves.push(width); } },
+    host,
+  };
+  installResize(rt);
+  const ev = (x: number) => ({ button: 0, pointerId: 1, clientX: x, target: handle, preventDefault() {}, stopPropagation() {} });
+  // Slow: one point a move, past the floor (the page area 1100 at a 404 sidebar).
+  listeners.pointerdown(ev(260));
+  for (let x = 261; x <= 500; x += 1) listeners.pointermove(ev(x));
+  assert.equal(Math.max(...live), 404, 'never wider than the page area\'s floor allows');
+  listeners.pointerup(ev(500));
+  assert.equal(saves.at(-1), 404, 'let go there');
+  // Fast: one move far past it, and back.
+  host.layout = { ...host.layout, insets: { ...host.layout.insets, left: 404 } };
+  live.length = 0;
+  listeners.pointerdown(ev(404));
+  listeners.pointermove(ev(300));
+  listeners.pointermove(ev(800));
+  assert.deepEqual(live, [300, 404], 'a fast move past it stops at it; narrower is free');
+  listeners.pointerup(ev(800));
+  assert.equal(saves.at(-1), 404);
+  // Under the floor already (the shown window wider than the page area): no wider at all, narrower as usual.
+  host.pageMinWidth = 1200;
+  live.length = 0;
+  listeners.pointerdown(ev(404));
+  listeners.pointermove(ev(450));
+  assert.deepEqual(live, [], 'no wider when the page area is under its floor');
+  listeners.pointermove(ev(350));
+  assert.deepEqual(live, [350], 'narrower as usual');
+  listeners.pointerup(ev(350));
+  // A floor said mid-drag holds from the next move; none: no limit but the theme's.
+  host.pageMinWidth = 0;
+  host.layout = { ...host.layout, insets: { ...host.layout.insets, left: 350 } };
+  live.length = 0;
+  listeners.pointerdown(ev(350));
+  listeners.pointermove(ev(420));
+  host.pageMinWidth = 1100;
+  listeners.pointermove(ev(480));
+  assert.deepEqual(live, [420, 404], 'the floor said mid-drag: the next move stops at it (the page area 1154 at the press, 54 above it)');
+  listeners.pointerup(ev(480));
+  host.pageMinWidth = 0;
+  listeners.pointerdown(ev(404));
+  host.layout = { ...host.layout, insets: { ...host.layout.insets, left: 404 } };
+  listeners.pointermove(ev(500));
+  assert.equal(live.at(-1), 500, 'no floor: the theme\'s max only');
+  listeners.pointerup(ev(500));
+  // Arcadia's own step (10): the edge stops at the floor exactly while dragged, and lets go at the step under it, never
+  // past it (the real screen, 2026-11-18 10:31: live 404, the page area 1100; let go 400, 1104).
+  rt.theme.manifest.settings.sidebarWidth.step = 10;
+  host.pageMinWidth = 1100;
+  host.layout = { ...host.layout, insets: { ...host.layout.insets, left: 240 } };
+  width = 240;
+  live.length = 0;
+  listeners.pointerdown(ev(240));
+  for (let x = 250; x <= 500; x += 10) listeners.pointermove(ev(x));
+  assert.equal(Math.max(...live), 404, 'stopped at the floor exactly');
+  listeners.pointerup(ev(500));
+  assert.equal(saves.at(-1), 400, 'let go at the step under the floor, not 410');
+  rt.theme.manifest.settings.sidebarWidth.step = undefined;
+  // The reset to the default (260) widens the page: free; a default past the floor stops at it.
+  host.pageMinWidth = 1300;
+  host.layout = { ...host.layout, insets: { ...host.layout.insets, left: 160 } };
+  width = 160;
+  listeners.dblclick(ev(160));
+  assert.equal(saves.at(-1), 204, 'the reset stops where the page area is at its floor (1344 − 1300 + 160)');
+});
+
+test('the app host: the hosted window\'s own minimum width, from the hello and as it changes (its own window only)', () => {
+  const host = createAppHost({ hello: hello({ host: 'app-window', pageHosted: true, pageMinWidth: 1047.5 }), post: bridge().post });
+  assert.equal(host.pageMinWidth, 1048, 'from the hello, whole points up');
+  host.receive({ type: 'pageMin', width: 1100 });
+  assert.equal(host.pageMinWidth, 1100);
+  host.receive({ type: 'pageMin', width: null });
+  assert.equal(host.pageMinWidth, 0, 'none');
+  host.receive({ type: 'pageMin', width: 'wide' });
+  assert.equal(host.pageMinWidth, 0, 'not a number: none');
+  const over = createAppHost({ hello: hello({ pageMinWidth: 1100 }), post: bridge().post });
+  over.receive({ type: 'pageMin', width: 1100 });
+  assert.equal(over.pageMinWidth, 0, 'over a browser window: never');
+});
+
 test('the app host: the sidebar\'s width being dragged goes to the app (its own window only); a layout that leaves the corners out keeps them', () => {
   const b = bridge();
   const host = createAppHost({ hello: hello({ host: 'app-window', pageHosted: true }), post: b.post });

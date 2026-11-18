@@ -5828,3 +5828,67 @@ Space"; the calls: `docs/PRIVATE-APIS.md` rows 22-23, 36-39 and the `tiles` part
   switch after the tiles changed 76 ms, 41 of it the frozen watch; the two misses were the suite's first read of a hold
   getting no page area from Margin's dev hook, then not read again), live-resize 29/31 (the two misses: Chameleon 2's
   30-frame drags at p95 25.9 and 26.4 ms against the 25 ms bound, its own redraw).
+
+## A hosted window's minimum size: no tile narrower than it, the sidebar's edge stops there (2026-11-18)
+
+- **Seen in Tirth's real use (09:08-09:09):** dragging the sidebar's edge fast with Weather shown, Weather's window left
+  Margin's Space for a full-screen Space of its own three times; Margin brought it back each time by leaving and
+  entering full screen (2-3 s, the loader). The drag said "197 page area changes in 4607 ms, 46 sent, followed 26
+  (median 41.9 ms), 20 not followed within 50 ms".
+- **The cause, measured on the real screen** (the build before the fix, 40534e93; the suite's new `min-drag` steps read
+  every window's bounds and Spaces every millisecond and the shown tile's rect every few): a tile was sent a rect
+  narrower than its window's own minimum. The minimum is in the tile's own values (`SizeConstraints` `Min`, AppKit's,
+  what Split View's divider stops at), read with the same call Margin reads `TileRect` with: no new private call.
+  - Weather (09:43): its tile said 1048×640; a slow drag (240 frames) first sent 1046 wide at 1908 ms, and 24 ms later
+    the window was in a new full-screen Space of its own (type 4). Margin's recovery then took it out of full screen
+    and in again behind the loader. Its later drags in that run were spoilt by that recovery (not counted).
+  - Chameleon 3 with `contentMinSize` 1100×500 (09:38): its tile said 1100×500. Below it, its AppKit window followed
+    its tile to 1024 but drew a second window at its minimum and the tile's height (1099×966, right-aligned, on screen in
+    Margin's Space: Margin let it in front of its own window), and at the next drag's start, still below its minimum, it
+    left full screen (`willExitFullScreen`; Margin placed it again in 824 ms behind the loader). 3 of 3 slow drags past
+    it (240 and 600 frames). Six fast drags above its minimum (130 pt in 8 frames, 140 pt in 3, both ways) were followed
+    with nothing left: speed alone doesn't do it.
+- **The fix:** `HostLayout.fit` (the page area, or the window's minimum with its right edge and top the page area's),
+  used by every tile sizing (`tileRect(for:)`: the drag's follow, `sizeTile`, `reapplyTiles`, `marginNarrowed`) and by
+  the first open's reservation (its own Space's tile read for its minimum before it's reserved). The minimum is read
+  from its tile as it comes in, at each drag's start and each sizing, never per frame. Margin's window is told the shown
+  one's minimum width (the hello's `pageMinWidth`, `pageMin` pushes) and the page's own drag stops the edge there
+  (ui/behaviors/resize.ts), so the edge and the app agree at any speed. A parked one wider than the page area is sized
+  at its minimum, right edge aligned (its overflow under Margin's sidebar when it's shown). One that leaves its tile
+  anyway has its new tile moved back into Margin's Space (`tileBack`, no full-screen exit or entry, no loader), isn't
+  followed again in that drag, and with no minimum said the narrowest it held is taken for one.
+- **Tests:** live-resize-tests.swift (the stand-in world plays Weather's ejection below a minimum: `ejectsBelowMinimum`;
+  8 of its new checks fail without the fix), hosted-tests.swift (the minimum reaches Margin's window), ui-host-app.test.ts
+  (the drag's floor, slow, fast, mid-drag, a reset; both new tests fail without the UI change); the suite's
+  `live-resize-min` part (Chameleon's `minSize` switch) and `real-apps-min` (Weather, opt-in).
+- **Weather's saved window state:** the baseline run (09:43) left `windowSystemFrame` 260,237 1048×640 and
+  `windowGeometry`'s `windowFrame` [[808,400],[1048,640]] (its minimum, after Margin's old recovery took it out of full
+  screen); the suite then recorded no Mac Catalyst keys, so what they were before isn't known. Tirth: leave them as they
+  are. The suite now records keys with a window frame or geometry in their names (both later Weather runs put them
+  back, read the same after).
+- **On the real screen with the fix (2026-11-18):**
+  - The first run (10:31, the coordinator's) found the window never out of Margin's Space and never under its minimum,
+    but the page area ended 1104 wide, not 1100: Arcadia's `sidebarWidth` has a step of 10. While dragged the edge
+    stopped exactly at the floor (the sidebar 404, the window 1100 wide: the suite's narrowest bounds); let go, it
+    snaps to the step under the floor (400: 1104), never past it. The suite's ends were wrong (and assumed the sidebar
+    at 260; it was 240): it now works out where a drag stops and lets go by the theme's rules (Verdicts.swift `letGo`,
+    self-checked), sets the sidebar to 260 first, and checks the window was exactly its minimum while the edge stood at
+    the floor. Its "min none" for the parked Chameleon 3 was the suite's: a parked window's tile names no window
+    (`TileWindowID` 0) and says a 0×0 minimum; Margin kept the one it read before (the parked window was 1100 wide at
+    404, right-aligned) and now says so once ("its tile … says no minimum now (parked): … kept"). Space 11108 was
+    Margin's.
+  - `live-resize-min` (10:51): 27 of 27. Drags past the minimum (240 frames, 12, 3): the window exactly 1100 wide at the
+    floor, let go at 1104; 111 of 111 changes followed (median 3.4 ms, p95 16.2 ms) in the slow one; above it and wider
+    again followed too; Chameleon 3 parked under its minimum at 404,41 1100×933, shown so 5 s (0 reads off), dragged
+    wider; never out of Margin's Space; nothing placed again.
+  - `real-apps-min` with Weather (10:57): 13 of 13 (10:54: 8 of 13, all its misses the suite's 50-ms follow count). Its
+    tile said 1048×640; every drag, 240 frames to 3, stopped with the window exactly 1048 wide (the sidebar 456: the
+    step above it would cross the floor, so it lets go there), never out of Margin's Space, never placed again, no
+    loader. Weather resizes at its own pace, 50 ms a change (median 50.2, p95 56.2 ms in the slow drag; 22 of 36 within
+    50 ms): its drags follow, about 50-100 ms behind the edge. The suite holds a person's app to following and ending
+    where it belongs, Chameleon to 9 in 10 within 50 ms.
+  - Safari was started at 10:41:43 by `webpushd` (a push for one of Tirth's profiles), between runs; it restored two
+    full-screen windows (Spaces 11124, 11127). No test launched it or touched it.
+- **Still unproven:** an app whose tile says no minimum (the narrowest-held fallback), `tileBack` on the real Mac (no
+  window left its tile with the fix), a first open while the page area is already narrower than its minimum, a
+  translucent theme over the overflow.

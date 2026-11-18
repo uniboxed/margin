@@ -159,6 +159,9 @@ protocol HostedWindow: AnyObject {
     func setHosted(_ number: Int?) // the hosted window shown in its page area (this window in front of it), nil: none
     func hostedMoved() // that window was placed again, or kept where it was: its bounds read again
     func followsPage(_ on: Bool) // the hosted window follows a drag live: the hole is the page area as it is meanwhile
+    // The one shown's own minimum width (nil: none): the sidebar's edge stops where the page area would be narrower
+    // (its page's resize behaviour, ui/behaviors/resize.ts), as Split View's divider stops at a window's minimum.
+    func setPageMinimum(_ width: CGFloat?)
     func cover(_ number: Int?) // a window of the engine's in its Space not shown yet (a new app's, read), nil: no more
     func yield(to number: Int?) // another app's window opened in its Space: let in front until it's gone (nil)
     func frontRead(_ read: HostEngine.FrontRead) // the poll's read at rest of it and the hosted window: in front, kept so
@@ -171,6 +174,7 @@ extension HostedWindow {
     func setShowing(_ label: String?, app: String?) { setShowing(label, app: app, slow: false) }
     func setLoading(_ label: String?) { setLoading(label, app: nil) }
     func followsPage(_ on: Bool) {}
+    func setPageMinimum(_ width: CGFloat?) {}
 }
 
 // The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
@@ -561,6 +565,12 @@ final class HostedSession: LibraryDelegate {
     func hosted(_ number: Int?) {
         guard let id = hostingWindow, let w = window(id) else { return }
         w.setHosted(number)
+    }
+
+    // The one shown's own minimum width (HostEngine `onMinimum`; nil: none): told to the Margin window hosting it.
+    func minimum(_ width: CGFloat?) {
+        guard let id = hostingWindow, let w = window(id) else { return }
+        w.setPageMinimum(width)
     }
 
     // Another app's normal window on screen in Margin's Space that came while nothing was being opened (HostEngine

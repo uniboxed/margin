@@ -13,6 +13,13 @@
 // theme whose sidebar reveals from the left (theme.json `layout.reveal`),
 // leftward from the right.
 //
+// Never past the page area's floor: the host's `pageMinWidth` (Margin.app: the hosted window's own minimum width,
+// ui/host-app.ts; none elsewhere): the page area isn't dragged narrower than that, as Split View's divider stops at a
+// window's minimum. The page shrinks by what the sidebar grows (its far edge stays), so the widest the sidebar gets in
+// a drag is its width at the press plus what the page area had above the floor then (none left: it doesn't grow at
+// all); read at each move (a floor said mid-drag holds from the next), only a comparison per move. A reset to the
+// default stops there too.
+//
 // The host hears when a width change begins and when it's over
 // (`perform('sidebar.resizing', { on })`, once each per drag or reset: the
 // first change of the width, and the end, after the page's last place was
@@ -28,7 +35,7 @@ const SETTING = 'sidebarWidth';
 
 export function installResize(rt: Rt) {
   const { view, theme } = rt;
-  let drag: { el: Element, pointerId: number, startX: number, start: number, width: number, k: number, told: boolean } | null = null;
+  let drag: { el: Element, pointerId: number, startX: number, start: number, width: number, k: number, told: boolean, page: number | null } | null = null;
   let warned = false;
 
   const spec = () => theme.manifest?.settings?.[SETTING] ?? null;
@@ -54,6 +61,19 @@ export function installResize(rt: Rt) {
   };
   // Which way a drag grows it: toward the page.
   const sign = () => (theme.manifest?.layout?.reveal === 'right' ? -1 : 1);
+  // The page area's width now, in Margin's px, from the host's last layout (null: none reported).
+  const pageWidth = () => {
+    const g = rt.host?.layout;
+    if (!g?.container || !g.insets) return null;
+    const w = g.container.width - g.insets.left - g.insets.right;
+    return Number.isFinite(w) && w > 0 ? w : null;
+  };
+  // The widest the sidebar may be for a width `from` with the page area `page` wide: Infinity with no floor.
+  const widest = (from: number, page: number | null) => {
+    const floor = rt.host?.pageMinWidth ?? 0;
+    if (!(floor > 0) || page == null) return Infinity;
+    return from + Math.max(0, page - floor);
+  };
 
   const save = (w: number) => {
     rt.setThemeSettings({ [SETTING]: value(w) });
@@ -75,13 +95,13 @@ export function installResize(rt: Rt) {
     try { hit.el.setPointerCapture(e.pointerId); } catch {}
     const start = current();
     // The pointer moves in the page's pixels, the width is Margin's (rt.scale).
-    drag = { el: hit.el, pointerId: e.pointerId, startX: e.clientX, start, width: start, k: rt.scale?.() || 1, told: false };
+    drag = { el: hit.el, pointerId: e.pointerId, startX: e.clientX, start, width: start, k: rt.scale?.() || 1, told: false, page: pageWidth() };
     hit.el.classList.add('m-resizing');
     view.rootElement()?.classList.add('m-resizing');
   }, true);
   rt.listen(rt.container, 'pointermove', (e: PointerEvent) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
-    const width = clamp(drag.start + (e.clientX - drag.startX) * drag.k * sign());
+    const width = Math.min(clamp(drag.start + (e.clientX - drag.startX) * drag.k * sign()), widest(drag.start, drag.page));
     if (width === drag.width) return;
     drag.width = width;
     if (!drag.told) { drag.told = true; tell(true); }
@@ -90,12 +110,13 @@ export function installResize(rt: Rt) {
   });
   const end = (e: PointerEvent) => {
     if (!drag || (e?.pointerId != null && e.pointerId !== drag.pointerId)) return;
-    const { el, width, told } = drag;
+    const { el, width, told, start, page } = drag;
     drag = null;
     el.classList.remove('m-resizing');
     view.rootElement()?.classList.remove('m-resizing');
     try { el.releasePointerCapture(e.pointerId); } catch {}
-    save(snap(width));
+    // (Its step never past the floor: a snap up that would cross it stays where the drag stopped.)
+    save(Math.min(snap(width), Math.max(width, widest(start, page))));
     view.scheduleLayout();
     if (told) tell(false);
   };
@@ -103,9 +124,10 @@ export function installResize(rt: Rt) {
   rt.listen(rt.container, 'dblclick', (e: MouseEvent) => {
     if (!view.behaviorAt(e.target, 'm-resize', 'sidebar') || !usable()) return;
     e.stopPropagation();
-    const def = snap(bounds().def);
+    const now = current();
+    const def = Math.min(snap(bounds().def), widest(now, pageWidth()));
     // (One change, begun and over at once: nothing to tell when the width is the default's already.)
-    const changes = def !== current();
+    const changes = def !== now;
     if (changes) tell(true);
     save(def);
     view.scheduleLayout();

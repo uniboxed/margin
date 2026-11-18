@@ -43,6 +43,8 @@ final class FakeHostedWindow: HostedWindow {
     func hostedMoved() { moves += 1 }
     var followingPage = false // followsPage: the hosted window follows a drag live
     func followsPage(_ on: Bool) { followingPage = on }
+    var minimums: [CGFloat?] = [] // each setPageMinimum (the one shown's own minimum width), in order
+    func setPageMinimum(_ width: CGFloat?) { minimums.append(width) }
     var yields: [Int?] = [] // each yield(to:), in order
     func yield(to number: Int?) { yields.append(number) }
     var frontReads: [HostEngine.FrontRead] = [] // each frontRead, in order
@@ -1114,6 +1116,7 @@ func liveSidebarResizeTests(script: URL) {
     guard let library = Library.open(dataRoot: root, script: script, background: false) else { return check("live resize (session): the library opens", false) }
     let w = FakeHostWorld()
     w.tilesOn = true
+    w.minSize["com.apple.Notes"] = CGSize(width: 1100, height: 500) // (its tile says so: the page area's floor while it's shown)
     let engine = HostEngine(system: w, marker: nil, pid: 1)
     engine.options.privateRetire = 0
     let session = HostedSession(library: library, engine: engine, links: FakeHostedLinks())
@@ -1123,6 +1126,7 @@ func liveSidebarResizeTests(script: URL) {
     engine.onEvent = { session.hostEvent($0) }
     engine.loading = { session.loading($0) }
     engine.hostedWindow = { session.hosted($0) }
+    engine.onMinimum = { session.minimum($0) } // (as ShellHostedGlue wires it)
     library.delegate = session
     func run(_ body: @escaping () async -> Void = {}) { hostRun { await body(); await session.idle() } }
     _ = library.perform("createSpace", ["windowId": 1, "name": "Home", "emoji": "🏠"])
@@ -1130,7 +1134,9 @@ func liveSidebarResizeTests(script: URL) {
     func count(_ prefix: String, since: Int = 0) -> Int { w.calls.dropFirst(since).filter { $0.hasPrefix(prefix) }.count }
     func page(_ left: CGFloat) -> CGRect { CGRect(x: left, y: 41, width: 1512 - 8 - left, height: 933) }
     run { session.openApp("com.apple.TextEdit", windowId: 1) }
+    check("live resize (session): an app with no minimum shown: none told to Margin's window", window.minimums.last == .some(nil) || window.minimums.isEmpty, "\(window.minimums)")
     run { session.openApp("com.apple.Notes", windowId: 1) }
+    check("live resize (session): an app with its own minimum shown: its width told to Margin's window (its page's drag stops there)", window.minimums.last == .some(1100), "\(window.minimums)")
     let edit = windowOf("com.apple.TextEdit"), notes = windowOf("com.apple.Notes")
     guard engine.shown == HostTarget.app("com.apple.Notes").id, w.tileOf(notes) != nil, w.tileOf(edit) != nil, w.bounds(window: notes) == page(260) else {
         return check("live resize (session): two apps hosted in tiles of Margin's Space", false, "\(session.done.suffix(6)) \(w.calls.suffix(10))")

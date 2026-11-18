@@ -982,6 +982,15 @@ final class FakeHostWorld: HostSystem {
     func tiles(of space: UInt64) -> [UInt64]? { tilesOn ? tiles[space] : nil }
     func tileRect(_ tile: UInt64) -> CGRect? { tilesOn && tiles.values.contains { $0.contains(tile) } ? tileRects[tile] ?? Self.tileDisplay : nil }
     func tileWindow(_ tile: UInt64) -> Int? { tilesOn ? tileWindow[tile] : nil }
+    // A tile's `SizeConstraints`' minimum: its window's app's own (`minSize`), as AppKit gives it (the real Mac, 2026-11-18:
+    // Chameleon's contentMinSize 1100×500 read back exactly, Weather's 1048×640). `minUnread`: none said.
+    var minUnread = false
+    var minUnreadParked = false // ...none while its window is parked (a private Space)
+    func tileMinSize(_ tile: UInt64) -> CGSize? {
+        guard tilesOn, !minUnread, let n = tileWindow[tile], let pid = wins[n]?.pid, let bundle = apps[pid]?.bundle else { return nil }
+        if minUnreadParked, wins[n]?.priv != nil { return nil }
+        return minSize[bundle]
+    }
     func maxTiles(of space: UInt64) -> Int? { tilesOn && tiles[space] != nil ? maxTileConfig[space] ?? 2 : nil }
     func setMaxTiles(_ space: UInt64, _ count: Int) -> Bool {
         calls.append("maxTiles \(space) \(count)")
@@ -993,7 +1002,39 @@ final class FakeHostWorld: HostSystem {
         calls.append("tileRect \(tile) \(Int(rect.minX)),\(Int(rect.minY)) \(Int(rect.width))×\(Int(rect.height))")
         guard tilesOn else { return false }
         if !rectsIgnored { tileRects[tile] = rect }
+        if !rectsIgnored, ejectsBelowMinimum, let n = tileWindow[tile], let pid = wins[n]?.pid, let bundle = apps[pid]?.bundle, let m = minSize[bundle],
+           rect.width < m.width - 0.5, let space = tiles.first(where: { $0.value.contains(tile) })?.key, owner[space] != pid {
+            belowMinimum += 1
+            eject(n, from: tile)
+        }
         return true
+    }
+    // A tiled window sent a rect narrower than its own minimum leaves its tile for a full-screen Space of its own, still
+    // full screen, at the whole area, as Weather did on the real Mac (2026-11-18 09:43: 24 ms after its tile was sent
+    // 1046 wide, its minimum 1048 by its tile; 09:08, three times in one session): its tile leaves Margin's Space (the
+    // first two there laid out again), a new Space its app owns holds a new tile with it. Margin's Space stays current.
+    var ejectsBelowMinimum = true
+    var belowMinimum = 0 // rects sent narrower than their window's minimum
+    var ejections = 0
+    func eject(_ n: Int, from tile: UInt64) {
+        guard var w = wins[n] else { return }
+        for (space, list) in tiles where list.contains(tile) { tiles[space] = list.filter { $0 != tile }; relayFirstTwo(space) }
+        tileWindow[tile] = nil
+        tileRects[tile] = nil
+        let space = nextId, own = nextId + 1
+        nextId += 2
+        tiles[space] = [own]
+        owner[space] = w.pid
+        tileWindow[own] = n
+        w.tiled = false
+        w.member = false
+        w.memberFrame = nil
+        w.priv = nil
+        w.fullScreen = true
+        w.spaces = [space]
+        wins[n] = w
+        ejections += 1
+        noteListing()
     }
     func moveTile(_ tile: UInt64, to space: UInt64, index: Int) -> Bool {
         calls.append("moveTile \(tile) \(space) \(index)")

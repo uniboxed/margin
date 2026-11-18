@@ -108,6 +108,8 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, NSToolbarDel
         let field = NSTextField(string: ""); field.placeholderString = "type here"; field.frame = NSRect(x: 30, y: 150, width: 320, height: 28); field.delegate = self; g.addSubview(field)
         let button = NSButton(title: "Click me", target: self, action: #selector(hit(_:))); button.frame = NSRect(x: 30, y: 200, width: 140, height: 32); g.addSubview(button)
         if kind == .main, switches.dialogMain { w.setAccessibilitySubrole(.dialog) }
+        // (Its own minimum, as an app's: a full-screen tile narrower than it can't hold it.)
+        if let m = switches.minSize, kind == .main || kind == .twin { w.contentMinSize = m }
         if case .system? = switches.restore?.via, kind == .main || kind == .twin {
             w.isRestorable = true
             w.restorationClass = Restorer.self
@@ -117,7 +119,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, NSToolbarDel
         kinds[ObjectIdentifier(w)] = kind
         NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in self?.occlusion(w) }
         if let exact { w.setFrame(exact, display: false) }
-        clog("window made \(w.windowNumber) kind \(kind.rawValue) frame \(r(topLeft)) subrole \(w.accessibilitySubrole()?.rawValue ?? "-") fullScreenable \(!switches.noFullScreen) resizable \(style.contains(.resizable))")
+        clog("window made \(w.windowNumber) kind \(kind.rawValue) frame \(r(topLeft)) subrole \(w.accessibilitySubrole()?.rawValue ?? "-") fullScreenable \(!switches.noFullScreen) resizable \(style.contains(.resizable)) min \(Int(w.minSize.width))x\(Int(w.minSize.height)) minFullScreen \(Int(w.minFullScreenContentSize.width))x\(Int(w.minFullScreenContentSize.height))")
         if order { show(w) }
         return w
     }

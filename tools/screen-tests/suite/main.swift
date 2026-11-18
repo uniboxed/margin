@@ -37,8 +37,8 @@ func plan(_ p: Part) {
     print("  test apps: Chameleon copies \(copies.map { "\($0.n)" }.joined(separator: ", ")) copied from \(builtApps) into ~/Applications (\(copies.map { "\($0.name).app" }.joined(separator: ", "))), registered with LaunchServices, removed after with their saved state; their own defaults (test.margin.chameleon.N: Chameleon* switches, ChameleonLog, NSQuitAlwaysKeepsWindows for priming) put back; logs in \(logFolder)")
   }
   if p.realApps {
-    let inst = installedRealApps()
-    print("  THE PERSON'S OWN APPS: \(inst.map { "\($0.name) (\($0.bundle))" }.joined(separator: ", "))\(realApps.count > inst.count ? "; skipped (not installed, or Safari not running: a test never launches it, it would restore the person's windows): \(realApps.filter { r in !inst.contains { $0.bundle == r.bundle } }.map(\.name).joined(separator: ", "))" : "")")
+    let inst = p.personsApps
+    print("  THE PERSON'S OWN APPS: \(inst.map { "\($0.name) (\($0.bundle))" }.joined(separator: ", "))\(p.apps == nil && realApps.count > inst.count ? "; skipped (not installed, or Safari not running: a test never launches it, it would restore the person's windows): \(realApps.filter { r in !inst.contains { $0.bundle == r.bundle } }.map(\.name).joined(separator: ", "))" : "")")
     print("    recorded first: running or not, pid, windows (numbers, bounds, Spaces), saved-state defaults keys (window frames, full screen, restoration: read with `defaults export`), Margin's library items for each")
     print("    touched ONLY through Margin's dev hook (host, show); no click or key is posted in this part at all; none of their windows or tabs closed by the suite")
     print("    after: apps that weren't running quit politely (never forced); apps that were left running; every changed saved-state key written back, read again, differences reported; Margin's items removed only for apps that had none before")
@@ -89,7 +89,7 @@ if part.realApps, let m = marginBefore {
   m.terminate(); spin(20) { m.isTerminated }
   spin(3)
 }
-recordBefore(part: part.name, built: builtMargin, realApps: part.realApps ? installedRealApps() : [])
+recordBefore(part: part.name, built: builtMargin, realApps: part.realApps ? part.personsApps : [])
 startFullScreen = fullScreenSpaces() // (live resize: Mission Control's full-screen Spaces before the run)
 if part.realApps, let m = marginBefore { before.marginPath = m.bundleURL?.path; saveState() }
 log("before: Margin \(before.marginPath == nil ? "not running" : "running"); Mission Control \(before.mcCount) Spaces; Space \(before.home); defaults " + marginKeys.map { "\($0) '\(before.marginDefaults[$0]?.prefix(20) ?? "")'" }.joined(separator: " "))

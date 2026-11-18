@@ -211,6 +211,20 @@ nonisolated enum HostLayout {
         let r = edges.inset(home)
         return r.width >= 1 && r.height >= 1 ? r : nil
     }
+    // Where a window that can't be smaller than `min` (its app's own minimum, its tile's `SizeConstraints`) goes for a
+    // page area: the page area itself when it's at least that big; else that minimum (within the area), its right edge
+    // and top the page area's: what's wider than the page area lies under Margin's sidebar (Margin's window is in front
+    // of it). Never a size the window can't take: a tile narrower than its window's minimum makes the app leave it (the
+    // real Mac, 2026-11-18: Weather, minimum 1048 wide, into a full-screen Space of its own 24 ms after its tile was
+    // sent 1046 wide; Chameleon's AppKit window drew a second window at its minimum and left full screen at the next
+    // drag).
+    static func fit(_ page: CGRect, min: CGSize?, in area: CGRect) -> CGRect {
+        guard let min, min.width > page.width + 0.5 || min.height > page.height + 0.5 else { return page }
+        let width = Swift.max(page.width, Swift.min(min.width.rounded(.up), area.width))
+        let height = Swift.max(page.height, Swift.min(min.height.rounded(.up), area.maxY - page.minY))
+        return CGRect(x: Swift.max(page.maxX - width, area.minX), y: page.minY, width: width, height: height)
+    }
+
     // Margin's own tile: the display's whole frame, from its top left (nil: the display isn't known).
     static func home(_ p: HostPlacement) -> CGRect? {
         p.display.width >= 1 && p.display.height >= 1 ? CGRect(origin: .zero, size: p.display.size) : nil

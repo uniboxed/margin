@@ -111,6 +111,7 @@ extension Shell {
         host.safariLinked = { [weak session] profile in await session?.safariLinked(profile) ?? false }
         host.loading = { [weak session] id in session?.loading(id) }
         host.hostedWindow = { [weak session] number in session?.hosted(number) }
+        host.onMinimum = { [weak session] width in session?.minimum(width) }
         host.cover = { [weak session] number in session?.cover(number) }
         host.others = { [weak session] number in session?.others(number) }
         host.front = { [weak session] read in session?.front(read) }

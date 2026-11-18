@@ -58,6 +58,7 @@ as a launch argument: no window, no window-server connection). Switches are its 
 | `strip` | a full-width 88-tall window across the top while in full screen (`linger`: left after the exit), or `at:<s>,for:<s>` |
 | `auxiliary` | a settings-like window (`settings`, `sidebar` over Margin's sidebar, or `WxH+X+Y`), `at`/`for`/`borderless` |
 | `noFullScreen`, `fixedSize` | no full-screen button; not resizable (400×300 or `WxH`) |
+| `minSize` | its main window's own minimum content size `WxH` (a full-screen tile narrower than it can't hold it: Weather's) |
 | `extraWindow` | another window on File › New Window, on its `test.margin.chameleon.extraWindow` notification, or `at:<s>` |
 
 It logs every window event it makes and gets (made, ordered in/out, closed, key/main, full screen, occlusion, Space
@@ -85,6 +86,12 @@ The stand-in world plays the same switches off screen: `app/platforms/macos/shel
   said for comparison with another build; a parked copy killed (SIGKILL: its placeholder tile destroyed, Margin's window
   whole again); Margin's quit with tiles in its Space (everything given back); then, from a launch of its own, Margin
   killed (SIGKILL) with two copies in tiles and opened again (its recovery gives them back, its old Space destroyed).
+- `live-resize-min` (docs/HOSTING-CORE.md "A window's minimum size"): Chameleon 1 plain, Chameleon 3 with `minSize`
+  1100×500; its tile says that minimum (`SizeConstraints`); slow (240 frames), fast (12, 4, 3 frames) drags past it and
+  above it: never out of Margin's Space, never narrower than its minimum, the edge stopped at it (the page area 1100
+  wide), nothing placed again or behind the loader; Chameleon 3 parked while the page area goes narrower than it (sized
+  at its minimum, its right edge the page area's, never in a user Space), shown so for 5 s, dragged wider again.
+  `real-apps-min` (opt-in, `--real-apps`): the same drags with the person's Weather (minimum 1048 wide), nothing posted.
 - `real-apps` (opt-in, `--real-apps`): Maps, Phone, Messages, Mail, WhatsApp, Safari, Notes, Calculator (the list at the
   top of `suite/RealApps.swift`; skipped if not installed). Recorded first (running, pid, windows, saved-state defaults
   keys, Margin's library items); each hosted through the dev hook only and its desired state held 30 s; a switch to

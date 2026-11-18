@@ -6,7 +6,7 @@ import Foundation
 enum Target: Equatable {
   case copy(Int), app(String)
   var id: String { switch self { case .copy(let n): return copies[n - 1].id; case .app(let b): return b } }
-  var text: String { switch self { case .copy(let n): return "Chameleon \(n)"; case .app(let b): return realApps.first { $0.bundle == b }?.name ?? b } }
+  var text: String { switch self { case .copy(let n): return "Chameleon \(n)"; case .app(let b): return (realApps + [weather]).first { $0.bundle == b }?.name ?? b } }
 }
 // The design's desired state for a shown app (docs/HOSTING-CORE.md, principle 3), read from the window server:
 // exactly one main window at the page area (full screen as a member of Margin's Space, or a window placed there), on
@@ -78,6 +78,11 @@ enum Step: Equatable {
   case marginQuitTiles([Int])                     // margin-quit with tiles
   case killMargin([Int])                          // margin-crash recovery
   case memory(String)                             // Margin's, WindowServer's and the copies' resident memory, said
+  // a window's own minimum size (MinSize.swift)
+  case tileMin(Target, expect: CGSize?)           // tile-min
+  case minDrag(Target, dx: Int, steps: Int, endsAt: Int?, parked: [Target]) // min-drag
+  case overflow(Target, seconds: Double)          // overflow
+  case sidebarWidth(Int)                         // the sidebar that wide first (dev hook `sidebar`): a known start
 
   var text: String {
     switch self {
@@ -112,6 +117,10 @@ enum Step: Equatable {
     case .marginQuitTiles(let ns): return "margin-quit with tiles: quit Margin; Chameleon \(ns.map(String.init).joined(separator: ", ")) given back and quit, nothing listed but the run's first Spaces"
     case .killMargin(let ns): return "margin-crash recovery: Margin killed (SIGKILL) with Chameleon \(ns.map(String.init).joined(separator: ", ")) in tiles of its Space, opened again: its recovery gives them back (quit), its old Space and the tiles destroyed"
     case .memory(let label): return "memory (\(label)): Margin's, WindowServer's and the copies' resident memory, said"
+    case .tileMin(let t, let e): return "tile-min: \(t.text)'s tile in Margin's Space says the minimum its app gave it (the window server's SizeConstraints, read only)\(e.map { ": about \(Int($0.width))x\(Int($0.height))" } ?? "")"
+    case .minDrag(let t, let dx, let st, let ends, let parked): return "min-drag: the sidebar's edge dragged \(dx > 0 ? "+" : "")\(dx) pt over \(st) display frames (dev hook `drag`), \(t.text) shown\(parked.isEmpty ? "" : ", \(parked.map(\.text).joined(separator: ", ")) parked"), every window's bounds and Spaces read every ms: never out of Margin's Space, never narrower than its minimum, the page area \(ends.map { "\($0)" } ?? "as dragged (its minimum the floor)") wide at the end\(parked.isEmpty ? "" : "; the parked ones at the page area or at their minimum width, right edge aligned, never in a user Space")"
+    case .sidebarWidth(let w): return "the sidebar \(w) wide first (dev hook `sidebar`, as a drag that ends there): the page area \(1504 - w) wide"
+    case .overflow(let t, let s): return "overflow: \(t.text), wider by its own minimum than the page area, held \(Int(s)) s in Margin's Space at its minimum width, its right edge the page area's"
     }
   }
 }
@@ -122,7 +131,11 @@ struct Scenario {
   let steps: [Step]
   let estimate: Double // seconds, for splitting into parts
 }
-struct Part { let name: String; let scenarios: [Scenario]; let realApps: Bool }
+struct Part {
+  let name: String; let scenarios: [Scenario]; let realApps: Bool
+  var apps: [RealApp]? = nil // the person's apps it hosts (nil: every installed one of RealApps.swift's list)
+  var personsApps: [RealApp] { apps ?? installedRealApps() }
+}
 
 // ---- check10's steps, ported (copies 1 and 2 as its two test panes) ----
 let core = Scenario(name: "core", title: "check10's steps: Margin's window in front of what it hosts, clicks, palette, switches, sidebar drags, Space swipes, a fresh launch, a busy app with extra windows, a relaunch",
@@ -219,6 +232,44 @@ let liveResizeCrash = Scenario(name: "live-resize-crash", title: "Margin killed 
   .openMargin, .host(.copy(1)), .host(.copy(2)), .liveDrag(2, dx: 60, steps: 60, parked: [1]), .killMargin([1, 2]), .listedOnly("after the recovery"),
 ], estimate: 110)
 
+// ---- a window's own minimum size (MinSize.swift; docs/HOSTING-CORE.md "A window's minimum size"): Chameleon 3 can't
+// be narrower than 1100 (its `minSize`), Chameleon 1 has no minimum. Arcadia's sidebar: 160-500 wide, 260 by default
+// in steps of 10, set to 260 first (the page area 1244 wide on the 1512 display; 1004 at the sidebar's widest). A drag
+// past the minimum stops at it (the sidebar 404, the page area 1100) and lets go at the step under it (400: 1104). Slow and fast drags past its minimum
+// (the edge stops there), fast drags above it, Chameleon 3 parked while the page area goes narrower than it (sized at
+// its minimum width, right edge aligned, never in a user Space), shown so (its overflow under Margin's sidebar) and
+// dragged wider again ----
+let minWide = CGSize(width: 1100, height: 500)
+let liveResizeMin = Scenario(name: "live-resize-min", title: "drags of the sidebar's edge past a hosted window's own minimum: the edge stops there, the window never leaves Margin's Space, a parked one wider than the page area sized at its minimum",
+                             copies: [1, 3], steps: [
+  .setSwitches(1, [:]), .setSwitches(3, ["minSize": "1100x500"]),
+  .openMargin, .host(.copy(1)), .sidebarWidth(260), .host(.copy(3)), .expect(.desired(Desired(target: .copy(3)))), .tileMin(.copy(3), expect: minWide),
+  .minDrag(.copy(3), dx: 240, steps: 240, endsAt: nil, parked: [.copy(1)]),   // slow, past its minimum: stops at 1100, lets go at 1104 (the step)
+  .minDrag(.copy(3), dx: -144, steps: 60, endsAt: nil, parked: [.copy(1)]),
+  .minDrag(.copy(3), dx: 240, steps: 12, endsAt: nil, parked: [.copy(1)]),    // fast (0.1 s), past it
+  .minDrag(.copy(3), dx: -60, steps: 6, endsAt: nil, parked: []), .minDrag(.copy(3), dx: 50, steps: 4, endsAt: nil, parked: []), .minDrag(.copy(3), dx: -50, steps: 4, endsAt: nil, parked: []), // fast, above it
+  .minDrag(.copy(3), dx: 300, steps: 3, endsAt: nil, parked: []),             // a flick far past it
+  .minDrag(.copy(3), dx: -144, steps: 30, endsAt: nil, parked: [.copy(1)]),
+  .show(.copy(1), maxMs: nil),
+  .minDrag(.copy(1), dx: 240, steps: 30, endsAt: nil, parked: [.copy(3)]),    // Chameleon 3 parked: the page area under its minimum
+  .show(.copy(3), maxMs: 99), .overflow(.copy(3), seconds: 5),
+  .minDrag(.copy(3), dx: -240, steps: 60, endsAt: nil, parked: [.copy(1)]),   // wider again from under its minimum
+  .listedOnly("after the drags past a minimum"),
+  .marginQuitTiles([1, 3]),
+], estimate: 150)
+// The person's Weather (opt-in, `--real-apps`): its own minimum (about 1048 wide, 2026-11-14) is the real case.
+func realMinScenario(_ a: RealApp) -> Scenario {
+  Scenario(name: "real-apps-min", title: "\(a.name), the person's own, dragged past its own minimum through Margin's dev hook only: no click or key ever posted into it", copies: [], steps: [
+    .openMargin, .host(.app(a.bundle)), .sidebarWidth(260), .tileMin(.app(a.bundle), expect: nil),
+    .minDrag(.app(a.bundle), dx: 240, steps: 240, endsAt: nil, parked: []), .minDrag(.app(a.bundle), dx: -240, steps: 60, endsAt: nil, parked: []),
+    .minDrag(.app(a.bundle), dx: 240, steps: 12, endsAt: nil, parked: []), .minDrag(.app(a.bundle), dx: -240, steps: 12, endsAt: nil, parked: []),
+    .minDrag(.app(a.bundle), dx: 300, steps: 3, endsAt: nil, parked: []), .minDrag(.app(a.bundle), dx: -300, steps: 30, endsAt: nil, parked: []),
+    .listedOnly("\(a.name) dragged past its minimum"),
+    .quitMargin, .expect(.givenBack([a.bundle])),
+  ], estimate: 120)
+}
+let weather = RealApp(name: "Weather", bundle: "com.apple.weather", framedOnly: false)
+
 // The parts: core; the behaviour scenarios in parts of about 6 minutes each (each from its own Margin launch);
 // the real apps' (opt-in).
 func parts(realApps withReal: Bool) -> [Part] {
@@ -233,6 +284,8 @@ func parts(realApps withReal: Bool) -> [Part] {
   if !chunk.isEmpty { out.append(Part(name: "behaviours-\(out.count)", scenarios: [behaviourSetup] + chunk, realApps: false)) }
   out.append(Part(name: "live-resize", scenarios: [liveResize], realApps: false))
   out.append(Part(name: "live-resize-crash", scenarios: [liveResizeCrash], realApps: false))
+  out.append(Part(name: "live-resize-min", scenarios: [liveResizeMin], realApps: false))
   if withReal { out.append(Part(name: "real-apps", scenarios: [realAppsScenario(installedRealApps())], realApps: true)) }
+  if withReal, isInstalled(weather.bundle) { out.append(Part(name: "real-apps-min", scenarios: [realMinScenario(weather)], realApps: true, apps: [weather])) }
   return out
 }

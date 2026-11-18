@@ -61,6 +61,14 @@ func selfCheck() -> Bool {
     print("\(ok ? "ok  " : "FAIL") \(name)\(ok ? "" : ": \(detail())")")
     if !ok { failures += 1 }
   }
+  // A drag past a window's minimum (2026-11-18 10:31, Arcadia's sidebar 160-500 in steps of 10, Chameleon 3's minimum
+  // 1100): the edge stops at the floor (the sidebar 404, the page area 1100) and lets go at the step under it (400: 1104).
+  let a = arcadia
+  expect("drag: past the floor: stops there, lets go at the step under it", letGo(a, start: 240, dx: 240, page: 1264, floor: 1100) == (stop: 404, end: 400), "\(letGo(a, start: 240, dx: 240, page: 1264, floor: 1100))")
+  expect("drag: from the step under the floor, wider: as dragged, snapped", letGo(a, start: 400, dx: -144, page: 1104, floor: 1100) == (stop: 256, end: 260))
+  expect("drag: under the floor already: no wider", letGo(a, start: 500, dx: 50, page: 1004, floor: 1100) == (stop: 500, end: 500))
+  expect("drag: no floor: the theme's own bounds", letGo(a, start: 260, dx: 300, page: 1244, floor: nil) == (stop: 500, end: 500) && letGo(a, start: 260, dx: -200, page: 1244, floor: nil) == (stop: 160, end: 160))
+  expect("drag: above the floor: as dragged", letGo(a, start: 340, dx: 50, page: 1164, floor: 1100) == (stop: 390, end: 390))
   // replacesWindow-every (20:34): its own log's lines for the windows it closed.
   let chameleon = [
     "CHAMELEON 1794965687.987 pid 43997 replaced 76030 by 76033 (the old one at 350,73 1154x869)",
@@ -99,4 +107,18 @@ func selfCheck() -> Bool {
   expect("Safari's story: a failure said", failedStory.failed != nil && failedStory.shown == nil, failedStory.text)
   print(failures == 0 ? "self-check: all passed" : "self-check: \(failures) failed")
   return failures == 0
+}
+
+// The theme's sidebar (ui/behaviors/resize.ts): its bounds and step. Arcadia's (themes/arcadia/theme.json): 160-500 in
+// steps of 10; its page area's left inset is its sidebar's width.
+struct SidebarSpec { let lo: Double; let hi: Double; let step: Double }
+let arcadia = SidebarSpec(lo: 160, hi: 500, step: 10)
+// Where a drag of the sidebar's edge by `dx` from `start` stops (its last live width) and lets go (snapped to the step,
+// never past the widest the page area's floor allows: resize.ts `widest`), the page area `page` wide at the press.
+func letGo(_ s: SidebarSpec, start: Double, dx: Double, page: Double, floor: Double?) -> (stop: Double, end: Double) {
+  let widest = floor.map { start + max(0, page - $0) } ?? .infinity
+  let clamp = { (w: Double) in min(s.hi, max(s.lo, w)) }
+  let stop = min(clamp(start + dx), widest)
+  let snap = clamp((stop / s.step).rounded() * s.step)
+  return (stop, min(snap, max(stop, widest)))
 }

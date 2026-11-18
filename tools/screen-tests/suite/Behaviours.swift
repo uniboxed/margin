@@ -57,6 +57,14 @@ extension Runner {
     case .marginQuitTiles(let ns): marginQuitTiles(ns)
     case .killMargin(let ns): killMargin(ns)
     case .memory(let label): memoryLine(label)
+    case .tileMin(let t, let e): tileMinStep(t, expect: e)
+    case .minDrag(let t, let dx, let st, let ends, let parked): minDrag(t, dx: dx, steps: st, endsAt: ends, parked: parked)
+    case .overflow(let t, let s): overflowHeld(t, seconds: s)
+    case .sidebarWidth(let w):
+      gate("the sidebar's width")
+      hook(["sidebar": "\(w)"])
+      let ok = spin(5) { rectIn(front(), "page area").map { abs($0.minX - CGFloat(w)) <= 1 } ?? false }
+      step("the sidebar \(w) wide (a known start)", ok, "page area \(rect(rectIn(front(), "page area")))")
     }
   }
 
