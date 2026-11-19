@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use super::causes::{Cause, Causes, Change, Event};
 use super::choice::{self, ChoiceRule};
 use super::driver::{Admit, Driver, Identity};
+use super::front::{Look, Others};
 use super::guard::Verdict;
 use super::kinds::{self, AppFacts, Window};
 use super::layout::Placement;
@@ -186,6 +187,13 @@ pub enum Request {
     Forget {
         host: String,
     },
+    /// The window of the shown app let in front of Margin's window now (front.rs), at a look at rest.
+    Front {
+        look: Look,
+    },
+    /// Nothing hosted (`FrontReset`); Margin's Space not at rest (`FrontUnsteady`).
+    FrontReset,
+    FrontUnsteady,
 }
 
 /// The hosting core's state across calls: the loop (its guard, the routes, the corrections' tries) and the causes.
@@ -193,6 +201,7 @@ pub enum Request {
 pub struct HostCore {
     pub driver: Driver,
     pub causes: Causes,
+    pub others: Others,
 }
 
 impl HostCore {
@@ -289,6 +298,15 @@ impl HostCore {
             }
             Request::Forget { host } => {
                 self.driver.forget(&host);
+                json!({})
+            }
+            Request::Front { look } => json!({ "front": self.others.look(&look) }),
+            Request::FrontReset => {
+                self.others.reset();
+                json!({})
+            }
+            Request::FrontUnsteady => {
+                self.others.unsteady();
                 json!({})
             }
             Request::Constants => {

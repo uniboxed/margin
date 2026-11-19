@@ -137,9 +137,6 @@ final class HostEngine {
         // the ask, and after a show, the poll undoes a switch to a Space that wasn't listed before the ask, and acts
         // on a shown window that isn't on screen at its first read.
         var lateWatch = 3.0
-        // A window of the hosted app shown in Margin's Space is let in front only once two polls at least this far apart
-        // have seen it there (`lookForOthers`: a Space change's picture lasts one read).
-        var otherConfirm = 0.2
         var memberWait = 0.6 // a window moved by the bridge (into Margin's Space, or parked): there by then
         var memberEvery = 0.005 // ...read this often (a switch is a move each way: well under 100 ms in all)
         var destroyWait = 1.5
@@ -206,10 +203,10 @@ final class HostEngine {
         // A full-screen window's toolbar strip (its own window: the display's or the page area's width, at most this
         // tall): never let in front, never left behind by a full-screen attempt backed out.
         var stripMaxHeight: CGFloat = 150
-        // A hosted app's window covering at least this share of Margin's sidebar is never let in front of it, and a
-        // window-mode window that couldn't be fitted is never shown over it.
+        // A window-mode window that couldn't be fitted covering at least this share of Margin's sidebar is never shown
+        // over it. (What's let in front of Margin's window is the core's, host/front.rs: none reaching over the sidebar
+        // more than 8 pt each way.)
         var sidebarCover: CGFloat = 0.25
-        var sidebarSliver: CGFloat = 8 // ...and none reaching over it more than this, each way, is let in front of it
         // Live resize (docs/HOSTING-CORE.md "Live resize: tiles in Margin's Space"): a hosted window's tile moved into
         // Margin's Space lands within `tileMoveWait`; a tile's rect set, its window is there within `tileWait` (the kit:
         // 10-26 ms, shown or parked); Margin's Space's tile limit read back within `tileLimitWait`. During a drag of the
@@ -366,11 +363,8 @@ final class HostEngine {
     var front: ((FrontRead) -> Void)?
     private var hostedSaid: Int?
     private var otherSaid: Int?
-    // Other windows seen on screen in Margin's Space (their numbers): true, one Margin lets in front; false, one that
-    // came during an operation from an app Margin hosts (its toolbar's window, what a Safari Margin started restores):
-    // never. When each was first seen so, in the polls in a row since. And whether an operation ran since the last look.
-    private var otherSeen: [Int: Bool] = [:]
-    private var otherSince: [Int: Double] = [:]
+    // Whether an operation ran since the last look (what's first seen then came with it). What each look saw is the
+    // core's (host/front.rs).
     private var ranSinceLook = true
     private var retired: [UInt64: Double] = [:] // private Spaces a window was moved out of, and when: destroyed later (`privateRetire`)
     // The last full-screen ask: when, and the full-screen Spaces listed before it (the poll's late watch, `lateWatch`).
@@ -1355,58 +1349,31 @@ final class HostEngine {
         Task { await serial { await self.backOnScreen(id) } }
     }
 
-    // A window of the hosted app shown that the person opened in Margin's Space (the poll; one window-server read):
-    // layer 0, visible, not a hosted window, on Margin's display and reaching outside the page area (one inside it shows
-    // through the hole and takes its clicks as it is: a sheet, a small Settings window). Margin's window lets the front
-    // one in front until it's gone. Only when all of these hold (2026-11-17, his log: Margin let his own Claude app's and
-    // Arc's full-screen windows of other Spaces in front as he swiped, again and again):
-    // - the list is a picture of Margin's Space at rest (`steadyScreen`: Margin's Space current before and after it);
-    // - the window server's Space read for that window, in the same poll, is Margin's Space and nothing else;
-    // - it was seen so at two polls in a row at least `otherConfirm` apart;
-    // - its app is the one shown. Never a window of an app Margin doesn't host: such an app can't put a normal window in
-    //   another app's full-screen Space; what it shows there is a Space change's picture or a panel at a higher layer.
-    //   Never one of a hosted app that isn't the one shown (the person can't have opened it: its app is out of sight),
-    //   nor one first seen right after an operation (it came with it: the window of a full-screen window's toolbar, the
-    //   windows a Safari Margin started restores before they're swept): those stay behind Margin's window, as
-    //   everything of an opening does. No per-app rules.
-    // Margin's Space not current, or changing: nothing is said either way (Margin's window is left as it is until the
-    // next look at rest).
+    // A window of the hosted app shown that the person opened in Margin's Space (the poll; one window-server read): let in
+    // front of Margin's window until it's gone. The rules are the core's (host/front.rs: the shown app's only, seen at two
+    // looks in a row, not one that came with an operation, not a strip or one over the sidebar, in Margin's Space alone);
+    // this reads what they need. Margin's Space not current, or changing: nothing is said either way (Margin's window is
+    // left as it is until the next look at rest).
     private func lookForOthers() {
         guard others != nil else { return }
         let fresh = ranSinceLook
         ranSinceLook = false
         guard marginWindow != 0, marginSpace > 0, hasHosts else {
-            otherSeen = [:]
-            otherSince = [:]
+            core.frontReset()
             return say(other: nil)
         }
-        guard let list = steadyScreen() else {
-            otherSince = [:] // (seen again from the start at the next look at rest)
-            return
-        }
+        guard let list = steadyScreen() else { return core.frontUnsteady() }
         let hosted = Set(hosts.values.map(\.window))
         let shownPid = shown.flatMap { hosts[$0] }.flatMap { $0.phase == .shown ? $0.pid : nil }
-        let page = placement.page.insetBy(dx: -1, dy: -1)
-        let now = sys.now()
-        var front: Int?
-        var seen: [Int: Bool] = [:]
-        var since: [Int: Double] = [:]
-        for w in list where w.layer == 0 && w.pid != ownPid && w.number != marginWindow && w.alpha > 0 && !hosted.contains(w.number) {
-            guard w.bounds.width >= 80, w.bounds.height >= 80, w.bounds.intersects(placement.area), !page.contains(w.bounds) else { continue }
-            let lets = otherSeen[w.number] ?? (!fresh && w.pid == shownPid)
-            seen[w.number] = lets
-            // (Never a full-screen window's toolbar strip, nor one over Margin's sidebar: Mail's strip, 2026-11-17, was let
-            // in front again and again, and Margin's window with it went below Mail's unfitted window, over the sidebar.)
-            guard lets, w.pid == shownPid, !isStrip(w.bounds), !overSidebar(w.bounds), !keptBehind(w), sys.spaces(window: w.number) == [marginSpace] else { continue }
-            let first = otherSince[w.number] ?? now
-            since[w.number] = first
-            if front == nil, now - first >= options.otherConfirm - 1e-9 { front = w.number }
+        // (The Spaces read only for the shown app's own windows: no other's can be let in front.)
+        let windows: [[String: Any]] = list.map { w in
+            var d = w.coreJSON
+            d["keptBehind"] = keptBehind(w)
+            d["marginOnly"] = w.pid == shownPid && w.layer == 0 && !hosted.contains(w.number) && sys.spaces(window: w.number) == [marginSpace]
+            return d
         }
-        otherSeen = seen
-        otherSince = since
-        // (The one let in front still there, still in Margin's Space alone: kept until it's gone.)
-        if front == nil, let was = otherSaid, since[was] != nil { front = was }
-        say(other: front)
+        say(other: core.front(now: sys.now(), windows: windows, ownPid: ownPid, marginWindow: marginWindow, hosted: Array(hosted),
+                              shownPid: shownPid, placement: placement, fresh: fresh))
     }
 
     // What Margin's window checks at each poll at rest (`front`): the poll's on-screen list (front to back) has both
@@ -2655,15 +2622,6 @@ final class HostEngine {
     private func keptBehind(_ w: ServerWindow) -> Bool {
         guard let k = observer.model.apps[w.pid]?.windows[w.number]?.kind else { return false }
         return k.keptBehind
-    }
-
-    // Whether a window at `b` reaches over Margin's sidebar at all (more than `sidebarSliver` each way): never let in
-    // front of Margin's window (docs/HOSTING-CORE.md, principle 3: an auxiliary window in front only if it doesn't cover
-    // the sidebar; the real-screen suite's extraWindow, 2026-11-17: a 900×560 window 60 pt over it was let in front).
-    private func overSidebar(_ b: CGRect) -> Bool {
-        guard let side = sidebarRect else { return false }
-        let i = b.intersection(side)
-        return !i.isNull && i.width > options.sidebarSliver && i.height > options.sidebarSliver
     }
 
     // Whether a window at `b` covers at least `sidebarCover` of Margin's sidebar.

@@ -219,6 +219,21 @@ nonisolated extension HostCore {
     func forget(host: String) { _ = call(["type": "forget", "host": host]) }
 }
 
+// ---- the window let in front of Margin's window (host/front.rs) ----
+
+nonisolated extension HostCore {
+    // The shown app's window let in front of Margin's window now (nil: none), from a look at rest: the window server's
+    // list front to back (`ServerWindow.coreJSON`, with `keptBehind` and `marginOnly`).
+    func front(now: Double, windows: [[String: Any]], ownPid: pid_t, marginWindow: Int, hosted: [Int], shownPid: pid_t?, placement: HostPlacement, fresh: Bool) -> Int? {
+        var look: [String: Any] = ["now": now, "windows": windows, "ownPid": Int(ownPid), "marginWindow": marginWindow, "hosted": hosted,
+                                   "placement": placement.coreJSON, "fresh": fresh]
+        if let shownPid { look["shownPid"] = Int(shownPid) }
+        return (call(["type": "front", "look": look])["front"] as? NSNumber)?.intValue
+    }
+    func frontReset() { _ = call(["type": "frontReset"]) }
+    func frontUnsteady() { _ = call(["type": "frontUnsteady"]) }
+}
+
 // ---- when the engine looks again (host/schedule.rs) ----
 
 nonisolated extension HostCore {
