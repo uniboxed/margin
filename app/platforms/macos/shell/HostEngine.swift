@@ -3015,7 +3015,12 @@ final class HostEngine {
             if refused() { return .slow("its copy didn't ask Safari for full screen") }
             if let s = space, memberAt == nil, inOwn(s) { memberAt = sys.now(); mark("in its Space") }
             if space == nil, let owners = sys.fullScreenSpaceOwners() {
-                let new = owners.keys.filter { s in !before.contains(s) && s != marginSpace && (owners[s] == host.pid || inOwn(s)) }.sorted()
+                // (A Space of its app's is its window's only when the app has no other window that could be going full screen:
+                // restore-code, 2026-11-19 01:57, its second window's new Space taken for the hosted one's, which never came
+                // into it; seen once Margin found the window 0.1 s sooner, mid-way through the app's own full screen of both.
+                // With others, its window in it is the evidence.)
+                let alone = HostWindowChoice.candidates(serverList(pid: host.pid) ?? [], pid: host.pid) { $0 == host.window }.isEmpty
+                let new = owners.keys.filter { s in !before.contains(s) && s != marginSpace && (inOwn(s) || (alone && owners[s] == host.pid)) }.sorted()
                 if new.count > 1 { return .slow("\(new.count) new full-screen Spaces of its app: which is its window's isn't known") }
                 if let s = new.first {
                     mark("listed")
