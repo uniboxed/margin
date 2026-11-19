@@ -143,6 +143,11 @@ would need it written again.
   back); tiles against members measured (tiles stay the default: DECISIONS.md); the soak on his own apps, 82 of 82;
   margin-core's reconcile driver against an OS adapter (`host::driver`, `HostAdapter`) and the Windows adapter for it
   (window mode, compile- and unit-checked, docs/windows/UNVERIFIED.md).
-- Left: a browser tab's faded picture (its card for now); the Mac engine's own loop onto the driver (it uses the same
-  step, guard and routes through the FFI today); the let-in-front rules into the core; the Windows adapter wired into
-  the Windows shell and run on Windows.
+- 2026-11-18 night: a web item's card in another Margin window shows its page's picture, faded (the Safari copy's
+  `hostPicture` as its window leaves: `tabs.captureVisibleTab`, at most 1600 px wide, memory only, never logged), every
+  theme. The Mac engine's corrections now go through the core's loop in parts (`decide`, then `admit`: the tries, the
+  guard and a stop's step down are the core's, `host::driver`), the same loop the Windows adapter runs whole. Which
+  window of the shown app is let in front of Margin's window is the core's too (`host::front`).
+- Left: Windows hosting needs Margin's own window there first (the Windows shell still draws over Chrome's and Edge's
+  windows, the old way): the hosted design ported (its window, its page area, the library), then the adapter driven
+  from it and run on a real PC. The core and the adapter are ready for it.
