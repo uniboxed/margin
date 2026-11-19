@@ -139,5 +139,10 @@ would need it written again.
 - Decided while he was away (to confirm): one Safari window per profile, not per space (spaces sharing a profile share
   it: fewer windows, less memory, tab switches inside it as chosen). Each OS's step-by-step operations (full screen,
   tiles, parking) stay in its adapter: the core decides what, the adapter how.
-- Next: an app in two Margin windows (the faded card), the engine's state into the core with a Windows adapter
-  contract, the soak part on real apps, the tiles-vs-members numbers.
+- 2026-11-18 evening: an item in another Margin window (its card, faded, every theme; that window in front takes it
+  back); tiles against members measured (tiles stay the default: DECISIONS.md); the soak on his own apps, 82 of 82;
+  margin-core's reconcile driver against an OS adapter (`host::driver`, `HostAdapter`) and the Windows adapter for it
+  (window mode, compile- and unit-checked, docs/windows/UNVERIFIED.md).
+- Left: a browser tab's faded picture (its card for now); the Mac engine's own loop onto the driver (it uses the same
+  step, guard and routes through the FFI today); the let-in-front rules into the core; the Windows adapter wired into
+  the Windows shell and run on Windows.
