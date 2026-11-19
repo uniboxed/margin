@@ -76,7 +76,7 @@ export type Host = {
    * (`pageOpening`: its name), the card opaque with the loader; `empty`: nothing to show, the launcher.
    * Undefined in every other host (the page is the browser's own).
    */
-  readonly pageState?: 'empty' | 'loading' | 'shown',
+  readonly pageState?: 'empty' | 'loading' | 'shown' | 'elsewhere',
   readonly pageOpening?: string | null,
   /** The app whose icon the loader shows (its bundle id: the app's, or the browser's for a web item), as the app says it. */
   readonly pageOpeningBundleId?: string | null,

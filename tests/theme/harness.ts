@@ -479,8 +479,10 @@ const withRuntime = Object.assign(T, {
   // Margin.app's own window: the page card's state as the app says it (ui/host-app.ts pageState), drawn again.
   // `empty`: nothing hosted (the launcher); `loading`: an item opening (`name`; `bundleId`: the app whose icon the
   // loader shows, looked up in the state's `apps`: rtApps); `shown`: a hosted window shows through.
-  rtPageState(state: 'empty' | 'loading' | 'shown', name: string | null = null, bundleId: string | null = null) {
-    Object.assign(rt.host, { pageState: state, pageOpening: state === 'loading' ? name : null, pageOpeningBundleId: state === 'loading' ? bundleId : null, pageHosted: state !== 'empty', sidebarDocked: state !== 'empty', launcher: state === 'empty' });
+  rtPageState(state: 'empty' | 'loading' | 'shown' | 'elsewhere', name: string | null = null, bundleId: string | null = null) {
+    const named = state === 'loading' || state === 'elsewhere';
+    // (`elsewhere`: not hosting, its item in another Margin window: its card, the sidebar still docked, no launcher.)
+    Object.assign(rt.host, { pageState: state, pageOpening: named ? name : null, pageOpeningBundleId: named ? bundleId : null, pageHosted: state !== 'empty', sidebarDocked: state !== 'empty', launcher: state === 'empty' });
     rt.runtime!.render();
     const root = rt.runtime!.view.rootElement();
     const loader = root?.querySelector('m-page-loader');

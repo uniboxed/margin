@@ -42,6 +42,8 @@ m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2
 m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-page-loader:empty{display:none}
 m-page-loader[m-default]{position:fixed;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;background:Canvas;color:CanvasText;font:13px/1.3 system-ui,sans-serif;text-align:center;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s linear,visibility 0s linear .12s}
 [m-page-state="loading"]>m-page-loader[m-default]{opacity:1;visibility:visible;pointer-events:auto;transition:none}
+[m-page-state="elsewhere"]>m-page-loader[m-default]{opacity:.55;visibility:visible;pointer-events:none;transition:none}
+[m-page-state="elsewhere"]>m-page-loader[m-default]>[m-loader-spin]{display:none}
 m-page-loader[m-default]>[m-loader-icon]{display:block;width:32px;height:32px;margin-bottom:4px;object-fit:contain}
 m-page-loader[m-default]>[m-loader-icon]:not([src]){display:none}
 m-page-loader[m-default]>[m-loader-spin]{display:block;width:18px;height:18px;box-sizing:border-box;border-radius:50%;border:2px solid color-mix(in srgb,currentColor 18%,transparent);border-top-color:color-mix(in srgb,currentColor 70%,transparent);animation:m-loader-spin .9s linear infinite}

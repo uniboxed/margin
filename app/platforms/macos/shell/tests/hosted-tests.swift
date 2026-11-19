@@ -38,6 +38,9 @@ final class FakeHostedWindow: HostedWindow {
     var showings: [String?] = [] // each setShowing, in order
     var slowShowings: [String] = [] // those said to take a while (the last item at launch: the loader at once)
     var showingApps: [String?] = [] // the app each setShowing named for the loader's icon, in order
+    var elsewhere: String? // its card's name (HostedSession `elsewhere`)
+    var elsewhereApp: String?
+    func setElsewhere(_ label: String?, app: String?) { elsewhere = label; elsewhereApp = app }
     func setShowing(_ label: String?, app: String?, slow: Bool) { guard label != showing else { return }; showing = label; showings.append(label); showingApps.append(app); if slow, let label { slowShowings.append(label) } }
     var moves = 0 // hostedMoved: the hosted window's bounds read again
     func hostedMoved() { moves += 1 }
@@ -1018,6 +1021,31 @@ func hostedResumeTests(script: URL) {
         check("start: a browser that never gets ready holds the item no longer than its limit", engine.shown == HostTarget.app("com.apple.Notes").id && session.resuming == nil,
               "\(String(describing: engine.shown)) \(window.slowShowings)")
         run { await engine.quitAll() }
+    }
+    // ---- an item in another Margin window (Tirth, 2026-11-18): its card there, the item back when that window's in front ----
+    do {
+        let (w, engine, session, window, run) = launch()
+        window.isFullScreen = true
+        let second = FakeHostedWindow(id: 2, number: 77)
+        second.isFullScreen = true
+        w.wins[77] = FakeHostWorld.Win(pid: 1, spaces: [FakeHostWorld.marginSpace]) // (a second Margin window, in Margin's Space)
+        session.window = { id in id == nil || id == 1 ? window : id == 2 ? second : nil }
+        run { session.openApp("com.apple.Notes", windowId: 1) }
+        let notesShown = engine.shown == HostTarget.app("com.apple.Notes").id && session.hostingWindow == 1
+        run { session.openApp("com.apple.TextEdit", windowId: 2) }
+        check("elsewhere: an app opened in a second Margin window: hosted there, the first window's item kept as its card (faded: \"Click to show Notes here\"), not the launcher",
+              notesShown && engine.shown == HostTarget.app("com.apple.TextEdit").id && session.hostingWindow == 2 && window.elsewhere == "Notes" && window.elsewhereApp == "com.apple.Notes"
+              && !window.hosting && second.elsewhere == nil && session.elsewhere[1] != nil, "\(String(describing: engine.shown)) \(String(describing: window.elsewhere)) \(session.elsewhere)")
+        session.focused(1)
+        run {}
+        check("elsewhere: the first window brought in front: its item hosted there again (the app's one window follows the window in use), the second window's item its card now",
+              engine.shown == HostTarget.app("com.apple.Notes").id && session.hostingWindow == 1 && window.elsewhere == nil && second.elsewhere != nil && session.elsewhere[2] != nil && session.elsewhere[1] == nil,
+              "\(String(describing: engine.shown)) \(String(describing: second.elsewhere)) \(session.elsewhere)")
+        session.focused(1)
+        run {}
+        check("elsewhere: in front again with its item already there: nothing more", engine.shown == HostTarget.app("com.apple.Notes").id && session.hostingWindow == 1)
+        run { await engine.quitAll() }
+        _ = library.perform("activateTab", ["windowId": 1, "tabId": notes]) // (Notes the item shown last again, for the tests after)
     }
     do {
         let (_, engine, session, window, run) = launch()

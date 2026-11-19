@@ -374,5 +374,7 @@ test('the page card\'s loader: the opening item\'s icon (the app\'s, Safari\'s f
   assert.equal(loader(null), null, 'not loading: no loader');
   assert.deepEqual(loader({ name: 'Getting you started', bundleId: 'com.apple.Safari', starting: true }), { name: 'Getting you started', label: 'Getting you started…', icon: safari },
     'Margin\'s start (its default browser first): its own words, the browser\'s icon');
+  assert.deepEqual(loader({ name: 'Notes', bundleId: 'com.apple.Notes', elsewhere: true }), { name: 'Notes', label: 'Click to show Notes here.', icon: notes },
+    'its item in another Margin window: its card\'s words, the app\'s icon');
   assert.equal(loader({ name: 'Notes', bundleId: 'com.apple.Notes' }, { ...state, apps: [{ bundleId: 'com.apple.Notes', name: 'Notes', icon: 'data:text/html;base64,PHA+' }] })?.icon, null, 'never anything but a data: image');
 });

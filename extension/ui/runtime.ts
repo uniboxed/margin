@@ -245,7 +245,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     inNewTab: !!host.inNewTab,
     launcherPage: !!host.launcher,
     // Margin.app's own window, an item opening in the page area: the page card's loader, with its name.
-    pageOpening: host.pageState === 'loading' ? { name: host.pageOpening ?? '', bundleId: host.pageOpeningBundleId ?? null, starting: host.pageStarting === true } : null,
+    pageOpening: host.pageState === 'loading' || host.pageState === 'elsewhere'
+      ? { name: host.pageOpening ?? '', bundleId: host.pageOpeningBundleId ?? null, starting: host.pageStarting === true, elsewhere: host.pageState === 'elsewhere' } : null,
     // Margin.app's own window hosting another app's window beside it: no page area here (ui/host-app.ts).
     pageOutside: !!(host as { pageOutside?: boolean }).pageOutside,
     // The sidebar kept docked by the host (Margin.app hosting: beside a tile, or under an app's window in window mode).
@@ -307,7 +308,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
 
   // ---- the theme's root: the page card's state, and the start ------------------------------
   //
-  // `m-page-state` (Margin.app's own window only: host.pageState): `shown`, `loading` or `empty`, for the theme's CSS.
+  // `m-page-state` (Margin.app's own window only: host.pageState): `shown`, `loading`, `elsewhere` (its item in another
+  // Margin window: its card, faded) or `empty`, for the theme's CSS.
   // While it's `loading` the page card is opaque with a loader: the theme's own (`<template m-part="page-loader">` in
   // its `<m-page-loader>`, drawn by the view), or, when the theme has none, Margin's default, made here: one element
   // on the root, laid over the page's place as the view measures it (a quiet spinner and Margin's words; its look is
@@ -340,7 +342,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const own = view.parts.has('page-loader') && !!root.querySelector('m-page-loader:not([m-default])');
     if (own) { defaultLoader?.remove(); defaultLoader = null; return; }
     if (!defaultLoader) {
-      if (state !== 'loading') return; // (made the first time it's needed)
+      if (state !== 'loading' && state !== 'elsewhere') return; // (made the first time it's needed)
       defaultLoader = doc.createElement('m-page-loader');
       defaultLoader.setAttribute('m-default', '');
       defaultLoader.setAttribute('role', 'status');
@@ -357,7 +359,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       defaultLoader.append(icon, spin, label);
     }
     if (defaultLoader.parentNode !== root) root.appendChild(defaultLoader);
-    if (state === 'loading') {
+    if (state === 'loading' || state === 'elsewhere') {
       const label = (defaultLoader.lastChild as HTMLElement);
       const text = vm?.pageLoader?.label ?? '';
       if (label.textContent !== text) label.textContent = text;

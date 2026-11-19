@@ -162,6 +162,8 @@ protocol HostedWindow: AnyObject {
     // The one shown's own minimum width (nil: none): the sidebar's edge stops where the page area would be narrower
     // (its page's resize behaviour, ui/behaviors/resize.ts), as Split View's divider stops at a window's minimum.
     func setPageMinimum(_ width: CGFloat?)
+    // Not hosting, its item hosted in another Margin window or parked: the card ("Click to show … here", faded), nil: none.
+    func setElsewhere(_ label: String?, app: String?)
     func cover(_ number: Int?) // a window of the engine's in its Space not shown yet (a new app's, read), nil: no more
     func yield(to number: Int?) // another app's window opened in its Space: let in front until it's gone (nil)
     func frontRead(_ read: HostEngine.FrontRead) // the poll's read at rest of it and the hosted window: in front, kept so
@@ -175,6 +177,7 @@ extension HostedWindow {
     func setLoading(_ label: String?) { setLoading(label, app: nil) }
     func followsPage(_ on: Bool) {}
     func setPageMinimum(_ width: CGFloat?) {}
+    func setElsewhere(_ label: String?, app: String?) {}
 }
 
 // The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
@@ -444,14 +447,18 @@ final class HostedSession: LibraryDelegate {
     // safety check), its page drawing its own layout for hosting, its page area measured. Nil: it couldn't be.
     private func prepare(_ w: HostedWindow, for target: HostTarget) async -> (HostPlacement, UInt64)? {
         if let other = hostingWindow, other != w.id, let was = window(other) {
-            // (One Margin window hosts at a time: the one shown in the other parked first.)
+            // (One Margin window hosts at a time: the one shown in the other parked first. That window keeps its item as a
+            // card, faded, and takes it back once it's in front: `focused`.)
+            let item = shown[other]
             await engine.parkShown(why: "another Margin window hosts")
             shown[other] = nil
             hostingWindow = nil
             was.setHosted(nil)
             was.setShowing(nil)
             was.setHosting(false)
+            if let item { showElsewhere(item, in: was) }
         }
+        if elsewhere[w.id] != nil { elsewhere[w.id] = nil; w.setElsewhere(nil, app: nil) }
         if !w.isFullScreen {
             note("Margin's window \(w.id) not in full screen (it always is while hosting is on: \(w.fullScreenState)): asked")
             w.toFullScreen()
@@ -628,6 +635,49 @@ final class HostedSession: LibraryDelegate {
     private(set) var resuming: Int? // the Margin window whose last item is being shown at launch (it keeps hosting meanwhile)
     private var resumed = false
 
+    // ---- an item in another Margin window (Tirth, 2026-11-18) ----
+
+    // One Margin window hosts at a time. Another one's item stays on it as a card, faded ("Click to show … here", the
+    // page's words); the window brought in front (`focused`, a click on it) takes the item back: the app's one window
+    // follows the window in use. Each window's item, by window.
+    private(set) var elsewhere: [Int: String] = [:]
+    private func showElsewhere(_ item: String, in w: HostedWindow) {
+        guard let value = library.items().first(where: { $0.id == item })?.value else { return }
+        elsewhere[w.id] = item
+        let target = library.target(ofItem: item)
+        let name: String
+        let app: String
+        switch target {
+        case .app(let bundle, let n)?: name = appName(bundle) ?? n; app = bundle
+        default: name = (value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? (value["url"] as? String) ?? "the page"; app = safariIdentifier
+        }
+        w.setElsewhere(String(name.prefix(120)), app: app)
+        note("Margin's window \(w.id): its item \(item) shown in another window now: its card, until it's in front again")
+    }
+    // A Margin window brought in front: its item from another window shown here again.
+    func focused(_ windowId: Int) {
+        guard let item = elsewhere[windowId], hostingWindow != windowId, let w = window(windowId) else { return }
+        guard library.items().contains(where: { $0.id == item }) else {
+            elsewhere[windowId] = nil
+            return w.setElsewhere(nil, app: nil)
+        }
+        requested[windowId] = item
+        onChange?()
+        let target = library.target(ofItem: item)
+        enqueue {
+            guard self.requested[windowId] == item, self.hostingWindow != windowId else { return }
+            await self.show(item, url: nil, target: target, windowId: windowId)
+            if self.requested[windowId] == item { self.requested[windowId] = nil }
+        }
+    }
+    // A window gone, or its item closed: its card goes.
+    func forgetElsewhere(windowId: Int? = nil, item: String? = nil) {
+        for (w, i) in elsewhere where w == windowId || i == item {
+            elsewhere[w] = nil
+            window(w)?.setElsewhere(nil, app: nil)
+        }
+    }
+
     // ---- the start (Tirth, 2026-11-18): the default browser first, behind "Getting you started" ----
 
     // The person's default browser always starts with Margin, its window made ready out of sight, before the item a
@@ -744,6 +794,7 @@ final class HostedSession: LibraryDelegate {
     // ---- closing ----
 
     func close(_ item: String, target: ItemTarget?) async {
+        forgetElsewhere(item: item)
         let target = target ?? library.target(ofItem: item)
         let had = open.removeValue(forKey: item)
         safariTabs[item] = nil

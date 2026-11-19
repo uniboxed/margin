@@ -191,6 +191,8 @@ extension Shell {
     // Margin's windows joined to the session: which window is which, their page areas, the first run's editor.
     func joinHosted(_ windows: MarginWindows) {
         guard let session = hosted else { return }
+        // (A Margin window brought in front takes back its item from another one; one closed forgets its card.)
+        windows.onKey = { [weak session] id in session?.focused(id) }
         session.window = { [weak windows] id in
             guard let windows else { return nil }
             if let id { return windows.controllers.first { $0.id == id } }

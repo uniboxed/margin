@@ -66,7 +66,7 @@ export type UiState = {
    * Margin.app's own window: an item is being opened in the page area (its name, as the app says it): the page card's
    * loader; `bundleId`: the app whose icon it shows (the app's own, the browser's for a web item), from the state's `apps`.
    * */
-  pageOpening?: { name: string, bundleId?: string | null, starting?: boolean } | null,
+  pageOpening?: { name: string, bundleId?: string | null, starting?: boolean, elsewhere?: boolean } | null,
   /** Margin.app's own window hosting another app's window beside it: no page area here (ui/host-app.ts pageOutside). */
   pageOutside?: boolean,
   /** The host keeps the sidebar docked (Margin.app's window hosting: a tile beside it, or an app's window in its page area). */
@@ -296,7 +296,9 @@ function fresh(input: ViewModelInput): ViewModel {
   const loadingApp = ui.pageOpening && isBundleId(ui.pageOpening.bundleId) ? ui.pageOpening.bundleId : null;
   const loadingIcon = loadingApp ? appIcon((state as { apps?: InstalledApp[] | null } | null)?.apps, loadingApp) : null;
   // (Margin's start, its default browser first: its own words, never "Opening Getting you started…".)
-  const loadingLabel = ui.pageOpening?.starting === true ? 'Getting you started…' : loadingName ? `Opening ${loadingName}…` : 'Opening…';
+  // (Its item in another Margin window: its card, faded; brought in front, this window takes it back.)
+  const loadingLabel = ui.pageOpening?.elsewhere === true ? `Click to show ${loadingName || 'it'} here.`
+    : ui.pageOpening?.starting === true ? 'Getting you started…' : loadingName ? `Opening ${loadingName}…` : 'Opening…';
   const pageLoader = ui.pageOpening ? { name: loadingName, label: loadingLabel, icon: checkIconUrl(loadingIcon) ? loadingIcon : null } : null;
   if (!state) {
     return {

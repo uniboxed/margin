@@ -257,11 +257,13 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   const minOf = (v: unknown) => (appWindow && typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.ceil(v) : 0);
   let pageMinWidth = minOf(hello?.pageMinWidth);
   // The page card's state (Margin's own window only), and the name of what's opening while it's `loading`.
-  const pageStateOf = (v: unknown) => (v === 'shown' || v === 'loading' ? v : 'empty');
+  const pageStateOf = (v: unknown) => (v === 'shown' || v === 'loading' || v === 'elsewhere' ? v : 'empty');
+  // (Its item's name and app said while it opens, and while it's in another Margin window: its card.)
+  const named = (s: string) => s === 'loading' || s === 'elsewhere';
   const nameOf = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 120) : null);
-  let pageState: 'empty' | 'loading' | 'shown' = pageStateOf(hello?.pageState);
-  let pageOpening: string | null = pageState === 'loading' ? nameOf(hello?.pageOpening) : null;
-  let pageOpeningBundleId: string | null = pageState === 'loading' && isBundleId(hello?.pageOpeningBundleId) ? hello.pageOpeningBundleId : null;
+  let pageState: 'empty' | 'loading' | 'shown' | 'elsewhere' = pageStateOf(hello?.pageState);
+  let pageOpening: string | null = named(pageState) ? nameOf(hello?.pageOpening) : null;
+  let pageOpeningBundleId: string | null = named(pageState) && isBundleId(hello?.pageOpeningBundleId) ? hello.pageOpeningBundleId : null;
   // Margin's start (its default browser starting first): the loader's own words, "Getting you started…".
   let pageStarting = pageState === 'loading' && hello?.pageStarting === true;
   // Installed apps, as the app read them (null: none read yet).
@@ -480,8 +482,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
         case 'pageState': {
           if (!appWindow) return;
           const next = pageStateOf(msg.state);
-          const name = next === 'loading' ? nameOf(msg.label) : null;
-          const bundleId = next === 'loading' && isBundleId(msg.bundleId) ? msg.bundleId : null;
+          const name = named(next) ? nameOf(msg.label) : null;
+          const bundleId = named(next) && isBundleId(msg.bundleId) ? msg.bundleId : null;
           const starting = next === 'loading' && msg.starting === true;
           if (next === pageState && name === pageOpening && bundleId === pageOpeningBundleId && starting === pageStarting) return;
           pageState = next;
