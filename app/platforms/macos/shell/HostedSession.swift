@@ -163,7 +163,9 @@ protocol HostedWindow: AnyObject {
     // (its page's resize behaviour, ui/behaviors/resize.ts), as Split View's divider stops at a window's minimum.
     func setPageMinimum(_ width: CGFloat?)
     // Not hosting, its item hosted in another Margin window or parked: the card ("Click to show … here", faded), nil: none.
-    func setElsewhere(_ label: String?, app: String?)
+    // `picture`: a web item's page as Safari last showed it (a data URL, the copy's `hostPicture`), drawn faded under
+    // the card's words; nil: the card alone. In memory only, never logged.
+    func setElsewhere(_ label: String?, app: String?, picture: String?)
     func cover(_ number: Int?) // a window of the engine's in its Space not shown yet (a new app's, read), nil: no more
     func yield(to number: Int?) // another app's window opened in its Space: let in front until it's gone (nil)
     func frontRead(_ read: HostEngine.FrontRead) // the poll's read at rest of it and the hosted window: in front, kept so
@@ -177,7 +179,8 @@ extension HostedWindow {
     func setLoading(_ label: String?) { setLoading(label, app: nil) }
     func followsPage(_ on: Bool) {}
     func setPageMinimum(_ width: CGFloat?) {}
-    func setElsewhere(_ label: String?, app: String?) {}
+    func setElsewhere(_ label: String?, app: String?, picture: String?) {}
+    func setElsewhere(_ label: String?, app: String?) { setElsewhere(label, app: app, picture: nil) }
 }
 
 // The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
@@ -233,6 +236,7 @@ final class HostedSession: LibraryDelegate {
         var refitRetryAfter = 1.5 // a placing again that left the window out of full screen: shown again once, this long after
         var resumesLast = true // (Tirth, 2026-11-17) at launch, the item the window showed last is shown again, behind the loader
         var startupWait = 15.0 // (Tirth, 2026-11-18) at launch, how long the default browser's start holds the item shown last
+        var pictureWait = 0.4 // a web item's picture for its card in the other window, asked before its window leaves: no longer
         var wokenGrace = 5.0 // a window opened to wake a profile, still open this long after its copy linked with no request under way: closed
     }
 
@@ -450,13 +454,16 @@ final class HostedSession: LibraryDelegate {
             // (One Margin window hosts at a time: the one shown in the other parked first. That window keeps its item as a
             // card, faded, and takes it back once it's in front: `focused`.)
             let item = shown[other]
+            // (A web item's page pictured first, while its window still shows it: its card there is that, faded.)
+            var picture: String?
+            if let item { picture = await pagePicture(of: item) }
             await engine.parkShown(why: "another Margin window hosts")
             shown[other] = nil
             hostingWindow = nil
             was.setHosted(nil)
             was.setShowing(nil)
             was.setHosting(false)
-            if let item { showElsewhere(item, in: was) }
+            if let item { showElsewhere(item, in: was, picture: picture) }
         }
         if elsewhere[w.id] != nil { elsewhere[w.id] = nil; w.setElsewhere(nil, app: nil) }
         if !w.isFullScreen {
@@ -641,7 +648,7 @@ final class HostedSession: LibraryDelegate {
     // page's words); the window brought in front (`focused`, a click on it) takes the item back: the app's one window
     // follows the window in use. Each window's item, by window.
     private(set) var elsewhere: [Int: String] = [:]
-    private func showElsewhere(_ item: String, in w: HostedWindow) {
+    private func showElsewhere(_ item: String, in w: HostedWindow, picture: String? = nil) {
         guard let value = library.items().first(where: { $0.id == item })?.value else { return }
         elsewhere[w.id] = item
         let target = library.target(ofItem: item)
@@ -651,8 +658,28 @@ final class HostedSession: LibraryDelegate {
         case .app(let bundle, let n)?: name = appName(bundle) ?? n; app = bundle
         default: name = (value["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? (value["url"] as? String) ?? "the page"; app = safariIdentifier
         }
-        w.setElsewhere(String(name.prefix(120)), app: app)
-        note("Margin's window \(w.id): its item \(item) shown in another window now: its card, until it's in front again")
+        w.setElsewhere(String(name.prefix(120)), app: app, picture: picture)
+        note("Margin's window \(w.id): its item \(item) shown in another window now: its card\(picture != nil ? " with its page's picture" : ""), until it's in front again")
+    }
+    // A web item's page as its Safari window shows it now (the copy's `hostPicture`), or nil: not a web item, its copy
+    // not linked, no picture, or none within `pictureWait` (the move doesn't wait longer: the card alone then).
+    private func pagePicture(of item: String) async -> String? {
+        guard options.pictureWait > 0, let open = open[item], let p = open.profile, open.host == HostTarget.safariWindow(p).id,
+              let windowId = safariWindows[p] else { return nil }
+        let first = FirstOf<String?>()
+        let links = links
+        return await withCheckedContinuation { (k: CheckedContinuation<String?, Never>) in
+            first.then = { k.resume(returning: $0) }
+            Task { @MainActor in
+                let (result, _) = await links.request(profile: p, "hostPicture", ["windowId": windowId, "itemId": item])
+                let data = result?["data"] as? String
+                first.give(data.flatMap { $0.hasPrefix("data:image/jpeg;base64,") || $0.hasPrefix("data:image/png;base64,") ? $0 : nil })
+            }
+            Task { @MainActor [wait = options.pictureWait] in
+                try? await Task.sleep(for: .seconds(wait))
+                first.give(nil)
+            }
+        }
     }
     // A Margin window brought in front: its item from another window shown here again.
     func focused(_ windowId: Int) {
@@ -1381,5 +1408,17 @@ final class LibraryWindowSource: MarginWindowSource {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: "-_.!~*'()")
         return template.replacingOccurrences(of: "%s", with: query.addingPercentEncoding(withAllowedCharacters: allowed) ?? query)
+    }
+}
+
+// The first of several answers, given once (a request raced against its time limit).
+@MainActor final class FirstOf<T> {
+    var then: ((T) -> Void)?
+    private var given = false
+    func give(_ value: T) {
+        guard !given, let then else { return }
+        given = true
+        self.then = nil
+        then(value)
     }
 }

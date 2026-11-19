@@ -318,6 +318,36 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   // `m-starting`: from the root's first frame until a frame after the state's data was first drawn (a theme's
   // skeleton); never set when the data is there at the first draw.
   let defaultLoader: HTMLElement | null = null;
+  // `elsewhere` with a web item's picture (host.pagePicture): `<m-page-picture>` over the page's place, above any
+  // loader: the page as Safari last showed it, faded, and the card's words (BASE_CSS; a theme may restyle it). Made
+  // when needed, removed (its image with it) once the state or the picture goes. `m-page-picture` on the root meanwhile.
+  let picture: HTMLElement | null = null;
+  function followPicture(root: HTMLElement, state: string) {
+    const data = state === 'elsewhere' ? host.pagePicture ?? null : null;
+    if (!data) {
+      if (picture) { picture.remove(); picture = null; }
+      if (root.hasAttribute('m-page-picture')) root.removeAttribute('m-page-picture');
+      return;
+    }
+    if (!picture) {
+      picture = doc.createElement('m-page-picture');
+      picture.setAttribute('role', 'status');
+      const img = doc.createElement('img');
+      img.setAttribute('alt', '');
+      img.setAttribute('aria-hidden', 'true');
+      img.setAttribute('decoding', 'async');
+      const label = doc.createElement('span');
+      label.setAttribute('m-picture-label', '');
+      picture.append(img, label);
+    }
+    const img = picture.firstChild as HTMLImageElement;
+    if (img.getAttribute('src') !== data) img.setAttribute('src', data);
+    const label = picture.lastChild as HTMLElement;
+    const text = vm?.pageLoader?.label ?? '';
+    if (label.textContent !== text) label.textContent = text;
+    if (!root.hasAttribute('m-page-picture')) root.setAttribute('m-page-picture', '');
+    if (picture.parentNode !== root) root.appendChild(picture);
+  }
   let started = false;
   let startingOn = false;
   function followPage() {
@@ -339,8 +369,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const state = host.pageState;
     if (!state) return;
     if (root.getAttribute('m-page-state') !== state) root.setAttribute('m-page-state', state);
+    followPicture(root, state);
     const own = view.parts.has('page-loader') && !!root.querySelector('m-page-loader:not([m-default])');
-    if (own) { defaultLoader?.remove(); defaultLoader = null; return; }
+    if (own) { defaultLoader?.remove(); defaultLoader = null; placeLoader(); return; }
     if (!defaultLoader) {
       if (state !== 'loading' && state !== 'elsewhere') return; // (made the first time it's needed)
       defaultLoader = doc.createElement('m-page-loader');
@@ -372,10 +403,12 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   }
   // Margin's default loader over the page's place: `<m-page>`'s content box and its corners, as the view measures them.
   function placeLoader() {
-    if (!defaultLoader?.isConnected) return;
-    const g = view.measure();
-    if (!g) return;
-    const s = defaultLoader.style;
+    const els = [defaultLoader, picture].filter((el): el is HTMLElement => !!el?.isConnected);
+    const g = els.length ? view.measure() : null;
+    if (g) for (const el of els) place(el, g);
+  }
+  function place(el: HTMLElement, g: NonNullable<ReturnType<typeof view.measure>>) {
+    const s = el.style;
     const set = (name: string, value: string) => { if (s.getPropertyValue(name) !== value) s.setProperty(name, value); };
     set('left', `${g.insets.left}px`);
     set('top', `${g.insets.top}px`);

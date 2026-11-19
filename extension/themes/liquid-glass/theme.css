@@ -292,6 +292,8 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
 /* Its item in another Margin window (m-page-state="elsewhere"): the card, faded and still. */
 .lg[m-page-state="elsewhere"] .page-loader { opacity: .55; visibility: visible; pointer-events: none; transition: none; }
 .lg[m-page-state="elsewhere"] .opening-spin { animation: none; opacity: 0; }
+/* A web item's picture over it (m-page-picture, Margin's): the page faded, the words on a plain chip (no glass). */
+.lg > m-page-picture > [m-picture-label] { background: light-dark(#fff, #2c2c30); color: var(--label); }
 /* The capsule, plain: a translucent fill, a hairline, a soft shadow (the slot's own box while starting: it has no part then). */
 .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before {
   content: "";

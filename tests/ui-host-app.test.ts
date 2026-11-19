@@ -187,6 +187,38 @@ test("the app host in Margin's own window: the page card's state from the app (h
   assert.equal(over.pageState, undefined, 'over a browser (the Windows shell): no page state');
 });
 
+test("the app host in Margin's own window: a web item's picture for its card (`pagePicture`), only a picture's data URL, only while `elsewhere`; none over a browser", () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });
+  let emits = 0;
+  host.onState(() => { emits++; });
+  const shot = 'data:image/jpeg;base64,QUJD';
+  host.receive({ type: 'pagePicture', data: shot });
+  assert.equal(host.pagePicture, null, 'not elsewhere yet: none drawn');
+  assert.equal(emits, 0, '… and nothing drawn again for it');
+  host.receive({ type: 'pageState', state: 'elsewhere', label: 'Example' });
+  assert.equal(host.pagePicture, shot, 'elsewhere: the picture the app sent');
+  host.receive({ type: 'pagePicture', data: shot });
+  const before = emits;
+  for (const odd of ['javascript:alert(1)', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:text/html;base64,PGI+', 'data:image/jpeg;base64,QU"onload=x', 42]) {
+    host.receive({ type: 'pagePicture', data: odd });
+    assert.equal(host.pagePicture, null, `not a JPEG or PNG data URL: none (${String(odd).slice(0, 30)})`);
+  }
+  host.receive({ type: 'pagePicture', data: 'data:image/png;base64,' + 'A'.repeat(9 * 1024 * 1024) });
+  assert.equal(host.pagePicture, null, 'too large: none');
+  host.receive({ type: 'pagePicture', data: shot });
+  assert.equal(host.pagePicture, shot);
+  assert.ok(emits > before);
+  host.receive({ type: 'pageState', state: 'shown' });
+  assert.equal(host.pagePicture, null, 'shown: none');
+  const again = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen', pageHosted: false, pageState: 'elsewhere', pageOpening: 'Example', pagePicture: shot }), post: b.post });
+  assert.equal(again.pagePicture, shot, 'a page loaded again while elsewhere: its hello has it');
+  const over = createAppHost({ hello: hello(), post: b.post });
+  over.receive({ type: 'pageState', state: 'elsewhere', label: 'Example' });
+  over.receive({ type: 'pagePicture', data: shot });
+  assert.equal(over.pagePicture ?? null, null, 'over a browser: none');
+});
+
 test("the app host in Margin's own window: the app's `loading` for its items draws each one's row and the bar of the one in front", () => {
   const b = bridge();
   const host = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen' }), post: b.post });

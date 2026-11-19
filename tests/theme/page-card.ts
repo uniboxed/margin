@@ -260,6 +260,27 @@ export async function pageLoaderChecks(t: TestContext, browser: Browser, o: Load
     const still = (await ev(() => T.rtAnimations())).filter((a) => a.loader && a.running && !a.name.startsWith('transition:'));
     assert.deepEqual(still.map((a) => a.name), [], `elsewhere: nothing of the loader's moving (${JSON.stringify(still)})`);
 
+    // ---- elsewhere, a web item: its page's picture over the card, faded into the theme's ground, Margin's words on it ----
+    const lay = (await ev(() => T.rtLayouts())).at(-1)!;
+    const pic = await ev(() => T.rtPagePicture(true));
+    assert.ok(pic.attr && pic.el, 'elsewhere with a picture: <m-page-picture> drawn, the root says m-page-picture');
+    const [pl, pt, pw, ph] = pic.el!.box;
+    assert.ok(Math.abs(pl - lay.left) <= 1 && Math.abs(pt - lay.top) <= 1 && Math.abs(pw - (lay.width - lay.left - lay.right)) <= 1 && Math.abs(ph - (lay.height - lay.top - lay.bottom)) <= 1,
+      `elsewhere: the picture exactly over the page's place (${JSON.stringify([pic.el!.box, lay])})`);
+    assert.equal(pic.el!.pointer, 'none', 'elsewhere: the picture lets the pointer through (a click is the window\'s)');
+    assert.ok(pic.el!.img?.src && pic.el!.img.complete && pic.el!.img.opacity > 0.2 && pic.el!.img.opacity < 0.8, `elsewhere: the page's picture, faded (${JSON.stringify(pic.el!.img)})`);
+    assert.ok(pic.el!.label?.visible && pic.el!.label.text.trim() === 'Click to show Notes here.', `elsewhere: Margin's words on the picture (${JSON.stringify(pic.el!.label)})`);
+    assert.equal(pic.el!.moving, 0, 'elsewhere: nothing of the picture moving');
+    await page.waitForTimeout(60);
+    at = await shot();
+    // (Away from the words: the picture, red, faded toward the theme's ground: red stronger than green and blue, and opaque.)
+    const lb = pic.el!.label!.box;
+    const off = inside.filter(([x, y]) => !(x >= lb[0] - 8 && x <= lb[0] + lb[2] + 8 && y >= lb[1] - 8 && y <= lb[1] + lb[3] + 8));
+    const faded = off.map((p) => px(at, p)).filter(([r, g, b, a]) => !(a >= 250 && r > g + 25 && r > b + 25));
+    assert.deepEqual(faded.slice(0, 3), [], `elsewhere: the page's picture seen in the page's place, faded, over the theme's own card (${faded.length} of ${off.length} points not)`);
+    const unpictured = await ev(() => T.rtPagePicture(false));
+    assert.deepEqual([unpictured.attr, unpictured.el], [false, null], 'elsewhere: the picture gone with it, nothing of it left');
+
     // ---- empty: the launcher; the loader gone, nothing of it running ----
     const empty = await ev(() => T.rtPageState('empty'));
     assert.deepEqual([empty.attr, empty.loader], ['empty', { own: true, text: '' }]);

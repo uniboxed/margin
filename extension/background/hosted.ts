@@ -7,6 +7,10 @@
 //   else the window's lone new-tab page (Safari's first tab of a window Margin made) is sent there; else a new tab.
 //   It comes to the front. Answers `{ tabId, created }` (`created`: a tab made or navigated for it).
 // - `hostClose { itemId }`: the item's tab closed (closed from Margin's sidebar). Answers `{ closed }`.
+// - `hostPicture { windowId, itemId }`: a picture of the item's page, as that window shows it, for its card in another
+//   Margin window (the app's `elsewhere`), asked just before the window leaves. Only while the item's tab is the one in
+//   front there (else it'd be of something else). JPEG, at most PICTURE.width px wide. Answers `{ data }` (a data
+//   URL, or null). Never kept here, never logged, never stored: the app keeps it in memory while the card shows.
 //
 // The tags (item → tab) are this copy's memory only: a copy restarted finds an item's tab again by its address.
 // Nothing here touches the copy's own spaces: its usual tab tracking goes on as for any tab.
@@ -20,7 +24,13 @@ export type HostedTabsApi = {
   create(props: { windowId: number, url: string, active: boolean }): Promise<Tab>,
   update(id: number, props: { url?: string, active?: boolean }): Promise<Tab>,
   remove(id: number): Promise<void>,
+  captureVisibleTab?(windowId: number, options: { format: 'jpeg', quality: number }): Promise<string>,
 };
+/** A picture made smaller (background/picture.ts; a test's stand-in), or as it was when it can't be. */
+export type Shrink = (data: string, width: number, quality: number) => Promise<string>;
+
+export const PICTURE = { width: 1600, quality: 60 } as const;
+const PICTURE_URL = /^data:image\/(jpeg|png);base64,/;
 
 const ITEM = /^[A-Za-z0-9_.:-]{1,256}$/;
 // The addresses an item can show: web pages, and a blank page (a new web item with nothing typed yet).
@@ -28,7 +38,7 @@ const SHOWN = /^(https?:\/\/|about:blank$)/i;
 
 const plain = (url: unknown) => String(url ?? '').replace(/#.*$/, '').replace(/\/$/, '');
 
-export function createHostedTabs(tabs: () => HostedTabsApi) {
+export function createHostedTabs(tabs: () => HostedTabsApi, shrink: Shrink = async (d) => d) {
   const byItem = new Map<string, number>();
   const tagged = (tabId: number) => [...byItem.values()].includes(tabId);
   // The item's tagged tab, if it's still open in `windowId` (any window when null).
@@ -67,6 +77,18 @@ export function createHostedTabs(tabs: () => HostedTabsApi) {
       byItem.set(itemId, tab.id);
       if (!created) await tabs().update(tab.id, { active: true }); // (one made or sent there is in front already)
       return { tabId: tab.id, created };
+    },
+    async picture({ windowId, itemId }: { windowId?: unknown, itemId?: unknown }) {
+      if (!Number.isInteger(windowId)) throw new Error('no window');
+      if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');
+      const capture = tabs().captureVisibleTab;
+      if (!capture) return { data: null };
+      const tab = await own(itemId, windowId as number);
+      if (!tab?.active) return { data: null };
+      const shot = await capture.call(tabs(), windowId as number, { format: 'jpeg', quality: PICTURE.quality }).catch(() => null);
+      if (typeof shot !== 'string' || !PICTURE_URL.test(shot)) return { data: null };
+      const small = await shrink(shot, PICTURE.width, PICTURE.quality / 100).catch(() => shot);
+      return { data: typeof small === 'string' && PICTURE_URL.test(small) ? small : shot };
     },
     async close({ itemId }: { itemId?: unknown }) {
       if (typeof itemId !== 'string' || !ITEM.test(itemId)) throw new Error('no item');
