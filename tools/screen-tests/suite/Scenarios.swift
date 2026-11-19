@@ -291,6 +291,24 @@ func realLoopScenario(_ first: RealApp, _ second: RealApp) -> Scenario {
   ], estimate: 160)
 }
 let maps = RealApp(name: "Maps", bundle: "com.apple.Maps", framedOnly: false)
+// The soak (docs/ARCHITECTURE-PLAN.md "Testing"): the person's own apps hosted together, then switched through three
+// times, each left alone a moment and watched for a loop, with sidebar drags between rounds; every check the read-only
+// steps' own (Margin's dev hook only: nothing clicked or typed into the apps). Safari never: the suite doesn't launch it.
+func realSoakScenario(_ apps: [RealApp]) -> Scenario {
+  let list = apps.filter { $0.bundle != "com.apple.Safari" }
+  var steps: [Step] = [.openMargin, .sidebarWidth(260)]
+  for a in list { steps += [.host(.app(a.bundle)), .expect(.desired(Desired(target: .app(a.bundle), framed: a.framedOnly)))] }
+  for round in 0..<3 {
+    for a in list { steps += [.show(.app(a.bundle), maxMs: nil), .expect(.desired(Desired(target: .app(a.bundle), framed: a.framedOnly))), .settled(.app(a.bundle), seconds: 3)] }
+    if let last = list.last, !last.framedOnly {
+      let others = list.dropLast().filter { !$0.framedOnly }.map { Target.app($0.bundle) }
+      steps.append(.liveDragApp(.app(last.bundle), dx: round % 2 == 0 ? 80 : -80, steps: 40, parked: others))
+    }
+  }
+  steps += [.listedOnly("after the soak"), .memory("after the soak"), .quitMargin, .expect(.givenBack(list.map(\.bundle)))]
+  return Scenario(name: "real-apps-soak", title: "the person's own apps hosted together, switched through three times, watched for loops, dragged between rounds: through Margin's dev hook only",
+                  copies: [], steps: steps, estimate: 40 + Double(list.count) * 15 + 3 * Double(list.count) * 7 + 3 * 6 + 30)
+}
 
 // What Margin costs when nothing happens (the plan's budget: under 0.5% CPU idle, under ~150 MB): with nothing hosted,
 // then three copies hosted and left alone.
@@ -334,5 +352,9 @@ func parts(realApps withReal: Bool) -> [Part] {
   if withReal { out.append(Part(name: "real-apps", scenarios: [realAppsScenario(installedRealApps())], realApps: true)) }
   if withReal, isInstalled(weather.bundle) { out.append(Part(name: "real-apps-min", scenarios: [realMinScenario(weather)], realApps: true, apps: [weather])) }
   if withReal, isInstalled(weather.bundle), isInstalled(maps.bundle) { out.append(Part(name: "real-apps-loop", scenarios: [realLoopScenario(weather, maps)], realApps: true, apps: [weather, maps])) }
+  if withReal {
+    let soak = installedRealApps().filter { $0.bundle != "com.apple.Safari" } + (isInstalled(weather.bundle) ? [weather] : [])
+    out.append(Part(name: "real-apps-soak", scenarios: [realSoakScenario(soak)], realApps: true, apps: soak))
+  }
   return out
 }

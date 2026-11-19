@@ -222,8 +222,14 @@ extension Runner {
     let relaid = all.filter { $0.contains("laid out as a split's part by a tile change (") }
     let moved = all.filter { $0.contains("moved from tiles to members") || $0.contains("moved from members to window mode") || $0.contains("live resize off for this run") }
     let wins = windowsOf(a.processIdentifier).filter { $0.layer == 0 && $0.r.width >= 200 }
-    let at = wins.first { w in let r = w.r; return abs(r.maxX - p.maxX) <= 2 && abs(r.minY - p.minY) <= 2 && r.width >= p.width - 2 && spacesOf(w.n) == [marginSpace] }
-    step("settled (\(t.text)): left alone \(Int(seconds)) s, Margin's Space's tiles laid out again by a change Margin didn't make \(relaid.count) time\(relaid.count == 1 ? "" : "s") (at most 3), \(t.text) at the page area in Margin's Space",
+    // (At the page area, or a fixed-size window inside it: Phone and Calculator, window mode, centred; `desired` holds the
+    // ones that fill the page to filling it.)
+    let at = wins.first { w in
+      let r = w.r
+      let fills = abs(r.maxX - p.maxX) <= 2 && abs(r.minY - p.minY) <= 2 && r.width >= p.width - 2
+      return (fills || p.insetBy(dx: -2, dy: -2).contains(r)) && spacesOf(w.n) == [marginSpace]
+    }
+    step("settled (\(t.text)): left alone \(Int(seconds)) s, Margin's Space's tiles laid out again by a change Margin didn't make \(relaid.count) time\(relaid.count == 1 ? "" : "s") (at most 3), \(t.text) at the page area (a fixed size: inside it) in Margin's Space",
          relaid.count <= 3 && at != nil,
          "page area \(rect(p)); its windows \(wins.map { "#\($0.n) \(rect($0.r)) \(spacesOf($0.n))" }); re-layouts: \(relaid.map { String($0.suffix(110)) }.prefix(4)); the guard: \(moved.isEmpty ? "nothing moved" : moved.map { String($0.suffix(160)) }.joined(separator: " | "))")
   }
