@@ -1749,6 +1749,21 @@ final class HostEngine {
                         serverAllowed = true
                     }
                 }
+                // (An app Margin started with exactly one window already in a full-screen Space of its own (it reopened so,
+                // or put it there itself as it launched): that one, at once. It's already as Margin wants it; Accessibility
+                // can't see it there (not the current Space), and its main window can swap between windows mid-launch:
+                // restore-code, 2026-11-19, hosted the other one, which macOS then wouldn't take into full screen beside it;
+                // Maps, Messages, WhatsApp: 0.4-0.6 s from the window server's listing to the choice.)
+                if serverHas, !personal, isApp, usable.isEmpty, let owners = self.sys.fullScreenSpaceOwners() {
+                    let inOwn = HostWindowChoice.candidates(self.serverList(pid: app.pid) ?? [], pid: app.pid, excluded: { self.isHosted(window: $0) }).filter { w in
+                        (self.sys.spaces(window: w.number) ?? []).contains { $0 != self.marginSpace && owners[$0] == app.pid }
+                    }
+                    if inOwn.count == 1 {
+                        number = inOwn[0].number
+                        rule = .fullScreen
+                        return true
+                    }
+                }
                 if serverHas, let chosen = await self.chooseWindow(pid: app.pid, listed: listed, serverAllowed: serverAllowed) {
                     number = chosen.number
                     rule = chosen.rule

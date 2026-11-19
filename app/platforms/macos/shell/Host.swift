@@ -258,6 +258,7 @@ nonisolated enum HostWindowChoice {
         case inSpace = "the one in a Space (the others in none: never ordered in)"
         case front = "the window server's front one (nothing else told them apart)"
         case only = "its only window by the window server"
+        case fullScreen = "its one window already in a full-screen Space of its own"
 
         init?(core: String) {
             switch core {
