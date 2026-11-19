@@ -132,4 +132,12 @@ would need it written again.
   the loop guard wired into the reconciler, the re-layouts and the strays; routes.json per app version. Installed.
   Real screen: no regression in live-resize (30/31, the miss a known first-switch quirk), no loop with Weather. See
   DECISIONS.md "The hosting core in Rust, the loop guard".
-- Next: the layout's first two tiles Margin's own (research), the event-driven scheduler, then the operations.
+- 2026-11-18: the anchors (two empty tiles of Margin's own at its Space's front: a tile change lays only them out
+  again) and the event-driven scheduler (three hosted at rest 4.02% → 0.42% of a CPU). The start: the default browser
+  first behind "Getting you started", then the item shown last. The note when an app moves to a simpler way.
+  Installed. Full screen suite: behaviours 122/122, live-resize 31/31, crash 10/10, min 27/27.
+- Decided while he was away (to confirm): one Safari window per profile, not per space (spaces sharing a profile share
+  it: fewer windows, less memory, tab switches inside it as chosen). Each OS's step-by-step operations (full screen,
+  tiles, parking) stay in its adapter: the core decides what, the adapter how.
+- Next: an app in two Margin windows (the faded card), the engine's state into the core with a Windows adapter
+  contract, the soak part on real apps, the tiles-vs-members numbers.
