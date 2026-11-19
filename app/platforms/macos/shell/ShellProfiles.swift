@@ -27,6 +27,8 @@ extension Shell {
             case .noAccess, .noSafari, .failed: _ = profiles.dropBrowserNames()
             case .busy: break
             }
+            // (Safari's own names read, or gone: a profile Margin couldn't open by name may open now.)
+            self.hosted?.profileNamesChanged()
             self.profilesSoon()
         }
         // Each read (changed or not): the linked copies checked against it.
@@ -49,6 +51,12 @@ extension Shell {
             return Set(self.profilesOf("safari").profiles).union(self.linkedProfiles("safari"))
         }
         safariNames = watcher
+        // (The person's one-time pick of Safari's folder, kept: its scope started before the first read. A pick made now
+        // is read at once, not at the next retry.)
+        SafariFolderGrant.restore()
+        NotificationCenter.default.addObserver(forName: SafariFolderGrant.granted, object: nil, queue: .main) { [weak watcher] _ in
+            MainActor.assumeIsolated { watcher?.readNow() }
+        }
         watcher.start()
     }
 
@@ -133,12 +141,13 @@ extension Shell {
 
     // A profile with no window (its copy not running): Safari's own menu opens one, through Accessibility. Its
     // copy starts with it and links (the host waits for it: HostedSession.requestSafariWindow).
-    func openProfileWindow(_ profile: String) -> Bool {
+    func openProfileWindow(_ profile: String, pressed done: @escaping @MainActor (Bool) -> Void = { _ in }) -> Bool {
         guard options.safariAX, SafariAX.trusted, profile.hasPrefix("safari:"),
               let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Safari").first?.processIdentifier,
               case let name = profilesOf("safari").browserNames[String(profile.dropFirst("safari:".count))]?.name ?? profileName(profile), !name.isEmpty else { return false }
         safariAX.newWindow(pid: pid, profileName: name) { pressed in
             Diagnostics.note(pressed ? "asked Safari for a new window of \(profile) (File › New Window)" : "Safari's File › New Window has no item for \(profile)")
+            done(pressed)
         }
         return true
     }

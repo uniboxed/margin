@@ -136,6 +136,7 @@ final class Library {
     }
 
     func target(ofItem id: String) -> ItemTarget? { ItemTarget(json: (dataSet.liveValues("tabs")[id] as? JSONObject)?["target"]) }
+    func space(ofItem id: String) -> String? { (dataSet.liveValues("tabs")[id] as? JSONObject)?["spaceId"] as? String }
 
     // The space a Margin window shows (nil: none chosen yet).
     func space(ofWindow windowId: Int) -> String? { (dataSet.liveValues("windows")[String(windowId)] as? JSONObject)?["spaceId"] as? String }

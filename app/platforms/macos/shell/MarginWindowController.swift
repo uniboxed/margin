@@ -1266,6 +1266,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             toggleFullScreen()
             return ["ok": true, "result": true]
         }
+        // A note's Allow (shared/notices.ts `safari-profile`): Safari's folder picked once, its profiles' names read.
+        if type == "allowSafariProfiles" {
+            SafariFolderGrant.ask(over: nil)
+            return ["ok": true, "result": true]
+        }
         return ask(type, payload) ?? ["ok": true, "result": true]
     }
 

@@ -97,8 +97,12 @@ final class FakeHostedLinks: HostedLinks {
     var wakes: Set<String> = [] // profiles that link when woken
     var windowsOf: [String: [Int]] = [:]
     var onMenuOpen: ((String) -> Void)? // (the window Safari's menu opens, in the stand-in world)
-    func openProfileWindow(_ profile: String) -> Bool {
+    var notInMenu: Set<String> = [] // profiles Safari's menu has no item for (their names unknown to Margin)
+    func openProfileWindow(_ profile: String, pressed: @escaping @MainActor (Bool) -> Void) -> Bool {
         menuOpens.append(profile)
+        let has = !notInMenu.contains(profile)
+        DispatchQueue.main.async { MainActor.assumeIsolated { pressed(has) } }
+        guard has else { return true }
         onMenuOpen?(profile)
         if wakes.contains(profile) { profiles.append(profile); windowsOf[profile, default: []].append(77) }
         return true
@@ -491,6 +495,22 @@ func safariWakeTests(_ library: Library) {
         var ok2 = false
         hostRun { ok2 = await s2.safariLinked("s-late") }
         check("wake: a window from the second press: no third, linked", ok2 && links2.menuOpens.count == 2, "\(links2.menuOpens)")
+    }
+    do {
+        // Safari's menu has no item by the name Margin has for the profile (its own names unreadable, 2026-11-18 23:02: four
+        // presses and 15 s for nothing): said at once after the one press, never pressed again, not linked.
+        let (s, links, _, elapsed, _) = rig(windowsPerPress: 0)
+        links.notInMenu = ["s-nameless"]
+        var ok = true
+        hostRun { ok = await s.safariLinked("s-nameless") }
+        check("wake: a profile Safari's menu has no item for: one press, given up at once (not four presses and 15 s), kept as one it can't open",
+              !ok && links.menuOpens == ["s-nameless"] && elapsed() < 1 && s.unopenable.contains("s-nameless") && s.done.contains { $0.contains("has no item by the name") },
+              "\(ok) \(links.menuOpens) \(elapsed()) \(s.done.suffix(2))")
+        var again = true
+        hostRun { again = await s.safariLinked("s-nameless") }
+        check("wake: … asked again: not pressed again", !again && links.menuOpens == ["s-nameless"])
+        s.profileNamesChanged()
+        check("wake: … Safari's names read (the folder allowed): it may be opened again", !s.unopenable.contains("s-nameless"))
     }
     do {
         // What it was for no longer wanted (another item picked): no longer waited for, at once.

@@ -210,7 +210,9 @@ protocol HostedLinks: AnyObject {
     func request(profile: String, _ type: String, _ payload: JSONObject) async -> (result: JSONObject?, error: String?)
     // A profile with no window has no copy running: one of its windows opened from Safari's own File › New Window menu
     // (Accessibility), so its copy starts and links. False: it couldn't be asked.
-    func openProfileWindow(_ profile: String) -> Bool
+    // `pressed`: Safari's menu had the profile's item, and it was pressed (false: none by that name, Margin doesn't know
+    // the profile's name: Safari's profiles unreadable), told on the main thread once Accessibility answered.
+    func openProfileWindow(_ profile: String, pressed: @escaping @MainActor (Bool) -> Void) -> Bool
     // That profile's windows, as its copy lists them.
     func windowIds(of profile: String) -> [Int]
     // Its windows that were there before its copy started (Safari restored them at launch), once its copy has listed its
@@ -398,7 +400,7 @@ final class HostedSession: LibraryDelegate {
             open[item] = OpenItem(host: HostTarget.app(bundle).id, profile: nil)
         case .web(let browser, let profile):
             guard browser == "safari" else { return note("\(item): \(browser) isn't hosted yet") }
-            let p = resolve(profile)
+            let p = await profileFallback(resolve(profile), space: library.space(ofItem: item))
             let id = HostTarget.safariWindow(p).id
             labels[id] = "Safari"
             showing[id] = item
@@ -866,28 +868,39 @@ final class HostedSession: LibraryDelegate {
         let started = now()
         let browser = DefaultBrowser.resolve(setting)
         func skip(_ why: String) { note("browser not prepared: \(why)"); preparationOver() }
-        // 1. a Margin window in full screen, its page area measured.
+        guard browser.name == "safari" else { return skip("\(browser.name) isn't hosted yet") }
+        guard engine.preparesOutOfSight else { return skip("the early full screen isn't available, so it can't be made ready out of sight") }
+        // 1. the browser started at once, beside Margin's own window going full screen, not after it (the real Mac,
+        // 2026-11-18: Margin's window took 2.7 s; Safari then takes ~1.3 s to its first window and 2.5–3 s to its
+        // extension whatever Margin's window does: step 0's timings, docs/ARCHITECTURE-PLAN.md).
+        let starting = Task { await self.engine.start(bundleId: browser.bundleId) }
+        // 2. a Margin window in full screen, its page area measured.
         guard await wait(options.prepareWindowWait, { self.window(nil).map { $0.isFullScreen && $0.idlePlacement != nil } ?? false }), let w = window(nil) else {
             return skip("no Margin window in full screen with its page area within \(Int(options.prepareWindowWait)) s")
         }
         let space = library.space(ofWindow: w.id) ?? library.spaces().first?.id
         let spaceProfile = (library.spaces().first { $0.id == space }?.value["profile"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        // 2. the browser running, its copy linked (outside the session's and the engine's queues: the person's picks
-        // meanwhile aren't held up).
-        guard browser.name == "safari" else { return skip("\(browser.name) isn't hosted yet") }
-        guard engine.preparesOutOfSight else { return skip("the early full screen isn't available, so it can't be made ready out of sight") }
-        guard await engine.start(bundleId: browser.bundleId) != nil else { return skip("\(browser.bundleId) couldn't be started with no Dock icon") }
-        let p = resolve(spaceProfile)
+        // 3. its copy linked (outside the session's and the engine's queues: the person's picks meanwhile aren't held up).
+        guard await starting.value != nil else { return skip("\(browser.bundleId) couldn't be started with no Dock icon") }
+        var p = resolve(spaceProfile)
         // (A profile with no window is woken through Safari's menu only for a preparation that can still happen: nothing
         // shown, nothing on its way, nothing asked for. 2026-11-17 14:05: woken 0.9 s after Maps was shown, the
         // preparation then given up and the woken window left open over Maps.)
         let wanted = { self.engine.shown == nil && (self.startupWaiting || (self.resuming == nil && self.requested.isEmpty)) }
-        guard await safariLinked(p, wakeIf: wanted) else {
+        var linked = await safariLinked(p, wakeIf: wanted)
+        // (One Margin can't open, its name unknown: the default profile made ready instead, never the start held up for
+        // it; its page says so when it's shown, `profileFallback`. 2026-11-18 23:02: four presses, 15 s, nothing.)
+        if !linked, unopenable.contains(p), p != Self.defaultSafariProfile {
+            note("browser: the space's Safari profile can't be opened (its name unknown): the default profile made ready instead")
+            p = Self.defaultSafariProfile
+            linked = await safariLinked(p, wakeIf: wanted)
+        }
+        guard linked else {
             await closeWoken(p, why: " (its preparation given up)")
             return skip(wanted() ? "its extension didn't link" : "something is shown in Margin's window (its profile not woken for it)")
         }
         let target = HostTarget.safariWindow(p)
-        // 3. its window made ready out of sight, one at a time with the person's requests.
+        // 4. its window made ready out of sight, one at a time with the person's requests.
         enqueue {
             // (Given up below, a window opened to wake its profile is closed: it was only for this.)
             @MainActor func skip(_ why: String) async { await self.closeWoken(p, why: " (its preparation given up)"); self.note("browser not prepared: \(why)"); self.preparationOver() }
@@ -920,9 +933,10 @@ final class HostedSession: LibraryDelegate {
 
     // Decided by Tirth (2026-11-15): when Safari was started by Margin (no Dock icon), the windows Safari restored from its
     // last session are closed, so they don't come back next time (a restored full-screen one stood as its own Space in
-    // Mission Control). Only in a Safari Margin started; only windows that were there before their profile's copy
-    // started (Margin's own are made after); once per link; closed by their copy. A Safari the person opened is never
-    // touched. Called from the shell's poll.
+    // Mission Control). Only in a Safari Margin started; only the windows its profile's copy lists at the first look after
+    // it links (Safari restores before any copy starts), less Margin's own and the ones opened to wake it; once per link;
+    // closed by their copy. A window that comes later (a link opened from another app) is never touched, nor any of a
+    // Safari the person opened. Called from the shell's poll.
     func sweepRestoredSafariWindows() {
         // (A window opened to wake a profile, still open `wokenGrace` after its copy linked with nothing asked of it: what
         // it was for went another way. Closed, whoever started Safari.)
@@ -935,7 +949,7 @@ final class HostedSession: LibraryDelegate {
         for p in links.safariProfiles() where !requesting.contains(p) {
             guard let epoch = links.linkEpoch(of: p), swept[p] != epoch, let restored = links.restoredWindowIds(of: p) else { continue }
             swept[p] = epoch
-            let ours = Set(safariWindows.values).union(made_)
+            let ours = Set(safariWindows.values).union(made_).union(wokenByMenu[p] ?? [])
             let close = restored.filter { !ours.contains($0) }
             guard !close.isEmpty else { continue }
             note("Safari started by Margin: \(close.count) window(s) it restored from its last session closed")
@@ -971,6 +985,13 @@ final class HostedSession: LibraryDelegate {
         // or after `firstCopiesPace` with none.)
         if links.safariProfiles().isEmpty { note("a Safari profile not linked yet: Safari's own copies waited for first (a window it restores links by itself)") }
         while !links.safariProfiles().contains(p) {
+            // (Safari's menu has no item by the name Margin has for it: pressing again can't open it. Said at once, not after
+            // four presses and 15 s: the caller opens the default profile instead, `profileFallback`.)
+            if unopenable.contains(p) {
+                note("a Safari profile with no window: Safari's menu has no item by the name Margin has for it (Safari's profiles not readable: its own names unknown): not woken, \(secs(since: started)) s")
+                if wokenByMenu.isEmpty { engine.releaseWoken(bundleId: safariIdentifier) }
+                return false
+            }
             guard wanted() else {
                 note(presses == 0 ? "a Safari profile with no window: not woken (what it was for isn't wanted any more)"
                                   : "a Safari profile woken: its copy no longer waited for (what it was for isn't wanted any more), \(secs(since: started)) s")
@@ -995,7 +1016,7 @@ final class HostedSession: LibraryDelegate {
                 // (The window it opens is parked out of sight as soon as it's listed: it opens in the current Space, Margin's,
                 // and would show through the page area over what's shown.)
                 engine.hideWoken(bundleId: safariIdentifier)
-                if links.openProfileWindow(p) {
+                if links.openProfileWindow(p, pressed: { [weak self] ok in if !ok { self?.unopenable.insert(p) } }) {
                     note("a Safari profile with no window: one opened from Safari's menu so its copy links (press \(presses)\(presses > 1 ? ": no window came of the one before" : ""))")
                     if wokenByMenu[p] == nil { wokenByMenu[p] = [] }
                 } else {
@@ -1026,6 +1047,29 @@ final class HostedSession: LibraryDelegate {
     }
     private func secs(since t: Double) -> String { String(format: "%.1f", now() - t) }
     private(set) var wokenByMenu: [String: [Int]] = [:] // a profile woken through Safari's menu: the windows it had then
+    // Profiles Safari's menu has no item for by the names Margin has (Safari's profiles unreadable: its own names
+    // unknown): not pressed again; a page of theirs opens in the default profile (`profileFallback`). Forgotten when
+    // Safari's names are read (the person allowed Safari's folder, SafariFolderGrant).
+    private(set) var unopenable: Set<String> = []
+    func profileNamesChanged() { unopenable = [] }
+
+    // The profile a web item of `space` opens in: `p` when it's linked or can be woken; else the default one, said in the
+    // sidebar with the folder grant's Allow (Tirth, 2026-11-18: a quiet fallback and a small note, the start never held
+    // up by a profile Margin can't open).
+    private func profileFallback(_ p: String, space: String?) async -> String {
+        let fallback = Self.defaultSafariProfile
+        guard p != fallback, !links.safariProfiles().contains(p) else { return p }
+        if !unopenable.contains(p), await safariLinked(p) { return p }
+        guard unopenable.contains(p) else { return p } // (not woken for another reason: the show goes on and says it)
+        note("a Safari profile Margin can't open (its name unknown): the default profile used instead")
+        let name = space.flatMap { id in library.spaces().first { $0.id == id }?.value["name"] as? String }
+        if let w = window(hostingWindow ?? preparingWindow) ?? window(nil),
+           let data = try? JSONSerialization.data(withJSONObject: ["type": "hostNote", "kind": "safari-profile", "space": String((name ?? "").prefix(60))]),
+           let json = String(data: data, encoding: .utf8) {
+            w.push(json)
+        }
+        return fallback
+    }
     private var wokenLinkedAt: [String: Double] = [:] // ...and when its copy linked
 
     // The windows opened only to wake a profile, closed by its copy (Margin opened them; they hold no page of the

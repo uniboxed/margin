@@ -287,6 +287,21 @@ final class SetupModel: ObservableObject {
         NSWorkspace.shared.open(SafariFiles.fullDiskAccessURL)
     }
 
+    // Safari's folder picked once (SafariFolderGrant): the profiles' names readable without Full Disk Access.
+    @Published var folderSaid: String?
+    func allowSafariFolder() {
+        SafariFolderGrant.ask(over: NSApp.keyWindow) { [weak self] outcome in
+            guard let self else { return }
+            switch outcome {
+            case .granted: self.folderSaid = nil
+            case .cancelled: self.folderSaid = nil
+            case .wrongFolder: self.folderSaid = "That wasn't Safari's folder. Click Allow Safari's profiles again and choose the folder it opens on."
+            case .unreadable: self.folderSaid = "Still not readable. Quit Margin, open it again, and try once more."
+            }
+            self.refreshExtensionState()
+        }
+    }
+
     func openKeyboardSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") {
             NSWorkspace.shared.open(url)
@@ -449,7 +464,7 @@ struct StepCard: View {
         case (.commandT, _): return "Safari keeps ⌘T for its own New Tab, which makes a tab before Margin can step in (a flicker). Giving Safari's New Tab another shortcut frees ⌘T for Margin."
         case (.profileNames, .done): return "Margin knows each Safari profile by the name Safari gives it, and follows when you rename one in Safari: that's how it opens a space's pages in the right profile."
         case (.profileNames, _) where model.diskAccess == .noSafari: return "Safari's data wasn't found on this Mac. Margin uses its own names for Safari's profiles (Default, Profile 2)."
-        case (.profileNames, _): return "With several Safari profiles, Margin can know them by Safari's own names: that's how it opens a space's pages in the right profile. That needs Full Disk Access: Safari keeps the names in its own data. Without it, Margin uses its own names for them (Default, Profile 2), and nothing else changes."
+        case (.profileNames, _): return "With several Safari profiles, Margin needs Safari's own names for them: that's how it opens a space's pages in the right profile. Safari keeps the names in its own folder: allow Margin to see it once. No Full Disk Access needed. Without it, a space's pages open in your default profile."
         case (.restore, _): return "Margin keeps tabs in their spaces across restarts when Safari reopens them."
         case (.tidy, _): return "In Margin's window, its sidebar takes the place of Safari's tab bar and sidebar."
         case (.shortcuts, _): return "Most of Margin works from the keyboard."
@@ -505,16 +520,16 @@ struct StepCard: View {
             TestLine(test: model.test, step: step, waiting: "Waiting for ⌘T on a web page in Safari…")
         case .profileNames:
             Instructions(lines: [
-                "Click Open Full Disk Access (System Settings › Device Control and Data Access › Full Disk Access).",
-                "Turn on Margin. If it isn't listed, click +, then choose Margin in your Applications folder.",
+                "Click Allow Safari's profiles. A folder window opens on Safari's own folder.",
+                "Click Allow in it. That's all: Margin remembers it.",
                 "Margin reads only the profiles' names and symbols, never your tabs or history, and never changes anything of Safari's.",
             ])
             HStack {
-                Button("Open Full Disk Access") { model.openFullDiskAccess() }
+                Button("Allow Safari's profiles…") { model.allowSafariFolder() }
                 if model.diskAccess == .granted {
-                    Text("Margin has Full Disk Access.").font(.callout).foregroundStyle(.secondary)
-                } else {
-                    Text("Checked as you go. Names not showing a minute after you allow it: quit Margin and open it again.").font(.callout).foregroundStyle(.secondary)
+                    Text("Margin can see your Safari profiles.").font(.callout).foregroundStyle(.secondary)
+                } else if let said = model.folderSaid {
+                    Text(said).font(.callout).foregroundStyle(.secondary)
                 }
             }
         case .restore:
