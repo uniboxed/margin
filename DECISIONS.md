@@ -5987,3 +5987,14 @@ setting, the screen suite's new `--members`) hosts every window as a plain membe
   Liquid Glass, each checked by its theme test), and that window brought in front takes the item back. A web item's card
   is the same card (no picture of the tab yet). Not checked on the real screen (the suite opens one Margin window).
 - **The start:** the default browser first, "Getting you started…", then the item shown last, held at most 15 s.
+
+## The soak on the person's own apps (2026-11-18 20:40)
+
+`real-apps-soak` (new): Maps, Phone, Messages, Mail, WhatsApp, Notes, Calculator and Weather hosted together through
+Margin's dev hook only (nothing clicked or typed into them; Safari left out: the suite never launches it), then switched
+through three times, each left alone 3 s and watched for a re-layout loop, a sidebar drag between rounds; Mission
+Control and memory after, every app given back at Margin's quit. First run 76 of 82: the six misses were the new
+`settled` step's, which held the fixed-size windows (Phone, Calculator: window mode, centred) to filling the page; it
+takes a window inside the page area now. Second run 82 of 82: 24 switches, each app where it belongs every time, no
+re-layout Margin didn't make, Mission Control Margin's Space only; Margin 100 MB, WindowServer 168 MB after. Every app's
+saved state recorded before and put back after (Mail 3 keys, WhatsApp, Notes, Calculator 1 each).
