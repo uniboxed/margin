@@ -6072,3 +6072,6 @@ A child, so AppKit keeps it in Margin's Space and moves it with the window; its 
 (the window server keeps a child's own level: read in the app's e2e with the parent raised). Only in full screen. Its
 layer is read back after each placing: at or above a normal window's (it would cover the app) it's taken out for the
 rest of the window's life, said. No Mac-wide setting is touched.
+- **The whole display** (the second look, same day): the backdrop at Margin's window's frame left the menu bar's band
+  (33 pt) showing the wallpaper under the see-through menu bar, and the hosted apps' toolbars reach into it (Safari's
+  toolbar strip from y -11): their glass still took the yellow at the top. It covers the display's whole frame now.

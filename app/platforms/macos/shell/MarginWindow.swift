@@ -358,6 +358,11 @@ final class MarginBackdrop: NSWindow {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    // The whole display, not only Margin's window (its full-screen area starts below the menu bar's band, 33 pt on Tirth's
+    // display): a hosted app's toolbar reaches up into that band (Safari's at -11), under the see-through menu bar, and
+    // its glass showed the wallpaper there (2026-11-19, the second look). A window with no display (a test's): its frame.
+    static func frame(window: NSRect, screen: NSRect?) -> NSRect { screen ?? window }
+
     // Its layer as the window server has it now; nil: unread (not ordered in).
     var serverLayer: Int? { windowNumber > 0 ? MarginWindowController.serverLayer(windowNumber) : nil }
 }

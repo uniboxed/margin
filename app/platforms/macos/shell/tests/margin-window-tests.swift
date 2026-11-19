@@ -140,6 +140,9 @@ func marginWindowTests() {
     check("hosted: New Tab opens the palette (the same word as ⌘T)", MarginMenuAction.newTab.effect == .page(#"{"type":"command","name":"palette"}"#))
     check("hosted: Toggle Sidebar is the UI's", MarginMenuAction.toggleSidebar.effect == .page(#"{"type":"command","name":"toggle-sidebar"}"#))
     check("hosted: Close Tab is the source's (it knows the tab in front)", MarginMenuAction.closeTab.effect == .source("closeTab"))
+    check("backdrop: the whole display (the menu bar's band too: hosted toolbars reach into it), a window with no display its own frame",
+          MarginBackdrop.frame(window: NSRect(x: 0, y: 0, width: 1512, height: 949), screen: NSRect(x: 0, y: 0, width: 1512, height: 982)) == NSRect(x: 0, y: 0, width: 1512, height: 982)
+          && MarginBackdrop.frame(window: NSRect(x: -20000, y: -20000, width: 1200, height: 800), screen: nil) == NSRect(x: -20000, y: -20000, width: 1200, height: 800))
     check("hosted: New Window makes a window", MarginMenuAction.newWindow.effect == .newWindow)
 
     // ---- the stand-in source: a data set as the state pages draw ----
