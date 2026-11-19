@@ -10,10 +10,11 @@ use serde_json::{Value, json};
 
 use super::causes::{Cause, Causes, Change, Event};
 use super::choice::{self, ChoiceRule};
-use super::guard::{LoopGuard, Verdict};
+use super::driver::{Admit, Driver, Identity};
+use super::guard::Verdict;
 use super::kinds::{self, AppFacts, Window};
 use super::layout::Placement;
-use super::reconciler::{self, Desired, Situation};
+use super::reconciler::{self, Correction, Desired, Situation};
 use super::routes::{Route, Routes};
 use crate::geometry::Rect;
 use crate::system::ServerWindow;
@@ -61,9 +62,16 @@ impl From<&ServerWin> for ServerWindow {
 pub enum Request {
     /// Every window's kind (kinds.rs).
     #[serde(rename_all = "camelCase")]
-    Classify { windows: Vec<Window>, app: AppFacts, placement: Placement },
+    Classify {
+        windows: Vec<Window>,
+        app: AppFacts,
+        placement: Placement,
+    },
     /// The corrections for one host (reconciler.rs).
-    Step { situation: Situation, desired: Desired },
+    Step {
+        situation: Situation,
+        desired: Desired,
+    },
     /// Which window to host (choice.rs): from `server` (all of the app's, front to back), the pid, and the excluded.
     #[serde(rename_all = "camelCase")]
     Choose {
@@ -80,7 +88,11 @@ pub enum Request {
         server_allowed: bool,
     },
     /// A reaction about to be applied (guard.rs).
-    React { now: f64, host: String, key: String },
+    React {
+        now: f64,
+        host: String,
+        key: String,
+    },
     /// The person acted (on a host, or on everything).
     Person {
         now: f64,
@@ -88,18 +100,39 @@ pub enum Request {
         host: Option<String>,
     },
     /// A host's route changed, it closed, or it starts again: its stop and counts go.
-    Cleared { host: String },
+    Cleared {
+        host: String,
+    },
     /// Something seen, for the causes.
-    Note { now: f64, event: Event },
+    Note {
+        now: f64,
+        event: Event,
+    },
     /// Why something changed.
-    Explain { now: f64, change: Change },
+    Explain {
+        now: f64,
+        change: Change,
+    },
     /// The best route for an app (routes.rs).
-    Route { bundle: String, version: String, available: Vec<Route> },
+    Route {
+        bundle: String,
+        version: String,
+        available: Vec<Route>,
+    },
     /// An app failed on `from`: held lower.
     #[serde(rename_all = "camelCase")]
-    StepDown { now: f64, bundle: String, version: String, from: Route, available: Vec<Route>, why: String },
+    StepDown {
+        now: f64,
+        bundle: String,
+        version: String,
+        from: Route,
+        available: Vec<Route>,
+        why: String,
+    },
     /// The routes as saved (read at launch).
-    LoadRoutes { routes: Routes },
+    LoadRoutes {
+        routes: Routes,
+    },
     /// The routes to save.
     SaveRoutes,
     /// The earliest time the core has something to do on its own (none: wake it with the next event).
@@ -114,15 +147,52 @@ pub enum Request {
     /// Every correction's budget by its key family, and the reconciler's and the kinds' constants: read once.
     Constants,
     /// Seconds until the engine looks again (schedule.rs).
-    NextPoll { facts: super::schedule::PollFacts },
+    NextPoll {
+        facts: super::schedule::PollFacts,
+    },
+    /// The host's next correction of those the loop makes, its tries filled in by the core (driver.rs `decide`).
+    #[serde(rename_all = "camelCase")]
+    Decide {
+        now: f64,
+        host: String,
+        situation: Situation,
+        desired: Desired,
+        #[serde(default)]
+        put_back: bool,
+    },
+    /// A correction about to be applied: the guard (when `guarded`), its try counted, a stop's step down (`admit`).
+    Admit {
+        now: f64,
+        host: String,
+        correction: Correction,
+        guarded: bool,
+        identity: Identity,
+    },
+    /// A try counted outside the loop (`record`); `Tried`: the tries of a key now.
+    Record {
+        now: f64,
+        host: String,
+        key: String,
+    },
+    Tried {
+        now: f64,
+        host: String,
+        key: String,
+    },
+    /// The host's budgets start again (`reset_tries`); `Forget`: nothing kept of it.
+    ResetTries {
+        host: String,
+    },
+    Forget {
+        host: String,
+    },
 }
 
-/// The hosting core's state across calls.
+/// The hosting core's state across calls: the loop (its guard, the routes, the corrections' tries) and the causes.
 #[derive(Debug, Default)]
 pub struct HostCore {
-    pub guard: LoopGuard,
+    pub driver: Driver,
     pub causes: Causes,
-    pub routes: Routes,
 }
 
 impl HostCore {
@@ -161,16 +231,16 @@ impl HostCore {
                 })
             }
             Request::React { now, host, key } => {
-                let v: Verdict = self.guard.react(now, &host, &key);
+                let v: Verdict = self.driver.guard.react(now, &host, &key);
                 serde_json::to_value(v).unwrap_or(Value::Null)
             }
             Request::Person { now, host } => {
-                self.guard.person(host.as_deref());
+                self.driver.guard.person(host.as_deref());
                 self.causes.note(now, Event::Person);
                 json!({})
             }
             Request::Cleared { host } => {
-                self.guard.cleared(&host);
+                self.driver.guard.cleared(&host);
                 json!({})
             }
             Request::Note { now, event } => {
@@ -182,20 +252,20 @@ impl HostCore {
                 serde_json::to_value(c).unwrap_or(Value::Null)
             }
             Request::Route { bundle, version, available } => {
-                let route = self.routes.route(&bundle, &version, &available);
-                let held = self.routes.held_at(&bundle, &version);
+                let route = self.driver.routes.route(&bundle, &version, &available);
+                let held = self.driver.routes.held_at(&bundle, &version);
                 json!({ "route": route, "held": held })
             }
             Request::StepDown { now, bundle, version, from, available, why } => {
-                let next = self.routes.step_down(&bundle, &version, from, &available, &why, now);
+                let next = self.driver.routes.step_down(&bundle, &version, from, &available, &why, now);
                 json!({ "route": next })
             }
             Request::LoadRoutes { routes } => {
-                self.routes = routes;
+                self.driver.routes = routes;
                 json!({})
             }
-            Request::SaveRoutes => json!({ "routes": self.routes }),
-            Request::NextWake => json!({ "at": self.guard.next_wake() }),
+            Request::SaveRoutes => json!({ "routes": self.driver.routes }),
+            Request::NextWake => json!({ "at": self.driver.guard.next_wake() }),
             Request::Candidates { server, pid, excluded } => {
                 let list: Vec<ServerWindow> = server.iter().map(ServerWindow::from).collect();
                 let excluded: BTreeSet<i64> = excluded.into_iter().collect();
@@ -204,6 +274,23 @@ impl HostCore {
                 json!({ "candidates": numbers })
             }
             Request::NextPoll { facts } => json!({ "after": super::schedule::next_poll(&facts) }),
+            Request::Decide { now, host, situation, desired, put_back } => {
+                json!({ "correction": self.driver.decide(now, &host, situation, desired, put_back) })
+            }
+            Request::Admit { now, host, correction, guarded, identity } => {
+                let a: Admit = self.driver.admit(now, &host, &correction, guarded, &identity);
+                serde_json::to_value(a).unwrap_or(Value::Null)
+            }
+            Request::Record { now, host, key } => json!({ "tried": self.driver.record(now, &host, &key) }),
+            Request::Tried { now, host, key } => json!({ "tried": self.driver.tried(now, &host, &key) }),
+            Request::ResetTries { host } => {
+                self.driver.reset_tries(&host);
+                json!({})
+            }
+            Request::Forget { host } => {
+                self.driver.forget(&host);
+                json!({})
+            }
             Request::Constants => {
                 use reconciler::{Correction as C, Forward};
                 let budgets: BTreeMap<String, u32> = [
@@ -357,6 +444,63 @@ mod tests {
         assert_eq!(r["after"], 0.1);
         let r = call(&mut core, json!({ "type": "nextPoll", "facts": {} }));
         assert!(r["after"].is_null());
+    }
+
+    #[test]
+    fn the_loop_in_parts_through_calls() {
+        let mut core = HostCore::new();
+        let situation = json!({ "phase": "shown", "member": true, "window": 1, "place": "margin", "onScreen": true,
+                                "launchedByMargin": true, "tile": true, "tileStale": true });
+        let decide = |core: &mut HostCore, now: f64| {
+            call(
+                core,
+                json!({ "type": "decide", "now": now, "host": "app:w", "situation": situation, "desired": "shown" }),
+            )
+        };
+        assert_eq!(decide(&mut core, 0.0)["correction"], json!({ "type": "sizeTile" }));
+        let admit = |core: &mut HostCore, now: f64, guarded: bool| {
+            call(
+                core,
+                json!({ "type": "admit", "now": now, "host": "app:w", "correction": { "type": "sizeTile" }, "guarded": guarded,
+                               "identity": { "bundle": "com.apple.weather", "version": "4.1", "from": "tiles", "available": ["tiles", "members", "window"] } }),
+            )
+        };
+        assert_eq!(admit(&mut core, 0.0, true), json!({ "type": "go", "tried": 1 }));
+        assert_eq!(admit(&mut core, 0.3, true), json!({ "type": "go", "tried": 2 }));
+        let stop = admit(&mut core, 0.6, true);
+        assert_eq!(
+            (stop["type"].clone(), stop["from"].clone(), stop["to"].clone()),
+            (json!("stopped"), json!("tiles"), json!("members")),
+            "{stop}"
+        );
+        assert!(stop["why"].as_str().is_some_and(|w| w.contains("3 times")), "{stop}");
+        // Its budget (3 a show) spent: the old way's placing again next; then a show: its budgets anew.
+        assert_eq!(admit(&mut core, 0.9, false)["tried"], 3);
+        assert_eq!(decide(&mut core, 1.0)["correction"], json!({ "type": "placeAgain" }));
+        call(&mut core, json!({ "type": "resetTries", "host": "app:w" }));
+        assert_eq!(decide(&mut core, 1.1)["correction"], json!({ "type": "sizeTile" }));
+        assert_eq!(
+            call(&mut core, json!({ "type": "record", "now": 2.0, "host": "app:w", "key": "bring forward activate" }))
+                ["tried"],
+            1
+        );
+        assert_eq!(
+            call(&mut core, json!({ "type": "tried", "now": 2.5, "host": "app:w", "key": "bring forward activate" }))["tried"],
+            1
+        );
+        assert_eq!(
+            call(&mut core, json!({ "type": "tried", "now": 40.0, "host": "app:w", "key": "bring forward activate" }))
+                ["tried"],
+            0
+        );
+        call(&mut core, json!({ "type": "forget", "host": "app:w" }));
+        assert_eq!(
+            call(
+                &mut core,
+                json!({ "type": "decide", "now": 41.0, "host": "app:w", "situation": { "phase": "parked" }, "desired": "parked" })
+            )["correction"],
+            Value::Null
+        );
     }
 
     #[test]

@@ -172,10 +172,9 @@ final class HostEngine {
         var destroyAfterMove = 0.05
         var memberSettle = 0.15
         var memberReadds = 3
-        // The reconciler (HostReconciler.swift): its corrections' budgets count the tries of the last `budgetWithin`;
-        // a reopen (a Dock-icon click) waits `reopenWait` for a window; a rung of `bringForward` waits `forwardWait` for
-        // the window on screen; an app Margin started with no window at all `reopenAfter` into its open is reopened once.
-        var budgetWithin = 30.0
+        // The reconciler (HostReconciler.swift; its corrections' budgets are the core's, host/driver.rs): a reopen (a
+        // Dock-icon click) waits `reopenWait` for a window; a rung of `bringForward` waits `forwardWait` for the window
+        // on screen; an app Margin started with no window at all `reopenAfter` into its open is reopened once.
         var reopenWait = 2.0
         var forwardWait = 0.5
         var reopenAfter = 1.5
@@ -270,11 +269,11 @@ final class HostEngine {
         var bundleId: String?
         var appLaunchedAt: Double?
         // The reconciler's (HostReconciler.swift): its app's windows when its first show ended (an app Margin started:
-        // restored, or made as it launched, the window it hosts aside), the corrections tried and when (a budget per
-        // 30 s), the polls in a row its window-mode window was in Margin's Space and off screen, and whether its window
-        // went while its app ran (reopened, or another one adopted, before it's given up).
+        // restored, or made as it launched, the window it hosts aside), the polls in a row its window-mode window was
+        // in Margin's Space and off screen, and whether its window went while its app ran (reopened, or another one
+        // adopted, before it's given up). The corrections tried and when are the core's (host/driver.rs: a budget per
+        // 30 s, a window's framing per show).
         var launchWindows: Set<Int> = []
-        var tries: [String: [Double]] = [:]
         var offScreenReads = 0
         var offPageReads = 0 // polls in a row a shown member wasn't at the page area
         var gone = false
@@ -799,9 +798,6 @@ final class HostEngine {
         s.tile = host.tile != nil
         s.tileStale = host.tile != nil && (!(host.placedPage.map { HostLayout.near($0, placement.page, within: options.tolerance) } ?? false) || host.offPageReads >= HostReconciler.offPageAfter)
         s.dragging = liveOn
-        let now = sys.now()
-        // (Tries within `budgetWithin`; a window-mode window's framing, per show: never again and again for one that can't be.)
-        s.tries = host.tries.reduce(into: [:]) { out, e in out[e.key] = e.key == HostCorrection.frameWindow.key ? e.value.count : e.value.filter { now - $0 < options.budgetWithin }.count }
         guard let app = observer.model.apps[host.pid] else { return s }
         let mine = app.windows[host.window]
         s.place = mine?.place ?? .unread
@@ -876,18 +872,15 @@ final class HostEngine {
             // screen, for good): brought forward like a window-mode one, its app's own reopen the rung that brings it.)
             if host.phase == .shown, shown == id, host.mode == .window || sys.now() - shownAt >= options.lateWatch { noteOffScreen(host) } else { host.offScreenReads = 0 }
             if host.member, host.phase == .shown, shown == id || host.tile != nil { noteOffPage(host) } else if host.tile != nil, host.phase == .parked { noteOffPage(host) } else { host.offPageReads = 0 }
-            let s = situation(host)
-            let d = desired(host)
-            guard let c = HostReconciler.step(s, d).first(where: steady) else { continue }
+            guard let c = decide(host) else { continue }
             reconcileQueued = true
             Task { await serial {
                 self.reconcileQueued = false
                 guard let host = self.hosts[id] else { return }
                 // (Read again in its turn: an operation in between may have settled it.)
                 let now = self.situation(host)
-                guard HostReconciler.step(now, self.desired(host)).first(where: self.steady) == c else { return }
-                guard self.guarded(host, c.key) else { return }
-                await self.apply(c, host, now)
+                guard self.decide(host, now) == c, let tried = self.admitted(host, c) else { return }
+                await self.apply(c, host, now, tried: tried)
             } }
             return
         }
@@ -900,27 +893,40 @@ final class HostEngine {
         guard !quitting, !liveOn, tilesOK, !reconcileQueued else { return }
         for id in hosts.keys.sorted(by: { ($0 == shown ? 0 : 1, $0.raw) < ($1 == shown ? 0 : 1, $1.raw) }) {
             guard let host = hosts[id], host.tile != nil, host.phase != .preparing else { continue }
-            let s = situation(host)
-            guard HostReconciler.step(s, desired(host)).first(where: steady) == .sizeTile else { continue }
+            guard decide(host) == .sizeTile else { continue }
             reconcileQueued = true
             Task { await serial {
                 self.reconcileQueued = false
                 guard let host = self.hosts[id] else { return self.sizeTilesSoon() }
                 let now = self.situation(host)
-                guard HostReconciler.step(now, self.desired(host)).first(where: self.steady) == .sizeTile else { return self.sizeTilesSoon() }
-                guard self.guarded(host, HostCorrection.sizeTile.key) else { return self.sizeTilesSoon() }
-                await self.apply(.sizeTile, host, now)
+                guard self.decide(host, now) == .sizeTile, let tried = self.admitted(host, .sizeTile) else { return self.sizeTilesSoon() }
+                await self.apply(.sizeTile, host, now, tried: tried)
             } }
             return
         }
     }
 
-    // The corrections the poll applies (the first open's placement is `bringIn`'s; a window out of Margin's Space is
-    // `strayed`'s, a member off screen `backOnScreen`'s).
-    private func steady(_ c: HostCorrection) -> Bool {
-        switch c {
-        case .adopt, .reopen, .unhide, .bringForward, .closeLeftover, .parkLeftover, .parkStrip, .parkAgain, .frameWindow, .closeItem, .placeAgain, .sizeTile, .fallback: return true
-        default: return false
+    // The host's next correction of those the poll applies, by the core's loop (host/driver.rs `decide`: its tries the
+    // core's). Not the first open's placement (`bringIn`'s), a window out of Margin's Space (`strayed`'s) or a member
+    // off screen right after a show (`backOnScreen`'s).
+    private func decide(_ host: Host, _ s: HostSituation? = nil) -> HostCorrection? {
+        core.decide(now: sys.now(), host: host.id.raw, s ?? situation(host), desired(host))
+    }
+
+    // `c` about to be applied in its turn: through the loop guard (a reaction; Margin's own plan and a person's operation
+    // aren't), its try counted (its tries now, this one in). Held: nothing this time; stopped: the host moved down a
+    // route (`stepDown`). Nil: not applied.
+    private func admitted(_ host: Host, _ c: HostCorrection) -> Int? {
+        let (bundle, version) = identity(host)
+        let from = routeOf(host)
+        switch core.admit(now: sys.now(), host: host.id.raw, c, guarded: !planned && options.loopGuard, bundle: bundle, version: version, from: from, available: availableRoutes(host)) {
+        case .go(let tried): return tried
+        case .held(let until):
+            Diagnostics.note("host: \(host.id): \(c.key) held: too many reactions this second across every host (\(Int(max(0, until - sys.now()) * 1000)) ms more)")
+            return nil
+        case .stopped(let why, let from, let next):
+            movedDown(host, from: from, to: next, why: why, version: version)
+            return nil
         }
     }
 
@@ -960,9 +966,8 @@ final class HostEngine {
 
     // One correction, through the engine's own steps, its line in the log (what was observed, what's done, the budget
     // left of it).
-    private func apply(_ c: HostCorrection, _ host: Host, _ s: HostSituation) async {
-        host.tries[c.key, default: []].append(sys.now())
-        let left = HostReconciler.budget(of: c) - (s.tried(c) + 1)
+    private func apply(_ c: HostCorrection, _ host: Host, _ s: HostSituation, tried: Int) async {
+        let left = HostReconciler.budget(of: c) - tried
         Diagnostics.note("host: \(host.id): \(s.text) → \(c.text) (\(left) left)")
         switch c {
         case .parkLeftover(let n), .parkStrip(let n):
@@ -2260,7 +2265,7 @@ final class HostEngine {
     private func bringIn(_ host: Host, isNew: Bool, retrying: Bool = false) async -> HostResult {
         jumps = 0
         // (A show: the reconciler's budgets anew.)
-        host.tries = [:]
+        core.resetTries(host: host.id.raw)
         host.offScreenReads = 0
         // (Its window went while it was parked, its app still running: a Dock-icon click first, the window it makes
         // adopted, behind the loader; nothing came: gone as a closed window.)
@@ -2280,6 +2285,7 @@ final class HostEngine {
             guard host.taken else {
                 // (Nothing of it was touched: forgotten, never backed out of a full screen that's the person's.)
                 hosts[host.id] = nil
+                core.resetTries(host: host.id.raw)
                 if !hosts.values.contains(where: { $0.pid == host.pid }) { sys.stopWatchingOpens(pid: host.pid) }
                 saveMarker()
                 return fail(host.id, failed, why)
@@ -3814,6 +3820,11 @@ final class HostEngine {
         let (bundle, version) = identity(host)
         let next = core.stepDown(now: sys.now(), bundle: bundle, version: version, from: from, available: availableRoutes(host), why: why)
         core.cleared(host: host.id.raw)
+        movedDown(host, from: from, to: next, why: why, version: version)
+    }
+
+    // A step down made (here, or by the core's loop at a stop: `admitted`): saved, said, and the host moved.
+    private func movedDown(_ host: Host, from: HostRoute, to next: HostRoute?, why: String, version: String) {
         if let routesURL { core.saveRoutes(to: routesURL) }
         guard let next else {
             Diagnostics.warn("host: \(host.id): \(why), on \(from.text), nothing safer below: left as it is")
@@ -4119,8 +4130,8 @@ final class HostEngine {
             // orders it in again at its activation or its reopen (ordersOut after: placing it again only took it out of
             // full screen and back, again and again). Then placed again: macOS's own change that left it undrawn.)
             Diagnostics.note("host: \(id): shown, not on screen though it's in Margin's Space, the current one (\(seen)): no Space made current, nothing moved; its app brought forward first, out of full screen and placed again if that doesn't bring it")
-            for rung in HostForward.allCases where (host.tries[HostCorrection.bringForward(rung).key] ?? []).filter({ sys.now() - $0 < options.budgetWithin }).isEmpty {
-                host.tries[HostCorrection.bringForward(rung).key, default: []].append(sys.now())
+            for rung in HostForward.allCases where core.tried(now: sys.now(), host: host.id.raw, key: HostCorrection.bringForward(rung).key) == 0 {
+                core.record(now: sys.now(), host: host.id.raw, key: HostCorrection.bringForward(rung).key)
                 await bringForward(host, rung)
                 if sys.windowOnScreen(host.window).map({ $0.onScreen && $0.alpha > 0 }) == true { hostedSaid = nil; return announceHosted() }
             }
@@ -4315,6 +4326,7 @@ final class HostEngine {
         if atQuit, let left = unfinished(host) { leftWindows.append(left) }
         if let priv = host.privateSpace { retirePrivate(priv) }
         hosts[id] = nil
+        core.resetTries(host: id.raw)
         if !hosts.values.contains(where: { $0.pid == host.pid }) { sys.stopWatchingOpens(pid: host.pid) }
         saveMarker()
         Diagnostics.note("host: \(id) closed (\(why)) in \(ms(since: started)) ms\(times.isEmpty ? "" : " (" + times.joined(separator: ", ") + ")")")
@@ -4574,6 +4586,7 @@ final class HostEngine {
             if let priv = host.privateSpace { retirePrivate(priv) }
             if let own = host.fullScreenSpace, sys.spaceExists(own) == true { leftSpaces.insert(own) }
             hosts[host.id] = nil
+            core.resetTries(host: host.id.raw)
             if shown == host.id { shown = nil }
             sys.stopWatchingOpens(pid: pid)
             Diagnostics.note("host: \(host.id) quit, not by Margin")
@@ -4589,6 +4602,7 @@ final class HostEngine {
         if let priv = host.privateSpace { retirePrivate(priv) }
         if let own = host.fullScreenSpace, sys.spaceExists(own) == true { leftSpaces.insert(own) }
         hosts[host.id] = nil
+        core.resetTries(host: host.id.raw)
         if shown == host.id { shown = nil }
         saveMarker()
         Diagnostics.note("host: \(host.id): its window closed (its app still runs)")
