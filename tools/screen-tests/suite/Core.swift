@@ -5,6 +5,7 @@ import AppKit
 final class Runner {
   var built = ""
   var wantFront: String?
+  var members = false // (--members: MarginTiles NO, the members' route)
   var m: NSRunningApplication!
   var marginWindow: Win!
   var marginSpace: UInt64 = 0
@@ -32,6 +33,7 @@ final class Runner {
     sh("/usr/bin/defaults", ["write", marginId, "MarginPrepareBrowser", "-bool", "NO"]) // (no browser started or asked for a window)
     sh("/usr/bin/defaults", ["write", marginId, "MarginResumeLast", "-bool", "NO"]) // (the launcher: the person's last item is never opened)
     if let wantFront { sh("/usr/bin/defaults", ["write", marginId, "MarginFront", wantFront]) } else { sh("/usr/bin/defaults", ["delete", marginId, "MarginFront"]) }
+    if members { sh("/usr/bin/defaults", ["write", marginId, "MarginTiles", "-bool", "NO"]) } else { sh("/usr/bin/defaults", ["delete", marginId, "MarginTiles"]) }
     gate("opening Margin")
     sh("/usr/bin/open", [built])
     // (The one just opened: the build's, not one that ran before.)

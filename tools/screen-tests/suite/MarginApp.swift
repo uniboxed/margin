@@ -92,6 +92,6 @@ func defaultsPut(_ domain: String, _ key: String, _ was: String) {
   else { sh("/usr/bin/defaults", ["write", domain, key, was]) }
 }
 // The Margin defaults a run writes (each recorded first and put back as it was).
-let marginKeys = ["MarginDevHooks", "MarginPrepareBrowser", "MarginResumeLast", "MarginFront"]
+let marginKeys = ["MarginDevHooks", "MarginPrepareBrowser", "MarginResumeLast", "MarginFront", "MarginTiles"]
 // The theme's saved sidebar width (the sidebar drags change it).
 let themeKey = "MarginWindowThemeSettings"

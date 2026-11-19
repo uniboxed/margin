@@ -5966,3 +5966,24 @@ three Chameleon copies hosted and left alone 60 s, and nothing hosted for 30 s.
   Margin, no DOM change in 2 s (the dev hook's new `say animations`). That's the cost of a field ready for typing.
 - **Memory at rest:** Margin 63-64 MB with nothing hosted, 100-104 MB with three hosted (its web view's processes not
   counted).
+
+## Tiles against members, measured (2026-11-18)
+
+The plan's first step: both hosting routes on the same screen with the same parts. `MarginTiles NO` (a development
+setting, the screen suite's new `--members`) hosts every window as a plain member of Margin's Space.
+
+- **Plain switches:** the same (tiles 16-29 ms, members 17-29 ms).
+- **A switch after the sidebar's resize:** tiles at the new page area from the first frame (~20 ms); members first at
+  the old size (260 wide on a 380 page area), then out of full screen and in again to be placed (seen at 900×560 112 ms
+  in): the "takes a moment to show it resized" Tirth objected to.
+- **A drag:** tiles follow it live (median 4-5 ms, p95 16-19 ms); members don't follow (no live resize), the parked ones
+  not sized until shown.
+- **At rest:** the same (three hosted 0.42% either way; nothing hosted 1.5%, the launcher's caret).
+- **Decision (Tirth was away; the plan said he picks from the numbers):** tiles stay the default. Their one weakness was
+  the re-layout macOS makes of a Space's first two tiles, which the anchors now take; the loop guard is behind them.
+  Members stay the route an app steps down to when it won't settle in a tile, window mode below that.
+- **An item in another Margin window (same day):** one window hosts at a time; another window's item stays on it as a
+  card, faded and still ("Click to show Notes here.", every theme: the default loader, Arcadia, Pixel, Neubrutalism,
+  Liquid Glass, each checked by its theme test), and that window brought in front takes the item back. A web item's card
+  is the same card (no picture of the tab yet). Not checked on the real screen (the suite opens one Margin window).
+- **The start:** the default browser first, "Getting you started…", then the item shown last, held at most 15 s.

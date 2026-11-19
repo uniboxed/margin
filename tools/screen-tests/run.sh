@@ -28,6 +28,7 @@ while [ $# -gt 0 ]; do
     --part) ONLY="$2"; shift 2 ;;
     --front) PASS+=(--front "$2"); shift 2 ;;
     --real-apps) PASS+=(--real-apps); shift ;;
+    --members) PASS+=(--members); shift ;;
     --dry-run) DRY=1; shift ;;
     --restore) RESTORE=1; shift ;;
     --self-check) SELF=1; shift ;;
