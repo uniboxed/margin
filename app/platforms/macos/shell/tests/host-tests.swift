@@ -474,9 +474,18 @@ final class FakeHostWorld: HostSystem {
     // their process still there (`processRuns`). `attemptTermination` posts the termination notice too.
     var lsGone: Set<pid_t> = []
     func attemptTermination(_ pid: pid_t) { lsGone.insert(pid); onAppQuit?(pid) }
+    // ...and the other way: apps whose process has ended that NSWorkspace still lists a moment (its notice not handled
+    // yet: 2026-11-19, Journal quit 5 s after its row's close, reopened meanwhile, taken for the person's as it ended).
+    // Their quit leaves them in `stale` (in `running` and `app(pid:)`, their process gone) until `clearStale`.
+    var listedAfterExit: Set<String> = []
+    var stale: [pid_t: HostApp] = [:]
+    func clearStale() { stale = [:] }
     func processRuns(pid: pid_t) -> Bool { apps[pid] != nil }
-    func running(bundleId: String) -> [HostApp] { apps.values.filter { $0.bundle == bundleId && !lsGone.contains($0.pid) }.sorted { $0.pid < $1.pid }.map { HostApp(pid: $0.pid, bundleId: $0.bundle, launchedAt: $0.launchedAt) } }
-    func app(pid: pid_t) -> HostApp? { lsGone.contains(pid) ? nil : apps[pid].map { HostApp(pid: $0.pid, bundleId: $0.bundle, launchedAt: $0.launchedAt) } }
+    func running(bundleId: String) -> [HostApp] {
+        (apps.values.filter { $0.bundle == bundleId && !lsGone.contains($0.pid) }.map { HostApp(pid: $0.pid, bundleId: $0.bundle, launchedAt: $0.launchedAt) }
+            + stale.values.filter { $0.bundleId == bundleId }).sorted { $0.pid < $1.pid }
+    }
+    func app(pid: pid_t) -> HostApp? { lsGone.contains(pid) ? nil : apps[pid].map { HostApp(pid: $0.pid, bundleId: $0.bundle, launchedAt: $0.launchedAt) } ?? stale[pid] }
     func policy(pid: pid_t) -> HostPolicy? { apps[pid]?.policy }
     @discardableResult func start(_ bundle: String, policy: HostPolicy, windows: Int) -> pid_t {
         let pid = nextPid
@@ -500,7 +509,8 @@ final class FakeHostWorld: HostSystem {
     func launchDockless(bundleId: String, arguments: [String]) -> Bool {
         calls.append("launch \(bundleId)")
         lastArguments = arguments
-        guard !fail.contains("launch"), installed.contains(bundleId), running(bundleId: bundleId).isEmpty else { return false }
+        // (LaunchServices knows an ended process at once: a `stale` listing never stops a launch.)
+        guard !fail.contains("launch"), installed.contains(bundleId), !apps.values.contains(where: { $0.bundle == bundleId && !lsGone.contains($0.pid) }) else { return false }
         let spareCount = spares[bundleId] ?? 0
         let firstSpare = nextWindow
         if spareCount > 0 { nextWindow += spareCount }
@@ -569,6 +579,7 @@ final class FakeHostWorld: HostSystem {
     }
     func quitNow(_ pid: pid_t) {
         guard let a = apps.removeValue(forKey: pid) else { return }
+        if listedAfterExit.contains(a.bundle) { stale[pid] = HostApp(pid: pid, bundleId: a.bundle, launchedAt: a.launchedAt) }
         if let n = a.windows.first, let w = wins[n] { saved[a.bundle] = w.frame ?? Self.defaultFrame } // (its frame at quit)
         for n in a.windows { wins[n] = nil }
         for (space, p) in owner where p == pid { tiles[space] = nil; owner[space] = nil }
@@ -3245,6 +3256,26 @@ func windowModeTests(world: () -> (FakeHostWorld, HostEngine, URL)) {
               && w.calls.filter { $0 == "launch com.apple.Notes" }.count == 2 && lines.contains { $0.contains("its last instance's exit waited for") }, "\(w.calls.suffix(12)) \(lines.filter { $0.contains("Notes") })")
         hostRun { await e.quitAll() }
         check("reopen during its exit: nothing left", w.apps.isEmpty && clean(w))
+    }
+    do {
+        // ...its process gone while NSWorkspace still lists it (2026-11-19, Journal: the open took the ended instance for
+        // the person's, waited 2 s for a window, failed): an ended process is never the one an open uses.
+        let (w, e, _) = world()
+        _ = wired(e)
+        _ = open(e, notes)
+        let old = pid(w, "com.apple.Notes")
+        w.quitsAfter["com.apple.Notes"] = 5
+        w.listedAfterExit = ["com.apple.Notes"]
+        hostRun { await e.close(notes.id) }
+        w.quitsAfter = [:]
+        let lines = said { _ = open(e, notes) }
+        let now = w.apps.values.first { $0.bundle == "com.apple.Notes" }?.pid ?? 0
+        check("reopen during its exit, still listed as it ends: a new instance started and hosted as Margin's, the ended one never used",
+              e.isHosted(notes.id) && e.shown == notes.id && w.stale[old] != nil && now != old && now != 0 && e.launched[now] != nil
+              && w.calls.filter { $0 == "launch com.apple.Notes" }.count == 2 && !lines.contains { $0.contains("open with no window") }, "\(w.calls.suffix(12)) \(lines.filter { $0.contains("Notes") })")
+        w.clearStale()
+        hostRun { await e.quitAll() }
+        check("reopen during its exit, still listed: nothing left", w.apps.isEmpty && clean(w))
     }
     do {
         // ...and an old instance that doesn't quit (unsaved work): after `quitWait` it's Margin's again, reused (no

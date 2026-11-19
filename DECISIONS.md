@@ -6095,3 +6095,12 @@ app's icon and no words; nothing of Margin's can be used before the browser is. 
   words; the two choices asked of the host), the session (held, Try again, Continue, ready after all, resume off, the
   extension never linking then Try again with it on).
 
+
+## An app reopened while its last instance quits (2026-11-19)
+
+Journal, closed from its row, took 5 s to quit; reopened meanwhile, its open waited for that exit (as designed), then
+took the ended instance for the person's own: NSWorkspace still listed it (its termination notice not handled yet,
+`kill(pid, 0)` already failing), so the open waited 2 s for a window it would never make and failed; a second press
+worked. An open (and the browser's start) now uses only instances whose process still runs (`HostEngine.liveInstances`).
+Margin's own keys are now said in its log as they're pressed (the command and the front app, never a held key's
+repeats), so a key that didn't reach Margin can be told from one Margin ignored.
