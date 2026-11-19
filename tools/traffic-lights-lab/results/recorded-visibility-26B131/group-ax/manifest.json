@@ -1,0 +1,9 @@
+{
+  "sha256": {
+    "sources/ax-button-visibility.m": "a1a4ee11b796d6ca1bf2fb939382017632e5815453a711cd77ba28c8cc2ecbb9",
+    "sources/ax-movement-group.m": "4be9b3b9aab5df754ee71b1a1dd0545e7b1b4b13422750dd823ec332c2f03b4d",
+    "sources/visibility-stimulus.m": "8479d85d926177b999e4aa7e0ee372897718dbfafa9810aded9a8ecb093a085d",
+    "binaries/margin-visibility-stimulus": "d3524230be7fa3114a5de71ec73e9ee986a0304f40bf99ed376521647269856c",
+    "binaries/margin-ax-movement-group": "fdce9a9f905fbfee29b88d8a980f986ef29af500379d674d4afe265646429ced"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "browser": "chrome",
+  "sha256": {
+    "sources/visibility-recorder.swift": "89fd28e613b22352078ba9568eaca752ae0285f23fb47a70841ea895069bcbbb",
+    "sources/ax-button-visibility.m": "a1a4ee11b796d6ca1bf2fb939382017632e5815453a711cd77ba28c8cc2ecbb9",
+    "sources/run-browser-visibility.py": "d5877407650d5a7261baa39965fcc1f90bc964de7998ea95a8c8ef17443fbedb",
+    "sources/ax-live-detector.m": "77a75997cae9480366d7260da74949f9bd57d51a18e75af57c703aebe6c8e3e9",
+    "sources/browser-visibility-stimulus.m": "d60b1952f95e96f00a34ef2667ecf8d6c759325def60b2df7cd5d79f42a62788",
+    "binaries/ax-live-detector": "03b54b4718996d6e1d9707b6fe0a039f85d49eee1a9375aefcbf7d1686f07ccc",
+    "binaries/browser-visibility-stimulus": "abe1b931db81a0effb89eae0258c16c62b276e50e9dd251e9befebbfcc7226bb",
+    "binaries/visibility-recorder": "036026c44fb490382da62b769c884fef584ceedd679bd51a828487aaba611d07"
+  },
+  "pixelFeedbackToBackend": false
+}

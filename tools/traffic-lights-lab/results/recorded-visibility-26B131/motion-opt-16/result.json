@@ -1,0 +1,12 @@
+{
+  "failure": "('child failed', [('stimulus', 2)])",
+  "processes": {
+    "stimulus": {
+      "pid": 64415,
+      "exit": 2
+    }
+  },
+  "pixelFeedbackToBackend": false,
+  "recordingUsedForMeasurementOnly": true,
+  "passed": false
+}

@@ -1,0 +1,14 @@
+{
+  "browser": "edge",
+  "sha256": {
+    "sources/visibility-recorder.swift": "89fd28e613b22352078ba9568eaca752ae0285f23fb47a70841ea895069bcbbb",
+    "sources/ax-button-visibility.m": "a1a4ee11b796d6ca1bf2fb939382017632e5815453a711cd77ba28c8cc2ecbb9",
+    "sources/run-browser-visibility.py": "d5877407650d5a7261baa39965fcc1f90bc964de7998ea95a8c8ef17443fbedb",
+    "sources/ax-live-detector.m": "43728d626893e3a604b1ff4193ab1d72cb33b393e000366710f5ebeddb1878d2",
+    "sources/browser-visibility-stimulus.m": "d60b1952f95e96f00a34ef2667ecf8d6c759325def60b2df7cd5d79f42a62788",
+    "binaries/ax-live-detector": "4135b168bfa656e69e36e68a52418b66098aa669c56deb2d056eb18f3f7730ca",
+    "binaries/browser-visibility-stimulus": "abe1b931db81a0effb89eae0258c16c62b276e50e9dd251e9befebbfcc7226bb",
+    "binaries/visibility-recorder": "036026c44fb490382da62b769c884fef584ceedd679bd51a828487aaba611d07"
+  },
+  "pixelFeedbackToBackend": false
+}

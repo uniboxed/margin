@@ -1,0 +1,2440 @@
+{
+  "build": "26B131",
+  "pixelFeedbackToBackend": false,
+  "cases": {
+    "chrome-1": {
+      "failure": null,
+      "processes": {
+        "driver": {
+          "pid": 62785,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 62826,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 62827,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "passed": true
+    },
+    "conditional-cover-30": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 68705,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 68707,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 68708,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": true
+    },
+    "custom-30": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 62282,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 62286,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 62287,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": true
+    },
+    "edge-1": {
+      "failure": null,
+      "processes": {
+        "driver": {
+          "pid": 63090,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 63134,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 63136,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "passed": true
+    },
+    "events-scopes": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 65609,
+          "exit": 0
+        },
+        "observer": {
+          "pid": 65611,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 65616,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": false,
+      "passed": true
+    },
+    "group-ax": {
+      "exit": 0
+    },
+    "group-ax-drag": {
+      "exit": 2
+    },
+    "motion-0": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 62412,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 62417,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 62418,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": true
+    },
+    "motion-16": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 62557,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 62562,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 62563,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": true
+    },
+    "motion-opt-0": {
+      "failure": "('child failed', [('stimulus', 2)])",
+      "processes": {
+        "stimulus": {
+          "pid": 64046,
+          "exit": 2
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": false
+    },
+    "motion-opt-0b": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 64215,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 64217,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 64218,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": true
+    },
+    "motion-opt-16": {
+      "failure": "('child failed', [('stimulus', 2)])",
+      "processes": {
+        "stimulus": {
+          "pid": 64415,
+          "exit": 2
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": false
+    },
+    "motion-opt-16b": {
+      "failure": "('child failed', [('recorder', 2)])",
+      "processes": {
+        "stimulus": {
+          "pid": 64538,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 64541,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 64545,
+          "exit": 2
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": false
+    },
+    "motion-opt-16c": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 64602,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 64604,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 64605,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": true
+    },
+    "motion-order-16": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 64812,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 64813,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 64816,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": true
+    },
+    "motion-overflow-24": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 67443,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 67445,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 67450,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": true
+    },
+    "motion-overflow-32": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 67847,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 67849,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 67851,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": true
+    },
+    "perf-15": {
+      "failure": "('child failed', [('stimulus', 2)])",
+      "processes": {
+        "stimulus": {
+          "pid": 64958,
+          "exit": 2
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": false,
+      "passed": false
+    },
+    "perf-15b": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 65264,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 65270,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": false,
+      "passed": true
+    },
+    "perf-30b": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 65285,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 65292,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": false,
+      "passed": true
+    },
+    "perf-60b": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 65303,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 65327,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": false,
+      "passed": true
+    },
+    "perf-baseline": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 64942,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": false,
+      "passed": true
+    },
+    "perf-baseline-b": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 65251,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": false,
+      "passed": true
+    },
+    "safari-1": {
+      "failure": "('child failed', [('driver', 2)])",
+      "processes": {
+        "driver": {
+          "pid": 63390,
+          "exit": 2
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "passed": false
+    },
+    "safari-2": {
+      "failure": "('child failed', [('driver', 2)])",
+      "processes": {
+        "driver": {
+          "pid": 63622,
+          "exit": 2
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "passed": false
+    },
+    "safari-3": {
+      "failure": null,
+      "processes": {
+        "driver": {
+          "pid": 63759,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 63820,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 63821,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "passed": true
+    },
+    "visibility-30": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 59803,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 59825,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 59828,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": true
+    },
+    "visibility-display-30": {
+      "failure": null,
+      "processes": {
+        "stimulus": {
+          "pid": 62155,
+          "exit": 0
+        },
+        "detector": {
+          "pid": 62160,
+          "exit": 0
+        },
+        "recorder": {
+          "pid": 62161,
+          "exit": 0
+        }
+      },
+      "pixelFeedbackToBackend": false,
+      "recordingUsedForMeasurementOnly": true,
+      "passed": true
+    }
+  },
+  "cleanup": [
+    {
+      "pid": 62785,
+      "exited": true
+    },
+    {
+      "pid": 62826,
+      "exited": true
+    },
+    {
+      "pid": 62827,
+      "exited": true
+    },
+    {
+      "pid": 62786,
+      "exited": true
+    },
+    {
+      "pid": 68705,
+      "exited": true
+    },
+    {
+      "pid": 68707,
+      "exited": true
+    },
+    {
+      "pid": 68708,
+      "exited": true
+    },
+    {
+      "pid": 62282,
+      "exited": true
+    },
+    {
+      "pid": 62286,
+      "exited": true
+    },
+    {
+      "pid": 62287,
+      "exited": true
+    },
+    {
+      "pid": 63090,
+      "exited": true
+    },
+    {
+      "pid": 63134,
+      "exited": true
+    },
+    {
+      "pid": 63136,
+      "exited": true
+    },
+    {
+      "pid": 63091,
+      "exited": true
+    },
+    {
+      "pid": 65609,
+      "exited": true
+    },
+    {
+      "pid": 65611,
+      "exited": true
+    },
+    {
+      "pid": 65616,
+      "exited": true
+    },
+    {
+      "pid": 65434,
+      "exited": true
+    },
+    {
+      "pid": 65435,
+      "exited": true
+    },
+    {
+      "pid": 65690,
+      "exited": true
+    },
+    {
+      "pid": 65693,
+      "exited": true
+    },
+    {
+      "pid": 62412,
+      "exited": true
+    },
+    {
+      "pid": 62417,
+      "exited": true
+    },
+    {
+      "pid": 62418,
+      "exited": true
+    },
+    {
+      "pid": 62557,
+      "exited": true
+    },
+    {
+      "pid": 62562,
+      "exited": true
+    },
+    {
+      "pid": 62563,
+      "exited": true
+    },
+    {
+      "pid": 64046,
+      "exited": true
+    },
+    {
+      "pid": 64215,
+      "exited": true
+    },
+    {
+      "pid": 64217,
+      "exited": true
+    },
+    {
+      "pid": 64218,
+      "exited": true
+    },
+    {
+      "pid": 64415,
+      "exited": true
+    },
+    {
+      "pid": 64538,
+      "exited": true
+    },
+    {
+      "pid": 64541,
+      "exited": true
+    },
+    {
+      "pid": 64545,
+      "exited": true
+    },
+    {
+      "pid": 64602,
+      "exited": true
+    },
+    {
+      "pid": 64604,
+      "exited": true
+    },
+    {
+      "pid": 64605,
+      "exited": true
+    },
+    {
+      "pid": 64812,
+      "exited": true
+    },
+    {
+      "pid": 64813,
+      "exited": true
+    },
+    {
+      "pid": 64816,
+      "exited": true
+    },
+    {
+      "pid": 67443,
+      "exited": true
+    },
+    {
+      "pid": 67445,
+      "exited": true
+    },
+    {
+      "pid": 67450,
+      "exited": true
+    },
+    {
+      "pid": 67847,
+      "exited": true
+    },
+    {
+      "pid": 67849,
+      "exited": true
+    },
+    {
+      "pid": 67851,
+      "exited": true
+    },
+    {
+      "pid": 64958,
+      "exited": true
+    },
+    {
+      "pid": 65264,
+      "exited": true
+    },
+    {
+      "pid": 65270,
+      "exited": true
+    },
+    {
+      "pid": 65285,
+      "exited": true
+    },
+    {
+      "pid": 65292,
+      "exited": true
+    },
+    {
+      "pid": 65303,
+      "exited": true
+    },
+    {
+      "pid": 65327,
+      "exited": true
+    },
+    {
+      "pid": 64942,
+      "exited": true
+    },
+    {
+      "pid": 65251,
+      "exited": true
+    },
+    {
+      "pid": 63390,
+      "exited": true
+    },
+    {
+      "pid": 63391,
+      "exited": true
+    },
+    {
+      "pid": 63622,
+      "exited": true
+    },
+    {
+      "pid": 63623,
+      "exited": true
+    },
+    {
+      "pid": 63759,
+      "exited": true
+    },
+    {
+      "pid": 63820,
+      "exited": true
+    },
+    {
+      "pid": 63821,
+      "exited": true
+    },
+    {
+      "pid": 63761,
+      "exited": true
+    },
+    {
+      "pid": 59803,
+      "exited": true
+    },
+    {
+      "pid": 59825,
+      "exited": true
+    },
+    {
+      "pid": 59828,
+      "exited": true
+    },
+    {
+      "pid": 62155,
+      "exited": true
+    },
+    {
+      "pid": 62160,
+      "exited": true
+    },
+    {
+      "pid": 62161,
+      "exited": true
+    }
+  ],
+  "videos": {
+    "chrome-1": {
+      "originalFrames": 270,
+      "relativePTSMaxDifferenceSeconds": 0.0007669169962323252,
+      "minCompleteGapSeconds": 0.013338415999896824,
+      "maxCompleteGapSeconds": 2.947808500000974,
+      "videoSHA256": "7bd301f11f410b1c515f849b35f023025e5505f4212927309f0ee0f2f7671580"
+    },
+    "conditional-cover-30": {
+      "originalFrames": 201,
+      "relativePTSMaxDifferenceSeconds": 0.0008325839979965721,
+      "minCompleteGapSeconds": 0.013338292003027163,
+      "maxCompleteGapSeconds": 0.8136484999995446,
+      "videoSHA256": "69be123fe78048b52695e9ed88a0219c886fa434c0470290c19f755dabf94f6b"
+    },
+    "custom-30": {
+      "originalFrames": 64,
+      "relativePTSMaxDifferenceSeconds": 0.0008318330045016253,
+      "minCompleteGapSeconds": 0.013338415999896824,
+      "maxCompleteGapSeconds": 1.0270652920007706,
+      "videoSHA256": "ab3496bae64fc8659f41253bd998bc5b60be0352ba189817995736bd09d20f33"
+    },
+    "edge-1": {
+      "originalFrames": 201,
+      "relativePTSMaxDifferenceSeconds": 0.0007925830010044876,
+      "minCompleteGapSeconds": 0.013338457996724173,
+      "maxCompleteGapSeconds": 1.7740219999977853,
+      "videoSHA256": "611afd426b4ecd69da94af435f85b8c50d8f2047c84abcecfb98b46b336633c7"
+    },
+    "motion-0": {
+      "originalFrames": 202,
+      "relativePTSMaxDifferenceSeconds": 0.0008327499989695397,
+      "minCompleteGapSeconds": 0.013338416996703018,
+      "maxCompleteGapSeconds": 0.7869720829985454,
+      "videoSHA256": "1dcb81a651d620748f976882ea528d71fe84e8975730afbbf32a767810124cd7"
+    },
+    "motion-16": {
+      "originalFrames": 203,
+      "relativePTSMaxDifferenceSeconds": 0.0008326670021210347,
+      "minCompleteGapSeconds": 0.013338415999896824,
+      "maxCompleteGapSeconds": 0.786972166999476,
+      "videoSHA256": "f14bfb09f3d1653cf998f19404a02c047751edf1f0dc9de32a9e097d21098757"
+    },
+    "motion-opt-0b": {
+      "originalFrames": 201,
+      "relativePTSMaxDifferenceSeconds": 0.0008288750011549162,
+      "minCompleteGapSeconds": 0.013338415999896824,
+      "maxCompleteGapSeconds": 0.786972166999476,
+      "videoSHA256": "55c61f89333997311edcb0e06f7dd27d0570ae677b129eccf6bd336f5fcce89f"
+    },
+    "motion-opt-16c": {
+      "originalFrames": 216,
+      "relativePTSMaxDifferenceSeconds": 0.0008323750033900623,
+      "minCompleteGapSeconds": 0.013338374999875668,
+      "maxCompleteGapSeconds": 0.8269870419971994,
+      "videoSHA256": "874b8a1c3c932b96f418365f5add0e26c78c2bedefbdcc3af1ada2cf83a46d42"
+    },
+    "motion-order-16": {
+      "originalFrames": 260,
+      "relativePTSMaxDifferenceSeconds": 0.0008290000021067279,
+      "minCompleteGapSeconds": 0.013338416996703018,
+      "maxCompleteGapSeconds": 0.28010850000282517,
+      "videoSHA256": "2cbc7de6a78fdba335683ef776de8b49614371f1923e68f94470b99395514fc9"
+    },
+    "motion-overflow-24": {
+      "originalFrames": 260,
+      "relativePTSMaxDifferenceSeconds": 0.0008323339960929488,
+      "minCompleteGapSeconds": 0.013338374999875668,
+      "maxCompleteGapSeconds": 0.24009312500129454,
+      "videoSHA256": "db2d27a8645601e5f46221939c1d1597fbdc9d1f8c983689f032683cf99fe92b"
+    },
+    "motion-overflow-32": {
+      "originalFrames": 259,
+      "relativePTSMaxDifferenceSeconds": 0.0008325420011692231,
+      "minCompleteGapSeconds": 0.013338415999896824,
+      "maxCompleteGapSeconds": 0.6802636659995187,
+      "videoSHA256": "2346a3a2f9ae518076741251a19777a3534d081e9d791439dc0df61040def8e0"
+    },
+    "safari-3": {
+      "originalFrames": 552,
+      "relativePTSMaxDifferenceSeconds": 0.0008316669988559511,
+      "minCompleteGapSeconds": 0.013338415999896824,
+      "maxCompleteGapSeconds": 0.22675449999951525,
+      "videoSHA256": "157afdf1753b706db2e04fd84412e03be5a3df43974216b5db26d5bfff947dea"
+    },
+    "visibility-30": {
+      "originalFrames": 58,
+      "relativePTSMaxDifferenceSeconds": 0.0008102499996311963,
+      "minCompleteGapSeconds": 0.013338457996724173,
+      "maxCompleteGapSeconds": 2.641025791002903,
+      "videoSHA256": "4026aa35b6699c155bb133e094b7d13e65bf5d1fbeb9186b48088a866680fcaa"
+    },
+    "visibility-display-30": {
+      "originalFrames": 76,
+      "relativePTSMaxDifferenceSeconds": 0.0008272919963774328,
+      "minCompleteGapSeconds": 0.013338457996724173,
+      "maxCompleteGapSeconds": 1.0003882500022883,
+      "videoSHA256": "32ad52e9f1d3164c020a9940bb09fa3043a929ebf0c2530cfd72290e4062b7b2"
+    }
+  },
+  "nativeSnapshots": {
+    "visibility-display-30": [
+      {
+        "phase": "shown",
+        "nativeEligible": [
+          true,
+          true,
+          true
+        ],
+        "pixelDiscs": [
+          true,
+          true,
+          true
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 3
+      },
+      {
+        "phase": "hidden",
+        "nativeEligible": [
+          false,
+          false,
+          false
+        ],
+        "pixelDiscs": [
+          false,
+          false,
+          false
+        ],
+        "AXHits": [
+          false,
+          false,
+          false
+        ],
+        "originalFrame": 4
+      },
+      {
+        "phase": "shown",
+        "nativeEligible": [
+          true,
+          true,
+          true
+        ],
+        "pixelDiscs": [
+          true,
+          true,
+          true
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 5
+      },
+      {
+        "phase": "alpha-zero",
+        "nativeEligible": [
+          false,
+          false,
+          false
+        ],
+        "pixelDiscs": [
+          false,
+          false,
+          false
+        ],
+        "AXHits": [
+          false,
+          false,
+          false
+        ],
+        "originalFrame": 6
+      },
+      {
+        "phase": "disabled",
+        "nativeEligible": [
+          true,
+          true,
+          true
+        ],
+        "pixelDiscs": [
+          true,
+          true,
+          true
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 70
+      },
+      {
+        "phase": "hidden",
+        "nativeEligible": [
+          false,
+          false,
+          false
+        ],
+        "pixelDiscs": [
+          false,
+          false,
+          false
+        ],
+        "AXHits": [
+          false,
+          false,
+          false
+        ],
+        "originalFrame": 71
+      },
+      {
+        "phase": "shown",
+        "nativeEligible": [
+          true,
+          true,
+          true
+        ],
+        "pixelDiscs": [
+          true,
+          true,
+          true
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 72
+      },
+      {
+        "phase": "only-close",
+        "nativeEligible": [
+          true,
+          false,
+          false
+        ],
+        "pixelDiscs": [
+          true,
+          false,
+          false
+        ],
+        "AXHits": [
+          true,
+          false,
+          false
+        ],
+        "originalFrame": 73
+      },
+      {
+        "phase": "shown",
+        "nativeEligible": [
+          true,
+          true,
+          true
+        ],
+        "pixelDiscs": [
+          true,
+          true,
+          true
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 74
+      },
+      {
+        "phase": "shown",
+        "nativeEligible": [
+          true,
+          true,
+          true
+        ],
+        "pixelDiscs": [
+          true,
+          true,
+          true
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 75
+      }
+    ],
+    "custom-30": [
+      {
+        "phase": "shown",
+        "nativeEligible": [
+          true,
+          true,
+          true
+        ],
+        "pixelDiscs": [
+          true,
+          true,
+          true
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 1
+      },
+      {
+        "phase": "hidden",
+        "nativeEligible": [
+          false,
+          false,
+          false
+        ],
+        "pixelDiscs": [
+          false,
+          false,
+          false
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 2
+      },
+      {
+        "phase": "shown",
+        "nativeEligible": [
+          true,
+          true,
+          true
+        ],
+        "pixelDiscs": [
+          true,
+          true,
+          true
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 3
+      },
+      {
+        "phase": "alpha-zero",
+        "nativeEligible": [
+          false,
+          false,
+          false
+        ],
+        "pixelDiscs": [
+          false,
+          false,
+          false
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 4
+      },
+      {
+        "phase": "disabled",
+        "nativeEligible": [
+          true,
+          true,
+          true
+        ],
+        "pixelDiscs": [
+          true,
+          true,
+          true
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 58
+      },
+      {
+        "phase": "hidden",
+        "nativeEligible": [
+          false,
+          false,
+          false
+        ],
+        "pixelDiscs": [
+          false,
+          false,
+          false
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 59
+      },
+      {
+        "phase": "shown",
+        "nativeEligible": [
+          true,
+          true,
+          true
+        ],
+        "pixelDiscs": [
+          true,
+          true,
+          true
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 60
+      },
+      {
+        "phase": "only-close",
+        "nativeEligible": [
+          true,
+          false,
+          false
+        ],
+        "pixelDiscs": [
+          true,
+          false,
+          false
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 61
+      },
+      {
+        "phase": "shown",
+        "nativeEligible": [
+          true,
+          true,
+          true
+        ],
+        "pixelDiscs": [
+          true,
+          true,
+          true
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 62
+      },
+      {
+        "phase": "shown",
+        "nativeEligible": [
+          true,
+          true,
+          true
+        ],
+        "pixelDiscs": [
+          true,
+          true,
+          true
+        ],
+        "AXHits": [
+          true,
+          true,
+          true
+        ],
+        "originalFrame": 63
+      }
+    ]
+  },
+  "nativePollingDelay": {
+    "samples": [
+      {
+        "phase": "hidden",
+        "delayMs": 12.059166670951527
+      },
+      {
+        "phase": "shown",
+        "delayMs": 7.356125002843328
+      },
+      {
+        "phase": "alpha-zero",
+        "delayMs": 10.20845833409112
+      },
+      {
+        "phase": "hidden",
+        "delayMs": 28.29629166808445
+      },
+      {
+        "phase": "shown",
+        "delayMs": 4.162625002209097
+      },
+      {
+        "phase": "only-close",
+        "delayMs": 18.567958337371238
+      },
+      {
+        "phase": "shown",
+        "delayMs": 5.307083338266239
+      }
+    ],
+    "medianMs": 10.20845833409112,
+    "maxMs": 28.29629166808445,
+    "definition": "logged completed native mutation to next correct completed 30 Hz poll; not first-pixel latency"
+  },
+  "browsers": {
+    "chrome-1": {
+      "settledStates": [
+        {
+          "serial": 1,
+          "phase": "sample",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 2
+        },
+        {
+          "serial": 2,
+          "phase": "away",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 6
+        },
+        {
+          "serial": 3,
+          "phase": "fullscreen-on",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 58
+        },
+        {
+          "serial": 4,
+          "phase": "away",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 126
+        },
+        {
+          "serial": 5,
+          "phase": "toolbar-toggle",
+          "AXHits": [
+            false,
+            false,
+            false
+          ],
+          "threeDiscPixelEvidence": false,
+          "originalFrame": 172
+        },
+        {
+          "serial": 6,
+          "phase": "away",
+          "AXHits": [
+            false,
+            false,
+            false
+          ],
+          "threeDiscPixelEvidence": false,
+          "originalFrame": 176
+        },
+        {
+          "serial": 7,
+          "phase": "hover",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 197
+        },
+        {
+          "serial": 8,
+          "phase": "away",
+          "AXHits": [
+            false,
+            false,
+            false
+          ],
+          "threeDiscPixelEvidence": false,
+          "originalFrame": 216
+        },
+        {
+          "serial": 9,
+          "phase": "toolbar-toggle",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 233
+        },
+        {
+          "serial": 10,
+          "phase": "fullscreen-off",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 269
+        },
+        {
+          "serial": 11,
+          "phase": "sample",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 269
+        }
+      ],
+      "scope": "200 ms after driver sample; pixels independently locate color pair + gray middle-disc contrast, no AX rectangle input"
+    },
+    "edge-1": {
+      "settledStates": [
+        {
+          "serial": 1,
+          "phase": "sample",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 1
+        },
+        {
+          "serial": 2,
+          "phase": "away",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 5
+        },
+        {
+          "serial": 3,
+          "phase": "fullscreen-on",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 57
+        },
+        {
+          "serial": 4,
+          "phase": "away",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 59
+        },
+        {
+          "serial": 5,
+          "phase": "toolbar-toggle",
+          "AXHits": [
+            false,
+            false,
+            false
+          ],
+          "threeDiscPixelEvidence": false,
+          "originalFrame": 102
+        },
+        {
+          "serial": 6,
+          "phase": "away",
+          "AXHits": [
+            false,
+            false,
+            false
+          ],
+          "threeDiscPixelEvidence": false,
+          "originalFrame": 107
+        },
+        {
+          "serial": 7,
+          "phase": "hover",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 129
+        },
+        {
+          "serial": 8,
+          "phase": "away",
+          "AXHits": [
+            false,
+            false,
+            false
+          ],
+          "threeDiscPixelEvidence": false,
+          "originalFrame": 145
+        },
+        {
+          "serial": 9,
+          "phase": "toolbar-toggle",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 162
+        },
+        {
+          "serial": 10,
+          "phase": "fullscreen-off",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 199
+        },
+        {
+          "serial": 11,
+          "phase": "sample",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 199
+        }
+      ],
+      "scope": "200 ms after driver sample; pixels independently locate color pair + gray middle-disc contrast, no AX rectangle input"
+    },
+    "safari-3": {
+      "settledStates": [
+        {
+          "serial": 1,
+          "phase": "sample",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 12
+        },
+        {
+          "serial": 2,
+          "phase": "hide-attributes",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 66
+        },
+        {
+          "serial": 3,
+          "phase": "restore-attributes",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 84
+        },
+        {
+          "serial": 4,
+          "phase": "away",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 109
+        },
+        {
+          "serial": 5,
+          "phase": "fullscreen-on",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 182
+        },
+        {
+          "serial": 6,
+          "phase": "away",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 209
+        },
+        {
+          "serial": 7,
+          "phase": "toolbar-toggle",
+          "AXHits": [
+            false,
+            false,
+            false
+          ],
+          "threeDiscPixelEvidence": false,
+          "originalFrame": 246
+        },
+        {
+          "serial": 8,
+          "phase": "away",
+          "AXHits": [
+            false,
+            false,
+            false
+          ],
+          "threeDiscPixelEvidence": false,
+          "originalFrame": 287
+        },
+        {
+          "serial": 9,
+          "phase": "hover",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 355
+        },
+        {
+          "serial": 10,
+          "phase": "away",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 383
+        },
+        {
+          "serial": 11,
+          "phase": "toolbar-toggle",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 427
+        },
+        {
+          "serial": 12,
+          "phase": "fullscreen-off",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 498
+        },
+        {
+          "serial": 13,
+          "phase": "sample",
+          "AXHits": [
+            true,
+            true,
+            true
+          ],
+          "threeDiscPixelEvidence": true,
+          "originalFrame": 534
+        }
+      ],
+      "scope": "200 ms after driver sample; pixels independently locate color pair + gray middle-disc contrast, no AX rectangle input"
+    }
+  },
+  "motion": {
+    "motion-0": {
+      "originalFrames": 202,
+      "exposedFrames": [
+        11,
+        14,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        31,
+        35,
+        37,
+        38,
+        39,
+        40,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        52,
+        69,
+        70,
+        71,
+        74,
+        77,
+        79,
+        85,
+        87,
+        91,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        112,
+        113,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122,
+        123,
+        124,
+        126,
+        135,
+        139,
+        140,
+        141,
+        142,
+        143,
+        144,
+        145,
+        146,
+        147,
+        154,
+        157,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        169,
+        173,
+        177,
+        180,
+        181,
+        182,
+        184,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195,
+        197
+      ],
+      "initialCoverValid": true,
+      "flickerFree": false
+    },
+    "motion-16": {
+      "originalFrames": 203,
+      "exposedFrames": [
+        19,
+        20,
+        23,
+        43,
+        44,
+        45,
+        47,
+        68,
+        69,
+        73,
+        92,
+        93,
+        94,
+        95,
+        119,
+        140,
+        142,
+        144,
+        166,
+        167,
+        168
+      ],
+      "initialCoverValid": true,
+      "flickerFree": false
+    },
+    "motion-opt-0b": {
+      "originalFrames": 201,
+      "exposedFrames": [
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        139,
+        140,
+        141,
+        142,
+        143,
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        182,
+        183,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195,
+        196,
+        197
+      ],
+      "initialCoverValid": true,
+      "flickerFree": false
+    },
+    "motion-opt-16c": {
+      "originalFrames": 216,
+      "exposedFrames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        138,
+        139,
+        140,
+        141,
+        142,
+        143,
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        205,
+        206,
+        207,
+        208,
+        209,
+        210,
+        211,
+        212,
+        213,
+        214,
+        215
+      ],
+      "initialCoverValid": false,
+      "flickerFree": false
+    },
+    "motion-order-16": {
+      "originalFrames": 260,
+      "exposedFrames": [
+        76,
+        78,
+        101,
+        102,
+        103,
+        126,
+        128,
+        149,
+        150,
+        151,
+        152,
+        153,
+        174,
+        175,
+        176,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        221,
+        223,
+        224,
+        247,
+        248,
+        250,
+        251
+      ],
+      "initialCoverValid": true,
+      "flickerFree": false
+    }
+  },
+  "fullFootprintGuards": {
+    "motion-order-16": {
+      "originalFrames": 260,
+      "exposedFrames": [
+        76,
+        78,
+        80,
+        101,
+        102,
+        103,
+        126,
+        128,
+        149,
+        150,
+        151,
+        152,
+        153,
+        172,
+        174,
+        175,
+        176,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        221,
+        223,
+        224,
+        247,
+        248,
+        250,
+        251,
+        252
+      ],
+      "paddingPoints": 16,
+      "overflowGuard": false,
+      "maskRadiusPoints": 7.5,
+      "nativeControlsRemainUnhiddenAndActive": true,
+      "universalFlickerFreeClaim": false
+    },
+    "motion-overflow-24": {
+      "originalFrames": 260,
+      "exposedFrames": [
+        250
+      ],
+      "paddingPoints": 24,
+      "overflowGuard": true,
+      "maskRadiusPoints": 7.5,
+      "nativeControlsRemainUnhiddenAndActive": true,
+      "universalFlickerFreeClaim": false
+    },
+    "motion-overflow-32": {
+      "originalFrames": 259,
+      "exposedFrames": [],
+      "paddingPoints": 32,
+      "overflowGuard": true,
+      "maskRadiusPoints": 7.5,
+      "nativeControlsRemainUnhiddenAndActive": true,
+      "universalFlickerFreeClaim": false
+    }
+  },
+  "conditionalCover": {
+    "hz": 30,
+    "paddingPoints": 32,
+    "overflowGuard": true,
+    "originalFrames": 201,
+    "coloredDiscExposureFrames": [
+      81,
+      108,
+      171
+    ],
+    "interpretation": "native reveal/fade trial exposes colored controls despite logical cover state; no first-pixel presentation guarantee"
+  },
+  "pollingCPU": {
+    "perf-baseline-b": {
+      "targetOneCoreCPUPercentIncludingTruthInstrumentation": 10.238025669856682,
+      "screenRecorderRunning": false
+    },
+    "perf-15b": {
+      "targetOneCoreCPUPercentIncludingTruthInstrumentation": 12.953256249848641,
+      "screenRecorderRunning": false,
+      "detector": {
+        "captureBackend": false,
+        "complete": true,
+        "elapsedSeconds": 6.067891666665673,
+        "maxQueryMs": 10.70350000372855,
+        "meanQueryMs": 3.817098900921397,
+        "moveCallbacks": 0,
+        "moveFailures": 0,
+        "oneCoreCPUPercent": 1.777783881551681,
+        "overruns": 0,
+        "pid": 65270,
+        "processCPUSeconds": 0.107874,
+        "ticks": 91
+      },
+      "p95QueryMs": 7.32092500111321
+    },
+    "perf-30b": {
+      "targetOneCoreCPUPercentIncludingTruthInstrumentation": 13.406255604746597,
+      "screenRecorderRunning": false,
+      "detector": {
+        "captureBackend": false,
+        "complete": true,
+        "elapsedSeconds": 6.034479624999221,
+        "maxQueryMs": 9.18591666413704,
+        "meanQueryMs": 4.131107734642004,
+        "moveCallbacks": 0,
+        "moveFailures": 0,
+        "oneCoreCPUPercent": 3.2101359526924402,
+        "overruns": 0,
+        "pid": 65292,
+        "processCPUSeconds": 0.19371499999999997,
+        "ticks": 181
+      },
+      "p95QueryMs": 7.732199999736622
+    },
+    "perf-60b": {
+      "targetOneCoreCPUPercentIncludingTruthInstrumentation": 14.951238116184582,
+      "screenRecorderRunning": false,
+      "detector": {
+        "captureBackend": false,
+        "complete": true,
+        "elapsedSeconds": 6.016920124995522,
+        "maxQueryMs": 8.664708337164484,
+        "meanQueryMs": 2.999931209787747,
+        "moveCallbacks": 0,
+        "moveFailures": 0,
+        "oneCoreCPUPercent": 4.676545377942996,
+        "overruns": 0,
+        "pid": 65327,
+        "processCPUSeconds": 0.281384,
+        "ticks": 361
+      },
+      "p95QueryMs": 6.184233335807221
+    }
+  },
+  "notifications": {
+    "registrations": 40,
+    "successful": 40,
+    "scopes": "app, window, close, minimize, zoom",
+    "observed": [
+      {
+        "name": "AXMoved",
+        "scope": 2,
+        "stage": "AX-event",
+        "uptime": 40045.414692583334
+      },
+      {
+        "name": "AXMoved",
+        "scope": 1,
+        "stage": "AX-event",
+        "uptime": 40045.415142750004
+      },
+      {
+        "name": "AXMoved",
+        "scope": 2,
+        "stage": "AX-event",
+        "uptime": 40046.20156558334
+      },
+      {
+        "name": "AXMoved",
+        "scope": 1,
+        "stage": "AX-event",
+        "uptime": 40046.201708625005
+      }
+    ],
+    "hideFadeEventsObserved": false
+  },
+  "movementGroups": {
+    "ordinaryOwnerMotion": [
+      {
+        "AXTrusted": 1,
+        "follows": true,
+        "joinError": 0,
+        "moveError": 0,
+        "stage": "owned-group-positive"
+      },
+      {
+        "AXTrusted": 1,
+        "childPID": 65435,
+        "controllerPID": 65434,
+        "followsWithoutControllerMoves": 0,
+        "joinError": 0,
+        "memberDelta": [
+          0,
+          0
+        ],
+        "stage": "foreign-group-with-AX",
+        "targetDelta": [
+          128,
+          -37
+        ]
+      }
+    ],
+    "interactiveDrag": "inconclusive: zero target movement; rejected, no coupling claim"
+  },
+  "exclusions": {
+    "visibility-30": "app-filtered measurement inserted sharing control; not normal-visibility acceptance",
+    "safari-1": "geometry setup failed before capture; private window can start fullscreen",
+    "safari-2": "incorrect startup-window precondition; Safari can start menu-only",
+    "motion-opt-0": "fixture key/focus setup failed before capture",
+    "motion-opt-16": "active but not key; stopped before capture",
+    "motion-opt-16b": "obsolete app-shareability precondition in display recorder; stopped before capture",
+    "motion-opt-16c": "cover logical state did not match AppKit ordering; all discs exposed from initial frame",
+    "perf-15": "key-window gate irrelevant to CPU-only trial; rejected and rerun in separate outputs",
+    "group-ax-drag": "mouse stimulus produced no target movement; not a negative or positive coupling result"
+  }
+}

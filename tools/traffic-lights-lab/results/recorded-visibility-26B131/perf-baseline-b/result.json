@@ -1,0 +1,12 @@
+{
+  "failure": null,
+  "processes": {
+    "stimulus": {
+      "pid": 65251,
+      "exit": 0
+    }
+  },
+  "pixelFeedbackToBackend": false,
+  "recordingUsedForMeasurementOnly": false,
+  "passed": true
+}

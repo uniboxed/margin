@@ -1,0 +1,2 @@
+{"captureBackend":false,"covering":false,"coverWindow":0,"hz":30,"padding":0,"pid":62826,"stage":"ready","targetPID":62786,"targetWindow":6608,"uptime":38624.231339291669}
+{"captureBackend":false,"complete":true,"elapsedSeconds":20.4186358750012,"maxQueryMs":126.02333333052229,"meanQueryMs":3.2601566113577771,"moveCallbacks":0,"moveFailures":0,"oneCoreCPUPercent":2.18214871320327,"overruns":7,"pid":62826,"processCPUSeconds":0.44556499999999999,"ticks":605}

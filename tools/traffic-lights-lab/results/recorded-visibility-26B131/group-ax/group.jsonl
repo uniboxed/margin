@@ -1,0 +1,3 @@
+{"AXTrusted":1,"follows":true,"joinError":0,"moveError":0,"stage":"owned-group-positive"}
+{"AXTrusted":1,"childPID":65435,"controllerPID":65434,"followsWithoutControllerMoves":0,"joinError":0,"memberDelta":[0,0],"stage":"foreign-group-with-AX","targetDelta":[128,-37]}
+{"childExited":1,"complete":true,"reason":"bounded AX-trusted movement-group authority comparison complete","screenCaptureUsed":false,"status":0}

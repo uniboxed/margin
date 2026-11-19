@@ -1,0 +1,11 @@
+{
+  "failure": "('child failed', [('driver', 2)])",
+  "processes": {
+    "driver": {
+      "pid": 63390,
+      "exit": 2
+    }
+  },
+  "pixelFeedbackToBackend": false,
+  "passed": false
+}

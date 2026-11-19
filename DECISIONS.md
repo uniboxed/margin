@@ -5362,3 +5362,66 @@ builds and unit tests 1,031 pass. Full E2E attempted/bounded at 60s after missin
 pinned WebKit 2388; no browser download/full E2E pass. Other current-build browser
 toolbar settings, hover, Safari, custom controls and product lifecycle need manual
 or further dedicated acceptance.
+
+## 2026-11-18 — recorded validation of AX visibility and motion guards (m2)
+
+User authorizes Screen Recording only as independent test measurement, never a
+backend dependency. Explicit user answer authorizes a disposable Safari window,
+overriding SPEC's previous Safari research restriction for this pass. Research
+only on test/button-visibility-recordings; no production behavior/permission change.
+
+On actual 27.2.1/26B131, separate recorder, owned target/driver and metadata-only
+AX/private-WindowServer detector have no pixel feedback. Source/linkage audit finds
+no backend capture calls, image reads or ScreenCaptureKit dependency. Native fixture
+pixel endpoints and 35 settled Safari/Chrome/Edge samples correlate with AX hits,
+including fullscreen toolbar hiding/hover. Synthetic custom AX intentionally keeps
+hits while native controls hide: no universal rendering-oracle claim. Safari's
+non-settable AXHidden writes return zero yet controls stay visibly present;
+AXVisible writes unsupported. Native external removal stays unestablished.
+
+40 app/window/button observer registrations succeed. Two native moves produce four
+app/window AXMoved callbacks; hide/fade changes produce none among those subscriptions.
+Recorder-free six-second polling at 15/30/60 Hz uses 1.78/3.21/4.68% of one core in
+the detector, including diagnostic logging. Seven native discrete mutations reach
+next correct 30 Hz poll in median 10.2 ms, max 28.3 ms. Not first-pixel latency or
+long-term/browser-wide energy acceptance; target is separately instrumented.
+
+Cross-process fitted covers still slip. Full 7.5-point disc mask finds 31/260
+exposure frames with clipped 16-point guard, 1/260 with 24-point overflow guard,
+and 0/259 with 32-point overflow guard. Last requests 126x80 points and extends
+about 24 points outside the native left/top boundary, into title/page/outer area.
+This is a bounded overcoverage trade-off, not native removal or a universal
+flicker-free promise. Preserve interior-vs-full-footprint results separately.
+
+AX-trusted same-owner movement-group positive follows. Foreign join returns zero
+but ordinary owner movement does not carry member; not proof of denied authority
+or every group path being impossible. Native drag stimulus yields no target
+movement and is rejected; no false zero/zero coupling claim. Physical drag support
+remains unvalidated. AppKit/private panel ordering consistency also matters: a
+logically visible panel was actually ordered out in a rejected candidate.
+
+App-filtered first recording changes titlebar sharing UI; excluded. Safari setup
+first hits inherited fullscreen, then an invalid initial-window requirement; both
+retained before corrected private-window test. Fixture key/focus and an obsolete
+shareability precondition reject further attempts before recording. Offline
+analyzer timebase, truth-row and cropped-disc boundary failures are retained and
+corrected without UI replays. All original frame counts/PTS cross-checked; shared
+presentation copies are corner crops enlarged 2x, with no frame interpolation.
+
+All 70 recorded controller/target PIDs exit. Fresh Chromium profiles removed after
+matching-process checks; no Safari profile files deleted; toolbar/cursor restored.
+Raw test-results/button-visibility-recorded-2026-11-18; compact evidence in
+tools/traffic-lights-lab/results/recorded-visibility-26B131; detailed report
+docs/RECORDED-BUTTON-VISIBILITY-RESEARCH.md. Native checked builds/evidence audit and
+unit 1,031 pass. Full E2E attempted/bounded at 60 seconds after missing pinned
+WebKit 2388; no browser download/full pass. Unknown custom apps, physical drags,
+resize/displays/Spaces/occlusion, exact compositor onset and sustained lifecycle
+remain future acceptance. No product installation or universal hide claim.
+
+Additional conditional-cover trial: at 30 Hz with the same 32-point overflow guard,
+reveal/fade changes expose colored controls in 3/201 originals (81,108,171), despite
+logical visible flags. State intent is not compositor paint. This prevents treating
+0/259 already-covered motion as a zero-flash reveal guarantee. Poll scheduling,
+AppKit ordering and presentation delay are not isolated here. A persistent reserved
+frame region differs from reactive cover visibility and needs product validation;
+current research mask also passes mouse events through.

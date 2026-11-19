@@ -1,0 +1,20 @@
+{
+  "failure": "('child failed', [('recorder', 2)])",
+  "processes": {
+    "stimulus": {
+      "pid": 64538,
+      "exit": 0
+    },
+    "detector": {
+      "pid": 64541,
+      "exit": 0
+    },
+    "recorder": {
+      "pid": 64545,
+      "exit": 2
+    }
+  },
+  "pixelFeedbackToBackend": false,
+  "recordingUsedForMeasurementOnly": true,
+  "passed": false
+}

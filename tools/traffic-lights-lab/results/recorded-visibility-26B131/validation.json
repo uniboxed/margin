@@ -1,0 +1,63 @@
+{
+  "backendCaptureCalls": false,
+  "backendPixelFileReads": false,
+  "backendLinksScreenCaptureKit": false,
+  "backendSourceSHA256": "24838dc54c459d097b741d0c37f656033f47e91672fff07c1a506e208389c90b",
+  "backendBinarySHA256": "0504e5f38c10e18b4cd2eb3c0ed28cd9732aee838561c5fa58f7e2404bc52ff3",
+  "unitTests": {
+    "pass": 1031,
+    "fail": 0
+  },
+  "e2e": {
+    "exit": 124,
+    "boundSeconds": 60,
+    "download": false
+  },
+  "e2eBlocker": "missing pinned WebKit 2388 executable",
+  "pythonAST": "pass",
+  "nativeWarningsAsErrorsBuilds": "pass",
+  "productionAppModified": false,
+  "finalNativeReview": {
+    "ax-live-detector": {
+      "sourceSHA256": "24838dc54c459d097b741d0c37f656033f47e91672fff07c1a506e208389c90b",
+      "binarySHA256": "0504e5f38c10e18b4cd2eb3c0ed28cd9732aee838561c5fa58f7e2404bc52ff3",
+      "warningsAsErrorsBuild": true
+    },
+    "visibility-stimulus": {
+      "sourceSHA256": "bfac1e71c38ae05239a5666ad00b1912d6a225dee3fd0c1a3059cadad7071140",
+      "binarySHA256": "0c9a67b89915265e145050ab0b6045c0c9fcb8866420cc50a8880748f91282e3",
+      "warningsAsErrorsBuild": true
+    },
+    "browser-visibility-stimulus": {
+      "sourceSHA256": "496c7409c266e66e2d70e31710a1757c6ade0c6f36a27145690fb6d07f68e0e6",
+      "binarySHA256": "7079a82b4623f0b2c9b9c4b72fe3a46d3c7d2780ad9a9eea0f46307c3c1d8f6c",
+      "warningsAsErrorsBuild": true
+    },
+    "visibility-observer": {
+      "sourceSHA256": "e25e110d657f4c338ad8a156f2df6fc5599310fcc8604b926a2181adb313925a",
+      "binarySHA256": "158a60c971108983c057d2310fb3111d800cf1a4366e0d46cf3ea23b35bf05d3",
+      "warningsAsErrorsBuild": true
+    },
+    "ax-movement-group": {
+      "sourceSHA256": "858d2b9892df07d0c2e4ac6fda2171d58f4cb9a2be5aa8cb0c5c71bdf6bbb293",
+      "binarySHA256": "cd9d03719b76d8f893db4c79e2f976443cb45c33fde999fe296e406fbd92c115",
+      "warningsAsErrorsBuild": true
+    },
+    "visibility-recorder": {
+      "sourceSHA256": "ef39fe8230c4fb219a1c9873741e86797f0c06ed455ff93e16f74eae83d76499",
+      "binarySHA256": "b364dcca8fcfdedf7020c29fb0a732a441dacdff18f65a9d9ed7901850900374",
+      "warningsAsErrorsBuild": true
+    },
+    "analyze-visibility-video": {
+      "sourceSHA256": "48f6378f9cf83252fefaad2eae33f2dcbc5a1c4feb4648dfc76a319e7644051c",
+      "binarySHA256": "60ac5f9ba8c5891477f7005687654a3c2f8e834c4268e7eae114b6e8ee6834c1",
+      "warningsAsErrorsBuild": true
+    },
+    "analyze-browser-buttons": {
+      "sourceSHA256": "fd4e6f1e02ac4ad9138d8b725abda3b3b3114ddeaca899e94159c4bb1223bf31",
+      "binarySHA256": "cf29631f212ac8dde7ecf57c7a4f9d95c6563dfc51ec4267ef4a941c5fe29b02",
+      "warningsAsErrorsBuild": true
+    }
+  },
+  "finalReviewNote": "Helpers gain inspected-build guards and dry descriptions after the archived UI runs; original per-attempt sources/binaries remain intact. Group logging also guards nonzero target movement before reporting following; the rejected historical zero/zero record is unchanged."
+}

@@ -1,0 +1,14 @@
+{
+  "browser": "safari",
+  "sha256": {
+    "sources/visibility-recorder.swift": "89fd28e613b22352078ba9568eaca752ae0285f23fb47a70841ea895069bcbbb",
+    "sources/ax-button-visibility.m": "a1a4ee11b796d6ca1bf2fb939382017632e5815453a711cd77ba28c8cc2ecbb9",
+    "sources/run-browser-visibility.py": "214693addf9c31ac515b5564b6a62c644651e184e1de80c6219007a89afdda5d",
+    "sources/ax-live-detector.m": "43728d626893e3a604b1ff4193ab1d72cb33b393e000366710f5ebeddb1878d2",
+    "sources/browser-visibility-stimulus.m": "d28fcd0e1f7ba402211e05f9155e9045555ce77df08460806db331c8b4bb68c0",
+    "binaries/ax-live-detector": "4135b168bfa656e69e36e68a52418b66098aa669c56deb2d056eb18f3f7730ca",
+    "binaries/browser-visibility-stimulus": "e5cc0b1810d00edc304e0c91160bbdba4bec3fa9308bfb4f0fb81fa173aaa3c6",
+    "binaries/visibility-recorder": "036026c44fb490382da62b769c884fef584ceedd679bd51a828487aaba611d07"
+  },
+  "pixelFeedbackToBackend": false
+}

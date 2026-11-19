@@ -1,5 +1,17 @@
 # Window traffic-light research lab
 
+## Recorded AX validation (2026-11-18)
+
+Screen Recording is used only by a separate test measurer. The AX/private-metadata
+backend has no capture calls, image inputs or ScreenCaptureKit linkage. Real Safari,
+Chrome and Edge have 35 matching settled pixel/AX samples. Polling CPU/timing,
+app/window/button notifications and cover movement are measured. A large overflowing
+guard records 0/259 full-footprint exposures in one bounded run; its requested
+126×80-point rectangle extends past the window. Conditional reveal still exposes
+colored controls in 3/201 frames. Native controls remain underneath.
+See [report](../../docs/RECORDED-BUTTON-VISIBILITY-RESEARCH.md) and
+[evidence/reproduction](results/recorded-visibility-26B131/README.md).
+
 ## Detection with Accessibility (2026-11-18)
 
 The user now permits AX, retaining metadata-only/no-capture testing. App-specific

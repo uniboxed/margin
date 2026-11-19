@@ -1,0 +1,77 @@
+[
+  {
+    "file": "presentation/safari-titlebar.mp4",
+    "source": "safari-3/measurement.mp4",
+    "cropPoints": [
+      0,
+      0,
+      320,
+      230
+    ],
+    "enlargement": 2,
+    "interpolation": "nearest pixel, no frame interpolation",
+    "originalFrames": 552,
+    "maxPTSChangeSeconds": 0.0,
+    "sha256": "58a0dfd8610c42e708cf2d7d4329e5b0ef1fac79b653e76eeb72b6fcfa7acb91"
+  },
+  {
+    "file": "presentation/motion-corner.mp4",
+    "source": "motion-order-16/measurement.mp4",
+    "cropPoints": [
+      200,
+      210,
+      400,
+      200
+    ],
+    "enlargement": 2,
+    "interpolation": "nearest pixel, no frame interpolation",
+    "originalFrames": 260,
+    "maxPTSChangeSeconds": 0.0,
+    "sha256": "66654002fdca1d3cd4f99f4452dbecd2b2e49729a4b6aba926dc700a67f789e5"
+  },
+  {
+    "file": "presentation/motion-clipped-16.mp4",
+    "source": "motion-order-16/measurement.mp4",
+    "cropPoints": [
+      160,
+      170,
+      480,
+      260
+    ],
+    "enlargement": 2,
+    "interpolation": "nearest pixel; no frame interpolation",
+    "originalFrames": 260,
+    "maxPTSChangeSeconds": 0.0,
+    "sha256": "a9300e2756f144df3f723df034191d7fc4ed6fe38ac0bcca59be35f16cf18aee"
+  },
+  {
+    "file": "presentation/motion-guard-32.mp4",
+    "source": "motion-overflow-32/measurement.mp4",
+    "cropPoints": [
+      160,
+      170,
+      480,
+      260
+    ],
+    "enlargement": 2,
+    "interpolation": "nearest pixel; no frame interpolation",
+    "originalFrames": 259,
+    "maxPTSChangeSeconds": 0.0,
+    "sha256": "01bc859e8704872967b481ab8175c0adfbb624fc4605d294ddf10cb7bda7654c"
+  },
+  {
+    "file": "presentation/conditional-reveal.mp4",
+    "source": "conditional-cover-30/measurement.mp4",
+    "cropPoints": [
+      160,
+      170,
+      480,
+      260
+    ],
+    "enlargement": 2,
+    "interpolation": "nearest pixel; no frame interpolation",
+    "originalFrames": 201,
+    "maxPTSChangeSeconds": 0.0,
+    "sha256": "33481d2e26f1cfc7004b316f087c742e0a6b6b950e51cb1139955699d20651af"
+  }
+]

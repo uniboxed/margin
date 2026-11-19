@@ -1,0 +1,3 @@
+{"AXTrusted":1,"follows":true,"joinError":0,"moveError":0,"stage":"owned-group-positive"}
+{"AXTrusted":1,"childPID":65693,"controllerPID":65690,"dragStimulus":true,"followsWithoutControllerMoves":1,"joinError":0,"memberDelta":[0,0],"stage":"foreign-group-with-AX","targetDelta":[0,0]}
+{"childExited":1,"complete":true,"reason":"native titlebar drag stimulus did not move target enough","screenCaptureUsed":false,"status":2}

@@ -1,0 +1,24 @@
+{
+  "arguments": {
+    "output": "/Users/patelti4/Documents/projects/personal/margin/test-results/button-visibility-recorded-2026-11-18/motion-0",
+    "mode": "motion",
+    "hz": 60,
+    "padding": 0,
+    "cover": true,
+    "no_recording": false,
+    "no_detector": false,
+    "seconds": 6,
+    "run": true
+  },
+  "sha256": {
+    "sources/visibility-recorder.swift": "89fd28e613b22352078ba9568eaca752ae0285f23fb47a70841ea895069bcbbb",
+    "sources/ax-button-visibility.m": "a1a4ee11b796d6ca1bf2fb939382017632e5815453a711cd77ba28c8cc2ecbb9",
+    "sources/ax-live-detector.m": "77a75997cae9480366d7260da74949f9bd57d51a18e75af57c703aebe6c8e3e9",
+    "sources/run-recorded-visibility.py": "4976ee237f3d1638f15027f62825b340137c50e7681c430604790bf909951531",
+    "sources/visibility-stimulus.m": "562452b193ad3becaf117ffa4f81a53168c6c442843ec611977ebcebea7fcf7e",
+    "binaries/ax-live-detector": "03b54b4718996d6e1d9707b6fe0a039f85d49eee1a9375aefcbf7d1686f07ccc",
+    "binaries/visibility-stimulus": "75f5d61fcaf51a070b56817a8937067589bea16e6924ecf1e910b43b65fae3c6",
+    "binaries/visibility-recorder": "036026c44fb490382da62b769c884fef584ceedd679bd51a828487aaba611d07"
+  },
+  "pixelFeedbackToBackend": false
+}

@@ -1,5 +1,44 @@
 # Testing Margin
 
+## Recorded AX visibility follow-up (2026-11-18)
+
+User authorizes capture for testing only and explicitly overrides the earlier
+no-Safari-run research restriction for a disposable Safari window. Backend stays
+pixel-free; product unchanged. Actual host 27.2.1/26B131.
+
+- [x] Separate recorder, owned native stimuli/browser windows and metadata-only
+  backend. Static/linkage audit: no backend capture/permission APIs or image reads.
+- [x] 35 settled rendered/AX comparisons: installed Chrome 158.0.8127.37, Edge
+  157.0.4341.60, Safari 27.2 private window; fullscreen toolbar/hover/restoration.
+- [x] Native hidden/alpha/reveal/disabled/individual-control states, plus deliberate
+  custom AX counterexample. Correct pixel analysis for shifted title text and dark
+  gray minimize discs; visually inspected original frames.
+- [x] 40 accepted AX subscriptions across app/window/three buttons. Four planned
+  move callbacks are positive controls; no hide/fade notifications observed.
+- [x] Recorder-free six-second 15/30/60 Hz trials: detector 1.78/3.21/4.68% of one
+  core. Native logged-mutation-to-correct-30-Hz-poll median 10.2 ms, max 28.3 ms,
+  seven transitions; not first-compositor-pixel timing or an energy benchmark.
+- [x] Conditional cover at 30 Hz and 32-point overflow still exposes colored native
+  controls in 3/201 recorded reveal/fade frames. Logical visible state is not paint
+  readback; no end-to-end zero-flash claim.
+- [x] Full-disc motion measurements: clipped 16-point guard 31/260 exposure frames;
+  overflow 24-point guard 1/260; overflow 32-point guard 0/259. Last one requests
+  126×80 points and overflows the native left/top edges by approximately 24 points.
+- [x] AX-trusted group own-owner positive; foreign join returns zero without
+  ordinary-owner following. Drag stimulus fails to move target: inconclusive,
+  explicitly excluded, not a zero/zero coupling success.
+- [x] Original frame counts and relative PTS checked against SC complete-frame
+  timestamps. Cropped/enlarged presentation clips preserve all original frames/PTS.
+  Failed setups/analysis versions retained; 70 recorded PIDs confirmed exited.
+- [x] Native warnings-as-errors builds, offline verifier, Python parsing, unit 1,031
+  pass. Full E2E attempted/bounded at 60s; missing pinned WebKit 2388, no download.
+- [ ] Physical dragging/resizing, every animation frame, other displays/scales/OS
+  builds, arbitrary custom controls, overlap/Spaces/Mission Control, permission
+  loss, long-term CPU/power and production lifecycle remain unaccepted.
+
+See [recorded report](docs/RECORDED-BUTTON-VISIBILITY-RESEARCH.md) and
+[raw-evidence reproduction](tools/traffic-lights-lab/results/recorded-visibility-26B131/README.md).
+
 ## Button detection with Accessibility (2026-11-18)
 
 The user permits AX; no Screen Recording or pixel capture in this pass. Actual

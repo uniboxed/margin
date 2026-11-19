@@ -1,5 +1,10 @@
 # Button visibility through Accessibility
 
+**Later follow-up:** the user authorized capture for independent testing and a
+disposable Safari window. Recorded browser validation, notification/CPU trials and
+motion-guard results are in [the recorded report](RECORDED-BUTTON-VISIBILITY-RESEARCH.md).
+The implementation still receives no pixels or recording permission dependency.
+
 2026-11-18. The user now permits Accessibility (AX), while retaining the restriction
 against Screen Recording and pixel capture. This supersedes the no-AX constraint
 for this research only. No Margin.app behavior changes.

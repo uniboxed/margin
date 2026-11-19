@@ -1,0 +1,3 @@
+{"arguments":["-ApplePersistenceIgnoreState","YES"],"engine":"safari","pid":63391,"stage":"browser-launched","version":"27.2"}
+{"mark":{"error":-25212,"value":null},"menu":"File","stage":"menu-capability","title":"New Private Window"}
+{"childExited":1,"complete":true,"reason":"owned browser geometry setup failed","screenCaptureUsed":false,"status":2}

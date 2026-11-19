@@ -1,0 +1,19 @@
+{
+  "failure": null,
+  "processes": {
+    "driver": {
+      "pid": 63759,
+      "exit": 0
+    },
+    "detector": {
+      "pid": 63820,
+      "exit": 0
+    },
+    "recorder": {
+      "pid": 63821,
+      "exit": 0
+    }
+  },
+  "pixelFeedbackToBackend": false,
+  "passed": true
+}

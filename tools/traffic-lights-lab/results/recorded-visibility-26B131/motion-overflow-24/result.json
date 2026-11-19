@@ -1,0 +1,20 @@
+{
+  "failure": null,
+  "processes": {
+    "stimulus": {
+      "pid": 67443,
+      "exit": 0
+    },
+    "detector": {
+      "pid": 67445,
+      "exit": 0
+    },
+    "recorder": {
+      "pid": 67450,
+      "exit": 0
+    }
+  },
+  "pixelFeedbackToBackend": false,
+  "recordingUsedForMeasurementOnly": true,
+  "passed": true
+}

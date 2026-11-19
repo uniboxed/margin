@@ -1,0 +1,27 @@
+{
+  "arguments": {
+    "output": "/Users/patelti4/Documents/projects/personal/margin/test-results/button-visibility-recorded-2026-11-18/events-scopes",
+    "mode": "events",
+    "observe": true,
+    "hz": 30,
+    "padding": 0,
+    "cover": false,
+    "no_recording": true,
+    "no_detector": false,
+    "seconds": 6,
+    "run": true
+  },
+  "sha256": {
+    "sources/visibility-observer.m": "6ef70155b2c1c72498c8fdf9f634ba725e0ddeebe976e08f243733739b312aee",
+    "sources/visibility-recorder.swift": "ef39fe8230c4fb219a1c9873741e86797f0c06ed455ff93e16f74eae83d76499",
+    "sources/ax-button-visibility.m": "a1a4ee11b796d6ca1bf2fb939382017632e5815453a711cd77ba28c8cc2ecbb9",
+    "sources/ax-live-detector.m": "60bdbcb576b1a4d24d5a22eacedebfb7bc3c33639232731bb05f427d7d80fe48",
+    "sources/run-recorded-visibility.py": "e61850cda2d2092141586cb1eaa02bc529d9eb3ad2ec7e9668f782a48831339f",
+    "sources/visibility-stimulus.m": "6bdbd6c3e8a9520177f34abc8318fefa295b5a4b86916244e992c6f2154624e4",
+    "binaries/ax-live-detector": "8f853c9f9600426979dafbe0db4c9224e79f0db7a3625e6ba0edc2ffa2ec66c2",
+    "binaries/visibility-observer": "a4508783049554b1bbdd7b5ff4d190bcf4dfabc23e4f69a3d1bfcb5cfab266c8",
+    "binaries/visibility-stimulus": "cf4d99eac5c762967f6ae7ae0300041adab4e1e3c57be532411697bd9e26822e",
+    "binaries/visibility-recorder": "b364dcca8fcfdedf7020c29fb0a732a441dacdff18f65a9d9ed7901850900374"
+  },
+  "pixelFeedbackToBackend": false
+}

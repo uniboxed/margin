@@ -4,6 +4,15 @@ The target is the three close, minimise and zoom/fullscreen buttons, leaving the
 window title and other application chrome alone. Research is restricted to Accessibility and private
 macOS APIs for control. No product behavior is changed by this spike.
 
+**2026-11-18, recorded follow-up:** capture is authorized for test evidence only.
+AX detection agrees with 35 settled recorded samples across Safari/Chrome/Edge.
+App/button-scoped notification and recorder-free CPU tests support bounded polling.
+A clipped guard still slips; a much larger overflowing corner records 0/259
+full-footprint exposure frames in one stress run, with significant overcoverage.
+Conditional reveal still exposes colored controls in 3/201 frames.
+Native removal and universal/flicker-free guarantees remain unestablished. See
+[recorded findings](RECORDED-BUTTON-VISIBILITY-RESEARCH.md).
+
 **2026-11-18, Accessibility now allowed:** metadata-only tests on 26B131 correlate
 app-specific AX button hit-tests with native hidden/alpha/reveal states in a
 separate fixture. The signal survives a verified owned cover. Fresh installed
