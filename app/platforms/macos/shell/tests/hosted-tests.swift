@@ -42,6 +42,9 @@ final class FakeHostedWindow: HostedWindow {
     var elsewhereApp: String?
     var elsewherePicture: String?
     func setElsewhere(_ label: String?, app: String?, picture: String?) { elsewhere = label; elsewhereApp = app; elsewherePicture = picture }
+    var stuck: String? // what the start screen says is wrong now (HostedSession `holdStartup`)
+    var stucks: [String?] = [] // each setStartupStuck, in order
+    func setStartupStuck(_ why: String?) { stuck = why; stucks.append(why) }
     func setShowing(_ label: String?, app: String?, slow: Bool) { guard label != showing else { return }; showing = label; showings.append(label); showingApps.append(app); if slow, let label { slowShowings.append(label) } }
     var moves = 0 // hostedMoved: the hosted window's bounds read again
     func hostedMoved() { moves += 1 }
@@ -377,6 +380,34 @@ func preparedBrowserTests(_ library: Library) {
         let lines = prepare(r)
         check("prepared: something shown in Margin's window: not prepared, it stays shown", r.engine.shown == HostTarget.app("com.apple.TextEdit").id && r.engine.hosts[safari] == nil
               && lines.contains { $0.contains("browser not prepared") }, "\(lines.filter { $0.contains("prepared") })")
+        hostRun { await r.engine.quitAll() }
+    }
+    // ---- the start screen (2026-11-19): the extension never links: said at once; Try again once it's on: prepared ----
+    do {
+        let r = rig()
+        r.links.profiles = []
+        r.links.notInMenu = ["s-default"] // (its copy never links: nothing Safari's menu opens links it)
+        r.session.options.firstCopiesPace = 0
+        r.session.options.startupWait = 600 // (the stand-in's preparation is many waits' turns long: never "taking longer" here)
+        r.window.isFullScreen = true
+        r.session.resumeLast(r.window)
+        let screen = r.session.startupShown
+        _ = prepare(r)
+        func spin(_ done: () -> Bool) -> Bool {
+            let until = Date().addingTimeInterval(5)
+            while !done(), Date() < until { hostRun { await r.session.idle() }; RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+            return done()
+        }
+        let said = spin { r.window.stuck != nil }
+        check("start screen: the browser's extension never links: said at once (not after the limit), what to check, Try again and Continue without Safari; nothing shown",
+              screen && said && r.window.stuck == HostedSession.startupNoLink && r.engine.shown == nil && r.session.startupShown, "\(String(describing: r.window.stuck))")
+        r.links.notInMenu = []
+        r.links.profiles = ["s-default"] // (the person turned the extension on)
+        r.session.startupRetry()
+        let ready = spin { !r.session.startupShown }
+        check("start screen: Try again with the extension on: the preparation run again, prepared, the start screen lifted",
+              ready && r.window.stuck == nil && r.engine.hosts[safari] != nil && r.links.asked.contains { $0.type == "newWindow" } && Array(r.window.stucks) == [HostedSession.startupNoLink, nil],
+              "\(r.window.stucks) \(String(describing: r.engine.hosts[safari]?.phase)) \(r.session.done.suffix(4))")
         hostRun { await r.engine.quitAll() }
     }
     // ---- a profile with no window, woken through Safari's menu for the preparation (2026-11-17 14:05) ----
@@ -1073,17 +1104,62 @@ func hostedResumeTests(script: URL) {
               "first \(first) all \(window.slowShowings) shown \(String(describing: engine.shown))")
         run { await engine.quitAll() }
     }
+    // (The start screen, Tirth 2026-11-19: held until the browser is ready; past its limit, what's wrong said with Try
+    // again and Continue without Safari, never the item shown on its own.)
+    func spin(_ run: (@escaping () async -> Void) -> Void, _ done: () -> Bool) -> Bool {
+        let until = Date().addingTimeInterval(3)
+        while !done(), Date() < until { run {}; RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        return done()
+    }
     do {
         let (_, engine, session, window, run) = launch()
         session.options.preparesBrowser = true
         session.options.startupWait = 0.05
         window.isFullScreen = true
         session.resumeLast(window)
-        // (The preparation never says it's over: the item isn't held longer than `startupWait`.)
-        let until = Date().addingTimeInterval(3)
-        while engine.shown == nil, Date() < until { run {} ; RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
-        check("start: a browser that never gets ready holds the item no longer than its limit", engine.shown == HostTarget.app("com.apple.Notes").id && session.resuming == nil,
-              "\(String(describing: engine.shown)) \(window.slowShowings)")
+        // (The preparation never says it's over.)
+        let held = spin(run) { window.stuck != nil }
+        check("start: a browser not ready within its limit: the start screen held up, saying so; the item NOT shown on its own, nothing usable",
+              held && window.stuck == HostedSession.startupSlow && engine.shown == nil && session.startupShown && window.slowShowings == [HostedSession.startupLabel],
+              "\(String(describing: window.stuck)) \(String(describing: engine.shown)) \(window.slowShowings)")
+        let pushedBefore = window.stucks.count
+        session.startupRetry()
+        let again = spin(run) { window.stucks.count >= pushedBefore + 2 }
+        check("start: Try again (still preparing): the words gone, its limit anew, then said again", again && Array(window.stucks.suffix(2)) == [nil, HostedSession.startupSlow]
+              && session.startupRetries == 1 && engine.shown == nil, "\(window.stucks)")
+        session.startupSkip()
+        let skipped = spin(run) { engine.shown == HostTarget.app("com.apple.Notes").id }
+        check("start: Continue without Safari: the start screen gone, the item shown last shown", skipped && !session.startupShown && window.stuck == nil && session.resuming == nil
+              && window.slowShowings.last == "Notes", "\(String(describing: engine.shown)) \(window.slowShowings) \(window.stucks)")
+        session.startupRetry()
+        session.startupSkip()
+        check("start: the start screen gone: its choices do nothing", session.startupRetries == 1)
+        run { await engine.quitAll() }
+    }
+    do {
+        let (_, engine, session, window, run) = launch()
+        session.options.preparesBrowser = true
+        session.options.startupWait = 0.05
+        window.isFullScreen = true
+        session.resumeLast(window)
+        _ = spin(run) { window.stuck != nil }
+        session.preparationOver()
+        let ready = spin(run) { engine.shown == HostTarget.app("com.apple.Notes").id }
+        check("start: held up, then the browser ready after all: the start screen lifts by itself, the item shown", ready && window.stuck == nil && !session.startupShown
+              && window.stucks == [HostedSession.startupSlow, nil], "\(window.stucks)")
+        run { await engine.quitAll() }
+    }
+    do {
+        let (_, engine, session, window, run) = launch()
+        session.options.preparesBrowser = true
+        session.options.resumesLast = false
+        window.isFullScreen = true
+        session.resumeLast(window)
+        let screen = session.startupShown && window.slowShowings == [HostedSession.startupLabel] && window.hosting
+        session.preparationOver()
+        _ = spin(run) { !session.startupShown }
+        check("start: the item shown last not shown again (MarginResumeLast NO): the start screen still, then the launcher (nothing shown)",
+              screen && !session.startupShown && engine.shown == nil && !window.hosting && session.resuming == nil, "\(window.slowShowings) \(window.hostings)")
         run { await engine.quitAll() }
     }
     // ---- an item in another Margin window (Tirth, 2026-11-18): its card there, the item back when that window's in front ----

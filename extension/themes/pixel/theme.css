@@ -291,6 +291,11 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
   transition: opacity .12s steps(2), visibility 0s linear .12s;
 }
 .pixel:is([m-page-state="loading"], [m-starting][m-page-state="empty"]) .page-loader { opacity: 1; visibility: visible; pointer-events: auto; transition: none; }
+/* Margin's start (m-startup: Margin.app's own window while its default browser gets ready): the loader's dotted ground
+   over the whole window, the meter alone (no app's icon, no words); held up, what's wrong under it. */
+.pixel > m-startup { background: linear-gradient(var(--side), var(--side)) center / 246px 28px no-repeat, radial-gradient(var(--dots) 1px, transparent 1px) 0 0 / 16px 16px var(--ground); color: var(--ink); font-size: 12px; text-transform: uppercase; }
+.pixel > m-startup > [m-startup-spin] { display: none; }
+.pixel > m-startup [m-startup-action] { border: 2px solid var(--ink); border-radius: 0; background: var(--deep); text-transform: uppercase; }
 /* Its item in another Margin window (m-page-state="elsewhere"): the card, faded and still. */
 .pixel[m-page-state="elsewhere"] .page-loader { opacity: .55; visibility: visible; pointer-events: none; transition: none; }
 .pixel[m-page-state="elsewhere"] .opening-fill { animation: none; transform: scaleX(0); }
@@ -300,8 +305,8 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
 .pixel > m-page-picture > [m-picture-label] { background: var(--deep); color: var(--ink); border: 2px solid var(--ink); border-radius: 0; box-shadow: none; font-size: 12px; text-transform: uppercase; }
 .opening { position: relative; justify-self: stretch; display: grid; place-items: center; }
 /* The fill, and the frame over it (the slot's own two boxes while starting: it has no part then). */
-.opening-fill, .pixel[m-starting][m-page-state="empty"] .page-loader::before { content: ""; grid-area: 1 / 1; width: 240px; height: 28px; margin-right: 6px; background: var(--space); transform-origin: left; transform: scaleX(0); animation: px-fill 1.8s steps(9, jump-none) infinite; }
-.opening-frame, .pixel[m-starting][m-page-state="empty"] .page-loader::after {
+.opening-fill, .pixel[m-starting][m-page-state="empty"] .page-loader::before, .pixel > m-startup::before { content: ""; grid-area: 1 / 1; width: 240px; height: 28px; margin-right: 6px; background: var(--space); transform-origin: left; transform: scaleX(0); animation: px-fill 1.8s steps(9, jump-none) infinite; }
+.opening-frame, .pixel[m-starting][m-page-state="empty"] .page-loader::after, .pixel > m-startup::after {
   content: "";
   grid-area: 1 / 1;
   position: relative; /* (over the fill, which its transform lifts) */
@@ -487,7 +492,7 @@ img.fav.app { width: 22px; height: 22px; margin: -2px; box-shadow: none; backgro
   .column.m-settling .swipes, .gesture, .load-bar { transition: none; }
   .gesture, .gesture .pix { animation: none !important; translate: none; }
   /* The page card's meter stands half full, its hourglass and cursor still, the skeleton doesn't blink, the card goes at once. */
-  .opening-fill, .pixel[m-starting][m-page-state="empty"] .page-loader::before { animation: none; transform: scaleX(.5); }
+  .opening-fill, .pixel[m-starting][m-page-state="empty"] .page-loader::before, .pixel > m-startup::before { animation: none; transform: scaleX(.5); }
   .opening-glass, .pixel.blink .opening-caret, .pixel[m-starting] .today::before { animation: none; }
   .pixel .page-loader { transition: none; }
 }

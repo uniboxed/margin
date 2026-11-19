@@ -289,13 +289,24 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
   transition: opacity .12s linear, visibility 0s linear .12s;
 }
 .lg:is([m-page-state="loading"], [m-starting][m-page-state="empty"]) .page-loader { opacity: 1; visibility: visible; pointer-events: auto; transition: none; }
+/* Margin's start (m-startup: Margin.app's own window while its default browser gets ready): the loader's glow over the
+   whole window, the capsule and its spinner alone (no app's icon, no words); held up, what's wrong under it. */
+.lg > m-startup {
+  background:
+    radial-gradient(46% 40% at 50% 47%, color-mix(in srgb, var(--glow-a) 58%, transparent) 0, transparent 72%),
+    radial-gradient(52% 50% at 16% 12%, color-mix(in srgb, var(--glow-b) 44%, transparent) 0, transparent 70%),
+    radial-gradient(60% 52% at 88% 92%, color-mix(in srgb, var(--glow-c) 46%, transparent) 0, transparent 72%),
+    light-dark(#f6f7f9, #141518);
+  color: var(--label);
+}
+.lg > m-startup > [m-startup-spin] { display: none; }
 /* Its item in another Margin window (m-page-state="elsewhere"): the card, faded and still. */
 .lg[m-page-state="elsewhere"] .page-loader { opacity: .55; visibility: visible; pointer-events: none; transition: none; }
 .lg[m-page-state="elsewhere"] .opening-spin { animation: none; opacity: 0; }
 /* A web item's picture over it (m-page-picture, Margin's): the page faded, the words on a plain chip (no glass). */
 .lg > m-page-picture > [m-picture-label] { background: light-dark(#fff, #2c2c30); color: var(--label); }
 /* The capsule, plain: a translucent fill, a hairline, a soft shadow (the slot's own box while starting: it has no part then). */
-.opening, .lg[m-starting][m-page-state="empty"] .page-loader::before {
+.opening, .lg[m-starting][m-page-state="empty"] .page-loader::before, .lg > m-startup::before {
   content: "";
   grid-area: 1 / 1;
   box-sizing: border-box;
@@ -306,7 +317,7 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
   box-shadow: inset 0 0 0 .5px light-dark(rgba(255, 255, 255, .8), rgba(255, 255, 255, .16)), 0 0 0 .5px light-dark(rgba(0, 0, 0, .08), rgba(0, 0, 0, .5)), 0 6px 22px light-dark(rgba(0, 0, 0, .1), rgba(0, 0, 0, .34));
 }
 .opening { display: flex; align-items: center; gap: 10px; max-width: min(480px, 70%); padding: 0 20px 0 15px; color: var(--label); font-size: 13px; font-weight: 500; }
-.opening-spin, .lg[m-starting][m-page-state="empty"] .page-loader::after {
+.opening-spin, .lg[m-starting][m-page-state="empty"] .page-loader::after, .lg > m-startup::after {
   content: "";
   grid-area: 1 / 1;
   flex: none;
@@ -566,8 +577,8 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
   }
   /* The page card's loader: a flat ground, a solid capsule with a line around it, the spinner's arc solid. */
   .lg .page-loader { background: light-dark(#fff, #000); }
-  .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before { background: light-dark(#fff, #000); box-shadow: inset 0 0 0 1.5px var(--label); }
-  .opening-spin, .lg[m-starting][m-page-state="empty"] .page-loader::after { background: conic-gradient(transparent 25%, var(--label) 0); opacity: 1; }
+  .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before, .lg > m-startup::before { background: light-dark(#fff, #000); box-shadow: inset 0 0 0 1.5px var(--label); }
+  .opening-spin, .lg[m-starting][m-page-state="empty"] .page-loader::after, .lg > m-startup::after { background: conic-gradient(transparent 25%, var(--label) 0); opacity: 1; }
 }
 /* Less transparency: solid fills (and, at the end, no glass). */
 @media (prefers-reduced-transparency: reduce) {
@@ -578,7 +589,7 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
     --lit-fill: light-dark(#fff, #48484f);
     --scrim: light-dark(rgba(0, 0, 0, .2), rgba(0, 0, 0, .45));
   }
-  .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before { background: light-dark(#fff, #34343a); }
+  .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before, .lg > m-startup::before { background: light-dark(#fff, #34343a); }
 }
 @media (prefers-reduced-motion: reduce) {
   .lg *, .lg *::before, .lg *::after, .menu, .sidebar { transition: none !important; }
@@ -587,7 +598,7 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
   /* The loading light stays, still: a full bar. */
   .load-bar.on::before { animation: none; width: 100%; transform: none; opacity: .7; }
   /* The page card's spinner stands still (an arc in its capsule), and the skeleton doesn't breathe. */
-  .opening-spin, .lg[m-starting][m-page-state="empty"] .page-loader::after, .lg[m-starting] .today::before { animation: none; }
+  .opening-spin, .lg[m-starting][m-page-state="empty"] .page-loader::after, .lg > m-startup::after, .lg[m-starting] .today::before { animation: none; }
 }
 
 /* ---- The system's glass ----------------------------------------------------
@@ -611,7 +622,7 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
     /* The tab in front: the subdued glass, lit a little. */
     .tab.on, .new-tab.on, .tab.on:hover, .new-tab.on:hover { background: light-dark(rgba(255, 255, 255, .42), rgba(255, 255, 255, .07)); -apple-visual-effect: -apple-system-glass-material-subdued; }
     /* The page card's capsule, while an item opens: glass on the card's lit ground (one more layer, only then). */
-    .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before { overflow: hidden; background: none; box-shadow: none; -apple-visual-effect: -apple-system-glass-material; }
+    .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before, .lg > m-startup::before { overflow: hidden; background: none; box-shadow: none; -apple-visual-effect: -apple-system-glass-material; }
     /* The copy of a row under the pointer while it's dragged: plain (it moves every frame). */
     .m-drag-ghost, .tab.on.m-drag-ghost { background: var(--pop-fill); box-shadow: var(--pop-edge), 0 8px 24px light-dark(rgba(0, 0, 0, .2), rgba(0, 0, 0, .5)); -apple-visual-effect: none; }
     /* The scrim under a glass panel: lighter, the glass does the separating. */
@@ -623,6 +634,6 @@ img.fav.app { width: 20px; height: 20px; margin: -2px; border-radius: 0; object-
     .panel.glass { background: var(--panel-fill); box-shadow: var(--panel-edge), var(--panel-shadow); }
     .capsule { background: var(--capsule-fill); box-shadow: var(--capsule-edge); -apple-visual-effect: none; }
     .tab.on, .new-tab.on, .tab.on:hover, .new-tab.on:hover { background: var(--lit-fill); box-shadow: var(--lit-edge); -apple-visual-effect: none; }
-    .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before { background: light-dark(#fff, #34343a); box-shadow: inset 0 0 0 .5px var(--separator), 0 6px 22px light-dark(rgba(0, 0, 0, .1), rgba(0, 0, 0, .34)); -apple-visual-effect: none; }
+    .opening, .lg[m-starting][m-page-state="empty"] .page-loader::before, .lg > m-startup::before { background: light-dark(#fff, #34343a); box-shadow: inset 0 0 0 .5px var(--separator), 0 6px 22px light-dark(rgba(0, 0, 0, .1), rgba(0, 0, 0, .34)); -apple-visual-effect: none; }
   }
 }

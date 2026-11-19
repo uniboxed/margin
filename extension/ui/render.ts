@@ -54,6 +54,14 @@ m-page-loader[m-default]>[m-loader-spin]{display:block;width:18px;height:18px;bo
 m-page-loader[m-default]>[m-loader-label]{display:block;max-width:min(80%,420px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;opacity:.7}
 @keyframes m-loader-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){m-page-loader[m-default]{transition:none}m-page-loader[m-default]>[m-loader-spin]{animation:none}}
+m-startup{position:fixed;inset:0;z-index:2147483647;box-sizing:border-box;display:grid;place-items:center;background:Canvas;color:CanvasText;font:13px/1.35 system-ui,sans-serif;text-align:center;pointer-events:auto!important;cursor:default;-webkit-user-select:none;user-select:none}
+m-startup>[m-startup-spin]{grid-area:1/1;display:block;width:18px;height:18px;box-sizing:border-box;border-radius:50%;border:2px solid color-mix(in srgb,currentColor 18%,transparent);border-top-color:color-mix(in srgb,currentColor 70%,transparent);animation:m-loader-spin .9s linear infinite}
+m-startup>[m-startup-stuck]{position:absolute;left:50%;top:calc(50% + 60px);transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:14px;width:min(460px,calc(100% - 48px))}
+m-startup [m-startup-text]{margin:0}
+m-startup [m-startup-actions]{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+m-startup [m-startup-action]{font:inherit;color:inherit;padding:6px 14px;border-radius:8px;border:1px solid color-mix(in srgb,currentColor 30%,transparent);background:color-mix(in srgb,currentColor 8%,transparent);cursor:pointer}
+m-startup [m-startup-action]:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+@media (prefers-reduced-motion:reduce){m-startup>[m-startup-spin]{animation:none}}
 template{display:none!important}
 [m-passthrough]{pointer-events:none!important}
 :where([m-passthrough])>:where(:not(m-page)){pointer-events:auto}
@@ -64,7 +72,7 @@ template{display:none!important}
 [contenteditable].m-renaming{cursor:text;user-select:text;-webkit-user-select:text}
 `;
 
-// `m-passthrough`, `m-away`, `m-sidebar-fixed`, `m-page-state` and `m-starting` are the host's and the
+// `m-passthrough`, `m-away`, `m-sidebar-fixed`, `m-page-state`, `m-starting` and `m-startup` are the host's and the
 // runtime's, on the theme's root (a theme can't write m- attributes of its own; its CSS can select
 // them). `m-page-state` (Margin.app's own window: ui/runtime.ts followPage): `shown`, a hosted window
 // shows through the page's place, which draws nothing; `loading`, an item is being opened: the page
@@ -72,6 +80,8 @@ template{display:none!important}
 // (`m-page-loader[m-default]`, above: a quiet spinner and Margin's words, laid over the page's place by
 // the runtime; it fades out over the hosted window as `shown` comes); `empty`, nothing to show: the
 // launcher. `m-starting`: from the first frame until the state's data is drawn (a theme's skeleton).
+// `m-startup` (Margin.app's own window, its default browser getting ready): the start screen, Margin's
+// `<m-startup>` over the whole window, the theme's loader marks in it (`> m-startup::before`, `::after`).
 // The others: the pointer over the page's slot
 // goes to the page under it, past the root's own background (the in-page
 // host sets it while the pointer is there; what the theme draws over the

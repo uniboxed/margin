@@ -82,6 +82,8 @@ export type Host = {
   readonly pageOpeningBundleId?: string | null,
   /** Margin's start (its default browser starting first): the loader's own words ("Getting you started…"). */
   readonly pageStarting?: boolean,
+  /** Margin's start held up (its default browser not ready within its limit, or its extension didn't connect): what's wrong, in Margin's words; the start screen offers Try again and Continue without Safari. Null: not held up. */
+  readonly pageStuck?: string | null,
   /** Its item in another Margin window (`elsewhere`), a web page: that page as Safari last showed it (a JPEG or PNG data URL), drawn faded under the card's words. */
   readonly pagePicture?: string | null,
   readonly focusLauncherAtMount?: boolean,

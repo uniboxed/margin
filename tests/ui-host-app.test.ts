@@ -647,3 +647,26 @@ test("the app host in Margin's own window: the opening item's app (its bundle id
   const idle = createAppHost({ hello: hello({ host: 'app-window', mode: 'fullscreen', pageState: 'shown', pageOpeningBundleId: 'com.apple.Notes' }), post: b.post });
   assert.equal(idle.pageOpeningBundleId, null, '… only while loading');
 });
+
+test("the app host in Margin's own window: the start screen held up (`stuck` with `starting`), its two choices the app's to run; nothing held up otherwise", async () => {
+  const b = bridge();
+  const host = createAppHost({ hello: hello({ host: 'app-window', pageState: 'loading', pageOpening: 'Getting you started', pageStarting: true, pageStuck: 'Safari is taking longer than usual to start.' }), post: b.post });
+  assert.equal(host.pageStarting, true);
+  assert.equal(host.pageStuck, 'Safari is taking longer than usual to start.', 'from the hello (a page loaded while held up)');
+  let changes = 0;
+  host.onState(() => { changes += 1; });
+  host.receive({ type: 'pageState', state: 'loading', label: 'Getting you started', starting: true });
+  assert.equal(host.pageStuck, null, 'no longer held up');
+  assert.equal(changes, 1, 'drawn again');
+  host.receive({ type: 'pageState', state: 'loading', label: 'Getting you started', starting: true, stuck: 'x'.repeat(500) });
+  assert.equal((host.pageStuck as string | null)?.length, 300, 'what the app says, cut at 300 characters');
+  assert.equal(host.perform('startup.retry'), true);
+  assert.equal(host.perform('startup.skip'), true);
+  await Promise.resolve();
+  assert.deepEqual(b.posts.filter((p) => p.op === 'perform').map((p) => p.name), ['startup.retry', 'startup.skip'], 'each asked of the app');
+  host.receive({ type: 'pageState', state: 'loading', label: 'Notes', stuck: 'held' });
+  assert.equal(host.pageStuck, null, 'not starting: never held up, whatever is said');
+  assert.equal(host.perform('startup.retry'), false, 'not starting: its choices refused');
+  const browserPage = createAppHost({ hello: hello({ pageState: 'loading', pageStarting: true, pageStuck: 'held' }), post: bridge().post });
+  assert.equal(browserPage.perform('startup.skip'), false, 'over a browser (not Margin\'s own window): never');
+});

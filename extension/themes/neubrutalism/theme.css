@@ -240,6 +240,11 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
   transition: opacity .12s linear, visibility 0s linear .12s;
 }
 .nb:is([m-page-state="loading"], [m-starting][m-page-state="empty"]) .page-loader { opacity: 1; visibility: visible; pointer-events: auto; transition: none; }
+/* Margin's start (m-startup: Margin.app's own window while its default browser gets ready): the loader's dotted paper
+   over the whole window, the bar and its running block alone (no app's icon, no words); held up, what's wrong under it. */
+.nb > m-startup { --bar: min(380px, 100% - 56px); background: radial-gradient(rgba(17, 17, 17, .1) 1.2px, transparent 1.2px) 0 0 / 18px 18px var(--cream); color: var(--ink); }
+.nb > m-startup > [m-startup-spin] { display: none; }
+.nb > m-startup [m-startup-action] { border: 3px solid var(--ink); border-radius: 10px; background: var(--paper); box-shadow: 4px 4px 0 var(--ink); font-weight: 700; }
 /* Its item in another Margin window (m-page-state="elsewhere"): the card, faded and still. */
 .nb[m-page-state="elsewhere"] .page-loader { opacity: .55; visibility: visible; pointer-events: none; transition: none; }
 .nb[m-page-state="elsewhere"] .opening-run { animation: none; opacity: 0; }
@@ -248,8 +253,8 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
 .nb > m-page-picture > [m-picture-label] { background: var(--yellow); color: var(--ink); border: 3px solid var(--ink); border-radius: 0; box-shadow: 4px 4px 0 var(--ink); font-family: 'Archivo Black', sans-serif; text-transform: uppercase; letter-spacing: -.2px; }
 .opening { position: relative; justify-self: stretch; display: grid; place-items: center; }
 /* The bar, and the block that runs along it (the slot's own two boxes while starting: it has no part then). */
-.opening-bar, .nb[m-starting][m-page-state="empty"] .page-loader::before { content: ""; grid-area: 1 / 1; box-sizing: border-box; width: var(--bar); height: 48px; border: 3px solid var(--ink); border-radius: 12px; background: var(--space); box-shadow: 6px 6px 0 var(--ink); }
-.opening-run, .nb[m-starting][m-page-state="empty"] .page-loader::after { content: ""; grid-area: 1 / 1; box-sizing: border-box; width: calc((var(--bar) - 18px) * .2873); height: 30px; border: 3px solid var(--ink); border-radius: 6px; background: repeating-linear-gradient(-45deg, var(--ink) 0 5px, var(--paper) 5px 10px); transform: translateX(-124%); animation: nb-run .7s cubic-bezier(.7, 0, .3, 1) infinite alternate; }
+.opening-bar, .nb[m-starting][m-page-state="empty"] .page-loader::before, .nb > m-startup::before { content: ""; grid-area: 1 / 1; box-sizing: border-box; width: var(--bar); height: 48px; border: 3px solid var(--ink); border-radius: 12px; background: var(--space); box-shadow: 6px 6px 0 var(--ink); }
+.opening-run, .nb[m-starting][m-page-state="empty"] .page-loader::after, .nb > m-startup::after { content: ""; grid-area: 1 / 1; box-sizing: border-box; width: calc((var(--bar) - 18px) * .2873); height: 30px; border: 3px solid var(--ink); border-radius: 6px; background: repeating-linear-gradient(-45deg, var(--ink) 0 5px, var(--paper) 5px 10px); transform: translateX(-124%); animation: nb-run .7s cubic-bezier(.7, 0, .3, 1) infinite alternate; }
 @keyframes nb-run { from { transform: translateX(-124%); } to { transform: translateX(124%); } }
 /* Above the bar: the app's icon in a bordered square (32 pt: the 64 px icon at 2x), Margin's words beside it. */
 .opening-head { position: absolute; bottom: calc(100% + 22px); display: flex; align-items: center; gap: 16px; max-width: min(620px, 100% - 56px); }
@@ -407,7 +412,7 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
   .loading .ico { animation: none; }
   .tab.busy .fav, .load-bar.on { animation: none; }
   /* The page card's block stands in the middle of its bar, the skeleton doesn't blink, the card goes at once. */
-  .opening-run, .nb[m-starting][m-page-state="empty"] .page-loader::after { animation: none; transform: none; }
+  .opening-run, .nb[m-starting][m-page-state="empty"] .page-loader::after, .nb > m-startup::after { animation: none; transform: none; }
   .nb[m-starting] .today::before { animation: none; }
   .nb .page-loader { transition: none; }
   .gesture { transition: none; translate: none; }

@@ -348,6 +348,58 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (!root.hasAttribute('m-page-picture')) root.setAttribute('m-page-picture', '');
     if (picture.parentNode !== root) root.appendChild(picture);
   }
+  // `m-startup` (Margin.app's own window, host.pageStarting: its default browser getting ready, HostedSession.swift
+  // resumeLast): the start screen. `<m-startup>`, Margin's, over the whole window and everything in it, takes the
+  // pointer (nothing under it can be pressed); a theme draws its loader's own marks in it, with no app's icon and no
+  // words (its CSS: `> m-startup`, `::before` and `::after`, its `[m-startup-spin]` hidden), Margin's quiet spinner
+  // otherwise. Held up (host.pageStuck), it says what's wrong, with Try again and Continue without Safari.
+  let startup: HTMLElement | null = null;
+  function followStartup(root: HTMLElement) {
+    const on = host.pageState === 'loading' && host.pageStarting === true;
+    if (!on) {
+      if (startup) { startup.remove(); startup = null; }
+      if (root.hasAttribute('m-startup')) root.removeAttribute('m-startup');
+      return;
+    }
+    if (!root.hasAttribute('m-startup')) root.setAttribute('m-startup', '');
+    if (!startup) {
+      startup = doc.createElement('m-startup');
+      startup.setAttribute('role', 'status');
+      startup.setAttribute('aria-label', 'Margin is starting');
+      const spin = doc.createElement('span');
+      spin.setAttribute('m-startup-spin', '');
+      spin.setAttribute('aria-hidden', 'true');
+      startup.append(spin);
+      startup.addEventListener('click', (e) => {
+        const button = (e.target as Element | null)?.closest?.('[m-startup-action]');
+        const action = button?.getAttribute('m-startup-action');
+        if (action === 'retry' || action === 'skip') host.perform?.(action === 'retry' ? 'startup.retry' : 'startup.skip');
+      });
+    }
+    const stuck = host.pageStuck ?? null;
+    let said = startup.querySelector('[m-startup-stuck]');
+    if (!stuck) said?.remove();
+    else if (said?.querySelector('[m-startup-text]')?.textContent !== stuck) {
+      said?.remove();
+      said = doc.createElement('div');
+      said.setAttribute('m-startup-stuck', '');
+      const text = doc.createElement('p');
+      text.setAttribute('m-startup-text', '');
+      text.textContent = stuck;
+      const actions = doc.createElement('div');
+      actions.setAttribute('m-startup-actions', '');
+      for (const [action, label] of [['retry', 'Try again'], ['skip', 'Continue without Safari']] as const) {
+        const b = doc.createElement('button');
+        b.setAttribute('type', 'button');
+        b.setAttribute('m-startup-action', action);
+        b.textContent = label;
+        actions.append(b);
+      }
+      said.append(text, actions);
+      startup.append(said);
+    }
+    if (startup.parentNode !== root || startup !== root.lastElementChild) root.appendChild(startup);
+  }
   let started = false;
   let startingOn = false;
   function followPage() {
@@ -370,6 +422,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (!state) return;
     if (root.getAttribute('m-page-state') !== state) root.setAttribute('m-page-state', state);
     followPicture(root, state);
+    followStartup(root);
     const own = view.parts.has('page-loader') && !!root.querySelector('m-page-loader:not([m-default])');
     if (own) { defaultLoader?.remove(); defaultLoader = null; placeLoader(); return; }
     if (!defaultLoader) {

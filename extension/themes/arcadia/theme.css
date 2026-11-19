@@ -158,6 +158,20 @@
   transition: opacity 120ms linear, visibility 0s linear 120ms;
 }
 .arcadia:is([m-page-state="loading"], [m-starting][m-page-state="empty"]) .page-loader { opacity: 1; visibility: visible; pointer-events: auto; transition: none; }
+/* Margin's start (m-startup: Margin.app's own window while its default browser gets ready): the loader's card over the
+   whole window, the tile and its ring alone (no app's icon, no words); held up, what's wrong under it with two choices. */
+.arcadia > m-startup {
+  --load-bg: #fff;
+  --load-tile: color-mix(in srgb, var(--space-color) 24%, #fff);
+  --load-ring: color-mix(in srgb, var(--space-color) 58%, #26252b);
+  --load-arc: conic-gradient(transparent 12%, var(--load-ring));
+  --load-edge: 0 0 0 0 transparent;
+  --load-fg: rgba(0, 0, 0, 0.5);
+  background: var(--load-bg);
+  color: var(--load-fg);
+}
+.arcadia > m-startup > [m-startup-spin] { display: none; }
+.arcadia > m-startup [m-startup-action] { padding: 7px 16px; border: 0; border-radius: 10px; background: var(--load-tile); box-shadow: inset var(--load-edge); color: var(--load-ring); font-weight: 600; }
 /* Its item in another Margin window (m-page-state="elsewhere"): the card, faded and still, its words ("Click to show
    … here"); in front again, the window takes the item back. */
 .arcadia[m-page-state="elsewhere"] .page-loader { opacity: .55; visibility: visible; pointer-events: none; transition: none; }
@@ -167,8 +181,8 @@
 .arcadia > m-page-picture > [m-picture-label] { background: var(--active); color: var(--fg); }
 .opening { position: relative; justify-self: stretch; display: grid; place-items: center; }
 /* The tile, and the ring in it (the slot's own two boxes while starting: it has no part then). */
-.opening-mark, .arcadia[m-starting][m-page-state="empty"] .page-loader::before { content: ""; grid-area: 1 / 1; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; background: var(--load-tile); box-shadow: inset var(--load-edge); }
-.opening-mark::after, .arcadia[m-starting][m-page-state="empty"] .page-loader::after {
+.opening-mark, .arcadia[m-starting][m-page-state="empty"] .page-loader::before, .arcadia > m-startup::before { content: ""; grid-area: 1 / 1; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; background: var(--load-tile); box-shadow: inset var(--load-edge); }
+.opening-mark::after, .arcadia[m-starting][m-page-state="empty"] .page-loader::after, .arcadia > m-startup::after {
   content: "";
   grid-area: 1 / 1;
   width: 24px;
@@ -184,14 +198,14 @@
 .opening-icon { grid-area: 1 / 1; width: 32px; height: 32px; object-fit: contain; }
 .opening-label { position: absolute; top: calc(100% + 14px); max-width: min(420px, 100% - 48px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--load-fg); font-size: 13px; }
 @media (prefers-color-scheme: dark) {
-  .arcadia .page-loader { --load-bg: #1b1b1f; --load-tile: color-mix(in srgb, var(--space-color) 26%, #1b1b1f); --load-ring: color-mix(in srgb, var(--space-color) 72%, #fff); --load-fg: rgba(255, 255, 255, 0.55); }
+  :is(.arcadia .page-loader, .arcadia > m-startup) { --load-bg: #1b1b1f; --load-tile: color-mix(in srgb, var(--space-color) 26%, #1b1b1f); --load-ring: color-mix(in srgb, var(--space-color) 72%, #fff); --load-fg: rgba(255, 255, 255, 0.55); }
 }
 /* More contrast: black on white (white on black), the tile outlined, the ring's arc solid. */
 @media (prefers-contrast: more) {
-  .arcadia .page-loader { --load-tile: var(--load-bg); --load-ring: #000; --load-fg: #000; --load-arc: conic-gradient(transparent 25%, var(--load-ring) 0); --load-edge: 0 0 0 2px var(--load-ring); }
+  :is(.arcadia .page-loader, .arcadia > m-startup) { --load-tile: var(--load-bg); --load-ring: #000; --load-fg: #000; --load-arc: conic-gradient(transparent 25%, var(--load-ring) 0); --load-edge: 0 0 0 2px var(--load-ring); }
 }
 @media (prefers-contrast: more) and (prefers-color-scheme: dark) {
-  .arcadia .page-loader { --load-bg: #000; --load-ring: #fff; --load-fg: #fff; }
+  :is(.arcadia .page-loader, .arcadia > m-startup) { --load-bg: #000; --load-ring: #fff; --load-fg: #fff; }
 }
 
 /* Starting (m-starting: the theme's first frame, before its data): the
@@ -254,7 +268,7 @@
   .arcadia.loading .loader { transition: opacity 150ms linear; }
   .arcadia.loading .loader-bar { animation: none; }
   /* The page card's ring stands still (an arc in its tile), the skeleton doesn't breathe, the card goes at once. */
-  .opening-mark::after, .arcadia[m-starting][m-page-state="empty"] .page-loader::after, .arcadia[m-starting] .tabs::after { animation: none; }
+  .opening-mark::after, .arcadia[m-starting][m-page-state="empty"] .page-loader::after, .arcadia > m-startup::after, .arcadia[m-starting] .tabs::after { animation: none; }
   .arcadia .page-loader { transition: none; }
 }
 
