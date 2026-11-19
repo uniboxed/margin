@@ -52,7 +52,11 @@ const notices = createAppNotices({
   send: (type, payload) => host?.send(type, payload),
   frontTab: () => host?.frontTabId ?? null,
   // The overlay's own notice (a theme it couldn't draw): Settings opens Margin's Settings in this window.
-  local: (kind, action) => { if (kind === 'theme-failed' && action === 'settings') void host?.send('openLauncher', { settings: true }); },
+  local: (kind, action) => {
+    if (kind === 'theme-failed' && action === 'settings') void host?.send('openLauncher', { settings: true });
+    // Margin.app's picker on Safari's folder (app/engines/webkit/safari/SafariFolderGrant.swift).
+    if (kind === 'safari-profile' && action === 'allow') void host?.send('allowSafariProfiles', {});
+  },
 });
 // How far a gesture has gone: eased every frame into --gesture-live (ui/gesture-motion.ts), the UI not drawn again.
 const gestureMotion = createGestureMotion({ apply: (value) => document.documentElement.style.setProperty('--gesture-live', value.toFixed(3)) });
@@ -643,7 +647,8 @@ function onMessage(msg: any) {
       return;
     // Margin.app's own word about a hosted app (HostEngine stepDown): its notice, its name filled in.
     case 'hostNote':
-      if (msg.kind === 'route-simpler') notices.say('route-simpler', { app: msg.app });
+      if (msg.kind === 'route-simpler' || msg.kind === 'app-asking') notices.say(msg.kind, { app: msg.app });
+      if (msg.kind === 'safari-profile') notices.say(msg.kind, { space: msg.space });
       return;
     case 'push':
       switch (msg.msg?.type) {

@@ -30,6 +30,9 @@ protocol HostSystem: AnyObject {
     func keepsWindowsAtQuit(pid: pid_t) -> Bool
     // Its app's version ("short (build)"; nil: unread): the hosting core's routes remember a step down per version.
     func appVersion(pid: pid_t) -> String?
+    // An app Margin just started, its first window waited for: its Accessibility reads wait at most 0.2 s, not 1, for
+    // `seconds` (0: as any again). A launching app can't answer yet, and each read is asked again 20 ms on.
+    func launching(pid: pid_t, for seconds: Double)
     // One poll's reads (synchronous, nothing moved in between): the Space list read once for all of them. Outside one,
     // every read is fresh (an operation reads before and after its own moves).
     func batch(_ body: () -> Void)
@@ -163,6 +166,7 @@ protocol HostSystem: AnyObject {
 extension HostSystem {
     func batch(_ body: () -> Void) { body() }
     func appVersion(pid: pid_t) -> String? { nil }
+    func launching(pid: pid_t, for seconds: Double) {}
     // (A stand-in that doesn't play it: not sent.)
     func reopen(pid: pid_t) -> Bool { false }
     // (A stand-in that doesn't play it: not taken, front app unread.)
@@ -206,6 +210,12 @@ extension HostSystem {
 nonisolated final class HostAX: @unchecked Sendable {
     private let queue = DispatchQueue(label: "margin.host.ax", qos: .userInitiated)
     private var elements: [Int: (pid: pid_t, element: AXUIElement)] = [:] // on the queue only
+    private var launchingUntil: [pid_t: Date] = [:] // on the queue only: apps whose reads wait 0.2 s at most (`launching`)
+    func launching(pid: pid_t, for seconds: Double) {
+        queue.async { self.launchingUntil[pid] = seconds > 0 ? Date().addingTimeInterval(seconds) : nil }
+    }
+    // How long a read of `pid` waits for its app (on the queue).
+    private func timeout(_ pid: pid_t) -> Float { (launchingUntil[pid].map { $0 > Date() } ?? false) ? 0.2 : 1 }
     let refuses = PrivateCalls.inTests
 
     private func attr(_ e: AXUIElement, _ name: String) -> AnyObject? {
@@ -236,7 +246,7 @@ nonisolated final class HostAX: @unchecked Sendable {
                               resizable: settable(w, kAXSizeAttribute), minimized: (attr(w, kAXMinimizedAttribute) as? Bool) == true, role: role.isEmpty ? nil : role)
         }
         let app = AXUIElementCreateApplication(pid)
-        AXUIElementSetMessagingTimeout(app, 1)
+        AXUIElementSetMessagingTimeout(app, timeout(pid))
         var candidates = (attr(app, kAXWindowsAttribute) as? [AXUIElement]) ?? []
         for name in [kAXMainWindowAttribute, kAXFocusedWindowAttribute] {
             if let v = attr(app, name), CFGetTypeID(v) == AXUIElementGetTypeID() { candidates.append(v as! AXUIElement) }
@@ -258,7 +268,7 @@ nonisolated final class HostAX: @unchecked Sendable {
 
     private func read(_ pid: pid_t) -> [HostWindow]? {
         let app = AXUIElementCreateApplication(pid)
-        AXUIElementSetMessagingTimeout(app, 1)
+        AXUIElementSetMessagingTimeout(app, timeout(pid))
         guard let list = attr(app, kAXWindowsAttribute) as? [AXUIElement] else { return nil }
         var out: [HostWindow] = []
         for w in list {
@@ -314,7 +324,7 @@ nonisolated final class HostAX: @unchecked Sendable {
         return await withCheckedContinuation { c in
             queue.async {
                 let app = AXUIElementCreateApplication(pid)
-                AXUIElementSetMessagingTimeout(app, 1)
+                AXUIElementSetMessagingTimeout(app, self.timeout(pid))
                 guard let v = self.attr(app, name), CFGetTypeID(v) == AXUIElementGetTypeID() else { return c.resume(returning: nil) }
                 var n: CGWindowID = 0
                 guard hostWindowNumber(v as! AXUIElement, &n) == .success, n > 0 else { return c.resume(returning: nil) }
@@ -534,6 +544,7 @@ final class RealHostSystem: HostSystem {
         return read
     }
 
+    func launching(pid: pid_t, for seconds: Double) { ax.launching(pid: pid, for: seconds) }
     func appVersion(pid: pid_t) -> String? {
         guard let url = NSRunningApplication(processIdentifier: pid)?.bundleURL, let info = Bundle(url: url)?.infoDictionary else { return nil }
         return "\(info["CFBundleShortVersionString"] as? String ?? "?") (\(info["CFBundleVersion"] as? String ?? "?"))"

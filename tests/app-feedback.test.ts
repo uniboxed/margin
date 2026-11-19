@@ -135,7 +135,7 @@ const kinds = (kind: string) => pushed.filter((p) => p.msg.type === 'notice' && 
 // ---- the words ------------------------------------------------------------------
 
 test('notices: Margin\'s words, each kind\'s buttons; a switch that didn\'t happen gets the notice for why', () => {
-  assert.deepEqual(Object.keys(words.NOTICES).sort(), ['new-tab-setting', 'no-answer', 'not-responding', 'not-shown', 'route-simpler', 'tab-gone', 'theme-failed', 'updated-while-open']);
+  assert.deepEqual(Object.keys(words.NOTICES).sort(), ['app-asking', 'new-tab-setting', 'no-answer', 'not-responding', 'not-shown', 'route-simpler', 'safari-profile', 'tab-gone', 'theme-failed', 'updated-while-open']);
   assert.match(words.NOTICES['not-responding'].text, /isn’t responding on this page/);
   assert.deepEqual(words.NOTICES['not-responding'].actions.map((a) => a.id), ['reload', 'later']);
   assert.match(words.NOTICES['updated-while-open'].text, /Quit and reopen Safari/);
@@ -516,6 +516,8 @@ test('Margin.app\'s own notice: a hosted app moved to a simpler way, its name fi
   assert.equal(words.fillNotice('{app} x', { app: 'A\u0007pp\n' + 'b'.repeat(80) }).length, 62, 'control characters out, 60 characters at most');
   assert.equal(words.fillNotice('{app} x', {}), 'An app x', 'no name: words still whole');
   assert.equal(words.fillNotice('{app} x', { app: 42 }), 'An app x', 'only a string');
+  assert.equal(words.fillNotice('“{space}” y', { space: 'Work\u0007' }), '“Work” y', 'a space\'s name, cleaned the same way');
+  assert.equal(words.fillNotice('“{space}” y', {}), '“this space” y');
 });
 
 test('the overlay\'s own notice: a theme it couldn\'t draw; the copy can\'t push it, and its buttons stay in the overlay', () => {

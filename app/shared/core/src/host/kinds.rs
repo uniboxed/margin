@@ -31,9 +31,12 @@
 //!   7. a sheet: dialog; a floating subrole: auxiliary; a dialog subrole: a dialog, unless its app has no other window
 //!      that could be its main one and it's hosted or at least 400×300; anything else: a main candidate
 //!   8. a candidate made before the window Margin hosts, in an app Margin started, not hosted: restored   leftover
+//!      (never one in Margin's Space that Accessibility hasn't read yet: it may be the app's sheet or alert over the
+//!      window shown, Books' "Discover New Books" 2026-11-18, parked as a leftover 70 ms before it read as a sheet:
+//!      the app waited on an answer nobody could see. Read, it's decided; elsewhere it can't be in the way.)
 //!   9. a candidate that can't go full screen while another can                    auxiliary
 //!  8b. a candidate there as the first show of the hosted window ended, in an app Margin started, not hosted
-//!                                                                                 leftover
+//!      (the same exception as 8)                                                  leftover
 //!  10. the mains: each hosted candidate its app didn't replace; none: the best of the candidates
 //!  11. the other candidates: at a main window's frame (within 4 pt) a twin (transient), else auxiliary.
 //! ```
@@ -164,6 +167,12 @@ pub struct Window {
 
 fn one() -> f64 {
     1.0
+}
+
+/// In Margin's Space and not read by Accessibility yet: what it is (a sheet, an alert, a restored window) isn't known,
+/// and it may be what the app shown is waiting on. Never taken for a leftover until it's read (rules 8 and 8b).
+fn unread_here(w: &Window) -> bool {
+    w.role.is_none() && w.place == WindowPlace::Margin
 }
 
 impl Window {
@@ -375,7 +384,7 @@ pub fn classify(windows: &[Window], app: &AppFacts, placement: &Placement) -> BT
         && let Some(&first) = app.hosted.iter().next()
     {
         candidates.retain(|w| {
-            if app.hosted.contains(&w.number) || w.number >= first {
+            if app.hosted.contains(&w.number) || w.number >= first || unread_here(w) {
                 return true;
             }
             out.insert(
@@ -431,7 +440,7 @@ pub fn classify(windows: &[Window], app: &AppFacts, placement: &Placement) -> BT
     // 8b. Made as its app launched, in an app Margin started, not hosted.
     if app.launched_by_margin && !app.hosted.is_empty() {
         candidates.retain(|w| {
-            if app.hosted.contains(&w.number) || !app.launch_windows.contains(&w.number) {
+            if app.hosted.contains(&w.number) || !app.launch_windows.contains(&w.number) || unread_here(w) {
                 return true;
             }
             out.insert(

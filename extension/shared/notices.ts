@@ -67,13 +67,33 @@ export const NOTICES: Readonly<Record<string, NoticeWords>> = Object.freeze({
     tab: false,
     local: true,
   },
+  // Margin.app (app/platforms/macos/shell/HostEngine.swift `onAsking`): an app whose row was closed while it was asking
+  // something (its own sheet or alert) didn't quit: its prompt holds it. Kept in Margin, never put on the Desktop.
+  // Margin.app (HostedSession.swift `profileFallback`): a space's Safari profile couldn't be opened (Margin doesn't know
+  // its name: Safari's profiles not readable), so its page opened in the default profile. `{space}`: the space's name
+  // as the person typed it. Allow opens the picker on Safari's folder (SafariFolderGrant.swift).
+  'safari-profile': {
+    text: 'Margin couldn’t open the Safari profile of “{space}”, so this page opened in your default profile. Allow Margin to see your Safari profiles to fix this.',
+    actions: [{ id: 'allow', label: 'Allow…' }, { id: 'ok', label: 'Not now' }],
+    ms: 20000,
+    tab: false,
+    local: true,
+  },
+  'app-asking': {
+    text: '{app} is waiting for an answer, so it didn’t close. Open it, answer it, then close it.',
+    actions: [{ id: 'ok', label: 'OK' }],
+    ms: 12000,
+    tab: false,
+    local: true,
+  },
 });
 
 // A notice's words with its values filled in (`{app}`: an installed app's name, at most 60 characters, plain text;
 // anything else left out). Words without a value are as they are.
 export function fillNotice(text: string, values: Record<string, unknown> = {}): string {
-  const app = typeof values.app === 'string' ? values.app.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60) : '';
-  return text.replace(/\{app\}/g, app || 'An app');
+  const clean = (v: unknown) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60) : '');
+  // (`{space}`: a space's name as the person typed it.)
+  return text.replace(/\{app\}/g, clean(values.app) || 'An app').replace(/\{space\}/g, clean(values.space) || 'this space');
 }
 
 /** Whether `kind` is one of Margin's notices. */

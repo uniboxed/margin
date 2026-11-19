@@ -1266,6 +1266,11 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             toggleFullScreen()
             return ["ok": true, "result": true]
         }
+        // A note's Allow (shared/notices.ts `safari-profile`): Safari's folder picked once, its profiles' names read.
+        if type == "allowSafariProfiles" {
+            SafariFolderGrant.ask(over: nil)
+            return ["ok": true, "result": true]
+        }
         return ask(type, payload) ?? ["ok": true, "result": true]
     }
 
@@ -1558,7 +1563,9 @@ struct FullScreenRetry {
     static let minGap: TimeInterval = 0.25
     static let forwardGap: TimeInterval = 0.8
     static let forwardsMax = 3
-    // How Margin is brought forward, in turn: its own activation, a reopen asked of LaunchServices, both.
+    // How Margin is brought forward: both at once from the first time (its own activation alone isn't honoured on macOS
+    // 14 and later for an app that isn't active: at its open on 2026-11-18 23:02 the second try, through LaunchServices,
+    // was the one that worked, 0.9 s on), then each again.
     enum Forward: String { case activation = "by its own activation", launchServices = "through LaunchServices", both = "by its own activation and through LaunchServices" }
     private(set) var looks = 0
     private(set) var forwards = 0
@@ -1580,7 +1587,7 @@ struct FullScreenRetry {
     mutating func forward(sinceLast: TimeInterval) -> Forward? {
         guard forwards < Self.forwardsMax, sinceLast >= Self.forwardGap else { return nil }
         forwards += 1
-        return forwards == 1 ? .activation : forwards == 2 ? .launchServices : .both
+        return .both
     }
 
     // macOS would take it now, after a wait: the looks from the shortest delay again.

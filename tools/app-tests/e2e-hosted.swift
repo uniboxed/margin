@@ -177,7 +177,7 @@ func hostedScenario() async {
     w.windowDidBecomeMain(Notification(name: NSWindow.didBecomeMainNotification, object: w.window))
     NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
     check("its window key and main, Margin active, still not on the current Space: still nothing asked; Margin brought forward once for it, not at every event",
-          w.fullScreenAsks == 0 && !w.isFullScreen && w.fullScreenForwards == 1 && w.forwardWays == [.activation], "\(w.fullScreenAsks) \(w.fullScreenForwards)")
+          w.fullScreenAsks == 0 && !w.isFullScreen && w.fullScreenForwards == 1 && w.forwardWays == [.both], "\(w.fullScreenAsks) \(w.fullScreenForwards)")
     ready = true
     NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
     let spaceIn = await until(1, { w.isFullScreen })

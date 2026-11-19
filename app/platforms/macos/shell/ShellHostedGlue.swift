@@ -22,11 +22,14 @@ final class ShellHostedLinks: HostedLinks {
         return shell.links.values.filter { $0.connection.isUp && $0.connection.hello.browser == "safari" }.map(\.connection.hello.profile).sorted()
     }
 
-    func openProfileWindow(_ profile: String) -> Bool { shell?.openProfileWindow("safari:\(profile)") ?? false }
+    func openProfileWindow(_ profile: String, pressed: @escaping @MainActor (Bool) -> Void) -> Bool { shell?.openProfileWindow("safari:\(profile)", pressed: pressed) ?? false }
     func windowIds(of profile: String) -> [Int] { shell?.windows(of: "safari:\(profile)").map(\.id) ?? [] }
+    // Every window the copy lists now (the session takes them at its link's first look: then, in a Safari Margin started,
+    // each is one Safari restored, Margin's own and its woken ones aside). Not by `createdAt`: a copy may hear Safari's
+    // restored windows created as it starts (the sweep never ran on the real Mac, 2026-11-18, with two restored).
     func restoredWindowIds(of profile: String) -> [Int]? {
         guard let entry = shell?.links["safari:\(profile)"], entry.connection.isUp, entry.mirror.hasState else { return nil }
-        return ExtWindow.parse(entry.mirror.windows).filter { $0.createdAt == nil }.map(\.id)
+        return ExtWindow.parse(entry.mirror.windows).map(\.id)
     }
     func linkEpoch(of profile: String) -> String? {
         guard let entry = shell?.links["safari:\(profile)"], entry.connection.isUp else { return nil }
@@ -116,6 +119,7 @@ extension Shell {
         host.others = { [weak session] number in session?.others(number) }
         host.front = { [weak session] read in session?.front(read) }
         host.onRoute = { [weak session] id, route in session?.routeChanged(id, route) }
+        host.onAsking = { [weak session] id in session?.appAsking(id) }
         let before = host.onEvent
         // (A notification of a hosted app's: the shell's read now, then fast for a while: the hosting core's schedule.)
         host.onWake = { [weak self] in self?.soon() }

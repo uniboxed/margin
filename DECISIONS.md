@@ -6017,3 +6017,24 @@ saved state recorded before and put back after (Mail 3 keys, WhatsApp, Notes, Ca
   more than 8 pt, in Margin's Space alone). The Mac reads the Spaces only of the shown app's own windows.
 - **Windows hosting** waits on Margin's own window there (the Windows shell still draws over Chrome's and Edge's
   windows): the hosted design ported first, then its adapter driven. Not wired before that: nothing would call it.
+
+## A fast, safe start and show (2026-11-19, night)
+
+From step 0's timings (Safari: first window 1.2-1.4 s, extension 2.5-3.9 s in any launch mode; apps through Margin
+0-1.6 s slower than opened normally):
+- **Prompts never hidden.** A window in Margin's Space that Accessibility hasn't read yet is never a leftover (Books'
+  "Discover New Books" sheet was parked 70 ms before it read as a sheet: Books waited on an answer nobody could see,
+  then wouldn't leave full screen, close or quit, and ended on the Desktop). A row closed while its app asks something
+  only asks it to quit, its window where it is; one its prompt holds stays Margin's, said in the sidebar.
+- **The start.** Safari is started with Margin, not after its window (2.7 s). A profile Safari's menu has no item for
+  (its name unknown) costs one press, not four and 15 s; its pages open in the default profile, with a note whose Allow
+  opens the one-time folder grant (Safari's profile names without Full Disk Access, proven 2026-11-18). Restored
+  windows are the ones a copy lists at its first look after linking (not by `createdAt`, which the real run suggests a
+  copy can hear for restored windows too). Margin's window is brought forward both ways from the first try.
+- **Shows revealed early.** A show is revealed as soon as its window is in Margin's Space at the page area with Margin's
+  Space current; its own Space's destroy and the settle are checked after, unseen (the guard and these checks put back
+  what macOS moves). About 0.4-0.5 s sooner. Not for Safari's window (its sidebar is hidden after that point).
+- **An app's first window found sooner.** An app Margin started asks Accessibility only once the window server lists a
+  window of it (a launching app can't answer, and each read waited up to 1 s).
+- **Left:** an app whose window opens windowed still waits for macOS's own full-screen Space (~0.5 s, first open only);
+  Safari's window shown before its extension links (adopting its restored window).

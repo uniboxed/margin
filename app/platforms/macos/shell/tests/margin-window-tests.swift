@@ -118,10 +118,10 @@ func marginWindowTests() {
     retry.takeable()
     check("hosted: full screen: macOS would take it after a wait: its looks from the shortest delay again (an ask still refused is made again soon)", retry.nextLook() == 0.3 && retry.nextLook() == 0.6)
     let forwards = [Double.infinity, 0.4, 0.9, 1.5, 60, 60].map { retry.forward(sinceLast: $0) }
-    check("hosted: full screen: while macOS wouldn't take it, Margin brought forward 0.8 s apart, three times at most (never taking another app's keys look after look): by its own activation, then through LaunchServices (as `open` does), then both",
-          forwards == [.activation, nil, .launchServices, .both, nil, nil], "\(forwards)")
+    check("hosted: full screen: while macOS wouldn't take it, Margin brought forward 0.8 s apart, three times at most (never taking another app's keys look after look): by its own activation and through LaunchServices at once from the first (its own activation alone isn't honoured on macOS 14+)",
+          forwards == [.both, nil, .both, .both, nil, nil], "\(forwards)")
     retry.entered()
-    check("hosted: full screen: in: the back-off and the forwards from the start again the next time", retry.nextLook() == 0.3 && retry.forward(sinceLast: .infinity) == .activation)
+    check("hosted: full screen: in: the back-off and the forwards from the start again the next time", retry.nextLook() == 0.3 && retry.forward(sinceLast: .infinity) == .both)
     check("hosted: the standard app menu: About, Hide, Hide Others, Show All, Quit ⌘Q",
           [#selector(NSApplication.orderFrontStandardAboutPanel(_:)), #selector(NSApplication.hide(_:)), #selector(NSApplication.hideOtherApplications(_:)),
            #selector(NSApplication.unhideAllApplications(_:)), #selector(NSApplication.terminate(_:))].allSatisfy { sel in bar.items[0].submenu?.items.contains { $0.action == sel } == true }
