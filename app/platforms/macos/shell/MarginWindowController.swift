@@ -348,6 +348,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     // it isn't any more, ordered in again if it's out, and, on screen while this window is on the current Space but
     // not itself, taken out and made its child again so it joins this window's Space (said: none of these is expected).
     func attachPanel(_ why: String) {
+        defer { syncBackdrop(why) }
         guard !isClosed, window.isVisible || options.harness else { return }
         let frame = window.frame
         if panel.frame != frame { panel.setFrame(frame, display: false) }
@@ -380,6 +381,48 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         NSApp.activate()
     }
 
+    // ---- the ground behind what it hosts (MarginBackdrop) ----
+
+    // Made the first time it's wanted (in full screen), kept for the window's life.
+    private(set) var backdrop: MarginBackdrop?
+    private(set) var backdropAttached = 0 // times made this window's child
+    // Why it isn't used for the rest of this window's life: its layer read at or above a normal window's (it would cover
+    // what Margin hosts). Never expected; said once.
+    private(set) var backdropOff: String?
+
+    // In full screen: behind everything in Margin's Space, at the window's frame, this window's child (in its Space);
+    // out of full screen (or closing): out. Asked with the panel (attachPanel) and after a level change.
+    func syncBackdrop(_ why: String) {
+        guard backdropOff == nil else { return }
+        guard !isClosed, isFullScreen, window.isVisible || options.harness else {
+            if let b = backdrop { if b.parent != nil { window.removeChildWindow(b) }; if b.isVisible { b.orderOut(nil) } }
+            return
+        }
+        let b = backdrop ?? MarginBackdrop(frame: window.frame)
+        backdrop = b
+        if b.frame != window.frame { b.setFrame(window.frame, display: false) }
+        if b.level != MarginBackdrop.level { b.level = MarginBackdrop.level }
+        if b.parent !== window {
+            let lost = b.isVisible // (taken out on purpose when this window left full screen: not on screen then)
+            window.addChildWindow(b, ordered: .below)
+            backdropAttached += 1
+            if b.level != MarginBackdrop.level { b.level = MarginBackdrop.level }
+            if lost { Diagnostics.warn("Margin's window \(id): its backdrop wasn't its child any more (\(why)): made its child again") }
+        } else if !options.harness, window.isOnActiveSpace, !b.isOnActiveSpace {
+            window.removeChildWindow(b)
+            b.orderOut(nil)
+            window.addChildWindow(b, ordered: .below)
+            Diagnostics.warn("Margin's window \(id): its backdrop wasn't in Margin's Space (\(why)): made its child again there")
+        }
+        // Below every normal window, as the window server has it, or never used again by this window.
+        if let layer = b.serverLayer, layer >= 0 {
+            window.removeChildWindow(b)
+            b.orderOut(nil)
+            backdropOff = "its layer \(layer) (\(why))"
+            Diagnostics.warn("Margin's window \(id): its backdrop read at layer \(layer), not below the apps' (\(why)): taken out for good")
+        }
+    }
+
     private(set) var isClosed = false
     // Its page let go of (the window closing, or closed by close()).
     func teardown() {
@@ -394,11 +437,13 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         window.delegate = nil
         if panel.parent != nil { window.removeChildWindow(panel) }
         panel.orderOut(nil)
+        if let b = backdrop { if b.parent != nil { window.removeChildWindow(b) }; b.orderOut(nil) }
     }
 
     func close() {
         teardown()
         panel.close()
+        backdrop?.close()
         window.close()
     }
 
@@ -573,6 +618,8 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     private func setLevel(_ level: NSWindow.Level) {
         window.level = level
         if panel.level != level { panel.level = level }
+        // (Its backdrop never follows it up: below every normal window whatever this one's level.)
+        if let b = backdrop, b.parent === window, b.level != MarginBackdrop.level { b.level = MarginBackdrop.level }
     }
 
     // Ordered right above a window, its panel right above it (AppKit keeps a child above its parent; said again).

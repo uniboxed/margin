@@ -6059,3 +6059,16 @@ From the first real session on the fast start (its log, 10:55-11:04):
 - **After the folder grant**, the web items open in the default profile only because theirs couldn't be opened are
   moved into their own: each tab closed in the default profile's window, the one shown shown again in its profile.
 
+
+## The ground behind hosted apps (2026-11-19)
+
+Hosted apps' see-through sidebars (Notes', Weather's, WhatsApp's glass) showed the wallpaper: in a full-screen Space macOS
+draws a blurred copy of it behind every window (WindowManager's windows at about -2^31, listed under every app's), and
+nothing of Margin's was behind the hosted window (Margin's own window is in front of it). Chosen by Tirth: plain grey,
+like macOS. Margin's full-screen window has a second child (`MarginBackdrop`, beside its panel): opaque, in the system's
+window background colour (light or dark as the Mac is), at the window's frame, at the desktop icons' level + 1 (below
+every normal window, above macOS's backdrop), never the mouse's, the keys', the window cycle's or the Window menu's.
+A child, so AppKit keeps it in Margin's Space and moves it with the window; its level is set apart from the parent's
+(the window server keeps a child's own level: read in the app's e2e with the parent raised). Only in full screen. Its
+layer is read back after each placing: at or above a normal window's (it would cover the app) it's taken out for the
+rest of the window's life, said. No Mac-wide setting is touched.
