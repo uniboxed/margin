@@ -4,7 +4,7 @@
 // or found by the overlay itself (a switch it asked for that didn't happen).
 // Pure: no DOM, no browser API; the overlay gives it the runtime's setUi.
 
-import { NOTICES, isNotice, switchFailure } from '../shared/notices.ts';
+import { NOTICES, fillNotice, isNotice, switchFailure } from '../shared/notices.ts';
 
 /**
  * One notice at a time, in the theme's guarded `notice` part with Margin's
@@ -27,10 +27,10 @@ export function createAppNotices({ show, send, frontTab = () => null, local = ()
   setTimer?: (fn: () => void, ms: number) => any,
   clearTimer?: (timer: any) => void,
 }) {
-  let current: { id: string, kind: string, tabId: number | null, front: boolean } | null = null;
+  let current: { id: string, kind: string, tabId: number | null, front: boolean, values?: Record<string, unknown> } | null = null;
   let timer: unknown = null; // (setTimer's)
   let count = 0;
-  const viewOf = (c: { id: string, kind: string }) => ({ id: c.id, text: NOTICES[c.kind].text, actions: NOTICES[c.kind].actions.map((a) => ({ ...a })) });
+  const viewOf = (c: { id: string, kind: string, values?: Record<string, unknown> }) => ({ id: c.id, text: fillNotice(NOTICES[c.kind].text, c.values), actions: NOTICES[c.kind].actions.map((a) => ({ ...a })) });
   function clear(redraw = true) {
     clearTimer(timer);
     timer = null;
@@ -38,13 +38,13 @@ export function createAppNotices({ show, send, frontTab = () => null, local = ()
     current = null;
     if (had && redraw) show(null);
   }
-  function put(kind: unknown, tabId: unknown = null) {
+  function put(kind: unknown, tabId: unknown = null, values?: Record<string, unknown>) {
     if (!isNotice(kind)) return false;
     const words = NOTICES[(kind as string)];
     clear(false);
     const id = `${kind}#${++count}`;
     const tab = words.tab && Number.isInteger(tabId) ? (tabId as number) : null;
-    current = { id, kind: (kind as string), tabId: tab, front: tab != null && frontTab() === tab };
+    current = { id, kind: (kind as string), tabId: tab, front: tab != null && frontTab() === tab, ...(values ? { values } : {}) };
     show(viewOf(current));
     timer = setTimer(() => { if (current?.id === id) clear(); }, words.ms);
     return true;
@@ -88,8 +88,8 @@ export function createAppNotices({ show, send, frontTab = () => null, local = ()
       else void send('noticeAction', { notice: kind, action: String(arg.action ?? ''), ...(tabId != null ? { tabId } : {}) });
       return true;
     },
-    /** One of the overlay's own notices (`local` in shared/notices.ts), put up. */
-    say(kind: string) { return NOTICES[kind]?.local ? put(kind) : false; },
+    /** One of the overlay's own notices (`local` in shared/notices.ts), put up, its values filled in (fillNotice). */
+    say(kind: string, values?: Record<string, unknown>) { return NOTICES[kind]?.local ? put(kind, null, values) : false; },
     /** The notice up now, as the runtime draws it (for a runtime made again: a new theme). */
     view: () => (current ? viewOf(current) : null),
     /** Which notice is up, and about which tab. */

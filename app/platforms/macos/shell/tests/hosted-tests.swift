@@ -838,6 +838,7 @@ func hostedResumeTests(script: URL) {
         let session = HostedSession(library: library, engine: engine, links: links)
         session.sleep = { _ in await Task.yield() }
         session.appName = { $0 == "com.apple.Notes" ? "Notes" : nil }
+        session.options.preparesBrowser = false // (the resume alone: the start's browser below, "the start")
         let window = FakeHostedWindow(id: 1, number: FakeHostWorld.marginWindow)
         session.window = { id in id == nil || id == 1 ? window : nil }
         // (A Safari Margin starts: its copy's newWindow makes a window on the Desktop, its setWindowState acts on it.)
@@ -982,6 +983,51 @@ func hostedResumeTests(script: URL) {
               page?.value["selected"] as? Bool == true && atOnce && w.calls.contains("launch com.apple.Safari") && engine.shown == safari && session.shown[1] == page?.id
               && shows.count == 1 && shows.first?.payload["itemId"] as? String == page?.id && window.showing == nil && window.hostings == [true] && session.resuming == nil,
               "at once \(atOnce) \(window.slowShowings) \(session.done.suffix(4)) \(window.hostings)")
+        run { await engine.quitAll() }
+    }
+
+    // ---- the start (Tirth, 2026-11-18): the default browser first, behind "Getting you started", then the item ----
+    let notes = library.items().first { $0.value["url"] as? String == "app://com.apple.Notes" }?.id ?? ""
+    if notes.isEmpty { check("start: Notes is an item", false) }
+    _ = library.perform("activateTab", ["windowId": 1, "tabId": notes])
+    do {
+        let (w, engine, session, window, run) = launch()
+        session.options.preparesBrowser = true
+        window.isFullScreen = true
+        session.resumeLast(window)
+        let first = window.slowShowings
+        let launchedEarly = w.calls.contains { $0.hasPrefix("launch com.apple.Notes") }
+        // (The browser's preparation over: ready, or not done.)
+        session.preparationOver()
+        run {}
+        check("start: \"Getting you started\" from the window's first frame while the default browser starts, nothing of the item launched yet; then the item's name, and the item shown",
+              first == [HostedSession.startupLabel] && !launchedEarly && window.slowShowings.prefix(2) == [HostedSession.startupLabel, "Notes"]
+              && engine.shown == HostTarget.app("com.apple.Notes").id && session.resuming == nil && window.showing == nil,
+              "first \(first) all \(window.slowShowings) shown \(String(describing: engine.shown))")
+        run { await engine.quitAll() }
+    }
+    do {
+        let (_, engine, session, window, run) = launch()
+        session.options.preparesBrowser = true
+        session.options.startupWait = 0.05
+        window.isFullScreen = true
+        session.resumeLast(window)
+        // (The preparation never says it's over: the item isn't held longer than `startupWait`.)
+        let until = Date().addingTimeInterval(3)
+        while engine.shown == nil, Date() < until { run {} ; RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        check("start: a browser that never gets ready holds the item no longer than its limit", engine.shown == HostTarget.app("com.apple.Notes").id && session.resuming == nil,
+              "\(String(describing: engine.shown)) \(window.slowShowings)")
+        run { await engine.quitAll() }
+    }
+    do {
+        let (_, engine, session, window, run) = launch()
+        session.options.preparesBrowser = true
+        window.isFullScreen = true
+        session.preparationOver()
+        session.resumeLast(window)
+        run {}
+        check("start: the browser ready before the window: no \"Getting you started\", the item at once", window.slowShowings == ["Notes"] && engine.shown == HostTarget.app("com.apple.Notes").id,
+              "\(window.slowShowings)")
         run { await engine.quitAll() }
     }
 }

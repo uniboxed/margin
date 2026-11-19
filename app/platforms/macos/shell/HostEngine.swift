@@ -450,7 +450,7 @@ final class HostEngine {
         let core = HostCore()
         self.core = core
         observer = HostObserver(system: system, source: observation, core: core)
-        observer.onHeard = { [weak self] in self?.activity(); self?.onWake?() }
+        observer.onHeard = { [weak self] in self?.heardSomething() }
         sys.onAppQuit = { [weak self] pid in self?.appQuit(pid) }
         if let routesURL { core.loadRoutes(from: routesURL) }
     }
@@ -4830,6 +4830,16 @@ final class HostEngine {
     // Its next look wanted at once (a notification heard): the shell's read, now.
     var onWake: (() -> Void)?
     private func activity() { lastActivity = sys.now() }
+    // A notification of a hosted app's: activity, and the shell's read now, at most one every `FAST` (its fast window
+    // reads that often anyway), never during a drag (the window dragged says it moved and resized every frame: a poll for
+    // each took the main thread from the drag's own writes, its p95 26-36 ms, 2026-11-18).
+    private var lastWake = -Double.infinity
+    private func heardSomething() {
+        activity()
+        guard !liveOn, sys.now() - lastWake >= 0.1 else { return }
+        lastWake = sys.now()
+        onWake?()
+    }
     // Something not settled: a read to confirm, an exit or a retry due, a drag, an operation running or queued, the late
     // watch after a show. The poll comes every 0.25 s until it is.
     var pollPending: Bool {

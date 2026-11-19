@@ -245,7 +245,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     inNewTab: !!host.inNewTab,
     launcherPage: !!host.launcher,
     // Margin.app's own window, an item opening in the page area: the page card's loader, with its name.
-    pageOpening: host.pageState === 'loading' ? { name: host.pageOpening ?? '', bundleId: host.pageOpeningBundleId ?? null } : null,
+    pageOpening: host.pageState === 'loading' ? { name: host.pageOpening ?? '', bundleId: host.pageOpeningBundleId ?? null, starting: host.pageStarting === true } : null,
     // Margin.app's own window hosting another app's window beside it: no page area here (ui/host-app.ts).
     pageOutside: !!(host as { pageOutside?: boolean }).pageOutside,
     // The sidebar kept docked by the host (Margin.app hosting: beside a tile, or under an app's window in window mode).

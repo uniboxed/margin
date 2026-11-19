@@ -5938,3 +5938,31 @@ each OS keeping only its window calls. Work is on `refactor/host-core`, one step
   all but the drag-follow checks, which held Weather to Chameleon's 25 ms (now a person's app is held to its own pace,
   as the min-drag part does). 1622 of 1622 Swift checks.
 - **Next:** the scheduler on events (the 4 Hz poll), then the operations.
+
+## The engine looks on events: the idle cost (2026-11-18)
+
+The plan's budget: Margin under 0.5% of a CPU at rest, nothing waking it when nothing changes. Measured with the new
+`idle-cost` screen part (the kernel's own counts, proc_pid_rusage: CPU time, idle and interrupt wakeups, footprint),
+three Chameleon copies hosted and left alone 60 s, and nothing hosted for 30 s.
+
+- **Before:** three hosted 4.02% (2448 ms in 61 s), 5 interrupt wakeups a second; nothing hosted 1.60%, 89.5 a second.
+  A sample (`sample`) showed the engine's poll (`Shell.track`, every 0.25 s whenever anything was hosted, and 20 more at
+  0.1 s after each show) most of the main thread's work, and the set-up window's checks every 2 s all the time.
+- **The schedule (margin-core host/schedule.rs):** every 0.1 s for 2 s after activity (an event, an operation's end, a
+  correction, a notification of a hosted app's), every 0.25 s while something is unconfirmed (a read to repeat, an exit
+  or a retry due, a drag, the late watch after a show), every 1.5 s at rest with apps hosted, every 2 s with only copies
+  linked, never with nothing. Events look at once: the workspace's (an app activated, a Space changed, already the
+  shell's), the observer's Accessibility notifications (new: `onHeard` → the shell's read now). The 20 polls after a
+  show are the schedule's fast window now. Timers have a 10% tolerance (coalesced with the system's).
+- **A poll's reads:** the Space list (SLSCopyManagedDisplaySpaces, parsed) once a poll instead of 4-6 times; each
+  running app (NSRunningApplication: a LaunchServices request each time) and the session's state once a poll; a quit
+  seen by the process alone (kill(pid, 0)); an app's windows classified again only when what the classification reads
+  changed (the observer's cost a poll in the stand-in: 604 → 181 µs). The set-up window's checks run only while it's
+  shown.
+- **After:** three hosted 0.45% (276 ms in 61 s), 1.6 interrupt wakeups a second: under the budget. Nothing hosted
+  1.44-1.50%, 89 interrupt wakeups a second: Margin's page is the launcher, its field focused (the dev hook's `say
+  field`: focused true, Margin active), its caret blinking; WebKit draws each blink (its display link started and
+  stopped, a thread each time). The page itself is quiet: no animation running, no frame asked, no message from
+  Margin, no DOM change in 2 s (the dev hook's new `say animations`). That's the cost of a field ready for typing.
+- **Memory at rest:** Margin 63-64 MB with nothing hosted, 100-104 MB with three hosted (its web view's processes not
+  counted).

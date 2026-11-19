@@ -709,8 +709,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     var pageStateJSON: String {
         #"{"type":"pageState","state":"\#(pageState.rawValue)","label":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
-            + (loaderApp.flatMap { jsonString($0) }.map { #","bundleId":"# + $0 } ?? "") + "}"
+            + (loaderApp.flatMap { jsonString($0) }.map { #","bundleId":"# + $0 } ?? "") + (starting ? #","starting":true"# : "") + "}"
     }
+    // Margin's start (HostedSession `startup`): its loader says "Getting you started…", not "Opening …" (the page's words).
+    private var starting: Bool { pageState == .loading && loaderLabel == HostedSession.startupLabel }
 
     // The hosted window's bounds read from the window server (kept: a layout report, a pointer move never reads them).
     private func readHosted() {
@@ -1227,6 +1229,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         json += #","pageMinWidth":"# + (pageMinimum.map { String(Int($0)) } ?? "null")
         json += #","pageState":""# + pageState.rawValue + #"","pageOpening":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
         json += #","pageOpeningBundleId":"# + (loaderApp.flatMap { jsonString($0) } ?? "null")
+        if starting { json += #","pageStarting":true"# }
         let theme = owner.theme()
         themeSent = theme
         json += #","theme":"# + (theme ?? "null") + "}"

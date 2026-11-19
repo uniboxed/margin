@@ -115,6 +115,7 @@ extension Shell {
         host.cover = { [weak session] number in session?.cover(number) }
         host.others = { [weak session] number in session?.others(number) }
         host.front = { [weak session] read in session?.front(read) }
+        host.onRoute = { [weak session] id, route in session?.routeChanged(id, route) }
         let before = host.onEvent
         // (A notification of a hosted app's: the shell's read now, then fast for a while: the hosting core's schedule.)
         host.onWake = { [weak self] in self?.soon() }
@@ -180,6 +181,7 @@ extension Shell {
         // (`defaults write com.unibox.margin MarginPrepareBrowser -bool NO`: no browser started or asked for a window at
         // launch; the first web item opens it then. The on-screen checks that use only their own test apps set it.)
         if !options.harness, UserDefaults.standard.object(forKey: "MarginPrepareBrowser") as? Bool == false {
+            session.preparationOver() // (the item shown last isn't held for it)
             return Diagnostics.note("hosted: browser not prepared at launch (MarginPrepareBrowser is NO)")
         }
         let setting = UserDefaults.standard.string(forKey: DefaultBrowser.key)

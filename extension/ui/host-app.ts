@@ -262,6 +262,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let pageState: 'empty' | 'loading' | 'shown' = pageStateOf(hello?.pageState);
   let pageOpening: string | null = pageState === 'loading' ? nameOf(hello?.pageOpening) : null;
   let pageOpeningBundleId: string | null = pageState === 'loading' && isBundleId(hello?.pageOpeningBundleId) ? hello.pageOpeningBundleId : null;
+  // Margin's start (its default browser starting first): the loader's own words, "Getting you started…".
+  let pageStarting = pageState === 'loading' && hello?.pageStarting === true;
   // Installed apps, as the app read them (null: none read yet).
   let apps = appsOf(hello?.apps);
   let layout: Geometry | null = null;
@@ -345,6 +347,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get pageState() { return appWindow ? pageState : undefined; },
     get pageOpening() { return pageOpening; },
     get pageOpeningBundleId() { return pageOpeningBundleId; },
+    get pageStarting() { return pageStarting; },
     /** The sidebar kept docked while hosting (beside a tile, or under a window-mode app's window), whatever its setting. */
     get sidebarDocked() { return pageOutside || pageHosted; },
     // The overlay stays on screen through a switch (ui/runtime.ts: the highlight waits for the state).
@@ -479,10 +482,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           const next = pageStateOf(msg.state);
           const name = next === 'loading' ? nameOf(msg.label) : null;
           const bundleId = next === 'loading' && isBundleId(msg.bundleId) ? msg.bundleId : null;
-          if (next === pageState && name === pageOpening && bundleId === pageOpeningBundleId) return;
+          const starting = next === 'loading' && msg.starting === true;
+          if (next === pageState && name === pageOpening && bundleId === pageOpeningBundleId && starting === pageStarting) return;
           pageState = next;
           pageOpening = name;
           pageOpeningBundleId = bundleId;
+          pageStarting = starting;
           return emit();
         }
         case 'themes':

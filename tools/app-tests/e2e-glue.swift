@@ -388,12 +388,14 @@ func glueScenario() async {
   check("Margin's window told the app's window, and in front of it: its level still raised, never ordered below anything", c.hosted == editWindow && c.window.level == FrontMechanism.raised
         && c.mechanism == .level && c.yieldOrders == 0, "hosted \(String(describing: c.hosted)) level \(c.window.level.rawValue)")
   // ---- the page card: loading while the app launched, shown now: the page area a hole ----
-  let states = c.pageStates
+  // (Margin's start before the pick, with no item to show again: "Getting you started", then the launcher.)
+  let start = ["loading \(HostedSession.startupLabel)", "empty"]
+  let states = Array(c.pageStates.starts(with: start) ? c.pageStates.dropFirst(start.count) : c.pageStates[...])
   check("the page card `loading` as the app launched (the engine's slow step: at once, with its name), nothing of Margin's window see-through then; `shown` once its window was in place",
         cardAtLaunch["com.apple.TextEdit"] == "loading hole none ground whole clear false" && states == ["loading com.apple.TextEdit", "shown"]
         && c.pushed.contains(#"{"type":"pageState","state":"loading","label":"com.apple.TextEdit","bundleId":"com.apple.TextEdit"}"#) && c.pushed.contains(#"{"type":"pageState","state":"shown","label":null}"#) && c.pageState == .shown, "\(cardAtLaunch) \(states)")
   check("an app item's loader: the pageState message names the app's bundle id (the page shows its icon), and only while loading",
-        c.pushed.filter { $0.contains(#""type":"pageState""#) && $0.contains(#""state":"loading""#) }.allSatisfy { $0.contains(#""bundleId":"com.apple.TextEdit""#) }
+        c.pushed.filter { $0.contains(#""type":"pageState""#) && $0.contains(#""state":"loading""#) && !$0.contains(#""starting":true"#) }.allSatisfy { $0.contains(#""bundleId":"com.apple.TextEdit""#) }
         && c.pushed.filter { $0.contains(#""type":"pageState""#) && !$0.contains(#""state":"loading""#) }.allSatisfy { !$0.contains("bundleId") }, "\(c.pushed.filter { $0.contains("pageState") })")
   let rootShown = await waitJS(c.webView, "const l = document.querySelector('.arcadia > m-page-loader'); return document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'shown' && !!l && !l.hasAttribute('m-default') && document.querySelectorAll('m-page-loader').length === 1 && l.textContent.trim() === '' && getComputedStyle(l).pointerEvents === 'none'")
   check("the theme's root says shown; the theme's own loader (Arcadia's slot, no default of Margin's beside it) has its part taken out and lets go as it's shown", rootShown)
@@ -1084,13 +1086,14 @@ func glueResumeScenario() async {
   c.hostedBounds = { world.bounds(window: $0) }
   world.display = c.contentFrame
   let hello = c.pageHello()
-  check("as the window is made, before its page has loaded: hosting, the page card loading with the item's name, its hello saying so (the first frame is the loader, not the launcher)",
-        c.hosting && c.pageState == .loading && c.loaderLabel == "Notes" && c.pageStates == ["loading Notes"] && hello.contains(#""pageHosted":true"#) && hello.contains(#""pageState":"loading""#)
-        && hello.contains(#""pageOpening":"Notes""#) && hello.contains(#""pageOpeningBundleId":"com.apple.Notes""#) && session.resuming == c.id, "\(c.pageStates) \(c.pageState.rawValue) \(hello.contains("pageOpeningBundleId"))")
+  // (Margin's start, Tirth 2026-11-18: the default browser first, behind "Getting you started", then the item.)
+  check("as the window is made, before its page has loaded: hosting, the page card loading with Margin's start (\"Getting you started\" while the default browser starts), its hello saying so (the first frame is the loader, not the launcher)",
+        c.hosting && c.pageState == .loading && c.loaderLabel == HostedSession.startupLabel && c.pageStates == ["loading \(HostedSession.startupLabel)"] && hello.contains(#""pageHosted":true"#) && hello.contains(#""pageState":"loading""#)
+        && hello.contains(#""pageStarting":true"#) && session.resuming == c.id, "\(c.pageStates) \(c.pageState.rawValue) \(hello.contains("pageStarting"))")
   guard await until(15, { c.isReady }) else { return check("Margin's window's page drawn", false) }
   let first = await js(c.webView, "const r = document.querySelector('.arcadia'); const l = r?.querySelector('m-page-loader'); return [r?.getAttribute('m-page-state'), !!document.querySelector('.launcher'), l?.textContent ?? '', r?.dataset.sidebar].join('|')") as? String ?? "?"
   check("its page as it's first drawn: the theme's root loading (or already shown), no launcher, the loader with Margin's words, the sidebar docked",
-        (first.hasPrefix("loading|false|Opening Notes…") || first.hasPrefix("shown|false|")) && first.hasSuffix("|open"), first)
+        (first.hasPrefix("loading|false|Opening Notes…") || first.hasPrefix("loading|false|Getting you started…") || first.hasPrefix("shown|false|")) && first.hasSuffix("|open"), first)
   let notes = HostTarget.app("com.apple.Notes").id
   guard await until(10, { engine.shown == notes && c.pageState == .shown }) else { return check("the item shown again", false, "\(session.done.suffix(5)) \(c.pageStates)") }
   let win = world.apps.values.first { $0.bundle == "com.apple.Notes" }?.windows.first ?? 0
@@ -1112,8 +1115,8 @@ func glueResumeScenario() async {
         onAgain && engine.shown == notes && c.hosted == win && c.pageState == .shown && world.inMargin == [win], "back \(onAgain) \(c.pageState.rawValue)")
   world.lists = false
   check("its app opened only once Margin's window was in full screen with its page area, still behind the loader", atLaunch == "true loading true", "\(String(describing: atLaunch))")
-  check("then shown: the page card loading → shown with never the launcher (never `empty`, hosting never turned off), the hole at the app's window, its item the one shown",
-        c.pageStates == ["loading Notes", "shown"] && !c.pushed.contains(#"{"type":"pageHosted","on":false}"#) && c.hole == world.bounds(window: win) && c.hole == c.window.pageRect
+  check("then shown: the page card loading (Margin's start, then the item's name) → shown with never the launcher (never `empty`, hosting never turned off), the hole at the app's window, its item the one shown",
+        c.pageStates == ["loading \(HostedSession.startupLabel)", "loading Notes", "shown"] && !c.pushed.contains(#"{"type":"pageHosted","on":false}"#) && c.hole == world.bounds(window: win) && c.hole == c.window.pageRect
         && session.shown[c.id] == item && session.resuming == nil && world.inMargin == [win], "\(c.pageStates) hole \(String(describing: c.hole))")
   let lit = await waitJS(c.webView, "return document.querySelector('.tab.active')?.getAttribute('aria-label') === 'Notes' && document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'shown' && !document.querySelector('.launcher')")
   check("the sidebar highlights it, the theme's root says shown, no launcher", lit)

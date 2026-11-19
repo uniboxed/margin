@@ -80,6 +80,8 @@ export type Host = {
   readonly pageOpening?: string | null,
   /** The app whose icon the loader shows (its bundle id: the app's, or the browser's for a web item), as the app says it. */
   readonly pageOpeningBundleId?: string | null,
+  /** Margin's start (its default browser starting first): the loader's own words ("Getting you started…"). */
+  readonly pageStarting?: boolean,
   readonly focusLauncherAtMount?: boolean,
   /** The last layout reported (the page's place), where the host keeps it. */
   readonly layout?: Geometry | null,

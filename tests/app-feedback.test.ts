@@ -135,7 +135,7 @@ const kinds = (kind: string) => pushed.filter((p) => p.msg.type === 'notice' && 
 // ---- the words ------------------------------------------------------------------
 
 test('notices: Margin\'s words, each kind\'s buttons; a switch that didn\'t happen gets the notice for why', () => {
-  assert.deepEqual(Object.keys(words.NOTICES).sort(), ['new-tab-setting', 'no-answer', 'not-responding', 'not-shown', 'tab-gone', 'theme-failed', 'updated-while-open']);
+  assert.deepEqual(Object.keys(words.NOTICES).sort(), ['new-tab-setting', 'no-answer', 'not-responding', 'not-shown', 'route-simpler', 'tab-gone', 'theme-failed', 'updated-while-open']);
   assert.match(words.NOTICES['not-responding'].text, /isn’t responding on this page/);
   assert.deepEqual(words.NOTICES['not-responding'].actions.map((a) => a.id), ['reload', 'later']);
   assert.match(words.NOTICES['updated-while-open'].text, /Quit and reopen Safari/);
@@ -504,6 +504,18 @@ test('loads: the page being left told at once, taken back when it stays; a slow 
   const before = said.length;
   handlers.beforeunload[0](ev);
   assert.equal(said.length, before, 'not drawn by the app: nothing');
+});
+
+test('Margin.app\'s own notice: a hosted app moved to a simpler way, its name filled in as plain text; never the copy\'s', () => {
+  const shown: AppNotice[] = [];
+  const n = createAppNotices({ show: (v) => shown.push(v), send: () => {}, setTimer: () => 0, clearTimer: () => {} });
+  assert.equal(n.push({ type: 'notice', kind: 'route-simpler', app: 'Weather' }), false, 'not the copy\'s to say');
+  assert.equal(n.say('route-simpler', { app: 'Weather' }), true);
+  assert.equal(shown.at(-1)!.text, 'Weather didn’t settle in Margin, so it’s shown a simpler way now. It may take a moment to resize. Margin tries again when Weather updates.');
+  assert.deepEqual(shown.at(-1)!.actions.map((a) => a.label), ['OK']);
+  assert.equal(words.fillNotice('{app} x', { app: 'A\u0007pp\n' + 'b'.repeat(80) }).length, 62, 'control characters out, 60 characters at most');
+  assert.equal(words.fillNotice('{app} x', {}), 'An app x', 'no name: words still whole');
+  assert.equal(words.fillNotice('{app} x', { app: 42 }), 'An app x', 'only a string');
 });
 
 test('the overlay\'s own notice: a theme it couldn\'t draw; the copy can\'t push it, and its buttons stay in the overlay', () => {
