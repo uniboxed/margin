@@ -1086,10 +1086,16 @@ func glueResumeScenario() async {
   c.hostedBounds = { world.bounds(window: $0) }
   world.display = c.contentFrame
   let hello = c.pageHello()
-  // (Margin's start, Tirth 2026-11-18: the default browser first, behind "Getting you started", then the item.)
-  check("as the window is made, before its page has loaded: hosting, the page card loading with Margin's start (\"Getting you started\" while the default browser starts), its hello saying so (the first frame is the loader, not the launcher)",
-        c.hosting && c.pageState == .loading && c.loaderLabel == HostedSession.startupLabel && c.pageStates == ["loading \(HostedSession.startupLabel)"] && hello.contains(#""pageHosted":true"#) && hello.contains(#""pageState":"loading""#)
-        && hello.contains(#""pageStarting":true"#) && session.resuming == c.id, "\(c.pageStates) \(c.pageState.rawValue) \(hello.contains("pageStarting"))")
+  // (Margin's start, Tirth 2026-11-18: the default browser first, behind "Getting you started", then the item. Here no
+  // browser can be made ready out of sight (no early full screen in this world), and since the start found that out at
+  // once (Safari started with Margin, not after its window: 2026-11-18 night) it says the item's name from the first
+  // frame instead, never "Getting you started" for a browser that isn't being started. The start's own words are
+  // hosted-tests.swift's "start:" checks.)
+  let startsWithBrowser = c.pageStates == ["loading \(HostedSession.startupLabel)"] && hello.contains(#""pageStarting":true"#)
+  let startsWithItem = c.pageStates == ["loading Notes"] && !hello.contains(#""pageStarting":true"#)
+  check("as the window is made, before its page has loaded: hosting, the page card loading (\"Getting you started\" while a browser starts; here none can be, so the item's name), its hello saying so (the first frame is the loader, not the launcher)",
+        c.hosting && c.pageState == .loading && (startsWithBrowser || startsWithItem) && hello.contains(#""pageHosted":true"#) && hello.contains(#""pageState":"loading""#)
+        && session.resuming == c.id, "\(c.pageStates) \(c.pageState.rawValue) \(hello.contains("pageStarting"))")
   guard await until(15, { c.isReady }) else { return check("Margin's window's page drawn", false) }
   let first = await js(c.webView, "const r = document.querySelector('.arcadia'); const l = r?.querySelector('m-page-loader'); return [r?.getAttribute('m-page-state'), !!document.querySelector('.launcher'), l?.textContent ?? '', r?.dataset.sidebar].join('|')") as? String ?? "?"
   check("its page as it's first drawn: the theme's root loading (or already shown), no launcher, the loader with Margin's words, the sidebar docked",
@@ -1116,7 +1122,7 @@ func glueResumeScenario() async {
   world.lists = false
   check("its app opened only once Margin's window was in full screen with its page area, still behind the loader", atLaunch == "true loading true", "\(String(describing: atLaunch))")
   check("then shown: the page card loading (Margin's start, then the item's name) → shown with never the launcher (never `empty`, hosting never turned off), the hole at the app's window, its item the one shown",
-        c.pageStates == ["loading \(HostedSession.startupLabel)", "loading Notes", "shown"] && !c.pushed.contains(#"{"type":"pageHosted","on":false}"#) && c.hole == world.bounds(window: win) && c.hole == c.window.pageRect
+        (c.pageStates == ["loading \(HostedSession.startupLabel)", "loading Notes", "shown"] || c.pageStates == ["loading Notes", "shown"]) && !c.pushed.contains(#"{"type":"pageHosted","on":false}"#) && c.hole == world.bounds(window: win) && c.hole == c.window.pageRect
         && session.shown[c.id] == item && session.resuming == nil && world.inMargin == [win], "\(c.pageStates) hole \(String(describing: c.hole))")
   let lit = await waitJS(c.webView, "return document.querySelector('.tab.active')?.getAttribute('aria-label') === 'Notes' && document.querySelector('.arcadia')?.getAttribute('m-page-state') === 'shown' && !document.querySelector('.launcher')")
   check("the sidebar highlights it, the theme's root says shown, no launcher", lit)
