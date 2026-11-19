@@ -173,6 +173,11 @@ read as the suite reads it). DECISIONS.md, "The hosting core, stage 3", has the 
   2 a show (a window-mode window not where it was framed), `bringForward` one try a rung (`activate`, `reopen`), then
   `fallback`; `closeItem` once its window has been gone `goneGrace` (1 s) with no other main window; `placeAgain` 1 per
   30 s. One log line each: `host: <app>: <observed> → <correction> (<budget left>)`.
+- **Since 2026-11-18 the decisions are margin-core's** (`app/shared/core/src/host/`, docs/ARCHITECTURE-PLAN.md): the
+  step (`reconciler.rs`), the loop that picks the next host's correction and counts its tries against these budgets
+  (`driver.rs`: the Mac asks it in parts, `decide` then `admit`; Windows' adapter hands it the whole loop), the loop
+  guard and the routes, and which window is let in front of Margin's window (`front.rs`). `HostReconciler.swift` and
+  `HostEngine` keep the Mac's reads and steps.
 - **Off screen in Margin's Space:** `bringForward` is for a window-mode window, and for a member once its show's late
   watch is over (its app ordered it out: ordersOut after, in Margin's Space off screen for good, 19:08); within the late
   watch the member's `backOnScreen` tries the same rungs before it places the window again; never a Space made current or a

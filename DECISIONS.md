@@ -5998,3 +5998,22 @@ Control and memory after, every app given back at Margin's quit. First run 76 of
 takes a window inside the page area now. Second run 82 of 82: 24 switches, each app where it belongs every time, no
 re-layout Margin didn't make, Mission Control Margin's Space only; Margin 100 MB, WindowServer 168 MB after. Every app's
 saved state recorded before and put back after (Mail 3 keys, WhatsApp, Notes, Calculator 1 each).
+
+## One loop for every OS; the page's picture on its card (2026-11-18, night)
+
+- **A web item's card in another Margin window** shows its page as Safari showed it last, faded toward the theme's
+  ground, with the card's words on a chip in the theme's style (every built-in theme, both engines). The Safari copy
+  takes it (`hostPicture`: `tabs.captureVisibleTab`, made at most 1600 px wide: ~22 MB decoded at full Retina size,
+  ~5 MB at 1600) just before the hosted window leaves for the other Margin window; Margin waits 0.4 s at most for it,
+  and the card alone stands in otherwise. Kept in memory while the card shows, never stored or logged (the window's
+  test list of pushes keeps only that one was sent). An app's card has no picture: Margin reads no other app's pixels
+  (no Screen Recording, by his decision).
+- **The Mac engine's loop is the core's** (`host::driver`). An OS whose steps are plain calls (Windows) hands the driver
+  its adapter; the Mac's steps are async work in its own queue, so it asks the driver in parts: `decide` (the host's
+  next correction, its tries the core's), then in that correction's turn `decide` again and `admit` (the guard, the try
+  counted, a stop's step down). The budgets' window (30 s, a framing per show) is the core's constant only.
+- **Which window is let in front of Margin's window** is the core's (`host::front`): the rules of 2026-11-17 unchanged
+  (the shown app's, seen at two looks in a row 0.2 s apart, not with an operation, not a strip, not over the sidebar
+  more than 8 pt, in Margin's Space alone). The Mac reads the Spaces only of the shown app's own windows.
+- **Windows hosting** waits on Margin's own window there (the Windows shell still draws over Chrome's and Edge's
+  windows): the hosted design ported first, then its adapter driven. Not wired before that: nothing would call it.

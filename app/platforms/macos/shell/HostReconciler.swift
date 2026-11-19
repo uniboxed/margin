@@ -236,14 +236,18 @@ nonisolated enum HostReconciler {
     // The corrections that bring `s` to `d`, most urgent first (the engine applies the first, then looks again).
     // Empty: settled (or the core refused the request, said in the log).
     static func step(_ s: HostSituation, _ d: HostDesired) -> [HostCorrection] {
-        let desired: String
-        switch d {
-        case .shown: desired = "shown"
-        case .parked: desired = "parked"
-        case .givenBack: desired = "givenBack"
-        }
-        let answer = HostCore.shared.call(["type": "step", "situation": s.coreJSON, "desired": desired])
+        let answer = HostCore.shared.call(["type": "step", "situation": s.coreJSON, "desired": d.coreName])
         return (answer["corrections"] as? [[String: Any]] ?? []).compactMap(HostCorrection.init(coreJSON:))
+    }
+}
+
+nonisolated extension HostDesired {
+    var coreName: String {
+        switch self {
+        case .shown: return "shown"
+        case .parked: return "parked"
+        case .givenBack: return "givenBack"
+        }
     }
 }
 
@@ -277,6 +281,30 @@ nonisolated extension HostOther {
 }
 
 nonisolated extension HostCorrection {
+    // As the core reads it (the decoder's inverse).
+    var coreJSON: [String: Any] {
+        switch self {
+        case .launch: return ["type": "launch"]
+        case .reopen: return ["type": "reopen"]
+        case .unhide: return ["type": "unhide"]
+        case .wait(let why): return ["type": "wait", "why": why]
+        case .placeFromOwnSpace(let sp): return ["type": "placeFromOwnSpace", "space": sp]
+        case .outThenAsk: return ["type": "outThenAsk"]
+        case .askFullScreen: return ["type": "askFullScreen"]
+        case .frameWindow: return ["type": "frameWindow"]
+        case .putBack: return ["type": "putBack"]
+        case .bringForward(let f): return ["type": "bringForward", "rung": f.rawValue]
+        case .adopt(let w): return ["type": "adopt", "window": w]
+        case .closeLeftover(let w): return ["type": "closeLeftover", "window": w]
+        case .parkLeftover(let w): return ["type": "parkLeftover", "window": w]
+        case .parkStrip(let w): return ["type": "parkStrip", "window": w]
+        case .parkAgain: return ["type": "parkAgain"]
+        case .closeItem: return ["type": "closeItem"]
+        case .placeAgain: return ["type": "placeAgain"]
+        case .sizeTile: return ["type": "sizeTile"]
+        case .fallback(let why): return ["type": "fallback", "why": why]
+        }
+    }
     init?(coreJSON d: [String: Any]) {
         func n(_ k: String) -> Int? { (d[k] as? NSNumber)?.intValue }
         switch d["type"] as? String {

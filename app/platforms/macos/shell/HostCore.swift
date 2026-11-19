@@ -180,6 +180,60 @@ nonisolated extension HostCore {
     }
 }
 
+// ---- the loop in parts (host/driver.rs): the next correction, then the guard and its try ----
+
+nonisolated enum HostAdmit: Equatable {
+    case go(tried: Int)
+    case held(until: Double)
+    case stopped(why: String, from: HostRoute, to: HostRoute?)
+}
+
+nonisolated extension HostCore {
+    // The host's next correction of those the loop makes (`putBack`: one out of its place too), its tries the core's.
+    func decide(now: Double, host: String, _ s: HostSituation, _ d: HostDesired, putBack: Bool = false) -> HostCorrection? {
+        let a = call(["type": "decide", "now": now, "host": host, "situation": s.coreJSON, "desired": d.coreName, "putBack": putBack])
+        return (a["correction"] as? [String: Any]).flatMap(HostCorrection.init(coreJSON:))
+    }
+    // `c` about to be applied: through the guard when `guarded` (a reaction), its try counted on a go; a stop moved the
+    // host down a route in the core's record (said back: the caller moves it). A refused request: go, uncounted.
+    func admit(now: Double, host: String, _ c: HostCorrection, guarded: Bool, bundle: String, version: String, from: HostRoute, available: [HostRoute]) -> HostAdmit {
+        let a = call(["type": "admit", "now": now, "host": host, "correction": c.coreJSON, "guarded": guarded,
+                      "identity": ["bundle": bundle, "version": version, "from": from.rawValue, "available": available.map(\.rawValue)]])
+        switch a["type"] as? String {
+        case "held": return .held(until: (a["until"] as? NSNumber)?.doubleValue ?? now + 1)
+        case "stopped":
+            return .stopped(why: a["why"] as? String ?? "", from: (a["from"] as? String).flatMap(HostRoute.init(rawValue:)) ?? from,
+                            to: (a["to"] as? String).flatMap(HostRoute.init(rawValue:)))
+        default: return .go(tried: (a["tried"] as? NSNumber)?.intValue ?? 0)
+        }
+    }
+    // A try counted outside the loop (a show's own ladder); the tries of a key now.
+    @discardableResult func record(now: Double, host: String, key: String) -> Int {
+        (call(["type": "record", "now": now, "host": host, "key": key])["tried"] as? NSNumber)?.intValue ?? 0
+    }
+    func tried(now: Double, host: String, key: String) -> Int {
+        (call(["type": "tried", "now": now, "host": host, "key": key])["tried"] as? NSNumber)?.intValue ?? 0
+    }
+    // A show: the host's budgets anew. Gone: nothing kept of it.
+    func resetTries(host: String) { _ = call(["type": "resetTries", "host": host]) }
+    func forget(host: String) { _ = call(["type": "forget", "host": host]) }
+}
+
+// ---- the window let in front of Margin's window (host/front.rs) ----
+
+nonisolated extension HostCore {
+    // The shown app's window let in front of Margin's window now (nil: none), from a look at rest: the window server's
+    // list front to back (`ServerWindow.coreJSON`, with `keptBehind` and `marginOnly`).
+    func front(now: Double, windows: [[String: Any]], ownPid: pid_t, marginWindow: Int, hosted: [Int], shownPid: pid_t?, placement: HostPlacement, fresh: Bool) -> Int? {
+        var look: [String: Any] = ["now": now, "windows": windows, "ownPid": Int(ownPid), "marginWindow": marginWindow, "hosted": hosted,
+                                   "placement": placement.coreJSON, "fresh": fresh]
+        if let shownPid { look["shownPid"] = Int(shownPid) }
+        return (call(["type": "front", "look": look])["front"] as? NSNumber)?.intValue
+    }
+    func frontReset() { _ = call(["type": "frontReset"]) }
+    func frontUnsteady() { _ = call(["type": "frontUnsteady"]) }
+}
+
 // ---- when the engine looks again (host/schedule.rs) ----
 
 nonisolated extension HostCore {
