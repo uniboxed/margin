@@ -64,8 +64,9 @@ test('Liquid Glass: every material is inside @supports, after the plain look, on
   for (const v of used) assert.ok(VISUAL_EFFECTS.includes(v), v);
   // Who gets one: the panels that float and the capsules in the panel, by class, never a row or a tile as such.
   const rules = [...block.matchAll(/([^{}]+)\{([^{}]*-apple-visual-effect:\s*-apple-system-glass[^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]]);
-  // … and the page loader's one capsule (a layer only while an item opens; the slot's own box while starting).
-  const OPENING = '.opening, .lg[m-starting][m-page-state="empty"] .page-loader::before';
+  // … and the page loader's one capsule (a layer only while an item opens; the slot's own box while starting; the start
+  // screen's, Margin's `<m-startup>`, while Margin starts).
+  const OPENING = '.opening, .lg[m-starting][m-page-state="empty"] .page-loader::before, .lg > m-startup::before';
   assert.deepEqual(rules.map(([selector]) => selector), ['.glass, .panel.glass', '.capsule', '.tab.on, .new-tab.on, .tab.on:hover, .new-tab.on:hover', OPENING]);
   assert.match(rules.find(([selector]) => selector === OPENING)![1], /overflow: hidden; background: none; box-shadow: none;/, 'the loader\'s capsule: clipped, no shadow of its own');
   assert.ok(css.indexOf(`${OPENING} {`) > 0 && css.indexOf(`${OPENING} {`) < at, 'its plain look first');
