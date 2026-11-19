@@ -1765,6 +1765,10 @@ final class HostEngine {
                 return false
             }
         }
+        // (Its reads wait 0.2 s at most while its first window is waited for: Mail's window, listed by the window server
+        // at 1.0 s, was chosen at 2.0 s, Accessibility's reads of the still-launching app each waiting their 1 s.)
+        if startedNow { sys.launching(pid: app.pid, for: options.windowWait) }
+        defer { if startedNow { sys.launching(pid: app.pid, for: 0) } }
         _ = await lookForWindow(personal ? options.personWindowWait : options.windowWait)
         // Running with no window Margin can host (the person's app with none, its Dock icon there: Maps, 2026-11-17 15:19;
         // one of Margin's that made none): reopened as a Dock-icon click would, then looked at again, within the budget.
