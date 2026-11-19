@@ -488,11 +488,11 @@ final class HostEngine {
     func start(bundleId: String) async -> HostApp? {
         await serial(planned: true) {
             _ = await self.awaitExits(of: bundleId)
-            if let running = self.sys.running(bundleId: bundleId).first { return running }
+            if let running = self.liveInstances(of: bundleId).first { return running }
             let arguments = bundleId == self.options.safariBundle ? self.options.safariArguments : self.options.appArguments
             guard self.sys.launchDockless(bundleId: bundleId, arguments: arguments) else { return nil }
             var found: HostApp?
-            _ = await self.wait(self.options.launchWait) { found = self.sys.running(bundleId: bundleId).first; return found != nil }
+            _ = await self.wait(self.options.launchWait) { found = self.liveInstances(of: bundleId).first; return found != nil }
             guard let found else { return nil }
             self.launched[found.pid] = found
             self.saveMarker()
@@ -1618,7 +1618,7 @@ final class HostEngine {
         }
         // (Its last instance asked to quit by a row's close and still finishing: its exit waited for, never hosting it.)
         if let waited = await awaitExits(of: bundle) { times.append("its last instance's exit waited for \(waited) ms") }
-        let running = sys.running(bundleId: bundle)
+        let running = liveInstances(of: bundle)
         var app: HostApp
         var startedNow = false
         if let first = running.first {
@@ -1628,7 +1628,7 @@ final class HostEngine {
             let arguments = bundle == options.safariBundle ? options.safariArguments : options.appArguments
             guard sys.launchDockless(bundleId: bundle, arguments: arguments) else { return fail(id, .launch, "\(bundle) couldn't be started with no Dock icon") }
             var found: HostApp?
-            _ = await wait(options.launchWait) { found = self.sys.running(bundleId: bundle).first; return found != nil }
+            _ = await wait(options.launchWait) { found = self.liveInstances(of: bundle).first; return found != nil }
             guard let found else { return fail(id, .launch, "\(bundle) didn't start within \(Int(options.launchWait)) s") }
             app = found
             startedNow = true
@@ -4587,6 +4587,13 @@ final class HostEngine {
     // An open (or start) of an app whose last instance a row's close asked to quit and is still finishing: waits for
     // that exit (heard, or until `quitWait` after the ask: then it's Margin's again, reused), so the dying instance is
     // never hosted, nor taken for the person's. Nil: nothing to wait for; else the ms waited.
+    // The app's running instances whose process still runs: NSWorkspace lists an app a moment after its process ended
+    // (its notice not handled yet), and an open right after an exit took that ended instance for the person's, waited for
+    // a window it would never make, and failed (2026-11-19, Journal reopened as its last instance quit).
+    private func liveInstances(of bundle: String) -> [HostApp] {
+        sys.running(bundleId: bundle).filter { sys.processRuns(pid: $0.pid) }
+    }
+
     private func awaitExits(of bundle: String) async -> Int? {
         let dying = exiting.filter { $0.value.app.bundleId == bundle }.map(\.key).sorted()
         guard !dying.isEmpty else { return nil }

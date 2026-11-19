@@ -271,6 +271,9 @@ extension Shell {
         let w = hosted?.hostingWindow.flatMap { id in windows.controllers.first { $0.id == id } } ?? windows.front
         // (The start screen up: nothing of Margin's usable yet, its page ignores its keys too.)
         if hosted?.startupShown == true { return Diagnostics.note("\(command.rawValue): not now, the start screen is up") }
+        // (Each press said, never a held key's repeats: whether a key reached Margin at all is then in its log, 2026-11-19:
+        // ⌥⌘↓ after Journal's Touch ID prompt did nothing and the log couldn't say whether Margin heard it.)
+        if !isRepeat { Diagnostics.note("Margin's key: \(command.rawValue), the front app \(apps.frontPid.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier } ?? "unread")") }
         switch command {
         case .newWindow:
             windows.open()
