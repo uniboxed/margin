@@ -2634,6 +2634,25 @@ final class HostEngine {
     private func fallBack(_ host: Host, isNew: Bool, retrying: Bool, _ step: HostStep, _ reason: String, previous: Host?) async -> HostResult {
         // (Being prepared out of sight: never shown as a window instead.)
         guard case .app = host.target, !preparing else { return await giveUp(host, isNew: isNew, step, reason, previous: previous) }
+        // (Its first open, its app Margin's: its full screen failed while another window of its app is full screen in a
+        // Space of its own (the app put it there as it launched, and macOS won't take a second beside it: restore-code,
+        // 2026-11-19, its main window by Accessibility the other one mid-launch). That one hosted instead, once: it's
+        // already as Margin wants it. The first, backed out as any, is the reconciler's from then (a leftover, parked).)
+        if step == .fullScreen, isNew, !retrying, host.launchedByMargin, let other = fullScreenSibling(host) {
+            Diagnostics.note("host: \(host.id): its full screen failed (\(reason)) while its app's window \(other) is full screen in a Space of its own: that one hosted instead")
+            let frozen = holdFreeze()
+            await backOut(host)
+            await outForGood(host)
+            releaseFreeze(frozen)
+            host.window = other
+            host.fullScreenSpace = nil
+            host.member = false
+            host.placedPage = nil
+            host.original = nil
+            host.originalSpace = sys.desktop(onDisplayOf: marginSpace)
+            saveMarker()
+            return await placeFullScreen(host, isNew: isNew, retrying: true)
+        }
         // (It can go full screen: tried again at its next show, once; window mode for the rest of the session after that.)
         host.fullScreenFailures += 1
         host.retryFullScreen = host.fullScreenFailures == 1
@@ -2645,6 +2664,16 @@ final class HostEngine {
         host.mode = .window
         saveMarker()
         return await bringInWindow(host, isNew: isNew, retrying: retrying)
+    }
+
+    // The one other window of the app of `host` in a full-screen Space of its own (its app's, or one macOS names no owner
+    // of), not hosted; nil: none, or more than one.
+    private func fullScreenSibling(_ host: Host) -> Int? {
+        guard let owners = sys.fullScreenSpaceOwners() else { return nil }
+        let found = HostWindowChoice.candidates(serverList(pid: host.pid) ?? [], pid: host.pid, excluded: { $0 == host.window || self.isHosted(window: $0) }).filter { w in
+            (sys.spaces(window: w.number) ?? []).contains { $0 != marginSpace && owners[$0].map { $0 == host.pid || $0 == 0 } == true }
+        }
+        return found.count == 1 ? found[0].number : nil
     }
 
     // A full-screen attempt backed out, before its window is shown as a window: nothing of full screen left (2026-11-17,
