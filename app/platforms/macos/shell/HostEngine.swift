@@ -4332,7 +4332,7 @@ final class HostEngine {
                 host.quitAskedAt = sys.now()
                 host.askingSaid = false
                 let asked = sys.terminate(pid: host.pid)
-                Diagnostics.note("host: \(id): its row closed while its app is asking something: asked to quit with its window where it is\(asked ? "" : " (the system refused the ask)"); kept in Margin if its prompt holds it")
+                Diagnostics.note("host: \(id): its row closed while its app is asking something: asked to quit with its window where it is\(asked ? "" : " (its quit ask not taken: macOS takes none from an app already quitting)"); kept in Margin if its prompt holds it")
                 return
             }
         }
@@ -4542,7 +4542,7 @@ final class HostEngine {
             launched[pid] = nil; saveMarker(); return
         }
         quitAsked.insert(pid)
-        if !sys.terminate(pid: pid) { Diagnostics.warn("host: \(bundle) (pid \(pid)) wasn't asked to quit (the system refused the ask)") }
+        if !sys.terminate(pid: pid) { Diagnostics.note("host: \(bundle) (pid \(pid)): its quit ask not taken (macOS takes none from an app already quitting, as one whose last window just closed): its exit waited for as for any") }
         saveMarker()
     }
 
@@ -4555,7 +4555,7 @@ final class HostEngine {
     private func askQuitWatched(_ pid: pid_t, bundle: String, id: HostID) {
         guard let now = sys.app(pid: pid) else { launched[pid] = nil; leftSafariWindows.removeAll { $0.pid == pid }; saveMarker(); return }
         exiting[pid] = Exiting(app: launched.removeValue(forKey: pid) ?? now, id: id, askedAt: sys.now())
-        if !sys.terminate(pid: pid) { Diagnostics.warn("host: \(bundle) (pid \(pid)) wasn't asked to quit (the system refused the ask)") }
+        if !sys.terminate(pid: pid) { Diagnostics.note("host: \(bundle) (pid \(pid)): its quit ask not taken (macOS takes none from an app already quitting, as one whose last window just closed): its exit waited for as for any") }
         saveMarker()
     }
 
