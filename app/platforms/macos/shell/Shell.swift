@@ -132,6 +132,7 @@ final class Shell: ExtensionLinkDelegate {
         apps.onChange = { [weak self] _ in self?.soon() }
         shortcuts.onCommand = { [weak self] command, isRepeat in self?.run(command, isRepeat: isRepeat) }
         shortcuts.onQuit = { [weak self] _ in self?.quitKey() }
+        shortcuts.onAppKey = { [weak self] key in self?.runAppKey(key) }
     }
 
     // The app's own: the window server and NSWorkspace, Carbon's hot keys.
@@ -192,6 +193,7 @@ final class Shell: ExtensionLinkDelegate {
         pollTimer?.invalidate()
         shortcuts.set(active: false)
         shortcuts.setQuitGuard(active: false)
+        shortcuts.setAppKeyGuard(active: false)
         dismissQuitPrompt()
         apps.stop()
         safariNames?.stop()

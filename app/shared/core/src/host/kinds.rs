@@ -464,6 +464,12 @@ pub fn classify(windows: &[Window], app: &AppFacts, placement: &Placement) -> BT
                 if app.hosted.contains(&c.number) || !c.placed_now() {
                     return false;
                 }
+                // Taken by its app into a full-screen Space of its own while the hosted one is still in Margin's: a
+                // second window of its own (Teams' meeting, 2026-11-19, at the hosted one's full-screen frame and
+                // Accessibility's main), never the hosted one's replacement.
+                if c.place == WindowPlace::FullScreen && h.place == WindowPlace::Margin {
+                    return false;
+                }
                 if near(&c.bounds, &h.bounds, TWIN_WITHIN) {
                     return h.place == WindowPlace::Nowhere || (c.ax_main && !h.ax_main);
                 }
@@ -525,7 +531,11 @@ pub fn classify(windows: &[Window], app: &AppFacts, placement: &Placement) -> BT
                 w.number,
                 verdict(WindowKind::Transient, format!("replaced by its app: {by} at its frame{is_main}")),
             );
-        } else if let Some(twin) = main_windows.iter().find(|m| near(&m.bounds, &w.bounds, TWIN_WITHIN)) {
+        } else if let Some(twin) = main_windows.iter().find(|m| {
+            // (A full-screen Space of its own and Margin's: two windows at the one full-screen frame, never twins.)
+            near(&m.bounds, &w.bounds, TWIN_WITHIN)
+                && !(w.place == WindowPlace::FullScreen && m.place == WindowPlace::Margin)
+        }) {
             out.insert(
                 w.number,
                 verdict(WindowKind::Transient, format!("a twin of the main window {}, at its frame", twin.number)),

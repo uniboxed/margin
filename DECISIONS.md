@@ -6038,3 +6038,24 @@ From step 0's timings (Safari: first window 1.2-1.4 s, extension 2.5-3.9 s in an
   window of it (a launching app can't answer, and each read waited up to 1 s).
 - **Left:** an app whose window opens windowed still waits for macOS's own full-screen Space (~0.5 s, first open only);
   Safari's window shown before its extension links (adopting its restored window).
+
+## A hosted app's own keys, Teams' meeting, Settings and the folder grant (2026-11-19, morning)
+
+From the first real session on the fast start (its log, 10:55-11:04):
+- **A hosted app's keys that undo its hosting are Margin's while that app is in front** (Carbon hot keys, as ⌘Q's guard;
+  never while Margin itself is, whose menu has them, or another app is). In the window Margin hosts (or its toolbar
+  strip): ⌘W is Margin's Close Tab (the item shown in that Margin window); ⇧⌘W, ⌥⌘W (Safari: Close Window, Close Other
+  Tabs: every tab of the profile's window), ⌘M, ⌘H, ⌥⌘H (Margin among the others) and ⌃⌘F do nothing. In another window
+  of the app's (Accessibility's focused one: a meeting, a draft, Safari's Settings), ⌘W presses its close button and ⌘M
+  minimizes it; the rest do nothing. The keyboard's window unread: nothing (never close what the person didn't mean).
+  Seen: a key in the hosted Safari (Safari's log: `performKeyEquivalent`, then `windowShouldClose`) closed its window and
+  the space's tab with it. Not covered: the Globe-F full-screen key (no Carbon modifier for it), menu items clicked.
+- **A window an app takes into a full-screen Space of its own while the hosted one is still in Margin's is a second
+  window** (core `host::kinds`), never the hosted one's replacement or its twin. Teams' meeting went full screen at the
+  hosted window's frame as Accessibility's main window; Margin adopted it in place of the main window, couldn't place it
+  (Teams busy 12 s), and closed Teams' item when the meeting ended.
+- **The palette's Settings and Archive in Margin's window** (`openLauncher`, refused before): what it hosts parked, the
+  launcher in the page area, Settings open there; the item's row shows it again.
+- **After the folder grant**, the web items open in the default profile only because theirs couldn't be opened are
+  moved into their own: each tab closed in the default profile's window, the one shown shown again in its profile.
+

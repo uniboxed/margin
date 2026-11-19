@@ -402,6 +402,17 @@ fn rows() -> Vec<Row> {
             want: vec![(3, Main), (4, Auxiliary)],
             why: vec![(3, "main before")],
         },
+        Row {
+            name: "Teams' meeting window full screen in a Space of its own, Accessibility's main: the hosted one stays main",
+            windows: vec![std(105173, AREA, Margin, Some(false), Some(true)), {
+                let mut meeting = std(105200, AREA, FullScreen, Some(true), Some(true));
+                meeting.ax_main = true;
+                meeting
+            }],
+            app: app(true, &[105173]),
+            want: vec![(105173, Main), (105200, Auxiliary)],
+            why: vec![(105173, "the window Margin hosts")],
+        },
         Row { name: "an app with no window: nothing", windows: vec![], app: app(true, &[]), want: vec![], why: vec![] },
     ]
 }

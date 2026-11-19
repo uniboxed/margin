@@ -466,6 +466,32 @@ final class FakeRegistrar: HotKeyRegistrar {
     if let q { fake.onHit?(q) }
     check("quit guard: let go, ⌘Q is the front app's again", fake.held.isEmpty && quits.count == 2)
 
+    // A hosted app's own keys that would undo its hosting (⌘W, ⇧⌘W, ⌥⌘W, ⌘M, ⌘H, ⌥⌘H, ⌃⌘F): Margin's only while an app
+    // it hosts is in front, never while Margin itself is (its own menu has them) or another app is.
+    func appKeys(quitting: Bool = false, front: pid_t? = 20, hosted: Set<pid_t> = [20, 21], open: Bool = true, here: Bool = true) -> Bool {
+        ShortcutSet.guardsAppKeys(quitting: quitting, frontPid: front, ownPid: 1, hostedPids: hosted, marginWindowOpen: open, marginOnCurrentSpace: here)
+    }
+    check("app keys: held with an app Margin hosts in front, Margin's window on the current Space", appKeys() && appKeys(front: 21))
+    check("app keys: never with Margin itself in front (its menu's Close Tab, Close Window, Minimize, Hide), another app in front, no Margin window, another Space, or quitting",
+          !appKeys(front: 1) && !appKeys(front: 30) && !appKeys(front: nil) && !appKeys(open: false) && !appKeys(here: false) && !appKeys(quitting: true))
+    check("app keys: the seven combinations, each a key with ⌘", AppShortcuts.appKeyCombos.map(\.combo) == ["Meta+KeyW", "Shift+Meta+KeyW", "Alt+Meta+KeyW", "Meta+KeyM", "Meta+KeyH", "Alt+Meta+KeyH", "Ctrl+Meta+KeyF"].compactMap(Combo.parse)
+          && AppShortcuts.appKeyCombos.allSatisfy { $0.combo.modifiers & Combo.parse("Meta+KeyA")!.modifiers != 0 })
+    var appKeyHits: [AppKey] = []
+    keys.onAppKey = { appKeyHits.append($0) }
+    keys.setAppKeyGuard(active: true)
+    let w = fake.held.first { $0.value == Combo.parse("Meta+KeyW") }?.key, m = fake.held.first { $0.value == Combo.parse("Meta+KeyM") }?.key
+    check("app keys: all seven held, apart from Margin's keys and the quit guard", fake.held.count == AppKey.allCases.count && w != nil && m != nil && !keys.isActive && !keys.guardsQuit)
+    if let w, let m { fake.onHit?(w); fake.onHit?(m) }
+    check("app keys: each press says which key it was", appKeyHits == [.closeTab, .minimize], "\(appKeyHits)")
+    keys.setQuitGuard(active: true)
+    keys.set(active: true)
+    keys.set(active: false)
+    keys.setQuitGuard(active: false)
+    check("app keys: Margin's keys and the quit guard coming and going leave them held", fake.held.count == AppKey.allCases.count && keys.guardsAppKeys)
+    keys.setAppKeyGuard(active: false)
+    if let w { fake.onHit?(w) }
+    check("app keys: let go, they're the front app's again", fake.held.isEmpty && appKeyHits.count == 2)
+
     // A held key repeats at the Mac's repeat (a test clock), until let go.
     var waits: [(TimeInterval, () -> Void)] = []
     var mods = true

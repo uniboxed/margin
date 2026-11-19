@@ -81,6 +81,8 @@ protocol HostSystem: AnyObject {
     func frontApp() -> pid_t?
     // Closed as its close button would (AXPress on its AXCloseButton, an action, never a click). True: asked.
     func close(pid: pid_t, window: Int) async -> Bool
+    // Minimized into the Dock as its yellow button would (AXMinimized set, never a click). True: asked.
+    func minimize(pid: pid_t, window: Int) async -> Bool
     // AXEnhancedUserInterface on the app's element (what assistive apps set; some apps expose their windows to
     // Accessibility only with it): read (nil: unread), and set. True: Accessibility took it.
     func enhancedUserInterface(pid: pid_t) async -> Bool?
@@ -174,6 +176,7 @@ extension HostSystem {
     func frontApp() -> pid_t? { nil }
     // (A stand-in that doesn't play it: none.)
     func focusedWindow(pid: pid_t) async -> Int? { nil }
+    func minimize(pid: pid_t, window: Int) async -> Bool { false }
     func frameError(window: Int) -> Int32? { nil }
     func refreshWindow(pid: pid_t, window: Int) async -> Bool { false }
     // (A stand-in that doesn't play it: unread, so the engine's early full screen isn't tried.)
@@ -420,6 +423,17 @@ nonisolated final class HostAX: @unchecked Sendable {
         }
     }
 
+    // Minimized (AXMinimized, an attribute, never a click).
+    func minimize(pid: pid_t, window: Int) async -> Bool {
+        guard !refuses, AXIsProcessTrusted() else { return false }
+        return await withCheckedContinuation { c in
+            queue.async {
+                guard let e = self.element(pid, window) else { return c.resume(returning: false) }
+                c.resume(returning: AXUIElementSetAttributeValue(e, kAXMinimizedAttribute as CFString, kCFBooleanTrue) == .success)
+            }
+        }
+    }
+
     // The app's AXEnhancedUserInterface (an attribute of its application element, not a window's).
     func enhancedUserInterface(pid: pid_t) async -> Bool? {
         guard !refuses, AXIsProcessTrusted() else { return nil }
@@ -559,6 +573,7 @@ final class RealHostSystem: HostSystem {
     }
 
     func close(pid: pid_t, window: Int) async -> Bool { await ax.close(pid: pid, window: window) }
+    func minimize(pid: pid_t, window: Int) async -> Bool { await ax.minimize(pid: pid, window: window) }
 
     func isHidden(pid: pid_t) -> Bool? {
         guard let a = runningApp(pid) else { return nil }

@@ -139,6 +139,41 @@ extension ShortcutSet {
     }
 }
 
+// A hosted app's own key Margin takes while that app is in front (AppShortcuts.setAppKeyGuard), and what it does there
+// (Shell.runAppKey): in the window Margin hosts, what Margin's own menu would (⌘W its Close Tab) or nothing (the rest:
+// each would take the window out of Margin, or close every tab of a Safari window); in another window of the app's (a
+// meeting, a draft, Safari's Settings), ⌘W closes it and ⌘M minimizes it, as there.
+enum AppKey: String, CaseIterable {
+    case closeTab = "Meta+KeyW"
+    case closeWindow = "Shift+Meta+KeyW" // Safari: Close Window, every tab in it
+    case closeOthers = "Alt+Meta+KeyW" // Safari: Close Other Tabs; most apps: Close All
+    case minimize = "Meta+KeyM"
+    case hide = "Meta+KeyH"
+    case hideOthers = "Alt+Meta+KeyH" // Margin itself among the others
+    case fullScreen = "Ctrl+Meta+KeyF" // out of Margin's Space, into one of its own
+
+    var name: String {
+        switch self {
+        case .closeTab: return "⌘W"
+        case .closeWindow: return "⇧⌘W"
+        case .closeOthers: return "⌥⌘W"
+        case .minimize: return "⌘M"
+        case .hide: return "⌘H"
+        case .hideOthers: return "⌥⌘H"
+        case .fullScreen: return "⌃⌘F"
+        }
+    }
+}
+
+extension ShortcutSet {
+    /// Whether a hosted app's own keys (AppKey) are Margin's: an app Margin hosts is in front (not Margin itself, whose
+    /// menu has them), with a Margin window on the current Space (`hostedActive`), and Margin isn't quitting.
+    static func guardsAppKeys(quitting: Bool, frontPid: pid_t?, ownPid: pid_t, hostedPids: Set<pid_t>, marginWindowOpen: Bool, marginOnCurrentSpace: Bool) -> Bool {
+        !quitting && frontPid != ownPid
+            && hostedActive(frontPid: frontPid, ownPid: ownPid, hostedPids: hostedPids, marginWindowOpen: marginWindowOpen, marginOnCurrentSpace: marginOnCurrentSpace)
+    }
+}
+
 // Registering and letting go of a hot key (Carbon's, or a test's stand-in).
 protocol HotKeyRegistrar: AnyObject {
     // False if it can't be had (another app has it).
@@ -212,6 +247,11 @@ final class AppShortcuts {
         self.bindings = Self.ordered(bindings)
         self.keyRepeat = keyRepeat
         registrar.onHit = { [weak self] id in
+            if id >= Self.appKeyIdBase {
+                guard let self, self.guardsAppKeys, Int(id - Self.appKeyIdBase) < Self.appKeyCombos.count else { return }
+                self.onAppKey?(Self.appKeyCombos[Int(id - Self.appKeyIdBase)].key)
+                return
+            }
             if id >= Self.quitIdBase {
                 guard let self, self.guardsQuit, Int(id - Self.quitIdBase) < Self.quitCombos.count else { return }
                 self.onQuit?(Self.quitCombos[Int(id - Self.quitIdBase)].keepWindows)
@@ -273,6 +313,26 @@ final class AppShortcuts {
             let id = Self.quitIdBase + UInt32(i)
             if !active { registrar.unregister(id: id); continue }
             if !registrar.register(entry.combo, id: id) { Diagnostics.warn("\(entry.combo) is another app's: Margin can't ask before it quits by it") }
+        }
+    }
+
+    // ---- a hosted app's own keys that would undo its hosting (Tirth, 2026-11-19) ----
+    // Taken while an app Margin hosts is in front (ShortcutSet.guardsAppKeys), never while Margin itself is (its own menu
+    // has them: Close Tab, Close Window, Minimize, Hide) or another app is. Without them, ⌘W in a hosted Safari closed
+    // its window and every tab Margin had there (seen 2026-11-19 10:55:40), ⌘M or ⌃⌘F took the window out of Margin's
+    // Space, ⌘H hid it, ⌥⌘H hid Margin. Each one's run by Shell.runAppKey for the window that has the keys.
+    static let appKeyCombos: [(combo: Combo, key: AppKey)] = AppKey.allCases.map { (Combo.parse($0.rawValue)!, $0) }
+    static let appKeyIdBase: UInt32 = 920
+    var onAppKey: ((AppKey) -> Void)?
+    private(set) var guardsAppKeys = false
+
+    func setAppKeyGuard(active: Bool) {
+        guard active != guardsAppKeys else { return }
+        guardsAppKeys = active
+        for (i, entry) in Self.appKeyCombos.enumerated() {
+            let id = Self.appKeyIdBase + UInt32(i)
+            if !active { registrar.unregister(id: id); continue }
+            if !registrar.register(entry.combo, id: id) { Diagnostics.warn("\(entry.combo) is another app's: a hosted app keeps it") }
         }
     }
 

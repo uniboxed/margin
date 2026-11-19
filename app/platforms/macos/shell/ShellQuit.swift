@@ -95,6 +95,7 @@ extension Shell {
     // Margin's quit, asked of the app: the guard let go first, for good (a ⌘Q while it quits is the front app's).
     func quitNow(_ why: String) {
         shortcuts.setQuitGuard(active: false)
+        shortcuts.setAppKeyGuard(active: false)
         quitsAsked += 1
         Diagnostics.note("Margin quits (\(why))")
         options.quit()
