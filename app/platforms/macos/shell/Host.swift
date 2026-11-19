@@ -57,6 +57,7 @@ nonisolated enum HostResult: Equatable, Sendable {
 nonisolated enum HostEvent: Equatable, Sendable {
     case opened(HostID, ms: Int)
     case shown(HostID, ms: Int)
+    case revealed(HostID) // its window in Margin's Space at the page area mid-way through its show: Margin's window opens onto it
     case parked(HostID)
     case failed(HostID, HostStep, String)
     case outsideOpen(HostID) // LaunchServices heard someone open the app from outside (659)

@@ -1385,7 +1385,7 @@ func hostTests() {
         check("host: one freeze, only around the full-screen entry (revealed before the reservation)", w.freezes == 1 && w.reveals == 1, "\(w.freezes)")
         check("host: the loading animation for it from the start, done at the end", said.loading == [textEdit.id, nil], "\(said.loading)")
         check("host: Mission Control listed its own Space only during the open, a moment (on the stand-in's clock)", w.episodes.count == 1 && (w.episodes.first ?? 9) < 2, "\(w.episodes)")
-        check("host: opened, then shown", events.count == 2 && { if case .opened = events[0], case .shown = events[1] { return true }; return false }(), "\(events)")
+        check("host: opened, revealed as soon as it's in place, then shown", events.count == 3 && { if case .opened = events[0], case .revealed = events[1], case .shown = events[2] { return true }; return false }(), "\(events)")
         let m = HostMarker.read(marker)
         check("host: the marker lists the app Margin started and its window, a member", m?.apps.map(\.pid) == [p] && m?.windows.map(\.number) == [n] && m?.windows.first?.member == true
               && m?.marginSpace == FakeHostWorld.marginSpace, "\(String(describing: m))")
@@ -2295,11 +2295,13 @@ func hostTests() {
         hostRun { await w.sleep(1.0) }
         check("member: … and after a placing again", ok == true && w.drops == 0 && w.spaces(window: a) == [FakeHostWorld.marginSpace] && w.bounds(window: a) == page2 && !events.contains(.unshown(textEdit.id)), "drops \(w.drops)")
     }
-    do {
+    for early in [true, false] {
         // The destroy takes the window with it anyway, and it shows only after the first read said "in Margin's Space"
-        // (as the real Mac's log: "in place" at +20 ms, in no Space later): in place only once it has stayed there;
-        // found in none, put back; Margin's window told only then.
+        // (as the real Mac's log: "in place" at +20 ms, in no Space later): found in none, put back. Revealed early (the
+        // default since 2026-11-18 night): Margin's window told as soon as it's in Margin's Space at the page area, the
+        // drop put back after, unseen; else told only once it has stayed there.
         let (w, e, _) = world()
+        e.options.revealEarly = early
         w.staged = true
         w.dropNext = 1
         w.dropAfter = 0.05
@@ -2308,8 +2310,9 @@ func hostTests() {
         let r = open(e, textEdit)
         let a = window(w, "com.apple.TextEdit")
         hostRun { await w.sleep(1.0) }
-        check("member: dropped from every Space by its own Space's destroy just after the first read: not in place yet; put back into Margin's Space, and shown (Margin's window told) only once it has stayed there",
-              r == .shown(textEdit.id, placed: true) && w.drops == 1 && atShown?.drops == 1 && atShown?.spaces == [FakeHostWorld.marginSpace] && w.spaces(window: a) == [FakeHostWorld.marginSpace]
+        check(early ? "member, revealed early: Margin's window told as soon as it's in Margin's Space at the page area; dropped by its own Space's destroy after that: put back, still shown"
+                    : "member: dropped from every Space by its own Space's destroy just after the first read: not in place yet; put back into Margin's Space, and shown (Margin's window told) only once it has stayed there",
+              r == .shown(textEdit.id, placed: true) && w.drops == 1 && atShown?.drops == (early ? 0 : 1) && atShown?.spaces == [FakeHostWorld.marginSpace] && w.spaces(window: a) == [FakeHostWorld.marginSpace]
               && w.wins[a]?.fullScreen == true && w.bounds(window: a) == page && w.freezes == 1 && w.reveals == 1 && clean(w), "\(String(describing: r)) drops \(w.drops) at shown \(String(describing: atShown))")
     }
     do {
@@ -2327,17 +2330,19 @@ func hostTests() {
               && w.freezes == 1 && w.reveals == 1 && w.destroyedWithWindows == 0 && w.spaces(window: a) == [FakeHostWorld.marginSpace] && w.bounds(window: a) == page && clean(w),
               "\(String(describing: r)) rehomes \(w.rehomes) moves \(moves) freezes \(w.freezes) \(w.calls.suffix(8))")
     }
-    do {
+    for early in [true, false] {
         // The slow path (its window in a Space of its own first): the same after its destroy.
         let (w, e, _) = world()
+        e.options.revealEarly = early
         w.dropNext = 1
         w.dropAfter = 0.05
         var atShown: (drops: Int, spaces: [UInt64]?)?
         e.hostedWindow = { n in if n != nil, atShown == nil { atShown = (w.drops, w.spaces(window: n ?? 0)) } }
         let r = open(e, textEdit)
         let a = window(w, "com.apple.TextEdit")
-        check("member: the slow path: dropped by its own Space's destroy: put back, shown only once it has stayed in Margin's Space",
-              r == .shown(textEdit.id, placed: true) && w.drops == 1 && atShown?.drops == 1 && atShown?.spaces == [FakeHostWorld.marginSpace] && w.spaces(window: a) == [FakeHostWorld.marginSpace] && clean(w),
+        check(early ? "member, the slow path, revealed early: told once in Margin's Space at the page area; dropped by its own Space's destroy after: put back, still shown"
+                    : "member: the slow path: dropped by its own Space's destroy: put back, shown only once it has stayed in Margin's Space",
+              r == .shown(textEdit.id, placed: true) && w.drops == 1 && atShown?.drops == (early ? 0 : 1) && atShown?.spaces == [FakeHostWorld.marginSpace] && w.spaces(window: a) == [FakeHostWorld.marginSpace] && clean(w),
               "\(String(describing: r)) drops \(w.drops) at shown \(String(describing: atShown))")
     }
     do {

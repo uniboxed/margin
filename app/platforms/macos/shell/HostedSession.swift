@@ -1183,6 +1183,11 @@ final class HostedSession: LibraryDelegate {
             // Parked with nothing in its place (Margin's window left full screen, its window strayed): its items keep
             // their page, none is shown.
             for (w, i) in shown where open[i]?.host == id { shown[w] = nil }
+        case .revealed(let id):
+            // (Its window in place mid-way through its show: the item's name off the page card now, not when the show
+            // returns; the engine has told the window which window to open onto.)
+            if showing[id] != nil, let w = window(hostingWindow) { w.setShowing(nil) }
+            return
         case .quitByUser(let id), .windowClosed(let id), .closed(let id):
             let items = open.filter { $0.value.host == id }.map(\.key)
             for item in items { open[item] = nil; safariTabs[item] = nil }
