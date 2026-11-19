@@ -330,6 +330,38 @@ enum MarginMenu {
     }
 }
 
+// What a hosted app's see-through parts show (Tirth, 2026-11-19: Notes', Weather's and WhatsApp's glass sidebars showed
+// the yellow wallpaper macOS draws behind every window of a full-screen Space, its WindowManager's backdrop; "plain grey,
+// like macOS"): a window of Margin's own behind them, opaque in the system's window background colour (light or dark as
+// the Mac is), at the display's frame, below every normal window and above that backdrop. Margin's window's child, as
+// its panel is, so it's in Margin's Space with it and moves with it; it takes no mouse, never the keys, isn't in the
+// window cycle or the Window menu, and draws nothing of its own.
+final class MarginBackdrop: NSWindow {
+    // Above the backdrop macOS draws (WindowManager's, at about -2^31) and the desktop's icons' level, below every
+    // normal window (a hosted app's are at 0).
+    static let level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
+
+    // `frame`: AppKit's (bottom left), its parent's.
+    init(frame: NSRect) {
+        super.init(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: true)
+        isReleasedWhenClosed = false
+        isOpaque = true
+        backgroundColor = .windowBackgroundColor
+        hasShadow = false
+        ignoresMouseEvents = true
+        isExcludedFromWindowsMenu = true
+        animationBehavior = .none
+        collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
+        level = Self.level
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+
+    // Its layer as the window server has it now; nil: unread (not ordered in).
+    var serverLayer: Int? { windowNumber > 0 ? MarginWindowController.serverLayer(windowNumber) : nil }
+}
+
 // The window's ground, with the page area cut out of it (MarginWindowController: Margin's window is in front of what it
 // hosts, DECISIONS.md "Margin's window in front of what it hosts"). While a hosted window is shown, the window's own
 // background is clear and this view, under the web view, fills the ground everywhere but that window's bounds (`hole`,

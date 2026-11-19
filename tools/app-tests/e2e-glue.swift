@@ -356,6 +356,13 @@ func glueScenario() async {
         c.panel.styleMask.contains(.nonactivatingPanel) && c.panel.parent === c.window && c.panel.level == FrontMechanism.raised && MarginWindowController.serverLayer(c.panel.windowNumber) == FrontMechanism.raised.rawValue
           && stack?.above == true && c.panel.frame == c.window.frame && c.window.ignoresMouseEvents && c.window.backgroundColor == .clear && c.webView.window === c.panel && c.activations.isEmpty,
         "child \(c.panel.parent === c.window) level \(c.panel.level.rawValue) server \(String(describing: MarginWindowController.serverLayer(c.panel.windowNumber))) order \(String(describing: stack)) activations \(c.activations)")
+  // (2026-11-19: hosted apps' glass sidebars showed the wallpaper macOS draws behind a full-screen Space's windows.)
+  let backdropLayer = c.backdrop.flatMap { MarginWindowController.serverLayer($0.windowNumber) }
+  check("in full screen, behind what it hosts: its backdrop, the full-screen window's child, opaque in the system's window background colour, below every normal window as the window server has it (above macOS's own backdrop), never the mouse's or the keys'",
+        c.backdrop?.parent === c.window && c.backdrop?.isOpaque == true && c.backdrop?.backgroundColor == .windowBackgroundColor && c.backdrop?.frame == c.window.frame
+          && c.backdrop?.ignoresMouseEvents == true && c.backdrop?.canBecomeKey == false && c.backdrop?.level == MarginBackdrop.level
+          && (backdropLayer ?? 0) < 0 && (backdropLayer ?? 0) > -2147483620 && c.backdropOff == nil && c.backdropAttached == 1,
+        "child \(c.backdrop?.parent === c.window) level \(String(describing: c.backdrop?.level.rawValue)) server \(String(describing: backdropLayer)) off \(String(describing: c.backdropOff))")
   c.toggleFullScreen()
   check("asked to leave full screen (⌃⌘F, the page's own ask): refused, still full screen", c.isFullScreen && c.refusedExits == 1)
   check("its menu has no Enter/Exit Full Screen item", !made.menu.items.flatMap { $0.submenu?.items ?? [] }.contains { $0.action == #selector(NSWindow.toggleFullScreen(_:)) })
@@ -732,6 +739,10 @@ func glueScenario() async {
   await session.idle()
   check("out of full screen by macOS: back into it at once, Calculator hosted again at the page area", c.isFullScreen && c.backIntoFullScreen == 1 && world.bounds(window: calcWindow) == centred
         && session.done.contains { $0.contains("back in full screen") }, "\(session.done.suffix(5))")
+  let backAgainLayer = c.backdrop.flatMap { MarginWindowController.serverLayer($0.windowNumber) }
+  check("…back in full screen with Calculator: its backdrop still behind the hosted app (below every normal window, Margin's window raised above the app)",
+        c.backdrop?.parent === c.window && (backAgainLayer ?? 0) < 0 && c.backdropOff == nil && MarginWindowController.serverLayer(c.window.windowNumber) == FrontMechanism.raised.rawValue,
+        "attached \(c.backdropAttached) server \(String(describing: backAgainLayer)) off \(String(describing: c.backdropOff))")
 
   _ = await until(3) { c.pageState == .shown && c.hole == centred } // (its page's layout at the window's whole width again, measured)
   check("back in full screen: in front of Calculator again (its level raised), the page card shown, the hole at its window", c.window.level == FrontMechanism.raised && c.pageState == .shown && c.hole == centred,
