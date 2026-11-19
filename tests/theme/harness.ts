@@ -488,6 +488,34 @@ const withRuntime = Object.assign(T, {
     const loader = root?.querySelector('m-page-loader');
     return { attr: root?.getAttribute('m-page-state') ?? null, starting: root?.hasAttribute('m-starting') ?? null, loader: loader ? { own: !loader.hasAttribute('m-default'), text: loader.textContent ?? '' } : null };
   },
+  // Margin's start screen (ui/runtime.ts followStartup): the page `loading` as Margin starts (host.pageStarting), held
+  // up with `stuck` (host.pageStuck; null: not), drawn again. Answers `<m-startup>`'s box, what's on top at a few points
+  // (whether each is it or inside it), its words, its buttons' labels and boxes, the root's `m-startup`, its own
+  // spinner's display, and whether its `::before` and `::after` draw (a theme's marks); null for the element if none.
+  rtStartup(stuck: string | null) {
+    Object.assign(rt.host, { pageState: 'loading', pageOpening: 'Getting you started', pageOpeningBundleId: 'com.apple.Safari', pageStarting: true, pageStuck: stuck, pageHosted: true, sidebarDocked: true, launcher: false });
+    rt.runtime!.render();
+    const root = rt.runtime!.view.rootElement() as HTMLElement | null;
+    const el = root?.querySelector(':scope > m-startup') as HTMLElement | null;
+    if (!el) return { el: null, attr: root?.hasAttribute('m-startup') ?? null };
+    const r = el.getBoundingClientRect();
+    const doc = el.ownerDocument;
+    const at = (x: number, y: number) => { const top = (doc.elementFromPoint(x, y) as Element | null); return !!top && (top === el || el.contains(top)); };
+    const w = doc.documentElement.clientWidth, h = doc.documentElement.clientHeight;
+    const draws = (pseudo: string) => { const c = getComputedStyle(el, pseudo); return c.content !== 'none' && c.content !== 'normal' && c.display !== 'none'; };
+    const spin = el.querySelector('[m-startup-spin]');
+    return {
+      el: { left: r.left, top: r.top, width: r.width, height: r.height },
+      attr: root?.hasAttribute('m-startup') ?? null,
+      onTop: [[40, h / 2], [w / 2, h / 2], [w - 10, 10], [10, h - 10], [w - 10, h - 10]].map(([x, y]) => at(x, y)),
+      text: (el.querySelector('[m-startup-text]')?.textContent ?? '').trim(),
+      allText: (el.textContent ?? '').trim(),
+      buttons: [...el.querySelectorAll('[m-startup-action]')].map((b) => { const br = b.getBoundingClientRect(); return { label: (b.textContent ?? '').trim(), action: b.getAttribute('m-startup-action'), x: br.left + br.width / 2, y: br.top + br.height / 2, inside: br.left >= 0 && br.top >= 0 && br.right <= w && br.bottom <= h && br.width > 0 && br.height > 0 }; }),
+      spin: spin ? getComputedStyle(spin).display : null,
+      before: draws('::before'),
+      after: draws('::after'),
+    };
+  },
   // `elsewhere` with a web item's picture (host.pagePicture, ui/host-app.ts): a solid red picture (made here, a PNG
   // data URL; null: none), drawn again. Answers Margin's <m-page-picture>: its box, how it's drawn, its image's and its
   // words', and whether the root says `m-page-picture`; null for the element when there's none.

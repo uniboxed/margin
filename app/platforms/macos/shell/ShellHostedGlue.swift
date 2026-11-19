@@ -217,6 +217,7 @@ extension Shell {
         windows.onSidebarResizing = { [weak session] controller, on in session?.sidebarResizing(controller, on) }
         windows.onNarrowed = { [weak self] _ in self?.host?.marginNarrowed() }
         windows.apps = { [weak self] in self?.appsJSON ?? "null" }
+        windows.holdsMenu = { [weak session] in session?.startupShown == true }
     }
 
     // The installed app's name as the catalog read it (Finder's).
@@ -268,6 +269,8 @@ extension Shell {
     func runHosted(_ command: AppCommand, isRepeat: Bool) {
         guard let windows = marginWindows else { return }
         let w = hosted?.hostingWindow.flatMap { id in windows.controllers.first { $0.id == id } } ?? windows.front
+        // (The start screen up: nothing of Margin's usable yet, its page ignores its keys too.)
+        if hosted?.startupShown == true { return Diagnostics.note("\(command.rawValue): not now, the start screen is up") }
         switch command {
         case .newWindow:
             windows.open()

@@ -166,6 +166,9 @@ protocol HostedWindow: AnyObject {
     // `picture`: a web item's page as Safari last showed it (a data URL, the copy's `hostPicture`), drawn faded under
     // the card's words; nil: the card alone. In memory only, never logged.
     func setElsewhere(_ label: String?, app: String?, picture: String?)
+    // Margin's start held up (its default browser not ready within `startupWait`, or its extension didn't connect):
+    // what's wrong, in Margin's words, drawn on the start screen with Try again and Continue without Safari; nil: not.
+    func setStartupStuck(_ why: String?)
     func cover(_ number: Int?) // a window of the engine's in its Space not shown yet (a new app's, read), nil: no more
     func yield(to number: Int?) // another app's window opened in its Space: let in front until it's gone (nil)
     func frontRead(_ read: HostEngine.FrontRead) // the poll's read at rest of it and the hosted window: in front, kept so
@@ -181,6 +184,7 @@ extension HostedWindow {
     func setPageMinimum(_ width: CGFloat?) {}
     func setElsewhere(_ label: String?, app: String?, picture: String?) {}
     func setElsewhere(_ label: String?, app: String?) { setElsewhere(label, app: app, picture: nil) }
+    func setStartupStuck(_ why: String?) {}
 }
 
 // The app whose icon a host's loader shows: an app's own, a Safari window's Safari.
@@ -727,6 +731,63 @@ final class HostedSession: LibraryDelegate {
     private(set) var startup = Startup.waiting
     static let startupLabel = "Getting you started"
     private var startupWaiting = false // a window's last item waits for the preparation (it wakes the browser's profile)
+    // The start screen (Tirth, 2026-11-19): while the default browser gets ready, Margin's window is the start screen
+    // alone, the theme's loader over the whole window (no sidebar, no app's icon, no words), nothing of Margin's usable
+    // (its page ignores the keys, ⌘N opens no window). Held up, what's wrong is said there with Try again and Continue
+    // without Safari: still not ready after `startupWait`, or given up because the browser's extension didn't link.
+    private(set) var startupShown = false
+    private(set) var startupStuck: String? // what the start screen says is wrong now
+    private var startupFailure: String? // the preparation given up for a reason the person can fix (said on the screen)
+    private var startupSkipped = false // Continue without Safari
+    private(set) var startupRetries = 0 // Try again, each time
+    private var preparedSetting: String? // the default browser setting the preparation ran with (Try again runs it again)
+    static let startupSlow = "Safari is taking longer than usual to start."
+    static let startupNoLink = "Safari started, but Margin’s Safari extension didn’t connect. Check that Margin is turned on in Safari › Settings › Extensions."
+
+    // The start screen's Try again: the preparation run again if it was given up, else waited for again (its limit anew).
+    func startupRetry() {
+        guard startupShown, startupStuck != nil else { return }
+        startupRetries += 1
+        note("the start screen: Try again (\(startupRetries))")
+        guard startup == .done, startupFailure != nil else { return }
+        startupFailure = nil
+        startup = .waiting
+        Task { await self.prepareBrowser(setting: self.preparedSetting) }
+    }
+
+    // The start screen's Continue without Safari: Margin usable now, the browser made ready when it can be (a web item
+    // opens it then).
+    func startupSkip() {
+        guard startupShown, startupStuck != nil, !startupSkipped else { return }
+        startupSkipped = true
+        note("the start screen: Continue without Safari")
+    }
+
+    // Until the browser is ready, Continue without Safari is picked, or another item is asked for: `startupWait`, then
+    // (still not ready) what's wrong said with the two choices, waited on as long as it takes; given up because its
+    // extension didn't link: said at once.
+    private func holdStartup(_ w: HostedWindow, last: String?) async {
+        var limit = options.startupWait
+        let moved = { last.map { self.requested[w.id] != $0 } ?? false }
+        while true {
+            _ = await wait(limit) { self.startup == .done || self.startupSkipped || moved() }
+            if startupSkipped || moved() || (startup == .done && startupFailure == nil) { break }
+            let why = startupFailure ?? Self.startupSlow
+            if startupStuck != why {
+                startupStuck = why
+                w.setStartupStuck(why)
+                note("the start screen held up: \(startupFailure == nil ? "the default browser not ready within \(Int(limit)) s" : "its extension didn't link"): Try again or Continue without Safari")
+            }
+            let retries = startupRetries
+            _ = await wait(.infinity) { self.startupSkipped || moved() || self.startupRetries != retries || (self.startup == .done && self.startupFailure == nil) }
+            if startupRetries != retries, !startupSkipped, !moved() {
+                startupStuck = nil
+                w.setStartupStuck(nil)
+                limit = options.startupWait
+            }
+        }
+        if startupStuck != nil { startupStuck = nil; w.setStartupStuck(nil) }
+    }
     func preparationOver() {
         guard startup != .done else { return }
         startup = .done
@@ -752,9 +813,10 @@ final class HostedSession: LibraryDelegate {
     }
 
     func resumeLast(_ w: HostedWindow) {
-        guard options.resumesLast, !resumed, hostingWindow == nil, engine.shown == nil else { return }
+        guard !resumed, hostingWindow == nil, engine.shown == nil else { return }
         resumed = true
-        let last = lastItem(ofWindow: w.id)
+        // (MarginResumeLast NO: no item shown again, the start screen still: nothing's usable before the browser is.)
+        let last = options.resumesLast ? lastItem(ofWindow: w.id) : nil
         let gate = options.preparesBrowser && startup != .done
         guard last != nil || gate else { return }
         resuming = w.id
@@ -763,6 +825,7 @@ final class HostedSession: LibraryDelegate {
         w.setHosting(true)
         if gate {
             startupWaiting = true
+            startupShown = true
             w.setShowing(Self.startupLabel, app: safariIdentifier, slow: true)
             note("Margin's window \(w.id): \"\(Self.startupLabel)\" while the default browser starts\(last.map { ", then the item it showed last (\($0.item))" } ?? "")")
         } else if let (item, target, name) = last {
@@ -773,9 +836,10 @@ final class HostedSession: LibraryDelegate {
         Task { @MainActor in
             if gate {
                 // (Outside the session's queue: the preparation's own step is in it.)
-                _ = await self.wait(self.options.startupWait) { self.startup == .done || (last.map { self.requested[w.id] != $0.item } ?? false) }
+                await self.holdStartup(w, last: last?.item)
                 self.startupWaiting = false
-                if self.startup != .done { self.note("the default browser not ready within \(Int(self.options.startupWait)) s: the item shown last now, the browser when it's ready") }
+                self.startupShown = false
+                if self.startup != .done { self.note("the start screen left before the default browser was ready (Continue without Safari): the browser when it's ready") }
             }
             guard let (item, target, name) = last, self.requested[w.id] == item else {
                 // (No item to show again, or another picked meanwhile: the loader goes, its own show decides.)
@@ -879,6 +943,7 @@ final class HostedSession: LibraryDelegate {
     // Called by the shell once the library and the engine are up; it never delays Margin's own window.
     func prepareBrowser(setting: String?) async {
         guard options.preparesBrowser else { return preparationOver() }
+        preparedSetting = setting
         startup = .preparing
         let started = now()
         let browser = DefaultBrowser.resolve(setting)
@@ -912,6 +977,8 @@ final class HostedSession: LibraryDelegate {
         }
         guard linked else {
             await closeWoken(p, why: " (its preparation given up)")
+            // (Said on the start screen while it's up: the person can turn the extension on, then Try again.)
+            if wanted(), startupShown { startupFailure = Self.startupNoLink }
             return skip(wanted() ? "its extension didn't link" : "something is shown in Margin's window (its profile not woken for it)")
         }
         let target = HostTarget.safariWindow(p)
@@ -1478,6 +1545,12 @@ final class LibraryWindowSource: MarginWindowSource {
             return answer(library.perform("newTab", ["windowId": windowId ?? NSNull(), "url": Self.searchUrl(query, settings: settings), "title": query]))
         case "goBack", "goForward", "reload":
             session.navigate(type, windowId: windowId)
+            return nil
+        case "startup.retry":
+            session.startupRetry()
+            return nil
+        case "startup.skip":
+            session.startupSkip()
             return nil
         case "openLauncher":
             session.openLauncher(windowId: windowId, settings: payload["settings"] as? Bool == true)

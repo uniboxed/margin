@@ -253,3 +253,59 @@ for (const [engineName, engine] of ENGINES) {
     }
   });
 }
+
+// Margin's start screen (Tirth, 2026-11-19; ui/runtime.ts followStartup, HostedSession.swift resumeLast): while
+// Margin's default browser gets ready, `<m-startup>` covers the whole window, opaque, above everything (the sidebar
+// can't be pressed), each theme's own loader marks in it with no app's icon and no words; held up, what's wrong is said
+// with Try again and Continue without Safari, each the host's to run; gone once the start is over.
+for (const [engineName, engine] of ENGINES) {
+  test(`Margin's start screen, in ${engineName}`, async (t) => {
+    const browser = await engine.launch({ headless: true });
+    try {
+      for (const [id, dir] of THEMES) {
+        await t.test(`${id}: the whole window, opaque, nothing under it pressable, its marks alone; held up: what's wrong and two choices; gone after`, async () => {
+          const context = await browser.newContext({ viewport: { width: W, height: H } });
+          const page = await context.newPage();
+          await context.route('**/*', (route) => route.abort());
+          await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0"></body></html>');
+          await page.addScriptTag({ content: script });
+          const ev = <R, const A>(fn: (arg: A) => R | Promise<R>, arg?: A) => page.evaluate(fn as (arg: unknown) => R | Promise<R>, arg);
+          assert.equal((await ev(([p, i]) => T.loadBuiltin(p, i, []), [themeForPage(dir), id] as const)).ok, true);
+          await ev(() => T.mountRuntime({ width: 1440, height: 900, container: 'document', platform: { browser: 'safari', os: 'mac' }, hosted: true }));
+          await page.waitForFunction(() => T.rtLayouts().length > 0);
+
+          const on = await ev(() => T.rtStartup(null));
+          assert.ok(on.el, `${id}: the start screen is there`);
+          assert.deepEqual(on.el, { left: 0, top: 0, width: W, height: H }, `${id}: it covers the whole window`);
+          assert.equal(on.attr, true, `${id}: the root says m-startup`);
+          assert.deepEqual(on.onTop, [true, true, true, true, true], `${id}: it's on top everywhere (the sidebar, the page, each corner): nothing under it can be pressed`);
+          assert.equal(on.allText, '', `${id}: no words, no app's name`);
+          assert.equal(on.spin, 'none', `${id}: the theme's own marks, not Margin's default spinner`);
+          assert.ok(on.before && on.after, `${id}: the theme's loader marks drawn (::before and ::after)`);
+          await page.waitForTimeout(150);
+          const shot = decodePng(await page.screenshot({ omitBackground: true }));
+          const clear = [[40, 450], [W / 2, 120], [W - 6, 6], [6, H - 6], [W - 6, H - 6], [W / 2, H - 40]].filter((p) => px(shot, p as [number, number])[3] !== 255);
+          assert.deepEqual(clear, [], `${id}: opaque across the whole window`);
+
+          const why = 'Safari is taking longer than usual to start.';
+          const held = await ev((w) => T.rtStartup(w), why);
+          assert.equal(held.text, why, `${id}: held up: what's wrong, said`);
+          assert.deepEqual(held.buttons!.map((b) => [b.label, b.action]), [['Try again', 'retry'], ['Continue without Safari', 'skip']], `${id}: the two choices`);
+          assert.ok(held.buttons!.every((b) => b.inside), `${id}: both in the window`);
+          for (const b of held.buttons!) await page.mouse.click(b.x, b.y);
+          assert.deepEqual((await ev(() => T.rtPerformed())).filter((n) => n.startsWith('startup.')), ['startup.retry', 'startup.skip'], `${id}: each choice asked of the host`);
+
+          const again = await ev(() => T.rtStartup(null));
+          assert.equal(again.text, '', `${id}: no longer held up: the words and choices gone`);
+          assert.equal(again.buttons!.length, 0);
+          const after = await ev(() => T.rtPageState('shown'));
+          assert.equal(after.attr, 'shown');
+          assert.equal(await ev(() => !!(window as any).__rt.runtime.view.rootElement().querySelector(':scope > m-startup') || (window as any).__rt.runtime.view.rootElement().hasAttribute('m-startup')), false, `${id}: the start over: the screen gone, the root's attribute too`);
+          await context.close();
+        });
+      }
+    } finally {
+      await browser.close();
+    }
+  });
+}

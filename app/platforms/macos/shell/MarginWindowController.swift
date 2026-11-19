@@ -778,7 +778,17 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     var pageStateJSON: String {
         #"{"type":"pageState","state":"\#(pageState.rawValue)","label":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
-            + (loaderApp.flatMap { jsonString($0) }.map { #","bundleId":"# + $0 } ?? "") + (starting ? #","starting":true"# : "") + "}"
+            + (loaderApp.flatMap { jsonString($0) }.map { #","bundleId":"# + $0 } ?? "") + (starting ? #","starting":true"# : "")
+            + (starting ? startupStuck.flatMap { jsonString($0) }.map { #","stuck":"# + $0 } ?? "" : "") + "}"
+    }
+
+    // Margin's start held up (HostedSession `holdStartup`): what's wrong, on the start screen with its two choices.
+    private(set) var startupStuck: String?
+    func setStartupStuck(_ why: String?) {
+        guard why != startupStuck else { return }
+        startupStuck = why
+        Diagnostics.note("Margin's window \(id): the start screen \(why == nil ? "no longer held up" : "held up: what's wrong said, Try again and Continue without Safari")")
+        push(pageStateJSON)
     }
     // Margin's start (HostedSession `startup`): its loader says "Getting you started…", not "Opening …" (the page's words).
     private var starting: Bool { pageState == .loading && loaderLabel == HostedSession.startupLabel }
@@ -1301,6 +1311,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         json += #","pageState":""# + pageState.rawValue + #"","pageOpening":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
         json += #","pageOpeningBundleId":"# + (loaderApp.flatMap { jsonString($0) } ?? "null")
         if starting { json += #","pageStarting":true"# }
+        if starting, let why = startupStuck.flatMap({ jsonString($0) }) { json += #","pageStuck":"# + why }
         if pageState == .elsewhere, let picture = elsewherePicture, let data = jsonString(picture) { json += #","pagePicture":"# + data }
         let theme = owner.theme()
         themeSent = theme
@@ -1565,7 +1576,10 @@ final class MarginWindows {
     }
 
     // (Run while Margin is the active app, its menu bar's: the app shown gets the activation back after, `menuItemRan`.)
+    // Margin's own menu items held (the start screen up, HostedSession `startupShown`): none of them runs.
+    var holdsMenu: () -> Bool = { false }
     func perform(_ action: MarginMenuAction) {
+        if holdsMenu() { return Diagnostics.note("Margin's menu: \(action.rawValue) not now, the start screen is up") }
         if action == .newWindow { open(); return }
         front?.run(action)
         front?.menuItemRan()

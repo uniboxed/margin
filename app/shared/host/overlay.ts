@@ -595,7 +595,9 @@ function onMessage(msg: any) {
       if (host?.getState()) mounting = mounting.then(() => mount(msg.theme));
       return;
     case 'command':
-      // The app's keys (app/platforms/macos/shell/Shortcuts.swift, following the Settings shortcuts).
+      // The app's keys (app/platforms/macos/shell/Shortcuts.swift, following the Settings shortcuts). None while the
+      // start screen is up (Margin's default browser getting ready: nothing of Margin's usable yet).
+      if (host?.pageStarting) return;
       if (msg.name === 'palette') {
         if (runtime?.paletteOpen) runtime.closePalette();
         else openPaletteTimed({ newTab: !!host?.appWindow || !host?.launcher }, 'the app\'s key');
@@ -645,6 +647,7 @@ function onMessage(msg: any) {
       // The app showed this overlay (it wasn't): `palette`, over a new window in front (⌘N, New
       // Window): the palette opens over its new tab, as ⌘T's does (2026-11-09), never as the
       // page first draws. (`focus`: the launcher's field instead, for a host that asks for that.)
+      if (host?.pageStarting) return;
       if (msg.palette === true) openPaletteTimed({ newTab: !!host?.appWindow || !host?.launcher }, 'a new window');
       else if (msg.focus === true) runtime?.focusLauncher();
       return;
@@ -674,7 +677,7 @@ function onMessage(msg: any) {
         case 'gesture': gestures.push(msg.msg); return;
         // Safari's own New Tab made a tab the copy closed again (background/handlers.ts
         // newTabHandOff), or Margin's new-tab page came up: the palette, here.
-        case 'palette': openPaletteTimed({ newTab: msg.msg.newTab === true }, 'the copy'); return;
+        case 'palette': if (!host?.pageStarting) openPaletteTimed({ newTab: msg.msg.newTab === true }, 'the copy'); return;
         default: return;
       }
     default:

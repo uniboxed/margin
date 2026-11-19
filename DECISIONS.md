@@ -6075,3 +6075,23 @@ rest of the window's life, said. No Mac-wide setting is touched.
 - **The whole display** (the second look, same day): the backdrop at Margin's window's frame left the menu bar's band
   (33 pt) showing the wallpaper under the see-through menu bar, and the hosted apps' toolbars reach into it (Safari's
   toolbar strip from y -11): their glass still took the yellow at the top. It covers the display's whole frame now.
+
+## The start screen (2026-11-19)
+
+Asked by Tirth: while Margin's default browser gets ready, the whole window is the browser's loader, with no sidebar, no
+app's icon and no words; nothing of Margin's can be used before the browser is. Agreed with a way out and a limit:
+- **The screen.** Margin's `<m-startup>` (ui/runtime.ts followStartup) over the whole window and everything in it, taking
+  the pointer; each built-in theme draws its own loader's marks in it (`> m-startup::before`, `::after`, the ones its
+  card draws while starting) on its loader's background; Margin's quiet spinner for a theme that doesn't. The root says
+  `m-startup`. The page ignores Margin's keys meanwhile (the palette, the tab and space keys, Settings); the app opens
+  no new window by ⌘N or its menu (`startupShown`). Shown also when the item shown last isn't resumed (MarginResumeLast NO).
+- **Held up.** Not ready within `startupWait` (15 s): "Safari is taking longer than usual to start." Its preparation given
+  up because its extension never linked: said at once ("…Check that Margin is turned on in Safari › Settings ›
+  Extensions."). With **Try again** (the preparation run again if it was given up, else its limit anew) and **Continue
+  without Safari** (Margin usable; the browser made ready when it can be). No longer does the item shown last appear on
+  its own after the limit. Another reason the preparation is given up (no browser Margin hosts, the early full screen not
+  available) doesn't hold the start, as before.
+- **Checked:** the four themes in WebKit and Chromium (the whole window, opaque, on top everywhere, their marks, no
+  words; the two choices asked of the host), the session (held, Try again, Continue, ready after all, resume off, the
+  extension never linking then Try again with it on).
+

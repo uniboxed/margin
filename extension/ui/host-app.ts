@@ -243,7 +243,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   onMessage?: (msg: any) => void,
   onNotice?: (arg: { id?: string, action?: string }) => void,
   warn?: (...args: any[]) => void,
-}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly pageMinWidth: number, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
+}): Host & { readonly platform: Host['platform'] & { app: boolean, features: Record<string, any> }, readonly appWindow: boolean, readonly pageOutside: boolean, readonly pageHosted: boolean, readonly pageMinWidth: number, readonly pageStuck: string | null, readonly sidebarDocked: boolean, perform(name: string, arg?: any): boolean | undefined, staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void } {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   let raw: Record<string, any> | null = hello?.state && typeof hello.state === 'object' ? hello.state : null;
   let state: any = null;
@@ -268,6 +268,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let pageOpeningBundleId: string | null = named(pageState) && isBundleId(hello?.pageOpeningBundleId) ? hello.pageOpeningBundleId : null;
   // Margin's start (its default browser starting first): the loader's own words, "Getting you started…".
   let pageStarting = pageState === 'loading' && hello?.pageStarting === true;
+  // ...held up (the browser not ready within the app's limit, or its extension didn't connect): what's wrong, in the
+  // app's words; the start screen's Try again and Continue without Safari meanwhile (ui/runtime.ts followStartup).
+  const stuckOf = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 300) : null);
+  let pageStuck: string | null = pageStarting ? stuckOf(hello?.pageStuck) : null;
   // Its item's page as Safari last showed it (a web item in another Margin window): only a picture's data URL, kept
   // while the card shows (the app sends null as it goes), never stored.
   const pictureOf = (v: unknown) => (typeof v === 'string' && v.length <= PICTURE_MAX && /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(v) ? v : null);
@@ -356,6 +360,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get pageOpening() { return pageOpening; },
     get pageOpeningBundleId() { return pageOpeningBundleId; },
     get pageStarting() { return pageStarting; },
+    get pageStuck() { return pageStarting ? pageStuck : null; },
     get pagePicture() { return pageState === 'elsewhere' ? pagePicture : null; },
     /** The sidebar kept docked while hosting (beside a tile, or under a window-mode app's window), whatever its setting. */
     get sidebarDocked() { return pageOutside || pageHosted; },
@@ -427,6 +432,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (!arg?.value || typeof arg.value !== 'object') return false;
           void post('perform', { name, arg: { value: arg.value } }).catch(() => {});
           return true;
+        // The start screen's choices while Margin's start is held up (HostedSession.swift startupRetry, startupSkip).
+        case 'startup.retry':
+        case 'startup.skip':
+          if (!appWindow || !pageStarting) return false;
+          void post('perform', { name }).catch(() => {});
+          return true;
         // An installed app picked in the palette (app/platforms/macos/shell/ShellApps.swift): opened in the page area.
         case 'app.open':
           if (!isBundleId(arg?.bundleId)) return false;
@@ -492,7 +503,9 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           const name = named(next) ? nameOf(msg.label) : null;
           const bundleId = named(next) && isBundleId(msg.bundleId) ? msg.bundleId : null;
           const starting = next === 'loading' && msg.starting === true;
-          if (next === pageState && name === pageOpening && bundleId === pageOpeningBundleId && starting === pageStarting) return;
+          const stuck = starting ? stuckOf(msg.stuck) : null;
+          if (next === pageState && name === pageOpening && bundleId === pageOpeningBundleId && starting === pageStarting && stuck === pageStuck) return;
+          pageStuck = stuck;
           pageState = next;
           pageOpening = name;
           pageOpeningBundleId = bundleId;
