@@ -40,7 +40,8 @@ final class FakeHostedWindow: HostedWindow {
     var showingApps: [String?] = [] // the app each setShowing named for the loader's icon, in order
     var elsewhere: String? // its card's name (HostedSession `elsewhere`)
     var elsewhereApp: String?
-    func setElsewhere(_ label: String?, app: String?) { elsewhere = label; elsewhereApp = app }
+    var elsewherePicture: String?
+    func setElsewhere(_ label: String?, app: String?, picture: String?) { elsewhere = label; elsewhereApp = app; elsewherePicture = picture }
     func setShowing(_ label: String?, app: String?, slow: Bool) { guard label != showing else { return }; showing = label; showings.append(label); showingApps.append(app); if slow, let label { slowShowings.append(label) } }
     var moves = 0 // hostedMoved: the hosted window's bounds read again
     func hostedMoved() { moves += 1 }
@@ -107,6 +108,8 @@ final class FakeHostedLinks: HostedLinks {
     var epochs: [String: String] = [:]
     func restoredWindowIds(of profile: String) -> [Int]? { profiles.contains(profile) ? (restored[profile] ?? []) : nil }
     func linkEpoch(of profile: String) -> String? { profiles.contains(profile) ? (epochs[profile] ?? "e1") : nil }
+    var picture: String? // the copy's answer to hostPicture
+    var pictureDelay = 0.0 // ...this long after it's asked
     func request(profile: String, _ type: String, _ payload: JSONObject) async -> (result: JSONObject?, error: String?) {
         asked.append((profile, type, payload))
         guard profiles.contains(profile) else { return (nil, "not linked") }
@@ -128,6 +131,9 @@ final class FakeHostedLinks: HostedLinks {
         case "closeWindow":
             if let id = int(payload["windowId"]) { onCloseWindow?(id) }
             return ([:], nil)
+        case "hostPicture":
+            if pictureDelay > 0 { try? await Task.sleep(for: .seconds(pictureDelay)) }
+            return (["data": picture ?? NSNull()], nil)
         case "hostShow":
             onHostShow?()
             nextTab += 1
@@ -1046,6 +1052,43 @@ func hostedResumeTests(script: URL) {
         check("elsewhere: in front again with its item already there: nothing more", engine.shown == HostTarget.app("com.apple.Notes").id && session.hostingWindow == 1)
         run { await engine.quitAll() }
         _ = library.perform("activateTab", ["windowId": 1, "tabId": notes]) // (Notes the item shown last again, for the tests after)
+    }
+    // ---- a web item's card in the other window: its page's picture, taken as its window leaves ----
+    do {
+        let links = FakeHostedLinks()
+        links.profiles = ["s-default"]
+        links.picture = "data:image/jpeg;base64,QUJD"
+        let (w, engine, session, window, run) = launch(links: links)
+        window.isFullScreen = true
+        let second = FakeHostedWindow(id: 2, number: 77)
+        second.isFullScreen = true
+        w.wins[77] = FakeHostWorld.Win(pid: 1, spaces: [FakeHostWorld.marginSpace])
+        session.window = { id in id == nil || id == 1 ? window : id == 2 ? second : nil }
+        run { _ = library.perform("newTab", ["windowId": 1, "url": "https://pictured.example/", "title": "Pictured"]) }
+        let item = library.items().first { $0.value["url"] as? String == "https://pictured.example/" }?.id ?? ""
+        let safariShown = engine.shown == HostTarget.safariWindow("s-default").id && session.shown[1] == item
+        run { session.openApp("com.apple.TextEdit", windowId: 2) }
+        let asked = links.asked.first { $0.type == "hostPicture" }
+        check("elsewhere: a web item's card: its page's picture, asked of its copy for its window and item as it leaves, given to the card",
+              safariShown && window.elsewhere == "Pictured" && window.elsewherePicture == links.picture && int(asked?.payload["windowId"]) == session.safariWindows["s-default"]
+              && asked?.payload["itemId"] as? String == item && second.elsewherePicture == nil,
+              "\(safariShown) \(String(describing: window.elsewhere)) \(String(describing: asked?.payload))")
+        session.focused(1)
+        run {}
+        check("elsewhere: an app's card (the second window's TextEdit): no picture asked (Margin has none of other apps' windows)",
+              second.elsewhere != nil && second.elsewherePicture == nil && window.elsewhere == nil && window.elsewherePicture == nil
+              && links.asked.filter { $0.type == "hostPicture" }.count == 1, "\(String(describing: second.elsewhere))")
+        // A copy slower than `pictureWait`: the card alone, the move not held for it.
+        links.pictureDelay = 2
+        session.options.pictureWait = 0.05
+        let started = Date()
+        session.focused(2)
+        run {}
+        check("elsewhere: a picture not there in time: the card alone, the move not held for it",
+              engine.shown == HostTarget.app("com.apple.TextEdit").id && window.elsewhere == "Pictured" && window.elsewherePicture == nil && Date().timeIntervalSince(started) < 1.5,
+              "\(String(describing: engine.shown)) \(String(describing: window.elsewhere)) \(Date().timeIntervalSince(started))")
+        run { await engine.quitAll() }
+        _ = library.perform("activateTab", ["windowId": 1, "tabId": notes])
     }
     do {
         let (_, engine, session, window, run) = launch()

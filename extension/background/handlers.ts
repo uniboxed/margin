@@ -23,6 +23,7 @@ import { closeTabs, noteClosing } from './closing.ts';
 import * as away from './away.ts';
 import { appLink } from './app-link.ts';
 import { createHostedTabs, type HostedTabsApi } from './hosted.ts';
+import { shrinkPicture } from './picture.ts';
 import { noticeAnswered } from './notices.ts';
 import { isNoticeAction } from '../shared/notices.ts';
 import * as pageLoads from './page-loads.ts';
@@ -174,7 +175,7 @@ const appState = (windowId: number | null) => {
 
 const launcherOpening = new Map<string, Promise<{ tabId: number, shown: number }>>();
 // Margin.app hosting this profile's window in its page area (background/hosted.ts): its items' tabs.
-const hostedTabs = createHostedTabs(() => api.tabs as unknown as HostedTabsApi);
+const hostedTabs = createHostedTabs(() => api.tabs as unknown as HostedTabsApi, shrinkPicture);
 
 export const handlers = {
   // A page starting: which tab and window it is, this copy, whether the window is in Margin's
@@ -753,6 +754,10 @@ export const handlers = {
   async hostShow(message: { windowId?: number, itemId?: string, url?: string }, sender: BrowserMessageSender) {
     if (!sender?.app) throw new Error('the app\'s request only');
     return hostedTabs.show(message);
+  },
+  async hostPicture(message: { windowId?: number, itemId?: string }, sender: BrowserMessageSender) {
+    if (!sender?.app) throw new Error('the app\'s request only');
+    return hostedTabs.picture(message);
   },
   async hostClose(message: { itemId?: string }, sender: BrowserMessageSender) {
     if (!sender?.app) throw new Error('the app\'s request only');

@@ -82,6 +82,8 @@ export type Host = {
   readonly pageOpeningBundleId?: string | null,
   /** Margin's start (its default browser starting first): the loader's own words ("Getting you started…"). */
   readonly pageStarting?: boolean,
+  /** Its item in another Margin window (`elsewhere`), a web page: that page as Safari last showed it (a JPEG or PNG data URL), drawn faded under the card's words. */
+  readonly pagePicture?: string | null,
   readonly focusLauncherAtMount?: boolean,
   /** The last layout reported (the page's place), where the host keeps it. */
   readonly layout?: Geometry | null,

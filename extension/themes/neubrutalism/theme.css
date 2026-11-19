@@ -243,6 +243,9 @@ img.fav.app, .tab.on img.fav.app { width: 22px; height: 22px; margin: -2px; bord
 /* Its item in another Margin window (m-page-state="elsewhere"): the card, faded and still. */
 .nb[m-page-state="elsewhere"] .page-loader { opacity: .55; visibility: visible; pointer-events: none; transition: none; }
 .nb[m-page-state="elsewhere"] .opening-run { animation: none; opacity: 0; }
+/* A web item's picture over it (m-page-picture, Margin's): the page faded into paper, the words on a yellow block. */
+.nb > m-page-picture { background: var(--paper); }
+.nb > m-page-picture > [m-picture-label] { background: var(--yellow); color: var(--ink); border: 3px solid var(--ink); border-radius: 0; box-shadow: 4px 4px 0 var(--ink); font-family: 'Archivo Black', sans-serif; text-transform: uppercase; letter-spacing: -.2px; }
 .opening { position: relative; justify-self: stretch; display: grid; place-items: center; }
 /* The bar, and the block that runs along it (the slot's own two boxes while starting: it has no part then). */
 .opening-bar, .nb[m-starting][m-page-state="empty"] .page-loader::before { content: ""; grid-area: 1 / 1; box-sizing: border-box; width: var(--bar); height: 48px; border: 3px solid var(--ink); border-radius: 12px; background: var(--space); box-shadow: 6px 6px 0 var(--ink); }

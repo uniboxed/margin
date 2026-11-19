@@ -96,6 +96,8 @@ export const sidebarFixed = (host: { pageOutside?: boolean } | null | undefined)
 
 /** The mode a window's UI is drawn in, from its state (windows.get). */
 export const modeOf = (w: any) => (w?.state === 'fullscreen' ? 'fullscreen' : 'windowed');
+// A page's picture for the card (`pagePicture`) at most this long: the copy's is ~0.2–0.6 MB (1600 px wide, JPEG).
+const PICTURE_MAX = 8 * 1024 * 1024;
 
 /**
  * What the theme draws over the page slot that takes the pointer: the boxes
@@ -266,6 +268,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let pageOpeningBundleId: string | null = named(pageState) && isBundleId(hello?.pageOpeningBundleId) ? hello.pageOpeningBundleId : null;
   // Margin's start (its default browser starting first): the loader's own words, "Getting you started…".
   let pageStarting = pageState === 'loading' && hello?.pageStarting === true;
+  // Its item's page as Safari last showed it (a web item in another Margin window): only a picture's data URL, kept
+  // while the card shows (the app sends null as it goes), never stored.
+  const pictureOf = (v: unknown) => (typeof v === 'string' && v.length <= PICTURE_MAX && /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(v) ? v : null);
+  let pagePicture: string | null = pageState === 'elsewhere' ? pictureOf(hello?.pagePicture) : null;
   // Installed apps, as the app read them (null: none read yet).
   let apps = appsOf(hello?.apps);
   let layout: Geometry | null = null;
@@ -350,6 +356,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     get pageOpening() { return pageOpening; },
     get pageOpeningBundleId() { return pageOpeningBundleId; },
     get pageStarting() { return pageStarting; },
+    get pagePicture() { return pageState === 'elsewhere' ? pagePicture : null; },
     /** The sidebar kept docked while hosting (beside a tile, or under a window-mode app's window), whatever its setting. */
     get sidebarDocked() { return pageOutside || pageHosted; },
     // The overlay stays on screen through a switch (ui/runtime.ts: the highlight waits for the state).
@@ -491,6 +498,13 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           pageOpeningBundleId = bundleId;
           pageStarting = starting;
           return emit();
+        }
+        case 'pagePicture': {
+          if (!appWindow) return;
+          const next = pictureOf(msg.data);
+          if (next === pagePicture) return;
+          pagePicture = next;
+          return pageState === 'elsewhere' ? emit() : undefined;
         }
         case 'themes':
           // Margin.app's index of imported themes changed (Settings lists them).

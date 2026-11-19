@@ -150,11 +150,22 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
     enum PageState: String { case empty, loading, shown, elsewhere }
     private var elsewhereLabel: String?
     private var elsewhereApp: String?
-    func setElsewhere(_ label: String?, app: String?) {
+    // A web item's page, as Safari showed it before it left for the other window (a data URL): the page draws it faded
+    // under the card's words (`pagePicture`, sent apart from `pageState`: it's large). In memory only, never logged.
+    private(set) var elsewherePicture: String?
+    func setElsewhere(_ label: String?, app: String?, picture: String?) {
+        let picture = label == nil ? nil : picture
+        if picture != elsewherePicture {
+            elsewherePicture = picture
+            push(pagePictureJSON, kept: false)
+        }
         guard label != elsewhereLabel || app != elsewhereApp else { return }
         elsewhereLabel = label
         elsewhereApp = label == nil ? nil : app
         settlePage()
+    }
+    private var pagePictureJSON: String {
+        #"{"type":"pagePicture","data":"# + (elsewherePicture.flatMap { jsonString($0) } ?? "null") + "}"
     }
     private(set) var pageState = PageState.empty
     private(set) var loaderLabel: String?
@@ -1194,10 +1205,12 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
 
     // ---- the page ----
 
-    func push(_ json: String) {
+    // `kept`: false for a page's picture: the tests' list of what was pushed keeps only that one was (no page content kept).
+    func push(_ json: String) { push(json, kept: true) }
+    func push(_ json: String, kept: Bool) {
         guard asked else { return } // its hello, when it asks, has this already
         pushes += 1
-        pushed.append(json)
+        pushed.append(kept ? json : #"{"type":"pagePicture"}"#)
         if pushed.count > 50 { pushed.removeFirst(pushed.count - 50) }
         webView.callAsyncJavaScript("marginApp.receive(m)", arguments: ["m": json], in: nil, in: .page) { result in
             if case .failure(let error) = result { Diagnostics.warn("push into Margin's window failed: \(error.localizedDescription)") }
@@ -1240,6 +1253,7 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
         json += #","pageState":""# + pageState.rawValue + #"","pageOpening":"# + (loaderLabel.flatMap { jsonString($0) } ?? "null")
         json += #","pageOpeningBundleId":"# + (loaderApp.flatMap { jsonString($0) } ?? "null")
         if starting { json += #","pageStarting":true"# }
+        if pageState == .elsewhere, let picture = elsewherePicture, let data = jsonString(picture) { json += #","pagePicture":"# + data }
         let theme = owner.theme()
         themeSent = theme
         json += #","theme":"# + (theme ?? "null") + "}"

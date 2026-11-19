@@ -92,3 +92,34 @@ test('hostShow and hostClose are requests the app may make', async () => {
   const { APP_REQUESTS } = await import('../extension/background/link.ts');
   for (const type of ['hostShow', 'hostClose']) assert.ok(APP_REQUESTS.has(type), type);
 });
+
+test('hostPicture: the item\'s page while its tab is in front, made smaller; nothing for a tab behind, another window, or no capture', async () => {
+  const f = fakeTabs([{ id: 1, windowId: 9, url: NEW_TAB, active: true }]);
+  const shots: number[] = [];
+  const shrunk: [number, number][] = [];
+  const api = { ...f.api, async captureVisibleTab(windowId: number) { shots.push(windowId); return 'data:image/jpeg;base64,QUJD'; } };
+  const h = createHostedTabs(() => api, async (d, width, quality) => { shrunk.push([width, quality]); return `${d}small`; });
+  await h.show({ windowId: 9, itemId: 't-aaaa', url: 'https://a.example/' });
+  assert.deepEqual(await h.picture({ windowId: 9, itemId: 't-aaaa' }), { data: 'data:image/jpeg;base64,QUJDsmall' });
+  assert.deepEqual(shots, [9]);
+  assert.deepEqual(shrunk, [[1600, 0.6]]);
+  // Another item in front: the first one's picture would be of it.
+  await h.show({ windowId: 9, itemId: 't-bbbb', url: 'https://b.example/' });
+  assert.deepEqual(await h.picture({ windowId: 9, itemId: 't-aaaa' }), { data: null });
+  assert.deepEqual(await h.picture({ windowId: 8, itemId: 't-bbbb' }), { data: null }, 'not in that window');
+  assert.deepEqual(await h.picture({ windowId: 9, itemId: 't-none' }), { data: null }, 'an item with no tab');
+  assert.equal(shots.length, 1);
+  await assert.rejects(h.picture({ windowId: 'x', itemId: 't-bbbb' }));
+  await assert.rejects(h.picture({ windowId: 9, itemId: 'no spaces' }));
+  // No capture in this browser, a refused one, or not a picture: none. A shrink that fails: the capture as it was.
+  assert.deepEqual(await createHostedTabs(() => f.api).picture({ windowId: 9, itemId: 't-bbbb' }), { data: null });
+  const refusing = createHostedTabs(() => ({ ...f.api, async captureVisibleTab() { throw new Error('no permission'); } }));
+  await refusing.show({ windowId: 9, itemId: 't-bbbb', url: 'https://b.example/' });
+  assert.deepEqual(await refusing.picture({ windowId: 9, itemId: 't-bbbb' }), { data: null });
+  const odd = createHostedTabs(() => ({ ...f.api, async captureVisibleTab() { return 'javascript:alert(1)'; } }));
+  await odd.show({ windowId: 9, itemId: 't-bbbb', url: 'https://b.example/' });
+  assert.deepEqual(await odd.picture({ windowId: 9, itemId: 't-bbbb' }), { data: null });
+  const failing = createHostedTabs(() => api, async () => { throw new Error('no canvas'); });
+  await failing.show({ windowId: 9, itemId: 't-bbbb', url: 'https://b.example/' });
+  assert.deepEqual(await failing.picture({ windowId: 9, itemId: 't-bbbb' }), { data: 'data:image/jpeg;base64,QUJD' });
+});

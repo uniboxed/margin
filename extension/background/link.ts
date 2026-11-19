@@ -149,7 +149,7 @@ export const APP_REQUESTS = new Set([
   // Margin.app's index of the person's imported themes (app/platforms/macos/shell/ShellThemes.swift).
   'userThemes',
   // Margin.app hosting this profile's window in its page area (background/hosted.ts): an item's tab shown, closed.
-  'hostShow', 'hostClose',
+  'hostShow', 'hostClose', 'hostPicture',
 ]);
 // The requests that call windows.update or windows.remove for one window: each carries `notAfter`
 // from the app, and only one runs per window at a time (background/handoff.ts).

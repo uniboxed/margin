@@ -488,6 +488,37 @@ const withRuntime = Object.assign(T, {
     const loader = root?.querySelector('m-page-loader');
     return { attr: root?.getAttribute('m-page-state') ?? null, starting: root?.hasAttribute('m-starting') ?? null, loader: loader ? { own: !loader.hasAttribute('m-default'), text: loader.textContent ?? '' } : null };
   },
+  // `elsewhere` with a web item's picture (host.pagePicture, ui/host-app.ts): a solid red picture (made here, a PNG
+  // data URL; null: none), drawn again. Answers Margin's <m-page-picture>: its box, how it's drawn, its image's and its
+  // words', and whether the root says `m-page-picture`; null for the element when there's none.
+  async rtPagePicture(on: boolean) {
+    let data: string | null = null;
+    if (on) {
+      const c = document.createElement('canvas');
+      c.width = 160; c.height = 100;
+      const g = c.getContext('2d')!;
+      g.fillStyle = '#e00000';
+      g.fillRect(0, 0, c.width, c.height);
+      data = c.toDataURL('image/png');
+    }
+    Object.assign(rt.host, { pagePicture: data });
+    rt.runtime!.render();
+    const root = rt.runtime!.view.rootElement() as HTMLElement | null;
+    const el = root?.querySelector('m-page-picture') as HTMLElement | null;
+    const img = el?.querySelector('img') as HTMLImageElement | null;
+    await img?.decode().catch(() => undefined);
+    const label = el?.querySelector('[m-picture-label]') as HTMLElement | null;
+    const box = (n: Element) => { const b = n.getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; };
+    return {
+      attr: root?.hasAttribute('m-page-picture') ?? false,
+      el: el ? {
+        box: box(el), zIndex: getComputedStyle(el).zIndex, pointer: getComputedStyle(el).pointerEvents, last: root?.lastElementChild === el,
+        img: img ? { src: img.getAttribute('src') === data, complete: img.complete, opacity: Number(getComputedStyle(img).opacity), box: box(img) } : null,
+        label: label ? { text: label.textContent ?? '', font: getComputedStyle(label).fontFamily, visible: getComputedStyle(label).display !== 'none' && label.getBoundingClientRect().width > 0, box: box(label) } : null,
+        moving: el.getAnimations({ subtree: true }).filter((a) => a.playState === 'running').length,
+      } : null,
+    };
+  },
   // A runtime mounted in the whole window with no state yet (a hello without one): the root says `m-starting`, and
   // the theme draws its skeleton. `pageState`: the page card's then (`empty`: nothing hosted yet). `rtArrive` gives
   // it its state. Both answer whether the root says `m-starting`.
