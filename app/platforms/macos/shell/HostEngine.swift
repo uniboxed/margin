@@ -1717,6 +1717,8 @@ final class HostEngine {
         var unhidden = false
         var rule: HostWindowChoice.Rule?
         var looking = sys.now()
+        // (When the window server first listed a window of it, and Accessibility first did: said with its window's time.)
+        var serverSeenAt: Double?, axSeenAt: Double?
         var reopened = 0
         func lookForWindow(_ seconds: Double) async -> Bool {
             await wait(seconds) {
@@ -1725,7 +1727,9 @@ final class HostEngine {
                 // through Margin and 1.1 s opened normally, Maps up to 2.1 s against 0.85-1.2 s (step 0, 2026-11-18).)
                 let serverHas = personal || !isApp
                     || !HostWindowChoice.candidates(self.serverList(pid: app.pid) ?? [], pid: app.pid, excluded: { self.isHosted(window: $0) }).isEmpty
+                if serverHas, !personal, serverSeenAt == nil { serverSeenAt = self.sys.now() }
                 let listed = serverHas ? (await self.sys.windows(pid: app.pid) ?? []).filter { !self.isHosted(window: $0.number) } : []
+                if !listed.isEmpty, axSeenAt == nil { axSeenAt = self.sys.now() }
                 let usable = listed.filter { !$0.minimized }
                 minimizedOnly = !listed.isEmpty && usable.isEmpty
                 // (An app Margin started that's still hidden lists nothing to Accessibility: the window server's window at
@@ -1790,7 +1794,8 @@ final class HostEngine {
             if personal { return fail(id, .window, minimizedOnly ? "\(bundle) has only minimized windows: left as they are" : "\(bundle) is open with no window Margin can host") }
             return fail(id, .window, "no window within \(Int(options.windowWait)) s")
         }
-        times.append("window \(ms(since: windowStarted))\(info == nil ? " (by the window server: on another Space)" : "")\(personal ? ", an app the person opened" : "")")
+        let seen = [serverSeenAt.map { "the window server listed one at \(Int((($0 - windowStarted) * 1000).rounded()))" }, axSeenAt.map { "Accessibility at \(Int((($0 - windowStarted) * 1000).rounded()))" }].compactMap { $0 }
+        times.append("window \(ms(since: windowStarted))\(info == nil ? " (by the window server: on another Space)" : "")\(personal ? ", an app the person opened" : "")\(seen.isEmpty ? "" : " (\(seen.joined(separator: ", ")))")")
         if let rule { Diagnostics.note("host: \(id): its window \(window) chosen as \(rule.rawValue)") }
         let host = Host(id: id, target: target, pid: app.pid, window: window, launchedByMargin: launchedByMargin, madeByMargin: false)
         host.bundleId = bundle
@@ -2850,9 +2855,14 @@ final class HostEngine {
         // off): an app's window with neither `fullScreenRefusal` after the ask was refused, and waiting on can't change
         // that (2026-11-17: 6 s for Maps). Asked once more the proper way (`askAgainProperly`: on its Desktop, its app in
         // front); refused again as soon: failed now. Taken, it has up to `fullScreenWait` to come into its Space.
+        // (A new Space of its app's is progress only when the app has no other window that could be going full screen, or
+        // its window is in it: restore-code, 2026-11-19 02:22, its second window's Space taken for progress, the ask macOS
+        // dropped mid-way through that other change never made again, 6 s waited, then window mode.)
         func progressed() async -> Bool {
             if let owners = sys.fullScreenSpaceOwners() {
-                if owners.contains(where: { !listed.contains($0.key) && $0.key != marginSpace && $0.value == host.pid }) { return true }
+                let alone = HostWindowChoice.candidates(serverList(pid: host.pid) ?? [], pid: host.pid) { $0 == host.window }.isEmpty
+                let mine = { (s: UInt64) in self.sys.spaces(window: host.window)?.contains(s) == true }
+                if owners.contains(where: { !listed.contains($0.key) && $0.key != marginSpace && $0.value == host.pid && (alone || mine($0.key)) }) { return true }
             } else if !Set(sys.listedFullScreenSpaces() ?? []).subtracting(listed).subtracting([marginSpace]).isEmpty {
                 return true
             }
