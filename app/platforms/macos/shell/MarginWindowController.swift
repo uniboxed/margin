@@ -398,9 +398,10 @@ final class MarginWindowController: NSObject, OverlayPageOwner, NSWindowDelegate
             if let b = backdrop { if b.parent != nil { window.removeChildWindow(b) }; if b.isVisible { b.orderOut(nil) } }
             return
         }
-        let b = backdrop ?? MarginBackdrop(frame: window.frame)
+        let frame = MarginBackdrop.frame(window: window.frame, screen: window.screen?.frame)
+        let b = backdrop ?? MarginBackdrop(frame: frame)
         backdrop = b
-        if b.frame != window.frame { b.setFrame(window.frame, display: false) }
+        if b.frame != frame { b.setFrame(frame, display: false) }
         if b.level != MarginBackdrop.level { b.level = MarginBackdrop.level }
         if b.parent !== window {
             let lost = b.isVisible // (taken out on purpose when this window left full screen: not on screen then)
