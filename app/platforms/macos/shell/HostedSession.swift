@@ -599,6 +599,15 @@ final class HostedSession: LibraryDelegate {
         w.push(json)
     }
 
+    // An app closed while it was asking something didn't quit (HostEngine `onAsking`): said in the sidebar.
+    func appAsking(_ id: HostID) {
+        guard let w = window(hostingWindow ?? preparingWindow) ?? window(nil) else { return }
+        let bundle = id.raw.hasPrefix("app:") ? String(id.raw.dropFirst("app:".count)) : id.raw
+        guard let data = try? JSONSerialization.data(withJSONObject: ["type": "hostNote", "kind": "app-asking", "app": appName(bundle) ?? bundle]),
+              let json = String(data: data, encoding: .utf8) else { return }
+        w.push(json)
+    }
+
     // Another app's normal window on screen in Margin's Space that came while nothing was being opened (HostEngine
     // `others`: a hosted app's Settings, a second document), or none any more: the Margin window there lets it in front.
     func others(_ number: Int?) {

@@ -274,6 +274,10 @@ final class HostEngine {
         var offScreenReads = 0
         var offPageReads = 0 // polls in a row a shown member wasn't at the page area
         var gone = false
+        // Its row closed while its app was asking something (a sheet or an alert of its own on screen): when it was asked
+        // to quit, with its window left where it was; and whether its not quitting has been said (`onAsking`).
+        var quitAskedAt: Double?
+        var askingSaid = false
         var goneAt: Double?
         // Its full-screen window's own toolbar windows (`ownToolbar`): left as they are while they're where it is.
         var toolbars: Set<Int> = []
@@ -408,6 +412,9 @@ final class HostEngine {
     private var routesURL: URL? { markerURL?.deletingLastPathComponent().appendingPathComponent("routes.json") }
     // A host moved to a safer route (the loop guard stopped it, its full screen failed): for the sidebar's note.
     var onRoute: ((HostID, String) -> Void)?
+    // Told when an app whose row was closed while it was asking something didn't quit (its sheet or alert holds it):
+    // it's kept in Margin (parked by the next show, or still shown), never put on the Desktop; the sidebar says why.
+    var onAsking: ((HostID) -> Void)?
     // Its own hosting core: its loop guard, its causes, its routes (never shared with another engine).
     private let core: HostCore
 
@@ -694,6 +701,13 @@ final class HostEngine {
         polledAt = sys.now()
         // (An app a row's close asked to quit, still running `quitWait` later: it didn't quit, Margin's again.)
         for pid in overdue() { if let back = takeBack(pid) { Task { await self.sayNotQuit(back) } } }
+        // (One closed while it was asking something, still running `quitWait` later: its prompt holds it. Kept, said once.)
+        for host in hosts.values where !host.askingSaid {
+            guard let asked = host.quitAskedAt, sys.now() - asked >= options.quitWait, sys.processRuns(pid: host.pid) else { continue }
+            host.askingSaid = true
+            Diagnostics.warn("host: \(host.id): didn't quit within \(Int(options.quitWait)) s of its row's close: it's asking something (its sheet or alert holds it): kept in Margin, never on the Desktop")
+            onAsking?(host.id)
+        }
         // (Margin's window out of its Space, macOS took it out of full screen: the one shown is a stray too.)
         let marginHere = marginWindow == 0 || sys.spaces(window: marginWindow).map { $0.contains(marginSpace) } ?? true
         for host in hosts.values {
@@ -2231,6 +2245,9 @@ final class HostEngine {
 
     private func bringIn(_ host: Host, isNew: Bool, retrying: Bool = false) async -> HostResult {
         jumps = 0
+        // (Shown again after a close its prompt held off: Margin's as before, its quit no longer waited on.)
+        host.quitAskedAt = nil
+        host.askingSaid = false
         // (A show: the reconciler's budgets anew.)
         core.resetTries(host: host.id.raw)
         host.offScreenReads = 0
@@ -4203,6 +4220,20 @@ final class HostEngine {
     enum CloseExit { case waited, watched, atQuit }
     private func closeNow(_ id: HostID, why: String, exit: CloseExit = .waited) async {
         guard let host = hosts[id] else { return }
+        // A row closed while its app is asking something (a sheet or an alert of its own on screen): a Mac app does nothing
+        // else until it's answered (Books, 2026-11-18 23:21: out of full screen not taken for 7 s, its close button
+        // refused, its quit refused, then left on the Desktop). Asked to quit at once with its window left where it is: one
+        // that quits is gone as any (the poll hears it); one its prompt holds stays Margin's, shown until something else is
+        // (a switch parks it then, as any), said in the sidebar once `quitWait` has passed.
+        if exit == .watched, host.launchedByMargin, host.safariWindow == nil, asking(host), !hosts.values.contains(where: { $0.id != id && $0.pid == host.pid }) {
+            if case .app = host.target {
+                host.quitAskedAt = sys.now()
+                host.askingSaid = false
+                let asked = sys.terminate(pid: host.pid)
+                Diagnostics.note("host: \(id): its row closed while its app is asking something: asked to quit with its window where it is\(asked ? "" : " (the system refused the ask)"); kept in Margin if its prompt holds it")
+                return
+            }
+        }
         let atQuit = exit == .atQuit, waits = exit == .waited
         let started = sys.now()
         var times: [String] = []
@@ -4289,6 +4320,16 @@ final class HostEngine {
         saveMarker()
         Diagnostics.note("host: \(id) closed (\(why)) in \(ms(since: started)) ms\(times.isEmpty ? "" : " (" + times.joined(separator: ", ") + ")")")
         emit(.closed(id))
+    }
+
+    // A window's kind as the observed model has it (the tests read it).
+    func modelKind(pid: pid_t, window: Int) -> WindowKind? { observer.model.apps[pid]?.windows[window]?.kind }
+
+    // Whether the app of `host` is asking something: a sheet or an alert of its own (the model's dialog kind) in Margin's
+    // Space or on screen. Such an app does nothing else until it's answered.
+    private func asking(_ host: Host) -> Bool {
+        guard let app = observer.model.apps[host.pid] else { return false }
+        return app.windows.values.contains { $0.kind == .dialog && ($0.place == .margin || $0.onScreen == true) }
     }
 
     // What Margin's quit couldn't finish for this host, for the marker (nil: done): its frame not given back, its exit

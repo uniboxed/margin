@@ -1752,6 +1752,48 @@ func hostTests() {
               && events.contains { if case .failed(_, .quit, _) = $0 { return true }; return false } && clean(w))
     }
 
+    // ---- a row closed while its app is asking something (Books' sheet, 2026-11-18): asked to quit at once, its window
+    // where it is; its prompt holding it, it stays Margin's (never on the Desktop) and the sidebar is told once ----
+    do {
+        let w = FakeHostWorld()
+        w.autoOnScreen = true
+        let ax = FakeObservation(w)
+        let e = HostEngine(system: w, marker: nil, pid: 1, observation: ax)
+        e.options.privateRetire = 0
+        e.observer.schedule = { _, run in run() }
+        _ = open(e, textEdit)
+        let p = pid(w, "com.apple.TextEdit")
+        let aw = window(w, "com.apple.TextEdit")
+        w.apps[p]?.refusesQuit = true
+        let n = w.nextWindow
+        w.nextWindow += 1
+        var sheet = FakeHostWorld.Win(pid: p, spaces: [FakeHostWorld.marginSpace])
+        sheet.frame = CGRect(x: 600, y: 120, width: 500, height: 300)
+        sheet.axRole = "AXSheet"
+        sheet.canFullScreen = false
+        w.wins[n] = sheet
+        w.apps[p]?.windows.append(n)
+        ax.post(p, .created, n)
+        e.poll()
+        hostRun { await w.sleep(0.3) }
+        e.poll()
+        let kind = e.modelKind(pid: p, window: n)
+        var asked: [HostID] = []
+        e.onAsking = { asked.append($0) }
+        let before = w.calls.count
+        hostRun { await e.close(textEdit.id) }
+        let after = Array(w.calls.dropFirst(before))
+        check("host: a row closed while its app shows a sheet: asked to quit at once, nothing else tried (no 7 s out of full screen, no close button, no Desktop), still Margin's",
+              kind == .dialog && after.filter { $0.hasPrefix("terminate") }.count == 1 && !after.contains { $0.hasPrefix("fullScreen") || $0.hasPrefix("close") || $0.hasPrefix("frame") }
+              && e.isHosted(textEdit.id) && w.wins[aw]?.fullScreen == true, "\(String(describing: kind)) \(after)")
+        hostRun { await w.sleep(6) }
+        e.poll()
+        e.poll()
+        check("host: … its prompt holding it past the quit's wait: kept in Margin, the sidebar told once", asked == [textEdit.id] && e.isHosted(textEdit.id) && w.spaces(window: aw) != [FakeHostWorld.desktop], "\(asked)")
+        w.apps[p]?.refusesQuit = false
+        hostRun { await e.quitAll() }
+    }
+
     // ---- the page area changing while one is parked: placed again lazily, when it's next shown ----
     do {
         let (w, e, _) = world()

@@ -61,7 +61,41 @@ fn rows() -> Vec<Row> {
     extra_main.ax_main = true;
     let mut ax3 = s(3, DESK, Desktop);
     ax3.ax_main = true;
+    // Books, 2026-11-18 23:20: its "Discover New Books" sheet there as it launched, in Margin's Space over the window
+    // Margin hosts, not read by Accessibility yet: never a leftover (it was parked, and Books waited on it unseen).
+    let mut books = app(true, &[99369]);
+    books.launch_windows = [99379].into_iter().collect();
+    let mut books_sheet = std(99379, r(580.0, 200.0, 580.0, 640.0), Margin, Some(true), None);
+    books_sheet.role = Some("AXSheet".into());
+    books_sheet.subrole = None;
     vec![
+        Row {
+            name: "Books' sheet there as it launched, unread, in Margin's Space: not a leftover (what it is isn't known yet)",
+            windows: vec![
+                std(99369, PAGE, Margin, Some(true), Some(true)),
+                unread(99379, r(580.0, 200.0, 580.0, 640.0), Margin, Some(true)),
+            ],
+            app: books.clone(),
+            want: vec![(99369, Main), (99379, Auxiliary)],
+            why: vec![],
+        },
+        Row {
+            name: "Books' sheet read: a dialog, shown with it",
+            windows: vec![std(99369, PAGE, Margin, Some(true), Some(true)), books_sheet],
+            app: books.clone(),
+            want: vec![(99369, Main), (99379, Dialog)],
+            why: vec![(99379, "a sheet")],
+        },
+        Row {
+            name: "the same window read as an ordinary window there as its app launched: a leftover then",
+            windows: vec![
+                std(99369, PAGE, Margin, Some(true), Some(true)),
+                std(99379, r(580.0, 200.0, 580.0, 640.0), Margin, Some(true), Some(true)),
+            ],
+            app: books,
+            want: vec![(99369, Main), (99379, Leftover)],
+            why: vec![(99379, "there as its app launched")],
+        },
         Row {
             name: "Safari Margin started: its restored windows leftovers, the one Margin asked for main",
             windows: vec![

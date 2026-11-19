@@ -67,6 +67,15 @@ export const NOTICES: Readonly<Record<string, NoticeWords>> = Object.freeze({
     tab: false,
     local: true,
   },
+  // Margin.app (app/platforms/macos/shell/HostEngine.swift `onAsking`): an app whose row was closed while it was asking
+  // something (its own sheet or alert) didn't quit: its prompt holds it. Kept in Margin, never put on the Desktop.
+  'app-asking': {
+    text: '{app} is waiting for an answer, so it didn’t close. Open it, answer it, then close it.',
+    actions: [{ id: 'ok', label: 'OK' }],
+    ms: 12000,
+    tab: false,
+    local: true,
+  },
 });
 
 // A notice's words with its values filled in (`{app}`: an installed app's name, at most 60 characters, plain text;

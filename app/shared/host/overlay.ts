@@ -643,7 +643,7 @@ function onMessage(msg: any) {
       return;
     // Margin.app's own word about a hosted app (HostEngine stepDown): its notice, its name filled in.
     case 'hostNote':
-      if (msg.kind === 'route-simpler') notices.say('route-simpler', { app: msg.app });
+      if (msg.kind === 'route-simpler' || msg.kind === 'app-asking') notices.say(msg.kind, { app: msg.app });
       return;
     case 'push':
       switch (msg.msg?.type) {

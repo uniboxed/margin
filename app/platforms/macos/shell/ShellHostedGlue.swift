@@ -116,6 +116,7 @@ extension Shell {
         host.others = { [weak session] number in session?.others(number) }
         host.front = { [weak session] read in session?.front(read) }
         host.onRoute = { [weak session] id, route in session?.routeChanged(id, route) }
+        host.onAsking = { [weak session] id in session?.appAsking(id) }
         let before = host.onEvent
         // (A notification of a hosted app's: the shell's read now, then fast for a while: the hosting core's schedule.)
         host.onWake = { [weak self] in self?.soon() }

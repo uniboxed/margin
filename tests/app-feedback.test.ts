@@ -135,7 +135,7 @@ const kinds = (kind: string) => pushed.filter((p) => p.msg.type === 'notice' && 
 // ---- the words ------------------------------------------------------------------
 
 test('notices: Margin\'s words, each kind\'s buttons; a switch that didn\'t happen gets the notice for why', () => {
-  assert.deepEqual(Object.keys(words.NOTICES).sort(), ['new-tab-setting', 'no-answer', 'not-responding', 'not-shown', 'route-simpler', 'tab-gone', 'theme-failed', 'updated-while-open']);
+  assert.deepEqual(Object.keys(words.NOTICES).sort(), ['app-asking', 'new-tab-setting', 'no-answer', 'not-responding', 'not-shown', 'route-simpler', 'tab-gone', 'theme-failed', 'updated-while-open']);
   assert.match(words.NOTICES['not-responding'].text, /isn’t responding on this page/);
   assert.deepEqual(words.NOTICES['not-responding'].actions.map((a) => a.id), ['reload', 'later']);
   assert.match(words.NOTICES['updated-while-open'].text, /Quit and reopen Safari/);
