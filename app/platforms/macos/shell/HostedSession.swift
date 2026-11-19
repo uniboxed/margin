@@ -829,6 +829,21 @@ final class HostedSession: LibraryDelegate {
         onChange?()
     }
 
+    // ---- the launcher asked for ----
+
+    // The palette's Settings or Archive in Margin's window while it hosts (the UI's openLauncher; with nothing hosted
+    // the page opens its launcher's Settings itself, ui/runtime.ts): the launcher in its page area, the item shown there
+    // parked (its row shows it again), then Settings open in it. Until 2026-11-19 refused, and nothing happened.
+    func openLauncher(windowId: Int?, settings: Bool) {
+        guard let id = window(windowId)?.id else { return note("the launcher asked for: no Margin window") }
+        enqueue {
+            if self.engine.shown != nil, self.hostingWindow == id { await self.engine.parkShown(why: "the launcher asked for in Margin's window") }
+            self.settleHosting()
+            self.note("Margin's window \(id): its launcher in the page area\(settings ? ", Settings open" : "")")
+            if settings { self.window(id)?.push(#"{"type":"command","name":"settings"}"#) }
+        }
+    }
+
     // ---- closing ----
 
     func close(_ item: String, target: ItemTarget?) async {
@@ -1051,7 +1066,28 @@ final class HostedSession: LibraryDelegate {
     // unknown): not pressed again; a page of theirs opens in the default profile (`profileFallback`). Forgotten when
     // Safari's names are read (the person allowed Safari's folder, SafariFolderGrant).
     private(set) var unopenable: Set<String> = []
-    func profileNamesChanged() { unopenable = [] }
+    func profileNamesChanged() {
+        unopenable = []
+        // Its web items open in the default profile only because theirs couldn't be (profileFallback, before the
+        // folder grant): moved into their own now, as the note's Allow says (2026-11-19: the tab stayed in the default
+        // profile's window until it was closed). Each one's tab there closed, and one shown in a Margin window shown
+        // again (its own profile woken by Safari's menu now that its name is known).
+        let fallback = Self.defaultSafariProfile
+        let moved = open.compactMap { item, o -> String? in
+            guard o.profile == fallback, case .web(let browser, let profile)? = library.target(ofItem: item), browser == "safari", resolve(profile) != fallback else { return nil }
+            return item
+        }.sorted()
+        guard !moved.isEmpty else { return }
+        note("Safari's profile names readable: \(moved.count) item(s) open in the default profile moved into their own")
+        enqueue {
+            for item in moved where self.open[item]?.profile == fallback {
+                let windows = self.shown.filter { $0.value == item }.map(\.key).sorted()
+                await self.close(item, target: nil)
+                if let w = windows.first, self.requested[w] == nil { await self.show(item, url: nil, target: nil, windowId: w) }
+            }
+            self.settleHosting()
+        }
+    }
 
     // The profile a web item of `space` opens in: `p` when it's linked or can be woken; else the default one, said in the
     // sidebar with the folder grant's Allow (Tirth, 2026-11-18: a quiet fallback and a small note, the start never held
@@ -1442,6 +1478,9 @@ final class LibraryWindowSource: MarginWindowSource {
             return answer(library.perform("newTab", ["windowId": windowId ?? NSNull(), "url": Self.searchUrl(query, settings: settings), "title": query]))
         case "goBack", "goForward", "reload":
             session.navigate(type, windowId: windowId)
+            return nil
+        case "openLauncher":
+            session.openLauncher(windowId: windowId, settings: payload["settings"] as? Bool == true)
             return nil
         case "closeTab" where payload["tabId"] == nil:
             // ⌘W: the item shown in that window.

@@ -4427,6 +4427,31 @@ final class HostEngine {
     // A window's kind as the observed model has it (the tests read it).
     func modelKind(pid: pid_t, window: Int) -> WindowKind? { observer.model.apps[pid]?.windows[window]?.kind }
 
+    // ---- an app's own keys taken by Margin (Shortcuts.swift AppKey, Shell.runAppKey) ----
+
+    // Which window of a hosted app has its keyboard now (Accessibility's focused window): the one Margin hosts (or a
+    // strip of its: Safari's toolbar in full screen), another of its app's own (a meeting, a draft, Safari's Settings),
+    // or unread (none, Accessibility busy, an app Margin doesn't host).
+    enum KeyWindow: Equatable { case hosted(HostID), other(Int), unread }
+    func keyWindow(pid: pid_t) async -> KeyWindow {
+        let mine = hosts.values.filter { $0.pid == pid }
+        guard !mine.isEmpty, let focused = await sys.focusedWindow(pid: pid) else { return .unread }
+        if let h = mine.first(where: { $0.window == focused }) { return .hosted(h.id) }
+        if modelKind(pid: pid, window: focused) == .strip, let h = mine.first(where: { $0.phase == .shown }) ?? mine.first { return .hosted(h.id) }
+        return .other(focused)
+    }
+
+    // Another window of a hosted app's closed as its close button would, or minimized as its yellow one would (never a
+    // window Margin hosts: those are its items, closed through Margin). True: asked.
+    func closeOther(pid: pid_t, window: Int) async -> Bool {
+        guard !hosts.values.contains(where: { $0.pid == pid && $0.window == window }) else { return false }
+        return await sys.close(pid: pid, window: window)
+    }
+    func minimizeOther(pid: pid_t, window: Int) async -> Bool {
+        guard !hosts.values.contains(where: { $0.pid == pid && $0.window == window }) else { return false }
+        return await sys.minimize(pid: pid, window: window)
+    }
+
     // Whether the app of `host` is asking something: a sheet or an alert of its own (the model's dialog kind) in Margin's
     // Space or on screen. Such an app does nothing else until it's answered.
     private func asking(_ host: Host) -> Bool {

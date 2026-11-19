@@ -693,7 +693,7 @@ func hostedTests() {
     check("hosted: a search typed in the palette: a web item at the engine's address", searched?["ok"] as? Bool == true
           && library.items(space: home).contains { ($0.value["url"] as? String)?.hasPrefix("https://www.google.com/search?") == true && ($0.value["url"] as? String)?.contains("q=margin%20app") == true })
     run {}
-    let unsupported = source.perform("openLauncher", ["windowId": 1])
+    let unsupported = source.perform("renameProfile", ["windowId": 1])
     check("hosted: a request the library doesn't take: refused, said to the page", unsupported?["ok"] as? Bool == false)
     check("hosted: the UI's own bookkeeping requests: answered quietly", source.perform("sidebarScroll", ["windowId": 1])?["ok"] as? Bool == true)
 
@@ -704,6 +704,20 @@ func hostedTests() {
     check("hosted: the app's item again: shown by the engine at once (no loading), Safari's window parked as it is (its copy not asked)",
           engine.shown == HostTarget.app("com.apple.TextEdit").id && engine.hosts[safari]?.phase == .parked && w.wins[safariWindow]?.fullScreen == true
           && links.types().filter { $0 == "setWindowState" }.count == setStates && window.loadings.count == loadingsBefore && window.hosted == editWindow, "\(window.loadings)")
+
+    // ---- the palette's Settings while an app is shown (2026-11-19: refused, nothing happened) ----
+    let pushesBefore = window.pushed.count
+    let asked = source.perform("openLauncher", ["windowId": 1, "settings": true])
+    run {}
+    check("hosted: the palette's Settings while an app is shown: taken, the app parked, the launcher in the page area, Settings opened in it",
+          asked?["ok"] as? Bool != false && engine.shown == nil && engine.hosts[HostTarget.app("com.apple.TextEdit").id]?.phase == .parked && !window.hosting && session.shown[1] == nil
+          && window.pushed.dropFirst(pushesBefore).contains(#"{"type":"command","name":"settings"}"#), "\(window.pushed.suffix(3)) \(String(describing: engine.shown))")
+    let pushesArchive = window.pushed.count
+    _ = source.perform("openLauncher", ["windowId": 1])
+    run {}
+    check("hosted: the palette's Archive: the launcher, Settings not opened", engine.shown == nil && !window.pushed.dropFirst(pushesArchive).contains { $0.contains("\"settings\"") })
+    run { _ = library.perform("activateTab", ["windowId": 1, "tabId": editItem]) }
+    check("hosted: …its row again: the app shown again at once", engine.shown == HostTarget.app("com.apple.TextEdit").id && window.hosted == editWindow)
 
     // ---- Safari and Chrome picked as apps ----
     let before = library.items().count
@@ -829,6 +843,30 @@ func hostedTests() {
         check("hosted window mode: FaceTime's item closed: its frame given back before it was quit", w.frameAtQuit["com.apple.FaceTime"] == FakeHostWorld.defaultFrame && w.running(bundleId: "com.apple.FaceTime").isEmpty
               && w.saved["com.apple.FaceTime"] == FakeHostWorld.defaultFrame, "\(String(describing: w.frameAtQuit))")
         window.layout.left = 300
+    }
+    // ---- a space's Safari profile Margin can't open (its name unknown, no folder grant): the default profile's window,
+    // said; moved into its own once Safari's names are read (2026-11-19: it stayed in the default profile's window) ----
+    do {
+        links.notInMenu = ["s-own"]
+        links.wakes.insert("s-own")
+        let added = library.perform("addItem", ["windowId": 1, "url": "https://own.example/", "front": true, "target": ItemTarget.web(browser: "safari", profile: "s-own").json])
+        let own = (added.result as? JSONObject)?["tabId"] as? String ?? ""
+        let pushes = window.pushed.count
+        run { await session.show(own, url: nil, target: nil, windowId: 1) }
+        check("hosted: a profile Margin can't open: its item shown in the default profile's window, the note said", !own.isEmpty && session.open[own]?.profile == "s-default" && session.shown[1] == own
+              && window.pushed.dropFirst(pushes).contains { $0.contains("safari-profile") }, "\(String(describing: session.open[own])) \(session.done.suffix(3))")
+        links.notInMenu = []
+        let mark = links.asked.count
+        session.profileNamesChanged()
+        run {}
+        let asked = links.asked.dropFirst(mark).map { "\($0.profile) \($0.type)" }
+        check("hosted: …Safari's names read (the folder allowed): its tab closed in the default profile's window, shown in its own",
+              session.open[own]?.profile == "s-own" && session.shown[1] == own && asked.first == "s-default hostClose" && asked.contains("s-own hostShow")
+              && engine.shown == HostTarget.safariWindow("s-own").id, "\(asked) \(String(describing: session.open[own])) \(session.done.suffix(4))")
+        let again = links.asked.count
+        session.profileNamesChanged()
+        run {}
+        check("hosted: …read again: nothing more moved", links.asked.count == again, "\(links.asked.dropFirst(again).map(\.type))")
     }
     run { await engine.quitAll() }
 

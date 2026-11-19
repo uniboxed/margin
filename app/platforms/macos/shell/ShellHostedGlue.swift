@@ -254,6 +254,10 @@ extension Shell {
                                             marginWindowOpen: !windows.isEmpty, marginOnCurrentSpace: here)
         if guards != shortcuts.guardsQuit { Diagnostics.note("⌘Q \(guards ? "is Margin's first: it asks before it quits" : "let go: the front app's own")") }
         shortcuts.setQuitGuard(active: guards)
+        let appKeys = ShortcutSet.guardsAppKeys(quitting: hostQuitting || quitsAsked > 0, frontPid: apps.frontPid, ownPid: own, hostedPids: hostedPids,
+                                                marginWindowOpen: !windows.isEmpty, marginOnCurrentSpace: here)
+        if appKeys != shortcuts.guardsAppKeys { Diagnostics.note("a hosted app's ⌘W, ⌘M, ⌘H, ⌃⌘F \(appKeys ? "are Margin's while it's in front" : "let go")") }
+        shortcuts.setAppKeyGuard(active: appKeys)
         // (Its prompt up and neither Margin nor an app it hosts in front any more: never left up.)
         if !active, quitPrompt != nil { quitPrompt?.choose(.cancel) }
     }
@@ -277,5 +281,38 @@ extension Shell {
         }
         w.map { hostedKeysRun.append("\(command.rawValue) → \($0.id)") }
         if hostedKeysRun.count > 50 { hostedKeysRun.removeFirst(hostedKeysRun.count - 50) }
+    }
+
+    // A hosted app's own key Margin took (Shortcuts.swift AppKey), for the window of the front app that has its keys:
+    // the one Margin hosts gets what Margin's own menu does (⌘W: Close Tab, the item shown in that Margin window, as the
+    // sidebar's close does) or nothing (the rest would take it out of Margin, or close every tab of a Safari window);
+    // another window of its app's (a meeting, a draft, Safari's Settings) is closed by ⌘W and minimized by ⌘M as there.
+    // Its keyboard's window unread (Accessibility busy): nothing, said, rather than close what the person didn't mean.
+    func runAppKey(_ key: AppKey) {
+        guard let host, let pid = apps.frontPid, host.hosts.values.contains(where: { $0.pid == pid }) else { return }
+        let started = Diagnostics.now()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let target = await host.keyWindow(pid: pid)
+            var done: String
+            switch (key, target) {
+            case (.closeTab, .hosted(let id)):
+                let w = self.hosted?.hostingWindow.flatMap { n in self.marginWindows?.controllers.first { $0.id == n } } ?? self.marginWindows?.front
+                if let w { w.run(.closeTab); done = "Close Tab in Margin's window \(w.id) (\(id))" } else { done = "no Margin window: nothing" }
+            case (.closeTab, .other(let n)):
+                done = await host.closeOther(pid: pid, window: n) ? "its window \(n) closed (its close button)" : "its window \(n) has no close button Accessibility can press: nothing"
+            case (.minimize, .other(let n)):
+                done = await host.minimizeOther(pid: pid, window: n) ? "its window \(n) minimized" : "its window \(n) didn't minimize: nothing"
+            case (_, .unread):
+                done = "the window with its keys unread: nothing"
+            case (_, .hosted):
+                done = "in the window Margin hosts: nothing (it would take it out of Margin)"
+            case (_, .other(let n)):
+                done = "in its window \(n): nothing (it would take it out of Margin)"
+            }
+            Diagnostics.note("\(key.name) in a hosted app: \(done), \(Diagnostics.ms(since: started))")
+            self.hostedKeysRun.append("\(key.name) → \(done)")
+            if self.hostedKeysRun.count > 50 { self.hostedKeysRun.removeFirst(self.hostedKeysRun.count - 50) }
+        }
     }
 }

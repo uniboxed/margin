@@ -459,6 +459,15 @@ final class FakeHostWorld: HostSystem {
         return true
     }
 
+    // Minimized by Accessibility (`minimized`, off screen from then): a window of that app's.
+    func minimize(pid: pid_t, window: Int) async -> Bool {
+        calls.append("minimize \(window)")
+        guard !fail.contains("ax"), let w = wins[window], w.pid == pid, !axHides(pid) else { return false }
+        minimized.insert(window)
+        wins[window]?.minimized = true
+        return true
+    }
+
     // ---- apps ----
     // Apps NSWorkspace says have quit while their process goes on (a UIKit app attempting termination with no window in
     // any user Space: Maps, 2026-11-17, `isAttemptingTermination` and still running): not in `running` or `app(pid:)`,
@@ -4291,6 +4300,28 @@ func session1405Tests(world: () -> (FakeHostWorld, HostEngine, URL)) {
         check("unfitted: its next show tries again: placed at the page area", back == .shown(faceTime.id, placed: true) && w.bounds(window: n) == page && e.shown == faceTime.id, "\(String(describing: back))")
         hostRun { await e.quitAll() }
         check("unfitted: quit: the person's window given back at its own frame, on its Desktop", w.wins[n]?.frame == FakeHostWorld.display && w.spaces(window: n) == [FakeHostWorld.desktop], "\(String(describing: w.wins[n]))")
+    }
+
+    // ---- a hosted app's own ⌘W and ⌘M (Shell.runAppKey): which window has its keys ----
+    do {
+        let (w, e, _) = world()
+        _ = open(e, textEdit)
+        let p = pid(w, "com.apple.TextEdit"), n = window(w, "com.apple.TextEdit")
+        check("app keys: its keyboard's window unread: unread (nothing closed for it)", hostRun { await e.keyWindow(pid: p) } == .unread)
+        w.focused[p] = n
+        check("app keys: the window Margin hosts has the keys: that host's", hostRun { await e.keyWindow(pid: p) } == .hosted(textEdit.id))
+        let other = w.nextWindow
+        w.nextWindow += 1
+        w.wins[other] = FakeHostWorld.Win(pid: p, spaces: [w.current])
+        w.apps[p]?.windows.append(other)
+        w.focused[p] = other
+        check("app keys: another window of its app has them (a meeting, a draft): that window", hostRun { await e.keyWindow(pid: p) } == .other(other))
+        check("app keys: an app Margin doesn't host: unread", hostRun { await e.keyWindow(pid: 4242) } == .unread)
+        check("app keys: the window Margin hosts is never closed or minimized as another one", hostRun { await e.closeOther(pid: p, window: n) } == false
+              && hostRun { await e.minimizeOther(pid: p, window: n) } == false && w.wins[n] != nil && !w.minimized.contains(n))
+        check("app keys: ⌘M in the other window: minimized", hostRun { await e.minimizeOther(pid: p, window: other) } == true && w.minimized.contains(other))
+        check("app keys: ⌘W in the other window: closed by its close button, the hosted one still there", hostRun { await e.closeOther(pid: p, window: other) } == true
+              && w.wins[other] == nil && w.wins[n] != nil && e.shown == textEdit.id, "\(w.calls.suffix(3))")
     }
 
     // ---- A: a window opened only to wake a profile, parked out of sight as it comes ----

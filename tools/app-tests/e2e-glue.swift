@@ -109,6 +109,8 @@ final class GlueHostWorld: HostSystem {
   }
   func isFullScreen(pid: pid_t, window: Int) async -> Bool? { wins[window].flatMap { $0.pid == pid ? $0.fullScreen : nil } }
   func mainWindow(pid: pid_t) async -> Int? { apps[pid]?.windows.last }
+  var focused: [pid_t: Int] = [:] // the app's keyboard's window (none: unread)
+  func focusedWindow(pid: pid_t) async -> Int? { focused[pid] }
   func frame(pid: pid_t, window: Int) async -> CGRect? { wins[window].map { $0.frame ?? CGRect(x: 100, y: 100, width: 800, height: 600) } }
   func setFrame(pid: pid_t, window: Int, _ frame: CGRect, size: Bool) async -> Bool {
     calls.append("frame \(window)")
@@ -614,7 +616,7 @@ func glueScenario() async {
   // ---- Margin's keys while hosting: held while Margin or a hosted app is in front, the next/previous item of the space ----
   apps.bringToFront(1) // (an app Margin doesn't host)
   shell.track()
-  check("keys: another app in front: Margin's keys let go, ⌘Q that app's own", !shell.shortcuts.isActive && !shell.shortcuts.guardsQuit && keys.held.isEmpty)
+  check("keys: another app in front: Margin's keys let go, ⌘Q that app's own", !shell.shortcuts.isActive && !shell.shortcuts.guardsQuit && !shell.shortcuts.guardsAppKeys && keys.held.isEmpty)
   let calcPid = world.apps.values.first { $0.bundle == GlueHostWorld.calculator }?.pid ?? 0
   apps.bringToFront(calcPid)
   shell.track()
@@ -631,9 +633,26 @@ func glueScenario() async {
   let back = await until(5, { session.shown[c.id] == calcItem && engine.shown == calculator })
   await session.idle()
   check("keys: ⌥⌘↓ then: the next one, Calculator again", back && shell.hostedKeysRun.last == "next-tab → \(c.id)", "\(String(describing: session.shown[c.id])) \(shell.hostedKeysRun)")
+  // ---- a hosted app's own keys that would undo its hosting (2026-11-19): Margin's while it's in front ----
+  check("app keys: a hosted app in front: its ⌘W, ⇧⌘W, ⌥⌘W, ⌘M, ⌘H, ⌥⌘H, ⌃⌘F are Margin's", shell.shortcuts.guardsAppKeys
+        && AppKey.allCases.allSatisfy { k in keys.held.values.contains(Combo.parse(k.rawValue)!) }, "\(keys.held.values)")
+  let calcWindowNow = engine.shown.flatMap { engine.hosts[$0]?.window } ?? 0
+  world.focused[calcPid] = calcWindowNow
+  let appKeysBefore = shell.hostedKeysRun.count
+  for k in ["Meta+KeyM", "Ctrl+Meta+KeyF", "Meta+KeyH"] { keys.press(k) }
+  _ = await until(3) { shell.hostedKeysRun.count >= appKeysBefore + 3 }
+  check("app keys: ⌘M, ⌃⌘F, ⌘H in the window Margin hosts: nothing (each would take it out of Margin), Calculator still shown",
+        shell.hostedKeysRun.dropFirst(appKeysBefore).count == 3 && shell.hostedKeysRun.dropFirst(appKeysBefore).allSatisfy { $0.contains("in the window Margin hosts: nothing") }
+        && engine.shown == calculator && session.shown[c.id] == calcItem && !world.calls.contains { $0.hasPrefix("close ") }, "\(shell.hostedKeysRun.suffix(3))")
+  world.focused[calcPid] = nil
+  keys.press("Meta+KeyW")
+  _ = await until(3) { shell.hostedKeysRun.count >= appKeysBefore + 4 }
+  check("app keys: ⌘W with its keyboard's window unread: nothing closed", shell.hostedKeysRun.last == "⌘W → the window with its keys unread: nothing"
+        && engine.shown == calculator && session.shown[c.id] == calcItem, "\(shell.hostedKeysRun.suffix(2))")
   apps.bringToFront(ProcessInfo.processInfo.processIdentifier)
   shell.track()
   check("keys: Margin itself in front: held, its sidebar key too", shell.shortcuts.isActive && keys.held.values.contains(Combo.parse("Alt+KeyS")!))
+  check("app keys: Margin itself in front: let go (its own menu has Close Tab, Minimize, Hide)", !shell.shortcuts.guardsAppKeys && !keys.held.values.contains(Combo.parse("Meta+KeyW")!))
   let pushes = c.pushes
   keys.press("Meta+KeyT")
   check("keys: ⌘T: the palette, in Margin's window", c.pushed.suffix(max(1, c.pushes - pushes)).contains(#"{"type":"command","name":"palette"}"#))

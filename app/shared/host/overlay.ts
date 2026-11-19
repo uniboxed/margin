@@ -610,6 +610,9 @@ function onMessage(msg: any) {
       // Margin's own window, its first run (app/platforms/macos/shell/HostedSession.swift): the space it made, in the
       // space editor for the person to name (the UI's own editor, as a new space opens in it).
       else if (msg.name === 'edit-space' && host?.appWindow && typeof msg.spaceId === 'string') runtime?.dispatch('space.edit', msg.spaceId, 'behavior');
+      // Margin's own window, the palette's Settings while it hosted (HostedSession.swift openLauncher): its launcher is
+      // in the page area again, with its Settings open.
+      else if (msg.name === 'settings' && host?.appWindow) runtime?.setUi({ settingsOpen: true, recording: null });
       return;
     case 'link':
       // (Margin's own window has no copy's link to lose.)
